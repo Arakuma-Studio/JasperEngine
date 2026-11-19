@@ -108,6 +108,7 @@ namespace jasperengine::editor{
     class JobsMemoryWindow;
     class MeshAuditWindow;
     class BuildReportWindow;
+    class CrashReportsWindow;
     class AnimationStatisticsWindow;
     class ProfilerWindow;
     class FrameDebuggerWindow;
@@ -297,6 +298,7 @@ namespace jasperengine::editor{
         JobsMemoryWindow* jobsMemoryWindow;
         MeshAuditWindow* meshAuditWindow;
         BuildReportWindow* buildReportWindow;
+        CrashReportsWindow* crashReportsWindow;
         AnimationStatisticsWindow* animationStatisticsWindow;
         ProfilerWindow* profilerWindow;
         FrameDebuggerWindow* frameDebuggerWindow;
@@ -740,6 +742,7 @@ namespace jasperengine::editor{
         NoiseGraphWindow* getNoiseGraphWindow() const { return noiseGraphWindow; }
         SystemsWindow* getSystemsWindow() const;
         JobsMemoryWindow* getJobsMemoryWindow() const;
+        CrashReportsWindow* getCrashReportsWindow() const { return crashReportsWindow; }
         ProfilerWindow* getProfilerWindow() const { return profilerWindow; }
         FrameDebuggerWindow* getFrameDebuggerWindow() const { return frameDebuggerWindow; }
         UndoHistoryWindow* getUndoHistoryWindow() const { return undoHistoryWindow; }

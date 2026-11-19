@@ -1257,6 +1257,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/ModelImporterView.cpp
     ${EDITOR_DIR}/window/MeshAuditWindow.cpp
     ${EDITOR_DIR}/window/BuildReportWindow.cpp
+    ${EDITOR_DIR}/window/CrashReportsWindow.cpp
     ${EDITOR_DIR}/model/GltfDocument.cpp
     ${EDITOR_DIR}/model/ModelAudit.cpp
     ${EDITOR_DIR}/model/ModelCookCache.cpp

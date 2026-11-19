@@ -271,6 +271,14 @@ struct LocalBuildSettings {
     bool configured = false;    // set on read: false = no entry, so default toolchain
 };
 
+// Window > Analysis > Crash Reports: the reports folder it shows (empty: the editor's own) and the
+// symbols folder its Copy Symbolicate Command names. Machine paths, so per project beside
+// LocalBuildSettings.
+struct CrashReportsLocations {
+    std::filesystem::path folder;
+    std::filesystem::path symbols;
+};
+
 class AppSettings {
 private:
     static std::filesystem::path configFilePath;
@@ -394,6 +402,9 @@ public:
 
     static LocalBuildSettings getBuildSettings(const std::filesystem::path& projectFile);
     static bool setBuildSettings(const std::filesystem::path& projectFile, const LocalBuildSettings& value);
+
+    static CrashReportsLocations getCrashReportsLocations(const std::filesystem::path& projectFile);
+    static bool setCrashReportsLocations(const std::filesystem::path& projectFile, const CrashReportsLocations& value);
 
     // Initialization
     // preferUserDirectory: keep the files in the per-user config directory unless the working

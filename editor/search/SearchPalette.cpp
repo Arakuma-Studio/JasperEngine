@@ -92,7 +92,7 @@ namespace {
         {"Undo History", "window.undoHistory"}, {"Play Mode Changes", "window.playModeChanges"},
         {"Missing Assets", "window.missingAssets"}, {"Graph Editor", "window.graphEditor"}, {"References", "window.assetReferences"}, {"Profiler", "window.profiler"},
         {"Frame Debugger", "window.frameDebugger"}, {"Systems", "window.systems"}, {"Jobs & Memory", "window.jobsMemory"},
-        {"Mesh Optimization Audit", "window.meshAudit"}, {"Build Report", "window.buildReport"}, {"Animation Statistics", "window.animationStatistics"},
+        {"Mesh Optimization Audit", "window.meshAudit"}, {"Build Report", "window.buildReport"}, {"Crash Reports", "window.crashReports"}, {"Animation Statistics", "window.animationStatistics"},
         {"Sprite Preview", "window.spritePreview"}, {"Palette", "window.palette"}, {"Tile Palette", "window.tilePalette"},
         {"Tileset Editor", "window.tilesetEditor"}, {"Title Designer", "window.titleDesigner"},
     };
