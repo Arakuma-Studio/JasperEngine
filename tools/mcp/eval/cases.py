@@ -5285,7 +5285,7 @@ CASES = [
         "what_happened": "New text (input-device-awareness R27): the Game view forces the input scheme before Play, so the HUD "
                          "shows a scheme's prompts from the first frame; without the parameter an agent sends a pad press after "
                          "Play started (the first frames show the other prompts) or edits scripts.",
-        "text_at_issue": "configure_game_view input_scheme: 'Forced at Play start; auto follows the device used.'",
+        "text_at_issue": "configure_game_view: '... the input scheme forced at Play start'; its input_scheme enum auto|keyboard_mouse|gamepad|touch",
         "source": "input-device-awareness R24, R27 (new tool text); no failure on record",
         "prompt": "I want to check the gamepad button prompts of the HUD from the very first frame of the game. Set the editor "
                   "up so the game treats the player as using a gamepad from the start, press Play and take a Game view "

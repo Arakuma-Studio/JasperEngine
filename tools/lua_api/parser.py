@@ -3621,7 +3621,11 @@ class Builder:
                             if cn == vname:
                                 v = cv
                                 break
-                if v is None and expr and not qual:
+                strings = [x for x in expr if x.k == 'str'] if expr else []
+                if v is None and len(strings) == 1:
+                    # a string constant (`std::string("Touch")`: InputScheme, GamepadFamily)
+                    v = literal(strings)
+                elif v is None and expr and not qual:
                     # a literal value (a namespace of plain constants: ParticleSystemStopBehavior)
                     v = eval_int(expr, {}, self.model)
                 vals.append((name, v, call))

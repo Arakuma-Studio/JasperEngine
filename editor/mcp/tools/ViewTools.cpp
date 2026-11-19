@@ -2365,7 +2365,8 @@ void registerViewTools(McpRegistry& registry) {
         tool.description =
             "Read (no arguments) or change the Game view toolbar (editor preferences, not undoable): aspect (project = "
             "the canvas size), resolution (the game and screenshots render at it; its dpi is Screen.dpi), a simulated "
-            "device, orientation and language (editor only; safe_area is Screen.safeArea). Options: jasper://docs/ui.";
+            "device, orientation and language (editor only; safe_area is Screen.safeArea), the input scheme forced at Play "
+            "start. Options: jasper://docs/ui.";
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
             {"scale", number("", 1, 5)},
@@ -2373,7 +2374,7 @@ void registerViewTools(McpRegistry& registry) {
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
             {"simulate_touch", boolean("")},
-            {"input_scheme", stringEnum("Forced at Play start; auto follows the device used.", {"auto", "keyboard_mouse", "gamepad", "touch"})},
+            {"input_scheme", stringEnum("", {"auto", "keyboard_mouse", "gamepad", "touch"})},
             {"simulate_textures", stringEnum("", {"desktop", "mobile", "android_etc2", "web"})},
             {"atmosphere_quality", stringEnum("", {"project", "off", "low", "medium", "high"})},
             {"physics_debug", boolean("")},

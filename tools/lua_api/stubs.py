@@ -11,6 +11,7 @@ Types the parser could not resolve are `any` (never a wrong type), and the bindi
 `-- unresolved:` in the stub, which tools/mcp/tests/test_stubs.py checks stays empty.
 """
 
+import json
 import os
 
 FILE_HEADER = ('---@meta _\n'
@@ -421,7 +422,8 @@ class Emitter:
             for v in en['values']:
                 for dl in doc_lines(v['doc'], '    '):
                     L.append(dl)
-                L.append(f'    {v["name"]} = {v["value"]},')
+                value = json.dumps(v["value"]) if isinstance(v["value"], str) else v["value"]
+                L.append(f'    {v["name"]} = {value},')
             L.append('}')
         else:
             # values the generator could not compute: still typed, not numbered
