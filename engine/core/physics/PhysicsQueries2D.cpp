@@ -28,13 +28,13 @@ namespace {
     }
 
     // The scene's world when it can be queried now (D6, R18)
-    struct World2D{
+    struct QueryWorld2D{
         PhysicsSystem* system = nullptr;
         b2WorldId world = b2_nullWorldId;
         float pointsToMeter = 1.0f;
     };
 
-    bool queryWorld2D(Scene* scene, std::atomic<bool>& insideStepLogged, const char* function, World2D& out){
+    bool queryWorld2D(Scene* scene, std::atomic<bool>& insideStepLogged, const char* function, QueryWorld2D& out){
         if (!scene){
             return false;
         }
@@ -257,7 +257,7 @@ namespace {
         if (out){
             out->clear();
         }
-        World2D world;
+        QueryWorld2D world;
         const bool queryable = queryWorld2D(scene, logged, function, world);
         Shape2D query;
         // the arguments are checked with or without a world, so a bad call always says so
@@ -309,7 +309,7 @@ namespace {
             Log::error("%s: distance must be a positive finite number", function);
             return Ray::NO_HIT;
         }
-        World2D world;
+        QueryWorld2D world;
         const bool queryable = queryWorld2D(scene, logged, function, world);
         Shape2D query;
         if (!makeShape2D(function, shape, queryable ? world.pointsToMeter : 1.0f, query)){

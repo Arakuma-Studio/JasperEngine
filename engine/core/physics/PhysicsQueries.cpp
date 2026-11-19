@@ -393,7 +393,7 @@ namespace {
         return result;
     }
 
-    physics::QueryShape sphereShape(const Vector3& center, float radius){
+    physics::QueryShape querySphereShape3D(const Vector3& center, float radius){
         physics::QueryShape shape;
         shape.type = physics::QueryShape::Type::Sphere;
         shape.a = center;
@@ -401,7 +401,7 @@ namespace {
         return shape;
     }
 
-    physics::QueryShape boxShape(const Vector3& center, const Vector3& halfExtents, const Quaternion& rotation){
+    physics::QueryShape queryBoxShape3D(const Vector3& center, const Vector3& halfExtents, const Quaternion& rotation){
         physics::QueryShape shape;
         shape.type = physics::QueryShape::Type::Box;
         shape.a = center;
@@ -410,7 +410,7 @@ namespace {
         return shape;
     }
 
-    physics::QueryShape capsuleShape(const Vector3& point0, const Vector3& point1, float radius){
+    physics::QueryShape queryCapsuleShape3D(const Vector3& point0, const Vector3& point1, float radius){
         physics::QueryShape shape;
         shape.type = physics::QueryShape::Type::Capsule;
         shape.a = point0;
@@ -427,53 +427,53 @@ namespace {
 }
 
 size_t Physics::overlapSphere(Scene* scene, const Vector3& center, float radius, std::vector<OverlapHit>& out, const PhysicsQueryOptions& options){
-    return overlap3D("Physics.overlapSphere", stepLoggedOverlapSphere, scene, sphereShape(center, radius), out, options);
+    return overlap3D("Physics.overlapSphere", stepLoggedOverlapSphere, scene, querySphereShape3D(center, radius), out, options);
 }
 
 size_t Physics::overlapBox(Scene* scene, const Vector3& center, const Vector3& halfExtents, const Quaternion& rotation, std::vector<OverlapHit>& out, const PhysicsQueryOptions& options){
-    return overlap3D("Physics.overlapBox", stepLoggedOverlapBox, scene, boxShape(center, halfExtents, rotation), out, options);
+    return overlap3D("Physics.overlapBox", stepLoggedOverlapBox, scene, queryBoxShape3D(center, halfExtents, rotation), out, options);
 }
 
 size_t Physics::overlapCapsule(Scene* scene, const Vector3& point0, const Vector3& point1, float radius, std::vector<OverlapHit>& out, const PhysicsQueryOptions& options){
-    return overlap3D("Physics.overlapCapsule", stepLoggedOverlapCapsule, scene, capsuleShape(point0, point1, radius), out, options);
+    return overlap3D("Physics.overlapCapsule", stepLoggedOverlapCapsule, scene, queryCapsuleShape3D(point0, point1, radius), out, options);
 }
 
 bool Physics::checkSphere(Scene* scene, const Vector3& center, float radius, const PhysicsQueryOptions& options){
-    return check3D("Physics.checkSphere", stepLoggedCheckSphere, scene, sphereShape(center, radius), options);
+    return check3D("Physics.checkSphere", stepLoggedCheckSphere, scene, querySphereShape3D(center, radius), options);
 }
 
 bool Physics::checkBox(Scene* scene, const Vector3& center, const Vector3& halfExtents, const Quaternion& rotation, const PhysicsQueryOptions& options){
-    return check3D("Physics.checkBox", stepLoggedCheckBox, scene, boxShape(center, halfExtents, rotation), options);
+    return check3D("Physics.checkBox", stepLoggedCheckBox, scene, queryBoxShape3D(center, halfExtents, rotation), options);
 }
 
 bool Physics::checkCapsule(Scene* scene, const Vector3& point0, const Vector3& point1, float radius, const PhysicsQueryOptions& options){
-    return check3D("Physics.checkCapsule", stepLoggedCheckCapsule, scene, capsuleShape(point0, point1, radius), options);
+    return check3D("Physics.checkCapsule", stepLoggedCheckCapsule, scene, queryCapsuleShape3D(point0, point1, radius), options);
 }
 
 RayReturn Physics::sphereCast(Scene* scene, const Vector3& origin, float radius, const Vector3& direction, float maxDistance, const PhysicsQueryOptions& options){
-    return cast3D("Physics.sphereCast", stepLoggedSphereCast, scene, sphereShape(origin, radius), direction, maxDistance, nullptr, options);
+    return cast3D("Physics.sphereCast", stepLoggedSphereCast, scene, querySphereShape3D(origin, radius), direction, maxDistance, nullptr, options);
 }
 
 RayReturn Physics::boxCast(Scene* scene, const Vector3& center, const Vector3& halfExtents, const Vector3& direction, float maxDistance, const Quaternion& rotation, const PhysicsQueryOptions& options){
-    return cast3D("Physics.boxCast", stepLoggedBoxCast, scene, boxShape(center, halfExtents, rotation), direction, maxDistance, nullptr, options);
+    return cast3D("Physics.boxCast", stepLoggedBoxCast, scene, queryBoxShape3D(center, halfExtents, rotation), direction, maxDistance, nullptr, options);
 }
 
 RayReturn Physics::capsuleCast(Scene* scene, const Vector3& point0, const Vector3& point1, float radius, const Vector3& direction, float maxDistance, const PhysicsQueryOptions& options){
-    return cast3D("Physics.capsuleCast", stepLoggedCapsuleCast, scene, capsuleShape(point0, point1, radius), direction, maxDistance, nullptr, options);
+    return cast3D("Physics.capsuleCast", stepLoggedCapsuleCast, scene, queryCapsuleShape3D(point0, point1, radius), direction, maxDistance, nullptr, options);
 }
 
 size_t Physics::sphereCastAll(Scene* scene, const Vector3& origin, float radius, const Vector3& direction, float maxDistance, std::vector<RayReturn>& out, const PhysicsQueryOptions& options){
-    cast3D("Physics.sphereCastAll", stepLoggedSphereCast, scene, sphereShape(origin, radius), direction, maxDistance, &out, options);
+    cast3D("Physics.sphereCastAll", stepLoggedSphereCast, scene, querySphereShape3D(origin, radius), direction, maxDistance, &out, options);
     return out.size();
 }
 
 size_t Physics::boxCastAll(Scene* scene, const Vector3& center, const Vector3& halfExtents, const Vector3& direction, float maxDistance, const Quaternion& rotation, std::vector<RayReturn>& out, const PhysicsQueryOptions& options){
-    cast3D("Physics.boxCastAll", stepLoggedBoxCast, scene, boxShape(center, halfExtents, rotation), direction, maxDistance, &out, options);
+    cast3D("Physics.boxCastAll", stepLoggedBoxCast, scene, queryBoxShape3D(center, halfExtents, rotation), direction, maxDistance, &out, options);
     return out.size();
 }
 
 size_t Physics::capsuleCastAll(Scene* scene, const Vector3& point0, const Vector3& point1, float radius, const Vector3& direction, float maxDistance, std::vector<RayReturn>& out, const PhysicsQueryOptions& options){
-    cast3D("Physics.capsuleCastAll", stepLoggedCapsuleCast, scene, capsuleShape(point0, point1, radius), direction, maxDistance, &out, options);
+    cast3D("Physics.capsuleCastAll", stepLoggedCapsuleCast, scene, queryCapsuleShape3D(point0, point1, radius), direction, maxDistance, &out, options);
     return out.size();
 }
 
