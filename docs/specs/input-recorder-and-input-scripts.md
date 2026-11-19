@@ -645,7 +645,6 @@ wait until clicked, shot). Red controls are named per criterion.
   and Capture Screenshots dialog (R36-R40) are not implemented in this change.
 - **Not implemented in this change:** editor Record Input (R13, AC7, AC17), shots of `play {input}`
   replays (R21), `record_game {input, format: "shots", resolutions}` (R23, AC14), `run_build
-  {input_script, resolutions}` (R24, AC11), the web URL fetch of `--input-script` (R30), the
-  player's UI Document target resolver (R8: a player's `target` step fails "target needs the htmlui
-  module in this player"), the web gate and Android runs (AC12, AC13). A player's seed is applied
+  {input_script, resolutions}` (R24, AC11), the web URL fetch of `--input-script` (R30: content
+  paths only), the web gate and Android runs (AC12, AC13). A player's seed is applied
   when its Lua state opens after the engine starts.

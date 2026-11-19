@@ -6,6 +6,14 @@
 #include "input/InputRecorder.h"
 #include "input/InputScriptRunner.h"
 
+#include "Engine.h"
+#include "Scene.h"
+#if JASPERENGINE_HTMLUI
+#include "component/UIDocumentComponent.h"
+#include "object/ui/UIDocument.h"
+#include "object/ui/UIElement.h"
+#endif
+
 #include <algorithm>
 
 namespace jasperengine::input {
@@ -16,6 +24,41 @@ namespace {
         static std::vector<std::shared_ptr<Replay>> list;
         return list;
     }
+
+#if JASPERENGINE_HTMLUI
+    // a selector in the running UI Documents drawn on the screen, the topmost document first (a
+    // higher sortOrder draws on top): the centre of the first match with a size (R8)
+    bool resolveDocumentTarget(const std::string& selector, const ScriptJson&, Vector2& point, std::string& error, ScriptJson* found){
+        struct Candidate { Scene* scene; Entity entity; int sortOrder; };
+        std::vector<Candidate> candidates;
+        for (Scene* scene : Engine::getSceneLayers()) {
+            if (!scene || !scene->isComponentRegistered<UIDocumentComponent>())
+                continue;
+            auto* documents = scene->getComponentArray<UIDocumentComponent>();
+            for (size_t i = 0; documents && i < documents->size(); i++) {
+                const Entity entity = documents->getEntity(i);
+                const UIDocumentComponent* component = scene->findComponent<UIDocumentComponent>(entity);
+                if (component && component->renderMode == UIDocumentRenderMode::SCREEN)
+                    candidates.push_back({scene, entity, component->sortOrder});
+            }
+        }
+        std::stable_sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) { return a.sortOrder > b.sortOrder; });
+        for (const Candidate& c : candidates) {
+            UIDocument document(c.scene, c.entity);
+            for (const UIElement& element : document.querySelectorAll(selector)) {
+                const Rect box = element.getBoundingBox();
+                if (box.getWidth() <= 0 || box.getHeight() <= 0)
+                    continue;
+                point = Vector2(box.getX() + box.getWidth() / 2.0f, box.getY() + box.getHeight() / 2.0f);
+                if (found)
+                    *found = {{"entity", c.entity}, {"name", c.scene->getEntityName(c.entity)}};
+                return true;
+            }
+        }
+        error = "matched no element of the running UI Documents" + std::string(candidates.empty() ? " (none is drawn on the screen)" : "");
+        return false;
+    }
+#endif
 
 }
 
@@ -29,6 +72,10 @@ Replay::~Replay(){
 }
 
 std::shared_ptr<Replay> Replay::start(std::shared_ptr<const ParsedScript> script, ReplayOptions options){
+#if JASPERENGINE_HTMLUI
+    if (!options.host.resolveTarget)
+        options.host.resolveTarget = &resolveDocumentTarget;
+#endif
     std::shared_ptr<Replay> replay(new Replay(std::move(script), std::move(options)));
     replays().push_back(replay);
     const ReplayOptions& o = replay->options;
