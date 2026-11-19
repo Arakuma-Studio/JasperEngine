@@ -1,0 +1,171 @@
+// (c) JasperDev and contributors
+// SPDX-License-Identifier: MIT
+
+// The soft keyboard's snapshots turned into the field's edits (engine/core/input/TextInputSync.h,
+// text-entry spec D3, AC2): the diff Android used for document text fields, moved out of
+// NativeEngine.cpp, now shared with iOS.
+
+#include "input/TextInputSync.h"
+
+#include <gtest/gtest.h>
+
+#include <string>
+#include <vector>
+
+using namespace jasperengine;
+
+namespace {
+
+    // every edit, in order, as text: "caret -2", "back", "insert at", "compose ka 2", "cancel"
+    class Recorder : public TextInputSync::Output {
+    public:
+        std::vector<std::string> edits;
+
+        void moveCaret(int steps) override { edits.push_back("caret " + std::to_string(steps)); }
+        void backspace() override { edits.push_back("back"); }
+        void insertText(const std::string& utf8) override { edits.push_back("insert " + utf8); }
+        void compose(const std::string& utf8, int cursor) override { edits.push_back("compose " + utf8 + " " + std::to_string(cursor)); }
+        void cancelComposition() override { edits.push_back("cancel"); }
+    };
+
+    std::u16string unitsOf(const std::u32string& text){
+        std::u16string units;
+        for (char32_t cp : text){
+            if (cp >= 0x10000){
+                cp -= 0x10000;
+                units.push_back((char16_t)(0xD800 + (cp >> 10)));
+                units.push_back((char16_t)(0xDC00 + (cp & 0x3FF)));
+            }else{
+                units.push_back((char16_t)cp);
+            }
+        }
+        return units;
+    }
+
+    // a snapshot with the caret at `caret` (units) and no composing region
+    void typed(TextInputSync& sync, const std::u32string& text, int caret, Recorder& out){
+        const std::u16string units = unitsOf(text);
+        sync.update(units, caret, caret, -1, -1, out);
+    }
+
+    // a snapshot with the caret at the end of the composing region [start, end) (units)
+    void composing(TextInputSync& sync, const std::u32string& text, int start, int end, Recorder& out){
+        const std::u16string units = unitsOf(text);
+        sync.update(units, end, end, start, end, out);
+    }
+
+    using Edits = std::vector<std::string>;
+
+}
+
+TEST(TextInputSync, SuggestionCompletingAWordInsertsTheRestOnly){
+    TextInputSync sync;
+    Recorder out;
+    sync.reset(U"Wh", 2);
+    typed(sync, U"What", 4, out);
+    EXPECT_EQ(out.edits, (Edits{"insert at"}));
+    EXPECT_EQ(sync.text(), U"What");
+    EXPECT_EQ(sync.caret(), 4u);
+}
+
+TEST(TextInputSync, CorrectionDeletesThenInserts){
+    TextInputSync sync;
+    Recorder out;
+    sync.reset(U"teh", 3);
+    typed(sync, U"the", 3, out);
+    EXPECT_EQ(out.edits, (Edits{"back", "back", "insert he"}));
+}
+
+TEST(TextInputSync, CompositionUpdatedCommittedAndCancelled){
+    TextInputSync sync;
+    Recorder out;
+    sync.reset(U"a", 1);
+
+    // composing "k", then "ka": the composition follows
+    composing(sync, U"ak", 1, 2, out);
+    composing(sync, U"aka", 1, 3, out);
+    EXPECT_TRUE(sync.isComposing());
+    EXPECT_EQ(out.edits, (Edits{"compose k 1", "compose ka 2"}));
+
+    // the same snapshot again: nothing
+    out.edits.clear();
+    composing(sync, U"aka", 1, 3, out);
+    EXPECT_TRUE(out.edits.empty());
+
+    // the region ends with a conversion: committed
+    typed(sync, U"aか", 2, out);
+    EXPECT_EQ(out.edits, (Edits{"insert \xE3\x81\x8B"}));
+    EXPECT_FALSE(sync.isComposing());
+    EXPECT_EQ(sync.caret(), 2u);
+
+    // a composition whose text goes away: cancelled
+    out.edits.clear();
+    composing(sync, U"aかx", 2, 3, out);
+    typed(sync, U"aか", 2, out);
+    EXPECT_EQ(out.edits, (Edits{"compose x 1", "cancel"}));
+    EXPECT_FALSE(sync.isComposing());
+
+    // a new composition right after a commit follows it
+    out.edits.clear();
+    composing(sync, U"aかn", 2, 3, out);
+    composing(sync, U"aかny", 3, 4, out);
+    EXPECT_EQ(out.edits, (Edits{"compose n 1", "insert n", "compose y 1"}));
+
+    // text outside the composition changed too: dropped, then the rest diffed
+    out.edits.clear();
+    typed(sync, U"Zかn", 3, out);
+    EXPECT_EQ(out.edits, (Edits{"cancel", "caret -2", "back", "insert Z", "caret 2"}));
+}
+
+TEST(TextInputSync, AnEditAwayFromTheCaretMovesItFirst){
+    TextInputSync sync;
+    Recorder out;
+    sync.reset(U"one twx three", 13);
+    // a suggestion fixes "twx" while the caret is at the end
+    typed(sync, U"one two three", 13, out);
+    EXPECT_EQ(out.edits, (Edits{"caret -6", "back", "insert o", "caret 6"}));
+    EXPECT_EQ(sync.caret(), 13u);
+
+    // the IME moved its caret alone (a swipe on the space bar)
+    out.edits.clear();
+    typed(sync, U"one two three", 3, out);
+    EXPECT_EQ(out.edits, (Edits{"caret -10"}));
+}
+
+TEST(TextInputSync, EmojiAndSurrogatePairsCountOneCodePoint){
+    TextInputSync sync;
+    Recorder out;
+    sync.reset(U"hi", 2);
+
+    // an emoji is two UTF-16 units and one code point
+    typed(sync, U"hi\U0001F600", 4, out);
+    EXPECT_EQ(out.edits, (Edits{"insert \xF0\x9F\x98\x80"}));
+    EXPECT_EQ(sync.caret(), 3u);
+
+    // erased with one backspace
+    out.edits.clear();
+    typed(sync, U"hi", 2, out);
+    EXPECT_EQ(out.edits, (Edits{"back"}));
+
+    // a lone surrogate is U+FFFD
+    std::u32string text;
+    std::vector<size_t> unitToCodepoint;
+    utf16ToCodepoints(std::u16string{u'a', (char16_t)0xD83D}, text, unitToCodepoint);
+    EXPECT_EQ(text, (std::u32string{U'a', 0xFFFD}));
+}
+
+TEST(TextInputSync, ResetStartsOverWithoutEdits){
+    TextInputSync sync;
+    Recorder out;
+    sync.reset(U"abc", 2);
+    composing(sync, U"abxc", 2, 3, out);
+    ASSERT_TRUE(sync.isComposing());
+
+    // the field's text was sent back to the keyboard
+    out.edits.clear();
+    sync.reset(U"ab", 9);
+    EXPECT_FALSE(sync.isComposing());
+    EXPECT_EQ(sync.caret(), 2u);
+    typed(sync, U"ab", 2, out);
+    EXPECT_TRUE(out.edits.empty());
+}

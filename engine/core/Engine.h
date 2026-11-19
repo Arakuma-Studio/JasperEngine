@@ -141,6 +141,8 @@
 namespace jasperengine {
     class Scheduler;
     enum class InputSourceTag : uint8_t;   // input/InputScheme.h
+    enum class EnterKey : uint8_t;         // input/TextEntry.h
+    struct TextEntryTraits;
 
     class JASPERENGINE_API Scene;
 
@@ -1086,6 +1088,21 @@ namespace jasperengine {
         static void systemImeComposition(const std::string& utf8, int cursorCodepoints);
         // drops the current composition, restoring the text it replaced
         static void systemImeCancel();
+        // A soft keyboard that keeps the text (Android, iOS) reports its state: UTF-16 units, the
+        // selection and the composing region in units (-1: none). Diffed against what it held
+        // (TextInputSync) into caret moves, backspaces, text input and composition for the field
+        // (text-entry D3); the field's real text goes back at the next flush when it differs (R4)
+        static void systemTextInputState(const std::u16string& units, int selectionStart, int selectionEnd,
+                                         int composingStart, int composingEnd);
+        // the soft keyboard was given this text (UTF-8), caret in code points, nothing composed
+        static void resetTextInputState(const std::string& utf8, size_t caret);
+        // The soft keyboard's action key (text-entry R3, D2): Enter on the focused field, with
+        // event.enterKeyHint, cancelable; unless prevented, the hint's default action. A component
+        // InputField submits; with no field the game gets an Enter press
+        static void systemEditorAction(EnterKey key);
+        // the focused text field (a document's or a component InputField) and the traits it asks of
+        // the soft keyboard; keyboardOpen: the keyboard is shown for it (Game view, inspect_ui)
+        static bool getTextEntryFocus(TextEntryTraits& traits, bool& keyboardOpen);
         // a document text field has focus: platforms route IME composition to it
         static bool wantsTextComposition();
         // the caret area of the focused document text field, canvas coordinates; converted

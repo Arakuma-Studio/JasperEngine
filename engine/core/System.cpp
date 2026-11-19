@@ -101,8 +101,20 @@ void System::showVirtualKeyboard(std::wstring text){
 
 }
 
+void System::showVirtualKeyboard(const std::wstring& text, const TextEntryTraits& traits){
+    showVirtualKeyboard(text);
+}
+
 void System::hideVirtualKeyboard(){
 
+}
+
+void System::updateVirtualKeyboardText(const std::wstring& text, int selectionStart, int selectionEnd){
+
+}
+
+bool System::keepsVirtualKeyboardText(){
+    return false;
 }
 
 void System::setClipboardText(const std::string& utf8){

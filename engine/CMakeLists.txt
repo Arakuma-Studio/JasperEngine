@@ -1393,6 +1393,7 @@ endif()
 set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/EngineTime.cpp
+    core/EngineTextEntry.cpp
     core/PlatformConfig.cpp
     core/player/ContentManifest.cpp
     core/player/Launch.cpp
@@ -1407,6 +1408,8 @@ set(JASPERENGINE_SRCS
     core/input/InputRebind.cpp
     core/input/InputScheme.cpp
     core/input/InputVirtualControls.cpp
+    core/input/TextEntry.cpp
+    core/input/TextInputSync.cpp
     core/audio/AudioCapture.cpp
     core/audio/AudioClock.cpp
     core/audio/AudioEffects.cpp
@@ -1572,6 +1575,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/HtmlUIContextInput.cpp
     core/htmlui/RmlKeyMap.cpp
     core/htmlui/RmlTextInputHandler.cpp
+    core/htmlui/TextEntryTraits.cpp
     core/htmlui/anim/AnimAnimation.cpp
     core/htmlui/anim/AnimCommon.cpp
     core/htmlui/anim/AnimEasing.cpp

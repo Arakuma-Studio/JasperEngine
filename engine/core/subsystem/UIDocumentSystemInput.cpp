@@ -12,6 +12,7 @@
 #include "htmlui/RmlKeyMap.h"
 #include "htmlui/RmlSystem.h"
 #include "htmlui/RmlTextInputHandler.h"
+#include "htmlui/TextEntryTraits.h"
 #include "htmlui/widgets/ItemsViewElement.h"
 #include "util/StringUtils.h"
 
@@ -215,6 +216,20 @@ namespace {
         if (defaultPrevented)
             *defaultPrevented = prevented;
         return propagated;
+    }
+
+    // An Enter keydown carrying event.enterKeyHint (the soft keyboard's action key, a field's
+    // enterkeyhint); true when no listener prevented it, so the hint's default action runs
+    bool dispatchEnterKey(Rml::Element* target, Rml::Input::KeyIdentifier rmlKey, int rmlModifiers, EnterKey hint){
+        static const char* const modifiers[] = {"ctrl_key", "shift_key", "alt_key", "meta_key", "caps_lock_key", "num_lock_key", "scroll_lock_key"};
+        Rml::Dictionary parameters;
+        parameters["key_identifier"] = (int)rmlKey;
+        for (int i = 0; i < 7; i++)
+            parameters[modifiers[i]] = (int)((rmlModifiers & (1 << i)) != 0);
+        parameters["enterKeyHint"] = Rml::String(enterKeyName(hint));
+        bool prevented = false;
+        target->DispatchEvent(Rml::EventId::Keydown, parameters, &prevented);
+        return !prevented;
     }
 
     // the focused element when it is a real element of a shown document; null for none, the
@@ -431,6 +446,23 @@ bool UIDocumentSystem::eventOnKeyDown(int key, bool repeat, int mods){
     {
         Rml::Context* rmlContext = keys->getRmlContext();
         Rml::Element* focus = focusedElement(rmlContext);
+
+        // Enter with a hint on a text field: cancelable, then the hint's default action (text-entry R3, D2)
+        if ((key == D_KEY_ENTER || key == D_KEY_KP_ENTER) && htmlui::isTextEntryField(focus)){
+            EnterKey hint = EnterKey::Default;
+            const bool explicitHint = htmlui::explicitEnterKeyHint(focus, hint);
+            const EnterKey* action = htmlui::actionKeyInFlight();
+            if (action || explicitHint){
+                if (action && (*action != EnterKey::Default || !explicitHint))
+                    hint = *action;
+                Rml::ObserverPtr<Rml::Element> field = focus->GetObserverPtr();
+                if (dispatchEnterKey(focus, RmlKeyMap::toRmlKey(key), RmlKeyMap::toRmlModifiers(mods), hint) && field)
+                    htmlui::runEnterKeyAction(field.get(), hint);
+                if (key >= 0 && key <= D_KEY_LAST)
+                    state.consumedKeys.set(key, true);
+                return true;
+            }
+        }
 
         // false: propagation was stopped (a text field handling the key) or the default prevented
         const bool propagated = rmlContext->ProcessKeyDown(RmlKeyMap::toRmlKey(key), RmlKeyMap::toRmlModifiers(mods));

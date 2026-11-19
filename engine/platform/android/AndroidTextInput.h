@@ -4,9 +4,11 @@
 #ifndef ANDROID_TEXT_INPUT_H
 #define ANDROID_TEXT_INPUT_H
 
-// The text conversions of the Android soft keyboard (GameTextInput) and the component
-// InputField's diff, without Android headers, so the core tests run them on any host.
+// The text conversions of the Android soft keyboard (GameTextInput), the component InputField's
+// diff and the keyboard a field asks for (editorInfoOf), without Android headers, so the core
+// tests run them on any host. The document fields' diff is the core's TextInputSync.
 
+#include "input/TextInputSync.h"
 #include "util/StringUtils.h"
 
 #include <cstdint>
@@ -61,29 +63,9 @@ inline std::u16string decodeModifiedUtf8(const char* text, int32_t length) {
     return out;
 }
 
-// Code points of UTF-16 units. unitToCodepoint has units.size() + 1 entries: the code point
-// index at each unit (the second unit of a pair maps past it). Lone surrogates become U+FFFD.
-inline void utf16ToCodepoints(const std::u16string& units, std::u32string& text, std::vector<size_t>& unitToCodepoint) {
-    text.clear();
-    text.reserve(units.size());
-    unitToCodepoint.assign(units.size() + 1, 0);
-
-    size_t i = 0;
-    while (i < units.size()) {
-        unitToCodepoint[i] = text.size();
-        char32_t unit = units[i];
-        if (unit >= 0xD800 && unit <= 0xDBFF && i + 1 < units.size() &&
-                units[i + 1] >= 0xDC00 && units[i + 1] <= 0xDFFF) {
-            text.push_back(0x10000 + ((unit - 0xD800) << 10) + (units[i + 1] - 0xDC00));
-            unitToCodepoint[i + 1] = text.size();
-            i += 2;
-        } else {
-            text.push_back((unit >= 0xD800 && unit <= 0xDFFF) ? 0xFFFD : unit);
-            i += 1;
-        }
-    }
-    unitToCodepoint[units.size()] = text.size();
-}
+// UTF-16 units to code points: the core's, shared with the document text sync (TextInputSync)
+using jasperengine::utf16ToCodepoints;
+using jasperengine::codepointsToUtf8;
 
 // Code points of a wide string. wchar_t is 32 bits on Android, but surrogate pairs that
 // arrive as two units are combined too.
@@ -132,14 +114,6 @@ inline std::string codepointsToModifiedUtf8(const std::u32string& text, int32_t&
             utf16Length++;
         }
         utf16Length++;
-    }
-    return out;
-}
-
-inline std::string codepointsToUtf8(const std::u32string& text, size_t start, size_t end) {
-    std::string out;
-    for (size_t i = start; i < end && i < text.size(); i++) {
-        out += StringUtils::toUTF8(text[i]);
     }
     return out;
 }
