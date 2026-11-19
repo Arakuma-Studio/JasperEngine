@@ -56,7 +56,7 @@ namespace {
     }
 
     void putFloat(std::string& out, double d){
-        uint64_t bits;
+        uint64_t bits = 0;
         std::memcpy(&bits, &d, sizeof(bits));
         out.push_back(static_cast<char>(TagFloat));
         putLE(out, bits, 8);
@@ -325,7 +325,7 @@ namespace {
         }
 
         bool float32(float& out){
-            uint64_t bits;
+            uint64_t bits = 0;
             if (!fixed(4, bits)) return false;
             const uint32_t b32 = static_cast<uint32_t>(bits);
             std::memcpy(&out, &b32, sizeof(out));
@@ -333,7 +333,7 @@ namespace {
         }
 
         bool float64(double& out){
-            uint64_t bits;
+            uint64_t bits = 0;
             if (!fixed(8, bits)) return false;
             std::memcpy(&out, &bits, sizeof(out));
             return true;
@@ -341,7 +341,7 @@ namespace {
 
         bool string(std::string_view& out){
             const size_t start = pos;
-            uint64_t length;
+            uint64_t length = 0;
             if (!varint(length)) return false;
             if (length > left()) return failAt(start, "bad string length " + std::to_string(length));
             out = std::string_view(reinterpret_cast<const char*>(data + pos), static_cast<size_t>(length));
@@ -382,9 +382,9 @@ namespace {
     };
 
     bool skipValue(Reader& r, int depth){
-        uint8_t tag;
+        uint8_t tag = 0;
         if (!r.byte(tag)) return false;
-        uint64_t scratch;
+        uint64_t scratch = 0;
         std::string_view text;
         switch (tag){
             case TagFalse: case TagTrue: case TagNull: return true;
@@ -397,12 +397,12 @@ namespace {
                 return r.fixed(4, scratch) && r.fixed(4, scratch) && r.fixed(4, scratch) && r.fixed(4, scratch);
             case TagTable: {
                 if (!r.depthCap(depth + 1)) return false;
-                uint64_t n, m;
+                uint64_t n = 0, m = 0;
                 if (!r.counts(n, 1, "array count")) return false;
                 for (uint64_t i = 0; i < n; i++) if (!skipValue(r, depth + 1)) return false;
                 if (!r.counts(m, 2, "pair count")) return false;
                 for (uint64_t i = 0; i < m; i++){
-                    uint8_t keyTag;
+                    uint8_t keyTag = 0;
                     if (!r.keyTag(keyTag)) return false;
                     if (keyTag == TagInteger ? !r.varint(scratch) : !r.string(text)) return false;
                     if (!skipValue(r, depth + 1)) return false;
@@ -417,20 +417,20 @@ namespace {
     // A value pushed on L (nothing on failure)
     bool pushValue(lua_State* L, Reader& r, int depth){
         if (!lua_checkstack(L, 4)) return r.failAt(r.pos, "nesting too deep for the Lua stack");
-        uint8_t tag;
+        uint8_t tag = 0;
         if (!r.byte(tag)) return false;
         switch (tag){
             case TagFalse: lua_pushboolean(L, 0); return true;
             case TagTrue: lua_pushboolean(L, 1); return true;
             case TagNull: LuaJson::pushNull(L); return true;
             case TagInteger: {
-                uint64_t v;
+                uint64_t v = 0;
                 if (!r.varint(v)) return false;
                 lua_pushinteger(L, static_cast<lua_Integer>(unzigzag(v)));
                 return true;
             }
             case TagFloat: {
-                double d;
+                double d = 0;
                 if (!r.float64(d)) return false;
                 lua_pushnumber(L, static_cast<lua_Number>(d));
                 return true;
@@ -442,32 +442,32 @@ namespace {
                 return true;
             }
             case TagVector2: {
-                float x, y;
+                float x = 0, y = 0;
                 if (!r.float32(x) || !r.float32(y)) return false;
-                luabridge::push(L, Vector2(x, y));
+                if (!luabridge::push(L, Vector2(x, y))) return r.failAt(r.pos, "cannot push a vector");
                 return true;
             }
             case TagVector3: {
-                float x, y, z;
+                float x = 0, y = 0, z = 0;
                 if (!r.float32(x) || !r.float32(y) || !r.float32(z)) return false;
-                luabridge::push(L, Vector3(x, y, z));
+                if (!luabridge::push(L, Vector3(x, y, z))) return r.failAt(r.pos, "cannot push a vector");
                 return true;
             }
             case TagVector4: {
-                float x, y, z, w;
+                float x = 0, y = 0, z = 0, w = 0;
                 if (!r.float32(x) || !r.float32(y) || !r.float32(z) || !r.float32(w)) return false;
-                luabridge::push(L, Vector4(x, y, z, w));
+                if (!luabridge::push(L, Vector4(x, y, z, w))) return r.failAt(r.pos, "cannot push a vector");
                 return true;
             }
             case TagQuaternion: {
-                float x, y, z, w;
+                float x = 0, y = 0, z = 0, w = 0;
                 if (!r.float32(x) || !r.float32(y) || !r.float32(z) || !r.float32(w)) return false;
-                luabridge::push(L, Quaternion(w, x, y, z));
+                if (!luabridge::push(L, Quaternion(w, x, y, z))) return r.failAt(r.pos, "cannot push a vector");
                 return true;
             }
             case TagTable: {
                 if (!r.depthCap(depth + 1)) return false;
-                uint64_t n;
+                uint64_t n = 0;
                 if (!r.counts(n, 1, "array count")) return false;
                 const int top = lua_gettop(L);
                 lua_createtable(L, static_cast<int>(std::min<uint64_t>(n, 1u << 20)), 0);
@@ -476,13 +476,13 @@ namespace {
                     if (!pushValue(L, r, depth + 1)){ lua_settop(L, top); return false; }
                     lua_rawseti(L, table, static_cast<lua_Integer>(i + 1));
                 }
-                uint64_t m;
+                uint64_t m = 0;
                 if (!r.counts(m, 2, "pair count")){ lua_settop(L, top); return false; }
                 for (uint64_t i = 0; i < m; i++){
-                    uint8_t keyTag;
+                    uint8_t keyTag = 0;
                     if (!r.keyTag(keyTag)){ lua_settop(L, top); return false; }
                     if (keyTag == TagInteger){
-                        uint64_t v;
+                        uint64_t v = 0;
                         if (!r.varint(v)){ lua_settop(L, top); return false; }
                         lua_pushinteger(L, static_cast<lua_Integer>(unzigzag(v)));
                     } else {
@@ -516,7 +516,7 @@ namespace {
     nlohmann::json floatJson(double d){
         if (std::isfinite(d)) return d;
         if (std::isinf(d)) return {{"$float", d > 0 ? "inf" : "-inf"}};
-        uint64_t bits;
+        uint64_t bits = 0;
         std::memcpy(&bits, &d, sizeof(bits));
         if (bits == CANONICAL_NAN) return {{"$float", "nan"}};
         char hex[32];
@@ -536,20 +536,20 @@ namespace {
     }
 
     bool jsonValue(Reader& r, nlohmann::json& out, int depth){
-        uint8_t tag;
+        uint8_t tag = 0;
         if (!r.byte(tag)) return false;
         switch (tag){
             case TagFalse: out = false; return true;
             case TagTrue: out = true; return true;
             case TagNull: out = nullptr; return true;
             case TagInteger: {
-                uint64_t v;
+                uint64_t v = 0;
                 if (!r.varint(v)) return false;
                 out = unzigzag(v);
                 return true;
             }
             case TagFloat: {
-                double d;
+                double d = 0;
                 if (!r.float64(d)) return false;
                 out = floatJson(d);
                 return true;
@@ -565,7 +565,7 @@ namespace {
                 const char* name = tag == TagVector2 ? "$vec2" : tag == TagVector3 ? "$vec3" : tag == TagVector4 ? "$vec4" : "$quat";
                 nlohmann::json items = nlohmann::json::array();
                 for (int i = 0; i < count; i++){
-                    float f;
+                    float f = 0;
                     if (!r.float32(f)) return false;
                     items.push_back(floatJson(static_cast<double>(f)));
                 }
@@ -574,7 +574,7 @@ namespace {
             }
             case TagTable: {
                 if (!r.depthCap(depth + 1)) return false;
-                uint64_t n;
+                uint64_t n = 0;
                 if (!r.counts(n, 1, "array count")) return false;
                 std::vector<nlohmann::json> arrayPart;
                 arrayPart.reserve(static_cast<size_t>(std::min<uint64_t>(n, 4096)));
@@ -583,7 +583,7 @@ namespace {
                     if (!jsonValue(r, item, depth + 1)) return false;
                     arrayPart.push_back(std::move(item));
                 }
-                uint64_t m;
+                uint64_t m = 0;
                 if (!r.counts(m, 2, "pair count")) return false;
                 if (m == 0 && n > 0){
                     out = nlohmann::json::array();
@@ -593,11 +593,11 @@ namespace {
                 out = nlohmann::json::object();
                 for (uint64_t i = 0; i < n; i++) out["#" + std::to_string(i + 1)] = std::move(arrayPart[i]);
                 for (uint64_t i = 0; i < m; i++){
-                    uint8_t keyTag;
+                    uint8_t keyTag = 0;
                     if (!r.keyTag(keyTag)) return false;
                     std::string key;
                     if (keyTag == TagInteger){
-                        uint64_t v;
+                        uint64_t v = 0;
                         if (!r.varint(v)) return false;
                         key = "#" + std::to_string(unzigzag(v));
                     } else {
@@ -667,7 +667,7 @@ namespace {
                 return fail("\"" + name + "\" must be an array of " + std::to_string(count) + " numbers " + shape);
             float values[4] = {0, 0, 0, 0};
             for (int i = 0; i < count; i++){
-                double d;
+                double d = 0;
                 if (!number(items[static_cast<size_t>(i)], d))
                     return fail("\"" + name + "\" must be an array of " + std::to_string(count) + " numbers " + shape);
                 values[i] = static_cast<float>(d);
@@ -735,7 +735,7 @@ namespace {
                     const nlohmann::json& inner = item.begin().value();
                     if (key == "$vec2" || key == "$vec3" || key == "$vec4" || key == "$quat") return vector(key, inner, out);
                     if (key == "$float"){
-                        double d;
+                        double d = 0;
                         if (!inner.is_string() || !special(inner.get<std::string>(), d))
                             return fail("\"$float\" must be \"nan\", \"inf\" or \"-inf\"");
                         putFloat(out, d);
@@ -920,18 +920,18 @@ void save::appendInteger(std::string& out, int64_t value){
 bool save::findField(std::string_view payload, std::string_view key, std::string_view& value){
     SaveError ignored;
     Reader r(payload, ignored);
-    uint8_t tag;
+    uint8_t tag = 0;
     if (!r.byte(tag) || tag != TagTable) return false;
-    uint64_t n, m;
+    uint64_t n = 0, m = 0;
     if (!r.counts(n, 1, "array count")) return false;
     for (uint64_t i = 0; i < n; i++) if (!skipValue(r, 1)) return false;
     if (!r.counts(m, 2, "pair count")) return false;
     for (uint64_t i = 0; i < m; i++){
-        uint8_t keyTag;
+        uint8_t keyTag = 0;
         if (!r.keyTag(keyTag)) return false;
         bool match = false;
         if (keyTag == TagInteger){
-            uint64_t scratch;
+            uint64_t scratch = 0;
             if (!r.varint(scratch)) return false;
         } else {
             std::string_view s;
@@ -951,7 +951,7 @@ bool save::findField(std::string_view payload, std::string_view key, std::string
 bool save::readString(std::string_view payload, std::string& out){
     SaveError ignored;
     Reader r(payload, ignored);
-    uint8_t tag;
+    uint8_t tag = 0;
     std::string_view s;
     if (!r.byte(tag) || tag != TagString || !r.string(s) || r.pos != r.size) return false;
     out.assign(s.data(), s.size());
@@ -961,8 +961,8 @@ bool save::readString(std::string_view payload, std::string& out){
 bool save::readInteger(std::string_view payload, int64_t& out){
     SaveError ignored;
     Reader r(payload, ignored);
-    uint8_t tag;
-    uint64_t v;
+    uint8_t tag = 0;
+    uint64_t v = 0;
     if (!r.byte(tag) || tag != TagInteger || !r.varint(v) || r.pos != r.size) return false;
     out = unzigzag(v);
     return true;
