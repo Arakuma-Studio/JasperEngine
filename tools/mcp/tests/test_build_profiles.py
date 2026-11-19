@@ -224,7 +224,7 @@ async def test_excluded_asset_referenced_by_a_scene_fails(ed: Editor):
     await ed.call("save_project")
     r = await ed.call("build_project", profile="Lite", output_dir=str(ed.scratch.root / "lite2"), timeout_seconds=600, expect_error=True)
     ed.check_in("Scene Level1 uses art/full/boss.png, which Build Profile 'Lite' excludes (label full-only)", str(r))
-    await ed.call("delete_entity", scene="Level1", entity="Boss")
+    await ed.call("delete_entities", scene="Level1", entities=["Boss"])
     await ed.call("save_project")
     await ed.call("edit_build_profile", action="delete", name="Lite")
 
@@ -237,7 +237,7 @@ async def test_build_project_profile_conflicts(ed: Editor):
                          contains="differs from Build Profile 'Demo', which builds for linux")
     await ed.check_error("build_project", profile="Nope", contains="no Build Profile 'Nope'")
     cli = await asyncio.to_thread(subprocess.run, harness.editor_command() + ["build", "--project", str(ed.project), "--profile", "Demo",
-                                                                            "--out", str(ed.scratch.root / "cli-demo")],
+                                                                            "--method", "prebuilt", "--out", str(ed.scratch.root / "cli-demo")],
                                   capture_output=True, text=True, timeout=900)
     ed.check_in("profile: Demo", cli.stdout, f"stdout {cli.stdout[-2000:]} stderr {cli.stderr[-2000:]}")
     refused = await asyncio.to_thread(subprocess.run, harness.editor_command() + ["build", "--project", str(ed.project), "--profile", "Demo",
