@@ -13,8 +13,10 @@
     html[data-input-scheme="gamepad"] .pad { display: block; }
     html[data-input-scheme="touch"] .touch-only { display: block; }
     html[data-gamepad-family="playstation"] .pad { color: #8cf; }
-    .tip { display: none; }
-    @media (hover: hover) { .slot:hover .tip, .tip.always { display: block; } }
+    /* a mouse gets the hover look and the hint (a finger: the slots a little larger, no hint) */
+    .tip { visibility: hidden; color: #ccc; }
+    .slot { width: 56px; height: 56px; }
+    @media (hover: hover) { .slot { width: 48px; height: 48px; } .slot:hover { background: #444a; } .tip { visibility: visible; } }
 </style>
 </head>
 <body>

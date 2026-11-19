@@ -30,6 +30,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -286,16 +287,44 @@ TEST_F(InputSchemeDocumentTest, SchemeSwitchCost){
         load("bench/input-scheme.html");
     ASSERT_EQ(documentCount(fixture->getScene()), 3);
     // the prewarmed variant of the hover query (one document file: one variant)
-    const size_t cache = htmlui::compat::DocumentLoader::cacheSize();
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
     std::shared_ptr<const htmlui::compat::CompatDocument> compiled =
         htmlui::compat::DocumentLoader::compiledOf(findDocument(fixture->getScene(), "input-scheme bench"));
     ASSERT_TRUE(compiled && compiled->dependsOnPointer);
-    while (htmlui::compat::DocumentLoader::cacheSize() < cache + 1 && std::chrono::steady_clock::now() < deadline){
+    htmlui::compat::CompatOptions fine = compiled->options;
+    fine.coarsePointer = false;
+    while (!htmlui::compat::DocumentLoader::findCompiled(compiled->sourcePath, fine) && std::chrono::steady_clock::now() < deadline){
         frames(1);
         std::this_thread::yield();
     }
+    ASSERT_NE(htmlui::compat::DocumentLoader::findCompiled(compiled->sourcePath, fine), nullptr) << "the other pointer's variant was not prewarmed";
+    // the frame after it is in parses both variants' sheets for each document (HtmlUIContext::update)
+    frames(1);
     Scene& scene = fixture->getScene();
+    Rml::Context* context = rmlContext(scene);
+    auto containers = [&](){
+        std::vector<const Rml::StyleSheetContainer*> out;
+        for (int i = 0; i < context->GetNumDocuments(); i++)
+            out.push_back(context->GetDocument(i)->GetStyleSheetContainer());
+        return out;
+    };
+    const auto pointerSwitch = [&](bool toMouse){
+        if (toMouse) InputSchemeTracker::noteMouseScroll();
+        else InputSchemeTracker::noteTouchStart(1, 1, InputSchemeTracker::clock());
+        InputSchemeTracker::latch();
+        updateDocuments(scene);
+    };
+    // the first switch after the load: from the prewarmed sheets, nothing parsed then
+    double start = compat::threadCpuMs();
+    pointerSwitch(true);
+    const double firstMs = compat::threadCpuMs() - start;
+    const std::vector<const Rml::StyleSheetContainer*> mouseSheets = containers();
+    pointerSwitch(false);
+    const std::vector<const Rml::StyleSheetContainer*> touchSheets = containers();
+    pointerSwitch(true);
+    EXPECT_EQ(containers(), mouseSheets) << "a swap back reuses the document's parsed sheets";
+    pointerSwitch(false);
+    EXPECT_EQ(containers(), touchSheets);
     const double steadyMs = compat::medianCpuMs([&](){ InputSchemeTracker::latch(); updateDocuments(scene); }, 10);
     // Gamepad <-> Touch: the attributes only (the pointer stays a finger)
     bool pad = false;
@@ -320,9 +349,12 @@ TEST_F(InputSchemeDocumentTest, SchemeSwitchCost){
     EXPECT_EQ(htmlui::compat::DocumentLoader::cacheSize(), before);
     const double scheme = std::max(0.0, schemeMs - steadyMs);
     const double pointer = std::max(0.0, pointerMs - steadyMs);
-    std::printf("[bench] input scheme change %.3f ms, pointer change %.3f ms (a frame without one %.3f ms)\n", scheme, pointer, steadyMs);
+    const double first = std::max(0.0, firstMs - steadyMs);
+    std::printf("[bench] input scheme change %.3f ms, pointer change %.3f ms (the first after the load %.3f ms; a frame "
+                "without one %.3f ms)\n", scheme, pointer, first, steadyMs);
     if (compat::benchmarkPerfSlack() > 0.0){
         EXPECT_LE(scheme, 0.5 * compat::benchmarkPerfSlack());
         EXPECT_LE(pointer, 1.0 * compat::benchmarkPerfSlack());
+        EXPECT_LE(first, 1.0 * compat::benchmarkPerfSlack());
     }
 }

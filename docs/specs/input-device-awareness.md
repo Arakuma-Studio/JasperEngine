@@ -478,11 +478,12 @@ Each red control is recorded by running the test on the base commit first; the P
 - **AC14.** The cost is measured by `InputSchemeDocumentTest.SchemeSwitchCost` (`TestInputScheme.cpp`,
   three documents of `fixtures/bench/input-scheme.html`), gated with `JASPER_HTMLUI_PERF_SLACK` as the
   other HTML UI budgets near a build server's noise; the render benchmark (`HtmlUIRenderPerf`) runs one
-  document through FixtureRunner. Mobile numbers need the device lab and are not recorded. Measured
-  on the shared build host (CPU time): a scheme change 0.19 ms for the three documents (R23 met); a
-  pointer change 9.5 ms although every swap is a cache hit: `DocumentLoader::restyle` parses the
-  documents' sheets again (about 3 ms a document), so R23's 1 ms for the swap is not met. Keeping the
-  parsed style sheet container per compile is the follow-up.
+  document through FixtureRunner. Mobile numbers need the device lab and are not recorded.
+- **D4.** Prewarming the other variant's compile was not enough for R23: a restyle parsed the
+  document's sheets again (9.5 ms for the three documents). Each document now keeps the sheets it
+  parsed per compile (`DocumentLoader::restyleSheets`, the last four compiles), and on a touch device
+  both pointer variants' sheets are parsed, compiled and resolved for the document as soon as the
+  background compile is in (`HtmlUIContext::update`, `DocumentLoader::prewarmSheets`).
 - **AC16.** `GameWindowTest.InputSchemeMenu` is in `editor/tests/PlayStartupScenesTest.cpp` (it needs
   that file's play-session access) and drives `GameWindow::chooseInputScheme`, which the menu calls.
 - **AC17.** `InputSchemeEditorTest.OldScenesUnchanged` checks the three components' codecs (old values

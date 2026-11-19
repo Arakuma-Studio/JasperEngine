@@ -313,6 +313,8 @@ Rml::ElementDocument* HtmlUIContext::loadDocument(const std::string& path){
             other.coarsePointer = !options.coarsePointer;
             jobs::enqueueDetached([path, other](){ htmlui::compat::DocumentLoader::compile(path, other); }, jobs::Lane::Background,
                                   "htmlui-pointer-variant");
+            // and both variants' sheets parsed for the document once that compile is in (update)
+            pointerPrewarms.push_back(PointerPrewarm{document->GetObserverPtr(), path, other});
         }
         if (document && !navigateListener){
             navigateListener.reset(new NavigateListener(&navigateHandler));
@@ -370,8 +372,39 @@ void HtmlUIContext::applyInputScheme(){
     }
 }
 
+void HtmlUIContext::prewarmPointerVariants(){
+    for (auto it = pointerPrewarms.begin(); it != pointerPrewarms.end();){
+        Rml::ElementDocument* document = it->document ? it->document->GetOwnerDocument() : nullptr;
+        if (!document){
+            it = pointerPrewarms.erase(it);
+            continue;
+        }
+        std::shared_ptr<const htmlui::compat::CompatDocument> other = htmlui::compat::DocumentLoader::findCompiled(it->path, it->options);
+        if (!other){
+            // the background compile is not in yet; one that never comes (the file went) is let go:
+            // the switch then compiles, as on a desktop
+            if (++it->frames > kPointerPrewarmFrames)
+                it = pointerPrewarms.erase(it);
+            else
+                ++it;
+            continue;
+        }
+        // the document moves to its own kept sheets now: the ones RmlUi parsed at the load go with
+        // this frame, not with the switch's (freeing them is most of what a first swap cost)
+        std::shared_ptr<const htmlui::compat::CompatDocument> current = htmlui::compat::DocumentLoader::compiledOf(document);
+        htmlui::compat::DocumentLoader::prewarmSheets(document, current);
+        if (current)
+            htmlui::compat::DocumentLoader::restyleSheets(document, *current);
+        htmlui::compat::DocumentLoader::prewarmSheets(document, other);
+        it = pointerPrewarms.erase(it);
+    }
+}
+
 void HtmlUIContext::update(){
     if (context){
+        // a touch device's documents that read hover or pointer: both variants parsed ahead (R23)
+        if (!pointerPrewarms.empty())
+            prewarmPointerVariants();
         // the input scheme of the frame (InputSchemeTracker::latch): root attributes, hover and pointer
         applyInputScheme();
         // text-effect: the texts that animate draw again (geometry only)

@@ -190,6 +190,12 @@ namespace jasperengine::htmlui::compat {
         // the registration of its custom properties)
         static void restyleSheets(Rml::ElementDocument* document, const CompatDocument& compiled);
         static size_t cacheSize();
+        // the cached compile for these options, null when there is none (never compiles). Thread-safe
+        static std::shared_ptr<const CompatDocument> findCompiled(const std::string& htmlPath, const CompatOptions& options);
+        // parses and compiles the compile's sheets for the document now, so a later restyle with it
+        // (the other pointer variant) is a swap of parsed sheets: each document keeps the last few
+        // compiles' (engine-internal, main thread)
+        static void prewarmSheets(Rml::ElementDocument* document, const std::shared_ptr<const CompatDocument>& compiled);
         // compiles the document's source again with `options` and restyles it (restyleForViewport,
         // restyleForRoot)
         static std::shared_ptr<const CompatDocument> restyleWith(Rml::ElementDocument* document,
