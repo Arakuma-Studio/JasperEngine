@@ -64,8 +64,8 @@ namespace jasperengine::pose {
             bool right = false;
             std::string key;
             for (const std::string& token : tokens){
-                // twist/roll helpers and IK/end bones are never mapped
-                if (oneOf(token, {"twist", "roll", "helper", "ik", "pole", "target", "end", "nub"})){
+                // twist/roll helpers, IK/end bones and proxies (Unity's Spine Proxy) are never mapped
+                if (oneOf(token, {"twist", "roll", "helper", "ik", "pole", "target", "end", "nub", "proxy"})){
                     return info;
                 }
                 // fingers (not animated by the pose tool): "LeftHandIndex1" must not become the hand
@@ -80,8 +80,8 @@ namespace jasperengine::pose {
                     key += token;
                 }
             }
-            // the same inside unsplit lower-case names ("lefthandindex1", "upperarmtwist")
-            for (const char* part : {"twist", "helper", "index", "thumb", "pinky", "finger"}){
+            // the same inside unsplit lower-case names ("lefthandindex1", "upperarmtwist", "spineproxy")
+            for (const char* part : {"twist", "helper", "index", "thumb", "pinky", "finger", "proxy"}){
                 if (key.find(part) != std::string::npos){
                     return info;
                 }
@@ -250,7 +250,7 @@ namespace jasperengine::pose {
         }
 
         // rig prefixes (repeatedly, with the separators after them)
-        static const char* PREFIXES[] = {"mixamorig", "bip001", "bip01", "def-", "def_", "j_bip_", "b_", "bone_"};
+        static const char* PREFIXES[] = {"mixamorig", "bip001", "bip01", "def-", "def_", "j_bip_", "b_", "b-", "bone_"};
         bool stripped = true;
         while (stripped && !name.empty()){
             stripped = false;
