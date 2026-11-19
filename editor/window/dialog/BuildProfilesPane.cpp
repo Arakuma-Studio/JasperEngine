@@ -266,7 +266,8 @@ void BuildProfilesPane::drawIdentity(Project* project, BuildProfile& next, bool&
     }());
     auto text = [&](const char* label, const char* name, const char* field, char* buffer, size_t size, std::string& value) {
         beginPaneRow(label);
-        const std::string hint = resolved.count(field) ? resolved.at(field).value + "  (" + resolved.at(field).source + ")" : std::string();
+        const bool inherited = resolved.count(field) && !resolved.at(field).value.empty();
+        const std::string hint = inherited ? resolved.at(field).value + "  (" + resolved.at(field).source + ")" : std::string();
         if (EditorModal::inputTextWithHint((std::string("##") + name).c_str(), name, hint.c_str(), buffer, size)) {
             value = buffer;
             changed = true;
