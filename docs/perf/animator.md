@@ -210,6 +210,36 @@ The parallel times stay within their ranges; the serial ones do not: about 0.4 t
 characters, 2 to 3 µs a character, of which the Look At's 1.5 µs. Without the IK the serial p50 is
 the same (8.70 and 8.77 ms). ARM and web are unmeasured.
 
+## Mesh Space Rotation: Crowd200MeshSpace
+
+[Mesh Space Rotation](../specs/mesh-space-rotation.md) (R23, R24): `AnimBench.Crowd200MeshSpace` is
+the same crowd with the option on for its upper-body layer (the boundary bones: the neck and both
+shoulders, 3 per character); `crowd200_mesh_space_*` rows, gated with S21's budgets. Measured on
+this repository's shared host (2026-11-19): AMD Ryzen 7 7700, 8 cores / 16 threads, Linux x64, the
+core-tests build (RelWithDebInfo, GCC, SSE2 pose kernels), `--workers 3 --count-allocs`, `main` at
+`c4e3b58ad` and the branch alternated, three runs each, the median shown (the range in brackets).
+The host ran other agents' builds throughout (load average 39-47 on 16 threads), so the wall times
+are far above E's, and `main` misses R19's 2.5 ms and 0.4 ms here too: they compare the two builds
+with each other and the two rows with each other, never with the budgets. The allocations (0) and
+the serial p95 medians are within the budgets.
+
+| Metric | `main` | Branch, option off (Crowd200) | Branch, option on (Crowd200MeshSpace) |
+|---|---|---|---|
+| Wall time p50, 3 workers + main | 4.69 ms (4.37-5.37) | 4.90 ms (4.81-5.33) | 5.05 ms (4.54-5.12) |
+| Wall time p95 | 7.60 ms (7.48-7.97) | 7.72 ms (7.55-8.92) | 7.65 ms (7.18-8.17) |
+| Main thread p95 | 0.63 ms (0.59-0.65) | 0.61 ms (0.57-1.39) | 0.59 ms (0.59-0.62) |
+| Serial p50 | 7.11 ms (7.10-7.42) | 7.22 ms (7.07-7.29) | 7.34 ms (7.25-7.35) |
+| Serial p95 | 7.71 ms (7.39-7.81) | 7.61 ms (7.47-8.99) | 7.66 ms (7.61-7.67) |
+| Heap allocations, 600 frames | 0 | 0 | 0 |
+| Runtime state of an Animator | 5 368 B | 5 616 B | 5 616 B |
+
+With the option off the branch is within `main`'s noise (the ranges overlap; the extra branch per
+layer is not measurable here). With it on the serial p50 is about 0.1 ms higher over 200
+characters, under 1 µs a character: two rotation-only rig passes up to the last shoulder and a few
+quaternion operations per boundary bone. The runtime state grows by the layer runs' new fields
+(248 B for the crowd's 3 layers). An E run is still owed against the budgets. ARM and web are
+unmeasured.
+
 ## GPU skinning on a GPU (GPU campaign)
 
 RTX 3080 Ti, `tools/performance/vat_crowd.py --gpu-passes` (Game view 752x362): the skinned crowd's
