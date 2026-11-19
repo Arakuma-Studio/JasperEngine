@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "test/GameTests.h"
+#include "test/TestOptions.h"
 
 #include "Project.h"
 #include "Out.h"

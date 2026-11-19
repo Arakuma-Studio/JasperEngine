@@ -8,7 +8,9 @@
 #include "Project.h"
 #include "test/EditModeTests.h"
 #include "test/TestRunHost.h"
+#include "EditorVersion.h"
 #include "util/FileUtils.h"
+#include "util/ImageDiff.h"
 #include "util/ProjectFileWrites.h"
 #include "util/SafeWrite.h"
 

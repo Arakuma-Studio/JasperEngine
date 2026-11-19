@@ -11,7 +11,7 @@
 #include "mcp/tools/PlayViewCommon.h"
 #include "pool/ShaderPool.h"
 #include "pool/TextureDataPool.h"
-#include "render/Framebuffer.h"
+#include "texture/Framebuffer.h"
 #include "script/LuaBinding.h"
 #include "test/GameTests.h"
 #include "test/PlayData.h"
