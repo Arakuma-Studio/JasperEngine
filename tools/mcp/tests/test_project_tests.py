@@ -80,11 +80,14 @@ end)
 
 Test.case("Project data is refused", {tags = {"projectdata"}, data = "project"}, function(t) end)
 
-Test.case("Every scene has a camera", {mode = "edit", tags = {"edit"}}, function(t)
+Test.case("The start scene has a Player", {mode = "edit", tags = {"edit"}}, function(t)
     local scenes = Editor.call("list_scenes", {}).data.scenes
     Test.check(#scenes > 0, "no scenes")
     for _, s in ipairs(scenes) do
-        if s.start_scene then Test.check(s.main_camera ~= nil, s.name .. " has no camera") end
+        if s.start_scene then
+            local found = Editor.call("find_entities", {scene = s.id, name = "Player"})
+            Test.check(found.ok and #found.data.entities == 1, s.name .. " has no Player")
+        end
     end
 end)
 
@@ -136,7 +139,10 @@ async def setup(ed: Editor) -> dict:
     await ed.call("create_script", kind="lua", name="Player", content=PLAYER, scene=S["scene"], entity="Player")
     await ed.call("create_entity", scene=S["scene"], type="empty", name="Coin")
     await ed.call("create_script", kind="lua", name="Coin", content=COIN, scene=S["scene"], entity="Coin")
-    await ed.call("save_scene", scene=S["scene"])
+    if start.get("path"):
+        await ed.call("save_scene", scene=S["scene"])
+    else:
+        await ed.call("save_scene", scene=S["scene"], path="scenes/Main.scene")
     await ed.call("save_project")
     tests = project / "Tests"
     (tests / "Data" / "one_coin").mkdir(parents=True, exist_ok=True)
@@ -158,7 +164,7 @@ async def test_run_tests_is_in_the_testing_group(ed: Editor):
     ed.check_in("menu.test.lua#Red on purpose", ids)
     red = next(c for c in listed["cases"] if c["id"] == "menu.test.lua#Red on purpose")
     ed.check_eq(red["line"], 14, "the case's line")
-    edit = next(c for c in listed["cases"] if c["id"] == "menu.test.lua#Every scene has a camera")
+    edit = next(c for c in listed["cases"] if c["id"] == "menu.test.lua#The start scene has a Player")
     ed.check_eq(edit["mode"], "edit")
 
 
@@ -235,7 +241,7 @@ async def test_edit_mode_cases(ed: Editor):
     result = await run_tests(ed, filter="tag:edit,tag:readonly")
     doc = json.loads((s["project"] / result["results_file"]).read_text())
     by_id = {c["id"]: c for c in doc["cases"]}
-    ed.check_eq(by_id["menu.test.lua#Every scene has a camera"]["status"], "passed", json.dumps(by_id["menu.test.lua#Every scene has a camera"]))
+    ed.check_eq(by_id["menu.test.lua#The start scene has a Player"]["status"], "passed", json.dumps(by_id["menu.test.lua#The start scene has a Player"]))
     readonly = by_id["menu.test.lua#Edit Mode cannot edit"]
     ed.check_eq(readonly["status"], "failed")
     ed.check_in("Edit Mode tests are read-only: set_properties edits the project; test it in a Play Mode case",
@@ -306,6 +312,8 @@ async def test_cli_test_command(ed: Editor):
     work = Path(tempfile.mkdtemp(prefix="jasper-test-cli-"))
     env = {k: v for k, v in os.environ.items() if k not in ("DISPLAY", "WAYLAND_DISPLAY")}
     env["HOME"] = str(work)
+    # the HTTP editor of this test (its registry of live editors is under the editor's own HOME)
+    env["JASPER_MCP_URL"] = f"http://127.0.0.1:{PORT}/mcp"
     env["JASPER_MCP_TOKEN"] = TOKEN
 
     def cli(*args: str) -> subprocess.CompletedProcess:
@@ -348,7 +356,7 @@ async def test_ledger_unverified(ed: Editor):
 async def test_test_runner_window(ed: Editor):
     await setup(ed)
     await ed.call("tool_groups", enable=["editor_ux"])
-    await ed.call("run_command", command="window.testRunner")
+    await ed.call("run_command", id="window.testRunner")
     found = await ed.call("find_ui_item", label="Run All", window="Test Runner")
     ed.check(found["items"], f"the Test Runner shows Run All: {found}")
     shot = os.environ.get("JASPER_TEST_RUNNER_SHOT")

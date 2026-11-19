@@ -4330,12 +4330,12 @@ void registerPlayTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Play Mode";
         tool.description =
-            "Control Play mode. start: saves modified scenes, builds C++ scripts if any (minutes), waits until "
+            "Control Play mode. start: saves modified scenes, builds C++ scripts (minutes), waits until "
             "running; returns the state + console problems, or isError with compile/script errors; past "
-            "timeout_seconds (or wait:false) a job_id (get_job). stop: restores the edit-time state, summarizes "
+            "timeout_seconds (or wait:false) a job_id (get_job). stop: restores edit-time state, sums up "
             "the session. step: advance a paused game `frames` frames. Script errors stop play.\nClock (any "
             "action; set = only it; kept until changed): time_scale, fixed_fps, auto_pause (frozen between "
-            "calls; runs only in wait / send_input / step).";
+            "calls but in wait / send_input / step).";
         tool.inputSchema = object({
             {"action", stringEnum("", {"start", "stop", "restart", "pause", "resume", "step", "set"})},
             {"scene", sceneRef("start: default the start scene (else selected).")},
@@ -4349,7 +4349,7 @@ void registerPlayTools(McpRegistry& registry) {
             {"max_width", maxWidth},
             {"keep_changes", stringEnum("stop: keep all or none of the edits made while playing (absent: get_play_changes).",
                                         {"none", "all"})},
-            {"data", withDefault(string("start: data:// is \"project\", \"clean\" or a Tests/Data snapshot."), "project")}
+            {"data", withDefault(string("start: \"project\", \"clean\" or a Tests/Data snapshot."), "project")}
         }, {"action"});
         tool.handler = playTool;
         registry.addTool(std::move(tool));
