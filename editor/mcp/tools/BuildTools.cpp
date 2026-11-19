@@ -2461,30 +2461,29 @@ void registerBuildTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Build;  // busy policy (McpServer::busyRefusal)
         tool.title = "Build Project";
         tool.description =
-            "File > Build Settings > Build, as a job. player: a game per platform (prebuilt, or compiled if it needs "
-            "native code); desktop/web: this computer/web; source: a CMake project; omitted: the project's default platform "
-            "(get_build_info). profile: a Build Profile supplies platform, API, flavour and folder. Saves scenes first. Past "
-            "timeout_seconds: {job_id} (get_job).";
+            "Build Settings > Build, as a job. player: a game per platform (prebuilt, or compiled); desktop/web: this "
+            "computer/web; source: a CMake project; omitted: get_build_info's default platform. profile: a Build Profile sets "
+            "platform, API, flavour, folder. Saves scenes first. Past timeout_seconds: job_id (get_job).";
         tool.inputSchema = object({
             {"mode", stringEnum("", {"player", "desktop", "web", "source"})},
-            {"output_dir", string("Absolute, outside the project.")},
-            {"overwrite", withDefault(boolean("source: allow a non-empty output_dir."), false)},
-            {"start_scene", sceneRef("Also becomes the start scene.")},
+            {"output_dir", string("Absolute, outside project.")},
+            {"overwrite", withDefault(boolean("source: into a non-empty dir."), false)},
+            {"start_scene", sceneRef("Also set as start scene.")},
             {"allow_missing_assets", withDefault(boolean(""), false)},
             {"graphics_api", string("opengl/vulkan/d3d11/metal-macos/opengles. Remembered.")},
-            {"platform", stringEnum("player/source target.", {"windows", "macos", "linux", "android", "ios", "web"})},
+            {"platform", stringEnum("player/source.", {"windows", "macos", "linux", "android", "ios", "web"})},
             {"profile", string("")},
             {"method", withDefault(stringEnum("", {"auto", "prebuilt", "compile"}), "auto")},
             {"development", withDefault(boolean(""), false)},
-            {"android_format", stringEnum("Default: project's.", {"aab", "apk-per-abi", "apk"})},
+            {"android_format", stringEnum("Default: project.", {"aab", "apk-per-abi", "apk"})},
             {"ios_simulator", withDefault(boolean("Unsigned simulator .app."), false)},
             {"backends", array(stringItem, "source: opengl/opengles/d3d11/metal-macos/metal-ios/vulkan/all. Remembered.")},
             {"build_type", withDefault(stringEnum("", {"Release", "Debug", "RelWithDebInfo", "MinSizeRel"}), "Release")},
             {"build_jobs", integer("0 = auto.")},
             {"shaders", object({
-                {"add", array(stringItem, "Shader keys.")},
+                {"add", array(stringItem, "Keys.")},
                 {"exclude", array(stringItem, "")},
-                {"reset", boolean("Clear manual add/exclude first.")}
+                {"reset", boolean("Clear add/exclude.")}
             })},
             {"wait", withDefault(boolean(""), true)},
             {"timeout_seconds", jobTimeout}
