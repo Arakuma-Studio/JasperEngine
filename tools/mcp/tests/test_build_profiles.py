@@ -142,7 +142,7 @@ async def test_edit_build_profile(ed: Editor):
     r = await profile(ed, "Demo", action="get")
     ed.check_eq(r["values"]["product_name"], "Box Demo")
     ed.check_eq(r["resolved"]["product_name"], {"value": "Box Demo", "source": "profile"})
-    ed.check_eq(r["resolved"]["identifier"]["source"], "default")
+    ed.check_eq(r["resolved"]["identifier"]["source"], "player.identifier", "a Linux build's identifier is the shared one")
     await profile(ed, "Demo", action="set", values={"product_name": ""})
     r = await profile(ed, "Demo", action="get")
     ed.check_eq(r["resolved"]["product_name"], {"value": "Box", "source": "Project Name"})
@@ -219,12 +219,12 @@ async def test_excluded_asset_referenced_by_a_scene_fails(ed: Editor):
     ed.check(not any(p.name == "boss.png" for p in out.rglob("*")), "the excluded texture is not shipped")
     # used by a shipped scene: the build fails naming the scene and the asset
     await ed.call("open_scene", scene="Level1")
-    await ed.call("create_entity", name="Boss", type="sprite",
+    await ed.call("create_entity", scene="Level1", name="Boss", type="sprite",
                   values={"sprite": {"width": 8, "height": 8}, "mesh": {"submeshes[0].material.baseColorTexture": "art/full/boss.png"}})
     await ed.call("save_project")
     r = await ed.call("build_project", profile="Lite", output_dir=str(ed.scratch.root / "lite2"), timeout_seconds=600, expect_error=True)
     ed.check_in("Scene Level1 uses art/full/boss.png, which Build Profile 'Lite' excludes (label full-only)", str(r))
-    await ed.call("delete_entity", entity="Boss")
+    await ed.call("delete_entity", scene="Level1", entity="Boss")
     await ed.call("save_project")
     await ed.call("edit_build_profile", action="delete", name="Lite")
 
@@ -257,7 +257,7 @@ async def test_active_profile_in_play(ed: Editor):
     await ed.call("play", action="start", scene="Level1")
     try:
         r = await ed.call("eval_lua", code="return {System.getAppName(), System.isDefined('DEMO'), System.getBuildProfile(), System.getBuildInfo().defines[1]}")
-        ed.check_eq(r["value"], ["Box Demo", True, "Demo", "DEMO"])
+        ed.check_eq(r["values"][0], ["Box Demo", True, "Demo", "DEMO"])
         # a scene the profile leaves out still loads in Play, and says a build leaves it out
         await ed.console_since(None)
         await ed.call("eval_lua", code="SceneManager.loadScene('Bonus')")
@@ -270,7 +270,7 @@ async def test_active_profile_in_play(ed: Editor):
     await ed.call("play", action="start", scene="Level1")
     try:
         r = await ed.call("eval_lua", code="return {System.getAppName(), System.isDefined('DEMO'), System.getBuildProfile()}")
-        ed.check_eq(r["value"], ["Box", False, ""])
+        ed.check_eq(r["values"][0], ["Box", False, ""])
     finally:
         await ed.call("play", action="stop")
     await ed.call("edit_build_profile", action="delete", name="Demo")
