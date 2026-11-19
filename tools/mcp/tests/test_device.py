@@ -172,3 +172,19 @@ async def test_device_simulation_in_play(ed: Editor):
     ed.check_eq(info["simulation"]["tier"], "medium", "the toolbar keeps its choice for the next Play")
     await ed.call("set_device_simulation", tier="auto", platform="auto", thermal_state="device")
     await ed.check_error("set_device_simulation", tier="extreme")
+
+
+async def test_device_info_quirks(ed: Editor):
+    """GPU quirks (docs/specs/release-performance-and-gpu-quirks.md AC22): on llvmpipe get_device_info
+    has the driver and the two software-GL quirks with their reasons, and Lua sees the same."""
+    info = await ed.call("get_device_info")
+    ed.check(info["driver"], f"a GL driver string: {info.get('driver')!r}")
+    names = {q["name"]: q for q in info["quirks"]}
+    ed.check_eq(set(names), {"gl_no_worker_context", "gl_no_compile_threads"}, f"the software-GL quirks: {info['quirks']}")
+    for quirk in names.values():
+        ed.check_eq(quirk["source"], "rule", f"{quirk}")
+        ed.check(len(quirk["reason"]) >= 20, f"with its reason: {quirk}")
+    ed.check_eq(info["quirks_forced_off"], [], "nothing forced off")
+    lua = await ed.call("eval_lua", code="return #Device.gpuQuirks, Device.gpuDriver", allow_edit_mode=True)
+    ed.check_eq(lua["values"][0], 2, "Device.gpuQuirks")
+    ed.check_eq(lua["values"][1], info["driver"], "Device.gpuDriver")
