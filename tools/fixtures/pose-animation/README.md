@@ -58,6 +58,31 @@ python3 -I tools/fixtures/pose-animation/make_animated_hero.py --check    # vali
 accessor types and counts, increasing times, unit rotations, target nodes) and compares the bytes
 with a fresh generation.
 
+### `b_rig_proxy.gltf` (written by `make_b_rig.py`)
+
+A small humanoid named like Kevin Iglesias' rigs, for the Mesh Space Rotation tests
+(`docs/specs/mesh-space-rotation.md`). Not in `Main Scene.scene`.
+
+- Nodes: scene root `Rig` with `B-root` and the skinned mesh `RigMesh`; `B-root` holds `B-hips` and
+  `B-spineProxy`. Joints (22): `B-root`, `B-hips`, `B-spine`, `B-chest`, `B-neck`, `B-head`, and per
+  side `B-shoulder`, `B-upperArm`, `B-forearm`, `B-hand`, `B-thigh`, `B-shin`, `B-foot`, `B-toe`
+  (`.L`, `.R`).
+- `B-spineProxy` (path `Rig/B-root/B-spineProxy`) is Unity's Spine Proxy bone: a plain node, no
+  joint, no weights, at the spine's rest pose relative to `B-root`.
+- T-pose, 1.75 m, Blender-style rest rotations (local +Y along the bone), one rigid box per bone.
+- Animations, LINEAR, 1 s, keys every 0.25 s: `Run` (`B-hips` turned 90 degrees about +Y, thighs
+  swinging 30 degrees, shins bending) and `Attack` (`B-hips` turned -20 degrees about +Y, `B-spine`
+  leaning forward to 30 degrees, `B-upperArm.R` swinging forward to 80 degrees). Both key
+  `B-spineProxy` with the spine's rotation relative to `B-root`.
+
+```bash
+python3 -I tools/fixtures/pose-animation/make_b_rig.py            # rewrite it
+python3 -I tools/fixtures/pose-animation/make_b_rig.py --check    # validate it
+```
+
+`--check` runs make_humanoids.py's validation and make_animated_hero.py's animation checks on it,
+checks the proxy node and compares the bytes with a fresh generation.
+
 `project.yaml` and `Main Scene.scene` are made by the editor through MCP with `make_scene.py`
 (a new project, `editor.assets_dir` = `assets`, `set_model` both models, the light turned to the
 front, `create_entity` the ground and the camera, `set_main_camera`, `save_scene`), so they are in
