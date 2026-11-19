@@ -42,7 +42,8 @@ namespace jasperengine {
 
         static int luaRegisterEvent(lua_State* L);
         static int luaRegisterEngineEvent(lua_State* L);
-        static int luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive);
+        static int luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive,
+                                        int32_t priority = 0);
         static int luaUnregisterEvent(lua_State* L);
         static int luaUnregisterEngineEvent(lua_State* L);
         // Pushes the tag RegisterEvent / RegisterEngineEvent give a subscription
