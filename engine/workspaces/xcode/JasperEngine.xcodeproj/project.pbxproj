@@ -4992,6 +4992,18 @@
 		4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */; };
 		4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */; };
 		4A534E476B9066D7DA7DF4A0 /* PortableMath.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477CE603833084E5A8 /* PortableMath.h */; };
+		4A534E530652583A0F926C60 /* PhysicsQueries.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53409864A13A46E65E /* PhysicsQueries.cpp */; };
+		4A534E53D403D38480C66DB6 /* PhysicsQueries2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */; };
+		4A534E53787F595627F6B486 /* PhysicsQueryDebug.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53E8DA31A26A60CF23 /* PhysicsQueryDebug.cpp */; };
+		4A534E53C17A15D3FC2029C7 /* PhysicsQueryReference.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53D9A877F63C620597 /* PhysicsQueryReference.cpp */; };
+		4A534E53E523C8F90AE5EF1A /* PhysicsQueryLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53C8E60EBFCA4D4D8F /* PhysicsQueryLua.cpp */; };
+		4A534E53519130B949B127BD /* PhysicsQueries.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53409864A13A46E65E /* PhysicsQueries.cpp */; };
+		4A534E53ED6BAD3FA848849B /* PhysicsQueries2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */; };
+		4A534E53507EFF084157E0B0 /* PhysicsQueryDebug.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53E8DA31A26A60CF23 /* PhysicsQueryDebug.cpp */; };
+		4A534E534000F52E30631F8D /* PhysicsQueryReference.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53D9A877F63C620597 /* PhysicsQueryReference.cpp */; };
+		4A534E53AB7BAEFA1B69AD21 /* PhysicsQueryLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53C8E60EBFCA4D4D8F /* PhysicsQueryLua.cpp */; };
+		4A534E4791F8158E27C85959 /* PhysicsQueryDebug.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4729C0DD7AAEE708CF /* PhysicsQueryDebug.h */; };
+		4A534E47A4BCFF9EF5211FAA /* PhysicsQueryReference.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C36F9A60B5A0E29E /* PhysicsQueryReference.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9610,6 +9622,13 @@
 		4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.rectclip.cpp; sourceTree = "<group>"; };
 		4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.triangulation.cpp; sourceTree = "<group>"; };
 		4A534E477CE603833084E5A8 /* PortableMath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PortableMath.h; sourceTree = "<group>"; };
+		4A534E53409864A13A46E65E /* PhysicsQueries.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueries.cpp; sourceTree = "<group>"; };
+		4A534E53CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueries2D.cpp; sourceTree = "<group>"; };
+		4A534E53E8DA31A26A60CF23 /* PhysicsQueryDebug.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueryDebug.cpp; sourceTree = "<group>"; };
+		4A534E53D9A877F63C620597 /* PhysicsQueryReference.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueryReference.cpp; sourceTree = "<group>"; };
+		4A534E53C8E60EBFCA4D4D8F /* PhysicsQueryLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueryLua.cpp; sourceTree = "<group>"; };
+		4A534E4729C0DD7AAEE708CF /* PhysicsQueryDebug.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueryDebug.h; sourceTree = "<group>"; };
+		4A534E47C36F9A60B5A0E29E /* PhysicsQueryReference.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueryReference.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10179,6 +10198,7 @@
 				4A534E47CFB46598B1647202 /* TransitionClassesLua.cpp */,
 				4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */,
 				4A534E47157896361DA814BE /* TilemapClassesLua.cpp */,
+				4A534E53C8E60EBFCA4D4D8F /* PhysicsQueryLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -11036,6 +11056,12 @@
 				5452524E4733A6D0ECC250AF /* JoltTerrainRefresh.h */,
 				54574C44FD5752CF7DB6BCCA /* TerrainWorldCollision.cpp */,
 				54574C442B54D4346813C175 /* TerrainWorldCollision.h */,
+				4A534E53409864A13A46E65E /* PhysicsQueries.cpp */,
+				4A534E53CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */,
+				4A534E53E8DA31A26A60CF23 /* PhysicsQueryDebug.cpp */,
+				4A534E53D9A877F63C620597 /* PhysicsQueryReference.cpp */,
+				4A534E4729C0DD7AAEE708CF /* PhysicsQueryDebug.h */,
+				4A534E47C36F9A60B5A0E29E /* PhysicsQueryReference.h */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -17023,6 +17049,8 @@
 				4A534E47054E398FA74D8510 /* TilemapSystem.h in Headers */,
 				4A534E471318EF349C5D6003 /* TitleArtLanguage.h in Headers */,
 				4A534E476B9066D7DA7DF4A0 /* PortableMath.h in Headers */,
+				4A534E4791F8158E27C85959 /* PhysicsQueryDebug.h in Headers */,
+				4A534E47A4BCFF9EF5211FAA /* PhysicsQueryReference.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19727,6 +19755,11 @@
 				4A534E531A1C988F11418CC6 /* clipper.offset.cpp in Sources */,
 				4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */,
 				4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */,
+				4A534E53519130B949B127BD /* PhysicsQueries.cpp in Sources */,
+				4A534E53ED6BAD3FA848849B /* PhysicsQueries2D.cpp in Sources */,
+				4A534E53507EFF084157E0B0 /* PhysicsQueryDebug.cpp in Sources */,
+				4A534E534000F52E30631F8D /* PhysicsQueryReference.cpp in Sources */,
+				4A534E53AB7BAEFA1B69AD21 /* PhysicsQueryLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20722,6 +20755,11 @@
 				4A534E53B20756E5F1A7BE16 /* clipper.offset.cpp in Sources */,
 				4A534E53D0DF67AF16A27312 /* clipper.rectclip.cpp in Sources */,
 				4A534E53987D75562512D018 /* clipper.triangulation.cpp in Sources */,
+				4A534E530652583A0F926C60 /* PhysicsQueries.cpp in Sources */,
+				4A534E53D403D38480C66DB6 /* PhysicsQueries2D.cpp in Sources */,
+				4A534E53787F595627F6B486 /* PhysicsQueryDebug.cpp in Sources */,
+				4A534E53C17A15D3FC2029C7 /* PhysicsQueryReference.cpp in Sources */,
+				4A534E53E523C8F90AE5EF1A /* PhysicsQueryLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

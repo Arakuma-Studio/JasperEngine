@@ -232,7 +232,7 @@ TEST(PhysicsQuery, TriggersFollowInteraction){
 }
 
 // AC3: raycast and raycastAll through the city give what the pre-change Ray::cast gave (the
-// fixture was written by this test on the tree without the change, JASPER_WRITE_RAY_FIXTURE=1)
+// fixture was written by this test on the tree without the change, JASPER_TEST_UPDATE_GOLDEN=1)
 TEST(PhysicsQuery, RaycastUnchangedByDefault){
     test::QueryCity city = test::buildQueryCity3D(2000);
     Scene* scene = city.scene.get();
@@ -254,7 +254,7 @@ TEST(PhysicsQuery, RaycastUnchangedByDefault){
         }
     }
     const std::string path = JASPER_TEST_REPO_DIR "/engine/tests/core/fixtures/physics/ray_city_hits.txt";
-    if (std::getenv("JASPER_WRITE_RAY_FIXTURE")){
+    if (std::getenv("JASPER_TEST_UPDATE_GOLDEN")){
         std::ofstream(path) << lines.str();
         GTEST_SKIP() << "wrote " << path;
     }

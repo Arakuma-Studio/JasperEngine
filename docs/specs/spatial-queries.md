@@ -526,4 +526,46 @@ core tests already build scenes with physics, `PhysicsRayThreadsTest.cpp:27-30`)
 
 ## Deviations
 
-None yet.
+- **D1 / R15 frame key.** `Engine::getFrameCount()` does not exist and `Engine::getGameFrames()`
+  stops while paused and in the editor's edit mode (a `world: drawn` overlap there would never
+  refit). `Engine::getFrameIndex()` is added: every engine frame, paused or not, one increment
+  beside the frame arena's reset. Tests advance it through `EngineTestAccess`.
+- **D2 buffers.** The 3D collector (its `OnBody` and its `TransformedShape` context give the entity,
+  trigger flag and collider index with no second body lock) and the 2D callbacks write straight into
+  the caller's vector; there is no fixed 256-entry array. The 2D first forms keep only the lowest
+  `(body, collider)` hit, with no buffer. The Lua forms use one main-thread buffer each.
+- **D2 query box.** Box query shapes use a convex radius of 0 (exact corners).
+- **R3 casts.** Every hit at fraction 0 is dropped (touching at the start counts as overlapping,
+  R1), not only those with positive penetration: without `mReturnDeepestPoint` Jolt reports no
+  reliable depth there. A Box2D cast callback never returns -1 or 0 for a skipped shape (Box2D 3.1
+  carries the value into its next tree as the maximum fraction, and 0 stops the cast).
+- **R12 foliage.** Foliage trees have no SceneBvh leaves (rays walk FoliageSystem's cells), so the
+  drawn overlaps return SceneBvh leaves only: default kinds are `MESH | INSTANCE | BOUNDS` and
+  `MeshOverlapHit` has no `foliageId` / `prototype`. A box walk of the foliage cells is follow-up work.
+- **R18 / risks "one error per call site".** One error per query function per process (an atomic
+  flag each), for C++ and Lua alike, naming "outside the physics step: queue the query for onUpdate".
+- **R22 undo.** The existing Physics rows apply without undo; the two new rows go through a new
+  `PhysicsQuerySettingsCmd` (one step per changed row, from the dialog's OK and from
+  `set_project_settings physics.queries_hit_triggers` / `physics2d.queries_hit_triggers`).
+- **R23 toolbar.** The Game view has no Physics menu and no Contacts item: Queries is a toggle button
+  beside Physics (icon when narrow), saved in the editor preferences (`physics_queries`).
+- **R27 monitors.** Every query (and every `Physics` / `Physics2D` raycast) does one relaxed add on
+  two process-wide counters; the profiler's `publishMonitors` publishes per-frame differences (in
+  profiler builds) and the Stats panel the difference since its last draw. Raycasts are also drawn
+  by the query debug draw, as a zero-radius cast.
+- **R28 Lua extras.** The ignore list is a trailing table (after `qti`, after `colliders` in a
+  NonAlloc form). `Physics.overlapBoxNonAlloc` takes `results` before the optional rotation (Unity);
+  `MeshRaycast.overlapBoxNonAlloc` takes the rotation first (§6's example). 2D box and capsule
+  `angle` arguments are optional (0). The two enums are bound with typed values in
+  `PhysicsQueryLua.cpp` (its own `Stack` specializations).
+- **R25 details.** `query_physics` `verify` checks physics overlaps only (no drawn-world reference);
+  its `raycast` drops the `ignore` bodies after the cast (`Physics.raycast` has no ignore list);
+  `world: drawn` refits now (`current`). An unnamed layer is named by its number in the hint.
+- **AC3 fixture.** The fixture is written with `JASPER_TEST_UPDATE_GOLDEN=1` (the variable
+  `tools/build.sh` forwards into the image), by the same test on the tree without the change.
+- **AC15 timing.** A browser's clock is too coarse for one 0.04 ms call: the gate times batches of
+  100 calls and takes the p99 of the per-call mean over 100 batches. `MeshRaycast.overlapSphere` is
+  timed from C++, `Physics.overlapSphereNonAlloc` through Lua.
+- **D8 ring.** An entry holds the `QueryShape`, the sweep and up to 4 hit points (more than 96 bytes);
+  the scene's `PhysicsQueryDebug` is made by the first recorded query and its ring freed after 10 s
+  with debug draw off and nothing live.

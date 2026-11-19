@@ -165,6 +165,21 @@ async def test_query_physics_hints(ed: Editor):
     finally:
         await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
 
+    # Project Settings > Physics > Queries Hit Triggers off: Play starts with it (AC16), a script's change ends at Stop
+    await ed.call("set_project_settings", values={"physics.queries_hit_triggers": False})
+    await ed.call("play", action="start", scene=scene, fixed_fps=60, auto_pause=True)
+    try:
+        await ed.call("wait", frames=2)
+        global_off = await ed.call("query_physics", shape={"type": "sphere", "radius": 0.5}, origin=[0, 0, 3])
+        ed.check(global_off["count"] == 0, f"use_global follows the project setting: {global_off}")
+        got = (await ed.call("eval_lua", code="local was = Physics.queriesHitTriggers; Physics.queriesHitTriggers = true; return was"))["values"]
+        ed.check(got[0] is False, f"Physics.queriesHitTriggers in Play: {got}")
+    finally:
+        await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
+    got = (await ed.call("eval_lua", code="return Physics.queriesHitTriggers", allow_edit_mode=True))["values"]
+    ed.check(got[0] is False, f"Stop puts the project's value back: {got}")
+    await ed.call("set_project_settings", values={"physics.queries_hit_triggers": True})
+
 
 async def test_query_debug_draw(ed: Editor):
     from htmlui_pixels import decode_png
