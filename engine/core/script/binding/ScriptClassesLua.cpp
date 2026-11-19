@@ -655,10 +655,11 @@ void LuaBinding::registerScriptClasses(lua_State* L) {
         .endClass()
         .deriveClass<CancellableScriptEvent, ScriptEvent>("CancellableEvent")
         .addConstructor<void (*) ()>()
-        // Event's dispatch (it returns cancelled for this class), bound again for its own Lua API entry
-
-        .addFunction("invoke", &ScriptEvent::luaInvoke)
+        .addFunction("invoke", &CancellableScriptEvent::luaInvoke)
         .addProperty("cancelledBy", &CancellableScriptEvent::cancelledBy)
+        // metamethods are not inherited from Event
+
+        .addFunction("__tostring", &ScriptEvent::luaToString)
         .endClass()
         .beginClass<ScriptCancelEventArgs>("CancelEventArgs")
         .addFunction("cancel", &ScriptCancelEventArgs::luaCancel)

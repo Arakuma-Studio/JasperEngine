@@ -23,6 +23,8 @@
 namespace {
 
     struct InvokeCost {
+        const char* constructor;
+        int listeners;
         double ns = 0.0;
         uint64_t allocations = 0;
         int luaBytes = 0;
@@ -37,48 +39,57 @@ namespace {
         return std::string();
     }
 
-    // `benchEvent:invoke(i)` in a precompiled Lua loop of `calls` iterations
-    InvokeCost measureInvokes(lua_State* L, int calls) {
-        constexpr int runs = 7;
-        InvokeCost cost;
-        EXPECT_EQ(luaL_loadstring(L, "local ev, n = benchEvent, ...; for i = 1, n do ev:invoke(i) end"), LUA_OK);
-        const int loop = lua_gettop(L);
-        auto run = [&](int n) {
-            lua_pushvalue(L, loop);
-            lua_pushinteger(L, n);
-            EXPECT_EQ(lua_pcall(L, 1, 0, 0), LUA_OK) << lua_tostring(L, -1);
-        };
-        run(calls);   // warm-up: the listeners' first calls grow Lua's call stack
-        std::vector<double> samples;
-        for (int i = 0; i < runs; i++) {
-            const auto start = std::chrono::steady_clock::now();
-            run(calls);
-            samples.push_back(std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / calls);
-        }
-        std::sort(samples.begin(), samples.end());
-        cost.ns = samples[runs / 2];
-
-        lua_gc(L, LUA_GCSTOP);
-        const int before = lua_gc(L, LUA_GCCOUNT) * 1024 + lua_gc(L, LUA_GCCOUNTB);
-        testsupport::ThreadAllocationCount count;
-        run(10000);
-        cost.allocations = count.count();
-        cost.luaBytes = lua_gc(L, LUA_GCCOUNT) * 1024 + lua_gc(L, LUA_GCCOUNTB) - before;
-        lua_gc(L, LUA_GCRESTART);
-        lua_settop(L, loop - 1);
-        return cost;
+    // `ev:invoke(i)` in a Lua loop of n iterations over the event at the stack index `event`
+    void runInvokes(lua_State* L, int loop, int event, int n) {
+        lua_pushvalue(L, loop);
+        lua_pushvalue(L, event);
+        lua_pushinteger(L, n);
+        EXPECT_EQ(lua_pcall(L, 2, 0, 0), LUA_OK) << lua_tostring(L, -1);
     }
 
-    // benchEvent = <constructor>() with `listeners` listeners `listener`
-    InvokeCost measureEvent(lua_State* L, const char* constructor, const char* listener, int listeners, int calls) {
-        const std::string setup = std::string("benchEvent = ") + constructor + "()\n"
-                                  "for i = 1, " + std::to_string(listeners) + " do benchEvent:addListener(" + listener + ") end\n";
-        EXPECT_EQ(runBenchLua(L, setup), "");
-        const InvokeCost cost = measureInvokes(L, calls);
-        EXPECT_EQ(runBenchLua(L, "benchEvent = nil; collectgarbage()"), "");
-        std::printf("[bench] %s:invoke with %d listeners: %.1f ns, %.3f allocations and %.3f Lua bytes per invoke\n",
-                    constructor, listeners, cost.ns, cost.allocations / 10000.0, cost.luaBytes / 10000.0);
-        return cost;
+    // Each case's median of 7 runs, the cases interleaved in every run so that a ratio compares
+    // samples taken under the same load; then its allocations and Lua bytes over 10,000 invokes
+    void measureInvokes(lua_State* L, std::vector<InvokeCost>& cases, int calls) {
+        constexpr int runs = 7;
+        const int base = lua_gettop(L);
+        ASSERT_EQ(luaL_loadstring(L, "local ev, n = ...; for i = 1, n do ev:invoke(i) end"), LUA_OK);
+        const int loop = base + 1;
+        for (const InvokeCost& c : cases) {
+            // a new closure per listener: the same function twice is one listener
+            const char* listener = std::string(c.constructor) == "Event" ? "function(v) end" : "function(e, v) end";
+            const std::string setup = std::string("local ev = ") + c.constructor + "()\n"
+                                      "for i = 1, " + std::to_string(c.listeners) + " do ev:addListener(" + listener + ") end\n"
+                                      "return ev";
+            ASSERT_EQ(luaL_loadstring(L, setup.c_str()), LUA_OK);
+            ASSERT_EQ(lua_pcall(L, 0, 1, 0), LUA_OK) << lua_tostring(L, -1);
+        }
+        std::vector<std::vector<double>> samples(cases.size());
+        for (size_t k = 0; k < cases.size(); k++) {
+            runInvokes(L, loop, loop + 1 + static_cast<int>(k), calls);   // warm-up: the first calls grow Lua's call stack
+        }
+        for (int run = 0; run < runs; run++) {
+            for (size_t k = 0; k < cases.size(); k++) {
+                const auto start = std::chrono::steady_clock::now();
+                runInvokes(L, loop, loop + 1 + static_cast<int>(k), calls);
+                samples[k].push_back(std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / calls);
+            }
+        }
+        for (size_t k = 0; k < cases.size(); k++) {
+            InvokeCost& c = cases[k];
+            std::sort(samples[k].begin(), samples[k].end());
+            c.ns = samples[k][runs / 2];
+            lua_gc(L, LUA_GCSTOP);
+            const int before = lua_gc(L, LUA_GCCOUNT) * 1024 + lua_gc(L, LUA_GCCOUNTB);
+            testsupport::ThreadAllocationCount count;
+            runInvokes(L, loop, loop + 1 + static_cast<int>(k), 10000);
+            c.allocations = count.count();
+            c.luaBytes = lua_gc(L, LUA_GCCOUNT) * 1024 + lua_gc(L, LUA_GCCOUNTB) - before;
+            lua_gc(L, LUA_GCRESTART);
+            std::printf("[bench] %s:invoke with %d listeners: %.1f ns, %.3f allocations and %.3f Lua bytes per invoke\n",
+                        c.constructor, c.listeners, c.ns, c.allocations / 10000.0, c.luaBytes / 10000.0);
+        }
+        lua_settop(L, base);
+        EXPECT_EQ(runBenchLua(L, "collectgarbage()"), "");
     }
 
 }
@@ -86,30 +97,25 @@ namespace {
 TEST(ScriptEventBench, InvokeCosts) {
     lua_State* L = jasperengine::LuaBinding::getLuaState();
     ASSERT_NE(L, nullptr);
-    constexpr int calls = 200000;
-    // a new closure per listener: the same function twice is one listener
-    const char* eventListener = "function(v) end";
-    const char* cancellableListener = "function(e, v) end";
-
-    const InvokeCost event0 = measureEvent(L, "Event", eventListener, 0, calls);
-    const InvokeCost event1 = measureEvent(L, "Event", eventListener, 1, calls);
-    const InvokeCost event8 = measureEvent(L, "Event", eventListener, 8, calls);
-    const InvokeCost cancellable0 = measureEvent(L, "CancellableEvent", cancellableListener, 0, calls);
-    measureEvent(L, "CancellableEvent", cancellableListener, 1, calls);
-    const InvokeCost cancellable8 = measureEvent(L, "CancellableEvent", cancellableListener, 8, calls);
+    std::vector<InvokeCost> cases = {{"Event", 0}, {"CancellableEvent", 0}, {"Event", 1}, {"CancellableEvent", 1},
+                                     {"Event", 8}, {"CancellableEvent", 8}};
+    measureInvokes(L, cases, 200000);
+    const InvokeCost& event0 = cases[0];
+    const InvokeCost& cancellable0 = cases[1];
+    const InvokeCost& event8 = cases[4];
+    const InvokeCost& cancellable8 = cases[5];
     std::printf("[bench] CancellableEvent over Event: %.2fx idle (budget 1.2), %.2fx with 8 listeners (budget 1.15)\n",
                 cancellable0.ns / event0.ns, cancellable8.ns / event8.ns);
 
     if (testsupport::countsAllocations()) {
-        EXPECT_EQ(event0.allocations, 0u);
-        EXPECT_EQ(event1.allocations, 0u) << "Event:invoke copied its listeners";
-        EXPECT_EQ(event8.allocations, 0u) << "Event:invoke copied its listeners";
-        EXPECT_EQ(cancellable0.allocations, 0u);
-        EXPECT_EQ(cancellable8.allocations, 0u) << "CancellableEvent:invoke made a CancelEventArgs";
+        for (const InvokeCost& c : cases) {
+            EXPECT_EQ(c.allocations, 0u) << c.constructor << ":invoke with " << c.listeners
+                                         << " listeners allocated (a copy of the listeners, or a CancelEventArgs)";
+        }
     }
-    EXPECT_EQ(event8.luaBytes, 0);
-    EXPECT_EQ(cancellable0.luaBytes, 0);
-    EXPECT_EQ(cancellable8.luaBytes, 0) << "the CancelEventArgs is reused";
+    for (const InvokeCost& c : cases) {
+        EXPECT_EQ(c.luaBytes, 0) << c.constructor << ":invoke with " << c.listeners << " listeners: the CancelEventArgs is reused";
+    }
     if (testsupport::perfSlack() > 0.0) {
         EXPECT_LE(cancellable0.ns, event0.ns * 1.2 * testsupport::perfSlack());
         EXPECT_LE(cancellable8.ns, event8.ns * 1.15 * testsupport::perfSlack());

@@ -415,7 +415,18 @@ ScriptCancelEventArgs* ScriptEvent::pushCancelArgs(lua_State* L) {
 }
 
 int ScriptEvent::luaInvoke(lua_State* L) {
-    ScriptEvent* self = eventArg(L);
+    return dispatch(L, eventArg(L));
+}
+
+int CancellableScriptEvent::luaInvoke(lua_State* L) {
+    ScriptEvent* self = luabridge::detail::Userdata::get<CancellableScriptEvent>(L, 1, false);
+    if (!self) {
+        luaL_error(L, "CancellableEvent:invoke called without a CancellableEvent (use a colon: ev:invoke())");
+    }
+    return dispatch(L, self);
+}
+
+int ScriptEvent::dispatch(lua_State* L, ScriptEvent* self) {
     if (self->listeners.empty()) {
         if (!self->cancellable) {
             return 0;

@@ -62,6 +62,7 @@ namespace jasperengine {
 
     protected:
         explicit ScriptEvent(bool cancellable);
+        static int dispatch(lua_State* L, ScriptEvent* self);
 
         const bool cancellable;
         bool invokedOnce = false;
@@ -111,6 +112,8 @@ namespace jasperengine {
     class JASPERENGINE_API CancellableScriptEvent : public ScriptEvent {
     public:
         CancellableScriptEvent();
+        // Event's dispatch, reached without LuaBridge's walk to the base class: returns cancelled
+        static int luaInvoke(lua_State* L);
         // the listener that cancelled the latest completed invoke (named as getListeners names it);
         // nil when it went ahead or before the first invoke
         std::optional<std::string> cancelledBy() const;

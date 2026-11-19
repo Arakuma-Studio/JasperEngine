@@ -149,23 +149,24 @@ namespace jasperengine {
                 } else if (e.cancelled) {
                     return true;        // a decider after the veto
                 }
-                run(*slots, slot, guarded, e, args...);
+                if (!guarded) {
+                    try {
+                        slot.function(e, args...);
+                    } catch (...) {
+                        CrashHook::logFailure(std::string(e.eventName) + " listener");
+                    }
+                } else {
+                    runGuarded(*slots, slot, e, args...);
+                }
                 return true;
             });
             if (!e.orphaned) innermost = e.outer;
             return e.cancelled;
         }
 
-        static void run(List& slots, Slot& slot, bool guarded, CancelEventArgs& e, Args&... args) {
+        // under the crash guard (a CrashHook is set): a faulting listener is removed and reported
+        static void runGuarded(List& slots, Slot& slot, CancelEventArgs& e, Args&... args) {
             auto call = [&]() { slot.function(e, args...); };
-            if (!guarded) {
-                try {
-                    call();
-                } catch (...) {
-                    CrashHook::logFailure(std::string(e.eventName) + " listener");
-                }
-                return;
-            }
             using Call = decltype(call);
             std::string errorInfo;
             if (!CrashHook::runGuarded([](void* data) { (*static_cast<Call*>(data))(); }, &call, errorInfo)) {

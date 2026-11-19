@@ -491,5 +491,8 @@ uint64_t add(Function function, uint64_t ownerKey, std::string tag, int32_t prio
   live `CancelEventArgs` take over the monitor-error flag (`orphaned`), so R19's "once per event"
   becomes once per pending emit for that case. The crash guard reports a failing listener as
   `<name> listener` (the event has no tags).
+- **A nested invoke** goes over the listeners there were when the outermost invoke started, as
+  `SlotList` does: one added by a listener waits until the outermost invoke ends (with the snapshot
+  copy, an invoke nested after the add saw it). Every other R13 rule is unchanged.
 - **`CancellableEvent:invoke`** is bound again on the derived class (the same function) so the Lua API
   data has its own `---@nodiscard` entry; the dispatch reads the event's kind, not the binding.

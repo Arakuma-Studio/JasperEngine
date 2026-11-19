@@ -36,12 +36,15 @@ namespace {
             lua("log = nil; ev = nil; stored = nil; collectgarbage()");
         }
 
-        // the first result as tostring gives it, or "error: <message>"; chunk name ScriptEventTest
+        // the first result as tostring gives it, or "error: <message>" without the position Lua
+        // puts first ("ScriptEventTest:<line>: "); chunk name ScriptEventTest
         std::string lua(const std::string& code) {
             if (luaL_loadbuffer(L, code.data(), code.size(), "=ScriptEventTest") != LUA_OK || lua_pcall(L, 0, 1, 0) != LUA_OK) {
-                std::string error = std::string("error: ") + (lua_tostring(L, -1) ? lua_tostring(L, -1) : "?");
+                std::string message = lua_tostring(L, -1) ? lua_tostring(L, -1) : "?";
                 lua_pop(L, 1);
-                return error;
+                const std::string where = "ScriptEventTest:";
+                const size_t colon = message.rfind(where, 0) == 0 ? message.find(": ", where.size()) : std::string::npos;
+                return "error: " + (colon == std::string::npos ? message : message.substr(colon + 2));
             }
             std::string result = luaL_tolstring(L, -1, nullptr);
             lua_pop(L, 2);

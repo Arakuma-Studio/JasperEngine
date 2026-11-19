@@ -2075,6 +2075,9 @@ OVERRIDES.update({
     ('Event', '__tostring'): {
         'doc': [],
         'overloads': [([], 'string')]},
+    ('CancellableEvent', '__tostring'): {
+        'doc': [],
+        'overloads': [([], 'string')]},
     ('CancellableEvent', 'invoke'): {
         'doc': ["Calls the listeners as `fn(e, ...)` by priority until one calls `e:cancel()`, then the MONITOR",
                 "listeners. True when one cancelled: then do not apply the change."],
