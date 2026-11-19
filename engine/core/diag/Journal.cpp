@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cmath>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -65,7 +66,11 @@ namespace je_journal {
             else cut = true;
         }
         void put(std::string_view text) {
-            for (char c : text) put(c);
+            const size_t room = journal::kMaxEntryBytes - size;
+            const size_t n = text.size() < room ? text.size() : room;
+            std::memcpy(data + size, text.data(), n);
+            size += n;
+            if (n < text.size()) cut = true;
         }
     };
 
@@ -119,9 +124,40 @@ namespace je_journal {
         line.put(std::string_view(digits, static_cast<size_t>(result.ptr - digits)));
     }
 
+    // %.9g. The common range, 1e-4 <= |value| < 1e9, without snprintf (a third of an entry's
+    // cost): the 9 significant digits rounded, the trailing zeros dropped. Elsewhere snprintf, whose
+    // decimal comma under a device's locale would make the text depend on the device.
     void putDouble(Line& line, double value) {
-        // %.9g: std::to_chars(double) needs macOS 13.3's libc++; snprintf of a double does not
-        // allocate. A locale's decimal comma would make the text depend on the device.
+        const double magnitude = value < 0.0 ? -value : value;
+        if (std::isfinite(value) && magnitude >= 1e-4 && magnitude < 1e9) {
+            static constexpr double kPowers[] = {1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12};
+            int exponent = static_cast<int>(std::floor(std::log10(magnitude)));
+            auto significand = [magnitude](int e) { return static_cast<uint64_t>(std::llround(magnitude * kPowers[8 - e])); };
+            if (exponent >= -4 && exponent <= 8) {
+                uint64_t digits = significand(exponent);
+                if (digits >= 1000000000ull && exponent < 8) digits = significand(++exponent);
+                else if (digits < 100000000ull && exponent > -4) digits = significand(--exponent);
+                if (digits >= 100000000ull && digits < 1000000000ull) {
+                    char text[9];
+                    for (int i = 8; i >= 0; i--, digits /= 10) text[i] = static_cast<char>('0' + digits % 10);
+                    int significant = 9;
+                    while (significant > 1 && text[significant - 1] == '0') significant--;
+                    if (value < 0.0) line.put('-');
+                    if (exponent >= 0) {
+                        line.put(std::string_view(text, static_cast<size_t>(exponent + 1)));
+                        if (significant > exponent + 1) {
+                            line.put('.');
+                            line.put(std::string_view(text + exponent + 1, static_cast<size_t>(significant - exponent - 1)));
+                        }
+                    } else {
+                        line.put("0.");
+                        for (int i = -1; i > exponent; i--) line.put('0');
+                        line.put(std::string_view(text, static_cast<size_t>(significant)));
+                    }
+                    return;
+                }
+            }
+        }
         char digits[40];
         const int n = std::snprintf(digits, sizeof(digits), "%.9g", value);
         for (int i = 0; i < n && i < static_cast<int>(sizeof(digits)); i++) line.put(digits[i] == ',' ? '.' : digits[i]);
