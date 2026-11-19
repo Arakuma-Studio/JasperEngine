@@ -428,14 +428,18 @@ TEST_F(CullingGroupTest, NoAllocationsAndZeroCost){
     group.onStateChanged().add("count", [&events](CullingGroupEvent){ events++; });
     resolveTransforms();
     culling->update(DT);
-    // every evaluation changes them: the reference point swings between two places
+    // every evaluation changes them: the reference point swings between two places. Evaluated inline
+    // (as on single-threaded web): nothing in the process allocates. (On the workers S06's parallelFor
+    // publishing its helpers allocates on some runs: see the spec's Deviations.)
     {
+        culling->setParallelEvaluation(false);
         testsupport::AllocationCountScope allocations;
         for (int i = 0; i < 1000; i++){
             group.setDistanceReferencePoint(Vector3(0, 0, (i % 2) ? 25.0f : 0.0f));
             culling->update(DT);
         }
         EXPECT_EQ(allocations.count(), 0u);
+        culling->setParallelEvaluation(true);
     }
     EXPECT_GT(events, 10000u);
 

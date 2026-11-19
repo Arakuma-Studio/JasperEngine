@@ -244,7 +244,8 @@ namespace jasperengine{
         void gatherFocuses();
         void ensureSimFlags(Entity entity);
         float resolveRadius(Entity entity, SimulationCullingComponent& component);
-        bool groundLoaded(Entity entity, const Vector3& position, float radius, bool withinDistance, uint32_t& scriptChecks);
+        // `all`: a first evaluation, never capped
+        bool groundLoaded(Entity entity, const Vector3& position, float radius, bool withinDistance, bool all, uint32_t& scriptChecks);
         void evaluateSimulation(bool all, const std::vector<Entity>* only);
         void applyTransition(const Transition& transition);
         void applyFlags(Entity root, const SimulationCullingComponent& component, SimulationState state);

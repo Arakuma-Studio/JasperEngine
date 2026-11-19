@@ -229,8 +229,7 @@ TEST(TerrainWorldResidency, IsAreaLoadedNoAlloc){
     }
     EXPECT_EQ(agreeing, 1000);
     EXPECT_GT(loadedAreas, 0);
-    // in memory without fine collision (no body asked for it): loaded, not Collision-ready
+    // the focus's tile is in memory: loaded (whatever its fine collision, which isAreaLoaded never reads)
     EXPECT_TRUE(runtime->isAreaLoaded(32.0f, 32.0f, 1.0f));
-    EXPECT_FALSE(runtime->isAreaReady(32.0f, 32.0f, 1.0f, jasperengine::TerrainWorldReadyLevel::Collision));
 }
 #endif

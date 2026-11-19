@@ -745,7 +745,7 @@ float CullingSystem::resolveRadius(Entity entity, SimulationCullingComponent& co
     return component.resolvedRadius;
 }
 
-bool CullingSystem::groundLoaded(Entity entity, const Vector3& position, float radius, bool withinDistance, uint32_t& scriptChecks) {
+bool CullingSystem::groundLoaded(Entity entity, const Vector3& position, float radius, bool withinDistance, bool all, uint32_t& scriptChecks) {
     (void)entity;
     bool loaded = true;
 #if JASPERENGINE_TERRAIN_WORLD
@@ -754,7 +754,7 @@ bool CullingSystem::groundLoaded(Entity entity, const Vector3& position, float r
     }
 #endif
     // the game's own streaming: only within simulation distance (a far one is culled anyway)
-    if (loaded && groundCheck && withinDistance && scriptChecks < MAX_GROUND_CHECKS_PER_FRAME) {
+    if (loaded && groundCheck && withinDistance && (all || scriptChecks < MAX_GROUND_CHECKS_PER_FRAME)) {
         scriptChecks++;
         loaded = groundCheck(position, radius);
     }
@@ -828,9 +828,11 @@ void CullingSystem::evaluateSimulation(bool all, const std::vector<Entity>* only
             if (component.freezeWhenGroundNotLoaded && (terrain || groundCheck)) {
                 const bool moved = tileSize > 0.0f && component.groundChecked &&
                     std::max(std::fabs(position.x - component.groundCheckX), std::fabs(position.z - component.groundCheckZ)) > tileSize;
-                const bool due = all || !component.groundChecked || moved || ((frameCounter + ordinal + groundCursor) % 8) == 0;
+                // one held by unloaded ground is checked every frame: it resumes as soon as its tile is in
+                const bool due = all || !component.groundChecked || !component.groundLoaded || moved ||
+                                 ((frameCounter + ordinal + groundCursor) % 8) == 0;
                 if (due) {
-                    component.groundLoaded = groundLoaded(entity, position, radius, distance <= simulation, scriptChecks);
+                    component.groundLoaded = groundLoaded(entity, position, radius, distance <= simulation, all, scriptChecks);
                     component.groundChecked = true;
                     component.groundCheckX = position.x;
                     component.groundCheckZ = position.z;

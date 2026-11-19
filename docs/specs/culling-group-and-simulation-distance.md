@@ -595,6 +595,13 @@ Unit tests in `engine/tests/core/subsystem/CullingSystemTest.cpp` (suites `Culli
 - **R18 pacing.** Reduced to Full changes count in the 64 a frame too (after resumes and culls).
 - **D9 2D inside a step.** Simulation Culling never decides inside a step; a 2D freeze asked for inside
   one is ignored (the 3D one is queued to the step's end).
+- **R23 allocations** hold for the evaluation inline (`CullingGroupTest.NoAllocationsAndZeroCost`: 0 in the
+  whole process over 1,000 evaluations with changes). Groups above 4,096 spheres evaluated on S06's
+  `parallelFor` saw about 55 allocations on the calling thread over 1,000 evaluations: the job system
+  publishing its helpers, not the culling code (measured, not fixed here).
+- **D12 cap at start.** The first evaluation of a scene and of a new GameObject calls the script ground
+  check for every component (AC13 starts 500 over unloaded ground); the 256-a-frame cap applies to the
+  later evaluations.
 - **R33 `onStateChanged`** is write-only in Lua (reads nil). C++ `onSimulationCulled` takes
   `const std::string& reason`.
 - **Tests.** The scripted cases (AC5, AC6's Lua part, AC7's script counts, AC10, AC12) run whole engine
