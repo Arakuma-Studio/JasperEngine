@@ -214,6 +214,9 @@ namespace jasperengine::editor {
         // involve), found while the scenes are loaded; empty: every scene of the project ships
         std::vector<uint32_t> profileListedScenes;
         std::set<uint32_t> shippedScenes;
+        // a Compile build of a profile: main.cpp from its settings snapshot and Scene List (made while
+        // the scenes are loaded; copyGenerated ships it instead of the editor's own)
+        std::string profileMainSource;
         bool prepareBuildProfile();
         bool shipsScene(uint32_t sceneId) const { return shippedScenes.empty() || shippedScenes.count(sceneId) > 0; }
         // the profile's start scene, else the first it lists; 0 without a Scene List

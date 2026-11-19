@@ -332,6 +332,10 @@ namespace jasperengine::editor {
         bool defaultFilterPoint = false;
         // the styled bitmap glyph cache's MiB (S51), emitted when it is not 0
         int bitmapTextCacheMiB = 0;
+        // setBuildTiers: what mainSource writes instead of the engine's current tiers
+        int buildLightMode = -1;
+        std::vector<int> buildShadowTiers;
+        std::vector<int> buildTerrainTiers;
 
         static fs::path getGeneratedPath(const fs::path& projectInternalPath);
         static std::string getEditorPluginAbiCheck();
@@ -424,6 +428,15 @@ namespace jasperengine::editor {
         bool hasSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath) const;
 
         void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const ThreadingProjectSettings& threading = ThreadingProjectSettings(), const HtmlUiRenderSettings& htmlUiRender = HtmlUiRenderSettings(), PbrTier mobilePbrTier = PbrTier::REDUCED, const ShaderCreationProjectSettings& shaderCreation = ShaderCreationProjectSettings(), bool allowInsecureHttp = false, const std::vector<ShaderGlobalDecl>& shaderGlobals = {}, const PlayerSettings& playerSettings = {}, const AudioSettings& audioSettings = AudioSettings(), const DebugSettings& debugSettings = DebugSettings(), uint32_t particleWorldBudget = 0);
+        // main.cpp's text: configure writes it; an export of a Build Profile builds its own from the
+        // profile's settings snapshot (Project::buildMainSource) without touching the project's files
+        std::string mainSource(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const ThreadingProjectSettings& threading = ThreadingProjectSettings(), const HtmlUiRenderSettings& htmlUiRender = HtmlUiRenderSettings(), PbrTier mobilePbrTier = PbrTier::REDUCED, const ShaderCreationProjectSettings& shaderCreation = ShaderCreationProjectSettings(), bool allowInsecureHttp = false, const std::vector<ShaderGlobalDecl>& shaderGlobals = {}, const PlayerSettings& playerSettings = {}, const AudioSettings& audioSettings = AudioSettings(), const DebugSettings& debugSettings = DebugSettings(), uint32_t particleWorldBudget = 0);
+        // The tiers main.cpp sets (a Build Profile's snapshot); unset (-1, empty), the editor's own
+        void setBuildTiers(int lightMode, std::vector<int> shadowTiers, std::vector<int> terrainTiers) {
+            buildLightMode = lightMode;
+            buildShadowTiers = std::move(shadowTiers);
+            buildTerrainTiers = std::move(terrainTiers);
+        }
         // main.cpp's init lines of Project Settings > Input: the default deadzone (when not 0.15)
         // and InputActions::loadDefault of the actions asset (none: the engine keeps Unity's
         // Input Manager defaults)

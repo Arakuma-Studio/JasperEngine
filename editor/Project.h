@@ -1564,6 +1564,8 @@ namespace jasperengine::editor{
         bool hasMissingSceneSources() const;
         void writeMissingSceneSources();
         void configureGenerator();
+        void prepareGenerator(Generator& target, const Project& settings) const;
+        std::vector<SceneBuildInfo> generatorScenes(uint32_t startId, const std::set<uint32_t>& only);
         void saveModifiedChildScenes(uint32_t sceneId, std::function<void(bool)> callback = nullptr);
         bool hasSceneUnsavedChangesImpl(uint32_t sceneId, std::unordered_set<uint32_t>& visited) const;
         void saveSceneListSequentially(std::vector<uint32_t> sceneIds, std::function<bool(uint32_t)> needsSave, std::function<void(bool)> callback);
@@ -1700,6 +1702,9 @@ namespace jasperengine::editor{
         // profile's overrides here, and the open project, its file and the engine stay as they are.
         static std::shared_ptr<Project> makeSettingsSnapshot(Project& source);
         bool isSettingsSnapshot() const { return settingsSnapshot; }
+        // A Compile build's main.cpp (Build Profiles): the init of `settings` (a profile's snapshot),
+        // the scenes of `sceneIds` registered (empty: every scene) and `startId` loaded first. Writes nothing.
+        std::string buildMainSource(const Project& settings, const std::set<uint32_t>& sceneIds, uint32_t startId);
 
         // ---- The project's shader list (docs/specs/S64-shader-lists.md). One source for an export,
         // generate_shaders, get_build_info, Play's startup and the Build Settings window:

@@ -2677,6 +2677,13 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                     shippedScenes.insert(involved.begin(), involved.end());
                 }
             }
+            // a Compile build's init and scene registration are the profile's too
+            profileMainSource.clear();
+            if (imported && buildProfile && config.mode != ExportMode::Player && config.mode != ExportMode::SourceCode) {
+                uint32_t start = profileStartScene();
+                if (!start) start = config.startSceneId != 0 ? config.startSceneId : project->getStartSceneId();
+                profileMainSource = project->buildMainSource(*settings, shippedScenes, start);
+            }
             // R12: nothing a shipped scene uses is excluded (a game would miss it at runtime)
             if (imported && !contentFilter.empty()) {
                 project->getAssetIndex().waitUntilReady();
@@ -3016,16 +3023,19 @@ bool editor::Exporter::copyGenerated() {
         if (!copied) return false;
     }
 
-    // Process main.cpp: copy from Generator output but strip editor-specific parts
+    // Process main.cpp: copy from Generator output (a Build Profile's own, built from its settings
+    // snapshot) but strip editor-specific parts
     fs::path mainSrc = generatedSrc / "main.cpp";
-    if (fs::exists(mainSrc, ec)) {
-        std::ifstream ifs(mainSrc, std::ios::in | std::ios::binary);
-        if (!ifs) {
-            setError("Failed to read generated main.cpp");
-            return false;
+    if (!profileMainSource.empty() || fs::exists(mainSrc, ec)) {
+        std::string content = profileMainSource;
+        if (content.empty()) {
+            std::ifstream ifs(mainSrc, std::ios::in | std::ios::binary);
+            if (!ifs) {
+                setError("Failed to read generated main.cpp");
+                return false;
+            }
+            content.assign((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
         }
-        std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
-        ifs.close();
 
         // Remove the entry point (the exported build compiles the engine's own
         // platform main.cpp, which already defines main()). Generator brackets
@@ -3055,8 +3065,8 @@ bool editor::Exporter::copyGenerated() {
             content.insert(init + initStart.size(), "    System::setBuildInfo(" + Factory::formatString(buildProfile->name) + ", {" + defines + "});\n");
         }
 
-        // Update start scene if user selected one
-        if (config.startSceneId != 0) {
+        // Update start scene if user selected one (a profile's Scene List names its own)
+        if (config.startSceneId != 0 && profileListedScenes.empty()) {
             std::string startSceneName;
             for (const auto& sceneProject : project->getScenes()) {
                 if (sceneProject.id == config.startSceneId) {
