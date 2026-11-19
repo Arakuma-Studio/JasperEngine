@@ -10,6 +10,7 @@
 #include "render/SystemRender.h"
 #include "json.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 
