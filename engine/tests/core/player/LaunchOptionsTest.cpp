@@ -203,7 +203,7 @@ TEST(LaunchOptions, GpuQuirkRejectsUnknownNames) {
 
 // --perf-summary (R12): a file in a directory that exists; it asks for the ready signal
 TEST(LaunchOptions, PerfSummary) {
-    TempDir dir;
+    test::TempDir dir;
     const std::string path = (dir.path() / "perf.json").string();
     const LaunchOptions options = ok({"--perf-summary=" + path});
     EXPECT_EQ(options.perfSummary.string(), path);
