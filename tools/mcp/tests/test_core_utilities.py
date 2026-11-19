@@ -86,6 +86,12 @@ end
 return Lock
 """
 
+
+def lock_source(extra: str = "") -> str:
+    # replace, not format: the Lua's table braces are not fields
+    return LOCK.replace("{extra}", extra)
+
+
 S: dict = {}
 
 
@@ -97,7 +103,7 @@ async def setup(ed: Editor) -> dict:
     made = await ed.call("create_scene", name="CoreUtil", type="3D", path="scenes/CoreUtil")
     S["scene"] = made["scene"]["id"]
     for name, cls, code in (("TagOwner", "TagOwner", TAG_OWNER), ("TimerOwner", "TimerOwner", TIMER_OWNER),
-                            ("Door", "Door", DOOR), ("Lock", "Lock", LOCK.format(extra=""))):
+                            ("Door", "Door", DOOR), ("Lock", "Lock", lock_source())):
         ent = await ed.call("create_entity", scene=S["scene"], type="empty", name=name)
         made = await ed.call("create_script", kind="lua", name=cls, content=code, scene=S["scene"], entity=ent["entity_id"])
         S["path_" + cls] = made["path"]
@@ -141,7 +147,7 @@ async def test_cancellable_event_in_play(ed: Editor):
     reload of Lock keeps its listeners' priorities."""
     since = await cursor(ed)
     s = await setup(ed)
-    await ed.call("write_file", path=s["path_Lock"], content=LOCK.format(extra=""))
+    await ed.call("write_file", path=s["path_Lock"], content=lock_source())
     await start(ed)
     await ed.call("wait", frames=2)
     door = "script('Door', 'Door', 'CoreUtil')"
@@ -158,7 +164,7 @@ async def test_cancellable_event_in_play(ed: Editor):
     ed.check_eq([m.strip() for m in markers][-2:], ["[lock-monitor] cancelled=true", "[lock-monitor] cancelled=false"],
                 f"the monitor saw each decision: {markers}")
 
-    await ed.call("write_file", path=s["path_Lock"], content=LOCK.format(extra="\nfunction Lock:onReload() end\n"))
+    await ed.call("write_file", path=s["path_Lock"], content=lock_source("\nfunction Lock:onReload() end\n"))
     reloaded = await ed.call("reload_scripts", paths=[s["path_Lock"]], language="lua")
     ed.check([x for x in reloaded["reloaded"] if x["path"].endswith("Lock.lua")], f"Lock.lua reloaded: {reloaded}")
     ed.check_eq(await lua(ed, f"return {door}.onOpening:getListeners()"), [expected], "the reload kept the priorities")
