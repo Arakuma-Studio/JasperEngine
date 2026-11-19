@@ -494,5 +494,7 @@ uint64_t add(Function function, uint64_t ownerKey, std::string tag, int32_t prio
 - **A nested invoke** goes over the listeners there were when the outermost invoke started, as
   `SlotList` does: one added by a listener waits until the outermost invoke ends (with the snapshot
   copy, an invoke nested after the add saw it). Every other R13 rule is unchanged.
-- **`CancellableEvent:invoke`** is bound again on the derived class (the same function) so the Lua API
-  data has its own `---@nodiscard` entry; the dispatch reads the event's kind, not the binding.
+- **`CancellableEvent:invoke`** is bound again on the derived class so the Lua API data has its own
+  `---@nodiscard` entry; it checks for the exact class, which skips LuaBridge's walk up to `Event`'s
+  (the dispatch is the same and reads the event's kind). `__tostring` is bound again too: LuaBridge
+  does not inherit metamethods.

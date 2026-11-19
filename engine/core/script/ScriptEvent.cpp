@@ -67,6 +67,7 @@ ScriptEvent::ScriptEvent(): ScriptEvent(false) {
 ScriptEvent::ScriptEvent(bool cancellable): cancellable(cancellable) {
     state = LuaBinding::getLuaState();
     std::fill(std::begin(cachedArgs), std::end(cachedArgs), LUA_NOREF);
+    std::fill(std::begin(cachedArgsData), std::end(cachedArgsData), nullptr);
 }
 
 ScriptEvent::~ScriptEvent() {
@@ -393,18 +394,21 @@ int ScriptEvent::luaRemoveAllListeners(lua_State* L) {
 
 ScriptCancelEventArgs* ScriptEvent::pushCancelArgs(lua_State* L) {
     // one per nesting depth, made on first use: an invoke allocates nothing
+    ScriptCancelEventArgs* args = nullptr;
     if (depth < CACHED_ARGS && cachedArgs[depth] != LUA_NOREF) {
         lua_rawgeti(L, LUA_REGISTRYINDEX, cachedArgs[depth]);
+        args = cachedArgsData[depth];
     } else {
         if (!luabridge::push(L, ScriptCancelEventArgs())) {
             luaL_error(L, "CancellableEvent:invoke: CancelEventArgs is not registered");
         }
+        args = luabridge::detail::Userdata::get<ScriptCancelEventArgs>(L, -1, false);
         if (depth < CACHED_ARGS) {
             lua_pushvalue(L, -1);
             cachedArgs[depth] = luaL_ref(L, LUA_REGISTRYINDEX);
+            cachedArgsData[depth] = args;
         }
     }
-    ScriptCancelEventArgs* args = luabridge::detail::Userdata::get<ScriptCancelEventArgs>(L, -1, false);
     args->cancelled = false;
     args->monitor = false;
     args->ended = false;

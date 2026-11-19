@@ -91,6 +91,9 @@ namespace jasperengine {
         uint32_t depth = 0;
         mutable bool dirty = false;
         int cachedArgs[CACHED_ARGS];
+        // their userdata, which Lua never moves and the registry reference keeps alive: an invoke
+        // skips LuaBridge's metatable walk to reach it
+        ScriptCancelEventArgs* cachedArgsData[CACHED_ARGS];
 
         void release(Listener& listener) const;
         void compact() const;
