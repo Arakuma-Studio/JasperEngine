@@ -448,4 +448,41 @@ Each red control is recorded by running the test on the base commit first; the P
 
 ## Deviations
 
-None yet.
+- **D1 API.** The evidence functions take what the rules need: `noteKey(key, repeat, typing, now)`
+  (typing: a focused text field, R4), `noteKeyUp(key)` (R6(a) needs the held keys),
+  `noteMouseButton(x, y, now)` and `noteMouseMove(x, y, now)` (positions, not deltas: R6(d) compares
+  them with the last touch end), `noteTouchStart(x, y, now)`, `noteGamepadDisconnected(id)`. The
+  device id travels with the tag: `Engine::setInputSource(tag, deviceId)` (R20), read back with
+  `InputSchemeTracker::getSourceTag/getSourceDevice`. There is no `addListener`: the HTML UI
+  (`HtmlUIContext::update`), `<input-prompt>` and the component UI compare
+  `InputSchemeTracker::getRevision()` or read `getCurrent()` once per frame (D5, D6), which costs a
+  compare when nothing changed and keeps R8's one scheme per frame. Added: `familyOfPad`,
+  `familyName`, `familyKey`, `parseScheme`. `reset` starts on the forced scheme when one is set (no
+  event), so a forced Play starts on it (AC15).
+- **D3.** The compile adds the two attribute names to the root's selector banding
+  (`rewriteContext.rootAttributes`) instead of writing them into the RML, and `DocumentLoader::load`
+  sets their live values before the first layout: the root signature holds the names as D3 wants,
+  and no existing RML snapshot changes. `restyleForRoot` counts the names as present, so a script
+  that removes one does not recompile.
+- **R11.** A map pinned to a pad (`setGamepad`) names its controls after that pad; otherwise after
+  the pad last used, then the first connected one (the order R11 gives), so a second player's map
+  never shows the first player's labels.
+- **R9.** Firefox's gamepad ids (`054c-0ce6-...`) are read as a vendor id too.
+- **R13.** Also `touch/count`; a binding with required modifiers prefixes them
+  (`keyboard/ctrl+keyboard/s`); a stick's single axis gives the stick's key.
+- **R26.** The debugger's rows are actions, so a Bindings column lists each action's bindings,
+  those outside the current scheme dimmed.
+- **AC7.** `InputBench.SchemeEventAndLatch` prints `scheme_event_ns` and `scheme_latch_ns` and gates them
+  with `perfSlack()` like the suite's other budgets; `tools/perf/bench-thresholds.json` reads the JSON of
+  benchmark executables only, which InputBench is not.
+- **AC14.** The cost is measured by `InputSchemeDocumentTest.SchemeSwitchCost` (`TestInputScheme.cpp`,
+  three documents of `fixtures/bench/input-scheme.html`), gated with `JASPER_HTMLUI_PERF_SLACK` as the
+  other HTML UI budgets near a build server's noise; the render benchmark (`HtmlUIRenderPerf`) runs one
+  document through FixtureRunner. Mobile numbers need the device lab and are not recorded.
+- **AC16.** `GameWindowTest.InputSchemeMenu` is in `editor/tests/PlayStartupScenesTest.cpp` (it needs
+  that file's play-session access) and drives `GameWindow::chooseInputScheme`, which the menu calls.
+- **AC17.** `InputSchemeEditorTest.OldScenesUnchanged` checks the three components' codecs (old values
+  read and written back byte-identical, `touch_scheme` round-trips) in `editor/tests/UIMultiPointerTest.cpp`.
+- **AC18.** CDP cannot send a gamepad: the web gate's tap and key give two lines (`Touch`, then
+  `Keyboard&Mouse`; the page starts on Keyboard&Mouse). The Android mouse and touchscreen taps run
+  after the two-finger tap in `tools/android-two-finger-tap.sh`.

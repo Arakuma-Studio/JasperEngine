@@ -177,6 +177,9 @@ namespace jasperengine {
         void releaseFocus();
         // documents laid out with viewport-dependent values follow a size change (§3.12.1)
         void restyleForViewport();
+        // the documents follow the input scheme (input-device-awareness R14, R17): once per change
+        void applyInputScheme();
+        uint32_t inputSchemeRevision = UINT32_MAX;
     };
 
 }

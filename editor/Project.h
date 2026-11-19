@@ -1081,6 +1081,7 @@ namespace jasperengine::editor{
         VoxelProjectSettings voxelSettings;
         SpriteNormalsWindowSettings spriteNormalsSettings;
         bool simulateTouch;
+        std::string inputSchemeOverride = "auto";
         std::vector<GameResolution> customResolutions;
 
         // True while project.yaml holds the only copy of this user's editor state
@@ -2320,6 +2321,14 @@ namespace jasperengine::editor{
         // Play acts as a touch device: the mouse is one finger and isTouchDevice() is true
         bool isSimulateTouch() const;
         void setSimulateTouch(bool simulateTouch);
+        // the Game view's Input Scheme: "auto" (what the player last used) or a forced
+        // "keyboard_mouse", "gamepad" or "touch": set at Play start, at once during Play, cleared at
+        // Play stop (InputSchemeTracker::setOverride). Workspace state, never in builds. False
+        // for another name
+        const std::string& getInputSchemeOverride() const;
+        bool setInputSchemeOverride(const std::string& scheme);
+        // the override above into the running game (Play start)
+        void applyInputSchemeOverride() const;
         // the Game view's custom resolutions (editor workspace, this user's)
         const std::vector<GameResolution>& getCustomResolutions() const;
         void setCustomResolutions(const std::vector<GameResolution>& resolutions);

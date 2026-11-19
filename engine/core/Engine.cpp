@@ -18,6 +18,7 @@
 #include "Screen.h"
 #include "io/UserSettings.h"
 #include "input/InputActions.h"
+#include "input/InputScheme.h"
 #include "debug/DebugOverlay.h"
 #include "render/SystemRender.h"
 #include "shader/ShaderWarmup.h"
@@ -1730,6 +1731,7 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     Log::onMessageReceived.removeByTagSubstring(substring);
     Device::onThermalStateChanged.removeByTagSubstring(substring);
     Device::onLowMemory.removeByTagSubstring(substring);
+    InputSchemeTracker::onSchemeChanged.removeByTagSubstring(substring);
 #if JASPERENGINE_SOUND_LAYER
     Audio::onMusicBeat.removeByTagSubstring(substring);
     Audio::onMusicSection.removeByTagSubstring(substring);
@@ -1782,6 +1784,7 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     Log::onMessageReceived.clear();
     Device::onThermalStateChanged.clear();
     Device::onLowMemory.clear();
+    InputSchemeTracker::onSchemeChanged.clear();
 #if JASPERENGINE_SOUND_LAYER
     // here too, not only in MusicPlayer::reset: the editor's Stop runs that after the C++ script library is unloaded
     Audio::onMusicBeat.clear();
@@ -2092,6 +2095,8 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     Scheduler::game().setOwnerThread();
 
     Engine::setCanvasSize(1000,480);
+    // the input scheme starts from the device (input-device-awareness R3)
+    InputSchemeTracker::reset(system->isTouchDevice());
 
     lastTime = 0;
     updateTimeCount = 0;
@@ -3671,10 +3676,26 @@ namespace {
 
 }
 
+namespace {
+
+    // Engine::setInputSource lasts for one event
+    struct InputSourceScope {
+        ~InputSourceScope(){ InputSchemeTracker::setSource(InputSourceTag::None, -1); }
+    };
+
+}
+
+void Engine::setInputSource(InputSourceTag tag, int deviceId){
+    InputSchemeTracker::setSource(tag, deviceId);
+}
+
 void Engine::systemTouchStart(int pointer, float x, float y){
+    const InputSourceScope sourceScope;
     // the debug overlay's gestures (three fingers held) see every finger; never consumed
     DebugOverlay::handleTouch(pointer, x, y, 0);
     if (transformCoordPos(x, y)){
+        // the scheme's evidence before the UI routes it: a finger a document took is touch use
+        InputSchemeTracker::noteTouchStart(x, y, InputSchemeTracker::clock());
 #if JASPERENGINE_AUDIO_CAPTURE
         if (AudioMarkers::isEnabled()) AudioMarkers::input("touch", "down", pointer, x, y);
 #endif
@@ -3723,10 +3744,12 @@ void Engine::systemTouchStart(int pointer, float x, float y){
 }
 
 void Engine::systemTouchEnd(int pointer, float x, float y){
+    const InputSourceScope sourceScope;
     DebugOverlay::handleTouch(pointer, x, y, 2);
     // a finger Input.multiTouchEnabled hides does not move or press the simulated mouse
     const bool visible = Input::isTouchVisible(pointer);
     const bool onCanvas = transformCoordPos(x, y);
+    InputSchemeTracker::noteTouchEnd(x, y, InputSchemeTracker::clock());
 #if JASPERENGINE_AUDIO_CAPTURE
     if (AudioMarkers::isEnabled()) AudioMarkers::input("touch", "up", pointer, x, y);
 #endif
@@ -3777,6 +3800,7 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
 }
 
 void Engine::systemTouchMove(int pointer, float x, float y){
+    const InputSourceScope sourceScope;
     DebugOverlay::handleTouch(pointer, x, y, 1);
     if (transformCoordPos(x, y)){
         Input::setTouchPosition(pointer, x, y);
@@ -3869,7 +3893,9 @@ void Engine::systemTouchCancel(int pointer){
 }
 
 void Engine::systemMouseDown(int button, float x, float y, int mods){
+    const InputSourceScope sourceScope;
     if (transformCoordPos(x, y)){
+        InputSchemeTracker::noteMouseButton(x, y, InputSchemeTracker::clock());
 #if JASPERENGINE_AUDIO_CAPTURE
         if (AudioMarkers::isEnabled()) AudioMarkers::input("mouse", "down", button, x, y);
 #endif
@@ -3917,6 +3943,7 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
     }
 }
 void Engine::systemMouseUp(int button, float x, float y, int mods){
+    const InputSourceScope sourceScope;
     const bool onCanvas = transformCoordPos(x, y);
 #if JASPERENGINE_AUDIO_CAPTURE
     if (AudioMarkers::isEnabled()) AudioMarkers::input("mouse", "up", button, x, y);
@@ -3970,7 +3997,9 @@ void Engine::systemMouseUp(int button, float x, float y, int mods){
 
 void Engine::systemMouseMove(float x, float y, int mods){
     // the movement counts outside the canvas too (a captured or dragged mouse looks around)
+    const InputSourceScope sourceScope;
     const bool insideCanvas = transformCoordPos(x, y);
+    InputSchemeTracker::noteMouseMove(x, y, InputSchemeTracker::clock());
     Input::addMouseMovement(x, y);
     if (insideCanvas){
         Input::setMousePosition(x, y);
@@ -4036,6 +4065,8 @@ void Engine::systemMouseMove(float x, float y, int mods){
 }
 
 void Engine::systemMouseScroll(float xoffset, float yoffset, int mods){
+    const InputSourceScope sourceScope;
+    InputSchemeTracker::noteMouseScroll();
     Input::setMouseScroll(xoffset, yoffset);
     if (mods != 0)
         Input::setModifiers(mods);
@@ -4073,6 +4104,9 @@ void Engine::systemMouseLeave(){
 }
 
 void Engine::systemKeyDown(int key, bool repeat, int mods){
+    const InputSourceScope sourceScope;
+    // typing in a text field never switches the scheme (a phone's soft keyboard)
+    InputSchemeTracker::noteKey(key, repeat, !repeat && isTextInputFocused(), InputSchemeTracker::clock());
 #if JASPERENGINE_AUDIO_CAPTURE
     if (!repeat && AudioMarkers::isEnabled()) AudioMarkers::input("key", "down", key, 0.0f, 0.0f);
 #endif
@@ -4136,6 +4170,8 @@ void Engine::systemKeyDown(int key, bool repeat, int mods){
 }
 
 void Engine::systemKeyUp(int key, bool repeat, int mods){
+    const InputSourceScope sourceScope;
+    InputSchemeTracker::noteKeyUp(key);
 #if JASPERENGINE_AUDIO_CAPTURE
     if (AudioMarkers::isEnabled()) AudioMarkers::input("key", "up", key, 0.0f, 0.0f);
 #endif
@@ -4293,6 +4329,7 @@ void Engine::setTextInputArea(const Rect& canvasRect){
 }
 
 void Engine::systemGamepadConnect(int gamepad, const std::string& name){
+    InputSchemeTracker::noteGamepadConnected(gamepad, name);
     Input::addGamepad(gamepad, name);
     Engine::onGamepadConnect.call(gamepad);
 }
@@ -4317,6 +4354,7 @@ void Engine::systemGamepadDisconnect(int gamepad){
     }
 
     Input::removeGamepad(gamepad);
+    InputSchemeTracker::noteGamepadDisconnected(gamepad);
     Engine::onGamepadDisconnect.call(gamepad);
 }
 
@@ -4324,6 +4362,7 @@ void Engine::systemGamepadButtonDown(int gamepad, int button){
 #if JASPERENGINE_AUDIO_CAPTURE
     if (AudioMarkers::isEnabled()) AudioMarkers::input("gamepad", "down", button, 0.0f, 0.0f);
 #endif
+    InputSchemeTracker::noteGamepadButton(gamepad);
     Input::addGamepadButtonPressed(gamepad, button);
 
     const bool consumed = gamepadKeyDown(getScenesSnapshot(), gamepad, gamepadKeyOfButton(button));
@@ -4348,6 +4387,7 @@ void Engine::systemGamepadButtonUp(int gamepad, int button){
 }
 
 void Engine::systemGamepadAxisMove(int gamepad, int axis, float value){
+    InputSchemeTracker::noteGamepadAxis(gamepad, axis, Input::getGamepadAxis(gamepad, axis), value);
     Input::setGamepadAxisValue(gamepad, axis, value);
 
     const bool consumed = gamepadAxisToDocuments(getScenesSnapshot(), gamepad, axis, value);

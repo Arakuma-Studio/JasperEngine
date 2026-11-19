@@ -11,6 +11,7 @@
 #include "Input.h"
 #include "TestSystem.h"
 #include "input/InputActions.h"
+#include "input/InputScheme.h"
 #include "support/AllocationCounter.h"
 
 #include <gtest/gtest.h>
@@ -122,4 +123,41 @@ TEST(InputBench, Evaluate100Actions300Bindings){
     InputActions::unload();
     Engine::systemGamepadDisconnect(0);
     Input::resetFrameState();
+}
+
+// input-device-awareness R22, AC7: the input scheme's evidence per event within 0.2 us and its
+// latch without a change within 1 us (a 2020 phone core; a desktop has room), no allocation
+TEST(InputBench, SchemeEventAndLatch){
+    InputSchemeTracker::setOverride(std::nullopt);
+    InputSchemeTracker::reset(false);
+    InputSchemeTracker::noteGamepadConnected(0, "Pad");
+    constexpr int events = 1000000;
+    testsupport::ThreadAllocationCount allocations;
+    double now = 1.0;
+    auto start = std::chrono::steady_clock::now();
+    for (int i = 0; i < events; i++){
+        // what a frame of play sends: keys held (repeats), a resting stick, small mouse moves
+        switch (i & 3){
+            case 0: InputSchemeTracker::noteKey(D_KEY_W, true, false, now); break;
+            case 1: InputSchemeTracker::noteGamepadAxis(0, D_GAMEPAD_AXIS_LEFT_X, 0.05f, 0.06f); break;
+            case 2: InputSchemeTracker::noteMouseMove(100.0f, 100.0f, now); break;
+            default: InputSchemeTracker::noteKeyUp(D_KEY_W); break;
+        }
+        now += 0.0001;
+    }
+    const double eventNs = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / events;
+    constexpr int latches = 1000000;
+    start = std::chrono::steady_clock::now();
+    for (int i = 0; i < latches; i++)
+        InputSchemeTracker::latch();
+    const double latchNs = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / latches;
+    std::printf("[bench] scheme_event_ns %.1f (budget 200)\n", eventNs);
+    std::printf("[bench] scheme_latch_ns %.1f (budget 1000)\n", latchNs);
+    EXPECT_EQ(allocations.count(), 0u);
+    if (testsupport::perfSlack() > 0.0){
+        EXPECT_LE(eventNs, 200.0 * 1.5 * testsupport::perfSlack());
+        EXPECT_LE(latchNs, 1000.0 * 1.5 * testsupport::perfSlack());
+    }
+    InputSchemeTracker::noteGamepadDisconnected(0);
+    InputSchemeTracker::reset(false);
 }

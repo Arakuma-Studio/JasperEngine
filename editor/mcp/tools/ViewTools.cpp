@@ -1939,6 +1939,14 @@ void configureGameViewTool(const CallPtr& call) {
         }
         changed.push_back("simulate_touch");
     }
+    if (args.contains("input_scheme")) {
+        // forced from the next frame during Play, else at Play start
+        if (!GameWindow::chooseInputScheme(project, args.value("input_scheme", ""))) {
+            call->fail("input_scheme must be auto, keyboard_mouse, gamepad or touch.");
+            return;
+        }
+        changed.push_back("input_scheme");
+    }
     static const std::vector<std::string> atmosphereNames = {"project", "off", "low", "medium", "high"};
     if (args.contains("atmosphere_quality")) {
         const std::string quality = args.value("atmosphere_quality", "");
@@ -2155,6 +2163,7 @@ void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& 
         {"maximized", gw->isMaximizedNow()},
         {"show_stats", settings.showStats},
         {"simulate_touch", project->isSimulateTouch()},
+        {"input_scheme", project->getInputSchemeOverride()},
         {"simulate_textures", textureFamilyName(TextureCookQueue::get().getViewFamily())},
         {"atmosphere_quality", std::vector<std::string>{"project", "off", "low", "medium", "high"}[(size_t)std::clamp(settings.atmosphereQuality + 1, 0, 4)]},
         {"physics_debug", Physics::isDebugDraw()},
@@ -2364,6 +2373,7 @@ void registerViewTools(McpRegistry& registry) {
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
             {"simulate_touch", boolean("")},
+            {"input_scheme", stringEnum("Forced at Play start; auto follows the device used.", {"auto", "keyboard_mouse", "gamepad", "touch"})},
             {"simulate_textures", stringEnum("", {"desktop", "mobile", "android_etc2", "web"})},
             {"atmosphere_quality", stringEnum("", {"project", "off", "low", "medium", "high"})},
             {"physics_debug", boolean("")},

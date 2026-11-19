@@ -32,7 +32,10 @@ A baseline's "click": n clicks the canvas centre n times after the run (CDP Inpu
 trusted events, so a page can lock the pointer), each followed by "after_click_seconds" (default 2)
 of running; the console lines it causes are checked like the others.
 
-A baseline's "keys": key presses after the clicks, each a {"code", "key", "key_code", "location"} object
+A baseline's "touch": n finger taps at the canvas centre after the clicks (CDP
+Input.dispatchTouchEvent touchStart, touchEnd), each followed by "after_touch_seconds" (default 1).
+
+A baseline's "keys": key presses after the clicks and taps, each a {"code", "key", "key_code", "location"} object
 (every field optional: an event without "code" exercises the legacy keyCode path) sent as a CDP
 Input.dispatchKeyEvent rawKeyDown and keyUp pair (trusted: a key press is a user gesture), each followed
 by "after_key_seconds" (default 0.5). "eval_before_input" with "eval_before_input_expect" is evaluated
@@ -407,6 +410,15 @@ def main() -> int:
                 cdp.send("Input.dispatchMouseEvent", type=kind, x=x, y=y, button="left" if kind != "mouseMoved" else "none",
                          buttons=1 if kind == "mousePressed" else 0, clickCount=1 if kind != "mouseMoved" else 0)
             cdp.pump(float(baseline.get("after_click_seconds", 2.0)))
+
+        # finger taps at the canvas centre (CDP Input.dispatchTouchEvent)
+        for _ in range(int(baseline.get("touch", 0))):
+            rect = evaluate(cdp, "(() => { const c = document.querySelector('canvas'); if (!c) return null;"
+                                 " const r = c.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()")
+            x, y = (rect[0], rect[1]) if rect else (640, 360)
+            cdp.send("Input.dispatchTouchEvent", type="touchStart", touchPoints=[{"x": x, "y": y, "id": 1}])
+            cdp.send("Input.dispatchTouchEvent", type="touchEnd", touchPoints=[])
+            cdp.pump(float(baseline.get("after_touch_seconds", 1.0)))
 
         # key presses (trusted, so a gesture: web audio starts on one)
         for key in baseline.get("keys", []):

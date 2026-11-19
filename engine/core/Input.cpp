@@ -7,6 +7,7 @@
 #include "Engine.h"
 #include "Log.h"
 #include "input/InputActions.h"
+#include "input/InputScheme.h"
 #include "input/InputControlNames.h"
 
 #include <array>
@@ -820,6 +821,8 @@ void Input::beginFrame(double unscaledDeltaTime, const InputSuppression& suppres
         s.inputFrame++;
     s.inFrame = true;
     beginFrame();
+    // the window's input scheme and its one change event, before the actions (a callback sees it)
+    InputSchemeTracker::latch();
     InputActions::setSuppression(suppression);
     InputActions::evaluate((float)unscaledDeltaTime);
     // the actions' edges, after every action is evaluated (a handler reading another action

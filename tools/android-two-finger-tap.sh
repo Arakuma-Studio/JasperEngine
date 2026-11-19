@@ -2,6 +2,8 @@
 # Two fingers touching the screen of the running emulator together, then lifting together: the
 # Linux multi-touch protocol (type B) through `adb shell sendevent` on the emulator's touch device.
 # tools/android-emulator-test.sh --two-finger-tap runs it inside its container, after the launch.
+# Then a mouse tap and a touchscreen tap in the middle of the screen (the input scheme's switches,
+# tools/test-projects/input/android-expect.txt).
 set -euo pipefail
 
 # the input device nodes are root's: adbd as root (the emulator's aosp_atd image allows it; the
@@ -49,3 +51,9 @@ awk -v wanted="$device" '/^add device/ { current = $4 } current == wanted' <<< "
 adb shell "$down"
 sleep 0.3
 adb shell "$up"
+
+# the input scheme: a mouse (its pointers have the mouse tool type), then a finger
+sleep 2
+adb shell input mouse tap $(( max_x / 2 )) $y || true
+sleep 2
+adb shell input touchscreen tap $(( max_x / 2 )) $y || true

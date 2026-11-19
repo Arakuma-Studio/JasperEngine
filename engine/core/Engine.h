@@ -140,6 +140,7 @@
 
 namespace jasperengine {
     class Scheduler;
+    enum class InputSourceTag : uint8_t;   // input/InputScheme.h
 
     class JASPERENGINE_API Scene;
 
@@ -1049,6 +1050,11 @@ namespace jasperengine {
         static void systemFocusChanged(bool focused);
         // The browser's pointer lock became active or ended (pointerlockchange)
         static void systemPointerLockChanged(bool locked);
+
+        // What the platform knows of the next touch, mouse or key event (InputSchemeTracker):
+        // a finger that is a mouse, an engine-made key, the input device id. Each systemTouch*,
+        // systemMouse* and systemKey* call resets it to None, -1 once it is done
+        static void setInputSource(InputSourceTag tag, int deviceId = -1);
 
         static void systemTouchStart(int pointer, float x, float y);
         static void systemTouchEnd(int pointer, float x, float y);

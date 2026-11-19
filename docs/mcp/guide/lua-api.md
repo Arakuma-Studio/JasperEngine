@@ -661,6 +661,10 @@ Maps of actions bound to controls, from an `.inputactions` asset (`jasper://docs
 | `InputActions.getBinding(id)` | `InputBinding`: `id`, `path`, `displayName`, `composite`, `overridden`, `getDisplayName()`, `getGroups()`, `getParts()` |
 | `InputActions.getBindingDisplayName(id)`, `getControlDisplayName(path)`, `isControlBound(path)` | "Space", "Ctrl+S", "Left Stick" |
 | `InputActions.defaultDeadzone` | rw, 0.15 |
+| `InputActions.currentScheme`, `currentPointer`, `gamepadFamily`, `lastGamepad` | read-only: `"Keyboard&Mouse"`, `"Gamepad"`, `"Touch"` (`InputScheme.KeyboardMouse`...); `"Xbox"`, `"PlayStation"`, `"Nintendo"`, `"Generic"` (`GamepadFamily.Xbox`...); -1 before any pad |
+| `InputActions.onSchemeChanged = function(scheme, previous) end` | once per frame that switched |
+| `InputActions.setSchemeOverride(scheme or nil)`, `getSchemeOverride()` | forces the scheme; nil: back to the tracked one |
+| `InputActions.getActionDisplayName(action, scheme?)`, `getActionGlyph(action, scheme?)`, `getBindingGlyph(id)` | the action's first binding in the scheme (default current): "Cross", `"gamepad/playstation/cross"`; "" without one |
 
 `InputAction`: `readValue()`, `readVector2()`, `isPressed()`, `wasPressedThisFrame()`,
 `wasReleasedThisFrame()`, `getHeldTime()`, `getPhase()` / `phase` (`InputActionPhase.WAITING`,
@@ -3511,7 +3515,7 @@ gate.area = 0 ; gate:remove()
 | `ScrollbarType`, `ProgressbarType` | `VERTICAL`, `HORIZONTAL` |
 | `OnScreenStickMode` | `FIXED`, `FLOATING`, `DYNAMIC` |
 | `OnScreenStickAxes` | `BOTH`, `HORIZONTAL`, `VERTICAL` |
-| `OnScreenVisibility` | `ALWAYS`, `TOUCH_DEVICES_ONLY` |
+| `OnScreenVisibility` | `ALWAYS`, `TOUCH_DEVICES_ONLY`, `TOUCH_SCHEME` |
 | `ParticleEmitterShape` | `Box`, `Sphere`, `Hemisphere`, `Circle`, `Cone` |
 | `FogType` | `LINEAR`, `EXPONENTIAL`, `EXPONENTIALSQUARED`, `HEIGHT` |
 | `FogColorMode` | `COLOR`, `SKY` |

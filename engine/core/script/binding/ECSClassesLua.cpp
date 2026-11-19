@@ -365,6 +365,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .beginNamespace("OnScreenVisibility")
         .addVariable("ALWAYS", OnScreenVisibility::ALWAYS)
         .addVariable("TOUCH_DEVICES_ONLY", OnScreenVisibility::TOUCH_DEVICES_ONLY)
+        .addVariable("TOUCH_SCHEME", OnScreenVisibility::TOUCH_SCHEME)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)

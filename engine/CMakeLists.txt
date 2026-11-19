@@ -1405,6 +1405,7 @@ set(JASPERENGINE_SRCS
     core/input/InputActionAsset.cpp
     core/input/InputActions.cpp
     core/input/InputRebind.cpp
+    core/input/InputScheme.cpp
     core/input/InputVirtualControls.cpp
     core/audio/AudioCapture.cpp
     core/audio/AudioClock.cpp
@@ -1589,6 +1590,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/vector/LottiePlayback.cpp
     core/htmlui/vector/UIElementLottie.cpp
     core/htmlui/vector/UILottieElement.cpp
+    core/htmlui/controls/InputPrompt.cpp
     core/htmlui/controls/OnScreenControls.cpp
     core/media/Av1Decoder.cpp
     core/media/GrowingFileReader.cpp

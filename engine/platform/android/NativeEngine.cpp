@@ -31,6 +31,7 @@
 #include "Engine.h"
 #include "System.h"
 #include "Input.h"
+#include "input/InputScheme.h"
 #include "Screen.h"
 #include "Log.h"
 #include "render/GpuWorkerContext.h"
@@ -202,6 +203,14 @@ float stylusPressureOf(const GameActivityPointerAxes& pointer) {
     return std::clamp(GameActivityPointerAxes_getPressure(&pointer), 0.0f, 1.0f);
 }
 
+// what the input scheme knows of a pointer on the touch path: a mouse with a button held stays a
+// finger there (unchanged behaviour) but is mouse use, and the device id (an emulator's PC mouse
+// arrives as fingers of the device that sends keys)
+void setPointerSource(const GameActivityMotionEvent* event, const GameActivityPointerAxes& pointer) {
+    const bool mouse = GameActivityPointerAxes_getToolType(&pointer) == AMOTION_EVENT_TOOL_TYPE_MOUSE;
+    jasperengine::Engine::setInputSource(mouse ? jasperengine::InputSourceTag::Mouse : jasperengine::InputSourceTag::None, event->deviceId);
+}
+
 constexpr int getJasperEngineGamepadButton(int32_t key) {
     if (key == AKEYCODE_BUTTON_A)
         return D_GAMEPAD_BUTTON_A;
@@ -358,7 +367,10 @@ static void resetDocumentTextInput(const std::u32string& text, size_t caret) {
 }
 
 static void sendTextInputKey(int key) {
+    // the soft keyboard's edits are made by the engine: never input scheme evidence
+    jasperengine::Engine::setInputSource(jasperengine::InputSourceTag::Synthetic);
     jasperengine::Engine::systemKeyDown(key, false, 0);
+    jasperengine::Engine::setInputSource(jasperengine::InputSourceTag::Synthetic);
     jasperengine::Engine::systemKeyUp(key, false, 0);
 }
 
@@ -1515,6 +1527,8 @@ void NativeEngine::handleGameActivityInput(){
     }
     if (backPressed.exchange(false)) {
         jasperengine::Engine::systemCharInput('\x1b');
+        // the engine's Escape, not a key the player pressed (the input scheme stays)
+        jasperengine::Engine::setInputSource(jasperengine::InputSourceTag::Synthetic);
         jasperengine::Engine::systemKeyDown(D_KEY_ESCAPE, false, jasperengine::Input::getModifiers());
         backEscapeDown = true;
     }
@@ -1564,8 +1578,11 @@ void NativeEngine::handleGameActivityInput(){
 
                 // the soft-keyboard Back above has no engine key; don't spam
                 // listeners with D_KEY_UNKNOWN
-                if (keyCode != D_KEY_UNKNOWN)
+                // the device id: an emulator's PC mouse arrives as fingers of the device that sends keys
+                if (keyCode != D_KEY_UNKNOWN) {
+                    jasperengine::Engine::setInputSource(jasperengine::InputSourceTag::None, keyEvent->deviceId);
                     jasperengine::Engine::systemKeyDown(keyCode, repeat, modifiers);
+                }
             } else if (keyEvent->action == AKEY_EVENT_ACTION_UP) {
                 if (keyCode != D_KEY_UNKNOWN)
                     jasperengine::Engine::systemKeyUp(keyCode, repeat, modifiers);
@@ -1636,6 +1653,7 @@ void NativeEngine::handleGameActivityInput(){
                         int motionPointerId = motionEvent->pointers[p].id;
                         float motionX = GameActivityPointerAxes_getX(&motionEvent->pointers[p]);
                         float motionY = GameActivityPointerAxes_getY(&motionEvent->pointers[p]);
+                        setPointerSource(motionEvent, motionEvent->pointers[p]);
                         jasperengine::Engine::systemTouchMove(motionPointerId, motionX, motionY);
                     }
                 } else if (actionMasked == AMOTION_EVENT_ACTION_CANCEL) {
@@ -1647,6 +1665,7 @@ void NativeEngine::handleGameActivityInput(){
                         float motionX = GameActivityPointerAxes_getX(&motionEvent->pointers[ptrIndex]);
                         float motionY = GameActivityPointerAxes_getY(&motionEvent->pointers[ptrIndex]);
 
+                        setPointerSource(motionEvent, motionEvent->pointers[ptrIndex]);
                         if (actionMasked == AMOTION_EVENT_ACTION_DOWN || actionMasked == AMOTION_EVENT_ACTION_POINTER_DOWN) {
                             jasperengine::Engine::systemTouchStart(motionPointerId, motionX, motionY);
                         } else if (actionMasked == AMOTION_EVENT_ACTION_UP || actionMasked == AMOTION_EVENT_ACTION_POINTER_UP) {

@@ -24,7 +24,8 @@ namespace jasperengine{
     // Joystick Pack's Fixed / Floating / Dynamic (Unity's Variable)
     enum class OnScreenStickMode { FIXED, FLOATING, DYNAMIC };
     enum class OnScreenStickAxes { BOTH, HORIZONTAL, VERTICAL };
-    enum class OnScreenVisibility { ALWAYS, TOUCH_DEVICES_ONLY };
+    // TOUCH_SCHEME: shown while the player is using touch (InputActions.currentScheme)
+    enum class OnScreenVisibility { ALWAYS, TOUCH_DEVICES_ONLY, TOUCH_SCHEME };
 
     struct JASPERENGINE_API OnScreenStickComponent{
         bool enabled = true;

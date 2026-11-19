@@ -29,6 +29,7 @@
 #include "Widgets.h"
 #include "external/IconsFontAwesome6.h"
 #include "net/Http.h"
+#include "input/InputScheme.h"
 #include "shortcuts/CommandCatalog.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -937,6 +938,16 @@ void editor::GameWindow::drawToolbar() {
     // Right side toggles, as icons when the view is too narrow for their names
     const char* debuggerLabel = "HTML UI Debugger##GameHtmlUiDebugger";
     const char* touchLabel = ICON_FA_MOBILE_SCREEN "##GameTouch";
+    // the scheme the game treats as the device in use (during Play), else the forced one
+    const std::string& forcedScheme = project->getInputSchemeOverride();
+    InputScheme shownScheme = InputScheme::KeyboardMouse;
+    if (project->isAnyScenePlaying())
+        shownScheme = InputSchemeTracker::getCurrent();
+    else if (forcedScheme != "auto")
+        InputSchemeTracker::parseScheme(forcedScheme, shownScheme);
+    const char* inputSchemeLabel = shownScheme == InputScheme::Gamepad ? ICON_FA_GAMEPAD "##GameInputScheme"
+                                 : shownScheme == InputScheme::Touch ? ICON_FA_HAND "##GameInputScheme"
+                                                                      : ICON_FA_KEYBOARD "##GameInputScheme";
     const char* networkLabel = ICON_FA_WIFI "##GameNetwork";
     const char* maximizeLabel = "Maximize On Play##GameMaximize";
     const char* statsLabel = "Stats##GameStats";
@@ -951,7 +962,8 @@ void editor::GameWindow::drawToolbar() {
     };
     auto groupWidth = [&]() {
         return buttonWidth(texturesLabel.c_str()) + buttonWidth(debuggerLabel) + buttonWidth(networkLabel) +
-               buttonWidth(touchLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) + buttonWidth(physicsLabel) + style.ItemSpacing.x * 6.0f;
+               buttonWidth(touchLabel) + buttonWidth(inputSchemeLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) +
+               buttonWidth(physicsLabel) + style.ItemSpacing.x * 7.0f;
     };
     ImGui::SameLine();
     const float contentRight = ImGui::GetWindowContentRegionMax().x;
@@ -1018,6 +1030,30 @@ void editor::GameWindow::drawToolbar() {
     }
     ImGui::EndDisabled();
 
+    // Input Scheme: Auto follows the last device used; a forced one applies at Play start and at
+    // once during Play (Simulate Touch stays the device's capability)
+    ImGui::SameLine();
+    if (toggleButton(inputSchemeLabel, forcedScheme != "auto",
+                     "Input Scheme: what the game treats as the device in use (Auto follows the last device used)")) {
+        ImGui::OpenPopup("##GameInputSchemeMenu");
+    }
+    if (ImGui::BeginPopup("##GameInputSchemeMenu")) {
+        static const char* const choices[][2] = {
+            {"Auto", "auto"}, {"Keyboard & Mouse", "keyboard_mouse"}, {"Gamepad", "gamepad"}, {"Touch", "touch"}};
+        for (const auto& choice : choices) {
+            if (ImGui::MenuItem(choice[0], nullptr, forcedScheme == choice[1]))
+                chooseInputScheme(project, choice[1]);
+        }
+        ImGui::Separator();
+        const InputScheme current = InputSchemeTracker::getCurrent();
+        std::string line = std::string("Current: ") +
+            (current == InputScheme::KeyboardMouse ? "Keyboard & Mouse" : InputSchemeTracker::groupName(current));
+        if (current == InputScheme::Gamepad)
+            line += std::string(" (") + InputSchemeTracker::familyName(InputSchemeTracker::getGamepadFamily()) + ")";
+        ImGui::MenuItem(line.c_str(), nullptr, false, false);
+        ImGui::EndPopup();
+    }
+
     ImGui::SameLine();
     if (toggleButton(maximizeLabel, settings.maximizeOnPlay, "Maximize On Play: fill the editor with the Game view while playing")) {
         settings.maximizeOnPlay = !settings.maximizeOnPlay;
@@ -1038,6 +1074,13 @@ void editor::GameWindow::drawToolbar() {
     }
 
     ImGui::SetCursorPosY(toolbarRowY + ImGui::GetTextLineHeightWithSpacing());
+}
+
+bool editor::GameWindow::chooseInputScheme(Project* project, const std::string& scheme) {
+    if (!project->setInputSchemeOverride(scheme))
+        return false;
+    project->saveWorkspaceFile();
+    return true;
 }
 
 // "Add custom...": a named size and dpi, kept in this project's editor workspace

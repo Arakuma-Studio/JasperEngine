@@ -13,10 +13,12 @@
 
 #include "Log.h"
 #include "input/InputActions.h"
+#include "input/InputScheme.h"
 #if JASPERENGINE_HTMLUI
 #include "input/InputVirtualControls.h"
 #endif
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -148,6 +150,22 @@ void LuaBinding::registerGameplayClasses(lua_State *L){
         .addVariable("VECTOR2", InputActionType::VECTOR2)
         .endNamespace();
 
+    // the input scheme's names (InputActions.currentScheme == InputScheme.Touch)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("InputScheme")
+        .addVariable("KeyboardMouse", std::string(InputSchemeTracker::groupName(InputScheme::KeyboardMouse)))
+        .addVariable("Gamepad", std::string(InputSchemeTracker::groupName(InputScheme::Gamepad)))
+        .addVariable("Touch", std::string(InputSchemeTracker::groupName(InputScheme::Touch)))
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("GamepadFamily")
+        .addVariable("Generic", std::string(InputSchemeTracker::familyName(GamepadFamily::Generic)))
+        .addVariable("Xbox", std::string(InputSchemeTracker::familyName(GamepadFamily::Xbox)))
+        .addVariable("PlayStation", std::string(InputSchemeTracker::familyName(GamepadFamily::PlayStation)))
+        .addVariable("Nintendo", std::string(InputSchemeTracker::familyName(GamepadFamily::Nintendo)))
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginClass<InputActionEvent>("InputActionEvent")
         .addProperty("action", &InputActionEvent::getAction)
@@ -250,6 +268,31 @@ void LuaBinding::registerGameplayClasses(lua_State *L){
         .addStaticFunction("getBindingDisplayName", &InputActions::getBindingDisplayName)
         .addStaticFunction("getControlDisplayName", [] (const std::string& path) { return InputActions::getControlDisplayName(path, 0); })
         .addStaticFunction("isControlBound", &InputActions::isControlBound)
+        // the input scheme (docs/mcp/guide/input.md "Input scheme")
+        .addStaticProperty("currentScheme", &InputActions::getCurrentScheme)
+        .addStaticProperty("currentPointer", &InputActions::getCurrentPointer)
+        .addStaticProperty("gamepadFamily", &InputActions::getGamepadFamily)
+        .addStaticProperty("lastGamepad", &InputActions::getLastGamepad)
+        .addStaticProperty("onSchemeChanged", [] () { return &InputSchemeTracker::onSchemeChanged; },
+                           [] (lua_State* L) { InputSchemeTracker::onSchemeChanged = L; })
+        .addStaticFunction("setSchemeOverride", [] (std::optional<std::string> scheme, lua_State* L) {
+            if (!InputActions::setSchemeOverride(scheme.value_or("")))
+                luaL_error(L, "InputActions.setSchemeOverride: '%s' is not a scheme (InputScheme.KeyboardMouse, Gamepad, Touch or nil)",
+                           scheme.value_or("").c_str());
+        })
+        .addStaticFunction("getSchemeOverride", [] () -> std::optional<std::string> {
+            const std::string scheme = InputActions::getSchemeOverride();
+            if (scheme.empty())
+                return std::nullopt;
+            return scheme;
+        })
+        .addStaticFunction("getActionDisplayName", [] (const std::string& action, std::optional<std::string> scheme) {
+            return InputActions::getActionDisplayName(action, scheme.value_or(""));
+        })
+        .addStaticFunction("getActionGlyph", [] (const std::string& action, std::optional<std::string> scheme) {
+            return InputActions::getActionGlyph(action, scheme.value_or(""));
+        })
+        .addStaticFunction("getBindingGlyph", &InputActions::getBindingGlyph)
 #if JASPERENGINE_HTMLUI
         // on-screen controls: HTML UI elements as virtual/<name> sticks and buttons
         .addStaticFunction("bindVirtualStick", &InputVirtualControls::bindStick)
