@@ -1127,8 +1127,7 @@ void inspectUiTool(const CallPtr& call) {
             if (!Localization::isActive()) l10nData["next"] = "The project has no String Tables: create one with edit_string_table (group localization).";
             else if (!report.literal.empty()) l10nData["next"] = "Literal text is not translated: add keys with edit_string_table and data-l10n-id on the elements.";
             data["l10n"] = l10nData;
-            text += "
-Localization (" + (report.language.empty() ? std::string("inactive") : report.language) + "): " +
+            text += "\nLocalization (" + (report.language.empty() ? std::string("inactive") : report.language) + "): " +
                     std::to_string(report.keyed) + " keyed, " + std::to_string(report.literal.size()) + " literal, " +
                     std::to_string(report.missing.size()) + " missing.";
         }
