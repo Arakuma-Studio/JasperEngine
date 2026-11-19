@@ -24,6 +24,8 @@
 #include "Input.h"
 #include "Catalog.h"
 #include "registry/EntityCloner.h"
+#include "input/TextEntry.h"
+#include "Stream.h"
 
 #include <cmath>
 #include <cstdio>
@@ -586,6 +588,63 @@ TEST_F(UIComponentsTest, TypingGuardAcrossScenes) {
     Engine::systemCharInput(U' ');
     EXPECT_EQ(ui(top).getSelected(), x) << "the upper scene's menu does not move";
     EXPECT_EQ(scene->getComponent<TextComponent>(text).text, "w ") << "Space typed, not a click";
+}
+
+// text-entry spec AC8: Keyboard Type reaches the soft keyboard, Character Limit holds on typing and
+// paste, the action key submits, older scenes read the defaults
+TEST_F(UIComponentsTest, InputFieldKeyboardTypeAndLimit) {
+    const Entity field = element("Field", 0, 0, 200, 30);
+    const Entity text = element("Text", 0, 0, 200, 30, field);
+    scene->removeComponent<ImageComponent>(text);
+    scene->addComponent<TextComponent>(text, {});
+    scene->getComponent<RectTransformComponent>(text).ignoreEvents = true;
+    InputFieldComponent inputfield;
+    inputfield.text = text;
+    inputfield.keyboardType = InputFieldKeyboardType::EMAIL_ADDRESS;
+    inputfield.characterLimit = 4;
+    scene->addComponent<InputFieldComponent>(field, inputfield);
+    count(scene->getComponent<InputFieldComponent>(field).onSubmit, "submit");
+    start();
+
+    const int shows = system.keyboardShows;
+    ui().eventOnPointerDown(-1, D_MOUSE_BUTTON_LEFT, 10, 10, false);
+    ui().eventOnPointerUp(-1, D_MOUSE_BUTTON_LEFT, 10, 10, false);
+    ASSERT_TRUE(uic(field).focused);
+    EXPECT_EQ(system.keyboardShows, shows + 1);
+    EXPECT_EQ(system.keyboardTraits.keyboard, KeyboardType::Email);
+    EXPECT_EQ(system.keyboardTraits.maxLength, 4);
+
+    // typed: the fifth and sixth characters are refused
+    for (char32_t c : std::u32string(U"abcdef"))
+        Engine::systemCharInput(c);
+    EXPECT_EQ(scene->getComponent<TextComponent>(text).text, "abcd");
+
+    // pasted (text from the platform): the same limit
+    scene->getComponent<TextComponent>(text).text = "";
+    scene->getComponent<InputFieldComponent>(field).cursorIndex = 0;
+    scene->getComponent<InputFieldComponent>(field).selectionAnchor = 0;
+    Engine::systemTextInput("abcdef");
+    EXPECT_EQ(scene->getComponent<TextComponent>(text).text, "abcd");
+
+    // the soft keyboard's action key submits, once
+    Engine::systemEditorAction(EnterKey::Send);
+    EXPECT_EQ(counts["submit"], 1);
+
+    // saved only away from the defaults; a scene without the keys reads the defaults
+    const YAML::Node saved = Stream::encodeComponents(field, scene, scene->getSignature(field));
+    EXPECT_EQ(saved["inputfield"]["keyboardType"].as<std::string>(), "email_address");
+    EXPECT_EQ(saved["inputfield"]["characterLimit"].as<int>(), 4);
+    Scene old;
+    const Entity loaded = old.createUserEntity();
+    YAML::Node oldComponents;
+    oldComponents["inputfield"] = YAML::Load("{placeholder: Name}");
+    Stream::decodeComponents(loaded, NULL_ENTITY, &old, oldComponents);
+    ASSERT_TRUE(old.findComponent<InputFieldComponent>(loaded));
+    EXPECT_EQ(old.getComponent<InputFieldComponent>(loaded).keyboardType, InputFieldKeyboardType::DEFAULT);
+    EXPECT_EQ(old.getComponent<InputFieldComponent>(loaded).characterLimit, 0);
+    const YAML::Node again = Stream::encodeComponents(loaded, &old, old.getSignature(loaded));
+    EXPECT_FALSE(again["inputfield"]["keyboardType"]) << "the defaults are not written";
+    EXPECT_FALSE(again["inputfield"]["characterLimit"]);
 }
 
 TEST_F(UIComponentsTest, InputActionsSuppressedWhileSelected) {
