@@ -629,4 +629,23 @@ wait until clicked, shot). Red controls are named per criterion.
 
 ## Deviations
 
-None yet.
+- **Writer signature.** `writeScript` is `bool writeScript(const ParsedScript&, std::string& out,
+  std::string& error)`: the steps of a script's composite events (a drag's moves, a relative mouse
+  move) have no single-event form, so writing them fails instead of producing a different file.
+- **Recorder buffer.** `InputRecorder::end()` returns a `RecordedInput` (the swapped record chunks);
+  `toScript()` turns it into a `ParsedScript` on a job, so Stop stays O(1) on the main thread (R15).
+- **Parity (AC3).** The editor keeps no interpreter of its own: `send_input` parses with
+  `parseEventList` (live rules) and runs a `ScriptPlayer`, polled once per editor frame. The parity
+  test is the core test `InputRecorderTest.SendInputParityEventsGiveTheSameSystemCalls`: the live
+  pacing and a script file run by `ScriptRunner` give the same recorded `Engine::system*` trace.
+- **get_play_state.** The recording and replay state are merged into the existing `input` object
+  (`input.recording`, `input.replaying`), which already held the game's input.
+- **Commands.** Editor commands are in the `playmode.*` group (`playmode.playOrResume`), so Record
+  Input would be `playmode.recordInput`; the toolbar button, its menu, settings, banner, Inspector
+  and Capture Screenshots dialog (R36-R40) are not implemented in this change.
+- **Not implemented in this change:** editor Record Input (R13, AC7, AC17), shots of `play {input}`
+  replays (R21), `record_game {input, format: "shots", resolutions}` (R23, AC14), `run_build
+  {input_script, resolutions}` (R24, AC11), the web URL fetch of `--input-script` (R30), the
+  player's UI Document target resolver (R8: a player's `target` step fails "target needs the htmlui
+  module in this player"), the web gate and Android runs (AC12, AC13). A player's seed is applied
+  when its Lua state opens after the engine starts.

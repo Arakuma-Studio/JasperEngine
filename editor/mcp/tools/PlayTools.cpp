@@ -41,6 +41,9 @@
 #include "Input.h"
 #include "input/InputActions.h"
 #include "input/InputControlPath.h"
+#include "input/InputRecorder.h"
+#include "input/InputReplay.h"
+#include "input/InputScript.h"
 #include "Platform.h"
 #include <filesystem>
 #include <memory>
@@ -94,6 +97,8 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstring>
+#include <fstream>
 #include <map>
 #include <memory>
 #include <set>
@@ -169,28 +174,6 @@ struct SessionRecord {
     double durationSeconds = 0.0;
 };
 
-// Input an agent is holding down in the game (send_input), released at stop
-struct HeldInput {
-    std::set<int> keys;
-    std::set<int> mouseButtons;
-    Vector2 mousePos = Vector2(0, 0);   // view (framebuffer) pixels
-    bool mousePosKnown = false;         // mousePos was set by an injected event this session
-    std::map<int, Vector2> touches;     // pointer → view pixels
-    std::set<int> gamepads;             // connected virtual gamepads
-    std::map<int, std::set<int>> gamepadButtons;
-    std::map<int, std::set<int>> gamepadAxes;
-    std::set<std::string> actions;      // Input Actions forced down (input_action down)
-    // the Input Manager's actions held and axes set through the "mcp" source (action / axis events)
-    std::set<std::string> managerActions;
-    std::map<std::string, float> axes;
-    bool empty() const {
-        if (!keys.empty() || !mouseButtons.empty() || !touches.empty() || !gamepads.empty() || !actions.empty() ||
-            !managerActions.empty() || !axes.empty()) return false;
-        for (const auto& [id, buttons] : gamepadButtons) if (!buttons.empty()) return false;
-        return true;
-    }
-};
-
 struct PlayStartWait {
     JobPtr job;
     uint32_t sceneId = NULL_PROJECT_SCENE;
@@ -206,6 +189,8 @@ struct TimeControl {
     int fixedFps = 0;               // 0: real time
     bool autoPause = false;
     int advancers = 0;              // calls letting an auto-paused game run (wait, send_input, step)
+    int shotHolds = 0;              // input `shot` steps being read: the game waits for them
+    int inputFixedFps = 0;          // play {input}: the file's fixed_fps for this session
 };
 
 struct PlayToolsState {
@@ -215,9 +200,14 @@ struct PlayToolsState {
     SessionRecord last;
     uint64_t serialCounter = 0;
     uint64_t pendingStartLogId = 0;     // set by play start just before Project::start
-    HeldInput held;
+    // input an agent is holding down in the game (send_input), released at stop
+    std::shared_ptr<input::HeldInput> held = std::make_shared<input::HeldInput>();
     std::vector<PlayStartWait> startWaits;
     bool monitorScheduled = false;
+    // play {input}: the file waits for the scene to run (the game held), then replays
+    std::shared_ptr<input::ParsedScript> pendingReplay;
+    std::string replayFile;
+    std::shared_ptr<input::Replay> replay;
 };
 
 PlayToolsState& state() {
@@ -296,6 +286,7 @@ Json sessionJson(const SessionRecord& record) {
 }
 
 void finishStartWaits(McpContext& ctx);
+void startPendingReplay(McpContext& ctx);
 
 // ================================================================== game clock
 
@@ -303,7 +294,8 @@ void finishStartWaits(McpContext& ctx);
 void applyTimeSettings() {
     const TimeControl& t = state().time;
     Engine::setTimeScale(static_cast<float>(t.timeScale));
-    Engine::setFixedDeltatime(t.fixedFps > 0 ? 1.0 / t.fixedFps : 0.0);
+    const int fps = t.inputFixedFps > 0 ? t.inputFixedFps : t.fixedFps;
+    Engine::setFixedDeltatime(fps > 0 ? 1.0 / fps : 0.0);
 }
 
 // auto_pause: the simulation is held unless a call is advancing it; the game always gets its
@@ -314,7 +306,7 @@ void applyHold(McpContext& ctx) {
     const uint32_t playId = project ? project->getPlaySessionSceneId() : NULL_PROJECT_SCENE;
     SceneProject* sp = playId != NULL_PROJECT_SCENE ? project->getScene(playId) : nullptr;
     const bool running = sp && isRunningState(sp->playState) && s.current.active;
-    const bool hold = running && s.time.autoPause && s.time.advancers == 0 && s.current.ranFirstFrame;
+    const bool hold = running && ((s.time.autoPause && s.time.advancers == 0 && s.current.ranFirstFrame) || s.time.shotHolds > 0 || s.pendingReplay != nullptr);
     if (Engine::isSimulationHeld() != hold) Engine::setSimulationHeld(hold);
 }
 
@@ -415,6 +407,7 @@ void observeSession(McpContext& ctx) {
         if (sp && isRunningState(sp->playState)) {
             s.current.reachedPlaying = true;
         }
+        if (sp && sp->playState == ScenePlayState::PLAYING && s.pendingReplay) startPendingReplay(ctx);
         if (playId != NULL_PROJECT_SCENE) {
             s.current.framesPlaying = Engine::getGameFrames() - std::min(Engine::getGameFrames(), s.current.engineFramesBase);
             s.current.gameTime = std::max(0.0, Engine::getGameTime() - s.current.engineTimeBase);
@@ -430,6 +423,9 @@ void observeSession(McpContext& ctx) {
             s.last = r;
             s.current = SessionRecord();
             releaseHeldInput(ctx);
+            s.pendingReplay.reset();
+            s.replay.reset();
+            s.time.inputFixedFps = 0;
         }
     }
 
@@ -441,7 +437,7 @@ bool monitorNeeded(McpContext& ctx) {
     PlayToolsState& s = state();
     Project* project = ctx.project();
     return (project && project->getPlaySessionSceneId() != NULL_PROJECT_SCENE) || s.current.active ||
-           !s.startWaits.empty() || !s.held.empty();
+           !s.startWaits.empty() || !s.held->empty();
 }
 
 // A main-thread task re-posting itself every frame while there is something to watch
@@ -514,87 +510,21 @@ Json runningScenesJson(Project* project) {
 
 // The control names are InputControlNames' (engine/core/input/InputControlPath.cpp), shared with
 // InputActions' control paths and get_input_state
-int parseKeyName(const Json& value) {
-    if (value.is_number_integer()) return value.get<int>();
-    if (!value.is_string()) return D_KEY_UNKNOWN;
-    return InputControlNames::parseKey(value.get<std::string>());
-}
-
 std::string keyName(int key) {
     return InputControlNames::keyName(key);
 }
 
-int parseMouseButton(const Json& value) {
-    if (value.is_null()) return D_MOUSE_BUTTON_LEFT;
-    if (value.is_number_integer()) return std::clamp(value.get<int>(), 0, D_MOUSE_BUTTON_LAST);
-    const std::string name = value.is_string() ? value.get<std::string>() : std::string();
-    if (name.empty()) return D_MOUSE_BUTTON_LEFT;
-    return InputControlNames::parseMouseButton(name);
-}
-
-int parseGamepadButton(const Json& value) {
-    if (value.is_number_integer()) return std::clamp(value.get<int>(), 0, D_GAMEPAD_BUTTON_LAST);
-    if (!value.is_string()) return -1;
-    return InputControlNames::parseGamepadButton(value.get<std::string>());
-}
-
-int parseGamepadAxis(const Json& value) {
-    if (value.is_number_integer()) return std::clamp(value.get<int>(), 0, D_GAMEPAD_AXIS_LAST);
-    if (!value.is_string()) return -1;
-    return InputControlNames::parseGamepadAxis(value.get<std::string>());
-}
-
-int parseMods(const Json& value) {
-    int mods = 0;
-    if (!value.is_array()) return 0;
-    for (const Json& item : value) {
-        const std::string name = item.is_string() ? lowerCopy(item.get<std::string>()) : std::string();
-        if (name == "shift") mods |= D_MODIFIER_SHIFT;
-        else if (name == "ctrl" || name == "control") mods |= D_MODIFIER_CONTROL;
-        else if (name == "alt") mods |= D_MODIFIER_ALT;
-        else if (name == "super" || name == "cmd" || name == "meta") mods |= D_MODIFIER_SUPER;
-    }
-    return mods;
-}
-
-// Engine view (framebuffer) pixels of the Game view → the system* entry points
-Vector2 clampToView(Vector2 point) {
-    const Rect view = Engine::getViewRect();
-    return Vector2(std::clamp(point.x, view.getX(), view.getX() + std::max(0.0f, view.getWidth())),
-                   std::clamp(point.y, view.getY(), view.getY() + std::max(0.0f, view.getHeight())));
-}
-
 // the owner of what send_input's action / axis / axis_delta events give the input actions (a
 // virtual source, as an on-screen control; input_action forces an action with InputActions::inject)
-uintptr_t mcpInputSource() {
-    return InputActions::namedSource("mcp");
-}
+const char* const kMcpInputSource = "mcp";
 
 void releaseHeldInput(McpContext& ctx) {
-    HeldInput& held = state().held;
-    for (int key : held.keys) Engine::systemKeyUp(key, false, 0);
-    const Vector2 pos = clampToView(held.mousePos);
-    for (int button : held.mouseButtons) Engine::systemMouseUp(button, pos.x, pos.y, 0);
-    for (const auto& [pointer, point] : held.touches) {
-        const Vector2 p = clampToView(point);
-        Engine::systemTouchEnd(pointer, p.x, p.y);
-    }
-    for (const auto& [pad, buttons] : held.gamepadButtons) {
-        for (int button : buttons) Engine::systemGamepadButtonUp(pad, button);
-    }
-    for (const auto& [pad, axes] : held.gamepadAxes) {
-        for (int axis : axes) Engine::systemGamepadAxisMove(pad, axis, 0.0f);
-    }
-    for (int pad : held.gamepads) Engine::systemGamepadDisconnect(pad);
-    for (const std::string& action : held.actions) InputActions::releaseInjected(action);
-    // the Input Manager's actions and axes it held (send_input action / axis / axis_delta)
-    InputActions::clearSource(mcpInputSource());
-    held = HeldInput();
+    input::releaseHeldInput(*state().held, kMcpInputSource);
     if (PlayInput* input = ctx.playInput()) input->setPointerInjected(false);
 }
 
 Json heldInputJson() {
-    const HeldInput& held = state().held;
+    const input::HeldInput& held = *state().held;
     Json keys = Json::array();
     for (int key : held.keys) keys.push_back(keyName(key));
     Json buttons = Json::array();
@@ -780,10 +710,34 @@ Json playStateJson(McpContext& ctx) {
     size_t pending = 0;
     for (uint32_t sceneId : PlayChangeReview::get().pendingScenes()) pending += PlayChangeReview::get().pendingCount(sceneId);
     out["pending_play_changes"] = pending;
-    if (!s.held.empty()) out["held_input"] = heldInputJson();
+    if (!s.held->empty()) out["held_input"] = heldInputJson();
+    // input recordings and replays (R41)
+    Json inputState = Json::object();
+    if (input::InputRecorder::isRecording()) {
+        inputState["recording"] = {{"frame", input::InputRecorder::frame()}, {"events", input::InputRecorder::events()},
+                                   {"truncated", input::InputRecorder::truncated()}};
+    }
+    if (s.replay || s.pendingReplay) {
+        const input::ParsedScript& script = s.replay ? s.replay->script() : *s.pendingReplay;
+        Json replaying = {{"file", s.replayFile}, {"kind", script.header.kind == input::ScriptKind::Recording ? "recording" : "script"},
+                          {"last_frame", script.lastFrame()}, {"frame", -1}, {"events_left", script.actions.size()}};
+        if (s.replay) {
+            const input::ReplayReport& report = s.replay->report();
+            replaying["frame"] = s.replay->frame();
+            replaying["done"] = s.replay->isDone();
+            replaying["events_left"] = script.actions.size() - std::min(report.actionsDone, script.actions.size());
+            replaying["comparable"] = report.comparable;
+            replaying["compared"] = report.compared;
+            replaying["diverged_at_frame"] = report.divergedAtFrame >= 0 ? Json(report.divergedAtFrame) : Json(nullptr);
+            replaying["differences"] = report.differences;
+            if (report.failed) replaying["error"] = s.replay->errorText();
+        }
+        inputState["replaying"] = replaying;
+    }
     // what the game's input reads (the Input Manager's actions, touches, keys)
     if (playId != NULL_PROJECT_SCENE && s.current.active) {
         out["input"] = playInputJson(project);
+        out["input"].update(inputState);
         // a cursor the game holds, and whether the editor took it back (Escape, Release Game Cursor)
         static const char* const mouseModes[] = {"normal", "hidden", "captured", "confined"};
         const int mode = static_cast<int>(Engine::getMouseMode());
@@ -1461,6 +1415,11 @@ bool luaTruthy(const Json& value) {
 
 Json startResultJson(McpContext& ctx, uint64_t startLogId, double seconds) {
     Json data = w3::playStateJson(ctx);
+    const PlayToolsState& s = state();
+    const input::ParsedScript* replay = s.pendingReplay ? s.pendingReplay.get() : s.replay ? &s.replay->script() : nullptr;
+    if (replay) {
+        data["next"] = {{"tool", "wait"}, {"args", {{"until", "not InputRecording.isReplaying()"}, {"frames", replay->lastFrame() + 60}}}};
+    }
     data["startup_seconds"] = round3(seconds);
     data["console_cursor_at_start"] = startLogId;
     data["problems"] = problemsSince(startLogId, 30);
@@ -1790,13 +1749,39 @@ void playStart(const CallPtr& call, const Json& sceneRef) {
         return;
     }
 
+    // input: a .input.json replayed from the first frame the scene runs (R16, R21)
+    std::shared_ptr<input::ParsedScript> replay;
+    const std::string inputFile = args.value("input", "");
+    if (!inputFile.empty()) {
+        std::filesystem::path path(inputFile);
+        if (path.is_relative()) path = std::filesystem::path(project->getProjectPath()) / path;
+        std::ifstream in(path, std::ios::binary);
+        std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        if (!in && text.empty()) {
+            call->fail("No input file at " + path.string() + " (input is project-relative or absolute).");
+            return;
+        }
+        replay = std::make_shared<input::ParsedScript>();
+        std::string error;
+        if (!input::parseScript(text, *replay, error)) {
+            call->fail(inputFile + ": " + error + ".");
+            return;
+        }
+        if (replay->header.kind == input::ScriptKind::Recording && replay->header.hasSeed) input::setPendingLuaSeed(replay->header.seed);
+        state().time.inputFixedFps = replay->header.fixedFps;
+        state().replayFile = inputFile;
+    }
+
     observeSession(ctx);
     releaseHeldInput(ctx);
     const uint64_t startLogId = Out::lastLogId();
     state().pendingStartLogId = startLogId;
+    state().pendingReplay = replay;
     project->start(sp->id);
     if (project->getPlaySessionSceneId() != sp->id) {
         state().pendingStartLogId = 0;
+        state().pendingReplay.reset();
+        state().time.inputFixedFps = 0;
         Json problems = problemsSince(startLogId, 20);
         call->fail("Play did not start." + (problems.empty() ? std::string() : "\n" + w3::formatConsoleText(problems)),
                    Json{{"problems", problems}});
@@ -2825,818 +2810,30 @@ void setRuntimePropertyTool(const CallPtr& call) {
 
 // ================================================================== tool: send_input
 
-struct InputStep {
-    std::function<std::string()> run;   // returns an error ("" = ok)
-    int framesAfter = 0;
-    int msAfter = 0;
-    std::string label;
-};
-
-// A sequence of input steps, advanced one frame at a time by the call running it
-// (send_input, or wait with input)
+// The events of a call (or a script file) run by the engine's input interpreter
+// (engine/core/input/InputScript.h), advanced one frame at a time by the call running it
+// (send_input, or wait with input). The editor adds what depends on it: the Game view's pointer,
+// UI Document targets, Lua conditions in the game's state, shots of the Game view.
 struct InputRun {
     CallPtr call;
-    std::vector<InputStep> steps;
-    size_t next = 0;
+    std::shared_ptr<input::ScriptPlayer> player;
     uint32_t playId = NULL_PROJECT_SCENE;
     uint64_t cursor = 0;
-    int frames = 0;
     Clock::time_point start;
     std::string error;
-    int pendingFrames = 0;          // game frames to let pass before the next step
     uint64_t gameFrame = 0;         // Engine::getGameFrames() when the run last advanced
-    bool msPending = false;
-    Clock::time_point msDeadline;
+    uint64_t frameIndex = 0;        // the frames the run has seen (its player's count)
     bool finished = false;
-    HeldInput heldBefore;           // what was held before the run (cutInputShort)
+    bool fromFile = false;          // send_input {file}: errors name the event
     std::shared_ptr<Advance> advance = std::make_shared<Advance>();
-    std::shared_ptr<Json> targets = std::make_shared<Json>(Json::array());   // resolved target / to_target points
+    std::shared_ptr<int> shotsPending = std::make_shared<int>(0);
+    std::shared_ptr<Json> shots = std::make_shared<Json>(Json::array());   // {name, path} (or error)
+
+    size_t stepsDone() const { return player->report().actionsDone; }
+    size_t stepsTotal() const { return player->script().actions.size(); }
+    int framesAfter = 0;            // send_input frames_after, once the steps are done
+    int frames() const { return static_cast<int>(player->report().frames) + framesAfter; }
 };
-
-// Coordinates (canvas / normalized / view) → view pixels; error when outside the game canvas
-bool toViewPoint(const std::string& space, double x, double y, Vector2& out, std::string& error) {
-    const Rect view = Engine::getViewRect();
-    const double canvasW = Engine::getCanvasWidth();
-    const double canvasH = Engine::getCanvasHeight();
-    if (view.getWidth() <= 0 || view.getHeight() <= 0 || canvasW <= 0 || canvasH <= 0) {
-        error = "The game view has no size yet.";
-        return false;
-    }
-    double cx = x, cy = y;
-    if (space == "normalized") {
-        cx = x * canvasW;
-        cy = y * canvasH;
-    } else if (space == "view") {
-        cx = (x - view.getX()) / view.getWidth() * canvasW;
-        cy = (y - view.getY()) / view.getHeight() * canvasH;
-    }
-    if (!Engine::isAllowEventsOutCanvas() && (cx < 0 || cy < 0 || cx > canvasW || cy > canvasH)) {
-        error = "Point (" + std::to_string(x) + ", " + std::to_string(y) + ") in " + space + " space is outside the game canvas (" +
-                std::to_string((int)canvasW) + "x" + std::to_string((int)canvasH) + "); the game would ignore it.";
-        return false;
-    }
-    out = Vector2(static_cast<float>(view.getX() + cx / canvasW * view.getWidth()),
-                  static_cast<float>(view.getY() + cy / canvasH * view.getHeight()));
-    return true;
-}
-
-// Where a mouse event without x,y happens: the last injected pointer position, else the game's
-// current mouse position (view pixels)
-Vector2 currentPointerView() {
-    const HeldInput& held = state().held;
-    if (held.mousePosKnown) return held.mousePos;
-    const Vector2 canvas = Input::getMousePosition();
-    Vector2 p;
-    std::string error;
-    if (toViewPoint("canvas", canvas.x, canvas.y, p, error)) return p;
-    return held.mousePos;
-}
-
-void markPointerInjected(McpContext& ctx) {
-    if (PlayInput* input = ctx.playInput()) input->setPointerInjected(true);
-}
-
-// UTF-8 → code points
-std::vector<uint32_t> decodeUtf8(const std::string& text) {
-    std::vector<uint32_t> out;
-    for (size_t i = 0; i < text.size();) {
-        const unsigned char c = static_cast<unsigned char>(text[i]);
-        uint32_t cp = c;
-        size_t len = 1;
-        if (c >= 0xF0) { cp = c & 0x07; len = 4; }
-        else if (c >= 0xE0) { cp = c & 0x0F; len = 3; }
-        else if (c >= 0xC0) { cp = c & 0x1F; len = 2; }
-        for (size_t k = 1; k < len && i + k < text.size(); k++) cp = (cp << 6) | (static_cast<unsigned char>(text[i + k]) & 0x3F);
-        out.push_back(cp);
-        i += len;
-    }
-    return out;
-}
-
-bool readPoint(const Json& event, const char* xKey, const char* yKey, const char* arrayKey, double& x, double& y) {
-    if (event.contains(arrayKey) && event[arrayKey].is_array() && event[arrayKey].size() >= 2 &&
-        event[arrayKey][0].is_number() && event[arrayKey][1].is_number()) {
-        x = event[arrayKey][0].get<double>();
-        y = event[arrayKey][1].get<double>();
-        return true;
-    }
-    if (event.contains(xKey) && event.contains(yKey) && event[xKey].is_number() && event[yKey].is_number()) {
-        x = event[xKey].get<double>();
-        y = event[yKey].get<double>();
-        return true;
-    }
-    return false;
-}
-
-// A point of a mouse / touch event: x, y in the event's space, or `target`, the center of a UI
-// Document element (htmlui_mcp::elementCenter, canvas px) found when the step runs, so an element
-// an earlier event showed can be targeted
-struct EventPoint {
-    bool given = false;
-    double x = 0, y = 0;
-    std::string target;
-    Json document;   // the UI Document to search (null: every one, topmost first)
-};
-
-// {xKey, yKey} / arrayKey [x,y] / targetKey; false + error when the target is not a selector
-bool readEventPoint(const Json& event, const char* xKey, const char* yKey, const char* arrayKey, const char* targetKey,
-                    EventPoint& out, std::string& error) {
-    if (event.contains(targetKey) && !event[targetKey].is_null()) {
-        if (!event[targetKey].is_string() || event[targetKey].get<std::string>().empty()) {
-            error = std::string(targetKey) + " must be a CSS selector of a UI Document element";
-            return false;
-        }
-        out.target = event[targetKey].get<std::string>();
-        out.document = event.contains("document") ? event["document"] : Json();
-        out.given = true;
-        return true;
-    }
-    out.given = readPoint(event, xKey, yKey, arrayKey, out.x, out.y);
-    return true;
-}
-
-// The point in view pixels ("" or the error); a resolved target is reported in `targets`
-std::string resolveEventPoint(McpContext& ctx, const EventPoint& point, const std::string& space, size_t eventIndex,
-                              const std::shared_ptr<Json>& targets, Vector2& out) {
-    std::string error;
-    if (point.target.empty()) {
-        return toViewPoint(space, point.x, point.y, out, error) ? std::string() : error;
-    }
-    double x = 0, y = 0;
-    Json document;
-    if (!htmlui_mcp::elementCenter(ctx, point.document, point.target, x, y, error, &document) ||
-        !toViewPoint("canvas", x, y, out, error)) {
-        return "target \"" + point.target + "\": " + error;
-    }
-    if (targets) {
-        targets->push_back({{"event", eventIndex}, {"target", point.target},
-                            {"point", Json::array({std::round(x * 10.0) / 10.0, std::round(y * 10.0) / 10.0})},
-                            {"document", document}});
-    }
-    return std::string();
-}
-
-// Turns one event into steps; false + error for a malformed event. Resolved targets go to `targets`.
-bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defaultSpace, int gapFrames,
-                     std::vector<InputStep>& steps, std::string& error, size_t eventIndex = 0,
-                     const std::shared_ptr<Json>& targets = nullptr) {
-    if (!event.is_object()) {
-        error = "each event must be an object with a type";
-        return false;
-    }
-    const std::string type = lowerCopy(event.value("type", ""));
-    const std::string space = lowerCopy(event.value("space", defaultSpace));
-    if (space != "canvas" && space != "normalized" && space != "view") {
-        error = "space must be canvas, normalized or view";
-        return false;
-    }
-    // 0: the press and its release in the same frame (a tap Input.getKeyDown and getKeyUp both see)
-    int holdFrames = std::clamp(event.value("hold_frames", 2), 0, 100000);
-    const int holdMs = std::clamp(event.value("hold_ms", 0), 0, 600000);
-    const int mods = parseMods(event.value("mods", Json::array()));
-    McpContext* c = &ctx;
-    const bool touchMode = ctx.project()->isSimulateTouch();
-
-    auto add = [&](std::function<std::string()> fn, int framesAfter, int msAfter, std::string label) {
-        steps.push_back({std::move(fn), framesAfter, msAfter, std::move(label)});
-    };
-
-    if (type == "wait") {
-        const int frames = std::clamp(event.value("frames", 0), 0, 1000000);
-        const int ms = std::clamp(event.value("ms", 0), 0, 600000);
-        if (frames == 0 && ms == 0) {
-            error = "wait needs frames or ms";
-            return false;
-        }
-        add([]() { return std::string(); }, frames, ms, "wait");
-        return true;
-    }
-
-    if (type == "key") {
-        const Json keyValue = event.contains("key") ? event["key"] : Json();
-        const int key = parseKeyName(keyValue);
-        if (key == D_KEY_UNKNOWN) {
-            error = "unknown key " + keyValue.dump() + " (names like space, enter, escape, a-z, 0-9, left, right, up, down, "
-                    "shift, ctrl, alt, tab, backspace, f1-f12, kp_0-kp_9)";
-            return false;
-        }
-        const std::string action = lowerCopy(event.value("action", "press"));
-        auto down = [key, mods]() {
-            Engine::systemKeyDown(key, false, mods);
-            state().held.keys.insert(key);
-            return std::string();
-        };
-        auto up = [key, mods]() {
-            Engine::systemKeyUp(key, false, mods);
-            state().held.keys.erase(key);
-            return std::string();
-        };
-        if (action == "down") add(down, gapFrames, 0, "key down " + keyName(key));
-        else if (action == "up") add(up, gapFrames, 0, "key up " + keyName(key));
-        else if (action == "press" || action == "tap") {
-            add(down, holdFrames, holdMs, "key down " + keyName(key));
-            add(up, gapFrames, 0, "key up " + keyName(key));
-        } else {
-            error = "key action must be press, down or up";
-            return false;
-        }
-        return true;
-    }
-
-    if (type == "text") {
-        const std::string text = event.value("text", "");
-        if (text.empty()) {
-            error = "text event needs text";
-            return false;
-        }
-        if (event.contains("per_unit") && !event["per_unit"].is_boolean()) {
-            error = "per_unit must be true or false";
-            return false;
-        }
-        if (event.value("per_unit", false)) {
-            // one character event per UTF-16 unit, as Windows WM_CHAR and Android's keys deliver
-            // typing: a character beyond U+FFFF arrives as two halves the engine must combine
-            std::vector<char32_t> units;
-            for (uint32_t cp : decodeUtf8(text)) {
-                if (cp > 0xFFFF) {
-                    const uint32_t value = cp - 0x10000;
-                    units.push_back(static_cast<char32_t>(0xD800 + (value >> 10)));
-                    units.push_back(static_cast<char32_t>(0xDC00 + (value & 0x3FF)));
-                } else {
-                    units.push_back(static_cast<char32_t>(cp));
-                }
-            }
-            add([units]() {
-                for (char32_t unit : units) Engine::systemCharInput(unit);
-                return std::string();
-            }, gapFrames, 0, "text per unit");
-            return true;
-        }
-        // the whole string at once (a paste, an IME commit): documents get it as one text input,
-        // the game and the component UI each code point
-        add([text]() {
-            Engine::systemTextInput(text);
-            return std::string();
-        }, gapFrames, 0, "text");
-        return true;
-    }
-
-    // IME composition of the focused HTML UI text field (cursor in code points, -1 selects it)
-    if (type == "ime") {
-        const std::string text = event.value("text", "");
-        const int cursor = event.contains("cursor") && event["cursor"].is_number_integer()
-            ? event["cursor"].get<int>() : static_cast<int>(decodeUtf8(text).size());
-        add([text, cursor]() {
-            Engine::systemImeComposition(text, cursor);
-            return std::string();
-        }, gapFrames, 0, "ime");
-        return true;
-    }
-
-    if (type == "ime_commit") {
-        const std::string text = event.value("text", "");
-        add([text]() {
-            if (text.empty()) Engine::systemImeCancel();
-            else Engine::systemTextInput(text);
-            return std::string();
-        }, gapFrames, 0, "ime commit");
-        return true;
-    }
-
-    if (type == "ime_cancel") {
-        add([]() {
-            Engine::systemImeCancel();
-            return std::string();
-        }, gapFrames, 0, "ime cancel");
-        return true;
-    }
-
-    if (type == "mouse_leave" || type == "mouse_enter") {
-        const bool leave = type == "mouse_leave";
-        add([c, leave]() {
-            markPointerInjected(*c);
-            if (leave) Engine::systemMouseLeave();
-            else Engine::systemMouseEnter();
-            return std::string();
-        }, gapFrames, 0, type);
-        return true;
-    }
-
-    if (type == "mouse") {
-        const std::string action = lowerCopy(event.value("action", "click"));
-        const int button = parseMouseButton(event.contains("button") ? event["button"] : Json());
-        if (button < 0) {
-            error = "button must be left, right, middle or button4..button8";
-            return false;
-        }
-        EventPoint from, to;
-        if (!readEventPoint(event, "x", "y", "position", "target", from, error) ||
-            !readEventPoint(event, "to_x", "to_y", "to", "to_target", to, error)) {
-            return false;
-        }
-        const bool hasPoint = from.given;
-        // a move without a point and with dx, dy goes that far from the pointer (mouse-look)
-        const bool relativeMove = action == "move" && !hasPoint && (event.contains("dx") || event.contains("dy"));
-        // down / up / click without a point: where the pointer is
-        if (!hasPoint && !relativeMove && (action == "move" || action == "drag")) {
-            error = "mouse " + action + " needs x and y (or position [x,y], or target), or dx/dy for a move";
-            return false;
-        }
-        if (!to.target.empty() && action != "drag") {
-            error = "to_target is for mouse drag and touch swipe";
-            return false;
-        }
-        // Simulate Touch: the left button is a finger, as in the editor
-        const bool asTouch = touchMode && button == D_MOUSE_BUTTON_LEFT;
-        auto resolve = [c, space, eventIndex, targets](const EventPoint& point, Vector2& out) {
-            return resolveEventPoint(*c, point, space, eventIndex, targets, out);
-        };
-        auto moveTo = [c, mods, asTouch](Vector2 p) -> std::string {
-            markPointerInjected(*c);
-            HeldInput& held = state().held;
-            if (asTouch) {
-                if (held.touches.count(0)) {
-                    Engine::systemTouchMove(0, p.x, p.y);
-                    held.touches[0] = p;
-                }
-            } else {
-                Engine::systemMouseMove(p.x, p.y, mods);
-            }
-            held.mousePos = p;
-            held.mousePosKnown = true;
-            return std::string();
-        };
-        auto pressAt = [c, mods, button, asTouch](bool known, Vector2 p) -> std::string {
-            if (!known) p = currentPointerView();
-            markPointerInjected(*c);
-            HeldInput& held = state().held;
-            if (asTouch) {
-                Engine::systemTouchStart(0, p.x, p.y);
-                held.touches[0] = p;
-            } else {
-                Engine::systemMouseMove(p.x, p.y, mods);
-                Engine::systemMouseDown(button, p.x, p.y, mods);
-                held.mouseButtons.insert(button);
-            }
-            held.mousePos = p;
-            held.mousePosKnown = true;
-            return std::string();
-        };
-        auto releaseAt = [c, mods, button, asTouch](bool known, Vector2 p) -> std::string {
-            HeldInput& held = state().held;
-            if (!known) p = currentPointerView();
-            markPointerInjected(*c);
-            if (asTouch) {
-                Engine::systemTouchEnd(0, p.x, p.y);
-                held.touches.erase(0);
-            } else {
-                Engine::systemMouseUp(button, p.x, p.y, mods);
-                held.mouseButtons.erase(button);
-            }
-            held.mousePos = p;
-            held.mousePosKnown = true;
-            return std::string();
-        };
-        // a point resolved once per event: a click's down and up happen at the same place
-        auto at = std::make_shared<Vector2>();
-
-        if (action == "move" && relativeMove) {
-            const double dx = event.value("dx", 0.0);
-            const double dy = event.value("dy", 0.0);
-            add([moveTo, dx, dy, space]() {
-                const Rect view = Engine::getViewRect();
-                const double canvasW = std::max(1, Engine::getCanvasWidth());
-                const double canvasH = std::max(1, Engine::getCanvasHeight());
-                // the event's space to view pixels
-                double sx = 1.0, sy = 1.0;
-                if (space == "canvas") {
-                    sx = view.getWidth() / canvasW;
-                    sy = view.getHeight() / canvasH;
-                } else if (space == "normalized") {
-                    sx = view.getWidth();
-                    sy = view.getHeight();
-                }
-                const Vector2 from = currentPointerView();
-                return moveTo(Vector2(static_cast<float>(from.x + dx * sx), static_cast<float>(from.y + dy * sy)));
-            }, gapFrames, 0, "mouse move");
-        } else if (action == "move") {
-            add([resolve, moveTo, from]() {
-                Vector2 p;
-                const std::string err = resolve(from, p);
-                return err.empty() ? moveTo(p) : err;
-            }, gapFrames, 0, "mouse move");
-        } else if (action == "down" || action == "up") {
-            const bool down = action == "down";
-            add([resolve, pressAt, releaseAt, from, hasPoint, down]() {
-                Vector2 p;
-                if (hasPoint) {
-                    const std::string err = resolve(from, p);
-                    if (!err.empty()) return err;
-                }
-                return down ? pressAt(hasPoint, p) : releaseAt(hasPoint, p);
-            }, gapFrames, 0, down ? "mouse down" : "mouse up");
-        } else if (action == "click" || action == "double_click") {
-            const int clicks = action == "double_click" ? 2 : 1;
-            for (int i = 0; i < clicks; i++) {
-                add([resolve, pressAt, from, hasPoint, at, i]() {
-                    if (hasPoint && i == 0) {
-                        const std::string err = resolve(from, *at);
-                        if (!err.empty()) return err;
-                    }
-                    return pressAt(hasPoint, *at);
-                }, holdFrames, holdMs, "mouse down");
-                add([releaseAt, hasPoint, at]() { return releaseAt(hasPoint, *at); }, gapFrames, 0, "mouse up");
-            }
-        } else if (action == "drag") {
-            if (!to.given) {
-                error = "mouse drag needs to: [x,y] (or to_x, to_y, or to_target)";
-                return false;
-            }
-            const int stepsCount = std::clamp(event.value("steps", 10), 1, 1000);
-            // both ends are resolved when the drag starts (before it moves anything)
-            auto path = std::make_shared<std::pair<Vector2, Vector2>>();
-            add([resolve, pressAt, from, to, path]() {
-                std::string err = resolve(from, path->first);
-                if (err.empty()) err = resolve(to, path->second);
-                return err.empty() ? pressAt(true, path->first) : err;
-            }, 1, 0, "drag start");
-            for (int i = 1; i <= stepsCount; i++) {
-                const float t = float(i) / stepsCount;
-                add([moveTo, path, t]() {
-                    const Vector2 a = path->first, b = path->second;
-                    return moveTo(Vector2(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t));
-                }, 1, 0, "drag move");
-            }
-            add([releaseAt, path]() { return releaseAt(true, path->second); }, gapFrames, 0, "drag end");
-        } else if (action == "scroll") {
-            const float dx = event.value("dx", 0.0f);
-            const float dy = event.value("dy", event.value("amount", 1.0f));
-            add([resolve, hasPoint, moveTo, from, dx, dy, mods]() {
-                if (hasPoint) {
-                    Vector2 p;
-                    std::string err = resolve(from, p);
-                    if (err.empty()) err = moveTo(p);
-                    if (!err.empty()) return err;
-                }
-                Engine::systemMouseScroll(dx, dy, mods);
-                return std::string();
-            }, gapFrames, 0, "scroll");
-        } else {
-            error = "mouse action must be click, double_click, down, up, move, drag or scroll";
-            return false;
-        }
-        return true;
-    }
-
-    if (type == "touch") {
-        const std::string action = lowerCopy(event.value("action", "tap"));
-        const int pointer = std::clamp(event.value("pointer", 0), 0, 9);
-        EventPoint from, to;
-        if (!readEventPoint(event, "x", "y", "position", "target", from, error) ||
-            !readEventPoint(event, "to_x", "to_y", "to", "to_target", to, error)) {
-            return false;
-        }
-        const bool hasPoint = from.given;
-        if (!hasPoint && action != "end" && action != "cancel") {
-            error = "touch " + action + " needs x and y (or target)";
-            return false;
-        }
-        if (!to.target.empty() && action != "swipe") {
-            error = "to_target is for mouse drag and touch swipe";
-            return false;
-        }
-        auto resolve = [c, space, eventIndex, targets](const EventPoint& point, Vector2& out) {
-            return resolveEventPoint(*c, point, space, eventIndex, targets, out);
-        };
-        auto start = [c, pointer](Vector2 p) -> std::string {
-            markPointerInjected(*c);
-            Engine::systemTouchStart(pointer, p.x, p.y);
-            state().held.touches[pointer] = p;
-            return std::string();
-        };
-        auto move = [c, pointer](Vector2 p) -> std::string {
-            markPointerInjected(*c);
-            Engine::systemTouchMove(pointer, p.x, p.y);
-            state().held.touches[pointer] = p;
-            return std::string();
-        };
-        auto end = [c, pointer](bool known, Vector2 p) -> std::string {
-            HeldInput& held = state().held;
-            if (!known) p = held.touches.count(pointer) ? held.touches[pointer] : held.mousePos;
-            markPointerInjected(*c);
-            Engine::systemTouchEnd(pointer, p.x, p.y);
-            held.touches.erase(pointer);
-            return std::string();
-        };
-        auto at = std::make_shared<Vector2>();
-        if (action == "start" || action == "move") {
-            const bool begin = action == "start";
-            add([resolve, start, move, from, begin]() {
-                Vector2 p;
-                const std::string err = resolve(from, p);
-                if (!err.empty()) return err;
-                return begin ? start(p) : move(p);
-            }, gapFrames, 0, begin ? "touch start" : "touch move");
-        } else if (action == "end") {
-            add([resolve, end, from, hasPoint]() {
-                Vector2 p;
-                if (hasPoint) {
-                    const std::string err = resolve(from, p);
-                    if (!err.empty()) return err;
-                }
-                return end(hasPoint, p);
-            }, gapFrames, 0, "touch end");
-        } else if (action == "cancel") {
-            add([pointer]() {
-                Engine::systemTouchCancel(pointer);
-                state().held.touches.erase(pointer);
-                return std::string();
-            }, gapFrames, 0, "touch cancel");
-        } else if (action == "tap") {
-            add([resolve, start, from, at]() {
-                const std::string err = resolve(from, *at);
-                return err.empty() ? start(*at) : err;
-            }, holdFrames, holdMs, "touch start");
-            add([end, at]() { return end(true, *at); }, gapFrames, 0, "touch end");
-        } else if (action == "swipe") {
-            if (!to.given) {
-                error = "touch swipe needs to: [x,y] (or to_target)";
-                return false;
-            }
-            const int stepsCount = std::clamp(event.value("steps", 10), 1, 1000);
-            auto path = std::make_shared<std::pair<Vector2, Vector2>>();
-            add([resolve, start, from, to, path]() {
-                std::string err = resolve(from, path->first);
-                if (err.empty()) err = resolve(to, path->second);
-                return err.empty() ? start(path->first) : err;
-            }, 1, 0, "swipe start");
-            for (int i = 1; i <= stepsCount; i++) {
-                const float t = float(i) / stepsCount;
-                add([move, path, t]() {
-                    const Vector2 a = path->first, b = path->second;
-                    return move(Vector2(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t));
-                }, 1, 0, "swipe move");
-            }
-            add([end, path]() { return end(true, path->second); }, gapFrames, 0, "swipe end");
-        } else {
-            error = "touch action must be tap, start, move, end, cancel or swipe";
-            return false;
-        }
-        return true;
-    }
-
-    if (type == "gamepad") {
-        const int pad = std::clamp(event.value("gamepad", 0), 0, 15);
-        const std::string action = lowerCopy(event.value("action", event.contains("axis") ? "axis" : "press"));
-        auto connect = [pad]() {
-            HeldInput& held = state().held;
-            if (!held.gamepads.count(pad)) {
-                Engine::systemGamepadConnect(pad, "MCP Virtual Gamepad");
-                held.gamepads.insert(pad);
-            }
-        };
-        if (action == "connect") {
-            add([connect]() { connect(); return std::string(); }, gapFrames, 0, "gamepad connect");
-            return true;
-        }
-        if (action == "disconnect") {
-            add([pad]() {
-                HeldInput& held = state().held;
-                Engine::systemGamepadDisconnect(pad);
-                held.gamepads.erase(pad);
-                held.gamepadButtons.erase(pad);
-                held.gamepadAxes.erase(pad);
-                return std::string();
-            }, gapFrames, 0, "gamepad disconnect");
-            return true;
-        }
-        if (action == "axis") {
-            const int axis = parseGamepadAxis(event.contains("axis") ? event["axis"] : Json());
-            if (axis < 0) {
-                error = "axis must be left_x, left_y, right_x, right_y, left_trigger or right_trigger";
-                return false;
-            }
-            const float value = std::clamp(event.value("value", 0.0f), -1.0f, 1.0f);
-            add([connect, pad, axis, value]() {
-                connect();
-                Engine::systemGamepadAxisMove(pad, axis, value);
-                if (value != 0.0f) state().held.gamepadAxes[pad].insert(axis);
-                else state().held.gamepadAxes[pad].erase(axis);
-                return std::string();
-            }, gapFrames, 0, "gamepad axis");
-            return true;
-        }
-        const int button = parseGamepadButton(event.contains("button") ? event["button"] : Json());
-        if (button < 0) {
-            error = "gamepad button must be a, b, x, y, left_bumper, right_bumper, back, start, guide, left_thumb, "
-                    "right_thumb, dpad_up, dpad_right, dpad_down, dpad_left";
-            return false;
-        }
-        auto down = [connect, pad, button]() {
-            connect();
-            Engine::systemGamepadButtonDown(pad, button);
-            state().held.gamepadButtons[pad].insert(button);
-            return std::string();
-        };
-        auto up = [pad, button]() {
-            Engine::systemGamepadButtonUp(pad, button);
-            state().held.gamepadButtons[pad].erase(button);
-            return std::string();
-        };
-        if (action == "down") add(down, gapFrames, 0, "gamepad down");
-        else if (action == "up") add(up, gapFrames, 0, "gamepad up");
-        else if (action == "press") {
-            add(down, holdFrames, holdMs, "gamepad down");
-            add(up, gapFrames, 0, "gamepad up");
-        } else {
-            error = "gamepad action must be press, down, up, axis, connect or disconnect";
-            return false;
-        }
-        return true;
-    }
-
-    if (type == "action" || type == "axis" || type == "axis_delta") {
-        // the Input Manager's actions (a flat name or Map/Action), through the virtual source
-        // "mcp" (as an on-screen control)
-        const Json nameValue = event.contains("name") ? event["name"] : (event.contains("action") ? event["action"] : Json());
-        const std::string name = nameValue.is_string() ? nameValue.get<std::string>() : std::string();
-        if (!InputActions::hasAction(name)) {
-            std::string list;
-            for (const std::string& known : InputActions::getActionNames()) list += (list.empty() ? "" : ", ") + known;
-            error = (name.empty() ? std::string("name must be an input action") : "no input action \"" + name + "\"") +
-                    " (Project Settings > Input: " + list + ")";
-            return false;
-        }
-        const uintptr_t source = mcpInputSource();
-        if (type == "action") {
-            const std::string phase = lowerCopy(event.value("phase", "press"));
-            auto down = [name, source]() {
-                InputActions::setSourceValue(source, name, 1.0f, InputSourceKind::Agent);
-                state().held.managerActions.insert(name);
-                return std::string();
-            };
-            auto up = [name, source]() {
-                InputActions::setSourceValue(source, name, 0.0f, InputSourceKind::Agent);
-                state().held.managerActions.erase(name);
-                return std::string();
-            };
-            if (phase == "down") add(down, gapFrames, 0, "action down " + name);
-            else if (phase == "up") add(up, gapFrames, 0, "action up " + name);
-            else if (phase == "press" || phase == "tap") {
-                add(down, holdFrames, holdMs, "action down " + name);
-                add(up, gapFrames, 0, "action up " + name);
-            } else {
-                error = "action phase must be press, down or up";
-                return false;
-            }
-            return true;
-        }
-        const char* key = type == "axis" ? "value" : "delta";
-        if (!event.contains(key) || !event[key].is_number()) {
-            error = std::string(type) + " needs a number " + key;
-            return false;
-        }
-        if (type == "axis_delta") {
-            const float delta = event[key].get<float>();
-            add([name, source, delta]() {
-                InputActions::addSourceDelta(source, name, delta, InputSourceKind::Agent);
-                return std::string();
-            }, gapFrames, 0, "axis delta " + name);
-            return true;
-        }
-        const float value = std::clamp(event[key].get<float>(), -1.0f, 1.0f);
-        auto set = [name, source](float v) {
-            InputActions::setSourceValue(source, name, v, InputSourceKind::Agent);
-            if (v != 0.0f) state().held.axes[name] = v;
-            else state().held.axes.erase(name);
-            return std::string();
-        };
-        // with hold_frames / hold_ms it goes back to 0 after them, else it stays (0 releases)
-        if (value != 0.0f && (event.contains("hold_frames") || event.contains("hold_ms"))) {
-            add([set, value]() { return set(value); }, holdFrames, holdMs, "axis " + name);
-            add([set]() { return set(0.0f); }, gapFrames, 0, "axis release " + name);
-        } else {
-            add([set, value]() { return set(value); }, gapFrames, 0, "axis " + name);
-        }
-        return true;
-    }
-
-    // an Input Action forced at top priority (InputActions::inject): press for hold_frames
-    // windows (0: pressed and released in one), down until up, up, or a value for hold_frames
-    if (type == "input_action") {
-        const std::string name = event.value("name", "");
-        if (name.find('/') == std::string::npos) {
-            error = "input_action needs name \"Map/Action\"";
-            return false;
-        }
-        const std::string action = lowerCopy(event.value("action", "press"));
-        Vector2 value(1.0f, 0.0f);
-        if (event.contains("value")) {
-            const Json& v = event["value"];
-            if (v.is_number()) value = Vector2(v.get<float>(), 0.0f);
-            else if (v.is_array() && v.size() == 2 && v[0].is_number() && v[1].is_number()) value = Vector2(v[0].get<float>(), v[1].get<float>());
-            else {
-                error = "input_action value is a number or [x, y]";
-                return false;
-            }
-        }
-        auto exists = [name]() {
-            return InputActions::get(name) ? std::string() : "no Input Action " + name + " is loaded (get_input_state fields actions lists them)";
-        };
-        if (action == "press" || action == "value") {
-            const int windows = holdFrames;
-            add([exists, name, value, windows]() {
-                const std::string err = exists();
-                if (err.empty()) InputActions::inject(name, value, windows);
-                return err;
-            }, std::max(holdFrames, 0), holdMs, "input action " + action + " " + name);
-            add([]() { return std::string(); }, gapFrames, 0, "input action gap");
-        } else if (action == "down") {
-            add([exists, name, value]() {
-                const std::string err = exists();
-                if (err.empty()) {
-                    InputActions::inject(name, value, -1);
-                    state().held.actions.insert(name);
-                }
-                return err;
-            }, gapFrames, 0, "input action down " + name);
-        } else if (action == "up") {
-            add([exists, name]() {
-                const std::string err = exists();
-                if (err.empty()) {
-                    InputActions::releaseInjected(name);
-                    state().held.actions.erase(name);
-                }
-                return err;
-            }, gapFrames, 0, "input action up " + name);
-        } else {
-            error = "input_action action must be press, down, up or value";
-            return false;
-        }
-        return true;
-    }
-
-    if (type == "release_all") {
-        add([c]() { releaseHeldInput(*c); return std::string(); }, gapFrames, 0, "release all");
-        return true;
-    }
-
-    // The app's lifecycle as a device reports it (Engine::systemPause / systemResume /
-    // systemFocus / systemLowMemory), or the simulated device turned (configure_game_view device)
-    if (type == "app") {
-        const std::string action = lowerCopy(event.value("action", ""));
-        // the window hidden (minimized) and shown again: the game updates without drawing meanwhile
-        if (action == "hide" || action == "show") {
-            add([action]() {
-                Platform::setGameHiddenSimulated(action == "hide");
-                return std::string();
-            }, gapFrames, 0, "app " + action);
-            return true;
-        }
-        if (action == "pause" || action == "resume" || action == "focus_lost" || action == "focus_gained" ||
-            action == "low_memory") {
-            add([action]() {
-                if (action == "pause") Engine::systemPause();
-                else if (action == "resume") Engine::systemResume();
-                else if (action == "focus_lost") Engine::systemFocus(false);
-                else if (action == "focus_gained") Engine::systemFocus(true);
-                else Engine::systemLowMemory();
-                return std::string();
-            }, gapFrames, 0, "app " + action);
-            return true;
-        }
-        if (action == "orientation") {
-            ScreenOrientation orientation;
-            if (!PlatformRules::parseOrientationName(event.value("orientation", ""), orientation) ||
-                !PlatformRules::isFixedOrientation(orientation)) {
-                error = "app orientation needs orientation: portrait, portrait_upside_down, landscape_left or landscape_right";
-                return false;
-            }
-            add([c, orientation]() {
-                const DeviceProfile* device = Platform::getSimulation().device;
-                if (!device) return std::string("app orientation needs a simulated device: configure_game_view {device: \"iphone_15_pro\"}");
-                GameWindow* gw = c->gameWindow();
-                const uint8_t allowed = gw ? gw->getRotatableOrientations() : profileOrientationMask(*device);
-                if (!(allowed & PlatformRules::orientationBit(orientation))) {
-                    std::string text = std::string(device->name) + " cannot show " + PlatformRules::orientationName(orientation) + " now (allowed:";
-                    for (ScreenOrientation o : {ScreenOrientation::Portrait, ScreenOrientation::PortraitUpsideDown,
-                                                ScreenOrientation::LandscapeLeft, ScreenOrientation::LandscapeRight}) {
-                        if (allowed & PlatformRules::orientationBit(o)) text += std::string(" ") + PlatformRules::orientationName(o);
-                    }
-                    return text + "; the game sets them with Screen.orientation / Screen.autorotateTo*)";
-                }
-                Platform::setSimulatedOrientation(orientation);
-                return std::string();
-            }, gapFrames, 0, "app orientation");
-            return true;
-        }
-        error = "app action must be pause, resume, focus_lost, focus_gained, low_memory, hide, show or orientation";
-        return false;
-    }
-
-    error = "type must be key, text, ime, ime_commit, ime_cancel, mouse, mouse_leave, mouse_enter, touch, gamepad, input_action, action, axis, axis_delta, app, wait or release_all";
-    return false;
-}
 
 // Runs the steps due now: once when the run starts (newFrame false), then once per frame.
 // True when every step ran or one failed (error).
@@ -3645,46 +2842,15 @@ bool advanceInput(InputRun& run, bool newFrame) {
     // the game frames that ran since the run last advanced (a call is polled once per editor
     // frame, which need not run exactly one game frame)
     const uint64_t gameFrame = Engine::getGameFrames();
-    int elapsed = newFrame ? static_cast<int>(gameFrame - run.gameFrame) : 0;
+    uint64_t elapsed = newFrame ? gameFrame - run.gameFrame : 0;
     run.gameFrame = gameFrame;
     // an app paused by an `app` event does not update (as on a device): the editor's frames
     // drive the steps meanwhile, so a later resume step still runs
     if (newFrame && elapsed == 0 && Engine::isPaused()) elapsed = 1;
-    if (run.pendingFrames > 0 || run.msPending) {
-        if (elapsed <= 0) return false;
-        run.frames += elapsed;
-        run.pendingFrames = std::max(run.pendingFrames - elapsed, 0);
-        if (run.pendingFrames > 0 || (run.msPending && Clock::now() < run.msDeadline)) return false;
-        run.msPending = false;
-    }
-    while (run.next < run.steps.size()) {
-        InputStep& step = run.steps[run.next];
-        const std::string error = step.run();
-        run.next++;
-        if (!error.empty()) {
-            run.error = error;
-            run.finished = true;
-            return true;
-        }
-        if (step.msAfter > 0 && state().time.fixedFps > 0) {
-            // fixed_fps: milliseconds of game frames (each exactly 1/fixed_fps s), not of the wall
-            // clock, so the input lasts the same frames however fast the machine runs
-            const int msFrames = static_cast<int>(std::ceil(step.msAfter * state().time.fixedFps / 1000.0 - 1e-9));
-            run.pendingFrames = std::max({step.framesAfter, msFrames, 1});
-            return false;
-        }
-        if (step.msAfter > 0) {
-            run.pendingFrames = std::max(step.framesAfter, 1);
-            run.msPending = true;
-            run.msDeadline = Clock::now() + std::chrono::milliseconds(step.msAfter);
-            return false;
-        }
-        if (step.framesAfter > 0) {
-            run.pendingFrames = step.framesAfter;
-            return false;
-        }
-    }
+    run.frameIndex += elapsed;
+    if (run.player->beforeFrame(run.frameIndex)) return false;
     run.finished = true;
+    if (run.player->report().failed) run.error = run.fromFile ? run.player->errorText() : run.player->report().error;
     return true;
 }
 
@@ -3705,68 +2871,125 @@ bool inputPlayable(McpContext& ctx, InputRun& run) {
 bool cutInputShort(InputRun& run) {
     if (run.finished) return false;
     run.finished = true;
-    if (run.next >= run.steps.size()) return false;   // only the trailing gap was left
-    HeldInput& held = state().held;
-    const HeldInput& before = run.heldBefore;
-    std::vector<int> keys, buttons, touches;
-    for (int key : held.keys) if (!before.keys.count(key)) keys.push_back(key);
-    for (int key : keys) {
-        Engine::systemKeyUp(key, false, 0);
-        held.keys.erase(key);
+    return run.player->cutShort();
+}
+
+// A `shot` step: the Game view as Recordings/Input/<stem>/<name>.png, the game held until it is read
+bool takeInputShot(const CallPtr& call, const std::shared_ptr<int>& pending, const std::shared_ptr<Json>& shots,
+                   const std::string& stem, const std::string& name, std::string& error) {
+    McpContext& ctx = call->ctx();
+    Project* project = ctx.project();
+    const std::string relative = "Recordings/Input/" + stem + "/" + name + ".png";
+    std::error_code ec;
+    std::filesystem::create_directories(std::filesystem::path(project->getProjectPath()) / "Recordings" / "Input" / stem, ec);
+    if (ec) {
+        error = "shot \"" + name + "\": cannot create Recordings/Input/" + stem + ": " + ec.message();
+        return false;
     }
-    const Vector2 pos = clampToView(held.mousePos);
-    for (int button : held.mouseButtons) if (!before.mouseButtons.count(button)) buttons.push_back(button);
-    for (int button : buttons) {
-        Engine::systemMouseUp(button, pos.x, pos.y, 0);
-        held.mouseButtons.erase(button);
-    }
-    for (const auto& [pointer, point] : held.touches) if (!before.touches.count(pointer)) touches.push_back(pointer);
-    for (int pointer : touches) {
-        const Vector2 p = clampToView(held.touches[pointer]);
-        Engine::systemTouchEnd(pointer, p.x, p.y);
-        held.touches.erase(pointer);
-    }
-    for (auto& [pad, padButtons] : held.gamepadButtons) {
-        std::vector<int> up;
-        auto it = before.gamepadButtons.find(pad);
-        for (int b : padButtons) if (it == before.gamepadButtons.end() || !it->second.count(b)) up.push_back(b);
-        for (int b : up) {
-            Engine::systemGamepadButtonUp(pad, b);
-            padButtons.erase(b);
-        }
-    }
-    // the input actions it forced down are released
-    std::vector<std::string> actions;
-    for (const std::string& name : held.actions) if (!before.actions.count(name)) actions.push_back(name);
-    for (const std::string& name : actions) {
-        InputActions::releaseInjected(name);
-        held.actions.erase(name);
-    }
-    // the Input Manager's actions it pressed are released, the axes it moved go back to where they were
-    std::vector<std::string> managerActions;
-    for (const std::string& name : held.managerActions) if (!before.managerActions.count(name)) managerActions.push_back(name);
-    for (const std::string& name : managerActions) {
-        InputActions::setSourceValue(mcpInputSource(), name, 0.0f, InputSourceKind::Agent);
-        held.managerActions.erase(name);
-    }
-    std::vector<std::string> axes;
-    for (const auto& [name, value] : held.axes) {
-        auto it = before.axes.find(name);
-        if (it == before.axes.end() || it->second != value) axes.push_back(name);
-    }
-    for (const std::string& name : axes) {
-        auto it = before.axes.find(name);
-        const float value = it == before.axes.end() ? 0.0f : it->second;
-        InputActions::setSourceValue(mcpInputSource(), name, value, InputSourceKind::Agent);
-        if (value != 0.0f) held.axes[name] = value;
-        else held.axes.erase(name);
-    }
+    w3::CaptureRequest request;
+    request.view = "game";
+    request.maxWidth = 0;
+    request.deviceOverlay = false;
+    request.focus = true;
+    request.savePath = relative;
+    (*pending)++;
+    state().time.shotHolds++;
+    applyHold(ctx);
+    w3::captureView(call, request, [call, pending, shots, name, relative](w3::CaptureResult capture) {
+        (*pending)--;
+        state().time.shotHolds = std::max(0, state().time.shotHolds - 1);
+        applyHold(call->ctx());
+        Json item = {{"name", name}, {"path", relative}};
+        if (!capture.ok) item["error"] = capture.error;
+        shots->push_back(item);
+    });
     return true;
+}
+
+// The editor's side of the interpreter for a call
+input::PlayerHost editorInputHost(const CallPtr& call, const std::shared_ptr<int>& shotsPending, const std::shared_ptr<Json>& shots,
+                                  const std::string& shotStem) {
+    McpContext* c = &call->ctx();
+    input::PlayerHost host;
+    host.resolveTarget = [c](const std::string& selector, const Json& document, Vector2& point, std::string& error, Json* found) {
+        double x = 0, y = 0;
+        if (!htmlui_mcp::elementCenter(*c, document, selector, x, y, error, found)) return false;
+        point = Vector2(static_cast<float>(x), static_cast<float>(y));
+        return true;
+    };
+    host.evalCondition = [c](const std::string& condition, bool& truthy, std::string& error) {
+        Project* p = c->project();
+        SceneProject* scene = p ? p->getScene(p->getPlaySessionSceneId()) : nullptr;
+        if (!scene) {
+            error = "nothing is playing";
+            return false;
+        }
+        LuaEvalResult r = runLua(p, scene, condition, 2.0, 3, 50);
+        if (!r.ok) {
+            error = "until failed: " + r.error;
+            return false;
+        }
+        truthy = luaTruthy(r.values.empty() ? Json(nullptr) : r.values[0]);
+        return true;
+    };
+    host.shot = [call, shotsPending, shots, shotStem](const std::string& name, uint64_t, std::string& error) {
+        return takeInputShot(call, shotsPending, shots, shotStem, name, error);
+    };
+    host.busy = [shotsPending]() { return *shotsPending > 0; };
+    host.pointerInjected = [c](bool injected) {
+        if (PlayInput* input = c->playInput()) input->setPointerInjected(injected);
+    };
+    // the window hidden (minimized) and shown again: the game updates without drawing meanwhile
+    host.appHidden = [](bool hidden) {
+        Platform::setGameHiddenSimulated(hidden);
+        return std::string();
+    };
+    // the simulated device turned (configure_game_view device)
+    host.appOrientation = [c](const std::string& name) -> std::string {
+        ScreenOrientation orientation;
+        PlatformRules::parseOrientationName(name, orientation);
+        const DeviceProfile* device = Platform::getSimulation().device;
+        if (!device) return "app orientation needs a simulated device: configure_game_view {device: \"iphone_15_pro\"}";
+        GameWindow* gw = c->gameWindow();
+        const uint8_t allowed = gw ? gw->getRotatableOrientations() : profileOrientationMask(*device);
+        if (!(allowed & PlatformRules::orientationBit(orientation))) {
+            std::string text = std::string(device->name) + " cannot show " + PlatformRules::orientationName(orientation) + " now (allowed:";
+            for (ScreenOrientation o : {ScreenOrientation::Portrait, ScreenOrientation::PortraitUpsideDown,
+                                        ScreenOrientation::LandscapeLeft, ScreenOrientation::LandscapeRight}) {
+                if (allowed & PlatformRules::orientationBit(o)) text += std::string(" ") + PlatformRules::orientationName(o);
+            }
+            return text + "; the game sets them with Screen.orientation / Screen.autorotateTo*)";
+        }
+        Platform::setSimulatedOrientation(orientation);
+        return std::string();
+    };
+    return host;
+}
+
+std::shared_ptr<InputRun> newInputRun(const CallPtr& call, std::shared_ptr<const input::ParsedScript> script, const std::string& shotStem,
+                                      bool fromFile) {
+    McpContext& ctx = call->ctx();
+    auto run = std::make_shared<InputRun>();
+    run->call = call;
+    run->playId = ctx.project()->getPlaySessionSceneId();
+    run->cursor = Out::lastLogId();
+    run->start = Clock::now();
+    run->gameFrame = Engine::getGameFrames();
+    run->fromFile = fromFile;
+    input::PlayOptions options;
+    options.simulateTouch = ctx.project()->isSimulateTouch();
+    options.msFixedFps = state().time.fixedFps;
+    options.actionSource = kMcpInputSource;
+    options.held = state().held;
+    // a call's presses outlive it (a key held down until a later call's up); a file's end with it
+    options.releaseAtEnd = fromFile;
+    run->player = std::make_shared<input::ScriptPlayer>(std::move(script), editorInputHost(call, run->shotsPending, run->shots, shotStem),
+                                                        options);
+    return run;
 }
 
 // events (+ space, gap_frames) of a call → a run; false after failing the call
 std::shared_ptr<InputRun> buildInputRun(const CallPtr& call, const Json& events, const std::string& argName) {
-    McpContext& ctx = call->ctx();
     const Json& args = call->args();
     if (!events.is_array() || events.empty()) {
         call->fail(argName + " must be a non-empty array, e.g. [{\"type\":\"key\",\"key\":\"space\"}, "
@@ -3777,22 +3000,62 @@ std::shared_ptr<InputRun> buildInputRun(const CallPtr& call, const Json& events,
         call->fail("At most 500 events per call.");
         return nullptr;
     }
-    const std::string space = lowerCopy(args.value("space", "canvas"));
-    const int gap = std::clamp(args.value("gap_frames", 1), 0, 1000);
-    auto run = std::make_shared<InputRun>();
-    run->call = call;
-    run->playId = ctx.project()->getPlaySessionSceneId();
-    run->cursor = Out::lastLogId();
-    run->start = Clock::now();
-    run->heldBefore = state().held;
-    for (size_t i = 0; i < events.size(); i++) {
-        std::string error;
-        if (!buildEventSteps(ctx, events[i], space, gap, run->steps, error, i, run->targets)) {
-            call->fail(argName + "[" + std::to_string(i) + "]: " + error + ".");
-            return nullptr;
-        }
+    input::EventParseOptions options;
+    options.live = true;
+    if (!input::parseSpace(lowerCopy(args.value("space", "canvas")), options.space)) {
+        call->fail("space must be canvas, normalized, safe_area or view.");
+        return nullptr;
     }
-    return run;
+    options.gapFrames = std::clamp(args.value("gap_frames", 1), 0, 1000);
+    auto script = std::make_shared<input::ParsedScript>();
+    std::string error;
+    size_t index = 0;
+    if (!input::parseEventList(events, options, *script, error, index)) {
+        call->fail(argName + "[" + std::to_string(index) + "]: " + error + ".");
+        return nullptr;
+    }
+    return newInputRun(call, script, "send_input", false);
+}
+
+// send_input {file}: a script file's events, as if passed in events (R22); false after failing the call
+std::shared_ptr<InputRun> buildFileInputRun(const CallPtr& call, const std::string& file) {
+    Project* project = call->ctx().project();
+    std::filesystem::path path(file);
+    if (path.is_relative()) path = std::filesystem::path(project->getProjectPath()) / path;
+    std::string text;
+    std::ifstream in(path, std::ios::binary);
+    if (in) text.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    if (!in) {
+        call->fail("No input file at " + path.string() + " (file is project-relative or absolute).");
+        return nullptr;
+    }
+    auto script = std::make_shared<input::ParsedScript>();
+    std::string error;
+    if (!input::parseScript(text, *script, error)) {
+        call->fail(file + ": " + error + ".");
+        return nullptr;
+    }
+    if (script->header.kind == input::ScriptKind::Recording) {
+        call->fail("A recording replays from Play's start: play {action: \"start\", input: \"" + file + "\"}.");
+        return nullptr;
+    }
+    std::string stem = path.filename().string();
+    for (const char* suffix : {".json", ".input"}) {
+        if (stem.size() > std::strlen(suffix) && stem.compare(stem.size() - std::strlen(suffix), std::string::npos, suffix) == 0)
+            stem.resize(stem.size() - std::strlen(suffix));
+    }
+    return newInputRun(call, script, stem, true);
+}
+
+// what a run resolved and shot, for the reply
+void addInputRunResults(const InputRun& run, Json& data) {
+    Json targets = Json::array();
+    for (const input::ResolvedTarget& t : run.player->report().targets) {
+        targets.push_back({{"event", t.event}, {"target", t.selector}, {"point", Json::array({t.canvas.x, t.canvas.y})},
+                           {"document", t.document}});
+    }
+    if (!targets.empty()) data["targets"] = targets;
+    if (!run.shots->empty()) data["shots"] = *run.shots;
 }
 
 void finishInputRun(const std::shared_ptr<InputRun>& run) {
@@ -3805,34 +3068,72 @@ void finishInputRun(const std::shared_ptr<InputRun>& run) {
     query.limit = 50;
     w3::ConsoleResult console = w3::queryConsole(query);
     Json data = w3::playStateJson(ctx);
-    data["events_done"] = run->next;
-    data["steps_total"] = run->steps.size();
-    data["frames"] = run->frames;
+    data["events_done"] = run->stepsDone();
+    data["steps_total"] = run->stepsTotal();
+    data["frames"] = run->frames();
     data["held_input"] = heldInputJson();
     data["console"] = console.entries;
     data["next_cursor"] = console.nextCursor;
-    if (!run->targets->empty()) data["targets"] = *run->targets;
+    addInputRunResults(*run, data);
 
     const bool ended = ctx.project()->getPlaySessionSceneId() != run->playId;
     std::string text;
     bool isError = false;
     if (!run->error.empty()) {
-        text = "Input stopped at step " + std::to_string(run->next) + ": " + run->error;
+        text = "Input stopped at step " + std::to_string(run->stepsDone()) + ": " + run->error;
         isError = true;
     } else if (ended) {
         text = "Play ended during the input: " + sessionSummaryText(state().last);
         isError = true;
     } else {
-        text = "Sent " + std::to_string(run->steps.size()) + " input step(s) over " + std::to_string(run->frames) + " frame(s).";
+        text = "Sent " + std::to_string(run->stepsTotal()) + " input step(s) over " + std::to_string(run->frames()) + " frame(s).";
         if (Engine::isSimulationHeld()) text += " Held again (auto_pause).";
     }
-    if (!state().held.empty()) text += " Still held: " + heldInputJson().dump() + " (released at stop or with release_all).";
-    for (const Json& target : *run->targets) {
+    if (!state().held->empty()) text += " Still held: " + heldInputJson().dump() + " (released at stop or with release_all).";
+    for (const Json& target : data.value("targets", Json::array())) {
         text += "\nTarget \"" + target["target"].get<std::string>() + "\" (event " + target["event"].dump() + ") at canvas " +
                 target["point"].dump() + " in " + target["document"].value("html", std::string("?")) + ".";
     }
+    for (const Json& shot : *run->shots) {
+        text += "\nShot \"" + shot["name"].get<std::string>() + "\": " +
+                (shot.contains("error") ? "failed: " + shot["error"].get<std::string>() : shot["path"].get<std::string>());
+    }
     if (!console.entries.empty()) text += "\nConsole:\n" + w3::formatConsoleText(console.entries, 4000);
     replyWithOptionalScreenshot(call, isError ? ToolResult::error(text, data) : ToolResult::success(text, data));
+}
+
+// play {input}: the scene runs, the replay starts with its next frame and the game is let go
+void startPendingReplay(McpContext& ctx) {
+    PlayToolsState& s = state();
+    std::shared_ptr<input::ParsedScript> script = std::move(s.pendingReplay);
+    s.pendingReplay.reset();
+    McpContext* c = &ctx;
+    input::ReplayOptions options;
+    options.play.simulateTouch = script->header.kind == input::ScriptKind::Recording ? script->header.simulateTouch
+                                                                                      : ctx.project()->isSimulateTouch();
+    options.host.resolveTarget = [c](const std::string& selector, const Json& document, Vector2& point, std::string& error, Json* found) {
+        double x = 0, y = 0;
+        if (!htmlui_mcp::elementCenter(*c, document, selector, x, y, error, found)) return false;
+        point = Vector2(static_cast<float>(x), static_cast<float>(y));
+        return true;
+    };
+    options.host.evalCondition = [c](const std::string& condition, bool& truthy, std::string& error) {
+        Project* p = c->project();
+        SceneProject* scene = p ? p->getScene(p->getPlaySessionSceneId()) : nullptr;
+        if (!scene) {
+            error = "nothing is playing";
+            return false;
+        }
+        LuaEvalResult r = runLua(p, scene, condition, 2.0, 3, 50);
+        if (!r.ok) {
+            error = "until failed: " + r.error;
+            return false;
+        }
+        truthy = luaTruthy(r.values.empty() ? Json(nullptr) : r.values[0]);
+        return true;
+    };
+    s.replay = input::Replay::start(script, std::move(options));
+    applyHold(ctx);
 }
 
 void sendInputTool(const CallPtr& call) {
@@ -3852,7 +3153,13 @@ void sendInputTool(const CallPtr& call) {
                    w3::playStateJson(ctx));
         return;
     }
-    std::shared_ptr<InputRun> run = buildInputRun(call, args.contains("events") ? args["events"] : Json(), "events");
+    const bool hasEvents = args.contains("events") && !args["events"].is_null();
+    const std::string file = args.value("file", "");
+    if (hasEvents == !file.empty()) {
+        call->fail(hasEvents ? "Pass events or file, not both." : "Pass events (an array of input events) or file (a script .input.json).");
+        return;
+    }
+    std::shared_ptr<InputRun> run = hasEvents ? buildInputRun(call, args["events"], "events") : buildFileInputRun(call, file);
     if (!run) return;
     ensureMonitor(ctx);
     run->advance->acquire(ctx);
@@ -3860,7 +3167,7 @@ void sendInputTool(const CallPtr& call) {
     const int after = std::clamp(args.value("frames_after", 1), 0, 100000);
     auto afterLeft = std::make_shared<int>(after);
     advanceInput(*run, false);
-    if (run->finished && (!run->error.empty() || after == 0)) {
+    if (run->finished && *run->shotsPending == 0 && (!run->error.empty() || after == 0)) {
         finishInputRun(run);
         return;
     }
@@ -3876,8 +3183,8 @@ void sendInputTool(const CallPtr& call) {
             return true;
         }
         if (!run->finished) {
-            if (!advanceInput(*run, true) || !run->error.empty()) return !run->error.empty();
-            return *afterLeft == 0;
+            if (!advanceInput(*run, true) || !run->error.empty()) return !run->error.empty() && *run->shotsPending == 0;
+            return *afterLeft == 0 && *run->shotsPending == 0;
         }
         // frames_after: game frames after the last step
         const uint64_t gameFrame = Engine::getGameFrames();
@@ -3887,9 +3194,9 @@ void sendInputTool(const CallPtr& call) {
         if (*afterLeft > 0 && elapsed > 0) {
             const int counted = std::min(*afterLeft, elapsed);
             *afterLeft -= counted;
-            run->frames += counted;
+            run->framesAfter += counted;
         }
-        return *afterLeft == 0;
+        return *afterLeft == 0 && *run->shotsPending == 0;
     }, 0, [run](bool timedOut) {
         if (timedOut && run->error.empty()) run->error = "timed out (is the game rendering?)";
         finishInputRun(run);
@@ -4117,8 +3424,9 @@ void waitTool(const CallPtr& call) {
         data["next_cursor"] = console.nextCursor;
         if (!until.empty()) data["condition_value"] = ws->conditionValue;
         if (input) {
-            data["input"] = {{"steps_done", input->next}, {"steps_total", input->steps.size()}, {"cut_short", ws->inputCut}};
+            data["input"] = {{"steps_done", input->stepsDone()}, {"steps_total", input->stepsTotal()}, {"cut_short", ws->inputCut}};
             if (!input->error.empty()) data["input"]["error"] = input->error;
+            addInputRunResults(*input, data["input"]);
             data["held_input"] = heldInputJson();
         }
 
@@ -4139,7 +3447,7 @@ void waitTool(const CallPtr& call) {
             data["condition_error"] = ws->conditionError;
             isError = true;
         } else if (ws->reason == "input_error") {
-            text = "Input stopped at step " + std::to_string(input ? input->next : 0) + ": " + (input ? input->error : std::string());
+            text = "Input stopped at step " + std::to_string(input ? input->stepsDone() : 0) + ": " + (input ? input->error : std::string());
             isError = true;
         } else if (ws->reason == "stalled") {
             text = "The game stopped advancing: no frame" + std::string(gameSeconds > 0.0 && frames <= 0 ? " or game time" : "") +
@@ -4325,7 +3633,8 @@ void registerPlayTools(McpRegistry& registry) {
             {"screenshot", screenshotOption},
             {"max_width", maxWidth},
             {"keep_changes", stringEnum("stop: keep all or none of the edits made while playing (absent: get_play_changes).",
-                                        {"none", "all"})}
+                                        {"none", "all"})},
+            {"input", string("start: replay a .input.json from the first frame the scene runs.")}
         }, {"action"});
         tool.handler = playTool;
         registry.addTool(std::move(tool));
@@ -4408,7 +3717,7 @@ void registerPlayTools(McpRegistry& registry) {
             {"frames", integer("", 0, 1000000)},
             {"until", string("Lua condition (eval_lua helpers).")},
             {"input", Json{{"type", "array"}, {"maxItems", 500}, {"items", anyObject("")}}},
-            {"space", withDefault(stringEnum("", {"canvas", "normalized", "view"}), "canvas")},
+            {"space", withDefault(stringEnum("", {"canvas", "normalized", "safe_area", "view"}), "canvas")},
             {"timeout_seconds", number("Wall clock. Default: 30 (until alone); frames/game_seconds run in full "
                                        "(error if no frame for 60 s).", 0.5, 3600)},
             {"poll_frames", withDefault(integer("until: check every N frames.", 1, 600), 1)},
@@ -4524,19 +3833,21 @@ void registerPlayTools(McpRegistry& registry) {
             "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy (scroll; move w/o x, y)\ntouch: action "
             "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget / to_target: UI Document element CSS selector "
             "(document: which)\ngamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + "
-            "value\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
+            "value, or action connect|disconnect (+name)\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
             "phase (press|down|up)|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|orientation "
-            "(+orientation)\nwait: frames, ms. release_all.\nspace: canvas px, normalized 0..1, view = Game view px. "
+            "(+orientation)\nwait: frames, ms, or until (Lua; frames caps it: 600)\nshot: name (PNG, returned in shots). release_all.\n"
+            "space: canvas px, normalized 0..1, safe_area 0..1 of Screen.safeArea, view = Game view px. "
             "down holds until up/release_all/stop. Returns frames, console, play state (auto_pause: events + "
             "frames_after only).";
         tool.inputSchema = object({
             {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", eventItem}}},
-            {"space", withDefault(stringEnum("", {"canvas", "normalized", "view"}), "canvas")},
+            {"file", string("A script .input.json, run now as its events.")},
+            {"space", withDefault(stringEnum("", {"canvas", "normalized", "safe_area", "view"}), "canvas")},
             {"gap_frames", withDefault(integer("Between events.", 0, 1000), 1)},
             {"frames_after", withDefault(integer("Run before replying.", 0, 100000), 1)},
             {"screenshot", screenshotOption},
             {"max_width", maxWidth}
-        }, {"events"});
+        });
         tool.handler = sendInputTool;
         // input into the running game, changes nothing (busy policy: McpServer::busyRefusal)
         tool.activity = ToolActivity::Control;
