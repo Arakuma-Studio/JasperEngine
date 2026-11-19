@@ -1557,6 +1557,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/HtmlTextEffects.cpp
     core/htmlui/UIParticleSystemElement.cpp
     core/htmlui/HtmlUIContext.cpp
+    core/htmlui/HtmlL10n.cpp
     core/htmlui/HtmlUIContextRender.cpp
     core/htmlui/HtmlUIDependencies.cpp
     core/htmlui/HtmlUITexture.cpp
@@ -2249,6 +2250,10 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "the navigation sources: file-local Detour helpers and constants with the same names"
     SOURCES ${JASPERENGINE_NAVIGATION_SRCS})
+jasperengine_skip_unity_build(
+    REASON "the localization sources: file-local helpers (state, readFile, lower) other sources define too"
+    SOURCES core/localization/Localization.cpp core/localization/MessageFormat.cpp core/localization/PluralRules.cpp
+            core/localization/StringTableRuntime.cpp core/script/binding/LocalizationClassesLua.cpp core/htmlui/HtmlL10n.cpp)
 if(JASPERENGINE_TITLE_ART_SRCS)
     jasperengine_skip_unity_build(
         REASON "the Title Art sources: several streams' per-file helper sets with the same names"

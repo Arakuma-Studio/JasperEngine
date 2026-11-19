@@ -6,6 +6,7 @@
 #include "pixelart/BitmapTextCache.h"
 #include "Project.h"
 #include "util/TitleArtLanguage.h"
+#include "localization/StringTableCook.h"
 #include "foliage/TreeDataFile.h"
 #include "pixelart/Glitch.h"
 #include "pixelart/ScreenTransition.h"
@@ -3526,6 +3527,7 @@ editor::PlayerSettings editor::Project::getPlayerSettings() const{
     settings.targetFrameRate = presentationSettings.targetFrameRate;
     settings.dynamicBatching = dynamicBatching;
     settings.defaultLanguage = localizationSettings.effectiveDefault();
+    settings.localization = !l10n::findTables(getProjectPath()).empty();
     auto app = [this](const std::string& name, const std::string& identifier, const std::string& version, const std::string& build) {
         ApplicationInfo info;
         info.name = getApplicationName(name);
@@ -3552,6 +3554,9 @@ void editor::Project::applyPresentationSettings(){
     // S87: a Play starts in the device's language with the project's default
     TitleArtLanguage::setGlobal("");
     TitleArtLanguage::setProjectDefault(localizationSettings.effectiveDefault());
+    // game-ui-localization.md R13, R20: the String Tables as they are now, this Play's misses only
+    l10n::refreshEditorLocalization(this);
+    Localization::clearMisses();
     Screen::initialize(presentationSettings.defaultOrientation, presentationSettings.effectiveAllowedOrientations(),
                        presentationSettings.keepScreenOn);
     // a simulated phone or tablet keeps the screen on as the device would (Keep Screen On

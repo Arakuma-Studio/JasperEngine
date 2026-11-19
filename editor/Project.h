@@ -678,16 +678,21 @@ namespace jasperengine::editor{
         bool operator!=(const PresentationSettings& other) const { return !(*this == other); }
     };
 
-    // Project Settings > Localization (docs/specs/S87-title-localisation-interchange.md R64, D3):
-    // the languages the game ships (empty: every language of every title) and the default one ("":
-    // the first of `languages`, else "en"); names a later project-wide localisation reuses
+    // Project Settings > Localization (docs/specs/S87-title-localisation-interchange.md R64, D3;
+    // game-ui-localization.md R6, R14, R30): the languages the game ships (empty: every language of
+    // every String Table and title) and the default one ("": the first of `languages`, else "en");
+    // whether the game remembers the player's choice, and fonts per language (HTML and Text fallbacks)
     struct LocalizationSettings {
         std::vector<std::string> languages;     // BCP 47, canonical case
         std::string defaultLanguage;
+        bool rememberChoice = true;
+        std::map<std::string, std::vector<std::string>> fonts;     // language -> font asset paths
 
         // the default with its fallbacks applied ("" -> the first language, else "en")
         std::string effectiveDefault() const { return !defaultLanguage.empty() ? defaultLanguage : !languages.empty() ? languages.front() : "en"; }
-        bool operator==(const LocalizationSettings& other) const { return languages == other.languages && defaultLanguage == other.defaultLanguage; }
+        bool operator==(const LocalizationSettings& other) const {
+            return languages == other.languages && defaultLanguage == other.defaultLanguage && rememberChoice == other.rememberChoice && fonts == other.fonts;
+        }
         bool operator!=(const LocalizationSettings& other) const { return !(*this == other); }
     };
 

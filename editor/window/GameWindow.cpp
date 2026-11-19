@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "GameWindow.h"
+#include "localization/Localization.h"
 #include "window/ContactSheetWindow.h"
 #include "audio/AudioCapture.h"
 #include "render/SystemRender.h"
@@ -338,7 +339,9 @@ bool editor::GameWindow::turnDevice(ScreenOrientation orientation) {
 const std::vector<std::string>& editor::GameWindow::languagePresets() {
     static const std::vector<std::string> languages = {
         "", "en-US", "es-ES", "es-MX", "pt-BR", "fr-FR", "de-DE", "it-IT", "ja-JP", "ko-KR", "zh-Hans", "zh-Hant",
-        "ru-RU", "ar-SA", "hi-IN"
+        "ru-RU", "ar-SA", "hi-IN",
+        // game-ui-localization.md R19, R31: the pseudo-locales (accented and longer; right to left)
+        "en-XA", "ar-XB"
     };
     return languages;
 }
@@ -1141,7 +1144,10 @@ void editor::GameWindow::drawDeviceTierMenu() {
 void editor::GameWindow::drawDeviceMenu() {
     const PlatformSimulation& simulation = Platform::getSimulation();
     const DeviceProfile* device = simulation.device;
-    const std::string languageLabel = settings.language.empty() ? std::string() : " | " + settings.language;
+    std::string languageLabel = settings.language.empty() ? std::string() : " | " + settings.language;
+    // R31: the language the game resolved, when the String Tables made it another ("ja-JP -> ja")
+    const std::string& resolved = Localization::getLanguage();
+    if (!settings.language.empty() && !resolved.empty() && resolved != settings.language) languageLabel += " \xE2\x86\x92 " + resolved;
     const std::string label = std::string(ICON_FA_MOBILE_SCREEN_BUTTON " ") + (device ? device->name : "No Device") + languageLabel +
         "##GameDevice";
 
@@ -1170,7 +1176,8 @@ void editor::GameWindow::drawDeviceMenu() {
         ImGui::Separator();
         if (ImGui::BeginMenu("Language")) {
             for (const std::string& language : languagePresets()) {
-                const char* name = language.empty() ? "System" : language.c_str();
+                const char* name = language.empty() ? "System" : language == "en-XA" ? "Pseudo (en-XA)"
+                                 : language == "ar-XB" ? "Pseudo RTL (ar-XB)" : language.c_str();
                 if (ImGui::MenuItem(name, nullptr, settings.language == language)) {
                     settings.language = language;
                     applySimulation();

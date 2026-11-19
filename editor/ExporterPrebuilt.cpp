@@ -498,6 +498,7 @@ bool editor::Exporter::runPrebuilt() {
     if (!copyAssets()) return false;
     if (!writeTitleArtRuntime()) return false;
     if (!writeAudioImports()) return false;
+    if (!writeLocalization()) return false;
     if (!writeAssetMap()) return false;
     if (!copyCustomShaderSources()) return false;
     if (cancelled()) return false;
@@ -624,6 +625,7 @@ bool editor::Exporter::writeGameConfig() {
     game.pixelsPerUnit = project->getPixelsPerUnit();
     game.defaultFilterPoint = project->getDefaultFilterMode() == TextureFilterMode::Point;
     game.bitmapTextCacheMiB = project->getBitmapTextCacheMiB();
+    if (localizationShipped) game.localization = "l10n/manifest.json";
     game.textureStrategy = project->getTextureStrategy();
     const LoadingSettings& loading = project->getLoadingSettings();
     game.loadingScene = loading.sceneId;

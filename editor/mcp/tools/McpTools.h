@@ -113,6 +113,7 @@ namespace jasperengine::editor::mcp {
     void registerDeviceTools(McpRegistry& registry);
     void registerScriptingTools(McpRegistry& registry);
     void registerGraphTools(McpRegistry& registry);
+    void registerLocalizationTools(McpRegistry& registry);   // game-ui-localization.md (LocalizationTools.cpp): edit_string_table
     void registerTerrainGenerationTools(McpRegistry& registry);
     void registerProceduralMaterialTools(McpRegistry& registry);
     void registerGameplayTools(McpRegistry& registry);

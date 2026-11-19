@@ -522,6 +522,9 @@ namespace jasperengine::editor {
         bool writeAudioCredits();
         // assets/je-audio-imports.json when any shipped clip has import settings
         bool writeAudioImports();
+        // game-ui-localization.md D5, R21: the String Tables cooked into assets/l10n (nothing without tables)
+        bool writeLocalization();
+        bool localizationShipped = false;
         // the paths the export writes the notices to, relative to its root
         static const char* effectLicensePath();
         static const char* fluidLicensePath();

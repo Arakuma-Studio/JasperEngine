@@ -62,6 +62,8 @@ namespace {
     };
 
     std::atomic<bool> active{false};
+    std::atomic<uint64_t> generation{0};
+    std::atomic<bool> editorMode{false};
 
     State& state() {
         static State* s = new State();
@@ -78,7 +80,7 @@ namespace {
     }
 
     bool development() {
-        return Engine::isDevelopmentBuild();
+        return editorMode.load() || Engine::isDevelopmentBuild();
     }
 
     std::string readFile(const std::string& path, bool& ok) {
@@ -182,6 +184,7 @@ namespace {
 
     // the chain's tables stay; the others go (R26)
     void applyLanguage(State& s, const std::string& language) {
+        generation++;
         s.language = language;
         s.pseudo = isPseudo(language);
         s.chain = chainOf(s.pseudo ? s.manifest.defaultLanguage : language, s.manifest);
@@ -582,6 +585,10 @@ std::vector<std::string> Localization::getLanguageFonts(const std::string& code)
     return match.empty() ? std::vector<std::string>() : fonts.at(match);
 }
 
+uint64_t Localization::getGeneration() {
+    return active.load() ? generation.load() : 0;
+}
+
 std::vector<Localization::Miss> Localization::getMisses() {
 #if JASPERENGINE_L10N_CAPTURE
     if (!active.load()) return {};
@@ -708,6 +715,10 @@ void Localization::registerReader(const std::string& extension, Reader reader) {
     s.readers[extension] = std::move(reader);
 }
 
+void Localization::setEditorMode(bool editor) {
+    editorMode.store(editor);
+}
+
 void Localization::reloadNamespace(const std::string& ns) {
     if (!active.load()) return;
     State& s = state();
@@ -718,6 +729,7 @@ void Localization::reloadNamespace(const std::string& ns) {
         if (it == s.namespaces.end()) return;
         it->second.tables.clear();
         language = s.language;
+        generation++;
     }
     const auto listeners = s.listeners;
     for (const auto& entry : listeners) entry.second(language);
@@ -734,6 +746,7 @@ void Localization::resetForTesting() {
         s.pseudo = false;
         s.readers.clear();
         s.warned.clear();
+        editorMode.store(false);
 #if JASPERENGINE_L10N_CAPTURE
         s.misses.clear();
         s.ring.fill(0);

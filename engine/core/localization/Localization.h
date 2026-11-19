@@ -101,6 +101,8 @@ namespace jasperengine {
         static std::string getLanguageName(const std::string& code);
         static bool isRightToLeft(std::string_view code);
         static std::vector<std::string> getLanguageFonts(const std::string& code);
+        // counts the changes of language and tables (a Text with a key compares it); 0 while inactive
+        static uint64_t getGeneration();
         static FunctionSubscribe<void(const std::string&)>& getOnLanguageChanged() { return onLanguageChanged; }
         // Lua Localization.onLanguageChanged; cleared at Stop (Engine::clearAllSubscriptions)
         static FunctionSubscribe<void(const std::string&)> onLanguageChanged;
@@ -123,6 +125,8 @@ namespace jasperengine {
         static void setManifest(const LocalizationManifest& manifest);
         static const LocalizationManifest& getManifest();
         static void registerReader(const std::string& extension, Reader reader);
+        // the editor: pseudo-locales and "⟦key⟧" outside Play too (development rules everywhere)
+        static void setEditorMode(bool editor);
         static void reloadNamespace(const std::string& ns);
         static void resetForTesting();
     };

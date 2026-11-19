@@ -96,6 +96,7 @@ json PlayerConfig::toJson() const {
     }
     out["foliageDistanceScale"] = {foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]};
     out["input"] = {{"deadzone", inputDeadzone}, {"actions", inputActions}};
+    if (!localization.empty()) out["localization"] = localization;
     json areas = json::array();
     for (const nav::AreaSettings& area : navigation.areas)
         areas.push_back({{"name", area.name}, {"cost", area.cost}, {"color", {area.color.x, area.color.y, area.color.z, area.color.w}}});
@@ -173,6 +174,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         config.appId = in.value("appId", "");
         config.version = in.value("version", "");
         config.startScene = in.value("startScene", 0u);
+        config.localization = in.value("localization", std::string());
         for (const json& scene : in.value("scenes", json::array())) {
             GameScene item;
             item.id = scene.at("id").get<uint32_t>();

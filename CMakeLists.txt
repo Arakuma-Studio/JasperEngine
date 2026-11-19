@@ -1619,6 +1619,8 @@ include(${EDITOR_DIR}/voxel/VoxelEditorSources.cmake)
 include(${EDITOR_DIR}/EditorToolsSources.cmake)
 # Title Art (S80-S87): its own globbed lists, so the title specs add editor files without meeting here
 include(${EDITOR_DIR}/titleart/TitleArtEditorSources.cmake)
+# game UI localization: String Tables, their window and tools
+include(${EDITOR_DIR}/localization/LocalizationEditorSources.cmake)
 include(${EDITOR_DIR}/procmat/ProcMatSources.cmake)
 # the pixel-art family (S43...): palettes, Apply Palette, the Palette window, the pixel_art tools
 include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)

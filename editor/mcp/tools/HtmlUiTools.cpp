@@ -28,6 +28,10 @@
 #include "component/UIDocumentComponent.h"
 #include "htmlui/HtmlUIAssertions.h"
 #include "htmlui/HtmlUIInspector.h"
+#include "htmlui/HtmlL10n.h"
+#include "localization/Localization.h"
+#include "localization/StringTableCook.h"
+#include "util/TitleArtLanguage.h"
 #include "object/ui/UIDocument.h"
 #include "object/ui/UIItemsView.h"
 #include "script/LuaBinding.h"
@@ -1105,6 +1109,30 @@ void inspectUiTool(const CallPtr& call) {
             }
         }
 
+        // game-ui-localization.md R34: keyed elements, literal text and misses of this document
+        if (args.value("l10n", false)) {
+            if (!isPlaying(project)) l10n::refreshEditorLocalization(project);
+            Rml::ElementDocument* document = sp->scene->getSystem<UIDocumentSystem>()->getDocument(target.entity);
+            if (document && Localization::isActive()) hui::HtmlL10n::translateDocument(document);
+            const hui::HtmlL10n::DocumentReport report = hui::HtmlL10n::report(document);
+            Json literal = Json::array();
+            Json missing = Json::array();
+            for (size_t i = 0; i < report.literal.size() && i < 50; i++) literal.push_back({{"ref", report.literal[i].first}, {"text", report.literal[i].second}});
+            for (size_t i = 0; i < report.missing.size() && i < 50; i++) {
+                missing.push_back({{"ref", report.missing[i].where}, {"key", report.missing[i].key}, {"kind", report.missing[i].kind}});
+            }
+            Json l10nData = {{"language", report.language}, {"keyed", report.keyed}, {"literal", literal}, {"missing", missing}};
+            if (report.literal.size() > 50) l10nData["literal_count"] = report.literal.size();
+            if (report.missing.size() > 50) l10nData["missing_count"] = report.missing.size();
+            if (!Localization::isActive()) l10nData["next"] = "The project has no String Tables: create one with edit_string_table (group localization).";
+            else if (!report.literal.empty()) l10nData["next"] = "Literal text is not translated: add keys with edit_string_table and data-l10n-id on the elements.";
+            data["l10n"] = l10nData;
+            text += "
+Localization (" + (report.language.empty() ? std::string("inactive") : report.language) + "): " +
+                    std::to_string(report.keyed) + " keyed, " + std::to_string(report.literal.size()) + " literal, " +
+                    std::to_string(report.missing.size()) + " missing.";
+        }
+
         if (args.value("models", false)) {
             Json models = Json::object();
             lua_State* L = LuaBinding::getLuaState();
@@ -1319,8 +1347,28 @@ void assertUiTool(const CallPtr& call) {
         call->fail("screenshot must be on_failure, always or never.");
         return;
     }
+    // game-ui-localization.md R35: every check once per language (x viewports, at most 24 layouts)
+    std::vector<std::string> languages;
+    if (has(args, "languages")) {
+        if (!args["languages"].is_array() || args["languages"].empty() || args["languages"].size() > 8) {
+            call->fail("languages must be 1 to 8 language tags, e.g. [\"de\", \"en-XA\"].");
+            return;
+        }
+        for (const Json& code : args["languages"]) {
+            std::string problem;
+            if (!code.is_string() || !TitleArtLanguage::isValid(code.get<std::string>(), &problem)) {
+                call->fail("languages: " + (problem.empty() ? std::string("each is a language tag") : problem));
+                return;
+            }
+            languages.push_back(TitleArtLanguage::canonicalize(code.get<std::string>()));
+        }
+        if (languages.size() * std::max<size_t>(1, viewports.size()) > 24) {
+            call->fail("languages x viewports is at most 24 layouts.");
+            return;
+        }
+    }
 
-    withDocument(call, [call, specs, viewports, mode](const DocTarget& target) {
+    withDocument(call, [call, specs, viewports, mode, languages](const DocTarget& target) {
         const Json& args = call->args();
         Project* project = call->ctx().project();
         SceneProject* sp = targetScene(project, target);
@@ -1339,25 +1387,36 @@ void assertUiTool(const CallPtr& call) {
             double width, height;
             bool current;
             hui::AssertResult result;
+            std::string language;
         };
         std::vector<Run> runs;
         std::vector<Outline> matchedOutlines;   // screenshot always: what the checks matched (current layout)
-        for (const auto& size : sizes) {
-            const double w = size.first, h = size.second;
-            const bool current = w == currentW && h == currentH;
-            auto runAll = [&]() {
-                for (size_t i = 0; i < specs.size(); i++) {
-                    runs.push_back({i, w, h, current, hui::HtmlUIAssertions::run(sp->scene, target.entity, specs[i])});
+        if (!languages.empty() && !isPlaying(project)) l10n::refreshEditorLocalization(project);
+        // the language for the layout, then back (TitleArt's global: nothing is remembered)
+        const std::string previousLanguage = TitleArtLanguage::global();
+        const std::vector<std::string> runLanguages = languages.empty() ? std::vector<std::string>{std::string()} : languages;
+        for (const std::string& language : runLanguages) {
+            if (!language.empty()) TitleArtLanguage::setGlobal(language);
+            for (const auto& size : sizes) {
+                const double w = size.first, h = size.second;
+                // another language lays out again even at the current size
+                const bool current = w == currentW && h == currentH && language.empty();
+                auto runAll = [&]() {
+                    for (size_t i = 0; i < specs.size(); i++) {
+                        runs.push_back({i, w, h, current, hui::HtmlUIAssertions::run(sp->scene, target.entity, specs[i]), language});
+                    }
+                };
+                if (current) {
+                    runAll();
+                } else if (!hui::HtmlUIInspector::withViewport(sp->scene, target.entity, static_cast<float>(w), static_cast<float>(h),
+                                                               runAll, error)) {
+                    if (!languages.empty()) TitleArtLanguage::setGlobal(previousLanguage);
+                    call->fail(error);
+                    return;
                 }
-            };
-            if (current) {
-                runAll();
-            } else if (!hui::HtmlUIInspector::withViewport(sp->scene, target.entity, static_cast<float>(w), static_cast<float>(h),
-                                                           runAll, error)) {
-                call->fail(error);
-                return;
             }
         }
+        if (!languages.empty()) TitleArtLanguage::setGlobal(previousLanguage);
         for (const Run& run : runs) {
             if (!run.result.error.empty()) {
                 call->fail("checks[" + std::to_string(run.check) + "] (" + specs[run.check].selector + "): " + run.result.error);
@@ -1387,7 +1446,7 @@ void assertUiTool(const CallPtr& call) {
         for (const Run& run : runs) {
             const hui::AssertSpec& spec = specs[run.check];
             const std::string type = assertKindNames()[static_cast<size_t>(spec.kind)];
-            const std::string at = viewportText(run.width, run.height);
+            const std::string at = viewportText(run.width, run.height) + (run.language.empty() ? std::string() : " " + run.language);
             Json failures = Json::array();
             for (size_t f = 0; f < run.result.failures.size(); f++) {
                 const hui::AssertFailure& failure = run.result.failures[f];
@@ -1421,6 +1480,7 @@ void assertUiTool(const CallPtr& call) {
                          {"viewport", Json::array({std::lround(run.width), std::lround(run.height)})},
                          {"passed", run.result.passed}, {"matched", run.result.matched}, {"failures", failures},
                          {"inconclusive", run.result.inconclusive}};
+            if (!run.language.empty()) item["language"] = run.language;
             if (run.result.failures.size() > MAX_FAILURES) item["failures_truncated"] = true;
             checks.push_back(item);
             if (run.result.passed) passed++;
@@ -1985,6 +2045,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
             {"styles", array(Json{{"type", "string"}}, "Computed CSS properties.")},
             {"limit", withDefault(integer("", 1, 1000), 200)},
             {"models", boolean("Data-model values (play).")},
+            {"l10n", boolean("String Tables: keyed, literal text, misses.")},
             {"reload", boolean("Last hot reload's report.")},
             {"viewport", vec2("Lay out at [w,h], then restore.")},
             {"screenshot", boolean("Game view image, matches outlined.")},
@@ -2032,6 +2093,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
                 {"text", string("")}
             }, {"type", "selector"})}}},
             {"viewports", array(vec2(""), "Up to 6 [w,h]; default: current.")},
+            {"languages", array(string(""), "Up to 8 tags (en-XA pseudo): every check per language.")},
             {"screenshot", withDefault(stringEnum("", {"on_failure", "always", "never"}), "on_failure")},
             {"max_width", w3::maxWidthArgSchema(4096, DEFAULT_IMAGE_WIDTH)}
         }, {"checks"});

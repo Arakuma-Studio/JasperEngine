@@ -2515,8 +2515,9 @@ std::vector<Setting> mcpSettingsTable() {
             Setting s;
             s.key = "localization.languages";
             s.type = "list";
-            s.description = "BCP 47 language tags the game ships, in order (de, pt-BR, zh-Hant). Title Art bakes, fonts and translations "
-                            "of other languages are left out of builds (W-TITLE-LANGUAGE-DROPPED); [] ships every language.";
+            s.description = "BCP 47 language tags the game ships, in order (de, pt-BR, zh-Hant). String Table translations, bakes, fonts "
+                            "and translations of other languages are left out of builds (W-L10N-LANGUAGE-DROPPED, W-TITLE-LANGUAGE-DROPPED); "
+                            "[] ships every language.";
             s.get = [](SettingsContext& ctx) {
                 Json list = Json::array();
                 for (const std::string& code : ctx.project()->getLocalizationSettings().languages) list.push_back(code);
@@ -2556,6 +2557,48 @@ std::vector<Setting> mcpSettingsTable() {
                 const std::string code = value.get<std::string>();
                 if (!code.empty() && !TitleArtLanguage::isValid(code, &error)) return false;
                 if (apply) ctx.project()->getLocalizationSettings().defaultLanguage = TitleArtLanguage::canonicalize(code);
+                return true;
+            };
+            add(s);
+        }
+        // game-ui-localization.md R30: Remember Player Choice and Language Fonts
+        add(boolSetting("localization.remember_choice",
+                        "Localization.setLanguage's choice is remembered (UserSettings jasper.language) and comes before the device's languages at the next start.",
+                        [](Project& p) { return p.getLocalizationSettings().rememberChoice; },
+                        [](Project& p, bool v) { p.getLocalizationSettings().rememberChoice = v; }));
+        {
+            Setting s;
+            s.key = "localization.fonts";
+            s.type = "object";
+            s.description = "Fonts per language, {\"ja\": [\"fonts/NotoSansJP.ttf\"]}: an HTML text run in that language gets them before the other "
+                            "fallback faces, and a Text whose font is empty uses the first.";
+            s.get = [](SettingsContext& ctx) {
+                Json fonts = Json::object();
+                for (const auto& [code, list] : ctx.project()->getLocalizationSettings().fonts) fonts[code] = list;
+                return fonts;
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_object()) {
+                    error = "must be an object {language: [font paths]}";
+                    return false;
+                }
+                std::map<std::string, std::vector<std::string>> fonts;
+                for (auto it = value.begin(); it != value.end(); ++it) {
+                    if (!TitleArtLanguage::isValid(it.key(), &error)) return false;
+                    if (!it->is_array()) {
+                        error = "the fonts of " + it.key() + " must be a list of font paths";
+                        return false;
+                    }
+                    std::vector<std::string>& list = fonts[TitleArtLanguage::canonicalize(it.key())];
+                    for (const Json& path : *it) {
+                        if (!path.is_string() || path.get<std::string>().empty()) {
+                            error = "the fonts of " + it.key() + " must be a list of font paths";
+                            return false;
+                        }
+                        list.push_back(path.get<std::string>());
+                    }
+                }
+                if (apply) ctx.project()->getLocalizationSettings().fonts = std::move(fonts);
                 return true;
             };
             add(s);

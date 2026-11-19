@@ -90,6 +90,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerTitleArtTools, "Title Art", "title_art"},   // S80
     {registerSpriteTools, "Sprites: Aseprite import, atlases, drawing", "sprites"},   // S44 (S45, S47)
     {registerPixelFontTools, "Pixel art: font previews", "pixel_art"},   // S51
+    {registerLocalizationTools, "Localization: String Tables", "localization"},   // game-ui-localization.md
 };
 
 // JASPER_MCP_SELFTEST_GROUP: one tool in the test-only group "selftest", for the tests of
