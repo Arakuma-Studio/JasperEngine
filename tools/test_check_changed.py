@@ -143,8 +143,11 @@ class Builds(unittest.TestCase):
         for f in ("engine/core/Foo.cpp", "editor/navigation/NavigationEditor.cpp", "engine/core/component/Transform.h",
                   "docs/navigation.md"):
             self.assertNotIn("navigation-off", self.plan(f).builds, f)
-        # an engine shader: the shader lint and its tests
-        self.assertEqual(self.plan("engine/shaderlib/includes/lights.glsl").self_tests, ["tools/ci/test_check_shader_lod.py"])
+        # an engine shader: the shader lint and its tests, and the GPU vendor lint (render code names no vendor)
+        self.assertEqual(self.plan("engine/shaderlib/includes/lights.glsl").self_tests,
+                         ["tools/check_gpu_vendor_branches.py", "tools/ci/test_check_shader_lod.py"])
+        self.assertIn("tools/check_gpu_vendor_branches.py", self.plan("engine/renders/sokol/SokolSystem.cpp").self_tests)
+        self.assertNotIn("tools/check_gpu_vendor_branches.py", self.plan("engine/platform/linux/Foo.cpp").self_tests)
         self.assertEqual(self.plan("tools/check_shader_lod.py").self_tests, ["tools/ci/test_check_shader_lod.py"])
         # an MCP test file (a new one too): classified for the CI suite, before anything is built
         self.assertEqual(self.plan("tools/mcp/tests/test_new.py").self_tests, ["tools/ci/check-mcp-ci-suite.py"])

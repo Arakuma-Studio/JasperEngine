@@ -5278,4 +5278,41 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    {
+        "id": "bad_frame_waits_not_computes",
+        "playing": True,
+        "kind": "bad",
+        "what_happened": "Asked whether a slow Play scene is CPU-bound, agents read get_frame_times' cpu_ms (the frame's CPU "
+                         "time, waits on the driver included) and called it CPU-bound, then optimized scripts that were not "
+                         "the cost; the frame thread's own CPU (main_thread_cpu_ms, its thread clock) was a third of it.",
+        "text_at_issue": "get_frame_times' next: 'The frame thread waits more than it computes (driver, locks, I/O): see "
+                         "get_gpu_passes and the Timeline's Wait band.' (release-performance-and-gpu-quirks R34)",
+        "source": "docs/specs/release-performance-and-gpu-quirks.md R34, R38",
+        "prompt": "The game is playing in the editor and runs at about 30 fps. Is the main thread CPU-bound (our scripts and "
+                  "systems computing), or is it waiting on something? Measure, then answer in one or two sentences.",
+        "groups_enabled": ["profiling"],
+        "mocks": [
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\"). Session: 63 s, 0 error(s) logged.",
+                                                   {"state": "playing", "scene": {"id": 1, "name": "Main"}, "frame": 1890})},
+            {"tool": "get_frame_times", "result": ok(
+                "300 frames, median 33.4 ms.",
+                {"frames_in_window": 300,
+                 "summary": {"cpu_ms": {"median": 30.2, "p95": 31.9, "p99": 33.0, "max": 34.1},
+                             "gpu_ms": {"median": None, "p95": None, "p99": None, "max": None},
+                             "fps": {"median": 29.9, "p95": 31.2, "p99": 31.5, "max": 31.8},
+                             "frame_ms": {"median": 33.4, "p95": 34.8, "p99": 36.0, "max": 37.2}},
+                 "main_thread_cpu_ms": 9.8,
+                 "next": "The frame thread waits more than it computes (driver, locks, I/O): see get_gpu_passes and the "
+                         "Timeline's Wait band."})},
+            {"tool": "get_gpu_passes", "result": ok(
+                "game view frame 1892: 12 passes, gpu 27.9 ms (elapsed, frame = sum): Opaque 19.4 ms, Shadows 6.1 ms.",
+                {"frame": 1892, "semantics": "elapsed", "gpu_frame_ms": 27.9,
+                 "passes": [{"label": "Opaque", "gpu_ms": 19.4}, {"label": "Shadows", "gpu_ms": 6.1}]})},
+            {"tool": "capture_profile", "result": ok("Captured 120 frames: main thread median 30.1 ms, of which Wait 19.6 ms.",
+                                                    {"frames": 120, "categories": {"Wait": {"median_ms": 19.6}, "Scripts": {"median_ms": 3.1}}})},
+        ],
+        "checks": {"calls": ["get_frame_times"], "reply_must": [r"(?i)wait"],
+                   "reply_must_not": [r"(?i)\b(is|it's|it is) (cpu.bound|compute.bound)"]},
+        "max_turns": 16,
+    },
 ]
