@@ -305,14 +305,10 @@ namespace {
         return 1;
     }
 
-    // group.targetCamera: a GameObject's entity id, nil = any enabled camera
-    int luaGetTargetCamera(lua_State* L) {
-        CullingGroup* group = cullingLuaSelf(L, "targetCamera");
-        if (!group) return cullingLuaRaise(L);
+    luabridge::LuaRef luaGetTargetCamera(const CullingGroup* group, lua_State* L) {
         const Entity camera = group->getTargetCamera();
-        if (camera == NULL_ENTITY) lua_pushnil(L);
-        else lua_pushinteger(L, camera);
-        return 1;
+        if (camera == NULL_ENTITY) return luabridge::LuaRef(L);
+        return luabridge::LuaRef(L, static_cast<lua_Integer>(camera));
     }
 
     int luaSetTargetCamera(lua_State* L) {
@@ -329,10 +325,8 @@ namespace {
         return ok ? 0 : cullingLuaRaise(L);
     }
 
-    // group.onStateChanged = function(index, isVisible, wasVisible, band, previousBand) ... end | nil
-    int luaGetOnStateChanged(lua_State* L) {
-        lua_pushnil(L);
-        return 1;
+    luabridge::LuaRef luaGetOnStateChanged(const CullingGroup*, lua_State* L) {
+        return luabridge::LuaRef(L);
     }
 
     int luaSetOnStateChanged(lua_State* L) {
@@ -426,11 +420,9 @@ void LuaBinding::registerCullingClasses(lua_State *L){
         // Ends the group: isValid() is false from then on
         .addFunction("dispose", &CullingGroup::dispose)
         .addFunction("isValid", &CullingGroup::isValid)
-        // false: not evaluated and no events; the states freeze until it is enabled again
         .addProperty("enabled", &CullingGroup::isEnabled, &CullingGroup::setEnabled)
         // A Camera GameObject's id; nil: visible in any enabled camera of the scene
         .addProperty("targetCamera", &luaGetTargetCamera, &luaSetTargetCamera)
-        // metres a sphere passes a band's edge by before it moves to a farther band (default 0)
         .addProperty("bandHysteresis", &CullingGroup::getBandHysteresis, &CullingGroup::setBandHysteresis)
         // function(index, isVisible, wasVisible, band, previousBand): each sphere whose visibility or
         // band changed, after the group was evaluated; the first evaluation reports every sphere
@@ -442,15 +434,11 @@ void LuaBinding::registerCullingClasses(lua_State *L){
         .addFunction("setBoundingSpheres", &luaSetBoundingSpheres)
         .addFunction("setSphere", &luaSetSphere)
         .addFunction("getSphere", &luaGetSphere)
-        // The sphere follows the GameObject's world position plus offset at each evaluation
         .addFunction("setSphereTarget", &luaSetSphereTarget)
-        // The last sphere and its state move into `index`
         .addFunction("eraseSwapBack", &luaIndexed<2>)
-        // 0 to 8 ascending distances: band b holds distances in [d[b-1], d[b])
         .addFunction("setBoundingDistances", &luaSetBoundingDistances)
         .addFunction("setDistanceReferencePoint", &luaSetDistanceReferencePoint)
         .addFunction("isVisible", &luaIndexed<0>)
-        // The sphere's band; -1 before the first evaluation
         .addFunction("getDistance", &luaIndexed<1>)
         .addFunction("queryIndices", &luaQueryIndices)
         .endClass();
