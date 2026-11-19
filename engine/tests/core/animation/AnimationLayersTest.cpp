@@ -734,8 +734,10 @@ TEST_F(Layers, LuaMeshSpaceRotationSetsTheAuthoredLayer){
     ASSERT_EQ(luaL_dostring(L,
         "local p = meshSpacePlayer\n"
         "meshSpaceBefore = tostring(p:getLayerMeshSpaceRotation('Holding'))\n"
-        "p:setLayerMeshSpaceRotation('Holding', true)\n"
-        "meshSpaceAfter = tostring(p:getLayerMeshSpaceRotation(1))\n"), LUA_OK) << lua_tostring(L, -1);
+        "p:setLayerMeshSpaceRotation('Holding', true)\n"), LUA_OK) << lua_tostring(L, -1);
+    EXPECT_TRUE(component.layers[1].meshSpaceRotation) << "the authored field";
+    EXPECT_TRUE(component.needsLoad) << "the player reloads its layers";
+    ASSERT_EQ(luaL_dostring(L, "meshSpaceAfter = tostring(meshSpacePlayer:getLayerMeshSpaceRotation(1))"), LUA_OK) << lua_tostring(L, -1);
     lua_getglobal(L, "meshSpaceBefore");
     const std::string before = lua_tostring(L, -1) ? lua_tostring(L, -1) : "";
     lua_getglobal(L, "meshSpaceAfter");
@@ -743,9 +745,7 @@ TEST_F(Layers, LuaMeshSpaceRotationSetsTheAuthoredLayer){
     lua_pop(L, 2);
     EXPECT_EQ(before, "false");
     EXPECT_EQ(after, "true");
-    EXPECT_TRUE(component.layers[1].meshSpaceRotation) << "the authored field";
     EXPECT_FALSE(component.layers[0].meshSpaceRotation);
-    EXPECT_TRUE(component.needsLoad) << "the player reloads its layers";
     step(0.1);
     EXPECT_TRUE(component.layers[1].meshSpaceRotation) << "kept through the reload";
     ASSERT_EQ(luaL_dostring(L, "meshSpacePlayer:setLayerMeshSpaceRotation(1, false)"), LUA_OK) << lua_tostring(L, -1);
