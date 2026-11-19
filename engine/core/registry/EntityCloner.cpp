@@ -61,6 +61,7 @@
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
 #include "component/TitleArtRendererComponent.h"
+#include "component/SimulationCullingComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
 #include "component/ScriptComponent.h"
@@ -938,6 +939,19 @@ void prepare<TitleArtRendererComponent>(TitleArtRendererComponent& title, Entity
 }
 
 template<>
+void prepare<SimulationCullingComponent>(SimulationCullingComponent& culling, Entity, CloneContext&) {
+    // the copy is evaluated on its own (CullingSystem): it froze nothing yet
+    const SimulationCullingComponent defaults;
+    culling.state = defaults.state;
+    culling.reason = defaults.reason;
+    culling.focusDistance = defaults.focusDistance;
+    culling.resolvedRadius = defaults.resolvedRadius;
+    culling.groundChecked = false;
+    culling.groundLoaded = true;
+    culling.evaluated = false;
+}
+
+template<>
 void prepare<AudioSnapshotComponent>(AudioSnapshotComponent& snapshot, Entity, CloneContext&) {
     // a copy has not started: it has nothing to revert
     snapshot.previousSnapshot.clear();
@@ -1369,6 +1383,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<SortingGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteBatchComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<HitStopExemptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<SimulationCullingComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<GridComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TilemapLayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TilemapCollider2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
