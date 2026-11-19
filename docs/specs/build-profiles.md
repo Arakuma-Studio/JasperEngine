@@ -539,6 +539,7 @@ craftsman-end-motor (a port reconstructed from a retail binary). Profiles are ge
   (`buildprofiles::view`), not through the S05 watcher (which leaves `EditorSettings/` out).
 - **Paths**: the code is in `editor/buildprofile/` and its tests in `editor/tests/buildprofile/`, not
   `editor/build/` and `editor/tests/build/`: `.gitignore` ignores every `build` folder.
+- **AC4's physics key** is `physics.max_bodies`: the project has no `physics.gravity` setting.
 - **AC2's fixture** (`expected-no-profile.json`) holds the key paths of `game.json` and
   `content-manifest.json` (values masked) recorded from this branch's build without a profile, not
   from main: no main editor was built here. The writers add the new keys only with a profile.

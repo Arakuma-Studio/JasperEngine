@@ -106,7 +106,7 @@ async def test_edit_build_profile(ed: Editor):
     ed.check_eq((folder / "Demo.buildprofile").read_text(), before, "undo restores the file")
     await ed.check_error("edit_build_profile", action="set", name="Demo", overrides={"android.package_format": "apk"},
                          contains="android.package_format is an Android key; this profile builds for Linux: use linux.* or player.* keys")
-    await ed.check_error("edit_build_profile", action="set", name="Demo", overrides={"physics.gravity": [0, -1, 0]},
+    await ed.check_error("edit_build_profile", action="set", name="Demo", overrides={"physics.max_bodies": 1000},
                          contains="overrides take player, graphics, quality, linux keys")
     ed.check_eq((folder / "Demo.buildprofile").read_text(), before, "a refused edit writes nothing")
 

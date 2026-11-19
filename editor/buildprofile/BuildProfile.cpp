@@ -200,7 +200,7 @@ bool BuildProfileFile::parse(const std::string& text, BuildProfile& out, std::st
         }
         if (format > BuildProfile::FORMAT_VERSION) {
             if (newer) *newer = true;
-            error = "made by a newer editor (formatVersion " + std::to_string(format) + "): update to edit or build it";
+            error = "made by a newer editor: update to edit or build it (formatVersion " + std::to_string(format) + ")";
             return false;
         }
         if (format < 1) {

@@ -53,6 +53,15 @@ namespace {
         return profile;
     }
 
+    // a project on disk with the icon the profiles name (path settings check that the file exists)
+    void openProjectWithIcon(const jasperengine::test::TestTempDir& dir, Project& project) {
+        std::ofstream(dir.path() / "project.yaml") << "name: Box\n";
+        fs::create_directories(dir.path() / "art");
+        std::ofstream(dir.path() / "art" / "icon.png", std::ios::binary) << "\x89PNG\r\n\x1a\n";
+        project.setSkipProjectLock(true);
+        ASSERT_TRUE(project.loadProject(dir.path(), false));
+    }
+
     std::string encoded(Project& project) {
         return YAML::Dump(Stream::encodeProject(&project));
     }
@@ -179,8 +188,9 @@ TEST(BuildProfileResolve, TypedFieldsWriteThePlatformKeys) {
         std::string identifier;
         std::string icon;
     };
+    jasperengine::test::TestTempDir dir("build-profile-typed");
     Project project;
-    project.setName("Box");
+    openProjectWithIcon(dir, project);
     auto nameOf = [](const Project& p, BuildPlatform platform) -> std::string {
         switch (platform) {
             case BuildPlatform::Android: return p.getAndroidProjectSettings().applicationName;
@@ -251,6 +261,7 @@ TEST(BuildProfileResolve, TypedFieldsWriteThePlatformKeys) {
     ASSERT_TRUE(android) << error;
     EXPECT_TRUE(android->getAndroidProjectSettings().adaptiveIconForeground.empty());
     EXPECT_EQ(project.getAndroidProjectSettings().adaptiveIconForeground.generic_string(), "art/fg.png");
+    editor::test::closeProject(project);
 }
 
 TEST(BuildProfileResolve, SuffixSkipsNumericVersions) {
@@ -282,8 +293,9 @@ TEST(BuildProfileResolve, SuffixSkipsNumericVersions) {
 }
 
 TEST(BuildProfileResolve, TheOpenProjectNeverChanges) {
+    jasperengine::test::TestTempDir dir("build-profile-isolation");
     Project project;
-    project.setName("Box");
+    openProjectWithIcon(dir, project);
     project.getApplicationSettings().version = "2.0";
     // a project.yaml of 2,000 lines (the label colours are one line each)
     std::vector<LabelColor> labels;
@@ -337,6 +349,7 @@ TEST(BuildProfileResolve, TheOpenProjectNeverChanges) {
     if (const double slack = editor::test::perfSlack(); slack > 0.0) {
         EXPECT_LT(ms, 50.0 * slack);
     }
+    editor::test::closeProject(project);
 }
 
 // ---------------------------------------------------------------- AC4: validation
@@ -358,14 +371,14 @@ TEST(BuildProfileValidate, RefusesKeysOfOtherCategories) {
     BuildProfile profile;
     profile.name = "Demo";
     profile.platform = BuildPlatform::Android;
-    profile.overrides["physics.gravity"] = mcp::Json::array({0, -9.8, 0});
+    profile.overrides["physics.max_bodies"] = 1000;
     profile.overrides["ios.icon"] = "art/icon.png";
     const std::vector<std::string> findings = validateProfile(project, profile);
     ASSERT_EQ(findings.size(), 2u);
     std::string all;
     for (const std::string& finding : findings) all += finding + "\n";
     EXPECT_NE(all.find("ios.icon is an iOS key; this profile builds for Android: use android.* or player.* keys"), std::string::npos) << all;
-    EXPECT_NE(all.find("physics.gravity is a physics setting, which a Build Profile cannot change: overrides take player, graphics, quality, android keys"),
+    EXPECT_NE(all.find("physics.max_bodies is a physics setting, which a Build Profile cannot change: overrides take player, graphics, quality, android keys"),
               std::string::npos) << all;
 }
 
