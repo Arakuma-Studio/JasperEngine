@@ -21,23 +21,30 @@
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/AnimatorAssetIO.h"
+#include "animation/AnimatorInstance.h"
 #include "animation/AnimatorPose.h"
 #include "animation/AvatarMaskWeights.h"
+#include "component/AnimatorComponent.h"
 #include "object/AnimationPlayer.h"
+#include "object/Animator.h"
 #include "pool/AnimationClipPool.h"
 #include "pool/AnimatorAssetPool.h"
 #include "script/LuaBinding.h"
 #include "subsystem/ActionSystem.h"
+#include "subsystem/AnimatorSystem.h"
 
 #include "lua.hpp"
 #include "LuaBridge.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <thread>
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <iterator>
+#include <map>
 #include <string>
 
 using namespace jasperengine;
@@ -100,6 +107,76 @@ namespace {
 
     float quatDot(const Quaternion& a, const Quaternion& b){
         return std::fabs(a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z);
+    }
+
+    // ---- Mesh Space Rotation on the Animator (docs/specs/mesh-space-rotation.md) ----
+
+    Quaternion yaw(float degrees){ return rotation(degrees, 0, 1, 0); }
+    Quaternion tilt(float degrees){ return rotation(degrees, 1, 0, 0); }
+    Quaternion roll(float degrees){ return rotation(degrees, 0, 0, 1); }
+
+    std::vector<float> xyzw(const Quaternion& q){ return {q.x, q.y, q.z, q.w}; }
+
+    // the angle between two rotations, degrees
+    double degreesBetween(const Quaternion& a, const Quaternion& b){
+        const double d = (double)a.w * b.w + (double)a.x * b.x + (double)a.y * b.y + (double)a.z * b.z;
+        const double n = std::sqrt(((double)a.w * a.w + (double)a.x * a.x + (double)a.y * a.y + (double)a.z * a.z) *
+                                   ((double)b.w * b.w + (double)b.x * b.x + (double)b.y * b.y + (double)b.z * b.z));
+        return 2.0 * std::acos(std::min(1.0, std::fabs(d) / n)) * 180.0 / PI;
+    }
+
+    // R7's bound: the largest component difference, b on a's hemisphere
+    float componentError(const Quaternion& a, const Quaternion& b){
+        const float s = a.dot(b) < 0.0f ? -1.0f : 1.0f;
+        return std::max(std::max(std::fabs(a.w - s * b.w), std::fabs(a.x - s * b.x)), std::max(std::fabs(a.y - s * b.y), std::fabs(a.z - s * b.z)));
+    }
+
+    // bones held at constant rotations (and positions) for `length` seconds
+    ClipData still(const std::vector<std::pair<std::string, Quaternion>>& rotations, const std::vector<std::pair<std::string, Vector3>>& positions = {},
+                   float length = 1.0f){
+        ClipData data;
+        data.wrap = ClipWrapMode::Loop;
+        for (const auto& r : rotations) data.tracks.push_back(track(r.first, ClipChannel::Rotation, {key(0, xyzw(r.second)), key(length, xyzw(r.second))}));
+        for (const auto& p : positions){
+            const std::vector<float> v = {p.second.x, p.second.y, p.second.z};
+            data.tracks.push_back(track(p.first, ClipChannel::Position, {key(0, v), key(length, v)}));
+        }
+        return data;
+    }
+
+    // the run: hips turned 90 degrees, the legs and spine in their own pose
+    ClipData runPose(){
+        return still({{"Hips", yaw(90)}, {"Hips/Spine", tilt(10)}, {"Hips/Thigh", tilt(-30)}, {"Hips/Thigh/Foot", tilt(20)}},
+                     {{"Hips", Vector3(0, 0.95f, 0.1f)}});
+    }
+
+    // the attack: hips turned -20 degrees, its own spine, head and legs
+    ClipData attackPose(){
+        return still({{"Hips", yaw(-20)}, {"Hips/Spine", tilt(40)}, {"Hips/Spine/Head", roll(15)}, {"Hips/Thigh", tilt(50)},
+                      {"Hips/Thigh/Foot", tilt(-10)}},
+                     {{"Hips", Vector3(0.2f, 0.8f, 0)}, {"Hips/Spine", Vector3(0, 0.35f, 0.05f)}});
+    }
+
+    // a mask of the path's GameObject and everything under it
+    anim::AvatarMaskDef pathMask(const std::string& path){
+        anim::AvatarMaskDef data;
+        data.defaultWeight = 0.0f;
+        data.paths.push_back({path, 1.0f, true});
+        return data;
+    }
+
+    anim::LayerDef animatorLayer(const std::string& name, const std::string& clip, const std::string& mask = "", bool meshSpace = false,
+                                 float weight = 1.0f){
+        anim::LayerDef layer;
+        layer.name = name;
+        layer.weight = weight;
+        layer.mask.path = mask;
+        layer.meshSpaceRotation = meshSpace;
+        anim::StateDef state;
+        state.name = name + " State";
+        state.motion.clip.path = clip;
+        layer.machine.states.push_back(state);
+        return layer;
     }
 
     class Layers : public ::testing::Test {
@@ -184,12 +261,113 @@ namespace {
 
         Transform& transform(Entity entity){ return scene.getComponent<Transform>(entity); }
 
+        // ---- the Animator's layers (Mesh Space Rotation) ----
+
+        // Hips -> Spine -> Head and Hips -> Thigh -> Foot under Hero
+        void addBody(){
+            hips = child(root, "Hips", Vector3(0, 1, 0));
+            spine = child(hips, "Spine", Vector3(0, 0.3f, 0));
+            head = child(spine, "Head", Vector3(0, 0.4f, 0));
+            thigh = child(hips, "Thigh", Vector3(0.1f, -0.5f, 0));
+            foot = child(thigh, "Foot", Vector3(0, -0.45f, 0));
+        }
+
+        std::string controllerFile(const std::string& name, const anim::ControllerDef& def){
+            animtest::writeAsset(prefix + name + ".controller", anim::writeController(def));
+            return prefix + name + ".controller";
+        }
+
+        AnimatorComponent& animator(const std::string& controllerPath, Entity on = NULL_ENTITY){
+            const Entity entity = on == NULL_ENTITY ? root : on;
+            if (!scene.findComponent<AnimatorComponent>(entity)) scene.addComponent<AnimatorComponent>(entity, {});
+            AnimatorComponent& component = scene.getComponent<AnimatorComponent>(entity);
+            component.controller = controllerPath;
+            component.needsLoad = true;
+            return component;
+        }
+
+        anim::AnimatorInstance& instance(Entity on = NULL_ENTITY){
+            return *scene.getComponent<AnimatorComponent>(on == NULL_ENTITY ? root : on).runtime;
+        }
+
+        void animate(double dt, int count = 1){
+            for (int i = 0; i < count; i++) scene.getSystem<AnimatorSystem>()->update(dt);
+        }
+
+        // a bone's rig-space rotation in the last evaluation
+        Quaternion rig(const std::string& path, Entity on = NULL_ENTITY){
+            const anim::AnimatorInstance& i = instance(on);
+            const int bone = i.rig.findBone(path);
+            EXPECT_GE(bone, 0) << path;
+            return bone >= 0 ? i.rigRotations()[(size_t)bone] : Quaternion();
+        }
+
+        // the rig-space rotations of a pose of the instance's rig (poseToRigSpace: the reference)
+        static std::vector<Quaternion> rigOf(const anim::AnimatorInstance& i, const anim::Pose& pose){
+            const size_t n = i.rig.bones.size();
+            std::vector<anim::Affine> world(n);
+            std::vector<Vector3> positions(n), scales(n);
+            std::vector<Quaternion> rotations(n);
+            anim::poseToRigSpace(pose, i.rig.parents.data(), anim::RigSpace{world.data(), positions.data(), rotations.data(), scales.data()});
+            return rotations;
+        }
+
+        // the T-pose humanoid (Mixamo names) under a new root at its rest pose: its bones' entities
+        // and paths from the root
+        struct Humanoid{
+            Entity root = NULL_ENTITY;
+            std::vector<Entity> bones;
+            std::vector<std::string> paths;
+            std::vector<Quaternion> rest;
+
+            std::string path(const std::string& name) const{
+                const posetest::TestRig& rig = posetest::tposeRig();
+                for (size_t i = 0; i < rig.skeleton.bones.size(); i++){
+                    if (rig.skeleton.bones[i].name == name) return paths[i];
+                }
+                ADD_FAILURE() << "no bone " << name;
+                return std::string();
+            }
+        };
+
+        Humanoid humanoid(const std::string& name){
+            const posetest::TestRig& rig = posetest::tposeRig();
+            Humanoid h;
+            h.root = scene.createEntity();
+            scene.setEntityName(h.root, name);
+            scene.addComponent<Transform>(h.root, {});
+            for (size_t i = 0; i < rig.skeleton.bones.size(); i++){
+                const pose::SkeletonBone& b = rig.skeleton.bones[i];
+                const Entity parent = b.parent >= 0 ? h.bones[(size_t)b.parent] : h.root;
+                Entity bone = child(parent, b.name, b.position);
+                transform(bone).rotation = b.rotation;
+                transform(bone).scale = b.scale;
+                h.bones.push_back(bone);
+                h.paths.push_back(b.parent >= 0 ? h.paths[(size_t)b.parent] + "/" + b.name : b.name);
+                h.rest.push_back(b.rotation);
+            }
+            return h;
+        }
+
+        // every humanoid bone keyed at its rest rotation, the named ones turned in their parent's
+        // space (`turns`: bone name, rotation)
+        static ClipData humanoidPose(const Humanoid& h, const std::map<std::string, Quaternion>& turns){
+            const posetest::TestRig& rig = posetest::tposeRig();
+            std::vector<std::pair<std::string, Quaternion>> rotations;
+            for (size_t i = 0; i < rig.skeleton.bones.size(); i++){
+                auto turn = turns.find(rig.skeleton.bones[i].name);
+                rotations.push_back({h.paths[i], turn != turns.end() ? turn->second * h.rest[i] : h.rest[i]});
+            }
+            return still(rotations);
+        }
+
         Scene scene;
         std::string prefix;
         Entity root = NULL_ENTITY;
         Entity arm = NULL_ENTITY;
         Entity hand = NULL_ENTITY;
         Entity leg = NULL_ENTITY;
+        Entity hips = NULL_ENTITY, spine = NULL_ENTITY, head = NULL_ENTITY, thigh = NULL_ENTITY, foot = NULL_ENTITY;
     };
 
     uint64_t fnv(uint64_t hash, const void* data, size_t size){
@@ -839,4 +1017,315 @@ TEST_F(Layers, ALayerWithoutItsMaskContributesNothing){
     AnimatorAssetPool::invalidate(broken);
     step(0.6, 2);
     EXPECT_NEAR(transform(hand).position.y, 1.0f, 1e-5f);
+}
+
+// ---- Mesh Space Rotation on the Animator's layers (docs/specs/mesh-space-rotation.md) ----
+
+// AC3: the boundary bones are where the mask weight changes from parent to child, listed for every
+// masked layer above 0 (the option off too): a path mask from the spine gives the spine, a mask
+// of everything but the legs (Body on) the legs' first bones, an unmasked layer none
+TEST_F(Layers, MeshSpaceBoundaryBones){
+    addBody();
+    const std::string run = clip("run", runPose());
+    const std::string attack = clip("attack", attackPose());
+    anim::ControllerDef def;
+    def.layers = {animatorLayer("Base Layer", run), animatorLayer("Upper Body", attack, mask("spine", pathMask("Hips/Spine"))),
+                  animatorLayer("Unmasked", attack, "", true, 0.0f)};
+    animator(controllerFile("bones", def));
+    animate(0.0);
+    anim::AnimatorInstance& generic = instance();
+    ASSERT_TRUE(generic.bound);
+    EXPECT_EQ(generic.layerBoundaryBones(1), std::vector<uint16_t>{(uint16_t)generic.rig.findBone("Hips/Spine")});
+    EXPECT_TRUE(generic.layerBoundaryBones(2).empty()) << "an unmasked layer has none";
+    EXPECT_TRUE(generic.layerBoundaryBones(0).empty());
+    EXPECT_TRUE(generic.layerBoundaryBones(7).empty());
+    EXPECT_FALSE(generic.layerMeshSpaceApplies(1)) << "the option is off";
+    EXPECT_FALSE(generic.layerMeshSpaceApplies(2)) << "on, but nothing to apply at";
+    EXPECT_EQ(generic.meshSpaceScratchBytes(), 0u) << "no layer runs the pass: no scratch";
+    Animator object(&scene, root);
+    EXPECT_EQ(object.getLayerBoundaryBones(1), std::vector<Entity>{spine});
+
+    const Humanoid human = humanoid("Granjero");
+    anim::AvatarMaskDef noLegs;
+    noLegs.bodyParts[(int)AvatarBodyPart::LeftLeg] = 0.0f;
+    noLegs.bodyParts[(int)AvatarBodyPart::RightLeg] = 0.0f;
+    const ClipData rest = humanoidPose(human, {});
+    anim::ControllerDef humanDef;
+    humanDef.layers = {animatorLayer("Base Layer", clip("rest", rest)), animatorLayer("Upper Body", clip("rest2", rest), mask("nolegs", noLegs)),
+                       animatorLayer("Torso", clip("rest3", rest), mask("torso", pathMask(human.path("mixamorig:Spine"))))};
+    animator(controllerFile("human", humanDef), human.root);
+    animate(0.0);
+    const anim::AnimatorInstance& i = instance(human.root);
+    ASSERT_TRUE(i.bound);
+    ASSERT_TRUE(i.humanoid.valid) << i.humanoid.error;
+    const std::vector<uint16_t>& legs = i.layerBoundaryBones(1);
+    ASSERT_EQ(legs.size(), 2u);
+    EXPECT_EQ(i.humanoidSlotOf(legs[0]), (int)pose::HumanBone::LeftUpperLeg);
+    EXPECT_EQ(i.humanoidSlotOf(legs[1]), (int)pose::HumanBone::RightUpperLeg);
+    ASSERT_EQ(i.layerBoundaryBones(2).size(), 1u);
+    EXPECT_EQ(i.humanoidSlotOf(i.layerBoundaryBones(2)[0]), (int)pose::HumanBone::Spine) << "what the editor's warning names";
+    EXPECT_EQ(i.humanoidSlotOf(i.rig.findBone("Armature")), -1);
+}
+
+// AC4, AC5: the base's hips turned 90 degrees, the layer's -20, a mask from the spine. With the
+// option the spine (and what follows it) has the layer clip's rotation relative to the character
+// and the legs the base's; without it the spine is 110 degrees off. Only the boundary bone's local
+// rotation changes: translations, scales and every other rotation are poseBlend's, bit for bit.
+TEST_F(Layers, MeshSpaceRotationKeepsTheLayerDirection){
+    addBody();
+    anim::ControllerDef def;
+    def.layers = {animatorLayer("Base Layer", clip("run", runPose())),
+                  animatorLayer("Upper Body", clip("attack", attackPose()), mask("spine", pathMask("Hips/Spine")), true)};
+    animator(controllerFile("direction", def));
+    animate(0.0);
+    anim::AnimatorInstance& i = instance();
+    ASSERT_TRUE(i.bound);
+    ASSERT_TRUE(i.layerMeshSpaceApplies(1));
+    EXPECT_EQ(i.meshSpaceScratchBytes(), 2 * i.rig.bones.size() * sizeof(Quaternion));
+    const Quaternion layerSpine = yaw(-20) * tilt(40);
+    EXPECT_LE(componentError(rig("Hips/Spine"), layerSpine), 1e-5f) << degreesBetween(rig("Hips/Spine"), layerSpine);
+    EXPECT_LE(componentError(rig("Hips/Spine/Head"), layerSpine * roll(15)), 1e-5f) << "the head follows the corrected spine";
+    EXPECT_LE(componentError(rig("Hips"), yaw(90)), 1e-5f) << "the hips are the base's";
+    EXPECT_LE(componentError(rig("Hips/Thigh"), yaw(90) * tilt(-30)), 1e-5f) << "the legs are the base's";
+    EXPECT_LE(componentError(rig("Hips/Thigh/Foot"), yaw(90) * tilt(-30) * tilt(20)), 1e-5f);
+    const anim::Pose& pose = i.pose();
+    std::vector<float> with(pose.raw(), pose.raw() + pose.floatCount());
+
+    i.setLayerMeshSpaceRotation(1, false);
+    EXPECT_EQ(i.meshSpaceScratchBytes(), 0u);
+    animate(0.0);
+    EXPECT_NEAR(degreesBetween(rig("Hips/Spine"), layerSpine), 110.0, 0.01) << "local blending: the spine inherits the base's hips";
+    EXPECT_NEAR(degreesBetween(rig("Hips/Spine/Head"), layerSpine * roll(15)), 110.0, 0.01);
+    EXPECT_LE(componentError(rig("Hips/Thigh"), yaw(90) * tilt(-30)), 1e-5f);
+    const size_t stride = pose.stride();
+    const size_t spineBone = (size_t)i.rig.findBone("Hips/Spine");
+    for (int a = 0; a < anim::Pose::ARRAY_COUNT; a++){
+        const bool rotation = a >= anim::Pose::QX && a <= anim::Pose::QW;
+        for (size_t b = 0; b < stride; b++){
+            if (rotation && b == spineBone) continue;
+            EXPECT_EQ(std::memcmp(&with[(size_t)a * stride + b], pose.array((anim::Pose::Array)a) + b, sizeof(float)), 0)
+                << "array " << a << ", bone " << b;
+        }
+    }
+}
+
+// AC5: a mask of everything but the legs takes the attack's hips; with the option the legs keep
+// the run's rotation relative to the character (the other direction of the same problem). Every
+// bone of mask weight 1 has the attack's rig rotation, every one of 0 the run's.
+TEST_F(Layers, MeshSpaceRotationKeepsTheBaseLegsUnderABodyMask){
+    const Humanoid human = humanoid("Granjero");
+    const ClipData run = humanoidPose(human, {{"mixamorig:Hips", yaw(90)}, {"mixamorig:LeftUpLeg", tilt(-30)}, {"mixamorig:RightUpLeg", tilt(25)},
+                                              {"mixamorig:Spine", tilt(10)}});
+    const ClipData attack = humanoidPose(human, {{"mixamorig:Hips", yaw(-20)}, {"mixamorig:Spine", tilt(40)}, {"mixamorig:LeftUpLeg", tilt(50)},
+                                                 {"mixamorig:RightArm", roll(60)}});
+    anim::AvatarMaskDef noLegs;
+    noLegs.bodyParts[(int)AvatarBodyPart::LeftLeg] = 0.0f;
+    noLegs.bodyParts[(int)AvatarBodyPart::RightLeg] = 0.0f;
+    anim::ControllerDef def;
+    def.layers = {animatorLayer("Base Layer", clip("run", run)), animatorLayer("Upper Body", clip("attack", attack), mask("nolegs", noLegs), true)};
+    animator(controllerFile("body", def), human.root);
+    animate(0.0);
+    anim::AnimatorInstance& i = instance(human.root);
+    ASSERT_TRUE(i.bound);
+    ASSERT_TRUE(i.humanoid.valid) << i.humanoid.error;
+    ASSERT_TRUE(i.layerMeshSpaceApplies(1));
+    const std::vector<Quaternion> base = rigOf(i, i.layerOutput(0));
+    const std::vector<Quaternion> layer = rigOf(i, i.layerOutput(1));
+    const std::vector<float>& weights = i.layers[1].mask;
+    for (size_t b = 0; b < i.rig.bones.size(); b++){
+        ASSERT_TRUE(weights[b] == 0.0f || weights[b] == 1.0f);
+        const Quaternion& expected = weights[b] == 1.0f ? layer[b] : base[b];
+        EXPECT_LE(componentError(i.rigRotations()[b], expected), 1e-5f) << i.rig.bones[b].path << " (mask " << weights[b] << ")";
+    }
+    const int leftLeg = i.humanoid.slotBones[(size_t)pose::HumanBone::LeftUpperLeg];
+    ASSERT_GE(leftLeg, 0);
+    const anim::Pose& pose = i.pose();
+    std::vector<float> with(pose.raw(), pose.raw() + pose.floatCount());
+
+    i.setLayerMeshSpaceRotation(1, false);
+    animate(0.0);
+    EXPECT_NEAR(degreesBetween(i.rigRotations()[(size_t)leftLeg], base[(size_t)leftLeg]), 110.0, 0.01)
+        << "local blending: the run's legs inherit the attack's hips";
+    const size_t stride = pose.stride();
+    for (int a : {anim::Pose::TX, anim::Pose::TY, anim::Pose::TZ, anim::Pose::SX, anim::Pose::SY, anim::Pose::SZ}){
+        EXPECT_EQ(std::memcmp(&with[(size_t)a * stride], pose.array((anim::Pose::Array)a), stride * sizeof(float)), 0) << "array " << a;
+    }
+}
+
+// AC6: a flagged layer of weight 0 changes nothing, bit for bit
+TEST_F(Layers, MeshSpaceRotationOfAWeightZeroLayerChangesNothing){
+    addBody();
+    anim::ControllerDef def;
+    def.layers = {animatorLayer("Base Layer", clip("run", runPose())),
+                  animatorLayer("Upper Body", clip("attack", attackPose()), mask("spine", pathMask("Hips/Spine")), true, 0.0f)};
+    animator(controllerFile("zero", def));
+    animate(0.0);
+    anim::AnimatorInstance& i = instance();
+    ASSERT_TRUE(i.layerMeshSpaceApplies(1));
+    animate(0.1);
+    const anim::Pose& pose = i.pose();
+    std::vector<float> flagged(pose.raw(), pose.raw() + pose.floatCount());
+    i.setLayerMeshSpaceRotation(1, false);
+    i.play("Base Layer State", 0, 0.0f);
+    i.play("Upper Body State", 1, 0.0f);
+    animate(0.1);
+    ASSERT_EQ(flagged.size(), pose.floatCount());
+    EXPECT_EQ(std::memcmp(flagged.data(), pose.raw(), flagged.size() * sizeof(float)), 0);
+    EXPECT_LE(componentError(rig("Hips/Spine"), yaw(90) * tilt(10)), 1e-5f) << "the base's pose";
+}
+
+// AC7: two flagged layers: the second blends over the first's corrected pose (its head, at weight
+// 0.5, starts from the attack's direction, not from the run's hips)
+TEST_F(Layers, MeshSpaceRotationLayersStackInOrder){
+    addBody();
+    const ClipData look = still({{"Hips", yaw(30)}, {"Hips/Spine", tilt(-15)}, {"Hips/Spine/Head", roll(-40)}});
+    anim::ControllerDef def;
+    def.layers = {animatorLayer("Base Layer", clip("run", runPose())),
+                  animatorLayer("Upper Body", clip("attack", attackPose()), mask("spine", pathMask("Hips/Spine")), true),
+                  animatorLayer("Look", clip("look", look), mask("head", pathMask("Hips/Spine/Head")), true, 0.5f)};
+    animator(controllerFile("stack", def));
+    animate(0.0);
+    anim::AnimatorInstance& i = instance();
+    ASSERT_TRUE(i.layerMeshSpaceApplies(1));
+    ASSERT_TRUE(i.layerMeshSpaceApplies(2));
+    const Quaternion attackHead = yaw(-20) * tilt(40) * roll(15);
+    const Quaternion lookHead = yaw(30) * tilt(-15) * roll(-40);
+    const Quaternion expected = anim::poseBlendRotation(attackHead, lookHead, 0.5f);
+    EXPECT_LE(componentError(rig("Hips/Spine"), yaw(-20) * tilt(40)), 1e-5f) << "the first layer's spine, kept under the second";
+    EXPECT_LE(componentError(rig("Hips/Spine/Head"), expected), 1e-5f) << degreesBetween(rig("Hips/Spine/Head"), expected);
+    const Quaternion fromTheRun = anim::poseBlendRotation(yaw(90) * tilt(40) * roll(15), lookHead, 0.5f);
+    EXPECT_GT(degreesBetween(expected, fromTheRun), 10.0) << "the test tells the two apart";
+}
+
+// AC7: an upper-body montage on a flagged slot layer is corrected with nothing more
+TEST_F(Layers, MeshSpaceRotationCorrectsAMontage){
+    addBody();
+    const std::string run = clip("run", runPose());
+    anim::MontageDef montage;
+    montage.clip.path = clip("attack", attackPose());
+    montage.slot = "UpperBody";
+    montage.blendIn.time = 0.0f;
+    montage.blendOut.time = 0.0f;
+    montage.sections = {{"Attack", 0.0f, ""}};
+    animtest::writeAsset(prefix + "attack.montage", anim::writeMontage(montage));
+    anim::ControllerDef def;
+    def.layers = {animatorLayer("Base Layer", run), animatorLayer("Upper Body", run, mask("spine", pathMask("Hips/Spine")), true)};
+    def.layers[1].slot = "UpperBody";
+    animator(controllerFile("montage", def));
+    animate(0.0);
+    Animator object(&scene, root);
+    EXPECT_LE(componentError(rig("Hips/Spine"), yaw(90) * tilt(10)), 1e-5f) << "no montage: the layer plays the run";
+    ASSERT_TRUE(object.playMontage(prefix + "attack.montage"));
+    animate(0.0);
+    animate(0.1);
+    ASSERT_TRUE(object.isMontagePlaying());
+    EXPECT_LE(componentError(rig("Hips/Spine"), yaw(-20) * tilt(40)), 1e-5f) << degreesBetween(rig("Hips/Spine"), yaw(-20) * tilt(40));
+    EXPECT_LE(componentError(rig("Hips/Thigh"), yaw(90) * tilt(-30)), 1e-5f);
+}
+
+// AC8: with root motion the layer clip's turning root is taken out first (its heading becomes root
+// motion), so the reference is the Animator, not the clip's root bone path
+TEST_F(Layers, MeshSpaceRotationReferenceIsTheAnimatorUnderRootMotion){
+    addBody();
+    ClipData turning = still({{"Hips/Spine", tilt(40)}});
+    ClipTrackData hipsTrack;
+    hipsTrack.path = "Hips";
+    hipsTrack.channel = ClipChannel::Rotation;
+    for (int k = 0; k <= 10; k++) hipsTrack.keys.push_back(key((float)k * 0.1f, xyzw(yaw(-40.0f * (float)k * 0.1f) * tilt(10))));
+    turning.tracks.push_back(hipsTrack);
+    anim::ControllerDef def;
+    def.layers = {animatorLayer("Base Layer", clip("run", runPose())),
+                  animatorLayer("Upper Body", clip("turning", turning), mask("spine", pathMask("Hips/Spine")), true)};
+    AnimatorComponent& component = animator(controllerFile("rootmotion", def));
+    component.applyRootMotion = true;
+    component.rootMotionBone = "Hips";
+    animate(0.0);
+    animate(0.5);
+    ASSERT_TRUE(instance().layerMeshSpaceApplies(1));
+    EXPECT_LE(componentError(rig("Hips/Spine"), tilt(10) * tilt(40)), 1e-5f) << degreesBetween(rig("Hips/Spine"), tilt(50));
+    EXPECT_GT(degreesBetween(rig("Hips/Spine"), yaw(-20) * tilt(50)), 19.9) << "not the clip's turned root";
+}
+
+// AC10: over a 0.3 s weight fade the spine moves along the blend with no step larger than the
+// fade's own (no pop at its start or end), from the run's spine to the attack's
+TEST_F(Layers, MeshSpaceRotationFadesWithTheLayerWeight){
+    addBody();
+    anim::ControllerDef def;
+    def.layers = {animatorLayer("Base Layer", clip("run", runPose())),
+                  animatorLayer("Upper Body", clip("attack", attackPose()), mask("spine", pathMask("Hips/Spine")), true, 0.0f)};
+    animator(controllerFile("fade", def));
+    animate(0.0);
+    const Quaternion from = yaw(90) * tilt(10);
+    const Quaternion to = yaw(-20) * tilt(40);
+    EXPECT_LE(componentError(rig("Hips/Spine"), from), 1e-5f);
+    const double total = degreesBetween(from, to);
+    const float dt = 1.0f / 60.0f;
+    // an nlerp turns at most ~1.1 x its mean rate (at its middle, for this angle)
+    const double bound = total * (dt / 0.3) * 1.25;
+    instance().setLayerWeight(1, 1.0f, 0.3f);
+    Quaternion previous = rig("Hips/Spine");
+    double largest = 0.0;
+    for (int frame = 0; frame < 30; frame++){
+        animate(dt);
+        const Quaternion now = rig("Hips/Spine");
+        const double step = degreesBetween(previous, now);
+        EXPECT_LE(step, bound) << "frame " << frame;
+        largest = std::max(largest, step);
+        previous = now;
+    }
+    EXPECT_GT(largest, 0.0);
+    EXPECT_LE(componentError(rig("Hips/Spine"), to), 1e-5f) << "the attack's spine once the fade ends";
+}
+
+// AC13: Lua sets and gets the option by index and by name, an unknown layer is an error naming the
+// layers, the controller file is not written and a reload of the controller clears the override
+TEST_F(Layers, MeshSpaceRotationFromLua){
+    addBody();
+    anim::ControllerDef def;
+    def.layers = {animatorLayer("Base Layer", clip("run", runPose())),
+                  animatorLayer("Upper Body", clip("attack", attackPose()), mask("spine", pathMask("Hips/Spine")))};
+    const std::string path = controllerFile("lua", def);
+    const std::string bytes = anim::writeController(def);
+    animator(path);
+    animate(0.0);
+    Animator object(&scene, root);
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_TRUE(L != nullptr);
+    luabridge::setGlobal(L, object, "msrAnimator");
+    ASSERT_EQ(luaL_dostring(L,
+        "local a = msrAnimator\n"
+        "msrResult = tostring(a:getLayerMeshSpaceRotation('Upper Body'))\n"
+        "a:setLayerMeshSpaceRotation(1, true)\n"
+        "msrResult = msrResult .. '|' .. tostring(a:getLayerMeshSpaceRotation(1)) .. '|' .. tostring(a:getLayerMeshSpaceRotation('Upper Body'))\n"
+        "local ok, err = pcall(function() a:setLayerMeshSpaceRotation('Nope', true) end)\n"
+        "msrError = tostring(ok) .. ' ' .. tostring(err)\n"
+        "local ok2, err2 = pcall(function() return a:getLayerMeshSpaceRotation(7) end)\n"
+        "msrError2 = tostring(ok2) .. ' ' .. tostring(err2)\n"), LUA_OK) << lua_tostring(L, -1);
+    auto global = [&](const char* name){
+        lua_getglobal(L, name);
+        const std::string value = lua_tostring(L, -1) ? lua_tostring(L, -1) : "";
+        lua_pop(L, 1);
+        return value;
+    };
+    EXPECT_EQ(global("msrResult"), "false|true|true");
+    EXPECT_NE(global("msrError").find("false"), std::string::npos);
+    EXPECT_NE(global("msrError").find("no layer \"Nope\"; the layers are 0 \"Base Layer\", 1 \"Upper Body\""), std::string::npos) << global("msrError");
+    EXPECT_NE(global("msrError2").find("no layer 7"), std::string::npos) << global("msrError2");
+    ASSERT_TRUE(instance().layerMeshSpaceApplies(1));
+    animate(0.0);
+    EXPECT_LE(componentError(rig("Hips/Spine"), yaw(-20) * tilt(40)), 1e-5f) << "the override drives the pass";
+    std::ifstream file(animtest::assetDir() + "/" + path, std::ios::binary);
+    EXPECT_EQ(std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()), bytes)
+        << "a runtime override: the controller is not written";
+
+    ASSERT_EQ(luaL_dostring(L, "msrAnimator:setLayerMeshSpaceRotation('Upper Body', false)"), LUA_OK) << lua_tostring(L, -1);
+    EXPECT_FALSE(object.getLayerMeshSpaceRotation(1));
+    ASSERT_EQ(luaL_dostring(L, "msrAnimator:setLayerMeshSpaceRotation('Upper Body', true)"), LUA_OK) << lua_tostring(L, -1);
+    EXPECT_TRUE(object.getLayerMeshSpaceRotation(1));
+    // the same controller loaded again: the override is gone, the asset's value (off) is back
+    AnimatorAssetPool::invalidate(path);
+    animate(0.0);
+    EXPECT_FALSE(object.getLayerMeshSpaceRotation(1));
+    EXPECT_FALSE(instance().layerMeshSpaceApplies(1));
+    luabridge::setGlobal(L, luabridge::LuaRef(L), "msrAnimator");
 }

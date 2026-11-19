@@ -14,6 +14,8 @@
 // AnimatorSystem's wall time per frame (p50 / p95) with the workers and serial, the main
 // thread's share (prepare + finalize), and with --count-allocs the heap allocations of the
 // steady-state frames.
+// AnimBench.Crowd200MeshSpace: the same crowd with Mesh Space Rotation on its upper-body layer
+// (docs/specs/mesh-space-rotation.md R24), the same rows.
 // AnimBench.Micro*: a two-pose blend at 128 bones (Native and Scalar), one 65-bone clip sample,
 // a state-machine update (20 states, 60 transitions, no pose), an Animator's runtime state, a
 // Look At solve over 3 bones of a leaning chain (S77 R33, information).
@@ -908,6 +910,26 @@ int main(int argc, char** argv){
         results.add("crowd200_serial_one_tree_p50_ms", runCrowd(*crowd, false, 120, false).p50, "ms");
         each([](AnimatorComponent& c){ c.writeBones = AnimatorWriteBones::Exposed; c.applyRootMotion = false; });
         results.add("crowd200_serial_no_root_motion_p50_ms", runCrowd(*crowd, false, 120, false).p50, "ms");
+    }
+
+    // ---- AnimBench.Crowd200MeshSpace (docs/specs/mesh-space-rotation.md R24): the same crowd with
+    // Mesh Space Rotation on its upper-body layer (boundary bones: the neck and both shoulders)
+    {
+        std::unique_ptr<Crowd> crowd = buildCrowd(assets, bones);
+        for (Entity root : crowd->roots) crowd->scene->getComponent<AnimatorComponent>(root).runtime->setLayerMeshSpaceRotation(1, true);
+        const CrowdTimes parallel = runCrowd(*crowd, true, kFrames, false);
+        results.add("crowd200_mesh_space_parallel_p50_ms", parallel.p50, "ms");
+        results.add("crowd200_mesh_space_parallel_p95_ms", parallel.p95, "ms");
+        results.add("crowd200_mesh_space_main_thread_p95_ms", parallel.mainP95, "ms");
+        const CrowdTimes serial = runCrowd(*crowd, false, std::max(120, kFrames / 3), false);
+        results.add("crowd200_mesh_space_serial_p50_ms", serial.p50, "ms");
+        results.add("crowd200_mesh_space_serial_p95_ms", serial.p95, "ms");
+        if (countAllocs){
+            const CrowdTimes counted = runCrowd(*crowd, true, kFrames, true);
+            results.add("crowd200_mesh_space_steady_state_allocations", (double)counted.allocations, "allocations");
+        }
+        const AnimatorInstance* instance = crowd->scene->getComponent<AnimatorComponent>(crowd->roots[0]).runtime.get();
+        results.add("crowd200_mesh_space_boundary_bones", (double)instance->layerBoundaryBones(1).size(), "bones");
     }
 
     // ---- AnimBench.Micro: a two-pose blend at 128 bones, Native and Scalar

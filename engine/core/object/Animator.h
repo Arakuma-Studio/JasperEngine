@@ -8,6 +8,7 @@
 #include "component/AnimatorComponent.h"
 
 #include <string>
+#include <vector>
 
 namespace jasperengine{
 
@@ -84,6 +85,20 @@ namespace jasperengine{
         // reached linearly over `fade` seconds of the Animator's time
         void setLayerWeight(int layer, float weight, float fade);
         float getLayerWeight(int layer) const;
+        // Mesh Space Rotation (docs/specs/mesh-space-rotation.md): a runtime override of this
+        // Animator only (the controller is not written), cleared when the controller loads again;
+        // ignored on layer 0 and Additive layers. The getter: the override, else the controller's.
+        void setLayerMeshSpaceRotation(int layer, bool enabled);
+        bool getLayerMeshSpaceRotation(int layer) const;
+        // the GameObjects where the layer's mask starts or stops (its boundary bones, parents
+        // first), empty before the rig is bound
+        std::vector<Entity> getLayerBoundaryBones(int layer) const;
+        // the editor: Compare (no layer runs the pass while set) and the Torso Direction gizmo's
+        // recording (AnimatorInstance::layerMeshSpaceUnpassed); runtime only, never saved
+        void setMeshSpaceBypass(bool bypass);
+        bool isMeshSpaceBypass() const;
+        void setMeshSpaceDebug(bool debug);
+        bool isMeshSpaceDebug() const;
 
         // a .montage (asset-relative); false when it cannot play (no layer plays its slot)
         bool playMontage(const std::string& path);

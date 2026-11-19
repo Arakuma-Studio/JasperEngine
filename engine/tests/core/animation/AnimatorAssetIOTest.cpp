@@ -129,6 +129,69 @@ TEST(AnimatorAssetIO, ControllerRoundTripIsStable){
     EXPECT_NE(second.find("\"x_tool\": {\"a\":1}"), std::string::npos) << "unknown keys are written back";
 }
 
+// Mesh Space Rotation's layer key (docs/specs/mesh-space-rotation.md R42, R43, AC16): written only
+// when on, so old controllers re-save byte for byte with no version bump; kept on layer 0 and
+// Additive layers (the runtime ignores it there); and an older build, to which the key is
+// unknown, keeps it through its unknown-key path and writes it back where this build reads it
+TEST(AnimatorAssetIO, MeshSpaceRotationKeyIsWrittenOnlyWhenOn){
+    const std::string old = writeController(sampleController());
+    EXPECT_EQ(old.find("mesh_space_rotation"), std::string::npos);
+    ControllerParseResult oldParsed = parseController(old);
+    ASSERT_TRUE(oldParsed.ok) << oldParsed.error.toString();
+    EXPECT_FALSE(oldParsed.data.layers[0].meshSpaceRotation);
+    EXPECT_FALSE(oldParsed.data.layers[1].meshSpaceRotation);
+    EXPECT_EQ(writeController(oldParsed.data), old) << "an old controller re-saves byte for byte";
+
+    ControllerDef def = sampleController();
+    def.layers[1].blending = AnimatorLayerBlending::Override;
+    def.layers[1].meshSpaceRotation = true;
+    const std::string on = writeController(def);
+    const size_t key = on.find("\"mesh_space_rotation\": true");
+    ASSERT_NE(key, std::string::npos) << on;
+    EXPECT_EQ(on.find("mesh_space_rotation", key + 2), std::string::npos) << "once: the base layer's is off";
+    EXPECT_LT(on.find("\"slot\": \"UpperBody\""), key);
+    EXPECT_LT(key, on.find("\"state_machine\"", key));
+    EXPECT_NE(on.find("\"version\": 2"), std::string::npos) << "no version bump";
+    ControllerParseResult parsed = parseController(on);
+    ASSERT_TRUE(parsed.ok) << parsed.error.toString();
+    EXPECT_FALSE(parsed.data.layers[0].meshSpaceRotation);
+    EXPECT_TRUE(parsed.data.layers[1].meshSpaceRotation);
+    EXPECT_TRUE(parsed.data.layers[1].unknownKeys.empty());
+    EXPECT_EQ(writeController(parsed.data), on);
+    std::shared_ptr<const CompiledController> compiled = compileController(parsed.data);
+    ASSERT_TRUE(compiled);
+    EXPECT_FALSE(compiled->layers[0].meshSpaceRotation);
+    EXPECT_TRUE(compiled->layers[1].meshSpaceRotation);
+
+    def.layers[0].meshSpaceRotation = true;
+    def.layers[1].blending = AnimatorLayerBlending::Additive;
+    ControllerParseResult ignored = parseController(writeController(def));
+    ASSERT_TRUE(ignored.ok);
+    EXPECT_TRUE(ignored.data.layers[0].meshSpaceRotation) << "layer 0 keeps the value";
+    EXPECT_TRUE(ignored.data.layers[1].meshSpaceRotation) << "an Additive layer keeps the value";
+
+    // an older build reads any layer key it does not know into the layer's unknown keys and
+    // writes it back after the keys it knows (shown with a key no build knows)
+    std::string newer = old;
+    const std::string slot = "\"slot\": \"UpperBody\"";
+    ASSERT_NE(newer.find(slot), std::string::npos);
+    newer.replace(newer.find(slot), slot.size(), slot + ", \"x_newer_flag\": true");
+    ControllerParseResult kept = parseController(newer);
+    ASSERT_TRUE(kept.ok) << kept.error.toString();
+    ASSERT_EQ(kept.data.layers[1].unknownKeys.size(), 1u);
+    EXPECT_EQ(kept.data.layers[1].unknownKeys[0].first, "x_newer_flag");
+    const std::string writtenBack = writeController(kept.data);
+    EXPECT_NE(writtenBack.find("\"x_newer_flag\": true"), std::string::npos) << writtenBack;
+    // so the older build writes this build's key back as an unknown key, and this build reads it
+    ControllerDef older = sampleController();
+    older.layers[1].unknownKeys = {{"mesh_space_rotation", "true"}};
+    const std::string fromOlder = writeController(older);
+    ControllerParseResult back = parseController(fromOlder);
+    ASSERT_TRUE(back.ok) << back.error.toString();
+    EXPECT_TRUE(back.data.layers[1].meshSpaceRotation);
+    EXPECT_TRUE(back.data.layers[1].unknownKeys.empty()) << "a known key here";
+}
+
 TEST(AnimatorAssetIO, ControllerCompilesAndResolvesTargets){
     ControllerParseResult parsed = parseController(writeController(sampleController()));
     ASSERT_TRUE(parsed.ok);
