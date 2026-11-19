@@ -344,6 +344,59 @@ is not for this player, 6 not ready in time, 7 no display.
 xvfb-run ./MyGame --headless --after-ready --quit-after 30 --fixed-fps 60 --screenshot game.png --fail-on-error
 ```
 
+## Build Profiles
+
+A Build Profile is a named variant of the game for one platform (docs/specs/build-profiles.md),
+after Unity 6's: a demo, a store edition, a branded copy, a test build with cheats. Each is a file
+in `EditorSettings/BuildProfiles/<Name>.buildprofile` (committed, never shipped, YAML with
+`formatVersion: 1`). It stores only what the variant changes:
+
+- Identity: Product Name, Identifier, Version Suffix and Icon, written to the keys each
+  platform's build reads (Android `android.application_name`, `android.package_name`,
+  `android.launcher_icon`; iOS and macOS their `application_name`, `bundle_identifier`, `icon`;
+  Windows `windows.product_name`; Linux `linux.application_name`; Web `web.application_name` and
+  `web.favicon`; the others `player.identifier` and `player.window_icon`). Product Name also titles
+  the window when the project has no Window Title. Version Suffix goes on the text version
+  (`android.version_name`, game.json's `version`), never on Apple or Windows numeric versions
+  (`W-PROFILE-SUFFIX-NUMERIC`).
+- Store and Store Title, checked against the stores' limits (Google Play and App Store titles 30
+  characters, labels warn above 12; `editor/publish/StoreLimits.cpp` holds the table): warnings at
+  build, errors at publish prepare.
+- Graphics API, Development Build and Output Folder, which replace Build Settings' for its builds.
+- A Scene List (absent: the project's Scenes In Build) and its start scene. The scenes they
+  involve ship too; a load of a scene the build left out logs "Scene 'Bonus' is not in this build
+  (Build Profile 'Demo')", and in Play with the profile active it loads with a warning.
+- Scripting Define Symbols, which the game reads with `System.isDefined("DEMO")`,
+  `System.getDefines()` and `System.getBuildInfo()`. They are values, not a preprocessor: code
+  behind them still ships. Code that must not ship goes under an Exclude Path.
+- Exclude Labels (asset labels) and Exclude Paths (project-relative folders ending in `/`, or
+  files): what they name is not copied, cooked or packed, Lua included. A shipped scene, prefab,
+  material, UI Document or Sound Event that uses an excluded asset fails the build naming both; a
+  literal `require` of an excluded module warns `W-PROFILE-LUA-REQUIRE`.
+- Player Settings overrides: any Project Settings key of the Player, Graphics and Quality pages
+  and of the profile's platform, each checked by the setting's own validator.
+
+A build resolves the profile once into a copy of the project's settings; the project and
+`project.yaml` never change. A build without a profile writes what it wrote before. `game.json`
+gains `buildProfile` and `defines`, `content-manifest.json` and `build-report.json` gain
+`buildProfile` (content format 1.6: an older runtime would ignore the defines).
+
+Build Settings lists the profiles under the platforms: Add Build Profile, and on a row Duplicate,
+Rename, Delete and Switch Profile. Every edit is one undo step. The active profile (per user, in
+`.jasperengine/user/build.yaml`) is what Build Settings opens on and what Play uses: its Product
+Name, Identifier, Version Suffix, defines and Scene List (the Game view shows "Profile: Demo";
+Project Settings marks the rows it overrides in builds). Build and Build And Run build the selected
+profile; selecting a platform builds without one.
+
+```
+jasperengine-editor build --project MyGame --profile Demo [--out D]
+jasperengine-editor call edit_build_profile --action list
+```
+
+A publishing.json target may name `"profile": "Demo"`: publish prepare refuses a build of another
+profile, another platform, backend or flavour, or a store limit the profile breaks. A Build
+Profile is not S56's Device Profile (`deviceProfile`).
+
 ## Releases
 
 `publishing.json` at the project root (committed; Build Settings > Publish edits it) names the

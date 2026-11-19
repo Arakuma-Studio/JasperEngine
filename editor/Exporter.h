@@ -6,6 +6,7 @@
 #include "titleart/localisation/TitleLanguageExport.h"
 #include "Project.h"
 #include "ShippingTypes.h"
+#include "buildprofile/BuildProfile.h"
 #include "cook/BuildReport.h"
 #include "cook/SceneCooker.h"
 #include "players/ModuleUsage.h"
@@ -116,7 +117,15 @@ namespace jasperengine::editor {
         std::string keyPassword;
         // iOS: the simulator's unsigned .app instead of an archive
         bool iosSimulator = false;
+        // the Build Profile the build resolves (docs/specs/build-profiles.md); "" none: today's build.
+        // The caller has applied its platform, backend, flavour and folder (applyBuildProfile)
+        std::string buildProfile;
     };
+
+    // A build of `profileName`: its platform, Graphics API, Development Build and output folder
+    // into `config` (an output folder of its own replaces `defaultOutputDir`). False with the
+    // reason when it does not exist, cannot be read or does not validate.
+    bool applyBuildProfile(Project& project, const std::string& profileName, ExportConfig& config, std::string& error);
 
     // Why a project needs the Compile method (R5); empty: a prebuilt player can build it
     struct BuildMethodChoice {
@@ -151,6 +160,8 @@ namespace jasperengine::editor {
         fs::path buildReport;
         uint64_t buildBytes = 0;
         std::map<std::string, uint64_t> buildCategories;
+        // the Build Profile the build resolved ("" none)
+        std::string buildProfile;
     };
 
     struct ExportProgress {
@@ -190,6 +201,31 @@ namespace jasperengine::editor {
     private:
         Project* project = nullptr;
         ExportConfig config;
+        // Build Profiles (R14): every Project Settings value of the build comes from `settings`, the
+        // open project itself without a profile (R15) or its settings snapshot; scenes and assets
+        // come from `project`. Made on the main thread when the export starts (prepareBuildProfile)
+        std::shared_ptr<Project> settingsHolder;
+        Project* settings = nullptr;
+        std::shared_ptr<const BuildProfile> buildProfile;
+        // what resolving it found (W-PROFILE-SUFFIX-NUMERIC, the store limits): the build's warnings
+        std::vector<BuildWarning> profileWarnings;
+        BuildContentFilter contentFilter;
+        // the profile's Scene List as project scene ids (listed first, then the scenes they
+        // involve), found while the scenes are loaded; empty: every scene of the project ships
+        std::vector<uint32_t> profileListedScenes;
+        std::set<uint32_t> shippedScenes;
+        bool prepareBuildProfile();
+        bool shipsScene(uint32_t sceneId) const { return shippedScenes.empty() || shippedScenes.count(sceneId) > 0; }
+        // the profile's start scene, else the first it lists; 0 without a Scene List
+        uint32_t profileStartScene() const;
+        // a path under the project, project-relative and generic ("" outside it), for the content filter
+        std::string projectRelativeForFilter(const fs::path& absolute) const;
+        // the project-relative prefix of a folder's paths ("assets/", "" for the project root)
+        std::string filterPrefixOf(const fs::path& folder) const;
+        // R12: what the shipped scenes reach through the dependency graph against the exclusions
+        // (main thread, the asset index ready); "" when nothing excluded is used
+        std::string excludedReference() const;
+        void warnExcludedLuaRequires(const fs::path& luaRoot);
         ExportProgress progress;
         mutable std::mutex progressMutex;
         std::atomic<bool> cancelRequested{false};

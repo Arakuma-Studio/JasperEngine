@@ -148,6 +148,7 @@ namespace jasperengine::editor{
         int64_t getAppBuild() override;
         std::string getAppIdentifier() override;
         std::string getAppName() override;
+        bool playsBuildProfile() const;
         std::string getOperatingSystem() override;
         std::string getOperatingSystemVersion() override;
         std::string getDeviceModel() override;

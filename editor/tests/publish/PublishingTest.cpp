@@ -14,6 +14,7 @@
 #include "publish/Notices.h"
 #include "publish/PayloadValidator.h"
 #include "publish/Publishing.h"
+#include "buildprofile/BuildProfile.h"
 #include "publish/TreeManifest.h"
 #include "serialization/CookedScene.h"
 #include "util/ZipArchive.h"
@@ -625,4 +626,92 @@ TEST(Notices, WhenListShipsWithAnyOfItsFeatures) {
     const std::vector<std::string> titleArt = names({"titleart"});
     EXPECT_NE(std::find(titleArt.begin(), titleArt.end(), "thorvg"), titleArt.end());
     EXPECT_EQ(std::find(titleArt.begin(), titleArt.end(), "harfbuzz-subset"), titleArt.end());
+}
+
+// Build Profiles R24, AC7: a target naming a profile is released only from a build of that profile,
+// on its platform, backend and flavour, within its store's limits
+namespace publishing_test {
+
+    void writeProfile(const fs::path& project, const std::string& text) {
+        TestTempDir::write(BuildProfileFile::pathOf(project, "Demo"), text);
+    }
+
+    void markBuiltWith(const fs::path& build, const std::string& profile) {
+        player::ContentManifest manifest;
+        std::string error;
+        ASSERT_TRUE(player::ContentManifest::parse(TestTempDir::read(build / "content-manifest.json"), manifest, error)) << error;
+        manifest.buildProfile = profile;
+        TestTempDir::write(build / "content-manifest.json", manifest.toJson().dump(2));
+    }
+
+}
+
+TEST(Publishing, PrepareRefusesATargetWhoseProfileBreaksItsStore) {
+    TestTempDir dir("release-profile-store");
+    const fs::path project = dir / "Game";
+    writeLinuxBuild(project / "build/linux");
+    markBuiltWith(project / "build/linux", "Demo");
+    PrepareRequest request;
+    request.projectDir = project;
+    request.projectName = "Game";
+    request.config = linuxConfig("build/linux");
+    request.config.targets["linux"].profile = "Demo";
+    request.release = "1.0.0";
+    PrepareResult result;
+    std::vector<std::string> problems;
+
+    // a 31-character Store Title on Google Play's limit of 30
+    writeProfile(project, "formatVersion: 1\nplatform: linux\nstore: google-play\nidentifier: com.studio.game\n"
+                          "storeTitle: \"" + std::string(31, 'T') + "\"\n");
+    EXPECT_FALSE(prepareRelease(request, {}, result, problems));
+    EXPECT_TRUE(hasFinding(problems, "W-STORE-TITLE-LENGTH")) << join(problems);
+    EXPECT_FALSE(fs::exists(project / "releases/1.0.0"));
+
+    // within the limit it is released
+    writeProfile(project, "formatVersion: 1\nplatform: linux\nstore: google-play\nidentifier: com.studio.game\nstoreTitle: \"Game: Demo\"\n");
+    problems.clear();
+    ASSERT_TRUE(prepareRelease(request, {}, result, problems)) << join(problems);
+
+    // the target's platform, backend or flavour against the profile's
+    writeProfile(project, "formatVersion: 1\nplatform: linux\nbackend: vulkan\ndevelopment: true\n");
+    request.release = "1.0.1";
+    problems.clear();
+    EXPECT_FALSE(prepareRelease(request, {}, result, problems));
+    EXPECT_TRUE(hasFinding(problems, "backend glcore differs from Build Profile 'Demo' (vulkan)")) << join(problems);
+    EXPECT_TRUE(hasFinding(problems, "flavour release differs from Build Profile 'Demo' (development)")) << join(problems);
+}
+
+TEST(Publishing, PrepareRefusesABuildOfAnotherProfile) {
+    TestTempDir dir("release-profile-build");
+    const fs::path project = dir / "Game";
+    writeLinuxBuild(project / "build/linux");
+    writeProfile(project, "formatVersion: 1\nplatform: linux\n");
+    PrepareRequest request;
+    request.projectDir = project;
+    request.projectName = "Game";
+    request.config = linuxConfig("build/linux");
+    request.config.targets["linux"].profile = "Demo";
+    request.release = "1.0.0";
+    PrepareResult result;
+    std::vector<std::string> problems;
+    // a build of no profile
+    EXPECT_FALSE(prepareRelease(request, {}, result, problems));
+    EXPECT_TRUE(hasFinding(problems, "is of no Build Profile, the target names 'Demo'")) << join(problems);
+    // a build of another profile
+    markBuiltWith(project / "build/linux", "Full");
+    problems.clear();
+    EXPECT_FALSE(prepareRelease(request, {}, result, problems));
+    EXPECT_TRUE(hasFinding(problems, "is of Build Profile 'Full', the target names 'Demo'")) << join(problems);
+    // a target without a profile releases any build, as before
+    request.config.targets["linux"].profile.clear();
+    problems.clear();
+    EXPECT_TRUE(prepareRelease(request, {}, result, problems)) << join(problems);
+    // and the key round-trips (absent when empty: schemaVersion stays 1)
+    request.config.targets["linux"].profile = "Demo";
+    PublishingConfig again;
+    std::string error;
+    ASSERT_TRUE(PublishingConfig::parse(request.config.toJson(), again, error)) << error;
+    EXPECT_EQ(again.targets["linux"].profile, "Demo");
+    request.config.targets["linux"].profile.clear();
+    EXPECT_EQ(request.config.toJson().find("\"profile\""), std::string::npos);
 }

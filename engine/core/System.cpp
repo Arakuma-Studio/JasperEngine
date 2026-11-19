@@ -21,6 +21,9 @@ using namespace jasperengine;
 
 System* System::systemInstance = nullptr;
 ApplicationInfo System::applicationInfo;
+std::string System::buildProfile;
+std::vector<std::string> System::buildDefines;
+std::unordered_set<std::string> System::buildDefineSet;
 
 System& System::instance(){
     if (!systemInstance) {
@@ -210,6 +213,24 @@ void System::setApplicationInfo(const ApplicationInfo& info){
 
 const ApplicationInfo& System::getApplicationInfo(){
     return applicationInfo;
+}
+
+void System::setBuildInfo(const std::string& profile, const std::vector<std::string>& defines){
+    buildProfile = profile;
+    buildDefines = defines;
+    buildDefineSet = std::unordered_set<std::string>(defines.begin(), defines.end());
+}
+
+const std::string& System::getBuildProfile(){
+    return buildProfile;
+}
+
+const std::vector<std::string>& System::getDefines(){
+    return buildDefines;
+}
+
+bool System::isDefined(const std::string& symbol){
+    return buildDefineSet.count(symbol) > 0;
 }
 
 std::string System::getAppVersion(){

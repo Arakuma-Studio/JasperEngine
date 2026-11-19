@@ -506,4 +506,45 @@ craftsman-end-motor (a port reconstructed from a retail binary). Profiles are ge
 
 ## Deviations
 
-None yet.
+- **The snapshot (R14) is a `Project` in a settings-snapshot mode** (`Project::makeSettingsSnapshot`):
+  decoding a second `Project` ran setters that apply to engine globals (shadow tiers, audio,
+  threading, the window title...) and `resetConfigs` closes documents and clears pools. The snapshot
+  constructor sets a flag those setters and `resetConfigs` check, decodes `encodeProject` without
+  `scenes`, and takes the source's tags, layers and physics world (no profile overrides them). A
+  setter added later with a global effect needs the same guard.
+- **A Scene List names scenes of the project's Scenes In Build**: the exporter loads, saves and cooks
+  the project's scene list; a scene asset outside it is refused by validation ("add it there
+  (edit_build_scenes)"). All project prefabs still ship (the prefab cook is not per scene).
+- **Compile builds**: the generated init gets `System::setBuildInfo` (R17) and the packaging the
+  exporter writes (CMake settings, Gradle, plists, Windows resources) reads the snapshot, but the
+  generated init's other Project Settings values and its scene registration are the open project's
+  (`.jasperengine/generated/main.cpp`): the Scene List and the overrides the init applies take effect
+  in prebuilt builds.
+- **Keys a profile does not override**: `player.product_name` (executable and save folder, section 2),
+  `player.start_scene` and `player.target_platforms` (the profile's Scene List and platform),
+  `player.development_build` (`development`). The refusals name the field to use.
+- **publish prepare (R24)** reads the build's profile from `content-manifest.json`, else from
+  `build-report.json`, which gains `buildProfile` (a mobile build packs its manifest). The store
+  check uses the profile's values and a loose `game.json` (label, identifier, version); what a packed
+  build does not show is not checked there. `W-LABEL-TRUNCATED` stays a warning at prepare.
+- **edit_build_profile** refuses a write with findings (each naming its fix; `dry_run` reports them);
+  the Build Settings pane writes each edit and shows the findings inline (the build refuses them).
+  It is registered with the publish tools (module "Shipping: player runtimes and releases").
+- **Build Settings pane**: no icon preview; an override row draws a widget by the row's type (bool,
+  enum, number, else text or JSON) rather than the key's own widget; Exclude Paths are typed (no
+  folder picker); Delete confirms inline and does not use the OS trash (undo restores the file);
+  the Project Settings marker's tooltip names the profile but does not open it.
+- **External edits (R21)** are seen by the editor windows' view of the profiles, which compares the
+  folder's and `build.yaml`'s file stamps at most once a second while a window asks
+  (`buildprofiles::view`), not through the S05 watcher (which leaves `EditorSettings/` out).
+- **Paths**: the code is in `editor/buildprofile/` and its tests in `editor/tests/buildprofile/`, not
+  `editor/build/` and `editor/tests/build/`: `.gitignore` ignores every `build` folder.
+- **The snapshot's budget (50 ms for 2,000 lines) is not met**: `TheOpenProjectNeverChanges` measured
+  179.5 ms on the shared build box (five builds at once), most of it yaml-cpp encoding and decoding
+  the 2,019-line `project.yaml`. It is printed and enforced only under `perfSlack()`; a build takes
+  seconds. The Risks' `BuildSettingsView` fallback was not taken: it would need every settings
+  setter to write a struct instead of a `Project`.
+- **AC4's physics key** is `physics.max_bodies`: the project has no `physics.gravity` setting.
+- **AC2's fixture** (`expected-no-profile.json`) holds the key paths of `game.json` and
+  `content-manifest.json` (values masked) recorded from this branch's build without a profile, not
+  from main: no main editor was built here. The writers add the new keys only with a profile.

@@ -9,6 +9,7 @@
 #include "LogCapture.h"
 
 #include "player/ContentManifest.h"
+#include "player/PlayerConfig.h"
 #include "player/PlayerModules.h"
 #include "serialization/CookedScene.h"
 
@@ -105,6 +106,41 @@ TEST(ContentManifest, ReadsContentFormat) {
     EXPECT_FALSE(cook::readsContentFormat("1.5", "2.0"));
     EXPECT_FALSE(cook::readsContentFormat("2.0", "1.5"));
     for (const char* bad : {"", "1", "1.", ".5", "1.x", "v1.5", "1.5.0", "-1.5"}) EXPECT_FALSE(cook::readsContentFormat("1.5", bad)) << bad;
+    // minor 6 (Build Profiles): game.json's buildProfile and defines; a runtime of minor 5 would
+    // ignore the defines and run a demo as the full game, so the editor does not use one
+    EXPECT_TRUE(cook::readsContentFormat(cook::contentFormatVersion(), "1.6"));
+    EXPECT_FALSE(cook::readsContentFormat("1.5", cook::contentFormatVersion()));
+}
+
+// game.json's side of the same (R17): the profile and its defines, absent without a profile
+TEST(PlayerConfig, BuildProfileAndDefinesRoundTrip) {
+    PlayerConfig game;
+    game.name = "Box";
+    EXPECT_FALSE(game.toJson().contains("buildProfile"));
+    EXPECT_FALSE(game.toJson().contains("defines"));
+    game.buildProfile = "Demo";
+    game.defines = {"DEMO", "NO_ADS"};
+    PlayerConfig back;
+    std::string error;
+    ASSERT_TRUE(PlayerConfig::parse(game.toJson().dump(), back, error)) << error;
+    EXPECT_EQ(back.buildProfile, "Demo");
+    EXPECT_EQ(back.defines, game.defines);
+}
+
+TEST(ContentManifest, BuildProfileRoundTrips) {
+    ContentManifest m = sample();
+    // without a profile the key is absent: a build of no profile writes what it wrote before
+    EXPECT_FALSE(m.toJson().contains("buildProfile"));
+    m.buildProfile = "Steam Demo";
+    ContentManifest back;
+    std::string error;
+    ASSERT_TRUE(ContentManifest::parse(m.toJson().dump(2), back, error)) << error;
+    EXPECT_EQ(back.buildProfile, "Steam Demo");
+    EXPECT_EQ(back.toJson(), m.toJson());
+    // an older manifest has none
+    ContentManifest old;
+    ASSERT_TRUE(ContentManifest::parse(sample().toJson().dump(), old, error)) << error;
+    EXPECT_EQ(old.buildProfile, "");
 }
 
 // A player runs content of a newer minor (its additions are skipped, one warning per version) and

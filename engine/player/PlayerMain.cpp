@@ -368,6 +368,8 @@ JASPERENGINE_INIT void init() {
         NativeBridge::setPlatformOnlyPlugins(game.nativePlatformOnly);
         NativeBridge::setMockWarnings(true);
     }
+    // the Build Profile and its Scripting Define Symbols (System.isDefined), read once
+    if (!game.buildProfile.empty()) System::setBuildInfo(game.buildProfile, game.defines);
 
     for (const GameScene& scene : game.scenes) {
         const GameScene stack = scene;

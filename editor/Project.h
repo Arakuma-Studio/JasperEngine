@@ -1625,6 +1625,11 @@ namespace jasperengine::editor{
         // see getInspectedAsset()
         std::filesystem::path inspectedAsset;
         SceneProject* materialAssetScene = nullptr;
+        // A build's settings snapshot (makeSettingsSnapshot): its setters keep their values and
+        // apply nothing to the engine, the editor or the files of the project it was made from
+        bool settingsSnapshot = false;
+        struct SettingsSnapshotTag {};
+        explicit Project(SettingsSnapshotTag);
 
     public:
         // The files a registry's components reference, for SceneManager::preloadScene() (the
@@ -1689,6 +1694,13 @@ namespace jasperengine::editor{
         ~Project();
         Project(const Project&) = delete;
         Project& operator=(const Project&) = delete;
+
+        // The settings of `source` as project.yaml holds them, in a Project of its own (Build
+        // Profiles R14): decoded from Stream::encodeProject without its scenes, so no scene opens,
+        // no asset is scanned and nothing is watched. Its setters change only it: a build applies a
+        // profile's overrides here, and the open project, its file and the engine stay as they are.
+        static std::shared_ptr<Project> makeSettingsSnapshot(Project& source);
+        bool isSettingsSnapshot() const { return settingsSnapshot; }
 
         // ---- The project's shader list (docs/specs/S64-shader-lists.md). One source for an export,
         // generate_shaders, get_build_info, Play's startup and the Build Settings window:

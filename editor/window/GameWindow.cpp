@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "GameWindow.h"
+#include "buildprofile/BuildProfile.h"
 #include "window/ContactSheetWindow.h"
 #include "audio/AudioCapture.h"
 #include "render/SystemRender.h"
@@ -776,6 +777,15 @@ void editor::GameWindow::drawToolbar() {
         ImGui::EndCombo();
     }
     ImGui::SetItemTooltip("Target display");
+
+    // Build Profiles R9: the active profile, whose identity, defines and Scene List Play uses
+    if (const auto& profiles = buildprofiles::view(project->getProjectPath()); profiles.active) {
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("Profile: %s", profiles.active->name.c_str());
+        ImGui::SetItemTooltip("Play uses Build Profile '%s''s Product Name, Identifier, Version Suffix, Scripting Define Symbols and Scene "
+                              "List; its other overrides apply to builds only (File > Build Settings)", profiles.active->name.c_str());
+    }
 
     const std::string projectAspect = std::to_string(project->getCanvasWidth()) + "x"
         + std::to_string(project->getCanvasHeight()) + " (Project)";

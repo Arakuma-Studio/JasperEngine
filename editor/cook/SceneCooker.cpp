@@ -309,9 +309,10 @@ std::vector<uint8_t> editor::cook::SceneCooker::cookPrefab(const std::filesystem
 }
 
 bool editor::cook::SceneCooker::cookProject(Project* project, std::vector<editor::cook::CookedFileBytes>& files, std::vector<editor::cook::CookedPrefabInfo>& prefabs,
-                                    std::string& error) {
+                                    std::string& error, const std::set<uint32_t>* scenes) {
     bool defaultSky = false;
     for (const SceneProject& sceneProject : project->getScenes()) {
+        if (scenes && !scenes->count(sceneProject.id)) continue;
         if (!sceneProject.scene) {
             error = "scene " + sceneProject.name + " is not loaded for the cook";
             return false;

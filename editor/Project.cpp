@@ -64,6 +64,7 @@
 #include "sceneview/SceneViewVisibility.h"
 #include "picking/SceneBvh.h"
 #include "Workspace.h"
+#include "buildprofile/BuildProfile.h"
 #include "io/ScopedFileLock.h"
 #include "registry/PhysicsLayers.h"
 
@@ -386,7 +387,30 @@ editor::Project::Project(): vcsService(std::make_unique<vcs::VcsService>()), sce
     TerrainMapFileWriter::get();
 }
 
+editor::Project::Project(SettingsSnapshotTag): vcsService(std::make_unique<vcs::VcsService>()), sceneDiffs(std::make_unique<vcs::SceneDiffTracker>()), settingsSnapshot(true){
+    resetConfigs();
+}
+
+std::shared_ptr<editor::Project> editor::Project::makeSettingsSnapshot(Project& source){
+    std::shared_ptr<Project> snapshot(new Project(SettingsSnapshotTag{}));
+    // the validators of path settings (an icon) resolve against the project's folders
+    snapshot->projectPath = source.projectPath;
+    YAML::Node node = Stream::encodeProject(&source);
+    // no scene opens in a snapshot: the build reads them from the open project
+    node.remove("scenes");
+    const Workspace none;
+    Stream::decodeProject(snapshot.get(), node, none);
+    snapshot->name = source.name;
+    snapshot->startSceneId = source.startSceneId;
+    // what the engine holds for the open project (no profile overrides these categories)
+    snapshot->tags = source.tags;
+    snapshot->layerNames = source.layerNames;
+    snapshot->physics3DWorld = source.physics3DWorld;
+    return snapshot;
+}
+
 editor::Project::~Project(){
+    if (settingsSnapshot) return;
     // closing the project: a map waiting for its debounce reaches its file (T1 R30)
     TerrainMapPersistence::get().flushAll();
     // the poller and the worker read nothing of the project, but its backups go with it
@@ -1615,7 +1639,7 @@ std::string editor::Project::getName() const {
 void editor::Project::setName(std::string name){
     this->name = name;
     this->libName = Factory::toIdentifier(name);
-    editor::getEditorHost().updateWindowTitle(name);
+    if (!settingsSnapshot) editor::getEditorHost().updateWindowTitle(name);
 }
 
 void editor::Project::setCanvasSize(unsigned int width, unsigned int height){
@@ -1656,6 +1680,7 @@ Scaling editor::Project::getScalingMode() const{
 
 void editor::Project::setUIScale(const CanvasScalerSettings& uiScale){
     this->uiScale = uiScale;
+    if (settingsSnapshot) return;
     // the Engine's default is what edit-mode scenes on the project default resolve to as well
     Engine::setDefaultCanvasScaler(uiScale);
     applyEditCanvasScaleToAll();
@@ -1751,7 +1776,7 @@ bool editor::Project::isVSyncEnabled() const{
 
 void editor::Project::setDynamicBatching(bool enabled){
     dynamicBatching = enabled;
-    Engine::setDynamicBatchingDefault(enabled);
+    if (!settingsSnapshot) Engine::setDynamicBatchingDefault(enabled);
 }
 
 bool editor::Project::isDynamicBatching() const{
@@ -1760,7 +1785,7 @@ bool editor::Project::isDynamicBatching() const{
 
 void editor::Project::setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality){
     atmosphereQuality = quality;
-    Engine::setAtmosphereQualityDefaults(quality[0], quality[1], quality[2]);
+    if (!settingsSnapshot) Engine::setAtmosphereQualityDefaults(quality[0], quality[1], quality[2]);
 }
 
 const std::array<AtmosphereQuality, 3>& editor::Project::getAtmosphereQuality() const{
@@ -1770,7 +1795,7 @@ const std::array<AtmosphereQuality, 3>& editor::Project::getAtmosphereQuality() 
 void editor::Project::setFoliageQuality(const std::array<FoliageQuality, 3>& quality, bool declared){
     foliageQuality = quality;
     foliageQualityDeclared = declared;
-    Engine::setFoliageQualityDefaults(quality[0], quality[1], quality[2], !declared);
+    if (!settingsSnapshot) Engine::setFoliageQualityDefaults(quality[0], quality[1], quality[2], !declared);
 }
 
 const std::array<FoliageQuality, 3>& editor::Project::getFoliageQuality() const{
@@ -1784,7 +1809,7 @@ bool editor::Project::isFoliageQualityDeclared() const{
 void editor::Project::setFoliageDistanceScale(const std::array<float, 3>& scale){
     for (size_t i = 0; i < scale.size(); i++)
         foliageDistanceScale[i] = std::isfinite(scale[i]) ? std::clamp(scale[i], 0.0f, 10.0f) : defaultFoliageDistanceScale[i];
-    Engine::setFoliageDistanceScaleDefaults(foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]);
+    if (!settingsSnapshot) Engine::setFoliageDistanceScaleDefaults(foliageDistanceScale[0], foliageDistanceScale[1], foliageDistanceScale[2]);
 }
 
 const std::array<float, 3>& editor::Project::getFoliageDistanceScale() const{
@@ -1823,7 +1848,7 @@ std::string editor::Project::getInputActionsEnginePath() const{
 
 void editor::Project::setInputDeadzone(float deadzone){
     inputDeadzone = std::clamp(deadzone, 0.0f, 0.95f);
-    InputActions::setDefaultDeadzone(inputDeadzone);
+    if (!settingsSnapshot) InputActions::setDefaultDeadzone(inputDeadzone);
 }
 
 float editor::Project::getInputDeadzone() const{
@@ -1850,7 +1875,7 @@ void editor::Project::setHtmlUiMsaaSamples(int samples){
     }
     this->htmlUiMsaaSamples = valid;
     // documents already drawn pick it up when their target is created again
-    UIDocumentSystem::setPreferredSampleCount(valid);
+    if (!settingsSnapshot) UIDocumentSystem::setPreferredSampleCount(valid);
 }
 
 void editor::Project::setSpriteAtlasMode(const std::string& mode){
@@ -1866,6 +1891,7 @@ int editor::Project::getHtmlUiMsaaSamples() const{
 void editor::Project::setPixelsPerUnit(int pixelsPerUnit){
     const int previous = this->pixelsPerUnit;
     this->pixelsPerUnit = std::clamp(pixelsPerUnit, minPixelsPerUnit, maxPixelsPerUnit);
+    if (settingsSnapshot) return;
     // the edited scenes' sprites and tilemaps of PPU 0 build again (MeshSystem)
     Engine::setPixelsPerUnit(this->pixelsPerUnit);
     // .aseprite sheets of pixelsPerUnit "project" bake it: their imports' keys change with it
@@ -1880,7 +1906,7 @@ int editor::Project::getPixelsPerUnit() const{
 
 void editor::Project::setPixelArtSettings(const pixelart::PixelArtSettings& settings){
     pixelArtSettings = settings;
-    pixelart::PixelArtMode::get().projectSettingsChanged(this);
+    if (!settingsSnapshot) pixelart::PixelArtMode::get().projectSettingsChanged(this);
 }
 
 void editor::Project::setDefaultFilterMode(TextureFilterMode mode){
@@ -1889,7 +1915,7 @@ void editor::Project::setDefaultFilterMode(TextureFilterMode mode){
 
 void editor::Project::setBitmapTextCacheMiB(int mib){
     bitmapTextCacheMiB = std::clamp(mib, 0, maxBitmapTextCacheMiB);
-    ::jasperengine::pixelart::BitmapTextCache::get().setBudgetMiB(bitmapTextCacheMiB);
+    if (!settingsSnapshot) ::jasperengine::pixelart::BitmapTextCache::get().setBudgetMiB(bitmapTextCacheMiB);
 }
 
 int editor::Project::getBitmapTextCacheMiB() const{
@@ -1905,7 +1931,7 @@ void editor::Project::setHtmlUiRenderSettings(const HtmlUiRenderSettings& settin
     if (!isValidHtmlUiGlyphAtlasMiB(htmlUiRender.glyphAtlasMiB))
         htmlUiRender.glyphAtlasMiB = std::clamp(htmlUiRender.glyphAtlasMiB, minHtmlUiGlyphAtlasMiB, maxHtmlUiGlyphAtlasMiB);
     // the editor's documents follow at once
-    UIDocumentSystem::setHtmlUiRenderOptions(htmlUiRender.glyphAtlasMiB, htmlUiRender.sdfPrimitives, htmlUiRender.transformAwareText);
+    if (!settingsSnapshot) UIDocumentSystem::setHtmlUiRenderOptions(htmlUiRender.glyphAtlasMiB, htmlUiRender.sdfPrimitives, htmlUiRender.transformAwareText);
 }
 
 const editor::HtmlUiRenderSettings& editor::Project::getHtmlUiRenderSettings() const{
@@ -1915,7 +1941,7 @@ const editor::HtmlUiRenderSettings& editor::Project::getHtmlUiRenderSettings() c
 void editor::Project::setDrawSubmissionSettings(const DrawSubmissionSettings& settings){
     drawSubmission = settings;
     // the editor's scenes draw with it at once (RenderSystem reads it every update)
-    Engine::setGpuInstancingEnabled(drawSubmission.gpuInstancing);
+    if (!settingsSnapshot) Engine::setGpuInstancingEnabled(drawSubmission.gpuInstancing);
 }
 
 const editor::DrawSubmissionSettings& editor::Project::getDrawSubmissionSettings() const{
@@ -1923,6 +1949,10 @@ const editor::DrawSubmissionSettings& editor::Project::getDrawSubmissionSettings
 }
 
 void editor::Project::setTransitionDefaults(const jasperengine::pixelart::TransitionDefaults& defaults){
+    if (settingsSnapshot){
+        transitionDefaults = defaults;
+        return;
+    }
     jasperengine::pixelart::ScreenTransition::setDefaults(defaults);
     transitionDefaults = jasperengine::pixelart::ScreenTransition::getDefaults();
 }
@@ -1933,7 +1963,7 @@ const jasperengine::pixelart::TransitionDefaults& editor::Project::getTransition
 
 void editor::Project::setDeviceSettings(const DeviceSettings& settings){
     deviceSettings = settings;
-    Device::setProjectSettings(deviceSettings);
+    if (!settingsSnapshot) Device::setProjectSettings(deviceSettings);
 }
 
 const DeviceSettings& editor::Project::getDeviceSettings() const{
@@ -1945,7 +1975,7 @@ void editor::Project::setShadowTier(int platform, ShadowTier tier){
         return;
     shadowTiers[platform] = tier;
     // the editor renders with the tiers at once (RenderSystem resolves them every update)
-    ShadowTiers::setPlatformTier(platform, tier);
+    if (!settingsSnapshot) ShadowTiers::setPlatformTier(platform, tier);
 }
 
 ShadowTier editor::Project::getShadowTier(int platform) const{
@@ -1957,7 +1987,7 @@ ShadowTier editor::Project::getShadowTier(int platform) const{
 void editor::Project::setLightMode(LightMode mode){
     lightMode = mode;
     // the editor's renderer reads it every frame (LightingTiers::usesTiledLights)
-    LightingTiers::setLightMode(mode);
+    if (!settingsSnapshot) LightingTiers::setLightMode(mode);
 }
 
 LightMode editor::Project::getLightMode() const{
@@ -1969,7 +1999,7 @@ void editor::Project::setTerrainQualityTier(int platform, terraincore::TerrainQu
         return;
     terrainQualityTiers[platform] = tier;
     // the editor renders with the tiers at once, as the shadow tiers
-    terraincore::TerrainQualitySettings::setPlatformTier(platform, tier);
+    if (!settingsSnapshot) terraincore::TerrainQualitySettings::setPlatformTier(platform, tier);
 }
 
 terraincore::TerrainQuality editor::Project::getTerrainQualityTier(int platform) const{
@@ -2240,6 +2270,8 @@ PbrTier editor::Project::getMobilePbrTier() const{
 }
 
 void editor::Project::setTagsAndLayers(const std::vector<std::string>& tags, const std::vector<std::string>& layerNames){
+    // (a snapshot takes its source's, makeSettingsSnapshot)
+    if (settingsSnapshot) return;
     TagManager::setTags(tags);
     TagManager::setLayerNames(layerNames);
 
@@ -2253,6 +2285,7 @@ void editor::Project::setTagsAndLayers(const std::vector<std::string>& tags, con
 }
 
 void editor::Project::setSortingLayers(const std::vector<SortingLayerInfo>& layers){
+    if (settingsSnapshot) return;
     SortingLayers::setLayers(layers);
 }
 
@@ -2261,6 +2294,7 @@ const std::vector<SortingLayerInfo>& editor::Project::getSortingLayers() const{
 }
 
 void editor::Project::setTransparencySort(TransparencySortMode mode, const Vector3& axis){
+    if (settingsSnapshot) return;
     SortingLayers::setTransparencySortMode(mode);
     SortingLayers::setTransparencySortAxis(axis);
 }
@@ -2298,7 +2332,7 @@ static editor::LayerCollisionRows symmetricLayerCollisions(const editor::LayerCo
 void editor::Project::setLayerCollisionMatrices(const LayerCollisionRows& matrix3D, const LayerCollisionRows& matrix2D){
     layerCollisionMatrix3D = symmetricLayerCollisions(matrix3D);
     layerCollisionMatrix2D = symmetricLayerCollisions(matrix2D);
-    applyLayerCollisionMatrices();
+    if (!settingsSnapshot) applyLayerCollisionMatrices();
 }
 
 const editor::LayerCollisionRows& editor::Project::getLayerCollisionMatrix3D() const{
@@ -2316,6 +2350,7 @@ void editor::Project::applyLayerCollisionMatrices() const{
 
 void editor::Project::setPhysics3DWorldSettings(const Physics3DWorldSettings& settings){
     physics3DWorld = settings;
+    if (settingsSnapshot) return;
     PhysicsSystem::setWorldCapacity3D(settings.maxBodies, settings.maxBodyPairs, settings.maxContactConstraints);
     // what the engine kept (clamped)
     physics3DWorld.maxBodies = PhysicsSystem::getDefaultMaxBodies3D();
@@ -2402,7 +2437,7 @@ void editor::Project::resetPlayInput() const{
 
 void editor::Project::setShaderGlobals(const std::vector<ShaderGlobalDecl>& decls){
     shaderGlobals = decls;
-    applyShaderGlobals();
+    if (!settingsSnapshot) applyShaderGlobals();
 }
 
 const std::vector<ShaderGlobalDecl>& editor::Project::getShaderGlobals() const{
@@ -3367,7 +3402,7 @@ void editor::Project::setPackNativeResources(bool enabled){
 
 void editor::Project::setVcsProjectSettings(const VcsProjectSettings& settings, bool apply){
     if (settings == vcsProjectSettings) return;
-    if (!apply) {
+    if (!apply || settingsSnapshot) {
         vcsProjectSettings = settings;
         return;
     }
@@ -3568,7 +3603,21 @@ void editor::Project::applyPresentationSettings(){
     info.identifier = getApplicationIdentifier();
     info.version = getApplicationVersion();
     info.build = getApplicationVersionCode();
+    // Build Profiles R9: Play takes the active profile's identity, defines and Scene List (its
+    // other overrides apply to builds only)
+    buildprofiles::PlayProfile profile;
+    std::vector<uint32_t> profileScenes;
+    if (buildprofiles::playProfile(*this, profile)) {
+        info.name = profile.appName;
+        info.identifier = profile.identifier;
+        info.version = profile.version;
+        for (const SceneProject& scene : scenes)
+            if (!scene.filepath.empty() && profile.sceneGuids.count(assetDatabase.getAssetGuid(scene.filepath).str()))
+                collectInvolvedScenes(scene.id, profileScenes);
+    }
     System::setApplicationInfo(info);
+    System::setBuildInfo(profile.name, profile.defines);
+    SceneManager::setBuildProfileScenes(profile.hasScenes ? profile.name : std::string(), profileScenes);
 }
 
 const editor::ApplicationSettings& editor::Project::getApplicationSettings() const{
@@ -3709,6 +3758,7 @@ void editor::Project::setAudioSettings(const AudioSettings& settings){
     audioSettings.maxVoices = std::clamp(audioSettings.maxVoices, 1, 1000);
     if (audioSettings.sampleRate < 0) audioSettings.sampleRate = 0;
     audioSettings.seed = std::max(audioSettings.seed, 0);
+    if (settingsSnapshot) return;
     AudioSystem::configure({audioSettings.maxRealVoices, audioSettings.maxVoices, audioSettings.sampleRate,
                             AudioSystem::outputStageFromName(audioSettings.outputStage),
                             AudioSystem::iosSessionFromName(audioSettings.iosSessionCategory), (uint32_t)audioSettings.seed,
@@ -3881,7 +3931,7 @@ uint32_t editor::Project::getParticleWorldBudget() const{
 
 void editor::Project::setParticleWorldBudget(uint32_t budget){
     particleWorldBudget = budget;
-    particles::ParticleWorld::setProjectBudget(budget);
+    if (!settingsSnapshot) particles::ParticleWorld::setProjectBudget(budget);
 }
 
 const editor::ThreadingProjectSettings& editor::Project::getThreadingSettings() const{
@@ -3899,6 +3949,7 @@ ThreadingSettings editor::Project::toEngineThreading(const ThreadingProjectSetti
 
 void editor::Project::setThreadingSettings(const ThreadingProjectSettings& settings){
     threadingSettings = settings;
+    if (settingsSnapshot) return;
     Engine::setThreadingSettings(toEngineThreading(settings));
     // the standalone build's main.cpp bakes them in; loading them (project.yaml, the defaults a
     // load starts from) is not a change: opening a project writes nothing
@@ -3914,6 +3965,7 @@ const editor::ShaderCreationProjectSettings& editor::Project::getShaderCreationS
 void editor::Project::setShaderCreationSettings(const ShaderCreationProjectSettings& settings){
     const bool changed = settings != shaderCreationSettings;
     shaderCreationSettings = settings;
+    if (settingsSnapshot) return;
     Engine::setShaderCreationSettings(settings.engineSettings());
     if (changed && modelLoaded){
         markGeneratedSourcesDirty();
@@ -4053,6 +4105,7 @@ const editor::NavigationProjectSettings& editor::Project::getNavigationSettings(
 void editor::Project::setVoxelSettings(const VoxelProjectSettings& settings){
     const bool changed = settings != voxelSettings;
     voxelSettings = settings;
+    if (settingsSnapshot) return;
     applyVoxelProjectSettings(voxelSettings);
     // the standalone build's main.cpp carries them
     if (modelLoaded && changed){
@@ -4064,6 +4117,7 @@ void editor::Project::setNavigationSettings(const NavigationProjectSettings& set
     const bool changed = settings != navigationSettings;
     navigationSettings = settings;
     navigationSettings.settings.sanitize();
+    if (settingsSnapshot) return;
     nav::setSettings(navigationSettings.settings);
     // the standalone build's main.cpp and CMake settings carry them
     if (modelLoaded && changed){
@@ -6488,49 +6542,52 @@ void editor::Project::resetConfigs() {
     terrainQualityWritten = false;
     shipAllTerrainTiers = false;
     compressTerrainLayers = false;
-    endTerrainExport();
-    // pose animation and clip documents and rigs belong to the project
-    PoseAnimationDocument::closeAll();
-    AnimationClipDocument::closeAll();
-    VatDocument::closeAll();
-    // Title Art documents, their scheduled bakes and the renderer's resolver and caches too
-    TitleArtDocument::closeAll();
-    TitleArtAutoBake::get().reset();
-    TitleArtRenderHost::editor().reset();
-    // the Inspector's asset was a file of the old project
-    inspectedAsset.clear();
-    PoseRigProvider::clear();
-    // and the offscreen renderers render_pose_animation keeps of its models
-    PoseSheetRenderer::clearShared();
+    // a build's settings snapshot owns no documents, scenes or pools
+    if (!settingsSnapshot) {
+        endTerrainExport();
+        // pose animation and clip documents and rigs belong to the project
+        PoseAnimationDocument::closeAll();
+        AnimationClipDocument::closeAll();
+        VatDocument::closeAll();
+        // Title Art documents, their scheduled bakes and the renderer's resolver and caches too
+        TitleArtDocument::closeAll();
+        TitleArtAutoBake::get().reset();
+        TitleArtRenderHost::editor().reset();
+        // the Inspector's asset was a file of the old project
+        inspectedAsset.clear();
+        PoseRigProvider::clear();
+        // and the offscreen renderers render_pose_animation keeps of its models
+        PoseSheetRenderer::clearShared();
 
-    // Prefab Mode ends with the project (what it had unsaved was offered for saving before)
-    while (!prefabStages.empty()) {
-        popPrefabStage();
+        // Prefab Mode ends with the project (what it had unsaved was offered for saving before)
+        while (!prefabStages.empty()) {
+            popPrefabStage();
+        }
+
+        // Clear existing scenes
+        for (auto& sceneProject : scenes) {
+            deleteSceneProject(&sceneProject);
+        }
+        scenes.clear();
+        unresolvedScenes.clear();
+        unresolvedSceneStates.clear();
+        prefabAssets.clear();
+        standalonePrefabs.clear();
+        editor::getEditorHost().resetLastActivatedScene();
+
+        // A project may be closed, edited externally, then reopened in the same editor
+        // process. Do not carry its dependency snapshots or compiled custom data across
+        // that boundary.
+        editor::ShaderBuilder::invalidateCustomShaders();
+        // the pose rigs of its models (the next project may have files of the same names)
+        pose::PoseRigCache::shared().clear();
+        // and the animation builds shared on them
+        pose::PoseBuildCache::shared().clear();
+
+        // Scenes are gone: drop unreferenced pool assets from the previous project.
+        // Keep entries still held by the editor/engine (fonts, active shaders, etc.).
+        Engine::clearUnusedPools();
     }
-
-    // Clear existing scenes
-    for (auto& sceneProject : scenes) {
-        deleteSceneProject(&sceneProject);
-    }
-    scenes.clear();
-    unresolvedScenes.clear();
-    unresolvedSceneStates.clear();
-    prefabAssets.clear();
-    standalonePrefabs.clear();
-    editor::getEditorHost().resetLastActivatedScene();
-
-    // A project may be closed, edited externally, then reopened in the same editor
-    // process. Do not carry its dependency snapshots or compiled custom data across
-    // that boundary.
-    editor::ShaderBuilder::invalidateCustomShaders();
-    // the pose rigs of its models (the next project may have files of the same names)
-    pose::PoseRigCache::shared().clear();
-    // and the animation builds shared on them
-    pose::PoseBuildCache::shared().clear();
-
-    // Scenes are gone: drop unreferenced pool assets from the previous project.
-    // Keep entries still held by the editor/engine (fonts, active shaders, etc.).
-    Engine::clearUnusedPools();
 
     // Reset state
     name = "";
@@ -6538,7 +6595,7 @@ void editor::Project::resetConfigs() {
     canvasHeight = defaultCanvasHeight;
     scalingMode = defaultScalingMode;
     uiScale = CanvasScalerSettings();
-    Engine::setDefaultCanvasScaler(uiScale);
+    if (!settingsSnapshot) Engine::setDefaultCanvasScaler(uiScale);
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
     setDynamicBatching(defaultDynamicBatching);
@@ -6586,7 +6643,7 @@ void editor::Project::resetConfigs() {
     runtimeShadersEnabled = defaultRuntimeShadersEnabled;
     mobilePbrTier = defaultMobilePbrTier;
     setTagsAndLayers({}, {});
-    SortingLayers::reset();
+    if (!settingsSnapshot) SortingLayers::reset();
     setLayerCollisionMatrices(allLayersCollide(), allLayersCollide());
     setPhysics3DWorldSettings(Physics3DWorldSettings());
     unreadableInputNode.clear();
@@ -6595,7 +6652,7 @@ void editor::Project::resetConfigs() {
     packNativeResources = defaultPackNativeResources;
     versionControlMetadata = defaultVersionControlMetadata;
     // the project's version control ends with it (R11: its revert backups too)
-    if (vcsService) {
+    if (vcsService && !settingsSnapshot) {
         vcsService->close();
         removeVcsBackups();
     }
@@ -6628,7 +6685,7 @@ void editor::Project::resetConfigs() {
     simulateTouch = false;
     inputSchemeOverride = "auto";
     // nothing reloads into a project that is going (S05), nothing cooks for it (S14)
-    HotReloadService::get().stopWatching();
+    if (!settingsSnapshot) HotReloadService::get().stopWatching();
     if (TextureCookQueue::get().getProject() == this){
         TextureCookQueue::get().attach(nullptr);
     }
@@ -6646,9 +6703,11 @@ void editor::Project::resetConfigs() {
     inspectedAssets.clear();
     customResolutions.clear();
     projectPath.clear();
-    SoundEventLibrary::clear();
-    AssetMap::setResolver(nullptr);
-    jasperengine::pixelart::PixelFxPlayer::setEmberResolver(nullptr);
+    if (!settingsSnapshot) {
+        SoundEventLibrary::clear();
+        AssetMap::setResolver(nullptr);
+        jasperengine::pixelart::PixelFxPlayer::setEmberResolver(nullptr);
+    }
     waitForAssetScan();
     assetSearchIndex.detach();
     assetLabels.close();
@@ -6659,6 +6718,7 @@ void editor::Project::resetConfigs() {
     materialFileLinks.clear();
     tabs.clear();
     projectHistory.clear();
+    if (settingsSnapshot) return;
     PlayChangeReview::get().discardAll();
 
     editor::getEditorHost().updateWindowTitle(name);

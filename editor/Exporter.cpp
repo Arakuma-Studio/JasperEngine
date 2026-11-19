@@ -980,7 +980,7 @@ bool editor::Exporter::isEarlierExport(const fs::directory_entry& entry) {
 }
 
 bool editor::Exporter::writeWebFavicon(const fs::path& target) {
-    const WebProjectSettings& web = project->getWebProjectSettings();
+    const WebProjectSettings& web = settings->getWebProjectSettings();
     if (!web.favicon.empty()) {
         const fs::path favicon = web.favicon.is_absolute() ? web.favicon : project->getProjectPath() / web.favicon;
         std::string error;
@@ -989,7 +989,7 @@ bool editor::Exporter::writeWebFavicon(const fs::path& target) {
         return false;
     }
     std::error_code ec;
-    fs::path icon = project->getWindowIcon();
+    fs::path icon = settings->getWindowIcon();
     if (!icon.empty() && icon.is_relative()) icon = project->getProjectPath() / icon;
     std::string extension = FileUtils::pathToUtf8(icon.extension());
     std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -1029,6 +1029,27 @@ void editor::Exporter::failBuild(const std::string& what) {
         progress.errorCount = buildErrors.errorCount();
     }
     setError(what + buildErrors.failureDetail(), !errors.empty());
+}
+
+bool editor::applyBuildProfile(Project& project, const std::string& profileName, ExportConfig& config, std::string& error) {
+    BuildProfile profile;
+    if (!buildprofiles::load(project.getProjectPath(), profileName, profile, error)) return false;
+    const std::vector<std::string> findings = validateProfile(project, profile);
+    if (!findings.empty()) {
+        error = "Build Profile '" + profile.name + "': " + findings.front();
+        return false;
+    }
+    config.mode = ExportMode::Player;
+    config.buildProfile = profile.name;
+    config.platform = profile.platform;
+    if (!profile.backend.empty()) config.graphicBackend = normalizeBackend(profile.backend);
+    if (profile.development) config.developmentBuild = *profile.development;
+    if (!profile.outputDir.empty()) {
+        fs::path dir = FileUtils::pathFromUtf8(profile.outputDir);
+        if (dir.is_relative()) dir = project.getProjectPath() / dir;
+        config.destinationDir = dir.lexically_normal();
+    }
+    return true;
 }
 
 std::string editor::Exporter::outputFolderRefusal(const Project* project, const fs::path& dir) {
@@ -1111,6 +1132,11 @@ void editor::Exporter::startExport(Project* proj, const ExportConfig& cfg) {
         this->producedExecutable.clear();
     }
     resetResult();
+    if (!prepareBuildProfile()) {
+        std::lock_guard<std::mutex> lock(progressMutex);
+        progress.finished = true;
+        return;
+    }
 
     // the export reads the open scenes and prefabs while the frames go on: the holes of
     // destroyed entities are closed before it starts (ComponentArray; an index read on the
@@ -1143,6 +1169,7 @@ bool editor::Exporter::exportProject(Project* proj, const ExportConfig& cfg) {
         this->producedExecutable.clear();
     }
     resetResult();
+    if (!prepareBuildProfile()) return false;
 
     runExport();
 
@@ -1150,10 +1177,114 @@ bool editor::Exporter::exportProject(Project* proj, const ExportConfig& cfg) {
     return progress.finished && !progress.failed;
 }
 
+bool editor::Exporter::prepareBuildProfile() {
+    settingsHolder.reset();
+    settings = project;
+    buildProfile.reset();
+    profileWarnings.clear();
+    contentFilter = BuildContentFilter();
+    profileListedScenes.clear();
+    shippedScenes.clear();
+    if (!project || config.buildProfile.empty()) return true;
+    BuildProfile loaded;
+    std::string error;
+    if (!buildprofiles::load(project->getProjectPath(), config.buildProfile, loaded, error)) {
+        setError(error);
+        return false;
+    }
+    std::vector<BuildWarning> warnings;
+    settingsHolder = resolveBuildSettings(*project, &loaded, warnings, error);
+    if (!settingsHolder) {
+        setError(error);
+        return false;
+    }
+    settings = settingsHolder.get();
+    profileWarnings = warnings;
+    contentFilter = BuildContentFilter(&loaded, labelledAssetPaths(*project));
+    buildProfile = std::make_shared<const BuildProfile>(std::move(loaded));
+    return true;
+}
+
+std::string editor::Exporter::projectRelativeForFilter(const fs::path& absolute) const {
+    std::error_code ec;
+    const fs::path root = fs::weakly_canonical(project->getProjectPath(), ec).lexically_normal();
+    const fs::path where = fs::weakly_canonical(absolute, ec).lexically_normal();
+    const fs::path rel = where.lexically_relative(root);
+    if (rel.empty() || *rel.begin() == "..") return std::string();
+    return FileUtils::pathToGenericUtf8(rel);
+}
+
+std::string editor::Exporter::filterPrefixOf(const fs::path& folder) const {
+    const std::string prefix = projectRelativeForFilter(folder);
+    return prefix.empty() || prefix == "." ? std::string() : prefix + "/";
+}
+
+std::string editor::Exporter::excludedReference() const {
+    if (contentFilter.empty()) return std::string();
+    const AssetDatabase& database = project->getAssetDatabase();
+    const AssetIndex& index = project->getAssetIndex();
+    auto describe = [&](const Guid& guid) {
+        const std::string path = FileUtils::pathToGenericUtf8(database.getPath(guid));
+        if (path.size() > 6 && path.compare(path.size() - 6, 6, ".scene") == 0) return "Scene " + fs::path(path).stem().string();
+        return path;
+    };
+    std::set<Guid> visited;
+    std::vector<std::pair<Guid, std::string>> queue;   // an asset and the shipped scene it is reached from
+    for (const SceneProject& scene : project->getScenes()) {
+        if (scene.filepath.empty() || !shipsScene(scene.id)) continue;
+        const Guid guid = database.getAssetGuid(scene.filepath);
+        std::string why;
+        if (contentFilter.excludes(FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(scene.filepath)), &why))
+            return "Scene " + scene.name + " ships and Build Profile '" + contentFilter.profileName() + "' excludes it (" + why + ")";
+        if (!guid.isNull() && visited.insert(guid).second) queue.push_back({guid, "Scene " + scene.name});
+    }
+    for (size_t i = 0; i < queue.size(); i++) {
+        const auto [referrer, root] = queue[i];
+        for (const DepEdge& edge : index.dependenciesOf(referrer, 1)) {
+            std::string path = edge.targetPath;
+            if (!edge.target.isNull()) {
+                const fs::path resolved = database.getPath(edge.target);
+                if (!resolved.empty()) path = FileUtils::pathToGenericUtf8(resolved);
+            }
+            if (path.empty()) continue;
+            std::string why;
+            if (contentFilter.excludes(path, &why)) {
+                const std::string user = describe(referrer);
+                return (user == root ? user : user + " (shipped with " + root + ")") + " uses " + path + ", which Build Profile '" +
+                       contentFilter.profileName() + "' excludes (" + why + ")";
+            }
+            // what a shipped prefab, material, UI document or Sound Event uses ships too
+            if (!edge.target.isNull() && visited.insert(edge.target).second) queue.push_back({edge.target, root});
+        }
+    }
+    return std::string();
+}
+
+void editor::Exporter::warnExcludedLuaRequires(const fs::path& luaRoot) {
+    if (contentFilter.empty()) return;
+    // a literal require("a.b") or require "a.b" (a computed one cannot be seen, S34's caveat)
+    static const std::regex literalRequire(R"(require\s*\(?\s*["']([A-Za-z0-9_./-]+)["'])");
+    for (const fs::path& relative : luaExportedPaths) {
+        std::ifstream file(getExportProjectRoot() / "lua" / relative, std::ios::binary);
+        const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        for (std::sregex_iterator it(text.begin(), text.end(), literalRequire), end; it != end; ++it) {
+            std::string module = (*it)[1].str();
+            std::replace(module.begin(), module.end(), '.', '/');
+            const std::string target = projectRelativeForFilter(luaRoot / FileUtils::pathFromUtf8(module + ".lua"));
+            std::string why;
+            if (!target.empty() && contentFilter.excludes(target, &why))
+                warn("W-PROFILE-LUA-REQUIRE", FileUtils::pathToGenericUtf8(relative) + " requires \"" + (*it)[1].str() + "\" (" + target +
+                                              "), which Build Profile '" + contentFilter.profileName() + "' excludes (" + why + ")");
+        }
+    }
+}
+
 bool editor::Exporter::generateShaders(const ExportConfig& cfg) {
     waitForExport();
 
     this->project = nullptr;
+    this->settings = nullptr;
+    this->settingsHolder.reset();
     this->config = cfg;
     cancelRequested.store(false);
     {
@@ -1200,16 +1331,16 @@ void editor::Exporter::runExport() {
             BuildMethod saved = BuildMethod::Auto;
             if (parseBuildMethod(project->getBuildMethod(), saved)) config.method = saved;
         }
-        config.packNativeResources = config.packNativeResources || project->isPackContent();
+        config.packNativeResources = config.packNativeResources || settings->isPackContent();
         runPlayerBuild();
         return;
     }
     const bool shaderGenerationOnly = (project == nullptr);
     if (project && config.mode == ExportMode::Web)
-        config.webMultithreaded = config.webMultithreaded || project->getThreadingSettings().webMultithreaded;
+        config.webMultithreaded = config.webMultithreaded || settings->getThreadingSettings().webMultithreaded;
     // Build Settings > Development Build, whichever front end exports
     if (project)
-        config.developmentBuild = config.developmentBuild || project->isDevelopmentBuild();
+        config.developmentBuild = config.developmentBuild || settings->isDevelopmentBuild();
     const bool buildMode = !shaderGenerationOnly && config.mode != ExportMode::SourceCode;
 
     // The scene sources describe the FBX imports that ship, so none may change mid-export
@@ -1486,10 +1617,10 @@ std::vector<std::string> editor::Exporter::compiledModules() const {
     // what Project Settings allow (the HTML UI, its video, the sound layer and Terrain Worlds have no
     // switch of their own)
     std::vector<std::string> modules = {"htmlui", "video", "soundlayer", "voxel", "terrainworld", "terrainedit", "titleart"};
-    if (project->isRuntimeShadersEnabled()) modules.push_back("runtimeshaders");
+    if (settings->isRuntimeShadersEnabled()) modules.push_back("runtimeshaders");
     if (project->isPhysics3DEnabled()) modules.push_back("physics3d");
     if (project->isPhysics2DEnabled()) modules.push_back("physics2d");
-    if (project->getNavigationSettings().includeInBuilds) modules.push_back("navigation");
+    if (settings->getNavigationSettings().includeInBuilds) modules.push_back("navigation");
     modules.push_back("noise");
     // of them, those the project reaches (a source export: all of them)
     if (moduleUsageKnown)
@@ -1515,10 +1646,10 @@ fs::path editor::Exporter::getSharedBuildCacheDir() const {
         + "\ncxx" + std::to_string(project->getCxxStandard())
         + "\nphysics2d " + (project->isPhysics2DEnabled() ? "1" : "0")
         + "\nphysics3d " + (project->isPhysics3DEnabled() ? "1" : "0")
-        + "\nnavigation " + (project->getNavigationSettings().includeInBuilds ? "1" : "0")
-        + "\nruntime shaders " + (project->isRuntimeShadersEnabled() ? "1" : "0")
-        + "\ncrash handler " + (project->getPlayerCrash().enabled ? "1" : "0")
-        + "\nhang watchdog " + (project->getPlayerCrash().hangWatchdog ? "1" : "0");
+        + "\nnavigation " + (settings->getNavigationSettings().includeInBuilds ? "1" : "0")
+        + "\nruntime shaders " + (settings->isRuntimeShadersEnabled() ? "1" : "0")
+        + "\ncrash handler " + (settings->getPlayerCrash().enabled ? "1" : "0")
+        + "\nhang watchdog " + (settings->getPlayerCrash().hangWatchdog ? "1" : "0");
     if (config.mode == ExportMode::Desktop) {
         const std::string platform = Generator::getGeneratorPlatform(config.cmakeGenerator);
         if (!platform.empty()) key += "\n" + platform;
@@ -2522,13 +2653,47 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 warn("W-SCENE-NOT-SAVED", "Scene '" + name + "' has never been saved; it ships as it is in the editor. Save it to keep it.");
             }
 
+            // Build Profiles R4: the profile's Scene List (a scene of the project's), then the scenes
+            // each involves; every scene of the project without a list
+            profileListedScenes.clear();
+            shippedScenes.clear();
+            if (imported && buildProfile && buildProfile->scenes) {
+                for (const BuildProfileScene& listed : *buildProfile->scenes) {
+                    const Guid wanted = Guid::parse(listed.guid);
+                    uint32_t found = 0;
+                    for (const SceneProject& scene : scenes)
+                        if (!scene.filepath.empty() && project->getAssetDatabase().getAssetGuid(scene.filepath) == wanted) found = scene.id;
+                    if (!found) {
+                        importError = "Build Profile '" + buildProfile->name + "': scene " + (listed.path.empty() ? listed.guid : listed.path) +
+                                      " is not a scene of the project (Scenes In Build): add it there or remove it from the Scene List";
+                        imported = false;
+                        break;
+                    }
+                    profileListedScenes.push_back(found);
+                }
+                for (uint32_t id : profileListedScenes) {
+                    std::vector<uint32_t> involved;
+                    project->collectInvolvedScenesForExport(id, involved);
+                    shippedScenes.insert(involved.begin(), involved.end());
+                }
+            }
+            // R12: nothing a shipped scene uses is excluded (a game would miss it at runtime)
+            if (imported && !contentFilter.empty()) {
+                project->getAssetIndex().waitUntilReady();
+                const std::string excluded = excludedReference();
+                if (!excluded.empty()) {
+                    importError = excluded;
+                    imported = false;
+                }
+            }
+
             // S30: a prebuilt player's cooked scenes and prefabs, from the scenes as they are
             // loaded now (the same GameObjects the generated sources describe)
             cookedFiles.clear();
             cookedPrefabs.clear();
             if (imported && config.mode == ExportMode::Player) {
                 std::string cookError;
-                if (!cook::SceneCooker::cookProject(project, cookedFiles, cookedPrefabs, cookError)) {
+                if (!cook::SceneCooker::cookProject(project, cookedFiles, cookedPrefabs, cookError, shippedScenes.empty() ? nullptr : &shippedScenes)) {
                     importError = "Cooking the scenes: " + cookError;
                     imported = false;
                 }
@@ -2537,7 +2702,7 @@ bool editor::Exporter::loadAndSaveAllScenes() {
             // The UI Documents the build ships, checked by checkHtmlUIReferences()
             htmlUIDocuments.clear();
             for (const auto& sceneProject : scenes) {
-                if (sceneProject.filepath.empty() || !sceneProject.scene) {
+                if (sceneProject.filepath.empty() || !sceneProject.scene || !shipsScene(sceneProject.id)) {
                     continue;
                 }
                 auto documents = sceneProject.scene->getComponentArray<UIDocumentComponent>();
@@ -2585,7 +2750,7 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 std::set<Guid> owners;
                 std::vector<Guid> queue;
                 for (const auto& sceneProject : scenes) {
-                    if (sceneProject.filepath.empty()) continue;
+                    if (sceneProject.filepath.empty() || !shipsScene(sceneProject.id)) continue;
                     const Guid guid = project->getAssetDatabase().getAssetGuid(sceneProject.filepath);
                     if (!guid.isNull() && owners.insert(guid).second) queue.push_back(guid);
                 }
@@ -2618,7 +2783,19 @@ bool editor::Exporter::loadAndSaveAllScenes() {
             voxelKeptGenerators.clear();
             voxelTerrainBases.clear();
             if (imported) {
-                const ModuleScan shipped = ModuleUsageDetector::collect(project);
+                ModuleScan shipped = ModuleUsageDetector::collect(project);
+                // S34 reads what a Build Profile ships: its scenes, and the scripts and documents it keeps
+                if (buildProfile) {
+                    std::set<std::string> leftOutScenes;
+                    for (const SceneProject& scene : scenes)
+                        if (!shipsScene(scene.id)) leftOutScenes.insert("scene " + scene.name);
+                    auto excluded = [this](const ModuleSource& source) { return contentFilter.excludes(source.path); };
+                    shipped.luaScripts.erase(std::remove_if(shipped.luaScripts.begin(), shipped.luaScripts.end(), excluded), shipped.luaScripts.end());
+                    shipped.documents.erase(std::remove_if(shipped.documents.begin(), shipped.documents.end(), excluded), shipped.documents.end());
+                    shipped.contents.erase(std::remove_if(shipped.contents.begin(), shipped.contents.end(),
+                                                          [&](const ModuleContent& content) { return leftOutScenes.count(content.label) > 0; }),
+                                           shipped.contents.end());
+                }
                 // T6 R78: which volumes the asset cook leaves a generator in, and the ground a volume
                 // attached to a Terrain is cooked over, taken while its scene is loaded
                 voxelKeptGenerators = cook::voxelVolumesGeneratedAtRuntime(shipped);
@@ -2865,6 +3042,19 @@ bool editor::Exporter::copyGenerated() {
             }
         }
 
+        // Build Profiles R17: the profile and its defines, as game.json gives them to a prebuilt player
+        if (buildProfile) {
+            const std::string initStart = "JASPERENGINE_INIT void init() {\n";
+            const size_t init = content.find(initStart);
+            if (init == std::string::npos) {
+                setError("The generated main.cpp has no init() for Build Profile '" + buildProfile->name + "'");
+                return false;
+            }
+            std::string defines;
+            for (const std::string& define : buildProfile->defines) defines += (defines.empty() ? "" : ", ") + Factory::formatString(define);
+            content.insert(init + initStart.size(), "    System::setBuildInfo(" + Factory::formatString(buildProfile->name) + ", {" + defines + "});\n");
+        }
+
         // Update start scene if user selected one
         if (config.startSceneId != 0) {
             std::string startSceneName;
@@ -3014,7 +3204,7 @@ bool editor::Exporter::writeTitleArtRuntime() {
     bool settingsFailed = false;
     const fs::path assetsDst = getExportProjectRoot() / "assets";
     const std::vector<std::string> platforms = exportPlatformNames();
-    const std::vector<TextureFamily> families = TextureCookQueue::familiesForExport(platforms, project->getTextureSettings().androidEtc2Fallback);
+    const std::vector<TextureFamily> families = TextureCookQueue::familiesForExport(platforms, settings->getTextureSettings().androidEtc2Fallback);
     TitleArtExportPlan plan;
     // on the main thread, asked again on later frames while a prebake meets a program the frames
     // are still building (S80 Deviation 61); the deadline only guards against a hang
@@ -3340,7 +3530,7 @@ bool editor::Exporter::cookTextures() {
     // a source export builds for every platform, so it carries every family (R9)
     const std::vector<std::string> platforms = exportPlatformNames();
     const std::vector<TextureFamily> families =
-        TextureCookQueue::familiesForExport(platforms, project->getTextureSettings().androidEtc2Fallback);
+        TextureCookQueue::familiesForExport(platforms, settings->getTextureSettings().androidEtc2Fallback);
 
     // the settings and references of every texture source come from the main thread
     std::map<std::string, TextureCookInputs> inputs;
@@ -3360,6 +3550,11 @@ bool editor::Exporter::cookTextures() {
     }
     // S87 R25: a Title Art language the build leaves out is not cooked
     for (const std::string& dropped : titleLanguages.droppedFiles) inputs.erase(dropped);
+    // nor what a Build Profile excludes (R10, R11)
+    if (!contentFilter.empty()) {
+        const std::string prefix = filterPrefixOf(getAssetsSourceDir());
+        for (auto it = inputs.begin(); it != inputs.end();) it = contentFilter.excludes(prefix + it->first) ? inputs.erase(it) : std::next(it);
+    }
     // S45: the export family's atlases cook under their je-imported/ path (R16: lossless pages as
     // S14 quality none, RGBA8 + Zstandard; the others as the project's sprites); a packed texture
     // only sprites read is not cooked
@@ -3449,7 +3644,7 @@ bool editor::Exporter::writeAudioCredits() {
     if (!licence.empty()) warn("W-AUDIO-LICENCE", licence);
     const std::string placeholder = AudioCredits::placeholderWarning(report);
     if (!placeholder.empty()) warn("W-AUDIO-PLACEHOLDER", placeholder);
-    if (report.empty() || !project->getAudioSettings().creditsFile) return true;
+    if (report.empty() || !settings->getAudioSettings().creditsFile) return true;
     const io::WriteResult written = io::writeFileAtomic(file, AudioCredits::render(report, project->getName()));
     if (!written.ok()) {
         setError("The audio credits: " + written.message);
@@ -3491,6 +3686,13 @@ bool editor::Exporter::cookModels() {
     if (!gatheredFuture.get()) {
         setError("Model cook failed: " + gatherError);
         return false;
+    }
+    // what a Build Profile excludes is not cooked (R10, R11)
+    if (!contentFilter.empty()) {
+        const std::string prefix = filterPrefixOf(getAssetsSourceDir());
+        inputs.items.erase(std::remove_if(inputs.items.begin(), inputs.items.end(),
+                                          [&](const ModelBatchItem& item) { return contentFilter.excludes(prefix + item.assetPath); }),
+                           inputs.items.end());
     }
     // before the cook, which would read such an asset as a model and fail on it instead
     for (const ModelBatchItem& item : inputs.items) {
@@ -3547,6 +3749,7 @@ bool editor::Exporter::writeBuildReport(const fs::path& outputDir, const std::st
     buildReport.platform = config.mode == ExportMode::Player ? buildPlatformName(config.platform)
                          : config.mode == ExportMode::Web ? "web" : config.mode == ExportMode::Desktop ? "desktop" : "source";
     buildReport.method = method;
+    buildReport.buildProfile = buildProfile ? buildProfile->name : std::string();
     const fs::path file = outputDir / BuildReport::kFileName;
     std::string error;
     if (!buildReport.write(file, error)) {
@@ -3672,6 +3875,7 @@ bool editor::Exporter::copyAssets() {
         return false;
     }
     const fs::path nativePluginsRoot = NativePlugins::root(project->getProjectPath()).lexically_normal();
+    const std::string filterPrefix = contentFilter.empty() ? std::string() : filterPrefixOf(assetsSrc);
 
     // References are relative to this directory, so its contents become the export root, linked
     // folders included, at the paths the editor reaches them by
@@ -3687,6 +3891,12 @@ bool editor::Exporter::copyAssets() {
         std::string firstComponent = relPath.begin()->string();
         if (!firstComponent.empty() && Project::isNonAssetTopLevelDir(firstComponent)) {
             return TreeStep::Skip;
+        }
+
+        // Build Profiles R10, R11: what the profile excludes is neither copied nor packed
+        if (!contentFilter.empty() && contentFilter.excludes(filterPrefix + relPath.generic_string())) {
+            if (isDirectory) return TreeStep::Skip;
+            return removeStale(assetsDst / relPath) ? TreeStep::Enter : stop();
         }
 
         // The engine loads a "resources.pak" at the asset root, so the name is reserved.
@@ -3834,7 +4044,7 @@ bool editor::Exporter::copyAssets() {
             voxelOptions.keepGenerator = voxelKeptGenerators.count(relPath.generic_string()) > 0;
             const auto terrainBase = voxelTerrainBases.find(relPath.generic_string());
             if (terrainBase != voxelTerrainBases.end()) voxelOptions.terrainBase = terrainBase->second;
-            voxelOptions.settings = project->getVoxelSettings();
+            voxelOptions.settings = settings->getVoxelSettings();
             voxelOptions.hasTarget = config.mode != ExportMode::SourceCode;
             voxelOptions.target = config.mode == ExportMode::Player ? config.platform
                                 : config.mode == ExportMode::Web ? BuildPlatform::Web : hostBuildPlatform();
@@ -4008,7 +4218,7 @@ bool editor::Exporter::copyPngWithoutEditorChunks(const fs::path& source, const 
 bool editor::Exporter::copyCustomShaderSources() {
     // Without runtime compilation a game still reads the manifests of its forks (parameter
     // defaults, textures, render state) from their entry points: those ship, includes do not
-    const bool runtimeShaders = project->isRuntimeShadersEnabled();
+    const bool runtimeShaders = settings->isRuntimeShadersEnabled();
 
     setProgress("Copying shader sources...", 0.38f);
 
@@ -4083,11 +4293,14 @@ bool editor::Exporter::copyLua() {
     // same path; Android merges both trees into one and fails the build on duplicates.
     const bool luaRootIsAssetsRoot = (luaSrc == getAssetsSourceDir());
 
+    const std::string filterPrefix = contentFilter.empty() ? std::string() : filterPrefixOf(luaSrc);
     bool failed = false;
     walkTree(luaSrc, [&](const fs::directory_entry& entry, const fs::path& relPath, bool isDirectory, const fs::path& real) {
         // Skip hidden directories (starting with '.') and build directories
         std::string firstComponent = relPath.begin()->string();
         if (!firstComponent.empty() && Project::isNonAssetTopLevelDir(firstComponent)) return TreeStep::Skip;
+        // Build Profiles R11: an excluded folder's Lua stays out too
+        if (!contentFilter.empty() && contentFilter.excludes(filterPrefix + relPath.generic_string())) return TreeStep::Skip;
         if (isDirectory) return TreeStep::Enter;
 
         // Skip project support files that should not ship in the Lua directory, and metas (S04)
@@ -4117,6 +4330,7 @@ bool editor::Exporter::copyLua() {
         setError("Failed to list the Lua scripts: cannot read the folder " + FileUtils::pathToGenericUtf8(treeListFailure) + ": " + ec.message());
         return false;
     }
+    warnExcludedLuaRequires(luaSrc);
     return true;
 }
 
@@ -4550,7 +4764,7 @@ bool editor::Exporter::copyEngine() {
             const std::map<std::string, std::string> sorted(manifests.begin(), manifests.end());
             if (!writeOrFail(dst / "shaderlib_manifests.h", ShaderHeaderBuilder::buildShaderLibHeader(sorted, "shaderlib_manifests"))) return false;
         }
-        if (project->isRuntimeShadersEnabled()) {
+        if (settings->isRuntimeShadersEnabled()) {
             const auto& library = ShaderVariantCompiler::getLibrarySources();
             const std::map<std::string, std::string> sorted(library.begin(), library.end());
             if (!writeOrFail(dst / "shaderlib.h", ShaderHeaderBuilder::buildShaderLibHeader(sorted))) return false;
@@ -4601,7 +4815,7 @@ bool editor::Exporter::copyEngine() {
     // so JASPERENGINE_WINDOW_ICON is only switched on when the files exist. A bad
     // icon degrades to an iconless export (warned), never a failed one.
     bool iconGenerated = false;
-    if (!project->getWindowIcon().empty()) {
+    if (!settings->getWindowIcon().empty()) {
         iconGenerated = writeAppIcon();
     }
     if (!iconGenerated) {
@@ -4617,7 +4831,7 @@ bool editor::Exporter::copyEngine() {
     const std::string projectSettingsMarker = "# @JASPERENGINE_PROJECT_SETTINGS@";
     const size_t projectSettingsPos = cmakeContent.find(projectSettingsMarker);
     if (projectSettingsPos != std::string::npos) {
-        const WindowSettings window = project->getWindowSettings();
+        const WindowSettings window = settings->getWindowSettings();
 
         // The title becomes a C string literal through the engine's compile definitions: carried
         // as escaped bytes (util/CMakeText.h), so any character in any language builds.
@@ -4628,14 +4842,14 @@ bool editor::Exporter::copyEngine() {
         // match the surrounding standalone setup block (4 spaces).
         const std::string indent = "\n    ";
         std::string projectSettings = std::string("set(JASPERENGINE_VSYNC_ENABLED ")
-            + (project->isVSyncEnabled() ? "ON" : "OFF") + ")";
+            + (settings->isVSyncEnabled() ? "ON" : "OFF") + ")";
         projectSettings += indent + "set(JASPERENGINE_WINDOW_WIDTH " + std::to_string(window.width) + ")";
         projectSettings += indent + "set(JASPERENGINE_WINDOW_HEIGHT " + std::to_string(window.height) + ")";
         projectSettings += indent + "set(JASPERENGINE_WINDOW_MODE " + std::to_string(static_cast<int>(window.mode)) + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_WINDOW_RESIZABLE ") + (window.resizable ? "ON" : "OFF") + ")";
         projectSettings += indent + "set(JASPERENGINE_WINDOW_TITLE \"" + cmakeTitle + "\")";
         // Web saves use the identifier, unless it is the default every project shares
-        const std::string identifier = project->getApplicationIdentifier();
+        const std::string identifier = settings->getApplicationIdentifier();
         const std::string storageId = (identifier != ApplicationSettings{}.identifier) ? identifier : project->getName();
         projectSettings += indent + "set(JASPERENGINE_STORAGE_ID \"" + toStorageId(storageId) + "\")";
         // Desktop saves (data://) go to a per-user folder named after it (System::getUserDataPath)
@@ -4675,12 +4889,12 @@ bool editor::Exporter::copyEngine() {
             projectSettings += indent + "set(JASPERENGINE_DEVELOPMENT_BUILD ON)";
         }
         // Player > Logging
-        const PlayerLoggingSettings& logging = project->getPlayerLogging();
+        const PlayerLoggingSettings& logging = settings->getPlayerLogging();
         projectSettings += indent + "set(JASPERENGINE_LOG_LEVEL \"" + logging.level + "\")";
         projectSettings += indent + std::string("set(JASPERENGINE_LOG_FILE ") + (logging.fileLog ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_LOG_BACKTRACE ") + (logging.backtrace ? "ON" : "OFF") + ")";
         // Player > Crash Handling
-        const PlayerCrashSettings& crash = project->getPlayerCrash();
+        const PlayerCrashSettings& crash = settings->getPlayerCrash();
         projectSettings += indent + std::string("set(JASPERENGINE_CRASH_HANDLER ") + (crash.enabled ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_CRASH_LOG_TAIL ") + (crash.includeLogTail ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_CRASH_DUMP_WITH_HEAP ") + (crash.dumpWithHeap ? "ON" : "OFF") + ")";
@@ -4689,7 +4903,7 @@ bool editor::Exporter::copyEngine() {
         projectSettings += indent + std::string("set(JASPERENGINE_CRASH_WEB_OVERLAY ") + (crash.webCrashOverlay ? "ON" : "OFF") + ")";
         // App Transport Security of a bare macOS executable (Ninja/Makefile builds have no bundle)
         projectSettings += indent + std::string("set(JASPERENGINE_ALLOW_INSECURE_HTTP ") +
-                           (project->getApplicationSettings().allowInsecureHttp ? "ON" : "OFF") + ")";
+                           (settings->getApplicationSettings().allowInsecureHttp ? "ON" : "OFF") + ")";
         cmakeContent.replace(projectSettingsPos, projectSettingsMarker.size(), projectSettings);
     } else {
         Out::warning("Exported CMakeLists.txt is missing the project settings marker; using platform defaults");
@@ -4746,8 +4960,8 @@ bool editor::Exporter::writeExportSettingsScript(std::string& cmakeContent) {
         while (value.find("]" + equals + "]") != std::string::npos) equals += "=";
         return "[" + equals + "[" + value + "]" + equals + "]";
     };
-    const WebProjectSettings& web = project->getWebProjectSettings();
-    const LinuxProjectSettings& linuxSettings = project->getLinuxProjectSettings();
+    const WebProjectSettings& web = settings->getWebProjectSettings();
+    const LinuxProjectSettings& linuxSettings = settings->getLinuxProjectSettings();
     const fs::path settingsDir = getExportProjectRoot() / "export-settings";
     std::error_code ec;
     fs::create_directories(settingsDir, ec);
@@ -4765,12 +4979,12 @@ bool editor::Exporter::writeExportSettingsScript(std::string& cmakeContent) {
     auto value = [&](const char* name, const std::string& text) {
         script += "set(" + std::string(name) + " " + literal(text) + ")\n";
     };
-    value("title", escapeXmlAttribute(project->getApplicationName(web.applicationName)));
+    value("title", escapeXmlAttribute(settings->getApplicationName(web.applicationName)));
     value("head", web.headInclude);
     value("resize", web.resizeCanvasToWindow ? "ON" : "OFF");
     value("hide_ui", web.hideEmscriptenUI ? "ON" : "OFF");
     value("viewport_cover", web.viewportFitCover ? "ON" : "OFF");
-    value("name", stripDesktopEntryControlChars(project->getApplicationName(linuxSettings.applicationName)));
+    value("name", stripDesktopEntryControlChars(settings->getApplicationName(linuxSettings.applicationName)));
     value("comment", stripDesktopEntryControlChars(linuxSettings.comment));
     value("categories", stripDesktopEntryControlChars(linuxSettings.categories));
     // native plugins (web): the JasperNative stub first (plugin scripts register before the
@@ -4886,9 +5100,9 @@ endif()
     // CMake and the hand-maintained Xcode project must use the same IDs.
     replaceAll(cmakeContent, "set(APP_BUNDLE_IDENTIFIER \"com.jaspergameengine.jasperengine\")",
         "if(CMAKE_SYSTEM_NAME STREQUAL \"iOS\")\nset(APP_BUNDLE_IDENTIFIER "
-        + literal(project->getApplicationIdentifier(project->getIOSProjectSettings().bundleIdentifier))
+        + literal(settings->getApplicationIdentifier(settings->getIOSProjectSettings().bundleIdentifier))
         + ")\nelse()\nset(APP_BUNDLE_IDENTIFIER "
-        + literal(project->getApplicationIdentifier(project->getMacOSProjectSettings().bundleIdentifier)) + ")\nendif()");
+        + literal(settings->getApplicationIdentifier(settings->getMacOSProjectSettings().bundleIdentifier)) + ")\nendif()");
     replaceAll(cmakeContent, "MACOSX_BUNDLE_INFO_PLIST \"${JASPERENGINE_ROOT}/workspaces/xcode/macos/Info.plist\"",
         "MACOSX_BUNDLE_INFO_PLIST \"${JASPERENGINE_ROOT}/workspaces/xcode/macos/Info.plist\"\n"
         "                XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER ${APP_BUNDLE_IDENTIFIER}");
@@ -4928,7 +5142,7 @@ std::string editor::Exporter::buildScriptDirIncludes() const {
 
     // macOS CMake builds: the Objective-C native plugins
     std::string nativePlugins = NativePlugins::macosCMake(NativePlugins::scan(getExportProjectRoot()), "${APP_NAME}", "${PROJECT_ROOT}/plugins/native",
-                                                          project->getMacOSProjectSettings().frameworks, "${JASPERENGINE_ROOT}/platform/apple");
+                                                          settings->getMacOSProjectSettings().frameworks, "${JASPERENGINE_ROOT}/platform/apple");
     if (dirs.empty()) {
         return nativePlugins;
     }
@@ -5044,7 +5258,7 @@ std::string editor::Exporter::videoUrlScene() const {
 }
 
 bool editor::Exporter::writeAndroidProjectSettings() {
-    const AndroidProjectSettings& android = project->getAndroidProjectSettings();
+    const AndroidProjectSettings& android = settings->getAndroidProjectSettings();
     if (!android.abiArmeabiV7a && !android.abiArm64V8a && !android.abiX86 && !android.abiX86_64) {
         setError("Android export needs at least one selected architecture");
         return false;
@@ -5070,7 +5284,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     const fs::path adaptiveIconDir = androidAppDir / "src" / "main" / "res" / "mipmap-anydpi-v26";
     const fs::path mainActivityPath = config.targetDir / "platform" / "android" / "java" / "com" / "jaspergameengine" / "jasperengine" / "MainActivity.java";
 
-    const std::string appName = project->getApplicationName(android.applicationName);
+    const std::string appName = settings->getApplicationName(android.applicationName);
 
     std::string gradle;
     if (!readText(buildGradlePath, gradle)) return false;
@@ -5088,12 +5302,12 @@ bool editor::Exporter::writeAndroidProjectSettings() {
 
     replaceAll(gradle, "compileSdk 36", "compileSdk " + std::to_string(android.targetSdk));
     replaceAll(gradle, "applicationId \"com.yourcompany.project\"",
-        "applicationId \"" + escapeGradleString(project->getApplicationIdentifier(android.packageName)) + "\"");
+        "applicationId \"" + escapeGradleString(settings->getApplicationIdentifier(android.packageName)) + "\"");
     replaceAll(gradle, "minSdkVersion 21", "minSdkVersion " + std::to_string(android.minSdk));
     replaceAll(gradle, "targetSdkVersion 36", "targetSdkVersion " + std::to_string(android.targetSdk));
-    replaceAll(gradle, "versionCode 1", "versionCode " + std::to_string(project->getApplicationVersionCode(android.versionCode)));
+    replaceAll(gradle, "versionCode 1", "versionCode " + std::to_string(settings->getApplicationVersionCode(android.versionCode)));
     replaceAll(gradle, "versionName \"1.0\"",
-        "versionName \"" + escapeGradleString(project->getApplicationVersion(android.versionName)) + "\"");
+        "versionName \"" + escapeGradleString(settings->getApplicationVersion(android.versionName)) + "\"");
 
     std::vector<std::string> abis;
     if (android.abiArm64V8a) abis.push_back("\"arm64-v8a\"");
@@ -5251,7 +5465,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     // Player > Resolution and Presentation: the default orientation, or auto-rotation within the
     // allowed ones (the user's rotation lock kept); scripts change it with Screen.orientation
     {
-        const PresentationSettings& presentation = project->getPresentationSettings();
+        const PresentationSettings& presentation = settings->getPresentationSettings();
         bool unsupported = false;
         const int requested = PlatformRules::androidRequestedOrientation(presentation.defaultOrientation,
             presentation.effectiveAllowedOrientations(), &unsupported);
@@ -5273,7 +5487,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     manifest += "    <uses-feature android:glEsVersion=\"0x00030000\" android:required=\"true\" />\n";
     // the mobile family's ASTC (S14 R11); with the ETC2 fallback devices without it load
     // android_etc2 instead, so the store filters none out
-    if (!project->getTextureSettings().androidEtc2Fallback) {
+    if (!settings->getTextureSettings().androidEtc2Fallback) {
         manifest += "    <supports-gl-texture android:name=\"GL_KHR_texture_compression_astc_ldr\" />\n";
     }
     manifest += "\n";
@@ -5283,7 +5497,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     // The cleartext policy Http enforces itself (player.allow_insecure_http), declared to Android
     // too: localhost / 127.0.0.1 always, other hosts only when insecure HTTP is allowed
     {
-        const bool cleartext = project->getApplicationSettings().allowInsecureHttp;
+        const bool cleartext = settings->getApplicationSettings().allowInsecureHttp;
         std::string config;
         config += "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
         config += "<!-- Written by the export from Project Settings > Player > Allow Insecure HTTP -->\n";
@@ -5417,28 +5631,28 @@ bool editor::Exporter::writeAppleProjectSettings() {
         return true;
     };
 
-    const MacOSProjectSettings& macOS = project->getMacOSProjectSettings();
+    const MacOSProjectSettings& macOS = settings->getMacOSProjectSettings();
     std::string macOSPlist;
     if (!readText(macOSPlistPath, macOSPlist)) {
         return false;
     }
     if (!macOSPlist.empty()) {
-        const std::string appName = project->getApplicationName(macOS.applicationName);
+        const std::string appName = settings->getApplicationName(macOS.applicationName);
         replacePlistStringValue(macOSPlist, "CFBundleName", appName);
         replacePlistStringValue(macOSPlist, "CFBundleDisplayName", appName);
-        replacePlistStringValue(macOSPlist, "CFBundleIdentifier", project->getApplicationIdentifier(macOS.bundleIdentifier));
+        replacePlistStringValue(macOSPlist, "CFBundleIdentifier", settings->getApplicationIdentifier(macOS.bundleIdentifier));
         replacePlistStringValue(macOSPlist, "CFBundleShortVersionString",
-            Project::toAppleVersion(project->getApplicationVersion(macOS.versionName)));
+            Project::toAppleVersion(settings->getApplicationVersion(macOS.versionName)));
         replacePlistStringValue(macOSPlist, "CFBundleVersion",
-            Project::toAppleVersion(project->getApplicationBuild(macOS.buildNumber)));
+            Project::toAppleVersion(settings->getApplicationBuild(macOS.buildNumber)));
         replacePlistBoolValue(macOSPlist, "NSHighResolutionCapable", macOS.highDpi);
         // Project Settings > Native Plugins > macOS (macos.plist_entries)
         writeNativePlistEntries(macOSPlist, macOS.plistEntries, std::string());
-        writeAppTransportSecurity(macOSPlist, project->getApplicationSettings().allowInsecureHttp);
+        writeAppTransportSecurity(macOSPlist, settings->getApplicationSettings().allowInsecureHttp);
         if (!writeOrFail(macOSPlistPath, macOSPlist)) return false;
     }
 
-    const IOSProjectSettings& ios = project->getIOSProjectSettings();
+    const IOSProjectSettings& ios = settings->getIOSProjectSettings();
     // Keep signing/build settings consistent with the generated Info.plist.
     const fs::path projectFile = xcodeDir / "JasperEngine.xcodeproj" / "project.pbxproj";
     std::string xcodeProject;
@@ -5573,7 +5787,7 @@ bool editor::Exporter::writeAppleProjectSettings() {
 
     // Without runtime shader compilation the engine compiles without the compiler
     // (ShaderVariantCompiler reports it unavailable) and does not link it
-    if (!project->isRuntimeShadersEnabled()) {
+    if (!settings->isRuntimeShadersEnabled()) {
         removeProjectLinesContaining("JASPERENGINE_RUNTIME_SHADERS,");
         if (!unlinkBackend("shadercompiler")) return false;
     }
@@ -5585,7 +5799,7 @@ bool editor::Exporter::writeAppleProjectSettings() {
 
     // Navigation off (Project Settings > Navigation > Include in Builds): Recast/Detour and the
     // engine's Detour glue stay out, and the engine compiles its navmesh stubs (S19 R42)
-    if (!project->getNavigationSettings().includeInBuilds) {
+    if (!settings->getNavigationSettings().includeInBuilds) {
         replaceAll(xcodeProject, "\t\t\t\t\tRMLUI_STATIC_LIB,\n", "\t\t\t\t\t\"JASPERENGINE_NAVIGATION=0\",\n\t\t\t\t\tRMLUI_STATIC_LIB,\n");
         excludedPhysicsSources.insert(excludedPhysicsSources.end(), {
             "NavDetourSupport.cpp",
@@ -5649,7 +5863,7 @@ bool editor::Exporter::writeAppleProjectSettings() {
                 return false;
             }
             block.replace(start + key.size(), end - start - key.size(),
-                "\"" + project->getApplicationIdentifier(isIOS ? ios.bundleIdentifier : macOS.bundleIdentifier) + "\"");
+                "\"" + settings->getApplicationIdentifier(isIOS ? ios.bundleIdentifier : macOS.bundleIdentifier) + "\"");
             xcodeProject.replace(blockStart, blockEnd - blockStart, block);
         }
         blockStart += block.size() + 2;
@@ -5669,7 +5883,7 @@ bool editor::Exporter::writeAppleProjectSettings() {
     if (!writeNativeAppleFiles()) return false;
     // the privacy manifests (the template's resources): the engine's, the project's and the plugins'
     for (const char* platform : {"ios", "macos"}) {
-        const ApplePrivacy::Composed composed = ApplePrivacy::compose(project->getProjectPath(), project->getApplePrivacy(), platform,
+        const ApplePrivacy::Composed composed = ApplePrivacy::compose(project->getProjectPath(), settings->getApplePrivacy(), platform,
                                                                       iosDeclaresTrackingUsage());
         warnPrivacy(std::string(platform) == "ios" ? "iOS" : "macOS", composed.warnings);
         const fs::path manifest = config.targetDir / "workspaces" / "xcode" / platform / "PrivacyInfo.xcprivacy";
@@ -5688,19 +5902,19 @@ bool editor::Exporter::writeAppleProjectSettings() {
         return false;
     }
     if (!iosPlist.empty()) {
-        const std::string appName = project->getApplicationName(ios.applicationName);
+        const std::string appName = settings->getApplicationName(ios.applicationName);
         replacePlistStringValue(iosPlist, "CFBundleName", appName);
         replacePlistStringValue(iosPlist, "CFBundleDisplayName", appName);
-        replacePlistStringValue(iosPlist, "CFBundleIdentifier", project->getApplicationIdentifier(ios.bundleIdentifier));
+        replacePlistStringValue(iosPlist, "CFBundleIdentifier", settings->getApplicationIdentifier(ios.bundleIdentifier));
         replacePlistStringValue(iosPlist, "CFBundleShortVersionString",
-            Project::toAppleVersion(project->getApplicationVersion(ios.versionName)));
+            Project::toAppleVersion(settings->getApplicationVersion(ios.versionName)));
         replacePlistStringValue(iosPlist, "CFBundleVersion",
-            Project::toAppleVersion(project->getApplicationBuild(ios.buildNumber)));
+            Project::toAppleVersion(settings->getApplicationBuild(ios.buildNumber)));
         replacePlistBoolValue(iosPlist, "UIStatusBarHidden", ios.hideStatusBar);
         // Player > Resolution and Presentation: the allowed set, the default first (a fixed
         // default alone); iPad multitasking ignores orientation locks unless the app is full screen
         {
-            const PresentationSettings& presentation = project->getPresentationSettings();
+            const PresentationSettings& presentation = settings->getPresentationSettings();
             const uint8_t allowed = presentation.effectiveAllowedOrientations();
             const std::vector<std::string> orientations =
                 PlatformRules::iosPlistOrientations(presentation.defaultOrientation, allowed);
@@ -5715,7 +5929,7 @@ bool editor::Exporter::writeAppleProjectSettings() {
             }
         }
         replacePlistBoolValue(iosPlist, "CADisableMinimumFrameDurationOnPhone", ios.supportsHighRefreshRate);
-        writeAppTransportSecurity(iosPlist, project->getApplicationSettings().allowInsecureHttp);
+        writeAppTransportSecurity(iosPlist, settings->getApplicationSettings().allowInsecureHttp);
         // Project Settings > Native Plugins > iOS (ios.plist_entries, ios.plist_xml)
         const std::string plistError = NativePlugins::xmlFragmentError(ios.plistXml);
         if (!plistError.empty()) {
@@ -6046,8 +6260,8 @@ const std::vector<std::string>& editor::Exporter::appleEngineFrameworks(bool ios
 }
 
 bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject, const XcodeNativeLayout& layout) {
-    const IOSProjectSettings& ios = project->getIOSProjectSettings();
-    const MacOSProjectSettings& macOS = project->getMacOSProjectSettings();
+    const IOSProjectSettings& ios = settings->getIOSProjectSettings();
+    const MacOSProjectSettings& macOS = settings->getMacOSProjectSettings();
     const fs::path& nativeRoot = layout.nativeRoot;
     std::error_code ec;
 
@@ -6490,7 +6704,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject, const 
 }
 
 bool editor::Exporter::addNativeToIosPlayer(const fs::path& projectDir) {
-    const IOSProjectSettings& ios = project->getIOSProjectSettings();
+    const IOSProjectSettings& ios = settings->getIOSProjectSettings();
     // the plugins next to the project, as the source export has them next to its workspace
     const fs::path nativeRoot = projectDir / NativePlugins::relativeRoot();
     if (!copyNativePluginFolders(nativeRoot, {"apple", "ios"})) return false;
@@ -6567,7 +6781,7 @@ bool editor::Exporter::addNativeToIosPlayer(const fs::path& projectDir) {
     }
 
     // the privacy manifest: the engine's, the project's and the plugins'
-    const ApplePrivacy::Composed composed = ApplePrivacy::compose(project->getProjectPath(), project->getApplePrivacy(), "ios",
+    const ApplePrivacy::Composed composed = ApplePrivacy::compose(project->getProjectPath(), settings->getApplePrivacy(), "ios",
                                                                   iosDeclaresTrackingUsage());
     warnPrivacy("iOS", composed.warnings);
     if (FileUtils::writeFile(projectDir / "PrivacyInfo.xcprivacy", ApplePrivacy::toXml(composed.manifest)) == FileUtils::WriteResult::Failed) {
@@ -6578,7 +6792,7 @@ bool editor::Exporter::addNativeToIosPlayer(const fs::path& projectDir) {
 }
 
 bool editor::Exporter::writeEntitlements(const fs::path& entitlementsPath) {
-    const IOSProjectSettings& ios = project->getIOSProjectSettings();
+    const IOSProjectSettings& ios = settings->getIOSProjectSettings();
     std::error_code ec;
     const std::string entitlementsError = NativePlugins::xmlFragmentError(ios.entitlementsXml);
     if (!entitlementsError.empty()) {
@@ -6600,7 +6814,7 @@ bool editor::Exporter::writeEntitlements(const fs::path& entitlementsPath) {
 }
 
 bool editor::Exporter::writeNativeAppleFiles() {
-    const IOSProjectSettings& ios = project->getIOSProjectSettings();
+    const IOSProjectSettings& ios = settings->getIOSProjectSettings();
     const fs::path xcodeDir = config.targetDir / "workspaces" / "xcode";
     std::error_code ec;
     if (!writeEntitlements(xcodeDir / "ios" / "JasperEngine.entitlements")) return false;
@@ -6677,11 +6891,11 @@ bool editor::Exporter::writeXcodeBuildSettings(std::string& xcodeProject) {
 }
 
 bool editor::Exporter::writeWindowsResourceFile(bool includeIcon) {
-    const WindowsProjectSettings& windows = project->getWindowsProjectSettings();
-    const std::string productName = project->getApplicationName(windows.productName);
+    const WindowsProjectSettings& windows = settings->getWindowsProjectSettings();
+    const std::string productName = settings->getApplicationName(windows.productName);
     const std::string companyName = windows.companyName;
-    const std::string fileVersionText = project->getApplicationFileVersion(windows.fileVersion);
-    const std::string productVersionText = project->getApplicationFileVersion(windows.productVersion);
+    const std::string fileVersionText = settings->getApplicationFileVersion(windows.fileVersion);
+    const std::string productVersionText = settings->getApplicationFileVersion(windows.productVersion);
     const std::array<int, 4> fileVersion = parseWindowsVersion(fileVersionText);
     const std::array<int, 4> productVersion = parseWindowsVersion(productVersionText);
 
@@ -6735,7 +6949,7 @@ bool editor::Exporter::writeWindowsResourceFile(bool includeIcon) {
 }
 
 bool editor::Exporter::writeAppIcon() {
-    fs::path iconPath = project->getWindowIcon();
+    fs::path iconPath = settings->getWindowIcon();
     if (iconPath.is_relative()) {
         iconPath = project->getProjectPath() / iconPath;
     }
@@ -7002,7 +7216,7 @@ bool editor::Exporter::buildAndSaveShaders() {
     // the warm-up list of what this export built (spec S32 R11): a file next to the shaders, or an
     // entry ("warmup") of each shader header
     std::string warmupList;
-    if (project && project->getShaderCreationSettings().includeInBuilds && loadShaderWarmup()) {
+    if (project && settings->getShaderCreationSettings().includeInBuilds && loadShaderWarmup()) {
         warmupList = ShaderWarmup::filteredString(std::vector<ShaderKey>(config.selectedShaderKeys.begin(), config.selectedShaderKeys.end()));
         if (config.shaderOutputFormat == ShaderOutputFormat::Header) {
             const std::string encoded = Base64::encode(reinterpret_cast<const unsigned char*>(warmupList.data()), warmupList.size());

@@ -4,6 +4,7 @@
 #include "window/TerrainQualityPanel.h"
 #include "component/TerrainComponent.h"
 #include "ProjectSettingsWindow.h"
+#include "buildprofile/BuildProfile.h"
 #include "window/ProjectWindow.h"
 #include "io/watch/LinkedFolders.h"
 #include "window/EditorModal.h"
@@ -1266,6 +1267,9 @@ void ProjectSettingsWindow::drawSettings() {
     const SettingsPage* page = settingsui::pageAt(SettingsScope::Project, m_category);
     settingsui::categoryTitle(page ? page->displayName().c_str() : "");
     settingsui::beginPage(page ? page->name : std::string(), m_categorySearch);
+    // Build Profiles R20: the rows the active profile changes in builds are marked
+    if (const auto& profiles = buildprofiles::view(m_project->getProjectPath()); profiles.active)
+        settingsui::setBuildProfileOverrides(profiles.active->name, buildprofiles::overriddenKeys(*profiles.active));
     switch (static_cast<ProjectCategory>(m_category)) {
         case ProjectCategory::Player: drawPlayerSettings(); break;
         case ProjectCategory::Graphics: drawGraphicsSettings(); break;

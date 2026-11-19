@@ -832,6 +832,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/publish/TreeManifest.cpp
     ${EDITOR_DIR}/publish/PayloadValidator.cpp
     ${EDITOR_DIR}/publish/Publishing.cpp
+    ${EDITOR_DIR}/publish/StoreLimits.cpp
+    ${EDITOR_DIR}/buildprofile/BuildProfile.cpp
     ${EDITOR_DIR}/platform/ExternalTools.cpp
     ${EDITOR_DIR}/platform/AndroidTools.cpp
     ${EDITOR_DIR}/platform/PinnedDownload.cpp
@@ -995,6 +997,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
     ${EDITOR_DIR}/mcp/tools/PublishTools.cpp
+    ${EDITOR_DIR}/mcp/tools/BuildProfileTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
     ${EDITOR_DIR}/mcp/TerrainMaterialInfo.cpp
     ${EDITOR_DIR}/mcp/tools/AnimationClipTools.cpp
@@ -1418,6 +1421,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/dialog/TextureSlicerToolDialog.cpp
     ${EDITOR_DIR}/window/dialog/ExportWindow.cpp
     ${EDITOR_DIR}/window/dialog/ExportWindowShipping.cpp
+    ${EDITOR_DIR}/window/dialog/BuildProfilesPane.cpp
     ${EDITOR_DIR}/window/dialog/EditorSettingsWindow.cpp
     ${EDITOR_DIR}/window/dialog/ProjectSettingsWindow.cpp
     ${EDITOR_DIR}/window/AudioMixerWindow.cpp
@@ -1547,6 +1551,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/InputActionsCmd.cpp
     ${EDITOR_DIR}/command/type/DebugSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/ShaderOverridesCmd.cpp
+    ${EDITOR_DIR}/command/type/EditBuildProfileCmd.cpp
     ${EDITOR_DIR}/command/type/ApplePrivacySettingsCmd.cpp
     ${EDITOR_DIR}/command/type/CopyFileCmd.cpp
     ${EDITOR_DIR}/command/type/RenameFileCmd.cpp

@@ -4072,6 +4072,26 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("getAppBuild", [] () { return System::instance().getAppBuild(); })
         .addStaticFunction("getAppIdentifier", [] () { return System::instance().getAppIdentifier(); })
         .addStaticFunction("getAppName", [] () { return System::instance().getAppName(); })
+        // Build Profiles: the build's profile ("" none; in Play the active one) and its Scripting
+        // Define Symbols. Defines are values, not a preprocessor: code behind them still ships.
+        .addStaticFunction("getBuildProfile", [] () { return System::getBuildProfile(); })
+        .addStaticFunction("isDefined", [] (const std::string& symbol) { return System::isDefined(symbol); })
+        .addStaticFunction("getDefines", [] (lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef table = luabridge::newTable(L);
+            int index = 1;
+            for (const std::string& define : System::getDefines()) table[index++] = define;
+            return table;
+        })
+        .addStaticFunction("getBuildInfo", [] (lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef info = luabridge::newTable(L);
+            luabridge::LuaRef defines = luabridge::newTable(L);
+            int index = 1;
+            for (const std::string& define : System::getDefines()) defines[index++] = define;
+            info["profile"] = System::getBuildProfile();
+            info["defines"] = defines;
+            info["development"] = Engine::isDevelopmentBuild();
+            return info;
+        })
         .addStaticFunction("getOperatingSystem", [] () { return System::instance().getOperatingSystem(); })
         .addStaticFunction("getOperatingSystemVersion", [] () { return System::instance().getOperatingSystemVersion(); })
         .addStaticFunction("getAndroidApiLevel", [] () { return System::instance().getAndroidApiLevel(); })

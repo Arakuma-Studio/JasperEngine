@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string>
+#include <unordered_set>
 #include <vector>
 #include "io/Data.h"
 #include "math/EdgeInsets.h"
@@ -208,6 +209,10 @@ namespace jasperengine {
 
         static System* systemInstance;
         static ApplicationInfo applicationInfo;
+        // the build's Build Profile and Scripting Define Symbols (setBuildInfo)
+        static std::string buildProfile;
+        static std::vector<std::string> buildDefines;
+        static std::unordered_set<std::string> buildDefineSet;
 
         // Only Engine is allowed to inject an external System implementation.
         static void setSystemInstance(System* system);
@@ -306,6 +311,13 @@ namespace jasperengine {
         // The values the base app getters return (generated main, editor Play start)
         static void setApplicationInfo(const ApplicationInfo& info);
         static const ApplicationInfo& getApplicationInfo();
+        // The build's Build Profile ("" none) and its Scripting Define Symbols, set once at start
+        // (game.json, a Compile build's init, editor Play with the active profile)
+        static void setBuildInfo(const std::string& profile, const std::vector<std::string>& defines);
+        static const std::string& getBuildProfile();
+        static const std::vector<std::string>& getDefines();
+        // one hash lookup
+        static bool isDefined(const std::string& symbol);
         // Android: the installed package (versionName, versionCode, package name, label);
         // Apple: the main bundle; elsewhere setApplicationInfo's values
         virtual std::string getAppVersion();

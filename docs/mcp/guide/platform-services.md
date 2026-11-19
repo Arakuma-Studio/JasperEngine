@@ -186,6 +186,7 @@ function Music:onVisibilityChanged(visible) self.sound.volume = visible and 1 or
 | `System.getDeviceModel()`, `getDeviceType()` | `SystemInfo.deviceModel`, `deviceType` | `"Google Pixel 8"`, `"iPhone16,1"`; `DeviceType.Handheld` / `Desktop` |
 | `System.getSystemMemorySize()`, `getProcessorCount()` | `systemMemorySize`, `processorCount` | MiB (0 unknown), logical CPUs |
 | `System.isEditor()` | `Application.isEditor` | true only in editor Play |
+| `System.getBuildProfile()`, `isDefined(symbol)`, `getDefines()`, `getBuildInfo()` | Build Profiles, `#if` defines | the build's Build Profile (`""` none; Play: the active one) and its Scripting Define Symbols; `getBuildInfo()` is `{profile, defines, development}`. Values, not a preprocessor: the code behind them ships |
 | `System.getInternetReachability()` | `Application.internetReachability` | says a network is there, not that a server answers. Android adds `ACCESS_NETWORK_STATE` to the export when a script calls it |
 | `System.vibrate([ms])` | `Handheld.Vibrate` | 400 ms by default; iOS ignores the length; `false` without a vibrator. Android adds `VIBRATE` to the export when a script calls it |
 | `System.hapticFeedback(HapticFeedback.X)` | (iOS feedback generators) | `Light`, `Medium`, `Heavy`, `Selection`, `Success`, `Warning`, `Error`; Android haptic constants, web vibration patterns, Force Touch trackpads |

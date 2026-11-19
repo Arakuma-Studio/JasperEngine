@@ -303,10 +303,12 @@ int main(int argc, char* argv[]) {
         return 2;
     }
     // the profiler's options go to the engine, whatever the mode; benchmark parses its own, and
-    // generate-sprite-normals has a --profile of its own (the height profile: --profile rounded)
+    // generate-sprite-normals has a --profile of its own (the height profile: --profile rounded), and so
+    // has build (the Build Profile: --profile Demo)
     const bool benchmark = args.size() >= 2 && std::strcmp(args[1], "benchmark") == 0;
     const bool spriteNormals = args.size() >= 2 && std::strcmp(args[1], "generate-sprite-normals") == 0;
-    if (!benchmark && !spriteNormals && !editor::CommandLine::takeProfilerFlags(args)) {
+    const bool build = args.size() >= 2 && std::strcmp(args[1], "build") == 0;
+    if (!benchmark && !spriteNormals && !build && !editor::CommandLine::takeProfilerFlags(args)) {
         editor::Out::stopLogging();
         return 2;
     }
