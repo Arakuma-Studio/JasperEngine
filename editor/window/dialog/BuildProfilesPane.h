@@ -7,7 +7,7 @@
 // list (Add Build Profile, and Duplicate, Rename, Delete, Switch Profile on a row) and the selected
 // profile's pane. Every edit is one project undo step (EditBuildProfileCmd), merged while typing.
 
-#include "build/BuildProfile.h"
+#include "buildprofile/BuildProfile.h"
 
 #include <cstdint>
 #include <filesystem>

@@ -4,7 +4,7 @@
 #include "window/TerrainQualityPanel.h"
 #include "component/TerrainComponent.h"
 #include "ProjectSettingsWindow.h"
-#include "build/BuildProfile.h"
+#include "buildprofile/BuildProfile.h"
 #include "window/ProjectWindow.h"
 #include "io/watch/LinkedFolders.h"
 #include "window/EditorModal.h"

@@ -9,7 +9,7 @@
 #include "Publishing.h"
 
 #include "ShippingTypes.h"
-#include "build/BuildProfile.h"
+#include "buildprofile/BuildProfile.h"
 #include "publish/StoreLimits.h"
 #include "io/AtomicFile.h"
 #include "platform/ExternalTools.h"

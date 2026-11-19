@@ -63,7 +63,7 @@
 #include "sceneview/SceneViewVisibility.h"
 #include "picking/SceneBvh.h"
 #include "Workspace.h"
-#include "build/BuildProfile.h"
+#include "buildprofile/BuildProfile.h"
 #include "io/ScopedFileLock.h"
 #include "registry/PhysicsLayers.h"
 

@@ -6,7 +6,7 @@
 #include "titleart/localisation/TitleLanguageExport.h"
 #include "Project.h"
 #include "ShippingTypes.h"
-#include "build/BuildProfile.h"
+#include "buildprofile/BuildProfile.h"
 #include "cook/BuildReport.h"
 #include "cook/SceneCooker.h"
 #include "players/ModuleUsage.h"

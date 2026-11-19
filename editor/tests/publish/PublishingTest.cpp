@@ -14,7 +14,7 @@
 #include "publish/Notices.h"
 #include "publish/PayloadValidator.h"
 #include "publish/Publishing.h"
-#include "build/BuildProfile.h"
+#include "buildprofile/BuildProfile.h"
 #include "publish/TreeManifest.h"
 #include "serialization/CookedScene.h"
 #include "util/ZipArchive.h"

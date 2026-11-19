@@ -3,7 +3,7 @@
 
 #include "EditBuildProfileCmd.h"
 
-#include "build/BuildProfile.h"
+#include "buildprofile/BuildProfile.h"
 #include "io/AtomicFile.h"
 #include "util/FileUtils.h"
 

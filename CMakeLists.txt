@@ -833,7 +833,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/publish/PayloadValidator.cpp
     ${EDITOR_DIR}/publish/Publishing.cpp
     ${EDITOR_DIR}/publish/StoreLimits.cpp
-    ${EDITOR_DIR}/build/BuildProfile.cpp
+    ${EDITOR_DIR}/buildprofile/BuildProfile.cpp
     ${EDITOR_DIR}/platform/ExternalTools.cpp
     ${EDITOR_DIR}/platform/AndroidTools.cpp
     ${EDITOR_DIR}/platform/PinnedDownload.cpp

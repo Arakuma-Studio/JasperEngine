@@ -12,7 +12,7 @@
 #include "mcp/McpSchema.h"
 
 #include "Project.h"
-#include "build/BuildProfile.h"
+#include "buildprofile/BuildProfile.h"
 #include "command/type/EditBuildProfileCmd.h"
 #include "publish/Publishing.h"
 #include "util/FileUtils.h"

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "GameWindow.h"
-#include "build/BuildProfile.h"
+#include "buildprofile/BuildProfile.h"
 #include "window/ContactSheetWindow.h"
 #include "audio/AudioCapture.h"
 #include "render/SystemRender.h"
