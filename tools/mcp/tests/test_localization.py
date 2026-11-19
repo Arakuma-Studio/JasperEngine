@@ -67,7 +67,7 @@ async def test_edit_string_table_ops_undo_and_refusal(ed: Editor):
     await ed.call("edit_string_table", path=TABLE, ops=[{"op": "set", "key": "menu.play", "text": "Start"}])
     got = await ed.call("edit_string_table", path=TABLE, get={"keys": ["menu.play"]})
     ed.check_eq(got["entries"][0]["translations"]["de"]["status"], "needs_review", "a source edit marks translations for review")
-    await ed.call("undo")
+    await ed.call("undo", scope="timeline")
     got = await ed.call("edit_string_table", path=TABLE, get={"keys": ["menu.play"]})
     ed.check_eq((got["entries"][0]["text"], got["entries"][0]["translations"]["de"]["status"]), ("Play", "translated"), "undone in one step")
 
