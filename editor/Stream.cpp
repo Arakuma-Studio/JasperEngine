@@ -3018,6 +3018,15 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["physics3DWorld"] = physicsNode;
     }
 
+    // Project Settings > Physics / Physics 2D > Queries Hit Triggers: only when one is off
+    if (project->getPhysicsQuerySettings() != PhysicsQuerySettings()) {
+        const PhysicsQuerySettings& queries = project->getPhysicsQuerySettings();
+        YAML::Node queriesNode;
+        queriesNode["hitTriggers3D"] = queries.hitTriggers3D;
+        queriesNode["hitTriggers2D"] = queries.hitTriggers2D;
+        root["physicsQueries"] = queriesNode;
+    }
+
 
     {
         YAML::Node exportNode;
@@ -4008,6 +4017,19 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             Out::warning("Ignoring physics3DWorld in project settings: not a map");
         }
         project->setPhysics3DWorldSettings(world);
+    }
+
+    {
+        // Project Settings > Physics / Physics 2D > Queries Hit Triggers; missing: on
+        PhysicsQuerySettings queries;
+        const YAML::Node queriesNode = node["physicsQueries"];
+        if (queriesNode && queriesNode.IsMap()) {
+            if (queriesNode["hitTriggers3D"]) queries.hitTriggers3D = queriesNode["hitTriggers3D"].as<bool>(true);
+            if (queriesNode["hitTriggers2D"]) queries.hitTriggers2D = queriesNode["hitTriggers2D"].as<bool>(true);
+        } else if (queriesNode) {
+            Out::warning("Ignoring physicsQueries in project settings: not a map");
+        }
+        project->setPhysicsQuerySettings(queries);
     }
 
 

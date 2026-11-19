@@ -142,6 +142,9 @@ json PlayerConfig::toJson() const {
         out["transparencySortAxis"] = {transparencySortAxis.x, transparencySortAxis.y, transparencySortAxis.z};
     out["collision3D"] = collision3D;
     out["collision2D"] = collision2D;
+    // written only when off: an older player and a game.json without them read true
+    if (!queriesHitTriggers3D) out["queries_hit_triggers_3d"] = false;
+    if (!queriesHitTriggers2D) out["queries_hit_triggers_2d"] = false;
     out["logging"] = {{"level", logLevel}, {"file", logFile}, {"backtrace", logBacktrace}};
     out["crash"] = {{"handler", crashHandler}, {"logTail", crashLogTail}, {"dumpWithHeap", crashDumpWithHeap},
                     {"hangWatchdog", hangWatchdog}, {"hangMs", hangMs}, {"webOverlay", crashWebOverlay}};
@@ -333,6 +336,8 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         const std::vector<uint32_t> collision2D = in.value("collision2D", std::vector<uint32_t>{});
         for (size_t i = 0; i < collision3D.size() && i < config.collision3D.size(); i++) config.collision3D[i] = collision3D[i];
         for (size_t i = 0; i < collision2D.size() && i < config.collision2D.size(); i++) config.collision2D[i] = collision2D[i];
+        config.queriesHitTriggers3D = in.value("queries_hit_triggers_3d", config.queriesHitTriggers3D);
+        config.queriesHitTriggers2D = in.value("queries_hit_triggers_2d", config.queriesHitTriggers2D);
         if (const auto logging = in.find("logging"); logging != in.end()) {
             config.logLevel = logging->value("level", "");
             config.logFile = logging->value("file", config.logFile);

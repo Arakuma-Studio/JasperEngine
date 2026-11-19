@@ -131,6 +131,7 @@ namespace jasperengine::editor {
         char m_newCheckScreen[32] = "";
         std::unique_ptr<PixelArtPresetDialog> m_presetDialog;
         Physics3DWorldSettings m_physics3DWorld;
+        PhysicsQuerySettings m_physicsQueries;
         int m_particleWorldBudget = 0;
         ParticleQaSettings m_particleQa;
         procmat::ProcMatQaSettings m_procMatQa;

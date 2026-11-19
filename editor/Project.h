@@ -179,6 +179,18 @@ namespace jasperengine::editor{
         bool operator!=(const Physics3DWorldSettings& other) const { return !(*this == other); }
     };
 
+    // Project Settings > Physics / Physics 2D > Queries Hit Triggers (project.yaml physicsQueries,
+    // written only when one is off): what QueryTriggerInteraction.UseGlobal means in each world
+    struct PhysicsQuerySettings {
+        bool hitTriggers3D = true;
+        bool hitTriggers2D = true;
+
+        bool operator==(const PhysicsQuerySettings& other) const {
+            return hitTriggers3D == other.hitTriggers3D && hitTriggers2D == other.hitTriggers2D;
+        }
+        bool operator!=(const PhysicsQuerySettings& other) const { return !(*this == other); }
+    };
+
     // project.yaml held an older editor's Project Settings > Input (Unity's Input Manager as a flat
     // list, `input: {version: 1, actions: [...]}`): its actions as the Input Manager map of an
     // .inputactions asset (InputManagerFormat), written into the assets directory when the
@@ -1014,6 +1026,7 @@ namespace jasperengine::editor{
         LayerCollisionRows layerCollisionMatrix3D = allLayersCollide();
         LayerCollisionRows layerCollisionMatrix2D = allLayersCollide();
         Physics3DWorldSettings physics3DWorld;
+        PhysicsQuerySettings physicsQueries;
         // an input node of project.yaml that could not be read (an older editor's Input Manager
         // actions with a typo made by hand): written back as it was until an actions asset is
         // set, so nothing is lost
@@ -1995,6 +2008,13 @@ namespace jasperengine::editor{
         // Values are clamped to 16.. (and Jolt's body id range); a running Play keeps its world.
         void setPhysics3DWorldSettings(const Physics3DWorldSettings& settings);
         const Physics3DWorldSettings& getPhysics3DWorldSettings() const;
+
+        // Project Settings > Physics / Physics 2D > Queries Hit Triggers, applied to the engine's
+        // Physics / Physics2D.queriesHitTriggers (Play starts from them; exports carry them)
+        void setPhysicsQuerySettings(const PhysicsQuerySettings& settings);
+        const PhysicsQuerySettings& getPhysicsQuerySettings() const;
+        // Puts the project's values back into the engine, undoing what scripts changed in a Play
+        void applyPhysicsQuerySettings() const;
 
         // Project Settings > Input, Unity's Input Manager (docs/specs/S22-gameplay.md "Upstream
         // absorption"): the actions Input.getAxis / getButton read by their flat names, the

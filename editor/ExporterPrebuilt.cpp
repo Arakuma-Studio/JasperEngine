@@ -670,6 +670,8 @@ bool editor::Exporter::writeGameConfig() {
         game.collision3D[layer] = project->getLayerCollisionMatrix3D()[layer];
         game.collision2D[layer] = project->getLayerCollisionMatrix2D()[layer];
     }
+    game.queriesHitTriggers3D = project->getPhysicsQuerySettings().hitTriggers3D;
+    game.queriesHitTriggers2D = project->getPhysicsQuerySettings().hitTriggers2D;
     const PlayerLoggingSettings& logging = project->getPlayerLogging();
     game.logLevel = logging.level;
     game.logFile = logging.fileLog;

@@ -1776,6 +1776,10 @@ set(JASPERENGINE_SRCS
     core/physics/JoltTerrainRefresh.cpp
     core/physics/PhysicsDebugLines.cpp
     core/physics/PhysicsMaterial.cpp
+    core/physics/PhysicsQueries.cpp
+    core/physics/PhysicsQueries2D.cpp
+    core/physics/PhysicsQueryDebug.cpp
+    core/physics/PhysicsQueryReference.cpp
     core/physics/RagdollBuilder.cpp
     core/physics/PolygonDecomposition2D.cpp
     core/physics/PlacementWorld.cpp
@@ -1827,6 +1831,7 @@ set(JASPERENGINE_SRCS
     core/script/ScriptRuntime.cpp
     core/script/binding/ActionClassesLua.cpp
     core/script/binding/CoreClassesLua.cpp
+    core/script/binding/PhysicsQueryLua.cpp
     core/script/binding/CrashClassesLua.cpp
     core/script/binding/AudioClassesLua.cpp
     core/script/binding/NoiseClassesLua.cpp

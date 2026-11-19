@@ -34,6 +34,7 @@
 #include "subsystem/AudioSystem.h"
 #include "EditorHost.h"
 #include "command/type/DebugSettingsCmd.h"
+#include "command/type/PhysicsQuerySettingsCmd.h"
 #include "command/type/SortingLayersCmd.h"
 #include "component/SortingGroupComponent.h"
 #include "component/MeshComponent.h"
@@ -1044,6 +1045,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     for (const pixelart::ProjectPalette& entry : pixelart::listProjectPalettes(*project))
         m_paletteFiles.push_back({entry.path, entry.palette.name});
     m_physics3DWorld = project->getPhysics3DWorldSettings();
+    m_physicsQueries = project->getPhysicsQuerySettings();
     m_particleWorldBudget = (int)project->getParticleWorldBudget();
     m_particleQa = project->getParticleQaSettings();
     m_procMatQa = project->getProcMatQaSettings();
@@ -2945,6 +2947,14 @@ void ProjectSettingsWindow::drawPhysicsSettings() {
                 ImGui::Checkbox("##Physics3D", &m_physics3DEnabled);
                 endSettingsRow("Jolt-based 3D physics. When off, Jolt is left out of exported builds, along with any Rigidbodies and joints the scenes still use. Play always runs with both backends available.");
             }
+            if (settingsui::beginRow("physics.queries_hit_triggers")) {
+                if (projectBeginSettingsRow("Queries Hit Triggers", !m_physicsQueries.hitTriggers3D)) {
+                    m_physicsQueries.hitTriggers3D = true;
+                }
+                ImGui::Checkbox("##QueriesHitTriggers3D", &m_physicsQueries.hitTriggers3D);
+                endSettingsRow("Whether raycasts, overlaps and shape casts report trigger colliders when their QueryTriggerInteraction is UseGlobal "
+                               "(Physics.queriesHitTriggers). A query passing Ignore or Collide decides for itself. Applies to Physics.raycast too.");
+            }
             ImGui::EndTable();
         }
 
@@ -3237,6 +3247,14 @@ void ProjectSettingsWindow::drawPhysics2DSettings() {
                 }
                 ImGui::Checkbox("##Physics2D", &m_physics2DEnabled);
                 endSettingsRow("Box2D-based 2D physics. When off, Box2D is left out of exported builds, along with any Rigidbody 2D and joints the scenes still use. Play always runs with both backends available.");
+            }
+            if (settingsui::beginRow("physics2d.queries_hit_triggers")) {
+                if (projectBeginSettingsRow("Queries Hit Triggers", !m_physicsQueries.hitTriggers2D)) {
+                    m_physicsQueries.hitTriggers2D = true;
+                }
+                ImGui::Checkbox("##QueriesHitTriggers2D", &m_physicsQueries.hitTriggers2D);
+                endSettingsRow("Whether 2D raycasts, overlaps and shape casts report trigger colliders when their QueryTriggerInteraction is UseGlobal "
+                               "(Physics2D.queriesHitTriggers). A query passing Ignore or Collide decides for itself. Applies to Physics2D.raycast too.");
             }
             ImGui::EndTable();
         }
@@ -6321,6 +6339,17 @@ bool ProjectSettingsWindow::applySettings() {
         auto* command = new TitleArtSettingsCmd(m_project, m_project->getTitleArtSettings(), m_titleArt);
         command->setNoMerge();
         m_project->getProjectCommandHistory()->addCommand(command);
+    }
+
+    // Queries Hit Triggers: one undoable step per row changed
+    for (const bool is2D : {false, true}) {
+        PhysicsQuerySettings changed = m_project->getPhysicsQuerySettings();
+        (is2D ? changed.hitTriggers2D : changed.hitTriggers3D) = is2D ? m_physicsQueries.hitTriggers2D : m_physicsQueries.hitTriggers3D;
+        if (changed != m_project->getPhysicsQuerySettings()) {
+            auto* command = new PhysicsQuerySettingsCmd(m_project, m_project->getPhysicsQuerySettings(), changed);
+            command->setNoMerge();
+            m_project->getProjectCommandHistory()->addCommand(command);
+        }
     }
 
     // Debug: one undoable step of the project history

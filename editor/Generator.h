@@ -238,6 +238,9 @@ namespace jasperengine::editor {
         std::vector<SortingLayerInfo> sortingLayers;
         TransparencySortMode transparencySortMode = TransparencySortMode::DEFAULT;
         Vector3 transparencySortAxis = Vector3(0.0f, 1.0f, 0.0f);
+        // Project Settings > Physics / Physics 2D > Queries Hit Triggers
+        bool queriesHitTriggers3D = true;
+        bool queriesHitTriggers2D = true;
     };
 
     // A script build's state, published by every Generator (Play, compile_scripts, C++ reload,
