@@ -280,7 +280,7 @@ TEST_F(DocumentBackTest, BackRoutingReachesTheGame){
 
     escape();
     EXPECT_EQ(backs.size(), 1u) << "the menu heard it and let it go";
-    EXPECT_EQ(Engine::getLastBackRoute(), BackRoute::None);
+    EXPECT_EQ(Engine::getLastBackRoute(), BackRoute::Unconsumed);
     EXPECT_EQ(keydowns, std::vector<std::string>{"Escape"});
     EXPECT_EQ(gameKeys, std::vector<int>{D_KEY_ESCAPE});
 

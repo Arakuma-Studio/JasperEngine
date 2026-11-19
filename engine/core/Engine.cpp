@@ -293,7 +293,7 @@ FunctionSubscribe<void(const std::string&)> Engine::onPauseRequested;
 namespace {
 
     // ---- Back and menus (Engine::systemBack, Engine::isMenuShowing)
-    BackRoute lastBackRoute = BackRoute::None;
+    BackRoute lastBackRoute = BackRoute::Unconsumed;
     // the Escape a Back button or agent Back pressed: released at the start of the frame after the
     // one that latched it (as Android's Back always played)
     bool backEscapeDown = false;
@@ -2160,7 +2160,7 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     backEscapeKeyHeld = false;
     backPadButtonsHeld.clear();
     cursorPadButtonsHeld.clear();
-    lastBackRoute = BackRoute::None;
+    lastBackRoute = BackRoute::Unconsumed;
     GamepadCursor::resetSession();
     lastOrientation = 0;
     orientationPendingSince = 0.0;
@@ -4600,14 +4600,14 @@ BackRoute Engine::getLastBackRoute(){
 bool Engine::systemBack(BackSource source){
     // keys go to every scene that takes keys; the pad's B to every scene, as their own routing does
     const std::vector<Scene*> scenes = (source == BackSource::Gamepad) ? getScenesSnapshot() : getInputScenes(true);
-    BackRoute route = BackRoute::None;
+    BackRoute route = BackRoute::Unconsumed;
     // 0. an open select or modal dialog where the key goes closes as today: not a Back
-    for (auto it = scenes.rbegin(); it != scenes.rend() && route == BackRoute::None; ++it){
+    for (auto it = scenes.rbegin(); it != scenes.rend() && route == BackRoute::Unconsumed; ++it){
         if (canSendDocumentEvents(*it) && (*it)->getSystem<UIDocumentSystem>()->hasBackOverlay())
             route = BackRoute::Key;
     }
     // 1. the top menu document: the first scene with one, top layer first
-    if (route == BackRoute::None){
+    if (route == BackRoute::Unconsumed){
         for (auto it = scenes.rbegin(); it != scenes.rend(); ++it){
             UIDocumentSystem* documents = (*it)->getSystem<UIDocumentSystem>().get();
             if (!canSendDocumentEvents(*it) || !documents->hasMenuDocument())
@@ -4618,7 +4618,7 @@ bool Engine::systemBack(BackSource source){
         }
     }
     // 2. the game, when it listens
-    if (route == BackRoute::None && onBack.hasSubscribers()){
+    if (route == BackRoute::Unconsumed && onBack.hasSubscribers()){
         route = BackRoute::Game;
         onBack.call(std::string(backSourceName(source)));
     }

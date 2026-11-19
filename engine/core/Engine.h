@@ -145,8 +145,9 @@ namespace jasperengine {
     // what pressed Back (Engine::systemBack); named in Lua by backSourceName
     enum class BackSource : uint8_t { BackButton, Escape, Gamepad, Agent };
     // who took the last Back: an open <select> or modal <dialog> as a key (not a Back), the top menu
-    // document's `back` event, Engine.onBack, or nobody (the source's own path ran)
-    enum class BackRoute : uint8_t { None, Key, Document, Game };
+    // document's `back` event, Engine.onBack, or nobody (the source's own path ran; not "None": X11
+    // defines it)
+    enum class BackRoute : uint8_t { Unconsumed, Key, Document, Game };
 
     class JASPERENGINE_API Scene;
 
