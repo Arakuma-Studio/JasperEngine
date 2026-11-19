@@ -2821,6 +2821,8 @@ PROPERTY_OVERRIDES = {
     # the null sentinel (stubs/Json.lua: JsonNull)
     ('Json', 'null'): ('JsonNull', False),
     ('Mesh', 'material'): ('Material', True),
+    # the active GPU quirks' names
+    ('Device', 'gpuQuirks'): ('string[]', True),
     # the Particle System module views (binding/stubs/ParticleSystemModules.lua, from
     # tools/gen_particle_stubs.py): live views, not copies
     **{('ParticleSystem', _m): ('ParticleSystem' + _m[0].upper() + _m[1:] + 'Module', False) for _m in (
