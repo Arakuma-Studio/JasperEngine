@@ -6,6 +6,7 @@
 
 #include "Engine.h"
 #include "Input.h"
+#include "input/InputScheme.h"
 
 #include <string>
 
@@ -463,12 +464,22 @@ static UITouch* touches[MAX_TOUCHES];
     jasperengine::Input::setPenPressure(pressure);
 }
 
+// the input scheme: a trackpad's or a mouse's pointer (UITouchTypeIndirectPointer, iOS 13.4) arrives
+// as a touch and stays one, but it is mouse use
+-(void)reportInputSource:(UITouch*)touch{
+    bool mouse = false;
+    if (@available(iOS 13.4, *))
+        mouse = touch.type == UITouchTypeIndirectPointer;
+    jasperengine::Engine::setInputSource(mouse ? jasperengine::InputSourceTag::Mouse : jasperengine::InputSourceTag::None);
+}
+
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent*)event{
     [super touchesBegan:touches withEvent:event];
     for (UITouch *touch in touches) {
         const CGPoint point = [self getTouchPoint:touch];
         const int identifier = (int)[self getTouchId:touch andRemove:false];
         [self reportPenPressure:touch];
+        [self reportInputSource:touch];
         jasperengine::Engine::systemTouchStart(identifier, point.x, point.y);
     }
 }
@@ -479,6 +490,7 @@ static UITouch* touches[MAX_TOUCHES];
         const CGPoint point = [self getTouchPoint:touch];
         const int identifier = (int)[self getTouchId:touch andRemove:false];
         [self reportPenPressure:touch];
+        [self reportInputSource:touch];
         jasperengine::Engine::systemTouchMove(identifier, point.x, point.y);
     }
 }
@@ -489,6 +501,7 @@ static UITouch* touches[MAX_TOUCHES];
         const CGPoint point = [self getTouchPoint:touch];
         const int identifier = (int)[self getTouchId:touch andRemove:true];
         [self reportPenPressure:touch];
+        [self reportInputSource:touch];
         jasperengine::Engine::systemTouchEnd(identifier, point.x, point.y);
     }
 }

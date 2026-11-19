@@ -19,6 +19,7 @@
 
 #include "htmlui/HtmlUI.h"
 #include "htmlui/RmlFontEngine.h"
+#include "input/InputScheme.h"
 #include "util/FontRegistry.h"
 
 #include <RmlUi/Core/Context.h>
@@ -149,7 +150,10 @@ namespace {
             hash = hashString(hash, "root");
             for (const auto& attribute : options.rootAttributes){
                 hash = hashString(hash, attribute.first);
-                hash = hashString(hash, attribute.second);
+                // the input scheme's values change at runtime and no selector band reads them:
+                // one compile serves every scheme
+                if (attribute.first != DocumentLoader::kInputSchemeAttribute && attribute.first != DocumentLoader::kGamepadFamilyAttribute)
+                    hash = hashString(hash, attribute.second);
             }
         }
         const uint32_t version = DocumentLoader::kVersion;
@@ -176,6 +180,8 @@ namespace {
 
     bool isCurrent(const CompatDocument& document, const CompatOptions& options){
         if (document.dependsOnViewport && document.options.viewport != options.viewport)
+            return false;
+        if (document.dependsOnPointer && document.options.coarsePointer != options.coarsePointer)
             return false;
         const FileAccess files;
         for (const CompatDocument::DependencyStamp& stamp : document.dependencyStamps){
@@ -360,6 +366,13 @@ namespace {
                 rewriteContext.rootAttributes.emplace_back(attribute.name, attribute.value);
             }
         }
+        // the input scheme's attributes, which every loaded document carries
+        for (const char* name : {DocumentLoader::kInputSchemeAttribute, DocumentLoader::kGamepadFamilyAttribute}){
+            const bool present = std::any_of(rewriteContext.rootAttributes.begin(), rewriteContext.rootAttributes.end(),
+                                             [&](const auto& attribute){ return attribute.first == name; });
+            if (!present)
+                rewriteContext.rootAttributes.emplace_back(name, "");
+        }
         document->rootSignature = rootSignatureOf(rewriteContext.rootAttributes);
 
         RewriteResult result;
@@ -500,6 +513,7 @@ namespace {
         }
 
         document->dependsOnViewport = result.dependsOnViewport || context.dependsOnViewport;
+        document->dependsOnPointer = result.dependsOnPointer;
         document->animationFillNames = std::move(result.animationFillNames);
         document->fontFamilies = std::move(result.fontFamilies);
         document->declaredFontFamilies = std::move(result.declaredFontFamilies);
@@ -535,6 +549,10 @@ namespace {
         if (document->dependsOnViewport){
             const int size[2] = {options.viewport.x, options.viewport.y};
             key = fnv1a64(std::string_view(reinterpret_cast<const char*>(size), sizeof(size)), key);
+        }
+        if (document->dependsOnPointer){
+            const uint8_t coarse = options.coarsePointer ? 1 : 0;
+            key = fnv1a64(std::string_view(reinterpret_cast<const char*>(&coarse), sizeof(coarse)), key);
         }
         document->key = key;
         return document;
@@ -655,6 +673,7 @@ std::shared_ptr<const CompatDocument> DocumentLoader::compile(const std::string&
         // what this compile replaces (another state of the same document and viewport)
         for (auto it = bucket.begin(); it != bucket.end();){
             if (it->document->sourcePath == path && (!it->document->dependsOnViewport || it->document->options.viewport == options.viewport) &&
+                (!it->document->dependsOnPointer || it->document->options.coarsePointer == options.coarsePointer) &&
                 it->document->key != compiled->key){
                 dropped.push_back(it->document);
                 it = bucket.erase(it);
@@ -849,6 +868,8 @@ Rml::ElementDocument* DocumentLoader::load(Rml::Context* context, const std::str
     // the fork paints it over the whole context (BackgroundLayers, phase 3 p3-paint)
     if (options.fork.has(ForkFeature::BackgroundLayers))
         document->SetCanvasBackground(true, "htmlbody");
+    // the input scheme's root attributes before the first layout (their names are in the compile)
+    applyInputScheme(document);
 
     // the compile's diagnostics, the mapped RmlUi messages of the load, the font check
     std::vector<Diagnostic> runtime = std::move(binding->diagnostics);
@@ -866,6 +887,18 @@ Rml::ElementDocument* DocumentLoader::load(Rml::Context* context, const std::str
     bindings()[document] = binding;
     document->AddEventListener(Rml::EventId::Unload, new BindingListener(document));
     return document;
+}
+
+void DocumentLoader::applyInputScheme(Rml::ElementDocument* document){
+    if (!document)
+        return;
+    const auto set = [document](const char* name, const char* value){
+        const Rml::Variant* current = document->GetAttribute(name);
+        if (!current || current->Get<Rml::String>() != value)
+            document->SetAttribute(name, Rml::String(value));
+    };
+    set(kInputSchemeAttribute, InputSchemeTracker::htmlName(InputSchemeTracker::getCurrent()));
+    set(kGamepadFamilyAttribute, InputSchemeTracker::familyKey(InputSchemeTracker::getGamepadFamily()));
 }
 
 std::shared_ptr<const CompatDocument> DocumentLoader::compiledOf(const Rml::ElementDocument* document){
@@ -1052,6 +1085,11 @@ std::shared_ptr<const CompatDocument> DocumentLoader::restyleForRoot(Rml::Elemen
     const Rml::String classes = document->GetClassNames();
     if (!classes.empty())
         attributes.emplace_back("class", classes);
+    // the input scheme's names are always the root's (compile): a script that removed one does not recompile it
+    for (const char* name : {kInputSchemeAttribute, kGamepadFamilyAttribute}){
+        if (std::none_of(attributes.begin(), attributes.end(), [&](const auto& attribute){ return attribute.first == name; }))
+            attributes.emplace_back(name, "");
+    }
     std::sort(attributes.begin(), attributes.end());
     if (rootSignatureOf(attributes) == compiled->rootSignature)
         return compiled;

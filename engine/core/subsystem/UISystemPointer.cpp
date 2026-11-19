@@ -23,6 +23,7 @@
 #include "Input.h"
 #include "System.h"
 #include "input/InputActions.h"
+#include "input/InputScheme.h"
 #include "script/ScriptMessages.h"
 #include "script/ScriptRuntime.h"
 #include "script/LuaBinding.h"
@@ -48,6 +49,16 @@ static constexpr float UI_DRAG_START_DISTANCE = 4.0f;
 static constexpr double UI_DOUBLE_CLICK_TIME = 0.3;
 
 namespace {
+
+    // an on-screen control's Visibility: Always, on a touch device, or while the player uses touch
+    bool onScreenControlShown(OnScreenVisibility visibility){
+        switch (visibility){
+            case OnScreenVisibility::TOUCH_DEVICES_ONLY: return System::instance().isTouchDevice();
+            case OnScreenVisibility::TOUCH_SCHEME: return InputSchemeTracker::getCurrent() == InputScheme::Touch;
+            case OnScreenVisibility::ALWAYS: break;
+        }
+        return true;
+    }
 
     bool isMousePointer(int pointerId){
         return pointerId < 0;
@@ -1434,18 +1445,17 @@ bool UISystem::controlTakesPointers(Entity entity, Signature signature) const{
     // inactive or in a non-interactable Canvas Group: no (a held control is cancelled, D6)
     if (!scene->isEntityActiveInHierarchy(entity) || !isInteractable(entity))
         return false;
-    const bool touchDevice = System::instance().isTouchDevice();
     if (signature.test(scene->getComponentId<OnScreenStickComponent>())){
         const OnScreenStickComponent& stick = scene->getComponent<OnScreenStickComponent>(entity);
-        return stick.enabled && (stick.visibility == OnScreenVisibility::ALWAYS || touchDevice);
+        return stick.enabled && onScreenControlShown(stick.visibility);
     }
     if (signature.test(scene->getComponentId<OnScreenButtonComponent>())){
         const OnScreenButtonComponent& button = scene->getComponent<OnScreenButtonComponent>(entity);
-        return button.enabled && (button.visibility == OnScreenVisibility::ALWAYS || touchDevice);
+        return button.enabled && onScreenControlShown(button.visibility);
     }
     if (signature.test(scene->getComponentId<TouchAreaComponent>())){
         const TouchAreaComponent& area = scene->getComponent<TouchAreaComponent>(entity);
-        return area.enabled && (area.visibility == OnScreenVisibility::ALWAYS || touchDevice);
+        return area.enabled && onScreenControlShown(area.visibility);
     }
     return false;
 }
@@ -1794,13 +1804,13 @@ void UISystem::setElementOffset(Entity entity, const Vector2& rest, const Vector
 }
 
 // Once a frame: the Touch Areas' onDrag with the frame's movement, the visibility rules (a
-// released Floating base hidden, controls for touch devices only)
+// released Floating base hidden, controls for touch devices only or the touch scheme). A control
+// hidden by them lets go in validatePointers (controlTakesPointers)
 void UISystem::updateControls(){
     if (!ScriptRuntime::hasStarted(scene))
         return;
 
     validatePointers();
-    const bool touchDevice = System::instance().isTouchDevice();
 
     // a control and its children shown or hidden (only when that changes: a pass over the
     // Transforms); the visible flags it sets are runtime state of the playing scene
@@ -1830,8 +1840,8 @@ void UISystem::updateControls(){
     for (int i = 0; i < sticks->size(); i++){
         const Entity entity = sticks->getEntity(i);
         const OnScreenStickComponent& stick = sticks->getComponentFromIndex(i);
-        const bool shown = stick.visibility == OnScreenVisibility::ALWAYS || touchDevice;
-        if (stick.visibility == OnScreenVisibility::TOUCH_DEVICES_ONLY)
+        const bool shown = onScreenControlShown(stick.visibility);
+        if (stick.visibility != OnScreenVisibility::ALWAYS)
             setSubtreeVisible(entity, shown);
         if (shown && stick.background != NULL_ENTITY && stick.mode != OnScreenStickMode::FIXED && stick.hideWhenReleased)
             setSubtreeVisible(stick.background, stick.pressed);
@@ -1840,16 +1850,16 @@ void UISystem::updateControls(){
     auto buttons = scene->getComponentArray<OnScreenButtonComponent>();
     for (int i = 0; i < buttons->size(); i++){
         const OnScreenButtonComponent& control = buttons->getComponentFromIndex(i);
-        if (control.visibility == OnScreenVisibility::TOUCH_DEVICES_ONLY)
-            setSubtreeVisible(buttons->getEntity(i), touchDevice);
+        if (control.visibility != OnScreenVisibility::ALWAYS)
+            setSubtreeVisible(buttons->getEntity(i), onScreenControlShown(control.visibility));
     }
 
     std::vector<std::pair<Entity, Vector2>> drags;
     auto areas = scene->getComponentArray<TouchAreaComponent>();
     for (int i = 0; i < areas->size(); i++){
         TouchAreaComponent& area = areas->getComponentFromIndex(i);
-        if (area.visibility == OnScreenVisibility::TOUCH_DEVICES_ONLY)
-            setSubtreeVisible(areas->getEntity(i), touchDevice);
+        if (area.visibility != OnScreenVisibility::ALWAYS)
+            setSubtreeVisible(areas->getEntity(i), onScreenControlShown(area.visibility));
         if (area.delta.x != 0.0f || area.delta.y != 0.0f)
             drags.emplace_back(areas->getEntity(i), area.delta);
         area.delta = Vector2(0, 0);

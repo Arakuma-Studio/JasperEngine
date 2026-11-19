@@ -182,6 +182,7 @@
 #include "shader/ShaderWarmup.h"
 #include "Input.h"
 #include "input/InputActions.h"
+#include "input/InputScheme.h"
 #include "io/UserSettings.h"
 #include "io/UserSettingsStore.h"
 #include "pool/ShaderPool.h"
@@ -2394,6 +2395,8 @@ void editor::Project::resetPlayInput() const{
     // its Input Manager rebinding, disabled actions or simulated sources
     Input::reset();
     InputActions::resetRuntimeState();
+    // and the input scheme starts from the device (the Game view's Simulate Touch), or forced
+    InputSchemeTracker::reset(System::instance().isTouchDevice());
 }
 
 void editor::Project::setShaderGlobals(const std::vector<ShaderGlobalDecl>& decls){
@@ -4089,6 +4092,33 @@ void editor::Project::setCustomResolutions(const std::vector<GameResolution>& re
 
 void editor::Project::setSimulateTouch(bool simulateTouch){
     this->simulateTouch = simulateTouch;
+}
+
+const std::string& editor::Project::getInputSchemeOverride() const{
+    return inputSchemeOverride;
+}
+
+bool editor::Project::setInputSchemeOverride(const std::string& scheme){
+    InputScheme parsed = InputScheme::KeyboardMouse;
+    if (scheme == "auto"){
+        inputSchemeOverride = scheme;
+    }else if (InputSchemeTracker::parseScheme(scheme, parsed)){
+        inputSchemeOverride = parsed == InputScheme::KeyboardMouse ? "keyboard_mouse" : parsed == InputScheme::Gamepad ? "gamepad" : "touch";
+    }else{
+        return false;
+    }
+    // during Play at once; in edit mode at the next Play start
+    if (isPlaySessionActive())
+        applyInputSchemeOverride();
+    return true;
+}
+
+void editor::Project::applyInputSchemeOverride() const{
+    InputScheme parsed = InputScheme::KeyboardMouse;
+    if (inputSchemeOverride != "auto" && InputSchemeTracker::parseScheme(inputSchemeOverride, parsed))
+        InputSchemeTracker::setOverride(parsed);
+    else
+        InputSchemeTracker::setOverride(std::nullopt);
 }
 
 editor::CommandHistory* editor::Project::getProjectCommandHistory(){
@@ -6595,6 +6625,7 @@ void editor::Project::resetConfigs() {
     setVoxelSettings(VoxelProjectSettings());
     spriteNormalsSettings = {};
     simulateTouch = false;
+    inputSchemeOverride = "auto";
     // nothing reloads into a project that is going (S05), nothing cooks for it (S14)
     HotReloadService::get().stopWatching();
     if (TextureCookQueue::get().getProject() == this){
@@ -11423,7 +11454,8 @@ void editor::Project::start(uint32_t sceneId) {
     applyLayerCollisionMatrices();
     // a review left from the last Play of this scene goes with the new one
     PlayChangeReview::get().discard(sceneId);
-    // and from clean input (Project Settings > Input, no runtime rebinding)
+    // and from clean input (Project Settings > Input, no runtime rebinding), in the Game view's Input Scheme
+    applyInputSchemeOverride();
     resetPlayInput();
     // and audio: no music of edit mode (eval_lua) in it, the driver this Play mixes on, the mixer's
     // start snapshot and remembered values, the listener unpaused
@@ -11728,7 +11760,8 @@ void editor::Project::stop(uint32_t sceneId) {
 
             // matrix changes made by scripts last only for the Play, never reaching project.yaml
             applyLayerCollisionMatrices();
-            // so do held input, rebinding overrides and simulated input sources
+            // so do held input, rebinding overrides, simulated input sources and a forced input scheme
+            InputSchemeTracker::setOverride(std::nullopt);
             resetPlayInput();
             // and the driver of its capture, and the mixer values scripts set (the remembered ones
             // stay in UserSettings)

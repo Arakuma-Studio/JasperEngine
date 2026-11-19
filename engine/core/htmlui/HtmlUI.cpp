@@ -13,6 +13,7 @@
 #if JASPERENGINE_VIDEO
 #include "media/UIVideoElement.h"
 #endif
+#include "controls/InputPrompt.h"
 #include "controls/OnScreenControls.h"
 #include "compat/runtime/RuntimeRegistry.h"
 #include "widgets/WidgetsRuntime.h"
@@ -107,6 +108,8 @@ bool HtmlUI::acquire(){
     htmlui::HtmlTextEffects::install();
     // the on-screen controls (ui-multitouch): <onscreen-stick>, <onscreen-button>, <touch-area>
     UIOnScreenControl::registerInstancers();
+    // <input-prompt>: an action's binding for the input scheme in use
+    UIInputPrompt::registerInstancer();
     // the compat layer's runtime emulations (phase-2 hook H1), before any document loads
     htmlui::compat::registerRuntime();
     // the S17 widgets: virtual views, markdown, tooltips, drag and drop
@@ -153,6 +156,7 @@ void HtmlUI::release(){
 #endif
     UIParticleSystemElement::releaseInstancer();
     UIOnScreenControl::releaseInstancers();
+    UIInputPrompt::releaseInstancer();
     htmlui::compat::releaseRuntime();
     htmlui::WidgetsRuntime::releaseAll();
     htmlui::EffectRegistry::get().shutdown();

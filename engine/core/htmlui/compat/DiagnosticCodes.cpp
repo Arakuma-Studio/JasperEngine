@@ -252,7 +252,7 @@ namespace {
          "The media query was rewritten to the engine's syntax (range syntax to min-/max-, comma lists to separate blocks, "
          "prefers-color-scheme to themes, ...)."},
         {codes::MediaStatic, I, false, "media-static", "Media feature evaluated statically",
-         "The media feature has one fixed value in the engine (hover, pointer, color, ...); the message gives the value used."},
+         "The media feature has one fixed value in the engine (any-hover, any-pointer, color, ...); the message gives the value used."},
         {codes::ImportProblem, W, true, "import-problem", "@import problem",
          "An @import cycle (Error: the repeated import is dropped), a missing imported file, or an @import nested too deeply "
          "(Warning)."},

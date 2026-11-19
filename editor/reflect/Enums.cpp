@@ -346,6 +346,7 @@ namespace {
     constexpr EnumItem kOnScreenVisibilityItems[] = {
         {v(OnScreenVisibility::ALWAYS), "always", "Always", "OnScreenVisibility::ALWAYS"},
         {v(OnScreenVisibility::TOUCH_DEVICES_ONLY), "touch_devices_only", "Touch Devices Only", "OnScreenVisibility::TOUCH_DEVICES_ONLY"},
+        {v(OnScreenVisibility::TOUCH_SCHEME), "touch_scheme", "Touch Scheme", "OnScreenVisibility::TOUCH_SCHEME"},
     };
 
     // the tokens upstream's rigidbody codecs write (StreamComponents.cpp)

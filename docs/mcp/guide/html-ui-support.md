@@ -89,6 +89,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `iframe` | unsupported | placeholder div.htmlui-unsupported (Warning) (HTMLUI-HTML-0002) | load the page as its own UIDocument |
 | `img` | emulated | HtmlImageElement; .svg sources (and data:image/svg+xml) -> <svg src> |  |
 | `input` | emulated | HtmlInputElement (input type table) |  |
+| `input-prompt` | emulated | the engine's input prompt: the action's binding for the input scheme in use, live (Input actions) |  |
 | `ins` | native | UA inline styles |  |
 | `kbd` | native | UA inline styles |  |
 | `label` | native | with HtmlLabelBehavior |  |
@@ -209,11 +210,12 @@ A construct that is not native is reported where it is written (`check --ui`, th
 
 `*` = every element; `data-*`, `aria-*` and `on*` are patterns.
 
-### Attributes: a-e
+### Attributes: a-d
 
 | Attribute | Element | Support | Notes | Instead |
 |---|---|---|---|---|
 | `action` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
+| `action` | `input-prompt` | emulated | read by the engine's input prompt (jasper://docs/html-ui) |  |
 | `action` | `onscreen-button` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `align` | `*` | rewritten | legacy presentational attribute |  |
 | `alt` | `*` | native | kept |  |
@@ -274,17 +276,17 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `disableremoteplayback` | `video` | ignored | no remote playback; dropped with an info (HTMLUI-HTML-0028) |  |
 | `draggable` | `*` | rewritten | mapped: HTML5 drag events with event.dataTransfer, ghost, drop feedback (S17) |  |
 | `dropzone` | `*` | emulated | the element accepts drops of the listed dataTransfer types (copy\|move\|link) (S17) |  |
+
+### Attributes: e-l
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
 | `enctype` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
 | `enterkeyhint` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `estimated-height` | `grid-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
 | `estimated-height` | `list-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
 | `estimated-height` | `table-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
 | `estimated-height` | `tree-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
-
-### Attributes: f-l
-
-| Attribute | Element | Support | Notes | Instead |
-|---|---|---|---|---|
 | `face` | `font` | rewritten | legacy presentational attribute |  |
 | `fetchpriority` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `for` | `*` | native | kept |  |
@@ -404,6 +406,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | Attribute | Element | Support | Notes | Instead |
 |---|---|---|---|---|
 | `scale` | `particle-system` | emulated | CSS px per prefab unit (default 1) |  |
+| `scheme` | `input-prompt` | emulated | read by the engine's input prompt (jasper://docs/html-ui) |  |
 | `segment` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `segment` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `segment` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -2212,7 +2215,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `grid` | unsupported | not evaluated: the query never matches (Warning) (HTMLUI-AT-0004) | remove the query |
 | `handheld` | rewritten | media type that never matches; the block is dropped |  |
 | `height` | native | range syntax -> min-/max- forms; em/rem -> px x 16 |  |
-| `hover` | rewritten | evaluated at load: hover unless System::isTouchDevice() (Info) |  |
+| `hover` | rewritten | follows the last pointer used (live): none after a finger, hover after the mouse; the document is restyled with the other compile when it changes |  |
 | `inverted-colors` | rewritten | evaluated at load with the value none (Info) |  |
 | `max-aspect-ratio` | native | range syntax -> min-/max- forms |  |
 | `max-color` | rewritten | evaluated at load with the value 8 (Info) |  |
@@ -2236,7 +2239,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `orientation` | native |  |  |
 | `overflow-block` | rewritten | evaluated at load with the value scroll (Info) |  |
 | `overflow-inline` | rewritten | evaluated at load with the value scroll (Info) |  |
-| `pointer` | rewritten | evaluated at load: fine, or coarse on touch devices (Info) |  |
+| `pointer` | rewritten | follows the last pointer used (live): coarse after a finger, fine after the mouse; the document is restyled with the other compile when it changes |  |
 | `prefers-color-scheme` | rewritten | UIDocument::setColorScheme switches the theme (light by default) |  |
 | `prefers-contrast` | rewritten | evaluated at load with the value no-preference (Info) |  |
 | `prefers-reduced-data` | unsupported | not evaluated: the query never matches (Warning) (HTMLUI-AT-0004) | remove the query |
@@ -2268,7 +2271,7 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-AT-0003` | info | **@supports evaluated** (`supports-evaluated`): The @supports condition was evaluated against the engine's support tables; the message gives the result. |
 | `HTMLUI-AT-0004` | warning | **Media feature unsupported** (`media-feature-unsupported`): The media condition uses a feature or a negation the engine cannot express; the block never matches. |
 | `HTMLUI-AT-0005` | info | **Media query normalized** (`media-normalized`): The media query was rewritten to the engine's syntax (range syntax to min-/max-, comma lists to separate blocks, prefers-color-scheme to themes, ...). |
-| `HTMLUI-AT-0006` | info | **Media feature evaluated statically** (`media-static`): The media feature has one fixed value in the engine (hover, pointer, color, ...); the message gives the value used. |
+| `HTMLUI-AT-0006` | info | **Media feature evaluated statically** (`media-static`): The media feature has one fixed value in the engine (any-hover, any-pointer, color, ...); the message gives the value used. |
 | `HTMLUI-AT-0007` | by case (warning) | **@import problem** (`import-problem`): An @import cycle (Error: the repeated import is dropped), a missing imported file, or an @import nested too deeply (Warning). |
 | `HTMLUI-AT-0008` | info | **Nesting flattened** (`nesting-flattened`): Nested rules were flattened into top-level rules. |
 | `HTMLUI-AT-0009` | warning | **Invalid keyframes** (`keyframes-invalid`): A keyframe selector or the content of a keyframe block is invalid; it was dropped. |

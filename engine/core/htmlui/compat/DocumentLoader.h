@@ -76,6 +76,9 @@ namespace jasperengine::htmlui::compat {
         std::vector<Diagnostic> diagnostics;          // compile-time, sorted
         SourceFiles files;
         bool dependsOnViewport = false;
+        // a media query read hover or pointer: compiled per CompatOptions::coarsePointer, the
+        // document swapped for the other variant when the pointer in use changes
+        bool dependsOnPointer = false;
         uint64_t key = 0;                             // cache key (path, contents of every dependency, options)
         std::string rootSignature;                    // the <html> class and attribute names its selectors were banded for
 
@@ -208,6 +211,9 @@ namespace jasperengine::htmlui::compat {
         // font check) of a loaded document; empty for others
         static const std::vector<Diagnostic>& diagnosticsOf(const Rml::ElementDocument* document);
         static void addRuntimeDiagnostic(const Rml::ElementDocument* document, const Diagnostic& diagnostic);
+        // the input scheme's root attributes as InputSchemeTracker has them now (every load; a
+        // .rml document and each change through HtmlUIContext)
+        static void applyInputScheme(Rml::ElementDocument* document);
         // focuses the first element with `autofocus` (after the document is shown)
         static void applyAutofocus(Rml::ElementDocument* document);
         // HTMLUI-CSS-0023: families the document names that no @font-face declares and the font
@@ -216,6 +222,10 @@ namespace jasperengine::htmlui::compat {
         // the RML <body> of a compat document is "body#htmlui-root"
         static bool isCompatDocument(const Rml::Element* element);
         static constexpr const char* kRootId = "htmlui-root";
+        // the input scheme's attributes of every document's root (input-device-awareness R14):
+        // their names are in every compile's root signature, their values set live (no recompile)
+        static constexpr const char* kInputSchemeAttribute = "data-input-scheme";
+        static constexpr const char* kGamepadFamilyAttribute = "data-gamepad-family";
         static constexpr const char* kLocationAttribute = "data-htmlui-loc";
     };
 

@@ -5278,4 +5278,58 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # -- input-device-awareness: the input scheme (configure_game_view input_scheme, get_input_state's scheme) --------------
+    {
+        "id": "guard_input_scheme_forced",
+        "kind": "guard",
+        "what_happened": "New text (input-device-awareness R27): the Game view forces the input scheme before Play, so the HUD "
+                         "shows a scheme's prompts from the first frame; without the parameter an agent sends a pad press after "
+                         "Play started (the first frames show the other prompts) or edits scripts.",
+        "text_at_issue": "configure_game_view: '... the input scheme forced at Play start'; its input_scheme enum auto|keyboard_mouse|gamepad|touch",
+        "source": "input-device-awareness R24, R27 (new tool text); no failure on record",
+        "prompt": "I want to check the gamepad button prompts of the HUD from the very first frame of the game. Set the editor "
+                  "up so the game treats the player as using a gamepad from the start, press Play and take a Game view "
+                  "screenshot. Do not change the game's scripts.",
+        "groups_enabled": ["editor_ux"],
+        "mocks": [
+            {"tool": "configure_game_view", "args": {"input_scheme": "gamepad"}, "result": ok(
+                "Game view: input scheme gamepad (forced at Play start), aspect free, scale 1.",
+                {"input_scheme": "gamepad", "aspect": "free", "scale": 1})},
+            {"tool": "configure_game_view", "result": ok("Game view: input scheme auto, aspect free, scale 1.",
+                                                         {"input_scheme": "auto", "aspect": "free", "scale": 1})},
+            {"tool": "play", "result": ok("Playing \"Main\".", {"state": "playing"})},
+            {"tool": "get_input_state", "result": ok(
+                "Input of game frame 3\nscheme Gamepad (forced), 0 changes",
+                {"game_frame": 3, "scheme": {"current": "Gamepad", "pointer": "Keyboard&Mouse", "gamepad": None,
+                                             "gamepad_family": "Generic", "override": "Gamepad"}, "changes": 0})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).", {"view": "game"})},
+        ],
+        "checks": {"calls": [{"tool": "configure_game_view", "args": {"input_scheme": "gamepad"}}, "play"],
+                   "edits_must_not": [r"\.lua$"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_input_scheme_read",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "New text (input-device-awareness R27): which device the game treats as in use is in get_input_state "
+                         "(scheme), and send_input switches it as a player would; without it an agent writes a Lua probe or "
+                         "guesses from the screenshot.",
+        "text_at_issue": "get_input_state: '... and the input scheme (the device in use; send_input switches it)'",
+        "source": "input-device-awareness R27 (new tool text); no failure on record",
+        "prompt": "The game is playing. Tap the screen once at (640, 360), then tell me which input scheme the game thinks the "
+                  "player is using now.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "touch"}]}, "result": ok(
+                "Sent 1 event over 2 frames; playing.", {"frames": 2, "state": "playing"})},
+            {"tool": "get_input_state", "result": ok(
+                "Input of game frame 212\nscheme Touch, 1 changes",
+                {"game_frame": 212, "touches": [], "scheme": {"current": "Touch", "pointer": "Touch", "gamepad": None,
+                                                              "gamepad_family": "Generic", "override": None}, "changes": 1})},
+            {"tool": "eval_lua", "result": ok("Touch", {"result": "Touch"})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "touch"}]}}, "get_input_state"],
+                   "reply_must": [r"(?i)touch"]},
+        "max_turns": 10,
+    },
 ]

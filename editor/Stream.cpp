@@ -4428,6 +4428,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     project->getSpriteNormalsSettings() = workspace.getSpriteNormalsSettings();
 
     project->setSimulateTouch(workspace.isSimulateTouch());
+    // an unknown name (a newer editor's) leaves it on Auto
+    if (!project->setInputSchemeOverride(workspace.getInputScheme()))
+        project->setInputSchemeOverride("auto");
     project->setCustomResolutions(workspace.getCustomResolutions());
 
     // Which scenes are open is a per-user choice, so the tab list decides it. With no

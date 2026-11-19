@@ -19,6 +19,8 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "Log.h"
 #include "System.h"
+#include "input/InputScheme.h"
+#include "jobs/JobSystem.h"
 
 #include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
@@ -298,10 +300,20 @@ Rml::ElementDocument* HtmlUIContext::loadDocument(const std::string& path){
         options.viewport = htmlui::compat::CompatSize{dimensions.x, dimensions.y};
         options.dpRatio = densityRatio;
         options.touchDevice = System::instance().isTouchDevice();
+        options.coarsePointer = InputSchemeTracker::getPointer() == InputScheme::Touch;
         options.colorScheme = colorScheme;
         options.reducedMotion = reducedMotion;
         options.verboseDiagnostics = UIDocumentSystem::getVerboseDiagnostics();   // AppSettings::htmlUiVerboseDiagnostics
-        document = htmlui::compat::DocumentLoader::load(context, path, options);
+        std::shared_ptr<const htmlui::compat::CompatDocument> compiled;
+        document = htmlui::compat::DocumentLoader::load(context, path, options, &compiled);
+        // a touch device's first switch to the mouse (or back) is a cache hit: the other pointer's
+        // variant of a document that reads hover or pointer is compiled in the background
+        if (document && compiled && compiled->dependsOnPointer && options.touchDevice){
+            htmlui::compat::CompatOptions other = options;
+            other.coarsePointer = !options.coarsePointer;
+            jobs::enqueueDetached([path, other](){ htmlui::compat::DocumentLoader::compile(path, other); }, jobs::Lane::Background,
+                                  "htmlui-pointer-variant");
+        }
         if (document && !navigateListener){
             navigateListener.reset(new NavigateListener(&navigateHandler));
             context->GetRootElement()->AddEventListener("htmlnavigate", navigateListener.get(), false);
@@ -312,6 +324,7 @@ Rml::ElementDocument* HtmlUIContext::loadDocument(const std::string& path){
         }
     }else{
         document = context->LoadDocument(path);
+        htmlui::compat::DocumentLoader::applyInputScheme(document);
     }
     if (!document){
         Log::error("[HTML UI] could not load document '%s'", path.c_str());
@@ -336,8 +349,31 @@ void HtmlUIContext::unloadDocument(Rml::ElementDocument* document){
     context->UnloadDocument(document);
 }
 
+void HtmlUIContext::applyInputScheme(){
+    const uint32_t revision = InputSchemeTracker::getRevision();
+    if (!context || revision == inputSchemeRevision)
+        return;
+    inputSchemeRevision = revision;
+    const bool coarse = InputSchemeTracker::getPointer() == InputScheme::Touch;
+    for (int i = 0; i < context->GetNumDocuments(); i++){
+        Rml::ElementDocument* document = context->GetDocument(i);
+        // RmlUi restyles what the attribute selectors match
+        htmlui::compat::DocumentLoader::applyInputScheme(document);
+        // hover and pointer: the other variant (prewarmed on a touch device); documents that never
+        // read them keep their compile
+        std::shared_ptr<const htmlui::compat::CompatDocument> compiled = htmlui::compat::DocumentLoader::compiledOf(document);
+        if (compiled && compiled->dependsOnPointer && compiled->options.coarsePointer != coarse){
+            htmlui::compat::CompatOptions options = compiled->options;
+            options.coarsePointer = coarse;
+            htmlui::compat::DocumentLoader::restyleWith(document, compiled, options);
+        }
+    }
+}
+
 void HtmlUIContext::update(){
     if (context){
+        // the input scheme of the frame (InputSchemeTracker::latch): root attributes, hover and pointer
+        applyInputScheme();
         // text-effect: the texts that animate draw again (geometry only)
         htmlui::HtmlTextEffects::get().update(context);
         // focus tracking, animation fill modes (phase-2 hook H1)

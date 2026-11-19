@@ -382,7 +382,8 @@ Native or exactly rewritten, as in Chrome:
   as in a browser.
 - **At-rules**: `@media` (width, height, aspect-ratio, orientation, resolution, range syntax,
   `prefers-color-scheme` and `prefers-reduced-motion` switched from Lua; `hover` and `pointer`
-  evaluated once at load: `none`/`coarse` on touch devices), `@supports` (evaluated against
+  follow the last pointer used, live: `none`/`coarse` after a finger, `hover`/`fine` after the
+  mouse; `any-hover` and `any-pointer` are the device's, at load), `@supports` (evaluated against
   the engine's tables), `@layer`, `@import`, CSS nesting, `@keyframes`, `@starting-style`,
   `@font-face`, `@property` (registered: typed, animated, `inherits: false`; see "Animating custom
   properties (@property)").
@@ -1588,8 +1589,8 @@ form control or `tabindex="0"`) has the focus, the gamepad drives the document l
 **Touch.** Every finger is a pointer of its own: its own `:hover` (only while it is down),
 `:active`, capture, drag and click. Two fingers press two buttons; lifting one releases and
 clicks only its own. Hover-only affordances do not exist on touch: show them by default or on
-`:focus`/`:active`, or use `@media (hover: hover)`, evaluated once at load (false on touch
-devices). A finger that starts on a scrollable box pans it once it moves past a few pixels,
+`:focus`/`:active`, or use `@media (hover: hover)`, which follows the last pointer used (false
+after a finger, true after the mouse, also on a touch device with a mouse attached). A finger that starts on a scrollable box pans it once it moves past a few pixels,
 where `touch-action` allows (then it gets `pointercancel` and loses `:active`); on-screen
 controls and game surfaces use `touch-action: none`. Linux desktops have no multi-touch: the
 Game view's Simulate Touch with an Alt-pinned finger and `send_input` cover testing.
@@ -1633,7 +1634,7 @@ pointer that presses it; three fingers on three controls work at once.
 
 | Element | Attributes (defaults) | State and events |
 |---|---|---|
-| `onscreen-stick` | `mode` (`fixed`, `floating`: the base appears under the finger, `dynamic`: it follows past `move-threshold`), `handle-range` (1), `dead-zone` (0), `move-threshold` (1), `axes` (`both`, `horizontal`, `vertical`), `snap-x`, `snap-y`, `horizontal-action` (`Horizontal`), `vertical-action` (`Vertical`), `visibility` (`always`, `touch-devices-only`) | `data-pressed`, `data-x`, `data-y` (-1..1, y up); `:active` while held; `stickstart`, `stickmove`, `stickend` (`event.detail.x` / `.y`) |
+| `onscreen-stick` | `mode` (`fixed`, `floating`: the base appears under the finger, `dynamic`: it follows past `move-threshold`), `handle-range` (1), `dead-zone` (0), `move-threshold` (1), `axes` (`both`, `horizontal`, `vertical`), `snap-x`, `snap-y`, `horizontal-action` (`Horizontal`), `vertical-action` (`Vertical`), `visibility` (`always`, `touch-devices-only`, `touch-scheme`: while the player uses touch) | `data-pressed`, `data-x`, `data-y` (-1..1, y up); `:active` while held; `stickstart`, `stickmove`, `stickend` (`event.detail.x` / `.y`) |
 | `onscreen-button` | `action` (`Fire1`), `value` (1; -1 on an axis), `press-on-enter`, `release-on-leave`, `visibility` | `data-pressed`, `:active`; the usual pointer and click events |
 | `touch-area` | `horizontal-action` (`Mouse X`), `vertical-action` (`Mouse Y`), `sensitivity` (0.1), `invert-x`, `invert-y`, `visibility` | `data-pressed`; `areadrag` (`event.detail.dx` / `.dy`, document px) |
 
@@ -1641,7 +1642,19 @@ A stick without children gets `<div class="stick-base"><div class="stick-knob"><
 (a 160 px translucent circle and a 64 px knob from the UA sheet; give your own children these
 classes to restyle). The stick maths is Joystick Pack's in document px: the base's half width is
 the radius; the knob moves with `transform: translate(...)`. Released, removed, hidden with
-`display: none`, or with its document hidden or unloaded, a control clears what it wrote.
+`display: none` or by its `visibility`, or with its document hidden or unloaded, a control
+clears what it wrote.
+
+**Input scheme.** Every document's `<html>` carries `data-input-scheme` (`keyboard-mouse`,
+`gamepad`, `touch`) and `data-gamepad-family` (`xbox`, `playstation`, `nintendo`, `generic`),
+updated the frame the player switches device (jasper://docs/input), so CSS alone follows it:
+`html[data-input-scheme="touch"] .kbd-hint { display: none; }`. A script that sets them is
+overwritten at the next change. `<input-prompt action="Gameplay/Jump">` shows the action's binding
+for the scheme in use ("Space", "Cross", "Touch"; `scheme="gamepad"` and the others pin one) and
+sets `data-glyph` (a glyph key such as `gamepad/playstation/cross`), `data-scheme` and
+`data-empty` (no binding for that scheme); it follows rebinding too. Children you give it replace
+the text, the attributes still update: `<input-prompt action="Gameplay/Jump"><img class="glyph"></input-prompt>`
+with CSS on `[data-glyph="..."]` shows your art.
 
 **Text fields.** Focusing one opens the virtual keyboard (Android, iOS, Web) and places the IME
 window at the caret. Composition shows inside the field on Windows, macOS, iOS, Android and
