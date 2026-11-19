@@ -14,10 +14,16 @@
 //   where    writes the reports directory install resolved to DIR/where.txt (DIR may be relative)
 //   ring     logs 300 lines, writes the crash ring to DIR/ring.txt
 //   hang     starts the watchdog (200 ms) and stalls the main thread for 700 ms in a phase
+//   savegame_loop  writes a 4 MiB SaveGame slot (DIR/saves/slot1) again and again until killed
+//            (SaveGameKillSlow); JASPER_SAVEGAME_INPLACE=1 rewrites one file in place instead,
+//            the red control of that test
 
 #include "diag/CrashHandler.h"
 #include "diag/detail/CrashState.h"
 #include "diag/HangWatchdog.h"
+#include "jobs/JobSystem.h"
+#include "save/SaveFormat.h"
+#include "save/SaveGameStore.h"
 #include "log/Logger.h"
 #include "util/CrashGuard.h"
 #include "thread/ThreadUtil.h"
@@ -30,6 +36,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <thread>
 #if defined(_WIN32)
@@ -137,6 +144,32 @@ int main(int argc, char** argv) {
     Logger::Config logging;
     logging.asyncDrain = false;
     Logger::init(logging);
+
+    if (std::strcmp(mode, "savegame_loop") == 0) {
+        // each snapshot is whole and tells which one it is: {"i": n, "blob": 4 MiB of 'a' + n % 26}
+        save::SaveGameStore& store = save::SaveGameStore::instance();
+        store.setFolder(root / "saves");
+        const bool inPlace = std::getenv("JASPER_SAVEGAME_INPLACE") != nullptr;
+        for (int64_t i = 1;; i++) {
+            std::string payload;
+            save::SaveError error;
+            nlohmann::json value = {{"i", i}, {"blob", std::string(4 * 1024 * 1024, static_cast<char>('a' + i % 26))}};
+            if (!save::fromJson(value, payload, error)) return 3;
+            if (inPlace) {
+                save::SaveFile file;
+                file.generation = 1;
+                file.sections.push_back({"main", std::make_shared<const std::string>(std::move(payload))});
+                const std::string bytes = save::buildSaveFile(file);
+                std::filesystem::create_directories(root / "saves");
+                std::ofstream(root / "saves" / "slot1.g1.jsave", std::ios::binary | std::ios::trunc)
+                    .write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+                continue;
+            }
+            if (!store.write("slot1", "main", std::move(payload), save::WriteOptions(), nullptr).ok()) return 3;
+            store.flush("slot1");
+            jobs::drainMainQueue();
+        }
+    }
 
     diag::crash::Config config;
     config.product = "jasperengine-crash-test";

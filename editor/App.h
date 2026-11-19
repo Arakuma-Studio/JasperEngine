@@ -120,6 +120,7 @@ namespace jasperengine::editor{
     class SearchPalette;
     class ShortcutsWindow;
     class BookmarksWindow;
+    class SavedDataWindow;
 
     enum class AlertType {
         Info,
@@ -312,6 +313,7 @@ namespace jasperengine::editor{
         SearchPalette* searchPalette;
         ShortcutsWindow* shortcutsWindow;
         BookmarksWindow* bookmarksWindow;
+        SavedDataWindow* savedDataWindow;
         PlayInput* playInput;
         GameWindow* gameWindow;
         MainToolbar* mainToolbar;
@@ -563,6 +565,7 @@ namespace jasperengine::editor{
         SearchPalette* getSearchPalette() const { return searchPalette; }
         ShortcutsWindow* getShortcutsWindow() const { return shortcutsWindow; }
         BookmarksWindow* getBookmarksWindow() const { return bookmarksWindow; }
+        SavedDataWindow* getSavedDataWindow() const { return savedDataWindow; }
         // Runs a main-menu command as a menu click would (the palette, run_command)
         void runMenuCommand(const PlatformMenuCommand& command) { executeMenuCommand(command); }
         // The main menu as it is now (the palette's commands, run_command's checks)

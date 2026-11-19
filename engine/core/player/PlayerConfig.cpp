@@ -149,6 +149,7 @@ json PlayerConfig::toJson() const {
                     {"sampleRate", audioSampleRate}, {"outputStage", audioOutputStage}, {"iosSessionCategory", audioIosSession}, {"seed", audioSeed},
                     {"musicGroup", audioMusicGroup}};
     if (!nativePlatformOnly.empty()) out["nativePlatformOnly"] = nativePlatformOnly;
+    if (saveGame != save::SaveSettings()) out["saveGame"] = {{"backups", saveGame.backups}, {"maxSlotMiB", saveGame.maxSlotMiB}};
     return out;
 }
 
@@ -362,6 +363,11 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             for (const auto& [plugin, message] : native->items()) {
                 if (message.is_string()) config.nativePlatformOnly[plugin] = message.get<std::string>();
             }
+        }
+        // absent: the defaults
+        if (const auto saveGame = in.find("saveGame"); saveGame != in.end() && saveGame->is_object()) {
+            config.saveGame.backups = saveGame->value("backups", config.saveGame.backups);
+            config.saveGame.maxSlotMiB = saveGame->value("maxSlotMiB", config.saveGame.maxSlotMiB);
         }
         if (config.title.empty()) config.title = config.name;
         if (config.storageId.empty()) config.storageId = config.appId.empty() ? config.name : config.appId;

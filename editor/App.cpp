@@ -139,6 +139,7 @@
 #include "shortcuts/PanelClaims.h"
 #include "shortcuts/ShortcutsWindow.h"
 #include "window/BookmarksWindow.h"
+#include "window/SavedDataWindow.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
 #include "pixelart/aseprite/AsepriteEditorHooks.h"
@@ -346,6 +347,7 @@ editor::App::App(){
         StatusBar::setTransientMessage(def.name + ": " + reason, 4.0);
     });
     bookmarksWindow = new BookmarksWindow(&project);
+    savedDataWindow = new SavedDataWindow(&project);
     // Stop found edits that can be kept: the window opens, or after an agent's Stop the
     // Console says where they are (S24 R30)
     PlayChangeReview::get().onPending = [this](uint32_t sceneId, size_t rows) {
@@ -830,6 +832,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.project", windowMenuLabel(ProjectWindow::WINDOW_NAME)),
             catalogItem("window.console", windowMenuLabel(ConsoleWindow::WINDOW_NAME)),
             catalogItem("window.bookmarks", windowMenuLabel(BookmarksWindow::WINDOW_NAME)),
+            catalogItem("window.savedData", windowMenuLabel(SavedDataWindow::WINDOW_NAME)),
             catalogItem("window.undoHistory", windowMenuLabel(UndoHistoryWindow::WINDOW_NAME)),
             catalogItem("window.playModeChanges", windowMenuLabel(PlayModeChangesWindow::WINDOW_NAME)),
             catalogItem("window.colorPicker"),
@@ -1582,6 +1585,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::SearchAll:
             searchPalette->open();
+            break;
+        case AppMenuCommand::ToggleSavedData:
+            showEditorWindow(savedDataWindow);
             break;
         case AppMenuCommand::ToggleBookmarks:
             showEditorWindow(bookmarksWindow);
@@ -2382,6 +2388,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(UndoHistoryWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(PlayModeChangesWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(BookmarksWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(SavedDataWindow::WINDOW_NAME, dock_id_middle_bottom);
     // Systems: an eight-column table, wide enough only here (in the Inspector's column the
     // system names and the Enabled checkboxes were cut off)
     ImGui::DockBuilderDockWindow(SystemsWindow::WINDOW_NAME, dock_id_middle_bottom);
@@ -3247,6 +3254,7 @@ void editor::App::show(){
     navigationWindow->show();
     playModeChangesWindow->show();
     bookmarksWindow->show();
+    savedDataWindow->show();
     codeEditor->show();
     gameWindow->show();
     // Prefab Mode's tab docks with the scene tabs the first time a stage shows

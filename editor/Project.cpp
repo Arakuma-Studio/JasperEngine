@@ -3903,6 +3903,19 @@ void editor::Project::setThreadingSettings(const ThreadingProjectSettings& setti
     }
 }
 
+const editor::SaveGameSettings& editor::Project::getSaveGameSettings() const{
+    return saveGameSettings;
+}
+
+void editor::Project::setSaveGameSettings(const SaveGameSettings& settings){
+    const bool changed = settings != saveGameSettings;
+    saveGameSettings = settings;
+    save::configure(settings.engineSettings());
+    if (changed && modelLoaded){
+        markGeneratedSourcesDirty();
+    }
+}
+
 const editor::ShaderCreationProjectSettings& editor::Project::getShaderCreationSettings() const{
     return shaderCreationSettings;
 }
@@ -6539,6 +6552,7 @@ void editor::Project::resetConfigs() {
     setParticleQaSettings(ParticleQaSettings());
     setProcMatQaSettings(procmat::ProcMatQaSettings());
     setShaderCreationSettings(ShaderCreationProjectSettings());
+    setSaveGameSettings(SaveGameSettings());
     windowMode = defaultWindowMode;
     windowWidth = defaultWindowWidth;
     windowHeight = defaultWindowHeight;
@@ -7339,6 +7353,8 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
         applyNewProjectTerrainDefaults();
         // PlayerPrefs are the project's (.jasperengine/user/rundata): read from the new one
         UserSettingsStore::instance().unload();
+        // and the SaveGame slots (rundata/saves): the store flushes and opens the new folder
+        if (save::SaveGameStore* saves = save::SaveGameStore::existing()) saves->reset();
         fs::path projectFile = projectPath / "project.yaml";
 
         // Set the project name so libName (used for the generated CMake target
@@ -7725,6 +7741,8 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& requestedPa
         refreshTrustedRoots();
         // PlayerPrefs are the project's (.jasperengine/user/rundata): read from the new one
         UserSettingsStore::instance().unload();
+        // and the SaveGame slots (rundata/saves): the store flushes and opens the new folder
+        if (save::SaveGameStore* saves = save::SaveGameStore::existing()) saves->reset();
         // the undo steps name the old folder's files: an undo would write into it, as opening a
         // project drops them
         projectHistory.clear();
@@ -7818,6 +7836,8 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         refreshTrustedRoots();
         // PlayerPrefs are the project's (.jasperengine/user/rundata): read from the new one
         UserSettingsStore::instance().unload();
+        // and the SaveGame slots (rundata/saves): the store flushes and opens the new folder
+        if (save::SaveGameStore* saves = save::SaveGameStore::existing()) saves->reset();
 
         // shader manifests of forks are read from this project's files
         // (the project root, else the assets directory: findShaderFile, read when asked, so
@@ -8507,6 +8527,7 @@ void editor::Project::configureGenerator() {
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setSaveGameSettings(saveGameSettings);
     generator.setFoliageQuality(foliageQuality, !foliageQualityDeclared);
     generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setDrawSubmission(drawSubmission);
@@ -10721,6 +10742,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setSaveGameSettings(saveGameSettings);
     generator.setFoliageQuality(foliageQuality, !foliageQualityDeclared);
     generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setDrawSubmission(drawSubmission);
@@ -11737,7 +11759,14 @@ void editor::Project::stop(uint32_t sceneId) {
             // and the global shader values scripts set (Shader.setGlobal*)
             resetPlayShaderGlobals();
 
-            // what the game stored in UserSettings / PlayerPrefs is on disk when Play has stopped
+            // what the game queued in SaveGame and stored in UserSettings / PlayerPrefs is on disk
+            // when Play has stopped; the Saved Data window's marks of this Play end
+            save::flushForLifecycle("Play stopped");
+            // (and the images go: the next Play may have another SaveGame.version and migrations)
+            if (save::SaveGameStore* saves = save::SaveGameStore::existing()){
+                saves->clearSessionMarks();
+                saves->unload();
+            }
             UserSettings::save();
 
             // simulated focus, pause and rotation end with the Play, as the frame rate a script set

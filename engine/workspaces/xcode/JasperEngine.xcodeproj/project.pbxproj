@@ -4992,6 +4992,14 @@
 		4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */; };
 		4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */; };
 		4A534E476B9066D7DA7DF4A0 /* PortableMath.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477CE603833084E5A8 /* PortableMath.h */; };
+		4A534E53AE3BB15CBCB78CDA /* SaveFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53CAF7B69A0583A110 /* SaveFormat.cpp */; };
+		4A534E5373A14E5DE31D0E81 /* SaveGameStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530FF89075AA589D6F /* SaveGameStore.cpp */; };
+		4A534E53E9E0F36C81D3138F /* SaveValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E539F1764A02980F06D /* SaveValue.cpp */; };
+		4A534E53BA8CD9400B7688D5 /* SaveGameLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53BC6A5E7A1DB2D134 /* SaveGameLua.cpp */; };
+		4A534E536CEBB1B5DC66A17D /* SaveFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53CAF7B69A0583A110 /* SaveFormat.cpp */; };
+		4A534E53BB8B1E8B65DDF02E /* SaveGameStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530FF89075AA589D6F /* SaveGameStore.cpp */; };
+		4A534E53F22BCFDA1F16EDF8 /* SaveValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E539F1764A02980F06D /* SaveValue.cpp */; };
+		4A534E53FB9FC3DF45EFBCF7 /* SaveGameLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53BC6A5E7A1DB2D134 /* SaveGameLua.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9610,6 +9618,10 @@
 		4A534E534A929794BDDB5CB4 /* clipper.rectclip.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.rectclip.cpp; sourceTree = "<group>"; };
 		4A534E53B10176CE4BA89CBF /* clipper.triangulation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = clipper.triangulation.cpp; sourceTree = "<group>"; };
 		4A534E477CE603833084E5A8 /* PortableMath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PortableMath.h; sourceTree = "<group>"; };
+		4A534E53CAF7B69A0583A110 /* SaveFormat.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SaveFormat.cpp; sourceTree = "<group>"; };
+		4A534E530FF89075AA589D6F /* SaveGameStore.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SaveGameStore.cpp; sourceTree = "<group>"; };
+		4A534E539F1764A02980F06D /* SaveValue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SaveValue.cpp; sourceTree = "<group>"; };
+		4A534E53BC6A5E7A1DB2D134 /* SaveGameLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SaveGameLua.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10179,6 +10191,7 @@
 				4A534E47CFB46598B1647202 /* TransitionClassesLua.cpp */,
 				4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */,
 				4A534E47157896361DA814BE /* TilemapClassesLua.cpp */,
+				4A534E53BC6A5E7A1DB2D134 /* SaveGameLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -11790,6 +11803,7 @@
 				5052544389C2D57FF7DC8B71 /* noise */,
 				564F584C566CEAA6686CA9AF /* voxel */,
 				4A534E531B38A0F5FBC1FFA3 /* tilemap */,
+				4A534E535737E19B07B9FC33 /* save */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -16090,6 +16104,16 @@
 			path = clipper2;
 			sourceTree = "<group>";
 		};
+		4A534E535737E19B07B9FC33 /* save */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E53CAF7B69A0583A110 /* SaveFormat.cpp */,
+				4A534E530FF89075AA589D6F /* SaveGameStore.cpp */,
+				4A534E539F1764A02980F06D /* SaveValue.cpp */,
+			);
+			path = save;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -19727,6 +19751,10 @@
 				4A534E531A1C988F11418CC6 /* clipper.offset.cpp in Sources */,
 				4A534E53070C4D4DF13C2CF1 /* clipper.rectclip.cpp in Sources */,
 				4A534E532D5E71F42D847032 /* clipper.triangulation.cpp in Sources */,
+				4A534E536CEBB1B5DC66A17D /* SaveFormat.cpp in Sources */,
+				4A534E53BB8B1E8B65DDF02E /* SaveGameStore.cpp in Sources */,
+				4A534E53F22BCFDA1F16EDF8 /* SaveValue.cpp in Sources */,
+				4A534E53FB9FC3DF45EFBCF7 /* SaveGameLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20722,6 +20750,10 @@
 				4A534E53B20756E5F1A7BE16 /* clipper.offset.cpp in Sources */,
 				4A534E53D0DF67AF16A27312 /* clipper.rectclip.cpp in Sources */,
 				4A534E53987D75562512D018 /* clipper.triangulation.cpp in Sources */,
+				4A534E53AE3BB15CBCB78CDA /* SaveFormat.cpp in Sources */,
+				4A534E5373A14E5DE31D0E81 /* SaveGameStore.cpp in Sources */,
+				4A534E53E9E0F36C81D3138F /* SaveValue.cpp in Sources */,
+				4A534E53BA8CD9400B7688D5 /* SaveGameLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

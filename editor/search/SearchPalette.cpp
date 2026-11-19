@@ -88,7 +88,7 @@ namespace {
         {"Input Actions", "window.inputActions"}, {"Navigation", "window.navigation"},
         {"Texture Synthesis", "window.textureSynthesis"}, {"Sprite Normal Map", "window.spriteNormals"}, {"Pixel Art Cleanup", "window.pixelArtCleanup"},
         {"Pixel Art Check", "window.pixelArtCheck"}, {"Physics Placement", "window.physicsPlacement"},
-        {"MCP Server", "window.mcpActivity"}, {"Bookmarks", "window.bookmarks"},
+        {"MCP Server", "window.mcpActivity"}, {"Bookmarks", "window.bookmarks"}, {"Saved Data", "window.savedData"},
         {"Undo History", "window.undoHistory"}, {"Play Mode Changes", "window.playModeChanges"},
         {"Missing Assets", "window.missingAssets"}, {"Graph Editor", "window.graphEditor"}, {"References", "window.assetReferences"}, {"Profiler", "window.profiler"},
         {"Frame Debugger", "window.frameDebugger"}, {"Systems", "window.systems"}, {"Jobs & Memory", "window.jobsMemory"},

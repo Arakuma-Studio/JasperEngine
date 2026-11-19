@@ -598,6 +598,7 @@ bool editor::Exporter::writeGameConfig() {
     // the native plugins the player's platform has no code of (a Compile build's generated init sets the same)
     game.nativePlatformOnly = NativePlugins::platformOnlyPlugins(NativePlugins::listPlugins(NativePlugins::scan(project->getProjectPath())),
                                                                  nativeRunningName(config.platform));
+    game.saveGame = project->getSaveGameSettings().engineSettings();
     // the selected scene of the editor (in Prefab Mode, the scene behind it), else the project's
     game.startScene = config.startSceneId != 0 ? config.startSceneId : project->getStartSceneId();
     for (const SceneProject& scene : project->getScenes()) {

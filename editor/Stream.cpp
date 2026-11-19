@@ -3307,6 +3307,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         // Shader Creation (spec S32): the values away from their defaults, by its reflection table
         const YAML::Node shaderCreationNode = reflect::encode(reflect::shaderCreationStruct(), &project->getShaderCreationSettings(), reflect::EncodeContext{});
         if (shaderCreationNode.IsMap() && shaderCreationNode.size()) root["shaderCreation"] = shaderCreationNode;
+        // Player > Saved Data: the values away from their defaults, by its reflection table
+        const YAML::Node saveGameNode = reflect::encode(reflect::saveGameSettingsStruct(), &project->getSaveGameSettings(), reflect::EncodeContext{});
+        if (saveGameNode.IsMap() && saveGameNode.size()) root["saveGame"] = saveGameNode;
     }
 
     {
@@ -4341,6 +4344,18 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             shaderCreation.clamp();
         }
         project->setShaderCreationSettings(shaderCreation);
+    }
+
+    {
+        SaveGameSettings saveGame;
+        if (node["saveGame"] && node["saveGame"].IsMap()){
+            reflect::DecodeContext ctx;
+            ctx.component = "saveGame";
+            reflect::decode(reflect::saveGameSettingsStruct(), node["saveGame"], &saveGame, ctx);
+            saveGame.clamp();
+        }
+        // a project without the node (older ones) gets the defaults
+        project->setSaveGameSettings(saveGame);
     }
 
     project->setNavigationSettings(decodeNavigationProjectSettings(node["navigation"]));

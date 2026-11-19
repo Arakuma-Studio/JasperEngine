@@ -1,0 +1,63 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+#pragma once
+
+// Window > General > Saved Data (docs/saved-data.md, docs/specs/savegame.md R31-R36): the
+// project's SaveGame slots and PlayerPrefs, from the store the game uses in Play (its pending
+// writes too). Save Slots lists every slot (Slot, Version, Saved, Size, Backups, Status, Title);
+// a selected slot shows its namespaces as a read-only tree, Copy as JSON, its metadata, and its
+// backups with Restore Backup. Delete Slot, Restore Backup, the Testing dropdown's Corrupt Newest
+// Generation and Clear All Saves are undo steps of the project history (SaveSlotCmd). While open
+// it refreshes at most 4 times a second; closed, it costs nothing.
+
+#include "command/type/SaveSlotCmd.h"
+#include "save/SaveGameStore.h"
+
+#include "json.hpp"
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace jasperengine::editor {
+
+    class Project;
+
+    class SavedDataWindow {
+    public:
+        static constexpr const char* WINDOW_NAME = "Saved Data";
+
+        explicit SavedDataWindow(Project* project);
+
+        void show();
+        void setOpen(bool open);
+        bool isOpen() const { return windowOpen; }
+
+        // One undoable step of the project history; a failure is told in the Console and the
+        // status bar, and returned
+        bool run(SaveSlotCmd::Action action, const std::string& slot, uint64_t generation = 0,
+                 save::CorruptMode mode = save::CorruptMode::Flip, std::string* error = nullptr);
+
+    private:
+        Project* project;
+        bool windowOpen = false;
+        bool focusRequested = false;
+
+        std::vector<save::SlotInfo> slots;
+        uint64_t seenChanges = UINT64_MAX;
+        double lastRefresh = -1.0;
+        std::string selected;
+        // the selected slot as read (refreshed with the list)
+        nlohmann::json selectedJson;
+        std::string selectedProblem;
+        std::vector<save::BackupInfo> backups;
+
+        void refresh(bool force);
+        void loadSelected();
+        void drawSlots();
+        void drawSelected();
+        void drawPrefs();
+    };
+
+}

@@ -28,6 +28,12 @@ deliberate crash) and fail nothing. Exit 2 when the gate itself cannot run (no C
 --until-line TEXT ends the run at the first console line containing TEXT (a game that prints when it
 is done; --seconds is then the cap).
 
+A baseline's "reload_after": TEXT reloads the page (Page.reload, the same profile: what it stored in
+IndexedDB stays) once a console line contains TEXT, then waits for the ready line again; the console
+checks see both loads. "quota_bytes" sets the site's storage quota (Storage.overrideQuotaForOrigin)
+before the page opens. "project" names the test project whose build the gate runs (default: the
+gate's own name), for a second gate of one build.
+
 A baseline's "click": n clicks the canvas centre n times after the run (CDP Input.dispatchMouseEvent:
 trusted events, so a page can lock the pointer), each followed by "after_click_seconds" (default 2)
 of running; the console lines it causes are checked like the others.
@@ -385,12 +391,27 @@ def main() -> int:
         cdp.send("Page.enable")
         if baseline.get("init_script"):
             cdp.send("Page.addScriptToEvaluateOnNewDocument", source=baseline["init_script"])
+        # a site storage quota (bytes): IndexedDB writes past it fail with QuotaExceededError
+        if baseline.get("quota_bytes"):
+            cdp.send("Storage.overrideQuotaForOrigin", origin=f"http://127.0.0.1:{server.server_port}",
+                     quotaSize=int(baseline["quota_bytes"]))
         print(f"browser_gate: {Path(chrome_path).name} opens {page_url}")
         cdp.send("Page.navigate", url=page_url)
 
         ready = False
         if args.until_ready:
             ready = cdp.pump(args.timeout, until=lambda event: READY_LINE in console_text(event))
+        reload_after = baseline.get("reload_after")
+        if reload_after:
+            # what the page stored (IndexedDB, localStorage) stays: the same profile loads it again
+            if not any(reload_after in console_text(event) for event in cdp.events):
+                cdp.pump(args.timeout, until=lambda event: reload_after in console_text(event))
+            print(f"browser_gate: reloading the page after {reload_after!r}")
+            loads = sum(1 for event in cdp.events if READY_LINE in console_text(event))
+            cdp.send("Page.reload")
+            if args.until_ready:
+                ready = cdp.pump(args.timeout, until=lambda event: READY_LINE in console_text(event)
+                                 and sum(1 for e in cdp.events if READY_LINE in console_text(e)) > loads)
         cdp.pump(seconds, until=(lambda event: args.until_line in console_text(event)) if args.until_line else None)
 
         before_input = None

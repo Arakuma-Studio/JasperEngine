@@ -781,9 +781,12 @@ web-gate)
         *)
             [[ "$NAME" =~ ^[A-Za-z0-9_-]+$ && -f "$ROOT/tools/web/gates/$NAME.json" ]] \
                 || { echo "GATE must be sample-project, sample-project-threads or a tools/web/gates/<name>.json" >&2; exit 1; }
-            WEB_DIR="$OUT-$NAME"
+            # a gate of another test project's build names it ("project": savegame-quota runs build/web-savegame)
+            PROJECT_NAME="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("project", sys.argv[2]))' \
+                "$ROOT/tools/web/gates/$NAME.json" "$NAME")"
+            WEB_DIR="$OUT-$PROJECT_NAME"
             # a test project's pthreads build (WEB_THREADS=1 WEB_PROJECT=<name> tools/build.sh web)
-            [[ "${WEB_THREADS:-0}" == 1 ]] && WEB_DIR="$OUT-threads-$NAME" ;;
+            [[ "${WEB_THREADS:-0}" == 1 ]] && WEB_DIR="$OUT-threads-$PROJECT_NAME" ;;
     esac
     SHOT_NAME="$NAME"
     if [[ "${WASM_SIMD:-1}" == 0 ]]; then

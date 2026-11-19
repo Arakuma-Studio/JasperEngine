@@ -228,6 +228,38 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_saved_data_corrupt",
+        "kind": "guard",
+        "what_happened": "Asked to check that a game survives a damaged save, an agent would hand-edit the binary .jsave with "
+                         "write_file (or a shell) and break its own test. user_settings store \"saves\" corrupts the newest "
+                         "generation the way a crash would, as an undo step.",
+        "text_at_issue": "user_settings description: 'store \"saves\": SaveGame slots (key = slot): ... corrupt, restore (generation).'",
+        "source": "docs/specs/savegame.md R37, R43",
+        "prompt": "My game saves its progress in the save slot slot1. Damage that save the way a crash could, so I can check the "
+                  "game recovers from the backup. Don't play the game; just damage it and tell me which file you damaged.",
+        "mocks": [
+            {"tool": "user_settings", "args": {"store": "saves", "action": "list"}, "result": ok(
+                "1 slot in .jasperengine/user/rundata/saves:\nslot1: version 1, 412 bytes, 3 generation(s), ok",
+                {"slots": [{"slot": "slot1", "version": 1, "saved_at": 1795080000.5, "size": 412, "generation": 12, "generations": 3,
+                            "namespaces": ["main"], "meta": None, "requires": None, "status": "ok"}],
+                 "count": 1, "folder": ".jasperengine/user/rundata/saves"})},
+            {"tool": "user_settings", "args": {"store": "saves", "action": "get"}, "result": ok(
+                "slot1/main (version 1, generation 12) = {\"gold\":120,\"level\":\"forest\"}",
+                {"slot": "slot1", "namespace": "main", "value": {"gold": 120, "level": "forest"}, "version": 1, "generation": 12,
+                 "namespaces": ["main"], "meta": None, "requires": None})},
+            {"tool": "user_settings", "args": {"store": "saves", "action": "corrupt"}, "result": ok(
+                "Corrupted slot1.g12.jsave (flip).",
+                {"slot": "slot1", "generation": 12, "mode": "flip",
+                 "next": "Read it in the game (eval_lua \"return SaveGame.read('slot1')\") to see the recovery, or "
+                         "user_settings {store: \"saves\", action: \"get\", key: \"slot1\"}."})},
+            {"tool": "user_settings", "result": err("Unknown action. Valid: list, get, set, delete, clear.")},
+        ],
+        "checks": {"calls": [{"tool": "user_settings", "args": {"store": "saves", "action": "corrupt"}}],
+                   "must_not_call": ["write_file", "delete_asset"], "shell_must_not": [r"\.jsave"],
+                   "reply_must": [r"g12"]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_linked_folder_rules",
         "kind": "guard",
         "what_happened": "A folder linked in from out of the project is a folder of the project for the asset database and exports, "

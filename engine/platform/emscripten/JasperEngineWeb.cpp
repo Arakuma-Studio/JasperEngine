@@ -21,6 +21,7 @@
 #include "Log.h"
 #include "PlatformConfig.h"
 #include "player/RunControl.h"
+#include "save/SaveGameStore.h"
 #include "util/FrameLimiter.h"
 #include "util/PlatformRules.h"
 
@@ -120,11 +121,53 @@ extern "C" {
         }
     }
 
-    EMSCRIPTEN_KEEPALIVE 
-    void syncfs_callback(const char* err) {
-	    if (!err || err[0]) {
+    // errName / err: the DOMException's name ("QuotaExceededError") and message, "" on success.
+    // SaveGame completes the writes that waited for this sync with its result (quota reaches the game)
+    EMSCRIPTEN_KEEPALIVE
+    void syncfs_callback(const char* errName, const char* err) {
+        const bool failed = err && err[0];
+	    if (failed) {
 		    jasperengine::Log::error("Failed to save in iDB file system: %s", err);
 	    }
+        if (jasperengine::save::SaveGameStore* saves = jasperengine::save::SaveGameStore::existing())
+            saves->fileSystemSynced(!failed, errName ? errName : "", err ? err : "");
+    }
+
+    // ---- SaveGame (engine/core/save/SaveGameStore.cpp)
+
+    EMSCRIPTEN_KEEPALIVE
+    int jasper_web_idb_enabled() {
+        return JasperEngineWeb::isEnabledIDB() ? 1 : 0;
+    }
+
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_storage_estimated(double used, double quota) {
+        if (jasperengine::save::SaveGameStore* saves = jasperengine::save::SaveGameStore::existing())
+            saves->setStorageEstimate(static_cast<int64_t>(used), static_cast<int64_t>(quota));
+    }
+
+    // navigator.storage.persist(), once, best effort: the browser may still evict the site
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_storage_persist() {
+        EM_ASM({
+            if (navigator.storage && navigator.storage.persist) {
+                navigator.storage.persist().then(function(granted) {
+                    console.debug("SaveGame: persistent storage " + (granted ? "granted" : "not granted"));
+                }).catch(function() {});
+            }
+        });
+    }
+
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_storage_estimate() {
+        EM_ASM({
+            if (navigator.storage && navigator.storage.estimate) {
+                navigator.storage.estimate().then(function(e) {
+                    ccall('jasper_web_storage_estimated', null, ['number', 'number'],
+                          [e.usage === undefined ? -1 : e.usage, e.quota === undefined ? -1 : e.quota]);
+                }).catch(function() {});
+            }
+        });
     }
 
     // ---- the hidden IME textarea (jasper_ime_create) and the clipboard
@@ -769,7 +812,8 @@ void JasperEngineWeb::syncFileSystemNow(){
 
     EM_ASM(
         FS.syncfs(function(err) {
-            ccall('syncfs_callback', null, ['string'], [err ? err.message : ""]);
+            ccall('syncfs_callback', null, ['string', 'string'],
+                  [err ? (err.name || "Error") : "", err ? (err.message || err.name || String(err)) : ""]);
         });
     );
 }

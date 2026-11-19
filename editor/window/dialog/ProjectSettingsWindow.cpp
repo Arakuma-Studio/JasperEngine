@@ -14,6 +14,7 @@
 #include "settings/SettingsRegistry.h"
 #include "reflect/Reflect.h"
 #include "command/type/ShaderCreationSettingsCmd.h"
+#include "command/type/SaveGameSettingsCmd.h"
 #include "texture/TextureCookReport.h"
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
@@ -1147,6 +1148,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_loadingSettings = project->getLoadingSettings();
     m_threading = project->getThreadingSettings();
     m_shaderCreation = project->getShaderCreationSettings();
+    m_saveGame = project->getSaveGameSettings();
     m_htmlUiRender = project->getHtmlUiRenderSettings();
     m_drawSubmission = project->getDrawSubmissionSettings();
     m_transitions = project->getTransitionDefaults();
@@ -1835,6 +1837,23 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                                "picks it when the browser allows SharedArrayBuffer, else the single-thread build.");
             }
 
+            ImGui::EndTable();
+        }
+
+        // SaveGame's slots (docs/saved-data.md): the rows of its reflection table
+        if (settingsFoldout("Saved Data") && beginSettingsTable("##PlayerSavedDataTable")) {
+            const SaveGameSettings defaults;
+            for (const reflect::FieldDesc& field : reflect::saveGameSettingsStruct().fields) {
+                const std::string key = std::string("player.saved_data.") + (std::string(field.name) == "backups" ? "backups_kept" : "max_slot_size_mib");
+                if (!settingsui::beginRow(key.c_str())) continue;
+                int& value = *static_cast<int*>(field.ref(&m_saveGame));
+                const int base = *static_cast<const int*>(field.ref(const_cast<SaveGameSettings*>(&defaults)));
+                if (projectBeginSettingsRow(field.label, value != base)) value = base;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputInt((std::string("##") + field.name).c_str(), &value);
+                value = std::clamp(value, static_cast<int>(field.min), static_cast<int>(field.max));
+                endSettingsRow(field.tooltip ? field.tooltip : "");
+            }
             ImGui::EndTable();
         }
 
@@ -6285,6 +6304,9 @@ bool ProjectSettingsWindow::applySettings() {
         m_project->getProjectCommandHistory()->addCommand(new ThreadingSettingsCmd(m_project, m_threading));
     }
     // undoable: the budget and warm draws apply to the editor at once
+    if (m_saveGame != m_project->getSaveGameSettings()) {
+        m_project->getProjectCommandHistory()->addCommand(new SaveGameSettingsCmd(m_project, m_saveGame));
+    }
     if (m_shaderCreation != m_project->getShaderCreationSettings()) {
         m_project->getProjectCommandHistory()->addCommand(new ShaderCreationSettingsCmd(m_project, m_shaderCreation));
     }

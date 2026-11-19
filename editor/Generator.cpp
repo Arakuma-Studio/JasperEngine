@@ -2356,6 +2356,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         mainContent += "#include \"particles/ParticleWorld.h\"\n";
     if (bitmapTextCacheMiB != 0)
         mainContent += "#include \"pixelart/BitmapTextCache.h\"\n";
+    if (saveGameSettings != SaveGameSettings())
+        mainContent += "#include \"save/SaveGameStore.h\"\n";
     mainContent += "#ifdef JASPERENGINE_PROJECT_PATH\n";
     mainContent += "#include \"shader/ShaderManifest.h\"\n";
     mainContent += "#include \"shader/ShaderVariantCompiler.h\"\n";
@@ -2830,6 +2832,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
 
     // Project Settings > Debug, before the first scene (its scripts may read DebugOverlay)
     mainContent += debugInitSource(debugSettings);
+    // Project Settings > Player > Saved Data, before a script can save
+    mainContent += saveGameInitSource(saveGameSettings);
 
     mainContent += "\n";
 
@@ -2918,6 +2922,18 @@ std::string editor::Generator::inputSettingsInitSource(const std::string& action
     if (!actionsAsset.empty())
         source += "    InputActions::loadDefault(" + Factory::formatString(actionsAsset) + ");\n";
     return source;
+}
+
+std::string editor::Generator::saveGameInitSource(const SaveGameSettings& settings) {
+    if (settings == SaveGameSettings()) return "";
+    std::string out;
+    out += "    {\n";
+    out += "        save::SaveSettings saveSettings;\n";
+    out += "        saveSettings.backups = " + std::to_string(settings.backups) + ";\n";
+    out += "        saveSettings.maxSlotMiB = " + std::to_string(settings.maxSlotMiB) + ";\n";
+    out += "        save::configure(saveSettings);\n";
+    out += "    }\n";
+    return out;
 }
 
 std::string editor::Generator::debugInitSource(const DebugSettings& debug) {

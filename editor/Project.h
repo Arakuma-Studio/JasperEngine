@@ -45,6 +45,7 @@
 #include "titleart/TitleArtSettings.h"
 #include "pixelart/PixelArtSettings.h"
 #include "model/ModelImportSettings.h"
+#include "SaveGameSettings.h"
 #include "vcs/VcsTypes.h"
 #include "util/PlatformRules.h"
 #include "util/ApplePrivacy.h"
@@ -1066,6 +1067,7 @@ namespace jasperengine::editor{
         ParticleQaSettings particleQa;
         procmat::ProcMatQaSettings procMatQa;
         ShaderCreationProjectSettings shaderCreationSettings;
+        SaveGameSettings saveGameSettings;
         AudioSettings audioSettings;
         DebugSettings debugSettings;
         TitleArtProjectSettings titleArtSettings;
@@ -2215,6 +2217,10 @@ namespace jasperengine::editor{
         // to the editor at once, asynchronous creation on its next start; exports bake them in
         const ShaderCreationProjectSettings& getShaderCreationSettings() const;
         void setShaderCreationSettings(const ShaderCreationProjectSettings& settings);
+        // Project Settings > Player > Saved Data: Play's SaveGame store takes them at its next
+        // write (save::configure), exports bake them in
+        const SaveGameSettings& getSaveGameSettings() const;
+        void setSaveGameSettings(const SaveGameSettings& settings);
         // the project's shader warm-up list (ShaderWarmup), next to project.yaml
         std::filesystem::path getShaderWarmupPath() const;
         // Stop of a Play that recorded: the run's entries merged into the list file
