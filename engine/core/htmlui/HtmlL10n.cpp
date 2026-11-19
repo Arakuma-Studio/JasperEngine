@@ -4,6 +4,8 @@
 #include "HtmlL10n.h"
 
 #include "Log.h"
+#include "Scene.h"
+#include "subsystem/UIDocumentSystem.h"
 #include "util/FontRegistry.h"
 
 #include "json.hpp"
@@ -262,6 +264,12 @@ HtmlL10n::DocumentReport HtmlL10n::report(Rml::ElementDocument* document) {
     }
     collectLiteral(document, false, out.literal);
     return out;
+}
+
+HtmlL10n::DocumentReport HtmlL10n::reportOf(Scene* scene, Entity entity) {
+    Rml::ElementDocument* document = scene ? scene->getSystem<UIDocumentSystem>()->getDocument(entity) : nullptr;
+    if (document && Localization::isActive()) translateDocument(document);
+    return report(document);
 }
 
 std::string HtmlL10n::refOf(Rml::Element* element) {

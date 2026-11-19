@@ -1112,9 +1112,7 @@ void inspectUiTool(const CallPtr& call) {
         // game-ui-localization.md R34: keyed elements, literal text and misses of this document
         if (args.value("l10n", false)) {
             if (!isPlaying(project)) l10n::refreshEditorLocalization(project);
-            Rml::ElementDocument* document = sp->scene->getSystem<UIDocumentSystem>()->getDocument(target.entity);
-            if (document && Localization::isActive()) hui::HtmlL10n::translateDocument(document);
-            const hui::HtmlL10n::DocumentReport report = hui::HtmlL10n::report(document);
+            const hui::HtmlL10n::DocumentReport report = hui::HtmlL10n::reportOf(sp->scene, target.entity);
             Json literal = Json::array();
             Json missing = Json::array();
             for (size_t i = 0; i < report.literal.size() && i < 50; i++) literal.push_back({{"ref", report.literal[i].first}, {"text", report.literal[i].second}});

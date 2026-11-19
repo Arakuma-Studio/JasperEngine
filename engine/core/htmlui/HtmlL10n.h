@@ -20,6 +20,7 @@
 
 #include "Export.h"
 #include "localization/Localization.h"
+#include "ecs/Entity.h"
 
 #include <string>
 #include <utility>
@@ -28,6 +29,10 @@
 namespace Rml {
     class Element;
     class ElementDocument;
+}
+
+namespace jasperengine {
+    class Scene;
 }
 
 namespace jasperengine::htmlui {
@@ -54,6 +59,9 @@ namespace jasperengine::htmlui {
         static DocumentReport report(Rml::ElementDocument* document);
         // "#id" or a path of tag:nth-child steps from the nearest element with an id
         static std::string refOf(Rml::Element* element);
+        // report() of a scene's UI Document, its keyed elements collected again first: what the
+        // editor's tools call (the shared engine exports no symbol with an RmlUi type)
+        static DocumentReport reportOf(Scene* scene, Entity entity);
     };
 
 }
