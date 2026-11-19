@@ -214,6 +214,7 @@ TEST_F(InputSchemeTest, NoiseDoesNotSwitch){
 
     // a key repeat, Shift alone, a key typed in a text field, the engine's Escape
     Engine::systemKeyDown(D_KEY_A, true, 0);
+    Engine::systemKeyUp(D_KEY_A, false, 0);
     Engine::systemKeyDown(D_KEY_LEFT_SHIFT, false, D_MODIFIER_SHIFT);
     Engine::systemKeyUp(D_KEY_LEFT_SHIFT, false, 0);
     InputSchemeTracker::noteKey(D_KEY_H, false, true, 1001.0);
@@ -230,6 +231,12 @@ TEST_F(InputSchemeTest, NoiseDoesNotSwitch){
     EXPECT_EQ(InputSchemeTracker::getChangeCount(), 0u);
 
     // the controls: 12 px within 0.25 s (spread over more time it is not), a trigger past half way
+    InputSchemeTracker::noteMouseMove(200, 200, 1999.0);   // where the mouse is (a jump counts as motion)
+    InputSchemeTracker::latch();
+    ASSERT_EQ(current(), InputScheme::KeyboardMouse);
+    InputSchemeTracker::noteTouchStart(5, 5, 1999.5);
+    InputSchemeTracker::latch();
+    ASSERT_EQ(current(), InputScheme::Touch);
     InputSchemeTracker::noteMouseMove(200, 200, 2000.0);
     InputSchemeTracker::noteMouseMove(206, 200, 2000.1);
     InputSchemeTracker::noteMouseMove(212, 200, 2000.4);

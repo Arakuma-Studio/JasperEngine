@@ -177,7 +177,7 @@ filter: every binding of every enabled map stays live whatever the scheme.
 
 ```lua
 if InputActions.currentScheme == InputScheme.Touch then showTouchHints() end
-InputActions.onSchemeChanged = function(scheme, previous) hud:refresh() end
+InputActions.onSchemeChanged = function(scheme, previous) refreshHud(scheme) end
 local label = InputActions.getActionDisplayName("Gameplay/Jump")        -- "Space", "Cross", "Touch"
 local glyph = InputActions.getActionGlyph("Gameplay/Jump", "Gamepad")   -- "gamepad/playstation/cross"
 ```
@@ -282,8 +282,10 @@ by their component or element: a stick writes `horizontalAction` / `verticalActi
 it, a touch area `Mouse X` / `Mouse Y` deltas × `sensitivity` (0.1). An action field takes a flat
 name or `Map/Action`. Each takes the first pointer that presses it (a stick, a look area and a
 button at once); releasing, disabling, destroying, unloading, a cancel, pause or focus loss let go.
-A touch area dragged with the mouse adds nothing to an action bound to mouse movement. The Game
-view's Simulate Touch makes the mouse finger 0 (Alt on release keeps it down; the next drag is
+A touch area dragged with the mouse adds nothing to an action bound to mouse movement. Visibility
+(`visibility` on the elements): Always, Touch Devices Only (`touch-devices-only`: where the device
+has a touch screen) or Touch Scheme (`touch-scheme`: while the player uses touch; hidden, it lets
+go). The Game view's Simulate Touch makes the mouse finger 0 (Alt on release keeps it down; the next drag is
 finger 1).
 
 ```lua
