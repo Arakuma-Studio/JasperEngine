@@ -91,11 +91,11 @@ TEST(LuaPhysicsQuery, NonAllocFillsAndClears){
     EXPECT_EQ(runPhysicsQueryLua(L, R"(
         local scene = queryScene
         local t = {}
-        Physics.overlapSphereNonAlloc(scene, Vector3(5, 0, 0), 20, t)
+        local center = Vector3(5, 0, 0)
+        Physics.overlapSphereNonAlloc(scene, center, 20, t)
         collectgarbage("collect")
         collectgarbage("stop")
         local before = collectgarbage("count")
-        local center = Vector3(5, 0, 0)
         for i = 1, 1000 do
             Physics.overlapSphereNonAlloc(scene, center, 20, t)
         end

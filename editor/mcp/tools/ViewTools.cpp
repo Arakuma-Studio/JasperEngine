@@ -2359,8 +2359,8 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "configure_game_view";
         tool.title = "Configure Game View";
         tool.description =
-            "Read (no arguments) or change the Game view toolbar (editor preferences, not undoable): aspect (project = "
-            "the canvas size), resolution (the game and screenshots render at it; its dpi is Screen.dpi), a simulated "
+            "Read (no args) or change the Game view toolbar (editor preferences, not undoable): aspect (project = "
+            "the canvas size), resolution (the game and screenshots render at it), a simulated "
             "device, orientation and language (editor only; safe_area is Screen.safeArea). Options: jasper://docs/ui.";
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
@@ -2375,7 +2375,7 @@ void registerViewTools(McpRegistry& registry) {
             {"physics_debug_contacts", boolean("")},
             {"physics_debug_queries", boolean("")},
             {"network", stringEnum("", {"online", "offline"})},
-            {"device", string("A devices id, custom or none.")},
+            {"device", string("Id, custom, none.")},
             {"orientation", stringEnum("", {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"})},
             {"language", string("es-MX..., or system.")},
             {"device_overlay", boolean("")},

@@ -41,7 +41,26 @@ Json vectorJson(const Vector3& v) {
 
 // the shape argument as a QueryShape at origin; false with the error naming the field
 bool readQueryShape(const Json& args, const std::string& world, physics::QueryShape& shape, std::string& error) {
-    const Json spec = args.contains("shape") && args["shape"].is_object() ? args["shape"] : Json::object();
+    if (args.contains("shape") && !args["shape"].is_object()) {
+        error = "shape must be an object {type, radius, half_extents, size, point1, angle, rotation, direction2d}.";
+        return false;
+    }
+    const Json spec = args.contains("shape") ? args["shape"] : Json::object();
+    static const std::set<std::string> keys = {"type", "radius", "half_extents", "size", "point1", "angle", "rotation", "direction2d"};
+    for (auto it = spec.begin(); it != spec.end(); ++it) {
+        if (!keys.count(it.key())) {
+            error = "shape." + it.key() + " is not a shape field: type, radius, half_extents, size, point1, angle, rotation, direction2d.";
+            return false;
+        }
+    }
+    if (spec.contains("type") && !spec["type"].is_string()) {
+        error = "shape.type must be sphere, box, capsule, circle, point or area.";
+        return false;
+    }
+    if (spec.contains("direction2d") && spec["direction2d"] != "vertical" && spec["direction2d"] != "horizontal") {
+        error = "shape.direction2d must be vertical or horizontal.";
+        return false;
+    }
     const bool is2D = world == "2d";
     const std::string type = spec.value("type", is2D ? "circle" : "sphere");
     Vector3 origin;
@@ -378,16 +397,8 @@ void registerPhysicsQueryTools(McpRegistry& registry) {
     tool.inputSchema = object({
         {"op", withDefault(stringEnum("", {"overlap", "check", "cast", "raycast"}), "overlap")},
         {"world", stringEnum("Default: the scene's type.", {"3d", "2d", "drawn"})},
-        {"shape", object({
-            {"type", stringEnum("", {"sphere", "box", "capsule", "circle", "point", "area"})},
-            {"radius", number("")},
-            {"half_extents", vec3("")},
-            {"size", vec2("2D box or capsule.")},
-            {"point1", vec3("Capsule end, area corner.")},
-            {"angle", number("2D degrees.")},
-            {"rotation", quat()},
-            {"direction2d", stringEnum("", {"vertical", "horizontal"})}
-        })},
+        {"shape", anyObject("{type: sphere|box|capsule|circle|point|area, radius, half_extents, size (2D), point1 (capsule end, "
+                            "area corner), angle (2D degrees), rotation, direction2d: vertical|horizontal}.")},
         {"origin", vec3("Shape centre or start; 2D in scene units.")},
         {"direction", vec3("")},
         {"max_distance", number("")},
