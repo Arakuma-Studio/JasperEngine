@@ -1316,8 +1316,8 @@ CASES = [
         "what_happened": "Without String Tables agents localised a menu with a Lua table per language and a langIndex() per screen "
                          "(the Craftsman anti-pattern, docs/specs/game-ui-localization.md section 4); the guide's Other areas entry and "
                          "edit_string_table route them to keys and data-l10n-id.",
-        "text_at_issue": "Guide 'Other areas': 'localization (edit_string_table, data-l10n-id; assert_ui languages)'; "
-                         "edit_string_table's description",
+        "text_at_issue": "Guide 'Other areas': 'localization' (jasper://docs/localization); the localization group's "
+                         "description; edit_string_table's description",
         "source": "docs/specs/game-ui-localization.md R38",
         "prompt": "The main menu (assets/ui/main_menu.html, a Play button) must also be in German: 'Spielen'.",
         "mocks": [
@@ -1338,7 +1338,7 @@ CASES = [
         "kind": "guard",
         "what_happened": "Agents checked whether translated text fits by switching the Game view language and taking screenshots "
                          "one by one; assert_ui's languages runs text_fits per language in one call.",
-        "text_at_issue": "assert_ui's `languages` parameter; guide 'Other areas' localization entry",
+        "text_at_issue": "assert_ui's `languages` parameter (inspect_ui `l10n` beside it); jasper://docs/localization",
         "source": "docs/specs/game-ui-localization.md R38",
         "prompt": "Check that the main menu's buttons (UI Document GameObject 30) still fit their text in German.",
         "mocks": [

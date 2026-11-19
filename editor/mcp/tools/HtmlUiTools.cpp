@@ -2029,7 +2029,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
             "A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = "
             "send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model, "
             "styles + rule file:line. at: hit test. file: a .html/.css's diagnostics (= "
-            "`jasperengine-editor check --ui`). Lua-made content: play only.";
+            "`jasperengine-editor check --ui`). l10n: String Tables. Lua content: play only.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("UI Document (default: the only one).")},
@@ -2042,7 +2042,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
             {"styles", array(Json{{"type", "string"}}, "Computed CSS properties.")},
             {"limit", withDefault(integer("", 1, 1000), 200)},
             {"models", boolean("Data-model values (play).")},
-            {"l10n", boolean("String Tables: keyed, literal text, misses.")},
+            {"l10n", boolean("")},
             {"reload", boolean("Last hot reload's report.")},
             {"viewport", vec2("Lay out at [w,h], then restore.")},
             {"screenshot", boolean("Game view image, matches outlined.")},
@@ -2062,12 +2062,12 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.name = "assert_ui";
         tool.title = "Assert UI Layout";
         tool.description =
-            "Assert a live HTML/CSS UI document's layout: passed + each failure (element ref, numbers, rects), "
-            "on failure an image with failing boxes outlined. Checks {type, selector}: exists, count and selected "
+            "Assert a live HTML/CSS UI document's layout: passed + each failure (ref, numbers, rects), "
+            "on failure an image with them outlined. Checks {type, selector}: exists, count and selected "
             "(count|min|max), visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), "
             "within_parent (container), within_viewport, contrast (min_ratio, background where the UI is "
-            "transparent), min_size (width, height), virtual_window (max rows), tooltip (text). viewports: other "
-            "sizes too. Zero matches fail.";
+            "transparent), min_size (width, height), virtual_window (max rows), tooltip (text). viewports, "
+            "languages: more layouts. 0 matches fail.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("UI Document (default: the only one).")},
@@ -2090,7 +2090,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
                 {"text", string("")}
             }, {"type", "selector"})}}},
             {"viewports", array(vec2(""), "Up to 6 [w,h]; default: current.")},
-            {"languages", array(string(""), "Up to 8 tags (en-XA pseudo): every check per language.")},
+            {"languages", array(string(""), "")},
             {"screenshot", withDefault(stringEnum("", {"on_failure", "always", "never"}), "on_failure")},
             {"max_width", w3::maxWidthArgSchema(4096, DEFAULT_IMAGE_WIDTH)}
         }, {"checks"});
