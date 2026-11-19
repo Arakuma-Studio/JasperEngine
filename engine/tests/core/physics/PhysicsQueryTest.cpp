@@ -637,7 +637,9 @@ TEST(PhysicsQuery2D, OverlapsAndCastsMatchReference){
         total += hits.size();
         for (const OverlapHit& hit : hits){
             sensors += hit.trigger ? 1 : 0;
-            if (options.triggers == QueryTriggerInteraction::Ignore) ASSERT_FALSE(hit.trigger);
+            if (options.triggers == QueryTriggerInteraction::Ignore){
+                ASSERT_FALSE(hit.trigger);
+            }
         }
 
         // the first form is the All form's first
