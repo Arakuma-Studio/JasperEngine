@@ -4259,6 +4259,29 @@ CASES = [
         "max_turns": 10,
     },
 
+    {
+        "id": "bad_lua_veto_through_cancellable_event",
+        "kind": "bad",
+        "what_happened": "Asked for an action another script may refuse, agents fired a plain Event after the change (nothing can "
+                         "say no) or polled a shared flag; the Lua API guide now has CancellableEvent: listeners e:cancel(), and "
+                         "the emitter reads invoke's result and does not apply the change when it is true.",
+        "text_at_issue": "docs/mcp/guide/lua-api.md 'CancellableEvent()' (the emitter rule, e:cancel(), monitors)",
+        "source": "docs/specs/cancellable-prioritised-events.md R33",
+        "prompt": "Make the door refuse to open while another script says it is locked: Door should own an event that Lock "
+                  "(and any later script) can veto, and Lock vetoes it while self.locked is true. Edit scripts/Door.lua and "
+                  "scripts/Lock.lua; check the editor's Lua API guide for the engine's way to do it.",
+        "files": {
+            "scripts/Door.lua": "---@class Door : ScriptInstance\nlocal Door = { properties = {} }\n\n"
+                                "function Door:init()\n    self.isOpen = false\nend\n\n"
+                                "function Door:open(by)\n    self.isOpen = true\n    return true\nend\n\nreturn Door\n",
+            "scripts/Lock.lua": "---@class Lock : ScriptInstance\nlocal Lock = { properties = {} }\n\n"
+                                "function Lock:init()\n    self.locked = true\nend\n\nreturn Lock\n",
+        },
+        "checks": {"file_must": {"scripts/Door.lua": [r"CancellableEvent\(\)",
+                                                      r"(if\s+(not\s+)?[\w.:]*invoke\(|=\s*[\w.:]*invoke\()"],
+                                 "scripts/Lock.lua": [r"\w+:cancel\(\)"]}},
+        "max_turns": 18,
+    },
     # -- agent-authoring: building scenes, the guide past the client cut, terrain, shaders ------------
     {
         "id": "bad_repeat_without_prefab",

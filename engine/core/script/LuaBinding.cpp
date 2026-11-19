@@ -543,7 +543,8 @@ static void noteUIPointerSubscription(lua_State* L, int eventIndex, int selfInde
 }
 
 // Common implementation for event registration
-int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive) {
+int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive,
+                                     int32_t priority) {
     // Look up self[methodName] using __index
     lua_pushvalue(L, selfIndex);
     lua_pushstring(L, methodName);
@@ -661,7 +662,7 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
     if (luabridge::isInstance<ScriptEvent>(L, eventIndex)) {
         auto event = luabridge::get<ScriptEvent*>(L, eventIndex);
         if (event && event.value()) {
-            event.value()->addTagged(L, eventIndex, lua_tostring(L, tagIndex), closureIndex, guardActive ? 0 : selfIndex);
+            event.value()->addTagged(L, eventIndex, lua_tostring(L, tagIndex), closureIndex, guardActive ? 0 : selfIndex, priority);
             return 0;
         }
     }
@@ -803,11 +804,11 @@ int LuaBinding::luaUnregisterEngineEvent(lua_State* L) {
     return removeSubscription(L, eventIndex, -1, "UnregisterEngineEvent");
 }
 
-// Generic: RegisterEvent(self, event, methodName [, tag])
+// Generic: RegisterEvent(self, event, methodName [, tag] [, priority])
 int LuaBinding::luaRegisterEvent(lua_State* L) {
     int top = lua_gettop(L);
     if (top < 3)
-        return luaL_error(L, "RegisterEvent(self, event, methodName [, tag]) requires at least 3 arguments");
+        return luaL_error(L, "RegisterEvent(self, event, methodName [, tag] [, priority]) requires at least 3 arguments");
 
     if (!lua_istable(L, 1))
         return luaL_error(L, "RegisterEvent: 'self' must be a table");
@@ -818,7 +819,15 @@ int LuaBinding::luaRegisterEvent(lua_State* L) {
     const char* methodName = lua_tostring(L, 3);
     const char* tag = (top >= 4 && !lua_isnil(L, 4)) ? lua_tostring(L, 4) : nullptr;
 
-    return luaRegisterEventImpl(L, 2, 1, methodName, tag, false);
+    // the fifth argument (a number fourth is still a tag): Lua Events only
+    int32_t priority = 0;
+    if (top >= 5 && !lua_isnil(L, 5)) {
+        if (!luabridge::isInstance<ScriptEvent>(L, 2))
+            return luaL_error(L, "RegisterEvent: priority is for Event and CancellableEvent; engine events run in subscription order");
+        priority = ScriptEvent::checkPriority(L, 5, "RegisterEvent");
+    }
+
+    return luaRegisterEventImpl(L, 2, 1, methodName, tag, false, priority);
 }
 
 // Engine-specific: RegisterEngineEvent(self, methodName [, tag])
