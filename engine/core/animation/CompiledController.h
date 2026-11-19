@@ -126,6 +126,7 @@ namespace jasperengine::anim{
         AnimatorLayerBlending blending = AnimatorLayerBlending::Override;
         AnimatorAssetRef mask;
         std::string slot;
+        bool meshSpaceRotation = false;     // LayerDef::meshSpaceRotation
         int rootMachine = -1;
         uint32_t stateBegin = 0, stateCount = 0;
         // every any-state transition of the layer's machines, root first then depth first

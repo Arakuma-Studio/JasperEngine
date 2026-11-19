@@ -3463,6 +3463,9 @@ _PARAM_TYPE_OVERRIDES = {
     ('Rigidbody2D', 'setColliderMaterial', 'value'): 'string|PhysicsMaterial|nil',
     ('Rigidbody', 'setColliderMaterial', 'value'): 'string|PhysicsMaterial|nil',
     ('PhysicsMaterial', 'new', 'params'): '{friction?: number, bounciness?: number, frictionCombine?: PhysicsMaterialCombine, bounceCombine?: PhysicsMaterialCombine}|nil',
+    # Animator layers: an index (0 is the base layer) or a name
+    ('Animator', 'setLayerMeshSpaceRotation', 'layer'): 'integer|string',
+    ('Animator', 'getLayerMeshSpaceRotation', 'layer'): 'integer|string',
 }
 # anime (engine/core/script/binding/HtmlUIAnimeLua.cpp, phase-1 p1-anim): the parameter tables
 # are the Anime*Params classes of engine/core/script/binding/stubs/anime.lua

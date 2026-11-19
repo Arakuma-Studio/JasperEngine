@@ -416,4 +416,13 @@ player:setLayerMeshSpaceRotation("Upper Body", true)
 
 ## Deviations
 
-None yet.
+- **R5, D8: boundary bones of every masked layer.** The instance lists the boundary bones of every masked layer
+  above 0, whatever its blending and option, not only of flagged Override layers. The editor's warning (R29) and
+  `get_animation`'s coverage (R38) need them while the option is off. The list is bind-time data, not scratch: the
+  two scratch arrays (R21, R22) are still sized only while a layer runs the pass.
+- **R14: "rebind" is a load of the controller.** The Lua override resets when the controller loads again (another
+  controller, or the same file changed), where the layers' runtime state is rebuilt. It survives a rig rebind
+  after a hierarchy change, like `setLayerWeight`, so a script's call before the first bind is not lost.
+- **R30: what the gizmo's ghost is.** The runtime records, per boundary bone, the rig-space rotation right after
+  the layer's own blend and before the pass (`AnimatorInstance::layerMeshSpaceUnpassed`), over the pose the
+  layers below left, corrections included.

@@ -257,6 +257,44 @@ float Animator::getLayerWeight(int layer) const{
     return instance ? instance->getLayerWeight(layer) : 0.0f;
 }
 
+void Animator::setLayerMeshSpaceRotation(int layer, bool enabled){
+    anim::AnimatorInstance* instance = runtime();
+    if (instance) instance->setLayerMeshSpaceRotation(layer, enabled);
+}
+
+bool Animator::getLayerMeshSpaceRotation(int layer) const{
+    anim::AnimatorInstance* instance = runtime();
+    return instance && instance->layerMeshSpaceRotation(layer);
+}
+
+std::vector<Entity> Animator::getLayerBoundaryBones(int layer) const{
+    std::vector<Entity> bones;
+    anim::AnimatorInstance* instance = runtime();
+    if (!instance || !instance->bound) return bones;
+    for (uint16_t bone : instance->layerBoundaryBones(layer)) bones.push_back(instance->rig.bones[bone].entity);
+    return bones;
+}
+
+void Animator::setMeshSpaceBypass(bool bypass){
+    anim::AnimatorInstance* instance = runtime();
+    if (instance) instance->setMeshSpaceBypass(bypass);
+}
+
+bool Animator::isMeshSpaceBypass() const{
+    anim::AnimatorInstance* instance = runtime();
+    return instance && instance->meshSpaceBypass();
+}
+
+void Animator::setMeshSpaceDebug(bool debug){
+    anim::AnimatorInstance* instance = runtime();
+    if (instance) instance->setMeshSpaceDebug(debug);
+}
+
+bool Animator::isMeshSpaceDebug() const{
+    anim::AnimatorInstance* instance = runtime();
+    return instance && instance->meshSpaceDebug();
+}
+
 bool Animator::playMontage(const std::string& path){
     return playMontage(path, 1.0f, std::string());
 }

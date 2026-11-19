@@ -51,6 +51,7 @@
 #include "AnimationPlayer.h"
 #include <set>
 #include <cstdio>
+#include <stdexcept>
 
 #include "Log.h"
 
@@ -136,6 +137,32 @@ namespace{
         out.speed = info.speed;
         out.loop = info.loop;
         return out;
+    }
+
+    // an Animator layer by index or by name; an unknown one throws (LuaBridge turns it into a Lua
+    // error) naming the layers there are
+    int luaAnimatorLayer(const jasperengine::Animator& animator, const luabridge::LuaRef& layer, const char* function){
+        const int count = animator.getLayerCount();
+        int index = -1;
+        std::string asked;
+        if (layer.isString()){
+            const std::string name = layer.unsafe_cast<std::string>();
+            asked = "\"" + name + "\"";
+            index = animator.getLayerIndex(name);
+        }else if (layer.isNumber()){
+            const double value = layer.unsafe_cast<double>();
+            char text[32];
+            std::snprintf(text, sizeof(text), "%g", value);
+            asked = text;
+            if (value == std::floor(value) && value >= 0.0 && value < (double)count) index = (int)value;
+        }else{
+            throw std::runtime_error(std::string("Animator:") + function + ": the layer is an index (0 is the base layer) or a name");
+        }
+        if (index >= 0 && index < count) return index;
+        std::string names;
+        for (int l = 0; l < count; l++) names += (l > 0 ? ", " : "") + std::to_string(l) + " \"" + animator.getLayerName(l) + "\"";
+        throw std::runtime_error(std::string("Animator:") + function + ": no layer " + asked + "; the layers are " +
+                                 (count > 0 ? names : std::string("none (no controller loaded)")));
     }
 
 }
@@ -4447,6 +4474,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getLayerWeight", +[](const Animator* self, lua_State* L) -> float {
             const int layer = lua_type(L, 2) == LUA_TSTRING ? self->getLayerIndex(lua_tostring(L, 2)) : (int)luaL_checkinteger(L, 2);
             return self->getLayerWeight(layer);
+        })
+        // Mesh Space Rotation (docs/specs/mesh-space-rotation.md R14): a runtime override of this
+        // Animator, a layer by index or by name
+        .addFunction("setLayerMeshSpaceRotation", +[](Animator* self, const luabridge::LuaRef& layer, bool enabled) {
+            self->setLayerMeshSpaceRotation(luaAnimatorLayer(*self, layer, "setLayerMeshSpaceRotation"), enabled);
+        })
+        .addFunction("getLayerMeshSpaceRotation", +[](const Animator* self, const luabridge::LuaRef& layer) -> bool {
+            return self->getLayerMeshSpaceRotation(luaAnimatorLayer(*self, layer, "getLayerMeshSpaceRotation"));
         })
         .addFunction("playMontage",
             luabridge::overload<const std::string&>(&Animator::playMontage),
