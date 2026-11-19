@@ -42,7 +42,9 @@ namespace {
     void saveBenchBudget(const char* what, double ms, double budget){
         const double slack = testsupport::perfSlack();
         std::printf("[ bench    ] SaveGame %s: %.3f ms (budget %.1f ms)\n", what, ms, budget);
-        if (slack > 0.0) EXPECT_LE(ms, budget * slack) << what;
+        if (slack > 0.0) {
+            EXPECT_LE(ms, budget * slack) << what;
+        }
     }
 
     // A table of 10,000 entries, about 256 KiB encoded, as the global __saveBench

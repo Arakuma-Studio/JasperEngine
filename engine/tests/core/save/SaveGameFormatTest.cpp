@@ -113,7 +113,9 @@ TEST(SaveGameFormat, RejectsDamage){
         const bool ok = save::parseSaveFile(bytes, out, error);
         EXPECT_FALSE(ok) << what;
         EXPECT_FALSE(error.message.empty()) << what;
-        if (counting) EXPECT_LE(testsupport::largestAllocation(), 64u * 1024u) << what << ": " << error.message;
+        if (counting) {
+            EXPECT_LE(testsupport::largestAllocation(), 64u * 1024u) << what << ": " << error.message;
+        }
         return error;
     };
 
