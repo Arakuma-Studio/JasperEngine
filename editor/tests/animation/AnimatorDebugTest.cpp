@@ -454,22 +454,24 @@ TEST_F(AnimatorDebugTest, TorsoDirectionDrawsTwoAxesPerBoundaryBoneOfTheSelected
     pass.update(&scene, {root, hips}, torso, draw, {root});
     EXPECT_EQ(draws, 1);
     EXPECT_TRUE(instance.meshSpaceDebug()) << "recording while it draws the Animator";
-    ASSERT_EQ(drawn.size(), 1u) << "no update recorded the ghost yet: the corrected axis only";
+    ASSERT_EQ(drawn.size(), kTorsoAxisLines) << "no update recorded the ghost yet: the corrected axis only";
     step(0.02f);
     pass.update(&scene, {root, hips}, torso, draw, {root});
-    ASSERT_EQ(drawn.size(), 2u) << "two axes per boundary bone";
+    ASSERT_EQ(drawn.size(), 2 * kTorsoAxisLines) << "two axes per boundary bone";
     EXPECT_EQ(pass.snapshots(), 0u) << "Torso Direction takes no IK snapshot";
     // rest rotations are identity, so an axis is the bone's rig rotation turning +Z: the layer's
     // (hips -20 degrees, spine 40) with the pass, the base's hips under it without
     const Vector3 at(10.0f, 1.3f, 0.0f);
     const Vector3 corrected = (debugTurn(-20, 0, 1, 0) * debugTurn(40, 1, 0, 0)) * Vector3(0, 0, 1);
     const Vector3 ghost = (debugTurn(90, 0, 1, 0) * debugTurn(40, 1, 0, 0)) * Vector3(0, 0, 1);
-    EXPECT_EQ(drawn[0].color, overlaycolor::applied);
-    EXPECT_EQ(drawn[1].color, overlaycolor::rejected);
-    for (int k = 0; k < 2; k++){
+    for (size_t k = 0; k < 2; k++){
+        const Vector4& color = k == 0 ? overlaycolor::applied : overlaycolor::rejected;
+        for (size_t i = 0; i < kTorsoAxisLines; i++) EXPECT_EQ(drawn[k * kTorsoAxisLines + i].color, color) << "axis " << k << ", line " << i;
+        // its shaft
+        const AnimatorOverlayLine& shaft = drawn[k * kTorsoAxisLines];
         const Vector3 expected = at + (k == 0 ? corrected : ghost) * kTorsoAxisLength;
-        EXPECT_NEAR((drawn[(size_t)k].a - at).length(), 0.0f, 1e-4f) << "from the spine, under the Animator's Transform";
-        EXPECT_NEAR((drawn[(size_t)k].b - expected).length(), 0.0f, 1e-4f) << (k == 0 ? "the corrected axis" : "the ghost");
+        EXPECT_NEAR((shaft.a - at).length(), 0.0f, 1e-4f) << "from the spine, under the Animator's Transform";
+        EXPECT_NEAR((shaft.b - expected).length(), 0.0f, 1e-4f) << (k == 0 ? "the corrected axis" : "the ghost");
     }
 
     const uint64_t lines = pass.lines();

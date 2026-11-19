@@ -190,7 +190,7 @@ namespace jasperengine::anim{
         inline const Vector4 rootFuture(0.25f, 0.9f, 0.3f, 1.0f);
         // Torso Direction: the axis the pass gives, and its ghost without the pass
         inline const Vector4 applied(0.25f, 0.9f, 0.3f, 1.0f);
-        inline const Vector4 rejected(0.95f, 0.2f, 0.15f, 0.6f);
+        inline const Vector4 rejected(0.95f, 0.2f, 0.15f, 1.0f);
     }
     // a foot trail's colour: green planted and still, yellow to red with the slide speed, a dim
     // white in the air
@@ -216,8 +216,9 @@ namespace jasperengine::anim{
     void appendAnimatorOverlayLines(const AnimatorDebugSnapshot& snapshot, const AnimatorOverlayFlags& flags,
                                     const AnimatorOverlayHistory* history, std::vector<AnimatorOverlayLine>& out);
 
-    // Torso Direction's axis length, metres
-    inline constexpr float kTorsoAxisLength = 0.4f;
+    // Torso Direction's axis length, metres; each axis is an arrow (a shaft and a two-line head)
+    inline constexpr float kTorsoAxisLength = 0.6f;
+    inline constexpr size_t kTorsoAxisLines = 3;
 
     // Torso Direction (R30): per boundary bone of each layer the pass runs on, from the bone, the
     // way the character's front at rest (+Z of the rig) points at that bone now

@@ -72,6 +72,18 @@ namespace{
         }
     }
 
+    // a shaft from `from` along the unit `axis`, and a head at its tip
+    void overlayAddArrow(std::vector<AnimatorOverlayLine>& out, const Vector3& from, const Vector3& axis, float length, const Vector4& color){
+        const Vector3 tip = from + axis * length;
+        Vector3 side = axis.crossProduct(Vector3(0, 1, 0));
+        if (side.length() < 1e-3f) side = axis.crossProduct(Vector3(1, 0, 0));
+        side = side.normalized();
+        const Vector3 back = tip - axis * (0.15f * length);
+        overlayAddLine(out, from, tip, color);
+        overlayAddLine(out, tip, back + side * (0.08f * length), color);
+        overlayAddLine(out, tip, back - side * (0.08f * length), color);
+    }
+
     void overlayDropOld(std::vector<AnimatorOverlayHistory::Sample>& samples, float now){
         size_t keep = 0;
         while (keep < samples.size() && samples[keep].time < now - kAnimatorTrailSeconds) keep++;
@@ -355,10 +367,10 @@ void appendTorsoDirectionLines(const AnimatorInstance& instance, const AnimatorR
             const Vector3 from = root.matrix * positions[b];
             const Quaternion fromRest = rest[b].inverse();
             const Vector3 axis = (root.rotation * (rotations[b] * (fromRest * front))).normalized();
-            overlayAddLine(out, from, from + axis * kTorsoAxisLength, overlaycolor::applied);
+            overlayAddArrow(out, from, axis, kTorsoAxisLength, overlaycolor::applied);
             if (unpassed && k < unpassed->size()){
                 const Vector3 ghost = (root.rotation * ((*unpassed)[k] * (fromRest * front))).normalized();
-                overlayAddLine(out, from, from + ghost * kTorsoAxisLength, overlaycolor::rejected);
+                overlayAddArrow(out, from, ghost, kTorsoAxisLength, overlaycolor::rejected);
             }
         }
     }
