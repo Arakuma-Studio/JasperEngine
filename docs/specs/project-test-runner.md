@@ -765,6 +765,8 @@ case tagged `red`, a skipped case, an Edit Mode case, goldens for `level1_start`
   `.jasperengine/user/game_view.yaml` (`play_data`), not in the workspace file, and the session folder
   is read by `Project::getUserDataPath` from `gametests::PlayData` (no `Project` member): no
   project-wide header changes for a per-session value.
+- **The Project window.** As `Recordings` and `EditorSettings` are, the test root stays visible in the
+  Project window (its files are edited there); asset scans, imports, `check` and exports skip it.
 - **Replacing a snapshot.** Save Snapshot over an existing name writes the new files as one undo step;
   files of the earlier snapshot that the new data lacks are kept and named in a warning (a
   `WriteFilesCmd` step cannot delete).

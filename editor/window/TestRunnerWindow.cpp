@@ -72,6 +72,17 @@ TestRunnerWindow& TestRunnerWindow::get() {
 void TestRunnerWindow::refresh(Project* project, bool force) {
     const double now = nowSeconds();
     const bool runChanged = gametests::TestRun::get().revision() != seenRun;
+    // a finished run shows its first failure in the detail pane, unless a case is selected
+    if (runChanged && selected.empty()) {
+        if (const gametests::RunOutcome* last = gametests::TestRun::get().last()) {
+            for (const gametest::CaseResult& r : last->result.cases) {
+                if (r.status == gametest::Status::Failed || r.status == gametest::Status::Error || r.status == gametest::Status::Hung) {
+                    selected = r.spec.id;
+                    break;
+                }
+            }
+        }
+    }
     if (!force && !runChanged && now - lastScan < 2.0 && project->getProjectPath() == projectDir) return;
     lastScan = now;
     seenRun = gametests::TestRun::get().revision();
