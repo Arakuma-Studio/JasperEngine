@@ -748,4 +748,38 @@ case tagged `red`, a skipped case, an Edit Mode case, goldens for `level1_start`
 
 ## Deviations
 
-None yet.
+- **Namespace.** The runner lives in `jasperengine::gametest`, not `jasperengine::test`: the unit-test
+  support library already owns `jasperengine::test` (`TempDir`, `TestSystem`), and inside
+  `jasperengine::editor` the name `test::` resolves to `editor::test` first.
+- **The option's macro.** `JASPERENGINE_TEST_RUNNER` reaches the engine's sites through the generated
+  header `TestRunnerConfig.h` (the engine's private `generated/` folder), not a compile definition on
+  every source: the few sites include it, and turning the option over does not rebuild the engine.
+  The runner's sources (`core/test/*`, `core/player/PlayerTests.cpp`) are left out of a build without it.
+- **Edit Mode console watch.** The console watch (R11) applies to Play Mode cases; Edit Mode cases run
+  synchronously and report Lua errors and failed checks only.
+- **Runaway interrupt.** R16's 10 s interrupt is the runner's own count hook on the case's coroutine
+  (and on `waitUntil`'s predicate), in the editor and in players alike; game scripts keep the editor's
+  hang watchdog. The message is `script interrupted: <file>:<line> ran for 10.0 s without yielding
+  (test runner)`, and the case is an `error`.
+- **Play Data choice.** The Game view's Play Data choice is kept per user and project in
+  `.jasperengine/user/game_view.yaml` (`play_data`), not in the workspace file, and the session folder
+  is read by `Project::getUserDataPath` from `gametests::PlayData` (no `Project` member): no
+  project-wide header changes for a per-session value.
+- **Replacing a snapshot.** Save Snapshot over an existing name writes the new files as one undo step;
+  files of the earlier snapshot that the new data lacks are kept and named in a warning (a
+  `WriteFilesCmd` step cannot delete).
+- **`run_tests` while playing.** `run` is refused by the handler with §6.6's text ("Stop Play first...")
+  instead of `allowedWhilePlaying: false`, whose server text differs; `list`, `import` and `accept`
+  work while playing.
+- **The fixture.** The MCP tests build the fixture project through the tools on a fresh project
+  (`test_project_tests.py` `setup`: a Player cube and a Coin script, `Tests/` written beside them),
+  since `tools/test-projects/*` are engine-only projects; only the checked-in Android sample
+  (`tools/test-projects/game-tests/samples/android-results.json`) lives there.
+- **Player session reset.** A player's case reloads its scene (`SceneManager::loadScene`), clears the
+  project's Lua modules, seeds `math.random` and sets the fixed delta; it does not re-create the Lua
+  state or reset the persistent scene (no `Engine::resetGameSession()` was extracted).
+- **Not done in this change** (each named in the PR): Build Settings Include Tests (R40) and the
+  exporters' `tests/` (R50, AC17's export half), hence `run_tests {target: "desktop"}` (AC10, refused
+  with how to run a player and import), the web gate and the Android run (AC12, AC13, and the
+  emulator script's `--setprop` widening), replay cases (R9, AC16: they need the input spec's recorder
+  merged), and the size and benchmark evidence of AC18 beyond `TestRunnerBench.FrameOverhead`.

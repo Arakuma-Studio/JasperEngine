@@ -9,7 +9,9 @@
 #include "test/TestResults.h"
 #include "test/TestRunner.h"
 
+#include "Input.h"
 #include "Log.h"
+#include "input/InputScriptRunner.h"
 #include "support/AllocationCounter.h"
 
 #include "lua.hpp"
@@ -490,6 +492,54 @@ TEST(TestRunnerCore, FiltersAndCaseIdPaths) {
     EXPECT_TRUE(matchesFilter(spec, "tag:red, tag:Smoke"));
     EXPECT_FALSE(matchesFilter(spec, "tag:red,shop"));
     EXPECT_EQ(caseIdPath("ui/menu.test.lua#Start opens the level"), "ui__menu.test.lua__Start_opens_the_level");
+}
+
+// R8: Test.input runs the events through the shared interpreter and returns when they are done;
+// a recording is refused, a malformed event is the case's error
+TEST(TestRunnerCore, InputRunsOnTheSharedInterpreter) {
+    FakeHost host;
+    lua_register(host.L, "keyDown", [](lua_State* L) -> int {
+        lua_pushboolean(L, Input::isKeyPressed(D_KEY_B));
+        return 1;
+    });
+    host.files["i.test.lua"] = R"(
+Test.case("press", function(t)
+    local start = t.frame
+    Test.input({ {type = "key", key = "b", action = "down"}, {type = "wait", frames = 3} })
+    Test.check(keyDown(), "b is held after the events")
+    Test.check(t.frame - start >= 3, "the events' frames passed")
+    Test.input({ {type = "key", key = "b", action = "up"} })
+end)
+Test.case("recording refused", function(t)
+    Test.input("Input/rec.input.json")
+end)
+Test.case("bad event", function(t)
+    Test.input({ {type = "key", key = "nokey"} })
+end)
+)";
+    host.files["Input/rec.input.json"] = R"({"format": "jasperengine-input", "version": 1, "kind": "recording", "start": "play", "fixed_fps": 60,
+        "events": [{"frame": 1, "type": "key", "key": "b", "action": "down"}]})";
+    TestRunner runner;
+    runner.start(host.planOf("i.test.lua", {"press", "recording refused", "bad event"}), host, RunOptions());
+    for (int i = 0; i < 1000 && runner.frame(); i++) {
+        // the engine's frame loop: the interpreter before the input latch, then the update
+        input::ScriptRunner::beforeFrame(true);
+        Input::beginFrame();
+        input::ScriptRunner::afterUpdate();
+        host.frames++;
+        host.time += 1.0 / 60.0;
+    }
+    const RunResult& result = runner.result();
+    const CaseResult& press = byName(result, "press");
+    EXPECT_EQ(press.status, Status::Passed) << (press.failures.empty() ? "" : press.failures[0].message);
+    const CaseResult& refused = byName(result, "recording refused");
+    ASSERT_FALSE(refused.failures.empty());
+    EXPECT_NE(refused.failures[0].message.find("a recording replays from Play's start: use Test.case{replay = ...}"), std::string::npos)
+        << refused.failures[0].message;
+    const CaseResult& bad = byName(result, "bad event");
+    ASSERT_FALSE(bad.failures.empty());
+    EXPECT_NE(bad.failures[0].message.find("unknown key"), std::string::npos) << bad.failures[0].message;
+    input::ScriptRunner::stopAll();
 }
 
 TEST(TestRunnerBench, FrameOverhead) {

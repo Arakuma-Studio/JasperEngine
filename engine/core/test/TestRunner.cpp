@@ -7,6 +7,8 @@
 #include "test/TestResults.h"
 
 #include "Log.h"
+#include "input/InputScript.h"
+#include "input/InputScriptRunner.h"
 #include "log/LogSink.h"
 #include "log/Logger.h"
 
@@ -197,6 +199,45 @@ namespace {
         return false;
     }
 
+    // a Lua value as JSON (Test.input's events): tables with keys 1..n are arrays
+    Json luaToJson(lua_State* L, int index, int depth = 0) {
+        index = lua_absindex(L, index);
+        if (depth > 16) return nullptr;
+        switch (lua_type(L, index)) {
+            case LUA_TBOOLEAN: return lua_toboolean(L, index) != 0;
+            case LUA_TNUMBER:
+                if (lua_isinteger(L, index)) return static_cast<int64_t>(lua_tointeger(L, index));
+                return lua_tonumber(L, index);
+            case LUA_TSTRING: return std::string(lua_tostring(L, index));
+            case LUA_TTABLE: {
+                const lua_Integer length = static_cast<lua_Integer>(lua_rawlen(L, index));
+                size_t keys = 0;
+                lua_pushnil(L);
+                while (lua_next(L, index) != 0) {
+                    keys++;
+                    lua_pop(L, 1);
+                }
+                if (length > 0 && static_cast<size_t>(length) == keys) {
+                    Json array = Json::array();
+                    for (lua_Integer i = 1; i <= length; i++) {
+                        lua_rawgeti(L, index, i);
+                        array.push_back(luaToJson(L, -1, depth + 1));
+                        lua_pop(L, 1);
+                    }
+                    return array;
+                }
+                Json object = Json::object();
+                lua_pushnil(L);
+                while (lua_next(L, index) != 0) {
+                    if (lua_type(L, -2) == LUA_TSTRING) object[lua_tostring(L, -2)] = luaToJson(L, -1, depth + 1);
+                    lua_pop(L, 1);
+                }
+                return object;
+            }
+            default: return nullptr;
+        }
+    }
+
     // ---- the runner's interrupt of a Lua call that never yields (R16)
 
     struct InterruptState {
@@ -242,7 +283,9 @@ namespace jasperengine::gametest {
 
     // What a running case waits for
     struct Wait {
-        enum Kind { None, Frames, GameSeconds, Until, Capture } kind = None;
+        enum Kind { None, Frames, GameSeconds, Until, Capture, Input } kind = None;
+        // Test.input: the shared interpreter's run (input-recorder-and-input-scripts R7)
+        std::shared_ptr<input::ScriptPlayer> inputPlayer;
         int64_t untilFrame = 0;
         double untilTime = 0.0;
         int predicateRef = LUA_NOREF;
@@ -514,6 +557,60 @@ namespace jasperengine::gametest {
             return lua_yield(L, 0);
         }
 
+        // Test.input(events | path, [opts]) (R8): the events through the shared input interpreter,
+        // resumed once they are done. No C++ object is alive where Lua raises.
+        static int testInput(lua_State* L) {
+            TestChunk* c = chunk(L);
+            if (c->mode == Mode::Edit) {
+                activeCase(L, "Test.input");
+                return luaL_error(L, "Edit Mode tests cannot wait: make it a Play Mode case");
+            }
+            if (!lua_istable(L, 1) && !lua_isstring(L, 1)) return luaL_error(L, "Test.input takes a list of send_input events or an Input/*.input.json path");
+            CaseRunState* s = waitingCase(L, "Test.input");
+            char error[1024] = {0};
+            {
+                auto script = std::make_shared<input::ParsedScript>();
+                std::string message;
+                bool parsed = false;
+                if (lua_type(L, 1) == LUA_TSTRING) {
+                    const std::string path = lua_tostring(L, 1);
+                    std::string code;
+                    if (!c->readFile || !c->readFile(path, code)) message = "Test.input: no file " + path + " in the test root";
+                    else if (!input::parseScript(code, *script, message)) message = "Test.input " + path + ": " + message;
+                    else if (script->header.kind == input::ScriptKind::Recording)
+                        message = "a recording replays from Play's start: use Test.case{replay = ...}";
+                    else parsed = true;
+                } else {
+                    int gapFrames = 1;
+                    input::Space space = input::Space::Canvas;
+                    if (lua_istable(L, 2)) {
+                        lua_getfield(L, 2, "gapFrames");
+                        if (lua_isinteger(L, -1)) gapFrames = static_cast<int>(std::max<lua_Integer>(0, lua_tointeger(L, -1)));
+                        lua_pop(L, 1);
+                        lua_getfield(L, 2, "space");
+                        if (lua_type(L, -1) == LUA_TSTRING) input::parseSpace(lua_tostring(L, -1), space);
+                        lua_pop(L, 1);
+                    }
+                    const Json events = luaToJson(L, 1);
+                    if (!events.is_array()) message = "Test.input: the events are a list ({ {type = \"key\", ...}, ... })";
+                    else if (!input::parseEvents(events, space, gapFrames, s->result.spec.fixedFps, *script, message)) message = "Test.input " + message;
+                    else parsed = true;
+                }
+                if (parsed) {
+                    input::PlayOptions options;
+                    options.actionSource = "test";
+                    auto player = std::make_shared<input::ScriptPlayer>(script, input::PlayerHost(), options);
+                    input::ScriptRunner::start(player);
+                    s->wait.kind = Wait::Input;
+                    s->wait.inputPlayer = player;
+                } else {
+                    std::snprintf(error, sizeof(error), "%s", message.c_str());
+                }
+            }
+            if (error[0]) return luaL_error(L, "%s", error);
+            return lua_yield(L, 0);
+        }
+
         // the test root's file for the require of loadEnvironment's Lua: its code, or nil
         static int testReadModule(lua_State* L) {
             TestChunk* c = chunk(L);
@@ -605,7 +702,8 @@ bool TestChunk::load(const std::string& code, const std::string& path, std::stri
         {"fail", ChunkAccess::testFail},           {"skip", ChunkAccess::testSkip},
         {"waitFrames", ChunkAccess::testWaitFrames}, {"waitGameSeconds", ChunkAccess::testWaitGameSeconds},
         {"waitUntil", ChunkAccess::testWaitUntil}, {"capture", ChunkAccess::testCapture},
-        {"expectError", ChunkAccess::testExpectError}, {"log", ChunkAccess::testLog}};
+        {"expectError", ChunkAccess::testExpectError}, {"log", ChunkAccess::testLog},
+        {"input", ChunkAccess::testInput}};
     for (const auto& [name, function] : functions) {
         lua_pushlightuserdata(L, this);
         lua_pushcclosure(L, function, 1);
@@ -1020,6 +1118,7 @@ namespace {
         s.coRef = LUA_NOREF;
         s.co = nullptr;
         if (s.wait.predicateRef != LUA_NOREF) luaL_unref(L, LUA_REGISTRYINDEX, s.wait.predicateRef);
+        if (s.wait.inputPlayer) input::ScriptRunner::stop(s.wait.inputPlayer.get());
         s.wait = Wait();
     }
 
@@ -1133,6 +1232,18 @@ void TestRunner::runCaseFrame() {
                         s.bodyFailed = true;
                         dropCoroutine(s, L);
                         stepOver = true;
+                    }
+                    break;
+                }
+                case Wait::Input: {
+                    if (!w.inputPlayer || !w.inputPlayer->finished()) break;
+                    if (w.inputPlayer->report().failed) {
+                        s.fail("error", "Test.input: " + w.inputPlayer->errorText(), w.file, w.line);
+                        s.bodyFailed = true;
+                        dropCoroutine(s, L);
+                        stepOver = true;
+                    } else {
+                        resume = true;
                     }
                     break;
                 }

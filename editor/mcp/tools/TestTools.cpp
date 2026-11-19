@@ -20,7 +20,9 @@
 #include "util/Base64.h"
 #include "util/FileUtils.h"
 
+#include <algorithm>
 #include <fstream>
+#include <map>
 #include <set>
 #include <sstream>
 
