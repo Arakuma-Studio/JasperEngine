@@ -19553,6 +19553,11 @@
       1,
       "touch_devices_only",
       "Touch Devices Only"
+     ],
+     [
+      2,
+      "touch_scheme",
+      "Touch Scheme"
      ]
     ]
    },
@@ -19749,6 +19754,11 @@
       1,
       "touch_devices_only",
       "Touch Devices Only"
+     ],
+     [
+      2,
+      "touch_scheme",
+      "Touch Scheme"
      ]
     ]
    },
@@ -19846,6 +19856,11 @@
       1,
       "touch_devices_only",
       "Touch Devices Only"
+     ],
+     [
+      2,
+      "touch_scheme",
+      "Touch Scheme"
      ]
     ]
    },

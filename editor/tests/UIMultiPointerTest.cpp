@@ -675,9 +675,8 @@ TEST_F(UIMultiPointerTest, TouchSchemeVisibility) {
     up(1, 450, 50);
     up(2, 650, 50);
 
-    // a finger brings them back
-    Engine::systemTouchStart(4, 10, 10);
-    Engine::systemTouchEnd(4, 10, 10);
+    // a finger brings them back (the scheme's evidence, as Engine::systemTouchStart notes it)
+    InputSchemeTracker::noteTouchStart(10, 10, InputSchemeTracker::clock());
     frame();
     EXPECT_EQ(InputSchemeTracker::getCurrent(), InputScheme::Touch);
     EXPECT_TRUE(scene->getComponent<Transform>(root).visible);
