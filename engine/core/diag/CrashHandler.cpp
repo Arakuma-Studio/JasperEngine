@@ -1176,7 +1176,6 @@ namespace jasperengine::diag::crash {
         if (!content.journal.empty()) files.emplace_back("journal.txt", content.journal);
         if (content.logTail) files.emplace_back("log-tail.txt", *content.logTail);
         if (!content.screenshotJpeg.empty()) files.emplace_back("screenshot.jpg", content.screenshotJpeg);
-        if (!content.perfJson.empty()) files.emplace_back("perf.json", content.perfJson);
         // last: a folder is a user report once user.txt is there, so a write that fails halfway
         // leaves nothing that looks complete
         files.emplace_back("user.txt", user);

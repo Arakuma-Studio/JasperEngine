@@ -164,7 +164,6 @@ namespace jasperengine::diag::crash {
         std::string journal;                                       // empty: no journal.txt
         std::optional<std::string> logTail;                        // nullopt: no log-tail.txt
         std::string screenshotJpeg;                                // empty: no screenshot.jpg
-        std::string perfJson;                                      // empty: no perf.json
     };
     // At most kMaxPendingUserReports unhandled ones: then nullopt with error
     // "too_many_pending: ..." and nothing written
