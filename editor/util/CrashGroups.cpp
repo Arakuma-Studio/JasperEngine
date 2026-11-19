@@ -7,7 +7,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
-#include <tuple>
 
 namespace jasperengine::editor::crashgroups {
 

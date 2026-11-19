@@ -140,7 +140,7 @@ void getCrashReportsTool(const CallPtr& call) {
             for (const auto& [name, count] : g.versions) versions[name] = count;
             for (const auto& [name, count] : g.platforms) platforms[name] = count;
             // the newest 20: count says how many there are
-            std::vector<std::string> ids(g.reportIds.begin(), g.reportIds.begin() + std::min<size_t>(g.reportIds.size(), 20));
+            std::vector<std::string> ids(g.reportIds.begin(), g.reportIds.begin() + static_cast<std::ptrdiff_t>(std::min<size_t>(g.reportIds.size(), 20)));
             groups.push_back({{"signature", g.signature}, {"kind", g.kind}, {"count", g.count}, {"versions", versions},
                               {"platforms", platforms}, {"first_seen", isoOf[g.firstSeen]}, {"last_seen", isoOf[g.lastSeen]},
                               {"report_ids", ids}, {"unresolved", g.unresolved}});
