@@ -1872,7 +1872,9 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     }
 
     // Gizmos > Animation (S77 R49): with every toggle off the pass takes no snapshot and draws nothing
-    const anim::AnimatorOverlayFlags animatorFlags{displaySettings.showIK, displaySettings.showRootMotion, displaySettings.showFootTrails};
+    // (Torso Direction: the selected Animators only)
+    const anim::AnimatorOverlayFlags animatorFlags{displaySettings.showIK, displaySettings.showRootMotion, displaySettings.showFootTrails,
+                                                   displaySettings.showTorsoDirection};
     std::set<Entity> currentAnimatorLines;
     animatorOverlay->update(scene, entities, animatorFlags, [&](Entity entity, const std::vector<anim::AnimatorOverlayLine>& drawn){
         // in the tools layer, as the skeleton overlay: drawn over the meshes the chains run inside
@@ -1885,7 +1887,7 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
         overlayLines->clearLines();
         for (const anim::AnimatorOverlayLine& line : drawn) overlayLines->addLine(line.a, line.b, line.color);
         overlayLines->setVisible(true);
-    });
+    }, selEntities);
     for (auto it = animatorLines.begin(); it != animatorLines.end();) {
         if (currentAnimatorLines.find(it->first) == currentAnimatorLines.end()) {
             delete it->second;

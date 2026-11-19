@@ -7,8 +7,9 @@ on a scratch copy of the pose-animation fixture in an isolated editor:
   yaw, accumulated position and yaw, slide and its contact source;
 - the Animator Inspector's IK (live) table and Root Motion line draw the same numbers (find_ui_item
   reads each drawn value; the game is paused so both read one update);
-- set_scene_camera's display takes show_ik, show_root_motion and show_foot_trails, and the Scene
-  view draws them (screenshots to JE_EVIDENCE_DIR, else the test's scratch folder);
+- set_scene_camera's display takes show_ik, show_root_motion, show_foot_trails and
+  show_torso_direction (mesh-space-rotation R30), and the Scene view draws them (screenshots to
+  JE_EVIDENCE_DIR, else the test's scratch folder);
 - without a Foot IK or Foot Lock the contact source is "none" and no slide is reported (R37).
 """
 
@@ -29,7 +30,7 @@ CONTROLLER = "assets/anim/debug.controller"
 WALK = "assets/models/hero_animated.gltf#Walk"
 ARM = ["left_upper_arm", "left_lower_arm", "left_hand"]
 LEG = ["left_upper_leg", "left_lower_leg", "left_foot"]
-FLAGS = ("show_ik", "show_root_motion", "show_foot_trails")
+FLAGS = ("show_ik", "show_root_motion", "show_foot_trails", "show_torso_direction")
 
 
 def evidence(ed: Editor) -> Path:
