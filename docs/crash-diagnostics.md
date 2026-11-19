@@ -195,9 +195,9 @@ end)
 -- the form's Send
 local report, err = Crash.createReport{note = text, category = "gameplay", fields = {level = "forest-2"}}
 if report then
-    Http.post(url, {body = Crash.readReportFile(report.id, "user.txt"), callback = function(response)
+    Http.post(url, Crash.readReportFile(report.id, "user.txt"), function(response)
         if response.ok then Crash.markHandled(report.id) end   -- else offered again at the next start
-    end})
+    end)
 end
 Crash.cancelReport()                     -- the form's Cancel
 ```
