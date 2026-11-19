@@ -316,6 +316,15 @@ Lucide and LottieFiles player `<script>`s are not needed: both are built in (an 
 `<noscript>` content shows. Duplicate ids warn (`HTMLUI-HTML-0011`): `getElementById` finds
 the first.
 
+### Localised text: `data-l10n-id`
+
+`<button data-l10n-id="ui.menu.play">Play</button>` shows the String Table message of that key in the
+game language; `data-l10n-args='{"count": 3}'` gives its arguments and `data-l10n-attr-<name>`
+(`placeholder`, `title`, `alt`, `aria-label`, `value`) sets an attribute. The element holds only
+text (child elements: `HTMLUI-L10N-0001`, left as written); `translate="no"` keeps a subtree out of
+the literal-text scan. Lua: `element:setL10n(key, args)`, `doc:translate()`. Tables and checks:
+jasper://docs/localization.
+
 ### `.rml` documents: RmlUi's own dialect
 
 A file named `.rml` is not translated: RmlUi's own loader reads it. Use it for documents written

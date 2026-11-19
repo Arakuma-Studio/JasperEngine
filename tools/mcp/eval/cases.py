@@ -1311,6 +1311,47 @@ CASES = [
         "max_turns": 14,
     },
     {
+        "id": "guard_l10n_keyed_html",
+        "kind": "guard",
+        "what_happened": "Without String Tables agents localised a menu with a Lua table per language and a langIndex() per screen "
+                         "(the Craftsman anti-pattern, docs/specs/game-ui-localization.md section 4); the guide's Other areas entry and "
+                         "edit_string_table route them to keys and data-l10n-id.",
+        "text_at_issue": "Guide 'Other areas': 'localization (edit_string_table, data-l10n-id; assert_ui languages)'; "
+                         "edit_string_table's description",
+        "source": "docs/specs/game-ui-localization.md R38",
+        "prompt": "The main menu (assets/ui/main_menu.html, a Play button) must also be in German: 'Spielen'.",
+        "mocks": [
+            {"tool": "read_file", "result": ok("<button id=\"play\">Play</button>", {"content": "<button id=\"play\">Play</button>"})},
+            {"tool": "edit_string_table", "result": ok(
+                "Create String Table ui.", {"path": "assets/l10n/ui.stringtable", "namespace": "ui", "entries": 1,
+                                            "next": "Use the keys: data-l10n-id=\"ui.<key>\" in HTML; check the fit with assert_ui {languages}."})},
+            {"tool": "write_file", "result": ok("Wrote assets/ui/main_menu.html.", {"path": "assets/ui/main_menu.html"})},
+            {"tool": "edit_file", "result": ok("Edited assets/ui/main_menu.html.", {"path": "assets/ui/main_menu.html"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_string_table"}],
+                   "file_must_not": {"assets/ui/main_menu.lua": [r"(?i)spielen"]},
+                   "must_not_call": ["create_script"]},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_l10n_assert_languages",
+        "kind": "guard",
+        "what_happened": "Agents checked whether translated text fits by switching the Game view language and taking screenshots "
+                         "one by one; assert_ui's languages runs text_fits per language in one call.",
+        "text_at_issue": "assert_ui's `languages` parameter; guide 'Other areas' localization entry",
+        "source": "docs/specs/game-ui-localization.md R38",
+        "prompt": "Check that the main menu's buttons (UI Document GameObject 30) still fit their text in German.",
+        "mocks": [
+            {"tool": "assert_ui", "result": ok(
+                "assert_ui: 1/2 passed.\nFAIL text_fits \"button\" @1280x720 de: #play: the text needs 132 px, the box has 80 px",
+                {"passed": False, "failed": 1, "total": 2,
+                 "checks": [{"index": 0, "type": "text_fits", "language": "de", "passed": False}]})},
+        ],
+        "checks": {"calls": [{"tool": "assert_ui", "args": {"languages": "*"}}],
+                   "must_not_call": ["configure_game_view", "screenshot"]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_post_processing_preset",
         "kind": "guard",
         "what_happened": "The guide's Post-processing digest routes a look request to a preset first, then fields; guards the "
