@@ -98,6 +98,7 @@
 #include "model/ModelCpuData.h"
 #include "picking/PickCache.h"
 #include "profiler/FrameTimes.h"
+#include "profiler/PerfSampler.h"
 #include "profiler/Profile.h"
 #if JASPERENGINE_PROFILER
 #include "profiler/EngineProfiling.h"
@@ -1730,6 +1731,7 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     Log::onMessageReceived.removeByTagSubstring(substring);
     Device::onThermalStateChanged.removeByTagSubstring(substring);
     Device::onLowMemory.removeByTagSubstring(substring);
+    PerfSampler::onWindow.removeByTagSubstring(substring);
 #if JASPERENGINE_SOUND_LAYER
     Audio::onMusicBeat.removeByTagSubstring(substring);
     Audio::onMusicSection.removeByTagSubstring(substring);
@@ -1782,6 +1784,8 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     Log::onMessageReceived.clear();
     Device::onThermalStateChanged.clear();
     Device::onLowMemory.clear();
+    // Performance.onSample (R11)
+    PerfSampler::onWindow.clear();
 #if JASPERENGINE_SOUND_LAYER
     // here too, not only in MusicPlayer::reset: the editor's Stop runs that after the C++ script library is unloaded
     Audio::onMusicBeat.clear();
@@ -2389,6 +2393,8 @@ void Engine::signalReadyOnce(){
         readySignalled = true;
         signalledFrame = frames;
         Log::print("Engine ready: every scene loaded and no shader build pending (frame %llu)", (unsigned long long)frames);
+        // --perf-summary starts sampling here unless the game chose already
+        player::RunControl::engineReady();
         for (Scene* scene : scenes){
             scene->getSystem<RenderSystem>()->logRenderObjects();
         }
@@ -2951,6 +2957,8 @@ void Engine::systemShutdown(){
 
     // what the game (and its onShutdown handlers) stored is on disk before it goes
     UserSettings::save();
+    // --perf-summary's last window
+    player::RunControl::writePerfSummary();
 
     // anime's, the timers', the script coroutines' and the input actions' Lua references go
     // while the Lua state still exists
@@ -3030,6 +3038,8 @@ void Engine::applyPause(){
     paused = want;
     // a backgrounded app expects no heartbeat; resume re-arms on the next frame
     diag::watchdog::setPaused(want);
+    // the Performance sampler drops the paused seconds and the 2 s after a resume (R3)
+    PerfSampler::notePaused(want);
     if (!want){
         AudioSystem::setPlatformPaused(false);
         ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
@@ -3062,6 +3072,8 @@ void Engine::systemFocus(bool hasFocus){
         systemResume();
     }
     focused = hasFocus;
+    if (hasFocus)
+        PerfSampler::noteResumed();
     // the key and button ups after a focus loss go to another window: the next frame sees them; the
     // UI presses end now (D6, cancelled)
     if (!hasFocus){
@@ -3079,6 +3091,7 @@ void Engine::systemFocus(bool hasFocus){
 void Engine::systemVisibilityChanged(bool isVisible){
     if (isVisible == visible) return;
     visible = isVisible;
+    PerfSampler::noteHidden(!isVisible);
     if (isVisible)
         Log::print("Window visible: drawing again");
     else

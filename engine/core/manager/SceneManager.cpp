@@ -5,6 +5,7 @@
 #include "Engine.h"
 #include "Scene.h"
 #include "Log.h"
+#include "profiler/PerfSampler.h"
 #include "memory/HeapTrim.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/AudioSystem.h"
@@ -783,6 +784,8 @@ void SceneManager::updateLoading() {
 
         loadingState = LoadingState::Loaded;
         // a handler can hold the load or start another one
+        // the Performance sampler drops the second after a scene load (R3)
+        PerfSampler::noteSceneLoaded();
         Engine::onSceneLoaded.call();
     }
 
