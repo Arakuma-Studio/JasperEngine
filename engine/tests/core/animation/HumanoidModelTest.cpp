@@ -24,6 +24,7 @@
 #include "animation/ModelSubClips.h"
 #include "component/BoneComponent.h"
 #include "component/ModelComponent.h"
+#include "component/Transform.h"
 #include "object/AnimationPlayer.h"
 #include "object/Model.h"
 #include "pool/AnimationClipPool.h"
@@ -356,6 +357,73 @@ TEST_F(HumanoidModel, BadExtraOverrideKeepsTheRigWithOneWarningPerBuild){
     size_t warned = 0;
     for (const std::string& line : animtest::takeWarnings()) warned += line.find("auto-detected instead") != std::string::npos ? 1 : 0;
     EXPECT_EQ(warned, 1u) << "one warning per rig build (the cached rig says nothing)";
+}
+
+// ---- a Kevin Iglesias rig with Unity's Spine Proxy bone (mesh-space-rotation R1, R3) ----
+
+TEST_F(HumanoidModel, SpineProxyNodeIsNotedOnceAndKept){
+    const std::string brig = dir + "b_rig_proxy.gltf";
+    animtest::writeAsset(brig, readFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/b_rig_proxy.gltf"));
+    const Entity entity = load(brig);
+    const std::string proxyPath = "Rig/B-root/B-spineProxy";
+    const Entity proxy = anim::resolvePath(&scene, entity, proxyPath);
+    ASSERT_NE(proxy, NULL_ENTITY);
+    EXPECT_EQ(scene.findComponent<BoneComponent>(proxy), nullptr) << "a plain node, not a joint";
+    const Transform before = scene.getComponent<Transform>(proxy);
+    auto proxyTrack = [&](ClipData& clip){
+        std::vector<ClipWarning> warnings;
+        std::string error;
+        EXPECT_TRUE(anim::buildModelSubClip(brig + "#Attack", clip, warnings, &error)) << error;
+        for (const ClipTrackData& track : clip.tracks){
+            if (track.path == proxyPath && track.channel == ClipChannel::Rotation) return &track;
+        }
+        return static_cast<const ClipTrackData*>(nullptr);
+    };
+    ClipData clipBefore;
+    const ClipTrackData* trackBefore = proxyTrack(clipBefore);
+    ASSERT_NE(trackBefore, nullptr);
+    ASSERT_EQ(trackBefore->keys.size(), 5u);
+
+    // every required slot from the B- names, the proxy is not in the skeleton
+    Skeleton skeleton;
+    std::vector<Entity> bones;
+    ASSERT_TRUE(buildSkeleton(&scene, entity, skeleton, bones));
+    EXPECT_EQ(findSkeletonBone(skeleton, "B-spineProxy"), -1);
+    HumanoidMap map;
+    std::vector<std::string> notes;
+    std::string error;
+    ASSERT_TRUE(resolveHumanoid(skeleton, HumanoidOverrides(), map, &error, &notes)) << error;
+    EXPECT_EQ(map.bones[boneIndex(HumanBone::Spine)], "B-spine");
+
+    const std::string note = "B-spineProxy is a spine proxy bone for Unity's Spine Proxy. JasperEngine does not need it: "
+                             "turn on Mesh Space Rotation on the layer instead.";
+    noteSpineProxies(&scene, entity, map, notes);
+    EXPECT_EQ(std::count(notes.begin(), notes.end(), note), 1) << "once, though both clips key it";
+
+    // inside the hips' subtree it is not the Spine Proxy bone: B-root taken as the hips here
+    HumanoidMap rootAsHips = map;
+    rootAsHips.bones[boneIndex(HumanBone::Hips)] = "B-root";
+    std::vector<std::string> none;
+    noteSpineProxies(&scene, entity, rootAsHips, none);
+    EXPECT_TRUE(none.empty());
+    // a model without one says nothing
+    const Entity heroEntity = load(hero);
+    noteSpineProxies(&scene, heroEntity, map, none);
+    EXPECT_TRUE(none.empty());
+
+    // the node and its track are unchanged
+    const Transform& after = scene.getComponent<Transform>(proxy);
+    EXPECT_EQ(after.position, before.position);
+    EXPECT_EQ(after.rotation, before.rotation);
+    EXPECT_EQ(after.scale, before.scale);
+    ClipData clipAfter;
+    const ClipTrackData* trackAfter = proxyTrack(clipAfter);
+    ASSERT_NE(trackAfter, nullptr);
+    ASSERT_EQ(trackAfter->keys.size(), trackBefore->keys.size());
+    for (size_t k = 0; k < trackAfter->keys.size(); k++){
+        EXPECT_EQ(trackAfter->keys[k].time, trackBefore->keys[k].time);
+        EXPECT_EQ(trackAfter->keys[k].value, trackBefore->keys[k].value);
+    }
 }
 
 // ---- dropped scale tracks of mapped bones (review L-2) ----

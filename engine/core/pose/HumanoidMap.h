@@ -46,7 +46,8 @@ namespace jasperengine::pose {
     // at index n / 2, UpperChest = last before the neck. Body-part synonyms match the whole name
     // (minus side tokens: "LeftHandIndex1" is not a hand), except the spine*, neck* and toe*
     // prefixes. Besides the spec's helper tokens (twist, roll, helper, ik, pole, target, end,
-    // nub), finger tokens (index, middle, ring, pinky, little, thumb, finger) are never mapped;
+    // nub), proxy (Unity's Spine Proxy bone) and finger tokens (index, middle, ring, pinky, little,
+    // thumb, finger) are never mapped;
     // "c"/"center"/"centre" tokens are ignored (VRM "J_Bip_C_Hips"); an all-lower-case name
     // starting with "left"/"right" counts as sided ("leftarm"). Neck and head must descend from
     // the hips (head from the neck when there is one). When a mapped shoulder or upper arm
