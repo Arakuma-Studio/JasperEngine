@@ -83,6 +83,8 @@ std::string jasperengine::player::usage() {
         "  --resolution WxH        the window size\n"
         "  --scene NAME|ID         start in this scene\n"
         "  --device-tier TIER      low, medium, high or ultra instead of the GPU's detected tier\n"
+        "  --gpu-quirk NAME:on|off force a GPU quirk on or off (repeatable or comma-separated)\n"
+        "  --perf-summary PATH     sample gameplay frames from the ready frame; write the summary JSON at quit\n"
         "  --silent-audio          open no audio output\n"
         "  --audio-capture <dir>   a development player: write an audio capture session into <dir>\n"
         "  --content DIR           read the game's content from DIR\n"
@@ -233,6 +235,23 @@ std::variant<LaunchOptions, ParseError> jasperengine::player::parse(std::span<co
             if (!DeviceNames::tierFromName(text.c_str(), tier))
                 return fail("--device-tier needs low, medium, high or ultra, for example --device-tier=low (got \"" + text + "\")");
             options.deviceTier = DeviceNames::tier(tier);
+        } else if (name == "--gpu-quirk") {
+            auto taken = takeValue("gl_no_warm_draws:off");
+            if (auto* error = std::get_if<ParseError>(&taken)) return *error;
+            std::string problem;
+            if (!GpuQuirks::parseOverrides(std::get<std::string>(taken), options.gpuQuirks, problem))
+                return fail("--gpu-quirk: " + problem);
+        } else if (name == "--perf-summary") {
+            auto taken = takeValue("perf.json");
+            if (auto* error = std::get_if<ParseError>(&taken)) return *error;
+            const std::string text = std::get<std::string>(taken);
+            if (text.empty()) return fail("--perf-summary needs a file name, for example --perf-summary perf.json");
+            options.perfSummary = text;
+#if !defined(__EMSCRIPTEN__)
+            std::string problem;
+            if (!writableDirectory(options.perfSummary, problem))
+                return fail("--perf-summary " + text + ": " + problem + "; create it or write the summary elsewhere");
+#endif
         } else if (name == "--content") {
             auto taken = takeValue("path/to/content");
             if (auto* error = std::get_if<ParseError>(&taken)) return *error;

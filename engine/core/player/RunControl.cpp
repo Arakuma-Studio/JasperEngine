@@ -13,6 +13,7 @@
 #include "io/AtomicFile.h"
 #include "pool/ShaderPool.h"
 #include "pool/TextureDataPool.h"
+#include "profiler/PerfSampler.h"
 #include "log/LogSink.h"
 #include "log/Logger.h"
 
@@ -53,6 +54,7 @@ namespace {
         std::chrono::steady_clock::time_point captureWaitStarted;
         std::atomic<bool> errorLogged{false};
         Logger::SinkId errorSink = 0;
+        bool perfWindowWritten = false;
     };
 
     State& state() {
@@ -63,6 +65,26 @@ namespace {
     constexpr double CAPTURE_WAIT_SECONDS = 120.0;
 
     bool (*gpuCreationIdleProbe)() = nullptr;
+
+    // --perf-summary (R12): the JSON through the atomic writer, or on the web a console line
+    void writePerfSummaryFile(const PerfSummary& summary) {
+        const std::filesystem::path& path = state().options.perfSummary;
+        if (path.empty()) return;
+        const std::string json = PerfSampler::toJson(summary);
+#if defined(__EMSCRIPTEN__)
+        std::printf("JASPERENGINE PERF: %s\n", json.c_str());
+        std::fflush(stdout);
+#else
+        const io::WriteResult written = io::writeFileAtomic(path, json + "\n");
+        if (!written.ok())
+            Log::error("--perf-summary: %s", written.message.c_str());
+#endif
+    }
+
+    void writePerfWindow(const PerfSummary& summary) {
+        writePerfSummaryFile(summary);
+        state().perfWindowWritten = true;
+    }
 
     // nothing drawn as a stand-in: no shader or pipeline being made, no texture loading
     bool gpuCreationIdle() {
@@ -150,6 +172,7 @@ void RunControl::reset() {
     s.captureHeldGame = false;
     gpuCreationIdleProbe = nullptr;
     s.errorLogged.store(false);
+    s.perfWindowWritten = false;
 }
 
 void RunControl::configure(const LaunchOptions& options) {
@@ -204,7 +227,25 @@ bool RunControl::isActive() {
 }
 
 bool RunControl::wantsReadySignal() {
-    return state().options.afterReady;
+    return state().options.afterReady || !state().options.perfSummary.empty();
+}
+
+void RunControl::engineReady() {
+    State& s = state();
+    if (s.options.perfSummary.empty()) return;
+    PerfSampler::setWindowWriter(&writePerfWindow);
+    if (!PerfSampler::wasSetByGame()) {
+        PerfSampler::setSampling(true);
+        Log::print("Performance sampling: on (--perf-summary %s)", s.options.perfSummary.string().c_str());
+    }
+}
+
+void RunControl::writePerfSummary() {
+    State& s = state();
+    if (s.options.perfSummary.empty()) return;
+    const PerfSummary summary = PerfSampler::summary();
+    if (s.perfWindowWritten && summary.seconds <= 0.0) return;
+    writePerfSummaryFile(summary);
 }
 
 bool RunControl::wantsScreenshot() {

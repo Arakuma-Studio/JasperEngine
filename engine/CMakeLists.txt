@@ -1422,6 +1422,8 @@ set(JASPERENGINE_SRCS
     core/Log.cpp
     core/device/Device.cpp
     core/device/DeviceSettings.cpp
+    core/device/GpuQuirks.cpp
+    core/device/GpuQuirksData.cpp
     core/device/GpuTierDatabase.cpp
     core/device/GpuTiersData.cpp
     core/device/QualityResolver.cpp
@@ -1957,7 +1959,9 @@ set(JASPERENGINE_SRCS
     core/profiler/EngineProfiling.cpp
     core/profiler/FrameTimes.cpp
     core/profiler/GpuMemory.cpp
+    core/profiler/PerfSampler.cpp
     core/profiler/Profiler.cpp
+    core/profiler/ThreadCpuClock.cpp
     core/memory/Arena.cpp
     core/memory/HeapTrim.cpp
     core/memory/MemoryStats.cpp
@@ -2213,6 +2217,9 @@ endif()
 if(JASPERENGINE_TESTS)
     set_property(SOURCE core/pool/AnimationClipPool.cpp core/animation/ModelSubClips.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS JASPERENGINE_ANIM_TEST_HOOKS)
+    # the test_tint GPU quirk (the equivalence checks' red control): its catalogue entry and its lever
+    set_property(SOURCE core/device/GpuQuirks.cpp renders/sokol/SokolCamera.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS JASPERENGINE_GPU_QUIRK_TEST_HOOKS)
 endif()
 
 if(JASPERENGINE_HTMLUI)

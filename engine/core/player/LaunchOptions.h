@@ -12,6 +12,7 @@
 // --screenshot works headless.
 
 #include "Export.h"
+#include "device/GpuQuirks.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -46,6 +47,11 @@ namespace jasperengine::player {
         std::string logLevel;
         // --device-tier: low, medium, high or ultra instead of the detected tier ("" detects)
         std::string deviceTier;
+        // --perf-summary: the Performance summary's JSON file, written at quit and at each window
+        // end (the web prints it instead: ?perf-summary=1)
+        std::filesystem::path perfSummary;
+        // --gpu-quirk name:on|off, repeatable or comma-separated (later ones win)
+        std::vector<GpuQuirkOverride> gpuQuirks;
         // what follows "--" (a strict parse), or every argument the options do not know (a
         // lenient one): the Lua System.args
         std::vector<std::string> scriptArgs;
