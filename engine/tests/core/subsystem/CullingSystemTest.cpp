@@ -330,7 +330,7 @@ TEST_F(CullingGroupTest, FollowEraseAndQuery){
 
     // a destroyed GameObject's sphere keeps its last position, with one warning
     {
-        LogCapture capture;
+        test::LogCapture capture;
         scene->destroyEntity(b);
         frame();
         frame();
@@ -619,7 +619,7 @@ TEST_F(SimulationCullingTest, FrozenBody2D){
     Rigidbody2DComponent rigidbody;
     rigidbody.type = BodyType::DYNAMIC;
     rigidbody.colliders.resize(1);
-    rigidbody.colliders[0].shapeType = Collider2DType::CIRCLE;
+    rigidbody.colliders[0].type = Collider2DType::CIRCLE;
     rigidbody.colliders[0].radius = 0.5f;
     scene->addComponent<Rigidbody2DComponent>(entity, rigidbody);
     SimulationCullingComponent& component = cull(entity, 64.0f);
