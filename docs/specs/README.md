@@ -152,3 +152,30 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 | T4 | Terrain Worlds: `.terrainworld` tile grids past one map, world-spanning CDLOD with a far overview and bounded draws, streaming on jobs round focus points, paged Jolt collision with a no-fall-through guarantee, tiled `TerrainMapStore` with edits across borders, heightmap slicing, Terrain World panel, `edit_terrain_world`, Lua `TerrainWorld`, player module `JASPERENGINE_TERRAIN_WORLD` | 5 (terrain; spec-first) |
 | T5 | Foliage upgrade: Details (32-byte instances, per-instance CPU cull into a stream, density falloff, wind) and Trees (`.jetrees` store, cells, mesh LODs, baked impostors, Jolt capsules), placement on jobs with bit-identical hashes, `scatter_by_rules`, re-snap, Lua removal and hit events, nav obstacles, picking, Paint Trees and Paint Details panels,  | 5 (terrain; spec-first) |
 | T6 | Voxel Volumes: opt-in `JASPERENGINE_VOXEL` module; bounded volumes of 16³ blocks (16-bit SDF, material channel, uniform collapse, point-decimated LOD levels), Transvoxel clipbox with atomic change sets that never crack, triplanar tiers, Jolt mesh colliders on jobs with tunnelling rescue, deterministic edit API and debris events, Noise Graph, Terrain and mesh generation, automatic terrain holes with a hidden overlap, `.voxelvolume`, group `voxels` | 5 (terrain; spec-first) |
+
+## Specs from the craftsman-end-motor comparison
+
+These specs are named by feature, without an ID. The ideas came from studying
+`/var/lib/orquester/workspaces/jaspersito/craftsman-end-motor`, a Minecraft PE 0.15 port rebuilt
+from Mojang's retail binary. That tree is reference material for ideas only: copy no code, data or
+assets from it, and no Minecraft-specific mechanics. Each spec's Reference section says what was
+studied there. Every feature in these specs must make sense for any game genre.
+
+| Spec | Stream | Wave |
+|---|---|---|
+| `project-test-runner.md` | Project Test Runner: `Tests/*.test.lua` Edit and Play Mode cases, `Test` API, clean or snapshot Play Data, golden captures, Test Runner window, `run_tests` (group `testing`), CLI `test`, development players `--run-tests`, per-platform last-passed ledger | Craftsman 1 |
+| `input-recorder-and-input-scripts.md` | Input Recorder and input scripts: one `.input.json` format in frames, Record Input, divergence checkpoints instead of promised determinism, `send_input {file}`, `record_game` store shots, `run_build {input_script}`, player `--input-script`, Lua `InputRecording` | Craftsman 1 |
+| `spatial-queries.md` | Spatial queries: 3D and 2D overlaps and shape casts with non-allocating forms, trigger interaction, bounds overlaps on SceneBvh, brute-force verify, `query_physics`, query debug drawing | Craftsman 1 |
+| `game-ui-localization.md` | Game UI localization: String Tables with ICU messages and CLDR plurals, one game language shared with Title Art, `data-l10n-id` in HTML UI, Text keys, missing and literal text capture, pseudo-locales, Localization Tables window, `edit_string_table`, `assert_ui {languages}` | Craftsman 1 |
+| `savegame.md` | Save games: slots and namespaces, binary format with checksums and size caps, versioned migrations, backup generations and recovery, coalesced background writes, web quota errors, Saved Data window, `user_settings {store: "saves"}` | Craftsman 1 |
+| `input-device-awareness.md` | Input device awareness: current input scheme and gamepad family with hysteresis, `data-input-scheme`, live hover/pointer queries, `<input-prompt>`, Game view Input Scheme | Craftsman 2 |
+| `text-entry-gamepad-cursor-back-button.md` | Text entry, gamepad cursor and Back: per-field soft keyboards on Android, iOS and web, IME text sync, Gamepad Cursor on UIDocument, one Back path to the top Is Menu document, Pause On Focus Loss | Craftsman 2 |
+| `build-and-run-on-device.md` | Build And Run on device: Run Device list (Android, iOS Simulator, browser), install, launch and device log, Patch And Run for Development Builds, `run_build {device}` | Craftsman 2 |
+| `build-profiles.md` | Build Profiles: per-platform variants with identity, scenes, defines, exclusions and settings overrides, store limit checks, `edit_build_profile`, `build_project {profile}`, Lua build info | Craftsman 2 |
+| `dialogue-graphs.md` | Dialogue graphs: `.dialogue` graph kind, DialogueRunner with prefix-dispatched actions and conditions, variables and save hooks, lint, Preview, `run_dialogue`, player module `JASPERENGINE_DIALOGUE` | Craftsman 2 |
+| `dev-console-for-agents.md` | Dev console for agents: registry outside the debug overlay, typed arguments, structured results, completion, cheat flag, release gating, `eval_lua {command}`, player `--command` | Craftsman 2 |
+| `cancellable-prioritised-events.md` | Cancellable, prioritised events: listener priority, `CancellableEvent` with vetoes the emitter must read, monitor listeners, zero-allocation invoke | Craftsman 2 |
+| `culling-group-and-simulation-distance.md` | Culling groups and simulation culling: CullingGroup bands and visibility, Simulation Culling component with Full / Reduced / Culled, the unloaded-ground freeze, tier multipliers | Craftsman 2 |
+| `shipped-game-diagnostics.md` | Shipped game diagnostics: gameplay Journal in every report, player "Report a Problem", crash grouping by build id, Crash Reports window | Craftsman 2 |
+| `release-performance-and-gpu-quirks.md` | Release performance and GPU quirks: gameplay-only frame sampler in Release, main-thread CPU time, `gpu_quirks.json` with overrides and same-image tests | Craftsman 2 |
+| `build-size-tools.md` | Build size tools: full build reports with history and comparison, Referenced By chains, size budgets, Force To Mono with a stereo-width measure | Craftsman 2 |
