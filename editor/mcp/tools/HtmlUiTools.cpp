@@ -1104,6 +1104,19 @@ void inspectUiTool(const CallPtr& call) {
                                       {"y", std::round(point.y * 10.0f) / 10.0f}, {"over", over}};
         }
 
+        // the focused text field's soft keyboard (text-entry R30)
+        bool focusPresent = false;
+        hui::InspectFocus focus;
+        std::string focusError;
+        if (hui::HtmlUIInspector::focus(sp->scene, target.entity, focusPresent, focus, focusError) && focusPresent) {
+            const TextEntryTraits& t = focus.traits;
+            data["focus"] = {{"ref", focus.ref}, {"keyboard", keyboardTypeName(t.keyboard)},
+                             {"enter_key", t.enterKey == EnterKey::Default ? "default" : enterKeyName(t.enterKey)},
+                             {"autocapitalize", autoCapitalizeName(t.capitalize)}, {"autocorrect", t.autocorrect},
+                             {"secure", t.secure}, {"multiline", t.multiline},
+                             {"max_length", t.maxLength < 0 ? Json(nullptr) : Json(t.maxLength)}, {"keyboard_open", focus.keyboardOpen}};
+        }
+
         if (args.value("render_stats", false)) {
             std::vector<std::pair<std::string, uint32_t>> fields;
             std::string statsError;

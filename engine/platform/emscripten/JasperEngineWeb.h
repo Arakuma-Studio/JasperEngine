@@ -7,6 +7,7 @@
 #include <emscripten/html5.h>
 
 #include "System.h"
+#include "input/TextEntry.h"
 
 #include <string>
 #include <vector>
@@ -114,6 +115,8 @@ public:
     virtual void quit() override;
 
     virtual void showVirtualKeyboard(std::wstring text) override;
+    // the field's traits on the IME textarea (WebTextEntry.h)
+    virtual void showVirtualKeyboard(const std::wstring& text, const jasperengine::TextEntryTraits& traits) override;
     virtual void hideVirtualKeyboard() override;
 
     // async browser clipboard: writes go to navigator.clipboard, reads return the text of the

@@ -680,7 +680,7 @@ A listener gets a `UIEvent`: `type`, `target`, `currentTarget`, `eventPhase` (1 
 `deltaX`/`deltaY`, `ctrlKey`, `shiftKey`, `altKey`, `metaKey`, `key` (browser key names:
 `"Enter"`, `"Escape"`, `"ArrowUp"`, `"a"`), `code` (`"KeyA"`; a gamepad's `"GamepadA"`, ...),
 `keyCode` (`Input.KEY_*`), `repeat` (`event["repeat"]`), `gamepad` (the pad's id, -1 for the
-keyboard), `pointerId`, `pointerType` (`"mouse"`, `"touch"`, `"pen"`), `isPrimary`, `buttons` (1
+keyboard), `enterKeyHint` (the soft keyboard's action key, "Text fields"), `pointerId`, `pointerType` (`"mouse"`, `"touch"`, `"pen"`), `isPrimary`, `buttons` (1
 left, 2 right, 4 middle), `pressure` (0.5 while pressed), `width`, `height`, `fingerId` (the
 `Input` finger id, -1 for the mouse), `data` (`textinput`), `animationName`, `propertyName`,
 `elapsedTime`, `detail` (a copy of the `dispatchEvent` detail), `defaultPrevented`, and
@@ -1708,7 +1708,27 @@ the text, the attributes still update: `<input-prompt action="Gameplay/Jump"><im
 with CSS on `[data-glyph="..."]` shows your art.
 
 **Text fields.** Focusing one opens the virtual keyboard (Android, iOS, Web) and places the IME
-window at the caret. Composition shows inside the field on Windows, macOS, iOS, Android and
+window at the caret. The field picks the keyboard (desktop platforms ignore it):
+
+| Attribute | Keyboard |
+|---|---|
+| `type` | `email`, `url`, `tel`: their keyboards; `search`: the search keyboard and key; `number`: digits when `step` is whole and `min` ≥ 0, else a decimal pad (with a minus while `min` is absent or negative); `password`: secure, no suggestions; `<textarea>`: multi-line, the Enter key |
+| `inputmode` | `text`, `decimal`, `numeric`, `tel`, `search`, `email`, `url` override it; `none` shows no keyboard (hardware keys still type) |
+| `enterkeyhint` | the action key: `enter`, `done`, `go`, `next`, `previous`, `search`, `send` |
+| `autocapitalize` | `off`/`none` (default), `on`/`sentences`, `words`, `characters` |
+| `autocorrect` | `on`: suggestions (Android; iOS and the web keep no text to correct, so stay off); default off |
+| `maxlength` | the keyboard stops there too |
+
+The action key arrives as an Enter `keydown` on the field with `event.enterKeyHint` ("next",
+"send", ...; "" for the platform's default key); `preventDefault()` stops what follows. Otherwise
+`next` / `previous` focus the next / previous text field in tab order (none: the field blurs),
+`done` blurs (the keyboard closes), and `go`, `search`, `send`, `enter` or none submit an
+`<input>`'s form as Enter does, then blur; in a `<textarea>` the key breaks the line. A hardware
+Enter on a field with `enterkeyhint` does the same (as Chrome on Android with a Bluetooth
+keyboard); without one, it submits as before. Moving between fields keeps the keyboard open and
+changes it; the field's value stays the truth: text it rejects (`maxlength`, a number filter, a
+script setting `value`) is sent back to the Android and iOS keyboards. `inspect_ui` reports the
+focused field's keyboard as `focus`; the Game view shows it in a chip during Play. Composition shows inside the field on Windows, macOS, iOS, Android and
 Web; on Linux the input method draws it, and in the editor's Game view composed text arrives
 committed. Ctrl/Cmd + C/X/V/A copy, cut, paste and select all. `System.setClipboardText` /
 `System.getClipboardText` reach the system clipboard (asynchronous on Web).

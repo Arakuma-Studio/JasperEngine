@@ -189,6 +189,12 @@ namespace {
         JE_FIELD(InputFieldComponent, selectionAnchor, .step = 1.0f, .group = "Selection", .uiOrder = 13),
         JE_FIELD(InputFieldComponent, disabled, .uiOrder = 4),
         JE_FIELD(InputFieldComponent, password, .uiOrder = 5),
+        // the soft keyboard (text-entry R7); absent in older scenes
+        JE_FIELD(InputFieldComponent, keyboardType, .enumDesc = &enums::kInputFieldKeyboardType, .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged,
+                 .label = "Keyboard Type", .tooltip = "The phone keyboard the field asks for (Email Address shows @, Number Pad digits).",
+                 .group = "Content", .uiOrder = 6),
+        JE_FIELD(InputFieldComponent, characterLimit, .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged, .min = 0.0f, .step = 1.0f,
+                 .label = "Character Limit", .tooltip = "Characters the player can type or paste. 0: no limit.", .group = "Content", .uiOrder = 6),
     };
 
     // ---------------------------------------------------------------- Panel

@@ -1311,6 +1311,32 @@ CASES = [
         "max_turns": 14,
     },
     {
+        "id": "guard_text_entry_focus",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "inspect_ui's focus reports the soft keyboard a focused field asks for (text-entry R30); the agent "
+                         "reads it to see why a phone shows letters, and fixes the field's attributes, not the engine.",
+        "text_at_issue": "inspect_ui result: focus {ref, keyboard, enter_key, autocapitalize, autocorrect, secure, multiline, "
+                         "max_length, keyboard_open}",
+        "source": "docs/specs/text-entry-gamepad-cursor-back-button.md R30; no failure on record",
+        "prompt": "Players on phones say the e-mail field of the sign-up screen (assets/ui/signup.html) shows a plain letters "
+                  "keyboard and no Send key. The game is playing: check what keyboard the field asks for, then fix it.",
+        "files": {"assets/ui/signup.html": "<html><body><form id=\"signup\"><input id=\"mail\" type=\"text\">"
+                                           "<button type=\"submit\">Join</button></form></body></html>\n"},
+        "mocks": [
+            {"tool": "send_input", "result": ok("Sent 1 event over 2 frames; playing.", {"frames": 2, "state": "playing"})},
+            {"tool": "inspect_ui", "result": ok(
+                "signup (assets/ui/signup.html): 1 element.\n#mail input (40, 260 400x36) :focus",
+                {"elements": [{"ref": "#mail", "tag": "input", "pseudo": ["focus"]}],
+                 "focus": {"ref": "#mail", "keyboard": "text", "enter_key": "default", "autocapitalize": "off", "autocorrect": False,
+                           "secure": False, "multiline": False, "max_length": None, "keyboard_open": True}})},
+        ],
+        "checks": {"calls": ["inspect_ui"],
+                   "file_must": {"assets/ui/signup.html": [r"type=\"email\"|inputmode=\"email\"", r"enterkeyhint=\"send\""]},
+                   "edits_must_not": [r"\.(cpp|h)$"]},
+        "max_turns": 14,
+    },
+    {
         "id": "guard_post_processing_preset",
         "kind": "guard",
         "what_happened": "The guide's Post-processing digest routes a look request to a preset first, then fields; guards the "

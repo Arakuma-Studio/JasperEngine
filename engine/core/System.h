@@ -55,6 +55,7 @@ namespace jasperengine {
     };
 
     class System;
+    struct TextEntryTraits;
 
     // A System for code that runs before the platform made its own (a prebuilt player reads its
     // content and game.json before the window exists): installed only while none is set, and
@@ -247,7 +248,17 @@ namespace jasperengine {
         virtual bool isTouchDevice();
 
         virtual void showVirtualKeyboard(std::wstring text = L"");
+        // the soft keyboard a text field asks for (input/TextEntry.h); also called while it is open,
+        // when the focus moves to a field of other traits. The base calls the text-only overload
+        virtual void showVirtualKeyboard(const std::wstring& text, const TextEntryTraits& traits);
         virtual void hideVirtualKeyboard();
+        // the field's real text and selection (code points) replace what the soft keyboard holds,
+        // its composition dropped: the field rejected or changed text the keyboard typed. The base
+        // does nothing (no soft keyboard, or one that keeps no text)
+        virtual void updateVirtualKeyboardText(const std::wstring& text, int selectionStart, int selectionEnd);
+        // the soft keyboard keeps the field's text (Android, iOS): the engine resyncs it. False: no
+        // soft keyboard, or one that keeps nothing between edits (the web)
+        virtual bool keepsVirtualKeyboardText();
 
         // The system clipboard, UTF-8 text. The base implementation keeps an in-process
         // string (headless runs, tests); every platform layer replaces it.

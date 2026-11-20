@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head>
+<title>text entry traits</title>
+<style>
+body { margin: 0; }
+input, textarea { display: block; margin: 0; width: 200px; height: 12px; }
+</style>
+</head>
+<body>
+<input id="text" type="text">
+<input id="email" type="email">
+<input id="url" type="url">
+<input id="tel" type="tel">
+<input id="search" type="search">
+<input id="count" type="number" min="0" step="1">
+<input id="amount" type="number">
+<input id="offset" type="number" min="-5">
+<input id="half" type="number" min="0" step="0.5">
+<input id="any" type="number" min="0" step="any">
+<input id="password" type="password">
+<input id="pin" type="password" inputmode="numeric">
+<textarea id="notes"></textarea>
+<input id="decimal" inputmode="decimal">
+<input id="hidden-keyboard" inputmode="none">
+<input id="mail-send" type="email" enterkeyhint="send" maxlength="32" autocapitalize="sentences">
+<input id="next" enterkeyhint="next">
+<input id="previous" enterkeyhint="previous" autocapitalize="words">
+<input id="done" enterkeyhint="done" autocapitalize="characters">
+<input id="go" enterkeyhint="go" autocapitalize="on" autocorrect="on">
+<input id="find" enterkeyhint="search" autocapitalize="none" autocorrect="off">
+<input id="short" maxlength="5">
+<input id="web" inputmode="url" enterkeyhint="bogus" autocapitalize="bogus">
+<textarea id="message" enterkeyhint="send" maxlength="100" autocorrect="on"></textarea>
+</body>
+</html>

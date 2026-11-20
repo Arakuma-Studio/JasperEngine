@@ -880,7 +880,9 @@ local price = Items.sword.price
 `System.getScreenWidth()`, `getScreenHeight()`, `isTouchDevice()`, `isFullscreen()`,
 `requestFullscreen()`, `exitFullscreen()`, `isWindowMaximized()`, `maximizeWindow()`,
 `restoreWindow()`, `setWindowSize(w, h)`, `isWindowResizable()`, `setWindowResizable(b)`,
-`setWindowTitle(s)`, `quit()`, `showVirtualKeyboard(text)`, `hideVirtualKeyboard()`,
+`setWindowTitle(s)`, `quit()`, `showVirtualKeyboard(text, options?)` (options
+`{keyboard = "email", enterKey = "send", autocapitalize, autocorrect, secure, multiline, maxLength}`,
+the HTML attribute values), `updateVirtualKeyboardText(text, caret?)`, `hideVirtualKeyboard()`,
 `setClipboardText(s)`, `getClipboardText()` (the system clipboard, UTF-8; on Web the text of
 the last copy or paste), `getDirSeparator()`, `getAssetPath()`, `getUserDataPath()`, `getLuaPath()`,
 `getShaderPath()`, `syncFileSystem()` (Web: stores the `data://` files in IndexedDB now; true),
@@ -2663,7 +2665,7 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 | `Panel` (Image) | `title`, `titleColor`, `titleFont`, `titleFontSize`, `headerColor`, `minWidth`, `minHeight`, `canMove`, `canResize`, `canBringToFront` | `getPanelComponent()`, `setMinSize(w,h)` |
 | `Scrollbar` (Image) | `type` (`ScrollbarType.*`), `barSize`, `step`, `barColor`, `barAlpha` | `getScrollbarComponent()`, `setBarTexture(path)` |
 | `Progressbar` (Image) | `type`, `value` (0..1), `fillColor`, `fillAlpha` | `getProgressbarComponent()`, `setFillTexture(path)` |
-| `InputField` (Image) | `text`, `disabled`, `textColor`, `textFont`, `fontSize`, `maxTextSize`, `placeholder`, `placeholderColor`, `password`, `passwordChar`, `cursorIndex`, `cursorColor`, `selectionColor`, `cursorBlink`, `cursorWidth` | `getInputFieldComponent()`, `getTextObject()`, `setSelection(...)` |
+| `InputField` (Image) | `text`, `disabled`, `textColor`, `textFont`, `fontSize`, `maxTextSize`, `placeholder`, `placeholderColor`, `password`, `passwordChar`, `cursorIndex`, `cursorColor`, `selectionColor`, `cursorBlink`, `cursorWidth`; on the component: `keyboardType` (`InputFieldKeyboardType.EMAIL_ADDRESS`, ...: the phone keyboard), `characterLimit` (0 = none) | `getInputFieldComponent()`, `getTextObject()`, `setSelection(...)` |
 | `OnScreenStick` (Image) | `enabled`, `mode` (`OnScreenStickMode.*`), `background`, `handle` (entities), `handleRange`, `deadZone`, `moveThreshold`, `axes` (`OnScreenStickAxes.*`), `snapX`, `snapY`, `hideWhenReleased`, `clampToArea`, `horizontalAction`, `verticalAction`, `visibility`; ro `value` (Vector2, y up), `pressed`, `pointerId`; events `onValueChanged(x, y)`, `onPress`, `onRelease` | `getOnScreenStickComponent()` |
 | `OnScreenButton` (Image) | `enabled`, `action`, `value`, `pressWhenPointerEnters`, `releaseWhenPointerLeaves`, `visibility`; ro `pressed`; events `onPress`, `onRelease` | `getOnScreenButtonComponent()` |
 | `TouchArea` (Image) | `enabled`, `horizontalAction`, `verticalAction`, `sensitivity`, `invertX`, `invertY`, `visibility`; ro `delta` (this frame, canvas px), `pressed`, `pointerId`; event `onDrag(dx, dy)` | `getTouchAreaComponent()` |

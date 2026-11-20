@@ -10,6 +10,7 @@
 
 #include "Engine.h"
 #include "System.h"
+#include "input/TextEntry.h"
 #include "Scene.h"
 #include "component/Transform.h"
 #include "component/ScriptComponent.h"
@@ -53,6 +54,16 @@ namespace jasperengine::scripttest {
     public:
         std::string luaPath;
         std::vector<std::string> logLines;
+        // the soft keyboards asked for (text-entry spec)
+        int keyboardShows = 0;
+        TextEntryTraits keyboardTraits;
+
+        using System::showVirtualKeyboard;
+        void showVirtualKeyboard(const std::wstring& text, const TextEntryTraits& traits) override {
+            (void)text;
+            keyboardShows++;
+            keyboardTraits = traits;
+        }
 
         int getScreenWidth() override { return 0; }
         int getScreenHeight() override { return 0; }

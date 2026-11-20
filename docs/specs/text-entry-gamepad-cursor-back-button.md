@@ -567,3 +567,30 @@ Red controls are run on the base commit first and named in the PR.
   persistence is `StreamComponent.UIDocumentMenuAndCursorRoundTrip` and
   `PresentationSettings.PauseOnFocusLossAndGamepadCursorRoundTrip` (the two Inspector rows use the
   generic reflection `PropertyCmd` path of their neighbours; not tested on their own).
+- Part A: iOS keeps its sentinel text field (R23 in part). The risk table removes the sentinel code
+  only after an iOS simulator pass with Japanese and Chinese keyboards, which no machine of this
+  implementation could run. The hidden field gets the field's keyboard type, Return key,
+  capitalisation, secure entry and `inputmode="none"` (an empty `inputView`), and the keyboard's
+  Return is R3's action key. The field holds no text, so iOS has no resync
+  (`keepsVirtualKeyboardText` is false) and autocorrect stays off, as on the web. The shared diff
+  (`TextInputSync`) is ready for the mirror model.
+- Part A: the shared diff's state lives in core, not in each platform: `Engine::systemTextInputState`
+  (a platform keyboard's snapshot) and `Engine::resetTextInputState` (the keyboard was given
+  text) hold one `TextInputSync`, and `RmlTextInputHandler` compares the field with the snapshot.
+  `System::keepsVirtualKeyboardText()` (Android true) gates R4, so platforms whose keyboard keeps no
+  text (desktop, web, iOS here) never resync. `Engine::getTextEntryFocus` serves the Game view chip.
+- Part A: a blur hides the soft keyboard at the document system's next update in the same frame,
+  not inside the blur, so focus moving between fields (a click, `el:focus()`, Next) shows the next
+  field's traits without a hide in between (R5). A field that goes away hides it at once.
+- Part A: a hardware Enter on a field without `enterkeyhint` keeps today's behaviour exactly
+  (implicit submission, the field keeps the focus, no `event.enterKeyHint`). With `enterkeyhint`,
+  and for every action key, the `keydown` carries the hint and the default action runs after the
+  listeners, so `preventDefault()` stops it (D2).
+- Part A: `event.enterKeyHint` is documented through `tools/lua_api`'s field override of the bound
+  `UIEvent` class, not in `HtmlUI.lua`: the generator owns `UIEvent`'s fields, and the fragment
+  redeclaring one would duplicate it.
+- Part A: names in Lua, MCP and the chip are the `inputmode` values (`numeric` for Number, `tel` for
+  Phone); `inspect_ui`'s `focus` is present only while a text field of that document is focused;
+  `enter_key` is `"default"` without a hint and `max_length` is null without a limit.
+- Part A: games-activity moves to 3.0.5 (the version in the build's Gradle cache). The emulator suite
+  (`tools/android-emulator-test.sh`, AC7) did not run here; see the implementation report.

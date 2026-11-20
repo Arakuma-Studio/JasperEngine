@@ -34,6 +34,7 @@
 #include "input/InputActions.h"
 #include "input/InputControlNames.h"
 #include "input/InputManagerFormat.h"
+#include "input/TextEntry.h"
 #include "json.hpp"
 
 #include <cstring>
@@ -43,6 +44,7 @@
 #include "render/SystemRender.h"
 #include "player/RunControl.h"
 #include "Screen.h"
+#include "util/StringUtils.h"
 #include "util/CanvasScalerRef.h"
 #include "registry/PhysicsLayers.h"
 #include "math/Ray.h"
@@ -214,6 +216,68 @@ static int luaScreenSetExtraInsets(lua_State* L){
         }
     }
     Screen::setExtraInsets(EdgeInsets(values[0], values[1], values[2], values[3]), pixels);
+    return 0;
+}
+
+// System.showVirtualKeyboard(text [, options]): options {keyboard, enterKey, autocapitalize,
+// autocorrect, secure, multiline, maxLength} with the HTML attribute values (text-entry R6);
+// without options the platform's plain keyboard, as before
+static int luaSystemShowVirtualKeyboard(lua_State* L){
+    const char* utf8 = luaL_optstring(L, 1, "");
+    bool hadInvalid = false;
+    const std::wstring text = StringUtils::utf8ToWString(utf8, hadInvalid);
+    if (lua_isnoneornil(L, 2)){
+        System::instance().showVirtualKeyboard(text);
+        return 0;
+    }
+    if (!lua_istable(L, 2))
+        return luaL_error(L, "System.showVirtualKeyboard: options must be a table {keyboard=, enterKey=, autocapitalize=, autocorrect=, secure=, multiline=, maxLength=}");
+
+    TextEntryTraits traits;
+    auto name = [L](const char* field, auto parse, const char* values) -> int {
+        lua_getfield(L, 2, field);
+        int error = 0;
+        if (!lua_isnil(L, -1)){
+            const char* value = lua_type(L, -1) == LUA_TSTRING ? lua_tostring(L, -1) : nullptr;
+            if (!value || !parse(value))
+                error = luaL_error(L, "System.showVirtualKeyboard: %s must be one of %s", field, values);
+        }
+        lua_pop(L, 1);
+        return error;
+    };
+    auto flag = [L](const char* field, bool& out){
+        lua_getfield(L, 2, field);
+        if (!lua_isnil(L, -1))
+            out = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+    };
+    name("keyboard", [&](const char* v){ return keyboardTypeFromName(v, traits.keyboard); },
+         "\"text\", \"numeric\", \"decimal\", \"tel\", \"email\", \"url\", \"search\", \"none\"");
+    name("enterKey", [&](const char* v){ return enterKeyFromName(v, traits.enterKey); },
+         "\"enter\", \"done\", \"go\", \"next\", \"previous\", \"search\", \"send\"");
+    name("autocapitalize", [&](const char* v){ return autoCapitalizeFromName(v, traits.capitalize); },
+         "\"off\", \"sentences\", \"words\", \"characters\"");
+    flag("autocorrect", traits.autocorrect);
+    flag("secure", traits.secure);
+    flag("multiline", traits.multiline);
+    lua_getfield(L, 2, "maxLength");
+    if (lua_isnumber(L, -1))
+        traits.maxLength = std::max(-1, (int)lua_tointeger(L, -1));
+    lua_pop(L, 1);
+    System::instance().showVirtualKeyboard(text, traits);
+    return 0;
+}
+
+// System.updateVirtualKeyboardText(text [, caret]): the soft keyboard's text replaced, caret in
+// code points (default: the end)
+static int luaSystemUpdateVirtualKeyboardText(lua_State* L){
+    const char* utf8 = luaL_checkstring(L, 1);
+    bool hadInvalid = false;
+    const std::wstring text = StringUtils::utf8ToWString(utf8, hadInvalid);
+    const int length = (int)StringUtils::decodeUtf8ToCodepoints(utf8, hadInvalid).size();
+    const int caret = lua_isnoneornil(L, 2) ? length : std::clamp((int)luaL_checkinteger(L, 2), 0, length);
+    Engine::resetTextInputState(utf8, (size_t)caret);
+    System::instance().updateVirtualKeyboardText(text, caret, caret);
     return 0;
 }
 
@@ -4013,7 +4077,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .beginClass<System>("System")
         .addStaticFunction("getScreenWidth", [] () { return System::instance().getScreenWidth(); })
         .addStaticFunction("getScreenHeight", [] () { return System::instance().getScreenHeight(); })
-        .addStaticFunction("showVirtualKeyboard", [] (std::wstring text) { System::instance().showVirtualKeyboard(text); })
+        .addStaticFunction("showVirtualKeyboard", &luaSystemShowVirtualKeyboard)
+        .addStaticFunction("updateVirtualKeyboardText", &luaSystemUpdateVirtualKeyboardText)
         .addStaticFunction("hideVirtualKeyboard", [] () { System::instance().hideVirtualKeyboard(); })
         .addStaticFunction("setClipboardText", [] (const std::string& text) { System::instance().setClipboardText(text); })
         .addStaticFunction("getClipboardText", [] () { return System::instance().getClipboardText(); })

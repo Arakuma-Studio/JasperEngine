@@ -5,6 +5,7 @@
 #define JASPER_TEST_SYSTEM_H
 
 #include "System.h"
+#include "input/TextEntry.h"
 
 #include <cstddef>
 #include <functional>
@@ -82,12 +83,24 @@ namespace jasperengine { namespace test {
 
         // recorded for the input tests (phase 1): the base clipboard is kept
         void showVirtualKeyboard(std::wstring text = L"") override;
+        // also counted in virtualKeyboardShows (text-entry spec part A)
+        void showVirtualKeyboard(const std::wstring& text, const TextEntryTraits& traits) override;
         void hideVirtualKeyboard() override;
+        void updateVirtualKeyboardText(const std::wstring& text, int selectionStart, int selectionEnd) override;
+        // a phone's keyboard that keeps the text (the resync tests); off by default
+        bool keepsKeyboardText = false;
+        bool keepsVirtualKeyboardText() override { return keepsKeyboardText; }
         void setTextInputArea(float x, float y, float width, float height) override;
         void setMouseCursor(CursorType type) override;
         int virtualKeyboardShows = 0;
         int virtualKeyboardHides = 0;
         std::wstring virtualKeyboardText;
+        // the traits of the last show (the defaults after a text-only show)
+        TextEntryTraits virtualKeyboardTraits;
+        // what the platform was told by updateVirtualKeyboardText
+        int virtualKeyboardUpdates = 0;
+        std::wstring virtualKeyboardUpdateText;
+        int virtualKeyboardSelection[2] = {0, 0};
         float textInputArea[4] = {0, 0, 0, 0};
         int textInputAreaCalls = 0;
         CursorType mouseCursor = CursorType::ARROW;

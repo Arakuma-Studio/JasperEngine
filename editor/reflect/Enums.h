@@ -117,6 +117,7 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kTextureAlphaBorder;
     extern const EnumDesc kTextureFilter;
     extern const EnumDesc kTextureWrap;
+    extern const EnumDesc kInputFieldKeyboardType;
     extern const EnumDesc kUIDocumentRenderMode;
     extern const EnumDesc kUIEventState;
     extern const EnumDesc kWindingOrder;
