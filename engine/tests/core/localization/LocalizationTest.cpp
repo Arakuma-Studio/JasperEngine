@@ -355,3 +355,26 @@ TEST_F(LocalizationTest, HashCollisionIsAnExportError) {
     EXPECT_NE(error.find("\"menu.play\""), std::string::npos) << error;
     EXPECT_NE(error.find("rename"), std::string::npos) << error;
 }
+
+TEST_F(LocalizationTest, DeviceLocalesChangingReresolve) {
+    // a platform's event (Android configuration, Apple notification, WM_SETTINGCHANGE "intl", the
+    // web's languagechange) goes through System::notifyLocalesMayHaveChanged: a new list re-resolves,
+    // the same list does nothing
+    TestSystem::get().preferredLocales = {"de-DE"};
+    install("en", "en", {{"en", {{"play", "Play"}}}, {"de", {{"play", "Spielen"}}}, {"ja", {{"play", "プレイ"}}}});
+    TestSystem::get().notifyLocalesMayHaveChanged();
+    int events = 0;
+    Localization::onLanguageChanged.add("test", [&events](const std::string&) { events++; });
+    EXPECT_FALSE(TestSystem::get().notifyLocalesMayHaveChanged()) << "the same languages";
+    TestSystem::get().preferredLocales = {"ja-JP", "de-DE"};
+    EXPECT_TRUE(TestSystem::get().notifyLocalesMayHaveChanged());
+    EXPECT_EQ(Localization::getLanguage(), "ja");
+    EXPECT_EQ(events, 1);
+}
+
+TEST_F(LocalizationTest, PseudoLocalizeKeepsArgumentsAndSyntax) {
+    EXPECT_EQ(Localization::pseudoLocalize("Play", "en-XA"), "\xE2\x9F\xA6\xC3\x9E\xC4\xBA\xC3\xA1\xC3\xBD\xC2\xB7\xC2\xB7\xE2\x9F\xA7");
+    EXPECT_EQ(Localization::pseudoLocalize("Play", "ar-XB"), "yalP");
+    const std::string withArgument = Localization::pseudoLocalize("Hi {name}", "en-XA");
+    EXPECT_NE(withArgument.find("{name}"), std::string::npos) << withArgument;
+}

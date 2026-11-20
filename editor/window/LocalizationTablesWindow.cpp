@@ -421,25 +421,6 @@ void LocalizationTablesWindow::drawDialogs(l10n::StringTableSet&) {
     }
 }
 
-namespace {
-
-    // a key from a text: "Options" -> "text.options", "New Game!" -> "text.new_game"
-    std::string keyFromText(const std::string& text, const l10n::StringTableSet& set) {
-        std::string slug;
-        for (unsigned char c : text) {
-            if (std::isalnum(c)) slug += static_cast<char>(std::tolower(c));
-            else if (!slug.empty() && slug.back() != '_') slug += '_';
-            if (slug.size() >= 40) break;
-        }
-        while (!slug.empty() && slug.back() == '_') slug.pop_back();
-        if (slug.empty()) slug = "text";
-        std::string key = "text." + slug;
-        for (int n = 2; set.table.find(key); n++) key = "text." + slug + "_" + std::to_string(n);
-        return key;
-    }
-
-}
-
 std::string LocalizationTablesWindow::extractToTable(Project* project, const fs::path& table, const std::string& documentFile,
                                                      const std::string& text, std::string& error) {
     l10n::StringTableSet before;
@@ -450,37 +431,13 @@ std::string LocalizationTablesWindow::extractToTable(Project* project, const fs:
         error = documentFile + " cannot be read";
         return {};
     }
-    // the element holding the text: `>text<`, its start tag the last `<` before it
-    std::string needle = text;
-    while (!needle.empty() && std::isspace(static_cast<unsigned char>(needle.back()))) needle.pop_back();
-    while (!needle.empty() && std::isspace(static_cast<unsigned char>(needle.front()))) needle.erase(0, 1);
-    size_t at = std::string::npos;
-    for (size_t from = source.find(needle); from != std::string::npos; from = source.find(needle, from + 1)) {
-        size_t left = from;
-        while (left > 0 && std::isspace(static_cast<unsigned char>(source[left - 1]))) left--;
-        size_t right = from + needle.size();
-        while (right < source.size() && std::isspace(static_cast<unsigned char>(source[right]))) right++;
-        if (left > 0 && source[left - 1] == '>' && right < source.size() && source[right] == '<') {
-            at = left - 1;
-            break;
-        }
-    }
-    const size_t open = at == std::string::npos ? std::string::npos : source.rfind('<', at);
-    if (open == std::string::npos || source.compare(open, 2, "</") == 0 || source.compare(open, 2, "<!") == 0) {
-        error = "\"" + needle + "\" is not the whole text of an element of " + documentFile;
-        return {};
-    }
-    const std::string startTag = source.substr(open, at - open);
-    if (startTag.find("data-l10n-id") != std::string::npos) {
-        error = "the element already has a data-l10n-id";
-        return {};
-    }
     l10n::StringTableSet after = before;
-    const std::string key = keyFromText(needle, after);
-    if (!l10n::applyOps(after, l10n::Json::array({{{"op", "set"}, {"key", key}, {"text", needle}}}), error)) return {};
-    const std::string global = after.table.ns + "." + key;
     std::string edited = source;
-    edited.insert(at, " data-l10n-id=\"" + global + "\"");
+    std::string key;
+    if (!l10n::extractText(after, edited, text, key, error)) {
+        error += " (" + documentFile + ")";
+        return {};
+    }
     // the table's files and the document as one step
     std::vector<StringTableEditCmd::FileChange> changes;
     for (const auto& [path, body] : after.files()) {
@@ -490,12 +447,12 @@ std::string LocalizationTablesWindow::extractToTable(Project* project, const fs:
         if (was != body) changes.push_back({path, was, body});
     }
     changes.push_back({html, source, edited});
-    auto* command = new StringTableEditCmd(std::move(changes), "Extract to Table " + global, {}, project);
+    auto* command = new StringTableEditCmd(std::move(changes), "Extract to Table " + key, {}, project);
     if (!project->getProjectCommandHistory()->addCommandNoMerge(command)) {
         error = "the edit could not be written";
         return {};
     }
-    return global;
+    return key;
 }
 
 void LocalizationTablesWindow::drawMisses() {

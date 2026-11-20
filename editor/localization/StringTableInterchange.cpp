@@ -6,6 +6,7 @@
 #include "localization/MessageFormat.h"
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 
 using namespace jasperengine;
@@ -85,3 +86,59 @@ StringsExportDoc editor::l10n::exportDocOf(const StringTableSet& set, const std:
     return doc;
 }
 
+
+namespace {
+
+    // a key from a text: "Options" -> "text.options", "New Game!" -> "text.new_game"
+    std::string keyFromText(const std::string& text, const StringTableSet& set) {
+        std::string slug;
+        for (unsigned char c : text) {
+            if (std::isalnum(c)) slug += static_cast<char>(std::tolower(c));
+            else if (!slug.empty() && slug.back() != '_') slug += '_';
+            if (slug.size() >= 40) break;
+        }
+        while (!slug.empty() && slug.back() == '_') slug.pop_back();
+        if (slug.empty()) slug = "text";
+        std::string key = "text." + slug;
+        for (int n = 2; set.table.find(key); n++) key = "text." + slug + "_" + std::to_string(n);
+        return key;
+    }
+
+}
+
+bool editor::l10n::extractText(StringTableSet& set, std::string& html, const std::string& text, std::string& key, std::string& error) {
+    std::string needle = text;
+    while (!needle.empty() && std::isspace(static_cast<unsigned char>(needle.back()))) needle.pop_back();
+    while (!needle.empty() && std::isspace(static_cast<unsigned char>(needle.front()))) needle.erase(0, 1);
+    if (needle.empty()) {
+        error = "no text to extract";
+        return false;
+    }
+    // the element holding the text: `>text<`, its start tag the last `<` before it
+    size_t at = std::string::npos;
+    for (size_t from = html.find(needle); from != std::string::npos; from = html.find(needle, from + 1)) {
+        size_t left = from;
+        while (left > 0 && std::isspace(static_cast<unsigned char>(html[left - 1]))) left--;
+        size_t right = from + needle.size();
+        while (right < html.size() && std::isspace(static_cast<unsigned char>(html[right]))) right++;
+        if (left > 0 && html[left - 1] == '>' && right < html.size() && html[right] == '<') {
+            at = left - 1;
+            break;
+        }
+    }
+    const size_t open = at == std::string::npos ? std::string::npos : html.rfind('<', at);
+    if (open == std::string::npos || html.compare(open, 2, "</") == 0 || html.compare(open, 2, "<!") == 0) {
+        error = "\"" + needle + "\" is not the whole text of an element";
+        return false;
+    }
+    if (html.substr(open, at - open).find("data-l10n-id") != std::string::npos) {
+        error = "the element already has a data-l10n-id";
+        return false;
+    }
+    const std::string local = keyFromText(needle, set);
+    if (!applyOps(set, Json::array({{{"op", "set"}, {"key", local}, {"text", needle}}}), error)) return false;
+    key = set.table.ns + "." + local;
+    const size_t insertAt = at > open && html[at - 1] == '/' ? at - 1 : at;
+    html.insert(insertAt, " data-l10n-id=\"" + key + "\"");
+    return true;
+}

@@ -21,4 +21,10 @@ namespace jasperengine::editor::l10n {
     // the set as StringFiles exports it (`languages` empty: every translation language)
     StringsExportDoc exportDocOf(const StringTableSet& set, const std::vector<std::string>& languages);
 
+    // Extract to Table (R28): an entry with `text` (its key made from the text, "Options" ->
+    // "text.options") added to `set`, and data-l10n-id="<ns>.<key>" written on the element of
+    // `html` (a document's source) whose whole text it is. `key` gets the global key; false with
+    // `error` when no element holds exactly that text or it is keyed already
+    bool extractText(StringTableSet& set, std::string& html, const std::string& text, std::string& key, std::string& error);
+
 }
