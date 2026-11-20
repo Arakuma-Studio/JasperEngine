@@ -10,8 +10,8 @@ Lua's onStateEnter / onMontageEnded fire; one call through the CLI. Mesh Space R
 (docs/specs/mesh-space-rotation.md AC22, AC24): sample_animation_pose's space and solo_layer on the
 B- rig with a mask from the spine (the solo spine is 110 degrees from the blended one with the
 option off and equal with it on), get_animation {entity}'s Animator coverage with its boundary bones.
-Runs on a scratch copy of tools/fixtures/pose-animation (Hero: Mixamo names, Robot: Blender names,
-b_rig_proxy.gltf: B- names)."""
+Runs on a scratch copy of tools/fixtures/pose-animation (Hero: Mixamo names, Robot: Blender names),
+with tools/fixtures/b-rig's b_rig_proxy.gltf (B- names) copied in."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -321,6 +322,7 @@ async def test_from_player_and_cli(ed: Editor):
 # ---------------------------------------------------------------------------- Mesh Space Rotation
 
 PROXY_MODEL = "assets/models/b_rig_proxy.gltf"
+PROXY_SOURCE = REPO / "tools" / "fixtures" / "b-rig" / PROXY_MODEL
 PROXY_CONTROLLER = "assets/anim/proxy.controller"
 HIPS = "Rig/B-root/B-hips"
 SPINE = HIPS + "/B-spine"
@@ -338,8 +340,11 @@ def quat_angle(a, b) -> float:
 
 
 async def proxy_animator(ed: Editor) -> None:
-    """AC4's setup on the fixture's B- rig: Run (hips turned 90 degrees) on the base layer, Attack (hips
+    """AC4's setup on the copied-in B- rig: Run (hips turned 90 degrees) on the base layer, Attack (hips
     turned -20 degrees) on an Upper Body layer whose mask starts at the spine"""
+    # the B- rig lives outside the fixture project, so opening the project cooks no extra model
+    shutil.copyfile(PROXY_SOURCE, ed.project / PROXY_MODEL)
+    await ed.call("sync_files")
     await ed.call("set_model", path=PROXY_MODEL, create={"name": "Proxy", "position": [3, 0, 0]})
     await ed.call("edit_avatar_mask", path="assets/anim/upper_spine.mask", create=True, default=0,
                   paths={SPINE: {"weight": 1, "children": True}})
