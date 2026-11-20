@@ -9,6 +9,7 @@
 #include "Project.h"
 #include "Stream.h"
 #include "buildprofile/BuildProfile.h"
+#include "render/LightingTiers.h"
 #include "render/shadow/ShadowTiers.h"
 #include "settings/SettingsRegistry.h"
 #include "support/EditorTestSupport.h"
@@ -346,6 +347,18 @@ TEST(BuildProfileResolve, TheOpenProjectNeverChanges) {
 
     std::printf("[ bench ] settings snapshot of a %zu-line project.yaml: %.1f ms (budget 50)\n",
                 static_cast<size_t>(std::count(before.begin(), before.end(), '\n')), ms);
+    // where the time goes: the encode, a whole snapshot (encode, a Project made, decode), one of a
+    // project with nothing in it (the Project made), and the validation
+    auto timed = [](auto&& work) {
+        const auto t0 = std::chrono::steady_clock::now();
+        work();
+        return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    };
+    Project empty;
+    std::printf("[ bench ] of which: encodeProject %.1f ms, makeSettingsSnapshot %.1f ms (of an empty project %.1f ms), "
+                "validateProfile %.1f ms\n",
+                timed([&] { (void)Stream::encodeProject(&project); }), timed([&] { (void)Project::makeSettingsSnapshot(project); }),
+                timed([&] { (void)Project::makeSettingsSnapshot(empty); }), timed([&] { (void)validateProfile(project, profile); }));
     if (const double slack = editor::test::perfSlack(); slack > 0.0) {
         EXPECT_LT(ms, 50.0 * slack);
     }
@@ -440,5 +453,47 @@ TEST(BuildProfileStore, AnUnreadableProfileDoesNotStopTheProject) {
     EXPECT_EQ(buildprofiles::active(dir.path()), nullptr);
     std::vector<BuildWarning> warnings;
     EXPECT_EQ(resolveBuildSettings(project, nullptr, warnings, error).get(), &project);
+    editor::test::closeProject(project);
+}
+
+// ---------------------------------------------------------------- Compile builds
+
+// A Compile build's main.cpp of a profile: its Scene List (and the scenes they involve) registered, its
+// start scene loaded, and the init lines of its settings snapshot, not the open project's
+TEST(BuildProfileCompile, MainSourceRegistersTheSceneListAndTheProfilesSettings) {
+    editor::test::ensureEngine();
+    jasperengine::test::TestTempDir dir("build-profile-compile");
+    Project project;
+    openProjectWithIcon(dir, project);
+    const uint32_t menu = project.createSceneNow("Menu", SceneType::SCENE_2D, {}, false, UnsavedChoice::Discard);
+    const uint32_t level = project.createSceneNow("Level1", SceneType::SCENE_2D, {}, false, UnsavedChoice::Discard);
+    const uint32_t hud = project.createSceneNow("Hud", SceneType::SCENE_2D, {}, false, UnsavedChoice::Discard);
+    const uint32_t bonus = project.createSceneNow("Bonus", SceneType::SCENE_2D, {}, false, UnsavedChoice::Discard);
+    ASSERT_NE(project.getScene(level), nullptr);
+    project.getScene(level)->childScenes.push_back({hud, true});
+
+    const std::shared_ptr<Project> snapshot = Project::makeSettingsSnapshot(project);
+    snapshot->setCanvasSize(320, 200);
+    snapshot->setLightMode(LightMode::TILED);
+    auto registers = [](const std::string& source, uint32_t id, const std::string& name) {
+        return source.find("SceneManager::registerScene(" + std::to_string(id) + ", \"" + name + "\"") != std::string::npos;
+    };
+
+    const std::string profile = project.buildMainSource(*snapshot, {level, hud}, level);
+    EXPECT_TRUE(registers(profile, level, "Level1"));
+    EXPECT_TRUE(registers(profile, hud, "Hud")) << "the scene Level1 involves ships with it";
+    EXPECT_FALSE(registers(profile, menu, "Menu"));
+    EXPECT_FALSE(registers(profile, bonus, "Bonus"));
+    EXPECT_NE(profile.find("SceneManager::loadScene(\"Level1\");"), std::string::npos);
+    EXPECT_NE(profile.find("Engine::setCanvasSize(320, 200);"), std::string::npos);
+    EXPECT_NE(profile.find("LightingTiers::setLightMode(LightMode::TILED);"), std::string::npos);
+
+    // without a profile: every scene, the project's own settings
+    const std::string own = project.buildMainSource(project, {}, menu);
+    for (const auto& [id, name] : std::vector<std::pair<uint32_t, std::string>>{{menu, "Menu"}, {level, "Level1"}, {hud, "Hud"}, {bonus, "Bonus"}})
+        EXPECT_TRUE(registers(own, id, name)) << name;
+    EXPECT_NE(own.find("SceneManager::loadScene(\"Menu\");"), std::string::npos);
+    EXPECT_EQ(own.find("Engine::setCanvasSize(320, 200);"), std::string::npos);
+    EXPECT_EQ(own.find("LightMode::TILED"), std::string::npos);
     editor::test::closeProject(project);
 }

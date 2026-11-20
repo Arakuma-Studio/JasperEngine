@@ -8593,41 +8593,72 @@ void editor::Project::writeMissingSceneSources() {
     }
 }
 
+// what main.cpp writes of `settings` (this project, or a Build Profile's settings snapshot), set on `target`
+void editor::Project::prepareGenerator(Generator& target, const Project& settings) const {
+    target.setAtmosphereQuality(settings.atmosphereQuality);
+    target.setFoliageQuality(settings.foliageQuality, !settings.foliageQualityDeclared);
+    target.setFoliageDistanceScale(settings.foliageDistanceScale);
+    target.setDrawSubmission(settings.drawSubmission);
+    target.setTransitionDefaults(settings.transitionDefaults);
+    target.setInputSettings(settings.getInputActionsEnginePath(), settings.inputDeadzone);
+    target.setNavigationSettingsCode(generateNavigationSettingsCode(settings.navigationSettings.settings, "    "));
+    target.setVoxelSettingsCode(generateVoxelSettingsCode(settings.voxelSettings, "    "));
+    target.setDeviceSettingsJson(settings.deviceSettings.toJson());
+    target.setTextureDefaults(settings.textureSettings.textureQuality, settings.textureSettings.memoryBudgetMB, settings.textureSettings.lowMemoryFallback);
+    target.setMacOSFrameworks(settings.macOSProjectSettings.frameworks);
+    target.setUIScale(settings.uiScale);
+    target.setPixelsPerUnit(settings.pixelsPerUnit);
+    target.setDefaultFilterPoint(settings.defaultFilterMode == TextureFilterMode::Point);
+    target.setBitmapTextCacheMiB(settings.bitmapTextCacheMiB);
+    target.setShippedTerrainTiers(getGeneratedTerrainTiers());
+}
+
+// the scenes main.cpp registers: all of them, or those of `only` (a Build Profile's Scene List and the
+// scenes it involves); `startId` is loaded first
+std::vector<editor::SceneBuildInfo> editor::Project::generatorScenes(uint32_t startId, const std::set<uint32_t>& only) {
+    std::vector<editor::SceneBuildInfo> list;
+    for (SceneProject& sceneConf : scenes) {
+        if (!only.empty() && !only.count(sceneConf.id)) continue;
+        std::vector<uint32_t> involvedSceneIds;
+        std::vector<uint32_t> activeSceneIds;
+        collectInvolvedScenes(sceneConf.id, involvedSceneIds);
+        collectStartActiveScenes(sceneConf.id, activeSceneIds);
+        list.push_back({sceneConf.id, sceneConf.name, involvedSceneIds, activeSceneIds, startId == sceneConf.id});
+    }
+    return list;
+}
+
 void editor::Project::configureGenerator() {
     // the standalone build starts the selected scene (in Prefab Mode, the scene behind it)
     const uint32_t selectedRegular = getSceneBehindPrefabStage(selectedScene);
     const uint32_t startId = getScene(selectedRegular) ? selectedRegular : startSceneId;
 
-    std::vector<editor::SceneBuildInfo> scenesToConfig;
-    for (SceneProject& sceneConf : scenes) {
-        bool isMain = (startId == sceneConf.id);
-        std::vector<uint32_t> involvedSceneIds;
-        std::vector<uint32_t> activeSceneIds;
-        collectInvolvedScenes(sceneConf.id, involvedSceneIds);
-        collectStartActiveScenes(sceneConf.id, activeSceneIds);
-
-        scenesToConfig.push_back({sceneConf.id, sceneConf.name, involvedSceneIds, activeSceneIds, isMain});
-    }
-
+    std::vector<editor::SceneBuildInfo> scenesToConfig = generatorScenes(startId, {});
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.setAtmosphereQuality(atmosphereQuality);
-    generator.setFoliageQuality(foliageQuality, !foliageQualityDeclared);
-    generator.setFoliageDistanceScale(foliageDistanceScale);
-    generator.setDrawSubmission(drawSubmission);
-    generator.setTransitionDefaults(transitionDefaults);
-    generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
-    generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
-    generator.setVoxelSettingsCode(generateVoxelSettingsCode(voxelSettings, "    "));
-    generator.setDeviceSettingsJson(deviceSettings.toJson());
-    generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
-    generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
-    generator.setUIScale(uiScale);
-    generator.setPixelsPerUnit(pixelsPerUnit);
-    generator.setDefaultFilterPoint(defaultFilterMode == TextureFilterMode::Point);
-    generator.setBitmapTextCacheMiB(bitmapTextCacheMiB);
-    generator.setShippedTerrainTiers(getGeneratedTerrainTiers());
+    prepareGenerator(generator, *this);
     generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints, getSortingLayers(), getTransparencySortMode(), getTransparencySortAxis()}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings, particleWorldBudget);
+}
+
+std::string editor::Project::buildMainSource(const Project& settings, const std::set<uint32_t>& sceneIds, uint32_t startId) {
+    Generator built;
+    prepareGenerator(built, settings);
+    // the tiers the engine holds are the open project's; a snapshot's own are its members
+    std::vector<int> shadow, terrain;
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) shadow.push_back(static_cast<int>(settings.getShadowTier(platform)));
+    for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++)
+        terrain.push_back(static_cast<int>(settings.getTerrainQualityTier(platform)));
+    built.setBuildTiers(static_cast<int>(settings.getLightMode()), std::move(shadow), std::move(terrain));
+    const std::vector<editor::SceneBuildInfo> list = generatorScenes(startId, sceneIds);
+    return built.mainSource(list, libName, collectAllSceneCppScripts(), collectAllPrefabs(), getProjectPath(), getProjectInternalPath(), getAssetsPath(),
+                            getLuaPath(), getBuildScriptDirs(), getCxxStandard(), settings.scalingMode, settings.textureStrategy, settings.canvasWidth,
+                            settings.canvasHeight, settings.vsyncEnabled, settings.getWindowSettings(), settings.loadingSettings,
+                            TagsAndLayers{settings.tags, settings.layerNames, settings.layerCollisionMatrix3D, settings.layerCollisionMatrix2D,
+                                          settings.physics3DWorld.maxBodies, settings.physics3DWorld.maxBodyPairs, settings.physics3DWorld.maxContactConstraints,
+                                          settings.getSortingLayers(), settings.getTransparencySortMode(), settings.getTransparencySortAxis()},
+                            settings.htmlUiMsaaSamples, settings.threadingSettings, settings.htmlUiRender, settings.mobilePbrTier,
+                            settings.shaderCreationSettings, settings.applicationSettings.allowInsecureHttp, settings.getShaderGlobals(),
+                            settings.getPlayerSettings(), settings.getAudioSettings(), settings.debugSettings, settings.particleWorldBudget);
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
