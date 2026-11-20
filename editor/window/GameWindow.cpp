@@ -29,6 +29,7 @@
 #include "util/PlatformRules.h"
 #include "window/DeviceProfiles.h"
 #include "Backend.h"
+#include "App.h"
 #include "Theme.h"
 #include "subsystem/CullingSystem.h"
 #include "subsystem/UIDocumentSystem.h"
