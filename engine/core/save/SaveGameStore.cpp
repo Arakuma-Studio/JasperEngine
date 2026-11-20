@@ -418,7 +418,8 @@ namespace jasperengine::savegame {
             std::error_code ec;
             if (!fs::exists(path, ec)){
                 std::string generations;
-                for (const auto& entry : scanFolder(resolveFolder(), name)[name].generations)
+                auto all = scanFolder(resolveFolder(), name);
+                for (const auto& entry : all[name].generations)
                     generations += (generations.empty() ? "" : ", ") + std::to_string(entry.first);
                 return makeError(SaveErrorCode::NotFound, "slot \"" + name + "\" has no generation " + std::to_string(generation) +
                                  " (generations: " + (generations.empty() ? std::string("none") : generations) + ")");

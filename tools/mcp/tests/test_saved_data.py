@@ -147,6 +147,6 @@ async def test_group_listing(ed: Editor):
     await ed.call("tool_groups", enable=["scripting"])
     tools = {t.name: t for t in await ed.tools(groups=None)}
     ed.check("user_settings" in tools, "listed once scripting is enabled")
-    schema = tools["user_settings"].inputSchema
+    schema = tools["user_settings"].input_schema
     for key in ("store", "namespace", "generation", "mode", "file"):
         ed.check_in(key, schema["properties"])
