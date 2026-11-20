@@ -49,6 +49,10 @@ end)
 - Edit Mode cases (`mode = "edit"`) run in the editor without playing: `Editor.call` reaches only
   read-only tools and they cannot wait.
 - `skip = "reason"`, `Test.skip(reason)` and `platforms = {...}` give skipped, never passed.
+- `replay = "Input/<name>.input.json"` plays a recording from the session's first frame with its
+  frame rate (and its seed and scene when it has them) while the case runs; wait with
+  `Test.waitUntil(function() return not InputRecording.isReplaying() end)`, then check. A
+  checkpoint that differs fails the case as `divergence` (frame, probes) unless `divergence: warn`.
 
 ## The loop
 

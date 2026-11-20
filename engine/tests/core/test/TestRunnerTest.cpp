@@ -11,6 +11,7 @@
 
 #include "Input.h"
 #include "Log.h"
+#include "input/InputRecorder.h"
 #include "input/InputScriptRunner.h"
 #include "io/UserDataOverride.h"
 #include "player/PlayerTests.h"
@@ -19,6 +20,7 @@
 
 #include "lua.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <cstdio>
@@ -542,6 +544,88 @@ end)
     ASSERT_FALSE(bad.failures.empty());
     EXPECT_NE(bad.failures[0].message.find("unknown key"), std::string::npos) << bad.failures[0].message;
     input::ScriptRunner::stopAll();
+}
+
+// R9: a replay case's session takes the recording's frame rate, seed and scene, the recording
+// feeds it from the first frame beside the body, and a checkpoint that differs fails it as a
+// divergence naming the frame and what differs (a warning with divergence: warn)
+TEST(TestRunnerCore, ReplayCasesFeedTheRecordingAndReportDivergence) {
+    struct SpecHost : FakeHost {
+        bool beginSession(const CaseSpec& spec, std::string& error) override {
+            began.push_back(spec);
+            readyAt = -1;
+            return FakeHost::beginSession(spec, error);
+        }
+        SessionState sessionState(std::string&) override {
+            if (readyAt < 0) readyAt = static_cast<int64_t>(frames);
+            return SessionState::Ready;
+        }
+        std::vector<CaseSpec> began;
+        int64_t readyAt = -1;
+    };
+    const std::string recording = R"({"format": "jasperengine-input", "version": 1, "kind": "recording", "start": "play", "fixed_fps": 30,
+        "seed": 7, "scene": "Level", "platform": ")" + input::platformTag() + R"(", "frames": 8,
+        "checkpoints": [{"frame": 3, "hash": "1", "values": {"lives": 3}}],
+        "events": [{"frame": 0, "type": "key", "key": "b", "action": "down"}, {"frame": 5, "type": "key", "key": "b", "action": "up"}]})";
+    const std::string tests = R"(
+Test.case("replays", {replay = "Input/run.input.json"}, function(t)
+    Test.waitFrames(12)
+end)
+Test.case("a script is refused", {replay = "Input/script.input.json"}, function(t) end)
+)";
+    for (const bool warn : {false, true}) {
+        SpecHost host;
+        host.files["r.test.lua"] = tests;
+        host.files["Input/run.input.json"] = recording;
+        host.files["Input/script.input.json"] = R"({"format": "jasperengine-input", "version": 1, "kind": "script", "events": [{"type": "wait", "frames": 1}]})";
+        Settings settings;
+        settings.divergenceFail = !warn;
+        std::vector<CaseSpec> plan = host.planOf("r.test.lua", {"replays", "a script is refused"}, settings);
+        plan[0].replay = "Input/run.input.json";
+        plan[1].replay = "Input/script.input.json";
+        TestRunner runner;
+        RunOptions options;
+        options.settings = settings;
+        runner.start(plan, host, options);
+        bool sawB = false;
+        int64_t firstB = -1;
+        for (int i = 0; i < 1000 && runner.frame(); i++) {
+            input::ScriptRunner::beforeFrame(true);
+            Input::beginFrame();
+            if (Input::isKeyPressed(D_KEY_B) && firstB < 0) firstB = static_cast<int64_t>(host.frames);
+            sawB = sawB || Input::isKeyPressed(D_KEY_B);
+            input::ScriptRunner::afterUpdate();
+            host.frames++;
+            host.time += 1.0 / 30.0;
+        }
+        const RunResult& result = runner.result();
+        ASSERT_EQ(host.began.size(), 1u) << "the script's case never starts a session";
+        EXPECT_EQ(host.began[0].fixedFps, 30);
+        EXPECT_EQ(host.began[0].seed, 7u);
+        EXPECT_EQ(host.began[0].scene, "Level");
+        EXPECT_TRUE(sawB) << "the recording's key reached the game";
+        EXPECT_EQ(firstB, host.readyAt) << "the recording plays from the session's first frame";
+        const CaseResult& replays = byName(result, "replays");
+        if (!warn) {
+            EXPECT_EQ(replays.status, Status::Failed);
+            ASSERT_EQ(replays.failures.size(), 1u);
+            EXPECT_EQ(replays.failures[0].kind, "divergence");
+            EXPECT_NE(replays.failures[0].message.find("diverged at frame 3"), std::string::npos) << replays.failures[0].message;
+            EXPECT_NE(replays.failures[0].message.find("lives 3 -> null"), std::string::npos) << replays.failures[0].message;
+        } else {
+            EXPECT_EQ(replays.status, Status::Passed) << (replays.failures.empty() ? "" : replays.failures[0].message);
+            const bool warned = std::any_of(replays.console.begin(), replays.console.end(), [](const ConsoleLine& line) {
+                return line.level == "warning" && line.message.find("diverged at frame 3") != std::string::npos;
+            });
+            EXPECT_TRUE(warned) << "divergence: warn keeps the report as a warning";
+        }
+        const CaseResult& refused = byName(result, "a script is refused");
+        EXPECT_EQ(refused.status, Status::Error);
+        ASSERT_FALSE(refused.failures.empty());
+        EXPECT_NE(refused.failures[0].message.find("is a script, not a recording"), std::string::npos) << refused.failures[0].message;
+        EXPECT_FALSE(Input::isKeyPressed(D_KEY_B)) << "the replay's keys are released when it ends";
+        input::ScriptRunner::stopAll();
+    }
 }
 
 // R24, R25: a player's case starts from a new Lua state in a data:// sandbox of its own; nothing the

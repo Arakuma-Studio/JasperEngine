@@ -426,3 +426,103 @@ async def test_test_runner_window(ed: Editor):
     shot = os.environ.get("JASPER_TEST_RUNNER_SHOT")
     if shot:
         await ed.screenshot("editor", path=shot)
+
+
+ROLLER = """local Roller = {}
+function Roller:init()
+    self.go = GameObject(self.scene, self.entity)
+    self.wall = GameObject.find("Wall")
+end
+function Roller:update()
+    if Input.isKeyPressed(Input.KEY_RIGHT) then
+        local p = self.go.position
+        self.go.position = Vector3(math.min(p.x + 0.25, self.wall.position.x - 1), p.y, p.z)
+    end
+    GameState = GameState or {}
+    GameState.ballX = self.go.position.x
+end
+return Roller
+"""
+
+# the recorder starts at init (the session's first frame) when the case's data has record.json
+RECORDER = """local Recorder = {}
+function Recorder:init()
+    if Json.readFile("data://record.json") then
+        assert(InputRecording.start({checkpointFrames = 10, probes = {"Ball", "Wall"}}))
+    end
+end
+return Recorder
+"""
+
+REPLAY_TESTS = """-- R9 / AC16 (test_project_tests.py)
+Test.case("Record the roll", {tags = {"rec"}, data = "rec"}, function(t)
+    Test.check(InputRecording.isRecording(), "the recorder started at init")
+    Test.input({ {type = "key", key = "right", action = "down"}, {type = "wait", frames = 40},
+                 {type = "key", key = "right", action = "up"} })
+    Test.waitFrames(10)
+    Test.check(InputRecording.stop("data://roll.input.json") ~= nil, "the recording stopped")
+    Test.waitFrames(30)
+end)
+
+Test.case("The roll replays", {tags = {"replay"}, replay = "Input/roll.input.json"}, function(t)
+    Test.waitUntil(function() return not InputRecording.isReplaying() end, {frames = 300})
+    Test.check(GameState and GameState.ballX > 1, "the replayed key rolled the ball")
+end)
+"""
+
+
+async def test_replay_case_divergence(ed: Editor):
+    """AC16: a recording made in a test session replays green as a replay case; after the wall in
+    the scene moves, the case fails with a divergence naming the first checkpoint's frame and the
+    Wall probe (the state differs from there); divergence: warn passes it."""
+    s = await setup(ed)
+    for name, script in (("Ball", ROLLER), ("Recorder", RECORDER)):
+        await ed.call("create_entity", scene=s["scene"], type="empty", name=name)
+        await ed.call("create_script", kind="lua", name=name + "Script", content=script, scene=s["scene"], entity=name)
+    await ed.call("create_entity", scene=s["scene"], type="empty", name="Wall")
+    await ed.call("set_properties", scene=s["scene"], entity="Wall", values={"transform": {"position": [20, 0, 0]}})
+    await ed.call("save_scene", scene=s["scene"])
+    tests = s["project"] / "Tests"
+    (tests / "Data" / "rec").mkdir(parents=True, exist_ok=True)
+    (tests / "Data" / "rec" / "record.json").write_text("{}")
+    (tests / "replay.test.lua").write_text(REPLAY_TESTS)
+
+    recorded = await run_tests(ed, filter="tag:rec", keep_data=True)
+    ed.check_eq(recorded["counts"]["passed"], 1, f"the recording case: {json.dumps(recorded)[:2000]}")
+    sessions = s["project"] / ".jasperengine" / "user"
+    roll = None
+    for _ in range(100):
+        found = sorted(sessions.rglob("roll.input.json"))
+        if found:
+            roll = found[-1]
+            break
+        await asyncio.sleep(0.1)
+    ed.check(roll is not None, f"the recording was written under {sessions}")
+    recording = json.loads(roll.read_text())
+    ed.check(recording.get("checkpoints"), f"checkpoints were sampled: {list(recording)}")
+    # a Lua recording starts "now"; this one started with the session, as Record Input's do
+    recording["start"] = "play"
+    (tests / "Input").mkdir(exist_ok=True)
+    (tests / "Input" / "roll.input.json").write_text(json.dumps(recording))
+
+    green = await run_tests(ed, filter="tag:replay")
+    ed.check_eq((green["counts"]["passed"], green["counts"]["failed"]), (1, 0), f"the replay: {json.dumps(green)[:3000]}")
+
+    await ed.call("set_properties", scene=s["scene"], entity="Wall", values={"transform": {"position": [5, 0, 0]}})
+    await ed.call("save_scene", scene=s["scene"])
+    red = await run_tests(ed, filter="tag:replay")
+    ed.check_eq(red["counts"]["failed"], 1, f"a moved wall diverges: {json.dumps(red)[:3000]}")
+    failure = next((f for f in red["failures"] if f["id"] == "replay.test.lua#The roll replays" and f["kind"] == "divergence"), None)
+    ed.check(failure is not None, f"a divergence failure: {red['failures']}")
+    ed.check_in("diverged at frame 10", failure["message"], "the first checkpoint after the change")
+    ed.check_in("Wall", failure["message"], "the report names the probe that differs")
+
+    (tests / "tests.yaml").write_text(TESTS_YAML + "divergence: warn\n")
+    try:
+        warned = await run_tests(ed, filter="tag:replay")
+        ed.check_eq((warned["counts"]["passed"], warned["counts"]["failed"]), (1, 0), f"divergence: warn: {json.dumps(warned)[:3000]}")
+        doc = json.loads((s["project"] / warned["results_file"]).read_text())
+        console = [line["message"] for case in doc["cases"] for line in case.get("console", [])]
+        ed.check(any("diverged at frame" in line for line in console), f"the warning stays in the console: {console[:5]}")
+    finally:
+        (tests / "tests.yaml").write_text(TESTS_YAML)

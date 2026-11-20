@@ -803,6 +803,14 @@ case tagged `red`, a skipped case, an Edit Mode case, goldens for `level1_start`
 - **Test-project hooks.** `tools/test-projects/game-tests` is the engine project of AC12 and AC13
   (four smoke cases in `assets/tests/`, `android-expect.txt`, `tools/web/gates/game-tests.json`); the
   summary line's keys are in alphabetical order (the results document's JSON).
-- **Not done in this change** (each named in the PR): replay cases (R9, AC16: they need the input
-  spec's recorder); the web gate, the Android run and the release `.text` size (AC12, AC13, AC18)
-  run in the integration pass.
+- **Replay cases.** A replay case's session holds the simulation until its scene runs (the editor's
+  Play, a player's scene load), then the runner starts the replay with real input blocked, so its
+  frame 0 is the session's first update, as `play {input}` does. A recording without a seed or a
+  scene (Lua's) keeps the case's. A replay that fails on an event is an `error`; checkpoints a
+  recording cannot compare (another platform, not from Play's start) are a console warning. A
+  divergence names the first checkpoint that differs: the state hash covers the whole scene, so a
+  moved obstacle diverges at the first checkpoint after it, named by its probe when it has one.
+  Editor Record Input is not in the input spec yet, so AC16's test records with Lua
+  `InputRecording` from a script's `init` in a test session and marks the file `start: "play"`.
+- **Not done in this change** (each named in the PR): the web gate, the Android run and the release
+  `.text` size (AC12, AC13, AC18) run in the integration pass.

@@ -62,6 +62,8 @@ namespace {
         std::string folder;
         uint64_t framesAtLoad = 0;
         bool loaded = false;
+        // a replay case (R9): no frame runs before its replay, which starts with the first update
+        bool heldForReplay = false;
         // a capture: asked, read at the next offscreen frame
         bool captureWanted = false;
         bool captureDone = false;
@@ -72,9 +74,13 @@ namespace {
         bool beginSession(const gametest::CaseSpec& caseSpec, std::string& error) override {
             spec = caseSpec;
             if (!PlayerSession::begin(spec, runId, ++caseNumber, folder, error)) return false;
+            heldForReplay = !spec.replay.empty();
+            if (heldForReplay) Engine::setSimulationHeld(true);
             // the case's scene from its start: the build's start scene by default
             const bool started = spec.scene.empty() ? SceneManager::loadScene(startScene) : SceneManager::loadScene(spec.scene);
             if (!started) {
+                if (heldForReplay) Engine::setSimulationHeld(false);
+                heldForReplay = false;
                 error = "no scene \"" + (spec.scene.empty() ? std::string("(the start scene)") : spec.scene) + "\" in this build";
                 return false;
             }
@@ -87,9 +93,17 @@ namespace {
                 framesAtLoad = Engine::getGameFrames();
                 return SessionState::Starting;
             }
+            if (heldForReplay) {
+                // loaded under the hold: the runner starts the replay now, before the first update
+                heldForReplay = false;
+                Engine::setSimulationHeld(false);
+                return SessionState::Ready;
+            }
             return Engine::getGameFrames() > framesAtLoad ? SessionState::Ready : SessionState::Starting;
         }
         void endSession() override {
+            if (heldForReplay) Engine::setSimulationHeld(false);
+            heldForReplay = false;
             PlayerSession::end(folder, keepData);
             captureWanted = false;
             loaded = false;

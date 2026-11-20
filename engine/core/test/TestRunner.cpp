@@ -323,6 +323,9 @@ namespace jasperengine::gametest {
         bool hung = false;
         double interruptSeconds = 10.0;
         Logger::SinkId sink = 0;
+        // R9: the recording a replay case feeds its session from frame 0
+        std::shared_ptr<input::ParsedScript> replayScript;
+        std::shared_ptr<input::Replay> replay;
 
         void fail(const std::string& kind, const std::string& message, const std::string& file, int line) {
             result.failures.push_back({kind, message, file.empty() ? result.spec.file : file, line, frame});
@@ -905,6 +908,7 @@ void TestRunner::cancel() {
     if (!running) return;
     cancelled = true;
     if (phase == Phase::Starting || phase == Phase::Running) {
+        if (current && current->replay) current->replay->stop();
         if (current && current->sink) {
             Logger::removeSink(current->sink);
             current->sink = 0;
@@ -994,6 +998,12 @@ bool TestRunner::frame() {
             }
             s.frameBase = host->gameFrames();
             s.timeBase = host->gameTime();
+            if (s.replayScript) {
+                input::ReplayOptions replayOptions;
+                replayOptions.host = input::runtimePlayerHost();
+                replayOptions.play.simulateTouch = s.replayScript->header.simulateTouch;
+                s.replay = input::Replay::start(s.replayScript, std::move(replayOptions));
+            }
             s.chunk->active = &s;
             lua_newtable(L);
             lua_pushstring(L, spec.name.c_str());
@@ -1080,13 +1090,43 @@ void TestRunner::beginCase() {
         finishedWithoutSession();
         return;
     }
-    if (!host->beginSession(spec, error)) {
+    if (!spec.replay.empty() && !loadReplay(s, error)) {
+        s.runnerError = true;
+        s.fail("error", error, "", spec.line);
+        finishedWithoutSession();
+        return;
+    }
+    if (!host->beginSession(s.result.spec, error)) {
         s.runnerError = true;
         s.fail("error", error, "", spec.line);
         finishedWithoutSession();
         return;
     }
     phase = Phase::Starting;
+}
+
+bool TestRunner::loadReplay(CaseRunState& s, std::string& error) {
+    CaseSpec& spec = s.result.spec;
+    std::string code;
+    if (!host->readTestFile(spec.replay, code, error)) {
+        error = "replay: no file " + spec.replay + " in the test root";
+        return false;
+    }
+    auto script = std::make_shared<input::ParsedScript>();
+    if (!input::parseScript(code, *script, error)) {
+        error = "replay " + spec.replay + ": " + error;
+        return false;
+    }
+    if (script->header.kind != input::ScriptKind::Recording) {
+        error = "replay " + spec.replay + " is a script, not a recording: run it with Test.input";
+        return false;
+    }
+    const input::ScriptHeader& h = script->header;
+    spec.fixedFps = std::max(1, h.fixedFps);
+    if (h.hasSeed) spec.seed = h.seed;
+    if (!h.scene.empty()) spec.scene = h.scene;
+    s.replayScript = std::move(script);
+    return true;
 }
 
 namespace {
@@ -1340,6 +1380,7 @@ void TestRunner::finishCase() {
     }
     for (size_t i = 0; i < used.size(); i++)
         if (!used[i]) s.fail("expected_error_missing", "no error line matched the expected pattern \"" + s.result.spec.expectErrors[i] + "\"", "", s.result.spec.line);
+    if (s.replay) reportReplay(s);
 
     s.result.frames = s.frame;
     s.result.gameSeconds = s.gameTime;
@@ -1352,6 +1393,34 @@ void TestRunner::finishCase() {
     s.chunk.reset();
     host->endSession();
     phase = Phase::Ending;
+}
+
+void TestRunner::reportReplay(CaseRunState& s) {
+    input::Replay& replay = *s.replay;
+    const input::ReplayReport& report = replay.report();
+    const std::string& path = s.result.spec.replay;
+    if (report.divergedAtFrame >= 0) {
+        // the frame and what differs: each probe's recorded and replayed position, each value
+        std::string what;
+        for (const Json& d : report.differences) {
+            if (what.size() > 600) break;
+            what += what.empty() ? "" : "; ";
+            what += d.contains("probe") ? d["probe"].get<std::string>() + " " + d["recorded"].dump() + " -> " + d["replayed"].dump()
+                                        : d.value("value", std::string("?")) + " " + d["recorded"].dump() + " -> " + d["replayed"].dump();
+        }
+        if (what.empty()) what = "the state hash";
+        const std::string message = "replay " + path + " diverged at frame " + std::to_string(report.divergedAtFrame) + ": " + what;
+        if (options.settings.divergenceFail) s.fail("divergence", message, path, 0);
+        else s.result.console.push_back({"warning", message, path, 0});
+    } else if (report.failed) {
+        s.fail("error", "replay " + path + ": " + replay.errorText(), path, 0);
+    } else if (!report.comparable && !replay.script().header.checkpoints.empty()) {
+        s.result.console.push_back({"warning", "replay " + path + ": checkpoints not compared (recorded on " + replay.script().header.platform +
+                                                   (replay.script().header.fromPlayStart ? "" : ", not from Play's start") + ")",
+                                    path, 0});
+    }
+    if (!replay.isDone()) replay.stop();
+    s.replay.reset();
 }
 
 void TestRunner::endRun() {
