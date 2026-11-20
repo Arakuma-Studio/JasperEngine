@@ -74,12 +74,26 @@ namespace je_journal {
         }
     };
 
+    // per byte: 1 a kind's and a key's characters [A-Za-z0-9_.:-], 2 also a bare value's (/ and +)
+    constexpr uint8_t kKindClass = 1, kBareClass = 2;
+    struct CharClasses {
+        uint8_t of[256] = {};
+        constexpr CharClasses() {
+            for (int c = 0; c < 256; c++) {
+                const bool kind = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.' ||
+                                  c == ':' || c == '-';
+                of[c] = static_cast<uint8_t>((kind ? kKindClass | kBareClass : 0) | (c == '/' || c == '+' ? kBareClass : 0));
+            }
+        }
+    };
+    constexpr CharClasses kCharClasses;
+
     bool kindChar(char c) {
-        return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == ':' || c == '-';
+        return (kCharClasses.of[static_cast<unsigned char>(c)] & kKindClass) != 0;
     }
 
     bool bareChar(char c) {
-        return kindChar(c) || c == '/' || c == '+';
+        return (kCharClasses.of[static_cast<unsigned char>(c)] & kBareClass) != 0;
     }
 
     bool validKind(std::string_view kind) {
@@ -131,7 +145,10 @@ namespace je_journal {
         const double magnitude = value < 0.0 ? -value : value;
         if (std::isfinite(value) && magnitude >= 1e-4 && magnitude < 1e9) {
             static constexpr double kPowers[] = {1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12};
-            int exponent = static_cast<int>(std::floor(std::log10(magnitude)));
+            // the decimal exponent by comparisons (log10 costs more than the whole lookup)
+            static constexpr double kExponents[] = {1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8};
+            int exponent = 8;
+            while (exponent > -4 && magnitude < kExponents[exponent + 4]) exponent--;
             auto significand = [magnitude](int e) { return static_cast<uint64_t>(std::llround(magnitude * kPowers[8 - e])); };
             if (exponent >= -4 && exponent <= 8) {
                 uint64_t digits = significand(exponent);
@@ -179,6 +196,12 @@ namespace je_journal {
     // A key prints as its [A-Za-z0-9_.:-] characters, others as '_' (a space or '=' would make
     // the line ambiguous)
     void putKey(Line& line, std::string_view key) {
+        bool plain = true;
+        for (char c : key) plain = plain && kindChar(c);
+        if (plain) {
+            line.put(key);
+            return;
+        }
         for (char c : key) line.put(kindChar(c) ? c : '_');
     }
 
