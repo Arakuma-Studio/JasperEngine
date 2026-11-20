@@ -155,7 +155,7 @@ namespace {
             out = &code;
             next();
             if (mode == ExprMode::Condition) {
-                if (token.type == Tok::End) return true;
+                if (token.type == Tok::End && !failed) return true;
                 parseExpr();
                 if (!failed && token.type == Tok::Semi) fail(token.start, "';' separates statements: only set and action fields have them");
                 else if (!failed && token.type != Tok::End) fail(token.start, "unexpected " + describe(token));

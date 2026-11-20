@@ -63,10 +63,16 @@ TEST(DialogueBench, Load500) {
     registerDialogueKind();
     const std::string text = largeDialogue();
     std::shared_ptr<const Program> program;
-    double best = 1e9;
+    double best = 1e9, bestParse = 1e9, bestCompile = 1e9;
     for (int round = 0; round < 5; round++) {
         const Clock::time_point start = Clock::now();
-        program = Programs::fromText("bench.dialogue", text);
+        graph::LoadReport report;
+        const graph::Graph parsed = graph::load(text, report);
+        const double parse = msSince(start);
+        const Clock::time_point compiling = Clock::now();
+        program = Program::compile(parsed, "bench.dialogue");
+        bestCompile = std::min(bestCompile, msSince(compiling));
+        bestParse = std::min(bestParse, parse);
         best = std::min(best, msSince(start));
     }
     ASSERT_TRUE(program);
@@ -79,9 +85,9 @@ TEST(DialogueBench, Load500) {
     // what a node's record holds, and what each option or variant adds to its node's share
     const double perNodeRecord = static_cast<double>(memory - sourceTexts - program->options.size() * sizeof(ProgramOption) -
                                                      program->variants.size() * sizeof(ProgramVariant)) / static_cast<double>(program->nodes.size());
-    std::printf("[bench] dialogue load 500 nodes, 1996 edges, 1500 texts: %.2f ms (budget 3 ms desktop); %zu bytes, "
-                "%zu of source texts; %.0f bytes per node (%.0f without its options' %zu-byte records)\n",
-                best, memory, sourceTexts, perNode, perNodeRecord, sizeof(ProgramOption));
+    std::printf("[bench] dialogue load 500 nodes, 1996 edges, 1500 texts: %.2f ms (budget 3 ms desktop; JSON parse %.2f, compile %.2f); "
+                "%zu bytes, %zu of source texts; %.0f bytes per node (%.0f without its options' %zu-byte records)\n",
+                best, bestParse, bestCompile, memory, sourceTexts, perNode, perNodeRecord, sizeof(ProgramOption));
     EXPECT_LE(perNodeRecord, 160.0) << "R16: a node's record and its share of the expressions and strings";
     if (testsupport::perfSlack() > 0.0) {
         EXPECT_LE(best, 3.0 * testsupport::perfSlack());

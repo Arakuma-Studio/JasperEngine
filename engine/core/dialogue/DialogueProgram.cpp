@@ -266,7 +266,17 @@ std::shared_ptr<const Program> Program::compile(const graph::Graph& graph, const
     std::sort(used.begin(), used.end());
     used.erase(std::unique(used.begin(), used.end()), used.end());
     program->variablesUsed = std::move(used);
+    // what the program keeps for as long as it plays: no growth slack
     program->strings.shrink_to_fit();
+    program->nodes.shrink_to_fit();
+    program->options.shrink_to_fit();
+    program->variants.shrink_to_fit();
+    program->tags.shrink_to_fit();
+    program->entries.shrink_to_fit();
+    program->exprs.code.shrink_to_fit();
+    program->exprs.constants.shrink_to_fit();
+    program->exprs.names.shrink_to_fit();
+    program->exprs.calls.shrink_to_fit();
     return program;
 }
 

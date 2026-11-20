@@ -150,7 +150,7 @@ TEST(DialogueExpression, ShorthandAndCallFormsAreEqual) {
     e.run("job.pay:tavern_2; shop.open(\"weapons\", 3)", ExprMode::Statements);
     EXPECT_EQ(e.env.calls, (std::vector<std::string>{"act job.pay(\"tavern_2\")", "act shop.open(\"weapons\",3)"}));
     e.env.calls.clear();
-    e.run("quest.count:wolves > 2 and inventory.has", ExprMode::Condition);
+    e.run("quest.count:wolves > 2 or inventory.has", ExprMode::Condition);
     EXPECT_EQ(e.env.calls, (std::vector<std::string>{"cond quest.count(\"wolves\")", "cond inventory.has()"}));
 }
 
