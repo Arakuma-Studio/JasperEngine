@@ -721,6 +721,17 @@ void ExportWindow::drawDevelopmentBuildRow() {
         m_projectSettingsDirty = true;
     }
     ImGui::SetItemTooltip("Keeps the profiler in a Release build: --profile and --profile-capture=<file> record it (docs/profiling.md). Debug builds always have it.");
+    // Include Tests (project-test-runner R40): under Development Build, greyed without it
+    exportBeginSettingsRow("Include Tests");
+    bool includeTests = m_project->isIncludeTests();
+    ImGui::BeginDisabled(!development);
+    if (ImGui::Checkbox("##IncludeTests", &includeTests)) {
+        m_project->setIncludeTests(includeTests);
+        m_projectSettingsDirty = true;
+    }
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip(development ? "The build carries the project's tests (Tests/, without goldens): run them with --run-tests (docs/game-tests.md)."
+                                      : "Include Tests applies to Development builds only: turn on Development Build first.");
 }
 
 void ExportWindow::drawSourceBackendsRow() {

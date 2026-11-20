@@ -31,7 +31,11 @@
 #                       debug.jasperengine.scene set to NAME (a test project picks what it shows
 #                       by it: tools/test-projects/render-gate); every run is checked on its own
 #   --setprop NAME=VALUE  an Android system property set before each launch (repeatable),
-#                       e.g. debug.jasperengine.titleart_rgba8=1 (the render gate's forced RGBA8 path)
+#                       e.g. debug.jasperengine.titleart_rgba8=1 (the render gate's forced RGBA8 path),
+#                       or player arguments: "debug.jasperengine.args=--run-tests --test-filter tag:smoke".
+#                       VALUE is letters, digits and _ . - : , = and spaces only: it reaches the
+#                       device's shell double-quoted, where none of those is special
+#   --self-test         check the --setprop rule (what passes, what is refused) and exit
 #   --golden DIR        check what the screen shows: each run waits for the engine's
 #                       'I/JasperEngine: Engine presented:' line (30 frames presented after the
 #                       ready line), screenshots the device and fails when the screen is black or
@@ -93,6 +97,27 @@ usage() {
     exit 2
 }
 
+# --setprop's VALUE reaches `adb shell` (a shell on the device) inside double quotes: no quote,
+# $, backquote, backslash, ; | & < > ( ) or newline, so nothing in it is special there
+setprop_valid() {
+    local rule='^[A-Za-z0-9_.]+=[A-Za-z0-9_.:,= -]*$'
+    [[ "$1" =~ $rule ]]
+}
+
+if [[ "${1:-}" == --self-test ]]; then
+    failed=0
+    for ok in "debug.jasperengine.titleart_rgba8=1" "debug.jasperengine.args=--run-tests --test-filter tag:smoke" \
+              "debug.jasperengine.args=--test-filter=tag:smoke,tag:red --keep-test-data" "a.b="; do
+        setprop_valid "$ok" || { echo "self-test: refused a good value: $ok" >&2; failed=1; }
+    done
+    for bad in "debug.x=a;reboot" "debug.x=\$(id)" "debug.x=\`id\`" "debug.x=a\"b" "debug.x=a'b" "debug.x=a|b" "debug.x=a&b" \
+               "debug.x=a>b" "debug.x=a\\b" "debug.x=(a)" $'debug.x=a\nb' "debug x=1" "=1" "debug.x"; do
+        setprop_valid "$bad" && { echo "self-test: passed a dangerous value: $bad" >&2; failed=1; }
+    done
+    [[ $failed == 0 ]] && echo "android-emulator-test self-test: ok"
+    exit $failed
+fi
+
 [[ $# -ge 1 ]] || usage
 APK="$1"; shift
 [[ "$APK" == -h || "$APK" == --help ]] && usage
@@ -133,7 +158,7 @@ while [[ $# -gt 0 ]]; do
             [[ "$2" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "android-emulator-test: --scene takes a name of letters, digits, _ and - (got $2)" >&2; exit 2; }
             SCENES+=("$2"); shift 2 ;;
         --setprop)
-            [[ "$2" =~ ^[A-Za-z0-9_.]+=[A-Za-z0-9_.-]*$ ]] || { echo "android-emulator-test: --setprop takes NAME=VALUE (got $2)" >&2; exit 2; }
+            setprop_valid "$2" || { echo "android-emulator-test: --setprop takes NAME=VALUE, VALUE of letters, digits, spaces and _ . - : , = (got $2)" >&2; exit 2; }
             SETPROPS+=("$2"); shift 2 ;;
         --golden) GOLDEN="$2"; shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
@@ -191,6 +216,9 @@ printf '%s\n' ${FORBIDS[@]+"${FORBIDS[@]}"} > "$ROOT/$OUT/forbid.txt"
 TTY_FLAGS=()
 [[ -t 0 && -t 1 ]] && TTY_FLAGS=(-it)
 status=0
+# the properties one a line: a value may hold spaces
+SETPROP_LINES=""
+for prop in ${SETPROPS[@]+"${SETPROPS[@]}"}; do SETPROP_LINES+="$prop"$'\n'; done
 docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
     --device /dev/kvm --group-add "$(stat -c %g /dev/kvm)" \
     --user "$(id -u):$(id -g)" \
@@ -199,7 +227,7 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
     -e APK="$APK_IN" -e BUNDLETOOL="$BUNDLETOOL_IN" -e OUT="/src/$OUT" -e ORDERED="$ORDERED" -e TIMEOUT="$TIMEOUT" -e SECONDS_TO_RUN="$SECONDS_TO_RUN" \
     -e TWO_FINGER_TAP="$TWO_FINGER_TAP" -e TAP_AFTER="$TAP_AFTER" -e RELAUNCH="$RELAUNCH" \
     -e EXPECT_NATIVE_CRASH="$EXPECT_NATIVE_CRASH" \
-    -e SCENES="${SCENES[*]+"${SCENES[*]}"}" -e SETPROPS="${SETPROPS[*]+"${SETPROPS[*]}"}" -e SCREENSHOT_ON_PRESENT="$([[ -n "$GOLDEN" ]] && echo 1 || echo 0)" \
+    -e SCENES="${SCENES[*]+"${SCENES[*]}"}" -e SETPROPS="$SETPROP_LINES" -e SCREENSHOT_ON_PRESENT="$([[ -n "$GOLDEN" ]] && echo 1 || echo 0)" \
     -e GPU="${EMULATOR_GPU:-swangle_indirect}" \
     -e BOOT_TIMEOUT="${EMULATOR_BOOT_TIMEOUT:-600}" -e MEMORY="${EMULATOR_MEMORY:-3072}" -e CORES="${EMULATOR_CORES:-4}" \
     --tmpfs "/avd:rw,exec,size=${EMULATOR_TMPFS_GB:-10}g,mode=1777" \
@@ -268,7 +296,11 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             adb install -r -g "$APK" > "$OUT/install.log" 2>&1 || { log "install failed"; cat "$OUT/install.log"; exit 2; }
         fi
         adb shell setprop debug.jasperengine.ready_signal 1
-        for prop in ${SETPROPS:-}; do adb shell setprop "${prop%%=*}" "${prop#*=}"; done
+        # one property a line (a value may hold spaces), double-quoted for the device shell
+        while IFS= read -r prop; do
+            [[ -n "$prop" ]] || continue
+            adb shell setprop "${prop%%=*}" "\"${prop#*=}\""
+        done <<< "${SETPROPS:-}"
 
         # what the GLES path logs when it goes wrong (NativeEngine, sokol GL, ShaderPool, libEGL)
         GLES_ERRORS="^[A-Z]/JasperEngine: .*(OpenGL error|OPENGL ERRORS|shader compilation failed|shader linking failed|GL_SHADER_COMPILATION_FAILED|GL_SHADER_LINKING_FAILED|framebuffer completeness check failed|GL_FRAMEBUFFER_STATUS|failed to compile at runtime|Shader build failed|Shader resource creation failed|EGL error|SwappyGL_swap failed|\(PANIC\))|^E/libEGL *: call to OpenGL ES API with no current context"

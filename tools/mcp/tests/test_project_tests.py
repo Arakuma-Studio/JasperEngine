@@ -17,6 +17,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import build_cache
 import harness
 from harness import Editor, free_port, wait_for_port
 
@@ -25,8 +26,10 @@ TIMEOUT = 1500
 PORT = free_port()
 TOKEN = "project-tests-token"
 # the CLI attaches to this editor over HTTP (a stdio editor holding the project fails `call` with project_locked)
+# test_desktop_player_runs_tests: the run's prebuilt glcore development runtime (tools/mcp/build_cache.py)
+PREBUILT_PLAYERS = ["glcore-development"]
 EDITOR = {"create": True, "name": "Garden", "extra_args": ["--http-port", str(PORT)],
-          "settings": {"mcp": {"http_token": TOKEN}}}
+          "settings": {"mcp": {"http_token": TOKEN}}, "env": build_cache.player_env("glcore", "development")}
 
 PLAYER = """local Player = {}
 function Player:init()
@@ -107,6 +110,16 @@ end)
 
 Test.case("After the runaway", {tags = {"runaway"}}, function(t)
     Test.waitFrames(1)
+end)
+
+Test.case("Leaves Lua state behind", {tags = {"leak"}}, function(t)
+    LeakedByAnEarlierCase = true
+    package.loaded.leakedModule = {}
+end)
+
+Test.case("Starts from a fresh Lua state", {tags = {"leak"}}, function(t)
+    Test.check(LeakedByAnEarlierCase == nil, "a global of the earlier case leaked")
+    Test.check(package.loaded.leakedModule == nil, "a module of the earlier case leaked")
 end)
 """
 
@@ -296,14 +309,26 @@ async def test_test_api_absent_outside_runs(ed: Editor):
     await ed.call("play", action="start")
     value = (await ed.call("eval_lua", code="return Test == nil"))["values"][0]
     ed.check(value is True, "Test is not bound in a normal Play")
-    await ed.call("eval_lua", code="Test = 5")
     await ed.call("play", action="stop", keep_changes="none")
-    await run_tests(ed, filter="tag:smoke")
-    await ed.call("play", action="start")
-    value = (await ed.call("eval_lua", code="return Test"))["values"][0]
-    ed.check_eq(value, 5, "a game's global Test survives a test run")
-    await ed.call("eval_lua", code="Test = nil")
-    await ed.call("play", action="stop", keep_changes="none")
+    # a game's own global Test is the game's inside a case (the test API is the chunk's)
+    (ed.project / "Tests" / "global.test.lua").write_text(
+        'Test.case("A game global named Test", {tags = {"global"}}, function(t)\n'
+        '    rawset(_G, "Test", 5)\n'
+        '    Test.check(rawget(_G, "Test") == 5, "the game global")\n'
+        '    Test.check(type(Test) == "table", "the chunk still has the test API")\n'
+        'end)\n')
+    try:
+        result = await run_tests(ed, filter="tag:global")
+        ed.check_eq(result["counts"]["passed"], 1, f"{result}")
+    finally:
+        (ed.project / "Tests" / "global.test.lua").unlink()
+
+
+async def test_lua_state_is_fresh_per_case(ed: Editor):
+    """R14, R24: each case starts from a new Lua state; nothing an earlier case left reaches it."""
+    await setup(ed)
+    result = await run_tests(ed, filter="tag:leak")
+    ed.check_eq((result["counts"]["passed"], result["counts"]["failed"]), (2, 0), f"{json.dumps(result)[:2000]}")
 
 
 async def test_cli_test_command(ed: Editor):
@@ -351,6 +376,39 @@ async def test_ledger_unverified(ed: Editor):
     ed.check(passing not in imported["unverified"], f"android passed it: {imported['unverified']}")
     ledger = json.loads((s["project"] / ".jasperengine" / "test-results" / "ledger.json").read_text())
     ed.check_eq(sorted(k for k, v in ledger["cases"][passing].items() if "last_pass" in v), ["android", "editor"])
+
+
+async def test_desktop_player_runs_tests(ed: Editor):
+    """AC10: run_tests {target: "desktop"} builds a Development player with the tests, runs it with
+    --run-tests and imports its results; its exit code is 8 with a failure, 0 without."""
+    if os.environ.get("JASPER_SLOW_BUILD") != "1":
+        harness.skip("JASPER_SLOW_BUILD=1 builds a real game (the run builds its prebuilt player runtime once)")
+    await setup(ed)
+    await build_cache.player_runtime(ed, "glcore", "development")
+    with ed.busy():
+        red = await ed.call("run_tests", target="desktop", filter="tag:smoke,tag:red,tag:leak,tag:capture", timeout_seconds=3600, timeout=3700)
+    ed.check_eq(red["player_exit_code"], 8, f"a failed case: exit 8: {json.dumps(red)[:3000]}")
+    s = S
+    doc = json.loads(s["project"].joinpath(red["results_file"]).read_text())
+    status = {c["name"]: c["status"] for c in doc["cases"]}
+    ed.check_eq((status["Player starts with three lives"], status["A coin is saved"], status["Red on purpose"],
+                 status["The shop refuses a purchase"], status["Leaves Lua state behind"], status["Starts from a fresh Lua state"]),
+                ("passed", "passed", "failed", "skipped", "passed", "passed"), f"{status}")
+    ed.check("Edit Mode cannot edit" not in status, "a player runs no Edit Mode case")
+    capture = next(c for case in doc["cases"] for c in case["captures"])
+    ed.check(capture["status"] != "pending", f"the pending capture was compared at import: {capture}")
+    ed.check(doc["run"]["target"]["platform"] == "linux" and not doc["run"]["target"]["editor"], f"{doc['run']['target']}")
+    # the player's own data folder: the cases wrote into their sandboxes only, and those went
+    user_data = Path(red["player_results"]).parent.parent
+    ed.check(not (user_data / "progress.json").exists(), f"progress.json reached the player's real data folder {user_data}")
+    runs = user_data / ".jasper-test-runs"
+    ed.check(not runs.exists() or not any(p.is_file() for p in runs.rglob("*")), f"case sandboxes left: {list(runs.rglob('*'))[:5]}")
+    with ed.busy():
+        green = await ed.call("run_tests", target="desktop", filter="tag:smoke", timeout_seconds=3600, timeout=3700)
+    ed.check_eq(green["player_exit_code"], 0, f"smoke only: exit 0: {json.dumps(green)[:2000]}")
+    ed.check_eq(s["project"].joinpath(".jasperengine/test-results/ledger.json").exists(), True)
+    ledger = json.loads(s["project"].joinpath(".jasperengine/test-results/ledger.json").read_text())
+    ed.check("linux" in ledger["cases"]["menu.test.lua#Player starts with three lives"], "the ledger has the player's platform")
 
 
 async def test_test_runner_window(ed: Editor):

@@ -73,6 +73,17 @@ namespace jasperengine::editor::gametests {
     bool copyTree(const fs::path& from, const fs::path& to, std::string& error, uint64_t* bytes = nullptr);
     uint64_t treeBytes(const fs::path& dir);
 
+    // R50: what an export carries of the test root. A Development build with Include Tests gets
+    // <contentRoot>/tests/ (the root without Golden/) and tests/index.json (the settings and the
+    // test files, which a player reads where it cannot list folders); a release build with the
+    // setting gets nothing and `warning`. False + error when a copy fails.
+    inline constexpr const char* INCLUDE_TESTS_RELEASE_WARNING = "Include Tests applies to Development builds only";
+    bool exportTests(const fs::path& projectDir, bool development, bool includeTests, const fs::path& contentRoot, std::string& warning,
+                     std::string& error);
+    // run_tests {target: "desktop"} builds with Include Tests whatever the project's setting is
+    void setIncludeTestsForced(bool forced);
+    bool includeTestsForced();
+
     // ---- the ledger (R28, R29, R51)
 
     // a case file's revision: {vcs, id, dirty} from the project's VCS, else {vcs: "none", id: <SHA-256 of the file>}

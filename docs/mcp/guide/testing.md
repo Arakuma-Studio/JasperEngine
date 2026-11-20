@@ -79,7 +79,9 @@ project's own.
 
 ## Players and import
 
-A Development build with Include Tests runs the Play Mode cases with `--run-tests`
+`run_tests {target: "desktop"}` builds a Development player of this computer with the tests, runs it
+and imports its results (`player_exit_code`). A Development build with Include Tests runs the Play
+Mode cases with `--run-tests`
 (`--test-filter`, `--test-results <file>`; the web from `?run-tests&test-filter=...`, Android from
 `debug.jasperengine.args`). It exits 0, 8 (a case failed) or 9 (no case), logs `[test]` lines and
 writes the results JSON with `captures/` beside it. `run_tests {action: "import", results_file}`

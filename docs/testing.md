@@ -322,6 +322,18 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
   about 40 s; a whole run about 70 s.
 - `EMULATOR_BOOT_TIMEOUT`, `EMULATOR_MEMORY`, `EMULATOR_CORES` and `JASPER_DOCKER_IMAGE` (a
   prebuilt emulator image) tune it. `EMULATOR_GPU` is passed to `-gpu` (below).
+- `--setprop NAME=VALUE` sets a system property before each launch. VALUE may hold spaces and
+  `: , =` (it reaches the device's shell double-quoted; quotes, `$`, backquotes, backslashes and
+  `; | & < > ( )` are refused): the player arguments of a Development build go in
+  `debug.jasperengine.args`. `tools/android-emulator-test.sh --self-test` checks that rule. The
+  project test runner's check (docs/game-tests.md, AC13):
+
+  ```sh
+  ANDROID_PROJECT=game-tests tools/build.sh android
+  tools/android-emulator-test.sh build/android-game-tests/app-debug.apk --ordered \
+      --setprop "debug.jasperengine.args=--run-tests --test-filter tag:smoke" \
+      --expect-file tools/test-projects/game-tests/android-expect.txt
+  ```
 - Every run also fails on what the GLES path logs when it goes wrong, expected or not: an
   `OpenGL error` (NativeEngine reads `glGetError` after every frame; a debug build's sokol also
   asserts on one after each GL call, which the crash check catches), a shader that did not compile

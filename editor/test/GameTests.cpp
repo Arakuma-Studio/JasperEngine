@@ -312,6 +312,76 @@ uint64_t gametests::treeBytes(const fs::path& dir) {
     return total;
 }
 
+namespace {
+    bool includeTestsForcedFlag = false;
+}
+
+void gametests::setIncludeTestsForced(bool forced) {
+    includeTestsForcedFlag = forced;
+}
+
+bool gametests::includeTestsForced() {
+    return includeTestsForcedFlag;
+}
+
+bool gametests::exportTests(const fs::path& projectDir, bool development, bool includeTests, const fs::path& contentRoot, std::string& warning,
+                            std::string& error) {
+    warning.clear();
+    if (!includeTests) return true;
+    if (!development) {
+        warning = INCLUDE_TESTS_RELEASE_WARNING;
+        return true;
+    }
+    const fs::path root = findRoot(projectDir);
+    if (root.empty()) {
+        warning = std::string("Include Tests: ") + NO_ROOT_TEXT;
+        return true;
+    }
+    gametest::Settings settings;
+    if (!loadSettings(root, settings, error)) return false;
+    const fs::path out = contentRoot / "tests";
+    std::error_code ec;
+    fs::remove_all(out, ec);
+    for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end; it != end; it.increment(ec)) {
+        if (ec) break;
+        const fs::path relative = it->path().lexically_relative(root);
+        const std::string first = relative.begin() != relative.end() ? relative.begin()->generic_string() : std::string();
+        // goldens stay with the project: imports compare the captures
+        if (it.depth() == 0 && it->is_directory(ec) && first == "Golden") {
+            it.disable_recursion_pending();
+            continue;
+        }
+        if (it->is_directory(ec)) {
+            fs::create_directories(out / relative, ec);
+        } else if (it->is_regular_file(ec)) {
+            fs::create_directories((out / relative).parent_path(), ec);
+            fs::copy_file(it->path(), out / relative, ec);
+        }
+        if (ec) {
+            error = "Include Tests: cannot copy " + FileUtils::pathToGenericUtf8(relative) + ": " + ec.message();
+            return false;
+        }
+    }
+    // the snapshots' files: a player copies them by name (a content pack has no folders to list)
+    Json data = Json::object();
+    for (const std::string& snapshot : listSnapshots(projectDir)) {
+        Json files = Json::array();
+        const fs::path dir = root / "Data" / snapshot;
+        for (fs::recursive_directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
+            if (it->is_regular_file(ec)) files.push_back(FileUtils::pathToGenericUtf8(it->path().lexically_relative(dir)));
+        data[snapshot] = files;
+    }
+    Json index = {{"settings", settings.toJson()}, {"files", gametest::TestScan::listFiles(root)}, {"data", data}};
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    const io::WriteResult written = io::writeFileAtomic(out / "index.json", index.dump(1), options);
+    if (!written.ok()) {
+        error = "Include Tests: " + written.message;
+        return false;
+    }
+    return true;
+}
+
 Json gametests::revisionOf(Project* project, const fs::path& root, const std::string& file) {
     if (project) {
         const vcs::VcsService& vcs = project->getVcs();

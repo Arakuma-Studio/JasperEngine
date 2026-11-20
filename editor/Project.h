@@ -1033,6 +1033,9 @@ namespace jasperengine::editor{
         // Build Settings > Development Build (S15 R39): a Release game with the profiler and its
         // --profile options (export: developmentBuild, default off)
         bool developmentBuild = false;
+        // Build Settings > Include Tests (project-test-runner R40, R50): a Development build carries the
+        // test root as tests/ (export: includeTests, default off; release builds leave it out)
+        bool includeTests = false;
         std::string buildMethod = "auto";
         bool packContent = false;
         // Project Settings > Player > Strip Engine Code (docs/specs/S34-player-size.md R7): builds leave
@@ -2121,6 +2124,8 @@ namespace jasperengine::editor{
         const DesktopExportSettings& getDesktopExportSettings() const;
         bool isDevelopmentBuild() const { return developmentBuild; }
         void setDevelopmentBuild(bool enabled) { developmentBuild = enabled; }
+        bool isIncludeTests() const { return includeTests; }
+        void setIncludeTests(bool enabled) { includeTests = enabled; }
         // Build Settings > Build Method (S30 R29): auto, prebuilt or compile; Pack Content
         const std::string& getBuildMethod() const { return buildMethod; }
         void setBuildMethod(const std::string& method) { buildMethod = method; }

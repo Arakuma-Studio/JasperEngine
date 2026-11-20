@@ -12,11 +12,15 @@
 #include "Input.h"
 #include "Log.h"
 #include "input/InputScriptRunner.h"
+#include "io/UserDataOverride.h"
+#include "player/PlayerTests.h"
+#include "script/LuaBinding.h"
 #include "support/AllocationCounter.h"
 
 #include "lua.hpp"
 
 #include <chrono>
+#include <filesystem>
 #include <cstdio>
 #include <map>
 #include <string>
@@ -538,6 +542,50 @@ end)
     ASSERT_FALSE(bad.failures.empty());
     EXPECT_NE(bad.failures[0].message.find("unknown key"), std::string::npos) << bad.failures[0].message;
     input::ScriptRunner::stopAll();
+}
+
+// R24, R25: a player's case starts from a new Lua state in a data:// sandbox of its own; nothing the
+// earlier case left in Lua reaches it, and the sandbox goes with the case
+TEST(TestRunnerCore, PlayerSessionsStartFromAFreshLuaStateInASandbox) {
+    struct PlayerLikeHost : FakeHost {
+        std::vector<std::string> folders;
+        std::string folder;
+        int cases = 0;
+        bool beginSession(const CaseSpec& spec, std::string& error) override {
+            if (!player::PlayerSession::begin(spec, "run-test", ++cases, folder, error)) return false;
+            folders.push_back(getUserDataOverride());
+            inSession = true;
+            return true;
+        }
+        void endSession() override {
+            player::PlayerSession::end(folder, false);
+            inSession = false;
+        }
+        lua_State* luaState() override { return LuaBinding::getLuaState(); }
+    } host;
+    host.files["leak.test.lua"] = R"(
+Test.case("leaves state behind", function(t)
+    LeakedByAnEarlierCase = true
+    package.loaded.leakedModule = {}
+end)
+Test.case("starts fresh", function(t)
+    Test.check(LeakedByAnEarlierCase == nil, "a global of the earlier case leaked")
+    Test.check(package.loaded.leakedModule == nil, "a module of the earlier case leaked")
+end)
+)";
+    const uint64_t generation = LuaBinding::getLuaStateGeneration();
+    TestRunner runner;
+    runner.start(host.planOf("leak.test.lua", {"leaves state behind", "starts fresh"}), host, RunOptions());
+    for (int i = 0; i < 1000 && runner.frame(); i++) host.frames++;
+    const RunResult& result = runner.result();
+    const CaseResult& fresh = byName(result, "starts fresh");
+    EXPECT_EQ(fresh.status, Status::Passed) << (fresh.failures.empty() ? "" : fresh.failures[0].message);
+    EXPECT_GE(LuaBinding::getLuaStateGeneration(), generation + 2) << "a new Lua state per case";
+    ASSERT_EQ(host.folders.size(), 2u);
+    EXPECT_NE(host.folders[0].find(".jasper-test-runs/run-test/1"), std::string::npos) << host.folders[0];
+    EXPECT_NE(host.folders[1].find(".jasper-test-runs/run-test/2"), std::string::npos) << host.folders[1];
+    EXPECT_FALSE(std::filesystem::exists(host.folders[0])) << "the sandbox goes with its case";
+    EXPECT_TRUE(getUserDataOverride().empty()) << "data:// is the game's again after the run";
 }
 
 TEST(TestRunnerBench, FrameOverhead) {

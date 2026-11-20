@@ -121,6 +121,8 @@ bool TestRunHost::beginSession(const gametest::CaseSpec& caseSpec, std::string& 
         }
     }
     playSceneId = sp->id;
+    // a fresh Lua state (R14): nothing an earlier case or Play session left in Lua reaches this one
+    LuaBinding::recreateLuaState();
     PlayData::get().setNextSession(spec.data, keepData);
     const uint64_t seed = spec.seed;
     PlayData::get().beforeScripts = [seed]() {

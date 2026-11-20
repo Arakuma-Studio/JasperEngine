@@ -8,6 +8,7 @@
 // written to <dest>.staging-<pid> and swapped in at the end.
 
 #include "Exporter.h"
+#include "test/GameTests.h"
 
 #include "EditorHost.h"
 #include "Generator.h"
@@ -580,6 +581,17 @@ bool editor::Exporter::cookScenes() {
             std::error_code ec;
             fs::remove_all(contentDir / "assets" / "je-cooked" / family, ec);
         }
+    }
+    // Include Tests (project-test-runner R50): a Development build carries tests/ for --run-tests
+    if (project) {
+        std::string warning;
+        // under assets/: a player reads asset://tests/ on every platform (from the content pack too)
+        const bool includeTests = project->isIncludeTests() || gametests::includeTestsForced();
+        if (!gametests::exportTests(project->getProjectPath(), config.developmentBuild, includeTests, contentDir / "assets", warning, error)) {
+            setError(error);
+            return false;
+        }
+        if (!warning.empty()) Out::warning("%s", warning.c_str());
     }
     return true;
 }

@@ -777,12 +777,28 @@ case tagged `red`, a skipped case, an Edit Mode case, goldens for `level1_start`
   (`test_project_tests.py` `setup`: a Player cube and a Coin script, `Tests/` written beside them),
   since `tools/test-projects/*` are engine-only projects; only the checked-in Android sample
   (`tools/test-projects/game-tests/samples/android-results.json`) lives there.
-- **Player session reset.** A player's case reloads its scene (`SceneManager::loadScene`), clears the
-  project's Lua modules, seeds `math.random` and sets the fixed delta; it does not re-create the Lua
-  state or reset the persistent scene (no `Engine::resetGameSession()` was extracted).
-- **Not done in this change** (each named in the PR): Build Settings Include Tests (R40) and the
-  exporters' `tests/` for Development builds (R50, AC17's export half; exports do leave the test root
-  out), hence `run_tests {target: "desktop"}` (AC10, refused
-  with how to run a player and import), the web gate and the Android run (AC12, AC13, and the
-  emulator script's `--setprop` widening), replay cases (R9, AC16: they need the input spec's recorder
-  merged), and the size and benchmark evidence of AC18 beyond `TestRunnerBench.FrameOverhead`.
+- **Player session reset.** A player's case releases the scripts of every running scene (the
+  persistent scene's too), makes a new Lua state, seeds `math.random`, sets the fixed delta and
+  reloads the case's scene (`player::PlayerSession`, `engine/core/player/PlayerTests.cpp`), not
+  `Engine::resetGameSession()`: Input, InputActions and the clocks are not reset (the runner counts a
+  case's frames and game time from its own start), and the persistent scene's objects stay without
+  scripts. The editor makes a new Lua state before each case's Play too
+  (`LuaBinding::recreateLuaState`), since its Play keeps one state across sessions.
+- **The build setting.** Include Tests is the project setting `player.include_tests` (stored as
+  `export.includeTests` in project.yaml, beside `developmentBuild`), not `build.include_tests`: the
+  publishing settings live there. It is a row under Development Build in Build Settings.
+- **Where an export puts the tests.** A prebuilt Development build with Include Tests carries the
+  root as `assets/tests/` (not `tests/` beside the content), with `tests/index.json` (the settings,
+  the test files and each snapshot's files): a player reads `asset://tests/` on every platform,
+  from the content pack too, and cannot list folders there. Compile builds do not carry the tests
+  (`run_tests {target: "desktop"}` builds prebuilt). A player copies a snapshot by the index's names.
+- **`run_tests {target: "desktop"}`** chains `build_project {mode: "desktop", method: "prebuilt",
+  development: true}` with Include Tests forced for that build, `run_build {headless: true,
+  seconds: 300, args: ["--run-tests", ...]}` and the import of the results file the player names in
+  its log (`[test] results <path>`); a run longer than run_build's 300 s is cut.
+- **Test-project hooks.** `tools/test-projects/game-tests` is the engine project of AC12 and AC13
+  (four smoke cases in `assets/tests/`, `android-expect.txt`, `tools/web/gates/game-tests.json`); the
+  summary line's keys are in alphabetical order (the results document's JSON).
+- **Not done in this change** (each named in the PR): replay cases (R9, AC16: they need the input
+  spec's recorder); the web gate, the Android run and the release `.text` size (AC12, AC13, AC18)
+  run in the integration pass.
