@@ -86,8 +86,10 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"NavAreaOverride", 0x29479b88u},
         {"NavGrid", 0x5911c33cu},
         // (S74's isIKReached, setIKSoften, setIKHingeAxis, setIKTwist, setIKAimOffset reviewed: an IK
-        // constraint's shape and its last solve, bones only)
-        {"Animator", 0xe5218434u},
+        // constraint's shape and its last solve, bones only; mesh-space-rotation's
+        // setLayerMeshSpaceRotation, getLayerMeshSpaceRotation reviewed: a layer's rotation space
+        // where its mask starts or stops, bones only)
+        {"Animator", 0xc0f7cb88u},
         // (mesh-space-rotation's setLayerMeshSpaceRotation, getLayerMeshSpaceRotation reviewed: a
         // layer's rotation space where its mask starts or stops, bones only)
         {"AnimationPlayer", 0xc917096bu},
