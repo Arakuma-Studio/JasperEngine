@@ -53,11 +53,24 @@ def xdo(ed: Editor, *args: str) -> str:
     return subprocess.run(["xdotool", *args], env=env, capture_output=True, text=True, timeout=20).stdout
 
 
+TITLES = {"vertex_animation_baker": "Vertex Animation Baker", "inspector": "Inspector"}
+
+
 async def focus_x(ed: Editor, window: str = "vertex_animation_baker") -> None:
-    await ed.call("focus_window", window=window)
+    """Focus `window` until it has the editor's focus: a modal over it (the Loading popup while a model
+    the scene shows reloads from the cook the project's opening queued) takes every real click and key."""
     ids = xdo(ed, "search", "--onlyvisible", "--name", "JasperEngine").split()
     ed.check(ids, "the editor's X window")
     xdo(ed, "windowfocus", "--sync", ids[-1])
+    focused = None
+    for _ in range(240):
+        await ed.call("focus_window", window=window)
+        await ed.call("wait", frames=2)
+        focused = (await ed.call("editor_status"))["windows"]["focused"]
+        if focused == TITLES[window]:
+            break
+        await asyncio.sleep(0.25)
+    ed.check_eq(focused, TITLES[window], "the window the real input goes to has the focus")
     await ed.call("wait", frames=6)
 
 
