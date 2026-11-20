@@ -191,3 +191,54 @@ TEST(BuildReportTest, CompareBySource) {
     otherPlatform.platform = "linux";
     EXPECT_TRUE(compareBuildReports(base, otherPlatform).platformDiffers);
 }
+
+TEST(BuildReportTest, TextRoundTrips) {
+    // the writer writes text straight and the reader streams it: what one writes the other reads back
+    BuildReport report;
+    report.platform = "web";
+    report.method = "prebuilt";
+    report.buildProfile = "Demo \"quoted\"";
+    report.id = "20261119-142233-prebuilt";
+    report.created = "2026-11-19T14:22:33Z";
+    report.editorVersion = "1.2.3";
+    report.addFile(file("assets/textures/a\tb.png", "textures", 300));
+    report.addFile(file("assets/je-cooked/models/aa.glb", "models", 200, "models/crate.glb"));
+    BuildReportFile scene = file("scenes/3.jscn", "scenes", 50);
+    scene.asset = "scenes/Main.scene";
+    report.addFile(scene);
+    BuildReportFile map = file("assets/je-asset-map.json", "other", 10);
+    map.asset.clear();
+    map.origin = "generated";
+    report.addFile(map);
+    BuildReportFile odd = file("assets/notes.wav", "other", 5);   // a category its path would not give
+    report.addFile(odd);
+    report.leftOut = {{"textures/big.psd", 900, "cooked_texture"}};
+    report.budgets = {{"all", "textures", 1048576, 4000}};
+    report.reachability = std::map<std::string, BuildReportReach>{
+        {"project.yaml", {"", "", "root", ""}},
+        {"scenes/Main.scene", {"project.yaml", "project/scenes[0].filepath", "scene_list", ""}},
+        {"textures/a\tb.png", {"scenes/Main.scene", "entity:4/SpriteComponent.texture", "scene_component", "Root/\u00c9cran"}}};
+    const std::string text = report.toText();
+    ASSERT_FALSE(Json::parse(text, nullptr, false).is_discarded()) << text;
+    BuildReport read;
+    ASSERT_TRUE(BuildReport::parse(text, read));
+    EXPECT_EQ(read.toText(), text);
+    EXPECT_EQ(read.buildProfile, report.buildProfile);
+    ASSERT_EQ(read.files.size(), 5u);
+    for (const BuildReportFile& entry : read.files) {
+        if (entry.path == "scenes/3.jscn") EXPECT_EQ(entry.asset, "scenes/Main.scene");
+        if (entry.path == "assets/je-asset-map.json") EXPECT_EQ(entry.origin, "generated");
+        if (entry.path == "assets/notes.wav") EXPECT_EQ(entry.category, "other");
+        if (entry.path == "assets/je-cooked/models/aa.glb") EXPECT_EQ(entry.asset, "models/crate.glb");
+    }
+    EXPECT_EQ(read.reachability->at("textures/a\tb.png").object, "Root/\u00c9cran");
+    EXPECT_EQ(read.leftOut.size(), 1u);
+    EXPECT_EQ(read.budgets.size(), 1u);
+    // a report without a file list, and text that is no report
+    BuildReport old;
+    ASSERT_TRUE(BuildReport::parse(editor::test::readText(editor::test::fixture("build-report/v1-largest-only.json")), old));
+    EXPECT_FALSE(old.hasFiles);
+    EXPECT_FALSE(BuildReport::parse("{\"version\": 2}", read));
+    EXPECT_FALSE(BuildReport::parse("[1, 2]", read));
+    EXPECT_FALSE(BuildReport::parse("{\"version\": 1", read));
+}
