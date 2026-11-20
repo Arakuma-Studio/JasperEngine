@@ -646,6 +646,13 @@ Unit tests follow docs/testing.md naming. "Red" says what fails without the chan
 - **D-10 Inactive cost (R27, AC3).** `InactiveCostsNothing` counts 0 allocations across 600 rounds of
   every lookup call without tables; the start, document load and frame loop of the spec's version
   need a running engine the core test binary does not have.
+- **D-12 Guide and tool text (R36, R37).** The agent guide's "Other areas" index names the area alone
+  (`localization`, read as `jasper://docs/localization`) without its tools in parentheses: with
+  them the guide left 1,458 of the 1,500 bytes of headroom `tool_budget.py` requires. The tools are
+  named in the `localization` group's description and in `docs/mcp/guide/localization.md`.
+  `configure_game_view`'s `language` description gained the example `en-XA` but not the word
+  "pseudo": the tool would pass its 1,500-character limit; `docs/mcp/guide/ui.md` explains the two
+  pseudo-locales.
 - **D-11 Not built in this change:** the Text Inspector's key picker with its missing badge and the UI
   Document's read-only Localization foldout (R32), the Game view Stats overlay's Localization item
   (R31), the window's Rename Key dialog, Find References, Import/Export dialogs, Pseudo Preview
