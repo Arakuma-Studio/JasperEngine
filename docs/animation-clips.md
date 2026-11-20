@@ -894,7 +894,8 @@ animationplayer:
 ```
 
 `layer` is written only when not 0, `layers` only when they differ from one Base Layer without a
-mask, a layer's `weight` only when not 1 and `blend` only when not override. Masks follow the clip
+mask, a layer's `weight` only when not 1, `blend` only when not override and `meshSpaceRotation`
+(the Inspector's Mesh Space Rotation, `docs/specs/mesh-space-rotation.md`) only when true. Masks follow the clip
 GUID rules: a rename repairs the path, a deleted file shows Missing. A `controller` key (files saved
 when the player played controllers) is moved to an Animator by the scene migration (scene version
 6, prefab version 7); found in a newer file it is not read (a warning).

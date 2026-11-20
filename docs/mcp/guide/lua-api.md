@@ -2195,6 +2195,7 @@ to play a sound from code use `Audio.play`, and react to clip events as below.
 | `setLayerWeight(layer, w [, fade])`, `getLayerWeight(layer)` | runtime weight 0..1, fading linearly over `fade` s (scaled time); the getter returns the current, possibly fading, value; layer 0 is always 1 |
 | `setLayerMask(layer, path)`, `getLayerMask(layer)` | runtime Avatar Mask (`""` clears it); a layer whose mask is missing contributes nothing |
 | `setLayerBlendMode(layer, mode)`, `getLayerBlendMode(layer)` | runtime `"override"` / `"additive"` (layer 0: always override) |
+| `setLayerMeshSpaceRotation(layer, enabled)`, `getLayerMeshSpaceRotation(layer)` | authored Mesh Space Rotation (the Inspector's checkbox): bones where the layer's mask starts or stops keep its direction relative to the character; ignored on layer 0 and additive layers |
 | `stopLayer(layer [, fade])` | fades every state of the layer out (instant without a fade) and clears its queue |
 | `controller` | rw, the controller of the GameObject's Animator (asset-relative `.controller`, `""` = none); setting one adds an Animator playing it and disables the player, which then hands over |
 | `hasController()` | bool: the player hands over to an Animator with a controller |

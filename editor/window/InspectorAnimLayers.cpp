@@ -445,3 +445,85 @@ bool animlayersui::previewHierarchyFromEntity(Scene* scene, Entity root, Preview
     }
     return true;
 }
+
+// ---- the Layers table ----
+
+template<class T>
+Command* animlayersui::layerFieldCommand(Project* project, uint32_t sceneId, Entity entity, const AnimationPlayerComponent& player, int layer,
+                                         const std::string& field, const T& value, T AnimationPlayerLayer::* member){
+    if (player.layers.empty()){
+        std::vector<AnimationPlayerLayer> layers = anim::playerLayers(player);
+        if (layer < 0 || (size_t)layer >= layers.size()) return nullptr;
+        layers[(size_t)layer].*member = value;
+        return new PropertyCmd<std::vector<AnimationPlayerLayer>>(project, sceneId, entity, ComponentType::AnimationPlayerComponent, "layers", layers);
+    }
+    if (layer < 0 || (size_t)layer >= player.layers.size()) return nullptr;
+    return new PropertyCmd<T>(project, sceneId, entity, ComponentType::AnimationPlayerComponent, "layers[" + std::to_string(layer) + "]." + field, value);
+}
+
+template Command* animlayersui::layerFieldCommand<float>(Project*, uint32_t, Entity, const AnimationPlayerComponent&, int, const std::string&,
+                                                         const float&, float AnimationPlayerLayer::*);
+template Command* animlayersui::layerFieldCommand<AnimationLayerBlend>(Project*, uint32_t, Entity, const AnimationPlayerComponent&, int,
+                                                                       const std::string&, const AnimationLayerBlend&,
+                                                                       AnimationLayerBlend AnimationPlayerLayer::*);
+template Command* animlayersui::layerFieldCommand<bool>(Project*, uint32_t, Entity, const AnimationPlayerComponent&, int, const std::string&,
+                                                        const bool&, bool AnimationPlayerLayer::*);
+
+std::string animlayersui::layerSummary(const AnimationPlayerLayer& layer){
+    std::string text = anim::layerBlendName(layer.blend);
+    text += layer.mask.empty() ? ", no mask" : ", mask " + fs::path(layer.mask).filename().string();
+    if (layer.meshSpaceRotation) text += ", mesh space";
+    return text;
+}
+
+const char* const animlayersui::MESH_SPACE_ROTATION_TOOLTIP =
+    "Bones where the mask starts or stops keep this layer's direction relative to the character, instead of following their parent. "
+    "Use it for upper-body layers over locomotion, so the torso faces where this layer's clip faces. Unreal: Mesh Space Rotation Blend.";
+
+const char* animlayersui::meshSpaceRotationDisabledReason(int layer, AnimationLayerBlend blend){
+    if (layer == 0) return "The base layer has no layer below it to keep a direction from";
+    if (blend == AnimationLayerBlend::Additive) return "Additive layers add their change on top: a direction relative to the character has no meaning there";
+    return nullptr;
+}
+
+std::vector<Entity> animlayersui::meshSpaceBoundary(Scene* scene, Entity root, const anim::AvatarMaskDef& mask){
+    std::vector<Entity> bones;
+    if (!scene || root == NULL_ENTITY || !scene->isEntityCreated(root)) return bones;
+    for (const std::pair<std::string, Entity>& entry : anim::descendantPaths(scene, root)){
+        if (!entry.first.empty()) bones.push_back(entry.second);
+    }
+    anim::HumanoidSlots slots;
+    if (mask.usesHumanoid()) slots = anim::resolveHumanoidSlots(scene, root);
+    const std::vector<Entity> entries = anim::bindMaskPaths(mask, scene, root);
+    std::map<Entity, int> indexOf;
+    std::vector<float> weights(bones.size());
+    std::vector<int> parents(bones.size(), -1);
+    for (size_t b = 0; b < bones.size(); b++){
+        indexOf[bones[b]] = (int)b;
+        weights[b] = anim::maskWeightOf(mask, scene, root, bones[b], entries, slots.valid ? &slots : nullptr).weight;
+        const Transform* transform = scene->findComponent<Transform>(bones[b]);
+        const auto parent = transform ? indexOf.find(transform->parent) : indexOf.end();
+        if (parent != indexOf.end()) parents[b] = parent->second;
+    }
+    std::vector<uint16_t> boundary;
+    anim::maskBoundaryBones(weights.data(), parents.data(), bones.size(), boundary);
+    std::vector<Entity> out;
+    out.reserve(boundary.size());
+    for (uint16_t b : boundary) out.push_back(bones[b]);
+    return out;
+}
+
+std::string animlayersui::meshSpaceBoundaryLine(Scene* scene, Entity root, const anim::AvatarMaskDef* mask){
+    const char* const generic = "Applies where the mask starts or stops";
+    if (!mask || !scene || root == NULL_ENTITY || !scene->isEntityCreated(root) || anim::descendantPaths(scene, root).size() <= 1) return generic;
+    const std::vector<Entity> boundary = meshSpaceBoundary(scene, root, *mask);
+    if (boundary.empty()) return "Applies at: no bone (the mask does not start or stop below this GameObject)";
+    constexpr size_t SHOWN = 6;
+    std::string text = "Applies at: ";
+    for (size_t i = 0; i < boundary.size() && i < SHOWN; i++){
+        if (i > 0) text += ", ";
+        text += scene->getEntityName(boundary[i]);
+    }
+    if (boundary.size() > SHOWN) text += " and " + std::to_string(boundary.size() - SHOWN) + " more";
+    return text;
+}

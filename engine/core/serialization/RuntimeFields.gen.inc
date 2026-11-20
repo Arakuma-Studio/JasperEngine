@@ -790,6 +790,7 @@ const FieldEntry kStruct_AnimationPlayerLayer_fields[] = {
     JE_RF(AnimationPlayerLayer, blend, 0x527aec04u, Enum),
     JE_RF(AnimationPlayerLayer, mask, 0xb6a887b5u, String),
     JE_RF(AnimationPlayerLayer, maskGuid, 0x64d378fcu, String),
+    JE_RF(AnimationPlayerLayer, meshSpaceRotation, 0x64a8098cu, Bool),
 };
 const StructTable kStruct_AnimationPlayerLayer{"AnimationPlayerLayer", kStruct_AnimationPlayerLayer_fields, std::size(kStruct_AnimationPlayerLayer_fields)};
 void Codec<AnimationPlayerLayer>::write(Writer& w, const AnimationPlayerLayer& value) { writeStruct(w, kStruct_AnimationPlayerLayer, &value); }
