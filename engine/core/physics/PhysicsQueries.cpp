@@ -25,6 +25,13 @@
 #include "Jolt/Physics/Collision/Shape/BoxShape.h"
 #include "Jolt/Physics/Collision/Shape/CapsuleShape.h"
 #include "Jolt/Physics/Body/BodyFilter.h"
+#include "Jolt/Physics/Body/BodyLock.h"
+#include "Jolt/Physics/Collision/BroadPhase/BroadPhaseQuery.h"
+#include "Jolt/Physics/Collision/Shape/ConvexShape.h"
+#include "Jolt/Physics/Collision/TransformedShape.h"
+#include "Jolt/Geometry/ConvexSupport.h"
+#include "Jolt/Geometry/EPAPenetrationDepth.h"
+#include "Jolt/Geometry/OrientedBox.h"
 
 #include <algorithm>
 #include <cmath>
@@ -289,6 +296,154 @@ namespace {
         physics::recordQuery(scene, shape, Vector3::ZERO, 0.0f, false, points, pointCount, hit);
     }
 
+    // The overlap decision of Jolt's convex-vs-convex collide (its bounds test and its GJK step on
+    // the shapes without their convex radius) without the penetration depth it then works out: where
+    // the cores intersect (Jolt's EPA case) the shapes overlap, an overlap needs no depth
+    bool convexOverlap3D(const JPH::ConvexShape& query, JPH::Mat44Arg queryTransform, const JPH::ConvexShape& leaf, JPH::Vec3Arg leafScale,
+                         JPH::Mat44Arg leafTransform, float tolerance){
+        const JPH::Mat44 leafToQuery = queryTransform.InversedRotationTranslation() * leafTransform;
+        if (!JPH::OrientedBox(leafToQuery, leaf.GetLocalBounds().Scaled(leafScale)).Overlaps(query.GetLocalBounds())){
+            return false;
+        }
+        JPH::Vec3 axis = leafToQuery.GetTranslation();
+        if (axis.IsNearZero()){
+            axis = JPH::Vec3::sAxisX();
+        }
+        JPH::ConvexShape::SupportBuffer queryBuffer, leafBuffer;
+        const JPH::ConvexShape::Support* querySupport = query.GetSupportFunction(JPH::ConvexShape::ESupportMode::ExcludeConvexRadius, queryBuffer, JPH::Vec3::sReplicate(1.0f));
+        const JPH::ConvexShape::Support* leafSupport = leaf.GetSupportFunction(JPH::ConvexShape::ESupportMode::ExcludeConvexRadius, leafBuffer, leafScale);
+        const JPH::TransformedConvexObject<JPH::ConvexShape::Support> leafInQuery(leafToQuery, *leafSupport);
+        JPH::EPAPenetrationDepth depth;
+        JPH::Vec3 pointA, pointB;
+        return depth.GetPenetrationDepthStepGJK(*querySupport, querySupport->GetConvexRadius(), leafInQuery, leafSupport->GetConvexRadius(),
+                                                tolerance, axis, pointA, pointB) != JPH::EPAPenetrationDepth::EStatus::NotColliding;
+    }
+
+    // Every collider the query shape touches, by the broad phase, then a yes / no per leaf shape of each
+    // body (convex: convexOverlap3D; a mesh or a height field: Jolt's collide); the same answer as
+    // NarrowPhaseQuery::CollideShape with no separation, without its contact points and depths
+    class BooleanOverlap3D{
+    public:
+        std::vector<OverlapHit>* out = nullptr;   // null: stop at the first hit (a check)
+        bool found = false;
+        Vector3* points = nullptr;
+        size_t pointCount = 0;
+
+        BooleanOverlap3D(PhysicsSystem* system, const JPH::ObjectLayerFilter& layerFilter, const QueryBodyFilter3D& bodyFilter,
+                         const JPH::CollideShapeSettings& settings):
+            system(system), layerFilter(layerFilter), bodyFilter(bodyFilter), settings(settings){ }
+
+        void run(const JPH::Shape& shape, JPH::Mat44Arg transform){
+            query = &shape;
+            queryTransform = transform;
+            queryBounds = shape.GetWorldSpaceBounds(transform, JPH::Vec3::sReplicate(1.0f));
+            Bodies bodies(*this);
+            system->getWorld3D()->GetBroadPhaseQuery().CollideAABox(queryBounds, bodies, JPH::BroadPhaseLayerFilter(), layerFilter);
+        }
+
+    private:
+        PhysicsSystem* system;
+        const JPH::ObjectLayerFilter& layerFilter;
+        const QueryBodyFilter3D& bodyFilter;
+        const JPH::CollideShapeSettings& settings;
+        const JPH::Shape* query = nullptr;
+        JPH::Mat44 queryTransform = JPH::Mat44::sIdentity();
+        JPH::AABox queryBounds;
+        // the body being tested
+        const JPH::Shape* bodyShape = nullptr;
+        Entity entity = NULL_ENTITY;
+        bool sensor = false;
+        size_t bodyFirstHit = 0;
+
+        bool hasCollider(uint32_t collider) const{
+            for (size_t i = bodyFirstHit; out && i < out->size(); i++){
+                if ((*out)[i].colliderIndex == collider) return true;
+            }
+            return false;
+        }
+
+        // returns false to stop
+        bool testLeaf(const JPH::TransformedShape& leaf){
+            // a check is answered (a compound does not stop between its leaves on its own)
+            if (!out && found){
+                return false;
+            }
+            const uint32_t collider = (uint32_t)bodyShape->GetSubShapeUserData(leaf.mSubShapeIDCreator.GetID());
+            if (hasCollider(collider)){
+                return true;
+            }
+            bool hit;
+            if (leaf.mShape->GetType() == JPH::EShapeType::Convex && query->GetType() == JPH::EShapeType::Convex){
+                hit = convexOverlap3D(static_cast<const JPH::ConvexShape&>(*query), queryTransform, static_cast<const JPH::ConvexShape&>(*leaf.mShape),
+                                      leaf.GetShapeScale(), leaf.GetCenterOfMassTransform(), settings.mCollisionTolerance);
+            }else{
+                AnyHitCollector3D any;
+                leaf.CollideShape(query, JPH::Vec3::sReplicate(1.0f), queryTransform, settings, JPH::RVec3::sZero(), any);
+                hit = any.found;
+            }
+            if (!hit){
+                return true;
+            }
+            found = true;
+            if (points && pointCount < PhysicsQueryDebug::MAX_HIT_POINTS){
+                points[pointCount++] = fromJolt3(leaf.GetCenterOfMassTransform().GetTranslation());
+            }
+            if (!out){
+                return false;
+            }
+            OverlapHit result;
+            result.body = entity;
+            result.colliderIndex = collider;
+            result.trigger = sensor;
+            result.hit = true;
+            out->push_back(result);
+            return true;
+        }
+
+        class Leaves : public JPH::TransformedShapeCollector{
+        public:
+            explicit Leaves(BooleanOverlap3D& owner): owner(owner){ }
+            virtual void AddHit(const JPH::TransformedShape& inResult) override{
+                if (!owner.testLeaf(inResult)){
+                    ForceEarlyOut();
+                }
+            }
+        private:
+            BooleanOverlap3D& owner;
+        };
+
+        class Bodies : public JPH::CollideShapeBodyCollector{
+        public:
+            explicit Bodies(BooleanOverlap3D& owner): owner(owner){ }
+            virtual void AddHit(const JPH::BodyID& inResult) override{
+                if (!owner.bodyFilter.ShouldCollide(inResult)){
+                    return;
+                }
+                JPH::BodyLockRead lock(owner.system->getBodyLockInterface3D(), inResult);
+                if (!lock.SucceededAndIsInBroadPhase()){
+                    return;
+                }
+                const JPH::Body& body = lock.GetBody();
+                if (!owner.bodyFilter.ShouldCollideLocked(body)){
+                    return;
+                }
+                const JPH::TransformedShape transformed = body.GetTransformedShape();
+                owner.entity = PhysicsCallbacks::bodyEntity(body.GetUserData());
+                owner.sensor = body.IsSensor();
+                lock.ReleaseLock();
+                owner.bodyShape = transformed.mShape;
+                owner.bodyFirstHit = owner.out ? owner.out->size() : 0;
+                Leaves leaves(owner);
+                transformed.CollectTransformedShapes(owner.queryBounds, leaves);
+                if (leaves.ShouldEarlyOut()){
+                    ForceEarlyOut();
+                }
+            }
+        private:
+            BooleanOverlap3D& owner;
+        };
+    };
+
     size_t overlap3D(const char* function, std::atomic<bool>& logged, Scene* scene, const physics::QueryShape& shape,
                      std::vector<OverlapHit>& out, const PhysicsQueryOptions& options){
         out.clear();
@@ -303,16 +458,15 @@ namespace {
             const JPH::CollideShapeSettings settings = overlapSettings();
             Vector3 points[PhysicsQueryDebug::MAX_HIT_POINTS];
             const bool recording = physics::recordingQueries();
-            OverlapCollector3D collector(out);
-            collector.points = recording ? points : nullptr;
-            const JPH::NarrowPhaseQuery& query = system->getNarrowPhaseQuery3D();
+            BooleanOverlap3D overlap(system, layerFilter, bodyFilter, settings);
+            overlap.out = &out;
+            overlap.points = recording ? points : nullptr;
             withJoltShape(shape, rotation, [&](const JPH::Shape& joltShape, JPH::RMat44Arg transform){
-                query.CollideShape(&joltShape, JPH::Vec3::sReplicate(1.0f), transform, settings, JPH::RVec3::sZero(), collector,
-                                   JPH::BroadPhaseLayerFilter(), layerFilter, bodyFilter);
+                overlap.run(joltShape, transform);
             });
             out.resize(physics::sortOverlapHits(out.data(), out.size()));
             if (recording){
-                recordOverlap3D(scene, shape, points, collector.pointCount, !out.empty());
+                recordOverlap3D(scene, shape, points, overlap.pointCount, !out.empty());
             }
         }else if (physics::recordingQueries()){
             recordOverlap3D(scene, shape, nullptr, 0, false);
@@ -326,23 +480,27 @@ namespace {
         if (!validShape3D(function, shape, rotation)){
             return false;
         }
-        AnyHitCollector3D collector;
+        bool found = false;
+        Vector3 points[PhysicsQueryDebug::MAX_HIT_POINTS];
+        size_t pointCount = 0;
         PhysicsSystem* system = queryWorld3D(scene, logged, function);
         if (system && options.layerMask != LAYER_MASK_NOTHING){
             const JoltQueryObjectLayerFilter layerFilter(system->getObjectLayerTable3D(), options.layerMask, (uint16_t)~0u, (uint16_t)~0u);
             const QueryBodyFilter3D bodyFilter(options.ignore, Physics::hitsTriggers(options.triggers));
             const JPH::CollideShapeSettings settings = overlapSettings();
-            const JPH::NarrowPhaseQuery& query = system->getNarrowPhaseQuery3D();
+            BooleanOverlap3D overlap(system, layerFilter, bodyFilter, settings);
+            overlap.points = points;
             withJoltShape(shape, rotation, [&](const JPH::Shape& joltShape, JPH::RMat44Arg transform){
-                query.CollideShape(&joltShape, JPH::Vec3::sReplicate(1.0f), transform, settings, JPH::RVec3::sZero(), collector,
-                                   JPH::BroadPhaseLayerFilter(), layerFilter, bodyFilter);
+                overlap.run(joltShape, transform);
             });
+            found = overlap.found;
+            pointCount = overlap.pointCount;
         }
-        Physics::countQuery(collector.found ? 1 : 0);
+        Physics::countQuery(found ? 1 : 0);
         if (physics::recordingQueries()){
-            recordOverlap3D(scene, shape, &collector.point, collector.found ? 1 : 0, collector.found);
+            recordOverlap3D(scene, shape, points, pointCount, found);
         }
-        return collector.found;
+        return found;
     }
 
     // closest (out null) or every hit (out), distances in world units

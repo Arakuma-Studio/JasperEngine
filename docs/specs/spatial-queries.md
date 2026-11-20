@@ -537,14 +537,14 @@ core tests already build scenes with physics, `PhysicsRayThreadsTest.cpp:27-30`)
 - **D2 query box.** Box query shapes use Jolt's default convex radius (5 cm, at most half the
   smallest half extent): the corners are rounded by that much, the faces are exact; shallow pairs
   then need GJK only.
-- **R19 overlapBox is over budget (open).** `je-bench-physics-query` on box B (load about 10 on 12
-  cores): `overlap_box_p95_ms` 0.033 against 0.0088; every other key is within its budget
-  (`overlap_sphere` 0.0047, `check_sphere` 0.0010, `sphere_cast` 0.0025, Lua NonAlloc 0.0078, 2D
-  circle 0.0015, `MeshRaycast` 0.0034). The information key `overlap_box_no_ground_p95_ms` (0.031)
-  shows the mesh ground is not the cost: Jolt's `CollideShape` computes a penetration depth (EPA) for
-  every body the 5 m box holds wholly inside, which an overlap does not need. A boolean path (GJK
-  intersection per leaf shape after the broad phase) is the follow-up; the threshold stays at the
-  spec's value, so the bench reports the miss.
+- **D2 overlaps without contact points.** Overlaps and checks do not call
+  `NarrowPhaseQuery::CollideShape`: the broad phase lists the bodies, each body's leaf shapes inside
+  the query's bounds are listed (`CollectTransformedShapes`), and a convex leaf gets Jolt's own
+  convex-vs-convex decision (its bounds test and GJK step on the shapes without their convex radius;
+  intersecting cores, where Jolt would run EPA for a depth, overlap); a mesh or height field leaf goes
+  through Jolt's collide. The answers equal `CollideShape`'s (PhysicsQueryReference keeps using it, as
+  the independent sweep) without the penetration depth an overlap never needed: the EPA on every body
+  a 5 m box held wholly inside had made `overlapBox` 4x over its budget.
 - **R3 casts.** Every hit at fraction 0 is dropped (touching at the start counts as overlapping,
   R1), not only those with positive penetration: without `mReturnDeepestPoint` Jolt reports no
   reliable depth there. A Box2D cast callback never returns -1 or 0 for a skipped shape (Box2D 3.1
