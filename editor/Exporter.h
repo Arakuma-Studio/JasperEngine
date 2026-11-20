@@ -120,6 +120,12 @@ namespace jasperengine::editor {
         // the Build Profile the build resolves (docs/specs/build-profiles.md); "" none: today's build.
         // The caller has applied its platform, backend, flavour and folder (applyBuildProfile)
         std::string buildProfile;
+        // Build And Run on an Android device (docs/specs/build-and-run-on-device.md R3): one APK of
+        // this ABI, whatever androidFormat says; "" none
+        std::string androidRunAbi;
+        // Patch And Run (R6, D6): cook the content into the build cache as a build does, up to its
+        // content manifest, and stop there: no package, no signing, the output folder untouched
+        bool contentOnly = false;
     };
 
     // A build of `profileName`: its platform, Graphics API, Development Build and output folder
@@ -162,6 +168,13 @@ namespace jasperengine::editor {
         std::map<std::string, uint64_t> buildCategories;
         // the Build Profile the build resolved ("" none)
         std::string buildProfile;
+        // Android: the package name; iOS: the bundle identifier ("" elsewhere)
+        std::string appId;
+        // the cooked content folder (Patch And Run's source: the build cache's)
+        fs::path contentDir;
+        // an Android package that says android:debuggable (a Development Build of a runtime whose
+        // manifest template has the {{DEBUGGABLE}} marker, R9)
+        bool debuggable = false;
     };
 
     struct ExportProgress {
@@ -408,6 +421,8 @@ namespace jasperengine::editor {
         static bool isLuaSourceFile(const fs::path& path);
 
         std::string getAppName() const;
+        // the game's Android package name or iOS bundle identifier ("" for the other platforms)
+        std::string applicationId() const;
         fs::path getBuildCacheDir() const;
         // The compile tree every project with this build's kit and engine settings shares (the
         // engine and vendored objects built once), in the user cache; docs/specs/S33-build-speed.md R11

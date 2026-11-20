@@ -60,7 +60,13 @@ namespace jasperengine::editor::platform {
     // Gradle plugin does; its manifest then says extractNativeLibs="true") or stores them
     bool compressesNativeLibraries(const AndroidPackage& package);
 
-    // the AndroidManifest.xml of a package (the runtime's template with the settings filled in)
+    // whether a player runtime's android/AndroidManifest.template.xml has the {{DEBUGGABLE}} marker
+    // (docs/specs/build-and-run-on-device.md R9): an older runtime builds as before, and Patch And
+    // Run cannot reach its packages
+    bool androidRuntimeHasDebuggableMarker(const std::filesystem::path& runtimeAndroidDir);
+
+    // the AndroidManifest.xml of a package (the runtime's template with the settings filled in;
+    // {{DEBUGGABLE}}, when the template has it, says android:debuggable="true" for a debug package)
     bool writeAndroidManifest(const AndroidPackage& package, const std::string& templateText, std::string& manifest, std::string& error);
 
     bool buildAndroidPackage(const AndroidPackage& package, CommandRunner& runner, const std::function<bool()>& cancelled,

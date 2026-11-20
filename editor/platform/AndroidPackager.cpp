@@ -252,7 +252,14 @@ bool platform::writeAndroidManifest(const AndroidPackage& package, const std::st
     // the APK)
     if (compressesNativeLibraries(package))
         replaceAll(manifest, "android:extractNativeLibs=\"false\"", "android:extractNativeLibs=\"true\"");
+    // a Development Build's package lets `adb shell run-as` into its files (Patch And Run)
+    replaceAll(manifest, "{{DEBUGGABLE}}", package.debug ? "\n        android:debuggable=\"true\"" : "");
     return true;
+}
+
+bool platform::androidRuntimeHasDebuggableMarker(const fs::path& runtimeAndroidDir) {
+    std::string text;
+    return readText(runtimeAndroidDir / "AndroidManifest.template.xml", text) && text.find("{{DEBUGGABLE}}") != std::string::npos;
 }
 
 bool platform::compressesNativeLibraries(const AndroidPackage& package) {
