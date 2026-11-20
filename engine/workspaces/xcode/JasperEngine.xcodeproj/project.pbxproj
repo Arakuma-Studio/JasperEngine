@@ -5034,6 +5034,20 @@
 		4A534E47EAB1A42259BC93EB /* MessageFormat.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470B2329871720CC02 /* MessageFormat.h */; };
 		4A534E47229FA6D5C6CA97D7 /* PluralRules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D7DC5A2BBDDA5149 /* PluralRules.h */; };
 		4A534E4772F8D292D061E001 /* StringTableRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474CC8A9C045EE16B4 /* StringTableRuntime.h */; };
+		4A534E5338ACEAD8E0FC7D22 /* DialogueExpression.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53A747918ACD9F4E2A /* DialogueExpression.cpp */; };
+		4A534E53DBFB60AEB46EE96C /* DialogueKind.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53922C33FA44C430F6 /* DialogueKind.cpp */; };
+		4A534E539A886BF399AAB990 /* DialogueProgram.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5375143D287D60839A /* DialogueProgram.cpp */; };
+		4A534E5363E192CC7F21FDDB /* DialogueRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53720A533146371AE5 /* DialogueRunner.cpp */; };
+		4A534E53C5D22ADACAEF273F /* DialogueVariables.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53E74DB844AF1D67EC /* DialogueVariables.cpp */; };
+		4A534E53CDDF0C04F459F2AF /* DialogueRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53CB8B28243C275A9E /* DialogueRunner.cpp */; };
+		4A534E53D0B4CA2E28C49C96 /* DialogueClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530B2EA3DAEC0E3A21 /* DialogueClassesLua.cpp */; };
+		4A534E53515821357F8D063E /* DialogueExpression.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53A747918ACD9F4E2A /* DialogueExpression.cpp */; };
+		4A534E53C1FAA5C173CA7257 /* DialogueKind.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53922C33FA44C430F6 /* DialogueKind.cpp */; };
+		4A534E530DA4BED2FB010470 /* DialogueProgram.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5375143D287D60839A /* DialogueProgram.cpp */; };
+		4A534E5341EF590C749B78C5 /* DialogueRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53720A533146371AE5 /* DialogueRunner.cpp */; };
+		4A534E53DA09EC5C72658167 /* DialogueVariables.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53E74DB844AF1D67EC /* DialogueVariables.cpp */; };
+		4A534E539FBAE080AFA1A35F /* DialogueRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53CB8B28243C275A9E /* DialogueRunner.cpp */; };
+		4A534E532A91A91EAEC02537 /* DialogueClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530B2EA3DAEC0E3A21 /* DialogueClassesLua.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9680,6 +9694,13 @@
 		4A534E470B2329871720CC02 /* MessageFormat.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MessageFormat.h; sourceTree = "<group>"; };
 		4A534E47D7DC5A2BBDDA5149 /* PluralRules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PluralRules.h; sourceTree = "<group>"; };
 		4A534E474CC8A9C045EE16B4 /* StringTableRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StringTableRuntime.h; sourceTree = "<group>"; };
+		4A534E53A747918ACD9F4E2A /* DialogueExpression.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueExpression.cpp; sourceTree = "<group>"; };
+		4A534E53922C33FA44C430F6 /* DialogueKind.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueKind.cpp; sourceTree = "<group>"; };
+		4A534E5375143D287D60839A /* DialogueProgram.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueProgram.cpp; sourceTree = "<group>"; };
+		4A534E53720A533146371AE5 /* DialogueRunner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueRunner.cpp; sourceTree = "<group>"; };
+		4A534E53E74DB844AF1D67EC /* DialogueVariables.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueVariables.cpp; sourceTree = "<group>"; };
+		4A534E53CB8B28243C275A9E /* DialogueRunner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueRunner.cpp; sourceTree = "<group>"; };
+		4A534E530B2EA3DAEC0E3A21 /* DialogueClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueClassesLua.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10251,6 +10272,7 @@
 				4A534E47157896361DA814BE /* TilemapClassesLua.cpp */,
 				4A534E4771A4FBF2C146A04F /* CullingClassesLua.cpp */,
 				4A534E47D07BD1437308A3A2 /* LocalizationClassesLua.cpp */,
+				4A534E530B2EA3DAEC0E3A21 /* DialogueClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -11885,6 +11907,7 @@
 				564F584C566CEAA6686CA9AF /* voxel */,
 				4A534E531B38A0F5FBC1FFA3 /* tilemap */,
 				4A534E47651ABB7603E16A3A /* localization */,
+				4A534E53BCC7F910D7911F7F /* dialogue */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -12363,6 +12386,7 @@
 				4A534E47310A6F71AF79122B /* SimulationCulling.cpp */,
 				4A534E47AD378F6330680ED6 /* CullingGroup.h */,
 				4A534E475EE51C3B38637EFB /* SimulationCulling.h */,
+				4A534E53CB8B28243C275A9E /* DialogueRunner.cpp */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -16196,6 +16220,18 @@
 			path = clipper2;
 			sourceTree = "<group>";
 		};
+		4A534E53BCC7F910D7911F7F /* dialogue */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E53A747918ACD9F4E2A /* DialogueExpression.cpp */,
+				4A534E53922C33FA44C430F6 /* DialogueKind.cpp */,
+				4A534E5375143D287D60839A /* DialogueProgram.cpp */,
+				4A534E53720A533146371AE5 /* DialogueRunner.cpp */,
+				4A534E53E74DB844AF1D67EC /* DialogueVariables.cpp */,
+			);
+			path = dialogue;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -19861,6 +19897,13 @@
 				4A534E470BC7FF2CD66B3751 /* MessageFormat.cpp in Sources */,
 				4A534E47760F4276DE1BB621 /* PluralRules.cpp in Sources */,
 				4A534E479CBBFD13794893E2 /* StringTableRuntime.cpp in Sources */,
+				4A534E53515821357F8D063E /* DialogueExpression.cpp in Sources */,
+				4A534E53C1FAA5C173CA7257 /* DialogueKind.cpp in Sources */,
+				4A534E530DA4BED2FB010470 /* DialogueProgram.cpp in Sources */,
+				4A534E5341EF590C749B78C5 /* DialogueRunner.cpp in Sources */,
+				4A534E53DA09EC5C72658167 /* DialogueVariables.cpp in Sources */,
+				4A534E539FBAE080AFA1A35F /* DialogueRunner.cpp in Sources */,
+				4A534E532A91A91EAEC02537 /* DialogueClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20870,6 +20913,13 @@
 				4A534E47B87D66B801A34840 /* MessageFormat.cpp in Sources */,
 				4A534E4734B46E4A8AA1BD54 /* PluralRules.cpp in Sources */,
 				4A534E476D731FF6DD75A960 /* StringTableRuntime.cpp in Sources */,
+				4A534E5338ACEAD8E0FC7D22 /* DialogueExpression.cpp in Sources */,
+				4A534E53DBFB60AEB46EE96C /* DialogueKind.cpp in Sources */,
+				4A534E539A886BF399AAB990 /* DialogueProgram.cpp in Sources */,
+				4A534E5363E192CC7F21FDDB /* DialogueRunner.cpp in Sources */,
+				4A534E53C5D22ADACAEF273F /* DialogueVariables.cpp in Sources */,
+				4A534E53CDDF0C04F459F2AF /* DialogueRunner.cpp in Sources */,
+				4A534E53D0B4CA2E28C49C96 /* DialogueClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

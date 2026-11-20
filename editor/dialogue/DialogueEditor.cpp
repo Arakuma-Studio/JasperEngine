@@ -62,7 +62,7 @@ namespace {
     const std::map<fs::path, FileFacts>& projectFacts(Project* project) {
         State& s = state();
         std::set<fs::path> seen;
-        for (const fs::path& owner : l10n::findOwners(project->getProjectPath())) {
+        for (const fs::path& owner : editor::l10n::findOwners(project->getProjectPath())) {
             if (owner.extension() != rt::FILE_EXTENSION) continue;
             const fs::path file = owner.lexically_normal();
             seen.insert(file);

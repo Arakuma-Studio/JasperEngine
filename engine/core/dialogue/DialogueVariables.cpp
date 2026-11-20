@@ -51,7 +51,7 @@ namespace {
         return true;
     }
 
-    void notify(const std::string& name, const Value& value) {
+    void tell(const std::string& name, const Value& value) {
         Store& s = store();
         // by index: a listener may add (append) or remove (empty its slot) listeners; nothing allocates
         s.notifying++;
@@ -92,7 +92,7 @@ void Variables::set(std::string_view name, const Value& value) {
     } else {
         it = s.values.emplace(std::string(name), value).first;
     }
-    notify(it->first, it->second);
+    tell(it->first, it->second);
 }
 
 bool Variables::has(std::string_view name) {
@@ -173,10 +173,10 @@ bool Variables::fromJson(const Json& json, std::string* error, bool notify) {
     // what changed is told, as a set would
     for (const auto& [name, value] : s.values) {
         auto old = before.find(name);
-        if (old == before.end() || !old->second.same(value)) notify(name, value);
+        if (old == before.end() || !old->second.same(value)) tell(name, value);
     }
     for (const auto& [name, value] : before) {
-        if (!s.values.count(name)) notify(name, Value());
+        if (!s.values.count(name)) tell(name, Value());
     }
     return true;
 }
