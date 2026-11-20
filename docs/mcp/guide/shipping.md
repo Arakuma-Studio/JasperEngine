@@ -100,14 +100,14 @@ it works headless) and its exit code is the verdict:
 
 A web build reads the same options from the page's query: `index.html?quit-after=30&fixed-fps=60`.
 
-## Build Report
+## Build Report (group `shipping`)
 
 Every export writes `build-report.json` and a copy in the project's history (10 per platform).
-`get_build_info` reads it:
+`get_build_report` reads it:
 
-- A build grew, or someone asks what changed: `get_build_info {compare_to: "previous"}` (or a
+- A build grew, or someone asks what changed: `get_build_report {compare_to: "previous"}` (or a
   history id or a path): per category and per file changes keyed by source asset, largest first.
-- A file should not ship, or you are asked why it does: `get_build_info {referenced_by: [paths]}`
+- A file should not ship, or you are asked why it does: `get_build_report {referenced_by: [paths]}`
   gives the chain back to project.yaml or a script. `unreferenced` means no scene, prefab,
   material, setting or script reaches it in the index; a script may still load it by a computed
   path, so ask before deleting it.

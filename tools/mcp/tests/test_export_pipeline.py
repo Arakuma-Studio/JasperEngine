@@ -410,8 +410,12 @@ async def test_build_report_left_out(ed: Editor):
 
 
 async def test_build_report_referenced_by(ed: Editor):
-    """AC4: the chain scene -> material -> texture back to project.yaml, and an orphan unreferenced with the note"""
-    r = await ed.call_raw("get_build_info", {"referenced_by": ["textures/wall.png", "textures/orphan.png"]})
+    """AC4: why a texture and a material ship (their chains back to project.yaml), and an orphan unreferenced with the note;
+    get_build_report is in the shipping group: hidden in a new session, listed once tool_groups enables it"""
+    ed.check("get_build_report" not in {t.name for t in await ed.tools(groups=None)}, "hidden in a new session")
+    await ed.call("tool_groups", enable=["shipping"])
+    ed.check("get_build_report" in {t.name for t in await ed.tools()}, "listed once shipping is enabled")
+    r = await ed.call_raw("get_build_report", {"referenced_by": ["textures/wall.png", "textures/orphan.png"]})
     ed.check(not r.is_error, r.text)
     items = {item["asset"]: item for item in r.structured["referenced_by"]}
     # a linked submesh keeps a copy of the material's values: the scene reaches the texture itself,
@@ -423,7 +427,7 @@ async def test_build_report_referenced_by(ed: Editor):
     ed.check_eq(wall["chain"][1]["kind"], "scene_list")
     ed.check_eq(wall["chain"][-1]["kind"], "root")
     ed.check_eq(wall["live"], False, "from the export's walk")
-    material = (await ed.call("get_build_info", referenced_by=["materials/wall.material"]))["referenced_by"][0]
+    material = (await ed.call("get_build_report", referenced_by=["materials/wall.material"]))["referenced_by"][0]
     ed.check_eq([step["asset"] for step in material["chain"]], ["materials/wall.material", "scenes/Main.scene", "project.yaml"], f"{material}")
     ed.check_eq(material["chain"][0]["kind"], "mesh_material_file")
     orphan = items["textures/orphan.png"]
@@ -441,7 +445,7 @@ async def test_build_report_compare(ed: Editor):
     job = await source_export(ed, out)
     ed.check_eq(job["status"], "succeeded", f"{job.get('message')}")
     second = report_of(out)
-    r = await ed.call_raw("get_build_info", {"compare_to": "previous"})
+    r = await ed.call_raw("get_build_report", {"compare_to": "previous"})
     ed.check(not r.is_error, r.text)
     comparison = r.structured["comparison"]
     ed.check_eq(comparison["base"], S["first_report"])
@@ -457,7 +461,7 @@ async def test_build_report_compare(ed: Editor):
     ed.check_in(f"Build Report source {second['id']}", r.text)
     ed.check_in(f"vs {S['first_report']}", r.text)
     ed.check(re.search(r"textures \+[0-9.]+ [KM]?B \(\d+ grown", r.text) is not None, r.text[:400])
-    msg = await ed.call("get_build_info", compare_to="20000101-000000-source", expect_error=True)
+    msg = await ed.call("get_build_report", compare_to="20000101-000000-source", expect_error=True)
     ed.check_in(S["first_report"], msg, "an unknown id lists the history")
     S["second_report"] = second["id"]
 
@@ -468,7 +472,7 @@ async def test_build_report_history_survives_restart(ed: Editor):
     still = ed.scratch.root / "report-restart-project"
     shutil.copytree(ed.project, still, symlinks=True, ignore=shutil.ignore_patterns("*.je-tmp", ".git"))
     async with Editor(project=still, label="report-restart") as again:
-        last = await again.call("get_build_info", report="last")
+        last = await again.call("get_build_report", report="last")
         again.check_eq(last["report"]["id"], S["second_report"])
         again.check_eq(last["report"]["history"][:2], [S["second_report"], S["first_report"]])
         await again.call("tool_groups", enable=["editor_ux"])

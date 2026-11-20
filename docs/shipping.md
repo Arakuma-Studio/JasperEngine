@@ -226,7 +226,7 @@ A content failure stops before the engine is measured, which the message says. S
 never checked. A Build Profile may override the rows (`player.size_budgets`) for its builds.
 
 ```
-jasperengine-editor call get_build_info --compare-to previous
+jasperengine-editor call get_build_report --compare-to previous
 jasperengine-editor build --project MyGame --platform web --json   # build_report_id, size_budgets
 ```
 

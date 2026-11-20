@@ -4,6 +4,7 @@
 // W5: async export/build/run players
 //
 //   get_build_info     Build Settings state: modes, tools, output dirs, graphics APIs, shaders
+//   get_build_report   an export's Build Report, a comparison with another, why files ship (shipping group)
 //   build_project      export / build a player as a job (replaces export_project)
 //   generate_shaders   compile shader sets as a job (replaces the legacy blocking one)
 //   run_build          launch a built Desktop player, capture its log and a screenshot, stop it
@@ -1545,17 +1546,6 @@ void getBuildInfoTool(const CallPtr& call) {
     const fs::path projectFile = project->getProjectPath() / "project.yaml";
 
     Json data;
-    // build-size-tools R33: a Build Report asked for is answered first, so a wrong id fails at once
-    const bool reportAsked = args.contains("report") || args.contains("compare_to") || args.contains("referenced_by");
-    std::string reportText;
-    std::vector<std::string> reportNext;
-    if (reportAsked) {
-        std::string error;
-        if (!buildReportInfo(project, args, data, reportText, reportNext, error)) {
-            call->fail(error);
-            return;
-        }
-    }
     data["host_platform"] = hostPlatformName();
 
     const std::string missing = Generator::checkBuildTools();
@@ -1721,10 +1711,20 @@ void getBuildInfoTool(const CallPtr& call) {
                 data["shaders_job_id"].get<std::string>() + " until it ends, then get_build_info again.";
     }
     for (const UnreadableScene& scene : list.unreadableScenes) text += " Cannot read scene " + scene.path + ": " + scene.error + ".";
-    if (reportAsked) {
-        text = reportText + " " + text;
-        if (!reportNext.empty()) data["next"] = joinReportWords(reportNext, " ");
+    call->ok(text, data);
+}
+
+// ------------------------------------------------------------------ get_build_report
+
+void getBuildReportTool(const CallPtr& call) {
+    Json data;
+    std::string text, error;
+    std::vector<std::string> next;
+    if (!buildReportInfo(call->ctx().project(), call->args(), data, text, next, error)) {
+        call->fail(error);
+        return;
     }
+    if (!next.empty()) data["next"] = joinReportWords(next, " ");
     call->ok(text, data);
 }
 
@@ -2626,18 +2626,32 @@ void registerBuildTools(McpRegistry& registry) {
         tool.description =
             "Build Settings state: toolchains (cmake/compiler, emsdk; missing ones listed), graphics APIs and last "
             "output dir per mode, jobs, scenes in build, shader count (include_shaders: keys for edit_build_shaders), "
-            "running job, last result. Call before build_project.";
-        Json referencedBy = array(Json{{"type", "string"}}, "Build or asset paths: why each ships.");
-        referencedBy["maxItems"] = 50;
+            "running job, last result (sizes: get_build_report). Call before build_project.";
         tool.inputSchema = object({
-            {"include_shaders", withDefault(boolean(""), false)},
-            {"report", string("Build Report: last (default), a history id or a build-report.json path.")},
-            {"compare_to", string("previous, a history id or a path: per category and file changes.")},
-            {"referenced_by", referencedBy}
+            {"include_shaders", withDefault(boolean(""), false)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = getBuildInfoTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "get_build_report";
+        tool.title = "Get Build Report";
+        tool.group = "shipping";
+        tool.description =
+            "An export's Build Report (default: the last): sizes by category, largest, unreferenced and left-out files, size "
+            "budgets. compare_to: what changed since another report; referenced_by: why each file ships.";
+        tool.inputSchema = object({
+            {"report", string("last (default), a history id or a build-report.json path.")},
+            {"compare_to", string("previous, a history id or a path.")},
+            {"referenced_by", array(Json{{"type", "string"}}, "Build or asset paths, at most 50.")}
+        });
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getBuildReportTool;
         registry.addTool(std::move(tool));
     }
 

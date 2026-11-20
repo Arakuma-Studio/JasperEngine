@@ -527,6 +527,12 @@ inline constexpr double MONO_SIDE_MID_DB = -18.0;
   macos builds take it over `all`; their own row over it).
 - **AC8 and AC18** use a prebuilt Linux build with the stand-in runtime `test_build_method.py`
   installs (source exports are never checked, R12; a compile would cost minutes for the warn case).
+- **`get_build_report` (D8's fallback).** The three parameters on `get_build_info` (354 characters)
+  put the default listing at 99,254 of its 99,000 (`tool_budget.py --check`), and trimming them and
+  the description still left it over. They are a `shipping`-group tool, `get_build_report {report,
+  compare_to, referenced_by}`, which returns only the report part of R33's result; `get_build_info`'s
+  description points to it ("sizes: get_build_report", 28 characters). The eval cases (R38) and the
+  MCP tests call it; the CLI is `jasperengine-editor call get_build_report` (R35).
 - **`profile_excluded`** (build-profiles.md landed first): Left Out lists each file a Build Profile's
   exclusions leave out of the assets walk; a profile's own budget rows come through its
   `player.size_budgets` override, which the build's settings snapshot applies.

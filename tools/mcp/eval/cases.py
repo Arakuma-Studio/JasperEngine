@@ -5453,14 +5453,13 @@ CASES = [
         "kind": "bad",
         "what_happened": "A web build was bigger than the day before; with only the last build's totals the agent guessed at "
                          "causes (texture settings, engine modules) instead of comparing the two builds' reports.",
-        "text_at_issue": "get_build_info compare_to (previous, a history id or a path: per category and file changes)",
+        "text_at_issue": "get_build_report (shipping group) compare_to; get_build_info's '(sizes: get_build_report)'",
         "source": "docs/specs/build-size-tools.md R7, R33, R38",
         "prompt": "Our web build is bigger than yesterday's. Find out what grew.",
         "mocks": [
-            {"tool": "get_build_info", "args": {"compare_to": "*"}, "result": ok(
+            {"tool": "get_build_report", "args": {"compare_to": "*"}, "result": ok(
                 "Build Report web 20261119-142233-prebuilt: 142.0 MB (+3.2 MB vs 20261118-101500-prebuilt); textures +2.9 MB "
-                "(1 grown, 1 added); audio +0.3 MB (1 grown). Host linux. Desktop player: available; Web: available; source export: "
-                "available. 2 scene(s) in the build, 40 shader(s).",
+                "(1 grown, 1 added); audio +0.3 MB (1 grown).",
                 {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
                             "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]},
                  "comparison": {"base": "20261118-101500-prebuilt",
@@ -5474,11 +5473,15 @@ CASES = [
                                      "category": "audio", "before": 2097152, "after": 2411724, "delta": 314572}],
                                 "counts": {"added": 1, "removed": 0, "grown": 2, "shrunk": 0, "unchanged": 812},
                                 "partial": False, "platform_differs": False, "truncated": False}})},
+            {"tool": "get_build_report", "result": ok(
+                "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
+                {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
+                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]}})},
             {"tool": "get_build_info", "result": ok(
                 "Host linux. Desktop player: available; Web: available; source export: available. 2 scene(s) in the build, 40 "
                 "shader(s).", {"last_build": {"mode": "player", "platform": "web", "status": "succeeded"}, "scene_count": 2})},
         ],
-        "checks": {"calls": [{"tool": "get_build_info", "args": {"compare_to": "re:."}}],
+        "checks": {"calls": [{"tool": "get_build_report", "args": {"compare_to": "re:."}}],
                    "reply_must": [r"hero_sheet"], "must_not_call": ["build_project"]},
         "max_turns": 10,
     },
@@ -5487,13 +5490,12 @@ CASES = [
         "kind": "bad",
         "what_happened": "Asked why a texture was in the build, the agent searched the scenes' files by hand and missed the "
                          "material that pulled it in; the export already records which reference made each file ship.",
-        "text_at_issue": "get_build_info referenced_by (build or asset paths: why each ships)",
+        "text_at_issue": "get_build_report (shipping group) referenced_by; get_build_info's '(sizes: get_build_report)'",
         "source": "docs/specs/build-size-tools.md R9, R33, R38",
         "prompt": "textures/old_logo.png should not be in the build at all. Why is it in there?",
         "mocks": [
-            {"tool": "get_build_info", "args": {"referenced_by": ["re:old_logo"]}, "result": ok(
-                "Build Report web 20261119-142233-prebuilt: 142.0 MB. Host linux. Desktop player: available; Web: available; source "
-                "export: available. 2 scene(s) in the build, 40 shader(s).",
+            {"tool": "get_build_report", "args": {"referenced_by": ["re:old_logo"]}, "result": ok(
+                "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
                 {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792},
                  "referenced_by": [{"file": "assets/je-cooked/web/77c.ktx2", "asset": "textures/old_logo.png", "reason": "reached",
                                     "live": False, "chain": [
@@ -5502,11 +5504,15 @@ CASES = [
                                          "kind": "mesh_material_file", "object": "Credits/Logo"},
                                         {"asset": "scenes/Credits.scene", "field": "project/scenes[2].filepath", "kind": "scene_list"},
                                         {"asset": "project.yaml", "field": "", "kind": "root"}]}]})},
+            {"tool": "get_build_report", "result": ok(
+                "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
+                {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
+                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]}})},
             {"tool": "get_build_info", "result": ok(
                 "Host linux. Desktop player: available; Web: available; source export: available. 2 scene(s) in the build, 40 "
                 "shader(s).", {"last_build": {"mode": "player", "platform": "web", "status": "succeeded"}, "scene_count": 2})},
         ],
-        "checks": {"calls": [{"tool": "get_build_info", "args": {"referenced_by": ["re:old_logo"]}}],
+        "checks": {"calls": [{"tool": "get_build_report", "args": {"referenced_by": ["re:old_logo"]}}],
                    "reply_must": [r"splash\.material|Credits"]},
         "max_turns": 10,
     },
