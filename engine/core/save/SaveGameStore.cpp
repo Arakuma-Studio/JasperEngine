@@ -278,7 +278,7 @@ namespace jasperengine::savegame {
                     Log::warn("SaveGame: slot \"%s\" recovered from generation %llu (%s)", name.c_str(),
                               static_cast<unsigned long long>(it->first), list.c_str());
                 }
-                if (slot.version > dataVersion.load()) slot.status = "newer_version";
+                if (slot.status == "ok" && slot.version > dataVersion.load()) slot.status = "newer_version";
                 changed();
                 return {};
             }
@@ -918,12 +918,13 @@ std::vector<SlotInfo> SaveGameStore::list(){
                         (static_cast<size_t>(static_cast<unsigned char>(rest[pos + 5 + length])) << 24);
                     pos += 6 + length + payload;
                 }
-                if (info.version > dataVersion.load()) info.status = "newer_version";
                 break;
             }
             // a set-aside file above the newest valid one: an earlier read recovered
             if (info.status == "ok" && !files.corrupt.empty() && files.corrupt.rbegin()->first > info.generation)
                 info.status = "recovered";
+            // damage first: a recovered slot of a newer version shows as recovered
+            if (info.status == "ok" && info.version > dataVersion.load()) info.status = "newer_version";
         }
         out.push_back(std::move(info));
     }
