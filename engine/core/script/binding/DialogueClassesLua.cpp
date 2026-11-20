@@ -407,31 +407,26 @@ void LuaBinding::registerDialogueClasses(lua_State* L) {
     lua_setfield(L, -2, "variables");
     lua_setglobal(L, "Dialogue");
 
-    using RunnerEvent = FunctionSubscribe<void(DialogueRunner)>;
-    using LineEvent = FunctionSubscribe<void(DialogueRunner, const dialogue::Line&)>;
-    using EndEvent = FunctionSubscribe<void(DialogueRunner, const std::string&)>;
-    using VariableEvent = FunctionSubscribe<void(DialogueRunner, const std::string&, const dialogue::Value&)>;
-    using ChangedEvent = FunctionSubscribe<void(const std::string&, const dialogue::Value&)>;
     luabridge::getGlobalNamespace(L)
-        .beginClass<RunnerEvent>("FunctionSubscribe_V_DialogueRunner")
-        .addFunction("add", (bool (RunnerEvent::*)(const std::string&, lua_State*))&RunnerEvent::add)
-        .addFunction("remove", &RunnerEvent::remove)
+        .beginClass<FunctionSubscribe<void(DialogueRunner)>>("FunctionSubscribe_V_DialogueRunner")
+        .addFunction("add", (bool (FunctionSubscribe<void(DialogueRunner)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(DialogueRunner)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(DialogueRunner)>::remove)
         .endClass()
-        .beginClass<LineEvent>("FunctionSubscribe_V_DialogueLine")
-        .addFunction("add", (bool (LineEvent::*)(const std::string&, lua_State*))&LineEvent::add)
-        .addFunction("remove", &LineEvent::remove)
+        .beginClass<FunctionSubscribe<void(DialogueRunner, const dialogue::Line&)>>("FunctionSubscribe_V_DialogueLine")
+        .addFunction("add", (bool (FunctionSubscribe<void(DialogueRunner, const dialogue::Line&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(DialogueRunner, const dialogue::Line&)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(DialogueRunner, const dialogue::Line&)>::remove)
         .endClass()
-        .beginClass<EndEvent>("FunctionSubscribe_V_DialogueEnd")
-        .addFunction("add", (bool (EndEvent::*)(const std::string&, lua_State*))&EndEvent::add)
-        .addFunction("remove", &EndEvent::remove)
+        .beginClass<FunctionSubscribe<void(DialogueRunner, const std::string&)>>("FunctionSubscribe_V_DialogueEnd")
+        .addFunction("add", (bool (FunctionSubscribe<void(DialogueRunner, const std::string&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(DialogueRunner, const std::string&)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(DialogueRunner, const std::string&)>::remove)
         .endClass()
-        .beginClass<VariableEvent>("FunctionSubscribe_V_DialogueVariable")
-        .addFunction("add", (bool (VariableEvent::*)(const std::string&, lua_State*))&VariableEvent::add)
-        .addFunction("remove", &VariableEvent::remove)
+        .beginClass<FunctionSubscribe<void(DialogueRunner, const std::string&, const dialogue::Value&)>>("FunctionSubscribe_V_DialogueVariable")
+        .addFunction("add", (bool (FunctionSubscribe<void(DialogueRunner, const std::string&, const dialogue::Value&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(DialogueRunner, const std::string&, const dialogue::Value&)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(DialogueRunner, const std::string&, const dialogue::Value&)>::remove)
         .endClass()
-        .beginClass<ChangedEvent>("FunctionSubscribe_V_DialogueChanged")
-        .addFunction("add", (bool (ChangedEvent::*)(const std::string&, lua_State*))&ChangedEvent::add)
-        .addFunction("remove", &ChangedEvent::remove)
+        .beginClass<FunctionSubscribe<void(const std::string&, const dialogue::Value&)>>("FunctionSubscribe_V_DialogueChanged")
+        .addFunction("add", (bool (FunctionSubscribe<void(const std::string&, const dialogue::Value&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const std::string&, const dialogue::Value&)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(const std::string&, const dialogue::Value&)>::remove)
         .endClass();
 
     // Plays a .dialogue on its GameObject (adds a Dialogue Runner when it has none); every line
