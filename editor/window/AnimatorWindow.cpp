@@ -9,6 +9,7 @@
 #include "Backend.h"
 #include "Project.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/AnimatorDebug.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "animation/AnimatorInstance.h"
 #include "animation/BlendTree.h"
@@ -157,6 +158,16 @@ namespace{
         if (!motion.isTree()) return;
         visit(motion.tree.front());
         for (BlendChildDef& child : motion.tree.front().children) forEachTree(child.motion, visit);
+    }
+
+    // R27: where the layer's Mesh Space Rotation applies on the bound Animator
+    std::string meshSpaceAppliesLine(const AnimatorInstance* bound, const std::string& layer){
+        if (!bound) return "Applies where the mask starts or stops";
+        const std::vector<std::string> names = meshSpaceBoundaryNames(*bound, bound->getLayerIndex(layer));
+        if (names.empty()) return "Applies nowhere: the mask neither starts nor stops on this rig";
+        std::string text = "Applies at: ";
+        for (size_t i = 0; i < names.size(); i++) text += (i ? ", " : "") + names[i];
+        return text;
     }
 
     // "<list>[<n>]" at the start of `rest`: n, and `rest` past it (and a following '.')
@@ -434,6 +445,13 @@ anim::AnimatorInstance* AnimatorWindow::liveInstance() const{
     AnimatorComponent* animator = scene->scene->findComponent<AnimatorComponent>(entity);
     if (!animator || !animator->runtime || !animator->runtime->controller || !animator->runtime->bound) return nullptr;
     return animator->runtime.get();
+}
+
+anim::AnimatorInstance* AnimatorWindow::boundInstance() const{
+    AnimatorInstance* live = liveInstance();
+    // the window may show another controller than the Animator plays (opened from the Project window)
+    if (!live || !document || live->controllerPath.empty()) return nullptr;
+    return AnimatorAssetDocument::open(project, live->controllerPath, nullptr) == document ? live : nullptr;
 }
 
 void AnimatorWindow::claimInspector(){
@@ -1068,6 +1086,44 @@ bool AnimatorWindow::setLiveParameter(const std::string& name, float value){
     return true;
 }
 
+// ---------------------------------------------------------------- Mesh Space Rotation
+
+std::string AnimatorWindow::meshSpaceAppliesText(int index){
+    syncToDocument();
+    const ControllerDef def = working();
+    if (index < 0 || (size_t)index >= def.layers.size()) return std::string();
+    return meshSpaceAppliesLine(boundInstance(), def.layers[(size_t)index].name);
+}
+
+std::vector<MeshSpaceWarning> AnimatorWindow::meshSpaceProblems(){
+    syncToDocument();
+    AnimatorInstance* bound = boundInstance();
+    if (!bound || (!pending && !document)) return {};
+    // the Problems strip asks every frame: the working controller read in place, not copied
+    return meshSpaceWarnings(pending ? *pending : document->controller(), *bound);
+}
+
+bool AnimatorWindow::fixMeshSpaceProblem(int index){
+    syncToDocument();
+    ControllerDef def = working();
+    if (!editable() || index <= 0 || (size_t)index >= def.layers.size()) return false;
+    LayerDef& l = def.layers[(size_t)index];
+    // R29: only a proposal; the option on, nothing else
+    l.meshSpaceRotation = true;
+    return commit(def, "Edit Layer " + l.name);
+}
+
+bool AnimatorWindow::setCompare(bool compare){
+    if (previewToken == 0){
+        comparing = false;
+        return false;
+    }
+    comparing = compare;
+    // the pose at once, also while paused
+    stepPreview(0.0f);
+    return true;
+}
+
 // ---------------------------------------------------------------- preview
 
 bool AnimatorWindow::startPreview(){
@@ -1096,6 +1152,7 @@ bool AnimatorWindow::startPreview(){
     previewEntity = target;
     previewClock = 0.0;
     previewPaused = false;
+    comparing = false;
     lastFrameTime = nowSeconds();
     particles.stop(scene->scene);
     syncParticles(false);
@@ -1106,6 +1163,7 @@ void AnimatorWindow::stopPreview(){
     if (previewToken == 0) return;
     const PreviewOwner::Token token = previewToken;
     previewToken = 0;
+    comparing = false;
     SceneProject* scene = project->getScene(previewScene);
     if (scene && scene->scene){
         scene->scene->getSystem<AnimatorSystem>()->restorePreview(previewEntity);
@@ -1145,8 +1203,11 @@ bool AnimatorWindow::stepPreview(float dt){
     SceneProject* scene = project->getScene(previewScene);
     if (!scene || !scene->scene) return false;
     previewClock += dt;
+    AnimatorSystem* system = scene->scene->getSystem<AnimatorSystem>().get();
+    // Compare (R31): a runtime flag of the previewed Animator only
+    if (AnimatorInstance* runtime = system->instance(previewEntity)) runtime->setMeshSpaceBypass(comparing);
     std::string error;
-    if (!scene->scene->getSystem<AnimatorSystem>()->preview(previewEntity, dt, &error)){
+    if (!system->preview(previewEntity, dt, &error)){
         status = "Preview: " + error;
         return false;
     }
@@ -1255,6 +1316,11 @@ void AnimatorWindow::drawToolbar(){
             if (previewing){
                 ImGui::SameLine();
                 ImGui::Checkbox("Pause", &previewPaused);
+                ImGui::SameLine();
+                bool compare = comparing;
+                if (ImGui::Checkbox("Compare", &compare)) setCompare(compare);
+                UIProbe::item("animator.compare");
+                ImGui::SetItemTooltip("While on, the pose without Mesh Space Rotation (Preview only: never saved)");
             }
         }
     }
@@ -1272,11 +1338,23 @@ void AnimatorWindow::drawProblems(){
         problemsPath = document->projectPath();
         problemCache = problems();
     }
-    if (problemCache.empty()) return;
-    const std::string header = std::string(ICON_FA_TRIANGLE_EXCLAMATION " ") + std::to_string(problemCache.size()) + " problem(s)###animator_problems";
+    // the bound Animator's (they read its rig, so they are not cached with the file's)
+    const std::vector<MeshSpaceWarning> meshSpace = meshSpaceProblems();
+    const size_t count = problemCache.size() + meshSpace.size();
+    if (count == 0) return;
+    const std::string header = std::string(ICON_FA_TRIANGLE_EXCLAMATION " ") + std::to_string(count) + " problem(s)###animator_problems";
     if (ImGui::CollapsingHeader(header.c_str())){
         UIProbe::item("animator.problems");
-        ImGui::BeginChild("##animator_problem_list", ImVec2(0, std::min(6.0f, (float)problemCache.size()) * ImGui::GetTextLineHeightWithSpacing() + 4.0f));
+        ImGui::BeginChild("##animator_problem_list", ImVec2(0, std::min(6.0f, (float)count) * ImGui::GetTextLineHeightWithSpacing() + 4.0f));
+        for (size_t i = 0; i < meshSpace.size(); i++){
+            ImGui::PushID(("mesh_space" + std::to_string(i)).c_str());
+            if (ImGui::SmallButton("Fix")) fixMeshSpaceProblem(meshSpace[i].layer);
+            UIProbe::item("animator.problems.fix");
+            ImGui::SetItemTooltip("Turns on Mesh Space Rotation on the layer (one undo step)");
+            ImGui::SameLine();
+            if (ImGui::Selectable(meshSpace[i].message.c_str(), false)) inspect("layers[" + std::to_string(meshSpace[i].layer) + "]");
+            ImGui::PopID();
+        }
         for (size_t i = 0; i < problemCache.size(); i++){
             const ClipWarning& warning = problemCache[i];
             ImGui::PushID((int)i);
@@ -1862,6 +1940,28 @@ void AnimatorWindow::drawLayerInspector(ControllerDef& def){
         ImGui::EndDragDropTarget();
     }
     ImGui::SetItemTooltip("An Avatar Mask (.mask): drop one from the Project window");
+    // R25, R26: kept and ignored on layer 0 and on Additive layers (D5), so shown there but disabled
+    const char* meshSpaceOff = layer == 0 ? "Off on the base layer: nothing is below it to keep a direction against (a value set in the file is ignored)."
+                             : l.blending == AnimatorLayerBlending::Additive ? "Off on Additive layers: they add their clip's changes, so a direction relative to the character has no meaning there (a value set in the file is ignored)."
+                             : nullptr;
+    ImGui::BeginDisabled(meshSpaceOff != nullptr);
+    changed |= ImGui::Checkbox("Mesh Space Rotation", &l.meshSpaceRotation);
+    ImGui::EndDisabled();
+    UIProbe::item("animator.layer.meshSpaceRotation");
+    if (ImGui::BeginItemTooltip()){
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
+        ImGui::TextUnformatted(meshSpaceOff ? meshSpaceOff :
+            "Bones where the mask starts or stops keep this layer's direction relative to the character, instead of following their parent. "
+            "Use it for upper-body layers over locomotion, so the torso faces where this layer's clip faces. Unreal: Mesh Space Rotation Blend.");
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
+    if (l.meshSpaceRotation && !meshSpaceOff){
+        ImGui::Indent();
+        ImGui::TextDisabled("%s", meshSpaceAppliesLine(boundInstance(), l.name).c_str());
+        UIProbe::item("animator.layer.meshSpaceApplies");
+        ImGui::Unindent();
+    }
     char slot[128];
     std::snprintf(slot, sizeof(slot), "%s", l.slot.c_str());
     if (ImGui::InputText("Montage Slot", slot, sizeof(slot), ImGuiInputTextFlags_EnterReturnsTrue)){

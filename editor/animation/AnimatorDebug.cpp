@@ -5,7 +5,10 @@
 
 #include "Scene.h"
 #include "animation/AnimatorInstance.h"
+#include "animation/ControllerDef.h"
 #include "component/AnimatorComponent.h"
+#include "pose/HumanBones.h"
+#include "pose/HumanoidMap.h"
 
 #include <algorithm>
 #include <cmath>
@@ -68,6 +71,18 @@ namespace{
         for (size_t i = 1; i < samples.size(); i++){
             overlayAddLine(out, samples[i - 1].position, samples[i].position, color ? *color : samples[i].color);
         }
+    }
+
+    // a shaft from `from` along the unit `axis`, and a head at its tip
+    void overlayAddArrow(std::vector<AnimatorOverlayLine>& out, const Vector3& from, const Vector3& axis, float length, const Vector4& color){
+        const Vector3 tip = from + axis * length;
+        Vector3 side = axis.crossProduct(Vector3(0, 1, 0));
+        if (side.length() < 1e-3f) side = axis.crossProduct(Vector3(1, 0, 0));
+        side = side.normalized();
+        const Vector3 back = tip - axis * (0.15f * length);
+        overlayAddLine(out, from, tip, color);
+        overlayAddLine(out, tip, back + side * (0.08f * length), color);
+        overlayAddLine(out, tip, back - side * (0.08f * length), color);
     }
 
     void overlayDropOld(std::vector<AnimatorOverlayHistory::Sample>& samples, float now){
@@ -330,12 +345,65 @@ void appendAnimatorOverlayLines(const AnimatorDebugSnapshot& snapshot, const Ani
     }
 }
 
-void AnimatorOverlayPass::update(Scene* scene, const std::vector<Entity>& entities, const AnimatorOverlayFlags& flags, const Draw& draw){
+void appendTorsoDirectionLines(const AnimatorInstance& instance, const AnimatorRoot& root, std::vector<AnimatorOverlayLine>& out){
+    if (!instance.bound || !instance.controller || instance.evaluations == 0) return;
+    const size_t bones = instance.rig.bones.size();
+    const std::vector<Quaternion>& rotations = instance.rigRotations();
+    const std::vector<Vector3>& positions = instance.rigPositions();
+    if (rotations.size() < bones || positions.size() < bones) return;
+    std::vector<Quaternion> rest;
+    const Vector3 front(0, 0, 1);
+    for (size_t l = 1; l < instance.layers.size(); l++){
+        if (!instance.layerMeshSpaceApplies((int)l)) continue;
+        if (rest.empty()){
+            // the rest pose's rig rotations: an axis is the front at rest turned as the bone turned since
+            rest.resize(bones);
+            poseRigRotations(instance.rig.rest, instance.rig.parents.data(), bones, rest.data());
+        }
+        const std::vector<uint16_t>& boundary = instance.layerBoundaryBones((int)l);
+        const std::vector<Quaternion>* unpassed = instance.layerMeshSpaceUnpassed((int)l);
+        for (size_t k = 0; k < boundary.size(); k++){
+            const size_t b = boundary[k];
+            if (b >= bones) continue;
+            const Vector3 from = root.matrix * positions[b];
+            const Quaternion fromRest = rest[b].inverse();
+            const Vector3 axis = (root.rotation * (rotations[b] * (fromRest * front))).normalized();
+            overlayAddArrow(out, from, axis, kTorsoAxisLength, overlaycolor::applied);
+            if (unpassed && k < unpassed->size()){
+                const Vector3 ghost = (root.rotation * ((*unpassed)[k] * (fromRest * front))).normalized();
+                overlayAddArrow(out, from, ghost, kTorsoAxisLength, overlaycolor::rejected);
+            }
+        }
+    }
+}
+
+void AnimatorOverlayPass::update(Scene* scene, const std::vector<Entity>& entities, const AnimatorOverlayFlags& flags, const Draw& draw,
+                                 const std::vector<Entity>& selected){
+    // Torso Direction's recording runs only on the Animators it draws (R30): on for the selected
+    // ones while it is on, off again for every other one this pass turned on
+    if (flags.torsoDirection || !recording.empty()){
+        const std::vector<Entity> none;
+        const std::vector<Entity>& wanted = flags.torsoDirection ? selected : none;
+        for (Entity entity : recording){
+            if (std::find(wanted.begin(), wanted.end(), entity) != wanted.end()) continue;
+            AnimatorComponent* component = scene->findComponent<AnimatorComponent>(entity);
+            if (component && component->runtime && component->runtime->meshSpaceDebug()) component->runtime->setMeshSpaceDebug(false);
+        }
+        recording.clear();
+        for (Entity entity : wanted){
+            AnimatorComponent* component = scene->findComponent<AnimatorComponent>(entity);
+            if (!component || !component->runtime) continue;
+            if (!component->runtime->meshSpaceDebug()) component->runtime->setMeshSpaceDebug(true);
+            recording.push_back(entity);
+        }
+    }
     if (!flags.any()){
         // off costs nothing (R40): no snapshot, no line, nothing remembered
         if (!histories.empty()) histories.clear();
         return;
     }
+    const bool live = flags.ik || flags.rootMotion || flags.footTrails;
+    if (!live && !histories.empty()) histories.clear();
     std::unordered_set<Entity> seen;
     for (Entity entity : entities){
         AnimatorComponent* component = scene->findComponent<AnimatorComponent>(entity);
@@ -343,33 +411,40 @@ void AnimatorOverlayPass::update(Scene* scene, const std::vector<Entity>& entiti
         if (!component || !component->runtime || !animatorRootOf(scene, entity, root)) continue;
         const AnimatorInstance& instance = *component->runtime;
         if (!instance.bound || instance.evaluations == 0) continue;
-        const AnimatorDebugSnapshot snapshot = makeSnapshot(instance, *component, root);
-        snapshotCount++;
-        if (!snapshot.valid) continue;
-        seen.insert(entity);
-
-        AnimatorOverlayHistory& history = histories[entity];
-        if (instance.evaluations != history.evaluations){
-            const float now = instance.clock;
-            // a new run (a rebind, Play again) starts its trails over
-            if (!history.root.empty() && history.root.back().time > now) history = AnimatorOverlayHistory();
-            history.evaluations = instance.evaluations;
-            history.feet.resize(snapshot.ik.size());
-            for (size_t i = 0; i < snapshot.ik.size(); i++){
-                const AnimatorDebugIK& ik = snapshot.ik[i];
-                if (!flags.footTrails || !ik.leg){
-                    history.feet[i].clear();
-                    continue;
-                }
-                history.feet[i].push_back({now, ik.foot, footTrailColor(ik.contact, ik.slideMmS)});
-                overlayDropOld(history.feet[i], now);
-            }
-            history.root.push_back({now, snapshot.rootPosition, overlaycolor::rootPast});
-            overlayDropOld(history.root, now);
-        }
-
+        const bool torso = flags.torsoDirection && std::find(selected.begin(), selected.end(), entity) != selected.end();
+        if (!live && !torso) continue;
         scratch.clear();
-        appendAnimatorOverlayLines(snapshot, flags, &history, scratch);
+        bool drawn = torso;
+        if (live){
+            const AnimatorDebugSnapshot snapshot = makeSnapshot(instance, *component, root);
+            snapshotCount++;
+            if (snapshot.valid){
+                drawn = true;
+                seen.insert(entity);
+                AnimatorOverlayHistory& history = histories[entity];
+                if (instance.evaluations != history.evaluations){
+                    const float now = instance.clock;
+                    // a new run (a rebind, Play again) starts its trails over
+                    if (!history.root.empty() && history.root.back().time > now) history = AnimatorOverlayHistory();
+                    history.evaluations = instance.evaluations;
+                    history.feet.resize(snapshot.ik.size());
+                    for (size_t i = 0; i < snapshot.ik.size(); i++){
+                        const AnimatorDebugIK& ik = snapshot.ik[i];
+                        if (!flags.footTrails || !ik.leg){
+                            history.feet[i].clear();
+                            continue;
+                        }
+                        history.feet[i].push_back({now, ik.foot, footTrailColor(ik.contact, ik.slideMmS)});
+                        overlayDropOld(history.feet[i], now);
+                    }
+                    history.root.push_back({now, snapshot.rootPosition, overlaycolor::rootPast});
+                    overlayDropOld(history.root, now);
+                }
+                appendAnimatorOverlayLines(snapshot, flags, &history, scratch);
+            }
+        }
+        if (torso) appendTorsoDirectionLines(instance, root, scratch);
+        if (!drawn) continue;
         lineCount += scratch.size();
         draw(entity, scratch);
     }
@@ -377,6 +452,65 @@ void AnimatorOverlayPass::update(Scene* scene, const std::vector<Entity>& entiti
         if (seen.count(it->first)) ++it;
         else it = histories.erase(it);
     }
+}
+
+// ---------------------------------------------------------------- Mesh Space Rotation
+
+namespace{
+
+    // the warning's name of a torso slot (R29: "the mask starts at Spine")
+    const char* torsoSlotLabel(int slot){
+        switch ((pose::HumanBone)slot){
+            case pose::HumanBone::Spine: return "Spine";
+            case pose::HumanBone::Chest: return "Chest";
+            case pose::HumanBone::UpperChest: return "Upper Chest";
+            default: return nullptr;
+        }
+    }
+
+}
+
+std::vector<std::string> meshSpaceBoundaryNames(const AnimatorInstance& instance, int layer){
+    std::vector<std::string> names;
+    if (!instance.bound) return names;
+    for (uint16_t bone : instance.layerBoundaryBones(layer)){
+        if (bone < instance.rig.bones.size()) names.push_back(instance.rig.bones[bone].name);
+    }
+    return names;
+}
+
+std::vector<MeshSpaceWarning> meshSpaceWarnings(const ControllerDef& def, const AnimatorInstance& instance){
+    std::vector<MeshSpaceWarning> warnings;
+    if (!instance.bound || !instance.controller) return warnings;
+    // a torso bone: the humanoid's hips, spine, chest or upper chest, else by its name
+    auto torso = [&](size_t bone){
+        if (!instance.humanoid.valid) return pose::isTorsoBoneName(instance.rig.bones[bone].name);
+        const int slot = instance.humanoidSlotOf((int)bone);
+        return slot == (int)pose::HumanBone::Hips || torsoSlotLabel(slot) != nullptr;
+    };
+    for (size_t l = 1; l < def.layers.size(); l++){
+        const LayerDef& layer = def.layers[l];
+        if (layer.blending != AnimatorLayerBlending::Override || layer.meshSpaceRotation) continue;
+        const int run = instance.getLayerIndex(layer.name);
+        if (run <= 0 || !(instance.getLayerWeight(run) > 0.0f)) continue;
+        // the runtime's value too: a Lua override that turns it on answers the warning
+        if (instance.layerMeshSpaceRotation(run)) continue;
+        const std::vector<float>& mask = instance.layers[(size_t)run].mask;
+        // the first place, parents first, where the mask starts under a torso bone it leaves out
+        // and that start is a torso bone too: the torso split between the layers
+        std::string where;
+        for (size_t bone = 0; bone < instance.rig.bones.size() && bone < mask.size() && where.empty(); bone++){
+            const int parent = instance.rig.parents[bone];
+            if (parent < 0 || (size_t)parent >= mask.size() || !(mask[bone] > 0.0f) || mask[(size_t)parent] != 0.0f) continue;
+            if (!torso((size_t)parent) || !torso(bone)) continue;
+            const char* slot = instance.humanoid.valid ? torsoSlotLabel(instance.humanoidSlotOf((int)bone)) : nullptr;
+            where = slot ? std::string(slot) : instance.rig.bones[bone].name;
+        }
+        if (where.empty()) continue;
+        warnings.push_back({(int)l, "Layer '" + layer.name + "': the mask starts at " + where +
+                                    ", so the torso follows the base layer's hips. Turn on Mesh Space Rotation to keep this layer's direction."});
+    }
+    return warnings;
 }
 
 }

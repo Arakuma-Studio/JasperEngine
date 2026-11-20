@@ -59,6 +59,59 @@ TEST(PoseHumanoidMap, NameTokens){
     EXPECT_EQ(humanoidNameTokens("Bip01 L Thigh"), (V{"l", "thigh"}));
     EXPECT_EQ(humanoidNameTokens("Armature|root|spine_01"), (V{"spine", "01"}));
     EXPECT_EQ(humanoidNameTokens("b_Hips"), (V{"hips"}));
+    EXPECT_EQ(humanoidNameTokens("B-hips"), (V{"hips"}));
+    EXPECT_EQ(humanoidNameTokens("B-upperArm.L"), (V{"upper", "arm", "l"}));
+    EXPECT_EQ(humanoidNameTokens("B-spineProxy"), (V{"spine", "proxy"}));
+}
+
+TEST(PoseHumanoidMap, KevinIglesiasBNames){
+    // B- prefixed names with .L/.R sides, a root bone above the hips and the spine proxy bone of
+    // Unity's Spine Proxy beside the hips (mesh-space-rotation R1, R2)
+    BoneList bones = {{"B-root", ""}, {"B-hips", "B-root"}, {"B-spineProxy", "B-root"}, {"B-spine", "B-hips"},
+                      {"B-chest", "B-spine"}, {"B-neck", "B-chest"}, {"B-head", "B-neck"}, {"B-jaw", "B-head"}};
+    for (const char* s : {"L", "R"}){
+        const std::string x = std::string(".") + s;
+        bones.push_back({"B-shoulder" + x, "B-chest"});
+        bones.push_back({"B-upperArm" + x, "B-shoulder" + x});
+        bones.push_back({"B-forearm" + x, "B-upperArm" + x});
+        bones.push_back({"B-hand" + x, "B-forearm" + x});
+        bones.push_back({"B-thumb01" + x, "B-hand" + x});
+        bones.push_back({"B-indexFinger01" + x, "B-hand" + x});
+        bones.push_back({"B-thigh" + x, "B-hips"});
+        bones.push_back({"B-shin" + x, "B-thigh" + x});
+        bones.push_back({"B-foot" + x, "B-shin" + x});
+        bones.push_back({"B-toe" + x, "B-foot" + x});
+    }
+    const HumanoidMap expected = sidedMap(
+        {{H::Hips, "B-hips"}, {H::Spine, "B-spine"}, {H::Chest, "B-chest"}, {H::Neck, "B-neck"}, {H::Head, "B-head"}},
+        {{H::LeftShoulder, "B-shoulder.%s"}, {H::LeftUpperArm, "B-upperArm.%s"}, {H::LeftLowerArm, "B-forearm.%s"},
+         {H::LeftHand, "B-hand.%s"}, {H::LeftUpperLeg, "B-thigh.%s"}, {H::LeftLowerLeg, "B-shin.%s"},
+         {H::LeftFoot, "B-foot.%s"}, {H::LeftToes, "B-toe.%s"}},
+        "L", "R");
+    expectMap(skeletonFromList(bones), expected, "kevin iglesias");
+}
+
+TEST(PoseHumanoidMap, ProxyBonesNeverMapped){
+    // alone under a root nothing else claims the spine slot, so a proxy name would be taken
+    for (const char* name : {"B-spineProxy", "spine_proxy", "SpineProxy", "spineproxy", "Hips_Proxy", "LeftHandProxy"}){
+        const HumanoidMap map = autoDetectHumanoid(skeletonFromList({{"root", ""}, {name, "root"}}));
+        for (int s = 0; s < HUMAN_BONE_COUNT; s++){
+            EXPECT_EQ(map.bones[s], "") << name << " mapped to " << humanBoneName(boneAt(s));
+        }
+    }
+}
+
+// the auto-detect's torso reading of one name (the Mesh Space Rotation warnings on rigs without a
+// humanoid map): hips and the spine chain, with its prefixes stripped; never a root, a limb or a proxy
+TEST(PoseHumanoidMap, TorsoBoneNames){
+    for (const char* name : {"Hips", "mixamorig:Hips", "B-hips", "pelvis", "Spine", "mixamorig:Spine1", "B-spine", "spine_01", "Chest", "B-chest",
+                             "UpperChest", "J_Bip_C_Spine"}){
+        EXPECT_TRUE(isTorsoBoneName(name)) << name;
+    }
+    for (const char* name : {"Armature", "B-root", "Root", "Rig", "mixamorig:LeftShoulder", "B-shoulder.L", "Neck", "Head", "B-spineProxy",
+                             "LeftUpLeg", ""}){
+        EXPECT_FALSE(isTorsoBoneName(name)) << name;
+    }
 }
 
 TEST(PoseHumanoidMap, FixtureRigsMapFully){

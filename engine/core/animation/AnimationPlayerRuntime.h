@@ -31,7 +31,8 @@
 //     override (`layerOverride`).
 //   * the layered evaluator (ActionSystem::evaluateLayeredPlayer) runs for every player that is
 //     not isDefaultLayering; the per-track mask weights (`trackMask`) and the slot table of the
-//     pose scratch are computed at bind (when a stamp changes), never per frame.
+//     pose scratch are computed at bind (when a stamp changes), never per frame. So is Mesh Space
+//     Rotation's node table (PlayerPoseScratch::meshNodes), and only while a layer runs the pass.
 
 #ifndef ANIMATION_PLAYER_RUNTIME_H
 #define ANIMATION_PLAYER_RUNTIME_H
@@ -165,6 +166,14 @@ namespace jasperengine::anim{
         bool recursive = true;          // the path's descendants too
     };
 
+    // Mesh Space Rotation (docs/specs/mesh-space-rotation.md R16): where one state's rotation at a
+    // node of the table (PlayerPoseScratch::meshNodes) comes from, whatever its mask
+    struct JASPERENGINE_API PoseMeshSource{
+        int32_t track = -1;                 // the clip track rotating it, -1: none
+        int32_t output = -1;                // a humanoid clip: the HumanoidBinding output rotating it, -1: none
+        float mask = 0.0f;                  // the state's mask weight there (layer mask times mixing transforms)
+    };
+
     struct JASPERENGINE_API PlayerStateRuntime{
         std::string name;                   // unique (runtime " 2" alias applied)
         size_t entry = 0;                   // index into AnimationPlayerComponent::clips
@@ -235,6 +244,7 @@ namespace jasperengine::anim{
             uint64_t bindings = 0;          // AnimationPlayerRuntime::scratchSerial
             uint64_t mixing = 0;
             uint64_t humanoid = 0;          // AnimationPlayerRuntime::humanoidRevision
+            uint64_t meshSpace = 0;         // PlayerPoseScratch::meshSerial, 0: the layer runs no pass
             bool valid = false;
         } maskStamp;
         // additive layers: every track sampled at the clip's additive_reference (raw values),
@@ -254,6 +264,9 @@ namespace jasperengine::anim{
         // the Mirror / Foot IK the reference was realised with (bit 0, bit 1): a change (Lua
         // state.mirror / footIK) realises it again
         uint8_t humanoidReferenceFlags = 0;
+        // its layer runs Mesh Space Rotation: per node of the scratch's table, where the state's
+        // rotation there comes from (empty otherwise; computed with trackMask)
+        std::vector<PoseMeshSource> meshSources;
 
     };
 
@@ -318,6 +331,9 @@ namespace jasperengine::anim{
         float authoredWeight = 1.0f;
         AnimationLayerBlend authoredBlend = AnimationLayerBlend::Override;
         std::string authoredMask;
+        // authored only (no runtime override): Mesh Space Rotation (docs/specs/mesh-space-rotation.md
+        // R16), applied on an Override layer above 0 with a mask
+        bool meshSpaceRotation = false;
     };
 
     // The layered evaluator's per-player scratch (anim layers spec 7.3), sized at bind and reused
@@ -356,6 +372,24 @@ namespace jasperengine::anim{
         int coverLayer = -1;                // the layer `coverage` sums (the occlusion pass)
         float coverage = 0.0f;
     };
+    // Mesh Space Rotation (docs/specs/mesh-space-rotation.md R5-R7, R16). The Player's rig is the
+    // GameObjects its transform slots animate and their ancestors below the Player's GameObject, rig
+    // space that GameObject's local space (the Animator's rule). A node is a boundary bone of a
+    // layer that runs the pass or an ancestor of one, parents first, with a Rotation slot (one is
+    // added for a GameObject no clip rotates); a node without a result this frame is at its rest,
+    // as the layers' blends take it.
+    struct JASPERENGINE_API PoseMeshNode{
+        uint32_t element = 0;               // its Rotation slot's element
+        int parent = -1;                    // its parent's node, -1: a child of the Player's GameObject
+    };
+    // one flagged layer's own rotation at a node, this frame
+    struct JASPERENGINE_API PoseMeshSum{
+        float sum[4] = {0, 0, 0, 0};        // Σ w·q (w x y z, aligned to the first sample's hemisphere)
+        float ref[4] = {0, 0, 0, 0};
+        bool hasRef = false;
+        float masked = 0.0f;                // Σ w·mask: the S of the node's blend weight λ·min(1, S)
+    };
+
     // What the evaluator composes in one call (filled per frame into reused vectors)
     struct JASPERENGINE_API PoseLayerInput{
         float weight = 1.0f;                // λ (layer 0: 1)
@@ -379,6 +413,8 @@ namespace jasperengine::anim{
         const uint32_t* humanoidSlots = nullptr;
         const float* humanoidMask = nullptr;
         const HumanoidOutput* humanoidReference = nullptr;
+        // its layer runs Mesh Space Rotation: per node, where its rotation comes from (null otherwise)
+        const PoseMeshSource* meshSources = nullptr;
     };
 
     struct JASPERENGINE_API PlayerPoseScratch{
@@ -393,7 +429,23 @@ namespace jasperengine::anim{
         // per state: the bindings serial the state's trackSlots were built for (0: none)
         // (any change rebuilds the whole table: rest entries may have gone with a rebind)
         std::vector<uint64_t> builtFor;
+        // the slots the bindings made (buildPoseSlots); Mesh Space Rotation's added ones follow
+        uint32_t boundSlots = 0;
         bool dirty = true;
+        // Mesh Space Rotation (R16, R21, R22): built at prepare (ActionSystemLayers.cpp), all
+        // empty while no layer runs the pass. meshBoundary: per layer, its boundary nodes, parents
+        // first (empty: no pass); meshSums, meshBelow, meshRig: per node, the frame's scratch (the
+        // layer's own rotations; the rig rotations below the layer, then after it; the layer's own)
+        std::vector<PoseMeshNode> meshNodes;
+        std::vector<std::vector<uint16_t>> meshBoundary;
+        std::vector<PoseMeshSum> meshSums;
+        std::vector<Quaternion> meshBelow;
+        std::vector<Quaternion> meshRig;
+        // the rig's bones and the Transform parent each had at the build: a hierarchy change that
+        // moves one (a humanoid's bone, a rig bone the bindings still resolve) rebuilds the table
+        std::vector<std::pair<Entity, Entity>> meshParents;
+        // bumped by every build: what the states' meshSources were computed for
+        uint64_t meshSerial = 0;
     };
 
     class JASPERENGINE_API AnimationPlayerRuntime{
@@ -426,6 +478,11 @@ namespace jasperengine::anim{
         // rebuilds (what the states' track masks were computed for)
         PlayerPoseScratch scratch;
         uint64_t scratchSerial = 0;
+        // what the scratch's Mesh Space Rotation table was built from (empty while no layer runs
+        // the pass): scratchSerial, humanoidRevision, the hierarchy revision its meshParents were
+        // last found to hold at, then per layer the mask it applies with (null: none) and its
+        // maskEntitiesSerial
+        std::vector<uint64_t> meshSpaceStamp;
         // the root's humanoid rig for humanoid masks (spec 6.2 rule 2; anim-retarget's target rig
         // lookup shares it): resolved when a layer's mask needs it, again after a model reload
         std::shared_ptr<HumanoidSlots> humanoid;
@@ -470,6 +527,9 @@ namespace jasperengine::anim{
     JASPERENGINE_API void setLayerMask(AnimationPlayerComponent& player, int layer, const std::string& path, const std::string& who);
     // runtime blend (layer 0: always Override, warned once)
     JASPERENGINE_API void setLayerBlend(AnimationPlayerComponent& player, int layer, AnimationLayerBlend blend, const std::string& who);
+    // authored (docs/specs/mesh-space-rotation.md R17): the layer's meshSpaceRotation (needsLoad
+    // when it changes); kept, and ignored, on layer 0 and on additive layers
+    JASPERENGINE_API void setLayerMeshSpaceRotation(AnimationPlayerComponent& player, int layer, bool enabled);
     // every state of the layer fades out over `fade` (instant when <= 0) and stops; its queue clears
     JASPERENGINE_API void stopLayer(AnimationPlayerComponent& player, int layer, float fade);
     // authored: appends a layer (needsLoad); its index, or -1 when the name is taken or empty
@@ -557,6 +617,7 @@ namespace jasperengine::anim{
         std::vector<std::vector<uint32_t>> humanoidSlots;
         std::vector<std::vector<float>> humanoidMasks;
         std::vector<std::vector<HumanoidOutput>> humanoidReferences;
+        std::vector<std::vector<PoseMeshSource>> meshSources;
         // the root's humanoid rig (masks and humanoid clips)
         std::shared_ptr<HumanoidSlots> humanoid;
         uint64_t humanoidRevision = 0;      // the hierarchy revision it was resolved at

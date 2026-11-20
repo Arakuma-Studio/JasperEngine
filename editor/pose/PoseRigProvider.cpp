@@ -85,6 +85,7 @@ namespace {
         for (const pose::SkeletonBone& bone : skeleton.bones) info.boneNames.push_back(bone.name);
         std::string error;
         const bool valid = pose::resolveHumanoid(skeleton, overrides, info.humanoid, &error, &info.notes);
+        pose::noteSpineProxies(scene, model, info.humanoid, info.notes);
         for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++){
             const pose::HumanBone bone = pose::boneAt(b);
             if (pose::humanBoneInfo(bone).required && info.humanoid.bones[b].empty()){

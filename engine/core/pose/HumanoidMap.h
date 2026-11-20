@@ -46,7 +46,8 @@ namespace jasperengine::pose {
     // at index n / 2, UpperChest = last before the neck. Body-part synonyms match the whole name
     // (minus side tokens: "LeftHandIndex1" is not a hand), except the spine*, neck* and toe*
     // prefixes. Besides the spec's helper tokens (twist, roll, helper, ik, pole, target, end,
-    // nub), finger tokens (index, middle, ring, pinky, little, thumb, finger) are never mapped;
+    // nub), proxy (Unity's Spine Proxy bone) and finger tokens (index, middle, ring, pinky, little,
+    // thumb, finger) are never mapped;
     // "c"/"center"/"centre" tokens are ignored (VRM "J_Bip_C_Hips"); an all-lower-case name
     // starting with "left"/"right" counts as sided ("leftarm"). Neck and head must descend from
     // the hips (head from the neck when there is one). When a mapped shoulder or upper arm
@@ -67,6 +68,11 @@ namespace jasperengine::pose {
     // The name normalisation of the auto-detect, exposed for tests and tools: lower-case tokens
     // after stripping namespaces and rig prefixes and splitting camelCase/separators/digits.
     JASPERENGINE_API std::vector<std::string> humanoidNameTokens(const std::string& boneName);
+    // The auto-detect's reading of one name: true for a hips or spine-chain bone (hips, pelvis,
+    // spine*, chest, upper chest, torso, after the same stripping: "B-hips", "mixamorig:Spine1"),
+    // never for a proxy or helper. The torso test of rigs without a humanoid map (the Mesh Space
+    // Rotation warnings).
+    JASPERENGINE_API bool isTorsoBoneName(const std::string& boneName);
 
 }
 
