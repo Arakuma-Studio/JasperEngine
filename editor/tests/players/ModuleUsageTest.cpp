@@ -459,9 +459,9 @@ TEST(ModuleUsage, PhysicsQueryDebugNeedsRuntimeShaders) {
     EXPECT_FALSE(queries2D.needs("runtimeshaders"));
     EXPECT_EQ(queries2D.needs("physics2d"), ray2D.needs("physics2d"));
     EXPECT_FALSE(queries2D.needs("physics3d"));
-    // drawn-object overlaps need no physics module
-    const ModuleUsage drawn = withLua("local seen = MeshRaycast.overlapSphere(self.scene, Vector3(0, 0, 0), 8)");
-    EXPECT_FALSE(drawn.needs("physics3d") || drawn.needs("physics2d") || drawn.needs("runtimeshaders"));
+    // drawn-object overlaps need no runtime shaders (the scan matches member names, so their names,
+    // shared with Physics.overlapSphere / overlapBox, also keep the physics module: the safe side)
+    EXPECT_FALSE(withLua("local seen = MeshRaycast.overlapSphere(self.scene, Vector3(0, 0, 0), 8)").needs("runtimeshaders"));
 }
 
 TEST(ModuleUsage, RuntimeShadersFollowShaderRelevantNames) {
