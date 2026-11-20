@@ -40,6 +40,9 @@ namespace jasperengine::editor {
         std::string m_ffmpegOverride;
         // S30: the shipping tools (AppSettings external tool paths) and the installed player runtimes
         std::map<std::string, std::string> m_toolPaths;
+        // Preferences > External Tools > adb: where it was found for the path shown (looked up on change)
+        std::string m_adbChecked = "\x01";
+        std::string m_adbFound;
         std::vector<PlayerInfo> m_playerRuntimes;
         std::string m_playerRuntimeStatus;
         std::string m_ffmpegStatus;

@@ -55,6 +55,13 @@ namespace jasperengine::player {
         // publish prepare copies into the release's symbols/; empty for a prebuilt build, whose
         // player runtime holds its own
         std::string symbols;
+        // the Build Profile of the build ("" none: absent from the file)
+        std::string buildProfile;
+        // Patch And Run (docs/specs/build-and-run-on-device.md R8): which patch of a development
+        // content folder this is (0: packaged content, absent from the file) and when it was
+        // pushed (ISO 8601 UTC, "" none)
+        int patch = 0;
+        std::string patchedAt;
 
         nlohmann::json toJson() const;
         static bool fromJson(const nlohmann::json& json, ContentManifest& out, std::string& error);

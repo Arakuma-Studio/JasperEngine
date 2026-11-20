@@ -75,6 +75,8 @@ namespace jasperengine::editor::mcp {
     void registerDocsTools(McpRegistry& registry);
     void registerBuildTools(McpRegistry& registry);
     void registerPublishTools(McpRegistry& registry);   // S30
+    // BuildProfileTools.cpp: edit_build_profile (build-profiles), registered with the publish tools
+    void registerBuildProfileTools(McpRegistry& registry);
     void registerWorldTools(McpRegistry& registry);
     // spatial-queries: query_physics (PhysicsQueryTools.cpp)
     void registerPhysicsQueryTools(McpRegistry& registry);
@@ -115,6 +117,7 @@ namespace jasperengine::editor::mcp {
     void registerDeviceTools(McpRegistry& registry);
     void registerScriptingTools(McpRegistry& registry);
     void registerGraphTools(McpRegistry& registry);
+    void registerLocalizationTools(McpRegistry& registry);   // game-ui-localization.md (LocalizationTools.cpp): edit_string_table
     void registerTerrainGenerationTools(McpRegistry& registry);
     void registerProceduralMaterialTools(McpRegistry& registry);
     void registerGameplayTools(McpRegistry& registry);
@@ -129,6 +132,8 @@ namespace jasperengine::editor::mcp {
     void registerEditorToolsTools(McpRegistry& registry);
     // S80: diff_images (editor_tools) and the title_art group
     void registerImageDiffTools(McpRegistry& registry);
+    // project-test-runner: run_tests (group testing)
+    void registerTestTools(McpRegistry& registry);
     void registerTitleArtTools(McpRegistry& registry);
     void registerHubTools(McpRegistry& registry);
 

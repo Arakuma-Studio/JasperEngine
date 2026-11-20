@@ -69,6 +69,7 @@
 #include "component/SortingGroupComponent.h"
 #include "component/SpriteBatchComponent.h"
 #include "component/HitStopExemptComponent.h"
+#include "component/SimulationCullingComponent.h"
 #include "component/GridComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/TilemapCollider2DComponent.h"
@@ -238,6 +239,8 @@ EntityRegistry::EntityRegistry() {
     registerComponent<TilemapCollider2DComponent>(ComponentOrder::Insertion, "TilemapCollider2DComponent");
     // S81 R58: after the last one, so no ComponentType moves
     registerComponent<TitleArtRendererComponent>(ComponentOrder::Insertion, "TitleArtRendererComponent");
+    // culling-group-and-simulation-distance R10: after the last one, so no ComponentType moves
+    registerComponent<SimulationCullingComponent>(ComponentOrder::Insertion, "SimulationCullingComponent");
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
     liveRegistries().push_back(this);

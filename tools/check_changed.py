@@ -116,6 +116,10 @@ CI_SUITE_GUARD_TRIGGERS = ("tools/mcp/tests/test_*.py", "tools/mcp/run_tests.py"
 # The lint reads every engine source but the vendored libraries, the tests and the IDE projects
 EVENT_CLEARS_LINT = "tools/check_event_clears.py"
 EVENT_CLEARS_SKIPPED = ("engine/libs/", "engine/tests/", "engine/workspaces/")
+# render code changes: no string literal names a GPU vendor or renderer (a workaround is a GPU quirk)
+GPU_VENDOR_LINT = "tools/check_gpu_vendor_branches.py"
+GPU_VENDOR_TRIGGERS = ("engine/renders/*", "engine/core/render/*", "engine/shaderlib/*", "engine/core/device/gpu_tiers.json",
+                       GPU_VENDOR_LINT, "tools/gpu_vendor_branches_allowlist.txt")
 # the engine with every optional module off: a header's include can reach a source only through a
 # module's code, and the editor's engine, which has them all, never shows it
 MODULES_OFF_CHECK = "tools/check-physics-off.sh"
@@ -330,6 +334,8 @@ def plan_builds(files: list[str], plan: Plan) -> None:
         holds_events = f.startswith("engine/") and f.endswith(CXX) and not f.startswith(EVENT_CLEARS_SKIPPED)
         if (holds_events or f == EVENT_CLEARS_LINT) and EVENT_CLEARS_LINT not in plan.self_tests:
             plan.self_tests.append(EVENT_CLEARS_LINT)
+        if match(f, GPU_VENDOR_TRIGGERS) and GPU_VENDOR_LINT not in plan.self_tests:
+            plan.self_tests.append(GPU_VENDOR_LINT)
     # engine code may call a required-reason API the Apple privacy manifest must declare
     if any(f.startswith("engine/") and f.endswith(CXX) for f in files) or "engine/workspaces/xcode/ios/PrivacyInfo.xcprivacy" in files:
         if APPLE_PRIVACY_CHECK not in plan.self_tests:

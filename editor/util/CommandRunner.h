@@ -52,6 +52,11 @@ namespace jasperengine::editor {
         // metacharacters is one literal argument. timeoutMs > 0: the process is terminated after
         // that long and "" returned (a GUI program asked for --version may never answer).
         static std::string capture(const std::vector<std::string>& argv, int timeoutMs = 0);
+        // capture() whatever the exit code: the output lines (stdout and stderr, '\n' after each) in
+        // `output`, and the exit code, -1 when it did not start, ended by a signal or ran past
+        // timeoutMs (then terminated). The device tools' calls (adb, simctl), whose failures say why.
+        static int captureResult(const std::vector<std::string>& argv, std::string& output, int timeoutMs = 0,
+                                 const Environment* environment = nullptr);
 
         // Starts `exe` (no arguments) detached in workingDir: no shell, its own session / process
         // group, stdin/stdout/stderr on the null device, no other descriptor or handle inherited,
@@ -68,6 +73,9 @@ namespace jasperengine::editor {
         // Held around every fork / posix_spawn the editor does (see makeCloexecPipe)
         static std::mutex& spawnMutex();
 #endif
+
+        // The process run() is running now (0 when none): Build And Run's host player capture
+        long processId();
 
         // Request cancellation and terminate the running process (if any).
         void cancel();

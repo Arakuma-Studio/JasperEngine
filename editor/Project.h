@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "subsystem/GamepadCursor.h"
 #include "terrain/TerrainQuality.h"
 #include "window/GameResolutions.h"
 #include "Scene.h"
@@ -44,7 +45,9 @@
 #include "texture/TextureImportSettings.h"
 #include "titleart/TitleArtSettings.h"
 #include "pixelart/PixelArtSettings.h"
+#include "export/SizeBudget.h"
 #include "model/ModelImportSettings.h"
+#include "SaveGameSettings.h"
 #include "vcs/VcsTypes.h"
 #include "util/PlatformRules.h"
 #include "util/ApplePrivacy.h"
@@ -679,27 +682,35 @@ namespace jasperengine::editor{
         bool keepScreenOn = true;
         // -1 = the platform's rate
         int targetFrameRate = -1;
+        // Engine.onPauseRequested on a focus loss, an app pause or the gamepad's disconnect while no menu shows
+        bool pauseOnFocusLoss = false;
 
         // the allowed set with a fixed default in it, never empty
         uint8_t effectiveAllowedOrientations() const;
 
         bool operator==(const PresentationSettings& other) const {
             return defaultOrientation == other.defaultOrientation && allowedOrientations == other.allowedOrientations
-                && keepScreenOn == other.keepScreenOn && targetFrameRate == other.targetFrameRate;
+                && keepScreenOn == other.keepScreenOn && targetFrameRate == other.targetFrameRate
+                && pauseOnFocusLoss == other.pauseOnFocusLoss;
         }
         bool operator!=(const PresentationSettings& other) const { return !(*this == other); }
     };
 
-    // Project Settings > Localization (docs/specs/S87-title-localisation-interchange.md R64, D3):
-    // the languages the game ships (empty: every language of every title) and the default one ("":
-    // the first of `languages`, else "en"); names a later project-wide localisation reuses
+    // Project Settings > Localization (docs/specs/S87-title-localisation-interchange.md R64, D3;
+    // game-ui-localization.md R6, R14, R30): the languages the game ships (empty: every language of
+    // every String Table and title) and the default one ("": the first of `languages`, else "en");
+    // whether the game remembers the player's choice, and fonts per language (HTML and Text fallbacks)
     struct LocalizationSettings {
         std::vector<std::string> languages;     // BCP 47, canonical case
         std::string defaultLanguage;
+        bool rememberChoice = true;
+        std::map<std::string, std::vector<std::string>> fonts;     // language -> font asset paths
 
         // the default with its fallbacks applied ("" -> the first language, else "en")
         std::string effectiveDefault() const { return !defaultLanguage.empty() ? defaultLanguage : !languages.empty() ? languages.front() : "en"; }
-        bool operator==(const LocalizationSettings& other) const { return languages == other.languages && defaultLanguage == other.defaultLanguage; }
+        bool operator==(const LocalizationSettings& other) const {
+            return languages == other.languages && defaultLanguage == other.defaultLanguage && rememberChoice == other.rememberChoice && fonts == other.fonts;
+        }
         bool operator!=(const LocalizationSettings& other) const { return !(*this == other); }
     };
 
@@ -882,10 +893,14 @@ namespace jasperengine::editor{
         bool hangWatchdog = true;        // Development Builds: the main-thread hang watchdog
         int hangSeconds = 5;             // its threshold
         bool webCrashOverlay = true;     // Web: "The game stopped working. [Reload]"
+        static constexpr int maxJournalKiB = 256;
+        int journalKiB = 32;             // the Gameplay Journal's ring (0: off)
+        bool journalEngineEvents = true; // the engine's own engine.* journal entries
 
         bool operator==(const PlayerCrashSettings& other) const {
             return enabled == other.enabled && includeLogTail == other.includeLogTail && dumpWithHeap == other.dumpWithHeap &&
-                   hangWatchdog == other.hangWatchdog && hangSeconds == other.hangSeconds && webCrashOverlay == other.webCrashOverlay;
+                   hangWatchdog == other.hangWatchdog && hangSeconds == other.hangSeconds && webCrashOverlay == other.webCrashOverlay &&
+                   journalKiB == other.journalKiB && journalEngineEvents == other.journalEngineEvents;
         }
     };
 
@@ -964,6 +979,7 @@ namespace jasperengine::editor{
         // Input: the actions asset Play and the game start with (project-relative, empty for
         // none) and the deadzone of AXIS and VECTOR2 actions without their own
         std::filesystem::path inputActionsAsset;
+        GamepadCursorSettings gamepadCursorSettings;
         float inputDeadzone = 0.15f;
         // Pixel Art: the palette used where none is named (S43 R4b), project-relative, empty for none
         std::filesystem::path defaultPalette;
@@ -1051,6 +1067,8 @@ namespace jasperengine::editor{
         // Project Settings > Player > Strip Engine Code (docs/specs/S34-player-size.md R7): builds leave
         // out the engine modules the project cannot reach (export: stripEngineCode, default on)
         bool stripEngineCode = true;
+        std::vector<SizeBudgetRow> sizeBudgets;
+        bool sizeBudgetFail = false;
         // Project Settings > Player > Publishing Settings > Target Platforms: a bit per BuildPlatform
         // (export: targetPlatforms, written when not all six), never empty
         uint8_t targetPlatforms = allTargetPlatforms;
@@ -1079,6 +1097,7 @@ namespace jasperengine::editor{
         ParticleQaSettings particleQa;
         procmat::ProcMatQaSettings procMatQa;
         ShaderCreationProjectSettings shaderCreationSettings;
+        SaveGameSettings saveGameSettings;
         AudioSettings audioSettings;
         DebugSettings debugSettings;
         TitleArtProjectSettings titleArtSettings;
@@ -1094,6 +1113,7 @@ namespace jasperengine::editor{
         VoxelProjectSettings voxelSettings;
         SpriteNormalsWindowSettings spriteNormalsSettings;
         bool simulateTouch;
+        std::string inputSchemeOverride = "auto";
         std::vector<GameResolution> customResolutions;
 
         // True while project.yaml holds the only copy of this user's editor state
@@ -1577,6 +1597,8 @@ namespace jasperengine::editor{
         bool hasMissingSceneSources() const;
         void writeMissingSceneSources();
         void configureGenerator();
+        void prepareGenerator(Generator& target, const Project& settings) const;
+        std::vector<SceneBuildInfo> generatorScenes(uint32_t startId, const std::set<uint32_t>& only);
         void saveModifiedChildScenes(uint32_t sceneId, std::function<void(bool)> callback = nullptr);
         bool hasSceneUnsavedChangesImpl(uint32_t sceneId, std::unordered_set<uint32_t>& visited) const;
         void saveSceneListSequentially(std::vector<uint32_t> sceneIds, std::function<bool(uint32_t)> needsSave, std::function<void(bool)> callback);
@@ -1637,6 +1659,11 @@ namespace jasperengine::editor{
         // see getInspectedAsset()
         std::filesystem::path inspectedAsset;
         SceneProject* materialAssetScene = nullptr;
+        // A build's settings snapshot (makeSettingsSnapshot): its setters keep their values and
+        // apply nothing to the engine, the editor or the files of the project it was made from
+        bool settingsSnapshot = false;
+        struct SettingsSnapshotTag {};
+        explicit Project(SettingsSnapshotTag);
 
     public:
         // The files a registry's components reference, for SceneManager::preloadScene() (the
@@ -1701,6 +1728,16 @@ namespace jasperengine::editor{
         ~Project();
         Project(const Project&) = delete;
         Project& operator=(const Project&) = delete;
+
+        // The settings of `source` as project.yaml holds them, in a Project of its own (Build
+        // Profiles R14): decoded from Stream::encodeProject without its scenes, so no scene opens,
+        // no asset is scanned and nothing is watched. Its setters change only it: a build applies a
+        // profile's overrides here, and the open project, its file and the engine stay as they are.
+        static std::shared_ptr<Project> makeSettingsSnapshot(Project& source);
+        bool isSettingsSnapshot() const { return settingsSnapshot; }
+        // A Compile build's main.cpp (Build Profiles): the init of `settings` (a profile's snapshot),
+        // the scenes of `sceneIds` registered (empty: every scene) and `startId` loaded first. Writes nothing.
+        std::string buildMainSource(const Project& settings, const std::set<uint32_t>& sceneIds, uint32_t startId);
 
         // ---- The project's shader list (docs/specs/S64-shader-lists.md). One source for an export,
         // generate_shaders, get_build_info, Play's startup and the Build Settings window:
@@ -1837,6 +1874,9 @@ namespace jasperengine::editor{
         std::string getInputActionsEnginePath() const;
         void setInputDeadzone(float deadzone);
         float getInputDeadzone() const;
+        // Project Settings > Input > Gamepad Cursor (GamepadCursor's defaults at Play and in the game)
+        void setGamepadCursorSettings(const GamepadCursorSettings& settings);
+        const GamepadCursorSettings& getGamepadCursorSettings() const;
 
         // MSAA samples of the HTML UI targets (1, 2, 4 or 8; others round down to one of
         // them), applied to the editor's documents at once and written into exports
@@ -2148,6 +2188,11 @@ namespace jasperengine::editor{
         void setPackContent(bool enabled) { packContent = enabled; }
         bool isStripEngineCode() const { return stripEngineCode; }
         void setStripEngineCode(bool enabled) { stripEngineCode = enabled; }
+        // Publishing Settings > Size Budgets (build-size-tools R12): the rows, and When Over Budget (false: warn)
+        const std::vector<SizeBudgetRow>& getSizeBudgets() const { return sizeBudgets; }
+        void setSizeBudgets(const std::vector<SizeBudgetRow>& rows) { sizeBudgets = rows; }
+        bool isSizeBudgetFail() const { return sizeBudgetFail; }
+        void setSizeBudgetFail(bool fail) { sizeBudgetFail = fail; }
         // Target Platforms: where the game ships. Build Settings, build_project and get_build_info default
         // to them; any platform still builds. 0 sets all six (a game has a target)
         static constexpr uint8_t allTargetPlatforms = 0x3F;
@@ -2235,6 +2280,10 @@ namespace jasperengine::editor{
         // to the editor at once, asynchronous creation on its next start; exports bake them in
         const ShaderCreationProjectSettings& getShaderCreationSettings() const;
         void setShaderCreationSettings(const ShaderCreationProjectSettings& settings);
+        // Project Settings > Player > Saved Data: Play's SaveGame store takes them at its next
+        // write (savegame::configure), exports bake them in
+        const SaveGameSettings& getSaveGameSettings() const;
+        void setSaveGameSettings(const SaveGameSettings& settings);
         // the project's shader warm-up list (ShaderWarmup), next to project.yaml
         std::filesystem::path getShaderWarmupPath() const;
         // Stop of a Play that recorded: the run's entries merged into the list file
@@ -2340,6 +2389,14 @@ namespace jasperengine::editor{
         // Play acts as a touch device: the mouse is one finger and isTouchDevice() is true
         bool isSimulateTouch() const;
         void setSimulateTouch(bool simulateTouch);
+        // the Game view's Input Scheme: "auto" (what the player last used) or a forced
+        // "keyboard_mouse", "gamepad" or "touch": set at Play start, at once during Play, cleared at
+        // Play stop (InputSchemeTracker::setOverride). Workspace state, never in builds. False
+        // for another name
+        const std::string& getInputSchemeOverride() const;
+        bool setInputSchemeOverride(const std::string& scheme);
+        // the override above into the running game (Play start)
+        void applyInputSchemeOverride() const;
         // the Game view's custom resolutions (editor workspace, this user's)
         const std::vector<GameResolution>& getCustomResolutions() const;
         void setCustomResolutions(const std::vector<GameResolution>& resolutions);
@@ -3474,6 +3531,8 @@ namespace jasperengine::editor{
 
         void start(uint32_t sceneId);
         void pause(uint32_t sceneId);
+        // the Gameplay Journal's engine.play entry (start, pause, resume, stop)
+        void journalPlay(const char* playState);
         void resume(uint32_t sceneId);
         void stop(uint32_t sceneId);
         void stopActivePlay();

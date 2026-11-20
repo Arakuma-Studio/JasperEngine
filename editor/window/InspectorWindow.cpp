@@ -11933,6 +11933,11 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
     RowSettings interactiveSettings;
     interactiveSettings.help = "Receives pointer, keyboard and text input. Off: the game gets every event.";
 
+    RowSettings menuSettings;
+    menuSettings.help = "Back goes here first; opening it releases the game's held input; Pause On Focus Loss does not fire while it shows.";
+    RowSettings cursorSettings;
+    cursorSettings.help = "While the player uses a gamepad, the stick moves a pointer over this document.";
+
     RowSettings modeSettings;
     modeSettings.enumEntries = &entriesUIDocumentRenderMode;
     modeSettings.help = "Screen: drawn over the scene. Texture: rendered into a texture that a material, Mesh or Image shows.";
@@ -12076,6 +12081,8 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
 
     propertyRow(RowPropertyType::Int, cpType, "sortOrder", "Sort Order", sceneProject, entities, sortSettings);
     propertyRow(RowPropertyType::Bool, cpType, "interactive", "Interactive", sceneProject, entities, interactiveSettings);
+    propertyRow(RowPropertyType::Bool, cpType, "isMenu", "Is Menu", sceneProject, entities, menuSettings);
+    propertyRow(RowPropertyType::Bool, cpType, "gamepadCursor", "Gamepad Cursor", sceneProject, entities, cursorSettings);
     propertyRow(RowPropertyType::Enum, cpType, "renderMode", "Render Mode", sceneProject, entities, modeSettings);
     if (document.renderMode == UIDocumentRenderMode::TEXTURE) {
         propertyRow(RowPropertyType::Int, cpType, "textureWidth", "Texture Width", sceneProject, entities, sizeSettings);

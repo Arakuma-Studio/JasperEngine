@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "UISystem.h"
+#include "localization/Localization.h"
 #include "component/ActionComponent.h"
 #include "component/TweenComponent.h"
 #include "component/ButtonComponent.h"
@@ -9,6 +10,7 @@
 #include "component/CanvasGroupComponent.h"
 #include "component/ImageComponent.h"
 #include "component/InputFieldComponent.h"
+#include "input/TextEntry.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "component/PanelComponent.h"
@@ -284,8 +286,20 @@ std::string UISystem::getFontId(const TextComponent& text) const{
     return getFontId(text, getTextOptions(text));
 }
 
+namespace {
+
+    // game-ui-localization.md R14: a Text without a font uses the game language's first font
+    std::string primaryFontOf(const TextComponent& text){
+        if (!text.font[0].empty() || !Localization::isActive())
+            return text.font[0];
+        const std::vector<std::string> fonts = Localization::getLanguageFonts(Localization::getLanguage());
+        return fonts.empty() ? std::string() : fonts.front();
+    }
+
+}
+
 std::string UISystem::getFontId(const TextComponent& text, const STBTextOptions& options) const{
-    std::string fontId = text.font[0];
+    std::string fontId = primaryFontOf(text);
     if (fontId.empty())
         fontId = "font";
 
@@ -355,9 +369,10 @@ bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, RectTransform
                 fallbacks.push_back(text.font[i]);
         }
 
-        text.stbtext = FontPool::get(fontId, text.font[0], fallbacks, text.fontSize, options);
+        const std::string primary = primaryFontOf(text);
+        text.stbtext = FontPool::get(fontId, primary, fallbacks, text.fontSize, options);
         if (!text.stbtext) {
-            Log::error("Cannot load font atlas from: %s", text.font[0].c_str());
+            Log::error("Cannot load font atlas from: %s", primary.c_str());
             return false;
         }
     }
@@ -1649,6 +1664,10 @@ bool UISystem::handleInputFieldCharInput(InputFieldComponent& inputfield, TextCo
         if (text.maxTextSize > 0 && currentCount - selectionSize + insertCount > text.maxTextSize){
             return true;
         }
+        // Character Limit: typing and pasting stop there (pasted text arrives a character at a time)
+        if (inputfield.characterLimit > 0 && currentCount - selectionSize + insertCount > static_cast<size_t>(inputfield.characterLimit)){
+            return true;
+        }
 
         if (inputFieldHasSelection(inputfield)){
             inputFieldDeleteSelection(inputfield, text);
@@ -2756,6 +2775,21 @@ void UISystem::createOrUpdateUiComponent(RectTransformComponent& layout, Entity 
 
             if (noGeometry) text.needUpdateText = true;
 
+            // game-ui-localization.md R14, R16: the key's message and the language font, at start
+            // and after each change of language or tables
+            if ((!text.textKey.empty() || text.font[0].empty()) && text.localizationGeneration != Localization::getGeneration()){
+                text.localizationGeneration = Localization::getGeneration();
+                std::string message;
+                // a running scene only: an edit-mode scene keeps the authored text it saves
+                if (!text.textKey.empty() && Engine::isSceneRunning(scene) && Localization::translate(text.textKey, text.textArgs, message, "Text " + std::to_string(entity)) &&
+                        message != text.text){
+                    text.text = message;
+                    text.needUpdateText = true;
+                }
+                if (text.font[0].empty() && text.loaded)
+                    text.needReloadAtlas = true;
+            }
+
             // a Text Effect needs a colour per vertex: another buffer layout and shader variant
             const bool vertexColor = scene->findComponent<TextEffectComponent>(entity) != nullptr;
             if (text.vertexColor != vertexColor){
@@ -3573,6 +3607,40 @@ bool UISystem::isInputFieldFocused(){
             if (ui.focused){
                 return true;
             }
+        }
+    }
+    return false;
+}
+
+TextEntryTraits UISystem::inputFieldTraits(const InputFieldComponent& inputfield){
+    TextEntryTraits traits;
+    switch (inputfield.keyboardType){
+        case InputFieldKeyboardType::NUMBER_PAD: traits.keyboard = KeyboardType::Number; break;
+        case InputFieldKeyboardType::DECIMAL_PAD: traits.keyboard = KeyboardType::Decimal; break;
+        case InputFieldKeyboardType::PHONE_PAD: traits.keyboard = KeyboardType::Phone; break;
+        case InputFieldKeyboardType::EMAIL_ADDRESS: traits.keyboard = KeyboardType::Email; break;
+        case InputFieldKeyboardType::URL: traits.keyboard = KeyboardType::Url; break;
+        case InputFieldKeyboardType::SEARCH:
+            traits.keyboard = KeyboardType::Search;
+            traits.enterKey = EnterKey::Search;
+            break;
+        case InputFieldKeyboardType::DEFAULT: break;
+    }
+    traits.secure = inputfield.password;
+    traits.maxLength = inputfield.characterLimit > 0 ? inputfield.characterLimit : -1;
+    return traits;
+}
+
+bool UISystem::getTypingInputFieldTraits(TextEntryTraits& traits) const{
+    auto inputfields = scene->getComponentArray<InputFieldComponent>();
+    for (size_t i = 0; i < inputfields->size(); i++){
+        const Entity entity = inputfields->getEntity(i);
+        const Signature signature = scene->getSignature(entity);
+        if (!signature.test(scene->getComponentId<UIComponent>()))
+            continue;
+        if (scene->getComponent<UIComponent>(entity).focused && isUIActive(entity, signature) && isInteractable(entity)){
+            traits = inputFieldTraits(inputfields->getComponentFromIndex(i));
+            return true;
         }
     }
     return false;

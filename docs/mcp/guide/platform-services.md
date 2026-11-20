@@ -112,6 +112,8 @@ Screen.orientation = ScreenOrientation.AutoRotation
 | `Engine.isFocused` | Unity's `Application.isFocused`; `true` at start |
 | `Engine.onFocus` `(hasFocus)` | the app is frontmost and gets input, or something covers it (a system dialog, the notification shade, another window) |
 | `Engine.onPause`, `Engine.onResume` | the app goes to the background and comes back |
+| `Engine.onPauseRequested` `(reason)` | Project Settings > Player > Pause On Focus Loss on and no Is Menu document showing: once after `onFocus(false)` (`"focus_lost"`), after an `onPause` no focus loss announced (`"app_paused"`), after the disconnect of the pad that holds the Gamepad scheme (`"gamepad_disconnected"`). Open the pause menu there; the engine changes no time scale. On without a subscriber: one warning at Play start |
+| `Engine.onBack` `(source)`, `Engine.isMenuShowing()` | Back (Android's Back button, Escape, gamepad B) that no menu document took; whether an Is Menu document shows (jasper://docs/html-ui "Back and menus") |
 | `Engine.onLowMemory` | the system is short of memory (Android, iOS): free caches |
 | `Device.onLowMemory` | the next frame, after the engine cleared its own caches (Android `onTrimMemory`, iOS, the web's heap heuristic; jasper://docs/device) |
 | `Device.thermalState`, `Device.onThermalStateChanged` `(state)` | the platform's thermal state (`ThermalState`; Android, iOS and macOS report one) |
@@ -186,6 +188,7 @@ function Music:onVisibilityChanged(visible) self.sound.volume = visible and 1 or
 | `System.getDeviceModel()`, `getDeviceType()` | `SystemInfo.deviceModel`, `deviceType` | `"Google Pixel 8"`, `"iPhone16,1"`; `DeviceType.Handheld` / `Desktop` |
 | `System.getSystemMemorySize()`, `getProcessorCount()` | `systemMemorySize`, `processorCount` | MiB (0 unknown), logical CPUs |
 | `System.isEditor()` | `Application.isEditor` | true only in editor Play |
+| `System.getBuildProfile()`, `isDefined(symbol)`, `getDefines()`, `getBuildInfo()` | Build Profiles, `#if` defines | the build's Build Profile (`""` none; Play: the active one) and its Scripting Define Symbols; `getBuildInfo()` is `{profile, defines, development, contentPatch, contentPatched}` (the Patch And Run patch a development player runs: 0/false for packaged content and in Play). Values, not a preprocessor: the code behind them ships |
 | `System.getInternetReachability()` | `Application.internetReachability` | says a network is there, not that a server answers. Android adds `ACCESS_NETWORK_STATE` to the export when a script calls it |
 | `System.vibrate([ms])` | `Handheld.Vibrate` | 400 ms by default; iOS ignores the length; `false` without a vibrator. Android adds `VIBRATE` to the export when a script calls it |
 | `System.hapticFeedback(HapticFeedback.X)` | (iOS feedback generators) | `Light`, `Medium`, `Heavy`, `Selection`, `Success`, `Warning`, `Error`; Android haptic constants, web vibration patterns, Force Touch trackpads |

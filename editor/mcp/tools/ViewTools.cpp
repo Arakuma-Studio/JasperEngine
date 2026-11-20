@@ -50,6 +50,7 @@
 #include "pool/ShaderPool.h"
 #include "pool/TextureDataPool.h"
 #include "render/SystemRender.h"
+#include "subsystem/CullingSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -66,6 +67,7 @@
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
 #include "window/JobsMemoryWindow.h"
+#include "window/CrashReportsWindow.h"
 #include "window/profiler/FrameDebuggerWindow.h"
 #include "window/profiler/ProfilerWindow.h"
 #include "window/PlayModeChangesWindow.h"
@@ -1774,6 +1776,9 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "jobs_memory") {
         app.getJobsMemoryWindow()->setOpen(true);
         imguiName = JobsMemoryWindow::WINDOW_NAME;
+    } else if (window == "crash_reports") {
+        app.getCrashReportsWindow()->setOpen(true);
+        imguiName = CrashReportsWindow::WINDOW_NAME;
     } else if (window == "profiler") {
         ProfilerWindow* profiler = app.getProfilerWindow();
         profiler->setOpen(true);
@@ -1818,7 +1823,7 @@ void focusWindowTool(const CallPtr& call) {
         if (!focusTitleDesigner(call, app.getTitleDesignerWindow())) return;
     } else {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, animator, particle_effect, pose_animation, terrain, mcp, "
-                   "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
+                   "systems, jobs_memory, crash_reports, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
                    "vertex_animation_baker, sprite_normals, pixel_art_cleanup, title_designer, graph_editor.");
         return;
     }
@@ -1939,6 +1944,14 @@ void configureGameViewTool(const CallPtr& call) {
         }
         changed.push_back("simulate_touch");
     }
+    if (args.contains("input_scheme")) {
+        // forced from the next frame during Play, else at Play start
+        if (!GameWindow::chooseInputScheme(project, args.value("input_scheme", ""))) {
+            call->fail("input_scheme must be auto, keyboard_mouse, gamepad or touch.");
+            return;
+        }
+        changed.push_back("input_scheme");
+    }
     static const std::vector<std::string> atmosphereNames = {"project", "off", "low", "medium", "high"};
     if (args.contains("atmosphere_quality")) {
         const std::string quality = args.value("atmosphere_quality", "");
@@ -2003,6 +2016,12 @@ void configureGameViewTool(const CallPtr& call) {
     if (args.contains("physics_debug_queries")) {
         Physics::setDebugDrawQueries(args.value("physics_debug_queries", false));
         changed.push_back("physics_debug_queries");
+    }
+    // the Game view's Culling toggle: Simulation Culling and Culling Group spheres, every playing scene
+    if (args.contains("culling_debug")) {
+        settings.cullingDebug = args.value("culling_debug", false);
+        CullingSystem::setDebugDraw(settings.cullingDebug);
+        changed.push_back("culling_debug");
     }
     if (args.contains("network")) {
         const std::string network = args.value("network", "");
@@ -2159,12 +2178,14 @@ void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& 
         {"maximized", gw->isMaximizedNow()},
         {"show_stats", settings.showStats},
         {"simulate_touch", project->isSimulateTouch()},
+        {"input_scheme", project->getInputSchemeOverride()},
         {"simulate_textures", textureFamilyName(TextureCookQueue::get().getViewFamily())},
         {"atmosphere_quality", std::vector<std::string>{"project", "off", "low", "medium", "high"}[(size_t)std::clamp(settings.atmosphereQuality + 1, 0, 4)]},
         {"physics_debug", Physics::isDebugDraw()},
         {"physics_debug_contacts", Physics::isDebugDrawContacts()},
         {"physics_debug_queries", Physics::isDebugDrawQueries()},
         {"physics_debug_lines", physicsDebugLines},
+        {"culling_debug", CullingSystem::isDebugDraw()},
         {"network", Http::isOfflineSimulated() ? "offline" : "online"},
         {"open", gw->isOpen()},
         {"visible", gw->isVisible()},
@@ -2191,6 +2212,10 @@ void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& 
         const CustomDeviceSettings& c = settings.custom;
         data["custom_device"] = {{"width", c.width}, {"height", c.height}, {"corner_radius", c.cornerRadius},
                                  {"dpi", c.dpi}, {"insets", {{"top", c.top}, {"right", c.right}, {"bottom", c.bottom}, {"left", c.left}}}};
+    }
+    if (std::find(changed.begin(), changed.end(), "culling_debug") != changed.end() && CullingSystem::isDebugDraw()) {
+        data["next"] = "screenshot the Game view while playing: green spheres simulate, yellow run at the reduced rate, "
+                       "red are culled by distance, grey by unloaded ground; cyan / dark blue are Culling Group spheres in / out of view.";
     }
     call->ok(std::string(changed.empty() ? "Game view settings: " : "Updated the Game view: ") + data.dump(), data);
 }
@@ -2315,7 +2340,7 @@ void registerViewTools(McpRegistry& registry) {
             "pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "particle_effect", "pose_animation",
-                                       "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
+                                       "terrain", "mcp", "systems", "jobs_memory", "crash_reports", "profiler", "frame_debugger", "preferences",
                                        "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals",
                                        "pixel_art_cleanup", "title_designer", "graph_editor"})},
             {"scene", sceneRef("window scene: whose tab.")},
@@ -2361,7 +2386,7 @@ void registerViewTools(McpRegistry& registry) {
         tool.description =
             "Read (no args) or change the Game view toolbar (editor preferences, not undoable): aspect (project = "
             "the canvas size), resolution (the game and screenshots render at it), a simulated "
-            "device, orientation and language (editor only; safe_area is Screen.safeArea). Options: jasper://docs/ui.";
+            "device, orientation, language (editor only), the input scheme forced at Play start. Options: jasper://docs/ui.";
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
             {"scale", number("", 1, 5)},
@@ -2369,15 +2394,17 @@ void registerViewTools(McpRegistry& registry) {
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
             {"simulate_touch", boolean("")},
+            {"input_scheme", stringEnum("", {"auto", "keyboard_mouse", "gamepad", "touch"})},
             {"simulate_textures", stringEnum("", {"desktop", "mobile", "android_etc2", "web"})},
             {"atmosphere_quality", stringEnum("", {"project", "off", "low", "medium", "high"})},
             {"physics_debug", boolean("")},
             {"physics_debug_contacts", boolean("")},
             {"physics_debug_queries", boolean("")},
+            {"culling_debug", boolean("")},
             {"network", stringEnum("", {"online", "offline"})},
             {"device", string("Id, custom, none.")},
             {"orientation", stringEnum("", {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"})},
-            {"language", string("es-MX..., or system.")},
+            {"language", string("en-XA..., or system.")},
             {"device_overlay", boolean("")},
             {"safe_area_outline", boolean("")},
             {"custom_device", anyObject("")},

@@ -31,9 +31,10 @@ namespace jasperengine {
         Volumetrics,      // 0: no volumetric fog or clouds (Atmosphere Quality Off)
         TargetFrameRate,  // frames per second at most
         MaxPixelLights,   // per-object lights at most
-        ParticleBudget    // live particles at most
+        ParticleBudget,   // live particles at most
+        SimulationDistance // multiplies every Simulation Culling distance (0.25..1)
     };
-    constexpr int DEVICE_OVERRIDE_COUNT = 14;
+    constexpr int DEVICE_OVERRIDE_COUNT = 15;
 
     struct DeviceOverrideInfo {
         enum class Kind { Cap, Multiplier, AtLeast, Off };

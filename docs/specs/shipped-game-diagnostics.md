@@ -497,4 +497,43 @@ Unit tests: `engine/tests/core/diag/JournalTest.cpp` (new file, suite `Journal`,
 
 ## Deviations
 
-None yet.
+- **D5 `Field`** has a third member, `verbatim`: Lua's other types are written as `<table>`,
+  `<function>` (R2) without quotes, which a plain string value would get.
+- **R1** A ring smaller than four whole entries (1028 bytes) is rounded up to that, so Gameplay
+  Journal (KiB) = 1 allocates 1028 bytes. `configure` replaces the ring until `crash::install`
+  took it (the unit tests set a ring per test); afterwards it is ignored.
+- **R9** The editor's `engine.play` also writes `state=resume` (AC7 pauses and resumes; a journal
+  with a pause and no resume reads wrong).
+- **R34** The Console's message drops the frame too (`test.kind a=1`, as AC9 reads it): the Console
+  records each line's frame itself.
+  An exported game has no version the engine knows (`crash.txt` writes `version: unknown` too),
+  so its `engine.start` says `version=unknown`.
+- **R11/R13** `maxWidth` and `maxBytes` are the second argument of `Crash.beginReport(fn,
+  {maxWidth, maxBytes})`: the capture is encoded before `createReport` runs, so `createReport`
+  takes no such options. A capture that fails runs `fn(false, err)` on the frame after, as a
+  successful one does.
+- **R14** No `perf.json`: the Performance sampler of release-performance-and-gpu-quirks.md is not
+  in this tree; that spec adds the file to `UserReportContent` when it lands. `gpu_driver` is `""`
+  and `gpu_quirks` `[]` in `device.json` until then (R18 says so).
+- **R20** User reports also stay in memory on a native game whose crash handler is off (no report
+  root): the same API works, nothing is written.
+- **R8** `journal.txt` is written beside a hang report only when the journal holds an entry (as R7
+  for crashes).
+- **AC10** The red frame is the scene's background colour (a 2D scene with nothing in it) rather
+  than a sprite; the MCP harness has no JPEG decoder, so the centre is compared with
+  `diff_images` against a red PNG of the JPEG's size. The decode and centre pixel are also checked
+  in `CrashUserGpu` (stb_image).
+- **AC22** The new Stream tests are in the file's existing suite, `StreamProjectCrash`.
+- **R21/R23** Folders holding only `session.json` (an abnormal exit) count as report folders when
+  grouping, as `classify` lists them. A signature joins its parts with `" | "`; an unresolved
+  group's ends in `"| build <id>"` (R22). A hang with no own frame falls back to its stack's first
+  3 frames of any module, as a crash does.
+- **R23/R37** `first_seen` and `last_seen` are the reports' times as `readReport` gives them (the
+  file time of `crash.txt` or the hang report, `user.txt`'s `time`, else the folder name's).
+  `get_crash_reports folder` also takes a crash root that holds `reports/`. The `next` command and
+  the window's Copy Symbolicate Command assume `tools/crash/symbolicate.py` relative to the
+  repository (the editor knows no checkout path).
+- **R35** The Crash Reports window has a **Symbols Folder...** button (the folder Copy
+  Symbolicate Command passes as `--symbols`); its folders are saved per project in
+  `.jasperengine/user/build.yaml` (the editor's per-project user settings). Mark Handled on a
+  group marks every report of it. A binary file (crash.dmp) in a text tab shows a placeholder.

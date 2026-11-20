@@ -228,6 +228,87 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_tests_run_tests",
+        "kind": "guard",
+        "what_happened": "An agent fixed a bug, checked it by playing once and moved on; nothing kept the check. The guide's "
+                         "Other areas names run_tests and jasper://docs/testing, and authoring's Check what you built says to "
+                         "keep the check as a case (project-test-runner R46).",
+        "text_at_issue": "McpInstructions Other areas: 'testing (run_tests)'; authoring.md: 'Keep what you checked: a case in "
+                         "Tests/ and run_tests'.",
+        "source": "docs/specs/project-test-runner.md R46, AC20",
+        "prompt": "The player starts with 2 lives instead of 3 (player.lua). Fix it, and make sure the fix sticks.",
+        "files": {"scripts/player.lua": "local Player = {}\nfunction Player:init()\n    GameState = {lives = 2}\nend\nreturn Player\n",
+                  "Tests/tests.yaml": "version: 1\n"},
+        "mocks": [
+            {"tool": "run_tests", "result": ok(
+                "PASS player.test.lua#Player starts with three lives\n1 passed, 0 failed, 0 skipped.",
+                {"run_id": "20261119-101500-3f2a", "counts": {"total": 1, "passed": 1, "failed": 0, "skipped": 0, "error": 0, "hung": 0,
+                                                              "excluded_edit": 0},
+                 "failures": [], "unverified": {}, "results_file": ".jasperengine/test-results/runs/20261119-101500-3f2a.json"})},
+        ],
+        "checks": {"calls": [{"tool": "run_tests"}]},
+        "max_turns": 14,
+    },
+    {
+        "id": "bad_tests_project_data",
+        "kind": "bad",
+        "what_happened": "A case used data = \"project\" to start from the developer's own save; the run refuses it and the error "
+                         "names the fix (a snapshot) (project-test-runner R20).",
+        "text_at_issue": "TestOptions PROJECT_DATA_REFUSED: 'tests never use the project's Play data: save a snapshot (Game view > "
+                         "Play Data > Save Snapshot...) and use data = \"<name>\"'.",
+        "source": "docs/specs/project-test-runner.md R20, AC20",
+        "prompt": "Run the shop test (Tests/shop.test.lua) and make it pass. It needs the save that has 100 coins, which is in "
+                  "Tests/Data/rich/.",
+        "files": {"Tests/tests.yaml": "version: 1\n", "Tests/Data/rich/progress.json": "{\"coins\": 100}",
+                  "Tests/shop.test.lua": "Test.case(\"Buying a hat costs 50\", {data = \"project\"}, function(t)\n"
+                                         "    Test.waitUntil(function() return Shop end)\n    Test.equal(Shop.buy(\"hat\"), true)\nend)\n"},
+        "mocks": [
+            {"tool": "run_tests", "result": ok(
+                "ERROR shop.test.lua#Buying a hat costs 50  shop.test.lua:1: tests never use the project's Play data: save a snapshot "
+                "(Game view > Play Data > Save Snapshot...) and use data = \"<name>\"\n0 passed, 0 failed, 0 skipped, 1 error.",
+                {"counts": {"total": 1, "passed": 0, "failed": 0, "skipped": 0, "error": 1, "hung": 0, "excluded_edit": 0},
+                 "failures": [{"id": "shop.test.lua#Buying a hat costs 50", "status": "error", "kind": "error",
+                               "message": "tests never use the project's Play data: save a snapshot (Game view > Play Data > Save "
+                                          "Snapshot...) and use data = \"<name>\"", "file": "shop.test.lua", "line": 1, "frame": 0}],
+                 "unverified": {}})},
+        ],
+        "checks": {"file_must": {"Tests/shop.test.lua": [r"data\s*=\s*\"rich\""]},
+                   "file_must_not": {"Tests/shop.test.lua": [r"data\s*=\s*\"project\""]}},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_saved_data_corrupt",
+        "kind": "guard",
+        "what_happened": "Asked to check that a game survives a damaged save, an agent would hand-edit the binary .jsave with "
+                         "write_file (or a shell) and break its own test. user_settings store \"saves\" corrupts the newest "
+                         "generation the way a crash would, as an undo step.",
+        "text_at_issue": "user_settings description: 'store \"saves\": SaveGame slots (key = slot): ... corrupt, restore (generation).'",
+        "source": "docs/specs/savegame.md R37, R43",
+        "prompt": "My game saves its progress in the save slot slot1. Damage that save the way a crash could, so I can check the "
+                  "game recovers from the backup. Don't play the game; just damage it and tell me which file you damaged.",
+        "mocks": [
+            {"tool": "user_settings", "args": {"store": "saves", "action": "list"}, "result": ok(
+                "1 slot in .jasperengine/user/rundata/saves:\nslot1: version 1, 412 bytes, 3 generation(s), ok",
+                {"slots": [{"slot": "slot1", "version": 1, "saved_at": 1795080000.5, "size": 412, "generation": 12, "generations": 3,
+                            "namespaces": ["main"], "meta": None, "requires": None, "status": "ok"}],
+                 "count": 1, "folder": ".jasperengine/user/rundata/saves"})},
+            {"tool": "user_settings", "args": {"store": "saves", "action": "get"}, "result": ok(
+                "slot1/main (version 1, generation 12) = {\"gold\":120,\"level\":\"forest\"}",
+                {"slot": "slot1", "namespace": "main", "value": {"gold": 120, "level": "forest"}, "version": 1, "generation": 12,
+                 "namespaces": ["main"], "meta": None, "requires": None})},
+            {"tool": "user_settings", "args": {"store": "saves", "action": "corrupt"}, "result": ok(
+                "Corrupted slot1.g12.jsave (flip).",
+                {"slot": "slot1", "generation": 12, "mode": "flip",
+                 "next": "Read it in the game (eval_lua \"return SaveGame.read('slot1')\") to see the recovery, or "
+                         "user_settings {store: \"saves\", action: \"get\", key: \"slot1\"}."})},
+            {"tool": "user_settings", "result": err("Unknown action. Valid: list, get, set, delete, clear.")},
+        ],
+        "checks": {"calls": [{"tool": "user_settings", "args": {"store": "saves", "action": "corrupt"}}],
+                   "must_not_call": ["write_file", "delete_asset"], "shell_must_not": [r"\.jsave"],
+                   "reply_must": [r"g12"]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_linked_folder_rules",
         "kind": "guard",
         "what_happened": "A folder linked in from out of the project is a folder of the project for the asset database and exports, "
@@ -1093,6 +1174,38 @@ CASES = [
         "max_turns": 14,
     },
     {
+        "id": "guard_console_command_mode",
+        "kind": "guard",
+        "what_happened": "Asked to run a game's console command, agents wrapped DebugOverlay.executeCommand in eval_lua code and "
+                         "read the console for what happened, missing the command's result (its lines and returned value).",
+        "text_at_issue": "eval_lua parameter command: 'A console command line instead of code (help lists them).'",
+        "source": "docs/specs/dev-console-for-agents.md R25, R30",
+        "prompt": "The game is playing. Give the player 10 gold with the game's own `give` console command, and tell me the "
+                  "player's new gold total that the command reports.",
+        "playing": True,
+        "mocks": [
+            {"tool": "eval_lua", "args": {"command": "re:^give"}, "result": ok(
+                "10 gold\nvalue: 130",
+                {"mode": "play", "command": {"name": "give", "status": "ok", "ok": True, "lines": ["10 gold"], "log": [],
+                                             "value": 130, "cheat": True},
+                 "console": [{"id": 811, "level": "info", "message": "> give gold 10"},
+                             {"id": 812, "level": "info", "message": "[give] 10 gold"}], "next_cursor": 812})},
+            {"tool": "eval_lua", "args": {"command": "re:^help"}, "result": ok(
+                "give - adds gold or gems [g] (cheat)\nhelp - lists the commands",
+                {"mode": "play", "command": {"name": "help", "status": "ok", "ok": True,
+                                             "lines": ["give - adds gold or gems [g] (cheat)", "help - lists the commands"], "log": [],
+                                             "value": [{"name": "give", "usage": "give <item> [count=1]"}], "cheat": False},
+                 "console": [], "next_cursor": 812})},
+            {"tool": "eval_lua", "args": {"code": "re:executeCommand"}, "result": ok(
+                "OK (no return value).\nconsole:\n[info] > give gold 10\n[info] [give] 10 gold",
+                {"mode": "play", "values": [], "printed": [], "console": [{"id": 811, "level": "info", "message": "> give gold 10"},
+                                                                         {"id": 812, "level": "info", "message": "[give] 10 gold"}],
+                 "next_cursor": 812})},
+        ],
+        "checks": {"calls": [{"tool": "eval_lua", "args": {"command": "re:give\\s+gold\\s+10"}}], "reply_must": [r"130"]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_lua_script",
         "kind": "guard",
         "what_happened": "In-editor-era models wrote Lua with self.entity as an object, on_start, getComponent and C++-style "
@@ -1308,6 +1421,73 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "create_ui_document", "args": {"template": "main_menu"}}],
                    "must_not_call": ["create_ui"], "file_must_not": {"assets/ui/main_menu.html": [r"<rml|\.rcss"]}},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_l10n_keyed_html",
+        "kind": "guard",
+        "what_happened": "Without String Tables agents localised a menu with a Lua table per language and a langIndex() per screen "
+                         "(the Craftsman anti-pattern, docs/specs/game-ui-localization.md section 4); the guide's Other areas entry and "
+                         "edit_string_table route them to keys and data-l10n-id.",
+        "text_at_issue": "Guide 'Other areas': 'localization' (jasper://docs/localization); the localization group's "
+                         "description; edit_string_table's description",
+        "source": "docs/specs/game-ui-localization.md R38",
+        "prompt": "The main menu (assets/ui/main_menu.html, a Play button) must also be in German: 'Spielen'.",
+        "mocks": [
+            {"tool": "read_file", "result": ok("<button id=\"play\">Play</button>", {"content": "<button id=\"play\">Play</button>"})},
+            {"tool": "edit_string_table", "result": ok(
+                "Create String Table ui.", {"path": "assets/l10n/ui.stringtable", "namespace": "ui", "entries": 1,
+                                            "next": "Use the keys: data-l10n-id=\"ui.<key>\" in HTML; check the fit with assert_ui {languages}."})},
+            {"tool": "write_file", "result": ok("Wrote assets/ui/main_menu.html.", {"path": "assets/ui/main_menu.html"})},
+            {"tool": "edit_file", "result": ok("Edited assets/ui/main_menu.html.", {"path": "assets/ui/main_menu.html"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_string_table"}],
+                   "file_must_not": {"assets/ui/main_menu.lua": [r"(?i)spielen"]},
+                   "must_not_call": ["create_script"]},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_l10n_assert_languages",
+        "kind": "guard",
+        "what_happened": "Agents checked whether translated text fits by switching the Game view language and taking screenshots "
+                         "one by one; assert_ui's languages runs text_fits per language in one call.",
+        "text_at_issue": "assert_ui's `languages` parameter (inspect_ui `l10n` beside it); jasper://docs/localization",
+        "source": "docs/specs/game-ui-localization.md R38",
+        "prompt": "Check that the main menu's buttons (UI Document GameObject 30) still fit their text in German.",
+        "mocks": [
+            {"tool": "assert_ui", "result": ok(
+                "assert_ui: 1/2 passed.\nFAIL text_fits \"button\" @1280x720 de: #play: the text needs 132 px, the box has 80 px",
+                {"passed": False, "failed": 1, "total": 2,
+                 "checks": [{"index": 0, "type": "text_fits", "language": "de", "passed": False}]})},
+        ],
+        "checks": {"calls": [{"tool": "assert_ui", "args": {"languages": "*"}}],
+                   "must_not_call": ["configure_game_view", "screenshot"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_text_entry_focus",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "inspect_ui's focus reports the soft keyboard a focused field asks for (text-entry R30); the agent "
+                         "reads it to see why a phone shows letters, and fixes the field's attributes, not the engine.",
+        "text_at_issue": "inspect_ui result: focus {ref, keyboard, enter_key, autocapitalize, autocorrect, secure, multiline, "
+                         "max_length, keyboard_open}",
+        "source": "docs/specs/text-entry-gamepad-cursor-back-button.md R30; no failure on record",
+        "prompt": "Players on phones say the e-mail field of the sign-up screen (assets/ui/signup.html) shows a plain letters "
+                  "keyboard and no Send key. The game is playing: check what keyboard the field asks for, then fix it.",
+        "files": {"assets/ui/signup.html": "<html><body><form id=\"signup\"><input id=\"mail\" type=\"text\">"
+                                           "<button type=\"submit\">Join</button></form></body></html>\n"},
+        "mocks": [
+            {"tool": "send_input", "result": ok("Sent 1 event over 2 frames; playing.", {"frames": 2, "state": "playing"})},
+            {"tool": "inspect_ui", "result": ok(
+                "signup (assets/ui/signup.html): 1 element.\n#mail input (40, 260 400x36) :focus",
+                {"elements": [{"ref": "#mail", "tag": "input", "pseudo": ["focus"]}],
+                 "focus": {"ref": "#mail", "keyboard": "text", "enter_key": "default", "autocapitalize": "off", "autocorrect": False,
+                           "secure": False, "multiline": False, "max_length": None, "keyboard_open": True}})},
+        ],
+        "checks": {"calls": ["inspect_ui"],
+                   "file_must": {"assets/ui/signup.html": [r"type=\"email\"|inputmode=\"email\"", r"enterkeyhint=\"send\""]},
+                   "edits_must_not": [r"\.(cpp|h)$"]},
         "max_turns": 14,
     },
     {
@@ -2580,6 +2760,50 @@ CASES = [
             {"tool": "build_project", "result": ok("Build succeeded.", {"status": "succeeded", "result": {"method_used": "prebuilt"}})},
         ],
         "checks": {"calls": [{"tool": "build_project", "args": {"platform": "ios", "ios_simulator": True}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_run_on_the_connected_phone",
+        "kind": "bad",
+        "what_happened": "Asked to try a change on the Android phone plugged in, an agent built an .aab and told the user to "
+                         "install it with adb: build_project had no way to install and launch on a device.",
+        "text_at_issue": "build_project run_device and its description 'run_device: Build And Run.'; get_build_info devices",
+        "source": "docs/specs/build-and-run-on-device.md R21, R22",
+        "prompt": "My Android phone is plugged in with USB debugging on. Put the current build of the game on it and start it.",
+        "mocks": [
+            {"tool": "get_build_info", "args": {"devices": True}, "result": ok("Host linux. 1 usable Run Device(s) of 3.", {
+                "devices": [{"id": "R58M123ABC", "platform": "android", "kind": "device", "name": "Galaxy S23", "state": "device",
+                             "usable": True, "abi": "arm64-v8a", "os_version": "34"},
+                            {"id": "web", "platform": "web", "kind": "browser", "name": "Default browser", "state": "ready", "usable": True}]})},
+            {"tool": "build_project", "args": {"run_device": "re:^(R58M123ABC|auto)$"}, "result": ok(
+                "Build android (Release): succeeded - Built android (prebuilt player android-universal-gles3-development) in /work/out. "
+                "Installed on Galaxy S23 and launched.",
+                {"job_id": "job-1", "status": "succeeded", "next": "read_console categories [\"device\"] for its log; run_build device to watch it",
+                 "result": {"platform": "android", "device": {"id": "R58M123ABC", "name": "Galaxy S23", "installed": "full",
+                                                              "pushed_files": 0, "pushed_bytes": 0, "launch_ms": 900}}})},
+        ],
+        "checks": {"calls": [{"tool": "build_project", "args": {"platform": "android", "run_device": "re:^(R58M123ABC|auto)$"}}],
+                   "must_not_call": [{"tool": "build_project", "args": {"android_format": "aab"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_device_run_with_input",
+        "kind": "bad",
+        "what_happened": "To check a game on the emulator, an agent passed run_build an input script; input reaches desktop "
+                         "players only, so the run failed instead of returning the device's log and crash state.",
+        "text_at_issue": "run_build description 'here or on a device (get_build_info devices) ... input: send_input events (desktop "
+                         "Linux/X11)' and the error 'input is desktop-only (Linux/X11); on a device drive the game from Lua or its arguments'",
+        "source": "docs/specs/build-and-run-on-device.md R23",
+        "prompt": "The game is installed on the emulator emulator-5554. Run it there for 10 seconds and tell me whether it crashes.",
+        "mocks": [
+            {"tool": "run_build", "args": {"device": "emulator-5554", "input": "re:."}, "result": err(
+                "input is desktop-only (Linux/X11); on a device drive the game from Lua or its arguments.")},
+            {"tool": "run_build", "args": {"device": "emulator-5554"}, "result": ok(
+                "Pixel 7: launched, crashed. 40 log line(s), fatal: Fatal signal 11 (SIGSEGV).",
+                {"crashed": True, "fatal_lines": ["libc: Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR)"], "errors": [], "exit_code": None,
+                 "device": {"id": "emulator-5554", "name": "Pixel 7", "installed": "current"}})},
+        ],
+        "checks": {"calls": [{"tool": "run_build", "args": {"device": "emulator-5554"}}], "reply_must": [r"(?i)crash|SIGSEGV|signal 11"]},
         "max_turns": 8,
     },
     {
@@ -4259,6 +4483,29 @@ CASES = [
         "max_turns": 10,
     },
 
+    {
+        "id": "bad_lua_veto_through_cancellable_event",
+        "kind": "bad",
+        "what_happened": "Asked for an action another script may refuse, agents fired a plain Event after the change (nothing can "
+                         "say no) or polled a shared flag; the Lua API guide now has CancellableEvent: listeners e:cancel(), and "
+                         "the emitter reads invoke's result and does not apply the change when it is true.",
+        "text_at_issue": "docs/mcp/guide/lua-api.md 'CancellableEvent()' (the emitter rule, e:cancel(), monitors)",
+        "source": "docs/specs/cancellable-prioritised-events.md R33",
+        "prompt": "Make the door refuse to open while another script says it is locked: Door should own an event that Lock "
+                  "(and any later script) can veto, and Lock vetoes it while self.locked is true. Edit scripts/Door.lua and "
+                  "scripts/Lock.lua; check the editor's Lua API guide for the engine's way to do it.",
+        "files": {
+            "scripts/Door.lua": "---@class Door : ScriptInstance\nlocal Door = { properties = {} }\n\n"
+                                "function Door:init()\n    self.isOpen = false\nend\n\n"
+                                "function Door:open(by)\n    self.isOpen = true\n    return true\nend\n\nreturn Door\n",
+            "scripts/Lock.lua": "---@class Lock : ScriptInstance\nlocal Lock = { properties = {} }\n\n"
+                                "function Lock:init()\n    self.locked = true\nend\n\nreturn Lock\n",
+        },
+        "checks": {"file_must": {"scripts/Door.lua": [r"CancellableEvent\(\)",
+                                                      r"(if\s+(not\s+)?[\w.:]*invoke\(|=\s*[\w.:]*invoke\()"],
+                                 "scripts/Lock.lua": [r"\w+:cancel\(\)"]}},
+        "max_turns": 18,
+    },
     # -- agent-authoring: building scenes, the guide past the client cut, terrain, shaders ------------
     {
         "id": "bad_repeat_without_prefab",
@@ -5357,5 +5604,445 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "query_physics", "args": {"verify": True}}]},
         "max_turns": 8,
+    },
+    # -- input-device-awareness: the input scheme (configure_game_view input_scheme, get_input_state's scheme) --------------
+    {
+        "id": "guard_input_scheme_forced",
+        "kind": "guard",
+        "what_happened": "New text (input-device-awareness R27): the Game view forces the input scheme before Play, so the HUD "
+                         "shows a scheme's prompts from the first frame; without the parameter an agent sends a pad press after "
+                         "Play started (the first frames show the other prompts) or edits scripts.",
+        "text_at_issue": "configure_game_view: '... the input scheme forced at Play start'; its input_scheme enum auto|keyboard_mouse|gamepad|touch",
+        "source": "input-device-awareness R24, R27 (new tool text); no failure on record",
+        "prompt": "I want to check the gamepad button prompts of the HUD from the very first frame of the game. Set the editor "
+                  "up so the game treats the player as using a gamepad from the start, press Play and take a Game view "
+                  "screenshot. Do not change the game's scripts.",
+        "groups_enabled": ["editor_ux"],
+        "mocks": [
+            {"tool": "configure_game_view", "args": {"input_scheme": "gamepad"}, "result": ok(
+                "Game view: input scheme gamepad (forced at Play start), aspect free, scale 1.",
+                {"input_scheme": "gamepad", "aspect": "free", "scale": 1})},
+            {"tool": "configure_game_view", "result": ok("Game view: input scheme auto, aspect free, scale 1.",
+                                                         {"input_scheme": "auto", "aspect": "free", "scale": 1})},
+            {"tool": "play", "result": ok("Playing \"Main\".", {"state": "playing"})},
+            {"tool": "get_input_state", "result": ok(
+                "Input of game frame 3\nscheme Gamepad (forced), 0 changes",
+                {"game_frame": 3, "scheme": {"current": "Gamepad", "pointer": "Keyboard&Mouse", "gamepad": None,
+                                             "gamepad_family": "Generic", "override": "Gamepad"}, "changes": 0})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).", {"view": "game"})},
+        ],
+        "checks": {"calls": [{"tool": "configure_game_view", "args": {"input_scheme": "gamepad"}}, "play"],
+                   "edits_must_not": [r"\.lua$"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_input_scheme_read",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "New text (input-device-awareness R27): which device the game treats as in use is in get_input_state "
+                         "(scheme), and send_input switches it as a player would; without it an agent writes a Lua probe or "
+                         "guesses from the screenshot.",
+        "text_at_issue": "get_input_state: '... and the input scheme (the device in use; send_input switches it)'",
+        "source": "input-device-awareness R27 (new tool text); no failure on record",
+        "prompt": "The game is playing. Tap the screen once at (640, 360), then tell me which input scheme the game thinks the "
+                  "player is using now.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "touch"}]}, "result": ok(
+                "Sent 1 event over 2 frames; playing.", {"frames": 2, "state": "playing"})},
+            {"tool": "get_input_state", "result": ok(
+                "Input of game frame 212\nscheme Touch, 1 changes",
+                {"game_frame": 212, "touches": [], "scheme": {"current": "Touch", "pointer": "Touch", "gamepad": None,
+                                                              "gamepad_family": "Generic", "override": None}, "changes": 1})},
+            {"tool": "eval_lua", "result": ok("Touch", {"result": "Touch"})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "touch"}]}}, "get_input_state"],
+                   "reply_must": [r"(?i)touch"]},
+        "max_turns": 10,
+    },
+    # ---- culling-group-and-simulation-distance: Culling Groups and Simulation Culling
+    {
+        "id": "guard_culling_stats",
+        "kind": "guard",
+        "what_happened": "New text (R29, R35): get_render_stats returns `culling` (groups, spheres, simulation culled/full/"
+                         "ground_not_loaded). Asked whether far enemies still simulate, an agent reads it (or the component's "
+                         "state through get_runtime_entity) instead of guessing from screenshots.",
+        "text_at_issue": "get_render_stats description: '... culling: what is culled or frozen.'; jasper://docs/profiling Culling",
+        "source": "docs/specs/culling-group-and-simulation-distance.md R35 (new tool text); no failure on record",
+        "playing": True,
+        "groups_enabled": ["profiling"],
+        "prompt": "The game is playing. Our enemies have Simulation Culling: are the far ones still simulating, or are they frozen?",
+        "mocks": [
+            {"tool": "get_render_stats", "result": ok(
+                "Render stats (frame): 42 draws (40 main, 2 shadow; 0 instanced), 3 passes, CPU 2.1 ms.",
+                {"view": "frame", "draw_calls": 42, "culling": {"groups": 0, "spheres": 0, "visible": 0, "per_band": [0],
+                 "evaluate_ms": 0.004, "simulation": {"components": 3, "full": 1, "reduced": 0, "culled": 2, "ground_not_loaded": 0,
+                                                      "focuses": 1, "script_updates_skipped": 6, "transitions_deferred": 0}}})},
+            {"tool": "get_runtime_entity", "result": ok(
+                "Enemy [13]: transform, simulationculling (state culled, reason distance, focusDistance 41.2).",
+                {"id": 13, "components": {"simulationculling": {"simulationDistance": 20, "state": "culled", "reason": "distance",
+                                                                "focusDistance": 41.2}}})},
+            {"tool": "list_runtime_entities", "result": ok("4 GameObjects: 10 Main Camera, 12 Player, 13 Enemy, 14 Enemy (1)",
+                                                          {"entities": [{"id": 13, "path": "Enemy"}, {"id": 14, "path": "Enemy (1)"}]})},
+            {"tool": "find_entities", "result": ok("2 GameObjects: 13 Enemy, 14 Enemy (1)",
+                                                  {"entities": [{"id": 13, "path": "Enemy"}, {"id": 14, "path": "Enemy (1)"}]})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).", {"view": "game"})},
+        ],
+        "checks": {"any_of": [{"calls": ["get_render_stats"]}, {"calls": ["get_runtime_entity"]}],
+                   "reply_must": [r"(?i)frozen|culled|not simulat|stopped"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_culling_debug",
+        "kind": "guard",
+        "what_happened": "New text (R30, R35): configure_game_view culling_debug draws the Simulation Culling and Culling Group "
+                         "spheres; asked to show what is culled, an agent turns it on and takes a Game view screenshot.",
+        "text_at_issue": "configure_game_view's culling_debug parameter, its result's next ('screenshot the Game view while "
+                         "playing: green spheres simulate ...'); jasper://docs/profiling Culling",
+        "source": "docs/specs/culling-group-and-simulation-distance.md R35 (new tool text); no failure on record",
+        "playing": True,
+        "groups_enabled": ["editor_ux"],
+        "prompt": "The game is playing. Show me which GameObjects are culled right now, as a picture.",
+        "mocks": [
+            {"tool": "configure_game_view", "result": ok("Updated the Game view: {\"culling_debug\": true, ...}",
+                                                        {"culling_debug": True, "changed": ["culling_debug"],
+                                                         "next": "screenshot the Game view while playing: green spheres simulate, yellow run "
+                                                                 "at the reduced rate, red are culled by distance, grey by unloaded ground; "
+                                                                 "cyan / dark blue are Culling Group spheres in / out of view."})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (scaled to 768x432).", {"view": "game"})},
+            {"tool": "get_render_stats", "result": ok("Render stats (frame): 42 draws.", {"view": "frame", "draw_calls": 42})},
+        ],
+        "checks": {"calls": [{"tool": "configure_game_view", "args": {"culling_debug": True}}, "screenshot"],
+                   "order": [[{"tool": "configure_game_view", "args": {"culling_debug": True}}, "screenshot"]]},
+        "max_turns": 10,
+    },
+    # ---- build-profiles: a variant is a Build Profile, not an edit of the project's settings
+    {
+        "id": "guard_build_profile_demo",
+        "kind": "guard",
+        "what_happened": "New text (build-profiles R22, R23): edit_build_profile makes a named variant (identity, Scene List, "
+                         "defines) and build_project profile builds it; asked for a demo build, an agent makes a profile instead "
+                         "of renaming the project and removing scenes from its build list, then putting them back.",
+        "text_at_issue": "edit_build_profile: 'Build Profiles (Build Settings): named per-platform variants overriding identity, "
+                         "store, API, scenes, defines ...' and build_project: 'profile: a Build Profile sets platform, API, "
+                         "flavour, folder.'",
+        "source": "build-profiles R22, R23 (new tool text); no failure on record",
+        "prompt": "Make a Linux demo build of this game: only scenes/Level1.scene, titled \"Box Demo\", with a DEMO switch my "
+                  "scripts can check. Don't change the full game's settings.",
+        "mocks": [
+            {"tool": "get_build_info", "result": ok(
+                "Host linux. Desktop player: available; Web: no emsdk; source export: available. 3 scene(s) in the build, 12 shader(s).",
+                {"host_platform": "linux", "scenes": [{"id": 1, "name": "Menu", "path": "scenes/Menu.scene"},
+                                                      {"id": 2, "name": "Level1", "path": "scenes/Level1.scene"},
+                                                      {"id": 3, "name": "Bonus", "path": "scenes/Bonus.scene"}],
+                 "profiles": [], "active_profile": None})},
+            {"tool": "edit_build_profile", "result": ok(
+                "Created Build Profile 'Demo' (linux).",
+                {"files_written": ["EditorSettings/BuildProfiles/Demo.buildprofile"],
+                 "values": {"product_name": "Box Demo", "scenes": [{"guid": "0a9e00000000000000000000000000bb", "path": "scenes/Level1.scene"}],
+                            "defines": ["DEMO"]},
+                 "next": "build it with build_project profile \"Demo\""})},
+            {"tool": "build_project", "result": ok(
+                "Built linux (prebuilt player linux-x64-glcore-release) in /home/me/Box-Demo.",
+                {"profile": "Demo", "platform": "linux", "method_used": "prebuilt", "warnings": []})},
+            {"tool": "list_scenes", "result": ok("3 scene(s).", {"scenes": [{"id": 1, "name": "Menu", "path": "scenes/Menu.scene"},
+                                                                            {"id": 2, "name": "Level1", "path": "scenes/Level1.scene"},
+                                                                            {"id": 3, "name": "Bonus", "path": "scenes/Bonus.scene"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_build_profile", "args": {"action": "create"}}, {"tool": "build_project", "args": {"profile": "*"}}],
+                   "must_not_call": ["set_project_settings", "edit_build_scenes"]},
+        "max_turns": 12,
+    },
+    # -- shipped-game-diagnostics R40, AC23: get_crash_reports folder and group (R37). ----------------
+    {
+        "id": "crash_reports_new_in_version",
+        "kind": "guard",
+        "groups_enabled": ["diagnostics"],
+        "what_happened": "Two hundred report folders from testers' devices: the agent must tell which crash is new in 1.4. A page "
+                         "of reports names no pattern; grouping by signature with counts per version does.",
+        "text_at_issue": "get_crash_reports: description sentence on folder and group; its folder and group parameters",
+        "source": "docs/specs/shipped-game-diagnostics.md R37, R40",
+        "prompt": "My testers pulled the crash folders off their phones and PCs into /home/me/crashes/forest-run (the game's "
+                  "crash folder, with reports/ inside). Version 1.4 went out last week: which crash is new in 1.4?",
+        "mocks": [
+            {"tool": "get_crash_reports", "args": {"group": True}, "result": ok(
+                "5 groups of 212 reports in /home/me/crashes/forest-run/reports.", {
+                    "folder": "/home/me/crashes/forest-run/reports", "reports_read": 212, "session": "20261118T090000Z-4410",
+                    "notice_open": False,
+                    "next": "Names need symbols: python3 -I tools/crash/symbolicate.py --group /home/me/crashes/forest-run/reports --symbols <dir>",
+                    "groups": [
+                        {"signature": "crash | EXCEPTION_ACCESS_VIOLATION | game::Inventory::addItem | game::Player::pickUp | "
+                                      "(anonymous namespace)::onTouch", "kind": "crash", "count": 91, "versions": {"1.3": 58, "1.4": 33},
+                         "platforms": {"windows-x86_64": 91}, "first_seen": "2026-10-02T10:00:30Z", "last_seen": "2026-11-17T21:12:09Z",
+                         "report_ids": ["20261117T211200Z-8812"], "unresolved": False},
+                        {"signature": "crash | SIGSEGV | forestrun+0x4f2a0 | libjasperengine.so+0x1a000 | forestrun+0x4e100 | build "
+                                      "3f1c9e07b2d84a6c5e91f0a2b7c4d6e8f9a0b1c2", "kind": "crash", "count": 52, "versions": {"1.3": 30, "1.4": 22},
+                         "platforms": {"linux-x86_64": 52}, "first_seen": "2026-10-05T08:10:00Z", "last_seen": "2026-11-18T07:40:44Z",
+                         "report_ids": ["20261118T074000Z-1209"], "unresolved": True},
+                        {"signature": "crash | terminate | std::vector::_Xlength | game::Level::load | game::Game::start", "kind": "crash",
+                         "count": 37, "versions": {"1.4": 37}, "platforms": {"windows-x86_64": 29, "android-arm64": 8},
+                         "first_seen": "2026-11-11T14:02:13Z", "last_seen": "2026-11-18T08:55:01Z",
+                         "report_ids": ["20261118T085500Z-7310"], "unresolved": False},
+                        {"signature": "hang | lua | Spawning enemies | NtDelayExecution | SleepEx | game::Ai::think", "kind": "hang",
+                         "count": 20, "versions": {"1.3": 12, "1.4": 8}, "platforms": {"windows-x86_64": 20},
+                         "first_seen": "2026-10-09T19:30:00Z", "last_seen": "2026-11-16T12:00:30Z",
+                         "report_ids": ["20261116T120000Z-5001"], "unresolved": False},
+                        {"signature": "abnormal_exit", "kind": "abnormal_exit", "count": 12, "versions": {"1.3": 7, "1.4": 5},
+                         "platforms": {"unknown": 12}, "first_seen": "2026-10-03T07:00:00Z", "last_seen": "2026-11-15T22:10:00Z",
+                         "report_ids": ["20261115T221000Z-6120"], "unresolved": False},
+                    ]})},
+            {"tool": "get_crash_reports", "result": ok(
+                "10 reports in /home/me/crashes/forest-run/reports.", {
+                    "folder": "/home/me/crashes/forest-run/reports", "session": "20261118T090000Z-4410", "notice_open": False,
+                    "reports": [{"id": f"2026111{d}T0{h}0000Z-{4000 + d * 10 + h}", "kind": "crash", "time": f"2026-11-1{d}T0{h}:00:30Z",
+                                 "reason": reason, "product": "Forest Run", "version": version,
+                                 "folder": f"/home/me/crashes/forest-run/reports/2026111{d}T0{h}0000Z-{4000 + d * 10 + h}",
+                                 "files": ["crash.txt", "log-tail.txt"], "handled": False, "this_session": False}
+                                for d, h, reason, version in [
+                                    (8, 8, "unhandled exception: vector too long", "1.4"), (8, 7, "SIGSEGV (invalid memory access)", "1.4"),
+                                    (8, 6, "unhandled Windows exception", "1.3"), (7, 9, "unhandled Windows exception", "1.4"),
+                                    (7, 5, "SIGSEGV (invalid memory access)", "1.3"), (7, 2, "unhandled Windows exception", "1.4"),
+                                    (6, 8, "SIGSEGV (invalid memory access)", "1.4"), (6, 4, "unhandled Windows exception", "1.3"),
+                                    (6, 1, "unhandled exception: vector too long", "1.4"), (5, 9, "unhandled Windows exception", "1.3")]]})},
+        ],
+        "checks": {"calls": [{"tool": "get_crash_reports", "args": {"folder": "re:forest-run", "group": True}}],
+                   "reply_must": [r"vector|_Xlength|Level::load|terminate"]},
+        "max_turns": 10,
+    },
+    # -- shipped-game-diagnostics P1/P2: the guide's "A game's own reports" lines and lua-api.md's Report a
+    # Problem and Journal paragraphs. -------------------------------------------------------------------------
+    {
+        "id": "user_report_in_play",
+        "kind": "guard",
+        "playing": True,
+        "groups_enabled": ["diagnostics"],
+        "what_happened": "A user report starts with a capture of the frame (Crash.beginReport), whose callback runs a frame "
+                         "later; only then does Crash.createReport write the folder. An agent that calls createReport alone gets "
+                         "no screenshot, and one that writes files by hand bypasses the engine's report.",
+        "text_at_issue": "crash-diagnostics.md 'A game's own reports' first line; lua-api.md 'Report a Problem' block",
+        "source": "docs/specs/shipped-game-diagnostics.md R11, R14, R38",
+        "prompt": "The game is playing in the editor. Check that a player's 'Report a Problem' works end to end: make a user "
+                  "report from the running game, with a screenshot of the frame and the note 'door stuck', then tell me which "
+                  "files the report folder holds.",
+        "mocks": [
+            {"tool": "eval_lua", "args": {"code": "re:Crash\\.beginReport"}, "result": ok("nil", {"values": []})},
+            {"tool": "wait", "result": ok("Waited 2 frames: the condition holds.", {"frames": 2, "met": True})},
+            {"tool": "eval_lua", "args": {"code": "re:Crash\\.createReport"}, "result": ok(
+                "{id = \"20261120T101500Z-4242-user1\", kind = \"user\", category = \"other\"}",
+                {"values": [{"id": "20261120T101500Z-4242-user1", "kind": "user", "category": "other"}]})},
+            {"tool": "eval_lua", "result": ok("true", {"values": [True]})},
+            {"tool": "get_crash_reports", "result": ok("1 report in /home/me/.config/jasperengine/reports.", {
+                "folder": "/home/me/.config/jasperengine/reports", "session": "20261120T101500Z-4242", "notice_open": False,
+                "reports": [{"id": "20261120T101500Z-4242-user1", "kind": "user", "time": "2026-11-20T10:15:02Z",
+                             "reason": "user report (other): door stuck", "product": "Space Dodge", "version": "0.3",
+                             "folder": "/home/me/.config/jasperengine/reports/20261120T101500Z-4242-user1",
+                             "files": ["device.json", "journal.txt", "log-tail.txt", "screenshot.jpg", "user.txt"],
+                             "handled": False, "this_session": False}]})},
+        ],
+        "checks": {"calls": [{"tool": "eval_lua", "args": {"code": "re:Crash\\.beginReport"}},
+                             {"tool": "eval_lua", "args": {"code": "re:Crash\\.createReport"}}],
+                   "order": [[{"tool": "eval_lua", "args": {"code": "re:Crash\\.beginReport"}},
+                              {"tool": "eval_lua", "args": {"code": "re:Crash\\.createReport"}}]],
+                   "reply_must": [r"screenshot\.jpg"],
+                   "edits_must_not": [r"user\.txt|screenshot"]},
+        "max_turns": 14,
+    },
+    {
+        "id": "journal_before_the_error",
+        "kind": "guard",
+        "what_happened": "What the game did just before an error is in the Gameplay Journal, which the Console keeps in its "
+                         "journal category; without the hint an agent pages the whole Console or guesses from the script.",
+        "text_at_issue": "crash-diagnostics.md 'A game's own reports' second line (read_console categories journal)",
+        "source": "docs/specs/shipped-game-diagnostics.md R34, R38",
+        "prompt": "Play stopped a moment ago with a script error. Before touching any code: which level was the player in and "
+                  "what had they just done when it happened?",
+        "mocks": [
+            {"tool": "read_console", "args": {"categories": ["journal"]}, "result": ok(
+                "4 entries (0 error(s), 0 warning(s)). next_cursor 214.", {"next_cursor": 214, "entries": [
+                    {"id": 207, "level": "info", "type": "log", "category": "journal", "frame": 310,
+                     "message": "engine.scene_loaded ms=212 name=Forest2"},
+                    {"id": 209, "level": "info", "type": "log", "category": "journal", "frame": 1880,
+                     "message": "level.start name=forest-2 seed=42"},
+                    {"id": 211, "level": "info", "type": "log", "category": "journal", "frame": 2405,
+                     "message": "player.pickup item=rusty_key"},
+                    {"id": 213, "level": "info", "type": "log", "category": "journal", "frame": 2411,
+                     "message": "engine.play state=stop"}]})},
+            {"tool": "read_console", "result": ok(
+                "2 entries (1 error(s), 0 warning(s)). next_cursor 214.", {"next_cursor": 214, "entries": [
+                    {"id": 212, "level": "error", "type": "error", "category": "lua", "frame": 2410,
+                     "message": "Script crash in scene 'Forest2': scripts/door.lua:41: attempt to index a nil value (field 'lock')"},
+                    {"id": 213, "level": "info", "type": "log", "category": "journal", "frame": 2411,
+                     "message": "engine.play state=stop"}]})},
+        ],
+        "checks": {"calls": [{"tool": "read_console", "args": {"categories": ["journal"]}}],
+                   "reply_must": [r"forest", r"key"],
+                   "edits_must_not": [r"\.lua$"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "journal_log_in_script",
+        "kind": "guard",
+        "files": GAME_FILES,
+        "what_happened": "Crash reports carry the game's events only through the Gameplay Journal (Journal.log); Crash.setTag "
+                         "keeps one value per key and Log lines are pushed out by a log storm.",
+        "text_at_issue": "lua-api.md 'Journal' paragraph",
+        "source": "docs/specs/shipped-game-diagnostics.md R2, R5, R39",
+        "prompt": "Our crash reports never say what the player was doing. Write scripts/LevelEvents.lua: when the level starts "
+                  "it records a game event for the crash reports with the level name 'forest-2' and the seed 42. Just write "
+                  "the file; don't attach or run it.",
+        "mocks": [
+            {"tool": "check_script", "result": ok("scripts/LevelEvents.lua: no syntax errors.", {"ok": True, "problems": []})},
+            {"tool": "create_script", "result": ok("Created scripts/LevelEvents.lua.", {"path": "scripts/LevelEvents.lua"})},
+        ],
+        "checks": {"any_of": [{"file_must": {"scripts/LevelEvents.lua": [r"Journal\.log\s*\(", r"forest-2"]}},
+                              {"calls": [{"tool": "create_script", "args": {"content": r"re:(?s)Journal\.log\s*\(.*forest-2"}}]}],
+                   "must_not_call": ["play", "attach_script"]},
+        "max_turns": 20,
+    },
+    # -- text-entry-gamepad-cursor-back-button: send_input app back, gamepad cursor warp ----------------------------------------
+    {
+        "id": "guard_send_input_app_back",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "New text (text-entry-gamepad-cursor-back-button R30): Android's Back button is send_input's app action "
+                         "back, and the result names who took it; without it an agent presses Escape (which is not routed as "
+                         "the Back button: no Escape follows a game's Engine.onBack) or writes a Lua probe.",
+        "text_at_issue": "send_input app: '...|orientation (+orientation)|back' and the result's back field",
+        "source": "text-entry-gamepad-cursor-back-button R16, R30 (new tool text); no failure on record",
+        "prompt": "The game is playing. Press the Android Back button once, as a phone would, and tell me whether the pause menu "
+                  "document handled it or the game did.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "app", "action": "back"}]}, "result": ok(
+                "Sent 1 event over 1 frame; playing.", {"frames": 1, "state": "playing", "back": "document"})},
+            {"tool": "eval_lua", "result": ok("nil", {"result": None})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "app", "action": "back"}]}}],
+                   "reply_must": [r"(?i)document|menu"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_send_input_gamepad_cursor_target",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "New text (text-entry-gamepad-cursor-back-button R30): a gamepad event's x, y or target warps the "
+                         "gamepad cursor before its button, so an agent clicks a menu button with A in one event; without it "
+                         "an agent steers the cursor with stick axis events and guesses timings, or clicks with the mouse "
+                         "(which switches the scheme and hides the cursor).",
+        "text_at_issue": "send_input gamepad: '... value, x, y/target: warp cursor'",
+        "source": "text-entry-gamepad-cursor-back-button R30 (new tool text); no failure on record",
+        "prompt": "The game is playing and its menu shows the gamepad cursor. Click the menu's #start button with the gamepad's "
+                  "A button through the cursor (do not use the mouse or touch).",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "gamepad", "button": "a", "target": "#start"}]}, "result": ok(
+                "Sent 1 event over 3 frames; playing.", {"frames": 3, "state": "playing"})},
+            {"tool": "inspect_ui", "result": ok("menu.html", {"gamepad_cursor": {"active": True, "x": 640, "y": 360, "over": "#start"}})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "gamepad", "target": "#start"}]}}],
+                   "must_not_call": ["eval_lua"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_frame_waits_not_computes",
+        "playing": True,
+        "kind": "bad",
+        "what_happened": "Asked whether a slow Play scene is CPU-bound, agents read get_frame_times' cpu_ms (the frame's CPU "
+                         "time, waits on the driver included) and called it CPU-bound, then optimized scripts that were not "
+                         "the cost; the frame thread's own CPU (main_thread_cpu_ms, its thread clock) was a third of it.",
+        "text_at_issue": "get_frame_times' next: 'The frame thread waits more than it computes (driver, locks, I/O): see "
+                         "get_gpu_passes and the Timeline's Wait band.' (release-performance-and-gpu-quirks R34)",
+        "source": "docs/specs/release-performance-and-gpu-quirks.md R34, R38",
+        "prompt": "The game is playing in the editor and runs at about 30 fps. Is the main thread CPU-bound (our scripts and "
+                  "systems computing), or is it waiting on something? Measure, then answer in one or two sentences.",
+        "groups_enabled": ["profiling"],
+        "mocks": [
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\"). Session: 63 s, 0 error(s) logged.",
+                                                   {"state": "playing", "scene": {"id": 1, "name": "Main"}, "frame": 1890})},
+            {"tool": "get_frame_times", "result": ok(
+                "300 frames, median 33.4 ms.",
+                {"frames_in_window": 300,
+                 "summary": {"cpu_ms": {"median": 30.2, "p95": 31.9, "p99": 33.0, "max": 34.1},
+                             "gpu_ms": {"median": None, "p95": None, "p99": None, "max": None},
+                             "fps": {"median": 29.9, "p95": 31.2, "p99": 31.5, "max": 31.8},
+                             "frame_ms": {"median": 33.4, "p95": 34.8, "p99": 36.0, "max": 37.2}},
+                 "main_thread_cpu_ms": 9.8,
+                 "next": "The frame thread waits more than it computes (driver, locks, I/O): see get_gpu_passes and the "
+                         "Timeline's Wait band."})},
+            {"tool": "get_gpu_passes", "result": ok(
+                "game view frame 1892: 12 passes, gpu 27.9 ms (elapsed, frame = sum): Opaque 19.4 ms, Shadows 6.1 ms.",
+                {"frame": 1892, "semantics": "elapsed", "gpu_frame_ms": 27.9,
+                 "passes": [{"label": "Opaque", "gpu_ms": 19.4}, {"label": "Shadows", "gpu_ms": 6.1}]})},
+            {"tool": "capture_profile", "result": ok("Captured 120 frames: main thread median 30.1 ms, of which Wait 19.6 ms.",
+                                                    {"frames": 120, "categories": {"Wait": {"median_ms": 19.6}, "Scripts": {"median_ms": 3.1}}})},
+        ],
+        "checks": {"calls": ["get_frame_times"], "reply_must": [r"(?i)wait"],
+                   "reply_must_not": [r"(?i)\b(is|it's|it is) (cpu.bound|compute.bound)"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "bad_build_grew_find_why",
+        "kind": "bad",
+        "what_happened": "A web build was bigger than the day before; with only the last build's totals the agent guessed at "
+                         "causes (texture settings, engine modules) instead of comparing the two builds' reports.",
+        "text_at_issue": "get_build_report (shipping group) compare_to; get_build_info's '(sizes: get_build_report)'",
+        "source": "docs/specs/build-size-tools.md R7, R33, R38",
+        "prompt": "Our web build is bigger than yesterday's. Find out what grew.",
+        "mocks": [
+            {"tool": "get_build_report", "args": {"compare_to": "*"}, "result": ok(
+                "Build Report web 20261119-142233-prebuilt: 142.0 MB (+3.2 MB vs 20261118-101500-prebuilt); textures +2.9 MB "
+                "(1 grown, 1 added); audio +0.3 MB (1 grown).",
+                {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
+                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]},
+                 "comparison": {"base": "20261118-101500-prebuilt",
+                                "total": {"before": 145541120, "after": 148897792, "delta": 3356672},
+                                "changes": [
+                                    {"change": "grown", "key": "textures/hero_sheet.png", "path": "assets/je-cooked/web/5e1.ktx2",
+                                     "category": "textures", "before": 524288, "after": 2621440, "delta": 2097152},
+                                    {"change": "added", "key": "textures/title_bg.png", "path": "assets/je-cooked/web/9ab.ktx2",
+                                     "category": "textures", "before": 0, "after": 943718, "delta": 943718},
+                                    {"change": "grown", "key": "assets/music/theme.ogg", "path": "assets/music/theme.ogg",
+                                     "category": "audio", "before": 2097152, "after": 2411724, "delta": 314572}],
+                                "counts": {"added": 1, "removed": 0, "grown": 2, "shrunk": 0, "unchanged": 812},
+                                "partial": False, "platform_differs": False, "truncated": False}})},
+            {"tool": "get_build_report", "result": ok(
+                "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
+                {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
+                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]}})},
+            {"tool": "get_build_info", "result": ok(
+                "Host linux. Desktop player: available; Web: available; source export: available. 2 scene(s) in the build, 40 "
+                "shader(s).", {"last_build": {"mode": "player", "platform": "web", "status": "succeeded"}, "scene_count": 2})},
+        ],
+        "checks": {"calls": [{"tool": "get_build_report", "args": {"compare_to": "re:."}}],
+                   "reply_must": [r"hero_sheet"], "must_not_call": ["build_project"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_texture_should_not_ship",
+        "kind": "bad",
+        "what_happened": "Asked why a texture was in the build, the agent searched the scenes' files by hand and missed the "
+                         "material that pulled it in; the export already records which reference made each file ship.",
+        "text_at_issue": "get_build_report (shipping group) referenced_by; get_build_info's '(sizes: get_build_report)'",
+        "source": "docs/specs/build-size-tools.md R9, R33, R38",
+        "prompt": "textures/old_logo.png should not be in the build at all. Why is it in there?",
+        "mocks": [
+            {"tool": "get_build_report", "args": {"referenced_by": ["re:old_logo"]}, "result": ok(
+                "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
+                {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792},
+                 "referenced_by": [{"file": "assets/je-cooked/web/77c.ktx2", "asset": "textures/old_logo.png", "reason": "reached",
+                                    "live": False, "chain": [
+                                        {"asset": "textures/old_logo.png", "field": "material/baseColorTexture", "kind": "material_texture"},
+                                        {"asset": "materials/splash.material", "field": "entity:14/MeshComponent.submeshes[0].material",
+                                         "kind": "mesh_material_file", "object": "Credits/Logo"},
+                                        {"asset": "scenes/Credits.scene", "field": "project/scenes[2].filepath", "kind": "scene_list"},
+                                        {"asset": "project.yaml", "field": "", "kind": "root"}]}]})},
+            {"tool": "get_build_report", "result": ok(
+                "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
+                {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
+                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]}})},
+            {"tool": "get_build_info", "result": ok(
+                "Host linux. Desktop player: available; Web: available; source export: available. 2 scene(s) in the build, 40 "
+                "shader(s).", {"last_build": {"mode": "player", "platform": "web", "status": "succeeded"}, "scene_count": 2})},
+        ],
+        "checks": {"calls": [{"tool": "get_build_report", "args": {"referenced_by": ["re:old_logo"]}}],
+                   "reply_must": [r"splash\.material|Credits"]},
+        "max_turns": 10,
     },
 ]

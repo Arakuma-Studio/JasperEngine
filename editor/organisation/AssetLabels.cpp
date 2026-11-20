@@ -11,6 +11,7 @@
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
+#include <unordered_set>
 #include <cctype>
 
 using namespace jasperengine;
@@ -531,12 +532,20 @@ void AssetLabels::refreshAsset(const Guid& guid) {
 void AssetLabels::setEntries(std::vector<LabelColor> entries) {
     std::lock_guard<std::mutex> lock(mutex);
     palette.clear();
+    // the names met so far, lower case: one lookup per entry (a scan of the palette per entry, with
+    // two lower-cased copies per comparison, was most of a 2,000-entry project.yaml's decode)
+    std::unordered_set<std::string> seen;
     for (LabelColor& entry : entries) {
         std::string name;
         if (!normalizeLabel(entry.name, name)) continue;
-        if (std::any_of(palette.begin(), palette.end(), [&](const LabelColor& other) { return sameLabel(other.name, name); })) continue;
+        if (!seen.insert(lower(name)).second) continue;
         palette.push_back({name, isColor(entry.color) ? entry.color : paletteColorFor(name)});
     }
-    std::sort(palette.begin(), palette.end(), [](const LabelColor& a, const LabelColor& b) { return lower(a.name) < lower(b.name); });
+    std::vector<std::pair<std::string, LabelColor>> keyed;
+    keyed.reserve(palette.size());
+    for (LabelColor& entry : palette) keyed.push_back({lower(entry.name), std::move(entry)});
+    std::sort(keyed.begin(), keyed.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    palette.clear();
+    for (auto& [key, entry] : keyed) palette.push_back(std::move(entry));
     revision++;
 }

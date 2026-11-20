@@ -2760,12 +2760,33 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     if (const YAML::Node pixelArt = pixelart::encodePixelArtSettings(project->getPixelArtSettings()); pixelArt.size() > 0)
         root["pixelArt"] = pixelArt;
     // Project Settings > Input, omitted at its defaults
-    if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone) {
+    const GamepadCursorSettings& cursor = project->getGamepadCursorSettings();
+    const GamepadCursorSettings cursorDefaults;
+    if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone || cursor != cursorDefaults) {
         YAML::Node input;
         if (!project->getInputActionsAsset().empty())
             input["actions"] = project->getInputActionsAsset().generic_string();
         if (project->getInputDeadzone() != Project::defaultInputDeadzone)
             input["deadzone"] = project->getInputDeadzone();
+        // Input > Gamepad Cursor: what differs from the defaults
+        if (cursor != cursorDefaults) {
+            YAML::Node cursorNode;
+            if (cursor.speed != cursorDefaults.speed) cursorNode["speed"] = cursor.speed;
+            if (cursor.accelerationTime != cursorDefaults.accelerationTime) cursorNode["accelerationTime"] = cursor.accelerationTime;
+            if (cursor.slowOverControls != cursorDefaults.slowOverControls) cursorNode["slowOverControls"] = cursor.slowOverControls;
+            if (cursor.scrollSpeed != cursorDefaults.scrollSpeed) cursorNode["scrollSpeed"] = cursor.scrollSpeed;
+            if (cursor.deadzone != cursorDefaults.deadzone) cursorNode["deadzone"] = cursor.deadzone;
+            if (cursor.graphic != cursorDefaults.graphic) cursorNode["graphic"] = cursor.graphic;
+            if (cursor.size != cursorDefaults.size) cursorNode["size"] = cursor.size;
+            if (cursor.hotSpot != cursorDefaults.hotSpot) {
+                YAML::Node hot(YAML::NodeType::Sequence);
+                hot.push_back(cursor.hotSpot.x);
+                hot.push_back(cursor.hotSpot.y);
+                hot.SetStyle(YAML::EmitterStyle::Flow);
+                cursorNode["hotSpot"] = hot;
+            }
+            input["gamepadCursor"] = cursorNode;
+        }
         root["input"] = input;
     } else if (!project->getUnreadableInputNode().empty()) {
         // an older editor's Input Manager node that could not be read: back as it was, until
@@ -2792,6 +2813,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         crashNode["hangWatchdog"] = crash.hangWatchdog;
         crashNode["hangSeconds"] = crash.hangSeconds;
         crashNode["webOverlay"] = crash.webCrashOverlay;
+        crashNode["journalKiB"] = crash.journalKiB;
+        crashNode["journalEngineEvents"] = crash.journalEngineEvents;
         root["playerCrash"] = crashNode;
     }
     root["htmlUiMsaaSamples"] = project->getHtmlUiMsaaSamples();
@@ -3048,6 +3071,19 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (project->getBuildMethod() != "auto") exportNode["method"] = project->getBuildMethod();
         if (project->isPackContent()) exportNode["pack"] = true;
         if (!project->isStripEngineCode()) exportNode["stripEngineCode"] = false;
+        if (!project->getSizeBudgets().empty()) {
+            YAML::Node budgetsNode(YAML::NodeType::Sequence);
+            for (const SizeBudgetRow& row : project->getSizeBudgets()) {
+                YAML::Node rowNode;
+                rowNode["platform"] = row.platform;
+                rowNode["category"] = row.category;
+                rowNode["limitMb"] = row.limitMb;
+                rowNode.SetStyle(YAML::EmitterStyle::Flow);
+                budgetsNode.push_back(rowNode);
+            }
+            exportNode["sizeBudgets"] = budgetsNode;
+        }
+        if (project->isSizeBudgetFail()) exportNode["sizeBudgetAction"] = "fail";
         // Player > Target Platforms: only when not all six, in BuildPlatform order
         if (project->getTargetPlatforms() != Project::allTargetPlatforms) {
             YAML::Node targetsNode(YAML::NodeType::Sequence);
@@ -3084,6 +3120,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
         if (presentation.keepScreenOn != defaults.keepScreenOn) presentationNode["keepScreenOn"] = presentation.keepScreenOn;
         if (presentation.targetFrameRate != defaults.targetFrameRate) presentationNode["targetFrameRate"] = presentation.targetFrameRate;
+        if (presentation.pauseOnFocusLoss != defaults.pauseOnFocusLoss) presentationNode["pauseOnFocusLoss"] = presentation.pauseOnFocusLoss;
         if (presentationNode.size() != 0) root["presentation"] = presentationNode;
     }
 
@@ -3097,6 +3134,17 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             localizationNode["languages"] = list;
         }
         if (!localization.defaultLanguage.empty()) localizationNode["defaultLanguage"] = localization.defaultLanguage;
+        // game-ui-localization.md R40: new members with defaults, written when they differ
+        if (!localization.rememberChoice) localizationNode["rememberChoice"] = false;
+        if (!localization.fonts.empty()) {
+            YAML::Node fonts(YAML::NodeType::Map);
+            for (const auto& [code, list] : localization.fonts) {
+                YAML::Node paths(YAML::NodeType::Sequence);
+                for (const std::string& path : list) paths.push_back(path);
+                fonts[code] = paths;
+            }
+            localizationNode["fonts"] = fonts;
+        }
         if (localizationNode.size() != 0) root["localization"] = localizationNode;
     }
 
@@ -3316,6 +3364,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         // Shader Creation (spec S32): the values away from their defaults, by its reflection table
         const YAML::Node shaderCreationNode = reflect::encode(reflect::shaderCreationStruct(), &project->getShaderCreationSettings(), reflect::EncodeContext{});
         if (shaderCreationNode.IsMap() && shaderCreationNode.size()) root["shaderCreation"] = shaderCreationNode;
+        // Player > Saved Data: the values away from their defaults, by its reflection table
+        const YAML::Node saveGameNode = reflect::encode(reflect::saveGameSettingsStruct(), &project->getSaveGameSettings(), reflect::EncodeContext{});
+        if (saveGameNode.IsMap() && saveGameNode.size()) root["saveGame"] = saveGameNode;
     }
 
     {
@@ -3595,6 +3646,22 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             project->setInputActionsAsset(map && input["actions"].IsDefined() ? fs::path(input["actions"].as<std::string>()) : fs::path());
             project->setInputDeadzone(map && input["deadzone"].IsDefined() ? YamlNumbers::as<float>(input["deadzone"]) : Project::defaultInputDeadzone);
         }
+        // Input > Gamepad Cursor (absent: the defaults)
+        GamepadCursorSettings cursor;
+        if (input.IsDefined() && input.IsMap() && input["gamepadCursor"].IsDefined() && input["gamepadCursor"].IsMap()) {
+            const YAML::Node cursorNode = input["gamepadCursor"];
+            if (cursorNode["speed"].IsDefined()) cursor.speed = YamlNumbers::as<float>(cursorNode["speed"]);
+            if (cursorNode["accelerationTime"].IsDefined()) cursor.accelerationTime = YamlNumbers::as<float>(cursorNode["accelerationTime"]);
+            if (cursorNode["slowOverControls"].IsDefined()) cursor.slowOverControls = YamlNumbers::as<float>(cursorNode["slowOverControls"]);
+            if (cursorNode["scrollSpeed"].IsDefined()) cursor.scrollSpeed = YamlNumbers::as<float>(cursorNode["scrollSpeed"]);
+            if (cursorNode["deadzone"].IsDefined()) cursor.deadzone = YamlNumbers::as<float>(cursorNode["deadzone"]);
+            if (cursorNode["graphic"].IsDefined() && cursorNode["graphic"].IsScalar()) cursor.graphic = cursorNode["graphic"].as<std::string>();
+            if (cursorNode["size"].IsDefined()) cursor.size = YamlNumbers::as<float>(cursorNode["size"]);
+            const YAML::Node hot = cursorNode["hotSpot"];
+            if (hot.IsDefined() && hot.IsSequence() && hot.size() == 2)
+                cursor.hotSpot = Vector2(YamlNumbers::as<float>(hot[0]), YamlNumbers::as<float>(hot[1]));
+        }
+        project->setGamepadCursorSettings(cursor);
     }
 
     {
@@ -3623,6 +3690,10 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (crashNode["hangWatchdog"].IsDefined()) crash.hangWatchdog = YamlNumbers::as<bool>(crashNode["hangWatchdog"]);
             if (crashNode["hangSeconds"].IsDefined()) crash.hangSeconds = YamlNumbers::as<int>(crashNode["hangSeconds"]);
             if (crashNode["webOverlay"].IsDefined()) crash.webCrashOverlay = YamlNumbers::as<bool>(crashNode["webOverlay"]);
+            if (crashNode["journalKiB"].IsDefined()) {
+                crash.journalKiB = std::clamp(YamlNumbers::as<int>(crashNode["journalKiB"]), 0, PlayerCrashSettings::maxJournalKiB);
+            }
+            if (crashNode["journalEngineEvents"].IsDefined()) crash.journalEngineEvents = YamlNumbers::as<bool>(crashNode["journalEngineEvents"]);
         }
         project->setPlayerCrash(crash);
     }
@@ -4085,6 +4156,22 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         project->setPackContent(exportNode["pack"] && exportNode["pack"].as<bool>());
         project->setStripEngineCode(!exportNode["stripEngineCode"] || exportNode["stripEngineCode"].as<bool>());
+        // build-size-tools R40: optional, none and warn by default; a row this editor cannot read is dropped
+        std::vector<SizeBudgetRow> sizeBudgets;
+        if (exportNode["sizeBudgets"] && exportNode["sizeBudgets"].IsSequence()) {
+            for (const YAML::Node& rowNode : exportNode["sizeBudgets"]) {
+                if (!rowNode.IsMap() || !rowNode["limitMb"]) continue;
+                mcp::Json row = {{"platform", rowNode["platform"] ? rowNode["platform"].as<std::string>() : std::string("all")},
+                                 {"category", rowNode["category"] ? rowNode["category"].as<std::string>() : std::string("total")},
+                                 {"limit_mb", rowNode["limitMb"].as<double>(0.0)}};
+                std::vector<SizeBudgetRow> parsed;
+                std::string rowError;
+                if (sizebudget::fromJson(mcp::Json::array({row}), parsed, rowError)) sizeBudgets.push_back(parsed.front());
+            }
+        }
+        project->setSizeBudgets(sizeBudgets);
+        project->setSizeBudgetFail(exportNode["sizeBudgetAction"] && exportNode["sizeBudgetAction"].IsScalar() &&
+                                   exportNode["sizeBudgetAction"].as<std::string>() == "fail");
 
         if (exportNode["desktop"] && exportNode["desktop"].IsMap()) {
             const YAML::Node& desktopNode = exportNode["desktop"];
@@ -4113,6 +4200,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         presentation.allowedOrientations = nodeToOrientationMask(presentationNode["allowedOrientations"], presentation.allowedOrientations);
         if (presentationNode["keepScreenOn"].IsDefined()) presentation.keepScreenOn = YamlNumbers::as<bool>(presentationNode["keepScreenOn"]);
+        if (presentationNode["pauseOnFocusLoss"].IsDefined()) presentation.pauseOnFocusLoss = YamlNumbers::as<bool>(presentationNode["pauseOnFocusLoss"]);
         if (presentationNode["targetFrameRate"].IsDefined()) {
             const int fps = YamlNumbers::as<int>(presentationNode["targetFrameRate"]);
             presentation.targetFrameRate = fps <= 0 ? -1 : std::min(fps, 1000);
@@ -4134,6 +4222,17 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (localizationNode["defaultLanguage"]) {
             const std::string tag = TitleArtLanguage::canonicalize(localizationNode["defaultLanguage"].as<std::string>(""));
             if (TitleArtLanguage::isValid(tag)) localization.defaultLanguage = tag;
+        }
+        if (localizationNode["rememberChoice"]) localization.rememberChoice = localizationNode["rememberChoice"].as<bool>(true);
+        if (localizationNode["fonts"] && localizationNode["fonts"].IsMap()) {
+            for (const auto& entry : localizationNode["fonts"]) {
+                const std::string tag = TitleArtLanguage::canonicalize(entry.first.as<std::string>(""));
+                if (!TitleArtLanguage::isValid(tag) || !entry.second.IsSequence()) continue;
+                for (const YAML::Node& path : entry.second) {
+                    const std::string value = path.as<std::string>("");
+                    if (!value.empty()) localization.fonts[tag].push_back(value);
+                }
+            }
         }
     }
 
@@ -4365,6 +4464,18 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setShaderCreationSettings(shaderCreation);
     }
 
+    {
+        SaveGameSettings saveGame;
+        if (node["saveGame"] && node["saveGame"].IsMap()){
+            reflect::DecodeContext ctx;
+            ctx.component = "saveGame";
+            reflect::decode(reflect::saveGameSettingsStruct(), node["saveGame"], &saveGame, ctx);
+            saveGame.clamp();
+        }
+        // a project without the node (older ones) gets the defaults
+        project->setSaveGameSettings(saveGame);
+    }
+
     project->setNavigationSettings(decodeNavigationProjectSettings(node["navigation"]));
     project->setVoxelSettings(decodeVoxelProjectSettings(node["voxel"]));
 
@@ -4450,6 +4561,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     project->getSpriteNormalsSettings() = workspace.getSpriteNormalsSettings();
 
     project->setSimulateTouch(workspace.isSimulateTouch());
+    // an unknown name (a newer editor's) leaves it on Auto
+    if (!project->setInputSchemeOverride(workspace.getInputScheme()))
+        project->setInputSchemeOverride("auto");
     project->setCustomResolutions(workspace.getCustomResolutions());
 
     // Which scenes are open is a per-user choice, so the tab list decides it. With no

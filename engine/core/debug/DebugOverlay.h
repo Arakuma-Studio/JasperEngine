@@ -5,6 +5,7 @@
 #define DEBUGOVERLAY_H
 
 #include "Export.h"
+#include "debug/ConsoleCommands.h"
 #include "ecs/Entity.h"
 
 #include <cstdint>
@@ -35,6 +36,9 @@ namespace jasperengine {
         enum class Corner { TopLeft, TopRight, BottomLeft, BottomRight };
         Corner statsCorner = Corner::TopLeft;
         bool allowLua = false;                  // the console's `lua <code>` command
+        // Console Commands: the command field, agents (MCP) and the player's --command may run
+        // commands (console::setCommandsEnabled); the game's own calls always run
+        bool commands = false;
     };
 
     // The on-device debug overlay (Unity's IngameDebugConsole and Graphy): a log console with
@@ -70,18 +74,20 @@ namespace jasperengine {
         // off -> fps -> full -> off
         static void cycleStatsMode();
 
-        // A console command: `name args...` typed in the command field (quotes group words).
-        // name is [a-z0-9_-]+ (lower case); adding a name again replaces it. ownerTag: the
-        // subscription tag of what added it (a Lua script's "_<address>_"), removed with it
-        // (removeCommandsByTag); "" = until removeCommand
+        // Console commands (debug/ConsoleCommands.h, the registry these forward to): `name args...`
+        // typed in the command field (quotes group words). This form takes the words as strings;
+        // console::add takes typed arguments, aliases, a cheat flag. Adding a name again replaces
+        // it; a built-in of that name is shadowed until the game's command goes (not `help`).
+        // ownerTag: the subscription tag of what added it (a Lua script's "_<address>_"), removed
+        // with it (removeCommandsByTag); "" = until removeCommand
         static bool addCommand(const std::string& name, const std::string& description,
                                std::function<void(const std::vector<std::string>&)> function, const std::string& ownerTag = "");
         static void removeCommand(const std::string& name);
         static bool hasCommand(const std::string& name);
-        // name and description of every command, built-in ones first
+        // name and description of every command listed (console::list: sorted by name)
         static std::vector<std::pair<std::string, std::string>> getCommands();
-        // runs a command line as the command field does (its output is logged)
-        static void executeCommand(const std::string& line);
+        // runs a command line as the game's code (console::execute, Source::Game: not gated)
+        static console::Result executeCommand(const std::string& line);
         // commands whose owner tag contains `substring` (Engine::removeSubscriptionsByTag)
         static void removeCommandsByTag(const std::string& substring);
         // every command added with an owner tag (scripts): Play stop, the Lua state going
@@ -119,7 +125,7 @@ namespace jasperengine {
         // the view went away (Engine::systemViewDestroyed): the Scene goes, the state stays
         static void viewDestroyed();
         // Engine::systemShutdown and the editor's Play stop: everything goes (commands of
-        // scripts too), the log buffer stays
+        // scripts too, the cheat flag: console::endSession), the log buffer stays
         static void shutdown();
     };
 

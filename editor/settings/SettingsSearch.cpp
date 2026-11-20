@@ -23,6 +23,8 @@ namespace {
         double flashUntil = 0.0;
         std::string currentKey;       // the row being drawn
         bool currentRevealed = false;
+        std::string profile;          // the active Build Profile overriding profileKeys
+        std::set<std::string> profileKeys;
     };
 
     State& state() {
@@ -66,8 +68,16 @@ void settingsui::beginPage(const std::string& page, const char* search) {
     }
 }
 
+void settingsui::setBuildProfileOverrides(const std::string& profile, std::set<std::string> keys) {
+    State& s = state();
+    s.profile = profile;
+    s.profileKeys = std::move(keys);
+}
+
 void settingsui::endPage() {
     State& s = state();
+    s.profile.clear();
+    s.profileKeys.clear();
     s.page.clear();
     s.currentKey.clear();
     s.currentRevealed = false;
@@ -134,6 +144,11 @@ void settingsui::rowLabel(const char* label) {
             ImGui::GetColorU32(ImVec4(0.30f, 0.55f, 0.95f, 0.45f * alpha)), 3.0f);
     }
     highlightedText(label);
+    if (!s.profileKeys.empty() && s.profileKeys.count(s.currentKey)) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.95f, 0.70f, 0.25f, 1.0f), "%s", "(P)");
+        ImGui::SetItemTooltip("Overridden by Build Profile '%s' in builds", s.profile.c_str());
+    }
     s.currentKey.clear();
     s.currentRevealed = false;
 }

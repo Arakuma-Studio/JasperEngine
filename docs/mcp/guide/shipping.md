@@ -100,10 +100,75 @@ it works headless) and its exit code is the verdict:
 
 A web build reads the same options from the page's query: `index.html?quit-after=30&fixed-fps=60`.
 
+## Devices
+
+The loop on an Android device or emulator, an iOS Simulator (a Mac with Xcode) or the browser:
+
+1. `get_build_info devices:true` lists the Run Devices (`id`, `usable`, `why`; `installed` with
+   `patchable` / `why_not` when this project is installed there). Probing spawns adb and simctl:
+   ask only when you need the list.
+2. `build_project platform:"android" development:true run_device:"<id>"` (or `"auto"`, the only
+   usable device; `"web"` for a web build) builds, installs or patches, and launches. A Development
+   Build patches by default (`patch`): only the changed content is pushed, no reinstall
+   (`device.installed: "patched"`); when it cannot, it installs in full and `next` says why.
+3. `read_console categories:["device"]` reads the game's log (`[<device>] <line>`).
+4. `run_build device:"<id>"` runs the recorded build on the device for `seconds` with `args`,
+   `fixed_fps`, `quit_after`, `after_ready`, and returns `log`, `errors`, `crashed`, `fatal_lines`
+   and the device's screenshot; `keep_running` leaves it running. `input` is desktop-only: drive a
+   device's game from Lua or its arguments.
+
+A web run gives `device.url` (a headless editor opens no browser).
+
+## Build Report (group `shipping`)
+
+Every export writes `build-report.json` and a copy in the project's history (10 per platform).
+`get_build_report` reads it:
+
+- A build grew, or someone asks what changed: `get_build_report {compare_to: "previous"}` (or a
+  history id or a path): per category and per file changes keyed by source asset, largest first.
+- A file should not ship, or you are asked why it does: `get_build_report {referenced_by: [paths]}`
+  gives the chain back to project.yaml or a script. `unreferenced` means no scene, prefab,
+  material, setting or script reaches it in the index; a script may still load it by a computed
+  path, so ask before deleting it.
+- `report` picks another report (`last` by default, a history id or a path); its `left_out` lists
+  sources shipped as something else (cooked, atlas pages, baked) and why.
+- Size budgets: `set_project_settings {values: {"player.size_budgets": [{platform, category,
+  limit_mb}], "player.size_budget_action": "warn"|"fail"}}`. Over a limit the build warns
+  `W-SIZE-BUDGET` (or fails with `fail`); the report's `budgets` has the rows.
+
+## Build Profiles (group `shipping`)
+
+Make a Build Profile when one project ships more than one variant: a demo, a store edition, a
+white-label copy, a test build with cheats. A profile is a platform plus overrides; the project's
+own settings never change. Do not rename the project, edit its Scenes In Build or flip settings
+before a build and back after it.
+
+1. `edit_build_profile {action: create, name, platform, values?, overrides?}`: `values` holds
+   `product_name`, `identifier`, `version_suffix`, `icon`, `store`, `store_title`, `backend`,
+   `development`, `output_dir`, `scenes` (paths or GUIDs of the project's scenes), `start_scene`,
+   `defines`, `exclude_labels`, `exclude_paths`. `overrides` takes `get_project_settings` keys of
+   the categories `player`, `graphics`, `quality` and the profile's platform (`android.*` for an
+   Android profile); others are refused, naming the allowed ones. A refused edit writes nothing.
+2. `edit_build_profile {action: get, name}`: the stored values, `resolved` (each value the build
+   writes and where it comes from) and `store_findings`.
+3. `build_project {profile}`: platform, Graphics API, Development Build and folder come from the
+   profile; a `platform`, `graphics_api` or `development` that differs is refused. The result
+   names `profile`; store limits are `warnings[]` (`W-STORE-TITLE-LENGTH`, `W-LABEL-TRUNCATED`).
+4. `edit_build_profile {action: activate, name}` makes Play use the profile's name, identifier,
+   version, defines and Scene List (per user, not undoable); `name: null` for none.
+
+Scripting Define Symbols are runtime values (`System.isDefined("DEMO")`, `System.getBuildInfo()`):
+the code behind them still ships. Code that must not ship goes in a folder `exclude_paths` names.
+A shipped scene that uses an excluded asset fails the build naming both. Store limits: Google Play
+and App Store titles 30 characters, home-screen labels warn above 12. A publishing.json target may
+name `"profile"`: `publish_prepare` refuses a build of another profile, another platform, backend
+or flavour, or a store title over its limit. A Build Profile is not a Device Profile
+(`deviceProfile`, S56).
+
 ## Releases (group `shipping`)
 
 `publishing.json` (project root, committed) lists the targets: `{platform, arch, backend,
-flavour, buildDir, executable, depotId?, deviceProfile?: "steamdeck", requiredFiles[]}`, plus
+flavour, buildDir, executable, depotId?, deviceProfile?: "steamdeck", requiredFiles[], profile?}`, plus
 `steam{appId}` and `deck{host, user, remoteDir}`. `jasperengine-editor publish init` writes one.
 
 - `publish_prepare {release}`: validates every target's build (architecture, exec bits, case

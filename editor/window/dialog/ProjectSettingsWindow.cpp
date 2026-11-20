@@ -4,6 +4,7 @@
 #include "window/TerrainQualityPanel.h"
 #include "component/TerrainComponent.h"
 #include "ProjectSettingsWindow.h"
+#include "buildprofile/BuildProfile.h"
 #include "window/ProjectWindow.h"
 #include "io/watch/LinkedFolders.h"
 #include "window/EditorModal.h"
@@ -14,6 +15,7 @@
 #include "settings/SettingsRegistry.h"
 #include "reflect/Reflect.h"
 #include "command/type/ShaderCreationSettingsCmd.h"
+#include "command/type/SaveGameSettingsCmd.h"
 #include "texture/TextureCookReport.h"
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
@@ -59,6 +61,7 @@
 #include "command/type/TransitionSettingsCmd.h"
 #include "command/type/DeviceSettingsCmd.h"
 #include "device/Device.h"
+#include "device/GpuQuirks.h"
 #include "command/type/ThreadingSettingsCmd.h"
 #include "navigation/NavigationSettingsCmd.h"
 #include "titleart/TitleArtSettingsCmd.h"
@@ -500,6 +503,88 @@ static void helpMarker(const char* desc) {
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
     }
+}
+
+// Size Budgets (build-size-tools R30): every edit is one step of the project history
+static void applySizeBudgetValue(Project* project, const char* key, const mcp::Json& value, const char* step) {
+    auto* command = new ProjectSettingsValuesCmd(project, {{key, value}}, step);
+    command->setNoMerge();
+    project->getProjectCommandHistory()->addCommand(command);
+}
+
+static void drawSizeBudgetRows(Project* project) {
+    // the limit being typed: applied once, when the field is left
+    static int editingRow = -1;
+    static double editingLimit = 0.0;
+    std::vector<SizeBudgetRow> rows = project->getSizeBudgets();
+    const std::vector<std::string>& platforms = sizebudget::platformNames();
+    const std::vector<std::string>& categories = sizebudget::categoryNames();
+    auto title = [](const std::string& name) {
+        if (name == "all") return std::string("All");
+        if (name == "macos") return std::string("macOS");
+        if (name == "ios") return std::string("iOS");
+        std::string text = name;
+        text[0] = (char)std::toupper((unsigned char)text[0]);
+        return text;
+    };
+    int removed = -1;
+    bool changed = false;
+    if (!rows.empty() && ImGui::BeginTable("##SizeBudgets", 4, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerH)) {
+        ImGui::TableSetupColumn("Platform");
+        ImGui::TableSetupColumn("Category");
+        ImGui::TableSetupColumn("Limit (MB)");
+        ImGui::TableSetupColumn("##remove", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
+        ImGui::TableHeadersRow();
+        for (size_t i = 0; i < rows.size(); i++) {
+            SizeBudgetRow& row = rows[i];
+            ImGui::PushID((int)i);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::BeginCombo("##platform", title(row.platform).c_str())) {
+                for (const std::string& name : platforms)
+                    if (ImGui::Selectable(title(name).c_str(), name == row.platform) && name != row.platform) { row.platform = name; changed = true; }
+                ImGui::EndCombo();
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::BeginCombo("##category", title(row.category).c_str())) {
+                for (const std::string& name : categories)
+                    if (ImGui::Selectable(title(name).c_str(), name == row.category) && name != row.category) { row.category = name; changed = true; }
+                ImGui::EndCombo();
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            double limit = editingRow == (int)i ? editingLimit : row.limitMb;
+            if (ImGui::InputDouble("##limit", &limit, 0.0, 0.0, "%.1f")) {
+                editingRow = (int)i;
+                editingLimit = limit;
+            }
+            UIProbe::item("player.size_budgets.limit." + std::to_string(i));
+            if (ImGui::IsItemDeactivatedAfterEdit() && editingRow == (int)i) {
+                if (editingLimit > 0.0 && editingLimit != row.limitMb) { row.limitMb = editingLimit; changed = true; }
+                editingRow = -1;
+            }
+            ImGui::TableNextColumn();
+            if (ImGui::SmallButton(ICON_FA_XMARK)) removed = (int)i;
+            ImGui::SetItemTooltip("Remove this budget");
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    if (ImGui::SmallButton(ICON_FA_PLUS " Add Budget")) {
+        SizeBudgetRow row;
+        row.limitMb = 100.0;
+        rows.push_back(row);
+        changed = true;
+    }
+    UIProbe::item("player.size_budgets.add");
+    if (removed >= 0) {
+        rows.erase(rows.begin() + removed);
+        changed = true;
+    }
+    if (changed) applySizeBudgetValue(project, "player.size_budgets", sizebudget::toJson(rows),
+                                      removed >= 0 ? "Remove Size Budget" : "Edit Size Budgets");
 }
 
 // Width the value widget gives up so the marker fits beside it.
@@ -971,7 +1056,7 @@ Texture* ProjectSettingsWindow::findThumbnail(const std::string& path) {
     return nullptr;
 }
 
-void ProjectSettingsWindow::open(Project* project, const char* category) {
+void ProjectSettingsWindow::open(Project* project, const char* category, const char* search) {
     m_isOpen = true;
     if (category) {
         const int index = settingsui::pageIndex(SettingsScope::Project, category);
@@ -980,6 +1065,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
             m_categorySearch[0] = '\0';
         }
     }
+    if (search) std::snprintf(m_categorySearch, sizeof(m_categorySearch), "%s", search);
     m_project = project;
     m_projectNameOriginal = project->getName();
     snprintf(m_projectNameBuffer, sizeof(m_projectNameBuffer), "%s", m_projectNameOriginal.c_str());
@@ -1026,6 +1112,8 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_physics3DEnabled = project->isPhysics3DEnabled();
     m_inputActionsAsset = project->getInputActionsAsset();
     m_inputDeadzone = project->getInputDeadzone();
+    m_gamepadCursor = project->getGamepadCursorSettings();
+    snprintf(m_gamepadCursorGraphic, sizeof(m_gamepadCursorGraphic), "%s", m_gamepadCursor.graphic.c_str());
     m_inputStatus.clear();
     m_inputActionsFiles.clear();
     {
@@ -1058,6 +1146,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_defaultOrientationIndex = findDefaultOrientationIndex(presentation.defaultOrientation);
     m_allowedOrientations = presentation.allowedOrientations;
     m_keepScreenOn = presentation.keepScreenOn;
+    m_pauseOnFocusLoss = presentation.pauseOnFocusLoss;
     m_targetFrameRate = presentation.targetFrameRate;
 
     const ApplicationSettings& application = project->getApplicationSettings();
@@ -1149,6 +1238,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_loadingSettings = project->getLoadingSettings();
     m_threading = project->getThreadingSettings();
     m_shaderCreation = project->getShaderCreationSettings();
+    m_saveGame = project->getSaveGameSettings();
     m_htmlUiRender = project->getHtmlUiRenderSettings();
     m_drawSubmission = project->getDrawSubmissionSettings();
     m_transitions = project->getTransitionDefaults();
@@ -1268,6 +1358,9 @@ void ProjectSettingsWindow::drawSettings() {
     const SettingsPage* page = settingsui::pageAt(SettingsScope::Project, m_category);
     settingsui::categoryTitle(page ? page->displayName().c_str() : "");
     settingsui::beginPage(page ? page->name : std::string(), m_categorySearch);
+    // Build Profiles R20: the rows the active profile changes in builds are marked
+    if (const auto& profiles = buildprofiles::view(m_project->getProjectPath()); profiles.active)
+        settingsui::setBuildProfileOverrides(profiles.active->name, buildprofiles::overriddenKeys(*profiles.active));
     switch (static_cast<ProjectCategory>(m_category)) {
         case ProjectCategory::Player: drawPlayerSettings(); break;
         case ProjectCategory::Graphics: drawGraphicsSettings(); break;
@@ -1795,6 +1888,28 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                     "(window.jasperengine.onCrash gets the report either way).");
             }
 
+            if (settingsui::beginRow("player.crash.journal_kib")) {
+                if (projectBeginSettingsRow("Gameplay Journal (KiB)", m_playerCrash.journalKiB != defaults.journalKiB)) {
+                    m_playerCrash.journalKiB = defaults.journalKiB;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::DragInt("##PlayerCrashJournalKiB", &m_playerCrash.journalKiB, 0.5f, 0, PlayerCrashSettings::maxJournalKiB, "%d",
+                               ImGuiSliderFlags_AlwaysClamp);
+                endSettingsRow("Recent game events (Journal.log) kept in memory and saved with crash, hang and user reports. "
+                    "0 turns the journal off.");
+            }
+
+            ImGui::BeginDisabled(m_playerCrash.journalKiB == 0);
+            if (settingsui::beginRow("player.crash.journal_engine_events")) {
+                if (projectBeginSettingsRow("Journal Engine Events", m_playerCrash.journalEngineEvents != defaults.journalEngineEvents)) {
+                    m_playerCrash.journalEngineEvents = defaults.journalEngineEvents;
+                }
+                ImGui::Checkbox("##PlayerCrashJournalEngineEvents", &m_playerCrash.journalEngineEvents);
+                endSettingsRow("The journal also records the engine's own events: start, scene loads, pause and resume, "
+                    "focus, low memory, thermal state, device tier, Play in the editor.");
+            }
+            ImGui::EndDisabled();
+
             ImGui::EndTable();
         }
 
@@ -1837,6 +1952,23 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                                "picks it when the browser allows SharedArrayBuffer, else the single-thread build.");
             }
 
+            ImGui::EndTable();
+        }
+
+        // SaveGame's slots (docs/saved-data.md): the rows of its reflection table
+        if (settingsFoldout("Saved Data") && beginSettingsTable("##PlayerSavedDataTable")) {
+            const SaveGameSettings defaults;
+            for (const reflect::FieldDesc& field : reflect::saveGameSettingsStruct().fields) {
+                const std::string key = std::string("player.saved_data.") + (std::string(field.name) == "backups" ? "backups_kept" : "max_slot_size_mib");
+                if (!settingsui::beginRow(key.c_str())) continue;
+                int& value = *static_cast<int*>(field.ref(&m_saveGame));
+                const int base = *static_cast<const int*>(field.ref(const_cast<SaveGameSettings*>(&defaults)));
+                if (projectBeginSettingsRow(field.label, value != base)) value = base;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputInt((std::string("##") + field.name).c_str(), &value);
+                value = std::clamp(value, static_cast<int>(field.min), static_cast<int>(field.max));
+                endSettingsRow(field.tooltip ? field.tooltip : "");
+            }
             ImGui::EndTable();
         }
 
@@ -1917,6 +2049,21 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                                "compiler, 3D or 2D physics): a smaller player that behaves the same. Build Settings shows what is kept and "
                                "why. Turn it off for a script that builds engine names at runtime from pieces.");
             }
+            if (settingsui::beginRow("player.size_budgets")) {
+                projectBeginSettingsRow("Size Budgets");
+                drawSizeBudgetRows(m_project);
+                endSettingsRow("Checked by every Player build against its Build Report (source exports are not checked). A row for a "
+                               "platform replaces the All row of the same category; 1 MB = 1,048,576 bytes.");
+            }
+            if (settingsui::beginRow("player.size_budget_action")) {
+                projectBeginSettingsRow("When Over Budget");
+                int action = m_project->isSizeBudgetFail() ? 1 : 0;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::Combo("##SizeBudgetAction", &action, "Warn\0Fail Build\0"))
+                    applySizeBudgetValue(m_project, "player.size_budget_action", action == 1 ? "fail" : "warn", "Set When Over Budget");
+                endSettingsRow("Warn: the build finishes with W-SIZE-BUDGET. Fail Build: it stops (content budgets before any compile), "
+                               "keeping its Build Report.");
+            }
 
             ImGui::EndTable();
         }
@@ -1974,6 +2121,14 @@ void ProjectSettingsWindow::drawPresentationSettings() {
     endSettingsRow("Android and iOS: the screen never dims or locks while the game runs (Screen.sleepTimeout = "
         "SleepTimeout.NeverSleep). Off: the device's own setting. Desktops and the web follow the system unless a "
         "script sets NeverSleep (as Unity).");
+
+    if (projectBeginSettingsRow("Pause On Focus Loss", m_pauseOnFocusLoss != defaults.pauseOnFocusLoss)) {
+        m_pauseOnFocusLoss = defaults.pauseOnFocusLoss;
+    }
+    ImGui::Checkbox("##PauseOnFocusLoss", &m_pauseOnFocusLoss);
+    endSettingsRow("Engine.onPauseRequested(reason) fires when the app loses focus, is paused, or the gamepad in use "
+        "disconnects, unless an Is Menu document is showing. The game opens its pause menu there; the engine "
+        "changes no time scale.");
 
     if (projectBeginSettingsRow("Target Frame Rate", m_targetFrameRate != defaults.targetFrameRate)) {
         m_targetFrameRate = defaults.targetFrameRate;
@@ -2623,6 +2778,7 @@ namespace {
             case DeviceOverride::TargetFrameRate: return 30.0f;
             case DeviceOverride::MaxPixelLights: return 4.0f;
             case DeviceOverride::ParticleBudget: return 16384.0f;
+            case DeviceOverride::SimulationDistance: return 0.8f;
             default: return 0.0f;
         }
     }
@@ -2755,6 +2911,20 @@ void ProjectSettingsWindow::drawDeviceTierSettings() {
             ImGui::SameLine();
             ImGui::TextDisabled("This machine: %s", DeviceNames::tierLabel(detection.tier));
             ImGui::SetItemTooltip("%s", detection.reason.c_str());
+        }
+        // the driver workarounds this machine runs with (read-only: they change how a frame is
+        // made, never what it shows), each with its reason; on a line of their own, which the
+        // names would overflow beside the tier
+        const std::vector<std::string> quirks = GpuQuirks::activeNames();
+        ImGui::TextDisabled("GPU Quirks:%s", quirks.empty() ? " none" : "");
+        for (GpuQuirk quirk : GpuQuirks::known()) {
+            const GpuQuirkState& state = GpuQuirks::state(quirk);
+            if (!state.active)
+                continue;
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", GpuQuirks::name(quirk));
+            ImGui::SetItemTooltip("%s%s", state.source == "forced_on" ? "Forced on. " : "",
+                                  state.reason.empty() ? GpuQuirks::description(quirk) : state.reason.c_str());
         }
         endSettingsRow("Each tier caps the project's (and the scene's) values on the devices that get it: a tier never raises "
                        "quality. Players pick the tier from the GPU (docs/device-tiers.md); --device-tier and Device.setTier "
@@ -3337,6 +3507,46 @@ void ProjectSettingsWindow::drawInputSettings() {
                 endSettingsRow("The radial deadzone of stick and axis bindings of AXIS and VECTOR2 actions that set none of their own.");
             }
 
+            // Gamepad Cursor: what a UI Document with Gamepad Cursor on gives a pad player (GamepadCursor)
+            if (settingsui::sectionVisible("Gamepad Cursor")) {
+                ImGui::SeparatorText("Gamepad Cursor");
+                const GamepadCursorSettings defaults;
+                auto number = [&](const char* key, const char* label, const char* id, float& value, float defaultValue, float minimum,
+                                  float maximum, const char* format, const char* help) {
+                    if (!settingsui::beginRow(key)) return;
+                    if (projectBeginSettingsRow(label, value != defaultValue)) value = defaultValue;
+                    ImGui::SetNextItemWidth(-helpMarkerWidth());
+                    ImGui::DragFloat(id, &value, (maximum - minimum) / 500.0f, minimum, maximum, format, ImGuiSliderFlags_AlwaysClamp);
+                    endSettingsRow(help);
+                };
+                number("input.gamepad_cursor.speed", "Cursor Speed", "##CursorSpeed", m_gamepadCursor.speed, defaults.speed, 0.0f, 5000.0f, "%.0f px/s",
+                       "Canvas pixels per second at full stick on a 1080 px tall canvas (scaled by the canvas height). GamepadCursor.speed changes it while the game runs.");
+                number("input.gamepad_cursor.acceleration_time", "Acceleration Time", "##CursorAcceleration", m_gamepadCursor.accelerationTime,
+                       defaults.accelerationTime, 0.0f, 2.0f, "%.2f s", "Seconds from rest to full speed while the stick stays pushed.");
+                number("input.gamepad_cursor.slow_over_controls", "Slow Over Controls", "##CursorSlow", m_gamepadCursor.slowOverControls,
+                       defaults.slowOverControls, 0.0f, 1.0f, "%.2f", "Speed factor over buttons, links, form controls and component UI Buttons, for easier aim.");
+                number("input.gamepad_cursor.scroll_speed", "Scroll Speed", "##CursorScroll", m_gamepadCursor.scrollSpeed, defaults.scrollSpeed,
+                       0.0f, 200.0f, "%.0f lines/s", "Wheel lines per second at full right stick, at the cursor.");
+                number("input.gamepad_cursor.deadzone", "Deadzone", "##CursorDeadzone", m_gamepadCursor.deadzone, defaults.deadzone, 0.0f, 0.95f, "%.2f",
+                       "The radial deadzone of both sticks for the cursor.");
+                if (settingsui::beginRow("input.gamepad_cursor.graphic")) {
+                    if (projectBeginSettingsRow("Cursor Graphic", m_gamepadCursorGraphic[0] != '\0')) m_gamepadCursorGraphic[0] = '\0';
+                    ImGui::SetNextItemWidth(-helpMarkerWidth());
+                    ImGui::InputTextWithHint("##CursorGraphic", "Built-in arrow", m_gamepadCursorGraphic, sizeof(m_gamepadCursorGraphic));
+                    endSettingsRow("A texture (path in the assets folder) drawn as the cursor; empty: the built-in arrow.");
+                }
+                number("input.gamepad_cursor.size", "Cursor Size", "##CursorSize", m_gamepadCursor.size, defaults.size, 1.0f, 256.0f, "%.0f px",
+                       "The cursor's width and height in CSS pixels.");
+                if (settingsui::beginRow("input.gamepad_cursor.hot_spot")) {
+                    if (projectBeginSettingsRow("Cursor Hot Spot", m_gamepadCursor.hotSpot != defaults.hotSpot)) m_gamepadCursor.hotSpot = defaults.hotSpot;
+                    ImGui::SetNextItemWidth(-helpMarkerWidth());
+                    float hot[2] = {m_gamepadCursor.hotSpot.x, m_gamepadCursor.hotSpot.y};
+                    if (ImGui::DragFloat2("##CursorHotSpot", hot, 0.5f, 0.0f, 256.0f, "%.0f px"))
+                        m_gamepadCursor.hotSpot = Vector2(hot[0], hot[1]);
+                    endSettingsRow("The point of the graphic that clicks, in CSS pixels from its top-left.");
+                }
+            }
+
             if (settingsui::beginRow("input.rebinding_overrides")) {
                 projectBeginSettingsRow("Rebinding Overrides");
                 ImGui::BeginDisabled(m_inputActionsAsset.empty());
@@ -3606,8 +3816,8 @@ void ProjectSettingsWindow::drawLocalizationSettings() {
                 }
                 ImGui::EndDisabled();
                 if (!valid && m_localizationInput[0]) ImGui::TextDisabled("%s", error.c_str());
-                endSettingsRow("The languages the game ships, in order. Title Art bakes and fonts of other languages are left out of "
-                               "builds with a warning. Empty ships every language of every title.");
+                endSettingsRow("The languages the game ships, in order. String Table translations, Title Art bakes and fonts of other "
+                               "languages are left out of builds with a warning. Empty ships every language of every table and title.");
             }
             if (settingsui::beginRow("localization.default_language")) {
                 if (projectBeginSettingsRow("Default Language", !m_localization.defaultLanguage.empty())) m_localization.defaultLanguage.clear();
@@ -3623,6 +3833,41 @@ void ProjectSettingsWindow::drawLocalizationSettings() {
                 }
                 endSettingsRow("The language shown when none of the device's languages matches a title's, before its source language. "
                                "TitleArt.setLanguage and the device's languages come first.");
+            }
+            if (settingsui::beginRow("localization.remember_choice")) {
+                if (projectBeginSettingsRow("Remember Player Choice", !m_localization.rememberChoice)) m_localization.rememberChoice = true;
+                ImGui::Checkbox("##LocalizationRemember", &m_localization.rememberChoice);
+                endSettingsRow("The language the game sets (Localization.setLanguage, a language menu) is remembered and comes before the "
+                               "device's languages at the next start.");
+            }
+            if (settingsui::beginRow("localization.fonts")) {
+                if (projectBeginSettingsRow("Language Fonts", !m_localization.fonts.empty())) m_localization.fonts.clear();
+                std::string removeLanguage;
+                for (const auto& [code, list] : m_localization.fonts) {
+                    ImGui::PushID(code.c_str());
+                    std::string paths;
+                    for (const std::string& path : list) paths += (paths.empty() ? "" : ", ") + path;
+                    ImGui::Text("%s: %s", titleLanguageLabel(code).c_str(), paths.c_str());
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Remove")) removeLanguage = code;
+                    ImGui::PopID();
+                }
+                if (!removeLanguage.empty()) m_localization.fonts.erase(removeLanguage);
+                ImGui::SetNextItemWidth(80.0f);
+                ImGui::InputTextWithHint("##LocalizationFontLanguage", "ja", m_localizationFontLanguage, sizeof(m_localizationFontLanguage));
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(200.0f);
+                ImGui::InputTextWithHint("##LocalizationFontPath", "fonts/NotoSansJP.ttf", m_localizationFontPath, sizeof(m_localizationFontPath));
+                ImGui::SameLine();
+                const bool fontValid = TitleArtLanguage::isValid(m_localizationFontLanguage) && m_localizationFontPath[0];
+                ImGui::BeginDisabled(!fontValid);
+                if (ImGui::Button("Add Font")) {
+                    m_localization.fonts[TitleArtLanguage::canonicalize(m_localizationFontLanguage)].push_back(m_localizationFontPath);
+                    m_localizationFontPath[0] = '\0';
+                }
+                ImGui::EndDisabled();
+                endSettingsRow("Fonts per language: an HTML text in that language gets them before the other fallback fonts (Japanese and "
+                               "Chinese pages get their own Han glyphs), and a Text whose Font is empty uses the first.");
             }
             ImGui::EndTable();
         }
@@ -6117,6 +6362,7 @@ bool ProjectSettingsWindow::applySettings() {
     presentation.defaultOrientation = defaultOrientationValues[std::clamp(m_defaultOrientationIndex, 0, defaultOrientationCount - 1)];
     presentation.allowedOrientations = m_allowedOrientations ? m_allowedOrientations : PresentationSettings{}.allowedOrientations;
     presentation.keepScreenOn = m_keepScreenOn;
+    presentation.pauseOnFocusLoss = m_pauseOnFocusLoss;
     presentation.targetFrameRate = m_targetFrameRate <= 0 ? -1 : std::min(m_targetFrameRate, 1000);
 
     ApplicationSettings& application = m_project->getApplicationSettings();
@@ -6142,6 +6388,8 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setPhysics3DEnabled(m_physics3DEnabled);
     m_project->setInputActionsAsset(m_inputActionsAsset);
     m_project->setInputDeadzone(m_inputDeadzone);
+    m_gamepadCursor.graphic = m_gamepadCursorGraphic;
+    m_project->setGamepadCursorSettings(m_gamepadCursor);
     m_project->setPixelArtSettings(m_pixelArt);
     m_project->setDefaultFilterMode(m_defaultFilterIndex == 1 ? TextureFilterMode::Point : TextureFilterMode::Bilinear);
     // a built-in Default Palette is the project's copy of it (S43 R7), made now
@@ -6303,6 +6551,9 @@ bool ProjectSettingsWindow::applySettings() {
         m_project->getProjectCommandHistory()->addCommand(new ThreadingSettingsCmd(m_project, m_threading));
     }
     // undoable: the budget and warm draws apply to the editor at once
+    if (m_saveGame != m_project->getSaveGameSettings()) {
+        m_project->getProjectCommandHistory()->addCommand(new SaveGameSettingsCmd(m_project, m_saveGame));
+    }
     if (m_shaderCreation != m_project->getShaderCreationSettings()) {
         m_project->getProjectCommandHistory()->addCommand(new ShaderCreationSettingsCmd(m_project, m_shaderCreation));
     }

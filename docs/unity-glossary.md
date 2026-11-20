@@ -36,6 +36,7 @@ Projects made before the rename are migrated once with
 | A Prefab field in the Inspector (a script property of type Prefab: drag a `.prefab` from the Project window onto it) | none (new) |
 | Assets > Scenes in Build... | Project > Manage Scenes... |
 | File > Build Settings... | File > Export Project... |
+| Build Report (the Build Report Inspector package), comparing two builds' reports | Window > Analysis > Build Report: Compare With..., Changes, Referenced By, Unreferenced, Left Out; Size Budgets in Project Settings > Player (none before) |
 | Edit > Preferences... | Edit > Editor Settings... |
 | Edit > Project Settings... | Project > Project Settings... |
 | Project Settings > Physics / Physics 2D > Layer Collision Matrix | none (new) |
@@ -76,6 +77,8 @@ Projects made before the rename are migrated once with
 | Unity term | Old JasperEngine name |
 |---|---|
 | `GameObject` | `Object` |
+| `CullingGroup` (`SetBoundingSpheres`, `SetBoundingDistances`, `onStateChanged`, `QueryIndices`, `EraseSwapBack`), `BoundingSphere`, `CullingGroupEvent` | `CullingGroup`, `BoundingSphere`, `CullingGroupEvent` (none before); frustum only, no occlusion; Lua indices 1-based ([docs/scripting/culling-groups.md](scripting/culling-groups.md)) |
+| A per-object simulation distance (Unreal's tick significance, an entity ticking range) | the **Simulation Culling** component, `SimulationCulling` in Lua, messages `onSimulationCulled` / `onSimulationResumed` (none before) |
 | `Primitive` (box, sphere, plane... meshes) | `Shape` |
 | `Rigidbody2D` / `Rigidbody2DComponent` | `Body2D` / `Body2DComponent` |
 | `Rigidbody` / `RigidbodyComponent` | `Body3D` / `Body3DComponent` |
@@ -119,6 +122,7 @@ Projects made before the rename are migrated once with
 | `SceneManager.MoveGameObjectToScene(go, scene)` -> `SceneManager.moveGameObjectToScene(obj, scene)` (C++ `SceneManager::moveGameObjectToScene`) | none (new) |
 | Singleton pattern `if (instance == null) { instance = this; DontDestroyOnLoad(gameObject); } else if (instance != this) Destroy(gameObject);` -> `if GameObject.persistSingleton(self) ~= self then return end` in `init` (C++ `persistSingleton<T>()`); module tables are per instance, so no `static Instance` | none (new) |
 | `UnityEvent` / C# `event` (`AddListener` / `+=`, `RemoveListener` / `-=`, `Invoke`) -> `Event()` (`addListener`, `removeListener`, `invoke`); `-=` of an engine or component event -> `UnregisterEngineEvent` / `UnregisterEvent` | none (new): no unregister from Lua |
+| none: `UnityEvent` has no veto or listener order; C# `System.ComponentModel.CancelEventArgs` (`Cancel`) | none (new): `CancellableEvent()`, whose listeners get a `CancelEventArgs` first (`e:cancel()`, `e.cancelled`) and whose `invoke` returns whether one cancelled; every `Event` listener takes a `priority` (`Event.MONITOR` runs after the decision) |
 | `PrefabAsset` (what a Prefab script property holds; `PrefabAsset.load("path")`) | none (new) |
 | `PrefabManager` (the build's prefab registry: `findPrefab`, `getPrefabNames`, `prefabCount`) | `BundleManager` |
 | `PrefabComponent` | `BundleComponent` |
@@ -288,6 +292,7 @@ Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
 |---|---|
 | `PlayerPrefs.GetInt/SetInt/GetFloat/SetFloat/GetString/SetString/HasKey/DeleteKey/DeleteAll/Save` | `PlayerPrefs.getInt/setInt/getFloat/setFloat/getString/setString/hasKey/deleteKey/deleteAll/save` (Lua), over the same store as `UserSettings` (`getIntegerForKey`, `setStringForKey`, ... and `hasKey`, `deleteKey`, `deleteAll`, `save`; C++ `jasperengine::UserSettings`) |
 | Edit > Clear All PlayerPrefs | Edit > Clear User Settings (PlayerPrefs)...; MCP `user_settings` (list, get, set, delete, clear) |
+| Save slots (a game's own; Unity has none built in; Unreal `USaveGame`, `SaveGameToSlot` / `LoadGameFromSlot` / `DoesSaveGameExist` / `DeleteGameInSlot` / `AsyncSaveGameToSlot`) | `SaveGame.write(slot, table)` / `SaveGame.read(slot)` / `exists` / `delete` (Lua; versions, migrations, backups: docs/saved-data.md); Window > General > Saved Data; MCP `user_settings` `store: "saves"` |
 | `JsonUtility.ToJson` / `FromJson`, Newtonsoft `JsonConvert.SerializeObject` / `DeserializeObject`, `JObject` | `Json.encode(value [, opts])` / `Json.decode(text [, opts])` (tables, not typed classes; `Json.null`, `Json.array`, `Json.object`); C++ `nlohmann::json`, `jasperengine::LuaJson` |
 | `Application.persistentDataPath` | `data://` (`System.getUserDataPath()`) |
 | `File.ReadAllText` / `WriteAllText` / `AppendAllText` / `Exists` / `Delete`, `Directory.CreateDirectory` / `GetFileSystemEntries` | `File.readText` / `writeText` (atomic) / `appendText` / `exists` / `remove`, `File.makeDirs` / `File.list` (return `nil, message` on failure) |
@@ -419,7 +424,8 @@ through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md)
 | `AudioSource.PlayClipAtPoint(clip, position, volume)` | `AudioSource.playClipAtPoint(scene, path, position [, volume [, group]])` |
 | AudioClip Load Type Decompress On Load / Compressed In Memory / Streaming | `AudioSource.loadType` (`AudioLoadType.DecompressOnLoad` / `CompressedInMemory` / `Streaming`, default `Auto`: streams files of 1 MiB and more): per source, not a clip import setting |
 | `AudioImporter` | `.meta` section `import.audioImporter` (Inspector's Import Settings, MCP `set_audio_import_settings`) |
-| AudioClip import settings | `type`, `gain_db`, `trim_head_ms`, `trim_tail_ms`, `fade_in_ms`, `fade_out_ms`, `loop_start_ms`, `loop_end_ms`, `music` (tempo); the engine plays them in Play and in exports (see [mcp/guide/sound.md](mcp/guide/sound.md)) |
+| AudioClip import settings | `type`, `gain_db`, `trim_head_ms`, `trim_tail_ms`, `fade_in_ms`, `fade_out_ms`, `loop_start_ms`, `loop_end_ms`, `force_to_mono`, `music` (tempo); the engine plays them in Play and in exports (see [mcp/guide/sound.md](mcp/guide/sound.md)) |
+| `AudioImporter.forceToMono` (Force To Mono) | Import Settings' Force To Mono, key `force_to_mono`: `off`, `on`, `auto` (mono when the file's measured stereo width `side_mid_db` is at most -18 dB); `AudioSource.channels` reads 1 |
 | `AudioSource.pitch` | `pitch` (= `speed`) |
 | `AudioSource.priority`, Project Settings Real / Virtual Voices | `priority` (0..256, 128); Project Settings > Audio Max Real Voices (32) and Max Voices (256) |
 | `AudioSource.ignoreListenerPause`, `AudioListener.pause`, `AudioListener.volume` | the same names (`AudioListener.volume` = `AudioSystem.globalVolume`) |

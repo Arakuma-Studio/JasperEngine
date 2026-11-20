@@ -13,6 +13,7 @@
     "heartbeat_ns": {"max": 5, "spec": "S28 R26 diag::heartbeat(), median of 9 runs"},
     "ring_write_120b_ns": {"max": 150, "spec": "S28 R26 a 120-byte crash-ring write (memcpy included), median of 9 runs"},
     "install_ms": {"max": 3, "spec": "S28 R26 diag::crash::install on an empty report root"},
+    "journal_log_4f_ns": {"max": 250, "spec": "shipped-game-diagnostics R29 diag::journal::log, a kind and 4 fields (2 strings, 2 numbers), median of 9 runs"},
     "watchdog_idle_cpu_pct": {"max": 0.1, "spec": "S28 R26 the hang watchdog's polls with the main thread idle, % of one core over 5 s"}
   },
   "je-bench-memory": {
@@ -125,6 +126,14 @@
     "cells_rebuilt_100_trees": {"max": 9, "spec": "T5 R45 adding 100 trees to one cell"},
     "stored_tree_bytes": {"max": 40, "spec": "T5 R42 a stored tree"},
     "memory_total_mb": {"max": 128, "spec": "T5 R42 desktop, CPU and GPU, without meshes and impostors"}
+  },
+  "je-bench-culling": {
+    "group_10k_eval_ms": {"max": 0.132, "spec": "culling-group-and-simulation-distance R22: one group, 10,000 fixed spheres, 4 distances, one camera, no change (desktop + 10 %)"},
+    "group_10k_follow_eval_ms": {"max": 0.22, "spec": "R22 the same with every sphere following a GameObject"},
+    "simulation_1k_eval_ms": {"max": 0.066, "spec": "R22 1,000 Simulation Culling components, 2 focuses, no state change"},
+    "simulation_64_transitions_ms": {"max": 0.165, "spec": "R22 64 state changes"},
+    "ground_1k_ms": {"max": 0.022, "spec": "R22 the ground rule over 1,000 components (round robin)"},
+    "culling_zero_cost_ms": {"max": 0.0022, "spec": "R22 no group, no component: the system and the guards of 1,000 callbacks"}
   },
   "je-bench-splines": {
     "evaluate_at_distance_ns": {"max": 60, "spec": "R18 evaluateAtDistance on a 100-knot spline"},

@@ -147,12 +147,11 @@ TEST(ProjectPhysicsSettings, GameJsonCarriesQueriesHitTriggers) {
     const fs::path internal = project / ".jasperengine";
     auto generatedMain = [&](bool hitTriggers3D){
         Generator generator;
-        TagsAndLayers layers;
-        layers.queriesHitTriggers3D = hitTriggers3D;
+        generator.setPhysicsQueries(hitTriggers3D, true);
         const std::vector<SceneBuildInfo> scenes = {SceneBuildInfo{1, "Level", {1}, {1}, true}};
         generator.configure(scenes, "test", {}, {}, project, internal, project / "assets", project / "lua", {}, 17,
                             Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, WindowSettings(), LoadingSettings(),
-                            layers, 4, ThreadingProjectSettings(), HtmlUiRenderSettings(), PbrTier::REDUCED,
+                            TagsAndLayers(), 4, ThreadingProjectSettings(), HtmlUiRenderSettings(), PbrTier::REDUCED,
                             ShaderCreationProjectSettings(), false, {}, PlayerSettings(), AudioSettings(), DebugSettings(), 0);
         std::ifstream file(internal / "generated" / "main.cpp");
         std::stringstream text;

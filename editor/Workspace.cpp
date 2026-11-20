@@ -136,6 +136,7 @@ void Workspace::clear() {
     physicsPlacementSettings = PhysicsPlacementSettings();
     spriteNormalsSettings = SpriteNormalsWindowSettings();
     simulateTouch = false;
+    inputScheme = "auto";
     customResolutions.clear();
     sceneStates.clear();
     adoptedLegacy = false;
@@ -206,6 +207,11 @@ void Workspace::load(const fs::path& projectPath) {
     readSection("touch simulation", source, [&]() {
         if (!root["simulateTouch"]) return;
         simulateTouch = root["simulateTouch"].as<bool>();
+    });
+
+    readSection("the Game view's input scheme", source, [&]() {
+        if (!root["inputScheme"]) return;
+        inputScheme = root["inputScheme"].as<std::string>();
     });
 
     readSection("the Game view resolutions", source, [&]() {
@@ -341,6 +347,7 @@ bool Workspace::save(const Project* project) {
     root["physicsPlacement"] = Stream::encodePhysicsPlacementSettings(project->getPhysicsPlacementSettings());
     root["spriteNormals"] = Stream::encodeSpriteNormalsSettings(project->getSpriteNormalsSettings());
     root["simulateTouch"] = project->isSimulateTouch();
+    root["inputScheme"] = project->getInputSchemeOverride();
     if (!project->getCustomResolutions().empty()) {
         YAML::Node resolutions(YAML::NodeType::Sequence);
         for (const GameResolution& resolution : project->getCustomResolutions()) {

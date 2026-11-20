@@ -11,6 +11,7 @@
 #include <game-activity/GameActivity.h>
 #include <string>
 #include "util/FrameLimiter.h"
+#include "input/TextEntry.h"
 
 struct NativeEngineSavedState {
     bool mHasFocus;
@@ -201,8 +202,10 @@ public:
     int getDeviceDegrees();
     // frame pacing without Swappy: applied at the next frame (the context is current there)
     void setFallbackPacing(int swapInterval, double limiterFps);
-    void showSoftInput(std::wstring text);
+    void showSoftInput(const std::wstring& text, const jasperengine::TextEntryTraits& traits);
     void hideSoftInput();
+    // the field's text replaces the IME's (the field rejected or changed what it typed)
+    void setSoftInputText(const std::wstring& text, int selectionStart, int selectionEnd);
 
     std::string getInternalDataPath();
 

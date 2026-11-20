@@ -35,6 +35,11 @@ namespace jasperengine{
         int textureHeight = 1024;
         Entity inputSurface = NULL_ENTITY;                          // TEXTURE mode: mesh hit-tested for pointer input; NULL = own entity
         float pixelRatio = 0.0f;                                    // 0 = automatic (phase-0 dp ratio); TEXTURE mode default 1
+        // Back goes to the top shown menu first, opening one releases the game's held input, and
+        // Pause On Focus Loss does not fire while one shows (Engine::isMenuShowing)
+        bool isMenu = false;
+        // while the player uses a gamepad, the left stick moves a pointer over the screen's documents (GamepadCursor)
+        bool gamepadCursor = false;
         FunctionSubscribe<void()> onLoad;                           // after every (re)load
         FunctionSubscribe<void()> onUnload;
 
@@ -50,6 +55,8 @@ namespace jasperengine{
         bool loadFailed = false;  // last load failed (error logged once per attempt)
         int appliedSortOrder = 0;
         bool appliedVisible = false;
+        bool appliedMenu = false;     // counted by Engine::isMenuShowing (shown, interactive, isMenu)
+        bool appliedCursor = false;   // counted by GamepadCursor (shown, interactive, screen, gamepadCursor)
     };
 
 }

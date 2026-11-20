@@ -79,6 +79,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerTerrainTools, "Terrain: declarative edits and heightmap files", "terrain"},   // T1
     {registerEditorToolsTools, "Editor tools: recorder, colour sampling, swatches, curves", "editor_tools"},   // S27
     {registerImageDiffTools, "Image comparison", "editor_tools"},   // S80
+    {registerTestTools, "Project tests", "testing"},   // project-test-runner
     {registerParticleTools, "Particles: effects and playback", "particles"},   // S20
     {registerTilesetTools, "Tilemaps: tilesets and map import", "tilemaps"},   // S50
     {registerPaletteTools, "Pixel art: palettes", "pixel_art"},   // S43
@@ -91,6 +92,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerTitleArtTools, "Title Art", "title_art"},   // S80
     {registerSpriteTools, "Sprites: Aseprite import, atlases, drawing", "sprites"},   // S44 (S45, S47)
     {registerPixelFontTools, "Pixel art: font previews", "pixel_art"},   // S51
+    {registerLocalizationTools, "Localization: String Tables", "localization"},   // game-ui-localization.md
 };
 
 // JASPER_MCP_SELFTEST_GROUP: one tool in the test-only group "selftest", for the tests of

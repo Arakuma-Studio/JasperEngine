@@ -539,4 +539,60 @@ Red controls are run on the base commit first and named in the PR.
 
 ## Deviations
 
-None yet.
+- Parts B/C: `send_input` reports who took an `app: back` in one top-level `back` field (the last
+  such event of the call), not inside a per-event list, which `send_input` does not have.
+- Part C (R19): a menu appearing releases the keys, mouse and gamepad buttons whose press went to
+  the game (a press a document or the component UI took stays held in `Input`); virtual sources of
+  kind Control are released through their pointers' cancel (every on-screen control clears its
+  source on `pointercancel`), so a Control source no pointer holds stays.
+- Part C: `Engine.isMenuShowing()` and `GamepadCursor.isActive()` are Lua functions, as the spec
+  names them, although other bound getters are properties.
+- Part B (D6): the cursor updates after the input latch of a frame that runs its update (the
+  latched sticks and scheme); while the app or the editor's Play is paused it neither moves nor
+  activates.
+- Part B (AC13): the component UI goes through the same cursor dispatch as the documents (the
+  mouse's pointer -1), but no editor test drives a component Button with the cursor: the editor
+  test binary has no HTML documents, and a Gamepad Cursor document must show for the cursor to be
+  active. Not verified.
+- Part B (AC14, AC15): no counting allocator or bench line: `InputGamepadCursorTest.CursorZeroCostWhenOff`
+  checks that the overlay never loads and the cursor stays inactive with a pad moving; and
+  `CursorDrawnOnTop` checks the overlay document's layout (above the documents, hot spot on the
+  point, hidden in another scheme) instead of a golden image.
+- Tests: the Back tests are `DocumentBackTest.*` (an HTML fixture of their own in
+  `TestInputDocument.cpp`), the cursor tests `InputGamepadCursorTest.*`, AC18 and the menu clause
+  of AC19 are in the htmlui suite (`DocumentBackTest.MenuOpeningReleasesGameInput`,
+  `PauseRequestedOnlyWithoutMenu`, `PauseOnFocusLossWarnsWithoutSubscriber`; the editor tests have
+  no HTML documents), the rest of AC19 is `PlatformServicesTest.PauseRequestedOnlyWithoutMenu`;
+  AC20's cursor and Back cases are one MCP test, `test_gamepad_cursor_and_back_route`; AC21's
+  persistence is `StreamComponent.UIDocumentMenuAndCursorRoundTrip` and
+  `PresentationSettings.PauseOnFocusLossAndGamepadCursorRoundTrip` (the two Inspector rows use the
+  generic reflection `PropertyCmd` path of their neighbours; not tested on their own).
+- Part A: iOS keeps its sentinel text field (R23 in part). The risk table removes the sentinel code
+  only after an iOS simulator pass with Japanese and Chinese keyboards, which no machine of this
+  implementation could run. The hidden field gets the field's keyboard type, Return key,
+  capitalisation, secure entry and `inputmode="none"` (an empty `inputView`), and the keyboard's
+  Return is R3's action key. The field holds no text, so iOS has no resync
+  (`keepsVirtualKeyboardText` is false) and autocorrect stays off, as on the web. The shared diff
+  (`TextInputSync`) is ready for the mirror model.
+- Part A: the shared diff's state lives in core, not in each platform: `Engine::systemTextInputState`
+  (a platform keyboard's snapshot) and `Engine::resetTextInputState` (the keyboard was given
+  text) hold one `TextInputSync`, and `RmlTextInputHandler` compares the field with the snapshot.
+  `System::keepsVirtualKeyboardText()` (Android true) gates R4, so platforms whose keyboard keeps no
+  text (desktop, web, iOS here) never resync. `Engine::getTextEntryFocus` serves the Game view chip.
+- Part A: a blur hides the soft keyboard at the document system's next update in the same frame,
+  not inside the blur, so focus moving between fields (a click, `el:focus()`, Next) shows the next
+  field's traits without a hide in between (R5). A field that goes away hides it at once.
+- Part A: a hardware Enter on a field without `enterkeyhint` keeps today's behaviour exactly
+  (implicit submission, the field keeps the focus, no `event.enterKeyHint`). With `enterkeyhint`,
+  and for every action key, the `keydown` carries the hint and the default action runs after the
+  listeners, so `preventDefault()` stops it (D2).
+- Part A: `event.enterKeyHint` is documented through `tools/lua_api`'s field override of the bound
+  `UIEvent` class, not in `HtmlUI.lua`: the generator owns `UIEvent`'s fields, and the fragment
+  redeclaring one would duplicate it.
+- Part A: names in Lua, MCP and the chip are the `inputmode` values (`numeric` for Number, `tel` for
+  Phone); `inspect_ui`'s `focus` is present only while a text field of that document is focused;
+  `enter_key` is `"default"` without a hint and `max_length` is null without a limit.
+- Part A: games-activity moves to 3.0.5 (the version in the build's Gradle cache). The Android
+  build (`ANDROID_ABIS=x86_64 tools/build.sh android`) and the web build compile with it and with
+  parts A and C's platform code; the emulator suite (`tools/android-emulator-test.sh --ime`, AC7),
+  the web gate's form (AC22) and an iOS build did not run.

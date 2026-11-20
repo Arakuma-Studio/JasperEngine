@@ -308,6 +308,11 @@ uint32_t QualityResolver::particleBudget(uint32_t budget){
     return c ? std::min(budget, (uint32_t)*c) : budget;
 }
 
+float QualityResolver::simulationDistanceScale(){
+    const auto& c = resolvedCell(DeviceOverride::SimulationDistance);
+    return c ? std::clamp(*c, 0.25f, 1.0f) : 1.0f;
+}
+
 uint64_t QualityResolver::uploadBudgetBytes(){
     const QualityResolverState& s = qualityState();
     return (uint64_t)std::max(s.settings.uploadBudgetMB[(size_t)s.group], 1) * 1024ull * 1024ull;
