@@ -326,7 +326,10 @@ async def test_stats_overlay_rows(ed: Editor):
         ed.check(found.get("items"), f"Sampling row: {found}")
         shot = await ed.call_raw("screenshot", {"view": "editor"})
         if shot.images:
-            (ed.scratch.root / "stats-overlay.png").write_bytes(shot.images[0][0])
+            # the evidence, beside the run's results (build/test-results outlives the image's container)
+            evidence = harness.REPO / "build" / "test-results" / "stats-overlay.png"
+            evidence.parent.mkdir(parents=True, exist_ok=True)
+            evidence.write_bytes(shot.images[0][0])
     finally:
         await ed.call("play", action="stop")
         await ed.call("configure_game_view", show_stats=False)
