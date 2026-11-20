@@ -60,9 +60,9 @@ TEST(SizeBudgetTest, RowsAndSpecificity) {
     ASSERT_EQ(web.size(), 2u);
     EXPECT_EQ(web[0].category, "total");
     EXPECT_EQ(web[1].platform, "web");
-    const std::vector<SizeBudgetRow> linux = sizebudget::applicable(rows, "linux");
-    ASSERT_EQ(linux.size(), 2u);
-    EXPECT_EQ(linux[1].platform, "desktop");
+    const std::vector<SizeBudgetRow> desktop = sizebudget::applicable(rows, "linux");
+    ASSERT_EQ(desktop.size(), 2u);
+    EXPECT_EQ(desktop[1].platform, "desktop");
     EXPECT_EQ(sizebudget::applicable(rows, "ios")[1].platform, "all");
 
     // 1 MB is 1,048,576 bytes, as the report shows it

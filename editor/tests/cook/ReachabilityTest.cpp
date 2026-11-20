@@ -103,5 +103,5 @@ TEST(ReachabilityTest, TenThousandAssetsWithinBudget) {
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     std::printf("[ PERF ] reachability of 10000 assets, 60001 edges: %.2f ms (budget 50 ms)\n", ms);
     EXPECT_GT(reached.size(), 9000u);
-    if (test::perfSlack() > 0.0) EXPECT_LE(ms, 50.0 * test::perfSlack());
+    if (editor::test::perfSlack() > 0.0) EXPECT_LE(ms, 50.0 * editor::test::perfSlack());
 }

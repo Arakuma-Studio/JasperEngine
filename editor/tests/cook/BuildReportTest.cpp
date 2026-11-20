@@ -26,7 +26,7 @@ namespace {
     BuildReport loadFixture(const std::string& name) {
         BuildReport report;
         std::string error;
-        EXPECT_TRUE(BuildReport::load(test::fixture("build-report/" + name), report, error)) << error;
+        EXPECT_TRUE(BuildReport::load(editor::test::fixture("build-report/" + name), report, error)) << error;
         return report;
     }
 
@@ -185,7 +185,7 @@ TEST(BuildReportTest, CompareBySource) {
     for (const BuildReportChange& change : partial.changes) EXPECT_NE(change.change, "added") << change.key;
 
     // two platforms
-    BuildReport linux = head;
-    linux.platform = "linux";
-    EXPECT_TRUE(compareBuildReports(base, linux).platformDiffers);
+    BuildReport otherPlatform = head;
+    otherPlatform.platform = "linux";
+    EXPECT_TRUE(compareBuildReports(base, otherPlatform).platformDiffers);
 }

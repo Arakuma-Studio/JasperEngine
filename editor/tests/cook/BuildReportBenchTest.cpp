@@ -55,7 +55,7 @@ namespace {
 }
 
 TEST(BuildReportBench, LargeReport) {
-    const double slack = test::perfSlack();
+    const double slack = editor::test::perfSlack();
     jasperengine::test::TempDir dir;
     const BuildReport head = largeReport(100);
     auto start = std::chrono::steady_clock::now();
