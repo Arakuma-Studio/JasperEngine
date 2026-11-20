@@ -314,7 +314,7 @@ async def test_stats_overlay_rows(ed: Editor):
     await ed.call("configure_game_view", show_stats=True)
     try:
         await ed.call("play", action="start", scene=scene)
-        await ed.call("focus_window", window="Game")
+        await ed.call("focus_window", window="game")
         await ed.call("wait", frames=10)
         found = await ed.call("find_ui_item", label="Main Thread CPU")
         ed.check(found.get("items"), f"Main Thread CPU row: {found}")
@@ -338,7 +338,9 @@ async def test_player_perf_summary(ed: Editor):
     seconds with SIGTERM, which a player does not turn into a quit."""
     if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0"):
         skip("set JASPER_SLOW_BUILD=1 to build and run a real Desktop player (the run builds its prebuilt runtime once)")
-    await red_scene(ed)
+    scene = await red_scene(ed)
+    # a build holds saved scenes only
+    await ed.call("save_scene", scene=scene, path="ProfilerRed.scene")
     runtime = await build_cache.player_runtime(ed, "glcore", "release")
     out = ed.scratch.root / "export-perf"
     r = await ed.call("build_project", mode="desktop", output_dir=str(out), method="prebuilt", timeout_seconds=600)
