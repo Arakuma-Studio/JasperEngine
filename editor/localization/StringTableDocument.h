@@ -94,6 +94,9 @@ namespace jasperengine::editor::l10n {
     struct StringTableSet {
         std::filesystem::path owner;                            // absolute
         std::string ownerRelative;                              // project-relative ("assets/l10n/ui.stringtable")
+        // a .dialogue owner (dialogue-graphs.md R3): `table` is read from its nodes' texts and is
+        // never written here; only its translations are (its texts change through the graph)
+        bool dialogue = false;
         StringTableDoc table;
         std::map<std::string, TranslationDoc> translations;     // language -> its file's content
 
@@ -114,6 +117,8 @@ namespace jasperengine::editor::l10n {
 
     // every .stringtable of the project (under assets/, sorted)
     std::vector<std::filesystem::path> findTables(const std::filesystem::path& projectPath);
+    // every owner of texts: the String Tables and the dialogues (.dialogue), sorted
+    std::vector<std::filesystem::path> findOwners(const std::filesystem::path& projectPath);
     // who holds a namespace: a String Table's or a Title Art document's project-relative path ("" when free)
     std::string namespaceOwner(const std::filesystem::path& projectPath, const std::string& ns, const std::filesystem::path& except = {});
 

@@ -45,6 +45,7 @@ bool readTrimKey(const YAML::Node& value, const char* key, AudioImportSettings::
 }
 
 const char* const MUSIC_KEYS = "bpm, beats_per_bar, first_beat_ms";
+const char* const FORCE_TO_MONO_ERROR = "force_to_mono must be off, on or auto";
 
 // The music block from either side (a YAML map or set_audio_import_settings' object), the same
 // rules: bpm is required, the others default; any other key is refused with the names
@@ -102,7 +103,7 @@ int64_t framesOf(double ms, unsigned int rate) {
 
 const std::vector<std::string>& AudioImportSettings::keyNames() {
     static const std::vector<std::string> names = {"type", "gain_db", "trim_head_ms", "trim_tail_ms", "fade_in_ms", "fade_out_ms",
-                                                   "loop_start_ms", "loop_end_ms", "music"};
+                                                   "loop_start_ms", "loop_end_ms", "force_to_mono", "music"};
     return names;
 }
 
@@ -112,7 +113,75 @@ nlohmann::json AudioImportSettings::Music::toJson() const {
 
 bool AudioImportSettings::sameSound(const AudioImportSettings& other) const {
     return gainDb == other.gainDb && trimHead == other.trimHead && trimTail == other.trimTail && fadeInMs == other.fadeInMs &&
-           fadeOutMs == other.fadeOutMs && loopStartMs == other.loopStartMs && loopEndMs == other.loopEndMs;
+           fadeOutMs == other.fadeOutMs && loopStartMs == other.loopStartMs && loopEndMs == other.loopEndMs &&
+           forceToMono == other.forceToMono;
+}
+
+const char* AudioImportSettings::forceToMonoName(ForceToMono value) {
+    switch (value) {
+        case ForceToMono::On: return "on";
+        case ForceToMono::Auto: return "auto";
+        default: return "off";
+    }
+}
+
+bool AudioImportSettings::forceToMonoFromName(const std::string& name, ForceToMono& out) {
+    if (name == "off") out = ForceToMono::Off;
+    else if (name == "on") out = ForceToMono::On;
+    else if (name == "auto") out = ForceToMono::Auto;
+    else return false;
+    return true;
+}
+
+bool AudioImportSettings::Channels::autoPicksMono() const {
+    return channels > 1 && sideMidDb && *sideMidDb <= SoundTypes::MONO_SIDE_MID_DB &&
+           (!correlation || *correlation >= SoundTypes::PHASE_CORRELATION_MIN);
+}
+
+AudioImportSettings::Channels AudioImportSettings::Channels::fromAnalysis(const nlohmann::json& item) {
+    Channels out;
+    if (!item.is_object()) return out;
+    const auto format = item.find("format");
+    if (format != item.end() && format->is_object()) out.channels = format->value("channels", 0u);
+    // a clip as it plays keeps the file's numbers under `source`
+    const nlohmann::json* stereo = nullptr;
+    const auto source = item.find("source");
+    if (source != item.end() && source->is_object() && source->contains("stereo")) stereo = &(*source)["stereo"];
+    else if (item.contains("stereo")) stereo = &item["stereo"];
+    if (stereo && stereo->is_object()) {
+        const auto side = stereo->find("side_mid_db");
+        if (side != stereo->end() && side->is_number()) out.sideMidDb = side->get<double>();
+        const auto correlation = stereo->find("correlation");
+        if (correlation != stereo->end() && correlation->is_number()) out.correlation = correlation->get<double>();
+    }
+    return out;
+}
+
+std::string AudioImportSettings::Channels::autoHint() const {
+    if (channels <= 1 || !sideMidDb) return std::string();
+    char text[96];
+    if (autoPicksMono()) {
+        std::snprintf(text, sizeof(text), "\xE2\x86\x92 Mono (width %.1f dB)", *sideMidDb);
+    } else if (*sideMidDb <= SoundTypes::MONO_SIDE_MID_DB && correlation) {
+        std::snprintf(text, sizeof(text), "\xE2\x86\x92 Stereo (correlation %.2f: cancels in mono)", *correlation);
+    } else {
+        std::snprintf(text, sizeof(text), "\xE2\x86\x92 Stereo (width %.1f dB: a wide image)", *sideMidDb);
+    }
+    return text;
+}
+
+bool AudioImportSettings::playsMono(const Channels& file) const {
+    if (file.channels <= 1) return false;
+    if (forceToMono == ForceToMono::On) return true;
+    return forceToMono == ForceToMono::Auto && file.autoPicksMono();
+}
+
+void AudioImportSettings::resolveChannels(const Channels& file, ClipImportSettings& out, Json* resolved) const {
+    out.forceMono = playsMono(file);
+    if (resolved && resolved->is_object()) {
+        (*resolved)["force_mono"] = out.forceMono;
+        (*resolved)["channels"] = out.forceMono ? 1u : file.channels;
+    }
 }
 
 bool AudioImportSettings::operator==(const AudioImportSettings& other) const {
@@ -186,6 +255,11 @@ bool AudioImportSettings::parse(const YAML::Node& section, AudioImportSettings& 
             ok = readNumberKey(value, "loop_start_ms", out.loopStartMs, error);
         } else if (key == "loop_end_ms") {
             ok = readNumberKey(value, "loop_end_ms", out.loopEndMs, error);
+        } else if (key == "force_to_mono") {
+            if (!value.IsScalar() || !forceToMonoFromName(value.as<std::string>(""), out.forceToMono)) {
+                error = FORCE_TO_MONO_ERROR;
+                return false;
+            }
         } else if (key == "music") {
             if (!value.IsMap()) {
                 error = std::string("music must be a mapping of ") + MUSIC_KEYS;
@@ -234,6 +308,7 @@ YAML::Node AudioImportSettings::toYaml() const {
     if (fadeOutMs != 0.0) node["fade_out_ms"] = numberText(fadeOutMs);
     if (loopStartMs != -1.0) node["loop_start_ms"] = numberText(loopStartMs);
     if (loopEndMs != -1.0) node["loop_end_ms"] = numberText(loopEndMs);
+    if (forceToMono != ForceToMono::Off) node["force_to_mono"] = std::string(forceToMonoName(forceToMono));
     if (!music.isDefault()) {
         YAML::Node block(YAML::NodeType::Map);
         block["bpm"] = numberText(music.bpm);
@@ -262,6 +337,7 @@ AudioImportSettings::Json AudioImportSettings::toJson() const {
     if (fadeOutMs != 0.0) out["fade_out_ms"] = fadeOutMs;
     if (loopStartMs != -1.0) out["loop_start_ms"] = loopStartMs;
     if (loopEndMs != -1.0) out["loop_end_ms"] = loopEndMs;
+    if (forceToMono != ForceToMono::Off) out["force_to_mono"] = forceToMonoName(forceToMono);
     if (!music.isDefault()) out["music"] = music.toJson();
     return out;
 }
@@ -326,6 +402,13 @@ bool AudioImportSettings::apply(const Json& keys, std::string& error) {
             ok = numberKey(key, value, -1.0, next.loopStartMs);
         } else if (key == "loop_end_ms") {
             ok = numberKey(key, value, -1.0, next.loopEndMs);
+        } else if (key == "force_to_mono") {
+            if (value.is_null()) {
+                next.forceToMono = ForceToMono::Off;
+            } else if (!value.is_string() || !forceToMonoFromName(value.get<std::string>(), next.forceToMono)) {
+                error = std::string(FORCE_TO_MONO_ERROR) + " (null resets it)";
+                return false;
+            }
         } else if (key == "music") {
             if (value.is_null()) {
                 next.music = Music();

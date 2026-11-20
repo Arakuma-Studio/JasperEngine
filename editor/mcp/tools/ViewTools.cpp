@@ -2396,7 +2396,7 @@ void registerViewTools(McpRegistry& registry) {
             {"physics_debug_contacts", boolean("")},
             {"culling_debug", boolean("")},
             {"network", stringEnum("", {"online", "offline"})},
-            {"device", string("A devices id, custom or none.")},
+            {"device", string("A devices id, custom, none.")},
             {"orientation", stringEnum("", {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"})},
             {"language", string("en-XA..., or system.")},
             {"device_overlay", boolean("")},

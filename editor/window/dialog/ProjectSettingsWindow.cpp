@@ -234,6 +234,7 @@ enum class ProjectCategory {
     Voxels,    // drawn from its settings rows (no page of its own here)
     TitleArt,
     Localization,
+    Dialogue,
     Count
 };
 
@@ -502,6 +503,88 @@ static void helpMarker(const char* desc) {
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
     }
+}
+
+// Size Budgets (build-size-tools R30): every edit is one step of the project history
+static void applySizeBudgetValue(Project* project, const char* key, const mcp::Json& value, const char* step) {
+    auto* command = new ProjectSettingsValuesCmd(project, {{key, value}}, step);
+    command->setNoMerge();
+    project->getProjectCommandHistory()->addCommand(command);
+}
+
+static void drawSizeBudgetRows(Project* project) {
+    // the limit being typed: applied once, when the field is left
+    static int editingRow = -1;
+    static double editingLimit = 0.0;
+    std::vector<SizeBudgetRow> rows = project->getSizeBudgets();
+    const std::vector<std::string>& platforms = sizebudget::platformNames();
+    const std::vector<std::string>& categories = sizebudget::categoryNames();
+    auto title = [](const std::string& name) {
+        if (name == "all") return std::string("All");
+        if (name == "macos") return std::string("macOS");
+        if (name == "ios") return std::string("iOS");
+        std::string text = name;
+        text[0] = (char)std::toupper((unsigned char)text[0]);
+        return text;
+    };
+    int removed = -1;
+    bool changed = false;
+    if (!rows.empty() && ImGui::BeginTable("##SizeBudgets", 4, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerH)) {
+        ImGui::TableSetupColumn("Platform");
+        ImGui::TableSetupColumn("Category");
+        ImGui::TableSetupColumn("Limit (MB)");
+        ImGui::TableSetupColumn("##remove", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
+        ImGui::TableHeadersRow();
+        for (size_t i = 0; i < rows.size(); i++) {
+            SizeBudgetRow& row = rows[i];
+            ImGui::PushID((int)i);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::BeginCombo("##platform", title(row.platform).c_str())) {
+                for (const std::string& name : platforms)
+                    if (ImGui::Selectable(title(name).c_str(), name == row.platform) && name != row.platform) { row.platform = name; changed = true; }
+                ImGui::EndCombo();
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::BeginCombo("##category", title(row.category).c_str())) {
+                for (const std::string& name : categories)
+                    if (ImGui::Selectable(title(name).c_str(), name == row.category) && name != row.category) { row.category = name; changed = true; }
+                ImGui::EndCombo();
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            double limit = editingRow == (int)i ? editingLimit : row.limitMb;
+            if (ImGui::InputDouble("##limit", &limit, 0.0, 0.0, "%.1f")) {
+                editingRow = (int)i;
+                editingLimit = limit;
+            }
+            UIProbe::item("player.size_budgets.limit." + std::to_string(i));
+            if (ImGui::IsItemDeactivatedAfterEdit() && editingRow == (int)i) {
+                if (editingLimit > 0.0 && editingLimit != row.limitMb) { row.limitMb = editingLimit; changed = true; }
+                editingRow = -1;
+            }
+            ImGui::TableNextColumn();
+            if (ImGui::SmallButton(ICON_FA_XMARK)) removed = (int)i;
+            ImGui::SetItemTooltip("Remove this budget");
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    if (ImGui::SmallButton(ICON_FA_PLUS " Add Budget")) {
+        SizeBudgetRow row;
+        row.limitMb = 100.0;
+        rows.push_back(row);
+        changed = true;
+    }
+    UIProbe::item("player.size_budgets.add");
+    if (removed >= 0) {
+        rows.erase(rows.begin() + removed);
+        changed = true;
+    }
+    if (changed) applySizeBudgetValue(project, "player.size_budgets", sizebudget::toJson(rows),
+                                      removed >= 0 ? "Remove Size Budget" : "Edit Size Budgets");
 }
 
 // Width the value widget gives up so the marker fits beside it.
@@ -973,7 +1056,7 @@ Texture* ProjectSettingsWindow::findThumbnail(const std::string& path) {
     return nullptr;
 }
 
-void ProjectSettingsWindow::open(Project* project, const char* category) {
+void ProjectSettingsWindow::open(Project* project, const char* category, const char* search) {
     m_isOpen = true;
     if (category) {
         const int index = settingsui::pageIndex(SettingsScope::Project, category);
@@ -982,6 +1065,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
             m_categorySearch[0] = '\0';
         }
     }
+    if (search) std::snprintf(m_categorySearch, sizeof(m_categorySearch), "%s", search);
     m_project = project;
     m_projectNameOriginal = project->getName();
     snprintf(m_projectNameBuffer, sizeof(m_projectNameBuffer), "%s", m_projectNameOriginal.c_str());
@@ -1162,6 +1246,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_navigation = project->getNavigationSettings();
     m_titleArt = project->getTitleArtSettings();
     m_localization = project->getLocalizationSettings();
+    m_dialogue = project->getDialogueSettings();
     m_localizationInput[0] = '\0';
     m_audioSettings = project->getAudioSettings();
     snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", m_audioSettings.mixer.c_str());
@@ -1297,6 +1382,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::PixelArt: drawPixelArtSettings(); break;
         case ProjectCategory::TitleArt: drawTitleArtSettings(); break;
         case ProjectCategory::Localization: drawLocalizationSettings(); break;
+        case ProjectCategory::Dialogue: drawDialogueSettings(); break;
         default: break;
     }
     settingsui::endPage();
@@ -1963,6 +2049,21 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                 endSettingsRow("Builds leave out the engine modules nothing in the project uses (HTML UI, video, the runtime shader "
                                "compiler, 3D or 2D physics): a smaller player that behaves the same. Build Settings shows what is kept and "
                                "why. Turn it off for a script that builds engine names at runtime from pieces.");
+            }
+            if (settingsui::beginRow("player.size_budgets")) {
+                projectBeginSettingsRow("Size Budgets");
+                drawSizeBudgetRows(m_project);
+                endSettingsRow("Checked by every Player build against its Build Report (source exports are not checked). A row for a "
+                               "platform replaces the All row of the same category; 1 MB = 1,048,576 bytes.");
+            }
+            if (settingsui::beginRow("player.size_budget_action")) {
+                projectBeginSettingsRow("When Over Budget");
+                int action = m_project->isSizeBudgetFail() ? 1 : 0;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::Combo("##SizeBudgetAction", &action, "Warn\0Fail Build\0"))
+                    applySizeBudgetValue(m_project, "player.size_budget_action", action == 1 ? "fail" : "warn", "Set When Over Budget");
+                endSettingsRow("Warn: the build finishes with W-SIZE-BUDGET. Fail Build: it stops (content budgets before any compile), "
+                               "keeping its Build Report.");
             }
 
             ImGui::EndTable();
@@ -3757,6 +3858,108 @@ void ProjectSettingsWindow::drawLocalizationSettings() {
         }
         drawSectionNote("Titles keep their translations inside the .titleart (Title Designer > Language). Play simulates a device "
                         "language with the Game view's Device > Language.");
+    }
+    endSettingsPanel();
+}
+
+namespace {
+
+    // a text field over a std::string (no imgui_stdlib here)
+    bool dialogueTextField(const char* id, std::string& value, float width, const char* hint = "") {
+        char buffer[256];
+        std::snprintf(buffer, sizeof(buffer), "%s", value.c_str());
+        ImGui::SetNextItemWidth(width);
+        if (!ImGui::InputTextWithHint(id, hint, buffer, sizeof(buffer))) return false;
+        value = buffer;
+        return true;
+    }
+
+    // a list of prefixes: name, description, argument hint; Add and Remove
+    void dialoguePrefixRows(const char* id, std::vector<DialogueSettings::Prefix>& list) {
+        ImGui::PushID(id);
+        int remove = -1;
+        for (size_t i = 0; i < list.size(); i++) {
+            ImGui::PushID(static_cast<int>(i));
+            dialogueTextField("##name", list[i].name, 90.0f, "quest");
+            ImGui::SameLine();
+            dialogueTextField("##description", list[i].description, 170.0f, "description");
+            ImGui::SameLine();
+            dialogueTextField("##hint", list[i].hint, 110.0f, "arguments");
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Remove")) remove = static_cast<int>(i);
+            ImGui::PopID();
+        }
+        if (remove >= 0) list.erase(list.begin() + remove);
+        if (ImGui::SmallButton("Add Prefix")) list.push_back({});
+        ImGui::PopID();
+    }
+
+}
+
+void ProjectSettingsWindow::drawDialogueSettings() {
+    if (beginSettingsPanel("##DialogueSettingsPanel")) {
+        if (beginSettingsTable("##SettingsTable")) {
+            if (settingsui::beginRow("dialogue.action_prefixes")) {
+                if (projectBeginSettingsRow("Action Prefixes", !m_dialogue.actionPrefixes.empty())) m_dialogue.actionPrefixes.clear();
+                dialoguePrefixRows("actions", m_dialogue.actionPrefixes);
+                endSettingsRow("The prefixes of the actions game code handles (Dialogue.onAction(\"quest\", ...)): the Dialogue window "
+                               "completes them, and the lint warns on a prefix not listed. Empty checks nothing.");
+            }
+            if (settingsui::beginRow("dialogue.condition_prefixes")) {
+                if (projectBeginSettingsRow("Condition Prefixes", !m_dialogue.conditionPrefixes.empty())) m_dialogue.conditionPrefixes.clear();
+                dialoguePrefixRows("conditions", m_dialogue.conditionPrefixes);
+                endSettingsRow("The prefixes of the conditions game code answers (Dialogue.onCondition), as Action Prefixes.");
+            }
+            if (settingsui::beginRow("dialogue.variables")) {
+                if (projectBeginSettingsRow("Variables", !m_dialogue.variables.empty())) m_dialogue.variables.clear();
+                int remove = -1;
+                static const char* types[] = {"number", "bool", "string"};
+                for (size_t i = 0; i < m_dialogue.variables.size(); i++) {
+                    DialogueSettings::Variable& variable = m_dialogue.variables[i];
+                    ImGui::PushID(static_cast<int>(i));
+                    dialogueTextField("##name", variable.name, 90.0f, "gold");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(80.0f);
+                    if (ImGui::BeginCombo("##type", variable.type.c_str())) {
+                        for (const char* type : types) {
+                            if (ImGui::Selectable(type, variable.type == type)) variable.type = type;
+                        }
+                        ImGui::EndCombo();
+                    }
+                    ImGui::SameLine();
+                    dialogueTextField("##default", variable.defaultValue, 80.0f, "default");
+                    ImGui::SameLine();
+                    dialogueTextField("##description", variable.description, 130.0f, "description");
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Remove")) remove = static_cast<int>(i);
+                    ImGui::PopID();
+                }
+                if (remove >= 0) m_dialogue.variables.erase(m_dialogue.variables.begin() + remove);
+                if (ImGui::SmallButton("Add Variable")) m_dialogue.variables.push_back({});
+                endSettingsRow("Game-wide variables ($gold): their default is what a dialogue reads first in Play and in games; the "
+                               "lint warns on a variable no dialogue or this list declares.");
+            }
+            if (settingsui::beginRow("dialogue.speakers")) {
+                if (projectBeginSettingsRow("Speakers", !m_dialogue.speakers.empty())) m_dialogue.speakers.clear();
+                int remove = -1;
+                for (size_t i = 0; i < m_dialogue.speakers.size(); i++) {
+                    ImGui::PushID(static_cast<int>(i));
+                    dialogueTextField("##id", m_dialogue.speakers[i].id, 110.0f, "guard");
+                    ImGui::SameLine();
+                    dialogueTextField("##key", m_dialogue.speakers[i].displayKey, 170.0f, ("speakers." + m_dialogue.speakers[i].id).c_str());
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Remove")) remove = static_cast<int>(i);
+                    ImGui::PopID();
+                }
+                if (remove >= 0) m_dialogue.speakers.erase(m_dialogue.speakers.begin() + remove);
+                if (ImGui::SmallButton("Add Speaker")) m_dialogue.speakers.push_back({});
+                endSettingsRow("The speakers lines name, for the Dialogue window's Speaker field. A line shows the text of "
+                               "speakers.<id> when a String Table has it, else the id.");
+            }
+            ImGui::EndTable();
+        }
+        drawSectionNote("Dialogues are .dialogue graphs (Create > Dialogue, Window > Dialogue); these lists are for completion "
+                        "and the lint, and the variables' defaults.");
     }
     endSettingsPanel();
 }
@@ -6241,6 +6444,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setWindowIcon(m_windowIcon);
 
     m_project->getLocalizationSettings() = m_localization;
+    m_project->getDialogueSettings() = m_dialogue;
 
     PresentationSettings& presentation = m_project->getPresentationSettings();
     presentation.defaultOrientation = defaultOrientationValues[std::clamp(m_defaultOrientationIndex, 0, defaultOrientationCount - 1)];

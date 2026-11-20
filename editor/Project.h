@@ -45,6 +45,7 @@
 #include "texture/TextureImportSettings.h"
 #include "titleart/TitleArtSettings.h"
 #include "pixelart/PixelArtSettings.h"
+#include "export/SizeBudget.h"
 #include "model/ModelImportSettings.h"
 #include "SaveGameSettings.h"
 #include "vcs/VcsTypes.h"
@@ -701,6 +702,43 @@ namespace jasperengine::editor{
         bool operator!=(const LocalizationSettings& other) const { return !(*this == other); }
     };
 
+    // Project Settings > Dialogue (docs/specs/dialogue-graphs.md R23, R31): the handler prefixes, variables
+    // and speakers dialogues use, for the editor's completion and lint; the variables' defaults also
+    // reach Play and games (je-dialogue.json). All default empty: an older project writes nothing.
+    struct DialogueSettings {
+        struct Prefix {
+            std::string name;           // "quest"
+            std::string description;
+            std::string hint;           // the arguments ("quest id")
+            bool operator==(const Prefix& other) const { return name == other.name && description == other.description && hint == other.hint; }
+        };
+        struct Variable {
+            std::string name;           // without '$'
+            std::string type = "number";    // number | bool | string
+            std::string defaultValue;   // as typed: "10", "true", "Ana"
+            std::string description;
+            bool operator==(const Variable& other) const {
+                return name == other.name && type == other.type && defaultValue == other.defaultValue && description == other.description;
+            }
+        };
+        struct Speaker {
+            std::string id;             // as lines name it
+            std::string displayKey;     // the String Table key of its shown name ("" = speakers.<id>)
+            bool operator==(const Speaker& other) const { return id == other.id && displayKey == other.displayKey; }
+        };
+        std::vector<Prefix> actionPrefixes;
+        std::vector<Prefix> conditionPrefixes;
+        std::vector<Variable> variables;
+        std::vector<Speaker> speakers;
+
+        bool empty() const { return actionPrefixes.empty() && conditionPrefixes.empty() && variables.empty() && speakers.empty(); }
+        bool operator==(const DialogueSettings& other) const {
+            return actionPrefixes == other.actionPrefixes && conditionPrefixes == other.conditionPrefixes && variables == other.variables &&
+                   speakers == other.speakers;
+        }
+        bool operator!=(const DialogueSettings& other) const { return !(*this == other); }
+    };
+
     // Name, identifier, version and build below are overrides: empty (or 0)
     // means the ApplicationSettings value.
 
@@ -1056,6 +1094,8 @@ namespace jasperengine::editor{
         // Project Settings > Player > Strip Engine Code (docs/specs/S34-player-size.md R7): builds leave
         // out the engine modules the project cannot reach (export: stripEngineCode, default on)
         bool stripEngineCode = true;
+        std::vector<SizeBudgetRow> sizeBudgets;
+        bool sizeBudgetFail = false;
         // Project Settings > Player > Publishing Settings > Target Platforms: a bit per BuildPlatform
         // (export: targetPlatforms, written when not all six), never empty
         uint8_t targetPlatforms = allTargetPlatforms;
@@ -1064,6 +1104,7 @@ namespace jasperengine::editor{
         ApplicationSettings applicationSettings;
         PresentationSettings presentationSettings;
         LocalizationSettings localizationSettings;
+        DialogueSettings dialogueSettings;
         WebProjectSettings webProjectSettings;
         LinuxProjectSettings linuxProjectSettings;
         WindowsProjectSettings windowsProjectSettings;
@@ -2170,6 +2211,11 @@ namespace jasperengine::editor{
         void setPackContent(bool enabled) { packContent = enabled; }
         bool isStripEngineCode() const { return stripEngineCode; }
         void setStripEngineCode(bool enabled) { stripEngineCode = enabled; }
+        // Publishing Settings > Size Budgets (build-size-tools R12): the rows, and When Over Budget (false: warn)
+        const std::vector<SizeBudgetRow>& getSizeBudgets() const { return sizeBudgets; }
+        void setSizeBudgets(const std::vector<SizeBudgetRow>& rows) { sizeBudgets = rows; }
+        bool isSizeBudgetFail() const { return sizeBudgetFail; }
+        void setSizeBudgetFail(bool fail) { sizeBudgetFail = fail; }
         // Target Platforms: where the game ships. Build Settings, build_project and get_build_info default
         // to them; any platform still builds. 0 sets all six (a game has a target)
         static constexpr uint8_t allTargetPlatforms = 0x3F;
@@ -2197,6 +2243,8 @@ namespace jasperengine::editor{
         const PresentationSettings& getPresentationSettings() const;
         LocalizationSettings& getLocalizationSettings() { return localizationSettings; }
         const LocalizationSettings& getLocalizationSettings() const { return localizationSettings; }
+        DialogueSettings& getDialogueSettings() { return dialogueSettings; }
+        const DialogueSettings& getDialogueSettings() const { return dialogueSettings; }
         // Play start: Engine.targetFrameRate / vSyncCount, Screen and the application info from
         // these settings, before any script runs (the generated main of an export does the same)
         void applyPresentationSettings();

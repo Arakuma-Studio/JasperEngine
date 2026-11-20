@@ -277,7 +277,7 @@ namespace {
         JE_FIELD(TextComponent, font, .updateFlags = UpdateFlags_Text_Atlas, .asset = AssetKind::Font, .uiOrder = 1),
         JE_FIELD(TextComponent, text, .updateFlags = kText, .drawer = "multiline"),
         // game-ui-localization.md R16, R40: "" by default, written only when set
-        JE_FIELD(TextComponent, textKey, .flags = OmitIfDefault, .updateFlags = kText, .label = "Localization Key",
+        JE_FIELD(TextComponent, textKey, .flags = OmitIfDefault | Hidden, .updateFlags = kText, .label = "Localization Key",
                  .tooltip = "A String Table key (ns.key): the text shows its message in the game language; the text stays the fallback."),
         JE_FIELD(TextComponent, fontSize, .updateFlags = UpdateFlags_Text_Atlas, .unit = Unit::Pixels, .step = 1.0f, .label = "FontSize",
                  .visibleIf = &textIsVector, .uiOrder = 2),

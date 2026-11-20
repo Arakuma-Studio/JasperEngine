@@ -508,4 +508,49 @@ inline constexpr double MONO_SIDE_MID_DB = -18.0;
 
 ## Deviations
 
-None yet.
+Report, history, reachability and budgets (P1, P2):
+
+- **Names.** The comparison is the free function `compareBuildReports(base, head)` and the walk takes
+  `ReachEdge`s (both ends as report asset keys; `reachEdgesOf` converts the index's `DepEdge`s), so
+  the exporter and `get_build_info`'s live answer (R10) share one conversion. `BuildReport::last()`
+  stays the session's report; `BuildReportHistory::last(project)` adds the history fallback (R6).
+- **When the edges are copied.** In a main-thread task when the report is written (after the scripts
+  and C++ sources are copied), not right after `measureBuildContent`: one copy serves the file to
+  asset mapping (scene ids, prefab GUIDs) and the walk.
+- **C++ script sources are not roots.** They hold no edges of the index (the scenes' `CppScript`
+  edges reach them), and `cppExportedPaths` also lists the generated sources, which are no assets.
+- **Reachability entries carry `object`** (the GameObject holding the field, `DepEdge::entityPath`)
+  when there is one, so R29's step names the GameObject's path rather than its file id.
+- **File layout.** `build-report.json` keeps one line per file, left-out source and reached asset
+  (containers of scalars on one line); a file's `asset` is written only when its path does not
+  imply it (`assets/<rel>` ships `<rel>`, a cooked file its `source`), and files with no asset get
+  `origin` (`engine`, `generated`); a file's `category` is written only when its path does not give it
+  (`largest` keeps every key for older readers); a reachability entry is `[via, field, kind]` (and the
+  GameObject). Keys per entry put the 20,000-file bench at 4.67 MB; without them it fits R22's 4 MB.
+- **Budget specificity.** A `desktop` row sits between a platform's row and `all` (windows, linux and
+  macos builds take it over `all`; their own row over it).
+- **AC8 and AC18** use a prebuilt Linux build with the stand-in runtime `test_build_method.py`
+  installs (source exports are never checked, R12; a compile would cost minutes for the warn case).
+- **`get_build_report` (D8's fallback).** The three parameters on `get_build_info` (354 characters)
+  put the default listing at 99,254 of its 99,000 (`tool_budget.py --check`), and trimming them and
+  the description still left it over. They are a `shipping`-group tool, `get_build_report {report,
+  compare_to, referenced_by}`, which returns only the report part of R33's result; `get_build_info`'s
+  description points to it ("sizes: get_build_report", 28 characters). The eval cases (R38) and the
+  MCP tests call it; the CLI is `jasperengine-editor call get_build_report` (R35).
+- **`string_table_cooked`**: game-ui-localization (merged meanwhile) ships `.stringtable` and
+  `.translation` files cooked into `assets/l10n`; Left Out lists them with this reason.
+- **`profile_excluded`** (build-profiles.md landed first): Left Out lists each file a Build Profile's
+  exclusions leave out of the assets walk; a profile's own budget rows come through its
+  `player.size_budgets` override, which the build's settings snapshot applies.
+
+Force To Mono (P3):
+
+- Test names follow the suites their files already use: AC11's `ClipSourceTest.ForceMonoMeanOfChannels` is
+  `AudioClipSource.ForceMonoMeanOfChannels`, AC20's `ClipSourceTest.ImportTableForceMono` is
+  `AudioImportTable.ImportTableForceMono`, `ClipSourceBudgetTest` is the suite `ClipSourceBudget`, AC9's test is
+  `AudioAnalysis.SideMidWidth`. AC11's pinned hashes are `ClipImportSettings.ExistingHashesStayAndForceMonoChangesIt`.
+- `analyze_audio` reports the channels as a clip plays in `played.channels` (every played item), and the file's
+  `stereo` joins the keys copied under `source`, so a forced clip still shows the file's `side_mid_db`.
+- Auto treats a null correlation (one channel constant) as not cancelling: only the width decides then.
+- The mono WAV cook writes only the `fmt ` and `data` chunks: a clip's loop and trims come from its import
+  settings, not from `smpl` or `cue ` chunks, which the engine does not read.

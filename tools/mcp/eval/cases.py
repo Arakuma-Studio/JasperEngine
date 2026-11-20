@@ -751,6 +751,44 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "guard_input_script_file",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "Agents repeating a menu flow re-sent the same send_input events by hand each time; a script "
+                         "file runs the flow with one call and keeps it for the next run.",
+        "text_at_issue": "send_input parameter file: 'Script .input.json.'",
+        "source": "input-recorder-and-input-scripts spec, AC19",
+        "prompt": "The game is playing. Tests/Input/menu.input.json is a script that taps through the main menu. Run it "
+                  "and tell me whether it worked.",
+        "mocks": [
+            {"tool": "send_input", "args": {"file": "re:menu\\.input\\.json$"}, "result": ok(
+                "Sent 6 input step(s) over 140 frame(s).\nShot \"01_menu\": Recordings/Input/menu/01_menu.png",
+                {"frames": 140, "shots": [{"name": "01_menu", "path": "Recordings/Input/menu/01_menu.png"}]})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\").", {"state": "playing"})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"file": "re:menu\\.input\\.json$"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_input_ms_in_file",
+        "playing": True,
+        "kind": "bad",
+        "what_happened": "Agents writing input files used wall-clock ms waits; in a file ms are frames at its fixed_fps, "
+                         "and a load that takes longer on a slow machine is waited for with wait until.",
+        "text_at_issue": "send_input description: 'wait: frames, ms, or until (Lua; frames caps)'",
+        "source": "input-recorder-and-input-scripts spec, AC19",
+        "prompt": "The game is playing. Wait until the Lua global MenuReady is true (it takes a few seconds to load), "
+                  "then press space.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "wait", "until": "re:MenuReady"}]}, "result": ok(
+                "Sent 3 input step(s) over 212 frame(s).", {"frames": 212, "state": "playing"})},
+            {"tool": "wait", "args": {"until": "re:MenuReady"}, "result": ok("Condition true after 210 frames.", {"reason": "condition"})},
+            {"tool": "send_input", "result": ok("Sent 2 input step(s) over 3 frame(s).", {"frames": 3})},
+        ],
+        "checks": {"calls": ["send_input"], "max_errors": {"send_input": 0}},
+        "max_turns": 8,
+    },
+    {
         "id": "bad_batch_args_key",
         "kind": "bad",
         "what_happened": "batch items used `args` instead of `arguments`; the key was dropped silently, the item ran with no "
@@ -1445,6 +1483,53 @@ CASES = [
                    "file_must_not": {"assets/ui/main_menu.lua": [r"(?i)spielen"]},
                    "must_not_call": ["create_script"]},
         "max_turns": 14,
+    },
+    {
+        "id": "guard_dialogue_graph_not_lua_table",
+        "kind": "guard",
+        "what_happened": "Asked for an NPC conversation, agents hard-coded it as a Lua table of lines and choices in a script (the "
+                         "dialogue template's old CONVERSATION table, the Craftsman .inc anti-pattern of docs/specs/dialogue-graphs.md "
+                         "section 4); a .dialogue graph made with edit_graph is the format, played by a Dialogue Runner.",
+        "text_at_issue": "Guide 'Other areas': 'dialogue' (jasper://docs/dialogue); run_dialogue's description",
+        "source": "docs/specs/dialogue-graphs.md R29",
+        "prompt": "Give the blacksmith NPC a short conversation: he greets the player, then offers 'Buy a sword' or 'Goodbye'.",
+        "mocks": [
+            {"tool": "edit_graph", "result": ok(
+                "Create blacksmith.dialogue: 5 op(s), 0 issue(s).",
+                {"issues": [], "applied": 5, "undo_name": "Create blacksmith.dialogue", "dry_run": False,
+                 "added": [{"op_index": 0, "id": "n1"}, {"op_index": 1, "id": "n2"}]})},
+            {"tool": "run_dialogue", "result": ok(
+                "assets/dialogue/blacksmith.dialogue: line\nn2 blacksmith: Welcome, traveller!\n  1. Buy a sword\n  2. Goodbye",
+                {"transcript": [{"node": "n2", "speaker": "blacksmith", "text": "Welcome, traveller!", "key": "blacksmith.n2"}],
+                 "state": {"state": "line", "node": "n2"}, "variables": {}})},
+            {"tool": "add_component", "result": ok("Added dialoguerunner to Blacksmith.", {"component": "dialoguerunner"})},
+            {"tool": "set_component_property", "result": ok("Set dialoguerunner.dialogue.", {})},
+        ],
+        "checks": {"calls": [{"tool": "edit_graph", "args": {"create": "*"}}],
+                   "file_must_not": {"scripts/Blacksmith.lua": [r"(?i)buy a sword"], "scripts/blacksmith.lua": [r"(?i)buy a sword"]},
+                   "must_not_call": ["create_script"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "guard_dialogue_run_explore",
+        "kind": "guard",
+        "what_happened": "Asked whether every ending of a conversation can be reached, agents read get_graph and reasoned over the "
+                         "wires (missing conditions and loops); run_dialogue {explore: true} walks every path and reports the endings, "
+                         "no-exit loops and lines never shown.",
+        "text_at_issue": "run_dialogue's description ('explore: true walks every path ...'); jasper://docs/dialogue",
+        "source": "docs/specs/dialogue-graphs.md R29",
+        "prompt": "Can the player reach every ending of assets/dialogue/guard.dialogue? Check it.",
+        "mocks": [
+            {"tool": "run_dialogue", "result": ok(
+                "Explored 6 path(s): 9/10 nodes covered, 2 ending(s), 0 no-exit loop(s).\nend \"paid\" at n10 by choices [1]\n"
+                "end \"left\" at n9 by choices [2]\nnever shown: n12",
+                {"coverage": {"nodes": 10, "covered": 9, "uncovered": ["n12"]},
+                 "endings": [{"result": "paid", "node": "n10", "choices": [1]}, {"result": "left", "node": "n9", "choices": [2]}],
+                 "no_exit_loops": [], "lines_never_shown": ["n12"], "paths": 6})},
+            {"tool": "get_graph", "result": ok("dialogue graph: 10 node(s), 9 edge(s).", {"graph": {}, "issue_count": 0})},
+        ],
+        "checks": {"calls": [{"tool": "run_dialogue", "args": {"explore": True}}]},
+        "max_turns": 10,
     },
     {
         "id": "guard_l10n_assert_languages",
@@ -5896,5 +5981,73 @@ CASES = [
         "checks": {"calls": ["get_frame_times"], "reply_must": [r"(?i)wait"],
                    "reply_must_not": [r"(?i)\b(is|it's|it is) (cpu.bound|compute.bound)"]},
         "max_turns": 16,
+    },
+    {
+        "id": "bad_build_grew_find_why",
+        "kind": "bad",
+        "what_happened": "A web build was bigger than the day before; with only the last build's totals the agent guessed at "
+                         "causes (texture settings, engine modules) instead of comparing the two builds' reports.",
+        "text_at_issue": "get_build_report (shipping group) compare_to; get_build_info's '(sizes: get_build_report)'",
+        "source": "docs/specs/build-size-tools.md R7, R33, R38",
+        "prompt": "Our web build is bigger than yesterday's. Find out what grew.",
+        "mocks": [
+            {"tool": "get_build_report", "args": {"compare_to": "*"}, "result": ok(
+                "Build Report web 20261119-142233-prebuilt: 142.0 MB (+3.2 MB vs 20261118-101500-prebuilt); textures +2.9 MB "
+                "(1 grown, 1 added); audio +0.3 MB (1 grown).",
+                {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
+                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]},
+                 "comparison": {"base": "20261118-101500-prebuilt",
+                                "total": {"before": 145541120, "after": 148897792, "delta": 3356672},
+                                "changes": [
+                                    {"change": "grown", "key": "textures/hero_sheet.png", "path": "assets/je-cooked/web/5e1.ktx2",
+                                     "category": "textures", "before": 524288, "after": 2621440, "delta": 2097152},
+                                    {"change": "added", "key": "textures/title_bg.png", "path": "assets/je-cooked/web/9ab.ktx2",
+                                     "category": "textures", "before": 0, "after": 943718, "delta": 943718},
+                                    {"change": "grown", "key": "assets/music/theme.ogg", "path": "assets/music/theme.ogg",
+                                     "category": "audio", "before": 2097152, "after": 2411724, "delta": 314572}],
+                                "counts": {"added": 1, "removed": 0, "grown": 2, "shrunk": 0, "unchanged": 812},
+                                "partial": False, "platform_differs": False, "truncated": False}})},
+            {"tool": "get_build_report", "result": ok(
+                "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
+                {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
+                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]}})},
+            {"tool": "get_build_info", "result": ok(
+                "Host linux. Desktop player: available; Web: available; source export: available. 2 scene(s) in the build, 40 "
+                "shader(s).", {"last_build": {"mode": "player", "platform": "web", "status": "succeeded"}, "scene_count": 2})},
+        ],
+        "checks": {"calls": [{"tool": "get_build_report", "args": {"compare_to": "re:."}}],
+                   "reply_must": [r"hero_sheet"], "must_not_call": ["build_project"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_texture_should_not_ship",
+        "kind": "bad",
+        "what_happened": "Asked why a texture was in the build, the agent searched the scenes' files by hand and missed the "
+                         "material that pulled it in; the export already records which reference made each file ship.",
+        "text_at_issue": "get_build_report (shipping group) referenced_by; get_build_info's '(sizes: get_build_report)'",
+        "source": "docs/specs/build-size-tools.md R9, R33, R38",
+        "prompt": "textures/old_logo.png should not be in the build at all. Why is it in there?",
+        "mocks": [
+            {"tool": "get_build_report", "args": {"referenced_by": ["re:old_logo"]}, "result": ok(
+                "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
+                {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792},
+                 "referenced_by": [{"file": "assets/je-cooked/web/77c.ktx2", "asset": "textures/old_logo.png", "reason": "reached",
+                                    "live": False, "chain": [
+                                        {"asset": "textures/old_logo.png", "field": "material/baseColorTexture", "kind": "material_texture"},
+                                        {"asset": "materials/splash.material", "field": "entity:14/MeshComponent.submeshes[0].material",
+                                         "kind": "mesh_material_file", "object": "Credits/Logo"},
+                                        {"asset": "scenes/Credits.scene", "field": "project/scenes[2].filepath", "kind": "scene_list"},
+                                        {"asset": "project.yaml", "field": "", "kind": "root"}]}]})},
+            {"tool": "get_build_report", "result": ok(
+                "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
+                {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
+                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]}})},
+            {"tool": "get_build_info", "result": ok(
+                "Host linux. Desktop player: available; Web: available; source export: available. 2 scene(s) in the build, 40 "
+                "shader(s).", {"last_build": {"mode": "player", "platform": "web", "status": "succeeded"}, "scene_count": 2})},
+        ],
+        "checks": {"calls": [{"tool": "get_build_report", "args": {"referenced_by": ["re:old_logo"]}}],
+                   "reply_must": [r"splash\.material|Credits"]},
+        "max_turns": 10,
     },
 ]

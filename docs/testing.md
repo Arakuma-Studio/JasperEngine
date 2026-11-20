@@ -184,6 +184,7 @@ takes about a second. So an MCP test compiles only when the compile path is what
   | `test_build.py::test_desktop_build_and_run` | the compile path end to end (CMake, the engine, the link, a player that runs), and a broken C++ source's errors parsed as `file:line` (only a compiler produces them) |
   | `test_html_ui_effects_export.py::test_desktop_player_draws_the_effects` | `graphics.runtime_shaders: false`: a compiled game ships without the runtime shader compiler whatever its scripts do (a prebuilt variant leaves it out only when no script can need it, S34), so it shows the exported UI effect variants are all the game needs |
   | `test_build.py::test_cancel_desktop_build`, `test_busy.py::test_export_job_refusals` | a compile runs long enough to cancel, and to refuse other tools while it runs (a prebuilt build ends first); both are cancelled within seconds |
+  | `test_localization_export.py::test_compiled_game_loads_the_manifest` | the generated main of a compiled game loads `l10n/manifest.json` (a prebuilt player reads it from `game.json`): the String Tables reach a compiled game |
   | `test_lifecycle_export.py::test_play_and_export_log_the_same_lifecycle` | a C++ script's lifecycle in an exported player: C++ scripts ship only in a compiled game |
 
 - **(b) Prebuilt** (`method="prebuilt"`, and it checks `method_used` and the `player_id` it
@@ -830,6 +831,19 @@ no-silent-green gate, and fails unless at least two `NavStubTest` tests passed (
 compiles navigation in runs none). The first run builds the whole engine (the switch is a public
 define); later runs are incremental. `tools/check-changed` plans it for a navigation or engine CMake
 change; nothing else runs it, CI included.
+
+### Dialogue OFF: `tools/check-physics-off.sh dialogue-off`
+
+A project with no `.dialogue`, Dialogue Runner or script naming `Dialogue` exports with
+`JASPERENGINE_DIALOGUE=OFF` (dialogue-graphs.md R15): `engine/core/dialogue` is not compiled and the
+Lua names `Dialogue` and `DialogueRunner` are stubs that log once. The module-off variant of
+`tools/check-physics-off.sh` builds that engine (`build/physics-off-dialogue-off`); the stubs'
+test, `DialogueStubTest.LogsOnceWhenNotCompiled`, binds them on a Lua state of its own, so it runs in
+every core build:
+
+```sh
+tools/build.sh exec linux tools/check-physics-off.sh dialogue-off
+```
 
 ### Sanitizers
 

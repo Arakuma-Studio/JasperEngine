@@ -308,6 +308,12 @@ namespace jasperengine {
         // The user's languages as BCP 47 tags ("es-MX"), most preferred first; never empty
         // (the base returns {"en-US"})
         virtual std::vector<std::string> getPreferredLocales();
+        // The platform saw a change that may be the user's languages (Android's configuration, the
+        // Apple locale notification, Windows' WM_SETTINGCHANGE "intl", the web's languagechange):
+        // when getPreferredLocales() differs from what it said last, the game language and Auto
+        // titles resolve again (TitleArtLanguage::localesChanged; game-ui-localization.md R10).
+        // True when it changed. Main thread.
+        bool notifyLocalesMayHaveChanged();
         // getPreferredLocales()[0], normalized ("es-MX")
         std::string getLocale();
         // "es": the language subtag of getLocale(), lower case

@@ -1570,6 +1570,27 @@ co:cancel(); co:isActive(); Timer.cancelAll(self)
 
 For delayed destruction `GameObject.destroy(obj, delay)` also works; tweens are Actions.
 
+### 2.13.1 InputRecording (static): record and replay input
+
+```lua
+InputRecording.start({ checkpointFrames = 60 })            -- true | nil, err (one at a time)
+local path = InputRecording.stop("data://recordings/run.input.json")   -- written on a job
+local replay = InputRecording.play("asset://demo/attract.input.json",
+    { loop = true, stopOnRealInput = true, onFinished = function(r) self:showMenu() end })
+InputRecording.checkpoint("score", self.score)            -- a value checkpoints compare
+local _ = replay:isDone(), replay.frame, replay.diverged, InputRecording.frame
+replay:stop(); InputRecording.stopReplay()
+```
+
+- A recording from `start()` is `start: "now"`; `stop()` writes `data://` only (`lua://` and
+  `asset://` are read-only). `maxBytes` caps it (1 MB, at most 16 MB): at the cap it stops with a
+  warning and the file says `truncated: true`.
+- `play(source)` takes a `lua://`, `asset://` or `data://` path, or a decoded file table. While it
+  runs real device input is blocked (`blockRealInput = false` lets it through); with
+  `stopOnRealInput` the first real key, button or touch ends it and reaches the game (attract mode).
+- `replay.diverged` is nil or `{frame, differences}` (recordings with checkpoints, on the platform
+  that recorded them). `Coroutine.waitFor(replay)` waits for it.
+
 ### 2.14 Profiler (static): samples, counters, frame statistics
 
 ```lua
@@ -1682,6 +1703,32 @@ local scan = Localization.scan()                 -- {literal = {...}, missing = 
   setting `text` from `Localization.get`: those follow language changes by themselves.
 - `language`, `languages` and `onLanguageChanged` are fields; `TitleArt.setLanguage` sets the
   same language. Tables: `edit_string_table`, jasper://docs/localization.
+### 2.15.2 Dialogue (static) and DialogueRunner: dialogue graphs
+
+```lua
+Dialogue.onCondition("shop", function(runner, verb, args)        -- shop.canAfford(5) in a dialogue
+    if verb == "canAfford" then return Dialogue.variables.get("gold") >= args[1] end
+end)
+Dialogue.onAction("shop", function(runner, verb, args)           -- shop.open:weapons
+    if verb == "open" then return "wait" end                     -- the runner waits for resume()
+end)
+local runner = DialogueRunner(self.scene, self.entity)          -- adds a Dialogue Runner if missing
+runner.dialogue = "dialogue/guard.dialogue"
+runner.onLine = function(r, line)                                 -- {node, key, text, speakerName, options...}
+    for _, o in ipairs(line.options) do Log.print(o.index .. ". " .. o.text) end
+end
+runner.onEnd = function(r, result) Log.print("ended: " .. result) end
+runner:start("greet", {player = "Ana"})                          -- {player} in a text, or in an expression
+runner:choose(1)                                                  -- or runner:advance() on a line without choices
+Dialogue.variables.set("gold", 20)
+local saved = Dialogue.variables.toTable()                       -- values and visit counts, for a save
+```
+
+- `state` is `idle`, `line`, `waiting` or `ended`; `isRunning`, `currentNode`, `currentLine` (the
+  last line) are fields. Handlers are game-wide, one per prefix, cleared at Stop: register them in
+  `init`. An unregistered prefix makes a condition false and warns once per run.
+- Write conversations as `.dialogue` graphs (`edit_graph`), never as Lua tables; walk them with
+  `run_dialogue` (jasper://docs/dialogue).
 ### 2.16 Time (static, Unity's Time)
 
 The game clocks under their Unity names. `Engine.deltatime` and the other `Engine` names stay;
@@ -2902,6 +2949,8 @@ rw: `enabled`, `volume`, `speed` (`pitch` is the same), `pan`, `looping`, `loopi
 mixer group by name, "" = Master), `loadType` (`AudioLoadType.*`, Auto streams files of 1 MiB and
 more), `priority` (0 most important .. 256, default 128), `maxVoices` (1..64, default 8),
 `ignoreListenerPause`.
+Read-only: `channels` (the loaded clip's channels as it plays: 1 under the clip's Force To Mono, 0
+with no clip loaded).
 Sound Events and triggers: `event` (rw: its path; assigning a path or GUID resolves it, `""` clears it;
 set, the source plays the event and its clip is ignored), `playOn` (rw, `AudioPlayOn` flags),
 `minImpactSpeed`, `fullVolumeImpactSpeed` (contact triggers: below the first nothing plays; below the

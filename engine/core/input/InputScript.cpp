@@ -3,6 +3,8 @@
 
 #include "input/InputScript.h"
 #include "input/InputScriptRunner.h"
+#include "input/InputRecorder.h"
+#include "Log.h"
 
 #include "Engine.h"
 #include "Input.h"
@@ -11,6 +13,7 @@
 #include "input/InputControlNames.h"
 #include "math/Rect.h"
 #include "script/LuaBinding.h"
+#include "subsystem/GamepadCursor.h"
 #include "util/PlatformRules.h"
 
 #include "lua.hpp"
@@ -486,6 +489,15 @@ namespace {
                 b.add(ActionType::GamepadDisconnect, gap).device = pad;
                 return true;
             }
+            // x, y or target: the gamepad cursor goes there first, in the same frame
+            ScriptPoint warp;
+            if (!b.readEventPoint(event, "x", "y", "position", "target", space, warp, error))
+                return false;
+            if (warp.given) {
+                ScriptAction& a = b.add(ActionType::GamepadCursor, 0);
+                a.device = pad;
+                a.point = warp;
+            }
             if (action == "axis") {
                 const int axis = parseGamepadAxisValue(event.contains("axis") ? event["axis"] : ScriptJson());
                 if (axis < 0) {
@@ -651,7 +663,17 @@ namespace {
                 b.add(ActionType::AppOrientation, gap).string = b.addString(PlatformRules::orientationName(orientation));
                 return true;
             }
-            error = "app action must be pause, resume, focus_lost, focus_gained, low_memory, hide, show or orientation";
+            if (action == "back") {
+                // an agent's Back, or a recorded Back button's (Engine.onBack hears which)
+                const std::string source = lowerText(stringOf(event, "source", "agent"));
+                if (source != "agent" && source != "back_button") {
+                    error = "app back source must be agent or back_button (an Escape or a B is its key or button event)";
+                    return false;
+                }
+                b.add(ActionType::AppBack, gap).code = static_cast<int>(source == "back_button" ? BackSource::BackButton : BackSource::Agent);
+                return true;
+            }
+            error = "app action must be pause, resume, focus_lost, focus_gained, low_memory, hide, show, orientation or back";
             return false;
         }
 
@@ -666,6 +688,19 @@ namespace {
         InjectScope() { injectingDepth.fetch_add(1, std::memory_order_relaxed); }
         ~InjectScope() { injectingDepth.fetch_sub(1, std::memory_order_relaxed); }
     };
+
+    // a whole number >= 0, signed or not: a parsed file's are unsigned, a decoded Lua table's signed
+    bool nonNegativeWhole(const ScriptJson& v, uint64_t& out){
+        if (v.is_number_unsigned()) {
+            out = v.get<uint64_t>();
+            return true;
+        }
+        if (v.is_number_integer() && v.get<int64_t>() >= 0) {
+            out = static_cast<uint64_t>(v.get<int64_t>());
+            return true;
+        }
+        return false;
+    }
 
     double round4(double v){
         return std::round(v * 10000.0) / 10000.0;
@@ -752,6 +787,8 @@ const char* actionTypeName(ActionType type){
         case ActionType::AppHide: return "app hide";
         case ActionType::AppShow: return "app show";
         case ActionType::AppOrientation: return "app orientation";
+        case ActionType::AppBack: return "app back";
+        case ActionType::GamepadCursor: return "gamepad cursor";
     }
     return "?";
 }
@@ -778,7 +815,7 @@ bool ScriptAction::operator==(const ScriptAction& other) const{
 
 uint32_t ParsedScript::lastFrame() const{
     if (header.kind == ScriptKind::Recording) {
-        uint32_t last = header.checkpoints.empty() ? 0 : header.checkpoints.back().frame;
+        uint32_t last = std::max(header.frames, header.checkpoints.empty() ? 0u : header.checkpoints.back().frame);
         for (const ScriptAction& action : actions)
             last = std::max(last, action.frame);
         return last;
@@ -826,12 +863,12 @@ bool parseEventList(const ScriptJson& events, const EventParseOptions& options, 
         uint32_t stamp = 0;
         const bool stamped = event.is_object() && event.contains("frame");
         if (options.recording) {
-            if (!stamped || !event["frame"].is_number_unsigned()) {
+            uint64_t value = 0;
+            if (!stamped || !nonNegativeWhole(event["frame"], value)) {
                 errorEvent = i;
                 error = "a recording's event needs frame, the update frame it arrived on (a whole number >= 0)";
                 return false;
             }
-            const uint64_t value = event["frame"].get<uint64_t>();
             if (value > UINT32_MAX) {
                 errorEvent = i;
                 error = "frame " + std::to_string(value) + " is past the last frame a recording can hold";
@@ -955,12 +992,13 @@ namespace {
             header.fromPlayStart = start == "play";
         }
         if (root.contains("seed")) {
-            if (!root["seed"].is_number_unsigned() || root["seed"].get<uint64_t>() > UINT32_MAX) {
+            uint64_t seed = 0;
+            if (!nonNegativeWhole(root["seed"], seed) || seed > UINT32_MAX) {
                 error = "seed must be a 32-bit whole number";
                 return false;
             }
             header.hasSeed = true;
-            header.seed = static_cast<uint32_t>(root["seed"].get<uint64_t>());
+            header.seed = static_cast<uint32_t>(seed);
         }
         header.scene = stringOf(root, "scene");
         header.platform = stringOf(root, "platform");
@@ -975,6 +1013,14 @@ namespace {
         }
         header.simulateTouch = root.contains("simulate_touch") && root["simulate_touch"].is_boolean() && root["simulate_touch"].get<bool>();
         header.truncated = root.contains("truncated") && root["truncated"].is_boolean() && root["truncated"].get<bool>();
+        if (root.contains("frames")) {
+            uint64_t frames = 0;
+            if (!nonNegativeWhole(root["frames"], frames) || frames > UINT32_MAX) {
+                error = "frames must be the recording's length in frames (a whole number, 0 or more)";
+                return false;
+            }
+            header.frames = static_cast<uint32_t>(frames);
+        }
         if (root.contains("probes")) {
             for (const ScriptJson& p : root["probes"]) {
                 if (!p.is_string()) {
@@ -992,12 +1038,13 @@ namespace {
             for (const ScriptJson& c : root["checkpoints"]) {
                 Checkpoint checkpoint;
                 const std::string hash = stringOf(c, "hash");
-                if (!c.is_object() || !c.contains("frame") || !c["frame"].is_number_unsigned() || hash.empty() || hash.size() > 16 ||
+                uint64_t frame = 0;
+                if (!c.is_object() || !c.contains("frame") || !nonNegativeWhole(c["frame"], frame) || hash.empty() || hash.size() > 16 ||
                     hash.find_first_not_of("0123456789abcdef") != std::string::npos) {
                     error = "each checkpoint needs frame and hash (16 hex digits)";
                     return false;
                 }
-                checkpoint.frame = static_cast<uint32_t>(std::min<uint64_t>(c["frame"].get<uint64_t>(), UINT32_MAX));
+                checkpoint.frame = static_cast<uint32_t>(std::min<uint64_t>(frame, UINT32_MAX));
                 checkpoint.hash = std::stoull(hash, nullptr, 16);
                 if (c.contains("probes") && c["probes"].is_array()) {
                     for (const ScriptJson& p : c["probes"]) {
@@ -1015,7 +1062,7 @@ namespace {
         }
         static const char* const known[] = {"format", "version", "kind", "start", "fixed_fps", "space", "gap_frames", "seed",
                                             "scene", "platform", "engine_version", "canvas", "simulate_touch", "probes",
-                                            "checkpoints", "truncated", "events"};
+                                            "checkpoints", "truncated", "frames", "events"};
         for (auto it = root.begin(); it != root.end(); ++it) {
             if (std::find(std::begin(known), std::end(known), it.key()) == std::end(known))
                 header.extra[it.key()] = it.value();
@@ -1184,6 +1231,11 @@ namespace {
             case ActionType::AppHide: e = {{"type", "app"}, {"action", "hide"}}; break;
             case ActionType::AppShow: e = {{"type", "app"}, {"action", "show"}}; break;
             case ActionType::AppOrientation: e = {{"type", "app"}, {"action", "orientation"}, {"orientation", text}}; break;
+            case ActionType::AppBack:
+                e = {{"type", "app"}, {"action", "back"}};
+                if (a.code == static_cast<int>(BackSource::BackButton)) e["source"] = "back_button";
+                break;
+            case ActionType::GamepadCursor:
             case ActionType::MouseMoveBy:
             case ActionType::DragStart:
             case ActionType::DragMove:
@@ -1228,6 +1280,8 @@ bool writeScript(const ParsedScript& script, std::string& out, std::string& erro
         head["probes"] = h.probes;
     if (recording)
         head["truncated"] = h.truncated;
+    if (recording && h.frames > 0)
+        head["frames"] = h.frames;
     for (auto it = h.extra.begin(); it != h.extra.end(); ++it)
         head[it.key()] = it.value();
 
@@ -1370,6 +1424,9 @@ ScriptPlayer::ScriptPlayer(std::shared_ptr<const ParsedScript> script, PlayerHos
     heldBefore_ = *held_;
     if (!script_)
         script_ = std::make_shared<ParsedScript>();
+    // checkpoints compare only from a known start, on the platform that recorded them (R19)
+    const ScriptHeader& h = script_->header;
+    report_.comparable = h.kind == ScriptKind::Recording && h.fromPlayStart && !h.checkpoints.empty() && h.platform == platformTag();
 }
 
 ScriptPlayer::~ScriptPlayer(){
@@ -1408,7 +1465,7 @@ Vector2 ScriptPlayer::currentPointer(){
     return held_->mousePos;
 }
 
-bool ScriptPlayer::resolve(const ScriptAction& action, const ScriptPoint& point, Vector2& out, std::string& error){
+bool ScriptPlayer::resolve(const ScriptAction& action, const ScriptPoint& point, Vector2& out, std::string& error, bool engineSpace){
     Vector2 canvas;
     if (point.target >= 0) {
         const ScriptTarget& target = script_->targets[static_cast<size_t>(point.target)];
@@ -1428,12 +1485,22 @@ bool ScriptPlayer::resolve(const ScriptAction& action, const ScriptPoint& point,
     } else if (!toCanvas(point.space, point.x, point.y, canvas, error)) {
         return false;
     }
-    out = host_.toEnginePoint ? host_.toEnginePoint(canvas) : canvasToEngine(canvas);
+    out = !engineSpace ? canvas : host_.toEnginePoint ? host_.toEnginePoint(canvas) : canvasToEngine(canvas);
     return true;
 }
 
 bool ScriptPlayer::runAction(const ScriptAction& a, std::string& error){
     InjectScope injecting;
+    // what the interpreter forces counts as input (an agent's forced action), never game code's
+    switch (a.type) {
+        case ActionType::ActionDown: case ActionType::ActionUp: case ActionType::Axis: case ActionType::AxisDelta:
+        case ActionType::InputActionPress: case ActionType::InputActionDown: case ActionType::InputActionUp:
+            if (InputRecorder::isActive())
+                InputRecorder::recordForced(a, *script_);
+            break;
+        default:
+            break;
+    }
     HeldInput& held = *held_;
     const std::string& text = script_->stringAt(a.string);
     auto pointerInjected = [this]() {
@@ -1745,11 +1812,37 @@ bool ScriptPlayer::runAction(const ScriptAction& a, std::string& error){
         }
         case ActionType::AppOrientation:
             if (!host_.appOrientation) {
+                // a recording's turn was the device's: replayed where none can be simulated, the
+                // rest of it still runs
+                if (script_->header.kind == ScriptKind::Recording) {
+                    if (!orientationSkipped_)
+                        Log::warn("Input replay: the recorded orientation turns are skipped (%s at frame %u first): only the editor's Game view simulates a device",
+                                  text.c_str(), a.frame);
+                    orientationSkipped_ = true;
+                    return true;
+                }
                 error = "app orientation turns a simulated device: it runs in the editor's Game view";
                 return false;
             }
             error = host_.appOrientation(text);
             return error.empty();
+        case ActionType::AppBack: {
+            Engine::systemBack(a.code == static_cast<int>(BackSource::BackButton) ? BackSource::BackButton : BackSource::Agent);
+            static const char* const routes[] = {"escape", "key", "document", "game"};
+            report_.backs.push_back({a.event, routes[static_cast<int>(Engine::getLastBackRoute())]});
+            return true;
+        }
+        case ActionType::GamepadCursor: {
+            if (!Engine::isGamepadCursorShown()) {
+                error = "no document has Gamepad Cursor on: set_properties UIDocument gamepadCursor true";
+                return false;
+            }
+            Vector2 canvas;
+            if (!resolve(a, a.point, canvas, error, false))
+                return false;
+            GamepadCursor::setPosition(canvas);
+            return true;
+        }
     }
     return true;
 }
@@ -1858,12 +1951,12 @@ bool ScriptPlayer::beforeFrame(uint64_t frameIndex){
             return true;
         }
     }
-    // the last action's own frames (a trailing wait) are the run's too; a recording lasts to its
-    // last checkpoint
+    // the last action's own frames (a trailing wait) are the run's too; a recording lasts to the
+    // frame it was stopped on, and to its last checkpoint
     if (!recording && pendingFrames_ > 0)
         return true;
-    const std::vector<Checkpoint>& checkpoints = script_->header.checkpoints;
-    if (recording && !checkpoints.empty() && frameIndex + 1 < checkpoints.back().frame)
+    const ScriptHeader& header = script_->header;
+    if (recording && frameIndex < std::max(header.frames, header.checkpoints.empty() ? 0u : header.checkpoints.back().frame))
         return true;
     report_.done = true;
     if (options_.releaseAtEnd)
@@ -1871,7 +1964,31 @@ bool ScriptPlayer::beforeFrame(uint64_t frameIndex){
     return false;
 }
 
-void ScriptPlayer::afterUpdate(uint64_t){
+void ScriptPlayer::afterUpdate(uint64_t frameIndex){
+    const std::vector<Checkpoint>& checkpoints = script_->header.checkpoints;
+    if (finished() || checkpoints.empty())
+        return;
+    // the frame that just updated is the (frameIndex + 1)th: a checkpoint's frame counts frames run
+    const uint64_t frame = frameIndex + 1;
+    while (nextCheckpoint_ < checkpoints.size() && checkpoints[nextCheckpoint_].frame < frame)
+        nextCheckpoint_++;
+    if (nextCheckpoint_ >= checkpoints.size() || checkpoints[nextCheckpoint_].frame != frame)
+        return;
+    const Checkpoint& recorded = checkpoints[nextCheckpoint_++];
+    // later checkpoints are not compared: past the first difference they all differ
+    if (!report_.comparable || report_.divergedAtFrame >= 0)
+        return;
+    const Checkpoint replayed = sampleCheckpoint(static_cast<uint32_t>(frame), script_->header.probes);
+    ScriptJson differences;
+    report_.compared++;
+    if (compareCheckpoint(recorded, replayed, script_->header.probes, differences))
+        return;
+    report_.divergedAtFrame = static_cast<int64_t>(frame);
+    report_.differences = differences;
+    const ScriptJson line = {{"frame", frame}, {"differences", differences}};
+    Log::print("[input] diverged %s", line.dump(-1, ' ', false, ScriptJson::error_handler_t::replace).c_str());
+    if (options_.stopOnDivergence && !script_->actions.empty())
+        fail(script_->actions[std::min(next_, script_->actions.size() - 1)], "the replay diverged at frame " + std::to_string(frame));
 }
 
 void releaseHeldInput(HeldInput& held, const std::string& actionSource){

@@ -260,6 +260,18 @@ extern "C" {
 // env(safe-area-inset-*) (non-zero with viewport-fit=cover on phones with a notch) gives the
 // viewport's safe rectangle; intersected with the canvas, it becomes canvas-local insets.
 // Read again on resize, orientationchange and visualViewport resize, and with each canvas size.
+// window's languagechange: navigator.languages changed, the game language resolves again
+// (game-ui-localization.md R10)
+extern "C" EMSCRIPTEN_KEEPALIVE void jasper_web_languages_changed() {
+    jasperengine::System::instance().notifyLocalesMayHaveChanged();
+}
+
+EM_JS(void, jasper_languages_install, (), {
+    if (Module.jasperLanguagesInstalled) return;
+    Module.jasperLanguagesInstalled = true;
+    window.addEventListener('languagechange', function() { ccall('jasper_web_languages_changed', null, [], []); });
+});
+
 EM_JS(void, jasper_safe_area_create, (), {
     if (document.getElementById('jasper-safe-area')) return;
     var probe = document.createElement('div');
@@ -616,6 +628,7 @@ int JasperEngineWeb::init(int argc, char **argv){
 
     jasper_ime_create();
     jasper_safe_area_create();
+    jasper_languages_install();
     jasper_pen_install();
 
     sampleCount = 4;

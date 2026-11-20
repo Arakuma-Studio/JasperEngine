@@ -624,6 +624,8 @@ namespace jasperengine::editor {
         // Assets > Create > Title Art (S80 R7): "New Title Art.titleart", baked at once
         void assetsCreateTitleArt(const fs::path& directory);
         void assetsCreateProceduralMaterial(const fs::path& directory);
+        // dialogue-graphs.md R22: Create > Dialogue
+        void assetsCreateDialogue(const fs::path& directory);
         // Assets > Create > Audio Mixer: "New Audio Mixer.mixer" (Master only) in the current folder,
         // one project undo step, then renamed in place
         void assetsCreateAudioMixer(const fs::path& directory);

@@ -10,6 +10,8 @@
 #include "Engine.h"
 #include "Input.h"
 #include "htmlui/TextEntryTraits.h"
+#include "htmlui/RmlTextInputHandler.h"
+#include "AllocationCounter.h"
 #include "input/TextEntry.h"
 #include "object/ui/UIDocument.h"
 
@@ -20,6 +22,8 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -377,4 +381,29 @@ TEST(TextEntryNames, RoundTripTheHtmlValues){
     EXPECT_FALSE(keyboardTypeFromName("qwerty", keyboard));
     EXPECT_TRUE(keyboardTypeFromName("number", keyboard));
     EXPECT_EQ(keyboard, KeyboardType::Number);
+}
+
+// R26: a focused field left idle costs no allocation per frame: the keyboard's per-frame check
+// (traits unchanged, the field's text and caret what the keyboard holds) on a keyboard that keeps
+// its text (Android, iOS); the time is printed
+TEST_F(TextEntryTest, IdleFocusedFieldDoesNotAllocate){
+    TestSystem& system = TestSystem::get();
+    system.keepsKeyboardText = true;
+    load("text-entry/form.html");
+    focus("short");
+    updateDocuments(scene());
+    const int updates = system.virtualKeyboardUpdates;
+    RmlTextInputHandler& handler = documentSystem(scene()).getContext()->getTextInputHandler();
+
+    constexpr int frames = 600;
+    testsupport::ThreadAllocationCount allocations;
+    const auto start = std::chrono::steady_clock::now();
+    for (int i = 0; i < frames; i++)
+        handler.flushKeyboard();
+    const double ns = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / frames;
+    std::printf("[bench] text_entry_idle_frame_ns %.1f, %llu allocations in %d frames (budget 0 allocations)\n", ns,
+                (unsigned long long)allocations.count(), frames);
+    if (testsupport::countsAllocations())
+        EXPECT_EQ(allocations.count(), 0u);
+    EXPECT_EQ(system.virtualKeyboardUpdates, updates) << "idle: nothing sent to the keyboard";
 }

@@ -98,6 +98,7 @@ namespace jasperengine::editor {
         NavigationProjectSettings m_navigation;
         TitleArtProjectSettings m_titleArt;
         LocalizationSettings m_localization;
+        DialogueSettings m_dialogue;
         char m_localizationInput[64] = {0};
         char m_localizationFontLanguage[32] = {0};
         char m_localizationFontPath[260] = {0};
@@ -315,6 +316,7 @@ namespace jasperengine::editor {
         void drawMeshSettings();
         void drawTitleArtSettings();
         void drawLocalizationSettings();
+        void drawDialogueSettings();
         void draw2DSettings();
         void drawAnimationSettings();
         void drawPixelArtSettings();
@@ -374,8 +376,9 @@ namespace jasperengine::editor {
         void drawRootsConfirmation();
 
     public:
-        // category: a page to show, e.g. "Player"; nullptr keeps the last one.
-        void open(Project* project, const char* category = nullptr);
+        // category: a page to show, e.g. "Player"; nullptr keeps the last one. search: the filter
+        // typed for it ("Size Budgets" shows that row only)
+        void open(Project* project, const char* category = nullptr, const char* search = nullptr);
         void show();
         bool isOpen() const { return m_isOpen; }
         // a native plugin's Lua mock the Create Plugin dialog wrote (to open in the code editor); once

@@ -1049,6 +1049,12 @@ namespace jasperengine::editor{
         void drawUIDocumentComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // its table's rows, then a bitmap font's Pixel Font rows (S51 R22, InspectorPixelFont.cpp)
         void drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // game-ui-localization.md R32 (InspectorLocalization.cpp): Text's Localization Key with its
+        // picker and missing badge; a UI Document's read-only Localization foldout in Play
+        void drawTextLocalizationRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawUIDocumentLocalization(SceneProject* sceneProject, Entity entity);
+        std::vector<std::pair<std::string, std::string>> localizationKeys;     // the picker's keys and source texts
+        char localizationKeySearch[64] = {0};
         void drawPoseAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAudioComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -1094,6 +1100,9 @@ namespace jasperengine::editor{
         void drawWaterWakeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the table's rows, then in Play its read-only State, Reason and Focus Distance
         void drawSimulationCullingComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // editor/dialogue/DialogueRunnerInspector.cpp (dialogue-graphs.md R24): the rows, Open and the
+        // Start Entry list; in Play the state, the current node and Advance / option buttons
+        void drawDialogueRunnerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawBuoyancyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // InspectorSplines.cpp (S18)
         void drawSplineComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

@@ -360,3 +360,30 @@ text, for `UserSettings`), `Input.importBindings(json)`. Runtime state: Play sto
 - On-screen controls with several fingers: `touch` events with different `pointer` ids spread
   over frames (`gap_frames`, `wait` events), then `eval_lua "return Input.getAxis('Horizontal')"`;
   `Input.isPointerOverUI(id)` tells whether a finger is on UI.
+
+## Recordings and input scripts
+
+- An input file (`.input.json`, `format: "jasperengine-input"`, `version: 1`) holds `events`: the
+  `send_input` event objects. `kind: "script"` events follow each other like a call's (their own
+  frames, then `gap_frames`); `kind: "recording"` events carry `frame`, the update frame they
+  arrived on, and replay in that frame's input window.
+- In a file `ms` and `hold_ms` are frames at its `fixed_fps` (default 60), rounded up: 100 ms is 6
+  frames. Write waits in frames, or wait for state: `{type: "wait", until: "Menu.ready", frames:
+  600}` checks the Lua condition once per frame and fails naming it after `frames` (600 by default).
+- Steps only files and `send_input` know: `{type: "shot", name: "01_menu"}` (a PNG of the game
+  frame), `{type: "gamepad", action: "connect", gamepad: 0, name: "Pad"}` and `disconnect`.
+  `space: "safe_area"` puts x, y in 0..1 of `Screen.safeArea`; `view` cannot be stored.
+- Repeat a flow: write a script and run it with `send_input {file: "Tests/Input/menu.input.json"}`
+  (its shots come back in `shots`). A recording replays from Play's start, not through send_input.
+- A recording made from Play's start has a `seed` (Lua's `math.randomseed` before any `init`), a
+  fixed frame rate and checkpoints (a state hash, probe positions, `InputRecording.checkpoint`
+  values) every 60 frames. A replay compares them and reports the first `diverged_at_frame` with
+  the probes and values that differ; it does not promise the same run. Sources of divergence: wall
+  clock reads (`Time.realtimeSinceStartup`, `os.time`, `os.clock`), loads and worker results that
+  finish on other frames, HTTP, logic on audio position, physics across platforms or compilers.
+  Checkpoints compare only on the platform that recorded them (`comparable: false` otherwise).
+- Players run a file with `--input-script tests/Input/menu.input.json --quit-after-input` (implies
+  `--after-ready` and the file's `fixed_fps`); `--input-shots DIR` (default `data://input-shots/`),
+  `--input-strict` (a divergence fails), `--input-allow-real`. They log `[input] begin`, `[input]
+  shot`, `[input] diverged`, `[input] done`, `[input] failed` lines and exit 0, 10 (failed) or 11
+  (diverged with `--input-strict`).

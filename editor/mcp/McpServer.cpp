@@ -1674,6 +1674,12 @@ void McpServer::tick() {
             for (const Deferred& other : keep) {
                 if (other.call == call) stillQueued = true;
             }
+            // a deferral the call added from inside another of its own (send_input's shot capture,
+            // added while its run was polled) sits before that one in this snapshot: the run's own
+            // deferral is still ahead
+            for (size_t next = static_cast<size_t>(&item - current.data()) + 1; !stillQueued && next < current.size(); next++) {
+                if (current[next].call == call) stillQueued = true;
+            }
             if (!stillQueued) call->fail("Internal error: tool " + call->tool() + " deferred without a result.");
         }
     }

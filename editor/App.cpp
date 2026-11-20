@@ -50,6 +50,8 @@
 #include "window/SpriteNormalsWindow.h"
 #include "window/TitleDesignerWindow.h"
 #include "window/LocalizationTablesWindow.h"
+#include "dialogue/DialogueEditor.h"
+#include "dialogue/DialogueWindow.h"
 #include "window/InspectorWindowTitleArt.h"
 #include "titleart/designer/TitleCanvasView.h"
 #include "window/SpritePreviewWindow.h"
@@ -320,6 +322,9 @@ editor::App::App(){
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
     titleDesignerWindow = new TitleDesignerWindow(&project);
     localizationTablesWindow = new LocalizationTablesWindow(&project);
+    // dialogue-graphs.md R19, D6: the kind's edit hooks and lint context, and Window > Dialogue
+    dialogues::install(&project);
+    dialogueWindow = new DialogueWindow(&project);
     // the Inspector's Open in Title Designer and a double-click open the window (S82 R1, R62)
     InspectorWindowTitleArt::setOpenInDesigner([this](const std::filesystem::path& document) {
         std::string error;
@@ -894,6 +899,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
         catalogItem("window.titleDesigner", windowMenuLabel(TitleDesignerWindow::WINDOW_NAME)),
         catalogItem("window.localizationTables", windowMenuLabel(LocalizationTablesWindow::WINDOW_NAME)),
+        catalogItem("window.dialogue", windowMenuLabel(DialogueWindow::WINDOW_NAME)),
         catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
         menuSubmenu("2D", {
             catalogItem("window.spritePreview", windowMenuLabel(SpritePreviewWindow::WINDOW_NAME)),
@@ -1198,6 +1204,10 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleGraphEditor:
             graphEditorWindow->setOpen(true);
             graphEditorWindow->requestFocus();
+            break;
+        case AppMenuCommand::ToggleDialogue:
+            dialogueWindow->setOpen(true);
+            dialogueWindow->requestFocus();
             break;
         case AppMenuCommand::ToggleAudioCaptures:
             audioCapturesWindow->open();

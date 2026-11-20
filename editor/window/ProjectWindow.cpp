@@ -3,6 +3,9 @@
 
 #include "pixelart/BitmapFontCreate.h"
 #include "localization/StringTableDocument.h"
+#include "dialogue/DialogueEditor.h"
+#include "dialogue/DialogueKind.h"
+#include "dialogue/DialogueProgram.h"
 #include "localization/StringTableEditCmd.h"
 #include "window/LocalizationTablesWindow.h"
 #include "animation/AnimatorAssetDocument.h"
@@ -1406,6 +1409,11 @@ void editor::ProjectWindow::renderCreateItems(const fs::path& directory) {
             ImGui::EndMenu();
         }
         ImGui::EndMenu();
+    }
+    // Dialogue (dialogue-graphs.md R22): an entry `start` wired to an empty line, namespace from the name
+    if (ImGui::MenuItem(ICON_FA_COMMENTS " Dialogue")) {
+        assetsCreateDialogue(directory);
+        ImGui::CloseCurrentPopup();
     }
     // Localization > String Table (game-ui-localization.md R29): namespace from the name, source
     // language from the project default; one undo step
@@ -5179,6 +5187,27 @@ void editor::ProjectWindow::assetsCreateProceduralMaterial(const fs::path& direc
     std::string error;
     if (!ProjectFileWrites::writeUndoable(project, {{project->getProjectPath() / relative, text}}, error)) {
         Backend::getApp().registerAlert("Create Procedural Material", error);
+        return;
+    }
+    selectCreated(directory, relative.filename().string(), true);
+}
+
+void editor::ProjectWindow::assetsCreateDialogue(const fs::path& directory) {
+    if (!fs::is_directory(directory)) {
+        Backend::getApp().registerAlert("Create", "The folder " + FileUtils::pathToUtf8(directory) + " is gone.");
+        return;
+    }
+    focusProjectPanel(this);
+    const fs::path relative = uniqueRelativePath(directory, "New Dialogue", ".dialogue");
+    const fs::path file = project->getProjectPath() / relative;
+    dialogue::registerDialogueKind();
+    graph::Graph created;
+    created.kind = dialogue::KIND_ID;
+    created.kindVersion = 1;
+    dialogues::prepareNew(project, file, created, true);
+    std::string error;
+    if (!ProjectFileWrites::writeUndoable(project, {{file, graph::save(created)}}, error)) {
+        Backend::getApp().registerAlert("Create Dialogue", error);
         return;
     }
     selectCreated(directory, relative.filename().string(), true);

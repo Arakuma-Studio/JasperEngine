@@ -5014,6 +5014,20 @@
 		4A534E47DB6039C34EFAAD7A /* InputScript.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E562E3C49242FBD7 /* InputScript.cpp */; };
 		4A534E47233962EE4B8553AD /* InputScript.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4708A47DEEE94F83AE /* InputScript.h */; };
 		4A534E470FFB202D75CD6558 /* InputScriptRunner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4786963BAB6500F7BE /* InputScriptRunner.h */; };
+		4A534E47D2DD9D30B8E42A07 /* InputScriptRun.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CA6B666A030A4DD5 /* InputScriptRun.cpp */; };
+		4A534E47A0B3A1ECCD45D81D /* InputScriptRun.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CA6B666A030A4DD5 /* InputScriptRun.cpp */; };
+		4A534E479C3A823131C40862 /* InputRecorder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47903ABA6837102B42 /* InputRecorder.cpp */; };
+		4A534E47958B36668C604F4A /* InputRecorder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47903ABA6837102B42 /* InputRecorder.cpp */; };
+		4A534E474175779AD50FC231 /* InputReplay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47414A3F109082A1A5 /* InputReplay.cpp */; };
+		4A534E4703B705BC1722D976 /* InputReplay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47414A3F109082A1A5 /* InputReplay.cpp */; };
+		4A534E47DDF961FF391C6089 /* StateHash.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47539BD5D8A31B6052 /* StateHash.cpp */; };
+		4A534E47161ACCD4A04829DC /* StateHash.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47539BD5D8A31B6052 /* StateHash.cpp */; };
+		4A534E478003753F56F77D68 /* InputRecordingClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FC6AA1360ADE9D43 /* InputRecordingClassesLua.cpp */; };
+		4A534E473484F5DDF908A1F3 /* InputRecordingClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FC6AA1360ADE9D43 /* InputRecordingClassesLua.cpp */; };
+		4A534E47C2D211B17464A538 /* InputRecorder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475D56407228B8BA17 /* InputRecorder.h */; };
+		4A534E47E32BEB876EEB9DE7 /* InputReplay.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478CEAC0A0185F3B6F /* InputReplay.h */; };
+		4A534E47CCB174687545D29E /* StateHash.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471DC5839095619C6F /* StateHash.h */; };
+		4A534E479F49542889F94E1F /* InputScriptRun.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4752968F3EF7DC98C0 /* InputScriptRun.h */; };
 		4A534E53F5BA1F3A7AE6E46A /* ConsoleCommands.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53C605544DB443297D /* ConsoleCommands.cpp */; };
 		4A534E533EB1184B8A3029C4 /* ConsoleCommands.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53C605544DB443297D /* ConsoleCommands.cpp */; };
 		4A534E47D32D5980C2E5A628 /* HtmlL10n.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473E0CDBDD10629EA3 /* HtmlL10n.cpp */; };
@@ -5072,6 +5086,20 @@
 		4A534E533DFF364159F4806E /* GpuQuirksData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E534564060F0F13042E /* GpuQuirksData.cpp */; };
 		4A534E53C4F9AC1774C50393 /* PerfSampler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E536345B2AD374C0575 /* PerfSampler.cpp */; };
 		4A534E5319430248003FF836 /* ThreadCpuClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530E969EC23D5C64CD /* ThreadCpuClock.cpp */; };
+		4A534E5338ACEAD8E0FC7D22 /* DialogueExpression.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53A747918ACD9F4E2A /* DialogueExpression.cpp */; };
+		4A534E53DBFB60AEB46EE96C /* DialogueKind.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53922C33FA44C430F6 /* DialogueKind.cpp */; };
+		4A534E539A886BF399AAB990 /* DialogueProgram.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5375143D287D60839A /* DialogueProgram.cpp */; };
+		4A534E5363E192CC7F21FDDB /* DialogueRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53720A533146371AE5 /* DialogueRunner.cpp */; };
+		4A534E53C5D22ADACAEF273F /* DialogueVariables.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53E74DB844AF1D67EC /* DialogueVariables.cpp */; };
+		4A534E53CDDF0C04F459F2AF /* DialogueRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53CB8B28243C275A9E /* DialogueRunner.cpp */; };
+		4A534E53D0B4CA2E28C49C96 /* DialogueClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530B2EA3DAEC0E3A21 /* DialogueClassesLua.cpp */; };
+		4A534E53515821357F8D063E /* DialogueExpression.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53A747918ACD9F4E2A /* DialogueExpression.cpp */; };
+		4A534E53C1FAA5C173CA7257 /* DialogueKind.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53922C33FA44C430F6 /* DialogueKind.cpp */; };
+		4A534E530DA4BED2FB010470 /* DialogueProgram.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5375143D287D60839A /* DialogueProgram.cpp */; };
+		4A534E5341EF590C749B78C5 /* DialogueRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53720A533146371AE5 /* DialogueRunner.cpp */; };
+		4A534E53DA09EC5C72658167 /* DialogueVariables.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53E74DB844AF1D67EC /* DialogueVariables.cpp */; };
+		4A534E539FBAE080AFA1A35F /* DialogueRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53CB8B28243C275A9E /* DialogueRunner.cpp */; };
+		4A534E532A91A91EAEC02537 /* DialogueClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530B2EA3DAEC0E3A21 /* DialogueClassesLua.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9705,6 +9733,15 @@
 		4A534E47E562E3C49242FBD7 /* InputScript.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputScript.cpp; sourceTree = "<group>"; };
 		4A534E4708A47DEEE94F83AE /* InputScript.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputScript.h; sourceTree = "<group>"; };
 		4A534E4786963BAB6500F7BE /* InputScriptRunner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputScriptRunner.h; sourceTree = "<group>"; };
+		4A534E47CA6B666A030A4DD5 /* InputScriptRun.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputScriptRun.cpp; sourceTree = "<group>"; };
+		4A534E47903ABA6837102B42 /* InputRecorder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputRecorder.cpp; sourceTree = "<group>"; };
+		4A534E47414A3F109082A1A5 /* InputReplay.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputReplay.cpp; sourceTree = "<group>"; };
+		4A534E47539BD5D8A31B6052 /* StateHash.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StateHash.cpp; sourceTree = "<group>"; };
+		4A534E47FC6AA1360ADE9D43 /* InputRecordingClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputRecordingClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E475D56407228B8BA17 /* InputRecorder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputRecorder.h; sourceTree = "<group>"; };
+		4A534E478CEAC0A0185F3B6F /* InputReplay.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputReplay.h; sourceTree = "<group>"; };
+		4A534E471DC5839095619C6F /* StateHash.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StateHash.h; sourceTree = "<group>"; };
+		4A534E4752968F3EF7DC98C0 /* InputScriptRun.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputScriptRun.h; sourceTree = "<group>"; };
 		4A534E53C605544DB443297D /* ConsoleCommands.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ConsoleCommands.cpp; sourceTree = "<group>"; };
 		4A534E473E0CDBDD10629EA3 /* HtmlL10n.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlL10n.cpp; sourceTree = "<group>"; };
 		4A534E47D07BD1437308A3A2 /* LocalizationClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LocalizationClassesLua.cpp; sourceTree = "<group>"; };
@@ -9740,6 +9777,13 @@
 		4A534E534564060F0F13042E /* GpuQuirksData.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GpuQuirksData.cpp; sourceTree = "<group>"; };
 		4A534E536345B2AD374C0575 /* PerfSampler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PerfSampler.cpp; sourceTree = "<group>"; };
 		4A534E530E969EC23D5C64CD /* ThreadCpuClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ThreadCpuClock.cpp; sourceTree = "<group>"; };
+		4A534E53A747918ACD9F4E2A /* DialogueExpression.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueExpression.cpp; sourceTree = "<group>"; };
+		4A534E53922C33FA44C430F6 /* DialogueKind.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueKind.cpp; sourceTree = "<group>"; };
+		4A534E5375143D287D60839A /* DialogueProgram.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueProgram.cpp; sourceTree = "<group>"; };
+		4A534E53720A533146371AE5 /* DialogueRunner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueRunner.cpp; sourceTree = "<group>"; };
+		4A534E53E74DB844AF1D67EC /* DialogueVariables.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueVariables.cpp; sourceTree = "<group>"; };
+		4A534E53CB8B28243C275A9E /* DialogueRunner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueRunner.cpp; sourceTree = "<group>"; };
+		4A534E530B2EA3DAEC0E3A21 /* DialogueClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueClassesLua.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10315,9 +10359,11 @@
 				4A534E47CFB46598B1647202 /* TransitionClassesLua.cpp */,
 				4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */,
 				4A534E47157896361DA814BE /* TilemapClassesLua.cpp */,
+				4A534E47FC6AA1360ADE9D43 /* InputRecordingClassesLua.cpp */,
 				4A534E4771A4FBF2C146A04F /* CullingClassesLua.cpp */,
 				4A534E47D07BD1437308A3A2 /* LocalizationClassesLua.cpp */,
 				4A534E53BC6A5E7A1DB2D134 /* SaveGameLua.cpp */,
+				4A534E530B2EA3DAEC0E3A21 /* DialogueClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -11437,6 +11483,8 @@
 				4A534E47C484ACD2846CB3C2 /* RunControl.h */,
 				4A534E473BFB6BEEE8990A48 /* PlayerModules.cpp */,
 				4A534E47A4609FEFF72DC9EF /* PlayerModules.h */,
+				4A534E47CA6B666A030A4DD5 /* InputScriptRun.cpp */,
+				4A534E4752968F3EF7DC98C0 /* InputScriptRun.h */,
 				4A534E5391C68DED5B482106 /* DevelopmentContent.cpp */,
 			);
 			path = player;
@@ -11483,6 +11531,12 @@
 				4A534E47E562E3C49242FBD7 /* InputScript.cpp */,
 				4A534E4708A47DEEE94F83AE /* InputScript.h */,
 				4A534E4786963BAB6500F7BE /* InputScriptRunner.h */,
+				4A534E47903ABA6837102B42 /* InputRecorder.cpp */,
+				4A534E47414A3F109082A1A5 /* InputReplay.cpp */,
+				4A534E47539BD5D8A31B6052 /* StateHash.cpp */,
+				4A534E475D56407228B8BA17 /* InputRecorder.h */,
+				4A534E478CEAC0A0185F3B6F /* InputReplay.h */,
+				4A534E471DC5839095619C6F /* StateHash.h */,
 				4A534E47879CEBF1EC52E724 /* TextEntry.cpp */,
 				4A534E477A358BCDEE20A331 /* TextInputSync.cpp */,
 				4A534E471E3A49042EFB6FBC /* TextEntry.h */,
@@ -11961,6 +12015,7 @@
 				4A534E47651ABB7603E16A3A /* localization */,
 				4A534E535737E19B07B9FC33 /* save */,
 				4A534E4745E4714837819508 /* EngineTextEntry.cpp */,
+				4A534E53BCC7F910D7911F7F /* dialogue */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -12439,6 +12494,7 @@
 				4A534E47310A6F71AF79122B /* SimulationCulling.cpp */,
 				4A534E47AD378F6330680ED6 /* CullingGroup.h */,
 				4A534E475EE51C3B38637EFB /* SimulationCulling.h */,
+				4A534E53CB8B28243C275A9E /* DialogueRunner.cpp */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -16286,6 +16342,18 @@
 			path = save;
 			sourceTree = "<group>";
 		};
+		4A534E53BCC7F910D7911F7F /* dialogue */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E53A747918ACD9F4E2A /* DialogueExpression.cpp */,
+				4A534E53922C33FA44C430F6 /* DialogueKind.cpp */,
+				4A534E5375143D287D60839A /* DialogueProgram.cpp */,
+				4A534E53720A533146371AE5 /* DialogueRunner.cpp */,
+				4A534E53E74DB844AF1D67EC /* DialogueVariables.cpp */,
+			);
+			path = dialogue;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -17227,6 +17295,10 @@
 				4A534E470F1DA0CC06D1BE45 /* CullingSystem.h in Headers */,
 				4A534E47233962EE4B8553AD /* InputScript.h in Headers */,
 				4A534E470FFB202D75CD6558 /* InputScriptRunner.h in Headers */,
+				4A534E47C2D211B17464A538 /* InputRecorder.h in Headers */,
+				4A534E47E32BEB876EEB9DE7 /* InputReplay.h in Headers */,
+				4A534E47CCB174687545D29E /* StateHash.h in Headers */,
+				4A534E479F49542889F94E1F /* InputScriptRun.h in Headers */,
 				4A534E47124F8ED4FCA538F5 /* HtmlL10n.h in Headers */,
 				4A534E470B0062B980E34AF9 /* Localization.h in Headers */,
 				4A534E47F22652515F676497 /* LocalizationArgs.h in Headers */,
@@ -19951,6 +20023,11 @@
 				4A534E470611FC91C80C2EAA /* CullingClassesLua.cpp in Sources */,
 				4A534E47B7A4A4F3C5A76787 /* CullingSystem.cpp in Sources */,
 				4A534E4789E1A9AF1D751A17 /* InputScript.cpp in Sources */,
+				4A534E47D2DD9D30B8E42A07 /* InputScriptRun.cpp in Sources */,
+				4A534E479C3A823131C40862 /* InputRecorder.cpp in Sources */,
+				4A534E474175779AD50FC231 /* InputReplay.cpp in Sources */,
+				4A534E47DDF961FF391C6089 /* StateHash.cpp in Sources */,
+				4A534E478003753F56F77D68 /* InputRecordingClassesLua.cpp in Sources */,
 				4A534E533EB1184B8A3029C4 /* ConsoleCommands.cpp in Sources */,
 				4A534E47D32D5980C2E5A628 /* HtmlL10n.cpp in Sources */,
 				4A534E470210EF3DC97A7F1D /* LocalizationClassesLua.cpp in Sources */,
@@ -19973,6 +20050,13 @@
 				4A534E533DFF364159F4806E /* GpuQuirksData.cpp in Sources */,
 				4A534E53C4F9AC1774C50393 /* PerfSampler.cpp in Sources */,
 				4A534E5319430248003FF836 /* ThreadCpuClock.cpp in Sources */,
+				4A534E53515821357F8D063E /* DialogueExpression.cpp in Sources */,
+				4A534E53C1FAA5C173CA7257 /* DialogueKind.cpp in Sources */,
+				4A534E530DA4BED2FB010470 /* DialogueProgram.cpp in Sources */,
+				4A534E5341EF590C749B78C5 /* DialogueRunner.cpp in Sources */,
+				4A534E53DA09EC5C72658167 /* DialogueVariables.cpp in Sources */,
+				4A534E539FBAE080AFA1A35F /* DialogueRunner.cpp in Sources */,
+				4A534E532A91A91EAEC02537 /* DialogueClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20976,6 +21060,11 @@
 				4A534E47E263432C02CB12D0 /* CullingClassesLua.cpp in Sources */,
 				4A534E4776590B99B1885055 /* CullingSystem.cpp in Sources */,
 				4A534E47DB6039C34EFAAD7A /* InputScript.cpp in Sources */,
+				4A534E47A0B3A1ECCD45D81D /* InputScriptRun.cpp in Sources */,
+				4A534E47958B36668C604F4A /* InputRecorder.cpp in Sources */,
+				4A534E4703B705BC1722D976 /* InputReplay.cpp in Sources */,
+				4A534E47161ACCD4A04829DC /* StateHash.cpp in Sources */,
+				4A534E473484F5DDF908A1F3 /* InputRecordingClassesLua.cpp in Sources */,
 				4A534E53F5BA1F3A7AE6E46A /* ConsoleCommands.cpp in Sources */,
 				4A534E476ADF2ABC854A8744 /* HtmlL10n.cpp in Sources */,
 				4A534E47FECE89744C7673F5 /* LocalizationClassesLua.cpp in Sources */,
@@ -20998,6 +21087,13 @@
 				4A534E53D4810949DFCCD841 /* GpuQuirksData.cpp in Sources */,
 				4A534E536E2FAC285B08679A /* PerfSampler.cpp in Sources */,
 				4A534E53E03919AB8FB52DE7 /* ThreadCpuClock.cpp in Sources */,
+				4A534E5338ACEAD8E0FC7D22 /* DialogueExpression.cpp in Sources */,
+				4A534E53DBFB60AEB46EE96C /* DialogueKind.cpp in Sources */,
+				4A534E539A886BF399AAB990 /* DialogueProgram.cpp in Sources */,
+				4A534E5363E192CC7F21FDDB /* DialogueRunner.cpp in Sources */,
+				4A534E53C5D22ADACAEF273F /* DialogueVariables.cpp in Sources */,
+				4A534E53CDDF0C04F459F2AF /* DialogueRunner.cpp in Sources */,
+				4A534E53D0B4CA2E28C49C96 /* DialogueClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

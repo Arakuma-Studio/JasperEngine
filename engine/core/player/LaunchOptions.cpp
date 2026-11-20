@@ -92,6 +92,11 @@ std::string jasperengine::player::usage() {
         "  --log-level SPEC        the log level (\"debug\", \"warn,render=debug\")\n"
         "  --verify-content        check every content file's SHA-256 before starting (exit 5)\n"
         "  --fail-on-error         exit 3 when an error is logged (ignored with --run-tests)\n"
+        "  --input-script PATH     run an input file (.input.json) from the ready frame (implies --after-ready)\n"
+        "  --input-shots DIR       where its shot steps go (default data://input-shots/)\n"
+        "  --quit-after-input      exit when its events are done (exit 10 failed, 11 diverged with --input-strict)\n"
+        "  --input-strict          a checkpoint that differs fails the run\n"
+        "  --input-allow-real      real input reaches the game while it runs\n"
         "  --command LINE          run a console command after \"Engine ready:\", one a frame (repeatable;\n"
         "                          development players, or Project Settings > Debug > Console Commands: Always)\n"
         "  --run-tests             a development player: run the content's Play Mode tests (exit 8 failed, 9 none)\n"
@@ -173,7 +178,19 @@ std::variant<LaunchOptions, ParseError> jasperengine::player::parse(std::span<co
         };
         auto noValue = [&]() -> bool { return !hasInlineValue; };
 
-        if (name == "--headless" || name == "--after-ready" || name == "--silent-audio" || name == "--fail-on-error" ||
+        if (name == "--quit-after-input" || name == "--input-strict" || name == "--input-allow-real") {
+            if (!noValue()) return fail(name + " takes no value");
+            if (name == "--quit-after-input") options.quitAfterInput = true;
+            else if (name == "--input-strict") options.inputStrict = true;
+            else options.inputAllowReal = true;
+        } else if (name == "--input-script" || name == "--input-shots") {
+            auto taken = takeValue(name == "--input-script" ? "tests/Input/menu.input.json" : "data://input-shots/");
+            if (auto* error = std::get_if<ParseError>(&taken)) return *error;
+            const std::string text = std::get<std::string>(taken);
+            if (text.empty()) return fail(name + " needs a path, for example " + name + " tests/Input/menu.input.json");
+            if (name == "--input-script") options.inputScript = text;
+            else options.inputShots = text;
+        } else if (name == "--headless" || name == "--after-ready" || name == "--silent-audio" || name == "--fail-on-error" ||
             name == "--verify-content") {
             if (!noValue()) return fail(name + " takes no value");
             if (name == "--headless") options.headless = true;

@@ -1523,6 +1523,24 @@ std::vector<Setting> mcpSettingsTable() {
         add(boolSetting("player.strip_engine_code", "Builds leave out the engine modules nothing in the project reaches (HTML UI, video, the runtime "
                         "shader compiler, 3D or 2D physics): a smaller player that behaves the same. Off: every module the settings allow.",
                         [](Project& p) { return p.isStripEngineCode(); }, [](Project& p, bool v) { p.setStripEngineCode(v); }));
+        {
+            Setting s;
+            s.key = "player.size_budgets";
+            s.type = "list";
+            s.description = "Size Budgets: [{platform, category, limit_mb}] checked at export against the Build Report (platform all, "
+                            "desktop or one; category total or one; 1 MB = 1,048,576 bytes); a platform's row replaces the all row.";
+            s.get = [](SettingsContext& ctx) { return sizebudget::toJson(ctx.project()->getSizeBudgets()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                std::vector<SizeBudgetRow> rows;
+                if (!sizebudget::fromJson(value, rows, error)) return false;
+                if (apply) ctx.project()->setSizeBudgets(rows);
+                return true;
+            };
+            add(s);
+        }
+        nameChoice("player.size_budget_action", "When Over Budget: warn (W-SIZE-BUDGET) or fail the build.", {"warn", "fail"},
+                   [](Project& p) { return std::string(p.isSizeBudgetFail() ? "fail" : "warn"); },
+                   [](Project& p, const std::string& v) { p.setSizeBudgetFail(v == "fail"); });
         nameChoice("android.package_format", "Android builds make an App Bundle (aab, for Google Play: one ABI per device), one APK per ABI "
                    "(apk-per-abi), or one universal APK of every selected ABI (apk).", {"aab", "apk-per-abi", "apk"},
                    [](Project& p) { return p.getAndroidProjectSettings().packageFormat; },
@@ -2633,6 +2651,124 @@ std::vector<Setting> mcpSettingsTable() {
                 return true;
             };
             add(s);
+        }
+        // Project Settings > Dialogue (dialogue-graphs.md R23, R31): lists of objects, one undoable step each
+        {
+            auto prefixSetting = [](const char* key, const char* description, bool action) {
+                Setting s;
+                s.key = key;
+                s.type = "list";
+                s.description = description;
+                s.get = [action](SettingsContext& ctx) {
+                    const DialogueSettings& d = ctx.project()->getDialogueSettings();
+                    Json list = Json::array();
+                    for (const DialogueSettings::Prefix& prefix : action ? d.actionPrefixes : d.conditionPrefixes) {
+                        list.push_back({{"name", prefix.name}, {"description", prefix.description}, {"hint", prefix.hint}});
+                    }
+                    return list;
+                };
+                s.set = [action](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    if (!value.is_array()) {
+                        error = "must be a list of {name, description?, hint?} (or of names)";
+                        return false;
+                    }
+                    std::vector<DialogueSettings::Prefix> list;
+                    for (const Json& item : value) {
+                        DialogueSettings::Prefix prefix;
+                        if (item.is_string()) prefix.name = item.get<std::string>();
+                        else if (item.is_object()) {
+                            prefix.name = item.value("name", std::string());
+                            prefix.description = item.value("description", std::string());
+                            prefix.hint = item.value("hint", std::string());
+                        }
+                        while (!prefix.name.empty() && prefix.name.back() == '.') prefix.name.pop_back();
+                        if (prefix.name.empty() || prefix.name.find_first_of(". ") != std::string::npos) {
+                            error = "each prefix needs a name without dots or spaces (\"quest\")";
+                            return false;
+                        }
+                        list.push_back(prefix);
+                    }
+                    if (apply) (action ? ctx.project()->getDialogueSettings().actionPrefixes : ctx.project()->getDialogueSettings().conditionPrefixes) = std::move(list);
+                    return true;
+                };
+                return s;
+            };
+            add(prefixSetting("dialogue.action_prefixes", "The prefixes of dialogue actions game code registers (Dialogue.onAction): editor completion, and the "
+                              "lint warns on a prefix not listed. [] checks nothing.", true));
+            add(prefixSetting("dialogue.condition_prefixes", "The prefixes of dialogue conditions game code answers (Dialogue.onCondition), as action_prefixes.", false));
+            Setting variables;
+            variables.key = "dialogue.variables";
+            variables.type = "list";
+            variables.description = "Game-wide dialogue variables [{name, type: number|bool|string, default, description?}]: their default is what $name "
+                                    "reads first in Play and games; the lint warns on an undeclared one.";
+            variables.get = [](SettingsContext& ctx) {
+                Json list = Json::array();
+                for (const DialogueSettings::Variable& v : ctx.project()->getDialogueSettings().variables) {
+                    list.push_back({{"name", v.name}, {"type", v.type}, {"default", v.defaultValue}, {"description", v.description}});
+                }
+                return list;
+            };
+            variables.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array()) {
+                    error = "must be a list of {name, type, default, description?}";
+                    return false;
+                }
+                std::vector<DialogueSettings::Variable> list;
+                for (const Json& item : value) {
+                    if (!item.is_object() || item.value("name", std::string()).empty()) {
+                        error = "each variable needs a name";
+                        return false;
+                    }
+                    DialogueSettings::Variable v;
+                    v.name = item.value("name", std::string());
+                    if (!v.name.empty() && v.name[0] == '$') v.name.erase(0, 1);
+                    v.type = item.value("type", std::string("number"));
+                    if (v.type != "number" && v.type != "bool" && v.type != "string") {
+                        error = "type of " + v.name + " is number, bool or string";
+                        return false;
+                    }
+                    const auto def = item.find("default");
+                    if (def != item.end()) v.defaultValue = def->is_string() ? def->get<std::string>() : def->dump();
+                    v.description = item.value("description", std::string());
+                    list.push_back(v);
+                }
+                if (apply) ctx.project()->getDialogueSettings().variables = std::move(list);
+                return true;
+            };
+            add(variables);
+            Setting speakers;
+            speakers.key = "dialogue.speakers";
+            speakers.type = "list";
+            speakers.description = "The speakers lines name [{id, display_key?}]: completion in the Dialogue window; a speaker shows the text of "
+                                   "speakers.<id> when a table has it.";
+            speakers.get = [](SettingsContext& ctx) {
+                Json list = Json::array();
+                for (const DialogueSettings::Speaker& sp : ctx.project()->getDialogueSettings().speakers) list.push_back({{"id", sp.id}, {"display_key", sp.displayKey}});
+                return list;
+            };
+            speakers.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array()) {
+                    error = "must be a list of {id, display_key?}";
+                    return false;
+                }
+                std::vector<DialogueSettings::Speaker> list;
+                for (const Json& item : value) {
+                    DialogueSettings::Speaker sp;
+                    if (item.is_string()) sp.id = item.get<std::string>();
+                    else if (item.is_object()) {
+                        sp.id = item.value("id", std::string());
+                        sp.displayKey = item.value("display_key", std::string());
+                    }
+                    if (sp.id.empty()) {
+                        error = "each speaker needs an id";
+                        return false;
+                    }
+                    list.push_back(sp);
+                }
+                if (apply) ctx.project()->getDialogueSettings().speakers = std::move(list);
+                return true;
+            };
+            add(speakers);
         }
         // Project Settings > Title Art (S80 R52): one undoable step each
         add(titleArtSetting("title_art.auto_bake", "bool", "Rebake a Title Art document's existing outputs 500 ms after its last edit.", {},
@@ -4489,6 +4625,8 @@ const Placement placements[] = {
     {"player.build_method", "Player", "Publishing Settings", "Build Method", "prebuilt compile player"},
     {"player.pack_content", "Player", "Publishing Settings", "Content Pack", "jpak pack"},
     {"player.strip_engine_code", "Player", "Publishing Settings", "Strip Engine Code", "size modules variant smaller"},
+    {"player.size_budgets", "Player", "Publishing Settings", "Size Budgets", "size budget download limit megabytes build report"},
+    {"player.size_budget_action", "Player", "Publishing Settings", "When Over Budget", "size budget download warn fail build"},
     {"android.package_format", "Player", "Android", "Package Format", "android apk aab bundle abi universal split"},
     {"android.keystore_path", "Player", "Android", "Keystore", "android signing key"},
     {"android.keystore_alias", "Player", "Android", "Key Alias", "android signing key"},
@@ -4590,6 +4728,10 @@ const Placement placements[] = {
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
     {"localization.languages", "Localization", "", "Languages", "language locale translation"},
     {"localization.default_language", "Localization", "", "Default Language", "language locale translation"},
+    {"dialogue.action_prefixes", "Dialogue", "", "Action Prefixes", "dialogue conversation handler action prefix quest shop"},
+    {"dialogue.condition_prefixes", "Dialogue", "", "Condition Prefixes", "dialogue conversation handler condition prefix"},
+    {"dialogue.variables", "Dialogue", "", "Variables", "dialogue conversation variables state default"},
+    {"dialogue.speakers", "Dialogue", "", "Speakers", "dialogue conversation speakers characters names npc"},
     {"title_art.auto_bake", "Title Art", "", "Auto Bake", "titleart bake automatic outputs png"},
     {"title_art.stale_bakes_on_export", "Title Art", "", "Stale Bakes On Export", "titleart export rebake warn fail outputs"},
     {"title_art.frame_budget_ms", "Title Art", "Runtime", "Frame Budget", "titleart realtime glyph atlas render time slice ms"},
@@ -4942,6 +5084,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Voxels", SettingsScope::Project, 18, "voxel volumes caves destruction dimension limits memory budget"},
         {"Title Art", SettingsScope::Project, 19, "title art titleart logo bake baked outputs png export stale"},
         {"Localization", SettingsScope::Project, 20, "localization localisation language languages locale translation"},
+        {"Dialogue", SettingsScope::Project, 21, "dialogue conversation npc dialog lines choices handlers prefixes variables speakers"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},

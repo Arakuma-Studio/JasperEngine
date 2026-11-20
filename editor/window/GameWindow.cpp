@@ -8,6 +8,7 @@
 #include "Out.h"
 #include "util/FileUtils.h"
 #include "localization/Localization.h"
+#include "window/LocalizationTablesWindow.h"
 #include "window/ContactSheetWindow.h"
 #include "audio/AudioCapture.h"
 #include "render/SystemRender.h"
@@ -29,6 +30,7 @@
 #include "util/PlatformRules.h"
 #include "window/DeviceProfiles.h"
 #include "Backend.h"
+#include "App.h"
 #include "Theme.h"
 #include "subsystem/CullingSystem.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -1879,6 +1881,13 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     std::vector<std::string> all(lines, lines + lineCount);
     // after "Draw calls: ... Tris: ..."
     all.insert(all.begin() + 3, meshLines.begin(), meshLines.end());
+    // game-ui-localization.md R31: this Play's localisation misses; a click opens the window on them
+    size_t missLine = all.size();
+    if (playing && Localization::isActive()) {
+        uint32_t misses = 0;
+        for (const Localization::Miss& miss : Localization::getMisses()) misses += miss.count;
+        all.push_back("Localization: " + std::to_string(misses) + " misses (click: Localization Tables)");
+    }
     const ImVec2 textMin = drawStatsBox(ImGui::GetWindowDrawList(), imageMin, imageMax, all);
     // the Main Thread CPU and Sampling rows as items find_ui_item reports (drawn text is no item;
     // these take no input)
@@ -1896,5 +1905,14 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
         const ImGuiID id = ImGui::GetID(label);
         if (ImGui::ItemAdd(rect, id, nullptr, ImGuiItemFlags_NoNav))
             IMGUI_TEST_ENGINE_ITEM_INFO(id, label, 0);
+    }
+    if (missLine < all.size() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        // the misses line, from drawStatsBox's text origin (one text line each)
+        const ImVec2 min(textMin.x, textMin.y + lineHeight * (float)missLine);
+        const ImVec2 mouse = ImGui::GetMousePos();
+        if (mouse.x >= min.x && mouse.x <= min.x + ImGui::CalcTextSize(all[missLine].c_str()).x &&
+            mouse.y >= min.y && mouse.y < min.y + lineHeight) {
+            Backend::getApp().getLocalizationTablesWindow()->openMisses();
+        }
     }
 }

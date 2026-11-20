@@ -1,0 +1,39 @@
+{
+  "formatVersion": 1,
+  "kind": "dialogue",
+  "kindVersion": 1,
+  "nextId": 20,
+  "nodes": [
+    {"id": "n1", "type": "entry", "position": [0.0, 0.0], "params": {"name": "start", "arguments": ""}},
+    {"id": "n2", "type": "set", "position": [200.0, 0.0], "params": {"assign": "$gold = 10; $met = false"}},
+    {"id": "n3", "type": "line", "position": [400.0, 0.0], "params": {"speaker": "guard", "text": "Halt! You have {gold} coins.",
+      "options": [{"id": "o1", "text": "Pay five", "condition": "$gold >= 5", "action": "$gold -= 5"}, {"id": "o2", "text": "Leave", "style": "exit"}],
+      "next_sub_id": 3}, "ports": [{"id": "in", "direction": "in", "type": "flow", "name": "In", "multi": true, "optional": true},
+      {"id": "next", "direction": "out", "type": "flow", "name": "Next", "optional": true},
+      {"id": "o1", "direction": "out", "type": "flow", "name": "Pay five", "optional": true},
+      {"id": "o2", "direction": "out", "type": "flow", "name": "Leave", "optional": true}]},
+    {"id": "n4", "type": "branch", "position": [600.0, 0.0], "params": {"condition": "$gold > 3 and not $met"}},
+    {"id": "n5", "type": "action", "position": [800.0, 0.0], "params": {"action": "quest.start:intro"}},
+    {"id": "n6", "type": "jump", "position": [1000.0, 0.0], "params": {"entry": "inside"}},
+    {"id": "n7", "type": "entry", "position": [0.0, 200.0], "params": {"name": "inside"}},
+    {"id": "n8", "type": "line", "position": [200.0, 200.0], "params": {"speaker": "guard", "text": "Welcome in. {gold} left."},
+      "ports": [{"id": "in", "direction": "in", "type": "flow", "name": "In", "multi": true, "optional": true},
+      {"id": "next", "direction": "out", "type": "flow", "name": "Next", "optional": true}]},
+    {"id": "n9", "type": "end", "position": [600.0, 200.0], "params": {"result": "left"}},
+    {"id": "n10", "type": "end", "position": [400.0, 200.0], "params": {"result": "paid"}}
+  ],
+  "edges": [
+    {"id": "e11", "from": {"node": "n1", "port": "next"}, "to": {"node": "n2", "port": "in"}},
+    {"id": "e12", "from": {"node": "n2", "port": "next"}, "to": {"node": "n3", "port": "in"}},
+    {"id": "e13", "from": {"node": "n3", "port": "o1"}, "to": {"node": "n4", "port": "in"}},
+    {"id": "e14", "from": {"node": "n3", "port": "o2"}, "to": {"node": "n9", "port": "in"}},
+    {"id": "e15", "from": {"node": "n4", "port": "true"}, "to": {"node": "n5", "port": "in"}},
+    {"id": "e16", "from": {"node": "n4", "port": "false"}, "to": {"node": "n9", "port": "in"}},
+    {"id": "e17", "from": {"node": "n5", "port": "next"}, "to": {"node": "n6", "port": "in"}},
+    {"id": "e18", "from": {"node": "n7", "port": "next"}, "to": {"node": "n8", "port": "in"}},
+    {"id": "e19", "from": {"node": "n8", "port": "next"}, "to": {"node": "n10", "port": "in"}}
+  ],
+  "variables": [{"name": "gold", "type": "number", "default": 0}, {"name": "met", "type": "bool", "default": false}],
+  "metadata": {"namespace": "walk", "source_language": "en"},
+  "guid": "5a0d9a10-0000-4000-8000-00000000d1a1"
+}

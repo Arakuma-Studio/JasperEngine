@@ -232,6 +232,11 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".procmat";
         }
 
+        // a dialogue graph (dialogue-graphs.md R30): a graph file with its GUID in its JSON
+        inline static bool isDialogueFile(const std::string& path) {
+            return fileExtension(path) == ".dialogue";
+        }
+
         // the GUID-tracked JSON assets of the animation system: clips, Vertex Animations, Avatar
         // Masks, Animator Controllers (their references follow by GUID: remapClipFilePath)
         inline static bool isGuidJsonAssetFile(const std::string& path) {

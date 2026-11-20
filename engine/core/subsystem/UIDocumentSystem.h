@@ -343,6 +343,7 @@ namespace jasperengine{
         // the gamepad cursor's overlay document in the screen context (null until it first shows)
         Rml::ElementDocument* cursorOverlay = nullptr;
         std::string cursorOverlayGraphic;
+        float cursorOverlayLook[3] = {-1.0f, 0.0f, 0.0f};   // the size and hot spot applied
         // canvas px to context px and back
         void toCanvas(float& x, float& y) const;
 

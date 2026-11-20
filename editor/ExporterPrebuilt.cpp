@@ -537,6 +537,7 @@ bool editor::Exporter::runPrebuilt() {
     if (!writeTitleArtRuntime()) return false;
     if (!writeAudioImports()) return false;
     if (!writeLocalization()) return false;
+    if (!writeDialogueSettings()) return false;
     if (!writeAssetMap()) return false;
     if (!copyCustomShaderSources()) return false;
     if (cancelled()) return false;
@@ -554,6 +555,8 @@ bool editor::Exporter::runPrebuilt() {
     // what ships, measured before the pack hides it (S53 R21)
     buildReport = BuildReport();
     measureBuildContent(contentDir);
+    // R13: the content budgets, before the pack
+    if (!checkSizeBudgets(true, config.destinationDir, "prebuilt")) return false;
     if (!packContent()) return false;
     if (cancelled()) return false;
     if (!writeContentManifest(true)) return false;

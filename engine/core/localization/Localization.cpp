@@ -27,6 +27,12 @@ using namespace jasperengine::l10n;
 
 FunctionSubscribe<void(const std::string&)> Localization::onLanguageChanged;
 
+#if JASPERENGINE_L10N_CAPTURE
+// the capture code is in this binary (D8): tools/l10n/check_capture_symbols.py looks for this name
+// in a release engine (absent) and the editor's (present)
+extern "C" JASPERENGINE_API const char jasperengine_l10n_capture[] = "missing-translation capture";
+#endif
+
 namespace {
 
     constexpr const char* kRememberKey = "jasper.language";
@@ -38,6 +44,8 @@ namespace {
         LocalizationNamespace info;
         // the chain's languages that were asked for: a table, or null when the file did not read
         std::map<std::string, std::shared_ptr<const StringTable>> tables;
+        // the shown language is the source's (no "untranslated" capture), set per language change
+        bool sourceShown = true;
     };
 
     struct State {
@@ -188,7 +196,9 @@ namespace {
         s.language = language;
         s.pseudo = isPseudo(language);
         s.chain = chainOf(s.pseudo ? s.manifest.defaultLanguage : language, s.manifest);
+        const std::string& shown = s.pseudo ? s.manifest.defaultLanguage : language;
         for (auto& [name, ns] : s.namespaces) {
+            ns.sourceShown = !TitleArtLanguage::match(shown, {ns.info.sourceLanguage}).empty();
             for (auto it = ns.tables.begin(); it != ns.tables.end();) {
                 const bool keep = it->first == ns.info.sourceLanguage || std::find(s.chain.begin(), s.chain.end(), it->first) != s.chain.end();
                 it = keep ? std::next(it) : ns.tables.erase(it);
@@ -311,7 +321,7 @@ namespace {
 
     struct Found {
         std::string_view text;
-        std::string language;
+        std::string_view language;     // the chain's or the namespace's: alive while the lock is held
         bool plain = false;
     };
 
@@ -336,8 +346,7 @@ namespace {
         const StringTable* source = tableOf(s, ns, ns.info.sourceLanguage);
         if (!source || !source->find(local, found.text, nullptr, &found.plain)) return false;
         found.language = ns.info.sourceLanguage;
-        const std::string& shown = s.pseudo ? s.manifest.defaultLanguage : s.language;
-        if (TitleArtLanguage::match(shown, {ns.info.sourceLanguage}).empty()) capture(s, key, "untranslated", where);
+        if (!ns.sourceShown) capture(s, key, "untranslated", where);
         return true;
     }
 
@@ -346,7 +355,7 @@ namespace {
         Found found;
         if (!lookup(s, key, found, {})) return false;
         text.assign(found.text);
-        language = found.language;
+        language.assign(found.language);
         if (s.pseudo) {
             // the referenced noun is shown transformed like the rest of the message
             std::string transformed;
@@ -523,6 +532,20 @@ std::string Localization::format(std::string_view pattern, const LocalizationArg
     return out;
 }
 
+std::string Localization::pseudoLocalize(std::string_view text, const std::string& code, std::string_view language) {
+    FormatOptions options;
+    options.language = language;
+    options.showMissing = true;
+    const bool rtl = code == kPseudoRtl;
+    options.literal = rtl ? reverseLiteral : accentLiteral;
+    std::string body;
+    MessageFormat::format(text, options, body);
+    if (rtl) return body;
+    std::string out = "\xE2\x9F\xA6" + body;
+    for (size_t k = 0, filler = (codePoints(body) * 4 + 9) / 10; k < filler; k++) out += "\xC2\xB7";
+    return out + "\xE2\x9F\xA7";
+}
+
 const std::string& Localization::getLanguage() {
     if (!active.load()) return emptyString();
     return state().language;
@@ -593,7 +616,7 @@ uint64_t Localization::getGeneration() {
 
 std::vector<Localization::Miss> Localization::getMisses() {
 #if JASPERENGINE_L10N_CAPTURE
-    if (!active.load()) return {};
+    if (!active.load() || !jasperengine_l10n_capture[0]) return {};
     State& s = state();
     std::lock_guard<std::mutex> lock(s.mutex);
     return s.misses;

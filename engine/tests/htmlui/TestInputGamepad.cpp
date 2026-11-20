@@ -17,6 +17,15 @@
 #include "input/InputScheme.h"
 #include "object/ui/UIEvent.h"
 #include "subsystem/GamepadCursor.h"
+#include "component/ButtonComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "input/InputActions.h"
+#include "object/ui/Button.h"
+#include "object/ui/OnScreenControls.h"
+#include "AllocationCounter.h"
+
+#include <chrono>
+#include <cstdio>
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
@@ -965,6 +974,93 @@ TEST_F(InputGamepadCursorTest, CursorZeroCostWhenOff){
     EXPECT_FALSE(GamepadCursor::isActive());
     EXPECT_EQ(UIDocumentSystem::getCursorOverlayLoads(), loads);
     EXPECT_FALSE(gameAxes.empty()) << "nothing took the stick";
+
+    // the cursor's share of a frame, 600 frames with the pad's stick moving: no allocation (R26)
+    constexpr int offFrames = 600;
+    testsupport::ThreadAllocationCount allocations;
+    const auto start = std::chrono::steady_clock::now();
+    for (int i = 0; i < offFrames; i++){
+        Input::setGamepadAxisValue(pad, D_GAMEPAD_AXIS_LEFT_X, (i % 2) ? 0.8f : -0.8f);
+        GamepadCursor::update(cursorFrame);
+    }
+    const double ns = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / offFrames;
+    std::printf("[bench] cursor_off_frame_ns %.1f, %llu allocations in %d frames (budget: one cached boolean, 0 allocations)\n", ns,
+                (unsigned long long)allocations.count(), offFrames);
+    if (testsupport::countsAllocations())
+        EXPECT_EQ(allocations.count(), 0u);
+    EXPECT_FALSE(GamepadCursor::isActive());
+}
+
+// R26: active and moving, the cursor's frame (one hit test, one pointer move, the overlay) within
+// 20 us on a desktop; printed here, enforced with JASPER_TEST_PERF_SLACK (the benchmark run)
+TEST_F(InputGamepadCursorTest, CursorFrameBench){
+    loadCursor("html, body { margin: 0; }\n"
+               ".row { display: flex; flex-wrap: wrap; gap: 4px; }\nbutton { width: 60px; height: 30px; }\n",
+               std::string("<div class=\"row\">") +
+               "<button>1</button><button>2</button><button>3</button><button>4</button><button>5</button><button>6</button>"
+               "<button>7</button><button>8</button><button>9</button><button>10</button><button>11</button><button>12</button></div>");
+    ASSERT_TRUE(GamepadCursor::isActive());
+    GamepadCursor::setPosition(Vector2(10.0f, 10.0f));
+    Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_X, 0.6f);
+    Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_Y, 0.1f);
+    frames(12);   // past the acceleration ramp
+
+    constexpr int benchFrames = 300;
+    double total = 0.0;
+    testsupport::ThreadAllocationCount allocations;
+    for (int i = 0; i < benchFrames; i++){
+        // back and forth across the buttons: a hover change most frames
+        if (GamepadCursor::getPosition().x > 700.0f)
+            GamepadCursor::setPosition(Vector2(10.0f, 10.0f));
+        const auto start = std::chrono::steady_clock::now();
+        GamepadCursor::update(cursorFrame);
+        total += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
+    }
+    const double us = total / benchFrames;
+    std::printf("[bench] cursor_frame_us %.2f (budget 20 us desktop, 60 us mobile), %.1f allocations per frame\n", us,
+                double(allocations.count()) / benchFrames);
+    if (testsupport::perfSlack() > 0.0)
+        EXPECT_LE(us, 20.0 * testsupport::perfSlack());
+    EXPECT_TRUE(GamepadCursor::isActive());
+}
+
+// AC13: the cursor clicks a component UI Button and drags a component On-Screen Stick with A held
+TEST_F(InputGamepadCursorTest, GamepadCursorPressesComponentButton){
+    InputActions::loadDefaults();
+    InputActions::resetRuntimeState();
+    // the document has nothing over the component UI: its pointer passes through to it
+    loadCursor("html, body { margin: 0; }\n#corner { position: absolute; left: 1100px; top: 600px; width: 100px; height: 60px; }\n",
+               "<button id=\"corner\">Corner</button>");
+    Button& button = fixture->add<Button>();
+    button.setPosition(700, 100);
+    button.setSize(200, 80);
+    int clicks = 0;
+    button.getComponent<ButtonComponent>().onClick.add(cursorTag, std::function<void()>([&clicks](){ clicks++; }));
+    OnScreenStick& stick = fixture->add<OnScreenStick>();
+    stick.setPosition(100, 300);
+    stick.setSize(200, 200);
+    stick.getStick().mode = OnScreenStickMode::FIXED;
+    stick.getStick().background = stick.getEntity();   // its own rect: centre (200, 400), radius 100
+    frames(2);
+
+    GamepadCursor::setPosition(Vector2(800.0f, 140.0f));
+    press(D_GAMEPAD_BUTTON_A);
+    EXPECT_EQ(clicks, 1) << "A clicked the component Button once";
+    EXPECT_EQ(gameMouseDowns, 0);
+
+    // A held on the stick's centre, the cursor moves right: the stick follows, then lets go
+    GamepadCursor::setPosition(Vector2(200.0f, 400.0f));
+    Engine::systemGamepadButtonDown(pad, D_GAMEPAD_BUTTON_A);
+    EXPECT_TRUE(stick.getStick().pressed);
+    GamepadCursor::setPosition(Vector2(250.0f, 400.0f));
+    frames(1);
+    EXPECT_NEAR(InputActions::getAxis("Horizontal"), 0.5f, 0.05f) << "half a radius right";
+    Engine::systemGamepadButtonUp(pad, D_GAMEPAD_BUTTON_A);
+    frames(1);
+    EXPECT_FALSE(stick.getStick().pressed);
+    EXPECT_NEAR(InputActions::getAxis("Horizontal"), 0.0f, 1e-4f);
+    button.getComponent<ButtonComponent>().onClick.remove(cursorTag);
+    InputActions::resetRuntimeState();
 }
 
 // the cursor graphic: an overlay above every document, its hot spot on the point, never hit

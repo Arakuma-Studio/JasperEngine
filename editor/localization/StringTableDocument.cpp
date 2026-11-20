@@ -3,6 +3,8 @@
 
 #include "StringTableDocument.h"
 
+#include "dialogue/DialogueProgram.h"
+#include "graph/Graph.h"
 #include "localization/MessageFormat.h"
 #include "localization/PluralRules.h"
 #include "titleart/TitleTranslations.h"
@@ -262,7 +264,7 @@ std::vector<std::string> StringTableSet::languages() const {
 
 std::map<fs::path, std::string> StringTableSet::files() const {
     std::map<fs::path, std::string> out;
-    out[owner] = saveStringTable(table);
+    if (!dialogue) out[owner] = saveStringTable(table);
     for (const auto& [language, doc] : translations) out[translationPathFor(owner, language)] = saveTranslation(doc);
     return out;
 }
@@ -325,7 +327,22 @@ bool editor::l10n::loadSet(const fs::path& projectPath, const fs::path& owner, S
         return false;
     }
     ParseError parse;
-    if (!parseStringTable(text, out.table, &parse)) {
+    if (owner.extension() == dialogue::FILE_EXTENSION) {
+        // a dialogue's entries are its lines', variants' and options' texts, keyed by their ids
+        graph::LoadReport report;
+        const graph::Graph file = graph::load(text, report);
+        if (!report.ok || file.kind != dialogue::KIND_ID) {
+            error = out.ownerRelative + " is not a dialogue" + (report.error.empty() ? std::string() : ": " + report.error);
+            return false;
+        }
+        out.dialogue = true;
+        if (auto guid = file.passthrough.find("guid"); guid != file.passthrough.end() && guid->is_string()) out.table.guid = guid->get<std::string>();
+        out.table.ns = dialogue::namespaceOf(file, owner.string());
+        if (auto language = file.metadata.find("source_language"); language != file.metadata.end() && language->is_string() && !language->get<std::string>().empty()) {
+            out.table.sourceLanguage = language->get<std::string>();
+        }
+        for (const dialogue::SourceEntry& entry : dialogue::sourceEntries(file)) out.table.entries.push_back({entry.key, entry.text, "", 0, Json::object()});
+    } else if (!parseStringTable(text, out.table, &parse)) {
         error = out.ownerRelative + ": " + parse.message;
         return false;
     }
@@ -359,12 +376,37 @@ std::vector<fs::path> editor::l10n::findTables(const fs::path& projectPath) {
     return out;
 }
 
+std::vector<fs::path> editor::l10n::findOwners(const fs::path& projectPath) {
+    std::vector<fs::path> out = findTables(projectPath);
+    std::error_code ec;
+    const fs::path assets = projectPath / "assets";
+    for (fs::recursive_directory_iterator it(fs::exists(assets, ec) ? assets : projectPath, fs::directory_options::skip_permission_denied, ec), end;
+            !ec && it != end; it.increment(ec)) {
+        const std::string name = it->path().filename().string();
+        if (it->is_directory(ec) && (name == ".jasperengine" || name == "build" || (!name.empty() && name[0] == '.'))) {
+            it.disable_recursion_pending();
+            continue;
+        }
+        if (it->path().extension() == dialogue::FILE_EXTENSION && it->is_regular_file(ec)) out.push_back(it->path());
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 std::string editor::l10n::namespaceOwner(const fs::path& projectPath, const std::string& ns, const fs::path& except) {
-    for (const fs::path& table : findTables(projectPath)) {
-        if (!except.empty() && table == except) continue;
+    for (const fs::path& owner : findOwners(projectPath)) {
+        if (!except.empty() && owner == except) continue;
+        if (owner.extension() == dialogue::FILE_EXTENSION) {
+            std::string text;
+            if (!ProjectChecks::readFile(owner, text)) continue;
+            graph::LoadReport report;
+            const graph::Graph file = graph::load(text, report);
+            if (report.ok && file.kind == dialogue::KIND_ID && dialogue::namespaceOf(file, owner.string()) == ns) return relativeTo(projectPath, owner);
+            continue;
+        }
         std::string text;
         StringTableDoc doc;
-        if (ProjectChecks::readFile(table, text) && parseStringTable(text, doc) && doc.ns == ns) return relativeTo(projectPath, table);
+        if (ProjectChecks::readFile(owner, text) && parseStringTable(text, doc) && doc.ns == ns) return relativeTo(projectPath, owner);
     }
     // a Title Art document's string_namespace (S87 D3: one key space)
     std::error_code ec;
@@ -418,6 +460,11 @@ bool editor::l10n::applyOps(StringTableSet& set, const Json& ops, std::string& e
         const std::string name = op.is_object() ? str(op, "op") : std::string();
         const std::string key = op.is_object() ? str(op, "key") : std::string();
         const std::string language = op.is_object() && !str(op, "language").empty() ? TitleArtLanguage::canonicalize(str(op, "language")) : std::string();
+        // a dialogue's source texts are its nodes' params (dialogue-graphs.md R3, D5)
+        if (work.dialogue && (name == "remove" || name == "rename" || (name == "set" && isSource(work, language)))) {
+            return fail(error, index, name, "a dialogue's source texts and keys are its nodes': edit the text with edit_graph setParam "
+                                            "(line text, variants, options); translations take a language");
+        }
         if (name == "set") {
             if (!op.contains("text") || !op["text"].is_string()) return fail(error, index, name, "needs text");
             const std::string text = op["text"].get<std::string>();

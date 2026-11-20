@@ -31,6 +31,12 @@
 #                       (HOME), kill its process (am kill, as Android does to a backgrounded app)
 #                       and launch it again; the expected lines are then checked on the new
 #                       process only (SaveGame's slot survives: tools/test-projects/savegame)
+#   --locale-change TAG once the expected lines are in, set the system language to TAG
+#                       (`adb shell cmd locale set-system-locales`, falling back to the
+#                       persist.sys.locale property) while the game runs, and require its
+#                       '[Localization] language <TAG's language>' line within --timeout: the game
+#                       language re-resolves without a relaunch (game-ui-localization.md R10, AC15).
+#                       The language is restored to en-US after
 #   --scene NAME        launch the app once per --scene (repeatable), with the property
 #                       debug.jasperengine.scene set to NAME (a test project picks what it shows
 #                       by it: tools/test-projects/render-gate); every run is checked on its own
@@ -139,6 +145,7 @@ TWO_FINGER_TAP=0
 TAP_AFTER=10
 RELAUNCH=0
 KILL_AFTER=""
+LOCALE_CHANGE=""
 OUT="build/android-emulator"
 BUNDLETOOL=""
 while [[ $# -gt 0 ]]; do
@@ -160,6 +167,7 @@ while [[ $# -gt 0 ]]; do
         --tap-after) TAP_AFTER="$2"; shift 2 ;;
         --relaunch) RELAUNCH=1; shift ;;
         --kill-relaunch-after) KILL_AFTER="$2"; shift 2 ;;
+        --locale-change) LOCALE_CHANGE="$2"; shift 2 ;;
         --scene)
             [[ "$2" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "android-emulator-test: --scene takes a name of letters, digits, _ and - (got $2)" >&2; exit 2; }
             SCENES+=("$2"); shift 2 ;;
@@ -231,7 +239,7 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
     -v "$ROOT:/src" -w /src \
     -e HOME=/src/build/.cache/home \
     -e APK="$APK_IN" -e BUNDLETOOL="$BUNDLETOOL_IN" -e OUT="/src/$OUT" -e ORDERED="$ORDERED" -e TIMEOUT="$TIMEOUT" -e SECONDS_TO_RUN="$SECONDS_TO_RUN" \
-    -e TWO_FINGER_TAP="$TWO_FINGER_TAP" -e TAP_AFTER="$TAP_AFTER" -e RELAUNCH="$RELAUNCH" \
+    -e TWO_FINGER_TAP="$TWO_FINGER_TAP" -e TAP_AFTER="$TAP_AFTER" -e RELAUNCH="$RELAUNCH" -e LOCALE_CHANGE="$LOCALE_CHANGE" \
     -e EXPECT_NATIVE_CRASH="$EXPECT_NATIVE_CRASH" \
     -e SCENES="${SCENES[*]+"${SCENES[*]}"}" -e SETPROPS="$SETPROP_LINES" -e SCREENSHOT_ON_PRESENT="$([[ -n "$GOLDEN" ]] && echo 1 || echo 0)" \
     -e GPU="${EMULATOR_GPU:-swangle_indirect}" \
@@ -411,6 +419,26 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
                     relaunched="found        relaunched in process $pid: a new view, still running"
                 fi
             fi
+            # the system language changed while the game runs: its game language follows
+            localechanged=""
+            if [[ -n "$LOCALE_CHANGE" && -z "$crashes" ]]; then
+                wanted="[Localization] language ${LOCALE_CHANGE%%-*}"
+                log "changing the system language to $LOCALE_CHANGE"
+                adb shell cmd locale set-system-locales "$LOCALE_CHANGE" >/dev/null 2>&1 ||
+                    adb shell "setprop persist.sys.locale $LOCALE_CHANGE" >/dev/null 2>&1 || true
+                start=$SECONDS
+                localechanged="MISSING      '$wanted' after the system language became $LOCALE_CHANGE"
+                while (( SECONDS - start <= TIMEOUT )); do
+                    sleep 2
+                    adb logcat -d -v tag > "$DIR/logcat.txt"
+                    if grep -qF "$wanted" "$DIR/logcat.txt"; then
+                        localechanged="found        $wanted (the system language became $LOCALE_CHANGE in the same run)"
+                        break
+                    fi
+                done
+                adb shell cmd locale set-system-locales en-US >/dev/null 2>&1 ||
+                    adb shell "setprop persist.sys.locale en-US" >/dev/null 2>&1 || true
+            fi
             adb logcat -d -v tag > "$DIR/logcat.txt"
             adb logcat -d -v threadtime > "$DIR/logcat-full.txt"
 
@@ -450,6 +478,10 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             if [[ -n "$relaunched" ]]; then
                 echo "$relaunched" >> "$DIR/result.txt"
                 [[ "$relaunched" == found* ]] || result=1
+            fi
+            if [[ -n "$localechanged" ]]; then
+                echo "$localechanged" >> "$DIR/result.txt"
+                [[ "$localechanged" == found* ]] || result=1
             fi
             # no expectation (--no-ready): the app must at least still be running after its seconds
             if [[ "$EXPECT_NATIVE_CRASH" != 1 ]] && ! grep -q . "$DIR/expect.txt" &&

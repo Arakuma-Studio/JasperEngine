@@ -31,7 +31,10 @@ namespace jasperengine::player {
         // the project test runner (docs/specs/project-test-runner.md R27): a case failed, errored or
         // hung; no case to run (the filter matched nothing, or the content holds no tests)
         EXIT_TESTS_FAILED = 8,
-        EXIT_NO_TESTS = 9
+        EXIT_NO_TESTS = 9,
+        // --input-script with --quit-after-input (docs/specs/input-recorder-and-input-scripts.md R26)
+        EXIT_INPUT_FAILED = 10,
+        EXIT_INPUT_DIVERGED = 11
     };
 
     // the composited frame: width * height RGBA8, rows top first; false when it cannot be read

@@ -2157,6 +2157,12 @@ OVERRIDES[('NoiseGraph', 'sampleGrid')] = {'doc': ['A grid of at most 4,000,000 
 OVERRIDES[('NoiseGraph', 'sampleGridAsync')] = {'doc': ['The same bits as sampleGrid on small jobs, which keep the frame and work without worker threads.'],
                                                 'overloads': [([('args', 'NoiseGridArgs')], 'NoiseGridTask')]}
 OVERRIDES[('NoiseGridTask', 'result')] = {'doc': ['The grid once done; nil before, or after cancel.'], 'overloads': [([], 'NoiseGrid?')]}
+# dialogue-graphs.md R27: DialogueRunner's lua_CFunctions (DialogueClassesLua.cpp); DialogueLine in stubs/Dialogue.lua
+OVERRIDES[('DialogueRunner', 'start')] = {'doc': ['Starts at an entry ("" or nil: Start Entry, else `start`, else the lowest id) with message arguments that',
+                                                  'win over variables ({player = "Ana"}). False when there is no dialogue or no such entry.'],
+                                          'overloads': [([('entry?', 'string'), ('args?', 'table<string, string|number|boolean>')], 'boolean')]}
+OVERRIDES[('DialogueRunner', 'setArg')] = {'doc': ['A message argument for this conversation ({name} in a text, {name} in an expression).'],
+                                           'overloads': [([('name', 'string'), ('value', 'string|number|boolean')], '')]}
 OVERRIDES[('ParticleSystemModule', 'setBursts')] = {
     'doc': ['ps.emission:setBursts({{time = 0, count = 10, cycles = 1, interval = 0.01, probability = 1}, ...}): replaces',
             'the bursts (count a number or a MinMaxCurve; cycles 0 repeats forever). Version 2 systems only.'],
@@ -2854,6 +2860,8 @@ OVERRIDES.update({
 PROPERTY_OVERRIDES = {
     # the null sentinel (stubs/Json.lua: JsonNull)
     ('Json', 'null'): ('JsonNull', False),
+    # dialogue-graphs.md R8: the last line shown (stubs/Dialogue.lua: DialogueLine)
+    ('DialogueRunner', 'currentLine'): ('DialogueLine?', True),
     ('Mesh', 'material'): ('Material', True),
     # the active GPU quirks' names
     ('Device', 'gpuQuirks'): ('string[]', True),

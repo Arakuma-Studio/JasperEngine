@@ -125,7 +125,9 @@ verify with checkpoints. No code.
   (`recording` | `script`) and `events`; optional `fixed_fps` (default 60), `space` (default
   `normalized` for recordings, `canvas` for scripts), `gap_frames` (scripts, default 1), and for
   recordings `start` (`play` | `now`), `seed`, `scene`, `canvas`, `simulate_touch`, `platform`,
-  `engine_version`, `probes`, `checkpoints`, `truncated`. Extension `.input.json`. Unknown keys are
+  `engine_version`, `probes`, `checkpoints`, `truncated`, `frames` (the update frames from start to
+  stop: a replay runs that long, not only to its last event; missing in older files: to the last
+  event or checkpoint). Extension `.input.json`. Unknown keys are
   kept by tools that rewrite a file. Field reference: §6.1.
 - **R2 Events.** Each event is a `send_input` event object (same keys, same meanings). Recordings
   stamp every event with `frame` (non-decreasing); scripts stamp none (each event follows the
@@ -360,6 +362,7 @@ verify with checkpoints. No code.
   "engine_version": "…",
   "probes": ["Player", "Enemies/Bat (3)"],
   "truncated": false,
+  "frames": 600,
   "events": [
     {"frame": 0,  "type": "key", "key": "right", "action": "down"},
     {"frame": 42, "type": "key", "key": "right", "action": "up"},
@@ -629,4 +632,40 @@ wait until clicked, shot). Red controls are named per criterion.
 
 ## Deviations
 
-None yet.
+- **Writer signature.** `writeScript` is `bool writeScript(const ParsedScript&, std::string& out,
+  std::string& error)`: the steps of a script's composite events (a drag's moves, a relative mouse
+  move) have no single-event form, so writing them fails instead of producing a different file.
+- **Recording length.** A recording stores `frames` (R1), the frames from `start()` to `stop()` (to
+  the cap's frame when truncated), and replays that long; without it a replay ended on its last
+  event, cutting the idle tail a recording was stopped after. An optional key, no version bump.
+- **Merged steps.** `send_input`'s `app {action: "back"}` (Engine::systemBack, the result's `back`)
+  and the gamepad cursor warp (`gamepad` with `x`, `y` or `target`, before its button or axis in the
+  same frame) from text-entry-gamepad-cursor-back-button are interpreter steps, so files,
+  `Test.input`, players and Lua take them too; `Test.input` resolves targets in the running UI
+  Documents as Lua replays do.
+- **Back in recordings.** `Engine::systemBack` is a recorder site: the Back button's and an agent's
+  Back are recorded as `app {action: "back"}` (`source: "back_button"` for the button). An Escape or
+  a gamepad B that is a Back is recorded once, as its key or button, which a replay turns into the
+  same Back; the Escape the engine presses for a Back nobody takes is not recorded (the replayed Back
+  presses it again).
+- **Orientation in replays.** A recording's orientation turn replayed where no device can be
+  simulated (Lua, players) is skipped with one warning; a script asking for a turn there fails. The
+  recorder stores a turn when the orientation changes, not each `systemOrientationChanged` call.
+- **Unmoved mouse moves.** The recorder drops a mouse move to where the last recorded mouse event
+  left the pointer (the editor's Game view sends one each hovered frame); captured, every move is kept.
+- **Recorder buffer.** `InputRecorder::end()` returns a `RecordedInput` (the swapped record chunks);
+  `toScript()` turns it into a `ParsedScript` on a job, so Stop stays O(1) on the main thread (R15).
+- **Parity (AC3).** The editor keeps no interpreter of its own: `send_input` parses with
+  `parseEventList` (live rules) and runs a `ScriptPlayer`, polled once per editor frame. The parity
+  test is the core test `InputRecorderTest.SendInputParityEventsGiveTheSameSystemCalls`: the live
+  pacing and a script file run by `ScriptRunner` give the same recorded `Engine::system*` trace.
+- **get_play_state.** The recording and replay state are merged into the existing `input` object
+  (`input.recording`, `input.replaying`), which already held the game's input.
+- **Commands.** Editor commands are in the `playmode.*` group (`playmode.playOrResume`), so Record
+  Input would be `playmode.recordInput`; the toolbar button, its menu, settings, banner, Inspector
+  and Capture Screenshots dialog (R36-R40) are not implemented in this change.
+- **Not implemented in this change:** editor Record Input (R13, AC7, AC17), shots of `play {input}`
+  replays (R21), `record_game {input, format: "shots", resolutions}` (R23, AC14), `run_build
+  {input_script, resolutions}` (R24, AC11), the web URL fetch of `--input-script` (R30: content
+  paths only), the web gate and Android runs (AC12, AC13). A player's seed is applied
+  when its Lua state opens after the engine starts.

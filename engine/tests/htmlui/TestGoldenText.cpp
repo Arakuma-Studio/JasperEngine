@@ -14,6 +14,9 @@
 #include "RmlFontEngine.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "util/FontRegistry.h"
+#include "localization/Localization.h"
+#include "localization/StringTableRuntime.h"
+#include "util/TitleArtLanguage.h"
 
 #include <RmlUi/Core/Context.h>
 
@@ -237,4 +240,65 @@ TEST_F(FullPathGoldenTest, TextLoadedFont){
     // the scene released RmlUi: the next tests see only the built-in faces again
     EXPECT_FALSE(HtmlUI::isInitialized());
     FontRegistry::clear();
+}
+
+// game-ui-localization.md AC9: the pseudo-locales on a keyed settings panel, Roboto Bold. en-XA
+// shows the default language's text accented, 40 % longer and bracketed; ar-XB the same text right
+// to left with the root's direction rtl
+namespace {
+
+    class GoldenText : public FullPathGoldenTest {
+    protected:
+        void SetUp() override{
+            FullPathGoldenTest::SetUp();
+            TitleArtLanguage::resetForTesting();
+            Localization::resetForTesting();
+            Localization::setEditorMode(true);
+            Localization::registerReader(".mem", [](const std::string&, const std::string& language, std::string*) {
+                return l10n::StringTable::fromEntries(language, {{"settings.title", "Settings"}, {"settings.resolution", "Resolution"},
+                                                                 {"settings.volume", "Music Volume"}, {"settings.percent", "{n, number, percent}"},
+                                                                 {"settings.subtitles", "Subtitles"}, {"settings.on", "On"},
+                                                                 {"settings.apply", "Apply Changes"}});
+            });
+            LocalizationManifest manifest;
+            manifest.defaultLanguage = "en";
+            manifest.rememberChoice = false;
+            manifest.languages = {"en"};
+            manifest.namespaces.push_back({"ui", "en", {{"en", "ui.en.mem"}}});
+            Localization::setManifest(manifest);
+        }
+
+        void TearDown() override{
+            Localization::resetForTesting();
+            TitleArtLanguage::resetForTesting();
+            FullPathGoldenTest::TearDown();
+        }
+
+        void renderPseudo(const char* code, const char* golden){
+            ASSERT_TRUE(HtmlUI::loadFontFace("fonts/Roboto-Bold.ttf"));
+            ASSERT_TRUE(Localization::setLanguage(code));
+            {
+                SceneFixture fixture;
+                fixture.addDocument("golden/l10n_pseudo.rml");
+                ASSERT_TRUE(fixture.waitUntilLoaded());
+                Screen screen;
+                ASSERT_TRUE(capture(screen, 2));
+                // the title (blue) and the values (amber) drew
+                EXPECT_GT(screen.countColor({0, 0, 640, 360}, 0x40, 0xc0, 0xff, 24), 100u);
+                EXPECT_GT(screen.countColor({0, 0, 640, 360}, 0xff, 0xc0, 0x40, 24), 50u);
+                EXPECT_SCREEN_GOLDEN(screen, golden);
+            }
+            EXPECT_FALSE(HtmlUI::isInitialized());
+            FontRegistry::clear();
+        }
+    };
+
+}
+
+TEST_F(GoldenText, PseudoLocaleEnXa){
+    renderPseudo("en-XA", "l10n/pseudo_en_xa");
+}
+
+TEST_F(GoldenText, PseudoLocaleArXb){
+    renderPseudo("ar-XB", "l10n/pseudo_ar_xb");
 }

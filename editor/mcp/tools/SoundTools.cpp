@@ -1149,6 +1149,7 @@ void checkFit(ImportWork& work) {
             work.error = clip.rel + ": " + error;
             return;
         }
+        clip.settings.resolveChannels(AudioImportSettings::Channels::fromAnalysis(cached), resolved, &clip.resolved);
     }
 }
 
@@ -1453,7 +1454,7 @@ void registerSoundTools(McpRegistry& registry) {
         clips["maxItems"] = 64;
         set.inputSchema = object({
             {"paths", clips},
-            {"settings", anyObject("Import settings keys: type, gain_db, trim_head_ms, trim_tail_ms, fade_in_ms, fade_out_ms, loop_start_ms, loop_end_ms, music.")},
+            {"settings", anyObject("Import settings keys: type, gain_db, trim_head_ms, trim_tail_ms, fade_in_ms, fade_out_ms, loop_start_ms, loop_end_ms, force_to_mono, music.")},
             {"provenance", anyObject("Provenance keys: licence, licence_url, author, attribution, source, url.")},
             {"labels", array(Json{{"type", "string"}}, "S25 labels to set: replaces the clips' labels.")}
         }, {"paths"});

@@ -19,6 +19,7 @@
 #include "localization/StringTableCook.h"
 #include "localization/StringTableDocument.h"
 #include "localization/StringTableEditCmd.h"
+#include "localization/StringTableInterchange.h"
 #include "util/ProjectChecks.h"
 #include "util/TitleArtLanguage.h"
 
@@ -147,80 +148,6 @@ Json missingReferences(Project* project, const StringTableSet& set) {
 }
 
 // rows of a strings file into the set; notes say what was not imported
-void importRows(StringTableSet& set, const StringsFile& file, bool addLanguages, Json& notes, int& changed) {
-    for (const StringsNote& note : file.notes) {
-        notes.push_back(Json{{"code", note.code}, {"key", note.key}, {"language", note.language}, {"message", note.message}, {"line", note.line}});
-    }
-    for (const StringRow& row : file.rows) {
-        if (!row.file.empty() && fs::path(row.file).lexically_normal() != fs::path(set.ownerRelative).lexically_normal()) continue;
-        const size_t dot = row.key.find('.');
-        const std::string ns = dot == std::string::npos ? std::string() : row.key.substr(0, dot);
-        if (row.file.empty() && ns != set.table.ns) {
-            notes.push_back(Json{{"code", "unknown_key"}, {"key", row.key}, {"line", row.line},
-                                 {"message", "not this table's namespace; a title's row: import it with edit_title import_strings"}});
-            continue;
-        }
-        const std::string key = dot == std::string::npos ? row.key : row.key.substr(dot + 1);
-        const l10n::TableEntry* entry = set.table.find(key);
-        if (!entry) {
-            notes.push_back(Json{{"code", "unknown_key"}, {"key", row.key}, {"line", row.line}, {"message", "no such entry: set it in the source language first"}});
-            continue;
-        }
-        const bool sourceChanged = !row.source.empty() && row.source != entry->text;
-        if (sourceChanged) {
-            notes.push_back(Json{{"code", "source_changed"}, {"key", row.key}, {"line", row.line}, {"message", "the source text differs: imported as needs_review"}});
-        }
-        for (const auto& [code, text] : row.targets) {
-            if (text.empty()) continue;
-            if (!set.translations.count(code)) {
-                if (!addLanguages) {
-                    notes.push_back(Json{{"code", "unknown_language"}, {"key", row.key}, {"language", code}, {"line", row.line},
-                                         {"message", "the table has no " + code + ": pass add_languages: true"}});
-                    continue;
-                }
-                std::string error;
-                if (!l10n::applyOps(set, Json::array({Json{{"op", "add_language"}, {"language", code}}}), error)) continue;
-            }
-            jasperengine::l10n::MessageError problem;
-            if (!jasperengine::l10n::MessageFormat::validate(text, &problem)) {
-                notes.push_back(Json{{"code", "bad_message"}, {"key", row.key}, {"language", code}, {"line", row.line}, {"message", problem.message}});
-                continue;
-            }
-            l10n::TranslationEntry& translation = set.translations[code].entries[key];
-            const auto state = row.states.find(code);
-            const std::string status = sourceChanged || (state != row.states.end() && state->second == "needs_review") ? "needs_review" : "translated";
-            if (translation.text == text && translation.status == status) continue;
-            translation.text = text;
-            translation.status = status;
-            translation.sourceHash = l10n::sourceHash(entry->text);
-            changed++;
-        }
-    }
-}
-
-StringsExportDoc exportDocOf(const StringTableSet& set, const std::vector<std::string>& languages) {
-    StringsExportDoc doc;
-    doc.file = set.ownerRelative;
-    doc.sourceLanguage = set.table.sourceLanguage;
-    for (const auto& entry : set.translations) {
-        if (languages.empty() || std::find(languages.begin(), languages.end(), entry.first) != languages.end()) doc.languages.push_back(entry.first);
-    }
-    for (const l10n::TableEntry& entry : set.table.entries) {
-        StringsExportUnit unit;
-        unit.key = set.table.ns + "." + entry.key;
-        unit.context = entry.context;
-        unit.source = entry.text;
-        unit.maxChars = entry.maxChars;
-        for (const auto& [code, translation] : set.translations) {
-            const auto found = translation.entries.find(entry.key);
-            if (found == translation.entries.end() || found->second.text.empty()) continue;
-            unit.targets[code] = {found->second.text, found->second.status == "needs_review" || found->second.sourceHash != l10n::sourceHash(entry.text)};
-        }
-        doc.units.push_back(std::move(unit));
-    }
-    return doc;
-}
-
 void editStringTable(CallPtr call) {
     Project* project = call->ctx().project();
     const Json& args = call->args();
@@ -242,8 +169,14 @@ void editStringTable(CallPtr call) {
         call->fail(error.empty() ? "path: a project .stringtable path, e.g. assets/l10n/ui.stringtable." : error);
         return;
     }
-    if (owner.extension() != l10n::STRINGTABLE_EXTENSION) {
-        call->fail("path must be a .stringtable (" + path + ").");
+    // a dialogue owns its lines' texts (dialogue-graphs.md R26): its translations are edited here
+    const bool dialogueOwner = owner.extension() == ".dialogue";
+    if (owner.extension() != l10n::STRINGTABLE_EXTENSION && !dialogueOwner) {
+        call->fail("path must be a .stringtable or a .dialogue (" + path + ").");
+        return;
+    }
+    if (dialogueOwner && args.contains("create")) {
+        call->fail("create makes a .stringtable; a dialogue is created with edit_graph {create: {kind: \"dialogue\"}}.");
         return;
     }
     StringTableSet before;
@@ -279,7 +212,7 @@ void editStringTable(CallPtr call) {
             call->fail("export.out: " + (error.empty() ? std::string("a project path to write, e.g. translations/ui.csv") : error));
             return;
         }
-        const std::vector<StringsExportDoc> docs = {exportDocOf(set, languages)};
+        const std::vector<StringsExportDoc> docs = {l10n::exportDocOf(set, languages)};
         Json written = Json::array();
         auto write = [&](const fs::path& file, const std::string& body) {
             std::error_code ec;
@@ -319,7 +252,9 @@ void editStringTable(CallPtr call) {
             return;
         }
         Json notes = Json::array();
-        importRows(set, strings, importArgs.value("add_languages", false), notes, changes);
+        for (const StringsNote& note : l10n::importStrings(set, strings, importArgs.value("add_languages", false), changes)) {
+            notes.push_back(Json{{"code", note.code}, {"key", note.key}, {"language", note.language}, {"message", note.message}, {"line", note.line}});
+        }
         out["imported"] = changes;
         if (!notes.empty()) out["notes"] = notes;
         text += "Imported " + std::to_string(changes) + " translation(s). ";

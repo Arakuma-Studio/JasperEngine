@@ -7,6 +7,7 @@
 #include "test/TestResults.h"
 
 #include "Log.h"
+#include "input/InputReplay.h"
 #include "input/InputScript.h"
 #include "input/InputScriptRunner.h"
 #include "log/LogSink.h"
@@ -599,7 +600,7 @@ namespace jasperengine::gametest {
                 if (parsed) {
                     input::PlayOptions options;
                     options.actionSource = "test";
-                    auto player = std::make_shared<input::ScriptPlayer>(script, input::PlayerHost(), options);
+                    auto player = std::make_shared<input::ScriptPlayer>(script, input::runtimePlayerHost(), options);
                     input::ScriptRunner::start(player);
                     s->wait.kind = Wait::Input;
                     s->wait.inputPlayer = player;

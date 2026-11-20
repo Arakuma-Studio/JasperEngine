@@ -633,6 +633,10 @@ if(DEFINED JASPERENGINE_NOISE AND NOT JASPERENGINE_NOISE)
     message(FATAL_ERROR "The editor needs JASPERENGINE_NOISE: only players can leave it out")
 endif()
 set(JASPERENGINE_NOISE_ALL_BACKENDS ON CACHE BOOL "" FORCE)
+# The editor's Dialogue window, preview and run_dialogue run the dialogue runtime (dialogue-graphs.md D6)
+if(DEFINED JASPERENGINE_DIALOGUE AND NOT JASPERENGINE_DIALOGUE)
+    message(FATAL_ERROR "The editor needs JASPERENGINE_DIALOGUE: only players can leave it out")
+endif()
 # The editor's terrain tools run the operation engine (T1)
 if(DEFINED JASPERENGINE_TERRAIN_EDIT AND NOT JASPERENGINE_TERRAIN_EDIT)
     message(FATAL_ERROR "The editor needs JASPERENGINE_TERRAIN_EDIT: only players can leave it out")
@@ -824,6 +828,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/voxel/VoxelProjectSettings.cpp
     ${EDITOR_DIR}/cook/JPakWriter.cpp
     ${EDITOR_DIR}/cook/BuildReport.cpp
+    ${EDITOR_DIR}/cook/BuildReportHistory.cpp
+    ${EDITOR_DIR}/cook/Reachability.cpp
     ${EDITOR_DIR}/util/ZipArchive.cpp
     ${EDITOR_DIR}/players/ModuleUsage.cpp
     ${EDITOR_DIR}/players/PlayerRuntimes.cpp
@@ -939,6 +945,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/ExporterPrebuilt.cpp
     ${EDITOR_DIR}/ShippingTypes.cpp
     ${EDITOR_DIR}/export/ExportFiles.cpp
+    ${EDITOR_DIR}/export/SizeBudget.cpp
     ${EDITOR_DIR}/util/BuildDiagnostics.cpp
 
     ${EDITOR_DIR}/mcp/McpActivityWindow.cpp
@@ -1560,6 +1567,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/AudioImportSettings.cpp
     ${EDITOR_DIR}/audio/AudioMusicGrid.cpp
     ${EDITOR_DIR}/audio/AudioProvenance.cpp
+    ${EDITOR_DIR}/audio/MonoWavCook.cpp
     ${EDITOR_DIR}/audio/LoudnessMonitor.cpp
     ${EDITOR_DIR}/command/type/ShaderGlobalsCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsCmd.cpp
@@ -1643,6 +1651,8 @@ include(${EDITOR_DIR}/test/GameTestsSources.cmake)
 include(${EDITOR_DIR}/titleart/TitleArtEditorSources.cmake)
 # game UI localization: String Tables, their window and tools
 include(${EDITOR_DIR}/localization/LocalizationEditorSources.cmake)
+# dialogue graphs: the edit hooks, the walker, the Dialogue window
+include(${EDITOR_DIR}/dialogue/DialogueEditorSources.cmake)
 include(${EDITOR_DIR}/procmat/ProcMatSources.cmake)
 # the pixel-art family (S43...): palettes, Apply Palette, the Palette window, the pixel_art tools
 include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)

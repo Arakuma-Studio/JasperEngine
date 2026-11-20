@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ExportWindow.h"
+#include "cook/BuildReportHistory.h"
 #include "command/type/ShaderOverridesCmd.h"
 #include "cook/BuildReport.h"
 #include "window/EditorModal.h"
@@ -1883,10 +1884,29 @@ void ExportWindow::drawProgress() {
         }
         // S53 R21: what ships, by category, with the full report a click away
         if (!result.buildReport.empty()) {
-            BuildReport report;
-            std::string reportError;
-            if (BuildReport::load(result.buildReport, report, reportError)) {
-                ImGui::TextUnformatted(("Build Report: " + BuildReport::formatBytes(report.totalBytes)).c_str());
+            if (m_shownReport != result.buildReport) {
+                m_shownReport = result.buildReport;
+                std::string reportError;
+                m_shownReportLoaded = BuildReport::load(result.buildReport, m_shownReportData, reportError);
+                m_shownReportSince.clear();
+                // build-size-tools R32: against the platform's report before this one
+                const std::string previous = m_shownReportLoaded ? BuildReportHistory::previous(m_project->getProjectPath(), m_shownReportData) : "";
+                BuildReport before;
+                if (!previous.empty() && BuildReport::load(BuildReportHistory::resolve(m_project->getProjectPath(), previous, reportError), before, reportError, true)) {
+                    const int64_t delta = (int64_t)m_shownReportData.totalBytes - (int64_t)before.totalBytes;
+                    std::string when = before.created.size() >= 16 ? before.created.substr(0, 10) + " " + before.created.substr(11, 5) : previous;
+                    m_shownReportSince = std::string(" (") + (delta < 0 ? "-" : "+") + BuildReport::formatBytes((uint64_t)(delta < 0 ? -delta : delta)) +
+                                         " since " + when + ")";
+                }
+            }
+            const BuildReport& report = m_shownReportData;
+            if (m_shownReportLoaded) {
+                ImGui::TextUnformatted(("Build Report: " + BuildReport::formatBytes(report.totalBytes) + m_shownReportSince).c_str());
+                for (const BuildReportBudget& budget : report.budgets) {
+                    if (!budget.overBytes()) continue;
+                    ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.2f, 1.0f), "  %s over its %s budget by %s", budget.category.c_str(),
+                                       BuildReport::formatBytes(budget.limitBytes).c_str(), BuildReport::formatBytes(budget.overBytes()).c_str());
+                }
                 for (const std::string& category : BuildReport::categoryNames()) {
                     const auto it = report.categories.find(category);
                     if (it == report.categories.end() || it->second == 0) continue;

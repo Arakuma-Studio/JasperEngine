@@ -8,6 +8,7 @@
 #include "asset/AssetOps.h"
 #include "localization/StringTableDocument.h"
 #include "localization/StringTableEditCmd.h"
+#include "localization/StringTableInterchange.h"
 #include "util/ProjectChecks.h"
 
 #include "TempDir.h"
@@ -106,4 +107,39 @@ TEST(StringTableEditCmd, MovingTheOwnerMovesItsTranslations) {
         }
     }
     EXPECT_TRUE(movesTranslation);
+}
+
+TEST(StringTableEditCmd, ExtractToTableIsOneUndoStepOverBothFiles) {
+    jasperengine::test::TempDir dir;
+    const st::StringTableSet created = makeTable(dir);
+    const fs::path html = dir.write("assets/ui/menu.html", "<div>\n  <button id=\"options\">Options</button>\n  <p>Keyed</p>\n</div>\n");
+    const std::string htmlBefore = fileText(html);
+    const std::string tableBefore = fileText(created.owner);
+
+    st::StringTableSet after = created;
+    std::string edited = htmlBefore;
+    std::string key;
+    std::string error;
+    ASSERT_TRUE(st::extractText(after, edited, "Options", key, error)) << error;
+    EXPECT_EQ(key, "ui.text.options");
+    EXPECT_NE(edited.find("<button id=\"options\" data-l10n-id=\"ui.text.options\">Options</button>"), std::string::npos) << edited;
+    ASSERT_NE(after.table.find("text.options"), nullptr);
+    EXPECT_EQ(after.table.find("text.options")->text, "Options");
+
+    std::vector<StringTableEditCmd::FileChange> changes = {{created.owner, tableBefore, after.files().at(created.owner)}, {html, htmlBefore, edited}};
+    StringTableEditCmd command(changes, "Extract to Table " + key);
+    ASSERT_TRUE(command.execute());
+    EXPECT_NE(fileText(created.owner).find("text.options"), std::string::npos);
+    EXPECT_NE(fileText(html).find("data-l10n-id"), std::string::npos);
+    command.undo();
+    EXPECT_EQ(fileText(created.owner), tableBefore) << "one step: the table back";
+    EXPECT_EQ(fileText(html), htmlBefore) << "and the document back";
+
+    // text that is not the whole text of an element, and an element already keyed, are refused
+    st::StringTableSet again = after;
+    std::string keyed = edited;
+    EXPECT_FALSE(st::extractText(again, keyed, "Options", key, error));
+    EXPECT_NE(error.find("data-l10n-id"), std::string::npos) << error;
+    std::string partial = htmlBefore;
+    EXPECT_FALSE(st::extractText(again, partial, "Opt", key, error));
 }
