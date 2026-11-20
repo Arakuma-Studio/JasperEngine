@@ -117,7 +117,7 @@ namespace {
         return dir;
     }
 
-    bool readText(const fs::path& path, std::string& text) {
+    bool deviceReadText(const fs::path& path, std::string& text) {
         std::ifstream in(path, std::ios::binary);
         if (!in) return false;
         text.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -422,7 +422,7 @@ void builddevice::runBuildOnDevice(const CallPtr& call) {
             const fs::path cache = cacheContent(internalDir, platform);
             player::ContentManifest cached;
             std::string cacheText, parseError;
-            const bool haveCache = readText(cache / "content-manifest.json", cacheText) &&
+            const bool haveCache = deviceReadText(cache / "content-manifest.json", cacheText) &&
                                    player::ContentManifest::parse(cacheText, cached, parseError);
             std::string sha;
             const builtplayers::Fingerprint print = builtplayers::fingerprintOf(package);
@@ -451,7 +451,7 @@ void builddevice::runBuildOnDevice(const CallPtr& call) {
                 }
                 player::ContentManifest inside;
                 std::string text;
-                if (readText(request.run.contentDir / "content-manifest.json", text) && player::ContentManifest::parse(text, inside, parseError)) {
+                if (deviceReadText(request.run.contentDir / "content-manifest.json", text) && player::ContentManifest::parse(text, inside, parseError)) {
                     request.playerId = inside.playerId;
                     ExportConfig config;
                     config.platform = platform;
