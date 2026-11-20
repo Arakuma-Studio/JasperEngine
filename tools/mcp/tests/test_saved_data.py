@@ -55,6 +55,7 @@ async def test_saves_in_play(ed: Editor):
         ed.check_eq(await lua(ed, "return saveSlotProbe"), ["queued"])
         listed = await ed.call("user_settings", store="saves", action="list")
         ed.check_eq([s["slot"] for s in listed["slots"]], ["slot1"])
+        ed.check_eq(listed["store"], "saves", "a result names the store it acted on")
         ed.check_eq(listed["slots"][0]["meta"], {"title": "Forest"})
         got = await ed.call("user_settings", store="saves", action="get", key="slot1")
         ed.check_eq(got["value"], {"gold": 120, "items": {"#1": "a", "#5": "b"}, "pos": {"$vec3": [4.0, 0.0, 2.0]}})

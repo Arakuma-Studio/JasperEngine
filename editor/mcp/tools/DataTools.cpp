@@ -117,14 +117,14 @@ void savesTool(const CallPtr& call, const std::string& action, const std::string
                     std::to_string(info.generations) + " generation(s), " + info.status;
         }
         call->ok(std::to_string(slots.size()) + (slots.size() == 1 ? " slot" : " slots") + " in " + folder + (slots.empty() ? "." : ":") + text,
-                 Json{{"slots", slots}, {"count", slots.size()}, {"folder", folder}});
+                 Json{{"store", "saves"}, {"slots", slots}, {"count", slots.size()}, {"folder", folder}});
         return;
     }
     if (action == "clear") {
         const size_t count = store.list().size();
         if (count && !runSlotCommand(call, SaveSlotCmd::Action::ClearAll, "", 0, savegame::CorruptMode::Flip)) return;
         call->ok("Deleted all " + std::to_string(count) + (count == 1 ? " slot" : " slots") + " (undo brings them back).",
-                 Json{{"deleted", count}, {"folder", folder}});
+                 Json{{"store", "saves"}, {"deleted", count}, {"folder", folder}});
         return;
     }
 
@@ -159,7 +159,7 @@ void savesTool(const CallPtr& call, const std::string& action, const std::string
         }
         call->ok(path.filename().string() + ": generation " + std::to_string(file.generation) + ", version " + std::to_string(file.dataVersion) +
                  ", namespaces " + Json(names).dump() + ".",
-                 Json{{"file", path.string()}, {"generation", file.generation}, {"version", file.dataVersion}, {"namespaces", namespaces},
+                 Json{{"store", "saves"}, {"file", path.string()}, {"generation", file.generation}, {"version", file.dataVersion}, {"namespaces", namespaces},
                       {"meta", payloadJson(metadata.meta)}, {"requires", payloadJson(metadata.requirements)}});
         return;
     }
@@ -193,7 +193,7 @@ void savesTool(const CallPtr& call, const std::string& action, const std::string
             return;
         }
         Json value = payloadJson(*found->payload);
-        Json result{{"slot", key}, {"namespace", nameSpace}, {"value", value}, {"version", data.info.version},
+        Json result{{"store", "saves"}, {"slot", key}, {"namespace", nameSpace}, {"value", value}, {"version", data.info.version},
                     {"generation", data.info.generation}, {"namespaces", data.info.namespaces}, {"meta", payloadJson(data.info.meta)},
                     {"requires", payloadJson(data.info.requirements)}};
         if (data.info.recoveredFrom) result["recovered_from"] = data.info.recoveredFrom;
@@ -246,13 +246,13 @@ void savesTool(const CallPtr& call, const std::string& action, const std::string
         }
         call->ok("Wrote " + key + "/" + nameSpace + " at version " + std::to_string(options.version) + " (generation " +
                  std::to_string(store.newestGeneration(key)) + ").",
-                 Json{{"slot", key}, {"namespace", nameSpace}, {"version", options.version}, {"generation", store.newestGeneration(key)}});
+                 Json{{"store", "saves"}, {"slot", key}, {"namespace", nameSpace}, {"version", options.version}, {"generation", store.newestGeneration(key)}});
         return;
     }
 
     if (action == "delete") {
         if (!runSlotCommand(call, SaveSlotCmd::Action::Delete, key, 0, savegame::CorruptMode::Flip)) return;
-        call->ok("Deleted slot \"" + key + "\" (undo brings it back).", Json{{"slot", key}, {"deleted", true}});
+        call->ok("Deleted slot \"" + key + "\" (undo brings it back).", Json{{"store", "saves"}, {"slot", key}, {"deleted", true}});
         return;
     }
 
@@ -263,7 +263,7 @@ void savesTool(const CallPtr& call, const std::string& action, const std::string
         const uint64_t generation = store.newestGeneration(key);
         if (!runSlotCommand(call, SaveSlotCmd::Action::Corrupt, key, 0, mode)) return;
         call->ok("Corrupted " + savegame::slotFileName(key, generation) + " (" + modeName + ").",
-                 Json{{"slot", key}, {"generation", generation}, {"mode", modeName},
+                 Json{{"store", "saves"}, {"slot", key}, {"generation", generation}, {"mode", modeName},
                       {"next", "Read it in the game (eval_lua \"return SaveGame.read('" + key + "')\") to see the recovery, or "
                                "user_settings {store: \"saves\", action: \"get\", key: \"" + key + "\"}."}});
         return;
@@ -300,7 +300,7 @@ void savesTool(const CallPtr& call, const std::string& action, const std::string
         if (!runSlotCommand(call, SaveSlotCmd::Action::Restore, key, generation, savegame::CorruptMode::Flip)) return;
         call->ok("Restored generation " + std::to_string(generation) + " of \"" + key + "\" as generation " +
                  std::to_string(store.newestGeneration(key)) + ".",
-                 Json{{"slot", key}, {"restored", generation}, {"generation", store.newestGeneration(key)}});
+                 Json{{"store", "saves"}, {"slot", key}, {"restored", generation}, {"generation", store.newestGeneration(key)}});
         return;
     }
 
@@ -342,7 +342,7 @@ void userSettingsTool(const CallPtr& call) {
         }
         if (entries.size() > MAX_TEXT_KEYS)
             text += "\n... " + std::to_string(entries.size() - MAX_TEXT_KEYS) + " more in data.values";
-        call->ok(text, Json{{"store", profile}, {"values", values}, {"count", entries.size()}, {"file", file}});
+        call->ok(text, Json{{"store", "prefs"}, {"profile", profile}, {"values", values}, {"count", entries.size()}, {"file", file}});
         return;
     }
 
@@ -351,7 +351,7 @@ void userSettingsTool(const CallPtr& call) {
         UserSettings::deleteAll();
         UserSettings::save();
         call->ok("Deleted all " + std::to_string(count) + (count == 1 ? " key" : " keys") + " of " + file + ".",
-                 Json{{"store", profile}, {"deleted", count}, {"file", file}});
+                 Json{{"store", "prefs"}, {"profile", profile}, {"deleted", count}, {"file", file}});
         return;
     }
 
@@ -363,10 +363,10 @@ void userSettingsTool(const CallPtr& call) {
     if (action == "get") {
         std::string value;
         if (!store.get(key, value)) {
-            call->ok("No key " + shown(key) + " in " + file + ".", Json{{"store", profile}, {"key", key}, {"exists", false}});
+            call->ok("No key " + shown(key) + " in " + file + ".", Json{{"store", "prefs"}, {"profile", profile}, {"key", key}, {"exists", false}});
             return;
         }
-        call->ok(key + " = " + shown(value), Json{{"store", profile}, {"key", key}, {"exists", true}, {"value", textJson(value)}});
+        call->ok(key + " = " + shown(value), Json{{"store", "prefs"}, {"profile", profile}, {"key", key}, {"exists", true}, {"value", textJson(value)}});
         return;
     }
 
@@ -375,7 +375,7 @@ void userSettingsTool(const CallPtr& call) {
         UserSettings::deleteKey(key.c_str());
         UserSettings::save();
         call->ok(existed ? "Deleted " + shown(key) + "." : "No key " + shown(key) + " (nothing to delete).",
-                 Json{{"store", profile}, {"key", key}, {"deleted", existed}});
+                 Json{{"store", "prefs"}, {"profile", profile}, {"key", key}, {"deleted", existed}});
         return;
     }
 
@@ -421,7 +421,7 @@ void userSettingsTool(const CallPtr& call) {
         std::string stored;
         store.get(key, stored);
         call->ok("Set " + key + " = " + shown(stored) + " (" + type + ") in " + file + ".",
-                 Json{{"store", profile}, {"key", key}, {"type", type}, {"value", textJson(stored)}, {"file", file}});
+                 Json{{"store", "prefs"}, {"profile", profile}, {"key", key}, {"type", type}, {"value", textJson(stored)}, {"file", file}});
         return;
     }
 

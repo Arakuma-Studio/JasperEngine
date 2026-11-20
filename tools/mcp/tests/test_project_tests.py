@@ -242,12 +242,12 @@ async def test_play_data_profiles(ed: Editor):
     folder = s["project"] / state["data"]["folder"]
     ed.check(folder.exists() and ".jasperengine/user/sessions" in state["data"]["folder"], f"a session folder: {state['data']}")
     set_result = await ed.call("user_settings", action="set", key="volume", value=0.5)
-    ed.check_eq(set_result["store"], "clean")
+    ed.check_eq((set_result["store"], set_result["profile"]), ("prefs", "clean"), "store is the selected store, profile the Play Data profile")
     await ed.call("play", action="stop", keep_changes="none")
     ed.check(not folder.exists(), "the session folder is gone after stop")
     ed.check_eq(tree_hash(rundata), before, "UserSettings.xml of the project is unchanged")
     after = await ed.call("user_settings", action="list")
-    ed.check_eq(after["store"], "project")
+    ed.check_eq((after["store"], after["profile"]), ("prefs", "project"))
     text = await ed.call("play", action="start", data="two_coins", expect_error=True)
     ed.check_in("one_coin", text, "the error lists the snapshots")
 

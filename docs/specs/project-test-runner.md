@@ -337,7 +337,7 @@ Rerun Failed, expected logs. No code.
   status, kind, message, file, line, frame), `unverified`, `results_file`, `next`; at most one image
   (the first failed capture's a | b | diff panel). Errors name the fix (§6.6).
 - **R43 `play {data}`**: `"project"` (default), `"clean"`, or a snapshot name; start only.
-  `get_play_state` gains `data: {profile, folder}`; `user_settings` results gain `store`.
+  `get_play_state` gains `data: {profile, folder}`; `user_settings` results gain `profile`.
 - **R44 CLI** `jasperengine-editor test` (§6.7), built on `run_tests` through the `call` machinery
   (attach to the HTTP editor that has the project, else a one-shot headless editor); `--junit` and
   `--json` files; exit 0, 1, 2, 3.
@@ -643,7 +643,7 @@ case tagged `red`, a skipped case, an Edit Mode case, goldens for `level1_start`
   write leaves `Tests/Data/one_coin/` byte-identical; `data = "project"` gives error with the fixed
   text. Red: a host that leaves `getUserDataPath` at `rundata` (the hash check fails).
 - **AC7 Play Data profiles.** `test_play_data_profiles`: `play {action: "start", data: "clean"}`,
-  `user_settings set` reports `store: "clean"` and the project's `UserSettings.xml` is unchanged after
+  `user_settings set` reports `profile: "clean"` (and `store: "prefs"`) and the project's `UserSettings.xml` is unchanged after
   stop; the session folder is gone after stop; `get_play_state.data` names the profile. Editor gtest
   `PlayDataProfile.SnapshotSessionIsACopy` checks the copy and deletion. Red: profile ignored.
 - **AC8 Edit Mode is read-only.** `test_edit_mode_cases`: the camera case passes; a case calling
@@ -796,6 +796,10 @@ case tagged `red`, a skipped case, an Edit Mode case, goldens for `level1_start`
   development: true}` with Include Tests forced for that build, `run_build {headless: true,
   seconds: 300, args: ["--run-tests", ...]}` and the import of the results file the player names in
   its log (`[test] results <path>`, an absolute path); a run longer than run_build's 300 s is cut.
+- **`user_settings` names the profile `profile`, not `store`.** R43 said its results gain `store`,
+  but SaveGame's `store` input ("prefs" | "saves") selects the store on the same tool. A result's
+  `store` is the store it acted on (SaveGame slot results too), and `profile` is the Play Data
+  profile of a prefs result.
 - **Test-project hooks.** `tools/test-projects/game-tests` is the engine project of AC12 and AC13
   (four smoke cases in `assets/tests/`, `android-expect.txt`, `tools/web/gates/game-tests.json`); the
   summary line's keys are in alphabetical order (the results document's JSON).

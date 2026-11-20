@@ -75,7 +75,8 @@ A case's `data://` (PlayerPrefs included) is an empty folder, or a copy of
 `Tests/Data/<name>/` with `data = "<name>"`; it is deleted after the case. `data = "project"`
 is refused. Save a snapshot from the Game view's Play Data menu (Save Snapshot...), or play with
 `play {action: "start", data: "clean"}` to try a game on empty data without touching the
-project's own.
+project's own. `user_settings` then reports that profile in `profile`; its `store` is the store it
+acted on (`prefs` or `saves`).
 
 ## Players and import
 
