@@ -2813,8 +2813,8 @@ void ProjectSettingsWindow::drawDeviceTierSettings() {
             ImGui::SetItemTooltip("%s", detection.reason.c_str());
         }
         // the driver workarounds this machine runs with (read-only: they change how a frame is
-        // made, never what it shows), each with its reason
-        ImGui::SameLine();
+        // made, never what it shows), each with its reason; on a line of their own, which the
+        // names would overflow beside the tier
         const std::vector<std::string> quirks = GpuQuirks::activeNames();
         ImGui::TextDisabled("GPU Quirks:%s", quirks.empty() ? " none" : "");
         for (GpuQuirk quirk : GpuQuirks::known()) {
