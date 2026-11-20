@@ -31,7 +31,6 @@
     },
     {
       "bytes": 4096,
-      "category": "textures",
       "path": "assets/je-cooked/astc/1f.ktx2",
       "source": "textures/wall.png",
       "source_bytes": 8000
@@ -110,14 +109,16 @@
   "platform": "source",
   "reachability": {
     "assets": {
-      "project.yaml": {
-        "kind": "root"
-      },
-      "scenes/main.scene": {
-        "field": "project/scenes[0]",
-        "kind": "SceneList",
-        "via": "project.yaml"
-      }
+      "project.yaml": [
+        "",
+        "",
+        "root"
+      ],
+      "scenes/main.scene": [
+        "project.yaml",
+        "project/scenes[0].filepath",
+        "scene_list"
+      ]
     }
   },
   "total_bytes": 7504,

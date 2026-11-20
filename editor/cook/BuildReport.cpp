@@ -134,7 +134,9 @@ std::map<std::string, std::pair<std::string, uint64_t>> BuildReport::cookedTextu
 namespace {
 
     Json reportFileJson(const BuildReportFile& file, bool withAsset){
-        Json entry = {{"path", file.path}, {"category", file.category}, {"bytes", file.bytes}};
+        Json entry = {{"path", file.path}, {"bytes", file.bytes}};
+        // the file list leaves out what its path says (largest keeps every key, for older readers)
+        if (!withAsset || file.category != BuildReport::categoryOf(file.path)) entry["category"] = file.category;
         if (!file.source.empty()){
             entry["source"] = file.source;
             entry["source_bytes"] = file.sourceBytes;
@@ -151,7 +153,7 @@ namespace {
     BuildReportFile reportFileFromJson(const Json& entry){
         BuildReportFile file;
         file.path = entry.value("path", std::string());
-        file.category = entry.value("category", std::string());
+        file.category = entry.contains("category") ? entry.value("category", std::string()) : BuildReport::categoryOf(file.path);
         file.bytes = entry.value("bytes", (uint64_t)0);
         file.source = entry.value("source", std::string());
         file.sourceBytes = entry.value("source_bytes", (uint64_t)0);
@@ -219,10 +221,10 @@ Json BuildReport::toJson() const{
         if (reachability){
             Json assets = Json::object();
             for (const auto& [asset, reach] : *reachability){
-                Json entry = {{"kind", reach.kind}};
-                if (!reach.via.empty()) entry["via"] = reach.via;
-                if (!reach.field.empty()) entry["field"] = reach.field;
-                if (!reach.object.empty()) entry["object"] = reach.object;
+                // [via, field, kind] and the GameObject when there is one: a key per entry would cost
+                // a fifth of a large report
+                Json entry = Json::array({reach.via, reach.field, reach.kind});
+                if (!reach.object.empty()) entry.push_back(reach.object);
                 assets[asset] = std::move(entry);
             }
             out["reachability"] = {{"assets", std::move(assets)}};
@@ -275,9 +277,9 @@ bool BuildReport::fromJson(const Json& json, BuildReport& out){
         json["reachability"]["assets"].is_object()){
         std::map<std::string, BuildReportReach> assets;
         for (const auto& [asset, entry] : json["reachability"]["assets"].items())
-            if (entry.is_object())
-                assets[asset] = {entry.value("via", std::string()), entry.value("field", std::string()), entry.value("kind", std::string()),
-                                 entry.value("object", std::string())};
+            if (entry.is_array() && entry.size() >= 3 && entry[0].is_string() && entry[1].is_string() && entry[2].is_string())
+                assets[asset] = {entry[0].get<std::string>(), entry[1].get<std::string>(), entry[2].get<std::string>(),
+                                 entry.size() > 3 && entry[3].is_string() ? entry[3].get<std::string>() : std::string()};
         out.reachability = std::move(assets);
     }
     if (json.contains("budgets") && json["budgets"].is_array())

@@ -92,7 +92,7 @@ TEST(ReachabilityTest, TenThousandAssetsWithinBudget) {
     edges.reserve(60000);
     char from[64], to[64];
     for (int i = 0; i < 60000; i++) {
-        const int a = i % 10000, b = (i * 7919 + 13) % 10000;
+        const int a = i % 10000, b = (a * 31 + (i / 10000) * 977 + 7) % 10000;
         std::snprintf(from, sizeof(from), "folder%02d/asset%05d.material", a % 50, a);
         std::snprintf(to, sizeof(to), "folder%02d/asset%05d.material", b % 50, b);
         edges.push_back({from, to, "material/field" + std::to_string(i % 6), "MaterialTexture", ""});

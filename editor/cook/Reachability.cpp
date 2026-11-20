@@ -7,7 +7,6 @@
 #include "util/FileUtils.h"
 
 #include <algorithm>
-#include <numeric>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -38,24 +37,16 @@ std::vector<ReachEdge> jasperengine::editor::reachEdgesOf(const AssetIndex& inde
 
 std::map<std::string, BuildReportReach> jasperengine::editor::computeReachability(const std::vector<ReachEdge>& edges,
                                                                                   const std::vector<std::string>& roots){
-    // indexes sorted by referrer, field, target: each referrer's edges are one run, in R3's order
-    std::vector<size_t> order(edges.size());
-    std::iota(order.begin(), order.end(), size_t(0));
-    std::sort(order.begin(), order.end(), [&edges](size_t a, size_t b){
-        const ReachEdge& x = edges[a];
-        const ReachEdge& y = edges[b];
-        if (x.from != y.from) return x.from < y.from;
-        if (x.field != y.field) return x.field < y.field;
-        return x.to < y.to;
-    });
-    std::unordered_map<std::string_view, std::pair<size_t, size_t>> runs;
+    // each referrer's edges, in field locator then target order (R3): grouped by a hash, each group sorted
+    std::unordered_map<std::string_view, std::vector<size_t>> runs;
     runs.reserve(edges.size());
-    for (size_t i = 0; i < order.size();){
-        size_t end = i + 1;
-        while (end < order.size() && edges[order[end]].from == edges[order[i]].from) end++;
-        runs[edges[order[i]].from] = {i, end};
-        i = end;
-    }
+    for (size_t i = 0; i < edges.size(); i++) runs[edges[i].from].push_back(i);
+    for (auto& run : runs)
+        std::sort(run.second.begin(), run.second.end(), [&edges](size_t a, size_t b){
+            const ReachEdge& x = edges[a];
+            const ReachEdge& y = edges[b];
+            return x.field != y.field ? x.field < y.field : x.to < y.to;
+        });
 
     std::map<std::string, BuildReportReach> reached;
     std::unordered_set<std::string_view> seen;
@@ -69,8 +60,8 @@ std::map<std::string, BuildReportReach> jasperengine::editor::computeReachabilit
     for (size_t head = 0; head < queue.size(); head++){
         const auto run = runs.find(queue[head]);
         if (run == runs.end()) continue;
-        for (size_t i = run->second.first; i < run->second.second; i++){
-            const ReachEdge& edge = edges[order[i]];
+        for (size_t index : run->second){
+            const ReachEdge& edge = edges[index];
             if (edge.to.empty() || !seen.insert(edge.to).second) continue;
             reached[edge.to] = {edge.from, edge.field, edge.kind, edge.object};
             queue.push_back(edge.to);

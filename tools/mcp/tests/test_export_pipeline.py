@@ -518,7 +518,7 @@ async def test_size_budget_warns_and_fails(ed: Editor):
     ed.check_in("textures/big.png", msg)
     data = report_of(failed)
     ed.check(data["budgets"] and data["budgets"][0]["over_bytes"] > 0, f"{data['budgets']}")
-    ed.check(not any(f["category"] == "engine" for f in data["files"]), "stopped before the engine was measured")
+    ed.check(not any(f.get("category") == "engine" or f["path"].endswith(".so") for f in data["files"]), "stopped before the engine was measured")
     history = ed.project / ".jasperengine" / "build-reports" / "linux" / f"{data['id']}.json"
     ed.check(history.is_file(), f"the history entry {history}")
     ed.check_eq(json.loads(history.read_text())["budgets"], data["budgets"])

@@ -96,6 +96,8 @@ TEST(BuildReportTest, FullListAndOptionalKeys) {
     }
     EXPECT_TRUE(newer.hasFiles);
     EXPECT_EQ(newer.files.size(), 6u);
+    for (const BuildReportFile& entry : newer.files)
+        if (entry.path == "assets/je-cooked/astc/1f.ktx2") EXPECT_EQ(entry.category, "textures") << "a file without category takes its path's";
     EXPECT_EQ(newer.id, "20261119-142233-source");
     EXPECT_EQ(newer.leftOutBytes(), 8000u);
     ASSERT_TRUE(newer.reachability.has_value());
