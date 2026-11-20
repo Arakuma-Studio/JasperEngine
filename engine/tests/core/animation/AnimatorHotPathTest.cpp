@@ -159,8 +159,9 @@ TEST_F(AnimatorHotPath, MeshSpaceRotationAllocatesNothingAfterTheBind){
     EXPECT_EQ(instance(twin).meshSpaceScratchBytes(), 0u) << "the option off: no scratch";
     EXPECT_EQ(instance(twin).layerBoundaryBones(1).size(), 1u) << "the boundary bones are listed all the same";
     for (int i = 0; i < 120; i++) step(kDt);
-    if (!testsupport::countsAllocations()) GTEST_SKIP() << "this build cannot count allocations";
-    {
+    // the recording's checks run on every build (sanitizers included); the counts where it can count
+    const bool counts = testsupport::countsAllocations();
+    if (counts){
         testsupport::AllocationCountScope scope;
         for (int i = 0; i < 600; i++) step(kDt);
         EXPECT_EQ(scope.count(), 0u);
@@ -168,7 +169,7 @@ TEST_F(AnimatorHotPath, MeshSpaceRotationAllocatesNothingAfterTheBind){
     instance(root).setMeshSpaceDebug(true);
     EXPECT_EQ(instance(root).layerMeshSpaceUnpassed(1), nullptr) << "nothing recorded before an update";
     step(kDt);
-    {
+    if (counts){
         testsupport::AllocationCountScope scope;
         for (int i = 0; i < 120; i++) step(kDt);
         EXPECT_EQ(scope.count(), 0u) << "the recording allocates in its setter only";
@@ -176,6 +177,7 @@ TEST_F(AnimatorHotPath, MeshSpaceRotationAllocatesNothingAfterTheBind){
     ASSERT_NE(instance(root).layerMeshSpaceUnpassed(1), nullptr);
     EXPECT_EQ(instance(root).layerMeshSpaceUnpassed(1)->size(), 1u);
     EXPECT_EQ(instance(twin).layerMeshSpaceUnpassed(1), nullptr) << "a layer the pass does not run on records nothing";
+    if (!counts) GTEST_SKIP() << "this build cannot count allocations (the recording was checked)";
 }
 
 // AC6: a layer of weight 0 costs no sampling, and its time still runs: when its weight comes up
