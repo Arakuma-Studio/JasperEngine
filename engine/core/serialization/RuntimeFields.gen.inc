@@ -1779,6 +1779,8 @@ const FieldEntry kBody_InputFieldComponent_fields[] = {
     JE_RF(InputFieldComponent, selectionAnchor, 0x8c85cbe8u, Int),
     JE_RF(InputFieldComponent, disabled, 0xf5ea7571u, Bool),
     JE_RF(InputFieldComponent, password, 0x5e3d4d6cu, Bool),
+    JE_RF(InputFieldComponent, keyboardType, 0xf65183f0u, Enum),
+    JE_RF(InputFieldComponent, characterLimit, 0x64eca537u, Int),
 };
 const StructTable kBody_InputFieldComponent{"inputfield", kBody_InputFieldComponent_fields, std::size(kBody_InputFieldComponent_fields)};
 

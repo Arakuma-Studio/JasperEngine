@@ -188,22 +188,22 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `color` | approximated | text showing the value; no swatch or picker, no ::before/::after (HTMLUI-HTML-0008) |  |
 | `date` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
 | `datetime-local` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
-| `email` | approximated | text input; no validation or keyboard hints (HTMLUI-HTML-0008) |  |
+| `email` | approximated | text input with the e-mail keyboard; no validation (HTMLUI-HTML-0008) |  |
 | `file` | unsupported | disabled "Choose File" button, no ::before/::after (HTMLUI-HTML-0008) | pick files through the game, e.g. a Lua file dialog |
 | `hidden` | native | text input hidden by the UA sheet |  |
 | `image` | emulated | submit button drawing src |  |
 | `month` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
-| `number` | emulated | text with numeric filtering, step keys and clamping; no spinner (HTMLUI-HTML-0008) |  |
+| `number` | emulated | text with numeric filtering, step keys, clamping and a number keypad; no spinner (HTMLUI-HTML-0008) |  |
 | `password` | native |  |  |
 | `radio` | native |  |  |
 | `range` | native |  |  |
 | `reset` | emulated | button that resets the form |  |
-| `search` | approximated | text input; no validation or keyboard hints (HTMLUI-HTML-0008) |  |
+| `search` | approximated | text input with the search keyboard and key; no validation (HTMLUI-HTML-0008) |  |
 | `submit` | native |  |  |
-| `tel` | approximated | text input; no validation or keyboard hints (HTMLUI-HTML-0008) |  |
+| `tel` | approximated | text input with the phone keypad; no validation (HTMLUI-HTML-0008) |  |
 | `text` | native |  |  |
 | `time` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
-| `url` | approximated | text input; no validation or keyboard hints (HTMLUI-HTML-0008) |  |
+| `url` | approximated | text input with the URL keyboard; no validation (HTMLUI-HTML-0008) |  |
 | `week` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
 
 ## Attributes
@@ -228,8 +228,9 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `as` | `list-view` | emulated | the aliases of an item and its 0-based index ("item, i") (S17) |  |
 | `as` | `table-view` | emulated | the aliases of an item and its 0-based index ("item, i") (S17) |  |
 | `as` | `tree-view` | emulated | the aliases of an item and its 0-based index ("item, i") (S17) |  |
-| `autocapitalize` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `autocapitalize` | `*` | native | the soft keyboard's capitalisation on Android, iOS and the web (off, none, on, sentences, words, characters; default off) |  |
 | `autocomplete` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `autocorrect` | `*` | native | the soft keyboard's suggestions on Android (on, off; default off); off on iOS and the web, whose keyboards keep no text |  |
 | `autofocus` | `*` | emulated | focused after load |  |
 | `autoplay` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `autoplay` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
@@ -277,12 +278,12 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `draggable` | `*` | rewritten | mapped: HTML5 drag events with event.dataTransfer, ghost, drop feedback (S17) |  |
 | `dropzone` | `*` | emulated | the element accepts drops of the listed dataTransfer types (copy\|move\|link) (S17) |  |
 
-### Attributes: e-l
+### Attributes: e-k
 
 | Attribute | Element | Support | Notes | Instead |
 |---|---|---|---|---|
 | `enctype` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
-| `enterkeyhint` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `enterkeyhint` | `*` | native | the soft keyboard's action key (enter, done, go, next, previous, search, send): an Enter keydown with event.enterKeyHint; next / previous focus the adjacent text field, done blurs, the others submit (a hardware Enter does the same) |  |
 | `estimated-height` | `grid-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
 | `estimated-height` | `list-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
 | `estimated-height` | `table-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
@@ -312,7 +313,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `id` | `*` | native | kept; id="htmlui-root" is reserved and renamed (Warning) |  |
 | `id` | `html` | rewritten | the root id is reserved; selectors on the author id are rewritten |  |
 | `indent` | `tree-view` | emulated | the indentation per depth in px (default 16) (S17) |  |
-| `inputmode` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `inputmode` | `*` | native | the soft keyboard on Android, iOS and the web (none, text, decimal, numeric, tel, search, email, url); none shows no keyboard |  |
 | `integrity` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `intermission` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `intermission` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -337,6 +338,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `key` | `table-column` | emulated | the item field the cells show ({{item.<key>}}) (S17) |  |
 | `key` | `table-view` | emulated | the item field that identifies an item (selection, row identity) (S17) |  |
 | `key` | `tree-view` | emulated | the node field that identifies a node (default: its index path) (S17) |  |
+
+### Attributes: l-r
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
 | `lang` | `*` | rewritten | kept, plus a presentational hint |  |
 | `loading` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `loop` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
@@ -345,16 +351,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `loop` | `particle-system` | emulated | loop="false" plays once; absent: the prefab's own |  |
 | `loop` | `video` | native | seamless (seeking, seeked at the wrap) |  |
 | `low` | `meter` | unsupported | dropped (Info) (HTMLUI-HTML-0004) | color the progress fill with a class |
-
-### Attributes: m-r
-
-| Attribute | Element | Support | Notes | Instead |
-|---|---|---|---|---|
 | `marker` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `marker` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `marker` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `max` | `*` | native | kept |  |
-| `maxlength` | `*` | native | kept |  |
+| `maxlength` | `*` | native | kept: typing and the soft keyboard stop there |  |
 | `media` | `source` | rewritten | resolved at load to choose the img source |  |
 | `method` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
 | `min` | `*` | native | kept |  |
