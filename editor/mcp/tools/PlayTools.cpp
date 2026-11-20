@@ -3920,13 +3920,13 @@ void registerPlayTools(McpRegistry& registry) {
             "[shift,ctrl,alt,super]\ntext: text, per_unit (per UTF-16 unit); ime: text, cursor; ime_commit: text; ime_cancel\n"
             "mouse_leave, mouse_enter\nmouse: action click|double_click|down|up|move|drag|scroll, x, y (default: "
             "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy (scroll; move w/o x, y)\ntouch: action "
-            "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget / to_target: UI Document CSS selector "
-            "(document: which)\ngamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + "
+            "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget / to_target: UI Document CSS selector"
+            "\ngamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + "
             "value, x, y/target: warp cursor, or action connect|disconnect\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
             "phase (press|down|up)|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|orientation "
-            "(+orientation)|back\nwait: frames, ms, or until (Lua; frames caps)\nshot: name (PNG). release_all.\n"
-            "space: canvas px, normalized 0..1, safe_area 0..1 of safeArea, view = Game view px. "
-            "down holds until up/release_all/stop. auto_pause: events + frames_after only.";
+            "(+orientation)|back\nwait: frames, ms, or until (Lua; frames caps)\nshot: name. release_all.\n"
+            "space: canvas px, normalized/safe_area 0..1, view = Game view px. "
+            "down holds until up/release_all/stop.";
         tool.inputSchema = object({
             {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", eventItem}}},
             {"file", string("Script .input.json.")},
