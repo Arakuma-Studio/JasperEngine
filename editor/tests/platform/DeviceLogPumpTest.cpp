@@ -46,7 +46,8 @@ TEST(DeviceLogPump, BatchesLinesOncePerFrame) {
         pump.push(LogLevel::Info, "[Pixel 7] line " + std::to_string(i), now);
         pump.tick(now);
     }
-    pump.tick(101.0);
+    // the end of the stream hands the rest on (stop() does this)
+    pump.tick(101.0, true);
     EXPECT_EQ(lines, 10000u);
     EXPECT_LE(pump.batches(), 60u) << "at most one batch a frame (1/60 s)";
     EXPECT_GE(pump.batches(), 30u);

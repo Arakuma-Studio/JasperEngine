@@ -8,8 +8,8 @@
      compresses them and says true (AndroidPackager compressesNativeLibraries). The native plugin
      settings without code (android.extra_permissions, manifest_xml, manifest_application_xml) go
      into the NATIVE markers; code and Gradle dependencies make the build compile instead.
-     The DEBUGGABLE marker: android:debuggable="true" in a Development Build, so Patch And Run can reach the
-     app's files through `adb shell run-as` (docs/specs/build-and-run-on-device.md R9). -->
+     The DEBUGGABLE marker: filled in a Development Build, so Patch And Run can reach the app's files
+     through `adb shell run-as` (docs/specs/build-and-run-on-device.md R9). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.jaspergameengine.jasperengine"
     android:versionCode="{{VERSION_CODE}}"
