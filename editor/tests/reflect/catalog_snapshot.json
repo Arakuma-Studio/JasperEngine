@@ -24441,6 +24441,109 @@
    "type": 104,
    "type_of_key": 104,
    "type_of_name": 104
+  },
+  {
+   "display_name": "Dialogue Runner",
+   "enum_options": {},
+   "has_enabled": false,
+   "icon": "ef8286",
+   "key": "dialoguerunner",
+   "known_keys": [
+    "autoStart",
+    "dialogue",
+    "seed",
+    "startEntry",
+    "view"
+   ],
+   "name": "DialogueRunnerComponent",
+   "properties_of_default": {
+    "autoStart": [
+     0,
+     0,
+     true
+    ],
+    "currentNode": [
+     1,
+     0,
+     true
+    ],
+    "dialogue": [
+     18,
+     0,
+     true
+    ],
+    "isRunning": [
+     0,
+     0,
+     true
+    ],
+    "seed": [
+     8,
+     0,
+     true
+    ],
+    "startEntry": [
+     1,
+     0,
+     true
+    ],
+    "state": [
+     1,
+     0,
+     true
+    ],
+    "view": [
+     16,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "autoStart": [
+     0,
+     0,
+     true
+    ],
+    "currentNode": [
+     1,
+     0,
+     true
+    ],
+    "dialogue": [
+     18,
+     0,
+     true
+    ],
+    "isRunning": [
+     0,
+     0,
+     true
+    ],
+    "seed": [
+     8,
+     0,
+     true
+    ],
+    "startEntry": [
+     1,
+     0,
+     true
+    ],
+    "state": [
+     1,
+     0,
+     true
+    ],
+    "view": [
+     16,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 105,
+   "type_of_key": 105,
+   "type_of_name": 105
   }
  ],
  "ease_options": [

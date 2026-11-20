@@ -81,7 +81,11 @@ namespace {
 }
 
 TEST_F(DialogueWindowTest, OpensDialogueFilesInItsWindow) {
-    EXPECT_EQ(GraphEditorWindow::windowFor(file.string()), window.get()) << "a .dialogue opens in Window > Dialogue";
+    // (the editor App another test made has its own Dialogue window: any Dialogue window, never the Graph Editor)
+    GraphEditorWindow* opens = GraphEditorWindow::windowFor(file.string());
+    ASSERT_NE(opens, nullptr);
+    EXPECT_NE(dynamic_cast<DialogueWindow*>(opens), nullptr) << "a .dialogue opens in Window > Dialogue";
+    EXPECT_EQ(opens->kindId(), "dialogue");
     EXPECT_EQ(window->windowName(), std::string(DialogueWindow::WINDOW_NAME));
     EXPECT_EQ(DialogueWindow::instance(), window.get());
     window->setOpen(false);
