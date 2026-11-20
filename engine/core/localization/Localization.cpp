@@ -44,6 +44,8 @@ namespace {
         LocalizationNamespace info;
         // the chain's languages that were asked for: a table, or null when the file did not read
         std::map<std::string, std::shared_ptr<const StringTable>> tables;
+        // the shown language is the source's (no "untranslated" capture), set per language change
+        bool sourceShown = true;
     };
 
     struct State {
@@ -194,7 +196,9 @@ namespace {
         s.language = language;
         s.pseudo = isPseudo(language);
         s.chain = chainOf(s.pseudo ? s.manifest.defaultLanguage : language, s.manifest);
+        const std::string& shown = s.pseudo ? s.manifest.defaultLanguage : language;
         for (auto& [name, ns] : s.namespaces) {
+            ns.sourceShown = !TitleArtLanguage::match(shown, {ns.info.sourceLanguage}).empty();
             for (auto it = ns.tables.begin(); it != ns.tables.end();) {
                 const bool keep = it->first == ns.info.sourceLanguage || std::find(s.chain.begin(), s.chain.end(), it->first) != s.chain.end();
                 it = keep ? std::next(it) : ns.tables.erase(it);
@@ -317,7 +321,7 @@ namespace {
 
     struct Found {
         std::string_view text;
-        std::string language;
+        std::string_view language;     // the chain's or the namespace's: alive while the lock is held
         bool plain = false;
     };
 
@@ -342,8 +346,7 @@ namespace {
         const StringTable* source = tableOf(s, ns, ns.info.sourceLanguage);
         if (!source || !source->find(local, found.text, nullptr, &found.plain)) return false;
         found.language = ns.info.sourceLanguage;
-        const std::string& shown = s.pseudo ? s.manifest.defaultLanguage : s.language;
-        if (TitleArtLanguage::match(shown, {ns.info.sourceLanguage}).empty()) capture(s, key, "untranslated", where);
+        if (!ns.sourceShown) capture(s, key, "untranslated", where);
         return true;
     }
 
@@ -352,7 +355,7 @@ namespace {
         Found found;
         if (!lookup(s, key, found, {})) return false;
         text.assign(found.text);
-        language = found.language;
+        language.assign(found.language);
         if (s.pseudo) {
             // the referenced noun is shown transformed like the rest of the message
             std::string transformed;
