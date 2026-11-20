@@ -778,6 +778,15 @@ commits); a review fix of G5-2's boundary order has its own commit.
 | G5-5 | `445de6757` `rmlui: Pointer Events: per-pointer hover, :active, capture, drag, click and touch-action (engine-gaps G5-1..G5-6)`; `ce76b4900` (`rmlui: Pointer Events unit tests`), `e0f6d569b` (`rmlui: Pointer Events unit tests: thin scrollbars in the pan fixture, the mouse's first move`) | `Include/RmlUi/Core/Context.h`, `Source/Core/{Context,ContextPointer}.cpp` | Per-pointer drag: `drag="drag\|drag-drop\|clone"` elements are dragged by the pointer that pressed them (each finger its own; one element by one pointer); `dragstart`/`drag`/`dragend`/`dragover`/`dragout`/`dragdrop`/`dragmove` use that pointer's hover and carry `pointer_id`; a touch's clone sits in the cursor proxy offset by the pointer's distance from the mouse. | upstreamable | `PointerEvents.per_pointer_drag` |
 | G5-6 | `445de6757` `rmlui: Pointer Events: per-pointer hover, :active, capture, drag, click and touch-action (engine-gaps G5-1..G5-6)`; `ce76b4900` (`rmlui: Pointer Events unit tests`), `e0f6d569b` (`rmlui: Pointer Events unit tests: thin scrollbars in the pan fixture, the mouse's first move`) | `Source/Core/ContextPointer.cpp` | Per-pointer click: a pointer released over its press's focus element (or a descendant) clicks it, two fingers click two elements; double click per pointer id (0.5 s, 3 dp, as the mouse's). | upstreamable | `PointerEvents.per_pointer_click` |
 
+## Text entry patches
+
+Feature text-entry-gamepad-cursor-back-button (`docs/specs/text-entry-gamepad-cursor-back-button.md`
+R26: a focused text field left idle costs no allocation per frame).
+
+| Id | Commits | Files | What and why | Upstream | Tests |
+|---|---|---|---|---|---|
+| TE-1 | `rmlui: WidgetTextInput::GetValue names placeholder-shown with a constant (text-entry R26)` | `Source/Core/Elements/WidgetTextInput.cpp` | `GetValue()` asked `IsPseudoClassSet("placeholder-shown")` with a string literal, which builds a 17-character `String` on the heap (past the small-string buffer) on every call; the engine's soft-keyboard resync reads the caret (`GetSelectionRange` → `GetSelection` → `GetValue`) once a frame while a field is focused. A function-local `static const String` instead. | upstreamable (a pure allocation saving) | engine `TextEntryTest.IdleFocusedFieldDoesNotAllocate` (htmlui suite, 600 idle frames, 0 allocations) |
+
 ## Upstream rebase rehearsal (p3-integration)
 
 Rehearsed in a scratch clone of `https://github.com/mikke89/RmlUi` (2026-10-11/12): upstream `master` at
