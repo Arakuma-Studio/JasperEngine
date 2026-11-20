@@ -251,12 +251,14 @@ namespace jasperengine::editor{
         // shows a .titleart through its Image or Sprite (S81 R1)
         TitleArtRendererComponent,
         // freezes far or unloaded-ground GameObjects (culling-group-and-simulation-distance R10)
-        SimulationCullingComponent
+        SimulationCullingComponent,
+        // plays a .dialogue (dialogue-graphs.md R13)
+        DialogueRunnerComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::SimulationCullingComponent;
+    constexpr ComponentType LastComponentType = ComponentType::DialogueRunnerComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;
