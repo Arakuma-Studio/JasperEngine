@@ -1917,14 +1917,20 @@ Wait until something matching is logged after `since` (a read_console next_curso
 
 Group: `scripting` (listed once `tool_groups` enables it, callable either way). Hints: destructive
 
-The project's UserSettings/PlayerPrefs store, shared with the game in Play (changes apply at once): list {key: text}, get, set (type from value or `type`), delete, clear. Writes save to disk.
+The project's UserSettings/PlayerPrefs store, shared with the game in Play (changes apply at once): list {key: text}, get, set (type from value or `type`), delete, clear. Writes save to disk. store "saves": SaveGame slots (key = slot): list, get (namespace, generation, or a .jsave file), set (JSON; vectors {"$vec3":[..]}), delete, clear, corrupt, restore (generation).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `action` | `"list"` \| `"get"` \| `"set"` \| `"delete"` \| `"clear"` | yes |  |
+| `action` | `"list"` \| `"get"` \| `"set"` \| `"delete"` \| `"clear"` \| `"corrupt"` \| `"restore"` | yes |  |
+| `file` | string |  | saves get: a .jsave path. |
+| `generation` | integer (1..9223372036854775807) |  | saves get/restore. |
 | `key` | string |  |  |
+| `mode` | `"truncate"` \| `"flip"` \| `"header"` |  | saves corrupt. |
+| `namespace` | string |  | saves: default main. |
+| `store` | `"prefs"` \| `"saves"` |  | Default prefs. |
 | `type` | `"string"` \| `"int"` \| `"float"` \| `"bool"` |  | set: how it is stored. |
-| `value` |  |  | set: string, number or boolean. |
+| `value` |  |  | set: string, number or boolean; saves: an object or array. |
+| `version` | integer (1..2147483647) |  | saves set: the data version. |
 
 
 ## Sound Events
