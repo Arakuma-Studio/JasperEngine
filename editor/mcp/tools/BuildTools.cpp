@@ -2531,7 +2531,7 @@ void registerBuildTools(McpRegistry& registry) {
         tool.description =
             "Build Settings state: toolchains (cmake/compiler, emsdk; missing ones listed), graphics APIs and last "
             "output dir per mode, jobs, scenes in build, shader count (include_shaders: keys for edit_build_shaders), "
-            "running job, last result. Call before build_project. devices: Run Devices (spawns adb/simctl).";
+            "running job, last result. Call before build_project.";
         tool.inputSchema = object({
             {"include_shaders", withDefault(boolean(""), false)},
             {"devices", withDefault(boolean(""), false)}
@@ -2553,7 +2553,7 @@ void registerBuildTools(McpRegistry& registry) {
         tool.description =
             "Build Settings > Build, as a job. player: a game per platform (prebuilt, or compiled); desktop/web: this "
             "computer/web; source: a CMake project; omitted: get_build_info's default platform. profile: a Build Profile sets "
-            "platform, API, flavour, folder. run_device: Build And Run there. Saves scenes first. Past timeout_seconds: job_id (get_job).";
+            "platform, API, flavour, folder. run_device: Build And Run. Saves scenes first. Past timeout_seconds: job_id (get_job).";
         tool.inputSchema = object({
             {"mode", stringEnum("", {"player", "desktop", "web", "source"})},
             {"output_dir", string("Absolute, outside project.")},
@@ -2567,8 +2567,8 @@ void registerBuildTools(McpRegistry& registry) {
             {"development", withDefault(boolean(""), false)},
             {"android_format", stringEnum("Default: project.", {"aab", "apk-per-abi", "apk"})},
             {"ios_simulator", withDefault(boolean("Unsigned simulator .app."), false)},
-            {"run_device", string("Device id, auto or web.")},
-            {"patch", boolean("Push changed content only. Default: development.")},
+            {"run_device", string("")},
+            {"patch", boolean("")},
             {"backends", array(stringItem, "source: opengl/opengles/d3d11/metal-macos/metal-ios/vulkan/all. Remembered.")},
             {"build_type", withDefault(stringEnum("", {"Release", "Debug", "RelWithDebInfo", "MinSizeRel"}), "Release")},
             {"build_jobs", integer("0 = auto.")},
@@ -2632,12 +2632,11 @@ void registerBuildTools(McpRegistry& registry) {
         tool.name = "run_build";
         tool.title = "Run Build";
         tool.description =
-            "Run the last build for `seconds` here or on a device (Android, iOS Simulator, web), screenshot it, stop it. "
-            "Returns log tail, errors, exit code, crashed, fatal_lines. input (desktop Linux/X11): send_input events. "
-            "screenshots_at: seconds since launch.";
+            "Run the last build `seconds` here or on a device (get_build_info devices), screenshot it, stop it. input: "
+            "send_input events (desktop Linux/X11). screenshots_at: seconds since launch.";
         tool.inputSchema = object({
-            {"path", string("Executable or build dir. Default: last build.")},
-            {"device", string("Device id, auto or web (get_build_info devices).")},
+            {"path", string("Default: last build.")},
+            {"device", string("")},
             {"keep_running", withDefault(boolean(""), false)},
             {"seconds", number("Default 5.", 0.5, 300)},
             {"input", Json{{"type", "array"}, {"maxItems", 500}, {"items", anyObject("")}}},

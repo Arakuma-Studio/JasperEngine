@@ -2587,8 +2587,7 @@ CASES = [
         "kind": "bad",
         "what_happened": "Asked to try a change on the Android phone plugged in, an agent built an .aab and told the user to "
                          "install it with adb: build_project had no way to install and launch on a device.",
-        "text_at_issue": "build_project run_device 'Device id, auto or web.' and its description 'run_device: Build And Run there'; "
-                         "get_build_info devices",
+        "text_at_issue": "build_project run_device and its description 'run_device: Build And Run.'; get_build_info devices",
         "source": "docs/specs/build-and-run-on-device.md R21, R22",
         "prompt": "My Android phone is plugged in with USB debugging on. Put the current build of the game on it and start it.",
         "mocks": [
@@ -2612,8 +2611,8 @@ CASES = [
         "kind": "bad",
         "what_happened": "To check a game on the emulator, an agent passed run_build an input script; input reaches desktop "
                          "players only, so the run failed instead of returning the device's log and crash state.",
-        "text_at_issue": "run_build description 'here or on a device ... input (desktop Linux/X11)' and the error 'input is "
-                         "desktop-only (Linux/X11); on a device drive the game from Lua or its arguments'",
+        "text_at_issue": "run_build description 'here or on a device (get_build_info devices) ... input: send_input events (desktop "
+                         "Linux/X11)' and the error 'input is desktop-only (Linux/X11); on a device drive the game from Lua or its arguments'",
         "source": "docs/specs/build-and-run-on-device.md R23",
         "prompt": "The game is installed on the emulator emulator-5554. Run it there for 10 seconds and tell me whether it crashes.",
         "mocks": [
