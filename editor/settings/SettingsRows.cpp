@@ -19,6 +19,7 @@
 #include "util/PlatformRules.h"
 #include "command/CommandHistory.h"
 #include "command/type/ShaderCreationSettingsCmd.h"
+#include "command/type/SaveGameSettingsCmd.h"
 #include "command/type/ShaderGlobalsCmd.h"
 #include "command/type/InputActionsCmd.h"
 #include "command/type/DebugSettingsCmd.h"
@@ -1047,6 +1048,32 @@ void addShaderCreationSettings(const std::function<void(Setting)>& add) {
             }
             if (apply && settings != ctx.project()->getShaderCreationSettings())
                 ctx.project()->getProjectCommandHistory()->addCommand(new ShaderCreationSettingsCmd(ctx.project(), settings));
+            return true;
+        };
+        add(s);
+    }
+}
+
+// Project Settings > Player > Saved Data: one MCP row per field of the reflection table
+// (editor/reflect/SaveGameReflect.cpp); a change is an undoable command
+void addSaveGameSettings(const std::function<void(Setting)>& add) {
+    for (const reflect::FieldDesc& field : reflect::saveGameSettingsStruct().fields) {
+        Setting s;
+        s.key = std::string("player.saved_data.") + (std::string(field.name) == "backups" ? "backups_kept" : "max_slot_size_mib");
+        s.type = "int";
+        s.description = std::string(field.tooltip ? field.tooltip : "") + " Undoable (undo scope project).";
+        const reflect::FieldDesc* desc = &field;
+        s.get = [desc](SettingsContext& ctx) {
+            SaveGameSettings settings = ctx.project()->getSaveGameSettings();
+            return Json(*static_cast<int*>(desc->ref(&settings)));
+        };
+        s.set = [desc](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+            SaveGameSettings settings = ctx.project()->getSaveGameSettings();
+            long long v;
+            if (!readInt(value, static_cast<long long>(desc->min), static_cast<long long>(desc->max), v, error)) return false;
+            *static_cast<int*>(desc->ref(&settings)) = static_cast<int>(v);
+            if (apply && settings != ctx.project()->getSaveGameSettings())
+                ctx.project()->getProjectCommandHistory()->addCommand(new SaveGameSettingsCmd(ctx.project(), settings));
             return true;
         };
         add(s);
@@ -4303,6 +4330,7 @@ std::vector<Setting> mcpSettingsTable() {
         }
         // ---- graphics: shader creation (spec S32), from its reflection table
         addShaderCreationSettings(add);
+        addSaveGameSettings(add);
         // ---- quality: device tiers, LOD biases, thermal response; graphics: upload budget (S56)
         addDeviceSettings(add);
         return t;
@@ -4329,6 +4357,8 @@ const Placement placements[] = {
     {"player.keep_screen_on", "Player", "Resolution and Presentation", "Keep Screen On", "sleep timeout screen on"},
     {"player.target_frame_rate", "Player", "Resolution and Presentation", "Target Frame Rate", "fps frame rate"},
     {"player.allow_insecure_http", "Player", "Other Settings", "Allow Insecure HTTP", "http cleartext network"},
+    {"player.saved_data.backups_kept", "Player", "Saved Data", "Backups Kept", "save game slots backups generations recovery"},
+    {"player.saved_data.max_slot_size_mib", "Player", "Saved Data", "Max Slot Size (MiB)", "save game slots size cap too large"},
     {"player.window_icon", "Player", "Icon", "Default Icon", "icon window taskbar"},
     {"player.window_mode", "Player", "Resolution and Presentation", "Fullscreen Mode", "window mode windowed maximized"},
     {"player.window_width", "Player", "Resolution and Presentation", "Default Screen Width", "window resolution"},

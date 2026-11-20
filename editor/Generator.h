@@ -20,6 +20,7 @@
 #include "jobs/JobSystem.h"
 #include "Scene.h"
 #include "DebugSettings.h"
+#include "SaveGameSettings.h"
 #include "registry/TagManager.h"
 #include "util/Prefab.h"
 #include "util/BuildDiagnostics.h"
@@ -277,6 +278,7 @@ namespace jasperengine::editor {
 
     class Generator {
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+        SaveGameSettings saveGameSettings;
         std::array<FoliageQuality, 3> foliageQuality = {FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH};
         bool foliageQualityUncapped = true;
         std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
@@ -457,10 +459,14 @@ namespace jasperengine::editor {
         // (JASPERENGINE_DEVELOPMENT_BUILD of a Debug-type export, DEBUG of Xcode's Debug
         // configuration), the log buffer and stack traces, DebugOverlay::configure
         static std::string debugInitSource(const DebugSettings& debugSettings);
+        // savegame::configure of Project Settings > Player > Saved Data ("" for the defaults)
+        static std::string saveGameInitSource(const SaveGameSettings& settings);
         void build(const fs::path projectPath, const fs::path buildPath, const std::string& cCompiler = "", const std::string& cxxCompiler = "", const std::string& generator = "", unsigned int parallelJobs = 0);
         // the project's Atmosphere Quality per platform group (desktop, mobile, web) the game
         // starts with; set before configure()
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality) { atmosphereQuality = quality; }
+        // Project Settings > Player > Saved Data; set before configure()
+        void setSaveGameSettings(const SaveGameSettings& settings) { saveGameSettings = settings; }
         void setFoliageQuality(const std::array<FoliageQuality, 3>& quality, bool uncapped) { foliageQuality = quality; foliageQualityUncapped = uncapped; }
         void setFoliageDistanceScale(const std::array<float, 3>& scale) { foliageDistanceScale = scale; }
         // Project::getGeneratedTerrainTiers; set before configure()

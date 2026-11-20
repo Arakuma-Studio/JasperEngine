@@ -884,6 +884,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/Properties.cpp
     ${EDITOR_DIR}/reflect/PostProcessingReflect.cpp
     ${EDITOR_DIR}/reflect/ShaderCreationReflect.cpp
+    ${EDITOR_DIR}/reflect/SaveGameReflect.cpp
     ${EDITOR_DIR}/reflect/DebugReflect.cpp
     ${EDITOR_DIR}/reflect/components/AnimationReflect.cpp
     ${EDITOR_DIR}/reflect/components/CameraAudioReflect.cpp
@@ -1325,6 +1326,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/PlayModeChangesWindow.cpp
     ${EDITOR_DIR}/window/UndoHistoryWindow.cpp
     ${EDITOR_DIR}/window/BookmarksWindow.cpp
+    ${EDITOR_DIR}/window/SavedDataWindow.cpp
     ${EDITOR_DIR}/window/SceneWindow.cpp
     ${EDITOR_DIR}/window/ParticleEffectOverlay.cpp
     ${EDITOR_DIR}/window/ParticleEffectWindow.cpp
@@ -1567,6 +1569,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/CreateDirCmd.cpp
     ${EDITOR_DIR}/command/type/ThreadingSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/ShaderCreationSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/SaveGameSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/SaveSlotCmd.cpp
     ${EDITOR_DIR}/command/type/HtmlUiRenderSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DrawSubmissionSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/SortingLayersCmd.cpp

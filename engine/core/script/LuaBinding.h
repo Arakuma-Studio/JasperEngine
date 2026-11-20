@@ -122,6 +122,7 @@ namespace jasperengine {
         static void registerTilemapClasses(lua_State *L);
         static void registerCrashClasses(lua_State *L);
         static void registerLocalizationClasses(lua_State *L);
+        static void registerSaveGameClasses(lua_State *L);
 #if JASPERENGINE_HTMLUI
         static void registerHtmlUIClasses(lua_State *L);
         static void registerHtmlUIAnimeClasses(lua_State *L);

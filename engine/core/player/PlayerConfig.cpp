@@ -153,6 +153,7 @@ json PlayerConfig::toJson() const {
     if (!buildProfile.empty()) out["buildProfile"] = buildProfile;
     if (!buildProfile.empty()) out["defines"] = defines;
     if (consoleCommands != "development") out["consoleCommands"] = consoleCommands;
+    if (saveGame != savegame::SaveSettings()) out["saveGame"] = {{"backups", saveGame.backups}, {"maxSlotMiB", saveGame.maxSlotMiB}};
     return out;
 }
 
@@ -372,6 +373,11 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
         }
         config.buildProfile = in.value("buildProfile", std::string());
         config.defines = in.value("defines", std::vector<std::string>{});
+        // absent: the defaults
+        if (const auto saveGame = in.find("saveGame"); saveGame != in.end() && saveGame->is_object()) {
+            config.saveGame.backups = saveGame->value("backups", config.saveGame.backups);
+            config.saveGame.maxSlotMiB = saveGame->value("maxSlotMiB", config.saveGame.maxSlotMiB);
+        }
         if (config.title.empty()) config.title = config.name;
         if (config.storageId.empty()) config.storageId = config.appId.empty() ? config.name : config.appId;
         out = std::move(config);

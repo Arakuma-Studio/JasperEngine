@@ -20,6 +20,7 @@
 #include "texture/MaterialPbr.h"
 #include "device/DeviceSettings.h"
 #include "pixelart/ScreenTransition.h"
+#include "save/SaveGameStore.h"
 
 #include "json.hpp"
 
@@ -166,6 +167,8 @@ namespace jasperengine::player {
         // both absent without a profile
         std::string buildProfile;
         std::vector<std::string> defines;
+        // Player > Saved Data (savegame::configure before the first scene; written only away from the defaults)
+        savegame::SaveSettings saveGame;
 
         PlayerConfig();
 

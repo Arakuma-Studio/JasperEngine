@@ -84,6 +84,7 @@ namespace jasperengine::editor {
         LoadingSettings m_loadingSettings;
         ThreadingProjectSettings m_threading;
         ShaderCreationProjectSettings m_shaderCreation;
+        SaveGameSettings m_saveGame;
         HtmlUiRenderSettings m_htmlUiRender;
         DrawSubmissionSettings m_drawSubmission;
         // Graphics > Screen Transitions (S48 R41)

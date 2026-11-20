@@ -633,4 +633,45 @@ without the change because the code it calls does not exist, plus the specific r
 
 ## Deviations
 
-None yet.
+- **D-a List counts generation files.** R6 says `generations` counts the valid ones, but R26 reads
+  only the newest header per slot: `list()` counts the generation files on disk (`getBackups` and
+  the Saved Data window's Backups list check each one). Its `status` is header-only too: `recovered`
+  when an earlier read set a newer generation aside (or the newest header is unreadable), `corrupt`
+  only when no header reads; a checksum failure of the newest file shows at its first read.
+- **D-b `SaveGame.storage()` has a third field.** Desktop and mobile have no quota: the table is
+  `{used, quota, free}`, `used` the bytes of the slot files (desktop, mobile) or the site's usage
+  (web), `free` the volume's free space (desktop, mobile) or `quota - used` (web).
+- **D-c `$quat` order.** The JSON view and the file store a Quaternion as `[x, y, z, w]` (the MCP
+  convention), not the Lua constructor's `(w, x, y, z)`.
+- **D-d JSON keys that are not UTF-8.** R21 has no spelling for a string key that is not UTF-8; to
+  keep the view a bijection it is `"$bytes:<base64>"` (a key starting with `$` is written `$$`, so
+  nothing collides). NaN payloads other than the canonical quiet NaN are `{"$float": "nan:<16 hex>"}`.
+- **D-e The 2 s flush test is a `Slow` suite.** AC15's "a queue held past 2 s logs R13's line" waits
+  2 s, above the 1 s rule for ordinary tests: it is `SaveGameStoreSlow.FlushPastTheLimitLogsAbandoned`
+  (`engine/tests/core/save/SaveGameSlowTest.cpp`); `SaveGameStore.FlushOnPauseWritesPending` keeps the
+  fast half. AC11's kill test lives in the same file.
+- **D-f AC17 runs in a child process.** The store is process-wide and other tests make it, so
+  `SaveGameStore.NothingExistsUntilFirstUse` runs the test binary again on the opt-in
+  `SaveGameStore.DISABLED_NothingExistsUntilFirstUseChild`, which checks no store, no allocation in
+  100 lifecycle hook calls, a pause and resume, and no `saves` folder. Engine shutdown is not part of
+  it: the test binary shuts the engine down once, after every test.
+- **D-g AC6 under ASan.** `tools/run-sanitizer-tests.sh` builds the editor tests only; the format
+  tests are core tests, run under ASan with `SANITIZE=address,undefined UNIT_SUITE=core
+  UNIT_TEST_ARGS=--gtest_filter='SaveGame*' tools/build.sh unit-tests`.
+- **D-h No ReflectParity key.** `ReflectParity` covers component tables only; the settings struct is
+  checked by `SavedDataWindow.SettingsRoundTripAndOmitDefaults` (project.yaml, game.json, the generated
+  init, undo).
+- **D-i Undo of the window's steps.** Delete, Restore Backup, Corrupt and Clear All Saves go on the
+  project history from MCP too (`user_settings` `delete`, `clear`, `corrupt`, `restore`); `set` is
+  not an undo step (the spec lists it with none).
+- **D-j Settings rows.** The MCP keys are `player.saved_data.backups_kept` and
+  `player.saved_data.max_slot_size_mib` (set_project_settings), under Player > Saved Data.
+- **D-k The web quota gate is its own baseline.** `GATE=savegame` reloads the page and reads the
+  slot back; `GATE=savegame-quota` (baseline key `project` points it at the savegame build) sets the
+  site quota to 64 KiB with `Storage.overrideQuotaForOrigin` and expects `quota` from the 256 KiB
+  slot's `onComplete`.
+- **D-m Namespace `jasperengine::savegame`.** The C++ API is in `jasperengine::savegame`, not `::save`: with
+  `using namespace jasperengine`, a namespace called `save` breaks every unqualified call of a function
+  named `save` in a file that sees it (the editor's Recorder window was the first).
+- **D-l Android kill and relaunch.** `tools/android-emulator-test.sh` gains `--kill-relaunch-after
+  TEXT` (HOME, `am kill`, relaunch; the expectations then apply to the new process).

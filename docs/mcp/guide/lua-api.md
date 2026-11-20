@@ -918,6 +918,46 @@ local Items = require("data.items")
 local price = Items.sword.price
 ```
 
+### 2.4.3 SaveGame (static, save slots)
+
+Game progress goes in `SaveGame`, not in hand-written JSON files: named slots (`slot1`,
+`autosave`; `a-z 0-9 _ -`, at most 48) of namespaces (`main` by default) holding any Lua value
+but functions and other userdata. Vectors, quaternions, integer keys, integers versus floats and
+binary strings come back exactly (Json does not keep them). Writes run off the main thread;
+every write is a new checksummed generation and the newest valid one is read, so a crash or a
+damaged file costs at most the last save. Errors are values `{code, message, path?}`, never raised
+(but wrong argument types). The full guide: `jasper://docs/saved-data`.
+
+| Function | Returns |
+|---|---|
+| `SaveGame.write(slot, value [, opts])` | `true`, or `false, err` (`name`, `encode`, `too_large`, `newer_version`); `opts`: `namespace`, `meta` (save menu data), `requires`, `replaceAll`, `force`, `onComplete(ok, err)`, `owner` |
+| `SaveGame.read(slot [, opts])` | `data, info` (`info.version`, `generation`, `savedAt`, `namespaces`, `meta`, `migratedFrom`, `recoveredFrom`, `problems`), or `nil, err` (`not_found`, `corrupt`, `newer_version`, `migration`) |
+| `SaveGame.readAsync(slot, fn [, opts])` | nothing; `fn(data, info)` later on the main thread |
+| `SaveGame.list()`, `SaveGame.info(slot)` | slots newest first: `slot, version, savedAt, size, generations, namespaces, meta, requires, status` |
+| `SaveGame.exists(slot)`, `delete(slot)`, `flush([slot])`, `unload([slot])` | boolean / `true` or `false, err` |
+| `SaveGame.getBackups(slot)`, `restoreBackup(slot, generation [, onComplete])` | generations `{generation, savedAt, version, size, valid}` / `true` or `false, err` |
+| `SaveGame.version`, `SaveGame.addMigration(fromVersion, fn)` | the data version writes stamp; `fn(namespaces, info)` returns the namespaces upgraded to `fromVersion + 1` |
+| `SaveGame.storage()` | `{used, quota, free}` (-1 when unknown) |
+
+```lua
+SaveGame.version = 2
+SaveGame.addMigration(1, function(ns) ns.main.gold = ns.main.coins or 0; ns.main.coins = nil; return ns end)
+
+local ok, err = SaveGame.write("slot1", {level = "forest", pos = Vector3(4, 0, 2), gold = 120},
+    {meta = {title = "Forest"}, onComplete = function(done, e) if not done then Log.warn(e.message) end end})
+SaveGame.write("slot1", {"sword", "shield"}, {namespace = "inventory"})   -- only this namespace re-encoded
+
+local data, info = SaveGame.read("slot1")
+if not data then Log.warn(info.code .. ": " .. info.message) end
+for _, s in ipairs(SaveGame.list()) do Log.print(s.slot .. " " .. s.status) end
+```
+
+- `write` encodes the value at once (later changes to the table are not saved) and a `read`
+  right after returns it, before it reaches the disk; `onComplete` runs in a later frame.
+- Many writes to one slot coalesce (one file write in flight, one waiting): saving every frame
+  is safe, but save at checkpoints. App pause, quit and Play stop flush what is queued.
+- Big data: split it into namespaces (a write re-encodes only its namespace) or slots.
+
 ### 2.5 System (static)
 
 `System.getScreenWidth()`, `getScreenHeight()`, `isTouchDevice()`, `isFullscreen()`,

@@ -18,6 +18,7 @@
 #include "Input.h"
 #include "Screen.h"
 #include "io/UserSettings.h"
+#include "save/SaveGameStore.h"
 #include "input/InputActions.h"
 #include "input/InputScheme.h"
 #include "input/InputScriptRunner.h"
@@ -2969,6 +2970,8 @@ void Engine::systemShutdown(){
     ScriptRuntime::quitAll();
 
     Engine::onShutdown.call();
+    // what the game queued in SaveGame (its onShutdown handlers too) lands before anything goes
+    savegame::flushForLifecycle("the app quit");
 
 #if JASPERENGINE_AUDIO_CAPTURE
     // a player's capture ends with the run; its voices are still in their scenes
@@ -2996,6 +2999,8 @@ void Engine::systemShutdown(){
     InputActions::unload();
     // the persistent scene's scripts (their onDestroy ran above) are released, and it goes
     SceneManager::destroyPersistentScene();
+    // and what scripts saved in their onDestroy
+    savegame::flushForLifecycle("the app quit");
 
     // HTTP requests end without their callbacks and the HTTP stack's threads stop; what other
     // threads posted for the game is dropped
@@ -3083,7 +3088,9 @@ void Engine::applyPause(){
     // controls let go (D6)
     cancelAllUIPointers();
 
-    // a paused app may be killed without another call (after the handlers, which may set some)
+    // a paused app may be killed without another call (after the handlers, which may set some):
+    // the saves first, then the PlayerPrefs
+    savegame::flushForLifecycle("the app paused");
     UserSettings::save();
 }
 

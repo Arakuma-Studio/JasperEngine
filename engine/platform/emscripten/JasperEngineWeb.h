@@ -88,6 +88,8 @@ public:
     JasperEngineWeb();
 
     static void setEnabledIDB(bool enabledIDB);
+    // IndexedDB holds the user data (false: private mode, storage disabled; saves last the session)
+    static bool isEnabledIDB() { return enabledIDB; }
     static bool hasProjectStarted() { return projectStarted; }
 
     static int init(int argc, char **argv);

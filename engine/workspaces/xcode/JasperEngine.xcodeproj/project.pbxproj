@@ -5036,6 +5036,14 @@
 		4A534E4772F8D292D061E001 /* StringTableRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474CC8A9C045EE16B4 /* StringTableRuntime.h */; };
 		4A534E530375D5DAE4E19591 /* DevelopmentContent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5391C68DED5B482106 /* DevelopmentContent.cpp */; };
 		4A534E530891EB6799B6865C /* DevelopmentContent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5391C68DED5B482106 /* DevelopmentContent.cpp */; };
+		4A534E53AE3BB15CBCB78CDA /* SaveFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53CAF7B69A0583A110 /* SaveFormat.cpp */; };
+		4A534E5373A14E5DE31D0E81 /* SaveGameStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530FF89075AA589D6F /* SaveGameStore.cpp */; };
+		4A534E53E9E0F36C81D3138F /* SaveValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E539F1764A02980F06D /* SaveValue.cpp */; };
+		4A534E53BA8CD9400B7688D5 /* SaveGameLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53BC6A5E7A1DB2D134 /* SaveGameLua.cpp */; };
+		4A534E536CEBB1B5DC66A17D /* SaveFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53CAF7B69A0583A110 /* SaveFormat.cpp */; };
+		4A534E53BB8B1E8B65DDF02E /* SaveGameStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530FF89075AA589D6F /* SaveGameStore.cpp */; };
+		4A534E53F22BCFDA1F16EDF8 /* SaveValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E539F1764A02980F06D /* SaveValue.cpp */; };
+		4A534E53FB9FC3DF45EFBCF7 /* SaveGameLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53BC6A5E7A1DB2D134 /* SaveGameLua.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9683,6 +9691,10 @@
 		4A534E47D7DC5A2BBDDA5149 /* PluralRules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PluralRules.h; sourceTree = "<group>"; };
 		4A534E474CC8A9C045EE16B4 /* StringTableRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StringTableRuntime.h; sourceTree = "<group>"; };
 		4A534E5391C68DED5B482106 /* DevelopmentContent.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DevelopmentContent.cpp; sourceTree = "<group>"; };
+		4A534E53CAF7B69A0583A110 /* SaveFormat.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SaveFormat.cpp; sourceTree = "<group>"; };
+		4A534E530FF89075AA589D6F /* SaveGameStore.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SaveGameStore.cpp; sourceTree = "<group>"; };
+		4A534E539F1764A02980F06D /* SaveValue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SaveValue.cpp; sourceTree = "<group>"; };
+		4A534E53BC6A5E7A1DB2D134 /* SaveGameLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SaveGameLua.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10254,6 +10266,7 @@
 				4A534E47157896361DA814BE /* TilemapClassesLua.cpp */,
 				4A534E4771A4FBF2C146A04F /* CullingClassesLua.cpp */,
 				4A534E47D07BD1437308A3A2 /* LocalizationClassesLua.cpp */,
+				4A534E53BC6A5E7A1DB2D134 /* SaveGameLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -11889,6 +11902,7 @@
 				564F584C566CEAA6686CA9AF /* voxel */,
 				4A534E531B38A0F5FBC1FFA3 /* tilemap */,
 				4A534E47651ABB7603E16A3A /* localization */,
+				4A534E535737E19B07B9FC33 /* save */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -16200,6 +16214,16 @@
 			path = clipper2;
 			sourceTree = "<group>";
 		};
+		4A534E535737E19B07B9FC33 /* save */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E53CAF7B69A0583A110 /* SaveFormat.cpp */,
+				4A534E530FF89075AA589D6F /* SaveGameStore.cpp */,
+				4A534E539F1764A02980F06D /* SaveValue.cpp */,
+			);
+			path = save;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -19866,6 +19890,10 @@
 				4A534E47760F4276DE1BB621 /* PluralRules.cpp in Sources */,
 				4A534E479CBBFD13794893E2 /* StringTableRuntime.cpp in Sources */,
 				4A534E530891EB6799B6865C /* DevelopmentContent.cpp in Sources */,
+				4A534E536CEBB1B5DC66A17D /* SaveFormat.cpp in Sources */,
+				4A534E53BB8B1E8B65DDF02E /* SaveGameStore.cpp in Sources */,
+				4A534E53F22BCFDA1F16EDF8 /* SaveValue.cpp in Sources */,
+				4A534E53FB9FC3DF45EFBCF7 /* SaveGameLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20876,6 +20904,10 @@
 				4A534E4734B46E4A8AA1BD54 /* PluralRules.cpp in Sources */,
 				4A534E476D731FF6DD75A960 /* StringTableRuntime.cpp in Sources */,
 				4A534E530375D5DAE4E19591 /* DevelopmentContent.cpp in Sources */,
+				4A534E53AE3BB15CBCB78CDA /* SaveFormat.cpp in Sources */,
+				4A534E5373A14E5DE31D0E81 /* SaveGameStore.cpp in Sources */,
+				4A534E53E9E0F36C81D3138F /* SaveValue.cpp in Sources */,
+				4A534E53BA8CD9400B7688D5 /* SaveGameLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

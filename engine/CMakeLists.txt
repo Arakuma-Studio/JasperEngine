@@ -1673,6 +1673,9 @@ set(JASPERENGINE_SRCS
     core/io/AtomicFile.cpp
     core/io/ScopedFileLock.cpp
     core/io/UserSettingsStore.cpp
+    core/save/SaveFormat.cpp
+    core/save/SaveGameStore.cpp
+    core/save/SaveValue.cpp
     core/math/AABB.cpp
     core/math/Curve.cpp
     core/math/CurveJson.cpp
@@ -1840,6 +1843,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/CoreClassesLua.cpp
     core/script/binding/CrashClassesLua.cpp
     core/script/binding/LocalizationClassesLua.cpp
+    core/script/binding/SaveGameLua.cpp
     core/script/binding/AudioClassesLua.cpp
     core/script/binding/NoiseClassesLua.cpp
     core/script/binding/ECSClassesLua.cpp
@@ -2423,7 +2427,7 @@ endif()
 # The User-Agent's version ("JasperEngine/<version> (<platform>)"): on this one file only, so a
 # new version recompiles nothing else
 if(JASPERENGINE_EDITOR_VERSION)
-    set_property(SOURCE core/net/Http.cpp core/audio/AudioCapture.cpp APPEND PROPERTY COMPILE_DEFINITIONS
+    set_property(SOURCE core/net/Http.cpp core/audio/AudioCapture.cpp core/save/SaveGameStore.cpp APPEND PROPERTY COMPILE_DEFINITIONS
         "JASPERENGINE_VERSION_STRING=\"${JASPERENGINE_EDITOR_VERSION}\"")
 endif()
 

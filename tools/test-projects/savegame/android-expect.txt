@@ -1,0 +1,3 @@
+# tools/android-emulator-test.sh --kill-relaunch-after 'savegame: written' --expect-file: what the
+# savegame project logs once it is launched again after its process was killed in the background
+I/JasperEngine: savegame: read ok gen 1

@@ -101,6 +101,7 @@ namespace jasperengine::editor {
         Shortcuts,            // Edit > Shortcuts...
         ToggleBookmarks,      // Window > General > Bookmarks
         ToggleLocalizationTables,   // Window > Localization Tables (game-ui-localization.md R28)
+        ToggleSavedData,      // Window > General > Saved Data
         LayoutApply,          // payload: the preset's name (Window > Layouts)
         LayoutSave,
         LayoutRename,         // payload: the preset's name
