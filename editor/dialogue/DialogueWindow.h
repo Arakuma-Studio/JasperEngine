@@ -40,6 +40,8 @@
 
 namespace jasperengine::editor{
 
+    struct DialogueSettings;
+
     class DialogueWindow : public GraphEditorWindow{
     public:
         static constexpr const char* WINDOW_NAME = "Dialogue";
@@ -119,6 +121,11 @@ namespace jasperengine::editor{
         std::set<std::string> walked;
         // Inspector text buffers: field id -> text being typed
         std::map<std::string, std::string> buffers;
+        // the lint rows that depend on the project (prefixes, variables, other dialogues), made again
+        // when the graph or Project Settings > Dialogue change: the document's issues are its load's
+        mutable std::vector<graph::Issue> projectIssues;
+        mutable uint64_t projectIssuesRevision = 0;
+        mutable std::shared_ptr<const DialogueSettings> projectIssuesSettings;
 
         void loadTranslations();
         void replay();

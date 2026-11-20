@@ -307,6 +307,29 @@ void DialogueWindow::drawToolbarExtras(){
 
 void DialogueWindow::collectProblems(std::vector<Problem>& problems) const{
     if (!getDocument()) return;
+    // the codes the project decides, linted again when the graph or the settings changed
+    static const std::set<std::string> projectCodes = {"unknown-action-prefix", "unknown-condition-prefix", "unknown-variable",
+                                                        "unknown-argument", "jump-target", "unreachable"};
+    if (project && (projectIssuesRevision != getDocument()->revision() || !projectIssuesSettings ||
+                    *projectIssuesSettings != project->getDialogueSettings())) {
+        projectIssues.clear();
+        std::vector<graph::Issue> fresh;
+        rt::lint(getDocument()->graph(), fresh);
+        for (graph::Issue& issue : fresh) {
+            if (projectCodes.count(issue.code)) projectIssues.push_back(std::move(issue));
+        }
+        projectIssuesRevision = getDocument()->revision();
+        projectIssuesSettings = std::make_shared<const DialogueSettings>(project->getDialogueSettings());
+    }
+    if (project) {
+        problems.erase(std::remove_if(problems.begin(), problems.end(), [](const Problem& p) { return projectCodes.count(p.code) > 0; }), problems.end());
+        for (const graph::Issue& issue : projectIssues) {
+            Problem problem{issue.severity, issue.code, issue.message, issue.nodeId, {}, ""};
+            if (!issue.suggestion.empty()) problem.message += " (" + issue.suggestion + ")";
+            problem.revision = getDocument()->revision();
+            problems.push_back(std::move(problem));
+        }
+    }
     const std::vector<graph::Issue>& issues = getDocument()->issues();
     for (Problem& problem : problems) {
         if (problem.code == "fan-out") {
