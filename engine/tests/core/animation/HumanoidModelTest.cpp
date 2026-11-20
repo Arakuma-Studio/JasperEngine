@@ -366,7 +366,7 @@ TEST_F(HumanoidModel, BadExtraOverrideKeepsTheRigWithOneWarningPerBuild){
 
 TEST_F(HumanoidModel, SpineProxyNodeIsNotedOnceAndKept){
     const std::string brig = dir + "b_rig_proxy.gltf";
-    animtest::writeAsset(brig, readFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/b_rig_proxy.gltf"));
+    animtest::writeAsset(brig, readFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/b-rig/assets/models") + "/b_rig_proxy.gltf"));
     const Entity entity = load(brig);
     const std::string proxyPath = "Rig/B-root/B-spineProxy";
     const Entity proxy = anim::resolvePath(&scene, entity, proxyPath);

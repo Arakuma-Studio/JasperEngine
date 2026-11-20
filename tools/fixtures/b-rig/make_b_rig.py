@@ -19,13 +19,17 @@ Two LINEAR animations of 1 s, with five keys at 0, 0.25, 0.5, 0.75 and 1 s:
 Both also key B-spineProxy with the spine's rotation relative to B-root in that clip, as Spine Proxy
 clips do. Rotations are about the model's axes, applied to the rest pose.
 
-    python3 -I tools/fixtures/pose-animation/make_b_rig.py           # write the model
-    python3 -I tools/fixtures/pose-animation/make_b_rig.py --check   # validate the file
+    python3 -I tools/fixtures/b-rig/make_b_rig.py           # write the model
+    python3 -I tools/fixtures/b-rig/make_b_rig.py --check   # validate the file
 
 Deterministic: rerunning rewrites the same bytes. --check runs make_humanoids.py's validation on the
-model and make_animated_hero.py's on the animations, checks the proxy node (not a joint, a child of
-B-root beside B-hips, keyed in every animation) and that the file matches a fresh generation byte for
-byte.
+model and make_animated_hero.py's on the animations (both in tools/fixtures/pose-animation), checks the
+proxy node (not a joint, a child of B-root beside B-hips, keyed in every animation) and that the file
+matches a fresh generation byte for byte.
+
+Its own folder, not the pose-animation project: every model in a project the editor opens is cooked
+before the scene's models reload, so an extra one there delays the tests that drive that project with
+real input. The tests copy it into their scratch project.
 """
 
 import argparse
@@ -37,12 +41,15 @@ import struct
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# the box helpers and the animation packer of the pose-animation fixture
+POSE = os.path.join(os.path.dirname(HERE), "pose-animation")
+MODELS = os.path.join(HERE, "assets", "models")
 OUTPUT = "b_rig_proxy.gltf"
 
 
 def load(name):
-    # python -I does not put the script's directory on sys.path
-    spec = importlib.util.spec_from_file_location(name, os.path.join(HERE, name + ".py"))
+    # python -I does not put the script's directory on sys.path, and the helpers live in POSE
+    spec = importlib.util.spec_from_file_location(name, os.path.join(POSE, name + ".py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -221,7 +228,7 @@ def build():
 
     data = b"".join(blobs)
     g = {
-        "asset": {"version": "2.0", "generator": "pose-animation fixture make_b_rig.py"},
+        "asset": {"version": "2.0", "generator": "b-rig fixture make_b_rig.py"},
         "scene": 0,
         "scenes": [{"name": ROOT, "nodes": [0]}],
         "nodes": nodes,
@@ -264,9 +271,9 @@ def main():
     ap.add_argument("--check", action="store_true", help="validate the file on disk (no writing)")
     args = ap.parse_args()
     fresh = build()
-    path = os.path.join(mh.MODELS, OUTPUT)
+    path = os.path.join(MODELS, OUTPUT)
     if not args.check:
-        os.makedirs(mh.MODELS, exist_ok=True)
+        os.makedirs(MODELS, exist_ok=True)
         with open(path, "wb") as f:
             f.write(fresh)
         print(f"wrote {os.path.relpath(path, HERE)} ({len(fresh)} bytes)")

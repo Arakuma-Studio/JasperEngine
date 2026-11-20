@@ -11,6 +11,7 @@ follows edits made on disk.
 from __future__ import annotations
 
 import json
+import shutil
 
 import harness
 from harness import Editor
@@ -23,6 +24,7 @@ HERO = "assets/models/hero_tpose.gltf"
 ROBOT = "assets/models/robot_apose.gltf"
 WALK = "assets/anim/walk.poseanim"
 B_RIG = "assets/models/b_rig_proxy.gltf"
+B_RIG_SOURCE = harness.REPO / "tools" / "fixtures" / "b-rig" / B_RIG
 PROXY_NOTE = ("B-spineProxy is a spine proxy bone for Unity's Spine Proxy. JasperEngine does not need it: "
               "turn on Mesh Space Rotation on the layer instead.")
 
@@ -334,6 +336,9 @@ async def test_rig_and_metrics_on_the_preview_model(ed: Editor):
 async def test_b_rig_maps_and_notes_its_spine_proxy(ed: Editor):
     # Kevin Iglesias' B- names map every required slot; the animated spine proxy node beside the
     # hips is said once in the notes (mesh-space-rotation R1, R3)
+    # the B- rig lives outside the fixture project, so opening the project cooks no extra model
+    shutil.copyfile(B_RIG_SOURCE, ed.project / B_RIG)
+    await ed.call("sync_files")
     path = "assets/anim/b_rig.poseanim"
     await ed.call("edit_pose_animation", path=path, create={"preview_model": B_RIG}, ops=[{"op": "add_pose", "name": "Stand"}])
     rig = (await ed.call("get_pose_animation", path=path))["rig"]

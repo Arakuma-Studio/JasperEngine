@@ -546,12 +546,16 @@ async def test_cli_anim_quality():
 # ---------------------------------------------------------------- layer_blend (mesh-space-rotation R36, AC23)
 
 PROXY_MODEL = "assets/models/b_rig_proxy.gltf"
+PROXY_SOURCE = REPO / "tools" / "fixtures" / "b-rig" / PROXY_MODEL
 PROXY_CONTROLLER = "assets/anim/proxy.controller"
 SPINE = "Rig/B-root/B-hips/B-spine"
 
 
 async def test_layer_blend_twist_then_fixed(ed: Editor):
     # AC4's setup: Run (hips turned 90 degrees) under Attack (hips turned -20 degrees) masked from the spine
+    # the B- rig lives outside the fixture project, so opening the project cooks no extra model
+    shutil.copyfile(PROXY_SOURCE, ed.project / PROXY_MODEL)
+    await ed.call("sync_files")
     await ed.call("set_model", path=PROXY_MODEL, create={"name": "Proxy", "position": [3, 0, 0]})
     await ed.call("edit_avatar_mask", path="assets/anim/upper_spine.mask", create=True, default=0,
                   paths={SPINE: {"weight": 1, "children": True}})
