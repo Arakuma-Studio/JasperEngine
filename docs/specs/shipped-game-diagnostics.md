@@ -523,3 +523,16 @@ Unit tests: `engine/tests/core/diag/JournalTest.cpp` (new file, suite `Journal`,
   `diff_images` against a red PNG of the JPEG's size. The decode and centre pixel are also checked
   in `CrashUserGpu` (stb_image).
 - **AC22** The new Stream tests are in the file's existing suite, `StreamProjectCrash`.
+- **R21/R23** Folders holding only `session.json` (an abnormal exit) count as report folders when
+  grouping, as `classify` lists them. A signature joins its parts with `" | "`; an unresolved
+  group's ends in `"| build <id>"` (R22). A hang with no own frame falls back to its stack's first
+  3 frames of any module, as a crash does.
+- **R23/R37** `first_seen` and `last_seen` are the reports' times as `readReport` gives them (the
+  file time of `crash.txt` or the hang report, `user.txt`'s `time`, else the folder name's).
+  `get_crash_reports folder` also takes a crash root that holds `reports/`. The `next` command and
+  the window's Copy Symbolicate Command assume `tools/crash/symbolicate.py` relative to the
+  repository (the editor knows no checkout path).
+- **R35** The Crash Reports window has a **Symbols Folder...** button (the folder Copy
+  Symbolicate Command passes as `--symbols`); its folders are saved per project in
+  `.jasperengine/user/build.yaml` (the editor's per-project user settings). Mark Handled on a
+  group marks every report of it. A binary file (crash.dmp) in a text tab shows a placeholder.

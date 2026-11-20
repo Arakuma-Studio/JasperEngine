@@ -281,7 +281,7 @@ void registerDiagnosticsTools(McpRegistry& registry) {
         tool.name = "get_crash_reports";
         tool.title = "Get Crash Reports";
         tool.description =
-            "Crash, hang and abnormal_exit report folders of this editor, newest first ({id, kind, time, reason, "
+            "Crash, hang, abnormal_exit and user report folders of this editor, newest first ({id, kind, time, reason, "
             "files, handled}), and notice_open (the startup notice). include_text adds crash.txt or the hang report. "
             "folder reads a game's reports; group: true merges similar crashes with counts per version and platform.";
         tool.inputSchema = object({
