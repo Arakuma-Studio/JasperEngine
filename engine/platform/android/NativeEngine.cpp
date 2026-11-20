@@ -1740,7 +1740,9 @@ void NativeEngine::handleCommand(int32_t cmd) {
             break;
         case APP_CMD_CONFIG_CHANGED:
             // a rotation or a locale change (configChanges keeps the activity): the surface size
-            // follows in a later frame, which reports the rotation after onCanvasChanged
+            // follows in a later frame, which reports the rotation after onCanvasChanged; a new
+            // language list re-resolves the game language (game-ui-localization.md R10)
+            jasperengine::System::instance().notifyLocalesMayHaveChanged();
             break;
         case APP_CMD_LOW_MEMORY:
             jasperengine::Engine::systemLowMemory();

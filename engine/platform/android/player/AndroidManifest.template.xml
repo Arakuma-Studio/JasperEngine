@@ -26,7 +26,7 @@
 
         <activity android:name="com.jaspergameengine.jasperengine.MainActivity"
             android:label="{{LABEL}}"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|screenLayout|smallestScreenSize|uiMode|density"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|screenLayout|smallestScreenSize|uiMode|density|locale|layoutDirection"
             android:theme="{{THEME}}"{{ORIENTATION}}
             android:exported="true">
             <meta-data android:name="android.app.lib_name" android:value="jasperengine-android" />

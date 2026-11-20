@@ -9,6 +9,7 @@
 #include "Log.h"
 #include "log/LogSinks.h"
 #include "util/PlatformRules.h"
+#include "util/TitleArtLanguage.h"
 #include "Screen.h"
 #include <limits>
 #include <mutex>
@@ -180,6 +181,16 @@ bool System::platformOpenURL(const std::string& url){
 
 std::vector<std::string> System::getPreferredLocales(){
     return {"en-US"};
+}
+
+bool System::notifyLocalesMayHaveChanged(){
+    static std::vector<std::string> last;
+    std::vector<std::string> now = getPreferredLocales();
+    if (now == last) return false;
+    last = std::move(now);
+    Log::verbose("[Localization] the device's languages changed: %s", last.empty() ? "" : last.front().c_str());
+    TitleArtLanguage::localesChanged();
+    return true;
 }
 
 std::string System::getLocale(){
