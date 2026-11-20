@@ -535,8 +535,16 @@ core tests already build scenes with physics, `PhysicsRayThreadsTest.cpp:27-30`)
   the caller's vector; there is no fixed 256-entry array. The 2D first forms keep only the lowest
   `(body, collider)` hit, with no buffer. The Lua forms use one main-thread buffer each.
 - **D2 query box.** Box query shapes use Jolt's default convex radius (5 cm, at most half the
-  smallest half extent): the corners are rounded by that much, the faces are exact. A radius of 0
-  made every box pair go through EPA (overlapBox p95 0.055 ms on the loaded box A, budget 0.008).
+  smallest half extent): the corners are rounded by that much, the faces are exact; shallow pairs
+  then need GJK only.
+- **R19 overlapBox is over budget (open).** `je-bench-physics-query` on box B (load about 10 on 12
+  cores): `overlap_box_p95_ms` 0.033 against 0.0088; every other key is within its budget
+  (`overlap_sphere` 0.0047, `check_sphere` 0.0010, `sphere_cast` 0.0025, Lua NonAlloc 0.0078, 2D
+  circle 0.0015, `MeshRaycast` 0.0034). The information key `overlap_box_no_ground_p95_ms` (0.031)
+  shows the mesh ground is not the cost: Jolt's `CollideShape` computes a penetration depth (EPA) for
+  every body the 5 m box holds wholly inside, which an overlap does not need. A boolean path (GJK
+  intersection per leaf shape after the broad phase) is the follow-up; the threshold stays at the
+  spec's value, so the bench reports the miss.
 - **R3 casts.** Every hit at fraction 0 is dropped (touching at the start counts as overlapping,
   R1), not only those with positive penetration: without `mReturnDeepestPoint` Jolt reports no
   reliable depth there. A Box2D cast callback never returns -1 or 0 for a skipped shape (Box2D 3.1
