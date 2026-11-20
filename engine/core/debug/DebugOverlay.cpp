@@ -195,6 +195,8 @@ namespace {
         // the suggestion chips shown, and the part of the line a tapped one replaces
         std::vector<std::string> chips;
         size_t chipsStart = 0, chipsEnd = 0;
+        // the command bar shows for this state of console::commandsEnabled (-1: a new document)
+        int commandBarShown = -1;
 
         // the popup's place (fraction of the height) and its drag
         float popupTop = 0.45f;
@@ -807,6 +809,7 @@ namespace {
         for (Rml::EventId id : capturedEvents)
             s.document->AddEventListener(id, &s.listener, true);
         s.rebuild = true;
+        s.commandBarShown = -1;
         s.layoutChanged = true;
         s.nextText = 0.0;
         s.nextGraph = 0.0;
@@ -1260,10 +1263,15 @@ namespace {
 
     // Console Commands off: no command field (the game may turn them on while it runs)
     void updateCommandBar(){
+        OverlayState& s = state();
         const bool shown = console::commandsEnabled();
-        Rml::Element* bar = byId("commandbar");
-        if (!bar || bar->IsClassSet("hidden") != shown)
+        // (a frame looks up nothing while the state stays)
+        if (s.commandBarShown == (shown ? 1 : 0))
             return;
+        Rml::Element* bar = byId("commandbar");
+        if (!bar)
+            return;
+        s.commandBarShown = shown ? 1 : 0;
         setHidden(bar, !shown);
         if (!shown)
             showChips({});
