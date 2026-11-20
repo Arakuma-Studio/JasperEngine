@@ -43,6 +43,9 @@ namespace jasperengine::dialogue {
     JASPERENGINE_API graph::GraphKindDesc makeDialogueKind();
     JASPERENGINE_API void registerDialogueKind();
     JASPERENGINE_API void setLintContext(std::shared_ptr<const LintContext> context);
+    // a context made at each lint (the editor's: the project's settings and dialogues as they are
+    // now); a set context wins over it
+    JASPERENGINE_API void setLintContextProvider(std::function<std::shared_ptr<const LintContext>()> provider);
     JASPERENGINE_API std::shared_ptr<const LintContext> lintContext();
     // the lint alone (validate() runs it after the generic checks)
     JASPERENGINE_API void lint(const graph::Graph& graph, std::vector<graph::Issue>& issues);

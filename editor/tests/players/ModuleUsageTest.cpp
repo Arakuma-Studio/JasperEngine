@@ -24,6 +24,7 @@
 #include "component/RigidbodyComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/DialogueRunnerComponent.h"
 #include "component/SplineExtrudeComponent.h"
 #include "component/Transform.h"
 #include "component/UIDocumentComponent.h"
@@ -219,6 +220,25 @@ TEST(ModuleUsage, VoxelLuaNameNeedsTheModule) {
     EXPECT_FALSE(withLua("local v = 1").needs("voxel"));
 }
 
+// dialogue-graphs.md R15, AC14: a .dialogue, a Dialogue Runner or a script naming Dialogue or DialogueRunner
+TEST(ModuleUsage, DetectsDialogue) {
+    EXPECT_EQ(modules(withLua("local x = 1")), "");
+    const ModuleUsage handlers = withLua("Dialogue.onAction('quest', function() end)");
+    EXPECT_EQ(modules(handlers), "dialogue");
+    EXPECT_NE(handlers.firstEvidence("dialogue").find("lua/test.lua:1"), std::string::npos) << handlers.firstEvidence("dialogue");
+    EXPECT_TRUE(withLua("local r = DialogueRunner(self.scene, self.entity)").needs("dialogue"));
+    // a member or a string of that name is not the global
+    EXPECT_FALSE(withLua("local t = self.Dialogue\nprint('Dialogue')").needs("dialogue"));
+    ModuleScan scan = empty();
+    scan.dialogues.push_back("assets/npc/guard.dialogue");
+    const ModuleUsage file = ModuleUsageDetector::analyze(scan);
+    EXPECT_EQ(modules(file), "dialogue");
+    EXPECT_EQ(file.firstEvidence("dialogue"), "assets/npc/guard.dialogue: dialogue graph");
+    OneEntity one;
+    one.scene.addComponent<DialogueRunnerComponent>(one.entity, {});
+    EXPECT_EQ(one.usage().firstEvidence("dialogue"), "scene Main: Dialogue Runner on Thing");
+}
+
 // T1 R54: runtime terrain edits are a module, needed by a terrain that allows them or a script that writes one
 TEST(ModuleUsage, AllowRuntimeEditsNeedsTerrainEdits) {
     OneEntity one;
@@ -356,7 +376,7 @@ TEST(ModuleUsage, LuaNamesNeedTheirModules) {
 }
 
 TEST(ModuleUsage, DynamicAccessNeedsEveryModule) {
-    const std::string every = "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit";
+    const std::string every = "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit dialogue";
     for (const char* code : {"local f = _G[name]", "local f = _ENV[name]", "local chunk = load(text)", "local s = loadstring(text)",
                              "dofile(path)", "local r = debug.getregistry()", "local g = package.loaded", "local m = require(name)",
                              "local g = require('_G')"}) {
@@ -372,7 +392,7 @@ TEST(ModuleUsage, CppScriptsNeedEveryModule) {
     ModuleScan scan = empty();
     scan.cppScripts.push_back("scripts/Player.cpp");
     const ModuleUsage usage = ModuleUsageDetector::analyze(scan);
-    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit");
+    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit dialogue");
     EXPECT_NE(usage.firstEvidence("htmlui").find("scripts/Player.cpp"), std::string::npos);
 }
 

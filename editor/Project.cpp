@@ -9,6 +9,7 @@
 #include "test/GameTests.h"
 #include "test/PlayData.h"
 #include "localization/StringTableCook.h"
+#include "dialogue/DialogueEditor.h"
 #include "foliage/TreeDataFile.h"
 #include "pixelart/Glitch.h"
 #include "pixelart/ScreenTransition.h"
@@ -3568,7 +3569,7 @@ editor::PlayerSettings editor::Project::getPlayerSettings() const{
     settings.targetFrameRate = presentationSettings.targetFrameRate;
     settings.dynamicBatching = dynamicBatching;
     settings.defaultLanguage = localizationSettings.effectiveDefault();
-    settings.localization = !l10n::findTables(getProjectPath()).empty();
+    settings.localization = !l10n::findOwners(getProjectPath()).empty();
     auto app = [this](const std::string& name, const std::string& identifier, const std::string& version, const std::string& build) {
         ApplicationInfo info;
         info.name = getApplicationName(name);
@@ -3598,6 +3599,8 @@ void editor::Project::applyPresentationSettings(){
     // game-ui-localization.md R13, R20: the String Tables as they are now, this Play's misses only
     l10n::refreshEditorLocalization(this);
     Localization::clearMisses();
+    // dialogue-graphs.md R5: Play starts with an empty dialogue store and the project's declared defaults
+    dialogues::preparePlay(this);
     Screen::initialize(presentationSettings.defaultOrientation, presentationSettings.effectiveAllowedOrientations(),
                        presentationSettings.keepScreenOn);
     // a simulated phone or tablet keeps the screen on as the device would (Keep Screen On

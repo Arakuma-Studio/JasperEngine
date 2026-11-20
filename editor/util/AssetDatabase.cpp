@@ -290,7 +290,7 @@ namespace {
 
     bool isClipFile(const fs::path& path) {
         return editor::Util::isAnimationClipFile(path.string()) || editor::Util::isVertexAnimationFile(path.string()) ||
-               editor::Util::isAnimatorAssetFile(path.string()) || editor::Util::isProceduralMaterialFile(path.string()) ||
+               editor::Util::isAnimatorAssetFile(path.string()) || (editor::Util::isProceduralMaterialFile(path.string()) || editor::Util::isDialogueFile(path.string())) ||
                isSpriteAtlasFile(path) || editor::Util::isTitleArtFile(path.string()) || isStringTableFile(path);
     }
 
@@ -375,7 +375,7 @@ namespace {
             const titleart::TitleArtParseResult parsed = titleart::parseTitleArt(text);
             return parsed.ok || parsed.error.code == "version_newer";
         }
-        if (editor::Util::isProceduralMaterialFile(path.string())) {
+        if ((editor::Util::isProceduralMaterialFile(path.string()) || editor::Util::isDialogueFile(path.string()))) {
             graph::LoadReport report;
             graph::load(text, report);
             return report.ok;
@@ -427,7 +427,7 @@ namespace {
     bool withJsonAssetIdentity(const fs::path& path, std::string& text, const Guid& guid, const std::vector<Guid>& formerGuids) {
         // a graph file has no "version" member to insert after: written canonically, the identity
         // among its unknown keys, which the graph model keeps
-        if (editor::Util::isProceduralMaterialFile(path.string())) {
+        if ((editor::Util::isProceduralMaterialFile(path.string()) || editor::Util::isDialogueFile(path.string()))) {
             graph::LoadReport report;
             graph::Graph file = graph::load(text, report);
             if (!report.ok) {

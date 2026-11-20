@@ -54,7 +54,8 @@ namespace jasperengine::editor::reflect {
         TreeData,       // a .jetrees file of a Terrain's trees (T5 R22)
         TerrainWorld,   // a Name.terrainworld folder (T4 R48)
         Tileset,        // a .tileset (S50)
-        TitleArt        // a .titleart (S81's Title Art Renderer)
+        TitleArt,       // a .titleart (S81's Title Art Renderer)
+        Dialogue        // a .dialogue (dialogue-graphs.md R13)
     };
 
     // How a field holds an asset reference (editor/asset/AssetRefSchema generates its table from the

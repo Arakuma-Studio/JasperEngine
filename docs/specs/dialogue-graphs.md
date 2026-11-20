@@ -513,4 +513,44 @@ handler checks; error names the fix).
 
 ## Deviations
 
-None yet.
+- **D-1 Assignments in actions (R4).** Assignments are statements: they are allowed in `set` and in
+  every action field (a line's or option's `action`, an action node), as the option example of §6
+  mixes them (`shop.pay({bribe}); $guard_bribed = true`), and refused only in conditions (branch,
+  option conditions). `AssignmentsOnlyInSet` checks the refusal in conditions.
+- **D-2 Runner events (D6 sketch).** The core `dialogue::Runner` has plain callbacks (`onStart`,
+  `onLine`, `onEnd`, `onVariableChanged`), so the headless walker owns them; the `FunctionSubscribe`
+  events Lua and C++ scripts subscribe to are the Dialogue Runner component's (listed in
+  `ComponentsWithEvents`, cleared at Stop like every component event). `Dialogue.variables.onChanged`
+  is a static `FunctionSubscribe` cleared by `Engine::clearAllSubscriptions`.
+- **D-3 Entry arguments and jump targets (R2, R11).** `entry` has an `arguments` parameter (the names
+  `start` passes, for `unknown-argument`). A jump's `entry` may name an entry or a node id, so a jump
+  from another file into the middle of a dialogue is what makes a node reachable without a path from
+  its entries (`UnreachableCountsJumpsFromOtherFiles`). A line also has `max_chars` (R21's count).
+- **D-4 The template's demo (R14).** The demo conversation ships with the template's other assets, so
+  `create_ui_document` puts it at `<stem>_assets/demo.dialogue` beside the document (not
+  `assets/dialogue/`), its namespace rewritten to `<stem>_demo` so two documents from the template do
+  not collide; its English texts are the dialogue's own table. The view plays its GameObject's Dialogue
+  Runner (adding one with the demo when the GameObject has none); there is no separate `runner`
+  script property. On the last line the "continue" marker shows (the runner cannot tell that `next` is
+  unconnected); the first frame and the golden are as before.
+- **D-5 Hot reload timing (R12).** A running runner moves to the reloaded program when the reload
+  happens (the editor applies file changes between frames), which is its next step in practice.
+- **D-6 A line's action and "wait".** A line's `action` runs when it is shown; a handler returning
+  "wait" there is ignored (the line waits for advance or a choice anyway).
+- **D-7 Speakers (R3, R23).** At runtime a speaker's name is `speakers.<speaker>` when a table has
+  it; Project Settings > Dialogue > Speakers' display key is for the editor (completion), the runtime
+  never reads project settings but the variables' defaults (`je-dialogue.json`, written by the export
+  when variables are declared).
+- **D-8 Explore and no-exit (R11, R25).** `run_dialogue {explore}` tells menus apart by node,
+  variables and the condition values assumed on the way (visit counts are left out, so a loop that
+  only counts visits is a loop); the lint's `no-exit` reports one warning per group of trapped
+  nodes at its lowest id, entries left out.
+- **D-9 Graph model (S23).** `setParam` on a node of a dynamic-port type now keeps its stored ports in
+  step with the params they are computed from (and its inverse carries the old ports back exactly), so
+  an option added by `edit_graph` gets its port. `GraphEditorWindow` gained two small hooks for a
+  kind's window: `drawKindNodeInspector` and `Problem::fixAction` (a fix that is no graph edit).
+- **D-10 Bench file (AC13).** The benchmarks are `engine/tests/core/dialogue/DialogueBenchTest.cpp`
+  (the core target globs `*Test.cpp`), suite `DialogueBench`.
+- **D-11 Add Component.** There was no Gameplay category: it is added with the Dialogue Runner.
+- **D-12 Module off (AC14).** `DialogueStubTest` binds the stubs on a Lua state of its own, so it runs
+  in every core build; the module-off engine builds with `tools/check-physics-off.sh dialogue-off`.

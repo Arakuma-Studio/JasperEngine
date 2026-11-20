@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "ScriptRuntime.h"
-#if JASPERENGINE_DIALOGUE
+#include "dialogue/DialogueSwitch.h"
+#if JASPERENGINE_DIALOGUE_ENABLED
 #include "object/DialogueRunner.h"
 #endif
 #include "ScriptMessages.h"
@@ -310,7 +311,7 @@ void ScriptRuntime::awakeScene(Scene* scene) {
     awake(scene, scriptedOrder(scene));
     awakeningScenes--;
     ObjectManager::popActiveScene();
-#if JASPERENGINE_DIALOGUE
+#if JASPERENGINE_DIALOGUE_ENABLED
     // dialogue-graphs.md R13: Auto Start runners start after every init of this frame
     dialogue::scheduleAutoStart(scene, nullptr);
 #endif

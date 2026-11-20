@@ -560,6 +560,8 @@ namespace jasperengine::editor {
         bool writeAudioImports();
         // game-ui-localization.md D5, R21: the String Tables cooked into assets/l10n (nothing without tables)
         bool writeLocalization();
+        // assets/je-dialogue.json: Project Settings > Dialogue's variable defaults (nothing without any)
+        bool writeDialogueSettings();
         bool localizationShipped = false;
         // the paths the export writes the notices to, relative to its root
         static const char* effectLicensePath();
@@ -589,6 +591,8 @@ namespace jasperengine::editor {
         // are recipes: they ship only when the game can load one at run time, and then all of them, since a
         // Lua string can name any. usage null: not known (a source export), which keeps everything.
         static bool shipsForNoise(const fs::path& relPath, const ModuleUsage* usage);
+        // dialogue-graphs.md R15: .dialogue files ship only when the project needs the dialogue module
+        static bool shipsForDialogue(const fs::path& relPath, const ModuleUsage* usage);
         // Why `dir` can't take an export of `project` ("" when it can): it is, or is inside, the
         // project, its assets or its Lua folder (the editor would import the exported files as
         // project assets), unless it is below a hidden folder or the project's top-level build/

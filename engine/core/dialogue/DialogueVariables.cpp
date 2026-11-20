@@ -139,7 +139,7 @@ Json Variables::toJson() {
     return Json{{"variables", values}, {"visits", visits}};
 }
 
-bool Variables::fromJson(const Json& json, std::string* error) {
+bool Variables::fromJson(const Json& json, std::string* error, bool notify) {
     auto failWith = [&](const std::string& message) {
         if (error) *error = message;
         return false;
@@ -169,6 +169,7 @@ bool Variables::fromJson(const Json& json, std::string* error) {
     std::map<std::string, Value, std::less<>> before = std::move(s.values);
     s.values = std::move(values);
     s.visits = std::move(visits);
+    if (!notify) return true;
     // what changed is told, as a set would
     for (const auto& [name, value] : s.values) {
         auto old = before.find(name);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PlayerModules.h"
+#include "dialogue/DialogueSwitch.h"
 #include "terrain/TerrainEditModule.h"
 
 #include "component/AudioSourceComponent.h"
@@ -53,7 +54,7 @@ std::vector<std::string> player::builtModules() {
 #if JASPERENGINE_TERRAIN_EDIT
     modules.push_back("terrainedit");
 #endif
-#if JASPERENGINE_DIALOGUE
+#if JASPERENGINE_DIALOGUE_ENABLED
     modules.push_back("dialogue");
 #endif
     return modules;

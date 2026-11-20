@@ -96,6 +96,7 @@ namespace jasperengine::editor {
         NavigationProjectSettings m_navigation;
         TitleArtProjectSettings m_titleArt;
         LocalizationSettings m_localization;
+        DialogueSettings m_dialogue;
         char m_localizationInput[64] = {0};
         char m_localizationFontLanguage[32] = {0};
         char m_localizationFontPath[260] = {0};
@@ -311,6 +312,7 @@ namespace jasperengine::editor {
         void drawMeshSettings();
         void drawTitleArtSettings();
         void drawLocalizationSettings();
+        void drawDialogueSettings();
         void draw2DSettings();
         void drawAnimationSettings();
         void drawPixelArtSettings();

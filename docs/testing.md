@@ -804,6 +804,19 @@ compiles navigation in runs none). The first run builds the whole engine (the sw
 define); later runs are incremental. `tools/check-changed` plans it for a navigation or engine CMake
 change; nothing else runs it, CI included.
 
+### Dialogue OFF: `tools/check-physics-off.sh dialogue-off`
+
+A project with no `.dialogue`, Dialogue Runner or script naming `Dialogue` exports with
+`JASPERENGINE_DIALOGUE=OFF` (dialogue-graphs.md R15): `engine/core/dialogue` is not compiled and the
+Lua names `Dialogue` and `DialogueRunner` are stubs that log once. The module-off variant of
+`tools/check-physics-off.sh` builds that engine (`build/physics-off-dialogue-off`); the stubs'
+test, `DialogueStubTest.LogsOnceWhenNotCompiled`, binds them on a Lua state of its own, so it runs in
+every core build:
+
+```sh
+tools/build.sh exec linux tools/check-physics-off.sh dialogue-off
+```
+
 ### Sanitizers
 
 ```sh

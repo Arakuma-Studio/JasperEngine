@@ -847,6 +847,7 @@ bool GraphEditorWindow::inspectProblem(const Problem& problem){
 }
 
 bool GraphEditorWindow::fixProblem(const Problem& problem){
+    if (problem.fixAction) return problem.fixAction();
     if (problem.fix.empty()) return false;
     // its op names the graph it was found on: an edit since (even this frame's) may have made it wrong
     if (!document || problem.revision != document->revision()){
@@ -945,7 +946,7 @@ void GraphEditorWindow::drawProblems(){
         for (size_t i = 0; i < rows.size(); i++){
             const Problem& problem = rows[i];
             ImGui::PushID((int)i);
-            if (!problem.fix.empty()){
+            if (!problem.fix.empty() || problem.fixAction){
                 if (ImGui::SmallButton("Fix")) fixProblem(problem);
                 ImGui::SetItemTooltip("%s", problem.fixLabel.c_str());
                 UIProbe::item("graph.problem." + std::to_string(i) + ".fix");
@@ -1169,6 +1170,7 @@ void GraphEditorWindow::drawNodeInspector(const graph::Node& node){
     ImGui::TextDisabled("%s", node.id.c_str());
     if (type && !type->category.empty()) ImGui::TextDisabled("%s", type->category.c_str());
     ImGui::Separator();
+    if (drawKindNodeInspector(node)) return;
     std::vector<graph::ParamDesc> params = type ? type->params : std::vector<graph::ParamDesc>();
     // values the type does not declare (a newer build's, a typo) still show, as JSON
     for (auto it = node.params.begin(); it != node.params.end(); ++it){

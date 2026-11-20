@@ -56,6 +56,7 @@ _MODULE_MACROS = {
     'JASPERENGINE_TERRAIN_WORLD': 'terrainworld',
     'JASPERENGINE_TERRAIN_EDIT': 'terrainedit',
     'JASPERENGINE_DIALOGUE': 'dialogue',
+    'JASPERENGINE_DIALOGUE_ENABLED': 'dialogue',
 }
 
 

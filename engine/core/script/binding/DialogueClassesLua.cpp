@@ -7,6 +7,7 @@
 // still exist: any use logs once that the module is not compiled and does nothing.
 
 #include "LuaBinding.h"
+#include "dialogue/DialogueSwitch.h"
 #include "lua.hpp"
 #include "LuaBridge.h"
 #include "LuaBridgeAddon.h"
@@ -14,7 +15,7 @@
 
 #include "Log.h"
 
-#if JASPERENGINE_DIALOGUE
+#if JASPERENGINE_DIALOGUE_ENABLED
 #include "dialogue/DialogueRunner.h"
 #include "dialogue/DialogueVariables.h"
 #include "object/DialogueRunner.h"
@@ -29,7 +30,7 @@ using namespace jasperengine;
 
 namespace {
 
-#if JASPERENGINE_DIALOGUE
+#if JASPERENGINE_DIALOGUE_ENABLED
 
     void pushString(lua_State* L, const std::string& text) {
         lua_pushlstring(L, text.data(), text.size());
@@ -319,7 +320,7 @@ namespace {
         return **self;
     }
 
-#endif // JASPERENGINE_DIALOGUE
+#endif // JASPERENGINE_DIALOGUE_ENABLED
 
     // ---- without the module: the names exist, any use logs once
 
@@ -352,7 +353,7 @@ namespace {
 
 }
 
-#if JASPERENGINE_DIALOGUE
+#if JASPERENGINE_DIALOGUE_ENABLED
 
 // the events' arguments (FunctionSubscribe's Lua callbacks)
 void LuaFunctionBase::push_value(lua_State* vm, const DialogueRunner& o) {
@@ -380,7 +381,7 @@ void LuaBinding::registerDialogueStubs(lua_State* L) {
 
 void LuaBinding::registerDialogueClasses(lua_State* L) {
 #ifndef DISABLE_LUA_BINDINGS
-#if JASPERENGINE_DIALOGUE
+#if JASPERENGINE_DIALOGUE_ENABLED
     static const luaL_Reg functions[] = {
         {"onAction", luaOnAction},
         {"onCondition", luaOnCondition},

@@ -242,8 +242,14 @@ void editStringTable(CallPtr call) {
         call->fail(error.empty() ? "path: a project .stringtable path, e.g. assets/l10n/ui.stringtable." : error);
         return;
     }
-    if (owner.extension() != l10n::STRINGTABLE_EXTENSION) {
-        call->fail("path must be a .stringtable (" + path + ").");
+    // a dialogue owns its lines' texts (dialogue-graphs.md R26): its translations are edited here
+    const bool dialogueOwner = owner.extension() == ".dialogue";
+    if (owner.extension() != l10n::STRINGTABLE_EXTENSION && !dialogueOwner) {
+        call->fail("path must be a .stringtable or a .dialogue (" + path + ").");
+        return;
+    }
+    if (dialogueOwner && args.contains("create")) {
+        call->fail("create makes a .stringtable; a dialogue is created with edit_graph {create: {kind: \"dialogue\"}}.");
         return;
     }
     StringTableSet before;

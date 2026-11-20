@@ -1632,6 +1632,8 @@ include(${EDITOR_DIR}/test/GameTestsSources.cmake)
 include(${EDITOR_DIR}/titleart/TitleArtEditorSources.cmake)
 # game UI localization: String Tables, their window and tools
 include(${EDITOR_DIR}/localization/LocalizationEditorSources.cmake)
+# dialogue graphs: the edit hooks, the walker, the Dialogue window
+include(${EDITOR_DIR}/dialogue/DialogueEditorSources.cmake)
 include(${EDITOR_DIR}/procmat/ProcMatSources.cmake)
 # the pixel-art family (S43...): palettes, Apply Palette, the Palette window, the pixel_art tools
 include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)

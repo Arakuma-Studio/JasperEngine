@@ -47,8 +47,9 @@ namespace jasperengine::dialogue {
         static void resetVisits();
 
         static nlohmann::ordered_json toJson();
-        // replaces values and visits; false (nothing changed) for a value of another shape
-        static bool fromJson(const nlohmann::ordered_json& json, std::string* error = nullptr);
+        // replaces values and visits; false (nothing changed) for a value of another shape;
+        // `notify`: what changed is told as a set would (the editor's walker puts the store back silently)
+        static bool fromJson(const nlohmann::ordered_json& json, std::string* error = nullptr, bool notify = true);
 
         // Project Settings > Dialogue > Variables: the editor sets them for Play; a game reads
         // SETTINGS_FILE (its export writes it when the project declares any) on the first lookup

@@ -61,6 +61,11 @@ namespace {
         return context;
     }
 
+    std::function<std::shared_ptr<const LintContext>()>& contextProvider() {
+        static std::function<std::shared_ptr<const LintContext>()> provider;
+        return provider;
+    }
+
     std::mutex& contextMutex() {
         static std::mutex mutex;
         return mutex;
@@ -226,9 +231,19 @@ void jasperengine::dialogue::setLintContext(std::shared_ptr<const LintContext> c
     contextSlot() = std::move(context);
 }
 
-std::shared_ptr<const LintContext> jasperengine::dialogue::lintContext() {
+void jasperengine::dialogue::setLintContextProvider(std::function<std::shared_ptr<const LintContext>()> provider) {
     std::lock_guard<std::mutex> lock(contextMutex());
-    return contextSlot();
+    contextProvider() = std::move(provider);
+}
+
+std::shared_ptr<const LintContext> jasperengine::dialogue::lintContext() {
+    std::function<std::shared_ptr<const LintContext>()> provider;
+    {
+        std::lock_guard<std::mutex> lock(contextMutex());
+        if (contextSlot() || !contextProvider()) return contextSlot();
+        provider = contextProvider();
+    }
+    return provider();
 }
 
 namespace {

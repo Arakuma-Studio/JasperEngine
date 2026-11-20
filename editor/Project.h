@@ -696,6 +696,43 @@ namespace jasperengine::editor{
         bool operator!=(const LocalizationSettings& other) const { return !(*this == other); }
     };
 
+    // Project Settings > Dialogue (docs/specs/dialogue-graphs.md R23, R31): the handler prefixes, variables
+    // and speakers dialogues use, for the editor's completion and lint; the variables' defaults also
+    // reach Play and games (je-dialogue.json). All default empty: an older project writes nothing.
+    struct DialogueSettings {
+        struct Prefix {
+            std::string name;           // "quest"
+            std::string description;
+            std::string hint;           // the arguments ("quest id")
+            bool operator==(const Prefix& other) const { return name == other.name && description == other.description && hint == other.hint; }
+        };
+        struct Variable {
+            std::string name;           // without '$'
+            std::string type = "number";    // number | bool | string
+            std::string defaultValue;   // as typed: "10", "true", "Ana"
+            std::string description;
+            bool operator==(const Variable& other) const {
+                return name == other.name && type == other.type && defaultValue == other.defaultValue && description == other.description;
+            }
+        };
+        struct Speaker {
+            std::string id;             // as lines name it
+            std::string displayKey;     // the String Table key of its shown name ("" = speakers.<id>)
+            bool operator==(const Speaker& other) const { return id == other.id && displayKey == other.displayKey; }
+        };
+        std::vector<Prefix> actionPrefixes;
+        std::vector<Prefix> conditionPrefixes;
+        std::vector<Variable> variables;
+        std::vector<Speaker> speakers;
+
+        bool empty() const { return actionPrefixes.empty() && conditionPrefixes.empty() && variables.empty() && speakers.empty(); }
+        bool operator==(const DialogueSettings& other) const {
+            return actionPrefixes == other.actionPrefixes && conditionPrefixes == other.conditionPrefixes && variables == other.variables &&
+                   speakers == other.speakers;
+        }
+        bool operator!=(const DialogueSettings& other) const { return !(*this == other); }
+    };
+
     // Name, identifier, version and build below are overrides: empty (or 0)
     // means the ApplicationSettings value.
 
@@ -1051,6 +1088,7 @@ namespace jasperengine::editor{
         ApplicationSettings applicationSettings;
         PresentationSettings presentationSettings;
         LocalizationSettings localizationSettings;
+        DialogueSettings dialogueSettings;
         WebProjectSettings webProjectSettings;
         LinuxProjectSettings linuxProjectSettings;
         WindowsProjectSettings windowsProjectSettings;
@@ -2173,6 +2211,8 @@ namespace jasperengine::editor{
         const PresentationSettings& getPresentationSettings() const;
         LocalizationSettings& getLocalizationSettings() { return localizationSettings; }
         const LocalizationSettings& getLocalizationSettings() const { return localizationSettings; }
+        DialogueSettings& getDialogueSettings() { return dialogueSettings; }
+        const DialogueSettings& getDialogueSettings() const { return dialogueSettings; }
         // Play start: Engine.targetFrameRate / vSyncCount, Screen and the application info from
         // these settings, before any script runs (the generated main of an export does the same)
         void applyPresentationSettings();

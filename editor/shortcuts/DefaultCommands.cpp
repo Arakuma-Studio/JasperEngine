@@ -252,6 +252,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.bookmarks", "Bookmarks", AppMenuCommand::ToggleBookmarks);
     b.menu("window.localizationTables", "Localization Tables", AppMenuCommand::ToggleLocalizationTables).description =
         "String Tables: keys, translations, coverage and this Play's misses";
+    b.menu("window.dialogue", "Dialogue", AppMenuCommand::ToggleDialogue).description =
+        "Dialogue graphs: lines, choices, branches, a preview without Play";
     b.menu("window.undoHistory", "Undo History", AppMenuCommand::ToggleUndoHistory);
     b.menu("window.playModeChanges", "Play Mode Changes", AppMenuCommand::TogglePlayModeChanges);
     b.menu("window.colorPicker", "Color Picker", AppMenuCommand::ToggleColorPicker).description =
