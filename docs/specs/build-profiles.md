@@ -515,11 +515,10 @@ craftsman-end-motor (a port reconstructed from a retail binary). Profiles are ge
 - **A Scene List names scenes of the project's Scenes In Build**: the exporter loads, saves and cooks
   the project's scene list; a scene asset outside it is refused by validation ("add it there
   (edit_build_scenes)"). All project prefabs still ship (the prefab cook is not per scene).
-- **Compile builds**: the generated init gets `System::setBuildInfo` (R17) and the packaging the
-  exporter writes (CMake settings, Gradle, plists, Windows resources) reads the snapshot, but the
-  generated init's other Project Settings values and its scene registration are the open project's
-  (`.jasperengine/generated/main.cpp`): the Scene List and the overrides the init applies take effect
-  in prebuilt builds.
+- **Compile builds** ship a main.cpp built from the profile's snapshot (`Project::buildMainSource`,
+  `Generator::mainSource`): its init, its Scene List's scenes registered and its start scene, while the
+  project's own `.jasperengine/generated/main.cpp` stays the editor's. The sources of the scenes a
+  profile leaves out are still compiled (nothing registers them).
 - **Keys a profile does not override**: `player.product_name` (executable and save folder, section 2),
   `player.start_scene` and `player.target_platforms` (the profile's Scene List and platform),
   `player.development_build` (`development`). The refusals name the field to use.
