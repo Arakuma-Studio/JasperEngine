@@ -129,8 +129,7 @@ check with ssr_debug_mode 7), profiling (get_frame_times), navigation (get_navig
 (analyze_audio), shipping (build_project), palettes (edit_palette, apply_palette), pixel-fx
 (capture_contact_sheet), title-art, data safety (allow_data_loss), meshes (inspect_models,
 check_render_budgets), device tiers (set_device_simulation, then play), sprites (set_sprite_frames
-sheet), tilemaps (edit_tilemap), testing (run_tests), localization, dialogue (run_dialogue):
-jasper://docs/<area>.
+sheet), tilemaps (edit_tilemap), testing (run_tests), localization, dialogue: jasper://docs/<area>.
 )JE";
 }
 
