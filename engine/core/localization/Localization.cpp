@@ -27,6 +27,12 @@ using namespace jasperengine::l10n;
 
 FunctionSubscribe<void(const std::string&)> Localization::onLanguageChanged;
 
+#if JASPERENGINE_L10N_CAPTURE
+// the capture code is in this binary (D8): tools/l10n/check_capture_symbols.py looks for this name
+// in a release engine (absent) and the editor's (present)
+extern "C" JASPERENGINE_API const char jasperengine_l10n_capture[] = "missing-translation capture";
+#endif
+
 namespace {
 
     constexpr const char* kRememberKey = "jasper.language";
@@ -607,7 +613,7 @@ uint64_t Localization::getGeneration() {
 
 std::vector<Localization::Miss> Localization::getMisses() {
 #if JASPERENGINE_L10N_CAPTURE
-    if (!active.load()) return {};
+    if (!active.load() || !jasperengine_l10n_capture[0]) return {};
     State& s = state();
     std::lock_guard<std::mutex> lock(s.mutex);
     return s.misses;
