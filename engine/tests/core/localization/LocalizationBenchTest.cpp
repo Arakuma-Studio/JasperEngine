@@ -79,7 +79,8 @@ TEST_F(LocalizationBench, Lookup) {
     ASSERT_EQ(Localization::getView("ui.key.1").size(), 40u);     // loads the namespace
     constexpr int rounds = 200000;
     size_t sink = 0;
-    testsupport::AllocationCountScope allocations;
+    // the calling thread's: the logger's drain thread may allocate meanwhile
+    testsupport::ThreadAllocationCount allocations;
     auto start = std::chrono::steady_clock::now();
     for (int k = 0; k < rounds; k++) sink += Localization::getView(k % 2 ? "ui.key.1" : "ui.key.3").size();
     const double plain = microsecondsSince(start, rounds);
