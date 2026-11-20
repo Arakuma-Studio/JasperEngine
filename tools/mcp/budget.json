@@ -144,8 +144,8 @@
             "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%; lowered to its size when Target Platforms cut its result field list; build-and-run-on-device added run_device and patch (core paid for them: run_build lost its result field list)"
         },
         "send_input": {
-            "limit": 1990,
-            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030); 1980 measured with the text event's per_unit (unicode-text: typing one UTF-16 unit at a time, as Windows and Android deliver it; eval case guard_typing_utf16_units); +10 measured for the app actions hide|show (platform-lifecycle, eval case bad_app_hide)"
+            "limit": 2000,
+            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030); 1980 measured with the text event's per_unit (unicode-text: typing one UTF-16 unit at a time, as Windows and Android deliver it; eval case guard_typing_utf16_units); +10 measured for the app actions hide|show (platform-lifecycle, eval case bad_app_hide); input-recorder-and-input-scripts' file parameter and shot, wait until, gamepad connect|disconnect and safe_area steps (eval cases guard_input_script_file, bad_input_ms_in_file) beside text-entry's app back and gamepad warp: 2000 measured after the description dropped what the play description and the event schema already say"
         },
         "create_particles": {
             "limit": 1888,
@@ -160,8 +160,8 @@
             "reason": "grandfathered by S31: 1707 chars when the limits were set, +5% (tighter than its HTML UI cap 1956)"
         },
         "play": {
-            "limit": 1709,
-            "reason": "grandfathered by S31 at 1555 chars (+5% = 1632); S24 added keep_changes (+154): 1709 when S31 merged S24"
+            "limit": 1776,
+            "reason": "grandfathered by S31 at 1555 chars (+5% = 1632); S24 added keep_changes (+154): 1709 when S31 merged S24; input-recorder-and-input-scripts' input (replay a .input.json from Play's start) beside project-test-runner's data, after both trimmed its description (that spec's budget rule)"
         },
         "wait": {
             "limit": 1610,

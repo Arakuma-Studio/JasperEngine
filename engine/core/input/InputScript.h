@@ -82,6 +82,7 @@ namespace jasperengine::input {
         std::vector<std::string> probes;
         std::vector<Checkpoint> checkpoints;
         bool truncated = false;
+        uint32_t frames = 0;            // recordings: update frames from start to stop (0: unknown, to the last event)
         ScriptJson extra = ScriptJson::object();   // unknown keys, kept by tools that rewrite a file (R1)
     };
 
@@ -110,6 +111,7 @@ namespace jasperengine::input {
         GamepadDisconnect,
         GamepadButtonDown, GamepadButtonUp, // code: button
         GamepadAxis,                        // code: axis, value
+        GamepadCursor,                      // the gamepad cursor warped to point (before the event's button or axis)
         ActionDown, ActionUp,               // the Input Manager's action `string` through the source
         Axis,                               // its axis `string` set to value
         AxisDelta,                          // value added this frame
@@ -118,6 +120,7 @@ namespace jasperengine::input {
         ReleaseAll,
         AppPause, AppResume, AppFocusLost, AppFocusGained, AppLowMemory, AppHide, AppShow,
         AppOrientation,                     // string: portrait, landscape_left...
+        AppBack,                            // Back, as Android's Back button (Engine::systemBack)
     };
 
     JASPERENGINE_API const char* actionTypeName(ActionType type);
@@ -247,6 +250,12 @@ namespace jasperengine::input {
         ScriptJson document;
     };
 
+    // app back: who took it (Engine::getLastBackRoute: escape, key, document, game)
+    struct BackTaken {
+        size_t event = 0;
+        std::string route;
+    };
+
     struct ShotTaken {
         std::string name;
         uint64_t frame = 0;
@@ -262,6 +271,7 @@ namespace jasperengine::input {
         size_t failedEvent = 0;
         std::vector<ResolvedTarget> targets;
         std::vector<ShotTaken> shots;
+        std::vector<BackTaken> backs;
         // checkpoints (recordings)
         bool comparable = false;
         int compared = 0;
@@ -301,7 +311,8 @@ namespace jasperengine::input {
 
     private:
         bool runAction(const ScriptAction& action, std::string& error);
-        bool resolve(const ScriptAction& action, const ScriptPoint& point, Vector2& out, std::string& error);
+        // the point in the engine's coordinates (the events'), or in the canvas
+        bool resolve(const ScriptAction& action, const ScriptPoint& point, Vector2& out, std::string& error, bool engineSpace = true);
         Vector2 currentPointer();
         void fail(const ScriptAction& action, const std::string& error);
 
@@ -313,6 +324,7 @@ namespace jasperengine::input {
         ReplayReport report_;
         size_t next_ = 0;
         uint64_t lastFrame_ = 0;
+        bool orientationSkipped_ = false;   // a recording's turn without a simulated device: warned once
         bool started_ = false;
         uint64_t pendingFrames_ = 0;
         bool msPending_ = false;

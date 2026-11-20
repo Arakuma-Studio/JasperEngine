@@ -58,7 +58,6 @@ Conventions shared by every tool (explained once in the server instructions, not
 - [Terrain: declarative edits and heightmap files](#terrain-declarative-edits-and-heightmap-files) (4): `edit_terrain`, `edit_terrain_world`, `export_terrain_heightmap`, `visualize_terrain`
 - [Editor tools: recorder, colour sampling, swatches, curves](#editor-tools-recorder-colour-sampling-swatches-curves) (5): `edit_swatches`, `evaluate_curve`, `list_curve_presets`, `record_game`, `sample_view_color`
 - [Image comparison](#image-comparison) (1): `diff_images`
-- [Project tests](#project-tests) (1): `run_tests`
 - [Particles: effects and playback](#particles-effects-and-playback) (12): `add_particle_module`, `bake_particle_sheet`, `capture_particles`, `control_particles`, `create_particle_effect`, `edit_particle_effect`, `get_particle_effect`, `get_particle_migration_report`, `get_particle_stats`, `preview_particle_effect`, `remove_particle_module`, `set_particle_effect`
 - [Tilemaps: tilesets and map import](#tilemaps-tilesets-and-map-import) (2): `edit_tileset`, `import_tilemap`
 - [Pixel art: palettes](#pixel-art-palettes) (2): `apply_palette`, `edit_palette`
@@ -71,7 +70,6 @@ Conventions shared by every tool (explained once in the server instructions, not
 - [Title Art](#title-art) (6): `check_title`, `edit_title`, `export_title`, `get_title`, `list_title_library`, `render_title`
 - [Sprites: Aseprite import, atlases, drawing](#sprites-aseprite-import-atlases-drawing) (9): `create_sprite`, `diff_sprite`, `edit_sprite`, `edit_sprite_atlas`, `get_sprite`, `get_sprite_atlas`, `read_sprite_pixels`, `render_sprite`, `set_sprite_import_settings`
 - [Pixel art: font previews](#pixel-art-font-previews) (1): `preview_font`
-- [Localization: String Tables](#localization-string-tables) (1): `edit_string_table`
 
 ## Core
 
@@ -1371,8 +1369,7 @@ Run Lua in the running game: the values as JSON (handles as {type, entity, name,
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `allow_edit_mode` | boolean |  |  |
-| `code` | string |  | Expression, or chunk with return. |
-| `command` | string |  | A console command line instead of code (help lists them). |
+| `code` | string | yes | Expression, or chunk with return. |
 | `max_depth` | integer (1..12) |  | Table nesting. Default: `4`. |
 | `max_items` | integer (1..5000) |  | Entries per table. Default: `200`. |
 | `scene` | integer or string |  |  |
@@ -1398,7 +1395,7 @@ After play stop: the edits made while playing that can be kept, rows {id, kind, 
 
 Group: `core`. Hints: read-only, idempotent
 
-Play state: played and running scenes (child scenes run as copies with own ids), the session (time, frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), debug_overlay, audio (voices, mixer_meters dB), console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held), platform (lifecycle, orientation, opened_urls...), http (request counts, last failures), safe_area; stopped: play_would_start.
+Play state: played and running scenes (child scenes run as copies with own ids), the session (time, frames, errors, crash), how the last one ended, held input, the game's input (actions, touches, keys, input replays), debug_overlay, audio, console_cursor, coroutines and timers, the clock, platform (lifecycle, orientation, opened_urls...), http, safe_area; stopped: play_would_start.
 
 No parameters.
 
@@ -1445,16 +1442,16 @@ GameObjects of the running game (id, name, path), runtime-spawned ones included 
 
 Group: `core`
 
-Control Play mode. start: saves modified scenes, builds C++ scripts (minutes), waits until running; returns the state + console problems, or isError with compile/script errors; past timeout_seconds (or wait:false) a job_id (get_job). stop: restores edit-time state, sums up the session. step: advance a paused game `frames` frames. Script errors stop play.
-Clock (any action; set = only it; kept until changed): time_scale, fixed_fps, auto_pause (frozen between calls but in wait / send_input / step).
+Control Play mode. start: saves modified scenes, builds C++ scripts if any (minutes), waits until running; returns the state + console problems, or isError with compile/script errors; past timeout_seconds (or wait:false) a job_id (get_job). stop: restores the edit-time state, summarizes the session. step: advance a paused game `frames` frames. Script errors stop play.
+Clock (any action; set = only it; kept until changed): time_scale, fixed_fps, auto_pause (frozen between calls; runs only in wait / send_input / step).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `action` | `"start"` \| `"stop"` \| `"restart"` \| `"pause"` \| `"resume"` \| `"step"` \| `"set"` | yes |  |
 | `auto_pause` | boolean |  |  |
-| `data` | string |  | start: "project", "clean" or a Tests/Data snapshot. Default: `"project"`. |
 | `fixed_fps` | integer (0..1000) |  | 0 = real time. Default: `0`. |
 | `frames` | integer (1..600) |  | Default: `1`. |
+| `input` | string |  | start: replay this .input.json. |
 | `keep_changes` | `"none"` \| `"all"` |  | stop: keep all or none of the edits made while playing (absent: get_play_changes). |
 | `max_width` | integer (0..4096) |  | Default: `768`. |
 | `scene` | integer or string |  | start: default the start scene (else selected). |
@@ -1470,28 +1467,30 @@ Clock (any action; set = only it; kept until changed): time_scale, fixed_fps, au
 
 Group: `core`
 
-Input into the running game, over frames. events in order, {type, ...} (first action: default):
+Input into the running game. events in order, {type, ...} (first action: default):
 key: key (space, a, f1...), action press|down|up, hold_frames (2; 0: same frame), hold_ms, mods [shift,ctrl,alt,super]
-text: text, per_unit (per UTF-16 unit); ime: text, cursor; ime_commit: text; ime_cancel
+text: text, per_unit (one event per UTF-16 unit, as Windows/Android type); ime: text, cursor; ime_commit: text; ime_cancel
 mouse_leave, mouse_enter
 mouse: action click|double_click|down|up|move|drag|scroll, x, y (default: pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy (scroll; move w/o x, y)
 touch: action tap|start|move|end|cancel|swipe, pointer, x, y, to
-target / to_target: UI Document element CSS selector (document: which)
-gamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + value, x, y/target: warp cursor
+target / to_target: UI Document CSS selector (document: which)
+gamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + value, or action connect|disconnect
 input_action: name Map/Action, action press|down|up|value, value
 action|axis|axis_delta: name + phase (press|down|up)|value|delta
-app: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|orientation (+orientation)|back
-wait: frames, ms. release_all.
-space: canvas px, normalized 0..1, view = Game view px. down holds until up/release_all/stop. Returns frames, console, play state (auto_pause: events + frames_after only).
+app: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|orientation (+orientation)
+wait: frames, ms, or until (Lua; frames caps)
+shot: name (PNG). release_all.
+space: canvas px, normalized 0..1, safe_area 0..1 of safeArea, view = Game view px. down holds until up/release_all/stop. auto_pause: events + frames_after only.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `events` | array of object {document, target, to_target} | yes |  |
+| `events` | array of object {document, target, to_target} |  |  |
+| `file` | string |  | Script .input.json. |
 | `frames_after` | integer (0..100000) |  | Run before replying. Default: `1`. |
 | `gap_frames` | integer (0..1000) |  | Between events. Default: `1`. |
 | `max_width` | integer (0..4096) |  | Default: `768`. |
 | `screenshot` | boolean or `"game"` \| `"scene"` \| `"editor"` |  | Also return an image (true: game). |
-| `space` | `"canvas"` \| `"normalized"` \| `"view"` |  | Default: `"canvas"`. |
+| `space` | `"canvas"` \| `"normalized"` \| `"safe_area"` \| `"view"` |  | Default: `"canvas"`. |
 
 
 ### `set_runtime_property`
@@ -1544,18 +1543,16 @@ Let the game run `seconds` (wall clock), `game_seconds`, `frames` (steps a pause
 
 Group: `editor_ux` (listed once `tool_groups` enables it, callable either way). Hints: idempotent
 
-Read (no arguments) or change the Game view toolbar (editor preferences, not undoable): aspect (project = the canvas size), resolution (the game and screenshots render at it; its dpi is Screen.dpi), a simulated device, orientation, language (editor only), the input scheme forced at Play start. Options: jasper://docs/ui.
+Read (no arguments) or change the Game view toolbar (editor preferences, not undoable): aspect (project = the canvas size), resolution (the game and screenshots render at it; its dpi is Screen.dpi), a simulated device, orientation and language (editor only; safe_area is Screen.safeArea). Options: jasper://docs/ui.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `aspect` | `"free"` \| `"project"` \| `"16:9"` \| `"16:10"` \| `"4:3"` \| `"9:16"` |  |  |
 | `atmosphere_quality` | `"project"` \| `"off"` \| `"low"` \| `"medium"` \| `"high"` |  |  |
-| `culling_debug` | boolean |  |  |
 | `custom_device` | object |  |  |
 | `device` | string |  | A devices id, custom or none. |
 | `device_overlay` | boolean |  |  |
-| `input_scheme` | `"auto"` \| `"keyboard_mouse"` \| `"gamepad"` \| `"touch"` |  |  |
-| `language` | string |  | en-XA..., or system. |
+| `language` | string |  | es-MX..., or system. |
 | `maximize_on_play` | boolean |  |  |
 | `network` | `"online"` \| `"offline"` |  |  |
 | `orientation` | `"portrait"` \| `"portrait_upside_down"` \| `"landscape_left"` \| `"landscape_right"` |  |  |
@@ -1602,7 +1599,7 @@ Fronts a panel (screenshot needs none). console: its rows, categories, selection
 | `profiler` | object {load} |  |  |
 | `scene` | integer or string |  | window scene: whose tab. |
 | `title_designer` | object |  |  |
-| `window` | `"scene"` \| `"game"` \| `"console"` \| `"hierarchy"` \| `"inspector"` \| `"project"` \| `"animation"` \| `"animator"` \| `"particle_effect"` \| `"pose_animation"` \| `"terrain"` \| `"mcp"` \| `"systems"` \| `"jobs_memory"` \| `"crash_reports"` \| `"profiler"` \| `"frame_debugger"` \| `"preferences"` \| `"undo_history"` \| `"play_mode_changes"` \| `"texture_synthesis"` \| `"vertex_animation_baker"` \| `"sprite_normals"` \| `"pixel_art_cleanup"` \| `"title_designer"` \| `"graph_editor"` | yes |  |
+| `window` | `"scene"` \| `"game"` \| `"console"` \| `"hierarchy"` \| `"inspector"` \| `"project"` \| `"animation"` \| `"animator"` \| `"particle_effect"` \| `"pose_animation"` \| `"terrain"` \| `"mcp"` \| `"systems"` \| `"jobs_memory"` \| `"profiler"` \| `"frame_debugger"` \| `"preferences"` \| `"undo_history"` \| `"play_mode_changes"` \| `"texture_synthesis"` \| `"vertex_animation_baker"` \| `"sprite_normals"` \| `"pixel_art_cleanup"` \| `"title_designer"` \| `"graph_editor"` | yes |  |
 
 
 ### `frame_entity`
@@ -1923,20 +1920,14 @@ Wait until something matching is logged after `since` (a read_console next_curso
 
 Group: `scripting` (listed once `tool_groups` enables it, callable either way). Hints: destructive
 
-The project's UserSettings/PlayerPrefs store, shared with the game in Play (changes apply at once): list {key: text}, get, set (type from value or `type`), delete, clear. Writes save to disk. store "saves": SaveGame slots (key = slot): list, get (namespace, generation, or a .jsave file), set (JSON; vectors {"$vec3":[..]}), delete, clear, corrupt, restore (generation).
+The project's UserSettings/PlayerPrefs store, shared with the game in Play (changes apply at once): list {key: text}, get, set (type from value or `type`), delete, clear. Writes save to disk.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `action` | `"list"` \| `"get"` \| `"set"` \| `"delete"` \| `"clear"` \| `"corrupt"` \| `"restore"` | yes |  |
-| `file` | string |  | saves get: a .jsave path. |
-| `generation` | integer (1..9223372036854775807) |  | saves get/restore. |
+| `action` | `"list"` \| `"get"` \| `"set"` \| `"delete"` \| `"clear"` | yes |  |
 | `key` | string |  |  |
-| `mode` | `"truncate"` \| `"flip"` \| `"header"` |  | saves corrupt. |
-| `namespace` | string |  | saves: default main. |
-| `store` | `"prefs"` \| `"saves"` |  | Default prefs. |
 | `type` | `"string"` \| `"int"` \| `"float"` \| `"bool"` |  | set: how it is stored. |
-| `value` |  |  | set: string, number or boolean; saves: an object or array. |
-| `version` | integer (1..2147483647) |  | saves set: the data version. |
+| `value` |  |  | set: string, number or boolean. |
 
 
 ## Sound Events
@@ -3017,12 +3008,12 @@ Case-insensitive substring search of the engine's C++ headers/sources and Lua bi
 
 Group: `core`. Hints: open-world
 
-Build Settings > Build, as a job. player: a game per platform (prebuilt, or compiled); desktop/web: this computer/web; source: a CMake project; omitted: get_build_info's default platform. profile: a Build Profile sets platform, API, flavour, folder. run_device: Build And Run. Saves scenes first. Past timeout_seconds: job_id (get_job).
+File > Build Settings > Build, as a job. player: a game per platform (prebuilt, or compiled if it needs native code); desktop/web: this computer/web; source: a CMake project; omitted: the project's default platform (get_build_info). Saves scenes first. Past timeout_seconds: {job_id} (get_job).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `allow_missing_assets` | boolean |  |  |
-| `android_format` | `"aab"` \| `"apk-per-abi"` \| `"apk"` |  | Default: project. |
+| `android_format` | `"aab"` \| `"apk-per-abi"` \| `"apk"` |  | Default: project's. |
 | `backends` | array of string |  | source: opengl/opengles/d3d11/metal-macos/metal-ios/vulkan/all. Remembered. |
 | `build_jobs` | integer |  | 0 = auto. |
 | `build_type` | `"Release"` \| `"Debug"` \| `"RelWithDebInfo"` \| `"MinSizeRel"` |  | Default: `"Release"`. |
@@ -3031,14 +3022,11 @@ Build Settings > Build, as a job. player: a game per platform (prebuilt, or comp
 | `ios_simulator` | boolean |  | Unsigned simulator .app. |
 | `method` | `"auto"` \| `"prebuilt"` \| `"compile"` |  | Default: `"auto"`. |
 | `mode` | `"player"` \| `"desktop"` \| `"web"` \| `"source"` |  |  |
-| `output_dir` | string |  | Absolute, outside project. |
-| `overwrite` | boolean |  | source: into a non-empty dir. |
-| `patch` | boolean |  |  |
-| `platform` | `"windows"` \| `"macos"` \| `"linux"` \| `"android"` \| `"ios"` \| `"web"` |  | player/source. |
-| `profile` | string |  |  |
-| `run_device` | string |  |  |
+| `output_dir` | string |  | Absolute, outside the project. |
+| `overwrite` | boolean |  | source: allow a non-empty output_dir. |
+| `platform` | `"windows"` \| `"macos"` \| `"linux"` \| `"android"` \| `"ios"` \| `"web"` |  | player/source target. |
 | `shaders` | object {add, exclude, reset} |  |  |
-| `start_scene` | integer or string |  | Also set as start scene. |
+| `start_scene` | integer or string |  | Also becomes the start scene. |
 | `timeout_seconds` | number (0..3600) |  | Default: `120`. |
 | `wait` | boolean |  | Default: `true`. |
 
@@ -3087,7 +3075,6 @@ Build Settings state: toolchains (cmake/compiler, emsdk; missing ones listed), g
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `devices` | boolean |  |  |
 | `include_shaders` | boolean |  |  |
 
 
@@ -3112,22 +3099,20 @@ An export's Build Report (default: the last): sizes by category, largest, unrefe
 
 Group: `core`. Hints: open-world
 
-Run the last build `seconds` here or on a device (get_build_info devices), screenshot it, stop it. input: send_input events (desktop Linux/X11). screenshots_at: seconds since launch.
+Run a desktop player for `seconds`, screenshot it (Linux/X11), stop it. Returns log tail (log_file), errors, exit code/signal, crashed, fatal_lines. input (Linux): send_input events (key, text, mouse, wait, release_all, screenshot). screenshots_at: seconds since launch.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `after_ready` | boolean |  |  |
 | `args` | array of string |  | Player arguments. |
-| `device` | string |  |  |
 | `fixed_fps` | number (1..1000) |  |  |
 | `gap_ms` | number (0..10000) |  | Default: `50`. |
 | `headless` | boolean |  |  |
 | `input` | array of object |  |  |
 | `input_delay_seconds` | number (0..120) |  | Default: `1`. |
-| `keep_running` | boolean |  |  |
 | `log_lines` | integer (0..2000) |  | Default: `80`. |
 | `max_width` | integer (64..4096) |  | Default: `1280`. |
-| `path` | string |  | Default: last build. |
+| `path` | string |  | Executable or build dir. Default: last build. |
 | `quit_after` | integer (1..1000000) |  | Frames. |
 | `screenshot` | boolean |  |  |
 | `screenshot_after_seconds` | number |  |  |
@@ -3138,25 +3123,6 @@ Run the last build `seconds` here or on a device (get_build_info devices), scree
 
 
 ## Shipping: player runtimes and releases
-
-### `edit_build_profile`
-
-*Edit Build Profile*
-
-Group: `shipping` (listed once `tool_groups` enables it, callable either way)
-
-Build Profiles (Build Settings): named per-platform variants overriding identity, store, API, scenes, defines, content exclusions and Player Settings keys. Each file change is one undo step; activate (per user, not undoable) is what Play applies. scenes take paths or GUIDs (the project's own list: edit_build_scenes). Build with build_project profile.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `action` | `"list"` \| `"get"` \| `"create"` \| `"duplicate"` \| `"rename"` \| `"delete"` \| `"set"` \| `"activate"` | yes |  |
-| `dry_run` | boolean |  |  |
-| `name` | string or null |  |  |
-| `new_name` | string |  |  |
-| `overrides` | object |  | Settings key -> value; null removes. |
-| `platform` | `"windows"` \| `"linux"` \| `"macos"` \| `"android"` \| `"ios"` \| `"web"` |  |  |
-| `values` | object {backend, defines, development, exclude_labels, exclude_paths, icon, identifier, output_dir, product_name, scenes, start_scene, store, store_title, version_suffix} |  |  |
-
 
 ### `install_player_runtime`
 
@@ -4047,13 +4013,12 @@ Edit-time physics placement (the scene's own physics never runs): drop, separate
 
 Group: `core`. Hints: read-only, idempotent
 
-Assert a live HTML/CSS UI document's layout: passed + each failure (ref, numbers, rects), on failure an image with them outlined. Checks {type, selector}: exists, count and selected (count|min|max), visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), within_parent (container), within_viewport, contrast (min_ratio, background where the UI is transparent), min_size (width, height), virtual_window (max rows), tooltip (text). viewports, languages: more layouts. 0 matches fail.
+Assert a live HTML/CSS UI document's layout: passed + each failure (element ref, numbers, rects), on failure an image with failing boxes outlined. Checks {type, selector}: exists, count and selected (count|min|max), visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), within_parent (container), within_viewport, contrast (min_ratio, background where the UI is transparent), min_size (width, height), virtual_window (max rows), tooltip (text). viewports: other sizes too. Zero matches fail.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `checks` | array of object {allow_scroll, background, container, count, height, max, min, min_ratio, selector, single_line, text, tolerance, type, unobstructed, width, with} | yes |  |
 | `entity` | integer or string |  | UI Document (default: the only one). |
-| `languages` | array of string |  |  |
 | `max_width` | integer (0..4096) |  | Default: `768`. |
 | `scene` | integer or string |  |  |
 | `screenshot` | `"on_failure"` \| `"always"` \| `"never"` |  | Default: `"on_failure"`. |
@@ -4108,7 +4073,7 @@ Drive a list-view, grid-view, tree-view or table-view of a playing HTML UI docum
 
 Group: `core`. Hints: read-only, idempotent
 
-A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model, styles + rule file:line. at: hit test. file: a .html/.css's diagnostics (= `jasperengine-editor check --ui`). l10n: String Tables. Lua content: play only.
+A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model, styles + rule file:line. at: hit test. file: a .html/.css's diagnostics (= `jasperengine-editor check --ui`). Lua-made content: play only.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -4117,7 +4082,6 @@ A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h
 | `detail` | `"tree"` \| `"full"` |  | full: box model, attributes, styles + sources (max 20 elements). Default: `"tree"`. |
 | `entity` | integer or string |  | UI Document (default: the only one). |
 | `file` | string |  | .html/.css: diagnostics only. |
-| `l10n` | boolean |  |  |
 | `limit` | integer (1..1000) |  | Default: `200`. |
 | `max_width` | integer (0..4096) |  | Default: `768`. |
 | `models` | boolean |  | Data-model values (play). |
@@ -4261,15 +4225,11 @@ The startup notice's Dismiss: marks the report handled (default: the notice's) s
 
 Group: `diagnostics` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
 
-Crash, hang, abnormal_exit and user report folders of this editor, newest first ({id, kind, time, reason, files, handled}), and notice_open (the startup notice). include_text adds crash.txt or the hang report. folder reads a game's reports; group: true merges similar crashes with counts per version and platform.
+Crash, hang and abnormal_exit report folders of this editor, newest first ({id, kind, time, reason, files, handled}), and notice_open (the startup notice). include_text adds crash.txt or the hang report.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `files` | array of string |  | File names to inline as text, 64 KiB each. |
-| `folder` | string |  | Absolute path of a reports root. Default: this editor's. |
-| `group` | boolean |  |  |
 | `include_text` | boolean |  |  |
-| `kinds` | array of `"crash"` \| `"hang"` \| `"abnormal_exit"` \| `"user"` |  |  |
 | `limit` | integer (1..100) |  | Default: `10`. |
 
 
@@ -4435,7 +4395,7 @@ The ordered sokol passes of a view's frame: targets, actions, draws, triangles, 
 
 Group: `profiling` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
 
-A view's last drawn frame: draws, instances, triangles, vertices, passes, pipelines/bindings, uniform and upload bytes, alive resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui, shader_creation{mode,pending_*,max_main_ms,warmup}, lod{lod_histogram,fading,culled_by_size,fade_draws}, batching. One frame is one sample. gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). culling: what is culled or frozen. Also jasper://stats.
+A view's last drawn frame: draws, instances, triangles, vertices, passes, pipelines/bindings, uniform and upload bytes, alive resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui, shader_creation{mode,pending_*,max_main_ms,warmup}, lod{lod_histogram,fading,culled_by_size,fade_draws}, batching. One frame is one sample. gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). Also jasper://stats.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -4486,7 +4446,7 @@ Contact sheet of a mesh's detail levels (LOD 0 first) with each level's triangle
 
 Group: `device` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
 
-The GPU, driver, GPU quirks, its detected Device Tier and why, the tier in effect (simulated, set, detected; none in the editor until simulated), thermal and memory state, the overrides in effect and the upload queue. Tier table: quality.device_tiers.* in set_project_settings. jasper://docs/device
+The GPU, its detected Device Tier and why, the tier in effect (simulated, set, detected; none in the editor until simulated), thermal and memory state, the overrides in effect and the upload queue. Tier table: quality.device_tiers.* in set_project_settings. jasper://docs/device
 
 No parameters.
 
@@ -4832,7 +4792,7 @@ An .inputactions asset (project-relative path): its maps, actions and bindings a
 
 Group: `gameplay` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
 
-What the game reads from Input at the last frame that ran: levels (held), the frame's edges (down/up: getKeyDown/getKeyUp), mouse delta and scroll delta, pointer lock, touches with phases, gamepads, and the Input Actions maps (priority, enabled, blocked) with each action's value, phase and consumer, and the input scheme (the device in use; send_input switches it). auto_pause + send_input frames_after 0: the frame the input landed in.
+What the game reads from Input at the last frame that ran: levels (held), the frame's edges (down/up: getKeyDown/getKeyUp), mouse delta and scroll delta, pointer lock, touches with phases, gamepads, and the Input Actions maps (priority, enabled, blocked) with each action's value, phase and consumer. auto_pause + send_input frames_after 0: the frame the input landed in.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -5203,32 +5163,6 @@ Compares two images of one size: ok, max, mean, fraction_over, changed_pct, bbox
 | `mode` | `"premultiplied"` \| `"straight"` |  | Default: `"premultiplied"`. |
 | `save_diff` | string |  |  |
 | `tolerance` | integer |  | Default: `8`. |
-
-
-## Project tests
-
-### `run_tests`
-
-*Run Tests*
-
-Group: `testing` (listed once `tool_groups` enables it, callable either way)
-
-Run the project's tests (Tests/*.test.lua) as a job: Edit Mode and Play Mode cases, each Play case in a fresh session at a fixed frame rate on clean data. Returns counts, failures (file:line, frame), unverified targets and next. list: cases without running them. import: a player's results file. accept: make captures the goldens. A filter matching nothing is an error.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `action` | `"run"` \| `"list"` \| `"import"` \| `"accept"` |  | Default: `"run"`. |
-| `captures` | array of string |  | accept: "<case id>/<name>", or ["all"] (every new or failed capture of the last run). |
-| `failed_only` | boolean |  | The last run's failed, error and hung cases. |
-| `filter` | string |  | Substring of "<file>#<case>", or tag:<t>; "," = or. |
-| `for_target` | boolean |  | accept: the golden of this platform and backend only. |
-| `junit` | string |  | Also write JUnit XML here. |
-| `keep_data` | boolean |  | Keep each case's data folder. |
-| `mode` | `"all"` \| `"edit"` \| `"play"` |  | Default: `"all"`. |
-| `results_file` | string |  | import: a results JSON (its captures/ beside it). |
-| `target` | `"editor"` \| `"desktop"` |  | Default: `"editor"`. |
-| `timeout_seconds` | number (1..86400) |  | Default: `600`. |
-| `wait` | boolean |  | Default: `true`. |
 
 
 ## Particles: effects and playback
@@ -6375,23 +6309,3 @@ Draw a font as PNG: a bitmap font (.bitmapfont, .fnt, builtin:pixel) as its labe
 | `path` | string | yes |  |
 | `scale` | integer (1..16) |  | Font pixels per side. |
 | `text` | string |  | At most 256 characters, \n for lines. |
-
-
-## Localization: String Tables
-
-### `edit_string_table`
-
-*Edit String Table*
-
-Group: `localization` (listed once `tool_groups` enables it, callable either way)
-
-String Tables (.stringtable, keys ns.key). No path: lists tables, coverage per language and Play misses. get reads entries; ops (set, remove, rename, add_language, remove_language, mark_reviewed) apply as one undo step, refused whole if one fails; create makes a table; import/export CSV or XLIFF. Texts are ICU ({n, plural, one {# coin} other {# coins}}).
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `create` | object {namespace, source_language} |  |  |
-| `export` | object {format, languages, out} |  |  |
-| `get` | object {keys, language, limit, missing} |  |  |
-| `import` | object {add_languages, file} |  |  |
-| `ops` | array |  |  |
-| `path` | string |  |  |

@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "input/InputRecorder.h"
 #include <cmath>
 #include "object/spline/Spline.h"
 #include "object/spline/SplineAnimate.h"
@@ -976,6 +977,15 @@ void LuaBinding::registerClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
     // luaL_openlibs() open all libraries: base, string, io, os, package, table, debug
     luaL_openlibs(L);
+    // an input recording's replay starts from its seed (input/InputRecorder.h)
+    uint32_t inputSeed = 0;
+    if (input::takePendingLuaSeed(inputSeed)) {
+        lua_getglobal(L, "math");
+        lua_getfield(L, -1, "randomseed");
+        lua_pushinteger(L, (lua_Integer)inputSeed);
+        if (lua_pcall(L, 1, 0, 0) != LUA_OK) lua_pop(L, 1);
+        lua_pop(L, 1);
+    }
 
     registerCoreClasses(L);
     registerGameObjectClasses(L);
@@ -1020,6 +1030,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerPixelFxClasses(L);
     registerTilemapClasses(L);
     registerCrashClasses(L);
+    registerInputRecordingClasses(L);
     registerLocalizationClasses(L);
     registerSaveGameClasses(L);
     registerDialogueClasses(L);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "RunControl.h"
+#include "player/InputScriptRun.h"
 #include "TestRunnerConfig.h"
 #if JASPERENGINE_TEST_RUNNER
 #include "player/PlayerTests.h"
@@ -182,6 +183,7 @@ void RunControl::reset() {
     s.captureHeldGame = false;
     gpuCreationIdleProbe = nullptr;
     s.errorLogged.store(false);
+    InputScriptRun::reset();
     s.testsBegun = false;
     s.nextCommand = 0;
     s.commandsChecked = false;
@@ -192,10 +194,11 @@ void RunControl::configure(const LaunchOptions& options) {
     reset();
     State& s = state();
     s.options = options;
-    s.active = options.quitAfter > 0 || options.afterReady || !options.screenshot.empty() || options.failOnError ||
-               !options.commands.empty();
+    InputScriptRun::configure(s.options);
+    s.active = s.options.quitAfter > 0 || s.options.afterReady || !s.options.screenshot.empty() || s.options.failOnError ||
+               !s.options.commands.empty();
     // the commands wait for the ready frame, and the frames count after them
-    s.counting = !options.afterReady && options.commands.empty();
+    s.counting = !s.options.afterReady && s.options.commands.empty();
 }
 
 const LaunchOptions& RunControl::options() {
@@ -205,6 +208,7 @@ const LaunchOptions& RunControl::options() {
 void RunControl::engineStarted() {
     State& s = state();
     s.started = std::chrono::steady_clock::now();
+    InputScriptRun::engineStarted(s.options);
     if (s.options.fixedFps > 0.0)
         Engine::setFixedDeltatime(1.0 / s.options.fixedFps);
     if (s.options.fixedFps > 0.0 && s.options.afterReady) {
@@ -271,6 +275,7 @@ bool RunControl::wantsScreenshot() {
 
 bool RunControl::wantsOffscreenFrame() {
     const State& s = state();
+    if (s.active && InputScriptRun::wantsOffscreenFrame()) return true;
 #if JASPERENGINE_TEST_RUNNER
     // a test case's capture reads the composite of the next frame
     if (s.active && s.options.runTests && PlayerTests::wantsFrame()) return true;
@@ -288,6 +293,7 @@ void RunControl::frameDrawn(bool readySignalled, const FrameReader& reader) {
     if (!s.active) return;
     s.drawn++;
 
+    InputScriptRun::frameDrawn(reader);
     if (!s.options.commands.empty() && !s.commandsChecked) {
         s.commandsChecked = true;
         if (!console::commandsEnabled()) {
@@ -314,6 +320,8 @@ void RunControl::frameDrawn(bool readySignalled, const FrameReader& reader) {
                 return;
             }
             s.counting = true;
+            // the input script starts where the frames count: after the --command lines
+            InputScriptRun::ready();
         } else {
             const double waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - s.started).count();
             if (waited > s.options.readyTimeout) {

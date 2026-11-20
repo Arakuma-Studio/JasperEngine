@@ -47,6 +47,13 @@ namespace jasperengine::player {
         std::string logLevel;
         // --device-tier: low, medium, high or ultra instead of the detected tier ("" detects)
         std::string deviceTier;
+        // --input-script: an input file the engine runs from the ready frame (a file or content
+        // path; the web: a content path or a same-origin URL); shots go to inputShots
+        std::string inputScript;
+        std::string inputShots = "data://input-shots/";
+        bool quitAfterInput = false;    // exit when its events are done (0, 10 failed, 11 diverged)
+        bool inputStrict = false;       // a divergence fails it
+        bool inputAllowReal = false;    // real device input reaches the game during it
         // the project test runner (docs/specs/project-test-runner.md R23): --run-tests runs every
         // Play Mode case of the content, --test-filter selects (R18), --test-results is the
         // results JSON, --keep-test-data keeps each case's data folder

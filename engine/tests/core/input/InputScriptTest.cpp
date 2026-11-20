@@ -8,6 +8,7 @@
 #include "Engine.h"
 #include "Input.h"
 #include "Screen.h"
+#include "LogCapture.h"
 #include "TestSystem.h"
 #include "input/InputScript.h"
 #include "input/InputScriptRunner.h"
@@ -63,6 +64,7 @@ namespace {
             ScriptRunner::stopAll();
             Engine::systemTouchCancel();
             Engine::onKeyDown.remove(callbackTag);
+            Engine::onBack.remove(callbackTag);
             Screen::clearExtraInsets();
             Input::resetFrameState();
         }
@@ -384,6 +386,61 @@ TEST_F(InputScriptPlayerTest, TargetsNeedAResolver){
     EXPECT_NEAR(Input::getTouchPosition(0).x, 100.0f, 1e-2f);
     ASSERT_EQ(resolved.report().targets.size(), 1u);
     EXPECT_EQ(resolved.report().targets[0].document["html"], "menu.html");
+}
+
+TEST_F(InputScriptPlayerTest, AppBackReportsWhoTookIt){
+    // nobody takes it: the Back button's own path presses Escape
+    auto script = parsed(scriptFile(R"([{"type": "app", "action": "back"}])"));
+    ScriptPlayer escape(script, PlayerHost(), PlayOptions());
+    runFrame(escape, 0);
+    EXPECT_TRUE(Input::getKeyDown(D_KEY_ESCAPE));
+    ASSERT_EQ(escape.report().backs.size(), 1u);
+    EXPECT_EQ(escape.report().backs[0].route, "escape");
+
+    Input::resetFrameState();
+    int heard = 0;
+    Engine::onBack.add(callbackTag, std::function<void(const std::string&)>([&](const std::string&) { heard++; }));
+    ScriptPlayer game(script, PlayerHost(), PlayOptions());
+    runFrame(game, 0);
+    EXPECT_EQ(heard, 1);
+    ASSERT_EQ(game.report().backs.size(), 1u);
+    EXPECT_EQ(game.report().backs[0].route, "game");
+    EXPECT_FALSE(Input::getKeyDown(D_KEY_ESCAPE));
+}
+
+TEST_F(InputScriptPlayerTest, GamepadWarpNeedsTheGamepadCursor){
+    auto script = parsed(scriptFile(R"([{"type": "gamepad", "button": "a", "x": 0.5, "y": 0.5, "space": "normalized"}])"));
+    ASSERT_EQ(script->actions.size(), 3u);
+    EXPECT_EQ(script->actions[0].type, ActionType::GamepadCursor);
+    EXPECT_EQ(script->actions[0].framesAfter, 0u);   // the warp and the press share the frame
+    ScriptPlayer player(script, PlayerHost(), PlayOptions());
+    EXPECT_FALSE(player.beforeFrame(0));
+    EXPECT_EQ(player.errorText(), "Event 0 (gamepad press): no document has Gamepad Cursor on: set_properties UIDocument gamepadCursor true");
+}
+
+TEST_F(InputScriptPlayerTest, RecordedOrientationTurnsAreSkippedOutsideTheEditor){
+    // the device turned while recording; here nothing simulates one: the turns are skipped, warned
+    // once, and the rest of the recording still runs
+    auto recording = parsed(recordingFile(R"([
+        {"frame": 0, "type": "app", "action": "orientation", "orientation": "portrait"},
+        {"frame": 1, "type": "app", "action": "orientation", "orientation": "landscape_left"},
+        {"frame": 1, "type": "key", "key": "a", "action": "down"}
+    ])"));
+    test::LogCapture log;
+    ScriptPlayer player(recording, PlayerHost(), PlayOptions());
+    runFrame(player, 0);
+    runFrame(player, 1);
+    EXPECT_TRUE(Input::getKeyDown(D_KEY_A));
+    EXPECT_TRUE(player.report().done);
+    EXPECT_FALSE(player.report().failed);
+    EXPECT_EQ(log.count(D_LOG_WARN, "recorded orientation turns are skipped"), 1u);
+    Engine::systemKeyUp(D_KEY_A, false, 0);
+
+    // a script asks for the turn: that cannot be done here, and says where it can
+    auto script = parsed(scriptFile(R"([{"type": "app", "action": "orientation", "orientation": "portrait"}])"));
+    ScriptPlayer asked(script, PlayerHost(), PlayOptions());
+    EXPECT_FALSE(asked.beforeFrame(0));
+    EXPECT_NE(asked.errorText().find("runs in the editor's Game view"), std::string::npos) << asked.errorText();
 }
 
 TEST_F(InputScriptPlayerTest, InjectingIsKnownToTheEntryPoints){

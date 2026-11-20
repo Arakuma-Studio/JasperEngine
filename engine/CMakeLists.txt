@@ -1411,6 +1411,7 @@ set(JASPERENGINE_SRCS
     core/player/PlayerConfig.cpp
     core/player/PlayerModules.cpp
     core/player/RunControl.cpp
+    core/player/InputScriptRun.cpp
     core/Input.cpp
     core/input/InputControlPath.cpp
     core/input/InputActionAsset.cpp
@@ -1434,6 +1435,9 @@ set(JASPERENGINE_SRCS
     core/input/InputControlNames.cpp
     core/input/InputManagerFormat.cpp
     core/input/InputScript.cpp
+    core/input/InputRecorder.cpp
+    core/input/InputReplay.cpp
+    core/input/StateHash.cpp
     core/Log.cpp
     core/device/Device.cpp
     core/device/DeviceSettings.cpp
@@ -1877,6 +1881,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/PixelArtClassesLua.cpp
     core/script/binding/SortingClassesLua.cpp
     core/script/binding/HitStopClassesLua.cpp
+    core/script/binding/InputRecordingClassesLua.cpp
     core/script/binding/CullingClassesLua.cpp
     # S48 screen transitions and the scripted glitch
     core/script/binding/TransitionClassesLua.cpp

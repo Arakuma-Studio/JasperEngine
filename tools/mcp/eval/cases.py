@@ -751,6 +751,44 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "guard_input_script_file",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "Agents repeating a menu flow re-sent the same send_input events by hand each time; a script "
+                         "file runs the flow with one call and keeps it for the next run.",
+        "text_at_issue": "send_input parameter file: 'Script .input.json.'",
+        "source": "input-recorder-and-input-scripts spec, AC19",
+        "prompt": "The game is playing. Tests/Input/menu.input.json is a script that taps through the main menu. Run it "
+                  "and tell me whether it worked.",
+        "mocks": [
+            {"tool": "send_input", "args": {"file": "re:menu\\.input\\.json$"}, "result": ok(
+                "Sent 6 input step(s) over 140 frame(s).\nShot \"01_menu\": Recordings/Input/menu/01_menu.png",
+                {"frames": 140, "shots": [{"name": "01_menu", "path": "Recordings/Input/menu/01_menu.png"}]})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\").", {"state": "playing"})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"file": "re:menu\\.input\\.json$"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_input_ms_in_file",
+        "playing": True,
+        "kind": "bad",
+        "what_happened": "Agents writing input files used wall-clock ms waits; in a file ms are frames at its fixed_fps, "
+                         "and a load that takes longer on a slow machine is waited for with wait until.",
+        "text_at_issue": "send_input description: 'wait: frames, ms, or until (Lua; frames caps)'",
+        "source": "input-recorder-and-input-scripts spec, AC19",
+        "prompt": "The game is playing. Wait until the Lua global MenuReady is true (it takes a few seconds to load), "
+                  "then press space.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "wait", "until": "re:MenuReady"}]}, "result": ok(
+                "Sent 3 input step(s) over 212 frame(s).", {"frames": 212, "state": "playing"})},
+            {"tool": "wait", "args": {"until": "re:MenuReady"}, "result": ok("Condition true after 210 frames.", {"reason": "condition"})},
+            {"tool": "send_input", "result": ok("Sent 2 input step(s) over 3 frame(s).", {"frames": 3})},
+        ],
+        "checks": {"calls": ["send_input"], "max_errors": {"send_input": 0}},
+        "max_turns": 8,
+    },
+    {
         "id": "bad_batch_args_key",
         "kind": "bad",
         "what_happened": "batch items used `args` instead of `arguments`; the key was dropped silently, the item ran with no "
