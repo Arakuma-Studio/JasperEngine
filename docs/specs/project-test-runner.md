@@ -795,7 +795,7 @@ case tagged `red`, a skipped case, an Edit Mode case, goldens for `level1_start`
 - **`run_tests {target: "desktop"}`** chains `build_project {mode: "desktop", method: "prebuilt",
   development: true}` with Include Tests forced for that build, `run_build {headless: true,
   seconds: 300, args: ["--run-tests", ...]}` and the import of the results file the player names in
-  its log (`[test] results <path>`); a run longer than run_build's 300 s is cut.
+  its log (`[test] results <path>`, an absolute path); a run longer than run_build's 300 s is cut.
 - **Test-project hooks.** `tools/test-projects/game-tests` is the engine project of AC12 and AC13
   (four smoke cases in `assets/tests/`, `android-expect.txt`, `tools/web/gates/game-tests.json`); the
   summary line's keys are in alphabetical order (the results document's JSON).

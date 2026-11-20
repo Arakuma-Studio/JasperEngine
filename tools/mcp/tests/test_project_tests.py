@@ -395,9 +395,11 @@ async def test_desktop_player_runs_tests(ed: Editor):
     s = S
     doc = json.loads(s["project"].joinpath(red["results_file"]).read_text())
     status = {c["name"]: c["status"] for c in doc["cases"]}
+    why = {c["name"]: ([f["message"] for f in c.get("failures", [])], [line["message"] for line in c.get("console", [])][-3:])
+           for c in doc["cases"] if c["status"] not in ("passed", "skipped")}
     ed.check_eq((status["Player starts with three lives"], status["A coin is saved"], status["Red on purpose"],
                  status["The shop refuses a purchase"], status["Leaves Lua state behind"], status["Starts from a fresh Lua state"]),
-                ("passed", "passed", "failed", "skipped", "passed", "passed"), f"{status}")
+                ("passed", "passed", "failed", "skipped", "passed", "passed"), f"{status} {json.dumps(why)[:3000]}")
     ed.check("Edit Mode cannot edit" not in status, "a player runs no Edit Mode case")
     capture = next(c for case in doc["cases"] for c in case["captures"])
     ed.check(capture["status"] != "pending", f"the pending capture was compared at import: {capture}")
