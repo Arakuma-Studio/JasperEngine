@@ -426,3 +426,18 @@ player:setLayerMeshSpaceRotation("Upper Body", true)
 - **R30: what the gizmo's ghost is.** The runtime records, per boundary bone, the rig-space rotation right after
   the layer's own blend and before the pass (`AnimatorInstance::layerMeshSpaceUnpassed`), over the pose the
   layers below left, corrections included.
+- **R34: where the warning comes from.** The "no effect" warning for the option on layer 0 or an Additive layer is
+  the MCP validation's (`edit_animator_controller`, `get_animator` / `get_animation {controller}`, `write_file` of a
+  `.controller`), not `anim::validateController`'s, so `check --anims` and the Animator window do not repeat it.
+- **R36: what a bone is compared with, and when.** Each listed bone is compared with where the blend should put it:
+  the solo layer's rig rotation where the mask takes it, the layers below where it does not
+  (`poseBlendRotation(below, solo, weight * mask)`, the pass's target), so a Body-on mask's legs are measured against
+  the run, not the attack. The layers below are the same evaluation with this layer and those above it at weight 0.
+  The check plays both states from their start in edit mode, one time per main-thread slice with the scene put back
+  after each; in play mode it is refused. `layer_blend` is listed as a free-form object (the handler checks its
+  members) and `check_animation` has a budget exception, so the `animation` group keeps 13 tools.
+- **R38: where the Animator's coverage is.** `get_animation {entity}`'s `mask_coverage` was the Animation Player's
+  (`players[0].mask_coverage`). The Animator's masked layers are a new member, `animator: {entity, controller,
+  mask_coverage: [{layer, covered, total, warnings, mesh_space_rotation, boundary_bones}]}`, the bones as paths from
+  the Animator's GameObject; `get_animation {entity}` now answers for a GameObject that only an Animator plays. The
+  Player's coverage gains its fields with step 5 (R39).
