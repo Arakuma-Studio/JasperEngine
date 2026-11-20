@@ -5014,6 +5014,8 @@
 		4A534E47DB6039C34EFAAD7A /* InputScript.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E562E3C49242FBD7 /* InputScript.cpp */; };
 		4A534E47233962EE4B8553AD /* InputScript.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4708A47DEEE94F83AE /* InputScript.h */; };
 		4A534E470FFB202D75CD6558 /* InputScriptRunner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4786963BAB6500F7BE /* InputScriptRunner.h */; };
+		4A534E53F5BA1F3A7AE6E46A /* ConsoleCommands.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53C605544DB443297D /* ConsoleCommands.cpp */; };
+		4A534E533EB1184B8A3029C4 /* ConsoleCommands.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53C605544DB443297D /* ConsoleCommands.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9647,6 +9649,7 @@
 		4A534E47E562E3C49242FBD7 /* InputScript.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputScript.cpp; sourceTree = "<group>"; };
 		4A534E4708A47DEEE94F83AE /* InputScript.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputScript.h; sourceTree = "<group>"; };
 		4A534E4786963BAB6500F7BE /* InputScriptRunner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputScriptRunner.h; sourceTree = "<group>"; };
+		4A534E53C605544DB443297D /* ConsoleCommands.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ConsoleCommands.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -11485,6 +11488,7 @@
 				4A534E470614F67155D9E9FC /* DebugOverlay.h */,
 				4A534E47C029F7456AC311E6 /* DebugOverlayResources.h */,
 				4A534E47FC23B0CE0C82B758 /* DebugStats.h */,
+				4A534E53C605544DB443297D /* ConsoleCommands.cpp */,
 			);
 			path = debug;
 			sourceTree = "<group>";
@@ -19794,6 +19798,7 @@
 				4A534E470611FC91C80C2EAA /* CullingClassesLua.cpp in Sources */,
 				4A534E47B7A4A4F3C5A76787 /* CullingSystem.cpp in Sources */,
 				4A534E4789E1A9AF1D751A17 /* InputScript.cpp in Sources */,
+				4A534E533EB1184B8A3029C4 /* ConsoleCommands.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20796,6 +20801,7 @@
 				4A534E47E263432C02CB12D0 /* CullingClassesLua.cpp in Sources */,
 				4A534E4776590B99B1885055 /* CullingSystem.cpp in Sources */,
 				4A534E47DB6039C34EFAAD7A /* InputScript.cpp in Sources */,
+				4A534E53F5BA1F3A7AE6E46A /* ConsoleCommands.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

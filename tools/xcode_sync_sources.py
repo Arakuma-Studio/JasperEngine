@@ -54,7 +54,9 @@ APPLE = {"APPLE": "1", "UNIX": "1", "EMSCRIPTEN": None, "WIN32": None, "ANDROID"
          "CMAKE_CURRENT_BINARY_DIR": os.path.join(ROOT, "build", "xcode", "engine"),
          "JASPERENGINE_LIB_TYPE": "STATIC", "JASPERENGINE_SHARED": "OFF", "JASPERENGINE_TESTS": "OFF",
          "JASPERENGINE_HTMLUI_TESTS": "OFF", "JASPERENGINE_NOISE_ALL_BACKENDS": "OFF",
-         "EMSCRIPTEN_THREAD_SUPPORT": None, "JASPERENGINE_EDITOR_VERSION": None}
+         "EMSCRIPTEN_THREAD_SUPPORT": None, "JASPERENGINE_EDITOR_VERSION": None,
+         # the project test runner ships in Development players only (project-test-runner.md R32)
+         "JASPERENGINE_TEST_RUNNER": "OFF"}
 # the optional modules: the editor engine's set (docs/specs/S34-player-size.md R1), but Title Art,
 # and V-HACD, which only the editor's desktop engine decomposes with (the project defines no
 # JASPERENGINE_CONVEX_DECOMPOSITION)
