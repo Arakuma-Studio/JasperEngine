@@ -1505,7 +1505,7 @@ bool buildReportInfo(Project* project, const Json& args, Json& data, std::string
         const fs::path baseFile = BuildReportHistory::resolve(projectPath, against, error);
         if (baseFile.empty()) return false;
         BuildReport base;
-        if (!BuildReport::load(baseFile, base, error)) return false;
+        if (!BuildReport::load(baseFile, base, error, true)) return false;
         const BuildReportDiff diff = compareBuildReports(base, report);
         Json categories = Json::object();
         std::string parts;

@@ -115,7 +115,7 @@ void BuildReportWindow::load(const fs::path& path) {
 void BuildReportWindow::compareWith(const fs::path& path) {
     compareError.clear();
     deltaByKey.clear();
-    if (!BuildReport::load(path, base, compareError)) {
+    if (!BuildReport::load(path, base, compareError, true)) {
         comparing = false;
         return;
     }

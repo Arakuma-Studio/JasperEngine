@@ -119,12 +119,13 @@ namespace jasperengine::editor {
         static std::map<std::string, std::pair<std::string, uint64_t>> cookedTextures(const std::filesystem::path& assetsDir,
                                                                                        const std::filesystem::path& sourceAssets);
 
-        Json toJson() const;
-        // what write() writes: toJson with one line per file, left-out source and reached asset
+        // build-report.json's text: keys in order, one line per file, left-out source and reached asset
         std::string toText() const;
-        static bool fromJson(const Json& json, BuildReport& out);
+        // false for text that is not a version 1 report (unknown keys are skipped); comparisonOnly
+        // reads what compareBuildReports needs (no reachability, left-out sources or budgets)
+        static bool parse(const std::string& text, BuildReport& out, bool comparisonOnly = false);
         bool write(const std::filesystem::path& file, std::string& error) const;
-        static bool load(const std::filesystem::path& file, BuildReport& out, std::string& error);
+        static bool load(const std::filesystem::path& file, BuildReport& out, std::string& error, bool comparisonOnly = false);
         // "Build Report (Web): 142 MB; textures 61 MB, models 38 MB..."
         std::string summary() const;
         static std::string formatBytes(uint64_t bytes);

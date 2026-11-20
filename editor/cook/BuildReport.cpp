@@ -10,10 +10,13 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <mutex>
 #include <set>
 #include <sstream>
+#include <string_view>
+#include <unordered_map>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -21,8 +24,18 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    std::string lowerExtension(const std::string& path){
-        std::string extension = fs::path(path).extension().string();
+    // a path's file name and its extension in lower case, as std::filesystem names them, without
+    // building a path: the reader asks for 20,000 categories (R23)
+    std::string_view fileNameOf(std::string_view path){
+        const size_t slash = path.find_last_of('/');
+        return slash == std::string_view::npos ? path : path.substr(slash + 1);
+    }
+
+    std::string lowerExtension(std::string_view path){
+        const std::string_view name = fileNameOf(path);
+        const size_t dot = name.rfind('.');
+        if (dot == std::string_view::npos || dot == 0 || name == "..") return std::string();
+        std::string extension(name.substr(dot));
         std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c){ return (char)std::tolower(c); });
         return extension;
     }
@@ -45,25 +58,28 @@ const std::vector<std::string>& BuildReport::categoryNames(){
 }
 
 std::string BuildReport::categoryOf(const std::string& path){
-    const std::string extension = lowerExtension(path);
-    const std::string cooked = std::string("assets/") + CookedTextures::kCookedDir + "/";
-    if (path.rfind(cooked + "models/", 0) == 0 || path.find("/" + std::string(CookedTextures::kCookedDir) + "/models/") != std::string::npos)
+    static const std::string cooked = std::string("assets/") + CookedTextures::kCookedDir + "/";
+    static const std::string cookedModels = cooked + "models/";
+    static const std::string nested = "/" + std::string(CookedTextures::kCookedDir) + "/";
+    static const std::string nestedModels = nested + "models/";
+    if (path.rfind(cookedModels, 0) == 0 || path.find(nestedModels) != std::string::npos)
         return "models";
-    if (path.rfind(cooked, 0) == 0 || path.find("/" + std::string(CookedTextures::kCookedDir) + "/") != std::string::npos)
+    if (path.rfind(cooked, 0) == 0 || path.find(nested) != std::string::npos)
         return "textures";
-    static const std::set<std::string> models = {".glb", ".gltf", ".fbx", ".obj", ".bin", ".vat"};
-    static const std::set<std::string> textures = {".png", ".jpg", ".jpeg", ".tga", ".bmp", ".psd", ".gif", ".hdr", ".exr", ".ktx2", ".svg", ".webp", ".jlut"};
-    static const std::set<std::string> audio = {".wav", ".ogg", ".mp3", ".flac", ".opus"};
-    static const std::set<std::string> scripts = {".lua", ".luac"};
-    static const std::set<std::string> scenes = {".scene", ".prefab", ".jscn", ".jpfb"};
-    static const std::set<std::string> engine = {".exe", ".dll", ".so", ".dylib", ".wasm", ".js", ".a", ".apk", ".aab", ".pdb"};
+    static const std::set<std::string, std::less<>> models = {".glb", ".gltf", ".fbx", ".obj", ".bin", ".vat"};
+    static const std::set<std::string, std::less<>> textures = {".png", ".jpg", ".jpeg", ".tga", ".bmp", ".psd", ".gif", ".hdr", ".exr", ".ktx2", ".svg", ".webp", ".jlut"};
+    static const std::set<std::string, std::less<>> audio = {".wav", ".ogg", ".mp3", ".flac", ".opus"};
+    static const std::set<std::string, std::less<>> scripts = {".lua", ".luac"};
+    static const std::set<std::string, std::less<>> scenes = {".scene", ".prefab", ".jscn", ".jpfb"};
+    static const std::set<std::string, std::less<>> engine = {".exe", ".dll", ".so", ".dylib", ".wasm", ".js", ".a", ".apk", ".aab", ".pdb"};
+    const std::string extension = lowerExtension(path);
     if (models.count(extension)) return "models";
     if (textures.count(extension)) return "textures";
     if (audio.count(extension)) return "audio";
     if (scripts.count(extension) || path.rfind("lua/", 0) == 0) return "scripts";
     if (scenes.count(extension) || path.rfind("scenes/", 0) == 0 || path.rfind("prefabs/", 0) == 0) return "scenes";
-    const std::string name = fs::path(path).filename().string();
-    if (engine.count(extension) || name.rfind("jasperengine-player", 0) == 0 || name.find(".so.") != std::string::npos ||
+    const std::string_view name = fileNameOf(path);
+    if (engine.count(extension) || name.rfind("jasperengine-player", 0) == 0 || name.find(".so.") != std::string_view::npos ||
         path.find(".framework/") != std::string::npos || path.find(".app/Contents/MacOS/") != std::string::npos)
         return "engine";
     return "other";
@@ -133,160 +149,534 @@ std::map<std::string, std::pair<std::string, uint64_t>> BuildReport::cookedTextu
 
 namespace {
 
-    Json reportFileJson(const BuildReportFile& file, bool withAsset){
-        Json entry = {{"path", file.path}, {"bytes", file.bytes}};
-        // the file list leaves out what its path says (largest keeps every key, for older readers)
-        if (!withAsset || file.category != BuildReport::categoryOf(file.path)) entry["category"] = file.category;
-        if (!file.source.empty()){
-            entry["source"] = file.source;
-            entry["source_bytes"] = file.sourceBytes;
-        }
-        if (withAsset){
-            // only what the path does not already say: assets/<rel> ships <rel>, a cooked file its source
-            const std::string implied = !file.source.empty() ? file.source : file.path.rfind("assets/", 0) == 0 ? file.path.substr(7) : std::string();
-            if (!file.origin.empty()) entry["origin"] = file.origin;
-            else if (file.asset != implied) entry["asset"] = file.asset;
-        }
-        return entry;
+    // the asset a file ships when its entry names none: a cooked file's source, assets/<rel>'s <rel>
+    std::string impliedReportAsset(const BuildReportFile& file){
+        if (!file.source.empty()) return file.source;
+        return file.path.rfind("assets/", 0) == 0 ? file.path.substr(7) : std::string();
     }
 
-    BuildReportFile reportFileFromJson(const Json& entry){
+    // build-report.json is written straight into one string: a document tree of 20,000 files and
+    // their reachability costs ten times the writing (R22). The layout is the reader's: keys in
+    // order, a container of scalars on one line, others one child per line.
+    class ReportWriter {
+    public:
+        std::string out;
+
+        void string(const std::string& text){
+            out += '"';
+            for (unsigned char c : text){
+                switch (c){
+                    case '"': out += "\\\""; break;
+                    case '\\': out += "\\\\"; break;
+                    case '\b': out += "\\b"; break;
+                    case '\f': out += "\\f"; break;
+                    case '\n': out += "\\n"; break;
+                    case '\r': out += "\\r"; break;
+                    case '\t': out += "\\t"; break;
+                    default:
+                        if (c < 0x20){
+                            char escaped[8];
+                            std::snprintf(escaped, sizeof(escaped), "\\u%04x", c);
+                            out += escaped;
+                        } else {
+                            out += (char)c;
+                        }
+                }
+            }
+            out += '"';
+        }
+        void number(uint64_t value){
+            char text[24];
+            const int length = std::snprintf(text, sizeof(text), "%llu", (unsigned long long)value);
+            out.append(text, (size_t)length);
+        }
+        // "key": at `depth`, after the previous member's ",\n" (first: none)
+        void key(const char* name, int depth, bool& first){
+            out += first ? "\n" : ",\n";
+            first = false;
+            out.append((size_t)depth * 2, ' ');
+            out += '"';
+            out += name;
+            out += "\": ";
+        }
+        void member(const char* name, bool& first){
+            out += first ? "" : ",";
+            first = false;
+            out += '"';
+            out += name;
+            out += "\":";
+        }
+        void close(int depth, char bracket){
+            out += '\n';
+            out.append((size_t)depth * 2, ' ');
+            out += bracket;
+        }
+        void file(const BuildReportFile& entry, bool fileList){
+            bool first = true;
+            out += '{';
+            if (fileList && entry.origin.empty() && entry.asset != impliedReportAsset(entry)){ member("asset", first); string(entry.asset); }
+            member("bytes", first); number(entry.bytes);
+            // the file list leaves out what its path says (largest keeps every key, for older readers)
+            if (!fileList || entry.category != BuildReport::categoryOf(entry.path)){ member("category", first); string(entry.category); }
+            if (fileList && !entry.origin.empty()){ member("origin", first); string(entry.origin); }
+            member("path", first); string(entry.path);
+            if (!entry.source.empty()){
+                member("source", first); string(entry.source);
+                member("source_bytes", first); number(entry.sourceBytes);
+            }
+            out += '}';
+        }
+        // an array of one-line items at depth 1, one per line
+        template <typename List, typename Item>
+        void lines(const List& list, Item item){
+            if (list.empty()){
+                out += "[]";
+                return;
+            }
+            out += '[';
+            bool first = true;
+            for (const auto& entry : list){
+                out += first ? "\n    " : ",\n    ";
+                first = false;
+                item(entry);
+            }
+            close(1, ']');
+        }
+    };
+
+    // What the scanner reads goes straight where it belongs: no document tree, each string moved.
+    // A container the report does not use (or, for a comparison, does not need) is skipped unread.
+    class ReportReader {
+    public:
+        ReportReader(BuildReport& report, bool comparisonOnly): report(report), comparisonOnly(comparisonOnly) {}
+
+        bool valid() const { return version == 1 && sawTop; }
+
+        // a value that is no unsigned integer or string (null, true, a float...)
+        void other(){
+            if (!frames.empty() && frames.back() == Frame::ReachItem) reachParts = 100;   // the entry is dropped
+        }
+        void string(std::string& value){
+            const Frame top = frames.empty() ? Frame::Skip : frames.back();
+            if (top == Frame::Top){
+                if (pending == "platform") report.platform = std::move(value);
+                else if (pending == "method") report.method = std::move(value);
+                else if (pending == "buildProfile") report.buildProfile = std::move(value);
+                else if (pending == "id") report.id = std::move(value);
+                else if (pending == "created") report.created = std::move(value);
+                else if (pending == "editor_version") report.editorVersion = std::move(value);
+            } else if (top == Frame::FileItem){
+                if (pending == "path") file.path = std::move(value);
+                else if (pending == "category"){ file.category = std::move(value); fileHasCategory = true; }
+                else if (pending == "source") file.source = std::move(value);
+                else if (pending == "origin") file.origin = std::move(value);
+                else if (pending == "asset"){ file.asset = std::move(value); fileHasAsset = true; }
+            } else if (top == Frame::LeftItem){
+                if (pending == "source") left.source = std::move(value);
+                else if (pending == "reason") left.reason = std::move(value);
+            } else if (top == Frame::ReachItem){
+                if (reachParts < 4) reachPart[reachParts] = std::move(value);
+                reachParts++;
+            } else if (top == Frame::BudgetItem){
+                if (pending == "platform") budget.platform = std::move(value);
+                else if (pending == "category") budget.category = std::move(value);
+            }
+        }
+        // false: the scanner skips the object
+        bool startObject(){
+            if (frames.empty()){
+                sawTop = true;
+                frames.push_back(Frame::Top);
+                return true;
+            }
+            const Frame top = frames.back();
+            Frame next = Frame::Skip;
+            if (top == Frame::Top && pending == "categories") next = Frame::Categories;
+            else if (top == Frame::Top && pending == "reachability" && !comparisonOnly){ next = Frame::Reach; report.reachability.emplace(); }
+            else if (top == Frame::Reach && pending == "assets") next = Frame::ReachAssets;
+            else if (top == Frame::FileList){ next = Frame::FileItem; file = BuildReportFile(); fileHasCategory = fileHasAsset = false; }
+            else if (top == Frame::LeftList){ next = Frame::LeftItem; left = BuildReportLeftOut(); }
+            else if (top == Frame::BudgetList){ next = Frame::BudgetItem; budget = BuildReportBudget(); }
+            if (next == Frame::Skip) return false;
+            frames.push_back(next);
+            return true;
+        }
+        void endObject(){
+            const Frame top = frames.back();
+            frames.pop_back();
+            if (top == Frame::FileItem){
+                if (!fileHasCategory) file.category = BuildReport::categoryOf(file.path);
+                // a comparison reads no reachability: the asset a file ships is not asked
+                if (!fileHasAsset && file.origin.empty() && !comparisonOnly) file.asset = impliedReportAsset(file);
+                fileTarget->push_back(std::move(file));
+            } else if (top == Frame::LeftItem){
+                report.leftOut.push_back(std::move(left));
+            } else if (top == Frame::BudgetItem){
+                report.budgets.push_back(std::move(budget));
+            }
+        }
+        bool startArray(){
+            const Frame top = frames.empty() ? Frame::Skip : frames.back();
+            Frame next = Frame::Skip;
+            if (top == Frame::Top && pending == "largest"){ next = Frame::FileList; fileTarget = &report.largest; }
+            else if (top == Frame::Top && pending == "files"){ next = Frame::FileList; fileTarget = &report.files; report.hasFiles = true; }
+            else if (top == Frame::Top && pending == "left_out" && !comparisonOnly) next = Frame::LeftList;
+            else if (top == Frame::Top && pending == "budgets" && !comparisonOnly) next = Frame::BudgetList;
+            else if (top == Frame::ReachAssets){ next = Frame::ReachItem; reachAsset = std::move(pending); reachParts = 0; }
+            if (next == Frame::Skip) return false;
+            frames.push_back(next);
+            return true;
+        }
+        void endArray(){
+            const Frame top = frames.back();
+            frames.pop_back();
+            // [via, field, kind] and the GameObject; the writer gives them in key order
+            if (top == Frame::ReachItem && reachParts >= 3 && reachParts <= 4)
+                report.reachability->emplace_hint(report.reachability->end(), std::move(reachAsset),
+                                                  BuildReportReach{std::move(reachPart[0]), std::move(reachPart[1]), std::move(reachPart[2]),
+                                                                   reachParts > 3 ? std::move(reachPart[3]) : std::string()});
+        }
+        void key(std::string& value){
+            pending.swap(value);
+        }
+        void number(uint64_t value){
+            const Frame top = frames.empty() ? Frame::Skip : frames.back();
+            if (top == Frame::Top){
+                if (pending == "version") version = (int64_t)value;
+                else if (pending == "total_bytes") report.totalBytes = value;
+            } else if (top == Frame::Categories){
+                report.categories[pending] = value;
+            } else if (top == Frame::FileItem){
+                if (pending == "bytes") file.bytes = value;
+                else if (pending == "source_bytes") file.sourceBytes = value;
+            } else if (top == Frame::LeftItem){
+                if (pending == "bytes") left.bytes = value;
+            } else if (top == Frame::BudgetItem){
+                if (pending == "limit_bytes") budget.limitBytes = value;
+                else if (pending == "bytes") budget.bytes = value;
+            } else if (top == Frame::ReachItem){
+                reachParts = 100;   // not a string: the entry is dropped
+            }
+        }
+
+    private:
+        enum class Frame { Top, Categories, FileList, FileItem, LeftList, LeftItem, Reach, ReachAssets, ReachItem, BudgetList, BudgetItem, Skip };
+
+        BuildReport& report;
+        bool comparisonOnly = false;
+        std::vector<Frame> frames;
+        std::string pending;
+        bool sawTop = false;
+        int64_t version = 0;
         BuildReportFile file;
-        file.path = entry.value("path", std::string());
-        file.category = entry.contains("category") ? entry.value("category", std::string()) : BuildReport::categoryOf(file.path);
-        file.bytes = entry.value("bytes", (uint64_t)0);
-        file.source = entry.value("source", std::string());
-        file.sourceBytes = entry.value("source_bytes", (uint64_t)0);
-        file.origin = entry.value("origin", std::string());
-        if (entry.contains("asset") && entry["asset"].is_string()) file.asset = entry["asset"].get<std::string>();
-        else if (file.origin.empty()) file.asset = !file.source.empty() ? file.source : file.path.rfind("assets/", 0) == 0 ? file.path.substr(7) : std::string();
-        return file;
-    }
+        bool fileHasCategory = false, fileHasAsset = false;
+        std::vector<BuildReportFile>* fileTarget = nullptr;
+        BuildReportLeftOut left;
+        BuildReportBudget budget;
+        std::string reachAsset;
+        std::string reachPart[4];
+        size_t reachParts = 0;
+    };
 
-    // a container whose children are all scalars goes on one line; others open one line per child
-    void appendReportLines(std::string& out, const Json& value, int depth){
-        bool nested = false;
-        if (value.is_structured())
-            for (const Json& child : value) nested = nested || child.is_structured();
-        if (!nested || value.empty()){
-            out += value.dump();
-            return;
+    // A JSON scanner for build-report.json: strings are found with memchr and decoded into one
+    // reused buffer, unsigned integers read in place, and a container the reader declines is
+    // skipped by bracket counting. nlohmann's parser, even its SAX interface, read a 20,000-file
+    // report at a third of the speed R23 needs.
+    class ReportScanner {
+    public:
+        ReportScanner(const std::string& text, ReportReader& reader): p(text.data()), end(text.data() + text.size()), reader(reader) {}
+
+        bool run(){
+            space();
+            if (p == end || *p != '{' || !value(0)) return false;
+            space();
+            return p == end;
         }
-        const std::string indent((size_t)(depth + 1) * 2, ' ');
-        out += value.is_object() ? "{\n" : "[\n";
-        bool first = true;
-        if (value.is_object()){
-            for (const auto& [key, child] : value.items()){
-                out += (first ? "" : ",\n") + indent + Json(key).dump() + ": ";
-                appendReportLines(out, child, depth + 1);
-                first = false;
+
+    private:
+        const char* p;
+        const char* end;
+        ReportReader& reader;
+        std::string buffer;
+        static constexpr int kMaxDepth = 64;
+
+        void space(){
+            while (p < end && (*p == ' ' || *p == '\n' || *p == '\r' || *p == '\t')) p++;
+        }
+        bool literal(const char* word, size_t length){
+            if ((size_t)(end - p) < length || std::memcmp(p, word, length) != 0) return false;
+            p += length;
+            return true;
+        }
+        static void utf8(std::string& out, uint32_t code){
+            if (code < 0x80) out += (char)code;
+            else if (code < 0x800){ out += (char)(0xC0 | (code >> 6)); out += (char)(0x80 | (code & 0x3F)); }
+            else if (code < 0x10000){ out += (char)(0xE0 | (code >> 12)); out += (char)(0x80 | ((code >> 6) & 0x3F)); out += (char)(0x80 | (code & 0x3F)); }
+            else { out += (char)(0xF0 | (code >> 18)); out += (char)(0x80 | ((code >> 12) & 0x3F)); out += (char)(0x80 | ((code >> 6) & 0x3F)); out += (char)(0x80 | (code & 0x3F)); }
+        }
+        bool hex4(uint32_t& out){
+            if (end - p < 4) return false;
+            out = 0;
+            for (int i = 0; i < 4; i++){
+                const char c = *p++;
+                out <<= 4;
+                if (c >= '0' && c <= '9') out |= (uint32_t)(c - '0');
+                else if (c >= 'a' && c <= 'f') out |= (uint32_t)(c - 'a' + 10);
+                else if (c >= 'A' && c <= 'F') out |= (uint32_t)(c - 'A' + 10);
+                else return false;
             }
-        } else {
-            for (const Json& child : value){
-                out += (first ? "" : ",\n") + indent;
-                appendReportLines(out, child, depth + 1);
-                first = false;
+            return true;
+        }
+        // p at the opening quote; the decoded text in `buffer`
+        bool string(){
+            p++;
+            buffer.clear();
+            while (true){
+                const char* quote = (const char*)std::memchr(p, '"', (size_t)(end - p));
+                if (!quote) return false;
+                const char* escape = (const char*)std::memchr(p, '\\', (size_t)(quote - p));
+                if (!escape){
+                    buffer.append(p, (size_t)(quote - p));
+                    p = quote + 1;
+                    return true;
+                }
+                buffer.append(p, (size_t)(escape - p));
+                p = escape + 1;
+                if (p == end) return false;
+                const char c = *p++;
+                switch (c){
+                    case '"': buffer += '"'; break;
+                    case '\\': buffer += '\\'; break;
+                    case '/': buffer += '/'; break;
+                    case 'b': buffer += '\b'; break;
+                    case 'f': buffer += '\f'; break;
+                    case 'n': buffer += '\n'; break;
+                    case 'r': buffer += '\r'; break;
+                    case 't': buffer += '\t'; break;
+                    case 'u': {
+                        uint32_t code = 0;
+                        if (!hex4(code)) return false;
+                        // a surrogate pair is one character
+                        if (code >= 0xD800 && code < 0xDC00){
+                            uint32_t low = 0;
+                            if (!literal("\\u", 2) || !hex4(low) || low < 0xDC00 || low > 0xDFFF) return false;
+                            code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00);
+                        }
+                        utf8(buffer, code);
+                        break;
+                    }
+                    default: return false;
+                }
             }
         }
-        out += "\n" + std::string((size_t)depth * 2, ' ') + (value.is_object() ? "}" : "]");
-    }
+        // a skipped string: only where it ends
+        bool skipString(){
+            p++;
+            while (true){
+                const char* quote = (const char*)std::memchr(p, '"', (size_t)(end - p));
+                if (!quote) return false;
+                // the quote is escaped when an odd number of backslashes precede it
+                const char* back = quote;
+                while (back > p && back[-1] == '\\') back--;
+                p = quote + 1;
+                if (((quote - back) & 1) == 0) return true;
+            }
+        }
+        bool number(){
+            const char* start = p;
+            if (p < end && *p == '-') p++;
+            uint64_t value = 0;
+            bool digits = false, plain = *start != '-';
+            while (p < end && *p >= '0' && *p <= '9'){
+                value = value * 10 + (uint64_t)(*p - '0');
+                p++;
+                digits = true;
+            }
+            if (p < end && (*p == '.' || *p == 'e' || *p == 'E')){
+                plain = false;
+                while (p < end && (std::isdigit((unsigned char)*p) || *p == '.' || *p == 'e' || *p == 'E' || *p == '+' || *p == '-')) p++;
+            }
+            if (!digits) return false;
+            if (plain) reader.number(value);
+            else reader.other();
+            return true;
+        }
+        // a container the reader declined: brackets counted, strings stepped over
+        bool skipContainer(){
+            int depth = 0;
+            while (p < end){
+                const char c = *p;
+                if (c == '"'){
+                    if (!skipString()) return false;
+                    continue;
+                }
+                p++;
+                if (c == '{' || c == '[') depth++;
+                else if (c == '}' || c == ']'){
+                    if (--depth == 0) return true;
+                }
+            }
+            return false;
+        }
+        bool value(int depth){
+            if (p == end || depth > kMaxDepth) return false;
+            switch (*p){
+                case '{': {
+                    if (!reader.startObject()) return skipContainer();
+                    p++;
+                    space();
+                    if (p < end && *p == '}'){ p++; reader.endObject(); return true; }
+                    while (true){
+                        space();
+                        if (p == end || *p != '"' || !string()) return false;
+                        reader.key(buffer);
+                        space();
+                        if (p == end || *p++ != ':') return false;
+                        space();
+                        if (!value(depth + 1)) return false;
+                        space();
+                        if (p == end) return false;
+                        if (*p == ','){ p++; continue; }
+                        if (*p++ != '}') return false;
+                        reader.endObject();
+                        return true;
+                    }
+                }
+                case '[': {
+                    if (!reader.startArray()) return skipContainer();
+                    p++;
+                    space();
+                    if (p < end && *p == ']'){ p++; reader.endArray(); return true; }
+                    while (true){
+                        space();
+                        if (!value(depth + 1)) return false;
+                        space();
+                        if (p == end) return false;
+                        if (*p == ','){ p++; continue; }
+                        if (*p++ != ']') return false;
+                        reader.endArray();
+                        return true;
+                    }
+                }
+                case '"':
+                    if (!string()) return false;
+                    reader.string(buffer);
+                    return true;
+                case 't': reader.other(); return literal("true", 4);
+                case 'f': reader.other(); return literal("false", 5);
+                case 'n': reader.other(); return literal("null", 4);
+                default: return number();
+            }
+        }
+    };
 
 }
 
-Json BuildReport::toJson() const{
-    Json categoryJson = Json::object();
-    for (const std::string& name : categoryNames())
-        categoryJson[name] = categories.count(name) ? categories.at(name) : 0;
-    Json largestJson = Json::array();
-    for (const BuildReportFile& file : largest)
-        largestJson.push_back(reportFileJson(file, false));
-    Json out = {{"version", 1}, {"platform", platform}, {"method", method}, {"total_bytes", totalBytes}, {"categories", categoryJson}, {"largest", largestJson}};
-    if (!buildProfile.empty()) out["buildProfile"] = buildProfile;
-    if (!id.empty()) out["id"] = id;
-    if (!created.empty()) out["created"] = created;
-    if (!editorVersion.empty()) out["editor_version"] = editorVersion;
+std::string BuildReport::toText() const{
+    ReportWriter w;
+    w.out.reserve(256 + (files.size() + largest.size()) * 120 + (reachability ? reachability->size() * 110 : 0) + leftOut.size() * 80);
+    bool first = true;
+    w.out += '{';
+    if (hasFiles){
+        w.key("budgets", 1, first);
+        w.lines(budgets, [&w](const BuildReportBudget& budget){
+            bool item = true;
+            w.out += '{';
+            w.member("bytes", item); w.number(budget.bytes);
+            w.member("category", item); w.string(budget.category);
+            w.member("limit_bytes", item); w.number(budget.limitBytes);
+            w.member("over_bytes", item); w.number(budget.overBytes());
+            w.member("platform", item); w.string(budget.platform);
+            w.out += '}';
+        });
+    }
+    if (!buildProfile.empty()){ w.key("buildProfile", 1, first); w.string(buildProfile); }
+    // the categories in key order, every one of them (0 when empty)
+    std::vector<std::string> names = categoryNames();
+    std::sort(names.begin(), names.end());
+    w.key("categories", 1, first);
+    bool item = true;
+    w.out += '{';
+    for (const std::string& name : names){
+        w.member(name.c_str(), item);
+        const auto it = categories.find(name);
+        w.number(it == categories.end() ? 0 : it->second);
+    }
+    w.out += '}';
+    if (!created.empty()){ w.key("created", 1, first); w.string(created); }
+    if (!editorVersion.empty()){ w.key("editor_version", 1, first); w.string(editorVersion); }
     if (hasFiles){
         std::vector<const BuildReportFile*> sorted;
         sorted.reserve(files.size());
         for (const BuildReportFile& file : files) sorted.push_back(&file);
         std::sort(sorted.begin(), sorted.end(), [](const BuildReportFile* a, const BuildReportFile* b){ return a->path < b->path; });
-        Json list = Json::array();
-        for (const BuildReportFile* file : sorted) list.push_back(reportFileJson(*file, true));
-        out["files"] = std::move(list);
-        Json left = Json::array();
-        for (const BuildReportLeftOut& item : leftOut)
-            left.push_back({{"source", item.source}, {"bytes", item.bytes}, {"reason", item.reason}});
-        out["left_out"] = std::move(left);
-        out["left_out_bytes"] = leftOutBytes();
-        if (reachability){
-            Json assets = Json::object();
-            for (const auto& [asset, reach] : *reachability){
-                // [via, field, kind] and the GameObject when there is one: a key per entry would cost
-                // a fifth of a large report
-                Json entry = Json::array({reach.via, reach.field, reach.kind});
-                if (!reach.object.empty()) entry.push_back(reach.object);
-                assets[asset] = std::move(entry);
-            }
-            out["reachability"] = {{"assets", std::move(assets)}};
+        w.key("files", 1, first);
+        w.lines(sorted, [&w](const BuildReportFile* file){ w.file(*file, true); });
+    }
+    if (!id.empty()){ w.key("id", 1, first); w.string(id); }
+    w.key("largest", 1, first);
+    w.lines(largest, [&w](const BuildReportFile& file){ w.file(file, false); });
+    if (hasFiles){
+        w.key("left_out", 1, first);
+        w.lines(leftOut, [&w](const BuildReportLeftOut& left){
+            bool member = true;
+            w.out += '{';
+            w.member("bytes", member); w.number(left.bytes);
+            w.member("reason", member); w.string(left.reason);
+            w.member("source", member); w.string(left.source);
+            w.out += '}';
+        });
+        w.key("left_out_bytes", 1, first);
+        w.number(leftOutBytes());
+    }
+    w.key("method", 1, first); w.string(method);
+    w.key("platform", 1, first); w.string(platform);
+    if (hasFiles){
+        w.key("reachability", 1, first);
+        if (!reachability){
+            w.out += "null";
         } else {
-            out["reachability"] = nullptr;
+            // [via, field, kind] and the GameObject when there is one: a key per entry would cost
+            // a fifth of a large report
+            w.out += '{';
+            bool inner = true;
+            w.key("assets", 2, inner);
+            if (reachability->empty()){
+                w.out += "{}";
+            } else {
+                w.out += '{';
+                bool entry = true;
+                for (const auto& [asset, reach] : *reachability){
+                    w.out += entry ? "\n      " : ",\n      ";
+                    entry = false;
+                    w.string(asset);
+                    w.out += ": [";
+                    w.string(reach.via); w.out += ',';
+                    w.string(reach.field); w.out += ',';
+                    w.string(reach.kind);
+                    if (!reach.object.empty()){ w.out += ','; w.string(reach.object); }
+                    w.out += ']';
+                }
+                w.close(2, '}');
+            }
+            w.close(1, '}');
         }
-        Json budgetJson = Json::array();
-        for (const BuildReportBudget& budget : budgets)
-            budgetJson.push_back({{"platform", budget.platform}, {"category", budget.category}, {"limit_bytes", budget.limitBytes},
-                                  {"bytes", budget.bytes}, {"over_bytes", budget.overBytes()}});
-        out["budgets"] = std::move(budgetJson);
     }
-    return out;
+    w.key("total_bytes", 1, first); w.number(totalBytes);
+    w.key("version", 1, first); w.number(1);
+    w.close(0, '}');
+    w.out += '\n';
+    return std::move(w.out);
 }
 
-std::string BuildReport::toText() const{
-    std::string out;
-    appendReportLines(out, toJson(), 0);
-    return out + "\n";
-}
-
-bool BuildReport::fromJson(const Json& json, BuildReport& out){
-    if (!json.is_object() || json.value("version", 0) != 1)
-        return false;
+bool BuildReport::parse(const std::string& text, BuildReport& out, bool comparisonOnly){
     out = BuildReport();
-    out.platform = json.value("platform", std::string());
-    out.method = json.value("method", std::string());
-    out.buildProfile = json.value("buildProfile", std::string());
-    out.totalBytes = json.value("total_bytes", (uint64_t)0);
-    out.id = json.value("id", std::string());
-    out.created = json.value("created", std::string());
-    out.editorVersion = json.value("editor_version", std::string());
-    if (json.contains("categories") && json["categories"].is_object())
-        for (const auto& [name, bytes] : json["categories"].items())
-            if (bytes.is_number_unsigned()) out.categories[name] = bytes.get<uint64_t>();
-    if (json.contains("largest") && json["largest"].is_array())
-        for (const Json& entry : json["largest"])
-            if (entry.is_object()) out.largest.push_back(reportFileFromJson(entry));
-    if (json.contains("files") && json["files"].is_array()){
-        out.hasFiles = true;
-        out.files.reserve(json["files"].size());
-        for (const Json& entry : json["files"])
-            if (entry.is_object()) out.files.push_back(reportFileFromJson(entry));
+    ReportReader reader(out, comparisonOnly);
+    ReportScanner scanner(text, reader);
+    if (!scanner.run() || !reader.valid()){
+        out = BuildReport();
+        return false;
     }
-    if (json.contains("left_out") && json["left_out"].is_array())
-        for (const Json& entry : json["left_out"])
-            if (entry.is_object())
-                out.leftOut.push_back({entry.value("source", std::string()), entry.value("bytes", (uint64_t)0), entry.value("reason", std::string())});
-    if (json.contains("reachability") && json["reachability"].is_object() && json["reachability"].contains("assets") &&
-        json["reachability"]["assets"].is_object()){
-        std::map<std::string, BuildReportReach> assets;
-        for (const auto& [asset, entry] : json["reachability"]["assets"].items())
-            if (entry.is_array() && entry.size() >= 3 && entry[0].is_string() && entry[1].is_string() && entry[2].is_string())
-                assets[asset] = {entry[0].get<std::string>(), entry[1].get<std::string>(), entry[2].get<std::string>(),
-                                 entry.size() > 3 && entry[3].is_string() ? entry[3].get<std::string>() : std::string()};
-        out.reachability = std::move(assets);
-    }
-    if (json.contains("budgets") && json["budgets"].is_array())
-        for (const Json& entry : json["budgets"])
-            if (entry.is_object())
-                out.budgets.push_back({entry.value("platform", std::string()), entry.value("category", std::string()),
-                                       entry.value("limit_bytes", (uint64_t)0), entry.value("bytes", (uint64_t)0)});
     return true;
 }
 
@@ -381,26 +771,29 @@ BuildReportDiff jasperengine::editor::compareBuildReports(const BuildReport& bas
         const auto after = head.categories.find(name);
         diff.categories[name] = {before == base.categories.end() ? 0 : before->second, after == head.categories.end() ? 0 : after->second};
     }
-    // a cooked file's name changes with its content: its source asset is what stays the same (D2)
-    struct Side { std::string path, category; uint64_t bytes = 0; };
+    // a cooked file's name changes with its content: its source asset is what stays the same (D2).
+    // Keyed by views into the reports' own strings: nothing is copied but the changed rows
+    struct Side { const BuildReportFile* file = nullptr; uint64_t bytes = 0; };
+    using Keyed = std::unordered_map<std::string_view, Side>;
     auto keyed = [](const std::vector<BuildReportFile>& list){
-        std::map<std::string, Side> out;
+        Keyed out;
+        out.reserve(list.size());
         for (const BuildReportFile& file : list){
-            Side& side = out[file.source.empty() ? file.path : file.source];
-            if (side.path.empty()){ side.path = file.path; side.category = file.category; }
+            Side& side = out[file.source.empty() ? std::string_view(file.path) : std::string_view(file.source)];
+            if (!side.file) side.file = &file;
             side.bytes += file.bytes;
         }
         return out;
     };
-    const std::map<std::string, Side> before = keyed(base.hasFiles ? base.files : base.largest);
-    const std::map<std::string, Side> after = keyed(head.hasFiles ? head.files : head.largest);
-    auto row = [&](const std::string& key, const Side* from, const Side* to){
+    const Keyed before = keyed(base.hasFiles ? base.files : base.largest);
+    const Keyed after = keyed(head.hasFiles ? head.files : head.largest);
+    auto row = [&](std::string_view key, const Side* from, const Side* to){
         const uint64_t a = from ? from->bytes : 0, b = to ? to->bytes : 0;
         if (from && to && a == b){ diff.unchanged++; return; }
         BuildReportChange change;
-        change.key = key;
-        change.path = to ? to->path : from->path;
-        change.category = to ? to->category : from->category;
+        change.key = std::string(key);
+        change.path = to ? to->file->path : from->file->path;
+        change.category = to ? to->file->category : from->file->category;
         change.before = a;
         change.after = b;
         change.delta = (int64_t)b - (int64_t)a;
@@ -419,7 +812,7 @@ BuildReportDiff jasperengine::editor::compareBuildReports(const BuildReport& bas
         // a report without the list names its largest only: a file missing from a 25-row list may
         // still have shipped, smaller, so only the base's largest are compared
         for (const auto& entry : keyed(base.largest)){
-            const std::string& key = entry.first;
+            const std::string_view key = entry.first;
             const auto from = before.find(key);
             const auto to = after.find(key);
             if (to == after.end() && !head.hasFiles) continue;
@@ -444,15 +837,17 @@ bool BuildReport::write(const fs::path& file, std::string& error) const{
     return true;
 }
 
-bool BuildReport::load(const fs::path& file, BuildReport& out, std::string& error){
-    std::ifstream in(file, std::ios::binary);
+bool BuildReport::load(const fs::path& file, BuildReport& out, std::string& error, bool comparisonOnly){
+    std::ifstream in(file, std::ios::binary | std::ios::ate);
     if (!in){
         error = "no " + std::string(kFileName) + " at " + FileUtils::pathToUtf8(file.parent_path());
         return false;
     }
-    std::stringstream text;
-    text << in.rdbuf();
-    if (!fromJson(Json::parse(text.str(), nullptr, false), out)){
+    // read whole, once: a stringstream would copy a large report twice
+    std::string text((size_t)std::max<std::streamoff>(0, in.tellg()), '\0');
+    in.seekg(0);
+    in.read(text.data(), (std::streamsize)text.size());
+    if (!parse(text, out, comparisonOnly)){
         error = FileUtils::pathToUtf8(file) + " is not a build report";
         return false;
     }

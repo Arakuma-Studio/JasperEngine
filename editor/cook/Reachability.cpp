@@ -7,9 +7,9 @@
 #include "util/FileUtils.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <string_view>
 #include <unordered_map>
-#include <unordered_set>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -37,34 +37,72 @@ std::vector<ReachEdge> jasperengine::editor::reachEdgesOf(const AssetIndex& inde
 
 std::map<std::string, BuildReportReach> jasperengine::editor::computeReachability(const std::vector<ReachEdge>& edges,
                                                                                   const std::vector<std::string>& roots){
-    // each referrer's edges, in field locator then target order (R3): grouped by a hash, each group sorted
-    std::unordered_map<std::string_view, std::vector<size_t>> runs;
-    runs.reserve(edges.size());
-    for (size_t i = 0; i < edges.size(); i++) runs[edges[i].from].push_back(i);
-    for (auto& run : runs)
-        std::sort(run.second.begin(), run.second.end(), [&edges](size_t a, size_t b){
+    // every asset named once, as a number: the walk then runs on integers and flat arrays
+    std::unordered_map<std::string_view, uint32_t> ids;
+    ids.reserve(edges.size() + roots.size());
+    std::vector<std::string_view> names;
+    names.reserve(edges.size() + roots.size());
+    auto idOf = [&](std::string_view name){
+        const auto [it, inserted] = ids.try_emplace(name, (uint32_t)names.size());
+        if (inserted) names.push_back(name);
+        return it->second;
+    };
+    std::vector<uint32_t> from(edges.size()), to(edges.size());
+    for (size_t i = 0; i < edges.size(); i++){
+        from[i] = idOf(edges[i].from);
+        to[i] = edges[i].to.empty() ? UINT32_MAX : idOf(edges[i].to);
+    }
+    for (const std::string& root : roots)
+        if (!root.empty()) idOf(root);
+
+    // each referrer's edges side by side (offsets into one array), in field locator then target order (R3)
+    std::vector<uint32_t> first(names.size() + 1, 0);
+    for (uint32_t f : from) first[f + 1]++;
+    for (size_t i = 1; i < first.size(); i++) first[i] += first[i - 1];
+    std::vector<uint32_t> order(edges.size());
+    {
+        std::vector<uint32_t> fill(first.begin(), first.end() - 1);
+        for (size_t i = 0; i < edges.size(); i++) order[fill[from[i]]++] = (uint32_t)i;
+    }
+    for (size_t node = 0; node + 1 < first.size(); node++)
+        std::sort(order.begin() + first[node], order.begin() + first[node + 1], [&edges](uint32_t a, uint32_t b){
             const ReachEdge& x = edges[a];
             const ReachEdge& y = edges[b];
             return x.field != y.field ? x.field < y.field : x.to < y.to;
         });
 
-    std::map<std::string, BuildReportReach> reached;
-    std::unordered_set<std::string_view> seen;
-    std::vector<std::string_view> queue;
-    queue.reserve(roots.size() + edges.size());
+    // breadth first from the roots in the order given; each asset keeps the edge that first reached it
+    constexpr uint32_t kUnseen = UINT32_MAX, kRoot = UINT32_MAX - 1;
+    std::vector<uint32_t> via(names.size(), kUnseen);
+    std::vector<uint32_t> queue;
+    queue.reserve(names.size());
     for (const std::string& root : roots){
-        if (root.empty() || !seen.insert(root).second) continue;
-        reached[root] = {std::string(), std::string(), "root", std::string()};
-        queue.push_back(root);
+        if (root.empty()) continue;
+        const uint32_t id = ids.at(root);
+        if (via[id] != kUnseen) continue;
+        via[id] = kRoot;
+        queue.push_back(id);
     }
     for (size_t head = 0; head < queue.size(); head++){
-        const auto run = runs.find(queue[head]);
-        if (run == runs.end()) continue;
-        for (size_t index : run->second){
-            const ReachEdge& edge = edges[index];
-            if (edge.to.empty() || !seen.insert(edge.to).second) continue;
-            reached[edge.to] = {edge.from, edge.field, edge.kind, edge.object};
-            queue.push_back(edge.to);
+        const uint32_t node = queue[head];
+        for (uint32_t k = first[node]; k < first[node + 1]; k++){
+            const uint32_t edge = order[k];
+            const uint32_t target = to[edge];
+            if (target == UINT32_MAX || via[target] != kUnseen) continue;
+            via[target] = edge;
+            queue.push_back(target);
+        }
+    }
+
+    // the result in name order, so every insertion goes at the end
+    std::sort(queue.begin(), queue.end(), [&names](uint32_t a, uint32_t b){ return names[a] < names[b]; });
+    std::map<std::string, BuildReportReach> reached;
+    for (uint32_t node : queue){
+        if (via[node] == kRoot){
+            reached.emplace_hint(reached.end(), std::string(names[node]), BuildReportReach{std::string(), std::string(), "root", std::string()});
+        } else {
+            const ReachEdge& edge = edges[via[node]];
+            reached.emplace_hint(reached.end(), std::string(names[node]), BuildReportReach{edge.from, edge.field, edge.kind, edge.object});
         }
     }
     return reached;
