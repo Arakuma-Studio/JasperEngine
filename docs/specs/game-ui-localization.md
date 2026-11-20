@@ -653,6 +653,24 @@ Unit tests follow docs/testing.md naming. "Red" says what fails without the chan
   `configure_game_view`'s `language` description gained the example `en-XA` but not the word
   "pseudo": the tool would pass its 1,500-character limit; `docs/mcp/guide/ui.md` explains the two
   pseudo-locales.
+- **D-11 How the rest was built.** The OS locale hooks go through `System::notifyLocalesMayHaveChanged`,
+  which re-resolves only when the language list changed (an Android configuration change is also a
+  rotation); the prebuilt Android activity now keeps running on `locale|layoutDirection` changes.
+  The web hook is verified by the `localization` web gate; Android (`--locale-change` in
+  `tools/android-emulator-test.sh`), iOS, macOS and Windows are built but not run. Extract to Table
+  finds the element by its text in the `.html` (the whole text of one element), not through the
+  compiled source map. The pseudo goldens render a keyed settings panel
+  (`fixtures/golden/l10n_pseudo.rml`) rather than `examples/settings`, whose labels carry no keys.
+  `LocalizationBench.Switch` measures the re-resolve and 300 keyed lookups without RmlUi documents.
+  AC12's check is `tools/l10n/check_capture_symbols.py` over the release and editor engines (the
+  capture code defines `jasperengine_l10n_capture`), not a gtest.
+- **D-12 Guide and tool text (R36, R37).** The agent guide's "Other areas" index names the area alone
+  (`localization`, read as `jasper://docs/localization`) without its tools in parentheses: with
+  them the guide left 1,458 of the 1,500 bytes of headroom `tool_budget.py` requires. The tools are
+  named in the `localization` group's description and in `docs/mcp/guide/localization.md`.
+  `configure_game_view`'s `language` description gained the example `en-XA` but not the word
+  "pseudo": the tool would pass its 1,500-character limit; `docs/mcp/guide/ui.md` explains the two
+  pseudo-locales.
 - **D-11 Not built in this change:** the Text Inspector's key picker with its missing badge and the UI
   Document's read-only Localization foldout (R32), the Game view Stats overlay's Localization item
   (R31), the window's Rename Key dialog, Find References, Import/Export dialogs, Pseudo Preview
