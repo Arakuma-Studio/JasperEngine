@@ -563,6 +563,10 @@ core tests already build scenes with physics, `PhysicsRayThreadsTest.cpp:27-30`)
 - **R25 details.** `query_physics` `verify` checks physics overlaps only (no drawn-world reference);
   its `raycast` drops the `ignore` bodies after the cast (`Physics.raycast` has no ignore list);
   `world: drawn` refits now (`current`). An unnamed layer is named by its number in the hint.
+- **R37 / AC23 modules.** `Physics.raycast` does select a module today: functions bound only under
+  `JASPERENGINE_PHYSICS_3D` / `_2D` reach `physics3d` / `physics2d` in the module scan. The queries do
+  the same (as `raycast`), so AC23 checks they reach the same modules as `raycast`, need no runtime
+  shaders, and that `MeshRaycast` overlaps reach none.
 - **AC3 fixture.** The fixture is written with `JASPER_TEST_UPDATE_GOLDEN=1` (the variable
   `tools/build.sh` forwards into the image), by the same test on the tree without the change.
 - **AC15 timing.** A browser's clock is too coarse for one 0.04 ms call: the gate times batches of

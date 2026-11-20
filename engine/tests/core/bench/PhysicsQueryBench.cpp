@@ -70,6 +70,11 @@ int main(int argc, char** argv){
         results.add("overlap_sphere_p95_ms", p95PerQuery([&](int i){ found += Physics::overlapSphere(scene, centers[i], 5.0f, hits); }), "ms");
         std::printf("overlapSphere r 5: %.1f hits per query\n", (double)found / (double)(SAMPLES * BATCH + BATCH));
         results.add("overlap_box_p95_ms", p95PerQuery([&](int i){ Physics::overlapBox(scene, centers[i], Vector3(5, 5, 5), turned, hits); }), "ms");
+        // information: the same boxes passing through the mesh ground (what the box pairs with the ground's triangles cost)
+        const std::vector<Entity> ground = {city.ground};
+        PhysicsQueryOptions noGround;
+        noGround.ignore = ground;
+        results.add("overlap_box_no_ground_p95_ms", p95PerQuery([&](int i){ Physics::overlapBox(scene, centers[i], Vector3(5, 5, 5), turned, hits, noGround); }), "ms");
         results.add("check_sphere_p95_ms", p95PerQuery([&](int i){ Physics::checkSphere(scene, centers[i], 5.0f); }), "ms");
         results.add("sphere_cast_p95_ms", p95PerQuery([&](int i){
             Physics::sphereCast(scene, centers[i], 0.5f, Vector3(1, 0, (float)(i % 3) - 1.0f), 30.0f);

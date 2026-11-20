@@ -195,24 +195,35 @@ async def test_query_debug_draw(ed: Editor):
     await ed.call("save_scene", scene=scene)
     await ed.call("play", action="start", scene=scene, fixed_fps=60, auto_pause=True)
 
-    def changed(a: bytes, b: bytes) -> tuple[int, int, int, int]:
-        """Pixels that differ (left half, right half) and the image size."""
+    noise: set[tuple[int, int]] = set()
+
+    def diff(a: bytes, b: bytes) -> set[tuple[int, int]]:
         wa, ha, ca, ra = decode_png(a)
         _, _, cb, rb = decode_png(b)
-        left = right = 0
-        for y in range(ha):
-            for x in range(wa):
-                if any(abs(ra[y][x * ca + k] - rb[y][x * cb + k]) > 24 for k in range(3)):
-                    if x < wa // 2:
-                        left += 1
-                    else:
-                        right += 1
-        return left, right, wa, ha
+        return {(x, y) for y in range(ha) for x in range(wa)
+                if any(abs(ra[y][x * ca + k] - rb[y][x * cb + k]) > 24 for k in range(3))}
+
+    def changed(a: bytes, b: bytes) -> tuple[int, int, int, int]:
+        """Pixels that differ (left half, right half; what changes on its own left out) and the image size."""
+        w, h, _, _ = decode_png(a)
+        pixels = diff(a, b) - noise
+        left = sum(1 for x, _ in pixels if x < w // 2)
+        return left, len(pixels) - left, w, h
 
     try:
-        await ed.call("wait", frames=2)
+        # a camera of the test's own at z = 5 looking down -z: x = -4 is left of the centre, x = +4 right
+        await ed.call("eval_lua", code="""
+            local camera = Camera(scene)
+            camera:setPosition(0, 0, 5)
+            camera:setTarget(0, 0, -20)
+            camera:activate()
+            _G.queryTestCamera = camera
+            return true""")
+        await ed.call("wait", frames=4)
         before = await ed.screenshot("game", max_width=320)
-        # the camera looks down -z from the origin: a sphere query left of the centre, the right half untouched
+        await ed.call("wait", frames=4)
+        # what changes between two frames with nothing drawn (a counter, an overlay) is not the query's
+        noise |= diff(before, await ed.screenshot("game", max_width=320))
         await ed.call("configure_game_view", physics_debug_queries=True)
         view = await ed.call("configure_game_view")
         ed.check(view["physics_debug_queries"] is True, f"{view}")
@@ -228,9 +239,7 @@ async def test_query_debug_draw(ed: Editor):
         await ed.call("wait", frames=4)
         on = await ed.screenshot("game", max_width=320)
         left, right, _, _ = changed(before, on)
-        # x = -4 and x = +4 land in opposite halves of the view, whichever way the default camera faces
-        ed.check((left > 0) != (right > 0), f"the query drawn in its own half only: {left} pixels left, {right} right")
-        lua_side = "left" if left > 0 else "right"
+        ed.check(left > 0 and right == 0, f"the query drawn in its region only: {left} pixels left, {right} right")
         await ed.call("configure_game_view", physics_debug_queries=False)
         await ed.call("eval_lua", code="_G.queryDrawOn = false return true")
         await ed.call("wait", frames=90)
@@ -242,9 +251,7 @@ async def test_query_debug_draw(ed: Editor):
         await ed.call("wait", frames=2)
         drawn = await ed.screenshot("game", max_width=320)
         left, right, _, _ = changed(before, drawn)
-        drawn_side = "left" if left > 0 else "right"
-        ed.check((left > 0) != (right > 0) and drawn_side != lua_side,
-                 f"query_physics draw in the opposite half: {left} pixels left, {right} right (the Lua query was {lua_side})")
+        ed.check(right > 0 and left == 0, f"query_physics draw in its region only: {left} pixels left, {right} right")
     finally:
         await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
         await ed.call("configure_game_view", physics_debug_queries=False)
