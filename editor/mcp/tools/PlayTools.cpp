@@ -3865,6 +3865,10 @@ void finishInputRun(const std::shared_ptr<InputRun>& run) {
     }
     if (!state().held.empty()) text += " Still held: " + heldInputJson().dump() + " (released at stop or with release_all).";
     for (const Json& target : *run->targets) {
+        if (target.contains("back")) {
+            text += "\nBack (event " + target["event"].dump() + "): " + target["back"].get<std::string>() + ".";
+            continue;
+        }
         text += "\nTarget \"" + target["target"].get<std::string>() + "\" (event " + target["event"].dump() + ") at canvas " +
                 target["point"].dump() + " in " + target["document"].value("html", std::string("?")) + ".";
     }
@@ -4556,14 +4560,14 @@ void registerPlayTools(McpRegistry& registry) {
         tool.description =
             "Input into the running game, over frames. events in order, {type, ...} (first action: default):\nkey: key "
             "(space, a, f1...), action press|down|up, hold_frames (2; 0: same frame), hold_ms, mods "
-            "[shift,ctrl,alt,super]\ntext: text, per_unit (one event per UTF-16 unit, as Windows/Android type); ime: text, cursor; ime_commit: text; ime_cancel\n"
+            "[shift,ctrl,alt,super]\ntext: text, per_unit (per UTF-16 unit); ime: text, cursor; ime_commit: text; ime_cancel\n"
             "mouse_leave, mouse_enter\nmouse: action click|double_click|down|up|move|drag|scroll, x, y (default: "
             "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy (scroll; move w/o x, y)\ntouch: action "
             "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget / to_target: UI Document element CSS selector "
             "(document: which)\ngamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + "
-            "value; x, y / target first warp the gamepad cursor\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
+            "value, x, y/target: warp cursor\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
             "phase (press|down|up)|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|orientation "
-            "(+orientation)|back (Android Back; result back: document|game|key|escape)\nwait: frames, ms. release_all.\nspace: canvas px, normalized 0..1, view = Game view px. "
+            "(+orientation)|back\nwait: frames, ms. release_all.\nspace: canvas px, normalized 0..1, view = Game view px. "
             "down holds until up/release_all/stop. Returns frames, console, play state (auto_pause: events + "
             "frames_after only).";
         tool.inputSchema = object({

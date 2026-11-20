@@ -5366,7 +5366,7 @@ CASES = [
         "what_happened": "New text (text-entry-gamepad-cursor-back-button R30): Android's Back button is send_input's app action "
                          "back, and the result names who took it; without it an agent presses Escape (which is not routed as "
                          "the Back button: no Escape follows a game's Engine.onBack) or writes a Lua probe.",
-        "text_at_issue": "send_input app: '...|back (Android Back; result back: document|game|key|escape)'",
+        "text_at_issue": "send_input app: '...|orientation (+orientation)|back' and the result's back field",
         "source": "text-entry-gamepad-cursor-back-button R16, R30 (new tool text); no failure on record",
         "prompt": "The game is playing. Press the Android Back button once, as a phone would, and tell me whether the pause menu "
                   "document handled it or the game did.",
@@ -5387,7 +5387,7 @@ CASES = [
                          "gamepad cursor before its button, so an agent clicks a menu button with A in one event; without it "
                          "an agent steers the cursor with stick axis events and guesses timings, or clicks with the mouse "
                          "(which switches the scheme and hides the cursor).",
-        "text_at_issue": "send_input gamepad: '... value; x, y / target first warp the gamepad cursor'",
+        "text_at_issue": "send_input gamepad: '... value, x, y/target: warp cursor'",
         "source": "text-entry-gamepad-cursor-back-button R30 (new tool text); no failure on record",
         "prompt": "The game is playing and its menu shows the gamepad cursor. Click the menu's #start button with the gamepad's "
                   "A button through the cursor (do not use the mouse or touch).",
