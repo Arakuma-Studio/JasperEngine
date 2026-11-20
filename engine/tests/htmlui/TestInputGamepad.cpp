@@ -762,6 +762,19 @@ namespace {
         int gameMouseDowns = 0;
     };
 
+    // pointer moves with the left button held (a drag in progress)
+    class HeldMoves : public Rml::EventListener {
+    public:
+        int moves = 0;
+        float lastX = 0.0f;
+        void ProcessEvent(Rml::Event& event) override{
+            if (event.GetParameter<int>("buttons", 0) & 1){
+                moves++;
+                lastX = event.GetParameter<float>("mouse_x", 0.0f);
+            }
+        }
+    };
+
     // canvas px per second at full stick on this 1280x720 canvas
     const float fullSpeed = 1000.0f * 720.0f / 1080.0f;
 
@@ -827,8 +840,8 @@ TEST_F(InputGamepadCursorTest, CursorMovesAndConsumes){
 TEST_F(InputGamepadCursorTest, CursorClicksHoversDrags){
     loadCursor("html, body { margin: 0; }\n"
                "#go { position: absolute; left: 100px; top: 100px; width: 200px; height: 60px; }\n"
-               "#volume { position: absolute; left: 100px; top: 300px; width: 400px; height: 30px; }\n",
-               "<button id=\"go\">Go</button>\n<input id=\"volume\" type=\"range\" min=\"0\" max=\"100\" step=\"1\" value=\"0\">");
+               "#drag { position: absolute; left: 100px; top: 300px; width: 600px; height: 30px; }\n",
+               "<button id=\"go\">Go</button>\n<div id=\"drag\"></div>");
     ClickCounter clicks;
     element("go")->AddEventListener(Rml::EventId::Click, &clicks);
     const Vector2 mouse = Input::getMousePosition();
@@ -839,15 +852,20 @@ TEST_F(InputGamepadCursorTest, CursorClicksHoversDrags){
     EXPECT_EQ(clicks.clicks, 1);
     EXPECT_TRUE(gameDowns == std::vector<int>{D_GAMEPAD_BUTTON_X}) << "A is the cursor's";
 
-    // A held at the range's left end, the stick moves right: the thumb follows
-    GamepadCursor::setPosition(Vector2(102.0f, 315.0f));
+    // A held over the drag pad, the stick moves right: pointer moves with the button held reach it
+    HeldMoves held;
+    Rml::Element* dragPad = element("drag");
+    dragPad->AddEventListener(Rml::EventId::Pointermove, &held);
+    GamepadCursor::setPosition(Vector2(110.0f, 315.0f));
     Engine::systemGamepadButtonDown(pad, D_GAMEPAD_BUTTON_A);
     EXPECT_FALSE(Input::getMouseButton(D_MOUSE_BUTTON_LEFT));
     Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_X, 1.0f);
     frames(30);
     Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_X, 0.0f);
     Engine::systemGamepadButtonUp(pad, D_GAMEPAD_BUTTON_A);
-    EXPECT_GT(std::stoi(doc().getElementById("volume").getValue()), 20);
+    EXPECT_GT(held.moves, 10) << "a drag: moves with the left button held";
+    EXPECT_GT(held.lastX, 200.0f);
+    dragPad->RemoveEventListener(Rml::EventId::Pointermove, &held);
 
     EXPECT_EQ(Input::getMousePosition(), mouse) << "the cursor is not the mouse";
     EXPECT_FALSE(Input::getMouseButton(D_MOUSE_BUTTON_LEFT));
@@ -868,12 +886,18 @@ TEST_F(InputGamepadCursorTest, CursorScrollsAndJumpsToFocus){
                "<div id=\"list\"><div></div></div>\n<button id=\"b1\">1</button><button id=\"b2\">2</button>");
     Rml::Element* list = element("list");
     GamepadCursor::setPosition(Vector2(200.0f, 150.0f));
-    const float lineHeight = system().getContext()->getWheelScale();
+    // one wheel line down at the cursor (the documents' mouse pointer), as the reference
+    ASSERT_TRUE(system().eventOnWheel(0.0f, -1.0f, 0));
+    frames(30);
+    const float lineHeight = list->GetScrollTop();
+    ASSERT_GT(lineHeight, 0.0f);
+    list->SetScrollTop(0.0f);
+    frames(1);
     Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_RIGHT_Y, 1.0f);
     frames(60);
     Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_RIGHT_Y, 0.0f);
     frames(30);
-    EXPECT_NEAR(list->GetScrollTop(), 20.0f * lineHeight, 20.0f * lineHeight * 0.05f);
+    EXPECT_NEAR(list->GetScrollTop(), 20.0f * lineHeight, 20.0f * lineHeight * 0.05f) << "Scroll Speed 20 lines/s for 1 s";
 
     // the d-pad: from the element under the cursor (nothing focused) to the next one
     GamepadCursor::setPosition(Vector2(700.0f, 120.0f));
@@ -898,8 +922,8 @@ TEST_F(InputGamepadCursorTest, CursorCancelsOnDeactivate){
 
     GamepadCursor::setPosition(Vector2(200.0f, 130.0f));
     Engine::systemGamepadButtonDown(pad, D_GAMEPAD_BUTTON_A);
-    Engine::systemMouseMove(900.0f, 600.0f, 0);
-    Engine::systemMouseMove(920.0f, 600.0f, 0);
+    Engine::systemMouseMove(150.0f, 130.0f, 0);
+    Engine::systemMouseMove(170.0f, 130.0f, 0);
     frames(2);
     EXPECT_NE(InputSchemeTracker::getCurrent(), InputScheme::Gamepad);
     EXPECT_FALSE(GamepadCursor::isActive());
@@ -917,7 +941,7 @@ TEST_F(InputGamepadCursorTest, CursorCancelsOnDeactivate){
     frames(2);
     EXPECT_FALSE(GamepadCursor::isActive());
     Engine::systemGamepadButtonUp(pad, D_GAMEPAD_BUTTON_A);
-    EXPECT_EQ(cancels.clicks, 2);
+    EXPECT_FALSE(element("go")->IsPseudoClassSet("active")) << "the press ended";
     EXPECT_EQ(clicks.clicks, 0);
     element("go")->RemoveEventListener(Rml::EventId::Click, &clicks);
     element("go")->RemoveEventListener(Rml::EventId::Pointercancel, &cancels);

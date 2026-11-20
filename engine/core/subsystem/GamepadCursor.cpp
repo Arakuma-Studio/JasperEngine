@@ -50,6 +50,8 @@ namespace {
     Vector2 cursorPosition(0.0f, 0.0f);
     // seconds the left stick has been past the deadzone (the acceleration ramp)
     double stickHeld = 0.0;
+    // wheel lines the right stick moved that make no whole line yet
+    Vector2 scrollLines(0.0f, 0.0f);
     // the pad whose A holds the pointer down (-1: none)
     int pressPad = -1;
     // the focus the cursor last saw: another one (the d-pad, a script, autofocus) moves the cursor to it
@@ -278,14 +280,22 @@ void GamepadCursor::update(double deltaTime){
         placeOverlay(scenes, true);
     }
 
-    // the right stick scrolls at the cursor through the wheel (lines; up and left are positive)
+    // the right stick scrolls at the cursor through the wheel, a whole line (a wheel notch) at a
+    // time: up and left are positive, as a wheel's
     const Vector2 scroll = strongestStick(D_GAMEPAD_AXIS_RIGHT_X, D_GAMEPAD_AXIS_RIGHT_Y);
     const float scrollLength = std::sqrt(scroll.x * scroll.x + scroll.y * scroll.y);
     if (scrollLength > deadzone && dt > 0.0f){
         const float rate = getScrollSpeed() * dt;
-        const float dx = -std::copysign(std::min(std::fabs(scroll.x), 1.0f) * std::min(std::fabs(scroll.x), 1.0f) * rate, scroll.x);
-        const float dy = -std::copysign(std::min(std::fabs(scroll.y), 1.0f) * std::min(std::fabs(scroll.y), 1.0f) * rate, scroll.y);
-        Engine::dispatchCursorWheel(dx, dy);
+        const float ax = std::min(std::fabs(scroll.x), 1.0f);
+        const float ay = std::min(std::fabs(scroll.y), 1.0f);
+        scrollLines = scrollLines + Vector2(-std::copysign(ax * ax * rate, scroll.x), -std::copysign(ay * ay * rate, scroll.y));
+        const Vector2 whole(std::trunc(scrollLines.x), std::trunc(scrollLines.y));
+        if (whole.x != 0.0f || whole.y != 0.0f){
+            scrollLines = scrollLines - whole;
+            Engine::dispatchCursorWheel(whole.x, whole.y);
+        }
+    }else{
+        scrollLines = Vector2(0.0f, 0.0f);
     }
 }
 

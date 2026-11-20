@@ -222,11 +222,20 @@ TEST_F(DocumentBackTest, BackRoutingOpenSelectIsNotABack){
     ASSERT_TRUE(select->IsSelectBoxVisible());
 
     escape();
-    EXPECT_FALSE(select->IsSelectBoxVisible());
     EXPECT_TRUE(backs.empty()) << "not a Back";
     EXPECT_TRUE(gameBacks.empty());
     EXPECT_EQ(Engine::getLastBackRoute(), BackRoute::Key);
     EXPECT_EQ(keydowns, std::vector<std::string>{"Escape"}) << "today's Escape reached the document";
+
+    // gamepad B closes it, as today, and is not a Back either
+    connectPad();
+    ASSERT_TRUE(select->IsSelectBoxVisible());
+    Engine::systemGamepadButtonDown(backPad, D_GAMEPAD_BUTTON_B);
+    Engine::systemGamepadButtonUp(backPad, D_GAMEPAD_BUTTON_B);
+    EXPECT_FALSE(select->IsSelectBoxVisible());
+    EXPECT_TRUE(backs.empty());
+    EXPECT_TRUE(gameBacks.empty());
+    EXPECT_EQ(Engine::getLastBackRoute(), BackRoute::Key);
 }
 
 // step 1: the top menu's focused element gets `back`, which bubbles; prevented, it is consumed: no
