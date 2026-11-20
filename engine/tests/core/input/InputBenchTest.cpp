@@ -12,6 +12,7 @@
 #include "TestSystem.h"
 #include "input/InputActions.h"
 #include "input/InputScheme.h"
+#include "subsystem/GamepadCursor.h"
 #include "support/AllocationCounter.h"
 
 #include <gtest/gtest.h>
@@ -160,4 +161,33 @@ TEST(InputBench, SchemeEventAndLatch){
     }
     InputSchemeTracker::noteGamepadDisconnected(0);
     InputSchemeTracker::reset(false);
+}
+
+// text-entry-gamepad-cursor-back-button R26: the gamepad cursor off (no Gamepad Cursor document) is
+// one cached look per frame, with a pad's stick moving and the Gamepad scheme: 0 allocations
+TEST(InputBench, GamepadCursorOffFrame){
+    Input::resetFrameState();
+    Engine::systemGamepadConnect(5, "Bench Gamepad");
+    InputSchemeTracker::setOverride(InputScheme::Gamepad);
+    InputSchemeTracker::latch();
+    ASSERT_EQ(InputSchemeTracker::getCurrent(), InputScheme::Gamepad);
+    GamepadCursor::update(1.0 / 60.0);
+
+    constexpr int frames = 200000;
+    testsupport::ThreadAllocationCount allocations;
+    const auto start = std::chrono::steady_clock::now();
+    for (int i = 0; i < frames; i++){
+        Input::setGamepadAxisValue(5, D_GAMEPAD_AXIS_LEFT_X, (i & 1) ? 0.8f : -0.8f);
+        GamepadCursor::update(1.0 / 60.0);
+    }
+    const double ns = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / frames;
+    std::printf("[bench] cursor_off_frame_ns %.1f (budget: one cached boolean, 0 allocations)\n", ns);
+    if (testsupport::countsAllocations())
+        EXPECT_EQ(allocations.count(), 0u);
+    EXPECT_FALSE(GamepadCursor::isActive());
+    if (testsupport::perfSlack() > 0.0)
+        EXPECT_LE(ns, 200.0 * testsupport::perfSlack());
+    InputSchemeTracker::setOverride(std::nullopt);
+    InputSchemeTracker::latch();
+    Engine::systemGamepadDisconnect(5);
 }

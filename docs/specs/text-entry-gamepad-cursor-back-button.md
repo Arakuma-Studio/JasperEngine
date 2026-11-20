@@ -550,14 +550,18 @@ Red controls are run on the base commit first and named in the PR.
 - Part B (D6): the cursor updates after the input latch of a frame that runs its update (the
   latched sticks and scheme); while the app or the editor's Play is paused it neither moves nor
   activates.
-- Part B (AC13): the component UI goes through the same cursor dispatch as the documents (the
-  mouse's pointer -1), but no editor test drives a component Button with the cursor: the editor
-  test binary has no HTML documents, and a Gamepad Cursor document must show for the cursor to be
-  active. Not verified.
-- Part B (AC14, AC15): no counting allocator or bench line: `InputGamepadCursorTest.CursorZeroCostWhenOff`
-  checks that the overlay never loads and the cursor stays inactive with a pad moving; and
-  `CursorDrawnOnTop` checks the overlay document's layout (above the documents, hot spot on the
-  point, hidden in another scheme) instead of a golden image.
+- Part B (AC13): the component-UI test is `InputGamepadCursorTest.GamepadCursorPressesComponentButton`
+  in the htmlui suite (a Gamepad Cursor document must show, and the editor test binary has no HTML
+  documents): A clicks a component Button once and drags a component On-Screen Stick.
+- Part B (AC14): the gtest bench lines print `cursor_off_frame_ns` (core `InputBench.GamepadCursorOffFrame`,
+  htmlui `CursorZeroCostWhenOff`: 0 allocations), `cursor_frame_us` (`CursorFrameBench`) and
+  `text_entry_idle_frame_ns` (`TextEntryTest.IdleFocusedFieldDoesNotAllocate`: 0 allocations), enforced
+  with JASPER_TEST_PERF_SLACK like the other InputBench lines; `tools/perf/bench-thresholds.json`
+  gates the je-bench-* binaries only, so no row there. Active and moving, the cursor's frame measured
+  27-43 us on the shared, loaded build box (budget 20 us desktop), with about 33 allocations a frame
+  (the scene list, the hover check's listener lists, the overlay's properties): not met there.
+- Part B (AC15): goldens `gamepad_cursor.png` and `gamepad_cursor_texture.png` (glcore,
+  `FullPathGoldenTest.GamepadCursorDrawnOnTop`); not compared on Vulkan.
 - Tests: the Back tests are `DocumentBackTest.*` (an HTML fixture of their own in
   `TestInputDocument.cpp`), the cursor tests `InputGamepadCursorTest.*`, AC18 and the menu clause
   of AC19 are in the htmlui suite (`DocumentBackTest.MenuOpeningReleasesGameInput`,
