@@ -70,6 +70,8 @@ namespace jasperengine::editor::platform {
                            std::string& error) = 0;
         virtual bool launch(const DeviceRunRequest& request, std::string& error) = 0;
         virtual void stop() = 0;
+        // stops following the run (its log) and leaves the game running (the CLI returning)
+        virtual void release() {}
         virtual bool screenshot(std::vector<uint8_t>& png, std::string& error) = 0;
         // thread-safe; the log itself goes to the Console
         virtual DeviceRunState state() const = 0;
@@ -97,12 +99,13 @@ namespace jasperengine::editor::platform {
         std::string playerId;
         std::string playerIdentity;
         bool debuggable = false;            // the package says android:debuggable
+        bool launchOnly = false;            // the device runs this build already: no install, no patch
     };
 
     struct DeployResult {
         bool ok = false;
         std::string error;
-        std::string installed;              // full, patched
+        std::string installed;              // full, patched, current (launched only)
         size_t pushedFiles = 0;
         uint64_t pushedBytes = 0;
         double launchMs = 0.0;
@@ -131,6 +134,8 @@ namespace jasperengine::editor::platform {
         // a run that ended (exited, crashed, stopped) leaves the list
         void dismiss(const std::string& deviceId);
         void stopAll();
+        // every run released: the games keep running, nothing follows them
+        void releaseAll();
 
         // this computer's player window, captured as run_build does (BuildTools registers it)
         using HostCapture = std::function<bool(long pid, std::vector<uint8_t>& png, std::string& error)>;

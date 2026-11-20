@@ -423,6 +423,9 @@ namespace jasperengine::editor {
         std::string getAppName() const;
         // the game's Android package name or iOS bundle identifier ("" for the other platforms)
         std::string applicationId() const;
+    public:
+        static std::string applicationIdOf(const Project& project, BuildPlatform platform, const std::string& appName);
+    private:
         fs::path getBuildCacheDir() const;
         // The compile tree every project with this build's kit and engine settings shares (the
         // engine and vendored objects built once), in the user cache; docs/specs/S33-build-speed.md R11

@@ -117,6 +117,10 @@ namespace jasperengine::editor {
         void addEntry(LogEntry&& entry);
         void updatePlayState();
         void showToolbar();
+        // Build And Run's device strip (docs/specs/build-and-run-on-device.md R19): each device run,
+        // its state, Stop and Screenshot
+        void showDeviceStrip();
+        std::set<std::string> crashActions;  // the device runs whose "crashed" line selects its fatal line
         void showList(float height);
         void showDetails();
         void copyAllToClipboard() const;

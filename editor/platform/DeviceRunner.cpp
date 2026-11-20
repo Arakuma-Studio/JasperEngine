@@ -323,6 +323,11 @@ namespace {
             halt();
         }
 
+        void release() override {
+            stopping = true;
+            halt();
+        }
+
         bool screenshot(std::vector<uint8_t>& png, std::string& error) override {
             // a file on the device, then pulled: the editor reads tool output as lines, not bytes
             const std::string remote = "/data/local/tmp/jasper-screenshot.png";
@@ -562,6 +567,8 @@ namespace {
             finish(std::nullopt, true);
             halt();
         }
+
+        void release() override { halt(); }
 
         bool screenshot(std::vector<uint8_t>& png, std::string& error) override {
             const fs::path local = fs::temp_directory_path() / ("jasper-simulator-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".png");
@@ -935,9 +942,11 @@ DeployResult DeviceRuns::deploy(const DeployRequest& request, const std::functio
     DeviceRecords records = mobile ? DeviceRecords::load(request.internalDir, &warning) : DeviceRecords();
     if (!warning.empty()) Out::warning("%s", warning.c_str());
     player::ContentManifest manifest;
-    if (mobile && !deviceContentManifest(run.contentDir, manifest, result.error)) return result;
+    if (mobile && !request.launchOnly && !deviceContentManifest(run.contentDir, manifest, result.error)) return result;
 
-    if (mobile && run.patch) {
+    if (request.launchOnly) {
+        result.installed = "current";
+    } else if (mobile && run.patch) {
         auto recorded = records.devices.find(device.id);
         if (recorded == records.devices.end()) {
             result.error = "no install recorded on " + device.name + ": Build And Run without patch";
@@ -1080,6 +1089,15 @@ void DeviceRuns::dismiss(const std::string& deviceId) {
         entry = it->second;
         entries.erase(it);
     }
+}
+
+void DeviceRuns::releaseAll() {
+    std::map<std::string, std::shared_ptr<Entry>> all;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        all.swap(entries);
+    }
+    for (auto& [id, entry] : all) entry->runner->release();
 }
 
 void DeviceRuns::stopAll() {

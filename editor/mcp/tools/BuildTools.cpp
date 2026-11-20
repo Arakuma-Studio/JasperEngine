@@ -41,6 +41,7 @@
 #include "platform/IosProject.h"
 #include "platform/ExternalTools.h"
 #include "util/BuiltPlayers.h"
+#include "BuildDevices.h"
 #include "pool/ShaderPool.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
@@ -58,6 +59,7 @@
 #include <cstdlib>
 #include <functional>
 #include <fstream>
+#include <future>
 #include <map>
 #include <cstdint>
 #ifndef _WIN32
@@ -65,6 +67,7 @@
 #endif
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -503,6 +506,8 @@ struct BuildRun {
     ExportResult result;                  // a player build's report (taken before the exporter goes)
     std::string next;                     // the success result's next: a platform the game does not target
     Json unreadableScenes = Json::array();  // generate_shaders: the scenes its list could not read (R4)
+    // build_project run_device: the device run after the build (docs/specs/build-and-run-on-device.md R22)
+    std::shared_ptr<builddevice::BuildDeploy> deploy;
 };
 
 // Never destroyed: a build still running at exit must not be joined from a static destructor
@@ -612,7 +617,11 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
     // notices) and notes
     for (const BuildWarning& warning : r.result.warnings) result["warnings"].push_back({{"code", warning.code}, {"message", warning.message}});
     if (!r.result.notes.empty()) result["notes"] = r.result.notes;
-    if (progress.finished && !progress.failed) {
+    if (progress.finished && !progress.failed && r.deploy && !r.deploy->result.ok) {
+        // built, but the device run failed: the error names the fix
+        result["step"] = "device";
+        r.job->fail("Built, but the run on " + r.deploy->device.name + " failed: " + r.deploy->result.error + ".", result);
+    } else if (progress.finished && !progress.failed) {
         result["artifacts"] = artifactsJson(outputDir);
         std::string message;
         if (r.mode == ExportMode::Player) {
@@ -657,6 +666,14 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
         }
         if (r.warningCount) message += " " + std::to_string(r.warningCount) + " compiler warning(s).";
         if (!r.result.warnings.empty()) message += " " + std::to_string(r.result.warnings.size()) + " build warning(s): see warnings.";
+        if (r.deploy) {
+            result["device"] = builddevice::resultJson(*r.deploy);
+            message = r.deploy->result.installed == "patched"
+                          ? "Patched " + r.deploy->device.name + " (" + std::to_string(r.deploy->result.pushedFiles) + " files, no reinstall) and launched the game."
+                          : message + " Installed on " + r.deploy->device.name + " and launched.";
+            if (!r.deploy->result.url.empty()) message += " " + r.deploy->result.url;
+            r.next = builddevice::nextHint(*r.deploy) + (r.next.empty() ? "" : "; " + r.next);
+        }
         if (!r.next.empty()) result["next"] = r.next;
         r.job->succeed(message, result);
     } else if (r.job->cancelRequested()) {
@@ -718,6 +735,10 @@ void watchRun(std::shared_ptr<BuildRun> run) {
         if (r.exporter) r.result = r.exporter->getResult();
         if (r.exporter) r.producedExecutable = r.exporter->getProducedExecutable();
         r.exporter.reset();
+    }
+    // Build And Run on a device: install or patch and launch, inside the build's job (D5)
+    if (r.deploy && progress.finished && !progress.failed && !r.job->cancelRequested()) {
+        builddevice::deploy(*r.deploy, r.projectPath, r.result, r.config, [&r](const std::string& step) { r.job->setProgress(0.99, step); });
     }
     finishRun(run, progress);
     if (r.logFile) r.logFile.close();
@@ -814,6 +835,15 @@ void buildProjectTool(const CallPtr& call) {
     }
     if (busy(call)) return;
 
+    // ---- run_device / patch (R22): Build And Run on a device
+    const std::string runDevice = args.contains("run_device") && args["run_device"].is_string() ? args["run_device"].get<std::string>() : "";
+    std::optional<bool> patchArg;
+    if (args.contains("patch") && args["patch"].is_boolean()) patchArg = args["patch"].get<bool>();
+    if (patchArg && runDevice.empty()) {
+        call->fail("patch needs run_device: Patch And Run pushes the content to a device (get_build_info devices:true lists them).");
+        return;
+    }
+
     // ---- mode: omitted, the project's default platform (Project::defaultBuildPlatform: this computer's
     // when it is a target), or the platform named
     const bool platformGiven = args.contains("platform") && args["platform"].is_string();
@@ -875,6 +905,11 @@ void buildProjectTool(const CallPtr& call) {
             return;
         }
         platform = profile.platform;
+    }
+
+    if (!runDevice.empty() && mode != ExportMode::Player) {
+        call->fail("run_device runs a game: build mode player, desktop or web (a source export has nothing to run).");
+        return;
     }
 
     // ---- scenes
@@ -1141,33 +1176,51 @@ void buildProjectTool(const CallPtr& call) {
         call->fail(escape);
         return;
     }
-    const std::string playerLabel = std::string("Build ") + buildPlatformName(platform);
-    const char* modeLabel = mode == ExportMode::SourceCode ? "Export source" : mode == ExportMode::Desktop ? "Build Desktop player"
-                          : mode == ExportMode::Player ? playerLabel.c_str() : "Build Web player";
-    auto run = std::make_shared<BuildRun>();
-    run->job = ctx.jobs().create("build", std::string(modeLabel) + (mode == ExportMode::SourceCode ? "" : " (" + config.buildType + ")"),
-                                 JobBusy::Export);
-    run->mode = mode;
-    run->config = config;
-    run->projectPath = project->getProjectPath();
-    if (mode == ExportMode::Player && !project->isTargetPlatform(platform)) {
-        std::string targets;
-        for (const std::string& name : targetPlatformNames(project)) targets += (targets.empty() ? "" : ", ") + name;
-        run->next = std::string(buildPlatformName(platform)) + " is not a target (player.target_platforms: " + targets + ")";
-    }
-    run->executableName = executableName(project);
-    run->exporter = std::make_unique<Exporter>();
-    run->logCursor = Out::lastLogId();
-    openRunLog(*run, project);
-    {
-        std::lock_guard<std::mutex> lock(manager().mutex);
-        manager().active = run;
-    }
-    Out::info("MCP: %s to %s", modeLabel, FileUtils::pathToUtf8(outputDir).c_str());
-    run->exporter->startExport(project, config);
-    startRun(run);
+    // Build And Run on a device (R22): the device is probed off the main thread, then the build starts
+    auto start = [call, project, mode, platform, outputDir](ExportConfig config, std::shared_ptr<builddevice::BuildDeploy> deploy) {
+        const Json& args = call->args();
+        if (busy(call)) return;
+        const std::string playerLabel = std::string(config.contentOnly ? "Patch " : "Build ") + buildPlatformName(platform);
+        const char* modeLabel = mode == ExportMode::SourceCode ? "Export source" : mode == ExportMode::Desktop ? "Build Desktop player"
+                              : mode == ExportMode::Player ? playerLabel.c_str() : "Build Web player";
+        auto run = std::make_shared<BuildRun>();
+        run->job = call->ctx().jobs().create("build", std::string(modeLabel) + (mode == ExportMode::SourceCode ? "" : " (" + config.buildType + ")"),
+                                     JobBusy::Export);
+        run->mode = mode;
+        run->config = config;
+        run->deploy = deploy;
+        run->projectPath = project->getProjectPath();
+        if (mode == ExportMode::Player && !project->isTargetPlatform(platform)) {
+            std::string targets;
+            for (const std::string& name : targetPlatformNames(project)) targets += (targets.empty() ? "" : ", ") + name;
+            run->next = std::string(buildPlatformName(platform)) + " is not a target (player.target_platforms: " + targets + ")";
+        }
+        run->executableName = executableName(project);
+        run->exporter = std::make_unique<Exporter>();
+        run->logCursor = Out::lastLogId();
+        openRunLog(*run, project);
+        {
+            std::lock_guard<std::mutex> lock(manager().mutex);
+            manager().active = run;
+        }
+        Out::info("MCP: %s to %s", modeLabel, FileUtils::pathToUtf8(outputDir).c_str());
+        run->exporter->startExport(project, config);
+        startRun(run);
 
-    replyWhenJobDone(call, run->job, args.value("wait", true), args.value("timeout_seconds", 120.0), buildResult);
+        replyWhenJobDone(call, run->job, args.value("wait", true), args.value("timeout_seconds", 120.0), buildResult);
+    };
+    if (!runDevice.empty()) {
+        builddevice::resolve(call, project, config, runDevice, patchArg, [start, config](std::shared_ptr<builddevice::BuildDeploy> deploy) {
+            ExportConfig deviceConfig = config;
+            deviceConfig.contentOnly = deploy->patch;
+            deviceConfig.androidRunAbi = deploy->patch ? std::string() : deploy->androidAbi;
+            // the simulator .app is what a simulator runs (R3)
+            if (deviceConfig.platform == BuildPlatform::IOS) deviceConfig.iosSimulator = true;
+            start(deviceConfig, deploy);
+        });
+        return;
+    }
+    start(config, nullptr);
 }
 
 // ------------------------------------------------------------------ the shader list (S64)
@@ -1541,6 +1594,11 @@ void getBuildInfoTool(const CallPtr& call) {
                 data["shaders_job_id"].get<std::string>() + " until it ends, then get_build_info again.";
     }
     for (const UnreadableScene& scene : list.unreadableScenes) text += " Cannot read scene " + scene.path + ": " + scene.error + ".";
+    // the Run Devices (R21): probing spawns processes, so only when asked, off the main thread
+    if (args.value("devices", false)) {
+        builddevice::replyWithDevices(call, project, text, data);
+        return;
+    }
     call->ok(text, data);
 }
 
@@ -2128,6 +2186,11 @@ void runBuildTool(const CallPtr& call) {
     McpContext& ctx = call->ctx();
     Project* project = ctx.project();
     const Json& args = call->args();
+    // R23: a device's run (Android, the iOS Simulator, the browser)
+    if (args.contains("device") && args["device"].is_string()) {
+        builddevice::runBuildOnDevice(call);
+        return;
+    }
 
     fs::path exe;
     const std::string pathText = args.value("path", "");
@@ -2425,6 +2488,10 @@ void runBuildTool(const CallPtr& call) {
 #else
 
 void runBuildTool(const CallPtr& call) {
+    if (call->args().contains("device") && call->args()["device"].is_string()) {
+        builddevice::runBuildOnDevice(call);
+        return;
+    }
     call->fail("run_build is not implemented on Windows yet: start the player from its output directory.");
 }
 
@@ -2435,6 +2502,28 @@ void runBuildTool(const CallPtr& call) {
 void registerBuildTools(McpRegistry& registry) {
     using namespace schema;
 
+    // Build And Run's Screenshot of this computer's player: run_build's window capture, on the main
+    // thread (Xlib's), asked for from the run's worker
+    platform::DeviceRuns::setHostCapture([](long pid, std::vector<uint8_t>& png, std::string& error) {
+        auto promise = std::make_shared<std::promise<ScreenCapture>>();
+        std::future<ScreenCapture> captured = promise->get_future();
+        getEditorHost().enqueueMainThreadTask([pid, promise]() {
+            const unsigned long window = findPlayerWindow(pid, {});
+            promise->set_value(window ? captureWindow(window, 4096) : ScreenCapture{});
+        });
+        if (captured.wait_for(std::chrono::seconds(10)) != std::future_status::ready) {
+            error = "the editor did not capture the player's window in time";
+            return false;
+        }
+        ScreenCapture capture = captured.get();
+        if (!capture.ok) {
+            error = capture.note.empty() ? "the player's window was not found (X11 only)" : capture.note;
+            return false;
+        }
+        png = std::move(capture.png);
+        return true;
+    });
+
     {
         ToolDef tool;
         tool.name = "get_build_info";
@@ -2442,9 +2531,10 @@ void registerBuildTools(McpRegistry& registry) {
         tool.description =
             "Build Settings state: toolchains (cmake/compiler, emsdk; missing ones listed), graphics APIs and last "
             "output dir per mode, jobs, scenes in build, shader count (include_shaders: keys for edit_build_shaders), "
-            "running job, last result. Call before build_project.";
+            "running job, last result. Call before build_project. devices: Run Devices (spawns adb/simctl).";
         tool.inputSchema = object({
-            {"include_shaders", withDefault(boolean(""), false)}
+            {"include_shaders", withDefault(boolean(""), false)},
+            {"devices", withDefault(boolean(""), false)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -2463,7 +2553,7 @@ void registerBuildTools(McpRegistry& registry) {
         tool.description =
             "Build Settings > Build, as a job. player: a game per platform (prebuilt, or compiled); desktop/web: this "
             "computer/web; source: a CMake project; omitted: get_build_info's default platform. profile: a Build Profile sets "
-            "platform, API, flavour, folder. Saves scenes first. Past timeout_seconds: job_id (get_job).";
+            "platform, API, flavour, folder. run_device: Build And Run there. Saves scenes first. Past timeout_seconds: job_id (get_job).";
         tool.inputSchema = object({
             {"mode", stringEnum("", {"player", "desktop", "web", "source"})},
             {"output_dir", string("Absolute, outside project.")},
@@ -2477,6 +2567,8 @@ void registerBuildTools(McpRegistry& registry) {
             {"development", withDefault(boolean(""), false)},
             {"android_format", stringEnum("Default: project.", {"aab", "apk-per-abi", "apk"})},
             {"ios_simulator", withDefault(boolean("Unsigned simulator .app."), false)},
+            {"run_device", string("Device id, auto or web.")},
+            {"patch", boolean("Push changed content only. Default: development.")},
             {"backends", array(stringItem, "source: opengl/opengles/d3d11/metal-macos/metal-ios/vulkan/all. Remembered.")},
             {"build_type", withDefault(stringEnum("", {"Release", "Debug", "RelWithDebInfo", "MinSizeRel"}), "Release")},
             {"build_jobs", integer("0 = auto.")},
@@ -2540,11 +2632,13 @@ void registerBuildTools(McpRegistry& registry) {
         tool.name = "run_build";
         tool.title = "Run Build";
         tool.description =
-            "Run a desktop player for `seconds`, screenshot it (Linux/X11), stop it. Returns log tail (log_file), "
-            "errors, exit code/signal, crashed, fatal_lines. input (Linux): send_input events (key, text, mouse, "
-            "wait, release_all, screenshot). screenshots_at: seconds since launch.";
+            "Run the last build for `seconds` here or on a device (Android, iOS Simulator, web), screenshot it, stop it. "
+            "Returns log tail, errors, exit code, crashed, fatal_lines. input (desktop Linux/X11): send_input events. "
+            "screenshots_at: seconds since launch.";
         tool.inputSchema = object({
             {"path", string("Executable or build dir. Default: last build.")},
+            {"device", string("Device id, auto or web (get_build_info devices).")},
+            {"keep_running", withDefault(boolean(""), false)},
             {"seconds", number("Default 5.", 0.5, 300)},
             {"input", Json{{"type", "array"}, {"maxItems", 500}, {"items", anyObject("")}}},
             {"input_delay_seconds", withDefault(number("", 0, 120), 1)},

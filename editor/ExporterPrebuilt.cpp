@@ -196,16 +196,20 @@ editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, con
     return choice;
 }
 
-std::string editor::Exporter::applicationId() const {
-    if (config.platform == BuildPlatform::Android) {
-        const std::string id = settings->getApplicationIdentifier(settings->getAndroidProjectSettings().packageName);
-        return id.empty() ? "com.jasperengine." + getAppName() : id;
+std::string editor::Exporter::applicationIdOf(const Project& project, BuildPlatform platform, const std::string& appName) {
+    if (platform == BuildPlatform::Android) {
+        const std::string id = project.getApplicationIdentifier(project.getAndroidProjectSettings().packageName);
+        return id.empty() ? "com.jasperengine." + appName : id;
     }
-    if (config.platform == BuildPlatform::IOS) {
-        const IOSProjectSettings& ios = settings->getIOSProjectSettings();
-        return ios.bundleIdentifier.empty() ? "com.jasperengine." + getAppName() : ios.bundleIdentifier;
+    if (platform == BuildPlatform::IOS) {
+        const IOSProjectSettings& ios = project.getIOSProjectSettings();
+        return ios.bundleIdentifier.empty() ? "com.jasperengine." + appName : ios.bundleIdentifier;
     }
     return "";
+}
+
+std::string editor::Exporter::applicationId() const {
+    return applicationIdOf(*settings, config.platform, getAppName());
 }
 
 bool editor::Exporter::resolvePlayer() {
