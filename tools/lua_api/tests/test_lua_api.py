@@ -272,6 +272,20 @@ class Emitters(unittest.TestCase):
         self.assertIn('setRamp', {m['name'] for m in gradient['methods']})
         self.assertTrue({'ramp', 'rampSteps', 'rampReverse', 'rampBias'} <= {p['name'] for p in gradient['properties']})
 
+    def test_nodiscard_flag(self):
+        """An OVERRIDES entry with 'nodiscard' reaches the JSON and becomes ---@nodiscard in the stub, so
+        LuaLS reports a dropped CancellableEvent:invoke result (cancellable-prioritised-events R9, R32)"""
+        classes = {c['name']: c for c in api()['classes']}
+
+        def method(cls, name):
+            return next(m for m in classes[cls]['methods'] if m['name'] == name)
+        self.assertTrue(method('CancellableEvent', 'invoke').get('nodiscard'))
+        self.assertNotIn('nodiscard', method('Event', 'invoke'))
+        with tempfile.TemporaryDirectory() as tmp:
+            files, _ = stubs.write_stubs(api(), os.path.join(tmp, 'stubs.h'), os.path.join(tmp, 'lua'))
+        self.assertRegex(files['CancellableEvent.lua'], r'---@nodiscard\n(---@[^\n]*\n)*function CancellableEvent:invoke\(')
+        self.assertNotIn('---@nodiscard', files['Event.lua'])
+
     def test_lua_only_marked(self):
         """C++ completion offers Engine::deltatime only if C++ has it (Doriax 755972f92): a static
         property backed by an accessor or a lambda, and a method bound to a helper, are Lua only"""

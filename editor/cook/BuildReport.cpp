@@ -142,7 +142,9 @@ Json BuildReport::toJson() const{
         }
         files.push_back(entry);
     }
-    return {{"version", 1}, {"platform", platform}, {"method", method}, {"total_bytes", totalBytes}, {"categories", categoryJson}, {"largest", files}};
+    Json out = {{"version", 1}, {"platform", platform}, {"method", method}, {"total_bytes", totalBytes}, {"categories", categoryJson}, {"largest", files}};
+    if (!buildProfile.empty()) out["buildProfile"] = buildProfile;
+    return out;
 }
 
 bool BuildReport::fromJson(const Json& json, BuildReport& out){
@@ -151,6 +153,7 @@ bool BuildReport::fromJson(const Json& json, BuildReport& out){
     out = BuildReport();
     out.platform = json.value("platform", std::string());
     out.method = json.value("method", std::string());
+    out.buildProfile = json.value("buildProfile", std::string());
     out.totalBytes = json.value("total_bytes", (uint64_t)0);
     if (json.contains("categories") && json["categories"].is_object())
         for (const auto& [name, bytes] : json["categories"].items())

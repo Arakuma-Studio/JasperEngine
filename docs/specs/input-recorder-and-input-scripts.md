@@ -638,6 +638,16 @@ wait until clicked, shot). Red controls are named per criterion.
 - **Recording length.** A recording stores `frames` (R1), the frames from `start()` to `stop()` (to
   the cap's frame when truncated), and replays that long; without it a replay ended on its last
   event, cutting the idle tail a recording was stopped after. An optional key, no version bump.
+- **Merged steps.** `send_input`'s `app {action: "back"}` (Engine::systemBack, the result's `back`)
+  and the gamepad cursor warp (`gamepad` with `x`, `y` or `target`, before its button or axis in the
+  same frame) from text-entry-gamepad-cursor-back-button are interpreter steps, so files,
+  `Test.input`, players and Lua take them too; `Test.input` resolves targets in the running UI
+  Documents as Lua replays do.
+- **Orientation in replays.** A recording's orientation turn replayed where no device can be
+  simulated (Lua, players) is skipped with one warning; a script asking for a turn there fails. The
+  recorder stores a turn when the orientation changes, not each `systemOrientationChanged` call.
+- **Unmoved mouse moves.** The recorder drops a mouse move to where the last recorded mouse event
+  left the pointer (the editor's Game view sends one each hovered frame); captured, every move is kept.
 - **Recorder buffer.** `InputRecorder::end()` returns a `RecordedInput` (the swapped record chunks);
   `toScript()` turns it into a `ParsedScript` on a job, so Stop stays O(1) on the main thread (R15).
 - **Parity (AC3).** The editor keeps no interpreter of its own: `send_input` parses with

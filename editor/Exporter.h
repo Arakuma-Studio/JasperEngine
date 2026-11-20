@@ -6,6 +6,7 @@
 #include "titleart/localisation/TitleLanguageExport.h"
 #include "Project.h"
 #include "ShippingTypes.h"
+#include "buildprofile/BuildProfile.h"
 #include "cook/BuildReport.h"
 #include "cook/SceneCooker.h"
 #include "players/ModuleUsage.h"
@@ -116,7 +117,21 @@ namespace jasperengine::editor {
         std::string keyPassword;
         // iOS: the simulator's unsigned .app instead of an archive
         bool iosSimulator = false;
+        // the Build Profile the build resolves (docs/specs/build-profiles.md); "" none: today's build.
+        // The caller has applied its platform, backend, flavour and folder (applyBuildProfile)
+        std::string buildProfile;
+        // Build And Run on an Android device (docs/specs/build-and-run-on-device.md R3): one APK of
+        // this ABI, whatever androidFormat says; "" none
+        std::string androidRunAbi;
+        // Patch And Run (R6, D6): cook the content into the build cache as a build does, up to its
+        // content manifest, and stop there: no package, no signing, the output folder untouched
+        bool contentOnly = false;
     };
+
+    // A build of `profileName`: its platform, Graphics API, Development Build and output folder
+    // into `config` (an output folder of its own replaces `defaultOutputDir`). False with the
+    // reason when it does not exist, cannot be read or does not validate.
+    bool applyBuildProfile(Project& project, const std::string& profileName, ExportConfig& config, std::string& error);
 
     // Why a project needs the Compile method (R5); empty: a prebuilt player can build it
     struct BuildMethodChoice {
@@ -151,6 +166,15 @@ namespace jasperengine::editor {
         fs::path buildReport;
         uint64_t buildBytes = 0;
         std::map<std::string, uint64_t> buildCategories;
+        // the Build Profile the build resolved ("" none)
+        std::string buildProfile;
+        // Android: the package name; iOS: the bundle identifier ("" elsewhere)
+        std::string appId;
+        // the cooked content folder (Patch And Run's source: the build cache's)
+        fs::path contentDir;
+        // an Android package that says android:debuggable (a Development Build of a runtime whose
+        // manifest template has the {{DEBUGGABLE}} marker, R9)
+        bool debuggable = false;
     };
 
     struct ExportProgress {
@@ -190,6 +214,34 @@ namespace jasperengine::editor {
     private:
         Project* project = nullptr;
         ExportConfig config;
+        // Build Profiles (R14): every Project Settings value of the build comes from `settings`, the
+        // open project itself without a profile (R15) or its settings snapshot; scenes and assets
+        // come from `project`. Made on the main thread when the export starts (prepareBuildProfile)
+        std::shared_ptr<Project> settingsHolder;
+        Project* settings = nullptr;
+        std::shared_ptr<const BuildProfile> buildProfile;
+        // what resolving it found (W-PROFILE-SUFFIX-NUMERIC, the store limits): the build's warnings
+        std::vector<BuildWarning> profileWarnings;
+        BuildContentFilter contentFilter;
+        // the profile's Scene List as project scene ids (listed first, then the scenes they
+        // involve), found while the scenes are loaded; empty: every scene of the project ships
+        std::vector<uint32_t> profileListedScenes;
+        std::set<uint32_t> shippedScenes;
+        // a Compile build of a profile: main.cpp from its settings snapshot and Scene List (made while
+        // the scenes are loaded; copyGenerated ships it instead of the editor's own)
+        std::string profileMainSource;
+        bool prepareBuildProfile();
+        bool shipsScene(uint32_t sceneId) const { return shippedScenes.empty() || shippedScenes.count(sceneId) > 0; }
+        // the profile's start scene, else the first it lists; 0 without a Scene List
+        uint32_t profileStartScene() const;
+        // a path under the project, project-relative and generic ("" outside it), for the content filter
+        std::string projectRelativeForFilter(const fs::path& absolute) const;
+        // the project-relative prefix of a folder's paths ("assets/", "" for the project root)
+        std::string filterPrefixOf(const fs::path& folder) const;
+        // R12: what the shipped scenes reach through the dependency graph against the exclusions
+        // (main thread, the asset index ready); "" when nothing excluded is used
+        std::string excludedReference() const;
+        void warnExcludedLuaRequires(const fs::path& luaRoot);
         ExportProgress progress;
         mutable std::mutex progressMutex;
         std::atomic<bool> cancelRequested{false};
@@ -372,6 +424,11 @@ namespace jasperengine::editor {
         static bool isLuaSourceFile(const fs::path& path);
 
         std::string getAppName() const;
+        // the game's Android package name or iOS bundle identifier ("" for the other platforms)
+        std::string applicationId() const;
+    public:
+        static std::string applicationIdOf(const Project& project, BuildPlatform platform, const std::string& appName);
+    private:
         fs::path getBuildCacheDir() const;
         // The compile tree every project with this build's kit and engine settings shares (the
         // engine and vendored objects built once), in the user cache; docs/specs/S33-build-speed.md R11
@@ -522,6 +579,9 @@ namespace jasperengine::editor {
         bool writeAudioCredits();
         // assets/je-audio-imports.json when any shipped clip has import settings
         bool writeAudioImports();
+        // game-ui-localization.md D5, R21: the String Tables cooked into assets/l10n (nothing without tables)
+        bool writeLocalization();
+        bool localizationShipped = false;
         // the paths the export writes the notices to, relative to its root
         static const char* effectLicensePath();
         static const char* fluidLicensePath();

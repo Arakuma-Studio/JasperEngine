@@ -89,6 +89,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `iframe` | unsupported | placeholder div.htmlui-unsupported (Warning) (HTMLUI-HTML-0002) | load the page as its own UIDocument |
 | `img` | emulated | HtmlImageElement; .svg sources (and data:image/svg+xml) -> <svg src> |  |
 | `input` | emulated | HtmlInputElement (input type table) |  |
+| `input-prompt` | emulated | the engine's input prompt: the action's binding for the input scheme in use, live (Input actions) |  |
 | `ins` | native | UA inline styles |  |
 | `kbd` | native | UA inline styles |  |
 | `label` | native | with HtmlLabelBehavior |  |
@@ -187,33 +188,34 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `color` | approximated | text showing the value; no swatch or picker, no ::before/::after (HTMLUI-HTML-0008) |  |
 | `date` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
 | `datetime-local` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
-| `email` | approximated | text input; no validation or keyboard hints (HTMLUI-HTML-0008) |  |
+| `email` | approximated | text input with the e-mail keyboard; no validation (HTMLUI-HTML-0008) |  |
 | `file` | unsupported | disabled "Choose File" button, no ::before/::after (HTMLUI-HTML-0008) | pick files through the game, e.g. a Lua file dialog |
 | `hidden` | native | text input hidden by the UA sheet |  |
 | `image` | emulated | submit button drawing src |  |
 | `month` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
-| `number` | emulated | text with numeric filtering, step keys and clamping; no spinner (HTMLUI-HTML-0008) |  |
+| `number` | emulated | text with numeric filtering, step keys, clamping and a number keypad; no spinner (HTMLUI-HTML-0008) |  |
 | `password` | native |  |  |
 | `radio` | native |  |  |
 | `range` | native |  |  |
 | `reset` | emulated | button that resets the form |  |
-| `search` | approximated | text input; no validation or keyboard hints (HTMLUI-HTML-0008) |  |
+| `search` | approximated | text input with the search keyboard and key; no validation (HTMLUI-HTML-0008) |  |
 | `submit` | native |  |  |
-| `tel` | approximated | text input; no validation or keyboard hints (HTMLUI-HTML-0008) |  |
+| `tel` | approximated | text input with the phone keypad; no validation (HTMLUI-HTML-0008) |  |
 | `text` | native |  |  |
 | `time` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
-| `url` | approximated | text input; no validation or keyboard hints (HTMLUI-HTML-0008) |  |
+| `url` | approximated | text input with the URL keyboard; no validation (HTMLUI-HTML-0008) |  |
 | `week` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
 
 ## Attributes
 
 `*` = every element; `data-*`, `aria-*` and `on*` are patterns.
 
-### Attributes: a-e
+### Attributes: a-d
 
 | Attribute | Element | Support | Notes | Instead |
 |---|---|---|---|---|
 | `action` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
+| `action` | `input-prompt` | emulated | read by the engine's input prompt (jasper://docs/html-ui) |  |
 | `action` | `onscreen-button` | emulated | read by the engine's on-screen control (jasper://docs/html-ui) |  |
 | `align` | `*` | rewritten | legacy presentational attribute |  |
 | `alt` | `*` | native | kept |  |
@@ -226,8 +228,9 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `as` | `list-view` | emulated | the aliases of an item and its 0-based index ("item, i") (S17) |  |
 | `as` | `table-view` | emulated | the aliases of an item and its 0-based index ("item, i") (S17) |  |
 | `as` | `tree-view` | emulated | the aliases of an item and its 0-based index ("item, i") (S17) |  |
-| `autocapitalize` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `autocapitalize` | `*` | native | the soft keyboard's capitalisation on Android, iOS and the web (off, none, on, sentences, words, characters; default off) |  |
 | `autocomplete` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `autocorrect` | `*` | native | the soft keyboard's suggestions on Android (on, off; default off); off on iOS and the web, whose keyboards keep no text |  |
 | `autofocus` | `*` | emulated | focused after load |  |
 | `autoplay` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `autoplay` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
@@ -274,17 +277,17 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `disableremoteplayback` | `video` | ignored | no remote playback; dropped with an info (HTMLUI-HTML-0028) |  |
 | `draggable` | `*` | rewritten | mapped: HTML5 drag events with event.dataTransfer, ghost, drop feedback (S17) |  |
 | `dropzone` | `*` | emulated | the element accepts drops of the listed dataTransfer types (copy\|move\|link) (S17) |  |
+
+### Attributes: e-k
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
 | `enctype` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
-| `enterkeyhint` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `enterkeyhint` | `*` | native | the soft keyboard's action key (enter, done, go, next, previous, search, send): an Enter keydown with event.enterKeyHint; next / previous focus the adjacent text field, done blurs, the others submit (a hardware Enter does the same) |  |
 | `estimated-height` | `grid-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
 | `estimated-height` | `list-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
 | `estimated-height` | `table-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
 | `estimated-height` | `tree-view` | emulated | the height of rows not measured yet (item-height="auto") (S17) |  |
-
-### Attributes: f-l
-
-| Attribute | Element | Support | Notes | Instead |
-|---|---|---|---|---|
 | `face` | `font` | rewritten | legacy presentational attribute |  |
 | `fetchpriority` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `for` | `*` | native | kept |  |
@@ -310,7 +313,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `id` | `*` | native | kept; id="htmlui-root" is reserved and renamed (Warning) |  |
 | `id` | `html` | rewritten | the root id is reserved; selectors on the author id are rewritten |  |
 | `indent` | `tree-view` | emulated | the indentation per depth in px (default 16) (S17) |  |
-| `inputmode` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `inputmode` | `*` | native | the soft keyboard on Android, iOS and the web (none, text, decimal, numeric, tel, search, email, url); none shows no keyboard |  |
 | `integrity` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `intermission` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `intermission` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -335,6 +338,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `key` | `table-column` | emulated | the item field the cells show ({{item.<key>}}) (S17) |  |
 | `key` | `table-view` | emulated | the item field that identifies an item (selection, row identity) (S17) |  |
 | `key` | `tree-view` | emulated | the node field that identifies a node (default: its index path) (S17) |  |
+
+### Attributes: l-r
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
 | `lang` | `*` | rewritten | kept, plus a presentational hint |  |
 | `loading` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `loop` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
@@ -343,16 +351,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `loop` | `particle-system` | emulated | loop="false" plays once; absent: the prefab's own |  |
 | `loop` | `video` | native | seamless (seeking, seeked at the wrap) |  |
 | `low` | `meter` | unsupported | dropped (Info) (HTMLUI-HTML-0004) | color the progress fill with a class |
-
-### Attributes: m-r
-
-| Attribute | Element | Support | Notes | Instead |
-|---|---|---|---|---|
 | `marker` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `marker` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `marker` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `max` | `*` | native | kept |  |
-| `maxlength` | `*` | native | kept |  |
+| `maxlength` | `*` | native | kept: typing and the soft keyboard stop there |  |
 | `media` | `source` | rewritten | resolved at load to choose the img source |  |
 | `method` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
 | `min` | `*` | native | kept |  |
@@ -404,6 +407,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | Attribute | Element | Support | Notes | Instead |
 |---|---|---|---|---|
 | `scale` | `particle-system` | emulated | CSS px per prefab unit (default 1) |  |
+| `scheme` | `input-prompt` | emulated | read by the engine's input prompt (jasper://docs/html-ui) |  |
 | `segment` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `segment` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `segment` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -450,7 +454,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `title` | `*` | emulated | emulated: a tooltip after the hover or focus delay (S17) |  |
 | `tooltip` | `*` | emulated | rich tooltip: #id of an element or <template> of the document, cloned on show (S17) |  |
 | `tooltip-delay` | `*` | emulated | the element's tooltip delay in ms (S17) |  |
-| `translate` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `translate` | `*` | native | kept: translate="no" keeps a subtree out of the localisation scan |  |
 | `type` | `*` | native | kept |  |
 | `type` | `source` | native | video: skipped when canPlayType gives "" (video/webm with AV1, Opus plays) |  |
 | `valign` | `*` | rewritten | legacy presentational attribute |  |
@@ -2212,7 +2216,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `grid` | unsupported | not evaluated: the query never matches (Warning) (HTMLUI-AT-0004) | remove the query |
 | `handheld` | rewritten | media type that never matches; the block is dropped |  |
 | `height` | native | range syntax -> min-/max- forms; em/rem -> px x 16 |  |
-| `hover` | rewritten | evaluated at load: hover unless System::isTouchDevice() (Info) |  |
+| `hover` | rewritten | follows the last pointer used (live): none after a finger, hover after the mouse; the document is restyled with the other compile when it changes |  |
 | `inverted-colors` | rewritten | evaluated at load with the value none (Info) |  |
 | `max-aspect-ratio` | native | range syntax -> min-/max- forms |  |
 | `max-color` | rewritten | evaluated at load with the value 8 (Info) |  |
@@ -2236,7 +2240,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `orientation` | native |  |  |
 | `overflow-block` | rewritten | evaluated at load with the value scroll (Info) |  |
 | `overflow-inline` | rewritten | evaluated at load with the value scroll (Info) |  |
-| `pointer` | rewritten | evaluated at load: fine, or coarse on touch devices (Info) |  |
+| `pointer` | rewritten | follows the last pointer used (live): coarse after a finger, fine after the mouse; the document is restyled with the other compile when it changes |  |
 | `prefers-color-scheme` | rewritten | UIDocument::setColorScheme switches the theme (light by default) |  |
 | `prefers-contrast` | rewritten | evaluated at load with the value no-preference (Info) |  |
 | `prefers-reduced-data` | unsupported | not evaluated: the query never matches (Warning) (HTMLUI-AT-0004) | remove the query |
@@ -2268,7 +2272,7 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-AT-0003` | info | **@supports evaluated** (`supports-evaluated`): The @supports condition was evaluated against the engine's support tables; the message gives the result. |
 | `HTMLUI-AT-0004` | warning | **Media feature unsupported** (`media-feature-unsupported`): The media condition uses a feature or a negation the engine cannot express; the block never matches. |
 | `HTMLUI-AT-0005` | info | **Media query normalized** (`media-normalized`): The media query was rewritten to the engine's syntax (range syntax to min-/max-, comma lists to separate blocks, prefers-color-scheme to themes, ...). |
-| `HTMLUI-AT-0006` | info | **Media feature evaluated statically** (`media-static`): The media feature has one fixed value in the engine (hover, pointer, color, ...); the message gives the value used. |
+| `HTMLUI-AT-0006` | info | **Media feature evaluated statically** (`media-static`): The media feature has one fixed value in the engine (any-hover, any-pointer, color, ...); the message gives the value used. |
 | `HTMLUI-AT-0007` | by case (warning) | **@import problem** (`import-problem`): An @import cycle (Error: the repeated import is dropped), a missing imported file, or an @import nested too deeply (Warning). |
 | `HTMLUI-AT-0008` | info | **Nesting flattened** (`nesting-flattened`): Nested rules were flattened into top-level rules. |
 | `HTMLUI-AT-0009` | warning | **Invalid keyframes** (`keyframes-invalid`): A keyframe selector or the content of a keyframe block is invalid; it was dropped. |
@@ -2395,6 +2399,12 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-IMP-0009` | warning | **Manifest file missing** (`manifest-file-missing`): An import manifest entry points to a file that does not exist; re-import the resource (load the document in the editor, jasperengine-editor import-ui, or MCP import_files from_document). |
 | `HTMLUI-IMP-0010` | warning | **Video not converted** (`video-not-converted`): The importer kept a video the engine cannot play because no FFmpeg with an AV1 encoder was found (JASPER_FFMPEG, the editor setting, then PATH). Install FFmpeg with SVT-AV1 (or libaom-av1, rav1e) and libopus and import it again, or run the command in the message. FFmpeg is the user's own tool, run as a separate program; the engine never links or ships it. |
 | `HTMLUI-IMP-0011` | error | **Video conversion failed** (`video-conversion-failed`): FFmpeg could not convert the video to AV1 + Opus WebM (an unreadable or damaged input, or an encoder error); the message has FFmpeg's last lines. The original is not imported. |
+
+### L10N
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `HTMLUI-L10N-0001` | warning | **Localised element with child elements** (`l10n-child-elements`): An element with data-l10n-id gets the message as its text, so it must hold only text: its child elements would be replaced. The element is left as written. Put the key on the innermost element that holds the text, or split the sentence into keys (data-l10n-args passes values). |
 
 ### SEL
 

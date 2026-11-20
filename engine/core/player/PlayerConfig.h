@@ -20,6 +20,8 @@
 #include "texture/MaterialPbr.h"
 #include "device/DeviceSettings.h"
 #include "pixelart/ScreenTransition.h"
+#include "save/SaveGameStore.h"
+#include "subsystem/GamepadCursor.h"
 
 #include "json.hpp"
 
@@ -65,6 +67,8 @@ namespace jasperengine::player {
         bool vsync = true;
         // Project Settings > Graphics > Dynamic Batching
         bool dynamicBatching = true;
+        // Player > Pause On Focus Loss
+        bool pauseOnFocusLoss = false;
         std::string icon;                  // content-relative PNG ("icon.png"), the window icon
         std::string storageId;
 
@@ -95,6 +99,9 @@ namespace jasperengine::player {
         std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
         float inputDeadzone = 0.15f;
         std::string inputActions;
+        // the String Tables' manifest ("l10n/manifest.json") when the game has any (game-ui-localization.md D5)
+        std::string localization;
+        GamepadCursorSettings gamepadCursor;
         nav::NavigationSettings navigation;
         // Project Settings > Voxels (T6 R7): what the project lowers of the platform's limits, 0: nothing
         int voxelMaxDimension = 0;
@@ -138,6 +145,12 @@ namespace jasperengine::player {
         bool hangWatchdog = true;
         int hangMs = 5000;
         bool crashWebOverlay = true;
+        int crashJournalBytes = 32 << 10;
+        bool crashJournalEngineEvents = true;
+
+        // Project Settings > Debug > Console Commands (development, always or never): whether
+        // --command, agents and the console field may run commands (console::setCommandsEnabled)
+        std::string consoleCommands = "development";
 
         // Project Settings > Audio (a Compile build's generated AudioSystem::configure and
         // AudioMixer::load): the defaults are AudioConfig's, the mixer asset-relative ("" = none)
@@ -155,6 +168,13 @@ namespace jasperengine::player {
         // NativeBridge::setPlatformOnlyPlugins): a call to one fails with "unavailable", and its
         // Lua mock answering logs a warning
         std::map<std::string, std::string> nativePlatformOnly;
+
+        // the Build Profile the game was built with and its Scripting Define Symbols (System.isDefined);
+        // both absent without a profile
+        std::string buildProfile;
+        std::vector<std::string> defines;
+        // Player > Saved Data (savegame::configure before the first scene; written only away from the defaults)
+        savegame::SaveSettings saveGame;
 
         PlayerConfig();
 

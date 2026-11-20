@@ -44,6 +44,8 @@ namespace {
         std::shared_ptr<RecordedInput> buffer;
         uint64_t startFrames = 0;
         uint32_t truncatedFrame = 0;     // the frame the cap stopped it on: where its replay ends
+        bool pointerKnown = false;       // where the last recorded mouse event left the pointer
+        float pointerX = 0.0f, pointerY = 0.0f;
         size_t bytes = 0;
         bool truncated = false;
         std::vector<std::string> probePaths;
@@ -284,6 +286,7 @@ bool InputRecorder::begin(const RecordOptions& options, std::string& error){
     s.startFrames = Engine::getGameFrames();
     s.bytes = 0;
     s.truncated = false;
+    s.pointerKnown = false;
     s.checkpoints.clear();
     // the probes, chosen now (R17)
     const std::vector<Scene*> scenes = Engine::getSceneLayers();
@@ -324,7 +327,16 @@ bool InputRecorder::record(const RecordedEvent& event, std::string_view text){
             if (blocked && !stopReplay)
                 return false;
         }
-        if (s.recording && !(event.kind == RecordKind::KeyDown && (event.flags & 1))) {
+        // a move to where the pointer already is (the editor's Game view sends one each frame it is
+        // hovered) changes nothing a replay needs; captured, a move is motion wherever it lands
+        const bool unmoved = event.kind == RecordKind::MouseMove && s.pointerKnown && event.x == s.pointerX &&
+                             event.y == s.pointerY && Engine::getMouseMode() != MouseMode::CAPTURED;
+        if (s.recording && (event.kind == RecordKind::MouseMove || event.kind == RecordKind::MouseDown || event.kind == RecordKind::MouseUp)) {
+            s.pointerKnown = true;
+            s.pointerX = event.x;
+            s.pointerY = event.y;
+        }
+        if (s.recording && !unmoved && !(event.kind == RecordKind::KeyDown && (event.flags & 1))) {
             RecordedInput& buffer = *s.buffer;
             const uint32_t frame = static_cast<uint32_t>(Engine::getGameFrames() - s.startFrames);
             // consecutive mouse moves of a frame: the last one (all of them while the pointer is captured)

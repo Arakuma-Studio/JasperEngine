@@ -13,9 +13,11 @@
 #if JASPERENGINE_VIDEO
 #include "media/UIVideoElement.h"
 #endif
+#include "controls/InputPrompt.h"
 #include "controls/OnScreenControls.h"
 #include "compat/runtime/RuntimeRegistry.h"
 #include "widgets/WidgetsRuntime.h"
+#include "htmlui/HtmlL10n.h"
 #include "effects/EffectRegistry.h"
 #include "effects/EffectSimulator.h"
 
@@ -107,10 +109,14 @@ bool HtmlUI::acquire(){
     htmlui::HtmlTextEffects::install();
     // the on-screen controls (ui-multitouch): <onscreen-stick>, <onscreen-button>, <touch-area>
     UIOnScreenControl::registerInstancers();
+    // <input-prompt>: an action's binding for the input scheme in use
+    UIInputPrompt::registerInstancer();
     // the compat layer's runtime emulations (phase-2 hook H1), before any document loads
     htmlui::compat::registerRuntime();
     // the S17 widgets: virtual views, markdown, tooltips, drag and drop
     htmlui::WidgetsRuntime::registerAll();
+    // game-ui-localization.md: keyed elements (data-l10n-*) as RmlUi makes them
+    htmlui::HtmlL10n::install();
     // the UI effects (phase 5): their typed instancers, property parsers and runtime plugin
     htmlui::EffectRegistry::get().initialise();
 
@@ -153,8 +159,10 @@ void HtmlUI::release(){
 #endif
     UIParticleSystemElement::releaseInstancer();
     UIOnScreenControl::releaseInstancers();
+    UIInputPrompt::releaseInstancer();
     htmlui::compat::releaseRuntime();
     htmlui::WidgetsRuntime::releaseAll();
+    htmlui::HtmlL10n::uninstall();
     htmlui::EffectRegistry::get().shutdown();
     ThorVGRuntime::release();
 

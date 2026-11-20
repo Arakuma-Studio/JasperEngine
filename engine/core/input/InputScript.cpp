@@ -13,6 +13,7 @@
 #include "input/InputControlNames.h"
 #include "math/Rect.h"
 #include "script/LuaBinding.h"
+#include "subsystem/GamepadCursor.h"
 #include "util/PlatformRules.h"
 
 #include "lua.hpp"
@@ -488,6 +489,15 @@ namespace {
                 b.add(ActionType::GamepadDisconnect, gap).device = pad;
                 return true;
             }
+            // x, y or target: the gamepad cursor goes there first, in the same frame
+            ScriptPoint warp;
+            if (!b.readEventPoint(event, "x", "y", "position", "target", space, warp, error))
+                return false;
+            if (warp.given) {
+                ScriptAction& a = b.add(ActionType::GamepadCursor, 0);
+                a.device = pad;
+                a.point = warp;
+            }
             if (action == "axis") {
                 const int axis = parseGamepadAxisValue(event.contains("axis") ? event["axis"] : ScriptJson());
                 if (axis < 0) {
@@ -653,7 +663,11 @@ namespace {
                 b.add(ActionType::AppOrientation, gap).string = b.addString(PlatformRules::orientationName(orientation));
                 return true;
             }
-            error = "app action must be pause, resume, focus_lost, focus_gained, low_memory, hide, show or orientation";
+            if (action == "back") {
+                b.add(ActionType::AppBack, gap);
+                return true;
+            }
+            error = "app action must be pause, resume, focus_lost, focus_gained, low_memory, hide, show, orientation or back";
             return false;
         }
 
@@ -767,6 +781,8 @@ const char* actionTypeName(ActionType type){
         case ActionType::AppHide: return "app hide";
         case ActionType::AppShow: return "app show";
         case ActionType::AppOrientation: return "app orientation";
+        case ActionType::AppBack: return "app back";
+        case ActionType::GamepadCursor: return "gamepad cursor";
     }
     return "?";
 }
@@ -1209,6 +1225,8 @@ namespace {
             case ActionType::AppHide: e = {{"type", "app"}, {"action", "hide"}}; break;
             case ActionType::AppShow: e = {{"type", "app"}, {"action", "show"}}; break;
             case ActionType::AppOrientation: e = {{"type", "app"}, {"action", "orientation"}, {"orientation", text}}; break;
+            case ActionType::AppBack: e = {{"type", "app"}, {"action", "back"}}; break;
+            case ActionType::GamepadCursor:
             case ActionType::MouseMoveBy:
             case ActionType::DragStart:
             case ActionType::DragMove:
@@ -1438,7 +1456,7 @@ Vector2 ScriptPlayer::currentPointer(){
     return held_->mousePos;
 }
 
-bool ScriptPlayer::resolve(const ScriptAction& action, const ScriptPoint& point, Vector2& out, std::string& error){
+bool ScriptPlayer::resolve(const ScriptAction& action, const ScriptPoint& point, Vector2& out, std::string& error, bool engineSpace){
     Vector2 canvas;
     if (point.target >= 0) {
         const ScriptTarget& target = script_->targets[static_cast<size_t>(point.target)];
@@ -1458,7 +1476,7 @@ bool ScriptPlayer::resolve(const ScriptAction& action, const ScriptPoint& point,
     } else if (!toCanvas(point.space, point.x, point.y, canvas, error)) {
         return false;
     }
-    out = host_.toEnginePoint ? host_.toEnginePoint(canvas) : canvasToEngine(canvas);
+    out = !engineSpace ? canvas : host_.toEnginePoint ? host_.toEnginePoint(canvas) : canvasToEngine(canvas);
     return true;
 }
 
@@ -1785,11 +1803,37 @@ bool ScriptPlayer::runAction(const ScriptAction& a, std::string& error){
         }
         case ActionType::AppOrientation:
             if (!host_.appOrientation) {
+                // a recording's turn was the device's: replayed where none can be simulated, the
+                // rest of it still runs
+                if (script_->header.kind == ScriptKind::Recording) {
+                    if (!orientationSkipped_)
+                        Log::warn("Input replay: the recorded orientation turns are skipped (%s at frame %u first): only the editor's Game view simulates a device",
+                                  text.c_str(), a.frame);
+                    orientationSkipped_ = true;
+                    return true;
+                }
                 error = "app orientation turns a simulated device: it runs in the editor's Game view";
                 return false;
             }
             error = host_.appOrientation(text);
             return error.empty();
+        case ActionType::AppBack: {
+            Engine::systemBack(BackSource::Agent);
+            static const char* const routes[] = {"escape", "key", "document", "game"};
+            report_.backs.push_back({a.event, routes[static_cast<int>(Engine::getLastBackRoute())]});
+            return true;
+        }
+        case ActionType::GamepadCursor: {
+            if (!Engine::isGamepadCursorShown()) {
+                error = "no document has Gamepad Cursor on: set_properties UIDocument gamepadCursor true";
+                return false;
+            }
+            Vector2 canvas;
+            if (!resolve(a, a.point, canvas, error, false))
+                return false;
+            GamepadCursor::setPosition(canvas);
+            return true;
+        }
     }
     return true;
 }

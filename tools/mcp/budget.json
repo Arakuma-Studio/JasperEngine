@@ -95,6 +95,10 @@
         }
     },
     "exceptions": {
+        "configure_game_view": {
+            "limit": 1620,
+            "reason": "input-device-awareness R27: its input_scheme (the Game view's Input Scheme menu: auto, or a scheme forced at Play start) on the toolbar tool that holds Simulate Touch; 1499 before, 1620 measured (eval case guard_input_scheme_forced)"
+        },
         "visualize_navigation": {
             "limit": 1725,
             "reason": "S74 path filter (agent_type, area_mask) and S75 R33 (frame, island / tile colours, slope and tile label flags, GameObject path ends, the Game view screenshot): 1642 measured + 5 %"
@@ -136,8 +140,8 @@
             "reason": "grandfathered by S31: 1977 chars when the limits were set, +5%"
         },
         "build_project": {
-            "limit": 1933,
-            "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%; lowered to its size when Target Platforms cut its result field list"
+            "limit": 2015,
+            "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%; lowered to its size when Target Platforms cut its result field list; build-and-run-on-device added run_device and patch (core paid for them: run_build lost its result field list)"
         },
         "send_input": {
             "limit": 2086,
@@ -156,8 +160,8 @@
             "reason": "grandfathered by S31: 1707 chars when the limits were set, +5% (tighter than its HTML UI cap 1956)"
         },
         "play": {
-            "limit": 1709,
-            "reason": "grandfathered by S31 at 1555 chars (+5% = 1632); S24 added keep_changes (+154): 1709 when S31 merged S24"
+            "limit": 1776,
+            "reason": "grandfathered by S31 at 1555 chars (+5% = 1632); S24 added keep_changes (+154): 1709 when S31 merged S24; input-recorder-and-input-scripts' input (replay a .input.json from Play's start) beside project-test-runner's data, after both trimmed its description (that spec's budget rule)"
         },
         "wait": {
             "limit": 1610,

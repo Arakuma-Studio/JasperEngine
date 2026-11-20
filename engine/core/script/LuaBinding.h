@@ -42,7 +42,8 @@ namespace jasperengine {
 
         static int luaRegisterEvent(lua_State* L);
         static int luaRegisterEngineEvent(lua_State* L);
-        static int luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive);
+        static int luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive,
+                                        int32_t priority = 0);
         static int luaUnregisterEvent(lua_State* L);
         static int luaUnregisterEngineEvent(lua_State* L);
         // Pushes the tag RegisterEvent / RegisterEngineEvent give a subscription
@@ -112,6 +113,7 @@ namespace jasperengine {
         static void registerSortingClasses(lua_State *L);
         // S48: HitStop and HitStopExempt (HitStopClassesLua.cpp)
         static void registerHitStopClasses(lua_State *L);
+        static void registerCullingClasses(lua_State *L);
         // S48: Transition, TransitionHandle, TransitionKind, PixelFX.glitch (TransitionClassesLua.cpp)
         static void registerTransitionClasses(lua_State *L);
         // S48: PixelFX.play, PixelFX.set and PixelFXHandle (PixelFxClassesLua.cpp)
@@ -121,6 +123,8 @@ namespace jasperengine {
         static void registerCrashClasses(lua_State *L);
         // InputRecording and InputReplay (InputRecordingClassesLua.cpp)
         static void registerInputRecordingClasses(lua_State *L);
+        static void registerLocalizationClasses(lua_State *L);
+        static void registerSaveGameClasses(lua_State *L);
 #if JASPERENGINE_HTMLUI
         static void registerHtmlUIClasses(lua_State *L);
         static void registerHtmlUIAnimeClasses(lua_State *L);

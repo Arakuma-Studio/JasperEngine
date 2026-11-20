@@ -35,6 +35,7 @@
 #include "subsystem/AnimatorSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "subsystem/CullingSystem.h"
 #include "subsystem/NavigationSystem.h"
 #if JASPERENGINE_TERRAIN_WORLD
 #include "subsystem/TerrainWorldSystem.h"
@@ -110,6 +111,9 @@ void Scene::init(){
     // after Render's transforms, before physics: a Tilemap Collider 2D's chunks rebuild before the step
     registerSystem<TilemapSystem>();
     registerSystem<PhysicsSystem>();
+    // after Render's world transforms and camera planes; after physics, whose load makes the
+    // bodies it freezes (the next fixed steps read them frozen)
+    registerSystem<CullingSystem>();
     // after physics (world collisions query it, never while it steps) and the transforms
     registerSystem<ParticleSubsystem>();
     registerSystem<AudioSystem>();
@@ -155,6 +159,7 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
     forEachComponentEvent(*this, [&substring](auto& event) { event.removeByTagSubstring(substring); });
     getSystem<PhysicsSystem>()->removeSubscriptionsByTag(substring);
     getSystem<TitleArtSystem>()->removeSubscriptionsByTag(substring);
+    getSystem<CullingSystem>()->removeSubscriptionsByTag(substring);
 }
 
 void Scene::setCamera(Camera* camera){

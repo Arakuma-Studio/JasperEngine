@@ -184,6 +184,41 @@ namespace jasperengine{
         // gamepad's navigation (the d-pad, the left stick, A)
         bool hasGamepadFocus() const;
 
+        // Back and menus (Engine::systemBack, Engine::isMenuShowing; docs/mcp/guide/html-ui.md "Back and menus")
+        // a shown, interactive Is Menu document of this scene
+        bool hasMenuDocument() const { return !menuEntities.empty(); }
+        // the focus keys go to is an open <select> or sits in an open modal <dialog>: Escape and B
+        // close it as keys (not a Back)
+        bool hasBackOverlay() const;
+        // the top menu document (highest sortOrder, then the later shown) gets a cancelable, bubbling
+        // `back` at its focused element, else its root; unless prevented, its default action closes
+        // an open <select>, else the topmost open modal <dialog>. True: prevented or something closed
+        bool dispatchBack();
+        // a menu opened (Engine, R19): the pointers this scene's non-menu documents hold end without a
+        // click; the fingers over a menu document stay and are added to keptFingers
+        void cancelPointersOutsideMenus(std::vector<int>& keptFingers);
+        // bumped whenever a document of any scene starts or stops counting as a menu or a cursor document
+        static uint32_t getMenuRevision();
+
+        // The gamepad cursor (GamepadCursor; docs/mcp/guide/html-ui.md "Gamepad cursor"); canvas px
+        // a shown, interactive, screen-mode Gamepad Cursor document of this scene
+        bool hasCursorDocument() const { return !cursorEntities.empty(); }
+        // the element under the documents' mouse pointer takes pointer input (a button, a link, a
+        // form control, [onclick], a click or pointerdown listener)
+        bool isMouseOverControl() const;
+        // the element under the documents' mouse pointer (engine-internal; null: none)
+        Rml::Element* getMouseHoverElement() const;
+        // the focused element of a shown screen document: its centre; false when none
+        bool getFocusCenter(float& x, float& y, const void*& focus) const;
+        // nothing focused: the element under the mouse pointer (or its nearest ancestor in the Tab
+        // order) takes the focus, so the d-pad navigates from it; true when one did
+        bool focusHoveredElement();
+        // the cursor graphic above every document of the screen context (an engine overlay document,
+        // loaded the first time it shows): its hot spot at (x, y); graphic empty = the built-in arrow
+        void setCursorOverlay(bool show, float x, float y, const std::string& graphic, float size, float hotX, float hotY);
+        // overlay documents loaded (any scene): tests check an unused cursor costs nothing
+        static uint32_t getCursorOverlayLoads();
+
         // --- p1-editor (UIDocumentSystemReload.cpp, §3.8.6-§3.8.7); paths are asset-relative ---
         struct Reloaded { Entity entity; bool stylesheetOnly; };
         std::vector<std::string> getDocumentFiles(Entity entity) const;   // document + union(scanner, runtime log)
@@ -301,6 +336,15 @@ namespace jasperengine{
         float frameWidth = 0.0f, frameHeight = 0.0f;
         std::vector<Entity> runtimeEntities;
         bool debuggerVisible = false;   // asked before the context existed
+        // the documents counted as menus (applyComponent), with the order they started counting in
+        std::unordered_map<Entity, uint64_t> menuEntities;
+        std::unordered_map<Entity, bool> cursorEntities;
+        void setInputFlagsApplied(Entity entity, UIDocumentComponent& document, bool menu, bool cursor);
+        // the gamepad cursor's overlay document in the screen context (null until it first shows)
+        Rml::ElementDocument* cursorOverlay = nullptr;
+        std::string cursorOverlayGraphic;
+        // canvas px to context px and back
+        void toCanvas(float& x, float& y) const;
 
         // safe-area spec 6.4: env(safe-area-inset-*) reads the --jasper-safe-area-inset-* custom
         // properties set on each document root; what each document got last

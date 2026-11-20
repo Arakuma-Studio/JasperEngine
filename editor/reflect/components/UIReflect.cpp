@@ -189,6 +189,12 @@ namespace {
         JE_FIELD(InputFieldComponent, selectionAnchor, .step = 1.0f, .group = "Selection", .uiOrder = 13),
         JE_FIELD(InputFieldComponent, disabled, .uiOrder = 4),
         JE_FIELD(InputFieldComponent, password, .uiOrder = 5),
+        // the soft keyboard (text-entry R7); absent in older scenes
+        JE_FIELD(InputFieldComponent, keyboardType, .enumDesc = &enums::kInputFieldKeyboardType, .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged,
+                 .label = "Keyboard Type", .tooltip = "The phone keyboard the field asks for (Email Address shows @, Number Pad digits).",
+                 .group = "Content", .uiOrder = 6),
+        JE_FIELD(InputFieldComponent, characterLimit, .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged, .min = 0.0f, .step = 1.0f,
+                 .label = "Character Limit", .tooltip = "Characters the player can type or paste. 0: no limit.", .group = "Content", .uiOrder = 6),
     };
 
     // ---------------------------------------------------------------- Panel
@@ -270,6 +276,9 @@ namespace {
     constexpr FieldDesc kTextFields[] = {
         JE_FIELD(TextComponent, font, .updateFlags = UpdateFlags_Text_Atlas, .asset = AssetKind::Font, .uiOrder = 1),
         JE_FIELD(TextComponent, text, .updateFlags = kText, .drawer = "multiline"),
+        // game-ui-localization.md R16, R40: "" by default, written only when set
+        JE_FIELD(TextComponent, textKey, .flags = OmitIfDefault, .updateFlags = kText, .label = "Localization Key",
+                 .tooltip = "A String Table key (ns.key): the text shows its message in the game language; the text stays the fallback."),
         JE_FIELD(TextComponent, fontSize, .updateFlags = UpdateFlags_Text_Atlas, .unit = Unit::Pixels, .step = 1.0f, .label = "FontSize",
                  .visibleIf = &textIsVector, .uiOrder = 2),
         JE_FIELD(TextComponent, multiline, .updateFlags = kText, .uiOrder = 3),
@@ -344,10 +353,15 @@ namespace {
         JE_FIELD(UIDocumentComponent, pixelRatio, .ops = &ops::NonNegativeFiniteFloat,
                  .flags = OmitIfDefault | OmitIfNonFinite | EmptyIsDefault | NonStructural | CodegenIfChanged, .updateFlags = kDocumentReload,
                  .min = 0.0f, .tooltip = "Document pixels per CSS pixel. 0 = Auto: the canvas-to-screen scale (1 in Texture mode)."),
+        JE_FIELD(UIDocumentComponent, isMenu, .flags = OmitIfDefault | EmptyIsDefault | NonStructural | CodegenIfChanged,
+                 .tooltip = "Back goes here first; opening it releases the game's held input; Pause On Focus Loss does not fire while it shows."),
+        JE_FIELD(UIDocumentComponent, gamepadCursor, .flags = OmitIfDefault | EmptyIsDefault | NonStructural | CodegenIfChanged,
+                 .tooltip = "While the player uses a gamepad, the stick moves a pointer over this document."),
     };
 
     constexpr const char* kUIDocumentCodegenOrder[] = {
-        "filename", "sortOrder", "enabled", "interactive", "renderMode", "textureWidth", "textureHeight", "inputSurface", "pixelRatio"
+        "filename", "sortOrder", "enabled", "interactive", "renderMode", "textureWidth", "textureHeight", "inputSurface", "pixelRatio",
+        "isMenu", "gamepadCursor"
     };
 
     // the old one's runtime state (its loaded document) stays while the file and render settings do

@@ -61,6 +61,7 @@
 #include "command/CommandHistory.h"
 #include "command/CommandNames.h"
 #include "command/PlayChangeReview.h"
+#include "test/PlayData.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "component/ScriptComponent.h"
 #include "component/NavMeshAgentComponent.h"
@@ -208,6 +209,7 @@ struct PlayToolsState {
     std::shared_ptr<input::ParsedScript> pendingReplay;
     std::string replayFile;
     std::shared_ptr<input::Replay> replay;
+    bool clockOwnedByTests = false;
 };
 
 PlayToolsState& state() {
@@ -292,6 +294,7 @@ void startPendingReplay(McpContext& ctx);
 
 // The MCP's time_scale / fixed_fps on the Engine (Project resets both when play stops)
 void applyTimeSettings() {
+    if (state().clockOwnedByTests) return;
     const TimeControl& t = state().time;
     Engine::setTimeScale(static_cast<float>(t.timeScale));
     const int fps = t.inputFixedFps > 0 ? t.inputFixedFps : t.fixedFps;
@@ -302,6 +305,7 @@ void applyTimeSettings() {
 // first frame (so it has drawn once) before the first hold
 void applyHold(McpContext& ctx) {
     PlayToolsState& s = state();
+    if (s.clockOwnedByTests) return;
     Project* project = ctx.project();
     const uint32_t playId = project ? project->getPlaySessionSceneId() : NULL_PROJECT_SCENE;
     SceneProject* sp = playId != NULL_PROJECT_SCENE ? project->getScene(playId) : nullptr;
@@ -615,6 +619,10 @@ SceneProject* gameViewScene(Project* project) {
     return project->getScene(project->getSceneBehindPrefabStage(project->getSelectedSceneId()));
 }
 
+void setPlayClockOwnedByTests(bool owned) {
+    state().clockOwnedByTests = owned;
+}
+
 // What play start runs without a scene: the project's start scene when it is open (not a
 // selected child/HUD scene), else the selected scene
 SceneProject* defaultPlayScene(Project* project) {
@@ -700,9 +708,16 @@ Json playStateJson(McpContext& ctx) {
         out["play_would_start"] = {{"id", sp->id}, {"name", sp->name}};
     }
     out["time"] = timeJson(playId != NULL_PROJECT_SCENE && s.current.active);
+    // Play Data (project-test-runner R43): the folder data:// is in this session
+    out["data"] = {{"profile", gametests::PlayData::get().profile()},
+                   {"folder", project->normalizeToProjectRelative(gametests::PlayData::get().active()
+                                                                     ? gametests::PlayData::get().folder()
+                                                                     : project->getProjectInternalPath() / "user" / "rundata").generic_string()}};
     if (playId != NULL_PROJECT_SCENE) {
         out["platform"] = platformJson();
         out["http"] = httpJson();
+        // a shown, interactive Is Menu document (Back goes there; Pause On Focus Loss stays quiet)
+        out["menu_showing"] = Engine::isMenuShowing();
     }
     out["safe_area"] = safeAreaJson();
     if (s.last.serial != 0) out["last_session"] = sessionJson(s.last);
@@ -747,7 +762,8 @@ Json playStateJson(McpContext& ctx) {
         static const char* const statsModes[] = {"off", "fps", "full"};
         const int statsMode = static_cast<int>(DebugOverlay::getStatsMode());
         out["debug_overlay"] = {{"enabled", DebugOverlay::isEnabled()}, {"console_visible", DebugOverlay::isConsoleVisible()},
-                                {"stats", statsMode >= 0 && statsMode < 3 ? statsModes[statsMode] : "off"}};
+                                {"stats", statsMode >= 0 && statsMode < 3 ? statsModes[statsMode] : "off"},
+                                {"commands_enabled", console::commandsEnabled()}, {"cheats_used", console::cheatsUsed()}};
     }
     if (playId != NULL_PROJECT_SCENE && s.current.active) out["audio"] = playAudioJson();
     // script coroutines and pending timers of the game (get_runtime_entity lists them per script)
@@ -1749,6 +1765,15 @@ void playStart(const CallPtr& call, const Json& sceneRef) {
         return;
     }
 
+    // Play Data: the project's folder, an empty one, or a copy of a snapshot (project-test-runner R43)
+    const std::string data = args.value("data", std::string("project"));
+    {
+        std::string error;
+        if (!gametests::PlayData::validProfile(project, data, error)) {
+            call->fail(error);
+            return;
+        }
+    }
     // input: a .input.json replayed from the first frame the scene runs (R16, R21)
     std::shared_ptr<input::ParsedScript> replay;
     const std::string inputFile = args.value("input", "");
@@ -1777,6 +1802,7 @@ void playStart(const CallPtr& call, const Json& sceneRef) {
     const uint64_t startLogId = Out::lastLogId();
     state().pendingStartLogId = startLogId;
     state().pendingReplay = replay;
+    if (args.contains("data")) gametests::PlayData::get().setNextSession(data);
     project->start(sp->id);
     if (project->getPlaySessionSceneId() != sp->id) {
         state().pendingStartLogId = 0;
@@ -2064,6 +2090,54 @@ void getPlayStateTool(const CallPtr& call) {
 
 // ================================================================== tool: eval_lua
 
+// eval_lua {command}: a console line run as the developer typed it (console::Source::Agent)
+void evalConsoleCommand(const CallPtr& call, const std::string& line) {
+    McpContext& ctx = call->ctx();
+    Project* project = ctx.project();
+    if (line.find_first_not_of(" \t") == std::string::npos) {
+        call->fail("command is empty. Example: {\"command\": \"help\"} lists the game's console commands.");
+        return;
+    }
+    if (project->getPlaySessionSceneId() == NULL_PROJECT_SCENE) {
+        call->fail("Console commands run in the playing game: start it with play {action: \"start\"} first.");
+        return;
+    }
+    const uint64_t cursor = Out::lastLogId();
+    const console::Result result = console::execute(line, console::Source::Agent);
+
+    w3::ConsoleQuery query;
+    query.since = cursor;
+    query.limit = 50;
+    w3::ConsoleResult lines = w3::queryConsole(query);
+
+    Json log = Json::array();
+    for (const console::LogLine& entry : result.log) log.push_back({{"level", logLevelName(entry.level)}, {"message", entry.message}});
+    Json command = {{"name", result.command}, {"status", console::statusName(result.status)}, {"ok", result.ok()},
+                    {"lines", result.lines}, {"log", log}, {"value", result.value}, {"cheat", result.cheat}};
+    if (!result.error.empty()) command["error"] = result.error;
+    if (!result.usage.empty()) command["usage"] = result.usage;
+    Json data = {{"mode", "play"}, {"command", command}, {"console", lines.entries}, {"next_cursor", lines.nextCursor}};
+
+    std::string text;
+    if (result.ok()) {
+        for (const std::string& printed : result.lines) text += (text.empty() ? "" : "\n") + printed;
+        if (text.empty()) text = "OK (no output).";
+        if (!result.value.is_null()) text += "\nvalue: " + result.value.dump();
+    } else {
+        text = result.error;
+        if (!result.usage.empty()) text += " Usage: " + result.usage;
+        if (result.status == console::Status::Unknown) text += " eval_lua {command: \"help\"} lists the commands.";
+        if (result.status == console::Status::Disabled)
+            text += " Turn them on: set_project_settings {values: {\"debug.console_commands\": \"development\"}}.";
+        for (const console::LogLine& entry : result.log) text += "\n" + std::string(logLevelName(entry.level)) + ": " + entry.message;
+    }
+    if (text.size() > 20000) text = text.substr(0, 20000) + " ... (see structuredContent)";
+    observeSession(ctx);
+    if (project->getPlaySessionSceneId() == NULL_PROJECT_SCENE) text += "\nPlay ended: " + sessionSummaryText(state().last);
+    if (result.ok()) call->ok(text, data);
+    else call->fail(text, data);
+}
+
 void evalLuaTool(const CallPtr& call) {
     const Json& args = call->args();
     McpContext& ctx = call->ctx();
@@ -2073,6 +2147,16 @@ void evalLuaTool(const CallPtr& call) {
         return;
     }
     observeSession(ctx);
+    const bool hasCode = args.contains("code") && !args["code"].is_null();
+    const bool hasCommand = args.contains("command") && !args["command"].is_null();
+    if (hasCode == hasCommand) {
+        call->fail("Pass code (Lua) or command (a console line), not both.");
+        return;
+    }
+    if (hasCommand) {
+        evalConsoleCommand(call, args["command"].is_string() ? args["command"].get<std::string>() : std::string());
+        return;
+    }
     const std::string code = args.value("code", "");
     if (code.empty()) {
         call->fail("code is empty. Example: {\"code\": \"local gc = script('GameController'); return gc.state, gc.score\"}");
@@ -3055,6 +3139,8 @@ void addInputRunResults(const InputRun& run, Json& data) {
                            {"document", t.document}});
     }
     if (!targets.empty()) data["targets"] = targets;
+    // app back: who took the Back (the last one)
+    if (!run.player->report().backs.empty()) data["back"] = run.player->report().backs.back().route;
     if (!run.shots->empty()) data["shots"] = *run.shots;
 }
 
@@ -3094,6 +3180,8 @@ void finishInputRun(const std::shared_ptr<InputRun>& run) {
         text += "\nTarget \"" + target["target"].get<std::string>() + "\" (event " + target["event"].dump() + ") at canvas " +
                 target["point"].dump() + " in " + target["document"].value("html", std::string("?")) + ".";
     }
+    for (const input::BackTaken& back : run->player->report().backs)
+        text += "\nBack (event " + std::to_string(back.event) + "): " + back.route + ".";
     for (const Json& shot : *run->shots) {
         text += "\nShot \"" + shot["name"].get<std::string>() + "\": " +
                 (shot.contains("error") ? "failed: " + shot["error"].get<std::string>() : shot["path"].get<std::string>());
@@ -3615,12 +3703,12 @@ void registerPlayTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Play Mode";
         tool.description =
-            "Control Play mode. start: saves modified scenes, builds C++ scripts if any (minutes), waits until "
+            "Control Play mode. start: saves modified scenes, builds C++ scripts (minutes), waits until "
             "running; returns the state + console problems, or isError with compile/script errors; past "
-            "timeout_seconds (or wait:false) a job_id (get_job). stop: restores the edit-time state, summarizes "
+            "timeout_seconds (or wait:false) a job_id (get_job). stop: restores edit-time state, sums up "
             "the session. step: advance a paused game `frames` frames. Script errors stop play.\nClock (any "
             "action; set = only it; kept until changed): time_scale, fixed_fps, auto_pause (frozen between "
-            "calls; runs only in wait / send_input / step).";
+            "calls but in wait / send_input / step).";
         tool.inputSchema = object({
             {"action", stringEnum("", {"start", "stop", "restart", "pause", "resume", "step", "set"})},
             {"scene", sceneRef("start: default the start scene (else selected).")},
@@ -3634,7 +3722,8 @@ void registerPlayTools(McpRegistry& registry) {
             {"max_width", maxWidth},
             {"keep_changes", stringEnum("stop: keep all or none of the edits made while playing (absent: get_play_changes).",
                                         {"none", "all"})},
-            {"input", string("start: replay this .input.json.")}
+            {"input", string("start: replay this .input.json.")},
+            {"data", withDefault(string("start: \"project\", \"clean\" or a Tests/Data snapshot."), "project")}
         }, {"action"});
         tool.handler = playTool;
         registry.addTool(std::move(tool));
@@ -3742,12 +3831,13 @@ void registerPlayTools(McpRegistry& registry) {
             "at stop. Stopped: refused unless allow_edit_mode (NOT undoable).";
         tool.inputSchema = object({
             {"code", string("Expression, or chunk with return.")},
+            {"command", string("A console command line instead of code (help lists them).")},
             {"scene", runtimeScene},
             {"allow_edit_mode", withDefault(boolean(""), false)},
             {"timeout_seconds", withDefault(number("", 0.1, 60), 5)},
             {"max_depth", withDefault(integer("Table nesting.", 1, 12), 4)},
             {"max_items", withDefault(integer("Entries per table.", 1, 5000), 200)}
-        }, {"code"});
+        });
         tool.annotations.destructive = true;
         tool.handler = evalLuaTool;
         registry.addTool(std::move(tool));
@@ -3827,14 +3917,14 @@ void registerPlayTools(McpRegistry& registry) {
         tool.description =
             "Input into the running game. events in order, {type, ...} (first action: default):\nkey: key "
             "(space, a, f1...), action press|down|up, hold_frames (2; 0: same frame), hold_ms, mods "
-            "[shift,ctrl,alt,super]\ntext: text, per_unit (one event per UTF-16 unit, as Windows/Android type); ime: text, cursor; ime_commit: text; ime_cancel\n"
+            "[shift,ctrl,alt,super]\ntext: text, per_unit (per UTF-16 unit); ime: text, cursor; ime_commit: text; ime_cancel\n"
             "mouse_leave, mouse_enter\nmouse: action click|double_click|down|up|move|drag|scroll, x, y (default: "
             "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy (scroll; move w/o x, y)\ntouch: action "
             "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget / to_target: UI Document CSS selector "
             "(document: which)\ngamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + "
-            "value, or action connect|disconnect\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
+            "value, x, y/target: warp cursor, or action connect|disconnect\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
             "phase (press|down|up)|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|orientation "
-            "(+orientation)\nwait: frames, ms, or until (Lua; frames caps)\nshot: name (PNG). release_all.\n"
+            "(+orientation)|back\nwait: frames, ms, or until (Lua; frames caps)\nshot: name (PNG). release_all.\n"
             "space: canvas px, normalized 0..1, safe_area 0..1 of safeArea, view = Game view px. "
             "down holds until up/release_all/stop. auto_pause: events + frames_after only.";
         tool.inputSchema = object({

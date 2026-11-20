@@ -309,6 +309,7 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n"
         << "  " << commandName << " merge-scene <base> <ours> <theirs> <path>  Git merge driver for scenes and prefabs.\n"
         << "  " << commandName << " scene-diff <old> <new> [--json]  Semantic diff of two scenes or prefabs.\n"
+        << "  " << commandName << " test --project <dir> [options]  Run the project's tests (Tests/*.test.lua; exit 0/1/2/3).\n"
         << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts, HTML/CSS UI, clips, vertex animations and normal maps (compiler-style).\n"
         << "  " << commandName << " assets check|migrate     Missing asset references (JSON); rewrite references with GUIDs.\n"
         << "  " << commandName << " import-ui [options]      Import the remote resources of HTML UI documents.\n"
@@ -397,6 +398,7 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "                         the frame's and each pass label's median/p95/mean ms (docs/profiling.md).\n"
         << "      --profile-capture <path>  Write a .jetrace.json profiler capture of the measured frames.\n"
         << "      --profile          Record the measured frames in the profiler (its overhead included).\n"
+        << "      --gpu-quirk <name:on|off>  Force a GPU quirk on or off for the run (repeatable).\n"
         << "  -h, --help             Show this help.\n\n"
         << "--project, --out and --profile-capture are absolute or relative to the current directory.\n"
         << "Vsync is forced off. The scene camera is used for the capture.\n";

@@ -212,6 +212,8 @@ def _class(bd, c, repo_root):
                   'unresolved': list(m.unresolved)}
         if getattr(m, 'is_async', False):
             method['async'] = True   # it yields the running engine coroutine (LuaLS ---@async)
+        if getattr(m, 'nodiscard', False):
+            method['nodiscard'] = True   # dropping its result is a mistake (LuaLS ---@nodiscard: discard-returns)
         if cpp_names is not None and m.name not in cpp_names:
             method['luaOnly'] = True  # bound to a lambda or a helper: C++ has no Class::name
         methods.append(method)

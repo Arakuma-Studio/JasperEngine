@@ -62,6 +62,14 @@ namespace {
 
 }
 
+PlayerHost runtimePlayerHost(){
+    PlayerHost host;
+#if JASPERENGINE_HTMLUI
+    host.resolveTarget = &resolveDocumentTarget;
+#endif
+    return host;
+}
+
 Replay::Replay(std::shared_ptr<const ParsedScript> script, ReplayOptions options)
     : script_(std::move(script)), options(std::move(options)){
 }

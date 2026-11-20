@@ -18,6 +18,7 @@
 
 #include "Engine.h"
 #include "device/Device.h"
+#include "device/GpuQuirks.h"
 
 #include <climits>
 #include <cmath>
@@ -25,6 +26,7 @@
 #include "util/SubscriptionOwnerIndex.h"
 #include "debug/DebugOverlay.h"
 #include "debug/DebugStats.h"
+#include "script/LuaJson.h"
 #include "Scene.h"
 #include "SceneManager.h"
 #include "PrefabManager.h"
@@ -34,8 +36,10 @@
 #include "input/InputActions.h"
 #include "input/InputControlNames.h"
 #include "input/InputManagerFormat.h"
+#include "input/TextEntry.h"
 #include "json.hpp"
 
+#include <cstdio>
 #include <cstring>
 #include <set>
 #include <stdexcept>
@@ -43,6 +47,7 @@
 #include "render/SystemRender.h"
 #include "player/RunControl.h"
 #include "Screen.h"
+#include "util/StringUtils.h"
 #include "util/CanvasScalerRef.h"
 #include "registry/PhysicsLayers.h"
 #include "math/Ray.h"
@@ -214,6 +219,68 @@ static int luaScreenSetExtraInsets(lua_State* L){
         }
     }
     Screen::setExtraInsets(EdgeInsets(values[0], values[1], values[2], values[3]), pixels);
+    return 0;
+}
+
+// System.showVirtualKeyboard(text [, options]): options {keyboard, enterKey, autocapitalize,
+// autocorrect, secure, multiline, maxLength} with the HTML attribute values (text-entry R6);
+// without options the platform's plain keyboard, as before
+static int luaSystemShowVirtualKeyboard(lua_State* L){
+    const char* utf8 = luaL_optstring(L, 1, "");
+    bool hadInvalid = false;
+    const std::wstring text = StringUtils::utf8ToWString(utf8, hadInvalid);
+    if (lua_isnoneornil(L, 2)){
+        System::instance().showVirtualKeyboard(text);
+        return 0;
+    }
+    if (!lua_istable(L, 2))
+        return luaL_error(L, "System.showVirtualKeyboard: options must be a table {keyboard=, enterKey=, autocapitalize=, autocorrect=, secure=, multiline=, maxLength=}");
+
+    TextEntryTraits traits;
+    auto name = [L](const char* field, auto parse, const char* values) -> int {
+        lua_getfield(L, 2, field);
+        int error = 0;
+        if (!lua_isnil(L, -1)){
+            const char* value = lua_type(L, -1) == LUA_TSTRING ? lua_tostring(L, -1) : nullptr;
+            if (!value || !parse(value))
+                error = luaL_error(L, "System.showVirtualKeyboard: %s must be one of %s", field, values);
+        }
+        lua_pop(L, 1);
+        return error;
+    };
+    auto flag = [L](const char* field, bool& out){
+        lua_getfield(L, 2, field);
+        if (!lua_isnil(L, -1))
+            out = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+    };
+    name("keyboard", [&](const char* v){ return keyboardTypeFromName(v, traits.keyboard); },
+         "\"text\", \"numeric\", \"decimal\", \"tel\", \"email\", \"url\", \"search\", \"none\"");
+    name("enterKey", [&](const char* v){ return enterKeyFromName(v, traits.enterKey); },
+         "\"enter\", \"done\", \"go\", \"next\", \"previous\", \"search\", \"send\"");
+    name("autocapitalize", [&](const char* v){ return autoCapitalizeFromName(v, traits.capitalize); },
+         "\"off\", \"sentences\", \"words\", \"characters\"");
+    flag("autocorrect", traits.autocorrect);
+    flag("secure", traits.secure);
+    flag("multiline", traits.multiline);
+    lua_getfield(L, 2, "maxLength");
+    if (lua_isnumber(L, -1))
+        traits.maxLength = std::max(-1, (int)lua_tointeger(L, -1));
+    lua_pop(L, 1);
+    System::instance().showVirtualKeyboard(text, traits);
+    return 0;
+}
+
+// System.updateVirtualKeyboardText(text [, caret]): the soft keyboard's text replaced, caret in
+// code points (default: the end)
+static int luaSystemUpdateVirtualKeyboardText(lua_State* L){
+    const char* utf8 = luaL_checkstring(L, 1);
+    bool hadInvalid = false;
+    const std::wstring text = StringUtils::utf8ToWString(utf8, hadInvalid);
+    const int length = (int)StringUtils::decodeUtf8ToCodepoints(utf8, hadInvalid).size();
+    const int caret = lua_isnoneornil(L, 2) ? length : std::clamp((int)luaL_checkinteger(L, 2), 0, length);
+    Engine::resetTextInputState(utf8, (size_t)caret);
+    System::instance().updateVirtualKeyboardText(text, caret, caret);
     return 0;
 }
 
@@ -1303,14 +1370,35 @@ namespace {
         integer("coroutines", s.coroutines);
         integer("timers", s.timers);
         integer("htmlUiDrawCalls", s.htmlUiDrawCalls);
+        integer("cullingGroups", s.cullingGroups);
+        integer("cullingSpheres", s.cullingSpheres);
+        integer("cullingVisible", s.cullingVisible);
+        integer("simulationFull", s.simulationFull);
+        integer("simulationReduced", s.simulationReduced);
+        integer("simulationCulled", s.simulationCulled);
+        integer("scriptUpdatesSkipped", s.scriptUpdatesSkipped);
         return 1;
     }
 
-    // a console command's Lua function, unreferenced when the command goes (while its state lives)
+    // a console command's Lua functions (run, complete), unreferenced when the command goes (while
+    // their state lives)
     struct LuaCommandFunction {
         lua_State* L = nullptr;
         int ref = LUA_NOREF;
+        int completeRef = LUA_NOREF;
         ~LuaCommandFunction(){
+            if (L && LuaBinding::getLuaState() == L){
+                if (ref != LUA_NOREF) luaL_unref(L, LUA_REGISTRYINDEX, ref);
+                if (completeRef != LUA_NOREF) luaL_unref(L, LUA_REGISTRYINDEX, completeRef);
+            }
+        }
+    };
+
+    // what a command's run returned, kept for a Lua caller of executeCommand (console::Result::scriptValue)
+    struct LuaCommandValue {
+        lua_State* L = nullptr;
+        int ref = LUA_NOREF;
+        ~LuaCommandValue(){
             if (L && ref != LUA_NOREF && LuaBinding::getLuaState() == L)
                 luaL_unref(L, LUA_REGISTRYINDEX, ref);
         }
@@ -1353,10 +1441,372 @@ namespace {
         return owners;
     }
 
+    // ---- the `call` a command's run gets: call:print(...), call:fail(message); a full userdata
+    // whose pointer is cleared when the call ends (a coroutine keeping it gets an error)
+    const char* const consoleCallMeta = "jasperengine.ConsoleCall";
+
+    console::Call* checkConsoleCall(lua_State* L){
+        auto** slot = static_cast<console::Call**>(luaL_checkudata(L, 1, consoleCallMeta));
+        return *slot;
+    }
+
+    // the values joined with tabs (tostring), pushed as one string
+    void pushJoined(lua_State* L, int from){
+        // (before luaL_buffinit, which may push a placeholder of its own)
+        const int top = lua_gettop(L);
+        luaL_Buffer buffer;
+        luaL_buffinit(L, &buffer);
+        for (int i = from; i <= top; i++){
+            if (i > from)
+                luaL_addchar(&buffer, '\t');
+            luaL_tolstring(L, i, nullptr);
+            luaL_addvalue(&buffer);
+        }
+        luaL_pushresult(&buffer);
+    }
+
+    int luaConsoleCallPrint(lua_State* L){
+        console::Call* call = checkConsoleCall(L);
+        if (!call)
+            return luaL_error(L, "call:print: the command's call has ended");
+        pushJoined(L, 2);
+        size_t length = 0;
+        const char* text = lua_tolstring(L, -1, &length);
+        call->print(std::string(text, length));
+        return 0;
+    }
+
+    int luaConsoleCallFail(lua_State* L){
+        console::Call* call = checkConsoleCall(L);
+        if (!call)
+            return luaL_error(L, "call:fail: the command's call has ended");
+        pushJoined(L, 2);
+        size_t length = 0;
+        const char* text = lua_tolstring(L, -1, &length);
+        call->fail(std::string(text, length));
+        return 0;
+    }
+
+    console::Call** pushConsoleCall(lua_State* L, console::Call* call){
+        auto** slot = static_cast<console::Call**>(lua_newuserdatauv(L, sizeof(console::Call*), 0));
+        *slot = call;
+        if (luaL_newmetatable(L, consoleCallMeta)){
+            lua_createtable(L, 0, 2);
+            lua_pushcfunction(L, &luaConsoleCallPrint);
+            lua_setfield(L, -2, "print");
+            lua_pushcfunction(L, &luaConsoleCallFail);
+            lua_setfield(L, -2, "fail");
+            lua_setfield(L, -2, "__index");
+        }
+        lua_setmetatable(L, -2);
+        return slot;
+    }
+
+    void pushArgValue(lua_State* L, const console::ArgValue& value){
+        switch (value.type){
+            case console::ArgType::Int: lua_pushinteger(L, static_cast<lua_Integer>(value.i)); break;
+            case console::ArgType::Float: lua_pushnumber(L, value.f); break;
+            case console::ArgType::Bool: lua_pushboolean(L, value.b); break;
+            case console::ArgType::Vector3:
+                if (!luabridge::push<Vector3>(L, value.v)) lua_pushnil(L);
+                break;
+            case console::ArgType::GameObject:
+                if (!luabridge::push<GameObject>(L, GameObject(value.scene, value.entity))) lua_pushnil(L);
+                break;
+            default: lua_pushlstring(L, value.text.data(), value.text.size()); break;
+        }
+    }
+
+    // run(args, call): typed commands get each argument by name and by position (an optional one
+    // left out is nil); untyped ones the words, as before
+    void runLuaCommand(const std::shared_ptr<LuaCommandFunction>& function, const std::string& name,
+                       const std::vector<std::string>& argNames, console::Call& call){
+        lua_State* L = function->L;
+        if (!L || LuaBinding::getLuaState() != L){
+            call.fail("its Lua state is gone");
+            return;
+        }
+        const int top = lua_gettop(L);
+        console::Call** slot = pushConsoleCall(L, &call);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, function->ref);
+        if (!argNames.empty()){
+            const std::vector<console::ArgValue>& args = call.args();
+            lua_createtable(L, static_cast<int>(args.size()), static_cast<int>(args.size()));
+            for (size_t i = 0; i < args.size() && i < argNames.size(); i++){
+                if (!args[i].given)
+                    continue;
+                pushArgValue(L, args[i]);
+                lua_pushvalue(L, -1);
+                lua_rawseti(L, -3, static_cast<lua_Integer>(i + 1));
+                lua_setfield(L, -2, argNames[i].c_str());
+            }
+        }else{
+            const std::vector<std::string>& words = call.words();
+            lua_createtable(L, static_cast<int>(words.size()), 0);
+            for (size_t i = 0; i < words.size(); i++){
+                lua_pushlstring(L, words[i].data(), words[i].size());
+                lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
+            }
+        }
+        lua_pushvalue(L, top + 1);
+        const int status = LuaBinding::pcallWithTraceback(L, 2, 1);
+        // the userdata below the results keeps the slot alive until here
+        *slot = nullptr;
+        if (status != LUA_OK){
+            const std::string error = LuaBinding::getLuaStackErrorString(L, -1);
+            lua_settop(L, top);
+            Log::error("Lua Error: console command '%s': %s", name.c_str(), error.c_str());
+            // the message's first line and the traceback's first frame
+            const std::string message = error.substr(0, error.find('\n'));
+            std::string frame;
+            const size_t trace = error.find("stack traceback:\n");
+            if (trace != std::string::npos){
+                frame = error.substr(trace + 17);
+                frame = frame.substr(0, frame.find('\n'));
+                while (!frame.empty() && (frame.front() == '\t' || frame.front() == ' '))
+                    frame.erase(frame.begin());
+            }
+            call.raise(frame.empty() ? message : message + " (" + frame + ")");
+            return;
+        }
+        if (!lua_isnil(L, -1)){
+            nlohmann::json value;
+            std::string problem;
+            LuaJson::EncodeOptions options;
+            options.utf8 = LuaJson::InvalidUtf8::Replace;
+            if (LuaJson::toJson(L, -1, value, options, problem)){
+                call.setValue(std::move(value));
+            }else{
+                size_t length = 0;
+                const char* text = luaL_tolstring(L, -1, &length);
+                call.setValue(std::string(text, length));
+                lua_pop(L, 1);
+            }
+            auto kept = std::make_shared<LuaCommandValue>();
+            kept->L = L;
+            lua_pushvalue(L, -1);
+            kept->ref = luaL_ref(L, LUA_REGISTRYINDEX);
+            call.setScriptValue(kept);
+        }
+        lua_settop(L, top);
+    }
+
+    std::vector<std::string> completeLuaCommand(const std::shared_ptr<LuaCommandFunction>& function, const std::string& name, int argIndex,
+                                                const std::string& prefix, const std::vector<std::string>& words){
+        std::vector<std::string> out;
+        lua_State* L = function->L;
+        if (!L || LuaBinding::getLuaState() != L || function->completeRef == LUA_NOREF)
+            return out;
+        const int top = lua_gettop(L);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, function->completeRef);
+        lua_pushinteger(L, argIndex + 1);
+        lua_pushlstring(L, prefix.data(), prefix.size());
+        lua_createtable(L, static_cast<int>(words.size()), 0);
+        for (size_t i = 0; i < words.size(); i++){
+            lua_pushlstring(L, words[i].data(), words[i].size());
+            lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
+        }
+        if (LuaBinding::pcallWithTraceback(L, 3, 1) != LUA_OK){
+            const std::string error = LuaBinding::getLuaStackErrorString(L, -1);
+            lua_settop(L, top);
+            Log::error("Lua Error: console command '%s' complete: %s", name.c_str(), error.c_str());
+            return out;
+        }
+        if (lua_istable(L, -1)){
+            const lua_Integer length = static_cast<lua_Integer>(lua_rawlen(L, -1));
+            for (lua_Integer i = 1; i <= length; i++){
+                lua_rawgeti(L, -1, i);
+                size_t textLength = 0;
+                if (lua_type(L, -1) == LUA_TSTRING){
+                    const char* text = lua_tolstring(L, -1, &textLength);
+                    out.emplace_back(text, textLength);
+                }
+                lua_pop(L, 1);
+            }
+        }
+        lua_settop(L, top);
+        return out;
+    }
+
+    // a field of the table at `index` (raw: no metamethods), pushed
+    int rawField(lua_State* L, int index, const char* key){
+        lua_pushstring(L, key);
+        return lua_rawget(L, index);
+    }
+
+    std::string fieldText(lua_State* L, int index, const char* key, bool& wrongType){
+        std::string out;
+        const int type = rawField(L, index, key);
+        if (type == LUA_TSTRING || type == LUA_TNUMBER){
+            size_t length = 0;
+            const char* text = lua_tolstring(L, -1, &length);
+            out.assign(text, length);
+        }else if (type == LUA_TBOOLEAN){
+            out = lua_toboolean(L, -1) ? "true" : "false";
+        }else if (type != LUA_TNIL){
+            wrongType = true;
+        }
+        lua_pop(L, 1);
+        return out;
+    }
+
+    // a list of strings at `key` (absent: none); false when it is something else
+    bool fieldStrings(lua_State* L, int index, const char* key, std::vector<std::string>& out){
+        const int type = rawField(L, index, key);
+        bool ok = type == LUA_TNIL;
+        if (type == LUA_TTABLE){
+            ok = true;
+            const lua_Integer length = static_cast<lua_Integer>(lua_rawlen(L, -1));
+            for (lua_Integer i = 1; i <= length; i++){
+                if (lua_rawgeti(L, -1, i) == LUA_TSTRING){
+                    size_t textLength = 0;
+                    const char* text = lua_tolstring(L, -1, &textLength);
+                    out.emplace_back(text, textLength);
+                }else{
+                    ok = false;
+                }
+                lua_pop(L, 1);
+            }
+        }
+        lua_pop(L, 1);
+        return ok;
+    }
+
+    // DebugOverlay.addCommand{name, description, usage, aliases, args, minArgs, maxArgs, cheat, run,
+    // complete, owner}: what the spec table says, or `problem` (a malformed table: raised by the caller)
+    void addCommandFromTable(lua_State* L, std::string& problem, bool& added, std::string& refusal){
+        console::CommandSpec spec;
+        bool wrong = false;
+        spec.name = fieldText(L, 1, "name", wrong);
+        spec.description = fieldText(L, 1, "description", wrong);
+        spec.usage = fieldText(L, 1, "usage", wrong);
+        if (wrong){
+            problem = "DebugOverlay.addCommand: name, description and usage are strings";
+            return;
+        }
+        if (!fieldStrings(L, 1, "aliases", spec.aliases)){
+            problem = "DebugOverlay.addCommand: aliases is a list of strings";
+            return;
+        }
+        if (rawField(L, 1, "cheat") != LUA_TNIL)
+            spec.cheat = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+        for (const char* key : {"minArgs", "maxArgs"}){
+            const int type = rawField(L, 1, key);
+            if (type == LUA_TNUMBER)
+                (std::strcmp(key, "minArgs") == 0 ? spec.minArgs : spec.maxArgs) = static_cast<int>(lua_tointeger(L, -1));
+            else if (type != LUA_TNIL)
+                wrong = true;
+            lua_pop(L, 1);
+        }
+        if (wrong){
+            problem = "DebugOverlay.addCommand: minArgs and maxArgs are whole numbers";
+            return;
+        }
+        if (rawField(L, 1, "args") == LUA_TTABLE){
+            const lua_Integer length = static_cast<lua_Integer>(lua_rawlen(L, -1));
+            for (lua_Integer i = 1; i <= length && problem.empty(); i++){
+                if (lua_rawgeti(L, -1, i) != LUA_TTABLE){
+                    problem = "DebugOverlay.addCommand: args[" + std::to_string(i) + "] is not a table {name, type, ...}";
+                }else{
+                    const int at = lua_gettop(L);
+                    console::ArgSpec arg;
+                    arg.name = fieldText(L, at, "name", wrong);
+                    const std::string type = fieldText(L, at, "type", wrong);
+                    arg.defaultValue = fieldText(L, at, "default", wrong);
+                    if (!type.empty() && !console::parseType(type, arg.type))
+                        problem = "DebugOverlay.addCommand: args[" + std::to_string(i) + "].type '" + type +
+                                  "' is not string, int, float, bool, enum, vector3, gameobject or rest";
+                    if (rawField(L, at, "optional") != LUA_TNIL)
+                        arg.optional = lua_toboolean(L, -1) != 0;
+                    lua_pop(L, 1);
+                    if (rawField(L, at, "min") == LUA_TNUMBER) arg.min = lua_tonumber(L, -1);
+                    lua_pop(L, 1);
+                    if (rawField(L, at, "max") == LUA_TNUMBER) arg.max = lua_tonumber(L, -1);
+                    lua_pop(L, 1);
+                    if (!fieldStrings(L, at, "choices", arg.choices) || wrong)
+                        problem = "DebugOverlay.addCommand: args[" + std::to_string(i) + "] has a field of the wrong type";
+                    spec.args.push_back(arg);
+                }
+                lua_pop(L, 1);
+            }
+        }else if (!lua_isnil(L, -1)){
+            problem = "DebugOverlay.addCommand: args is a list of tables {name, type, ...}";
+        }
+        lua_pop(L, 1);
+        if (!problem.empty())
+            return;
+
+        if (rawField(L, 1, "run") != LUA_TFUNCTION){
+            lua_pop(L, 1);
+            problem = "DebugOverlay.addCommand: run must be a function(args, call)";
+            return;
+        }
+        auto function = std::make_shared<LuaCommandFunction>();
+        function->L = L;
+        function->ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        const int completeType = rawField(L, 1, "complete");
+        if (completeType == LUA_TFUNCTION){
+            function->completeRef = luaL_ref(L, LUA_REGISTRYINDEX);
+        }else{
+            lua_pop(L, 1);
+            if (completeType != LUA_TNIL){
+                problem = "DebugOverlay.addCommand: complete must be a function(argIndex, prefix, words)";
+                return;
+            }
+        }
+        const void* owner = nullptr;
+        const int ownerType = rawField(L, 1, "owner");
+        if (ownerType == LUA_TTABLE)
+            owner = lua_topointer(L, -1);
+        lua_pop(L, 1);
+        if (ownerType != LUA_TNIL && ownerType != LUA_TTABLE){
+            problem = "DebugOverlay.addCommand: owner must be a script table";
+            return;
+        }
+        if (!owner)
+            owner = callerSelf(L);
+
+        const std::string name = spec.name;
+        std::vector<std::string> argNames;
+        for (const console::ArgSpec& arg : spec.args)
+            argNames.push_back(arg.name);
+        spec.run = [function, name, argNames](console::Call& call){ runLuaCommand(function, name, argNames, call); };
+        if (function->completeRef != LUA_NOREF){
+            spec.complete = [function, name](int argIndex, const std::string& prefix, const std::vector<std::string>& words){
+                return completeLuaCommand(function, name, argIndex, prefix, words);
+            };
+        }
+        // without an owner a Lua command still goes with the Lua state (Play stop, quit)
+        spec.ownerTag = owner ? "_" + std::to_string(reinterpret_cast<std::uintptr_t>(owner)) + "_" : std::string("lua");
+        added = console::add(std::move(spec), &refusal);
+        if (added && owner)
+            SubscriptionOwnerIndex::add(ownerKeyOf(owner), debugCommandOwners(), ownerKeyOf(owner));
+    }
+
     // DebugOverlay.addCommand(name, description, fn [, owner]): fn(args) gets the words after the
-    // name. The owner (a script table; by default the `self` of the calling method) takes the
-    // command with it when it is released
+    // name; or DebugOverlay.addCommand{...} (typed arguments, aliases, cheat). The owner (a script
+    // table; by default the `self` of the calling method) takes the command with it when it is
+    // released. true, or false and the reason
     int luaDebugOverlayAddCommand(lua_State* L){
+        if (lua_istable(L, 1)){
+            bool added = false;
+            char problem[512] = {0};
+            char refusal[512] = {0};
+            {
+                std::string problemText, refusalText;
+                addCommandFromTable(L, problemText, added, refusalText);
+                std::snprintf(problem, sizeof(problem), "%s", problemText.c_str());
+                std::snprintf(refusal, sizeof(refusal), "%s", refusalText.c_str());
+            }
+            if (problem[0])
+                return luaL_error(L, "%s", problem);
+            lua_pushboolean(L, added);
+            if (added)
+                return 1;
+            lua_pushstring(L, refusal);
+            return 2;
+        }
         size_t nameLength = 0;
         const char* name = luaL_checklstring(L, 1, &nameLength);
         size_t descriptionLength = 0;
@@ -1372,34 +1822,119 @@ namespace {
         lua_pushvalue(L, 3);
         const int ref = luaL_ref(L, LUA_REGISTRYINDEX);
         bool added = false;
+        char refusal[512] = {0};
         {
             const std::string commandName(name, nameLength);
             auto function = std::make_shared<LuaCommandFunction>();
             function->L = L;
             function->ref = ref;
+            console::CommandSpec spec;
+            spec.name = commandName;
+            spec.description = std::string(description, descriptionLength);
+            spec.run = [function, commandName](console::Call& call){ runLuaCommand(function, commandName, {}, call); };
             // without an owner a Lua command still goes with the Lua state (Play stop, quit)
-            const std::string ownerTag = owner ? "_" + std::to_string(reinterpret_cast<std::uintptr_t>(owner)) + "_" : std::string("lua");
-            added = DebugOverlay::addCommand(commandName, std::string(description, descriptionLength),
-                [function, commandName](const std::vector<std::string>& args){
-                    lua_State* state = function->L;
-                    if (!state || LuaBinding::getLuaState() != state)
-                        return;
-                    lua_rawgeti(state, LUA_REGISTRYINDEX, function->ref);
-                    lua_createtable(state, static_cast<int>(args.size()), 0);
-                    for (size_t i = 0; i < args.size(); i++){
-                        lua_pushlstring(state, args[i].data(), args[i].size());
-                        lua_rawseti(state, -2, static_cast<lua_Integer>(i + 1));
-                    }
-                    if (LuaBinding::pcallWithTraceback(state, 1, 0) != LUA_OK){
-                        const std::string error = LuaBinding::getLuaStackErrorString(state, -1);
-                        lua_pop(state, 1);
-                        Log::error("Lua Error: console command '%s': %s", commandName.c_str(), error.c_str());
-                    }
-                }, ownerTag);
+            spec.ownerTag = owner ? "_" + std::to_string(reinterpret_cast<std::uintptr_t>(owner)) + "_" : std::string("lua");
+            std::string refusalText;
+            added = console::add(std::move(spec), &refusalText);
+            std::snprintf(refusal, sizeof(refusal), "%s", refusalText.c_str());
             if (added && owner)
                 SubscriptionOwnerIndex::add(ownerKeyOf(owner), debugCommandOwners(), ownerKeyOf(owner));
         }
         lua_pushboolean(L, added);
+        if (added)
+            return 1;
+        lua_pushstring(L, refusal);
+        return 2;
+    }
+
+    void pushConsoleResult(lua_State* L, const console::Result& result){
+        lua_createtable(L, 0, 9);
+        lua_pushboolean(L, result.ok());
+        lua_setfield(L, -2, "ok");
+        lua_pushstring(L, console::statusName(result.status));
+        lua_setfield(L, -2, "status");
+        lua_pushlstring(L, result.command.data(), result.command.size());
+        lua_setfield(L, -2, "command");
+        lua_createtable(L, static_cast<int>(result.lines.size()), 0);
+        for (size_t i = 0; i < result.lines.size(); i++){
+            lua_pushlstring(L, result.lines[i].data(), result.lines[i].size());
+            lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
+        }
+        lua_setfield(L, -2, "lines");
+        lua_createtable(L, static_cast<int>(result.log.size()), 0);
+        for (size_t i = 0; i < result.log.size(); i++){
+            lua_createtable(L, 0, 2);
+            lua_pushinteger(L, static_cast<lua_Integer>(result.log[i].level));
+            lua_setfield(L, -2, "level");
+            lua_pushlstring(L, result.log[i].message.data(), result.log[i].message.size());
+            lua_setfield(L, -2, "message");
+            lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
+        }
+        lua_setfield(L, -2, "log");
+        const auto* kept = static_cast<const LuaCommandValue*>(result.scriptValue.get());
+        if (kept && kept->L == L && kept->ref != LUA_NOREF){
+            lua_rawgeti(L, LUA_REGISTRYINDEX, kept->ref);
+            lua_setfield(L, -2, "value");
+        }else if (!result.value.is_null()){
+            LuaJson::push(L, result.value);
+            lua_setfield(L, -2, "value");
+        }
+        if (!result.error.empty()){
+            lua_pushlstring(L, result.error.data(), result.error.size());
+            lua_setfield(L, -2, "error");
+        }
+        if (!result.usage.empty()){
+            lua_pushlstring(L, result.usage.data(), result.usage.size());
+            lua_setfield(L, -2, "usage");
+        }
+        lua_pushboolean(L, result.cheat);
+        lua_setfield(L, -2, "cheat");
+    }
+
+    // DebugOverlay.executeCommand(line): the result table (the game's own call: not gated)
+    int luaDebugOverlayExecuteCommand(lua_State* L){
+        size_t length = 0;
+        const char* line = luaL_checklstring(L, 1, &length);
+        {
+            const console::Result result = console::execute(std::string(line, length), console::Source::Game);
+            pushConsoleResult(L, result);
+        }
+        return 1;
+    }
+
+    // DebugOverlay.completeCommand(line [, cursor]): {replacement, candidates, start}; cursor and
+    // start count the bytes before them (default: the whole line)
+    int luaDebugOverlayCompleteCommand(lua_State* L){
+        size_t length = 0;
+        const char* line = luaL_checklstring(L, 1, &length);
+        const lua_Integer cursor = luaL_optinteger(L, 2, static_cast<lua_Integer>(length));
+        if (cursor < 0)
+            return luaL_argerror(L, 2, "the bytes before the cursor, 0 or more");
+        {
+            const console::Completion completion = console::complete(std::string(line, length), static_cast<size_t>(cursor));
+            lua_createtable(L, 0, 3);
+            lua_pushlstring(L, completion.replacement.data(), completion.replacement.size());
+            lua_setfield(L, -2, "replacement");
+            lua_createtable(L, static_cast<int>(completion.candidates.size()), 0);
+            for (size_t i = 0; i < completion.candidates.size(); i++){
+                lua_pushlstring(L, completion.candidates[i].data(), completion.candidates[i].size());
+                lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
+            }
+            lua_setfield(L, -2, "candidates");
+            lua_pushinteger(L, static_cast<lua_Integer>(completion.start));
+            lua_setfield(L, -2, "start");
+        }
+        return 1;
+    }
+
+    // DebugOverlay.getCommands(): {name, description, usage, aliases, cheat, builtIn, args} each, by name
+    int luaDebugOverlayGetCommands(lua_State* L){
+        {
+            nlohmann::json list = nlohmann::json::array();
+            for (const console::CommandSpec* spec : console::list())
+                list.push_back(console::describe(*spec));
+            LuaJson::push(L, list);
+        }
         return 1;
     }
 
@@ -2421,6 +2956,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         // Dynamic Batching (Project Settings > Graphics): the same image, fewer draw calls
         .addStaticProperty("dynamicBatching", &Engine::isDynamicBatching, &Engine::setDynamicBatching)
         .addStaticProperty("isFocused", &Engine::isFocused)
+        // a shown, interactive UIDocument with Is Menu exists (Back goes there first)
+        .addStaticFunction("isMenuShowing", &Engine::isMenuShowing)
         // false while the window can't be seen: the game updates without drawing (desktops)
         .addStaticProperty("isVisible", &Engine::isVisible)
         .addStaticProperty("asyncLoading", &Engine::isAsyncLoading, &Engine::setAsyncLoading)
@@ -2446,6 +2983,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("onResume", [] () { return &Engine::onResume; }, [] (lua_State* L) { Engine::onResume = L; })
         .addStaticProperty("onShutdown", [] () { return &Engine::onShutdown; }, [] (lua_State* L) { Engine::onShutdown = L; })
         .addStaticProperty("onFocus", [] () { return &Engine::onFocus; }, [] (lua_State* L) { Engine::onFocus = L; })
+        .addStaticProperty("onBack", [] () { return &Engine::onBack; }, [] (lua_State* L) { Engine::onBack = L; })
+        .addStaticProperty("onPauseRequested", [] () { return &Engine::onPauseRequested; }, [] (lua_State* L) { Engine::onPauseRequested = L; })
         .addStaticProperty("onVisibilityChanged", [] () { return &Engine::onVisibilityChanged; }, [] (lua_State* L) { Engine::onVisibilityChanged = L; })
         .addStaticProperty("onOrientationChanged", [] () { return &Engine::onOrientationChanged; }, [] (lua_State* L) { Engine::onOrientationChanged = L; })
         .addStaticProperty("onLowMemory", [] () { return &Engine::onLowMemory; }, [] (lua_State* L) { Engine::onLowMemory = L; })
@@ -3675,7 +4214,18 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("getStats", &luaDebugOverlayGetStats)
         .addStaticFunction("addCommand", &luaDebugOverlayAddCommand)
         .addStaticFunction("removeCommand", &DebugOverlay::removeCommand)
-        .addStaticFunction("executeCommand", &DebugOverlay::executeCommand)
+        .addStaticFunction("executeCommand", &luaDebugOverlayExecuteCommand)
+        .addStaticFunction("completeCommand", &luaDebugOverlayCompleteCommand)
+        .addStaticFunction("getCommands", &luaDebugOverlayGetCommands)
+        // Project Settings > Debug > Console Commands: the command field, agents and --command
+        // (a game may turn them on after a secret code)
+        .addStaticProperty("commandsEnabled", [] () -> bool { return console::commandsEnabled(); },
+                           [] (bool enabled) { console::setCommandsEnabled(enabled); })
+        .addStaticProperty("cheatsUsed", [] () -> bool { return console::cheatsUsed(); })
+        .addStaticFunction("resetCheatsUsed", &console::resetCheatsUsed)
+        // (name) of the first cheat command that ends ok
+        .addStaticProperty("onCheatUsed", [] () -> FunctionSubscribe<void(const std::string&)>* { return &console::Events::onCheatUsed; },
+                           [] (lua_State* L) { console::Events::onCheatUsed = L; })
         .endClass();
 
     // Unity's TouchPhase (the values of Input.TOUCH_BEGAN ...)
@@ -4009,7 +4559,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .beginClass<System>("System")
         .addStaticFunction("getScreenWidth", [] () { return System::instance().getScreenWidth(); })
         .addStaticFunction("getScreenHeight", [] () { return System::instance().getScreenHeight(); })
-        .addStaticFunction("showVirtualKeyboard", [] (std::wstring text) { System::instance().showVirtualKeyboard(text); })
+        .addStaticFunction("showVirtualKeyboard", &luaSystemShowVirtualKeyboard)
+        .addStaticFunction("updateVirtualKeyboardText", &luaSystemUpdateVirtualKeyboardText)
         .addStaticFunction("hideVirtualKeyboard", [] () { System::instance().hideVirtualKeyboard(); })
         .addStaticFunction("setClipboardText", [] (const std::string& text) { System::instance().setClipboardText(text); })
         .addStaticFunction("getClipboardText", [] () { return System::instance().getClipboardText(); })
@@ -4065,6 +4616,29 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("getAppBuild", [] () { return System::instance().getAppBuild(); })
         .addStaticFunction("getAppIdentifier", [] () { return System::instance().getAppIdentifier(); })
         .addStaticFunction("getAppName", [] () { return System::instance().getAppName(); })
+        // Build Profiles: the build's profile ("" none; in Play the active one) and its Scripting
+        // Define Symbols. Defines are values, not a preprocessor: code behind them still ships.
+        .addStaticFunction("getBuildProfile", [] () { return System::getBuildProfile(); })
+        .addStaticFunction("isDefined", [] (const std::string& symbol) { return System::isDefined(symbol); })
+        .addStaticFunction("getDefines", [] (lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef table = luabridge::newTable(L);
+            int index = 1;
+            for (const std::string& define : System::getDefines()) table[index++] = define;
+            return table;
+        })
+        .addStaticFunction("getBuildInfo", [] (lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef info = luabridge::newTable(L);
+            luabridge::LuaRef defines = luabridge::newTable(L);
+            int index = 1;
+            for (const std::string& define : System::getDefines()) defines[index++] = define;
+            info["profile"] = System::getBuildProfile();
+            info["defines"] = defines;
+            info["development"] = Engine::isDevelopmentBuild();
+            // Patch And Run: which patch of the development content folder runs (0: packaged)
+            info["contentPatch"] = System::getContentPatch();
+            info["contentPatched"] = System::getContentPatch() > 0;
+            return info;
+        })
         .addStaticFunction("getOperatingSystem", [] () { return System::instance().getOperatingSystem(); })
         .addStaticFunction("getOperatingSystemVersion", [] () { return System::instance().getOperatingSystemVersion(); })
         .addStaticFunction("getAndroidApiLevel", [] () { return System::instance().getAndroidApiLevel(); })
@@ -4105,6 +4679,17 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("tierApplied", &Device::isTierApplied)
         // the platform's thermal state (ThermalState); Nominal on desktops and the web
         .addStaticProperty("thermalState", &Device::getThermalState)
+        // the GPU quirks in effect: the names of the driver workarounds this device runs with
+        // (read-only: a quirk changes how a frame is made, never what it shows)
+        .addStaticProperty("gpuQuirks", [] (lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef table = luabridge::newTable(L);
+            int index = 1;
+            for (const std::string& name : GpuQuirks::activeNames())
+                table[index++] = name;
+            return table;
+        })
+        // the driver's version as the quirk rules read it (GL_VERSION, the Vulkan driver; "" on WebGL)
+        .addStaticProperty("gpuDriver", [] () { return SystemRender::getDriverVersion(); })
         // a graphics menu's choice: this tier's overrides for the rest of the run
         .addStaticFunction("setTier", &Device::setTier)
         // back to the detected tier

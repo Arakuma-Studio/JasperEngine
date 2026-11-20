@@ -262,6 +262,29 @@ TEST_F(InputRecorderTest, RecordsAnOrientationTurnOnly){
     EXPECT_EQ(turns, std::vector<std::string>{"3 portrait"});
 }
 
+TEST_F(InputRecorderTest, DropsAMouseMoveThatGoesNowhere){
+    std::string error;
+    ASSERT_TRUE(InputRecorder::begin(options(), error)) << error;
+    // a hovered Game view sends the same position each frame: one move is kept
+    for (int i = 0; i < 3; i++) {
+        Engine::systemMouseMove(100.0f, 50.0f, 0);
+        runFrame();
+    }
+    // a press elsewhere moves the pointer: a move onto it adds nothing, one away from it does
+    Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, 120.0f, 50.0f, 0);
+    runFrame();
+    Engine::systemMouseMove(120.0f, 50.0f, 0);
+    runFrame();
+    Engine::systemMouseMove(130.0f, 50.0f, 0);
+    Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, 130.0f, 50.0f, 0);
+    runFrame();
+    std::shared_ptr<ParsedScript> script = stop();
+    std::vector<uint32_t> moves;
+    for (const ScriptAction& a : script->actions)
+        if (a.type == ActionType::MouseMove) moves.push_back(a.frame);
+    EXPECT_EQ(moves, (std::vector<uint32_t>{0, 5})) << trace(*script);
+}
+
 TEST_F(InputRecorderTest, IdleCostsNothing){
     ASSERT_FALSE(InputRecorder::isActive());
     // the entry points' own first-call setup, before counting

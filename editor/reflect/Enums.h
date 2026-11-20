@@ -39,6 +39,8 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kForceFieldKind;
     extern const EnumDesc kWaterVolumeWaves;
     extern const EnumDesc kWaterExcluderShape;
+    extern const EnumDesc kSimulationState;
+    extern const EnumDesc kSimulationCullReason;
     extern const EnumDesc kBuoyancyColumns;
     // upstream's components (UpstreamReflect.cpp: Trail Renderer, Canvas Group, on-screen controls)
     extern const EnumDesc kLineRendererMode;
@@ -117,6 +119,7 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kTextureAlphaBorder;
     extern const EnumDesc kTextureFilter;
     extern const EnumDesc kTextureWrap;
+    extern const EnumDesc kInputFieldKeyboardType;
     extern const EnumDesc kUIDocumentRenderMode;
     extern const EnumDesc kUIEventState;
     extern const EnumDesc kWindingOrder;

@@ -506,6 +506,8 @@ namespace jasperengine::editor::reflect {
     std::vector<const EnumDesc*> postProcessingEnums();
     // Project Settings > Graphics > Shader Creation (ShaderCreationProjectSettings, spec S32)
     const StructDesc& shaderCreationStruct();
+    // Project Settings > Player > Saved Data (SaveGameSettings, docs/specs/savegame.md R34)
+    const StructDesc& saveGameSettingsStruct();
     // Project Settings > Debug (DebugSettings, feature debug-overlay): the project file's debug
     // block, the names of its values and its settings rows (editor/reflect/DebugReflect.cpp)
     const StructDesc& debugSettingsStruct();

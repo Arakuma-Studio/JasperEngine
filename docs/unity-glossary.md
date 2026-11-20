@@ -76,6 +76,8 @@ Projects made before the rename are migrated once with
 | Unity term | Old JasperEngine name |
 |---|---|
 | `GameObject` | `Object` |
+| `CullingGroup` (`SetBoundingSpheres`, `SetBoundingDistances`, `onStateChanged`, `QueryIndices`, `EraseSwapBack`), `BoundingSphere`, `CullingGroupEvent` | `CullingGroup`, `BoundingSphere`, `CullingGroupEvent` (none before); frustum only, no occlusion; Lua indices 1-based ([docs/scripting/culling-groups.md](scripting/culling-groups.md)) |
+| A per-object simulation distance (Unreal's tick significance, an entity ticking range) | the **Simulation Culling** component, `SimulationCulling` in Lua, messages `onSimulationCulled` / `onSimulationResumed` (none before) |
 | `Primitive` (box, sphere, plane... meshes) | `Shape` |
 | `Rigidbody2D` / `Rigidbody2DComponent` | `Body2D` / `Body2DComponent` |
 | `Rigidbody` / `RigidbodyComponent` | `Body3D` / `Body3DComponent` |
@@ -119,6 +121,7 @@ Projects made before the rename are migrated once with
 | `SceneManager.MoveGameObjectToScene(go, scene)` -> `SceneManager.moveGameObjectToScene(obj, scene)` (C++ `SceneManager::moveGameObjectToScene`) | none (new) |
 | Singleton pattern `if (instance == null) { instance = this; DontDestroyOnLoad(gameObject); } else if (instance != this) Destroy(gameObject);` -> `if GameObject.persistSingleton(self) ~= self then return end` in `init` (C++ `persistSingleton<T>()`); module tables are per instance, so no `static Instance` | none (new) |
 | `UnityEvent` / C# `event` (`AddListener` / `+=`, `RemoveListener` / `-=`, `Invoke`) -> `Event()` (`addListener`, `removeListener`, `invoke`); `-=` of an engine or component event -> `UnregisterEngineEvent` / `UnregisterEvent` | none (new): no unregister from Lua |
+| none: `UnityEvent` has no veto or listener order; C# `System.ComponentModel.CancelEventArgs` (`Cancel`) | none (new): `CancellableEvent()`, whose listeners get a `CancelEventArgs` first (`e:cancel()`, `e.cancelled`) and whose `invoke` returns whether one cancelled; every `Event` listener takes a `priority` (`Event.MONITOR` runs after the decision) |
 | `PrefabAsset` (what a Prefab script property holds; `PrefabAsset.load("path")`) | none (new) |
 | `PrefabManager` (the build's prefab registry: `findPrefab`, `getPrefabNames`, `prefabCount`) | `BundleManager` |
 | `PrefabComponent` | `BundleComponent` |
@@ -285,6 +288,7 @@ Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
 |---|---|
 | `PlayerPrefs.GetInt/SetInt/GetFloat/SetFloat/GetString/SetString/HasKey/DeleteKey/DeleteAll/Save` | `PlayerPrefs.getInt/setInt/getFloat/setFloat/getString/setString/hasKey/deleteKey/deleteAll/save` (Lua), over the same store as `UserSettings` (`getIntegerForKey`, `setStringForKey`, ... and `hasKey`, `deleteKey`, `deleteAll`, `save`; C++ `jasperengine::UserSettings`) |
 | Edit > Clear All PlayerPrefs | Edit > Clear User Settings (PlayerPrefs)...; MCP `user_settings` (list, get, set, delete, clear) |
+| Save slots (a game's own; Unity has none built in; Unreal `USaveGame`, `SaveGameToSlot` / `LoadGameFromSlot` / `DoesSaveGameExist` / `DeleteGameInSlot` / `AsyncSaveGameToSlot`) | `SaveGame.write(slot, table)` / `SaveGame.read(slot)` / `exists` / `delete` (Lua; versions, migrations, backups: docs/saved-data.md); Window > General > Saved Data; MCP `user_settings` `store: "saves"` |
 | `JsonUtility.ToJson` / `FromJson`, Newtonsoft `JsonConvert.SerializeObject` / `DeserializeObject`, `JObject` | `Json.encode(value [, opts])` / `Json.decode(text [, opts])` (tables, not typed classes; `Json.null`, `Json.array`, `Json.object`); C++ `nlohmann::json`, `jasperengine::LuaJson` |
 | `Application.persistentDataPath` | `data://` (`System.getUserDataPath()`) |
 | `File.ReadAllText` / `WriteAllText` / `AppendAllText` / `Exists` / `Delete`, `Directory.CreateDirectory` / `GetFileSystemEntries` | `File.readText` / `writeText` (atomic) / `appendText` / `exists` / `remove`, `File.makeDirs` / `File.list` (return `nil, message` on failure) |

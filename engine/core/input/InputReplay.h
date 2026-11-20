@@ -29,6 +29,10 @@ namespace jasperengine::input {
         std::function<void(Replay&)> onFinished;
     };
 
+    // a runtime player's host (Lua, a player's --input-script, Test.input): targets resolve in the
+    // running UI Documents when the htmlui module is in
+    JASPERENGINE_API PlayerHost runtimePlayerHost();
+
     class JASPERENGINE_API Replay : public std::enable_shared_from_this<Replay> {
     public:
         // starts it from the next frame

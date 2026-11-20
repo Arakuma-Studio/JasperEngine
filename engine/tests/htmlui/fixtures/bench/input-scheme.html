@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>input-scheme bench</title>
+<style>
+    /* input-device-awareness AC14: a HUD of 40 elements whose prompts follow the input scheme;
+       three documents of it are 120 elements */
+    html, body { margin: 0; width: 100%; height: 100%; font-family: sans-serif; }
+    .bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 4px; padding: 8px; }
+    .slot { width: 48px; height: 48px; border-radius: 6px; background: #222a; color: #fff; text-align: center; }
+    .kbd, .pad, .touch-only { display: none; font-size: 12px; }
+    html[data-input-scheme="keyboard-mouse"] .kbd { display: block; }
+    html[data-input-scheme="gamepad"] .pad { display: block; }
+    html[data-input-scheme="touch"] .touch-only { display: block; }
+    html[data-gamepad-family="playstation"] .pad { color: #8cf; }
+    /* a mouse gets the hover look and the hint (a finger: the slots a little larger, no hint) */
+    .tip { visibility: hidden; color: #ccc; }
+    .slot { width: 56px; height: 56px; }
+    @media (hover: hover) { .slot { width: 48px; height: 48px; } .slot:hover { background: #444a; } .tip { visibility: visible; } }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <div class="slot"><span class="kbd">1</span><span class="pad">Y</span><span class="touch-only">tap</span></div>
+    <div class="slot"><span class="kbd">2</span><span class="pad">Y</span><span class="touch-only">tap</span></div>
+    <div class="slot"><span class="kbd">3</span><span class="pad">Y</span><span class="touch-only">tap</span></div>
+    <div class="slot"><span class="kbd">4</span><span class="pad">Y</span><span class="touch-only">tap</span></div>
+    <div class="slot"><span class="kbd">5</span><span class="pad">Y</span><span class="touch-only">tap</span></div>
+    <div class="slot"><span class="kbd">6</span><span class="pad">Y</span><span class="touch-only">tap</span></div>
+    <div class="slot"><span class="kbd">7</span><span class="pad">Y</span><span class="touch-only">tap</span></div>
+    <div class="slot"><span class="kbd">8</span><span class="pad">Y</span><span class="touch-only">tap</span></div>
+    <div class="slot"><span class="kbd">9</span><span class="pad">Y</span><span class="touch-only">tap</span></div>
+  </div>
+  <div class="tip always">Hover a slot to see what it holds</div>
+</body>
+</html>

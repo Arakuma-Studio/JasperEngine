@@ -303,6 +303,25 @@ TEST_F(FontRegistryTest, NearestWeightRules){
     EXPECT_EQ(find("Unknown family", 400), "none");
 }
 
+// game-ui-localization.md R14, AC8: a face registered for a language leads the fallback faces of
+// text in a language that matches it ("ja" serves ja-JP), never of another (zh)
+TEST_F(FontRegistryTest, LanguageFontsLeadTheFallbackChain){
+    std::shared_ptr<FontFace> generic = FontFace::loadFile("fonts/Roboto-Italic.ttf");
+    std::shared_ptr<FontFace> japanese = FontFace::loadFile("fonts/Roboto-Bold.ttf");
+    ASSERT_TRUE(generic && japanese);
+    FontRegistry::registerFace(generic, "Generic", 0, -1, true);
+    FontRegistry::registerLanguageFace("ja", japanese);
+    EXPECT_EQ(FontRegistry::matchLanguage("ja-JP"), "ja");
+    const std::vector<std::shared_ptr<FontFace>> forJapanese = FontRegistry::getFallbackFaces("ja-JP");
+    ASSERT_EQ(forJapanese.size(), 2u);
+    EXPECT_EQ(forJapanese[0], japanese) << "the language's face before the generic fallbacks";
+    EXPECT_EQ(forJapanese[1], generic);
+    EXPECT_EQ(FontRegistry::matchLanguage("zh"), "");
+    const std::vector<std::shared_ptr<FontFace>> forChinese = FontRegistry::getFallbackFaces("zh");
+    ASSERT_EQ(forChinese.size(), 1u);
+    EXPECT_EQ(forChinese[0], generic);
+}
+
 TEST_F(FontRegistryTest, ItalicPreference){
     std::shared_ptr<FontFace> regular = robotoCopy("regular");
     std::shared_ptr<FontFace> boldItalic = robotoCopy("bold italic");

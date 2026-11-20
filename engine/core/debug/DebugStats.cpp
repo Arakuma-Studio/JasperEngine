@@ -10,6 +10,7 @@
 #include "script/LuaBinding.h"
 #include "script/ScriptScheduler.h"
 #include "subsystem/AudioSystem.h"
+#include "subsystem/CullingSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/UIDocumentSystem.h"
 
@@ -96,6 +97,16 @@ DebugStatsSnapshot DebugStats::sample(){
         entities += scene->getEntityCount();
         if (auto documents = scene->findSystem<UIDocumentSystem>())
             htmlUiDrawCalls += documents->getRenderStats().drawCalls;
+        if (auto culling = scene->findSystem<CullingSystem>()){
+            const CullingSystem::Stats c = culling->getStats();
+            s.cullingGroups += c.groups;
+            s.cullingSpheres += c.spheres;
+            s.cullingVisible += c.visible;
+            s.simulationFull += c.full;
+            s.simulationReduced += c.reduced;
+            s.simulationCulled += c.culled;
+            s.scriptUpdatesSkipped += c.scriptUpdatesSkipped;
+        }
         if (auto physics = scene->findSystem<PhysicsSystem>()){
 #ifdef JASPERENGINE_PHYSICS_2D
             const b2WorldId world = physics->getWorld2D();

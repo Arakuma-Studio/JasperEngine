@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <set>
 #include <vector>
 
 namespace jasperengine {
@@ -59,8 +60,9 @@ namespace jasperengine::editor::cook {
 
         // Every scene of the project that is loaded (the export loads them all first) and every
         // prefab of the build; on the main thread, while the scenes are loaded
+        // `scenes`: only these project scenes (a Build Profile's Scene List); null: every one
         static bool cookProject(Project* project, std::vector<CookedFileBytes>& files, std::vector<CookedPrefabInfo>& prefabs,
-                                std::string& error);
+                                std::string& error, const std::set<uint32_t>* scenes = nullptr);
 
         // The default sky's six images (a new 3D scene's Skybox, held in memory by the editor) as
         // the files a prebuilt build ships under assets/ ("assets/je-default-sky/..."): a cooked

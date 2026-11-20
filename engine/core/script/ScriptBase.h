@@ -204,6 +204,12 @@ namespace jasperengine {
         virtual void onSubmit(BaseEventData& e);
         virtual void onCancel(BaseEventData& e);
 
+        // Simulation Culling (culling-group-and-simulation-distance R17) stopped this GameObject's
+        // update callbacks, Animator and bodies (reason "distance" or "ground_not_loaded"), or let
+        // them run again: stop and restart what it does not stop itself (a NavMesh Agent, a sound)
+        virtual void onSimulationCulled(const std::string& reason);
+        virtual void onSimulationResumed();
+
         // the messages (ScriptMessage bits) whose base method ran: not overridden, so not sent
         // again and not among ScriptMessages::receivers
         uint64_t inheritedMessages = 0;   // ScriptMessageMask

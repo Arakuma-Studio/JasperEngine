@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "rules": [
+    {"quirk": "gl_no_worker_context", "reason": "On llvmpipe the render thread crashed drawing programs a worker context had drawn (warm draws) and once hung in a draw after the worker linked its programs", "issue": "docs/specs/S32-async-shaders.md deviation 6", "check": ["AsyncCreateGpu.EveryGlModeDrawsTheLitCube", "test_async_shaders.py::test_forced_gpu_quirks_draw_the_same_image"], "match": {"api": ["glcore", "gles3"], "renderer": ["llvmpipe", "softpipe", "swiftshader", "software rasterizer"]}},
+    {"quirk": "gl_no_compile_threads", "reason": "With the driver's compile threads, a lazily made shader can finish after the frame a test or an export check reads; llvmpipe compiles at once without them", "issue": "docs/specs/S32-async-shaders.md, docs/perf/gpu-campaign.md", "check": ["GpuQuirksGpu.CompileThreadsLeverDrawsTheLitCube", "test_async_shaders.py::test_forced_gpu_quirks_draw_the_same_image"], "match": {"api": ["glcore", "gles3"], "renderer": ["llvmpipe", "softpipe", "swiftshader", "software rasterizer"]}},
+    {"quirk": "gl_no_warm_draws", "reason": "Warm draws on Adreno and Mali drivers are unverified: no device run has drawn them yet, so GLES keeps them off", "issue": "docs/specs/S32-async-shaders.md (GLES waits for an Adreno/Mali run)", "check": ["test_async_shaders.py::test_forced_gpu_quirks_draw_the_same_image"], "match": {"api": "gles3"}}
+  ]
+}
