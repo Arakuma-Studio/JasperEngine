@@ -11,11 +11,17 @@ from __future__ import annotations
 import json
 import os
 import struct
+import sys
 import zlib
 from pathlib import Path
 
+import yaml
+
 from harness import REPO, Editor
 import ui_input
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import audio_refs as ar  # noqa: E402
 
 EDITOR = {"create": True, "name": "Report UI", "xvfb": "harness"}
 TIMEOUT = 1500
@@ -37,6 +43,13 @@ def noise_png(size: int, seed: int) -> bytes:
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
     return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0))
             + chunk(b"IDAT", zlib.compress(bytes(rows), 1)) + chunk(b"IEND", b""))
+
+
+def near_mono(seconds: float) -> list:
+    """two channels whose side is 24 dB under their mid: Force To Mono's Auto folds them"""
+    m = ar.sine(440.0, seconds, 44100, -12.0)
+    side = ar.sine(1000.0, seconds, 44100, -36.0)
+    return [[a + b for a, b in zip(m, side)], [a - b for a, b in zip(m, side)]]
 
 
 def format_bytes(n: int) -> str:
@@ -85,7 +98,12 @@ async def test_build_report_window(ed: Editor):
     await ed.call("save_project", untitled_scene_dir="scenes")
     first = await export(ed, "report-ui-1")
     (ed.project / "textures" / "wall.png").write_bytes(noise_png(256, 3))
-    await ed.call("sync_files", paths=["textures/wall.png"])
+    # two near-mono clips: one set to Auto (it ships folded), one left Off (the report offers Auto)
+    for clip in ("sfx/near.wav", "sfx/plain.wav"):
+        ar.write_wav(ed.project / clip, near_mono(1.0), 44100, ar.PCM16)
+    await ed.call("sync_files", paths=["textures/wall.png", "sfx/near.wav", "sfx/plain.wav"])
+    await ed.call("analyze_audio", paths=["sfx/near.wav", "sfx/plain.wav"], image="none")
+    await ed.call("set_audio_import_settings", paths=["sfx/near.wav"], settings={"force_to_mono": "auto"})
     second = await export(ed, "report-ui-2")
 
     await ed.call("run_command", id="window.buildReport")
@@ -111,3 +129,32 @@ async def test_build_report_window(ed: Editor):
     await ui.reveal("textures/wall.png", WINDOW)
     await ui.frames(6)
     await shot(ed, "3-left-out")
+
+    # an audio file the report says Auto would fold: Set Force To Mono: Auto is one undoable meta edit
+    await ui.click_item("Files", WINDOW)
+    await ui.click_item("##files_search", WINDOW)
+    await ui.type("plain.wav")
+    await ui.frames(4)
+    await ui.click_item("##row", WINDOW)
+    await ui.reveal("Set Force To Mono: Auto", WINDOW)
+    await ui.frames(4)
+    await shot(ed, "4-audio-detail")
+    await ui.click_item("Set Force To Mono: Auto", WINDOW)
+    for _ in range(60):
+        meta = ed.project / "sfx" / "plain.wav.meta"
+        if meta.is_file() and (yaml.safe_load(meta.read_text()) or {}).get("import", {}).get("audioImporter", {}).get("force_to_mono") == "auto":
+            break
+        await ui.frames(2)
+    else:
+        ed.fail("Set Force To Mono: Auto did not write the clip's import settings")
+    await ed.call("undo", scope="project")
+
+    # the folded clip's source opens its Inspector: the Force To Mono row with Auto's hint
+    await ui.click_item("##files_search", WINDOW)
+    await ui.key("ctrl+a")
+    await ui.type("near.wav")
+    await ui.frames(4)
+    await ui.click_item("sfx/near.wav", WINDOW)
+    await ui.reveal("Force To Mono", "Inspector")
+    await ui.frames(6)
+    await shot(ed, "5-inspector-force-to-mono")

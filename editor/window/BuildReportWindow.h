@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "audio/AudioImportSettings.h"
 #include "cook/BuildReport.h"
 
 #include <filesystem>
@@ -69,6 +70,11 @@ namespace jasperengine::editor {
         bool showAdded = true, showRemoved = true, showGrown = true, showShrunk = true;
 
         std::string selected;                        // a build path, or a left-out source
+        // the selected audio file's channels and Force To Mono, read once per selection (R29)
+        std::string audioFor;
+        AudioImportSettings::Channels audioChannels;
+        AudioImportSettings audioSettings;
+        bool audioSettingsRead = false;
 
         void load(const std::filesystem::path& path);
         void compareWith(const std::filesystem::path& path);
@@ -86,6 +92,7 @@ namespace jasperengine::editor {
         void drawBudgetsTab();
         void drawDetail();
         void showAsset(const std::string& asset);
+        void drawAudioDetail(const std::string& asset);
     };
 
 }

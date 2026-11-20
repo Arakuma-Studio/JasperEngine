@@ -6,6 +6,9 @@
 #include "App.h"
 #include "Backend.h"
 #include "Project.h"
+#include "audio/AudioImportRegistry.h"
+#include "command/CommandHistory.h"
+#include "command/type/SetAssetMetaCmd.h"
 #include "cook/BuildReportHistory.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/FileDialogs.h"
@@ -524,14 +527,42 @@ void BuildReportWindow::drawBudgetsTab() {
     ImGui::EndTable();
 }
 
+void BuildReportWindow::drawAudioDetail(const std::string& asset) {
+    const fs::path absolute = project->getAssetsPath() / FileUtils::pathFromUtf8(asset);
+    if (audioFor != asset) {
+        audioFor = asset;
+        audioChannels = AudioImportRegistry::channelsOf(*project, absolute);
+        std::string why;
+        audioSettings = AudioImportSettings();
+        audioSettingsRead = AudioImportSettings::load(absolute, audioSettings, why);
+    }
+    if (audioChannels.channels < 2 || !audioSettingsRead) return;
+    static const char* const modes[] = {"Off", "On", "Auto"};
+    char width[48] = "";
+    if (audioChannels.sideMidDb) std::snprintf(width, sizeof(width), " \xC2\xB7 width %.1f dB", *audioChannels.sideMidDb);
+    ImGui::SeparatorText("Audio");
+    ImGui::Text("Channels: %s%s \xC2\xB7 Force To Mono: %s", audioChannels.channels == 2 ? "Stereo" : "Multichannel", width,
+                modes[(int)audioSettings.forceToMono]);
+    // Auto would fold this clip: a positional voice pans it whole and a WAV ships at half the bytes
+    if (audioSettings.forceToMono == AudioImportSettings::ForceToMono::Off && audioChannels.autoPicksMono() &&
+        ImGui::Button("Set Force To Mono: Auto")) {
+        AudioImportSettings next = audioSettings;
+        next.forceToMono = AudioImportSettings::ForceToMono::Auto;
+        auto* command = new SetAssetMetaCmd(project, project->normalizeToProjectRelative(absolute), AudioImportSettings::metaKey, next.toYaml());
+        command->setNoMerge();
+        if (project->getProjectCommandHistory()->addCommand(command)) audioFor.clear();
+    }
+}
+
 void BuildReportWindow::drawDetail() {
     if (selected.empty()) {
         ImGui::TextDisabled("Select a file to see why it ships.");
         return;
     }
     ImGui::TextUnformatted(selected.c_str());
-    ImGui::SeparatorText("Referenced By");
     const BuildReportReferrers why = report.referencedBy(selected);
+    if (!why.asset.empty() && BuildReport::categoryOf(why.file.empty() ? why.asset : why.file) == "audio") drawAudioDetail(why.asset);
+    ImGui::SeparatorText("Referenced By");
     if (!report.reachability) {
         ImGui::TextDisabled("This report has no Referenced By data: export again.");
         return;
