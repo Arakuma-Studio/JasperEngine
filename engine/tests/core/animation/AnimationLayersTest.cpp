@@ -735,30 +735,62 @@ TEST_F(Layers, HumanoidMasksCoverBodyParts){
     EXPECT_EQ(anim::maskWeightOf(data, &human, character, bone("mixamorig:RightHand"), &none), 0.0f);
 }
 
-// docs/specs/mesh-space-rotation.md R5: the boundary bones are where the weight changes from the
-// parent's; a child of the root (parent -1) is never one, a uniform mask has none
-TEST(AvatarMaskBoundary, BonesWhereTheWeightDiffersFromTheParent){
+// docs/specs/mesh-space-rotation.md R5: the boundary bones are where the mask starts (the weight
+// rises from the parent's) and where it stops right under a start; elsewhere a bone follows its
+// parent (Unity's rule). A child of the root (parent -1) is never one, a uniform mask has none
+TEST(AvatarMaskBoundary, BonesWhereTheMaskStartsOrStopsUnderItsStart){
     // Hips (-1) > Spine > Chest > Neck, Hips > LeftUpLeg > LeftLeg, Chest > LeftArm
     const int parents[] = {-1, 0, 1, 2, 0, 4, 2};
     std::vector<uint16_t> boundary = {42};
     // a path mask from the spine
     const float spineUp[] = {0, 1, 1, 1, 0, 0, 1};
-    anim::maskBoundaryBones(spineUp, parents, std::size(parents), boundary);
+    anim::maskBoundaryBones(spineUp, parents, std::size(parents), -1, boundary);
     EXPECT_EQ(boundary, (std::vector<uint16_t>{1})) << "Spine only (and the list cleared first)";
-    // a body mask with the torso on and the head and arms off: the edges in both directions
+    // a body mask with the torso on and the head and arms off: the mask starts at the hips (right
+    // under the root), so it stops under them at the legs; the neck and the arm follow the chest
     const float body[] = {1, 1, 1, 0, 0, 0, 0};
-    anim::maskBoundaryBones(body, parents, std::size(parents), boundary);
-    EXPECT_EQ(boundary, (std::vector<uint16_t>{3, 4, 6})) << "Neck, LeftUpLeg, LeftArm";
+    anim::maskBoundaryBones(body, parents, std::size(parents), -1, boundary);
+    EXPECT_EQ(boundary, (std::vector<uint16_t>{4})) << "LeftUpLeg";
+    // a lower-body mask: the hips and legs on, the spine off, stops right under its start
+    const float lower[] = {1, 0, 0, 0, 1, 1, 0};
+    anim::maskBoundaryBones(lower, parents, std::size(parents), -1, boundary);
+    EXPECT_EQ(boundary, (std::vector<uint16_t>{1})) << "Spine";
     const float all[] = {1, 1, 1, 1, 1, 1, 1};
-    anim::maskBoundaryBones(all, parents, std::size(parents), boundary);
+    anim::maskBoundaryBones(all, parents, std::size(parents), -1, boundary);
     EXPECT_TRUE(boundary.empty()) << "an unmasked layer has none";
-    const float fractional[] = {0.5f, 0.5f, 0.25f, 0.25f, 0.5f, 0.5f, 0.25f};
-    anim::maskBoundaryBones(fractional, parents, std::size(parents), boundary);
-    EXPECT_EQ(boundary, (std::vector<uint16_t>{2})) << "a fractional step is an edge too";
+    // fractional steps: every rise is a start, a drop counts right under one
+    const float fractional[] = {0, 0.5f, 1, 0.25f, 0, 0, 1};
+    anim::maskBoundaryBones(fractional, parents, std::size(parents), -1, boundary);
+    EXPECT_EQ(boundary, (std::vector<uint16_t>{1, 2, 3})) << "Spine, Chest (rises), Neck (drops under the chest's rise)";
     const float rootOnly[] = {1, 0, 0, 0, 0, 0, 0};
     const int roots[] = {-1, -1, -1, -1, -1, -1, -1};
-    anim::maskBoundaryBones(rootOnly, roots, std::size(roots), boundary);
+    anim::maskBoundaryBones(rootOnly, roots, std::size(roots), -1, boundary);
     EXPECT_TRUE(boundary.empty()) << "children of the root keep the root's space";
+}
+
+// D2: fingers left out of an arm mask follow the hand; a head left out of a torso mask follows the
+// neck's parent; on a body-part mask on from the root, the body starts at the humanoid's hips
+TEST(AvatarMaskBoundary, BonesUnderAContinuingMaskFollowTheirParent){
+    // Armature (-1) > Hips > Spine > Chest > Shoulder > UpperArm > Hand > Finger1, Hand > Finger2,
+    // Chest > Neck > Head, Hips > LeftUpLeg
+    const int parents[] = {-1, 0, 1, 2, 3, 4, 5, 6, 6, 3, 9, 1};
+    std::vector<uint16_t> boundary;
+    const float arm[] = {0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0};
+    anim::maskBoundaryBones(arm, parents, std::size(parents), 1, boundary);
+    EXPECT_EQ(boundary, (std::vector<uint16_t>{4})) << "the shoulder; the fingers follow the hand";
+    const float torso[] = {0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0};
+    anim::maskBoundaryBones(torso, parents, std::size(parents), 1, boundary);
+    EXPECT_EQ(boundary, (std::vector<uint16_t>{2})) << "the spine; the head follows the neck";
+    // the hips and legs under an Armature the mask leaves out: the mask starts at the hips
+    const float lower[] = {0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+    anim::maskBoundaryBones(lower, parents, std::size(parents), -1, boundary);
+    EXPECT_EQ(boundary, (std::vector<uint16_t>{1, 2})) << "Hips (starts), Spine (stops under it)";
+    // everything but the legs, on from the root: the hips start the body of a body-part mask
+    const float noLegs[] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0};
+    anim::maskBoundaryBones(noLegs, parents, std::size(parents), -1, boundary);
+    EXPECT_TRUE(boundary.empty()) << "a path mask: the mask starts at the Armature, the legs follow the hips";
+    anim::maskBoundaryBones(noLegs, parents, std::size(parents), 1, boundary);
+    EXPECT_EQ(boundary, (std::vector<uint16_t>{11})) << "with the hips: LeftUpLeg";
 }
 
 // Test 11: upstream's .mask format (version 1), read as S21's version 2 (UpstreamAnimFormats.h)
@@ -1278,6 +1310,103 @@ TEST_F(Layers, MeshSpaceRotationKeepsTheBaseLegsUnderABodyMask){
     for (int a : {anim::Pose::TX, anim::Pose::TY, anim::Pose::TZ, anim::Pose::SX, anim::Pose::SY, anim::Pose::SZ}){
         EXPECT_EQ(std::memcmp(&with[(size_t)a * stride], pose.array((anim::Pose::Array)a), stride * sizeof(float)), 0) << "array " << a;
     }
+}
+
+// D2: fingers an arm mask leaves out follow the hand (Unity's rule): the mask starts at the
+// shoulder only, so the fingers keep the base's local rotation under the layer's hand instead of
+// the base's rotation relative to the character. The legs of a body-part mask on from the root
+// (everything but the legs) still keep the base's direction: its body starts at the hips.
+TEST_F(Layers, MeshSpaceRotationFingersLeftOutOfAnArmMaskFollowTheHand){
+    const Humanoid human = humanoid("Granjero");
+    const ClipData run = humanoidPose(human, {{"mixamorig:Hips", yaw(90)}, {"mixamorig:Spine", tilt(10)}, {"mixamorig:LeftHandIndex1", tilt(25)}});
+    const ClipData attack = humanoidPose(human, {{"mixamorig:Hips", yaw(-20)}, {"mixamorig:LeftArm", roll(60)}, {"mixamorig:LeftHand", tilt(30)},
+                                                 {"mixamorig:LeftHandIndex1", tilt(-40)}});
+    anim::AvatarMaskDef leftArm;
+    leftArm.defaultWeight = 0.0f;
+    leftArm.bodyParts[(int)AvatarBodyPart::LeftArm] = 1.0f;
+    leftArm.bodyParts[(int)AvatarBodyPart::LeftHand] = 1.0f;
+    leftArm.bodyParts[(int)AvatarBodyPart::LeftFingers] = 0.0f;
+    anim::ControllerDef def;
+    def.layers = {animatorLayer("Base Layer", clip("run", run)), animatorLayer("Left Arm", clip("attack", attack), mask("leftarm", leftArm), true)};
+    animator(controllerFile("fingers", def), human.root);
+    animate(0.0);
+    anim::AnimatorInstance& i = instance(human.root);
+    ASSERT_TRUE(i.bound);
+    ASSERT_TRUE(i.humanoid.valid) << i.humanoid.error;
+    ASSERT_TRUE(i.layerMeshSpaceApplies(1));
+    ASSERT_EQ(i.layerBoundaryBones(1).size(), 1u);
+    EXPECT_EQ(i.humanoidSlotOf(i.layerBoundaryBones(1)[0]), (int)pose::HumanBone::LeftShoulder) << "the mask starts there; nothing else";
+    const int handBone = i.humanoid.slotBones[(size_t)pose::HumanBone::LeftHand];
+    ASSERT_GE(handBone, 0);
+    const std::vector<Quaternion> layerRig = rigOf(i, i.layerOutput(1));
+    EXPECT_LE(componentError(i.rigRotations()[(size_t)handBone], layerRig[(size_t)handBone]), 1e-5f) << "the hand is the layer's";
+    size_t fingers = 0;
+    for (size_t b = 0; b < i.rig.bones.size(); b++){
+        if (i.rig.bones[b].path.find("mixamorig:LeftHand/") == std::string::npos) continue;
+        fingers++;
+        ASSERT_EQ(i.layers[1].mask[b], 0.0f) << i.rig.bones[b].path;
+        EXPECT_LE(componentError(i.pose().rotation(b), i.layerOutput(0).rotation(b)), 1e-6f)
+            << i.rig.bones[b].path << ": the base's local rotation, under the layer's hand";
+    }
+    EXPECT_GE(fingers, 3u);
+
+    // the Animation Player (no Model, so no humanoid: the same weights as paths): the same rule
+    const Humanoid twin = humanoid("Twin");
+    const posetest::TestRig& rig = posetest::tposeRig();
+    anim::AvatarMaskDef armPaths;
+    armPaths.defaultWeight = 0.0f;
+    armPaths.paths.push_back({twin.path("mixamorig:LeftShoulder"), 1.0f, true});
+    for (size_t b = 0; b < rig.skeleton.bones.size(); b++){
+        const int parent = rig.skeleton.bones[b].parent;
+        if (parent >= 0 && rig.skeleton.bones[(size_t)parent].name == "mixamorig:LeftHand") armPaths.paths.push_back({twin.paths[b], 0.0f, true});
+    }
+    const ClipData twinRun = humanoidPose(twin, {{"mixamorig:Hips", yaw(90)}, {"mixamorig:Spine", tilt(10)}, {"mixamorig:LeftHandIndex1", tilt(25)}});
+    const ClipData twinAttack = humanoidPose(twin, {{"mixamorig:Hips", yaw(-20)}, {"mixamorig:LeftArm", roll(60)}, {"mixamorig:LeftHand", tilt(30)},
+                                                    {"mixamorig:LeftHandIndex1", tilt(-40)}});
+    AnimationPlayer object = player({{"run", twinRun, 0}, {"attack", twinAttack, 1}},
+                                    {layer(anim::BASE_LAYER_NAME), meshSpaceLayer("Left Arm", mask("armpaths", armPaths))}, twin.root);
+    object.play("run");
+    object.play("attack");
+    step(0.1);
+    const anim::PlayerPoseScratch& scratch = scene.getComponent<AnimationPlayerComponent>(twin.root).runtime->scratch;
+    ASSERT_EQ(scratch.meshBoundary.size(), 2u);
+    EXPECT_EQ(scratch.meshBoundary[1].size(), 1u) << "the shoulder";
+    for (size_t b = 0; b < rig.skeleton.bones.size(); b++){
+        if (twin.paths[b].find("mixamorig:LeftHand/") == std::string::npos) continue;
+        const Quaternion expected = rig.skeleton.bones[b].name == "mixamorig:LeftHandIndex1" ? tilt(25) * twin.rest[b] : twin.rest[b];
+        EXPECT_LE(componentError(transform(twin.bones[b]).rotation, expected), 1e-5f) << twin.paths[b] << ": the run's local rotation";
+    }
+}
+
+// The lower-body mask (the hips and legs on, the spine off): the mask starts at the hips and stops
+// right under them, so the torso keeps the base's direction, not the layer's hips', on the
+// Animator and on the Animation Player
+TEST_F(Layers, MeshSpaceRotationLowerBodyMaskKeepsTheBaseTorso){
+    addBody();
+    anim::AvatarMaskDef lower;
+    lower.defaultWeight = 0.0f;
+    lower.paths = {{"Hips", 1.0f, true}, {"Hips/Spine", 0.0f, true}};
+    const std::string lowerMask = mask("lower", lower);
+    anim::ControllerDef def;
+    def.layers = {animatorLayer("Base Layer", clip("run", runPose())), animatorLayer("Lower Body", clip("attack", attackPose()), lowerMask, true)};
+    animator(controllerFile("lower", def));
+    animate(0.0);
+    anim::AnimatorInstance& i = instance();
+    ASSERT_TRUE(i.bound);
+    EXPECT_EQ(i.layerBoundaryBones(1), std::vector<uint16_t>{(uint16_t)i.rig.findBone("Hips/Spine")});
+    EXPECT_LE(componentError(rig("Hips"), yaw(-20)), 1e-5f) << "the hips are the layer's";
+    EXPECT_LE(componentError(rig("Hips/Thigh"), yaw(-20) * tilt(50)), 1e-5f) << "the legs follow them";
+    EXPECT_LE(componentError(rig("Hips/Spine"), yaw(90) * tilt(10)), 1e-5f) << "the torso is the base's: " << degreesBetween(rig("Hips/Spine"), yaw(90) * tilt(10));
+
+    const Entity twin = topLevel("Twin");
+    const std::vector<Entity> twinBones = body(twin);
+    AnimationPlayer object = player({{"run", runPose(), 0}, {"attack", attackPose(), 1}},
+                                    {layer(anim::BASE_LAYER_NAME), meshSpaceLayer("Lower Body", lowerMask)}, twin);
+    object.play("run");
+    object.play("attack");
+    step(0.1);
+    EXPECT_LE(componentError(playerRig(twinBones[1], twin), yaw(90) * tilt(10)), 1e-5f) << "the Player's torso is the base's";
+    EXPECT_LE(componentError(transform(twinBones[1]).rotation, transform(spine).rotation), 1e-5f) << "R18: the Animator's";
 }
 
 // AC6: a flagged layer of weight 0 changes nothing, bit for bit

@@ -382,13 +382,16 @@ void anim::AnimatorInstance::bind(Scene* scene, Entity root, const AnimatorCompo
         }
     }
 
-    // Mesh Space Rotation's boundary bones (D2): where the mask weight changes from parent to
-    // child (the one rule the Animation Player and the editor share)
+    // Mesh Space Rotation's boundary bones (D2): where the mask starts, and where it stops right
+    // under that (the one rule the Animation Player and the editor share); a body-part mask's
+    // body starts at the avatar's hips
     for (size_t l = 0; l < layers.size(); l++){
         AnimatorLayerRun& run = layers[l];
         run.boundaryBones.clear();
         if (l == 0 || !run.masked) continue;
-        maskBoundaryBones(run.mask.data(), rig.parents.data(), boneCount, run.boundaryBones);
+        const AvatarMaskDef* mask = l < masks.size() ? masks[l].get() : nullptr;
+        const int hips = mask && mask->usesHumanoid() && humanoid.valid ? humanoid.slotBones[(size_t)pose::HumanBone::Hips] : -1;
+        maskBoundaryBones(run.mask.data(), rig.parents.data(), boneCount, hips, run.boundaryBones);
     }
 
     // bones written to their entities

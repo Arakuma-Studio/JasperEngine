@@ -137,8 +137,9 @@ Ideas only. Nothing is vendored or copied.
 
 - **R4.** `LayerDef` and `CompiledLayer` gain `bool meshSpaceRotation = false`.
 - **R5.** **Boundary bones.** At bind, for every layer above 0 with Override blending and the option on, the
-  instance lists the layer's boundary bones. A boundary bone is a rig bone that has a parent and whose mask weight
-  differs from its parent's (`run.mask[b] != run.mask[parent]`). An unmasked layer has none, so the option changes
+  instance lists the layer's boundary bones. A boundary bone is a rig bone `b` with a parent `p` where the mask
+  starts or increases (`run.mask[b] > run.mask[p]`), or where it stops right under where it starts
+  (`run.mask[b] < run.mask[p]` and the mask starts at `p`). An unmasked layer has none, so the option changes
   nothing on it.
 - **R6.** **The pass.** For such a layer, at its place in the combine (`AnimatorInstance.cpp:1740-1750`):
   1. Before `poseBlend`, take the rig-space rotation of each boundary bone's parent chain in the pose so far
@@ -304,11 +305,14 @@ Ideas only. Nothing is vendored or copied.
 - **D1. Name.** The option is **Mesh Space Rotation** in the UI, `mesh_space_rotation` in controller JSON and MCP,
   `meshSpaceRotation` in C++ fields and the Player's scene key, `setLayerMeshSpaceRotation` in Lua. Unity has no
   term for it, so the glossary's no-alias rule is not broken. The industry term is the one people search for.
-- **D2. Boundary bones only.** Mesh space applies only where the mask weight changes between parent and child. With
-  0 or 1 weights this gives exactly what full per-bone mesh-space blending gives, at a fraction of the work:
+- **D2. Boundary bones only.** Mesh space applies only where the mask starts, and where it stops right under its
+  start. With 0 or 1 weights the bones inside the mask get what full per-bone mesh-space blending gives, at a fraction
+  of the work:
   - a child with the same weight as its parent inherits the corrected rotation through the hierarchy;
-  - fingers left out of an arm mask keep Unity's behaviour (they follow the hand);
-  - both directions are covered: the spine under the run's hips, and the run's legs under the attack's hips when a
+  - fingers left out of an arm mask keep Unity's behaviour (they follow the hand), as does a head left out of a torso
+    mask: the mask stops there, but not right under where it starts;
+  - both directions are covered where the layer's direction enters: the spine under the run's hips (a mask from the
+    spine, or a lower-body mask that leaves the spine out), and the run's legs under the attack's hips when a
     body-part mask includes Body.
   With fractional weights inside the mask, the result is local blending inside and mesh space at the edges. That is
   documented, not a defect.
@@ -420,6 +424,18 @@ player:setLayerMeshSpaceRotation("Upper Body", true)
   above 0, whatever its blending and option, not only of flagged Override layers. The editor's warning (R29) and
   `get_animation`'s coverage (R38) need them while the option is off. The list is bind-time data, not scratch: the
   two scratch arrays (R21, R22) are still sized only while a layer runs the pass.
+- **R5, D2: where the mask stops.** The first rule listed every bone whose weight differs from its parent's, in
+  both directions, so fingers left out of an arm mask (hand 1, fingers 0) took the base layer's rotation relative to
+  the character and no longer followed the hand, against D2. The owner's rule replaces it: a bone is a boundary bone
+  where the mask starts or increases, or where it stops right under where it starts (the legs under the hips of a
+  Body-on mask, the spine under the hips of a lower-body mask). Two bones count as where a mask starts without a
+  parent's weight to compare with: a bone right under the root when it weighs above 0 (rig space has nothing to
+  inherit), and, for a mask with body parts on a humanoid rig, the hips when they weigh above 0. The bones above the
+  hips are the mask's root part (`root_hierarchy`), so a body-part mask that is on from the root (everything but
+  the legs) starts its body at the hips, as Unity's humanoid masks do; without that its legs would follow the
+  layer's hips. A path mask on from the root of a rig with a node above the hips (`Armature`) starts at that node,
+  so its legs follow the hips: give the mask the hips and below to keep the run's legs. The rule stays
+  `anim::maskBoundaryBones`, shared by the Animator's bind, the Animation Player's composer and the editor's line.
 - **R14: "rebind" is a load of the controller.** The Lua override resets when the controller loads again (another
   controller, or the same file changed), where the layers' runtime state is rebuilt. It survives a rig rebind
   after a hierarchy change, like `setLayerWeight`, so a script's call before the first bind is not lost.

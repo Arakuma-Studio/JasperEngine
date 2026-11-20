@@ -212,9 +212,9 @@ namespace {
     }
 
     // The node table on the scratch's slot table for `masks` (per layer: the mask it runs the pass
-    // with and its bindMaskPaths entities; null: no pass). The rig is every GameObject a transform
-    // slot animates and its ancestors below the root, parents first (by depth); each layer's
-    // boundary bones come from anim::maskBoundaryBones over the mask's weights there; the nodes
+    // with and its bindMaskPaths entities; null: no pass). The rig is anim::playerRig over every
+    // GameObject a transform slot animates; each layer's boundary bones come from
+    // anim::playerMaskBoundaryBones there (the editor's line shares both); the nodes
     // are those and their ancestors, with a Rotation slot added (its rest taken now) for one that
     // no binding rotates. Nothing is kept when no layer has a boundary bone.
     void buildMeshSpaceTable(Scene* scene, Entity root, anim::PlayerPoseScratch& scratch,
@@ -222,45 +222,23 @@ namespace {
                              const anim::HumanoidSlots* humanoid, anim::RestMap& rest){
         releaseMeshSpaceTable(scratch);
         std::unordered_map<Entity, uint32_t> rotationSlot;
-        std::unordered_map<Entity, int> depth;
-        std::vector<Entity> path;
+        std::vector<Entity> animated;
         for (uint32_t s = 0; s < scratch.slots.size(); s++){
             const anim::PoseSlot& slot = scratch.slots[s];
             if (slot.channel != ClipChannel::Position && slot.channel != ClipChannel::Rotation && slot.channel != ClipChannel::Scale) continue;
             if (slot.channel == ClipChannel::Rotation) rotationSlot.emplace(slot.target, s);
-            path.clear();
-            Entity current = slot.target;
-            while (current != NULL_ENTITY && current != root && path.size() < 1024){
-                path.push_back(current);
-                current = parentOf(scene, current);
-            }
-            if (current != root) continue;      // not below the root (or the root itself)
-            for (size_t k = 0; k < path.size(); k++) depth.emplace(path[k], (int)(path.size() - k));
+            animated.push_back(slot.target);
         }
-        std::vector<std::pair<int, Entity>> order;
-        order.reserve(depth.size());
-        for (const std::pair<const Entity, int>& entry : depth) order.push_back({entry.second, entry.first});
-        std::sort(order.begin(), order.end());
-        std::unordered_map<Entity, int> boneOf;
-        std::vector<Entity> bones(order.size());
-        std::vector<int> parents(order.size(), -1);
-        for (size_t b = 0; b < order.size(); b++){
-            bones[b] = order[b].second;
-            boneOf.emplace(bones[b], (int)b);
-            const auto parent = boneOf.find(parentOf(scene, bones[b]));
-            if (parent != boneOf.end()) parents[b] = parent->second;
-        }
+        const anim::PlayerRig rig = anim::playerRig(scene, root, animated);
+        const std::vector<Entity>& bones = rig.bones;
+        const std::vector<int>& parents = rig.parents;
 
         std::vector<std::vector<uint16_t>> boundary(masks.size());
-        std::vector<float> weights(bones.size());
         std::vector<bool> needed(bones.size(), false);
         bool any = false;
         for (size_t l = 0; l < masks.size(); l++){
             if (!masks[l].first) continue;
-            for (size_t b = 0; b < bones.size(); b++){
-                weights[b] = anim::maskWeightOf(*masks[l].first, scene, root, bones[b], *masks[l].second, humanoid).weight;
-            }
-            anim::maskBoundaryBones(weights.data(), parents.data(), bones.size(), boundary[l]);
+            anim::playerMaskBoundaryBones(*masks[l].first, scene, root, rig, *masks[l].second, humanoid, boundary[l]);
             for (uint16_t b : boundary[l]){
                 for (int a = (int)b; a >= 0 && !needed[(size_t)a]; a = parents[(size_t)a]) needed[(size_t)a] = true;
             }

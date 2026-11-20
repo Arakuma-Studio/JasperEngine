@@ -498,15 +498,17 @@ std::vector<Entity> animlayersui::meshSpaceBoundary(Scene* scene, Entity root, c
     std::map<Entity, int> indexOf;
     std::vector<float> weights(bones.size());
     std::vector<int> parents(bones.size(), -1);
+    int hips = -1;
     for (size_t b = 0; b < bones.size(); b++){
         indexOf[bones[b]] = (int)b;
         weights[b] = anim::maskWeightOf(mask, scene, root, bones[b], entries, slots.valid ? &slots : nullptr).weight;
+        if (slots.valid && bones[b] == slots.entities[(size_t)pose::HumanBone::Hips]) hips = (int)b;
         const Transform* transform = scene->findComponent<Transform>(bones[b]);
         const auto parent = transform ? indexOf.find(transform->parent) : indexOf.end();
         if (parent != indexOf.end()) parents[b] = parent->second;
     }
     std::vector<uint16_t> boundary;
-    anim::maskBoundaryBones(weights.data(), parents.data(), bones.size(), boundary);
+    anim::maskBoundaryBones(weights.data(), parents.data(), bones.size(), hips, boundary);
     std::vector<Entity> out;
     out.reserve(boundary.size());
     for (uint16_t b : boundary) out.push_back(bones[b]);

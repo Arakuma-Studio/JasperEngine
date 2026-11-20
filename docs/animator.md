@@ -131,8 +131,15 @@ Limits:
 - Only rotation: translation stays local. A crouch or a lunge the attack makes with its hips'
   position is not carried over.
 - A hip spin past 180 degrees in the upper-body clip turns the torso a full turn over still legs.
-- Inside the mask, fractional weights blend locally; only the bones where the weight changes get
-  the rotation relative to the character.
+- It applies where the mask starts, and where it stops right under its start (the legs under the
+  hips of a mask with Body on, the spine under the hips of a lower-body mask). Bones the mask
+  leaves out further down follow their parent, as in Unity: fingers left out of an arm mask follow
+  the hand.
+- A path mask that is on from the GameObject down (not a body-part one) starts at the first node
+  under it, often `Armature`, so legs it leaves out follow the layer's hips: start the mask at the
+  hips to keep the base's legs.
+- Inside the mask, fractional weights blend locally; only the bones where the weight rises, and
+  where it drops right under a rise, get the rotation relative to the character.
 - The chain above a boundary bone is assumed to have uniform scale.
 - The warning may show on a layer where local blending is what you want: it only proposes. Leave
   the option off (or make the layer Additive).
