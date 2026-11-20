@@ -10695,6 +10695,7 @@
     "shadowOffset",
     "shadowSoftness",
     "text",
+    "textKey",
     "visibleCharacters"
    ],
    "name": "TextComponent",
@@ -10780,6 +10781,11 @@
      true
     ],
     "text": [
+     1,
+     32768,
+     true
+    ],
+    "textKey": [
      1,
      32768,
      true
@@ -10872,6 +10878,11 @@
      true
     ],
     "text": [
+     1,
+     32768,
+     true
+    ],
+    "textKey": [
      1,
      32768,
      true
@@ -31800,6 +31811,11 @@
     true
    ],
    "text": [
+    1,
+    32768,
+    true
+   ],
+   "textKey": [
     1,
     32768,
     true

@@ -17,8 +17,10 @@
 #include "io/ResourcePack.h"
 #include "particles/ParticleWorld.h"
 #include "player/ContentManifest.h"
+#include "player/DevelopmentContent.h"
 #include "player/PlayerLaunch.h"
 #include "player/PlayerConfig.h"
+#include "localization/Localization.h"
 #include "player/RunControl.h"
 #include "serialization/CookedScene.h"
 #if JASPERENGINE_VOXEL
@@ -158,6 +160,64 @@ namespace {
         return EXIT_CONTENT_MISMATCH;
     }
 
+    // Patch And Run's development content folder of a mobile app's data (Android: files/, iOS:
+    // Library/), "" where there is none (desktop and web players)
+    std::string developmentContentFolder() {
+#if defined(__ANDROID__)
+        // the platform's System (the early one on Android) knows the app's files folder
+        if (!System::hasInstance()) return "";
+        const std::string data = System::instance().getUserDataPath();
+        return data.empty() ? std::string() : data + "/" + DEVELOPMENT_CONTENT_DIR;
+#elif defined(__APPLE__) && TARGET_OS_IPHONE
+        std::string home;
+        if (CFURLRef url = CFCopyHomeDirectoryURL()) {
+            char path[4096];
+            if (CFURLGetFileSystemRepresentation(url, true, reinterpret_cast<UInt8*>(path), sizeof(path))) home = path;
+            CFRelease(url);
+        }
+        return home.empty() ? std::string() : home + "/Library/" + DEVELOPMENT_CONTENT_DIR;
+#else
+        return "";
+#endif
+    }
+
+    // R7: Patch And Run's folder as the content root when its manifest is this player's; a release
+    // player compiles this to false
+    bool selectDevelopmentContent(PlatformConfig& platform, bool contentGiven) {
+        if constexpr (!DEVELOPMENT_CONTENT_CHECKED) {
+            (void)platform;
+            (void)contentGiven;
+            return false;
+        } else {
+            DevelopmentContentAccess access;
+            access.exists = [](const std::string& path) {
+                std::error_code ec;
+                return std::filesystem::is_regular_file(path, ec);
+            };
+            access.read = [](const std::string& path, std::string& text) {
+                FILE* file = std::fopen(path.c_str(), "rb");
+                if (!file) return false;
+                char buffer[16384];
+                for (size_t n; (n = std::fread(buffer, 1, sizeof(buffer), file)) > 0;) text.append(buffer, n);
+                std::fclose(file);
+                return true;
+            };
+            access.warn = [](const std::string& message) { report(message); };
+            // the packaged manifest's player hash: read only when the folder has a manifest
+            const auto packagedSha = []() {
+                std::string text, error;
+                ContentManifest packaged;
+                return readContent("content-manifest.json", text) && ContentManifest::parse(text, packaged, error) ? packaged.playerSha256
+                                                                                                                  : std::string("-");
+            };
+            const auto found = findDevelopmentContent(developmentContentFolder(), contentGiven, runtimePlayerId(), packagedSha, access);
+            if (!found) return false;
+            platform.contentRoot = found->root;
+            System::setContentPatch(found->patch);
+            return true;
+        }
+    }
+
     // the player's step before the window (PlayerLaunch.h)
     int configure(const LaunchOptions& options) {
         PlatformConfig& platform = platformConfig();
@@ -166,6 +226,11 @@ namespace {
         // the platform's System comes with its window; until then the content root's
         ContentSystem early;
         EarlySystemScope earlyScope(&early);
+
+        // R7: a development player runs Patch And Run's folder when it holds this player's content
+        // (an explicit --content wins)
+        const std::string packagedRoot = platform.contentRoot;
+        bool developmentContent = selectDevelopmentContent(platform, !options.content.empty());
 
         // a packed build's content.jpak (the web mounted its fetched one already)
         if (!ResourcePack::contentPack()) {
@@ -178,18 +243,30 @@ namespace {
         }
 
         std::string text;
-        if (!readContent("content-manifest.json", text))
-            return failContent("no content-manifest.json in " + (platform.contentRoot.empty() ? std::string("the content pack") : platform.contentRoot) +
-                               ": run a game built for this player (Build Settings > Build, or jasperengine-editor build), or give "
-                               "--content <folder of the build>");
         ContentManifest manifest;
         std::string error;
-        if (!ContentManifest::parse(text, manifest, error)) return failContent(error);
         std::vector<std::string> problems;
         const ContentAccess access{&contentExists, &contentSha256};
-        if (!checkContent(manifest, runtimePlayerId(), access, options.verifyContent, problems)) {
-            for (const std::string& problem : problems) report("Content check failed: " + problem);
-            return EXIT_CONTENT_MISMATCH;
+        // a development folder whose files do not match its manifest (a patch cut short) falls back
+        // to the packaged content
+        if (developmentContent && (!readContent("content-manifest.json", text) || !ContentManifest::parse(text, manifest, error) ||
+                                   !checkContent(manifest, runtimePlayerId(), access, options.verifyContent, problems))) {
+            report(std::string("development content in ") + DEVELOPMENT_CONTENT_DIR + " does not match its manifest; using the packaged content");
+            platform.contentRoot = packagedRoot;
+            System::setContentPatch(0);
+            developmentContent = false;
+            problems.clear();
+        }
+        if (!developmentContent) {
+            if (!readContent("content-manifest.json", text))
+                return failContent("no content-manifest.json in " + (platform.contentRoot.empty() ? std::string("the content pack") : platform.contentRoot) +
+                                   ": run a game built for this player (Build Settings > Build, or jasperengine-editor build), or give "
+                                   "--content <folder of the build>");
+            if (!ContentManifest::parse(text, manifest, error)) return failContent(error);
+            if (!checkContent(manifest, runtimePlayerId(), access, options.verifyContent, problems)) {
+                for (const std::string& problem : problems) report("Content check failed: " + problem);
+                return EXIT_CONTENT_MISMATCH;
+            }
         }
 
         if (!readContent("game.json", text)) return failContent("game.json is missing");
@@ -312,6 +389,8 @@ namespace {
 }
 
 JASPERENGINE_INIT void init() {
+    // Project Settings > Debug > Console Commands: "development" follows the player's flavour
+    console::setCommandsEnabled(game.consoleCommands == "always" || (game.consoleCommands == "development" && JASPERENGINE_DEVELOPMENT_BUILD));
     const ThreadingSettings threadingDefaults;
     if (game.threading.workers != threadingDefaults.workers || game.threading.reservedFrameWorkers != threadingDefaults.reservedFrameWorkers ||
         game.threading.ioThreads != threadingDefaults.ioThreads || game.threading.webPumpBudgetMs != threadingDefaults.webPumpBudgetMs)
@@ -327,6 +406,7 @@ JASPERENGINE_INIT void init() {
     Engine::setFoliageDistanceScaleDefaults(game.foliageDistanceScale[0], game.foliageDistanceScale[1], game.foliageDistanceScale[2]);
     if (game.inputDeadzone != 0.15f) InputActions::setDefaultDeadzone(game.inputDeadzone);
     if (!game.inputActions.empty()) InputActions::loadDefault(game.inputActions);
+    if (!game.localization.empty()) Localization::loadManifest(game.localization);
     if (game.navigation != nav::NavigationSettings()) nav::setSettings(game.navigation);
 #if JASPERENGINE_VOXEL
     if (game.voxelMaxDimension > 0 || game.voxelCpuBudgetMB > 0 || game.voxelMeshBudgetMB > 0) {

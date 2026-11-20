@@ -28,6 +28,7 @@
 #include <RmlUi/Core/EventListener.h>
 #include <RmlUi/Core/Factory.h>
 #include <RmlUi/Core/StreamMemory.h>
+#include <RmlUi/Core/StyleSheet.h>
 #include <RmlUi/Core/StyleSheetContainer.h>
 
 #include <algorithm>
@@ -36,6 +37,7 @@
 #include <list>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::htmlui::compat;
@@ -584,11 +586,23 @@ namespace {
 
     // ---- loaded documents ----
 
+    // a compile's sheets parsed and combined for one document (restyleSheets): a document swapped
+    // back to a compile it had (the pointer variants of hover and pointer) parses nothing. Kept per
+    // document: RmlUi never shares a container between documents, whose compiled sheets follow
+    // their own context
+    struct ParsedSheets {
+        uint64_t owner = 0;                    // CompatDocument::owner: one compile
+        std::shared_ptr<Rml::StyleSheetContainer> container;
+    };
+    // the compiles a document alternates between: the two pointer variants (and a viewport's)
+    constexpr size_t kParsedSheetsKept = 4;
+
     struct Binding {
         std::shared_ptr<const CompatDocument> compiled;
         uint64_t translatorHandle = 0;
         std::vector<Diagnostic> diagnostics;   // compile + runtime
         uint64_t propertyOwner = 0;            // its @property registrations (CompatAtProperty, phase 5)
+        std::vector<ParsedSheets> parsed;      // most recent last
     };
 
     std::unordered_map<const Rml::ElementDocument*, std::shared_ptr<Binding>>& bindings(){
@@ -647,20 +661,10 @@ namespace {
 std::shared_ptr<const CompatDocument> DocumentLoader::compile(const std::string& htmlPath, const CompatOptions& options){
     const std::string path = normalizePath(htmlPath);
     const uint64_t bucketKey = baseKey(path, options);
+    if (std::shared_ptr<const CompatDocument> cached = findCompiled(path, options))
+        return cached;
 
     Cache& store = cache();
-    {
-        std::lock_guard<std::mutex> lock(store.mutex);
-        auto it = store.buckets.find(bucketKey);
-        if (it != store.buckets.end()){
-            for (CacheEntry& entry : it->second){
-                if (entry.document->sourcePath == path && isCurrent(*entry.document, options)){
-                    entry.lastUse = ++store.clock;
-                    return entry.document;
-                }
-            }
-        }
-    }
 
     std::shared_ptr<const CompatDocument> compiled = compileFile(path, options, FileAccess());
     if (!compiled->compiled)
@@ -950,46 +954,137 @@ void DocumentLoader::restyle(Rml::ElementDocument* document, const CompatDocumen
     restyleSheets(document, compiled);
 }
 
-void DocumentLoader::restyleSheets(Rml::ElementDocument* document, const CompatDocument& compiled){
+namespace {
+
     // the head's sheets in order, as ElementDocument::ProcessHeader combines them
-    std::shared_ptr<Rml::StyleSheetContainer> combined;
-    auto addFile = [&combined](const std::string& path, bool userAgent = false){
-        std::shared_ptr<Rml::StyleSheetContainer> sheet = Rml::Factory::InstanceStyleSheetFile("/" + VirtualFiles::normalize(path));
-        if (!sheet)
-            return;
-        // the user-agent origin, as <link origin="user-agent"> gives it (phase-3 §3.4.3: what 'revert' restores)
-        if (userAgent)
-            sheet->SetOrigin(Rml::StyleOrigin::UserAgent);
-        if (combined)
-            combined->MergeStyleSheetContainer(*sheet);
-        else
-            combined = sheet->CombineStyleSheetContainer(Rml::StyleSheetContainer());
-    };
-    auto addInline = [&combined, &compiled](const std::string& rcss, uint32_t line){
-        std::shared_ptr<Rml::StyleSheetContainer> sheet = inlineSheet(rcss, compiled.sourcePath, line);
-        if (!sheet)
-            return;
-        if (combined)
-            combined->MergeStyleSheetContainer(*sheet);
-        else
-            combined = sheet;
-    };
+    std::shared_ptr<Rml::StyleSheetContainer> parseSheets(const CompatDocument& compiled){
+        std::shared_ptr<Rml::StyleSheetContainer> combined;
+        auto addFile = [&combined](const std::string& path, bool userAgent = false){
+            std::shared_ptr<Rml::StyleSheetContainer> sheet = Rml::Factory::InstanceStyleSheetFile("/" + VirtualFiles::normalize(path));
+            if (!sheet)
+                return;
+            // the user-agent origin, as <link origin="user-agent"> gives it (phase-3 §3.4.3: what 'revert' restores)
+            if (userAgent)
+                sheet->SetOrigin(Rml::StyleOrigin::UserAgent);
+            if (combined)
+                combined->MergeStyleSheetContainer(*sheet);
+            else
+                combined = sheet->CombineStyleSheetContainer(Rml::StyleSheetContainer());
+        };
+        auto addInline = [&combined, &compiled](const std::string& rcss, uint32_t line){
+            std::shared_ptr<Rml::StyleSheetContainer> sheet = inlineSheet(rcss, compiled.sourcePath, line);
+            if (!sheet)
+                return;
+            if (combined)
+                combined->MergeStyleSheetContainer(*sheet);
+            else
+                combined = sheet;
+        };
 
-    addFile(compiled.userAgentPath, true);
-    if (!compiled.hints.rcss.empty())
-        addInline(compiled.hints.rcss, compiled.hintsLine);
-    for (size_t i = 0; i < compiled.stylesheets.size(); i++){
-        const StylesheetOutput& sheet = compiled.stylesheets[i];
-        if (sheet.kind == StylesheetInput::Kind::File)
-            addFile(sheet.virtualPath);
-        else
-            addInline(sheet.rcss, i < compiled.stylesheetLines.size() ? compiled.stylesheetLines[i] : 1);
+        addFile(compiled.userAgentPath, true);
+        if (!compiled.hints.rcss.empty())
+            addInline(compiled.hints.rcss, compiled.hintsLine);
+        for (size_t i = 0; i < compiled.stylesheets.size(); i++){
+            const StylesheetOutput& sheet = compiled.stylesheets[i];
+            if (sheet.kind == StylesheetInput::Kind::File)
+                addFile(sheet.virtualPath);
+            else
+                addInline(sheet.rcss, i < compiled.stylesheetLines.size() ? compiled.stylesheetLines[i] : 1);
+        }
+        if (!compiled.important.rcss.empty())
+            addInline(compiled.important.rcss, compiled.importantLine);
+        return combined;
     }
-    if (!compiled.important.rcss.empty())
-        addInline(compiled.important.rcss, compiled.importantLine);
 
-    if (combined)
-        document->SetStyleSheetContainer(std::move(combined));
+    // a compile without @property rules parses the same whatever is registered: its parsed sheets
+    // can be kept (a registration changes how the others parse: updateRegisteredProperties)
+    bool keepsParsedSheets(const CompatDocument& compiled){
+        return compiled.owner != 0 && compiled.registeredProperties.empty();
+    }
+
+    // kept: the container was parsed before (its compiled sheet may be current already)
+    std::shared_ptr<Rml::StyleSheetContainer> parsedSheetsOf(Rml::ElementDocument* document, const CompatDocument& compiled,
+                                                             bool* kept = nullptr){
+        if (kept)
+            *kept = false;
+        if (!keepsParsedSheets(compiled))
+            return parseSheets(compiled);
+        auto it = bindings().find(document);
+        if (it == bindings().end())
+            return parseSheets(compiled);
+        std::vector<ParsedSheets>& parsed = it->second->parsed;
+        for (size_t i = 0; i < parsed.size(); i++){
+            if (parsed[i].owner != compiled.owner)
+                continue;
+            ParsedSheets found = parsed[i];
+            parsed.erase(parsed.begin() + (std::ptrdiff_t)i);
+            parsed.push_back(found);
+            if (kept)
+                *kept = true;
+            return found.container;
+        }
+        std::shared_ptr<Rml::StyleSheetContainer> container = parseSheets(compiled);
+        if (container){
+            parsed.push_back(ParsedSheets{compiled.owner, container});
+            if (parsed.size() > kParsedSheetsKept)
+                parsed.erase(parsed.begin());
+        }
+        return container;
+    }
+
+}
+
+void DocumentLoader::restyleSheets(Rml::ElementDocument* document, const CompatDocument& compiled){
+    bool kept = false;
+    std::shared_ptr<Rml::StyleSheetContainer> combined = parsedSheetsOf(document, compiled, &kept);
+    if (!combined)
+        return;
+    // RmlUi restyles a document when its container compiles a new sheet; a kept container whose
+    // sheet is compiled already would change nothing. An empty container first marks every
+    // definition dirty (they are rebuilt from the kept one at the next update)
+    if (kept)
+        document->SetStyleSheetContainer(std::make_shared<Rml::StyleSheetContainer>());
+    document->SetStyleSheetContainer(std::move(combined));
+}
+
+void DocumentLoader::prewarmSheets(Rml::ElementDocument* document, const std::shared_ptr<const CompatDocument>& compiled){
+    if (!document || !compiled || !compiled->compiled)
+        return;
+    // parsed, and compiled for the document's context as it is now (RmlUi compiles a container's
+    // sheet when a document first uses it): the swap only restyles the elements
+    std::shared_ptr<Rml::StyleSheetContainer> container = parsedSheetsOf(document, *compiled);
+    if (!container || !document->GetContext())
+        return;
+    container->UpdateCompiledStyleSheet(document->GetContext());
+    // and the elements' definitions resolved against it (the sheet caches them by the rules that
+    // match): the swap's restyle finds them instead of matching every selector again
+    const Rml::StyleSheet* sheet = container->GetCompiledStyleSheet();
+    if (!sheet)
+        return;
+    std::vector<Rml::Element*> pending{document};
+    while (!pending.empty()){
+        Rml::Element* element = pending.back();
+        pending.pop_back();
+        sheet->GetElementDefinition(element);
+        for (int i = 0; i < element->GetNumChildren(); i++)
+            pending.push_back(element->GetChild(i));
+    }
+}
+
+std::shared_ptr<const CompatDocument> DocumentLoader::findCompiled(const std::string& htmlPath, const CompatOptions& options){
+    const std::string path = normalizePath(htmlPath);
+    Cache& store = cache();
+    std::lock_guard<std::mutex> lock(store.mutex);
+    auto it = store.buckets.find(baseKey(path, options));
+    if (it == store.buckets.end())
+        return nullptr;
+    for (CacheEntry& entry : it->second){
+        if (entry.document->sourcePath == path && isCurrent(*entry.document, options)){
+            entry.lastUse = ++store.clock;
+            return entry.document;
+        }
+    }
+    return nullptr;
 }
 
 void DocumentLoader::restyle(Rml::ElementDocument* document, const std::shared_ptr<const CompatDocument>& compiled,
@@ -1047,6 +1142,8 @@ void DocumentLoader::updateRegisteredProperties(){
             reported.emplace_back(const_cast<Rml::ElementDocument*>(document), binding);
     }
     for (auto& [document, binding] : waiting){
+        // their sheets parse differently now: nothing kept
+        binding->parsed.clear();
         registerProperties(document, *binding->compiled);
         restyleSheets(document, *binding->compiled);
         reported.emplace_back(document, binding);

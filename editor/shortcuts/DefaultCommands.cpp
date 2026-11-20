@@ -250,12 +250,16 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.profiler", "Profiler", AppMenuCommand::ToggleProfiler, C::Editor, "Ctrl+7");
     b.menu("window.console", "Console", AppMenuCommand::ToggleConsole, C::Editor, "Ctrl+Shift+C");
     b.menu("window.bookmarks", "Bookmarks", AppMenuCommand::ToggleBookmarks);
+    b.menu("window.localizationTables", "Localization Tables", AppMenuCommand::ToggleLocalizationTables).description =
+        "String Tables: keys, translations, coverage and this Play's misses";
     b.menu("window.undoHistory", "Undo History", AppMenuCommand::ToggleUndoHistory);
     b.menu("window.playModeChanges", "Play Mode Changes", AppMenuCommand::TogglePlayModeChanges);
     b.menu("window.colorPicker", "Color Picker", AppMenuCommand::ToggleColorPicker).description =
         "The Color window on its own: eyedropper, swatches, hexadecimal";
     b.menu("window.recorder", "Recorder", AppMenuCommand::ToggleRecorder).description =
         "Record the Game view to a PNG sequence or a movie";
+    b.menu("window.testRunner", "Test Runner", AppMenuCommand::ToggleTestRunner).description =
+        "The project's tests (Tests/*.test.lua): Edit Mode and Play Mode cases, results and goldens";
     b.menu("recorder.toggle", "Start Recording", AppMenuCommand::ToggleRecording, C::Global, "F10").description =
         "Start or stop the Recorder (enters Play when needed)";
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);

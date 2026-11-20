@@ -38,6 +38,11 @@ namespace jasperengine { namespace test {
         bool touchDevice = false;
         float screenDpi = 0.0f;
         bool isTouchDevice() override { return touchDevice; }
+        // the device's languages (the localisation tests); empty: the base's {"en-US"}
+        std::vector<std::string> preferredLocales;
+        std::vector<std::string> getPreferredLocales() override {
+            return preferredLocales.empty() ? System::getPreferredLocales() : preferredLocales;
+        }
         float getScreenDpi() override { return screenDpi; }
 
 #if defined(SOKOL_VULKAN) && defined(JASPER_TEST_HAS_GPU)

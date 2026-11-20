@@ -10,6 +10,7 @@
 #include <RmlUi/Core/Matrix4.h>
 #include <RmlUi/Core/ObserverPtr.h>
 
+#include "htmlui/compat/CompatOptions.h"
 #include "math/Rect.h"
 #include "render/CameraRender.h"
 #include "render/FramebufferRender.h"
@@ -180,6 +181,17 @@ namespace jasperengine {
         // the documents follow the input scheme (input-device-awareness R14, R17): once per change
         void applyInputScheme();
         uint32_t inputSchemeRevision = UINT32_MAX;
+        // the documents whose other pointer variant compiles in the background: once it is in, both
+        // variants' sheets are parsed for them, so the switch only swaps parsed sheets
+        struct PointerPrewarm {
+            Rml::ObserverPtr<Rml::Element> document;
+            std::string path;
+            htmlui::compat::CompatOptions options;
+            int frames = 0;                    // updates it has waited
+        };
+        static constexpr int kPointerPrewarmFrames = 600;
+        std::vector<PointerPrewarm> pointerPrewarms;
+        void prewarmPointerVariants();
     };
 
 }

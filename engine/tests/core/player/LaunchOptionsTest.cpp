@@ -130,6 +130,22 @@ TEST(LaunchOptions, RefusalsSayHowToFixThem) {
     EXPECT_NE(refused({"--content", "/nonexistent-dir-s30"}).find("not a directory"), std::string::npos);
     EXPECT_NE(refused({"--scene", ""}).find("scene name"), std::string::npos);
     EXPECT_NE(refused({"--help"}).find("--quit-after N"), std::string::npos);
+    // --command: a console line (and, in a player whose Console Commands keep typed commands
+    // off, RunControl's refusal: exit 2)
+    EXPECT_NE(refused({"--command", "  "}).find("needs a console line"), std::string::npos);
+    EXPECT_NE(refused({"--command"}).find("needs a value"), std::string::npos);
+    EXPECT_NE(refused({"--help"}).find("--command LINE"), std::string::npos);
+    EXPECT_EQ(std::string(commandsOffRefusal()),
+              "--command needs a development player or Project Settings > Debug > Console Commands: Always.");
+}
+
+// --command (dev-console-for-agents R16): repeatable, in order; the web's ?command= items too
+TEST(LaunchOptions, CommandRepeatsInOrder) {
+    const LaunchOptions options = ok({"--command", "give gold 10", "--headless", "--command=tp \"Big Tree\""});
+    EXPECT_EQ(options.commands, (std::vector<std::string>{"give gold 10", "tp \"Big Tree\""}));
+    EXPECT_TRUE(ok({}).commands.empty());
+    const LaunchOptions web = ok(argsFromQuery("?command=help&command=give+gold+10"), ParseMode::Lenient);
+    EXPECT_EQ(web.commands, (std::vector<std::string>{"help", "give gold 10"}));
 }
 
 TEST(LaunchOptions, LenientModeKeepsUnknownArguments) {
@@ -174,4 +190,37 @@ TEST(LaunchOptions, DeviceTier) {
     EXPECT_TRUE(ok({}).deviceTier.empty());
     EXPECT_NE(refused({"--device-tier=extreme"}).find("low, medium, high or ultra"), std::string::npos);
     EXPECT_NE(refused({"--device-tier"}).find("needs a value"), std::string::npos);
+}
+
+// project-test-runner AC11: --run-tests needs the test runner; a release player (built without
+// JASPERENGINE_TEST_RUNNER) refuses it with exit 2 and the fixed message, a development one
+// takes it with its filter and results path
+TEST(LaunchOptions, RunTestsNeedsTheTestRunner) {
+    if (!testRunnerCompiled()) {
+        EXPECT_EQ(refused({"--run-tests"}), NO_TEST_RUNNER);
+        EXPECT_EQ(refused({"--test-filter", "smoke"}), NO_TEST_RUNNER);
+        return;
+    }
+    test::TempDir dir;
+    const std::string results = (dir.path() / "results.json").string();
+    const LaunchOptions options = ok({"--run-tests", "--test-filter", "tag:smoke,shop", "--test-results", results, "--keep-test-data"});
+    EXPECT_TRUE(options.runTests);
+    EXPECT_TRUE(options.keepTestData);
+    EXPECT_EQ(options.testFilter, "tag:smoke,shop");
+    EXPECT_EQ(options.testResults.string(), results);
+    EXPECT_TRUE(options.afterReady) << "a test run counts from the ready frame";
+    EXPECT_NE(refused({"--test-filter", "smoke"}).find("go with --run-tests"), std::string::npos);
+    EXPECT_NE(refused({"--run-tests=yes"}).find("takes no value"), std::string::npos);
+    EXPECT_NE(refused({"--run-tests", "--test-results", (dir.path() / "missing" / "r.json").string()}).find("does not exist"), std::string::npos);
+}
+
+TEST(LaunchOptions, TestFlagsFromTheQuery) {
+    const std::vector<std::string> args = argsFromQuery("?run-tests&test-filter=tag%3Asmoke");
+    ASSERT_EQ(args.size(), 2u);
+    EXPECT_EQ(args[0], "--run-tests");
+    EXPECT_EQ(args[1], "--test-filter=tag:smoke");
+    if (!testRunnerCompiled()) return;
+    const LaunchOptions options = ok(args);
+    EXPECT_TRUE(options.runTests);
+    EXPECT_EQ(options.testFilter, "tag:smoke");
 }

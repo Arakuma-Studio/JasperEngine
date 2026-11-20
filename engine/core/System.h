@@ -213,6 +213,8 @@ namespace jasperengine {
         static std::string buildProfile;
         static std::vector<std::string> buildDefines;
         static std::unordered_set<std::string> buildDefineSet;
+        // the Patch And Run patch the content is (setContentPatch)
+        static int contentPatch;
 
         // Only Engine is allowed to inject an external System implementation.
         static void setSystemInstance(System* system);
@@ -318,6 +320,10 @@ namespace jasperengine {
         static const std::vector<std::string>& getDefines();
         // one hash lookup
         static bool isDefined(const std::string& symbol);
+        // Patch And Run (docs/specs/build-and-run-on-device.md R27): the patch of the development
+        // content folder a development player runs (0: its packaged content; the editor's Play too)
+        static void setContentPatch(int patch);
+        static int getContentPatch();
         // Android: the installed package (versionName, versionCode, package name, label);
         // Apple: the main bundle; elsewhere setApplicationInfo's values
         virtual std::string getAppVersion();

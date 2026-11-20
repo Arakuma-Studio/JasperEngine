@@ -46,6 +46,16 @@ namespace jasperengine::player {
         std::string logLevel;
         // --device-tier: low, medium, high or ultra instead of the detected tier ("" detects)
         std::string deviceTier;
+        // the project test runner (docs/specs/project-test-runner.md R23): --run-tests runs every
+        // Play Mode case of the content, --test-filter selects (R18), --test-results is the
+        // results JSON, --keep-test-data keeps each case's data folder
+        bool runTests = false;
+        bool keepTestData = false;
+        std::string testFilter;
+        std::filesystem::path testResults;
+        // --command (repeatable; web: ?command=... repeated): console lines run in order, one a
+        // frame, from the ready frame (RunControl)
+        std::vector<std::string> commands;
         // what follows "--" (a strict parse), or every argument the options do not know (a
         // lenient one): the Lua System.args
         std::vector<std::string> scriptArgs;
@@ -73,6 +83,14 @@ namespace jasperengine::player {
 
     // the usage text (--help)
     JASPERENGINE_API std::string usage();
+
+    // this player has the project test runner (JASPERENGINE_TEST_RUNNER: development players)
+    JASPERENGINE_API bool testRunnerCompiled();
+    // a release player's refusal of --run-tests (exit 2)
+    inline constexpr const char* NO_TEST_RUNNER =
+        "this player has no test runner (release): build a Development Build with Include Tests";
+    // --command in a player whose Console Commands setting keeps typed commands off (exit 2)
+    JASPERENGINE_API const char* commandsOffRefusal();
 
     // whole-string numbers (no sign for the unsigned one, no trailing text)
     JASPERENGINE_API bool parseUint64(const std::string& text, uint64_t& out);

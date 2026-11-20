@@ -228,6 +228,55 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_tests_run_tests",
+        "kind": "guard",
+        "what_happened": "An agent fixed a bug, checked it by playing once and moved on; nothing kept the check. The guide's "
+                         "Other areas names run_tests and jasper://docs/testing, and authoring's Check what you built says to "
+                         "keep the check as a case (project-test-runner R46).",
+        "text_at_issue": "McpInstructions Other areas: 'testing (run_tests)'; authoring.md: 'Keep what you checked: a case in "
+                         "Tests/ and run_tests'.",
+        "source": "docs/specs/project-test-runner.md R46, AC20",
+        "prompt": "The player starts with 2 lives instead of 3 (player.lua). Fix it, and make sure the fix sticks.",
+        "files": {"scripts/player.lua": "local Player = {}\nfunction Player:init()\n    GameState = {lives = 2}\nend\nreturn Player\n",
+                  "Tests/tests.yaml": "version: 1\n"},
+        "mocks": [
+            {"tool": "run_tests", "result": ok(
+                "PASS player.test.lua#Player starts with three lives\n1 passed, 0 failed, 0 skipped.",
+                {"run_id": "20261119-101500-3f2a", "counts": {"total": 1, "passed": 1, "failed": 0, "skipped": 0, "error": 0, "hung": 0,
+                                                              "excluded_edit": 0},
+                 "failures": [], "unverified": {}, "results_file": ".jasperengine/test-results/runs/20261119-101500-3f2a.json"})},
+        ],
+        "checks": {"calls": [{"tool": "run_tests"}]},
+        "max_turns": 14,
+    },
+    {
+        "id": "bad_tests_project_data",
+        "kind": "bad",
+        "what_happened": "A case used data = \"project\" to start from the developer's own save; the run refuses it and the error "
+                         "names the fix (a snapshot) (project-test-runner R20).",
+        "text_at_issue": "TestOptions PROJECT_DATA_REFUSED: 'tests never use the project's Play data: save a snapshot (Game view > "
+                         "Play Data > Save Snapshot...) and use data = \"<name>\"'.",
+        "source": "docs/specs/project-test-runner.md R20, AC20",
+        "prompt": "Run the shop test (Tests/shop.test.lua) and make it pass. It needs the save that has 100 coins, which is in "
+                  "Tests/Data/rich/.",
+        "files": {"Tests/tests.yaml": "version: 1\n", "Tests/Data/rich/progress.json": "{\"coins\": 100}",
+                  "Tests/shop.test.lua": "Test.case(\"Buying a hat costs 50\", {data = \"project\"}, function(t)\n"
+                                         "    Test.waitUntil(function() return Shop end)\n    Test.equal(Shop.buy(\"hat\"), true)\nend)\n"},
+        "mocks": [
+            {"tool": "run_tests", "result": ok(
+                "ERROR shop.test.lua#Buying a hat costs 50  shop.test.lua:1: tests never use the project's Play data: save a snapshot "
+                "(Game view > Play Data > Save Snapshot...) and use data = \"<name>\"\n0 passed, 0 failed, 0 skipped, 1 error.",
+                {"counts": {"total": 1, "passed": 0, "failed": 0, "skipped": 0, "error": 1, "hung": 0, "excluded_edit": 0},
+                 "failures": [{"id": "shop.test.lua#Buying a hat costs 50", "status": "error", "kind": "error",
+                               "message": "tests never use the project's Play data: save a snapshot (Game view > Play Data > Save "
+                                          "Snapshot...) and use data = \"<name>\"", "file": "shop.test.lua", "line": 1, "frame": 0}],
+                 "unverified": {}})},
+        ],
+        "checks": {"file_must": {"Tests/shop.test.lua": [r"data\s*=\s*\"rich\""]},
+                   "file_must_not": {"Tests/shop.test.lua": [r"data\s*=\s*\"project\""]}},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_linked_folder_rules",
         "kind": "guard",
         "what_happened": "A folder linked in from out of the project is a folder of the project for the asset database and exports, "
@@ -1093,6 +1142,38 @@ CASES = [
         "max_turns": 14,
     },
     {
+        "id": "guard_console_command_mode",
+        "kind": "guard",
+        "what_happened": "Asked to run a game's console command, agents wrapped DebugOverlay.executeCommand in eval_lua code and "
+                         "read the console for what happened, missing the command's result (its lines and returned value).",
+        "text_at_issue": "eval_lua parameter command: 'A console command line instead of code (help lists them).'",
+        "source": "docs/specs/dev-console-for-agents.md R25, R30",
+        "prompt": "The game is playing. Give the player 10 gold with the game's own `give` console command, and tell me the "
+                  "player's new gold total that the command reports.",
+        "playing": True,
+        "mocks": [
+            {"tool": "eval_lua", "args": {"command": "re:^give"}, "result": ok(
+                "10 gold\nvalue: 130",
+                {"mode": "play", "command": {"name": "give", "status": "ok", "ok": True, "lines": ["10 gold"], "log": [],
+                                             "value": 130, "cheat": True},
+                 "console": [{"id": 811, "level": "info", "message": "> give gold 10"},
+                             {"id": 812, "level": "info", "message": "[give] 10 gold"}], "next_cursor": 812})},
+            {"tool": "eval_lua", "args": {"command": "re:^help"}, "result": ok(
+                "give - adds gold or gems [g] (cheat)\nhelp - lists the commands",
+                {"mode": "play", "command": {"name": "help", "status": "ok", "ok": True,
+                                             "lines": ["give - adds gold or gems [g] (cheat)", "help - lists the commands"], "log": [],
+                                             "value": [{"name": "give", "usage": "give <item> [count=1]"}], "cheat": False},
+                 "console": [], "next_cursor": 812})},
+            {"tool": "eval_lua", "args": {"code": "re:executeCommand"}, "result": ok(
+                "OK (no return value).\nconsole:\n[info] > give gold 10\n[info] [give] 10 gold",
+                {"mode": "play", "values": [], "printed": [], "console": [{"id": 811, "level": "info", "message": "> give gold 10"},
+                                                                         {"id": 812, "level": "info", "message": "[give] 10 gold"}],
+                 "next_cursor": 812})},
+        ],
+        "checks": {"calls": [{"tool": "eval_lua", "args": {"command": "re:give\\s+gold\\s+10"}}], "reply_must": [r"130"]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_lua_script",
         "kind": "guard",
         "what_happened": "In-editor-era models wrote Lua with self.entity as an object, on_start, getComponent and C++-style "
@@ -1309,6 +1390,47 @@ CASES = [
         "checks": {"calls": [{"tool": "create_ui_document", "args": {"template": "main_menu"}}],
                    "must_not_call": ["create_ui"], "file_must_not": {"assets/ui/main_menu.html": [r"<rml|\.rcss"]}},
         "max_turns": 14,
+    },
+    {
+        "id": "guard_l10n_keyed_html",
+        "kind": "guard",
+        "what_happened": "Without String Tables agents localised a menu with a Lua table per language and a langIndex() per screen "
+                         "(the Craftsman anti-pattern, docs/specs/game-ui-localization.md section 4); the guide's Other areas entry and "
+                         "edit_string_table route them to keys and data-l10n-id.",
+        "text_at_issue": "Guide 'Other areas': 'localization' (jasper://docs/localization); the localization group's "
+                         "description; edit_string_table's description",
+        "source": "docs/specs/game-ui-localization.md R38",
+        "prompt": "The main menu (assets/ui/main_menu.html, a Play button) must also be in German: 'Spielen'.",
+        "mocks": [
+            {"tool": "read_file", "result": ok("<button id=\"play\">Play</button>", {"content": "<button id=\"play\">Play</button>"})},
+            {"tool": "edit_string_table", "result": ok(
+                "Create String Table ui.", {"path": "assets/l10n/ui.stringtable", "namespace": "ui", "entries": 1,
+                                            "next": "Use the keys: data-l10n-id=\"ui.<key>\" in HTML; check the fit with assert_ui {languages}."})},
+            {"tool": "write_file", "result": ok("Wrote assets/ui/main_menu.html.", {"path": "assets/ui/main_menu.html"})},
+            {"tool": "edit_file", "result": ok("Edited assets/ui/main_menu.html.", {"path": "assets/ui/main_menu.html"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_string_table"}],
+                   "file_must_not": {"assets/ui/main_menu.lua": [r"(?i)spielen"]},
+                   "must_not_call": ["create_script"]},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_l10n_assert_languages",
+        "kind": "guard",
+        "what_happened": "Agents checked whether translated text fits by switching the Game view language and taking screenshots "
+                         "one by one; assert_ui's languages runs text_fits per language in one call.",
+        "text_at_issue": "assert_ui's `languages` parameter (inspect_ui `l10n` beside it); jasper://docs/localization",
+        "source": "docs/specs/game-ui-localization.md R38",
+        "prompt": "Check that the main menu's buttons (UI Document GameObject 30) still fit their text in German.",
+        "mocks": [
+            {"tool": "assert_ui", "result": ok(
+                "assert_ui: 1/2 passed.\nFAIL text_fits \"button\" @1280x720 de: #play: the text needs 132 px, the box has 80 px",
+                {"passed": False, "failed": 1, "total": 2,
+                 "checks": [{"index": 0, "type": "text_fits", "language": "de", "passed": False}]})},
+        ],
+        "checks": {"calls": [{"tool": "assert_ui", "args": {"languages": "*"}}],
+                   "must_not_call": ["configure_game_view", "screenshot"]},
+        "max_turns": 10,
     },
     {
         "id": "guard_post_processing_preset",
@@ -2580,6 +2702,50 @@ CASES = [
             {"tool": "build_project", "result": ok("Build succeeded.", {"status": "succeeded", "result": {"method_used": "prebuilt"}})},
         ],
         "checks": {"calls": [{"tool": "build_project", "args": {"platform": "ios", "ios_simulator": True}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_run_on_the_connected_phone",
+        "kind": "bad",
+        "what_happened": "Asked to try a change on the Android phone plugged in, an agent built an .aab and told the user to "
+                         "install it with adb: build_project had no way to install and launch on a device.",
+        "text_at_issue": "build_project run_device and its description 'run_device: Build And Run.'; get_build_info devices",
+        "source": "docs/specs/build-and-run-on-device.md R21, R22",
+        "prompt": "My Android phone is plugged in with USB debugging on. Put the current build of the game on it and start it.",
+        "mocks": [
+            {"tool": "get_build_info", "args": {"devices": True}, "result": ok("Host linux. 1 usable Run Device(s) of 3.", {
+                "devices": [{"id": "R58M123ABC", "platform": "android", "kind": "device", "name": "Galaxy S23", "state": "device",
+                             "usable": True, "abi": "arm64-v8a", "os_version": "34"},
+                            {"id": "web", "platform": "web", "kind": "browser", "name": "Default browser", "state": "ready", "usable": True}]})},
+            {"tool": "build_project", "args": {"run_device": "re:^(R58M123ABC|auto)$"}, "result": ok(
+                "Build android (Release): succeeded - Built android (prebuilt player android-universal-gles3-development) in /work/out. "
+                "Installed on Galaxy S23 and launched.",
+                {"job_id": "job-1", "status": "succeeded", "next": "read_console categories [\"device\"] for its log; run_build device to watch it",
+                 "result": {"platform": "android", "device": {"id": "R58M123ABC", "name": "Galaxy S23", "installed": "full",
+                                                              "pushed_files": 0, "pushed_bytes": 0, "launch_ms": 900}}})},
+        ],
+        "checks": {"calls": [{"tool": "build_project", "args": {"platform": "android", "run_device": "re:^(R58M123ABC|auto)$"}}],
+                   "must_not_call": [{"tool": "build_project", "args": {"android_format": "aab"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_device_run_with_input",
+        "kind": "bad",
+        "what_happened": "To check a game on the emulator, an agent passed run_build an input script; input reaches desktop "
+                         "players only, so the run failed instead of returning the device's log and crash state.",
+        "text_at_issue": "run_build description 'here or on a device (get_build_info devices) ... input: send_input events (desktop "
+                         "Linux/X11)' and the error 'input is desktop-only (Linux/X11); on a device drive the game from Lua or its arguments'",
+        "source": "docs/specs/build-and-run-on-device.md R23",
+        "prompt": "The game is installed on the emulator emulator-5554. Run it there for 10 seconds and tell me whether it crashes.",
+        "mocks": [
+            {"tool": "run_build", "args": {"device": "emulator-5554", "input": "re:."}, "result": err(
+                "input is desktop-only (Linux/X11); on a device drive the game from Lua or its arguments.")},
+            {"tool": "run_build", "args": {"device": "emulator-5554"}, "result": ok(
+                "Pixel 7: launched, crashed. 40 log line(s), fatal: Fatal signal 11 (SIGSEGV).",
+                {"crashed": True, "fatal_lines": ["libc: Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR)"], "errors": [], "exit_code": None,
+                 "device": {"id": "emulator-5554", "name": "Pixel 7", "installed": "current"}})},
+        ],
+        "checks": {"calls": [{"tool": "run_build", "args": {"device": "emulator-5554"}}], "reply_must": [r"(?i)crash|SIGSEGV|signal 11"]},
         "max_turns": 8,
     },
     {

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "platform/DeviceRunner.h"
+#include "platform/WebServe.h"
 #include "window/TitleArtInterchangeWindows.h"
 #include "util/ImpostorBaker.h"
 #include "terrain/TerrainMapPersistence.h"
@@ -47,6 +49,7 @@
 #include "window/SceneWindow.h"
 #include "window/SpriteNormalsWindow.h"
 #include "window/TitleDesignerWindow.h"
+#include "window/LocalizationTablesWindow.h"
 #include "window/InspectorWindowTitleArt.h"
 #include "titleart/designer/TitleCanvasView.h"
 #include "window/SpritePreviewWindow.h"
@@ -122,6 +125,9 @@
 #include "widget/ColorPickerWindow.h"
 #include "util/GraphicUtils.h"
 #include "recorder/RecorderSession.h"
+#include "test/PlayData.h"
+#include "test/TestRun.h"
+#include "window/TestRunnerWindow.h"
 #include "hub/HubPaths.h"
 #include "platform/LaunchKeys.h"
 #include "io/AtomicFile.h"
@@ -308,6 +314,7 @@ editor::App::App(){
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
     titleDesignerWindow = new TitleDesignerWindow(&project);
+    localizationTablesWindow = new LocalizationTablesWindow(&project);
     // the Inspector's Open in Title Designer and a double-click open the window (S82 R1, R62)
     InspectorWindowTitleArt::setOpenInDesigner([this](const std::filesystem::path& document) {
         std::string error;
@@ -833,7 +840,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.undoHistory", windowMenuLabel(UndoHistoryWindow::WINDOW_NAME)),
             catalogItem("window.playModeChanges", windowMenuLabel(PlayModeChangesWindow::WINDOW_NAME)),
             catalogItem("window.colorPicker"),
-            catalogItem("window.recorder", windowMenuLabel(RecorderWindow::WINDOW_NAME))
+            catalogItem("window.recorder", windowMenuLabel(RecorderWindow::WINDOW_NAME)),
+            catalogItem("window.testRunner", windowMenuLabel(TestRunnerWindow::WINDOW_NAME))
         }),
         menuSubmenu("Animation", {
             catalogItem("window.animation", windowMenuLabel(AnimationWindow::WINDOW_NAME)),
@@ -876,6 +884,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
         catalogItem("window.titleDesigner", windowMenuLabel(TitleDesignerWindow::WINDOW_NAME)),
+        catalogItem("window.localizationTables", windowMenuLabel(LocalizationTablesWindow::WINDOW_NAME)),
         catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
         menuSubmenu("2D", {
             catalogItem("window.spritePreview", windowMenuLabel(SpritePreviewWindow::WINDOW_NAME)),
@@ -1016,6 +1025,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleRecorder:
             recorderWindow.setOpen(!recorderWindow.isOpen());
+            break;
+        case AppMenuCommand::ToggleTestRunner:
+            TestRunnerWindow::get().setOpen(!TestRunnerWindow::get().isOpen());
             break;
         case AppMenuCommand::ToggleRecording:
             toggleRecording();
@@ -1585,6 +1597,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleBookmarks:
             showEditorWindow(bookmarksWindow);
+            break;
+        case AppMenuCommand::ToggleLocalizationTables:
+            showEditorWindow(localizationTablesWindow);
             break;
         case AppMenuCommand::LayoutApply:
             layouts.requestSwitch(command.payload);
@@ -3226,6 +3241,7 @@ void editor::App::show(){
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
     vertexAnimationBakerWindow->show();
     titleDesignerWindow->show();
+    localizationTablesWindow->show();
     // S87: Import Title Art, its report and the Title Designer's Export
     drawTitleArtInterchangeWindows(&project);
     // also the tick of the Scene view's physics sessions, with the panel closed too
@@ -3263,6 +3279,13 @@ void editor::App::show(){
     recorderWindow.setProjectPath(project.getProjectPath());
     recorderWindow.show();
     if (isRecording()) requestRedraw();
+
+    // the project's tests (project-test-runner): a run's next frame, Play Data's session folder,
+    // the Test Runner window
+    gametests::TestRun::get().tick();
+    gametests::PlayData::get().update(&project);
+    TestRunnerWindow::get().show(*this, &project);
+    if (gametests::TestRun::get().running()) requestRedraw();
 
     // S27: the field windows after every window with a field (a field takes its window's
     // changes on its next draw, before the window ends a session); the Gradient Editor's colour
@@ -3722,6 +3745,10 @@ void editor::App::toggleRecording() {
 }
 
 void editor::App::playStarting(uint32_t) {
+    // Play Data (project-test-runner R21): the folder data:// is for this session
+    std::string playDataError;
+    if (!gametests::PlayData::get().sessionStarting(&project, gametests::PlayData::selected(&project), playDataError))
+        Out::error("Play Data: %s (the session uses the project's data)", playDataError.c_str());
     recorder::RecorderSession::get().onPlayStarting(recorderWindow.settings());
     if (pixelart::PixelArtMode::get().playHookRegistered()) pixelart::PixelArtMode::get().playStarting(&project);
 }
@@ -4135,6 +4162,9 @@ void editor::App::processProjectChange() {
     if (project.isAnyScenePlaying()) return;
     // the old project's save dialogs never act on the next one
     cancelSaveDialogs();
+    // its device runs and the web server of its Build And Run (docs/specs/build-and-run-on-device.md R10)
+    platform::DeviceRuns::get().stopAll();
+    platform::WebServe::get().stop();
 
     // Menu and dialog callbacks queue the change. Run it between frames so the
     // loading pump can draw without nesting ImGui frames or invalidating scene UI.
@@ -5460,6 +5490,8 @@ void editor::App::shutdownBackgroundWork() {
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
     mcp::McpServer::get().stop();
+    platform::DeviceRuns::get().stopAll();
+    platform::WebServe::get().stop();
     if (!editor::texsynth::SynthesisRun::cancelAll()) {
         Out::warning("A texture synthesis did not stop in time; it is left to finish without effect.");
     }

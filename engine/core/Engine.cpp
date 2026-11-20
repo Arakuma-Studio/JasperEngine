@@ -20,6 +20,7 @@
 #include "io/UserSettings.h"
 #include "input/InputActions.h"
 #include "input/InputScheme.h"
+#include "input/InputScriptRunner.h"
 #include "debug/DebugOverlay.h"
 #include "render/SystemRender.h"
 #include "shader/ShaderWarmup.h"
@@ -70,6 +71,7 @@
 #include "component/VertexAnimatorComponent.h"
 #include "pool/TexturePool.h"
 #include "device/Device.h"
+#include "localization/Localization.h"
 #include "device/QualityResolver.h"
 #include "pool/SoundPool.h"
 #include "pool/TextureDataPool.h"
@@ -1733,11 +1735,13 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     Device::onThermalStateChanged.removeByTagSubstring(substring);
     Device::onLowMemory.removeByTagSubstring(substring);
     InputSchemeTracker::onSchemeChanged.removeByTagSubstring(substring);
+    Localization::onLanguageChanged.removeByTagSubstring(substring);
 #if JASPERENGINE_SOUND_LAYER
     Audio::onMusicBeat.removeByTagSubstring(substring);
     Audio::onMusicSection.removeByTagSubstring(substring);
 #endif
     DebugOverlay::removeCommandsByTag(substring);
+    console::Events::onCheatUsed.removeByTagSubstring(substring);
 
     // a released script instance's tag is "_<address>_": the input sources it owned go too
     // (Input.simulateAxis(name, value, self), InputActions::setSourceValue(this, ...))
@@ -1786,12 +1790,14 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     Device::onThermalStateChanged.clear();
     Device::onLowMemory.clear();
     InputSchemeTracker::onSchemeChanged.clear();
+    Localization::onLanguageChanged.clear();
 #if JASPERENGINE_SOUND_LAYER
     // here too, not only in MusicPlayer::reset: the editor's Stop runs that after the C++ script library is unloaded
     Audio::onMusicBeat.clear();
     Audio::onMusicSection.clear();
 #endif
     DebugOverlay::removeOwnedCommands();
+    console::Events::onCheatUsed.clear();
 
     if (includeLifecycle) {
         onViewLoaded.clear();
@@ -1807,6 +1813,9 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
         onLowMemory.clear();
         onSafeAreaChanged.clear();
     }
+    // the input scripts the game ran (a Lua replay, a test's input) end with it; what they held is
+    // released once no game callback is left to hear it
+    input::ScriptRunner::stopAll();
 }
 
 // A script can leave callbacks on components (button.onPress.add(...)) that outlive it, and the
@@ -2595,6 +2604,10 @@ void Engine::runFrame(bool draw){
 
     // avoid increment updateTimeCount after resume; a held simulation only draws
     if (!paused && !simulationHeld) {
+        // input scripts apply what is due into the pending window this frame latches, as the
+        // recorded run's events arrived before it
+        if (input::ScriptRunner::isActive())
+            input::ScriptRunner::beforeFrame(true);
         // the input of the frame: the events since the last running frame (Input.h), then
         // the actions it drives (their callbacks, onButtonDown / onButtonUp run here, before the
         // fixed steps), on the unscaled frame time
@@ -2716,6 +2729,8 @@ void Engine::runFrame(bool draw){
         }
         ScriptScheduler::updatePhase();
         Engine::onPostUpdate.call();
+        if (input::ScriptRunner::isActive())
+            input::ScriptRunner::afterUpdate();
 
         // GameObject::destroy: after the update, before the draw (Unity)
         ObjectManager::update(frameDelta);
@@ -2725,6 +2740,9 @@ void Engine::runFrame(bool draw){
         }
         // what was for this frame only (the virtual sources' deltas) goes
         Input::endFrame();
+    } else if (paused && input::ScriptRunner::isActive()) {
+        // an app a script paused does not update: its frames still pace the script (its resume)
+        input::ScriptRunner::beforeFrame(false);
     }
 
 #if JASPERENGINE_SOUND_LAYER

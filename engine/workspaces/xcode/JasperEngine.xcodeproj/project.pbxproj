@@ -5010,6 +5010,32 @@
 		4A534E4761A7A367A5448107 /* CullingGroup.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AD378F6330680ED6 /* CullingGroup.h */; };
 		4A534E47FED2CE9691D75440 /* SimulationCulling.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475EE51C3B38637EFB /* SimulationCulling.h */; };
 		4A534E470F1DA0CC06D1BE45 /* CullingSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A36A3DA3472854CC /* CullingSystem.h */; };
+		4A534E4789E1A9AF1D751A17 /* InputScript.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E562E3C49242FBD7 /* InputScript.cpp */; };
+		4A534E47DB6039C34EFAAD7A /* InputScript.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E562E3C49242FBD7 /* InputScript.cpp */; };
+		4A534E47233962EE4B8553AD /* InputScript.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4708A47DEEE94F83AE /* InputScript.h */; };
+		4A534E470FFB202D75CD6558 /* InputScriptRunner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4786963BAB6500F7BE /* InputScriptRunner.h */; };
+		4A534E53F5BA1F3A7AE6E46A /* ConsoleCommands.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53C605544DB443297D /* ConsoleCommands.cpp */; };
+		4A534E533EB1184B8A3029C4 /* ConsoleCommands.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53C605544DB443297D /* ConsoleCommands.cpp */; };
+		4A534E47D32D5980C2E5A628 /* HtmlL10n.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473E0CDBDD10629EA3 /* HtmlL10n.cpp */; };
+		4A534E476ADF2ABC854A8744 /* HtmlL10n.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473E0CDBDD10629EA3 /* HtmlL10n.cpp */; };
+		4A534E470210EF3DC97A7F1D /* LocalizationClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D07BD1437308A3A2 /* LocalizationClassesLua.cpp */; };
+		4A534E47FECE89744C7673F5 /* LocalizationClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D07BD1437308A3A2 /* LocalizationClassesLua.cpp */; };
+		4A534E47CC1EAD4126BB8E77 /* Localization.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4765D377C8A90FEE2C /* Localization.cpp */; };
+		4A534E47BF5A72F34022452F /* Localization.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4765D377C8A90FEE2C /* Localization.cpp */; };
+		4A534E470BC7FF2CD66B3751 /* MessageFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D3194032526CE112 /* MessageFormat.cpp */; };
+		4A534E47B87D66B801A34840 /* MessageFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D3194032526CE112 /* MessageFormat.cpp */; };
+		4A534E47760F4276DE1BB621 /* PluralRules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47EC2E2C87B4D75DE1 /* PluralRules.cpp */; };
+		4A534E4734B46E4A8AA1BD54 /* PluralRules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47EC2E2C87B4D75DE1 /* PluralRules.cpp */; };
+		4A534E479CBBFD13794893E2 /* StringTableRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47264579824C6AA889 /* StringTableRuntime.cpp */; };
+		4A534E476D731FF6DD75A960 /* StringTableRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47264579824C6AA889 /* StringTableRuntime.cpp */; };
+		4A534E47124F8ED4FCA538F5 /* HtmlL10n.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B0BDDD79726EBB2F /* HtmlL10n.h */; };
+		4A534E470B0062B980E34AF9 /* Localization.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E27EC3692DD43A0E /* Localization.h */; };
+		4A534E47F22652515F676497 /* LocalizationArgs.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A8297BBB7780CCB4 /* LocalizationArgs.h */; };
+		4A534E47EAB1A42259BC93EB /* MessageFormat.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470B2329871720CC02 /* MessageFormat.h */; };
+		4A534E47229FA6D5C6CA97D7 /* PluralRules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D7DC5A2BBDDA5149 /* PluralRules.h */; };
+		4A534E4772F8D292D061E001 /* StringTableRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474CC8A9C045EE16B4 /* StringTableRuntime.h */; };
+		4A534E530375D5DAE4E19591 /* DevelopmentContent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5391C68DED5B482106 /* DevelopmentContent.cpp */; };
+		4A534E530891EB6799B6865C /* DevelopmentContent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5391C68DED5B482106 /* DevelopmentContent.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9640,6 +9666,23 @@
 		4A534E47AD378F6330680ED6 /* CullingGroup.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CullingGroup.h; sourceTree = "<group>"; };
 		4A534E475EE51C3B38637EFB /* SimulationCulling.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SimulationCulling.h; sourceTree = "<group>"; };
 		4A534E47A36A3DA3472854CC /* CullingSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CullingSystem.h; sourceTree = "<group>"; };
+		4A534E47E562E3C49242FBD7 /* InputScript.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputScript.cpp; sourceTree = "<group>"; };
+		4A534E4708A47DEEE94F83AE /* InputScript.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputScript.h; sourceTree = "<group>"; };
+		4A534E4786963BAB6500F7BE /* InputScriptRunner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputScriptRunner.h; sourceTree = "<group>"; };
+		4A534E53C605544DB443297D /* ConsoleCommands.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ConsoleCommands.cpp; sourceTree = "<group>"; };
+		4A534E473E0CDBDD10629EA3 /* HtmlL10n.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlL10n.cpp; sourceTree = "<group>"; };
+		4A534E47D07BD1437308A3A2 /* LocalizationClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LocalizationClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E4765D377C8A90FEE2C /* Localization.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Localization.cpp; sourceTree = "<group>"; };
+		4A534E47D3194032526CE112 /* MessageFormat.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MessageFormat.cpp; sourceTree = "<group>"; };
+		4A534E47EC2E2C87B4D75DE1 /* PluralRules.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PluralRules.cpp; sourceTree = "<group>"; };
+		4A534E47264579824C6AA889 /* StringTableRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StringTableRuntime.cpp; sourceTree = "<group>"; };
+		4A534E47B0BDDD79726EBB2F /* HtmlL10n.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlL10n.h; sourceTree = "<group>"; };
+		4A534E47E27EC3692DD43A0E /* Localization.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Localization.h; sourceTree = "<group>"; };
+		4A534E47A8297BBB7780CCB4 /* LocalizationArgs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LocalizationArgs.h; sourceTree = "<group>"; };
+		4A534E470B2329871720CC02 /* MessageFormat.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MessageFormat.h; sourceTree = "<group>"; };
+		4A534E47D7DC5A2BBDDA5149 /* PluralRules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PluralRules.h; sourceTree = "<group>"; };
+		4A534E474CC8A9C045EE16B4 /* StringTableRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StringTableRuntime.h; sourceTree = "<group>"; };
+		4A534E5391C68DED5B482106 /* DevelopmentContent.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DevelopmentContent.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10210,6 +10253,7 @@
 				4A534E477282A8B98B0BC511 /* PixelFxClassesLua.cpp */,
 				4A534E47157896361DA814BE /* TilemapClassesLua.cpp */,
 				4A534E4771A4FBF2C146A04F /* CullingClassesLua.cpp */,
+				4A534E47D07BD1437308A3A2 /* LocalizationClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -11329,6 +11373,7 @@
 				4A534E47C484ACD2846CB3C2 /* RunControl.h */,
 				4A534E473BFB6BEEE8990A48 /* PlayerModules.cpp */,
 				4A534E47A4609FEFF72DC9EF /* PlayerModules.h */,
+				4A534E5391C68DED5B482106 /* DevelopmentContent.cpp */,
 			);
 			path = player;
 			sourceTree = "<group>";
@@ -11371,6 +11416,9 @@
 				4A534E4763010A7AB6271A0C /* InputControlNames.h */,
 				4A534E4702A1FF14F0E26870 /* InputScheme.cpp */,
 				4A534E47CCF058D81CDE3E1B /* InputScheme.h */,
+				4A534E47E562E3C49242FBD7 /* InputScript.cpp */,
+				4A534E4708A47DEEE94F83AE /* InputScript.h */,
+				4A534E4786963BAB6500F7BE /* InputScriptRunner.h */,
 			);
 			path = input;
 			sourceTree = "<group>";
@@ -11475,6 +11523,7 @@
 				4A534E470614F67155D9E9FC /* DebugOverlay.h */,
 				4A534E47C029F7456AC311E6 /* DebugOverlayResources.h */,
 				4A534E47FC23B0CE0C82B758 /* DebugStats.h */,
+				4A534E53C605544DB443297D /* ConsoleCommands.cpp */,
 			);
 			path = debug;
 			sourceTree = "<group>";
@@ -11737,6 +11786,22 @@
 			path = world;
 			sourceTree = "<group>";
 		};
+		4A534E47651ABB7603E16A3A /* localization */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E4765D377C8A90FEE2C /* Localization.cpp */,
+				4A534E47D3194032526CE112 /* MessageFormat.cpp */,
+				4A534E47EC2E2C87B4D75DE1 /* PluralRules.cpp */,
+				4A534E47264579824C6AA889 /* StringTableRuntime.cpp */,
+				4A534E47E27EC3692DD43A0E /* Localization.h */,
+				4A534E47A8297BBB7780CCB4 /* LocalizationArgs.h */,
+				4A534E470B2329871720CC02 /* MessageFormat.h */,
+				4A534E47D7DC5A2BBDDA5149 /* PluralRules.h */,
+				4A534E474CC8A9C045EE16B4 /* StringTableRuntime.h */,
+			);
+			path = localization;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -11823,6 +11888,7 @@
 				5052544389C2D57FF7DC8B71 /* noise */,
 				564F584C566CEAA6686CA9AF /* voxel */,
 				4A534E531B38A0F5FBC1FFA3 /* tilemap */,
+				4A534E47651ABB7603E16A3A /* localization */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -14675,6 +14741,8 @@
 				4A534E47535074DEA48446A6 /* controls */,
 				4A534E477432B679554FC04C /* RmlFontEngineBitmap.cpp */,
 				4A534E477432B679554FC04C /* RmlFontEngineBitmap.cpp */,
+				4A534E473E0CDBDD10629EA3 /* HtmlL10n.cpp */,
+				4A534E47B0BDDD79726EBB2F /* HtmlL10n.h */,
 			);
 			path = htmlui;
 			sourceTree = "<group>";
@@ -17071,6 +17139,14 @@
 				4A534E4761A7A367A5448107 /* CullingGroup.h in Headers */,
 				4A534E47FED2CE9691D75440 /* SimulationCulling.h in Headers */,
 				4A534E470F1DA0CC06D1BE45 /* CullingSystem.h in Headers */,
+				4A534E47233962EE4B8553AD /* InputScript.h in Headers */,
+				4A534E470FFB202D75CD6558 /* InputScriptRunner.h in Headers */,
+				4A534E47124F8ED4FCA538F5 /* HtmlL10n.h in Headers */,
+				4A534E470B0062B980E34AF9 /* Localization.h in Headers */,
+				4A534E47F22652515F676497 /* LocalizationArgs.h in Headers */,
+				4A534E47EAB1A42259BC93EB /* MessageFormat.h in Headers */,
+				4A534E47229FA6D5C6CA97D7 /* PluralRules.h in Headers */,
+				4A534E4772F8D292D061E001 /* StringTableRuntime.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19781,6 +19857,15 @@
 				4A534E47408A63BCB810218A /* SimulationCulling.cpp in Sources */,
 				4A534E470611FC91C80C2EAA /* CullingClassesLua.cpp in Sources */,
 				4A534E47B7A4A4F3C5A76787 /* CullingSystem.cpp in Sources */,
+				4A534E4789E1A9AF1D751A17 /* InputScript.cpp in Sources */,
+				4A534E533EB1184B8A3029C4 /* ConsoleCommands.cpp in Sources */,
+				4A534E47D32D5980C2E5A628 /* HtmlL10n.cpp in Sources */,
+				4A534E470210EF3DC97A7F1D /* LocalizationClassesLua.cpp in Sources */,
+				4A534E47CC1EAD4126BB8E77 /* Localization.cpp in Sources */,
+				4A534E470BC7FF2CD66B3751 /* MessageFormat.cpp in Sources */,
+				4A534E47760F4276DE1BB621 /* PluralRules.cpp in Sources */,
+				4A534E479CBBFD13794893E2 /* StringTableRuntime.cpp in Sources */,
+				4A534E530891EB6799B6865C /* DevelopmentContent.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20782,6 +20867,15 @@
 				4A534E47F5EFE6B597499AD6 /* SimulationCulling.cpp in Sources */,
 				4A534E47E263432C02CB12D0 /* CullingClassesLua.cpp in Sources */,
 				4A534E4776590B99B1885055 /* CullingSystem.cpp in Sources */,
+				4A534E47DB6039C34EFAAD7A /* InputScript.cpp in Sources */,
+				4A534E53F5BA1F3A7AE6E46A /* ConsoleCommands.cpp in Sources */,
+				4A534E476ADF2ABC854A8744 /* HtmlL10n.cpp in Sources */,
+				4A534E47FECE89744C7673F5 /* LocalizationClassesLua.cpp in Sources */,
+				4A534E47BF5A72F34022452F /* Localization.cpp in Sources */,
+				4A534E47B87D66B801A34840 /* MessageFormat.cpp in Sources */,
+				4A534E4734B46E4A8AA1BD54 /* PluralRules.cpp in Sources */,
+				4A534E476D731FF6DD75A960 /* StringTableRuntime.cpp in Sources */,
+				4A534E530375D5DAE4E19591 /* DevelopmentContent.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

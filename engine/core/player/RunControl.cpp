@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 #include "RunControl.h"
+#include "TestRunnerConfig.h"
+#if JASPERENGINE_TEST_RUNNER
+#include "player/PlayerTests.h"
+#endif
+#include "debug/ConsoleCommands.h"
 #include "audio/AudioCapture.h"
 #include "manager/SceneManager.h"
 #include "subsystem/AudioSystem.h"
@@ -53,6 +58,11 @@ namespace {
         std::chrono::steady_clock::time_point captureWaitStarted;
         std::atomic<bool> errorLogged{false};
         Logger::SinkId errorSink = 0;
+        bool testsBegun = false;
+        // --command: the next line to run, and whether the gate was checked (at the first frame,
+        // after the game's init set it)
+        size_t nextCommand = 0;
+        bool commandsChecked = false;
     };
 
     State& state() {
@@ -150,14 +160,19 @@ void RunControl::reset() {
     s.captureHeldGame = false;
     gpuCreationIdleProbe = nullptr;
     s.errorLogged.store(false);
+    s.testsBegun = false;
+    s.nextCommand = 0;
+    s.commandsChecked = false;
 }
 
 void RunControl::configure(const LaunchOptions& options) {
     reset();
     State& s = state();
     s.options = options;
-    s.active = options.quitAfter > 0 || options.afterReady || !options.screenshot.empty() || options.failOnError;
-    s.counting = !options.afterReady;
+    s.active = options.quitAfter > 0 || options.afterReady || !options.screenshot.empty() || options.failOnError ||
+               !options.commands.empty();
+    // the commands wait for the ready frame, and the frames count after them
+    s.counting = !options.afterReady && options.commands.empty();
 }
 
 const LaunchOptions& RunControl::options() {
@@ -173,7 +188,8 @@ void RunControl::engineStarted() {
         Engine::pauseGameEvents(true);
         s.heldUntilReady = true;
     }
-    if (s.options.failOnError && s.errorSink == 0 && Logger::isInitialized())
+    // a test run owns the errors (project-test-runner R11, R27): --fail-on-error waits
+    if (s.options.failOnError && !s.options.runTests && s.errorSink == 0 && Logger::isInitialized())
         s.errorSink = Logger::addSink(std::make_unique<ErrorWatchSink>());
 }
 
@@ -204,7 +220,7 @@ bool RunControl::isActive() {
 }
 
 bool RunControl::wantsReadySignal() {
-    return state().options.afterReady;
+    return state().options.afterReady || !state().options.commands.empty();
 }
 
 bool RunControl::wantsScreenshot() {
@@ -214,6 +230,10 @@ bool RunControl::wantsScreenshot() {
 
 bool RunControl::wantsOffscreenFrame() {
     const State& s = state();
+#if JASPERENGINE_TEST_RUNNER
+    // a test case's capture reads the composite of the next frame
+    if (s.active && s.options.runTests && PlayerTests::wantsFrame()) return true;
+#endif
     if (!s.active || s.options.screenshot.empty() || s.screenshotWritten) return false;
     if (s.captureWaiting) return true;
     const uint64_t target = screenshotTarget();
@@ -227,13 +247,32 @@ void RunControl::frameDrawn(bool readySignalled, const FrameReader& reader) {
     if (!s.active) return;
     s.drawn++;
 
+    if (!s.options.commands.empty() && !s.commandsChecked) {
+        s.commandsChecked = true;
+        if (!console::commandsEnabled()) {
+            Log::error("%s", commandsOffRefusal());
+            requestQuit(EXIT_BAD_ARGUMENTS);
+            return;
+        }
+    }
+
     if (!s.counting) {
         if (readySignalled) {
-            s.counting = true;
             if (s.heldUntilReady) {
                 Engine::pauseGameEvents(false);
                 s.heldUntilReady = false;
             }
+            // one --command a frame (a scene load or a spawn it asks for lands before the next)
+            if (s.nextCommand < s.options.commands.size()) {
+                const std::string& line = s.options.commands[s.nextCommand++];
+                const console::Result result = console::execute(line, console::Source::LaunchOption);
+                if (result.ok())
+                    Log::print("[command] %s: ok", line.c_str());
+                else
+                    Log::error("[command] %s: %s (%s)", line.c_str(), console::statusName(result.status), result.error.c_str());
+                return;
+            }
+            s.counting = true;
         } else {
             const double waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - s.started).count();
             if (waited > s.options.readyTimeout) {
@@ -259,6 +298,18 @@ void RunControl::frameDrawn(bool readySignalled, const FrameReader& reader) {
         }
     };
 
+#if JASPERENGINE_TEST_RUNNER
+    // --run-tests (project-test-runner R23): the run starts at the ready frame and ends the process
+    if (s.options.runTests && !s.quit) {
+        if (!s.testsBegun) {
+            s.testsBegun = true;
+            PlayerTests::begin(s.options);
+        } else {
+            PlayerTests::frame(reader);
+        }
+        return;
+    }
+#endif
     if (s.captureWaiting) {
         // frames drawn while the capture waits for GPU creation: the game held, none counted
         const double waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - s.captureWaitStarted).count();
@@ -319,7 +370,7 @@ bool RunControl::quitRequested() {
 int RunControl::finish() {
     State& s = state();
     if (s.quit && s.quitCode != EXIT_OK) return s.quitCode;
-    if (s.options.failOnError && s.errorLogged.load()) return EXIT_ERROR_LOGGED;
+    if (s.options.failOnError && !s.options.runTests && s.errorLogged.load()) return EXIT_ERROR_LOGGED;
     if (!s.options.screenshot.empty() && !s.screenshotWritten) {
         std::fprintf(stderr, "Screenshot %s was not written: the game ended before the frame it names\n",
                      s.options.screenshot.string().c_str());

@@ -533,6 +533,8 @@ inline constexpr double MONO_SIDE_MID_DB = -18.0;
   compare_to, referenced_by}`, which returns only the report part of R33's result; `get_build_info`'s
   description points to it ("sizes: get_build_report", 28 characters). The eval cases (R38) and the
   MCP tests call it; the CLI is `jasperengine-editor call get_build_report` (R35).
+- **`string_table_cooked`**: game-ui-localization (merged meanwhile) ships `.stringtable` and
+  `.translation` files cooked into `assets/l10n`; Left Out lists them with this reason.
 - **`profile_excluded`** (build-profiles.md landed first): Left Out lists each file a Build Profile's
   exclusions leave out of the assets walk; a profile's own budget rows come through its
   `player.size_budgets` override, which the build's settings snapshot applies.

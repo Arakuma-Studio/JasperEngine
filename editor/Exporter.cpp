@@ -9,7 +9,9 @@
 #include "component/Rigidbody2DComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "Exporter.h"
+#include "test/GameTests.h"
 #include "titleart/TitleArtExport.h"
+#include "localization/StringTableCook.h"
 #include "titleart/three_d/Title3DExport.h"
 #include "titleart/runtime/TitleArtRuntimeExport.h"
 #include "titleart/runtime/TitleArtRuntimeFonts.h"
@@ -117,6 +119,14 @@
 #include <sstream>
 #include <vector>
 
+
+namespace {
+    // the project's test root (project-test-runner R1, R50): never exported as assets or scripts
+    bool isTestRootDir(const std::filesystem::path& testRoot, const std::filesystem::path& dir) {
+        std::error_code ec;
+        return !testRoot.empty() && std::filesystem::equivalent(testRoot, dir, ec);
+    }
+}
 
 namespace {
     // fs::remove_all that never follows a link: the entry removed beneath its own (resolved)
@@ -1424,6 +1434,7 @@ void editor::Exporter::runExport() {
     if (!copyAssets()) return;
     if (!writeTitleArtRuntime()) return;
     if (!writeAudioImports()) return;
+    if (!writeLocalization()) return;
     buildReport = BuildReport();
     measureBuildContent(getExportProjectRoot());
     // R13: the content budgets before any compile (a source export is never checked)
@@ -3622,6 +3633,21 @@ bool editor::Exporter::cookTextures() {
     return true;
 }
 
+bool editor::Exporter::writeLocalization() {
+    const l10n::CookResult cooked = l10n::cookLocalization(project->getProjectPath(), project->getLocalizationSettings(), getExportProjectRoot() / "assets");
+    for (const std::string& line : cooked.warnings) {
+        const size_t colon = line.find(": ");
+        warn(colon == std::string::npos ? std::string("W-L10N") : line.substr(0, colon), colon == std::string::npos ? line : line.substr(colon + 2));
+    }
+    if (!cooked.ok) {
+        setError(cooked.error);
+        return false;
+    }
+    localizationShipped = !cooked.written.empty();
+    if (localizationShipped) Out::info("String Tables: %zu files (%zu KiB)", cooked.written.size(), cooked.bytes / 1024);
+    return true;
+}
+
 bool editor::Exporter::writeAudioImports() {
     std::vector<std::string> problems;
     const std::string text = AudioImportRegistry::exportText(AudioImportRegistry::collect(*project, problems));
@@ -4041,12 +4067,13 @@ bool editor::Exporter::copyAssets() {
         failed = true;
         return TreeStep::Stop;
     };
+    const fs::path testRoot = gametests::findRoot(project->getProjectPath());
     walkTree(assetsSrc, [&](const fs::directory_entry& entry, const fs::path& relPath, bool isDirectory, const fs::path& real) {
         std::error_code ec;
 
         // Skip hidden directories (starting with '.') and build directories
         std::string firstComponent = relPath.begin()->string();
-        if (!firstComponent.empty() && Project::isNonAssetTopLevelDir(firstComponent)) {
+        if (!firstComponent.empty() && (Project::isNonAssetTopLevelDir(firstComponent) || isTestRootDir(testRoot, assetsSrc / firstComponent))) {
             return TreeStep::Skip;
         }
 
@@ -4107,6 +4134,11 @@ bool editor::Exporter::copyAssets() {
         // S87 R25: the sets of the languages the build leaves out
         if (titleLanguages.droppedFiles.count(relPath.generic_string())) {
             leaveOut(entry, relPath, isDirectory, "language_dropped");
+            return TreeStep::Enter;
+        }
+        // String Tables ship cooked (assets/l10n, writeLocalization)
+        if (relPath.extension() == ".stringtable" || relPath.extension() == ".translation") {
+            leaveOut(entry, relPath, isDirectory, "string_table_cooked");
             return TreeStep::Enter;
         }
         // A Procedural Material ships as what it baked: PNGs and a .material (S90 R4)
@@ -4403,10 +4435,12 @@ bool editor::Exporter::copyCustomShaderSources() {
     const fs::path assetsDst = getExportProjectRoot() / "assets";
     std::error_code ec;
     bool failed = false;
+    const fs::path testRoot = gametests::findRoot(projectRoot);
     walkTree(projectRoot, [&](const fs::directory_entry& entry, const fs::path& relPath, bool isDirectory, const fs::path&) {
-        // Same skips as copyAssets: hidden directories (the project's own data) and builds
+        // Same skips as copyAssets: hidden directories (the project's own data), builds, the test root
         const std::string firstComponent = relPath.begin()->string();
-        if (!firstComponent.empty() && Project::isNonAssetTopLevelDir(firstComponent)) return TreeStep::Skip;
+        if (!firstComponent.empty() && (Project::isNonAssetTopLevelDir(firstComponent) || isTestRootDir(testRoot, projectRoot / firstComponent)))
+            return TreeStep::Skip;
         if (isDirectory) return TreeStep::Enter;
         std::error_code fileError;
         if (!entry.is_regular_file(fileError)) return TreeStep::Skip;
@@ -4469,10 +4503,12 @@ bool editor::Exporter::copyLua() {
 
     const std::string filterPrefix = contentFilter.empty() ? std::string() : filterPrefixOf(luaSrc);
     bool failed = false;
+    const fs::path testRoot = gametests::findRoot(project->getProjectPath());
     walkTree(luaSrc, [&](const fs::directory_entry& entry, const fs::path& relPath, bool isDirectory, const fs::path& real) {
-        // Skip hidden directories (starting with '.') and build directories
+        // Skip hidden directories (starting with '.'), build directories and the test root
         std::string firstComponent = relPath.begin()->string();
-        if (!firstComponent.empty() && Project::isNonAssetTopLevelDir(firstComponent)) return TreeStep::Skip;
+        if (!firstComponent.empty() && (Project::isNonAssetTopLevelDir(firstComponent) || isTestRootDir(testRoot, luaSrc / firstComponent)))
+            return TreeStep::Skip;
         // Build Profiles R11: an excluded folder's Lua stays out too
         if (!contentFilter.empty() && contentFilter.excludes(filterPrefix + relPath.generic_string())) return TreeStep::Skip;
         if (isDirectory) return TreeStep::Enter;

@@ -71,6 +71,8 @@ namespace {
             {{AssetType::TerrainWorld, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".terrainworld"}},
             // Title Art documents (S80) keep their GUID in their JSON; their baked PNGs are Textures
             {{AssetType::TitleArt, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".titleart"}},
+            // String Tables and their translations (game-ui-localization.md R41): JSON with a top-level "guid"
+            {{AssetType::StringTable, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".stringtable", ".translation"}},
         };
         return table;
     }

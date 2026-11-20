@@ -26,7 +26,6 @@
 #include "util/UIProbe.h"
 
 #include <algorithm>
-#include "util/CommandRunner.h"
 #include "util/FileUtils.h"
 #include "ShippingTypes.h"
 
@@ -96,6 +95,8 @@ void ExportWindow::open(Project* project) {
     m_selectedSceneId = NULL_PROJECT_SCENE;
     m_runAfterBuild = false;
     m_launchDone = false;
+    m_selectedDevicesLoaded = false;
+    m_patchStateDirty = true;
     m_playerSettingsRequested = false;
     m_publishingLoaded = false;
     m_profiles.reset();
@@ -730,6 +731,7 @@ void ExportWindow::drawDevelopmentBuildRow() {
     if (EditorModal::checkbox("##DevelopmentBuild", "development_build", &development)) {
         m_project->setDevelopmentBuild(development);
         m_projectSettingsDirty = true;
+        m_patchStateDirty = true;
     }
     ImGui::SetItemTooltip("Keeps the profiler in a Release build: --profile and --profile-capture=<file> record it (docs/profiling.md). Debug builds always have it.");
 }
@@ -756,35 +758,9 @@ fs::path ExportWindow::builtPlayerPath() const {
 }
 
 void ExportWindow::launchBuiltPlayer() {
-    if (m_mode != ExportMode::Desktop && !(m_mode == ExportMode::Player && (shipPlatform() == hostBuildPlatform() || m_profileBuildRunnable))) return;
-
-    fs::path exePath = builtPlayerPath();
-    if (m_mode == ExportMode::Player) {
-        exePath = m_exporter.getResult().executable;
-        #ifdef __APPLE__
-        // a bundle opens through LaunchServices
-        if (exePath.extension() == ".app") {
-            const std::string command = "open '" + exePath.string() + "'";
-            if (std::system(command.c_str()) != 0) Out::error("Build And Run: could not open %s", exePath.string().c_str());
-            return;
-        }
-        #endif
-    }
-    std::error_code ec;
-    if (!fs::exists(exePath, ec)) {
-        Out::error("Build And Run: player not found at %s", exePath.string().c_str());
-        return;
-    }
-
-    // The player resolves assets and lua relative to its working directory. Launched detached
-    // WITHOUT a shell (the path is one argument), inheriting no descriptor, and never left as a
-    // zombie child of the editor; an exec failure is reported (CommandRunner::launchDetached)
-    std::string error;
-    if (!CommandRunner::launchDetached(exePath, exePath.parent_path(), error)) {
-        Out::error("Build And Run: could not start %s: %s", exePath.string().c_str(), error.c_str());
-    } else {
-        Out::info("Running %s", exePath.string().c_str());
-    }
+    // every target goes through the shared device runner: this computer's player too, its output
+    // through a pipe into the Console (R3, R12)
+    startDeviceRun();
 }
 
 void ExportWindow::drawOutputDirRow(const char* label) {
@@ -1106,11 +1082,14 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
         if (m_mode == ExportMode::Player) {
             drawPlayerRows();
             if (m_methodChoice.method == BuildMethod::Compile && shipPlatform() == hostBuildPlatform()) drawDesktopKitRows();
+            drawRunDeviceRow();
         } else if (m_mode == ExportMode::Desktop) {
             drawGraphicBackendRow();
             drawDesktopKitRows();
+            drawRunDeviceRow();
         } else if (m_mode == ExportMode::Web) {
             drawGraphicBackendRow();
+            drawRunDeviceRow();
         } else if (!isCustom) {
             drawSourceBackendsRow();
         }
@@ -1387,36 +1366,63 @@ void ExportWindow::drawBuildTab() {
     EditorModal::checkbox("Export Anyway", "export_anyway", &m_allowMissingAssets);
     ImGui::SetItemTooltip("Build even when the build's scenes reference missing assets (Window > Assets > Missing Assets lists them)");
 
+    // Build And Run reaches this computer, an Android device, an iOS Simulator or the browser (R18)
+    std::string runWhy;
+    bool runnable = m_mode != ExportMode::SourceCode || m_profiles.hasSelection();
+    if (runnable) {
+        if (m_profiles.hasSelection() || m_mode == ExportMode::Player || m_mode == ExportMode::Web) pollRunDevices(false);
+        runnable = runDeviceUsable(runWhy);
+    } else {
+        runWhy = "Build And Run needs a game: a C++ source project has nothing to run.";
+    }
+    // Patch And Run: Development Builds for Android and the iOS Simulator
+    const ShipPlatform runTarget = runPlatform();
+    bool development = m_project->isDevelopmentBuild();
+    if (m_profiles.hasSelection()) {
+        const BuildProfileEntry* profile = buildprofiles::find(buildprofiles::view(m_project->getProjectPath()).entries, m_profiles.selectedName());
+        if (profile && profile->readable && profile->profile.development) development = *profile->profile.development;
+    }
+    const bool offerPatch = development && (runTarget == ShipPlatform::Android || runTarget == ShipPlatform::IOS) &&
+                            (m_mode == ExportMode::Player || m_profiles.hasSelection());
+    if (offerPatch && m_patchStateDirty) refreshPatchState();
+
     const float actionWidth = Theme::dpi(120.0f);
-    const float buttonsWidth = actionWidth * 2.0f + style.ItemSpacing.x;
+    const float buttonsWidth = actionWidth * (offerPatch ? 3.0f : 2.0f) + style.ItemSpacing.x * (offerPatch ? 2.0f : 1.0f);
     ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - buttonsWidth);
 
-    auto startBuild = [&](bool run) {
+    auto startBuild = [&](bool run, bool patch) {
         m_runAfterBuild = run;
+        m_patchRun = patch;
         m_launchDone = false;
-        if (targetNotEmpty) {
+        if (targetNotEmpty && !patch) {
             ImGui::OpenPopup("Directory Not Empty##ExportOverwrite");
         } else {
             startConfiguredExport(false);
         }
     };
 
-    bool runnable = m_mode == ExportMode::Desktop || (m_mode == ExportMode::Player && m_platform == hostPlatform());
-    if (m_profiles.hasSelection()) {
-        const BuildProfileEntry* profile = buildprofiles::find(buildprofiles::view(m_project->getProjectPath()).entries, m_profiles.selectedName());
-        runnable = profile && profile->readable && profile->profile.platform == hostBuildPlatform();
-    }
     ImGui::BeginDisabled(!canExport || (m_download && m_download->running.load()));
-    EditorModal::message("Build the project: the Build tab's fields, then ok (Build) or build_and_run. A target that is not empty asks first." +
+    EditorModal::message("Build the project: the Build tab's fields, then ok (Build) or build_and_run" +
+                         std::string(offerPatch ? " (patch_and_run: push only the changed content)" : "") + ". A target that is not empty asks first." +
                          (m_profiles.hasSelection() && !m_profiles.agentNotice().empty() ? " " + m_profiles.agentNotice() : std::string()));
-    if (EditorModal::button("Build", "ok", ImVec2(actionWidth, 0))) startBuild(false);
+    if (EditorModal::button("Build", "ok", ImVec2(actionWidth, 0))) startBuild(false, false);
+    if (offerPatch) {
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!m_patchAvailable || !runnable);
+        if (EditorModal::button("Patch And Run", "patch_and_run", ImVec2(actionWidth, 0))) startBuild(true, true);
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            if (m_patchAvailable && runnable) ImGui::SetTooltip("Push only the changed content to the installed app and restart it: no reinstall, no signing.");
+            else ImGui::SetTooltip("Patch And Run is not available: %s", (runnable ? m_patchWhyNot : runWhy).c_str());
+        }
+    }
     ImGui::SameLine();
     ImGui::BeginDisabled(!runnable);
-    if (EditorModal::button("Build And Run", "build_and_run", ImVec2(actionWidth, 0))) startBuild(true);
+    if (EditorModal::button("Build And Run", "build_and_run", ImVec2(actionWidth, 0))) startBuild(true, false);
     ImGui::EndDisabled();
     ImGui::EndDisabled();
     if (!runnable && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui::SetTooltip("Build And Run needs a game for this computer.");
+        ImGui::SetTooltip("%s", runWhy.c_str());
     }
 
     drawOverwriteConfirmDialog();
@@ -1480,7 +1486,6 @@ void ExportWindow::startConfiguredExport(bool overwriteTarget) {
     exportConfig.mode = m_mode;
     exportConfig.overwriteTarget = overwriteTarget;
     exportConfig.allowMissingAssets = m_allowMissingAssets;
-    m_profileBuildRunnable = false;
 
     if (m_profiles.hasSelection()) {
         // the selected Build Profile: its platform, Graphics API, flavour and folder (R19)
@@ -1508,7 +1513,8 @@ void ExportWindow::startConfiguredExport(bool overwriteTarget) {
             return;
         }
         m_mode = ExportMode::Player;
-        m_profileBuildRunnable = exportConfig.platform == hostBuildPlatform();
+        applyRunDevice(exportConfig, m_patchRun);
+        m_lastExportConfig = exportConfig;
         m_step = Step::Progress;
         m_exporter.startExport(m_project, exportConfig);
         return;
@@ -1604,6 +1610,9 @@ void ExportWindow::startConfiguredExport(bool overwriteTarget) {
     }
 
     if (!saveCurrentSettingsToProject()) return;
+    if (m_mode == ExportMode::Player) applyRunDevice(exportConfig, m_patchRun);
+    else exportConfig.platform = m_mode == ExportMode::Web ? ShipPlatform::Web : hostBuildPlatform();
+    m_lastExportConfig = exportConfig;
     m_step = Step::Progress;
     m_exporter.startExport(m_project, exportConfig);
 }

@@ -309,6 +309,7 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n"
         << "  " << commandName << " merge-scene <base> <ours> <theirs> <path>  Git merge driver for scenes and prefabs.\n"
         << "  " << commandName << " scene-diff <old> <new> [--json]  Semantic diff of two scenes or prefabs.\n"
+        << "  " << commandName << " test --project <dir> [options]  Run the project's tests (Tests/*.test.lua; exit 0/1/2/3).\n"
         << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts, HTML/CSS UI, clips, vertex animations and normal maps (compiler-style).\n"
         << "  " << commandName << " assets check|migrate     Missing asset references (JSON); rewrite references with GUIDs.\n"
         << "  " << commandName << " import-ui [options]      Import the remote resources of HTML UI documents.\n"

@@ -3107,7 +3107,7 @@ OVERRIDES[('System', 'getDefines')] = {
     'doc': ["The build's Scripting Define Symbols (in Play: the active Build Profile's); {} without a profile."],
     'overloads': [([], 'string[]')]}
 OVERRIDES[('System', 'getBuildInfo')] = {
-    'doc': ['What the build is: its Build Profile, defines and Development Build flag.'],
+    'doc': ['What the build is: its Build Profile, defines, Development Build flag and Patch And Run patch.'],
     'overloads': [([], 'BuildInfo')]}
 # anim-retarget: addClip's options table, Model:getHumanoidInfo's table (LuaRef in C++)
 OVERRIDES[('AnimationPlayer', 'addClip')] = {
@@ -3582,6 +3582,7 @@ EVENT_FIELD_ARGS = {
     ('Audio', 'onMusicBeat'): ['bar', 'beat'],
     ('Audio', 'onMusicSection'): ['section', 'clip'],
     ('Device', 'onThermalStateChanged'): ['state'],
+    ('DebugOverlay', 'onCheatUsed'): ['name'],
 }
 
 _LUA_KEYWORDS = {'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'goto', 'if',
@@ -3998,10 +3999,24 @@ OVERRIDES[('DebugOverlay', 'getStats')] = {
             'frame-time ring (S15), draw calls, memory, audio, physics, entities, coroutines, timers.'],
     'overloads': [([], 'DebugStats')]}
 OVERRIDES[('DebugOverlay', 'addCommand')] = {
-    'doc': ['Adds a console command (name `[a-z0-9_-]+`; re-adding replaces): `fn(args)` gets the words after',
-            'the name. It goes with `owner` (default: the `self` of the calling script method). False for a bad',
-            'or built-in name.'],
-    'overloads': [([('name', 'string'), ('description', 'string?'), ('fn', 'fun(args: string[])'), ('owner?', 'table')], 'boolean')]}
+    'doc': ['Adds a console command: the table form takes typed arguments, aliases, a cheat flag; `run(args, call)` gets',
+            'the arguments by name and by position and returns the result\'s value. The old form\'s `fn(args)` gets the words',
+            'after the name. Re-adding a name replaces it. It goes with `owner` (default: the `self` of the calling script',
+            'method). True, or false and the reason (a bad name, an alias another command holds, `help`).'],
+    'overloads': [([('spec', 'ConsoleCommandSpec')], 'boolean, string?'),
+                  ([('name', 'string'), ('description', 'string?'), ('fn', 'fun(args: string[])'), ('owner?', 'table')], 'boolean, string?')]}
+OVERRIDES[('DebugOverlay', 'executeCommand')] = {
+    'doc': ['Runs a console line as the game\'s own call (Console Commands does not gate it) and returns its result.'],
+    'overloads': [([('line', 'string')], 'ConsoleResult')]}
+OVERRIDES[('DebugOverlay', 'completeCommand')] = {
+    'doc': ['The completion of the word at the cursor (the bytes of `line` before it; default: the end).'],
+    'overloads': [([('line', 'string'), ('cursor?', 'integer')], 'ConsoleCompletion')]}
+OVERRIDES[('DebugOverlay', 'resetCheatsUsed')] = {
+    'doc': ['Clears DebugOverlay.cheatsUsed (a new game); the next cheat fires onCheatUsed again.'],
+    'overloads': [([], '')]}
+OVERRIDES[('DebugOverlay', 'getCommands')] = {
+    'doc': ['Every command listed, sorted by name.'],
+    'overloads': [([], 'ConsoleCommandInfo[]')]}
 
 # Culling Groups and Simulation Culling (engine/core/script/binding/CullingClassesLua.cpp): the
 # lua_CFunctions taking 1-based indices, GameObjects or ids, Lua lists and functions

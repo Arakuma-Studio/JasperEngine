@@ -305,6 +305,7 @@ std::string BuildReport::leftOutReasonText(const std::string& reason){
         {"language_dropped", "a language the build leaves out"},
         {"procedural_material_baked", "ships as what it baked (PNGs and a .material)"},
         {"profile_excluded", "the Build Profile excludes it"},
+        {"string_table_cooked", "ships cooked in assets/l10n"},
     };
     const auto it = texts.find(reason);
     return it == texts.end() ? reason : it->second;

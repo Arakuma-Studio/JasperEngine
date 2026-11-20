@@ -6,6 +6,9 @@
 #include "pixelart/BitmapTextCache.h"
 #include "Project.h"
 #include "util/TitleArtLanguage.h"
+#include "test/GameTests.h"
+#include "test/PlayData.h"
+#include "localization/StringTableCook.h"
 #include "foliage/TreeDataFile.h"
 #include "pixelart/Glitch.h"
 #include "pixelart/ScreenTransition.h"
@@ -3565,6 +3568,7 @@ editor::PlayerSettings editor::Project::getPlayerSettings() const{
     settings.targetFrameRate = presentationSettings.targetFrameRate;
     settings.dynamicBatching = dynamicBatching;
     settings.defaultLanguage = localizationSettings.effectiveDefault();
+    settings.localization = !l10n::findTables(getProjectPath()).empty();
     auto app = [this](const std::string& name, const std::string& identifier, const std::string& version, const std::string& build) {
         ApplicationInfo info;
         info.name = getApplicationName(name);
@@ -3591,6 +3595,9 @@ void editor::Project::applyPresentationSettings(){
     // S87: a Play starts in the device's language with the project's default
     TitleArtLanguage::setGlobal("");
     TitleArtLanguage::setProjectDefault(localizationSettings.effectiveDefault());
+    // game-ui-localization.md R13, R20: the String Tables as they are now, this Play's misses only
+    l10n::refreshEditorLocalization(this);
+    Localization::clearMisses();
     Screen::initialize(presentationSettings.defaultOrientation, presentationSettings.effectiveAllowedOrientations(),
                        presentationSettings.keepScreenOn);
     // a simulated phone or tablet keeps the screen on as the device would (Keep Screen On
@@ -6093,8 +6100,12 @@ bool editor::Project::isNonAssetTopLevelDir(const std::string& name) {
 bool editor::Project::isNonAssetDir(const fs::path& dir) const {
     const std::string name = FileUtils::pathToUtf8(dir.filename());
     if (name.empty() || name[0] == '.' || name == "build") return true;
+    const bool testRootName = name == "Tests" || name == "GameTests";
+    if (name != "Recordings" && name != "EditorSettings" && !testRootName) return false;
     std::error_code ec;
-    return (name == "Recordings" || name == "EditorSettings") && fs::equivalent(dir.parent_path(), projectPath, ec);
+    if (!fs::equivalent(dir.parent_path(), projectPath, ec)) return false;
+    // a Tests folder is an asset folder until it holds tests.yaml (old projects keep their assets)
+    return !testRootName || gametests::isTestRoot(projectPath, dir);
 }
 
 bool editor::Project::createProjectAt(const fs::path& dir, const std::string& name, std::string* error) {
@@ -9941,7 +9952,9 @@ std::filesystem::path editor::Project::getImportPath() const{
 fs::path editor::Project::getUserDataPath() const{
     // One player's progress, not project content. At the assets root, as a standalone
     // build has it, every playtest would leave a modified file in the working tree.
-    const fs::path path = getProjectInternalPath() / "user" / "rundata";
+    // a Play Data session folder (Clean, a snapshot's copy) while one is in use (project-test-runner R21)
+    const fs::path& session = gametests::PlayData::get().folder();
+    const fs::path path = session.empty() ? getProjectInternalPath() / "user" / "rundata" : session;
     std::error_code ec;
     safewrite::EditorInternal ownRunData(path);   // Play's data folder, under .jasperengine (util/SafeWrite.h)
     FileUtils::createDirectories(path, ec);
@@ -11020,6 +11033,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 }
                 // C++ projects run Lua scripts too, through the plugin's initScripts
                 LuaBinding::clearLoadedProjectModules();
+                if (gametests::PlayData::get().beforeScripts) gametests::PlayData::get().beforeScripts();
 
                 // Frame pacing, orientation, screen sleep and application info, before any
                 // script runs (an exported game's generated main sets them before its scripts too)

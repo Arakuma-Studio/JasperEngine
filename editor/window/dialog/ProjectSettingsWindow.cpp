@@ -3691,8 +3691,8 @@ void ProjectSettingsWindow::drawLocalizationSettings() {
                 }
                 ImGui::EndDisabled();
                 if (!valid && m_localizationInput[0]) ImGui::TextDisabled("%s", error.c_str());
-                endSettingsRow("The languages the game ships, in order. Title Art bakes and fonts of other languages are left out of "
-                               "builds with a warning. Empty ships every language of every title.");
+                endSettingsRow("The languages the game ships, in order. String Table translations, Title Art bakes and fonts of other "
+                               "languages are left out of builds with a warning. Empty ships every language of every table and title.");
             }
             if (settingsui::beginRow("localization.default_language")) {
                 if (projectBeginSettingsRow("Default Language", !m_localization.defaultLanguage.empty())) m_localization.defaultLanguage.clear();
@@ -3708,6 +3708,41 @@ void ProjectSettingsWindow::drawLocalizationSettings() {
                 }
                 endSettingsRow("The language shown when none of the device's languages matches a title's, before its source language. "
                                "TitleArt.setLanguage and the device's languages come first.");
+            }
+            if (settingsui::beginRow("localization.remember_choice")) {
+                if (projectBeginSettingsRow("Remember Player Choice", !m_localization.rememberChoice)) m_localization.rememberChoice = true;
+                ImGui::Checkbox("##LocalizationRemember", &m_localization.rememberChoice);
+                endSettingsRow("The language the game sets (Localization.setLanguage, a language menu) is remembered and comes before the "
+                               "device's languages at the next start.");
+            }
+            if (settingsui::beginRow("localization.fonts")) {
+                if (projectBeginSettingsRow("Language Fonts", !m_localization.fonts.empty())) m_localization.fonts.clear();
+                std::string removeLanguage;
+                for (const auto& [code, list] : m_localization.fonts) {
+                    ImGui::PushID(code.c_str());
+                    std::string paths;
+                    for (const std::string& path : list) paths += (paths.empty() ? "" : ", ") + path;
+                    ImGui::Text("%s: %s", titleLanguageLabel(code).c_str(), paths.c_str());
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Remove")) removeLanguage = code;
+                    ImGui::PopID();
+                }
+                if (!removeLanguage.empty()) m_localization.fonts.erase(removeLanguage);
+                ImGui::SetNextItemWidth(80.0f);
+                ImGui::InputTextWithHint("##LocalizationFontLanguage", "ja", m_localizationFontLanguage, sizeof(m_localizationFontLanguage));
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(200.0f);
+                ImGui::InputTextWithHint("##LocalizationFontPath", "fonts/NotoSansJP.ttf", m_localizationFontPath, sizeof(m_localizationFontPath));
+                ImGui::SameLine();
+                const bool fontValid = TitleArtLanguage::isValid(m_localizationFontLanguage) && m_localizationFontPath[0];
+                ImGui::BeginDisabled(!fontValid);
+                if (ImGui::Button("Add Font")) {
+                    m_localization.fonts[TitleArtLanguage::canonicalize(m_localizationFontLanguage)].push_back(m_localizationFontPath);
+                    m_localizationFontPath[0] = '\0';
+                }
+                ImGui::EndDisabled();
+                endSettingsRow("Fonts per language: an HTML text in that language gets them before the other fallback fonts (Japanese and "
+                               "Chinese pages get their own Han glyphs), and a Text whose Font is empty uses the first.");
             }
             ImGui::EndTable();
         }

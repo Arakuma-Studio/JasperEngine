@@ -771,8 +771,12 @@ Graphy), details in `jasper://docs/debugging`:
 | `consoleVisible` | ro | |
 | `statsMode` | rw | `DebugOverlay.STATS_OFF`, `STATS_FPS`, `STATS_FULL` (another value raises an error) |
 | `getStats()` | fn | `{fps, frameMs, frameMsAvg, frameMsMin, frameMsMax, frameMs1PercentLow, drawCalls, instances, triangles, processMemoryBytes, luaMemoryBytes, audioVoices, audioVoicesMax, bodies2D, bodies3D, entities, scenes, coroutines, timers, htmlUiDrawCalls}`; works while not enabled |
-| `addCommand(name, description, fn [, owner])` | fn | console command `name args...`: `fn(args)` gets a list of strings; `[a-z0-9_-]+`; removed with its script (`owner`, default the calling method's `self`) |
-| `removeCommand(name)`, `executeCommand(line)` | fn | |
+| `addCommand{name, description, aliases, args, cheat, run, complete, owner}` | fn | a typed console command: `args` `{name, type, optional, default, min, max, choices}` (`string`, `int`, `float`, `bool`, `enum`, `vector3`, `gameobject`, `rest`); `run(args, call)` gets them by name and position, `call:print(...)`, `call:fail(msg)`, its return is the result's `value`; `true` or `false, reason` |
+| `addCommand(name, description, fn [, owner])` | fn | the old form: `fn(args)` gets a list of strings; names `[a-z0-9_.-]`; removed with its script (`owner`, default the calling method's `self`) |
+| `executeCommand(line)` | fn | `{ok, status, command, lines, log, value, error, usage, cheat}`; the game's call, never gated |
+| `completeCommand(line [, cursor])`, `getCommands()`, `removeCommand(name)` | fn | `{replacement, candidates, start}`; `{name, description, usage, aliases, cheat, builtIn, args}` each |
+| `commandsEnabled` | rw | Project Settings > Debug > Console Commands: the field, agents and `--command` may type commands |
+| `cheatsUsed`, `onCheatUsed`, `resetCheatsUsed()` | ro, event, fn | a `cheat = true` command ended ok (the event fires once, with its name) |
 
 ### 2.4 PlayerPrefs / UserSettings (static, persistent key/value)
 
@@ -1566,6 +1570,22 @@ Crash.markHandled("20261026T143200Z-4242")       -- the same by id (false: unkno
 - Pending means from an earlier session and not handled yet; the current session's reports
   appear at the next start.
 - Editor Play reads the editor's own reports (docs/crash-diagnostics.md).
+### 2.15.1 Localization (static): String Tables and the game language
+
+```lua
+local label = Localization.get("ui.shop.coins", {count = 3})        -- "3 coins"; fallback as 3rd argument
+local lives = Localization.format("{n, plural, one {# life} other {# lives}}", {n = 2})
+Localization.setLanguage("de")                   -- false for a bad tag; "" follows the device again
+print(Localization.language, Localization.languages[1], Localization.getLanguageName("de"))
+Localization.onLanguageChanged = function(code) Log.print("language " .. code) end
+local scan = Localization.scan()                 -- {literal = {...}, missing = {...}} (development)
+```
+
+- Keys are `ns.key`; texts are ICU (`{n, plural, one {...} other {...}}`). Prefer
+  `data-l10n-id` in HTML and a Text's `localizationKey` / `text:setLocalizedText(key, args)` over
+  setting `text` from `Localization.get`: those follow language changes by themselves.
+- `language`, `languages` and `onLanguageChanged` are fields; `TitleArt.setLanguage` sets the
+  same language. Tables: `edit_string_table`, jasper://docs/localization.
 ### 2.16 Time (static, Unity's Time)
 
 The game clocks under their Unity names. `Engine.deltatime` and the other `Engine` names stay;
@@ -3535,6 +3555,19 @@ gate.area = 0 ; gate:remove()
 | NavMeshModifier `enabled`, `area`, `center`, `size` | rw: a runtime volume applies again at once; `useVolume`, `applyAtRuntime`, `overrideArea`, `applyToChildren` read (bake inputs); `appliedPolygons` read |
 | NavigationSystem `setAreaInVolume(center, size, area[, {rotation, agentType}])` | a NavAreaOverride (nil for an area outside 0-15): the polygons whose centre lies in the box take `area` until `remove()`; ends at Stop |
 | NavAreaOverride `area`, `center`, `size`, `rotation` | rw; `valid`, `handle`, `appliedPolygons` read; `remove()` |
+
+### 4.23 Test (test files only)
+
+`Test` exists only in the chunks of the project's test files (`Tests/**/*.test.lua`), bound in each
+file's own environment: a game script never sees it, and a game global named `Test` is untouched.
+`Test.case(name, [opts], fn)` registers a case; `Test.config(opts)`, `Test.setup(fn)` and
+`Test.teardown(fn)` apply to the file's cases. Checks: `Test.check(cond, msg)` (goes on),
+`Test.assert(cond, msg)` and `Test.fail(msg)` (end the case), `Test.equal(actual, expected, msg)`
+(deep), `Test.near(a, b, eps, msg)`. Waits (Play Mode only, game time): `Test.waitFrames(n)`,
+`Test.waitGameSeconds(s)`, `Test.waitUntil(pred, {frames, gameSeconds, message})`. Also
+`Test.capture(name)`, `Test.expectError(pattern)`, `Test.skip(reason)`, `Test.log(...)`,
+`Test.target` (`platform`, `backend`, `editor`, `resolution`); the case `t` has `name`, `id`,
+`frame`, `gameTime`. The workflow: `jasper://docs/testing`.
 
 ## 5. Enums (exact Lua spelling; values are integers)
 

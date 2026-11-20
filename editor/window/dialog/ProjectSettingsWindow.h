@@ -97,6 +97,8 @@ namespace jasperengine::editor {
         TitleArtProjectSettings m_titleArt;
         LocalizationSettings m_localization;
         char m_localizationInput[64] = {0};
+        char m_localizationFontLanguage[32] = {0};
+        char m_localizationFontPath[260] = {0};
         AudioSettings m_audioSettings;
         char m_audioMixerBuffer[512] = {0};
         char m_audioDefaultGroupBuffer[128] = {0};

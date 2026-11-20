@@ -26,6 +26,8 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "texture/Framebuffer.h"
 #include "htmlui/compat/DocumentLoader.h"
+#include "htmlui/HtmlL10n.h"
+#include "json.hpp"
 
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
@@ -1329,6 +1331,25 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
             return optionalElement(self->querySelector(selector));
         })
         .addFunction("querySelectorAll", &UIElement::querySelectorAll)
+        // game-ui-localization.md R11: writes data-l10n-id (and data-l10n-args) and translates now
+        .addFunction("setL10n", [](UIElement* self, const std::string& key, lua_State* L) {
+            std::string args;
+            if (lua_istable(L, 3)) {
+                nlohmann::json json = nlohmann::json::object();
+                lua_pushnil(L);
+                while (lua_next(L, 3) != 0) {
+                    if (lua_type(L, -2) == LUA_TSTRING) {
+                        const std::string name = lua_tostring(L, -2);
+                        if (lua_isinteger(L, -1)) json[name] = static_cast<int64_t>(lua_tointeger(L, -1));
+                        else if (lua_type(L, -1) == LUA_TNUMBER) json[name] = lua_tonumber(L, -1);
+                        else if (const char* text = lua_tostring(L, -1)) json[name] = text;
+                    }
+                    lua_pop(L, 1);
+                }
+                args = json.dump();
+            }
+            htmlui::HtmlL10n::setL10n(UIElementAccess::get(*self), key, args);
+        })
         .addFunction("closest", [](const UIElement* self, const std::string& selector) -> std::optional<UIElement> {
             return optionalElement(self->closest(selector));
         })
@@ -1512,6 +1533,11 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
             return optionalElement(self->querySelector(selector));
         })
         .addFunction("querySelectorAll", &UIDocument::querySelectorAll)
+        // game-ui-localization.md R11: collects the keyed elements again after scripts edited data-l10n-* directly
+        .addFunction("translate", [](const UIDocument* self) {
+            Rml::Element* root = UIElementAccess::get(self->getDocumentElement());
+            htmlui::HtmlL10n::translateDocument(root ? root->GetOwnerDocument() : nullptr);
+        })
         // the document element (RML body)
         .addProperty("body", [](const UIDocument* self) -> std::optional<UIElement> { return optionalElement(self->getBody()); })
         // a detached element: insert it with appendChild/insertBefore

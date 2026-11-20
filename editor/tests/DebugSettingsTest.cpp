@@ -14,6 +14,7 @@
 #include "Stream.h"
 #include "Workspace.h"
 #include "command/type/DebugSettingsCmd.h"
+#include "player/PlayerConfig.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -36,6 +37,7 @@ namespace {
         debug.stats = DebugOverlaySettings::Stats::Full;
         debug.statsCorner = DebugOverlaySettings::Corner::BottomRight;
         debug.allowLua = DebugSettings::AllowLua::Never;
+        debug.consoleCommands = DebugSettings::AllowLua::AllBuilds;
         debug.logBufferSize = 2000;
         debug.logStackTraces = LogStackTraces::All;
         return debug;
@@ -148,6 +150,30 @@ TEST(DebugSettingsTest, GeneratedInit) {
     EXPECT_NE(Generator::debugInitSource(never).find("debugOverlay.enabled = false;"), std::string::npos);
 }
 
+// Console Commands (dev-console-for-agents R32): the generated init sets the gate, "development"
+// following the build type at run time; a prebuilt player's game.json carries it
+TEST(DebugSettingsTest, GeneratedInitSetsConsoleCommands) {
+    EXPECT_NE(Generator::debugInitSource(DebugSettings()).find("debugOverlay.commands = Engine::isDevelopmentBuild();"), std::string::npos);
+    EXPECT_NE(Generator::debugInitSource(customSettings()).find("debugOverlay.commands = true;"), std::string::npos);
+    DebugSettings never;
+    never.consoleCommands = DebugSettings::AllowLua::Never;
+    const std::string source = Generator::debugInitSource(never);
+    EXPECT_NE(source.find("debugOverlay.commands = false;"), std::string::npos) << source;
+    EXPECT_LT(source.find("debugOverlay.commands"), source.find("DebugOverlay::configure(debugOverlay);"));
+
+    player::PlayerConfig game;
+    EXPECT_FALSE(game.toJson().contains("consoleCommands")) << "omitted at development";
+    game.consoleCommands = "never";
+    player::PlayerConfig read;
+    std::string error;
+    nlohmann::json json = game.toJson();
+    ASSERT_TRUE(player::PlayerConfig::fromJson(json, read, error)) << error;
+    EXPECT_EQ(read.consoleCommands, "never");
+    json.erase("consoleCommands");
+    ASSERT_TRUE(player::PlayerConfig::fromJson(json, read, error)) << error;
+    EXPECT_EQ(read.consoleCommands, "development") << "an older game.json";
+}
+
 // the dialog's OK and MCP: one undoable step
 TEST(DebugSettingsTest, CommandUndoes) {
     Project project;
@@ -168,6 +194,7 @@ TEST(DebugSettingsTest, PlayApplies) {
     EXPECT_TRUE(Engine::isDevelopmentBuild());
     EXPECT_TRUE(DebugOverlay::isEnabled());
     EXPECT_TRUE(DebugOverlay::getSettings().allowLua);
+    EXPECT_TRUE(console::commandsEnabled()) << "Console Commands: development builds, and Play is one";
     EXPECT_EQ(Log::getBufferSize(), 123u);
     DebugOverlay::shutdown();
     Log::setBufferSize(500);

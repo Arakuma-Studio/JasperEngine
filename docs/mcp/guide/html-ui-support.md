@@ -453,7 +453,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `title` | `*` | emulated | emulated: a tooltip after the hover or focus delay (S17) |  |
 | `tooltip` | `*` | emulated | rich tooltip: #id of an element or <template> of the document, cloned on show (S17) |  |
 | `tooltip-delay` | `*` | emulated | the element's tooltip delay in ms (S17) |  |
-| `translate` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `translate` | `*` | native | kept: translate="no" keeps a subtree out of the localisation scan |  |
 | `type` | `*` | native | kept |  |
 | `type` | `source` | native | video: skipped when canPlayType gives "" (video/webm with AV1, Opus plays) |  |
 | `valign` | `*` | rewritten | legacy presentational attribute |  |
@@ -2398,6 +2398,12 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-IMP-0009` | warning | **Manifest file missing** (`manifest-file-missing`): An import manifest entry points to a file that does not exist; re-import the resource (load the document in the editor, jasperengine-editor import-ui, or MCP import_files from_document). |
 | `HTMLUI-IMP-0010` | warning | **Video not converted** (`video-not-converted`): The importer kept a video the engine cannot play because no FFmpeg with an AV1 encoder was found (JASPER_FFMPEG, the editor setting, then PATH). Install FFmpeg with SVT-AV1 (or libaom-av1, rav1e) and libopus and import it again, or run the command in the message. FFmpeg is the user's own tool, run as a separate program; the engine never links or ships it. |
 | `HTMLUI-IMP-0011` | error | **Video conversion failed** (`video-conversion-failed`): FFmpeg could not convert the video to AV1 + Opus WebM (an unreadable or damaged input, or an encoder error); the message has FFmpeg's last lines. The original is not imported. |
+
+### L10N
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `HTMLUI-L10N-0001` | warning | **Localised element with child elements** (`l10n-child-elements`): An element with data-l10n-id gets the message as its text, so it must hold only text: its child elements would be replaced. The element is left as written. Put the key on the innermost element that holds the text, or split the sentence into keys (data-l10n-args passes values). |
 
 ### SEL
 

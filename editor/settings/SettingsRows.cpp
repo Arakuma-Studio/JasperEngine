@@ -2533,8 +2533,9 @@ std::vector<Setting> mcpSettingsTable() {
             Setting s;
             s.key = "localization.languages";
             s.type = "list";
-            s.description = "BCP 47 language tags the game ships, in order (de, pt-BR, zh-Hant). Title Art bakes, fonts and translations "
-                            "of other languages are left out of builds (W-TITLE-LANGUAGE-DROPPED); [] ships every language.";
+            s.description = "BCP 47 language tags the game ships, in order (de, pt-BR, zh-Hant). String Table translations, bakes, fonts "
+                            "and translations of other languages are left out of builds (W-L10N-LANGUAGE-DROPPED, W-TITLE-LANGUAGE-DROPPED); "
+                            "[] ships every language.";
             s.get = [](SettingsContext& ctx) {
                 Json list = Json::array();
                 for (const std::string& code : ctx.project()->getLocalizationSettings().languages) list.push_back(code);
@@ -2574,6 +2575,48 @@ std::vector<Setting> mcpSettingsTable() {
                 const std::string code = value.get<std::string>();
                 if (!code.empty() && !TitleArtLanguage::isValid(code, &error)) return false;
                 if (apply) ctx.project()->getLocalizationSettings().defaultLanguage = TitleArtLanguage::canonicalize(code);
+                return true;
+            };
+            add(s);
+        }
+        // game-ui-localization.md R30: Remember Player Choice and Language Fonts
+        add(boolSetting("localization.remember_choice",
+                        "Localization.setLanguage's choice is remembered (UserSettings jasper.language) and comes before the device's languages at the next start.",
+                        [](Project& p) { return p.getLocalizationSettings().rememberChoice; },
+                        [](Project& p, bool v) { p.getLocalizationSettings().rememberChoice = v; }));
+        {
+            Setting s;
+            s.key = "localization.fonts";
+            s.type = "object";
+            s.description = "Fonts per language, {\"ja\": [\"fonts/NotoSansJP.ttf\"]}: an HTML text run in that language gets them before the other "
+                            "fallback faces, and a Text whose font is empty uses the first.";
+            s.get = [](SettingsContext& ctx) {
+                Json fonts = Json::object();
+                for (const auto& [code, list] : ctx.project()->getLocalizationSettings().fonts) fonts[code] = list;
+                return fonts;
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_object()) {
+                    error = "must be an object {language: [font paths]}";
+                    return false;
+                }
+                std::map<std::string, std::vector<std::string>> fonts;
+                for (auto it = value.begin(); it != value.end(); ++it) {
+                    if (!TitleArtLanguage::isValid(it.key(), &error)) return false;
+                    if (!it->is_array()) {
+                        error = "the fonts of " + it.key() + " must be a list of font paths";
+                        return false;
+                    }
+                    std::vector<std::string>& list = fonts[TitleArtLanguage::canonicalize(it.key())];
+                    for (const Json& path : *it) {
+                        if (!path.is_string() || path.get<std::string>().empty()) {
+                            error = "the fonts of " + it.key() + " must be a list of font paths";
+                            return false;
+                        }
+                        list.push_back(path.get<std::string>());
+                    }
+                }
+                if (apply) ctx.project()->getLocalizationSettings().fonts = std::move(fonts);
                 return true;
             };
             add(s);
@@ -4196,6 +4239,7 @@ std::vector<Setting> mcpSettingsTable() {
         };
         toolPreference("preferences.android_sdk_path", "androidSdk", "External Tools: the Android SDK of prebuilt Android builds (\"\" = ANDROID_HOME / ANDROID_SDK_ROOT).");
         toolPreference("preferences.jdk_path", "jdk", "External Tools: the JDK (keytool, jarsigner, java) of Android builds (\"\" = JAVA_HOME / PATH).");
+        toolPreference("preferences.adb_path", "adb", "External Tools: adb of Build And Run on Android devices (\"\" = the Android SDK's platform-tools, then PATH).");
         toolPreference("preferences.steamcmd_path", "steamcmd", "External Tools: SteamCMD for Steam uploads (\"\" = STEAMCMD_HOME / PATH).");
         toolPreference("preferences.rcodesign_path", "rcodesign", "External Tools: rcodesign, which signs macOS builds on any computer (\"\" = PATH).");
         // S44 §6.8: settings.yaml externalTools.aseprite.path
@@ -4578,6 +4622,7 @@ const Placement placements[] = {
     {"preferences.ffmpeg_path", "External Tools", "Video Import", "FFmpeg", "video av1"},
     {"preferences.android_sdk_path", "External Tools", "Shipping", "Android SDK", "android sdk aapt2 apksigner build-tools"},
     {"preferences.jdk_path", "External Tools", "Shipping", "JDK", "java keytool jarsigner"},
+    {"preferences.adb_path", "External Tools", "Shipping", "adb", "android device emulator run device platform-tools"},
     {"preferences.steamcmd_path", "External Tools", "Shipping", "SteamCMD", "steam upload steampipe"},
     {"preferences.rcodesign_path", "External Tools", "Shipping", "rcodesign", "macos signing codesign"},
     {"preferences.aseprite_path", "External Tools", "Aseprite", "Aseprite", "aseprite pixel art sprite editor executable"},

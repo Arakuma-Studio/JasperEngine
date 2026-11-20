@@ -1230,6 +1230,9 @@ else()
     set(JASPERENGINE_AUDIO_CAPTURE_DEFAULT OFF)
 endif()
 option(JASPERENGINE_AUDIO_CAPTURE "Compile audio captures and their gameplay markers" ${JASPERENGINE_AUDIO_CAPTURE_DEFAULT})
+# The project test runner (core/test, docs/specs/project-test-runner.md R32): the editor, the unit
+# tests and development players; a release player compiles none of it, and its sites to nothing
+option(JASPERENGINE_TEST_RUNNER "Compile the project test runner (--run-tests)" ${JASPERENGINE_PROFILER_DEFAULT})
 # Tracy remote profiling of a running development game (desktop and Android, libs/tracy)
 option(JASPERENGINE_TRACY "Send the profiler's zones, frames and plots to Tracy" OFF)
 if(JASPERENGINE_TRACY)
@@ -1395,6 +1398,7 @@ set(JASPERENGINE_SRCS
     core/EngineTime.cpp
     core/PlatformConfig.cpp
     core/player/ContentManifest.cpp
+    core/player/DevelopmentContent.cpp
     core/player/Launch.cpp
     core/player/LaunchOptions.cpp
     core/player/PlayerConfig.cpp
@@ -1420,6 +1424,7 @@ set(JASPERENGINE_SRCS
     core/audio/TruePeak.cpp
     core/input/InputControlNames.cpp
     core/input/InputManagerFormat.cpp
+    core/input/InputScript.cpp
     core/Log.cpp
     core/device/Device.cpp
     core/device/DeviceSettings.cpp
@@ -1445,6 +1450,7 @@ set(JASPERENGINE_SRCS
     core/log/sinks/EmscriptenConsoleSink.cpp
     core/log/sinks/DebuggerSink.cpp
     core/log/sinks/AppleLogSink.cpp
+    core/debug/ConsoleCommands.cpp
     core/debug/DebugOverlay.cpp
     core/debug/DebugOverlayResources.cpp
     core/debug/DebugStats.cpp
@@ -1558,6 +1564,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/HtmlTextEffects.cpp
     core/htmlui/UIParticleSystemElement.cpp
     core/htmlui/HtmlUIContext.cpp
+    core/htmlui/HtmlL10n.cpp
     core/htmlui/HtmlUIContextRender.cpp
     core/htmlui/HtmlUIDependencies.cpp
     core/htmlui/HtmlUITexture.cpp
@@ -1832,6 +1839,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/ActionClassesLua.cpp
     core/script/binding/CoreClassesLua.cpp
     core/script/binding/CrashClassesLua.cpp
+    core/script/binding/LocalizationClassesLua.cpp
     core/script/binding/AudioClassesLua.cpp
     core/script/binding/NoiseClassesLua.cpp
     core/script/binding/ECSClassesLua.cpp
@@ -1998,6 +2006,10 @@ set(JASPERENGINE_SRCS
     core/util/TextShaper.cpp
     core/util/TitleArtBakeInfo.cpp
     core/util/TitleArtLanguage.cpp
+    core/localization/Localization.cpp
+    core/localization/MessageFormat.cpp
+    core/localization/PluralRules.cpp
+    core/localization/StringTableRuntime.cpp
     core/util/ThorVGRuntime.cpp
     core/util/UniqueToken.cpp
     core/util/WaterExclusion.cpp
@@ -2124,6 +2136,10 @@ if(JASPERENGINE_VOXEL)
 endif()
 # always there: with the module off it is the plain terrain query (T6 R45)
 list(APPEND JASPERENGINE_SRCS core/object/voxel/GroundQuery.cpp)
+if(JASPERENGINE_TEST_RUNNER)
+    list(APPEND JASPERENGINE_SRCS core/test/TestOptions.cpp core/test/TestResults.cpp core/test/TestRunner.cpp core/test/TestScan.cpp
+                                  core/player/PlayerTests.cpp)
+endif()
 # Navigation (S19): navmeshes, crowds, grids, the NavigationSystem and its Lua objects
 include(core/navigation/NavigationSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NAVIGATION_SRCS})
@@ -2250,6 +2266,10 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "the navigation sources: file-local Detour helpers and constants with the same names"
     SOURCES ${JASPERENGINE_NAVIGATION_SRCS})
+jasperengine_skip_unity_build(
+    REASON "the localization sources: file-local helpers (state, readFile, lower) other sources define too"
+    SOURCES core/localization/Localization.cpp core/localization/MessageFormat.cpp core/localization/PluralRules.cpp
+            core/localization/StringTableRuntime.cpp core/script/binding/LocalizationClassesLua.cpp core/htmlui/HtmlL10n.cpp)
 if(JASPERENGINE_TITLE_ART_SRCS)
     jasperengine_skip_unity_build(
         REASON "the Title Art sources: several streams' per-file helper sets with the same names"
@@ -2336,6 +2356,9 @@ target_compile_definitions(jasperengine
         JASPERENGINE_BACKEND_TIME=$<OR:$<BOOL:${JASPERENGINE_TESTS}>,$<BOOL:${JASPERENGINE_HTMLUI_TESTS}>>
         JASPERENGINE_AUDIO_CAPTURE=$<BOOL:${JASPERENGINE_AUDIO_CAPTURE}>
         JASPERENGINE_DEVELOPMENT_BUILD=$<OR:$<BOOL:${JASPERENGINE_DEVELOPMENT_BUILD}>,$<CONFIG:Debug>>
+        # missing-translation capture (game-ui-localization.md D8): where the profiler is on by default
+        # (the editor, Development Builds, Debug, the unit tests) and in the HTML UI tests
+        JASPERENGINE_L10N_CAPTURE=$<OR:$<BOOL:${JASPERENGINE_PROFILER_DEFAULT}>,$<BOOL:${JASPERENGINE_HTMLUI_TESTS}>>
         JASPERENGINE_TRACY=$<BOOL:${JASPERENGINE_TRACY}>
         JASPERENGINE_NAVIGATION=$<BOOL:${JASPERENGINE_NAVIGATION}>
         JASPERENGINE_TERRAIN_WORLD=$<BOOL:${JASPERENGINE_TERRAIN_WORLD}>
@@ -2520,6 +2543,15 @@ add_custom_command(
 )
 target_sources(jasperengine PRIVATE ${JASPERENGINE_SHADERLIB_MANIFESTS_HEADER})
 target_include_directories(jasperengine BEFORE PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+# JASPERENGINE_TEST_RUNNER as a header the few sites include, not a definition every source gets
+if(JASPERENGINE_TEST_RUNNER)
+    set(JASPERENGINE_TEST_RUNNER_VALUE 1)
+else()
+    set(JASPERENGINE_TEST_RUNNER_VALUE 0)
+endif()
+file(CONFIGURE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/TestRunnerConfig.h
+     CONTENT "#pragma once\n// generated by engine/CMakeLists.txt: the project test runner is compiled (docs/specs/project-test-runner.md R32)\n#define JASPERENGINE_TEST_RUNNER @JASPERENGINE_TEST_RUNNER_VALUE@\n"
+     @ONLY)
 
 if(JASPERENGINE_RUNTIME_SHADERS)
     # The engine shader library (shaderlib/), embedded as the sources the runtime

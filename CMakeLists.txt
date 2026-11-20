@@ -812,6 +812,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cli/McpClient.cpp
     ${EDITOR_DIR}/cli/CallCommand.cpp
     ${EDITOR_DIR}/cli/ProceduralMaterialCommand.cpp
+    ${EDITOR_DIR}/cli/TestCommand.cpp
     ${EDITOR_DIR}/cli/ShippingCommands.cpp
     ${EDITOR_DIR}/cli/TitleArtCli.cpp
     ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
@@ -843,6 +844,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/platform/WindowsResources.cpp
     ${EDITOR_DIR}/platform/MacBundle.cpp
     ${EDITOR_DIR}/platform/IosProject.cpp
+    ${EDITOR_DIR}/platform/DeviceList.cpp
+    ${EDITOR_DIR}/platform/DeviceCommands.cpp
+    ${EDITOR_DIR}/platform/DeviceRecords.cpp
+    ${EDITOR_DIR}/platform/DeviceLogPump.cpp
+    ${EDITOR_DIR}/platform/DeviceRunner.cpp
+    ${EDITOR_DIR}/platform/WebServe.cpp
     ${EDITOR_DIR}/App.cpp
     ${EDITOR_DIR}/AppCommands.cpp
     ${EDITOR_DIR}/AppSettings.cpp
@@ -999,6 +1006,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/AssetIdentityTools.cpp
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
+    ${EDITOR_DIR}/mcp/tools/BuildDevices.cpp
     ${EDITOR_DIR}/mcp/tools/PublishTools.cpp
     ${EDITOR_DIR}/mcp/tools/BuildProfileTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
@@ -1424,6 +1432,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/dialog/TextureSlicerToolDialog.cpp
     ${EDITOR_DIR}/window/dialog/ExportWindow.cpp
     ${EDITOR_DIR}/window/dialog/ExportWindowShipping.cpp
+    ${EDITOR_DIR}/window/dialog/ExportWindowDevices.cpp
     ${EDITOR_DIR}/window/dialog/BuildProfilesPane.cpp
     ${EDITOR_DIR}/window/dialog/EditorSettingsWindow.cpp
     ${EDITOR_DIR}/window/dialog/ProjectSettingsWindow.cpp
@@ -1625,8 +1634,11 @@ include(${EDITOR_DIR}/navigation/NavigationEditorSources.cmake)
 include(${EDITOR_DIR}/voxel/VoxelEditorSources.cmake)
 # the editor tools (S27): colour picker, curve and gradient fields, Project Hub, Recorder
 include(${EDITOR_DIR}/EditorToolsSources.cmake)
+include(${EDITOR_DIR}/test/GameTestsSources.cmake)
 # Title Art (S80-S87): its own globbed lists, so the title specs add editor files without meeting here
 include(${EDITOR_DIR}/titleart/TitleArtEditorSources.cmake)
+# game UI localization: String Tables, their window and tools
+include(${EDITOR_DIR}/localization/LocalizationEditorSources.cmake)
 include(${EDITOR_DIR}/procmat/ProcMatSources.cmake)
 # the pixel-art family (S43...): palettes, Apply Palette, the Palette window, the pixel_art tools
 include(${EDITOR_DIR}/pixelart/PixelArtEditorSources.cmake)

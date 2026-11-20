@@ -95,6 +95,8 @@ namespace jasperengine::player {
         std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
         float inputDeadzone = 0.15f;
         std::string inputActions;
+        // the String Tables' manifest ("l10n/manifest.json") when the game has any (game-ui-localization.md D5)
+        std::string localization;
         nav::NavigationSettings navigation;
         // Project Settings > Voxels (T6 R7): what the project lowers of the platform's limits, 0: nothing
         int voxelMaxDimension = 0;
@@ -138,6 +140,10 @@ namespace jasperengine::player {
         bool hangWatchdog = true;
         int hangMs = 5000;
         bool crashWebOverlay = true;
+
+        // Project Settings > Debug > Console Commands (development, always or never): whether
+        // --command, agents and the console field may run commands (console::setCommandsEnabled)
+        std::string consoleCommands = "development";
 
         // Project Settings > Audio (a Compile build's generated AudioSystem::configure and
         // AudioMixer::load): the defaults are AudioConfig's, the mixer asset-relative ("" = none)

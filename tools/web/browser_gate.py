@@ -47,6 +47,12 @@ The transcript is printed before anything that needs the page's main thread (eva
 screenshot), so a wedged page still yields its console. The only capture path is
 Page.captureScreenshot: reading a WebGL canvas back from the page returns cleared pixels.
 
+--editor-served URL opens a page the editor serves (build_project run_device "web",
+docs/specs/build-and-run-on-device.md AC9) instead of serving --root; --editor-console CMD then runs
+CMD (a shell command that prints the editor's Console device lines, e.g. `jasperengine-editor call
+--project P read_console ...`) after the run and fails unless its output holds the ready line: the
+development page's reporter carried it to the editor.
+
 Chrome: JASPER_CHROME, else chrome-headless-shell (the web build image's, docker/web.Dockerfile),
 else google-chrome, chromium or chrome on PATH, else the usual install paths. No third-party
 packages: the DevTools client below speaks enough of RFC 6455 to send commands and collect events.
@@ -312,7 +318,10 @@ def evaluate(cdp: Cdp, expression: str, timeout: float = 30.0):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--root", type=Path, required=True, help="the web build directory (served)")
+    parser.add_argument("--root", type=Path, help="the web build directory (served); not with --editor-served")
+    parser.add_argument("--editor-served", metavar="URL", help="open this page of the editor's web server instead of serving --root")
+    parser.add_argument("--editor-console", metavar="CMD", help="with --editor-served: a command printing the editor's device "
+                        "Console lines; its output must hold the ready line")
     parser.add_argument("--page", default="jasperengine-project.html", help="page under --root")
     parser.add_argument("--until-ready", action="store_true", help=f"wait for the engine's '{READY_LINE}' line")
     parser.add_argument("--timeout", type=float, default=120.0, help="seconds to wait for the ready line (120)")
@@ -343,13 +352,16 @@ def main() -> int:
     seconds = args.seconds if args.seconds is not None else float(baseline.get("seconds", default_seconds))
     if args.capture_timeout is None:
         args.capture_timeout = float(baseline.get("capture_timeout", 30.0))
-    if not (args.root / args.page).is_file():
-        print(f"browser_gate: no {args.page} in {args.root}", file=sys.stderr)
-        return 2
-
-    server = make_server(args.root, 0, cross_origin_isolation=not args.no_isolation, quiet=True)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    page_url = f"http://127.0.0.1:{server.server_port}/{args.page}?" + "&".join([READY_QUERY] + baseline.get("query", []) + args.query)
+    if args.editor_served:
+        # the editor's server sends the isolation headers itself and relays the page's log
+        page_url = args.editor_served + ("&" if "?" in args.editor_served else "?") + "&".join([READY_QUERY] + baseline.get("query", []) + args.query)
+    else:
+        if args.root is None or not (args.root / args.page).is_file():
+            print(f"browser_gate: no {args.page} in {args.root} (--root, or --editor-served)", file=sys.stderr)
+            return 2
+        server = make_server(args.root, 0, cross_origin_isolation=not args.no_isolation, quiet=True)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        page_url = f"http://127.0.0.1:{server.server_port}/{args.page}?" + "&".join([READY_QUERY] + baseline.get("query", []) + args.query)
 
     chrome_path = find_chrome()
     cdp_port = free_port()
@@ -543,6 +555,13 @@ def main() -> int:
                                 "for a page that cannot be captured")
         if "isolated" in baseline and bool(isolated) != bool(baseline["isolated"]):
             failures.append(f"crossOriginIsolated is {bool(isolated)}, the baseline says {bool(baseline['isolated'])}")
+        if args.editor_console:
+            # the reporter posts at most every 100 ms: the editor has had the lines for a while
+            time.sleep(1.0)
+            relayed = subprocess.run(args.editor_console, shell=True, capture_output=True, text=True, timeout=120)
+            print(f"browser_gate: editor console: {relayed.stdout.strip()[-2000:]}")
+            if READY_LINE not in relayed.stdout:
+                failures.append(f"the editor's Console has no '{READY_LINE}' line from the page (its reporter did not post it)")
 
         print(f"\nbrowser_gate: {len(lines)} console lines, {len(exceptions)} exceptions, {len(errors)} errors, "
               f"ready {'yes' if ready else 'no' if args.until_ready else 'not awaited'}, crossOriginIsolated {bool(isolated)}, "

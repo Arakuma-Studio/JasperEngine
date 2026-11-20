@@ -8,3 +8,5 @@
 ---@field profile string # the Build Profile ("" without one)
 ---@field defines string[] # its Scripting Define Symbols
 ---@field development boolean # a Development Build
+---@field contentPatch integer # the Patch And Run patch of the content (0: the packaged content)
+---@field contentPatched boolean # the game runs patched content (Patch And Run)

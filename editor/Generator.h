@@ -265,6 +265,8 @@ namespace jasperengine::editor {
         bool dynamicBatching = true;
         // Project Settings > Localization > Default Language, its fallbacks applied (S87 R64)
         std::string defaultLanguage = "en";
+        // the project has String Tables: the game loads l10n/manifest.json (game-ui-localization.md D5)
+        bool localization = false;
         // what System.getAppName/Identifier/Version/Build return on each desktop and the web
         // (with their platform overrides); Android and iOS read their package and bundle
         ApplicationInfo linuxApp, windowsApp, macosApp, webApp;

@@ -14,6 +14,8 @@
 #include "cook/RuntimeFieldsEmitter.h"
 #include "io/AtomicFile.h"
 #include "platform/ExternalTools.h"
+#include "mcp/tools/BuildDevices.h"
+#include "platform/DeviceRunner.h"
 #include "players/PlayerRuntimes.h"
 #include "pool/ShaderPool.h"
 #include "publish/Publishing.h"
@@ -22,8 +24,11 @@
 #include "json.hpp"
 #include "util/FileUtils.h"
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <optional>
+#include <thread>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -163,10 +168,16 @@ namespace {
             "  --allow-player-mismatch  a player of another engine version (engine development only)\n"
             "  --ios-simulator          an unsigned simulator .app instead of an archive\n"
             "  --allow-missing-assets   build even when a scene references a missing asset\n"
+            "  --run-device d           Build And Run on a device: an adb serial or simulator UDID, auto (the\n"
+            "                           only usable one) or web; a Development Build patches the installed app\n"
+            "  --no-patch               with --run-device: a full install, never Patch And Run\n"
+            "  --run-seconds S          with --run-device: follow its log for S seconds (default 0: return\n"
+            "                           once it launched; web: serve the page until interrupted)\n"
             "  --json                   the result as JSON\n"
             "Prints method, compile_reason, player, modules (the engine modules the build ships), left_out,\n"
             "module (why one is needed), output, executable, content_manifest, artifact, warning and note\n"
-            "lines (and profile: with --profile); exits 1 when the build fails, 2 on bad arguments.\n",
+            "lines (and profile: with --profile; device:, installed: and url: with --run-device); exits 1 when the\n"
+            "build or the device run fails, 2 on bad arguments.\n",
             executableName, executableName);
     }
 
@@ -178,7 +189,9 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
     attachConsole();
     EditorHostOverrideGuard hostOverride(nullptr);
     fs::path projectPath, out, playersDir;
-    std::string platformName, backend, method = "auto", androidFormat, startScene, profileName;
+    std::string platformName, backend, method = "auto", androidFormat, startScene, profileName, runDevice;
+    bool noPatch = false;
+    double runSeconds = 0.0;
     bool development = false, pack = false, json = false, mismatch = false, simulator = false, allowMissing = false;
     for (int i = 1; i < argc; i++) {
         const std::string arg = argv[i];
@@ -219,6 +232,18 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
             simulator = true;
         } else if (arg == "--allow-missing-assets") {
             allowMissing = true;
+        } else if (arg == "--run-device") {
+            if (!takeValue(argc, argv, i, runDevice, "build")) return 2;
+        } else if (arg == "--no-patch") {
+            noPatch = true;
+        } else if (arg == "--run-seconds") {
+            if (!takeValue(argc, argv, i, value, "build")) return 2;
+            char* end = nullptr;
+            runSeconds = std::strtod(value.c_str(), &end);
+            if (!end || *end != '\0' || runSeconds < 0.0 || runSeconds > 86400.0) {
+                std::fprintf(stderr, "build: --run-seconds is 0 to 86400 seconds (got %s)\n", value.c_str());
+                return 2;
+            }
         } else {
             std::fprintf(stderr, "build: unknown argument %s (try --help)\n", arg.c_str());
             return 2;
@@ -257,10 +282,16 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
     config.keystorePassword = envOr("JASPER_ANDROID_KS_PASS");
     config.keyPassword = envOr("JASPER_ANDROID_KEY_PASS");
 
+    if ((noPatch || runSeconds > 0.0) && runDevice.empty()) {
+        std::fprintf(stderr, "build: --no-patch and --run-seconds go with --run-device (try --help)\n");
+        return 2;
+    }
+
     bool ok = false;
     int exitCode = 1;
     ExportResult result;
     std::string error;
+    std::shared_ptr<mcp::builddevice::BuildDeploy> deploy;
     {
         StdoutToStderr quiet;
         Out::setConsoleWindow(nullptr);
@@ -312,10 +343,50 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
             } else if (!startScene.empty() && config.startSceneId == 0) {
                 error = "--start-scene " + startScene + ": no scene of that id or name";
             } else {
-                Exporter exporter;
-                ok = exporter.exportProject(&project, config);
-                result = exporter.getResult();
-                if (!ok) error = exporter.getProgress().errorMessage;
+                // --run-device: the device first (its ABI, patch or full install), then the build
+                if (!runDevice.empty()) {
+                    std::string pickError;
+                    const std::vector<platform::RunDevice> devices = platform::devicesOf(config.platform, project.getAndroidProjectSettings().minSdk);
+                    const platform::RunDevice* device = platform::pickDevice(devices, config.platform, runDevice, pickError);
+                    if (!device) error = "--run-device: " + pickError;
+                    else deploy = mcp::builddevice::prepare(&project, config, *device, noPatch ? std::optional<bool>(false) : std::nullopt, error);
+                    if (deploy) {
+                        config.contentOnly = deploy->patch;
+                        config.androidRunAbi = deploy->patch ? std::string() : deploy->androidAbi;
+                        if (config.platform == BuildPlatform::IOS) config.iosSimulator = true;
+                        if (!deploy->fullBecause.empty() && !deploy->patch && !noPatch) Out::info("Build And Run installs in full: %s", deploy->fullBecause.c_str());
+                    }
+                }
+                if (runDevice.empty() || deploy) {
+                    Exporter exporter;
+                    ok = exporter.exportProject(&project, config);
+                    result = exporter.getResult();
+                    if (!ok) error = exporter.getProgress().errorMessage;
+                }
+                if (ok && deploy) {
+                    ok = mcp::builddevice::deploy(*deploy, project.getProjectPath(), result, config, [](const std::string& step) { Out::info("%s", step.c_str()); });
+                    if (!ok) error = "the run on " + deploy->device.name + " failed: " + deploy->result.error;
+                    // its log until it exits, or for --run-seconds
+                    const auto start = std::chrono::steady_clock::now();
+                    // (the web page is served by this process: without --run-seconds it serves until interrupted)
+                    const bool serving = deploy->device.kind == platform::RunDeviceKind::Browser;
+                    if (ok && serving && runSeconds <= 0.0) Out::info("Serving %s until interrupted (Ctrl+C)", deploy->result.url.c_str());
+                    while (ok && (runSeconds > 0.0 || serving)) {
+                        const std::optional<platform::DeviceRunState> state = platform::DeviceRuns::get().state(deploy->device.id);
+                        if (!state || !state->running) break;
+                        if (runSeconds > 0.0 && std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() >= runSeconds) break;
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    }
+                    if (ok) {
+                        const std::optional<platform::DeviceRunState> state = platform::DeviceRuns::get().state(deploy->device.id);
+                        if (state && state->crashed) {
+                            ok = false;
+                            error = deploy->device.name + " crashed: " + (state->fatalLines.empty() ? std::string("see its log") : state->fatalLines.front());
+                        }
+                    }
+                    // the game keeps running; nothing follows it once the command returns
+                    platform::DeviceRuns::get().releaseAll();
+                }
             }
         }
     }
@@ -356,6 +427,13 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
                                    {"bytes", budget.bytes}, {"over_bytes", budget.overBytes()}});
             report["size_budgets"] = budgets;
         }
+        if (deploy) {
+            report["device"] = deploy->device.id;
+            report["device_name"] = deploy->device.name;
+            report["installed"] = deploy->result.installed;
+            report["pushed_files"] = deploy->result.pushedFiles;
+            if (!deploy->result.url.empty()) report["url"] = deploy->result.url;
+        }
         if (!ok) report["error"] = error;
         std::printf("%s\n", report.dump(2).c_str());
     } else {
@@ -386,6 +464,12 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
         }
         for (const BuildWarning& warning : result.warnings) std::printf("warning: %s: %s\n", warning.code.c_str(), warning.message.c_str());
         for (const std::string& note : result.notes) std::printf("note: %s\n", note.c_str());
+        if (deploy && !deploy->result.installed.empty()) {
+            std::printf("device: %s (%s)\n", deploy->device.id.c_str(), deploy->device.name.c_str());
+            std::printf("installed: %s\n", deploy->result.installed.c_str());
+            if (deploy->result.installed == "patched") std::printf("pushed_files: %zu\n", deploy->result.pushedFiles);
+            if (!deploy->result.url.empty()) std::printf("url: %s\n", deploy->result.url.c_str());
+        }
     }
     std::fflush(stdout);
     if (!ok) {

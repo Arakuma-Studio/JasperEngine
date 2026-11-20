@@ -1020,6 +1020,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerPixelFxClasses(L);
     registerTilemapClasses(L);
     registerCrashClasses(L);
+    registerLocalizationClasses(L);
 #if JASPERENGINE_HTMLUI
     registerHtmlUIClasses(L);
     registerHtmlUIAnimeClasses(L);
