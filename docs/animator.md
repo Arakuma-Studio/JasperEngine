@@ -94,9 +94,15 @@ keep facing where the run faces. It needs no extra bone, export or script: it wo
 and rig, and a rig's `B-spineProxy` bone (Unity's Spine Proxy) is not needed. Unreal calls it Mesh
 Space Rotation Blend.
 
-| Without (Compare on: the spine follows the run's hips) | With (the spine faces where the attack faces) |
+| Without (Compare on): the torso turns with the run's hips, the attack swings off to the side | With: the torso faces where the attack faces (green), the legs keep running to the side; red is where it would face without |
 |---|---|
 | ![Without Mesh Space Rotation](img/animator/mesh-space-rotation-before.png) | ![With Mesh Space Rotation](img/animator/mesh-space-rotation-after.png) |
+
+A run on the base layer, an attack on an Upper Body layer masked from `B-spine`, Gizmos > Animation >
+Torso Direction on. The layer's Inspector, and the Problems strip warning about a second layer with
+the option off:
+
+![The layer Inspector with Mesh Space Rotation on, Applies at: B-spine, and the Problems strip's warning with Fix](img/animator/mesh-space-rotation-inspector.png)
 
 - It is off by default. It applies to Override layers above the base layer; on the base layer and
   on Additive layers the checkbox is disabled (a value set in the file is kept and ignored).
