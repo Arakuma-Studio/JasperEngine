@@ -12102,6 +12102,9 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
     // remote URLs (imports) and the compat diagnostics of the document
     htmlui::HtmlUiImportPanel::draw(project, sceneProject, entity, document.filename, documents);
 
+    // in Play: its keyed elements, literal text and misses (game-ui-localization.md R32)
+    drawUIDocumentLocalization(sceneProject, entity);
+
     // what RmlUi said while loading this document (and since), with the file and line it gave
     const std::vector<HtmlUIMessage>& messages = documents->getDocumentMessages(entity);
     std::string header = "Messages";

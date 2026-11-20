@@ -91,6 +91,9 @@ namespace jasperengine {
         static std::string_view getView(std::string_view key);
         static bool has(std::string_view key);
         static std::string format(std::string_view pattern, const LocalizationArgs& args = {}, std::string_view language = {});
+        // a text as the pseudo-locale `code` (en-XA, ar-XB) shows it, arguments left as {name}
+        // (the Localization Tables window's Pseudo Preview)
+        static std::string pseudoLocalize(std::string_view text, const std::string& code, std::string_view language = "en");
         // the consumers' lookup: false (and `out` untouched) for a key no table has; `where` names the
         // element or GameObject for capture
         static bool translate(std::string_view key, const LocalizationArgs& args, std::string& out, std::string_view where = {});

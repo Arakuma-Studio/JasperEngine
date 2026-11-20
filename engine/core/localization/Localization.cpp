@@ -523,6 +523,20 @@ std::string Localization::format(std::string_view pattern, const LocalizationArg
     return out;
 }
 
+std::string Localization::pseudoLocalize(std::string_view text, const std::string& code, std::string_view language) {
+    FormatOptions options;
+    options.language = language;
+    options.showMissing = true;
+    const bool rtl = code == kPseudoRtl;
+    options.literal = rtl ? reverseLiteral : accentLiteral;
+    std::string body;
+    MessageFormat::format(text, options, body);
+    if (rtl) return body;
+    std::string out = "\xE2\x9F\xA6" + body;
+    for (size_t k = 0, filler = (codePoints(body) * 4 + 9) / 10; k < filler; k++) out += "\xC2\xB7";
+    return out + "\xE2\x9F\xA7";
+}
+
 const std::string& Localization::getLanguage() {
     if (!active.load()) return emptyString();
     return state().language;

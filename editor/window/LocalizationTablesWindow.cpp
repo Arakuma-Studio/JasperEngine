@@ -5,15 +5,25 @@
 
 #include "Out.h"
 #include "Project.h"
+#include "command/CommandHistory.h"
 #include "localization/Localization.h"
 #include "localization/MessageFormat.h"
 #include "localization/StringTableCook.h"
 #include "localization/StringTableEditCmd.h"
+#include "localization/StringTableInterchange.h"
+#include "component/UIDocumentComponent.h"
+#include "htmlui/HtmlL10n.h"
+#include "htmlui/HtmlUIInspector.h"
+#include "io/AtomicFile.h"
+#include "util/FileDialogs.h"
+#include "util/ProjectChecks.h"
 #include "util/TitleArtLanguage.h"
 
 #include "imgui.h"
 
 #include <algorithm>
+#include <cctype>
+#include <optional>
 #include <cstdio>
 #include <cstring>
 
@@ -111,7 +121,8 @@ void LocalizationTablesWindow::drawTableList() {
 }
 
 void LocalizationTablesWindow::drawGrid(l10n::StringTableSet& set) {
-    // toolbar: Add Entry, Add Language, search and filters
+    drawToolbar(set);
+    // Add Entry, Add Language, search and filters
     ImGui::SetNextItemWidth(160.0f);
     ImGui::InputTextWithHint("##newKey", "menu.play", newKey, sizeof(newKey));
     ImGui::SameLine();
@@ -141,7 +152,7 @@ void LocalizationTablesWindow::drawGrid(l10n::StringTableSet& set) {
     ImGui::Checkbox("Over Length", &filterOverLength);
 
     const std::vector<std::string> languages = set.languages();
-    const int columns = 3 + static_cast<int>(languages.size()) + 1;
+    const int columns = 3 + static_cast<int>(languages.size()) + (pseudoPreview ? 1 : 0) + 1;
     std::string removeKey;
     if (ImGui::BeginTable("##grid", columns, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
                                              ImGuiTableFlags_ScrollY | ImGuiTableFlags_Hideable)) {
@@ -152,6 +163,7 @@ void LocalizationTablesWindow::drawGrid(l10n::StringTableSet& set) {
         for (const std::string& code : languages) {
             ImGui::TableSetupColumn((code == set.table.sourceLanguage ? code + " (source)" : code).c_str());
         }
+        if (pseudoPreview) ImGui::TableSetupColumn("en-XA (Pseudo)");
         ImGui::TableSetupColumn("##actions", ImGuiTableColumnFlags_WidthFixed, 60.0f);
         ImGui::TableHeadersRow();
         for (const l10n::TableEntry& entry : set.table.entries) {
@@ -171,7 +183,7 @@ void LocalizationTablesWindow::drawGrid(l10n::StringTableSet& set) {
             ImGui::PushID(entry.key.c_str());
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            ImGui::TextUnformatted(entry.key.c_str());
+            if (ImGui::Selectable(entry.key.c_str(), selectedKey == entry.key)) selectedKey = entry.key;
             ImGui::TableNextColumn();
             ImGui::TextUnformatted(entry.context.c_str());
             ImGui::TableNextColumn();
@@ -244,6 +256,10 @@ void LocalizationTablesWindow::drawGrid(l10n::StringTableSet& set) {
                 }
                 ImGui::PopID();
             }
+            if (pseudoPreview) {
+                ImGui::TableNextColumn();
+                ImGui::TextWrapped("%s", Localization::pseudoLocalize(entry.text, "en-XA", set.table.sourceLanguage).c_str());
+            }
             ImGui::TableNextColumn();
             if (ImGui::SmallButton("Remove")) removeKey = entry.key;
             ImGui::PopID();
@@ -253,7 +269,260 @@ void LocalizationTablesWindow::drawGrid(l10n::StringTableSet& set) {
     if (!removeKey.empty()) apply(l10n::Json::array({{{"op", "remove"}, {"key", removeKey}}}), "Remove " + set.table.ns + "." + removeKey);
 }
 
+void LocalizationTablesWindow::openMisses() {
+    setOpen(true);
+    selectMisses = true;
+}
+
+void LocalizationTablesWindow::report(const std::string& title, std::vector<std::string> lines) {
+    dialogTitle = title;
+    dialogLines = std::move(lines);
+    openDialog = true;
+}
+
+void LocalizationTablesWindow::drawToolbar(l10n::StringTableSet& set) {
+    const std::string global = selectedKey.empty() ? std::string() : set.table.ns + "." + selectedKey;
+    ImGui::BeginDisabled(selectedKey.empty() || !set.table.find(selectedKey));
+    if (ImGui::Button("Rename Key...")) {
+        std::snprintf(renameTo, sizeof(renameTo), "%s", selectedKey.c_str());
+        ImGui::OpenPopup("Rename Key##l10n");
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Find References")) {
+        std::vector<std::string> lines;
+        for (const l10n::KeyReference& reference : l10n::findReferences(project->getProjectPath(), global)) {
+            lines.push_back(reference.file + ":" + std::to_string(reference.line) + " (" + reference.kind + ")");
+        }
+        if (lines.empty()) lines.push_back("No HTML, scene or script names " + global + ".");
+        report("References to " + global, lines);
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Import...")) ImGui::OpenPopup("Import##l10n");
+    ImGui::SameLine();
+    if (ImGui::Button("Export...")) {
+        exportLanguages.clear();
+        for (const auto& entry : set.translations) exportLanguages.push_back(entry.first);
+        ImGui::OpenPopup("Export##l10n");
+    }
+    ImGui::SameLine();
+    ImGui::Checkbox("Pseudo Preview", &pseudoPreview);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("An en-XA column: the source accented, 40%% longer and bracketed, as the pseudo-locale shows it.");
+
+    // Rename Key: the table and its translations, one undo step; the references it leaves are listed
+    if (ImGui::BeginPopup("Rename Key##l10n")) {
+        ImGui::Text("Rename %s to", global.c_str());
+        ImGui::SetNextItemWidth(220.0f);
+        ImGui::InputText("##renameTo", renameTo, sizeof(renameTo));
+        const bool valid = l10n::isValidKey(renameTo) && !set.table.find(renameTo);
+        ImGui::BeginDisabled(!valid);
+        if (ImGui::Button("Rename")) {
+            const std::string from = selectedKey;
+            const std::string to = renameTo;
+            const std::vector<l10n::KeyReference> references = l10n::findReferences(project->getProjectPath(), set.table.ns + "." + from);
+            if (apply(l10n::Json::array({{{"op", "rename"}, {"key", from}, {"to", to}}}), "Rename Key " + set.table.ns + "." + from)) {
+                selectedKey = to;
+                std::vector<std::string> lines = {"Renamed " + set.table.ns + "." + from + " to " + set.table.ns + "." + to + " in the table and its translations."};
+                if (!references.empty()) lines.push_back("Not rewritten (update them to the new key):");
+                for (const l10n::KeyReference& reference : references) {
+                    lines.push_back("  " + reference.file + ":" + std::to_string(reference.line) + " (" + reference.kind + ")");
+                }
+                report("Rename Key", lines);
+            }
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndDisabled();
+        if (!valid && renameTo[0]) ImGui::TextDisabled("a new key of [a-z0-9_.-], not in the table");
+        ImGui::EndPopup();
+    }
+
+    // Import: a CSV or XLIFF file into this table, one undo step; the notes are listed
+    if (ImGui::BeginPopup("Import##l10n")) {
+        ImGui::Checkbox("Add new languages", &importAddLanguages);
+        if (ImGui::Button("Choose File...")) {
+            const std::string chosen = FileDialogs::openFileDialogFiltered(project->getProjectPath().string(), "Strings", "csv,xlf,xliff,tsv,txt");
+            if (!chosen.empty()) {
+                std::string body;
+                std::string error;
+                StringsFile strings;
+                if (!ProjectChecks::readFile(chosen, body) || !parseStrings(body, "auto", strings, error)) {
+                    report("Import", {"Could not read " + chosen + (error.empty() ? std::string() : ": " + error)});
+                } else {
+                    const l10n::StringTableSet before = set;
+                    l10n::StringTableSet after = set;
+                    int changed = 0;
+                    const std::vector<StringsNote> notes = l10n::importStrings(after, strings, importAddLanguages, changed);
+                    std::vector<std::string> lines = {"Imported " + std::to_string(changed) + " translation(s) from " + chosen + "."};
+                    for (const StringsNote& note : notes) {
+                        lines.push_back("  " + note.code + " " + note.key + (note.language.empty() ? "" : " (" + note.language + ")") + ": " + note.message);
+                    }
+                    if (changed > 0 && l10n::commitSet(project, &before, after, "Import Strings " + set.table.ns, &error)) set = std::move(after);
+                    else if (!error.empty()) lines.push_back("Not written: " + error);
+                    report("Import", lines);
+                }
+            }
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    // Export: CSV (one file) or XLIFF (one file per language) of the chosen languages
+    if (ImGui::BeginPopup("Export##l10n")) {
+        ImGui::RadioButton("CSV", &exportFormat, 0);
+        ImGui::SameLine();
+        ImGui::RadioButton("XLIFF", &exportFormat, 1);
+        for (const auto& entry : set.translations) {
+            bool on = std::find(exportLanguages.begin(), exportLanguages.end(), entry.first) != exportLanguages.end();
+            if (ImGui::Checkbox(entry.first.c_str(), &on)) {
+                if (on) exportLanguages.push_back(entry.first);
+                else exportLanguages.erase(std::remove(exportLanguages.begin(), exportLanguages.end(), entry.first), exportLanguages.end());
+            }
+        }
+        ImGui::BeginDisabled(exportLanguages.empty());
+        if (ImGui::Button("Export...")) {
+            const std::string name = set.table.ns + (exportFormat == 0 ? ".csv" : ".xlf");
+            const std::string chosen = FileDialogs::saveFileDialog(project->getProjectPath().string(), name, exportFormat == 0 ? "CSV" : "XLIFF",
+                                                                   exportFormat == 0 ? "csv" : "xlf");
+            if (!chosen.empty()) {
+                const fs::path target = chosen;
+                const std::vector<StringsExportDoc> docs = {l10n::exportDocOf(set, exportLanguages)};
+                std::vector<std::string> lines;
+                auto write = [&](const fs::path& file, const std::string& body) {
+                    const io::WriteResult result = io::writeFileAtomic(file, body);
+                    lines.push_back((result.ok() ? "Wrote " : "Could not write ") + file.generic_string() + (result.ok() ? "" : ": " + result.message));
+                };
+                if (exportFormat == 0) {
+                    write(target, exportStringsCsv(docs, exportLanguages));
+                } else {
+                    for (const auto& [code, body] : exportStringsXliff(docs, exportLanguages)) {
+                        write(target.parent_path() / (target.stem().string() + "." + code + ".xlf"), body);
+                    }
+                }
+                report("Export", lines);
+            }
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndDisabled();
+        ImGui::EndPopup();
+    }
+}
+
+void LocalizationTablesWindow::drawDialogs(l10n::StringTableSet&) {
+    if (openDialog) {
+        ImGui::OpenPopup("Localization##l10nReport");
+        openDialog = false;
+    }
+    if (ImGui::BeginPopup("Localization##l10nReport")) {
+        ImGui::TextUnformatted(dialogTitle.c_str());
+        ImGui::Separator();
+        for (const std::string& line : dialogLines) ImGui::TextUnformatted(line.c_str());
+        if (ImGui::Button("Close")) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+}
+
+namespace {
+
+    // a key from a text: "Options" -> "text.options", "New Game!" -> "text.new_game"
+    std::string keyFromText(const std::string& text, const l10n::StringTableSet& set) {
+        std::string slug;
+        for (unsigned char c : text) {
+            if (std::isalnum(c)) slug += static_cast<char>(std::tolower(c));
+            else if (!slug.empty() && slug.back() != '_') slug += '_';
+            if (slug.size() >= 40) break;
+        }
+        while (!slug.empty() && slug.back() == '_') slug.pop_back();
+        if (slug.empty()) slug = "text";
+        std::string key = "text." + slug;
+        for (int n = 2; set.table.find(key); n++) key = "text." + slug + "_" + std::to_string(n);
+        return key;
+    }
+
+}
+
+std::string LocalizationTablesWindow::extractToTable(Project* project, const fs::path& table, const std::string& documentFile,
+                                                     const std::string& text, std::string& error) {
+    l10n::StringTableSet before;
+    if (!l10n::loadSet(project->getProjectPath(), table, before, error)) return {};
+    const fs::path html = project->getAssetsPath() / documentFile;
+    std::string source;
+    if (!ProjectChecks::readFile(html, source)) {
+        error = documentFile + " cannot be read";
+        return {};
+    }
+    // the element holding the text: `>text<`, its start tag the last `<` before it
+    std::string needle = text;
+    while (!needle.empty() && std::isspace(static_cast<unsigned char>(needle.back()))) needle.pop_back();
+    while (!needle.empty() && std::isspace(static_cast<unsigned char>(needle.front()))) needle.erase(0, 1);
+    size_t at = std::string::npos;
+    for (size_t from = source.find(needle); from != std::string::npos; from = source.find(needle, from + 1)) {
+        size_t left = from;
+        while (left > 0 && std::isspace(static_cast<unsigned char>(source[left - 1]))) left--;
+        size_t right = from + needle.size();
+        while (right < source.size() && std::isspace(static_cast<unsigned char>(source[right]))) right++;
+        if (left > 0 && source[left - 1] == '>' && right < source.size() && source[right] == '<') {
+            at = left - 1;
+            break;
+        }
+    }
+    const size_t open = at == std::string::npos ? std::string::npos : source.rfind('<', at);
+    if (open == std::string::npos || source.compare(open, 2, "</") == 0 || source.compare(open, 2, "<!") == 0) {
+        error = "\"" + needle + "\" is not the whole text of an element of " + documentFile;
+        return {};
+    }
+    const std::string startTag = source.substr(open, at - open);
+    if (startTag.find("data-l10n-id") != std::string::npos) {
+        error = "the element already has a data-l10n-id";
+        return {};
+    }
+    l10n::StringTableSet after = before;
+    const std::string key = keyFromText(needle, after);
+    if (!l10n::applyOps(after, l10n::Json::array({{{"op", "set"}, {"key", key}, {"text", needle}}}), error)) return {};
+    const std::string global = after.table.ns + "." + key;
+    std::string edited = source;
+    edited.insert(at, " data-l10n-id=\"" + global + "\"");
+    // the table's files and the document as one step
+    std::vector<StringTableEditCmd::FileChange> changes;
+    for (const auto& [path, body] : after.files()) {
+        std::string disk;
+        std::optional<std::string> was;
+        if (ProjectChecks::readFile(path, disk)) was = disk;
+        if (was != body) changes.push_back({path, was, body});
+    }
+    changes.push_back({html, source, edited});
+    auto* command = new StringTableEditCmd(std::move(changes), "Extract to Table " + global, {}, project);
+    if (!project->getProjectCommandHistory()->addCommandNoMerge(command)) {
+        error = "the edit could not be written";
+        return {};
+    }
+    return global;
+}
+
 void LocalizationTablesWindow::drawMisses() {
+    // the documents' literal text (development builds and the editor): Extract to Table keys it
+    if (selected >= 0 && selected < static_cast<int>(tables.size())) {
+        int row = 0;
+        for (SceneProject& sceneProject : project->getScenes()) {
+            if (!sceneProject.scene) continue;
+            for (Entity entity : htmlui::HtmlUIInspector::documents(sceneProject.scene)) {
+                const UIDocumentComponent* document = sceneProject.scene->findComponent<UIDocumentComponent>(entity);
+                if (!document) continue;
+                for (const auto& [where, text] : htmlui::HtmlL10n::reportOf(sceneProject.scene, entity).literal) {
+                    ImGui::PushID(row++);
+                    if (ImGui::SmallButton("Extract to Table")) {
+                        std::string error;
+                        const std::string key = extractToTable(project, tables[selected].owner, document->filename, text, error);
+                        report("Extract to Table", {key.empty() ? "Not extracted: " + error : "Added " + key + " and data-l10n-id on " + where + " in " + document->filename + "."});
+                        dirty = true;
+                    }
+                    ImGui::SameLine();
+                    ImGui::Text("%s  %s: \"%s\"", document->filename.c_str(), where.c_str(), text.c_str());
+                    ImGui::PopID();
+                }
+            }
+        }
+        if (row > 0) ImGui::Separator();
+    }
     const std::vector<Localization::Miss> misses = Localization::getMisses();
     if (misses.empty()) {
         ImGui::TextDisabled("No misses this Play (untranslated, unknown or stale keys appear here while playing).");
@@ -303,13 +572,18 @@ void LocalizationTablesWindow::show() {
                 ImGui::TableNextColumn();
                 drawTableList();
                 ImGui::TableNextColumn();
-                if (selected >= 0 && selected < static_cast<int>(tables.size())) drawGrid(tables[selected]);
+                if (selected >= 0 && selected < static_cast<int>(tables.size())) {
+                    drawGrid(tables[selected]);
+                    drawDialogs(tables[selected]);
+                }
                 ImGui::EndTable();
             }
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem("Play Misses")) {
+        if (ImGui::BeginTabItem("Play Misses", nullptr, selectMisses ? ImGuiTabItemFlags_SetSelected : 0)) {
+            selectMisses = false;
             drawMisses();
+            if (selected >= 0 && selected < static_cast<int>(tables.size())) drawDialogs(tables[selected]);
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();

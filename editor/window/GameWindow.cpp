@@ -8,6 +8,7 @@
 #include "Out.h"
 #include "util/FileUtils.h"
 #include "localization/Localization.h"
+#include "window/LocalizationTablesWindow.h"
 #include "window/ContactSheetWindow.h"
 #include "audio/AudioCapture.h"
 #include "render/SystemRender.h"
@@ -1817,5 +1818,26 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     std::vector<std::string> all(lines, lines + lineCount);
     // after "Draw calls: ... Tris: ..."
     all.insert(all.begin() + 3, meshLines.begin(), meshLines.end());
+    // game-ui-localization.md R31: this Play's localisation misses; a click opens the window on them
+    size_t missLine = all.size();
+    if (playing && Localization::isActive()) {
+        uint32_t misses = 0;
+        for (const Localization::Miss& miss : Localization::getMisses()) misses += miss.count;
+        all.push_back("Localization: " + std::to_string(misses) + " misses (click: Localization Tables)");
+    }
     drawStatsBox(ImGui::GetWindowDrawList(), imageMin, imageMax, all);
+    if (missLine < all.size() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        // drawStatsBox's layout: the box at the top right, one text line each
+        float boxWidth = 0.0f;
+        for (const std::string& line : all) boxWidth = std::max(boxWidth, ImGui::CalcTextSize(line.c_str()).x);
+        const ImVec2 pad = Theme::dpi(ImVec2(10.0f, 8.0f));
+        const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
+        const float margin = Theme::dpi(8.0f);
+        const float left = std::max(imageMax.x - (boxWidth + pad.x * 2.0f) - margin, imageMin.x + margin);
+        const float top = imageMin.y + margin + pad.y + lineHeight * (float)missLine;
+        const ImVec2 mouse = ImGui::GetMousePos();
+        if (mouse.x >= left && mouse.x <= left + boxWidth + pad.x * 2.0f && mouse.y >= top && mouse.y < top + lineHeight) {
+            Backend::getApp().getLocalizationTablesWindow()->openMisses();
+        }
+    }
 }
