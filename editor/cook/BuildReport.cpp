@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <mutex>
 #include <set>
@@ -230,20 +231,19 @@ namespace {
         }
     };
 
-    // build-report.json read as it streams (SAX): no document tree, each value moved where it goes
-    class ReportReader : public Json::json_sax_t {
+    // What the scanner reads goes straight where it belongs: no document tree, each string moved.
+    // A container the report does not use (or, for a comparison, does not need) is skipped unread.
+    class ReportReader {
     public:
-        explicit ReportReader(BuildReport& report): report(report) {}
+        ReportReader(BuildReport& report, bool comparisonOnly): report(report), comparisonOnly(comparisonOnly) {}
 
         bool valid() const { return version == 1 && sawTop; }
 
-        bool null() override { return true; }
-        bool boolean(bool) override { return true; }
-        bool number_integer(Json::number_integer_t value) override { return value < 0 ? true : number((uint64_t)value); }
-        bool number_unsigned(Json::number_unsigned_t value) override { return number(value); }
-        bool number_float(Json::number_float_t, const Json::string_t&) override { return true; }
-        bool binary(Json::binary_t&) override { return true; }
-        bool string(Json::string_t& value) override {
+        // a value that is no unsigned integer or string (null, true, a float...)
+        void other(){
+            if (!frames.empty() && frames.back() == Frame::ReachItem) reachParts = 100;   // the entry is dropped
+        }
+        void string(std::string& value){
             const Frame top = frames.empty() ? Frame::Skip : frames.back();
             if (top == Frame::Top){
                 if (pending == "platform") report.platform = std::move(value);
@@ -268,9 +268,9 @@ namespace {
                 if (pending == "platform") budget.platform = std::move(value);
                 else if (pending == "category") budget.category = std::move(value);
             }
-            return true;
         }
-        bool start_object(std::size_t) override {
+        // false: the scanner skips the object
+        bool startObject(){
             if (frames.empty()){
                 sawTop = true;
                 frames.push_back(Frame::Top);
@@ -279,15 +279,16 @@ namespace {
             const Frame top = frames.back();
             Frame next = Frame::Skip;
             if (top == Frame::Top && pending == "categories") next = Frame::Categories;
-            else if (top == Frame::Top && pending == "reachability"){ next = Frame::Reach; report.reachability.emplace(); }
+            else if (top == Frame::Top && pending == "reachability" && !comparisonOnly){ next = Frame::Reach; report.reachability.emplace(); }
             else if (top == Frame::Reach && pending == "assets") next = Frame::ReachAssets;
             else if (top == Frame::FileList){ next = Frame::FileItem; file = BuildReportFile(); fileHasCategory = fileHasAsset = false; }
             else if (top == Frame::LeftList){ next = Frame::LeftItem; left = BuildReportLeftOut(); }
             else if (top == Frame::BudgetList){ next = Frame::BudgetItem; budget = BuildReportBudget(); }
+            if (next == Frame::Skip) return false;
             frames.push_back(next);
             return true;
         }
-        bool end_object() override {
+        void endObject(){
             const Frame top = frames.back();
             frames.pop_back();
             if (top == Frame::FileItem){
@@ -299,20 +300,20 @@ namespace {
             } else if (top == Frame::BudgetItem){
                 report.budgets.push_back(std::move(budget));
             }
-            return true;
         }
-        bool start_array(std::size_t) override {
+        bool startArray(){
             const Frame top = frames.empty() ? Frame::Skip : frames.back();
             Frame next = Frame::Skip;
             if (top == Frame::Top && pending == "largest"){ next = Frame::FileList; fileTarget = &report.largest; }
             else if (top == Frame::Top && pending == "files"){ next = Frame::FileList; fileTarget = &report.files; report.hasFiles = true; }
-            else if (top == Frame::Top && pending == "left_out") next = Frame::LeftList;
-            else if (top == Frame::Top && pending == "budgets") next = Frame::BudgetList;
+            else if (top == Frame::Top && pending == "left_out" && !comparisonOnly) next = Frame::LeftList;
+            else if (top == Frame::Top && pending == "budgets" && !comparisonOnly) next = Frame::BudgetList;
             else if (top == Frame::ReachAssets){ next = Frame::ReachItem; reachAsset = std::move(pending); reachParts = 0; }
+            if (next == Frame::Skip) return false;
             frames.push_back(next);
             return true;
         }
-        bool end_array() override {
+        void endArray(){
             const Frame top = frames.back();
             frames.pop_back();
             // [via, field, kind] and the GameObject; the writer gives them in key order
@@ -320,32 +321,11 @@ namespace {
                 report.reachability->emplace_hint(report.reachability->end(), std::move(reachAsset),
                                                   BuildReportReach{std::move(reachPart[0]), std::move(reachPart[1]), std::move(reachPart[2]),
                                                                    reachParts > 3 ? std::move(reachPart[3]) : std::string()});
-            return true;
         }
-        bool key(Json::string_t& value) override {
-            pending = std::move(value);
-            return true;
+        void key(std::string& value){
+            pending.swap(value);
         }
-        bool parse_error(std::size_t, const std::string&, const Json::exception&) override { return false; }
-
-    private:
-        enum class Frame { Top, Categories, FileList, FileItem, LeftList, LeftItem, Reach, ReachAssets, ReachItem, BudgetList, BudgetItem, Skip };
-
-        BuildReport& report;
-        std::vector<Frame> frames;
-        std::string pending;
-        bool sawTop = false;
-        int64_t version = 0;
-        BuildReportFile file;
-        bool fileHasCategory = false, fileHasAsset = false;
-        std::vector<BuildReportFile>* fileTarget = nullptr;
-        BuildReportLeftOut left;
-        BuildReportBudget budget;
-        std::string reachAsset;
-        std::string reachPart[4];
-        size_t reachParts = 0;
-
-        bool number(uint64_t value){
+        void number(uint64_t value){
             const Frame top = frames.empty() ? Frame::Skip : frames.back();
             if (top == Frame::Top){
                 if (pending == "version") version = (int64_t)value;
@@ -363,7 +343,216 @@ namespace {
             } else if (top == Frame::ReachItem){
                 reachParts = 100;   // not a string: the entry is dropped
             }
+        }
+
+    private:
+        enum class Frame { Top, Categories, FileList, FileItem, LeftList, LeftItem, Reach, ReachAssets, ReachItem, BudgetList, BudgetItem, Skip };
+
+        BuildReport& report;
+        bool comparisonOnly = false;
+        std::vector<Frame> frames;
+        std::string pending;
+        bool sawTop = false;
+        int64_t version = 0;
+        BuildReportFile file;
+        bool fileHasCategory = false, fileHasAsset = false;
+        std::vector<BuildReportFile>* fileTarget = nullptr;
+        BuildReportLeftOut left;
+        BuildReportBudget budget;
+        std::string reachAsset;
+        std::string reachPart[4];
+        size_t reachParts = 0;
+    };
+
+    // A JSON scanner for build-report.json: strings are found with memchr and decoded into one
+    // reused buffer, unsigned integers read in place, and a container the reader declines is
+    // skipped by bracket counting. nlohmann's parser, even its SAX interface, read a 20,000-file
+    // report at a third of the speed R23 needs.
+    class ReportScanner {
+    public:
+        ReportScanner(const std::string& text, ReportReader& reader): p(text.data()), end(text.data() + text.size()), reader(reader) {}
+
+        bool run(){
+            space();
+            if (p == end || *p != '{' || !value(0)) return false;
+            space();
+            return p == end;
+        }
+
+    private:
+        const char* p;
+        const char* end;
+        ReportReader& reader;
+        std::string buffer;
+        static constexpr int kMaxDepth = 64;
+
+        void space(){
+            while (p < end && (*p == ' ' || *p == '\n' || *p == '\r' || *p == '\t')) p++;
+        }
+        bool literal(const char* word, size_t length){
+            if ((size_t)(end - p) < length || std::memcmp(p, word, length) != 0) return false;
+            p += length;
             return true;
+        }
+        static void utf8(std::string& out, uint32_t code){
+            if (code < 0x80) out += (char)code;
+            else if (code < 0x800){ out += (char)(0xC0 | (code >> 6)); out += (char)(0x80 | (code & 0x3F)); }
+            else if (code < 0x10000){ out += (char)(0xE0 | (code >> 12)); out += (char)(0x80 | ((code >> 6) & 0x3F)); out += (char)(0x80 | (code & 0x3F)); }
+            else { out += (char)(0xF0 | (code >> 18)); out += (char)(0x80 | ((code >> 12) & 0x3F)); out += (char)(0x80 | ((code >> 6) & 0x3F)); out += (char)(0x80 | (code & 0x3F)); }
+        }
+        bool hex4(uint32_t& out){
+            if (end - p < 4) return false;
+            out = 0;
+            for (int i = 0; i < 4; i++){
+                const char c = *p++;
+                out <<= 4;
+                if (c >= '0' && c <= '9') out |= (uint32_t)(c - '0');
+                else if (c >= 'a' && c <= 'f') out |= (uint32_t)(c - 'a' + 10);
+                else if (c >= 'A' && c <= 'F') out |= (uint32_t)(c - 'A' + 10);
+                else return false;
+            }
+            return true;
+        }
+        // p at the opening quote; the decoded text in `buffer`
+        bool string(){
+            p++;
+            buffer.clear();
+            while (true){
+                const char* quote = (const char*)std::memchr(p, '"', (size_t)(end - p));
+                if (!quote) return false;
+                const char* escape = (const char*)std::memchr(p, '\\', (size_t)(quote - p));
+                if (!escape){
+                    buffer.append(p, (size_t)(quote - p));
+                    p = quote + 1;
+                    return true;
+                }
+                buffer.append(p, (size_t)(escape - p));
+                p = escape + 1;
+                if (p == end) return false;
+                const char c = *p++;
+                switch (c){
+                    case '"': buffer += '"'; break;
+                    case '\\': buffer += '\\'; break;
+                    case '/': buffer += '/'; break;
+                    case 'b': buffer += '\b'; break;
+                    case 'f': buffer += '\f'; break;
+                    case 'n': buffer += '\n'; break;
+                    case 'r': buffer += '\r'; break;
+                    case 't': buffer += '\t'; break;
+                    case 'u': {
+                        uint32_t code = 0;
+                        if (!hex4(code)) return false;
+                        // a surrogate pair is one character
+                        if (code >= 0xD800 && code < 0xDC00){
+                            uint32_t low = 0;
+                            if (!literal("\\u", 2) || !hex4(low) || low < 0xDC00 || low > 0xDFFF) return false;
+                            code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00);
+                        }
+                        utf8(buffer, code);
+                        break;
+                    }
+                    default: return false;
+                }
+            }
+        }
+        // a skipped string: only where it ends
+        bool skipString(){
+            p++;
+            while (true){
+                const char* quote = (const char*)std::memchr(p, '"', (size_t)(end - p));
+                if (!quote) return false;
+                // the quote is escaped when an odd number of backslashes precede it
+                const char* back = quote;
+                while (back > p && back[-1] == '\\') back--;
+                p = quote + 1;
+                if (((quote - back) & 1) == 0) return true;
+            }
+        }
+        bool number(){
+            const char* start = p;
+            if (p < end && *p == '-') p++;
+            uint64_t value = 0;
+            bool digits = false, plain = *start != '-';
+            while (p < end && *p >= '0' && *p <= '9'){
+                value = value * 10 + (uint64_t)(*p - '0');
+                p++;
+                digits = true;
+            }
+            if (p < end && (*p == '.' || *p == 'e' || *p == 'E')){
+                plain = false;
+                while (p < end && (std::isdigit((unsigned char)*p) || *p == '.' || *p == 'e' || *p == 'E' || *p == '+' || *p == '-')) p++;
+            }
+            if (!digits) return false;
+            if (plain) reader.number(value);
+            else reader.other();
+            return true;
+        }
+        // a container the reader declined: brackets counted, strings stepped over
+        bool skipContainer(){
+            int depth = 0;
+            while (p < end){
+                const char c = *p;
+                if (c == '"'){
+                    if (!skipString()) return false;
+                    continue;
+                }
+                p++;
+                if (c == '{' || c == '[') depth++;
+                else if (c == '}' || c == ']'){
+                    if (--depth == 0) return true;
+                }
+            }
+            return false;
+        }
+        bool value(int depth){
+            if (p == end || depth > kMaxDepth) return false;
+            switch (*p){
+                case '{': {
+                    if (!reader.startObject()) return skipContainer();
+                    p++;
+                    space();
+                    if (p < end && *p == '}'){ p++; reader.endObject(); return true; }
+                    while (true){
+                        space();
+                        if (p == end || *p != '"' || !string()) return false;
+                        reader.key(buffer);
+                        space();
+                        if (p == end || *p++ != ':') return false;
+                        space();
+                        if (!value(depth + 1)) return false;
+                        space();
+                        if (p == end) return false;
+                        if (*p == ','){ p++; continue; }
+                        if (*p++ != '}') return false;
+                        reader.endObject();
+                        return true;
+                    }
+                }
+                case '[': {
+                    if (!reader.startArray()) return skipContainer();
+                    p++;
+                    space();
+                    if (p < end && *p == ']'){ p++; reader.endArray(); return true; }
+                    while (true){
+                        space();
+                        if (!value(depth + 1)) return false;
+                        space();
+                        if (p == end) return false;
+                        if (*p == ','){ p++; continue; }
+                        if (*p++ != ']') return false;
+                        reader.endArray();
+                        return true;
+                    }
+                }
+                case '"':
+                    if (!string()) return false;
+                    reader.string(buffer);
+                    return true;
+                case 't': reader.other(); return literal("true", 4);
+                case 'f': reader.other(); return literal("false", 5);
+                case 'n': reader.other(); return literal("null", 4);
+                default: return number();
+            }
         }
     };
 
@@ -466,10 +655,11 @@ std::string BuildReport::toText() const{
     return std::move(w.out);
 }
 
-bool BuildReport::parse(const std::string& text, BuildReport& out){
+bool BuildReport::parse(const std::string& text, BuildReport& out, bool comparisonOnly){
     out = BuildReport();
-    ReportReader reader(out);
-    if (!Json::sax_parse(text, &reader) || !reader.valid()){
+    ReportReader reader(out, comparisonOnly);
+    ReportScanner scanner(text, reader);
+    if (!scanner.run() || !reader.valid()){
         out = BuildReport();
         return false;
     }
@@ -633,7 +823,7 @@ bool BuildReport::write(const fs::path& file, std::string& error) const{
     return true;
 }
 
-bool BuildReport::load(const fs::path& file, BuildReport& out, std::string& error){
+bool BuildReport::load(const fs::path& file, BuildReport& out, std::string& error, bool comparisonOnly){
     std::ifstream in(file, std::ios::binary | std::ios::ate);
     if (!in){
         error = "no " + std::string(kFileName) + " at " + FileUtils::pathToUtf8(file.parent_path());
@@ -643,7 +833,7 @@ bool BuildReport::load(const fs::path& file, BuildReport& out, std::string& erro
     std::string text((size_t)std::max<std::streamoff>(0, in.tellg()), '\0');
     in.seekg(0);
     in.read(text.data(), (std::streamsize)text.size());
-    if (!parse(text, out)){
+    if (!parse(text, out, comparisonOnly)){
         error = FileUtils::pathToUtf8(file) + " is not a build report";
         return false;
     }

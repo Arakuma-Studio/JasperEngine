@@ -1881,7 +1881,7 @@ void ExportWindow::drawProgress() {
                 // build-size-tools R32: against the platform's report before this one
                 const std::string previous = m_shownReportLoaded ? BuildReportHistory::previous(m_project->getProjectPath(), m_shownReportData) : "";
                 BuildReport before;
-                if (!previous.empty() && BuildReport::load(BuildReportHistory::resolve(m_project->getProjectPath(), previous, reportError), before, reportError)) {
+                if (!previous.empty() && BuildReport::load(BuildReportHistory::resolve(m_project->getProjectPath(), previous, reportError), before, reportError, true)) {
                     const int64_t delta = (int64_t)m_shownReportData.totalBytes - (int64_t)before.totalBytes;
                     std::string when = before.created.size() >= 16 ? before.created.substr(0, 10) + " " + before.created.substr(11, 5) : previous;
                     m_shownReportSince = std::string(" (") + (delta < 0 ? "-" : "+") + BuildReport::formatBytes((uint64_t)(delta < 0 ? -delta : delta)) +

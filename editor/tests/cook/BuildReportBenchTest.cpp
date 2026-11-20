@@ -62,7 +62,7 @@ TEST(BuildReportBench, LargeReport) {
     std::string error;
     ASSERT_TRUE(largeReport(0).write(dir.path() / "base.json", error)) << error;
     // the best of three runs of each step: a shared builder's load comes and goes
-    double writeMs = 1e9, parseMs = 1e9, compareMs = 1e9, chainMs = 1e9;
+    double writeMs = 1e9, parseMs = 1e9, fullParseMs = 1e9, compareMs = 1e9, chainMs = 1e9;
     BuildReport base, loaded;
     BuildReportDiff diff;
     BuildReportReferrers why;
@@ -71,10 +71,16 @@ TEST(BuildReportBench, LargeReport) {
         ASSERT_TRUE(head.write(dir.path() / "head.json", error)) << error;
         writeMs = std::min(writeMs, msSince(start));
 
+        // as get_build_report compare_to reads them: the report whole, the one it is compared with for
+        // what the comparison needs
         start = std::chrono::steady_clock::now();
-        ASSERT_TRUE(BuildReport::load(dir.path() / "base.json", base, error)) << error;
+        ASSERT_TRUE(BuildReport::load(dir.path() / "base.json", base, error, true)) << error;
         ASSERT_TRUE(BuildReport::load(dir.path() / "head.json", loaded, error)) << error;
         parseMs = std::min(parseMs, msSince(start));
+        start = std::chrono::steady_clock::now();
+        BuildReport whole;
+        ASSERT_TRUE(BuildReport::load(dir.path() / "base.json", whole, error)) << error;
+        fullParseMs = std::min(fullParseMs, msSince(start));
         start = std::chrono::steady_clock::now();
         diff = compareBuildReports(base, loaded);
         compareMs = std::min(compareMs, msSince(start));
@@ -88,7 +94,8 @@ TEST(BuildReportBench, LargeReport) {
     EXPECT_EQ(why.chain.size(), 3u);
 
     std::printf("[ PERF ] build report of 20000 files: write %.1f ms (150), %.2f MB (4), parse two %.1f ms + compare %.1f ms = %.1f ms (80), "
-                "chain %.3f ms (1)\n", writeMs, (double)bytes / 1048576.0, parseMs, compareMs, parseMs + compareMs, chainMs);
+                "chain %.3f ms (1); one report read whole %.1f ms\n", writeMs, (double)bytes / 1048576.0, parseMs, compareMs, parseMs + compareMs,
+                chainMs, fullParseMs);
     EXPECT_LE(bytes, 4u * 1048576u) << "a report of 20,000 files fits 4 MB";
     if (slack > 0.0) {
         EXPECT_LE(writeMs, 150.0 * slack);

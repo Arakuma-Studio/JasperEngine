@@ -238,6 +238,16 @@ TEST(BuildReportTest, TextRoundTrips) {
     BuildReport old;
     ASSERT_TRUE(BuildReport::parse(editor::test::readText(editor::test::fixture("build-report/v1-largest-only.json")), old));
     EXPECT_FALSE(old.hasFiles);
+    // for a comparison: the files and totals, nothing of reachability, left-out sources or budgets
+    BuildReport compared;
+    ASSERT_TRUE(BuildReport::parse(text, compared, true));
+    EXPECT_EQ(compared.files.size(), 5u);
+    EXPECT_EQ(compared.totalBytes, report.totalBytes);
+    EXPECT_FALSE(compared.reachability.has_value());
+    EXPECT_TRUE(compared.leftOut.empty());
+    EXPECT_TRUE(compared.budgets.empty());
+    EXPECT_TRUE(BuildReport::parse("{\"version\": 1, \"x\": [\"a\\\"]\", {\"y\": [1, 2.5e3, -4, null, true]}]}", read))
+        << "an unknown value of any shape is skipped";
     EXPECT_FALSE(BuildReport::parse("{\"version\": 2}", read));
     EXPECT_FALSE(BuildReport::parse("[1, 2]", read));
     EXPECT_FALSE(BuildReport::parse("{\"version\": 1", read));
