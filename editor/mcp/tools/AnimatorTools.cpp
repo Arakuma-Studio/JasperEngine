@@ -2207,9 +2207,11 @@ Json animatorLayers(Project* project, SceneProject* scene, Entity entity) {
         animator.controller.path.empty() ? nullptr : AnimatorAssetDocument::open(project, animator.controller.path, nullptr);
     if (!document || !document->loadError().empty()) return item;
     const ControllerDef& def = document->controller();
-    // the boundary bones are the bound rig's: in edit mode bind once, then put the scene back
+    // the boundary bones are the bound rig's: in edit mode bind once, then put the scene back,
+    // unless someone previews this Animator (the Animator window, preview_animator): binding
+    // and restoring would end their preview, so its runtime is read as it is
     AnimatorSystem* system = engineScene->getSystem<AnimatorSystem>().get();
-    const bool live = scene->playState != ScenePlayState::STOPPED || previewing(scene->id, root);
+    const bool live = scene->playState != ScenePlayState::STOPPED || PreviewOwner::ownerOf(scene->id, root).token != 0;
     const bool inspected = !live && system->preview(root, 0.0f, nullptr);
     const AnimatorInstance* instance = animator.runtime.get();
     const bool bound = instance && instance->bound && instance->controller && instance->controller->layers.size() == def.layers.size();
