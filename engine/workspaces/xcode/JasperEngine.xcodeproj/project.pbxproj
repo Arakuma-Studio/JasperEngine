@@ -5034,6 +5034,8 @@
 		4A534E47EAB1A42259BC93EB /* MessageFormat.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470B2329871720CC02 /* MessageFormat.h */; };
 		4A534E47229FA6D5C6CA97D7 /* PluralRules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D7DC5A2BBDDA5149 /* PluralRules.h */; };
 		4A534E4772F8D292D061E001 /* StringTableRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474CC8A9C045EE16B4 /* StringTableRuntime.h */; };
+		4A534E530375D5DAE4E19591 /* DevelopmentContent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5391C68DED5B482106 /* DevelopmentContent.cpp */; };
+		4A534E530891EB6799B6865C /* DevelopmentContent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5391C68DED5B482106 /* DevelopmentContent.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9680,6 +9682,7 @@
 		4A534E470B2329871720CC02 /* MessageFormat.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MessageFormat.h; sourceTree = "<group>"; };
 		4A534E47D7DC5A2BBDDA5149 /* PluralRules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PluralRules.h; sourceTree = "<group>"; };
 		4A534E474CC8A9C045EE16B4 /* StringTableRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StringTableRuntime.h; sourceTree = "<group>"; };
+		4A534E5391C68DED5B482106 /* DevelopmentContent.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DevelopmentContent.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -11370,6 +11373,7 @@
 				4A534E47C484ACD2846CB3C2 /* RunControl.h */,
 				4A534E473BFB6BEEE8990A48 /* PlayerModules.cpp */,
 				4A534E47A4609FEFF72DC9EF /* PlayerModules.h */,
+				4A534E5391C68DED5B482106 /* DevelopmentContent.cpp */,
 			);
 			path = player;
 			sourceTree = "<group>";
@@ -19861,6 +19865,7 @@
 				4A534E470BC7FF2CD66B3751 /* MessageFormat.cpp in Sources */,
 				4A534E47760F4276DE1BB621 /* PluralRules.cpp in Sources */,
 				4A534E479CBBFD13794893E2 /* StringTableRuntime.cpp in Sources */,
+				4A534E530891EB6799B6865C /* DevelopmentContent.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20870,6 +20875,7 @@
 				4A534E47B87D66B801A34840 /* MessageFormat.cpp in Sources */,
 				4A534E4734B46E4A8AA1BD54 /* PluralRules.cpp in Sources */,
 				4A534E476D731FF6DD75A960 /* StringTableRuntime.cpp in Sources */,
+				4A534E530375D5DAE4E19591 /* DevelopmentContent.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
