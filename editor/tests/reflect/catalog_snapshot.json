@@ -12780,8 +12780,10 @@
    "known_keys": [
     "enabled",
     "filename",
+    "gamepadCursor",
     "inputSurface",
     "interactive",
+    "isMenu",
     "pixelRatio",
     "renderMode",
     "sortOrder",
@@ -12800,12 +12802,22 @@
      274877906944,
      true
     ],
+    "gamepadCursor": [
+     0,
+     0,
+     true
+    ],
     "inputSurface": [
      16,
      0,
      true
     ],
     "interactive": [
+     0,
+     0,
+     true
+    ],
+    "isMenu": [
      0,
      0,
      true
@@ -12847,12 +12859,22 @@
      274877906944,
      true
     ],
+    "gamepadCursor": [
+     0,
+     0,
+     true
+    ],
     "inputSurface": [
      16,
      0,
      true
     ],
     "interactive": [
+     0,
+     0,
+     true
+    ],
+    "isMenu": [
      0,
      0,
      true
@@ -32624,12 +32646,22 @@
     274877906944,
     true
    ],
+   "gamepadCursor": [
+    0,
+    0,
+    true
+   ],
    "inputSurface": [
     16,
     0,
     true
    ],
    "interactive": [
+    0,
+    0,
+    true
+   ],
+   "isMenu": [
     0,
     0,
     true
