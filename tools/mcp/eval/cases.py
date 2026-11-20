@@ -5702,4 +5702,94 @@ CASES = [
                    "reply_must": [r"vector|_Xlength|Level::load|terminate"]},
         "max_turns": 10,
     },
+    # -- shipped-game-diagnostics P1/P2: the guide's "A game's own reports" lines and lua-api.md's Report a
+    # Problem and Journal paragraphs. -------------------------------------------------------------------------
+    {
+        "id": "user_report_in_play",
+        "kind": "guard",
+        "playing": True,
+        "groups_enabled": ["diagnostics"],
+        "what_happened": "A user report starts with a capture of the frame (Crash.beginReport), whose callback runs a frame "
+                         "later; only then does Crash.createReport write the folder. An agent that calls createReport alone gets "
+                         "no screenshot, and one that writes files by hand bypasses the engine's report.",
+        "text_at_issue": "crash-diagnostics.md 'A game's own reports' first line; lua-api.md 'Report a Problem' block",
+        "source": "docs/specs/shipped-game-diagnostics.md R11, R14, R38",
+        "prompt": "The game is playing in the editor. Check that a player's 'Report a Problem' works end to end: make a user "
+                  "report from the running game, with a screenshot of the frame and the note 'door stuck', then tell me which "
+                  "files the report folder holds.",
+        "mocks": [
+            {"tool": "eval_lua", "args": {"code": "re:Crash\\.beginReport"}, "result": ok("nil", {"values": []})},
+            {"tool": "wait", "result": ok("Waited 2 frames: the condition holds.", {"frames": 2, "met": True})},
+            {"tool": "eval_lua", "args": {"code": "re:Crash\\.createReport"}, "result": ok(
+                "{id = \"20261120T101500Z-4242-user1\", kind = \"user\", category = \"other\"}",
+                {"values": [{"id": "20261120T101500Z-4242-user1", "kind": "user", "category": "other"}]})},
+            {"tool": "eval_lua", "result": ok("true", {"values": [True]})},
+            {"tool": "get_crash_reports", "result": ok("1 report in /home/me/.config/jasperengine/reports.", {
+                "folder": "/home/me/.config/jasperengine/reports", "session": "20261120T101500Z-4242", "notice_open": False,
+                "reports": [{"id": "20261120T101500Z-4242-user1", "kind": "user", "time": "2026-11-20T10:15:02Z",
+                             "reason": "user report (other): door stuck", "product": "Space Dodge", "version": "0.3",
+                             "folder": "/home/me/.config/jasperengine/reports/20261120T101500Z-4242-user1",
+                             "files": ["device.json", "journal.txt", "log-tail.txt", "screenshot.jpg", "user.txt"],
+                             "handled": False, "this_session": False}]})},
+        ],
+        "checks": {"calls": [{"tool": "eval_lua", "args": {"code": "re:Crash\\.beginReport"}},
+                             {"tool": "eval_lua", "args": {"code": "re:Crash\\.createReport"}}],
+                   "order": [[{"tool": "eval_lua", "args": {"code": "re:Crash\\.beginReport"}},
+                              {"tool": "eval_lua", "args": {"code": "re:Crash\\.createReport"}}]],
+                   "reply_must": [r"screenshot\.jpg"],
+                   "edits_must_not": [r"user\.txt|screenshot"]},
+        "max_turns": 14,
+    },
+    {
+        "id": "journal_before_the_error",
+        "kind": "guard",
+        "what_happened": "What the game did just before an error is in the Gameplay Journal, which the Console keeps in its "
+                         "journal category; without the hint an agent pages the whole Console or guesses from the script.",
+        "text_at_issue": "crash-diagnostics.md 'A game's own reports' second line (read_console categories journal)",
+        "source": "docs/specs/shipped-game-diagnostics.md R34, R38",
+        "prompt": "Play stopped a moment ago with a script error. Before touching any code: which level was the player in and "
+                  "what had they just done when it happened?",
+        "mocks": [
+            {"tool": "read_console", "args": {"categories": ["journal"]}, "result": ok(
+                "4 entries (0 error(s), 0 warning(s)). next_cursor 214.", {"next_cursor": 214, "entries": [
+                    {"id": 207, "level": "info", "type": "log", "category": "journal", "frame": 310,
+                     "message": "engine.scene_loaded ms=212 name=Forest2"},
+                    {"id": 209, "level": "info", "type": "log", "category": "journal", "frame": 1880,
+                     "message": "level.start name=forest-2 seed=42"},
+                    {"id": 211, "level": "info", "type": "log", "category": "journal", "frame": 2405,
+                     "message": "player.pickup item=rusty_key"},
+                    {"id": 213, "level": "info", "type": "log", "category": "journal", "frame": 2411,
+                     "message": "engine.play state=stop"}]})},
+            {"tool": "read_console", "result": ok(
+                "2 entries (1 error(s), 0 warning(s)). next_cursor 214.", {"next_cursor": 214, "entries": [
+                    {"id": 212, "level": "error", "type": "error", "category": "lua", "frame": 2410,
+                     "message": "Script crash in scene 'Forest2': scripts/door.lua:41: attempt to index a nil value (field 'lock')"},
+                    {"id": 213, "level": "info", "type": "log", "category": "journal", "frame": 2411,
+                     "message": "engine.play state=stop"}]})},
+        ],
+        "checks": {"calls": [{"tool": "read_console", "args": {"categories": ["journal"]}}],
+                   "reply_must": [r"forest", r"key"],
+                   "edits_must_not": [r"\.lua$"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "journal_log_in_script",
+        "kind": "guard",
+        "files": GAME_FILES,
+        "what_happened": "Crash reports carry the game's events only through the Gameplay Journal (Journal.log); Crash.setTag "
+                         "keeps one value per key and Log lines are pushed out by a log storm.",
+        "text_at_issue": "lua-api.md 'Journal' paragraph",
+        "source": "docs/specs/shipped-game-diagnostics.md R2, R5, R39",
+        "prompt": "Our crash reports never say what the player was doing. Write scripts/LevelEvents.lua: when the level starts "
+                  "it records a game event for the crash reports with the level name 'forest-2' and the seed 42. Just write "
+                  "the file; don't attach or run it.",
+        "mocks": [
+            {"tool": "check_script", "result": ok("scripts/LevelEvents.lua: no syntax errors.", {"ok": True, "problems": []})},
+            {"tool": "create_script", "result": ok("Created scripts/LevelEvents.lua.", {"path": "scripts/LevelEvents.lua"})},
+        ],
+        "checks": {"any_of": [{"file_must": {"scripts/LevelEvents.lua": [r"Journal\.log\s*\(", r"forest-2"]}},
+                              {"calls": [{"tool": "create_script", "args": {"content": r"re:(?s)Journal\.log\s*\(.*forest-2"}}]}],
+                   "must_not_call": ["play", "attach_script"]},
+        "max_turns": 20,
+    },
 ]

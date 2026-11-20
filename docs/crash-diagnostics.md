@@ -155,7 +155,7 @@ then says what the player was doing, not only where the code died.
 
 ```lua
 Journal.log("level.start", {name = "forest-2", seed = 42, hard = true})
-Journal.enabled              -- read-only: false when Gameplay Journal (KiB) is 0
+local on = Journal.enabled   -- read-only: false when Gameplay Journal (KiB) is 0
 Journal.getEntries(20)       -- the newest 20: {{time = 412.031, frame = 24718, kind = "level.start", text = "..."}, ...}
 Journal.getText()            -- journal.txt as a report would hold it now
 Journal.clear()              -- a new run of a level, a privacy reset

@@ -1629,7 +1629,7 @@ Crash.cancelReport()                                        -- drops the draft
 
 ```lua
 Journal.log("level.start", {name = "forest-2", seed = 42})   -- kind [A-Za-z0-9_.:-]{1,48}, 12 fields
-Journal.enabled                                              -- read-only property
+local on = Journal.enabled                                   -- read-only property
 Journal.getEntries(20)                                       -- {{time, frame, kind, text}, ...} oldest first
 Journal.getText()                                            -- journal.txt
 Journal.clear()
