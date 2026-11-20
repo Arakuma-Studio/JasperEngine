@@ -22,6 +22,7 @@
 #include "audio/AudioCredits.h"
 #include "audio/AudioImport.h"
 #include "audio/AudioImportRegistry.h"
+#include "audio/MonoWavCook.h"
 #include "shader/ShaderWarmup.h"
 #include "shader/ShaderVariantCollector.h"
 #include "player/PlayerModules.h"
@@ -3615,8 +3616,29 @@ bool editor::Exporter::cookTextures() {
 
 bool editor::Exporter::writeAudioImports() {
     std::vector<std::string> problems;
-    const std::string text = AudioImportRegistry::exportText(AudioImportRegistry::collect(*project, problems));
+    const std::map<std::string, ClipImportSettings> clips = AudioImportRegistry::collect(*project, problems);
+    const std::string text = AudioImportRegistry::exportText(clips);
     for (const std::string& problem : problems) warn("W-AUDIO-IMPORT", "import settings not exported: " + problem);
+    // Force To Mono: a shipped PCM or float WAV is rewritten mono from its source (the same bytes every
+    // export); other formats ship as they are and fold at run time
+    cookedAudioSizes.clear();
+    for (const auto& [clip, clipSettings] : clips) {
+        if (!clipSettings.forceMono) continue;
+        const fs::path shipped = getExportProjectRoot() / "assets" / FileUtils::pathFromUtf8(clip);
+        std::error_code ec;
+        if (!fs::is_regular_file(shipped, ec)) continue;
+        std::ifstream in(project->getAssetsPath() / FileUtils::pathFromUtf8(clip), std::ios::binary);
+        if (!in) continue;
+        const std::string original((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        std::string mono;
+        if (!MonoWavCook::cook(original, mono)) continue;
+        const io::WriteResult cooked = io::writeFileAtomic(shipped, mono);
+        if (!cooked.ok()) {
+            setError("Can't write " + FileUtils::pathToGenericUtf8(shipped) + ": " + cooked.message);
+            return false;
+        }
+        cookedAudioSizes["assets/" + clip] = {clip, (uint64_t)original.size()};
+    }
     // a project without settings writes no file: its build is byte-identical to one without this
     if (text.empty()) return true;
     const fs::path target = getExportProjectRoot() / "assets" / AudioImportTable::FILE_NAME;
@@ -3735,6 +3757,7 @@ bool editor::Exporter::cookModels() {
 void editor::Exporter::measureBuildContent(const fs::path& contentRoot) {
     std::map<std::string, std::pair<std::string, uint64_t>> cooked = cookedModelSizes;
     for (const auto& [file, source] : BuildReport::cookedTextures(contentRoot / "assets", project->getAssetsPath())) cooked[file] = source;
+    for (const auto& [file, source] : cookedAudioSizes) cooked[file] = source;
     for (const char* tree : {"assets", "lua", "scenes", "prefabs"}) {
         std::error_code ec;
         if (fs::is_directory(contentRoot / tree, ec)) buildReport.addTree(contentRoot / tree, cooked, {}, std::string(tree) + "/");

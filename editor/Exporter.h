@@ -266,6 +266,9 @@ namespace jasperengine::editor {
         // S53 R21: what the export's cooks measured, for the Build Report: a cooked file's build
         // path -> its source asset and that source's bytes
         std::map<std::string, std::pair<std::string, uint64_t>> cookedModelSizes;
+        // build-size-tools R19: the WAVs Force To Mono shipped mono, the same way (build path
+        // "assets/<rel>" -> the asset and the original file's bytes)
+        std::map<std::string, std::pair<std::string, uint64_t>> cookedAudioSizes;
         BuildReport buildReport;
         // S44: the imports of the project's .aseprite files (gatherImportedAssets), shipped as
         // assets/je-imported/ with its index.json; the .aseprite files themselves never ship

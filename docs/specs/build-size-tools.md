@@ -508,4 +508,14 @@ inline constexpr double MONO_SIDE_MID_DB = -18.0;
 
 ## Deviations
 
-None yet.
+Force To Mono (P3):
+
+- Test names follow the suites their files already use: AC11's `ClipSourceTest.ForceMonoMeanOfChannels` is
+  `AudioClipSource.ForceMonoMeanOfChannels`, AC20's `ClipSourceTest.ImportTableForceMono` is
+  `AudioImportTable.ImportTableForceMono`, `ClipSourceBudgetTest` is the suite `ClipSourceBudget`, AC9's test is
+  `AudioAnalysis.SideMidWidth`. AC11's pinned hashes are `ClipImportSettings.ExistingHashesStayAndForceMonoChangesIt`.
+- `analyze_audio` reports the channels as a clip plays in `played.channels` (every played item), and the file's
+  `stereo` joins the keys copied under `source`, so a forced clip still shows the file's `side_mid_db`.
+- Auto treats a null correlation (one channel constant) as not cancelling: only the width decides then.
+- The mono WAV cook writes only the `fmt ` and `data` chunks: a clip's loop and trims come from its import
+  settings, not from `smpl` or `cue ` chunks, which the engine does not read.
