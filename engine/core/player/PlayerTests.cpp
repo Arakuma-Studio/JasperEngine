@@ -33,7 +33,7 @@ namespace {
 
     bool readFile(const std::string& path, std::string& out) {
         Data data;
-        if (data.open(path.c_str()) == 0 || !data.getMemPtr()) return false;
+        if (data.open(path.c_str()) != FileErrors::FILEDATA_OK || !data.getMemPtr()) return false;
         out.assign(reinterpret_cast<const char*>(data.getMemPtr()), data.length());
         return true;
     }
