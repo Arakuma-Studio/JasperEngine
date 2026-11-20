@@ -352,7 +352,8 @@ async def test_player_perf_summary(ed: Editor):
         while r.get("status") == "running" and time.monotonic() < deadline:
             await asyncio.sleep(3)
             r = await ed.call("get_job", job_id=r["job_id"], log_lines=10)
-        r = r.get("result", r)
+    ed.check_eq(r.get("status", "succeeded"), "succeeded", f"{r}")
+    r = r.get("result", r)
     ed.check_eq((r.get("method_used"), r.get("player_id")), ("prebuilt", runtime.name), f"{r}")
     summary = ed.scratch.root / "perf.json"
     raw = await ed.call_raw("run_build", {"after_ready": True, "quit_after": 360, "seconds": 120, "screenshot": False,
