@@ -508,6 +508,8 @@ inline constexpr double MONO_SIDE_MID_DB = -18.0;
 
 ## Deviations
 
+Report, history, reachability and budgets (P1, P2):
+
 - **Names.** The comparison is the free function `compareBuildReports(base, head)` and the walk takes
   `ReachEdge`s (both ends as report asset keys; `reachEdgesOf` converts the index's `DepEdge`s), so
   the exporter and `get_build_info`'s live answer (R10) share one conversion. `BuildReport::last()`
@@ -538,3 +540,15 @@ inline constexpr double MONO_SIDE_MID_DB = -18.0;
 - **`profile_excluded`** (build-profiles.md landed first): Left Out lists each file a Build Profile's
   exclusions leave out of the assets walk; a profile's own budget rows come through its
   `player.size_budgets` override, which the build's settings snapshot applies.
+
+Force To Mono (P3):
+
+- Test names follow the suites their files already use: AC11's `ClipSourceTest.ForceMonoMeanOfChannels` is
+  `AudioClipSource.ForceMonoMeanOfChannels`, AC20's `ClipSourceTest.ImportTableForceMono` is
+  `AudioImportTable.ImportTableForceMono`, `ClipSourceBudgetTest` is the suite `ClipSourceBudget`, AC9's test is
+  `AudioAnalysis.SideMidWidth`. AC11's pinned hashes are `ClipImportSettings.ExistingHashesStayAndForceMonoChangesIt`.
+- `analyze_audio` reports the channels as a clip plays in `played.channels` (every played item), and the file's
+  `stereo` joins the keys copied under `source`, so a forced clip still shows the file's `side_mid_db`.
+- Auto treats a null correlation (one channel constant) as not cancelling: only the width decides then.
+- The mono WAV cook writes only the `fmt ` and `data` chunks: a clip's loop and trims come from its import
+  settings, not from `smpl` or `cue ` chunks, which the engine does not read.

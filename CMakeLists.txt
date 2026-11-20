@@ -1558,6 +1558,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/AudioImportSettings.cpp
     ${EDITOR_DIR}/audio/AudioMusicGrid.cpp
     ${EDITOR_DIR}/audio/AudioProvenance.cpp
+    ${EDITOR_DIR}/audio/MonoWavCook.cpp
     ${EDITOR_DIR}/audio/LoudnessMonitor.cpp
     ${EDITOR_DIR}/command/type/ShaderGlobalsCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsCmd.cpp
