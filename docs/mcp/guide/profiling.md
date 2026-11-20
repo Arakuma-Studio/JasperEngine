@@ -27,6 +27,9 @@ Scene view), `"game"` or `"scene"` by name, or a view tag.
 (16.7 ms at 60 fps). `cpu_ms` is the main thread's work without presenting and waiting; `gpu_ms`
 is the game frame's GPU time while GPU timing runs.
 
+**Game frame rate on a device?** Run the player with `--perf-summary=<file>` and read it (the
+Performance summary of its gameplay; Lua `Performance` in Play, `get_frame_times.performance`).
+
 **Find the worst frame and why.** `capture_profile frames=120` then `get_cpu_profile
 capture_id=<id> frame=worst` (tree), `view=flat` (what costs most over every thread) and
 `view=threads` (are the job workers busy?). `filter` narrows rows by name.

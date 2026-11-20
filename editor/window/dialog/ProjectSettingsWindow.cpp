@@ -60,6 +60,7 @@
 #include "command/type/TransitionSettingsCmd.h"
 #include "command/type/DeviceSettingsCmd.h"
 #include "device/Device.h"
+#include "device/GpuQuirks.h"
 #include "command/type/ThreadingSettingsCmd.h"
 #include "navigation/NavigationSettingsCmd.h"
 #include "titleart/TitleArtSettingsCmd.h"
@@ -2810,6 +2811,20 @@ void ProjectSettingsWindow::drawDeviceTierSettings() {
             ImGui::SameLine();
             ImGui::TextDisabled("This machine: %s", DeviceNames::tierLabel(detection.tier));
             ImGui::SetItemTooltip("%s", detection.reason.c_str());
+        }
+        // the driver workarounds this machine runs with (read-only: they change how a frame is
+        // made, never what it shows), each with its reason
+        ImGui::SameLine();
+        const std::vector<std::string> quirks = GpuQuirks::activeNames();
+        ImGui::TextDisabled("GPU Quirks:%s", quirks.empty() ? " none" : "");
+        for (GpuQuirk quirk : GpuQuirks::known()) {
+            const GpuQuirkState& state = GpuQuirks::state(quirk);
+            if (!state.active)
+                continue;
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", GpuQuirks::name(quirk));
+            ImGui::SetItemTooltip("%s%s", state.source == "forced_on" ? "Forced on. " : "",
+                                  state.reason.empty() ? GpuQuirks::description(quirk) : state.reason.c_str());
         }
         endSettingsRow("Each tier caps the project's (and the scene's) values on the devices that get it: a tier never raises "
                        "quality. Players pick the tier from the GPU (docs/device-tiers.md); --device-tier and Device.setTier "

@@ -8,6 +8,7 @@
 #include "Engine.h"
 #include "Log.h"
 #include "FrameTimes.h"
+#include "PerfSampler.h"
 #include "GpuMemory.h"
 #include "Profiler.h"
 #include "Scene.h"
@@ -161,6 +162,7 @@ namespace {
         static MonitorHandle m23 = nullptr;
         static MonitorHandle m24 = nullptr;
         static MonitorHandle m25 = nullptr;
+        static MonitorHandle m26 = nullptr;
         const FrameTimeSample frame = FrameTimes::latest();
         counter(handle(m0, "FPS", MonitorUnit::Quantity), frame.fps);
         counter(handle(m1, "CPU frame ms", MonitorUnit::TimeMs), frame.cpuMs);
@@ -236,6 +238,13 @@ namespace {
             counter(handle(m24, "Simulation culled", MonitorUnit::Quantity), culling.culled);
             counter(handle(m25, "Script updates skipped", MonitorUnit::Quantity), culling.scriptUpdatesSkipped);
         }
+        // the frame thread's own CPU per frame, from its thread clock read once a second while the
+        // Profiler records (a point a second: the value holds between reads)
+        if (isEnabled())
+            PerfSampler::watchThreadCpu();
+        const double threadCpu = PerfSampler::mainThreadCpuMsLastSecond();
+        if (isEnabled() && threadCpu >= 0.0)
+            counter(handle(m26, "Main thread CPU ms", MonitorUnit::TimeMs), threadCpu);
         // the slower ones (a walk of every GPU allocation, /proc) four times a second, whatever
         // the frame rate
         const auto now = std::chrono::steady_clock::now();

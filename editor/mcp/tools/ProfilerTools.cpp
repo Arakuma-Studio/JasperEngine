@@ -10,6 +10,7 @@
 // per backend.
 
 #include "McpTools.h"
+#include "ProfilingHints.h"
 #include "shader/ShaderWarmup.h"
 
 #include "mcp/McpCall.h"
@@ -27,6 +28,7 @@
 #include "render/LightingTiers.h"
 #include "render/SystemRender.h"
 #include "profiler/FrameTimes.h"
+#include "profiler/PerfSampler.h"
 #include "profiler/GpuMemory.h"
 #include "profiler/Profiler.h"
 #include "util/Base64.h"
@@ -488,6 +490,21 @@ void getFrameTimesTool(const CallPtr& call){
         }
         data["monitors"] = monitors;
     }
+    // the frame thread's CPU (its thread clock, once a second) over the window's seconds (R34)
+    double windowSeconds = 0.0;
+    for (double ms : frameMs)
+        windowSeconds += ms / 1000.0;
+    PerfSampler::watchThreadCpu();
+    const double threadCpu = PerfSampler::mainThreadCpuMsOver(windowSeconds);
+    data["main_thread_cpu_ms"] = threadCpu >= 0.0 ? Json(round3(threadCpu)) : Json(nullptr);
+    // the Performance sampler's window while Play samples
+    Project* project = call->ctx().project();
+    const PerfSummary perf = PerfSampler::summary();
+    if (project && project->isAnyScenePlaying() && (PerfSampler::isSampling() || perf.seconds > 0.0))
+        data["performance"] = Json::parse(PerfSampler::toJson(perf));
+    const std::string hint = frameTimesHint(cpu.empty() ? 0.0 : percentile(cpu, 0.5), threadCpu);
+    if (!hint.empty())
+        data["next"] = hint;
     std::string text = std::to_string(samples.size()) + " frames";
     if (!frameMs.empty())
         text += ", median " + std::to_string(round3(percentile(frameMs, 0.5))).substr(0, 6) + " ms";

@@ -85,6 +85,7 @@
 #include "manager/SceneManager.h"
 #include "Engine.h"
 #include "device/Device.h"
+#include "device/GpuQuirks.h"
 #include "cli/CommandLine.h"
 #include "render/SystemRender.h"
 
@@ -111,6 +112,8 @@
 #include "window/profiler/FrameDebuggerWindow.h"
 #include "window/profiler/ProfilerWindow.h"
 #include "profiler/FrameTimes.h"
+#include "profiler/PerfSampler.h"
+#include "profiler/ThreadCpuClock.h"
 #include "profiler/Profiler.h"
 #include "window/PlayModeChangesWindow.h"
 #include "window/UndoHistoryWindow.h"
@@ -3437,6 +3440,19 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
                 benchmarkOut = CommandLine::absoluteArgPath(value);
         } else if (arg == "--ui-stats") {
             benchmarkUiStats = true;
+        } else if (arg == "--gpu-quirk" || arg.rfind("--gpu-quirk=", 0) == 0) {
+            // a GPU quirk forced on or off for the run (before the render device is set up)
+            const char* value = arg.size() > 11 ? argv[i] + 12 : requireValue(i, "--gpu-quirk");
+            if (value) {
+                std::vector<GpuQuirkOverride> overrides;
+                std::string error;
+                if (!GpuQuirks::parseOverrides(value, overrides, error)) {
+                    failBenchmark("--gpu-quirk: " + error);
+                    return;
+                }
+                benchmarkGpuQuirks.insert(benchmarkGpuQuirks.end(), overrides.begin(), overrides.end());
+                GpuQuirks::setCommandLineOverrides(benchmarkGpuQuirks);
+            }
         } else if (arg == "--gpu-passes") {
             benchmarkGpuPasses = true;
         } else if (arg == "--profile") {
@@ -5140,6 +5156,7 @@ void editor::App::tickBenchmark() {
                 benchmarkCaptureId = profiler::startCapture((uint32_t)std::min(benchmarkMeasureFrames, 600));
             }
             benchmarkMeasureStart = std::chrono::steady_clock::now();
+            benchmarkThreadCpuStart = ThreadCpuClock::nowMs();
         }
         return;
     }
@@ -5165,6 +5182,7 @@ void editor::App::tickBenchmark() {
         }
         collectBenchmarkGpuFrame();
         if (static_cast<int>(benchmarkFps.size()) >= benchmarkMeasureFrames) {
+            benchmarkThreadCpuEnd = ThreadCpuClock::nowMs();
             benchmarkLastFrame = FrameTimes::currentFrame();
             benchmarkPhase = 3;
             benchmarkDrainFrames = 0;
@@ -5306,6 +5324,21 @@ void editor::App::finishBenchmark() {
     json.precision(3);
     json << "  \"cpuMs\": {\"median\": " << stat(benchmarkCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkCpuMs, 0.95)
          << ", \"mean\": " << mean(benchmarkCpuMs) << "}";
+    // the main thread's own CPU per measured frame (its thread clock: what it computed, without its
+    // waits on the driver, locks and I/O), and the device it ran on (R36)
+    if (benchmarkThreadCpuStart >= 0.0 && benchmarkThreadCpuEnd >= benchmarkThreadCpuStart && n > 0)
+        json << ",\n  \"mainThreadCpuMs\": {\"mean\": " << (benchmarkThreadCpuEnd - benchmarkThreadCpuStart) / static_cast<double>(n) << "}";
+    else
+        json << ",\n  \"mainThreadCpuMs\": {\"mean\": null}";
+    {
+        json << ",\n  \"device\": {\"gpu\": \"" << jsonEscape(Device::getGpuName()) << "\", \"driver\": \""
+             << jsonEscape(SystemRender::getDriverVersion()) << "\", \"tier\": \"" << DeviceNames::tier(Device::getTier())
+             << "\", \"quirks\": [";
+        const std::vector<std::string> quirks = GpuQuirks::activeNames();
+        for (size_t i = 0; i < quirks.size(); i++)
+            json << (i ? ", " : "") << "\"" << quirks[i] << "\"";
+        json << "]}";
+    }
     // the scenes' draw and the commit of each measured frame (the render submission, S55 R9)
     json << ",\n  \"renderCpuMs\": {\"median\": " << stat(benchmarkRenderCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkRenderCpuMs, 0.95)
          << ", \"mean\": " << mean(benchmarkRenderCpuMs) << "}";

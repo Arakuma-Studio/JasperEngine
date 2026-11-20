@@ -106,6 +106,7 @@
 #include "model/ModelCpuData.h"
 #include "picking/PickCache.h"
 #include "profiler/FrameTimes.h"
+#include "profiler/PerfSampler.h"
 #include "profiler/Profile.h"
 #if JASPERENGINE_PROFILER
 #include "profiler/EngineProfiling.h"
@@ -1798,6 +1799,7 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     Device::onLowMemory.removeByTagSubstring(substring);
     InputSchemeTracker::onSchemeChanged.removeByTagSubstring(substring);
     Localization::onLanguageChanged.removeByTagSubstring(substring);
+    PerfSampler::onWindow.removeByTagSubstring(substring);
 #if JASPERENGINE_SOUND_LAYER
     Audio::onMusicBeat.removeByTagSubstring(substring);
     Audio::onMusicSection.removeByTagSubstring(substring);
@@ -1857,6 +1859,8 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     Localization::onLanguageChanged.clear();
     // Crash.beginReport's and createReport's callbacks, with the draft they were for
     diag::userreport::reset();
+    // Performance.onSample (R11)
+    PerfSampler::onWindow.clear();
 #if JASPERENGINE_SOUND_LAYER
     // here too, not only in MusicPlayer::reset: the editor's Stop runs that after the C++ script library is unloaded
     Audio::onMusicBeat.clear();
@@ -2487,6 +2491,8 @@ void Engine::signalReadyOnce(){
         readySignalled = true;
         signalledFrame = frames;
         Log::print("Engine ready: every scene loaded and no shader build pending (frame %llu)", (unsigned long long)frames);
+        // --perf-summary starts sampling here unless the game chose already
+        player::RunControl::engineReady();
         for (Scene* scene : scenes){
             scene->getSystem<RenderSystem>()->logRenderObjects();
         }
@@ -3097,6 +3103,8 @@ void Engine::systemShutdown(){
 
     // what the game (and its onShutdown handlers) stored is on disk before it goes
     UserSettings::save();
+    // --perf-summary's last window
+    player::RunControl::writePerfSummary();
 
     // anime's, the timers', the script coroutines' and the input actions' Lua references go
     // while the Lua state still exists
@@ -3195,6 +3203,8 @@ void Engine::applyPause(){
             diag::journal::logEngine("engine.resume", fields);
         }
     }
+    // the Performance sampler drops the paused seconds and the 2 s after a resume (R3)
+    PerfSampler::notePaused(want);
     if (!want){
         AudioSystem::setPlatformPaused(false);
         ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
@@ -3233,6 +3243,8 @@ void Engine::systemFocus(bool hasFocus){
         const diag::journal::Field fields[] = {{"focused", hasFocus}};
         diag::journal::logEngine("engine.focus", fields);
     }
+    if (hasFocus)
+        PerfSampler::noteResumed();
     // the key and button ups after a focus loss go to another window: the next frame sees them; the
     // UI presses end now (D6, cancelled)
     if (!hasFocus){
@@ -3257,6 +3269,7 @@ void Engine::systemFocus(bool hasFocus){
 void Engine::systemVisibilityChanged(bool isVisible){
     if (isVisible == visible) return;
     visible = isVisible;
+    PerfSampler::noteHidden(!isVisible);
     if (isVisible)
         Log::print("Window visible: drawing again");
     else
@@ -3351,6 +3364,8 @@ void Engine::resetApplicationState(){
     targetFrameRate = -1;
     // no tier a script set, no Game view simulation, the thermal and memory response at rest
     Device::resetSession();
+    // the Performance sampler off, its window and the game's reasons gone (R11)
+    PerfSampler::resetSession();
     applyFramePacing();
     dynamicBatching = dynamicBatchingDefault;
     // no extra insets, and the next safe area is where the game starts (no event)

@@ -224,3 +224,41 @@ TEST(LaunchOptions, TestFlagsFromTheQuery) {
     EXPECT_TRUE(options.runTests);
     EXPECT_EQ(options.testFilter, "tag:smoke");
 }
+
+// --gpu-quirk (GPU quirks R21, AC18): name:on|off, repeatable or comma-separated, in order
+TEST(LaunchOptions, GpuQuirkFlagParses) {
+    const LaunchOptions options = ok({"--gpu-quirk=gl_no_warm_draws:off,gl_no_worker_context:on", "--gpu-quirk", "gl_no_compile_threads:off"});
+    ASSERT_EQ(options.gpuQuirks.size(), 3u);
+    EXPECT_EQ(options.gpuQuirks[0].quirk, GpuQuirk::GlNoWarmDraws);
+    EXPECT_FALSE(options.gpuQuirks[0].on);
+    EXPECT_EQ(options.gpuQuirks[1].quirk, GpuQuirk::GlNoWorkerContext);
+    EXPECT_TRUE(options.gpuQuirks[1].on);
+    EXPECT_EQ(options.gpuQuirks[2].quirk, GpuQuirk::GlNoCompileThreads);
+    EXPECT_TRUE(ok({}).gpuQuirks.empty());
+    // the web page's query takes the same form (?gpu-quirk=gl_no_warm_draws:off)
+    EXPECT_EQ(ok(argsFromQuery("?gpu-quirk=gl_no_warm_draws:off")).gpuQuirks.size(), 1u);
+}
+
+// an unknown name is refused (exit 2), naming the known quirks
+TEST(LaunchOptions, GpuQuirkRejectsUnknownNames) {
+    EXPECT_EQ(refused({"--gpu-quirk=x:on"}).rfind("--gpu-quirk: unknown quirk \"x\" (known: gl_no_worker_context, gl_no_compile_threads, "
+                                                  "gl_no_warm_draws", 0), 0u);
+    EXPECT_NE(refused({"--gpu-quirk=gl_no_warm_draws:maybe"}).find(":on or :off"), std::string::npos);
+    const PlatformConfig saved = platformConfig();
+    EXPECT_EQ(launch({"--gpu-quirk=x:on"}, ParseMode::Strict), EXIT_BAD_ARGUMENTS);
+    RunControl::reset();
+    platformConfig() = saved;
+}
+
+// --perf-summary (R12): a file in a directory that exists; it asks for the ready signal
+TEST(LaunchOptions, PerfSummary) {
+    test::TempDir dir;
+    const std::string path = (dir.path() / "perf.json").string();
+    const LaunchOptions options = ok({"--perf-summary=" + path});
+    EXPECT_EQ(options.perfSummary.string(), path);
+    EXPECT_NE(refused({"--perf-summary=" + (dir.path() / "missing" / "perf.json").string()}).find("does not exist"), std::string::npos);
+    RunControl::configure(options);
+    EXPECT_TRUE(RunControl::wantsReadySignal());
+    EXPECT_FALSE(RunControl::isActive()) << "no frame option: the run is not counted";
+    RunControl::reset();
+}

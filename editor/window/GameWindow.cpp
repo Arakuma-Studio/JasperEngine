@@ -18,6 +18,7 @@
 #include "Theme.h"
 #include "texture/TextureCookQueue.h"
 #include "profiler/FrameTimes.h"
+#include "profiler/PerfSampler.h"
 
 #include "imgui_internal.h"
 #include "Engine.h"
@@ -1797,6 +1798,21 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
             snprintf(lines[lineCount], sizeof(lines[lineCount]), "CPU %.2f ms", frameTime.cpuMs);
         lineCount++;
     }
+    // the main thread's own CPU per frame over the last full second (its thread clock: without
+    // the waits CPU above includes), and the Performance sampler's window while it samples
+    PerfSampler::watchThreadCpu();
+    const double threadCpu = PerfSampler::mainThreadCpuMsLastSecond();
+    if (threadCpu >= 0.0)
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "Main Thread CPU: %.2f ms", threadCpu);
+    else
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "Main Thread CPU: measuring...");
+    lineCount++;
+    if (PerfSampler::isSampling()) {
+        const PerfSummary perf = PerfSampler::summary();
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "Sampling: %.0f s \xC2\xB7 p50 %.0f fps \xC2\xB7 p10 %.0f fps", perf.seconds, perf.fpsP50,
+                 perf.fpsP10);
+        lineCount++;
+    }
     if (const DeviceProfile* device = Platform::getSimulation().device) {
         snprintf(lines[lineCount], sizeof(lines[lineCount]), "Device: %s, %s", device->name,
                  PlatformRules::orientationName(Platform::getSimulation().orientation));
@@ -1855,7 +1871,7 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     }
 
     // S48: the game frozen by a hit-stop, and for how long still
-    if (playing && ::jasperengine::pixelart::HitStop::isActive() && lineCount < 16) {
+    if (playing && ::jasperengine::pixelart::HitStop::isActive() && lineCount < 18) {
         snprintf(lines[lineCount], sizeof(lines[lineCount]), "HIT STOP %.2f s", ::jasperengine::pixelart::HitStop::getRemaining());
         lineCount++;
     }
@@ -1863,5 +1879,22 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     std::vector<std::string> all(lines, lines + lineCount);
     // after "Draw calls: ... Tris: ..."
     all.insert(all.begin() + 3, meshLines.begin(), meshLines.end());
-    drawStatsBox(ImGui::GetWindowDrawList(), imageMin, imageMax, all);
+    const ImVec2 textMin = drawStatsBox(ImGui::GetWindowDrawList(), imageMin, imageMax, all);
+    // the Main Thread CPU and Sampling rows as items find_ui_item reports (drawn text is no item;
+    // these take no input)
+    const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
+    ImGuiContext& g = *GImGui;   // (IMGUI_TEST_ENGINE_ITEM_INFO reads it)
+    (void)g;
+    for (size_t i = 0; i < all.size(); i++) {
+        const char* label = all[i].rfind("Main Thread CPU", 0) == 0 ? "Main Thread CPU##stats"
+                            : all[i].rfind("Sampling", 0) == 0     ? "Sampling##stats"
+                                                                   : nullptr;
+        if (!label)
+            continue;
+        const ImVec2 min(textMin.x, textMin.y + lineHeight * (float)i);
+        const ImRect rect(min, ImVec2(min.x + ImGui::CalcTextSize(all[i].c_str()).x, min.y + ImGui::GetTextLineHeight()));
+        const ImGuiID id = ImGui::GetID(label);
+        if (ImGui::ItemAdd(rect, id, nullptr, ImGuiItemFlags_NoNav))
+            IMGUI_TEST_ENGINE_ITEM_INFO(id, label, 0);
+    }
 }

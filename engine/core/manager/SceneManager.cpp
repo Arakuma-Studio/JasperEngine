@@ -7,6 +7,7 @@
 #include "Log.h"
 #include "System.h"
 #include "diag/Journal.h"
+#include "profiler/PerfSampler.h"
 #include "memory/HeapTrim.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/AudioSystem.h"
@@ -823,6 +824,8 @@ void SceneManager::updateLoading() {
             diag::journal::logEngine("engine.scene_loaded", fields);
         }
         // a handler can hold the load or start another one
+        // the Performance sampler drops the second after a scene load (R3)
+        PerfSampler::noteSceneLoaded();
         Engine::onSceneLoaded.call();
     }
 

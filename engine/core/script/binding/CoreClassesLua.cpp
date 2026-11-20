@@ -18,6 +18,7 @@
 
 #include "Engine.h"
 #include "device/Device.h"
+#include "device/GpuQuirks.h"
 
 #include <climits>
 #include <cmath>
@@ -4678,6 +4679,17 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("tierApplied", &Device::isTierApplied)
         // the platform's thermal state (ThermalState); Nominal on desktops and the web
         .addStaticProperty("thermalState", &Device::getThermalState)
+        // the GPU quirks in effect: the names of the driver workarounds this device runs with
+        // (read-only: a quirk changes how a frame is made, never what it shows)
+        .addStaticProperty("gpuQuirks", [] (lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef table = luabridge::newTable(L);
+            int index = 1;
+            for (const std::string& name : GpuQuirks::activeNames())
+                table[index++] = name;
+            return table;
+        })
+        // the driver's version as the quirk rules read it (GL_VERSION, the Vulkan driver; "" on WebGL)
+        .addStaticProperty("gpuDriver", [] () { return SystemRender::getDriverVersion(); })
         // a graphics menu's choice: this tier's overrides for the rest of the run
         .addStaticFunction("setTier", &Device::setTier)
         // back to the detected tier

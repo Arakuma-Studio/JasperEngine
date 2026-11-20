@@ -173,6 +173,9 @@ namespace jasperengine{
         // the API reports the device as the CPU (Vulkan's device type); GL has no such property
         static bool isCpuDevice();
         static std::string getApiVersion();
+        // the driver's version as the GPU quirk rules read it (GL_VERSION, the Vulkan driver name
+        // and info, the D3D11 user-mode driver, the OS on Metal; "" on WebGL)
+        static std::string getDriverVersion();
         // per-draw records in the pass lists from now (a capture, the Frame Debugger)
         static void setDrawListEnabled(bool enabled);
 

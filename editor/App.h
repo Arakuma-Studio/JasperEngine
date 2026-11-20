@@ -4,6 +4,7 @@
 #pragma once
 
 #include "render/RenderStats.h"
+#include "device/GpuQuirks.h"
 #include "imgui.h"
 #include "json.hpp"
 
@@ -230,9 +231,14 @@ namespace jasperengine::editor{
         std::vector<std::pair<std::string, double>> benchmarkUiTotals;
         std::chrono::steady_clock::time_point benchmarkWaitStart{};
         std::chrono::steady_clock::time_point benchmarkMeasureStart{};
+        // the main thread's CPU time (its thread clock) at the measure's start and end, ms
+        double benchmarkThreadCpuStart = -1.0;
+        double benchmarkThreadCpuEnd = -1.0;
         // --gpu-passes: the GPU time of every pass of the measured frames (S15); --profile-capture
         // <path>: a .jetrace.json of them
         bool benchmarkGpuPasses = false;
+        // --gpu-quirk name:on|off for the run
+        std::vector<GpuQuirkOverride> benchmarkGpuQuirks;
         bool benchmarkProfile = false;
         std::filesystem::path benchmarkCapturePath;
         uint32_t benchmarkCaptureId = 0;

@@ -4471,7 +4471,7 @@ Contact sheet of a mesh's detail levels (LOD 0 first) with each level's triangle
 
 Group: `device` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
 
-The GPU, its detected Device Tier and why, the tier in effect (simulated, set, detected; none in the editor until simulated), thermal and memory state, the overrides in effect and the upload queue. Tier table: quality.device_tiers.* in set_project_settings. jasper://docs/device
+The GPU, driver, GPU quirks, its detected Device Tier and why, the tier in effect (simulated, set, detected; none in the editor until simulated), thermal and memory state, the overrides in effect and the upload queue. Tier table: quality.device_tiers.* in set_project_settings. jasper://docs/device
 
 No parameters.
 

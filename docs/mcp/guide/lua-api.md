@@ -1037,6 +1037,7 @@ subfolder). Use it for shared helper modules.
 | `Device.setTier(tier)`, `Device.resetTier()` | fn | a graphics menu's tier for the rest of the run, and back |
 | `Device.onThermalStateChanged` | event | `function(state)` |
 | `Device.onLowMemory` | event | a low-memory warning was handled (caches cleared, streamed textures a mip lower) |
+| `Device.gpuQuirks`, `Device.gpuDriver` | ro | the names of the GPU quirks in effect (driver workarounds; no setter), and the driver's version |
 
 ```lua
 Device.onThermalStateChanged = function(state)
@@ -1591,6 +1592,32 @@ local r = scene:getRenderStats()             -- by pass: mainDrawCalls, shadowDr
   `get_gpu_passes`); GPU times arrive a few frames late.
 - In a release game (no profiler) the functions do nothing, `enabled` stays false, and
   `frameStats()` still works.
+
+### 2.14.1 Performance (static): gameplay frame times in every build
+
+```lua
+Performance.setSampling(true)                    -- gameplay starts
+Performance.setSampling(false, "menu")           -- the main menu: excluded, named in excluded.reasons
+Performance.onSample(function(s)                 -- every 300 s of gameplay, then a new window
+    Log.print(string.format("p50 %.0f fps, p10 %.0f fps, main thread %.1f ms", s.fps.p50, s.fps.p10, s.mainThreadCpuMs or -1))
+end, 300)
+local s = Performance.getSummary{histogram = true}   -- the window now, not reset
+Performance.reset()                              -- a new window (sampling stays as it is)
+```
+
+| Name | Notes |
+|---|---|
+| `setSampling(on, reason?)`, `isSampling()` | off by default (one branch a frame); off with a reason counts the time in `excluded.reasons` |
+| `getSummary(options?)` | `{seconds, frames, fps {avg, p50, p10}, frameMs {p50, p90, p99, max}, cpuMs {avg, p90}, mainThreadCpuMs, mainThreadCpu, gpuMs?, hitches, excluded {paused, resume, loading, stall, game, reasons}, thermal, tier, tierChanges, gpu, driver, quirks, backend, platform, version, buildId, histogram?}`; with no committed second only `seconds`, `frames`, `excluded` |
+| `onSample(fn, seconds?)` | `fn(summary)` each `seconds` (30..3600, default 300) of committed gameplay; `onSample(nil)` removes it; cleared at Stop |
+| `reset()` | a new window now |
+
+- Only gameplay counts: seconds paused or hidden, the 2 s after a resume, scene loads, stalls of 1 s
+  and seconds the game turned sampling off are discarded whole. `Engine.timeScale = 0` is not
+  excluded: call `setSampling(false, "pause_menu")`.
+- `mainThreadCpuMs` is the frame thread's own CPU (its thread clock): far below `cpuMs.avg`, the frame
+  waits on the driver, locks or I/O. It is nil on the web (`mainThreadCpu = "unavailable"`).
+- The engine sends nothing: the game asks the player before it sends a summary anywhere.
 
 ### 2.15 Crash (static): reports of earlier sessions, the report hook, tags
 

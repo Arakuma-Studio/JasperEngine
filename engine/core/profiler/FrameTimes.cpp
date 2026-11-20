@@ -3,6 +3,8 @@
 
 #include "FrameTimes.h"
 
+#include "PerfSampler.h"
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -61,6 +63,9 @@ void FrameTimes::beginFrame() {
         s.ring[s.head] = sample;
         s.head = (s.head + 1) % CAPACITY;
         s.count = std::min(s.count + 1, CAPACITY);
+        // the Performance sampler: off, this branch is all it costs (R1)
+        if (PerfSampler::isActive())
+            PerfSampler::onFrame(sample, now);
     }
     s.started = true;
     s.hostWork = false;
@@ -87,6 +92,8 @@ void FrameTimes::recordSample(float frameMs, float cpuMs) {
     s.frame++;
     publishedFrame.store(s.frame, std::memory_order_relaxed);
     s.frameStart = std::chrono::steady_clock::now();
+    if (PerfSampler::isActive())
+        PerfSampler::onFrame(sample, s.frameStart);
     s.cpuMs = -1.0;
     s.drawCalls = 0;
 }
@@ -130,6 +137,9 @@ void FrameTimes::setGpuMs(uint64_t frame, double gpuMs, bool sumOfPasses) {
     for (size_t i = 0; i < s.count; i++) {
         FrameTimeSample& sample = s.ring[(s.head + CAPACITY - 1 - i) % CAPACITY];
         if (sample.frame == frame) {
+            // the sampler counted the frame without it: its GPU time joins the pending second (R6)
+            if (sample.gpuMs < 0.0f && PerfSampler::isActive())
+                PerfSampler::onGpuMs(gpuMs);
             sample.gpuMs = (float)gpuMs;
             sample.flags = (sample.flags & ~FLAG_GPU_SUM) | flags;
             return;

@@ -455,4 +455,47 @@ NVIDIA lane, `tools/mcp/gpu_lane.json` class `gpu`). The web gate extends a gate
 
 ## Deviations
 
-None yet.
+1. **Bins (R4).** The 0.5 ms bins below 50 ms are centred on multiples of 0.5 ms (bin 0 is [0, 0.25),
+   bin 99 is [49.25, 50)), so a percentile there is within 0.25 ms as R4 states; edges at 50 and
+   250 ms stay. Interpolation takes the rank's middle (`rank + 0.5`), so AC1's p90 sits at the edge
+   of the 33 ms bin: `fps.p10` is 30.5 against the ideal 30.3 (AC1 checks it within 0.3).
+2. **Driver ranges (R15).** `driver_at_least` / `driver_below` read the first dotted number after
+   `GL_VERSION`'s leading API version (`OpenGL ES 3.2 V@415.0` reads `415.0`, `4.5 (Core Profile)
+   Mesa 23.2.1` reads `23.2.1`); a string without that prefix is read whole, as R15 says. The first
+   dotted number of a GL_VERSION is always the API's, so a rule could never have keyed on the driver.
+3. **AC17's test list** is read when the test runs, not generated at build time: gtest's registry of
+   the binary, the unit-test sources (`TEST(Suite, Name)` / `TEST_F`) for a test another backend's
+   build leaves out, and the function names of the MCP test file. `convert_forge_gpu_data.py --check`
+   validates the rules' shape; the test compares the embedded table with the file, as
+   `GpuTier.EmbeddedDatabaseIsTheCheckedInFile` does.
+4. **`check`** is a list (or one string): D8 names two tests for two of the rules.
+5. **AC11** runs the player with `after_ready` and `quit_after` (and `seconds` as a cap): `run_build`
+   ends a run past its seconds with SIGTERM, which a player does not turn into a quit, so the
+   at-quit write needs the player to quit by itself. `--perf-summary` makes a run wait for the ready
+   line but does not make it a counted run (`RunControl::isActive`).
+6. **The quit write (R12)** is skipped when a finished window was already written and nothing has
+   been committed since, so the file keeps the last full window instead of an empty one.
+7. **Off with a reason (R3).** `setSampling(false, reason)` keeps the sampler's clock running (even
+   before the first gameplay second) so the excluded seconds count under the reason; `setSampling(
+   false)` after sampling does too, as `excluded.game`. `reset()` keeps sampling as it is (R9 "starts a
+   new window now"); `PerfSampler::resetSession()` (new) turns it off and forgets the window, the
+   reasons and the game's choice, at Play start and Stop (`Engine::resetApplicationState`).
+8. **A second resumed before its first frame** is the resume's, not the pause's, and a sampling
+   turned on before a second's first frame makes it gameplay whole; a mid-second change leaves the
+   second to the pause or the game. This keeps AC2's and AC3's timelines exact.
+9. **The thread-clock watch (R31).** `PerfSampler::watchThreadCpu()` keeps the 1 Hz thread-clock
+   read alive for 5 s without sampling; the Stats overlay, the Profiler's Monitors (while it records)
+   and `get_frame_times` renew it. `get_frame_times`' `main_thread_cpu_ms` averages the newest
+   measured seconds covering its window (a ring of 16), `null` until one second was measured.
+10. **AC12's rows** are reported to `find_ui_item` as items without input (`ItemAdd` and the test
+   engine's item info): the Stats overlay is drawn text, which `find_ui_item` does not see.
+11. **Compile threads both ways.** `sgj_gl_disable_compile_threads()` (our sokol extension) turns the
+   driver's compile threads off again on a context where an earlier setup turned them on, so AC19 and
+   AC20 can force `gl_no_compile_threads` off and back on in one process without leaving the
+   threads on for the tests after them.
+12. **test_tint** stays in `enum class GpuQuirk` in every build (one header for every unit), but only
+   builds with `JASPERENGINE_TESTS` know its name and read it (`JASPERENGINE_GPU_QUIRK_TEST_HOOKS` on
+   `GpuQuirks.cpp` and `SokolCamera.cpp`, where it changes a pass's clear colour).
+13. **`get_device_info`'s description** adds "driver, GPU quirks" (three words).
+14. **AC25** (the eval run) was not run by the implementer: it needs lent Orquester accounts; the
+   case is in `tools/mcp/eval/cases.py` (`bad_frame_waits_not_computes`).

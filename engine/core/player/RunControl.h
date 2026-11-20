@@ -46,6 +46,12 @@ namespace jasperengine::player {
         // Engine::systemInit, after its logger started: the error watch, the fixed frame time,
         // the scripts' arguments
         static void engineStarted();
+        // the frame that logs "Engine ready:": --perf-summary turns sampling on unless the game
+        // called Performance.setSampling already
+        static void engineReady();
+        // Engine::systemShutdown: --perf-summary's file (the web prints it), unless a finished
+        // window was written and nothing was committed since
+        static void writePerfSummary();
 
         // Engine::runFrame, once: --audio-capture's session starts with the start scene's first frame
         static void beginAudioCapture();
