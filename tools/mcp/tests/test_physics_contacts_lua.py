@@ -228,19 +228,23 @@ async def test_query_debug_draw(ed: Editor):
         await ed.call("wait", frames=4)
         on = await ed.screenshot("game", max_width=320)
         left, right, _, _ = changed(before, on)
-        ed.check(left > 0 and right == 0, f"the query drawn in its region only: {left} pixels left, {right} right")
+        # x = -4 and x = +4 land in opposite halves of the view, whichever way the default camera faces
+        ed.check((left > 0) != (right > 0), f"the query drawn in its own half only: {left} pixels left, {right} right")
+        lua_side = "left" if left > 0 else "right"
         await ed.call("configure_game_view", physics_debug_queries=False)
         await ed.call("eval_lua", code="_G.queryDrawOn = false return true")
         await ed.call("wait", frames=90)
         off = await ed.screenshot("game", max_width=320)
         left, right, _, _ = changed(before, off)
         ed.check(left == 0 and right == 0, f"off: nothing drawn after the entries expired ({left}, {right})")
-        # query_physics {draw} shows a query with the toggle off
+        # query_physics {draw} shows a query with the toggle off, in the other half (x = +4)
         await ed.call("query_physics", shape={"type": "sphere", "radius": 2}, origin=[4, 0, -20], draw=True)
         await ed.call("wait", frames=2)
         drawn = await ed.screenshot("game", max_width=320)
         left, right, _, _ = changed(before, drawn)
-        ed.check(right > 0 and left == 0, f"query_physics draw: {left} pixels left, {right} right")
+        drawn_side = "left" if left > 0 else "right"
+        ed.check((left > 0) != (right > 0) and drawn_side != lua_side,
+                 f"query_physics draw in the opposite half: {left} pixels left, {right} right (the Lua query was {lua_side})")
     finally:
         await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
         await ed.call("configure_game_view", physics_debug_queries=False)

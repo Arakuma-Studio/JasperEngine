@@ -26,6 +26,7 @@
 #include "Jolt/Physics/Collision/Shape/CapsuleShape.h"
 #include "Jolt/Physics/Body/BodyFilter.h"
 
+#include <algorithm>
 #include <cmath>
 
 using namespace jasperengine;
@@ -223,7 +224,10 @@ namespace {
     void withJoltShape(const physics::QueryShape& shape, const JPH::Quat& rotation, Visit&& visit){
         switch (shape.type){
             case physics::QueryShape::Type::Box: {
-                JPH::BoxShape box(toJolt3(shape.halfExtents), 0.0f);
+                // Jolt's default convex radius (its corners rounded by at most 5 cm, the faces where
+                // they are): GJK answers most pairs without the EPA a sharp box needs
+                const float smallest = std::min(shape.halfExtents.x, std::min(shape.halfExtents.y, shape.halfExtents.z));
+                JPH::BoxShape box(toJolt3(shape.halfExtents), std::min(JPH::cDefaultConvexRadius, 0.5f * smallest));
                 box.SetEmbedded();
                 visit(static_cast<const JPH::Shape&>(box), JPH::RMat44::sRotationTranslation(rotation, toJolt3(shape.a)));
                 return;

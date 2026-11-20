@@ -5,7 +5,7 @@
 // query_city (2,000 bodies over a 200 m mesh ground; the same layout in Box2D) and 10,000 drawn
 // leaves. Each sample times 100 queries; the keys are the p95 of 200 samples, per query.
 //
-//   je-bench-physics-query [out.json]
+//   je-bench-physics-query [--json out.json]
 
 #include "BenchUtil.h"
 #include "JobsTestSystem.h"

@@ -534,7 +534,9 @@ core tests already build scenes with physics, `PhysicsRayThreadsTest.cpp:27-30`)
   trigger flag and collider index with no second body lock) and the 2D callbacks write straight into
   the caller's vector; there is no fixed 256-entry array. The 2D first forms keep only the lowest
   `(body, collider)` hit, with no buffer. The Lua forms use one main-thread buffer each.
-- **D2 query box.** Box query shapes use a convex radius of 0 (exact corners).
+- **D2 query box.** Box query shapes use Jolt's default convex radius (5 cm, at most half the
+  smallest half extent): the corners are rounded by that much, the faces are exact. A radius of 0
+  made every box pair go through EPA (overlapBox p95 0.055 ms on the loaded box A, budget 0.008).
 - **R3 casts.** Every hit at fraction 0 is dropped (touching at the start counts as overlapping,
   R1), not only those with positive penetration: without `mReturnDeepestPoint` Jolt reports no
   reliable depth there. A Box2D cast callback never returns -1 or 0 for a skipped shape (Box2D 3.1
