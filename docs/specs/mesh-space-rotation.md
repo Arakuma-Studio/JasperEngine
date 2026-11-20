@@ -441,3 +441,17 @@ player:setLayerMeshSpaceRotation("Upper Body", true)
   mask_coverage: [{layer, covered, total, warnings, mesh_space_rotation, boundary_bones}]}`, the bones as paths from
   the Animator's GameObject; `get_animation {entity}` now answers for a GameObject that only an Animator plays. The
   Player's coverage gains its fields with step 5 (R39).
+- **R16: the Player's rig, weights and sources.** The Player's rig is every GameObject its transform slots animate
+  and their ancestors below the Player's GameObject, rig space that GameObject's local space. Boundary bones come
+  from the layer's mask through `anim::maskBoundaryBones` (one rule with the Animator's bind and the editor's line);
+  a state's mixing transforms add none, they weigh its contribution at the nodes as everywhere else. A boundary
+  bone's weight is the Player's own blend weight there, `λ·min(1, S)` with `S` the states' weights times their mask
+  weight (R6's `run.weight * run.mask[b]` for one state at weight 1). The table (the boundary bones and their
+  ancestors, parents first) is built at prepare while a layer runs the pass, never per frame. Its nodes are never
+  occluded by a layer above. A bone no layer below wrote this frame is at its rest, and the layer's own rotation at
+  a bone its clips do not rotate is the bone's rest (the Animator's `run.output`); a boundary bone no clip rotates
+  gets a Rotation slot of its own. The layered edit-mode preview (the Animation window's Preview over) applies the
+  option too (`PlayerPreviewLayer::meshSpaceRotation`).
+- **R18: where the bound holds.** The Player and the Animator agree within 1e-5 where the layers' clips rotate the
+  bones they mask in. A bone a masked Override layer's clips have no track for already blended differently before
+  this spec (the Animator toward the bone's rest, the Player not at all); the pass does not change that.

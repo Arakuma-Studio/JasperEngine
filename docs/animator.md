@@ -116,6 +116,8 @@ Space Rotation Blend.
   [Seeing IK and root motion](#seeing-ik-and-root-motion)).
 - From Lua, `animator:setLayerMeshSpaceRotation("Upper Body", true)` turns it on for that Animator
   only, until its controller loads again; `getLayerMeshSpaceRotation` reads it.
+- Animation Player layers have the same option ([Layers and masks](animation-clips.md#layers-and-masks)),
+  and give the same pose as an Animator with the same rig, clips, mask and weight.
 
 Limits:
 

@@ -465,6 +465,7 @@ namespace {
             layer.authoredWeight = weight;
             layer.authoredBlend = blend;
             layer.authoredMask = source.mask;
+            layer.meshSpaceRotation = source.meshSpaceRotation;
         }
         runtime.layers = std::move(layers);
     }

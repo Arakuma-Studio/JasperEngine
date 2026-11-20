@@ -611,6 +611,14 @@ combo), and each layer has:
 - **Mask**: an **Avatar Mask** (`.mask`) that says which bones the layer animates. Without a mask, a
   layer animates exactly the channels its clips have keys for, and everything else passes through
   from below: an upper-body clip on layer 1 leaves the legs to the base layer.
+- **Mesh Space Rotation** (under Mask, off by default): the bones where the mask starts or stops
+  keep the rotation the layer's clip gives them relative to the player's GameObject, not to their
+  parent, so an attack masked from the spine faces where the attack faces over a run whose hips
+  twist, and the legs keep facing where the run faces. The line under it names the GameObjects it
+  applies at. It works as on an Animator Controller's layer, limits included
+  ([Mesh Space Rotation](animator.md#mesh-space-rotation)): Override layers above the base layer
+  with a mask only (on the others the checkbox is disabled). `player:setLayerMeshSpaceRotation("Upper
+  Body", true)` sets the layer's own value, as the checkbox does.
 
 `play`, `crossFade` and `queue` work per layer. `play("Hold")` on layer 1 does not stop the walk on
 layer 0 (Unity's `PlayMode.StopSameLayer`); `play("Walk", 0, PlayMode.STOP_ALL)` stops every layer.
