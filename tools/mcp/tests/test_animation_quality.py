@@ -601,4 +601,12 @@ async def test_layer_blend_twist_then_fixed(ed: Editor):
                       ({"entity": "Proxy", "checks": ["layer_blend"]}, "layer_blend {layer}")):
         r = await ed.call_raw("check_animation", args)
         ed.check(r.is_error and why in r.text, f"{args}: {r.text[:300]}")
+
+    # the default times span one cycle as the state plays: its speed and the Animator's
+    await ed.call("edit_animator_controller", path=PROXY_CONTROLLER, ops=[{"op": "set_state", "state": "Upper Body.Attack", "speed": 2}])
+    fast = (await ed.call("check_animation", entity="Proxy", layer_blend={"layer": "Upper Body"}))["layer_blend"]
+    ed.check_eq([s["time"] for s in fast["samples"]], [0, 0.125, 0.25, 0.375, 0.5], f"a state at speed 2 plays its cycle in half the time: {fast}")
+    await ed.call("set_properties", entity="Proxy", values={"animator": {"speed": 0.5}})
+    slowed = (await ed.call("check_animation", entity="Proxy", layer_blend={"layer": "Upper Body"}))["layer_blend"]
+    ed.check_eq([s["time"] for s in slowed["samples"]], [0, 0.25, 0.5, 0.75, 1], f"and the Animator at speed 0.5: {slowed}")
     await ed.call("undo", scope="project")

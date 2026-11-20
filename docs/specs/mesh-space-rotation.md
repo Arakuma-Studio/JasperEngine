@@ -261,8 +261,8 @@ Ideas only. Nothing is vendored or copied.
   - Both work in edit mode through the existing evaluation path. The result echoes them.
 - **R36.** **`check_animation`** gains the check `layer_blend` in `kChecks`, with
   `layer_blend: {layer, base_state, state, times, bones}`. All are optional except `layer`; defaults are the layer's
-  default state, the base layer's default state, 5 evenly spaced times, and the layer's boundary bones plus their
-  children.
+  default state, the base layer's default state, 5 evenly spaced times over one cycle of the layer's state as it plays
+  (its length over its speed and the Animator's), and the layer's boundary bones plus their children.
   - It evaluates the bound Animator's layer stack at each time and compares each listed bone's rig-space rotation
     with the solo layer's.
   - It returns `layer_blend: {layer, mesh_space_rotation, boundary_bones, max_angle_deg, worst_bone,
