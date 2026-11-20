@@ -24,29 +24,29 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    std::vector<std::string> words(const std::string& line) {
+    std::vector<std::string> deviceWords(const std::string& line) {
         std::istringstream in(line);
         std::vector<std::string> out;
         for (std::string word; in >> word;) out.push_back(word);
         return out;
     }
 
-    std::string trimmed(std::string text) {
+    std::string deviceTrimmed(std::string text) {
         while (!text.empty() && (text.back() == '\r' || text.back() == '\n' || text.back() == ' ' || text.back() == '\t')) text.pop_back();
         size_t start = 0;
         while (start < text.size() && (text[start] == ' ' || text[start] == '\t')) start++;
         return text.substr(start);
     }
 
-    std::vector<std::string> lines(const std::string& text) {
+    std::vector<std::string> deviceLines(const std::string& text) {
         std::vector<std::string> out;
         std::istringstream in(text);
-        for (std::string line; std::getline(in, line);) out.push_back(trimmed(line));
+        for (std::string line; std::getline(in, line);) out.push_back(deviceTrimmed(line));
         return out;
     }
 
     // "com.apple.CoreSimulator.SimRuntime.iOS-17-2" -> "17.2"; "" for another OS
-    std::string iosRuntimeVersion(const std::string& runtime) {
+    std::string deviceIosRuntimeVersion(const std::string& runtime) {
         const std::string marker = "SimRuntime.iOS-";
         const size_t at = runtime.find(marker);
         if (at == std::string::npos) return "";
@@ -55,7 +55,7 @@ namespace {
         return version;
     }
 
-    std::vector<RunDevice> probeAndroid(unsigned int minSdk, int timeoutMs) {
+    std::vector<RunDevice> deviceProbeAndroid(unsigned int minSdk, int timeoutMs) {
         const ToolLocation adb = adbLocation();
         if (!adb.found()) return {missingAdbRow()};
         std::string output;
@@ -78,7 +78,7 @@ namespace {
         return devices;
     }
 
-    std::vector<RunDevice> probeIos(int timeoutMs) {
+    std::vector<RunDevice> deviceProbeIos(int timeoutMs) {
         RunDevice none;
         none.id = "ios-simulators";
         none.platform = BuildPlatform::IOS;
@@ -119,12 +119,12 @@ namespace {
     }
 
     // "Accept the prompt" -> "accept the prompt", inside a sentence
-    std::string lowerFirst(std::string text) {
+    std::string deviceLowerFirst(std::string text) {
         if (!text.empty() && text[0] >= 'A' && text[0] <= 'Z' && !(text.size() > 1 && text[1] >= 'A' && text[1] <= 'Z')) text[0] = static_cast<char>(text[0] - 'A' + 'a');
         return text;
     }
 
-    struct ProbeCache {
+    struct DeviceProbeCache {
         std::mutex mutex;
         struct Entry {
             std::chrono::steady_clock::time_point at;
@@ -134,8 +134,8 @@ namespace {
         std::map<int, Entry> entries;
     };
 
-    ProbeCache& cache() {
-        static ProbeCache* instance = new ProbeCache();
+    DeviceProbeCache& deviceProbeCache() {
+        static DeviceProbeCache* instance = new DeviceProbeCache();
         return *instance;
     }
 
@@ -154,9 +154,9 @@ const char* platform::runDeviceKindName(RunDeviceKind kind) {
 
 std::vector<RunDevice> platform::parseAdbDevicesLong(const std::string& output) {
     std::vector<RunDevice> devices;
-    for (const std::string& line : lines(output)) {
+    for (const std::string& line : deviceLines(output)) {
         if (line.empty() || line.rfind("List of devices", 0) == 0 || line.rfind("*", 0) == 0 || line.rfind("adb server", 0) == 0) continue;
-        const std::vector<std::string> fields = words(line);
+        const std::vector<std::string> fields = deviceWords(line);
         if (fields.size() < 2) continue;
         RunDevice device;
         device.platform = BuildPlatform::Android;
@@ -194,13 +194,13 @@ std::vector<RunDevice> platform::parseAdbDevicesLong(const std::string& output) 
 }
 
 void platform::applyAndroidProperties(RunDevice& device, const std::string& output, unsigned int minSdk) {
-    const std::vector<std::string> values = lines(output);
+    const std::vector<std::string> values = deviceLines(output);
     if (values.size() > 0 && !values[0].empty()) device.name = values[0];
     if (values.size() > 1) {
         device.abis.clear();
         std::stringstream list(values[1]);
         for (std::string abi; std::getline(list, abi, ',');)
-            if (!trimmed(abi).empty()) device.abis.push_back(trimmed(abi));
+            if (!deviceTrimmed(abi).empty()) device.abis.push_back(deviceTrimmed(abi));
     }
     if (values.size() > 2) {
         device.osVersion = values[2];
@@ -217,7 +217,7 @@ std::vector<RunDevice> platform::parseSimctlJson(const std::string& text) {
     const nlohmann::json root = nlohmann::json::parse(text, nullptr, false);
     if (root.is_discarded() || !root.is_object() || !root.contains("devices") || !root["devices"].is_object()) return devices;
     for (const auto& [runtime, list] : root["devices"].items()) {
-        const std::string version = iosRuntimeVersion(runtime);
+        const std::string version = deviceIosRuntimeVersion(runtime);
         if (version.empty() || !list.is_array()) continue;
         for (const nlohmann::json& entry : list) {
             if (!entry.is_object()) continue;
@@ -304,8 +304,8 @@ RunDevice platform::browserDevice() {
 
 std::vector<RunDevice> platform::probeDevices(BuildPlatform platform, unsigned int androidMinSdk, int timeoutMs) {
     switch (platform) {
-        case BuildPlatform::Android: return probeAndroid(androidMinSdk, timeoutMs);
-        case BuildPlatform::IOS: return probeIos(timeoutMs);
+        case BuildPlatform::Android: return deviceProbeAndroid(androidMinSdk, timeoutMs);
+        case BuildPlatform::IOS: return deviceProbeIos(timeoutMs);
         case BuildPlatform::Web: return {browserDevice()};
         default: break;
     }
@@ -314,7 +314,7 @@ std::vector<RunDevice> platform::probeDevices(BuildPlatform platform, unsigned i
 }
 
 std::vector<RunDevice> platform::devicesOf(BuildPlatform platform, unsigned int androidMinSdk, int maxAgeMs) {
-    ProbeCache& probes = cache();
+    DeviceProbeCache& probes = deviceProbeCache();
     const auto now = std::chrono::steady_clock::now();
     {
         std::lock_guard<std::mutex> lock(probes.mutex);
@@ -343,7 +343,7 @@ const RunDevice* platform::pickDevice(const std::vector<RunDevice>& devices, Bui
                 error = noAdb ? "adb is not installed: " + devices.front().why
                               : "no Android device is connected: connect one with USB debugging on (get_build_info devices:true lists them)";
                 for (const RunDevice& device : devices)
-                    if (!device.usable && device.id != "adb") error = device.name + " is " + device.state + ": " + lowerFirst(device.why);
+                    if (!device.usable && device.id != "adb") error = device.name + " is " + device.state + ": " + deviceLowerFirst(device.why);
             } else if (platform == BuildPlatform::IOS) {
                 error = devices.empty() ? "iOS Simulators need macOS with Xcode" : devices.front().why;
             } else {
@@ -357,7 +357,9 @@ const RunDevice* platform::pickDevice(const std::vector<RunDevice>& devices, Bui
     for (const RunDevice& device : devices) {
         if (device.id != id) continue;
         if (!device.usable) {
-            error = device.name + " is " + device.state + ": " + lowerFirst(device.why);
+            error = device.state == "device" || device.state == "Booted" || device.state == "Shutdown"
+                        ? device.name + ": " + device.why
+                        : device.name + " is " + device.state + ": " + deviceLowerFirst(device.why);
             return nullptr;
         }
         return &device;

@@ -841,6 +841,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/platform/WindowsResources.cpp
     ${EDITOR_DIR}/platform/MacBundle.cpp
     ${EDITOR_DIR}/platform/IosProject.cpp
+    ${EDITOR_DIR}/platform/DeviceList.cpp
+    ${EDITOR_DIR}/platform/DeviceCommands.cpp
+    ${EDITOR_DIR}/platform/DeviceRecords.cpp
+    ${EDITOR_DIR}/platform/DeviceLogPump.cpp
+    ${EDITOR_DIR}/platform/DeviceRunner.cpp
+    ${EDITOR_DIR}/platform/WebServe.cpp
     ${EDITOR_DIR}/App.cpp
     ${EDITOR_DIR}/AppCommands.cpp
     ${EDITOR_DIR}/AppSettings.cpp

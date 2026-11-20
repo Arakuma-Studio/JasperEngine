@@ -515,6 +515,16 @@ void editor::CommandRunner::cancel() {
     terminateCurrentProcess();
 }
 
+long editor::CommandRunner::processId() {
+#ifdef _WIN32
+    std::lock_guard<std::mutex> lock(processHandleMutex);
+    return currentProcessHandle ? static_cast<long>(GetProcessId(static_cast<HANDLE>(currentProcessHandle))) : 0;
+#else
+    std::lock_guard<std::mutex> lock(processPidMutex);
+    return static_cast<long>(currentProcessPid);
+#endif
+}
+
 bool editor::CommandRunner::isCancelRequested() const {
     return cancelRequested.load(std::memory_order_relaxed);
 }

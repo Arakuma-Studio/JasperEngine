@@ -74,6 +74,9 @@ namespace jasperengine::editor {
         static std::mutex& spawnMutex();
 #endif
 
+        // The process run() is running now (0 when none): Build And Run's host player capture
+        long processId();
+
         // Request cancellation and terminate the running process (if any).
         void cancel();
         bool isCancelRequested() const;
