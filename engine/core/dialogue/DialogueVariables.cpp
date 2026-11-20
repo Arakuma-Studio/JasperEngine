@@ -6,8 +6,10 @@
 #include "Log.h"
 #include "dialogue/DialogueProgram.h"
 #include "io/Data.h"
+#include "save/SaveGameStore.h"
 
 #include <algorithm>
+#include <cmath>
 #include <map>
 
 using namespace jasperengine;
@@ -144,7 +146,10 @@ bool Variables::fromJson(const Json& json, std::string* error, bool notify) {
         if (error) *error = message;
         return false;
     };
-    if (!json.is_object()) return failWith("the dialogue state is an object {variables, visits}");
+    // one of the two keys at least: another namespace of a save slot is not taken for an empty state
+    if (!json.is_object() || (!json.contains("variables") && !json.contains("visits"))) {
+        return failWith("the dialogue state is an object {variables, visits}");
+    }
     std::map<std::string, Value, std::less<>> values;
     if (auto it = json.find("variables"); it != json.end()) {
         if (!it->is_object()) return failWith("variables is an object of name -> bool, number or string");
@@ -159,7 +164,8 @@ bool Variables::fromJson(const Json& json, std::string* error, bool notify) {
         if (!it->is_object()) return failWith("visits is an object of \"<dialogue>#<node>\" -> count");
         for (auto entry = it->begin(); entry != it->end(); ++entry) {
             const size_t hash = entry.key().rfind('#');
-            if (hash == std::string::npos || !entry.value().is_number_unsigned()) {
+            // a save slot's JSON view gives signed integers
+            if (hash == std::string::npos || !entry.value().is_number_integer() || entry.value().get<int64_t>() < 0) {
                 return failWith("visit '" + entry.key() + "' is not \"<dialogue>#<node>\": count");
             }
             visits[entry.key().substr(0, hash)][entry.key().substr(hash + 1)] = entry.value().get<uint32_t>();
@@ -254,4 +260,67 @@ bool SaveHooks::restore(std::string_view text, std::string* error) {
         return false;
     }
     return Variables::fromJson(json, error);
+}
+
+namespace {
+
+    // SaveGame's JSON view (savegame.md R21) doubles a table key's leading '#' or '$'
+    std::string savedKey(const std::string& key) {
+        return !key.empty() && (key[0] == '#' || key[0] == '$') ? key.substr(0, 1) + key : key;
+    }
+
+    std::string loadedKey(const std::string& key) {
+        return key.size() > 1 && (key[0] == '#' || key[0] == '$') && key[1] == key[0] ? key.substr(1) : key;
+    }
+
+    // Objects and scalars, the keys renamed; an integral number becomes an integer, as Lua's
+    // toTable gives it, so a slot reads the same whichever side saved it
+    template<class To, class From>
+    To convertJson(const From& in, std::string (*key)(const std::string&)) {
+        if (in.is_object()) {
+            To out = To::object();
+            for (auto it = in.begin(); it != in.end(); ++it) out[key(it.key())] = convertJson<To>(it.value(), key);
+            return out;
+        }
+        if (in.is_array()) {
+            To out = To::array();
+            for (const auto& item : in) out.push_back(convertJson<To>(item, key));
+            return out;
+        }
+        if (in.is_boolean()) return To(in.template get<bool>());
+        if (in.is_number_unsigned()) return To(in.template get<uint64_t>());
+        if (in.is_number_integer()) return To(in.template get<int64_t>());
+        if (in.is_number()) {
+            const double number = in.template get<double>();
+            if (std::isfinite(number) && number == std::floor(number) && std::fabs(number) < 9.0e15) return To(static_cast<int64_t>(number));
+            return To(number);
+        }
+        if (in.is_string()) return To(in.template get<std::string>());
+        return To();
+    }
+
+}
+
+savegame::SaveError SaveHooks::save(std::string_view slot, std::string_view nameSpace, std::function<void(const savegame::SaveError&)> onComplete) {
+    std::string payload;
+    savegame::SaveError error;
+    if (!savegame::fromJson(convertJson<nlohmann::json>(Variables::toJson(), savedKey), payload, error)) return error;
+    savegame::WriteOptions options;
+    options.version = savegame::gameDataVersion();
+    return savegame::SaveGameStore::instance().write(slot, nameSpace, std::move(payload), options, std::move(onComplete));
+}
+
+savegame::SaveError SaveHooks::load(std::string_view slot, std::string_view nameSpace) {
+    std::string payload;
+    savegame::ReadInfo info;
+    savegame::SaveError error = savegame::SaveGameStore::instance().read(slot, nameSpace, payload, info);
+    if (!error.ok()) return error;
+    nlohmann::json json;
+    if (!savegame::toJson(payload, json, error)) return error;
+    std::string problem;
+    if (!Variables::fromJson(convertJson<Json>(json, loadedKey), &problem)) {
+        return savegame::makeError(savegame::SaveErrorCode::Corrupt, "namespace \"" + std::string(nameSpace) + "\" of slot \"" +
+                                   std::string(slot) + "\" is not a dialogue state: " + problem);
+    }
+    return {};
 }

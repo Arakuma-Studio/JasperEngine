@@ -19,7 +19,8 @@ Unity has no built-in slot system; the closest named equivalent is Unreal's `USa
 - A slot holds up to 64 **namespaces** (named like slots, 1-32 characters), each one Lua value,
   usually a table. `write` without a namespace writes `main`. Writing a namespace replaces only
   that one, so systems that save separately (inventory, quests, the world) never trample each
-  other; `replaceAll = true` drops the others.
+  other; `replaceAll = true` drops the others. `Dialogue.variables.save(slot)` keeps the dialogue
+  variables and visit counts in a namespace `dialogue` ([dialogue.md](dialogue.md)).
 - Values: booleans, integers (64-bit) and floats (bit-exact, NaN and infinities too), strings
   (any bytes), tables with integer or string keys, `Vector2`, `Vector3`, `Vector4`, `Quaternion`
   and `Json.null`. Functions, threads, other userdata, boolean or float keys, cycles and nesting

@@ -11,9 +11,12 @@
 #include "dialogue/DialogueRunner.h"
 #include "dialogue/DialogueVariables.h"
 #include "object/DialogueRunner.h"
+#include "jobs/JobSystem.h"
+#include "save/SaveGameStore.h"
 #include "script/LuaBinding.h"
 
 #include "TestPaths.h"
+#include "support/TestTempDir.h"
 
 #include "lua.hpp"
 #include "LuaBridge.h"
@@ -69,7 +72,7 @@ TEST_F(DialogueLua, ApiMatchesStubs) {
     const std::regex variable(R"(function DialogueVariables\.(\w+)\()");
     for (std::sregex_iterator it(stub.begin(), stub.end(), variable), end; it != end; ++it) variables.insert((*it)[1]);
     EXPECT_EQ(functions, (std::set<std::string>{"onAction", "onCondition", "removeHandler"}));
-    EXPECT_EQ(variables, (std::set<std::string>{"get", "set", "toTable", "fromTable", "resetVisits"}));
+    EXPECT_EQ(variables, (std::set<std::string>{"get", "set", "toTable", "fromTable", "resetVisits", "save", "load"}));
     for (const std::string& name : functions) EXPECT_EQ(runLua(L, "assert(type(Dialogue." + name + ") == 'function', '" + name + "')"), "") << name;
     for (const std::string& name : variables) {
         EXPECT_EQ(runLua(L, "assert(type(Dialogue.variables." + name + ") == 'function', '" + name + "')"), "") << name;
@@ -77,7 +80,7 @@ TEST_F(DialogueLua, ApiMatchesStubs) {
     // and the other way: the Lua tables have nothing the stub does not describe
     EXPECT_EQ(runLua(L,
         "local n = 0 for k in pairs(Dialogue) do n = n + 1 end assert(n == 4, n)\n"
-        "local v = 0 for k in pairs(Dialogue.variables) do v = v + 1 end assert(v == 5, v)\n"
+        "local v = 0 for k in pairs(Dialogue.variables) do v = v + 1 end assert(v == 7, v)\n"
         "Dialogue.variables.set('gold', 3)\n"
         "assert(Dialogue.variables.get('gold') == 3)\n"
         "local saved = Dialogue.variables.toTable()\n"
@@ -96,6 +99,46 @@ TEST_F(DialogueLua, ApiMatchesStubs) {
         "for _, name in ipairs({'start', 'advance', 'choose', 'resume', 'stop', 'setArg'}) do\n"
         "  assert(DialogueRunner[name], name)\n"
         "end\n"), "");
+}
+
+TEST_F(DialogueLua, VariablesSaveChangeLoad) {
+    test::TestTempDir dir{"dialogue-save-lua"};
+    savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
+    store.setFolder(dir.path() / "saves");
+    lua_State* L = LuaBinding::getLuaState();
+    dialogue::Variables::addVisit("guid-a", "n7");
+    EXPECT_EQ(runLua(L,
+        "Dialogue.variables.set('gold', 3)\n"
+        "Dialogue.variables.set('name', 'Ana')\n"
+        "assert(Dialogue.variables.save('slot1'))\n"
+        "Dialogue.variables.set('gold', 4)\n"
+        "Dialogue.variables.set('extra', true)\n"
+        "Dialogue.variables.resetVisits()\n"
+        "local ok, info = Dialogue.variables.load('slot1')\n"
+        "assert(ok, info and info.message)\n"
+        "assert(info.namespaces[1] == 'dialogue', info.namespaces[1])\n"
+        "assert(Dialogue.variables.get('gold') == 3)\n"
+        "assert(Dialogue.variables.get('name') == 'Ana')\n"
+        "assert(Dialogue.variables.get('extra') == nil)\n"
+        "assert(Dialogue.variables.toTable().visits['guid-a#n7'] == 1)\n"
+        // the namespace is SaveGame's: read as any other, or named in the options
+        "assert(SaveGame.read('slot1', {namespace = 'dialogue'}).variables.gold == 3)\n"
+        "assert(Dialogue.variables.save('slot1', {namespace = 'talk'}))\n"
+        "assert(SaveGame.read('slot1', {namespace = 'talk'}).variables.name == 'Ana')\n"
+        "assert(SaveGame.write('slot1', {level = 2}))\n"
+        "local bad, err = Dialogue.variables.load('slot1', {namespace = 'main'})\n"
+        "assert(not bad and err.code == 'corrupt', err and err.message)\n"
+        "local missing, err2 = Dialogue.variables.load('slot2')\n"
+        "assert(not missing and err2.code == 'not_found', err2 and err2.code)\n"
+        "assert(Dialogue.variables.get('gold') == 3)\n"), "");
+    // what Lua saved, C++ loads
+    dialogue::Variables::reset();
+    EXPECT_TRUE(dialogue::SaveHooks::load("slot1").ok());
+    EXPECT_TRUE(dialogue::Variables::get("gold").same(dialogue::Value(3.0)));
+    EXPECT_EQ(dialogue::Variables::visits("guid-a", "n7"), 1u);
+    store.flush();
+    jobs::drainMainQueue();
+    store.setFolder({});
 }
 
 TEST_F(DialogueLua, RunnerEventsAndChoose) {

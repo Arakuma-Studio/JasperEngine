@@ -12,13 +12,15 @@
 // - onChanged(name, value) fires after every set that changes a value (Lua; cleared at Stop by
 //   Engine::clearAllSubscriptions); C++ listeners (the runners' onVariableChanged) hear the same.
 // - toJson / fromJson are the store as {variables: {...}, visits: {"<guid>#n7": 2}}: Lua's
-//   toTable / fromTable and SaveHooks, which a save system calls (savegame.md).
+//   toTable / fromTable and SaveHooks. SaveHooks::save / load put that state in one namespace of
+//   a SaveGame slot (savegame.md); nothing touches the SaveGame store until one of them is called.
 // - reset() empties values and visits (Stop, tests); the project defaults stay.
 // - Thread-safety: main thread.
 
 #include "Export.h"
 #include "dialogue/DialogueValue.h"
 #include "json.hpp"
+#include "save/SaveValue.h"
 #include "util/FunctionSubscribe.h"
 
 #include <functional>
@@ -66,14 +68,24 @@ namespace jasperengine::dialogue {
         static void removeListener(int id);
     };
 
-    // What a save slot keeps of the dialogue system: the store's values and visit counts. The save
-    // system (savegame.md) calls these; nothing here depends on it.
+    // What a save slot keeps of the dialogue system: the store's values and visit counts
     class JASPERENGINE_API SaveHooks {
     public:
+        static constexpr const char* SAVE_NAMESPACE = "dialogue";
+
         // the state as JSON text
         static std::string capture();
         // false (nothing changed) for text that is not a captured state
         static bool restore(std::string_view text, std::string* error = nullptr);
+
+        // The state written as namespace `nameSpace` of SaveGame slot `slot`, stamped with
+        // SaveGame.version; queued as SaveGame.write is, `onComplete` on the main thread later.
+        // Lua's Dialogue.variables.save goes through SaveGame.write instead (its migrations).
+        static savegame::SaveError save(std::string_view slot, std::string_view nameSpace = SAVE_NAMESPACE,
+                                        std::function<void(const savegame::SaveError&)> onComplete = {});
+        // That namespace read back (pending writes included) and restored, told as sets are;
+        // nothing changes on an error. The game's Lua migrations do not run here
+        static savegame::SaveError load(std::string_view slot, std::string_view nameSpace = SAVE_NAMESPACE);
     };
 
 }
