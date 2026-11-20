@@ -824,6 +824,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/voxel/VoxelProjectSettings.cpp
     ${EDITOR_DIR}/cook/JPakWriter.cpp
     ${EDITOR_DIR}/cook/BuildReport.cpp
+    ${EDITOR_DIR}/cook/BuildReportHistory.cpp
+    ${EDITOR_DIR}/cook/Reachability.cpp
     ${EDITOR_DIR}/util/ZipArchive.cpp
     ${EDITOR_DIR}/players/ModuleUsage.cpp
     ${EDITOR_DIR}/players/PlayerRuntimes.cpp
@@ -939,6 +941,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/ExporterPrebuilt.cpp
     ${EDITOR_DIR}/ShippingTypes.cpp
     ${EDITOR_DIR}/export/ExportFiles.cpp
+    ${EDITOR_DIR}/export/SizeBudget.cpp
     ${EDITOR_DIR}/util/BuildDiagnostics.cpp
 
     ${EDITOR_DIR}/mcp/McpActivityWindow.cpp
@@ -1560,6 +1563,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/AudioImportSettings.cpp
     ${EDITOR_DIR}/audio/AudioMusicGrid.cpp
     ${EDITOR_DIR}/audio/AudioProvenance.cpp
+    ${EDITOR_DIR}/audio/MonoWavCook.cpp
     ${EDITOR_DIR}/audio/LoudnessMonitor.cpp
     ${EDITOR_DIR}/command/type/ShaderGlobalsCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsCmd.cpp

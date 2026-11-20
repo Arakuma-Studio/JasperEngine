@@ -4,6 +4,7 @@
 // W5: async export/build/run players
 //
 //   get_build_info     Build Settings state: modes, tools, output dirs, graphics APIs, shaders
+//   get_build_report   an export's Build Report, a comparison with another, why files ship (shipping group)
 //   build_project      export / build a player as a job (replaces export_project)
 //   generate_shaders   compile shader sets as a job (replaces the legacy blocking one)
 //   run_build          launch a built Desktop player, capture its log and a screenshot, stop it
@@ -35,6 +36,10 @@
 #include "Out.h"
 #include "Project.h"
 #include "command/type/ShaderOverridesCmd.h"
+#include "cook/BuildReport.h"
+#include "cook/BuildReportHistory.h"
+#include "cook/Reachability.h"
+#include "export/SizeBudget.h"
 #include "ShippingTypes.h"
 #include "players/PlayerRuntimes.h"
 #include "platform/AndroidTools.h"
@@ -1422,6 +1427,171 @@ void generateShadersTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ get_build_info
 
+std::string joinReportWords(const std::vector<std::string>& words, const std::string& separator) {
+    std::string out;
+    for (const std::string& word : words) out += (out.empty() ? "" : separator) + word;
+    return out;
+}
+
+// "+3.2 MB", "-12.0 KB"
+std::string signedBytes(int64_t delta) {
+    return (delta < 0 ? "-" : "+") + BuildReport::formatBytes((uint64_t)(delta < 0 ? -delta : delta));
+}
+
+Json reportFileItem(const BuildReportFile& file) {
+    Json item = {{"path", file.path}, {"category", file.category}, {"bytes", file.bytes}};
+    if (!file.source.empty()) item["source"] = file.source;
+    return item;
+}
+
+// build-size-tools R33: the report, its comparison and why files ship; false with the error
+bool buildReportInfo(Project* project, const Json& args, Json& data, std::string& text, std::vector<std::string>& next, std::string& error) {
+    const fs::path projectPath = project->getProjectPath();
+    const fs::path file = BuildReportHistory::resolve(projectPath, args.value("report", std::string("last")), error);
+    if (file.empty()) return false;
+    BuildReport report;
+    if (!BuildReport::load(file, report, error)) return false;
+    std::vector<std::string> ids;
+    for (const BuildReportHistory::Entry& entry : BuildReportHistory::list(projectPath, report.platform)) ids.push_back(entry.id);
+    const std::string name = report.id.empty() ? FileUtils::pathToGenericUtf8(file) : report.id;
+
+    Json largest = Json::array();
+    for (const BuildReportFile& item : report.largest) largest.push_back(reportFileItem(item));
+    const std::vector<const BuildReportFile*> unreferenced = report.unreferenced();
+    uint64_t unreferencedBytes = 0;
+    Json unreferencedTop = Json::array();
+    for (const BuildReportFile* item : unreferenced) {
+        unreferencedBytes += item->bytes;
+        if (unreferencedTop.size() < 10) unreferencedTop.push_back(reportFileItem(*item));
+    }
+    std::vector<BuildReportLeftOut> leftOut = report.leftOut;
+    std::stable_sort(leftOut.begin(), leftOut.end(), [](const BuildReportLeftOut& a, const BuildReportLeftOut& b) { return a.bytes > b.bytes; });
+    Json leftOutTop = Json::array();
+    for (size_t i = 0; i < leftOut.size() && i < 10; i++)
+        leftOutTop.push_back({{"source", leftOut[i].source}, {"reason", leftOut[i].reason}, {"bytes", leftOut[i].bytes}});
+    Json budgets = Json::array();
+    for (const BuildReportBudget& budget : report.budgets) {
+        budgets.push_back({{"platform", budget.platform}, {"category", budget.category}, {"limit_bytes", budget.limitBytes},
+                           {"bytes", budget.bytes}, {"over_bytes", budget.overBytes()}});
+        if (!budget.overBytes()) continue;
+        std::string files;
+        int shown = 0;
+        for (const BuildReportFile& item : report.largest) {
+            if (shown == 3 || (budget.category != "total" && item.category != budget.category)) continue;
+            files += (shown++ ? ", " : "") + (item.source.empty() ? item.path : item.source);
+        }
+        next.push_back(budget.category + " is " + signedBytes((int64_t)budget.overBytes()) + " over its " + BuildReport::formatBytes(budget.limitBytes) +
+                       " budget: look at " + (files.empty() ? std::string("the Files tab") : files) +
+                       " (referenced_by says why each ships)");
+    }
+    data["report"] = {{"id", report.id}, {"file", FileUtils::pathToGenericUtf8(file)}, {"platform", report.platform}, {"method", report.method},
+                      {"created", report.created}, {"total_bytes", report.totalBytes}, {"categories", report.categories}, {"largest", largest},
+                      {"unreferenced", {{"count", unreferenced.size()}, {"bytes", unreferencedBytes}, {"top", unreferencedTop}}},
+                      {"left_out", {{"count", report.leftOut.size()}, {"bytes", report.leftOutBytes()}, {"top", leftOutTop}}},
+                      {"budgets", budgets}, {"history", ids}};
+    if (!report.reachability) data["report"]["reachability"] = nullptr;
+    text = "Build Report " + report.platform + " " + name + ": " + BuildReport::formatBytes(report.totalBytes);
+
+    if (args.contains("compare_to")) {
+        std::string against = args.value("compare_to", std::string());
+        if (against == "previous") {
+            against = BuildReportHistory::previous(projectPath, report);
+            if (against.empty()) {
+                error = "no earlier " + report.platform + " report in the history to compare " + name + " with (history: " +
+                        (ids.empty() ? std::string("empty") : joinReportWords(ids, ", ")) + "); export again, or give compare_to a path";
+                return false;
+            }
+        }
+        const fs::path baseFile = BuildReportHistory::resolve(projectPath, against, error);
+        if (baseFile.empty()) return false;
+        BuildReport base;
+        if (!BuildReport::load(baseFile, base, error)) return false;
+        const BuildReportDiff diff = compareBuildReports(base, report);
+        Json categories = Json::object();
+        std::string parts;
+        for (const auto& [category, sizes] : diff.categories) {
+            const int64_t delta = (int64_t)sizes.second - (int64_t)sizes.first;
+            categories[category] = {{"before", sizes.first}, {"after", sizes.second}, {"delta", delta}};
+            if (delta == 0) continue;
+            std::map<std::string, size_t> counts;
+            for (const BuildReportChange& change : diff.changes)
+                if (change.category == category) counts[change.change]++;
+            std::string counted;
+            for (const char* kind : {"grown", "added", "shrunk", "removed"})
+                if (counts[kind]) counted += (counted.empty() ? "" : ", ") + std::to_string(counts[kind]) + " " + kind;
+            parts += "; " + category + " " + signedBytes(delta) + (counted.empty() ? "" : " (" + counted + ")");
+        }
+        Json changes = Json::array();
+        for (size_t i = 0; i < diff.changes.size() && i < 50; i++) {
+            const BuildReportChange& change = diff.changes[i];
+            changes.push_back({{"change", change.change}, {"key", change.key}, {"path", change.path}, {"category", change.category},
+                               {"before", change.before}, {"after", change.after}, {"delta", change.delta}});
+        }
+        const int64_t total = (int64_t)diff.totalAfter - (int64_t)diff.totalBefore;
+        data["comparison"] = {{"base", base.id.empty() ? FileUtils::pathToGenericUtf8(baseFile) : base.id}, {"categories", categories},
+                              {"total", {{"before", diff.totalBefore}, {"after", diff.totalAfter}, {"delta", total}}},
+                              {"changes", changes},
+                              {"counts", {{"added", diff.added}, {"removed", diff.removed}, {"grown", diff.grown}, {"shrunk", diff.shrunk},
+                                          {"unchanged", diff.unchanged}}},
+                              {"partial", diff.partial}, {"platform_differs", diff.platformDiffers}, {"truncated", diff.changes.size() > 50}};
+        text += " (" + signedBytes(total) + " vs " + (base.id.empty() ? FileUtils::pathToGenericUtf8(baseFile) : base.id) + ")" + parts;
+        if (diff.partial) text += "; partial: the older report lists its 25 largest files only";
+        if (diff.platformDiffers) text += "; the platforms differ (" + base.platform + " vs " + report.platform + ")";
+    }
+
+    if (args.contains("referenced_by")) {
+        const Json& asked = args["referenced_by"];
+        if (!asked.is_array() || asked.size() > 50) {
+            error = "referenced_by must be a list of at most 50 build or asset paths";
+            return false;
+        }
+        // R10: a report from before the walk answers from the index as the project is now
+        const bool live = !report.reachability;
+        if (live) {
+            AssetIndex& index = project->getAssetIndex();
+            if (!index.isReady()) {
+                error = "this report has no Referenced By data and the asset index is still building: call again once Indexing ends";
+                return false;
+            }
+            const std::string prefix = FileUtils::pathToGenericUtf8(project->getAssetsPath().lexically_relative(projectPath));
+            const std::string assetsPrefix = prefix.empty() || prefix == "." ? std::string() : prefix + "/";
+            std::vector<std::string> roots;
+            for (const BuildReportFile& item : report.files)
+                if (!item.asset.empty() && item.category == "scripts") roots.push_back(item.asset);
+            std::sort(roots.begin(), roots.end());
+            roots.insert(roots.begin(), reachAssetKey("project.yaml", assetsPrefix));
+            report.reachability = computeReachability(reachEdgesOf(index, project->getAssetDatabase(), assetsPrefix), roots);
+        }
+        Json items = Json::array();
+        bool askedUnreferenced = false;
+        for (const Json& path : asked) {
+            if (!path.is_string()) {
+                error = "referenced_by must be a list of at most 50 build or asset paths";
+                return false;
+            }
+            const BuildReportReferrers why = report.referencedBy(path.get<std::string>());
+            Json chain = Json::array();
+            for (const BuildReportStep& step : why.chain) {
+                Json item = {{"asset", step.asset}, {"field", step.field}, {"kind", step.kind}};
+                if (!step.object.empty()) item["object"] = step.object;
+                chain.push_back(item);
+            }
+            Json item = {{"file", why.file}, {"asset", why.asset}, {"reason", why.reason}, {"chain", chain}, {"live", live}};
+            if (why.reason == "unreferenced") {
+                item["note"] = BuildReport::unreferencedNote();
+                askedUnreferenced = true;
+            }
+            items.push_back(item);
+        }
+        data["referenced_by"] = items;
+        if (askedUnreferenced)
+            next.push_back(std::string("unreferenced: ") + BuildReport::unreferencedNote() + "; delete it, or keep it if a script loads it by a computed path");
+        if (live) text += "; Referenced By as the project is now, not as it was built";
+    }
+    text += ".";
+    return true;
+}
+
 void getBuildInfoTool(const CallPtr& call) {
     McpContext& ctx = call->ctx();
     Project* project = ctx.project();
@@ -1599,6 +1769,20 @@ void getBuildInfoTool(const CallPtr& call) {
         builddevice::replyWithDevices(call, project, text, data);
         return;
     }
+    call->ok(text, data);
+}
+
+// ------------------------------------------------------------------ get_build_report
+
+void getBuildReportTool(const CallPtr& call) {
+    Json data;
+    std::string text, error;
+    std::vector<std::string> next;
+    if (!buildReportInfo(call->ctx().project(), call->args(), data, text, next, error)) {
+        call->fail(error);
+        return;
+    }
+    if (!next.empty()) data["next"] = joinReportWords(next, " ");
     call->ok(text, data);
 }
 
@@ -2531,7 +2715,7 @@ void registerBuildTools(McpRegistry& registry) {
         tool.description =
             "Build Settings state: toolchains (cmake/compiler, emsdk; missing ones listed), graphics APIs and last "
             "output dir per mode, jobs, scenes in build, shader count (include_shaders: keys for edit_build_shaders), "
-            "running job, last result. Call before build_project.";
+            "running job, last result (sizes: get_build_report). Call before build_project.";
         tool.inputSchema = object({
             {"include_shaders", withDefault(boolean(""), false)},
             {"devices", withDefault(boolean(""), false)}
@@ -2539,6 +2723,25 @@ void registerBuildTools(McpRegistry& registry) {
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = getBuildInfoTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "get_build_report";
+        tool.title = "Get Build Report";
+        tool.group = "shipping";
+        tool.description =
+            "An export's Build Report (default: the last): sizes by category, largest, unreferenced and left-out files, size "
+            "budgets. compare_to: what changed since another report; referenced_by: why each file ships.";
+        tool.inputSchema = object({
+            {"report", string("last (default), a history id or a build-report.json path.")},
+            {"compare_to", string("previous, a history id or a path.")},
+            {"referenced_by", array(Json{{"type", "string"}}, "Build or asset paths, at most 50.")}
+        });
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getBuildReportTool;
         registry.addTool(std::move(tool));
     }
 

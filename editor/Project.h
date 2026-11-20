@@ -45,6 +45,7 @@
 #include "texture/TextureImportSettings.h"
 #include "titleart/TitleArtSettings.h"
 #include "pixelart/PixelArtSettings.h"
+#include "export/SizeBudget.h"
 #include "model/ModelImportSettings.h"
 #include "SaveGameSettings.h"
 #include "vcs/VcsTypes.h"
@@ -1053,6 +1054,8 @@ namespace jasperengine::editor{
         // Project Settings > Player > Strip Engine Code (docs/specs/S34-player-size.md R7): builds leave
         // out the engine modules the project cannot reach (export: stripEngineCode, default on)
         bool stripEngineCode = true;
+        std::vector<SizeBudgetRow> sizeBudgets;
+        bool sizeBudgetFail = false;
         // Project Settings > Player > Publishing Settings > Target Platforms: a bit per BuildPlatform
         // (export: targetPlatforms, written when not all six), never empty
         uint8_t targetPlatforms = allTargetPlatforms;
@@ -2165,6 +2168,11 @@ namespace jasperengine::editor{
         void setPackContent(bool enabled) { packContent = enabled; }
         bool isStripEngineCode() const { return stripEngineCode; }
         void setStripEngineCode(bool enabled) { stripEngineCode = enabled; }
+        // Publishing Settings > Size Budgets (build-size-tools R12): the rows, and When Over Budget (false: warn)
+        const std::vector<SizeBudgetRow>& getSizeBudgets() const { return sizeBudgets; }
+        void setSizeBudgets(const std::vector<SizeBudgetRow>& rows) { sizeBudgets = rows; }
+        bool isSizeBudgetFail() const { return sizeBudgetFail; }
+        void setSizeBudgetFail(bool fail) { sizeBudgetFail = fail; }
         // Target Platforms: where the game ships. Build Settings, build_project and get_build_info default
         // to them; any platform still builds. 0 sets all six (a game has a target)
         static constexpr uint8_t allTargetPlatforms = 0x3F;

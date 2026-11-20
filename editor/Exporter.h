@@ -166,6 +166,9 @@ namespace jasperengine::editor {
         fs::path buildReport;
         uint64_t buildBytes = 0;
         std::map<std::string, uint64_t> buildCategories;
+        // build-size-tools: the report's history id and its size budget rows
+        std::string buildReportId;
+        std::vector<BuildReportBudget> sizeBudgets;
         // the Build Profile the build resolved ("" none)
         std::string buildProfile;
         // Android: the package name; iOS: the bundle identifier ("" elsewhere)
@@ -282,7 +285,12 @@ namespace jasperengine::editor {
         // S53 R21: what the export's cooks measured, for the Build Report: a cooked file's build
         // path -> its source asset and that source's bytes
         std::map<std::string, std::pair<std::string, uint64_t>> cookedModelSizes;
+        // build-size-tools R19: the WAVs Force To Mono shipped mono, the same way (build path
+        // "assets/<rel>" -> the asset and the original file's bytes)
+        std::map<std::string, std::pair<std::string, uint64_t>> cookedAudioSizes;
         BuildReport buildReport;
+        // build-size-tools R2: the sources copyAssets() did not ship as themselves, and why
+        std::vector<BuildReportLeftOut> leftOutSources;
         // S44: the imports of the project's .aseprite files (gatherImportedAssets), shipped as
         // assets/je-imported/ with its index.json; the .aseprite files themselves never ship
         std::vector<std::shared_ptr<const pixelart::aseprite::ImportRecord>> importedRecords;
@@ -485,7 +493,17 @@ namespace jasperengine::editor {
         // its engine files, and the report written next to the export
         void measureBuildContent(const fs::path& contentRoot);
         void measureBuildEngine(const fs::path& root);
-        bool writeBuildReport(const fs::path& outputDir, const std::string& method);
+        // build-size-tools: the report's id and time, each file's asset, the reachability walk
+        // (R3, R4), the engine and total budgets (unless a content budget already stopped the build),
+        // then build-report.json and its history entry (R6). False when it cannot be written or a
+        // fail budget stops the export.
+        bool writeBuildReport(const fs::path& outputDir, const std::string& method, bool engineMeasured = true);
+        // R13: the size budgets of the content (content true, right after measureBuildContent) or
+        // of the engine and total; false when a fail budget stopped the export (its report written)
+        bool checkSizeBudgets(bool content, const fs::path& outputDir, const std::string& method);
+        std::string buildReportPlatform() const;
+        // each file's asset (main thread) and, with the index ready, why each asset ships
+        void mapBuildReportAssets();
         // What walkTree() does after visiting an entry: enter it (a folder; a file goes on to the
         // next entry), skip what it holds, or stop the walk
         enum class TreeStep { Enter, Skip, Stop };

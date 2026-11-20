@@ -3062,6 +3062,19 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (project->getBuildMethod() != "auto") exportNode["method"] = project->getBuildMethod();
         if (project->isPackContent()) exportNode["pack"] = true;
         if (!project->isStripEngineCode()) exportNode["stripEngineCode"] = false;
+        if (!project->getSizeBudgets().empty()) {
+            YAML::Node budgetsNode(YAML::NodeType::Sequence);
+            for (const SizeBudgetRow& row : project->getSizeBudgets()) {
+                YAML::Node rowNode;
+                rowNode["platform"] = row.platform;
+                rowNode["category"] = row.category;
+                rowNode["limitMb"] = row.limitMb;
+                rowNode.SetStyle(YAML::EmitterStyle::Flow);
+                budgetsNode.push_back(rowNode);
+            }
+            exportNode["sizeBudgets"] = budgetsNode;
+        }
+        if (project->isSizeBudgetFail()) exportNode["sizeBudgetAction"] = "fail";
         // Player > Target Platforms: only when not all six, in BuildPlatform order
         if (project->getTargetPlatforms() != Project::allTargetPlatforms) {
             YAML::Node targetsNode(YAML::NodeType::Sequence);
@@ -4121,6 +4134,22 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         project->setPackContent(exportNode["pack"] && exportNode["pack"].as<bool>());
         project->setStripEngineCode(!exportNode["stripEngineCode"] || exportNode["stripEngineCode"].as<bool>());
+        // build-size-tools R40: optional, none and warn by default; a row this editor cannot read is dropped
+        std::vector<SizeBudgetRow> sizeBudgets;
+        if (exportNode["sizeBudgets"] && exportNode["sizeBudgets"].IsSequence()) {
+            for (const YAML::Node& rowNode : exportNode["sizeBudgets"]) {
+                if (!rowNode.IsMap() || !rowNode["limitMb"]) continue;
+                mcp::Json row = {{"platform", rowNode["platform"] ? rowNode["platform"].as<std::string>() : std::string("all")},
+                                 {"category", rowNode["category"] ? rowNode["category"].as<std::string>() : std::string("total")},
+                                 {"limit_mb", rowNode["limitMb"].as<double>(0.0)}};
+                std::vector<SizeBudgetRow> parsed;
+                std::string rowError;
+                if (sizebudget::fromJson(mcp::Json::array({row}), parsed, rowError)) sizeBudgets.push_back(parsed.front());
+            }
+        }
+        project->setSizeBudgets(sizeBudgets);
+        project->setSizeBudgetFail(exportNode["sizeBudgetAction"] && exportNode["sizeBudgetAction"].IsScalar() &&
+                                   exportNode["sizeBudgetAction"].as<std::string>() == "fail");
 
         if (exportNode["desktop"] && exportNode["desktop"].IsMap()) {
             const YAML::Node& desktopNode = exportNode["desktop"];

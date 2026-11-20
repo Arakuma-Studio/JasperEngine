@@ -38,6 +38,8 @@ namespace jasperengine {
 
         double getLength();
         double getPlayingTime();
+        // the loaded clip's channels as it plays (1 under Force To Mono), 0 with no clip loaded
+        int getChannels() const;
 
         bool isPlaying();
         bool isPaused();

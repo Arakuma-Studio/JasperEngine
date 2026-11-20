@@ -27,7 +27,9 @@ namespace jasperengine{
     // the file (a SoLoud::Wav, read in place, or a WavStream or EngineWavStream, each voice with its
     // decoder). Every voice plays the region [start frame, end frame) of the file (the trims), at the
     // clip's gain, with its fades, and a looping voice wraps from the loop end to its loop point.
-    // Seeks land on frame floor(seconds x rate) of that region.
+    // Seeks land on frame floor(seconds x rate) of that region. With Force To Mono a file of several
+    // channels plays as one channel, the mean of its channels per frame (SoLoud then takes its cheaper
+    // 1 -> 2 path, which pans a positional voice whole).
     // Fades are applied by each voice as it reads, never baked into the shared samples, because
     // fades never shape a wrap: the fade-in only before the first wrap, the fade-out only on a
     // pass that ends the region. A clip with default settings is not wrapped at all (SoundPool).
@@ -51,7 +53,9 @@ namespace jasperengine{
         // the region's start (0 without a loop start)
         double getDefaultLoopPoint() const;
 
+        // the channels a voice gives (1 under Force To Mono), and the file's
         unsigned int getChannels() const;
+        unsigned int getFileChannels() const;
         float getSampleRate() const;
         // the file's frames, and the region's (frames from the file's first frame)
         uint32_t getFileFrames() const;
@@ -74,6 +78,9 @@ namespace jasperengine{
         SoLoud::WavStream* stream = nullptr;
 
         uint32_t fileFrames = 0;
+        unsigned int fileChannels = 0;
+        // Force To Mono on a file of several channels: voices give the mean of the file's channels
+        bool downmix = false;
         uint32_t startFrame = 0;
         uint32_t endFrame = 0;
         uint32_t loopStartFrame = 0;
@@ -148,6 +155,8 @@ namespace jasperengine{
         bool readsToLoopEnd() const;
         // where a read stops
         uint32_t readLimit() const;
+        // the mean of `channels` planes of `pitch` floats into out, `frames` of them, times `scale`
+        static void mixDown(float* out, const float* planes, unsigned int channels, size_t pitch, unsigned int frames, float scale);
         // the fades over the `count` frames just read into buffer from `position`
         void applyFades(float* buffer, unsigned int count, unsigned int bufferSize, bool toLoopEnd);
     };
