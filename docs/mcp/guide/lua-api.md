@@ -1542,13 +1542,14 @@ Crash.cancelReport()                                        -- drops the draft
 
 ```lua
 Journal.log("level.start", {name = "forest-2", seed = 42})   -- kind [A-Za-z0-9_.:-]{1,48}, 12 fields
-Journal.enabled                                              -- read-only property
+local on = Journal.enabled                                   -- read-only property
 Journal.getEntries(20)                                       -- {{time, frame, kind, text}, ...} oldest first
 Journal.getText()                                            -- journal.txt
 Journal.clear()
 ```
 
 - Events, not frames. The editor's Console shows each entry in the `journal` category.
+
 ### 2.16 Time (static, Unity's Time)
 
 The game clocks under their Unity names. `Engine.deltatime` and the other `Engine` names stay;
