@@ -538,11 +538,11 @@ craftsman-end-motor (a port reconstructed from a retail binary). Profiles are ge
   (`buildprofiles::view`), not through the S05 watcher (which leaves `EditorSettings/` out).
 - **Paths**: the code is in `editor/buildprofile/` and its tests in `editor/tests/buildprofile/`, not
   `editor/build/` and `editor/tests/build/`: `.gitignore` ignores every `build` folder.
-- **The snapshot's budget (50 ms for 2,000 lines) is not met**: `TheOpenProjectNeverChanges` measured
-  179.5 ms on the shared build box (five builds at once), most of it yaml-cpp encoding and decoding
-  the 2,019-line `project.yaml`. It is printed and enforced only under `perfSlack()`; a build takes
-  seconds. The Risks' `BuildSettingsView` fallback was not taken: it would need every settings
-  setter to write a struct instead of a `Project`.
+- **The snapshot's budget (50 ms for 2,000 lines)**: measured at 186 ms on box A; of it encodeProject
+  11 ms, a snapshot of an empty project 0.5 ms, validation 0.1 ms, so the decode of the 2,000 label
+  colours took ~175 ms: `AssetLabels::setEntries` scanned the palette per entry, lower-casing both names
+  on every comparison (quadratic). It now keeps a set of lower-case names (linear); the project's own
+  load gains the same.
 - **AC4's physics key** is `physics.max_bodies`: the project has no `physics.gravity` setting.
 - **AC2's fixture** (`expected-no-profile.json`) holds the key paths of `game.json` and
   `content-manifest.json` (values masked) recorded from this branch's build without a profile, not
