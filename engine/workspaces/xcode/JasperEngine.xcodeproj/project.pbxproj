@@ -5050,6 +5050,20 @@
 		4A534E476F0EFFA8AB3876B5 /* UserReport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4792A80D2DF7E35E88 /* UserReport.cpp */; };
 		4A534E479D34924BF696C797 /* Journal.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C1C52882757084CB /* Journal.h */; };
 		4A534E470A9B61891BAF0CD3 /* UserReport.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A91F74C67FF0BD20 /* UserReport.h */; };
+		4A534E479A01477F075170D5 /* GamepadCursor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476F7C0107E40CEB28 /* GamepadCursor.cpp */; };
+		4A534E474E12915DC5A2D12B /* GamepadCursor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476F7C0107E40CEB28 /* GamepadCursor.cpp */; };
+		4A534E47BC6CCFE167AF9CC0 /* GamepadCursor.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475474944C46E8ACD3 /* GamepadCursor.h */; };
+		4A534E47E35AE94D8975A3D1 /* EngineTextEntry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4745E4714837819508 /* EngineTextEntry.cpp */; };
+		4A534E4745EE6F73EBF129EB /* EngineTextEntry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4745E4714837819508 /* EngineTextEntry.cpp */; };
+		4A534E47B7225EB59C826FEC /* TextEntry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47879CEBF1EC52E724 /* TextEntry.cpp */; };
+		4A534E47898697E5FD46287E /* TextEntry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47879CEBF1EC52E724 /* TextEntry.cpp */; };
+		4A534E4726D026AB2D8209D0 /* TextInputSync.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477A358BCDEE20A331 /* TextInputSync.cpp */; };
+		4A534E472D5EB34D45F54487 /* TextInputSync.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477A358BCDEE20A331 /* TextInputSync.cpp */; };
+		4A534E47B38658FC77489F19 /* TextEntryTraits.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F42D15DF2035317D /* TextEntryTraits.cpp */; };
+		4A534E47D04EB0F01B20BAF4 /* TextEntryTraits.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F42D15DF2035317D /* TextEntryTraits.cpp */; };
+		4A534E47414EDA19A7B191A0 /* TextEntryTraits.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F625F43D9C08E937 /* TextEntryTraits.h */; };
+		4A534E47F035A00EEFA5A73C /* TextEntry.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471E3A49042EFB6FBC /* TextEntry.h */; };
+		4A534E472D0F9D8C4B9261EB /* TextInputSync.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4765F22B9DE0076AEB /* TextInputSync.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9705,6 +9719,15 @@
 		4A534E4792A80D2DF7E35E88 /* UserReport.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UserReport.cpp; sourceTree = "<group>"; };
 		4A534E47C1C52882757084CB /* Journal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Journal.h; sourceTree = "<group>"; };
 		4A534E47A91F74C67FF0BD20 /* UserReport.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UserReport.h; sourceTree = "<group>"; };
+		4A534E476F7C0107E40CEB28 /* GamepadCursor.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GamepadCursor.cpp; sourceTree = "<group>"; };
+		4A534E475474944C46E8ACD3 /* GamepadCursor.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GamepadCursor.h; sourceTree = "<group>"; };
+		4A534E4745E4714837819508 /* EngineTextEntry.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EngineTextEntry.cpp; sourceTree = "<group>"; };
+		4A534E47879CEBF1EC52E724 /* TextEntry.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextEntry.cpp; sourceTree = "<group>"; };
+		4A534E477A358BCDEE20A331 /* TextInputSync.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextInputSync.cpp; sourceTree = "<group>"; };
+		4A534E47F42D15DF2035317D /* TextEntryTraits.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextEntryTraits.cpp; sourceTree = "<group>"; };
+		4A534E47F625F43D9C08E937 /* TextEntryTraits.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextEntryTraits.h; sourceTree = "<group>"; };
+		4A534E471E3A49042EFB6FBC /* TextEntry.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextEntry.h; sourceTree = "<group>"; };
+		4A534E4765F22B9DE0076AEB /* TextInputSync.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextInputSync.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -11446,6 +11469,10 @@
 				4A534E47E562E3C49242FBD7 /* InputScript.cpp */,
 				4A534E4708A47DEEE94F83AE /* InputScript.h */,
 				4A534E4786963BAB6500F7BE /* InputScriptRunner.h */,
+				4A534E47879CEBF1EC52E724 /* TextEntry.cpp */,
+				4A534E477A358BCDEE20A331 /* TextInputSync.cpp */,
+				4A534E471E3A49042EFB6FBC /* TextEntry.h */,
+				4A534E4765F22B9DE0076AEB /* TextInputSync.h */,
 			);
 			path = input;
 			sourceTree = "<group>";
@@ -11917,6 +11944,7 @@
 				4A534E531B38A0F5FBC1FFA3 /* tilemap */,
 				4A534E47651ABB7603E16A3A /* localization */,
 				4A534E535737E19B07B9FC33 /* save */,
+				4A534E4745E4714837819508 /* EngineTextEntry.cpp */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -12557,6 +12585,8 @@
 				4A534E47D89F43391B4A415F /* TrailSystem.h */,
 				4A534E47FC33E0E52A92BE03 /* PhysicsSystemContacts.cpp */,
 				4A534E479EDE64B20B0A2F04 /* UISystemPointer.cpp */,
+				4A534E476F7C0107E40CEB28 /* GamepadCursor.cpp */,
+				4A534E475474944C46E8ACD3 /* GamepadCursor.h */,
 				4A534E470FE648ABDB388822 /* ActionSystemLayers.cpp */,
 				4A534E475FF4AFE61C31BF60 /* ActionSystemPlayersDetail.h */,
 				4A534E472D5BDDA43BAF777F /* CameraControlSystem.cpp */,
@@ -14771,6 +14801,8 @@
 				4A534E477432B679554FC04C /* RmlFontEngineBitmap.cpp */,
 				4A534E473E0CDBDD10629EA3 /* HtmlL10n.cpp */,
 				4A534E47B0BDDD79726EBB2F /* HtmlL10n.h */,
+				4A534E47F42D15DF2035317D /* TextEntryTraits.cpp */,
+				4A534E47F625F43D9C08E937 /* TextEntryTraits.h */,
 			);
 			path = htmlui;
 			sourceTree = "<group>";
@@ -17187,6 +17219,10 @@
 				4A534E4772F8D292D061E001 /* StringTableRuntime.h in Headers */,
 				4A534E479D34924BF696C797 /* Journal.h in Headers */,
 				4A534E470A9B61891BAF0CD3 /* UserReport.h in Headers */,
+				4A534E47BC6CCFE167AF9CC0 /* GamepadCursor.h in Headers */,
+				4A534E47414EDA19A7B191A0 /* TextEntryTraits.h in Headers */,
+				4A534E47F035A00EEFA5A73C /* TextEntry.h in Headers */,
+				4A534E472D0F9D8C4B9261EB /* TextInputSync.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19719,6 +19755,7 @@
 				4A534E47CE4DDDD5406DCD9F /* OnScreenControls.cpp in Sources */,
 				4A534E475734202A34670B36 /* OnScreenControls.cpp in Sources */,
 				4A534E476A7F8F86DF73A561 /* UISystemPointer.cpp in Sources */,
+				4A534E479A01477F075170D5 /* GamepadCursor.cpp in Sources */,
 				4A534E47C2EB8733EFA6A703 /* AnimJson.cpp in Sources */,
 				4A534E47DC0E92FD3966E7E3 /* ActionSystemLayers.cpp in Sources */,
 				4A534E47756C985B9E9901E4 /* AvatarMaskWeights.cpp in Sources */,
@@ -19912,6 +19949,10 @@
 				4A534E53FB9FC3DF45EFBCF7 /* SaveGameLua.cpp in Sources */,
 				4A534E4729AECE279C965B13 /* Journal.cpp in Sources */,
 				4A534E478B3D7882842B561A /* UserReport.cpp in Sources */,
+				4A534E47E35AE94D8975A3D1 /* EngineTextEntry.cpp in Sources */,
+				4A534E47B7225EB59C826FEC /* TextEntry.cpp in Sources */,
+				4A534E4726D026AB2D8209D0 /* TextInputSync.cpp in Sources */,
+				4A534E47B38658FC77489F19 /* TextEntryTraits.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20735,6 +20776,7 @@
 				4A534E472B759C831029D9FF /* OnScreenControls.cpp in Sources */,
 				4A534E4775C989A97F7DAD2F /* OnScreenControls.cpp in Sources */,
 				4A534E475C8615BE887AD90C /* UISystemPointer.cpp in Sources */,
+				4A534E474E12915DC5A2D12B /* GamepadCursor.cpp in Sources */,
 				4A534E47B883AB58AE96516A /* AnimJson.cpp in Sources */,
 				4A534E47B6383C70AF9337CE /* ActionSystemLayers.cpp in Sources */,
 				4A534E47F2CAAB71EAE7AAA8 /* AvatarMaskWeights.cpp in Sources */,
@@ -20928,6 +20970,10 @@
 				4A534E53BA8CD9400B7688D5 /* SaveGameLua.cpp in Sources */,
 				4A534E47F58C995541F203AF /* Journal.cpp in Sources */,
 				4A534E476F0EFFA8AB3876B5 /* UserReport.cpp in Sources */,
+				4A534E4745EE6F73EBF129EB /* EngineTextEntry.cpp in Sources */,
+				4A534E47898697E5FD46287E /* TextEntry.cpp in Sources */,
+				4A534E472D5EB34D45F54487 /* TextInputSync.cpp in Sources */,
+				4A534E47D04EB0F01B20BAF4 /* TextEntryTraits.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -21,6 +21,7 @@
 #include "device/DeviceSettings.h"
 #include "pixelart/ScreenTransition.h"
 #include "save/SaveGameStore.h"
+#include "subsystem/GamepadCursor.h"
 
 #include "json.hpp"
 
@@ -66,6 +67,8 @@ namespace jasperengine::player {
         bool vsync = true;
         // Project Settings > Graphics > Dynamic Batching
         bool dynamicBatching = true;
+        // Player > Pause On Focus Loss
+        bool pauseOnFocusLoss = false;
         std::string icon;                  // content-relative PNG ("icon.png"), the window icon
         std::string storageId;
 
@@ -98,6 +101,7 @@ namespace jasperengine::player {
         std::string inputActions;
         // the String Tables' manifest ("l10n/manifest.json") when the game has any (game-ui-localization.md D5)
         std::string localization;
+        GamepadCursorSettings gamepadCursor;
         nav::NavigationSettings navigation;
         // Project Settings > Voxels (T6 R7): what the project lowers of the platform's limits, 0: nothing
         int voxelMaxDimension = 0;

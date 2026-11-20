@@ -704,6 +704,7 @@ bool editor::Exporter::writeGameConfig() {
     game.foliageQualityUncapped = !settings->isFoliageQualityDeclared();
     game.foliageDistanceScale = settings->getFoliageDistanceScale();
     game.inputDeadzone = settings->getInputDeadzone();
+    game.gamepadCursor = settings->getGamepadCursorSettings();
     game.inputActions = settings->getInputActionsEnginePath();
     game.navigation = settings->getNavigationSettings().settings;
     game.voxelMaxDimension = settings->getVoxelSettings().maxDimension;
@@ -718,6 +719,7 @@ bool editor::Exporter::writeGameConfig() {
     game.transformAwareText = settings->getHtmlUiRenderSettings().transformAwareText;
     game.mobilePbrTier = settings->getMobilePbrTier();
     game.dynamicBatching = settings->isDynamicBatching();
+    game.pauseOnFocusLoss = settings->getPresentationSettings().pauseOnFocusLoss;
     game.lightMode = settings->getLightMode();
     game.transitions = settings->getTransitionDefaults();
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) game.shadowTiers[platform] = settings->getShadowTier(platform);

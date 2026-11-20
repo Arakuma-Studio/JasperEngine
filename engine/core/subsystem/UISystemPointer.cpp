@@ -24,6 +24,7 @@
 #include "System.h"
 #include "input/InputActions.h"
 #include "input/InputScheme.h"
+#include "input/TextEntry.h"
 #include "script/ScriptMessages.h"
 #include "script/ScriptRuntime.h"
 #include "script/LuaBinding.h"
@@ -512,7 +513,7 @@ void UISystem::legacyPointerDown(UIPointerState& state){
 
                 bool hadInvalid = false;
                 std::wstring wideText = StringUtils::utf8ToWString(text->text, hadInvalid);
-                System::instance().showVirtualKeyboard(wideText);
+                System::instance().showVirtualKeyboard(wideText, inputFieldTraits(inputfield));
             }
         }
     }else{

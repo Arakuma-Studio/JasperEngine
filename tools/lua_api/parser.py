@@ -1985,6 +1985,17 @@ OVERRIDES[('TerrainWorld', 'onAreaReady')] = {
     'overloads': [([('x', 'number'), ('z', 'number'), ('radius', 'number'), ('level', 'string'), ('callback', 'fun()')], '')]}
 OVERRIDES[('TerrainWorld', 'getStats')] = {'overloads': [([], 'TerrainWorldStats')]}
 
+OVERRIDES[('System', 'showVirtualKeyboard')] = {
+    'doc': ['Opens the soft keyboard (Android, iOS, the web) for text the script handles itself. `options` picks',
+            'the keyboard with the HTML attribute values; without them the platform\'s plain keyboard. HTML text',
+            'fields and the component InputField open theirs on their own.'],
+    'overloads': [([('text?', 'string'), ('options?', 'VirtualKeyboardOptions')], '')],
+}
+OVERRIDES[('System', 'updateVirtualKeyboardText')] = {
+    'doc': ['Replaces the text the soft keyboard holds (Android, iOS), caret in code points (default: the end):',
+            'after the script changed what was typed.'],
+    'overloads': [([('text', 'string'), ('caret?', 'integer')], '')],
+}
 OVERRIDES[('Screen', 'setExtraInsets')] = {
     'doc': ['Space the game keeps free per edge on top of the device insets (a banner ad): every safe-area',
             'consumer includes it (Screen.safeArea, the Safe Area component, HTML env()). `unit` is',
@@ -3403,6 +3414,8 @@ HTML_UI_FIELD_OVERRIDES = {
     ('UIDocument', 'body'): {'doc': ['the <body> element (the root of an .rml document)']},
     ('UIDocument', 'documentElement'): {'doc': ['the <html> element (CSS :root; the same as body in an .rml document)']},
     ('UIEvent', 'gamepad'): {'doc': ['the id of the gamepad that sent this keydown/keyup (code "GamepadA", ...), -1 for the keyboard']},
+    ('UIEvent', 'enterKeyHint'): {'doc': ['an Enter keydown of the soft keyboard\'s action key or of a field with an enterkeyhint: the hint',
+                                          '("next", "send", ...; "" for the platform\'s default key); preventDefault stops its action']},
 }
 
 # HTML UI (phase 4, p4-guide): the event names of UIElement/UIDocument addEventListener

@@ -82,6 +82,16 @@ namespace {
         return false;
     }
 
+    bool listensForClick(Rml::Element* element){
+        for (HtmlUIEventListener* listener : HtmlUIEventListener::listenersOf(element)){
+            const std::string& type = listener->getDomType();
+            if (type == "click" || type == "pointerdown" || type == "mousedown")
+                return true;
+        }
+        return element->HasAttribute("data-event-click") || element->HasAttribute("data-event-pointerdown") ||
+               element->HasAttribute("data-event-mousedown");
+    }
+
     // a background colour with alpha, a decorator or a background image layer
     bool paintsBackground(const Rml::Element* element){
         const Rml::Style::ComputedValues& values = element->GetComputedValues();
@@ -189,6 +199,18 @@ void HtmlUIContext::releaseFocus(){
     Rml::ElementDocument* document = focus->GetOwnerDocument();
     if (document && focus != document)
         document->Focus();
+}
+
+bool HtmlUIContext::takesPointerInput(Rml::Element* element){
+    for (Rml::Element* node = element; node; node = node->GetParentNode()){
+        if (rmlui_dynamic_cast<Rml::ElementDocument*>(node))
+            return false;
+        const Rml::String& tag = node->GetTagName();
+        if (tag == "button" || tag == "input" || tag == "select" || tag == "textarea" || (tag == "a" && node->HasAttribute("href")) ||
+            node->HasAttribute("onclick") || listensForClick(node))
+            return true;
+    }
+    return false;
 }
 
 bool HtmlUIContext::passesPointerThrough(Rml::Element* element){

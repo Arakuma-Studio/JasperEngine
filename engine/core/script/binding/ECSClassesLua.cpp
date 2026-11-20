@@ -251,6 +251,17 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("InputFieldKeyboardType")
+        .addVariable("DEFAULT", InputFieldKeyboardType::DEFAULT)
+        .addVariable("NUMBER_PAD", InputFieldKeyboardType::NUMBER_PAD)
+        .addVariable("DECIMAL_PAD", InputFieldKeyboardType::DECIMAL_PAD)
+        .addVariable("PHONE_PAD", InputFieldKeyboardType::PHONE_PAD)
+        .addVariable("EMAIL_ADDRESS", InputFieldKeyboardType::EMAIL_ADDRESS)
+        .addVariable("URL", InputFieldKeyboardType::URL)
+        .addVariable("SEARCH", InputFieldKeyboardType::SEARCH)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
         .beginNamespace("AnchorPreset")
         .addVariable("NONE", AnchorPreset::NONE)
         .addVariable("TOP_LEFT", AnchorPreset::TOP_LEFT)
@@ -1072,6 +1083,8 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("scrollOffset", &InputFieldComponent::scrollOffset, &setTrackedMember<&InputFieldComponent::scrollOffset>)
         .addProperty("disabled", &InputFieldComponent::disabled, &setTrackedMember<&InputFieldComponent::disabled>)
         .addProperty("password", &InputFieldComponent::password, &setTrackedMember<&InputFieldComponent::password>)
+        .addProperty("keyboardType", &InputFieldComponent::keyboardType, &setTrackedMember<&InputFieldComponent::keyboardType>)
+        .addProperty("characterLimit", &InputFieldComponent::characterLimit, &setTrackedMember<&InputFieldComponent::characterLimit>)
         .addProperty("onChange", [] (InputFieldComponent* self, lua_State* L) { return &self->onChange; }, [] (InputFieldComponent* self, lua_State* L) { self->onChange = L; })
         .addProperty("onSubmit", [] (InputFieldComponent* self, lua_State* L) { return &self->onSubmit; }, [] (InputFieldComponent* self, lua_State* L) { self->onSubmit = L; })
         .addProperty("needUpdateInputField", &InputFieldComponent::needUpdateInputField, &setTrackedMember<&InputFieldComponent::needUpdateInputField>)

@@ -1200,6 +1200,7 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addProperty("keyCode", &UIEvent::getKeyCode)
         .addProperty("repeat", &UIEvent::isRepeat)
         .addProperty("gamepad", &UIEvent::getGamepad)
+        .addProperty("enterKeyHint", &UIEvent::getEnterKeyHint)
         .addProperty("ctrlKey", &UIEvent::getCtrlKey)
         .addProperty("shiftKey", &UIEvent::getShiftKey)
         .addProperty("altKey", &UIEvent::getAltKey)
@@ -1526,6 +1527,8 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addFunction("hide", &UIDocument::hide)
         .addProperty("visible", &UIDocument::isVisible, &UIDocument::setVisible)
         .addProperty("sortOrder", &UIDocument::getSortOrder, &UIDocument::setSortOrder)
+        .addProperty("isMenu", &UIDocument::isMenu, &UIDocument::setMenu)
+        .addProperty("gamepadCursor", &UIDocument::isGamepadCursor, &UIDocument::setGamepadCursor)
         .addFunction("getElementById", [](const UIDocument* self, const std::string& id) -> std::optional<UIElement> {
             return optionalElement(self->getElementById(id));
         })

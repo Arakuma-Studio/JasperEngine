@@ -88,3 +88,60 @@ TEST(AndroidTextInput, DecodesModifiedAndPlainUtf8) {
     EXPECT_EQ(unitToCodepoint, (std::vector<size_t>{0, 1, 2, 2, 3}));
     EXPECT_EQ(codepointsToUtf8(U"a\U0001F600", 0, 2), "a\xF0\x9F\x98\x80");
 }
+
+
+TEST(AndroidTextInput, EditorInfoOfTraits) {
+    using jasperengine::AutoCapitalize;
+    using jasperengine::EnterKey;
+    using jasperengine::KeyboardType;
+    using jasperengine::TextEntryTraits;
+    constexpr int32_t flags = IME_FLAG_NO_FULLSCREEN | IME_FLAG_NO_EXTRACT_UI;
+    auto make = [](KeyboardType keyboard, EnterKey enterKey = EnterKey::Default, AutoCapitalize capitalize = AutoCapitalize::Off,
+                   bool autocorrect = false, bool secure = false, bool multiline = false, bool signedNumber = false) {
+        TextEntryTraits t;
+        t.keyboard = keyboard;
+        t.enterKey = enterKey;
+        t.capitalize = capitalize;
+        t.autocorrect = autocorrect;
+        t.secure = secure;
+        t.multiline = multiline;
+        t.signedNumber = signedNumber;
+        return t;
+    };
+    struct Row {
+        const char* name;
+        TextEntryTraits traits;
+        int32_t inputType;
+        int32_t imeOptions;
+    };
+    // the fields of TextEntryTest.TraitsFromAttributes (engine/tests/htmlui/TestTextEntry.cpp)
+    const Row rows[] = {
+        {"text", make(KeyboardType::Text), 0x1, 0x12000000},
+        {"email", make(KeyboardType::Email), 0x21, 0x12000000},
+        {"url", make(KeyboardType::Url), 0x11, 0x12000000},
+        {"tel", make(KeyboardType::Phone), 0x3, 0x12000000},
+        {"search", make(KeyboardType::Search, EnterKey::Search), 0x1, IME_ACTION_SEARCH | flags},
+        {"count", make(KeyboardType::Number), 0x2, flags},
+        {"amount", make(KeyboardType::Decimal, EnterKey::Default, AutoCapitalize::Off, false, false, false, true), 0x3002, flags},
+        {"half", make(KeyboardType::Decimal), 0x2002, flags},
+        {"password", make(KeyboardType::Text, EnterKey::Default, AutoCapitalize::Off, false, true), 0x80081, flags},
+        {"pin", make(KeyboardType::Number, EnterKey::Default, AutoCapitalize::Off, false, true), 0x12, flags},
+        {"notes", make(KeyboardType::Text, EnterKey::Enter, AutoCapitalize::Off, false, false, true), 0x20001, IME_ACTION_NONE | flags},
+        {"hidden-keyboard", make(KeyboardType::None), 0x1, flags},
+        {"mail-send", make(KeyboardType::Email, EnterKey::Send, AutoCapitalize::Sentences), 0x4021, 0x12000004},
+        {"next", make(KeyboardType::Text, EnterKey::Next), 0x1, IME_ACTION_NEXT | flags},
+        {"previous", make(KeyboardType::Text, EnterKey::Previous, AutoCapitalize::Words), 0x2001, IME_ACTION_PREVIOUS | flags},
+        {"done", make(KeyboardType::Text, EnterKey::Done, AutoCapitalize::Characters), 0x1001, IME_ACTION_DONE | flags},
+        {"go", make(KeyboardType::Text, EnterKey::Go, AutoCapitalize::Sentences, true), 0xC001, IME_ACTION_GO | flags},
+        {"message", make(KeyboardType::Text, EnterKey::Send, AutoCapitalize::Off, true, false, true), 0x28001, IME_ACTION_SEND | flags},
+    };
+    for (const Row& row : rows) {
+        const EditorInfo info = editorInfoOf(row.traits);
+        EXPECT_EQ(info.inputType, row.inputType) << row.name;
+        EXPECT_EQ(info.imeOptions, row.imeOptions) << row.name;
+        // the IME reports the action it was given: the same enter key comes back
+        EXPECT_EQ(enterKeyOfImeAction(info.imeOptions), row.traits.enterKey) << row.name;
+    }
+    // the action of AC7's e-mail field
+    EXPECT_EQ(editorInfoOf(make(KeyboardType::Email, EnterKey::Send)), (EditorInfo{0x21, 0x12000004}));
+}

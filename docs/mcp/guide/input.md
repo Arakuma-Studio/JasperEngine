@@ -87,6 +87,17 @@ in Unity. Losing the window focus (or an app pause)
 releases every held key, button and gamepad button (their `getKeyUp` fires), cancels the fingers
 and makes a lock `POINTER_PENDING`.
 
+## Back, menus and the gamepad cursor
+
+Escape, gamepad B and Android's Back button are **Back** first: the top Is Menu UI Document gets
+a cancelable `back` event, then `Engine.onBack(source)`; a taken press reaches neither the
+documents' `keydown` nor the game, its release neither. Untaken, they go on as keys (Android's
+Back presses Escape). An Is Menu document appearing releases the game's held keys, buttons and
+fingers in the next frame (`getKeyUp`), as a focus loss does. A UI Document with Gamepad Cursor
+gives pad players a pointer while the scheme is Gamepad; its sticks, A, B and d-pad never reach
+the game or input actions that ignore UI input then. Both: jasper://docs/html-ui "Gamepad
+cursor", "Back and menus".
+
 ## Keys on the web
 
 Browsers report every key the desktop players do: the Command and Windows keys are

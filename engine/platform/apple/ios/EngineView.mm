@@ -3,6 +3,7 @@
 
 #import "EngineView.h"
 #import "KeyCodesIOS.h"
+#import "TextTraitsMap.h"
 
 #include "Engine.h"
 #include "Input.h"
@@ -11,6 +12,28 @@
 #include <string>
 
 #define MAX_TOUCHES 10
+
+// TextTraitsMap.h names UIKit's values without UIKit
+static_assert(jasperengine::ios::KEYBOARD_DEFAULT == UIKeyboardTypeDefault, "UIKeyboardType");
+static_assert(jasperengine::ios::KEYBOARD_NUMBERS_AND_PUNCTUATION == UIKeyboardTypeNumbersAndPunctuation, "UIKeyboardType");
+static_assert(jasperengine::ios::KEYBOARD_URL == UIKeyboardTypeURL, "UIKeyboardType");
+static_assert(jasperengine::ios::KEYBOARD_NUMBER_PAD == UIKeyboardTypeNumberPad, "UIKeyboardType");
+static_assert(jasperengine::ios::KEYBOARD_PHONE_PAD == UIKeyboardTypePhonePad, "UIKeyboardType");
+static_assert(jasperengine::ios::KEYBOARD_EMAIL_ADDRESS == UIKeyboardTypeEmailAddress, "UIKeyboardType");
+static_assert(jasperengine::ios::KEYBOARD_DECIMAL_PAD == UIKeyboardTypeDecimalPad, "UIKeyboardType");
+static_assert(jasperengine::ios::KEYBOARD_WEB_SEARCH == UIKeyboardTypeWebSearch, "UIKeyboardType");
+static_assert(jasperengine::ios::RETURN_DEFAULT == UIReturnKeyDefault, "UIReturnKeyType");
+static_assert(jasperengine::ios::RETURN_GO == UIReturnKeyGo, "UIReturnKeyType");
+static_assert(jasperengine::ios::RETURN_NEXT == UIReturnKeyNext, "UIReturnKeyType");
+static_assert(jasperengine::ios::RETURN_SEARCH == UIReturnKeySearch, "UIReturnKeyType");
+static_assert(jasperengine::ios::RETURN_SEND == UIReturnKeySend, "UIReturnKeyType");
+static_assert(jasperengine::ios::RETURN_DONE == UIReturnKeyDone, "UIReturnKeyType");
+static_assert(jasperengine::ios::CAPITALIZE_NONE == UITextAutocapitalizationTypeNone, "UITextAutocapitalizationType");
+static_assert(jasperengine::ios::CAPITALIZE_WORDS == UITextAutocapitalizationTypeWords, "UITextAutocapitalizationType");
+static_assert(jasperengine::ios::CAPITALIZE_SENTENCES == UITextAutocapitalizationTypeSentences, "UITextAutocapitalizationType");
+static_assert(jasperengine::ios::CAPITALIZE_ALL_CHARACTERS == UITextAutocapitalizationTypeAllCharacters, "UITextAutocapitalizationType");
+static_assert(jasperengine::ios::AUTOCORRECT_NO == UITextAutocorrectionTypeNo, "UITextAutocorrectionType");
+static_assert(jasperengine::ios::AUTOCORRECT_YES == UITextAutocorrectionTypeYes, "UITextAutocorrectionType");
 
 // The hidden field always holds this, so the keyboard has something to delete and a
 // backspace in an empty text field still reaches the engine
@@ -92,6 +115,8 @@ namespace {
     BOOL _composing;
     // Set while the field is changed from here, which is not typing
     BOOL _updatingField;
+    // the action key of the field being edited (its Return)
+    jasperengine::EnterKey _enterKey;
     // Hardware keys held, and those whose down went to a composition instead
     bool _keysDown[D_KEY_LAST + 1];
     bool _imeKeys[D_KEY_LAST + 1];
@@ -164,9 +189,33 @@ static UITouch* touches[MAX_TOUCHES];
 // Text input (System::showVirtualKeyboard / hideVirtualKeyboard / setTextInputArea).
 // UIKit on the main thread, where the engine runs.
 
-- (void)showTextInput{
+- (void)showTextInput:(const jasperengine::TextEntryTraits&)traits{
+    // The field keeps the sentinel, not the text, so a correction has nothing to work on:
+    // autocorrect stays off (as on the web), the other traits apply
+    jasperengine::TextEntryTraits shown = traits;
+    shown.autocorrect = false;
+    const jasperengine::ios::TextTraits mapped = jasperengine::ios::textTraitsOf(shown);
+    const BOOL changed = _textField.keyboardType != (UIKeyboardType)mapped.keyboardType ||
+                         _textField.returnKeyType != (UIReturnKeyType)mapped.returnKeyType ||
+                         _textField.autocapitalizationType != (UITextAutocapitalizationType)mapped.autocapitalizationType ||
+                         _textField.secureTextEntry != (BOOL)mapped.secureTextEntry ||
+                         (_textField.inputView != nil) != (BOOL)mapped.emptyInputView;
+    _enterKey = traits.enterKey;
+    _textField.keyboardType = (UIKeyboardType)mapped.keyboardType;
+    _textField.returnKeyType = (UIReturnKeyType)mapped.returnKeyType;
+    _textField.autocapitalizationType = (UITextAutocapitalizationType)mapped.autocapitalizationType;
+    _textField.autocorrectionType = (UITextAutocorrectionType)mapped.autocorrectionType;
+    _textField.secureTextEntry = mapped.secureTextEntry;
+    _textField.inputView = mapped.emptyInputView ? [[UIView alloc] initWithFrame:CGRectZero] : nil;
+
     [self resetTextField];
-    [_textField becomeFirstResponder];
+    if ([_textField isFirstResponder]){
+        // another field took the keyboard: it changes in place (R5)
+        if (changed)
+            [_textField reloadInputViews];
+    }else{
+        [_textField becomeFirstResponder];
+    }
 }
 
 - (void)hideTextInput{
@@ -243,7 +292,11 @@ static UITouch* touches[MAX_TOUCHES];
 
 - (BOOL)textFieldShouldReturn:(UITextField*)textField{
     (void)textField;
-    [self sendEditingKey:D_KEY_ENTER character:L'\r'];
+    // a hardware Return reported its own key; the keyboard's Return is the field's action key (R3)
+    if (_keysDown[D_KEY_ENTER] || _keysDown[D_KEY_KP_ENTER])
+        [self sendEditingKey:D_KEY_ENTER character:L'\r'];
+    else
+        jasperengine::Engine::systemEditorAction(_enterKey);
     return NO;
 }
 

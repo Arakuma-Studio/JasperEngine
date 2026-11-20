@@ -2760,12 +2760,33 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     if (const YAML::Node pixelArt = pixelart::encodePixelArtSettings(project->getPixelArtSettings()); pixelArt.size() > 0)
         root["pixelArt"] = pixelArt;
     // Project Settings > Input, omitted at its defaults
-    if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone) {
+    const GamepadCursorSettings& cursor = project->getGamepadCursorSettings();
+    const GamepadCursorSettings cursorDefaults;
+    if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone || cursor != cursorDefaults) {
         YAML::Node input;
         if (!project->getInputActionsAsset().empty())
             input["actions"] = project->getInputActionsAsset().generic_string();
         if (project->getInputDeadzone() != Project::defaultInputDeadzone)
             input["deadzone"] = project->getInputDeadzone();
+        // Input > Gamepad Cursor: what differs from the defaults
+        if (cursor != cursorDefaults) {
+            YAML::Node cursorNode;
+            if (cursor.speed != cursorDefaults.speed) cursorNode["speed"] = cursor.speed;
+            if (cursor.accelerationTime != cursorDefaults.accelerationTime) cursorNode["accelerationTime"] = cursor.accelerationTime;
+            if (cursor.slowOverControls != cursorDefaults.slowOverControls) cursorNode["slowOverControls"] = cursor.slowOverControls;
+            if (cursor.scrollSpeed != cursorDefaults.scrollSpeed) cursorNode["scrollSpeed"] = cursor.scrollSpeed;
+            if (cursor.deadzone != cursorDefaults.deadzone) cursorNode["deadzone"] = cursor.deadzone;
+            if (cursor.graphic != cursorDefaults.graphic) cursorNode["graphic"] = cursor.graphic;
+            if (cursor.size != cursorDefaults.size) cursorNode["size"] = cursor.size;
+            if (cursor.hotSpot != cursorDefaults.hotSpot) {
+                YAML::Node hot(YAML::NodeType::Sequence);
+                hot.push_back(cursor.hotSpot.x);
+                hot.push_back(cursor.hotSpot.y);
+                hot.SetStyle(YAML::EmitterStyle::Flow);
+                cursorNode["hotSpot"] = hot;
+            }
+            input["gamepadCursor"] = cursorNode;
+        }
         root["input"] = input;
     } else if (!project->getUnreadableInputNode().empty()) {
         // an older editor's Input Manager node that could not be read: back as it was, until
@@ -3077,6 +3098,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
         if (presentation.keepScreenOn != defaults.keepScreenOn) presentationNode["keepScreenOn"] = presentation.keepScreenOn;
         if (presentation.targetFrameRate != defaults.targetFrameRate) presentationNode["targetFrameRate"] = presentation.targetFrameRate;
+        if (presentation.pauseOnFocusLoss != defaults.pauseOnFocusLoss) presentationNode["pauseOnFocusLoss"] = presentation.pauseOnFocusLoss;
         if (presentationNode.size() != 0) root["presentation"] = presentationNode;
     }
 
@@ -3602,6 +3624,22 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             project->setInputActionsAsset(map && input["actions"].IsDefined() ? fs::path(input["actions"].as<std::string>()) : fs::path());
             project->setInputDeadzone(map && input["deadzone"].IsDefined() ? YamlNumbers::as<float>(input["deadzone"]) : Project::defaultInputDeadzone);
         }
+        // Input > Gamepad Cursor (absent: the defaults)
+        GamepadCursorSettings cursor;
+        if (input.IsDefined() && input.IsMap() && input["gamepadCursor"].IsDefined() && input["gamepadCursor"].IsMap()) {
+            const YAML::Node cursorNode = input["gamepadCursor"];
+            if (cursorNode["speed"].IsDefined()) cursor.speed = YamlNumbers::as<float>(cursorNode["speed"]);
+            if (cursorNode["accelerationTime"].IsDefined()) cursor.accelerationTime = YamlNumbers::as<float>(cursorNode["accelerationTime"]);
+            if (cursorNode["slowOverControls"].IsDefined()) cursor.slowOverControls = YamlNumbers::as<float>(cursorNode["slowOverControls"]);
+            if (cursorNode["scrollSpeed"].IsDefined()) cursor.scrollSpeed = YamlNumbers::as<float>(cursorNode["scrollSpeed"]);
+            if (cursorNode["deadzone"].IsDefined()) cursor.deadzone = YamlNumbers::as<float>(cursorNode["deadzone"]);
+            if (cursorNode["graphic"].IsDefined() && cursorNode["graphic"].IsScalar()) cursor.graphic = cursorNode["graphic"].as<std::string>();
+            if (cursorNode["size"].IsDefined()) cursor.size = YamlNumbers::as<float>(cursorNode["size"]);
+            const YAML::Node hot = cursorNode["hotSpot"];
+            if (hot.IsDefined() && hot.IsSequence() && hot.size() == 2)
+                cursor.hotSpot = Vector2(YamlNumbers::as<float>(hot[0]), YamlNumbers::as<float>(hot[1]));
+        }
+        project->setGamepadCursorSettings(cursor);
     }
 
     {
@@ -4111,6 +4149,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         presentation.allowedOrientations = nodeToOrientationMask(presentationNode["allowedOrientations"], presentation.allowedOrientations);
         if (presentationNode["keepScreenOn"].IsDefined()) presentation.keepScreenOn = YamlNumbers::as<bool>(presentationNode["keepScreenOn"]);
+        if (presentationNode["pauseOnFocusLoss"].IsDefined()) presentation.pauseOnFocusLoss = YamlNumbers::as<bool>(presentationNode["pauseOnFocusLoss"]);
         if (presentationNode["targetFrameRate"].IsDefined()) {
             const int fps = YamlNumbers::as<int>(presentationNode["targetFrameRate"]);
             presentation.targetFrameRate = fps <= 0 ? -1 : std::min(fps, 1000);

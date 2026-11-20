@@ -248,6 +248,26 @@ TEST(StreamComponent, LightPhotometricFieldsRoundTrip){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+// text-entry-gamepad-cursor-back-button R32: Is Menu and Gamepad Cursor are additive (OmitIfDefault):
+// an old document saves without them, set ones round-trip
+TEST(StreamComponent, UIDocumentMenuAndCursorRoundTrip){
+    UIDocumentComponent document{};
+    document.filename = "ui/menu.html";
+    const YAML::Node plain = reflect::encodeValue(ComponentType::UIDocumentComponent, &document);
+    EXPECT_FALSE(plain["isMenu"]) << "default: omitted";
+    EXPECT_FALSE(plain["gamepadCursor"]);
+    const UIDocumentComponent old = reflect::decodeValue<UIDocumentComponent>(ComponentType::UIDocumentComponent, plain);
+    EXPECT_FALSE(old.isMenu);
+    EXPECT_FALSE(old.gamepadCursor);
+
+    document.isMenu = true;
+    document.gamepadCursor = true;
+    const UIDocumentComponent decoded = roundTrip(ComponentType::UIDocumentComponent, document);
+    EXPECT_TRUE(decoded.isMenu);
+    EXPECT_TRUE(decoded.gamepadCursor);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 TEST(StreamComponent, RigidbodyWaterFieldsRoundTrip){
     RigidbodyComponent body{};
     body.buoyancy = 1.25f;

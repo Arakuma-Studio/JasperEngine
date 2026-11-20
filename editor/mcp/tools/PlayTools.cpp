@@ -37,6 +37,7 @@
 #include "App.h"
 #include "Catalog.h"
 #include "Engine.h"
+#include "subsystem/GamepadCursor.h"
 #include "net/Http.h"
 #include "Input.h"
 #include "input/InputActions.h"
@@ -786,6 +787,8 @@ Json playStateJson(McpContext& ctx) {
     if (playId != NULL_PROJECT_SCENE) {
         out["platform"] = platformJson();
         out["http"] = httpJson();
+        // a shown, interactive Is Menu document (Back goes there; Pause On Focus Loss stays quiet)
+        out["menu_showing"] = Engine::isMenuShowing();
     }
     out["safe_area"] = safeAreaJson();
     if (s.last.serial != 0) out["last_session"] = sessionJson(s.last);
@@ -3492,6 +3495,24 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
             }, gapFrames, 0, "gamepad disconnect");
             return true;
         }
+        // x, y or target: the gamepad cursor goes there first (in the same frame)
+        EventPoint warp;
+        if (!readEventPoint(event, "x", "y", "position", "target", warp, error)) return false;
+        if (warp.given) {
+            add([c, warp, space, eventIndex, targets]() -> std::string {
+                if (!Engine::isGamepadCursorShown())
+                    return "no document has Gamepad Cursor on: set_properties UIDocument gamepadCursor true";
+                Vector2 view;
+                const std::string failure = resolveEventPoint(*c, warp, space, eventIndex, targets, view);
+                if (!failure.empty()) return failure;
+                // view pixels to the canvas (the inverse of Engine::transformCoordPos)
+                const Rect rect = Engine::getViewRect();
+                const float x = rect.getWidth() > 0 ? (view.x - rect.getX()) / rect.getWidth() * Engine::getCanvasWidth() : view.x;
+                const float y = rect.getHeight() > 0 ? (view.y - rect.getY()) / rect.getHeight() * Engine::getCanvasHeight() : view.y;
+                GamepadCursor::setPosition(Vector2(x, y));
+                return std::string();
+            }, 0, 0, "gamepad cursor");
+        }
         if (action == "axis") {
             const int axis = parseGamepadAxis(event.contains("axis") ? event["axis"] : Json());
             if (axis < 0) {
@@ -3687,6 +3708,16 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
             }, gapFrames, 0, "app " + action);
             return true;
         }
+        // Back as Android's Back button (Engine::systemBack): the result's `back` names who took it
+        if (action == "back") {
+            add([targets, eventIndex]() {
+                Engine::systemBack(BackSource::Agent);
+                static const char* const routes[] = {"escape", "key", "document", "game"};
+                if (targets) targets->push_back({{"event", eventIndex}, {"back", routes[static_cast<int>(Engine::getLastBackRoute())]}});
+                return std::string();
+            }, gapFrames, 0, "app back");
+            return true;
+        }
         if (action == "orientation") {
             ScreenOrientation orientation;
             if (!PlatformRules::parseOrientationName(event.value("orientation", ""), orientation) ||
@@ -3712,7 +3743,7 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
             }, gapFrames, 0, "app orientation");
             return true;
         }
-        error = "app action must be pause, resume, focus_lost, focus_gained, low_memory, hide, show or orientation";
+        error = "app action must be pause, resume, focus_lost, focus_gained, low_memory, hide, show, orientation or back";
         return false;
     }
 
@@ -3893,7 +3924,13 @@ void finishInputRun(const std::shared_ptr<InputRun>& run) {
     data["held_input"] = heldInputJson();
     data["console"] = console.entries;
     data["next_cursor"] = console.nextCursor;
-    if (!run->targets->empty()) data["targets"] = *run->targets;
+    // app back events report who took the Back (the last one); the rest are resolved targets
+    Json targets = Json::array();
+    for (const Json& entry : *run->targets) {
+        if (entry.contains("back")) data["back"] = entry["back"];
+        else targets.push_back(entry);
+    }
+    if (!targets.empty()) data["targets"] = targets;
 
     const bool ended = ctx.project()->getPlaySessionSceneId() != run->playId;
     std::string text;
@@ -3910,6 +3947,10 @@ void finishInputRun(const std::shared_ptr<InputRun>& run) {
     }
     if (!state().held.empty()) text += " Still held: " + heldInputJson().dump() + " (released at stop or with release_all).";
     for (const Json& target : *run->targets) {
+        if (target.contains("back")) {
+            text += "\nBack (event " + target["event"].dump() + "): " + target["back"].get<std::string>() + ".";
+            continue;
+        }
         text += "\nTarget \"" + target["target"].get<std::string>() + "\" (event " + target["event"].dump() + ") at canvas " +
                 target["point"].dump() + " in " + target["document"].value("html", std::string("?")) + ".";
     }
@@ -4603,14 +4644,14 @@ void registerPlayTools(McpRegistry& registry) {
         tool.description =
             "Input into the running game, over frames. events in order, {type, ...} (first action: default):\nkey: key "
             "(space, a, f1...), action press|down|up, hold_frames (2; 0: same frame), hold_ms, mods "
-            "[shift,ctrl,alt,super]\ntext: text, per_unit (one event per UTF-16 unit, as Windows/Android type); ime: text, cursor; ime_commit: text; ime_cancel\n"
+            "[shift,ctrl,alt,super]\ntext: text, per_unit (per UTF-16 unit); ime: text, cursor; ime_commit: text; ime_cancel\n"
             "mouse_leave, mouse_enter\nmouse: action click|double_click|down|up|move|drag|scroll, x, y (default: "
             "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy (scroll; move w/o x, y)\ntouch: action "
             "tap|start|move|end|cancel|swipe, pointer, x, y, to\ntarget / to_target: UI Document element CSS selector "
             "(document: which)\ngamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + "
-            "value\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
+            "value, x, y/target: warp cursor\ninput_action: name Map/Action, action press|down|up|value, value\naction|axis|axis_delta: name + "
             "phase (press|down|up)|value|delta\napp: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|orientation "
-            "(+orientation)\nwait: frames, ms. release_all.\nspace: canvas px, normalized 0..1, view = Game view px. "
+            "(+orientation)|back\nwait: frames, ms. release_all.\nspace: canvas px, normalized 0..1, view = Game view px. "
             "down holds until up/release_all/stop. Returns frames, console, play state (auto_pause: events + "
             "frames_after only).";
         tool.inputSchema = object({

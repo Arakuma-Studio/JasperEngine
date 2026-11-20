@@ -22,6 +22,7 @@
 
 
 namespace jasperengine{
+    struct TextEntryTraits;
 
     // An element's Canvas Group chain (ui canvas group spec decision 1): the enabled groups
     // from the element up, stopping after the first one with ignoreParentGroups
@@ -390,6 +391,11 @@ namespace jasperengine{
         bool isTextEffectsHeld() const;
 
         bool isInputFieldFocused();
+        // the soft keyboard a component InputField asks for: its Keyboard Type, Character Limit and
+        // Password (text-entry R7)
+        static TextEntryTraits inputFieldTraits(const InputFieldComponent& inputfield);
+        // the focused InputField that takes typing: its traits; false when none
+        bool getTypingInputFieldTraits(TextEntryTraits& traits) const;
 
         // the editor's edit mode and Play pause (Project::pauseEngineScene): Select On Enable and
         // pointer selection wait, scale transitions do not apply

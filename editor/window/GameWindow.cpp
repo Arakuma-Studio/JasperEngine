@@ -37,6 +37,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "net/Http.h"
 #include "input/InputScheme.h"
+#include "input/TextEntry.h"
 #include "shortcuts/CommandCatalog.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -56,6 +57,29 @@
 using namespace jasperengine;
 
 namespace {
+
+    // the keyboard chip (text-entry R29): what the focused field asks of a phone's soft keyboard
+    std::string keyboardChipText(const TextEntryTraits& traits){
+        static const char* const keyboards[] = {"Text", "Number", "Decimal", "Phone", "Email", "URL", "Search", "None"};
+        static const char* const keys[] = {"Default key", "Enter", "Done", "Go", "Next", "Previous", "Search", "Send"};
+        static const char* const capitals[] = {"", "Sentences", "Words", "Characters"};
+        std::string text = std::string("Keyboard: ") + keyboards[(int)traits.keyboard] + " \xC2\xB7 " + keys[(int)traits.enterKey];
+        if (traits.maxLength >= 0) text += " \xC2\xB7 max " + std::to_string(traits.maxLength);
+        if (traits.capitalize != AutoCapitalize::Off) text += std::string(" \xC2\xB7 ") + capitals[(int)traits.capitalize];
+        if (traits.autocorrect) text += " \xC2\xB7 Autocorrect";
+        if (traits.secure) text += " \xC2\xB7 Secure";
+        if (traits.multiline) text += " \xC2\xB7 Multiline";
+        return text;
+    }
+
+    // the same traits as inspect_ui's focus reports them
+    std::string keyboardChipJson(const TextEntryTraits& traits){
+        return std::string("{\"keyboard\": \"") + keyboardTypeName(traits.keyboard) + "\", \"enter_key\": \"" +
+               (traits.enterKey == EnterKey::Default ? "default" : enterKeyName(traits.enterKey)) + "\", \"autocapitalize\": \"" +
+               autoCapitalizeName(traits.capitalize) + "\", \"autocorrect\": " + (traits.autocorrect ? "true" : "false") +
+               ", \"secure\": " + (traits.secure ? "true" : "false") + ", \"multiline\": " + (traits.multiline ? "true" : "false") +
+               ", \"max_length\": " + (traits.maxLength < 0 ? std::string("null") : std::to_string(traits.maxLength)) + "}";
+    }
 
     struct AspectPreset {
         const char* label;
@@ -1663,7 +1687,29 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
                 ImGui::GetColorU32(ImGuiCol_TextDisabled), message);
         }
 
-        const bool hovered = ImGui::IsWindowHovered();
+        // the keyboard chip: while a field of the game is focused, the soft keyboard a phone would show;
+        // a click copies its traits (and does not reach the game)
+        bool overKeyboardChip = false;
+        TextEntryTraits chipTraits;
+        bool chipKeyboardOpen = false;
+        if (running && sceneProject->playState == ScenePlayState::PLAYING && Engine::getTextEntryFocus(chipTraits, chipKeyboardOpen)) {
+            const std::string chip = keyboardChipText(chipTraits);
+            const ImVec2 size = ImGui::CalcTextSize(chip.c_str());
+            const ImVec2 pad = Theme::dpi(ImVec2(8.0f, 4.0f));
+            const ImVec2 chipMin(areaMin.x + (areaSize.x - size.x) * 0.5f - pad.x, areaMin.y + areaSize.y - size.y - pad.y * 2.0f - Theme::dpi(8.0f));
+            const ImVec2 chipMax(chipMin.x + size.x + pad.x * 2.0f, chipMin.y + size.y + pad.y * 2.0f);
+            overKeyboardChip = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(chipMin, chipMax);
+            drawList->AddRectFilled(chipMin, chipMax, overKeyboardChip ? IM_COL32(45, 45, 45, 230) : IM_COL32(20, 20, 20, 210), Theme::dpi(3.0f));
+            drawList->AddText(ImVec2(chipMin.x + pad.x, chipMin.y + pad.y), IM_COL32(235, 235, 235, 255), chip.c_str());
+            UIProbe::rect("game.keyboardChip", chipMin.x, chipMin.y, chipMax.x, chipMax.y);
+            if (overKeyboardChip) {
+                ImGui::SetTooltip("Click to copy the keyboard's traits as JSON");
+                if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                    ImGui::SetClipboardText(keyboardChipJson(chipTraits).c_str());
+            }
+        }
+
+        const bool hovered = ImGui::IsWindowHovered() && !overKeyboardChip;
 
         if (running && sceneProject->playState == ScenePlayState::PLAYING) {
             // Escape is the game's while it plays here (Unity): ImGui's keyboard navigation

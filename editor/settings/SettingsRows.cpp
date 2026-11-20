@@ -1250,6 +1250,8 @@ std::vector<Setting> mcpSettingsTable() {
         }
         add(boolField("player.keep_screen_on", "Initial Screen.sleepTimeout on Android/iOS: true = NeverSleep, false = the device setting.",
                       [](Project& p) -> bool& { return p.getPresentationSettings().keepScreenOn; }));
+        add(boolField("player.pause_on_focus_loss", "Engine.onPauseRequested(reason) fires on a focus loss, an app pause and the gamepad's disconnect while no Is Menu document shows.",
+                      [](Project& p) -> bool& { return p.getPresentationSettings().pauseOnFocusLoss; }));
         {
             Setting s;
             s.key = "player.target_frame_rate";
@@ -3276,6 +3278,79 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(std::move(s));
         }
+        // Input > Gamepad Cursor (GamepadCursor's project values)
+        {
+            auto cursorNumber = [&](const char* key, const char* description, double minimum, double maximum,
+                                    float GamepadCursorSettings::*field) {
+                Setting s;
+                s.key = std::string("input.gamepad_cursor.") + key;
+                s.type = "number";
+                s.description = description;
+                s.get = [field](SettingsContext& ctx) { return Json(ctx.project()->getGamepadCursorSettings().*field); };
+                s.set = [field, minimum, maximum](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    double v;
+                    if (!readNumber(value, minimum, maximum, v, error)) return false;
+                    if (apply) {
+                        GamepadCursorSettings settings = ctx.project()->getGamepadCursorSettings();
+                        settings.*field = static_cast<float>(v);
+                        ctx.project()->setGamepadCursorSettings(settings);
+                    }
+                    return true;
+                };
+                add(std::move(s));
+            };
+            cursorNumber("speed", "Gamepad cursor speed, canvas px/s at a 1080 px tall canvas.", 0.0, 100000.0, &GamepadCursorSettings::speed);
+            cursorNumber("acceleration_time", "Seconds from rest to full speed.", 0.0, 10.0, &GamepadCursorSettings::accelerationTime);
+            cursorNumber("slow_over_controls", "Speed factor over buttons, links and form controls (0..1).", 0.0, 1.0, &GamepadCursorSettings::slowOverControls);
+            cursorNumber("scroll_speed", "Right stick scroll, wheel lines/s.", 0.0, 1000.0, &GamepadCursorSettings::scrollSpeed);
+            cursorNumber("deadzone", "Radial stick deadzone (0..0.95).", 0.0, 0.95, &GamepadCursorSettings::deadzone);
+            cursorNumber("size", "Cursor size, CSS px.", 1.0, 512.0, &GamepadCursorSettings::size);
+            {
+                Setting s;
+                s.key = "input.gamepad_cursor.graphic";
+                s.type = "string";
+                s.description = "Cursor texture, assets-relative; \"\" = the built-in arrow.";
+                s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getGamepadCursorSettings().graphic); };
+                s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    std::string text;
+                    if (!readString(value, text, error)) return false;
+                    if (!text.empty() && !fs::exists(ctx.project()->getAssetsPath() / fs::path(text))) {
+                        error = "\"" + text + "\" is not a file in the assets folder";
+                        return false;
+                    }
+                    if (apply) {
+                        GamepadCursorSettings settings = ctx.project()->getGamepadCursorSettings();
+                        settings.graphic = text;
+                        ctx.project()->setGamepadCursorSettings(settings);
+                    }
+                    return true;
+                };
+                add(std::move(s));
+            }
+            {
+                Setting s;
+                s.key = "input.gamepad_cursor.hot_spot";
+                s.type = "list";
+                s.description = "[x, y] CSS px of the graphic on the cursor's point.";
+                s.get = [](SettingsContext& ctx) {
+                    const Vector2 hot = ctx.project()->getGamepadCursorSettings().hotSpot;
+                    return Json::array({hot.x, hot.y});
+                };
+                s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    if (!value.is_array() || value.size() != 2 || !value[0].is_number() || !value[1].is_number()) {
+                        error = "must be [x, y]";
+                        return false;
+                    }
+                    if (apply) {
+                        GamepadCursorSettings settings = ctx.project()->getGamepadCursorSettings();
+                        settings.hotSpot = Vector2(value[0].get<float>(), value[1].get<float>());
+                        ctx.project()->setGamepadCursorSettings(settings);
+                    }
+                    return true;
+                };
+                add(std::move(s));
+            }
+        }
 
         // ---- audio (Project Settings > Audio)
         {
@@ -4375,6 +4450,7 @@ const Placement placements[] = {
     {"player.default_orientation", "Player", "Resolution and Presentation", "Default Orientation", "orientation portrait landscape auto rotation android ios"},
     {"player.allowed_orientations", "Player", "Resolution and Presentation", "Allowed Orientations for Auto Rotation", "orientation rotation android ios"},
     {"player.keep_screen_on", "Player", "Resolution and Presentation", "Keep Screen On", "sleep timeout screen on"},
+    {"player.pause_on_focus_loss", "Player", "Resolution and Presentation", "Pause On Focus Loss", "pause menu focus lost background onPauseRequested"},
     {"player.target_frame_rate", "Player", "Resolution and Presentation", "Target Frame Rate", "fps frame rate"},
     {"player.allow_insecure_http", "Player", "Other Settings", "Allow Insecure HTTP", "http cleartext network"},
     {"player.saved_data.backups_kept", "Player", "Saved Data", "Backups Kept", "save game slots backups generations recovery"},
@@ -4551,6 +4627,14 @@ const Placement placements[] = {
     {"voxel.ignore_dimension_limits", "Voxels", "", "Ignore Dimension Limits", "voxel volume export oversize"},
     {"input.actions", "Input", "", "Default Actions Asset", "input actions bindings controls keyboard gamepad touch inputactions"},
     {"input.deadzone", "Input", "", "Default Deadzone", "input stick axis analog gamepad dead zone"},
+    {"input.gamepad_cursor.speed", "Input", "Gamepad Cursor", "Cursor Speed", "gamepad cursor pointer virtual mouse stick speed"},
+    {"input.gamepad_cursor.acceleration_time", "Input", "Gamepad Cursor", "Acceleration Time", "gamepad cursor pointer acceleration ramp"},
+    {"input.gamepad_cursor.slow_over_controls", "Input", "Gamepad Cursor", "Slow Over Controls", "gamepad cursor pointer slow buttons aim"},
+    {"input.gamepad_cursor.scroll_speed", "Input", "Gamepad Cursor", "Scroll Speed", "gamepad cursor right stick scroll wheel"},
+    {"input.gamepad_cursor.deadzone", "Input", "Gamepad Cursor", "Deadzone", "gamepad cursor stick dead zone"},
+    {"input.gamepad_cursor.graphic", "Input", "Gamepad Cursor", "Cursor Graphic", "gamepad cursor texture image arrow"},
+    {"input.gamepad_cursor.size", "Input", "Gamepad Cursor", "Cursor Size", "gamepad cursor size pixels"},
+    {"input.gamepad_cursor.hot_spot", "Input", "Gamepad Cursor", "Cursor Hot Spot", "gamepad cursor hotspot point offset"},
     {"input.manager_actions", "Input", "Input Manager", "Input Manager", "input manager virtual axes buttons horizontal vertical jump fire gravity sensitivity unity"},
     // Project Settings > Pixel Art (S43 R4b; S42's Pixel Art page joins it)
     {"palettes.default", "Pixel Art", "", "Default Palette", "palette colours colors swatches snap lospec apply palette sweetie pico"},

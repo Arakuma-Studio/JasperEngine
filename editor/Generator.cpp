@@ -2346,6 +2346,8 @@ std::string editor::Generator::mainSource(const std::vector<editor::SceneBuildIn
         mainContent += "#include \"pixelart/BitmapTextCache.h\"\n";
     if (saveGameSettings != SaveGameSettings())
         mainContent += "#include \"save/SaveGameStore.h\"\n";
+    if (gamepadCursorSettings != GamepadCursorSettings())
+        mainContent += "#include \"subsystem/GamepadCursor.h\"\n";
     mainContent += "#ifdef JASPERENGINE_PROJECT_PATH\n";
     mainContent += "#include \"shader/ShaderManifest.h\"\n";
     mainContent += "#include \"shader/ShaderVariantCompiler.h\"\n";
@@ -2612,6 +2614,16 @@ std::string editor::Generator::mainSource(const std::vector<editor::SceneBuildIn
 
     // Project Settings > Input: the deadzone, then the default Input Actions asset
     mainContent += inputSettingsInitSource(inputActionsAsset, inputDeadzone);
+    // Project Settings > Input > Gamepad Cursor, when not the engine's defaults
+    if (gamepadCursorSettings != GamepadCursorSettings()) {
+        const GamepadCursorSettings& c = gamepadCursorSettings;
+        mainContent += "    { GamepadCursorSettings cursor; cursor.speed = " + Factory::formatFloat(c.speed) +
+            "; cursor.accelerationTime = " + Factory::formatFloat(c.accelerationTime) + "; cursor.slowOverControls = " +
+            Factory::formatFloat(c.slowOverControls) + "; cursor.scrollSpeed = " + Factory::formatFloat(c.scrollSpeed) +
+            "; cursor.deadzone = " + Factory::formatFloat(c.deadzone) + "; cursor.graphic = " + Factory::formatString(c.graphic) +
+            "; cursor.size = " + Factory::formatFloat(c.size) + "; cursor.hotSpot = Vector2(" + Factory::formatFloat(c.hotSpot.x) + ", " +
+            Factory::formatFloat(c.hotSpot.y) + "); GamepadCursor::setDefaults(cursor); }\n";
+    }
     // Project Settings > Navigation: the agent types and areas every navmesh and grid reads
     mainContent += navigationSettingsCode;
     // Project Settings > Voxels: what the project lowers of this platform's limits (T6 R7)
@@ -2745,6 +2757,9 @@ std::string editor::Generator::mainSource(const std::vector<editor::SceneBuildIn
         // Project Settings > Graphics > Dynamic Batching (on is the engine's default)
         if (!playerSettings.dynamicBatching)
             mainContent += "    Engine::setDynamicBatchingDefault(false);\n";
+        // Player > Pause On Focus Loss (off is the engine's default)
+        if (playerSettings.pauseOnFocusLoss)
+            mainContent += "    Engine::setPauseOnFocusLoss(true);\n";
         mainContent += "    Screen::initialize(ScreenOrientation::" + std::string(orientationNames[orientation]) + ", " + mask + ", " +
             (playerSettings.keepScreenOn ? "true" : "false") + ");\n";
         auto appInfo = [](const ApplicationInfo& info) {

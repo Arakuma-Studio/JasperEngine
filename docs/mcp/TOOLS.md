@@ -1472,15 +1472,15 @@ Group: `core`
 
 Input into the running game, over frames. events in order, {type, ...} (first action: default):
 key: key (space, a, f1...), action press|down|up, hold_frames (2; 0: same frame), hold_ms, mods [shift,ctrl,alt,super]
-text: text, per_unit (one event per UTF-16 unit, as Windows/Android type); ime: text, cursor; ime_commit: text; ime_cancel
+text: text, per_unit (per UTF-16 unit); ime: text, cursor; ime_commit: text; ime_cancel
 mouse_leave, mouse_enter
 mouse: action click|double_click|down|up|move|drag|scroll, x, y (default: pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy (scroll; move w/o x, y)
 touch: action tap|start|move|end|cancel|swipe, pointer, x, y, to
 target / to_target: UI Document element CSS selector (document: which)
-gamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + value
+gamepad: gamepad (0), button (a, dpad_up...) + action, or axis (left_x..right_trigger) + value, x, y/target: warp cursor
 input_action: name Map/Action, action press|down|up|value, value
 action|axis|axis_delta: name + phase (press|down|up)|value|delta
-app: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|orientation (+orientation)
+app: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|orientation (+orientation)|back
 wait: frames, ms. release_all.
 space: canvas px, normalized 0..1, view = Game view px. down holds until up/release_all/stop. Returns frames, console, play state (auto_pause: events + frames_after only).
 

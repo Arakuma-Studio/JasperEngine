@@ -208,6 +208,8 @@ jasperengine_add_test_target(jasperengine-core-tests
         ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/android
         # WebKeyMap.h, the web platform's key map (plain C++)
         ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/emscripten
+        # TextTraitsMap.h, the iOS text field's traits (plain C++)
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/apple/ios
     DEFINITIONS
         # the repository root: the fixture projects of tools/fixtures (pose and clip tests' models)
         JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../.."

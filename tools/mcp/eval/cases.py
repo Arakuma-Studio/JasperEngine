@@ -1465,6 +1465,32 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "guard_text_entry_focus",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "inspect_ui's focus reports the soft keyboard a focused field asks for (text-entry R30); the agent "
+                         "reads it to see why a phone shows letters, and fixes the field's attributes, not the engine.",
+        "text_at_issue": "inspect_ui result: focus {ref, keyboard, enter_key, autocapitalize, autocorrect, secure, multiline, "
+                         "max_length, keyboard_open}",
+        "source": "docs/specs/text-entry-gamepad-cursor-back-button.md R30; no failure on record",
+        "prompt": "Players on phones say the e-mail field of the sign-up screen (assets/ui/signup.html) shows a plain letters "
+                  "keyboard and no Send key. The game is playing: check what keyboard the field asks for, then fix it.",
+        "files": {"assets/ui/signup.html": "<html><body><form id=\"signup\"><input id=\"mail\" type=\"text\">"
+                                           "<button type=\"submit\">Join</button></form></body></html>\n"},
+        "mocks": [
+            {"tool": "send_input", "result": ok("Sent 1 event over 2 frames; playing.", {"frames": 2, "state": "playing"})},
+            {"tool": "inspect_ui", "result": ok(
+                "signup (assets/ui/signup.html): 1 element.\n#mail input (40, 260 400x36) :focus",
+                {"elements": [{"ref": "#mail", "tag": "input", "pseudo": ["focus"]}],
+                 "focus": {"ref": "#mail", "keyboard": "text", "enter_key": "default", "autocapitalize": "off", "autocorrect": False,
+                           "secure": False, "multiline": False, "max_length": None, "keyboard_open": True}})},
+        ],
+        "checks": {"calls": ["inspect_ui"],
+                   "file_must": {"assets/ui/signup.html": [r"type=\"email\"|inputmode=\"email\"", r"enterkeyhint=\"send\""]},
+                   "edits_must_not": [r"\.(cpp|h)$"]},
+        "max_turns": 14,
+    },
+    {
         "id": "guard_post_processing_preset",
         "kind": "guard",
         "what_happened": "The guide's Post-processing digest routes a look request to a preset first, then fields; guards the "
@@ -5791,5 +5817,47 @@ CASES = [
                               {"calls": [{"tool": "create_script", "args": {"content": r"re:(?s)Journal\.log\s*\(.*forest-2"}}]}],
                    "must_not_call": ["play", "attach_script"]},
         "max_turns": 20,
+    },
+    # -- text-entry-gamepad-cursor-back-button: send_input app back, gamepad cursor warp ----------------------------------------
+    {
+        "id": "guard_send_input_app_back",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "New text (text-entry-gamepad-cursor-back-button R30): Android's Back button is send_input's app action "
+                         "back, and the result names who took it; without it an agent presses Escape (which is not routed as "
+                         "the Back button: no Escape follows a game's Engine.onBack) or writes a Lua probe.",
+        "text_at_issue": "send_input app: '...|orientation (+orientation)|back' and the result's back field",
+        "source": "text-entry-gamepad-cursor-back-button R16, R30 (new tool text); no failure on record",
+        "prompt": "The game is playing. Press the Android Back button once, as a phone would, and tell me whether the pause menu "
+                  "document handled it or the game did.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "app", "action": "back"}]}, "result": ok(
+                "Sent 1 event over 1 frame; playing.", {"frames": 1, "state": "playing", "back": "document"})},
+            {"tool": "eval_lua", "result": ok("nil", {"result": None})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "app", "action": "back"}]}}],
+                   "reply_must": [r"(?i)document|menu"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_send_input_gamepad_cursor_target",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "New text (text-entry-gamepad-cursor-back-button R30): a gamepad event's x, y or target warps the "
+                         "gamepad cursor before its button, so an agent clicks a menu button with A in one event; without it "
+                         "an agent steers the cursor with stick axis events and guesses timings, or clicks with the mouse "
+                         "(which switches the scheme and hides the cursor).",
+        "text_at_issue": "send_input gamepad: '... value, x, y/target: warp cursor'",
+        "source": "text-entry-gamepad-cursor-back-button R30 (new tool text); no failure on record",
+        "prompt": "The game is playing and its menu shows the gamepad cursor. Click the menu's #start button with the gamepad's "
+                  "A button through the cursor (do not use the mouse or touch).",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "gamepad", "button": "a", "target": "#start"}]}, "result": ok(
+                "Sent 1 event over 3 frames; playing.", {"frames": 3, "state": "playing"})},
+            {"tool": "inspect_ui", "result": ok("menu.html", {"gamepad_cursor": {"active": True, "x": 640, "y": 360, "over": "#start"}})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "gamepad", "target": "#start"}]}}],
+                   "must_not_call": ["eval_lua"]},
+        "max_turns": 8,
     },
 ]

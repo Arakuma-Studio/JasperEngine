@@ -1027,6 +1027,8 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_physics3DEnabled = project->isPhysics3DEnabled();
     m_inputActionsAsset = project->getInputActionsAsset();
     m_inputDeadzone = project->getInputDeadzone();
+    m_gamepadCursor = project->getGamepadCursorSettings();
+    snprintf(m_gamepadCursorGraphic, sizeof(m_gamepadCursorGraphic), "%s", m_gamepadCursor.graphic.c_str());
     m_inputStatus.clear();
     m_inputActionsFiles.clear();
     {
@@ -1058,6 +1060,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_defaultOrientationIndex = findDefaultOrientationIndex(presentation.defaultOrientation);
     m_allowedOrientations = presentation.allowedOrientations;
     m_keepScreenOn = presentation.keepScreenOn;
+    m_pauseOnFocusLoss = presentation.pauseOnFocusLoss;
     m_targetFrameRate = presentation.targetFrameRate;
 
     const ApplicationSettings& application = project->getApplicationSettings();
@@ -2017,6 +2020,14 @@ void ProjectSettingsWindow::drawPresentationSettings() {
     endSettingsRow("Android and iOS: the screen never dims or locks while the game runs (Screen.sleepTimeout = "
         "SleepTimeout.NeverSleep). Off: the device's own setting. Desktops and the web follow the system unless a "
         "script sets NeverSleep (as Unity).");
+
+    if (projectBeginSettingsRow("Pause On Focus Loss", m_pauseOnFocusLoss != defaults.pauseOnFocusLoss)) {
+        m_pauseOnFocusLoss = defaults.pauseOnFocusLoss;
+    }
+    ImGui::Checkbox("##PauseOnFocusLoss", &m_pauseOnFocusLoss);
+    endSettingsRow("Engine.onPauseRequested(reason) fires when the app loses focus, is paused, or the gamepad in use "
+        "disconnects, unless an Is Menu document is showing. The game opens its pause menu there; the engine "
+        "changes no time scale.");
 
     if (projectBeginSettingsRow("Target Frame Rate", m_targetFrameRate != defaults.targetFrameRate)) {
         m_targetFrameRate = defaults.targetFrameRate;
@@ -3363,6 +3374,46 @@ void ProjectSettingsWindow::drawInputSettings() {
                 ImGui::SetNextItemWidth(-helpMarkerWidth());
                 ImGui::SliderFloat("##InputDeadzone", &m_inputDeadzone, 0.0f, 0.95f, "%.2f");
                 endSettingsRow("The radial deadzone of stick and axis bindings of AXIS and VECTOR2 actions that set none of their own.");
+            }
+
+            // Gamepad Cursor: what a UI Document with Gamepad Cursor on gives a pad player (GamepadCursor)
+            if (settingsui::sectionVisible("Gamepad Cursor")) {
+                ImGui::SeparatorText("Gamepad Cursor");
+                const GamepadCursorSettings defaults;
+                auto number = [&](const char* key, const char* label, const char* id, float& value, float defaultValue, float minimum,
+                                  float maximum, const char* format, const char* help) {
+                    if (!settingsui::beginRow(key)) return;
+                    if (projectBeginSettingsRow(label, value != defaultValue)) value = defaultValue;
+                    ImGui::SetNextItemWidth(-helpMarkerWidth());
+                    ImGui::DragFloat(id, &value, (maximum - minimum) / 500.0f, minimum, maximum, format, ImGuiSliderFlags_AlwaysClamp);
+                    endSettingsRow(help);
+                };
+                number("input.gamepad_cursor.speed", "Cursor Speed", "##CursorSpeed", m_gamepadCursor.speed, defaults.speed, 0.0f, 5000.0f, "%.0f px/s",
+                       "Canvas pixels per second at full stick on a 1080 px tall canvas (scaled by the canvas height). GamepadCursor.speed changes it while the game runs.");
+                number("input.gamepad_cursor.acceleration_time", "Acceleration Time", "##CursorAcceleration", m_gamepadCursor.accelerationTime,
+                       defaults.accelerationTime, 0.0f, 2.0f, "%.2f s", "Seconds from rest to full speed while the stick stays pushed.");
+                number("input.gamepad_cursor.slow_over_controls", "Slow Over Controls", "##CursorSlow", m_gamepadCursor.slowOverControls,
+                       defaults.slowOverControls, 0.0f, 1.0f, "%.2f", "Speed factor over buttons, links, form controls and component UI Buttons, for easier aim.");
+                number("input.gamepad_cursor.scroll_speed", "Scroll Speed", "##CursorScroll", m_gamepadCursor.scrollSpeed, defaults.scrollSpeed,
+                       0.0f, 200.0f, "%.0f lines/s", "Wheel lines per second at full right stick, at the cursor.");
+                number("input.gamepad_cursor.deadzone", "Deadzone", "##CursorDeadzone", m_gamepadCursor.deadzone, defaults.deadzone, 0.0f, 0.95f, "%.2f",
+                       "The radial deadzone of both sticks for the cursor.");
+                if (settingsui::beginRow("input.gamepad_cursor.graphic")) {
+                    if (projectBeginSettingsRow("Cursor Graphic", m_gamepadCursorGraphic[0] != '\0')) m_gamepadCursorGraphic[0] = '\0';
+                    ImGui::SetNextItemWidth(-helpMarkerWidth());
+                    ImGui::InputTextWithHint("##CursorGraphic", "Built-in arrow", m_gamepadCursorGraphic, sizeof(m_gamepadCursorGraphic));
+                    endSettingsRow("A texture (path in the assets folder) drawn as the cursor; empty: the built-in arrow.");
+                }
+                number("input.gamepad_cursor.size", "Cursor Size", "##CursorSize", m_gamepadCursor.size, defaults.size, 1.0f, 256.0f, "%.0f px",
+                       "The cursor's width and height in CSS pixels.");
+                if (settingsui::beginRow("input.gamepad_cursor.hot_spot")) {
+                    if (projectBeginSettingsRow("Cursor Hot Spot", m_gamepadCursor.hotSpot != defaults.hotSpot)) m_gamepadCursor.hotSpot = defaults.hotSpot;
+                    ImGui::SetNextItemWidth(-helpMarkerWidth());
+                    float hot[2] = {m_gamepadCursor.hotSpot.x, m_gamepadCursor.hotSpot.y};
+                    if (ImGui::DragFloat2("##CursorHotSpot", hot, 0.5f, 0.0f, 256.0f, "%.0f px"))
+                        m_gamepadCursor.hotSpot = Vector2(hot[0], hot[1]);
+                    endSettingsRow("The point of the graphic that clicks, in CSS pixels from its top-left.");
+                }
             }
 
             if (settingsui::beginRow("input.rebinding_overrides")) {
@@ -6180,6 +6231,7 @@ bool ProjectSettingsWindow::applySettings() {
     presentation.defaultOrientation = defaultOrientationValues[std::clamp(m_defaultOrientationIndex, 0, defaultOrientationCount - 1)];
     presentation.allowedOrientations = m_allowedOrientations ? m_allowedOrientations : PresentationSettings{}.allowedOrientations;
     presentation.keepScreenOn = m_keepScreenOn;
+    presentation.pauseOnFocusLoss = m_pauseOnFocusLoss;
     presentation.targetFrameRate = m_targetFrameRate <= 0 ? -1 : std::min(m_targetFrameRate, 1000);
 
     ApplicationSettings& application = m_project->getApplicationSettings();
@@ -6205,6 +6257,8 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setPhysics3DEnabled(m_physics3DEnabled);
     m_project->setInputActionsAsset(m_inputActionsAsset);
     m_project->setInputDeadzone(m_inputDeadzone);
+    m_gamepadCursor.graphic = m_gamepadCursorGraphic;
+    m_project->setGamepadCursorSettings(m_gamepadCursor);
     m_project->setPixelArtSettings(m_pixelArt);
     m_project->setDefaultFilterMode(m_defaultFilterIndex == 1 ? TextureFilterMode::Point : TextureFilterMode::Bilinear);
     // a built-in Default Palette is the project's copy of it (S43 R7), made now

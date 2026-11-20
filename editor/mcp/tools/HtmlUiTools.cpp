@@ -9,6 +9,8 @@
 #include "McpTools.h"
 #include "HtmlUiShared.h"
 #include "PlayViewCommon.h"
+#include "Engine.h"
+#include "subsystem/GamepadCursor.h"
 #include "W4Shared.h"
 
 #include "mcp/McpCall.h"
@@ -1092,6 +1094,31 @@ void inspectUiTool(const CallPtr& call) {
             data["details"] = detailList;
             if (text.size() + detailText.size() > MAX_TEXT * 2) detailText = detailText.substr(0, MAX_TEXT) + "\n... (details cut: see structuredContent)";
             text += detailText;
+        }
+
+        // the gamepad cursor while a Gamepad Cursor document shows: where it is, the element under it
+        if (Engine::isGamepadCursorShown()) {
+            const Vector2 point = GamepadCursor::getPosition();
+            Json over = nullptr;
+            std::vector<hui::InspectElement> under;
+            std::string ignored;
+            if (GamepadCursor::isActive() && hui::HtmlUIInspector::hitTest(sp->scene, target.entity, point.x, point.y, under, ignored) && !under.empty())
+                over = under.front().ref;
+            data["gamepad_cursor"] = {{"active", GamepadCursor::isActive()}, {"x", std::round(point.x * 10.0f) / 10.0f},
+                                      {"y", std::round(point.y * 10.0f) / 10.0f}, {"over", over}};
+        }
+
+        // the focused text field's soft keyboard (text-entry R30)
+        bool focusPresent = false;
+        hui::InspectFocus focus;
+        std::string focusError;
+        if (hui::HtmlUIInspector::focus(sp->scene, target.entity, focusPresent, focus, focusError) && focusPresent) {
+            const TextEntryTraits& t = focus.traits;
+            data["focus"] = {{"ref", focus.ref}, {"keyboard", keyboardTypeName(t.keyboard)},
+                             {"enter_key", t.enterKey == EnterKey::Default ? "default" : enterKeyName(t.enterKey)},
+                             {"autocapitalize", autoCapitalizeName(t.capitalize)}, {"autocorrect", t.autocorrect},
+                             {"secure", t.secure}, {"multiline", t.multiline},
+                             {"max_length", t.maxLength < 0 ? Json(nullptr) : Json(t.maxLength)}, {"keyboard_open", focus.keyboardOpen}};
         }
 
         if (args.value("render_stats", false)) {

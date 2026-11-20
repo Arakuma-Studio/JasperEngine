@@ -1780,6 +1780,8 @@ const FieldEntry kBody_InputFieldComponent_fields[] = {
     JE_RF(InputFieldComponent, selectionAnchor, 0x8c85cbe8u, Int),
     JE_RF(InputFieldComponent, disabled, 0xf5ea7571u, Bool),
     JE_RF(InputFieldComponent, password, 0x5e3d4d6cu, Bool),
+    JE_RF(InputFieldComponent, keyboardType, 0xf65183f0u, Enum),
+    JE_RF(InputFieldComponent, characterLimit, 0x64eca537u, Int),
 };
 const StructTable kBody_InputFieldComponent{"inputfield", kBody_InputFieldComponent_fields, std::size(kBody_InputFieldComponent_fields)};
 
@@ -1869,6 +1871,8 @@ const FieldEntry kBody_UIDocumentComponent_fields[] = {
     JE_RF(UIDocumentComponent, textureHeight, 0xe657e304u, Int),
     JE_RF_ENTITY(UIDocumentComponent, inputSurface, 0xdf0ce86fu, Entity),
     JE_RF(UIDocumentComponent, pixelRatio, 0x9ecbc5dbu, Float),
+    JE_RF(UIDocumentComponent, isMenu, 0xe9c0839fu, Bool),
+    JE_RF(UIDocumentComponent, gamepadCursor, 0x7c5c9c11u, Bool),
 };
 const StructTable kBody_UIDocumentComponent{"uidocument", kBody_UIDocumentComponent_fields, std::size(kBody_UIDocumentComponent_fields)};
 

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "subsystem/GamepadCursor.h"
 #include "audio/AudioQaSettings.h"
 #include "render/GpuCreation.h"
 #include "registry/SortingLayers.h"
@@ -262,6 +263,8 @@ namespace jasperengine::editor {
         uint8_t allowedOrientations = (1u << 1) | (1u << 3) | (1u << 4);
         bool keepScreenOn = true;
         int targetFrameRate = -1;
+        // Player > Pause On Focus Loss
+        bool pauseOnFocusLoss = false;
         // Project Settings > Graphics > Dynamic Batching
         bool dynamicBatching = true;
         // Project Settings > Localization > Default Language, its fallbacks applied (S87 R64)
@@ -290,6 +293,7 @@ namespace jasperengine::editor {
         // Project Settings > Input: the actions asset (assets-relative, "" none) and the deadzone
         std::string inputActionsAsset;
         float inputDeadzone = 0.15f;
+        GamepadCursorSettings gamepadCursorSettings;
         // Project Settings > Navigation: the statements main.cpp runs (nav::setSettings), "" defaults
         std::string navigationSettingsCode;
         std::string voxelSettingsCode;
@@ -476,6 +480,7 @@ namespace jasperengine::editor {
         // the project's LOD Bias and Shadow LOD Bias the game starts with; set before configure()
         // the Input Actions the game starts with (InputActions::loadDefault); set before configure()
         void setInputSettings(const std::string& actionsAsset, float deadzone) { inputActionsAsset = actionsAsset; inputDeadzone = deadzone; }
+        void setGamepadCursorSettings(const GamepadCursorSettings& settings) { gamepadCursorSettings = settings; }
         // the navigation settings the game starts with (generateNavigationSettingsCode); set before configure()
         void setNavigationSettingsCode(const std::string& code) { navigationSettingsCode = code; }
         // what Project Settings > Voxels lowers (generateVoxelSettingsCode); set before configure()
