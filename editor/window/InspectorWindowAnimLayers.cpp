@@ -533,11 +533,17 @@ void editor::InspectorWindow::drawAnimationPlayerLayers(ComponentType cpType, Sc
         UIProbe::item("player.layer." + std::to_string(index) + ".meshSpaceRotation");
         // above the checkbox: below it would hide the Applies at line a click has just shown
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)){
+            const char* tip = noMeshSpace ? noMeshSpace : animlayersui::MESH_SPACE_ROTATION_TOOLTIP;
+            const float wrap = ImGui::GetFontSize() * 30.0f;
+            // ImGui does not keep a tooltip placed by hand on screen, and the Inspector often docks at the right edge
+            const float tipWidth = ImGui::CalcTextSize(tip, nullptr, false, wrap).x + ImGui::GetStyle().WindowPadding.x * 2.0f;
+            const ImGuiViewport* viewport = ImGui::GetWindowViewport();
             const ImVec2 boxMin = ImGui::GetItemRectMin();
-            ImGui::SetNextWindowPos(ImVec2(boxMin.x, boxMin.y - Theme::dpi(4.0f)), ImGuiCond_Always, ImVec2(0.0f, 1.0f));
+            const float x = std::max(viewport->Pos.x, std::min(boxMin.x, viewport->Pos.x + viewport->Size.x - tipWidth));
+            ImGui::SetNextWindowPos(ImVec2(x, boxMin.y - Theme::dpi(4.0f)), ImGuiCond_Always, ImVec2(0.0f, 1.0f));
             if (ImGui::BeginTooltip()){
-                ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
-                ImGui::TextUnformatted(noMeshSpace ? noMeshSpace : animlayersui::MESH_SPACE_ROTATION_TOOLTIP);
+                ImGui::PushTextWrapPos(wrap);
+                ImGui::TextUnformatted(tip);
                 ImGui::PopTextWrapPos();
                 ImGui::EndTooltip();
             }
