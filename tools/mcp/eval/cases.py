@@ -2583,6 +2583,51 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "bad_run_on_the_connected_phone",
+        "kind": "bad",
+        "what_happened": "Asked to try a change on the Android phone plugged in, an agent built an .aab and told the user to "
+                         "install it with adb: build_project had no way to install and launch on a device.",
+        "text_at_issue": "build_project run_device 'Device id, auto or web.' and its description 'run_device: Build And Run there'; "
+                         "get_build_info devices",
+        "source": "docs/specs/build-and-run-on-device.md R21, R22",
+        "prompt": "My Android phone is plugged in with USB debugging on. Put the current build of the game on it and start it.",
+        "mocks": [
+            {"tool": "get_build_info", "args": {"devices": True}, "result": ok("Host linux. 1 usable Run Device(s) of 3.", {
+                "devices": [{"id": "R58M123ABC", "platform": "android", "kind": "device", "name": "Galaxy S23", "state": "device",
+                             "usable": True, "abi": "arm64-v8a", "os_version": "34"},
+                            {"id": "web", "platform": "web", "kind": "browser", "name": "Default browser", "state": "ready", "usable": True}]})},
+            {"tool": "build_project", "args": {"run_device": "re:^(R58M123ABC|auto)$"}, "result": ok(
+                "Build android (Release): succeeded - Built android (prebuilt player android-universal-gles3-development) in /work/out. "
+                "Installed on Galaxy S23 and launched.",
+                {"job_id": "job-1", "status": "succeeded", "next": "read_console categories [\"device\"] for its log; run_build device to watch it",
+                 "result": {"platform": "android", "device": {"id": "R58M123ABC", "name": "Galaxy S23", "installed": "full",
+                                                              "pushed_files": 0, "pushed_bytes": 0, "launch_ms": 900}}})},
+        ],
+        "checks": {"calls": [{"tool": "build_project", "args": {"platform": "android", "run_device": "re:^(R58M123ABC|auto)$"}}],
+                   "must_not_call": [{"tool": "build_project", "args": {"android_format": "aab"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_device_run_with_input",
+        "kind": "bad",
+        "what_happened": "To check a game on the emulator, an agent passed run_build an input script; input reaches desktop "
+                         "players only, so the run failed instead of returning the device's log and crash state.",
+        "text_at_issue": "run_build description 'here or on a device ... input (desktop Linux/X11)' and the error 'input is "
+                         "desktop-only (Linux/X11); on a device drive the game from Lua or its arguments'",
+        "source": "docs/specs/build-and-run-on-device.md R23",
+        "prompt": "The game is installed on the emulator emulator-5554. Run it there for 10 seconds and tell me whether it crashes.",
+        "mocks": [
+            {"tool": "run_build", "args": {"device": "emulator-5554", "input": "re:."}, "result": err(
+                "input is desktop-only (Linux/X11); on a device drive the game from Lua or its arguments.")},
+            {"tool": "run_build", "args": {"device": "emulator-5554"}, "result": ok(
+                "Pixel 7: launched, crashed. 40 log line(s), fatal: Fatal signal 11 (SIGSEGV).",
+                {"crashed": True, "fatal_lines": ["libc: Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR)"], "errors": [], "exit_code": None,
+                 "device": {"id": "emulator-5554", "name": "Pixel 7", "installed": "current"}})},
+        ],
+        "checks": {"calls": [{"tool": "run_build", "args": {"device": "emulator-5554"}}], "reply_must": [r"(?i)crash|SIGSEGV|signal 11"]},
+        "max_turns": 8,
+    },
+    {
         "id": "bad_build_check_on_the_host_not_the_targets",
         "kind": "bad",
         "what_happened": "In a game that ships on Android and iOS only, an agent proved a change by building for Linux, the "

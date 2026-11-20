@@ -138,7 +138,7 @@ TEST(DeviceList, ParsesAdbDevicesLong) {
 }
 
 TEST(DeviceList, ParsesSimctlJson) {
-    const std::string json = R"({
+    const std::string json = R"JSON({
       "devices" : {
         "com.apple.CoreSimulator.SimRuntime.iOS-17-2" : [
           {"udid" : "A1B2", "isAvailable" : true, "state" : "Shutdown", "name" : "iPhone 15"},
@@ -152,7 +152,7 @@ TEST(DeviceList, ParsesSimctlJson) {
           {"udid" : "W1", "isAvailable" : true, "state" : "Shutdown", "name" : "Apple Watch Series 9 (45mm)"}
         ]
       }
-    })";
+    })JSON";
     const std::vector<RunDevice> devices = parseSimctlJson(json);
     ASSERT_EQ(devices.size(), 2u) << "the unavailable runtime and the watch are left out";
     // booted first
@@ -326,7 +326,9 @@ TEST(DevicePatch, DiffOf10kUnchangedFilesIsFast) {
     EXPECT_TRUE(plan.push.empty());
     EXPECT_TRUE(plan.remove.empty());
     std::printf("[bench] DevicePatch diff of 10000 unchanged files: %.2f ms (budget 200 ms)\n", ms);
-    if (const double slack = editor::test::perfSlack(); slack > 0.0) EXPECT_LT(ms, 200.0 * slack);
+    if (const double slack = editor::test::perfSlack(); slack > 0.0) {
+        EXPECT_LT(ms, 200.0 * slack);
+    }
 }
 
 TEST(DevicePatch, DecidesPatchOrNamesWhyNot) {

@@ -100,6 +100,25 @@ it works headless) and its exit code is the verdict:
 
 A web build reads the same options from the page's query: `index.html?quit-after=30&fixed-fps=60`.
 
+## Devices
+
+The loop on an Android device or emulator, an iOS Simulator (a Mac with Xcode) or the browser:
+
+1. `get_build_info devices:true` lists the Run Devices (`id`, `usable`, `why`; `installed` with
+   `patchable` / `why_not` when this project is installed there). Probing spawns adb and simctl:
+   ask only when you need the list.
+2. `build_project platform:"android" development:true run_device:"<id>"` (or `"auto"`, the only
+   usable device; `"web"` for a web build) builds, installs or patches, and launches. A Development
+   Build patches by default (`patch`): only the changed content is pushed, no reinstall
+   (`device.installed: "patched"`); when it cannot, it installs in full and `next` says why.
+3. `read_console categories:["device"]` reads the game's log (`[<device>] <line>`).
+4. `run_build device:"<id>"` runs the recorded build on the device for `seconds` with `args`,
+   `fixed_fps`, `quit_after`, `after_ready`, and returns `log`, `errors`, `crashed`, `fatal_lines`
+   and the device's screenshot; `keep_running` leaves it running. `input` is desktop-only: drive a
+   device's game from Lua or its arguments.
+
+A web run gives `device.url` (a headless editor opens no browser).
+
 ## Build Profiles (group `shipping`)
 
 Make a Build Profile when one project ships more than one variant: a demo, a store edition, a

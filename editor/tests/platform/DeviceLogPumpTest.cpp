@@ -52,8 +52,8 @@ TEST(DeviceLogPump, BatchesLinesOncePerFrame) {
     EXPECT_GE(pump.batches(), 30u);
 
     // they reach the log, category device
-    const std::vector<LogEntry> logged = Out::getLogsSince(before);
-    const size_t device = static_cast<size_t>(std::count_if(logged.begin(), logged.end(), [](const LogEntry& e) {
+    const std::vector<editor::LogEntry> logged = Out::getLogsSince(before);
+    const size_t device = static_cast<size_t>(std::count_if(logged.begin(), logged.end(), [](const editor::LogEntry& e) {
         return e.category == DEVICE_LOG_CATEGORY && e.message.rfind("[Pixel 7] line ", 0) == 0;
     }));
     EXPECT_EQ(device, 10000u);
@@ -68,7 +68,9 @@ TEST(DeviceLogPump, BatchesLinesOncePerFrame) {
     const double perLine = total / 10000.0;
     std::printf("[bench] DeviceLogPump: %zu batches, worst %.3f ms, %.4f ms a line (budget 1 ms a frame at 2000 lines/s: %.3f ms)\n",
                 batchMs.size(), worst, perLine, perLine * 2000.0 / 60.0);
-    if (const double slack = editor::test::perfSlack(); slack > 0.0) EXPECT_LT(perLine * 2000.0 / 60.0, 1.0 * slack);
+    if (const double slack = editor::test::perfSlack(); slack > 0.0) {
+        EXPECT_LT(perLine * 2000.0 / 60.0, 1.0 * slack);
+    }
 }
 
 TEST(DeviceLogPump, DropsAboveTheRateAndSaysHowMany) {

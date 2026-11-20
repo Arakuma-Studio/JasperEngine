@@ -1177,7 +1177,7 @@ void buildProjectTool(const CallPtr& call) {
         return;
     }
     // Build And Run on a device (R22): the device is probed off the main thread, then the build starts
-    auto start = [call, project, mode, platform, outputDir](ExportConfig config, std::shared_ptr<builddevice::BuildDeploy> deploy) {
+    auto startBuild = [call, project, mode, platform, outputDir](ExportConfig config, std::shared_ptr<builddevice::BuildDeploy> deploy) {
         const Json& args = call->args();
         if (busy(call)) return;
         const std::string playerLabel = std::string(config.contentOnly ? "Patch " : "Build ") + buildPlatformName(platform);
@@ -1210,17 +1210,17 @@ void buildProjectTool(const CallPtr& call) {
         replyWhenJobDone(call, run->job, args.value("wait", true), args.value("timeout_seconds", 120.0), buildResult);
     };
     if (!runDevice.empty()) {
-        builddevice::resolve(call, project, config, runDevice, patchArg, [start, config](std::shared_ptr<builddevice::BuildDeploy> deploy) {
+        builddevice::resolve(call, project, config, runDevice, patchArg, [startBuild, config](std::shared_ptr<builddevice::BuildDeploy> deploy) {
             ExportConfig deviceConfig = config;
             deviceConfig.contentOnly = deploy->patch;
             deviceConfig.androidRunAbi = deploy->patch ? std::string() : deploy->androidAbi;
             // the simulator .app is what a simulator runs (R3)
             if (deviceConfig.platform == BuildPlatform::IOS) deviceConfig.iosSimulator = true;
-            start(deviceConfig, deploy);
+            startBuild(deviceConfig, deploy);
         });
         return;
     }
-    start(config, nullptr);
+    startBuild(config, nullptr);
 }
 
 // ------------------------------------------------------------------ the shader list (S64)
