@@ -90,6 +90,8 @@ std::string jasperengine::player::usage() {
         "  --log-level SPEC        the log level (\"debug\", \"warn,render=debug\")\n"
         "  --verify-content        check every content file's SHA-256 before starting (exit 5)\n"
         "  --fail-on-error         exit 3 when an error is logged (ignored with --run-tests)\n"
+        "  --command LINE          run a console command after \"Engine ready:\", one a frame (repeatable;\n"
+        "                          development players, or Project Settings > Debug > Console Commands: Always)\n"
         "  --run-tests             a development player: run the content's Play Mode tests (exit 8 failed, 9 none)\n"
         "  --test-filter F         with --run-tests: case ids containing F, or tag:<t>; \",\" = or\n"
         "  --test-results PATH     with --run-tests: write the results JSON there\n"
@@ -99,6 +101,10 @@ std::string jasperengine::player::usage() {
 
 bool jasperengine::player::testRunnerCompiled() {
     return JASPERENGINE_TEST_RUNNER != 0;
+}
+
+const char* jasperengine::player::commandsOffRefusal() {
+    return "--command needs a development player or Project Settings > Debug > Console Commands: Always.";
 }
 
 std::vector<std::string> jasperengine::player::argsFromQuery(const std::string& query) {
@@ -261,6 +267,13 @@ std::variant<LaunchOptions, ParseError> jasperengine::player::parse(std::span<co
                 if (!writableDirectory(options.testResults, problem))
                     return fail("--test-results " + text + ": " + problem + "; create it or write the results elsewhere");
             }
+        } else if (name == "--command") {
+            auto taken = takeValue("\"help\"");
+            if (auto* error = std::get_if<ParseError>(&taken)) return *error;
+            const std::string line = std::get<std::string>(taken);
+            if (line.find_first_not_of(" \t") == std::string::npos)
+                return fail("--command needs a console line, for example --command \"give gold 10\"");
+            options.commands.push_back(line);
         } else if (name == "--content") {
             auto taken = takeValue("path/to/content");
             if (auto* error = std::get_if<ParseError>(&taken)) return *error;

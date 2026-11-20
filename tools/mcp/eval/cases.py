@@ -1142,6 +1142,38 @@ CASES = [
         "max_turns": 14,
     },
     {
+        "id": "guard_console_command_mode",
+        "kind": "guard",
+        "what_happened": "Asked to run a game's console command, agents wrapped DebugOverlay.executeCommand in eval_lua code and "
+                         "read the console for what happened, missing the command's result (its lines and returned value).",
+        "text_at_issue": "eval_lua parameter command: 'A console command line instead of code (help lists them).'",
+        "source": "docs/specs/dev-console-for-agents.md R25, R30",
+        "prompt": "The game is playing. Give the player 10 gold with the game's own `give` console command, and tell me the "
+                  "player's new gold total that the command reports.",
+        "playing": True,
+        "mocks": [
+            {"tool": "eval_lua", "args": {"command": "re:^give"}, "result": ok(
+                "10 gold\nvalue: 130",
+                {"mode": "play", "command": {"name": "give", "status": "ok", "ok": True, "lines": ["10 gold"], "log": [],
+                                             "value": 130, "cheat": True},
+                 "console": [{"id": 811, "level": "info", "message": "> give gold 10"},
+                             {"id": 812, "level": "info", "message": "[give] 10 gold"}], "next_cursor": 812})},
+            {"tool": "eval_lua", "args": {"command": "re:^help"}, "result": ok(
+                "give - adds gold or gems [g] (cheat)\nhelp - lists the commands",
+                {"mode": "play", "command": {"name": "help", "status": "ok", "ok": True,
+                                             "lines": ["give - adds gold or gems [g] (cheat)", "help - lists the commands"], "log": [],
+                                             "value": [{"name": "give", "usage": "give <item> [count=1]"}], "cheat": False},
+                 "console": [], "next_cursor": 812})},
+            {"tool": "eval_lua", "args": {"code": "re:executeCommand"}, "result": ok(
+                "OK (no return value).\nconsole:\n[info] > give gold 10\n[info] [give] 10 gold",
+                {"mode": "play", "values": [], "printed": [], "console": [{"id": 811, "level": "info", "message": "> give gold 10"},
+                                                                         {"id": 812, "level": "info", "message": "[give] 10 gold"}],
+                 "next_cursor": 812})},
+        ],
+        "checks": {"calls": [{"tool": "eval_lua", "args": {"command": "re:give\\s+gold\\s+10"}}], "reply_must": [r"130"]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_lua_script",
         "kind": "guard",
         "what_happened": "In-editor-era models wrote Lua with self.entity as an object, on_start, getComponent and C++-style "

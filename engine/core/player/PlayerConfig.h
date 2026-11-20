@@ -139,6 +139,10 @@ namespace jasperengine::player {
         int hangMs = 5000;
         bool crashWebOverlay = true;
 
+        // Project Settings > Debug > Console Commands (development, always or never): whether
+        // --command, agents and the console field may run commands (console::setCommandsEnabled)
+        std::string consoleCommands = "development";
+
         // Project Settings > Audio (a Compile build's generated AudioSystem::configure and
         // AudioMixer::load): the defaults are AudioConfig's, the mixer asset-relative ("" = none)
         std::string audioMixer;

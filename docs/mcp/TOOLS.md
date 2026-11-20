@@ -1370,7 +1370,8 @@ Run Lua in the running game: the values as JSON (handles as {type, entity, name,
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `allow_edit_mode` | boolean |  |  |
-| `code` | string | yes | Expression, or chunk with return. |
+| `code` | string |  | Expression, or chunk with return. |
+| `command` | string |  | A console command line instead of code (help lists them). |
 | `max_depth` | integer (1..12) |  | Table nesting. Default: `4`. |
 | `max_items` | integer (1..5000) |  | Entries per table. Default: `200`. |
 | `scene` | integer or string |  |  |

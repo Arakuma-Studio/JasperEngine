@@ -1449,6 +1449,7 @@ set(JASPERENGINE_SRCS
     core/log/sinks/EmscriptenConsoleSink.cpp
     core/log/sinks/DebuggerSink.cpp
     core/log/sinks/AppleLogSink.cpp
+    core/debug/ConsoleCommands.cpp
     core/debug/DebugOverlay.cpp
     core/debug/DebugOverlayResources.cpp
     core/debug/DebugStats.cpp

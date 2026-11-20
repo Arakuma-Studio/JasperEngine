@@ -332,6 +332,7 @@ Every player takes the same options (the web from its URL query, `?quit-after=30
 | `--fixed-fps F` | a fixed time step of 1/F seconds |
 | `--screenshot file.png` / `--screenshot-frame N` | write that frame (the last one by default); a frame drawn with shaders still being made or textures still loading waits for them (the game held), up to 120 s, then exits 4 naming them |
 | `--fail-on-error` | exit 3 when an error is logged |
+| `--command "<line>"` | run a console command after "Engine ready:" (repeatable, one a frame; `?command=...` on the web); each result is logged (`[command] give gold 10: ok`) and one that is not ok logs an error; development players, or Project Settings > Debug > Console Commands: Always, else exit 2; `--quit-after` counts from the last command |
 | `--ready-timeout S` | exit 6 when not ready after S seconds |
 | `--resolution WxH`, `--scene <name\|id>`, `--content <dir>`, `--verify-content`, `--silent-audio`, `--log-level` | |
 | `--audio-capture <dir>` | A desktop development player writes one audio capture session into `<dir>/<id>/`, on the deterministic driver; any other player exits 2. |

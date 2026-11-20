@@ -53,6 +53,9 @@ namespace jasperengine::player {
         bool keepTestData = false;
         std::string testFilter;
         std::filesystem::path testResults;
+        // --command (repeatable; web: ?command=... repeated): console lines run in order, one a
+        // frame, from the ready frame (RunControl)
+        std::vector<std::string> commands;
         // what follows "--" (a strict parse), or every argument the options do not know (a
         // lenient one): the Lua System.args
         std::vector<std::string> scriptArgs;
@@ -86,6 +89,8 @@ namespace jasperengine::player {
     // a release player's refusal of --run-tests (exit 2)
     inline constexpr const char* NO_TEST_RUNNER =
         "this player has no test runner (release): build a Development Build with Include Tests";
+    // --command in a player whose Console Commands setting keeps typed commands off (exit 2)
+    JASPERENGINE_API const char* commandsOffRefusal();
 
     // whole-string numbers (no sign for the unsigned one, no trailing text)
     JASPERENGINE_API bool parseUint64(const std::string& text, uint64_t& out);
