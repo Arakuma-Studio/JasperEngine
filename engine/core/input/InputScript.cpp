@@ -669,6 +669,19 @@ namespace {
         ~InjectScope() { injectingDepth.fetch_sub(1, std::memory_order_relaxed); }
     };
 
+    // a whole number >= 0, signed or not: a parsed file's are unsigned, a decoded Lua table's signed
+    bool nonNegativeWhole(const ScriptJson& v, uint64_t& out){
+        if (v.is_number_unsigned()) {
+            out = v.get<uint64_t>();
+            return true;
+        }
+        if (v.is_number_integer() && v.get<int64_t>() >= 0) {
+            out = static_cast<uint64_t>(v.get<int64_t>());
+            return true;
+        }
+        return false;
+    }
+
     double round4(double v){
         return std::round(v * 10000.0) / 10000.0;
     }
@@ -828,12 +841,12 @@ bool parseEventList(const ScriptJson& events, const EventParseOptions& options, 
         uint32_t stamp = 0;
         const bool stamped = event.is_object() && event.contains("frame");
         if (options.recording) {
-            if (!stamped || !event["frame"].is_number_unsigned()) {
+            uint64_t value = 0;
+            if (!stamped || !nonNegativeWhole(event["frame"], value)) {
                 errorEvent = i;
                 error = "a recording's event needs frame, the update frame it arrived on (a whole number >= 0)";
                 return false;
             }
-            const uint64_t value = event["frame"].get<uint64_t>();
             if (value > UINT32_MAX) {
                 errorEvent = i;
                 error = "frame " + std::to_string(value) + " is past the last frame a recording can hold";
@@ -957,12 +970,13 @@ namespace {
             header.fromPlayStart = start == "play";
         }
         if (root.contains("seed")) {
-            if (!root["seed"].is_number_unsigned() || root["seed"].get<uint64_t>() > UINT32_MAX) {
+            uint64_t seed = 0;
+            if (!nonNegativeWhole(root["seed"], seed) || seed > UINT32_MAX) {
                 error = "seed must be a 32-bit whole number";
                 return false;
             }
             header.hasSeed = true;
-            header.seed = static_cast<uint32_t>(root["seed"].get<uint64_t>());
+            header.seed = static_cast<uint32_t>(seed);
         }
         header.scene = stringOf(root, "scene");
         header.platform = stringOf(root, "platform");
@@ -978,11 +992,12 @@ namespace {
         header.simulateTouch = root.contains("simulate_touch") && root["simulate_touch"].is_boolean() && root["simulate_touch"].get<bool>();
         header.truncated = root.contains("truncated") && root["truncated"].is_boolean() && root["truncated"].get<bool>();
         if (root.contains("frames")) {
-            if (!root["frames"].is_number_unsigned() || root["frames"].get<uint64_t>() > UINT32_MAX) {
+            uint64_t frames = 0;
+            if (!nonNegativeWhole(root["frames"], frames) || frames > UINT32_MAX) {
                 error = "frames must be the recording's length in frames (a whole number, 0 or more)";
                 return false;
             }
-            header.frames = root["frames"].get<uint32_t>();
+            header.frames = static_cast<uint32_t>(frames);
         }
         if (root.contains("probes")) {
             for (const ScriptJson& p : root["probes"]) {
@@ -1001,12 +1016,13 @@ namespace {
             for (const ScriptJson& c : root["checkpoints"]) {
                 Checkpoint checkpoint;
                 const std::string hash = stringOf(c, "hash");
-                if (!c.is_object() || !c.contains("frame") || !c["frame"].is_number_unsigned() || hash.empty() || hash.size() > 16 ||
+                uint64_t frame = 0;
+                if (!c.is_object() || !c.contains("frame") || !nonNegativeWhole(c["frame"], frame) || hash.empty() || hash.size() > 16 ||
                     hash.find_first_not_of("0123456789abcdef") != std::string::npos) {
                     error = "each checkpoint needs frame and hash (16 hex digits)";
                     return false;
                 }
-                checkpoint.frame = static_cast<uint32_t>(std::min<uint64_t>(c["frame"].get<uint64_t>(), UINT32_MAX));
+                checkpoint.frame = static_cast<uint32_t>(std::min<uint64_t>(frame, UINT32_MAX));
                 checkpoint.hash = std::stoull(hash, nullptr, 16);
                 if (c.contains("probes") && c["probes"].is_array()) {
                     for (const ScriptJson& p : c["probes"]) {

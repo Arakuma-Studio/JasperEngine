@@ -36,7 +36,8 @@ using namespace jasperengine;
 
 namespace jasperengine {
 
-    // the Lua side of a replay: the replay once its file is parsed (a large one parses on a job)
+    // a replay started by InputRecording.play (Coroutine.waitFor(replay) waits for it); its replay
+    // exists once the file is parsed, on a job for a large one
     class InputReplayLua : public std::enable_shared_from_this<InputReplayLua> {
     public:
         std::shared_ptr<input::Replay> replay;
@@ -369,8 +370,11 @@ void LuaBinding::registerInputRecordingClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .beginClass<InputReplayLua>("InputReplay")
+        // it ended (its events ran, it failed or was stopped)
         .addFunction("isDone", &InputReplayLua::isDone)
+        // stops it; what it held is released
         .addFunction("stop", &InputReplayLua::stop)
+        // the frame it is on (-1 once done)
         .addProperty("frame", &InputReplayLua::getFrame)
         // nil, or {frame, differences} at the first checkpoint that differed
         .addProperty("diverged", &replayDiverged)

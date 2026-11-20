@@ -217,6 +217,17 @@ TEST_F(InputRecorderTest, ReplayLastsToTheStopFrame){
     ASSERT_TRUE(parseScript(text, *script, error)) << error;
     EXPECT_EQ(script->header.frames, 10u);
     EXPECT_EQ(script->lastFrame(), 10u);
+    // a decoded Lua table (InputRecording.play(t)) gives its integers signed
+    ScriptJson root = ScriptJson::parse(text);
+    root["frames"] = int64_t(10);
+    for (ScriptJson& event : root["events"])
+        event["frame"] = event["frame"].get<int64_t>();
+    ParsedScript fromTable;
+    ASSERT_TRUE(parseScriptJson(root, fromTable, error)) << error;
+    EXPECT_EQ(fromTable.header.frames, 10u);
+    EXPECT_EQ(trace(fromTable), trace(*script));
+    root["frames"] = int64_t(-1);
+    EXPECT_FALSE(parseScriptJson(root, fromTable, error));
 
     // its press is on frame 1, yet it runs the ten frames recorded, as long as the recording ran
     Input::resetFrameState();
@@ -228,6 +239,27 @@ TEST_F(InputRecorderTest, ReplayLastsToTheStopFrame){
     runFrame();
     EXPECT_TRUE(player->finished());
     EXPECT_TRUE(player->report().done);
+}
+
+TEST_F(InputRecorderTest, RecordsAnOrientationTurnOnly){
+    Engine::systemOrientationChanged();
+    std::string error;
+    ASSERT_TRUE(InputRecorder::begin(options(), error)) << error;
+    // asked every frame (the editor's Game view does) without a turn: nothing to replay
+    for (int i = 0; i < 3; i++) {
+        Engine::systemOrientationChanged();
+        runFrame();
+    }
+    test::TestSystem::get().setScreenSize(360, 640);
+    Engine::systemOrientationChanged();
+    runFrame();
+    std::shared_ptr<ParsedScript> script = stop();
+    test::TestSystem::get().setScreenSize(640, 360);
+    Engine::systemOrientationChanged();
+    std::vector<std::string> turns;
+    for (const ScriptAction& a : script->actions)
+        if (a.type == ActionType::AppOrientation) turns.push_back(std::to_string(a.frame) + " " + script->stringAt(a.string));
+    EXPECT_EQ(turns, std::vector<std::string>{"3 portrait"});
 }
 
 TEST_F(InputRecorderTest, IdleCostsNothing){

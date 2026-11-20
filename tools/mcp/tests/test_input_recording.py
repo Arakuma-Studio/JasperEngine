@@ -141,6 +141,9 @@ async def test_lua_input_recording(ed: Editor):
         path = await lua(ed, "return InputRecording.stop('data://r.input.json')")
         ed.check_eq(path, "data://r.input.json", "stop returns the path")
         await ed.call("wait", frames=10)
+        recorded = await lua(ed, "return File.readText('data://r.input.json')")
+        keys = [e for e in json.loads(recorded or "{}").get("events", []) if e.get("type") == "key"]
+        ed.check_eq([(e["key"], e["action"]) for e in keys], [("space", "down"), ("space", "up")], f"the press was recorded: {recorded}")
         # asked in the same chunk: Play runs on between calls, past the few frames the recording lasts
         started = await lua(ed, "presses = 0; replay = InputRecording.play('data://r.input.json'); return replay:isDone()")
         ed.check_eq(started, False, "running")

@@ -3110,7 +3110,6 @@ void Engine::systemVisibilityChanged(bool isVisible){
 
 void Engine::systemOrientationChanged(){
     if (!System::hasInstance()) return;
-    if (input::InputRecorder::isActive()) input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::Orientation), PlatformRules::orientationName(Screen::getOrientation()));
     const int orientation = (int)Screen::getOrientation();
     if (orientation == lastOrientation){
         orientationPendingSince = 0.0;
@@ -3142,6 +3141,8 @@ void Engine::systemOrientationChanged(){
     }
     orientationPendingSince = 0.0;
     lastOrientation = orientation;
+    // a turn the game sees, not each call: the editor's Game view calls this every frame
+    if (input::InputRecorder::isActive()) input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::Orientation), PlatformRules::orientationName(Screen::getOrientation()));
     Engine::onOrientationChanged.call(orientation);
     // the insets the platform pushed while the turn waited for its size (the timeout: a view that
     // keeps its shape); after a size change systemViewChanged already used them

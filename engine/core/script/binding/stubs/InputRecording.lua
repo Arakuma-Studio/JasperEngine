@@ -15,17 +15,6 @@
 ---@field stopOnRealInput? boolean # the first real key, button or touch ends it and reaches the game (default false)
 ---@field onFinished? fun(replay: InputReplay) # called once when it ends
 
----A replay started by InputRecording.play. Coroutine.waitFor(replay) waits for it.
----@class InputReplay
----@field frame integer # read-only: the frame it is on (-1 once done)
----@field diverged table|nil # read-only: nil, or {frame, differences} at the first checkpoint that differed
-local InputReplay = {}
----It ended (its events ran, it failed or was stopped)
----@return boolean
-function InputReplay:isDone() end
----Stops it; what it held is released
-function InputReplay:stop() end
-
 ---Records the input that reaches the game into a .input.json file, and replays recordings and
 ---scripts through the engine's input entry points (attract modes, game tools)
 ---@class InputRecording
