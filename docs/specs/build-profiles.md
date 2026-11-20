@@ -542,7 +542,8 @@ craftsman-end-motor (a port reconstructed from a retail binary). Profiles are ge
   11 ms, a snapshot of an empty project 0.5 ms, validation 0.1 ms, so the decode of the 2,000 label
   colours took ~175 ms: `AssetLabels::setEntries` scanned the palette per entry, lower-casing both names
   on every comparison (quadratic). It now keeps a set of lower-case names (linear); the project's own
-  load gains the same.
+  load gains the same. Re-measured on box A after the fix: 18.0 ms (encodeProject 11.7 ms,
+  makeSettingsSnapshot 14.2 ms), within the budget.
 - **AC4's physics key** is `physics.max_bodies`: the project has no `physics.gravity` setting.
 - **AC2's fixture** (`expected-no-profile.json`) holds the key paths of `game.json` and
   `content-manifest.json` (values masked) recorded from this branch's build without a profile, not
