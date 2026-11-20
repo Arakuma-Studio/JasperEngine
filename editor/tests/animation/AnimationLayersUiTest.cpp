@@ -43,6 +43,7 @@
 #include <fstream>
 #include <iterator>
 #include <memory>
+#include <set>
 #include <string>
 
 using namespace jasperengine;
@@ -354,28 +355,39 @@ TEST_F(AnimationLayersUi, MeshSpaceRotationRowIsOneSceneStep) {
 
 TEST_F(AnimationLayersUi, MeshSpaceRotationSaysWhereItApplies) {
     LayerScene s = layerScene();
-    // Hero > Arm > Hand, Leg: a mask from the hand starts at the hand
+    // Hero > Arm > Hand, Leg, with Hand animated too: a mask from the hand starts at the hand
+    const std::vector<Entity> animated = {s.arm, s.hand, s.leg};
     anim::AvatarMaskDef hand;
     hand.defaultWeight = 0.0f;
     hand.paths.push_back({"Arm/Hand", 1.0f, true});
-    EXPECT_EQ(animlayersui::meshSpaceBoundary(s.scene, s.hero, hand), std::vector<Entity>{s.hand});
-    EXPECT_EQ(animlayersui::meshSpaceBoundaryLine(s.scene, s.hero, &hand), "Applies at: Hand");
-    // a mask that leaves the hand out of the arm: the edge is the hand again, the other way
+    EXPECT_EQ(animlayersui::meshSpaceBoundary(s.scene, s.hero, hand, animated), std::vector<Entity>{s.hand});
+    EXPECT_EQ(animlayersui::meshSpaceBoundaryLine(s.scene, s.hero, &hand, animated), "Applies at: Hand");
+    // a mask that leaves the hand out of the arm: the mask starts at the arm, right under the root,
+    // and stops right under it, at the hand
     anim::AvatarMaskDef arm;
     arm.defaultWeight = 0.0f;
     arm.paths.push_back({"Arm", 1.0f, true});
     arm.paths.push_back({"Arm/Hand", 0.0f, true});
-    EXPECT_EQ(animlayersui::meshSpaceBoundaryLine(s.scene, s.hero, &arm), "Applies at: Hand");
+    EXPECT_EQ(animlayersui::meshSpaceBoundaryLine(s.scene, s.hero, &arm, animated), "Applies at: Hand");
     // the root's children keep the root's space: an arm mask has no edge below the root
     arm.paths.pop_back();
-    EXPECT_TRUE(animlayersui::meshSpaceBoundary(s.scene, s.hero, arm).empty());
-    EXPECT_EQ(animlayersui::meshSpaceBoundaryLine(s.scene, s.hero, &arm),
-              "Applies at: no bone (the mask does not start or stop below this GameObject)");
+    EXPECT_TRUE(animlayersui::meshSpaceBoundary(s.scene, s.hero, arm, animated).empty());
+    EXPECT_EQ(animlayersui::meshSpaceBoundaryLine(s.scene, s.hero, &arm, animated),
+              "Applies at: no bone (the mask does not start or stop where the clips animate)");
     const anim::AvatarMaskDef unmasked{};
-    EXPECT_TRUE(animlayersui::meshSpaceBoundary(s.scene, s.hero, unmasked).empty()) << "no mask, no edge";
-    // no mask data, or nothing below the GameObject: the rule in words
-    EXPECT_EQ(animlayersui::meshSpaceBoundaryLine(s.scene, s.hero, nullptr), "Applies where the mask starts or stops");
-    EXPECT_EQ(animlayersui::meshSpaceBoundaryLine(s.scene, s.hand, &hand), "Applies where the mask starts or stops");
+    EXPECT_TRUE(animlayersui::meshSpaceBoundary(s.scene, s.hero, unmasked, animated).empty()) << "no mask, no edge";
+    // no mask data, or nothing animated below the GameObject: the rule in words
+    EXPECT_EQ(animlayersui::meshSpaceBoundaryLine(s.scene, s.hero, nullptr, animated), "Applies where the mask starts or stops");
+    EXPECT_EQ(animlayersui::meshSpaceBoundaryLine(s.scene, s.hand, &hand, animated), "Applies where the mask starts or stops");
+
+    // R16: the Player's rig is what its clips animate (walk and hold move Arm and Leg) and their
+    // ancestors, as the runtime's: the hand no clip animates is not a bone, so a mask from it
+    // applies nowhere, as at runtime
+    const std::vector<Entity> played = animlayersui::playerAnimatedTargets(project(), s.scene, s.hero, s.player());
+    EXPECT_EQ(std::set<Entity>(played.begin(), played.end()), (std::set<Entity>{s.arm, s.leg}));
+    EXPECT_TRUE(animlayersui::meshSpaceBoundary(s.scene, s.hero, hand, played).empty()) << "an unanimated GameObject under a masked bone";
+    EXPECT_EQ(animlayersui::meshSpaceBoundaryLine(s.scene, s.hero, &hand, played),
+              "Applies at: no bone (the mask does not start or stop where the clips animate)");
 }
 
 TEST_F(AnimationLayersUi, CreateMaskFromSelectionIsOneStepWithItsFile) {

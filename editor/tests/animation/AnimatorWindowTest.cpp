@@ -32,6 +32,7 @@
 #include "command/CommandHistory.h"
 #include "component/AnimatorComponent.h"
 #include "component/Transform.h"
+#include "mcp/tools/AnimatorTools.h"
 #include "subsystem/AnimatorSystem.h"
 #include "util/UiItemLocator.h"
 #include "window/AnimatorWindow.h"
@@ -1148,6 +1149,33 @@ TEST(AnimatorWindow, MeshSpaceRotationWarningAndItsFix) {
     EXPECT_TRUE(window.meshSpaceProblems().empty()) << "weight 0";
     window.stopPreview();
     EXPECT_TRUE(window.meshSpaceProblems().empty());
+}
+
+// get_animation {entity} during the window's Preview reads the previewed runtime (its boundary
+// bones) and leaves it running: binding and restoring would end the person's preview
+TEST(AnimatorWindow, GetAnimationLeavesTheWindowsPreviewRunning) {
+    ASSERT_TRUE(headless().ready);
+    AnimatorWindow window(project(), nullptr);
+    std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "torsoquery");
+    ASSERT_TRUE(doc);
+    upperBodyController(window, doc);
+    TorsoScene s = torsoScene("animator/torsoquery.controller");
+    window.openController("animator/torsoquery.controller", s.sceneProject->id, s.root);
+    ASSERT_TRUE(window.startPreview()) << window.getStatus();
+    ASSERT_TRUE(window.stepPreview(0.25f)) << window.getStatus();
+    const anim::AnimatorInstance* runtime = s.animator().runtime.get();
+    ASSERT_TRUE(runtime);
+    const float time = runtime->layers[0].current.time;
+
+    const mcp::Json got = mcp::animator_tools::animatorLayers(project(), s.sceneProject, s.root);
+    ASSERT_TRUE(got.contains("mask_coverage")) << got.dump();
+    EXPECT_EQ(got["mask_coverage"][0]["boundary_bones"], mcp::Json::array({"Hips/Spine"})) << got.dump();
+    EXPECT_TRUE(window.isPreviewing());
+    EXPECT_EQ(s.animator().runtime.get(), runtime) << "the preview's runtime, not a new bind";
+    ASSERT_TRUE(window.stepPreview(0.25f)) << window.getStatus();
+    EXPECT_EQ(s.animator().runtime.get(), runtime);
+    EXPECT_GT(runtime->layers[0].current.time, time) << "the preview goes on from where it was";
+    window.stopPreview();
 }
 
 // AC20 (R31): with the option on, Compare shows the pose without the pass while on; it is never

@@ -549,7 +549,8 @@ void editor::InspectorWindow::drawAnimationPlayerLayers(ComponentType cpType, Sc
             }
         }
         if (layer.meshSpaceRotation && !noMeshSpace){
-            // where it applies, from this GameObject's hierarchy (refreshed like the coverage lines)
+            // where it applies, on the rig the Player's clips animate (refreshed like the coverage
+            // lines)
             std::shared_ptr<AnimatorAssetDocument> document = layer.mask.empty() ? nullptr : maskDocument(project, state, layer.mask, nullptr);
             const std::string key = std::to_string(sceneId) + ":" + std::to_string(entity) + ":" + std::to_string(i) + ":" + layer.mask;
             InspectorLayerState::BoundaryEntry& entry = state.boundaries[key];
@@ -558,7 +559,7 @@ void editor::InspectorWindow::drawAnimationPlayerLayers(ComponentType cpType, Sc
             if (entry.at < 0.0 || entry.maskRevision != revision || now - entry.at > COVERAGE_SECONDS){
                 const anim::AvatarMaskDef unmasked{};
                 const anim::AvatarMaskDef* mask = layer.mask.empty() ? &unmasked : document ? &document->mask() : nullptr;
-                entry.line = animlayersui::meshSpaceBoundaryLine(scene, entity, mask);
+                entry.line = animlayersui::meshSpaceBoundaryLine(scene, entity, mask, animlayersui::playerAnimatedTargets(project, scene, entity, snapshot));
                 entry.maskRevision = revision;
                 entry.at = now;
             }

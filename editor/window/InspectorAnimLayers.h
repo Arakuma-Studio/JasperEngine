@@ -136,14 +136,15 @@ namespace jasperengine::editor::animlayersui{
     // why the checkbox is disabled on a layer (layer 0, an Additive layer: spec R26); null when
     // it is not
     const char* meshSpaceRotationDisabledReason(int layer, AnimationLayerBlend blend);
-    // The GameObjects below `root` where Mesh Space Rotation applies with `mask`: its descendants
-    // as bones (a child of the root has no parent in the root's space), their weights by
-    // anim::maskWeightOf (body parts from the humanoid rig of its Models), through
-    // anim::maskBoundaryBones; in hierarchy order
-    std::vector<Entity> meshSpaceBoundary(Scene* scene, Entity root, const anim::AvatarMaskDef& mask);
+    // The GameObjects the player's clips animate below `root` (their transform tracks' targets;
+    // a humanoid clip's, the rig's slot bones): what its Mesh Space Rotation rig is built from
+    std::vector<Entity> playerAnimatedTargets(Project* project, Scene* scene, Entity root, const AnimationPlayerComponent& player);
+    // The GameObjects below `root` where Mesh Space Rotation applies with `mask`, on the Player's
+    // rig of `animated` (anim::playerRig, anim::playerMaskBoundaryBones: the runtime's rule and
+    // rig, body parts from the humanoid rig of its Models); parents first, by depth
+    std::vector<Entity> meshSpaceBoundary(Scene* scene, Entity root, const anim::AvatarMaskDef& mask, const std::vector<Entity>& animated);
     // the read-only line under the checkbox (spec R27): "Applies at: Spine, ..." (names), the
-    // generic "Applies where the mask starts or stops" when there is no mask data or nothing
-    // below the root
-    std::string meshSpaceBoundaryLine(Scene* scene, Entity root, const anim::AvatarMaskDef* mask);
+    // generic "Applies where the mask starts or stops" when there is no mask data or no rig
+    std::string meshSpaceBoundaryLine(Scene* scene, Entity root, const anim::AvatarMaskDef* mask, const std::vector<Entity>& animated);
 
 }

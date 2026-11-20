@@ -302,6 +302,11 @@ namespace jasperengine::pose {
         return tokens;
     }
 
+    bool isTorsoBoneName(const std::string& boneName){
+        const Part part = classify(boneName).part;
+        return part == Part::Hips || part == Part::SpineChain;
+    }
+
     int findSkeletonBone(const Skeleton& skeleton, const std::string& name){
         if (name.empty()){
             return -1;

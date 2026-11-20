@@ -81,6 +81,12 @@ behaviour and are not written while at their defaults.
 
 **Soften** stays off by default, because it changes where feet land.
 
+### Humanoid rigs named `B-` (Mesh Space Rotation)
+
+- Rigs whose bones are named with a `B-` prefix (`B-hips`, `B-spine`, `B-upperArm.L`) are now detected as humanoids
+  with no `.humanoid` map, so on such a rig a mask's body parts (Body, Head, arms, legs) start to apply and humanoid
+  clips start to retarget to it; before, those masks fell back to their default weight.
+
 ## Fixed for the upgrade
 
 The upgrade test found these, fixed in this editor (each with a test that failed before):

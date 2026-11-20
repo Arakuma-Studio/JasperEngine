@@ -255,8 +255,11 @@ namespace jasperengine::anim{
     std::vector<std::string> meshSpaceBoundaryNames(const AnimatorInstance& instance, int layer);
 
     // R29: a layer of `def` (matched to the bound Animator by name) above 0, Override, the option
-    // off, weight above 0 in `instance`, with a boundary bone that is the humanoid's Spine, Chest
-    // or Upper Chest, or, without a humanoid, the child of a bone the mask leaves out
+    // off in `def` and in `instance` (a Lua override), weight above 0 in `instance`, whose mask starts at a torso bone under a torso bone it
+    // leaves out (weight 0): by the humanoid's slots when the rig has one (Hips, Spine, Chest,
+    // Upper Chest), else by name (pose::isTorsoBoneName). A mask that takes the hips (under
+    // `Armature` or `B-root`) or starts at an arm does not split the torso. The message names the
+    // first such start in rig order (parents first).
     struct MeshSpaceWarning{
         int layer = -1;                     // index in def
         std::string message;

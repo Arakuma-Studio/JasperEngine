@@ -3,6 +3,7 @@
 
 #include "InspectorAnimLayers.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/AnimationClipDocument.h"
 
 #include "Project.h"
 #include "Scene.h"
@@ -486,38 +487,50 @@ const char* animlayersui::meshSpaceRotationDisabledReason(int layer, AnimationLa
     return nullptr;
 }
 
-std::vector<Entity> animlayersui::meshSpaceBoundary(Scene* scene, Entity root, const anim::AvatarMaskDef& mask){
-    std::vector<Entity> bones;
-    if (!scene || root == NULL_ENTITY || !scene->isEntityCreated(root)) return bones;
-    for (const std::pair<std::string, Entity>& entry : anim::descendantPaths(scene, root)){
-        if (!entry.first.empty()) bones.push_back(entry.second);
+std::vector<Entity> animlayersui::playerAnimatedTargets(Project* project, Scene* scene, Entity root, const AnimationPlayerComponent& player){
+    std::vector<Entity> targets;
+    if (!scene || root == NULL_ENTITY || !scene->isEntityCreated(root)) return targets;
+    bool humanoidClip = false;
+    std::set<std::string> seen;
+    for (const AnimationPlayerClip& entry : player.clips){
+        if (entry.clip.empty() || !seen.insert(entry.clip).second) continue;
+        std::shared_ptr<AnimationClipDocument> document = AnimationClipDocument::open(project, entry.clip, nullptr);
+        if (!document) continue;
+        for (const ClipTrackData& track : document->data().tracks){
+            if (track.channel == ClipChannel::Humanoid) humanoidClip = true;
+            if (track.channel != ClipChannel::Position && track.channel != ClipChannel::Rotation && track.channel != ClipChannel::Scale) continue;
+            const Entity target = track.path.empty() ? root : anim::resolvePath(scene, root, track.path);
+            if (target != NULL_ENTITY) targets.push_back(target);
+        }
     }
+    // a humanoid clip realises its rotations on the rig's slot bones
+    if (humanoidClip){
+        const anim::HumanoidSlots slots = anim::resolveHumanoidSlots(scene, root);
+        for (Entity bone : slots.entities){
+            if (slots.valid && bone != NULL_ENTITY) targets.push_back(bone);
+        }
+    }
+    return targets;
+}
+
+std::vector<Entity> animlayersui::meshSpaceBoundary(Scene* scene, Entity root, const anim::AvatarMaskDef& mask, const std::vector<Entity>& animated){
+    std::vector<Entity> out;
+    if (!scene || root == NULL_ENTITY || !scene->isEntityCreated(root)) return out;
+    const anim::PlayerRig rig = anim::playerRig(scene, root, animated);
     anim::HumanoidSlots slots;
     if (mask.usesHumanoid()) slots = anim::resolveHumanoidSlots(scene, root);
-    const std::vector<Entity> entries = anim::bindMaskPaths(mask, scene, root);
-    std::map<Entity, int> indexOf;
-    std::vector<float> weights(bones.size());
-    std::vector<int> parents(bones.size(), -1);
-    for (size_t b = 0; b < bones.size(); b++){
-        indexOf[bones[b]] = (int)b;
-        weights[b] = anim::maskWeightOf(mask, scene, root, bones[b], entries, slots.valid ? &slots : nullptr).weight;
-        const Transform* transform = scene->findComponent<Transform>(bones[b]);
-        const auto parent = transform ? indexOf.find(transform->parent) : indexOf.end();
-        if (parent != indexOf.end()) parents[b] = parent->second;
-    }
     std::vector<uint16_t> boundary;
-    anim::maskBoundaryBones(weights.data(), parents.data(), bones.size(), boundary);
-    std::vector<Entity> out;
+    anim::playerMaskBoundaryBones(mask, scene, root, rig, anim::bindMaskPaths(mask, scene, root), slots.valid ? &slots : nullptr, boundary);
     out.reserve(boundary.size());
-    for (uint16_t b : boundary) out.push_back(bones[b]);
+    for (uint16_t b : boundary) out.push_back(rig.bones[b]);
     return out;
 }
 
-std::string animlayersui::meshSpaceBoundaryLine(Scene* scene, Entity root, const anim::AvatarMaskDef* mask){
+std::string animlayersui::meshSpaceBoundaryLine(Scene* scene, Entity root, const anim::AvatarMaskDef* mask, const std::vector<Entity>& animated){
     const char* const generic = "Applies where the mask starts or stops";
-    if (!mask || !scene || root == NULL_ENTITY || !scene->isEntityCreated(root) || anim::descendantPaths(scene, root).size() <= 1) return generic;
-    const std::vector<Entity> boundary = meshSpaceBoundary(scene, root, *mask);
-    if (boundary.empty()) return "Applies at: no bone (the mask does not start or stop below this GameObject)";
+    if (!mask || !scene || root == NULL_ENTITY || !scene->isEntityCreated(root) || anim::playerRig(scene, root, animated).bones.empty()) return generic;
+    const std::vector<Entity> boundary = meshSpaceBoundary(scene, root, *mask, animated);
+    if (boundary.empty()) return "Applies at: no bone (the mask does not start or stop where the clips animate)";
     constexpr size_t SHOWN = 6;
     std::string text = "Applies at: ";
     for (size_t i = 0; i < boundary.size() && i < SHOWN; i++){

@@ -811,6 +811,8 @@ void recordAnimator(const CallPtr& call, SceneProject* sceneProject, Entity enti
 
 constexpr double LAYER_TWIST_LIMIT_DEG = 5.0;
 constexpr size_t LAYER_BLEND_TIMES = 5;
+// the latest time layer_blend samples (what layer_blend.times accepts)
+constexpr float LAYER_BLEND_MAX_TIME = 600.0f;
 
 double degrees(double radians) {
     return radians * 180.0 / 3.14159265358979323846;
@@ -978,7 +980,11 @@ bool evaluateLayerBlend(LayerBlendCall& call, float time, bool prepare, LayerBle
         call.baseFull = instance->currentState(0).fullPath;
         call.stateFull = instance->currentState(call.layer).fullPath;
         if (call.times.empty()) {
-            const float length = instance->currentState(call.layer).length;
+            // one cycle of the layer's state as it plays: its length at its speed (and speed
+            // parameter) and the Animator's; a state that does not advance gives its start alone
+            const anim::AnimatorInstance::StateInfo info = instance->currentState(call.layer);
+            const float rate = std::fabs(info.speed * scene->getComponent<AnimatorComponent>(call.entity).speed);
+            const float length = info.length > 0.0f && rate > 0.0f && std::isfinite(rate) ? std::min(info.length / rate, LAYER_BLEND_MAX_TIME) : 0.0f;
             for (size_t k = 0; k < LAYER_BLEND_TIMES; k++) call.times.push_back(length > 0.0f ? length * (float)k / (float)(LAYER_BLEND_TIMES - 1) : 0.0f);
             if (length <= 0.0f) call.times.resize(1);
         }
@@ -1131,7 +1137,7 @@ void checkLayerBlend(const CallPtr& call, SceneProject* sceneProject, Entity ent
         bool ok = false;
         if (key == "layer" || key == "base_state" || key == "state") ok = v.is_string();
         else if (key == "times") ok = v.is_array() && std::all_of(v.begin(), v.end(), [](const Json& t) {
-            return t.is_number() && t.get<double>() >= 0.0 && t.get<double>() <= 600.0; });
+            return t.is_number() && t.get<double>() >= 0.0 && t.get<double>() <= (double)LAYER_BLEND_MAX_TIME; });
         else if (key == "bones") ok = v.is_array() && std::all_of(v.begin(), v.end(), [](const Json& b) { return b.is_string(); });
         else {
             call->fail("layer_blend: unknown key \"" + key + "\"" + usage);

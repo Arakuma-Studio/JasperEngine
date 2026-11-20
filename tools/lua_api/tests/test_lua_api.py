@@ -159,7 +159,7 @@ class Emitters(unittest.TestCase):
             self.assertIn('ScriptReloadInfo', files['Script.lua'])
             self.assertIn('function Editor.call(tool, args, callback) end', files['EditorScript.lua'])
             # a layer by index or name (docs/specs/mesh-space-rotation.md AC13)
-            self.assertIn('---@param layer integer|string\n---@param enabled? boolean\nfunction Animator:setLayerMeshSpaceRotation(layer, enabled) end',
+            self.assertIn('---@param layer integer|string\n---@param enabled boolean\nfunction Animator:setLayerMeshSpaceRotation(layer, enabled) end',
                           files['Animator.lua'])
             self.assertIn('function Animator:getLayerMeshSpaceRotation(layer) end', files['Animator.lua'])
             self.assertIn('HtmlUITypes.lua', files)

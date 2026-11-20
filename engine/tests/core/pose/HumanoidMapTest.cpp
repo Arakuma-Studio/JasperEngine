@@ -101,6 +101,19 @@ TEST(PoseHumanoidMap, ProxyBonesNeverMapped){
     }
 }
 
+// the auto-detect's torso reading of one name (the Mesh Space Rotation warnings on rigs without a
+// humanoid map): hips and the spine chain, with its prefixes stripped; never a root, a limb or a proxy
+TEST(PoseHumanoidMap, TorsoBoneNames){
+    for (const char* name : {"Hips", "mixamorig:Hips", "B-hips", "pelvis", "Spine", "mixamorig:Spine1", "B-spine", "spine_01", "Chest", "B-chest",
+                             "UpperChest", "J_Bip_C_Spine"}){
+        EXPECT_TRUE(isTorsoBoneName(name)) << name;
+    }
+    for (const char* name : {"Armature", "B-root", "Root", "Rig", "mixamorig:LeftShoulder", "B-shoulder.L", "Neck", "Head", "B-spineProxy",
+                             "LeftUpLeg", ""}){
+        EXPECT_FALSE(isTorsoBoneName(name)) << name;
+    }
+}
+
 TEST(PoseHumanoidMap, FixtureRigsMapFully){
     for (const TestRig* rig : allRigs()){
         expectMap(rig->skeleton, rig->expected, rig->label);

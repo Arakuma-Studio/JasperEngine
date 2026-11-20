@@ -1098,8 +1098,9 @@ std::string AnimatorWindow::meshSpaceAppliesText(int index){
 std::vector<MeshSpaceWarning> AnimatorWindow::meshSpaceProblems(){
     syncToDocument();
     AnimatorInstance* bound = boundInstance();
-    if (!bound) return {};
-    return meshSpaceWarnings(working(), *bound);
+    if (!bound || (!pending && !document)) return {};
+    // the Problems strip asks every frame: the working controller read in place, not copied
+    return meshSpaceWarnings(pending ? *pending : document->controller(), *bound);
 }
 
 bool AnimatorWindow::fixMeshSpaceProblem(int index){

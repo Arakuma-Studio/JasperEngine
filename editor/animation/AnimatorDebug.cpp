@@ -8,6 +8,7 @@
 #include "animation/ControllerDef.h"
 #include "component/AnimatorComponent.h"
 #include "pose/HumanBones.h"
+#include "pose/HumanoidMap.h"
 
 #include <algorithm>
 #include <cmath>
@@ -481,22 +482,29 @@ std::vector<std::string> meshSpaceBoundaryNames(const AnimatorInstance& instance
 std::vector<MeshSpaceWarning> meshSpaceWarnings(const ControllerDef& def, const AnimatorInstance& instance){
     std::vector<MeshSpaceWarning> warnings;
     if (!instance.bound || !instance.controller) return warnings;
+    // a torso bone: the humanoid's hips, spine, chest or upper chest, else by its name
+    auto torso = [&](size_t bone){
+        if (!instance.humanoid.valid) return pose::isTorsoBoneName(instance.rig.bones[bone].name);
+        const int slot = instance.humanoidSlotOf((int)bone);
+        return slot == (int)pose::HumanBone::Hips || torsoSlotLabel(slot) != nullptr;
+    };
     for (size_t l = 1; l < def.layers.size(); l++){
         const LayerDef& layer = def.layers[l];
         if (layer.blending != AnimatorLayerBlending::Override || layer.meshSpaceRotation) continue;
         const int run = instance.getLayerIndex(layer.name);
         if (run <= 0 || !(instance.getLayerWeight(run) > 0.0f)) continue;
+        // the runtime's value too: a Lua override that turns it on answers the warning
+        if (instance.layerMeshSpaceRotation(run)) continue;
         const std::vector<float>& mask = instance.layers[(size_t)run].mask;
+        // the first place, parents first, where the mask starts under a torso bone it leaves out
+        // and that start is a torso bone too: the torso split between the layers
         std::string where;
-        for (uint16_t bone : instance.layerBoundaryBones(run)){
-            if (bone >= instance.rig.bones.size()) continue;
-            if (instance.humanoid.valid){
-                if (const char* slot = torsoSlotLabel(instance.humanoidSlotOf(bone))) where = slot;
-            }else{
-                const int parent = instance.rig.parents[bone];
-                if (parent >= 0 && (size_t)parent < mask.size() && mask[(size_t)parent] == 0.0f) where = instance.rig.bones[bone].name;
-            }
-            if (!where.empty()) break;
+        for (size_t bone = 0; bone < instance.rig.bones.size() && bone < mask.size() && where.empty(); bone++){
+            const int parent = instance.rig.parents[bone];
+            if (parent < 0 || (size_t)parent >= mask.size() || !(mask[bone] > 0.0f) || mask[(size_t)parent] != 0.0f) continue;
+            if (!torso((size_t)parent) || !torso(bone)) continue;
+            const char* slot = instance.humanoid.valid ? torsoSlotLabel(instance.humanoidSlotOf((int)bone)) : nullptr;
+            where = slot ? std::string(slot) : instance.rig.bones[bone].name;
         }
         if (where.empty()) continue;
         warnings.push_back({(int)l, "Layer '" + layer.name + "': the mask starts at " + where +

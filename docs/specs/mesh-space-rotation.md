@@ -137,8 +137,9 @@ Ideas only. Nothing is vendored or copied.
 
 - **R4.** `LayerDef` and `CompiledLayer` gain `bool meshSpaceRotation = false`.
 - **R5.** **Boundary bones.** At bind, for every layer above 0 with Override blending and the option on, the
-  instance lists the layer's boundary bones. A boundary bone is a rig bone that has a parent and whose mask weight
-  differs from its parent's (`run.mask[b] != run.mask[parent]`). An unmasked layer has none, so the option changes
+  instance lists the layer's boundary bones. A boundary bone is a rig bone `b` with a parent `p` where the mask
+  starts or increases (`run.mask[b] > run.mask[p]`), or where it stops right under where it starts
+  (`run.mask[b] < run.mask[p]` and the mask starts at `p`). An unmasked layer has none, so the option changes
   nothing on it.
 - **R6.** **The pass.** For such a layer, at its place in the combine (`AnimatorInstance.cpp:1740-1750`):
   1. Before `poseBlend`, take the rig-space rotation of each boundary bone's parent chain in the pose so far
@@ -222,14 +223,16 @@ Ideas only. Nothing is vendored or copied.
 - **R28.** Editing it is one project undo step named "Edit Layer <name>", through the window's existing `stage`
   path, like Weight and Blending.
 - **R29.** **The warning.** When a bound Animator has an Override layer above 0 with the option off, weight above 0,
-  and at least one boundary bone that is a humanoid Spine, Chest or Upper Chest slot, or, with no humanoid, the
-  child of the bone its mask leaves out, then it shows a warning:
+  and a mask that starts at a torso bone under a torso bone it leaves out (by humanoid slot: Hips, Spine, Chest,
+  Upper Chest; with no humanoid, by name through the humanoid auto-detection), then it shows a warning, naming the
+  first such start in rig order:
   "Layer 'Upper Body': the mask starts at Spine, so the torso follows the base layer's hips. Turn on Mesh Space
   Rotation to keep this layer's direction."
   - It appears in the Animator component Inspector and the Animator window's Problems strip. Clicking it in the
     Problems strip selects the layer.
   - It has a **Fix** button that turns the option on as one undo step.
-  - It never changes anything by itself. Turning the option on, or setting the layer to Additive, clears it.
+  - It never changes anything by itself. Turning the option on (in the controller, or for that Animator from Lua),
+    or setting the layer to Additive, clears it.
 - **R30.** **Torso Direction gizmo.** A Gizmos > Animation > **Torso Direction** item. With it on, for a selected
   Animator with a flagged layer, the Scene view draws each boundary bone's forward axis:
   - the corrected axis in the overlay colour for "applied";
@@ -258,8 +261,8 @@ Ideas only. Nothing is vendored or copied.
   - Both work in edit mode through the existing evaluation path. The result echoes them.
 - **R36.** **`check_animation`** gains the check `layer_blend` in `kChecks`, with
   `layer_blend: {layer, base_state, state, times, bones}`. All are optional except `layer`; defaults are the layer's
-  default state, the base layer's default state, 5 evenly spaced times, and the layer's boundary bones plus their
-  children.
+  default state, the base layer's default state, 5 evenly spaced times over one cycle of the layer's state as it plays
+  (its length over its speed and the Animator's), and the layer's boundary bones plus their children.
   - It evaluates the bound Animator's layer stack at each time and compares each listed bone's rig-space rotation
     with the solo layer's.
   - It returns `layer_blend: {layer, mesh_space_rotation, boundary_bones, max_angle_deg, worst_bone,
@@ -269,8 +272,9 @@ Ideas only. Nothing is vendored or copied.
     `edit_animator_controller` call that turns the option on.
   - It runs on the main thread in slices, as a job when it outlasts the usual limit, like its existing checks.
 - **R37.** **Static check.** `check --anims` warns `anim-mask-root-inherits` for an Override layer above 0, option
-  off, whose mask is a `paths` mask with a weighted entry whose parent path weighs 0. It cannot know the rig, so the
-  message says the warning is about the mask's shape. `docs/mcp/checks.md` lists the code.
+  off, whose mask is a `paths` mask with a weighted entry whose parent path weighs 0, both of them torso names as the
+  humanoid auto-detection reads them (R29's rule by name). It cannot know the rig, so the message says the warning
+  is about the mask's shape. `docs/mcp/checks.md` lists the code.
 - **R38.** **Coverage.** `get_animation {entity}`'s `mask_coverage` lists each layer's `boundary_bones` and its
   `mesh_space_rotation`, so an agent can see where the pass applies without running a check.
 - **R39.** **Player.** Agents set the Player's field through
@@ -304,11 +308,14 @@ Ideas only. Nothing is vendored or copied.
 - **D1. Name.** The option is **Mesh Space Rotation** in the UI, `mesh_space_rotation` in controller JSON and MCP,
   `meshSpaceRotation` in C++ fields and the Player's scene key, `setLayerMeshSpaceRotation` in Lua. Unity has no
   term for it, so the glossary's no-alias rule is not broken. The industry term is the one people search for.
-- **D2. Boundary bones only.** Mesh space applies only where the mask weight changes between parent and child. With
-  0 or 1 weights this gives exactly what full per-bone mesh-space blending gives, at a fraction of the work:
+- **D2. Boundary bones only.** Mesh space applies only where the mask starts, and where it stops right under its
+  start. With 0 or 1 weights the bones inside the mask get what full per-bone mesh-space blending gives, at a fraction
+  of the work:
   - a child with the same weight as its parent inherits the corrected rotation through the hierarchy;
-  - fingers left out of an arm mask keep Unity's behaviour (they follow the hand);
-  - both directions are covered: the spine under the run's hips, and the run's legs under the attack's hips when a
+  - fingers left out of an arm mask keep Unity's behaviour (they follow the hand), as does a head left out of a torso
+    mask: the mask stops there, but not right under where it starts;
+  - both directions are covered where the layer's direction enters: the spine under the run's hips (a mask from the
+    spine, or a lower-body mask that leaves the spine out), and the run's legs under the attack's hips when a
     body-part mask includes Body.
   With fractional weights inside the mask, the result is local blending inside and mesh space at the edges. That is
   documented, not a defect.
@@ -420,6 +427,26 @@ player:setLayerMeshSpaceRotation("Upper Body", true)
   above 0, whatever its blending and option, not only of flagged Override layers. The editor's warning (R29) and
   `get_animation`'s coverage (R38) need them while the option is off. The list is bind-time data, not scratch: the
   two scratch arrays (R21, R22) are still sized only while a layer runs the pass.
+- **R5, D2: where the mask stops.** The first rule listed every bone whose weight differs from its parent's, in
+  both directions, so fingers left out of an arm mask (hand 1, fingers 0) took the base layer's rotation relative to
+  the character and no longer followed the hand, against D2. The owner's rule replaces it: a bone is a boundary bone
+  where the mask starts or increases, or where it stops right under where it starts (the legs under the hips of a
+  Body-on mask, the spine under the hips of a lower-body mask). Two bones count as where a mask starts without a
+  parent's weight to compare with: a bone right under the root when it weighs above 0 (rig space has nothing to
+  inherit), and, for a mask with body parts on a humanoid rig, the hips when they weigh above 0. The bones above the
+  hips are the mask's root part (`root_hierarchy`), so a body-part mask that is on from the root (everything but
+  the legs) starts its body at the hips, as Unity's humanoid masks do; without that its legs would follow the
+  layer's hips. A path mask on from the root of a rig with a node above the hips (`Armature`) starts at that node,
+  so its legs follow the hips: give the mask the hips and below to keep the run's legs. The rule stays
+  `anim::maskBoundaryBones`, shared by the Animator's bind, the Animation Player's composer and the editor's line.
+- **R29, R37: one torso rule.** The warning first fired for any boundary bone under a bone the mask leaves out on a
+  rig without a humanoid, and the static check for any weighted entry under an unweighted parent, so a mask that
+  takes the hips under `Armature` or `B-root` (`Armature/Hips`, `Rig/B-root/B-hips`: the whole body) warned that
+  "the mask starts at Hips". Both now share one rule: the mask starts at a torso bone under a torso bone it leaves
+  out, by humanoid slot on a bound humanoid, else by name (`pose::isTorsoBoneName`, the auto-detection's reading:
+  `B-hips`, `mixamorig:Spine1`). The start must be a torso bone too, so a mask from an arm (the shoulder under the
+  chest) does not warn that the torso follows the base layer's hips, on a humanoid as before and now on a generic
+  rig. The message names the first such start in rig order (the static check: the shallowest entry).
 - **R14: "rebind" is a load of the controller.** The Lua override resets when the controller loads again (another
   controller, or the same file changed), where the layers' runtime state is rebuilt. It survives a rig rebind
   after a hierarchy change, like `setLayerWeight`, so a script's call before the first bind is not lost.
@@ -443,14 +470,18 @@ player:setLayerMeshSpaceRotation("Upper Body", true)
 - **R38, R39: where the Player's value is.** `get_animation` echoes a Player layer's option as `mesh_space_rotation` in
   `players[0].layers[]`, beside its weight, blend and mask. The Player's `mask_coverage` entries carry
   `mesh_space_rotation` and `boundary_bones`, the paths of the Inspector's Applies at line (the rule over the Player's
-  GameObject hierarchy, `animlayersui::meshSpaceBoundary`).
+  rig, `animlayersui::meshSpaceBoundary`: the GameObjects its clips animate and their ancestors, through
+  `anim::playerRig`, the runtime's rig of R16, so a GameObject no clip animates is never listed).
 - **R16: the Player's rig, weights and sources.** The Player's rig is every GameObject its transform slots animate
   and their ancestors below the Player's GameObject, rig space that GameObject's local space. Boundary bones come
   from the layer's mask through `anim::maskBoundaryBones` (one rule with the Animator's bind and the editor's line);
   a state's mixing transforms add none, they weigh its contribution at the nodes as everywhere else. A boundary
   bone's weight is the Player's own blend weight there, `λ·min(1, S)` with `S` the states' weights times their mask
   weight (R6's `run.weight * run.mask[b]` for one state at weight 1). The table (the boundary bones and their
-  ancestors, parents first) is built at prepare while a layer runs the pass, never per frame. Its nodes are never
+  ancestors, parents first) is built at prepare while a layer runs the pass, never per frame. When the scene's
+  hierarchy revision changes, each bone of the table's rig is checked against the Transform parent it was built
+  with, as the bindings and the humanoid rig are checked; a moved one (a humanoid's bone the retargeted clips bind
+  by entity, which no path check sees) binds the masks' paths again and rebuilds the table. Its nodes are never
   occluded by a layer above. A bone no layer below wrote this frame is at its rest, and the layer's own rotation at
   a bone its clips do not rotate is the bone's rest (the Animator's `run.output`); a boundary bone no clip rotates
   gets a Rotation slot of its own. The layered edit-mode preview (the Animation window's Preview over) applies the

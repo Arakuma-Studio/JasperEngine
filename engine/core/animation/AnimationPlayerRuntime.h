@@ -441,6 +441,9 @@ namespace jasperengine::anim{
         std::vector<PoseMeshSum> meshSums;
         std::vector<Quaternion> meshBelow;
         std::vector<Quaternion> meshRig;
+        // the rig's bones and the Transform parent each had at the build: a hierarchy change that
+        // moves one (a humanoid's bone, a rig bone the bindings still resolve) rebuilds the table
+        std::vector<std::pair<Entity, Entity>> meshParents;
         // bumped by every build: what the states' meshSources were computed for
         uint64_t meshSerial = 0;
     };
@@ -476,8 +479,9 @@ namespace jasperengine::anim{
         PlayerPoseScratch scratch;
         uint64_t scratchSerial = 0;
         // what the scratch's Mesh Space Rotation table was built from (empty while no layer runs
-        // the pass): scratchSerial, humanoidRevision, then per layer the mask it applies with
-        // (null: none) and its maskEntitiesSerial
+        // the pass): scratchSerial, humanoidRevision, the hierarchy revision its meshParents were
+        // last found to hold at, then per layer the mask it applies with (null: none) and its
+        // maskEntitiesSerial
         std::vector<uint64_t> meshSpaceStamp;
         // the root's humanoid rig for humanoid masks (spec 6.2 rule 2; anim-retarget's target rig
         // lookup shares it): resolved when a layer's mask needs it, again after a model reload

@@ -68,6 +68,11 @@ namespace jasperengine::pose {
     // The name normalisation of the auto-detect, exposed for tests and tools: lower-case tokens
     // after stripping namespaces and rig prefixes and splitting camelCase/separators/digits.
     JASPERENGINE_API std::vector<std::string> humanoidNameTokens(const std::string& boneName);
+    // The auto-detect's reading of one name: true for a hips or spine-chain bone (hips, pelvis,
+    // spine*, chest, upper chest, torso, after the same stripping: "B-hips", "mixamorig:Spine1"),
+    // never for a proxy or helper. The torso test of rigs without a humanoid map (the Mesh Space
+    // Rotation warnings).
+    JASPERENGINE_API bool isTorsoBoneName(const std::string& boneName);
 
 }
 
