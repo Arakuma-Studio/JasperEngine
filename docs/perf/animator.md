@@ -240,6 +240,29 @@ quaternion operations per boundary bone. The runtime state grows by the layer ru
 (248 B for the crowd's 3 layers). An E run is still owed against the budgets. ARM and web are
 unmeasured.
 
+### The Animation Player's layers
+
+R16 on the Animation Player: `player_layered200_*` is S77's Animation Player crowd (200 characters,
+65 bones) with two layers, the walk on the base and the wave over it on an Override layer at 0.7
+masked from the neck and both shoulders (3 boundary bones a character, as Crowd200's);
+`player_mesh_space200_*` is the same with Mesh Space Rotation on that layer. Information rows, no
+budget. Measured on the shared build box "jasper" (2026-11-20): AMD Ryzen 9 5900X, 12 cores / 24
+threads, Linux x64, the core-tests build (RelWithDebInfo, GCC), `--workers 3 --count-allocs`, the
+branch's binary, three runs, the median shown (the range in brackets). Another agent's builds ran
+on the box during the runs (load average 4 to 12).
+
+| Metric | Option off (`player_layered200`) | Option on (`player_mesh_space200`) |
+|---|---|---|
+| ActionSystem update p50 | 2.33 ms (2.32-2.55) | 2.41 ms (2.39-2.41) |
+| ActionSystem update p95 | 2.47 ms (2.44-3.50) | 2.67 ms (2.50-2.90) |
+| Heap allocations, 200 frames | 4,836 | 4,836 |
+
+With the option on the p50 is about 0.08 ms higher over 200 characters, under 0.5 µs a character:
+per frame, the wave's rotation at the 7 nodes (the boundary bones and their ancestors), two
+rotation-only rig passes over them and one `poseMeshSpaceLocal` per boundary bone. The option adds
+no allocation: the 4,836 are the Player crowd's own (S77's row above, without layers, has the same).
+ARM and web are unmeasured.
+
 ## GPU skinning on a GPU (GPU campaign)
 
 RTX 3080 Ti, `tools/performance/vat_crowd.py --gpu-passes` (Game view 752x362): the skinned crowd's

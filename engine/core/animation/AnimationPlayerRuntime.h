@@ -432,7 +432,7 @@ namespace jasperengine::anim{
         // the slots the bindings made (buildPoseSlots); Mesh Space Rotation's added ones follow
         uint32_t boundSlots = 0;
         bool dirty = true;
-        // Mesh Space Rotation (R16, R21, R22): built at prepare (playerdetail::buildMeshSpace), all
+        // Mesh Space Rotation (R16, R21, R22): built at prepare (ActionSystemLayers.cpp), all
         // empty while no layer runs the pass. meshBoundary: per layer, its boundary nodes, parents
         // first (empty: no pass); meshSums, meshBelow, meshRig: per node, the frame's scratch (the
         // layer's own rotations; the rig rotations below the layer, then after it; the layer's own)
