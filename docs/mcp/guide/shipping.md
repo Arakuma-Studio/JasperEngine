@@ -100,6 +100,23 @@ it works headless) and its exit code is the verdict:
 
 A web build reads the same options from the page's query: `index.html?quit-after=30&fixed-fps=60`.
 
+## Build Report
+
+Every export writes `build-report.json` and a copy in the project's history (10 per platform).
+`get_build_info` reads it:
+
+- A build grew, or someone asks what changed: `get_build_info {compare_to: "previous"}` (or a
+  history id or a path): per category and per file changes keyed by source asset, largest first.
+- A file should not ship, or you are asked why it does: `get_build_info {referenced_by: [paths]}`
+  gives the chain back to project.yaml or a script. `unreferenced` means no scene, prefab,
+  material, setting or script reaches it in the index; a script may still load it by a computed
+  path, so ask before deleting it.
+- `report` picks another report (`last` by default, a history id or a path); its `left_out` lists
+  sources shipped as something else (cooked, atlas pages, baked) and why.
+- Size budgets: `set_project_settings {values: {"player.size_budgets": [{platform, category,
+  limit_mb}], "player.size_budget_action": "warn"|"fail"}}`. Over a limit the build warns
+  `W-SIZE-BUDGET` (or fails with `fail`); the report's `budgets` has the rows.
+
 ## Build Profiles (group `shipping`)
 
 Make a Build Profile when one project ships more than one variant: a demo, a store edition, a

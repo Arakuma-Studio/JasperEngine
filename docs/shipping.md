@@ -172,6 +172,64 @@ runtime from pieces (`obj["get" .. "Rigidbody"]`) is the one use the build canno
 **Project Settings > Player > Strip Engine Code** off for such a project (every module its
 settings allow ships).
 
+## The Build Report
+
+Every export writes `build-report.json` next to what it builds and keeps a copy in the project's
+history, `.jasperengine/build-reports/<platform>/<id>.json` (the newest 10 per platform; the id is
+the UTC time and the method, `20261119-142233-prebuilt`). Its sizes are the files on disk before
+packing (not the APK's or a web server's compression). It holds:
+
+- totals by category (models, textures, audio, scripts, scenes, engine, other) and every file with
+  its category, size and, for a cooked or replaced file, its source asset and that asset's size;
+- **Left Out**: each source the build did not ship as itself, with its size and why (the texture or
+  model cook replaced it, only sprites read it and it ships in an atlas's pages, a bitmap font's
+  `.jfont` holds it, an `.aseprite` ships as its import, a Title Art document no title reads, a
+  language the build leaves out, a Procedural Material that ships as what it baked, a Build
+  Profile's exclusion);
+- **Referenced By**: for each asset the first reference that reached it from project.yaml (the
+  scene list, standalone prefabs) or from a shipped script, walked through the dependency index
+  at export time, so an old report still explains its own build. **Unreferenced** files are those
+  no scene, prefab, material, project setting or script reaches. That is a lead, not a verdict: a
+  script that loads a file by a path it builds at run time (`loadSound("sfx/" .. name)`) is
+  invisible to the index (it sees `require` only), so nothing is left out automatically; a Build
+  Profile's Exclude Paths is the place to drop what you are sure no script loads. When the index
+  is still building, the report has no Referenced By data (`W-BUILD-REPORT-INDEX`): export again.
+- **Budgets**: each size budget the build met.
+
+**Window > Analysis > Build Report** opens the last export's report (after a restart, the newest of
+the history). **Report** picks another from the history (same platform first); **Compare With...**
+picks the report to compare with (another platform is allowed: texture families differ by design),
+or **Browse...** for any `build-report.json`; **Clear Comparison** ends it. Comparing adds Before,
+After and Delta to the categories (green smaller, orange larger). The tabs are **Files** (search,
+category filter, sortable columns, Delta when comparing), **Changes** (Added, Removed, Grown,
+Shrunk; a cooked file is matched by its source asset, so a model whose cooked name changed is one
+Grown row), **Unreferenced**, **Left Out** and **Budgets**. Selecting a file shows its **Referenced
+By** chain; click a step to select that asset. A report from an older editor lists its 25 largest
+files only: its comparison is partial, and its Referenced By answers from the project as it is now.
+
+The export's completion page shows the total and the change since the platform's previous report
+("Build Report: 142.0 MB (+3.2 MB since 2026-11-18 10:15)") and each budget over its limit.
+
+A report of 20,000 files is about 4 MB and sits beside the output: delete `build-report.json`
+before uploading a web folder, or export to a folder you upload from.
+
+### Size budgets
+
+**Project Settings > Player > Publishing Settings > Size Budgets** holds rows of Platform (All,
+Desktop, or one), Category (Total or one) and Limit (MB, 1,048,576 bytes as the report shows it);
+**When Over Budget** is Warn (the default) or Fail Build. A row for the build's platform replaces a
+Desktop row, which replaces an All row, of the same category. Content categories are checked right
+after the content is measured, before any compile or packing; Engine and Total once the engine is
+measured. Over a limit the build warns `W-SIZE-BUDGET` naming the category's three largest files;
+with Fail Build it writes the report and its history entry, then fails (the output folder is kept).
+A content failure stops before the engine is measured, which the message says. Source exports are
+never checked. A Build Profile may override the rows (`player.size_budgets`) for its builds.
+
+```
+jasperengine-editor call get_build_info --compare-to previous
+jasperengine-editor build --project MyGame --platform web --json   # build_report_id, size_budgets
+```
+
 ## The shaders a build ships
 
 Build Settings lists the shader variants a build compiles: what each scene needs, what every build

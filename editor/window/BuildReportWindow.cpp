@@ -416,9 +416,11 @@ void BuildReportWindow::drawChangesTab() {
             ImGui::TableNextColumn();
             std::string kind = change.change;
             kind[0] = (char)std::toupper((unsigned char)kind[0]);
-            if (ImGui::Selectable(kind.c_str(), selected == change.path, ImGuiSelectableFlags_SpanAllColumns)) select(change.path);
+            ImGui::TextColored(change.delta < 0 ? kSmallerColor : kLargerColor, "%s", kind.c_str());
             ImGui::TableNextColumn();
-            pathCell(change.key);
+            // the row is the file's key (a removed file has no path in this build)
+            if (ImGui::Selectable(change.key.c_str(), selected == change.path, ImGuiSelectableFlags_SpanAllColumns))
+                select(change.change == "removed" ? change.key : change.path);
             ImGui::TableNextColumn(); ImGui::TextUnformatted(change.category.c_str());
             ImGui::TableNextColumn(); if (change.before) ImGui::TextUnformatted(BuildReport::formatBytes(change.before).c_str());
             ImGui::TableNextColumn(); if (change.after) ImGui::TextUnformatted(BuildReport::formatBytes(change.after).c_str());

@@ -36,6 +36,7 @@ Projects made before the rename are migrated once with
 | A Prefab field in the Inspector (a script property of type Prefab: drag a `.prefab` from the Project window onto it) | none (new) |
 | Assets > Scenes in Build... | Project > Manage Scenes... |
 | File > Build Settings... | File > Export Project... |
+| Build Report (the Build Report Inspector package), comparing two builds' reports | Window > Analysis > Build Report: Compare With..., Changes, Referenced By, Unreferenced, Left Out; Size Budgets in Project Settings > Player (none before) |
 | Edit > Preferences... | Edit > Editor Settings... |
 | Edit > Project Settings... | Project > Project Settings... |
 | Project Settings > Physics / Physics 2D > Layer Collision Matrix | none (new) |
