@@ -133,7 +133,7 @@ namespace jasperengine::anim{
         uint32_t anyBegin = 0, anyCount = 0;
     };
 
-    struct CompiledController{
+    struct JASPERENGINE_API CompiledController{
         std::string guid;
         std::vector<ParameterDef> parameters;
         std::vector<CompiledLayer> layers;
