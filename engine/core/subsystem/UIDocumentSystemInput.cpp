@@ -901,24 +901,30 @@ void UIDocumentSystem::setCursorOverlay(bool show, float x, float y, const std::
         cursorOverlayLoads++;
         cursorOverlay->SetProperty(Rml::PropertyId::ZIndex, Rml::Property(kCursorOverlayZ, Rml::Unit::NUMBER));
         cursorOverlayGraphic.clear();
+        cursorOverlayLook[0] = -1.0f;
     }
     Rml::Element* image = cursorOverlay->GetElementById("cursor");
     if (!image)
         return;
-    const std::string source = graphic.empty() ? std::string("/") + kCursorArrowPath : graphic;
-    if (source != cursorOverlayGraphic){
-        image->SetAttribute("src", source);
-        cursorOverlayGraphic = source;
+    // the graphic, its size and hot spot change rarely: set only then; the position each move
+    if (graphic != cursorOverlayGraphic || cursorOverlayLook[0] < 0.0f){
+        image->SetAttribute("src", graphic.empty() ? std::string("/") + kCursorArrowPath : graphic);
+        cursorOverlayGraphic = graphic;
     }
-    // CSS px of the document are dp of the context; the hot spot sits on the point
+    if (size != cursorOverlayLook[0] || hotX != cursorOverlayLook[1] || hotY != cursorOverlayLook[2]){
+        // CSS px of the document are dp of the context; the hot spot sits on the point
+        image->SetProperty(Rml::PropertyId::Width, Rml::Property(size, Rml::Unit::DP));
+        image->SetProperty(Rml::PropertyId::Height, Rml::Property(size, Rml::Unit::DP));
+        image->SetProperty(Rml::PropertyId::MarginLeft, Rml::Property(-hotX, Rml::Unit::DP));
+        image->SetProperty(Rml::PropertyId::MarginTop, Rml::Property(-hotY, Rml::Unit::DP));
+        cursorOverlayLook[0] = size;
+        cursorOverlayLook[1] = hotX;
+        cursorOverlayLook[2] = hotY;
+    }
     float cx = x, cy = y;
     toContext(cx, cy);
-    image->SetProperty(Rml::PropertyId::Width, Rml::Property(size, Rml::Unit::DP));
-    image->SetProperty(Rml::PropertyId::Height, Rml::Property(size, Rml::Unit::DP));
     image->SetProperty(Rml::PropertyId::Left, Rml::Property(cx, Rml::Unit::PX));
     image->SetProperty(Rml::PropertyId::Top, Rml::Property(cy, Rml::Unit::PX));
-    image->SetProperty(Rml::PropertyId::MarginLeft, Rml::Property(-hotX, Rml::Unit::DP));
-    image->SetProperty(Rml::PropertyId::MarginTop, Rml::Property(-hotY, Rml::Unit::DP));
     if (!cursorOverlay->IsVisible())
         cursorOverlay->Show(Rml::ModalFlag::None, Rml::FocusFlag::None);
 }
