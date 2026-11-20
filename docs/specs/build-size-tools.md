@@ -524,7 +524,9 @@ Report, history, reachability and budgets (P1, P2):
 - **File layout.** `build-report.json` keeps one line per file, left-out source and reached asset
   (containers of scalars on one line); a file's `asset` is written only when its path does not
   imply it (`assets/<rel>` ships `<rel>`, a cooked file its `source`), and files with no asset get
-  `origin` (`engine`, `generated`). This keeps R22's 4 MB for 20,000 files.
+  `origin` (`engine`, `generated`); a file's `category` is written only when its path does not give it
+  (`largest` keeps every key for older readers); a reachability entry is `[via, field, kind]` (and the
+  GameObject). Keys per entry put the 20,000-file bench at 4.67 MB; without them it fits R22's 4 MB.
 - **Budget specificity.** A `desktop` row sits between a platform's row and `all` (windows, linux and
   macos builds take it over `all`; their own row over it).
 - **AC8 and AC18** use a prebuilt Linux build with the stand-in runtime `test_build_method.py`
