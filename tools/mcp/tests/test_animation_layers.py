@@ -194,6 +194,11 @@ async def test_layers_through_set_properties(ed: Editor):
     ed.check_eq(player["layers"][1]["blend"], "override", "blend")
     cov = player["mask_coverage"]
     ed.check_eq([(c["layer"], c["covered"], c["total"]) for c in cov], [("Holding", 1, 2)], f"the mask covers the right forearm only: {cov}")
+    # Mesh Space Rotation's boundary (the Inspector's Applies at line): the right arm part starts
+    # at the right shoulder, under the upper chest the mask leaves out
+    ed.check_eq(cov[0]["mesh_space_rotation"], False, f"the layer's option: {cov[0]}")
+    ed.check(any(p.endswith("mixamorig:RightShoulder") for p in cov[0]["boundary_bones"])
+             and not any("Left" in p for p in cov[0]["boundary_bones"]), f"the boundary starts at the right shoulder: {cov[0]}")
 
 
 async def test_preview_over(ed: Editor):

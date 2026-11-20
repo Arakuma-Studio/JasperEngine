@@ -441,8 +441,9 @@ player:setLayerMeshSpaceRotation("Upper Body", true)
   mask_coverage: [{layer, covered, total, warnings, mesh_space_rotation, boundary_bones}]}`, the bones as paths from
   the Animator's GameObject; `get_animation {entity}` now answers for a GameObject that only an Animator plays.
 - **R38, R39: where the Player's value is.** `get_animation` echoes a Player layer's option as `mesh_space_rotation` in
-  `players[0].layers[]`, beside its weight, blend and mask; the Player's `mask_coverage` entries do not list boundary
-  bones.
+  `players[0].layers[]`, beside its weight, blend and mask. The Player's `mask_coverage` entries carry
+  `mesh_space_rotation` and `boundary_bones`, the paths of the Inspector's Applies at line (the rule over the Player's
+  GameObject hierarchy, `animlayersui::meshSpaceBoundary`).
 - **R16: the Player's rig, weights and sources.** The Player's rig is every GameObject its transform slots animate
   and their ancestors below the Player's GameObject, rig space that GameObject's local space. Boundary bones come
   from the layer's mask through `anim::maskBoundaryBones` (one rule with the Animator's bind and the editor's line);
