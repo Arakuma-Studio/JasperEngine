@@ -903,10 +903,10 @@ animationplayer:
 ```
 
 `layer` is written only when not 0, `layers` only when they differ from one Base Layer without a
-mask, a layer's `weight` only when not 1, `blend` only when not override and `meshSpaceRotation`
-(Mesh Space Rotation: `meshSpaceRotation: true`) only when on. Masks follow the clip
-GUID rules: a rename repairs the path, a deleted file shows Missing. A `controller` key (files saved
-when the player played controllers) is moved to an Animator by the scene migration (scene version
+mask, a layer's `weight` only when not 1, `blend` only when not override and
+`meshSpaceRotation: true` (Mesh Space Rotation) only when on. Masks follow the clip GUID rules: a
+rename repairs the path, a deleted file shows Missing. A `controller` key (files saved when the
+player played controllers) is moved to an Animator by the scene migration (scene version
 6, prefab version 7); found in a newer file it is not read (a warning).
 
 ### The .mask and .controller files
@@ -937,8 +937,8 @@ there also weighs the hand; transforms cover their children unless `children: fa
 Animator's earlier true / false parts. A controller's layers nest a `state_machine` (states with
 their transitions, Any State, Entry, sub-state machines): `docs/mcp/guide/animator.md` lists every
 member; a layer's `"mesh_space_rotation": true` (Mesh Space Rotation) is written only when on, and
-a controller without it reads as off. Version 1 controllers with flat `states` and `transitions` (`"from": "any"`) load
-converted, members such as `mirror` and `foot_ik` kept. Unity's YAML `.mask` and `.controller`
+a controller without it reads as off. Version 1 controllers with flat `states` and `transitions`
+(`"from": "any"`) load converted, members such as `mirror` and `foot_ik` kept. Unity's YAML `.mask` and `.controller`
 files are refused with a message naming the menu that makes a JasperEngine one.
 
 ## Keyboard shortcuts
