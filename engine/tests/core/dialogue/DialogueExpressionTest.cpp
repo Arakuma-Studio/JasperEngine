@@ -66,7 +66,9 @@ namespace {
             EXPECT_TRUE(compileExpr(source, mode, pool, expr, &parse)) << source << ": " << parse.column << " " << parse.message;
             Value out;
             const bool ok = evaluate(pool, expr, env, stack, out, error);
-            if (!error) EXPECT_TRUE(ok) << source;
+            if (!error) {
+                EXPECT_TRUE(ok) << source;
+            }
             return ok ? out : Value();
         }
     };

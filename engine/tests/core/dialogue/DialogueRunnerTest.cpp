@@ -323,7 +323,9 @@ TEST_F(DialogueRunnerTest, SequenceAndOnceModes) {
         for (int i = 0; i < times; i++) {
             runner.start();
             out += runner.getCurrentLine()->text;
-            if (!runner.getCurrentLine()->variant.empty()) EXPECT_EQ(runner.getCurrentLine()->key, "t.n2." + runner.getCurrentLine()->variant);
+            if (!runner.getCurrentLine()->variant.empty()) {
+                EXPECT_EQ(runner.getCurrentLine()->key, "t.n2." + runner.getCurrentLine()->variant);
+            }
         }
         return out;
     };

@@ -110,7 +110,7 @@ TEST_F(DialogueKindTest, BadExpressionNamesTheColumn) {
 TEST_F(DialogueKindTest, JumpTargetMustExist) {
     GraphText g = base();
     g.node("n4", "jump", {{"entry", "nowhere"}});
-    g.edges.pop_back();
+    g.edges.erase(g.edges.end() - 1);
     g.wire("n2", "next", "n4").node("n5", "jump", {{"dialogue", {{"path", "assets/other.dialogue"}}}, {"entry", "x"}});
     g.node("n6", "entry", {{"name", "side"}}).wire("n6", "next", "n5");
     // n3 is now unreachable too
@@ -230,7 +230,9 @@ TEST_F(DialogueKindTest, KeysAreStableAcrossEdits) {
     std::reverse(options.begin(), options.end());
     graph::apply(edited, graph::opFromJson({{"op", "setParam"}, {"node", "n2"}, {"name", "options"}, {"value", options}}));
     graph::apply(edited, graph::opFromJson({{"op", "moveNodes"}, {"ids", {"n2"}}, {"delta", {300, 40}}}));
-    graph::apply(edited, graph::opFromJson({{"op", "setParam"}, {"node", "n2"}, {"name", "variants"}, {"value", {{{"id", "v2"}, {"text", "Hey"}}}}}}));
+    Json oneVariant = Json::array();
+    oneVariant.push_back({{"id", "v2"}, {"text", "Hey"}});
+    graph::apply(edited, graph::opFromJson({{"op", "setParam"}, {"node", "n2"}, {"name", "variants"}, {"value", oneVariant}}));
     std::map<std::string, std::string> after = keys(edited);
     EXPECT_EQ(after.count("n2.v1"), 0u);
     for (const auto& [key, text] : after) EXPECT_EQ(before.at(key), text) << key;

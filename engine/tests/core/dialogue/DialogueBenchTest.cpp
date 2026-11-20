@@ -83,7 +83,9 @@ TEST(DialogueBench, Load500) {
                 "%zu of source texts; %.0f bytes per node (%.0f without its options' %zu-byte records)\n",
                 best, memory, sourceTexts, perNode, perNodeRecord, sizeof(ProgramOption));
     EXPECT_LE(perNodeRecord, 160.0) << "R16: a node's record and its share of the expressions and strings";
-    if (testsupport::perfSlack() > 0.0) EXPECT_LE(best, 3.0 * testsupport::perfSlack());
+    if (testsupport::perfSlack() > 0.0) {
+        EXPECT_LE(best, 3.0 * testsupport::perfSlack());
+    }
 }
 
 namespace {
@@ -157,7 +159,9 @@ TEST(DialogueBench, Step) {
     std::printf("[bench] dialogue advance through 16 nodes to a 4-option line: %.4f ms (budget 0.04 ms desktop); %d rounds in %.1f ms\n",
                 perAdvance, rounds, msSince(start));
     EXPECT_EQ(fixture.runner.getState(), RunnerState::Line);
-    if (testsupport::perfSlack() > 0.0) EXPECT_LE(perAdvance, 0.04 * testsupport::perfSlack());
+    if (testsupport::perfSlack() > 0.0) {
+        EXPECT_LE(perAdvance, 0.04 * testsupport::perfSlack());
+    }
 }
 
 TEST(DialogueBench, StepAllocations) {

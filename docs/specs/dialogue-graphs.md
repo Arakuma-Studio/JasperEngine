@@ -554,3 +554,8 @@ handler checks; error names the fix).
 - **D-11 Add Component.** There was no Gameplay category: it is added with the Dialogue Runner.
 - **D-12 Module off (AC14).** `DialogueStubTest` binds the stubs on a Lua state of its own, so it runs
   in every core build; the module-off engine builds with `tools/check-physics-off.sh dialogue-off`.
+- **D-13 Reordering in the Inspector (R21).** Variants and options reorder with Up and Down buttons
+  (each one undo step; ids and wires kept) rather than by dragging the rows.
+- **D-14 Create > Dialogue (R22).** The item sits in the Project window's Create menu directly (not in
+  the catalog's `assets.create.*` commands).
+
