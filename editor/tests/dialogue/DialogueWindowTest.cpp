@@ -15,6 +15,7 @@
 #include "dialogue/DialogueEditor.h"
 #include "dialogue/DialogueKind.h"
 #include "dialogue/DialogueRunner.h"
+#include "dialogue/DialogueVariables.h"
 #include "dialogue/DialogueWindow.h"
 #include "graph/GraphDocument.h"
 

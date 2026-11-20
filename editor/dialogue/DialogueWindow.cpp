@@ -861,9 +861,10 @@ void DialogueWindow::drawLineInspector(const graph::Node& node){
     if (textField(node.id + ".text", "##text", text, typed, true)) setParam(node.id, "text", typed);
     UIProbe::item("dialogue.inspector.text");
     const std::string shown = buffers.count(node.id + ".text") ? buffers[node.id + ".text"] : text;
-    l10n::MessageError messageError;
-    if (!shown.empty() && !l10n::MessageFormat::validate(shown, &messageError)) {
-        ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "column %zu: %s", l10n::MessageFormat::column(shown, messageError.offset), messageError.message.c_str());
+    jasperengine::l10n::MessageError messageError;
+    if (!shown.empty() && !jasperengine::l10n::MessageFormat::validate(shown, &messageError)) {
+        ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "column %zu: %s", jasperengine::l10n::MessageFormat::column(shown, messageError.offset),
+                           messageError.message.c_str());
     }
     const int maxChars = node.params.value("max_chars", 0);
     if (maxChars > 0) {
