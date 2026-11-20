@@ -234,6 +234,7 @@ enum class ProjectCategory {
     Voxels,    // drawn from its settings rows (no page of its own here)
     TitleArt,
     Localization,
+    Dialogue,
     Count
 };
 
@@ -1245,6 +1246,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category, const c
     m_navigation = project->getNavigationSettings();
     m_titleArt = project->getTitleArtSettings();
     m_localization = project->getLocalizationSettings();
+    m_dialogue = project->getDialogueSettings();
     m_localizationInput[0] = '\0';
     m_audioSettings = project->getAudioSettings();
     snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", m_audioSettings.mixer.c_str());
@@ -1380,6 +1382,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::PixelArt: drawPixelArtSettings(); break;
         case ProjectCategory::TitleArt: drawTitleArtSettings(); break;
         case ProjectCategory::Localization: drawLocalizationSettings(); break;
+        case ProjectCategory::Dialogue: drawDialogueSettings(); break;
         default: break;
     }
     settingsui::endPage();
@@ -3855,6 +3858,108 @@ void ProjectSettingsWindow::drawLocalizationSettings() {
         }
         drawSectionNote("Titles keep their translations inside the .titleart (Title Designer > Language). Play simulates a device "
                         "language with the Game view's Device > Language.");
+    }
+    endSettingsPanel();
+}
+
+namespace {
+
+    // a text field over a std::string (no imgui_stdlib here)
+    bool dialogueTextField(const char* id, std::string& value, float width, const char* hint = "") {
+        char buffer[256];
+        std::snprintf(buffer, sizeof(buffer), "%s", value.c_str());
+        ImGui::SetNextItemWidth(width);
+        if (!ImGui::InputTextWithHint(id, hint, buffer, sizeof(buffer))) return false;
+        value = buffer;
+        return true;
+    }
+
+    // a list of prefixes: name, description, argument hint; Add and Remove
+    void dialoguePrefixRows(const char* id, std::vector<DialogueSettings::Prefix>& list) {
+        ImGui::PushID(id);
+        int remove = -1;
+        for (size_t i = 0; i < list.size(); i++) {
+            ImGui::PushID(static_cast<int>(i));
+            dialogueTextField("##name", list[i].name, 90.0f, "quest");
+            ImGui::SameLine();
+            dialogueTextField("##description", list[i].description, 170.0f, "description");
+            ImGui::SameLine();
+            dialogueTextField("##hint", list[i].hint, 110.0f, "arguments");
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Remove")) remove = static_cast<int>(i);
+            ImGui::PopID();
+        }
+        if (remove >= 0) list.erase(list.begin() + remove);
+        if (ImGui::SmallButton("Add Prefix")) list.push_back({});
+        ImGui::PopID();
+    }
+
+}
+
+void ProjectSettingsWindow::drawDialogueSettings() {
+    if (beginSettingsPanel("##DialogueSettingsPanel")) {
+        if (beginSettingsTable("##SettingsTable")) {
+            if (settingsui::beginRow("dialogue.action_prefixes")) {
+                if (projectBeginSettingsRow("Action Prefixes", !m_dialogue.actionPrefixes.empty())) m_dialogue.actionPrefixes.clear();
+                dialoguePrefixRows("actions", m_dialogue.actionPrefixes);
+                endSettingsRow("The prefixes of the actions game code handles (Dialogue.onAction(\"quest\", ...)): the Dialogue window "
+                               "completes them, and the lint warns on a prefix not listed. Empty checks nothing.");
+            }
+            if (settingsui::beginRow("dialogue.condition_prefixes")) {
+                if (projectBeginSettingsRow("Condition Prefixes", !m_dialogue.conditionPrefixes.empty())) m_dialogue.conditionPrefixes.clear();
+                dialoguePrefixRows("conditions", m_dialogue.conditionPrefixes);
+                endSettingsRow("The prefixes of the conditions game code answers (Dialogue.onCondition), as Action Prefixes.");
+            }
+            if (settingsui::beginRow("dialogue.variables")) {
+                if (projectBeginSettingsRow("Variables", !m_dialogue.variables.empty())) m_dialogue.variables.clear();
+                int remove = -1;
+                static const char* types[] = {"number", "bool", "string"};
+                for (size_t i = 0; i < m_dialogue.variables.size(); i++) {
+                    DialogueSettings::Variable& variable = m_dialogue.variables[i];
+                    ImGui::PushID(static_cast<int>(i));
+                    dialogueTextField("##name", variable.name, 90.0f, "gold");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(80.0f);
+                    if (ImGui::BeginCombo("##type", variable.type.c_str())) {
+                        for (const char* type : types) {
+                            if (ImGui::Selectable(type, variable.type == type)) variable.type = type;
+                        }
+                        ImGui::EndCombo();
+                    }
+                    ImGui::SameLine();
+                    dialogueTextField("##default", variable.defaultValue, 80.0f, "default");
+                    ImGui::SameLine();
+                    dialogueTextField("##description", variable.description, 130.0f, "description");
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Remove")) remove = static_cast<int>(i);
+                    ImGui::PopID();
+                }
+                if (remove >= 0) m_dialogue.variables.erase(m_dialogue.variables.begin() + remove);
+                if (ImGui::SmallButton("Add Variable")) m_dialogue.variables.push_back({});
+                endSettingsRow("Game-wide variables ($gold): their default is what a dialogue reads first in Play and in games; the "
+                               "lint warns on a variable no dialogue or this list declares.");
+            }
+            if (settingsui::beginRow("dialogue.speakers")) {
+                if (projectBeginSettingsRow("Speakers", !m_dialogue.speakers.empty())) m_dialogue.speakers.clear();
+                int remove = -1;
+                for (size_t i = 0; i < m_dialogue.speakers.size(); i++) {
+                    ImGui::PushID(static_cast<int>(i));
+                    dialogueTextField("##id", m_dialogue.speakers[i].id, 110.0f, "guard");
+                    ImGui::SameLine();
+                    dialogueTextField("##key", m_dialogue.speakers[i].displayKey, 170.0f, ("speakers." + m_dialogue.speakers[i].id).c_str());
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Remove")) remove = static_cast<int>(i);
+                    ImGui::PopID();
+                }
+                if (remove >= 0) m_dialogue.speakers.erase(m_dialogue.speakers.begin() + remove);
+                if (ImGui::SmallButton("Add Speaker")) m_dialogue.speakers.push_back({});
+                endSettingsRow("The speakers lines name, for the Dialogue window's Speaker field. A line shows the text of "
+                               "speakers.<id> when a String Table has it, else the id.");
+            }
+            ImGui::EndTable();
+        }
+        drawSectionNote("Dialogues are .dialogue graphs (Create > Dialogue, Window > Dialogue); these lists are for completion "
+                        "and the lint, and the variables' defaults.");
     }
     endSettingsPanel();
 }
@@ -6339,6 +6444,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setWindowIcon(m_windowIcon);
 
     m_project->getLocalizationSettings() = m_localization;
+    m_project->getDialogueSettings() = m_dialogue;
 
     PresentationSettings& presentation = m_project->getPresentationSettings();
     presentation.defaultOrientation = defaultOrientationValues[std::clamp(m_defaultOrientationIndex, 0, defaultOrientationCount - 1)];

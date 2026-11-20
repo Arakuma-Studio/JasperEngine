@@ -12,6 +12,8 @@
 #include "test/GameTests.h"
 #include "titleart/TitleArtExport.h"
 #include "localization/StringTableCook.h"
+#include "dialogue/DialogueEditor.h"
+#include "dialogue/DialogueVariables.h"
 #include "titleart/three_d/Title3DExport.h"
 #include "titleart/runtime/TitleArtRuntimeExport.h"
 #include "titleart/runtime/TitleArtRuntimeFonts.h"
@@ -1436,6 +1438,7 @@ void editor::Exporter::runExport() {
     if (!writeTitleArtRuntime()) return;
     if (!writeAudioImports()) return;
     if (!writeLocalization()) return;
+    if (!writeDialogueSettings()) return;
     buildReport = BuildReport();
     measureBuildContent(getExportProjectRoot());
     // R13: the content budgets before any compile (a source export is never checked)
@@ -1637,7 +1640,7 @@ fs::path editor::Exporter::getBuildCacheDir() const {
 std::vector<std::string> editor::Exporter::compiledModules() const {
     // what Project Settings allow (the HTML UI, its video, the sound layer and Terrain Worlds have no
     // switch of their own)
-    std::vector<std::string> modules = {"htmlui", "video", "soundlayer", "voxel", "terrainworld", "terrainedit", "titleart"};
+    std::vector<std::string> modules = {"htmlui", "video", "soundlayer", "voxel", "terrainworld", "terrainedit", "titleart", "dialogue"};
     if (settings->isRuntimeShadersEnabled()) modules.push_back("runtimeshaders");
     if (project->isPhysics3DEnabled()) modules.push_back("physics3d");
     if (project->isPhysics2DEnabled()) modules.push_back("physics2d");
@@ -3659,6 +3662,18 @@ bool editor::Exporter::writeLocalization() {
     return true;
 }
 
+bool editor::Exporter::writeDialogueSettings() {
+    const std::string text = dialogues::settingsFileText(project->getDialogueSettings());
+    if (text.empty() || (moduleUsageKnown && !moduleUsage.needs("dialogue"))) return true;
+    const fs::path target = getExportProjectRoot() / "assets" / dialogue::Variables::SETTINGS_FILE;
+    const io::WriteResult written = io::writeFileAtomic(target, text);
+    if (!written.ok()) {
+        setError("Can't write " + target.string() + ": " + written.message);
+        return false;
+    }
+    return true;
+}
+
 bool editor::Exporter::writeAudioImports() {
     std::vector<std::string> problems;
     const std::map<std::string, ClipImportSettings> clips = AudioImportRegistry::collect(*project, problems);
@@ -4232,6 +4247,7 @@ bool editor::Exporter::copyAssets() {
 
         // A project that only bakes its Noise Graphs pays nothing for them (T2 R45)
         if (!shipsForNoise(relPath, moduleUsageKnown ? &moduleUsage : nullptr)) return TreeStep::Skip;
+        if (!shipsForDialogue(relPath, moduleUsageKnown ? &moduleUsage : nullptr)) return TreeStep::Skip;
 
         // An FBX ships as its import, which the engine loads in its place. Those the scenes
         // use were imported before the scenes were saved, others are imported here.
@@ -4808,6 +4824,11 @@ bool editor::Exporter::shipsForNoise(const fs::path& relPath, const ModuleUsage*
     return ext != ".noisegraph";
 }
 
+bool editor::Exporter::shipsForDialogue(const fs::path& relPath, const ModuleUsage* usage) {
+    if (!usage || usage->needs("dialogue")) return true;
+    return !Util::isDialogueFile(relPath.generic_string());
+}
+
 bool editor::Exporter::copyMacosNativeSdks(const fs::path& projectRoot, const fs::path& destination, std::string& error) {
     error.clear();
     const NativePlugins::Scan scan = NativePlugins::scan(projectRoot);
@@ -5119,6 +5140,7 @@ bool editor::Exporter::copyEngine() {
         moduleSwitch("JASPERENGINE_TERRAIN_WORLD", "terrainworld");
         moduleSwitch("JASPERENGINE_TERRAIN_EDIT", "terrainedit");
         moduleSwitch("JASPERENGINE_TITLE_ART", "titleart");
+        moduleSwitch("JASPERENGINE_DIALOGUE", "dialogue");
         // S81 R51: the sub-options, off when no shipped Realtime title needs them (ModuleUsage)
         {
             const bool titleArt = std::find(modules.begin(), modules.end(), "titleart") != modules.end();
@@ -6041,6 +6063,12 @@ bool editor::Exporter::writeAppleProjectSettings() {
     const bool noiseNeeded = !moduleUsageKnown || moduleUsage.needs("noise");
     replaceAll(xcodeProject, "\t\t\t\t\tRMLUI_STATIC_LIB,\n",
                std::string("\t\t\t\t\t\"JASPERENGINE_NOISE=") + (noiseNeeded ? "1" : "0") + "\",\n\t\t\t\t\tRMLUI_STATIC_LIB,\n");
+
+    // The dialogue module (dialogue-graphs.md R15): its sources compile either way; off, the engine binds
+    // the Lua names as stubs and registers nothing
+    if (moduleUsageKnown && !moduleUsage.needs("dialogue")) {
+        replaceAll(xcodeProject, "\t\t\t\t\tRMLUI_STATIC_LIB,\n", "\t\t\t\t\t\"JASPERENGINE_DIALOGUE=0\",\n\t\t\t\t\tRMLUI_STATIC_LIB,\n");
+    }
 
     // Navigation off (Project Settings > Navigation > Include in Builds): Recast/Detour and the
     // engine's Detour glue stay out, and the engine compiles its navmesh stubs (S19 R42)

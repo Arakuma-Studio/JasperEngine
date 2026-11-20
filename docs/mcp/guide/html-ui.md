@@ -2042,7 +2042,7 @@ your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read the
 | `hud` | health and shield bars, score and timer, minimap, ammo, ability cooldowns, damage flash; data binding (`{{ }}`, `data-style-width`, `data-class-*`) | within_viewport, no_overlap, text_fits, contrast with background, visible |
 | `inventory` | a CSS grid of slots from `data-for`, HTML5 drag and drop (`draggable`, `dropzone`, `dataTransfer`, the ghost and drop classes), rich tooltips from `setTooltip`, equipment | count, no_overlap, within_parent, within_viewport, text_fits, visible |
 | `settings` | tabs, sliders, switches, selects, key bindings; two-way `data-value`/`data-checked` | visible, no_overlap, min_size, text_fits, within_parent, within_viewport |
-| `dialogue` | portrait, typewriter text, choices; `onUpdate` timing | text_fits, within_viewport, contrast, no_overlap, min_size |
+| `dialogue` | portrait, typewriter text, choices; `onUpdate` timing; the view of a Dialogue Runner (its conversation is `<stem>_assets/demo.dialogue`, edit it with `edit_graph`) | text_fits, within_viewport, contrast, no_overlap, min_size |
 | `shop` | filter chips, cards with `data-for` + `data-if`, buy buttons disabled by `data-attr-disabled`, a quantity dialog, an animated gold counter | text_fits, no_overlap, within_parent, contrast, min_size, within_viewport |
 | `toasts` | toasts created from Lua (`createElement`, `appendChild`), enter and exit animations | within_viewport, no_overlap, text_fits, contrast |
 | `loading` | progress bar, Lottie spinner, rotating tips, "press any key" | visible, text_fits, within_viewport |
@@ -2051,6 +2051,11 @@ your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read the
 | `chat_log` | Markdown messages of any height in a `<list-view item-height="auto" anchor="end">`, a composer, teammates writing on game time | contrast, min_size, text_fits, virtual_window, visible, within_viewport |
 | `quest_log` | chapters and quests in a `<tree-view>` with keyboard and gamepad navigation, a `<markdown src>` journal | text_fits, virtual_window, visible, within_viewport |
 | `blank` | an empty page with a heading (the default template; no script) | visible |
+
+The `dialogue` example shows the lines of its GameObject's Dialogue Runner (`runner.onLine` drives
+`say`, a choice calls `runner:choose(i)`, Space or a click `runner:advance()`, a line's voice plays
+through `Audio`); a runner without a dialogue gets the demo conversation. Give the runner your own
+`.dialogue` and the same view plays it (`jasper://docs/dialogue`).
 
 Each example's Lua class is `<Name>UI`, gets the document with
 `UIDocument(self.scene, self.entity)`, looks elements up through an asserting `byId`, and binds

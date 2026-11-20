@@ -123,6 +123,9 @@ namespace jasperengine {
         static void registerCrashClasses(lua_State *L);
         static void registerLocalizationClasses(lua_State *L);
         static void registerSaveGameClasses(lua_State *L);
+        // dialogue-graphs.md R27: Dialogue and DialogueRunner (DialogueClassesLua.cpp); without the
+        // module, the stubs below
+        static void registerDialogueClasses(lua_State *L);
 #if JASPERENGINE_HTMLUI
         static void registerHtmlUIClasses(lua_State *L);
         static void registerHtmlUIAnimeClasses(lua_State *L);
@@ -157,6 +160,8 @@ namespace jasperengine {
         static void releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry);
 
     public:
+        // the names without the module: any use logs once that it is not compiled (R15)
+        static void registerDialogueStubs(lua_State *L);
         LuaBinding();
         virtual ~LuaBinding();
         

@@ -3139,6 +3139,48 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (localizationNode.size() != 0) root["localization"] = localizationNode;
     }
 
+    // Project Settings > Dialogue (dialogue-graphs.md R31): written only when something is declared
+    {
+        const DialogueSettings& dialogue = project->getDialogueSettings();
+        YAML::Node dialogueNode(YAML::NodeType::Map);
+        auto prefixes = [](const std::vector<DialogueSettings::Prefix>& list) {
+            YAML::Node out(YAML::NodeType::Sequence);
+            for (const DialogueSettings::Prefix& prefix : list) {
+                YAML::Node item(YAML::NodeType::Map);
+                item["name"] = prefix.name;
+                if (!prefix.description.empty()) item["description"] = prefix.description;
+                if (!prefix.hint.empty()) item["hint"] = prefix.hint;
+                out.push_back(item);
+            }
+            return out;
+        };
+        if (!dialogue.actionPrefixes.empty()) dialogueNode["actionPrefixes"] = prefixes(dialogue.actionPrefixes);
+        if (!dialogue.conditionPrefixes.empty()) dialogueNode["conditionPrefixes"] = prefixes(dialogue.conditionPrefixes);
+        if (!dialogue.variables.empty()) {
+            YAML::Node list(YAML::NodeType::Sequence);
+            for (const DialogueSettings::Variable& variable : dialogue.variables) {
+                YAML::Node item(YAML::NodeType::Map);
+                item["name"] = variable.name;
+                item["type"] = variable.type;
+                item["default"] = variable.defaultValue;
+                if (!variable.description.empty()) item["description"] = variable.description;
+                list.push_back(item);
+            }
+            dialogueNode["variables"] = list;
+        }
+        if (!dialogue.speakers.empty()) {
+            YAML::Node list(YAML::NodeType::Sequence);
+            for (const DialogueSettings::Speaker& speaker : dialogue.speakers) {
+                YAML::Node item(YAML::NodeType::Map);
+                item["id"] = speaker.id;
+                if (!speaker.displayKey.empty()) item["displayKey"] = speaker.displayKey;
+                list.push_back(item);
+            }
+            dialogueNode["speakers"] = list;
+        }
+        if (dialogueNode.size() != 0) root["dialogue"] = dialogueNode;
+    }
+
     {
         const ApplicationSettings& application = project->getApplicationSettings();
         const ApplicationSettings defaultApplication;
@@ -4210,6 +4252,39 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
                     const std::string value = path.as<std::string>("");
                     if (!value.empty()) localization.fonts[tag].push_back(value);
                 }
+            }
+        }
+    }
+
+    if (node["dialogue"] && node["dialogue"].IsMap()) {
+        DialogueSettings& dialogue = project->getDialogueSettings();
+        dialogue = DialogueSettings();
+        const YAML::Node dialogueNode = node["dialogue"];
+        auto prefixes = [](const YAML::Node& list, std::vector<DialogueSettings::Prefix>& out) {
+            if (!list || !list.IsSequence()) return;
+            for (const YAML::Node& item : list) {
+                if (!item.IsMap() || item["name"].as<std::string>("").empty()) continue;
+                out.push_back({item["name"].as<std::string>(""), item["description"].as<std::string>(""), item["hint"].as<std::string>("")});
+            }
+        };
+        prefixes(dialogueNode["actionPrefixes"], dialogue.actionPrefixes);
+        prefixes(dialogueNode["conditionPrefixes"], dialogue.conditionPrefixes);
+        if (dialogueNode["variables"] && dialogueNode["variables"].IsSequence()) {
+            for (const YAML::Node& item : dialogueNode["variables"]) {
+                if (!item.IsMap() || item["name"].as<std::string>("").empty()) continue;
+                DialogueSettings::Variable variable;
+                variable.name = item["name"].as<std::string>("");
+                const std::string type = item["type"].as<std::string>("number");
+                variable.type = type == "bool" || type == "string" ? type : "number";
+                variable.defaultValue = item["default"].as<std::string>("");
+                variable.description = item["description"].as<std::string>("");
+                dialogue.variables.push_back(variable);
+            }
+        }
+        if (dialogueNode["speakers"] && dialogueNode["speakers"].IsSequence()) {
+            for (const YAML::Node& item : dialogueNode["speakers"]) {
+                if (!item.IsMap() || item["id"].as<std::string>("").empty()) continue;
+                dialogue.speakers.push_back({item["id"].as<std::string>(""), item["displayKey"].as<std::string>("")});
             }
         }
     }

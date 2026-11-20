@@ -1,0 +1,50 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest 8a04f0f334d192d3
+--- 0
+dialogue: sounds/hit.wav
+startEntry: "~"
+autoStart: false
+seed: -1
+view: 226
+--- 1
+dialogue: sounds/hit.wav
+startEntry: 123
+autoStart: false
+seed: 19
+view: 149
+--- 2
+dialogue: sounds/hit.wav
+startEntry: "  padded  "
+autoStart: false
+seed: 20
+view: 145
+--- 3
+dialogue: sounds/hit.wav
+startEntry: a/b/c.html
+autoStart: false
+seed: -75331
+view: 277
+--- 4
+dialogue: textures/a.png
+startEntry: with "quotes"
+autoStart: true
+seed: -10
+view: 272
+--- 5
+dialogue: sounds/hit.wav
+startEntry: "- dash"
+autoStart: true
+seed: -2
+view: 110
+--- 6
+dialogue: textures/a.png
+startEntry: "Hello, YAML: [1, 2]"
+autoStart: true
+seed: -12
+view: 180
+--- 7
+dialogue: textures/a.png
+startEntry: textures/a.png
+autoStart: false
+seed: 10
+view: 298

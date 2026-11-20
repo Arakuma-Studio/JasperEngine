@@ -1022,6 +1022,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerCrashClasses(L);
     registerLocalizationClasses(L);
     registerSaveGameClasses(L);
+    registerDialogueClasses(L);
 #if JASPERENGINE_HTMLUI
     registerHtmlUIClasses(L);
     registerHtmlUIAnimeClasses(L);

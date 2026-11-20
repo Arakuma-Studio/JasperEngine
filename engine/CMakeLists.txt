@@ -49,6 +49,8 @@ option(JASPERENGINE_TERRAIN_WORLD "Compile Terrain Worlds (tiles, streaming, col
 # not use it.
 option(JASPERENGINE_SOUND_LAYER "Compile Sound Events, triggers, free voices and clip import settings" ON)
 option(JASPERENGINE_NOISE "Compile the noise library and Noise Graphs for scripts and voxels" ON)
+# dialogue-graphs.md R15: .dialogue graphs, the Dialogue Runner and the Dialogue Lua API
+option(JASPERENGINE_DIALOGUE "Compile dialogue graphs and the Dialogue Runner" ON)
 option(JASPERENGINE_NOISE_ALL_BACKENDS "Build the noise kernels' Scalar back end beside Native (editor and tests)" OFF)
 # The HTML/CSS UI (UI Document components, their Lua API, anime, widgets, effects, the on-screen
 # controls: RmlUi, lexbor, ThorVG, msdfgen, the Lucide icons) and its <video> (dav1d, Opus,
@@ -1856,6 +1858,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/CrashClassesLua.cpp
     core/script/binding/LocalizationClassesLua.cpp
     core/script/binding/SaveGameLua.cpp
+    core/script/binding/DialogueClassesLua.cpp
     core/script/binding/AudioClassesLua.cpp
     core/script/binding/NoiseClassesLua.cpp
     core/script/binding/ECSClassesLua.cpp
@@ -2168,6 +2171,11 @@ include(core/audio/SoundLayerSources.cmake)
 if(JASPERENGINE_SOUND_LAYER)
     list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_SOUND_LAYER_SRCS})
 endif()
+# Dialogue graphs (dialogue-graphs.md): the module dialogue
+include(core/dialogue/DialogueSources.cmake)
+if(JASPERENGINE_DIALOGUE)
+    list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_DIALOGUE_SRCS})
+endif()
 # Splines (S18): the core, geometry and layouts (no contraction, bit-identical output)
 include(core/spline/SplineSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_SPLINE_SRCS})
@@ -2289,6 +2297,9 @@ jasperengine_skip_unity_build(
     REASON "the navigation sources: file-local Detour helpers and constants with the same names"
     SOURCES ${JASPERENGINE_NAVIGATION_SRCS})
 jasperengine_skip_unity_build(
+    REASON "the dialogue sources: file-local helpers (stringParam, arrayParam, pushString, argsAt) other sources define too"
+    SOURCES ${JASPERENGINE_DIALOGUE_SRCS} core/script/binding/DialogueClassesLua.cpp)
+jasperengine_skip_unity_build(
     REASON "the localization sources: file-local helpers (state, readFile, lower) other sources define too"
     SOURCES core/localization/Localization.cpp core/localization/MessageFormat.cpp core/localization/PluralRules.cpp
             core/localization/StringTableRuntime.cpp core/script/binding/LocalizationClassesLua.cpp core/htmlui/HtmlL10n.cpp)
@@ -2385,6 +2396,7 @@ target_compile_definitions(jasperengine
         JASPERENGINE_NAVIGATION=$<BOOL:${JASPERENGINE_NAVIGATION}>
         JASPERENGINE_TERRAIN_WORLD=$<BOOL:${JASPERENGINE_TERRAIN_WORLD}>
         JASPERENGINE_SOUND_LAYER=$<BOOL:${JASPERENGINE_SOUND_LAYER}>
+        JASPERENGINE_DIALOGUE=$<BOOL:${JASPERENGINE_DIALOGUE}>
         JASPERENGINE_NOISE=$<BOOL:${JASPERENGINE_NOISE}>
         JASPERENGINE_HTMLUI=$<BOOL:${JASPERENGINE_HTMLUI}>
         JASPERENGINE_VOXEL=$<BOOL:${JASPERENGINE_VOXEL}>

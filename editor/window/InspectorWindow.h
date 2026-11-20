@@ -1094,6 +1094,9 @@ namespace jasperengine::editor{
         void drawWaterWakeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // the table's rows, then in Play its read-only State, Reason and Focus Distance
         void drawSimulationCullingComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // editor/dialogue/DialogueRunnerInspector.cpp (dialogue-graphs.md R24): the rows, Open and the
+        // Start Entry list; in Play the state, the current node and Advance / option buttons
+        void drawDialogueRunnerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawBuoyancyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         // InspectorSplines.cpp (S18)
         void drawSplineComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

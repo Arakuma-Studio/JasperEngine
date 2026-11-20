@@ -50,7 +50,7 @@ namespace {
 
 editor::l10n::ProjectTables editor::l10n::loadProjectTables(const fs::path& projectPath) {
     ProjectTables out;
-    for (const fs::path& owner : findTables(projectPath)) {
+    for (const fs::path& owner : findOwners(projectPath)) {
         StringTableSet set;
         std::string error;
         if (loadSet(projectPath, owner, set, error)) out.sets.push_back(std::move(set));

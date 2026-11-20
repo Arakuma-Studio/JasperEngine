@@ -17,6 +17,7 @@
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterWakeComponent.h"
 #include "component/SimulationCullingComponent.h"
+#include "component/DialogueRunnerComponent.h"
 
 namespace jasperengine::editor::reflect {
 
@@ -173,6 +174,22 @@ namespace {
         JE_FIELD(SimulationCullingComponent, focusDistance, .flags = NoSave | ReadOnly | Hidden | NoCodegen | NoMcpWrite, .unit = Unit::Meters),
     };
 
+    // ---------------------------------------------------------------- Dialogue Runner
+
+    // the runtime state (isRunning, state, currentNode) is never saved; the Inspector shows it in Play
+    constexpr FieldDesc kDialogueRunnerFields[] = {
+        JE_FIELD(DialogueRunnerComponent, dialogue, .asset = AssetKind::Dialogue, .tooltip = "The .dialogue this runner plays."),
+        JE_FIELD(DialogueRunnerComponent, startEntry, .label = "Start Entry",
+                 .tooltip = "The entry start() begins at when none is given; empty: the entry named start, else the first."),
+        JE_FIELD(DialogueRunnerComponent, autoStart, .tooltip = "Starts on Play or when instantiated, after every script's init of that frame."),
+        JE_FIELD(DialogueRunnerComponent, seed, .tooltip = "Seeds the random variants, random() and chance(); 0: from the GameObject's id."),
+        JE_FIELD(DialogueRunnerComponent, view, .ops = &ops::Entity, .flags = OmitIfDefault | EmptyIsDefault | CodegenIfChanged,
+                 .tooltip = "The GameObject whose UI Document shows the lines (the dialogue template's view); None: the game's own."),
+        JE_FIELD(DialogueRunnerComponent, isRunning, .flags = NoSave | ReadOnly | Hidden | NoCodegen | NoMcpWrite),
+        JE_FIELD(DialogueRunnerComponent, state, .flags = NoSave | ReadOnly | Hidden | NoCodegen | NoMcpWrite),
+        JE_FIELD(DialogueRunnerComponent, currentNode, .flags = NoSave | ReadOnly | Hidden | NoCodegen | NoMcpWrite),
+    };
+
 }
 
 const ComponentDesc kCharacterController2DDesc{
@@ -251,6 +268,14 @@ const ComponentDesc kSimulationCullingDesc{
     .body = JE_STRUCT_DESC(SimulationCullingComponent, "SimulationCullingComponent", kSimulationCullingFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(SimulationCullingComponent),
     .codegenVar = "simulationCulling",
+};
+
+const ComponentDesc kDialogueRunnerDesc{
+    .type = ComponentType::DialogueRunnerComponent, .cppName = "DialogueRunnerComponent", .key = "dialoguerunner",
+    .displayName = "Dialogue Runner", .icon = ICON_FA_COMMENTS,
+    .body = JE_STRUCT_DESC(DialogueRunnerComponent, "DialogueRunnerComponent", kDialogueRunnerFields),
+    .structural = false, JE_COMPONENT_ACCESS(DialogueRunnerComponent),
+    .codegenVar = "dialogueRunner",
 };
 
 }

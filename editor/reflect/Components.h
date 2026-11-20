@@ -152,6 +152,7 @@ namespace jasperengine::editor::reflect {
     // editor/titleart/runtime/TitleArtRendererReflect.cpp (S81)
     extern const ComponentDesc kTitleArtRendererDesc;
     extern const ComponentDesc kSimulationCullingDesc;
+    extern const ComponentDesc kDialogueRunnerDesc;
 
 }
 

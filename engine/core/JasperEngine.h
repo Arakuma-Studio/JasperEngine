@@ -155,6 +155,7 @@
 #include "component/TilemapCollider2DComponent.h"
 #include "component/TitleArtRendererComponent.h"
 #include "component/SimulationCullingComponent.h"
+#include "component/DialogueRunnerComponent.h"
 #include "util/TitleArtLanguage.h"
 #include "localization/Localization.h"
 #include "object/TitleArt.h"

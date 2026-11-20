@@ -1682,6 +1682,32 @@ local scan = Localization.scan()                 -- {literal = {...}, missing = 
   setting `text` from `Localization.get`: those follow language changes by themselves.
 - `language`, `languages` and `onLanguageChanged` are fields; `TitleArt.setLanguage` sets the
   same language. Tables: `edit_string_table`, jasper://docs/localization.
+### 2.15.2 Dialogue (static) and DialogueRunner: dialogue graphs
+
+```lua
+Dialogue.onCondition("shop", function(runner, verb, args)        -- shop.canAfford(5) in a dialogue
+    if verb == "canAfford" then return Dialogue.variables.get("gold") >= args[1] end
+end)
+Dialogue.onAction("shop", function(runner, verb, args)           -- shop.open:weapons
+    if verb == "open" then return "wait" end                     -- the runner waits for resume()
+end)
+local runner = DialogueRunner(self.scene, self.entity)          -- adds a Dialogue Runner if missing
+runner.dialogue = "dialogue/guard.dialogue"
+runner.onLine = function(r, line)                                 -- {node, key, text, speakerName, options...}
+    for _, o in ipairs(line.options) do Log.print(o.index .. ". " .. o.text) end
+end
+runner.onEnd = function(r, result) Log.print("ended: " .. result) end
+runner:start("greet", {player = "Ana"})                          -- {player} in a text, or in an expression
+runner:choose(1)                                                  -- or runner:advance() on a line without choices
+Dialogue.variables.set("gold", 20)
+local saved = Dialogue.variables.toTable()                       -- values and visit counts, for a save
+```
+
+- `state` is `idle`, `line`, `waiting` or `ended`; `isRunning`, `currentNode`, `currentLine` (the
+  last line) are fields. Handlers are game-wide, one per prefix, cleared at Stop: register them in
+  `init`. An unregistered prefix makes a condition false and warns once per run.
+- Write conversations as `.dialogue` graphs (`edit_graph`), never as Lua tables; walk them with
+  `run_dialogue` (jasper://docs/dialogue).
 ### 2.16 Time (static, Unity's Time)
 
 The game clocks under their Unity names. `Engine.deltatime` and the other `Engine` names stay;

@@ -1447,6 +1447,53 @@ CASES = [
         "max_turns": 14,
     },
     {
+        "id": "guard_dialogue_graph_not_lua_table",
+        "kind": "guard",
+        "what_happened": "Asked for an NPC conversation, agents hard-coded it as a Lua table of lines and choices in a script (the "
+                         "dialogue template's old CONVERSATION table, the Craftsman .inc anti-pattern of docs/specs/dialogue-graphs.md "
+                         "section 4); a .dialogue graph made with edit_graph is the format, played by a Dialogue Runner.",
+        "text_at_issue": "Guide 'Other areas': 'dialogue' (jasper://docs/dialogue); run_dialogue's description",
+        "source": "docs/specs/dialogue-graphs.md R29",
+        "prompt": "Give the blacksmith NPC a short conversation: he greets the player, then offers 'Buy a sword' or 'Goodbye'.",
+        "mocks": [
+            {"tool": "edit_graph", "result": ok(
+                "Create blacksmith.dialogue: 5 op(s), 0 issue(s).",
+                {"issues": [], "applied": 5, "undo_name": "Create blacksmith.dialogue", "dry_run": False,
+                 "added": [{"op_index": 0, "id": "n1"}, {"op_index": 1, "id": "n2"}]})},
+            {"tool": "run_dialogue", "result": ok(
+                "assets/dialogue/blacksmith.dialogue: line\nn2 blacksmith: Welcome, traveller!\n  1. Buy a sword\n  2. Goodbye",
+                {"transcript": [{"node": "n2", "speaker": "blacksmith", "text": "Welcome, traveller!", "key": "blacksmith.n2"}],
+                 "state": {"state": "line", "node": "n2"}, "variables": {}})},
+            {"tool": "add_component", "result": ok("Added dialoguerunner to Blacksmith.", {"component": "dialoguerunner"})},
+            {"tool": "set_component_property", "result": ok("Set dialoguerunner.dialogue.", {})},
+        ],
+        "checks": {"calls": [{"tool": "edit_graph", "args": {"create": "*"}}],
+                   "file_must_not": {"scripts/Blacksmith.lua": [r"(?i)buy a sword"], "scripts/blacksmith.lua": [r"(?i)buy a sword"]},
+                   "must_not_call": ["create_script"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "guard_dialogue_run_explore",
+        "kind": "guard",
+        "what_happened": "Asked whether every ending of a conversation can be reached, agents read get_graph and reasoned over the "
+                         "wires (missing conditions and loops); run_dialogue {explore: true} walks every path and reports the endings, "
+                         "no-exit loops and lines never shown.",
+        "text_at_issue": "run_dialogue's description ('explore: true walks every path ...'); jasper://docs/dialogue",
+        "source": "docs/specs/dialogue-graphs.md R29",
+        "prompt": "Can the player reach every ending of assets/dialogue/guard.dialogue? Check it.",
+        "mocks": [
+            {"tool": "run_dialogue", "result": ok(
+                "Explored 6 path(s): 9/10 nodes covered, 2 ending(s), 0 no-exit loop(s).\nend \"paid\" at n10 by choices [1]\n"
+                "end \"left\" at n9 by choices [2]\nnever shown: n12",
+                {"coverage": {"nodes": 10, "covered": 9, "uncovered": ["n12"]},
+                 "endings": [{"result": "paid", "node": "n10", "choices": [1]}, {"result": "left", "node": "n9", "choices": [2]}],
+                 "no_exit_loops": [], "lines_never_shown": ["n12"], "paths": 6})},
+            {"tool": "get_graph", "result": ok("dialogue graph: 10 node(s), 9 edge(s).", {"graph": {}, "issue_count": 0})},
+        ],
+        "checks": {"calls": [{"tool": "run_dialogue", "args": {"explore": True}}]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_l10n_assert_languages",
         "kind": "guard",
         "what_happened": "Agents checked whether translated text fits by switching the Game view language and taking screenshots "

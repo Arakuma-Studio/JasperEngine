@@ -2744,6 +2744,15 @@ const FieldEntry kBody_SimulationCullingComponent_fields[] = {
 };
 const StructTable kBody_SimulationCullingComponent{"simulationculling", kBody_SimulationCullingComponent_fields, std::size(kBody_SimulationCullingComponent_fields)};
 
+const FieldEntry kBody_DialogueRunnerComponent_fields[] = {
+    JE_RF(DialogueRunnerComponent, dialogue, 0x774a9063u, AssetPath),
+    JE_RF(DialogueRunnerComponent, startEntry, 0xd4953c39u, String),
+    JE_RF(DialogueRunnerComponent, autoStart, 0x74f9a0a6u, Bool),
+    JE_RF(DialogueRunnerComponent, seed, 0x17a438bcu, Int),
+    JE_RF_ENTITY(DialogueRunnerComponent, view, 0x857da7a8u, Entity),
+};
+const StructTable kBody_DialogueRunnerComponent{"dialoguerunner", kBody_DialogueRunnerComponent_fields, std::size(kBody_DialogueRunnerComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2864,6 +2873,7 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(TilemapCollider2DComponent, "tilemapcollider2d", 0xc18e71fbu),
     JE_RF_COMPONENT(TitleArtRendererComponent, "titleart", 0x273fc23eu),
     JE_RF_COMPONENT(SimulationCullingComponent, "simulationculling", 0x71370112u),
+    JE_RF_COMPONENT(DialogueRunnerComponent, "dialoguerunner", 0x1ce95539u),
     JE_RF_COMPONENTS_END
 };
 

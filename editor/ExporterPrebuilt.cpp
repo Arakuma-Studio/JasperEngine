@@ -536,6 +536,7 @@ bool editor::Exporter::runPrebuilt() {
     if (!writeTitleArtRuntime()) return false;
     if (!writeAudioImports()) return false;
     if (!writeLocalization()) return false;
+    if (!writeDialogueSettings()) return false;
     if (!writeAssetMap()) return false;
     if (!copyCustomShaderSources()) return false;
     if (cancelled()) return false;

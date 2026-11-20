@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "manager/ObjectManager.h"
+#include "dialogue/DialogueSwitch.h"
 #include "component/OnScreenControlComponents.h"
 #include "Engine.h"
 #include "component/ComponentEvents.h"
@@ -76,6 +77,11 @@
 #include "pool/TexturePool.h"
 #include "device/Device.h"
 #include "localization/Localization.h"
+#if JASPERENGINE_DIALOGUE_ENABLED
+#include "dialogue/DialogueKind.h"
+#include "dialogue/DialogueVariables.h"
+#include "object/DialogueRunner.h"
+#endif
 #include "device/QualityResolver.h"
 #include "pool/SoundPool.h"
 #include "pool/TextureDataPool.h"
@@ -1800,6 +1806,9 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     InputSchemeTracker::onSchemeChanged.removeByTagSubstring(substring);
     Localization::onLanguageChanged.removeByTagSubstring(substring);
     PerfSampler::onWindow.removeByTagSubstring(substring);
+#if JASPERENGINE_DIALOGUE_ENABLED
+    dialogue::Variables::onChanged.removeByTagSubstring(substring);
+#endif
 #if JASPERENGINE_SOUND_LAYER
     Audio::onMusicBeat.removeByTagSubstring(substring);
     Audio::onMusicSection.removeByTagSubstring(substring);
@@ -1861,6 +1870,11 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     diag::userreport::reset();
     // Performance.onSample (R11)
     PerfSampler::onWindow.clear();
+#if JASPERENGINE_DIALOGUE_ENABLED
+    // dialogue-graphs.md R9, R27: the handlers hold script functions; Auto Start's pending list
+    dialogue::Variables::onChanged.clear();
+    dialogue::clearRuntime();
+#endif
 #if JASPERENGINE_SOUND_LAYER
     // here too, not only in MusicPlayer::reset: the editor's Stop runs that after the C++ script library is unloaded
     Audio::onMusicBeat.clear();
@@ -2183,6 +2197,10 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     Engine::setCanvasSize(1000,480);
     // the input scheme starts from the device (input-device-awareness R3)
     InputSchemeTracker::reset(system->isTouchDevice());
+#if JASPERENGINE_DIALOGUE_ENABLED
+    // dialogue-graphs.md R1: players load .dialogue files and their texts
+    dialogue::registerDialogueKind();
+#endif
 
     lastTime = 0;
     updateTimeCount = 0;

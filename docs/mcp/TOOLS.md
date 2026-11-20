@@ -49,7 +49,7 @@ Conventions shared by every tool (explained once in the server instructions, not
 - [Meshes: import, cook and detail levels](#meshes-import-cook-and-detail-levels) (1): `capture_model_lods`
 - [Device tiers: GPU, thermal and memory state, simulation](#device-tiers-gpu-thermal-and-memory-state-simulation) (2): `get_device_info`, `set_device_simulation`
 - [Scripting: hot reload, script status, editor menus, expressions](#scripting-hot-reload-script-status-editor-menus-expressions) (6): `eval_expression`, `get_script_status`, `list_editor_menus`, `reload_scripts`, `run_editor_menu`, `set_script_settings`
-- [Graphs](#graphs) (5): `edit_graph`, `get_graph`, `list_graph_kinds`, `list_graph_node_types`, `validate_graph`
+- [Graphs](#graphs) (6): `edit_graph`, `get_graph`, `list_graph_kinds`, `list_graph_node_types`, `run_dialogue`, `validate_graph`
 - [Procedural Materials: preview, checks and bake](#procedural-materials-preview-checks-and-bake) (2): `bake_procedural_material`, `preview_procedural_material`
 - [Terrain generation: Noise Graphs](#terrain-generation-noise-graphs) (2): `generate_terrain`, `preview_noise_graph`
 - [Gameplay: input, character controller, water](#gameplay-input-character-controller-water) (4): `edit_input_actions`, `get_input_actions`, `get_input_state`, `sample_water`
@@ -4659,6 +4659,30 @@ A kind's node types, one signature line each: id(inputs; param=default[min..max]
 | `ids` | array of string |  |  |
 | `kind` | string | yes |  |
 | `search` | string |  | Words in the id, name or aliases. |
+
+
+### `run_dialogue`
+
+*Run Dialogue*
+
+Group: `graphs` (listed once `tool_groups` enables it, callable either way)
+
+Play a .dialogue: path walks it headless (no Play; handler calls never run, unlisted conditions are false and reported), picking choices in order at each menu; explore: true walks every path and reports endings, no-exit loops and lines never shown. entity drives a Dialogue Runner in Play with the real handlers.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `advance` | integer (0..100) |  | entity: advance() calls after the choices. |
+| `choices` | array of integer (1..64) |  |  |
+| `conditions` | object |  | Handler condition values: {"quest.done": true} or {"quest.*": false}. |
+| `entity` | integer or string |  |  |
+| `entry` | string |  |  |
+| `explore` | boolean |  |  |
+| `language` | string |  |  |
+| `max_paths` | integer (1..512) |  | Default: `64`. |
+| `max_steps` | integer (1..2000) |  | Default: `200`. |
+| `path` | string |  | A .dialogue. |
+| `seed` | integer (0..4294967295) |  |  |
+| `variables` | object |  | Start values: {gold: 10}. |
 
 
 ### `validate_graph`
