@@ -77,7 +77,7 @@ namespace {
 
     bool isPress(RecordKind kind){
         return kind == RecordKind::KeyDown || kind == RecordKind::MouseDown || kind == RecordKind::TouchStart ||
-               kind == RecordKind::GamepadButtonDown;
+               kind == RecordKind::GamepadButtonDown || kind == RecordKind::Back;
     }
 
     bool hasPoint(RecordKind kind){
@@ -246,6 +246,7 @@ std::shared_ptr<ParsedScript> RecordedInput::toScript() const{
             case RecordKind::LowMemory: a.type = ActionType::AppLowMemory; label = "app low_memory"; break;
             case RecordKind::Hide: a.type = ActionType::AppHide; label = "app hide"; break;
             case RecordKind::Show: a.type = ActionType::AppShow; label = "app show"; break;
+            case RecordKind::Back: a.type = ActionType::AppBack; a.code = e.code; label = "app back"; break;
             case RecordKind::Orientation:
                 a.type = ActionType::AppOrientation;
                 a.string = addString(textAt(e.text));
@@ -306,7 +307,21 @@ bool InputRecorder::isRecording(){
     return s.recording;
 }
 
+namespace {
+    std::atomic<int> engineMadeDepth{0};
+}
+
+InputRecorder::EngineMade::EngineMade(){
+    engineMadeDepth.fetch_add(1, std::memory_order_relaxed);
+}
+
+InputRecorder::EngineMade::~EngineMade(){
+    engineMadeDepth.fetch_sub(1, std::memory_order_relaxed);
+}
+
 bool InputRecorder::record(const RecordedEvent& event, std::string_view text){
+    if (engineMadeDepth.load(std::memory_order_relaxed) > 0)
+        return true;
     RecorderState& s = recorder();
     std::function<void()> stopReplay;
     {

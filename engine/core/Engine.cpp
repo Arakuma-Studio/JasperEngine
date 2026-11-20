@@ -2620,6 +2620,7 @@ void Engine::runFrame(bool draw){
         // the Escape a Back pressed comes up the frame after the one that saw it
         if (backEscapeDown && drawnFrames >= backEscapeFrame + 2){
             backEscapeDown = false;
+            const input::InputRecorder::EngineMade engineMade;
             systemKeyUp(D_KEY_ESCAPE, false, Input::getModifiers());
         }
         // the input of this frame is over: no low surrogate will follow a pending high one
@@ -4741,6 +4742,11 @@ BackRoute Engine::getLastBackRoute(){
 }
 
 bool Engine::systemBack(BackSource source){
+    // an Escape or a B that is a Back is recorded as its key or button, which a replay makes a Back
+    // again; the Back button's and an agent's are recorded here
+    if ((source == BackSource::BackButton || source == BackSource::Agent) && input::InputRecorder::isActive() &&
+        !input::InputRecorder::record(input::RecordedEvent::of(input::RecordKind::Back, static_cast<int32_t>(source))))
+        return false;
     // keys go to every scene that takes keys; the pad's B to every scene, as their own routing does
     const std::vector<Scene*> scenes = (source == BackSource::Gamepad) ? getScenesSnapshot() : getInputScenes(true);
     BackRoute route = BackRoute::Unconsumed;
@@ -4770,6 +4776,8 @@ bool Engine::systemBack(BackSource source){
     // 3. the Back button and an agent's Back press Escape (a game written for Back = Escape), released
     //    the frame after the one that sees it
     if (!consumed && (source == BackSource::BackButton || source == BackSource::Agent)){
+        // made from the Back just recorded: a replay of it presses this Escape again
+        const input::InputRecorder::EngineMade engineMade;
         if (backEscapeDown)
             systemKeyUp(D_KEY_ESCAPE, false, Input::getModifiers());
         systemCharInput(U'\x1b');

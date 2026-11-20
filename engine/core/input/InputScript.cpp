@@ -664,7 +664,13 @@ namespace {
                 return true;
             }
             if (action == "back") {
-                b.add(ActionType::AppBack, gap);
+                // an agent's Back, or a recorded Back button's (Engine.onBack hears which)
+                const std::string source = lowerText(stringOf(event, "source", "agent"));
+                if (source != "agent" && source != "back_button") {
+                    error = "app back source must be agent or back_button (an Escape or a B is its key or button event)";
+                    return false;
+                }
+                b.add(ActionType::AppBack, gap).code = static_cast<int>(source == "back_button" ? BackSource::BackButton : BackSource::Agent);
                 return true;
             }
             error = "app action must be pause, resume, focus_lost, focus_gained, low_memory, hide, show, orientation or back";
@@ -1225,7 +1231,10 @@ namespace {
             case ActionType::AppHide: e = {{"type", "app"}, {"action", "hide"}}; break;
             case ActionType::AppShow: e = {{"type", "app"}, {"action", "show"}}; break;
             case ActionType::AppOrientation: e = {{"type", "app"}, {"action", "orientation"}, {"orientation", text}}; break;
-            case ActionType::AppBack: e = {{"type", "app"}, {"action", "back"}}; break;
+            case ActionType::AppBack:
+                e = {{"type", "app"}, {"action", "back"}};
+                if (a.code == static_cast<int>(BackSource::BackButton)) e["source"] = "back_button";
+                break;
             case ActionType::GamepadCursor:
             case ActionType::MouseMoveBy:
             case ActionType::DragStart:
@@ -1818,7 +1827,7 @@ bool ScriptPlayer::runAction(const ScriptAction& a, std::string& error){
             error = host_.appOrientation(text);
             return error.empty();
         case ActionType::AppBack: {
-            Engine::systemBack(BackSource::Agent);
+            Engine::systemBack(a.code == static_cast<int>(BackSource::BackButton) ? BackSource::BackButton : BackSource::Agent);
             static const char* const routes[] = {"escape", "key", "document", "game"};
             report_.backs.push_back({a.event, routes[static_cast<int>(Engine::getLastBackRoute())]});
             return true;

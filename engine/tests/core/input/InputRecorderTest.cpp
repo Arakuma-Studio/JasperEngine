@@ -45,6 +45,7 @@ namespace {
         }
 
         void TearDown() override{
+            Engine::onBack.remove("core-tests-input-recorder");
             InputRecorder::end();
             ScriptRunner::stopAll();
             Engine::systemTouchCancel();
@@ -283,6 +284,65 @@ TEST_F(InputRecorderTest, DropsAMouseMoveThatGoesNowhere){
     for (const ScriptAction& a : script->actions)
         if (a.type == ActionType::MouseMove) moves.push_back(a.frame);
     EXPECT_EQ(moves, (std::vector<uint32_t>{0, 5})) << trace(*script);
+}
+
+TEST_F(InputRecorderTest, RecordsEachBackOnce){
+    std::vector<std::string> heard;
+    Engine::onBack.add("core-tests-input-recorder", std::function<void(const std::string&)>([&](const std::string& source) { heard.push_back(source); }));
+    std::string error;
+    ASSERT_TRUE(InputRecorder::begin(options(), error)) << error;
+    // the Back button, an Escape and a B, each a Back the game takes
+    Engine::systemBack(BackSource::BackButton);
+    runFrame();
+    Engine::systemKeyDown(D_KEY_ESCAPE, false, 0);
+    runFrame();
+    Engine::systemKeyUp(D_KEY_ESCAPE, false, 0);
+    runFrame();
+    Engine::systemGamepadButtonDown(0, D_GAMEPAD_BUTTON_B);
+    runFrame();
+    Engine::systemGamepadButtonUp(0, D_GAMEPAD_BUTTON_B);
+    runFrame();
+    std::shared_ptr<ParsedScript> recorded = stop();
+    ASSERT_EQ(heard, (std::vector<std::string>{"back_button", "escape", "gamepad"}));
+    // the Back button as app back; the Escape and the B as their own events, not as a Back too
+    EXPECT_EQ(trace(*recorded),
+              "0 app back code=0 dev=0 mods=0 p=0.0000,0.0000 v=0.000,0.000 s=\n"
+              "1 key down code=256 dev=0 mods=0 p=0.0000,0.0000 v=0.000,0.000 s=\n"
+              "2 key up code=256 dev=0 mods=0 p=0.0000,0.0000 v=0.000,0.000 s=\n"
+              "3 gamepad down code=1 dev=0 mods=0 p=0.0000,0.0000 v=0.000,0.000 s=\n"
+              "4 gamepad up code=1 dev=0 mods=0 p=0.0000,0.0000 v=0.000,0.000 s=\n");
+
+    // through the file and back: one Back each, from the same sources
+    std::string text;
+    ASSERT_TRUE(writeScript(*recorded, text, error)) << error;
+    EXPECT_NE(text.find("\"source\":\"back_button\""), std::string::npos) << text;
+    auto script = std::make_shared<ParsedScript>();
+    ASSERT_TRUE(parseScript(text, *script, error)) << error;
+    heard.clear();
+    Input::resetFrameState();
+    auto player = std::make_shared<ScriptPlayer>(script, PlayerHost(), PlayOptions());
+    ScriptRunner::start(player);
+    for (int i = 0; i < 6; i++)
+        runFrame();
+    EXPECT_TRUE(player->report().done);
+    EXPECT_EQ(heard, (std::vector<std::string>{"back_button", "escape", "gamepad"}));
+}
+
+TEST_F(InputRecorderTest, BackNobodyTakesKeepsItsEscapeOutOfTheRecording){
+    std::string error;
+    ASSERT_TRUE(InputRecorder::begin(options(), error)) << error;
+    Engine::systemBack(BackSource::BackButton);
+    runFrame();
+    EXPECT_TRUE(Input::getKeyDown(D_KEY_ESCAPE));   // the engine's Escape reached the game
+    std::shared_ptr<ParsedScript> script = stop();
+    EXPECT_EQ(trace(*script), "0 app back code=0 dev=0 mods=0 p=0.0000,0.0000 v=0.000,0.000 s=\n");
+
+    // the replay's Back presses it again
+    Input::resetFrameState();
+    auto player = std::make_shared<ScriptPlayer>(script, PlayerHost(), PlayOptions());
+    ScriptRunner::start(player);
+    runFrame();
+    EXPECT_TRUE(Input::getKeyDown(D_KEY_ESCAPE));
 }
 
 TEST_F(InputRecorderTest, IdleCostsNothing){

@@ -643,6 +643,11 @@ wait until clicked, shot). Red controls are named per criterion.
   same frame) from text-entry-gamepad-cursor-back-button are interpreter steps, so files,
   `Test.input`, players and Lua take them too; `Test.input` resolves targets in the running UI
   Documents as Lua replays do.
+- **Back in recordings.** `Engine::systemBack` is a recorder site: the Back button's and an agent's
+  Back are recorded as `app {action: "back"}` (`source: "back_button"` for the button). An Escape or
+  a gamepad B that is a Back is recorded once, as its key or button, which a replay turns into the
+  same Back; the Escape the engine presses for a Back nobody takes is not recorded (the replayed Back
+  presses it again).
 - **Orientation in replays.** A recording's orientation turn replayed where no device can be
   simulated (Lua, players) is skipped with one warning; a script asking for a turn there fails. The
   recorder stores a turn when the orientation changes, not each `systemOrientationChanged` call.

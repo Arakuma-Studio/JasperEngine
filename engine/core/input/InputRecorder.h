@@ -35,6 +35,7 @@ namespace jasperengine::input {
         GamepadConnect, GamepadDisconnect, GamepadButtonDown, GamepadButtonUp, GamepadAxis,
         Pause, Resume, FocusLost, FocusGained, LowMemory, Orientation, Hide, Show,
         Forced,     // an action the interpreter forced (input_action, action, axis): code is its ActionType
+        Back,       // Engine::systemBack from a source no other record carries: code is its BackSource
     };
 
     // One event at an entry point. Points are engine (view) pixels at the site; the recorder keeps
@@ -109,6 +110,12 @@ namespace jasperengine::input {
         static bool isRecording();
         // the site of an entry point: false when the event must not reach the game
         static bool record(const RecordedEvent& event, std::string_view text = std::string_view());
+        // events the engine makes from one already recorded (the Escape an unconsumed Back presses):
+        // they reach the game unrecorded, as a replay makes them again
+        struct JASPERENGINE_API EngineMade {
+            EngineMade();
+            ~EngineMade();
+        };
         // what the interpreter forced (never game code: an on-screen stick re-derives from its touches)
         static void recordForced(const ScriptAction& action, const ParsedScript& script);
         // Engine::systemDraw, after the frame's update: checkpoints
