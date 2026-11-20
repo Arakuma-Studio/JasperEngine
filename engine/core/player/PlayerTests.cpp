@@ -299,7 +299,11 @@ void PlayerTests::begin(const LaunchOptions& options) {
     // R25: the results outside the sandbox, where adb and simctl reach a debuggable build's files
     r.resultsFile = !options.testResults.empty() ? options.testResults
                                                  : fs::path(System::instance().getUserDataPath()) / ".jasper-test-results" / (runOptions.runId + ".json");
-    r.host = std::make_unique<PlayerHost>();
+    // the log line is read by a process with another working directory (run_tests target desktop)
+    std::error_code absoluteError;
+    const fs::path absoluteResults = fs::absolute(r.resultsFile, absoluteError);
+    if (!absoluteError) r.resultsFile = absoluteResults;
+    r.host =std::make_unique<PlayerHost>();
     r.host->runId = runOptions.runId;
     r.host->startScene = SceneManager::getCurrentSceneId();
     r.host->keepData = options.keepTestData;
