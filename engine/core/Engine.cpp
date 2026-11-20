@@ -2152,16 +2152,6 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     nativePaused = false;
     focused = true;
     visible = true;
-    focusLossSeen = false;
-    pauseRequestCheckPending = true;
-    menuShownAtLatch = false;
-    menuCacheValid = false;
-    backEscapeDown = false;
-    backEscapeKeyHeld = false;
-    backPadButtonsHeld.clear();
-    cursorPadButtonsHeld.clear();
-    lastBackRoute = BackRoute::Unconsumed;
-    GamepadCursor::resetSession();
     lastOrientation = 0;
     orientationPendingSince = 0.0;
 
@@ -3251,6 +3241,16 @@ void Engine::resetApplicationState(){
     }
     focused = true;
     visible = true;
+    focusLossSeen = false;
+    pauseRequestCheckPending = true;
+    menuShownAtLatch = false;
+    menuCacheValid = false;
+    backEscapeDown = false;
+    backEscapeKeyHeld = false;
+    backPadButtonsHeld.clear();
+    cursorPadButtonsHeld.clear();
+    lastBackRoute = BackRoute::Unconsumed;
+    GamepadCursor::resetSession();
     lastOrientation = 0;
     orientationPendingSince = 0.0;
     targetFrameRate = -1;

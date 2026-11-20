@@ -755,11 +755,17 @@ namespace {
             ASSERT_EQ(InputSchemeTracker::getCurrent(), InputScheme::Gamepad);
         }
 
+        // the UI clock advances with the frames (smooth scrolling and transitions run on it)
         void frames(int count){
-            GpuEnvironment::drawFrames(count);
+            for (int i = 0; i < count; i++){
+                uiTime += cursorFrame;
+                HtmlUIClock::setFixedTime(uiTime);
+                GpuEnvironment::drawFrames(1);
+            }
         }
 
         int gameMouseDowns = 0;
+        double uiTime = 100.0;
     };
 
     // pointer moves with the left button held (a drag in progress)

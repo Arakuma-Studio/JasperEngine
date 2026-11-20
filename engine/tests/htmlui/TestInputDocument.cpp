@@ -9,6 +9,7 @@
 
 #include "Engine.h"
 #include "Input.h"
+#include "log/Logger.h"
 #include "input/InputActions.h"
 #include "input/InputScheme.h"
 #include "object/ui/UIEvent.h"
@@ -150,7 +151,7 @@ namespace {
         bool padConnected = false;
 
         void connectPad(){
-            connectPad();
+            Engine::systemGamepadConnect(backPad, "Test Gamepad");
             padConnected = true;
         }
 
@@ -185,7 +186,8 @@ namespace {
             document.emplace(fixture->addDocument("ui/back.html"));
             ASSERT_TRUE(fixture->waitUntilLoaded());
             document->setMenu(menu);
-            GpuEnvironment::drawFrames(1);
+            // the menu applies, then the next latch releases what the game held (R19)
+            GpuEnvironment::drawFrames(2);
             listenerIds.push_back(document->addEventListener("keydown", [this](UIEvent& event){ keydowns.push_back(event.getKey()); }));
             listenerIds.push_back(document->addEventListener("back", [this](UIEvent& event){
                 backs.push_back(event.getTarget().getId());
@@ -320,6 +322,7 @@ TEST_F(DocumentBackTest, BackRoutingReachesTheGame){
 // that saw it), and that Escape does not route Back again; consumed, nothing is pressed
 TEST_F(DocumentBackTest, BackRoutingAndroidKeepsEscape){
     load("<button id=\"resume\">Resume</button>", true);
+    ASSERT_TRUE(element("resume")->Focus(true));
 
     EXPECT_FALSE(Engine::systemBack(BackSource::BackButton));
     EXPECT_EQ(backs.size(), 1u) << "one Back, not a second one for the engine's Escape";
@@ -434,6 +437,7 @@ TEST_F(DocumentBackTest, PauseOnFocusLossWarnsWithoutSubscriber){
     Engine::resetApplicationState();
     TestSystem::get().clearLogs();
     GpuEnvironment::drawFrames(3);
+    ::jasperengine::Logger::flush();
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN), 1u) << logText(D_LOG_WARN);
     Engine::setPauseOnFocusLoss(false);
 }
