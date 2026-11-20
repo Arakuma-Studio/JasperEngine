@@ -240,8 +240,9 @@ async def test_force_to_mono_export(ed: Editor):
     await ed.call("sync_files", paths=paths)
     r = await ed.call("set_audio_import_settings", paths=paths, settings={"force_to_mono": "on"})
     ed.check_eq([(i["resolved"]["force_mono"], i["resolved"]["channels"]) for i in r["items"]], [(True, 1)] * 3, "the reply's resolved channels")
-    root = yaml.safe_load(meta_of(ed, paths[0]).read_text())
-    ed.check_eq(root["import"]["audioImporter"], {"version": 1, "force_to_mono": "on"}, "the key in the .meta")
+    # read as text: YAML 1.1 readers (PyYAML) take a bare `on` for true
+    importer = section_lines(meta_of(ed, paths[0]).read_text(), "import")
+    ed.check(any(line.strip() == "force_to_mono: on" for line in importer), f"the key in the .meta: {importer}")
 
     first = await source_export(ed, "mono-a")
     second = await source_export(ed, "mono-b")

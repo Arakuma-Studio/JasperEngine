@@ -197,7 +197,9 @@ void BuildReportWindow::showAsset(const std::string& asset) {
     const fs::path absolute = project->getAssetsPath() / FileUtils::pathFromUtf8(asset);
     std::error_code ec;
     if (!fs::exists(absolute, ec)) return;
+    // the importers (textures, models) read the list, every other asset's Inspector the one asset
     project->setInspectedAssets({project->normalizeToProjectRelative(absolute)});
+    project->setInspectedAsset(absolute);
     if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) projectWindow->revealAsset(absolute);
 }
 

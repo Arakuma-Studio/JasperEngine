@@ -69,6 +69,18 @@ def history_label(report: dict) -> str:
     return f"{report['platform'].capitalize()} · {created[:10]} {created[11:16]} · {report['method']} · {format_bytes(report['total_bytes'])}"
 
 
+async def click_drawn(ed: Editor, ui: ui_input.Ui, label: str) -> None:
+    """a click on the first row of a scrolling table: it sits right under the frozen header row, where the
+    probe reports it not visible though it is drawn in the open"""
+    for _ in range(60):
+        items = sorted((await ed.call("find_ui_item", label=label, window=WINDOW))["items"], key=lambda i: i["rect"]["y"])
+        if items:
+            await ui.click(ui.centre(items[0]["rect"]))
+            return
+        await ui.frames(2)
+    ed.fail(f"no {label!r} drawn in {WINDOW}")
+
+
 async def shot(ed: Editor, name: str) -> None:
     SHOTS.mkdir(parents=True, exist_ok=True)
     await ed.screenshot("editor", SHOTS / f"{name}.png", focus=False, max_width=0)
@@ -125,8 +137,14 @@ async def test_build_report_window(ed: Editor):
     await shot(ed, "2-unreferenced")
 
     await ui.click_item("Left Out", WINDOW)
-    await ui.reveal("art/hero.aseprite", WINDOW)
-    await ui.reveal("textures/wall.png", WINDOW)
+    # the rows are drawn (the first can sit under the frozen header row, where reveal cannot scroll it out)
+    for label in ("art/hero.aseprite", "textures/wall.png"):
+        for _ in range(60):
+            if (await ed.call("find_ui_item", label=label, window=WINDOW))["items"]:
+                break
+            await ui.frames(2)
+        else:
+            ed.fail(f"the Left Out tab does not list {label}")
     await ui.frames(6)
     await shot(ed, "3-left-out")
 
@@ -135,7 +153,7 @@ async def test_build_report_window(ed: Editor):
     await ui.click_item("##files_search", WINDOW)
     await ui.type("plain.wav")
     await ui.frames(4)
-    await ui.click_item("##row", WINDOW)
+    await click_drawn(ed, ui, "##row")
     await ui.reveal("Set Force To Mono: Auto", WINDOW)
     await ui.frames(4)
     await shot(ed, "4-audio-detail")
@@ -154,7 +172,9 @@ async def test_build_report_window(ed: Editor):
     await ui.key("ctrl+a")
     await ui.type("near.wav")
     await ui.frames(4)
-    await ui.click_item("sfx/near.wav", WINDOW)
+    await click_drawn(ed, ui, "sfx/near.wav")
+    await ui.frames(6)
+    await shot(ed, "5-after-source-click")
     await ui.reveal("Force To Mono", "Inspector")
     await ui.frames(6)
-    await shot(ed, "5-inspector-force-to-mono")
+    await shot(ed, "6-inspector-force-to-mono")
