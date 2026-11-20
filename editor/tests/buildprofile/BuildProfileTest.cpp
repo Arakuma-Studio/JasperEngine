@@ -465,10 +465,10 @@ TEST(BuildProfileCompile, MainSourceRegistersTheSceneListAndTheProfilesSettings)
     jasperengine::test::TestTempDir dir("build-profile-compile");
     Project project;
     openProjectWithIcon(dir, project);
-    const uint32_t menu = project.createNewScene("Menu", SceneType::SCENE_2D);
-    const uint32_t level = project.createNewScene("Level1", SceneType::SCENE_2D);
-    const uint32_t hud = project.createNewScene("Hud", SceneType::SCENE_2D);
-    const uint32_t bonus = project.createNewScene("Bonus", SceneType::SCENE_2D);
+    const uint32_t menu = project.createSceneNow("Menu", SceneType::SCENE_2D, {}, false, UnsavedChoice::Discard);
+    const uint32_t level = project.createSceneNow("Level1", SceneType::SCENE_2D, {}, false, UnsavedChoice::Discard);
+    const uint32_t hud = project.createSceneNow("Hud", SceneType::SCENE_2D, {}, false, UnsavedChoice::Discard);
+    const uint32_t bonus = project.createSceneNow("Bonus", SceneType::SCENE_2D, {}, false, UnsavedChoice::Discard);
     ASSERT_NE(project.getScene(level), nullptr);
     project.getScene(level)->childScenes.push_back({hud, true});
 
