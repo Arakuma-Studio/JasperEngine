@@ -1395,6 +1395,7 @@ set(JASPERENGINE_SRCS
     core/EngineTime.cpp
     core/PlatformConfig.cpp
     core/player/ContentManifest.cpp
+    core/player/DevelopmentContent.cpp
     core/player/Launch.cpp
     core/player/LaunchOptions.cpp
     core/player/PlayerConfig.cpp

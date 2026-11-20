@@ -3107,7 +3107,7 @@ OVERRIDES[('System', 'getDefines')] = {
     'doc': ["The build's Scripting Define Symbols (in Play: the active Build Profile's); {} without a profile."],
     'overloads': [([], 'string[]')]}
 OVERRIDES[('System', 'getBuildInfo')] = {
-    'doc': ['What the build is: its Build Profile, defines and Development Build flag.'],
+    'doc': ['What the build is: its Build Profile, defines, Development Build flag and Patch And Run patch.'],
     'overloads': [([], 'BuildInfo')]}
 # anim-retarget: addClip's options table, Model:getHumanoidInfo's table (LuaRef in C++)
 OVERRIDES[('AnimationPlayer', 'addClip')] = {

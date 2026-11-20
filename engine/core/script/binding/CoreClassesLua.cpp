@@ -4090,6 +4090,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             info["profile"] = System::getBuildProfile();
             info["defines"] = defines;
             info["development"] = Engine::isDevelopmentBuild();
+            // Patch And Run: which patch of the development content folder runs (0: packaged)
+            info["contentPatch"] = System::getContentPatch();
+            info["contentPatched"] = System::getContentPatch() > 0;
             return info;
         })
         .addStaticFunction("getOperatingSystem", [] () { return System::instance().getOperatingSystem(); })

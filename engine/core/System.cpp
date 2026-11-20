@@ -24,6 +24,7 @@ ApplicationInfo System::applicationInfo;
 std::string System::buildProfile;
 std::vector<std::string> System::buildDefines;
 std::unordered_set<std::string> System::buildDefineSet;
+int System::contentPatch = 0;
 
 System& System::instance(){
     if (!systemInstance) {
@@ -231,6 +232,14 @@ const std::vector<std::string>& System::getDefines(){
 
 bool System::isDefined(const std::string& symbol){
     return buildDefineSet.count(symbol) > 0;
+}
+
+void System::setContentPatch(int patch){
+    contentPatch = patch;
+}
+
+int System::getContentPatch(){
+    return contentPatch;
 }
 
 std::string System::getAppVersion(){
