@@ -24,8 +24,18 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    std::string lowerExtension(const std::string& path){
-        std::string extension = fs::path(path).extension().string();
+    // a path's file name and its extension in lower case, as std::filesystem names them, without
+    // building a path: the reader asks for 20,000 categories (R23)
+    std::string_view fileNameOf(std::string_view path){
+        const size_t slash = path.find_last_of('/');
+        return slash == std::string_view::npos ? path : path.substr(slash + 1);
+    }
+
+    std::string lowerExtension(std::string_view path){
+        const std::string_view name = fileNameOf(path);
+        const size_t dot = name.rfind('.');
+        if (dot == std::string_view::npos || dot == 0 || name == "..") return std::string();
+        std::string extension(name.substr(dot));
         std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c){ return (char)std::tolower(c); });
         return extension;
     }
@@ -48,25 +58,28 @@ const std::vector<std::string>& BuildReport::categoryNames(){
 }
 
 std::string BuildReport::categoryOf(const std::string& path){
-    const std::string extension = lowerExtension(path);
-    const std::string cooked = std::string("assets/") + CookedTextures::kCookedDir + "/";
-    if (path.rfind(cooked + "models/", 0) == 0 || path.find("/" + std::string(CookedTextures::kCookedDir) + "/models/") != std::string::npos)
+    static const std::string cooked = std::string("assets/") + CookedTextures::kCookedDir + "/";
+    static const std::string cookedModels = cooked + "models/";
+    static const std::string nested = "/" + std::string(CookedTextures::kCookedDir) + "/";
+    static const std::string nestedModels = nested + "models/";
+    if (path.rfind(cookedModels, 0) == 0 || path.find(nestedModels) != std::string::npos)
         return "models";
-    if (path.rfind(cooked, 0) == 0 || path.find("/" + std::string(CookedTextures::kCookedDir) + "/") != std::string::npos)
+    if (path.rfind(cooked, 0) == 0 || path.find(nested) != std::string::npos)
         return "textures";
-    static const std::set<std::string> models = {".glb", ".gltf", ".fbx", ".obj", ".bin", ".vat"};
-    static const std::set<std::string> textures = {".png", ".jpg", ".jpeg", ".tga", ".bmp", ".psd", ".gif", ".hdr", ".exr", ".ktx2", ".svg", ".webp", ".jlut"};
-    static const std::set<std::string> audio = {".wav", ".ogg", ".mp3", ".flac", ".opus"};
-    static const std::set<std::string> scripts = {".lua", ".luac"};
-    static const std::set<std::string> scenes = {".scene", ".prefab", ".jscn", ".jpfb"};
-    static const std::set<std::string> engine = {".exe", ".dll", ".so", ".dylib", ".wasm", ".js", ".a", ".apk", ".aab", ".pdb"};
+    static const std::set<std::string, std::less<>> models = {".glb", ".gltf", ".fbx", ".obj", ".bin", ".vat"};
+    static const std::set<std::string, std::less<>> textures = {".png", ".jpg", ".jpeg", ".tga", ".bmp", ".psd", ".gif", ".hdr", ".exr", ".ktx2", ".svg", ".webp", ".jlut"};
+    static const std::set<std::string, std::less<>> audio = {".wav", ".ogg", ".mp3", ".flac", ".opus"};
+    static const std::set<std::string, std::less<>> scripts = {".lua", ".luac"};
+    static const std::set<std::string, std::less<>> scenes = {".scene", ".prefab", ".jscn", ".jpfb"};
+    static const std::set<std::string, std::less<>> engine = {".exe", ".dll", ".so", ".dylib", ".wasm", ".js", ".a", ".apk", ".aab", ".pdb"};
+    const std::string extension = lowerExtension(path);
     if (models.count(extension)) return "models";
     if (textures.count(extension)) return "textures";
     if (audio.count(extension)) return "audio";
     if (scripts.count(extension) || path.rfind("lua/", 0) == 0) return "scripts";
     if (scenes.count(extension) || path.rfind("scenes/", 0) == 0 || path.rfind("prefabs/", 0) == 0) return "scenes";
-    const std::string name = fs::path(path).filename().string();
-    if (engine.count(extension) || name.rfind("jasperengine-player", 0) == 0 || name.find(".so.") != std::string::npos ||
+    const std::string_view name = fileNameOf(path);
+    if (engine.count(extension) || name.rfind("jasperengine-player", 0) == 0 || name.find(".so.") != std::string_view::npos ||
         path.find(".framework/") != std::string::npos || path.find(".app/Contents/MacOS/") != std::string::npos)
         return "engine";
     return "other";
@@ -293,7 +306,8 @@ namespace {
             frames.pop_back();
             if (top == Frame::FileItem){
                 if (!fileHasCategory) file.category = BuildReport::categoryOf(file.path);
-                if (!fileHasAsset && file.origin.empty()) file.asset = impliedReportAsset(file);
+                // a comparison reads no reachability: the asset a file ships is not asked
+                if (!fileHasAsset && file.origin.empty() && !comparisonOnly) file.asset = impliedReportAsset(file);
                 fileTarget->push_back(std::move(file));
             } else if (top == Frame::LeftItem){
                 report.leftOut.push_back(std::move(left));
