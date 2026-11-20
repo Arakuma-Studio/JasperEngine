@@ -102,6 +102,8 @@ namespace jasperengine {
         static bool loadingSceneShown;
         static bool loadingSceneReady;
         static double loadingStateTime;
+        // when the current load began (the journal's engine.scene_loaded ms)
+        static double journalLoadStart;
         static size_t loadingCount;
         static double loadingProgressTime;
         static float loadingProgress;

@@ -33,6 +33,7 @@
 #include "component/MeshPolygonComponent.h"
 #include "io/watch/LinkedFolders.h"
 #include "diag/HangWatchdog.h"
+#include "diag/Journal.h"
 #include "util/ProjectChecks.h"
 #include "util/EditorDiagnostics.h"
 #include "util/ThreadCpuTime.h"
@@ -11506,6 +11507,10 @@ void editor::Project::start(uint32_t sceneId) {
 
     // Play's Lua may now be interrupted when it runs away (Preferences > Diagnostics)
     EditorDiagnostics::setPlaying(true, sceneProject->name);
+    // the Gameplay Journal's engine entries as the built game would write them (Project Settings >
+    // Player > Crash Handling > Journal Engine Events)
+    diag::journal::setEngineEvents(playerCrash.journalEngineEvents);
+    journalPlay("start");
     jasperengine::CrashHook::set(
         [this, sceneId](const std::string& tag, const std::string& errorInfo) {
             // Log the scene and entity context
@@ -11614,6 +11619,11 @@ void editor::Project::start(uint32_t sceneId) {
     }, startupOptions);
 }
 
+void editor::Project::journalPlay(const char* playState) {
+    const diag::journal::Field fields[] = {{"state", std::string_view(playState)}};
+    diag::journal::logEngine("engine.play", fields);
+}
+
 void editor::Project::pause(uint32_t sceneId) {
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
@@ -11643,6 +11653,7 @@ void editor::Project::pause(uint32_t sceneId) {
             }
             Engine::pauseGameEvents(true);
             sceneProject->playState = ScenePlayState::PAUSED;
+            journalPlay("pause");
         }
         return;
     }
@@ -11679,6 +11690,7 @@ void editor::Project::resume(uint32_t sceneId) {
             }
             Engine::pauseGameEvents(false);
             sceneProject->playState = ScenePlayState::PLAYING;
+            journalPlay("resume");
             editor::getEditorHost().requestScenePlayFocus(sceneId);
         }
         return;
@@ -11695,6 +11707,7 @@ void editor::Project::stop(uint32_t sceneId) {
     }
     const diag::BusyScope busy("Stopping Play", 120'000);
     EditorDiagnostics::setPlaying(false, sceneProject->name);
+    if (sceneProject->playState != ScenePlayState::STOPPED) journalPlay("stop");
     finishShaderWarmupRecording();
 
     if (sceneProject->playState == ScenePlayState::STOPPED) {

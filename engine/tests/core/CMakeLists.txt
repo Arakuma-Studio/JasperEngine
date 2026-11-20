@@ -56,6 +56,11 @@ add_test(NAME native-crash-reports COMMAND ${Python3_EXECUTABLE} -I
     ${CMAKE_CURRENT_SOURCE_DIR}/../crash/test_crash.py $<TARGET_FILE:jasperengine-crash-test>
     --symbolicate ${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/crash/symbolicate.py ${JASPER_CRASH_TEST_FLAGS})
 set_tests_properties(native-crash-reports PROPERTIES TIMEOUT 180)
+# journal.txt beside crash.txt, from the fatal handler (docs/specs/shipped-game-diagnostics.md AC5)
+add_test(NAME native-crash-journal COMMAND ${Python3_EXECUTABLE} -I
+    ${CMAKE_CURRENT_SOURCE_DIR}/../crash/test_crash.py $<TARGET_FILE:jasperengine-crash-test>
+    --symbolicate ${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/crash/symbolicate.py --journal)
+set_tests_properties(native-crash-journal PROPERTIES TIMEOUT 60)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT JASPERENGINE_UNITY_BUILD)
     add_test(NAME posix-crash-signal-safety COMMAND ${Python3_EXECUTABLE} -I
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../tools/crash/check_posix_symbols.py

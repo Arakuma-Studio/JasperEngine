@@ -876,10 +876,14 @@ namespace jasperengine::editor{
         bool hangWatchdog = true;        // Development Builds: the main-thread hang watchdog
         int hangSeconds = 5;             // its threshold
         bool webCrashOverlay = true;     // Web: "The game stopped working. [Reload]"
+        static constexpr int maxJournalKiB = 256;
+        int journalKiB = 32;             // the Gameplay Journal's ring (0: off)
+        bool journalEngineEvents = true; // the engine's own engine.* journal entries
 
         bool operator==(const PlayerCrashSettings& other) const {
             return enabled == other.enabled && includeLogTail == other.includeLogTail && dumpWithHeap == other.dumpWithHeap &&
-                   hangWatchdog == other.hangWatchdog && hangSeconds == other.hangSeconds && webCrashOverlay == other.webCrashOverlay;
+                   hangWatchdog == other.hangWatchdog && hangSeconds == other.hangSeconds && webCrashOverlay == other.webCrashOverlay &&
+                   journalKiB == other.journalKiB && journalEngineEvents == other.journalEngineEvents;
         }
     };
 
@@ -3491,6 +3495,8 @@ namespace jasperengine::editor{
 
         void start(uint32_t sceneId);
         void pause(uint32_t sceneId);
+        // the Gameplay Journal's engine.play entry (start, pause, resume, stop)
+        void journalPlay(const char* playState);
         void resume(uint32_t sceneId);
         void stop(uint32_t sceneId);
         void stopActivePlay();

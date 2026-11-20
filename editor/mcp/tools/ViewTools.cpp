@@ -67,6 +67,7 @@
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
 #include "window/JobsMemoryWindow.h"
+#include "window/CrashReportsWindow.h"
 #include "window/profiler/FrameDebuggerWindow.h"
 #include "window/profiler/ProfilerWindow.h"
 #include "window/PlayModeChangesWindow.h"
@@ -1775,6 +1776,9 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "jobs_memory") {
         app.getJobsMemoryWindow()->setOpen(true);
         imguiName = JobsMemoryWindow::WINDOW_NAME;
+    } else if (window == "crash_reports") {
+        app.getCrashReportsWindow()->setOpen(true);
+        imguiName = CrashReportsWindow::WINDOW_NAME;
     } else if (window == "profiler") {
         ProfilerWindow* profiler = app.getProfilerWindow();
         profiler->setOpen(true);
@@ -1819,7 +1823,7 @@ void focusWindowTool(const CallPtr& call) {
         if (!focusTitleDesigner(call, app.getTitleDesignerWindow())) return;
     } else {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, animator, particle_effect, pose_animation, terrain, mcp, "
-                   "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
+                   "systems, jobs_memory, crash_reports, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
                    "vertex_animation_baker, sprite_normals, pixel_art_cleanup, title_designer, graph_editor.");
         return;
     }
@@ -2331,7 +2335,7 @@ void registerViewTools(McpRegistry& registry) {
             "pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "particle_effect", "pose_animation",
-                                       "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
+                                       "terrain", "mcp", "systems", "jobs_memory", "crash_reports", "profiler", "frame_debugger", "preferences",
                                        "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals",
                                        "pixel_art_cleanup", "title_designer", "graph_editor"})},
             {"scene", sceneRef("window scene: whose tab.")},

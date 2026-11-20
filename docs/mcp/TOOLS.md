@@ -1602,7 +1602,7 @@ Fronts a panel (screenshot needs none). console: its rows, categories, selection
 | `profiler` | object {load} |  |  |
 | `scene` | integer or string |  | window scene: whose tab. |
 | `title_designer` | object |  |  |
-| `window` | `"scene"` \| `"game"` \| `"console"` \| `"hierarchy"` \| `"inspector"` \| `"project"` \| `"animation"` \| `"animator"` \| `"particle_effect"` \| `"pose_animation"` \| `"terrain"` \| `"mcp"` \| `"systems"` \| `"jobs_memory"` \| `"profiler"` \| `"frame_debugger"` \| `"preferences"` \| `"undo_history"` \| `"play_mode_changes"` \| `"texture_synthesis"` \| `"vertex_animation_baker"` \| `"sprite_normals"` \| `"pixel_art_cleanup"` \| `"title_designer"` \| `"graph_editor"` | yes |  |
+| `window` | `"scene"` \| `"game"` \| `"console"` \| `"hierarchy"` \| `"inspector"` \| `"project"` \| `"animation"` \| `"animator"` \| `"particle_effect"` \| `"pose_animation"` \| `"terrain"` \| `"mcp"` \| `"systems"` \| `"jobs_memory"` \| `"crash_reports"` \| `"profiler"` \| `"frame_debugger"` \| `"preferences"` \| `"undo_history"` \| `"play_mode_changes"` \| `"texture_synthesis"` \| `"vertex_animation_baker"` \| `"sprite_normals"` \| `"pixel_art_cleanup"` \| `"title_designer"` \| `"graph_editor"` | yes |  |
 
 
 ### `frame_entity`
@@ -4246,11 +4246,15 @@ The startup notice's Dismiss: marks the report handled (default: the notice's) s
 
 Group: `diagnostics` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
 
-Crash, hang and abnormal_exit report folders of this editor, newest first ({id, kind, time, reason, files, handled}), and notice_open (the startup notice). include_text adds crash.txt or the hang report.
+Crash, hang, abnormal_exit and user report folders of this editor, newest first ({id, kind, time, reason, files, handled}), and notice_open (the startup notice). include_text adds crash.txt or the hang report. folder reads a game's reports; group: true merges similar crashes with counts per version and platform.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
+| `files` | array of string |  | File names to inline as text, 64 KiB each. |
+| `folder` | string |  | Absolute path of a reports root. Default: this editor's. |
+| `group` | boolean |  |  |
 | `include_text` | boolean |  |  |
+| `kinds` | array of `"crash"` \| `"hang"` \| `"abnormal_exit"` \| `"user"` |  |  |
 | `limit` | integer (1..100) |  | Default: `10`. |
 
 

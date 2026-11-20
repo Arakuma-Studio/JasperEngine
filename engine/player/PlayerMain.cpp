@@ -297,6 +297,8 @@ namespace {
         platform.hangWatchdog = game.hangWatchdog ? 1 : 0;
         platform.hangMs = game.hangMs;
         platform.crashWebOverlay = game.crashWebOverlay ? 1 : 0;
+        platform.crashJournalBytes = game.crashJournalBytes;
+        platform.crashJournalEngineEvents = game.crashJournalEngineEvents ? 1 : 0;
         return -1;
     }
 

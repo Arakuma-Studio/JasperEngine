@@ -141,6 +141,8 @@ namespace jasperengine::player {
         bool hangWatchdog = true;
         int hangMs = 5000;
         bool crashWebOverlay = true;
+        int crashJournalBytes = 32 << 10;
+        bool crashJournalEngineEvents = true;
 
         // Project Settings > Debug > Console Commands (development, always or never): whether
         // --command, agents and the console field may run commands (console::setCommandsEnabled)

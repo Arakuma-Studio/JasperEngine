@@ -6,6 +6,7 @@
 #include "Scene.h"
 #include "Log.h"
 #include "System.h"
+#include "diag/Journal.h"
 #include "memory/HeapTrim.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/AudioSystem.h"
@@ -53,6 +54,7 @@ SceneManager::LoadingState SceneManager::loadingState = SceneManager::LoadingSta
 bool SceneManager::loadingSceneShown = false;
 bool SceneManager::loadingSceneReady = false;
 double SceneManager::loadingStateTime = 0.0;
+double SceneManager::journalLoadStart = 0.0;
 size_t SceneManager::loadingCount = 0;
 double SceneManager::loadingProgressTime = 0.0;
 float SceneManager::loadingProgress = 0.0f;
@@ -189,6 +191,14 @@ void SceneManager::runFactory(uint32_t id) {
 #if JASPERENGINE_AUDIO_CAPTURE
     if (AudioMarkers::isEnabled()) AudioMarkers::sceneLoad(entry->name, "load");
 #endif
+
+    // the Gameplay Journal: the stack this load replaces
+    if (currentId != 0 && findEntry(currentId)) {
+        const std::string unloaded = getSceneName(currentId);
+        const diag::journal::Field fields[] = {{"name", std::string_view(unloaded)}};
+        diag::journal::logEngine("engine.scene_unloaded", fields);
+    }
+    journalLoadStart = Engine::getSystemTime();
 
     // Copied for the same reason as in addChildScene: the factory runs scripts
     std::function<void()> loadFactory = entry->loadFactory;
@@ -466,6 +476,7 @@ void SceneManager::setCurrentScene(uint32_t id) {
     currentId = id;
     Engine::markLevelLoad();
     loadingState = LoadingState::Loading;
+    journalLoadStart = Engine::getSystemTime();
     resetLoadProgress();
 }
 
@@ -805,6 +816,12 @@ void SceneManager::updateLoading() {
         }
 
         loadingState = LoadingState::Loaded;
+        {
+            const std::string loaded = getSceneName(currentId);
+            const diag::journal::Field fields[] = {{"ms", static_cast<int64_t>((now - journalLoadStart) * 1000.0)},
+                                                   {"name", std::string_view(loaded)}};
+            diag::journal::logEngine("engine.scene_loaded", fields);
+        }
         // a handler can hold the load or start another one
         Engine::onSceneLoaded.call();
     }

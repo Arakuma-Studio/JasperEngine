@@ -302,6 +302,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.jobsMemory", "Jobs & Memory", AppMenuCommand::ToggleJobsMemory);
     b.menu("window.meshAudit", "Mesh Optimization Audit", AppMenuCommand::ToggleMeshAudit);
     b.menu("window.buildReport", "Build Report", AppMenuCommand::ToggleBuildReport);
+    b.menu("window.crashReports", "Crash Reports", AppMenuCommand::ToggleCrashReports).description =
+        "Crash, hang and user reports of the editor or a game, grouped by signature";
     b.menu("window.animationStatistics", "Animation Statistics", AppMenuCommand::ToggleAnimationStatistics);
     b.menu("window.mcpActivity", "MCP Server", AppMenuCommand::ToggleMcpActivity);
     b.menu("window.vcs.commit", "Commit", AppMenuCommand::ToggleVcsCommit);

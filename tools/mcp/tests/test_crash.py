@@ -5,22 +5,37 @@ report of this session; a runaway Lua function in Play is interrupted and Play g
 session killed without a clean exit is reported at the next start (the notice, Lua
 Crash.setReportHook, dismiss_crash_notice). Editors that need flags or a shared report root
 start their own.
+
+shipped-game-diagnostics AC20, AC21: get_crash_reports reads a game's reports root (folder), filters
+kinds, inlines files and groups the shared fixtures of tools/crash/fixtures/group as
+symbolicate.py --group does; Window > Analysis > Crash Reports opens such a folder, shows its
+controls and Mark Handled writes `handled` (screenshots to $JE_EVIDENCE_DIR or
+$JASPER_MCP_EVIDENCE_DIR, which tools/build.sh forwards, else the scratch directory).
 """
 
 import asyncio
+import calendar
+import json
 import os
+import re
+import shutil
 import signal
 import tempfile
 import time
 from pathlib import Path
 
 import harness
-from harness import Editor
+import pngdiff
+import ui_input
+from harness import REPO, Editor
 
 CI = True
 EDITOR = {"create": True, "name": "Crash CI"}
 
 TIMEOUT = 900
+
+GROUP_FIXTURES = REPO / "tools" / "crash" / "fixtures" / "group"
+GROUP_KEYS = ("signature", "kind", "count", "versions", "platforms", "first_seen", "last_seen", "report_ids", "unresolved")
 
 S28_TOOLS = ["get_editor_health", "get_crash_reports", "dismiss_crash_notice", "set_hang_watchdog", "debug_crash"]
 
@@ -239,3 +254,247 @@ async def test_notice_after_crash():
             ed.check(notice.get("id") != session, f"dismissed crash stays dismissed after restart: {reports}")
             crashed = [r for r in reports["reports"] if r["id"] == session]
             ed.check(crashed and crashed[0]["handled"], f"it stays handled: {reports['reports']}")
+
+
+# -- the Gameplay Journal and user reports (docs/specs/shipped-game-diagnostics.md) ----------------
+
+
+def jpeg_size(data: bytes):
+    """A baseline or progressive JPEG's (width, height), from its SOF marker."""
+    at = 2
+    while at + 9 < len(data):
+        if data[at] != 0xFF:
+            return 0, 0
+        marker = data[at + 1]
+        length = int.from_bytes(data[at + 2:at + 4], "big")
+        if marker in (0xC0, 0xC1, 0xC2):
+            return int.from_bytes(data[at + 7:at + 9], "big"), int.from_bytes(data[at + 5:at + 7], "big")
+        at += 2 + length
+    return 0, 0
+
+
+async def journal_scene(ed: Editor, name: str):
+    """A 2D scene with a red background, saved: Play shows a red frame."""
+    made = await ed.call("create_scene", name=name, type="2D", path=f"scenes/{name}")
+    scene = made["scene"]["id"]
+    await ed.call("set_scene_settings", scene=scene, settings={"background_color": [1.0, 0.0, 0.0, 1.0]})
+    await ed.call("save_scene", scene=scene)
+    return scene
+
+
+async def journal_entries(ed: Editor, since: int):
+    return [e["message"] for e in (await ed.call("read_console", since=since, categories=["journal"], limit=200))["entries"]]
+
+
+async def test_journal_engine_events(ed: Editor):
+    scene = await journal_scene(ed, "JournalEvents")
+    since = (await ed.call("read_console", limit=1))["next_cursor"]
+    await ed.call("play", action="start", scene=scene)
+    await ed.call("wait", frames=3)
+    await ed.call("play", action="pause")
+    await ed.call("play", action="resume")
+    await ed.call("wait", frames=2)
+    await ed.call("play", action="stop")
+    messages = await journal_entries(ed, since)
+    ed.check(any(m.startswith("engine.play state=start") for m in messages), f"engine.play start: {messages}")
+    ed.check(any(m.startswith("engine.play state=pause") for m in messages), f"engine.play pause: {messages}")
+    ed.check(any(m.startswith("engine.scene_loaded ") and "name=JournalEvents" in m for m in messages),
+             f"engine.scene_loaded: {messages}")
+    ed.check(all(not m.startswith("+") for m in messages), f"the Console shows the entry without its time: {messages}")
+
+    await ed.call("set_project_settings", values={"player.crash.journal_engine_events": False})
+    since = (await ed.call("read_console", limit=1))["next_cursor"]
+    await ed.call("play", action="start", scene=scene)
+    await ed.call("wait", frames=3)
+    await ed.call("play", action="stop")
+    messages = await journal_entries(ed, since)
+    ed.check_eq([m for m in messages if m.startswith("engine.")], [], "no engine entries with Journal Engine Events off")
+    await ed.call("set_project_settings", values={"player.crash.journal_engine_events": True})
+
+
+async def test_journal_in_console(ed: Editor):
+    scene = await journal_scene(ed, "JournalConsole")
+    await ed.call("play", action="start", scene=scene)
+    since = (await ed.call("read_console", limit=1))["next_cursor"]
+    values = (await ed.call("eval_lua", code=(
+        'Journal.log("test.kind", {a = 1}) '
+        'local e = Journal.getEntries(1)[1] '
+        'return e.kind, e.frame >= 0, Journal.enabled, Journal.getText():sub(1, 23)')))["values"]
+    await ed.call("play", action="stop")
+    ed.check_eq(values, ["test.kind", True, True, "JasperEngine journal v1"], "Journal.getEntries and getText")
+    messages = await journal_entries(ed, since)
+    ed.check("test.kind a=1" in messages, f"read_console categories journal: {messages}")
+
+
+async def test_user_report_screenshot(ed: Editor):
+    scene = await journal_scene(ed, "UserReport")
+    await ed.call("play", action="start", scene=scene)
+    await ed.call("wait", frames=5)
+    await ed.call("eval_lua", code="_G.shot = nil; Crash.beginReport(function(ok, err) _G.shot = ok; _G.shotError = err end)")
+    waited = await ed.call_raw("wait", {"until": "_G.shot ~= nil", "timeout_seconds": 60})
+    ed.check(not waited.is_error, f"the capture's callback ran: {waited.text[:500]}")
+    values = (await ed.call("eval_lua", code=(
+        'local r, err = Crash.createReport{note = "x", category = "gameplay", fields = {level = "forest-2"}} '
+        'return _G.shot, tostring(_G.shotError), r and r.id or err, r and r.kind, r and r.category')))["values"]
+    await ed.call("play", action="stop")
+    ed.check_eq(values[0], True, f"a screenshot is in the draft: {values}")
+    report_id = values[2]
+    ed.check_eq(values[3:], ["user", "gameplay"], f"the report table: {values}")
+
+    listed = await ed.call("get_crash_reports", kinds=["user"], files=["user.txt"])
+    users = [r for r in listed["reports"] if r["id"] == report_id]
+    ed.check(users and users[0]["kind"] == "user", f"get_crash_reports kinds user lists it: {listed}")
+    ed.check(all(r["kind"] == "user" for r in listed["reports"]), "only user reports")
+    folder = Path(users[0]["folder"])
+    jpeg = (folder / "screenshot.jpg").read_bytes()
+    ed.check(jpeg[:2] == b"\xff\xd8", "screenshot.jpg is a JPEG")
+    ed.check(len(jpeg) <= 600 * 1024, f"at most 600 KiB: {len(jpeg)}")
+    width, height = jpeg_size(jpeg)
+    ed.check(0 < width <= 1280, f"at most 1280 px wide: {width}x{height}")
+    # the centre against a red image of that size (diff_images decodes the JPEG)
+    project = ed.project
+    shutil.copy(folder / "screenshot.jpg", project / "user-report-shot.jpg")
+    (project / "user-report-red.png").write_bytes(pngdiff.encode(width, height, bytes([255, 0, 0, 255]) * (width * height)))
+    diff = await ed.call("diff_images", a="user-report-shot.jpg", b="user-report-red.png", tolerance=24, max_fraction=0.0,
+                         max_diff=255, max_mean=255, crop=[width // 2 - 8, height // 2 - 8, 16, 16], image="none")
+    ed.check(diff["ok"], f"the centre is the red frame: {diff}")
+    ed.check((folder / "journal.txt").is_file() and (folder / "device.json").is_file(), "journal.txt and device.json")
+    await ed.call("eval_lua", allow_edit_mode=True, code=f'return Crash.markHandled("{report_id}")')
+
+
+async def test_read_report_file(ed: Editor):
+    scene = await journal_scene(ed, "ReadReportFile")
+    await ed.call("play", action="start", scene=scene)
+    values = (await ed.call("eval_lua", code=(
+        'local r, err = Crash.createReport{note = "read me"} '
+        'if not r then return err end '
+        'local bytes = Crash.readReportFile(r.id, "user.txt") '
+        'local missing, why = Crash.readReportFile(r.id, "nope.txt") '
+        'local escape = Crash.readReportFile(r.id, "../" .. r.id .. "/user.txt") '
+        'Crash.markHandled(r.id) '
+        'return r.id, bytes, missing == nil, why, escape == nil')))["values"]
+    await ed.call("play", action="stop")
+    ed.check(len(values) == 5, f"a report was created: {values}")
+    report_id, text = values[0], values[1]
+    listed = await ed.call("get_crash_reports")
+    folder = Path([r for r in listed["reports"] if r["id"] == report_id][0]["folder"])
+    ed.check_eq(text, (folder / "user.txt").read_text(), "readReportFile returns the file's bytes")
+    ed.check_eq(values[2:], [True, "not_found", True], "an unknown or escaping name: nil, not_found")
+
+def group_fixtures(into: Path, copies: int = 1) -> dict:
+    """The shared fixture folders under `into` (as tools/crash/test_symbolicate.py: every file dated
+    its folder's session time + the offset); copies > 1 repeats each under another pid"""
+    expected = json.loads((GROUP_FIXTURES / "expected.json").read_text())
+    into.mkdir(parents=True, exist_ok=True)
+    for folder in sorted(p for p in GROUP_FIXTURES.iterdir() if p.is_dir()):
+        match = re.match(r"(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z", folder.name)
+        when = calendar.timegm(tuple(int(g) for g in match.groups()) + (0, 0, 0)) + expected["mtime_offset_seconds"]
+        for copy in range(copies):
+            name = folder.name if copies == 1 else f"{folder.name[:16]}-{copy:02d}{folder.name[17:]}"
+            shutil.copytree(folder, into / name)
+            for file in (into / name).iterdir():
+                os.utime(file, (when, when))
+    return expected
+
+
+async def test_crash_reports_folder_group(ed: Editor):
+    root = ed.scratch.root / "game-crash-root"
+    expected = group_fixtures(root / "reports")
+    # a game's crash root as pulled from a device holds reports/
+    grouped = await ed.call("get_crash_reports", folder=str(root), group=True)
+    got = [{k: g[k] for k in GROUP_KEYS} for g in grouped["groups"]]
+    ed.check_eq(got, expected["groups"], "the groups of tools/crash/fixtures/group/expected.json")
+    ed.check_eq(grouped["folder"], str(root / "reports"), "the report folders are in reports/")
+    ed.check_eq(grouped.get("next"), f"Names need symbols: python3 -I tools/crash/symbolicate.py --group {root / 'reports'} --symbols <dir>",
+                "an unresolved group names the symbolicate command")
+
+    users = await ed.call("get_crash_reports", folder=str(root / "reports"), kinds=["user"], files=["journal.txt", "user.txt"])
+    ed.check_eq([r["kind"] for r in users["reports"]], ["user"], "kinds filters")
+    texts = users["reports"][0].get("texts", {})
+    ed.check("level.start" in texts.get("journal.txt", ""), f"files inlines journal.txt: {texts}")
+    ed.check(texts.get("user.txt", "").startswith("JasperEngine user report v1"), f"and user.txt: {texts}")
+    crashes = await ed.call("get_crash_reports", folder=str(root / "reports"), kinds=["crash", "hang"], limit=100)
+    ed.check_eq(sorted({r["kind"] for r in crashes["reports"]}), ["crash", "hang"], "two kinds")
+    ed.check_eq(len(crashes["reports"]), 6, "5 crashes and a hang")
+
+    missing = root / "nothing-here"
+    text = await ed.call("get_crash_reports", folder=str(missing), expect_error=True)
+    ed.check(f"No report folder at {missing}: give a reports root (it holds <yyyymmddThhmmssZ>-<pid> folders)." in text,
+             f"a missing folder: {text}")
+    text = await ed.call("get_crash_reports", files=["../secret.txt"], expect_error=True)
+    ed.check("not a file name" in text, f"files takes names, not paths: {text}")
+
+    # R32: group over 100 folders answers within 200 ms (a budget: the benchmark run enforces it)
+    many = ed.scratch.root / "many-reports"
+    group_fixtures(many, copies=13)
+    started = time.monotonic()
+    big = await ed.call("get_crash_reports", folder=str(many), group=True)
+    elapsed = time.monotonic() - started
+    ed.check_eq(big["reports_read"], 104, "104 folders read")
+    ed.check_eq(sorted((g["signature"], g["count"]) for g in big["groups"]),
+                sorted((g["signature"], g["count"] * 13) for g in expected["groups"]), "the counts scale")
+    slow = harness.over_budget("get_crash_reports group over 104 folders", {"answer": elapsed}, 0.2)
+    ed.check(not slow, f"get_crash_reports group answered in {elapsed:.3f} s")
+
+
+async def click_raw(ui: ui_input.Ui, item: dict) -> None:
+    """a click whose handler may open a picker: ui.click's frame pacer is refused while one holds the editor"""
+    x, y = ui.centre(item["rect"])
+    ui.xdo("mousemove", str(x), str(y))
+    await ui.frames(4)
+    ui.xdo("mousedown", "1")
+    await ui.frames(2)
+    ui.xdo("mouseup", "1")
+
+
+async def test_crash_reports_window():
+    async with Editor(create=True, name="Crash Reports Window CI", xvfb="harness") as ed:
+        root = ed.scratch.root / "device-crash"
+        group_fixtures(root / "reports")
+        window = "Crash Reports"
+        focused = await ed.call("focus_window", window="crash_reports")
+        ed.check(focused["shown"], f"focus_window crash_reports shows the window: {focused}")
+        ui = ui_input.for_editor(ed)
+        for label in ("Group Similar", "Open Folder...", "Mark Handled"):
+            ed.check(await ui.find(label, window), f"the window draws {label}")
+
+        await click_raw(ui, await ui.find("Open Folder...", window))
+        picker = None
+        for _ in range(80):
+            picker = ((await ed.call_raw("editor_status", {})).structured or {}).get("dialog")
+            if picker and picker["kind"] == "file_picker":
+                break
+            await asyncio.sleep(0.25)
+        ed.check(picker and picker["kind"] == "file_picker", f"Open Folder... asks for a folder: {picker}")
+        await ed.call("respond_dialog", values={"path": str(root)})
+
+        evidence = Path(os.environ.get("JE_EVIDENCE_DIR") or os.environ.get("JASPER_MCP_EVIDENCE_DIR") or ed.scratch.root) / "crash-reports"
+        evidence.mkdir(parents=True, exist_ok=True)
+        crash = "20261104T100000Z-4001"
+        # a row spans every column, but is drawn while the Kind column clips it: find_ui_item reports its
+        # centre as not visible, so it is clicked inside the Kind column
+        row = None
+        for _ in range(60):
+            items = (await ed.call("find_ui_item", label=f"##row_{crash}", window=window)).get("items", [])
+            if items:
+                row = items[0]
+                break
+            await ui.frames(2)
+        ed.check(row is not None, "the opened folder's reports are listed")
+        await ui.click(ui.at(row["rect"], (12, row["rect"]["height"] / 2)))
+        await ed.screenshot("editor", evidence / "crash-reports-window.png", focus=False, max_width=0)
+        await ui.click_item("Mark Handled", window)
+        handled = root / "reports" / crash / "handled"
+        for _ in range(60):
+            if handled.exists():
+                break
+            await ui.frames(2)
+        ed.check(handled.is_file(), "Mark Handled writes handled into the selected report's folder")
+        others = [p.name for p in (root / "reports").glob("*/handled") if p.parent.name != crash]
+        ed.check_eq(others, [], "only the selected report is marked")
+
+        await ui.click_item("Group Similar", window)
+        await ui.frames(4)
+        await ed.screenshot("editor", evidence / "crash-reports-window-grouped.png", focus=False, max_width=0)
+        local = (ed.project / ".jasperengine" / "user" / "build.yaml").read_text()
+        ed.check(str(root) in local, f"the folder is remembered for the project: {local}")

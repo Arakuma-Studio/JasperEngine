@@ -13,6 +13,7 @@
     "heartbeat_ns": {"max": 5, "spec": "S28 R26 diag::heartbeat(), median of 9 runs"},
     "ring_write_120b_ns": {"max": 150, "spec": "S28 R26 a 120-byte crash-ring write (memcpy included), median of 9 runs"},
     "install_ms": {"max": 3, "spec": "S28 R26 diag::crash::install on an empty report root"},
+    "journal_log_4f_ns": {"max": 250, "spec": "shipped-game-diagnostics R29 diag::journal::log, a kind and 4 fields (2 strings, 2 numbers), median of 9 runs"},
     "watchdog_idle_cpu_pct": {"max": 0.1, "spec": "S28 R26 the hang watchdog's polls with the main thread idle, % of one core over 5 s"}
   },
   "je-bench-memory": {

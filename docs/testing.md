@@ -401,7 +401,7 @@ frame timing (SwiftShader draws a frame in tens to hundreds of milliseconds).
 
 `jasperengine-crash-test` is built with core tests. `ctest --test-dir build/linux/core-tests
 -R 'native-crash|posix-crash' --output-on-failure` runs each deliberate fatal mode in a child,
-checks registers, frames, log tail, signal chaining and overflow reporting, and checks the POSIX
+checks registers, frames, log tail, the Gameplay Journal's `journal.txt`, signal chaining and overflow reporting, and checks the POSIX
 object for allocation/stdio/mutex imports. It also verifies a main-thread hang frame. These
 checks work in the ASan/UBSan tree too (`core-tests-address-undefined`). Windows/macOS desktop
 CTest builds register the same child-process checks; Windows additionally requires a minidump.
@@ -412,6 +412,9 @@ then `tools/android-emulator-test.sh build/android-crash-diagnostics/app-debug.a
 The opt-in flag requires the engine report **and** a matching debuggerd tombstone, saves both
 under the emulator result directory, and accepts that deliberate crash. Ordinary emulator tests
 continue to fail on any native crash.
+The fixture's Lua logs the Gameplay Journal entry `gate.ready` first, so the pulled report folder
+also holds `journal.txt` with it (`native-crash-journal` checks the same on the desktop:
+`jasperengine-crash-test --mode segv --journal`).
 
 ## Gates: per commit, then CI
 
