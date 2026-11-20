@@ -383,15 +383,12 @@ void anim::AnimatorInstance::bind(Scene* scene, Entity root, const AnimatorCompo
     }
 
     // Mesh Space Rotation's boundary bones (D2): where the mask weight changes from parent to
-    // child. Bone indices past 16 bits are not listed (no rig comes near).
+    // child (the one rule the Animation Player and the editor share)
     for (size_t l = 0; l < layers.size(); l++){
         AnimatorLayerRun& run = layers[l];
         run.boundaryBones.clear();
         if (l == 0 || !run.masked) continue;
-        for (size_t b = 0; b < boneCount && b <= 0xFFFF; b++){
-            const int parent = rig.parents[b];
-            if (parent >= 0 && run.mask[b] != run.mask[(size_t)parent]) run.boundaryBones.push_back((uint16_t)b);
-        }
+        maskBoundaryBones(run.mask.data(), rig.parents.data(), boneCount, run.boundaryBones);
     }
 
     // bones written to their entities
