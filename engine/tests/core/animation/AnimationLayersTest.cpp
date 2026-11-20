@@ -1722,6 +1722,30 @@ TEST_F(Layers, PlayerMeshSpaceRotationCorrectsABoneNoClipAnimates){
     EXPECT_LE(componentError(transform(twinBones[1]).rotation, transform(spine).rotation), 1e-5f) << "R18: the Animator's spine";
 }
 
+// R16, R21: the option turned off releases the table; the boundary bone it gave a Rotation slot of
+// its own (no clip rotates it) goes back to its rest once, instead of keeping the pass's last
+// rotation, and stays there
+TEST_F(Layers, PlayerMeshSpaceRotationOffPutsABoneNoClipAnimatesBack){
+    addBody();
+    const Quaternion rest = transform(spine).rotation;
+    const ClipData run = still({{"Hips", yaw(90)}, {"Hips/Thigh", tilt(-30)}});
+    const ClipData attack = still({{"Hips", yaw(-20)}, {"Hips/Spine/Head", roll(15)}, {"Hips/Thigh", tilt(50)}});
+    AnimationPlayer object = player({{"run", run, 0}, {"attack", attack, 1}},
+                                    {layer(anim::BASE_LAYER_NAME), meshSpaceLayer("Upper Body", mask("spine", pathMask("Hips/Spine")))});
+    object.play("run");
+    object.play("attack");
+    step(0.1);
+    ASSERT_GT(degreesBetween(transform(spine).rotation, rest), 100.0) << "the pass turned the spine (the layer's -20 over the run's 90)";
+
+    object.setLayerMeshSpaceRotation(1, false);
+    step(0.1);
+    EXPECT_LE(componentError(transform(spine).rotation, rest), 1e-6f) << degreesBetween(transform(spine).rotation, rest);
+    EXPECT_LE(componentError(playerRig(spine), yaw(90)), 1e-5f) << "local again: the spine follows the run's hips";
+    transform(spine).rotation = roll(5);
+    step(0.1);
+    EXPECT_LE(componentError(transform(spine).rotation, roll(5)), 1e-6f) << "once: nothing writes the bone after that";
+}
+
 // R8 on the Player: where the option does not apply it changes nothing, bit for bit: a flagged
 // layer at weight 0, a flagged Additive layer and a flagged layer without a mask give the pose of
 // the same layer without the option

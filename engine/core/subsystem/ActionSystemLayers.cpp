@@ -196,8 +196,24 @@ namespace {
         return layer > 0 && runtime.meshSpaceRotation && runtime.blend == AnimationLayerBlend::Override;
     }
 
-    // every Mesh Space vector released, and the Rotation slots an earlier table added gone
-    void releaseMeshSpaceTable(anim::PlayerPoseScratch& scratch){
+    // The bones an earlier table gave a Rotation slot of their own (boundary bones no clip
+    // rotates) back at their rest, once, as their slot goes: nothing writes them after that, so
+    // they would keep the pass's last rotation
+    void restoreMeshSpaceSlots(Scene* scene, const anim::PlayerPoseScratch& scratch){
+        for (size_t s = scratch.boundSlots; s < scratch.slots.size(); s++){
+            const anim::PoseSlot& slot = scratch.slots[s];
+            if (slot.channel != ClipChannel::Rotation || !slot.rest || !scene->isEntityCreated(slot.target)) continue;
+            if (Transform* transform = scene->findComponent<Transform>(slot.target)){
+                transform->rotation = slot.rest->rotation;
+                transform->needUpdate = true;
+            }
+        }
+    }
+
+    // every Mesh Space vector released, and the Rotation slots an earlier table added gone (their
+    // bones at their rest)
+    void releaseMeshSpaceTable(Scene* scene, anim::PlayerPoseScratch& scratch){
+        restoreMeshSpaceSlots(scene, scratch);
         uint32_t end = (uint32_t)scratch.elements.size();
         for (size_t s = scratch.boundSlots; s < scratch.slots.size(); s++) end = std::min(end, scratch.slots[s].first);
         scratch.slots.resize(std::min<size_t>(scratch.slots.size(), scratch.boundSlots));
@@ -220,7 +236,7 @@ namespace {
     void buildMeshSpaceTable(Scene* scene, Entity root, anim::PlayerPoseScratch& scratch,
                              const std::vector<std::pair<const anim::AvatarMaskDef*, const std::vector<Entity>*>>& masks,
                              const anim::HumanoidSlots* humanoid, anim::RestMap& rest){
-        releaseMeshSpaceTable(scratch);
+        releaseMeshSpaceTable(scene, scratch);
         std::unordered_map<Entity, uint32_t> rotationSlot;
         std::vector<Entity> animated;
         for (uint32_t s = 0; s < scratch.slots.size(); s++){
@@ -360,6 +376,7 @@ namespace {
 }
 
 void playerdetail::buildPoseSlots(Scene* scene, anim::PlayerPoseScratch& scratch, const std::vector<PoseSlotSource>& sources, anim::RestMap& rest){
+    restoreMeshSpaceSlots(scene, scratch);
     scratch.slots.clear();
     scratch.elementSlot.clear();
     scratch.touched.clear();
@@ -586,7 +603,7 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
         for (size_t l = 0; l < runtime.layers.size(); l++) any = any || (layerRunsMeshSpace(l, runtime.layers[l]) && runtime.layers[l].mask);
         if (!any){
             if (!stamp.empty()){
-                releaseMeshSpaceTable(runtime.scratch);
+                releaseMeshSpaceTable(scene, runtime.scratch);
                 std::vector<uint64_t>().swap(stamp);
             }
         }else{
@@ -1305,7 +1322,7 @@ void ActionSystem::previewLayers(Entity root, const PlayerPreview& preview, anim
         meshSpace = true;
     }
     if (meshSpace) buildMeshSpaceTable(scene, root, scratch, meshMasks, session.humanoid.get(), session.rest);
-    else releaseMeshSpaceTable(scratch);
+    else releaseMeshSpaceTable(scene, scratch);
     scratch.stateInputs.clear();
     for (size_t i = 0; i < states.size(); i++){
         const LayeredPreviewState& state = states[i];
