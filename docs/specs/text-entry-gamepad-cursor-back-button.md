@@ -592,5 +592,7 @@ Red controls are run on the base commit first and named in the PR.
 - Part A: names in Lua, MCP and the chip are the `inputmode` values (`numeric` for Number, `tel` for
   Phone); `inspect_ui`'s `focus` is present only while a text field of that document is focused;
   `enter_key` is `"default"` without a hint and `max_length` is null without a limit.
-- Part A: games-activity moves to 3.0.5 (the version in the build's Gradle cache). The emulator suite
-  (`tools/android-emulator-test.sh`, AC7) did not run here; see the implementation report.
+- Part A: games-activity moves to 3.0.5 (the version in the build's Gradle cache). The Android
+  build (`ANDROID_ABIS=x86_64 tools/build.sh android`) and the web build compile with it and with
+  parts A and C's platform code; the emulator suite (`tools/android-emulator-test.sh --ime`, AC7),
+  the web gate's form (AC22) and an iOS build did not run.
