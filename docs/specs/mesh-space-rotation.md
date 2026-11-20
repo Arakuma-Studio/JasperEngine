@@ -477,7 +477,10 @@ player:setLayerMeshSpaceRotation("Upper Body", true)
   a state's mixing transforms add none, they weigh its contribution at the nodes as everywhere else. A boundary
   bone's weight is the Player's own blend weight there, `λ·min(1, S)` with `S` the states' weights times their mask
   weight (R6's `run.weight * run.mask[b]` for one state at weight 1). The table (the boundary bones and their
-  ancestors, parents first) is built at prepare while a layer runs the pass, never per frame. Its nodes are never
+  ancestors, parents first) is built at prepare while a layer runs the pass, never per frame. When the scene's
+  hierarchy revision changes, each bone of the table's rig is checked against the Transform parent it was built
+  with, as the bindings and the humanoid rig are checked; a moved one (a humanoid's bone the retargeted clips bind
+  by entity, which no path check sees) binds the masks' paths again and rebuilds the table. Its nodes are never
   occluded by a layer above. A bone no layer below wrote this frame is at its rest, and the layer's own rotation at
   a bone its clips do not rotate is the bone's rest (the Animator's `run.output`); a boundary bone no clip rotates
   gets a Rotation slot of its own. The layered edit-mode preview (the Animation window's Preview over) applies the

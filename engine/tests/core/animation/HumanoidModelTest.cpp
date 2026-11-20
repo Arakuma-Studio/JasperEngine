@@ -677,6 +677,72 @@ TEST_F(HumanoidModel, MaskedHumanoidLayerOverAGenericWalk){
     EXPECT_LT(degreesBetween(scene.getComponent<Transform>(leftThigh).rotation, walked), 0.05);
 }
 
+// Mesh Space Rotation on the Animation Player (docs/specs/mesh-space-rotation.md R16) after a
+// hierarchy change its bindings do not see: both clips retargeted (bound to the humanoid's bones,
+// not by path), the left shoulder moved under a new turned GameObject. The node table is built
+// again with it, so the arm keeps the wave's rotation relative to the hero as a table built after
+// the move gives it
+TEST_F(HumanoidModel, PlayerMeshSpaceRotationFollowsAReparentedBone){
+    const Entity entity = load(hero);
+    anim::AvatarMaskDef maskData;
+    maskData.defaultWeight = 0.0f;
+    maskData.bodyParts[(int)AvatarBodyPart::LeftArm] = 1.0f;
+    maskData.bodyParts[(int)AvatarBodyPart::LeftHand] = 1.0f;
+    animtest::writeAsset(dir + "leftarm.mask", anim::writeMask(maskData));
+    scene.addComponent<AnimationPlayerComponent>(entity, AnimationPlayerComponent());
+    AnimationPlayerComponent& component = scene.getComponent<AnimationPlayerComponent>(entity);
+    AnimationPlayerLayer base;
+    base.name = "Base Layer";
+    AnimationPlayerLayer wave;
+    wave.name = "Wave";
+    wave.mask = dir + "leftarm.mask";
+    wave.meshSpaceRotation = true;
+    component.layers = {base, wave};
+    AnimationPlayerClip walkEntry;
+    walkEntry.clip = hero + "#Walk";
+    walkEntry.retarget = true;
+    AnimationPlayerClip waveEntry;
+    waveEntry.clip = hero + "#Wave 2";
+    waveEntry.retarget = true;
+    waveEntry.layer = 1;
+    component.clips = {walkEntry, waveEntry};
+    component.playAutomatically = false;
+    AnimationPlayer player(&scene, entity);
+    player.play("Walk");
+    player.play("Wave 2");
+    step(0.0);
+    step(0.3);
+    ASSERT_TRUE(player.isLoaded()) << player.getStateInfo("Wave 2").error;
+    const anim::PlayerPoseScratch& scratch = component.runtime->scratch;
+    ASSERT_EQ(scratch.meshBoundary.size(), 2u);
+    ASSERT_FALSE(scratch.meshBoundary[1].empty()) << "the arm mask starts at the left shoulder";
+
+    const anim::HumanoidSlots slots = anim::resolveHumanoidSlots(&scene, entity);
+    ASSERT_TRUE(slots.valid) << slots.error;
+    const Entity shoulder = slots.entities[(size_t)boneIndex(HumanBone::LeftShoulder)];
+    const Entity upperArm = slots.entities[(size_t)boneIndex(HumanBone::LeftUpperArm)];
+    ASSERT_NE(shoulder, NULL_ENTITY);
+    const Entity offset = scene.createEntity();
+    scene.setEntityName(offset, "Offset");
+    Transform turned;
+    turned.rotation = Quaternion(0.96592583f, 0.0f, 0.0f, 0.25881905f);     // 30 degrees about Z
+    scene.addComponent<Transform>(offset, turned);
+    scene.addEntityChild(scene.getComponent<Transform>(shoulder).parent, offset, false);
+    scene.addEntityChild(offset, shoulder, false);
+    step(0.0);
+    EXPECT_NE(std::find(scratch.meshParents.begin(), scratch.meshParents.end(), std::make_pair(shoulder, offset)), scratch.meshParents.end())
+        << "the table's rig has the shoulder under Offset";
+    const Quaternion moved[] = {scene.getComponent<Transform>(shoulder).rotation, scene.getComponent<Transform>(upperArm).rotation};
+
+    // a table built after the move: the option off and on again
+    player.setLayerMeshSpaceRotation(1, false);
+    step(0.0);
+    player.setLayerMeshSpaceRotation(1, true);
+    step(0.0);
+    EXPECT_LT(degreesBetween(moved[0], scene.getComponent<Transform>(shoulder).rotation), 0.01) << "the shoulder";
+    EXPECT_LT(degreesBetween(moved[1], scene.getComponent<Transform>(upperArm).rotation), 0.01) << "the upper arm";
+}
+
 // Mesh Space Rotation (docs/specs/mesh-space-rotation.md AC9, R12): the hero's wave, retargeted on
 // the robot, on an Animator layer masked from the robot's spine, over a base pose that turns the
 // robot's hips 90 degrees. With the option every bone of the mask has the wave's rotation

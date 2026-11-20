@@ -224,7 +224,16 @@ namespace {
         std::vector<anim::PoseMeshSum>().swap(scratch.meshSums);
         std::vector<Quaternion>().swap(scratch.meshBelow);
         std::vector<Quaternion>().swap(scratch.meshRig);
+        std::vector<std::pair<Entity, Entity>>().swap(scratch.meshParents);
         scratch.meshSerial++;
+    }
+
+    // every bone of the table's rig still under the Transform parent it was built with
+    bool meshSpaceHierarchyHolds(Scene* scene, const anim::PlayerPoseScratch& scratch){
+        for (const std::pair<Entity, Entity>& bone : scratch.meshParents){
+            if (!scene->isEntityCreated(bone.first) || parentOf(scene, bone.first) != bone.second) return false;
+        }
+        return true;
     }
 
     // The node table on the scratch's slot table for `masks` (per layer: the mask it runs the pass
@@ -248,6 +257,8 @@ namespace {
         const anim::PlayerRig rig = anim::playerRig(scene, root, animated);
         const std::vector<Entity>& bones = rig.bones;
         const std::vector<int>& parents = rig.parents;
+        scratch.meshParents.reserve(bones.size());
+        for (Entity bone : bones) scratch.meshParents.push_back({bone, parentOf(scene, bone)});
 
         std::vector<std::vector<uint16_t>> boundary(masks.size());
         std::vector<bool> needed(bones.size(), false);
@@ -586,6 +597,18 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
         for (anim::LayerRuntime& layer : runtime.layers) layer.maskEntitiesValid = false;
     }
 
+    // a hierarchy change that moved a bone of the Mesh Space Rotation table's rig while the
+    // bindings still resolve (a humanoid's bone, a reparent that keeps the paths): the masks'
+    // entries are bound again, which rebuilds the table below
+    const uint64_t hierarchy = scene->hierarchyRevision();
+    if (runtime.meshSpaceStamp.size() > 2 && runtime.meshSpaceStamp[2] != hierarchy){
+        if (meshSpaceHierarchyHolds(scene, runtime.scratch)){
+            runtime.meshSpaceStamp[2] = hierarchy;
+        }else{
+            for (anim::LayerRuntime& layer : runtime.layers) layer.maskEntitiesValid = false;
+        }
+    }
+
     // the masks' transform entries on the root (with the bindings)
     for (anim::LayerRuntime& layer : runtime.layers){
         if (layer.mask && !layer.maskEntitiesValid){
@@ -595,8 +618,9 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
         }
     }
 
-    // Mesh Space Rotation's node table (R16), again when the slots, the humanoid rig or a mask
-    // of a layer that runs the pass changed; nothing while no layer does
+    // Mesh Space Rotation's node table (R16), again when the slots, the humanoid rig, the
+    // hierarchy under its rig or a mask of a layer that runs the pass changed; nothing while no
+    // layer does
     {
         std::vector<uint64_t>& stamp = runtime.meshSpaceStamp;
         bool any = false;
@@ -607,24 +631,25 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
                 std::vector<uint64_t>().swap(stamp);
             }
         }else{
-            const size_t size = 2 + 2 * runtime.layers.size();
-            bool same = stamp.size() == size && stamp[0] == runtime.scratchSerial && stamp[1] == runtime.humanoidRevision;
+            const size_t size = 3 + 2 * runtime.layers.size();
+            bool same = stamp.size() == size && stamp[0] == runtime.scratchSerial && stamp[1] == runtime.humanoidRevision && stamp[2] == hierarchy;
             for (size_t l = 0; same && l < runtime.layers.size(); l++){
                 const anim::LayerRuntime& layer = runtime.layers[l];
                 const bool runs = layerRunsMeshSpace(l, layer) && layer.mask;
-                same = stamp[2 + 2 * l] == (runs ? (uint64_t)(uintptr_t)layer.mask.get() : 0) && stamp[3 + 2 * l] == (runs ? layer.maskEntitiesSerial : 0);
+                same = stamp[3 + 2 * l] == (runs ? (uint64_t)(uintptr_t)layer.mask.get() : 0) && stamp[4 + 2 * l] == (runs ? layer.maskEntitiesSerial : 0);
             }
             if (!same){
                 stamp.assign(size, 0);
                 stamp[0] = runtime.scratchSerial;
                 stamp[1] = runtime.humanoidRevision;
+                stamp[2] = hierarchy;
                 std::vector<std::pair<const anim::AvatarMaskDef*, const std::vector<Entity>*>> masks(runtime.layers.size(), {nullptr, nullptr});
                 for (size_t l = 0; l < runtime.layers.size(); l++){
                     const anim::LayerRuntime& layer = runtime.layers[l];
                     if (!(layerRunsMeshSpace(l, layer) && layer.mask)) continue;
                     masks[l] = {layer.mask.get(), &layer.maskEntities};
-                    stamp[2 + 2 * l] = (uint64_t)(uintptr_t)layer.mask.get();
-                    stamp[3 + 2 * l] = layer.maskEntitiesSerial;
+                    stamp[3 + 2 * l] = (uint64_t)(uintptr_t)layer.mask.get();
+                    stamp[4 + 2 * l] = layer.maskEntitiesSerial;
                 }
                 buildMeshSpaceTable(scene, entity, runtime.scratch, masks, runtime.humanoid.get(), runtime.rest);
             }
