@@ -109,9 +109,9 @@ the option off:
 - In Preview or Play, the line under it names the GameObjects it applies at ("Applies at: B-spine"
   for a mask from the spine, "Applies at: B-thigh.L, B-thigh.R" for a mask with Body on and the legs
   off); otherwise it says "Applies where the mask starts or stops".
-- When a bound Animator has an Override layer above 0 with weight whose mask starts at the torso (a
-  humanoid's Spine, Chest or Upper Chest; on a generic rig, a bone under one the mask leaves out)
-  and the option is off, the Animator's Inspector and the Animator window's Problems strip warn:
+- When a bound Animator has an Override layer above 0 with weight whose mask starts inside the
+  torso (at a torso bone under one it leaves out: a humanoid's Hips, Spine, Chest or Upper Chest;
+  on a generic rig, bones named like them, such as `B-hips` and `B-spine`) and the option is off, the Animator's Inspector and the Animator window's Problems strip warn:
   "Layer 'Upper Body': the mask starts at Spine, so the torso follows the base layer's hips. Turn on
   Mesh Space Rotation to keep this layer's direction." **Fix** turns the option on (one undo step);
   a click on the warning in the strip selects the layer. Nothing is ever turned on by itself; the

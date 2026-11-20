@@ -16,6 +16,7 @@
 #include "animation/AnimatorAssetIO.h"
 #include "animation/AnimatorDebug.h"
 #include "animation/AnimatorInstance.h"
+#include "animation/AvatarMaskWeights.h"
 #include "animation/CompiledController.h"
 #include "pose/HumanBones.h"
 #include "component/AnimatorComponent.h"
@@ -513,6 +514,7 @@ TEST(AnimatorMeshSpaceWarning, NamesTheTorsoWhereTheMaskStarts){
     instance.humanoid.valid = true;
     for (pose::HumanBone slot : {pose::HumanBone::Spine, pose::HumanBone::Chest, pose::HumanBone::UpperChest}){
         instance.humanoid.slotBones.fill(-1);
+        instance.humanoid.slotBones[(size_t)pose::HumanBone::Hips] = 0;
         instance.humanoid.slotBones[(size_t)slot] = 1;
         warnings = meshSpaceWarnings(def, instance);
         ASSERT_EQ(warnings.size(), 1u) << pose::humanBoneName(slot);
@@ -521,9 +523,10 @@ TEST(AnimatorMeshSpaceWarning, NamesTheTorsoWhereTheMaskStarts){
                                        ", so the torso follows the base layer's hips. Turn on Mesh Space Rotation to keep this layer's direction.");
     }
     instance.humanoid.slotBones.fill(-1);
+    instance.humanoid.slotBones[(size_t)pose::HumanBone::Hips] = 0;
     instance.humanoid.slotBones[(size_t)pose::HumanBone::LeftUpperLeg] = 1;
     EXPECT_TRUE(meshSpaceWarnings(def, instance).empty()) << "a humanoid's boundary outside the torso";
-    instance.humanoid.slotBones.fill(-1);
+    instance.humanoid.slotBones[(size_t)pose::HumanBone::LeftUpperLeg] = -1;
     instance.humanoid.slotBones[(size_t)pose::HumanBone::Spine] = 1;
 
     ControllerDef changed = def;
@@ -537,4 +540,56 @@ TEST(AnimatorMeshSpaceWarning, NamesTheTorsoWhereTheMaskStarts){
     instance.layers[1].weight = 1.0f;
     instance.bound = false;
     EXPECT_TRUE(meshSpaceWarnings(def, instance).empty()) << "not bound";
+}
+
+// R29's one rule: the warning shows only where the mask starts at a torso bone under a torso bone
+// it leaves out (by humanoid slot, else by name), named at the first such start in rig order. A
+// mask that takes the hips under B-root or Armature, or one from an arm, splits no torso
+TEST(AnimatorMeshSpaceWarning, OnlyWhereTheMaskSplitsTheTorso){
+    ControllerDef def;
+    def.layers.resize(2);
+    def.layers[0].name = "Base Layer";
+    def.layers[1].name = "Upper Body";
+    auto rigged = [&](const std::vector<std::pair<std::string, int>>& bones){
+        AnimatorInstance instance;
+        instance.controller = compileController(def);
+        instance.bound = true;
+        for (const auto& entry : bones){
+            RigBone bone;
+            bone.name = entry.first;
+            bone.parent = entry.second;
+            instance.rig.bones.push_back(bone);
+            instance.rig.parents.push_back(entry.second);
+        }
+        instance.layers.resize(2);
+        instance.layers[1].weight = 1.0f;
+        return instance;
+    };
+    auto warned = [&](AnimatorInstance& instance, const std::vector<float>& mask){
+        instance.layers[1].mask = mask;
+        anim::maskBoundaryBones(mask.data(), instance.rig.parents.data(), mask.size(), -1, instance.layers[1].boundaryBones);
+        const std::vector<MeshSpaceWarning> warnings = meshSpaceWarnings(def, instance);
+        if (warnings.empty()) return std::string();
+        const std::string& message = warnings[0].message;
+        const size_t at = message.find("starts at ");
+        return at == std::string::npos ? message : message.substr(at + 10, message.find(',', at) - at - 10);
+    };
+
+    // a B- rig without a humanoid: B-root > B-hips > B-thigh.L, B-hips > B-spine > B-chest > B-shoulder.L
+    AnimatorInstance generic = rigged({{"B-root", -1}, {"B-hips", 0}, {"B-thigh.L", 1}, {"B-spine", 1}, {"B-chest", 3}, {"B-shoulder.L", 4}});
+    EXPECT_EQ(warned(generic, {0, 1, 1, 1, 1, 1}), "") << "the whole body under B-root: the hips are in the mask";
+    EXPECT_EQ(warned(generic, {0, 0, 0, 0, 0, 1}), "") << "an arm mask: the torso is not split";
+    EXPECT_EQ(warned(generic, {0, 0, 0, 1, 1, 1}), "B-spine");
+    EXPECT_EQ(warned(generic, {0, 0, 1, 1, 1, 1}), "B-spine") << "the first start that splits the torso, not the first start";
+
+    // a humanoid: Armature > Hips > Spine > LeftShoulder
+    AnimatorInstance human = rigged({{"Armature", -1}, {"Hips", 0}, {"Spine", 1}, {"LeftShoulder", 2}});
+    human.humanoid.valid = true;
+    human.humanoid.slotBones.fill(-1);
+    human.humanoid.slotBones[(size_t)pose::HumanBone::Hips] = 1;
+    human.humanoid.slotBones[(size_t)pose::HumanBone::Spine] = 2;
+    human.humanoid.slotBones[(size_t)pose::HumanBone::LeftShoulder] = 3;
+    EXPECT_EQ(warned(human, {0, 1, 1, 1}), "") << "the whole body under Armature";
+    EXPECT_EQ(warned(human, {0, 0, 0, 1}), "") << "an arm mask";
+    EXPECT_EQ(warned(human, {0, 0, 1, 1}), "Spine");
 }

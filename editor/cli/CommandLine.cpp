@@ -6,6 +6,7 @@
 #include "animation/ClipOptimize.h"
 #include "animation/ClipStatistics.h"
 #include "animation/ModelSubClips.h"
+#include "pose/HumanoidMap.h"
 #include "util/SHA1.h"
 #include "media/VideoFormats.h"
 #include "htmlui/compat/CompatApi.h"
@@ -3027,10 +3028,12 @@ VideoCheck checkVideoPlayers(const fs::path& root) {
     return check;
 }
 
-// The first weighted path entry of a paths-only mask whose parent path weighs 0 by the mask's
-// rule (its entry, else the nearest ancestor's with children, else the default): where a masked
-// layer starts below a bone it leaves out ("" when none; an entry at the masked root's top has
-// no parent bone)
+// The shallowest weighted path entry of a paths-only mask that splits the torso: its parent path
+// weighs 0 by the mask's rule (its entry, else the nearest ancestor's with children, else the
+// default), and both names are torso bones by the humanoid auto-detect's reading
+// (pose::isTorsoBoneName: "Hips/Spine", "B-hips/B-spine"). A mask that takes the hips under
+// `Armature` or `B-root`, or starts at an arm, does not ("" when none; an entry at the masked
+// root's top has no parent bone)
 std::string maskEntryUnderUnweightedParent(const anim::AvatarMaskDef& mask) {
     auto weightOf = [&](const std::string& path) {
         const int own = mask.findPath(path);
@@ -3042,11 +3045,24 @@ std::string maskEntryUnderUnweightedParent(const anim::AvatarMaskDef& mask) {
         const int top = mask.findPath("");
         return top >= 0 && mask.paths[(size_t)top].children ? mask.paths[(size_t)top].weight : mask.defaultWeight;
     };
+    auto lastName = [](const std::string& path) {
+        const size_t slash = path.rfind('/');
+        return slash == std::string::npos ? path : path.substr(slash + 1);
+    };
+    std::string found;
+    size_t foundDepth = 0;
     for (const anim::MaskPathDef& entry : mask.paths) {
         const size_t slash = entry.path.rfind('/');
-        if (entry.weight > 0.0f && slash != std::string::npos && slash > 0 && weightOf(entry.path.substr(0, slash)) == 0.0f) return entry.path;
+        if (!(entry.weight > 0.0f) || slash == std::string::npos || slash == 0) continue;
+        const std::string parent = entry.path.substr(0, slash);
+        if (weightOf(parent) != 0.0f || !pose::isTorsoBoneName(lastName(parent)) || !pose::isTorsoBoneName(lastName(entry.path))) continue;
+        const size_t depth = (size_t)std::count(entry.path.begin(), entry.path.end(), '/');
+        if (found.empty() || depth < foundDepth) {
+            found = entry.path;
+            foundDepth = depth;
+        }
     }
-    return std::string();
+    return found;
 }
 
 // Avatar Masks (.mask: the format) and Animator Controllers (.controller: the format and

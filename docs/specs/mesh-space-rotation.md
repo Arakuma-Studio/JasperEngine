@@ -223,8 +223,9 @@ Ideas only. Nothing is vendored or copied.
 - **R28.** Editing it is one project undo step named "Edit Layer <name>", through the window's existing `stage`
   path, like Weight and Blending.
 - **R29.** **The warning.** When a bound Animator has an Override layer above 0 with the option off, weight above 0,
-  and at least one boundary bone that is a humanoid Spine, Chest or Upper Chest slot, or, with no humanoid, the
-  child of the bone its mask leaves out, then it shows a warning:
+  and a mask that starts at a torso bone under a torso bone it leaves out (by humanoid slot: Hips, Spine, Chest,
+  Upper Chest; with no humanoid, by name through the humanoid auto-detection), then it shows a warning, naming the
+  first such start in rig order:
   "Layer 'Upper Body': the mask starts at Spine, so the torso follows the base layer's hips. Turn on Mesh Space
   Rotation to keep this layer's direction."
   - It appears in the Animator component Inspector and the Animator window's Problems strip. Clicking it in the
@@ -270,8 +271,9 @@ Ideas only. Nothing is vendored or copied.
     `edit_animator_controller` call that turns the option on.
   - It runs on the main thread in slices, as a job when it outlasts the usual limit, like its existing checks.
 - **R37.** **Static check.** `check --anims` warns `anim-mask-root-inherits` for an Override layer above 0, option
-  off, whose mask is a `paths` mask with a weighted entry whose parent path weighs 0. It cannot know the rig, so the
-  message says the warning is about the mask's shape. `docs/mcp/checks.md` lists the code.
+  off, whose mask is a `paths` mask with a weighted entry whose parent path weighs 0, both of them torso names as the
+  humanoid auto-detection reads them (R29's rule by name). It cannot know the rig, so the message says the warning
+  is about the mask's shape. `docs/mcp/checks.md` lists the code.
 - **R38.** **Coverage.** `get_animation {entity}`'s `mask_coverage` lists each layer's `boundary_bones` and its
   `mesh_space_rotation`, so an agent can see where the pass applies without running a check.
 - **R39.** **Player.** Agents set the Player's field through
@@ -436,6 +438,14 @@ player:setLayerMeshSpaceRotation("Upper Body", true)
   layer's hips. A path mask on from the root of a rig with a node above the hips (`Armature`) starts at that node,
   so its legs follow the hips: give the mask the hips and below to keep the run's legs. The rule stays
   `anim::maskBoundaryBones`, shared by the Animator's bind, the Animation Player's composer and the editor's line.
+- **R29, R37: one torso rule.** The warning first fired for any boundary bone under a bone the mask leaves out on a
+  rig without a humanoid, and the static check for any weighted entry under an unweighted parent, so a mask that
+  takes the hips under `Armature` or `B-root` (`Armature/Hips`, `Rig/B-root/B-hips`: the whole body) warned that
+  "the mask starts at Hips". Both now share one rule: the mask starts at a torso bone under a torso bone it leaves
+  out, by humanoid slot on a bound humanoid, else by name (`pose::isTorsoBoneName`, the auto-detection's reading:
+  `B-hips`, `mixamorig:Spine1`). The start must be a torso bone too, so a mask from an arm (the shoulder under the
+  chest) does not warn that the torso follows the base layer's hips, on a humanoid as before and now on a generic
+  rig. The message names the first such start in rig order (the static check: the shallowest entry).
 - **R14: "rebind" is a load of the controller.** The Lua override resets when the controller loads again (another
   controller, or the same file changed), where the layers' runtime state is rebuilt. It survives a rig rebind
   after a hierarchy change, like `setLayerWeight`, so a script's call before the first bind is not lost.
