@@ -1959,11 +1959,11 @@ std::vector<std::pair<std::string, Entity>> boundTargets(Project* project, Scene
     return targets;
 }
 
-// a masked layer's coverage of what its clips animate (the Inspector's Bindings line); with
-// `boundary`, the GameObjects where Mesh Space Rotation applies as paths from `root` (the
+// a masked layer's coverage of what its clips animate (the Inspector's Bindings line); with a
+// `player`, the GameObjects where Mesh Space Rotation applies on its rig as paths from `root` (the
 // Animation Player's Inspector line: an Animator lists its bound rig's instead)
 Json maskCoverageEntry(Project* project, Scene* scene, Entity root, const std::string& layer, const std::string& mask,
-                       const std::vector<std::string>& clips, bool boundary = false) {
+                       const std::vector<std::string>& clips, const AnimationPlayerComponent* player = nullptr) {
     Json entry = {{"layer", layer}};
     std::string error;
     std::shared_ptr<AnimatorAssetDocument> document = AnimatorAssetDocument::open(project, mask, &error);
@@ -1985,11 +1985,12 @@ Json maskCoverageEntry(Project* project, Scene* scene, Entity root, const std::s
         warnings.push_back({{"path", "body_parts"}, {"message", "the root has no humanoid rig (" + result.rigError + "): the body parts do not apply"}});
     }
     entry["warnings"] = warnings;
-    if (boundary) {
+    if (player) {
         std::map<Entity, std::string> pathOf;
         for (const std::pair<std::string, Entity>& path : anim::descendantPaths(scene, root)) pathOf[path.second] = path.first;
         Json bones = Json::array();
-        for (Entity bone : animlayersui::meshSpaceBoundary(scene, root, document->mask())) bones.push_back(pathOf[bone]);
+        const std::vector<Entity> animated = animlayersui::playerAnimatedTargets(project, scene, root, *player);
+        for (Entity bone : animlayersui::meshSpaceBoundary(scene, root, document->mask(), animated)) bones.push_back(pathOf[bone]);
         entry["boundary_bones"] = bones;
     }
     return entry;
@@ -2185,7 +2186,7 @@ void addPlayerLayers(Project* project, SceneProject* scene, Entity root, Json& i
     Json coverage = Json::array();
     for (size_t l = 0; l < layers.size(); l++) {
         if (layers[l].mask.empty()) continue;
-        Json entry = maskCoverageEntry(project, engineScene, root, layers[l].name, layers[l].mask, playerClips(player, (int)l), true);
+        Json entry = maskCoverageEntry(project, engineScene, root, layers[l].name, layers[l].mask, playerClips(player, (int)l), &player);
         entry["mesh_space_rotation"] = layers[l].meshSpaceRotation;
         coverage.push_back(entry);
     }
