@@ -43,6 +43,7 @@ namespace {
         RecordOptions options;
         std::shared_ptr<RecordedInput> buffer;
         uint64_t startFrames = 0;
+        uint32_t truncatedFrame = 0;     // the frame the cap stopped it on: where its replay ends
         size_t bytes = 0;
         bool truncated = false;
         std::vector<std::string> probePaths;
@@ -335,6 +336,7 @@ bool InputRecorder::record(const RecordedEvent& event, std::string_view text){
             } else if (s.bytes + sizeof(RecordedEvent) + (text.empty() ? 0 : text.size() + sizeof(uint32_t)) > s.options.maxBytes) {
                 s.recording = false;
                 s.truncated = true;
+                s.truncatedFrame = frame;
                 buffer.header.truncated = true;
                 updateActive(s, active);
                 Log::warn("Input recording stopped at frame %u: it reached its cap of %zu bytes (the file is marked truncated)",
@@ -402,6 +404,7 @@ std::shared_ptr<RecordedInput> InputRecorder::end(){
     std::shared_ptr<RecordedInput> buffer = std::move(s.buffer);
     buffer->header.checkpoints = std::move(s.checkpoints);
     buffer->header.truncated = s.truncated;
+    buffer->header.frames = s.truncated ? s.truncatedFrame : static_cast<uint32_t>(Engine::getGameFrames() - s.startFrames);
     s.checkpoints.clear();
     s.recording = false;
     s.buffer.reset();

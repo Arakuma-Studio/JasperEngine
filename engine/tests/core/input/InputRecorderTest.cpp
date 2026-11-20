@@ -201,6 +201,35 @@ TEST_F(InputRecorderTest, ReplayHitsTheSameFrameEdges){
     EXPECT_TRUE(Input::getKeyUp(D_KEY_P));
 }
 
+TEST_F(InputRecorderTest, ReplayLastsToTheStopFrame){
+    std::string error;
+    ASSERT_TRUE(InputRecorder::begin(options(), error)) << error;
+    runFrame();
+    Engine::systemKeyDown(D_KEY_SPACE, false, 0);
+    Engine::systemKeyUp(D_KEY_SPACE, false, 0);
+    for (int i = 1; i < 10; i++)
+        runFrame();
+    std::shared_ptr<ParsedScript> recorded = stop();
+    EXPECT_EQ(recorded->header.frames, 10u);
+    std::string text;
+    ASSERT_TRUE(writeScript(*recorded, text, error)) << error;
+    auto script = std::make_shared<ParsedScript>();
+    ASSERT_TRUE(parseScript(text, *script, error)) << error;
+    EXPECT_EQ(script->header.frames, 10u);
+    EXPECT_EQ(script->lastFrame(), 10u);
+
+    // its press is on frame 1, yet it runs the ten frames recorded, as long as the recording ran
+    Input::resetFrameState();
+    auto player = std::make_shared<ScriptPlayer>(script, PlayerHost(), PlayOptions());
+    ScriptRunner::start(player);
+    for (int i = 0; i < 10; i++)
+        runFrame();
+    EXPECT_FALSE(player->finished());
+    runFrame();
+    EXPECT_TRUE(player->finished());
+    EXPECT_TRUE(player->report().done);
+}
+
 TEST_F(InputRecorderTest, IdleCostsNothing){
     ASSERT_FALSE(InputRecorder::isActive());
     // the entry points' own first-call setup, before counting
@@ -247,6 +276,7 @@ TEST_F(InputRecorderTest, StopsAtTheBufferCap){
     std::shared_ptr<RecordedInput> recorded = InputRecorder::end();
     ASSERT_TRUE(recorded);
     EXPECT_TRUE(recorded->header.truncated);
+    EXPECT_EQ(recorded->header.frames, 40u);   // its replay ends where the cap stopped it
     EXPECT_EQ(recorded->events(), 64u * 1024u / sizeof(RecordedEvent));
 }
 

@@ -82,6 +82,7 @@ namespace jasperengine::input {
         std::vector<std::string> probes;
         std::vector<Checkpoint> checkpoints;
         bool truncated = false;
+        uint32_t frames = 0;            // recordings: update frames from start to stop (0: unknown, to the last event)
         ScriptJson extra = ScriptJson::object();   // unknown keys, kept by tools that rewrite a file (R1)
     };
 

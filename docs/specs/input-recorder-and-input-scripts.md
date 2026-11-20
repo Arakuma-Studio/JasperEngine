@@ -125,7 +125,9 @@ verify with checkpoints. No code.
   (`recording` | `script`) and `events`; optional `fixed_fps` (default 60), `space` (default
   `normalized` for recordings, `canvas` for scripts), `gap_frames` (scripts, default 1), and for
   recordings `start` (`play` | `now`), `seed`, `scene`, `canvas`, `simulate_touch`, `platform`,
-  `engine_version`, `probes`, `checkpoints`, `truncated`. Extension `.input.json`. Unknown keys are
+  `engine_version`, `probes`, `checkpoints`, `truncated`, `frames` (the update frames from start to
+  stop: a replay runs that long, not only to its last event; missing in older files: to the last
+  event or checkpoint). Extension `.input.json`. Unknown keys are
   kept by tools that rewrite a file. Field reference: §6.1.
 - **R2 Events.** Each event is a `send_input` event object (same keys, same meanings). Recordings
   stamp every event with `frame` (non-decreasing); scripts stamp none (each event follows the
@@ -360,6 +362,7 @@ verify with checkpoints. No code.
   "engine_version": "…",
   "probes": ["Player", "Enemies/Bat (3)"],
   "truncated": false,
+  "frames": 600,
   "events": [
     {"frame": 0,  "type": "key", "key": "right", "action": "down"},
     {"frame": 42, "type": "key", "key": "right", "action": "up"},
@@ -632,6 +635,9 @@ wait until clicked, shot). Red controls are named per criterion.
 - **Writer signature.** `writeScript` is `bool writeScript(const ParsedScript&, std::string& out,
   std::string& error)`: the steps of a script's composite events (a drag's moves, a relative mouse
   move) have no single-event form, so writing them fails instead of producing a different file.
+- **Recording length.** A recording stores `frames` (R1), the frames from `start()` to `stop()` (to
+  the cap's frame when truncated), and replays that long; without it a replay ended on its last
+  event, cutting the idle tail a recording was stopped after. An optional key, no version bump.
 - **Recorder buffer.** `InputRecorder::end()` returns a `RecordedInput` (the swapped record chunks);
   `toScript()` turns it into a `ParsedScript` on a job, so Stop stays O(1) on the main thread (R15).
 - **Parity (AC3).** The editor keeps no interpreter of its own: `send_input` parses with

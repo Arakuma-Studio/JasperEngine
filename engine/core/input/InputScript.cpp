@@ -780,7 +780,7 @@ bool ScriptAction::operator==(const ScriptAction& other) const{
 
 uint32_t ParsedScript::lastFrame() const{
     if (header.kind == ScriptKind::Recording) {
-        uint32_t last = header.checkpoints.empty() ? 0 : header.checkpoints.back().frame;
+        uint32_t last = std::max(header.frames, header.checkpoints.empty() ? 0u : header.checkpoints.back().frame);
         for (const ScriptAction& action : actions)
             last = std::max(last, action.frame);
         return last;
@@ -977,6 +977,13 @@ namespace {
         }
         header.simulateTouch = root.contains("simulate_touch") && root["simulate_touch"].is_boolean() && root["simulate_touch"].get<bool>();
         header.truncated = root.contains("truncated") && root["truncated"].is_boolean() && root["truncated"].get<bool>();
+        if (root.contains("frames")) {
+            if (!root["frames"].is_number_unsigned() || root["frames"].get<uint64_t>() > UINT32_MAX) {
+                error = "frames must be the recording's length in frames (a whole number, 0 or more)";
+                return false;
+            }
+            header.frames = root["frames"].get<uint32_t>();
+        }
         if (root.contains("probes")) {
             for (const ScriptJson& p : root["probes"]) {
                 if (!p.is_string()) {
@@ -1017,7 +1024,7 @@ namespace {
         }
         static const char* const known[] = {"format", "version", "kind", "start", "fixed_fps", "space", "gap_frames", "seed",
                                             "scene", "platform", "engine_version", "canvas", "simulate_touch", "probes",
-                                            "checkpoints", "truncated", "events"};
+                                            "checkpoints", "truncated", "frames", "events"};
         for (auto it = root.begin(); it != root.end(); ++it) {
             if (std::find(std::begin(known), std::end(known), it.key()) == std::end(known))
                 header.extra[it.key()] = it.value();
@@ -1230,6 +1237,8 @@ bool writeScript(const ParsedScript& script, std::string& out, std::string& erro
         head["probes"] = h.probes;
     if (recording)
         head["truncated"] = h.truncated;
+    if (recording && h.frames > 0)
+        head["frames"] = h.frames;
     for (auto it = h.extra.begin(); it != h.extra.end(); ++it)
         head[it.key()] = it.value();
 
@@ -1873,12 +1882,12 @@ bool ScriptPlayer::beforeFrame(uint64_t frameIndex){
             return true;
         }
     }
-    // the last action's own frames (a trailing wait) are the run's too; a recording lasts to its
-    // last checkpoint
+    // the last action's own frames (a trailing wait) are the run's too; a recording lasts to the
+    // frame it was stopped on, and to its last checkpoint
     if (!recording && pendingFrames_ > 0)
         return true;
-    const std::vector<Checkpoint>& checkpoints = script_->header.checkpoints;
-    if (recording && !checkpoints.empty() && frameIndex < checkpoints.back().frame)
+    const ScriptHeader& header = script_->header;
+    if (recording && frameIndex < std::max(header.frames, header.checkpoints.empty() ? 0u : header.checkpoints.back().frame))
         return true;
     report_.done = true;
     if (options_.releaseAtEnd)
