@@ -368,8 +368,9 @@ namespace jasperengine::editor {
         void drawRootsConfirmation();
 
     public:
-        // category: a page to show, e.g. "Player"; nullptr keeps the last one.
-        void open(Project* project, const char* category = nullptr);
+        // category: a page to show, e.g. "Player"; nullptr keeps the last one. search: the filter
+        // typed for it ("Size Budgets" shows that row only)
+        void open(Project* project, const char* category = nullptr, const char* search = nullptr);
         void show();
         bool isOpen() const { return m_isOpen; }
         // a native plugin's Lua mock the Create Plugin dialog wrote (to open in the code editor); once

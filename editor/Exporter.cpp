@@ -74,6 +74,10 @@
 #include "texture/CookedTextures.h"
 #include "texture/TextureExport.h"
 #include "model/ModelExport.h"
+#include "cook/BuildReportHistory.h"
+#include "players/PlayerRuntimes.h"
+#include "cook/Reachability.h"
+#include "export/SizeBudget.h"
 #include "pixelart/aseprite/AsepriteImporter.h"
 #include "sprite/SpriteAtlasBuilder.h"
 #include "sprite/SpriteAtlasCook.h"
@@ -101,6 +105,9 @@
 #include <cstring>
 #include <fstream>
 #include <future>
+#include <chrono>
+#include <ctime>
+#include <unordered_map>
 #include <optional>
 #include <iterator>
 #include <limits>
@@ -1419,6 +1426,8 @@ void editor::Exporter::runExport() {
     if (!writeAudioImports()) return;
     buildReport = BuildReport();
     measureBuildContent(getExportProjectRoot());
+    // R13: the content budgets before any compile (a source export is never checked)
+    if (!checkSizeBudgets(true, buildMode ? config.destinationDir : config.targetDir, buildMode ? "compile" : "source")) return;
     if (!writeAssetMap()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyCustomShaderSources()) return;
@@ -3739,30 +3748,164 @@ void editor::Exporter::measureBuildContent(const fs::path& contentRoot) {
         std::error_code ec;
         if (fs::is_directory(contentRoot / tree, ec)) buildReport.addTree(contentRoot / tree, cooked, {}, std::string(tree) + "/");
     }
+    buildReport.leftOut = leftOutSources;
+    std::sort(buildReport.leftOut.begin(), buildReport.leftOut.end(), [](const BuildReportLeftOut& a, const BuildReportLeftOut& b) {
+        return a.source != b.source ? a.source < b.source : a.reason < b.reason;
+    });
 }
 
 void editor::Exporter::measureBuildEngine(const fs::path& root) {
     buildReport.addTree(root, {}, {"engine"});
 }
 
-bool editor::Exporter::writeBuildReport(const fs::path& outputDir, const std::string& method) {
-    buildReport.platform = config.mode == ExportMode::Player ? buildPlatformName(config.platform)
-                         : config.mode == ExportMode::Web ? "web" : config.mode == ExportMode::Desktop ? "desktop" : "source";
+std::string editor::Exporter::buildReportPlatform() const {
+    return config.mode == ExportMode::Player ? buildPlatformName(config.platform)
+         : config.mode == ExportMode::Web ? "web" : config.mode == ExportMode::Desktop ? "desktop" : "source";
+}
+
+void editor::Exporter::mapBuildReportAssets() {
+    const fs::path projectPath = project->getProjectPath();
+    const fs::path assetsSrc = getAssetsSourceDir();
+    // the report names assets relative to the assets root (what `source` and assets/<rel> say);
+    // what lies outside it keeps its project-relative path
+    const std::string assetsPrefix = filterPrefixOf(assetsSrc);
+    auto assetKey = [&assetsPrefix](const std::string& projectRelative) { return reachAssetKey(projectRelative, assetsPrefix); };
+    fs::path luaSrc = config.luaDir;
+    if (!luaSrc.empty() && luaSrc.is_relative()) luaSrc = projectPath / luaSrc;
+    const std::string luaPrefix = luaSrc.empty() ? std::string() : filterPrefixOf(luaSrc);
+
+    std::promise<void> mapped;
+    auto mappedFuture = mapped.get_future();
+    std::vector<ReachEdge> edges;
+    bool indexReady = false;
+    editor::getEditorHost().enqueueMainThreadTask([&]() {
+        AssetDatabase& database = project->getAssetDatabase();
+        std::map<uint32_t, std::string> sceneFiles;
+        for (const SceneProject& scene : project->getScenes())
+            if (!scene.filepath.empty()) sceneFiles[scene.id] = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(scene.filepath));
+        std::map<std::string, std::string> prefabFiles;   // prefabs/<id>.jpfb -> its GUID
+        for (const cook::CookedPrefabInfo& prefab : cookedPrefabs) prefabFiles[prefab.file] = prefab.guid;
+        std::error_code ec;
+        for (BuildReportFile& file : buildReport.files) {
+            file.asset.clear();
+            file.origin.clear();
+            if (!file.source.empty()) {
+                file.asset = file.source;
+            } else if (file.path.rfind("assets/", 0) == 0) {
+                const std::string rel = file.path.substr(7);
+                if (fs::exists(assetsSrc / FileUtils::pathFromUtf8(rel), ec)) file.asset = rel;
+                // an FBX ships as its import beside it
+                else if (rel.size() > 4 && rel.compare(rel.size() - 4, 4, ".glb") == 0 &&
+                         fs::exists(assetsSrc / FileUtils::pathFromUtf8(rel.substr(0, rel.size() - 4)), ec))
+                    file.asset = rel.substr(0, rel.size() - 4);
+            } else if (file.path.rfind("lua/", 0) == 0 && !luaSrc.empty()) {
+                file.asset = assetKey(luaPrefix + file.path.substr(4));
+            } else if (file.path.rfind("scenes/", 0) == 0) {
+                const auto scene = sceneFiles.find((uint32_t)std::strtoul(fs::path(file.path).stem().string().c_str(), nullptr, 10));
+                if (scene != sceneFiles.end()) file.asset = assetKey(scene->second);
+            } else if (file.path.rfind("prefabs/", 0) == 0) {
+                const auto prefab = prefabFiles.find(file.path);
+                if (prefab != prefabFiles.end()) {
+                    const fs::path path = database.getPath(prefab->second);
+                    if (!path.empty()) file.asset = assetKey(FileUtils::pathToGenericUtf8(path));
+                }
+            }
+            if (file.asset.empty()) file.origin = file.category == "engine" ? "engine" : "generated";
+        }
+
+        // R4: the index builds in the background; a build does not wait for it past 30 s
+        AssetIndex& index = project->getAssetIndex();
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (!index.isReady() && std::chrono::steady_clock::now() < deadline) std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        indexReady = index.isReady();
+        if (indexReady) edges = reachEdgesOf(index, database, assetsPrefix);
+        mapped.set_value();
+    });
+    mappedFuture.get();
+
+    if (!indexReady) {
+        buildReport.reachability.reset();
+        warn("W-BUILD-REPORT-INDEX", "the asset index was still building: the report has no Referenced By data; export again once the status "
+                                     "bar's Indexing ends");
+        return;
+    }
+    // R3: project.yaml, then every shipped script, in path order (a C++ script holds no edges of
+    // the index: the scenes' CppScript edges reach it)
+    std::vector<std::string> roots;
+    for (const BuildReportFile& file : buildReport.files)
+        if (!file.asset.empty() && file.category == "scripts") roots.push_back(file.asset);
+    std::sort(roots.begin(), roots.end());
+    roots.erase(std::unique(roots.begin(), roots.end()), roots.end());
+    roots.insert(roots.begin(), assetKey("project.yaml"));
+    buildReport.reachability = computeReachability(edges, roots);
+}
+
+bool editor::Exporter::checkSizeBudgets(bool content, const fs::path& outputDir, const std::string& method) {
+    buildReport.platform = buildReportPlatform();
+    buildReport.method = method;
+    std::string failure;
+    for (const BuildReportBudget& budget : sizebudget::evaluate(settings->getSizeBudgets(), buildReport, content)) {
+        buildReport.budgets.push_back(budget);
+        if (!budget.overBytes()) continue;
+        const std::string text = sizebudget::overText(budget, buildReport);
+        warn("W-SIZE-BUDGET", text);
+        if (failure.empty()) failure = text;
+    }
+    if (failure.empty() || !settings->isSizeBudgetFail()) return true;
+    // the report first, so the failure can be read in the Build Report window (D6)
+    std::error_code ec;
+    fs::create_directories(outputDir, ec);
+    if (!writeBuildReport(outputDir, method, !content)) return false;
+    setError("Size budget: " + failure + (content ? " (the build stopped before the engine was compiled and measured)" : ""));
+    return false;
+}
+
+bool editor::Exporter::writeBuildReport(const fs::path& outputDir, const std::string& method, bool engineMeasured) {
+    buildReport.platform = buildReportPlatform();
     buildReport.method = method;
     buildReport.buildProfile = buildProfile ? buildProfile->name : std::string();
+    const std::time_t now = std::time(nullptr);
+    buildReport.id = BuildReportHistory::newId(project->getProjectPath(), buildReport.platform, method, now);
+    buildReport.created = BuildReportHistory::isoTime(now);
+    buildReport.editorVersion = PlayerRuntimes::editorVersion();
+    mapBuildReportAssets();
+    bool overFail = false;
+    if (engineMeasured && method != "source") {
+        const size_t first = buildReport.budgets.size();
+        for (const BuildReportBudget& budget : sizebudget::evaluate(settings->getSizeBudgets(), buildReport, false)) buildReport.budgets.push_back(budget);
+        for (size_t i = first; i < buildReport.budgets.size(); i++) {
+            if (!buildReport.budgets[i].overBytes()) continue;
+            const std::string text = sizebudget::overText(buildReport.budgets[i], buildReport);
+            warn("W-SIZE-BUDGET", text);
+            if (!overFail && settings->isSizeBudgetFail()) {
+                overFail = true;
+                setError("Size budget: " + text);
+            }
+        }
+    }
     const fs::path file = outputDir / BuildReport::kFileName;
-    std::string error;
-    if (!buildReport.write(file, error)) {
-        setError("Build Report: " + error);
+    const std::string text = buildReport.toText();
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    const io::WriteResult written = io::writeFileAtomic(file, text, options);
+    if (!written.ok()) {
+        setError("Build Report: " + written.message);
         return false;
     }
-    std::lock_guard<std::mutex> lock(progressMutex);
-    result.buildReport = file;
-    result.buildBytes = buildReport.totalBytes;
-    result.buildCategories = buildReport.categories;
+    std::string historyWarning;
+    BuildReportHistory::record(project->getProjectPath(), buildReport, text, historyWarning);
+    if (!historyWarning.empty()) warn("W-BUILD-REPORT-HISTORY", historyWarning);
+    {
+        std::lock_guard<std::mutex> lock(progressMutex);
+        result.buildReport = file;
+        result.buildBytes = buildReport.totalBytes;
+        result.buildCategories = buildReport.categories;
+        result.buildReportId = buildReport.id;
+        result.sizeBudgets = buildReport.budgets;
+    }
     BuildReport::setLast(file);
     Out::info("%s", buildReport.summary().c_str());
-    return true;
+    return !overFail;
 }
 
 void editor::Exporter::walkTree(const fs::path& root, const TreeVisitor& visit, std::error_code& ec) {
@@ -3877,6 +4020,20 @@ bool editor::Exporter::copyAssets() {
     const fs::path nativePluginsRoot = NativePlugins::root(project->getProjectPath()).lexically_normal();
     const std::string filterPrefix = contentFilter.empty() ? std::string() : filterPrefixOf(assetsSrc);
 
+    // build-size-tools R2: what is not shipped as itself, with its bytes (a folder: each file in it)
+    leftOutSources.clear();
+    auto leaveOut = [this](const fs::directory_entry& entry, const fs::path& relPath, bool isDirectory, const char* reason) {
+        std::error_code ec;
+        if (!isDirectory) {
+            leftOutSources.push_back({relPath.generic_string(), (uint64_t)entry.file_size(ec), reason});
+            return;
+        }
+        for (fs::recursive_directory_iterator it(entry.path(), fs::directory_options::skip_permission_denied, ec), end; !ec && it != end; it.increment(ec)) {
+            if (!it->is_regular_file(ec)) continue;
+            leftOutSources.push_back({(relPath / it->path().lexically_relative(entry.path())).generic_string(), (uint64_t)it->file_size(ec), reason});
+        }
+    };
+
     // References are relative to this directory, so its contents become the export root, linked
     // folders included, at the paths the editor reaches them by
     bool failed = false;
@@ -3895,6 +4052,7 @@ bool editor::Exporter::copyAssets() {
 
         // Build Profiles R10, R11: what the profile excludes is neither copied nor packed
         if (!contentFilter.empty() && contentFilter.excludes(filterPrefix + relPath.generic_string())) {
+            leaveOut(entry, relPath, isDirectory, "profile_excluded");
             if (isDirectory) return TreeStep::Skip;
             return removeStale(assetsDst / relPath) ? TreeStep::Enter : stop();
         }
@@ -3920,7 +4078,10 @@ bool editor::Exporter::copyAssets() {
         }
 
         // An .aseprite file ships as its import (copyImportedAssets), never itself
-        if (SpriteSheetPool::isAsepritePath(relPath.generic_string())) return TreeStep::Skip;
+        if (SpriteSheetPool::isAsepritePath(relPath.generic_string())) {
+            if (!isDirectory) leaveOut(entry, relPath, false, "aseprite_import");
+            return TreeStep::Skip;
+        }
 
         // The exporter writes the clips' import settings there (S36)
         if (relPath == AudioImportTable::FILE_NAME) {
@@ -3939,26 +4100,39 @@ bool editor::Exporter::copyAssets() {
 
         // A Title Art document ships only when a Realtime or Glyph Atlas title reads it (its baked
         // PNGs are ordinary textures)
-        if (Util::isTitleArtFile(relPath.generic_string()) && !TitleArtExport::isNeeded(project, relPath.generic_string())) return TreeStep::Enter;
+        if (Util::isTitleArtFile(relPath.generic_string()) && !TitleArtExport::isNeeded(project, relPath.generic_string())) {
+            leaveOut(entry, relPath, isDirectory, "title_art_unused");
+            return TreeStep::Enter;
+        }
         // S87 R25: the sets of the languages the build leaves out
-        if (titleLanguages.droppedFiles.count(relPath.generic_string())) return TreeStep::Enter;
+        if (titleLanguages.droppedFiles.count(relPath.generic_string())) {
+            leaveOut(entry, relPath, isDirectory, "language_dropped");
+            return TreeStep::Enter;
+        }
         // A Procedural Material ships as what it baked: PNGs and a .material (S90 R4)
-        if (Util::isProceduralMaterialFile(entry.path().string())) return TreeStep::Enter;
+        if (Util::isProceduralMaterialFile(entry.path().string())) {
+            leaveOut(entry, relPath, isDirectory, "procedural_material_baked");
+            return TreeStep::Enter;
+        }
 
         // A texture only sprites read, packed in an atlas, ships as the atlas's pages only (S45 R19)
         if (atlasOnlySources.count(relPath.generic_string())) {
+            leaveOut(entry, relPath, isDirectory, "atlas_only");
             return removeStale(assetsDst / relPath) ? TreeStep::Enter : stop();
         }
         // A texture source the cooks replace ships as assets/je-cooked/<family>/ only
         if (cookedTextureSources.count(relPath.generic_string())) {
+            leaveOut(entry, relPath, isDirectory, "cooked_texture");
             return removeStale(assetsDst / relPath) ? TreeStep::Enter : stop();
         }
         // and a bitmap font's sheet, pages or TrueType file inside the font's .jfont (S51 R34)
         if (fontOnlySources.count(relPath.generic_string())) {
+            leaveOut(entry, relPath, isDirectory, "font_only");
             return removeStale(assetsDst / relPath) ? TreeStep::Enter : stop();
         }
         // and a model's as assets/je-cooked/models/ (an FBX's import too, S53)
         if (cookedModelSources.count(relPath.generic_string())) {
+            leaveOut(entry, relPath, isDirectory, "cooked_model");
             if (!removeStale(assetsDst / relPath)) return stop();
             if (FbxImporter::isFbxFile(entry.path())) {
                 fs::path importRelPath = relPath;

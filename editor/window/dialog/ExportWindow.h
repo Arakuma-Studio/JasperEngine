@@ -68,6 +68,11 @@ namespace jasperengine::editor {
         bool m_allowMissingAssets = false;
         bool m_iosSimulator = false;
         bool m_launchDone = false;
+        // the completion page's Build Report, read once per build (a report lists every file)
+        std::filesystem::path m_shownReport;
+        bool m_shownReportLoaded = false;
+        BuildReport m_shownReportData;
+        std::string m_shownReportSince;   // "(+3.2 MB since 2026-11-18 10:15)", "" without an earlier one
         bool m_playerSettingsRequested = false;
         // Nested inside this modal, so it can open without closing Build Settings.
         ScenesWindow m_scenesWindow;

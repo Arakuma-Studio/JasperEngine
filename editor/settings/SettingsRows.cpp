@@ -1492,6 +1492,24 @@ std::vector<Setting> mcpSettingsTable() {
         add(boolSetting("player.strip_engine_code", "Builds leave out the engine modules nothing in the project reaches (HTML UI, video, the runtime "
                         "shader compiler, 3D or 2D physics): a smaller player that behaves the same. Off: every module the settings allow.",
                         [](Project& p) { return p.isStripEngineCode(); }, [](Project& p, bool v) { p.setStripEngineCode(v); }));
+        {
+            Setting s;
+            s.key = "player.size_budgets";
+            s.type = "list";
+            s.description = "Size Budgets: [{platform, category, limit_mb}] checked at export against the Build Report (platform all, "
+                            "desktop or one; category total or one; 1 MB = 1,048,576 bytes); a platform's row replaces the all row.";
+            s.get = [](SettingsContext& ctx) { return sizebudget::toJson(ctx.project()->getSizeBudgets()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                std::vector<SizeBudgetRow> rows;
+                if (!sizebudget::fromJson(value, rows, error)) return false;
+                if (apply) ctx.project()->setSizeBudgets(rows);
+                return true;
+            };
+            add(s);
+        }
+        nameChoice("player.size_budget_action", "When Over Budget: warn (W-SIZE-BUDGET) or fail the build.", {"warn", "fail"},
+                   [](Project& p) { return std::string(p.isSizeBudgetFail() ? "fail" : "warn"); },
+                   [](Project& p, const std::string& v) { p.setSizeBudgetFail(v == "fail"); });
         nameChoice("android.package_format", "Android builds make an App Bundle (aab, for Google Play: one ABI per device), one APK per ABI "
                    "(apk-per-abi), or one universal APK of every selected ABI (apk).", {"aab", "apk-per-abi", "apk"},
                    [](Project& p) { return p.getAndroidProjectSettings().packageFormat; },
@@ -4316,6 +4334,8 @@ const Placement placements[] = {
     {"player.build_method", "Player", "Publishing Settings", "Build Method", "prebuilt compile player"},
     {"player.pack_content", "Player", "Publishing Settings", "Content Pack", "jpak pack"},
     {"player.strip_engine_code", "Player", "Publishing Settings", "Strip Engine Code", "size modules variant smaller"},
+    {"player.size_budgets", "Player", "Publishing Settings", "Size Budgets", "size budget download limit megabytes build report"},
+    {"player.size_budget_action", "Player", "Publishing Settings", "When Over Budget", "size budget download warn fail build"},
     {"android.package_format", "Player", "Android", "Package Format", "android apk aab bundle abi universal split"},
     {"android.keystore_path", "Player", "Android", "Keystore", "android signing key"},
     {"android.keystore_alias", "Player", "Android", "Key Alias", "android signing key"},

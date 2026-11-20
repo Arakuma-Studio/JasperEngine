@@ -348,6 +348,13 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
             report["build_report"] = result.buildReport.string();
             report["build_bytes"] = result.buildBytes;
             report["build_categories"] = result.buildCategories;
+            // build-size-tools R35: the history id and the size budget rows the build met
+            report["build_report_id"] = result.buildReportId;
+            ordered_json budgets = ordered_json::array();
+            for (const BuildReportBudget& budget : result.sizeBudgets)
+                budgets.push_back({{"platform", budget.platform}, {"category", budget.category}, {"limit_bytes", budget.limitBytes},
+                                   {"bytes", budget.bytes}, {"over_bytes", budget.overBytes()}});
+            report["size_budgets"] = budgets;
         }
         if (!ok) report["error"] = error;
         std::printf("%s\n", report.dump(2).c_str());

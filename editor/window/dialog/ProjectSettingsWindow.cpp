@@ -502,6 +502,88 @@ static void helpMarker(const char* desc) {
     }
 }
 
+// Size Budgets (build-size-tools R30): every edit is one step of the project history
+static void applySizeBudgetValue(Project* project, const char* key, const mcp::Json& value, const char* step) {
+    auto* command = new ProjectSettingsValuesCmd(project, {{key, value}}, step);
+    command->setNoMerge();
+    project->getProjectCommandHistory()->addCommand(command);
+}
+
+static void drawSizeBudgetRows(Project* project) {
+    // the limit being typed: applied once, when the field is left
+    static int editingRow = -1;
+    static double editingLimit = 0.0;
+    std::vector<SizeBudgetRow> rows = project->getSizeBudgets();
+    const std::vector<std::string>& platforms = sizebudget::platformNames();
+    const std::vector<std::string>& categories = sizebudget::categoryNames();
+    auto title = [](const std::string& name) {
+        if (name == "all") return std::string("All");
+        if (name == "macos") return std::string("macOS");
+        if (name == "ios") return std::string("iOS");
+        std::string text = name;
+        text[0] = (char)std::toupper((unsigned char)text[0]);
+        return text;
+    };
+    int removed = -1;
+    bool changed = false;
+    if (!rows.empty() && ImGui::BeginTable("##SizeBudgets", 4, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerH)) {
+        ImGui::TableSetupColumn("Platform");
+        ImGui::TableSetupColumn("Category");
+        ImGui::TableSetupColumn("Limit (MB)");
+        ImGui::TableSetupColumn("##remove", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
+        ImGui::TableHeadersRow();
+        for (size_t i = 0; i < rows.size(); i++) {
+            SizeBudgetRow& row = rows[i];
+            ImGui::PushID((int)i);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::BeginCombo("##platform", title(row.platform).c_str())) {
+                for (const std::string& name : platforms)
+                    if (ImGui::Selectable(title(name).c_str(), name == row.platform) && name != row.platform) { row.platform = name; changed = true; }
+                ImGui::EndCombo();
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::BeginCombo("##category", title(row.category).c_str())) {
+                for (const std::string& name : categories)
+                    if (ImGui::Selectable(title(name).c_str(), name == row.category) && name != row.category) { row.category = name; changed = true; }
+                ImGui::EndCombo();
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            double limit = editingRow == (int)i ? editingLimit : row.limitMb;
+            if (ImGui::InputDouble("##limit", &limit, 0.0, 0.0, "%.1f")) {
+                editingRow = (int)i;
+                editingLimit = limit;
+            }
+            UIProbe::item("player.size_budgets.limit." + std::to_string(i));
+            if (ImGui::IsItemDeactivatedAfterEdit() && editingRow == (int)i) {
+                if (editingLimit > 0.0 && editingLimit != row.limitMb) { row.limitMb = editingLimit; changed = true; }
+                editingRow = -1;
+            }
+            ImGui::TableNextColumn();
+            if (ImGui::SmallButton(ICON_FA_XMARK)) removed = (int)i;
+            ImGui::SetItemTooltip("Remove this budget");
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    if (ImGui::SmallButton(ICON_FA_PLUS " Add Budget")) {
+        SizeBudgetRow row;
+        row.limitMb = 100.0;
+        rows.push_back(row);
+        changed = true;
+    }
+    UIProbe::item("player.size_budgets.add");
+    if (removed >= 0) {
+        rows.erase(rows.begin() + removed);
+        changed = true;
+    }
+    if (changed) applySizeBudgetValue(project, "player.size_budgets", sizebudget::toJson(rows),
+                                      removed >= 0 ? "Remove Size Budget" : "Edit Size Budgets");
+}
+
 // Width the value widget gives up so the marker fits beside it.
 static float helpMarkerWidth() {
     return ImGui::CalcTextSize("(?)").x + ImGui::GetStyle().ItemSpacing.x;
@@ -971,7 +1053,7 @@ Texture* ProjectSettingsWindow::findThumbnail(const std::string& path) {
     return nullptr;
 }
 
-void ProjectSettingsWindow::open(Project* project, const char* category) {
+void ProjectSettingsWindow::open(Project* project, const char* category, const char* search) {
     m_isOpen = true;
     if (category) {
         const int index = settingsui::pageIndex(SettingsScope::Project, category);
@@ -980,6 +1062,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
             m_categorySearch[0] = '\0';
         }
     }
+    if (search) std::snprintf(m_categorySearch, sizeof(m_categorySearch), "%s", search);
     m_project = project;
     m_projectNameOriginal = project->getName();
     snprintf(m_projectNameBuffer, sizeof(m_projectNameBuffer), "%s", m_projectNameOriginal.c_str());
@@ -1918,6 +2001,21 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                 endSettingsRow("Builds leave out the engine modules nothing in the project uses (HTML UI, video, the runtime shader "
                                "compiler, 3D or 2D physics): a smaller player that behaves the same. Build Settings shows what is kept and "
                                "why. Turn it off for a script that builds engine names at runtime from pieces.");
+            }
+            if (settingsui::beginRow("player.size_budgets")) {
+                projectBeginSettingsRow("Size Budgets");
+                drawSizeBudgetRows(m_project);
+                endSettingsRow("Checked by every Player build against its Build Report (source exports are not checked). A row for a "
+                               "platform replaces the All row of the same category; 1 MB = 1,048,576 bytes.");
+            }
+            if (settingsui::beginRow("player.size_budget_action")) {
+                projectBeginSettingsRow("When Over Budget");
+                int action = m_project->isSizeBudgetFail() ? 1 : 0;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::Combo("##SizeBudgetAction", &action, "Warn\0Fail Build\0"))
+                    applySizeBudgetValue(m_project, "player.size_budget_action", action == 1 ? "fail" : "warn", "Set When Over Budget");
+                endSettingsRow("Warn: the build finishes with W-SIZE-BUDGET. Fail Build: it stops (content budgets before any compile), "
+                               "keeping its Build Report.");
             }
 
             ImGui::EndTable();
