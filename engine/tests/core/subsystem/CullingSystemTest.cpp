@@ -367,7 +367,7 @@ TEST_F(CullingGroupTest, FollowEraseAndQuery){
                 auto check = [&](const std::vector<uint32_t>& expected, uint32_t n){
                     const size_t want = expected.size() > first ? expected.size() - first : 0;
                     ASSERT_EQ(n, want);
-                    for (uint32_t k = 0; k < n; k++) EXPECT_EQ(out[k], expected[first + k]);
+                    for (uint32_t k = 0; k < n; k++) { EXPECT_EQ(out[k], expected[first + k]); }
                 };
                 check(expectVisible, group.queryIndices(visible, out, first));
                 check(expectBand, group.queryIndices(band, out, first));
@@ -551,7 +551,7 @@ TEST_F(SimulationCullingTest, FirstEvaluationBeforeFirstStep){
         EXPECT_EQ(c.reason, SimulationCullReason::GroundNotLoaded);
     }
     step();
-    for (Entity entity : bodies) EXPECT_NEAR(y(entity), 10.0f, 1e-4f);
+    for (Entity entity : bodies) { EXPECT_NEAR(y(entity), 10.0f, 1e-4f); }
     EXPECT_EQ(culling->getStats().groundNotLoaded, 500u);
 }
 
@@ -565,7 +565,7 @@ TEST_F(SimulationCullingTest, TransitionsArePaced){
         objects.push_back(entity);
     }
     culling->evaluateNow();
-    for (Entity entity : objects) ASSERT_EQ(scene->getComponent<SimulationCullingComponent>(entity).state, SimulationState::Full);
+    for (Entity entity : objects) { ASSERT_EQ(scene->getComponent<SimulationCullingComponent>(entity).state, SimulationState::Full); }
     moveTo(eye, Vector3(-1000, 0, 0));
     frame();
     EXPECT_EQ(culling->getStats().culled, 64u);

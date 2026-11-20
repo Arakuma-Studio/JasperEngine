@@ -426,8 +426,9 @@ TEST_F(ConsoleCommands, CompletionOfNamesArgsAndCustom){
     EXPECT_EQ(askedIndex, 1);
     EXPECT_EQ(askedWords, (std::vector<std::string>{"x"}));
 
-    for (int i = 0; i < 60; i++)
+    for (int i = 0; i < 60; i++) {
         ASSERT_TRUE(addRecorded("zz" + std::to_string(100 + i), {}, many));
+    }
     c = console::complete("zz", 2);
     EXPECT_EQ(c.candidates.size(), 50u);
     EXPECT_EQ(c.candidates.front(), "zz100");

@@ -113,7 +113,7 @@ namespace {
 }
 
 TEST_F(SaveGameStoreTest, KeepsBackupsKeptPlusOneGenerations){
-    for (int i = 1; i <= 10; i++) ASSERT_TRUE(writeAndFlush("slot1", "{\"i\":" + std::to_string(i) + "}").ok());
+    for (int i = 1; i <= 10; i++) { ASSERT_TRUE(writeAndFlush("slot1", "{\"i\":" + std::to_string(i) + "}").ok()); }
     EXPECT_EQ(storeFileNames(dir.path() / "saves"), (std::vector<std::string>{"slot1.g10.jsave", "slot1.g8.jsave", "slot1.g9.jsave"}));
 
     savegame::SaveSettings none;
@@ -132,7 +132,7 @@ TEST_F(SaveGameStoreTest, RecoversFromNewestValidGeneration){
         store.remove("slot1");
         store.reset();
         store.setFolder(saves);
-        for (int i = 1; i <= 10; i++) ASSERT_TRUE(writeAndFlush("slot1", "{\"i\":" + std::to_string(i) + "}").ok());
+        for (int i = 1; i <= 10; i++) { ASSERT_TRUE(writeAndFlush("slot1", "{\"i\":" + std::to_string(i) + "}").ok()); }
         std::string file;
         ASSERT_TRUE(store.corrupt("slot1", mode, file).ok());
         EXPECT_EQ(file, "slot1.g10.jsave");
@@ -159,7 +159,7 @@ TEST_F(SaveGameStoreTest, RecoversFromNewestValidGeneration){
 
     // every generation corrupt: corrupt, and every file stays where it is
     store.remove("slot1");
-    for (int i = 1; i <= 3; i++) ASSERT_TRUE(writeAndFlush("slot1", "{\"i\":" + std::to_string(i) + "}").ok());
+    for (int i = 1; i <= 3; i++) { ASSERT_TRUE(writeAndFlush("slot1", "{\"i\":" + std::to_string(i) + "}").ok()); }
     for (const std::string& name : storeFileNames(saves)){
         std::ofstream(saves / name, std::ios::binary | std::ios::trunc) << "garbage";
     }
@@ -186,13 +186,13 @@ TEST_F(SaveGameStoreTest, CrashAtEveryWriteStepLeavesAReadableSlot){
         // what the disk holds: the old generation, whole
         store.unload();
         EXPECT_EQ(readJson("slot1"), R"({"v":"old"})");
-        for (const std::string& name : storeFileNames(saves)) EXPECT_EQ(name.find("je-tmp"), std::string::npos) << name;
+        for (const std::string& name : storeFileNames(saves)) { EXPECT_EQ(name.find("je-tmp"), std::string::npos) << name; }
     }
 
     // a crash between publishing a generation and pruning: one file too many, all readable, the
     // next write prunes it
     store.remove("slot1");
-    for (int i = 1; i <= 3; i++) ASSERT_TRUE(writeAndFlush("slot1", "{\"i\":" + std::to_string(i) + "}").ok());
+    for (int i = 1; i <= 3; i++) { ASSERT_TRUE(writeAndFlush("slot1", "{\"i\":" + std::to_string(i) + "}").ok()); }
     fs::copy_file(saves / "slot1.g3.jsave", saves / "slot1.g4.jsave");
     store.reset();
     store.setFolder(saves);
@@ -215,8 +215,8 @@ TEST_F(SaveGameStoreTest, CoalescesWrites){
     store.setHold(false);
     ASSERT_TRUE(drainUntil([&]{ return order.size() == 100; }));
     EXPECT_EQ(store.fileWrites() - writesBefore, 2u) << "the first snapshot and the last";
-    for (int i = 0; i < 100; i++) EXPECT_EQ(order[i], i);
-    for (bool ok : results) EXPECT_TRUE(ok);
+    for (int i = 0; i < 100; i++) { EXPECT_EQ(order[i], i); }
+    for (bool ok : results) { EXPECT_TRUE(ok); }
     store.unload();
     EXPECT_EQ(readJson("slot1"), R"({"i":99})");
     EXPECT_EQ(storeFileNames(dir.path() / "saves"), (std::vector<std::string>{"slot1.g1.jsave", "slot1.g2.jsave"}));
@@ -329,7 +329,7 @@ TEST_F(SaveGameStoreTest, TooLargeNamesTheNamespaces){
 }
 
 TEST_F(SaveGameStoreTest, RestoreWritesAGenerationAsTheNewest){
-    for (int i = 1; i <= 3; i++) ASSERT_TRUE(writeAndFlush("slot1", "{\"i\":" + std::to_string(i) + "}").ok());
+    for (int i = 1; i <= 3; i++) { ASSERT_TRUE(writeAndFlush("slot1", "{\"i\":" + std::to_string(i) + "}").ok()); }
     std::vector<savegame::BackupInfo> backups;
     ASSERT_TRUE(store.backups("slot1", backups).ok());
     ASSERT_EQ(backups.size(), 3u);
@@ -352,7 +352,7 @@ TEST_F(SaveGameStoreTest, UnusedImagesStayUnderTheMemoryLimit){
     big.maxSlotMiB = 16;
     savegame::configure(big);
     const std::string blob = nlohmann::json(std::string(9 * 1024 * 1024, 'm')).dump();
-    for (int i = 0; i < 4; i++) ASSERT_TRUE(writeAndFlush("slot" + std::to_string(i), blob).ok());
+    for (int i = 0; i < 4; i++) { ASSERT_TRUE(writeAndFlush("slot" + std::to_string(i), blob).ok()); }
     jobs::drainMainQueue();
     EXPECT_LE(store.memoryBytes(), savegame::SaveGameStore::MEMORY_LIMIT);
     EXPECT_EQ(readJson("slot0").size(), blob.size()) << "a dropped image reloads";

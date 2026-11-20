@@ -301,7 +301,7 @@ TEST(AudioClipSource, ForceMonoMeanOfChannels){
         const std::vector<float> a = l.read(20000, 512, 0);
         const std::vector<float> b = r.read(20000, 512, 1);
         ASSERT_EQ(out.size(), a.size());
-        for (size_t i = 0; i < out.size(); i++) ASSERT_NEAR(out[i], (a[i] + b[i]) * 0.5f, 1e-6f) << (stream ? "streamed" : "held") << " frame " << i;
+        for (size_t i = 0; i < out.size(); i++) { ASSERT_NEAR(out[i], (a[i] + b[i]) * 0.5f, 1e-6f) << (stream ? "streamed" : "held") << " frame " << i; }
         // not looping: the fade-out at the region's end, then the voice ends
         Voice once(clip, false);
         Voice onceL(stereo, false);
@@ -310,7 +310,7 @@ TEST(AudioClipSource, ForceMonoMeanOfChannels){
         const std::vector<float> allL = onceL.read(100000, 512, 0);
         const std::vector<float> allR = onceR.read(100000, 512, 1);
         ASSERT_EQ(all.size(), allL.size());
-        for (size_t i = 0; i < all.size(); i++) ASSERT_NEAR(all[i], (allL[i] + allR[i]) * 0.5f, 1e-6f) << i;
+        for (size_t i = 0; i < all.size(); i++) { ASSERT_NEAR(all[i], (allL[i] + allR[i]) * 0.5f, 1e-6f) << i; }
         EXPECT_EQ(all.back(), 0.0f);
         EXPECT_TRUE(once.instance->hasEnded());
     }

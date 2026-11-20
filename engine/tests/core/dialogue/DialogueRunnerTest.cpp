@@ -303,8 +303,8 @@ TEST_F(DialogueRunnerTest, RandomVariantsAreSeededAndNeverRepeat) {
     const std::string second = walk(8);
     EXPECT_NE(first, second);
     for (const std::string& run : {first, second}) {
-        for (size_t i = 1; i < run.size(); i++) ASSERT_NE(run[i], run[i - 1]) << "the same variant twice in a row at " << i;
-        for (char c : std::string("abcd")) EXPECT_GT(std::count(run.begin(), run.end(), c), 2000) << c;
+        for (size_t i = 1; i < run.size(); i++) { ASSERT_NE(run[i], run[i - 1]) << "the same variant twice in a row at " << i; }
+        for (char c : std::string("abcd")) { EXPECT_GT(std::count(run.begin(), run.end(), c), 2000) << c; }
     }
     // the stream is integer-only: these are the same on every platform
     EXPECT_EQ(first.substr(0, 12), walk(7).substr(0, 12));

@@ -92,7 +92,7 @@ TEST_F(LocalizationBench, Lookup) {
     std::printf("[bench] Localization getView 40-byte plain %.3f us (budget 0.4), %llu allocations; get with 2 arguments and a plural %.3f us (budget 2)\n",
                 plain, (unsigned long long)plainAllocations, formatted);
     EXPECT_GT(sink, 0u);
-    if (testsupport::countsAllocations()) EXPECT_EQ(plainAllocations, 0u) << "getView allocates nothing";
+    if (testsupport::countsAllocations()) { EXPECT_EQ(plainAllocations, 0u) << "getView allocates nothing"; }
     if (testsupport::perfSlack() > 0.0) {
         EXPECT_LE(plain, 0.4 * testsupport::perfSlack());
         EXPECT_LE(formatted, 2.0 * testsupport::perfSlack());
@@ -118,7 +118,7 @@ TEST_F(LocalizationBench, Switch) {
     });
     constexpr int switches = 20;
     start = std::chrono::steady_clock::now();
-    for (int k = 0; k < switches; k++) ASSERT_TRUE(Localization::setLanguage(k % 2 ? "de" : "en"));
+    for (int k = 0; k < switches; k++) { ASSERT_TRUE(Localization::setLanguage(k % 2 ? "de" : "en")); }
     const double perSwitch = microsecondsSince(start, switches) / 1000.0;
     Localization::removeListener(listener);
     std::printf("[bench] Localization first lookup of a namespace (cooked, %d entries) %.3f ms (budget 2); switch with 300 keys %.3f ms (budget 6)\n",

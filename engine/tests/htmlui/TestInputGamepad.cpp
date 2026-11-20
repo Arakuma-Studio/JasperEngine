@@ -839,8 +839,9 @@ TEST_F(InputGamepadCursorTest, CursorMovesAndConsumes){
     EXPECT_NEAR(GamepadCursor::getPosition().x - start, fullSpeed * 0.5f * 0.5f, fullSpeed * 0.25f * 0.02f);
 
     // the game's stick is at rest
-    for (const auto& axis : gameAxes)
+    for (const auto& axis : gameAxes) {
         EXPECT_EQ(axis.second, 0.0f) << "axis " << axis.first;
+    }
     EXPECT_EQ(Input::getGamepadAxisForGame(pad, D_GAMEPAD_AXIS_LEFT_X), 0.0f);
     EXPECT_EQ(Input::getGamepadAxis(pad, D_GAMEPAD_AXIS_LEFT_X), 1.0f) << "polling the device still reads it";
 
@@ -986,8 +987,9 @@ TEST_F(InputGamepadCursorTest, CursorZeroCostWhenOff){
     const double ns = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / offFrames;
     std::printf("[bench] cursor_off_frame_ns %.1f, %llu allocations in %d frames (budget: one cached boolean, 0 allocations)\n", ns,
                 (unsigned long long)allocations.count(), offFrames);
-    if (testsupport::countsAllocations())
+    if (testsupport::countsAllocations()) {
         EXPECT_EQ(allocations.count(), 0u);
+    }
     EXPECT_FALSE(GamepadCursor::isActive());
 }
 
@@ -1019,8 +1021,9 @@ TEST_F(InputGamepadCursorTest, CursorFrameBench){
     const double us = total / benchFrames;
     std::printf("[bench] cursor_frame_us %.2f (budget 20 us desktop, 60 us mobile), %.1f allocations per frame\n", us,
                 double(allocations.count()) / benchFrames);
-    if (testsupport::perfSlack() > 0.0)
+    if (testsupport::perfSlack() > 0.0) {
         EXPECT_LE(us, 20.0 * testsupport::perfSlack());
+    }
     EXPECT_TRUE(GamepadCursor::isActive());
 }
 

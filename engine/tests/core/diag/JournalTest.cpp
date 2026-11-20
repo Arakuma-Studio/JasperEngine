@@ -123,7 +123,7 @@ TEST(Journal, RingKeepsTheNewestWholeEntries) {
 
     const std::vector<std::string> newest = journal::entries(5);
     ASSERT_EQ(newest.size(), 5u);
-    for (int i = 0; i < 5; i++) EXPECT_EQ(body(newest[i]), "entry i=" + std::to_string(995 + i));
+    for (int i = 0; i < 5; i++) { EXPECT_EQ(body(newest[i]), "entry i=" + std::to_string(995 + i)); }
 
     journal::clear();
     EXPECT_TRUE(journal::entries(5).empty());

@@ -446,8 +446,9 @@ TEST_F(InputActionsTest, GamepadFamilyAndLabels){
         {"Wireless Gamepad (STANDARD GAMEPAD Vendor: 057e Product: 2009)", GamepadFamily::Nintendo},
         {"054c-0ce6-Wireless Controller", GamepadFamily::PlayStation},
     };
-    for (const auto& [name, family] : names)
+    for (const auto& [name, family] : names) {
         EXPECT_EQ(InputSchemeTracker::familyOf(name), family) << name;
+    }
 
     const char* south[] = {"A", "Cross", "B", "A"};
     const char* trigger[] = {"RT", "R2", "ZR", "Right Trigger"};

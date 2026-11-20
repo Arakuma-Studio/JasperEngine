@@ -95,8 +95,9 @@ namespace {
                 GpuEnvironment::drawFrames(1);
                 Framebuffer& target = GpuEnvironment::target();
                 readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba);
-                if (golden)
+                if (golden) {
                     EXPECT_GOLDEN("render_lit_cube");
+                }
             }
             // the cube's programs go, so the next pass makes its own
             GpuEnvironment::drawFrames(2);

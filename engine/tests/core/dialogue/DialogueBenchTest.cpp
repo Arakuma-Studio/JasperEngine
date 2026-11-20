@@ -174,7 +174,7 @@ TEST(DialogueBench, StepAllocations) {
     if (!testsupport::countsAllocations()) GTEST_SKIP() << "this binary cannot count allocations";
     StepFixture fixture;
     // warm: every buffer has its size
-    for (int i = 0; i < 8; i++) ASSERT_TRUE(fixture.step());
+    for (int i = 0; i < 8; i++) { ASSERT_TRUE(fixture.step()); }
     uint64_t allocations = 0;
     for (int i = 0; i < 100; i++) {
         const testsupport::ThreadAllocationCount count;

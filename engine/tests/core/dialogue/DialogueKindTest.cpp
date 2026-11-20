@@ -235,7 +235,7 @@ TEST_F(DialogueKindTest, KeysAreStableAcrossEdits) {
     graph::apply(edited, graph::opFromJson({{"op", "setParam"}, {"node", "n2"}, {"name", "variants"}, {"value", oneVariant}}));
     std::map<std::string, std::string> after = keys(edited);
     EXPECT_EQ(after.count("n2.v1"), 0u);
-    for (const auto& [key, text] : after) EXPECT_EQ(before.at(key), text) << key;
+    for (const auto& [key, text] : after) { EXPECT_EQ(before.at(key), text) << key; }
     EXPECT_EQ(after.size(), 4u);
     // the option ports follow the reorder: the wires stay on their option ids
     std::vector<std::string> ports;

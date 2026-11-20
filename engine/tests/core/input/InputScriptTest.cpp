@@ -134,8 +134,9 @@ TEST(InputScriptFormat, RoundTripsEveryEventType){
     ASSERT_TRUE(parseScript(written, second, error)) << error << "\n" << written;
 
     ASSERT_EQ(second.actions.size(), first->actions.size()) << written;
-    for (size_t i = 0; i < first->actions.size(); i++)
+    for (size_t i = 0; i < first->actions.size(); i++) {
         EXPECT_TRUE(second.actions[i] == first->actions[i]) << "action " << i << " (" << actionTypeName(first->actions[i].type) << ")\n" << written;
+    }
     EXPECT_EQ(second.strings, first->strings);
     ASSERT_EQ(second.targets.size(), 1u);
     EXPECT_EQ(second.targets[0].selector, "#play");

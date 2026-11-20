@@ -98,8 +98,9 @@ TEST(SaveGameBench, SmallNamespaceInLargeSlot){
     std::string big;
     savegame::SaveError error;
     ASSERT_TRUE(savegame::fromJson(nlohmann::json(std::string(92 * 1024, 'w')), big, error));
-    for (int i = 0; i < 30; i++)
+    for (int i = 0; i < 30; i++) {
         ASSERT_TRUE(store.write("big", "part" + std::to_string(i), big, savegame::WriteOptions(), nullptr).ok());
+    }
     ASSERT_TRUE(store.flush("big").ok());
     std::string small;
     ASSERT_TRUE(savegame::fromJson(nlohmann::json(std::string(2 * 1024, 's')), small, error));

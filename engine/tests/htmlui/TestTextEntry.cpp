@@ -403,7 +403,8 @@ TEST_F(TextEntryTest, IdleFocusedFieldDoesNotAllocate){
     const double ns = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / frames;
     std::printf("[bench] text_entry_idle_frame_ns %.1f, %llu allocations in %d frames (budget 0 allocations)\n", ns,
                 (unsigned long long)allocations.count(), frames);
-    if (testsupport::countsAllocations())
+    if (testsupport::countsAllocations()) {
         EXPECT_EQ(allocations.count(), 0u);
+    }
     EXPECT_EQ(system.virtualKeyboardUpdates, updates) << "idle: nothing sent to the keyboard";
 }

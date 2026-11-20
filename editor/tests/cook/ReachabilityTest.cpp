@@ -110,5 +110,5 @@ TEST(ReachabilityTest, TenThousandAssetsWithinBudget) {
     }
     std::printf("[ PERF ] reachability of 10000 assets, 60001 edges: %.2f ms (budget 50 ms)\n", ms);
     EXPECT_GT(reached.size(), 9000u);
-    if (editor::test::perfSlack() > 0.0) EXPECT_LE(ms, 50.0 * editor::test::perfSlack());
+    if (editor::test::perfSlack() > 0.0) { EXPECT_LE(ms, 50.0 * editor::test::perfSlack()); }
 }

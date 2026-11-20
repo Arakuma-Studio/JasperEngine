@@ -125,5 +125,5 @@ TEST(AudioAnalysis, ForcedMonoPlaysTheMeanOfTheChannels) {
     const AudioAnalysis::Signal played = AudioAnalysis::played(file, region);
     ASSERT_EQ(played.channels, 1u);
     ASSERT_EQ(played.frames, file.frames);
-    for (size_t i = 0; i < played.frames; i++) ASSERT_FLOAT_EQ(played.samples[i], 0.125f) << i;
+    for (size_t i = 0; i < played.frames; i++) { ASSERT_FLOAT_EQ(played.samples[i], 0.125f) << i; }
 }
