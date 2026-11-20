@@ -301,6 +301,46 @@ TEST(PayloadValidator, AndroidPackagesMustBeSigned) {
     EXPECT_TRUE(hasFinding(findings, "apksigner verify failed: DOES NOT VERIFY")) << join(findings);
 }
 
+// A Development Build's APK says android:debuggable (Patch And Run's run-as): a release target that
+// is debuggable is refused, as aapt2 dump badging reports it (docs/specs/build-and-run-on-device.md
+// R9, AC7); a development target may be
+TEST(PayloadValidator, RefusesADebuggableReleaseApk) {
+    TestTempDir dir("payload-debuggable");
+    std::string error;
+    ZipWriter zip;
+    ASSERT_TRUE(zip.open(dir / "game.apk", error)) << error;
+    ASSERT_TRUE(zip.add("AndroidManifest.xml", "x", 1, false, error)) << error;
+    ASSERT_TRUE(zip.finish(error)) << error;
+    ValidationTarget target;
+    target.platform = BuildPlatform::Android;
+    target.arch = "universal";
+    target.verifyApk = [](const fs::path&, std::string& output) {
+        output = "Verifies";
+        return true;
+    };
+    std::string badging = "package: name='com.example.game' versionCode='1' versionName='1.0'\napplication-debuggable\n"
+                          "application-label:'Game'\n";
+    target.dumpBadging = [&badging](const fs::path&, std::string& output) {
+        output = badging;
+        return true;
+    };
+    std::vector<std::string> findings;
+    target.flavour = "release";
+    validatePayload(dir.path(), target, findings);
+    EXPECT_TRUE(hasFinding(findings, "a release package is debuggable")) << join(findings);
+
+    findings.clear();
+    target.flavour = "development";
+    validatePayload(dir.path(), target, findings);
+    EXPECT_FALSE(hasFinding(findings, "debuggable")) << join(findings);
+
+    findings.clear();
+    target.flavour = "release";
+    badging = "package: name='com.example.game' versionCode='1' versionName='1.0'\napplication-label:'Game'\n";
+    validatePayload(dir.path(), target, findings);
+    EXPECT_FALSE(hasFinding(findings, "debuggable")) << join(findings);
+}
+
 // 16 KB pages are a 64-bit requirement: a 32-bit library with 4 KB pages is accepted (the NDK's
 // flexible page sizes apply to arm64-v8a and x86_64 only)
 TEST(PayloadValidator, Android32BitLibrariesKeep4KPages) {

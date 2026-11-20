@@ -329,6 +329,18 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
   error or a failed swap, a sokol panic, and libEGL's "call to OpenGL ES API with no current
   context".
 
+#### Patch And Run: `tools/ci/android_patch_run.sh`
+
+Build And Run and Patch And Run on the same headless emulator (docs/specs/build-and-run-on-device.md
+AC10): a Development Build of a copy of `tools/fixtures/tween-curve` through
+`jasperengine-editor build --run-device emulator-5554`, a Lua string edit, the same command again.
+It checks the second run patched (`installed: patched`), logcat has the new string, the installed
+APK's SHA-256 did not change, and prints the patch's time against its 15 s budget as a `[bench]`
+line (`JASPER_MCP_PERF_SLACK` enforces it). It builds the `android-universal-gles3-development`
+runtime (x86_64) when `build/players` lacks it, and runs the editor of `tools/build.sh linux` inside
+the emulator image (its SDK and JDK make the APK). `test_device_run.py` covers the same flow with a
+stand-in adb on every MCP run.
+
 #### Rendering gate: `--scene` and `--golden`
 
 The logcat says the engine started; only the screen says it drew. `--golden DIR` makes each run

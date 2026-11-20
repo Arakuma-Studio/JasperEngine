@@ -505,4 +505,33 @@ craftsman-end-motor (a port reconstructed from a retail binary). Nothing here is
 
 ## Deviations
 
-None yet.
+- **Android screenshots** (R14) are `adb shell screencap -p <file>` then `adb pull`, not
+  `adb exec-out screencap -p`: the editor reads a tool's output as text lines (`CommandRunner`).
+- **No engine shutdown line exists** (R13): a process that disappears without a fatal line in its
+  log is reported as exited (code unknown), not crashed; adding a shutdown line would have been a
+  second runtime change (R17). iOS Simulator apps are not the editor's children, so their signal is
+  not known either: a Simulator run is crashed by its fatal lines.
+- **Player binary identity** (R5, R6, R7): a prebuilt Android or iOS runtime names a folder as its
+  executable, so `playerSha256` in their content manifests stays empty, as before. The device record
+  keeps the runtime id and a hash of the runtime's `executables` map; the player compares the
+  development folder's `playerId` with its own runtime id and its `playerSha256` with the packaged
+  content's (which was built for the running binary). Android and iOS builds are always prebuilt
+  (a Compile build of them is the source export), so the "compiled binary hash" case does not arise.
+- **AC3** `test_patch_and_run_pushes_only_changed_files`: the first patch after a full install
+  mirrors the whole content, as R8 says (the folder starts empty); the test checks that, then
+  changes one Lua file and checks `pushed_files: 2` on the next patch.
+- **AC10** builds `tools/fixtures/tween-curve` (an editor project): `tools/test-projects/core-utilities`
+  is an engine test project (`main.cpp`), not one the editor builds. The script times the whole
+  second command (cook, push, restart), an upper bound of the spec's end-of-cook-to-ready time.
+- **R11** the reporter goes into the pages of prebuilt Development web builds (the editor writes the
+  page); a Compile web build's page (its CMake shell) has none. A web screenshot is the canvas read
+  with `toBlob` right after a frame.
+- **R9** the payload check reads `aapt2 dump badging` of APKs; a bundle is not checked for
+  `debuggable` (Google Play refuses one itself). A Debug build type's APK is debuggable too.
+- **R21** `get_build_info devices:true` probes every platform's devices (Android, iOS, the browser,
+  this computer), not only the selected one: the call has no platform argument.
+- **R25** a web Build And Run from the CLI serves the page until interrupted when `--run-seconds` is
+  not given (the server lives in the CLI's process).
+- **Risks** the `run-as` fallback through `adb exec-in ... cat` is not implemented: a device whose
+  `run-as` cannot copy the pushed patch fails the patch with "this device's run-as is not usable",
+  the risk section's default for such devices.

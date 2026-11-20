@@ -4221,6 +4221,7 @@ std::vector<Setting> mcpSettingsTable() {
         };
         toolPreference("preferences.android_sdk_path", "androidSdk", "External Tools: the Android SDK of prebuilt Android builds (\"\" = ANDROID_HOME / ANDROID_SDK_ROOT).");
         toolPreference("preferences.jdk_path", "jdk", "External Tools: the JDK (keytool, jarsigner, java) of Android builds (\"\" = JAVA_HOME / PATH).");
+        toolPreference("preferences.adb_path", "adb", "External Tools: adb of Build And Run on Android devices (\"\" = the Android SDK's platform-tools, then PATH).");
         toolPreference("preferences.steamcmd_path", "steamcmd", "External Tools: SteamCMD for Steam uploads (\"\" = STEAMCMD_HOME / PATH).");
         toolPreference("preferences.rcodesign_path", "rcodesign", "External Tools: rcodesign, which signs macOS builds on any computer (\"\" = PATH).");
         // S44 §6.8: settings.yaml externalTools.aseprite.path
@@ -4601,6 +4602,7 @@ const Placement placements[] = {
     {"preferences.ffmpeg_path", "External Tools", "Video Import", "FFmpeg", "video av1"},
     {"preferences.android_sdk_path", "External Tools", "Shipping", "Android SDK", "android sdk aapt2 apksigner build-tools"},
     {"preferences.jdk_path", "External Tools", "Shipping", "JDK", "java keytool jarsigner"},
+    {"preferences.adb_path", "External Tools", "Shipping", "adb", "android device emulator run device platform-tools"},
     {"preferences.steamcmd_path", "External Tools", "Shipping", "SteamCMD", "steam upload steampipe"},
     {"preferences.rcodesign_path", "External Tools", "Shipping", "rcodesign", "macos signing codesign"},
     {"preferences.aseprite_path", "External Tools", "Aseprite", "Aseprite", "aseprite pixel art sprite editor executable"},

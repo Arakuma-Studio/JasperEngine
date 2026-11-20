@@ -121,12 +121,13 @@ namespace {
     }
 
     ValidationTarget validationTarget(const std::string& platform, const std::string& arch, const std::string& backend,
-                                      const std::string& executable) {
+                                      const std::string& executable, const std::string& flavour) {
         ValidationTarget target;
         parseBuildPlatform(platform, target.platform);
         target.arch = arch;
         target.backend = backend;
         target.executable = executable;
+        target.flavour = flavour;
         return target;
     }
 
@@ -653,7 +654,7 @@ bool publish::prepareRelease(const PrepareRequest& request, const PublishTools& 
             continue;
         }
         std::vector<std::string> findings;
-        validatePayload(source, validationTarget(target.platform, target.arch, target.backend, target.executable), findings);
+        validatePayload(source, validationTarget(target.platform, target.arch, target.backend, target.executable, target.flavour), findings);
         for (const std::string& file : target.requiredFiles)
             if (!fs::exists(source / editor::FileUtils::pathFromUtf8(file), ec)) findings.push_back("missing required file " + file);
         for (const std::string& finding : findings) problems.push_back(name + ": " + finding);
@@ -701,9 +702,9 @@ bool publish::prepareRelease(const PrepareRequest& request, const PublishTools& 
 
         // the payload after the split is the one that ships
         std::vector<std::string> findings;
-        validatePayload(content, validationTarget(target.platform, target.arch, target.backend, target.executable), findings);
+        validatePayload(content, validationTarget(target.platform, target.arch, target.backend, target.executable, target.flavour), findings);
         for (const std::string& finding : findings) problems.push_back(name + ": " + finding);
-        TreeManifestResult tree = treeManifest(content, targetOs(validationTarget(target.platform, target.arch, target.backend, "").platform));
+        TreeManifestResult tree = treeManifest(content, targetOs(validationTarget(target.platform, target.arch, target.backend, "", target.flavour).platform));
         for (const std::string& problem : tree.problems) problems.push_back(name + ": " + problem);
         if (!problems.empty()) return false;
 
@@ -749,7 +750,7 @@ bool publish::verifyRelease(const fs::path& releaseDir, std::vector<std::string>
         }
         const fs::path content = releaseDir / "content" / name;
         std::vector<std::string> findings;
-        const ValidationTarget validation = validationTarget(target.platform, target.arch, target.backend, target.executable);
+        const ValidationTarget validation = validationTarget(target.platform, target.arch, target.backend, target.executable, target.flavour);
         validatePayload(content, validation, findings);
         for (const std::string& finding : findings) problems.push_back(name + ": " + finding);
         const TreeManifestResult tree = treeManifest(content, targetOs(validation.platform));

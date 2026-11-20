@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "platform/DeviceRunner.h"
+#include "platform/WebServe.h"
 #include "window/TitleArtInterchangeWindows.h"
 #include "util/ImpostorBaker.h"
 #include "terrain/TerrainMapPersistence.h"
@@ -4160,6 +4162,9 @@ void editor::App::processProjectChange() {
     if (project.isAnyScenePlaying()) return;
     // the old project's save dialogs never act on the next one
     cancelSaveDialogs();
+    // its device runs and the web server of its Build And Run (docs/specs/build-and-run-on-device.md R10)
+    platform::DeviceRuns::get().stopAll();
+    platform::WebServe::get().stop();
 
     // Menu and dialog callbacks queue the change. Run it between frames so the
     // loading pump can draw without nesting ImGui frames or invalidating scene UI.
@@ -5485,6 +5490,8 @@ void editor::App::shutdownBackgroundWork() {
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
     mcp::McpServer::get().stop();
+    platform::DeviceRuns::get().stopAll();
+    platform::WebServe::get().stop();
     if (!editor::texsynth::SynthesisRun::cancelAll()) {
         Out::warning("A texture synthesis did not stop in time; it is left to finish without effect.");
     }

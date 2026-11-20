@@ -231,7 +231,7 @@ Project Settings > Player > Target Platforms records where the game ships; Build
   without Xcode, the build is the Xcode project ("Open on a Mac with Xcode"). Project Settings >
   iOS holds the team id and the export method (development, ad-hoc, app-store).
   - `--ios-simulator` (`ios_simulator` in `build_project`): an unsigned `.app` for the simulator,
-    no account needed. `xcrun simctl install` and `launch` run it.
+    no account needed. Build And Run on a simulator installs and launches it (Running on a device).
   - For a device, no Team ID: the project is compiled and linked for a device and stops before
     signing, with the warning `W-IOS-NO-TEAM`; the `.app` installs on nothing, and the Xcode
     project is there to open.
@@ -344,6 +344,62 @@ is not for this player, 6 not ready in time, 7 no display.
 ```
 xvfb-run ./MyGame --headless --after-ready --quit-after 30 --fixed-fps 60 --screenshot game.png --fail-on-error
 ```
+
+## Running on a device
+
+Build Settings' **Run Device** row (Android, iOS, Web) picks where **Build And Run** runs the game;
+for this computer's platform it says "This computer". The list is found off the editor's thread
+when Android or iOS shows, on **Refresh**, and every 3 seconds while it stays shown: nothing is
+probed while Build Settings is closed. An entry that cannot run (an unauthorized or offline
+device, an Android older than Minimum API Level) is greyed with what to do as its tooltip. The
+choice is yours, not the project's: it is kept in `.jasperengine/user/devices.yaml`, with no undo,
+as the selected platform is.
+
+- **Android** devices and running emulators come from `adb devices -l`. adb is Preferences >
+  External Tools > adb, else `<Android SDK>/platform-tools/adb`, else PATH (the SDK Manager package
+  `platform-tools`). Build And Run makes one APK of the device's first ABI the project builds,
+  whatever Package Format says, installs it with `adb install -r -t` (permissions are asked as on a
+  player's phone) and starts it. An APK signed with another key is not uninstalled for you (it
+  would delete the player's saves): uninstall it (`adb uninstall <package>`) or sign with the same
+  keystore. Starting an emulator and `adb pair` are yours to do.
+- **iOS Simulator** (a Mac with Xcode): a shut-down simulator is booted and shown, the simulator
+  `.app` is built, installed and launched with the game's options as its arguments. Physical
+  iPhones: build the `.ipa` and install it with Xcode.
+- **Web**: the editor serves the build's folder on `127.0.0.1` (the first free port from 8600 to
+  8699, never to other machines), with the cross-origin-isolation headers, and opens the default
+  browser on `index.html?editor-port=<port>`. A headless editor opens nothing and gives the URL.
+- **This computer**: the player starts with its output through a pipe into the Console.
+
+While a game runs, its log streams into the Console in the category `device`, each line after the
+device's name (`[Pixel 7] ...`): logcat of its process on Android, `log stream` and the app's
+output on the Simulator, the page's console on the web (a development page posts it back; a
+release page has no such code). The Console's strip shows each run's state (Installing, Pushing 3
+files (2.1 MB), Running, Exited, Crashed), **Stop** and **Screenshot** (saved in
+`Recordings/Device/`, which is not an asset folder). A run is Crashed when Android logs `FATAL
+EXCEPTION` or `Fatal signal`, the web page reports the crash overlay's report, or this computer's
+player ends by a signal; clicking its "crashed" line selects the first fatal line.
+
+**Patch And Run** (a Development Build, Android or the iOS Simulator) skips packaging: it cooks the
+content into the build cache, pushes only the files that changed since what the device runs
+(`.jasperengine/user/devices.yaml` keeps what each device runs) into the app's **development
+content folder** (`files/je-dev-content` on Android, written through `adb shell run-as`;
+`Library/je-dev-content` of the Simulator app's data container), writes `content-manifest.json`
+last and restarts the app. The installed package and its signature are untouched, so no keystore
+password is asked. A development player starts from that folder when its manifest names this very
+player (runtime id and binary), otherwise it warns once and runs its packaged content; `--content`
+wins over it, and a release player never looks. The first patch after an install pushes the whole
+content (the folder starts empty); a full install empties it again. A Development Build's APK is
+debuggable (`android:debuggable`) for `run-as`; a release target that is debuggable fails the
+payload check and `publish prepare`. Patch And Run is not offered, and Build And Run installs in
+full, when the player binary changed, no install of this project is recorded on the device, or
+the Android runtime predates Patch And Run. A game's debug overlay can show the patch:
+`System.getBuildInfo().contentPatch` (0 for packaged content) and `contentPatched`.
+
+From the command line, `jasperengine-editor build ... --run-device <id|auto|web>` builds and runs
+(Patch And Run for a Development Build when it can; `--no-patch` installs in full) and prints
+`device:`, `installed:` and `url:`; `--run-seconds S` follows the log for S seconds (a web build is
+served until interrupted). Agents use `get_build_info devices:true`, `build_project run_device`
+and `run_build device` (`docs/mcp/guide/shipping.md`).
 
 ## Build Profiles
 

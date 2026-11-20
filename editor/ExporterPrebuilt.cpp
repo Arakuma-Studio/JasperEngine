@@ -20,6 +20,7 @@
 #include "platform/AndroidPackager.h"
 #include "platform/IosProject.h"
 #include "platform/MacBundle.h"
+#include "platform/WebServe.h"
 #include "platform/WindowsResources.h"
 #include "player/ContentManifest.h"
 #include "player/PlayerConfig.h"
@@ -196,6 +197,22 @@ editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, con
     return choice;
 }
 
+std::string editor::Exporter::applicationIdOf(const Project& project, BuildPlatform platform, const std::string& appName) {
+    if (platform == BuildPlatform::Android) {
+        const std::string id = project.getApplicationIdentifier(project.getAndroidProjectSettings().packageName);
+        return id.empty() ? "com.jasperengine." + appName : id;
+    }
+    if (platform == BuildPlatform::IOS) {
+        const IOSProjectSettings& ios = project.getIOSProjectSettings();
+        return ios.bundleIdentifier.empty() ? "com.jasperengine." + appName : ios.bundleIdentifier;
+    }
+    return "";
+}
+
+std::string editor::Exporter::applicationId() const {
+    return applicationIdOf(*settings, config.platform, getAppName());
+}
+
 bool editor::Exporter::resolvePlayer() {
     // the full player, else any installed variant of it (the method only needs one);
     // selectPlayerVariant picks the build's once its modules are known
@@ -346,6 +363,16 @@ void editor::Exporter::runPlayerBuild() {
         discardStaging();
         return;
     }
+    if (config.contentOnly) {
+        // Patch And Run: the content is cooked; the package and the output folder stay as they are
+        setProgressRaw("Content cooked", 1.0f);
+        {
+            std::lock_guard<std::mutex> lock(progressMutex);
+            progress.finished = true;
+        }
+        Out::info("Content cooked for Patch And Run: %s", contentDir.string().c_str());
+        return;
+    }
     measureBuildEngine(config.destinationDir);
     if (!writeBuildReport(config.destinationDir, "prebuilt")) return;
     setProgressRaw("Build complete", 1.0f);
@@ -475,6 +502,12 @@ bool editor::Exporter::runPrebuilt() {
         case BuildPlatform::Web: contentDir = config.targetDir / "content"; break;
         default: contentDir = stagingDir; break;
     }
+    // a patch cooks into the build cache whatever the platform (nothing is staged)
+    if (config.contentOnly) contentDir = config.targetDir / "content";
+    {
+        std::lock_guard<std::mutex> lock(progressMutex);
+        result.appId = applicationId();
+    }
     fs::remove_all(config.targetDir / "content", ec);
     fs::create_directories(contentDir, ec);
 
@@ -514,7 +547,7 @@ bool editor::Exporter::runPrebuilt() {
     if (!cookScenes()) return false;
     if (cancelled()) return false;
     if (!writeGameConfig()) return false;
-    if (!stagePlayer()) return false;
+    if (!config.contentOnly && !stagePlayer()) return false;
     if (cancelled()) return false;
     if (!stageNotices()) return false;
     // what ships, measured before the pack hides it (S53 R21)
@@ -524,6 +557,15 @@ bool editor::Exporter::runPrebuilt() {
     if (cancelled()) return false;
     if (!writeContentManifest(true)) return false;
     if (cancelled()) return false;
+    {
+        std::lock_guard<std::mutex> lock(progressMutex);
+        result.contentDir = contentDir;
+    }
+    if (config.contentOnly) {
+        discardStaging();
+        stagingDir.clear();
+        return true;
+    }
 
     bool finalized = false;
     switch (config.platform) {
@@ -544,6 +586,7 @@ bool editor::Exporter::runPrebuilt() {
     target.arch = platformArch(config.platform);
     target.backend = config.graphicBackend;
     target.executable = fs::relative(getResult().executable, stagingDir, ec).generic_string();
+    target.flavour = config.developmentBuild || config.buildType == "Debug" ? "development" : "release";
     std::vector<std::string> findings;
     publish::validatePayload(stagingDir, target, findings);
     for (const std::string& finding : findings) {
@@ -959,6 +1002,7 @@ bool editor::Exporter::swapStagingIntoPlace() {
         return (relative.empty() || *relative.begin() == "..") ? path : config.destinationDir / relative;
     };
     result.contentManifest = moved(result.contentManifest);
+    result.contentDir = moved(result.contentDir);
     result.executable = moved(result.executable);
     for (fs::path& artifact : result.artifacts) artifact = moved(artifact);
     stagingDir = config.destinationDir;
@@ -1161,7 +1205,10 @@ bool editor::Exporter::finalizeWeb() {
             }
         }
     }
-    page = composeWebPage(page, settings->getApplicationName(web.applicationName), web.headInclude, web.resizeCanvasToWindow,
+    // a development page reports its log to the editor that serves it (R11); a release page carries no reporter
+    const std::string headInclude = config.developmentBuild || config.buildType == "Debug" ? web.headInclude + "\n" + platform::webDevelopmentReporter()
+                                                                                         : web.headInclude;
+    page = composeWebPage(page, settings->getApplicationName(web.applicationName), headInclude, web.resizeCanvasToWindow,
                           web.hideEmscriptenUI, true,
                           settings->getCanvasWidth(), settings->getCanvasHeight(), threads, webNativeScripts(web.scriptUrls, nativeFiles));
     if (page.find("player-loader.js") == std::string::npos) {
@@ -1206,8 +1253,7 @@ bool editor::Exporter::finalizeAndroid() {
     package.presentation = settings->getPresentationSettings();
     package.label = settings->getApplicationName(android.applicationName);
     if (package.label.empty()) package.label = project->getName();
-    package.applicationId = settings->getApplicationIdentifier(android.packageName);
-    if (package.applicationId.empty()) package.applicationId = "com.jasperengine." + getAppName();
+    package.applicationId = applicationId();
     package.versionCode = std::max(1u, settings->getApplicationVersionCode(android.versionCode));
     package.versionName = settings->getApplicationVersion(android.versionName);
     if (package.versionName.empty()) package.versionName = "1.0";
@@ -1225,7 +1271,11 @@ bool editor::Exporter::finalizeAndroid() {
     // an App Bundle (Google Play serves each device its ABI), one APK per selected ABI, or the
     // universal APK of every selected ABI (Project Settings > Android > Package Format)
     std::vector<std::vector<std::string>> packages;
-    if (config.androidFormat == AndroidFormat::ApkPerAbi) {
+    if (!config.androidRunAbi.empty()) {
+        // Build And Run: one APK of the device's ABI, whatever the Package Format (R3)
+        package.format = AndroidFormat::Apk;
+        packages.push_back({config.androidRunAbi});
+    } else if (config.androidFormat == AndroidFormat::ApkPerAbi) {
         for (const std::string& abi : platform::selectedAndroidAbis(android)) packages.push_back({abi});
         if (packages.empty()) {
             setError("no Android architecture is selected (Project Settings > Android > Architectures)");
@@ -1241,7 +1291,7 @@ bool editor::Exporter::finalizeAndroid() {
         package.abis = abis;
         const std::string suffix = abis.empty() ? "" : "-" + abis.front();
         package.workDir = config.targetDir / ("android" + suffix);
-        package.output = stagingDir / (getAppName() + suffix + (config.androidFormat == AndroidFormat::Aab ? ".aab" : ".apk"));
+        package.output = stagingDir / (getAppName() + suffix + (package.format == AndroidFormat::Aab ? ".aab" : ".apk"));
         if (!platform::buildAndroidPackage(package, commandRunner, [this]() { return isCancelled(); }, warnings, error)) {
             setError(error);
             return false;
@@ -1255,6 +1305,7 @@ bool editor::Exporter::finalizeAndroid() {
     std::lock_guard<std::mutex> lock(progressMutex);
     result.executable = outputs.front();
     result.artifacts = outputs;
+    result.debuggable = package.debug && platform::androidRuntimeHasDebuggableMarker(package.runtimeDir);
     return true;
 }
 
@@ -1264,7 +1315,7 @@ bool editor::Exporter::finalizeIOS() {
     const IOSProjectSettings& ios = settings->getIOSProjectSettings();
     xcode.appName = getAppName();
     xcode.displayName = ios.applicationName.empty() ? project->getName() : ios.applicationName;
-    xcode.bundleIdentifier = ios.bundleIdentifier.empty() ? "com.jasperengine." + getAppName() : ios.bundleIdentifier;
+    xcode.bundleIdentifier = applicationId();
     xcode.version = ios.versionName.empty() ? "1.0" : ios.versionName;
     xcode.build = ios.buildNumber.empty() ? "1" : ios.buildNumber;
     xcode.teamId = ios.teamId;
