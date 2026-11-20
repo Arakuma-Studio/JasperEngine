@@ -95,8 +95,8 @@ async def test_build_report_window(ed: Editor):
     await ui.click_item("Changes", WINDOW)
     # the texture grew: one row keyed by its source, its Referenced By chain beside it
     await ui.click_item("textures/wall.png", WINDOW)
-    await ui.reveal("materials/wall.material", WINDOW)
     await ui.reveal("scenes/Main.scene", WINDOW)
+    await ui.reveal("project.yaml  (root)", WINDOW)
     await ui.frames(6)
     await shot(ed, "1-changes-referenced-by")
 

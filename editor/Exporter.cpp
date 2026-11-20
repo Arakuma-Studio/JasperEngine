@@ -3856,7 +3856,7 @@ bool editor::Exporter::checkSizeBudgets(bool content, const fs::path& outputDir,
     std::error_code ec;
     fs::create_directories(outputDir, ec);
     if (!writeBuildReport(outputDir, method, !content)) return false;
-    setError("Size budget: " + failure + (content ? " (the build stopped before the engine was compiled and measured)" : ""));
+    setError("Size budget: " + failure + (content ? " (the build stopped before the engine was measured)" : ""));
     return false;
 }
 

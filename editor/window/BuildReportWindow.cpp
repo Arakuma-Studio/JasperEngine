@@ -321,8 +321,8 @@ void BuildReportWindow::drawFilesTab() {
     if (!report.hasFiles) ImGui::TextDisabled("This report predates the full file list: its 25 largest files.");
     // the numbers keep the width of their whole header or a long value; File and Source share the
     // rest, and have a floor below which the table scrolls sideways
-    const float sizeWidth = std::max(ImGui::CalcTextSize("1023.9 MB").x, ImGui::CalcTextSize("Source Size").x) + ImGui::GetFontSize();
-    const float categoryWidth = ImGui::CalcTextSize("Category  ").x + ImGui::GetFontSize();
+    const float sizeWidth = std::max(ImGui::CalcTextSize("1023.9 MB").x, ImGui::CalcTextSize("Source Size").x);
+    const float categoryWidth = ImGui::CalcTextSize("Category  ").x;
     const float cellPadding = ImGui::GetStyle().CellPadding.x * 2.0f;
     const int columns = comparing ? 6 : 5;
     const float tableFloor = ImGui::GetFontSize() * 34.0f + categoryWidth + sizeWidth * (float)(columns - 3) + cellPadding * (float)columns;
@@ -589,8 +589,9 @@ void BuildReportWindow::show() {
     }
     drawCategories();
     ImGui::Separator();
-    const float detailWidth = ImGui::GetFontSize() * 18.0f;
-    ImGui::BeginChild("##build_report_tabs", ImVec2(-detailWidth, 0.0f));
+    // the tables keep the window's width; Referenced By sits below them
+    const float detailHeight = ImGui::GetFontSize() * 9.0f;
+    ImGui::BeginChild("##build_report_tabs", ImVec2(0.0f, -detailHeight));
     if (ImGui::BeginTabBar("##build_report_tab_bar")) {
         if (ImGui::BeginTabItem("Files")) {
             drawFilesTab();
@@ -615,7 +616,6 @@ void BuildReportWindow::show() {
         ImGui::EndTabBar();
     }
     ImGui::EndChild();
-    ImGui::SameLine();
     ImGui::BeginChild("##build_report_detail", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders);
     drawDetail();
     ImGui::EndChild();

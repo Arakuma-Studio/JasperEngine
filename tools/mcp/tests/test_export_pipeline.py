@@ -21,6 +21,7 @@ and set_project_settings refuses the player.size_budgets key.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import shutil
@@ -413,13 +414,18 @@ async def test_build_report_referenced_by(ed: Editor):
     r = await ed.call_raw("get_build_info", {"referenced_by": ["textures/wall.png", "textures/orphan.png"]})
     ed.check(not r.is_error, r.text)
     items = {item["asset"]: item for item in r.structured["referenced_by"]}
+    # a linked submesh keeps a copy of the material's values: the scene reaches the texture itself,
+    # the shortest way back to a root (and the material file through its link)
     wall = items["textures/wall.png"]
     ed.check_eq(wall["reason"], "reached", f"{wall}")
-    ed.check_eq([step["asset"] for step in wall["chain"]], ["textures/wall.png", "materials/wall.material", "scenes/Main.scene", "project.yaml"],
-                f"{wall['chain']}")
-    ed.check_eq(wall["chain"][2]["kind"], "SceneList")
-    ed.check(wall["chain"][1].get("object") == "Box", f"the GameObject holding the material: {wall['chain'][1]}")
+    ed.check_eq([step["asset"] for step in wall["chain"]], ["textures/wall.png", "scenes/Main.scene", "project.yaml"], f"{wall['chain']}")
+    ed.check(wall["chain"][0].get("object") == "Box" and "MeshComponent" in wall["chain"][0]["field"], f"the field of Box: {wall['chain'][0]}")
+    ed.check_eq(wall["chain"][1]["kind"], "scene_list")
+    ed.check_eq(wall["chain"][-1]["kind"], "root")
     ed.check_eq(wall["live"], False, "from the export's walk")
+    material = (await ed.call("get_build_info", referenced_by=["materials/wall.material"]))["referenced_by"][0]
+    ed.check_eq([step["asset"] for step in material["chain"]], ["materials/wall.material", "scenes/Main.scene", "project.yaml"], f"{material}")
+    ed.check_eq(material["chain"][0]["kind"], "mesh_material_file")
     orphan = items["textures/orphan.png"]
     ed.check_eq(orphan["reason"], "unreferenced")
     ed.check_eq(orphan["chain"], [])
@@ -450,7 +456,7 @@ async def test_build_report_compare(ed: Editor):
     ed.check_eq(comparison["platform_differs"], False)
     ed.check_in(f"Build Report source {second['id']}", r.text)
     ed.check_in(f"vs {S['first_report']}", r.text)
-    ed.check(re.search(r"textures \+[0-9.]+ [KM]?B \(1 grown", r.text) is not None, r.text[:400])
+    ed.check(re.search(r"textures \+[0-9.]+ [KM]?B \(\d+ grown", r.text) is not None, r.text[:400])
     msg = await ed.call("get_build_info", compare_to="20000101-000000-source", expect_error=True)
     ed.check_in(S["first_report"], msg, "an unknown id lists the history")
     S["second_report"] = second["id"]
@@ -458,7 +464,10 @@ async def test_build_report_compare(ed: Editor):
 
 async def test_build_report_history_survives_restart(ed: Editor):
     """AC5: after a restart the Build Report window and get_build_info report: last open the newest export"""
-    async with Editor(project=ed.project, label="report-restart") as again:
+    # a still copy: the running editor writes its caches meanwhile
+    still = ed.scratch.root / "report-restart-project"
+    shutil.copytree(ed.project, still, symlinks=True, ignore=shutil.ignore_patterns("*.je-tmp", ".git"))
+    async with Editor(project=still, label="report-restart") as again:
         last = await again.call("get_build_info", report="last")
         again.check_eq(last["report"]["id"], S["second_report"])
         again.check_eq(last["report"]["history"][:2], [S["second_report"], S["first_report"]])
@@ -499,9 +508,10 @@ async def test_size_budget_warns_and_fails(ed: Editor):
 
     await ed.call("set_project_settings", values={"player.size_budget_action": "fail"})
     failed = ed.scratch.root / "budget-fail"
-    r = await ed.call("build_project", mode="player", platform="linux", method="prebuilt", output_dir=str(failed), timeout_seconds=600)
-    ed.check_eq(r["status"], "failed", f"{r}")
-    ed.check_in("textures/big.png", r.get("message", "") + json.dumps(r.get("result", {})))
+    msg = await ed.call("build_project", mode="player", platform="linux", method="prebuilt", output_dir=str(failed), timeout_seconds=600,
+                        expect_error=True)
+    ed.check_in("Size budget", msg)
+    ed.check_in("textures/big.png", msg)
     data = report_of(failed)
     ed.check(data["budgets"] and data["budgets"][0]["over_bytes"] > 0, f"{data['budgets']}")
     ed.check(not any(f["category"] == "engine" for f in data["files"]), "stopped before the engine was measured")

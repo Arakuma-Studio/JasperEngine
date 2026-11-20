@@ -5497,10 +5497,10 @@ CASES = [
                 {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792},
                  "referenced_by": [{"file": "assets/je-cooked/web/77c.ktx2", "asset": "textures/old_logo.png", "reason": "reached",
                                     "live": False, "chain": [
-                                        {"asset": "textures/old_logo.png", "field": "material/baseColorTexture", "kind": "MaterialTexture"},
+                                        {"asset": "textures/old_logo.png", "field": "material/baseColorTexture", "kind": "material_texture"},
                                         {"asset": "materials/splash.material", "field": "entity:14/MeshComponent.submeshes[0].material",
-                                         "kind": "MeshMaterialFile", "object": "Credits/Logo"},
-                                        {"asset": "scenes/Credits.scene", "field": "project/scenes[2]", "kind": "SceneList"},
+                                         "kind": "mesh_material_file", "object": "Credits/Logo"},
+                                        {"asset": "scenes/Credits.scene", "field": "project/scenes[2].filepath", "kind": "scene_list"},
                                         {"asset": "project.yaml", "field": "", "kind": "root"}]}]})},
             {"tool": "get_build_info", "result": ok(
                 "Host linux. Desktop player: available; Web: available; source export: available. 2 scene(s) in the build, 40 "
