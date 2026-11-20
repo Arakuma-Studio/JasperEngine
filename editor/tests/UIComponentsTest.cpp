@@ -631,18 +631,18 @@ TEST_F(UIComponentsTest, InputFieldKeyboardTypeAndLimit) {
     EXPECT_EQ(counts["submit"], 1);
 
     // saved only away from the defaults; a scene without the keys reads the defaults
-    const YAML::Node saved = Stream::encodeComponents(field, scene, scene->getSignature(field));
+    const YAML::Node saved = editor::Stream::encodeComponents(field, scene, scene->getSignature(field));
     EXPECT_EQ(saved["inputfield"]["keyboardType"].as<std::string>(), "email_address");
     EXPECT_EQ(saved["inputfield"]["characterLimit"].as<int>(), 4);
     Scene old;
     const Entity loaded = old.createUserEntity();
     YAML::Node oldComponents;
     oldComponents["inputfield"] = YAML::Load("{placeholder: Name}");
-    Stream::decodeComponents(loaded, NULL_ENTITY, &old, oldComponents);
+    editor::Stream::decodeComponents(loaded, NULL_ENTITY, &old, oldComponents);
     ASSERT_TRUE(old.findComponent<InputFieldComponent>(loaded));
     EXPECT_EQ(old.getComponent<InputFieldComponent>(loaded).keyboardType, InputFieldKeyboardType::DEFAULT);
     EXPECT_EQ(old.getComponent<InputFieldComponent>(loaded).characterLimit, 0);
-    const YAML::Node again = Stream::encodeComponents(loaded, &old, old.getSignature(loaded));
+    const YAML::Node again = editor::Stream::encodeComponents(loaded, &old, old.getSignature(loaded));
     EXPECT_FALSE(again["inputfield"]["keyboardType"]) << "the defaults are not written";
     EXPECT_FALSE(again["inputfield"]["characterLimit"]);
 }
