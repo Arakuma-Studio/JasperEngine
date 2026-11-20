@@ -96,6 +96,7 @@ namespace jasperengine::editor{
     class SystemsWindow;
     class SpriteNormalsWindow;
     class TitleDesignerWindow;
+    class LocalizationTablesWindow;
     class SpritePreviewWindow;
     class GameWindow;
     class MainToolbar;
@@ -287,6 +288,7 @@ namespace jasperengine::editor{
         PhysicsPlacementWindow* physicsPlacementWindow;
         SpriteNormalsWindow* spriteNormalsWindow;
         TitleDesignerWindow* titleDesignerWindow;
+        LocalizationTablesWindow* localizationTablesWindow;
         // which generated normal maps are stale, and their opt-in auto-regenerate
         SpriteNormalsWatcher* spriteNormalsWatcher;
         SpritePreviewWindow* spritePreviewWindow;
@@ -750,6 +752,7 @@ namespace jasperengine::editor{
         PhysicsPlacementWindow* getPhysicsPlacementWindow() const;
         SpriteNormalsWindow* getSpriteNormalsWindow() const;
         TitleDesignerWindow* getTitleDesignerWindow() const;
+        LocalizationTablesWindow* getLocalizationTablesWindow() const { return localizationTablesWindow; }
         SpriteNormalsWatcher* getSpriteNormalsWatcher() const;
         SpritePreviewWindow* getSpritePreviewWindow() const { return spritePreviewWindow; }
         void openSpriteNormals(const std::vector<std::filesystem::path>& images, bool editRecipe) override;

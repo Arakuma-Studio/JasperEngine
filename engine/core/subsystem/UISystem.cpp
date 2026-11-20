@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "UISystem.h"
+#include "localization/Localization.h"
 #include "component/ActionComponent.h"
 #include "component/TweenComponent.h"
 #include "component/ButtonComponent.h"
@@ -284,8 +285,20 @@ std::string UISystem::getFontId(const TextComponent& text) const{
     return getFontId(text, getTextOptions(text));
 }
 
+namespace {
+
+    // game-ui-localization.md R14: a Text without a font uses the game language's first font
+    std::string primaryFontOf(const TextComponent& text){
+        if (!text.font[0].empty() || !Localization::isActive())
+            return text.font[0];
+        const std::vector<std::string> fonts = Localization::getLanguageFonts(Localization::getLanguage());
+        return fonts.empty() ? std::string() : fonts.front();
+    }
+
+}
+
 std::string UISystem::getFontId(const TextComponent& text, const STBTextOptions& options) const{
-    std::string fontId = text.font[0];
+    std::string fontId = primaryFontOf(text);
     if (fontId.empty())
         fontId = "font";
 
@@ -355,9 +368,10 @@ bool UISystem::loadFontAtlas(TextComponent& text, UIComponent& ui, RectTransform
                 fallbacks.push_back(text.font[i]);
         }
 
-        text.stbtext = FontPool::get(fontId, text.font[0], fallbacks, text.fontSize, options);
+        const std::string primary = primaryFontOf(text);
+        text.stbtext = FontPool::get(fontId, primary, fallbacks, text.fontSize, options);
         if (!text.stbtext) {
-            Log::error("Cannot load font atlas from: %s", text.font[0].c_str());
+            Log::error("Cannot load font atlas from: %s", primary.c_str());
             return false;
         }
     }
@@ -2755,6 +2769,21 @@ void UISystem::createOrUpdateUiComponent(RectTransformComponent& layout, Entity 
             TextComponent& text = scene->getComponent<TextComponent>(entity);
 
             if (noGeometry) text.needUpdateText = true;
+
+            // game-ui-localization.md R14, R16: the key's message and the language font, at start
+            // and after each change of language or tables
+            if ((!text.textKey.empty() || text.font[0].empty()) && text.localizationGeneration != Localization::getGeneration()){
+                text.localizationGeneration = Localization::getGeneration();
+                std::string message;
+                // a running scene only: an edit-mode scene keeps the authored text it saves
+                if (!text.textKey.empty() && Engine::isSceneRunning(scene) && Localization::translate(text.textKey, text.textArgs, message, "Text " + std::to_string(entity)) &&
+                        message != text.text){
+                    text.text = message;
+                    text.needUpdateText = true;
+                }
+                if (text.font[0].empty() && text.loaded)
+                    text.needReloadAtlas = true;
+            }
 
             // a Text Effect needs a colour per vertex: another buffer layout and shader variant
             const bool vertexColor = scene->findComponent<TextEffectComponent>(entity) != nullptr;

@@ -11,6 +11,7 @@
 #include "Exporter.h"
 #include "test/GameTests.h"
 #include "titleart/TitleArtExport.h"
+#include "localization/StringTableCook.h"
 #include "titleart/three_d/Title3DExport.h"
 #include "titleart/runtime/TitleArtRuntimeExport.h"
 #include "titleart/runtime/TitleArtRuntimeFonts.h"
@@ -1426,6 +1427,7 @@ void editor::Exporter::runExport() {
     if (!copyAssets()) return;
     if (!writeTitleArtRuntime()) return;
     if (!writeAudioImports()) return;
+    if (!writeLocalization()) return;
     buildReport = BuildReport();
     measureBuildContent(getExportProjectRoot());
     if (!writeAssetMap()) return;
@@ -3622,6 +3624,21 @@ bool editor::Exporter::cookTextures() {
     return true;
 }
 
+bool editor::Exporter::writeLocalization() {
+    const l10n::CookResult cooked = l10n::cookLocalization(project->getProjectPath(), project->getLocalizationSettings(), getExportProjectRoot() / "assets");
+    for (const std::string& line : cooked.warnings) {
+        const size_t colon = line.find(": ");
+        warn(colon == std::string::npos ? std::string("W-L10N") : line.substr(0, colon), colon == std::string::npos ? line : line.substr(colon + 2));
+    }
+    if (!cooked.ok) {
+        setError(cooked.error);
+        return false;
+    }
+    localizationShipped = !cooked.written.empty();
+    if (localizationShipped) Out::info("String Tables: %zu files (%zu KiB)", cooked.written.size(), cooked.bytes / 1024);
+    return true;
+}
+
 bool editor::Exporter::writeAudioImports() {
     std::vector<std::string> problems;
     const std::string text = AudioImportRegistry::exportText(AudioImportRegistry::collect(*project, problems));
@@ -3952,6 +3969,8 @@ bool editor::Exporter::copyAssets() {
         if (Util::isTitleArtFile(relPath.generic_string()) && !TitleArtExport::isNeeded(project, relPath.generic_string())) return TreeStep::Enter;
         // S87 R25: the sets of the languages the build leaves out
         if (titleLanguages.droppedFiles.count(relPath.generic_string())) return TreeStep::Enter;
+        // String Tables ship cooked (assets/l10n, writeLocalization)
+        if (relPath.extension() == ".stringtable" || relPath.extension() == ".translation") return TreeStep::Enter;
         // A Procedural Material ships as what it baked: PNGs and a .material (S90 R4)
         if (Util::isProceduralMaterialFile(entry.path().string())) return TreeStep::Enter;
 

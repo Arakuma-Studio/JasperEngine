@@ -243,7 +243,7 @@ namespace {
         {"*", "title", E, FF::None, E, "", "emulated: a tooltip after the hover or focus delay (S17)", ""},
         {"*", "tooltip", E, FF::None, E, "", "rich tooltip: #id of an element or <template> of the document, cloned on show (S17)", ""},
         {"*", "tooltip-delay", E, FF::None, E, "", "the element's tooltip delay in ms (S17)", ""},
-        {"*", "translate", I, FF::None, I, "", "no effect in a game UI; dropped (Info)", ""},
+        {"*", "translate", N, FF::None, N, "", "kept: translate=\"no\" keeps a subtree out of the localisation scan", ""},
         {"*", "type", N, FF::None, N, "", "kept", ""},
         {"*", "valign", R, FF::None, R, "hint rule vertical-align", "legacy presentational attribute", ""},
         {"*", "value", N, FF::None, N, "", "kept", ""},

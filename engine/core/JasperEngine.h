@@ -156,6 +156,7 @@
 #include "component/TitleArtRendererComponent.h"
 #include "component/SimulationCullingComponent.h"
 #include "util/TitleArtLanguage.h"
+#include "localization/Localization.h"
 #include "object/TitleArt.h"
 #include "component/RectTransformComponent.h"
 #include "component/UIDocumentComponent.h"

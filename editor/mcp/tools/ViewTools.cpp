@@ -2394,7 +2394,7 @@ void registerViewTools(McpRegistry& registry) {
             {"network", stringEnum("", {"online", "offline"})},
             {"device", string("A devices id, custom or none.")},
             {"orientation", stringEnum("", {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"})},
-            {"language", string("es-MX..., or system.")},
+            {"language", string("en-XA..., or system.")},
             {"device_overlay", boolean("")},
             {"safe_area_outline", boolean("")},
             {"custom_device", anyObject("")},

@@ -47,6 +47,7 @@
 #include "window/SceneWindow.h"
 #include "window/SpriteNormalsWindow.h"
 #include "window/TitleDesignerWindow.h"
+#include "window/LocalizationTablesWindow.h"
 #include "window/InspectorWindowTitleArt.h"
 #include "titleart/designer/TitleCanvasView.h"
 #include "window/SpritePreviewWindow.h"
@@ -311,6 +312,7 @@ editor::App::App(){
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
     titleDesignerWindow = new TitleDesignerWindow(&project);
+    localizationTablesWindow = new LocalizationTablesWindow(&project);
     // the Inspector's Open in Title Designer and a double-click open the window (S82 R1, R62)
     InspectorWindowTitleArt::setOpenInDesigner([this](const std::filesystem::path& document) {
         std::string error;
@@ -880,6 +882,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
         catalogItem("window.titleDesigner", windowMenuLabel(TitleDesignerWindow::WINDOW_NAME)),
+        catalogItem("window.localizationTables", windowMenuLabel(LocalizationTablesWindow::WINDOW_NAME)),
         catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
         menuSubmenu("2D", {
             catalogItem("window.spritePreview", windowMenuLabel(SpritePreviewWindow::WINDOW_NAME)),
@@ -1592,6 +1595,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleBookmarks:
             showEditorWindow(bookmarksWindow);
+            break;
+        case AppMenuCommand::ToggleLocalizationTables:
+            showEditorWindow(localizationTablesWindow);
             break;
         case AppMenuCommand::LayoutApply:
             layouts.requestSwitch(command.payload);
@@ -3233,6 +3239,7 @@ void editor::App::show(){
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
     vertexAnimationBakerWindow->show();
     titleDesignerWindow->show();
+    localizationTablesWindow->show();
     // S87: Import Title Art, its report and the Title Designer's Export
     drawTitleArtInterchangeWindows(&project);
     // also the tick of the Scene view's physics sessions, with the panel closed too

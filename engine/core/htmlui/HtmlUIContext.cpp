@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "htmlui/HtmlTextEffects.h"
+#include "htmlui/HtmlL10n.h"
 #include "HtmlUIContext.h"
 #include "audio/AudioMarkers.h"
 
@@ -413,7 +414,10 @@ void HtmlUIContext::update(){
         htmlui::compat::updateRuntime(context);
         // S17: tooltips, drags, runtime diagnostics
         htmlui::WidgetsRuntime::update(context);
+        // the keyed elements made since (inserted fragments) and by the update (virtual rows)
+        htmlui::HtmlL10n::update();
         context->Update();
+        htmlui::HtmlL10n::update();
     }
     markUpdated();
 }

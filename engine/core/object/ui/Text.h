@@ -6,6 +6,7 @@
 
 #include "RectTransform.h"
 #include "texture/Material.h"
+#include "localization/LocalizationArgs.h"
 
 namespace jasperengine{
     class JASPERENGINE_API STBText;
@@ -38,6 +39,12 @@ namespace jasperengine{
 
         void setText(const std::string& text);
         std::string getText() const;
+
+        // Localization Key (game-ui-localization.md R16): the text follows the key's message in
+        // the game language; the arguments are runtime only (not saved). "" keeps the text as is
+        void setLocalizedText(const std::string& key, const LocalizationArgs& args = {});
+        void setLocalizationKey(const std::string& key);
+        std::string getLocalizationKey() const;
 
         // index 0 is the main font, the next ones are fallbacks for what it misses
         void setFont(const std::string& font);

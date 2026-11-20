@@ -1570,6 +1570,22 @@ Crash.markHandled("20261026T143200Z-4242")       -- the same by id (false: unkno
 - Pending means from an earlier session and not handled yet; the current session's reports
   appear at the next start.
 - Editor Play reads the editor's own reports (docs/crash-diagnostics.md).
+### 2.15.1 Localization (static): String Tables and the game language
+
+```lua
+local label = Localization.get("ui.shop.coins", {count = 3})        -- "3 coins"; fallback as 3rd argument
+local lives = Localization.format("{n, plural, one {# life} other {# lives}}", {n = 2})
+Localization.setLanguage("de")                   -- false for a bad tag; "" follows the device again
+print(Localization.language, Localization.languages[1], Localization.getLanguageName("de"))
+Localization.onLanguageChanged = function(code) Log.print("language " .. code) end
+local scan = Localization.scan()                 -- {literal = {...}, missing = {...}} (development)
+```
+
+- Keys are `ns.key`; texts are ICU (`{n, plural, one {...} other {...}}`). Prefer
+  `data-l10n-id` in HTML and a Text's `localizationKey` / `text:setLocalizedText(key, args)` over
+  setting `text` from `Localization.get`: those follow language changes by themselves.
+- `language`, `languages` and `onLanguageChanged` are fields; `TitleArt.setLanguage` sets the
+  same language. Tables: `edit_string_table`, jasper://docs/localization.
 ### 2.16 Time (static, Unity's Time)
 
 The game clocks under their Unity names. `Engine.deltatime` and the other `Engine` names stay;

@@ -3088,6 +3088,17 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             localizationNode["languages"] = list;
         }
         if (!localization.defaultLanguage.empty()) localizationNode["defaultLanguage"] = localization.defaultLanguage;
+        // game-ui-localization.md R40: new members with defaults, written when they differ
+        if (!localization.rememberChoice) localizationNode["rememberChoice"] = false;
+        if (!localization.fonts.empty()) {
+            YAML::Node fonts(YAML::NodeType::Map);
+            for (const auto& [code, list] : localization.fonts) {
+                YAML::Node paths(YAML::NodeType::Sequence);
+                for (const std::string& path : list) paths.push_back(path);
+                fonts[code] = paths;
+            }
+            localizationNode["fonts"] = fonts;
+        }
         if (localizationNode.size() != 0) root["localization"] = localizationNode;
     }
 
@@ -4112,6 +4123,17 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (localizationNode["defaultLanguage"]) {
             const std::string tag = TitleArtLanguage::canonicalize(localizationNode["defaultLanguage"].as<std::string>(""));
             if (TitleArtLanguage::isValid(tag)) localization.defaultLanguage = tag;
+        }
+        if (localizationNode["rememberChoice"]) localization.rememberChoice = localizationNode["rememberChoice"].as<bool>(true);
+        if (localizationNode["fonts"] && localizationNode["fonts"].IsMap()) {
+            for (const auto& entry : localizationNode["fonts"]) {
+                const std::string tag = TitleArtLanguage::canonicalize(entry.first.as<std::string>(""));
+                if (!TitleArtLanguage::isValid(tag) || !entry.second.IsSequence()) continue;
+                for (const YAML::Node& path : entry.second) {
+                    const std::string value = path.as<std::string>("");
+                    if (!value.empty()) localization.fonts[tag].push_back(value);
+                }
+            }
         }
     }
 

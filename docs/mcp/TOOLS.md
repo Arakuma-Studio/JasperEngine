@@ -71,6 +71,7 @@ Conventions shared by every tool (explained once in the server instructions, not
 - [Title Art](#title-art) (6): `check_title`, `edit_title`, `export_title`, `get_title`, `list_title_library`, `render_title`
 - [Sprites: Aseprite import, atlases, drawing](#sprites-aseprite-import-atlases-drawing) (9): `create_sprite`, `diff_sprite`, `edit_sprite`, `edit_sprite_atlas`, `get_sprite`, `get_sprite_atlas`, `read_sprite_pixels`, `render_sprite`, `set_sprite_import_settings`
 - [Pixel art: font previews](#pixel-art-font-previews) (1): `preview_font`
+- [Localization: String Tables](#localization-string-tables) (1): `edit_string_table`
 
 ## Core
 
@@ -1554,7 +1555,7 @@ Read (no arguments) or change the Game view toolbar (editor preferences, not und
 | `device` | string |  | A devices id, custom or none. |
 | `device_overlay` | boolean |  |  |
 | `input_scheme` | `"auto"` \| `"keyboard_mouse"` \| `"gamepad"` \| `"touch"` |  |  |
-| `language` | string |  | es-MX..., or system. |
+| `language` | string |  | en-XA..., or system. |
 | `maximize_on_play` | boolean |  |  |
 | `network` | `"online"` \| `"offline"` |  |  |
 | `orientation` | `"portrait"` \| `"portrait_upside_down"` \| `"landscape_left"` \| `"landscape_right"` |  |  |
@@ -4020,12 +4021,13 @@ Edit-time physics placement (the scene's own physics never runs): drop, separate
 
 Group: `core`. Hints: read-only, idempotent
 
-Assert a live HTML/CSS UI document's layout: passed + each failure (element ref, numbers, rects), on failure an image with failing boxes outlined. Checks {type, selector}: exists, count and selected (count|min|max), visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), within_parent (container), within_viewport, contrast (min_ratio, background where the UI is transparent), min_size (width, height), virtual_window (max rows), tooltip (text). viewports: other sizes too. Zero matches fail.
+Assert a live HTML/CSS UI document's layout: passed + each failure (ref, numbers, rects), on failure an image with them outlined. Checks {type, selector}: exists, count and selected (count|min|max), visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), within_parent (container), within_viewport, contrast (min_ratio, background where the UI is transparent), min_size (width, height), virtual_window (max rows), tooltip (text). viewports, languages: more layouts. 0 matches fail.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `checks` | array of object {allow_scroll, background, container, count, height, max, min, min_ratio, selector, single_line, text, tolerance, type, unobstructed, width, with} | yes |  |
 | `entity` | integer or string |  | UI Document (default: the only one). |
+| `languages` | array of string |  |  |
 | `max_width` | integer (0..4096) |  | Default: `768`. |
 | `scene` | integer or string |  |  |
 | `screenshot` | `"on_failure"` \| `"always"` \| `"never"` |  | Default: `"on_failure"`. |
@@ -4080,7 +4082,7 @@ Drive a list-view, grid-view, tree-view or table-view of a playing HTML UI docum
 
 Group: `core`. Hints: read-only, idempotent
 
-A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model, styles + rule file:line. at: hit test. file: a .html/.css's diagnostics (= `jasperengine-editor check --ui`). Lua-made content: play only.
+A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model, styles + rule file:line. at: hit test. file: a .html/.css's diagnostics (= `jasperengine-editor check --ui`). l10n: String Tables. Lua content: play only.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -4089,6 +4091,7 @@ A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h
 | `detail` | `"tree"` \| `"full"` |  | full: box model, attributes, styles + sources (max 20 elements). Default: `"tree"`. |
 | `entity` | integer or string |  | UI Document (default: the only one). |
 | `file` | string |  | .html/.css: diagnostics only. |
+| `l10n` | boolean |  |  |
 | `limit` | integer (1..1000) |  | Default: `200`. |
 | `max_width` | integer (0..4096) |  | Default: `768`. |
 | `models` | boolean |  | Data-model values (play). |
@@ -6318,3 +6321,23 @@ Draw a font as PNG: a bitmap font (.bitmapfont, .fnt, builtin:pixel) as its labe
 | `path` | string | yes |  |
 | `scale` | integer (1..16) |  | Font pixels per side. |
 | `text` | string |  | At most 256 characters, \n for lines. |
+
+
+## Localization: String Tables
+
+### `edit_string_table`
+
+*Edit String Table*
+
+Group: `localization` (listed once `tool_groups` enables it, callable either way)
+
+String Tables (.stringtable, keys ns.key). No path: lists tables, coverage per language and Play misses. get reads entries; ops (set, remove, rename, add_language, remove_language, mark_reviewed) apply as one undo step, refused whole if one fails; create makes a table; import/export CSV or XLIFF. Texts are ICU ({n, plural, one {# coin} other {# coins}}).
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `create` | object {namespace, source_language} |  |  |
+| `export` | object {format, languages, out} |  |  |
+| `get` | object {keys, language, limit, missing} |  |  |
+| `import` | object {add_languages, file} |  |  |
+| `ops` | array |  |  |
+| `path` | string |  |  |

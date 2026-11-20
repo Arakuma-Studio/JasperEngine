@@ -19,6 +19,7 @@
 #include "player/ContentManifest.h"
 #include "player/PlayerLaunch.h"
 #include "player/PlayerConfig.h"
+#include "localization/Localization.h"
 #include "player/RunControl.h"
 #include "serialization/CookedScene.h"
 #if JASPERENGINE_VOXEL
@@ -329,6 +330,7 @@ JASPERENGINE_INIT void init() {
     Engine::setFoliageDistanceScaleDefaults(game.foliageDistanceScale[0], game.foliageDistanceScale[1], game.foliageDistanceScale[2]);
     if (game.inputDeadzone != 0.15f) InputActions::setDefaultDeadzone(game.inputDeadzone);
     if (!game.inputActions.empty()) InputActions::loadDefault(game.inputActions);
+    if (!game.localization.empty()) Localization::loadManifest(game.localization);
     if (game.navigation != nav::NavigationSettings()) nav::setSettings(game.navigation);
 #if JASPERENGINE_VOXEL
     if (game.voxelMaxDimension > 0 || game.voxelCpuBudgetMB > 0 || game.voxelMeshBudgetMB > 0) {
