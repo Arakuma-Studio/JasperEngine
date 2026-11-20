@@ -4766,6 +4766,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("seek", &AudioSource::seek)
         .addFunction("getLength", &AudioSource::getLength)
         .addFunction("getPlayingTime", &AudioSource::getPlayingTime)
+        // read-only: the loaded clip's channels as it plays (1 under Force To Mono), 0 with no clip
+        .addProperty("channels", &AudioSource::getChannels)
         .addFunction("isPlaying", &AudioSource::isPlaying)
         .addFunction("isPaused", &AudioSource::isPaused)
         .addFunction("isStopped", &AudioSource::isStopped)

@@ -2786,6 +2786,8 @@ rw: `enabled`, `volume`, `speed` (`pitch` is the same), `pan`, `looping`, `loopi
 mixer group by name, "" = Master), `loadType` (`AudioLoadType.*`, Auto streams files of 1 MiB and
 more), `priority` (0 most important .. 256, default 128), `maxVoices` (1..64, default 8),
 `ignoreListenerPause`.
+Read-only: `channels` (the loaded clip's channels as it plays: 1 under the clip's Force To Mono, 0
+with no clip loaded).
 Sound Events and triggers: `event` (rw: its path; assigning a path or GUID resolves it, `""` clears it;
 set, the source plays the event and its clip is ignored), `playOn` (rw, `AudioPlayOn` flags),
 `minImpactSpeed`, `fullVolumeImpactSpeed` (contact triggers: below the first nothing plays; below the
