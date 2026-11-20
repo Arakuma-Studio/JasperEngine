@@ -6881,11 +6881,6 @@ void editor::Project::finalizeStart(SceneProject* mainSceneProject, std::vector<
     if (mainSceneProject) {
         mainSceneProject->playState = ScenePlayState::PLAYING;
         mainSceneProject->needUpdateRender = true;
-        {
-            const int64_t ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - playJournalStart).count();
-            const diag::journal::Field fields[] = {{"ms", ms}, {"name", std::string_view(mainSceneProject->name)}};
-            diag::journal::logEngine("engine.scene_loaded", fields);
-        }
         editor::getEditorHost().requestScenePlayFocus(mainSceneProject->id);
         editor::getEditorHost().resetLastActivatedScene();
         Out::success("Scene '%s' started", mainSceneProject->name.c_str());
@@ -11354,7 +11349,6 @@ void editor::Project::start(uint32_t sceneId) {
     // the Gameplay Journal's engine entries as the built game would write them (Project Settings >
     // Player > Crash Handling > Journal Engine Events)
     diag::journal::setEngineEvents(playerCrash.journalEngineEvents);
-    playJournalStart = std::chrono::steady_clock::now();
     journalPlay("start");
     jasperengine::CrashHook::set(
         [this, sceneId](const std::string& tag, const std::string& errorInfo) {

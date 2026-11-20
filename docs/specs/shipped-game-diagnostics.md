@@ -503,8 +503,9 @@ Unit tests: `engine/tests/core/diag/JournalTest.cpp` (new file, suite `Journal`,
   Journal (KiB) = 1 allocates 1028 bytes. `configure` replaces the ring until `crash::install`
   took it (the unit tests set a ring per test); afterwards it is ignored.
 - **R9** The editor's `engine.play` also writes `state=resume` (AC7 pauses and resumes; a journal
-  with a pause and no resume reads wrong). Editor Play loads no scene through `SceneManager`, so
-  the editor writes `engine.scene_loaded` once Play has started, `ms` counted from Play's start.
+  with a pause and no resume reads wrong).
+- **R34** The Console's message drops the frame too (`test.kind a=1`, as AC9 reads it): the Console
+  records each line's frame itself.
   An exported game has no version the engine knows (`crash.txt` writes `version: unknown` too),
   so its `engine.start` says `version=unknown`.
 - **R11/R13** `maxWidth` and `maxBytes` are the second argument of `Crash.beginReport(fn,

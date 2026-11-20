@@ -453,6 +453,7 @@ void SceneManager::setCurrentScene(uint32_t id) {
     currentId = id;
     Engine::markLevelLoad();
     loadingState = LoadingState::Loading;
+    journalLoadStart = Engine::getSystemTime();
     resetLoadProgress();
 }
 

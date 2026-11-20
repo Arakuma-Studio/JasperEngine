@@ -26,8 +26,11 @@ namespace {
     // left to the Console
     JE_LOG_CATEGORY(logCategoryJournal, "journal", ::jasperengine::LogLevel::Info)
 
+    // the entry after "+<seconds> f<frame> ": the Console records both itself
     void mirrorJournalEntry(std::string_view entry) {
-        Logger::write(LogLevel::Info, logCategoryJournal(), entry, nullptr, LogFlagNoRateLimit);
+        const size_t space = entry.find(' ');
+        Logger::write(LogLevel::Info, logCategoryJournal(), space == std::string_view::npos ? entry : entry.substr(space + 1),
+                      nullptr, LogFlagNoRateLimit);
     }
 
     struct State {

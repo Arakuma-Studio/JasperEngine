@@ -960,8 +960,6 @@ namespace jasperengine::editor{
         // Pixel Art: the palette used where none is named (S43 R4b), project-relative, empty for none
         std::filesystem::path defaultPalette;
         PlayerCrashSettings playerCrash;
-        // when Play started (the Gameplay Journal's engine.scene_loaded ms)
-        std::chrono::steady_clock::time_point playJournalStart;
         int htmlUiMsaaSamples;
         // graphics.pixelsPerUnit (S41): texels per world unit of the sprites and tilemaps that take it
         int pixelsPerUnit = 1;

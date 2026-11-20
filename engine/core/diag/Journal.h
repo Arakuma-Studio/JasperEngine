@@ -60,7 +60,7 @@ namespace jasperengine::diag::journal {
     JASPERENGINE_API void logEngine(std::string_view kind, std::span<const Field> fields = {});
 
     // The editor's Console mirror: called with each entry after its "+<time> " (the Console shows
-    // the time itself), on the writing thread
+    // the time itself), "f<frame> <kind> ...", on the writing thread
     using Listener = void (*)(std::string_view entry);
     JASPERENGINE_API void setListener(Listener listener);
 
