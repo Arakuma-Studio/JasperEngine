@@ -1976,6 +1976,10 @@ OVERRIDES = {
     },
 }
 
+# Mesh Space Rotation (docs/specs/mesh-space-rotation.md R14): read from the stack so that
+# `enabled` is required
+OVERRIDES[('Animator', 'setLayerMeshSpaceRotation')] = {'overloads': [([('layer', 'integer|string'), ('enabled', 'boolean')], '')]}
+
 # T4 R47: a Terrain World's waits, bound through lua_State* (their arguments read by hand)
 OVERRIDES[('TerrainWorld', 'waitForArea')] = {
     'doc': ['In an engine coroutine, waits until isAreaReady holds: true, or false at the timeout or when the world stops.'],
@@ -3464,7 +3468,6 @@ _PARAM_TYPE_OVERRIDES = {
     ('Rigidbody', 'setColliderMaterial', 'value'): 'string|PhysicsMaterial|nil',
     ('PhysicsMaterial', 'new', 'params'): '{friction?: number, bounciness?: number, frictionCombine?: PhysicsMaterialCombine, bounceCombine?: PhysicsMaterialCombine}|nil',
     # Animator layers: an index (0 is the base layer) or a name
-    ('Animator', 'setLayerMeshSpaceRotation', 'layer'): 'integer|string',
     ('Animator', 'getLayerMeshSpaceRotation', 'layer'): 'integer|string',
 }
 # anime (engine/core/script/binding/HtmlUIAnimeLua.cpp, phase-1 p1-anim): the parameter tables

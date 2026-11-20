@@ -4488,9 +4488,12 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             return self->getLayerWeight(layer);
         })
         // Mesh Space Rotation (docs/specs/mesh-space-rotation.md R14): a runtime override of this
-        // Animator, a layer by index or by name
-        .addFunction("setLayerMeshSpaceRotation", +[](Animator* self, const luabridge::LuaRef& layer, bool enabled) {
-            self->setLayerMeshSpaceRotation(luaAnimatorLayer(*self, layer, "setLayerMeshSpaceRotation"), enabled);
+        // Animator, a layer by index or by name; `enabled` is required (nil is not false), as the
+        // Animation Player's
+        .addFunction("setLayerMeshSpaceRotation", +[](Animator* self, lua_State* L) {
+            luaL_checktype(L, 3, LUA_TBOOLEAN);
+            const bool enabled = lua_toboolean(L, 3) != 0;
+            self->setLayerMeshSpaceRotation(luaAnimatorLayer(*self, luabridge::LuaRef::fromStack(L, 2), "setLayerMeshSpaceRotation"), enabled);
         })
         .addFunction("getLayerMeshSpaceRotation", +[](const Animator* self, const luabridge::LuaRef& layer) -> bool {
             return self->getLayerMeshSpaceRotation(luaAnimatorLayer(*self, layer, "getLayerMeshSpaceRotation"));

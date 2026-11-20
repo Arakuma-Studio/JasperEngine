@@ -1557,7 +1557,9 @@ TEST_F(Layers, MeshSpaceRotationFromLua){
         "local ok, err = pcall(function() a:setLayerMeshSpaceRotation('Nope', true) end)\n"
         "msrError = tostring(ok) .. ' ' .. tostring(err)\n"
         "local ok2, err2 = pcall(function() return a:getLayerMeshSpaceRotation(7) end)\n"
-        "msrError2 = tostring(ok2) .. ' ' .. tostring(err2)\n"), LUA_OK) << lua_tostring(L, -1);
+        "msrError2 = tostring(ok2) .. ' ' .. tostring(err2)\n"
+        "local ok3, err3 = pcall(function() a:setLayerMeshSpaceRotation(1) end)\n"
+        "msrError3 = tostring(ok3) .. ' ' .. tostring(err3)\n"), LUA_OK) << lua_tostring(L, -1);
     auto global = [&](const char* name){
         lua_getglobal(L, name);
         const std::string value = lua_tostring(L, -1) ? lua_tostring(L, -1) : "";
@@ -1568,6 +1570,8 @@ TEST_F(Layers, MeshSpaceRotationFromLua){
     EXPECT_NE(global("msrError").find("false"), std::string::npos);
     EXPECT_NE(global("msrError").find("no layer \"Nope\"; the layers are 0 \"Base Layer\", 1 \"Upper Body\""), std::string::npos) << global("msrError");
     EXPECT_NE(global("msrError2").find("no layer 7"), std::string::npos) << global("msrError2");
+    EXPECT_EQ(global("msrError3").rfind("false ", 0), 0u) << "a missing enabled is an error, as on the Animation Player: " << global("msrError3");
+    EXPECT_NE(global("msrError3").find("boolean expected"), std::string::npos) << global("msrError3");
     ASSERT_TRUE(instance().layerMeshSpaceApplies(1));
     animate(0.0);
     EXPECT_LE(componentError(rig("Hips/Spine"), yaw(-20) * tilt(40)), 1e-5f) << "the override drives the pass";
