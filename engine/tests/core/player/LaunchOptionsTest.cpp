@@ -175,3 +175,36 @@ TEST(LaunchOptions, DeviceTier) {
     EXPECT_NE(refused({"--device-tier=extreme"}).find("low, medium, high or ultra"), std::string::npos);
     EXPECT_NE(refused({"--device-tier"}).find("needs a value"), std::string::npos);
 }
+
+// project-test-runner AC11: --run-tests needs the test runner; a release player (built without
+// JASPERENGINE_TEST_RUNNER) refuses it with exit 2 and the fixed message, a development one
+// takes it with its filter and results path
+TEST(LaunchOptions, RunTestsNeedsTheTestRunner) {
+    if (!testRunnerCompiled()) {
+        EXPECT_EQ(refused({"--run-tests"}), NO_TEST_RUNNER);
+        EXPECT_EQ(refused({"--test-filter", "smoke"}), NO_TEST_RUNNER);
+        return;
+    }
+    test::TempDir dir;
+    const std::string results = (dir.path() / "results.json").string();
+    const LaunchOptions options = ok({"--run-tests", "--test-filter", "tag:smoke,shop", "--test-results", results, "--keep-test-data"});
+    EXPECT_TRUE(options.runTests);
+    EXPECT_TRUE(options.keepTestData);
+    EXPECT_EQ(options.testFilter, "tag:smoke,shop");
+    EXPECT_EQ(options.testResults.string(), results);
+    EXPECT_TRUE(options.afterReady) << "a test run counts from the ready frame";
+    EXPECT_NE(refused({"--test-filter", "smoke"}).find("go with --run-tests"), std::string::npos);
+    EXPECT_NE(refused({"--run-tests=yes"}).find("takes no value"), std::string::npos);
+    EXPECT_NE(refused({"--run-tests", "--test-results", (dir.path() / "missing" / "r.json").string()}).find("does not exist"), std::string::npos);
+}
+
+TEST(LaunchOptions, TestFlagsFromTheQuery) {
+    const std::vector<std::string> args = argsFromQuery("?run-tests&test-filter=tag%3Asmoke");
+    ASSERT_EQ(args.size(), 2u);
+    EXPECT_EQ(args[0], "--run-tests");
+    EXPECT_EQ(args[1], "--test-filter=tag:smoke");
+    if (!testRunnerCompiled()) return;
+    const LaunchOptions options = ok(args);
+    EXPECT_TRUE(options.runTests);
+    EXPECT_EQ(options.testFilter, "tag:smoke");
+}

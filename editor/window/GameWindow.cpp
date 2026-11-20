@@ -3,6 +3,10 @@
 
 #include "GameWindow.h"
 #include "buildprofile/BuildProfile.h"
+#include "test/GameTests.h"
+#include "test/PlayData.h"
+#include "Out.h"
+#include "util/FileUtils.h"
 #include "window/ContactSheetWindow.h"
 #include "audio/AudioCapture.h"
 #include "render/SystemRender.h"
@@ -472,6 +476,8 @@ bool editor::GameWindow::hasKeyboardFocus() const {
 
 void editor::GameWindow::resetProjectState() {
     playInput->releaseAll();
+    // another project: its own Play Data choice
+    playDataChoice.clear();
     visible = false;
     focused = false;
     cursorInView = false;
@@ -970,14 +976,19 @@ void editor::GameWindow::drawToolbar() {
     std::string texturesLabel = std::string(ICON_FA_IMAGE " ") + textureFamilyLabel(viewFamily) + "##GameTextures";
     const char* physicsLabel = "Physics##GamePhysicsDebug";
     const char* cullingLabel = "Culling##GameCullingDebug";
+    // Play Data: its name in full while it is not Project, even as icons
+    if (playDataChoice.empty()) playDataChoice = gametests::PlayData::selected(project);
+    const bool customPlayData = playDataChoice != "project";
+    std::string playDataLabel = customPlayData ? std::string(ICON_FA_DATABASE " ") + (playDataChoice == "clean" ? std::string("Clean") : playDataChoice) + "##GamePlayData"
+                                               : std::string("Play Data##GamePlayData");
     const ImGuiStyle& style = ImGui::GetStyle();
     auto buttonWidth = [&](const char* label) {
         return ImGui::CalcTextSize(label, nullptr, true).x + style.FramePadding.x * 2.0f;
     };
     auto groupWidth = [&]() {
-        return buttonWidth(texturesLabel.c_str()) + buttonWidth(debuggerLabel) + buttonWidth(networkLabel) +
+        return buttonWidth(texturesLabel.c_str()) + buttonWidth(debuggerLabel) + buttonWidth(networkLabel) + buttonWidth(playDataLabel.c_str()) +
                buttonWidth(touchLabel) + buttonWidth(inputSchemeLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) +
-               buttonWidth(physicsLabel) + buttonWidth(cullingLabel) + style.ItemSpacing.x * 8.0f;
+               buttonWidth(physicsLabel) + buttonWidth(cullingLabel) + style.ItemSpacing.x * 9.0f;
     };
     ImGui::SameLine();
     const float contentRight = ImGui::GetWindowContentRegionMax().x;
@@ -988,6 +999,7 @@ void editor::GameWindow::drawToolbar() {
         texturesLabel = ICON_FA_IMAGE "##GameTextures";
         physicsLabel = ICON_FA_CUBES "##GamePhysicsDebug";
         cullingLabel = ICON_FA_EYE_SLASH "##GameCullingDebug";
+        if (!customPlayData) playDataLabel = ICON_FA_DATABASE "##GamePlayData";
     }
     const float rightX = contentRight - groupWidth();
     if (rightX > ImGui::GetCursorPosX()) {
@@ -1035,6 +1047,19 @@ void editor::GameWindow::drawToolbar() {
         ImGui::TextDisabled("localhost is never affected; not saved into builds");
         ImGui::EndPopup();
     }
+
+    ImGui::SameLine();
+    // Play Data (project-test-runner R21, R41): picked before Play, as Simulate Touch
+    ImGui::BeginDisabled(project->isAnyScenePlaying());
+    if (customPlayData) ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::PrefabText);
+    if (toggleButton(playDataLabel.c_str(), customPlayData,
+                     "Play Data: the folder data:// and PlayerPrefs are in Play. Project (the project's own), Clean (an empty folder each "
+                     "Play) or a snapshot of Tests/Data (a fresh copy each Play)")) {
+        ImGui::OpenPopup("##GamePlayDataMenu");
+    }
+    if (customPlayData) ImGui::PopStyleColor();
+    ImGui::EndDisabled();
+    drawPlayDataMenu();
 
     ImGui::SameLine();
     const bool simulateTouch = project->isSimulateTouch();
@@ -1105,6 +1130,65 @@ bool editor::GameWindow::chooseInputScheme(Project* project, const std::string& 
         return false;
     project->saveWorkspaceFile();
     return true;
+}
+
+void editor::GameWindow::drawPlayDataMenu() {
+    if (ImGui::BeginPopup("##GamePlayDataMenu")) {
+        auto pick = [this](const std::string& profile) {
+            playDataChoice = profile;
+            gametests::PlayData::select(project, profile);
+        };
+        if (ImGui::MenuItem("Project", nullptr, playDataChoice == "project")) pick("project");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("The project's own Play data (.jasperengine/user/rundata)");
+        if (ImGui::MenuItem("Clean", nullptr, playDataChoice == "clean")) pick("clean");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("An empty folder each Play, deleted when Play stops");
+        const std::vector<std::string> snapshots = gametests::listSnapshots(project->getProjectPath());
+        if (ImGui::BeginMenu("Snapshot", !snapshots.empty())) {
+            for (const std::string& name : snapshots)
+                if (ImGui::MenuItem(name.c_str(), nullptr, playDataChoice == name)) pick(name);
+            ImGui::EndMenu();
+        }
+        ImGui::Separator();
+        const bool hasRoot = !gametests::findRoot(project->getProjectPath()).empty();
+        if (ImGui::MenuItem("Save Snapshot...", nullptr, false, hasRoot)) {
+            snapshotPopupRequested = true;
+            snapshotName[0] = '\0';
+            snapshotError.clear();
+        }
+        if (!hasRoot && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("Snapshots go into the test folder: Window > General > Test Runner > Create > Test Folder");
+        if (ImGui::MenuItem("Open Data Folder")) {
+            std::string error;
+            if (!Platform::openWithSystemDefault(FileUtils::pathToUtf8(project->getUserDataPath()), &error)) Out::error("Open Data Folder: %s", error.c_str());
+        }
+        ImGui::EndPopup();
+    }
+    if (snapshotPopupRequested) {
+        ImGui::OpenPopup("Save Snapshot##GamePlayDataSnapshot");
+        snapshotPopupRequested = false;
+    }
+    if (ImGui::BeginPopupModal("Save Snapshot##GamePlayDataSnapshot", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextUnformatted("Copies the Play data into Tests/Data/<name>/ (one undo step).");
+        ImGui::InputText("Name", snapshotName, sizeof(snapshotName));
+        const std::string name = snapshotName;
+        const std::vector<std::string> snapshots = gametests::listSnapshots(project->getProjectPath());
+        const bool exists = std::find(snapshots.begin(), snapshots.end(), name) != snapshots.end();
+        if (exists) ImGui::TextColored(Theme::Colors::WarningText, "A snapshot named %s exists: Save replaces its files.", name.c_str());
+        if (!snapshotError.empty()) ImGui::TextColored(Theme::Colors::ErrorText, "%s", snapshotError.c_str());
+        if (ImGui::Button(exists ? "Replace" : "Save")) {
+            std::string error, warning;
+            if (gametests::PlayData::get().saveSnapshot(project, name, error, warning)) {
+                if (!warning.empty()) Out::warning("%s", warning.c_str());
+                Out::info("Saved the Play data snapshot %s", name.c_str());
+                ImGui::CloseCurrentPopup();
+            } else {
+                snapshotError = error;
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
 }
 
 // "Add custom...": a named size and dpi, kept in this project's editor workspace
@@ -1584,10 +1668,21 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
                 ImGui::SetKeyOwner(ImGuiKey_Escape, ImGui::GetID("##GameCanvasKeys"));
             }
             const ImVec2 inputScale(engineScale.x / zoom, engineScale.y / zoom);
-            playInput->forward(sceneId, imageMin, inputScale, hovered, focused);
-            cursorInView = hovered;
+            if (inputBlockedReason.empty()) {
+                playInput->forward(sceneId, imageMin, inputScale, hovered, focused);
+                cursorInView = hovered;
+            } else {
+                playInput->release(sceneId);
+            }
         } else {
             playInput->release(sceneId);
+        }
+        if (!inputBlockedReason.empty() && running) {
+            const ImVec2 pad(Theme::dpi(8.0f), Theme::dpi(4.0f));
+            const ImVec2 textSize = ImGui::CalcTextSize(inputBlockedReason.c_str());
+            const ImVec2 bannerMin(areaMin.x, areaMin.y + areaSize.y - textSize.y - pad.y * 2.0f);
+            drawList->AddRectFilled(bannerMin, ImVec2(areaMin.x + areaSize.x, areaMin.y + areaSize.y), IM_COL32(20, 20, 20, 220));
+            drawList->AddText(ImVec2(bannerMin.x + pad.x, bannerMin.y + pad.y), IM_COL32(255, 200, 80, 255), inputBlockedReason.c_str());
         }
 
         if (settings.showStats) {

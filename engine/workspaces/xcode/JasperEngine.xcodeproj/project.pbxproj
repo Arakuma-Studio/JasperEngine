@@ -5010,6 +5010,10 @@
 		4A534E4761A7A367A5448107 /* CullingGroup.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AD378F6330680ED6 /* CullingGroup.h */; };
 		4A534E47FED2CE9691D75440 /* SimulationCulling.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475EE51C3B38637EFB /* SimulationCulling.h */; };
 		4A534E470F1DA0CC06D1BE45 /* CullingSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A36A3DA3472854CC /* CullingSystem.h */; };
+		4A534E4789E1A9AF1D751A17 /* InputScript.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E562E3C49242FBD7 /* InputScript.cpp */; };
+		4A534E47DB6039C34EFAAD7A /* InputScript.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E562E3C49242FBD7 /* InputScript.cpp */; };
+		4A534E47233962EE4B8553AD /* InputScript.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4708A47DEEE94F83AE /* InputScript.h */; };
+		4A534E470FFB202D75CD6558 /* InputScriptRunner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4786963BAB6500F7BE /* InputScriptRunner.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9640,6 +9644,9 @@
 		4A534E47AD378F6330680ED6 /* CullingGroup.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CullingGroup.h; sourceTree = "<group>"; };
 		4A534E475EE51C3B38637EFB /* SimulationCulling.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SimulationCulling.h; sourceTree = "<group>"; };
 		4A534E47A36A3DA3472854CC /* CullingSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CullingSystem.h; sourceTree = "<group>"; };
+		4A534E47E562E3C49242FBD7 /* InputScript.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputScript.cpp; sourceTree = "<group>"; };
+		4A534E4708A47DEEE94F83AE /* InputScript.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputScript.h; sourceTree = "<group>"; };
+		4A534E4786963BAB6500F7BE /* InputScriptRunner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputScriptRunner.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -11371,6 +11378,9 @@
 				4A534E4763010A7AB6271A0C /* InputControlNames.h */,
 				4A534E4702A1FF14F0E26870 /* InputScheme.cpp */,
 				4A534E47CCF058D81CDE3E1B /* InputScheme.h */,
+				4A534E47E562E3C49242FBD7 /* InputScript.cpp */,
+				4A534E4708A47DEEE94F83AE /* InputScript.h */,
+				4A534E4786963BAB6500F7BE /* InputScriptRunner.h */,
 			);
 			path = input;
 			sourceTree = "<group>";
@@ -17071,6 +17081,8 @@
 				4A534E4761A7A367A5448107 /* CullingGroup.h in Headers */,
 				4A534E47FED2CE9691D75440 /* SimulationCulling.h in Headers */,
 				4A534E470F1DA0CC06D1BE45 /* CullingSystem.h in Headers */,
+				4A534E47233962EE4B8553AD /* InputScript.h in Headers */,
+				4A534E470FFB202D75CD6558 /* InputScriptRunner.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19781,6 +19793,7 @@
 				4A534E47408A63BCB810218A /* SimulationCulling.cpp in Sources */,
 				4A534E470611FC91C80C2EAA /* CullingClassesLua.cpp in Sources */,
 				4A534E47B7A4A4F3C5A76787 /* CullingSystem.cpp in Sources */,
+				4A534E4789E1A9AF1D751A17 /* InputScript.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20782,6 +20795,7 @@
 				4A534E47F5EFE6B597499AD6 /* SimulationCulling.cpp in Sources */,
 				4A534E47E263432C02CB12D0 /* CullingClassesLua.cpp in Sources */,
 				4A534E4776590B99B1885055 /* CullingSystem.cpp in Sources */,
+				4A534E47DB6039C34EFAAD7A /* InputScript.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

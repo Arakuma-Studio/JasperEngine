@@ -58,6 +58,7 @@
 #include "command/CommandHistory.h"
 #include "command/CommandNames.h"
 #include "command/PlayChangeReview.h"
+#include "test/PlayData.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "component/ScriptComponent.h"
 #include "component/NavMeshAgentComponent.h"
@@ -218,6 +219,7 @@ struct PlayToolsState {
     HeldInput held;
     std::vector<PlayStartWait> startWaits;
     bool monitorScheduled = false;
+    bool clockOwnedByTests = false;
 };
 
 PlayToolsState& state() {
@@ -301,6 +303,7 @@ void finishStartWaits(McpContext& ctx);
 
 // The MCP's time_scale / fixed_fps on the Engine (Project resets both when play stops)
 void applyTimeSettings() {
+    if (state().clockOwnedByTests) return;
     const TimeControl& t = state().time;
     Engine::setTimeScale(static_cast<float>(t.timeScale));
     Engine::setFixedDeltatime(t.fixedFps > 0 ? 1.0 / t.fixedFps : 0.0);
@@ -310,6 +313,7 @@ void applyTimeSettings() {
 // first frame (so it has drawn once) before the first hold
 void applyHold(McpContext& ctx) {
     PlayToolsState& s = state();
+    if (s.clockOwnedByTests) return;
     Project* project = ctx.project();
     const uint32_t playId = project ? project->getPlaySessionSceneId() : NULL_PROJECT_SCENE;
     SceneProject* sp = playId != NULL_PROJECT_SCENE ? project->getScene(playId) : nullptr;
@@ -685,6 +689,10 @@ SceneProject* gameViewScene(Project* project) {
     return project->getScene(project->getSceneBehindPrefabStage(project->getSelectedSceneId()));
 }
 
+void setPlayClockOwnedByTests(bool owned) {
+    state().clockOwnedByTests = owned;
+}
+
 // What play start runs without a scene: the project's start scene when it is open (not a
 // selected child/HUD scene), else the selected scene
 SceneProject* defaultPlayScene(Project* project) {
@@ -770,6 +778,11 @@ Json playStateJson(McpContext& ctx) {
         out["play_would_start"] = {{"id", sp->id}, {"name", sp->name}};
     }
     out["time"] = timeJson(playId != NULL_PROJECT_SCENE && s.current.active);
+    // Play Data (project-test-runner R43): the folder data:// is in this session
+    out["data"] = {{"profile", gametests::PlayData::get().profile()},
+                   {"folder", project->normalizeToProjectRelative(gametests::PlayData::get().active()
+                                                                     ? gametests::PlayData::get().folder()
+                                                                     : project->getProjectInternalPath() / "user" / "rundata").generic_string()}};
     if (playId != NULL_PROJECT_SCENE) {
         out["platform"] = platformJson();
         out["http"] = httpJson();
@@ -1790,10 +1803,20 @@ void playStart(const CallPtr& call, const Json& sceneRef) {
         return;
     }
 
+    // Play Data: the project's folder, an empty one, or a copy of a snapshot (project-test-runner R43)
+    const std::string data = args.value("data", std::string("project"));
+    {
+        std::string error;
+        if (!gametests::PlayData::validProfile(project, data, error)) {
+            call->fail(error);
+            return;
+        }
+    }
     observeSession(ctx);
     releaseHeldInput(ctx);
     const uint64_t startLogId = Out::lastLogId();
     state().pendingStartLogId = startLogId;
+    if (args.contains("data")) gametests::PlayData::get().setNextSession(data);
     project->start(sp->id);
     if (project->getPlaySessionSceneId() != sp->id) {
         state().pendingStartLogId = 0;
@@ -4307,12 +4330,12 @@ void registerPlayTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Play Mode";
         tool.description =
-            "Control Play mode. start: saves modified scenes, builds C++ scripts if any (minutes), waits until "
+            "Control Play mode. start: saves modified scenes, builds C++ scripts (minutes), waits until "
             "running; returns the state + console problems, or isError with compile/script errors; past "
-            "timeout_seconds (or wait:false) a job_id (get_job). stop: restores the edit-time state, summarizes "
+            "timeout_seconds (or wait:false) a job_id (get_job). stop: restores edit-time state, sums up "
             "the session. step: advance a paused game `frames` frames. Script errors stop play.\nClock (any "
             "action; set = only it; kept until changed): time_scale, fixed_fps, auto_pause (frozen between "
-            "calls; runs only in wait / send_input / step).";
+            "calls but in wait / send_input / step).";
         tool.inputSchema = object({
             {"action", stringEnum("", {"start", "stop", "restart", "pause", "resume", "step", "set"})},
             {"scene", sceneRef("start: default the start scene (else selected).")},
@@ -4325,7 +4348,8 @@ void registerPlayTools(McpRegistry& registry) {
             {"screenshot", screenshotOption},
             {"max_width", maxWidth},
             {"keep_changes", stringEnum("stop: keep all or none of the edits made while playing (absent: get_play_changes).",
-                                        {"none", "all"})}
+                                        {"none", "all"})},
+            {"data", withDefault(string("start: \"project\", \"clean\" or a Tests/Data snapshot."), "project")}
         }, {"action"});
         tool.handler = playTool;
         registry.addTool(std::move(tool));

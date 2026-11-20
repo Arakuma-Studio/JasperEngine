@@ -58,6 +58,7 @@ Conventions shared by every tool (explained once in the server instructions, not
 - [Terrain: declarative edits and heightmap files](#terrain-declarative-edits-and-heightmap-files) (4): `edit_terrain`, `edit_terrain_world`, `export_terrain_heightmap`, `visualize_terrain`
 - [Editor tools: recorder, colour sampling, swatches, curves](#editor-tools-recorder-colour-sampling-swatches-curves) (5): `edit_swatches`, `evaluate_curve`, `list_curve_presets`, `record_game`, `sample_view_color`
 - [Image comparison](#image-comparison) (1): `diff_images`
+- [Project tests](#project-tests) (1): `run_tests`
 - [Particles: effects and playback](#particles-effects-and-playback) (12): `add_particle_module`, `bake_particle_sheet`, `capture_particles`, `control_particles`, `create_particle_effect`, `edit_particle_effect`, `get_particle_effect`, `get_particle_migration_report`, `get_particle_stats`, `preview_particle_effect`, `remove_particle_module`, `set_particle_effect`
 - [Tilemaps: tilesets and map import](#tilemaps-tilesets-and-map-import) (2): `edit_tileset`, `import_tilemap`
 - [Pixel art: palettes](#pixel-art-palettes) (2): `apply_palette`, `edit_palette`
@@ -1442,13 +1443,14 @@ GameObjects of the running game (id, name, path), runtime-spawned ones included 
 
 Group: `core`
 
-Control Play mode. start: saves modified scenes, builds C++ scripts if any (minutes), waits until running; returns the state + console problems, or isError with compile/script errors; past timeout_seconds (or wait:false) a job_id (get_job). stop: restores the edit-time state, summarizes the session. step: advance a paused game `frames` frames. Script errors stop play.
-Clock (any action; set = only it; kept until changed): time_scale, fixed_fps, auto_pause (frozen between calls; runs only in wait / send_input / step).
+Control Play mode. start: saves modified scenes, builds C++ scripts (minutes), waits until running; returns the state + console problems, or isError with compile/script errors; past timeout_seconds (or wait:false) a job_id (get_job). stop: restores edit-time state, sums up the session. step: advance a paused game `frames` frames. Script errors stop play.
+Clock (any action; set = only it; kept until changed): time_scale, fixed_fps, auto_pause (frozen between calls but in wait / send_input / step).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `action` | `"start"` \| `"stop"` \| `"restart"` \| `"pause"` \| `"resume"` \| `"step"` \| `"set"` | yes |  |
 | `auto_pause` | boolean |  |  |
+| `data` | string |  | start: "project", "clean" or a Tests/Data snapshot. Default: `"project"`. |
 | `fixed_fps` | integer (0..1000) |  | 0 = real time. Default: `0`. |
 | `frames` | integer (1..600) |  | Default: `1`. |
 | `keep_changes` | `"none"` \| `"all"` |  | stop: keep all or none of the edits made while playing (absent: get_play_changes). |
@@ -5143,6 +5145,32 @@ Compares two images of one size: ok, max, mean, fraction_over, changed_pct, bbox
 | `mode` | `"premultiplied"` \| `"straight"` |  | Default: `"premultiplied"`. |
 | `save_diff` | string |  |  |
 | `tolerance` | integer |  | Default: `8`. |
+
+
+## Project tests
+
+### `run_tests`
+
+*Run Tests*
+
+Group: `testing` (listed once `tool_groups` enables it, callable either way)
+
+Run the project's tests (Tests/*.test.lua) as a job: Edit Mode and Play Mode cases, each Play case in a fresh session at a fixed frame rate on clean data. Returns counts, failures (file:line, frame), unverified targets and next. list: cases without running them. import: a player's results file. accept: make captures the goldens. A filter matching nothing is an error.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `action` | `"run"` \| `"list"` \| `"import"` \| `"accept"` |  | Default: `"run"`. |
+| `captures` | array of string |  | accept: "<case id>/<name>", or ["all"] (every new or failed capture of the last run). |
+| `failed_only` | boolean |  | The last run's failed, error and hung cases. |
+| `filter` | string |  | Substring of "<file>#<case>", or tag:<t>; "," = or. |
+| `for_target` | boolean |  | accept: the golden of this platform and backend only. |
+| `junit` | string |  | Also write JUnit XML here. |
+| `keep_data` | boolean |  | Keep each case's data folder. |
+| `mode` | `"all"` \| `"edit"` \| `"play"` |  | Default: `"all"`. |
+| `results_file` | string |  | import: a results JSON (its captures/ beside it). |
+| `target` | `"editor"` \| `"desktop"` |  | Default: `"editor"`. |
+| `timeout_seconds` | number (1..86400) |  | Default: `600`. |
+| `wait` | boolean |  | Default: `true`. |
 
 
 ## Particles: effects and playback

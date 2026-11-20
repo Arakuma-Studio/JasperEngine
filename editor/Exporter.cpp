@@ -9,6 +9,7 @@
 #include "component/Rigidbody2DComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "Exporter.h"
+#include "test/GameTests.h"
 #include "titleart/TitleArtExport.h"
 #include "titleart/three_d/Title3DExport.h"
 #include "titleart/runtime/TitleArtRuntimeExport.h"
@@ -110,6 +111,14 @@
 #include <sstream>
 #include <vector>
 
+
+namespace {
+    // the project's test root (project-test-runner R1, R50): never exported as assets or scripts
+    bool isTestRootDir(const std::filesystem::path& testRoot, const std::filesystem::path& dir) {
+        std::error_code ec;
+        return !testRoot.empty() && std::filesystem::equivalent(testRoot, dir, ec);
+    }
+}
 
 namespace {
     // fs::remove_all that never follows a link: the entry removed beneath its own (resolved)
@@ -3884,12 +3893,13 @@ bool editor::Exporter::copyAssets() {
         failed = true;
         return TreeStep::Stop;
     };
+    const fs::path testRoot = gametests::findRoot(project->getProjectPath());
     walkTree(assetsSrc, [&](const fs::directory_entry& entry, const fs::path& relPath, bool isDirectory, const fs::path& real) {
         std::error_code ec;
 
         // Skip hidden directories (starting with '.') and build directories
         std::string firstComponent = relPath.begin()->string();
-        if (!firstComponent.empty() && Project::isNonAssetTopLevelDir(firstComponent)) {
+        if (!firstComponent.empty() && (Project::isNonAssetTopLevelDir(firstComponent) || isTestRootDir(testRoot, assetsSrc / firstComponent))) {
             return TreeStep::Skip;
         }
 
@@ -4229,10 +4239,12 @@ bool editor::Exporter::copyCustomShaderSources() {
     const fs::path assetsDst = getExportProjectRoot() / "assets";
     std::error_code ec;
     bool failed = false;
+    const fs::path testRoot = gametests::findRoot(projectRoot);
     walkTree(projectRoot, [&](const fs::directory_entry& entry, const fs::path& relPath, bool isDirectory, const fs::path&) {
-        // Same skips as copyAssets: hidden directories (the project's own data) and builds
+        // Same skips as copyAssets: hidden directories (the project's own data), builds, the test root
         const std::string firstComponent = relPath.begin()->string();
-        if (!firstComponent.empty() && Project::isNonAssetTopLevelDir(firstComponent)) return TreeStep::Skip;
+        if (!firstComponent.empty() && (Project::isNonAssetTopLevelDir(firstComponent) || isTestRootDir(testRoot, projectRoot / firstComponent)))
+            return TreeStep::Skip;
         if (isDirectory) return TreeStep::Enter;
         std::error_code fileError;
         if (!entry.is_regular_file(fileError)) return TreeStep::Skip;
@@ -4295,10 +4307,12 @@ bool editor::Exporter::copyLua() {
 
     const std::string filterPrefix = contentFilter.empty() ? std::string() : filterPrefixOf(luaSrc);
     bool failed = false;
+    const fs::path testRoot = gametests::findRoot(project->getProjectPath());
     walkTree(luaSrc, [&](const fs::directory_entry& entry, const fs::path& relPath, bool isDirectory, const fs::path& real) {
-        // Skip hidden directories (starting with '.') and build directories
+        // Skip hidden directories (starting with '.'), build directories and the test root
         std::string firstComponent = relPath.begin()->string();
-        if (!firstComponent.empty() && Project::isNonAssetTopLevelDir(firstComponent)) return TreeStep::Skip;
+        if (!firstComponent.empty() && (Project::isNonAssetTopLevelDir(firstComponent) || isTestRootDir(testRoot, luaSrc / firstComponent)))
+            return TreeStep::Skip;
         // Build Profiles R11: an excluded folder's Lua stays out too
         if (!contentFilter.empty() && contentFilter.excludes(filterPrefix + relPath.generic_string())) return TreeStep::Skip;
         if (isDirectory) return TreeStep::Enter;

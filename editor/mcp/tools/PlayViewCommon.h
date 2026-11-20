@@ -129,6 +129,9 @@ namespace jasperengine::editor::mcp::w3 {
     SceneProject* gameViewScene(Project* project);
     // The scene play start runs by default: the start scene if open, else gameViewScene
     SceneProject* defaultPlayScene(Project* project);
+    // A test run owns the Play clock (project-test-runner R14): play's time_scale, fixed_fps and
+    // auto_pause leave the engine's clock and hold alone while it is set
+    void setPlayClockOwnedByTests(bool owned);
 
     // A scene of the running game: null ref → the played (main) scene; otherwise a scene id,
     // name or path, mapped to its Play copy when the game runs it as a child scene (or a Play

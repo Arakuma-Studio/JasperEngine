@@ -3536,6 +3536,19 @@ gate.area = 0 ; gate:remove()
 | NavigationSystem `setAreaInVolume(center, size, area[, {rotation, agentType}])` | a NavAreaOverride (nil for an area outside 0-15): the polygons whose centre lies in the box take `area` until `remove()`; ends at Stop |
 | NavAreaOverride `area`, `center`, `size`, `rotation` | rw; `valid`, `handle`, `appliedPolygons` read; `remove()` |
 
+### 4.23 Test (test files only)
+
+`Test` exists only in the chunks of the project's test files (`Tests/**/*.test.lua`), bound in each
+file's own environment: a game script never sees it, and a game global named `Test` is untouched.
+`Test.case(name, [opts], fn)` registers a case; `Test.config(opts)`, `Test.setup(fn)` and
+`Test.teardown(fn)` apply to the file's cases. Checks: `Test.check(cond, msg)` (goes on),
+`Test.assert(cond, msg)` and `Test.fail(msg)` (end the case), `Test.equal(actual, expected, msg)`
+(deep), `Test.near(a, b, eps, msg)`. Waits (Play Mode only, game time): `Test.waitFrames(n)`,
+`Test.waitGameSeconds(s)`, `Test.waitUntil(pred, {frames, gameSeconds, message})`. Also
+`Test.capture(name)`, `Test.expectError(pattern)`, `Test.skip(reason)`, `Test.log(...)`,
+`Test.target` (`platform`, `backend`, `editor`, `resolution`); the case `t` has `name`, `id`,
+`frame`, `gameTime`. The workflow: `jasper://docs/testing`.
+
 ## 5. Enums (exact Lua spelling; values are integers)
 
 | Namespace | Values |

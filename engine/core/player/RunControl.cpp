@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "RunControl.h"
+#include "TestRunnerConfig.h"
+#if JASPERENGINE_TEST_RUNNER
+#include "player/PlayerTests.h"
+#endif
 #include "audio/AudioCapture.h"
 #include "manager/SceneManager.h"
 #include "subsystem/AudioSystem.h"
@@ -53,6 +57,7 @@ namespace {
         std::chrono::steady_clock::time_point captureWaitStarted;
         std::atomic<bool> errorLogged{false};
         Logger::SinkId errorSink = 0;
+        bool testsBegun = false;
     };
 
     State& state() {
@@ -150,6 +155,7 @@ void RunControl::reset() {
     s.captureHeldGame = false;
     gpuCreationIdleProbe = nullptr;
     s.errorLogged.store(false);
+    s.testsBegun = false;
 }
 
 void RunControl::configure(const LaunchOptions& options) {
@@ -173,7 +179,8 @@ void RunControl::engineStarted() {
         Engine::pauseGameEvents(true);
         s.heldUntilReady = true;
     }
-    if (s.options.failOnError && s.errorSink == 0 && Logger::isInitialized())
+    // a test run owns the errors (project-test-runner R11, R27): --fail-on-error waits
+    if (s.options.failOnError && !s.options.runTests && s.errorSink == 0 && Logger::isInitialized())
         s.errorSink = Logger::addSink(std::make_unique<ErrorWatchSink>());
 }
 
@@ -214,6 +221,10 @@ bool RunControl::wantsScreenshot() {
 
 bool RunControl::wantsOffscreenFrame() {
     const State& s = state();
+#if JASPERENGINE_TEST_RUNNER
+    // a test case's capture reads the composite of the next frame
+    if (s.active && s.options.runTests && PlayerTests::wantsFrame()) return true;
+#endif
     if (!s.active || s.options.screenshot.empty() || s.screenshotWritten) return false;
     if (s.captureWaiting) return true;
     const uint64_t target = screenshotTarget();
@@ -259,6 +270,18 @@ void RunControl::frameDrawn(bool readySignalled, const FrameReader& reader) {
         }
     };
 
+#if JASPERENGINE_TEST_RUNNER
+    // --run-tests (project-test-runner R23): the run starts at the ready frame and ends the process
+    if (s.options.runTests && !s.quit) {
+        if (!s.testsBegun) {
+            s.testsBegun = true;
+            PlayerTests::begin(s.options);
+        } else {
+            PlayerTests::frame(reader);
+        }
+        return;
+    }
+#endif
     if (s.captureWaiting) {
         // frames drawn while the capture waits for GPU creation: the game held, none counted
         const double waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - s.captureWaitStarted).count();
@@ -319,7 +342,7 @@ bool RunControl::quitRequested() {
 int RunControl::finish() {
     State& s = state();
     if (s.quit && s.quitCode != EXIT_OK) return s.quitCode;
-    if (s.options.failOnError && s.errorLogged.load()) return EXIT_ERROR_LOGGED;
+    if (s.options.failOnError && !s.options.runTests && s.errorLogged.load()) return EXIT_ERROR_LOGGED;
     if (!s.options.screenshot.empty() && !s.screenshotWritten) {
         std::fprintf(stderr, "Screenshot %s was not written: the game ended before the frame it names\n",
                      s.options.screenshot.string().c_str());
