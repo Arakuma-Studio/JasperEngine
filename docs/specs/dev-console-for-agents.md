@@ -569,3 +569,9 @@ stated. Each fails without the change because the API does not exist, plus the r
   end, with no storage made and no allocation on the thread.
 - **`editor/players/ModuleUsage.cpp` is unchanged**: a script naming `DebugOverlay` still keeps the HTML
   UI module in a prebuilt variant (conservative; the registry itself needs none).
+- **AC12 is a link check, not a test run**: the core test binary refuses `JASPERENGINE_HTMLUI=OFF`
+  (`engine/CMakeLists.txt`: "The tests cover the HTML UI and its video"), so no `ConsoleCommands.*`
+  test can run in such a build. As the fallback the spec names, `tools/check-physics-off.sh
+  htmlui-off` (the engine library and its sample project with the HTML UI module off) compiles and
+  links `ConsoleCommands.cpp`, its Lua bindings and the overlay's no-HTML-UI branch, which forwards
+  every command call to the registry; no new script was added.

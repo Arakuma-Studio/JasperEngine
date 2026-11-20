@@ -804,20 +804,6 @@ compiles navigation in runs none). The first run builds the whole engine (the sw
 define); later runs are incremental. `tools/check-changed` plans it for a navigation or engine CMake
 change; nothing else runs it, CI included.
 
-
-### HTML UI OFF: `tools/check-htmlui-off.sh`
-
-A player without the HTML UI module (S34) has no debug overlay, but its console commands still
-register and run (Lua, MCP, `--command`; dev-console-for-agents R1). The script configures the
-standalone engine (`engine-linux-tests`, `-DJASPERENGINE_HTMLUI=OFF`, warnings not errors), builds
-`jasperengine-core-tests`, runs `ConsoleCommands.*` through the no-silent-green gate and fails
-unless at least 10 of them passed:
-
-```sh
-tools/build.sh exec linux tools/check-htmlui-off.sh     # build/htmlui-off, build/test-results/htmlui-off.xml
-```
-
-Nothing runs it automatically, CI included.
 ### Sanitizers
 
 ```sh

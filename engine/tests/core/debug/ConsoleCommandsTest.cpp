@@ -4,7 +4,7 @@
 // The console's command registry (docs/specs/dev-console-for-agents.md, AC1-AC11): typed
 // arguments and the messages that name the fix, untyped words, aliases, the result's lines, log and
 // value, shadowed built-ins, help, completion, the cheat flag, the gate, nesting, and no storage
-// until the first use. No HTML UI: these run in every player (tools/check-htmlui-off.sh).
+// until the first use. Nothing here needs the HTML UI module.
 
 #include "debug/ConsoleCommands.h"
 #include "debug/DebugOverlay.h"
