@@ -493,6 +493,8 @@ std::vector<MeshSpaceWarning> meshSpaceWarnings(const ControllerDef& def, const 
         if (layer.blending != AnimatorLayerBlending::Override || layer.meshSpaceRotation) continue;
         const int run = instance.getLayerIndex(layer.name);
         if (run <= 0 || !(instance.getLayerWeight(run) > 0.0f)) continue;
+        // the runtime's value too: a Lua override that turns it on answers the warning
+        if (instance.layerMeshSpaceRotation(run)) continue;
         const std::vector<float>& mask = instance.layers[(size_t)run].mask;
         // the first place, parents first, where the mask starts under a torso bone it leaves out
         // and that start is a torso bone too: the torso split between the layers

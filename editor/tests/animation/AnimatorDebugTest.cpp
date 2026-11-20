@@ -532,6 +532,10 @@ TEST(AnimatorMeshSpaceWarning, NamesTheTorsoWhereTheMaskStarts){
     ControllerDef changed = def;
     changed.layers[1].meshSpaceRotation = true;
     EXPECT_TRUE(meshSpaceWarnings(changed, instance).empty()) << "the option on";
+    instance.setLayerMeshSpaceRotation(1, true);
+    EXPECT_TRUE(meshSpaceWarnings(def, instance).empty()) << "the runtime's value: a Lua override that turns it on";
+    instance.setLayerMeshSpaceRotation(1, false);
+    EXPECT_EQ(meshSpaceWarnings(def, instance).size(), 1u) << "the override off: the warning is back";
     changed = def;
     changed.layers[1].blending = AnimatorLayerBlending::Additive;
     EXPECT_TRUE(meshSpaceWarnings(changed, instance).empty()) << "an Additive layer";

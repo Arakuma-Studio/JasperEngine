@@ -231,7 +231,8 @@ Ideas only. Nothing is vendored or copied.
   - It appears in the Animator component Inspector and the Animator window's Problems strip. Clicking it in the
     Problems strip selects the layer.
   - It has a **Fix** button that turns the option on as one undo step.
-  - It never changes anything by itself. Turning the option on, or setting the layer to Additive, clears it.
+  - It never changes anything by itself. Turning the option on (in the controller, or for that Animator from Lua),
+    or setting the layer to Additive, clears it.
 - **R30.** **Torso Direction gizmo.** A Gizmos > Animation > **Torso Direction** item. With it on, for a selected
   Animator with a flagged layer, the Scene view draws each boundary bone's forward axis:
   - the corrected axis in the overlay colour for "applied";
