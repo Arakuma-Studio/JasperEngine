@@ -2384,7 +2384,7 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "configure_game_view";
         tool.title = "Configure Game View";
         tool.description =
-            "Read (no args) or change the Game view toolbar (editor preferences, not undoable): aspect (project = "
+            "Read (no args) or set the Game view toolbar (editor preferences; no undo): aspect (project = "
             "the canvas size), resolution (the game and screenshots render at it), a simulated "
             "device, orientation, language (editor only), the input scheme forced at Play start. Options: jasper://docs/ui.";
         tool.inputSchema = object({
