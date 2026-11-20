@@ -7,6 +7,7 @@ set(jasperengineLocalizationEditorDir ${CMAKE_CURRENT_LIST_DIR}/..)
 file(GLOB JASPERENGINE_EDITOR_LOCALIZATION_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_LIST_DIR}/*.cpp
     ${jasperengineLocalizationEditorDir}/window/LocalizationTables*.cpp
+    ${jasperengineLocalizationEditorDir}/window/InspectorLocalization.cpp
     ${jasperengineLocalizationEditorDir}/mcp/tools/LocalizationTools*.cpp)
 list(SORT JASPERENGINE_EDITOR_LOCALIZATION_SOURCES)
 list(APPEND JASPERENGINE_EDITOR_SOURCES ${JASPERENGINE_EDITOR_LOCALIZATION_SOURCES})
