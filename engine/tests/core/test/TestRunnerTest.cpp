@@ -565,11 +565,13 @@ TEST(TestRunnerCore, PlayerSessionsStartFromAFreshLuaStateInASandbox) {
     } host;
     host.files["leak.test.lua"] = R"(
 Test.case("leaves state behind", function(t)
-    LeakedByAnEarlierCase = true
+    _G.LeakedByAnEarlierCase = true
+    string.leakedByAnEarlierCase = true
     package.loaded.leakedModule = {}
 end)
 Test.case("starts fresh", function(t)
-    Test.check(LeakedByAnEarlierCase == nil, "a global of the earlier case leaked")
+    Test.check(rawget(_G, "LeakedByAnEarlierCase") == nil, "a global of the earlier case leaked")
+    Test.check(string.leakedByAnEarlierCase == nil, "a library change of the earlier case leaked")
     Test.check(package.loaded.leakedModule == nil, "a module of the earlier case leaked")
 end)
 )";

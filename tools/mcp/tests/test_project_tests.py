@@ -112,13 +112,17 @@ Test.case("After the runaway", {tags = {"runaway"}}, function(t)
     Test.waitFrames(1)
 end)
 
+-- a test file's own globals live in its chunk's environment: the real global table and a
+-- library table are what only a new Lua state resets (Play start clears project modules)
 Test.case("Leaves Lua state behind", {tags = {"leak"}}, function(t)
-    LeakedByAnEarlierCase = true
+    _G.LeakedByAnEarlierCase = true
+    string.leakedByAnEarlierCase = true
     package.loaded.leakedModule = {}
 end)
 
 Test.case("Starts from a fresh Lua state", {tags = {"leak"}}, function(t)
-    Test.check(LeakedByAnEarlierCase == nil, "a global of the earlier case leaked")
+    Test.check(rawget(_G, "LeakedByAnEarlierCase") == nil, "a global of the earlier case leaked")
+    Test.check(string.leakedByAnEarlierCase == nil, "a library change of the earlier case leaked")
     Test.check(package.loaded.leakedModule == nil, "a module of the earlier case leaked")
 end)
 """
