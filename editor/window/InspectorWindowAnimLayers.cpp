@@ -353,6 +353,8 @@ void editor::InspectorWindow::drawAnimationPlayerLayers(ComponentType cpType, Sc
     const bool stopped = sceneProject->playState == ScenePlayState::STOPPED;
     const uint32_t sceneId = sceneProject->id;
     const float labelWidth = getLabelSize("Play Automatically");
+    // the layer rows' labels are indented (propertyHeader) and Mesh Space Rotation is the longest
+    const float layersLabelWidth = std::max(labelWidth, getLabelSize("Mesh Space Rotation") + ImGui::GetFontSize());
     std::string error;
 
     // "Layers (1)" collapsed while only the base layer exists
@@ -364,7 +366,7 @@ void editor::InspectorWindow::drawAnimationPlayerLayers(ComponentType cpType, Sc
     if (!open) return;
 
     int moveFrom = -1, moveTo = -1;
-    beginTable(cpType, labelWidth, "player_layers_table");
+    beginTable(cpType, layersLabelWidth, "player_layers_table");
     for (size_t i = 0; i < layers.size(); i++){
         const AnimationPlayerLayer& layer = layers[i];
         const int index = (int)i;
@@ -415,7 +417,10 @@ void editor::InspectorWindow::drawAnimationPlayerLayers(ComponentType cpType, Sc
             if (base){
                 ImGui::TextDisabled("weight 1, override");
             }else{
-                ImGui::TextDisabled("%s", animlayersui::layerSummary(layer).c_str());
+                // wrapped: at the default width the summary is longer than the cell
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+                ImGui::TextWrapped("%s", animlayersui::layerSummary(layer).c_str());
+                ImGui::PopStyleColor();
             }
         }
         if (ImGui::IsMouseHoveringRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax()) && ImGui::IsMouseReleased(ImGuiMouseButton_Right)){
@@ -526,7 +531,23 @@ void editor::InspectorWindow::drawAnimationPlayerLayers(ComponentType cpType, Sc
         }
         ImGui::EndDisabled();
         UIProbe::item("player.layer." + std::to_string(index) + ".meshSpaceRotation");
-        ImGui::SetItemTooltip("%s", noMeshSpace ? noMeshSpace : animlayersui::MESH_SPACE_ROTATION_TOOLTIP);
+        // above the checkbox: below it would hide the Applies at line a click has just shown
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)){
+            const char* tip = noMeshSpace ? noMeshSpace : animlayersui::MESH_SPACE_ROTATION_TOOLTIP;
+            const float wrap = ImGui::GetFontSize() * 30.0f;
+            // ImGui does not keep a tooltip placed by hand on screen, and the Inspector often docks at the right edge
+            const float tipWidth = ImGui::CalcTextSize(tip, nullptr, false, wrap).x + ImGui::GetStyle().WindowPadding.x * 2.0f;
+            const ImGuiViewport* viewport = ImGui::GetWindowViewport();
+            const ImVec2 boxMin = ImGui::GetItemRectMin();
+            const float x = std::max(viewport->Pos.x, std::min(boxMin.x, viewport->Pos.x + viewport->Size.x - tipWidth));
+            ImGui::SetNextWindowPos(ImVec2(x, boxMin.y - Theme::dpi(4.0f)), ImGuiCond_Always, ImVec2(0.0f, 1.0f));
+            if (ImGui::BeginTooltip()){
+                ImGui::PushTextWrapPos(wrap);
+                ImGui::TextUnformatted(tip);
+                ImGui::PopTextWrapPos();
+                ImGui::EndTooltip();
+            }
+        }
         if (layer.meshSpaceRotation && !noMeshSpace){
             // where it applies, from this GameObject's hierarchy (refreshed like the coverage lines)
             std::shared_ptr<AnimatorAssetDocument> document = layer.mask.empty() ? nullptr : maskDocument(project, state, layer.mask, nullptr);
@@ -541,7 +562,9 @@ void editor::InspectorWindow::drawAnimationPlayerLayers(ComponentType cpType, Sc
                 entry.maskRevision = revision;
                 entry.at = now;
             }
-            ImGui::TextDisabled("%s", entry.line.c_str());
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+            ImGui::TextWrapped("%s", entry.line.c_str());
+            ImGui::PopStyleColor();
             UIProbe::item("player.layer." + std::to_string(index) + ".meshSpaceBoundary");
             if (state.boundaries.size() > 64) state.boundaries.clear();
         }

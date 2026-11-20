@@ -1,6 +1,6 @@
 # Mesh Space Rotation for animation layers
 
-Wave: follow-ups to S21. Owner stream: animation. Status: spec.
+Wave: follow-ups to S21. Owner stream: animation. Status: implemented.
 
 Source of the idea: Kevin Iglesias' "Spine Proxy" for Unity
 (<https://www.keviniglesias.com/spine-proxy.html>, `SpineProxy.cs`, and the Godot port `spine_proxy.gd` by
@@ -439,5 +439,7 @@ player:setLayerMeshSpaceRotation("Upper Body", true)
 - **R38: where the Animator's coverage is.** `get_animation {entity}`'s `mask_coverage` was the Animation Player's
   (`players[0].mask_coverage`). The Animator's masked layers are a new member, `animator: {entity, controller,
   mask_coverage: [{layer, covered, total, warnings, mesh_space_rotation, boundary_bones}]}`, the bones as paths from
-  the Animator's GameObject; `get_animation {entity}` now answers for a GameObject that only an Animator plays. The
-  Player's coverage gains its fields with step 5 (R39).
+  the Animator's GameObject; `get_animation {entity}` now answers for a GameObject that only an Animator plays.
+- **R38, R39: where the Player's value is.** `get_animation` echoes a Player layer's option as `mesh_space_rotation` in
+  `players[0].layers[]`, beside its weight, blend and mask; the Player's `mask_coverage` entries do not list boundary
+  bones.

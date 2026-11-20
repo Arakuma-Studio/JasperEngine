@@ -89,7 +89,15 @@ class Ui:
                     await self.wheel(at, True, 1)
                     await self.frames()
                     moved = self.ed.ui_items().get(name)
-                    if not moved or moved[1] == rect[1]:
+                    if not moved:
+                        # the notch took it past the top (an item is reported only fully visible): back one
+                        await self.wheel(at, False, 1)
+                        await self.frames()
+                        moved = self.ed.ui_items().get(name)
+                        if moved:
+                            rect = moved
+                        break
+                    if moved[1] == rect[1]:
                         break
                     rect = moved
                 return rect

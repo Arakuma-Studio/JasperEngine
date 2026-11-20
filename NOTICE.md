@@ -551,3 +551,5 @@ The `blob_47` sheet layout follows cr31's "Blob" Wang tileset page (minimum 7x7 
 ## Ideas re-implemented, no code copied
 
 [ozz-animation](https://github.com/guillaumeblanc/ozz-animation) (MIT, 0.17.0 `744eb9d`, (c) Guillaume Blanc): `editor/animation/ClipReduction.*` re-implements the idea of its `AnimationOptimizer` and `decimate.h` (a hierarchical error metric and Ramer-Douglas-Peucker decimation), with the changes of `docs/specs/S77-clip-quality.md` D5. No ozz source ships here.
+
+Kevin Iglesias' [Spine Proxy](https://www.keviniglesias.com/spine-proxy.html) for Unity (`SpineProxy.cs`, and its Godot port `spine_proxy.gd` by hlarsen; neither states a licence) and Unreal Engine's Layered Blend Per Bone option "Mesh Space Rotation Blend", read for the idea only: an upper-body layer's torso keeps its rotation relative to the character, not to the base layer's hips. `engine/core/animation/AnimatorPose.*`, `AnimatorInstance.*`, `AvatarMaskWeights.*` and `engine/core/subsystem/ActionSystemLayers.cpp` implement it as a layer's Mesh Space Rotation, with no proxy bone, per `docs/specs/mesh-space-rotation.md`. None of their code is here.
