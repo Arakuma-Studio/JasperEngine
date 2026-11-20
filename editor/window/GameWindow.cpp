@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "GameWindow.h"
+#include "buildprofile/BuildProfile.h"
 #include "test/GameTests.h"
 #include "test/PlayData.h"
 #include "Out.h"
 #include "util/FileUtils.h"
+#include "localization/Localization.h"
 #include "window/ContactSheetWindow.h"
 #include "audio/AudioCapture.h"
 #include "render/SystemRender.h"
@@ -16,6 +18,7 @@
 #include "Theme.h"
 #include "texture/TextureCookQueue.h"
 #include "profiler/FrameTimes.h"
+#include "profiler/PerfSampler.h"
 
 #include "imgui_internal.h"
 #include "Engine.h"
@@ -27,12 +30,15 @@
 #include "window/DeviceProfiles.h"
 #include "Backend.h"
 #include "Theme.h"
+#include "subsystem/CullingSystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/CameraControlSystem.h"
 #include "registry/PhysicsLayers.h"
 #include "Widgets.h"
 #include "external/IconsFontAwesome6.h"
 #include "net/Http.h"
+#include "input/InputScheme.h"
+#include "input/TextEntry.h"
 #include "shortcuts/CommandCatalog.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/RenderSystem.h"
@@ -52,6 +58,29 @@
 using namespace jasperengine;
 
 namespace {
+
+    // the keyboard chip (text-entry R29): what the focused field asks of a phone's soft keyboard
+    std::string keyboardChipText(const TextEntryTraits& traits){
+        static const char* const keyboards[] = {"Text", "Number", "Decimal", "Phone", "Email", "URL", "Search", "None"};
+        static const char* const keys[] = {"Default key", "Enter", "Done", "Go", "Next", "Previous", "Search", "Send"};
+        static const char* const capitals[] = {"", "Sentences", "Words", "Characters"};
+        std::string text = std::string("Keyboard: ") + keyboards[(int)traits.keyboard] + " \xC2\xB7 " + keys[(int)traits.enterKey];
+        if (traits.maxLength >= 0) text += " \xC2\xB7 max " + std::to_string(traits.maxLength);
+        if (traits.capitalize != AutoCapitalize::Off) text += std::string(" \xC2\xB7 ") + capitals[(int)traits.capitalize];
+        if (traits.autocorrect) text += " \xC2\xB7 Autocorrect";
+        if (traits.secure) text += " \xC2\xB7 Secure";
+        if (traits.multiline) text += " \xC2\xB7 Multiline";
+        return text;
+    }
+
+    // the same traits as inspect_ui's focus reports them
+    std::string keyboardChipJson(const TextEntryTraits& traits){
+        return std::string("{\"keyboard\": \"") + keyboardTypeName(traits.keyboard) + "\", \"enter_key\": \"" +
+               (traits.enterKey == EnterKey::Default ? "default" : enterKeyName(traits.enterKey)) + "\", \"autocapitalize\": \"" +
+               autoCapitalizeName(traits.capitalize) + "\", \"autocorrect\": " + (traits.autocorrect ? "true" : "false") +
+               ", \"secure\": " + (traits.secure ? "true" : "false") + ", \"multiline\": " + (traits.multiline ? "true" : "false") +
+               ", \"max_length\": " + (traits.maxLength < 0 ? std::string("null") : std::to_string(traits.maxLength)) + "}";
+    }
 
     struct AspectPreset {
         const char* label;
@@ -106,6 +135,7 @@ void editor::GameWindow::loadSettings() {
     settings.scale = std::clamp(settings.scale, MIN_SCALE, MAX_SCALE);
     settings.pixelScale = std::clamp(settings.pixelScale, 0, MAX_PIXEL_SCALE);
     Engine::setPixelPerfectForcedScale(settings.pixelScale);
+    CullingSystem::setDebugDraw(settings.cullingDebug);
     applySimulation();
 }
 
@@ -342,7 +372,9 @@ bool editor::GameWindow::turnDevice(ScreenOrientation orientation) {
 const std::vector<std::string>& editor::GameWindow::languagePresets() {
     static const std::vector<std::string> languages = {
         "", "en-US", "es-ES", "es-MX", "pt-BR", "fr-FR", "de-DE", "it-IT", "ja-JP", "ko-KR", "zh-Hans", "zh-Hant",
-        "ru-RU", "ar-SA", "hi-IN"
+        "ru-RU", "ar-SA", "hi-IN",
+        // game-ui-localization.md R19, R31: the pseudo-locales (accented and longer; right to left)
+        "en-XA", "ar-XB"
     };
     return languages;
 }
@@ -497,6 +529,7 @@ void editor::GameWindow::applySettings(const GameViewSettings& newSettings) {
     settings.scale = std::clamp(settings.scale, MIN_SCALE, MAX_SCALE);
     settings.pixelScale = std::clamp(settings.pixelScale, 0, MAX_PIXEL_SCALE);
     Engine::setPixelPerfectForcedScale(settings.pixelScale);
+    CullingSystem::setDebugDraw(settings.cullingDebug);
     applySimulation();
     editPassDirty = true;
     saveSettings();
@@ -779,6 +812,15 @@ void editor::GameWindow::drawToolbar() {
     }
     ImGui::SetItemTooltip("Target display");
 
+    // Build Profiles R9: the active profile, whose identity, defines and Scene List Play uses
+    if (const auto& profiles = buildprofiles::view(project->getProjectPath()); profiles.active) {
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("Profile: %s", profiles.active->name.c_str());
+        ImGui::SetItemTooltip("Play uses Build Profile '%s''s Product Name, Identifier, Version Suffix, Scripting Define Symbols and Scene "
+                              "List; its other overrides apply to builds only (File > Build Settings)", profiles.active->name.c_str());
+    }
+
     const std::string projectAspect = std::to_string(project->getCanvasWidth()) + "x"
         + std::to_string(project->getCanvasHeight()) + " (Project)";
     auto aspectLabel = [&](int index) -> const char* {
@@ -943,6 +985,16 @@ void editor::GameWindow::drawToolbar() {
     // Right side toggles, as icons when the view is too narrow for their names
     const char* debuggerLabel = "HTML UI Debugger##GameHtmlUiDebugger";
     const char* touchLabel = ICON_FA_MOBILE_SCREEN "##GameTouch";
+    // the scheme the game treats as the device in use (during Play), else the forced one
+    const std::string& forcedScheme = project->getInputSchemeOverride();
+    InputScheme shownScheme = InputScheme::KeyboardMouse;
+    if (project->isAnyScenePlaying())
+        shownScheme = InputSchemeTracker::getCurrent();
+    else if (forcedScheme != "auto")
+        InputSchemeTracker::parseScheme(forcedScheme, shownScheme);
+    const char* inputSchemeLabel = shownScheme == InputScheme::Gamepad ? ICON_FA_GAMEPAD "##GameInputScheme"
+                                 : shownScheme == InputScheme::Touch ? ICON_FA_HAND "##GameInputScheme"
+                                                                      : ICON_FA_KEYBOARD "##GameInputScheme";
     const char* networkLabel = ICON_FA_WIFI "##GameNetwork";
     const char* maximizeLabel = "Maximize On Play##GameMaximize";
     const char* statsLabel = "Stats##GameStats";
@@ -951,6 +1003,7 @@ void editor::GameWindow::drawToolbar() {
     const TextureFamily viewFamily = cooks.getViewFamily();
     std::string texturesLabel = std::string(ICON_FA_IMAGE " ") + textureFamilyLabel(viewFamily) + "##GameTextures";
     const char* physicsLabel = "Physics##GamePhysicsDebug";
+    const char* cullingLabel = "Culling##GameCullingDebug";
     // Play Data: its name in full while it is not Project, even as icons
     if (playDataChoice.empty()) playDataChoice = gametests::PlayData::selected(project);
     const bool customPlayData = playDataChoice != "project";
@@ -962,7 +1015,8 @@ void editor::GameWindow::drawToolbar() {
     };
     auto groupWidth = [&]() {
         return buttonWidth(texturesLabel.c_str()) + buttonWidth(debuggerLabel) + buttonWidth(networkLabel) + buttonWidth(playDataLabel.c_str()) +
-               buttonWidth(touchLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) + buttonWidth(physicsLabel) + style.ItemSpacing.x * 7.0f;
+               buttonWidth(touchLabel) + buttonWidth(inputSchemeLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) +
+               buttonWidth(physicsLabel) + buttonWidth(cullingLabel) + style.ItemSpacing.x * 9.0f;
     };
     ImGui::SameLine();
     const float contentRight = ImGui::GetWindowContentRegionMax().x;
@@ -972,6 +1026,7 @@ void editor::GameWindow::drawToolbar() {
         statsLabel = ICON_FA_CHART_SIMPLE "##GameStats";
         texturesLabel = ICON_FA_IMAGE "##GameTextures";
         physicsLabel = ICON_FA_CUBES "##GamePhysicsDebug";
+        cullingLabel = ICON_FA_EYE_SLASH "##GameCullingDebug";
         if (!customPlayData) playDataLabel = ICON_FA_DATABASE "##GamePlayData";
     }
     const float rightX = contentRight - groupWidth();
@@ -1043,6 +1098,30 @@ void editor::GameWindow::drawToolbar() {
     }
     ImGui::EndDisabled();
 
+    // Input Scheme: Auto follows the last device used; a forced one applies at Play start and at
+    // once during Play (Simulate Touch stays the device's capability)
+    ImGui::SameLine();
+    if (toggleButton(inputSchemeLabel, forcedScheme != "auto",
+                     "Input Scheme: what the game treats as the device in use (Auto follows the last device used)")) {
+        ImGui::OpenPopup("##GameInputSchemeMenu");
+    }
+    if (ImGui::BeginPopup("##GameInputSchemeMenu")) {
+        static const char* const choices[][2] = {
+            {"Auto", "auto"}, {"Keyboard & Mouse", "keyboard_mouse"}, {"Gamepad", "gamepad"}, {"Touch", "touch"}};
+        for (const auto& choice : choices) {
+            if (ImGui::MenuItem(choice[0], nullptr, forcedScheme == choice[1]))
+                chooseInputScheme(project, choice[1]);
+        }
+        ImGui::Separator();
+        const InputScheme current = InputSchemeTracker::getCurrent();
+        std::string line = std::string("Current: ") +
+            (current == InputScheme::KeyboardMouse ? "Keyboard & Mouse" : InputSchemeTracker::groupName(current));
+        if (current == InputScheme::Gamepad)
+            line += std::string(" (") + InputSchemeTracker::familyName(InputSchemeTracker::getGamepadFamily()) + ")";
+        ImGui::MenuItem(line.c_str(), nullptr, false, false);
+        ImGui::EndPopup();
+    }
+
     ImGui::SameLine();
     if (toggleButton(maximizeLabel, settings.maximizeOnPlay, "Maximize On Play: fill the editor with the Game view while playing")) {
         settings.maximizeOnPlay = !settings.maximizeOnPlay;
@@ -1062,7 +1141,23 @@ void editor::GameWindow::drawToolbar() {
         Physics::setDebugDraw(!physicsShown);
     }
 
+    ImGui::SameLine();
+    // Simulation Culling and Culling Group spheres while playing (saved with the Game view)
+    if (toggleButton(cullingLabel, settings.cullingDebug, "Culling: draw Simulation Culling spheres (green Full, yellow Reduced, red culled by "
+            "distance, grey by unloaded ground), Culling Group spheres (cyan visible, dark blue not) and the focuses while playing")) {
+        settings.cullingDebug = !settings.cullingDebug;
+        CullingSystem::setDebugDraw(settings.cullingDebug);
+        saveSettings();
+    }
+
     ImGui::SetCursorPosY(toolbarRowY + ImGui::GetTextLineHeightWithSpacing());
+}
+
+bool editor::GameWindow::chooseInputScheme(Project* project, const std::string& scheme) {
+    if (!project->setInputSchemeOverride(scheme))
+        return false;
+    project->saveWorkspaceFile();
+    return true;
 }
 
 void editor::GameWindow::drawPlayDataMenu() {
@@ -1225,7 +1320,10 @@ void editor::GameWindow::drawDeviceTierMenu() {
 void editor::GameWindow::drawDeviceMenu() {
     const PlatformSimulation& simulation = Platform::getSimulation();
     const DeviceProfile* device = simulation.device;
-    const std::string languageLabel = settings.language.empty() ? std::string() : " | " + settings.language;
+    std::string languageLabel = settings.language.empty() ? std::string() : " | " + settings.language;
+    // R31: the language the game resolved, when the String Tables made it another ("ja-JP -> ja")
+    const std::string& resolved = Localization::getLanguage();
+    if (!settings.language.empty() && !resolved.empty() && resolved != settings.language) languageLabel += " \xE2\x86\x92 " + resolved;
     const std::string label = std::string(ICON_FA_MOBILE_SCREEN_BUTTON " ") + (device ? device->name : "No Device") + languageLabel +
         "##GameDevice";
 
@@ -1254,7 +1352,8 @@ void editor::GameWindow::drawDeviceMenu() {
         ImGui::Separator();
         if (ImGui::BeginMenu("Language")) {
             for (const std::string& language : languagePresets()) {
-                const char* name = language.empty() ? "System" : language.c_str();
+                const char* name = language.empty() ? "System" : language == "en-XA" ? "Pseudo (en-XA)"
+                                 : language == "ar-XB" ? "Pseudo RTL (ar-XB)" : language.c_str();
                 if (ImGui::MenuItem(name, nullptr, settings.language == language)) {
                     settings.language = language;
                     applySimulation();
@@ -1589,7 +1688,29 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
                 ImGui::GetColorU32(ImGuiCol_TextDisabled), message);
         }
 
-        const bool hovered = ImGui::IsWindowHovered();
+        // the keyboard chip: while a field of the game is focused, the soft keyboard a phone would show;
+        // a click copies its traits (and does not reach the game)
+        bool overKeyboardChip = false;
+        TextEntryTraits chipTraits;
+        bool chipKeyboardOpen = false;
+        if (running && sceneProject->playState == ScenePlayState::PLAYING && Engine::getTextEntryFocus(chipTraits, chipKeyboardOpen)) {
+            const std::string chip = keyboardChipText(chipTraits);
+            const ImVec2 size = ImGui::CalcTextSize(chip.c_str());
+            const ImVec2 pad = Theme::dpi(ImVec2(8.0f, 4.0f));
+            const ImVec2 chipMin(areaMin.x + (areaSize.x - size.x) * 0.5f - pad.x, areaMin.y + areaSize.y - size.y - pad.y * 2.0f - Theme::dpi(8.0f));
+            const ImVec2 chipMax(chipMin.x + size.x + pad.x * 2.0f, chipMin.y + size.y + pad.y * 2.0f);
+            overKeyboardChip = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(chipMin, chipMax);
+            drawList->AddRectFilled(chipMin, chipMax, overKeyboardChip ? IM_COL32(45, 45, 45, 230) : IM_COL32(20, 20, 20, 210), Theme::dpi(3.0f));
+            drawList->AddText(ImVec2(chipMin.x + pad.x, chipMin.y + pad.y), IM_COL32(235, 235, 235, 255), chip.c_str());
+            UIProbe::rect("game.keyboardChip", chipMin.x, chipMin.y, chipMax.x, chipMax.y);
+            if (overKeyboardChip) {
+                ImGui::SetTooltip("Click to copy the keyboard's traits as JSON");
+                if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                    ImGui::SetClipboardText(keyboardChipJson(chipTraits).c_str());
+            }
+        }
+
+        const bool hovered = ImGui::IsWindowHovered() && !overKeyboardChip;
 
         if (running && sceneProject->playState == ScenePlayState::PLAYING) {
             // Escape is the game's while it plays here (Unity): ImGui's keyboard navigation
@@ -1630,7 +1751,7 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     const float fps = ImGui::GetIO().Framerate;
     const float ms = fps > 0.0f ? 1000.0f / fps : 0.0f;
 
-    char lines[16][112];
+    char lines[18][112];
     int lineCount = 5;
     // the view's vertices and detail levels (spec S54 R12): the frame while playing, else the Game view's own
     const bool playing = project && project->isPlaySessionActive();
@@ -1677,6 +1798,21 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
             snprintf(lines[lineCount], sizeof(lines[lineCount]), "CPU %.2f ms", frameTime.cpuMs);
         lineCount++;
     }
+    // the main thread's own CPU per frame over the last full second (its thread clock: without
+    // the waits CPU above includes), and the Performance sampler's window while it samples
+    PerfSampler::watchThreadCpu();
+    const double threadCpu = PerfSampler::mainThreadCpuMsLastSecond();
+    if (threadCpu >= 0.0)
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "Main Thread CPU: %.2f ms", threadCpu);
+    else
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "Main Thread CPU: measuring...");
+    lineCount++;
+    if (PerfSampler::isSampling()) {
+        const PerfSummary perf = PerfSampler::summary();
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "Sampling: %.0f s \xC2\xB7 p50 %.0f fps \xC2\xB7 p10 %.0f fps", perf.seconds, perf.fpsP50,
+                 perf.fpsP10);
+        lineCount++;
+    }
     if (const DeviceProfile* device = Platform::getSimulation().device) {
         snprintf(lines[lineCount], sizeof(lines[lineCount]), "Device: %s, %s", device->name,
                  PlatformRules::orientationName(Platform::getSimulation().orientation));
@@ -1707,6 +1843,21 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
             lineCount++;
         }
     }
+    // Culling Groups and Simulation Culling, when the scene has any
+    if (sceneProject && sceneProject->scene) {
+        if (auto culling = sceneProject->scene->findSystem<CullingSystem>()) {
+            const CullingSystem::Stats c = culling->getStats();
+            if (c.groups > 0) {
+                snprintf(lines[lineCount], sizeof(lines[lineCount]), "Culling groups: %u (%u spheres, %u visible)", c.groups, c.spheres, c.visible);
+                lineCount++;
+            }
+            if (c.components > 0) {
+                snprintf(lines[lineCount], sizeof(lines[lineCount]), "Simulation: %u full, %u reduced, %u culled (%u ground)  Script updates skipped: %u",
+                         c.full, c.reduced, c.culled, c.groundNotLoaded, c.scriptUpdatesSkipped);
+                lineCount++;
+            }
+        }
+    }
     // the scene's HTML UI documents (their offscreen passes are not in the counters above)
     UIDocumentSystem* documents = (sceneProject && sceneProject->scene) ? sceneProject->scene->getSystem<UIDocumentSystem>().get() : nullptr;
     if (documents && documents->hasDocuments()) {
@@ -1720,7 +1871,7 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     }
 
     // S48: the game frozen by a hit-stop, and for how long still
-    if (playing && ::jasperengine::pixelart::HitStop::isActive() && lineCount < 16) {
+    if (playing && ::jasperengine::pixelart::HitStop::isActive() && lineCount < 18) {
         snprintf(lines[lineCount], sizeof(lines[lineCount]), "HIT STOP %.2f s", ::jasperengine::pixelart::HitStop::getRemaining());
         lineCount++;
     }
@@ -1728,5 +1879,22 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     std::vector<std::string> all(lines, lines + lineCount);
     // after "Draw calls: ... Tris: ..."
     all.insert(all.begin() + 3, meshLines.begin(), meshLines.end());
-    drawStatsBox(ImGui::GetWindowDrawList(), imageMin, imageMax, all);
+    const ImVec2 textMin = drawStatsBox(ImGui::GetWindowDrawList(), imageMin, imageMax, all);
+    // the Main Thread CPU and Sampling rows as items find_ui_item reports (drawn text is no item;
+    // these take no input)
+    const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
+    ImGuiContext& g = *GImGui;   // (IMGUI_TEST_ENGINE_ITEM_INFO reads it)
+    (void)g;
+    for (size_t i = 0; i < all.size(); i++) {
+        const char* label = all[i].rfind("Main Thread CPU", 0) == 0 ? "Main Thread CPU##stats"
+                            : all[i].rfind("Sampling", 0) == 0     ? "Sampling##stats"
+                                                                   : nullptr;
+        if (!label)
+            continue;
+        const ImVec2 min(textMin.x, textMin.y + lineHeight * (float)i);
+        const ImRect rect(min, ImVec2(min.x + ImGui::CalcTextSize(all[i].c_str()).x, min.y + ImGui::GetTextLineHeight()));
+        const ImGuiID id = ImGui::GetID(label);
+        if (ImGui::ItemAdd(rect, id, nullptr, ImGuiItemFlags_NoNav))
+            IMGUI_TEST_ENGINE_ITEM_INFO(id, label, 0);
+    }
 }

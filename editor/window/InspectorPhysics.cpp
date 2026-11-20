@@ -114,6 +114,8 @@
 #include <unordered_set>
 #include <memory>
 #include "script/ScriptMessages.h"
+#include "component/SimulationCullingComponent.h"
+#include "object/SimulationCulling.h"
 
 using namespace jasperengine;
 
@@ -1715,4 +1717,26 @@ void editor::InspectorWindow::drawPhysicsContacts(SceneProject* sceneProject, En
         }
         ImGui::TreePop();
     }
+}
+
+void editor::InspectorWindow::drawSimulationCullingComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    drawDefaultComponent(cpType, sceneProject, entities);
+    if (sceneProject->playState == ScenePlayState::STOPPED || entities.size() != 1){
+        return;
+    }
+    // what CullingSystem decided this frame (runtime, never saved)
+    const SimulationCullingComponent* culling = sceneProject->scene->findComponent<SimulationCullingComponent>(entities[0]);
+    if (!culling){
+        return;
+    }
+    ImGui::BeginDisabled();
+    ImGui::Text("State: %s", culling->state == SimulationState::Full ? "Full" : (culling->state == SimulationState::Reduced ? "Reduced" : "Culled"));
+    ImGui::Text("Reason: %s", culling->reason == SimulationCullReason::None ? "None"
+        : (culling->reason == SimulationCullReason::Distance ? "Distance" : "Ground Not Loaded"));
+    if (culling->focusDistance >= 1.0e30f){
+        ImGui::TextUnformatted("Focus Distance: no focus");
+    }else{
+        ImGui::Text("Focus Distance: %.1f m", culling->focusDistance);
+    }
+    ImGui::EndDisabled();
 }

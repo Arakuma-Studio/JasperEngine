@@ -1,0 +1,28 @@
+JasperEngine crash report v1
+product: Forest Run
+version: 1.4
+build_id: 3f1c9e07b2d84a6c5e91f0a2b7c4d6e8f9a0b1c2
+platform: linux-x86_64
+backend: vulkan
+session: 20261106T090000Z-6001
+reason: SIGSEGV (invalid memory access)
+signal: 11
+si_code: 1
+fault_address: 0x0
+pc: 0x7f3a1c49a2b0
+sp: 0x7ffd2e1c8a40
+thread: 41022
+thread_name: forestrun
+time_since_start_ms: 731044
+backtrace:
+#0 libc.so.6+0x9a2b0
+#1 forestrun+0x4f2a0
+#2 libjasperengine.so+0x1a000
+#3 forestrun+0x4e100
+#4 libc.so.6+0x29d90
+modules:
+55d3c2a00000-55d3c2a4e000 r--p 00000000 08:01 1835012 /opt/forestrun/forestrun
+55d3c2a4e000-55d3c2b20000 r-xp 0004e000 08:01 1835012 /opt/forestrun/forestrun
+7f3a1c400000-7f3a1c428000 r--p 00000000 08:01 2097222 /usr/lib/x86_64-linux-gnu/libc.so.6
+7f3a1d000000-7f3a1d800000 r-xp 00000000 08:01 1835013 /opt/forestrun/libjasperengine.so
+core_pattern: core

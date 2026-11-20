@@ -10695,6 +10695,7 @@
     "shadowOffset",
     "shadowSoftness",
     "text",
+    "textKey",
     "visibleCharacters"
    ],
    "name": "TextComponent",
@@ -10784,6 +10785,11 @@
      32768,
      true
     ],
+    "textKey": [
+     1,
+     32768,
+     true
+    ],
     "visibleCharacters": [
      8,
      32768,
@@ -10876,6 +10882,11 @@
      32768,
      true
     ],
+    "textKey": [
+     1,
+     32768,
+     true
+    ],
     "visibleCharacters": [
      8,
      32768,
@@ -10889,17 +10900,57 @@
   },
   {
    "display_name": "Input Field",
-   "enum_options": {},
+   "enum_options": {
+    "keyboardType": [
+     [
+      0,
+      "default",
+      "Default"
+     ],
+     [
+      1,
+      "number_pad",
+      "Number Pad"
+     ],
+     [
+      2,
+      "decimal_pad",
+      "Decimal Pad"
+     ],
+     [
+      3,
+      "phone_pad",
+      "Phone Pad"
+     ],
+     [
+      4,
+      "email_address",
+      "Email Address"
+     ],
+     [
+      5,
+      "url",
+      "URL"
+     ],
+     [
+      6,
+      "search",
+      "Search"
+     ]
+    ]
+   },
    "has_enabled": false,
    "icon": "ef849c",
    "key": "inputfield",
    "known_keys": [
+    "characterLimit",
     "cursor",
     "cursorBlink",
     "cursorColor",
     "cursorIndex",
     "cursorWidth",
     "disabled",
+    "keyboardType",
     "password",
     "passwordChar",
     "placeholder",
@@ -10911,6 +10962,11 @@
    ],
    "name": "InputFieldComponent",
    "properties_of_default": {
+    "characterLimit": [
+     8,
+     0,
+     true
+    ],
     "cursor": [
      16,
      0,
@@ -10938,6 +10994,11 @@
     ],
     "disabled": [
      0,
+     0,
+     true
+    ],
+    "keyboardType": [
+     13,
      0,
      true
     ],
@@ -10978,6 +11039,11 @@
     ]
    },
    "properties_without_component": {
+    "characterLimit": [
+     8,
+     0,
+     true
+    ],
     "cursor": [
      16,
      0,
@@ -11005,6 +11071,11 @@
     ],
     "disabled": [
      0,
+     0,
+     true
+    ],
+    "keyboardType": [
+     13,
      0,
      true
     ],
@@ -12720,8 +12791,10 @@
    "known_keys": [
     "enabled",
     "filename",
+    "gamepadCursor",
     "inputSurface",
     "interactive",
+    "isMenu",
     "pixelRatio",
     "renderMode",
     "sortOrder",
@@ -12740,12 +12813,22 @@
      274877906944,
      true
     ],
+    "gamepadCursor": [
+     0,
+     0,
+     true
+    ],
     "inputSurface": [
      16,
      0,
      true
     ],
     "interactive": [
+     0,
+     0,
+     true
+    ],
+    "isMenu": [
      0,
      0,
      true
@@ -12787,12 +12870,22 @@
      274877906944,
      true
     ],
+    "gamepadCursor": [
+     0,
+     0,
+     true
+    ],
     "inputSurface": [
      16,
      0,
      true
     ],
     "interactive": [
+     0,
+     0,
+     true
+    ],
+    "isMenu": [
      0,
      0,
      true
@@ -19553,6 +19646,11 @@
       1,
       "touch_devices_only",
       "Touch Devices Only"
+     ],
+     [
+      2,
+      "touch_scheme",
+      "Touch Scheme"
      ]
     ]
    },
@@ -19749,6 +19847,11 @@
       1,
       "touch_devices_only",
       "Touch Devices Only"
+     ],
+     [
+      2,
+      "touch_scheme",
+      "Touch Scheme"
      ]
     ]
    },
@@ -19846,6 +19949,11 @@
       1,
       "touch_devices_only",
       "Touch Devices Only"
+     ],
+     [
+      2,
+      "touch_scheme",
+      "Touch Scheme"
      ]
     ]
    },
@@ -24211,6 +24319,210 @@
    "type": 103,
    "type_of_key": 103,
    "type_of_name": 103
+  },
+  {
+   "display_name": "Simulation Culling",
+   "enum_options": {
+    "reason": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "distance",
+      "Distance"
+     ],
+     [
+      2,
+      "ground_not_loaded",
+      "Ground Not Loaded"
+     ]
+    ],
+    "state": [
+     [
+      0,
+      "full",
+      "Full"
+     ],
+     [
+      1,
+      "reduced",
+      "Reduced"
+     ],
+     [
+      2,
+      "culled",
+      "Culled"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef81b0",
+   "key": "simulationculling",
+   "known_keys": [
+    "boundsRadius",
+    "cullAnimator",
+    "cullPhysics",
+    "cullScripts",
+    "enabled",
+    "freezeWhenGroundNotLoaded",
+    "hysteresis",
+    "reducedRateDistance",
+    "reducedUpdateInterval",
+    "simulateWhenVisible",
+    "simulationDistance"
+   ],
+   "name": "SimulationCullingComponent",
+   "properties_of_default": {
+    "boundsRadius": [
+     2,
+     0,
+     true
+    ],
+    "cullAnimator": [
+     0,
+     0,
+     true
+    ],
+    "cullPhysics": [
+     0,
+     0,
+     true
+    ],
+    "cullScripts": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "focusDistance": [
+     2,
+     0,
+     true
+    ],
+    "freezeWhenGroundNotLoaded": [
+     0,
+     0,
+     true
+    ],
+    "hysteresis": [
+     2,
+     0,
+     true
+    ],
+    "reason": [
+     13,
+     0,
+     true
+    ],
+    "reducedRateDistance": [
+     2,
+     0,
+     true
+    ],
+    "reducedUpdateInterval": [
+     8,
+     0,
+     true
+    ],
+    "simulateWhenVisible": [
+     0,
+     0,
+     true
+    ],
+    "simulationDistance": [
+     2,
+     0,
+     true
+    ],
+    "state": [
+     13,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "boundsRadius": [
+     2,
+     0,
+     true
+    ],
+    "cullAnimator": [
+     0,
+     0,
+     true
+    ],
+    "cullPhysics": [
+     0,
+     0,
+     true
+    ],
+    "cullScripts": [
+     0,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "focusDistance": [
+     2,
+     0,
+     true
+    ],
+    "freezeWhenGroundNotLoaded": [
+     0,
+     0,
+     true
+    ],
+    "hysteresis": [
+     2,
+     0,
+     true
+    ],
+    "reason": [
+     13,
+     0,
+     true
+    ],
+    "reducedRateDistance": [
+     2,
+     0,
+     true
+    ],
+    "reducedUpdateInterval": [
+     8,
+     0,
+     true
+    ],
+    "simulateWhenVisible": [
+     0,
+     0,
+     true
+    ],
+    "simulationDistance": [
+     2,
+     0,
+     true
+    ],
+    "state": [
+     13,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 104,
+   "type_of_key": 104,
+   "type_of_name": 104
   }
  ],
  "ease_options": [
@@ -26065,6 +26377,11 @@
    ]
   },
   "InputFieldComponent": {
+   "characterLimit": [
+    8,
+    0,
+    true
+   ],
    "cursor": [
     16,
     0,
@@ -26092,6 +26409,11 @@
    ],
    "disabled": [
     0,
+    0,
+    true
+   ],
+   "keyboardType": [
+    13,
     0,
     true
    ],
@@ -31585,6 +31907,11 @@
     32768,
     true
    ],
+   "textKey": [
+    1,
+    32768,
+    true
+   ],
    "visibleCharacters": [
     8,
     32768,
@@ -32539,12 +32866,22 @@
     274877906944,
     true
    ],
+   "gamepadCursor": [
+    0,
+    0,
+    true
+   ],
    "inputSurface": [
     16,
     0,
     true
    ],
    "interactive": [
+    0,
+    0,
+    true
+   ],
+   "isMenu": [
     0,
     0,
     true

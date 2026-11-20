@@ -54,6 +54,7 @@ namespace jasperengine::editor {
         ToggleJobsMemory,
         ToggleMeshAudit,
         ToggleBuildReport,
+        ToggleCrashReports,
         ToggleAnimationStatistics,
         ToggleProfiler,
         ToggleFrameDebugger,
@@ -100,6 +101,8 @@ namespace jasperengine::editor {
         SearchAll,            // S25: Edit > Search All... (the Search palette)
         Shortcuts,            // Edit > Shortcuts...
         ToggleBookmarks,      // Window > General > Bookmarks
+        ToggleLocalizationTables,   // Window > Localization Tables (game-ui-localization.md R28)
+        ToggleSavedData,      // Window > General > Saved Data
         LayoutApply,          // payload: the preset's name (Window > Layouts)
         LayoutSave,
         LayoutRename,         // payload: the preset's name

@@ -21,6 +21,10 @@ using namespace jasperengine;
 
 System* System::systemInstance = nullptr;
 ApplicationInfo System::applicationInfo;
+std::string System::buildProfile;
+std::vector<std::string> System::buildDefines;
+std::unordered_set<std::string> System::buildDefineSet;
+int System::contentPatch = 0;
 
 System& System::instance(){
     if (!systemInstance) {
@@ -101,8 +105,20 @@ void System::showVirtualKeyboard(std::wstring text){
 
 }
 
+void System::showVirtualKeyboard(const std::wstring& text, const TextEntryTraits& traits){
+    showVirtualKeyboard(text);
+}
+
 void System::hideVirtualKeyboard(){
 
+}
+
+void System::updateVirtualKeyboardText(const std::wstring& text, int selectionStart, int selectionEnd){
+
+}
+
+bool System::keepsVirtualKeyboardText(){
+    return false;
 }
 
 void System::setClipboardText(const std::string& utf8){
@@ -210,6 +226,32 @@ void System::setApplicationInfo(const ApplicationInfo& info){
 
 const ApplicationInfo& System::getApplicationInfo(){
     return applicationInfo;
+}
+
+void System::setBuildInfo(const std::string& profile, const std::vector<std::string>& defines){
+    buildProfile = profile;
+    buildDefines = defines;
+    buildDefineSet = std::unordered_set<std::string>(defines.begin(), defines.end());
+}
+
+const std::string& System::getBuildProfile(){
+    return buildProfile;
+}
+
+const std::vector<std::string>& System::getDefines(){
+    return buildDefines;
+}
+
+bool System::isDefined(const std::string& symbol){
+    return buildDefineSet.count(symbol) > 0;
+}
+
+void System::setContentPatch(int patch){
+    contentPatch = patch;
+}
+
+int System::getContentPatch(){
+    return contentPatch;
 }
 
 std::string System::getAppVersion(){

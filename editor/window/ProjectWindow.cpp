@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "pixelart/BitmapFontCreate.h"
+#include "localization/StringTableDocument.h"
+#include "localization/StringTableEditCmd.h"
+#include "window/LocalizationTablesWindow.h"
 #include "animation/AnimatorAssetDocument.h"
 #include "window/NoiseGraphWindow.h"
 #include "window/PoseAnimationWindow.h"
@@ -1401,6 +1404,28 @@ void editor::ProjectWindow::renderCreateItems(const fs::path& directory) {
                 }
             }
             ImGui::EndMenu();
+        }
+        ImGui::EndMenu();
+    }
+    // Localization > String Table (game-ui-localization.md R29): namespace from the name, source
+    // language from the project default; one undo step
+    if (ImGui::BeginMenu(ICON_FA_LANGUAGE " Localization")) {
+        if (ImGui::MenuItem("String Table")) {
+            fs::path owner = directory / "New String Table.stringtable";
+            for (int n = 1; fs::exists(owner); n++) owner = directory / ("New String Table " + std::to_string(n) + ".stringtable");
+            l10n::StringTableSet set;
+            std::string error;
+            std::string ns = l10n::namespaceFromStem(owner.stem().string());
+            for (int n = 2; !l10n::namespaceOwner(project->getProjectPath(), ns).empty(); n++) {
+                ns = l10n::namespaceFromStem(owner.stem().string()) + "_" + std::to_string(n);
+            }
+            if (!l10n::createTable(project->getProjectPath(), owner, ns, project->getLocalizationSettings().effectiveDefault(), set, error) ||
+                    !l10n::commitSet(project, nullptr, set, "Create String Table " + set.table.ns, &error)) {
+                Backend::getApp().registerAlert("Create String Table", error);
+            } else {
+                Backend::getApp().getLocalizationTablesWindow()->open(owner);
+            }
+            ImGui::CloseCurrentPopup();
         }
         ImGui::EndMenu();
     }
@@ -5639,6 +5664,11 @@ void editor::ProjectWindow::assetsOpenSelected() {
 }
 
 void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& filePath) {
+    // a String Table opens the Localization Tables window on it (game-ui-localization.md R29)
+    if (filePath.extension() == l10n::STRINGTABLE_EXTENSION) {
+        Backend::getApp().getLocalizationTablesWindow()->open(filePath);
+        return;
+    }
     if (file.type == FileType::IMAGE) {
         imageViewerWindow->openFile(filePath);
     } else if (file.type == FileType::SCENE) {

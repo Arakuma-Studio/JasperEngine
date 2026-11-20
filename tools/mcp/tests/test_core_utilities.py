@@ -3,7 +3,8 @@ log stream), RAII event subscriptions released with their script, and the schedu
 Timer (game, unscaled and real clocks, pause, owners, coroutines).
 
 Scene CoreUtil (3D): TagOwner (a Lua script registering Engine.onUpdate with an explicit tag),
-TimerOwner (a Lua script with a timer owned by itself). Play runs with auto_pause and a fixed
+TimerOwner (a Lua script with a timer owned by itself), Door and Lock (a CancellableEvent the Lock
+vetoes while locked, with a monitor that prints the decision). Play runs with auto_pause and a fixed
 1/60 s step, so frame counts are exact.
 """
 
@@ -44,6 +45,53 @@ end
 return TimerOwner
 """
 
+DOOR = """---@class Door : ScriptInstance
+local Door = { properties = {} }
+
+function Door:init()
+    self.onOpening = CancellableEvent()
+    self.isOpen = false
+end
+
+function Door:open(by)
+    if self.onOpening:invoke(self, by) then return false end
+    self.isOpen = true
+    return true
+end
+
+return Door
+"""
+
+LOCK = """---@class Lock : ScriptInstance
+local Lock = { properties = {} }
+
+function Lock:init()
+    self.locked = true
+end
+
+function Lock:start()
+    self.door = GameObject.findObjectOfType("Door")
+    RegisterEvent(self, self.door.onOpening, "check", nil, 10)
+    RegisterEvent(self, self.door.onOpening, "report", nil, Event.MONITOR)
+end
+
+function Lock:check(e, door, by)
+    if self.locked then e:cancel() end
+end
+
+function Lock:report(e, door, by)
+    print("[lock-monitor] cancelled=" .. tostring(e.cancelled))
+end
+{extra}
+return Lock
+"""
+
+
+def lock_source(extra: str = "") -> str:
+    # replace, not format: the Lua's table braces are not fields
+    return LOCK.replace("{extra}", extra)
+
+
 S: dict = {}
 
 
@@ -54,9 +102,11 @@ async def setup(ed: Editor) -> dict:
     S["ed"] = ed
     made = await ed.call("create_scene", name="CoreUtil", type="3D", path="scenes/CoreUtil")
     S["scene"] = made["scene"]["id"]
-    for name, cls, code in (("TagOwner", "TagOwner", TAG_OWNER), ("TimerOwner", "TimerOwner", TIMER_OWNER)):
+    for name, cls, code in (("TagOwner", "TagOwner", TAG_OWNER), ("TimerOwner", "TimerOwner", TIMER_OWNER),
+                            ("Door", "Door", DOOR), ("Lock", "Lock", lock_source())):
         ent = await ed.call("create_entity", scene=S["scene"], type="empty", name=name)
-        await ed.call("create_script", kind="lua", name=cls, content=code, scene=S["scene"], entity=ent["entity_id"])
+        made = await ed.call("create_script", kind="lua", name=cls, content=code, scene=S["scene"], entity=ent["entity_id"])
+        S["path_" + cls] = made["path"]
     await ed.call("save_scene", scene=S["scene"])
     await ed.call("save_project")
     return S
@@ -86,6 +136,43 @@ async def no_errors(ed: Editor, since) -> None:
 
 async def cursor(ed: Editor) -> int:
     return (await ed.call("read_console", limit=1))["next_cursor"]
+
+
+# -- cancellable events --------------------------------------------------------------
+
+
+async def test_cancellable_event_in_play(ed: Editor):
+    """cancellable-prioritised-events AC15: the Lock vetoes the Door's onOpening while locked, its
+    monitor prints the decision, getListeners and cancelledBy read through eval_lua, and a hot
+    reload of Lock keeps its listeners' priorities."""
+    since = await cursor(ed)
+    s = await setup(ed)
+    await ed.call("write_file", path=s["path_Lock"], content=lock_source())
+    await start(ed)
+    await ed.call("wait", frames=2)
+    door = "script('Door', 'Door', 'CoreUtil')"
+    lock = "script('Lock', 'Lock', 'CoreUtil')"
+    ed.check_eq(await lua(ed, f"return {door}:open('agent'), {door}.isOpen, {door}.onOpening.cancelledBy"),
+                [False, False, "Lock:check"], "the locked Lock refuses")
+    expected = [{"name": "Lock:check", "priority": 10, "monitor": False},
+                {"name": "Lock:report", "priority": -2147483648, "monitor": True}]
+    ed.check_eq(await lua(ed, f"return {door}.onOpening:getListeners()"), [expected], "listeners in dispatch order")
+    await lua(ed, f"{lock}.locked = false")
+    ed.check_eq(await lua(ed, f"return {door}:open('agent'), {door}.isOpen, tostring({door}.onOpening)"),
+                [True, True, "CancellableEvent(2 listeners, last invoke went ahead)"], "the unlocked Lock lets it open")
+    markers = [e.get("message", "") for e in await ed.console_since(since, limit=1000) if "[lock-monitor]" in e.get("message", "")]
+    ed.check_eq([m.strip() for m in markers][-2:], ["[lock-monitor] cancelled=true", "[lock-monitor] cancelled=false"],
+                f"the monitor saw each decision: {markers}")
+
+    await ed.call("write_file", path=s["path_Lock"], content=lock_source("\nfunction Lock:onReload() end\n"))
+    reloaded = await ed.call("reload_scripts", paths=[s["path_Lock"]], language="lua")
+    ed.check([x for x in reloaded["reloaded"] if x["path"].endswith("Lock.lua")], f"Lock.lua reloaded: {reloaded}")
+    ed.check_eq(await lua(ed, f"return {door}.onOpening:getListeners()"), [expected], "the reload kept the priorities")
+    await lua(ed, f"{lock}.locked = true")
+    ed.check_eq(await lua(ed, f"return {door}.onOpening:invoke({door}), {door}.onOpening.cancelledBy"), [True, "Lock:check"],
+                "the reloaded Lock still decides first")
+    await stop(ed)
+    await no_errors(ed, since)
 
 
 # -- timers ------------------------------------------------------------------------

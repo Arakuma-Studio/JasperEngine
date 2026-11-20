@@ -570,4 +570,46 @@ Unit tests in `engine/tests/core/subsystem/CullingSystemTest.cpp` (suites `Culli
 
 ## Deviations
 
-None yet.
+- **D1 registration and start.** `CullingSystem` is registered right after `PhysicsSystem` (still after
+  Render's transforms and camera planes): its update order against physics does not matter (physics steps
+  in the fixed phase of the next frame) and the bodies exist when it first runs. The first evaluation
+  (R18) and the evaluation of GameObjects instantiated since the last update run in
+  `CullingSystem::preUpdate`, called by `Engine::runFrame` at the start of every frame, before the
+  scripts' starts and the fixed steps (a scene has no start hook that runs after `PhysicsSystem::load`
+  in every host; the editor loads Play scenes paused).
+- **R36 codec.** The component uses the reflection table's generic encoding (as the other table-only
+  components added since S08, e.g. Water Excluder), not a hand-written `JE_STREAM_CODEC`.
+- **R24 memory.** A sphere takes 20 bytes (four floats and a packed word: its state and its follow
+  slot), a followed sphere 20 more (index, entity, offset). Simulation Culling keeps 1 byte per entity
+  id, plus a 32-byte reduced-band clock per entity id once a GameObject enters the reduced band (the
+  phase and delta are per GameObject, descendants included).
+- **R11, R33 `cameraIsFocus`.** It is a scene setting, so Lua has
+  `SimulationCulling.setCameraIsFocus(scene, bool)` / `isCameraFocus(scene)` rather than a static
+  property; `distanceScale` is a static property.
+- **R27, R26 editor.** The Game view toolbar has no Gizmos menu: **Culling** is a toggle beside
+  **Physics** (saved with the Game view settings). The Device Tiers table has a row per setting, so
+  Simulation Distance is a row.
+- **R13 ground checks.** A GameObject culled by unloaded ground is checked again every frame (so it
+  resumes within 2 frames of its tile loading, AC8); the others round robin every 8 frames.
+- **R15 reduced band** applies only with Cull > Scripts on (it only changes scripts).
+- **R18 pacing.** Reduced to Full changes count in the 64 a frame too (after resumes and culls).
+- **D9 2D inside a step.** Simulation Culling never decides inside a step; a 2D freeze asked for inside
+  one is ignored (the 3D one is queued to the step's end).
+- **R23 allocations** hold for the evaluation inline (`CullingGroupTest.NoAllocationsAndZeroCost`: 0 in the
+  whole process over 1,000 evaluations with changes). Groups above 4,096 spheres evaluated on S06's
+  `parallelFor` saw about 55 allocations on the calling thread over 1,000 evaluations: the job system
+  publishing its helpers, not the culling code (measured, not fixed here).
+- **D12 cap at start.** The first evaluation of a scene and of a new GameObject calls the script ground
+  check for every component (AC13 starts 500 over unloaded ground); the 256-a-frame cap applies to the
+  later evaluations.
+- **R33 `onStateChanged`** is write-only in Lua (reads nil). C++ `onSimulationCulled` takes
+  `const std::string& reason`.
+- **Tests.** The scripted cases (AC5, AC6's Lua part, AC7's script counts, AC10, AC12) run whole engine
+  frames with Lua scripts and are in `editor/tests/culling/SimulationCullingScriptTest.cpp`, which has
+  the script harness; the engine cases are in `engine/tests/core/subsystem/CullingSystemTest.cpp`
+  (fixtures `CullingGroupTest` and `SimulationCullingTest`, per docs/testing.md's naming), AC7's Animator
+  in `AnimatorSystemTest` (AC15) and its bodies in `SimulationCullingTest.DistanceFreezesBodies`. The
+  Inspector test is `editor/tests/reflect/InspectorSimulationCullingTest.cpp`. The bench is a
+  `je-bench-culling` executable gated by `tools/perf/check_bench.py`.
+- **AC17 (web gate)** is not done: no web build or `core-utilities` gate change was made in this
+  change; the single-threaded path (parallelFor inline) is covered by `CullingGroupTest.ParallelEqualsSerial`.

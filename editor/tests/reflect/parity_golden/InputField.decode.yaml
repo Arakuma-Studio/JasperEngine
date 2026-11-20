@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 89f6fd280504cc0a
+digest 7370842268ba580a
 --- 0
 text: 213
 selection: 87
@@ -15,6 +15,8 @@ cursorIndex: -3
 selectionAnchor: -4
 disabled: false
 password: true
+keyboardType: phone_pad
+characterLimit: 13
 --- 1
 text: 119
 selection: 105
@@ -30,6 +32,7 @@ cursorIndex: 11
 selectionAnchor: -16
 disabled: true
 password: false
+characterLimit: -10
 --- 2
 text: 216
 selection: 0
@@ -45,6 +48,8 @@ cursorIndex: 18
 selectionAnchor: 0
 disabled: true
 password: false
+keyboardType: search
+characterLimit: -6
 --- 3
 text: 181
 selection: 270
@@ -60,6 +65,7 @@ cursorIndex: -18
 selectionAnchor: -13
 disabled: false
 password: true
+characterLimit: -13
 --- 4
 text: 333
 selection: 0
@@ -75,6 +81,7 @@ cursorIndex: 1
 selectionAnchor: 13
 disabled: true
 password: false
+characterLimit: -91024
 --- 5
 text: 32
 selection: 33
@@ -90,6 +97,8 @@ cursorIndex: 19
 selectionAnchor: -9
 disabled: false
 password: false
+keyboardType: phone_pad
+characterLimit: -8
 --- 6
 text: 0
 selection: 138
@@ -105,6 +114,8 @@ cursorIndex: 70416
 selectionAnchor: -10
 disabled: true
 password: false
+keyboardType: url
+characterLimit: 11
 --- 7
 text: 168
 selection: 300
@@ -120,3 +131,4 @@ cursorIndex: 4
 selectionAnchor: 32213
 disabled: false
 password: true
+characterLimit: -18

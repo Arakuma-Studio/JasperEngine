@@ -153,6 +153,9 @@ struct GameViewSettings {
     int pixelScale = 0;
     bool maximizeOnPlay = false;
     bool showStats = false;
+    // Culling: the Simulation Culling and Culling Group spheres and the focuses, drawn while
+    // playing (CullingSystem::setDebugDraw)
+    bool cullingDebug = false;
     // Preview Atmosphere Quality: -1 the project's, else an AtmosphereQuality (Off..High)
     int atmosphereQuality = -1;
     // Device simulation in Play (spec S56 R5): the Device Tier (-1 Auto: none applies in the
@@ -181,7 +184,7 @@ struct GameViewSettings {
 
     bool operator==(const GameViewSettings& other) const {
         return aspect == other.aspect && scale == other.scale && pixelScale == other.pixelScale
-            && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats
+            && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats && cullingDebug == other.cullingDebug
             && atmosphereQuality == other.atmosphereQuality
             && deviceTier == other.deviceTier && devicePlatform == other.devicePlatform && deviceThermal == other.deviceThermal
             && device == other.device && orientation == other.orientation && language == other.language
@@ -269,6 +272,14 @@ struct LocalBuildSettings {
     std::string generator;
     unsigned int buildJobs = 0; // 0 = automatic
     bool configured = false;    // set on read: false = no entry, so default toolchain
+};
+
+// Window > Analysis > Crash Reports: the reports folder it shows (empty: the editor's own) and the
+// symbols folder its Copy Symbolicate Command names. Machine paths, so per project beside
+// LocalBuildSettings.
+struct CrashReportsLocations {
+    std::filesystem::path folder;
+    std::filesystem::path symbols;
 };
 
 class AppSettings {
@@ -394,6 +405,9 @@ public:
 
     static LocalBuildSettings getBuildSettings(const std::filesystem::path& projectFile);
     static bool setBuildSettings(const std::filesystem::path& projectFile, const LocalBuildSettings& value);
+
+    static CrashReportsLocations getCrashReportsLocations(const std::filesystem::path& projectFile);
+    static bool setCrashReportsLocations(const std::filesystem::path& projectFile, const CrashReportsLocations& value);
 
     // Initialization
     // preferUserDirectory: keep the files in the per-user config directory unless the working

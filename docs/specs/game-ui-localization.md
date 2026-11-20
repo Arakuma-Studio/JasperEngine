@@ -614,4 +614,42 @@ Unit tests follow docs/testing.md naming. "Red" says what fails without the chan
 
 ## Deviations
 
-None yet.
+- **D-1 Pre-tokenised messages (D5).** The cooked `.strbin` stores per entry the key hash, offset,
+  length and two flags (plain text, needs review): 16 bytes per entry as R26 asks. A message with
+  ICU syntax is parsed at lookup instead of being stored pre-tokenised; plain messages (the common
+  case) skip the parser through the flag.
+- **D-2 Hash collisions (AC10).** `HashCollisionIsAnExportError` forces the collision with a key
+  written twice (both hash alike) instead of a test seed; the error path and message naming both keys
+  are the same.
+- **D-3 HTML pass (R11, D7).** The pass runs on the elements as RmlUi makes them (an RmlUi plugin)
+  rather than from a compile-time flag: a document without `data-l10n-*` pays one attribute scan per
+  created element and nothing else, and none while the project has no String Tables. This also covers
+  template rows and inserted markup without a hook per widget.
+- **D-4 Root direction (R12).** A left-to-right language removes the direction the pass set instead of
+  writing `ltr`, so an author's `dir` on `<html>` stays in left-to-right languages; a right-to-left
+  language sets `rtl` over it.
+- **D-5 Language fonts (R14).** The face chain is keyed by the game language (the language every keyed
+  document's root gets), not by each text run's inherited `-rmlui-language`, which RmlUi does not
+  pass to the font engine. Documents loaded after a language change get its fonts; already-loaded
+  documents keep their face handles until reloaded.
+- **D-6 `setLanguage("")` (R9, AC3).** `""` also forgets the remembered choice, so the game follows the
+  device again (AC3 asks `setLanguage("")` to return to the device).
+- **D-7 Remembered choice for titles (D2).** The remembered choice is a candidate of
+  `Localization` only; Title Art follows `Localization.setLanguage` (the same global) but not the
+  value remembered from an earlier run.
+- **D-8 ar-XB (R19).** The literal text is reversed code point by code point (plus `rtl` on the root)
+  rather than wrapped in bidi controls, so it reads backwards whatever the text shaper does with
+  RLO/PDF.
+- **D-9 Capture in release (AC12).** Capture compiles out with `JASPERENGINE_L10N_CAPTURE=0` (release
+  players); `CaptureCompiledOutOfRelease` (an `nm` check in a release core build) is not added: the
+  release engine tree of `tools/build.sh linux` compiles the capture-off path warning-free.
+- **D-10 Inactive cost (R27, AC3).** `InactiveCostsNothing` counts 0 allocations across 600 rounds of
+  every lookup call without tables; the start, document load and frame loop of the spec's version
+  need a running engine the core test binary does not have.
+- **D-11 Not built in this change:** the Text Inspector's key picker with its missing badge and the UI
+  Document's read-only Localization foldout (R32), the Game view Stats overlay's Localization item
+  (R31), the window's Rename Key dialog, Find References, Import/Export dialogs, Pseudo Preview
+  column and Extract to Table (R28; rename, import and export are `edit_string_table` ops), the
+  pseudo goldens (AC9), the benchmarks (AC10 `LocalizationBench`), the Android/web/desktop OS
+  locale event call sites and their manual checks (R10, AC15: `localesChanged()` re-resolves, tested
+  with a fake System), and the slow-lane export test (AC14).

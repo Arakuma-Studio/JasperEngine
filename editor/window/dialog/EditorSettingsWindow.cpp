@@ -3,6 +3,7 @@
 
 #include "EditorSettingsWindow.h"
 #include "platform/ExternalTools.h"
+#include "platform/DeviceList.h"
 #include "object/Lattice.h"
 #include "window/CodeEditor.h"
 #include "window/EditorModal.h"
@@ -220,7 +221,7 @@ void EditorSettingsWindow::open(Project* project) {
     m_ffmpegOverride = AppSettings::getFfmpegPath();
     refreshFfmpegStatus();
     m_toolPaths.clear();
-    for (const char* tool : {"androidSdk", "jdk", "steamcmd", "rcodesign", pixelart::aseprite::kAsepriteToolKey}) m_toolPaths[tool] = AppSettings::getExternalToolPath(tool);
+    for (const char* tool : {"androidSdk", "jdk", "adb", "steamcmd", "rcodesign", pixelart::aseprite::kAsepriteToolKey}) m_toolPaths[tool] = AppSettings::getExternalToolPath(tool);
     refreshPlayerRuntimes();
     m_editorVSyncEnabled = AppSettings::getEditorVSyncEnabled();
     m_projectHubAlways = AppSettings::getProjectHubAlways();
@@ -907,6 +908,8 @@ void EditorSettingsWindow::drawShippingSettings() {
          "The Android SDK of prebuilt Android builds: build-tools 35+ (aapt2, zipalign, apksigner) and the target platform. "
          "Empty means ANDROID_HOME, then ANDROID_SDK_ROOT. No NDK or Gradle is needed.", true},
         {"preferences.jdk_path", "jdk", "JDK", "The JDK whose keytool, jarsigner and java sign Android builds. Empty means JAVA_HOME, then PATH.", true},
+        {"preferences.adb_path", "adb", "adb", "adb of Build And Run on Android devices and emulators. Empty means the Android SDK's "
+         "platform-tools/adb, then PATH.", false},
         {"preferences.steamcmd_path", "steamcmd", "SteamCMD", "steamcmd for publish steam-upload. Empty means STEAMCMD_HOME, then PATH.", false},
         {"preferences.rcodesign_path", "rcodesign", "rcodesign", "rcodesign signs macOS builds on any computer (codesign does on a Mac). Empty means PATH.", false},
     };
@@ -918,6 +921,15 @@ void EditorSettingsWindow::drawShippingSettings() {
         drawPathPicker((std::string("##ShippingTool") + row.tool).c_str(), (std::string("Browse##") + row.tool).c_str(),
                        (std::string("Auto##") + row.tool).c_str(), display, !value.empty(), row.directory,
                        [&value](const std::string& selected) { value = selected; }, [&value]() { value.clear(); });
+        if (std::string(row.tool) == "adb") {
+            // where Build And Run finds it now (the preference applied when saved)
+            if (m_adbChecked != value) {
+                m_adbChecked = value;
+                m_adbFound = platform::adbLocation().path.string();
+            }
+            if (!m_adbFound.empty()) ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), ICON_FA_CIRCLE_CHECK " %s", m_adbFound.c_str());
+            else ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " Not found: install Android SDK Platform-Tools");
+        }
     }
 
     if (settingsui::beginRow("preferences.player_runtimes")) {

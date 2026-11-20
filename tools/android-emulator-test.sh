@@ -27,6 +27,10 @@
 #                       engine's 'Graphics:' line), the process still running and no crash; the
 #                       font scale is restored after. The screenshot is the one before it: the
 #                       relaunched scene is still loading after the new view.
+#   --kill-relaunch-after TEXT  once a logcat line contains TEXT, send the app to the background
+#                       (HOME), kill its process (am kill, as Android does to a backgrounded app)
+#                       and launch it again; the expected lines are then checked on the new
+#                       process only (SaveGame's slot survives: tools/test-projects/savegame)
 #   --scene NAME        launch the app once per --scene (repeatable), with the property
 #                       debug.jasperengine.scene set to NAME (a test project picks what it shows
 #                       by it: tools/test-projects/render-gate); every run is checked on its own
@@ -134,6 +138,7 @@ SECONDS_TO_RUN=20
 TWO_FINGER_TAP=0
 TAP_AFTER=10
 RELAUNCH=0
+KILL_AFTER=""
 OUT="build/android-emulator"
 BUNDLETOOL=""
 while [[ $# -gt 0 ]]; do
@@ -154,6 +159,7 @@ while [[ $# -gt 0 ]]; do
         --two-finger-tap) TWO_FINGER_TAP=1; shift ;;
         --tap-after) TAP_AFTER="$2"; shift 2 ;;
         --relaunch) RELAUNCH=1; shift ;;
+        --kill-relaunch-after) KILL_AFTER="$2"; shift 2 ;;
         --scene)
             [[ "$2" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "android-emulator-test: --scene takes a name of letters, digits, _ and - (got $2)" >&2; exit 2; }
             SCENES+=("$2"); shift 2 ;;
@@ -338,6 +344,27 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
             if [[ "$TWO_FINGER_TAP" == 1 ]]; then
                 ( sleep "$TAP_AFTER"; bash /src/tools/android-two-finger-tap.sh > "$DIR/tap.log" 2>&1 ) &
+            fi
+
+            if [[ -n "$KILL_AFTER" ]]; then
+                start=$SECONDS
+                until adb logcat -d -v tag | grep -qF -- "$KILL_AFTER"; do
+                    (( SECONDS - start > TIMEOUT )) && break
+                    sleep 1
+                done
+                adb logcat -d -v tag > "$DIR/logcat-before-kill.txt"
+                log "background, kill and relaunch after: $KILL_AFTER"
+                adb shell input keyevent HOME
+                sleep 3
+                adb shell am kill "$PACKAGE" >/dev/null 2>&1 || true
+                start=$SECONDS
+                while [[ -n "$(adb shell pidof "$PACKAGE" 2>/dev/null | tr -d "\r")" ]] && (( SECONDS - start < 20 )); do
+                    sleep 1
+                done
+                # am kill spares a process Android still counts as visible: then as a low-memory kill would
+                [[ -n "$(adb shell pidof "$PACKAGE" 2>/dev/null | tr -d "\r")" ]] && adb shell am force-stop "$PACKAGE"
+                adb logcat -c
+                adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
             fi
 
             if grep -q . "$DIR/expect.txt"; then WAIT=$TIMEOUT; else WAIT=$SECONDS_TO_RUN; fi

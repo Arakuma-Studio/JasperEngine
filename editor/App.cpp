@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "platform/DeviceRunner.h"
+#include "platform/WebServe.h"
 #include "window/TitleArtInterchangeWindows.h"
 #include "util/ImpostorBaker.h"
 #include "terrain/TerrainMapPersistence.h"
@@ -47,6 +49,7 @@
 #include "window/SceneWindow.h"
 #include "window/SpriteNormalsWindow.h"
 #include "window/TitleDesignerWindow.h"
+#include "window/LocalizationTablesWindow.h"
 #include "window/InspectorWindowTitleArt.h"
 #include "titleart/designer/TitleCanvasView.h"
 #include "window/SpritePreviewWindow.h"
@@ -82,6 +85,7 @@
 #include "manager/SceneManager.h"
 #include "Engine.h"
 #include "device/Device.h"
+#include "device/GpuQuirks.h"
 #include "cli/CommandLine.h"
 #include "render/SystemRender.h"
 
@@ -101,12 +105,15 @@
 #include "window/JobsMemoryWindow.h"
 #include "window/MeshAuditWindow.h"
 #include "window/BuildReportWindow.h"
+#include "window/CrashReportsWindow.h"
 #include "window/ImporterFields.h"
 #include "window/AnimationStatisticsWindow.h"
 #include "window/ReduceKeysDialog.h"
 #include "window/profiler/FrameDebuggerWindow.h"
 #include "window/profiler/ProfilerWindow.h"
 #include "profiler/FrameTimes.h"
+#include "profiler/PerfSampler.h"
+#include "profiler/ThreadCpuClock.h"
 #include "profiler/Profiler.h"
 #include "window/PlayModeChangesWindow.h"
 #include "window/UndoHistoryWindow.h"
@@ -142,6 +149,7 @@
 #include "shortcuts/PanelClaims.h"
 #include "shortcuts/ShortcutsWindow.h"
 #include "window/BookmarksWindow.h"
+#include "window/SavedDataWindow.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
 #include "pixelart/aseprite/AsepriteEditorHooks.h"
@@ -311,6 +319,7 @@ editor::App::App(){
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
     titleDesignerWindow = new TitleDesignerWindow(&project);
+    localizationTablesWindow = new LocalizationTablesWindow(&project);
     // the Inspector's Open in Title Designer and a double-click open the window (S82 R1, R62)
     InspectorWindowTitleArt::setOpenInDesigner([this](const std::filesystem::path& document) {
         std::string error;
@@ -331,6 +340,7 @@ editor::App::App(){
     jobsMemoryWindow = new JobsMemoryWindow();
     meshAuditWindow = new MeshAuditWindow(&project);
     buildReportWindow = new BuildReportWindow(&project);
+    crashReportsWindow = new CrashReportsWindow(&project);
     animationStatisticsWindow = new AnimationStatisticsWindow(&project);
     profilerWindow = new ProfilerWindow(this);
     frameDebuggerWindow = new FrameDebuggerWindow(this);
@@ -349,6 +359,7 @@ editor::App::App(){
         StatusBar::setTransientMessage(def.name + ": " + reason, 4.0);
     });
     bookmarksWindow = new BookmarksWindow(&project);
+    savedDataWindow = new SavedDataWindow(&project);
     // Stop found edits that can be kept: the window opens, or after an agent's Stop the
     // Console says where they are (S24 R30)
     PlayChangeReview::get().onPending = [this](uint32_t sceneId, size_t rows) {
@@ -833,6 +844,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.project", windowMenuLabel(ProjectWindow::WINDOW_NAME)),
             catalogItem("window.console", windowMenuLabel(ConsoleWindow::WINDOW_NAME)),
             catalogItem("window.bookmarks", windowMenuLabel(BookmarksWindow::WINDOW_NAME)),
+            catalogItem("window.savedData", windowMenuLabel(SavedDataWindow::WINDOW_NAME)),
             catalogItem("window.undoHistory", windowMenuLabel(UndoHistoryWindow::WINDOW_NAME)),
             catalogItem("window.playModeChanges", windowMenuLabel(PlayModeChangesWindow::WINDOW_NAME)),
             catalogItem("window.colorPicker"),
@@ -875,11 +887,13 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.jobsMemory", windowMenuLabel(JobsMemoryWindow::WINDOW_NAME)),
             catalogItem("window.meshAudit", windowMenuLabel(MeshAuditWindow::WINDOW_NAME)),
             catalogItem("window.buildReport", windowMenuLabel(BuildReportWindow::WINDOW_NAME)),
+            catalogItem("window.crashReports", windowMenuLabel(CrashReportsWindow::WINDOW_NAME)),
             catalogItem("window.animationStatistics", windowMenuLabel(AnimationStatisticsWindow::WINDOW_NAME))
         }),
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
         catalogItem("window.titleDesigner", windowMenuLabel(TitleDesignerWindow::WINDOW_NAME)),
+        catalogItem("window.localizationTables", windowMenuLabel(LocalizationTablesWindow::WINDOW_NAME)),
         catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
         menuSubmenu("2D", {
             catalogItem("window.spritePreview", windowMenuLabel(SpritePreviewWindow::WINDOW_NAME)),
@@ -1156,6 +1170,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleBuildReport:
             showEditorWindow(buildReportWindow);
+            break;
+        case AppMenuCommand::ToggleCrashReports:
+            showEditorWindow(crashReportsWindow);
             break;
         case AppMenuCommand::ToggleAnimationStatistics:
             showEditorWindow(animationStatisticsWindow);
@@ -1590,8 +1607,14 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::SearchAll:
             searchPalette->open();
             break;
+        case AppMenuCommand::ToggleSavedData:
+            showEditorWindow(savedDataWindow);
+            break;
         case AppMenuCommand::ToggleBookmarks:
             showEditorWindow(bookmarksWindow);
+            break;
+        case AppMenuCommand::ToggleLocalizationTables:
+            showEditorWindow(localizationTablesWindow);
             break;
         case AppMenuCommand::LayoutApply:
             layouts.requestSwitch(command.payload);
@@ -2389,6 +2412,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(UndoHistoryWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(PlayModeChangesWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(BookmarksWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(SavedDataWindow::WINDOW_NAME, dock_id_middle_bottom);
     // Systems: an eight-column table, wide enough only here (in the Inspector's column the
     // system names and the Enabled checkboxes were cut off)
     ImGui::DockBuilderDockWindow(SystemsWindow::WINDOW_NAME, dock_id_middle_bottom);
@@ -3233,6 +3257,7 @@ void editor::App::show(){
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
     vertexAnimationBakerWindow->show();
     titleDesignerWindow->show();
+    localizationTablesWindow->show();
     // S87: Import Title Art, its report and the Title Designer's Export
     drawTitleArtInterchangeWindows(&project);
     // also the tick of the Scene view's physics sessions, with the panel closed too
@@ -3245,6 +3270,7 @@ void editor::App::show(){
     jobsMemoryWindow->show();
     meshAuditWindow->show();
     buildReportWindow->show();
+    crashReportsWindow->show();
     animationStatisticsWindow->show();
     profilerWindow->show();
     frameDebuggerWindow->show();
@@ -3254,6 +3280,7 @@ void editor::App::show(){
     navigationWindow->show();
     playModeChangesWindow->show();
     bookmarksWindow->show();
+    savedDataWindow->show();
     codeEditor->show();
     gameWindow->show();
     // Prefab Mode's tab docks with the scene tabs the first time a stage shows
@@ -3413,6 +3440,19 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
                 benchmarkOut = CommandLine::absoluteArgPath(value);
         } else if (arg == "--ui-stats") {
             benchmarkUiStats = true;
+        } else if (arg == "--gpu-quirk" || arg.rfind("--gpu-quirk=", 0) == 0) {
+            // a GPU quirk forced on or off for the run (before the render device is set up)
+            const char* value = arg.size() > 11 ? argv[i] + 12 : requireValue(i, "--gpu-quirk");
+            if (value) {
+                std::vector<GpuQuirkOverride> overrides;
+                std::string error;
+                if (!GpuQuirks::parseOverrides(value, overrides, error)) {
+                    failBenchmark("--gpu-quirk: " + error);
+                    return;
+                }
+                benchmarkGpuQuirks.insert(benchmarkGpuQuirks.end(), overrides.begin(), overrides.end());
+                GpuQuirks::setCommandLineOverrides(benchmarkGpuQuirks);
+            }
         } else if (arg == "--gpu-passes") {
             benchmarkGpuPasses = true;
         } else if (arg == "--profile") {
@@ -4153,6 +4193,9 @@ void editor::App::processProjectChange() {
     if (project.isAnyScenePlaying()) return;
     // the old project's save dialogs never act on the next one
     cancelSaveDialogs();
+    // its device runs and the web server of its Build And Run (docs/specs/build-and-run-on-device.md R10)
+    platform::DeviceRuns::get().stopAll();
+    platform::WebServe::get().stop();
 
     // Menu and dialog callbacks queue the change. Run it between frames so the
     // loading pump can draw without nesting ImGui frames or invalidating scene UI.
@@ -5113,6 +5156,7 @@ void editor::App::tickBenchmark() {
                 benchmarkCaptureId = profiler::startCapture((uint32_t)std::min(benchmarkMeasureFrames, 600));
             }
             benchmarkMeasureStart = std::chrono::steady_clock::now();
+            benchmarkThreadCpuStart = ThreadCpuClock::nowMs();
         }
         return;
     }
@@ -5138,6 +5182,7 @@ void editor::App::tickBenchmark() {
         }
         collectBenchmarkGpuFrame();
         if (static_cast<int>(benchmarkFps.size()) >= benchmarkMeasureFrames) {
+            benchmarkThreadCpuEnd = ThreadCpuClock::nowMs();
             benchmarkLastFrame = FrameTimes::currentFrame();
             benchmarkPhase = 3;
             benchmarkDrainFrames = 0;
@@ -5279,6 +5324,21 @@ void editor::App::finishBenchmark() {
     json.precision(3);
     json << "  \"cpuMs\": {\"median\": " << stat(benchmarkCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkCpuMs, 0.95)
          << ", \"mean\": " << mean(benchmarkCpuMs) << "}";
+    // the main thread's own CPU per measured frame (its thread clock: what it computed, without its
+    // waits on the driver, locks and I/O), and the device it ran on (R36)
+    if (benchmarkThreadCpuStart >= 0.0 && benchmarkThreadCpuEnd >= benchmarkThreadCpuStart && n > 0)
+        json << ",\n  \"mainThreadCpuMs\": {\"mean\": " << (benchmarkThreadCpuEnd - benchmarkThreadCpuStart) / static_cast<double>(n) << "}";
+    else
+        json << ",\n  \"mainThreadCpuMs\": {\"mean\": null}";
+    {
+        json << ",\n  \"device\": {\"gpu\": \"" << jsonEscape(Device::getGpuName()) << "\", \"driver\": \""
+             << jsonEscape(SystemRender::getDriverVersion()) << "\", \"tier\": \"" << DeviceNames::tier(Device::getTier())
+             << "\", \"quirks\": [";
+        const std::vector<std::string> quirks = GpuQuirks::activeNames();
+        for (size_t i = 0; i < quirks.size(); i++)
+            json << (i ? ", " : "") << "\"" << quirks[i] << "\"";
+        json << "]}";
+    }
     // the scenes' draw and the commit of each measured frame (the render submission, S55 R9)
     json << ",\n  \"renderCpuMs\": {\"median\": " << stat(benchmarkRenderCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkRenderCpuMs, 0.95)
          << ", \"mean\": " << mean(benchmarkRenderCpuMs) << "}";
@@ -5478,6 +5538,8 @@ void editor::App::shutdownBackgroundWork() {
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
     mcp::McpServer::get().stop();
+    platform::DeviceRuns::get().stopAll();
+    platform::WebServe::get().stop();
     if (!editor::texsynth::SynthesisRun::cancelAll()) {
         Out::warning("A texture synthesis did not stop in time; it is left to finish without effect.");
     }

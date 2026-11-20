@@ -341,6 +341,18 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
   error or a failed swap, a sokol panic, and libEGL's "call to OpenGL ES API with no current
   context".
 
+#### Patch And Run: `tools/ci/android_patch_run.sh`
+
+Build And Run and Patch And Run on the same headless emulator (docs/specs/build-and-run-on-device.md
+AC10): a Development Build of a copy of `tools/fixtures/tween-curve` through
+`jasperengine-editor build --run-device emulator-5554`, a Lua string edit, the same command again.
+It checks the second run patched (`installed: patched`), logcat has the new string, the installed
+APK's SHA-256 did not change, and prints the patch's time against its 15 s budget as a `[bench]`
+line (`JASPER_MCP_PERF_SLACK` enforces it). It builds the `android-universal-gles3-development`
+runtime (x86_64) when `build/players` lacks it, and runs the editor of `tools/build.sh linux` inside
+the emulator image (its SDK and JDK make the APK). `test_device_run.py` covers the same flow with a
+stand-in adb on every MCP run.
+
 #### Rendering gate: `--scene` and `--golden`
 
 The logcat says the engine started; only the screen says it drew. `--golden DIR` makes each run
@@ -401,7 +413,7 @@ frame timing (SwiftShader draws a frame in tens to hundreds of milliseconds).
 
 `jasperengine-crash-test` is built with core tests. `ctest --test-dir build/linux/core-tests
 -R 'native-crash|posix-crash' --output-on-failure` runs each deliberate fatal mode in a child,
-checks registers, frames, log tail, signal chaining and overflow reporting, and checks the POSIX
+checks registers, frames, log tail, the Gameplay Journal's `journal.txt`, signal chaining and overflow reporting, and checks the POSIX
 object for allocation/stdio/mutex imports. It also verifies a main-thread hang frame. These
 checks work in the ASan/UBSan tree too (`core-tests-address-undefined`). Windows/macOS desktop
 CTest builds register the same child-process checks; Windows additionally requires a minidump.
@@ -412,6 +424,9 @@ then `tools/android-emulator-test.sh build/android-crash-diagnostics/app-debug.a
 The opt-in flag requires the engine report **and** a matching debuggerd tombstone, saves both
 under the emulator result directory, and accepts that deliberate crash. Ordinary emulator tests
 continue to fail on any native crash.
+The fixture's Lua logs the Gameplay Journal entry `gate.ready` first, so the pulled report folder
+also holds `journal.txt` with it (`native-crash-journal` checks the same on the desktop:
+`jasperengine-crash-test --mode segv --journal`).
 
 ## Gates: per commit, then CI
 

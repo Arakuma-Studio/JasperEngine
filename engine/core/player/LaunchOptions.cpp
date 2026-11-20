@@ -84,12 +84,16 @@ std::string jasperengine::player::usage() {
         "  --resolution WxH        the window size\n"
         "  --scene NAME|ID         start in this scene\n"
         "  --device-tier TIER      low, medium, high or ultra instead of the GPU's detected tier\n"
+        "  --gpu-quirk NAME:on|off force a GPU quirk on or off (repeatable or comma-separated)\n"
+        "  --perf-summary PATH     sample gameplay frames from the ready frame; write the summary JSON at quit\n"
         "  --silent-audio          open no audio output\n"
         "  --audio-capture <dir>   a development player: write an audio capture session into <dir>\n"
         "  --content DIR           read the game's content from DIR\n"
         "  --log-level SPEC        the log level (\"debug\", \"warn,render=debug\")\n"
         "  --verify-content        check every content file's SHA-256 before starting (exit 5)\n"
         "  --fail-on-error         exit 3 when an error is logged (ignored with --run-tests)\n"
+        "  --command LINE          run a console command after \"Engine ready:\", one a frame (repeatable;\n"
+        "                          development players, or Project Settings > Debug > Console Commands: Always)\n"
         "  --run-tests             a development player: run the content's Play Mode tests (exit 8 failed, 9 none)\n"
         "  --test-filter F         with --run-tests: case ids containing F, or tag:<t>; \",\" = or\n"
         "  --test-results PATH     with --run-tests: write the results JSON there\n"
@@ -99,6 +103,10 @@ std::string jasperengine::player::usage() {
 
 bool jasperengine::player::testRunnerCompiled() {
     return JASPERENGINE_TEST_RUNNER != 0;
+}
+
+const char* jasperengine::player::commandsOffRefusal() {
+    return "--command needs a development player or Project Settings > Debug > Console Commands: Always.";
 }
 
 std::vector<std::string> jasperengine::player::argsFromQuery(const std::string& query) {
@@ -261,6 +269,30 @@ std::variant<LaunchOptions, ParseError> jasperengine::player::parse(std::span<co
                 if (!writableDirectory(options.testResults, problem))
                     return fail("--test-results " + text + ": " + problem + "; create it or write the results elsewhere");
             }
+        } else if (name == "--command") {
+            auto taken = takeValue("\"help\"");
+            if (auto* error = std::get_if<ParseError>(&taken)) return *error;
+            const std::string line = std::get<std::string>(taken);
+            if (line.find_first_not_of(" \t") == std::string::npos)
+                return fail("--command needs a console line, for example --command \"give gold 10\"");
+            options.commands.push_back(line);
+        } else if (name == "--gpu-quirk") {
+            auto taken = takeValue("gl_no_warm_draws:off");
+            if (auto* error = std::get_if<ParseError>(&taken)) return *error;
+            std::string problem;
+            if (!GpuQuirks::parseOverrides(std::get<std::string>(taken), options.gpuQuirks, problem))
+                return fail("--gpu-quirk: " + problem);
+        } else if (name == "--perf-summary") {
+            auto taken = takeValue("perf.json");
+            if (auto* error = std::get_if<ParseError>(&taken)) return *error;
+            const std::string text = std::get<std::string>(taken);
+            if (text.empty()) return fail("--perf-summary needs a file name, for example --perf-summary perf.json");
+            options.perfSummary = text;
+#if !defined(__EMSCRIPTEN__)
+            std::string problem;
+            if (!writableDirectory(options.perfSummary, problem))
+                return fail("--perf-summary " + text + ": " + problem + "; create it or write the summary elsewhere");
+#endif
         } else if (name == "--content") {
             auto taken = takeValue("path/to/content");
             if (auto* error = std::get_if<ParseError>(&taken)) return *error;

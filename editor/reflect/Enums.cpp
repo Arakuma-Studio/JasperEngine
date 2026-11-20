@@ -19,6 +19,7 @@
 #include "component/UISelectable.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/InputFieldComponent.h"
 #include "component/LightComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/ReflectionProbeComponent.h"
@@ -43,6 +44,7 @@
 #include "component/Joint3DComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/CapsuleShadowCasterComponent.h"
+#include "component/SimulationCullingComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "render/LineRibbonBuilder.h"
 #include "render/OrderIndependentTransparency.h"
@@ -346,6 +348,7 @@ namespace {
     constexpr EnumItem kOnScreenVisibilityItems[] = {
         {v(OnScreenVisibility::ALWAYS), "always", "Always", "OnScreenVisibility::ALWAYS"},
         {v(OnScreenVisibility::TOUCH_DEVICES_ONLY), "touch_devices_only", "Touch Devices Only", "OnScreenVisibility::TOUCH_DEVICES_ONLY"},
+        {v(OnScreenVisibility::TOUCH_SCHEME), "touch_scheme", "Touch Scheme", "OnScreenVisibility::TOUCH_SCHEME"},
     };
 
     // the tokens upstream's rigidbody codecs write (StreamComponents.cpp)
@@ -445,6 +448,18 @@ namespace {
         {v(WaterExcluderShape::BOX), "box", "Box", "WaterExcluderShape::BOX"},
         {v(WaterExcluderShape::SPHERE), "sphere", "Sphere", "WaterExcluderShape::SPHERE"},
         {v(WaterExcluderShape::CONVEX_HULL), "convex_hull", "Convex Hull", "WaterExcluderShape::CONVEX_HULL"},
+    };
+
+    constexpr EnumItem kSimulationStateItems[] = {
+        {v(SimulationState::Full), "full", "Full", "SimulationState::Full"},
+        {v(SimulationState::Reduced), "reduced", "Reduced", "SimulationState::Reduced"},
+        {v(SimulationState::Culled), "culled", "Culled", "SimulationState::Culled"},
+    };
+
+    constexpr EnumItem kSimulationCullReasonItems[] = {
+        {v(SimulationCullReason::None), "none", "None", "SimulationCullReason::None"},
+        {v(SimulationCullReason::Distance), "distance", "Distance", "SimulationCullReason::Distance"},
+        {v(SimulationCullReason::GroundNotLoaded), "ground_not_loaded", "Ground Not Loaded", "SimulationCullReason::GroundNotLoaded"},
     };
 
     constexpr EnumItem kBuoyancyColumnsItems[] = {
@@ -761,6 +776,16 @@ namespace {
         {v(TextureFilter::LINEAR_MIPMAP_LINEAR), "linear_mipmap_linear", "Linear Mipmap Linear", "TextureFilter::LINEAR_MIPMAP_LINEAR"},
     };
 
+    constexpr EnumItem kInputFieldKeyboardTypeItems[] = {
+        {v(InputFieldKeyboardType::DEFAULT), "default", "Default", "InputFieldKeyboardType::DEFAULT"},
+        {v(InputFieldKeyboardType::NUMBER_PAD), "number_pad", "Number Pad", "InputFieldKeyboardType::NUMBER_PAD"},
+        {v(InputFieldKeyboardType::DECIMAL_PAD), "decimal_pad", "Decimal Pad", "InputFieldKeyboardType::DECIMAL_PAD"},
+        {v(InputFieldKeyboardType::PHONE_PAD), "phone_pad", "Phone Pad", "InputFieldKeyboardType::PHONE_PAD"},
+        {v(InputFieldKeyboardType::EMAIL_ADDRESS), "email_address", "Email Address", "InputFieldKeyboardType::EMAIL_ADDRESS"},
+        {v(InputFieldKeyboardType::URL), "url", "URL", "InputFieldKeyboardType::URL"},
+        {v(InputFieldKeyboardType::SEARCH), "search", "Search", "InputFieldKeyboardType::SEARCH"},
+    };
+
     constexpr EnumItem kTextureWrapItems[] = {
         {v(TextureWrap::REPEAT), "repeat", "Repeat", "TextureWrap::REPEAT"},
         {v(TextureWrap::MIRRORED_REPEAT), "mirrored_repeat", "Mirrored Repeat", "TextureWrap::MIRRORED_REPEAT"},
@@ -816,6 +841,8 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kWaterVolumeWaves{"WaterVolumeWaves", kWaterVolumeWavesItems, v(WaterVolumeWaves::FROM_MATERIAL)};
     const EnumDesc kBuoyancyColumns{"BuoyancyColumns", kBuoyancyColumnsItems, v(BuoyancyColumns::AUTO_2x2)};
     const EnumDesc kWaterExcluderShape{"WaterExcluderShape", kWaterExcluderShapeItems, v(WaterExcluderShape::CONVEX_HULL)};
+    const EnumDesc kSimulationState{"SimulationState", kSimulationStateItems, v(SimulationState::Full)};
+    const EnumDesc kSimulationCullReason{"SimulationCullReason", kSimulationCullReasonItems, v(SimulationCullReason::None)};
     const EnumDesc kLineRendererMode{"LineRendererMode", kLineRendererModeItems, v(LineRendererMode::Segments)};
     const EnumDesc kLineWidthUnit{"LineWidthUnit", kLineWidthUnitItems, v(LineWidthUnit::World)};
     const EnumDesc kLineAlignment{"LineAlignment", kLineAlignmentItems, v(LineAlignment::View)};
@@ -885,6 +912,7 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kCapsuleDirection{"CapsuleDirection", kCapsuleDirectionItems, v(CapsuleDirection::Y_AXIS)};
     const EnumDesc kTextureAlphaBorder{"TextureAlphaBorder", kTextureAlphaBorderItems, v(TextureAlphaBorder::AUTO), nullptr, kTextureAlphaBorderOrder};
     const EnumDesc kTextureFilter{"TextureFilter", kTextureFilterItems, v(TextureFilter::LINEAR)};
+    const EnumDesc kInputFieldKeyboardType{"InputFieldKeyboardType", kInputFieldKeyboardTypeItems, v(InputFieldKeyboardType::DEFAULT)};
     const EnumDesc kTextureWrap{"TextureWrap", kTextureWrapItems, v(TextureWrap::REPEAT)};
     const EnumDesc kUIDocumentRenderMode{"UIDocumentRenderMode", kUIDocumentRenderModeItems, v(UIDocumentRenderMode::SCREEN), nullptr,
                                          kUIDocumentRenderModeOrder};

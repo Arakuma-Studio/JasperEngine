@@ -169,7 +169,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             endif()
         endif()
     endforeach()
-    foreach(crashSetting JASPERENGINE_CRASH_LOG_TAIL JASPERENGINE_CRASH_DUMP_WITH_HEAP JASPERENGINE_CRASH_WEB_OVERLAY)
+    foreach(crashSetting JASPERENGINE_CRASH_LOG_TAIL JASPERENGINE_CRASH_DUMP_WITH_HEAP JASPERENGINE_CRASH_WEB_OVERLAY
+            JASPERENGINE_CRASH_JOURNAL_ENGINE_EVENTS)
         if(DEFINED ${crashSetting})
             if(${crashSetting})
                 list(APPEND JASPERENGINE_APP_DEFINITIONS "${crashSetting}=1")
@@ -180,6 +181,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endforeach()
     if(DEFINED JASPERENGINE_CRASH_HANG_MS)
         list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_CRASH_HANG_MS=${JASPERENGINE_CRASH_HANG_MS}")
+    endif()
+    if(DEFINED JASPERENGINE_CRASH_JOURNAL_BYTES)
+        list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_CRASH_JOURNAL_BYTES=${JASPERENGINE_CRASH_JOURNAL_BYTES}")
     endif()
 
     if(NOT DEFINED JASPERENGINE_WINDOW_WIDTH)
@@ -1396,8 +1400,10 @@ endif()
 set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/EngineTime.cpp
+    core/EngineTextEntry.cpp
     core/PlatformConfig.cpp
     core/player/ContentManifest.cpp
+    core/player/DevelopmentContent.cpp
     core/player/Launch.cpp
     core/player/LaunchOptions.cpp
     core/player/PlayerConfig.cpp
@@ -1408,7 +1414,10 @@ set(JASPERENGINE_SRCS
     core/input/InputActionAsset.cpp
     core/input/InputActions.cpp
     core/input/InputRebind.cpp
+    core/input/InputScheme.cpp
     core/input/InputVirtualControls.cpp
+    core/input/TextEntry.cpp
+    core/input/TextInputSync.cpp
     core/audio/AudioCapture.cpp
     core/audio/AudioClock.cpp
     core/audio/AudioEffects.cpp
@@ -1426,6 +1435,8 @@ set(JASPERENGINE_SRCS
     core/Log.cpp
     core/device/Device.cpp
     core/device/DeviceSettings.cpp
+    core/device/GpuQuirks.cpp
+    core/device/GpuQuirksData.cpp
     core/device/GpuTierDatabase.cpp
     core/device/GpuTiersData.cpp
     core/device/QualityResolver.cpp
@@ -1435,6 +1446,8 @@ set(JASPERENGINE_SRCS
     core/diag/HangStackCapture.cpp
     core/diag/CrashHandlerWeb.cpp
     core/diag/HangWatchdog.cpp
+    core/diag/Journal.cpp
+    core/diag/UserReport.cpp
     core/log/Logger.cpp
     core/log/LogFormat.cpp
     core/log/Backtrace.cpp
@@ -1448,6 +1461,7 @@ set(JASPERENGINE_SRCS
     core/log/sinks/EmscriptenConsoleSink.cpp
     core/log/sinks/DebuggerSink.cpp
     core/log/sinks/AppleLogSink.cpp
+    core/debug/ConsoleCommands.cpp
     core/debug/DebugOverlay.cpp
     core/debug/DebugOverlayResources.cpp
     core/debug/DebugStats.cpp
@@ -1561,6 +1575,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/HtmlTextEffects.cpp
     core/htmlui/UIParticleSystemElement.cpp
     core/htmlui/HtmlUIContext.cpp
+    core/htmlui/HtmlL10n.cpp
     core/htmlui/HtmlUIContextRender.cpp
     core/htmlui/HtmlUIDependencies.cpp
     core/htmlui/HtmlUITexture.cpp
@@ -1575,6 +1590,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/HtmlUIContextInput.cpp
     core/htmlui/RmlKeyMap.cpp
     core/htmlui/RmlTextInputHandler.cpp
+    core/htmlui/TextEntryTraits.cpp
     core/htmlui/anim/AnimAnimation.cpp
     core/htmlui/anim/AnimCommon.cpp
     core/htmlui/anim/AnimEasing.cpp
@@ -1593,6 +1609,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/vector/LottiePlayback.cpp
     core/htmlui/vector/UIElementLottie.cpp
     core/htmlui/vector/UILottieElement.cpp
+    core/htmlui/controls/InputPrompt.cpp
     core/htmlui/controls/OnScreenControls.cpp
     core/media/Av1Decoder.cpp
     core/media/GrowingFileReader.cpp
@@ -1668,6 +1685,9 @@ set(JASPERENGINE_SRCS
     core/io/AtomicFile.cpp
     core/io/ScopedFileLock.cpp
     core/io/UserSettingsStore.cpp
+    core/save/SaveFormat.cpp
+    core/save/SaveGameStore.cpp
+    core/save/SaveValue.cpp
     core/math/AABB.cpp
     core/math/Curve.cpp
     core/math/CurveJson.cpp
@@ -1695,6 +1715,8 @@ set(JASPERENGINE_SRCS
     core/object/tilemap/TilemapLayer.cpp
     core/object/SpriteBatch.cpp
     core/object/HitStopExempt.cpp
+    core/object/CullingGroup.cpp
+    core/object/SimulationCulling.cpp
     core/object/Light2D.cpp
     core/object/LineRenderer.cpp
     core/object/TrailRenderer.cpp
@@ -1832,6 +1854,8 @@ set(JASPERENGINE_SRCS
     core/script/binding/ActionClassesLua.cpp
     core/script/binding/CoreClassesLua.cpp
     core/script/binding/CrashClassesLua.cpp
+    core/script/binding/LocalizationClassesLua.cpp
+    core/script/binding/SaveGameLua.cpp
     core/script/binding/AudioClassesLua.cpp
     core/script/binding/NoiseClassesLua.cpp
     core/script/binding/ECSClassesLua.cpp
@@ -1850,6 +1874,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/PixelArtClassesLua.cpp
     core/script/binding/SortingClassesLua.cpp
     core/script/binding/HitStopClassesLua.cpp
+    core/script/binding/CullingClassesLua.cpp
     # S48 screen transitions and the scripted glitch
     core/script/binding/TransitionClassesLua.cpp
     # S48 PixelFX player
@@ -1880,6 +1905,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/VertexAnimatorSystem.cpp
     core/subsystem/AnimatorSystem.cpp
     core/subsystem/TrailSystem.cpp
+    core/subsystem/CullingSystem.cpp
     core/subsystem/WaterInteractionSystem.cpp
     core/subsystem/CameraControlSystem.cpp
     core/subsystem/FluidSystem.cpp
@@ -1925,6 +1951,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/UISystemPointer.cpp
     core/subsystem/UISystemNavigation.cpp
     core/subsystem/UISystemBitmapText.cpp
+    core/subsystem/GamepadCursor.cpp
     core/subsystem/UIDocumentSystem.cpp
     core/subsystem/UIDocumentSystemRender.cpp
     core/subsystem/UIDocumentSystemInput.cpp
@@ -1961,7 +1988,9 @@ set(JASPERENGINE_SRCS
     core/profiler/EngineProfiling.cpp
     core/profiler/FrameTimes.cpp
     core/profiler/GpuMemory.cpp
+    core/profiler/PerfSampler.cpp
     core/profiler/Profiler.cpp
+    core/profiler/ThreadCpuClock.cpp
     core/memory/Arena.cpp
     core/memory/HeapTrim.cpp
     core/memory/MemoryStats.cpp
@@ -1996,6 +2025,10 @@ set(JASPERENGINE_SRCS
     core/util/TextShaper.cpp
     core/util/TitleArtBakeInfo.cpp
     core/util/TitleArtLanguage.cpp
+    core/localization/Localization.cpp
+    core/localization/MessageFormat.cpp
+    core/localization/PluralRules.cpp
+    core/localization/StringTableRuntime.cpp
     core/util/ThorVGRuntime.cpp
     core/util/UniqueToken.cpp
     core/util/WaterExclusion.cpp
@@ -2221,6 +2254,9 @@ endif()
 if(JASPERENGINE_TESTS)
     set_property(SOURCE core/pool/AnimationClipPool.cpp core/animation/ModelSubClips.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS JASPERENGINE_ANIM_TEST_HOOKS)
+    # the test_tint GPU quirk (the equivalence checks' red control): its catalogue entry and its lever
+    set_property(SOURCE core/device/GpuQuirks.cpp renders/sokol/SokolCamera.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS JASPERENGINE_GPU_QUIRK_TEST_HOOKS)
 endif()
 
 if(JASPERENGINE_HTMLUI)
@@ -2252,6 +2288,10 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "the navigation sources: file-local Detour helpers and constants with the same names"
     SOURCES ${JASPERENGINE_NAVIGATION_SRCS})
+jasperengine_skip_unity_build(
+    REASON "the localization sources: file-local helpers (state, readFile, lower) other sources define too"
+    SOURCES core/localization/Localization.cpp core/localization/MessageFormat.cpp core/localization/PluralRules.cpp
+            core/localization/StringTableRuntime.cpp core/script/binding/LocalizationClassesLua.cpp core/htmlui/HtmlL10n.cpp)
 if(JASPERENGINE_TITLE_ART_SRCS)
     jasperengine_skip_unity_build(
         REASON "the Title Art sources: several streams' per-file helper sets with the same names"
@@ -2338,6 +2378,9 @@ target_compile_definitions(jasperengine
         JASPERENGINE_BACKEND_TIME=$<OR:$<BOOL:${JASPERENGINE_TESTS}>,$<BOOL:${JASPERENGINE_HTMLUI_TESTS}>>
         JASPERENGINE_AUDIO_CAPTURE=$<BOOL:${JASPERENGINE_AUDIO_CAPTURE}>
         JASPERENGINE_DEVELOPMENT_BUILD=$<OR:$<BOOL:${JASPERENGINE_DEVELOPMENT_BUILD}>,$<CONFIG:Debug>>
+        # missing-translation capture (game-ui-localization.md D8): where the profiler is on by default
+        # (the editor, Development Builds, Debug, the unit tests) and in the HTML UI tests
+        JASPERENGINE_L10N_CAPTURE=$<OR:$<BOOL:${JASPERENGINE_PROFILER_DEFAULT}>,$<BOOL:${JASPERENGINE_HTMLUI_TESTS}>>
         JASPERENGINE_TRACY=$<BOOL:${JASPERENGINE_TRACY}>
         JASPERENGINE_NAVIGATION=$<BOOL:${JASPERENGINE_NAVIGATION}>
         JASPERENGINE_TERRAIN_WORLD=$<BOOL:${JASPERENGINE_TERRAIN_WORLD}>
@@ -2402,7 +2445,7 @@ endif()
 # The User-Agent's version ("JasperEngine/<version> (<platform>)"): on this one file only, so a
 # new version recompiles nothing else
 if(JASPERENGINE_EDITOR_VERSION)
-    set_property(SOURCE core/net/Http.cpp core/audio/AudioCapture.cpp APPEND PROPERTY COMPILE_DEFINITIONS
+    set_property(SOURCE core/net/Http.cpp core/audio/AudioCapture.cpp core/save/SaveGameStore.cpp APPEND PROPERTY COMPILE_DEFINITIONS
         "JASPERENGINE_VERSION_STRING=\"${JASPERENGINE_EDITOR_VERSION}\"")
 endif()
 

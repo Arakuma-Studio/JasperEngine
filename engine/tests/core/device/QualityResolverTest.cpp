@@ -300,3 +300,50 @@ TEST_F(QualityResolverTest, SettingsJsonRoundTrip){
     ASSERT_TRUE(DeviceSettings::fromJson("{\"tiers\": {\"mobile\": {\"low\": {\"future_cell\": 1}}}}", back, error)) << error;
     EXPECT_EQ(back, DeviceSettings());
 }
+
+// culling-group-and-simulation-distance R16: Low 0.6, Medium 0.8, High and Ultra inherit 1; a
+// project cell wins and is kept in 0.25..1; never a thermal step's
+TEST_F(QualityResolverTest, SimulationDistanceCell){
+    QualityResolver::setSettings(DeviceSettings());
+    QualityResolver::setPlatformGroup(DevicePlatformGroup::Mobile);
+    EXPECT_FLOAT_EQ(QualityResolver::simulationDistanceScale(), 1.0f) << "no tier applied";
+    QualityResolver::setTier(DeviceTier::Low);
+    EXPECT_FLOAT_EQ(QualityResolver::simulationDistanceScale(), 0.6f);
+    QualityResolver::setTier(DeviceTier::Medium);
+    EXPECT_FLOAT_EQ(QualityResolver::simulationDistanceScale(), 0.8f);
+    QualityResolver::setTier(DeviceTier::High);
+    EXPECT_FLOAT_EQ(QualityResolver::simulationDistanceScale(), 1.0f);
+    QualityResolver::setTier(DeviceTier::Ultra);
+    EXPECT_FLOAT_EQ(QualityResolver::simulationDistanceScale(), 1.0f);
+
+    DeviceSettings settings;
+    settings.tier(DevicePlatformGroup::Mobile, DeviceTier::Low).set(DeviceOverride::SimulationDistance, 0.5f);
+    QualityResolver::setSettings(settings);
+    QualityResolver::setTier(DeviceTier::Low);
+    EXPECT_FLOAT_EQ(QualityResolver::simulationDistanceScale(), 0.5f);
+    QualityResolver::forceThermalResponse(ThermalState::Critical);
+    EXPECT_FLOAT_EQ(QualityResolver::simulationDistanceScale(), 0.5f) << "not thermal-adjusted";
+    QualityResolver::forceThermalResponse(ThermalState::Nominal);
+
+    std::string error;
+    float value = 0.0f;
+    EXPECT_FALSE(DeviceOverrides::validate(DeviceOverride::SimulationDistance, 0.1f, error));
+    EXPECT_FALSE(DeviceOverrides::validate(DeviceOverride::SimulationDistance, 1.5f, error));
+    EXPECT_TRUE(DeviceOverrides::parse(DeviceOverride::SimulationDistance, "0.25", value, error)) << error;
+    EXPECT_STREQ(DeviceOverrides::info(DeviceOverride::SimulationDistance).key, "simulation_distance");
+    EXPECT_STREQ(DeviceOverrides::info(DeviceOverride::SimulationDistance).label, "Simulation Distance");
+}
+
+// R37: a tier JSON written before the cell existed loads its defaults; the defaults write nothing
+TEST_F(QualityResolverTest, OldTierJsonLoads){
+    DeviceSettings back;
+    std::string error;
+    ASSERT_TRUE(DeviceSettings::fromJson("{\"tiers\": {\"mobile\": {\"low\": {\"render_scale\": 0.6}}}}", back, error)) << error;
+    EXPECT_FLOAT_EQ(*back.tier(DevicePlatformGroup::Mobile, DeviceTier::Low).get(DeviceOverride::SimulationDistance), 0.6f);
+    EXPECT_FLOAT_EQ(*back.tier(DevicePlatformGroup::Desktop, DeviceTier::Medium).get(DeviceOverride::SimulationDistance), 0.8f);
+    EXPECT_FALSE(back.tier(DevicePlatformGroup::Web, DeviceTier::High).get(DeviceOverride::SimulationDistance).has_value());
+    EXPECT_EQ(DeviceSettings().toJson().find("simulation_distance"), std::string::npos);
+    DeviceSettings changed;
+    changed.tier(DevicePlatformGroup::Web, DeviceTier::High).set(DeviceOverride::SimulationDistance, 0.7f);
+    EXPECT_NE(changed.toJson().find("\"simulation_distance\""), std::string::npos);
+}

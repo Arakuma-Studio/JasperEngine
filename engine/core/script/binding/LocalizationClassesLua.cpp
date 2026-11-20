@@ -1,0 +1,189 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// Lua's Localization table (docs/specs/game-ui-localization.md R17, docs/localization.md): String
+// Table lookups with ICU arguments, the game language and its change event, and the development
+// scan. Bound with the Lua C API (stubs/Localization.lua is hand-written); always registered,
+// whatever modules the game compiles. `language`, `languages` and `onLanguageChanged` are fields
+// through the table's metatable.
+
+#include "LuaBinding.h"
+#include "lua.hpp"
+#include "LuaBridge.h"
+
+#include "localization/Localization.h"
+
+#include <cmath>
+#include <string>
+
+using namespace jasperengine;
+
+namespace {
+
+    // a Lua table {name = value} -> arguments; numbers with no fraction become integers
+    LocalizationArgs argsAt(lua_State* L, int index) {
+        LocalizationArgs args;
+        if (lua_isnoneornil(L, index)) return args;
+        luaL_checktype(L, index, LUA_TTABLE);
+        lua_pushnil(L);
+        while (lua_next(L, index) != 0) {
+            if (lua_type(L, -2) == LUA_TSTRING) {
+                const std::string name = lua_tostring(L, -2);
+                if (lua_isinteger(L, -1)) {
+                    args.emplace_back(name, static_cast<int64_t>(lua_tointeger(L, -1)));
+                } else if (lua_type(L, -1) == LUA_TNUMBER) {
+                    args.emplace_back(name, static_cast<double>(lua_tonumber(L, -1)));
+                } else if (lua_type(L, -1) == LUA_TBOOLEAN) {
+                    args.emplace_back(name, std::string(lua_toboolean(L, -1) ? "true" : "false"));
+                } else if (const char* text = lua_tostring(L, -1)) {
+                    args.emplace_back(name, std::string(text));
+                }
+            }
+            lua_pop(L, 1);
+        }
+        return args;
+    }
+
+    void pushString(lua_State* L, const std::string& text) {
+        lua_pushlstring(L, text.data(), text.size());
+    }
+
+    int luaGet(lua_State* L) {
+        size_t length = 0;
+        const char* key = luaL_checklstring(L, 1, &length);
+        const LocalizationArgs args = argsAt(L, 2);
+        size_t fallbackLength = 0;
+        const char* fallback = luaL_optlstring(L, 3, "", &fallbackLength);
+        pushString(L, Localization::get(std::string_view(key, length), args, std::string_view(fallback, fallbackLength)));
+        return 1;
+    }
+
+    int luaFormat(lua_State* L) {
+        size_t length = 0;
+        const char* pattern = luaL_checklstring(L, 1, &length);
+        const LocalizationArgs args = argsAt(L, 2);
+        const char* language = luaL_optstring(L, 3, "");
+        pushString(L, Localization::format(std::string_view(pattern, length), args, language));
+        return 1;
+    }
+
+    int luaHas(lua_State* L) {
+        size_t length = 0;
+        const char* key = luaL_checklstring(L, 1, &length);
+        lua_pushboolean(L, Localization::has(std::string_view(key, length)));
+        return 1;
+    }
+
+    // false (and nothing changes) for an invalid tag
+    int luaSetLanguage(lua_State* L) {
+        lua_pushboolean(L, Localization::setLanguage(luaL_checkstring(L, 1)));
+        return 1;
+    }
+
+    int luaGetLanguageName(lua_State* L) {
+        pushString(L, Localization::getLanguageName(luaL_checkstring(L, 1)));
+        return 1;
+    }
+
+    int luaIsRightToLeft(lua_State* L) {
+        lua_pushboolean(L, Localization::isRightToLeft(luaL_optstring(L, 1, "")));
+        return 1;
+    }
+
+    void pushMiss(lua_State* L, const Localization::Miss& miss) {
+        lua_createtable(L, 0, 5);
+        pushString(L, miss.key);
+        lua_setfield(L, -2, "key");
+        pushString(L, miss.language);
+        lua_setfield(L, -2, "language");
+        pushString(L, miss.kind);
+        lua_setfield(L, -2, "kind");
+        pushString(L, miss.where);
+        lua_setfield(L, -2, "where");
+        lua_pushinteger(L, miss.count);
+        lua_setfield(L, -2, "count");
+    }
+
+    // {literal = {{where, text}...}, missing = {{key, language, kind, where, count}...}}; empty in release
+    int luaScan(lua_State* L) {
+        const Localization::ScanReport report = Localization::scan();
+        lua_createtable(L, 0, 2);
+        lua_createtable(L, static_cast<int>(report.literal.size()), 0);
+        for (size_t k = 0; k < report.literal.size(); k++) {
+            lua_createtable(L, 0, 2);
+            pushString(L, report.literal[k].where);
+            lua_setfield(L, -2, "where");
+            pushString(L, report.literal[k].text);
+            lua_setfield(L, -2, "text");
+            lua_rawseti(L, -2, static_cast<lua_Integer>(k + 1));
+        }
+        lua_setfield(L, -2, "literal");
+        lua_createtable(L, static_cast<int>(report.missing.size()), 0);
+        for (size_t k = 0; k < report.missing.size(); k++) {
+            pushMiss(L, report.missing[k]);
+            lua_rawseti(L, -2, static_cast<lua_Integer>(k + 1));
+        }
+        lua_setfield(L, -2, "missing");
+        return 1;
+    }
+
+    int luaIndex(lua_State* L) {
+        const std::string field = luaL_checkstring(L, 2);
+        if (field == "language") {
+            pushString(L, Localization::getLanguage());
+            return 1;
+        }
+        if (field == "languages") {
+            const std::vector<std::string>& languages = Localization::getLanguages();
+            lua_createtable(L, static_cast<int>(languages.size()), 0);
+            for (size_t k = 0; k < languages.size(); k++) {
+                pushString(L, languages[k]);
+                lua_rawseti(L, -2, static_cast<lua_Integer>(k + 1));
+            }
+            return 1;
+        }
+        if (field == "onLanguageChanged") {
+            if (!luabridge::push(L, &Localization::onLanguageChanged)) lua_pushnil(L);
+            return 1;
+        }
+        lua_pushnil(L);
+        return 1;
+    }
+
+    // Localization.onLanguageChanged = function(code) ... end
+    int luaNewIndex(lua_State* L) {
+        const std::string field = luaL_checkstring(L, 2);
+        if (field == "onLanguageChanged") {
+            luaL_checktype(L, 3, LUA_TFUNCTION);
+            lua_pushvalue(L, 3);
+            Localization::onLanguageChanged = L;
+            lua_settop(L, 3);
+            return 0;
+        }
+        return luaL_error(L, "Localization.%s is read-only", field.c_str());
+    }
+
+}
+
+void LuaBinding::registerLocalizationClasses(lua_State* L){
+#ifndef DISABLE_LUA_BINDINGS
+    static const luaL_Reg functions[] = {
+        {"get", luaGet},
+        {"format", luaFormat},
+        {"has", luaHas},
+        {"setLanguage", luaSetLanguage},
+        {"getLanguageName", luaGetLanguageName},
+        {"isRightToLeft", luaIsRightToLeft},
+        {"scan", luaScan},
+        {nullptr, nullptr},
+    };
+    luaL_newlib(L, functions);
+    lua_createtable(L, 0, 2);
+    lua_pushcfunction(L, luaIndex);
+    lua_setfield(L, -2, "__index");
+    lua_pushcfunction(L, luaNewIndex);
+    lua_setfield(L, -2, "__newindex");
+    lua_setmetatable(L, -2);
+    lua_setglobal(L, "Localization");
+#endif //DISABLE_LUA_BINDINGS
+}

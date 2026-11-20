@@ -310,6 +310,13 @@ namespace jasperengine{
         Vector2 pendingLinearVelocity = Vector2::ZERO;
         float pendingAngularVelocity = 0.0f;
         bool pendingAwake = true;
+        // Simulation Culling froze it (PhysicsSystem::setSimulationFrozen2D): a dynamic body is
+        // kinematic in place; its velocities (Box2D units) and awake state are kept here, read and
+        // written by scripts meanwhile and applied when it thaws (type is the authored one)
+        bool simulationFrozen = false;
+        Vector2 frozenLinearVelocity = Vector2::ZERO;
+        float frozenAngularVelocity = 0.0f;
+        bool frozenAwake = true;
     };
 
 #ifdef JASPERENGINE_PHYSICS_2D

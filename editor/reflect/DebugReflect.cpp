@@ -114,6 +114,10 @@ namespace {
         JE_FIELD(DebugSettings, allowLua, .enumDesc = &kDebugAllowLuaEnum, .flags = OmitIfDefault, .label = "Allow Lua Commands",
                  .tooltip = "The console's `lua <code>` command runs Lua typed on the device: in development builds, always or never.",
                  .group = "Overlay"),
+        JE_FIELD(DebugSettings, consoleCommands, .enumDesc = &kDebugAllowLuaEnum, .flags = OmitIfDefault, .label = "Console Commands",
+                 .tooltip = "Who may type commands: the console field, agents and the player's --command option. "
+                            "The game's own scripts can always run their commands.",
+                 .group = "Overlay"),
         JE_FIELD(DebugSettings, logBufferSize, .flags = OmitIfDefault | Clamped, .min = 0.0f,
                  .max = static_cast<float>(DebugSettings::maxLogBufferSize), .label = "Log Buffer Size",
                  .tooltip = "Lines the log keeps for the console and Log.getEntries (0 keeps none): every record of the logger, "

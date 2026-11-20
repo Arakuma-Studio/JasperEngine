@@ -3,6 +3,7 @@
 
 #include "JasperEngineWeb.h"
 #include "WebKeyMap.h"
+#include "WebTextEntry.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +22,7 @@
 #include "Log.h"
 #include "PlatformConfig.h"
 #include "player/RunControl.h"
+#include "save/SaveGameStore.h"
 #include "util/FrameLimiter.h"
 #include "util/PlatformRules.h"
 
@@ -90,6 +92,9 @@ namespace {
 
 JasperEngineWeb::GamepadState JasperEngineWeb::gamepads[JASPERENGINE_WEB_MAX_GAMEPADS];
 
+// the traits of the field the IME textarea serves
+static jasperengine::TextEntryTraits webKeyboardTraits;
+
 extern "C" {
     EMSCRIPTEN_KEEPALIVE 
     int getScreenWidth() {
@@ -120,11 +125,53 @@ extern "C" {
         }
     }
 
-    EMSCRIPTEN_KEEPALIVE 
-    void syncfs_callback(const char* err) {
-	    if (!err || err[0]) {
+    // errName / err: the DOMException's name ("QuotaExceededError") and message, "" on success.
+    // SaveGame completes the writes that waited for this sync with its result (quota reaches the game)
+    EMSCRIPTEN_KEEPALIVE
+    void syncfs_callback(const char* errName, const char* err) {
+        const bool failed = err && err[0];
+	    if (failed) {
 		    jasperengine::Log::error("Failed to save in iDB file system: %s", err);
 	    }
+        if (jasperengine::savegame::SaveGameStore* saves = jasperengine::savegame::SaveGameStore::existing())
+            saves->fileSystemSynced(!failed, errName ? errName : "", err ? err : "");
+    }
+
+    // ---- SaveGame (engine/core/save/SaveGameStore.cpp)
+
+    EMSCRIPTEN_KEEPALIVE
+    int jasper_web_idb_enabled() {
+        return JasperEngineWeb::isEnabledIDB() ? 1 : 0;
+    }
+
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_storage_estimated(double used, double quota) {
+        if (jasperengine::savegame::SaveGameStore* saves = jasperengine::savegame::SaveGameStore::existing())
+            saves->setStorageEstimate(static_cast<int64_t>(used), static_cast<int64_t>(quota));
+    }
+
+    // navigator.storage.persist(), once, best effort: the browser may still evict the site
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_storage_persist() {
+        EM_ASM({
+            if (navigator.storage && navigator.storage.persist) {
+                navigator.storage.persist().then(function(granted) {
+                    console.debug("SaveGame: persistent storage " + (granted ? "granted" : "not granted"));
+                }).catch(function() {});
+            }
+        });
+    }
+
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_storage_estimate() {
+        EM_ASM({
+            if (navigator.storage && navigator.storage.estimate) {
+                navigator.storage.estimate().then(function(e) {
+                    ccall('jasper_web_storage_estimated', null, ['number', 'number'],
+                          [e.usage === undefined ? -1 : e.usage, e.quota === undefined ? -1 : e.quota]);
+                }).catch(function() {});
+            }
+        });
     }
 
     // ---- the hidden IME textarea (jasper_ime_create) and the clipboard
@@ -151,6 +198,15 @@ extern "C" {
         JasperEngineWeb::rememberClipboardText(text ? text : "");
         if (text && text[0])
             jasperengine::Engine::systemTextInput(text);
+    }
+
+    // a soft keyboard's line break: the field's action key, unless it is Enter itself (R24)
+    EMSCRIPTEN_KEEPALIVE
+    int jasper_web_action_key() {
+        if (!jasperengine::web::lineBreakIsActionKey(webKeyboardTraits))
+            return 0;
+        jasperengine::Engine::systemEditorAction(webKeyboardTraits.enterKey);
+        return 1;
     }
 
     // a soft keyboard key that came only as an input event (Android Chrome sends keyCode 229)
@@ -306,7 +362,9 @@ EM_JS(void, jasper_ime_create, (), {
         if (state.composing || e.isComposing || !state.softKey || away()) return;
         // keys a soft keyboard sends without a key code of their own
         if (e.inputType === "deleteContentBackward") ccall("jasper_web_soft_key", null, ["number"], [259]);
-        else if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") ccall("jasper_web_soft_key", null, ["number"], [257]);
+        else if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") {
+            if (!ccall("jasper_web_action_key", "number", [], [])) ccall("jasper_web_soft_key", null, ["number"], [257]);
+        }
     });
     ta.addEventListener("input", function(e) {
         if (away()) { ta.value = ""; return; }
@@ -323,6 +381,16 @@ EM_JS(void, jasper_ime_create, (), {
             ccall("jasper_web_paste", null, ["string"], [clip(text)]);
         }
     }, true);
+});
+
+// the field's keyboard: inputmode, enterkeyhint (removed when empty), autocapitalize
+EM_JS(void, jasper_ime_traits, (const char* inputmode, const char* enterkeyhint, const char* autocapitalize), {
+    var ta = document.getElementById("jasper-ime");
+    if (!ta) return;
+    ta.setAttribute("inputmode", UTF8ToString(inputmode));
+    var hint = UTF8ToString(enterkeyhint);
+    if (hint) ta.setAttribute("enterkeyhint", hint); else ta.removeAttribute("enterkeyhint");
+    ta.setAttribute("autocapitalize", UTF8ToString(autocapitalize));
 });
 
 EM_JS(void, jasper_ime_focus, (int focus), {
@@ -406,6 +474,15 @@ void JasperEngineWeb::setTextInputArea(float x, float y, float width, float heig
 }
 
 void JasperEngineWeb::showVirtualKeyboard(std::wstring text){
+    showVirtualKeyboard(text, jasperengine::TextEntryTraits());
+}
+
+void JasperEngineWeb::showVirtualKeyboard(const std::wstring& text, const jasperengine::TextEntryTraits& traits){
+    // the textarea keeps no text between commits: only the traits (a focused textarea takes new
+    // attributes without closing the keyboard)
+    webKeyboardTraits = traits;
+    const jasperengine::web::TextAreaAttributes attributes = jasperengine::web::textAreaAttributesOf(traits);
+    jasper_ime_traits(attributes.inputmode, attributes.enterkeyhint, attributes.autocapitalize);
     jasper_ime_focus(1);
 }
 
@@ -769,7 +846,8 @@ void JasperEngineWeb::syncFileSystemNow(){
 
     EM_ASM(
         FS.syncfs(function(err) {
-            ccall('syncfs_callback', null, ['string'], [err ? err.message : ""]);
+            ccall('syncfs_callback', null, ['string', 'string'],
+                  [err ? (err.name || "Error") : "", err ? (err.message || err.name || String(err)) : ""]);
         });
     );
 }

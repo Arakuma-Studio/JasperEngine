@@ -105,6 +105,8 @@ namespace jasperengine {
         static int targetFrameRate(int fps);
         static int maxPixelLights(int lights);
         static uint32_t particleBudget(uint32_t budget);
+        // the Device Tier's Simulation Distance multiplier (1 without one); not thermal-adjusted
+        static float simulationDistanceScale();
         static uint64_t uploadBudgetBytes();
 
         // the cells in effect now, with where each comes from

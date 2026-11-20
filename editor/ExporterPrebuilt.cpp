@@ -10,6 +10,7 @@
 #include "Exporter.h"
 #include "test/GameTests.h"
 
+#include "DebugSettings.h"
 #include "EditorHost.h"
 #include "Generator.h"
 #include "Out.h"
@@ -20,6 +21,7 @@
 #include "platform/AndroidPackager.h"
 #include "platform/IosProject.h"
 #include "platform/MacBundle.h"
+#include "platform/WebServe.h"
 #include "platform/WindowsResources.h"
 #include "player/ContentManifest.h"
 #include "player/PlayerConfig.h"
@@ -114,7 +116,7 @@ void editor::Exporter::warnPrivacy(const std::string& platform, const std::vecto
 }
 
 bool editor::Exporter::iosDeclaresTrackingUsage() const {
-    const IOSProjectSettings& ios = project->getIOSProjectSettings();
+    const IOSProjectSettings& ios = settings->getIOSProjectSettings();
     std::vector<std::string> keys;
     for (const auto& [key, value] : ios.plistEntries) keys.push_back(key);
     return ApplePrivacy::declaresTrackingUsage(keys, ios.plistXml);
@@ -196,6 +198,22 @@ editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, con
     return choice;
 }
 
+std::string editor::Exporter::applicationIdOf(const Project& project, BuildPlatform platform, const std::string& appName) {
+    if (platform == BuildPlatform::Android) {
+        const std::string id = project.getApplicationIdentifier(project.getAndroidProjectSettings().packageName);
+        return id.empty() ? "com.jasperengine." + appName : id;
+    }
+    if (platform == BuildPlatform::IOS) {
+        const IOSProjectSettings& ios = project.getIOSProjectSettings();
+        return ios.bundleIdentifier.empty() ? "com.jasperengine." + appName : ios.bundleIdentifier;
+    }
+    return "";
+}
+
+std::string editor::Exporter::applicationId() const {
+    return applicationIdOf(*settings, config.platform, getAppName());
+}
+
 bool editor::Exporter::resolvePlayer() {
     // the full player, else any installed variant of it (the method only needs one);
     // selectPlayerVariant picks the build's once its modules are known
@@ -229,8 +247,11 @@ void editor::Exporter::runPlayerBuild() {
         std::lock_guard<std::mutex> lock(progressMutex);
         result = ExportResult();
         result.outputDir = config.destinationDir;
+        if (buildProfile) result.buildProfile = buildProfile->name;
     }
-    if (project) config.developmentBuild = config.developmentBuild || project->isDevelopmentBuild();
+    if (buildProfile) Out::info("Build Profile: %s", buildProfile->name.c_str());
+    for (const BuildWarning& warning : profileWarnings) warn(warning.code, warning.message);
+    if (project) config.developmentBuild = config.developmentBuild || settings->isDevelopmentBuild();
     const std::string backend = normalizeBackend(config.graphicBackend);
     const std::vector<std::string> backends = platformBackends(config.platform);
     if (!config.graphicBackend.empty() && (backend.empty() || std::find(backends.begin(), backends.end(), backend) == backends.end())) {
@@ -294,7 +315,7 @@ void editor::Exporter::runPlayerBuild() {
         }
         config.mode = config.platform == BuildPlatform::Web ? ExportMode::Web : ExportMode::Desktop;
         config.selectedBackends = {shaderBackendOf(config.platform, config.graphicBackend)};
-        config.webMultithreaded = config.webMultithreaded || project->getThreadingSettings().webMultithreaded;
+        config.webMultithreaded = config.webMultithreaded || settings->getThreadingSettings().webMultithreaded;
         holdFinish = true;
         runExport();
         holdFinish = false;
@@ -341,6 +362,16 @@ void editor::Exporter::runPlayerBuild() {
     }
     if (!runPrebuilt()) {
         discardStaging();
+        return;
+    }
+    if (config.contentOnly) {
+        // Patch And Run: the content is cooked; the package and the output folder stay as they are
+        setProgressRaw("Content cooked", 1.0f);
+        {
+            std::lock_guard<std::mutex> lock(progressMutex);
+            progress.finished = true;
+        }
+        Out::info("Content cooked for Patch And Run: %s", contentDir.string().c_str());
         return;
     }
     measureBuildEngine(config.destinationDir);
@@ -472,6 +503,12 @@ bool editor::Exporter::runPrebuilt() {
         case BuildPlatform::Web: contentDir = config.targetDir / "content"; break;
         default: contentDir = stagingDir; break;
     }
+    // a patch cooks into the build cache whatever the platform (nothing is staged)
+    if (config.contentOnly) contentDir = config.targetDir / "content";
+    {
+        std::lock_guard<std::mutex> lock(progressMutex);
+        result.appId = applicationId();
+    }
     fs::remove_all(config.targetDir / "content", ec);
     fs::create_directories(contentDir, ec);
 
@@ -499,6 +536,7 @@ bool editor::Exporter::runPrebuilt() {
     if (!copyAssets()) return false;
     if (!writeTitleArtRuntime()) return false;
     if (!writeAudioImports()) return false;
+    if (!writeLocalization()) return false;
     if (!writeAssetMap()) return false;
     if (!copyCustomShaderSources()) return false;
     if (cancelled()) return false;
@@ -510,7 +548,7 @@ bool editor::Exporter::runPrebuilt() {
     if (!cookScenes()) return false;
     if (cancelled()) return false;
     if (!writeGameConfig()) return false;
-    if (!stagePlayer()) return false;
+    if (!config.contentOnly && !stagePlayer()) return false;
     if (cancelled()) return false;
     if (!stageNotices()) return false;
     // what ships, measured before the pack hides it (S53 R21)
@@ -520,6 +558,15 @@ bool editor::Exporter::runPrebuilt() {
     if (cancelled()) return false;
     if (!writeContentManifest(true)) return false;
     if (cancelled()) return false;
+    {
+        std::lock_guard<std::mutex> lock(progressMutex);
+        result.contentDir = contentDir;
+    }
+    if (config.contentOnly) {
+        discardStaging();
+        stagingDir.clear();
+        return true;
+    }
 
     bool finalized = false;
     switch (config.platform) {
@@ -540,6 +587,7 @@ bool editor::Exporter::runPrebuilt() {
     target.arch = platformArch(config.platform);
     target.backend = config.graphicBackend;
     target.executable = fs::relative(getResult().executable, stagingDir, ec).generic_string();
+    target.flavour = config.developmentBuild || config.buildType == "Debug" ? "development" : "release";
     std::vector<std::string> findings;
     publish::validatePayload(stagingDir, target, findings);
     for (const std::string& finding : findings) {
@@ -596,23 +644,37 @@ bool editor::Exporter::cookScenes() {
     return true;
 }
 
+uint32_t editor::Exporter::profileStartScene() const {
+    if (profileListedScenes.empty()) return 0;
+    if (!buildProfile->startScene.empty()) {
+        const Guid wanted = Guid::parse(buildProfile->startScene);
+        for (const SceneProject& scene : project->getScenes())
+            if (!scene.filepath.empty() && project->getAssetDatabase().getAssetGuid(scene.filepath) == wanted) return scene.id;
+    }
+    return profileListedScenes.front();
+}
+
 bool editor::Exporter::writeGameConfig() {
     setProgressRaw("Writing game.json...", 0.78f);
     player::PlayerConfig game;
-    const WindowSettings window = project->getWindowSettings();
+    const WindowSettings window = settings->getWindowSettings();
     game.name = project->getName().empty() ? getAppName() : project->getName();
-    game.appId = config.platform == BuildPlatform::Android ? project->getAndroidProjectSettings().packageName
-               : config.platform == BuildPlatform::MacOS ? project->getMacOSProjectSettings().bundleIdentifier
-               : config.platform == BuildPlatform::IOS ? project->getIOSProjectSettings().bundleIdentifier
+    game.appId = config.platform == BuildPlatform::Android ? settings->getAndroidProjectSettings().packageName
+               : config.platform == BuildPlatform::MacOS ? settings->getMacOSProjectSettings().bundleIdentifier
+               : config.platform == BuildPlatform::IOS ? settings->getIOSProjectSettings().bundleIdentifier
                : getAppName();
     if (game.appId.empty()) game.appId = getAppName();
-    game.version = project->getAndroidProjectSettings().versionName;
+    game.version = settings->getAndroidProjectSettings().versionName;
     // the native plugins the player's platform has no code of (a Compile build's generated init sets the same)
     game.nativePlatformOnly = NativePlugins::platformOnlyPlugins(NativePlugins::listPlugins(NativePlugins::scan(project->getProjectPath())),
                                                                  nativeRunningName(config.platform));
+    game.saveGame = project->getSaveGameSettings().engineSettings();
     // the selected scene of the editor (in Prefab Mode, the scene behind it), else the project's
     game.startScene = config.startSceneId != 0 ? config.startSceneId : project->getStartSceneId();
+    // a Build Profile's Scene List: its start scene, else the first it lists (R4)
+    if (const uint32_t start = profileStartScene()) game.startScene = start;
     for (const SceneProject& scene : project->getScenes()) {
+        if (!shipsScene(scene.id)) continue;
         player::GameScene item;
         item.id = scene.id;
         item.name = scene.name;
@@ -628,74 +690,80 @@ bool editor::Exporter::writeGameConfig() {
     game.windowHeight = static_cast<int>(window.height);
     game.resizable = window.resizable;
     game.title = window.title.empty() ? game.name : window.title;
-    game.vsync = project->isVSyncEnabled();
+    game.vsync = settings->isVSyncEnabled();
     game.storageId = Factory::toIdentifier(game.name);
-    game.canvasWidth = project->getCanvasWidth();
-    game.canvasHeight = project->getCanvasHeight();
-    game.scaling = project->getScalingMode();
-    game.pixelsPerUnit = project->getPixelsPerUnit();
-    game.defaultFilterPoint = project->getDefaultFilterMode() == TextureFilterMode::Point;
-    game.bitmapTextCacheMiB = project->getBitmapTextCacheMiB();
-    game.textureStrategy = project->getTextureStrategy();
-    const LoadingSettings& loading = project->getLoadingSettings();
+    game.canvasWidth = settings->getCanvasWidth();
+    game.canvasHeight = settings->getCanvasHeight();
+    game.scaling = settings->getScalingMode();
+    game.pixelsPerUnit = settings->getPixelsPerUnit();
+    game.defaultFilterPoint = settings->getDefaultFilterMode() == TextureFilterMode::Point;
+    game.bitmapTextCacheMiB = settings->getBitmapTextCacheMiB();
+    if (localizationShipped) game.localization = "l10n/manifest.json";
+    game.textureStrategy = settings->getTextureStrategy();
+    const LoadingSettings& loading = settings->getLoadingSettings();
     game.loadingScene = loading.sceneId;
     game.loadingDelay = loading.delay;
     game.loadingTimeout = loading.timeout;
     game.asyncLoading = loading.asyncLoading;
-    game.particleWorldBudget = project->getParticleWorldBudget();
-    const ThreadingProjectSettings& threading = project->getThreadingSettings();
+    game.particleWorldBudget = settings->getParticleWorldBudget();
+    const ThreadingProjectSettings& threading = settings->getThreadingSettings();
     game.threading.workers = threading.workers;
     game.threading.reservedFrameWorkers = threading.reservedFrameWorkers;
     game.threading.ioThreads = threading.ioThreads;
     game.threading.webPumpBudgetMs = threading.webPumpBudgetMs;
-    game.atmosphereQuality = project->getAtmosphereQuality();
-    game.foliageQuality = project->getFoliageQuality();
-    game.foliageQualityUncapped = !project->isFoliageQualityDeclared();
-    game.foliageDistanceScale = project->getFoliageDistanceScale();
-    game.inputDeadzone = project->getInputDeadzone();
-    game.inputActions = project->getInputActionsEnginePath();
-    game.navigation = project->getNavigationSettings().settings;
-    game.voxelMaxDimension = project->getVoxelSettings().maxDimension;
-    game.voxelCpuBudgetMB = project->getVoxelSettings().cpuBudgetMB;
-    game.voxelMeshBudgetMB = project->getVoxelSettings().meshBudgetMB;
-    const TextureProjectSettings& textures = project->getTextureSettings();
+    game.atmosphereQuality = settings->getAtmosphereQuality();
+    game.foliageQuality = settings->getFoliageQuality();
+    game.foliageQualityUncapped = !settings->isFoliageQualityDeclared();
+    game.foliageDistanceScale = settings->getFoliageDistanceScale();
+    game.inputDeadzone = settings->getInputDeadzone();
+    game.gamepadCursor = settings->getGamepadCursorSettings();
+    game.inputActions = settings->getInputActionsEnginePath();
+    game.navigation = settings->getNavigationSettings().settings;
+    game.voxelMaxDimension = settings->getVoxelSettings().maxDimension;
+    game.voxelCpuBudgetMB = settings->getVoxelSettings().cpuBudgetMB;
+    game.voxelMeshBudgetMB = settings->getVoxelSettings().meshBudgetMB;
+    const TextureProjectSettings& textures = settings->getTextureSettings();
     for (size_t g = 0; g < 3; g++)
         game.textureDefaults[g] = {textures.textureQuality[g], textures.memoryBudgetMB[g], textures.lowMemoryFallback[g]};
-    game.htmlUiMsaa = project->getHtmlUiMsaaSamples();
-    game.glyphAtlasMiB = project->getHtmlUiRenderSettings().glyphAtlasMiB;
-    game.sdfPrimitives = project->getHtmlUiRenderSettings().sdfPrimitives;
-    game.transformAwareText = project->getHtmlUiRenderSettings().transformAwareText;
-    game.mobilePbrTier = project->getMobilePbrTier();
-    game.dynamicBatching = project->isDynamicBatching();
-    game.lightMode = project->getLightMode();
-    game.transitions = project->getTransitionDefaults();
-    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) game.shadowTiers[platform] = ShadowTiers::getPlatformTier(platform);
-    game.device = project->getDeviceSettings();
-    for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) game.terrainQualityTiers[platform] = static_cast<int>(project->getTerrainQualityTier(platform));
-    game.terrainShippedTiers = project->getShippedTerrainTiers();
-    game.tags = project->getTags();
-    game.layerNames = project->getLayerNames();
+    game.htmlUiMsaa = settings->getHtmlUiMsaaSamples();
+    game.glyphAtlasMiB = settings->getHtmlUiRenderSettings().glyphAtlasMiB;
+    game.sdfPrimitives = settings->getHtmlUiRenderSettings().sdfPrimitives;
+    game.transformAwareText = settings->getHtmlUiRenderSettings().transformAwareText;
+    game.mobilePbrTier = settings->getMobilePbrTier();
+    game.dynamicBatching = settings->isDynamicBatching();
+    game.pauseOnFocusLoss = settings->getPresentationSettings().pauseOnFocusLoss;
+    game.lightMode = settings->getLightMode();
+    game.transitions = settings->getTransitionDefaults();
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) game.shadowTiers[platform] = settings->getShadowTier(platform);
+    game.device = settings->getDeviceSettings();
+    for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) game.terrainQualityTiers[platform] = static_cast<int>(settings->getTerrainQualityTier(platform));
+    game.terrainShippedTiers = settings->getShippedTerrainTiers();
+    game.tags = settings->getTags();
+    game.layerNames = settings->getLayerNames();
     if (project->getSortingLayers().size() > 1) game.sortingLayers = project->getSortingLayers();
     game.transparencySortMode = project->getTransparencySortMode();
     game.transparencySortAxis = project->getTransparencySortAxis();
     for (int layer = 0; layer < MAX_LAYERS; layer++) {
-        game.collision3D[layer] = project->getLayerCollisionMatrix3D()[layer];
-        game.collision2D[layer] = project->getLayerCollisionMatrix2D()[layer];
+        game.collision3D[layer] = settings->getLayerCollisionMatrix3D()[layer];
+        game.collision2D[layer] = settings->getLayerCollisionMatrix2D()[layer];
     }
-    const PlayerLoggingSettings& logging = project->getPlayerLogging();
+    const PlayerLoggingSettings& logging = settings->getPlayerLogging();
     game.logLevel = logging.level;
     game.logFile = logging.fileLog;
     game.logBacktrace = logging.backtrace;
-    const PlayerCrashSettings& crash = project->getPlayerCrash();
+    const PlayerCrashSettings& crash = settings->getPlayerCrash();
     game.crashHandler = crash.enabled;
     game.crashLogTail = crash.includeLogTail;
     game.crashDumpWithHeap = crash.dumpWithHeap;
     game.hangWatchdog = crash.hangWatchdog;
     game.hangMs = crash.hangSeconds * 1000;
     game.crashWebOverlay = crash.webCrashOverlay;
+    game.consoleCommands = DebugSettingsNames::name(project->getDebugSettings().consoleCommands);
+    game.crashJournalBytes = crash.journalKiB * 1024;
+    game.crashJournalEngineEvents = crash.journalEngineEvents;
     // Project Settings > Audio, as Play applies them (Project::setAudioSettings) and a Compile
     // build's init (Generator::audioInitSource): the mixer by its asset-relative path, which ships
-    const AudioSettings& audio = project->getAudioSettings();
+    const AudioSettings& audio = settings->getAudioSettings();
     game.audioMixer = audio.mixer;
     game.audioMaxRealVoices = audio.maxRealVoices;
     game.audioMaxVoices = audio.maxVoices;
@@ -704,9 +772,14 @@ bool editor::Exporter::writeGameConfig() {
     game.audioSampleRate = audio.sampleRate;
     game.audioOutputStage = audio.outputStage;
     game.audioIosSession = audio.iosSessionCategory;
+    // R17: the profile and its Scripting Define Symbols (absent without one)
+    if (buildProfile) {
+        game.buildProfile = buildProfile->name;
+        game.defines = buildProfile->defines;
+    }
 
     // the project icon, at the content root: the window and taskbar icon of every platform
-    fs::path icon = project->getWindowIcon();
+    fs::path icon = settings->getWindowIcon();
     if (!icon.empty() && icon.is_relative()) icon = project->getProjectPath() / icon;
     std::error_code ec;
     if (!icon.empty() && fs::is_regular_file(icon, ec) && icon.extension() == ".png") {
@@ -857,6 +930,8 @@ bool editor::Exporter::writeContentManifest(bool prebuilt) {
         const bool known = std::any_of(scenes.begin(), scenes.end(), [&](const SceneProject& scene) { return scene.id == manifest.startScene; });
         if (!known && !scenes.empty()) manifest.startScene = scenes.front().id;
     }
+    if (const uint32_t start = profileStartScene()) manifest.startScene = start;
+    if (buildProfile) manifest.buildProfile = buildProfile->name;
     // the modules the content needs (S34 R3): a player without one of them refuses to start
     manifest.modules = prebuilt ? moduleUsage.list() : compiledModules();
     manifest.hasModules = true;
@@ -944,6 +1019,7 @@ bool editor::Exporter::swapStagingIntoPlace() {
         return (relative.empty() || *relative.begin() == "..") ? path : config.destinationDir / relative;
     };
     result.contentManifest = moved(result.contentManifest);
+    result.contentDir = moved(result.contentDir);
     result.executable = moved(result.executable);
     for (fs::path& artifact : result.artifacts) artifact = moved(artifact);
     stagingDir = config.destinationDir;
@@ -968,7 +1044,7 @@ bool editor::Exporter::finalizeLinux() {
     }
     fs::permissions(stagingDir / app, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec | fs::perms::others_read |
                                           fs::perms::others_exec, fs::perm_options::replace, ec);
-    const std::string title = project->getWindowSettings().title.empty() ? project->getName() : project->getWindowSettings().title;
+    const std::string title = settings->getWindowSettings().title.empty() ? project->getName() : settings->getWindowSettings().title;
     std::string desktop = "[Desktop Entry]\nType=Application\nName=" + title + "\nExec=" + app + "\nStartupWMClass=" + app + "\n";
     if (fs::is_regular_file(stagingDir / "icon.png", ec)) desktop += "Icon=icon\n";
     desktop += "Categories=Game;\nTerminal=false\n";
@@ -1001,12 +1077,12 @@ bool editor::Exporter::finalizeWindows() {
     // stays in the file (the window and taskbar take icon.png at runtime)
     std::string error;
     platform::WindowsVersionInfo info;
-    const WindowsProjectSettings& windows = project->getWindowsProjectSettings();
+    const WindowsProjectSettings& windows = settings->getWindowsProjectSettings();
     info.productName = windows.productName.empty() ? project->getName() : windows.productName;
     info.companyName = windows.companyName;
     info.fileVersion = windows.fileVersion;
     info.productVersion = windows.productVersion;
-    fs::path icon = project->getWindowIcon();
+    fs::path icon = settings->getWindowIcon();
     if (!icon.empty() && icon.is_relative()) icon = project->getProjectPath() / icon;
     if (platform::canPatchExecutableResources()) {
         if (!platform::patchExecutableResources(stagingDir / app, icon, info, error)) {
@@ -1027,27 +1103,27 @@ bool editor::Exporter::finalizeMacOS() {
     setProgressRaw("Finishing the macOS build...", 0.9f);
     const std::string app = getAppName();
     const fs::path bundle = stagingDir / (app + ".app");
-    platform::MacBundleSettings settings;
-    const MacOSProjectSettings& mac = project->getMacOSProjectSettings();
-    settings.bundleName = mac.applicationName.empty() ? project->getName() : mac.applicationName;
-    settings.executable = app;
-    settings.bundleIdentifier = mac.bundleIdentifier.empty() ? "com.jasperengine." + app : mac.bundleIdentifier;
-    settings.version = mac.versionName.empty() ? "1.0" : mac.versionName;
-    settings.build = mac.buildNumber.empty() ? "1" : mac.buildNumber;
-    settings.highDpi = mac.highDpi;
-    fs::path icon = mac.icon.empty() ? project->getWindowIcon() : mac.icon;
+    platform::MacBundleSettings macBundle;
+    const MacOSProjectSettings& mac = settings->getMacOSProjectSettings();
+    macBundle.bundleName = mac.applicationName.empty() ? project->getName() : mac.applicationName;
+    macBundle.executable = app;
+    macBundle.bundleIdentifier = mac.bundleIdentifier.empty() ? "com.jasperengine." + app : mac.bundleIdentifier;
+    macBundle.version = mac.versionName.empty() ? "1.0" : mac.versionName;
+    macBundle.build = mac.buildNumber.empty() ? "1" : mac.buildNumber;
+    macBundle.highDpi = mac.highDpi;
+    fs::path icon = mac.icon.empty() ? settings->getWindowIcon() : mac.icon;
     if (!icon.empty() && icon.is_relative()) icon = project->getProjectPath() / icon;
-    settings.iconPng = icon;
+    macBundle.iconPng = icon;
     // the privacy manifest and Info.plist entries (macos.plist_entries) the source export has too
-    const ApplePrivacy::Composed privacy = ApplePrivacy::compose(project->getProjectPath(), project->getApplePrivacy(), "macos");
+    const ApplePrivacy::Composed privacy = ApplePrivacy::compose(project->getProjectPath(), settings->getApplePrivacy(), "macos");
     warnPrivacy("macOS", privacy.warnings);
-    settings.privacyManifest = ApplePrivacy::toXml(privacy.manifest);
+    macBundle.privacyManifest = ApplePrivacy::toXml(privacy.manifest);
     if (!mac.plistEntries.empty()) {
-        settings.customizePlist = [entries = mac.plistEntries](std::string& plist) { applyNativePlistEntries(plist, entries, ""); };
+        macBundle.customizePlist = [entries = mac.plistEntries](std::string& plist) { applyNativePlistEntries(plist, entries, ""); };
     }
     std::string error;
     std::vector<BuildWarning> warnings;
-    if (!platform::finishMacBundle(bundle, settings, warnings, error)) {
+    if (!platform::finishMacBundle(bundle, macBundle, warnings, error)) {
         setError("macOS bundle: " + error);
         return false;
     }
@@ -1094,7 +1170,7 @@ std::string editor::Exporter::composeWebPage(std::string page, const std::string
 bool editor::Exporter::finalizeWeb() {
     setProgressRaw("Finishing the web build...", 0.9f);
     std::error_code ec;
-    const bool threads = project->getThreadingSettings().webMultithreaded || config.webMultithreaded;
+    const bool threads = settings->getThreadingSettings().webMultithreaded || config.webMultithreaded;
     // the pthreads player and its isolation worker ship only when the project asks for them
     if (!threads) {
         for (const char* file : {"jasperengine-player-mt.js", "jasperengine-player-mt.wasm", "jasperengine-player-mt.worker.js", "coi-serviceworker.js"})
@@ -1117,7 +1193,7 @@ bool editor::Exporter::finalizeWeb() {
         setError("Cannot read the player's index.html");
         return false;
     }
-    const WebProjectSettings& web = project->getWebProjectSettings();
+    const WebProjectSettings& web = settings->getWebProjectSettings();
     if (!web.customHtmlShell.empty()) {
         const fs::path shell = web.customHtmlShell.is_absolute() ? web.customHtmlShell : project->getProjectPath() / web.customHtmlShell;
         std::string text;
@@ -1146,9 +1222,12 @@ bool editor::Exporter::finalizeWeb() {
             }
         }
     }
-    page = composeWebPage(page, project->getApplicationName(web.applicationName), web.headInclude, web.resizeCanvasToWindow,
+    // a development page reports its log to the editor that serves it (R11); a release page carries no reporter
+    const std::string headInclude = config.developmentBuild || config.buildType == "Debug" ? web.headInclude + "\n" + platform::webDevelopmentReporter()
+                                                                                         : web.headInclude;
+    page = composeWebPage(page, settings->getApplicationName(web.applicationName), headInclude, web.resizeCanvasToWindow,
                           web.hideEmscriptenUI, true,
-                          project->getCanvasWidth(), project->getCanvasHeight(), threads, webNativeScripts(web.scriptUrls, nativeFiles));
+                          settings->getCanvasWidth(), settings->getCanvasHeight(), threads, webNativeScripts(web.scriptUrls, nativeFiles));
     if (page.find("player-loader.js") == std::string::npos) {
         setError("The web page does not load player-loader.js (a custom shell keeps {{JASPERENGINE_DEFAULT_HTML}} or {{JASPERENGINE_LOADER}})");
         return false;
@@ -1186,17 +1265,16 @@ bool editor::Exporter::finalizeWeb() {
 bool editor::Exporter::finalizeAndroid() {
     setProgressRaw("Packaging for Android...", 0.9f);
     platform::AndroidPackage package;
-    const AndroidProjectSettings& android = project->getAndroidProjectSettings();
+    const AndroidProjectSettings& android = settings->getAndroidProjectSettings();
     package.settings = android;
-    package.presentation = project->getPresentationSettings();
-    package.label = project->getApplicationName(android.applicationName);
+    package.presentation = settings->getPresentationSettings();
+    package.label = settings->getApplicationName(android.applicationName);
     if (package.label.empty()) package.label = project->getName();
-    package.applicationId = project->getApplicationIdentifier(android.packageName);
-    if (package.applicationId.empty()) package.applicationId = "com.jasperengine." + getAppName();
-    package.versionCode = std::max(1u, project->getApplicationVersionCode(android.versionCode));
-    package.versionName = project->getApplicationVersion(android.versionName);
+    package.applicationId = applicationId();
+    package.versionCode = std::max(1u, settings->getApplicationVersionCode(android.versionCode));
+    package.versionName = settings->getApplicationVersion(android.versionName);
     if (package.versionName.empty()) package.versionName = "1.0";
-    package.astc = !project->getTextureSettings().androidEtc2Fallback;
+    package.astc = !settings->getTextureSettings().androidEtc2Fallback;
     package.runtimeDir = player->dir / "android";
     package.contentDir = contentDir;
     package.projectPath = project->getProjectPath();
@@ -1210,7 +1288,11 @@ bool editor::Exporter::finalizeAndroid() {
     // an App Bundle (Google Play serves each device its ABI), one APK per selected ABI, or the
     // universal APK of every selected ABI (Project Settings > Android > Package Format)
     std::vector<std::vector<std::string>> packages;
-    if (config.androidFormat == AndroidFormat::ApkPerAbi) {
+    if (!config.androidRunAbi.empty()) {
+        // Build And Run: one APK of the device's ABI, whatever the Package Format (R3)
+        package.format = AndroidFormat::Apk;
+        packages.push_back({config.androidRunAbi});
+    } else if (config.androidFormat == AndroidFormat::ApkPerAbi) {
         for (const std::string& abi : platform::selectedAndroidAbis(android)) packages.push_back({abi});
         if (packages.empty()) {
             setError("no Android architecture is selected (Project Settings > Android > Architectures)");
@@ -1226,7 +1308,7 @@ bool editor::Exporter::finalizeAndroid() {
         package.abis = abis;
         const std::string suffix = abis.empty() ? "" : "-" + abis.front();
         package.workDir = config.targetDir / ("android" + suffix);
-        package.output = stagingDir / (getAppName() + suffix + (config.androidFormat == AndroidFormat::Aab ? ".aab" : ".apk"));
+        package.output = stagingDir / (getAppName() + suffix + (package.format == AndroidFormat::Aab ? ".aab" : ".apk"));
         if (!platform::buildAndroidPackage(package, commandRunner, [this]() { return isCancelled(); }, warnings, error)) {
             setError(error);
             return false;
@@ -1240,39 +1322,40 @@ bool editor::Exporter::finalizeAndroid() {
     std::lock_guard<std::mutex> lock(progressMutex);
     result.executable = outputs.front();
     result.artifacts = outputs;
+    result.debuggable = package.debug && platform::androidRuntimeHasDebuggableMarker(package.runtimeDir);
     return true;
 }
 
 bool editor::Exporter::finalizeIOS() {
     setProgressRaw("Writing the Xcode project...", 0.9f);
-    platform::IosProjectSettings settings;
-    const IOSProjectSettings& ios = project->getIOSProjectSettings();
-    settings.appName = getAppName();
-    settings.displayName = ios.applicationName.empty() ? project->getName() : ios.applicationName;
-    settings.bundleIdentifier = ios.bundleIdentifier.empty() ? "com.jasperengine." + getAppName() : ios.bundleIdentifier;
-    settings.version = ios.versionName.empty() ? "1.0" : ios.versionName;
-    settings.build = ios.buildNumber.empty() ? "1" : ios.buildNumber;
-    settings.teamId = ios.teamId;
-    settings.exportMethod = ios.exportMethod;
-    settings.hideStatusBar = ios.hideStatusBar;
-    fs::path icon = ios.icon.empty() ? project->getWindowIcon() : ios.icon;
+    platform::IosProjectSettings xcode;
+    const IOSProjectSettings& ios = settings->getIOSProjectSettings();
+    xcode.appName = getAppName();
+    xcode.displayName = ios.applicationName.empty() ? project->getName() : ios.applicationName;
+    xcode.bundleIdentifier = applicationId();
+    xcode.version = ios.versionName.empty() ? "1.0" : ios.versionName;
+    xcode.build = ios.buildNumber.empty() ? "1" : ios.buildNumber;
+    xcode.teamId = ios.teamId;
+    xcode.exportMethod = ios.exportMethod;
+    xcode.hideStatusBar = ios.hideStatusBar;
+    fs::path icon = ios.icon.empty() ? settings->getWindowIcon() : ios.icon;
     if (!icon.empty() && icon.is_relative()) icon = project->getProjectPath() / icon;
-    settings.iconPng = icon;
-    settings.runtimeDir = player->dir / "ios";
-    settings.projectDir = stagingDir / getAppName();
-    settings.simulator = config.iosSimulator;
+    xcode.iconPng = icon;
+    xcode.runtimeDir = player->dir / "ios";
+    xcode.projectDir = stagingDir / getAppName();
+    xcode.simulator = config.iosSimulator;
     std::string error;
     std::vector<std::string> notes;
     std::vector<fs::path> artifacts;
     std::vector<BuildWarning> warnings;
-    if (!platform::stageIosProject(settings, error)) {
+    if (!platform::stageIosProject(xcode, error)) {
         setError(error);
         return false;
     }
     // the game's Objective-C/Swift plugins, SDKs, packages, Info.plist entries, entitlements and
     // privacy manifest: the template is an Xcode project, so they are carried, not dropped
-    if (!addNativeToIosPlayer(settings.projectDir)) return false;
-    if (!platform::buildIosProject(settings, commandRunner, [this]() { return isCancelled(); }, artifacts, notes, warnings, error)) {
+    if (!addNativeToIosPlayer(xcode.projectDir)) return false;
+    if (!platform::buildIosProject(xcode, commandRunner, [this]() { return isCancelled(); }, artifacts, notes, warnings, error)) {
         setError(error);
         return false;
     }
@@ -1281,6 +1364,6 @@ bool editor::Exporter::finalizeIOS() {
     std::lock_guard<std::mutex> lock(progressMutex);
     result.notes = notes;
     result.artifacts = artifacts;
-    result.executable = artifacts.empty() ? settings.projectDir : artifacts.front();
+    result.executable = artifacts.empty() ? xcode.projectDir : artifacts.front();
     return true;
 }

@@ -203,7 +203,7 @@ a sound -> `"AudioSource"`).
 | Function | Meaning |
 |---|---|
 | `RegisterEngineEvent(self, "methodName" [, tag])` | Subscribes `self:methodName(...)` to `Engine.<methodName>`. The method name must equal the Engine event name and must already exist on `self` (error otherwise). |
-| `RegisterEvent(self, eventObject, "methodName" [, tag])` | Subscribes `self:methodName(...)` to any event object (component or physics event, or an `Event`). |
+| `RegisterEvent(self, eventObject, "methodName" [, tag] [, priority])` | Subscribes `self:methodName(...)` to any event object (component or physics event, or an `Event`). `priority` is for an `Event` or `CancellableEvent` only (pass `nil` as the tag: `RegisterEvent(self, ev, "m", nil, 10)`); engine events run in subscription order. |
 | `UnregisterEngineEvent(self, "methodName" [, tag])` | Removes that `RegisterEngineEvent` subscription (same tag); `true` if it existed. Unity's `-=`. |
 | `UnregisterEvent(self, eventObject, "methodName" [, tag])` | Removes that `RegisterEvent` subscription; `true` if it existed. |
 
@@ -231,12 +231,51 @@ function Hud:onDisable() self.health.onDied:removeListener(self, "showGameOver")
 | Member | Meaning |
 |---|---|
 | `Event()` | a new event |
-| `ev:addListener(fn)` / `ev:addListener(self, "method")` | adds a listener (the second form is owned by `self`: removed once that script is released); adding the same one twice is ignored |
+| `ev:addListener(fn [, priority])` / `ev:addListener(self, "method" [, priority])` | adds a listener (the second form is owned by `self`: removed once that script is released); adding the same one twice is ignored, whatever its priority: remove it first to change its priority |
 | `ev:removeListener(fn)` / `ev:removeListener(self, "method")` | `true` if it was there |
 | `ev:removeAllListeners()` | |
-| `ev:invoke(...)` | calls the listeners in add order with these arguments; a listener's error is logged (with its traceback) and the others still run; listeners added during `invoke` run from the next one, removed ones are skipped at once |
+| `ev:invoke(...)` | calls the listeners by priority with these arguments; a listener's error is logged (with its traceback) and the others still run; listeners added during `invoke` run from the next one, removed ones are skipped at once |
 | `ev.listenerCount` | ro |
-| `ev:add(tag, fn)`, `ev:remove(tag)`, `ev:has(tag)` | the event object protocol: `RegisterEvent(self, ev, "method")` / `UnregisterEvent` work on it |
+| `ev:add(tag, fn [, priority])`, `ev:remove(tag)`, `ev:has(tag)` | the event object protocol: `RegisterEvent(self, ev, "method")` / `UnregisterEvent` work on it; a tag added again replaces its listener, with the new priority |
+| `ev:getListeners()` | `{name, priority, monitor}` per listener, in the order they run: `name` is `"Class:method"` for a script's method (`RegisterEvent`'s too), the tag of another tagged listener, `"function <source>:<line>"` for a function |
+
+**Priority.** Every listener form takes an integer `priority` from -1000000 to 1000000 (default 0):
+higher runs first, equal ones in the order added (all 0: add order). `Event.MONITOR` runs after every
+other listener; side effects go in monitors: they run after the decision.
+
+**`CancellableEvent()`**: an `Event` whose listeners may refuse the change before it happens. Read
+`invoke`'s result; when `true`, do not apply the change. Each listener gets a `CancelEventArgs` first,
+then `invoke`'s arguments; `e:cancel()` vetoes, and the deciding listeners after it are skipped. Then
+the `Event.MONITOR` listeners run with `e.cancelled` final (they cannot cancel).
+
+```lua
+function Door:init() self.onOpening = CancellableEvent() end
+function Door:open(by)
+    if self.onOpening:invoke(self, by) then return false end   -- a listener refused
+    self.isOpen = true
+    return true
+end
+
+function Lock:onEnable()
+    self.door = GameObject.findObjectOfType("Door")
+    RegisterEvent(self, self.door.onOpening, "check", nil, 10)
+    RegisterEvent(self, self.door.onOpening, "report", nil, Event.MONITOR)
+end
+function Lock:check(e, door, by) if self.locked then e:cancel() end end
+function Lock:report(e, door, by) if e.cancelled then print("locked") end end
+```
+
+| Member | Meaning |
+|---|---|
+| `ev:invoke(...)` | `true` when a listener cancelled (then do not apply the change), else `false` |
+| `e:cancel()` | vetoes; nothing undoes it. An error in a monitor listener or after its `invoke` ended |
+| `e.cancelled` | ro: whether a listener of this invoke cancelled |
+| `ev.cancelledBy` | ro: the listener (as `getListeners` names it) that cancelled the latest invoke; `nil` when it went ahead |
+| `tostring(ev)` | `CancellableEvent(N listeners, last invoke cancelled by <name>)`, `(…, last invoke went ahead)` or `(…, not invoked yet)` |
+
+A listener that should change a value instead of refusing gets a table: pass `{amount = 10}` to
+`invoke`, let listeners change `amount`, and read it after `invoke`. A plain `Event` has no veto
+(`ev:cancel()` is an error).
 
 Engine events (names valid for `RegisterEngineEvent`; handler arguments in order):
 
@@ -661,6 +700,10 @@ Maps of actions bound to controls, from an `.inputactions` asset (`jasper://docs
 | `InputActions.getBinding(id)` | `InputBinding`: `id`, `path`, `displayName`, `composite`, `overridden`, `getDisplayName()`, `getGroups()`, `getParts()` |
 | `InputActions.getBindingDisplayName(id)`, `getControlDisplayName(path)`, `isControlBound(path)` | "Space", "Ctrl+S", "Left Stick" |
 | `InputActions.defaultDeadzone` | rw, 0.15 |
+| `InputActions.currentScheme`, `currentPointer`, `gamepadFamily`, `lastGamepad` | read-only: `"Keyboard&Mouse"`, `"Gamepad"`, `"Touch"` (`InputScheme.KeyboardMouse`...); `"Xbox"`, `"PlayStation"`, `"Nintendo"`, `"Generic"` (`GamepadFamily.Xbox`...); -1 before any pad |
+| `InputActions.onSchemeChanged = function(scheme, previous) end` | once per frame that switched |
+| `InputActions.setSchemeOverride(scheme or nil)`, `getSchemeOverride()` | forces the scheme; nil: back to the tracked one |
+| `InputActions.getActionDisplayName(action, scheme?)`, `getActionGlyph(action, scheme?)`, `getBindingGlyph(id)` | the action's first binding in the scheme (default current): "Cross", `"gamepad/playstation/cross"`; "" without one |
 
 `InputAction`: `readValue()`, `readVector2()`, `isPressed()`, `wasPressedThisFrame()`,
 `wasReleasedThisFrame()`, `getHeldTime()`, `getPhase()` / `phase` (`InputActionPhase.WAITING`,
@@ -728,8 +771,12 @@ Graphy), details in `jasper://docs/debugging`:
 | `consoleVisible` | ro | |
 | `statsMode` | rw | `DebugOverlay.STATS_OFF`, `STATS_FPS`, `STATS_FULL` (another value raises an error) |
 | `getStats()` | fn | `{fps, frameMs, frameMsAvg, frameMsMin, frameMsMax, frameMs1PercentLow, drawCalls, instances, triangles, processMemoryBytes, luaMemoryBytes, audioVoices, audioVoicesMax, bodies2D, bodies3D, entities, scenes, coroutines, timers, htmlUiDrawCalls}`; works while not enabled |
-| `addCommand(name, description, fn [, owner])` | fn | console command `name args...`: `fn(args)` gets a list of strings; `[a-z0-9_-]+`; removed with its script (`owner`, default the calling method's `self`) |
-| `removeCommand(name)`, `executeCommand(line)` | fn | |
+| `addCommand{name, description, aliases, args, cheat, run, complete, owner}` | fn | a typed console command: `args` `{name, type, optional, default, min, max, choices}` (`string`, `int`, `float`, `bool`, `enum`, `vector3`, `gameobject`, `rest`); `run(args, call)` gets them by name and position, `call:print(...)`, `call:fail(msg)`, its return is the result's `value`; `true` or `false, reason` |
+| `addCommand(name, description, fn [, owner])` | fn | the old form: `fn(args)` gets a list of strings; names `[a-z0-9_.-]`; removed with its script (`owner`, default the calling method's `self`) |
+| `executeCommand(line)` | fn | `{ok, status, command, lines, log, value, error, usage, cheat}`; the game's call, never gated |
+| `completeCommand(line [, cursor])`, `getCommands()`, `removeCommand(name)` | fn | `{replacement, candidates, start}`; `{name, description, usage, aliases, cheat, builtIn, args}` each |
+| `commandsEnabled` | rw | Project Settings > Debug > Console Commands: the field, agents and `--command` may type commands |
+| `cheatsUsed`, `onCheatUsed`, `resetCheatsUsed()` | ro, event, fn | a `cheat = true` command ended ok (the event fires once, with its name) |
 
 ### 2.4 PlayerPrefs / UserSettings (static, persistent key/value)
 
@@ -871,12 +918,54 @@ local Items = require("data.items")
 local price = Items.sword.price
 ```
 
+### 2.4.3 SaveGame (static, save slots)
+
+Game progress goes in `SaveGame`, not in hand-written JSON files: named slots (`slot1`,
+`autosave`; `a-z 0-9 _ -`, at most 48) of namespaces (`main` by default) holding any Lua value
+but functions and other userdata. Vectors, quaternions, integer keys, integers versus floats and
+binary strings come back exactly (Json does not keep them). Writes run off the main thread;
+every write is a new checksummed generation and the newest valid one is read, so a crash or a
+damaged file costs at most the last save. Errors are values `{code, message, path?}`, never raised
+(but wrong argument types). The full guide: `jasper://docs/saved-data`.
+
+| Function | Returns |
+|---|---|
+| `SaveGame.write(slot, value [, opts])` | `true`, or `false, err` (`name`, `encode`, `too_large`, `newer_version`); `opts`: `namespace`, `meta` (save menu data), `requires`, `replaceAll`, `force`, `onComplete(ok, err)`, `owner` |
+| `SaveGame.read(slot [, opts])` | `data, info` (`info.version`, `generation`, `savedAt`, `namespaces`, `meta`, `migratedFrom`, `recoveredFrom`, `problems`), or `nil, err` (`not_found`, `corrupt`, `newer_version`, `migration`) |
+| `SaveGame.readAsync(slot, fn [, opts])` | nothing; `fn(data, info)` later on the main thread |
+| `SaveGame.list()`, `SaveGame.info(slot)` | slots newest first: `slot, version, savedAt, size, generations, namespaces, meta, requires, status` |
+| `SaveGame.exists(slot)`, `delete(slot)`, `flush([slot])`, `unload([slot])` | boolean / `true` or `false, err` |
+| `SaveGame.getBackups(slot)`, `restoreBackup(slot, generation [, onComplete])` | generations `{generation, savedAt, version, size, valid}` / `true` or `false, err` |
+| `SaveGame.version`, `SaveGame.addMigration(fromVersion, fn)` | the data version writes stamp; `fn(namespaces, info)` returns the namespaces upgraded to `fromVersion + 1` |
+| `SaveGame.storage()` | `{used, quota, free}` (-1 when unknown) |
+
+```lua
+SaveGame.version = 2
+SaveGame.addMigration(1, function(ns) ns.main.gold = ns.main.coins or 0; ns.main.coins = nil; return ns end)
+
+local ok, err = SaveGame.write("slot1", {level = "forest", pos = Vector3(4, 0, 2), gold = 120},
+    {meta = {title = "Forest"}, onComplete = function(done, e) if not done then Log.warn(e.message) end end})
+SaveGame.write("slot1", {"sword", "shield"}, {namespace = "inventory"})   -- only this namespace re-encoded
+
+local data, info = SaveGame.read("slot1")
+if not data then Log.warn(info.code .. ": " .. info.message) end
+for _, s in ipairs(SaveGame.list()) do Log.print(s.slot .. " " .. s.status) end
+```
+
+- `write` encodes the value at once (later changes to the table are not saved) and a `read`
+  right after returns it, before it reaches the disk; `onComplete` runs in a later frame.
+- Many writes to one slot coalesce (one file write in flight, one waiting): saving every frame
+  is safe, but save at checkpoints. App pause, quit and Play stop flush what is queued.
+- Big data: split it into namespaces (a write re-encodes only its namespace) or slots.
+
 ### 2.5 System (static)
 
 `System.getScreenWidth()`, `getScreenHeight()`, `isTouchDevice()`, `isFullscreen()`,
 `requestFullscreen()`, `exitFullscreen()`, `isWindowMaximized()`, `maximizeWindow()`,
 `restoreWindow()`, `setWindowSize(w, h)`, `isWindowResizable()`, `setWindowResizable(b)`,
-`setWindowTitle(s)`, `quit()`, `showVirtualKeyboard(text)`, `hideVirtualKeyboard()`,
+`setWindowTitle(s)`, `quit()`, `showVirtualKeyboard(text, options?)` (options
+`{keyboard = "email", enterKey = "send", autocapitalize, autocorrect, secure, multiline, maxLength}`,
+the HTML attribute values), `updateVirtualKeyboardText(text, caret?)`, `hideVirtualKeyboard()`,
 `setClipboardText(s)`, `getClipboardText()` (the system clipboard, UTF-8; on Web the text of
 the last copy or paste), `getDirSeparator()`, `getAssetPath()`, `getUserDataPath()`, `getLuaPath()`,
 `getShaderPath()`, `syncFileSystem()` (Web: stores the `data://` files in IndexedDB now; true),
@@ -948,6 +1037,7 @@ subfolder). Use it for shared helper modules.
 | `Device.setTier(tier)`, `Device.resetTier()` | fn | a graphics menu's tier for the rest of the run, and back |
 | `Device.onThermalStateChanged` | event | `function(state)` |
 | `Device.onLowMemory` | event | a low-memory warning was handled (caches cleared, streamed textures a mip lower) |
+| `Device.gpuQuirks`, `Device.gpuDriver` | ro | the names of the GPU quirks in effect (driver workarounds; no setter), and the driver's version |
 
 ```lua
 Device.onThermalStateChanged = function(state)
@@ -1503,6 +1593,32 @@ local r = scene:getRenderStats()             -- by pass: mainDrawCalls, shadowDr
 - In a release game (no profiler) the functions do nothing, `enabled` stays false, and
   `frameStats()` still works.
 
+### 2.14.1 Performance (static): gameplay frame times in every build
+
+```lua
+Performance.setSampling(true)                    -- gameplay starts
+Performance.setSampling(false, "menu")           -- the main menu: excluded, named in excluded.reasons
+Performance.onSample(function(s)                 -- every 300 s of gameplay, then a new window
+    Log.print(string.format("p50 %.0f fps, p10 %.0f fps, main thread %.1f ms", s.fps.p50, s.fps.p10, s.mainThreadCpuMs or -1))
+end, 300)
+local s = Performance.getSummary{histogram = true}   -- the window now, not reset
+Performance.reset()                              -- a new window (sampling stays as it is)
+```
+
+| Name | Notes |
+|---|---|
+| `setSampling(on, reason?)`, `isSampling()` | off by default (one branch a frame); off with a reason counts the time in `excluded.reasons` |
+| `getSummary(options?)` | `{seconds, frames, fps {avg, p50, p10}, frameMs {p50, p90, p99, max}, cpuMs {avg, p90}, mainThreadCpuMs, mainThreadCpu, gpuMs?, hitches, excluded {paused, resume, loading, stall, game, reasons}, thermal, tier, tierChanges, gpu, driver, quirks, backend, platform, version, buildId, histogram?}`; with no committed second only `seconds`, `frames`, `excluded` |
+| `onSample(fn, seconds?)` | `fn(summary)` each `seconds` (30..3600, default 300) of committed gameplay; `onSample(nil)` removes it; cleared at Stop |
+| `reset()` | a new window now |
+
+- Only gameplay counts: seconds paused or hidden, the 2 s after a resume, scene loads, stalls of 1 s
+  and seconds the game turned sampling off are discarded whole. `Engine.timeScale = 0` is not
+  excluded: call `setSampling(false, "pause_menu")`.
+- `mainThreadCpuMs` is the frame thread's own CPU (its thread clock): far below `cpuMs.avg`, the frame
+  waits on the driver, locks or I/O. It is nil on the web (`mainThreadCpu = "unavailable"`).
+- The engine sends nothing: the game asks the player before it sends a summary anywhere.
+
 ### 2.15 Crash (static): reports of earlier sessions, the report hook, tags
 
 ```lua
@@ -1523,6 +1639,49 @@ Crash.markHandled("20261026T143200Z-4242")       -- the same by id (false: unkno
 - Pending means from an earlier session and not handled yet; the current session's reports
   appear at the next start.
 - Editor Play reads the editor's own reports (docs/crash-diagnostics.md).
+
+"Report a Problem" (user reports, kind `"user"`): capture, then the game's own form, then write.
+
+```lua
+Crash.beginReport(function(ok, err) openReportForm() end)   -- ok: the frame is in the draft (fn runs a frame later)
+local report, err = Crash.createReport{note = "the door does not open", category = "gameplay", fields = {level = "forest-2"}}
+-- report: {id = "<session>-user1", kind = "user", category = "gameplay", files, ...}; nil, "too_many_pending: ..." past 3
+local bytes = Crash.readReportFile(report.id, "user.txt")   -- an Http body; nil, "not_found"
+Crash.markHandled(report.id)                                -- after the upload; else offered again next start
+Crash.cancelReport()                                        -- drops the draft
+```
+
+- `createReport` options: `note` (required, 4000 bytes), `category` (`[a-z0-9_]{1,32}`), `fields` (16),
+  `screenshot` (true), `logTail`, `done(report, err)` (write on a job). The web keeps them in memory.
+
+**Journal** (static): the Gameplay Journal, recent game events saved with crash, hang and user reports.
+
+```lua
+Journal.log("level.start", {name = "forest-2", seed = 42})   -- kind [A-Za-z0-9_.:-]{1,48}, 12 fields
+local on = Journal.enabled                                   -- read-only property
+Journal.getEntries(20)                                       -- {{time, frame, kind, text}, ...} oldest first
+Journal.getText()                                            -- journal.txt
+Journal.clear()
+```
+
+- Events, not frames. The editor's Console shows each entry in the `journal` category.
+
+### 2.15.1 Localization (static): String Tables and the game language
+
+```lua
+local label = Localization.get("ui.shop.coins", {count = 3})        -- "3 coins"; fallback as 3rd argument
+local lives = Localization.format("{n, plural, one {# life} other {# lives}}", {n = 2})
+Localization.setLanguage("de")                   -- false for a bad tag; "" follows the device again
+print(Localization.language, Localization.languages[1], Localization.getLanguageName("de"))
+Localization.onLanguageChanged = function(code) Log.print("language " .. code) end
+local scan = Localization.scan()                 -- {literal = {...}, missing = {...}} (development)
+```
+
+- Keys are `ns.key`; texts are ICU (`{n, plural, one {...} other {...}}`). Prefer
+  `data-l10n-id` in HTML and a Text's `localizationKey` / `text:setLocalizedText(key, args)` over
+  setting `text` from `Localization.get`: those follow language changes by themselves.
+- `language`, `languages` and `onLanguageChanged` are fields; `TitleArt.setLanguage` sets the
+  same language. Tables: `edit_string_table`, jasper://docs/localization.
 ### 2.16 Time (static, Unity's Time)
 
 The game clocks under their Unity names. `Engine.deltatime` and the other `Engine` names stay;
@@ -1584,6 +1743,33 @@ HitStop.play(0.12, {only = {GameObject.find("Hero")}}) -- only the hero freezes
 assert(HitStop.active)
 HitStop.stop()
 ```
+
+#### CullingGroup, BoundingSphere and SimulationCulling
+
+Culling (`docs/scripting/culling-groups.md`): which spheres are on screen and in which distance
+band, and a component that freezes far GameObjects. Sphere indices are 1-based, bands 0-based (0
+nearest, -1 before the first evaluation). Frustum only: no occlusion.
+
+| `CullingGroup(scene)` | Notes |
+|---|---|
+| `setBoundingSphereCount(n)`, `setBoundingSpheres({BoundingSphere...})`, `setSphere(i, s)`, `getSphere(i)` | at most 100,000 spheres; new ones at the origin, radius 0 |
+| `setSphereTarget(i, go \| entity, radius [, offset])` | the sphere follows the GameObject |
+| `eraseSwapBack(i)` | the last sphere and its state move into i |
+| `setBoundingDistances({d1, ...})` | 0 to 8 ascending distances; band b holds [d[b-1], d[b]) |
+| `setDistanceReferencePoint(Vector3 \| go)` | default: the target camera, else the main camera |
+| `onStateChanged = function(index, isVisible, wasVisible, band, previousBand)` | each changed sphere after the evaluation; the first reports all (previousBand -1) |
+| `isVisible(i)`, `getDistance(i)`, `queryIndices(visible \| band \| visible, band, out [, first])` | queryIndices fills out[1..n] and returns n |
+| `enabled`, `targetCamera` (entity or nil = any camera), `bandHysteresis`, `boundingSphereCount` (ro) | |
+| `dispose()`, `isValid()` | made in a script's callback: disposed with the script; at most 256 a scene |
+
+`SimulationCulling(scene, entity)` adds the component when missing: rw `enabled`,
+`simulationDistance`, `reducedRateDistance`, `reducedUpdateInterval`, `hysteresis`, `boundsRadius`,
+`simulateWhenVisible`, `freezeWhenGroundNotLoaded`, `cullScripts`, `cullAnimator`, `cullPhysics`;
+ro `state` ("full", "reduced", "culled"), `reason` ("none", "distance", "ground_not_loaded"),
+`focusDistance`. Statics: `addFocus(scene, Vector3 | go)` (id), `setFocus(scene, id, Vector3)`,
+`removeFocus(scene, id)`, `setCameraIsFocus(scene, bool)`, `isCameraFocus(scene)`, `distanceScale`
+(rw), `setGroundCheck(scene, function(x, y, z, radius) return loaded end | nil)`. Messages:
+`onSimulationCulled(reason)`, `onSimulationResumed()`.
 
 ### 2.17 Coroutines and invoke (Coroutine, self:startCoroutine, self:invoke)
 
@@ -2659,7 +2845,7 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 | `Panel` (Image) | `title`, `titleColor`, `titleFont`, `titleFontSize`, `headerColor`, `minWidth`, `minHeight`, `canMove`, `canResize`, `canBringToFront` | `getPanelComponent()`, `setMinSize(w,h)` |
 | `Scrollbar` (Image) | `type` (`ScrollbarType.*`), `barSize`, `step`, `barColor`, `barAlpha` | `getScrollbarComponent()`, `setBarTexture(path)` |
 | `Progressbar` (Image) | `type`, `value` (0..1), `fillColor`, `fillAlpha` | `getProgressbarComponent()`, `setFillTexture(path)` |
-| `InputField` (Image) | `text`, `disabled`, `textColor`, `textFont`, `fontSize`, `maxTextSize`, `placeholder`, `placeholderColor`, `password`, `passwordChar`, `cursorIndex`, `cursorColor`, `selectionColor`, `cursorBlink`, `cursorWidth` | `getInputFieldComponent()`, `getTextObject()`, `setSelection(...)` |
+| `InputField` (Image) | `text`, `disabled`, `textColor`, `textFont`, `fontSize`, `maxTextSize`, `placeholder`, `placeholderColor`, `password`, `passwordChar`, `cursorIndex`, `cursorColor`, `selectionColor`, `cursorBlink`, `cursorWidth`; on the component: `keyboardType` (`InputFieldKeyboardType.EMAIL_ADDRESS`, ...: the phone keyboard), `characterLimit` (0 = none) | `getInputFieldComponent()`, `getTextObject()`, `setSelection(...)` |
 | `OnScreenStick` (Image) | `enabled`, `mode` (`OnScreenStickMode.*`), `background`, `handle` (entities), `handleRange`, `deadZone`, `moveThreshold`, `axes` (`OnScreenStickAxes.*`), `snapX`, `snapY`, `hideWhenReleased`, `clampToArea`, `horizontalAction`, `verticalAction`, `visibility`; ro `value` (Vector2, y up), `pressed`, `pointerId`; events `onValueChanged(x, y)`, `onPress`, `onRelease` | `getOnScreenStickComponent()` |
 | `OnScreenButton` (Image) | `enabled`, `action`, `value`, `pressWhenPointerEnters`, `releaseWhenPointerLeaves`, `visibility`; ro `pressed`; events `onPress`, `onRelease` | `getOnScreenButtonComponent()` |
 | `TouchArea` (Image) | `enabled`, `horizontalAction`, `verticalAction`, `sensitivity`, `invertX`, `invertY`, `visibility`; ro `delta` (this frame, canvas px), `pressed`, `pointerId`; event `onDrag(dx, dy)` | `getTouchAreaComponent()` |
@@ -3524,7 +3710,7 @@ file's own environment: a game script never sees it, and a game global named `Te
 | `ScrollbarType`, `ProgressbarType` | `VERTICAL`, `HORIZONTAL` |
 | `OnScreenStickMode` | `FIXED`, `FLOATING`, `DYNAMIC` |
 | `OnScreenStickAxes` | `BOTH`, `HORIZONTAL`, `VERTICAL` |
-| `OnScreenVisibility` | `ALWAYS`, `TOUCH_DEVICES_ONLY` |
+| `OnScreenVisibility` | `ALWAYS`, `TOUCH_DEVICES_ONLY`, `TOUCH_SCHEME` |
 | `ParticleEmitterShape` | `Box`, `Sphere`, `Hemisphere`, `Circle`, `Cone` |
 | `FogType` | `LINEAR`, `EXPONENTIAL`, `EXPONENTIALSQUARED`, `HEIGHT` |
 | `FogColorMode` | `COLOR`, `SKY` |

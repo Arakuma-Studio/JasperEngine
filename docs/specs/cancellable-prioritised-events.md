@@ -479,4 +479,22 @@ uint64_t add(Function function, uint64_t ownerKey, std::string tag, int32_t prio
 
 ## Deviations
 
-None yet.
+- **D9 has no dispatch serial.** The reused `CancelEventArgs` is marked ended when its invoke returns,
+  so a stored `e` fails with R10's second error between invokes; used inside a later invoke at the
+  same nesting depth it is that invoke's own (the same userdata), so a serial could not tell them
+  apart and is left out.
+- **`ev:cancel()` on a `CancellableEvent`** also raises, naming `e:cancel()` (R10 only names the plain
+  `Event` case; `cancel` is one method of both classes).
+- **C++ priorities are not range-checked**: R1's range is the Lua argument's; `subscribe` documents
+  `EventPriority::Min..Max` or `Monitor`.
+- **A `CancellableEvent` destroyed by its own listener** (as `Signal` allows) keeps its emit valid: the
+  live `CancelEventArgs` take over the monitor-error flag (`orphaned`), so R19's "once per event"
+  becomes once per pending emit for that case. The crash guard reports a failing listener as
+  `<name> listener` (the event has no tags).
+- **A nested invoke** goes over the listeners there were when the outermost invoke started, as
+  `SlotList` does: one added by a listener waits until the outermost invoke ends (with the snapshot
+  copy, an invoke nested after the add saw it). Every other R13 rule is unchanged.
+- **`CancellableEvent:invoke`** is bound again on the derived class so the Lua API data has its own
+  `---@nodiscard` entry; it checks for the exact class, which skips LuaBridge's walk up to `Event`'s
+  (the dispatch is the same and reads the event's kind). `__tostring` is bound again too: LuaBridge
+  does not inherit metamethods.

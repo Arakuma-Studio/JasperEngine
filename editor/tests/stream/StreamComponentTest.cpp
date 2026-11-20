@@ -74,6 +74,7 @@
 #include "component/WaterVolumeComponent.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterWakeComponent.h"
+#include "component/SimulationCullingComponent.h"
 #include "particles/ParticleEffectCodec.h"
 #include "reflect/Reflect.h"
 #include "component/ActionComponent.h"
@@ -217,6 +218,8 @@ STABLE(WaterVolumeComponent, WaterVolumeComponent, component.infinite = true; co
 STABLE(WaterExcluderComponent, WaterExcluderComponent, component.shape = WaterExcluderShape::SPHERE; component.center = Vector3(0.0f, 0.5f, 1.0f);
     component.size = Vector3(2.0f, 1.0f, 6.0f); component.enabled = false)
 STABLE(WaterWakeComponent, WaterWakeComponent, component.foam = 1.5f; component.waves = 0.25f; component.width = 2.0f; component.length = 7.0f)
+STABLE(SimulationCullingComponent, SimulationCullingComponent, component.simulationDistance = 80.0f; component.reducedRateDistance = 30.0f;
+    component.reducedUpdateInterval = 6; component.cullPhysics = false; component.simulateWhenVisible = false)
 STABLE(BuoyancyComponent, BuoyancyComponent, component.columns = BuoyancyColumns::CUSTOM;
     component.customPoints = {Vector3(-1.0f, 0.0f, -1.0f), Vector3(1.0f, 0.0f, 1.0f)}; component.volumeScale = 0.8f)
 #undef STABLE
@@ -242,6 +245,26 @@ TEST(StreamComponent, LightPhotometricFieldsRoundTrip){
     EXPECT_EQ(decoded.intensityUnit, LightUnit::CANDELA);
     EXPECT_TRUE(decoded.useColorTemperature);
     EXPECT_FLOAT_EQ(decoded.colorTemperature, 2700.0f);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// text-entry-gamepad-cursor-back-button R32: Is Menu and Gamepad Cursor are additive (OmitIfDefault):
+// an old document saves without them, set ones round-trip
+TEST(StreamComponent, UIDocumentMenuAndCursorRoundTrip){
+    UIDocumentComponent document{};
+    document.filename = "ui/menu.html";
+    const YAML::Node plain = reflect::encodeValue(ComponentType::UIDocumentComponent, &document);
+    EXPECT_FALSE(plain["isMenu"]) << "default: omitted";
+    EXPECT_FALSE(plain["gamepadCursor"]);
+    const UIDocumentComponent old = reflect::decodeValue<UIDocumentComponent>(ComponentType::UIDocumentComponent, plain);
+    EXPECT_FALSE(old.isMenu);
+    EXPECT_FALSE(old.gamepadCursor);
+
+    document.isMenu = true;
+    document.gamepadCursor = true;
+    const UIDocumentComponent decoded = roundTrip(ComponentType::UIDocumentComponent, document);
+    EXPECT_TRUE(decoded.isMenu);
+    EXPECT_TRUE(decoded.gamepadCursor);
     EXPECT_NO_ENGINE_ERRORS();
 }
 

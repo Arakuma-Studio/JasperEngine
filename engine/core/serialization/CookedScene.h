@@ -38,8 +38,9 @@ namespace jasperengine {
         constexpr char PREFAB_MAGIC[4] = {'J', 'P', 'F', 'B'};
         constexpr uint16_t FORMAT_MAJOR = 1;
         // 1: the scene settings' capsule shadows (S57); 2: the LOD cross-fade's (S54); 3: the default shaders'
-        // property values; 4: the planar reflections (water-reflections); 5: the Water Wakes' map (water-boats)
-        constexpr uint16_t FORMAT_MINOR = 5;
+        // property values; 4: the planar reflections (water-reflections); 5: the Water Wakes' map (water-boats);
+        // 6: game.json's buildProfile and defines (build-profiles: a reader of 5 would run a demo as the full game)
+        constexpr uint16_t FORMAT_MINOR = 6;
         constexpr size_t HEADER_BYTES = 28;
 
         // entity record flags

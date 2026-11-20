@@ -2646,7 +2646,7 @@ void PhysicsSystem::applyRigidbodyParameters(Entity entity, RigidbodyComponent& 
         const JPH::EMotionType motion = body_interface.GetMotionType(body.body);
         const BodyType live = motion == JPH::EMotionType::Dynamic ? BodyType::DYNAMIC
                             : (motion == JPH::EMotionType::Kinematic ? BodyType::KINEMATIC : BodyType::STATIC);
-        if (live != body.type && !body.hasPendingType){
+        if (live != body.type && !body.hasPendingType && !body.simulationFrozen){
             const BodyType wanted = body.type;
             body.type = live;
             setRigidbodyType(entity, body, wanted);
@@ -2713,6 +2713,13 @@ bool PhysicsSystem::setRigidbodyType(Entity entity, RigidbodyComponent& body, Bo
         return true;
     }
 
+    // frozen by Simulation Culling: the authored type changes now, the body at the thaw
+    if (body.simulationFrozen){
+        body.type = type;
+        body.hasPendingType = false;
+        return true;
+    }
+
     // the script takes over a body that was following its Transform (a kinematic body switched
     // to dynamic keeps the velocity the following gave it: a ragdoll inherits the motion)
     const BodyType previous = body.type;
@@ -2756,7 +2763,71 @@ bool PhysicsSystem::setRigidbodyType(Entity entity, RigidbodyComponent& body, Bo
     return true;
 }
 
+void PhysicsSystem::setSimulationFrozen3D(Entity entity, bool frozen){
+    RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
+    if (!body || body->simulationFrozen == frozen){
+        return;
+    }
+    // the bodies are Jolt's until the step ends
+    if (steppingWorld3D){
+        pendingFreezes3D.emplace_back(entity, frozen);
+        return;
+    }
+    const bool live = !body->body.IsInvalid();
+    JPH::BodyInterface& bodyInterface = getBodyInterface3D();
+    if (frozen){
+        body->frozenLinearVelocity = Vector3(0, 0, 0);
+        body->frozenAngularVelocity = Vector3(0, 0, 0);
+        body->frozenAwake = true;
+        if (live && body->type == BodyType::DYNAMIC){
+            const JPH::Vec3 linear = bodyInterface.GetLinearVelocity(body->body);
+            const JPH::Vec3 angular = bodyInterface.GetAngularVelocity(body->body);
+            body->frozenLinearVelocity = Vector3(linear.GetX(), linear.GetY(), linear.GetZ());
+            body->frozenAngularVelocity = Vector3(angular.GetX(), angular.GetY(), angular.GetZ());
+            body->frozenAwake = bodyInterface.IsActive(body->body);
+            // kinematic, not asleep or removed: whatever touches it, it stays put and in the broad
+            // phase (D10)
+            bodyInterface.SetMotionType(body->body, JPH::EMotionType::Kinematic, JPH::EActivation::DontActivate);
+            bodyInterface.SetLinearAndAngularVelocity(body->body, JPH::Vec3::sZero(), JPH::Vec3::sZero());
+        }
+        body->simulationFrozen = true;
+        return;
+    }
+    body->simulationFrozen = false;
+    if (!live){
+        return;
+    }
+    const JPH::EMotionType motion = bodyInterface.GetMotionType(body->body);
+    const BodyType liveType = motion == JPH::EMotionType::Dynamic ? BodyType::DYNAMIC
+                            : (motion == JPH::EMotionType::Kinematic ? BodyType::KINEMATIC : BodyType::STATIC);
+    if (body->type == BodyType::DYNAMIC){
+        // a Transform moved while it was kinematic does not lead it now
+        body->followingPosition = false;
+        body->followingRotation = false;
+        const bool added = bodyInterface.IsAdded(body->body);
+        bodyInterface.SetMotionType(body->body, JPH::EMotionType::Dynamic, added ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
+        const Vector3& linear = body->frozenLinearVelocity;
+        const Vector3& angular = body->frozenAngularVelocity;
+        bodyInterface.SetLinearAndAngularVelocity(body->body, JPH::Vec3(linear.x, linear.y, linear.z), JPH::Vec3(angular.x, angular.y, angular.z));
+        if (added){
+            bodyInterface.ActivateBody(body->body);
+        }
+    }else if (liveType != body->type){
+        // a type a script set while it was frozen
+        const BodyType wanted = body->type;
+        body->type = liveType;
+        setRigidbodyType(entity, *body, wanted);
+    }
+}
+
 void PhysicsSystem::applyPendingTypeChanges3D(){
+    if (!pendingFreezes3D.empty()){
+        std::vector<std::pair<Entity, bool>> freezes;
+        freezes.swap(pendingFreezes3D);
+        for (const auto& freeze : freezes){
+            setSimulationFrozen3D(freeze.first, freeze.second);
+        }
+    }
     if (pendingTypeChanges3D.empty()){
         return;
     }
@@ -2817,6 +2888,12 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& bod
         activation = JPH::EActivation::Activate;
     }
 
+    // a body made again while Simulation Culling holds it stays frozen
+    if (body.simulationFrozen && joltType == JPH::EMotionType::Dynamic){
+        joltType = JPH::EMotionType::Kinematic;
+        activation = JPH::EActivation::DontActivate;
+    }
+
     if (joltType != JPH::EMotionType::Static && shape && shape->MustBeStatic()){
         Log::warn("Rigidbody entity %u uses a static-only shape (Mesh/HeightField/Plane/...) and cannot be %s. Forcing body type to Static.",
                   entity,
@@ -2875,7 +2952,13 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& bod
     }
 
     // moved here from another scene (persistence): it goes on as it went there
-    if (body.hasPendingVelocity){
+    if (body.hasPendingVelocity && body.simulationFrozen){
+        // frozen: the velocities wait for the thaw
+        body.hasPendingVelocity = false;
+        body.frozenLinearVelocity = body.pendingLinearVelocity;
+        body.frozenAngularVelocity = body.pendingAngularVelocity;
+        body.frozenAwake = body.pendingAwake;
+    }else if (body.hasPendingVelocity){
         body.hasPendingVelocity = false;
         if (joltType != JPH::EMotionType::Static){
             settings.mLinearVelocity = JPH::Vec3(body.pendingLinearVelocity.x, body.pendingLinearVelocity.y, body.pendingLinearVelocity.z);
@@ -3047,7 +3130,8 @@ bool PhysicsSystem::loadRigidbody2D(Entity entity){
 
         if (body.type == BodyType::STATIC){
             bodyDef.type = b2_staticBody;
-        }else if (body.type == BodyType::KINEMATIC){
+        }else if (body.type == BodyType::KINEMATIC || body.simulationFrozen){
+            // a dynamic body made again while Simulation Culling holds it stays frozen
             bodyDef.type = b2_kinematicBody;
         }else{
             bodyDef.type = b2_dynamicBody;
@@ -3080,7 +3164,12 @@ bool PhysicsSystem::loadRigidbody2D(Entity entity){
 
         const bool synced = syncRigidbody2DColliders(entity, body, true);
         Rigidbody2DComponent& made = scene->getComponent<Rigidbody2DComponent>(entity);
-        if (made.hasPendingVelocity && b2Body_IsValid(made.body)){
+        if (made.hasPendingVelocity && made.simulationFrozen){
+            made.hasPendingVelocity = false;
+            made.frozenLinearVelocity = made.pendingLinearVelocity;
+            made.frozenAngularVelocity = made.pendingAngularVelocity;
+            made.frozenAwake = made.pendingAwake;
+        }else if (made.hasPendingVelocity && b2Body_IsValid(made.body)){
             // moved here from another scene (persistence): it goes on as it went there, its
             // mass known now that it has its colliders
             made.hasPendingVelocity = false;
@@ -4781,3 +4870,56 @@ WaterSample PhysicsSystem::sampleWater(const Vector3& point) const{
 float PhysicsSystem::sampleWaterHeight(float x, float z) const{
     return water->sampleHeight(x, z);
 }
+
+#ifdef JASPERENGINE_PHYSICS_2D
+void PhysicsSystem::setSimulationFrozen2D(Entity entity, bool frozen){
+    Rigidbody2DComponent* body = scene->findComponent<Rigidbody2DComponent>(entity);
+    if (!body || body->simulationFrozen == frozen){
+        return;
+    }
+    // Simulation Culling decides between steps (CullingSystem's update and frame start); a
+    // contact callback that instantiates waits for the next frame's evaluation
+    if (steppingWorld2D){
+        return;
+    }
+    const bool live = b2Body_IsValid(body->body);
+    if (frozen){
+        body->frozenLinearVelocity = Vector2::ZERO;
+        body->frozenAngularVelocity = 0.0f;
+        body->frozenAwake = true;
+        if (live && body->type == BodyType::DYNAMIC){
+            const b2Vec2 linear = b2Body_GetLinearVelocity(body->body);
+            body->frozenLinearVelocity = Vector2(linear.x, linear.y);
+            body->frozenAngularVelocity = b2Body_GetAngularVelocity(body->body);
+            body->frozenAwake = b2Body_IsAwake(body->body);
+            b2Body_SetType(body->body, b2_kinematicBody);
+            b2Body_SetLinearVelocity(body->body, b2Vec2_zero);
+            b2Body_SetAngularVelocity(body->body, 0.0f);
+        }
+        body->simulationFrozen = true;
+        return;
+    }
+    body->simulationFrozen = false;
+    if (!live){
+        return;
+    }
+    const b2BodyType wanted = body->type == BodyType::DYNAMIC ? b2_dynamicBody
+                            : (body->type == BodyType::KINEMATIC ? b2_kinematicBody : b2_staticBody);
+    if (b2Body_GetType(body->body) != wanted){
+        b2Body_SetType(body->body, wanted);
+    }
+    if (body->type == BodyType::DYNAMIC){
+        b2Body_SetLinearVelocity(body->body, {body->frozenLinearVelocity.x, body->frozenLinearVelocity.y});
+        b2Body_SetAngularVelocity(body->body, body->frozenAngularVelocity);
+        b2Body_SetAwake(body->body, true);
+    }
+}
+#else
+void PhysicsSystem::setSimulationFrozen2D(Entity, bool){
+}
+#endif
+
+#ifndef JASPERENGINE_PHYSICS_3D
+void PhysicsSystem::setSimulationFrozen3D(Entity, bool){
+}
+#endif

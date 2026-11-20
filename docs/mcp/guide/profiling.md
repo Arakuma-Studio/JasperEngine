@@ -27,6 +27,9 @@ Scene view), `"game"` or `"scene"` by name, or a view tag.
 (16.7 ms at 60 fps). `cpu_ms` is the main thread's work without presenting and waiting; `gpu_ms`
 is the game frame's GPU time while GPU timing runs.
 
+**Game frame rate on a device?** Run the player with `--perf-summary=<file>` and read it (the
+Performance summary of its gameplay; Lua `Performance` in Play, `get_frame_times.performance`).
+
 **Find the worst frame and why.** `capture_profile frames=120` then `get_cpu_profile
 capture_id=<id> frame=worst` (tree), `view=flat` (what costs most over every thread) and
 `view=threads` (are the job workers busy?). `filter` narrows rows by name.
@@ -72,6 +75,28 @@ draw the same image (compare two `screenshot`s).
 | `ineligible_frame_rect` | OUTLINE or OVERLAY on a mesh that is not a Sprite (MeshPolygon): use a Sprite |
 | `ineligible_pixel_snap_pivot` | a rotated UI element under a Pixel Perfect Camera |
 | `ineligible_*` | drawn alone: custom shader or a library one other than `library:sprite`, extra pass, IBL, skinning, lattice, Vertex Animation, LODs, more than one submesh, too many vertices, a render-target texture, a fake billboard, a Sprite Batch (it draws instanced) |
+
+## Culling
+
+**Are far enemies still simulating?** Read it, don't guess from a screenshot: `get_render_stats`
+returns `culling` while the playing scenes have a Culling Group or a Simulation Culling component
+(absent otherwise): `groups`, `spheres`, `visible`, `per_band`, `evaluate_ms` and `simulation`
+{`components`, `full`, `reduced`, `culled`, `ground_not_loaded`, `focuses`,
+`script_updates_skipped`, `transitions_deferred`}. One GameObject: `get_runtime_entity` lists its
+Simulation Culling with `state` (full, reduced, culled), `reason` (none, distance,
+ground_not_loaded) and `focusDistance`. The monitors `Culling spheres`, `Culling visible`,
+`Culling ms`, `Simulation culled` and `Script updates skipped` are in `get_frame_times`.
+
+**Show me what is culled:** `configure_game_view {culling_debug: true}`, then a Game view
+`screenshot`: green spheres simulate, yellow run at the reduced rate, red are culled by distance,
+grey by unloaded ground; cyan and dark blue are Culling Group spheres in and out of view; crosses
+are the focuses.
+
+Recipe, far enemies freeze over an unloaded tile: play, `set_runtime_property` the camera far from
+them, `wait` a frame, then `get_render_stats`: `culling.simulation.culled` counts them and
+`ground_not_loaded` those over Terrain World tiles that are not loaded. Ground that never loads
+means no Terrain World focus is near: a Simulation focus streams no terrain (pair
+`SimulationCulling.addFocus` with `TerrainWorld:addFocus`). Scripting: jasper://docs/scripting/culling-groups.
 
 ## Caveats
 

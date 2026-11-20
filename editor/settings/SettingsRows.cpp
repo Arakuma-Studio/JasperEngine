@@ -19,6 +19,7 @@
 #include "util/PlatformRules.h"
 #include "command/CommandHistory.h"
 #include "command/type/ShaderCreationSettingsCmd.h"
+#include "command/type/SaveGameSettingsCmd.h"
 #include "command/type/ShaderGlobalsCmd.h"
 #include "command/type/InputActionsCmd.h"
 #include "command/type/DebugSettingsCmd.h"
@@ -1053,6 +1054,32 @@ void addShaderCreationSettings(const std::function<void(Setting)>& add) {
     }
 }
 
+// Project Settings > Player > Saved Data: one MCP row per field of the reflection table
+// (editor/reflect/SaveGameReflect.cpp); a change is an undoable command
+void addSaveGameSettings(const std::function<void(Setting)>& add) {
+    for (const reflect::FieldDesc& field : reflect::saveGameSettingsStruct().fields) {
+        Setting s;
+        s.key = std::string("player.saved_data.") + (std::string(field.name) == "backups" ? "backups_kept" : "max_slot_size_mib");
+        s.type = "int";
+        s.description = std::string(field.tooltip ? field.tooltip : "") + " Undoable (undo scope project).";
+        const reflect::FieldDesc* desc = &field;
+        s.get = [desc](SettingsContext& ctx) {
+            SaveGameSettings settings = ctx.project()->getSaveGameSettings();
+            return Json(*static_cast<int*>(desc->ref(&settings)));
+        };
+        s.set = [desc](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+            SaveGameSettings settings = ctx.project()->getSaveGameSettings();
+            long long v;
+            if (!readInt(value, static_cast<long long>(desc->min), static_cast<long long>(desc->max), v, error)) return false;
+            *static_cast<int*>(desc->ref(&settings)) = static_cast<int>(v);
+            if (apply && settings != ctx.project()->getSaveGameSettings())
+                ctx.project()->getProjectCommandHistory()->addCommand(new SaveGameSettingsCmd(ctx.project(), settings));
+            return true;
+        };
+        add(s);
+    }
+}
+
 const DebugSettingsNames::SettingKey* debugSettingKey(const std::string& key) {
     for (const DebugSettingsNames::SettingKey& entry : DebugSettingsNames::settingKeys()) {
         if (key == entry.key) return &entry;
@@ -1223,6 +1250,8 @@ std::vector<Setting> mcpSettingsTable() {
         }
         add(boolField("player.keep_screen_on", "Initial Screen.sleepTimeout on Android/iOS: true = NeverSleep, false = the device setting.",
                       [](Project& p) -> bool& { return p.getPresentationSettings().keepScreenOn; }));
+        add(boolField("player.pause_on_focus_loss", "Engine.onPauseRequested(reason) fires on a focus loss, an app pause and the gamepad's disconnect while no Is Menu document shows.",
+                      [](Project& p) -> bool& { return p.getPresentationSettings().pauseOnFocusLoss; }));
         {
             Setting s;
             s.key = "player.target_frame_rate";
@@ -2517,8 +2546,9 @@ std::vector<Setting> mcpSettingsTable() {
             Setting s;
             s.key = "localization.languages";
             s.type = "list";
-            s.description = "BCP 47 language tags the game ships, in order (de, pt-BR, zh-Hant). Title Art bakes, fonts and translations "
-                            "of other languages are left out of builds (W-TITLE-LANGUAGE-DROPPED); [] ships every language.";
+            s.description = "BCP 47 language tags the game ships, in order (de, pt-BR, zh-Hant). String Table translations, bakes, fonts "
+                            "and translations of other languages are left out of builds (W-L10N-LANGUAGE-DROPPED, W-TITLE-LANGUAGE-DROPPED); "
+                            "[] ships every language.";
             s.get = [](SettingsContext& ctx) {
                 Json list = Json::array();
                 for (const std::string& code : ctx.project()->getLocalizationSettings().languages) list.push_back(code);
@@ -2558,6 +2588,48 @@ std::vector<Setting> mcpSettingsTable() {
                 const std::string code = value.get<std::string>();
                 if (!code.empty() && !TitleArtLanguage::isValid(code, &error)) return false;
                 if (apply) ctx.project()->getLocalizationSettings().defaultLanguage = TitleArtLanguage::canonicalize(code);
+                return true;
+            };
+            add(s);
+        }
+        // game-ui-localization.md R30: Remember Player Choice and Language Fonts
+        add(boolSetting("localization.remember_choice",
+                        "Localization.setLanguage's choice is remembered (UserSettings jasper.language) and comes before the device's languages at the next start.",
+                        [](Project& p) { return p.getLocalizationSettings().rememberChoice; },
+                        [](Project& p, bool v) { p.getLocalizationSettings().rememberChoice = v; }));
+        {
+            Setting s;
+            s.key = "localization.fonts";
+            s.type = "object";
+            s.description = "Fonts per language, {\"ja\": [\"fonts/NotoSansJP.ttf\"]}: an HTML text run in that language gets them before the other "
+                            "fallback faces, and a Text whose font is empty uses the first.";
+            s.get = [](SettingsContext& ctx) {
+                Json fonts = Json::object();
+                for (const auto& [code, list] : ctx.project()->getLocalizationSettings().fonts) fonts[code] = list;
+                return fonts;
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_object()) {
+                    error = "must be an object {language: [font paths]}";
+                    return false;
+                }
+                std::map<std::string, std::vector<std::string>> fonts;
+                for (auto it = value.begin(); it != value.end(); ++it) {
+                    if (!TitleArtLanguage::isValid(it.key(), &error)) return false;
+                    if (!it->is_array()) {
+                        error = "the fonts of " + it.key() + " must be a list of font paths";
+                        return false;
+                    }
+                    std::vector<std::string>& list = fonts[TitleArtLanguage::canonicalize(it.key())];
+                    for (const Json& path : *it) {
+                        if (!path.is_string() || path.get<std::string>().empty()) {
+                            error = "the fonts of " + it.key() + " must be a list of font paths";
+                            return false;
+                        }
+                        list.push_back(path.get<std::string>());
+                    }
+                }
+                if (apply) ctx.project()->getLocalizationSettings().fonts = std::move(fonts);
                 return true;
             };
             add(s);
@@ -2816,6 +2888,26 @@ std::vector<Setting> mcpSettingsTable() {
                   &PlayerCrashSettings::hangWatchdog);
         crashBool("player.crash.web_overlay", "Web: show \"The game stopped working. [Reload]\" after a crash.",
                   &PlayerCrashSettings::webCrashOverlay);
+        crashBool("player.crash.journal_engine_events", "The Gameplay Journal also records the engine's own events (scene loads, pause, focus...).",
+                  &PlayerCrashSettings::journalEngineEvents);
+        {
+            Setting s;
+            s.key = "player.crash.journal_kib";
+            s.type = "int";
+            s.description = "Gameplay Journal (Journal.log) memory in KiB, saved with crash, hang and user reports; 0 turns it off.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getPlayerCrash().journalKiB); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, 0, PlayerCrashSettings::maxJournalKiB, v, error)) return false;
+                if (apply) {
+                    PlayerCrashSettings crash = ctx.project()->getPlayerCrash();
+                    crash.journalKiB = static_cast<int>(v);
+                    ctx.project()->setPlayerCrash(crash);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
         {
             Setting s;
             s.key = "player.crash.hang_seconds";
@@ -3187,6 +3279,79 @@ std::vector<Setting> mcpSettingsTable() {
                 return true;
             };
             add(std::move(s));
+        }
+        // Input > Gamepad Cursor (GamepadCursor's project values)
+        {
+            auto cursorNumber = [&](const char* key, const char* description, double minimum, double maximum,
+                                    float GamepadCursorSettings::*field) {
+                Setting s;
+                s.key = std::string("input.gamepad_cursor.") + key;
+                s.type = "number";
+                s.description = description;
+                s.get = [field](SettingsContext& ctx) { return Json(ctx.project()->getGamepadCursorSettings().*field); };
+                s.set = [field, minimum, maximum](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    double v;
+                    if (!readNumber(value, minimum, maximum, v, error)) return false;
+                    if (apply) {
+                        GamepadCursorSettings settings = ctx.project()->getGamepadCursorSettings();
+                        settings.*field = static_cast<float>(v);
+                        ctx.project()->setGamepadCursorSettings(settings);
+                    }
+                    return true;
+                };
+                add(std::move(s));
+            };
+            cursorNumber("speed", "Gamepad cursor speed, canvas px/s at a 1080 px tall canvas.", 0.0, 100000.0, &GamepadCursorSettings::speed);
+            cursorNumber("acceleration_time", "Seconds from rest to full speed.", 0.0, 10.0, &GamepadCursorSettings::accelerationTime);
+            cursorNumber("slow_over_controls", "Speed factor over buttons, links and form controls (0..1).", 0.0, 1.0, &GamepadCursorSettings::slowOverControls);
+            cursorNumber("scroll_speed", "Right stick scroll, wheel lines/s.", 0.0, 1000.0, &GamepadCursorSettings::scrollSpeed);
+            cursorNumber("deadzone", "Radial stick deadzone (0..0.95).", 0.0, 0.95, &GamepadCursorSettings::deadzone);
+            cursorNumber("size", "Cursor size, CSS px.", 1.0, 512.0, &GamepadCursorSettings::size);
+            {
+                Setting s;
+                s.key = "input.gamepad_cursor.graphic";
+                s.type = "string";
+                s.description = "Cursor texture, assets-relative; \"\" = the built-in arrow.";
+                s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getGamepadCursorSettings().graphic); };
+                s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    std::string text;
+                    if (!readString(value, text, error)) return false;
+                    if (!text.empty() && !fs::exists(ctx.project()->getAssetsPath() / fs::path(text))) {
+                        error = "\"" + text + "\" is not a file in the assets folder";
+                        return false;
+                    }
+                    if (apply) {
+                        GamepadCursorSettings settings = ctx.project()->getGamepadCursorSettings();
+                        settings.graphic = text;
+                        ctx.project()->setGamepadCursorSettings(settings);
+                    }
+                    return true;
+                };
+                add(std::move(s));
+            }
+            {
+                Setting s;
+                s.key = "input.gamepad_cursor.hot_spot";
+                s.type = "list";
+                s.description = "[x, y] CSS px of the graphic on the cursor's point.";
+                s.get = [](SettingsContext& ctx) {
+                    const Vector2 hot = ctx.project()->getGamepadCursorSettings().hotSpot;
+                    return Json::array({hot.x, hot.y});
+                };
+                s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    if (!value.is_array() || value.size() != 2 || !value[0].is_number() || !value[1].is_number()) {
+                        error = "must be [x, y]";
+                        return false;
+                    }
+                    if (apply) {
+                        GamepadCursorSettings settings = ctx.project()->getGamepadCursorSettings();
+                        settings.hotSpot = Vector2(value[0].get<float>(), value[1].get<float>());
+                        ctx.project()->setGamepadCursorSettings(settings);
+                    }
+                    return true;
+                };
+                add(std::move(s));
+            }
         }
 
         // ---- audio (Project Settings > Audio)
@@ -4180,6 +4345,7 @@ std::vector<Setting> mcpSettingsTable() {
         };
         toolPreference("preferences.android_sdk_path", "androidSdk", "External Tools: the Android SDK of prebuilt Android builds (\"\" = ANDROID_HOME / ANDROID_SDK_ROOT).");
         toolPreference("preferences.jdk_path", "jdk", "External Tools: the JDK (keytool, jarsigner, java) of Android builds (\"\" = JAVA_HOME / PATH).");
+        toolPreference("preferences.adb_path", "adb", "External Tools: adb of Build And Run on Android devices (\"\" = the Android SDK's platform-tools, then PATH).");
         toolPreference("preferences.steamcmd_path", "steamcmd", "External Tools: SteamCMD for Steam uploads (\"\" = STEAMCMD_HOME / PATH).");
         toolPreference("preferences.rcodesign_path", "rcodesign", "External Tools: rcodesign, which signs macOS builds on any computer (\"\" = PATH).");
         // S44 §6.8: settings.yaml externalTools.aseprite.path
@@ -4261,6 +4427,7 @@ std::vector<Setting> mcpSettingsTable() {
         }
         // ---- graphics: shader creation (spec S32), from its reflection table
         addShaderCreationSettings(add);
+        addSaveGameSettings(add);
         // ---- quality: device tiers, LOD biases, thermal response; graphics: upload budget (S56)
         addDeviceSettings(add);
         return t;
@@ -4285,8 +4452,11 @@ const Placement placements[] = {
     {"player.default_orientation", "Player", "Resolution and Presentation", "Default Orientation", "orientation portrait landscape auto rotation android ios"},
     {"player.allowed_orientations", "Player", "Resolution and Presentation", "Allowed Orientations for Auto Rotation", "orientation rotation android ios"},
     {"player.keep_screen_on", "Player", "Resolution and Presentation", "Keep Screen On", "sleep timeout screen on"},
+    {"player.pause_on_focus_loss", "Player", "Resolution and Presentation", "Pause On Focus Loss", "pause menu focus lost background onPauseRequested"},
     {"player.target_frame_rate", "Player", "Resolution and Presentation", "Target Frame Rate", "fps frame rate"},
     {"player.allow_insecure_http", "Player", "Other Settings", "Allow Insecure HTTP", "http cleartext network"},
+    {"player.saved_data.backups_kept", "Player", "Saved Data", "Backups Kept", "save game slots backups generations recovery"},
+    {"player.saved_data.max_slot_size_mib", "Player", "Saved Data", "Max Slot Size (MiB)", "save game slots size cap too large"},
     {"player.window_icon", "Player", "Icon", "Default Icon", "icon window taskbar"},
     {"player.window_mode", "Player", "Resolution and Presentation", "Fullscreen Mode", "window mode windowed maximized"},
     {"player.window_width", "Player", "Resolution and Presentation", "Default Screen Width", "window resolution"},
@@ -4460,6 +4630,14 @@ const Placement placements[] = {
     {"voxel.ignore_dimension_limits", "Voxels", "", "Ignore Dimension Limits", "voxel volume export oversize"},
     {"input.actions", "Input", "", "Default Actions Asset", "input actions bindings controls keyboard gamepad touch inputactions"},
     {"input.deadzone", "Input", "", "Default Deadzone", "input stick axis analog gamepad dead zone"},
+    {"input.gamepad_cursor.speed", "Input", "Gamepad Cursor", "Cursor Speed", "gamepad cursor pointer virtual mouse stick speed"},
+    {"input.gamepad_cursor.acceleration_time", "Input", "Gamepad Cursor", "Acceleration Time", "gamepad cursor pointer acceleration ramp"},
+    {"input.gamepad_cursor.slow_over_controls", "Input", "Gamepad Cursor", "Slow Over Controls", "gamepad cursor pointer slow buttons aim"},
+    {"input.gamepad_cursor.scroll_speed", "Input", "Gamepad Cursor", "Scroll Speed", "gamepad cursor right stick scroll wheel"},
+    {"input.gamepad_cursor.deadzone", "Input", "Gamepad Cursor", "Deadzone", "gamepad cursor stick dead zone"},
+    {"input.gamepad_cursor.graphic", "Input", "Gamepad Cursor", "Cursor Graphic", "gamepad cursor texture image arrow"},
+    {"input.gamepad_cursor.size", "Input", "Gamepad Cursor", "Cursor Size", "gamepad cursor size pixels"},
+    {"input.gamepad_cursor.hot_spot", "Input", "Gamepad Cursor", "Cursor Hot Spot", "gamepad cursor hotspot point offset"},
     {"input.manager_actions", "Input", "Input Manager", "Input Manager", "input manager virtual axes buttons horizontal vertical jump fire gravity sensitivity unity"},
     // Project Settings > Pixel Art (S43 R4b; S42's Pixel Art page joins it)
     {"palettes.default", "Pixel Art", "", "Default Palette", "palette colours colors swatches snap lospec apply palette sweetie pico"},
@@ -4561,6 +4739,7 @@ const Placement placements[] = {
     {"preferences.ffmpeg_path", "External Tools", "Video Import", "FFmpeg", "video av1"},
     {"preferences.android_sdk_path", "External Tools", "Shipping", "Android SDK", "android sdk aapt2 apksigner build-tools"},
     {"preferences.jdk_path", "External Tools", "Shipping", "JDK", "java keytool jarsigner"},
+    {"preferences.adb_path", "External Tools", "Shipping", "adb", "android device emulator run device platform-tools"},
     {"preferences.steamcmd_path", "External Tools", "Shipping", "SteamCMD", "steam upload steampipe"},
     {"preferences.rcodesign_path", "External Tools", "Shipping", "rcodesign", "macos signing codesign"},
     {"preferences.aseprite_path", "External Tools", "Aseprite", "Aseprite", "aseprite pixel art sprite editor executable"},

@@ -515,6 +515,16 @@ void editor::CommandRunner::cancel() {
     terminateCurrentProcess();
 }
 
+long editor::CommandRunner::processId() {
+#ifdef _WIN32
+    std::lock_guard<std::mutex> lock(processHandleMutex);
+    return currentProcessHandle ? static_cast<long>(GetProcessId(static_cast<HANDLE>(currentProcessHandle))) : 0;
+#else
+    std::lock_guard<std::mutex> lock(processPidMutex);
+    return static_cast<long>(currentProcessPid);
+#endif
+}
+
 bool editor::CommandRunner::isCancelRequested() const {
     return cancelRequested.load(std::memory_order_relaxed);
 }
@@ -700,9 +710,17 @@ bool editor::CommandRunner::runArgs(const std::vector<std::string>& args, const 
 }
 
 std::string editor::CommandRunner::capture(const std::vector<std::string>& argv, int timeoutMs) {
+    std::string output;
+    if (captureResult(argv, output, timeoutMs) != 0) return "";
+    while (!output.empty() && (output.back() == '\n' || output.back() == '\r' || output.back() == ' '))
+        output.pop_back();
+    return output;
+}
+
+int editor::CommandRunner::captureResult(const std::vector<std::string>& argv, std::string& output, int timeoutMs, const Environment* environment) {
     CommandRunner runner;
     runner.quiet = true;
-    std::string output;
+    output.clear();
 
     // timeoutMs > 0: a watchdog cancels the run (terminating the process) when it is still going
     std::mutex doneMutex;
@@ -718,10 +736,10 @@ std::string editor::CommandRunner::capture(const std::vector<std::string>& argv,
             }
         });
     }
-    const bool ok = runner.run(argv, fs::path(), [&output](const std::string& line) {
+    runner.run(argv, fs::path(), [&output](const std::string& line) {
         output += line;
         output.push_back('\n');
-    });
+    }, environment);
     if (watchdog.joinable()) {
         {
             std::lock_guard<std::mutex> lock(doneMutex);
@@ -730,10 +748,8 @@ std::string editor::CommandRunner::capture(const std::vector<std::string>& argv,
         doneSignal.notify_all();
         watchdog.join();
     }
-    if (!ok || runner.isCancelRequested()) return "";
-    while (!output.empty() && (output.back() == '\n' || output.back() == '\r' || output.back() == ' '))
-        output.pop_back();
-    return output;
+    if (runner.isCancelRequested()) return -1;
+    return runner.lastExitCode;
 }
 
 bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::path& workingDir, const std::function<void(const std::string&)>& onLine,
