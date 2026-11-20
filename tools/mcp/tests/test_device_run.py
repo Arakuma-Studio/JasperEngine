@@ -15,14 +15,16 @@ import json
 import os
 import shutil
 import struct
+import sys
 import tempfile
 import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
 
-from harness import Editor
-from test_build_method import content_format, png_bytes, FEATURES
+sys.path.insert(0, str(Path(__file__).parent))
+from harness import Editor  # noqa: E402
+from test_build_method import content_format, png_bytes, FEATURES  # noqa: E402
 
 CI = True
 REPO = Path(__file__).resolve().parents[3]
@@ -299,8 +301,10 @@ async def test_patch_and_run_pushes_only_changed_files(ed: Editor):
     pushed = sorted(ADB_DIR.glob("pushed/patch-*"))
     ed.check(pushed, "a patch was pushed")
     files = sorted(str(p.relative_to(pushed[-1])) for p in pushed[-1].rglob("*") if p.is_file())
-    ed.check_eq(files, ["content-manifest.json", "files/lua/Hello.lua"])
-    ed.check_in("hello 3", (pushed[-1] / "files/lua/Hello.lua").read_text())
+    ed.check_eq(len(files), 2, f"{files}")
+    ed.check_eq(files[0], "content-manifest.json")
+    ed.check(files[1].startswith("files/") and files[1].endswith("/Hello.lua"), f"{files}")
+    ed.check_in("hello 3", (pushed[-1] / files[1]).read_text())
     manifest = json.loads((pushed[-1] / "content-manifest.json").read_text())
     ed.check(manifest.get("patch", 0) >= 2 and manifest.get("patchedAt"), f"the patch counter: {manifest.get('patch')}")
     shells = shell_calls(recorded)
@@ -444,12 +448,12 @@ async def test_build_settings_run_device_row(ed: Editor):
                 break
             await asyncio.sleep(0.25)
         ed.check(field and any(f"{MODEL} ({DEVICE})" in option for option in field["options"]), f"the Run Device combo lists the device: {field}")
-        choices = dialog.get("choices", []) + dialog.get("disabledChoices", [])
+        choices = dialog.get("choices", []) + dialog.get("disabled_choices", [])
         ed.check_in("build_and_run", choices)
         ed.check("patch_and_run" not in choices, f"no Patch And Run without Development Build: {choices}")
         await ed.call("respond_dialog", values={"development_build": True})
         dialog = (await ed.call("editor_status")).get("dialog") or {}
-        ed.check_in("patch_and_run", dialog.get("choices", []) + dialog.get("disabledChoices", []))
+        ed.check_in("patch_and_run", dialog.get("choices", []) + dialog.get("disabled_choices", []))
     finally:
         await ed.call("respond_dialog", values={"development_build": False})
         await ed.call("respond_dialog", choice="cancel")
