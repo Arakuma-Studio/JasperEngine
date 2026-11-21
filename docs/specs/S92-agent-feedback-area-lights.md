@@ -329,3 +329,8 @@ PR-body checks. Nothing here touches the do-not-copy list in `README.md`.
 - **W8, R43 old editors:** an editor without `area` reads the type as an unknown enum value: the
   value is kept with the component (`StreamPreserved`, "kept by S03") and the light loads as
   Directional, the enum's fallback; inferred from the code, not run.
+- **W8, R40 bind limits:** a variant the light profiles texture would take past 16 fragment textures
+  or samplers (on GLES3, a material with every extended lobe and its maps, shadows, IBL and the spot
+  masks left out already) is built without it (`LIGHT_PROFILES_OFF`, a `light-profiles-left-out`
+  build line): its IES lights draw with their cones and its Area Lights with the representative
+  point. Elsewhere the profiles share the spot masks' sampler.
