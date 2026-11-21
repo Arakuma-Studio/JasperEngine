@@ -959,16 +959,17 @@ void LuaBinding::init(){
         chunk = lua_reload::chunkName("lua/main.lua");
     }
 
+    // A main.lua that fails is logged and the game runs on with what it defined before the error.
+    // The state stays open: closing it here left luastate pointing at a freed state, which every
+    // later script, binding and frame then used (a crash on desktop, a hung web page).
     if (luaL_loadbuffer(L,(const char*)filedata.getMemPtr(),filedata.length(), chunk.c_str()) == 0){
         if(pcallWithTraceback(L, 0, LUA_MULTRET) != 0){
             logLuaError("Lua Error: %s", getLuaStackErrorString(L, -1).c_str());
             lua_pop(L, 1);
-            lua_close(L);
         }
     }else{
         logLuaError("Lua Error: %s", getLuaStackErrorString(L, -1).c_str());
         lua_pop(L, 1);
-        lua_close(L);
     }
 
 }
