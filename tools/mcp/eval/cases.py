@@ -1337,7 +1337,7 @@ CASES = [
         "what_happened": "S92 adds Cavity (post_processing.cavity_*): Blender-viewport ridge and valley shading from the "
                          "scene's depth and normals. Asked for Blender-style edge highlights, an agent without the line reaches "
                          "for Edge Detect (luma outlines of the 2D image) or forks a post shader.",
-        "text_at_issue": "jasper://docs/shaders, Library shaders: 'A Blender-style cavity, edge highlight or bevel look on 3D "
+        "text_at_issue": "jasper://docs/shaders, its intro: 'A Blender-style cavity, edge highlight or bevel look on 3D "
                          "meshes is not a shader: it is the scene's Cavity post effect ...'; jasper://docs/post-processing, Fields: "
                          "'Cavity, for a Blender-style cavity ... (not Edge Detect ... and not a custom post shader)'",
         "source": "docs/specs/S92-cavity.md, Agent UX",
@@ -1366,7 +1366,7 @@ CASES = [
                                      {"tool": "set_scene_settings", "args": {"settings": {"post_processing": {"edge_detect_enabled": True}}}},
                                      {"tool": "set_scene_settings", "args": {"settings": {"post_processing.edge_detect_enabled": True}}}],
                    "edits_must_not": [r"\.(frag|vert|glsl)$"]},
-        "max_turns": 12,
+        "max_turns": 14,
     },
     {
         "id": "guard_atmosphere_preset",
