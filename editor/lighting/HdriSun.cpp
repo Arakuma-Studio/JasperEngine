@@ -367,12 +367,18 @@ bool viewsOf(float* rgba, int width, int height, bool cube, std::vector<SkyImage
             tileW = width / 4;
             tileH = height / 3;
             const int horizontal[6][2] = {{2, 1}, {0, 1}, {1, 0}, {1, 2}, {1, 1}, {3, 1}};
-            std::copy(&horizontal[0][0], &horizontal[0][0] + 12, &tiles[0][0]);
+            for (int f = 0; f < 6; f++){
+                tiles[f][0] = horizontal[f][0];
+                tiles[f][1] = horizontal[f][1];
+            }
         }else if (ratio == 75){
             tileW = width / 3;
             tileH = height / 4;
             const int vertical[6][2] = {{2, 1}, {0, 1}, {1, 0}, {1, 2}, {1, 1}, {1, 3}};
-            std::copy(&vertical[0][0], &vertical[0][0] + 12, &tiles[0][0]);
+            for (int f = 0; f < 6; f++){
+                tiles[f][0] = vertical[f][0];
+                tiles[f][1] = vertical[f][1];
+            }
         }else{
             return false;
         }
