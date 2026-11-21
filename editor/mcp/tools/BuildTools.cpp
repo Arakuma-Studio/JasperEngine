@@ -2970,20 +2970,19 @@ void registerBuildTools(McpRegistry& registry) {
         tool.title = "Run Build";
         tool.description =
             "Run the last build `seconds` here or on a device (get_build_info devices), screenshot it, stop it. input: "
-            "send_input events (desktop Linux/X11); input_script: a .input.json run by the engine (any desktop, headless). "
-            "screenshots_at: seconds since launch.";
+            "send_input events (Linux/X11); input_script: a .input.json, any desktop, headless.";
         tool.inputSchema = object({
-            {"path", string("Default: last build.")},
+            {"path", string("")},
             {"device", string("")},
             {"keep_running", withDefault(boolean(""), false)},
             {"seconds", number("Default 5.", 0.5, 300)},
             {"input", Json{{"type", "array"}, {"maxItems", 500}, {"items", anyObject("")}}},
             {"input_delay_seconds", withDefault(number("", 0, 120), 1)},
-            {"input_script", string("Returns its shots.")},
-            {"resolutions", array(stringItem, "WxH: a launch each.")},
+            {"input_script", string("")},
+            {"resolutions", array(stringItem, "")},
             {"space", withDefault(stringEnum("", {"window", "normalized"}), "window")},
             {"gap_ms", withDefault(number("", 0, 10000), 50)},
-            {"screenshots_at", array(number(""), "")},
+            {"screenshots_at", array(number(""), "Seconds since launch.")},
             {"screenshot", boolean("")},
             {"screenshot_after_seconds", number("")},
             {"max_width", withDefault(integer("", 64, 4096), 1280)},

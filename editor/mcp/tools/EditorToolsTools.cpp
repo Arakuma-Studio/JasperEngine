@@ -782,22 +782,22 @@ void registerEditorToolsTools(McpRegistry& registry) {
         tool.name = "record_game";
         tool.title = "Record Game";
         tool.description =
-            "The Recorder as a job: enters Play when needed and records frames start_frame.. of the Game view at a fixed fps "
-            "(game time k/fps per frame, deterministic) to a PNG sequence or an MP4 (H.264) / MOV (ProRes) through the user's FFmpeg. "
-            "Returns the sidecar (frames, fps, size, encoder, warnings, wallSeconds) and the files or movie. cancel_job stops and finalises. "
-            "input: replay a .input.json in a session of its own per run; shots: only its shot steps' frames.";
+            "The Recorder as a job: enters Play when needed and records the Game view from start_frame at a fixed fps "
+            "(deterministic game time) to a PNG sequence or an MP4 (H.264) / MOV (ProRes) through the user's FFmpeg. "
+            "Returns the sidecar and the files or movie; cancel_job stops and finalises. "
+            "input: replays a .input.json, a new session per run; shots: only its shot steps.";
         tool.inputSchema = object({
             {"frames", integer("Frames to record.", 1, 100000)},
             {"seconds", number("Or game seconds (frames = seconds x fps).")},
             {"start_frame", withDefault(integer("Frame 0: Play's first.", 0, 1000000), 0)},
             {"fps", withDefault(integer("", 1, 240), 30)},
-            {"width", integer("Default: the Recorder's resolution.", 16, 8192)},
+            {"width", integer("Default: the Recorder's.", 16, 8192)},
             {"height", integer("", 16, 8192)},
             {"format", withDefault(stringEnum("", {"png", "mp4", "mov", "shots"}), "png")},
             {"input", string("")},
-            {"resolutions", array(Json{{"type", "string"}}, "WxH: a run each, into output/WxH/.")},
+            {"resolutions", array(Json{{"type", "string"}}, "A run per WxH.")},
             {"quality", withDefault(stringEnum("", {"low", "medium", "high"}), "high")},
-            {"audio", withDefault(boolean("Movies; mixed offline from Play's start."), false)},
+            {"audio", withDefault(boolean("Movies; from Play's start."), false)},
             {"output", string("png: a folder; movie: a file. Default Recordings/.")},
             {"exit_play", withDefault(boolean(""), true)},
             {"wait", withDefault(boolean(""), true)},
