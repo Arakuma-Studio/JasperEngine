@@ -21,6 +21,7 @@
 #include <span>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace jasperengine {
@@ -114,10 +115,11 @@ namespace jasperengine::editor::framechecks {
     // face the same way and overlap by more than `tolerance` inside it
     bool coplanarOverlap(const Triangle& a, const Triangle& b, float tolerance);
 
-    // One mesh's faces near a region, bucketed by plane: the dominant axis and side of the normal,
-    // a grid cell across that axis, and the plane's height along the axis at the cell's centre. A
-    // face of another mesh is tested only against the faces that can share its plane there; faces
-    // spanning too many cells are kept apart and tested against every face of their side.
+    // One mesh's faces near a region, bucketed by plane: the dominant axis and side of the normal
+    // and a grid cell across that axis, each entry with the plane's height along the axis at the
+    // cell's centre. A face of another mesh is tested only against the faces of its cells whose
+    // height is close to its own there; faces spanning too many cells are kept apart and tested
+    // against every face of their side.
     class PlaneBuckets {
     public:
         // origin, radius: the region the faces come from (a pair's overlapping bounds)
@@ -134,29 +136,36 @@ namespace jasperengine::editor::framechecks {
             Vector3 normal;
             float distance = 0.0f;  // of its plane from the origin
         };
-        struct Key {
+        struct Cell {
             int group = 0;
             int32_t x = 0;
             int32_t y = 0;
-            int64_t height = 0;
-            bool operator==(const Key& other) const {
-                return group == other.group && x == other.x && y == other.y && height == other.height;
-            }
+            bool operator==(const Cell& other) const { return group == other.group && x == other.x && y == other.y; }
         };
-        struct KeyHash {
-            size_t operator()(const Key& key) const;
+        struct CellHash {
+            size_t operator()(const Cell& cell) const;
+        };
+        struct Entry {
+            uint32_t face = 0;
+            float height = 0.0f;
         };
         float tolerance;
         Vector3 origin;
         float radius;
         float cellSize = 1.0f;     // the grid across the axis
-        float heightSize = 1.0f;   // the height buckets
+        float heightSlack = 1.0f;  // the most two faces that meet in a cell differ in height there
         std::vector<Face> faces;
-        std::unordered_map<Key, std::vector<uint32_t>, KeyHash> buckets;
+        // a cell's entries: [first, first + count) of `entries`
+        std::unordered_map<Cell, std::pair<uint32_t, uint32_t>, CellHash> cells;
+        std::vector<Entry> entries;
         std::vector<uint32_t> wide[6];
+        // a face's last query, so a face met in several cells is tested once
+        mutable std::vector<uint32_t> testedBy;
+        mutable uint32_t queries = 0;
         // the cells a face covers across `axis`, false when they are too many
         bool cellsOf(const Triangle& triangle, int axis, int32_t& x0, int32_t& y0, int32_t& x1, int32_t& y1) const;
-        int64_t heightBucket(const Vector3& normal, float distance, int axis, int32_t x, int32_t y) const;
+        float heightAt(const Vector3& normal, float distance, int axis, int32_t x, int32_t y) const;
+        bool test(uint32_t face, const Triangle& triangle, const Vector3& normal) const;
     };
 
     // Where a world box lands in a view (NDC [-1, 1]): the share of its projected rectangle outside

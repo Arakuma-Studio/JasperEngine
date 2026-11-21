@@ -704,11 +704,10 @@ namespace {
     }
 }
 
-size_t PlaneBuckets::KeyHash::operator()(const Key& key) const{
-    uint64_t h = (uint64_t)(uint32_t)key.group * 0x9E3779B97F4A7C15ull;
-    h ^= (uint64_t)(uint32_t)key.x + 0x9E3779B97F4A7C15ull + (h << 6) + (h >> 2);
-    h ^= (uint64_t)(uint32_t)key.y + 0x9E3779B97F4A7C15ull + (h << 6) + (h >> 2);
-    h ^= (uint64_t)key.height + 0x9E3779B97F4A7C15ull + (h << 6) + (h >> 2);
+size_t PlaneBuckets::CellHash::operator()(const Cell& cell) const{
+    uint64_t h = (uint64_t)(uint32_t)cell.group * 0x9E3779B97F4A7C15ull;
+    h ^= (uint64_t)(uint32_t)cell.x + 0x9E3779B97F4A7C15ull + (h << 6) + (h >> 2);
+    h ^= (uint64_t)(uint32_t)cell.y + 0x9E3779B97F4A7C15ull + (h << 6) + (h >> 2);
     return (size_t)h;
 }
 
@@ -727,18 +726,31 @@ bool PlaneBuckets::cellsOf(const Triangle& triangle, int axis, int32_t& x0, int3
     return ((int64_t)x1 - x0 + 1) * ((int64_t)y1 - y0 + 1) <= MAX_FACE_CELLS;
 }
 
-int64_t PlaneBuckets::heightBucket(const Vector3& normal, float distance, int axis, int32_t x, int32_t y) const{
+float PlaneBuckets::heightAt(const Vector3& normal, float distance, int axis, int32_t x, int32_t y) const{
     unsigned u, v;
     acrossAxes(axis, u, v);
     // where the plane crosses the cell's centre line along the axis
     const float cu = ((float)x + 0.5f) * cellSize, cv = ((float)y + 0.5f) * cellSize;
-    const float height = (distance - normal[u] * cu - normal[v] * cv) / normal[(unsigned)axis];
-    return (int64_t)std::floor(std::clamp(height / heightSize, -1.0e15f, 1.0e15f));
+    return (distance - normal[u] * cu - normal[v] * cv) / normal[(unsigned)axis];
+}
+
+bool PlaneBuckets::test(uint32_t face, const Triangle& triangle, const Vector3& normal) const{
+    if (testedBy[face] == queries){
+        return false;
+    }
+    testedBy[face] = queries;
+    // the cheap rejections first: facing, then the plane distance of one corner
+    const Face& candidate = faces[face];
+    if (candidate.normal.dotProduct(normal) < COPLANAR_COS){
+        return false;
+    }
+    return coplanarOverlap(candidate.triangle, triangle, tolerance);
 }
 
 void PlaneBuckets::build(std::span<const Triangle> triangles){
     faces.clear();
-    buckets.clear();
+    cells.clear();
+    entries.clear();
     for (std::vector<uint32_t>& list : wide) list.clear();
     faces.reserve(triangles.size());
     for (const Triangle& triangle : triangles){
@@ -748,12 +760,20 @@ void PlaneBuckets::build(std::span<const Triangle> triangles){
         face.distance = face.normal.dotProduct(triangle.a - origin);
         faces.push_back(face);
     }
+    testedBy.assign(faces.size(), 0u);
+    queries = 0;
     // about one face per cell; two faces that meet within tolerance at a point of a cell have plane
     // heights at its centre that differ by under 1.8 tolerance (the axis is at least 1/sqrt(3) of a
     // unit normal) plus their slopes' difference (under 0.05 for normals COPLANAR_COS apart) times
-    // the 0.71 cells to the centre: a face's height bucket and the two beside it hold them all
+    // the 0.71 cells to the centre
     cellSize = std::max(4.0f * tolerance, 2.0f * radius / std::max(1.0f, std::sqrt((float)faces.size())));
-    heightSize = 2.0f * tolerance + 0.04f * cellSize;
+    heightSlack = 2.0f * tolerance + 0.04f * cellSize;
+    struct Item {
+        Cell cell;
+        Entry entry;
+    };
+    std::vector<Item> items;
+    items.reserve(faces.size() * 4);
     for (uint32_t index = 0; index < (uint32_t)faces.size(); index++){
         const Face& face = faces[index];
         const int axis = dominantAxis(face.normal);
@@ -765,9 +785,24 @@ void PlaneBuckets::build(std::span<const Triangle> triangles){
         }
         for (int32_t x = x0; x <= x1; x++){
             for (int32_t y = y0; y <= y1; y++){
-                buckets[Key{group, x, y, heightBucket(face.normal, face.distance, axis, x, y)}].push_back(index);
+                items.push_back({Cell{group, x, y}, Entry{index, heightAt(face.normal, face.distance, axis, x, y)}});
             }
         }
+    }
+    // one flat array, a cell's entries side by side
+    std::sort(items.begin(), items.end(), [](const Item& a, const Item& b){
+        if (a.cell.group != b.cell.group) return a.cell.group < b.cell.group;
+        if (a.cell.x != b.cell.x) return a.cell.x < b.cell.x;
+        return a.cell.y < b.cell.y;
+    });
+    entries.reserve(items.size());
+    cells.reserve(items.size());
+    for (size_t i = 0; i < items.size(); i++){
+        if (i == 0 || !(items[i].cell == items[i - 1].cell)){
+            cells[items[i].cell] = {(uint32_t)entries.size(), 0u};
+        }
+        cells[items[i].cell].second++;
+        entries.push_back(items[i].entry);
     }
 }
 
@@ -776,6 +811,11 @@ int PlaneBuckets::findOverlap(const Triangle& triangle) const{
     if (faces.empty() || !facePlane(triangle, normal)){
         return -1;
     }
+    if (++queries == 0){
+        // the stamps wrapped: start them again
+        std::fill(testedBy.begin(), testedBy.end(), 0u);
+        queries = 1;
+    }
     const float distance = normal.dotProduct(triangle.a - origin);
     const float largest = std::max(std::fabs(normal.x), std::max(std::fabs(normal.y), std::fabs(normal.z)));
     for (int axis = 0; axis < 3; axis++){
@@ -783,29 +823,26 @@ int PlaneBuckets::findOverlap(const Triangle& triangle) const{
         if (std::fabs(normal[(unsigned)axis]) < largest - AXIS_MARGIN) continue;
         const int group = sideGroup(normal, axis);
         for (uint32_t index : wide[group]){
-            if (coplanarOverlap(faces[index].triangle, triangle, tolerance)) return (int)index;
+            if (test(index, triangle, normal)) return (int)index;
         }
         int32_t x0, y0, x1, y1;
-        const bool fits = cellsOf(triangle, axis, x0, y0, x1, y1);
-        if (!fits){
+        if (!cellsOf(triangle, axis, x0, y0, x1, y1)){
             // a wide face of its own: every face of the side
-            for (const auto& bucket : buckets){
-                if (bucket.first.group != group) continue;
-                for (uint32_t index : bucket.second){
-                    if (coplanarOverlap(faces[index].triangle, triangle, tolerance)) return (int)index;
-                }
+            for (const Entry& entry : entries){
+                if (sideGroup(faces[entry.face].normal, dominantAxis(faces[entry.face].normal)) != group) continue;
+                if (test(entry.face, triangle, normal)) return (int)entry.face;
             }
             continue;
         }
         for (int32_t x = x0; x <= x1; x++){
             for (int32_t y = y0; y <= y1; y++){
-                const int64_t height = heightBucket(normal, distance, axis, x, y);
-                for (int64_t h = height - 1; h <= height + 1; h++){
-                    const auto found = buckets.find(Key{group, x, y, h});
-                    if (found == buckets.end()) continue;
-                    for (uint32_t index : found->second){
-                        if (coplanarOverlap(faces[index].triangle, triangle, tolerance)) return (int)index;
-                    }
+                const auto found = cells.find(Cell{group, x, y});
+                if (found == cells.end()) continue;
+                const float height = heightAt(normal, distance, axis, x, y);
+                for (uint32_t i = found->second.first; i < found->second.first + found->second.second; i++){
+                    const Entry& entry = entries[i];
+                    if (std::fabs(entry.height - height) > heightSlack) continue;
+                    if (test(entry.face, triangle, normal)) return (int)entry.face;
                 }
             }
         }
