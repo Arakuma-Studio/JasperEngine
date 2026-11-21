@@ -117,7 +117,9 @@ void editor::InspectorWindow::drawIesProfileAsset(const fs::path& asset){
     const float plotSize = std::min(ImGui::GetContentRegionAvail().x, 18.0f * ImGui::GetFontSize());
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, (ImGui::GetContentRegionAvail().x - plotSize) * 0.5f));
     drawIesPolarPlot(profile, plotSize);
-    ImGui::TextDisabled("Candela by vertical angle (0 down the light's forward axis), relative to the peak: C0-C180 orange, C90-C270 blue.");
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::TextWrapped("Candela by vertical angle (0 down the light's forward axis), relative to the peak: C0-C180 orange, C90-C270 blue.");
+    ImGui::PopStyleColor();
 
     if (ImGui::BeginTable("##ies_metadata", 2, ImGuiTableFlags_SizingStretchProp)){
         char number[64];
@@ -136,5 +138,7 @@ void editor::InspectorWindow::drawIesProfileAsset(const fs::path& asset){
         iesRow("Angles", number);
         ImGui::EndTable();
     }
-    ImGui::TextDisabled("A Spot or Point Light's IES Profile shapes it; its Intensity stays the peak.");
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::TextWrapped("A Spot or Point Light's IES Profile shapes it; its Intensity stays the peak.");
+    ImGui::PopStyleColor();
 }
