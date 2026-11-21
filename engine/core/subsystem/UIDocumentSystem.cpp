@@ -81,6 +81,7 @@ void UIDocumentSystem::destroyContext(){
     inputState.reset();
     // the context's documents go: the cursor overlay with them
     cursorOverlay = nullptr;
+    cursorOverlayImage = nullptr;
     cursorOverlayGraphic.clear();
     cursorOverlayLook[0] = -1.0f;
     if (!menuEntities.empty() || !cursorEntities.empty()){

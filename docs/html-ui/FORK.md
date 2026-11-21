@@ -787,6 +787,12 @@ R26: a focused text field left idle costs no allocation per frame).
 |---|---|---|---|---|---|
 | TE-1 | `rmlui: WidgetTextInput::GetValue names placeholder-shown with a constant (text-entry R26)` | `Source/Core/Elements/WidgetTextInput.cpp` | `GetValue()` asked `IsPseudoClassSet("placeholder-shown")` with a string literal, which builds a 17-character `String` on the heap (past the small-string buffer) on every call; the engine's soft-keyboard resync reads the caret (`GetSelectionRange` → `GetSelection` → `GetValue`) once a frame while a field is focused. A function-local `static const String` instead. | upstreamable (a pure allocation saving) | engine `TextEntryTest.IdleFocusedFieldDoesNotAllocate` (htmlui suite, 600 idle frames, 0 allocations) |
 
+Known allocations left in the fork (not patched): a mouse move through `Context::ProcessMouseMove` allocates
+about 27 times when the hover changes (measured by `InputGamepadCursorTest.CursorFrameBench`: 26.9 per frame
+along a path across twelve buttons, glcore build). The pointer events' parameter `Dictionary`s, the listener
+lists `EventDispatcher` collects per dispatch and the hover chain's sets are built per event. The gamepad
+cursor adds no allocation of its own on top (the bench checks it), and a still or inactive cursor makes none.
+
 ## Upstream rebase rehearsal (p3-integration)
 
 Rehearsed in a scratch clone of `https://github.com/mikke89/RmlUi` (2026-10-11/12): upstream `master` at

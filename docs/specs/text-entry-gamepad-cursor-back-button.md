@@ -558,8 +558,9 @@ Red controls are run on the base commit first and named in the PR.
   `text_entry_idle_frame_ns` (`TextEntryTest.IdleFocusedFieldDoesNotAllocate`: 0 allocations), enforced
   with JASPER_TEST_PERF_SLACK like the other InputBench lines; `tools/perf/bench-thresholds.json`
   gates the je-bench-* binaries only, so no row there. Active and moving, the cursor's frame measured
-  27-43 us on the shared, loaded build box (budget 20 us desktop), with about 33 allocations a frame
-  (the scene list, the hover check's listener lists, the overlay's properties): not met there.
+  9.0 us (budget 20 us desktop) with 26.8 allocations a frame: those of RmlUi's own mouse move (26.9
+  along the same path, recorded in `docs/html-ui/FORK.md`); the cursor adds none (checked), and a
+  still or inactive cursor makes none.
 - Part B (AC15): goldens `gamepad_cursor.png` and `gamepad_cursor_texture.png` (glcore,
   `FullPathGoldenTest.GamepadCursorDrawnOnTop`); not compared on Vulkan.
 - Tests: the Back tests are `DocumentBackTest.*` (an HTML fixture of their own in

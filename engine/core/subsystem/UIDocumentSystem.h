@@ -342,8 +342,10 @@ namespace jasperengine{
         void setInputFlagsApplied(Entity entity, UIDocumentComponent& document, bool menu, bool cursor);
         // the gamepad cursor's overlay document in the screen context (null until it first shows)
         Rml::ElementDocument* cursorOverlay = nullptr;
+        Rml::Element* cursorOverlayImage = nullptr;   // its <img>, owned by the overlay
         std::string cursorOverlayGraphic;
         float cursorOverlayLook[3] = {-1.0f, 0.0f, 0.0f};   // the size and hot spot applied
+        float cursorOverlayAt[2] = {0.0f, 0.0f};            // the position applied, context px
         // canvas px to context px and back
         void toCanvas(float& x, float& y) const;
 
