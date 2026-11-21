@@ -187,8 +187,8 @@ TEST_F(AreaLightGpu, IesProfileShapesASpot){
     spot.setIesProfile(JASPER_TEST_SOURCE_DIR "/fixtures/ies/oval_beam.ies");
     ASSERT_TRUE(render()) << "the scene never finished loading";
 
-    std::shared_ptr<RenderSystem> render = scene.getSystem<RenderSystem>();
-    EXPECT_EQ(render->getLightProfileBands(), 1);
+    std::shared_ptr<RenderSystem> renderSystem = scene.getSystem<RenderSystem>();
+    EXPECT_EQ(renderSystem->getLightProfileBands(), 1);
     EXPECT_EQ(scene.getComponent<LightComponent>(spot.getEntity()).iesProfileBand, 0);
     EXPECT_NE(groundLitDefines() & MaterialPbr::getDefineBit(MaterialPbr::IES_DEFINE), 0u) << "the ground's Lit has no IES path";
     const CompareResult result = compareTargetWithGolden("ies_spot", areaLightOptions());
