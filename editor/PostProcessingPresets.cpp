@@ -485,6 +485,9 @@ PostProcessingCost estimatePostProcessingCost(const PostProcessingSettings& sett
         engine.passes.push_back({"halation down", 1, area / 64.0f, false});
     }
     if (tiers.uber) engine.passes.push_back({"uber", 1, 1.0f, true});
+    // Cavity (S92) multiplies inside the scene pass at its resolution: pixels shaded, no pass
+    const bool cavity = settings.cavityEnabled;
+    if (cavity) engine.passes.push_back({"cavity (a draw in the scene pass)", 0, area, !scaled && !fixedResolution});
     total(engine);
 
     // ---- Unity URP 14 for the same effects (bloom Half, 6 iterations, not HQ; FXAA as the
@@ -513,6 +516,10 @@ PostProcessingCost estimatePostProcessingCost(const PostProcessingSettings& sett
     custom(UBER_VHS, "VHS");
     custom(UBER_FILM_DAMAGE, "film damage");
     custom(UBER_HALATION, "halation");
+    if (cavity) {
+        urp.passes.push_back({"cavity (renderer feature)", 1, area, !scaled});
+        cost.urpCustom.push_back("cavity");
+    }
     if (userPasses > 0) urp.passes.push_back({"user pass (renderer feature)", userPasses, area * userPasses, !scaled});
     if (post) urp.passes.push_back({"uber", 1, area, !scaled});
     if (fxaa && scaled) urp.passes.push_back({"FXAA scaling setup", 1, area, false});
@@ -520,8 +527,13 @@ PostProcessingCost estimatePostProcessingCost(const PostProcessingSettings& sett
     total(urp);
 
     // ---- remarks
-    if (!cost.inShader && !cost.uber && userPasses == 0) {
+    if (!cost.inShader && !cost.uber && userPasses == 0 && !cavity) {
         cost.notes.push_back("Nothing is on: no pass and no shader work.");
+    }
+    if (cavity) {
+        cost.notes.push_back("Cavity: one full-screen draw in the scene pass (counted in screens, not passes). When nothing else "
+                             "needs the depth pre-pass (SSR, SSAO, volumetric fog, contact shadows, a depth-reading shader), it "
+                             "adds that geometry pass: every opaque mesh drawn once more for depth and normals.");
     }
     if (cost.inShader) {
         cost.notes.push_back(tiers.tailGrade

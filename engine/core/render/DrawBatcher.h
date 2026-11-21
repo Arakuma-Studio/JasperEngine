@@ -120,8 +120,8 @@ namespace jasperengine{
         static constexpr size_t MAX_BYTES = 256;
 
         BatchPass pass = BatchPass::COLOR;
-        // a PipelineType: bits up to PIP_RTT_COLORONLY (1 << 15); a byte cut PIP_MSAA to 0
-        uint16_t pipType = 0;
+        // a PipelineType: bits up to PIP_DEPTH_NORMALS (1 << 16); a byte cut PIP_MSAA to 0
+        uint32_t pipType = 0;
         bool mirrored = false;
         bool noCull = false;
         uint32_t pipeline = 0;

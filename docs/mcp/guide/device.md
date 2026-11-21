@@ -42,7 +42,8 @@ The full reference is `docs/device-tiers.md`. This page is what an agent needs t
 Cells: `render_scale` (0.5..1), `msaa_samples` (1, 2, 4), `shadow_quality` (`low`..`ultra`),
 `shadow_distance` (m), `lod_bias`, `shadow_lod_bias` (factors), `lit_quality` (`standard`, `high`),
 `texture_quality` (mips dropped, 0..3), `bloom`, `ssao`, `volumetrics` (`false` turns off; `true` is
-refused), `target_frame_rate`, `max_pixel_lights`, `particle_budget`.
+refused), `target_frame_rate`, `max_pixel_lights`, `particle_budget`, `cavity_samples` (4, 8, 16:
+caps Cavity's World samples).
 
 Example: Low on mobile at a 0.6 render scale, without MSAA, SSAO inherited:
 

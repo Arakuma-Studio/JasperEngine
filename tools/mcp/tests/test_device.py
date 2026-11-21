@@ -68,6 +68,9 @@ async def test_device_tier_settings_with_undo(ed: Editor):
     ed.check_eq(low["volumetrics"], False)
     ed.check_eq(low["msaa_samples"], None, "an empty cell inherits")
     ed.check(abs(got["quality.device_tiers.mobile.medium"]["render_scale"] - 0.85) < 1e-6, "Medium renders at 0.85")
+    # S92: Cavity's World samples at most 4 on Low and 8 on Medium
+    ed.check_eq(low["cavity_samples"], 4)
+    ed.check_eq(got["quality.device_tiers.mobile.medium"]["cavity_samples"], 8)
     ed.check(all(v is None for v in got["quality.device_tiers.mobile.high"].values()), "High is the project's values")
     ed.check_eq(got["quality.thermal_response.mobile"], True)
     ed.check_eq(got["quality.thermal_response.desktop"], False)
@@ -102,6 +105,7 @@ async def test_device_tier_settings_with_undo(ed: Editor):
 
     await ed.check_error("set_project_settings", values={low_key: {"render_scale": 2}}, contains="render_scale")
     await ed.check_error("set_project_settings", values={low_key: {"ssao": True}}, contains="off")
+    await ed.check_error("set_project_settings", values={low_key: {"cavity_samples": 6}}, contains="4, 8 or 16")
     await ed.check_error("set_project_settings", values={low_key: {"sparkle": 1}}, contains="not a cell")
     await ed.check_error("set_project_settings", values={"graphics.upload_budget_mb.mobile": 0})
 

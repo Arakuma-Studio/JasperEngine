@@ -23,6 +23,7 @@
 #include <string_view>
 #include <set>
 #include <mutex>
+#include <regex>
 #include <unordered_set>
 
 #ifdef JASPERENGINE_RUNTIME_SHADERS
@@ -467,6 +468,7 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, true, false)) defs.push_back({"USE_FOLIAGE_WIND", "1"});
     if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, false, true)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::DEPTH, ShaderPool::SpriteBatchInput::SNAP_PIVOT)) defs.push_back({"HAS_SNAP_PIVOT", "1"}); // 'Spv' (S52)
+    if (prop & ShaderPool::getDepthNormalsProperty()) defs.push_back({"DEPTH_NORMALS", "1"});      // 'Cvn' (S92; its main is wrapped, prepareVariantArgs)
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -791,6 +793,11 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
     }else if (shaderType == ShaderType::TRANSITION){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "transition.frag";
+    }else if (shaderType == ShaderType::CAVITY){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "cavity.frag";
+        if (properties & shaderPropertyBit(0)) args.defines.push_back({"CAVITY_SCREEN", "1"});   // 'Scr'
+        if (properties & shaderPropertyBit(1)) args.defines.push_back({"CAVITY_WORLD", "1"});    // 'Wld'
     }else if (shaderType == ShaderType::PASS_PREVIEW){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "pass_preview.frag";
@@ -1256,6 +1263,91 @@ bool isOverBindLimits(const ShaderData& data){
     return samplers > 16;
 }
 
+// Whether a vertex stage (its file and the includes it reaches among the sources) writes S92's
+// v_depthNormal (includes/depth_normals.glsl): the engine's and the library's depth programs, a
+// fork made from them; not a fork made before them
+bool vertexWritesDepthNormal(const std::unordered_map<std::string, std::string>& files, const std::string& vertFile){
+    std::vector<std::string> pending = {vertFile};
+    std::set<std::string> seen;
+    while (!pending.empty()){
+        const std::string file = pending.back();
+        pending.pop_back();
+        if (!seen.insert(file).second)
+            continue;
+        auto source = files.find(file);
+        if (source == files.end())
+            continue;
+        if (source->second.find("v_depthNormal") != std::string::npos)
+            return true;
+        for (const std::string& include : ShaderVariantCompiler::getIncludeKeys(source->second))
+            pending.push_back(include);
+    }
+    return false;
+}
+
+// Where a GLSL source's #version line ends (past its newline; npos: none before the code), with its
+// line number (1-based): comments and blank lines may precede it
+size_t depthNormalsVersionEnd(const std::string& source, int& line){
+    size_t i = 0;
+    line = 1;
+    while (i < source.size()){
+        const char c = source[i];
+        if (c == '\n'){
+            line++;
+            i++;
+        }else if (c == ' ' || c == '\t' || c == '\r'){
+            i++;
+        }else if (source.compare(i, 2, "//") == 0){
+            const size_t end = source.find('\n', i);
+            i = end == std::string::npos ? source.size() : end;
+        }else if (source.compare(i, 2, "/*") == 0){
+            const size_t end = source.find("*/", i + 2);
+            if (end == std::string::npos)
+                return std::string::npos;
+            line += (int)std::count(source.begin() + (long)i, source.begin() + (long)end, '\n');
+            i = end + 2;
+        }else if (source.compare(i, 8, "#version") == 0){
+            const size_t end = source.find('\n', i);
+            return end == std::string::npos ? std::string::npos : end + 1;
+        }else{
+            return std::string::npos;
+        }
+    }
+    return std::string::npos;
+}
+
+// Moves a fragment source's own output at location 1 to the first free one of 2 and 3 (false,
+// with an error, when neither is), so the 'Cvn' wrapper's normals output can take location 1
+bool depthNormalsFreeLocation1(std::string& source, std::string& error){
+    static const std::regex output(R"(layout\s*\(([^)]*)\)\s*out\b)");
+    static const std::regex location(R"(\blocation\s*=\s*(\d+))");
+    std::set<int> taken;
+    size_t at = std::string::npos;
+    std::string inner;
+    for (std::sregex_iterator it(source.begin(), source.end(), output), end; it != end; ++it){
+        const std::string declared = (*it)[1].str();
+        std::smatch number;
+        if (!std::regex_search(declared, number, location))
+            continue;
+        const int value = std::stoi(number[1].str());
+        taken.insert(value);
+        if (value == 1){
+            at = (size_t)it->position(1);
+            inner = declared;
+        }
+    }
+    if (at == std::string::npos)
+        return true;
+    for (int free : {2, 3}){
+        if (taken.count(free))
+            continue;
+        source.replace(at, inner.size(), std::regex_replace(inner, location, "location = " + std::to_string(free)));
+        return true;
+    }
+    error = "Cavity's depth normals take output location 1, and this fragment shader uses 1, 2 and 3";
+    return false;
+}
+
 // The compiler arguments of one variant for a backend: entry points, sources and #defines
 // (compile and preprocess). False with an error when the key or its sources are unusable.
 bool prepareVariantArgs(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
@@ -1350,6 +1442,51 @@ bool prepareVariantArgs(ShaderKey key, ShaderBackend backend, const CustomShader
         // the line numbers of errors stay the file's
         wrapped.insert(versionEnd + 1, "#define main oitShadeMain\n#line 2\n");
         wrapped += "\n#undef main\n#include \"includes/oit.glsl\"\nvoid main(){\n    oitShadeMain();\n    g_finalColor = oitAccumulate(g_finalColor);\n}\n";
+        source->second = wrapped;
+    }
+
+    // S92's normals of the depth pre-pass ('Cvn'): the program's own main runs, then
+    // includes/depth_normals.glsl writes the second attachment, so a fork of depth.frag of any
+    // age writes it too. From the vertex stage's v_depthNormal when that stage writes one (the
+    // engine's and the library's, a fork made from them), else "none" (Cavity rebuilds it)
+    if (shaderType == ShaderType::DEPTH && (properties & ShaderPool::getDepthNormalsProperty())){
+        auto source = args.fileBuffers.find(args.frag_file);
+        if (source == args.fileBuffers.end()){
+            error = "Cavity's depth normals need the depth program's fragment shader (" + args.frag_file + ")";
+            return false;
+        }
+        std::string wrapped = source->second;
+        // (comments and blank lines may come before #version)
+        int versionLine = 0;
+        const size_t versionEnd = depthNormalsVersionEnd(wrapped, versionLine);
+        if (versionEnd == std::string::npos){
+            error = "Cavity's depth normals need a fragment shader with a #version line (" + args.frag_file + ")";
+            return false;
+        }
+        // the wrapper's output takes location 1: a fork's own output there moves to a free one
+        // (a depth target has one attachment, so it was never drawn anywhere)
+        if (!depthNormalsFreeLocation1(wrapped, error)){
+            error += " (" + args.frag_file + ")";
+            return false;
+        }
+        if (vertexWritesDepthNormal(args.fileBuffers, args.vert_file))
+            args.defines.push_back({"DEPTH_NORMALS_VARYING", "1"});
+        // the line numbers of errors stay the file's
+        wrapped.insert(versionEnd, "#define main depthNormalsShadeMain\n#line " + std::to_string(versionLine + 1) + "\n");
+        wrapped += "\n#undef main\n#include \"includes/depth_normals.glsl\"\n"
+                   "layout(location = 1) out vec4 frag_depthNormal;\n"
+                   "#ifdef DEPTH_NORMALS_VARYING\n"
+                   "in vec4 v_depthNormal;\n"
+                   "#endif\n"
+                   "void main(){\n"
+                   "    depthNormalsShadeMain();\n"
+                   "#ifdef DEPTH_NORMALS_VARYING\n"
+                   "    // a double-sided material's back faces, as the G-buffer turns them\n"
+                   "    frag_depthNormal = v_depthNormal.w > 0.5 ? depthNormalsEncode(gl_FrontFacing ? v_depthNormal.xyz : -v_depthNormal.xyz) : vec4(0.0);\n"
+                   "#else\n"
+                   "    frag_depthNormal = vec4(0.0);\n"
+                   "#endif\n"
+                   "}\n";
         source->second = wrapped;
     }
 

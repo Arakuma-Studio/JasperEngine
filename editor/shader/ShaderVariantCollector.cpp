@@ -277,6 +277,8 @@ namespace {
         environment.oit = (facts & FACT_OIT_CAMERA) != 0;
         environment.waterExclusion = (facts & FACT_WATER_EXCLUDERS) != 0;
         environment.waterWake = (facts & FACT_WATER_WAKES) != 0;
+        // S92: Cavity's depth programs with normals ('Cvn'; cavityStates adds a script's switch)
+        environment.cavityNormals = scene->getPostProcessing().cavityEnabled;
         return environment;
     }
 
@@ -288,7 +290,7 @@ namespace {
             (e.litQualityHigh ? (1u << 24) : 0u) | (e.pbrTier == PbrTier::REDUCED ? (1u << 25) : 0u) |
             (e.tiledLights ? (1u << 26) : 0u) | (e.capsuleShadows ? (1u << 27) : 0u) | (e.contactShadows ? (1u << 28) : 0u) |
             (e.oit ? (1u << 29) : 0u) | (e.waterExclusion ? (1u << 30) : 0u) | (e.waterWake ? (1u << 31) : 0u) |
-            (e.directionalLightsOnly ? (1ull << 32) : 0ull) |
+            (e.directionalLightsOnly ? (1ull << 32) : 0ull) | (e.cavityNormals ? (1ull << 40) : 0ull) |
             // T3 R34: the tier a build may force
             (e.terrainForced ? (1ull << (static_cast<int>(e.terrainForcedTier) + 33)) : 0ull);
     }
@@ -1530,9 +1532,20 @@ void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const S
         }
     }
 
-    const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities, postColor,
-                                                                                  shadowHQStates(scene, scriptsSetShadowQuality),
-                                                                                  scriptsSetLitQuality, mobilePbrTier, terrainTiers);
+    std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities, postColor,
+                                                                            shadowHQStates(scene, scriptsSetShadowQuality),
+                                                                            scriptsSetLitQuality, mobilePbrTier, terrainTiers);
+    // S92: a script switching post-processing may switch Cavity, whose depth programs differ
+    // ('Cvn'): both states ship
+    const bool cavity = scene->getPostProcessing().cavityEnabled;
+    if (scriptsSetPostProcessing){
+        const size_t own = environments.size();
+        for (size_t e = 0; e < own; e++){
+            MeshShaderEnvironment other = environments[e];
+            other.cavityNormals = !other.cavityNormals;
+            environments.push_back(other);
+        }
+    }
 
     Collector collector(scene, environments, postColor, keys);
     collector.collect(sceneContent);
@@ -1553,6 +1566,14 @@ void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const S
     }
     if (allFacts & FACT_OIT_CAMERA){
         keys.insert(ShaderPool::getShaderKey(ShaderType::LIGHTING_PASS, 1));
+    }
+    // S92's Cavity: the scene's type, every type when a script may switch it
+    if (cavity || scriptsSetPostProcessing){
+        const CavityType type = scene->getPostProcessing().cavityType;
+        for (CavityType candidate : {CavityType::SCREEN, CavityType::WORLD, CavityType::BOTH}){
+            if (scriptsSetPostProcessing || candidate == type)
+                keys.insert(ShaderPool::getShaderKey(ShaderType::CAVITY, ShaderPool::getCavityProperties(candidate != CavityType::WORLD, candidate != CavityType::SCREEN)));
+        }
     }
     if (scene->isSSREnabled()){
         keys.insert(ShaderPool::getShaderKey(ShaderType::SSR, 0));

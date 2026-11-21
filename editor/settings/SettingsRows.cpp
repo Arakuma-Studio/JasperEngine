@@ -958,7 +958,7 @@ void addDeviceSettings(const std::function<void(Setting)>& add) {
                 std::string("The ") + DeviceNames::tierLabel(tier) + " tier's overrides on " + DeviceNames::groupLabel(group) +
                 " (docs/device-tiers.md): an object of cells merged in, null inherits the project's value; caps lower, never raise "
                 "(render_scale, msaa_samples, shadow_quality, shadow_distance, lit_quality, target_frame_rate, max_pixel_lights, "
-                "particle_budget), texture_quality drops at least, bloom/ssao/volumetrics false turns them off, lod_bias and "
+                "particle_budget, cavity_samples 4/8/16), texture_quality drops at least, bloom/ssao/volumetrics false turns them off, lod_bias and "
                 "shadow_lod_bias multiply.",
                 [group, tier](const DeviceSettings& d) { return deviceTierJson(d.tier(group, tier)); },
                 [group, tier](DeviceSettings& d, const Json& v, std::string& e) { return mergeDeviceTier(d.tier(group, tier), v, e); }));

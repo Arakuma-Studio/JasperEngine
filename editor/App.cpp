@@ -6154,7 +6154,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      (BLIT 'Gli' 20) and the screen transition program.
     // v65: S50's tilemap tiles (after S48's v64): MESH 'Tcl' 54 (TILE_CLAMP_FRAME: includes/base_color_fs.glsl, the UV
     //      clamp inside the instance's frame; the vertex stages' v_tileFrame).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v65";
+    // v66: S92's Cavity: DEPTH 'Cvn' 26 (DEPTH_NORMALS: includes/depth_normals.glsl, depth.vert,
+    //      includes/surface_depth_vs.glsl and the wrapped fragment stage) and the CAVITY type.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v66";
 }
 
 void editor::App::pushTabNotificationStyle(){
