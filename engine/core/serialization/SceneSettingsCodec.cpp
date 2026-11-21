@@ -146,6 +146,11 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     w.u8(static_cast<uint8_t>(scene.getWaterWakeResolution()));
     w.f32(scene.getWaterWakeArea());
     w.f32(scene.getWaterWakeFade());
+    // format 1.6 (S92 R30): Environment Lighting's source and the Gradient's colours (sRGB)
+    w.u8(static_cast<uint8_t>(scene.getAmbientSource()));
+    write(w, scene.getAmbientSkyColor());
+    write(w, scene.getAmbientEquatorColor());
+    write(w, scene.getAmbientGroundColor());
 }
 
 void cook::readSceneSettings(Reader& r, Scene& scene) {
@@ -254,4 +259,16 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
         scene.setWaterWakeResolution(static_cast<WaterWakeResolution>(wakeResolution));
     scene.setWaterWakeArea(r.f32());
     scene.setWaterWakeFade(r.f32());
+    // a 1.5 record ends here: the Skybox source and the default gradient (format 1.6)
+    if (r.atEnd()) return;
+    const uint8_t source = r.u8();
+    if (source <= static_cast<uint8_t>(AmbientSource::GRADIENT))
+        scene.setAmbientSource(static_cast<AmbientSource>(source));
+    Vector3 sky, equator, ground;
+    read(r, sky);
+    read(r, equator);
+    read(r, ground);
+    scene.setAmbientSkyColor(sky);
+    scene.setAmbientEquatorColor(equator);
+    scene.setAmbientGroundColor(ground);
 }

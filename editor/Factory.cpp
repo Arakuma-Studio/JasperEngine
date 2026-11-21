@@ -3264,6 +3264,21 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     }
     out << ind2 << "scene->setGlobalIllumination(" << formatFloat(scene->getGlobalIlluminationIntensity()) << ");\n";
     out << ind2 << "scene->setGlobalIllumination(" << formatVector3(scene->getGlobalIlluminationColor()) << ");\n";
+    // Environment Lighting (S92 R30), away from its defaults
+    {
+        const SceneSettings defaults;
+        auto away = [](const Vector3& a, const Vector3& b){
+            return std::fabs(a.x - b.x) > 1e-5f || std::fabs(a.y - b.y) > 1e-5f || std::fabs(a.z - b.z) > 1e-5f;
+        };
+        if (scene->getAmbientSource() != defaults.ambientSource)
+            out << ind2 << "scene->setAmbientSource(AmbientSource::" << (scene->getAmbientSource() == AmbientSource::GRADIENT ? "GRADIENT" : "SKYBOX") << ");\n";
+        if (away(scene->getAmbientSkyColorLinear(), defaults.ambientSkyColor))
+            out << ind2 << "scene->setAmbientSkyColor(" << formatVector3(scene->getAmbientSkyColor()) << ");\n";
+        if (away(scene->getAmbientEquatorColorLinear(), defaults.ambientEquatorColor))
+            out << ind2 << "scene->setAmbientEquatorColor(" << formatVector3(scene->getAmbientEquatorColor()) << ");\n";
+        if (away(scene->getAmbientGroundColorLinear(), defaults.ambientGroundColor))
+            out << ind2 << "scene->setAmbientGroundColor(" << formatVector3(scene->getAmbientGroundColor()) << ");\n";
+    }
     if (scene->getMaxLightsPerObject() != SceneSettings().maxLightsPerObject)
         out << ind2 << "scene->setMaxLightsPerObject(" << scene->getMaxLightsPerObject() << ");\n";
     // always written: a Scene made in code is High, a scene saved before Lit Quality is Standard

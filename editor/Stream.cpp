@@ -5104,6 +5104,22 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["lightState"] = lightStateToString(scene->getLightState());
     sceneNode["globalIlluminationIntensity"] = scene->getGlobalIlluminationIntensity();
     sceneNode["globalIlluminationColor"] = encodeVector3(scene->getGlobalIlluminationColor());
+    // Environment Lighting (S92 R30): written only away from its defaults (no key: Skybox)
+    {
+        const SceneSettings defaults;
+        // (a default decoded through sRGB may differ from it in the last bits)
+        auto away = [](const Vector3& a, const Vector3& b) {
+            return std::fabs(a.x - b.x) > 1e-5f || std::fabs(a.y - b.y) > 1e-5f || std::fabs(a.z - b.z) > 1e-5f;
+        };
+        if (scene->getAmbientSource() != defaults.ambientSource)
+            sceneNode["ambientSource"] = StreamSchema::ambientSource().toString(scene->getAmbientSource());
+        if (away(scene->getAmbientSkyColorLinear(), defaults.ambientSkyColor))
+            sceneNode["ambientSkyColor"] = encodeVector3(scene->getAmbientSkyColor());
+        if (away(scene->getAmbientEquatorColorLinear(), defaults.ambientEquatorColor))
+            sceneNode["ambientEquatorColor"] = encodeVector3(scene->getAmbientEquatorColor());
+        if (away(scene->getAmbientGroundColorLinear(), defaults.ambientGroundColor))
+            sceneNode["ambientGroundColor"] = encodeVector3(scene->getAmbientGroundColor());
+    }
     if (scene->getMaxLightsPerObject() != SceneSettings().maxLightsPerObject)
         sceneNode["maxLightsPerObject"] = scene->getMaxLightsPerObject();
     // a scene without the key is Standard (it was drawn so before Lit Quality existed); new
@@ -5270,6 +5286,15 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
         scene->setGlobalIllumination(YamlNumbers::as<float>(node["globalIlluminationIntensity"]));
     } else if (node["globalIlluminationColor"]) {
         scene->setGlobalIllumination(decodeVector3(node["globalIlluminationColor"]));
+    }
+
+    // Environment Lighting: absent keys restore the defaults (a reused scene decodes exactly)
+    {
+        const SceneSettings defaults;
+        scene->setAmbientSource(node["ambientSource"] ? decodeEnum(node, "ambientSource", StreamSchema::ambientSource()) : defaults.ambientSource);
+        scene->setAmbientSkyColor(node["ambientSkyColor"] ? decodeVector3(node["ambientSkyColor"]) : Color::linearTosRGB(defaults.ambientSkyColor));
+        scene->setAmbientEquatorColor(node["ambientEquatorColor"] ? decodeVector3(node["ambientEquatorColor"]) : Color::linearTosRGB(defaults.ambientEquatorColor));
+        scene->setAmbientGroundColor(node["ambientGroundColor"] ? decodeVector3(node["ambientGroundColor"]) : Color::linearTosRGB(defaults.ambientGroundColor));
     }
 
     // absent key restores the engine default so decoding into a reused scene (play restore) is exact

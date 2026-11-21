@@ -257,6 +257,7 @@ namespace jasperengine::editor {
         static const EnumTable<LightType>& lightType();
         static const EnumTable<LightUnit>& lightUnit();
         static const EnumTable<LitQuality>& litQuality();
+        static const EnumTable<AmbientSource>& ambientSource();
         static const EnumTable<PbrTier>& pbrTier();
         static const EnumTable<MaterialAlphaMode>& materialAlphaMode();
         static const EnumTable<MaterialBlendMode>& materialBlendMode();

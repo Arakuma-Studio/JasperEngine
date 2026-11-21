@@ -1957,7 +1957,11 @@ namespace jasperengine{
 		// bumped when every mesh has to pick its lights again: lights added, removed or
 		// reordered, the scene ambient or the cap changed
 		uint64_t lightListEpoch;
-		Vector3 lightListAmbient;
+		// the SH every object's ambient starts from (sceneAmbient), before its folded lights
+		Vector4 lightListAmbientSH[3];
+		// Environment Lighting Source Gradient as the meshes loaded: the sky's irradiance map is
+		// not bound then (the gradient is the diffuse ambient)
+		bool loadedAmbientGradient = false;
 		int lightListCap;
 		// capacity tier the meshes loaded their variants with
 		int lightCapacityTier;
@@ -2483,6 +2487,10 @@ namespace jasperengine{
 		void orderObjectLights(const MeshComponent& mesh, uint64_t properties, int order[MAX_LIGHTS_PER_OBJECT], int& pixelCount, int& vertexCount) const;
 		// the per-object lights block of a submesh variant for the camera pass being drawn
 		void buildObjectLights(const MeshComponent& mesh, uint64_t properties, object_lights_t& block) const;
+		// the scene's ambient as the lit shaders take it (SceneSettings::AmbientSource): the SH every
+		// object starts from, its average over every facing (flat consumers: particles, clouds), and
+		// the part Lit treats as uniform (litFrame ambient; the rest of the SH it adds as overflow)
+		void sceneAmbient(Vector4 sh[3], Vector3& flat, Vector3& litFlat) const;
 		int passLightCascades(const SceneLight& light) const;
 		// the legacy u_fs_lighting of an older fork: the object's first pixel lights
 		void buildLegacyLighting(const MeshComponent& mesh, uint64_t properties, fs_lighting_t& block) const;

@@ -453,6 +453,17 @@ namespace {
         tail.f32(scene.getWaterWakeFade());
         return tail.data().size();
     }
+
+    // the bytes format 1.6 appends after them (Environment Lighting's source and gradient)
+    size_t ambientTailBytes(const Scene& scene) {
+        jasperengine::cook::StringTable none;
+        jasperengine::cook::Writer tail(none, [](Entity e) { return static_cast<uint32_t>(e); });
+        tail.u8(static_cast<uint8_t>(scene.getAmbientSource()));
+        jasperengine::cook::write(tail, scene.getAmbientSkyColor());
+        jasperengine::cook::write(tail, scene.getAmbientEquatorColor());
+        jasperengine::cook::write(tail, scene.getAmbientGroundColor());
+        return tail.data().size();
+    }
 }
 
 // S57: the scene's capsule shadows survive a cook (format 1.1), and S54's LOD cross-fade after
@@ -495,8 +506,8 @@ TEST(CookedScene, SceneSettingsKeepCapsuleShadows) {
     // (1.3) the five default shaders' property values, none set here
     jasperengine::cook::Writer v13(none, [](Entity e) { return static_cast<uint32_t>(e); });
     for (int type = 0; type < 5; type++) jasperengine::cook::write(v13, ShaderUniformValues());
-    // (1.4) the planar reflections, and (1.5) the Water Wakes' map after them
-    const size_t v14 = planarReflectionTailBytes(*scene) + waterWakeTailBytes(*scene);
+    // (1.4) the planar reflections, (1.5) the Water Wakes' map and (1.6) the ambient source after them
+    const size_t v14 = planarReflectionTailBytes(*scene) + waterWakeTailBytes(*scene) + ambientTailBytes(*scene);
     ASSERT_GT(bytes.size(), v11.data().size() + v12.data().size() + v13.data().size() + v14);
 
     // the 1.1 record: the same bytes without the cross-fade (and the 1.3 and 1.4 values)
@@ -628,9 +639,10 @@ TEST(CookedScene, SceneSettingsKeepPlanarReflections) {
     EXPECT_FLOAT_EQ(player.scene->scene->getPlanarReflectionClipOffset(), 0.2f);
     EXPECT_EQ(player.scene->scene->getMaxPlanarReflections(), 3);
 
-    // the 1.3 record: the same bytes without the planar reflections (and the 1.5 values)
+    // the 1.3 record: the same bytes without the planar reflections (and the 1.5 and 1.6 values)
     DecodedScene older = emptyScene();
-    jasperengine::cook::Reader r13(std::span<const uint8_t>(bytes.data(), bytes.size() - planarReflectionTailBytes(*scene) - waterWakeTailBytes(*scene)),
+    jasperengine::cook::Reader r13(std::span<const uint8_t>(bytes.data(), bytes.size() - planarReflectionTailBytes(*scene) - waterWakeTailBytes(*scene) -
+                                                            ambientTailBytes(*scene)),
                                    strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r13, *older.scene->scene);
     ASSERT_FALSE(r13.failed()) << r13.error();
@@ -679,7 +691,7 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
 
     // the 1.4 record: the same bytes without the wake settings; the planar reflections still read
     DecodedScene older = emptyScene();
-    jasperengine::cook::Reader r14(std::span<const uint8_t>(bytes.data(), bytes.size() - waterWakeTailBytes(*scene)),
+    jasperengine::cook::Reader r14(std::span<const uint8_t>(bytes.data(), bytes.size() - waterWakeTailBytes(*scene) - ambientTailBytes(*scene)),
                                    strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r14, *older.scene->scene);
     ASSERT_FALSE(r14.failed()) << r14.error();
@@ -689,6 +701,57 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
     EXPECT_EQ(old.getWaterWakeResolution(), defaults.waterWakeResolution);
     EXPECT_FLOAT_EQ(old.getWaterWakeArea(), defaults.waterWakeArea);
     EXPECT_FLOAT_EQ(old.getWaterWakeFade(), defaults.waterWakeFade);
+}
+
+// S92 R30: Environment Lighting's source and the Gradient's colours survive a cook (format 1.6,
+// after the Water Wakes); a 1.5 record (without them) keeps the Skybox source and the default gradient
+TEST(CookedScene, SceneSettingsKeepAmbientGradient) {
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    scene->setWaterWakeArea(32.0f);
+    scene->setAmbientSource(AmbientSource::GRADIENT);
+    scene->setAmbientSkyColor(Vector3(0.2f, 0.4f, 0.9f));
+    scene->setAmbientEquatorColor(Vector3(0.5f, 0.5f, 0.5f));
+    scene->setAmbientGroundColor(Vector3(0.3f, 0.2f, 0.1f));
+
+    jasperengine::cook::StringTable strings;
+    jasperengine::cook::Writer w(strings, [](Entity e) { return static_cast<uint32_t>(e); });
+    jasperengine::cook::writeSceneSettings(w, *scene);
+    const std::vector<uint8_t>& bytes = w.data();
+    auto entityOf = [](uint32_t id) { return static_cast<Entity>(id); };
+    auto expectNear = [](const Vector3& a, const Vector3& b) {
+        EXPECT_NEAR(a.x, b.x, 1e-4f);
+        EXPECT_NEAR(a.y, b.y, 1e-4f);
+        EXPECT_NEAR(a.z, b.z, 1e-4f);
+    };
+
+    DecodedScene loaded = emptyScene();
+    jasperengine::cook::Reader r(std::span<const uint8_t>(bytes.data(), bytes.size()), strings.strings(), entityOf);
+    jasperengine::cook::readSceneSettings(r, *loaded.scene->scene);
+    ASSERT_FALSE(r.failed()) << r.error();
+    EXPECT_TRUE(r.atEnd());
+    EXPECT_EQ(loaded.scene->scene->getAmbientSource(), AmbientSource::GRADIENT);
+    expectNear(loaded.scene->scene->getAmbientSkyColor(), Vector3(0.2f, 0.4f, 0.9f));
+    expectNear(loaded.scene->scene->getAmbientEquatorColor(), Vector3(0.5f, 0.5f, 0.5f));
+    expectNear(loaded.scene->scene->getAmbientGroundColor(), Vector3(0.3f, 0.2f, 0.1f));
+
+    // the prebuilt player's path
+    DecodedScene player;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {}, player, error)) << error;
+    EXPECT_EQ(player.scene->scene->getAmbientSource(), AmbientSource::GRADIENT);
+    expectNear(player.scene->scene->getAmbientGroundColor(), Vector3(0.3f, 0.2f, 0.1f));
+
+    // the 1.5 record: the same bytes without them; the Water Wakes still read
+    DecodedScene older = emptyScene();
+    jasperengine::cook::Reader r15(std::span<const uint8_t>(bytes.data(), bytes.size() - ambientTailBytes(*scene)), strings.strings(), entityOf);
+    jasperengine::cook::readSceneSettings(r15, *older.scene->scene);
+    ASSERT_FALSE(r15.failed()) << r15.error();
+    const SceneSettings defaults;
+    const Scene& old = *older.scene->scene;
+    EXPECT_FLOAT_EQ(old.getWaterWakeArea(), 32.0f);
+    EXPECT_EQ(old.getAmbientSource(), AmbientSource::SKYBOX);
+    expectNear(old.getAmbientSkyColorLinear(), defaults.ambientSkyColor);
 }
 
 // A newer minor adds only length-prefixed fields: a player reads its content without them and warns
@@ -723,43 +786,45 @@ TEST(CookedScene, ReadsANewerMinorAndRefusesAnotherMajor) {
     EXPECT_NE(error.find("build the game with the editor of this player's version"), std::string::npos) << error;
 }
 
-// What a 1.4 editor cooked loads: the file as its writer laid it out (1.5's without the Water Wakes
-// values that end the settings record, the record's length and the string table offset with them)
+// What a 1.5 editor cooked loads: the file as its writer laid it out (1.6's without the ambient
+// source values that end the settings record, the record's length and the string table offset with them)
 TEST(CookedScene, ReadsAnOlderMinorsContent) {
     using namespace jasperengine::cook;
-    ASSERT_EQ(FORMAT_MINOR, 5) << "the 1.4 layout below is 1.5's without its Water Wakes values: cut the newer minor's values too";
+    ASSERT_EQ(FORMAT_MINOR, 6) << "the 1.5 layout below is 1.6's without its ambient source values: cut the newer minor's values too";
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
     scene->setPlanarReflectionFarClip(60.0f);
     scene->setWaterWakeResolution(WaterWakeResolution::HIGH);
     scene->setWaterWakeArea(32.0f);
+    scene->setAmbientSource(AmbientSource::GRADIENT);
     const std::vector<uint8_t> bytes = editor::cook::SceneCooker::cookScene(scene, 4242, {}, NULL_ENTITY, SceneResources{});
     auto le32 = [](const uint8_t* at) { return uint32_t(at[0]) | uint32_t(at[1]) << 8 | uint32_t(at[2]) << 16 | uint32_t(at[3]) << 24; };
-    const size_t cut = waterWakeTailBytes(*scene);
+    const size_t cut = ambientTailBytes(*scene);
     const uint32_t settingsLength = le32(bytes.data() + HEADER_BYTES);
     ASSERT_GT(settingsLength, cut);
 
-    std::vector<uint8_t> v14(bytes.begin(), bytes.begin() + HEADER_BYTES);
-    v14[6] = 4;
-    v14[7] = 0;
+    std::vector<uint8_t> v15(bytes.begin(), bytes.begin() + HEADER_BYTES);
+    v15[6] = 5;
+    v15[7] = 0;
     uint64_t stringsOffset = 0;
     for (int i = 0; i < 8; i++) stringsOffset |= uint64_t(bytes[20 + i]) << (8 * i);
     stringsOffset -= cut;
-    for (int i = 0; i < 8; i++) v14[20 + i] = static_cast<uint8_t>(stringsOffset >> (8 * i));
+    for (int i = 0; i < 8; i++) v15[20 + i] = static_cast<uint8_t>(stringsOffset >> (8 * i));
     const uint32_t length = settingsLength - static_cast<uint32_t>(cut);
-    for (int i = 0; i < 4; i++) v14.push_back(static_cast<uint8_t>(length >> (8 * i)));
+    for (int i = 0; i < 4; i++) v15.push_back(static_cast<uint8_t>(length >> (8 * i)));
     const size_t settingsEnd = HEADER_BYTES + 4 + settingsLength;
-    v14.insert(v14.end(), bytes.begin() + HEADER_BYTES + 4, bytes.begin() + static_cast<std::ptrdiff_t>(settingsEnd - cut));
-    v14.insert(v14.end(), bytes.begin() + static_cast<std::ptrdiff_t>(settingsEnd), bytes.end());
-    ASSERT_EQ(v14.size(), bytes.size() - cut);
+    v15.insert(v15.end(), bytes.begin() + HEADER_BYTES + 4, bytes.begin() + static_cast<std::ptrdiff_t>(settingsEnd - cut));
+    v15.insert(v15.end(), bytes.begin() + static_cast<std::ptrdiff_t>(settingsEnd), bytes.end());
+    ASSERT_EQ(v15.size(), bytes.size() - cut);
 
     DecodedScene loaded = emptyScene();
     std::string error;
-    ASSERT_TRUE(CookedSceneLoader::loadScene(loaded.scene->scene, std::span<const uint8_t>(v14.data(), v14.size()), &error)) << error;
+    ASSERT_TRUE(CookedSceneLoader::loadScene(loaded.scene->scene, std::span<const uint8_t>(v15.data(), v15.size()), &error)) << error;
     const SceneSettings defaults;
     EXPECT_FLOAT_EQ(loaded.scene->scene->getPlanarReflectionFarClip(), 60.0f);
-    EXPECT_EQ(loaded.scene->scene->getWaterWakeResolution(), defaults.waterWakeResolution);
-    EXPECT_FLOAT_EQ(loaded.scene->scene->getWaterWakeArea(), defaults.waterWakeArea);
+    EXPECT_EQ(loaded.scene->scene->getWaterWakeResolution(), WaterWakeResolution::HIGH);
+    EXPECT_FLOAT_EQ(loaded.scene->scene->getWaterWakeArea(), 32.0f);
+    EXPECT_EQ(loaded.scene->scene->getAmbientSource(), defaults.ambientSource);
     EXPECT_EQ(jasperengine::test::LogCapture::sinceTestStart().count(D_LOG_WARN, "newer editor"), 0u);
 }
 

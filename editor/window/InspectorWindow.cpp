@@ -532,6 +532,14 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                     }
                 }
             }
+            if constexpr (std::is_same_v<T, AmbientSource>) {
+                const char* sourceNames[] = { "Skybox", "Gradient" };
+                int currentItem = std::clamp(static_cast<int>(value), 0, 1);
+                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, sourceNames, IM_ARRAYSIZE(sourceNames));
+                if (changed) {
+                    value = static_cast<AmbientSource>(currentItem);
+                }
+            }
             if constexpr (std::is_same_v<T, LitQuality>) {
                 const char* qualityNames[] = { "Standard", "High" };
                 int currentItem = static_cast<int>(value);
@@ -13869,14 +13877,26 @@ void editor::InspectorWindow::show(){
 
             LightState currentLightState = jasperengine::editor::Catalog::getSceneProperty<LightState>(sceneProject->scene, "light_state");
             if (currentLightState != LightState::OFF) {
-                ImGui::SeparatorText("Global Illumination");
+                ImGui::SeparatorText("Environment Lighting");
 
                 if (ImGui::BeginTable("scene_globalillum_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Intensity"));
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Equator Color"));
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
-                    drawScenePropertyRow<Vector3>(sceneProject, "global_illumination_color", "Color", ScenePropertyInputType::ColorRGB);
-                    drawScenePropertyRow<float>(sceneProject, "global_illumination_intensity", "Intensity", ScenePropertyInputType::SliderFloat, -1.0f, 0.0f, 1.0f);
+                    drawScenePropertyRow<AmbientSource>(sceneProject, "ambient_source", "Source", ScenePropertyInputType::Combo, 7 * ImGui::GetFontSize(), 0.0f, 1.0f,
+                        "Where lit surfaces take their ambient light from:\n"
+                        "- Skybox: the sky's image on Lit materials (image-based lighting); the Ambient Color where the scene has no "
+                        "sky image, and on shaders and particles that take no image-based lighting\n"
+                        "- Gradient: Sky, Equator and Ground colours by the way a surface faces, on every lit shader. The sky's image "
+                        "still gives Lit its reflections. Costs nothing over Skybox.");
+                    if (jasperengine::editor::Catalog::getSceneProperty<AmbientSource>(sceneProject->scene, "ambient_source") == AmbientSource::GRADIENT) {
+                        drawScenePropertyRow<Vector3>(sceneProject, "ambient_sky_color", "Sky Color", ScenePropertyInputType::ColorRGB);
+                        drawScenePropertyRow<Vector3>(sceneProject, "ambient_equator_color", "Equator Color", ScenePropertyInputType::ColorRGB);
+                        drawScenePropertyRow<Vector3>(sceneProject, "ambient_ground_color", "Ground Color", ScenePropertyInputType::ColorRGB);
+                    } else {
+                        drawScenePropertyRow<Vector3>(sceneProject, "global_illumination_color", "Ambient Color", ScenePropertyInputType::ColorRGB);
+                        drawScenePropertyRow<float>(sceneProject, "global_illumination_intensity", "Intensity", ScenePropertyInputType::SliderFloat, -1.0f, 0.0f, 1.0f);
+                    }
 
                     ImGui::EndTable();
                 }
