@@ -143,7 +143,7 @@ namespace {
                  .min = 0.01f, .label = "Height", .visibleIf = &lightAreaRectangle),
         JE_FIELD(LightComponent, areaRadius, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kShadowCamera, .unit = Unit::Meters,
                  .min = 0.005f, .label = "Radius", .visibleIf = &lightAreaDisc),
-        JE_FIELD(LightComponent, iesProfile, .asset = AssetKind::IesProfile, .flags = OmitIfDefault | CodegenIfChanged, .label = "IES Profile",
+        JE_FIELD(LightComponent, iesProfile, .flags = OmitIfDefault | CodegenIfChanged, .asset = AssetKind::IesProfile, .label = "IES Profile",
                  .tooltip = "An .ies photometric file shaping the light, turned with it (vertical angle 0 along its forward axis). "
                             "Intensity stays the profile's peak.",
                  .visibleIf = &lightTakesIesProfile),
