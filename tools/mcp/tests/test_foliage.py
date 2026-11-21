@@ -204,6 +204,31 @@ async def test_pick_at_reports_tree(ed: Editor):
     ed.check_eq(trees[0]["entity"], terrain, "the GameObject is the Terrain")
 
 
+async def test_query_physics_drawn_reports_tree(ed: Editor):
+    """spatial-queries R12: a drawn overlap finds a Terrain's tree, named as pick_at names it."""
+    sid, terrain = await terrain_scene(ed, "QueryTree")
+    await ed.call("tool_groups", enable=["physics"])
+    placed = await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[
+        {"op": "place_trees", "prototype": 0, "points": [[0, 0]]}], space="local")
+    surface = await ed.call("sample_terrain", scene=sid, entity=terrain, space="local", points=[[0, 0]])
+    y = surface["samples"][0]["height"]
+    trees: list = []
+    for _ in range(60):
+        got = await ed.call("query_physics", scene=sid, world="drawn", shape={"type": "sphere", "radius": 1},
+                            origin=[0, y + 3, 0])
+        trees = [hit for hit in got["hits"] if hit["kind"] == "tree"]
+        if trees:
+            break
+        await ed.call("wait", seconds=10, frames=5)
+    ed.check(trees, f"the tree is found once its cells and mesh are loaded: {got}")
+    ed.check_eq(trees[0]["tree_id"], placed["ops"][0]["ids"][0], f"{trees[0]}")
+    ed.check_eq(trees[0]["prototype"], 0, f"{trees[0]}")
+    ed.check_eq(trees[0]["entity"]["id"], terrain, "the GameObject is the Terrain")
+    beside = await ed.call("query_physics", scene=sid, world="drawn", shape={"type": "sphere", "radius": 1},
+                           origin=[6, y + 3, 0])
+    ed.check(not [hit for hit in beside["hits"] if hit["kind"] == "tree"], f"past its bounds, no tree: {beside}")
+
+
 async def test_set_properties_reaches_prototypes(ed: Editor):
     sid, terrain = await terrain_scene(ed, "Props")
     await ed.call("set_properties", scene=sid, entity=terrain, values={"terrain": {

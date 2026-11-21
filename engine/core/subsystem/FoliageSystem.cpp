@@ -38,6 +38,7 @@
 #include <cstddef>
 #include <cstring>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <sstream>
 
@@ -213,6 +214,7 @@ namespace {
         bool loadFailed = false;
         Vector3 center;
         float radius = 0.0f;
+        AABB bounds;    // the mesh's, for bounds overlaps
         std::vector<DetailSlot> ring;
         int side = 0;
         int viewCellX = FOLIAGE_NO_CELL, viewCellZ = FOLIAGE_NO_CELL;
@@ -267,6 +269,7 @@ namespace {
         std::vector<char> failed;
         Vector3 center;
         float radius = 0.0f;
+        AABB bounds;    // LOD0's, for bounds overlaps
         Entity impostor = NULL_ENTITY;
         uint32_t impostorSlot = 0;
         bool impostorReady = false;
@@ -304,6 +307,7 @@ namespace {
         jobs::Task<std::shared_ptr<TreeCellMap>> indexTask;
         std::shared_ptr<TreeStore> indexing;
         std::vector<int64_t> residentOrder;     // resident cells, for the views
+        float treeScaleMax = 0.0f;              // the largest range.maxScale a cell has had: how far a tree reaches
         bool residentDirty = true;
         int treeViewCellX = FOLIAGE_NO_CELL, treeViewCellZ = FOLIAGE_NO_CELL;
         float residencyDistance = -1.0f;
@@ -780,7 +784,7 @@ struct FoliageSystem::Impl {
     }
 
     // R6: one mesh load per layer, on the Background path; true once it is drawn
-    void pollMesh(Entity entity, const std::string& path, std::string& requested, bool& ready, bool& failed, Vector3& center, float& radius, uint32_t& meshLoads) {
+    void pollMesh(Entity entity, const std::string& path, std::string& requested, bool& ready, bool& failed, Vector3& center, float& radius, AABB& bounds, uint32_t& meshLoads) {
         if (ready || failed) return;
 
         if (requested != path) {
@@ -806,6 +810,7 @@ struct FoliageSystem::Impl {
         if (!mesh.aabb.isNull() && !mesh.aabb.isInfinite()) {
             center = mesh.aabb.getCenter();
             radius = mesh.aabb.getHalfSize().length();
+            bounds = mesh.aabb;
         }
         ready = true;
     }
@@ -1273,6 +1278,7 @@ struct FoliageSystem::Impl {
             TreeProtoRange& range = cell.ranges.back();
             range.count++;
             range.maxScale = std::max(range.maxScale, cell.instances[i].scale * std::max(1.0f, static_cast<float>(cell.instances[i].heightRatio) / 128.0f));
+            state.treeScaleMax = std::max(state.treeScaleMax, range.maxScale);
         }
         if (entries.empty()) {
             minY = 0.0f;
@@ -1555,14 +1561,16 @@ struct FoliageSystem::Impl {
                     bool failed = false;
                     Vector3 center;
                     float radius = 0.0f;
+                    AABB bounds;
                     std::string requested;
-                    pollMesh(prototype.lods[l], wanted[l], requested, ready, failed, center, radius, state.stats.meshLoads);
+                    pollMesh(prototype.lods[l], wanted[l], requested, ready, failed, center, radius, bounds, state.stats.meshLoads);
                     prototype.ready[l] = ready;
                     prototype.failed[l] = failed;
                     if (ready) {
                         if (l == 0) {
                             prototype.center = center;
                             prototype.radius = radius;
+                            prototype.bounds = bounds;
                         }
                         self->residencyRevision++;
                     }
@@ -1795,7 +1803,7 @@ struct FoliageSystem::Impl {
             }
             if (!layerState.meshReady && !layerState.loadFailed) {
                 pollMesh(layerState.entity, path, layerState.requestedPath, layerState.meshReady, layerState.loadFailed,
-                         layerState.center, layerState.radius, state.stats.meshLoads);
+                         layerState.center, layerState.radius, layerState.bounds, state.stats.meshLoads);
                 if (layerState.meshReady) {
                     // R37: a custom vertex program with no compact variant draws from a 96-byte stream
                     if (programNeedsExpanded(layerState.entity)) {
@@ -3380,6 +3388,137 @@ void FoliageSystem::forEachDetailAlongRay(const Ray& ray, float maxDistance, con
     std::stable_sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) { return a.distance < b.distance; });
     for (const Candidate& candidate : candidates) {
         if (!visit(candidate.terrain, candidate.layer, candidate.world, candidate.distance)) return;
+    }
+}
+
+namespace {
+
+    // a local box, inflated by pad, against the local box of the query (lo..hi)
+    bool foliageBoxTouches(const float boxMin[3], const float boxMax[3], float pad, const Vector3& lo, const Vector3& hi) {
+        return boxMax[0] + pad >= lo.x && boxMin[0] - pad <= hi.x && boxMax[1] + pad >= lo.y && boxMin[1] - pad <= hi.y &&
+               boxMax[2] + pad >= lo.z && boxMin[2] - pad <= hi.z;
+    }
+
+    // an instance's position, padded by its reach, against the local box of the query: no matrices yet
+    bool foliagePointTouches(const float position[3], float pad, const Vector3& lo, const Vector3& hi) {
+        return position[0] + pad >= lo.x && position[0] - pad <= hi.x && position[1] + pad >= lo.y && position[1] - pad <= hi.y &&
+               position[2] + pad >= lo.z && position[2] - pad <= hi.z;
+    }
+
+    // the cube around a world sphere against the world box: what can hold the instance's world bounds
+    bool foliageCubeTouches(const Vector3& center, float radius, const Vector3& mn, const Vector3& mx) {
+        return center.x + radius >= mn.x && center.x - radius <= mx.x && center.y + radius >= mn.y && center.y - radius <= mx.y &&
+               center.z + radius >= mn.z && center.z - radius <= mx.z;
+    }
+
+}
+
+void FoliageSystem::forEachFoliageInBox(const AABB& box, bool trees, bool details, FoliageInBoxVisit visit, void* context) const {
+    if (box.isNull() || box.isInfinite()) return;
+    const Vector3& mn = box.getMinimum();
+    const Vector3& mx = box.getMaximum();
+    for (const std::unique_ptr<RegionState>& regionPtr : impl->regions) {
+        const RegionState& region = *regionPtr;
+        if (!region.active || !region.inverseModel.isValid()) continue;
+        // A world box's preimage is not a box when the terrain turns or scales unevenly: the local walk
+        // pads by sqrt(3) times its axes' scale ratio, so it keeps every instance whose world bounds can
+        // touch the box (each is then culled in world space by its sphere's cube)
+        float axisMin = std::numeric_limits<float>::max();
+        float axisMax = 0.0f;
+        for (int c = 0; c < 3; c++) {
+            const float length = Vector3(region.model.get(c, 0), region.model.get(c, 1), region.model.get(c, 2)).length();
+            axisMin = std::min(axisMin, length);
+            axisMax = std::max(axisMax, length);
+        }
+        if (!(axisMin > 0.0f)) continue;
+        const float padScale = 1.7320508f * axisMax / axisMin;
+        const AABB local = region.inverseModel * box;
+        const Vector3& lo = local.getMinimum();
+        const Vector3& hi = local.getMaximum();
+        FoliageInBox found;
+        found.terrain = region.owner;
+
+        if (trees && !region.residentOrder.empty()) {
+            float prototypeReach = 0.0f;
+            for (const TreePrototypeState& prototype : region.prototypes) {
+                prototypeReach = std::max(prototypeReach, prototype.radius + prototype.center.length());
+            }
+            const float regionPad = prototypeReach * region.treeScaleMax * padScale;
+            const auto visitCell = [&](const TreeCell& cell) {
+                if (cell.instances.empty()) return;
+                float reach = 0.0f;
+                for (const TreeProtoRange& range : cell.ranges) {
+                    if (range.prototype < static_cast<int>(region.prototypes.size())) {
+                        const TreePrototypeState& prototype = region.prototypes[range.prototype];
+                        reach = std::max(reach, (prototype.radius + prototype.center.length()) * range.maxScale);
+                    }
+                }
+                if (!foliageBoxTouches(cell.boxMin, cell.boxMax, reach * padScale, lo, hi)) return;
+                for (const TreeProtoRange& range : cell.ranges) {
+                    if (range.prototype >= static_cast<int>(region.prototypes.size())) continue;
+                    const TreePrototypeState& prototype = region.prototypes[range.prototype];
+                    if (prototype.ready.empty() || !prototype.ready[0] || !(prototype.radius > 0.0f)) continue;
+                    const float pad = (prototype.radius + prototype.center.length()) * range.maxScale * padScale;
+                    for (uint32_t i = range.first; i < range.first + range.count; i++) {
+                        const FoliageInstance& instance = cell.instances[i];
+                        if (!foliagePointTouches(instance.position, pad, lo, hi)) continue;
+                        const float tall = instance.scale * std::max(1.0f, static_cast<float>(instance.heightRatio) / 128.0f);
+                        const Matrix4 world = region.model * foliageInstanceMatrix(instance);
+                        if (!foliageCubeTouches(world * prototype.center, prototype.radius * tall * axisMax, mn, mx)) continue;
+                        found.tree = true;
+                        found.id = makeTreeId(region.region->regionKey(), cell.slotIds[i]);
+                        found.prototype = range.prototype;
+                        found.bounds = world * prototype.bounds;
+                        visit(context, found);
+                    }
+                }
+            };
+            // the cells under the padded box, or the resident ones when they are fewer
+            const float firstX = std::floor((lo.x - regionPad) / FOLIAGE_TREE_CELL_SIZE);
+            const float lastX = std::floor((hi.x + regionPad) / FOLIAGE_TREE_CELL_SIZE);
+            const float firstZ = std::floor((lo.z - regionPad) / FOLIAGE_TREE_CELL_SIZE);
+            const float lastZ = std::floor((hi.z + regionPad) / FOLIAGE_TREE_CELL_SIZE);
+            const double span = (static_cast<double>(lastX) - firstX + 1.0) * (static_cast<double>(lastZ) - firstZ + 1.0);
+            const bool inRange = std::max({std::fabs(firstX), std::fabs(lastX), std::fabs(firstZ), std::fabs(lastZ)}) < 1.0e9f;
+            if (inRange && span <= static_cast<double>(region.residentOrder.size())) {
+                for (int z = static_cast<int>(firstZ); z <= static_cast<int>(lastZ); z++) {
+                    for (int x = static_cast<int>(firstX); x <= static_cast<int>(lastX); x++) {
+                        const auto it = region.cells.find(foliageTreeCellKey(x, z));
+                        if (it != region.cells.end() && it->second.resident) visitCell(it->second);
+                    }
+                }
+            } else {
+                for (int64_t key : region.residentOrder) {
+                    const auto it = region.cells.find(key);
+                    if (it != region.cells.end()) visitCell(it->second);
+                }
+            }
+        }
+
+        if (details) {
+            for (size_t l = 0; l < region.layers.size(); l++) {
+                const DetailLayerState& layer = region.layers[l];
+                if (!layer.meshReady || !(layer.radius > 0.0f)) continue;
+                const float reach = (layer.radius + layer.center.length()) * std::max(layer.params.maxScale, 0.001f) * std::max(1.0f, layer.params.maxHeightRatio);
+                for (const DetailSlot& slot : layer.ring) {
+                    if (!slot.instances || slot.instances->empty()) continue;
+                    const float slotMin[3] = {static_cast<float>(slot.x) * FOLIAGE_DETAIL_CELL_SIZE, slot.minY, static_cast<float>(slot.z) * FOLIAGE_DETAIL_CELL_SIZE};
+                    const float slotMax[3] = {slotMin[0] + FOLIAGE_DETAIL_CELL_SIZE, slot.maxY, slotMin[2] + FOLIAGE_DETAIL_CELL_SIZE};
+                    if (!foliageBoxTouches(slotMin, slotMax, reach * padScale, lo, hi)) continue;
+                    for (const FoliageInstance& instance : *slot.instances) {
+                        if (!foliagePointTouches(instance.position, reach * padScale, lo, hi)) continue;
+                        const float tall = instance.scale * std::max(1.0f, static_cast<float>(instance.heightRatio) / 128.0f);
+                        const Matrix4 world = region.model * foliageInstanceMatrix(instance);
+                        if (!foliageCubeTouches(world * layer.center, layer.radius * tall * axisMax, mn, mx)) continue;
+                        found.tree = false;
+                        found.id = 0;
+                        found.prototype = static_cast<int>(l);
+                        found.bounds = world * layer.bounds;
+                        visit(context, found);
+                    }
+                }
+            }
+        }
     }
 }
 

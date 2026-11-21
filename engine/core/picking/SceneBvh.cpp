@@ -1218,9 +1218,6 @@ void SceneBvh::overlap(const OverlapShape& shape, const PickFilter& filter, std:
             snapshotFrame = Engine::getFrameIndex();
         }
     }
-    if (tree.empty()){
-        return;
-    }
     Vector3 axes[3];
     Vector3 mn, mx;
     if (shape.box){
@@ -1238,25 +1235,59 @@ void SceneBvh::overlap(const OverlapShape& shape, const PickFilter& filter, std:
         mn = shape.center - reach;
         mx = shape.center + reach;
     }
+    const auto touches = [&](const AABB& bounds){
+        return bounds.isInfinite() ? true : shape.box ? bvhObbTouchesBox(shape.center, axes, shape.halfExtents, bounds)
+                                                      : bvhSphereTouchesBox(shape.center, shape.radius, bounds);
+    };
     const size_t first = out.size();
-    tree.overlap(mn, mx, [&](uint32_t index){
-        const Leaf& leaf = leaves[index];
-        if (leaf.bounds.isNull() || !passes(leaf, filter)){
-            return;
+    if (!tree.empty()){
+        tree.overlap(mn, mx, [&](uint32_t index){
+            const Leaf& leaf = leaves[index];
+            if (leaf.bounds.isNull() || !passes(leaf, filter) || !touches(leaf.bounds)){
+                return;
+            }
+            MeshOverlapHit hit;
+            hit.entity = leaf.entity;
+            hit.kind = leaf.kind;
+            hit.instance = leaf.kind == PickKind::INSTANCE ? (int32_t)leaf.subIndex : -1;
+            out.push_back(hit);
+        });
+    }
+
+    // T5 R35: foliage has no leaves: a walk of its cells, each instance by its world bounds
+    if (filter.kinds & (PICK_TREE | PICK_DETAIL)){
+        std::shared_ptr<FoliageSystem> foliage = scene->getSystem<FoliageSystem>();
+        if (foliage && foliage->hasDrawables()){
+            // the filter asks about the Terrain: once per Terrain, not per tree
+            Entity checked = NULL_ENTITY;
+            bool terrainPasses = false;
+            auto visit = [&](const FoliageSystem::FoliageInBox& found){
+                if (found.terrain != checked){
+                    Leaf terrainLeaf;
+                    terrainLeaf.entity = found.terrain;
+                    terrainLeaf.kind = found.tree ? PickKind::TREE : PickKind::DETAIL;
+                    checked = found.terrain;
+                    terrainPasses = passes(terrainLeaf, filter);
+                }
+                if (!terrainPasses || found.bounds.isNull() || !touches(found.bounds)){
+                    return;
+                }
+                MeshOverlapHit hit;
+                hit.entity = found.terrain;
+                hit.kind = found.tree ? PickKind::TREE : PickKind::DETAIL;
+                hit.foliageId = found.id;
+                hit.prototype = found.prototype;
+                out.push_back(hit);
+            };
+            foliage->forEachFoliageInBox(AABB(mn, mx), (filter.kinds & PICK_TREE) != 0, (filter.kinds & PICK_DETAIL) != 0, visit);
         }
-        const bool touches = leaf.bounds.isInfinite() ? true : shape.box ? bvhObbTouchesBox(shape.center, axes, shape.halfExtents, leaf.bounds)
-                                       : bvhSphereTouchesBox(shape.center, shape.radius, leaf.bounds);
-        if (!touches){
-            return;
-        }
-        MeshOverlapHit hit;
-        hit.entity = leaf.entity;
-        hit.kind = leaf.kind;
-        hit.instance = leaf.kind == PickKind::INSTANCE ? (int32_t)leaf.subIndex : -1;
-        out.push_back(hit);
-    });
+    }
+
     std::sort(out.begin() + (std::ptrdiff_t)first, out.end(), [](const MeshOverlapHit& a, const MeshOverlapHit& b){
         if (a.entity != b.entity) return a.entity < b.entity;
-        return a.instance < b.instance;
+        if (a.instance != b.instance) return a.instance < b.instance;
+        if (a.kind != b.kind) return a.kind < b.kind;
+        if (a.foliageId != b.foliageId) return a.foliageId < b.foliageId;
+        return a.prototype < b.prototype;
     });
 }

@@ -489,7 +489,7 @@ namespace {
         luaL_checktype(L, index, LUA_TTABLE);
         index = lua_absindex(L, index);
         lua_getfield(L, index, "kinds");
-        if (!lua_isnil(L, -1)) options.kinds = (uint32_t)luaL_checkinteger(L, -1) & MeshRaycast::ALL;
+        if (!lua_isnil(L, -1)) options.kinds = (uint32_t)luaL_checkinteger(L, -1) & (MeshRaycast::ALL | MeshRaycast::DETAIL);
         lua_pop(L, 1);
         lua_getfield(L, index, "includeInactive");
         if (!lua_isnil(L, -1)) options.includeInactive = lua_toboolean(L, -1) != 0;
@@ -562,6 +562,10 @@ namespace {
     lua_Integer pqMeshOverlapEntity(const MeshOverlapHit* hit){ return (lua_Integer)hit->entity; }
     lua_Integer pqMeshOverlapKind(const MeshOverlapHit* hit){ return (lua_Integer)(1u << (uint32_t)hit->kind); }
     lua_Integer pqMeshOverlapInstance(const MeshOverlapHit* hit){ return (lua_Integer)hit->instance; }
+    lua_Integer pqMeshRaycastTree(){ return MeshRaycast::TREE; }
+    lua_Integer pqMeshRaycastDetail(){ return MeshRaycast::DETAIL; }
+    lua_Integer pqMeshOverlapFoliageId(const MeshOverlapHit* hit){ return (lua_Integer)hit->foliageId; }
+    lua_Integer pqMeshOverlapPrototype(const MeshOverlapHit* hit){ return (lua_Integer)hit->prototype; }
 
 }
 #endif
@@ -595,6 +599,9 @@ void LuaBinding::registerPhysicsQueryClasses(lua_State* L){
         .addProperty("entity", &pqMeshOverlapEntity)
         .addProperty("kind", &pqMeshOverlapKind)
         .addProperty("instance", &pqMeshOverlapInstance)
+        // a TREE hit's tree (Terrain:removeTreeInstance takes it) and prototype; DETAIL: the layer in prototype
+        .addProperty("foliageId", &pqMeshOverlapFoliageId)
+        .addProperty("prototype", &pqMeshOverlapPrototype)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -652,6 +659,9 @@ void LuaBinding::registerPhysicsQueryClasses(lua_State* L){
 
     luabridge::getGlobalNamespace(L)
         .beginClass<MeshRaycast>("MeshRaycast")
+        // a Terrain's trees (a default kind of overlaps and rays) and details (opt-in)
+        .addStaticProperty("TREE", &pqMeshRaycastTree)
+        .addStaticProperty("DETAIL", &pqMeshRaycastDetail)
         .addStaticFunction("overlapSphere", &pqMeshOverlap<false, false>)
         .addStaticFunction("overlapSphereNonAlloc", &pqMeshOverlap<false, true>)
         .addStaticFunction("overlapBox", &pqMeshOverlap<true, false>)

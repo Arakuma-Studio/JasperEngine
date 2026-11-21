@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 // je-bench-physics-query: the spatial query budgets (docs/specs/spatial-queries.md R19, AC14) on
-// query_city (2,000 bodies over a 200 m mesh ground; the same layout in Box2D) and 10,000 drawn
-// leaves. Each sample times 100 queries; the keys are the p95 of 200 samples, per query.
+// query_city (2,000 bodies over a 200 m mesh ground; the same layout in Box2D), 10,000 drawn
+// leaves and T5's foliage scene (50,000 trees, which have no leaves: the overlap walks their cells).
+// Each sample times 100 queries; the keys are the p95 of 200 samples, per query.
 //
 //   je-bench-physics-query [--json out.json]
 
 #include "BenchUtil.h"
+#include "FoliageBenchScene.h"
 #include "JobsTestSystem.h"
 #include "../physics/QueryCityTestUtil.h"
 
@@ -132,6 +134,28 @@ int main(int argc, char** argv){
         std::vector<MeshOverlapHit> hits;
         hits.reserve(1024);
         results.add("mesh_overlap_p95_ms", p95PerQuery([&](int i){ MeshRaycast::overlapSphere(&scene, centers[i], 5.0f, hits); }), "ms");
+    }
+
+    {
+        // 50,000 trees over 1 km, all resident: spheres at trees' middles, the default kinds
+        foliagebench::Scene1 forest("physics-query-trees");
+        forest.settle();
+        const std::shared_ptr<terraincore::TreeStore> store = forest.foliage->getTreeStore(forest.entity);
+        std::vector<Vector3> centers;
+        for (int i = 0; i < SAMPLES * BATCH + BATCH; i++){
+            FoliageInstanceInfo pose;
+            const uint32_t record = store->records()[(size_t)(i * 7919) % store->records().size()].id;
+            forest.foliage->getTreePose(forest.entity, terraincore::makeTreeId(0, record), pose);
+            centers.push_back(pose.position + Vector3(0.0f, 2.0f, 0.0f));
+        }
+        std::vector<MeshOverlapHit> hits;
+        hits.reserve(1024);
+        size_t found = 0;
+        results.add("mesh_overlap_trees_p95_ms", p95PerQuery([&](int i){ found += MeshRaycast::overlapSphere(forest.scene.get(), centers[i], 5.0f, hits); }), "ms");
+        if (found == 0){
+            std::fprintf(stderr, "mesh_overlap_trees: no tree found: the scene did not load\n");
+            return 1;
+        }
     }
 
     const char* path = bench::jsonPath(argc, argv, "je-bench-physics-query.json");
