@@ -661,11 +661,45 @@ wait until clicked, shot). Red controls are named per criterion.
   pacing and a script file run by `ScriptRunner` give the same recorded `Engine::system*` trace.
 - **get_play_state.** The recording and replay state are merged into the existing `input` object
   (`input.recording`, `input.replaying`), which already held the game's input.
-- **Commands.** Editor commands are in the `playmode.*` group (`playmode.playOrResume`), so Record
-  Input would be `playmode.recordInput`; the toolbar button, its menu, settings, banner, Inspector
-  and Capture Screenshots dialog (R36-R40) are not implemented in this change.
-- **Not implemented in this change:** editor Record Input (R13, AC7, AC17), shots of `play {input}`
-  replays (R21), `record_game {input, format: "shots", resolutions}` (R23, AC14), `run_build
-  {input_script, resolutions}` (R24, AC11), the web URL fetch of `--input-script` (R30: content
-  paths only), the web gate and Android runs (AC12, AC13). A player's seed is applied
-  when its Lua state opens after the engine starts.
+- **Commands.** Editor commands are in the `playmode.*` group (`playmode.playOrResume`): Record Input
+  is `playmode.recordInput` and Replay Input... `playmode.replayInput`, neither with a default key.
+- **Toolbar.** The Recorder's Start Recording (S27) already has the red circle right of Step; Record
+  Input is a red-ringed circle (`circle-dot`) beside it with its caret menu, which also offers Retry
+  Saving Recording while a write that failed waits.
+- **Settings.** R37's settings are the project's (`.jasperengine/user/record-input.yaml`, beside the
+  Recorder's), edited on Preferences > Play Mode > Record Input and applied with its OK, like every
+  preference (no undo).
+- **Writing.** The JSON is encoded on a job; the write itself is the undo step's (`WriteFilesCmd`
+  through `ProjectFileWrites::writeUndoable`, an atomic write), so it runs on the main thread. A
+  failed write is kept until a retry or the next recording: Play's stop is what writes, so dropping
+  it at Play's end would lose every recording whose write failed then.
+- **Editor replays' host.** Replays the editor starts (`play {input}`, Replay Input, the Inspector,
+  Capture Screenshots) resolve `target` in the running UI Documents and `wait {until}` in the game's
+  Lua state, as players and `Test.input` do (R8), not through `htmlui_mcp::elementCenter`. Their
+  `shot` steps hold the game until two frames draw with nothing loading, then save the Game view.
+  The seed goes in through Play Data's before-scripts hook at the session's start: the editor keeps
+  one Lua state across sessions, so a seed waiting for a new state would never apply.
+- **play {input} warnings.** `scene_override` and `aspect_mismatch` are entries of the start result's
+  `warnings` (`{code, recorded_scene}`, `{code, recorded_canvas, canvas}`).
+- **record_game {input}.** Play must be stopped: every run (one per resolution) is a new session.
+  `format: "png"` or a movie records `frames` of the replay (default: all of it) and skips its `shot`
+  steps; `format: "shots"` and `resolutions` need `input` (at most 20 sizes). The output defaults to
+  `Recordings/Screenshots/<file stem>/` (shots) or `Recordings/Input/<file stem>/`; the sidecar is
+  `<output>/input-capture.json` (per run: resolution, folder, files, the replay's `compared`,
+  `comparable`, `diverged_at_frame`, `differences`, and the Recorder's sidecar for frames). The
+  result lists `runs` and `files`.
+- **run_build {input_script}.** The file is validated in the editor and passed by absolute path;
+  its shots go to `Recordings/Input/<file stem>/player/` (`/<WxH>/` per resolution) and come back in
+  `input_script {lines, shots, shots_folder}`; exit codes 10 and 11 are not crashes. `resolutions`
+  (at most 8, not with `device`) launches once per size and returns `runs`, each run's images among
+  the first 4. run_build runs this computer's player on Linux and macOS only: on Windows it was never
+  implemented (it says so), so R24's Windows desktop is not covered here.
+- **Web input-script URL.** The page's `main()` fetches an `--input-script` that is a URL or a page
+  path (`http(s)://`, `/`, `./`, `../`) with a synchronous same-origin `XMLHttpRequest` before the
+  engine starts, so every web build has it (not only the prebuilt player's loader), and runs the copy
+  from MEMFS; a failed fetch prints `[input] failed` with the URL and exits 10.
+- **AC7.** A recording holds input, not shots: the replay is checked by its compared checkpoints (the
+  state hash and a `math.random` value every frame) and the replayed presses, not by a shot.
+- **Not done in this change:** the web gate and the Android run (AC12, AC13): the `input` test
+  project has no `Replay` scene, HTML UI `#play` button or `tests/Input/menu.input.json` yet, and
+  neither lane ran here. A player's seed is applied when its Lua state opens after the engine starts.

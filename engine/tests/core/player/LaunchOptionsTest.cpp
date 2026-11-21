@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include "player/InputScriptRun.h"
 #include "player/PlayerLaunch.h"
 #include "player/LaunchOptions.h"
 #include "player/RunControl.h"
@@ -261,4 +262,18 @@ TEST(LaunchOptions, PerfSummary) {
     EXPECT_TRUE(RunControl::wantsReadySignal());
     EXPECT_FALSE(RunControl::isActive()) << "no frame option: the run is not counted";
     RunControl::reset();
+}
+
+// R30: the web page fetches an --input-script given as a URL or a page path before the start
+// scene; a content path is read from the game's content as on every other target
+TEST(InputScriptRun, WebFetchesUrlsNotContentPaths) {
+    using player::InputScriptRun::isFetchedUrl;
+    EXPECT_TRUE(isFetchedUrl("/tests/menu.input.json"));
+    EXPECT_TRUE(isFetchedUrl("./menu.input.json"));
+    EXPECT_TRUE(isFetchedUrl("../scripts/menu.input.json"));
+    EXPECT_TRUE(isFetchedUrl("https://example.com/menu.input.json"));
+    EXPECT_TRUE(isFetchedUrl("http://127.0.0.1:8000/menu.input.json"));
+    EXPECT_FALSE(isFetchedUrl("tests/Input/menu.input.json"));
+    EXPECT_FALSE(isFetchedUrl("asset://demo/attract.input.json"));
+    EXPECT_FALSE(isFetchedUrl("data://input/menu.input.json"));
 }

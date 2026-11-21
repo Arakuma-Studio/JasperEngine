@@ -13,6 +13,7 @@
 #include "audio/AudioCapture.h"
 #include "render/SystemRender.h"
 #include "util/UIProbe.h"
+#include "recorder/RecordInput.h"
 #include "recorder/RecorderSession.h"
 #include "widget/ColorField.h"
 #include "widget/ColorPickerWindow.h"
@@ -1664,6 +1665,19 @@ void editor::GameWindow::drawContent(uint32_t sceneId) {
             drawList->AddRectFilled(ImVec2(at.x - 4.0f, at.y - 2.0f), ImVec2(at.x + size.x + 4.0f, at.y + size.y + 2.0f), IM_COL32(0, 0, 0, 170), 3.0f);
             drawList->AddCircleFilled(ImVec2(at.x + 5.0f, at.y + size.y * 0.5f), 4.0f, IM_COL32(230, 40, 40, 255));
             drawList->AddText(at, IM_COL32(255, 70, 70, 255), recording.c_str());
+        }
+
+        // Replay Input (input-recorder-and-input-scripts R40): what replays and where it is, and the
+        // divergence once a checkpoint differs; the game ignores the editor's input meanwhile
+        const std::string replaying = recordinput::RecordInput::get().bannerText();
+        if (!replaying.empty()) {
+            const std::string diverged = recordinput::RecordInput::get().divergenceText();
+            const std::string text = replaying + (diverged.empty() ? std::string() : "\n" + diverged) + "\nEditor input to the game is ignored";
+            const ImVec2 size = ImGui::CalcTextSize(text.c_str());
+            const ImVec2 at(areaMin.x + (areaSize.x - size.x) * 0.5f, areaMin.y + Theme::dpi(8.0f));
+            drawList->AddRectFilled(ImVec2(at.x - 8.0f, at.y - 4.0f), ImVec2(at.x + size.x + 8.0f, at.y + size.y + 4.0f), IM_COL32(20, 20, 20, 210), 4.0f);
+            drawList->AddText(at, diverged.empty() ? IM_COL32(255, 200, 80, 255) : IM_COL32(255, 110, 90, 255), text.c_str());
+            UIProbe::rect("game.replayBanner", at.x, at.y, at.x + size.x, at.y + size.y);
         }
 
         // a capture mutes the device: say why the game is silent (S35 R31)

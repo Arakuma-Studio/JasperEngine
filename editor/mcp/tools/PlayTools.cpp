@@ -44,6 +44,7 @@
 #include "input/InputRecorder.h"
 #include "input/InputReplay.h"
 #include "input/InputScript.h"
+#include "recorder/RecordInput.h"
 #include "Platform.h"
 #include <filesystem>
 #include <memory>
@@ -191,7 +192,6 @@ struct TimeControl {
     bool autoPause = false;
     int advancers = 0;              // calls letting an auto-paused game run (wait, send_input, step)
     int shotHolds = 0;              // input `shot` steps being read: the game waits for them
-    int inputFixedFps = 0;          // play {input}: the file's fixed_fps for this session
 };
 
 struct PlayToolsState {
@@ -205,10 +205,8 @@ struct PlayToolsState {
     std::shared_ptr<input::HeldInput> held = std::make_shared<input::HeldInput>();
     std::vector<PlayStartWait> startWaits;
     bool monitorScheduled = false;
-    // play {input}: the file waits for the scene to run (the game held), then replays
-    std::shared_ptr<input::ParsedScript> pendingReplay;
-    std::string replayFile;
-    std::shared_ptr<input::Replay> replay;
+    // play {input}: what the start's result warns of (scene_override)
+    Json replayWarnings = Json::array();
     bool clockOwnedByTests = false;
 };
 
@@ -288,7 +286,6 @@ Json sessionJson(const SessionRecord& record) {
 }
 
 void finishStartWaits(McpContext& ctx);
-void startPendingReplay(McpContext& ctx);
 
 // ================================================================== game clock
 
@@ -297,7 +294,9 @@ void applyTimeSettings() {
     if (state().clockOwnedByTests) return;
     const TimeControl& t = state().time;
     Engine::setTimeScale(static_cast<float>(t.timeScale));
-    const int fps = t.inputFixedFps > 0 ? t.inputFixedFps : t.fixedFps;
+    // a replay's or a Record Input session's frame rate wins (its file's fixed_fps)
+    const int sessionFps = recordinput::RecordInput::get().sessionFixedFps();
+    const int fps = sessionFps > 0 ? sessionFps : t.fixedFps;
     Engine::setFixedDeltatime(fps > 0 ? 1.0 / fps : 0.0);
 }
 
@@ -310,7 +309,9 @@ void applyHold(McpContext& ctx) {
     const uint32_t playId = project ? project->getPlaySessionSceneId() : NULL_PROJECT_SCENE;
     SceneProject* sp = playId != NULL_PROJECT_SCENE ? project->getScene(playId) : nullptr;
     const bool running = sp && isRunningState(sp->playState) && s.current.active;
-    const bool hold = running && ((s.time.autoPause && s.time.advancers == 0 && s.current.ranFirstFrame) || s.time.shotHolds > 0 || s.pendingReplay != nullptr);
+    // Record Input and replays hold the game until their scene runs and while a shot is read
+    const bool hold = (running && ((s.time.autoPause && s.time.advancers == 0 && s.current.ranFirstFrame) || s.time.shotHolds > 0)) ||
+                      recordinput::RecordInput::get().wantsHold();
     if (Engine::isSimulationHeld() != hold) Engine::setSimulationHeld(hold);
 }
 
@@ -411,7 +412,6 @@ void observeSession(McpContext& ctx) {
         if (sp && isRunningState(sp->playState)) {
             s.current.reachedPlaying = true;
         }
-        if (sp && sp->playState == ScenePlayState::PLAYING && s.pendingReplay) startPendingReplay(ctx);
         if (playId != NULL_PROJECT_SCENE) {
             s.current.framesPlaying = Engine::getGameFrames() - std::min(Engine::getGameFrames(), s.current.engineFramesBase);
             s.current.gameTime = std::max(0.0, Engine::getGameTime() - s.current.engineTimeBase);
@@ -427,9 +427,6 @@ void observeSession(McpContext& ctx) {
             s.last = r;
             s.current = SessionRecord();
             releaseHeldInput(ctx);
-            s.pendingReplay.reset();
-            s.replay.reset();
-            s.time.inputFixedFps = 0;
         }
     }
 
@@ -726,29 +723,24 @@ Json playStateJson(McpContext& ctx) {
     for (uint32_t sceneId : PlayChangeReview::get().pendingScenes()) pending += PlayChangeReview::get().pendingCount(sceneId);
     out["pending_play_changes"] = pending;
     if (!s.held->empty()) out["held_input"] = heldInputJson();
+    const recordinput::RecordInput& recordInput = recordinput::RecordInput::get();
+    // the toolbar's Record Input (R13): armed for the next Play, the file it last wrote, a write to retry
+    if (recordInput.isArmed() || !recordInput.lastWritten().empty() || recordInput.writePendingFailed()) {
+        Json record = {{"armed", recordInput.isArmed()}};
+        if (!recordInput.lastWritten().empty()) record["last_file"] = project->normalizeToProjectRelative(recordInput.lastWritten()).generic_string();
+        if (recordInput.writePendingFailed()) record["error"] = recordInput.writeError();
+        out["record_input"] = record;
+    }
     // input recordings and replays (R41)
     Json inputState = Json::object();
     if (input::InputRecorder::isRecording()) {
         inputState["recording"] = {{"frame", input::InputRecorder::frame()}, {"events", input::InputRecorder::events()},
                                    {"truncated", input::InputRecorder::truncated()}};
+        // Record Input's file, written at Stop Recording or Play's stop (a Lua recording's is its stop path)
+        if (recordInput.isRecording()) inputState["recording"]["file"] = project->normalizeToProjectRelative(recordInput.recordingFile()).generic_string();
     }
-    if (s.replay || s.pendingReplay) {
-        const input::ParsedScript& script = s.replay ? s.replay->script() : *s.pendingReplay;
-        Json replaying = {{"file", s.replayFile}, {"kind", script.header.kind == input::ScriptKind::Recording ? "recording" : "script"},
-                          {"last_frame", script.lastFrame()}, {"frame", -1}, {"events_left", script.actions.size()}};
-        if (s.replay) {
-            const input::ReplayReport& report = s.replay->report();
-            replaying["frame"] = s.replay->frame();
-            replaying["done"] = s.replay->isDone();
-            replaying["events_left"] = script.actions.size() - std::min(report.actionsDone, script.actions.size());
-            replaying["comparable"] = report.comparable;
-            replaying["compared"] = report.compared;
-            replaying["diverged_at_frame"] = report.divergedAtFrame >= 0 ? Json(report.divergedAtFrame) : Json(nullptr);
-            replaying["differences"] = report.differences;
-            if (report.failed) replaying["error"] = s.replay->errorText();
-        }
-        inputState["replaying"] = replaying;
-    }
+    if (const Json replaying = recordInput.replayingJson(); !replaying.is_null()) inputState["replaying"] = replaying;
+    if (!recordInput.shots().empty()) inputState["shots"] = recordInput.shotsJson();
     // what the game's input reads (the Input Manager's actions, touches, keys)
     if (playId != NULL_PROJECT_SCENE && s.current.active) {
         out["input"] = playInputJson(project);
@@ -1431,10 +1423,19 @@ bool luaTruthy(const Json& value) {
 
 Json startResultJson(McpContext& ctx, uint64_t startLogId, double seconds) {
     Json data = w3::playStateJson(ctx);
-    const PlayToolsState& s = state();
-    const input::ParsedScript* replay = s.pendingReplay ? s.pendingReplay.get() : s.replay ? &s.replay->script() : nullptr;
+    const input::ParsedScript* replay = recordinput::RecordInput::get().replayScript();
     if (replay) {
         data["next"] = {{"tool", "wait"}, {"args", {{"until", "not InputRecording.isReplaying()"}, {"frames", replay->lastFrame() + 60}}}};
+        Json warnings = state().replayWarnings;
+        // normalized points scale to another canvas; anchored UI may move (R16)
+        const Vector2 recorded = replay->header.canvas;
+        const int width = Engine::getCanvasWidth(), height = Engine::getCanvasHeight();
+        if (replay->header.kind == input::ScriptKind::Recording && recorded.x > 0 && recorded.y > 0 && width > 0 && height > 0 &&
+            std::abs(recorded.x / recorded.y - static_cast<float>(width) / height) > 0.01f) {
+            warnings.push_back({{"code", "aspect_mismatch"}, {"recorded_canvas", Json::array({recorded.x, recorded.y})},
+                                {"canvas", Json::array({width, height})}});
+        }
+        if (!warnings.empty()) data["warnings"] = warnings;
     }
     data["startup_seconds"] = round3(seconds);
     data["console_cursor_at_start"] = startLogId;
@@ -1705,10 +1706,29 @@ void playStart(const CallPtr& call, const Json& sceneRef) {
     const bool wait = args.value("wait", true);
     const double timeout = std::clamp(args.value("timeout_seconds", 120.0), 1.0, 3600.0);
 
-    SceneProject* sp = nullptr;
-    if (!sceneRef.is_null()) {
+    // input: a .input.json replayed from the first frame the scene runs (R16, R21); a recording
+    // plays its scene unless scene is given
+    std::shared_ptr<input::ParsedScript> replay;
+    const std::string inputFile = args.value("input", "");
+    Json sceneToPlay = sceneRef;
+    state().replayWarnings = Json::array();
+    if (!inputFile.empty()) {
         std::string error;
-        sp = McpRefs::resolveScene(project, sceneRef, error);
+        if (!recordinput::RecordInput::get().loadReplay(inputFile, replay, error)) {
+            call->fail(error);
+            return;
+        }
+        const std::string& recordedScene = replay->header.scene;
+        if (replay->header.kind == input::ScriptKind::Recording && !recordedScene.empty()) {
+            if (sceneRef.is_null()) sceneToPlay = recordedScene;
+            else state().replayWarnings.push_back({{"code", "scene_override"}, {"recorded_scene", recordedScene}});
+        }
+    }
+
+    SceneProject* sp = nullptr;
+    if (!sceneToPlay.is_null()) {
+        std::string error;
+        sp = McpRefs::resolveScene(project, sceneToPlay, error);
         if (!sp) {
             call->fail(error);
             return;
@@ -1774,40 +1794,16 @@ void playStart(const CallPtr& call, const Json& sceneRef) {
             return;
         }
     }
-    // input: a .input.json replayed from the first frame the scene runs (R16, R21)
-    std::shared_ptr<input::ParsedScript> replay;
-    const std::string inputFile = args.value("input", "");
-    if (!inputFile.empty()) {
-        std::filesystem::path path(inputFile);
-        if (path.is_relative()) path = std::filesystem::path(project->getProjectPath()) / path;
-        std::ifstream in(path, std::ios::binary);
-        std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        if (!in && text.empty()) {
-            call->fail("No input file at " + path.string() + " (input is project-relative or absolute).");
-            return;
-        }
-        replay = std::make_shared<input::ParsedScript>();
-        std::string error;
-        if (!input::parseScript(text, *replay, error)) {
-            call->fail(inputFile + ": " + error + ".");
-            return;
-        }
-        if (replay->header.kind == input::ScriptKind::Recording && replay->header.hasSeed) input::setPendingLuaSeed(replay->header.seed);
-        state().time.inputFixedFps = replay->header.fixedFps;
-        state().replayFile = inputFile;
-    }
-
     observeSession(ctx);
     releaseHeldInput(ctx);
     const uint64_t startLogId = Out::lastLogId();
     state().pendingStartLogId = startLogId;
-    state().pendingReplay = replay;
+    if (replay) recordinput::RecordInput::get().prepareReplay(replay, inputFile);
     if (args.contains("data")) gametests::PlayData::get().setNextSession(data);
     project->start(sp->id);
     if (project->getPlaySessionSceneId() != sp->id) {
         state().pendingStartLogId = 0;
-        state().pendingReplay.reset();
-        state().time.inputFixedFps = 0;
+        if (replay) recordinput::RecordInput::get().cancelPrepared();
         Json problems = problemsSince(startLogId, 20);
         call->fail("Play did not start." + (problems.empty() ? std::string() : "\n" + w3::formatConsoleText(problems)),
                    Json{{"problems", problems}});
@@ -3188,40 +3184,6 @@ void finishInputRun(const std::shared_ptr<InputRun>& run) {
     }
     if (!console.entries.empty()) text += "\nConsole:\n" + w3::formatConsoleText(console.entries, 4000);
     replyWithOptionalScreenshot(call, isError ? ToolResult::error(text, data) : ToolResult::success(text, data));
-}
-
-// play {input}: the scene runs, the replay starts with its next frame and the game is let go
-void startPendingReplay(McpContext& ctx) {
-    PlayToolsState& s = state();
-    std::shared_ptr<input::ParsedScript> script = std::move(s.pendingReplay);
-    s.pendingReplay.reset();
-    McpContext* c = &ctx;
-    input::ReplayOptions options;
-    options.play.simulateTouch = script->header.kind == input::ScriptKind::Recording ? script->header.simulateTouch
-                                                                                      : ctx.project()->isSimulateTouch();
-    options.host.resolveTarget = [c](const std::string& selector, const Json& document, Vector2& point, std::string& error, Json* found) {
-        double x = 0, y = 0;
-        if (!htmlui_mcp::elementCenter(*c, document, selector, x, y, error, found)) return false;
-        point = Vector2(static_cast<float>(x), static_cast<float>(y));
-        return true;
-    };
-    options.host.evalCondition = [c](const std::string& condition, bool& truthy, std::string& error) {
-        Project* p = c->project();
-        SceneProject* scene = p ? p->getScene(p->getPlaySessionSceneId()) : nullptr;
-        if (!scene) {
-            error = "nothing is playing";
-            return false;
-        }
-        LuaEvalResult r = runLua(p, scene, condition, 2.0, 3, 50);
-        if (!r.ok) {
-            error = "until failed: " + r.error;
-            return false;
-        }
-        truthy = luaTruthy(r.values.empty() ? Json(nullptr) : r.values[0]);
-        return true;
-    };
-    s.replay = input::Replay::start(script, std::move(options));
-    applyHold(ctx);
 }
 
 void sendInputTool(const CallPtr& call) {

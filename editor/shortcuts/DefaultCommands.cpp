@@ -142,6 +142,10 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     // Escape in the Game view does it too (Unity), the key still reaching the game
     b.add("playmode.releaseCursor", "Release Game Cursor", C::Global).description =
         "Give a cursor the running game captured back to the editor; click the Game view to return it";
+    // the toolbar's Record Input and its menu (input-recorder-and-input-scripts R36)
+    b.add("playmode.recordInput", "Record Input", C::Global).description =
+        "Before Play: arm or disarm recording the game's input into a .input.json from Play's start; while recording: Stop Recording";
+    b.add("playmode.replayInput", "Replay Input...", C::Global).description = "Replay a .input.json from Play's start in a new session";
     CommandDef& maximize = b.menu("playmode.maximizeOnPlay", "Maximize On Play", AppMenuCommand::ToggleMaximizeOnPlay, C::Global, "F11");
     maximize.description = "Fill the editor with the Game view while playing (the Game view toolbar's toggle)";
     // macOS takes F11 for Show Desktop: Control+Cmd+F, the Mac's full-screen key, comes first there

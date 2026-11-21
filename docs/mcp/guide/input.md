@@ -374,7 +374,21 @@ text, for `UserSettings`), `Input.importBindings(json)`. Runtime state: Play sto
   frame), `{type: "gamepad", action: "connect", gamepad: 0, name: "Pad"}` and `disconnect`.
   `space: "safe_area"` puts x, y in 0..1 of `Screen.safeArea`; `view` cannot be stored.
 - Repeat a flow: write a script and run it with `send_input {file: "Tests/Input/menu.input.json"}`
-  (its shots come back in `shots`). A recording replays from Play's start, not through send_input.
+  (its shots come back in `shots`). A recording replays from Play's start, not through send_input:
+  `play {action: "start", input: "<file>"}` (the recording's scene unless `scene` is given; its shot
+  steps go to `Recordings/Input/<file stem>/`, listed in `get_play_state` `input.shots`).
+- Record a session: `run_command {id: "playmode.recordInput"}` before `play` arms the toolbar's
+  Record Input; the session records from Play's start (a new seed, the Record Input frame rate,
+  checkpoints) until the same command during Play (Stop Recording) or Play's stop, into
+  `Tests/Input/` (a project with a test root) or `Recordings/Input/`, one undo step.
+  `get_play_state` shows `input.recording.file` while it records and `record_input.last_file` after.
+- Store screenshots: `record_game {input, format: "shots", resolutions: ["1290x2796", "2048x2732"]}`
+  replays the file once per size, each from Play's start, writing its shot steps into
+  `<output>/<WxH>/` (default `Recordings/Screenshots/<file stem>/`); `format: "png"` records its
+  frames instead. `fps` is the file's `fixed_fps`.
+- Built players: `run_build {input_script: "<file>", resolutions, headless: true}` runs the file in
+  the player on any desktop (no X server) and returns its shots, `[input]` lines and exit code;
+  `input` stays the X11 route.
 - A recording made from Play's start has a `seed` (Lua's `math.randomseed` before any `init`), a
   fixed frame rate and checkpoints (a state hash, probe positions, `InputRecording.checkpoint`
   values) every 60 frames. A replay compares them and reports the first `diverged_at_frame` with

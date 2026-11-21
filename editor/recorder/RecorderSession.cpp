@@ -709,6 +709,14 @@ bool RecorderSession::start(const Settings& settings, std::string& error) {
     return arm(settings, false, error);
 }
 
+bool RecorderSession::startWithPlay(const Settings& settings, std::string& error) {
+    if (active()) {
+        error = "a recording is already running (stop it first)";
+        return false;
+    }
+    return arm(settings, true, error);
+}
+
 void RecorderSession::onPlayStarting(const Settings& settings) {
     if (active() || !settings.recordOnPlay) return;
     std::string error;

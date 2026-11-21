@@ -8,6 +8,7 @@
 // the windows draw that MCP does not set (their get reads the value).
 
 #include "SettingsRegistry.h"
+#include "recorder/RecordInput.h"
 
 #include "App.h"
 #include "AppSettings.h"
@@ -5133,6 +5134,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Diagnostics", SettingsScope::Preference, 10, "crash hang watchdog freeze not responding reports"},
         {"Shader Cache", SettingsScope::Preference, 11, "shaders cache clear"},
         {"Version Control", SettingsScope::Preference, 12, "git svn subversion lfs lock commit merge"},
+        {"Play Mode", SettingsScope::Preference, 13, "record input replay recordings checkpoints probes frame rate"},
     };
     for (const SettingsPage& page : pages) {
         // two scopes may share a title (Scripting): names stay unique
@@ -5367,6 +5369,17 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
             const vcs::SnapshotPtr& snapshot = ctx.project()->getVcs().snapshot();
             return Json(snapshot && snapshot->mergeDriverMissing ? "not set up" : "");
         }, "Set Up Smart Merge: git merges scenes and prefabs with the editor's scene merge (merge-scene) instead of its text merge"));
+    // Record Input's (input-recorder-and-input-scripts R37), per project
+    const char* playMode = "Play Mode";
+    addOrAbort(registry, uiRow("preferences.record_input.frame_rate", playMode, "Record Input", "Frame Rate", "record input fixed fps replay",
+        [](SettingsContext&) { return Json(recordinput::RecordInput::get().settings().frameRate); },
+        "The fixed frame rate a recorded Play runs at (its replays run at it too)"));
+    addOrAbort(registry, uiRow("preferences.record_input.checkpoint_frames", playMode, "Record Input", "Checkpoint Every", "record input checkpoint divergence hash",
+        [](SettingsContext&) { return Json(recordinput::RecordInput::get().settings().checkpointFrames); },
+        "Frames between the state checkpoints a replay compares (0: none)"));
+    addOrAbort(registry, uiRow("preferences.record_input.probes", playMode, "Record Input", "Probes", "record input probe positions divergence gameobjects",
+        [](SettingsContext&) { return Json(recordinput::RecordInput::get().settings().probes); },
+        "Up to 16 GameObject paths whose positions checkpoints store; empty: chosen when recording starts"));
 }
 
 } // namespace jasperengine::editor
