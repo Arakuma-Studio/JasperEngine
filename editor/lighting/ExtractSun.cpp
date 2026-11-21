@@ -33,7 +33,7 @@ using namespace jasperengine::editor;
 namespace {
 
     // one decoded sky image as linear RGBA floats
-    struct DecodedSkyImage {
+    struct ExtractSunImage {
         std::vector<float> rgba;
         int width = 0;
         int height = 0;
@@ -45,7 +45,7 @@ namespace {
         return c <= 0.04045f ? c / 12.92f : std::pow((c + 0.055f) / 1.055f, 2.4f);
     }
 
-    bool decodeSkyImage(const std::filesystem::path& path, DecodedSkyImage& out, std::string& error){
+    bool decodeExtractSunImage(const std::filesystem::path& path, ExtractSunImage& out, std::string& error){
         TextureData image;
         if (!image.loadTextureFromFile(path.generic_string().c_str()) || !image.getData()){
             error = "cannot decode " + path.filename().generic_string();
@@ -75,7 +75,7 @@ namespace {
     }
 
     // the scene's main Directional Light: its brightest (as drawn), the first on a tie
-    Entity mainDirectionalLight(Scene* scene){
+    Entity extractSunMainLight(Scene* scene){
         auto lights = scene->getComponentArray<LightComponent>();
         Entity best = NULL_ENTITY;
         float brightest = -1.0f;
@@ -125,17 +125,17 @@ bool ExtractSun::apply(Project* project, uint32_t sceneId, bool removeSunDisc, E
     if (cross)
         paths.resize(1);
 
-    std::vector<DecodedSkyImage> decoded(paths.size());
+    std::vector<ExtractSunImage> decoded(paths.size());
     std::vector<hdrisun::SkyImage> images;
     bool hdr = true;
     for (size_t i = 0; i < paths.size(); i++){
         const std::filesystem::path absolute = project->getAssetsPath() / FileUtils::pathFromUtf8(paths[i]);
-        if (!decodeSkyImage(absolute, decoded[i], error)){
+        if (!decodeExtractSunImage(absolute, decoded[i], error)){
             error = "Extract Sun: " + error + ".";
             return false;
         }
         hdr = hdr && decoded[i].hdr;
-        DecodedSkyImage& image = decoded[i];
+        ExtractSunImage& image = decoded[i];
         if (cross){
             if (!hdrisun::viewsOf(image.rgba.data(), image.width, image.height, true, images)){
                 error = "Extract Sun: " + paths[i] + " is not a 4:3 or 3:4 cubemap cross.";
@@ -213,7 +213,7 @@ bool ExtractSun::apply(Project* project, uint32_t sceneId, bool removeSunDisc, E
 
     const float ev100 = scene->getPhysicalLightEV100();
     CommandHistory* sceneHistory = CommandHandle::get(sceneId);
-    const Entity existing = mainDirectionalLight(scene);
+    const Entity existing = extractSunMainLight(scene);
     bool sceneWritten = false;
     if (existing == NULL_ENTITY){
         auto* create = new CreateEntityCmd(project, sceneId, "Directional Light", EntityCreationType::DIRECTIONAL_LIGHT);

@@ -1196,6 +1196,57 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_extract_sun",
+        "kind": "guard",
+        "what_happened": "S92 R28 adds extract_sun to set_scene_settings: an HDRI sky lights the scene only through IBL, so "
+                         "its sun casts no shadow. Without the parameter an agent guesses a Directional Light's angle by eye "
+                         "and leaves the sun in the sky's lighting twice.",
+        "text_at_issue": "set_scene_settings description: 'extract_sun creates or aligns the main Directional Light to the "
+                         "skybox HDR image's sun'; its next: 'set_scene_settings extract_sun {\"remove_sun_disc\": true} "
+                         "clamps the sky's disc'; jasper://docs/lighting",
+        "source": "docs/specs/S92-agent-feedback-area-lights.md R28, R29, R31",
+        "prompt": "Our Skybox uses the HDR image assets/sky/desert.hdr. Make its sun cast shadows: a sun light pointing "
+                  "exactly from the sun in the image, as bright and as coloured, and don't let the sky light the scene "
+                  "with the sun a second time.",
+        "mocks": [
+            {"tool": "set_scene_settings", "args": {"extract_sun": "*"}, "result": ok(
+                "Created the main Directional Light \"Directional Light\" to the sky's sun (812x the sky's mean) (one undo step).",
+                {"scene_id": 1, "settings": {}, "sun": {"light": {"id": 9, "name": "Directional Light"}, "created": True,
+                 "direction": [-0.41, -0.64, -0.65], "color": [1.0, 0.93, 0.82], "intensity": 3.1, "unit": "engine",
+                 "peak_ratio": 812.0, "disc_degrees": 0.9, "remove_sun_disc": ["assets/sky/desert.hdr"]}})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"extract_sun": {"remove_sun_disc": True}}}],
+                   "must_not_call": [{"tool": "create_entity", "args": {"type": "directional_light"}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_gradient_ambient",
+        "kind": "guard",
+        "what_happened": "S92 R30 adds Environment Lighting Source Gradient (ambient_source and the sky, equator and ground "
+                         "colours). Without it an agent tints the flat global_illumination_color, which lights every facing "
+                         "the same.",
+        "text_at_issue": "set_scene_settings names (ambient_source: 'Environment Lighting Source: skybox ..., gradient "
+                         "(sky/equator/ground colors by facing ...)'); jasper://docs/lighting",
+        "source": "docs/specs/S92-agent-feedback-area-lights.md R30, R31",
+        "prompt": "There is no sky image in this scene. Give it Unity-style trilight ambient: light blue from above, a "
+                  "neutral grey at the horizon and a warm brown from the ground.",
+        "mocks": [
+            {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\nambient_source = gradient",
+                {"scene_id": 1, "settings": {"ambient_source": "gradient"}})},
+            {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings"}},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 4 scene setting(s) (one undo step).", {"scene_id": 1, "settings": {"ambient_source": "gradient"}})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ambient_source": "gradient",
+                                                                                 "ambient_sky_color": "*",
+                                                                                 "ambient_ground_color": "*"}}}],
+                   "must_not_call": [{"tool": "set_scene_settings", "args": {"settings": {"global_illumination_color": "*"}}}]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_light_mode_setting",
         "kind": "guard",
         "what_happened": "S57 adds the project setting graphics.light_mode (Automatic, Per Object, Tiled). Raising Max "
