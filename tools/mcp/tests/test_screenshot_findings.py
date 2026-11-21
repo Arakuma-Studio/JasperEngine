@@ -195,6 +195,20 @@ async def test_coplanar_quads(ed: Editor):
     ed.check("z_fighting" not in kinds(r), f"5 mm apart: {r['findings']}")
 
 
+async def test_2d_scene_draws_in_order(ed: Editor):
+    """A 2D scene draws in its sorting order (no depth test): two quads on one plane never z-fight there,
+    and objects larger than the view are no out-of-frame subject (the fixture project's 2D main scene)"""
+    sid = (await ed.call("create_scene", name="Flat", type="2D", path="scenes/Flat"))["scene"]["id"]
+    for name in ("Back A", "Back B"):
+        await ed.call("create_entity", scene=sid, type="plane", name=name, position=[0, 0, -8], scale=[200, 1, 200],
+                      rotation=[90, 0, 0])
+    await ed.call("create_entity", scene=sid, type="plane", name="Wide", position=[0, 0, -9], scale=[5000, 1, 5000], rotation=[90, 0, 0])
+    await ed.call("select_entities", scene=sid, entities=[])
+    await ed.call("set_scene_camera", scene=sid, center=[0, 0], zoom=4)
+    r = await shoot(ed, {"scene": sid}, "scene", "2d")
+    ed.check("z_fighting" not in kinds(r) and "subject_out_of_frame" not in kinds(r), f"{r['findings']}")
+
+
 async def test_frame_checks_cost(ed: Editor):
     """R8: the checks of every screenshot above against the 10 ms budget"""
     ed.check(COSTS, "the screenshots above ran")
