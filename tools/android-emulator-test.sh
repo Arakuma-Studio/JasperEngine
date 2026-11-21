@@ -37,6 +37,11 @@
 #                       '[Localization] language <TAG's language>' line within --timeout: the game
 #                       language re-resolves without a relaunch (game-ui-localization.md R10, AC15).
 #                       The language is restored to en-US after
+#   --ime TEXT          once a logcat line contains TEXT (the game focused a text field), save
+#                       `dumpsys input_method` (ime.txt: the field's EditorInfo), type "abcdefgh"
+#                       (`input text`) and press Enter; the game's lines for them go in --expect
+#   --ime-editor-info TEXT  with --ime: a line of ime.txt must contain TEXT, e.g.
+#                       'inputType=0x21 imeOptions=0x12000004' (an e-mail field with a send key)
 #   --scene NAME        launch the app once per --scene (repeatable), with the property
 #                       debug.jasperengine.scene set to NAME (a test project picks what it shows
 #                       by it: tools/test-projects/render-gate); every run is checked on its own
@@ -103,7 +108,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
-    sed -n '2,79p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,84p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 2
 }
 
@@ -146,6 +151,8 @@ TAP_AFTER=10
 RELAUNCH=0
 KILL_AFTER=""
 LOCALE_CHANGE=""
+IME_AFTER=""
+IME_EDITOR_INFO=""
 OUT="build/android-emulator"
 BUNDLETOOL=""
 while [[ $# -gt 0 ]]; do
@@ -168,6 +175,8 @@ while [[ $# -gt 0 ]]; do
         --relaunch) RELAUNCH=1; shift ;;
         --kill-relaunch-after) KILL_AFTER="$2"; shift 2 ;;
         --locale-change) LOCALE_CHANGE="$2"; shift 2 ;;
+        --ime) IME_AFTER="$2"; shift 2 ;;
+        --ime-editor-info) IME_EDITOR_INFO="$2"; shift 2 ;;
         --scene)
             [[ "$2" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "android-emulator-test: --scene takes a name of letters, digits, _ and - (got $2)" >&2; exit 2; }
             SCENES+=("$2"); shift 2 ;;
@@ -187,6 +196,7 @@ if [[ "$APK" == *.aab ]]; then
 fi
 [[ -e /dev/kvm ]] || { echo "android-emulator-test: no /dev/kvm here: the emulator needs KVM (servers A and C have it)" >&2; exit 2; }
 [[ "$OUT" =~ ^build/[A-Za-z0-9_./-]+$ ]] || { echo "android-emulator-test: --out must be under build/ (got $OUT)" >&2; exit 2; }
+[[ -z "$IME_EDITOR_INFO" || -n "$IME_AFTER" ]] || { echo "android-emulator-test: --ime-editor-info needs --ime" >&2; exit 2; }
 if [[ -n "$GOLDEN" ]]; then
     (( READY )) || { echo "android-emulator-test: --golden needs the ready line (no --no-ready)" >&2; exit 2; }
     command -v python3 >/dev/null || { echo "android-emulator-test: --golden needs python3 on the host" >&2; exit 2; }
@@ -207,7 +217,7 @@ if [[ -n "$BUNDLETOOL" ]]; then
     BUNDLETOOL_IN="/src/$OUT/bundletool.jar"
 fi
 mkdir -p "$ROOT/$OUT" "$ROOT/build/.cache/home"
-rm -f "$ROOT/$OUT"/{logcat.txt,logcat-full.txt,screen.png,emulator.log,result.txt,stacks.txt}
+rm -f "$ROOT/$OUT"/{logcat.txt,logcat-full.txt,screen.png,emulator.log,result.txt,stacks.txt,ime.txt}
 rm -f "$ROOT/$OUT"/screen.*.png
 for scene in ${SCENES[@]+"${SCENES[@]}"}; do rm -rf "${ROOT:?}/$OUT/$scene"; done
 
@@ -240,6 +250,7 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
     -e HOME=/src/build/.cache/home \
     -e APK="$APK_IN" -e BUNDLETOOL="$BUNDLETOOL_IN" -e OUT="/src/$OUT" -e ORDERED="$ORDERED" -e TIMEOUT="$TIMEOUT" -e SECONDS_TO_RUN="$SECONDS_TO_RUN" \
     -e TWO_FINGER_TAP="$TWO_FINGER_TAP" -e TAP_AFTER="$TAP_AFTER" -e RELAUNCH="$RELAUNCH" -e LOCALE_CHANGE="$LOCALE_CHANGE" \
+    -e IME_AFTER="$IME_AFTER" -e IME_EDITOR_INFO="$IME_EDITOR_INFO" \
     -e EXPECT_NATIVE_CRASH="$EXPECT_NATIVE_CRASH" \
     -e SCENES="${SCENES[*]+"${SCENES[*]}"}" -e SETPROPS="$SETPROP_LINES" -e SCREENSHOT_ON_PRESENT="$([[ -n "$GOLDEN" ]] && echo 1 || echo 0)" \
     -e GPU="${EMULATOR_GPU:-swangle_indirect}" \
@@ -353,6 +364,22 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             if [[ "$TWO_FINGER_TAP" == 1 ]]; then
                 ( sleep "$TAP_AFTER"; bash /src/tools/android-two-finger-tap.sh > "$DIR/tap.log" 2>&1 ) &
             fi
+            # the focused field: its EditorInfo as the input method service holds it, then text past
+            # its limit and the Enter key (expected lines say what the game made of them)
+            if [[ -n "$IME_AFTER" ]]; then
+                (
+                    start=$SECONDS
+                    until adb logcat -d -v tag | grep -qF -- "$IME_AFTER"; do
+                        (( SECONDS - start > TIMEOUT )) && exit 0
+                        sleep 1
+                    done
+                    sleep 2
+                    adb shell dumpsys input_method > "$DIR/ime.txt" 2>&1
+                    adb shell input text abcdefgh
+                    sleep 1
+                    adb shell input keyevent KEYCODE_ENTER
+                ) > "$DIR/ime.log" 2>&1 &
+            fi
 
             if [[ -n "$KILL_AFTER" ]]; then
                 start=$SECONDS
@@ -441,6 +468,16 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             fi
             adb logcat -d -v tag > "$DIR/logcat.txt"
             adb logcat -d -v threadtime > "$DIR/logcat-full.txt"
+            imechecked=""
+            if [[ -n "$IME_EDITOR_INFO" ]]; then
+                if [[ ! -s "$DIR/ime.txt" ]]; then
+                    imechecked="MISSING      dumpsys input_method (no line contained: $IME_AFTER)"
+                elif grep -qF -- "$IME_EDITOR_INFO" "$DIR/ime.txt"; then
+                    imechecked="found        $(grep -F -m1 -- "$IME_EDITOR_INFO" "$DIR/ime.txt" | sed "s/^ *//")"
+                else
+                    imechecked="MISSING      $IME_EDITOR_INFO in dumpsys input_method (ime.txt: $(grep -m2 -E "inputType=" "$DIR/ime.txt" | sed "s/^ *//" | tr "\n" " "))"
+                fi
+            fi
 
             result=0
             : > "$DIR/result.txt"
@@ -482,6 +519,10 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             if [[ -n "$localechanged" ]]; then
                 echo "$localechanged" >> "$DIR/result.txt"
                 [[ "$localechanged" == found* ]] || result=1
+            fi
+            if [[ -n "$imechecked" ]]; then
+                echo "$imechecked" >> "$DIR/result.txt"
+                [[ "$imechecked" == found* ]] || result=1
             fi
             # no expectation (--no-ready): the app must at least still be running after its seconds
             if [[ "$EXPECT_NATIVE_CRASH" != 1 ]] && ! grep -q . "$DIR/expect.txt" &&

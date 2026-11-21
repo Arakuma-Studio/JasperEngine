@@ -335,6 +335,17 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
       --setprop "debug.jasperengine.args=--run-tests --test-filter tag:smoke" \
       --expect-file tools/test-projects/game-tests/android-expect.txt
   ```
+- `--ime TEXT` waits for a logcat line containing TEXT (the game focused a text field), saves
+  `dumpsys input_method` as `ime.txt`, types `abcdefgh` and presses Enter; `--ime-editor-info` names
+  what `ime.txt` must show. The soft keyboard check of text-entry-gamepad-cursor-back-button AC7:
+
+  ```sh
+  ANDROID_PROJECT=input ANDROID_ABIS=x86_64 tools/build.sh android
+  tools/android-emulator-test.sh build/android-input/app-debug.apk --two-finger-tap \
+      --expect-file tools/test-projects/input/android-expect.txt \
+      --ime '[gate] form focused' --ime-editor-info 'inputType=0x21 imeOptions=0x12000004' \
+      --expect-file tools/test-projects/input/android-ime-expect.txt
+  ```
 - Every run also fails on what the GLES path logs when it goes wrong, expected or not: an
   `OpenGL error` (NativeEngine reads `glGetError` after every frame; a debug build's sokol also
   asserts on one after each GL call, which the crash check catches), a shader that did not compile
