@@ -2448,6 +2448,8 @@ void runBuildResolutions(const CallPtr& call, std::vector<std::string> sizes) {
             *step = nullptr;
         });
     };
+    // the runs complete the call
+    call->detach();
     (*step)(0);
 }
 

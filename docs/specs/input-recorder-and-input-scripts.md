@@ -677,6 +677,8 @@ wait until clicked, shot). Red controls are named per criterion.
   Capture Screenshots) resolve `target` in the running UI Documents and `wait {until}` in the game's
   Lua state, as players and `Test.input` do (R8), not through `htmlui_mcp::elementCenter`. Their
   `shot` steps hold the game until two frames draw with nothing loading, then save the Game view.
+  The seed goes in through Play Data's before-scripts hook at the session's start: the editor keeps
+  one Lua state across sessions, so a seed waiting for a new state would never apply.
 - **play {input} warnings.** `scene_override` and `aspect_mismatch` are entries of the start result's
   `warnings` (`{code, recorded_scene}`, `{code, recorded_canvas, canvas}`).
 - **record_game {input}.** Play must be stopped: every run (one per resolution) is a new session.
