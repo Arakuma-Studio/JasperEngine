@@ -109,6 +109,8 @@ namespace jasperengine::gametest {
         void beginCase();
         void runCaseFrame();
         void finishCase();
+        bool loadReplay(CaseRunState& s, std::string& error);
+        void reportReplay(CaseRunState& s);
         void endRun();
 
         Host* host = nullptr;

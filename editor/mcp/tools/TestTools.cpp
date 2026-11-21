@@ -15,6 +15,7 @@
 #include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
+#include "mcp/McpServer.h"
 #include "test/GameTests.h"
 #include "test/TestRun.h"
 #include "util/Base64.h"
@@ -206,17 +207,85 @@ void listTests(const CallPtr& call, Project* project) {
     call->ok(text, Json{{"cases", cases}, {"root", relative(project, selection.root)}, {"targets", selection.settings.targets}});
 }
 
+// AC10: a Development player of this computer built with Include Tests (build_project, prebuilt),
+// run with --run-tests (run_build), its results imported as a device's are
+void runDesktop(const CallPtr& call, Project* project, const gametests::RunRequest& request) {
+    gametests::Selection selection = gametests::selectCases(project, request);
+    if (selection.error != gametests::SelectError::None) {
+        call->fail(selection.message);
+        return;
+    }
+    if (request.mode == "edit") {
+        call->fail("A player runs Play Mode cases only: run Edit Mode cases on the editor (target: \"editor\").");
+        return;
+    }
+    const Json args = call->args();
+    JobPtr job = call->ctx().jobs().create("run_tests", "Run tests on a desktop player");
+    job->setProgress(-1.0, "Building the Development player with the tests");
+    auto images = std::make_shared<std::vector<ToolImage>>();
+    gametests::setIncludeTestsForced(true);
+    const Json build = {{"mode", "desktop"}, {"method", "prebuilt"}, {"development", true}, {"wait", true}, {"timeout_seconds", 3600}};
+    McpServer::get().runNested(call, "build_project", build, [call, project, job, args, request, images](const ToolResult& built) {
+        gametests::setIncludeTestsForced(false);
+        if (built.isError) {
+            job->fail("build_project: " + built.text);
+            return;
+        }
+        job->setProgress(-1.0, "Running the player with --run-tests");
+        Json runArgs = Json::array({"--run-tests"});
+        if (!request.filter.empty()) runArgs.insert(runArgs.end(), {"--test-filter", request.filter});
+        if (request.keepData) runArgs.push_back("--keep-test-data");
+        // no run_build screenshot: the run ends the player before any frame it would name (exit 4)
+        const Json run = {{"headless", true}, {"seconds", 300}, {"log_lines", 40}, {"screenshot", false}, {"args", runArgs}};
+        McpServer::get().runNested(call, "run_build", run, [project, job, args, images](const ToolResult& ran) {
+            const Json data = ran.structured.is_object() ? ran.structured : Json::object();
+            // the player names its results file in its log ("[test] results <path>", R25's default place)
+            std::string results;
+            {
+                std::ifstream log(FileUtils::pathFromUtf8(data.value("log_file", std::string())), std::ios::binary);
+                std::string line;
+                while (std::getline(log, line)) {
+                    const size_t at = line.find("[test] results ");
+                    if (at != std::string::npos) results = line.substr(at + 15);
+                }
+                while (!results.empty() && (results.back() == '\r' || results.back() == ' ')) results.pop_back();
+            }
+            const Json exitCode = data.value("exit_code", Json());
+            if (results.empty()) {
+                job->fail("The player wrote no results (exit code " + exitCode.dump() + "; 2: no test runner, 9: no tests in the build): " +
+                          ran.text.substr(0, 2000));
+                return;
+            }
+            gametests::RunOutcome outcome;
+            std::string error;
+            if (!gametests::importResults(project, FileUtils::pathFromUtf8(results), outcome, error)) {
+                job->fail("The player's results " + results + ": " + error);
+                return;
+            }
+            ToolResult result = outcomeResult(project, outcome, args);
+            result.structured["player_exit_code"] = exitCode;
+            result.structured["player_results"] = results;
+            *images = result.images;
+            job->setImages(result.images);
+            job->succeed(result.text + " (player exit code " + exitCode.dump() + ")", result.structured);
+        });
+    });
+    const bool wait = args.value("wait", true);
+    const double timeout = std::clamp(args.value("timeout_seconds", 600.0), 1.0, 86400.0);
+    replyWhenJobDone(call, job, wait, timeout, [images](const McpJob& done) {
+        ToolResult result = done.status() == JobStatus::Failed ? ToolResult::error(done.message(), done.result())
+                                                               : ToolResult::success(done.message(), done.result());
+        result.images = *images;
+        return result;
+    });
+}
+
 void runTests(const CallPtr& call, Project* project) {
     const Json& args = call->args();
     const std::string target = args.value("target", std::string("editor"));
     if (target == "web" || target == "android" || target == "ios") {
         call->fail("This editor runs editor and desktop targets; for " + target +
                    ": build with Include Tests, run the player with --run-tests (or build-and-run-on-device), then import.");
-        return;
-    }
-    if (target == "desktop") {
-        call->fail("target desktop: build a Development build with Include Tests (build_project), run it with --run-tests "
-                   "--test-results <file>, then run_tests {action: \"import\", results_file}.");
         return;
     }
     gametests::TestRun& run = gametests::TestRun::get();
@@ -229,6 +298,10 @@ void runTests(const CallPtr& call, Project* project) {
         return;
     }
     const gametests::RunRequest request = requestOf(args);
+    if (target == "desktop") {
+        runDesktop(call, project, request);
+        return;
+    }
     JobPtr job = call->ctx().jobs().create("run_tests", "Run tests");
     job->setProgress(-1.0, "Starting");
     job->setCancelHandler([]() { gametests::TestRun::get().cancel(); });

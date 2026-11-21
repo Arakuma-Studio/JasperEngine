@@ -1485,6 +1485,8 @@ std::vector<Setting> mcpSettingsTable() {
                         [](Project& p, bool v) { ThreadingProjectSettings settings = p.getThreadingSettings(); settings.webMultithreaded = v; p.setThreadingSettings(settings); }));
         add(boolSetting("player.development_build", "Development Build: Release builds keep the profiler and --profile/--profile-capture (S15).",
                         [](Project& p) { return p.isDevelopmentBuild(); }, [](Project& p, bool v) { p.setDevelopmentBuild(v); }));
+        add(boolSetting("player.include_tests", "Include Tests: a Development build carries Tests/ (no goldens) for --run-tests.",
+                        [](Project& p) { return p.isIncludeTests(); }, [](Project& p, bool v) { p.setIncludeTests(v); }));
         add(boolSetting("player.pack_native_resources", "Experimental: pack assets and Lua into resources.pak in native builds instead of copying folders.",
                         [](Project& p) { return p.shouldPackNativeResources(); }, [](Project& p, bool v) { p.setPackNativeResources(v); }));
         // S30: how Build makes the game, and the prebuilt player's content pack
@@ -4651,6 +4653,7 @@ const Placement placements[] = {
     {"player.target_platforms", "Player", "Publishing Settings", "Target Platforms",
      "platforms targets ship export mobile desktop android ios web windows linux macos"},
     {"player.development_build", "Player", "Publishing Settings", "Development Build", "profiler"},
+    {"player.include_tests", "Player", "Publishing Settings", "Include Tests", "tests run_tests run-tests development"},
     {"player.pack_native_resources", "Player", "Publishing Settings", "Native Resource Pack", "resources pak"},
     {"player.build_method", "Player", "Publishing Settings", "Build Method", "prebuilt compile player"},
     {"player.pack_content", "Player", "Publishing Settings", "Content Pack", "jpak pack"},

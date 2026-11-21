@@ -6665,6 +6665,7 @@ void editor::Project::resetConfigs() {
     playerCrash = PlayerCrashSettings();
     buildMethod = "auto";
     packContent = false;
+    includeTests = false;
     stripEngineCode = true;
     targetPlatforms = allTargetPlatforms;
     spriteAtlasMode = "enabled";

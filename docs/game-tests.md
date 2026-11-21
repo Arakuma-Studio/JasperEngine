@@ -48,6 +48,12 @@ The `Test` table of a test file (`engine/core/script/binding/stubs/Test.lua` has
   duration). A case also fails at `timeout_frames`.
 - An error line logged during a case fails it unless expected; with `console_errors: warn` it is
   only attached.
+- **Replay cases** (`replay = "Input/<name>.input.json"`, a recording in the test root) start the
+  session with the recording's frame rate, and its seed and scene when it has them, hold the game
+  until the scene runs, and play the recording from the first frame while the case's function
+  runs. A checkpoint that differs fails the case as `divergence`, naming the frame and the probes
+  or values that differ; with `divergence: warn` it is a warning. Checkpoints compare only for a
+  recording from Play's start made on the same platform.
 
 ## Play Data
 
@@ -84,7 +90,11 @@ file, `<failure type="<kind>">` for a failed case, `<error>` for error and hung,
 
 ## Players
 
-A Development player runs the content's Play Mode cases with `--run-tests` (`--test-filter F`,
+Build Settings > Include Tests (under Development Build; the project setting `player.include_tests`)
+makes a prebuilt Development build carry the test root as `assets/tests/` (without `Golden/`, with
+`tests/index.json`); a release build leaves it out and says so. `run_tests {target: "desktop"}` (the
+Test Runner's Target: This Computer) builds such a player of this computer, runs it and imports its
+results. A Development player runs the content's Play Mode cases with `--run-tests` (`--test-filter F`,
 `--test-results PATH`, `--keep-test-data`); a release player refuses it (exit 2). The web reads them
 from the page query (`?run-tests&test-filter=smoke`), Android from `debug.jasperengine.args`. Each
 case gets `data://` in `<user data>/.jasper-test-runs/<run>/<n>/`; the results default to

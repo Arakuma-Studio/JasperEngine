@@ -64,9 +64,10 @@ TestRunHost::~TestRunHost() {
 }
 
 void TestRunHost::restore() {
-    if (heldForCapture) {
+    if (heldForCapture || heldForReplay) {
         Engine::setSimulationHeld(false);
         heldForCapture = false;
+        heldForReplay = false;
     }
     PlayData::get().beforeScripts = nullptr;
     if (GameWindow* game = app.getGameWindow()) {
@@ -121,6 +122,8 @@ bool TestRunHost::beginSession(const gametest::CaseSpec& caseSpec, std::string& 
         }
     }
     playSceneId = sp->id;
+    // a fresh Lua state (R14): nothing an earlier case or Play session left in Lua reaches this one
+    LuaBinding::recreateLuaState();
     PlayData::get().setNextSession(spec.data, keepData);
     const uint64_t seed = spec.seed;
     PlayData::get().beforeScripts = [seed]() {
@@ -136,8 +139,12 @@ bool TestRunHost::beginSession(const gametest::CaseSpec& caseSpec, std::string& 
     Engine::setFixedDeltatime(1.0 / std::max(1, spec.fixedFps));
     PlayChangeReview::get().setQuietStop(true);
     sessionLogCursor = Out::lastLogId();
+    heldForReplay = !spec.replay.empty();
+    if (heldForReplay) Engine::setSimulationHeld(true);
     project->start(playSceneId);
     if (project->getPlaySessionSceneId() != playSceneId) {
+        if (heldForReplay) Engine::setSimulationHeld(false);
+        heldForReplay = false;
         error = "Play did not start";
         for (const LogEntry& entry : Out::getLogsSince(sessionLogCursor, 3, true)) error += ": " + entry.message;
         return false;
@@ -160,6 +167,12 @@ gametest::Host::SessionState TestRunHost::sessionState(std::string& error) {
         return SessionState::Failed;
     }
     SceneProject* sp = project->getScene(playId);
+    if (sp && isRunning(sp->playState) && heldForReplay) {
+        // the runner starts the replay now: its frame 0 is the session's first update
+        heldForReplay = false;
+        Engine::setSimulationHeld(false);
+        return SessionState::Ready;
+    }
     if (sp && isRunning(sp->playState) && Engine::getGameFrames() > framesAtStart) return SessionState::Ready;
     return SessionState::Starting;
 }
@@ -168,14 +181,15 @@ void TestRunHost::enforce() {
     if (!started || stopping) return;
     // the case's clock, whatever Play's tools set since
     Engine::setFixedDeltatime(1.0 / std::max(1, spec.fixedFps));
-    if (!capturing && Engine::isSimulationHeld()) Engine::setSimulationHeld(false);
+    if (!capturing && !heldForReplay && Engine::isSimulationHeld()) Engine::setSimulationHeld(false);
     if (GameWindow* game = app.getGameWindow()) game->setRenderSizeOverride(spec.width, spec.height);
 }
 
 void TestRunHost::endSession() {
-    if (heldForCapture) {
+    if (heldForCapture || heldForReplay) {
         Engine::setSimulationHeld(false);
         heldForCapture = false;
+        heldForReplay = false;
     }
     capturing = false;
     stopping = true;

@@ -337,7 +337,7 @@ Rerun Failed, expected logs. No code.
   status, kind, message, file, line, frame), `unverified`, `results_file`, `next`; at most one image
   (the first failed capture's a | b | diff panel). Errors name the fix (§6.6).
 - **R43 `play {data}`**: `"project"` (default), `"clean"`, or a snapshot name; start only.
-  `get_play_state` gains `data: {profile, folder}`; `user_settings` results gain `store`.
+  `get_play_state` gains `data: {profile, folder}`; `user_settings` results gain `profile`.
 - **R44 CLI** `jasperengine-editor test` (§6.7), built on `run_tests` through the `call` machinery
   (attach to the HTTP editor that has the project, else a one-shot headless editor); `--junit` and
   `--json` files; exit 0, 1, 2, 3.
@@ -643,7 +643,7 @@ case tagged `red`, a skipped case, an Edit Mode case, goldens for `level1_start`
   write leaves `Tests/Data/one_coin/` byte-identical; `data = "project"` gives error with the fixed
   text. Red: a host that leaves `getUserDataPath` at `rundata` (the hash check fails).
 - **AC7 Play Data profiles.** `test_play_data_profiles`: `play {action: "start", data: "clean"}`,
-  `user_settings set` reports `store: "clean"` and the project's `UserSettings.xml` is unchanged after
+  `user_settings set` reports `profile: "clean"` (and `store: "prefs"`) and the project's `UserSettings.xml` is unchanged after
   stop; the session folder is gone after stop; `get_play_state.data` names the profile. Editor gtest
   `PlayDataProfile.SnapshotSessionIsACopy` checks the copy and deletion. Red: profile ignored.
 - **AC8 Edit Mode is read-only.** `test_edit_mode_cases`: the camera case passes; a case calling
@@ -777,12 +777,40 @@ case tagged `red`, a skipped case, an Edit Mode case, goldens for `level1_start`
   (`test_project_tests.py` `setup`: a Player cube and a Coin script, `Tests/` written beside them),
   since `tools/test-projects/*` are engine-only projects; only the checked-in Android sample
   (`tools/test-projects/game-tests/samples/android-results.json`) lives there.
-- **Player session reset.** A player's case reloads its scene (`SceneManager::loadScene`), clears the
-  project's Lua modules, seeds `math.random` and sets the fixed delta; it does not re-create the Lua
-  state or reset the persistent scene (no `Engine::resetGameSession()` was extracted).
-- **Not done in this change** (each named in the PR): Build Settings Include Tests (R40) and the
-  exporters' `tests/` for Development builds (R50, AC17's export half; exports do leave the test root
-  out), hence `run_tests {target: "desktop"}` (AC10, refused
-  with how to run a player and import), the web gate and the Android run (AC12, AC13, and the
-  emulator script's `--setprop` widening), replay cases (R9, AC16: they need the input spec's recorder
-  merged), and the size and benchmark evidence of AC18 beyond `TestRunnerBench.FrameOverhead`.
+- **Player session reset.** A player's case releases the scripts of every running scene (the
+  persistent scene's too), makes a new Lua state, seeds `math.random`, sets the fixed delta and
+  reloads the case's scene (`player::PlayerSession`, `engine/core/player/PlayerTests.cpp`), not
+  `Engine::resetGameSession()`: Input, InputActions and the clocks are not reset (the runner counts a
+  case's frames and game time from its own start), and the persistent scene's objects stay without
+  scripts. The editor makes a new Lua state before each case's Play too
+  (`LuaBinding::recreateLuaState`), since its Play keeps one state across sessions.
+- **The build setting.** Include Tests is the project setting `player.include_tests` (stored as
+  `export.includeTests` in project.yaml, beside `developmentBuild`), not `build.include_tests`: the
+  publishing settings live there. It is a row under Development Build in Build Settings.
+- **Where an export puts the tests.** A prebuilt Development build with Include Tests carries the
+  root as `assets/tests/` (not `tests/` beside the content), with `tests/index.json` (the settings,
+  the test files and each snapshot's files): a player reads `asset://tests/` on every platform,
+  from the content pack too, and cannot list folders there. Compile builds do not carry the tests
+  (`run_tests {target: "desktop"}` builds prebuilt). A player copies a snapshot by the index's names.
+- **`run_tests {target: "desktop"}`** chains `build_project {mode: "desktop", method: "prebuilt",
+  development: true}` with Include Tests forced for that build, `run_build {headless: true,
+  seconds: 300, args: ["--run-tests", ...]}` and the import of the results file the player names in
+  its log (`[test] results <path>`, an absolute path); a run longer than run_build's 300 s is cut.
+- **`user_settings` names the profile `profile`, not `store`.** R43 said its results gain `store`,
+  but SaveGame's `store` input ("prefs" | "saves") selects the store on the same tool. A result's
+  `store` is the store it acted on (SaveGame slot results too), and `profile` is the Play Data
+  profile of a prefs result.
+- **Test-project hooks.** `tools/test-projects/game-tests` is the engine project of AC12 and AC13
+  (four smoke cases in `assets/tests/`, `android-expect.txt`, `tools/web/gates/game-tests.json`); the
+  summary line's keys are in alphabetical order (the results document's JSON).
+- **Replay cases.** A replay case's session holds the simulation until its scene runs (the editor's
+  Play, a player's scene load), then the runner starts the replay with real input blocked, so its
+  frame 0 is the session's first update, as `play {input}` does. A recording without a seed or a
+  scene (Lua's) keeps the case's. A replay that fails on an event is an `error`; checkpoints a
+  recording cannot compare (another platform, not from Play's start) are a console warning. A
+  divergence names the first checkpoint that differs: the state hash covers the whole scene, so a
+  moved obstacle diverges at the first checkpoint after it, named by its probe when it has one.
+  Editor Record Input is not in the input spec yet, so AC16's test records with Lua
+  `InputRecording` from a script's `init` in a test session and marks the file `start: "play"`.
+- **Not done in this change** (each named in the PR): the web gate, the Android run and the release
+  `.text` size (AC12, AC13, AC18) run in the integration pass.

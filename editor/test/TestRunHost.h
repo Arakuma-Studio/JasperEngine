@@ -64,6 +64,8 @@ namespace jasperengine::editor::gametests {
         // the capture under way
         bool capturing = false;
         bool heldForCapture = false;
+        // a replay case (R9): no frame runs before its replay, which starts with the first update
+        bool heldForReplay = false;
         int settledFrames = 0;
         int captureFrames = 0;
         std::string captureName;

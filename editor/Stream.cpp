@@ -3068,6 +3068,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (project->isDevelopmentBuild()) {
             exportNode["developmentBuild"] = true;
         }
+        if (project->isIncludeTests()) exportNode["includeTests"] = true;
         if (project->getBuildMethod() != "auto") exportNode["method"] = project->getBuildMethod();
         if (project->isPackContent()) exportNode["pack"] = true;
         if (!project->isStripEngineCode()) exportNode["stripEngineCode"] = false;
@@ -4192,6 +4193,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
 
         project->setDevelopmentBuild(exportNode["developmentBuild"] && exportNode["developmentBuild"].as<bool>());
+        project->setIncludeTests(exportNode["includeTests"] && exportNode["includeTests"].as<bool>());
         if (exportNode["method"] && exportNode["method"].IsScalar()) {
             const std::string method = exportNode["method"].as<std::string>();
             project->setBuildMethod(method == "prebuilt" || method == "compile" ? method : "auto");

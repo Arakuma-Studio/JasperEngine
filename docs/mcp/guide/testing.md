@@ -49,6 +49,10 @@ end)
 - Edit Mode cases (`mode = "edit"`) run in the editor without playing: `Editor.call` reaches only
   read-only tools and they cannot wait.
 - `skip = "reason"`, `Test.skip(reason)` and `platforms = {...}` give skipped, never passed.
+- `replay = "Input/<name>.input.json"` plays a recording from the session's first frame with its
+  frame rate (and its seed and scene when it has them) while the case runs; wait with
+  `Test.waitUntil(function() return not InputRecording.isReplaying() end)`, then check. A
+  checkpoint that differs fails the case as `divergence` (frame, probes) unless `divergence: warn`.
 
 ## The loop
 
@@ -75,11 +79,14 @@ A case's `data://` (PlayerPrefs included) is an empty folder, or a copy of
 `Tests/Data/<name>/` with `data = "<name>"`; it is deleted after the case. `data = "project"`
 is refused. Save a snapshot from the Game view's Play Data menu (Save Snapshot...), or play with
 `play {action: "start", data: "clean"}` to try a game on empty data without touching the
-project's own.
+project's own. `user_settings` then reports that profile in `profile`; its `store` is the store it
+acted on (`prefs` or `saves`).
 
 ## Players and import
 
-A Development build with Include Tests runs the Play Mode cases with `--run-tests`
+`run_tests {target: "desktop"}` builds a Development player of this computer with the tests, runs it
+and imports its results (`player_exit_code`). A Development build with Include Tests runs the Play
+Mode cases with `--run-tests`
 (`--test-filter`, `--test-results <file>`; the web from `?run-tests&test-filter=...`, Android from
 `debug.jasperengine.args`). It exits 0, 8 (a case failed) or 9 (no case), logs `[test]` lines and
 writes the results JSON with `captures/` beside it. `run_tests {action: "import", results_file}`
