@@ -365,6 +365,25 @@ TEST(TestRunnerCore, ErrorsDoNotStopTheRun) {
     EXPECT_EQ(result.counts.error, 2);
 }
 
+// Test.config's table is the file's defaults for each case: an unknown key errors every case of the
+// file, naming it. (The table was iterated after its copy went: the Android player crashed in it,
+// and an ASan build reports the read)
+TEST(TestRunnerCore, ConfigAppliesToEveryCaseOfTheFile) {
+    FakeHost host;
+    host.files["f.test.lua"] = R"(
+Test.config{ tags = {"smoke", "config"}, colour = "red" }
+Test.case("one", function(t) end)
+Test.case("two", function(t) end)
+)";
+    const RunResult result = host.run(host.planOf("f.test.lua", {"one", "two"}));
+    for (const char* name : {"one", "two"}) {
+        const CaseResult& r = byName(result, name);
+        EXPECT_EQ(r.status, Status::Error) << name;
+        ASSERT_FALSE(r.failures.empty()) << name;
+        EXPECT_NE(r.failures[0].message.find("Test.config: unknown option \"colour\""), std::string::npos) << r.failures[0].message;
+    }
+}
+
 TEST(TestRunnerCore, HangAndTimeoutAreDifferent) {
     FakeHost host;
     host.files["h.test.lua"] = R"(
