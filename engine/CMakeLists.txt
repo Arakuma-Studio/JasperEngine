@@ -1914,6 +1914,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/FoliagePhysics.cpp
     core/subsystem/RenderSystemBatch.cpp
     core/subsystem/RenderSystemLighting.cpp
+    core/subsystem/RenderSystemLightProfiles.cpp
     core/subsystem/RenderSystemTerrain.cpp
     core/subsystem/RenderSystemTerrainWorld.cpp
     core/subsystem/RenderSystemPixelArt.cpp
