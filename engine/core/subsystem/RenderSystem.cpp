@@ -2509,6 +2509,9 @@ void RenderSystem::buildLegacyLighting(const MeshComponent& mesh, uint64_t prope
         if (n < count){
             const SceneLight& light = sceneLights[order[n]];
             block.position_type[n] = light.position_type;
+            // (an older fork knows no Area Light: a spot of its front hemisphere, its cone_shadow)
+            if (block.position_type[n].w == 3.0f)
+                block.position_type[n].w = 2.0f;
             block.direction_range[n] = light.direction_range;
             block.color_intensity[n] = light.color_intensity;
             block.inCon_ouCon_shadows_cascades[n] = light.cone_shadow;
