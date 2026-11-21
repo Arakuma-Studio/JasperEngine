@@ -295,3 +295,21 @@ PR-body checks. Nothing here touches the do-not-copy list in `README.md`.
 - **IES point lights in the per-object path.** Default: same atlas lookup, one fetch per light only where a profile is set.
 
 ## Deviations
+
+- **W2: out of frame without a selection.** The union of every visible renderer is mostly outside
+  the frustum in any outdoor or first-person view (the ground, a terrain or a room around the eye
+  always is), which would teach agents to ignore the finding. With nothing selected,
+  `subject_out_of_frame` measures the union of the visible renderers whose projected bounds are in
+  front of the eye and no larger than the image; the selected case is as R7 states.
+- **W2: z-fighting candidates.** Meshes (`MeshComponent` leaves of the picking BVH) only: skinned
+  and morphed meshes (their bind-pose faces are not what is drawn), instances of one renderer and
+  terrains are not paired, and a mesh whose triangle BVH is still building is skipped. The plane
+  buckets also carry a grid cell across the plane's dominant axis, so two dense parallel meshes
+  are not compared face by face; same-facing means normals within 0.8 degrees.
+- **W2: texture_missing referrers.** A visible renderer matches a missing-asset group through the
+  `.material` files its submeshes link and through references its own scene file holds for it
+  (a missing texture or material); references inside a prefab file are not mapped to its
+  instances' GameObjects.
+- **W2: severities and the budget finding.** `severity` is `warning` or `info`. The budget's info
+  finding has kind `checks_skipped` and is kept when the list is cut to 5. Findings are computed for
+  the `screenshot` tool, not for the images other tools attach with their `screenshot` argument.

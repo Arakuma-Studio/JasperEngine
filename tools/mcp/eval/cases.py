@@ -5278,4 +5278,65 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # -- S92 W2: screenshot findings (R6, R7); an image the agent cannot judge without them ----------
+    {
+        "id": "bad_screenshot_clipped_light",
+        "kind": "bad",
+        "what_happened": "Asked whether a scene looked right, agents described a screenshot they could not judge (a stub or "
+                         "a small image) and changed nothing; the result's findings and next now name the over-bright light "
+                         "and the call that lowers it (S92 R6, R7).",
+        "text_at_issue": "screenshot result: findings [{kind: exposure_clipped, ...}] and next 'exposure_clipped: ... Fix: "
+                         "set_properties {entity: 3, values: {light: {intensity: 6}}} halves it.'",
+        "source": "S92 spec, Crucible's frame-checks idea (paraphrased); no failure on record",
+        "prompt": "Take a Game view screenshot of the Main scene and fix anything that looks wrong with the lighting.",
+        "mocks": [
+            {"tool": "screenshot", "after": "set_properties", "result": ok(
+                "game view screenshot 768x432 of scene \"Main\".", {"view": "game", "width": 768, "height": 432, "findings": []})},
+            {"tool": "screenshot", "result": ok(
+                "game view screenshot 768x432 of scene \"Main\". Note: Frame checks: exposure_clipped (findings; next has the "
+                "first fix).",
+                {"view": "game", "width": 768, "height": 432, "findings_ms": 2.1,
+                 "findings": [{"kind": "exposure_clipped", "severity": "warning",
+                               "message": "41 % of the image is clipped white (luminance at or above 0.98); the brightest light "
+                                          "on it is Sun (#3), Directional at intensity 12.",
+                               "fix": "set_properties {entity: 3, values: {light: {intensity: 6}}} halves it", "entities": [3]}],
+                 "next": "exposure_clipped: 41 % of the image is clipped white (luminance at or above 0.98); the brightest "
+                         "light on it is Sun (#3), Directional at intensity 12. Fix: set_properties {entity: 3, values: "
+                         "{light: {intensity: 6}}} halves it."})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 3 \"Sun\".", {"entity": {"id": 3}})},
+            {"tool": "get_entity", "result": ok("GameObject 3 \"Sun\": transform, light (directional, intensity 12).",
+                                               {"id": 3, "components": {"light": {"type": "directional", "intensity": 12}}})},
+            {"tool": "find_entities", "result": ok("1 GameObject: 3 Sun", {"entities": [{"id": 3, "path": "Sun"}]})},
+        ],
+        "checks": {"calls": ["screenshot", {"tool": "set_properties", "args": {"entity": 3, "values": {"light": {"intensity": "*"}}}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_screenshot_selection_out_of_frame",
+        "kind": "bad",
+        "what_happened": "Agents reported on a Scene view screenshot of the selected object when the object was off-screen; "
+                         "the findings say it is out of frame and next gives frame_entity (S92 R6, R7).",
+        "text_at_issue": "screenshot result: findings [{kind: subject_out_of_frame}] and next 'subject_out_of_frame: Crate (#15) "
+                         "(the selection) is 88 % outside the frame. Fix: frame_entity {entity: 15}.'",
+        "source": "S92 spec (paraphrased); no failure on record",
+        "prompt": "Take a Scene view screenshot of the selected Crate and tell me how it looks.",
+        "mocks": [
+            {"tool": "screenshot", "after": "frame_entity", "result": ok(
+                "scene view screenshot 768x432 of scene \"Main\".", {"view": "scene", "width": 768, "height": 432, "findings": []})},
+            {"tool": "screenshot", "result": ok(
+                "scene view screenshot 768x432 of scene \"Main\". Note: Frame checks: subject_out_of_frame (findings; next has "
+                "the first fix).",
+                {"view": "scene", "width": 768, "height": 432, "findings_ms": 1.4,
+                 "findings": [{"kind": "subject_out_of_frame", "severity": "warning",
+                               "message": "Crate (#15) (the selection) is 88 % outside the frame.",
+                               "fix": "frame_entity {entity: 15}", "entities": [15]}],
+                 "next": "subject_out_of_frame: Crate (#15) (the selection) is 88 % outside the frame. Fix: frame_entity "
+                         "{entity: 15}."})},
+            {"tool": "frame_entity", "result": ok("Framed 1 GameObject in the Scene view.", {"framed": [15]})},
+            {"tool": "set_scene_camera", "result": ok("Scene view camera set.", {"position": [2, 1, 3], "target": [0, 0, 0]})},
+            {"tool": "get_selection", "result": ok("Selected: 15 Crate", {"entities": [{"id": 15, "path": "Crate"}]})},
+        ],
+        "checks": {"calls": ["screenshot", {"tool": "frame_entity", "args": {"entity": 15}}]},
+        "max_turns": 10,
+    },
 ]
