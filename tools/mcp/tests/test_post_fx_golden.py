@@ -289,7 +289,10 @@ async def test_cavity(ed: Editor):
                     {"enabled": True, "drawn": True, "type": "both", "world_samples": 16, "normals": "prepass",
                      "added_prepass": True, "draws": 1}, "drawn as authored")
         image = await capture(ed, "cavity")
-        check(ed, not pngdiff.compare(image, off, CHANNEL_TOLERANCE, MAX_FRACTION)[0], "Cavity changes the image")
+        # a visible change, not the golden's tolerance: Cavity touches edges only (about 1% of this
+        # frame moves by more than 24 once object outlines get no line, 2.8% by more than 8)
+        changed = pngdiff.compare(image, off, 8, 0.0)[1]
+        check(ed, changed > 0.01, f"Cavity changes the image: {changed:.4f} of the pixels by more than 8")
         compare_golden(ed, "cavity", image)
 
         # the device tier caps the World samples (Low: 4), never turns Cavity off
