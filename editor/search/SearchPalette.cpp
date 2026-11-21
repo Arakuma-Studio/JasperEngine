@@ -95,6 +95,7 @@ namespace {
         {"Mesh Optimization Audit", "window.meshAudit"}, {"Build Report", "window.buildReport"}, {"Crash Reports", "window.crashReports"}, {"Animation Statistics", "window.animationStatistics"},
         {"Sprite Preview", "window.spritePreview"}, {"Palette", "window.palette"}, {"Tile Palette", "window.tilePalette"},
         {"Tileset Editor", "window.tilesetEditor"}, {"Title Designer", "window.titleDesigner"},
+        {"Localization Tables", "window.localizationTables"}, {"Dialogue", "window.dialogue"}, {"Test Runner", "window.testRunner"},
     };
 
     // A label drawn with the matched ranges highlighted
