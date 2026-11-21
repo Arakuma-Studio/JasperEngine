@@ -14,6 +14,7 @@
 #include "lua.hpp"
 
 #include "LuaBridge.h"
+#include "script/binding/SceneConstructors.h"
 #include "LuaBridgeAddon.h"
 #include "LuaComponentSetters.h"
 
@@ -1516,7 +1517,7 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<UIDocument, GameObject>("UIDocument")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<UIDocument>(), sceneconstructors::ofEntity<UIDocument>())
         .addProperty("filename", &UIDocument::getFilename, &UIDocument::setFilename)
         .addFunction("getUIDocumentComponent", &UIDocument::getComponent<UIDocumentComponent>)
         .addFunction("load", &UIDocument::load)

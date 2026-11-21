@@ -138,3 +138,27 @@ TEST(LuaHierarchy, SetParentRefusesCycleAndOtherScene){
     GameObject(&scene, child).setParent(&strangerObject);
     EXPECT_EQ(scene.getComponent<Transform>(child).parent, parent);  // another scene: refused
 }
+
+// main.lua runs before the game's init sets a scene, so Engine.getScene() is nil there: an object
+// made with it is a Lua error naming the fix, not an entity written through a null Scene (a crash
+// here; on the web a page that hung before its first frame)
+TEST(LuaHierarchy, ObjectsMadeWithoutASceneFail){
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_NE(L, nullptr);
+    for (const char* code : {"GameObject(nil)", "GameObject(nil, 1)", "Sprite(nil)", "Camera(nil)", "AudioSource(nil, true)",
+                             "PositionTween(nil)", "CullingGroup(nil)"}) {
+        const std::string error = runLua(L, std::string("local object = ") + code);
+        EXPECT_NE(error.find("the scene is nil"), std::string::npos) << code << ": " << error;
+    }
+
+    // a scene still makes them, over a new entity or one it has
+    Scene scene;
+    const Entity existing = named(scene, "Existing");
+    luabridge::setGlobal(L, &scene, "testScene");
+    EXPECT_EQ(runLua(L, "local made = GameObject(testScene); assert(made.entity ~= nil)\n"
+                        "local over = GameObject(testScene, " + std::to_string(existing) + "); assert(over.entity == " +
+                        std::to_string(existing) + ")\n"
+                        "local sound = AudioSource(testScene, false); assert(sound.entity ~= nil)"), "");
+    lua_pushnil(L);
+    lua_setglobal(L, "testScene");
+}
