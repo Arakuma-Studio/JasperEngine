@@ -145,7 +145,11 @@ async def finished_job(ed: Editor, job_id: str) -> dict:
         state = await ed.call("get_job", job_id=job_id)
         if state.get("status") not in ("running", "pending"):
             break
-        await ed.call("wait", frames=5, timeout_seconds=60)
+        try:
+            await ed.call("wait", frames=5, timeout_seconds=60)
+        except harness.ToolError as e:
+            # the recording ends Play (exit_play): the job finishes with it
+            ed.check("Play ended" in str(e), f"{e}")
     play = await ed.call("get_play_state")
     if play.get("state") not in (None, "stopped"):
         await ed.call("play", action="stop")
