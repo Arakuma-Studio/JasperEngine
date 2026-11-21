@@ -295,3 +295,12 @@ PR-body checks. Nothing here touches the do-not-copy list in `README.md`.
 - **IES point lights in the per-object path.** Default: same atlas lookup, one fetch per light only where a profile is set.
 
 ## Deviations
+
+- **W6: what the red control keeps.** Besides the paths R26 lists, it keeps the tools' own tests and their data
+  (`tools/**/test_*.py`, `tools/tests/`, `tools/*/tests/`, `tools/*/fixtures/`), so a change of a tool's Python has a
+  red control too. It reruns the steps that run tests (unit, HTML UI, MCP, the tools' tests, navigation OFF) and the builds
+  they need; the area lints, header gates, the modules-off build and the web and Android builds are not tests and are not
+  rerun.
+- **W6: `--keep-going` is gone.** R23 makes keeping going the default, so the flag had nothing left to do.
+- **W6: AC6's tests** extend `tools/test_check_changed.py`, which is stdlib `unittest` (pytest collects it too), because
+  CI's lint lane and check-changed run it with `python3 -I` and no packages.

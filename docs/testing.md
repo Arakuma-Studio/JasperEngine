@@ -418,10 +418,11 @@ continue to fail on any native crash.
   `gh workflow run ci.yml --ref <branch> -f full=true` runs everything on a branch. check-changed is
   a selection and says so in every summary. The MCP files outside the CI suite (`MCP_SUITE=all`)
   run only where someone runs them.
-- **Lints check-changed does not run**, by area (`AGENTS.md`, Test): `tools/check_raw_writes.py` and
-  `tools/check_stream_keys.py` (file writes, decoders), `tools/check_text_encoding.py` (code-page
-  conversions, Win32 `-A` calls, Apple string encodings, vswhere; `--self-test` is its red control),
-  `tools/ci/check-hardcoded-shortcuts.py`, `tools/ci/check-notices.py`.
+- **check-changed runs the area lints** by the paths they read (`AREA_LINTS`): `tools/check_raw_writes.py` and
+  `tools/check_stream_keys.py` (file writes, decoders), `tools/check_event_clears.py` (engine events),
+  `tools/check_text_encoding.py` (code-page conversions, Win32 `-A` calls, Apple string encodings, vswhere)
+  and `tools/ci/check-hardcoded-shortcuts.py` (editor keys). `tools/ci/check-notices.py` (vendored
+  libraries and `NOTICE.md`) runs in the lint lane.
 
 ### `tools/check-changed`
 
@@ -430,15 +431,21 @@ tools/check-changed                           # build and test what the change t
 tools/check-changed --dry-run                 # the plan only
 tools/check-changed --base main               # another base (default: the merge base with oe-port, else main, origin/main)
 tools/check-changed --no-mcp                  # builds and unit tests only, said so in the summary and not cached
+tools/check-changed --json                    # the plan, step results, logs and fix commands as one JSON document
+tools/check-changed --red-control             # then the selected tests without the change: some must fail
+tools/check-changed --red-control --restore   # the tree an interrupted red control left reverted
 tools/build.sh exec linux tools/check-changed # inside the Linux image (no web or Android build there)
 ```
 
-- Lints with triggers: a changed MCP test file runs `tools/ci/check-mcp-ci-suite.py`; a changed
-  engine source (not `engine/libs`, `engine/tests`) runs `tools/check_event_clears.py` (every
-  `FunctionSubscribe` member is in its holder's `forEachEvent`, every component holder in
-  `ComponentEvents.h`, every other holder in the lint's `WALKS` or `TRANSIENT`, and every static
-  event in Engine's clears, so the clears at Stop reach it; `Ease` members count; `tools/build.sh
-  linux` runs it too).
+- The area lints run first, each when a path it reads changes: what it scans (editor and engine
+  C++ outside tests and vendored libraries, the decoders and reflection tables for
+  `check_stream_keys.py`) or its allow-list. A change of the lint, or of its self-test's fixtures,
+  also runs its `--self-test`. `tools/check_event_clears.py` runs for any engine source outside
+  `engine/libs`, `engine/tests` and `engine/workspaces`: every `FunctionSubscribe` member is in its
+  holder's `forEachEvent`, every component holder in `ComponentEvents.h`, every other holder in the
+  lint's `WALKS` or `TRANSIENT`, and every static event in Engine's clears, so the clears at Stop
+  reach it; `Ease` members count; `tools/build.sh linux` runs it too.
+- Other checks with triggers: a changed MCP test file runs `tools/ci/check-mcp-ci-suite.py`.
 - The change: committed since the base, staged, unstaged and untracked files. A checkout without
   the stream's history reads its diff from `build/.rb-changes.json` (with every file's sha256: a
   diff that does not match the files is refused).
@@ -468,8 +475,29 @@ tools/build.sh exec linux tools/check-changed # inside the Linux image (no web o
   changed and untracked file, the images' Dockerfiles, the coverage map's version and the script
   itself: the same inputs reprint the last summary (`--no-cache` runs again); a run during which
   the files changed caches nothing. Exit 1 when a step fails or a selected test cannot run.
-- Output: the plan, then each step's result; a failed step's output (`CHECK_CHANGED_VERBOSE=1`:
-  everything).
+- Output: the plan, then each step as it ends. Each step's whole output goes to
+  `build/check-changed/<step>.log` (`CHECK_CHANGED_VERBOSE=1`: to the terminal too). A failed step
+  prints its parsed failures, at most 40 lines (googletest, unittest and pytest failures, the MCP
+  results, and build diagnostics, crashes and gate verdicts through `tools/ci/report.py`'s
+  parsers; else a lint's `file:line` findings), then its log. The run ends with one line per step,
+  `ok|FAIL|skip|cached  <step>  <seconds>`; a FAIL carries `fix:`, the command that reruns it,
+  narrowed to the failed googletest tests or MCP files.
+- Independent steps go on after a failure. A step whose build failed is `skip` with the reason
+  (the unit tests after their build, the header gates and MCP tests after the editor's). `--json`
+  prints one document on stdout (the plan, the steps with their status, log, fix, failures and
+  failed tests, and the red control's verdicts); the progress goes to stderr.
+- `--red-control` proves the selected tests pin the change. It refuses a dirty tree, and any run
+  refuses while an interrupted one's marker (`build/red-control/in-progress.json`) is there,
+  printing `tools/check-changed --red-control --restore`. After the normal run passes (or its
+  cached pass), it saves the branch's diff from the base over the paths outside the tests
+  (everything but `engine/tests`, `editor/tests`, `tools/mcp/tests`, `tools/fixtures`, `golden`
+  folders, `docs/`, and the tools' own tests and fixtures) to `build/red-control/patch.diff` and
+  reverse-applies it in place. It then rebuilds and reruns the same selected tests (logs in
+  `build/red-control/logs/`) and restores the tree in a `finally`, SIGTERM and Ctrl-C included.
+  It then checks that the tree is byte-identical to before (status, diff, untracked files). Each
+  test step is `red` (with the tests that failed), `red (build)` (its build failed), `green` (it
+  does not pin the change) or `not run`. It exits 1 when none went red. The red run is never
+  cached, and it reverts the shared worktree it runs in: do not edit it meanwhile.
 - Inside the Linux image `tools/build.sh` has no Docker to call and runs the image's own targets
   directly, with the same environment; a target of another image (web, Android) exits 3; check-changed there leaves those
   builds out, says so in its summary and caches no pass.
@@ -480,7 +508,8 @@ tools/build.sh exec linux tools/check-changed # inside the Linux image (no web o
   OFF").
 - Its tests: `python3 -I tools/test_check_changed.py` (the diff and its fallbacks, the build plan,
   the suites from a synthetic `ninja -t deps`, the MCP selection from a synthetic map, the gcda
-  reader, the cache and its invalidation, the exit codes).
+  reader, the cache and its invalidation, the area lints by path, the exit codes, keep-going, the
+  logs, summary and fix lines, `--json`, and the red control on scratch repositories).
 
 **The coverage map** (`tools/mcp/coverage_map.py`): for each MCP test file, the engine and editor
 sources its editors executed. A full run of a coverage-instrumented editor records it, off the
