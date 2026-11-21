@@ -98,9 +98,22 @@ and lint only.
 `$name` reads the game-wide store `Dialogue.variables` (`get`, `set`, `onChanged`). A dialogue's own
 variables (the graph's) and Project Settings > Dialogue > Variables give defaults, written on the
 first read. Visits are counted per `<dialogue GUID>#<node>`. `Dialogue.variables.toTable()` and
-`fromTable(t)` are the store with its visits, for a save; `resetVisits()` forgets the visits. From
-C++, `dialogue::SaveHooks::capture()` and `restore(text)` are the same as JSON text. Editor Play
+`fromTable(t)` are the store with its visits; `resetVisits()` forgets the visits. Editor Play
 starts with an empty store.
+
+To keep them in a save slot ([saved-data.md](saved-data.md)), one call each way:
+
+```lua
+Dialogue.variables.save("slot1")                -- SaveGame.write of toTable() as namespace "dialogue"
+local ok, info = Dialogue.variables.load("slot1")   -- SaveGame.read of it, then fromTable
+```
+
+Both take SaveGame's options (`namespace`, `onComplete`, `meta`...) and return what SaveGame
+returns; the slot's other namespaces are untouched, and the slot's migrations run as for any read.
+`load` changes nothing when it fails (`not_found`, or `corrupt` for a namespace that is not a
+dialogue state) and fires `onChanged` for what it changes. Nothing uses SaveGame until you call
+them. From C++: `dialogue::SaveHooks::save(slot)` and `load(slot)` (no Lua migrations), or
+`capture()` / `restore(text)` for the state as JSON text.
 
 ## Localisation
 

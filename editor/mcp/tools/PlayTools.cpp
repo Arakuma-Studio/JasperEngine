@@ -3704,15 +3704,15 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Play Mode";
         tool.description =
             "Control Play mode. start: saves modified scenes, builds C++ scripts (minutes), waits until "
-            "running; returns the state + console problems, or isError with compile/script errors; past "
-            "timeout_seconds (or wait:false) a job_id (get_job). stop: restores edit-time state, sums up "
-            "the session. step: advance a paused game `frames` frames. Script errors stop play.\nClock (any "
+            "running; returns the state + console problems, or isError with compile/script errors. stop: "
+            "restores edit-time state, sums up the session. step: `frames` frames of a paused game. Script "
+            "errors stop play.\nClock (any "
             "action; set = only it; kept until changed): time_scale, fixed_fps, auto_pause (frozen between "
             "calls but in wait / send_input / step).";
         tool.inputSchema = object({
             {"action", stringEnum("", {"start", "stop", "restart", "pause", "resume", "step", "set"})},
             {"scene", sceneRef("start: default the start scene (else selected).")},
-            {"wait", withDefault(boolean("start only."), true)},
+            {"wait", withDefault(boolean("start only; false: a job."), true)},
             {"timeout_seconds", withDefault(number("start/stop: then return a job.", 1, 3600), 120)},
             {"frames", withDefault(integer("", 1, 600), 1)},
             {"time_scale", withDefault(number("", 0, 100), 1)},
@@ -3720,10 +3720,10 @@ void registerPlayTools(McpRegistry& registry) {
             {"auto_pause", withDefault(boolean(""), false)},
             {"screenshot", screenshotOption},
             {"max_width", maxWidth},
-            {"keep_changes", stringEnum("stop: keep all or none of the edits made while playing (absent: get_play_changes).",
+            {"keep_changes", stringEnum("stop: keep all or none of the play-time edits (absent: get_play_changes).",
                                         {"none", "all"})},
             {"input", string("start: replay this .input.json.")},
-            {"data", withDefault(string("start: \"project\", \"clean\" or a Tests/Data snapshot."), "project")}
+            {"data", withDefault(string("start: project, clean or a Tests/Data snapshot."), "project")}
         }, {"action"});
         tool.handler = playTool;
         registry.addTool(std::move(tool));
@@ -3734,9 +3734,9 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "get_play_state";
         tool.title = "Get Play State";
         tool.description =
-            "Play state: played and running scenes (child scenes run as copies with own ids), the session (time, "
-            "frames, errors, crash), how the last one ended, held input, the game's input (actions, touches, keys, input "
-            "replays), debug_overlay, audio, console_cursor, coroutines and timers, the clock, platform "
+            "Play state: played and running scenes (child scenes are copies with own ids), the session (time, "
+            "frames, errors, crash) and how the last one ended, input (held; the game's actions, touches, keys, "
+            "replays), debug_overlay, audio, console_cursor, coroutines, timers, the clock, platform "
             "(lifecycle, orientation, opened_urls...), http, safe_area; stopped: play_would_start.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
@@ -3795,8 +3795,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Wait / Run Game";
         tool.description =
             "Let the game run `seconds` (wall clock), `game_seconds`, `frames` (steps a paused game) or until "
-            "the Lua `until` is truthy (checked between frames; the others cap it); returns reason, elapsed "
-            "time/frames/game_seconds, console lines, play state. input: send_input events from the first frame; "
+            "the Lua `until` is truthy (checked between frames; the others cap it). input: send_input events from "
+            "the first frame; "
             "ends at its condition (leftover input skipped, presses released) or when the input is done. isError "
             "if play ended, input failed or `until` errored/timed out/hit its cap.";
         tool.inputSchema = object({
@@ -3825,7 +3825,7 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "eval_lua";
         tool.title = "Evaluate Lua";
         tool.description =
-            "Run Lua in the running game: the values as JSON (handles as {type, entity, name, path}), print() "
+            "Run Lua in the running game: values as JSON (handles {type, entity, name, path}), print() "
             "output, console lines. Helpers: scene, script(ref [,class]) -> its self, object(ref [,type]) -> "
             "handle (GameObject, Sprite...), entity(ref) -> id, getScene(name). Globals persist; changes revert "
             "at stop. Stopped: refused unless allow_edit_mode (NOT undoable).";

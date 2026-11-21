@@ -102,7 +102,7 @@ namespace jasperengine::editor::mcp::w3 {
     // Tool schemas of those arguments (and of max_width elsewhere)
     inline Json screenshotArgSchema() {
         return Json{
-            {"description", "Also return an image (true: game)."},
+            {"description", "Also an image (true: game)."},
             {"anyOf", Json::array({Json{{"type", "boolean"}}, Json{{"type", "string"}, {"enum", {"game", "scene", "editor"}}}})}
         };
     }

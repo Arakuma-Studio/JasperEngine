@@ -566,4 +566,9 @@ handler checks; error names the fix).
   and expressions) plus 52 bytes per option and 16 per variant record, beside the source texts; the
   test checks the 160-byte node budget on the former. Faster loading needs a cooked binary form of
   the graph, which no graph kind has yet.
+- **D-16 Saving in one call (R5, savegame.md).** Beside `toTable()`/`fromTable(t)`,
+  `Dialogue.variables.save(slot, options?)` and `load(slot, options?)` write and read the store as
+  the SaveGame namespace `dialogue` (through `SaveGame.write`/`read`, so migrations, callbacks and
+  errors are SaveGame's); C++ has `dialogue::SaveHooks::save/load`. `fromTable` now refuses a table
+  with neither `variables` nor `visits`, so loading another namespace cannot empty the store.
 

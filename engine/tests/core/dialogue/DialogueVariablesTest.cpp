@@ -1,11 +1,19 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The dialogue variable store (docs/specs/dialogue-graphs.md R5, AC5).
+// The dialogue variable store (docs/specs/dialogue-graphs.md R5, AC5) and its save slot namespace
+// (savegame.md).
 
 #include "DialogueTestSupport.h"
 
+#include "jobs/JobSystem.h"
+#include "save/SaveGameStore.h"
+
+#include "support/TestTempDir.h"
+
 #include <gtest/gtest.h>
+
+#include <algorithm>
 
 using namespace jasperengine::dialogue;
 using dialoguetest::GraphText;
@@ -97,6 +105,62 @@ TEST_F(DialogueVariablesTest, ToTableFromTableRoundTrip) {
     EXPECT_FALSE(error.empty());
     EXPECT_EQ(Variables::toJson(), saved);
     EXPECT_FALSE(SaveHooks::restore("not json", &error));
+}
+
+TEST_F(DialogueVariablesTest, SaveSlotSaveChangeLoad) {
+    jasperengine::test::TestTempDir dir{"dialogue-save"};
+    jasperengine::savegame::SaveGameStore& store = jasperengine::savegame::SaveGameStore::instance();
+    store.setFolder(dir.path() / "saves");
+    Variables::set("gold", Value(12.0));
+    Variables::set("ratio", Value(0.5));
+    Variables::set("met", Value(true));
+    Variables::set("name", Value("Ana"));
+    Variables::set("$odd", Value("kept"));      // a key the slot's JSON view escapes
+    Variables::addVisit("guid-a", "n7");
+    Variables::addVisit("guid-a", "n7");
+    Variables::addVisit("guid-a", "n7.o1");
+    const nlohmann::ordered_json saved = Variables::toJson();
+    // the slot's other namespaces stay
+    std::string mainPayload;
+    jasperengine::savegame::SaveError error;
+    ASSERT_TRUE(jasperengine::savegame::fromJson(nlohmann::json{{"level", 3}}, mainPayload, error));
+    ASSERT_TRUE(store.write("slot1", "main", mainPayload, jasperengine::savegame::WriteOptions(), nullptr).ok());
+
+    error = SaveHooks::save("slot1");
+    ASSERT_TRUE(error.ok()) << error.message;
+    ASSERT_TRUE(store.flush("slot1").ok());
+
+    Variables::set("gold", Value(99.0));
+    Variables::set("extra", Value(1.0));
+    Variables::addVisit("guid-a", "n8");
+    std::vector<std::string> told;
+    const int listener = Variables::addListener([&](const std::string& name, const Value&) { told.push_back(name); });
+    // from the file, not the image in memory
+    store.unload("slot1");
+    error = SaveHooks::load("slot1");
+    Variables::removeListener(listener);
+    ASSERT_TRUE(error.ok()) << error.message;
+    EXPECT_EQ(Variables::toJson(), saved);
+    EXPECT_EQ(Variables::visits("guid-a", "n7"), 2u);
+    EXPECT_EQ(Variables::visits("guid-a", "n8"), 0u);
+    EXPECT_EQ(told, (std::vector<std::string>{"gold", "extra"})) << "a load is told as sets are";
+    jasperengine::savegame::SlotInfo info;
+    ASSERT_TRUE(store.info("slot1", info).ok());
+    std::sort(info.namespaces.begin(), info.namespaces.end());
+    EXPECT_EQ(info.namespaces, (std::vector<std::string>{"dialogue", "main"}));
+
+    // another namespace, and the errors change nothing
+    ASSERT_TRUE(SaveHooks::save("slot1", "talk").ok());
+    EXPECT_EQ(SaveHooks::load("slot2").code, jasperengine::savegame::SaveErrorCode::NotFound);
+    EXPECT_EQ(SaveHooks::load("slot1", "main").code, jasperengine::savegame::SaveErrorCode::Corrupt);
+    EXPECT_EQ(Variables::toJson(), saved);
+    Variables::reset();
+    ASSERT_TRUE(SaveHooks::load("slot1", "talk").ok());
+    EXPECT_EQ(Variables::toJson(), saved);
+
+    store.flush();
+    jasperengine::jobs::drainMainQueue();
+    store.setFolder({});
 }
 
 TEST_F(DialogueVariablesTest, OnChangedFires) {

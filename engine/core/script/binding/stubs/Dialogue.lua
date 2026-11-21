@@ -49,6 +49,20 @@ function DialogueVariables.toTable() end
 ---@param state table
 function DialogueVariables.fromTable(state) end
 
+---Writes toTable() to a save slot: SaveGame.write with namespace "dialogue" unless the options name one
+---@param slot string
+---@param options? SaveWriteOptions
+---@return boolean ok
+---@return SaveError|nil err
+function DialogueVariables.save(slot, options) end
+
+---Reads the namespace save wrote (SaveGame.read, migrations included) and replaces the store with it
+---@param slot string
+---@param options? SaveReadOptions
+---@return boolean ok
+---@return SaveInfo|SaveError info
+function DialogueVariables.load(slot, options) end
+
 ---Forgets every visit count (visited(), visits(), once options and variants start over)
 function DialogueVariables.resetVisits() end
 

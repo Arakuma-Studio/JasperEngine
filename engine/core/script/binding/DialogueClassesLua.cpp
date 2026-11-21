@@ -260,6 +260,83 @@ namespace {
         return 0;
     }
 
+    // A copy of the options at `index` (nil: none) with namespace "dialogue" unless one is given
+    void pushSaveOptions(lua_State* L, int index) {
+        lua_newtable(L);
+        if (lua_istable(L, index)) {
+            lua_pushnil(L);
+            while (lua_next(L, index) != 0) {
+                lua_pushvalue(L, -2);
+                lua_insert(L, -2);
+                lua_settable(L, -4);
+            }
+        }
+        if (lua_getfield(L, -1, "namespace") == LUA_TNIL) {
+            lua_pushstring(L, dialogue::SaveHooks::SAVE_NAMESPACE);
+            lua_setfield(L, -3, "namespace");
+        }
+        lua_pop(L, 1);
+    }
+
+    // Through SaveGame.write and SaveGame.read, so a slot's migrations, callbacks and errors are theirs
+    bool pushSaveGameFunction(lua_State* L, const char* fn, const char* caller) {
+        if (!lua_isnoneornil(L, 2) && !lua_istable(L, 2)) {
+            luaL_error(L, "Dialogue.variables.%s: options must be a table, got %s", caller, luaL_typename(L, 2));
+            return false;
+        }
+        if (lua_getglobal(L, "SaveGame") != LUA_TTABLE || lua_getfield(L, -1, fn) != LUA_TFUNCTION) {
+            luaL_error(L, "Dialogue.variables.%s: SaveGame.%s is not available", caller, fn);
+            return false;
+        }
+        lua_remove(L, -2);
+        return true;
+    }
+
+    int luaVariablesSave(lua_State* L) {
+        lua_settop(L, 2);
+        if (!pushSaveGameFunction(L, "write", "save")) return 0;
+        lua_pushvalue(L, 1);
+        pushJson(L, dialogue::Variables::toJson());
+        pushSaveOptions(L, 2);
+        lua_call(L, 3, LUA_MULTRET);
+        return lua_gettop(L) - 2;
+    }
+
+    int luaVariablesLoad(lua_State* L) {
+        lua_settop(L, 2);
+        pushSaveOptions(L, 2);
+        const int options = lua_gettop(L);
+        if (!pushSaveGameFunction(L, "read", "load")) return 0;
+        lua_pushvalue(L, 1);
+        lua_pushvalue(L, options);
+        lua_call(L, 2, 2);
+        const int data = options + 1;
+        if (lua_isnil(L, data)) {
+            lua_pushboolean(L, 0);
+            lua_pushvalue(L, data + 1);
+            return 2;
+        }
+        nlohmann::ordered_json json;
+        std::string error;
+        if (!jsonAt(L, data, json) || !dialogue::Variables::fromJson(json, &error)) {
+            lua_getfield(L, options, "namespace");
+            const std::string nameSpace = lua_isstring(L, -1) ? lua_tostring(L, -1) : "";
+            const std::string slot = lua_isstring(L, 1) ? lua_tostring(L, 1) : "";
+            lua_pushboolean(L, 0);
+            lua_createtable(L, 0, 2);
+            lua_pushstring(L, "corrupt");
+            lua_setfield(L, -2, "code");
+            const std::string message = "namespace \"" + nameSpace + "\" of slot \"" + slot + "\" is not a dialogue state" +
+                                        (error.empty() ? std::string() : ": " + error);
+            lua_pushstring(L, message.c_str());
+            lua_setfield(L, -2, "message");
+            return 2;
+        }
+        lua_pushboolean(L, 1);
+        lua_pushvalue(L, data + 1);
+        return 2;
+    }
+
     int luaVariablesResetVisits(lua_State*) {
         dialogue::Variables::resetVisits();
         return 0;
@@ -394,6 +471,8 @@ void LuaBinding::registerDialogueClasses(lua_State* L) {
         {"toTable", luaVariablesToTable},
         {"fromTable", luaVariablesFromTable},
         {"resetVisits", luaVariablesResetVisits},
+        {"save", luaVariablesSave},
+        {"load", luaVariablesLoad},
         {nullptr, nullptr},
     };
     luaL_newlib(L, functions);
