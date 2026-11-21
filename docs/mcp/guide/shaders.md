@@ -2,6 +2,10 @@
 
 Served as `jasper://docs/shaders`.
 
+A Blender-style cavity, edge highlight or bevel look on 3D meshes is not a shader: it is the
+scene's Cavity post effect, `set_scene_settings` `post_processing.cavity_enabled`
+(jasper://docs/post-processing).
+
 ## Library shaders (use these first)
 
 The engine ships ready-made shaders, referenced as `"library:<name>"`. `list_shaders` lists

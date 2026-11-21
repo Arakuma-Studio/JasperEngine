@@ -1332,6 +1332,43 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "bad_cavity_edge_highlights",
+        "kind": "bad",
+        "what_happened": "S92 adds Cavity (post_processing.cavity_*): Blender-viewport ridge and valley shading from the "
+                         "scene's depth and normals. Asked for Blender-style edge highlights, an agent without the line reaches "
+                         "for Edge Detect (luma outlines of the 2D image) or forks a post shader.",
+        "text_at_issue": "jasper://docs/shaders, its intro: 'A Blender-style cavity, edge highlight or bevel look on 3D "
+                         "meshes is not a shader: it is the scene's Cavity post effect ...'; jasper://docs/post-processing, Fields: "
+                         "'Cavity, for a Blender-style cavity ... (not Edge Detect ... and not a custom post shader)'",
+        "source": "docs/specs/S92-cavity.md, Agent UX",
+        "prompt": "The Crate stands in for my low-poly rocks. Make my low-poly rocks show Blender-style edge highlights.",
+        "mocks": [
+            {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\npost_processing = {\"cavity_enabled\":true}",
+                {"scene_id": 1, "settings": {"post_processing": {"cavity_enabled": True}}})},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["post_processing"]})},
+            {"tool": "get_post_processing_status", "result": ok(
+                "\"Main\": no in-shader colour, uber pass off, render scale 1.00 applied; cavity drawn (both, 8 samples, "
+                "normals prepass, added pre-pass).",
+                {"scene_id": 1, "playing": False, "tail_color": False, "uber": False, "uber_features": [],
+                 "cavity": {"enabled": True, "drawn": True, "type": "both", "world_samples": 8, "normals": "prepass",
+                            "added_prepass": True, "draws": 1}})},
+            {"tool": "list_shaders", "result": ok(
+                "Library shaders (mesh): library:lit, library:unlit, library:toon, library:hologram ...; postprocess: "
+                "library:crt, library:pixelate, library:posterize, library:edge_neon, library:gameboy, library:blur",
+                {"shaders": [{"name": "library:edge_neon", "type": "postprocess"}, {"name": "library:toon", "type": "mesh"}]})},
+        ],
+        "checks": {"any_of": [
+                       {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"post_processing": {"cavity_enabled": True}}}}]},
+                       {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"post_processing.cavity_enabled": True}}}]}],
+                   "must_not_call": ["fork_shader",
+                                     {"tool": "set_scene_settings", "args": {"settings": {"post_processing": {"edge_detect_enabled": True}}}},
+                                     {"tool": "set_scene_settings", "args": {"settings": {"post_processing.edge_detect_enabled": True}}}],
+                   "edits_must_not": [r"\.(frag|vert|glsl)$"]},
+        "max_turns": 14,
+    },
+    {
         "id": "guard_atmosphere_preset",
         "kind": "guard",
         "what_happened": "The guide's Atmosphere digest names height fog and apply_atmosphere_preset (a rendering_fx tool); "
