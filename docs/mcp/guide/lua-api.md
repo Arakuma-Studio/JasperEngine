@@ -1410,6 +1410,16 @@ time (default: the mixer's update mode, scaled). `AudioMixerGroup`: `name`, `id`
 | `ignoreCollision(a, b [, ignore=true])`, `getIgnoreCollision(a, b)` | on both: two GameObjects / bodies (3D: Rigidbody, 2D: Rigidbody 2D) of one scene never collide; runtime only. Error if one has no body of that dimension |
 | `ALL_LAYERS`, `DEFAULT_RAYCAST_LAYERS`, `IGNORE_RAYCAST_LAYER` | static props on both |
 | `Physics.debugDraw`, `Physics.debugDrawContacts` | rw static bools: draw the colliders and joints (and contact points) of every playing scene, 3D and 2D (the Game view's Physics toggle) |
+| `Physics.overlapSphere(scene, center, radius [, mask [, qti [, ignore]]])`, `overlapBox(scene, center, halfExtents [, rotation, ...])`, `overlapCapsule(scene, p0, p1, radius, ...)` | every collider touching the shape -> table of `OverlapHit`, by (body, collider) |
+| `Physics.overlapSphereNonAlloc(scene, center, radius, results [, mask [, qti [, colliders [, ignore]]]])` (and Box: `results` before `rotation`, Capsule) | entity ids into `results` (`#results == count` after), returns the count; no garbage |
+| `Physics.checkSphere / checkBox / checkCapsule(...)` | the overlap's arguments -> boolean (stops at the first) |
+| `Physics.sphereCast(scene, origin, radius, direction, maxDistance [, mask [, qti]])`, `boxCast(scene, center, halfExtents, direction, maxDistance [, rotation, ...])`, `capsuleCast(scene, p0, p1, radius, direction, maxDistance, ...)`, `...All` | -> `RayReturn` (closest) / table, nearest first; skips colliders it starts in |
+| `Physics2D.overlapPoint(scene, p)`, `overlapCircle(scene, c, r)`, `overlapBox(scene, c, size [, angle])`, `overlapCapsule(scene, c, size, CapsuleDirection2D, angle)`, `overlapArea(scene, a, b)` (each `[, mask [, qti [, ignore]]]`) | -> the first `OverlapHit` or nil; `...All` -> table; `...NonAlloc(..., results ...)` -> count |
+| `Physics2D.circleCast(scene, origin, r, dir, distance)`, `boxCast(scene, origin, size, angle, dir, distance)`, `capsuleCast(scene, origin, size, CapsuleDirection2D, angle, dir, distance)`, `...All` | scene units, z = 0 |
+| `QueryTriggerInteraction.UseGlobal / Ignore / Collide`, `Physics.queriesHitTriggers`, `Physics2D.queriesHitTriggers` | the trailing `qti` of every query and raycast; UseGlobal follows the bool (Project Settings, default true) |
+| `Physics.debugDrawQueries` | rw static bool: draw the queries of the main thread for 1 s |
+
+`OverlapHit` (ro): `body` (entity id: `GameObject(scene, id)`), `colliderIndex`, `isTrigger`.
 
 `RayReturn` (ro): `hit` (bool), `distance`, `point` (Vector3), `normal` (Vector3), `body`
 (Entity), `colliderIndex`.

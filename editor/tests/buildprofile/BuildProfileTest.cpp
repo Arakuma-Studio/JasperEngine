@@ -490,8 +490,9 @@ TEST(BuildProfileCompile, MainSourceRegistersTheSceneListAndTheProfilesSettings)
 
     // without a profile: every scene, the project's own settings
     const std::string own = project.buildMainSource(project, {}, menu);
-    for (const auto& [id, name] : std::vector<std::pair<uint32_t, std::string>>{{menu, "Menu"}, {level, "Level1"}, {hud, "Hud"}, {bonus, "Bonus"}})
+    for (const auto& [id, name] : std::vector<std::pair<uint32_t, std::string>>{{menu, "Menu"}, {level, "Level1"}, {hud, "Hud"}, {bonus, "Bonus"}}) {
         EXPECT_TRUE(registers(own, id, name)) << name;
+    }
     EXPECT_NE(own.find("SceneManager::loadScene(\"Menu\");"), std::string::npos);
     EXPECT_EQ(own.find("Engine::setCanvasSize(320, 200);"), std::string::npos);
     EXPECT_EQ(own.find("LightMode::TILED"), std::string::npos);

@@ -2013,6 +2013,10 @@ void configureGameViewTool(const CallPtr& call) {
         Physics::setDebugDrawContacts(args.value("physics_debug_contacts", false));
         changed.push_back("physics_debug_contacts");
     }
+    if (args.contains("physics_debug_queries")) {
+        Physics::setDebugDrawQueries(args.value("physics_debug_queries", false));
+        changed.push_back("physics_debug_queries");
+    }
     // the Game view's Culling toggle: Simulation Culling and Culling Group spheres, every playing scene
     if (args.contains("culling_debug")) {
         settings.cullingDebug = args.value("culling_debug", false);
@@ -2179,6 +2183,7 @@ void replyGameViewSettings(const CallPtr& call, const std::vector<std::string>& 
         {"atmosphere_quality", std::vector<std::string>{"project", "off", "low", "medium", "high"}[(size_t)std::clamp(settings.atmosphereQuality + 1, 0, 4)]},
         {"physics_debug", Physics::isDebugDraw()},
         {"physics_debug_contacts", Physics::isDebugDrawContacts()},
+        {"physics_debug_queries", Physics::isDebugDrawQueries()},
         {"physics_debug_lines", physicsDebugLines},
         {"culling_debug", CullingSystem::isDebugDraw()},
         {"network", Http::isOfflineSimulated() ? "offline" : "online"},
@@ -2379,8 +2384,8 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "configure_game_view";
         tool.title = "Configure Game View";
         tool.description =
-            "Read (no arguments) or change the Game view toolbar (editor preferences, not undoable): aspect (project = "
-            "the canvas size), resolution (the game and screenshots render at it; its dpi is Screen.dpi), a simulated "
+            "Read (no args) or set the Game view toolbar (editor preferences; no undo): aspect (project = "
+            "the canvas size), resolution (the game and screenshots render at it), a simulated "
             "device, orientation, language (editor only), the input scheme forced at Play start. Options: jasper://docs/ui.";
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
@@ -2394,9 +2399,10 @@ void registerViewTools(McpRegistry& registry) {
             {"atmosphere_quality", stringEnum("", {"project", "off", "low", "medium", "high"})},
             {"physics_debug", boolean("")},
             {"physics_debug_contacts", boolean("")},
+            {"physics_debug_queries", boolean("")},
             {"culling_debug", boolean("")},
             {"network", stringEnum("", {"online", "offline"})},
-            {"device", string("A devices id, custom, none.")},
+            {"device", string("Id, custom, none.")},
             {"orientation", stringEnum("", {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"})},
             {"language", string("en-XA..., or system.")},
             {"device_overlay", boolean("")},

@@ -5610,6 +5610,86 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # -- spatial queries (docs/specs/spatial-queries.md R25, R31) --------------------------------
+    {
+        "id": "guard_physics_overlap_tool",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "Asked what is near an object in Play, agents wrote eval_lua loops over every GameObject's position; "
+                         "query_physics overlap answers it on the physics broad phase, sorted, with entity paths.",
+        "text_at_issue": "query_physics description: 'Use it instead of looping over objects in eval_lua.'; the physics "
+                         "group's description names spatial queries",
+        "source": "docs/specs/spatial-queries.md R25, R31",
+        "prompt": "The game is playing. List the enemies within 6 m of the player (Player is at the origin, enemies are on the "
+                  "Enemy layer, layer 8).",
+        "groups_enabled": ["physics"],
+        "mocks": [
+            {"tool": "query_physics", "result": ok(
+                "overlap (3d): 2 hits: Enemies/Grunt#2, Enemies/Archer.",
+                {"op": "overlap", "world": "3d", "count": 2, "truncated": False,
+                 "hits": [{"entity": {"id": 41, "name": "Grunt#2", "path": "Enemies/Grunt#2"}, "collider": 0, "trigger": False},
+                          {"entity": {"id": 57, "name": "Archer", "path": "Enemies/Archer"}, "collider": 1, "trigger": False}]})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\"). Session: 12 s, 0 error(s) logged.",
+                                                   {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+        ],
+        "checks": {"calls": ["query_physics"],
+                   "must_not_call": [{"tool": "eval_lua", "args": {"code": "re:(?s)\\bfor\\b"}}],
+                   "reply_must": [r"Grunt", r"Archer"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_physics_query_triggers",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "A pickup is a trigger collider: an overlap with triggers: ignore finds nothing there, and the result's "
+                         "next hint says to pass triggers: collide; the agent follows it instead of reporting that nothing is there.",
+        "text_at_issue": "query_physics next: 'no hits: only triggers are inside the shape and triggers are skipped; pass "
+                         "triggers: collide to report them.'",
+        "source": "docs/specs/spatial-queries.md R25 (next hints), R31",
+        "prompt": "The game is playing. Is the Coin pickup inside a 1 m sphere at (4, 0, 2)? Ignore triggers on your first try, "
+                  "then answer from what the tool tells you.",
+        "groups_enabled": ["physics"],
+        "mocks": [
+            {"tool": "query_physics", "args": {"triggers": "collide"}, "result": ok(
+                "overlap (3d): 1 hit: Coin.",
+                {"op": "overlap", "world": "3d", "count": 1, "truncated": False,
+                 "hits": [{"entity": {"id": 12, "name": "Coin", "path": "Coin"}, "collider": 0, "trigger": True}]})},
+            {"tool": "query_physics", "result": ok(
+                "overlap (3d): 0 hits. no hits: only triggers are inside the shape and triggers are skipped; pass triggers: collide "
+                "to report them.",
+                {"op": "overlap", "world": "3d", "count": 0, "truncated": False, "hits": [],
+                 "next": "no hits: only triggers are inside the shape and triggers are skipped; pass triggers: collide to report them."})},
+        ],
+        "checks": {"calls": [{"tool": "query_physics", "args": {"triggers": "collide"}}], "reply_must": [r"Coin"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_physics_query_verify",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "Asked to check that a pickup radius query is right, agents re-ran the same query; verify compares it with "
+                         "a brute-force sweep of every body.",
+        "text_at_issue": "query_physics description: 'verify compares an overlap with a brute-force sweep'",
+        "source": "docs/specs/spatial-queries.md R16, R25, R31",
+        "prompt": "The game is playing. Check that the physics overlap for the pickup radius (a 3 m sphere at the player, at "
+                  "(0, 1, 0)) is right: that it finds exactly the colliders really inside it.",
+        "groups_enabled": ["physics"],
+        "mocks": [
+            {"tool": "query_physics", "args": {"verify": True}, "result": ok(
+                "overlap (3d): 2 hits: Coin, Gem.",
+                {"op": "overlap", "world": "3d", "count": 2, "truncated": False,
+                 "hits": [{"entity": {"id": 12, "name": "Coin", "path": "Coin"}, "collider": 0, "trigger": True},
+                          {"entity": {"id": 13, "name": "Gem", "path": "Gem"}, "collider": 0, "trigger": True}],
+                 "verify": {"reference_count": 2, "missing": [], "extra": [], "ok": True}})},
+            {"tool": "query_physics", "result": ok(
+                "overlap (3d): 2 hits: Coin, Gem.",
+                {"op": "overlap", "world": "3d", "count": 2, "truncated": False,
+                 "hits": [{"entity": {"id": 12, "name": "Coin", "path": "Coin"}, "collider": 0, "trigger": True},
+                          {"entity": {"id": 13, "name": "Gem", "path": "Gem"}, "collider": 0, "trigger": True}]})},
+        ],
+        "checks": {"calls": [{"tool": "query_physics", "args": {"verify": True}}]},
+        "max_turns": 8,
+    },
     # -- input-device-awareness: the input scheme (configure_game_view input_scheme, get_input_state's scheme) --------------
     {
         "id": "guard_input_scheme_forced",

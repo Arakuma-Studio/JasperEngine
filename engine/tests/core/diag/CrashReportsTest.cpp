@@ -407,7 +407,7 @@ TEST(CrashUser, FourthPendingReportIsRefused) {
     ASSERT_EQ(runCrashTest({"--mode", "user", "--count", "4", "--out", dir.str()}), 0);
     const std::vector<std::string> results = lines(dir.read("user-results.txt"));
     ASSERT_EQ(results.size(), 6u) << dir.read("user-results.txt");
-    for (int i = 0; i < 3; i++) EXPECT_EQ(results[i].rfind("ok ", 0), 0u) << results[i];
+    for (int i = 0; i < 3; i++) { EXPECT_EQ(results[i].rfind("ok ", 0), 0u) << results[i]; }
     EXPECT_EQ(results[3], "error too_many_pending: upload a report or Crash.markHandled(id) first");
     size_t folders = 0;
     for (const auto& entry : fs::directory_iterator(dir.path() / "reports")) folders += entry.is_directory() ? 1 : 0;

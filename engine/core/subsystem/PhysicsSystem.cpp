@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PhysicsSystem.h"
+#include "physics/PhysicsQueryDebug.h"
 #include "terrain/TerrainEditModule.h"
 #if JASPERENGINE_TERRAIN_EDIT
 #include "physics/JoltTerrainRefresh.h"

@@ -70,7 +70,7 @@ TEST_F(DialogueLua, ApiMatchesStubs) {
     for (std::sregex_iterator it(stub.begin(), stub.end(), variable), end; it != end; ++it) variables.insert((*it)[1]);
     EXPECT_EQ(functions, (std::set<std::string>{"onAction", "onCondition", "removeHandler"}));
     EXPECT_EQ(variables, (std::set<std::string>{"get", "set", "toTable", "fromTable", "resetVisits"}));
-    for (const std::string& name : functions) EXPECT_EQ(runLua(L, "assert(type(Dialogue." + name + ") == 'function', '" + name + "')"), "") << name;
+    for (const std::string& name : functions) { EXPECT_EQ(runLua(L, "assert(type(Dialogue." + name + ") == 'function', '" + name + "')"), "") << name; }
     for (const std::string& name : variables) {
         EXPECT_EQ(runLua(L, "assert(type(Dialogue.variables." + name + ") == 'function', '" + name + "')"), "") << name;
     }

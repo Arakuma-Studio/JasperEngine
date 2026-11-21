@@ -182,11 +182,13 @@ TEST(InputBench, GamepadCursorOffFrame){
     }
     const double ns = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / frames;
     std::printf("[bench] cursor_off_frame_ns %.1f (budget: one cached boolean, 0 allocations)\n", ns);
-    if (testsupport::countsAllocations())
+    if (testsupport::countsAllocations()) {
         EXPECT_EQ(allocations.count(), 0u);
+    }
     EXPECT_FALSE(GamepadCursor::isActive());
-    if (testsupport::perfSlack() > 0.0)
+    if (testsupport::perfSlack() > 0.0) {
         EXPECT_LE(ns, 200.0 * testsupport::perfSlack());
+    }
     InputSchemeTracker::setOverride(std::nullopt);
     InputSchemeTracker::latch();
     Engine::systemGamepadDisconnect(5);

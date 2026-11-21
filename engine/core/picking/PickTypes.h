@@ -96,6 +96,15 @@ namespace jasperengine {
         int32_t prototype = -1;
     };
 
+    // What a bounds overlap (MeshRaycast.overlapSphere / overlapBox) finds: one object, by its
+    // world bounds
+    struct MeshOverlapHit {
+        Entity entity = NULL_ENTITY;
+        PickKind kind = PickKind::MESH;
+        // the instance of an INSTANCE hit, -1 otherwise
+        int32_t instance = -1;
+    };
+
 }
 
 #endif // PICKTYPES_H

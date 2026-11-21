@@ -131,10 +131,10 @@ TEST_F(DialogueWindowTest, OptionReorderKeepsIdsAndWires) {
     std::vector<std::string> ports;
     for (const graph::Port& port : graph::portsOf(graph(), *graph().findNode("n2"))) ports.push_back(port.id);
     EXPECT_EQ(ports, (std::vector<std::string>{"in", "next", "o2", "o1"}));
-    for (const graph::Issue& issue : graph::validate(graph())) EXPECT_NE(issue.severity, graph::Severity::Error) << issue.message;
+    for (const graph::Issue& issue : graph::validate(graph())) { EXPECT_NE(issue.severity, graph::Severity::Error) << issue.message; }
     // removing an option takes its wire in the same step
     ASSERT_TRUE(window->removeOption("n2", "o1"));
-    for (const graph::Edge& edge : graph().edges) EXPECT_FALSE(edge.from.node == "n2" && edge.from.port == "o1");
+    for (const graph::Edge& edge : graph().edges) { EXPECT_FALSE(edge.from.node == "n2" && edge.from.port == "o1"); }
     ASSERT_TRUE(history()->undo());
     EXPECT_EQ(graph().edges.size(), 3u);
 }
@@ -187,7 +187,7 @@ TEST_F(DialogueWindowTest, ProblemsStripFixDeclaresVariable) {
     EXPECT_EQ(declare->fixLabel, "Declare Variable $met");
     ASSERT_TRUE(window->fixProblem(*declare));
     ASSERT_NE(graph().findVariable("met"), nullptr);
-    for (const GraphEditorWindow::Problem& problem : window->problems()) EXPECT_NE(problem.code, "unknown-variable") << problem.message;
+    for (const GraphEditorWindow::Problem& problem : window->problems()) { EXPECT_NE(problem.code, "unknown-variable") << problem.message; }
     // an undeclared prefix, with prefixes declared: Fix declares it in Project Settings, one undo step
     DialogueSettings settings;
     settings.actionPrefixes.push_back({"quest", "", ""});

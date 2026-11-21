@@ -137,6 +137,7 @@ void editor::GameWindow::loadSettings() {
     settings.scale = std::clamp(settings.scale, MIN_SCALE, MAX_SCALE);
     settings.pixelScale = std::clamp(settings.pixelScale, 0, MAX_PIXEL_SCALE);
     Engine::setPixelPerfectForcedScale(settings.pixelScale);
+    Physics::setDebugDrawQueries(settings.physicsQueries);
     CullingSystem::setDebugDraw(settings.cullingDebug);
     applySimulation();
 }
@@ -1005,6 +1006,7 @@ void editor::GameWindow::drawToolbar() {
     const TextureFamily viewFamily = cooks.getViewFamily();
     std::string texturesLabel = std::string(ICON_FA_IMAGE " ") + textureFamilyLabel(viewFamily) + "##GameTextures";
     const char* physicsLabel = "Physics##GamePhysicsDebug";
+    const char* queriesLabel = "Queries##GamePhysicsQueries";
     const char* cullingLabel = "Culling##GameCullingDebug";
     // Play Data: its name in full while it is not Project, even as icons
     if (playDataChoice.empty()) playDataChoice = gametests::PlayData::selected(project);
@@ -1018,7 +1020,7 @@ void editor::GameWindow::drawToolbar() {
     auto groupWidth = [&]() {
         return buttonWidth(texturesLabel.c_str()) + buttonWidth(debuggerLabel) + buttonWidth(networkLabel) + buttonWidth(playDataLabel.c_str()) +
                buttonWidth(touchLabel) + buttonWidth(inputSchemeLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) +
-               buttonWidth(physicsLabel) + buttonWidth(cullingLabel) + style.ItemSpacing.x * 9.0f;
+               buttonWidth(physicsLabel) + buttonWidth(queriesLabel) + buttonWidth(cullingLabel) + style.ItemSpacing.x * 10.0f;
     };
     ImGui::SameLine();
     const float contentRight = ImGui::GetWindowContentRegionMax().x;
@@ -1028,6 +1030,7 @@ void editor::GameWindow::drawToolbar() {
         statsLabel = ICON_FA_CHART_SIMPLE "##GameStats";
         texturesLabel = ICON_FA_IMAGE "##GameTextures";
         physicsLabel = ICON_FA_CUBES "##GamePhysicsDebug";
+        queriesLabel = ICON_FA_MAGNIFYING_GLASS_LOCATION "##GamePhysicsQueries";
         cullingLabel = ICON_FA_EYE_SLASH "##GameCullingDebug";
         if (!customPlayData) playDataLabel = ICON_FA_DATABASE "##GamePlayData";
     }
@@ -1149,6 +1152,16 @@ void editor::GameWindow::drawToolbar() {
             "distance, grey by unloaded ground), Culling Group spheres (cyan visible, dark blue not) and the focuses while playing")) {
         settings.cullingDebug = !settings.cullingDebug;
         CullingSystem::setDebugDraw(settings.cullingDebug);
+        saveSettings();
+    }
+
+    ImGui::SameLine();
+    // the spatial queries scripts run (Physics.debugDrawQueries): shape, sweep and hits for 1 s
+    const bool queriesShown = Physics::isDebugDrawQueries();
+    if (toggleButton(queriesLabel, queriesShown, "Physics Queries: draw the overlaps, casts and raycasts scripts run while playing "
+                                                 "(green with hits, red without), in the Game and Scene views")) {
+        Physics::setDebugDrawQueries(!queriesShown);
+        settings.physicsQueries = !queriesShown;
         saveSettings();
     }
 
@@ -1869,6 +1882,19 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
         lineCount++;
         snprintf(lines[lineCount], sizeof(lines[lineCount]), "HTML UI: %u stencil draws, glyph atlas %.1f MiB", ui.stencilDraws,
                  (double)ui.atlasBytes / (1024.0 * 1024.0));
+        lineCount++;
+    }
+
+    // the spatial queries and raycasts of the last frame, when any ran
+    const uint64_t queryTotal = Physics::getQueryCount();
+    const uint64_t queryHitTotal = Physics::getQueryHitCount();
+    const uint64_t frameQueries = queryTotal - statsQueryTotal;
+    const uint64_t frameQueryHits = queryHitTotal - statsQueryHitTotal;
+    statsQueryTotal = queryTotal;
+    statsQueryHitTotal = queryHitTotal;
+    if (frameQueries > 0 && lineCount < 16) {
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "Physics queries: %llu (%llu hits)", (unsigned long long)frameQueries,
+                 (unsigned long long)frameQueryHits);
         lineCount++;
     }
 

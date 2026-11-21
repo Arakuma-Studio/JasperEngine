@@ -70,8 +70,9 @@ TEST(BuildReportTest, FullListAndOptionalKeys) {
     EXPECT_EQ(json["version"], 1);
     ASSERT_TRUE(json.contains("files"));
     ASSERT_EQ(json["files"].size(), 40u);
-    for (size_t i = 1; i < json["files"].size(); i++)
+    for (size_t i = 1; i < json["files"].size(); i++) {
         EXPECT_LT(json["files"][i - 1]["path"].get<std::string>(), json["files"][i]["path"].get<std::string>()) << "path order";
+    }
     EXPECT_EQ(json["largest"].size(), BuildReport::kLargest);
     EXPECT_EQ(json["largest"][0]["path"], "assets/textures/t00.png") << "the largest first";
     EXPECT_TRUE(json["reachability"].is_null()) << "no walk ran";
@@ -97,7 +98,7 @@ TEST(BuildReportTest, FullListAndOptionalKeys) {
     EXPECT_TRUE(newer.hasFiles);
     EXPECT_EQ(newer.files.size(), 6u);
     for (const BuildReportFile& entry : newer.files)
-        if (entry.path == "assets/je-cooked/astc/1f.ktx2") EXPECT_EQ(entry.category, "textures") << "a file without category takes its path's";
+        if (entry.path == "assets/je-cooked/astc/1f.ktx2") { EXPECT_EQ(entry.category, "textures") << "a file without category takes its path's"; }
     EXPECT_EQ(newer.id, "20261119-142233-source");
     EXPECT_EQ(newer.leftOutBytes(), 8000u);
     ASSERT_TRUE(newer.reachability.has_value());
@@ -184,7 +185,7 @@ TEST(BuildReportTest, CompareBySource) {
     web.platform = "source";
     const BuildReportDiff partial = compareBuildReports(old, web);
     EXPECT_TRUE(partial.partial);
-    for (const BuildReportChange& change : partial.changes) EXPECT_NE(change.change, "added") << change.key;
+    for (const BuildReportChange& change : partial.changes) { EXPECT_NE(change.change, "added") << change.key; }
 
     // two platforms
     BuildReport otherPlatform = head;
@@ -226,10 +227,10 @@ TEST(BuildReportTest, TextRoundTrips) {
     EXPECT_EQ(read.buildProfile, report.buildProfile);
     ASSERT_EQ(read.files.size(), 5u);
     for (const BuildReportFile& entry : read.files) {
-        if (entry.path == "scenes/3.jscn") EXPECT_EQ(entry.asset, "scenes/Main.scene");
-        if (entry.path == "assets/je-asset-map.json") EXPECT_EQ(entry.origin, "generated");
-        if (entry.path == "assets/notes.wav") EXPECT_EQ(entry.category, "other");
-        if (entry.path == "assets/je-cooked/models/aa.glb") EXPECT_EQ(entry.asset, "models/crate.glb");
+        if (entry.path == "scenes/3.jscn") { EXPECT_EQ(entry.asset, "scenes/Main.scene"); }
+        if (entry.path == "assets/je-asset-map.json") { EXPECT_EQ(entry.origin, "generated"); }
+        if (entry.path == "assets/notes.wav") { EXPECT_EQ(entry.category, "other"); }
+        if (entry.path == "assets/je-cooked/models/aa.glb") { EXPECT_EQ(entry.asset, "models/crate.glb"); }
     }
     EXPECT_EQ(read.reachability->at("textures/a\tb.png").object, "Root/\u00c9cran");
     EXPECT_EQ(read.leftOut.size(), 1u);

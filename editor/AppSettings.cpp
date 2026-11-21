@@ -515,6 +515,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (gameNode["maximize_on_play"]) gameViewSettings.maximizeOnPlay = gameNode["maximize_on_play"].as<bool>();
                 if (gameNode["stats"]) gameViewSettings.showStats = gameNode["stats"].as<bool>();
                 if (gameNode["culling_debug"]) gameViewSettings.cullingDebug = gameNode["culling_debug"].as<bool>();
+                if (gameNode["physics_queries"]) gameViewSettings.physicsQueries = gameNode["physics_queries"].as<bool>();
                 if (gameNode["atmosphere_quality"]) gameViewSettings.atmosphereQuality = std::clamp(gameNode["atmosphere_quality"].as<int>(), -1, 3);
                 if (gameNode["device_tier"]) gameViewSettings.deviceTier = std::clamp(gameNode["device_tier"].as<int>(), -1, 3);
                 if (gameNode["device_platform"]) gameViewSettings.devicePlatform = std::clamp(gameNode["device_platform"].as<int>(), -1, 2);
@@ -848,6 +849,7 @@ bool AppSettings::saveSettings() {
         gameNode["maximize_on_play"] = gameViewSettings.maximizeOnPlay;
         gameNode["stats"] = gameViewSettings.showStats;
         if (gameViewSettings.cullingDebug) gameNode["culling_debug"] = true;
+        if (gameViewSettings.physicsQueries) gameNode["physics_queries"] = true;
         gameNode["atmosphere_quality"] = gameViewSettings.atmosphereQuality;
         if (gameViewSettings.deviceTier >= 0) gameNode["device_tier"] = gameViewSettings.deviceTier;
         if (gameViewSettings.devicePlatform >= 0) gameNode["device_platform"] = gameViewSettings.devicePlatform;

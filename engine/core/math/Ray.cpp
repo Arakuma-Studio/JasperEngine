@@ -536,7 +536,7 @@ namespace{
 
 }
 
-RayReturn Ray::cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool onlyStatic, uint16_t categoryBits, uint16_t maskBits, const std::vector<Entity>* ignoreEntities, uint32_t layerMask, std::vector<RayReturn>* allHits) const{
+RayReturn Ray::cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool onlyStatic, uint16_t categoryBits, uint16_t maskBits, const std::vector<Entity>* ignoreEntities, uint32_t layerMask, std::vector<RayReturn>* allHits, bool hitTriggers) const{
     if (allHits){
         allHits->clear();
     }
@@ -601,6 +601,7 @@ RayReturn Ray::cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool
         context.onlyStatic = onlyStatic;
         context.ignoreEntities = ignoreEntities;
         context.maskBits = maskBits;
+        context.hitTriggers = hitTriggers;
 
         b2World_CastRay(world, bOrigin, translation, Box2DLayers::makeQueryFilter(categoryBits, layerMask), Box2DAux::CastCallback, &context);
 
@@ -646,7 +647,7 @@ RayReturn Ray::cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool
 
             // layer, category and mask are tested per body in Jolt's broad phase walk
             const JoltQueryObjectLayerFilter objectLayerFilter(physicsSystem->getObjectLayerTable3D(), layerMask, categoryBits, maskBits);
-            const OnlyStaticBodyFilter bodyFilter(onlyStatic, ignoreEntities);
+            const OnlyStaticBodyFilter bodyFilter(onlyStatic, ignoreEntities, hitTriggers);
             const JPH::BroadPhaseLayerFilter anyBroadPhaseLayer;
             const JPH::SpecifiedBroadPhaseLayerFilter specifiedBroadPhaseLayer(JPH::BroadPhaseLayer(broadPhaseLayer3D < 0 ? 0 : (uint8_t)broadPhaseLayer3D));
             const JPH::BroadPhaseLayerFilter& broadPhaseFilter = broadPhaseLayer3D < 0

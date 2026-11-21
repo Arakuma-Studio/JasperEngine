@@ -952,8 +952,9 @@ namespace{
         }
     }
 
-    // Physics.raycast(scene, ray [, layerMask]) or (scene, origin, direction, maxDistance [, layerMask]),
-    // and the 2D versions with Vector2 origin and direction
+    // Physics.raycast(scene, ray [, layerMask [, qti]]) or (scene, origin, direction, maxDistance
+    // [, layerMask [, qti]]), and the 2D versions with Vector2 origin and direction; qti is a
+    // QueryTriggerInteraction (UseGlobal by default)
     template<typename VectorT, bool all, bool is2D>
     int luaRaycast(lua_State* L){
         const char* function = is2D ? (all ? "Physics2D.raycastAll" : "Physics2D.raycast")
@@ -962,8 +963,17 @@ namespace{
 
         Ray ray;
         uint32_t layerMask;
+        auto triggersArg = [&](int index){
+            const lua_Integer value = luaL_optinteger(L, index, 0);
+            if (value < 0 || value > 2){
+                luaL_error(L, "%s: argument %d must be a QueryTriggerInteraction (UseGlobal, Ignore or Collide)", function, index);
+            }
+            return (QueryTriggerInteraction)value;
+        };
+        QueryTriggerInteraction triggers;
         if (luaRayArg(L, 2, ray)){
             layerMask = luaOptLayerMask(L, 3, Physics::DEFAULT_RAYCAST_LAYERS);
+            triggers = triggersArg(4);
         }else{
             if (!luabridge::isInstance<VectorT>(L, 2) || !luabridge::isInstance<VectorT>(L, 3)){
                 return luaL_error(L, "%s: expected (scene, ray [, layerMask]) or (scene, origin, direction, distance [, layerMask])", function);
@@ -975,23 +985,24 @@ namespace{
             }
             const float maxDistance = (float)luaL_checknumber(L, 4);
             layerMask = luaOptLayerMask(L, 5, Physics::DEFAULT_RAYCAST_LAYERS);
+            triggers = triggersArg(6);
 
             const VectorT originValue = origin.value();
             const VectorT directionValue = direction.value();
             if constexpr (is2D){
 #ifdef JASPERENGINE_PHYSICS_2D
                 if (all){
-                    luaPushRayReturns(L, Physics2D::raycastAll(scene, originValue, directionValue, maxDistance, layerMask));
+                    luaPushRayReturns(L, Physics2D::raycastAll(scene, originValue, directionValue, maxDistance, layerMask, triggers));
                 }else{
-                    luaPushRayReturn(L, Physics2D::raycast(scene, originValue, directionValue, maxDistance, layerMask));
+                    luaPushRayReturn(L, Physics2D::raycast(scene, originValue, directionValue, maxDistance, layerMask, triggers));
                 }
 #endif
             }else{
 #ifdef JASPERENGINE_PHYSICS_3D
                 if (all){
-                    luaPushRayReturns(L, Physics::raycastAll(scene, originValue, directionValue, maxDistance, layerMask));
+                    luaPushRayReturns(L, Physics::raycastAll(scene, originValue, directionValue, maxDistance, layerMask, triggers));
                 }else{
-                    luaPushRayReturn(L, Physics::raycast(scene, originValue, directionValue, maxDistance, layerMask));
+                    luaPushRayReturn(L, Physics::raycast(scene, originValue, directionValue, maxDistance, layerMask, triggers));
                 }
 #endif
             }
@@ -1001,17 +1012,17 @@ namespace{
         if constexpr (is2D){
 #ifdef JASPERENGINE_PHYSICS_2D
             if (all){
-                luaPushRayReturns(L, Physics2D::raycastAll(scene, ray, layerMask));
+                luaPushRayReturns(L, Physics2D::raycastAll(scene, ray, layerMask, triggers));
             }else{
-                luaPushRayReturn(L, Physics2D::raycast(scene, ray, layerMask));
+                luaPushRayReturn(L, Physics2D::raycast(scene, ray, layerMask, triggers));
             }
 #endif
         }else{
 #ifdef JASPERENGINE_PHYSICS_3D
             if (all){
-                luaPushRayReturns(L, Physics::raycastAll(scene, ray, layerMask));
+                luaPushRayReturns(L, Physics::raycastAll(scene, ray, layerMask, triggers));
             }else{
-                luaPushRayReturn(L, Physics::raycast(scene, ray, layerMask));
+                luaPushRayReturn(L, Physics::raycast(scene, ray, layerMask, triggers));
             }
 #endif
         }

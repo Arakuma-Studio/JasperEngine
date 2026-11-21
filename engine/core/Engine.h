@@ -415,6 +415,8 @@ namespace jasperengine {
         static double pinnedShaderTime;
         // read by Log from any thread (the frame of a line)
         static std::atomic<uint64_t> gameFrames;
+        // every frame run, paused or not (getFrameIndex)
+        static uint64_t frameIndex;
         static double unscaledDeltatime;
         static double unscaledTime;
         static double fixedTime;
@@ -511,6 +513,7 @@ namespace jasperengine {
         // Input, the game's events or the input scheme. True when the UI took it
         enum CursorPhase { CURSOR_DOWN, CURSOR_UP, CURSOR_MOVE };
         static bool dispatchCursorPointer(CursorPhase phase, float x, float y);
+        static bool dispatchCursorMove(float x, float y);
         // wheel lines (GLFW's signs: up and left are positive) at the documents' mouse pointer
         static bool dispatchCursorWheel(float dx, float dy);
         // systemDraw: a high surrogate that never got its low one is typed as U+FFFD
@@ -534,6 +537,8 @@ namespace jasperengine {
         // the snapshot with the debug overlay's Scene on top when it has one (keys: only while
         // a field of the overlay has the focus)
         static std::vector<Scene*> getInputScenes(bool keys);
+        // the same (keys false) into out, top layer first, reusing its storage (the gamepad cursor's frame)
+        static void getInputScenesTopFirst(std::vector<Scene*>& out);
         static bool ensureCompositeFramebuffer();
         static void beginCompositeFramebuffer();
         // a screen transition may draw this frame through the composite target (Vulkan,
@@ -853,6 +858,9 @@ namespace jasperengine {
         // Scaled seconds and frames the update loop has run (since start; not while paused or held)
         static double getGameTime();
         static uint64_t getGameFrames();
+        // Frames the engine has run, paused, held or in the editor's edit mode too: the key of
+        // what a cache keeps for one frame (main thread)
+        static uint64_t getFrameIndex();
 
         // The frame delta before timeScale (Unity's Time.unscaledDeltaTime): the measured frame
         // time capped by maxDeltatime, or the fixed frame delta when set; 0 while the app is
