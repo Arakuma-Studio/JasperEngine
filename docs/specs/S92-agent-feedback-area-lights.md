@@ -298,12 +298,16 @@ PR-body checks. Nothing here touches the do-not-copy list in `README.md`.
 
 ### W1 — Names and faults
 
-- **R1, enum values are suggested, not refused up front.** Handlers take aliases their enums do not list
-  (`create_entity` type `box` for `cube`, `sun` for `directional_light`), so the registry refuses only unknown
-  arguments and unknown keys of closed objects before a call runs. For a string outside its enum (not even in
-  another case or with other underscores) it adds the nearest option to the handler's own error, right after the
-  handler's mention of the value (`McpRegistry::suggestEnumValue`); a component property's enum
-  (`McpValues::enumFromJson`) suggests one itself.
+- **R1, nested keys and enum values are suggested, not refused up front.** A first version refused an unknown key
+  of any closed object below the top level before the handler ran: 74 tests of the MCP CI suite failed, because
+  listed schemas stay lean (`edit_pose_animation`'s `ops` items declare only `op`, closed, and the handler reads the
+  rest). Enums are the same: handlers take aliases their enums do not list (`create_entity` type `box` for `cube`,
+  `sun` for `directional_light`). So the registry refuses only unknown top-level arguments, as before. For a key of
+  a closed object, or a string outside its enum (not even in another case or with other underscores), it adds the
+  nearest declared name to the handler's own error, right after the handler's mention of it
+  (`McpRegistry::suggestNearestNames`); a handler that ignores an unknown nested key still ignores it. A component
+  property's enum (`McpValues::enumFromJson`) suggests one itself. AC1's nested-key case is `place_with_physics`
+  `target`, whose handler refuses unknown keys.
 - **R1, the matcher.** `NearestName.h` gains `NearestIdentifier` (a JasperEngine addition at its end, recorded in
   `NOTICE.md`): a fold-equal candidate (case, `_` and `-` ignored) first, then `NearestName`, then `NearestName` of
   the folded names. The CLI's `closeMatches` puts its answer first, so `call` suggests what the server does.

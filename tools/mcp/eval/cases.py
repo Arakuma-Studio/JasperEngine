@@ -5311,30 +5311,27 @@ CASES = [
         "max_turns": 10,
     },
     {
-        "id": "guard_did_you_mean_nested_key",
+        "id": "guard_did_you_mean_argument",
         "kind": "guard",
-        "what_happened": "A camelCase key inside a closed object (edits[0].oldText) was dropped silently before; the "
-                         "registry now refuses it naming the key meant, and the agent resends with that key.",
-        "text_at_issue": "McpRegistry.cpp nestedKeyProblem: 'edits[0]: unknown key \"oldText\" (did you mean 'old_text'?). "
-                         "Keys: ...'",
-        "source": "S92 R1 (nested closed objects, camelCase for snake_case)",
-        "files": GAME_FILES,
+        "what_happened": "An agent wrote a snake_case argument in camelCase; the registry refuses it naming the argument "
+                         "meant, and the agent resends with that name instead of dropping the argument.",
+        "text_at_issue": "McpRegistry.cpp argumentProblem: 'Unknown argument \"withComponents\" for find_entities (did you "
+                         "mean 'with_components'?). Arguments: ...'",
+        "source": "S92 R1 (camelCase for snake_case)",
         "history": [
-            {"user": "In the README, fix the typo 'spcae' (it should say 'space')."},
-            {"assistant": "Editing the README.", "calls": [{"tool": "write_file", "args": {
-                "path": "README.md", "edits": [{"oldText": "spcae", "newText": "space"}]},
-                "result": "edits[0]: unknown key \"oldText\" (did you mean 'old_text'?). Keys: new_text, old_text, "
-                          "replace_all."}]},
+            {"user": "List the GameObjects named Crate with their components."},
+            {"assistant": "Looking them up.", "calls": [{"tool": "find_entities", "args": {"name": "Crate", "withComponents": True},
+                "result": "Unknown argument \"withComponents\" for find_entities (did you mean 'with_components'?). Arguments: "
+                          "active, component, layer, limit, name, path, runtime, scene, tag, under, with_components."}]},
         ],
         "prompt": "Continue.",
         "mocks": [
-            {"tool": "write_file", "args": {"edits": [{"old_text": "spcae", "new_text": "space"}]}, "result": ok(
-                "Wrote README.md (1 edit).", {"path": "README.md", "edits": 1})},
+            {"tool": "find_entities", "args": {"with_components": True}, "result": ok(
+                "1 GameObject(s) match:\nCrate [15] mesh rigidbody transform", {"entities": [{"id": 15, "path": "Crate",
+                                                                                     "components": ["mesh", "rigidbody", "transform"]}]})},
         ],
-        "checks": {"any_of": [{"calls": [{"tool": "write_file", "args": {"edits": [{"old_text": "spcae", "new_text": "space"}]}}]},
-                              {"file_must": {"README.md": [r"space to shoot"]}}],
-                   "must_not_call": [{"tool": "write_file", "args": {"edits": [{"oldText": "*"}]}}],
-                   "max_calls": {"write_file": 2}},
+        "checks": {"calls": [{"tool": "find_entities", "args": {"with_components": True}}],
+                   "max_calls": {"find_entities": 2}},
         "max_turns": 6,
     },
 ]

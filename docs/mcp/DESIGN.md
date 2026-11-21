@@ -212,9 +212,10 @@ faults, answered with fixed advice and a fault id that `editor.log` holds with t
 `runtime_error`, never a `logic_error`.
 Errors that are the agent's fault (bad args, unknown entity) are tool results with
 `isError: true` and a message that says how to fix it (list the valid choices), never
-JSON-RPC errors. A misspelled tool, argument, key of a closed object, enum value, document or
-resource names the nearest valid name ("did you mean 'x'?", `NearestIdentifier` in
-`engine/core/util/NearestName.h`, which also matches camelCase for snake_case). JSON-RPC errors are only for protocol problems (unknown tool, bad params
+JSON-RPC errors. A misspelled tool, argument, document or resource names the nearest valid name
+("did you mean 'x'?", `NearestIdentifier` in `engine/core/util/NearestName.h`, which also matches
+camelCase for snake_case); a handler's error about a key of a closed object or an enum value gets
+the nearest declared one after its mention of it (`McpRegistry::suggestNearestNames`). JSON-RPC errors are only for protocol problems (unknown tool, bad params
 shape).
 
 Long operations (export/build players, C++ script compile, play startup with a C++ build,

@@ -96,8 +96,8 @@ async def test_bad_argument_is_tool_error(ed: Editor):
 NAME_CASES = [
     ("misspelled tool", "create_entty", {}, "create_entity", "tool_groups"),
     ("misspelled argument", "create_entity", {"nam": "X"}, "name", "Arguments: changes, components, model, name"),
-    ("nested key", "write_file", {"path": "notes.txt", "edits": [{"old_txt": "a", "new_text": "b"}]}, "old_text",
-     "Keys: new_text, old_text, replace_all"),
+    ("nested key", "place_with_physics", {"entities": ["Crate"], "mode": "move", "target": {"dleta": [1, 0, 0]}}, "delta",
+     "(allowed: delta, position"),
     ("enum value", "create_entity", {"type": "cylindr"}, "cylinder", "Types: empty, bare, cube"),
     ("docs area", "read_file", {"path": "jasper://docs/lightng"}, "lighting", "jasper://docs"),
     ("resource uri", "read_file", {"path": "jasper://guid"}, "jasper://guide", "jasper://docs"),
@@ -106,7 +106,8 @@ NAME_CASES = [
     ("missing underscore", "find_entities", {"withcomponents": True}, "with_components", "Arguments: active, component"),
     ("no close tool", "zzqx_wvut", {}, None, "tool_groups"),
     ("no close argument", "create_entity", {"zzqxwvut": 1}, None, "Arguments: changes, components, model, name"),
-    ("no close nested key", "write_file", {"path": "notes.txt", "edits": [{"zzqxwvut": "a"}]}, None, "Keys: new_text, old_text"),
+    ("no close nested key", "place_with_physics", {"entities": ["Crate"], "mode": "move", "target": {"zzqxwvut": 1}}, None,
+     "(allowed: delta, position"),
     ("no close docs area", "read_file", {"path": "jasper://docs/zzqxwvut"}, None, "Documents:"),
     ("no close enum value", "create_entity", {"type": "zzqxwvut"}, None, "Types: empty, bare, cube"),
 ]
@@ -120,6 +121,7 @@ FAULT_CASES = [("out_of_range", "logic_error: vector"), ("invalid_argument", "lo
 
 async def test_errors_suggest_names_and_advise_faults():
     async with Editor(create=True, name="MCP Errors", env={"JASPER_MCP_SELFTEST_GROUP": "1"}) as ed:
+        await ed.call("create_entity", name="Crate", type="cube")
         problems = []
         for what, tool, args, suggestion, lists in NAME_CASES:
             try:

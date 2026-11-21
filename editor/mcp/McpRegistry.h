@@ -156,14 +156,14 @@ namespace jasperengine::editor::mcp {
         // matches the uri; a reader's exception becomes a failed result.
         ResourceResult readResource(const std::string& uri, bool& found) const;
 
-        // What the agent must fix before a call runs (S92 R1): an unknown argument, or an unknown key of
-        // a closed object below it, naming the nearest valid name and listing them; "" when none.
-        // addTool's wrapper refuses the call with it.
+        // An unknown argument, naming the nearest valid one and listing them; "" when none. addTool's
+        // wrapper refuses the call with it.
         static std::string argumentProblem(const std::string& tool, const Json& inputSchema, const Json& args);
-        // A handler's error about a string outside its enum gets the nearest option after its mention
-        // of the value ("did you mean 'x'?"). Not refused up front: handlers take aliases (create_entity
-        // type "box") their enums do not list.
-        static void suggestEnumValue(const Json& inputSchema, const Json& args, std::string& errorText);
+        // A handler's error about a key of a closed object below the top level, or a string outside its
+        // enum, gets the nearest declared name after its mention of it ("did you mean 'x'?", S92 R1).
+        // Not refused up front: schemas stay lean (a closed object may declare only some of the keys its
+        // handler reads) and handlers take aliases their enums do not list (create_entity type "box").
+        static void suggestNearestNames(const Json& inputSchema, const Json& args, std::string& errorText);
         // "Unknown tool: x (did you mean 'y'?). ..." over every registered tool, listed or not
         std::string nearestToolName(const std::string& name) const;
         std::string unknownToolMessage(const std::string& name) const;

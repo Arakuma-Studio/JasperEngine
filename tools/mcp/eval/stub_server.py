@@ -9,10 +9,10 @@ its group, the instructions), so a sample always sees the current text. CASE.jso
 of cases.py (its mocks). Every call is appended to CALLS.jsonl. Nothing here touches an editor,
 a project or the network.
 
-Argument checks are the registry's (McpRegistry::argumentProblem): an unknown top-level key, or an
-unknown key of a closed object below it, fails with the editor's own message and its nearest valid
-name (NearestIdentifier in engine/core/util/NearestName.h); a missing required key fails like the
-handlers do ("<key> is required."). tool_groups is answered from state, so enabling a group lists its tools
+Argument checks are the registry's (McpRegistry::argumentProblem): an unknown top-level key fails
+with the editor's own message and its nearest valid name (NearestIdentifier in
+engine/core/util/NearestName.h); a missing required key fails like the handlers do ("<key> is
+required."). tool_groups is answered from state, so enabling a group lists its tools
 (notifications/tools/list_changed), as the editor does.
 """
 
@@ -60,28 +60,6 @@ def did_you_mean(target: str, candidates: list[str]) -> str:
     return f" (did you mean '{near}'?)" if near else ""
 
 
-def nested_key_problem(schema, value, path: str) -> str | None:
-    """McpRegistry.cpp's nestedKeyProblem: an unknown key of a closed object below the top level."""
-    if not isinstance(schema, dict):
-        return None
-    props = schema.get("properties")
-    if isinstance(value, dict) and isinstance(props, dict):
-        for key, item in value.items():
-            if key in props:
-                problem = nested_key_problem(props[key], item, f"{path}.{key}")
-                if problem:
-                    return problem
-            elif schema.get("additionalProperties") is False:
-                keys = list(props)
-                return f'{path}: unknown key "{key}"{did_you_mean(key, keys)}. Keys: {", ".join(keys) or "none"}.'
-    if isinstance(value, list) and isinstance(schema.get("items"), dict):
-        for i, item in enumerate(value):
-            problem = nested_key_problem(schema["items"], item, f"{path}[{i}]")
-            if problem:
-                return problem
-    return None
-
-
 def group_of(tool: dict) -> str:
     return str((tool.get("_meta") or {}).get("jasper/group") or CORE)
 
@@ -115,9 +93,6 @@ class Stub:
             if key not in props:
                 valid = ", ".join(props) or "none"
                 return f'Unknown argument "{key}" for {name}{did_you_mean(key, list(props))}. Arguments: {valid}.'
-            problem = nested_key_problem(props[key], args[key], key)
-            if problem:
-                return problem
         for key in schema.get("required") or []:
             if key not in args or args[key] is None:
                 return f"{key} is required."

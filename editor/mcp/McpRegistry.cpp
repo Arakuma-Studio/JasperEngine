@@ -33,37 +33,16 @@ bool closedObject(const Json& schema) {
     return schema.contains("additionalProperties") && schema["additionalProperties"] == false;
 }
 
-// An unknown key of a closed object below the top level, with the key the agent most likely meant
-// (S92 R1); everything else about a value (types, ranges, enums, required keys) is the handler's,
-// whose messages know the tool. anyOf branches are not entered: which one was meant is unknown.
-std::string nestedKeyProblem(const Json& schema, const Json& value, const std::string& path) {
-    if (!schema.is_object()) return {};
-    if (value.is_object() && schema.contains("properties") && schema["properties"].is_object()) {
-        const Json& props = schema["properties"];
-        for (auto it = value.begin(); it != value.end(); ++it) {
-            if (props.contains(it.key())) {
-                std::string problem = nestedKeyProblem(props[it.key()], it.value(), path + "." + it.key());
-                if (!problem.empty()) return problem;
-            } else if (closedObject(schema)) {
-                const std::vector<std::string> keys = schemaKeys(props);
-                return path + ": unknown key \"" + it.key() + "\"" + NearestIdentifierSuffix(it.key(), keys) + ". Keys: " +
-                       argumentNamesText(keys) + ".";
-            }
-        }
-    }
-    if (value.is_array() && schema.contains("items") && schema["items"].is_object()) {
-        for (size_t i = 0; i < value.size(); i++) {
-            std::string problem = nestedKeyProblem(schema["items"], value[i], path + "[" + std::to_string(i) + "]");
-            if (!problem.empty()) return problem;
-        }
-    }
-    return {};
-}
+struct NameMiss {
+    std::string given;
+    std::string nearest;
+};
 
-// The first string value outside its enum (not even in another case or with other underscores) that
-// an option is close to: missed and nearest stay empty when none
-void findEnumMiss(const Json& schema, const Json& value, std::string& missed, std::string& nearest) {
-    if (!schema.is_object() || !nearest.empty()) return;
+// The names in a call's arguments that its schema does not know but has a close match for (S92 R1):
+// a key of a closed object below the top level, and a string outside its enum (not even in another
+// case or with other underscores). anyOf branches are not entered: which one was meant is unknown.
+void collectNameMisses(const Json& schema, const Json& value, std::vector<NameMiss>& misses) {
+    if (!schema.is_object()) return;
     if (value.is_string() && schema.contains("enum") && schema["enum"].is_array()) {
         std::vector<std::string> options;
         for (const Json& option : schema["enum"]) {
@@ -72,65 +51,68 @@ void findEnumMiss(const Json& schema, const Json& value, std::string& missed, st
         const std::string& text = value.get_ref<const std::string&>();
         const std::string folded = FoldedName(text);
         const bool known = std::any_of(options.begin(), options.end(), [&](const std::string& o) { return FoldedName(o) == folded; });
-        if (!options.empty() && !known) {
-            nearest = NearestIdentifier(text, options);
-            if (!nearest.empty()) missed = text;
-            return;
+        if (!known) {
+            std::string nearest = NearestIdentifier(text, options);
+            if (!nearest.empty()) misses.push_back({text, std::move(nearest)});
         }
     }
     if (value.is_object() && schema.contains("properties") && schema["properties"].is_object()) {
         const Json& props = schema["properties"];
-        for (auto it = value.begin(); it != value.end() && nearest.empty(); ++it) {
-            if (props.contains(it.key())) findEnumMiss(props[it.key()], it.value(), missed, nearest);
+        const std::vector<std::string> keys = schemaKeys(props);
+        for (auto it = value.begin(); it != value.end(); ++it) {
+            if (props.contains(it.key())) {
+                collectNameMisses(props[it.key()], it.value(), misses);
+            } else if (closedObject(schema)) {
+                std::string nearest = NearestIdentifier(it.key(), keys);
+                if (!nearest.empty()) misses.push_back({it.key(), std::move(nearest)});
+            }
         }
     }
     if (value.is_array() && schema.contains("items") && schema["items"].is_object()) {
-        for (size_t i = 0; i < value.size() && nearest.empty(); i++) findEnumMiss(schema["items"], value[i], missed, nearest);
+        for (const Json& item : value) collectNameMisses(schema["items"], item, misses);
     }
+}
+
+// Where the error mentions `name`, quoted or as a whole word: right after it, else npos
+size_t afterMention(const std::string& text, const std::string& name) {
+    for (const char* quote : {"\"", "'", "`"}) {
+        const size_t found = text.find(quote + name + quote);
+        if (found != std::string::npos) return found + name.size() + 2;
+    }
+    auto wordChar = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+    for (size_t found = text.find(name); found != std::string::npos; found = text.find(name, found + 1)) {
+        const size_t end = found + name.size();
+        if ((found == 0 || !wordChar(text[found - 1])) && (end == text.size() || !wordChar(text[end]))) return end;
+    }
+    return std::string::npos;
 }
 
 } // namespace
 
 std::string McpRegistry::argumentProblem(const std::string& tool, const Json& schema, const Json& args) {
-    if (!args.is_object() || !schema.contains("properties") || !schema["properties"].is_object()) return {};
+    if (!args.is_object() || !closedObject(schema) || !schema.contains("properties") || !schema["properties"].is_object()) return {};
     const Json& props = schema["properties"];
     for (auto it = args.begin(); it != args.end(); ++it) {
-        if (props.contains(it.key())) {
-            std::string problem = nestedKeyProblem(props[it.key()], it.value(), it.key());
-            if (!problem.empty()) return problem;
-        } else if (closedObject(schema)) {
-            const std::vector<std::string> known = schemaKeys(props);
-            return "Unknown argument \"" + it.key() + "\" for " + tool + NearestIdentifierSuffix(it.key(), known) +
-                   ". Arguments: " + argumentNamesText(known) + ".";
-        }
+        if (props.contains(it.key())) continue;
+        const std::vector<std::string> known = schemaKeys(props);
+        return "Unknown argument \"" + it.key() + "\" for " + tool + NearestIdentifierSuffix(it.key(), known) +
+               ". Arguments: " + argumentNamesText(known) + ".";
     }
     return {};
 }
 
-void McpRegistry::suggestEnumValue(const Json& schema, const Json& args, std::string& errorText) {
+void McpRegistry::suggestNearestNames(const Json& schema, const Json& args, std::string& errorText) {
     if (errorText.find("did you mean") != std::string::npos) return;
-    std::string missed;
-    std::string nearest;
-    findEnumMiss(schema, args, missed, nearest);
-    if (nearest.empty()) return;
-    // right after the handler's mention of the value, quoted or as a whole word; an error that does
-    // not mention it is about something else (a handler may take aliases its enum does not list)
-    size_t at = std::string::npos;
-    for (const char* quote : {"\"", "'", "`"}) {
-        const size_t found = errorText.find(quote + missed + quote);
-        if (found != std::string::npos) {
-            at = found + missed.size() + 2;
-            break;
-        }
+    std::vector<NameMiss> misses;
+    collectNameMisses(schema, args, misses);
+    // after the handler's own mention of the name; an error that does not mention it is about
+    // something else (a handler may take aliases its enum does not list, or keys a lean schema does not)
+    for (const NameMiss& miss : misses) {
+        const size_t at = afterMention(errorText, miss.given);
+        if (at == std::string::npos) continue;
+        errorText.insert(at, " (did you mean '" + miss.nearest + "'?)");
+        return;
     }
-    auto wordChar = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
-    for (size_t found = errorText.find(missed); at == std::string::npos && found != std::string::npos;
-         found = errorText.find(missed, found + 1)) {
-        const size_t end = found + missed.size();
-        if ((found == 0 || !wordChar(errorText[found - 1])) && (end == errorText.size() || !wordChar(errorText[end]))) at = end;
-    }
-    if (at == std::string::npos) return;
-    errorText.insert(at, " (did you mean '" + nearest + "'?)");
 }
 
 std::string McpRegistry::nearestToolName(const std::string& name) const {
@@ -157,11 +139,10 @@ void McpRegistry::addTool(ToolDef def) {
     if (def.inputSchema.is_null()) {
         def.inputSchema = Json{{"type", "object"}, {"properties", Json::object()}};
     }
-    // additionalProperties: false is enforced here (a misspelled argument or key of a closed object
-    // fails, naming the nearest valid one and listing them) instead of being sent in tools/list (see
-    // toolToJson)
+    // additionalProperties: false is enforced here (a misspelled argument fails, naming the nearest
+    // valid one and listing them) instead of being sent in tools/list (see toolToJson)
     const Json& props = def.inputSchema.contains("properties") ? def.inputSchema["properties"] : Json();
-    if (def.handler && props.is_object()) {
+    if (def.handler && props.is_object() && def.inputSchema.value("additionalProperties", true) == false) {
         def.handler = [inner = def.handler, name = def.name, schema = def.inputSchema](CallPtr call) {
             const std::string problem = argumentProblem(name, schema, call->args());
             if (!problem.empty()) {

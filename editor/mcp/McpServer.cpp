@@ -1499,7 +1499,7 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
     call->setFinalizer([this, alertSerial, notes, toolTitle, weakCall, schema = &def.inputSchema](ToolResult& result) {
         // (the registry's definitions live as long as the server)
         if (result.isError) {
-            if (CallPtr done = weakCall.lock()) McpRegistry::suggestEnumValue(*schema, done->args(), result.text);
+            if (CallPtr done = weakCall.lock()) McpRegistry::suggestNearestNames(*schema, done->args(), result.text);
         }
         result.text += notes;
         if (CallPtr done = weakCall.lock(); done && done->saveWait() > 0.0) {
