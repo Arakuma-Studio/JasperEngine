@@ -37,6 +37,8 @@ namespace {
     // the share of a normal's largest component another axis may come within and still be
     // searched: normals COPLANAR_COS apart differ by less than this per component
     constexpr float AXIS_MARGIN = 0.02f;
+    // a mesh's triangle BVH still queued is built in the check up to this size
+    constexpr uint32_t INLINE_BUILD_TRIANGLES = 4096;
     // how far z-fighting faces are pushed apart by the fix (metres)
     constexpr float SEPARATION = 0.005f;
 
@@ -540,6 +542,9 @@ namespace {
             if (!mesh || !transform || jasperengine::picking::isPosed(*mesh)) continue;
             PickCache::EntryPtr entry = bvh.meshEntry(leaf.entity, true);
             const MeshBvh* tree = entry ? PickCache::ready(entry) : nullptr;
+            // a small mesh's tree still queued is built here (a fraction of a millisecond); a large
+            // one is skipped until its background build is done
+            if (!tree && entry && entry->triangles <= INLINE_BUILD_TRIANGLES) tree = PickCache::get().wait(entry);
             if (!tree || tree->empty()) continue;  // still building, or no CPU triangles
             meshes.push_back({leaf.entity, leaf.bounds, tree, transform->modelMatrix});
         }

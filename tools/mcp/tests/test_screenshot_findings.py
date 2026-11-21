@@ -105,7 +105,8 @@ async def test_black_scene(ed: Editor):
         found = await ed.call("find_entities", scene=s["scene"], component=component)
         if found["entities"]:
             await ed.call("delete_entities", scene=s["scene"], entities=[e["id"] for e in found["entities"]])
-    await ed.call("set_scene_settings", scene=s["scene"], settings={"background_color": [0, 0, 0, 1], "global_illumination_intensity": 0})
+    await ed.call("set_scene_settings", scene=s["scene"], settings={"background_color": [0, 0, 0, 1], "light_state": "on",
+                                                                     "global_illumination_intensity": 0})
     r = await shoot(ed, s, "game", "black")
     dark = finding(ed, r, "exposure_dark")
     ed.check("directional_light" in dark["fix"], f"no light: the fix adds one: {dark}")
