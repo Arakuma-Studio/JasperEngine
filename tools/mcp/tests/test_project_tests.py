@@ -432,6 +432,7 @@ ROLLER = """local Roller = {}
 function Roller:init()
     self.go = GameObject(self.scene, self.entity)
     self.wall = GameObject.find("Wall")
+    RegisterEngineEvent(self, "onUpdate")
 end
 function Roller:onUpdate()
     if Input.isKeyPressed(Input.KEY_RIGHT) then

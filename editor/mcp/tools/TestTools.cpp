@@ -235,7 +235,8 @@ void runDesktop(const CallPtr& call, Project* project, const gametests::RunReque
         Json runArgs = Json::array({"--run-tests"});
         if (!request.filter.empty()) runArgs.insert(runArgs.end(), {"--test-filter", request.filter});
         if (request.keepData) runArgs.push_back("--keep-test-data");
-        const Json run = {{"headless", true}, {"seconds", 300}, {"log_lines", 40}, {"args", runArgs}};
+        // no run_build screenshot: the run ends the player before any frame it would name (exit 4)
+        const Json run = {{"headless", true}, {"seconds", 300}, {"log_lines", 40}, {"screenshot", false}, {"args", runArgs}};
         McpServer::get().runNested(call, "run_build", run, [project, job, args, images](const ToolResult& ran) {
             const Json data = ran.structured.is_object() ? ran.structured : Json::object();
             // the player names its results file in its log ("[test] results <path>", R25's default place)
