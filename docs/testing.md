@@ -414,8 +414,8 @@ continue to fail on any native crash.
   (`tools/check-physics-off.sh all-off`): the editor's engine has every module, so only this shows a
   source that got a header through a module's code, which breaks Compile builds and the smaller players.
 - **CI owns the full suite** (below, "CI"): a PR runs the lanes its diff needs, the merge queue
-  every lane that can block the merge, the push to `main` the advisory test lanes the queue left
-  out, the nightly the whole MCP CI suite;
+  every lane that can block the merge, the advisory run a push to `main` dispatches the advisory test
+  lanes the queue left out, the nightly the whole MCP CI suite;
   `gh workflow run ci.yml --ref <branch> -f full=true` runs everything on a branch. check-changed is
   a selection and says so in every summary. The MCP files outside the CI suite (`MCP_SUITE=all`)
   run only where someone runs them.
@@ -943,7 +943,7 @@ edit rebuilds of one tree, with the host's load recorded) and `tools/perf/build_
 ## CI
 
 GitHub Actions (`.github/workflows/`) runs on every pull request to `main`, in the merge queue, on
-every push to `main`, every night and for a release. Each step is a one-line call to a script in this
+every push to `main` and in the advisory run it dispatches, every night and for a release. Each step is a one-line call to a script in this
 repository, in the same Docker images `tools/build.sh` builds, so every lane reproduces locally with
 the command its report prints. The design is `docs/superpowers/specs/2026-11-12-ci-design.md`.
 
@@ -981,8 +981,7 @@ compiles every other object into the restored ccache, uploads the files that add
 longer than its own part took, not at all when that part has not started or ended without them, or
 when its own part compiled under a tenth of its objects (a warm cache: the other part's hit too). It
 then builds the binary from the cache, compiling whatever it did not get, and runs its shard. Only
-the first part makes the deps dump on push; the second only compiles its objects there, unless the
-push runs the unit tests (below), when each part runs its shard as on a PR. The hits need a configure whose objects do not depend on a precompiled header built in
+the first part makes the deps dump on push; the second only compiles its objects there. The hits need a configure whose objects do not depend on a precompiled header built in
 the job: a GCC `.gch` is not the same bytes twice, so a unit built on the other part's misses. A skipped MCP test fails its shard unless `tools/ci/mcp-allowed-skips.txt` lists it
 with the reason and the lane where it does run; a new entry is reviewed like any change.
 PR and merge-queue shards run without `JASPER_SLOW_BUILD`: the tests that build a real game (an hour
@@ -997,22 +996,23 @@ Windows jobs' builds and the core tests' run included. Since an advisory lane ca
 the merge queue does not run it (`tools/ci/plan_lanes.py --advisory "$ADVISORY_LANES"`): of `unit`
 (every job of it), `asan`, `htmlui`, `mcp`, `smoke` and `windows-editor-tests` (the editor leg still
 builds), the ones the list names; taking a lane off the list puts it back in the queue with no other
-edit. Lint and the platform lanes run in the queue whatever the list says. The push to `main` runs
-what the queue left out instead, as the queue would have (below), so every merged change still gets
-their results a few hours after it lands, in the push run's report.
+edit. Lint and the platform lanes run in the queue whatever the list says. The advisory run a push to
+`main` dispatches runs what the queue left out instead, as the queue would have (below), so every
+merged change still gets their results, in that run's report and the `advisory-red` issue.
 
 ### What each event runs
 
-| | PR push | merge queue | push to `main` | `full=true` dispatch |
-|---|---|---|---|---|
-| `changes`, `Check` | yes | yes | yes | yes |
-| `lint` | unless every path is one nothing reads | same | no | yes |
-| platform builds | when anything that builds changed | yes | yes, to warm the caches | yes |
-| `unit`, `htmlui` | the suites the plan selects | all, unfiltered; not while advisory | while advisory all, unfiltered; else build only (the caches, the deps dumps) | all |
-| `asan` | the unit lane's suites | all, unfiltered; not while advisory | while advisory all; else no (it keeps no cache entry) | all |
-| `mcp` | the planned CI-suite files | the planned files, over the group's diff against `main`; not while advisory | while advisory the planned files, over the push's diff; else no | the whole CI suite |
-| `smoke` | when a game-building path changed | yes; not while advisory | while advisory yes; else when a game-building path changed (its cache) | yes |
-| `windows-editor-tests` | with the Windows editor leg | the same; not while advisory | while advisory the same; else no | yes |
+| | PR push | merge queue | push to `main` | advisory run | `full=true` dispatch |
+|---|---|---|---|---|---|
+| `changes`, `Check` | yes | yes | yes | yes | yes |
+| `lint` | unless every path is one nothing reads | same | no | no | yes |
+| `linux`, `web`, `android`, `windows`, `macos` | when anything that builds changed | yes | yes, to warm the caches (`windows`: the editor leg's build only) | `linux` when `mcp` or `smoke` runs (their editor install); `windows` for `windows-editor-tests` (the editor leg only) | yes |
+| `ios` | when anything that builds changed | yes | no (no cache) | no | yes |
+| `unit`, `htmlui` | the suites the plan selects | all, unfiltered; not while advisory | build only (the caches, the deps dumps) | while advisory all, unfiltered | all |
+| `asan` | the unit lane's suites | all, unfiltered; not while advisory | no (no cache) | while advisory all | all |
+| `mcp` | the planned CI-suite files | the planned files, over the group's diff against `main`; not while advisory | no | while advisory the planned files, over the diff since the last advisory run | the whole CI suite |
+| `smoke` | when a game-building path changed | yes; not while advisory | no (no cache) | while advisory yes | yes |
+| `windows-editor-tests` | with the Windows editor leg | the same; not while advisory | no | while advisory yes | yes |
 
 - **Nothing reads it**: a change only under `docs/specs/`, `docs/superpowers/`, `docs/engine-gaps/`,
   `docs/openengine-analysis/`, `docs/test-cleanup/`, `.claude/`, a root `*-LEDGER.md` or `README.md`
@@ -1025,14 +1025,33 @@ their results a few hours after it lands, in the push run's report.
 - **MCP in the merge queue** is planned from the coverage map, not the whole suite: a regression the
   map misses is the nightly's to find. A planned file outside the CI suite (it needs the fixture
   project, or is `CI_EXCLUDED`) is listed under "not run in CI"; `MCP_SUITE=all` locally covers it.
-- **Push to `main`** builds, and runs the tests of the advisory lanes the queue left out
-  (`tools/ci/plan_lanes.py` `build_only` lists what builds without its tests); the other tests ran in
-  the queue. A push run gates nothing: a failing advisory test shows in its report and job summary.
-  It saves the caches (ccache per lane, the deps dumps `changes` plans from): a PR restores what `main`
-  saved, never what the queue did. The unit and HTML UI tests run in a step of their own after the
-  build and the deps dumps that continues on error, so the job's result, which the `caches` job's
-  plan inputs follow, stays its build's; the lane's report carries the tests' failure, and
-  `tools/ci/check_gate.py` reads it.
+- **Push to `main`** builds what keeps a cache and nothing else (`tools/ci/plan_lanes.py` `build_only`
+  lists what builds without its tests): it saves the caches (ccache per lane, the deps dumps `changes`
+  plans from), and a PR restores what `main` saved, never what the queue did. The queue built and
+  tested the same commit, so a push runs no check: not `ios`, `smoke`, ASan or the Windows engine
+  legs, which keep no cache entry, nor any step the queue ran (`MAIN_STAGE` in `ci.yml`).
+- **One push run at a time.** Merge-queue groups land one push each, some minutes apart (2026-11-15
+  to 20: 21 pushes, gaps of 62 s, 3 and 4 min among 20). Push runs share one concurrency group without
+  cancel-in-progress: one runs, the newest waits, and GitHub drops an older waiting run before it takes
+  a runner. A push run's `changes` job first waits `ADMISSION_SECONDS` (300) and steps aside, running
+  no lane (`superseded_by` in `lanes.json`), when `main` moved on by then with a path that builds: the
+  newer run builds and saves. A newer push that touches only paths nothing reads does not supersede it.
+  Each push run plans against the head of the last push run that finished (`gh run list`), so a dropped
+  run's change is still built.
+- **The advisory run.** A push that builds dispatches `ci.yml` with `advisory: true` on `main`. That
+  run, named "Advisory tests of main at <sha>", runs the tests of the `ADVISORY_LANES` lanes the queue
+  left out, as the queue would have, plus the jobs they need (above). Advisory runs share their own
+  concurrency group: one at a time, the newest waiting. Each is planned against the head of the last
+  advisory run that finished, so one run tests every push since that one, and its report starts
+  "Advisory tests of the changes since <sha>". With no earlier run, it runs every advisory lane and
+  the whole MCP CI suite. `Check` stays green on an advisory failure, so the run keeps one issue,
+  labelled `advisory-red`: opened or commented on by each run with a failing, cancelled or missing job,
+  closed by the first green one. A run takes about 4.5 h (ASan). Over the pushes of 2026-11-15 to 20,
+  a model with 270 min runs gives each merged change its results 5.7 h after it lands on average (at
+  most 8.8 h), in 15 runs instead of 21, never two at once. Running them in every push run took 4.5 h
+  but up to three runs at a time (five or six at two to four times the pushes); an hourly schedule
+  averaged 5.9 h (7.5 to 7.9 h at two to four times the pushes). The unit and HTML UI jobs build again
+  in the advisory run (the editor tests' tree keeps no cache entry), about 150 Linux minutes a run.
 - **ccache in CI**: a build runs with no size limit (a cleanup in the middle of a build evicts the
   restored entries it has not reached yet, and each miss then evicts more: a PR that changed one test
   file hit 5 of 5,279 compiles). `ccache-save` then evicts every entry the run neither used nor wrote
@@ -1058,7 +1077,7 @@ their results a few hours after it lands, in the push run's report.
   | Gradle, Vulkan SDK, plan inputs, coverage map, MCP timings | 0.73, 0.21, under 0.01 each | | yes |
   | Windows OpenGL | 1.4 | | no: the lane ends with its slowest leg, and D3D11 and Vulkan cold (57-99 min) take about as long as OpenGL cold with the core tests (79-108) |
   | unit-editor | 4.0 | | no |
-  | asan-core, asan-editor | 5.3 both (one job, PR 26) | | no: neither binary's fits what is left, so ASan runs on push only while advisory, cold |
+  | asan-core, asan-editor | 5.3 both (one job, PR 26) | | no: neither binary's fits what is left, so ASan never runs on push, and runs cold |
   | smoke | 3.5 | | no |
 
   At most 8.4 GB of caps plus 0.95 GB of the rest, 9.35 GB (8.8 GB at these working sets). A cache
@@ -1091,6 +1110,8 @@ their results a few hours after it lands, in the push run's report.
   `ci-report.yml` writes it for a pull request from a fork, whose run cannot.
 - **Merge queue**: a group that fails removes the PR and posts the same report on it, prefixed
   "Removed from the merge queue". The commit it names is the queue's merge commit.
+- **Advisory run**: its report heads the job summary; a failing, cancelled or missing job opens or
+  comments on the issue labelled `advisory-red`, and the first green run closes it (above).
 - **`main`**: a failed push opens or updates the issue labelled `ci-red`, and comments on the PR that
   made the commit.
 - **Each run**: the same text in the job summaries; per lane the artifacts `ci-report-<lane>` (JSON:

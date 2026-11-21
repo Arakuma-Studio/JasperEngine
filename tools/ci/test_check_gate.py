@@ -209,37 +209,38 @@ class GateTest(unittest.TestCase):
         self.assertEqual(status, 0, out)
         self.assertRegex(out, r"(?m)^unit\s+success\s+ok \(build only on push\)$")
 
-    def test_push_runs_the_advisory_lanes_tests(self):
-        # the merge queue left them to the push (tools/ci/plan_lanes.py): build_only names what still only builds
-        p = plan(event="push", off=("lint",))
+    def test_the_advisory_run_lists_its_failures(self):
+        # the run a push to main dispatches: the advisory lanes' tests the merge queue left out, and the
+        # linux and windows jobs they need; what the queue ran is planned off (tools/ci/plan_lanes.py)
+        p = plan(event="advisory", off=("lint", "web", "android", "macos", "ios"))
         p["build_only"] = []
-        status, out = self.gate(needs_for(p), p, reports_for(p) + [
-            {"lane": "windows-editor-tests", "status": "success", "sha": "", "commands": [], "failures": [], "artifacts": [],
-             "tests": {"ran": 900, "failed": 0, "skipped": 0, "disabled": 0}}])
+        status, out = self.gate(needs_for(p), p, reports_for(p))
         self.assertEqual(status, 0, out)
         self.assertRegex(out, r"(?m)^unit\s+success\s+ok \(50 tests\)$")
-        self.assertRegex(out, r"(?m)^windows-editor-tests\s+success\s+ok \(900 tests\)$")
+        self.assertRegex(out, r"(?m)^web\s+skipped\s+ok \(not planned: not needed\)$")
+        self.assertRegex(out, r"(?m)^windows-editor-tests\s+success\s+ok \(50 tests\)$")
         advisory = "unit asan htmlui mcp smoke windows-editor-tests"
-        status, out = self.gate(needs_for(p), p, reports_for(p, ran={"unit": 0}), advisory=advisory)
+        reps = [r for r in reports_for(p, ran={"unit": 0}) if r["lane"] != "windows-editor-tests"]
+        status, out = self.gate(needs_for(p, htmlui="failure"), p, reps, advisory=advisory)
         self.assertEqual(status, 0, out)
         self.assertRegex(out, r"(?m)^unit\s+success\s+advisory \(rollout\): 0 tests ran$")
+        self.assertRegex(out, r"(?m)^htmlui\s+failure\s+advisory \(rollout\): failing$")
         self.assertRegex(out, r"(?m)^windows-editor-tests\s+missing\s+advisory \(rollout\): no report, so no proof tests ran$")
-        # the push's test steps continue on error (the job's result is its build's, which the caches
-        # follow): the report's own status says the tests failed
+        # a report that failed while its job succeeded (a step that continues on error) is failing
         reps = [dict(r, status="failure") if r["lane"] == "htmlui" else r for r in reports_for(p)]
-        status, out = self.gate(needs_for(p), p, reps, advisory=advisory)
-        self.assertEqual(status, 0, out)
-        self.assertRegex(out, r"(?m)^htmlui\s+success\s+advisory \(rollout\): failing$")
         status, out = self.gate(needs_for(p), p, reps)
         self.assertEqual(status, 1, out)
         self.assertRegex(out, r"(?m)^htmlui\s+success\s+FAIL: failing$")
-        # what the push builds only needs no test
-        p["build_only"] = ["unit", "htmlui", "windows-editor-tests"]
-        status, out = self.gate(needs_for(p), p, reports_for(p, ran={"unit": 0, "htmlui": 0}))
+        # the lanes it needs are not advisory: a linux failure fails Check
+        status, out = self.gate(needs_for(p, linux="failure"), p, reports_for(p), advisory=advisory)
+        self.assertEqual(status, 1, out)
+
+    def test_a_superseded_push_runs_nothing_and_passes(self):
+        p = plan(event="push", off=LANES[1:])
+        p["build_only"] = []
+        status, out = self.gate(needs_for(p), p, [])
         self.assertEqual(status, 0, out)
-        self.assertRegex(out, r"(?m)^htmlui\s+success\s+ok \(build only on push\)$")
-        self.assertRegex(out, r"(?m)^asan\s+success\s+ok \(50 tests\)$")
-        self.assertNotIn("windows-editor-tests", out)
+        self.assertRegex(out, r"(?m)^linux\s+skipped\s+ok \(not planned: not needed\)$")
 
     def test_zero_test_unit_suite_fails(self):
         p = plan()

@@ -32,6 +32,7 @@ Fixtures in tools/ci/fixtures/report/, and where each comes from:
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -42,6 +43,7 @@ import tempfile
 import textwrap
 import time
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -496,6 +498,39 @@ class RenderTest(unittest.TestCase):
         self.assertIn("htmlui: skipped (no HTML UI change)", body)
         self.assertTrue(body.rstrip().endswith("</details>"))
 
+    def test_the_advisory_run_names_the_changes_it_tested(self):
+        # one advisory run tests every push since the last one: the report says from where
+        lanes = lanes_json(lint=(False, "q"), htmlui=(False, "q"), web=(False, "q"), android=(False, "q"), macos=(False, "q"),
+                           ios=(False, "q"))
+        lanes["event"] = "advisory"
+        body = self.render(self.write(*self.green_reports(), lanes=lanes))
+        self.assertIn("Advisory tests of the changes since `aaaaaaa`: ✅ CI passed on `3f2c1ab`", body.splitlines()[1])
+        lanes["base"] = "not a sha"
+        body = self.render(self.write(*self.green_reports(), lanes=lanes))
+        self.assertIn("Advisory tests: ✅ CI passed", body.splitlines()[1])
+        lanes["event"] = "push"
+        self.assertTrue(self.render(self.write(*self.green_reports(), lanes=lanes)).splitlines()[1].startswith("✅"))
+
+    def test_render_counts_what_is_not_green(self):
+        # (the advisory run's issue closes only when nothing failed, was cancelled or left no report)
+        out = self.dir / "github-output"
+        args = ["render", "--reports", str(self.reports), "--lanes", str(self.dir / "lanes.json"), "--run-url", self.RUN,
+                "--sha", "3f2c1ab" + "0" * 33, "--advisory", "unit", "--out", str(self.dir / "comment.md"),
+                "--github-output", str(out)]
+        lanes = lanes_json(htmlui=(False, "no HTML UI change"))
+        self.write(*self.green_reports(), lanes=lanes)
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(report.main(args), 0)
+        self.assertEqual(out.read_text(), "failing=0\n")
+        for f in self.reports.glob("*.json"):
+            f.unlink()
+        unit = lane_report("unit", "failure", ran=412, failures=[failure("MeshBvh.Refit")])
+        self.write(unit, *[r for r in self.green_reports() if r["lane"] not in ("unit", "macos")], lanes=lanes)
+        out.unlink()
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(report.main(args), 0)
+        self.assertEqual(out.read_text(), "failing=2\n")
+
     def test_nested_artifact_dirs_and_missing_report(self):
         reports = [r for r in self.green_reports() if r["lane"] != "macos"]
         path = self.write(*reports, nested=True, lanes=lanes_json(htmlui=(False, "no HTML UI change")))
@@ -883,6 +918,26 @@ class GhTest(unittest.TestCase):
         self.assertEqual(calls[3]["args"][:2], ["api", f"repos/o/r/commits/{'d' * 40}/pulls"])
         self.assertEqual(calls[4]["args"][:3], ["pr", "comment", "12"])
         self.assertIn("issues/31", " ".join(calls[4]["args"]))
+
+    def test_issue_closes_when_green(self):
+        p, calls = self.run_report([["issue list", "44\n", 0]], "issue", "--label", "advisory-red", "--close",
+                                   "--body", str(self.body))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(calls[0]["args"][:7], ["issue", "list", "--repo", "o/r", "--label", "advisory-red", "--state"])
+        self.assertEqual(calls[1]["args"][:3], ["issue", "comment", "44"])
+        self.assertEqual(calls[1]["--body-file"], self.body.read_text())
+        self.assertEqual(calls[2]["args"], ["issue", "close", "44", "--repo", "o/r"])
+        self.assertEqual(len(calls), 3)
+        # none open: nothing to close, and no label made for it
+        self.log.unlink()
+        p, calls = self.run_report([["issue list", "", 0]], "issue", "--label", "advisory-red", "--close", "--body", str(self.body))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual([c["args"][:2] for c in calls], [["issue", "list"]])
+        self.assertIn("no open advisory-red issue", p.stdout)
+        # opening one needs a title
+        p, calls = self.run_report([], "issue", "--label", "advisory-red", "--body", str(self.body))
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("--title", p.stderr)
 
     def test_issue_label_is_checked(self):
         p, calls = self.run_report([], "issue", "--label", "bug", "--title", "t", "--body", str(self.body))

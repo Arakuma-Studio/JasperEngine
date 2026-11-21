@@ -5,9 +5,11 @@
     python3 tools/ci/report.py render --reports <dir> --lanes lanes.json --run-url <url> --sha <sha>
                                       [--advisory "unit mcp"] [--needs needs.json] [--started-at <iso>]
                                       [--prefix "Removed from the merge queue:"] --out comment.md
+                                      [--github-output <file>]
     python3 tools/ci/report.py post (--pr <N> | --pr-from-ref <ref> | --head-sha <sha> --head-label <owner:branch>)
                                     --body comment.md [--repo <owner/name>]
-    python3 tools/ci/report.py issue --label ci-red|nightly --title <t> --body comment.md [--commit <sha>]
+    python3 tools/ci/report.py issue --label ci-red|nightly|advisory-red (--title <t> | --close) --body comment.md
+                                     [--commit <sha>]
 
 collect runs as each lane's last step (.github/actions/report). It reads what the lane left in
 --results: googletest XML, run_tests.py's mcp.json, and every *.log (build logs of GCC, Clang, ld,
@@ -837,13 +839,14 @@ def load_reports(directory: Path) -> dict[str, dict]:
 def load_lanes(path: Path | None) -> dict:
     """lanes.json (tools/ci/plan_lanes.py), reduced to what render and check_gate read."""
     data = load_json(path) if path else None
-    out = {"ok": False, "event": "", "full": False, "lanes": {}, "shards": [], "not_in_ci": [], "unit_jobs": [],
+    out = {"ok": False, "event": "", "full": False, "base": "", "lanes": {}, "shards": [], "not_in_ci": [], "unit_jobs": [],
            "asan_jobs": [], "advisory_off": [], "build_only": []}
     if not isinstance(data, dict) or not isinstance(data.get("lanes"), dict):
         return out
     out["ok"] = True
     out["event"] = data.get("event") if isinstance(data.get("event"), str) else ""
     out["full"] = data.get("full") is True
+    out["base"] = data["base"] if isinstance(data.get("base"), str) and SHA_RE.match(data["base"]) else ""
     for name, lane in list(data["lanes"].items())[:60]:
         if isinstance(name, str) and LANE_RE.match(name) and isinstance(lane, dict):
             out["lanes"][name] = {"run": lane.get("run") is True, "why": text_field(lane.get("why"), 300)}
@@ -1048,6 +1051,26 @@ def minutes(seconds: int) -> str:
     return "<1 min" if seconds < 60 else f"{round(seconds / 60)} min"
 
 
+def job_states(reports: dict[str, dict], lanes: dict, needs: dict) -> tuple[list[str], dict[str, str]]:
+    """Every job of a lane that ran, in the plan's order (a shard per MCP shard), and its state: its
+    report's status, else its job's result, else missing."""
+    expected: list[str] = []
+    for name, lane in lanes["lanes"].items():
+        if name in ("report", "check") or not lane["run"]:
+            continue
+        expected += lane_jobs(name, lanes["shards"], lanes["unit_jobs"], lanes["asan_jobs"], lanes["build_only"])
+    expected += [name for name in reports if name not in expected]
+    states: dict[str, str] = {}
+    for name in expected:
+        if name in reports:
+            states[name] = reports[name]["status"]
+        else:
+            job = needs.get(name, needs.get(lane_base(name)))
+            result = job.get("result") if isinstance(job, dict) else None
+            states[name] = result if result in STATUSES else "missing"
+    return expected, states
+
+
 def render(reports: dict[str, dict], lanes: dict, run_url: str, sha: str, advisory: list[str],
            needs: dict | None = None, started_at: str = "", prefix: str = "") -> str:
     """The PR comment (design §11.2): failures first, one line and <details> when green."""
@@ -1060,22 +1083,8 @@ def render(reports: dict[str, dict], lanes: dict, run_url: str, sha: str, adviso
     unit_jobs = lanes["unit_jobs"]
     asan_jobs = lanes["asan_jobs"]
     advisory_set = {a for a in advisory if LANE_RE.match(a)}
+    expected, states = job_states(reports, lanes, needs)
 
-    # every lane that ran, in the plan's order; a shard per MCP shard
-    expected: list[str] = []
-    for name, lane in lanes["lanes"].items():
-        if name in ("report", "check") or not lane["run"]:
-            continue
-        expected += lane_jobs(name, shards, unit_jobs, asan_jobs, lanes["build_only"])
-    expected += [name for name in reports if name not in expected]
-    states: dict[str, str] = {}
-    for name in expected:
-        if name in reports:
-            states[name] = reports[name]["status"]
-        else:
-            job = needs.get(name, needs.get(lane_base(name)))
-            result = job.get("result") if isinstance(job, dict) else None
-            states[name] = result if result in STATUSES else "missing"
     def advisory_lane(n: str) -> bool:
         return n in advisory_set or lane_base(n) in advisory_set
 
@@ -1092,6 +1101,9 @@ def render(reports: dict[str, dict], lanes: dict, run_url: str, sha: str, adviso
         except ValueError:
             pass
     lead = f"{md(prefix)} " if prefix else ""
+    if lanes["event"] == "advisory":
+        # one advisory run tests every push since the last one (tools/ci/plan_lanes.py)
+        lead += f"Advisory tests of the changes since `{lanes['base'][:7]}`: " if lanes["base"] else "Advisory tests: "
 
     def lane_section(name: str, title: str = "") -> tuple[str, tuple]:
         report = reports.get(name)
@@ -1246,17 +1258,23 @@ def post(args) -> int:
     return 0
 
 
-ISSUE_LABELS = {"ci-red": ("B60205", "CI failures on main"), "nightly": ("B60205", "Nightly workflow failures")}
+ISSUE_LABELS = {"ci-red": ("B60205", "CI failures on main"), "nightly": ("B60205", "Nightly workflow failures"),
+                "advisory-red": ("D93F0B", "Advisory test failures on main (ADVISORY_LANES)")}
 
 
 def issue(args) -> int:
-    """Open or comment on the one open issue with the label, as the old nightly.yml reporter did."""
+    """Open or comment on the one open issue with the label, as the old nightly.yml reporter did; with
+    --close, comment on it and close it (none open: nothing to do)."""
     repo = repo_arg(args.repo)
     body = read_body(args.body)
     color, description = ISSUE_LABELS[args.label]
-    gh("label", "create", args.label, "--repo", repo, "--color", color, "--description", description, check=False)
+    if not args.close:
+        gh("label", "create", args.label, "--repo", repo, "--color", color, "--description", description, check=False)
     number = gh("issue", "list", "--repo", repo, "--label", args.label, "--state", "open", "--limit", "1",
                 "--json", "number", "--jq", ".[0].number // empty").strip()
+    if args.close and not number.isdigit():
+        print(f"report.py: no open {args.label} issue to close")
+        return 0
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as f:
         f.write(body)
         body_file = f.name
@@ -1264,6 +1282,9 @@ def issue(args) -> int:
         if number.isdigit():
             gh("issue", "comment", number, "--repo", repo, "--body-file", body_file)
             print(f"report.py: commented on issue #{number}")
+            if args.close:
+                gh("issue", "close", number, "--repo", repo)
+                print(f"report.py: closed issue #{number}")
         else:
             url = gh("issue", "create", "--repo", repo, "--label", args.label, "--title", args.title,
                      "--body-file", body_file).strip()
@@ -1304,6 +1325,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--started-at", default="", help="the run's start (ISO 8601), for its duration")
     r.add_argument("--prefix", default="", help='text before the verdict ("Removed from the merge queue:")')
     r.add_argument("--out", type=Path, required=True)
+    r.add_argument("--github-output", type=Path, help="append failing=<jobs failed, cancelled or without a report>")
     p = sub.add_parser("post", help="upsert the PR comment")
     target = p.add_mutually_exclusive_group(required=True)
     target.add_argument("--pr", type=int)
@@ -1314,7 +1336,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--repo")
     i = sub.add_parser("issue", help="open or comment the labelled issue")
     i.add_argument("--label", required=True, choices=sorted(ISSUE_LABELS))
-    i.add_argument("--title", required=True)
+    i.add_argument("--title", help="the issue's title, when it opens one")
+    i.add_argument("--close", action="store_true", help="comment on the open issue and close it (green again)")
     i.add_argument("--body", type=Path, required=True)
     i.add_argument("--commit", help="also comment on the PR that landed this commit, linking the issue")
     i.add_argument("--repo")
@@ -1338,10 +1361,17 @@ def main(argv: list[str] | None = None) -> int:
                       needs, args.started_at, args.prefix)
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(body, encoding="utf-8")
+        if args.github_output:
+            _, states = job_states(load_reports(args.reports), load_lanes(args.lanes), needs if isinstance(needs, dict) else {})
+            failing = sum(state in ("failure", "cancelled", "missing") for state in states.values())
+            with args.github_output.open("a", encoding="utf-8") as f:
+                f.write(f"failing={failing}\n")
         print(f"report.py: wrote {args.out} ({len(body)} characters)")
         return 0
     if args.command == "post":
         return post(args)
+    if not args.close and not args.title:
+        parser.error("issue: --title is needed to open an issue (or --close)")
     return issue(args)
 
 
