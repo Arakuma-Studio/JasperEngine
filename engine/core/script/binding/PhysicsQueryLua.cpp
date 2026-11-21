@@ -599,8 +599,9 @@ void LuaBinding::registerPhysicsQueryClasses(lua_State* L){
         .addProperty("entity", &pqMeshOverlapEntity)
         .addProperty("kind", &pqMeshOverlapKind)
         .addProperty("instance", &pqMeshOverlapInstance)
-        // a TREE hit's tree (Terrain:removeTreeInstance takes it) and prototype; DETAIL: the layer in prototype
+        // a TREE hit's tree id (Terrain:removeTreeInstance takes it), 0 otherwise
         .addProperty("foliageId", &pqMeshOverlapFoliageId)
+        // a TREE hit's prototype, a DETAIL hit's layer, -1 otherwise
         .addProperty("prototype", &pqMeshOverlapPrototype)
         .endClass();
 
@@ -659,8 +660,9 @@ void LuaBinding::registerPhysicsQueryClasses(lua_State* L){
 
     luabridge::getGlobalNamespace(L)
         .beginClass<MeshRaycast>("MeshRaycast")
-        // a Terrain's trees (a default kind of overlaps and rays) and details (opt-in)
+        // a Terrain's trees: a default kind of rays and overlaps
         .addStaticProperty("TREE", &pqMeshRaycastTree)
+        // a Terrain's details (grass): only when kinds asks
         .addStaticProperty("DETAIL", &pqMeshRaycastDetail)
         .addStaticFunction("overlapSphere", &pqMeshOverlap<false, false>)
         .addStaticFunction("overlapSphereNonAlloc", &pqMeshOverlap<false, true>)
