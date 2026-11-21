@@ -28,6 +28,7 @@
 #include "command/type/ScenePropertyCmd.h"
 #include "command/type/SetChildSceneStartActiveCmd.h"
 #include "command/type/SetMainCameraCmd.h"
+#include "lighting/ExtractSun.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/RenderSystem.h"
 #include "util/FileUtils.h"
@@ -1624,14 +1625,23 @@ void setSceneSettingsTool(const CallPtr& call) {
         call->fail(McpRefs::notOpenError(call->ctx().project(), *scene));
         return;
     }
-    if (!args.contains("settings") || !args["settings"].is_object() || args["settings"].empty()) {
+    // S92 R28: extract_sun {remove_sun_disc} with or without settings
+    const bool extractSun = args.contains("extract_sun") && !args["extract_sun"].is_null();
+    if (extractSun && !args["extract_sun"].is_object()) {
+        call->fail("extract_sun must be an object: {} or {\"remove_sun_disc\": true}.");
+        return;
+    }
+    const Json noSettings = Json::object();
+    const bool hasSettings = args.contains("settings") && !args["settings"].is_null();
+    if ((hasSettings && (!args["settings"].is_object() || args["settings"].empty())) || (!hasSettings && !extractSun)) {
         call->fail("settings must be an object {name: value}. Settings: " + settingNamesText() + ".");
         return;
     }
+    const Json& settings = hasSettings ? args["settings"] : noSettings;
     auto* multi = new MultiPropertyCmd();
     PostProcessingSettings postProcessing = scene->scene->getPostProcessing();
     bool postProcessingSet = false;
-    for (auto it = args["settings"].begin(); it != args["settings"].end(); ++it) {
+    for (auto it = settings.begin(); it != settings.end(); ++it) {
         const SceneSetting* setting = findSetting(it.key());
         if (!setting) {
             delete multi;
@@ -1681,6 +1691,14 @@ void setSceneSettingsTool(const CallPtr& call) {
     }
     const uint32_t id = scene->id;
     std::string error;
+    // the sun first: a sky without one refuses the whole call
+    ExtractSunResult sun;
+    const bool removeSunDisc = extractSun && args["extract_sun"].value("remove_sun_disc", false);
+    if (extractSun && !ExtractSun::apply(project, id, removeSunDisc, sun, error)) {
+        delete multi;
+        call->fail(error);
+        return;
+    }
     if (multi->empty()) {
         delete multi;
     }else if (!runSceneCommand(id, multi, error)) {
@@ -1689,13 +1707,30 @@ void setSceneSettingsTool(const CallPtr& call) {
     }
     SceneProject* updated = project->getScene(id);
     Json values = Json::object();
-    for (auto it = args["settings"].begin(); it != args["settings"].end(); ++it) {
+    for (auto it = settings.begin(); it != settings.end(); ++it) {
         values[it.key()] = settingValue(updated->scene, *findSetting(it.key()), false, project);
     }
-    const bool debugView = args["settings"].contains("shadows_debug_view");
-    call->ok("Set " + std::to_string(values.size()) + " scene setting(s) (one undo step" +
-             (debugView ? std::string("; shadows_debug_view takes none).") : std::string(").")),
-             Json{{"scene_id", id}, {"settings", values}});
+    Json data = {{"scene_id", id}, {"settings", values}};
+    std::string text = "Set " + std::to_string(values.size()) + " scene setting(s)";
+    if (extractSun) {
+        static const char* const unitNames[] = {"engine", "lux", "candela", "lumen"};
+        data["sun"] = {{"light", McpValues::entityToJson(updated, sun.light)},
+                       {"created", sun.created},
+                       {"direction", McpValues::toJson(sun.direction)},
+                       {"color", McpValues::toJson(sun.color)},
+                       {"intensity", McpValues::number(sun.intensity)},
+                       {"unit", unitNames[std::clamp((int)sun.unit, 0, 3)]},
+                       {"peak_ratio", McpValues::number(sun.peakRatio)},
+                       {"disc_degrees", McpValues::number(sun.discDegrees)},
+                       {"remove_sun_disc", sun.sunDiscTextures}};
+        text = std::string(sun.created ? "Created" : "Aligned") + " the main Directional Light \"" + updated->scene->getEntityName(sun.light) +
+               "\" to the sky's sun (" + Json(McpValues::number(sun.peakRatio)).dump() + "x the sky's mean)" +
+               (values.empty() ? std::string() : "; set " + std::to_string(values.size()) + " scene setting(s)");
+        if (!removeSunDisc)
+            data["next"] = "Image-based lighting still has the sun: set_scene_settings extract_sun {\"remove_sun_disc\": true} clamps the sky's disc so it is not counted twice.";
+    }
+    const bool debugView = settings.contains("shadows_debug_view");
+    call->ok(text + " (one undo step" + (debugView ? std::string("; shadows_debug_view takes none).") : std::string(").")), data);
 }
 
 // ------------------------------------------------------------------ post-processing presets
@@ -2221,9 +2256,10 @@ void registerSceneTools(McpRegistry& registry) {
         tool.description =
             "Set scene settings {name: value} (names and shapes: get_scene_settings). post_process replaces "
             "the pass list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": "
-            "[0.5,0,0,0]}}]. post_processing {field: value} sets the fields named (null resets all); one undo "
-            "step per call.";
-        tool.inputSchema = object({{"scene", sceneRef()}, {"settings", anyObject("")}}, {"settings"});
+            "[0.5,0,0,0]}}]. post_processing {field: value} sets the fields named (null resets all); extract_sun "
+            "creates or aligns the main Directional Light to the skybox HDR image's sun. One undo step per call.";
+        tool.inputSchema = object({{"scene", sceneRef()}, {"settings", anyObject("")},
+                                   {"extract_sun", object({{"remove_sun_disc", withDefault(boolean(""), false)}})}});
         tool.annotations.idempotent = true;
         tool.handler = setSceneSettingsTool;
         registry.addTool(std::move(tool));

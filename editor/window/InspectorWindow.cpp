@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainQualityPanel.h"
+#include "lighting/ExtractSun.h"
 #include "Engine.h"
 #include "mcp/TerrainMaterialInfo.h"
 #include "animation/BoneOverlay.h"
@@ -13251,6 +13252,47 @@ void editor::InspectorWindow::drawSkyboxComponent(ComponentType cpType, ScenePro
     propertyRow(RowPropertyType::Color4L, cpType, "color", "Color", sceneProject, entities);
     propertyRow(RowPropertyType::Float, cpType, "rotation", "Rotation", sceneProject, entities);
 
+    endTable();
+
+    // S92 R28: the sun of the sky's HDR image as the scene's main Directional Light
+    separatorText("Sun");
+    beginTable(cpType, getLabelSize("Remove Sun Disc"), "sky_sun");
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Remove Sun Disc");
+    ImGui::SetItemTooltip("Also turn on the sky images' Remove Sun Disc import setting: the cook clamps the sun's disc to the sky "
+                          "around it, so image-based lighting does not count the sun the light now gives. HDR images only.");
+    ImGui::TableNextColumn();
+    ImGui::Checkbox("##extract_sun_remove_disc", &extractSunRemoveDisc);
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::TableNextColumn();
+    if (ImGui::Button(ICON_FA_SUN " Extract Sun")) {
+        ExtractSunResult result;
+        std::string error;
+        extractSunFailed = !ExtractSun::apply(project, sceneProject->id, extractSunRemoveDisc, result, error);
+        if (extractSunFailed) {
+            extractSunMessage = error;
+        } else {
+            char text[160];
+            std::snprintf(text, sizeof(text), "%s the Directional Light: intensity %.3g%s, the sun %.0fx the sky's mean.",
+                          result.created ? "Created" : "Aligned", result.intensity, result.unit == LightUnit::LUX ? " lux" : "",
+                          result.peakRatio);
+            extractSunMessage = text;
+        }
+    }
+    ImGui::SetItemTooltip("Finds the sun in the sky's HDR image (the brightest spot, at least 20 times the sky's mean) and sets the "
+                          "scene's main Directional Light to its direction, colour and intensity, creating one when there is none, "
+                          "so the sun casts shadows. One undo step.");
+    if (!extractSunMessage.empty()) {
+        ImGui::PushTextWrapPos(0.0f);
+        if (extractSunFailed)
+            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " %s", extractSunMessage.c_str());
+        else
+            ImGui::TextDisabled("%s", extractSunMessage.c_str());
+        ImGui::PopTextWrapPos();
+    }
     endTable();
 }
 
