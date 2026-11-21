@@ -283,6 +283,10 @@ bool QualityResolver::ssao(bool enabled){
     return enabled && !resolvedCell(DeviceOverride::SSAO).has_value();
 }
 
+int QualityResolver::cavityWorldSamples(int samples){
+    return samples;
+}
+
 AtmosphereQuality QualityResolver::volumetrics(AtmosphereQuality quality){
     return resolvedCell(DeviceOverride::Volumetrics).has_value() ? AtmosphereQuality::OFF : quality;
 }
