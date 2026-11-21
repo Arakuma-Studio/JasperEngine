@@ -1644,48 +1644,59 @@ TEST_F(CavityGpu, SsrKeepsTheGBufferForLibraryShadersThatDoNotDisplace){
 
 // R2: a project's depth fork whose file starts with a comment (GLSL allows one before #version)
 // is still the program of every depth pass with Cavity on: it cuts its cube out of them all, so
-// the cube casts no shadow (the floor where the built-in depth program shades stays lit) and gets
-// no cavity (the pre-pass sees the floor behind it); it compiles without an error
+// the cube casts no shadow and gets no cavity (the pre-pass sees the floor behind it), and it
+// compiles without an error. Its twin with the built-in depth program, in the same frame, is the
+// control: its shadow is there. (The fork is set before the first frame: a depth program swapped
+// on a still scene keeps the cached shadow of the old one wherever the reload completes within one
+// update, as on Vulkan, an engine bug older than Cavity)
 TEST_F(CavityGpu, ForkWithACommentBeforeVersionKeepsItsDepthProgram){
     JASPER_REQUIRE_GPU();
     Primitive ground(&scene);
     ground.createPlane(8.0f, 8.0f);
     ground.setMaterial(CavityShowcase::litMaterial(0.6f, 0.6f, 0.6f));
-    Primitive cube(&scene);
-    cube.createBox(0.6f, 0.6f, 0.6f);
-    cube.setPosition(0.0f, 1.0f, 0.0f);
-    cube.setRotation(0.0f, 45.0f, 0.0f);
-    cube.setMaterial(cavityUnlit(0.3f, 0.3f, 0.3f));
+    Primitive forked(&scene), builtin(&scene);
+    const float forkedX = -0.7f, builtinX = 0.7f;
+    for (Primitive* cube : {&forked, &builtin}){
+        cube->createBox(0.6f, 0.6f, 0.6f);
+        cube->setRotation(0.0f, 45.0f, 0.0f);
+        cube->setMaterial(cavityUnlit(0.3f, 0.3f, 0.3f));
+    }
+    forked.setPosition(forkedX, 1.0f, 0.0f);
+    builtin.setPosition(builtinX, 1.0f, 0.0f);
+    forked.setCustomDepthShader("cavity/forked_depth.vert|cavity/commented_depth.frag");
     Light sun(&scene);
     sun.setType(LightType::DIRECTIONAL);
     sun.setDirection(0.3f, -1.0f, 0.6f);
     sun.setIntensity(1.5f);
     sun.setShadows(true);
-    // the cube's shadow and a lit floor point beside it
-    const Vector3 shadow(0.3f, 0.0f, 0.6f);
-    const Vector3 lit(-1.4f, 0.0f, 0.6f);
-    int sx = 0, sy = 0, lx = 0, ly = 0;
+    // each cube's shadow (its centre along the light) and a lit floor point clear of both
+    const Vector3 forkedShadow(forkedX + 0.3f, 0.0f, 0.6f);
+    const Vector3 builtinShadow(builtinX + 0.3f, 0.0f, 0.6f);
+    const Vector3 lit(0.3f, 0.0f, 1.4f);
+    int fx = 0, fy = 0, bx = 0, by = 0, lx = 0, ly = 0;
 
-    // the control: with the built-in depth program the cube's shadow is there
-    const CavityFrame builtin = frameOff();
-    ASSERT_TRUE(project(shadow, sx, sy));
-    ASSERT_TRUE(project(lit, lx, ly));
-    ASSERT_GT(builtin.luma(lx, ly) - builtin.luma(sx, sy), 10.0) << "no shadow of the cube to compare with";
-
-    cube.setCustomDepthShader("cavity/forked_depth.vert|cavity/commented_depth.frag");
     const CavityFrame off = frameOff();
-    EXPECT_LT(off.luma(lx, ly) - off.luma(sx, sy), 4.0) << "the fork does not cut the cube out of the shadow pass";
+    ASSERT_TRUE(project(forkedShadow, fx, fy));
+    ASSERT_TRUE(project(builtinShadow, bx, by));
+    ASSERT_TRUE(project(lit, lx, ly));
+    ASSERT_GT(off.luma(lx, ly) - off.luma(bx, by), 10.0) << "no shadow of the built-in cube to compare with";
+    EXPECT_LT(off.luma(lx, ly) - off.luma(fx, fy), 4.0) << "the fork does not cut the cube out of the shadow pass";
+
     const CavityFrame on = frameWith(cavityOn(CavityType::BOTH));
     expectDrawn("commented fork");
-    EXPECT_NE(scene.getComponent<MeshComponent>(cube.getEntity()).submeshes[0].customDepthShaderId, 0)
+    EXPECT_NE(scene.getComponent<MeshComponent>(forked.getEntity()).submeshes[0].customDepthShaderId, 0)
         << "Cavity's depth variant fell back to the built-in program";
-    std::printf("[measured] shadow point: built-in %.1f, fork %.1f, fork with Cavity %.1f (lit floor %.1f)\n",
-                builtin.luma(sx, sy), off.luma(sx, sy), on.luma(sx, sy), on.luma(lx, ly));
-    EXPECT_LE(std::abs(cavityDelta(on, off, sx, sy)), 3.0) << "with Cavity the cube casts the shadow its fork cuts out";
+    std::printf("[measured] shadow points: built-in cube %.1f / %.1f, forked cube %.1f / %.1f (Cavity off / on; lit floor %.1f)\n",
+                off.luma(bx, by), on.luma(bx, by), off.luma(fx, fy), on.luma(fx, fy), on.luma(lx, ly));
+    EXPECT_GT(on.luma(lx, ly) - on.luma(bx, by), 10.0) << "the built-in cube's shadow went with Cavity on";
+    EXPECT_LT(on.luma(lx, ly) - on.luma(fx, fy), 4.0) << "with Cavity the cube casts the shadow its fork cuts out";
     int x = 0, y = 0;
-    ASSERT_TRUE(project(Vector3(0.0f, 1.0f, 0.3f * std::sqrt(2.0f)), x, y));
+    ASSERT_TRUE(project(Vector3(forkedX, 1.0f, 0.3f * std::sqrt(2.0f)), x, y));
     const double edge = std::max(cavityWindowMax(on, off, x, y, 4), -cavityWindowMin(on, off, x, y, 4));
     EXPECT_LE(edge, CAVITY_NEUTRAL) << "the cube its depth fork cuts out of the pre-pass gets cavity";
+    // (the built-in twin does get it: Cavity drew where a pre-pass has the cube)
+    ASSERT_TRUE(project(Vector3(builtinX, 1.0f, 0.3f * std::sqrt(2.0f)), x, y));
+    EXPECT_GE(cavityWindowMax(on, off, x, y, 4), CAVITY_VISIBLE) << "the built-in cube's edge shows no cavity";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
