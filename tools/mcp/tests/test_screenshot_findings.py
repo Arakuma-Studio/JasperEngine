@@ -202,7 +202,7 @@ async def test_2d_scene_draws_in_order(ed: Editor):
     # two backgrounds on one plane, each wider than the view (none fits the frame)
     for name in ("Back A", "Back B"):
         await ed.call("create_entity", scene=sid, type="plane", name=name, position=[0, 0, -8], scale=[5000, 1, 5000],
-                      rotation=[90, 0, 0])
+                      rotation={"euler": [90, 0, 0]})
     await ed.call("select_entities", scene=sid, entities=[])
     await ed.call("set_scene_camera", scene=sid, center=[0, 0], zoom=4)
     r = await shoot(ed, {"scene": sid}, "scene", "2d")
