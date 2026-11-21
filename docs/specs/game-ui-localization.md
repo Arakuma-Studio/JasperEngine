@@ -664,3 +664,6 @@ Unit tests follow docs/testing.md naming. "Red" says what fails without the chan
   `configure_game_view`'s `language` description gained the example `en-XA` but not the word
   "pseudo": the tool would pass its 1,500-character limit; `docs/mcp/guide/ui.md` explains the two
   pseudo-locales.
+- **D-13 The diagnostic's code (R11).** The child-elements warning is `HTMLUI-LOC-0001`, not
+  `HTMLUI-L10N-0001`: an area is capital letters only, as the code checks and tools read a code
+  (`HTMLUI-[A-Z]+-NNNN`).

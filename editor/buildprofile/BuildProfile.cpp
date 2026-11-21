@@ -368,7 +368,7 @@ namespace {
         auto add = [&stamp](const fs::path& file, std::error_code& error) {
             const auto time = fs::last_write_time(file, error);
             const auto size = fs::file_size(file, error);
-            stamp += FileUtils::pathToUtf8(file.filename()) + ":" + std::to_string(time.time_since_epoch().count()) + ":" + std::to_string(size) + "\n";
+            stamp += FileUtils::pathToUtf8(file.filename()) + ":" + std::to_string(static_cast<long long>(time.time_since_epoch().count())) + ":" + std::to_string(size) + "\n";
         };
         const fs::path dir = BuildProfileFile::directory(projectPath);
         if (fs::is_directory(dir, ec)) {

@@ -8,7 +8,7 @@
 // - Keyed HTML: an element with data-l10n-id="ns.key" shows the message as its text (inserted as a
 //   text node, never parsed as markup), data-l10n-args='{"count": 3}' gives its arguments,
 //   data-l10n-attr-<name>="ns.key" sets that attribute. A key no table has keeps the authored text.
-//   An element with child elements is left as written (HTMLUI-L10N-0001 at compile; a warning here).
+//   An element with child elements is left as written (HTMLUI-LOC-0001 at compile; a warning here).
 // - The pass runs on the elements as RmlUi makes them (an RmlUi plugin): a document's load, the
 //   rows a list-view / grid-view / tree-view / table-view instantiates, and inserted fragments
 //   (innerHTML, insertAdjacentHTML) are all translated in the frame they appear, the compiled RML

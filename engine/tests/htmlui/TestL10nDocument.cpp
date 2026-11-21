@@ -158,7 +158,7 @@ TEST_F(HtmlL10nTest, ChildElementsReportL10n0001){
     Rml::ElementDocument* doc = documentSystem(scene).getDocument(document.getEntity());
     ASSERT_NE(doc, nullptr);
     EXPECT_EQ(textOf(doc->GetElementById("nested")), "<span>child</span>") << "left as written";
-    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "HTMLUI-L10N-0001"), 1u);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "HTMLUI-LOC-0001"), 1u);
 }
 
 TEST_F(HtmlL10nTest, DocumentsWithoutL10nAreUntouched){

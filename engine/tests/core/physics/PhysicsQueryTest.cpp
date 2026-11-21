@@ -264,7 +264,8 @@ TEST(PhysicsQuery, RaycastUnchangedByDefault){
     ASSERT_TRUE(file.good()) << path;
     std::stringstream expected;
     expected << file.rdbuf();
-    // line by line, so a difference names its ray
+    // line by line, so a difference names its ray; the ids and counts exactly, a distance to
+    // within its last printed digit (another compiler's float rounding: 3.4199 for 3.4200 on MSVC)
     std::istringstream got(lines.str());
     std::istringstream want(expected.str());
     std::string a, b;
@@ -272,7 +273,16 @@ TEST(PhysicsQuery, RaycastUnchangedByDefault){
     while (std::getline(want, b)){
         number++;
         ASSERT_TRUE(std::getline(got, a)) << "line " << number << " missing";
-        ASSERT_EQ(a, b) << "line " << number;
+        std::istringstream gotFields(a), wantFields(b);
+        std::string gotField, wantField;
+        while (wantFields >> wantField){
+            ASSERT_TRUE(gotFields >> gotField) << "line " << number << ": " << a << " for " << b;
+            if (wantField.find('.') != std::string::npos)
+                ASSERT_NEAR(std::stod(gotField), std::stod(wantField), 1.5e-4) << "line " << number << ": " << a << " for " << b;
+            else
+                ASSERT_EQ(gotField, wantField) << "line " << number << ": " << a << " for " << b;
+        }
+        ASSERT_FALSE(gotFields >> gotField) << "line " << number << ": " << a << " for " << b;
     }
     EXPECT_FALSE(std::getline(got, a)) << "more lines than the fixture";
 }

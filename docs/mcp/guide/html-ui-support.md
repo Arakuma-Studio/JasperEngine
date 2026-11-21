@@ -2400,11 +2400,11 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-IMP-0010` | warning | **Video not converted** (`video-not-converted`): The importer kept a video the engine cannot play because no FFmpeg with an AV1 encoder was found (JASPER_FFMPEG, the editor setting, then PATH). Install FFmpeg with SVT-AV1 (or libaom-av1, rav1e) and libopus and import it again, or run the command in the message. FFmpeg is the user's own tool, run as a separate program; the engine never links or ships it. |
 | `HTMLUI-IMP-0011` | error | **Video conversion failed** (`video-conversion-failed`): FFmpeg could not convert the video to AV1 + Opus WebM (an unreadable or damaged input, or an encoder error); the message has FFmpeg's last lines. The original is not imported. |
 
-### L10N
+### LOC
 
 | Code | Severity | Meaning |
 |---|---|---|
-| `HTMLUI-L10N-0001` | warning | **Localised element with child elements** (`l10n-child-elements`): An element with data-l10n-id gets the message as its text, so it must hold only text: its child elements would be replaced. The element is left as written. Put the key on the innermost element that holds the text, or split the sentence into keys (data-l10n-args passes values). |
+| `HTMLUI-LOC-0001` | warning | **Localised element with child elements** (`l10n-child-elements`): An element with data-l10n-id gets the message as its text, so it must hold only text: its child elements would be replaced. The element is left as written. Put the key on the innermost element that holds the text, or split the sentence into keys (data-l10n-args passes values). |
 
 ### SEL
 

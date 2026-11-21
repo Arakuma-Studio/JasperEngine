@@ -112,7 +112,9 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1102);
     scene->recreateEntity(1103);
     scene->recreateEntity(1104);
-    scene->setLastEntity(1104);
+    scene->recreateEntity(1105);
+    scene->recreateEntity(1106);
+    scene->setLastEntity(1106);
 
     {
         // Entity 1001 (Transform)
@@ -3515,6 +3517,63 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         titleArt.animationUnscaledTime = false;
         titleArt.driveAnimation = "";
         scene->addComponent<TitleArtRendererComponent>(1104, titleArt);
+    }
+
+    {
+        // Entity 1105 (SimulationCullingComponent)
+        scene->setEntityName(1105, "SimulationCullingComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(104.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1105, transform);
+
+        SimulationCullingComponent simulationCulling;
+        simulationCulling.enabled = false;
+        simulationCulling.simulationDistance = 8.500000f;
+        simulationCulling.reducedRateDistance = 6.400000f;
+        simulationCulling.reducedUpdateInterval = 3;
+        simulationCulling.hysteresis = 4.300000f;
+        simulationCulling.boundsRadius = 3.800000f;
+        simulationCulling.simulateWhenVisible = false;
+        simulationCulling.freezeWhenGroundNotLoaded = false;
+        simulationCulling.cullScripts = false;
+        simulationCulling.cullAnimator = false;
+        simulationCulling.cullPhysics = false;
+        scene->addComponent<SimulationCullingComponent>(1105, simulationCulling);
+    }
+
+    {
+        // Entity 1106 (DialogueRunnerComponent)
+        scene->setEntityName(1106, "DialogueRunnerComponent");
+
+        // Entity components initialization
+        Transform transform;
+        transform.position = Vector3(105.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1106, transform);
+
+        DialogueRunnerComponent dialogueRunner;
+        dialogueRunner.dialogue = "";
+        dialogueRunner.startEntry = "Reflection parity";
+        dialogueRunner.autoStart = true;
+        dialogueRunner.seed = 0;
+        scene->addComponent<DialogueRunnerComponent>(1106, dialogueRunner);
     }
 
     // Default Camera 1

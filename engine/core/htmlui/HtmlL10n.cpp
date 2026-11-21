@@ -112,7 +112,7 @@ namespace {
         if (!key.empty()) {
             if (hasChildElements(element)) {
                 if (s.plugin.warned.insert(element).second) {
-                    Log::warn("[HTML UI] HTMLUI-L10N-0001: %s has data-l10n-id=\"%s\" and child elements: left as written", ref.c_str(), key.c_str());
+                    Log::warn("[HTML UI] HTMLUI-LOC-0001: %s has data-l10n-id=\"%s\" and child elements: left as written", ref.c_str(), key.c_str());
                 }
             } else {
                 std::string text;
