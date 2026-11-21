@@ -295,3 +295,30 @@ PR-body checks. Nothing here touches the do-not-copy list in `README.md`.
 - **IES point lights in the per-object path.** Default: same atlas lookup, one fetch per light only where a profile is set.
 
 ## Deviations
+
+- **W7: the default Source is Skybox, and there is no Color source.** Today's shading (read in
+  `mesh.frag`): the built-in Lit with a sky image takes its diffuse ambient from the image (IBL) and
+  subtracts the flat Ambient Color out; everything else (no sky image, library shaders, vertex
+  lighting, particles) takes the flat Ambient Color. That is Unity's Skybox source with its Color
+  fallback, so `AmbientSource` is `SKYBOX` (default, value 0) and `GRADIENT` (1), stored append only.
+  A Color source that replaced a sky image's diffuse ambient would need the IBL variant without its
+  specular, a shader change R30 rules out; it can be appended later. The Inspector shows Ambient Color
+  and Intensity under Skybox (labelled for where they apply) and the three colours under Gradient.
+- **W7: the Gradient's colours are used as they are.** As Unity's Gradient (its Intensity Multiplier is
+  the Skybox source's), Intensity does not scale them; their defaults are about as bright as a new
+  scene's Ambient Color (sRGB 0.45 0.55 0.7, 0.4 0.4 0.42, 0.2 0.18 0.15), not Unity's darker ones.
+- **W7: Gradient under a sky image.** The gradient replaces the sky's diffuse ambient: the meshes bind a
+  black irradiance map while the scene has lights (with none, Lit takes no SH and keeps the sky's
+  diffuse ambient), and the frame's flat ambient Lit subtracts is 0, so Lit adds the object's whole SH.
+  The sky's prefiltered map still gives reflections; the SH's specular term Lit adds for the folded
+  lights then includes the gradient too, a small extra ambient specular. Particles and the clouds take
+  the gradient's average.
+- **W7: cooked scenes.** The source and the gradient are appended to the scene settings record as format
+  1.6 (`CookedScene.h` `FORMAT_MINOR`); a 1.5 record reads as Skybox with the default gradient.
+- **W7: Remove Sun Disc per image.** The cook sees one image at a time: a cross finds the disc across its
+  six faces, but a six-file sky finds it in each face file on its own, so a disc split by a face edge
+  is removed in each face where that face's part is distinct (20x its mean). An image without a
+  distinct sun cooks unchanged, with a note in its cook record. Extract Sun sets the setting on every
+  image of the sky.
+- **W7: the CLI** is `jasperengine-editor call set_scene_settings` with `extract_sun`, as every MCP tool
+  (no subcommand of its own).
