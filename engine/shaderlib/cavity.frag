@@ -201,7 +201,9 @@ vec2 cavityWorld(vec2 uv, vec3 P, vec3 n){
         vec3 v = S - P;
         float L = length(v);
         float h = dot(v, n);
-        float bias = 0.05 * L + 1e-4;
+        // (a smooth-shaded mesh's facets leave its interpolated normal's plane by up to half their
+        // angle: 0.15 covers ~8.5 degrees, so a sphere's triangles draw no grid)
+        float bias = 0.15 * L + 1e-4;
         float falloff = 1.0 / (max(L, 1e-5) * (1.0 + attenuation * L * L));
         valley += weight * max(h - bias, 0.0) * falloff;
         ridge += weight * max(-h - bias, 0.0) * falloff;

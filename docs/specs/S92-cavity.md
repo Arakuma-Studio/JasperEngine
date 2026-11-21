@@ -388,6 +388,9 @@ The tier never turns Cavity off, because it's art direction, not a quality extra
   not a scene-depth reader exists; otherwise the pre-pass, even with SSR on.
 - R3: the depth-step mask compares the second difference of 1 / view z across opposite taps with
   5% of the centre's (affine on any plane, so slanted surfaces keep their lines).
+- R4: the bias is 0.15 L (not about 0.05 L): a smooth-shaded mesh's facets leave the plane of
+  its interpolated normal by up to half their angle, and at 0.05 L a UV sphere's triangles drew a
+  grid in World mode (the anti-goal). Creases and bevels are far steeper.
 - R4: per tap valley adds `max(h - bias, 0)` and ridge `max(-h - bias, 0)`, both times the
   attenuation and the tap's weight, then a fixed gain of 2 before Valley and Ridge. Ring k of n
   sits at (k + 0.5) / n of the disk, so 4, 8 and 16 samples share the mean radius (half the disk).
