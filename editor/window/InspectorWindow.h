@@ -492,6 +492,8 @@ namespace jasperengine::editor{
         void forgetSpriteFxScene(uint32_t sceneId);
         // a selected .mixer: groups, exposed parameters, snapshots; Use as Project Mixer, Open in Audio Mixer
         void drawAudioMixerAsset(const std::filesystem::path& asset);
+        // a selected .ies: its polar plot and metadata (InspectorIesProfile.cpp, S92 R37)
+        void drawIesProfileAsset(const std::filesystem::path& asset);
         // a selected .soundevent: its editor, problems, Match Levels and Audition (InspectorSoundEvent.cpp)
         void drawSoundEventAsset(const std::filesystem::path& asset);
         // AudioSource: the Event, Play On, impact and Variation rows and their warnings
