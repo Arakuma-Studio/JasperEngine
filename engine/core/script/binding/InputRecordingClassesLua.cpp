@@ -10,7 +10,7 @@
 
 #include "LuaBinding.h"
 #include "LuaJson.h"
-#include "binding/NetClassesLua.h"
+#include "script/binding/NetClassesLua.h"
 
 #include "lua.hpp"
 
