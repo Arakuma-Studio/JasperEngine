@@ -295,3 +295,36 @@ PR-body checks. Nothing here touches the do-not-copy list in `README.md`.
 - **IES point lights in the per-object path.** Default: same atlas lookup, one fetch per light only where a profile is set.
 
 ## Deviations
+
+- **W8, R33 Standard diffuse:** the representative direction and the energy come from the shape's
+  vector form factor (4 edges for a Rectangle, 8 for a Disc, each a rational fit instead of an
+  acos), clipped by the receiver's horizon as a sphere of the same vector in closed form, not from
+  a closest or centre point: those were 10-30 % off at one to two light sizes, the form factor is
+  exact while the light is whole above the horizon. The specular is the representative point with
+  Karis's energy normalisation and the `A / (d^2 + A / pi)` irradiance, as written. Measured
+  (`AreaLightMath.*`): the form factor and the LTC diffuse within 5 % where the horizon leaves the
+  light whole and 15 % where it cuts it; the LTC GGX within 5 %; the representative point's
+  specular energy within 5 % in the point-light limit and 0.6-1.3 of the integral for a 1 m light
+  at 2-4 m.
+- **W8, R33 LUTs:** the LTC tables are `selfshadow/ltc_code`'s fit (BSD-2-Clause with a request to
+  cite the paper, verified and recorded in `NOTICE.md`), converted bit for bit by
+  `tools/gen_ltc_lut.py`; no fit of our own. They are RGBA16F only, sharing one texture
+  (`u_lightProfiles`) and sampler with the IES bands: RGBA16F filters on all five backends (GLES 3.0
+  and WebGL2 core), so the RGBA8 form has no device to run on.
+- **W8, R33 Disc:** both tiers draw a Disc as a regular octagon of its area.
+- **W8, R33 lobes:** a material with extended lobes (clear coat, sheen, ...) lights them from the
+  diffuse's representative direction on every tier; LTC is the base GGX's on High.
+- **W8, R33 other shaders:** `USE_AREA_LIGHTS` and `USE_IES` are the built-in Lit's (and its
+  forks') defines. Library shaders (water, custom library shaders) and vertex lights draw an Area
+  Light as a spot of its front hemisphere at its centre (its records keep that reading) and ignore
+  IES Profiles. Contact shadows do not march towards an Area Light.
+- **W8, R36 refusal:** an `.ies` file is imported as a copy with a `.meta` GUID; a `TILT=INCLUDE`, tilt
+  file or non-Type-C profile is refused where it is used: `set_properties` fails naming it, the
+  asset Inspector shows the reason and the renderer warns once and draws the light without it.
+- **W8, R37 orientation:** the horizontal angle 0 lies along the light's right (local X), 90 along its
+  up (local Y).
+- **W8 batching:** a submesh whose variant takes `USE_AREA_LIGHTS` or `USE_IES` is not batched by
+  automatic instancing (as any builtin:lit define but the High Lit Quality).
+- **W8, R43 old editors:** an editor without `area` reads the type as an unknown enum value: the
+  value is kept with the component (`StreamPreserved`, "kept by S03") and the light loads as
+  Directional, the enum's fallback; inferred from the code, not run.
