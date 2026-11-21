@@ -1210,15 +1210,19 @@ void editor::GameWindow::drawPlayDataMenu() {
         ImGui::OpenPopup("Save Snapshot##GamePlayDataSnapshot");
         snapshotPopupRequested = false;
     }
-    if (ImGui::BeginPopupModal("Save Snapshot##GamePlayDataSnapshot", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin("Save Snapshot##GamePlayDataSnapshot", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextUnformatted("Copies the Play data into Tests/Data/<name>/ (one undo step).");
-        ImGui::InputText("Name", snapshotName, sizeof(snapshotName));
+        EditorModal::message("Copies the Play data into Tests/Data/<name>/ (one undo step).");
+        EditorModal::inputText("Name", "name", snapshotName, sizeof(snapshotName));
         const std::string name = snapshotName;
         const std::vector<std::string> snapshots = gametests::listSnapshots(project->getProjectPath());
         const bool exists = std::find(snapshots.begin(), snapshots.end(), name) != snapshots.end();
         if (exists) ImGui::TextColored(Theme::Colors::WarningText, "A snapshot named %s exists: Save replaces its files.", name.c_str());
-        if (!snapshotError.empty()) ImGui::TextColored(Theme::Colors::ErrorText, "%s", snapshotError.c_str());
-        if (ImGui::Button(exists ? "Replace" : "Save")) {
+        if (!snapshotError.empty()) {
+            ImGui::TextColored(Theme::Colors::ErrorText, "%s", snapshotError.c_str());
+            EditorModal::error(snapshotError);
+        }
+        if (EditorModal::button(exists ? "Replace" : "Save", "ok")) {
             std::string error, warning;
             if (gametests::PlayData::get().saveSnapshot(project, name, error, warning)) {
                 if (!warning.empty()) Out::warning("%s", warning.c_str());
@@ -1229,7 +1233,7 @@ void editor::GameWindow::drawPlayDataMenu() {
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+        if (EditorModal::button("Cancel", "cancel")) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
 }
