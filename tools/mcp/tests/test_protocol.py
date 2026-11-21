@@ -115,10 +115,10 @@ NAME_CASES = [
 # normal error path: its message is the agent's
 FAULT_CASES = [("out_of_range", "logic_error: vector"), ("invalid_argument", "logic_error: selftest boom"),
                ("bad_alloc", "bad_alloc"), ("bad_function_call", "bad_function_call"),
-               ("json_out_of_range", "json out_of_range"), ("unknown", "not a std::exception")]
+               ("json_out_of_range", "json out_of_range"), ("unknown", "an exception that is not a std::exception")]
 
 
-async def test_errors_name_the_fix():
+async def test_errors_suggest_names_and_advise_faults():
     async with Editor(create=True, name="MCP Errors", env={"JASPER_MCP_SELFTEST_GROUP": "1"}) as ed:
         problems = []
         for what, tool, args, suggestion, lists in NAME_CASES:
@@ -153,7 +153,9 @@ async def test_errors_name_the_fix():
                     break
                 await asyncio.sleep(0.1)
             else:
-                problems.append(f"{raised}: editor.log lacks {line!r}")
+                text = log.read_text(errors="replace") if log.exists() else ""
+                problems.append(f"{raised}: editor.log lacks {line!r}; its fault lines: "
+                                f"{[entry for entry in text.splitlines() if 'MCP fault' in entry][-8:]}")
         r = await ed.call_raw("selftest_echo", {"throw": "runtime_error", "text": "boom"})
         if not (r.is_error and r.text.startswith("Tool selftest_echo failed: selftest boom")):
             problems.append(f"runtime_error: its message is not the error: {r.text!r}")
