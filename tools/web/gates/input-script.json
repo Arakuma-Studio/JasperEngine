@@ -1,0 +1,13 @@
+{
+  "description": "tools/test-projects/input (WEB_PROJECT=input tools/build.sh web): ?input-script=tests/Input/menu.input.json&quit-after-input runs the menu script from the content (input-recorder-and-input-scripts AC12): it waits for the menu, shoots it, taps #play, waits until it was clicked, shoots again; the page logs the click, the run's done line and exit code 0, in order. A build without the flag logs exit code 2.",
+  "project": "input",
+  "query": ["input-script=tests%2FInput%2Fmenu.input.json", "quit-after-input"],
+  "seconds": 30,
+  "console": [
+    {"text": "[input] begin", "level": "log"},
+    {"text": "[gate] clicked", "level": "log"},
+    {"text": "[input] done", "level": "log"},
+    {"text": "JasperEngine exit code 0", "level": "log"}
+  ],
+  "ordered": true
+}

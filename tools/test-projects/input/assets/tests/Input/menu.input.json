@@ -1,0 +1,8 @@
+{"format": "jasperengine-input", "version": 1, "kind": "script", "fixed_fps": 60,
+ "events": [
+   {"type": "wait", "until": "MenuReady", "frames": 600},
+   {"type": "shot", "name": "01_menu"},
+   {"type": "touch", "action": "tap", "target": "#play"},
+   {"type": "wait", "until": "Clicked", "frames": 120},
+   {"type": "shot", "name": "02_clicked"}
+ ]}

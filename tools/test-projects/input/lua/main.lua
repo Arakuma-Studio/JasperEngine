@@ -32,3 +32,6 @@ end)
 InputActions.onSchemeChanged = function(scheme, previous)
     Log.print("[gate] scheme " .. scheme)
 end
+
+-- the Replay menu and its input script (lua/replay.lua)
+require("replay")
