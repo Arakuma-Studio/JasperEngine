@@ -146,7 +146,7 @@ async def test_selected_object_off_screen(ed: Editor):
 
 async def test_tiny_object(ed: Editor):
     s = await fresh(ed, "Tiny")
-    await ed.call("set_transform", scene=s["scene"], entity=s["cube"], scale=[0.02, 0.02, 0.02])
+    await ed.call("set_transform", scene=s["scene"], entity=s["cube"], scale=[0.1, 0.1, 0.1])
     await ed.call("select_entities", scene=s["scene"], entities=[s["cube"]])
     r = await shoot(ed, s, "scene", "tiny")
     small = finding(ed, r, "subject_too_small")
