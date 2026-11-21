@@ -24,7 +24,7 @@
 #if !defined(SURFACE_DISPLACE) && !defined(DEPTH_NORMALS)
     #undef HAS_NORMALS
 #endif
-// S92 R2 (DEPTH_NORMALS, includes/depth_normals.glsl): v_depthNormal, the view-space normal
+// S92 R2 (DEPTH_NORMALS, includes/depth_normals.glsl): v_depthNormal, the world-space normal
 // Cavity reads, from the vertex normal as moved here. A hook that moves vertices moves the
 // surface away from it, so a displacing shader writes none (Cavity rebuilds it from depth)
 // unless it defines SURFACE_DISPLACE_KEEPS_NORMAL (its hook leaves the position as it is)
@@ -48,10 +48,6 @@
 
 #ifdef DEPTH_NORMALS
     out vec4 v_depthNormal;
-    #ifdef SURFACE_DEPTH_NORMAL
-        #define FRAME_VS
-        #include "includes/frame.glsl"
-    #endif
 #endif
 
 #ifdef PIXEL_SNAP
@@ -314,7 +310,8 @@ void main() {
     #ifdef DEPTH_NORMALS
         v_depthNormal = vec4(0.0);
         #ifdef SURFACE_DEPTH_NORMAL
-            v_depthNormal = vec4(normalize(mat3(frame.viewMatrix) * instanceNormal(mat3(depthParams.modelMatrix), objectNormal)), 1.0);
+            // world space: the object block alone, no camera block (Cavity turns it to view space)
+            v_depthNormal = vec4(normalize(instanceNormal(mat3(depthParams.modelMatrix), objectNormal)), 1.0);
         #endif
     #endif
 

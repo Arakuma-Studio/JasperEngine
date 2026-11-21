@@ -84,13 +84,11 @@ out vec2 v_projZW;
 #include "includes/lattice.glsl"
 #include "includes/vat.glsl"
 
-// S92 R2: the view-space normal Cavity reads beside this pre-pass's depth (includes/
+// S92 R2: the world-space normal Cavity reads beside this pre-pass's depth (includes/
 // depth_normals.glsl): the vertex normal as the colour pass moves it (skin, vertex animation,
 // lattices, the instance and the object; not the morph targets' normals, as the G-buffer), no
 // normal map. A terrain makes its own from the heightmap; a mesh without normals writes none
 #ifdef DEPTH_NORMALS
-    #define FRAME_VS
-    #include "includes/frame.glsl"
     #include "includes/instance_normal.glsl"
     out vec4 v_depthNormal;
     #ifdef HAS_NORMALS
@@ -198,8 +196,8 @@ void main() {
                     objectNormal = instanceNormal(mat3(instanceMatrix), objectNormal);
                 #endif
             #endif
-            vec3 viewNormal = mat3(frame.viewMatrix) * instanceNormal(mat3(depthParams.modelMatrix), objectNormal);
-            v_depthNormal = vec4(normalize(viewNormal), 1.0);
+            // world space: the object block alone, no camera block (Cavity turns it to view space)
+            v_depthNormal = vec4(normalize(instanceNormal(mat3(depthParams.modelMatrix), objectNormal)), 1.0);
         #endif
     #endif
 

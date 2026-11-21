@@ -73,6 +73,23 @@ namespace {
         "    v_projZW = gl_Position.zw;\n"
         "}\n";
 
+    // a fork with a comment before #version and an output of its own at location 1, where the
+    // normals output goes
+    const char* const COMMENTED_FORK_FRAG =
+        "// my depth fork\n"
+        "/* clips by a texture\n"
+        "   later */\n"
+        "\n"
+        "#version 450\n"
+        "out vec4 frag_color;\n"
+        "layout(location = 1) out vec4 frag_extra;\n"
+        "in vec2 v_projZW;\n"
+        "#include \"includes/depth_util.glsl\"\n"
+        "void main() {\n"
+        "    frag_color = encodeDepth(0.5 * v_projZW[0] / v_projZW[1] + 0.5);\n"
+        "    frag_extra = vec4(1.0);\n"
+        "}\n";
+
     CustomShaderSources forkSources(const std::string& shader){
         return ShaderVariantCompiler::resolveCustomShaderSources(shader, [](const std::string& path, std::string& content){
             if (path == "shaders/OldDepth.frag"){
@@ -81,6 +98,10 @@ namespace {
             }
             if (path == "shaders/OldDepth.vert"){
                 content = OLD_FORK_VERT;
+                return true;
+            }
+            if (path == "shaders/CommentedDepth.frag"){
+                content = COMMENTED_FORK_FRAG;
                 return true;
             }
             return false;
@@ -251,4 +272,17 @@ TEST_F(CavityVariantKeys, ExportShipsCavityOnlyWhenAScenesOrScriptsMayUseIt){
     const CavityKeys scripted = cavityVariantsCollect(scene, true);
     EXPECT_EQ(scripted.cavity.size(), 3u);
     EXPECT_GT(scripted.depthWithNormals, 0u);
+}
+
+TEST(CavityVariants, ForkWithCommentsBeforeVersionAndItsOwnLocation1Compiles){
+    ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
+    const uint64_t properties = cavityDepthProperties(meshInputs());
+    const std::string shader = "shaders/CommentedDepth.frag";
+    const CustomShaderSources sources = forkSources(shader);
+    ASSERT_TRUE(sources.valid) << sources.error;
+    const ShaderKey key = ShaderPool::getShaderKey(ShaderType::DEPTH, properties, ShaderPool::registerCustomShader(shader));
+    std::string vertex, fragment, error;
+    ASSERT_TRUE(ShaderVariantCompiler::preprocess(key, ShaderBackend::GLCore, &sources, vertex, fragment, &error)) << error;
+    EXPECT_NE(fragment.find("frag_depthNormal"), std::string::npos);
+    expectCompiles(key, &sources);
 }

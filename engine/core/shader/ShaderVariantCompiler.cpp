@@ -23,6 +23,7 @@
 #include <string_view>
 #include <set>
 #include <mutex>
+#include <regex>
 #include <unordered_set>
 
 #ifdef JASPERENGINE_RUNTIME_SHADERS
@@ -1284,6 +1285,69 @@ bool vertexWritesDepthNormal(const std::unordered_map<std::string, std::string>&
     return false;
 }
 
+// Where a GLSL source's #version line ends (past its newline; npos: none before the code), with its
+// line number (1-based): comments and blank lines may precede it
+size_t depthNormalsVersionEnd(const std::string& source, int& line){
+    size_t i = 0;
+    line = 1;
+    while (i < source.size()){
+        const char c = source[i];
+        if (c == '\n'){
+            line++;
+            i++;
+        }else if (c == ' ' || c == '\t' || c == '\r'){
+            i++;
+        }else if (source.compare(i, 2, "//") == 0){
+            const size_t end = source.find('\n', i);
+            i = end == std::string::npos ? source.size() : end;
+        }else if (source.compare(i, 2, "/*") == 0){
+            const size_t end = source.find("*/", i + 2);
+            if (end == std::string::npos)
+                return std::string::npos;
+            line += (int)std::count(source.begin() + (long)i, source.begin() + (long)end, '\n');
+            i = end + 2;
+        }else if (source.compare(i, 8, "#version") == 0){
+            const size_t end = source.find('\n', i);
+            return end == std::string::npos ? std::string::npos : end + 1;
+        }else{
+            return std::string::npos;
+        }
+    }
+    return std::string::npos;
+}
+
+// Moves a fragment source's own output at location 1 to the first free one of 2 and 3 (false,
+// with an error, when neither is), so the 'Cvn' wrapper's normals output can take location 1
+bool depthNormalsFreeLocation1(std::string& source, std::string& error){
+    static const std::regex output(R"(layout\s*\(([^)]*)\)\s*out\b)");
+    static const std::regex location(R"(\blocation\s*=\s*(\d+))");
+    std::set<int> taken;
+    size_t at = std::string::npos;
+    std::string inner;
+    for (std::sregex_iterator it(source.begin(), source.end(), output), end; it != end; ++it){
+        const std::string declared = (*it)[1].str();
+        std::smatch number;
+        if (!std::regex_search(declared, number, location))
+            continue;
+        const int value = std::stoi(number[1].str());
+        taken.insert(value);
+        if (value == 1){
+            at = (size_t)it->position(1);
+            inner = declared;
+        }
+    }
+    if (at == std::string::npos)
+        return true;
+    for (int free : {2, 3}){
+        if (taken.count(free))
+            continue;
+        source.replace(at, inner.size(), std::regex_replace(inner, location, "location = " + std::to_string(free)));
+        return true;
+    }
+    error = "Cavity's depth normals take output location 1, and this fragment shader uses 1, 2 and 3";
+    return false;
+}
+
 // The compiler arguments of one variant for a backend: entry points, sources and #defines
 // (compile and preprocess). False with an error when the key or its sources are unusable.
 bool prepareVariantArgs(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
@@ -1392,15 +1456,23 @@ bool prepareVariantArgs(ShaderKey key, ShaderBackend backend, const CustomShader
             return false;
         }
         std::string wrapped = source->second;
-        const size_t versionEnd = wrapped.find('\n');
-        if (wrapped.compare(0, 8, "#version") != 0 || versionEnd == std::string::npos){
-            error = "Cavity's depth normals need a fragment shader starting with #version (" + args.frag_file + ")";
+        // (comments and blank lines may come before #version)
+        int versionLine = 0;
+        const size_t versionEnd = depthNormalsVersionEnd(wrapped, versionLine);
+        if (versionEnd == std::string::npos){
+            error = "Cavity's depth normals need a fragment shader with a #version line (" + args.frag_file + ")";
+            return false;
+        }
+        // the wrapper's output takes location 1: a fork's own output there moves to a free one
+        // (a depth target has one attachment, so it was never drawn anywhere)
+        if (!depthNormalsFreeLocation1(wrapped, error)){
+            error += " (" + args.frag_file + ")";
             return false;
         }
         if (vertexWritesDepthNormal(args.fileBuffers, args.vert_file))
             args.defines.push_back({"DEPTH_NORMALS_VARYING", "1"});
         // the line numbers of errors stay the file's
-        wrapped.insert(versionEnd + 1, "#define main depthNormalsShadeMain\n#line 2\n");
+        wrapped.insert(versionEnd, "#define main depthNormalsShadeMain\n#line " + std::to_string(versionLine + 1) + "\n");
         wrapped += "\n#undef main\n#include \"includes/depth_normals.glsl\"\n"
                    "layout(location = 1) out vec4 frag_depthNormal;\n"
                    "#ifdef DEPTH_NORMALS_VARYING\n"

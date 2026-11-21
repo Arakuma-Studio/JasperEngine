@@ -11205,9 +11205,11 @@ bool RenderSystem::usesShadowIndices(const MeshComponent& mesh, const Submesh& s
             submesh.hasSkinning || submesh.hasMorphTarget || mesh.lattice.variantActive || mesh.vat.variantActive != VatVariant::NONE)
         return false;
     // no alpha clip, texture rect, instance fade or other input: the instance matrix of an
-    // InstancedMesh ('Ist') and a batch's ('Aui') move positions alike
-    const uint64_t positionsOnly = ShaderPool::getAutoInstancingProperty(ShaderType::DEPTH) |
-                                   ShaderPool::getDepthMeshProperties(false, false, false, false, false, false, true);
+    // InstancedMesh ('Ist') and a batch's ('Aui') move positions alike. Cavity's normals ('Cvn'
+    // and the normal input it reads, S92) go to an attachment a shadow map does not have: the
+    // shared position's first vertex draws the same depth
+    const uint64_t positionsOnly = ShaderPool::getAutoInstancingProperty(ShaderType::DEPTH) | ShaderPool::getDepthNormalsProperty() |
+                                   ShaderPool::getDepthMeshProperties(false, false, false, false, false, false, true, false, false, true);
     return (submesh.depthShaderProperties & ~positionsOnly) == 0;
 }
 
@@ -11645,12 +11647,13 @@ bool RenderSystem::drawCavity(const CameraComponent& camera, PipelineType colorP
 
     fs_cavity.projection = camera.projectionMatrix;
     fs_cavity.invProjection = camera.projectionMatrix.inverse();
+    fs_cavity.view = camera.viewMatrix;
     // widths in pixels are at a 1080-pixel-high target: the same apparent width at any size
     const float heightScale = (float)height / 1080.0f;
-    // the opposite taps' depth step (1 / view z's second difference, relative) past which the
-    // two sides are taken for two surfaces (S92 R3: no object IDs)
+    // the margin of the one-surface test between taps (cavity.frag cavityOneSurface; S92 R3: no
+    // object IDs), in tap widths over the facing
     fs_cavity.screen = Vector4(settings.cavityScreenRidge, settings.cavityScreenValley,
-                               std::max(1.0f, settings.cavityScreenWidth * heightScale), 0.05f);
+                               std::max(1.0f, settings.cavityScreenWidth * heightScale), 2.0f);
     // the tier's cap of the samples (QualityResolver), as 4, 8 or 16
     const int tierSamples = QualityResolver::cavityWorldSamples(settings.cavityWorldSamples);
     const int samples = tierSamples <= 4 ? 4 : (tierSamples <= 8 ? 8 : 16);
@@ -19499,21 +19502,29 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             passContactMask = renderContactShadows(camera, contactDepth, depthWidth, depthHeight);
     }
 
-    // Cavity's depth and normals: the G-buffer's, or those of a depth pre-pass above, else a
-    // pre-pass of its own (S92 D7), which the scene depth's readers then share
+    // Cavity's depth and normals: the G-buffer's (the colour pass's size, ssrWidth), or those of
+    // a depth pre-pass above of the colour pass's size, else a pre-pass of its own (S92 D7), which
+    // the scene depth's readers then share. (SSAO's pre-pass is the view's size, which the
+    // colour pass is not at a render scale below 1 or with fixed resolution: its texels would not
+    // be the pixels Cavity writes)
     TextureRender* cavityDepth = nullptr;
     TextureRender* cavityNormals = nullptr;
     TextureRender* cavityNormalsFine = nullptr;
     bool cavityAddedPrepass = false;
     if (useCavity){
+        const unsigned int depthWidth = (unsigned int)sceneInputViewport.getWidth();
+        const unsigned int depthHeight = (unsigned int)sceneInputViewport.getHeight();
         if (cavityGBuffer){
             cavityDepth = gbufferDepth;
             cavityNormals = &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(1);
             cavityNormalsFine = &rv().gbufferFramebuffer.getRender().getColorAttachmentTexture(3);
         }else{
+            if (passNormalsDepth && ((unsigned int)passNormalsDepth->getWidth() != depthWidth ||
+                                     (unsigned int)passNormalsDepth->getHeight() != depthHeight)){
+                passNormalsDepth = nullptr;
+                passNormalsTexture = nullptr;
+            }
             if (!passNormalsDepth){
-                const unsigned int depthWidth = (unsigned int)sceneInputViewport.getWidth();
-                const unsigned int depthHeight = (unsigned int)sceneInputViewport.getHeight();
                 if (SceneInputTarget* depthTarget = ensureSceneInputTarget(false, depthWidth, depthHeight, true)){
                     renderOpaqueDepth(camera, depthTarget->framebuffer, depthWidth, depthHeight, 0, &rv().lodView,
                                       perCameraMVP ? &cameraTransform : nullptr);

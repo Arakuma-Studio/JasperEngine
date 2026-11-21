@@ -335,7 +335,8 @@ namespace jasperengine{
 	typedef struct fs_cavity_t {
 		Matrix4 projection;
 		Matrix4 invProjection;
-		Vector4 screen;       // x Ridge, y Valley, z tap distance (pixels), w depth step threshold
+		Matrix4 view;         // the pre-pass's normals are world-space
+		Vector4 screen;       // x Ridge, y Valley, z tap distance (pixels), w depth step margin
 		Vector4 world;        // x Radius, y Ridge, z Valley, w samples
 		Vector4 worldLimits;  // x most on-screen radius (pixels, 0: none), y attenuation, z gain
 		Vector4 texel;        // the colour pass's size, 1 / size

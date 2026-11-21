@@ -1,14 +1,15 @@
-// The view-space normal a depth pre-pass writes beside its packed depth for Cavity (S92 R2;
+// The world-space normal a depth pre-pass writes beside its packed depth for Cavity (S92 R2;
 // DEPTH 'Cvn', DEPTH_NORMALS), in a second RGBA8 attachment: octahedral (includes/octahedral.glsl)
 // at 12 bits a component, rg their high 8 bits, b their low 4 bits (x high nibble, y low), a 1
 // where a program wrote a normal and 0 where none did: the clear (background) or a program
 // that cannot tell its surface's normal, where Cavity rebuilds one from the depth.
 //
 // The vertex stage (depth.vert, includes/surface_depth_vs.glsl) writes v_depthNormal: xyz the
-// view-space normal, w 1 (0: it has none). The shader compiler wraps every 'Cvn' fragment
-// stage (ShaderVariantCompiler: the program's own main runs, then depthNormalsOutput), so a
-// fork of depth.frag needs no change; it defines DEPTH_NORMALS_VARYING when the vertex stage
-// writes v_depthNormal (a vertex fork made before it does not: its pixels say none).
+// world-space normal, from the object block alone (a depth program takes no camera block for
+// it), w 1 (0: it has none). The shader compiler wraps every 'Cvn' fragment stage
+// (ShaderVariantCompiler: the program's own main runs, then the normals output), so a fork of
+// depth.frag needs no change; it defines DEPTH_NORMALS_VARYING when the vertex stage writes
+// v_depthNormal (a vertex fork made before it does not: its pixels say none).
 
 #ifndef DEPTH_NORMALS_GLSL
 #define DEPTH_NORMALS_GLSL

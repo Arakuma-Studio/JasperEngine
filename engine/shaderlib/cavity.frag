@@ -19,10 +19,12 @@
 // Cavity fades with the analytic distance fog already inside the meshes' colour, so a fogged
 // far object shows none of it (the volumetric and height fogs are drawn over it after).
 //
-// The fragment also writes its depth (the pre-pass's, a hair nearer) for a LESS_EQUAL test
-// against the colour pass's depth: where the colour pass drew something nearer than the
-// pre-pass saw (a stencil-tested submesh, which no pre-pass draws: S92 R6), the test fails and
-// that pixel takes no foreign cavity.
+// The fragment also writes its depth (the pre-pass's, nearer by the surface's own depth change
+// across a pixel) for a LESS_EQUAL test against the colour pass's depth: where the colour pass
+// drew something nearer than the pre-pass saw (a stencil-tested submesh, which no pre-pass
+// draws: S92 R6), the test fails and that pixel takes no foreign cavity. The margin keeps every
+// multisampled sample of the surface itself (each tested at its own depth, up to half a pixel
+// from the centre) passing on a sloped face.
 
 in vec2 v_texcoord;
 out vec4 frag_color;
@@ -38,7 +40,8 @@ uniform sampler u_cavityNormalFine_smp;
 uniform u_fs_cavity {
     mat4 projection;     // the camera's (logical: unflipped)
     mat4 invProjection;
-    vec4 screen;         // x Ridge, y Valley, z tap distance in pixels (1 and up), w depth step threshold
+    mat4 view;           // the camera's view matrix (the pre-pass's normals are world-space)
+    vec4 screen;         // x Ridge, y Valley, z tap distance in pixels (1 and up), w depth step margin
     vec4 world;          // x Radius (view space), y Ridge, z Valley, w samples (4, 8 or 16)
     vec4 worldLimits;    // x the most on-screen radius in pixels (0: none), y attenuation, z gain
     vec4 texel;          // xy the colour pass's size in pixels, zw 1 / size
@@ -69,14 +72,16 @@ vec3 cavityViewPosition(vec2 uv, float depth01){
     return view.xyz / view.w;
 }
 
-// xyz the view-space normal, w 1 where the pass gave one
+// xyz the view-space normal, w 1 where the pass gave one (the G-buffer's are view-space, the
+// pre-pass's world-space)
 vec4 cavityNormal(vec2 uv){
     vec4 coarse = textureLod(sampler2D(u_cavityNormalTexture, u_cavityNormal_smp), uv, 0.0);
     if (cavity.flags.y > 0.5){
         vec2 fine = textureLod(sampler2D(u_cavityNormalFineTexture, u_cavityNormalFine_smp), uv, 0.0).gb;
         return vec4(octDecode16(coarse.rg, fine), 1.0);
     }
-    return depthNormalsDecode(coarse);
+    vec4 world = depthNormalsDecode(coarse);
+    return vec4(normalize(mat3(cavity.view) * world.xyz), world.w);
 }
 
 // the point of view-space z on the view ray through uv
@@ -88,18 +93,43 @@ vec3 cavityPointAtZ(vec2 uv, float z){
     return vec3(R.xy, z);
 }
 
-// a face normal from the depth of the four neighbours, from the nearer side of each axis so it
-// never spans a silhouette (as ssao.frag)
-vec3 cavityDepthNormal(vec2 uv, vec3 P){
+// one side of an axis for a depth-rebuilt normal: the nearer neighbour in depth that is not the
+// background (w 0: both are)
+vec4 cavityDepthSide(vec3 P, vec2 uvMinus, vec2 uvPlus){
+    float dMinus = cavityDepth(uvMinus);
+    float dPlus = cavityDepth(uvPlus);
+    vec3 Pm = cavityViewPosition(uvMinus, dMinus);
+    vec3 Pp = cavityViewPosition(uvPlus, dPlus);
+    bool minus = dMinus < 1.0;
+    bool plus = dPlus < 1.0;
+    if (plus && (!minus || abs(Pp.z - P.z) < abs(P.z - Pm.z)))
+        return vec4(Pp - P, 1.0);
+    return minus ? vec4(P - Pm, 1.0) : vec4(0.0);
+}
+
+// a face normal from the depth of the four neighbours, from the nearer side of each axis that is
+// not the background, so it never spans a silhouette (as ssao.frag); w 0 where an axis has none
+vec4 cavityDepthNormal(vec2 uv, vec3 P){
     vec2 t = cavity.depthTexel.zw;
-    vec3 Pl = cavityViewPosition(uv - vec2(t.x, 0.0), cavityDepth(uv - vec2(t.x, 0.0)));
-    vec3 Pr = cavityViewPosition(uv + vec2(t.x, 0.0), cavityDepth(uv + vec2(t.x, 0.0)));
-    vec3 Pd = cavityViewPosition(uv - vec2(0.0, t.y), cavityDepth(uv - vec2(0.0, t.y)));
-    vec3 Pu = cavityViewPosition(uv + vec2(0.0, t.y), cavityDepth(uv + vec2(0.0, t.y)));
-    vec3 dx = (abs(Pr.z - P.z) < abs(P.z - Pl.z)) ? (Pr - P) : (P - Pl);
-    vec3 dy = (abs(Pu.z - P.z) < abs(P.z - Pd.z)) ? (Pu - P) : (P - Pd);
-    vec3 n = normalize(cross(dx, dy));
-    return dot(n, P) > 0.0 ? -n : n;
+    vec4 dx = cavityDepthSide(P, uv - vec2(t.x, 0.0), uv + vec2(t.x, 0.0));
+    vec4 dy = cavityDepthSide(P, uv - vec2(0.0, t.y), uv + vec2(0.0, t.y));
+    if (dx.w < 0.5 || dy.w < 0.5)
+        return vec4(0.0);
+    vec3 n = normalize(cross(dx.xyz, dy.xyz));
+    return vec4(dot(n, P) > 0.0 ? -n : n, 1.0);
+}
+
+// the window depth's change to a neighbour on one axis, the smaller of its two sides that are not
+// the background (0: both are)
+float cavityDepthSlope(float depth01, vec2 uvMinus, vec2 uvPlus){
+    float dMinus = cavityDepth(uvMinus);
+    float dPlus = cavityDepth(uvPlus);
+    float slope = 1.0;
+    if (dMinus < 1.0)
+        slope = abs(depth01 - dMinus);
+    if (dPlus < 1.0)
+        slope = min(slope, abs(dPlus - depth01));
+    return slope < 1.0 ? slope : 0.0;
 }
 
 // Blender-like soft ceiling: x (1 - c x) up to its top 0.25 / c at x = 0.5 / c
@@ -108,6 +138,19 @@ float cavitySoftClamp(float x, float c){
 }
 
 #ifdef CAVITY_SCREEN
+// whether two taps lie on one surface (no depth step between them): each lies near the other's
+// tangent plane. On one surface, plane, curved or folded by a crease, neither is farther from
+// the other's plane than the surface's run across the tap distance, which is the tap distance's
+// width at that depth over the surface's facing (|n.z|, taken no lower than 0.15: faces up to
+// ~80 degrees from the view). A step to another surface puts the farther one off the nearer's
+// plane by the gap. The margin (screen.w, 2) leaves creases of faces up to 80 degrees under half
+// of it, and masks a gap of 0.5% of the depth at Line Width 1 and 2, 1% up to 4
+bool cavityOneSurface(vec3 A, vec3 nA, vec3 B, vec3 nB, float width){
+    float facing = max(min(abs(nA.z), abs(nB.z)), 0.15);
+    float limit = cavity.screen.w * width / facing;
+    return abs(dot(B - A, nA)) < limit && abs(dot(A - B, nB)) < limit;
+}
+
 // the curvature from the normals of the four taps a tap distance away (0 across a depth step,
 // the background, or where a tap has no normal)
 float cavityScreen(vec2 uv, float depthCentre){
@@ -122,23 +165,26 @@ float cavityScreen(vec2 uv, float depthCentre){
     float dr = cavityDepth(uvRight);
     float dl = cavityDepth(uvLeft);
 
-    // a plane's 1 / view z is affine on screen: its second difference across opposite taps is
-    // zero on any surface without a step, relative to the centre's
-    float invC = 1.0 / cavityViewPosition(uv, depthCentre).z;
-    float invU = 1.0 / cavityViewPosition(uvUp, du).z;
-    float invD = 1.0 / cavityViewPosition(uvDown, dd).z;
-    float invR = 1.0 / cavityViewPosition(uvRight, dr).z;
-    float invL = 1.0 / cavityViewPosition(uvLeft, dl).z;
-    float threshold = cavity.screen.w * abs(invC);
-    bool vertical = du < 1.0 && dd < 1.0 && abs(invU + invD - 2.0 * invC) < threshold;
-    bool horizontal = dr < 1.0 && dl < 1.0 && abs(invR + invL - 2.0 * invC) < threshold;
-
+    vec4 nc = cavityNormal(uv);
     vec4 nu = cavityNormal(uvUp);
     vec4 nd = cavityNormal(uvDown);
     vec4 nr = cavityNormal(uvRight);
     vec4 nl = cavityNormal(uvLeft);
-    vertical = vertical && nu.w > 0.5 && nd.w > 0.5;
-    horizontal = horizontal && nr.w > 0.5 && nl.w > 0.5;
+    bool vertical = du < 1.0 && dd < 1.0 && nc.w > 0.5 && nu.w > 0.5 && nd.w > 0.5;
+    bool horizontal = dr < 1.0 && dl < 1.0 && nc.w > 0.5 && nr.w > 0.5 && nl.w > 0.5;
+
+    // the tap distance's width at the centre's depth (clip w: -z in perspective, 1 orthographic)
+    vec3 C = cavityViewPosition(uv, depthCentre);
+    float clipW = cavity.projection[2][3] * C.z + cavity.projection[3][3];
+    float width = cavity.screen.z * 2.0 * clipW / (cavity.projection[1][1] * cavity.texel.y);
+    if (vertical){
+        vertical = cavityOneSurface(C, nc.xyz, cavityViewPosition(uvUp, du), nu.xyz, width) &&
+                   cavityOneSurface(C, nc.xyz, cavityViewPosition(uvDown, dd), nd.xyz, width);
+    }
+    if (horizontal){
+        horizontal = cavityOneSurface(C, nc.xyz, cavityViewPosition(uvRight, dr), nr.xyz, width) &&
+                     cavityOneSurface(C, nc.xyz, cavityViewPosition(uvLeft, dl), nl.xyz, width);
+    }
 
     float d = (vertical ? nu.y - nd.y : 0.0) + (horizontal ? nr.x - nl.x : 0.0);
     float ridge = cavity.screen.x;
@@ -240,9 +286,13 @@ void main(){
     #endif
     #ifdef CAVITY_WORLD
         vec4 n = cavityNormal(uv);
-        vec3 normal = n.w > 0.5 ? n.xyz : cavityDepthNormal(uv, P);
-        vec2 term = cavityWorld(uv, P, normal);
-        factor *= (1.0 - term.x) * (1.0 + term.y);
+        if (n.w < 0.5)
+            n = cavityDepthNormal(uv, P);
+        // (no normal at all, a 1-pixel feature against the background: neutral)
+        if (n.w > 0.5){
+            vec2 term = cavityWorld(uv, P, n.xyz);
+            factor *= (1.0 - term.x) * (1.0 + term.y);
+        }
     #endif
 
     // the analytic distance fog the meshes' colour already holds (includes/fog.glsl's: window
@@ -261,8 +311,12 @@ void main(){
     }
     factor = clamp(factor, 0.0, 2.0);
 
-    // a hair nearer than the pre-pass's depth, for the LESS_EQUAL test (see the top)
-    gl_FragDepth = max(depth01 - 1e-6, 0.0);
+    // nearer than the pre-pass's depth by 0.75 of a pixel's depth change on each axis (from the
+    // flatter side, not the background: a sample is at most half a pixel off on each), for the
+    // LESS_EQUAL test (see the top)
+    vec2 t = cavity.depthTexel.zw;
+    gl_FragDepth = max(depth01 - 0.75 * (cavityDepthSlope(depth01, uv - vec2(t.x, 0.0), uv + vec2(t.x, 0.0)) +
+                                         cavityDepthSlope(depth01, uv - vec2(0.0, t.y), uv + vec2(0.0, t.y))) - 1e-6, 0.0);
     if (debugView){
         frag_color = vec4(vec3(0.5 * factor), 1.0);
         return;
