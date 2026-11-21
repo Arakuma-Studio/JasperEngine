@@ -4,6 +4,7 @@
 #include "BuildReportWindow.h"
 
 #include "Project.h"
+#include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/FileUtils.h"
 
@@ -75,6 +76,22 @@ void BuildReportWindow::show(){
         return;
     }
     ImGui::Text("Build Report (%s, %s): %s", report.platform.c_str(), report.method.c_str(), BuildReport::formatBytes(report.totalBytes).c_str());
+    // S92 R12: the size the Download Budget holds this build to, against the project's budget now
+    ModelFamily family;
+    if (BuildReport::budgetFamilyOf(report.platform, family)){
+        const uint64_t actual = report.budgetedBytes();
+        const uint64_t budget = BuildReport::budgetBytesOf(project->getDownloadBudgetMB(family));
+        const std::string size = (report.platform == "web" ? "Download " + BuildReport::formatBytes(actual) + " (gzip estimate)"
+                                                           : "Size " + BuildReport::formatBytes(actual));
+        const std::string label = std::string("Download Budget (") + modelFamilyLabel(family) + ")";
+        if (!budget)
+            ImGui::TextDisabled("%s; %s: off (Project Settings > Player > Publishing Settings)", size.c_str(), label.c_str());
+        else if (actual > budget)
+            ImGui::TextColored(Theme::Colors::ErrorText, ICON_FA_TRIANGLE_EXCLAMATION " %s, over the %s of %s", size.c_str(), label.c_str(),
+                               BuildReport::formatBytes(budget).c_str());
+        else
+            ImGui::Text("%s, within the %s of %s", size.c_str(), label.c_str(), BuildReport::formatBytes(budget).c_str());
+    }
     const float width = ImGui::GetContentRegionAvail().x * 0.5f;
     for (const std::string& category : BuildReport::categoryNames()){
         const auto it = report.categories.find(category);

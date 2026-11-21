@@ -59,6 +59,7 @@
 #include "command/type/DeviceSettingsCmd.h"
 #include "device/Device.h"
 #include "command/type/ThreadingSettingsCmd.h"
+#include "command/type/ProjectSettingsValuesCmd.h"
 #include "navigation/NavigationSettingsCmd.h"
 #include "titleart/TitleArtSettingsCmd.h"
 #include "titleart/localisation/TitleLanguageNames.h"
@@ -1167,6 +1168,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_buildMethodIndex = indexOfName(buildMethodNames, project->getBuildMethod());
     m_packContent = project->isPackContent();
     m_stripEngineCode = project->isStripEngineCode();
+    for (size_t f = 0; f < kModelFamilyCount; f++) m_downloadBudgetMB[f] = project->getDownloadBudgetMB((ModelFamily)f);
     m_vcs = project->getVcsProjectSettings();
 
     m_tags = project->getTags();
@@ -1914,6 +1916,21 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                 endSettingsRow("Builds leave out the engine modules nothing in the project uses (HTML UI, video, the runtime shader "
                                "compiler, 3D or 2D physics): a smaller player that behaves the same. Build Settings shows what is kept and "
                                "why. Turn it off for a script that builds engine names at runtime from pieces.");
+            }
+            // what a build of each family may weigh (S92 R11): a web build's gzip estimate, else its bytes
+            for (size_t f = 0; f < kModelFamilyCount; f++) {
+                const ModelFamily family = (ModelFamily)f;
+                const std::string label = modelFamilyLabel(family);
+                if (!settingsui::beginRow((std::string("player.download_budget_mb.") + modelFamilyName(family)).c_str())) continue;
+                if (projectBeginSettingsRow(("Download Budget MB (" + label + ")").c_str(), m_downloadBudgetMB[f] != 0.0)) m_downloadBudgetMB[f] = 0.0;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputDouble(("##DownloadBudget" + label).c_str(), &m_downloadBudgetMB[f], 1.0, 16.0, "%.1f");
+                m_downloadBudgetMB[f] = std::clamp(m_downloadBudgetMB[f], 0.0, 1e6);
+                endSettingsRow(family == ModelFamily::Web
+                                   ? "MB a web build may download, estimated as gzip -9 of the files the page loads. A build over it still "
+                                     "succeeds, with the warning W-BUILD-OVER-BUDGET; the Build Report shows both. 0 is off."
+                                   : "MB a build for this platform group may weigh (Android and iOS are Mobile). A build over it still "
+                                     "succeeds, with the warning W-BUILD-OVER-BUDGET; the Build Report shows both. 0 is off.");
             }
 
             ImGui::EndTable();
@@ -6335,6 +6352,19 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setBuildMethod(buildMethodNames[std::clamp(m_buildMethodIndex, 0, 2)]);
     m_project->setPackContent(m_packContent);
     m_project->setStripEngineCode(m_stripEngineCode);
+    // Download Budget: one undoable step of the project history
+    {
+        std::vector<std::pair<std::string, mcp::Json>> budgets;
+        for (size_t f = 0; f < kModelFamilyCount; f++) {
+            if (m_downloadBudgetMB[f] != m_project->getDownloadBudgetMB((ModelFamily)f))
+                budgets.push_back({std::string("player.download_budget_mb.") + modelFamilyName((ModelFamily)f), m_downloadBudgetMB[f]});
+        }
+        if (!budgets.empty()) {
+            auto* command = new ProjectSettingsValuesCmd(m_project, std::move(budgets), "Change Download Budget");
+            command->setNoMerge();
+            m_project->getProjectCommandHistory()->addCommand(command);
+        }
+    }
     m_project->setVcsProjectSettings(m_vcs);
 
     // a name typed into New Tag Name but not added yet is kept rather than lost

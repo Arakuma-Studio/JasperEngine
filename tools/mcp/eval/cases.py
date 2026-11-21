@@ -2619,6 +2619,68 @@ CASES = [
         "max_turns": 14,
     },
     {
+        "id": "bad_build_over_download_budget",
+        "kind": "bad",
+        "what_happened": "A web build over the project's Download Budget: build_project's result said nothing about sizes, so "
+                         "agents listed the output folder with du and guessed which assets to shrink.",
+        "text_at_issue": "build_project result: build_bytes, build_categories, top_files, download_bytes_gzip, W-BUILD-OVER-BUDGET "
+                         "and its next ('Over the Download Budget: textures is the largest category (5.1 MB). get_texture_cook_report "
+                         "{\"platforms\": [\"web\"]} lists each texture's disk bytes...'); jasper://docs/shipping Size",
+        "source": "docs/specs/S92-agent-feedback-area-lights.md R10, R11 (Crucible's build-size feedback); no transcript",
+        "files": GAME_FILES,
+        "prompt": "The web portal only takes games under 5 MB, and the project's web Download Budget is set to that. Build the web "
+                  "version and find out which files make it too big. Don't change anything yet.",
+        "mocks": [
+            {"tool": "build_project", "result": ok(
+                "Build web (Release): succeeded - Built web (prebuilt player web-wasm32-gles3-release) in /work/space-dodge-web. "
+                "1 build warning(s): see warnings.",
+                {"job_id": "job-4", "status": "succeeded", "result": {
+                    "mode": "player", "platform": "web", "method_used": "prebuilt", "output_dir": "/work/space-dodge-web",
+                    "artifacts": ["content.jpak", "index.html", "jasperengine-player-st.js", "jasperengine-player-st.wasm"],
+                    "errors": [], "error_count": 0, "warning_count": 0,
+                    "warnings": [{"code": "W-BUILD-OVER-BUDGET", "message":
+                                  "the web build downloads 7.9 MB (gzip estimate), over its Download Budget of 5.0 MB "
+                                  "(player.download_budget_mb.web); largest categories: textures 5.1 MB, engine 4.2 MB, audio 1.3 MB"}],
+                    "build_report": "/work/space-dodge-web/build-report.json", "build_bytes": 11534336,
+                    "build_categories": {"models": 524288, "textures": 5347737, "audio": 1363148, "scripts": 20480, "scenes": 61440,
+                                         "engine": 4404019, "other": 2048},
+                    "top_files": [{"path": "jasperengine-player-st.wasm", "bytes": 4194304},
+                                  {"path": "assets/je-cooked/web/1f/1f9a.ktx2", "bytes": 2097152},
+                                  {"path": "assets/je-cooked/web/7c/7c02.ktx2", "bytes": 1572864},
+                                  {"path": "assets/music/theme.ogg", "bytes": 1153433},
+                                  {"path": "assets/je-cooked/web/a4/a4d1.ktx2", "bytes": 786432}],
+                    "download_bytes_gzip": 8283750,
+                    "download_budget": {"budget_bytes": 5242880, "actual_bytes": 8283750, "over": True,
+                                        "largest_categories": [{"category": "textures", "bytes": 5347737},
+                                                               {"category": "engine", "bytes": 4404019},
+                                                               {"category": "audio", "bytes": 1363148}]}},
+                 "next": "Over the Download Budget: textures is the largest category (5.1 MB). get_texture_cook_report "
+                         "{\"platforms\": [\"web\"]} lists each texture's disk bytes; set_texture_import_settings lowers max_size "
+                         "or quality."})},
+            {"tool": "get_texture_cook_report", "result": ok(
+                "Texture cook report: 3 textures; web: 3 cooked, 4.3 MB on disk (source 18.0 MB).",
+                {"textures": [
+                    {"path": "assets/textures/background.png", "type": "default",
+                     "platforms": {"web": {"status": "cooked", "format": "ASTC 4x4", "width": 4096, "height": 4096, "mips": 13,
+                                           "disk_bytes": 2097152, "source_bytes": 9437184}}},
+                    {"path": "assets/textures/ship_atlas.png", "type": "sprite",
+                     "platforms": {"web": {"status": "cooked", "format": "ASTC 4x4", "width": 2048, "height": 2048, "mips": 12,
+                                           "disk_bytes": 1572864, "source_bytes": 6291456}}},
+                    {"path": "assets/textures/asteroids.png", "type": "default",
+                     "platforms": {"web": {"status": "cooked", "format": "ASTC 4x4", "width": 2048, "height": 1024, "mips": 12,
+                                           "disk_bytes": 786432, "source_bytes": 3145728}}}],
+                 "totals": {"web": {"textures": 3, "cooked": 3, "failed": 0, "cache_hits": 3, "vram_bytes": 22369621,
+                                    "disk_bytes": 4456448, "source_bytes": 18874368}}})},
+        ],
+        "shell": [{"match": r"\bdu\b|\bls\b|\bfind\b", "output": ""}],
+        "checks": {"calls": [{"tool": "build_project", "args": {"platform": "web"}},
+                             {"tool": "get_texture_cook_report"}],
+                   "order": [["build_project", "get_texture_cook_report"]],
+                   "must_not_call": ["set_texture_import_settings", "set_project_settings"],
+                   "reply_must": [r"(?i)background\.png"]},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_build_output_inside_project",
         "kind": "guard",
         "what_happened": "An export into a folder inside the project is refused by every front end (the editor would import "

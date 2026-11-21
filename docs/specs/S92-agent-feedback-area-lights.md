@@ -295,3 +295,8 @@ PR-body checks. Nothing here touches the do-not-copy list in `README.md`.
 - **IES point lights in the per-object path.** Default: same atlas lookup, one fetch per light only where a profile is set.
 
 ## Deviations
+- **Download Budget measure (W3).** A web build is held to `download_bytes_gzip`; a Mobile or Desktop build to
+  `build_bytes`, the build report's files as they are measured before packaging (the report does not measure an APK, AAB or
+  store download). The rows are labelled **Download Budget MB (Web|Mobile|Desktop)** under Player › Publishing Settings,
+  keys `player.download_budget_mb.<family>`; S53's per-scene `quality.render_budgets.<family>.download_mb` (cooked model
+  files a scene loads) is unrelated and unchanged.

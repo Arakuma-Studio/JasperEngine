@@ -6522,6 +6522,7 @@ void editor::Project::resetConfigs() {
     packContent = false;
     stripEngineCode = true;
     targetPlatforms = allTargetPlatforms;
+    downloadBudgetMB = {};
     spriteAtlasMode = "enabled";
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setPixelsPerUnit(defaultPixelsPerUnit);
