@@ -600,9 +600,11 @@ void estimateBuildJob(BuildRun& run, Project* project) {
     size_t seen = 0;
     for (auto it = fs::recursive_directory_iterator(project->getAssetsPath(), fs::directory_options::skip_permission_denied, ec);
          !ec && it != fs::recursive_directory_iterator() && seen < 200000; it.increment(ec), seen++) {
-        if (!it->is_regular_file(ec)) continue;
+        std::error_code entryError;
+        if (!it->is_regular_file(entryError)) continue;
+        const uintmax_t size = it->file_size(entryError);
         run.workFiles++;
-        run.workBytes += it->file_size(ec);
+        if (!entryError) run.workBytes += size;
     }
     bool prebuilt = false;
     uint64_t bytes = 0;
