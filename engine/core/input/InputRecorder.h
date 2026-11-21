@@ -88,6 +88,12 @@ namespace jasperengine::input {
     // A stopped recording: its records, turned into a script off the main thread (toScript)
     class JASPERENGINE_API RecordedInput {
     public:
+        // not copyable: MSVC defines every special member of a dllexport class, and the implicit copy
+        // of the chunks' unique_ptrs does not compile
+        RecordedInput() = default;
+        RecordedInput(const RecordedInput&) = delete;
+        RecordedInput& operator=(const RecordedInput&) = delete;
+
         ScriptHeader header;
         size_t events() const;
         uint32_t lastFrame() const;
