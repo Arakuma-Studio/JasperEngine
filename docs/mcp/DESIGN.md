@@ -204,10 +204,18 @@ class McpCall {
 };
 ```
 
-A call completes exactly once. Exceptions thrown by a handler become `fail()`.
+A call completes exactly once. Exceptions thrown by a handler become `fail()`: a
+`runtime_error`'s message reaches the agent, while the `logic_error` family, `bad_alloc`,
+`bad_function_call`, unchecked JSON lookups and non-`std::exception` throws are the editor's
+faults, answered with fixed advice and a fault id that `editor.log` holds with the detail
+(`McpServer::failFromException`). A handler reports an argument problem with `fail()` or a
+`runtime_error`, never a `logic_error`.
 Errors that are the agent's fault (bad args, unknown entity) are tool results with
 `isError: true` and a message that says how to fix it (list the valid choices), never
-JSON-RPC errors. JSON-RPC errors are only for protocol problems (unknown tool, bad params
+JSON-RPC errors. A misspelled tool, argument, document or resource names the nearest valid name
+("did you mean 'x'?", `NearestIdentifier` in `engine/core/util/NearestName.h`, which also matches
+camelCase for snake_case); a handler's error about a key of a closed object or an enum value gets
+the nearest declared one after its mention of it (`McpRegistry::suggestNearestNames`). JSON-RPC errors are only for protocol problems (unknown tool, bad params
 shape).
 
 Long operations (export/build players, C++ script compile, play startup with a C++ build,

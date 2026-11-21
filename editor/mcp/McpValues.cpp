@@ -370,7 +370,7 @@ bool submeshMaterialIndex(const std::string& name, unsigned int& index) {
     size_t pos = prefix.size();
     size_t end = pos;
     while (end < name.size() && std::isdigit(static_cast<unsigned char>(name[end]))) end++;
-    if (end == pos || name.compare(end, std::string::npos, "].material") != 0) return false;
+    if (end == pos || end - pos > 9 || name.compare(end, std::string::npos, "].material") != 0) return false;
     index = static_cast<unsigned int>(std::stoul(name.substr(pos, end - pos)));
     return true;
 }
@@ -672,7 +672,7 @@ bool splitPath(const std::string& path, std::vector<PathSegment>& out) {
             size_t end = path.find(']', i);
             if (end == std::string::npos || end == i + 1) return false;
             const std::string digits = path.substr(i + 1, end - i - 1);
-            if (!std::all_of(digits.begin(), digits.end(), [](unsigned char d) { return std::isdigit(d); })) return false;
+            if (digits.size() > 9 || !std::all_of(digits.begin(), digits.end(), [](unsigned char d) { return std::isdigit(d); })) return false;
             out.push_back({std::string(), std::stol(digits)});
             i = end;
         } else {
@@ -964,7 +964,9 @@ bool McpValues::enumFromJson(const Json& value, const EnumOptions& options, int&
             }
         }
     }
-    error = "\"" + value.get<std::string>() + "\" is not one of: " + namesText() + ".";
+    std::vector<std::string> names;
+    for (const EnumOption& option : options) names.push_back(option.name);
+    error = "\"" + value.get<std::string>() + "\" is not one of: " + namesText() + NearestIdentifierSuffix(value.get<std::string>(), names) + ".";
     return false;
 }
 
@@ -4300,7 +4302,7 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                                 names.push_back(name);
                             }
                             error = "Unknown property \"" + edit.property + "\" of " + componentLabel + " on " + label +
-                                    NearestNameSuffix(edit.property, names) + ". Properties: " + propertyNamesText(scene, entity, component) +
+                                    NearestIdentifierSuffix(edit.property, names) + ". Properties: " + propertyNamesText(scene, entity, component) +
                                     " (custom ones also by their scene-file keys, see get_entity detail=\"yaml\").";
                             // the Vertex Animator's edit-mode Preview is a runtime flag, never saved
                             // (no undo step, no scene change): its route is Lua

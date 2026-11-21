@@ -30,12 +30,17 @@
 #include "util/StringUtils.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <csignal>
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
+#include <exception>
+#include <functional>
+#include <new>
 #include <optional>
+#include <stdexcept>
 
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::mcp;
@@ -864,7 +869,8 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
             bool found = false;
             const ResourceResult result = reg.readResource(uri, found);
             if (!found) {
-                reply->respond(makeError(id, notFound, "Resource not found: " + uri, Json{{"uri", uri}}));
+                reply->respond(makeError(id, notFound, result.error + " resources/list lists them; the documents: jasper://docs.",
+                                         Json{{"uri", uri}}));
                 return;
             }
             if (!result.ok) {
@@ -985,7 +991,7 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
     const std::string name = params["name"].get<std::string>();
     const ToolDef* def = reg.findTool(name);
     if (!def) {
-        reply->respond(makeError(id, -32602, "Unknown tool: " + name + ". Call tools/list for the available tools."));
+        reply->respond(makeError(id, -32602, reg.unknownToolMessage(name)));
         return;
     }
     Json args = params.contains("arguments") ? params["arguments"] : Json::object();
@@ -1078,8 +1084,8 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
         trace("run", name + " " + key + " (off main)");
         try {
             def->handler(call);
-        } catch (const std::exception& e) {
-            call->fail(std::string("Tool ") + name + " failed: " + e.what());
+        } catch (...) {
+            failFromException(call, name, std::current_exception());
         }
         if (!call->completed()) call->fail("Internal error: tool " + name + " returned without a result.");
         return;
@@ -1490,7 +1496,11 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
     const uint64_t alertSerial = app.getAlertSerial();
     const std::string toolTitle = def.title.empty() ? def.name : def.title;
     std::weak_ptr<McpCall> weakCall = call;
-    call->setFinalizer([this, alertSerial, notes, toolTitle, weakCall](ToolResult& result) {
+    call->setFinalizer([this, alertSerial, notes, toolTitle, weakCall, schema = &def.inputSchema](ToolResult& result) {
+        // (the registry's definitions live as long as the server)
+        if (result.isError) {
+            if (CallPtr done = weakCall.lock()) McpRegistry::suggestNearestNames(*schema, done->args(), result.text);
+        }
         result.text += notes;
         if (CallPtr done = weakCall.lock(); done && done->saveWait() > 0.0) {
             const long long ms = std::llround(done->saveWait());
@@ -1543,14 +1553,8 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
             ~RunningHandler() { stack.pop_back(); }
         } running(runningHandlers, call);
         def.handler(call);
-    } catch (const Json::type_error& e) {
-        // an argument a handler read without checking its type: still an error the agent can fix
-        call->fail(std::string("Tool ") + def.name + ": an argument has the wrong type (" + e.what() +
-                   "); its inputSchema (tools/list) gives each argument's type.");
-    } catch (const std::exception& e) {
-        call->fail(std::string("Tool ") + def.name + " failed: " + e.what());
     } catch (...) {
-        call->fail(std::string("Tool ") + def.name + " failed with an unknown error.");
+        failFromException(call, def.name, std::current_exception());
     }
 
     if (onMainThread && appPtr && appPtr->getProject()) appPtr->getProject()->compactAllComponents();
@@ -1564,7 +1568,7 @@ void McpServer::runNested(const CallPtr& parent, const std::string& tool, const 
                           std::function<void(const ToolResult&)> done) {
     const ToolDef* def = reg.findTool(tool);
     if (!def) {
-        done(ToolResult::error("Unknown tool: " + tool + "."));
+        done(ToolResult::error(reg.unknownToolMessage(tool)));
         return;
     }
     std::weak_ptr<McpCall> weakParent = parent;
@@ -1586,12 +1590,93 @@ void McpServer::runLocal(const std::string& tool, const Json& args, const std::s
                          std::function<void(const ToolResult&)> done) {
     const ToolDef* def = reg.findTool(tool);
     if (!def || !started) {
-        done(ToolResult::error(def ? "The MCP server is not running." : "Unknown tool: " + tool + "."));
+        done(ToolResult::error(def ? "The MCP server is not running." : reg.unknownToolMessage(tool)));
         return;
     }
     auto call = std::make_shared<McpCall>(*this, tool, args, [done](McpCall&, const ToolResult& result) { done(result); });
     call->setClient(client, std::string());
     execute(call, *def);
+}
+
+// ---------------------------------------------------------------- faults
+
+void McpServer::failFromException(const CallPtr& call, const std::string& tool, std::exception_ptr error) {
+    // Handlers report what the agent got wrong with fail() or a runtime_error; the logic_error
+    // family, a failed allocation, an empty std::function, a JSON lookup the handler did not check
+    // and anything that is not a std::exception are the editor's own bugs (S92 R3, R4)
+    std::string fault;
+    try {
+        std::rethrow_exception(error);
+    } catch (const Json::type_error& e) {
+        // an argument a handler read without checking its type: still an error the agent can fix
+        call->fail(std::string("Tool ") + tool + ": an argument has the wrong type (" + e.what() +
+                   "); its inputSchema (tools/list) gives each argument's type.");
+        return;
+    } catch (const Json::out_of_range& e) {
+        fault = std::string("json out_of_range: ") + e.what();
+    } catch (const Json::invalid_iterator& e) {
+        fault = std::string("json invalid_iterator: ") + e.what();
+    } catch (const std::logic_error& e) {
+        fault = std::string("logic_error: ") + e.what();
+    } catch (const std::bad_alloc& e) {
+        fault = std::string("bad_alloc: ") + e.what();
+    } catch (const std::bad_function_call& e) {
+        fault = std::string("bad_function_call: ") + e.what();
+    } catch (const std::exception& e) {
+        call->fail(std::string("Tool ") + tool + " failed: " + e.what());
+        return;
+    } catch (...) {
+        fault = "an exception that is not a std::exception";
+    }
+
+    static std::atomic<uint32_t> faultCount{0};
+    const auto now = std::chrono::system_clock::now().time_since_epoch();
+    const uint32_t mixed = static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now).count()) ^
+                           ((faultCount.fetch_add(1) + 1) * 0x9E3779B9u);
+    char id[16];
+    std::snprintf(id, sizeof(id), "%08x", mixed);
+    Out::error("MCP fault %s in %s: %s", id, tool.c_str(), fault.c_str());
+    call->fail("Internal error in " + tool + " (not caused by your arguments); details in editor.log as fault " + id +
+               ". Check the state with " + faultCheckTool(tool) + ", retry once, and report it if it repeats.",
+               Json{{"fault", id}});
+}
+
+std::string McpServer::faultCheckTool(const std::string& tool) const {
+    // the read tool of the failing tool's group that shares the most words of its noun
+    // (create_entity -> get_entity); in a group without one, its first get_/list_ tool
+    auto nouns = [](const std::string& name) {
+        std::vector<std::string> words;
+        size_t start = name.find('_');
+        while (start != std::string::npos) {
+            const size_t end = name.find('_', start + 1);
+            words.push_back(name.substr(start + 1, end == std::string::npos ? std::string::npos : end - start - 1));
+            start = end;
+        }
+        return words;
+    };
+    const ToolDef* failing = reg.findTool(tool);
+    if (!failing) return "editor_status";
+    const std::string& group = McpRegistry::groupOf(*failing);
+    const std::vector<std::string> wanted = nouns(tool);
+    std::string best;
+    std::string first;
+    size_t bestShared = 0;
+    for (const ToolDef& def : reg.tools()) {
+        const bool reads = def.name.rfind("get_", 0) == 0 || def.name.rfind("list_", 0) == 0 || def.name.rfind("find_", 0) == 0;
+        if (def.name == tool || !reads || !def.annotations.readOnly || McpRegistry::groupOf(def) != group) continue;
+        size_t shared = 0;
+        for (const std::string& word : nouns(def.name)) {
+            if (std::find(wanted.begin(), wanted.end(), word) != wanted.end()) shared++;
+        }
+        if (shared > bestShared) {
+            bestShared = shared;
+            best = def.name;
+        }
+        if (first.empty()) first = def.name;
+    }
+    if (!best.empty()) return best;
+    if (!first.empty() && group != CORE_TOOL_GROUP) return first;
+    return "editor_status";
 }
 
 // ---------------------------------------------------------------- deferral
@@ -1662,11 +1747,8 @@ void McpServer::tick() {
                 }
                 if (item.then) item.then(timedOut);
             }
-        } catch (const std::exception& e) {
-            call->fail(std::string("Tool ") + call->tool() + " failed: " + e.what());
-            continue;
         } catch (...) {
-            call->fail(std::string("Tool ") + call->tool() + " failed with an unknown error.");
+            failFromException(call, call->tool(), std::current_exception());
             continue;
         }
         if (!call->completed() && !call->detached() && !hasDeferred(call.get())) {

@@ -13,6 +13,7 @@
 #include <atomic>
 #include <chrono>
 #include <deque>
+#include <exception>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -328,6 +329,10 @@ namespace jasperengine::editor::mcp {
         void onFilePickerOpened();
         // Gates + handler. complete() is already wired into the call.
         void execute(const CallPtr& call, const ToolDef& def);
+        // What an exception thrown out of a handler (or a continuation) tells the agent: the editor's
+        // own faults get a fault id logged with the detail and a read tool to check the state with
+        void failFromException(const CallPtr& call, const std::string& tool, std::exception_ptr error);
+        std::string faultCheckTool(const std::string& tool) const;
         uint64_t beginActivity(const std::string& client, const std::string& tool, const Json& args);
         void endActivity(uint64_t seq, const ToolResult& result, double durationMs, bool cancelled);
         static std::string inflightKey(const std::string& sessionId, const Json& id);

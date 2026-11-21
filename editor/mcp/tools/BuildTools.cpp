@@ -2835,7 +2835,7 @@ unsigned long playerKeysym(const std::string& rawName) {
     };
     auto it = keys.find(name);
     if (it != keys.end()) return it->second;
-    if (name.size() >= 2 && name[0] == 'f' && std::all_of(name.begin() + 1, name.end(), ::isdigit)) {
+    if (name.size() >= 2 && name.size() <= 3 && name[0] == 'f' && std::all_of(name.begin() + 1, name.end(), ::isdigit)) {
         const int n = std::stoi(name.substr(1));
         if (n >= 1 && n <= 24) return XK_F1 + (n - 1);
     }

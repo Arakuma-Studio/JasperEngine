@@ -8,6 +8,7 @@ import base64
 import contextlib
 import json
 import os
+import re
 import socket
 import stat
 import sys
@@ -86,6 +87,82 @@ async def test_bad_argument_is_tool_error(ed: Editor):
     msg = await ed.call("create_entity", name="Bad", type="definitely_not_a_type", expect_error=True)
     ed.check("type" in msg.lower(), f"invalid entity type was rejected for the wrong reason: {msg}")
     await ed.ping()
+
+
+# S92 R1-R5, AC1: each misspelled name gets the one nearest valid name, a name nothing is close to gets
+# the valid ones or the call that lists them, and an internal fault gets advice and a fault id that
+# editor.log holds with the detail. (what, tool, arguments, the suggestion or None, what the text
+# must also name: the list or the call that lists it)
+NAME_CASES = [
+    ("misspelled tool", "create_entty", {}, "create_entity", "tool_groups"),
+    ("misspelled argument", "create_entity", {"nam": "X"}, "name", "Arguments: changes, components, model, name"),
+    ("nested key", "place_with_physics", {"entities": ["Crate"], "mode": "move", "target": {"dleta": [1, 0, 0]}}, "delta",
+     "(allowed: delta, position"),
+    ("enum value", "create_entity", {"type": "cylindr"}, "cylinder", "Types: empty, bare, cube"),
+    ("docs area", "read_file", {"path": "jasper://docs/lightng"}, "lighting", "jasper://docs"),
+    ("resource uri", "read_file", {"path": "jasper://guid"}, "jasper://guide", "jasper://docs"),
+    ("camelCase key", "search_engine_api", {"query": "x", "maxDocResults": 2}, "max_doc_results",
+     "Arguments: include_docs, max_doc_results"),
+    ("missing underscore", "find_entities", {"withcomponents": True}, "with_components", "Arguments: active, component"),
+    ("no close tool", "zzqx_wvut", {}, None, "tool_groups"),
+    ("no close argument", "create_entity", {"zzqxwvut": 1}, None, "Arguments: changes, components, model, name"),
+    ("no close nested key", "place_with_physics", {"entities": ["Crate"], "mode": "move", "target": {"zzqxwvut": 1}}, None,
+     "(allowed: delta, position"),
+    ("no close docs area", "read_file", {"path": "jasper://docs/zzqxwvut"}, None, "Documents:"),
+    ("no close enum value", "create_entity", {"type": "zzqxwvut"}, None, "Types: empty, bare, cube"),
+]
+
+# (exception raised by selftest_echo's handler, what editor.log holds of it); runtime_error is the
+# normal error path: its message is the agent's
+FAULT_CASES = [("out_of_range", "logic_error: vector"), ("invalid_argument", "logic_error: selftest boom"),
+               ("bad_alloc", "bad_alloc"), ("bad_function_call", "bad_function_call"),
+               ("json_out_of_range", "json out_of_range"), ("unknown", "an exception that is not a std::exception")]
+
+
+async def test_errors_suggest_names_and_advise_faults():
+    async with Editor(create=True, name="MCP Errors", env={"JASPER_MCP_SELFTEST_GROUP": "1"}) as ed:
+        await ed.call("create_entity", name="Crate", type="cube")
+        problems = []
+        for what, tool, args, suggestion, lists in NAME_CASES:
+            try:
+                r = await ed.call_raw(tool, args)
+                text = r.text if r.is_error else f"(not an error) {r.text}"
+            except ProtocolError as error:   # tools/call of an unknown tool is a JSON-RPC error
+                text = str(error)
+            # inside batch an unknown tool is a step's error result, with the same text
+            if tool == "create_entty" or tool == "zzqx_wvut":
+                step = (await ed.call("batch", calls=[{"tool": tool, "arguments": args}]))["results"][0]
+                if step["ok"] or text.split(": ", 2)[-1] not in step["text"]:
+                    problems.append(f"{what} in batch: {step['text']!r} lacks {text!r}")
+            suggested = re.findall(r"did you mean '([^']*)'", text)
+            if suggested != ([suggestion] if suggestion else []):
+                problems.append(f"{what}: suggests {suggested}, not {suggestion!r}: {text!r}")
+            if lists not in text:
+                problems.append(f"{what}: names no next action ({lists!r}): {text!r}")
+
+        log = ed.scratch.root / "editor.log"
+        for raised, detail in FAULT_CASES:
+            r = await ed.call_raw("selftest_echo", {"throw": raised, "text": "boom"})
+            fault = (r.structured or {}).get("fault", "")
+            advice = (f"Internal error in selftest_echo (not caused by your arguments); details in editor.log as fault "
+                      f"{fault}. Check the state with editor_status, retry once, and report it if it repeats.")
+            if not (r.is_error and fault and r.text.startswith(advice)):
+                problems.append(f"{raised}: not the fault advice: {r.text!r} {r.structured!r}")
+                continue
+            line = f"MCP fault {fault} in selftest_echo: {detail}"
+            for _ in range(100):   # the log is written by its own thread
+                if line in (log.read_text(errors="replace") if log.exists() else ""):
+                    break
+                await asyncio.sleep(0.1)
+            else:
+                text = log.read_text(errors="replace") if log.exists() else ""
+                problems.append(f"{raised}: editor.log lacks {line!r}; its fault lines: "
+                                f"{[entry for entry in text.splitlines() if 'MCP fault' in entry][-8:]}")
+        r = await ed.call_raw("selftest_echo", {"throw": "runtime_error", "text": "boom"})
+        if not (r.is_error and r.text.startswith("Tool selftest_echo failed: selftest boom")):
+            problems.append(f"runtime_error: its message is not the error: {r.text!r}")
+        ed.check(not problems, "\n".join(problems))
+        await ed.ping()
 
 
 # -- edits through commands -------------------------------------------------------

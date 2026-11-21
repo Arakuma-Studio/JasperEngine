@@ -258,7 +258,7 @@ void readConsoleTool(const CallPtr& call) {
         const auto* cursor = since.get_ptr<const std::string*>();
         if (since.is_number_integer() && since.get<long long>() >= 0) {
             query.since = since.get<uint64_t>();
-        } else if (cursor && !cursor->empty() &&
+        } else if (cursor && !cursor->empty() && cursor->size() < 20 &&
                    std::all_of(cursor->begin(), cursor->end(), [](unsigned char c) { return std::isdigit(c); })) {
             query.since = std::stoull(*cursor);
         } else {

@@ -5339,4 +5339,60 @@ CASES = [
         "checks": {"calls": ["screenshot", {"tool": "frame_entity", "args": {"entity": 15}}]},
         "max_turns": 10,
     },
+    {
+        "id": "bad_internal_fault_as_argument_error",
+        "kind": "bad",
+        "what_happened": "A handler's std::out_of_range reached the agent verbatim ('Tool create_entity failed: "
+                         "vector::_M_range_check ...'); it read that as a bad argument and kept changing a correct call.",
+        "text_at_issue": "McpServer.cpp failFromException: 'Internal error in <tool> (not caused by your arguments); details in "
+                         "editor.log as fault <id>. Check the state with <read tool>, retry once, and report it if it repeats.'",
+        "source": "S92 section 3 (raw what() of logic_error reached agents); S92 R3",
+        "prompt": "Add a cube named Crate2 at position (2, 0, 0).",
+        "mocks": [
+            {"tool": "create_entity", "once": True, "result": err(
+                "Internal error in create_entity (not caused by your arguments); details in editor.log as fault 3fa9c021. "
+                "Check the state with get_entity, retry once, and report it if it repeats.")},
+            {"tool": "get_entity", "args": {"entity": "re:Crate2"}, "after": "create_entity", "result": ok(
+                "GameObject 22 \"Crate2\": transform, mesh. Position [2, 0, 0].", {"id": 22, "name": "Crate2", "path": "Crate2"})},
+            {"tool": "get_entity", "args": {"entity": "re:Crate2"}, "result": err(
+                "No GameObject \"Crate2\" in scene 1 \"Main\".")},
+            {"tool": "find_entities", "after": "create_entity", "result": ok(
+                "1 GameObject(s) match:\nCrate2 [22] mesh", {"entities": [{"id": 22, "path": "Crate2"}]})},
+            {"tool": "find_entities", "result": ok("0 GameObject(s) match.", {"entities": []})},
+            {"tool": "editor_status", "result": ok("Project \"Space Dodge\", scene 1 \"Main\" (edit mode).",
+                                                   {"project": {"name": "Space Dodge"}, "playing": False})},
+            {"tool": "create_entity", "result": ok(
+                "Created GameObject 22 \"Crate2\" (cube) in scene 1 \"Main\".",
+                {"entity": {"id": 22, "name": "Crate2", "path": "Crate2"}, "scene": {"id": 1, "name": "Main"}})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "create_entity", "args": {"name": "Crate2", "type": "re:^(cube|box)$"}}],
+                   "min_calls": {"create_entity": 2}, "max_calls": {"create_entity": 2},
+                   "any_of": [{"calls": ["get_entity"]}, {"calls": ["find_entities"]}, {"calls": ["editor_status"]}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_did_you_mean_argument",
+        "kind": "guard",
+        "what_happened": "An agent wrote a snake_case argument in camelCase; the registry refuses it naming the argument "
+                         "meant, and the agent resends with that name instead of dropping the argument.",
+        "text_at_issue": "McpRegistry.cpp argumentProblem: 'Unknown argument \"withComponents\" for find_entities (did you "
+                         "mean 'with_components'?). Arguments: ...'",
+        "source": "S92 R1 (camelCase for snake_case)",
+        "history": [
+            {"user": "List the GameObjects named Crate with their components."},
+            {"assistant": "Looking them up.", "calls": [{"tool": "find_entities", "args": {"name": "Crate", "withComponents": True},
+                "result": "Unknown argument \"withComponents\" for find_entities (did you mean 'with_components'?). Arguments: "
+                          "active, component, layer, limit, name, path, runtime, scene, tag, under, with_components."}]},
+        ],
+        "prompt": "Continue.",
+        "mocks": [
+            {"tool": "find_entities", "args": {"with_components": True}, "result": ok(
+                "1 GameObject(s) match:\nCrate [15] mesh rigidbody transform", {"entities": [{"id": 15, "path": "Crate",
+                                                                                     "components": ["mesh", "rigidbody", "transform"]}]})},
+        ],
+        "checks": {"calls": [{"tool": "find_entities", "args": {"with_components": True}}],
+                   "max_calls": {"find_entities": 2}},
+        "max_turns": 6,
+    },
 ]

@@ -18,3 +18,19 @@ TEST(NearestName, SuggestsWithinTwoEdits){
     EXPECT_EQ(LevenshteinCapped("kitten", "sitting", 5), 3u);
     EXPECT_EQ(LevenshteinCapped("kitten", "sitting", 1), 2u);
 }
+
+TEST(NearestName, IdentifierFoldsCaseAndUnderscores){
+    const std::vector<std::string> keys = {"max_results", "max_doc_results", "include_docs", "with_components"};
+    // camelCase for snake_case: four edits, past NearestName's two
+    EXPECT_EQ(NearestName("maxDocResults", keys), "");
+    EXPECT_EQ(NearestIdentifier("maxDocResults", keys), "max_doc_results");
+    // a missing or an extra '_'
+    EXPECT_EQ(NearestIdentifier("withcomponents", keys), "with_components");
+    EXPECT_EQ(NearestIdentifier("include__docs", keys), "include_docs");
+    // a plain typo, and a typo on top of a case confusion
+    EXPECT_EQ(NearestIdentifier("max_resluts", keys), "max_results");
+    EXPECT_EQ(NearestIdentifier("maxDocResluts", keys), "max_doc_results");
+    EXPECT_EQ(NearestIdentifier("position", keys), "");
+    EXPECT_EQ(NearestIdentifierSuffix("includeDocs", keys), " (did you mean 'include_docs'?)");
+    EXPECT_EQ(NearestIdentifierSuffix("zzz", keys), "");
+}

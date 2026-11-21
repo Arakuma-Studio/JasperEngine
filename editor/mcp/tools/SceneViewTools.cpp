@@ -587,7 +587,7 @@ ResourceResult sceneViewResource(const std::string& uri, const std::map<std::str
         return result;
     }
     Json ref = it->second;
-    if (!it->second.empty() && std::all_of(it->second.begin(), it->second.end(), [](char c) { return std::isdigit((unsigned char)c); })) {
+    if (!it->second.empty() && it->second.size() < 11 && std::all_of(it->second.begin(), it->second.end(), [](char c) { return std::isdigit((unsigned char)c); })) {
         ref = std::stoul(it->second);
     }
     std::string error;
