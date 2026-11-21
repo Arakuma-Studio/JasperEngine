@@ -60,6 +60,7 @@
 #include "component/SafeAreaComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/ShadowCaster2DComponent.h"
+#include "component/SimulationCullingComponent.h"
 #include "component/CapsuleShadowCasterComponent.h"
 #include "component/SkyboxComponent.h"
 #include "component/SpriteComponent.h"
@@ -746,6 +747,7 @@ namespace {
         rows.push_back(enabledRow<SplineInstantiateComponent>("splineinstantiate"));
         rows.push_back(enabledRow<SplineAnimateComponent>("splineanimate"));
         rows.push_back(enabledRow<AnimatorComponent>("animator"));
+        rows.push_back(enabledRow<SimulationCullingComponent>("simulationculling"));
 
         // the Title Art Renderer (S81 R40): its live layers' values and its numeric Exposed
         // parameters; S85's titleart.animationTime and animationSpeed

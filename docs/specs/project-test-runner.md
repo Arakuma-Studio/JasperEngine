@@ -810,7 +810,9 @@ case tagged `red`, a skipped case, an Edit Mode case, goldens for `level1_start`
   recording cannot compare (another platform, not from Play's start) are a console warning. A
   divergence names the first checkpoint that differs: the state hash covers the whole scene, so a
   moved obstacle diverges at the first checkpoint after it, named by its probe when it has one.
-  Editor Record Input is not in the input spec yet, so AC16's test records with Lua
-  `InputRecording` from a script's `init` in a test session and marks the file `start: "play"`.
+  The editor's Record Input (input spec R13) records a person's Play sessions but stands aside while
+  a test run owns the session (its clock, seed and input), so AC16's test records inside a test
+  session with Lua `InputRecording` from a script's `init` and marks the file `start: "play"`; a
+  file Record Input wrote replays as a case the same way.
 - **Not done in this change** (each named in the PR): the web gate, the Android run and the release
   `.text` size (AC12, AC13, AC18) run in the integration pass.

@@ -5110,6 +5110,21 @@
 		4A534E53507EFF084157E0B0 /* PhysicsQueryDebug.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53E8DA31A26A60CF23 /* PhysicsQueryDebug.cpp */; };
 		4A534E534000F52E30631F8D /* PhysicsQueryReference.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53D9A877F63C620597 /* PhysicsQueryReference.cpp */; };
 		4A534E53AB7BAEFA1B69AD21 /* PhysicsQueryLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53C8E60EBFCA4D4D8F /* PhysicsQueryLua.cpp */; };
+		4A534E472F5E98109DED378D /* DialogueRunnerComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47213A81837C82EE4C /* DialogueRunnerComponent.h */; };
+		4A534E479F663D9A1EF2ED9F /* ConsoleCommands.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470419A16C873F3E52 /* ConsoleCommands.h */; };
+		4A534E47C420A75D17815FE7 /* GpuQuirks.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473557F50C05DCFB9B /* GpuQuirks.h */; };
+		4A534E4793DE9FD54036FC11 /* UserDataOverride.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F5FD5DD2D6D5C8E8 /* UserDataOverride.h */; };
+		4A534E47DE85BB6F9C0E009E /* DialogueRunner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47961351BF5630DC7C /* DialogueRunner.h */; };
+		4A534E4791F8158E27C85959 /* PhysicsQueryDebug.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4729C0DD7AAEE708CF /* PhysicsQueryDebug.h */; };
+		4A534E47A4BCFF9EF5211FAA /* PhysicsQueryReference.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C36F9A60B5A0E29E /* PhysicsQueryReference.h */; };
+		4A534E47EE164F31D6D4925A /* DevelopmentContent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4747686B336DE5BF79 /* DevelopmentContent.h */; };
+		4A534E47E3FB5DB3F6D1603B /* PlayerTests.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47316455727F54F3C7 /* PlayerTests.h */; };
+		4A534E4750F36D4808DD6BA8 /* PerfSampler.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47072E0783470EA3FF /* PerfSampler.h */; };
+		4A534E470C56C79784E20C1A /* ThreadCpuClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477A25BB0ECD24B2B4 /* ThreadCpuClock.h */; };
+		4A534E47A1B310AEFA15F2E6 /* SaveFormat.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4703C785EB78220687 /* SaveFormat.h */; };
+		4A534E47839B8E430E7A3B51 /* SaveGameStore.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47FCF68ADBEB8D1DD4 /* SaveGameStore.h */; };
+		4A534E47C8038C88571DF3CC /* SaveValue.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473A1A1625794C3BA7 /* SaveValue.h */; };
+		4A534E47A738013D78827E06 /* CancellableEvent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4718BD5F7E76CC0509 /* CancellableEvent.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9799,6 +9814,21 @@
 		4A534E53E8DA31A26A60CF23 /* PhysicsQueryDebug.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueryDebug.cpp; sourceTree = "<group>"; };
 		4A534E53D9A877F63C620597 /* PhysicsQueryReference.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueryReference.cpp; sourceTree = "<group>"; };
 		4A534E53C8E60EBFCA4D4D8F /* PhysicsQueryLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueryLua.cpp; sourceTree = "<group>"; };
+		4A534E47213A81837C82EE4C /* DialogueRunnerComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DialogueRunnerComponent.h; sourceTree = "<group>"; };
+		4A534E470419A16C873F3E52 /* ConsoleCommands.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ConsoleCommands.h; sourceTree = "<group>"; };
+		4A534E473557F50C05DCFB9B /* GpuQuirks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GpuQuirks.h; sourceTree = "<group>"; };
+		4A534E47F5FD5DD2D6D5C8E8 /* UserDataOverride.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UserDataOverride.h; sourceTree = "<group>"; };
+		4A534E47961351BF5630DC7C /* DialogueRunner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DialogueRunner.h; sourceTree = "<group>"; };
+		4A534E4729C0DD7AAEE708CF /* PhysicsQueryDebug.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueryDebug.h; sourceTree = "<group>"; };
+		4A534E47C36F9A60B5A0E29E /* PhysicsQueryReference.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueryReference.h; sourceTree = "<group>"; };
+		4A534E4747686B336DE5BF79 /* DevelopmentContent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DevelopmentContent.h; sourceTree = "<group>"; };
+		4A534E47316455727F54F3C7 /* PlayerTests.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlayerTests.h; sourceTree = "<group>"; };
+		4A534E47072E0783470EA3FF /* PerfSampler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PerfSampler.h; sourceTree = "<group>"; };
+		4A534E477A25BB0ECD24B2B4 /* ThreadCpuClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ThreadCpuClock.h; sourceTree = "<group>"; };
+		4A534E4703C785EB78220687 /* SaveFormat.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SaveFormat.h; sourceTree = "<group>"; };
+		4A534E47FCF68ADBEB8D1DD4 /* SaveGameStore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SaveGameStore.h; sourceTree = "<group>"; };
+		4A534E473A1A1625794C3BA7 /* SaveValue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SaveValue.h; sourceTree = "<group>"; };
+		4A534E4718BD5F7E76CC0509 /* CancellableEvent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CancellableEvent.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10229,6 +10259,8 @@
 				5E5150000000000000000011 /* Profile.h */,
 				4A534E536345B2AD374C0575 /* PerfSampler.cpp */,
 				4A534E530E969EC23D5C64CD /* ThreadCpuClock.cpp */,
+				4A534E47072E0783470EA3FF /* PerfSampler.h */,
+				4A534E477A25BB0ECD24B2B4 /* ThreadCpuClock.h */,
 			);
 			path = profiler;
 			sourceTree = "<group>";
@@ -11241,6 +11273,8 @@
 				4A534E53CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */,
 				4A534E53E8DA31A26A60CF23 /* PhysicsQueryDebug.cpp */,
 				4A534E53D9A877F63C620597 /* PhysicsQueryReference.cpp */,
+				4A534E4729C0DD7AAEE708CF /* PhysicsQueryDebug.h */,
+				4A534E47C36F9A60B5A0E29E /* PhysicsQueryReference.h */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -11506,6 +11540,8 @@
 				4A534E47CA6B666A030A4DD5 /* InputScriptRun.cpp */,
 				4A534E4752968F3EF7DC98C0 /* InputScriptRun.h */,
 				4A534E5391C68DED5B482106 /* DevelopmentContent.cpp */,
+				4A534E4747686B336DE5BF79 /* DevelopmentContent.h */,
+				4A534E47316455727F54F3C7 /* PlayerTests.h */,
 			);
 			path = player;
 			sourceTree = "<group>";
@@ -11666,6 +11702,7 @@
 				4A534E47C029F7456AC311E6 /* DebugOverlayResources.h */,
 				4A534E47FC23B0CE0C82B758 /* DebugStats.h */,
 				4A534E53C605544DB443297D /* ConsoleCommands.cpp */,
+				4A534E470419A16C873F3E52 /* ConsoleCommands.h */,
 			);
 			path = debug;
 			sourceTree = "<group>";
@@ -11685,6 +11722,7 @@
 				4A534E47B7168D0FCCFB915F /* QualityResolver.h */,
 				4A534E53AD57B08E511AAFFF /* GpuQuirks.cpp */,
 				4A534E534564060F0F13042E /* GpuQuirksData.cpp */,
+				4A534E473557F50C05DCFB9B /* GpuQuirks.h */,
 			);
 			path = device;
 			sourceTree = "<group>";
@@ -12143,6 +12181,7 @@
 				4A534E474365841B0820D5A8 /* NearestName.h */,
 				4A534E47C3150163C8627096 /* TitleArtLanguage.cpp */,
 				4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */,
+				4A534E4718BD5F7E76CC0509 /* CancellableEvent.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -12173,6 +12212,7 @@
 				A5E05A7C0000000000000001 /* watch */,
 				4A534E478A53FD45D6859CB8 /* JPak.cpp */,
 				4A534E477327188402907BEC /* JPak.h */,
+				4A534E47F5FD5DD2D6D5C8E8 /* UserDataOverride.h */,
 			);
 			path = io;
 			sourceTree = "<group>";
@@ -12369,6 +12409,7 @@
 				4A534E4780ED4CFA46564A3A /* TilemapCollider2DComponent.h */,
 				4A534E471441E06FB19F6699 /* TilemapLayerComponent.h */,
 				4A534E4796E2C3866F22D77C /* SimulationCullingComponent.h */,
+				4A534E47213A81837C82EE4C /* DialogueRunnerComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -12515,6 +12556,7 @@
 				4A534E47AD378F6330680ED6 /* CullingGroup.h */,
 				4A534E475EE51C3B38637EFB /* SimulationCulling.h */,
 				4A534E53CB8B28243C275A9E /* DialogueRunner.cpp */,
+				4A534E47961351BF5630DC7C /* DialogueRunner.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -16358,6 +16400,9 @@
 				4A534E53CAF7B69A0583A110 /* SaveFormat.cpp */,
 				4A534E530FF89075AA589D6F /* SaveGameStore.cpp */,
 				4A534E539F1764A02980F06D /* SaveValue.cpp */,
+				4A534E4703C785EB78220687 /* SaveFormat.h */,
+				4A534E47FCF68ADBEB8D1DD4 /* SaveGameStore.h */,
+				4A534E473A1A1625794C3BA7 /* SaveValue.h */,
 			);
 			path = save;
 			sourceTree = "<group>";
@@ -17331,6 +17376,21 @@
 				4A534E47414EDA19A7B191A0 /* TextEntryTraits.h in Headers */,
 				4A534E47F035A00EEFA5A73C /* TextEntry.h in Headers */,
 				4A534E472D0F9D8C4B9261EB /* TextInputSync.h in Headers */,
+				4A534E472F5E98109DED378D /* DialogueRunnerComponent.h in Headers */,
+				4A534E479F663D9A1EF2ED9F /* ConsoleCommands.h in Headers */,
+				4A534E47C420A75D17815FE7 /* GpuQuirks.h in Headers */,
+				4A534E4793DE9FD54036FC11 /* UserDataOverride.h in Headers */,
+				4A534E47DE85BB6F9C0E009E /* DialogueRunner.h in Headers */,
+				4A534E4791F8158E27C85959 /* PhysicsQueryDebug.h in Headers */,
+				4A534E47A4BCFF9EF5211FAA /* PhysicsQueryReference.h in Headers */,
+				4A534E47EE164F31D6D4925A /* DevelopmentContent.h in Headers */,
+				4A534E47E3FB5DB3F6D1603B /* PlayerTests.h in Headers */,
+				4A534E4750F36D4808DD6BA8 /* PerfSampler.h in Headers */,
+				4A534E470C56C79784E20C1A /* ThreadCpuClock.h in Headers */,
+				4A534E47A1B310AEFA15F2E6 /* SaveFormat.h in Headers */,
+				4A534E47839B8E430E7A3B51 /* SaveGameStore.h in Headers */,
+				4A534E47C8038C88571DF3CC /* SaveValue.h in Headers */,
+				4A534E47A738013D78827E06 /* CancellableEvent.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

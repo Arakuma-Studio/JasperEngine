@@ -16,6 +16,9 @@
 #include "component/Transform.h"
 #include "component/CameraShakerComponent.h"
 #include "pool/ShaderPool.h"
+#include "pool/TextureDataPool.h"
+#include "texture/Framebuffer.h"
+#include "util/ProjectFileWrites.h"
 #include "render/SceneRender.h"
 #include "spritenormals/SpriteNormalsWatcher.h"
 #include "pixelart/PixelArtMode.h"
@@ -130,6 +133,9 @@
 #include "pose/PoseEditSession.h"
 #include "widget/ColorPickerWindow.h"
 #include "util/GraphicUtils.h"
+#include "recorder/CaptureScreenshotsDialog.h"
+#include "recorder/InputCapture.h"
+#include "recorder/RecordInput.h"
 #include "recorder/RecorderSession.h"
 #include "test/PlayData.h"
 #include "test/TestRun.h"
@@ -3307,6 +3313,14 @@ void editor::App::show(){
     recorderWindow.setProjectPath(project.getProjectPath());
     recorderWindow.show();
     if (isRecording()) requestRedraw();
+    // Record Input and Replay Input (input-recorder-and-input-scripts R13, R21): the session's
+    // start, the recording's write, the replay's shots; then the Capture Screenshots runs
+    recordinput::RecordInput::get().loadSettings(project.getProjectPath());
+    recordinput::RecordInput::get().tick();
+    recordinput::InputCapture::get().tick();
+    recordinput::CaptureScreenshotsDialog::get().show(&project);
+    if (recordinput::RecordInput::get().isRecording() || recordinput::RecordInput::get().isReplaying() || recordinput::InputCapture::get().active())
+        requestRedraw();
 
     // the project's tests (project-test-runner): a run's next frame, Play Data's session folder,
     // the Test Runner window
@@ -3791,6 +3805,7 @@ void editor::App::playStarting(uint32_t) {
     if (!gametests::PlayData::get().sessionStarting(&project, gametests::PlayData::selected(&project), playDataError))
         Out::error("Play Data: %s (the session uses the project's data)", playDataError.c_str());
     recorder::RecorderSession::get().onPlayStarting(recorderWindow.settings());
+    recordinput::RecordInput::get().playStarting();
     if (pixelart::PixelArtMode::get().playHookRegistered()) pixelart::PixelArtMode::get().playStarting(&project);
 }
 
@@ -3833,6 +3848,35 @@ void editor::App::setupRecorder() {
     host.maxTextureSize = []() { return sg_query_limits().max_image_size_2d; };
     recorder::RecorderSession::get().setHost(std::move(host));
     recorderWindow.openPreferences = [this]() { editorSettingsWindow.open(&project, "External Tools"); };
+
+    recordinput::RecordInput::Host input;
+    input.project = [this]() { return &project; };
+    input.readGameView = [this](std::vector<uint8_t>& rgba, int& width, int& height) {
+        Framebuffer* framebuffer = gameWindow->getFramebuffer();
+        if (!framebuffer || !framebuffer->isCreated() || !GraphicUtils::readFramebufferRGBA(framebuffer, rgba)) return false;
+        width = static_cast<int>(framebuffer->getWidth());
+        height = static_cast<int>(framebuffer->getHeight());
+        return true;
+    };
+    input.assetsIdle = []() { return ShaderPool::isCreationIdle() && TextureDataPool::getLoadingCount() == 0; };
+    // one undo step (Edit > Undo removes the recording)
+    input.writer = [this](const std::filesystem::path& path, const std::string& text, std::string& error) {
+        return ProjectFileWrites::writeUndoable(&project, {{path, text}}, error, nullptr, nullptr, {}, false,
+                                                "Record Input " + FileUtils::pathToUtf8(path.filename()));
+    };
+    recordinput::RecordInput::get().setHost(std::move(input));
+
+    recordinput::InputCapture::Host capture;
+    capture.setGameRenderSize = [this](int w, int h) { gameWindow->setRenderSizeOverride(w, h); };
+    capture.stopPlay = [this]() { mainToolbar->stopSession(); };
+    capture.playStopped = [this]() {
+        if (project.getPlaySessionSceneId() != NULL_PROJECT_SCENE) return false;
+        for (const SceneProject& scene : project.getScenes()) {
+            if (scene.playState != ScenePlayState::STOPPED) return false;
+        }
+        return true;
+    };
+    recordinput::InputCapture::get().setHost(std::move(capture));
 }
 
 void editor::App::setupProjectHub() {

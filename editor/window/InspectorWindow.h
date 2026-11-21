@@ -79,6 +79,7 @@ namespace jasperengine::editor{
     class AnimationClipDocument;
     class AnimatorAssetDocument;
     class SpriteAtlasInspector;
+    namespace recordinput { class InputRecordingInspector; }
     struct InspectorClipState;
     struct InspectorClipStateDeleter{
         void operator()(InspectorClipState* state) const;
@@ -229,6 +230,8 @@ namespace jasperengine::editor{
         // (shared: the type stays out of this header, which App.h includes; its sprite:: names would
         // make `sprite` a namespace in every source that includes App.h)
         std::shared_ptr<SpriteAtlasInspector> spriteAtlasInspector;
+        // a .input.json (input-recorder-and-input-scripts R39)
+        std::shared_ptr<recordinput::InputRecordingInspector> inputRecordingInspector;
         Project* project;
         SceneWindow* sceneWindow;
         Command* cmd;

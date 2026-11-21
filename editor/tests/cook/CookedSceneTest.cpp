@@ -724,10 +724,11 @@ TEST(CookedScene, ReadsANewerMinorAndRefusesAnotherMajor) {
 }
 
 // What a 1.4 editor cooked loads: the file as its writer laid it out (1.5's without the Water Wakes
-// values that end the settings record, the record's length and the string table offset with them)
+// values that end the settings record, the record's length and the string table offset with them).
+// 1.6 added game.json's buildProfile and defines, no scene bytes: its scenes are laid out as 1.5's.
 TEST(CookedScene, ReadsAnOlderMinorsContent) {
     using namespace jasperengine::cook;
-    ASSERT_EQ(FORMAT_MINOR, 5) << "the 1.4 layout below is 1.5's without its Water Wakes values: cut the newer minor's values too";
+    ASSERT_EQ(FORMAT_MINOR, 6) << "the 1.4 layout below is 1.6's without its Water Wakes values: cut the newer minor's values too";
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
     scene->setPlanarReflectionFarClip(60.0f);

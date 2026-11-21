@@ -9,6 +9,7 @@
 #include "registry/PhysicsLayers.h"
 #include "script/LuaBinding.h"
 #include "../physics/QueryCityTestUtil.h"
+#include "../terrain/FoliageTestSupport.h"
 
 #include "lua.hpp"
 #include "LuaBridge.h"
@@ -108,6 +109,42 @@ TEST(LuaPhysicsQuery, NonAllocFillsAndClears){
     lua_setglobal(L, "queryScene");
 }
 #endif
+
+// R12, R28: a tree a MeshRaycast overlap finds reads its kind, id and prototype; a NonAlloc form
+// gives its Terrain; details come when kinds asks
+TEST(LuaPhysicsQuery, MeshOverlapReadsTrees){
+    lua_State* L = LuaBinding::getLuaState();
+    foliagetest::FoliageFixture fixture;
+    foliagetest::withTrees(fixture, {{10.0f, 10.0f}});
+    fixture.settle();
+    const terraincore::TreeId id = terraincore::makeTreeId(0, fixture.foliage->getTreeStore(fixture.entity)->records()[0].id);
+    FoliageInstanceInfo pose;
+    ASSERT_TRUE(fixture.foliage->getTreePose(fixture.entity, id, pose));
+    luabridge::setGlobal(L, fixture.scene.get(), "queryScene");
+    luabridge::setGlobal(L, pose.position + Vector3(0.0f, 2.0f, 0.0f), "TREE_MIDDLE");
+    lua_pushinteger(L, (lua_Integer)fixture.entity);
+    lua_setglobal(L, "TERRAIN");
+    lua_pushinteger(L, (lua_Integer)id);
+    lua_setglobal(L, "TREE_ID");
+
+    EXPECT_EQ(runPhysicsQueryLua(L, R"(
+        local scene = queryScene
+        local hits = MeshRaycast.overlapSphere(scene, TREE_MIDDLE, 0.5)
+        assert(#hits == 1, "one tree, got " .. #hits)
+        local hit = hits[1]
+        assert(hit.kind == MeshRaycast.TREE and hit.entity == TERRAIN and hit.instance == -1)
+        assert(hit.foliageId == TREE_ID and hit.prototype == 0, "id " .. hit.foliageId .. ", prototype " .. hit.prototype)
+        local t = {}
+        assert(MeshRaycast.overlapSphereNonAlloc(scene, TREE_MIDDLE, 0.5, t) == 1 and t[1] == TERRAIN and #t == 1)
+        assert(#MeshRaycast.overlapSphere(scene, TREE_MIDDLE, 0.5, -1, {kinds = MeshRaycast.MESH}) == 0)
+        local details = MeshRaycast.overlapSphere(scene, TREE_MIDDLE, 6, -1, {kinds = MeshRaycast.DETAIL})
+        assert(#details > 0, "grass when asked")
+        assert(details[1].kind == MeshRaycast.DETAIL and details[1].foliageId == 0 and details[1].prototype == 0)
+    )"), "");
+
+    lua_pushnil(L);
+    lua_setglobal(L, "queryScene");
+}
 
 #ifdef JASPERENGINE_PHYSICS_2D
 TEST(LuaPhysicsQuery, FirstForm2DIsNilOnAMiss){

@@ -27,6 +27,11 @@ namespace jasperengine::player::InputScriptRun {
     void frameDrawn(const FrameReader& reader);
     void reset();
 
+    // R30: an --input-script the web page fetches (same-origin) before the start scene loads: a
+    // URL ("https://...") or a page path ("/tests/menu.input.json", "./menu.input.json"), not a
+    // content path ("tests/Input/menu.input.json", "asset://demo/attract.input.json")
+    JASPERENGINE_API bool isFetchedUrl(const std::string& path);
+
 }
 
 #endif

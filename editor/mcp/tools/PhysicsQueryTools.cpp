@@ -18,11 +18,14 @@
 
 #include "Project.h"
 #include "Scene.h"
+#include "component/TerrainWorldComponent.h"
 #include "picking/MeshRaycast.h"
 #include "physics/PhysicsQueryDebug.h"
 #include "physics/PhysicsQueryReference.h"
 #include "registry/PhysicsLayers.h"
 #include "registry/TagManager.h"
+#include "terrain/FoliageTypes.h"
+#include "terrainworld/TerrainWorldTrees.h"
 
 #include <algorithm>
 #include <set>
@@ -281,6 +284,15 @@ void queryPhysicsTool(const CallPtr& call) {
         for (size_t i = 0; i < drawn.size() && i < maxHits; i++) {
             Json item = {{"entity", McpRefs::entityJson(sceneProject, drawn[i].entity)}, {"kind", pickKindName(drawn[i].kind)}};
             if (drawn[i].instance >= 0) item["instance"] = drawn[i].instance;
+            if (drawn[i].kind == PickKind::TREE || drawn[i].kind == PickKind::DETAIL) {
+                // the entity is the Terrain; a tree as raycast_meshes and edit_terrain name it
+                item["prototype"] = drawn[i].prototype;
+                if (drawn[i].kind == PickKind::TREE) {
+                    item["tree_id"] = scene->findComponent<TerrainWorldComponent>(drawn[i].entity)
+                        ? terrainWorldTreeId(terraincore::TileCoord::fromKey(terraincore::treeIdRegion(drawn[i].foliageId)), terraincore::treeIdRecord(drawn[i].foliageId))
+                        : drawn[i].foliageId;
+                }
+            }
             hits.push_back(item);
         }
     } else if (op == "cast" || op == "raycast") {

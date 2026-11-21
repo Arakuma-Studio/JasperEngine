@@ -789,6 +789,80 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "guard_store_screenshots_from_input",
+        "kind": "guard",
+        "what_happened": "Asked for store screenshots at several sizes, agents looped configure_game_view, play, send_input and "
+                         "screenshot by hand per size: each run started from another state and the shots did not line up. "
+                         "record_game replays the script once per size from Play's start and writes only its shot steps.",
+        "text_at_issue": "record_game: description 'input: replays a .input.json, a new session per run; shots: only its shot "
+                         "steps.', format enum 'shots', resolutions 'A run per WxH.'",
+        "source": "input-recorder-and-input-scripts spec, R23, AC14",
+        "prompt": "Tests/Input/store.input.json walks through the menu and has shot steps. Make the store screenshots at "
+                  "1290x2796 and 2048x2732 from it.",
+        "mocks": [
+            {"tool": "record_game", "args": {"input": "re:store\\.input\\.json$", "format": "shots"}, "result": ok(
+                "Captured 4 file(s) in 2 run(s).",
+                {"runs": [{"resolution": "1290x2796", "files": ["Recordings/Screenshots/store/1290x2796/01_menu.png",
+                                                                "Recordings/Screenshots/store/1290x2796/02_game.png"]},
+                          {"resolution": "2048x2732", "files": ["Recordings/Screenshots/store/2048x2732/01_menu.png",
+                                                                "Recordings/Screenshots/store/2048x2732/02_game.png"]}],
+                 "sidecar": "Recordings/Screenshots/store/input-capture.json"})},
+        ],
+        "checks": {"calls": [{"tool": "record_game", "args": {"input": "re:store\\.input\\.json$", "format": "shots",
+                                                              "resolutions": ["1290x2796", "2048x2732"]}}],
+                   "must_not_call": ["configure_game_view", "screenshot"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_player_input_script_any_desktop",
+        "kind": "guard",
+        "what_happened": "To run a menu script on the built player of a Mac or a CI box without a display, agents passed run_build "
+                         "input (X11 events, Linux with a window only) and the run failed; input_script runs the file through "
+                         "the engine itself, headless, on any desktop, and returns its shots.",
+        "text_at_issue": "run_build description 'input: send_input events (Linux/X11); input_script: a .input.json, any desktop, "
+                         "headless.' and its parameter input_script",
+        "source": "input-recorder-and-input-scripts spec, R24, AC11",
+        "prompt": "The desktop build is done. This machine has no display. Run Tests/Input/menu.input.json on the built player "
+                  "headless and show me its screenshots.",
+        "mocks": [
+            {"tool": "run_build", "args": {"input_script": "re:menu\\.input\\.json$"}, "result": ok(
+                "Game exited by itself after 4 s with code 0. 120 log line(s). Input script: [input] done {\"frames\": 160, \"shots\": 2}; 2 shot(s).",
+                {"exit_code": 0, "input_script": {"lines": ["[input] begin {}", "[input] done {\"frames\": 160, \"shots\": 2}"],
+                                                  "shots": [{"name": "01_menu", "path": "/p/Recordings/Input/menu/player/01_menu.png"},
+                                                            {"name": "02_game", "path": "/p/Recordings/Input/menu/player/02_game.png"}]}})},
+            {"tool": "run_build", "args": {"input": "re:."}, "result": err(
+                "input is not supported here: no X display. Run without input (log + screenshots only).")},
+        ],
+        "checks": {"calls": [{"tool": "run_build", "args": {"input_script": "re:menu\\.input\\.json$"}}],
+                   "must_not_call": [{"tool": "run_build", "args": {"input": "re:."}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_record_input_command",
+        "kind": "guard",
+        "what_happened": "Asked to record a play session for a later replay, agents wrote Lua InputRecording calls into a game "
+                         "script; the toolbar's Record Input records from Play's start with the seed and checkpoints a replay "
+                         "compares, and run_command reaches it.",
+        "text_at_issue": "the command catalog's playmode.recordInput 'Record Input': 'Before Play: arm or disarm recording the "
+                         "game's input into a .input.json from Play's start; while recording: Stop Recording', and get_play_state "
+                         "record_input {armed, last_file}",
+        "source": "input-recorder-and-input-scripts spec, R13, R41",
+        "prompt": "Record my next play session's input so we can replay it later and check it plays the same. Get it ready; "
+                  "I'll press Play myself.",
+        "mocks": [
+            {"tool": "search_editor", "result": ok("1 result.", {"results": [
+                {"kind": "command", "key": "command:playmode.recordInput", "label": "Record Input", "enabled": True,
+                 "detail": "Before Play: arm or disarm recording the game's input into a .input.json from Play's start; while recording: Stop Recording"}]})},
+            {"tool": "list_shortcuts", "result": ok("1 command.", {"commands": [
+                {"id": "playmode.recordInput", "group": "Play Mode", "name": "Record Input", "chords": []}]})},
+            {"tool": "run_command", "args": {"id": "playmode.recordInput"}, "result": ok("Ran Record Input.", {"ran": "playmode.recordInput"})},
+            {"tool": "run_command", "args": {"key": "command:playmode.recordInput"}, "result": ok("Ran Record Input.", {"ran": "playmode.recordInput"})},
+            {"tool": "get_play_state", "result": ok("Play state: stopped.", {"state": "stopped", "record_input": {"armed": True}})},
+        ],
+        "checks": {"calls": ["run_command"], "must_not_call": ["write_file", "create_script", "edit_script"]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_batch_args_key",
         "kind": "bad",
         "what_happened": "batch items used `args` instead of `arguments`; the key was dropped silently, the item ran with no "

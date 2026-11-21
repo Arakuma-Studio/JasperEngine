@@ -87,8 +87,8 @@ namespace jasperengine {
         static constexpr uint32_t DETAIL = PICK_DETAIL;
         static constexpr uint32_t ALL = PICK_ALL & ~PICK_ICON;
         // what overlaps test by default: terrains and UI rects are left out (their bounds are the
-        // whole map or a screen rect)
-        static constexpr uint32_t OVERLAP_KINDS = PICK_MESH | PICK_INSTANCE | PICK_BOUNDS;
+        // whole map or a screen rect), and details as rays leave them out
+        static constexpr uint32_t OVERLAP_KINDS = PICK_MESH | PICK_INSTANCE | PICK_BOUNDS | PICK_TREE;
         // MeshRaycastOptions with kinds = OVERLAP_KINDS
         static MeshRaycastOptions overlapOptions();
 
@@ -110,7 +110,8 @@ namespace jasperengine {
 
         // Objects on a layer of layerMask whose world bounds touch the sphere or the oriented box,
         // without physics (bounds, not triangles: raycast is the exact tool), into out (cleared
-        // first) in (entity, instance) order. Bounds are as of the frame's first overlap unless
+        // first) in (entity, instance) order. A Terrain's trees (and details, when kinds asks) are
+        // one hit each, by their mesh's bounds, with the Terrain as entity and foliageId / prototype. Bounds are as of the frame's first overlap unless
         // options.current (Unity's autoSyncTransforms = false). Allocates nothing once out has
         // room and no SceneBvh rebuild is due. Main thread.
         static size_t overlapSphere(Scene* scene, const Vector3& center, float radius, std::vector<MeshOverlapHit>& out,

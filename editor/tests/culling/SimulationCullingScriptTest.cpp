@@ -125,7 +125,7 @@ TEST_F(SimulationCullingScriptTest, DistanceCullsScriptUpdates) {
 TEST_F(SimulationCullingScriptTest, ReducedBandAccumulatesDelta) {
     writeScript("Reduced",
         "local M = {}\n"
-        "function M:init() calls = calls or {}; fixed = fixed or {}; calls[self.entity] = {}; fixed[self.entity] = 0\n"
+        "function M:init() calls[self.entity] = {}; fixed[self.entity] = 0\n"
         "  RegisterEngineEvent(self, 'onUpdate'); RegisterEngineEvent(self, 'onFixedUpdate') end\n"
         "function M:onUpdate() local c = calls[self.entity]; c[#c + 1] = {Engine.frameCount, Engine.deltatime} end\n"
         "function M:onFixedUpdate() fixed[self.entity] = fixed[self.entity] + 1 end\n"
@@ -137,6 +137,8 @@ TEST_F(SimulationCullingScriptTest, ReducedBandAccumulatesDelta) {
     culling(b).reducedUpdateInterval = 4;
     addScript(scene, a, "Reduced");
     addScript(scene, b, "Reduced");
+    // the Lua state outlives a test: another suite's global of the same name must not leak in
+    lua("calls = {}; fixed = {}");
     start();
     frames(2);
     ASSERT_EQ(culling(a).state, SimulationState::Reduced);

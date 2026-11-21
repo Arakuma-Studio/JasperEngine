@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "AppSettings.h"
+#include "recorder/RecordInput.h"
 #include "Exporter.h"
 #include "Generator.h"
 #include "imgui.h"
@@ -78,6 +79,8 @@ namespace jasperengine::editor {
         std::string m_smartMergeStatus;
         LatticeViewSettings m_lattice;
         SceneViewSettings m_sceneView;
+        // Play Mode > Record Input (input-recorder-and-input-scripts R37): the project's
+        recordinput::Settings m_recordInput;
         // Unity-style category list; indexes PreferencesCategory in the .cpp.
         int m_category = 0;
         char m_categorySearch[64] = {0};
@@ -110,6 +113,7 @@ namespace jasperengine::editor {
         void drawPixelArtSettings();
         void drawVersionControlSettings();
         void drawAdvancedSettings();
+        void drawPlayModeSettings();
         bool applySettings();
 
     public:

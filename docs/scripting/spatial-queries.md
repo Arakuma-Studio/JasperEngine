@@ -128,9 +128,14 @@ local function visibleAround(self, p)
 end
 ```
 
-`MeshOverlapHit`: `entity`, `kind` (a `MeshRaycast` bit), `instance` (-1 unless an instance). The
-default kinds are meshes, instances and bounds-only objects (points, lines, particles); terrains
-and UI rects are left out (their bounds cover the whole map or the screen) unless `kinds` asks.
+`MeshOverlapHit`: `entity`, `kind` (a `MeshRaycast` bit), `instance` (-1 unless an instance),
+`foliageId` and `prototype`. The default kinds are meshes, instances, bounds-only objects (points,
+lines, particles) and a Terrain's trees; terrains and UI rects are left out (their bounds cover the
+whole map or the screen), and details (grass) as rays leave them out, unless `kinds` asks. A tree is
+one hit by its mesh's bounds, with its Terrain as `entity`, its id in `foliageId` (what
+`Terrain:removeTreeInstance` takes) and its prototype index; a detail has `foliageId` 0 and its layer
+in `prototype`. Only resident trees (within Tree Distance of the camera) and placed details are found.
+A NonAlloc form gives the Terrain's id for each.
 
 ## Seeing and checking queries
 

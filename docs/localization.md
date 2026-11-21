@@ -62,7 +62,7 @@ editor and Development Builds (one warning per key and language).
 ```
 
 The message replaces the element's text (as text, never markup), so a keyed element holds only text;
-one with child elements is left as written (`HTMLUI-L10N-0001`). Rows of list, grid, tree and table
+one with child elements is left as written (`HTMLUI-LOC-0001`). Rows of list, grid, tree and table
 views and markup scripts insert are translated as they are made; a language change translates the
 same elements again in place. The document's root gets the language and `rtl` for right-to-left
 languages. Lua: `element:setL10n(key, args)`, `doc:translate()` after editing `data-l10n-*`

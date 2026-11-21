@@ -519,7 +519,9 @@ void Runner::formatText(std::string_view key, std::string_view source, std::stri
     }
     l10n::FormatOptions options;
     const std::string& language = Localization::getLanguage();
-    options.language = language.empty() ? std::string_view(program->sourceLanguage.empty() ? "en" : program->sourceLanguage) : std::string_view(language);
+    // (each branch a view of a string that outlives the call: "en" : sourceLanguage would be a temporary std::string)
+    options.language = !language.empty() ? std::string_view(language)
+                     : program->sourceLanguage.empty() ? std::string_view("en") : std::string_view(program->sourceLanguage);
     options.args = &messageArgs;
     options.showMissing = true;
     l10n::MessageFormat::format(source, options, out);

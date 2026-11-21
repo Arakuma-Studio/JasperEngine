@@ -38,6 +38,8 @@ namespace jasperengine::editor {
         void drawTools(float rowHeight);
         void drawPlayControls(float rowHeight);
         void drawLayoutMenu(float rowHeight);
+        // Record Input (input-recorder-and-input-scripts R36): the button and its menu
+        void drawRecordInput(float rowHeight);
         // The "Tools" strip: toolbar buttons project editor scripts declare (---@toolbar)
         float toolsStripWidth(float rowHeight) const;
         void drawToolsStrip(float rowHeight);
@@ -64,6 +66,8 @@ namespace jasperengine::editor {
         void pauseOnly();
         bool canStopSession() const;
         void stopSession();
+        // Replay Input...: a .input.json picked from the recordings folder, replayed from Play's start
+        void replayInput();
 
         // Transform tools act on every open Scene view that supports them
         Tool getTool() const;
