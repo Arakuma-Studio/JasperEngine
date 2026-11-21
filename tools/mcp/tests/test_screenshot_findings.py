@@ -3,12 +3,14 @@ trigger it (an over-bright light, a black scene, a camera facing away, a selecte
 a tiny object, a material with a missing texture, two coplanar quads) and a clean scene with none;
 where the fix is a call, it is made and the finding goes. The checks' cost is reported against the
 10 ms budget (harness.over_budget). The z-fighting plane buckets themselves are a gtest
-(FrameChecksZFighting.*), the Frame Checks overlay's toggle is the display flag frame_checks.
+(FrameChecksZFighting.*). The Scene view's Frame Checks overlay (R9, the display flag frame_checks) is
+turned on over two of the scenes and the editor shot to build/test-results/screenshot-findings/.
 """
 
 from __future__ import annotations
 
 import re
+import shutil
 
 import harness
 from harness import Editor
@@ -44,6 +46,23 @@ async def shoot(ed: Editor, s: dict, view: str, label: str) -> dict:
         ed.check({"kind", "severity", "message", "fix"} <= set(finding), f"{label}: a finding's fields: {finding}")
     COSTS[f"{label} {view}"] = r["findings_ms"]
     return r
+
+
+async def overlay_shot(ed: Editor, s: dict, name: str) -> None:
+    """R9: Frame Checks on in the scene's view (a view setting, saved per user), drawn over it; the
+    whole editor shot to build/test-results/screenshot-findings/ as evidence"""
+    await ed.call("set_scene_camera", scene=s["scene"], display={"frame_checks": True})
+    workspace = (ed.project / ".jasperengine" / "user" / "workspace.yaml").read_text()
+    ed.check("frameChecks: true" in workspace, "Frame Checks is saved with the user's workspace")
+    await ed.call("focus_window", window="scene", scene=s["scene"])
+    # its list refreshes twice a second
+    await ed.call("wait", frames=90)
+    relative = f"screenshots/{name}.png"
+    r = await ed.call_raw("screenshot", {"view": "editor", "max_width": 1600, "save_path": relative})
+    ed.check(not r.is_error and r.images, f"editor screenshot {name}: {r.text[:300]}")
+    out = harness.REPO / "build" / "test-results" / "screenshot-findings"
+    out.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(ed.project / relative, out / f"{name}.png")
 
 
 def kinds(r: dict) -> list[str]:
@@ -118,6 +137,7 @@ async def test_selected_object_off_screen(ed: Editor):
     ed.check_eq(out["fix"], f"frame_entity {{entity: {far}}}")
     game = await shoot(ed, s, "game", "off-screen")
     ed.check(f"entity: {s['camera']}" in finding(ed, game, "subject_out_of_frame")["fix"], f"the Game view's fix moves its camera: {game}")
+    await overlay_shot(ed, s, "frame-checks-off-screen")
     await ed.call("frame_entity", scene=s["scene"], entity=far)
     await ed.call("wait", frames=30)
     r = await shoot(ed, s, "scene", "off-screen framed")
@@ -164,6 +184,7 @@ async def test_coplanar_quads(ed: Editor):
     fight = finding(ed, r, "z_fighting")
     ed.check_eq(sorted(fight["entities"]), sorted([floor, decal]))
     ed.check(fight["fix"].startswith(f"set_transform {{entity: {decal},"), f"the smaller one moves: {fight}")
+    await overlay_shot(ed, s, "frame-checks-z-fighting")
     position = [float(v) for v in re.search(r"position: \[([^\]]*)\]", fight["fix"]).group(1).split(",")]
     await ed.call("set_transform", scene=s["scene"], entity=decal, position=position, space="world")
     r = await shoot(ed, s, "scene", "coplanar fixed")
