@@ -6,16 +6,25 @@
 // age gets the normals output (the compiler wraps its main), from the vertex stage when that
 // stage writes one, else "none"; an export ships them only with Cavity.
 
+#include "shader/ShaderVariantCollector.h"
+
+#include "Scene.h"
+#include "object/Primitive.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "subsystem/RenderSystem.h"
 
 #include <gtest/gtest.h>
 
+#include "support/EditorTestSupport.h"
+
+#include <set>
+
 #include <string>
 #include <vector>
 
 using namespace jasperengine;
+using namespace jasperengine::editor;
 
 namespace {
 
@@ -175,4 +184,71 @@ TEST(CavityVariants, OldDepthForksWriteNoNormalsAndCompile){
         EXPECT_EQ(fragment.find("v_depthNormal"), std::string::npos) << "a vertex stage without the normal leaves the fragment none to read";
         expectCompiles(key, &sources);
     }
+}
+
+namespace {
+
+    class CavityVariantKeys : public ::testing::Test {
+    protected:
+        static void SetUpTestSuite(){
+            editor::test::ensureEngine();
+        }
+    };
+
+    // what an export of the scene ships of Cavity: its fullscreen variants and its depth
+    // programs with normals
+    struct CavityKeys {
+        std::set<uint64_t> cavity;
+        size_t depthWithNormals = 0;
+        size_t depth = 0;
+    };
+
+    CavityKeys cavityVariantsCollect(Scene& scene, bool scriptsSetPostProcessing){
+        ShaderVariantContent content;
+        content.registry = &scene;
+        content.entities = scene.getEntityList();
+        std::set<ShaderKey> keys;
+        ShaderVariantCollector::collectScene(&scene, content, {}, keys, {}, false, scriptsSetPostProcessing);
+        CavityKeys out;
+        for (ShaderKey key : keys){
+            const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
+            if (ShaderPool::getShaderTypeFromKey(key) == ShaderType::CAVITY)
+                out.cavity.insert(properties);
+            if (ShaderPool::getShaderTypeFromKey(key) == ShaderType::DEPTH){
+                out.depth++;
+                if (properties & ShaderPool::getDepthNormalsProperty())
+                    out.depthWithNormals++;
+            }
+        }
+        return out;
+    }
+
+}
+
+// S92 AC4: an export with Cavity off everywhere and no script setting post-processing ships no
+// Cavity shader; with it on, its type's variant and every depth program with normals; a script
+// that may switch it ships every type and both depth forms
+TEST_F(CavityVariantKeys, ExportShipsCavityOnlyWhenAScenesOrScriptsMayUseIt){
+    Scene scene;
+    Primitive cube(&scene);
+    cube.createBox(1.0f, 1.0f, 1.0f);
+
+    const CavityKeys off = cavityVariantsCollect(scene, false);
+    EXPECT_TRUE(off.cavity.empty());
+    EXPECT_EQ(off.depthWithNormals, 0u);
+
+    PostProcessingSettings settings = scene.getPostProcessing();
+    settings.cavityEnabled = true;
+    settings.cavityType = CavityType::SCREEN;
+    scene.setPostProcessing(settings);
+    const CavityKeys on = cavityVariantsCollect(scene, false);
+    EXPECT_EQ(on.cavity, std::set<uint64_t>{ShaderPool::getCavityProperties(true, false)});
+    EXPECT_GT(on.depthWithNormals, 0u);
+    EXPECT_EQ(on.depthWithNormals, on.depth) << "a depth program without normals ships though Cavity is always on";
+
+    settings.cavityEnabled = false;
+    scene.setPostProcessing(settings);
+    const CavityKeys scripted = cavityVariantsCollect(scene, true);
+    EXPECT_EQ(scripted.cavity.size(), 3u);
+    EXPECT_GT(scripted.depthWithNormals, 0u);
 }
