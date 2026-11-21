@@ -128,8 +128,8 @@
             "reason": "S31's grandfathered limit lowered by S50: 2070 chars when its ops moved to jasper://docs/tilemaps, +5%"
         },
         "assert_ui": {
-            "limit": 2170,
-            "reason": "grandfathered by S31: 2067 chars when the limits were set, +5% (tighter than its HTML UI cap 2400)"
+            "limit": 2031,
+            "reason": "grandfathered by S31: 2067 chars when the limits were set, +5% (tighter than its HTML UI cap 2400); 2031 measured after mcp-budget-trim cut wording (the craftsman merge took core over 99,000)"
         },
         "create_entity": {
             "limit": 2196,
@@ -140,8 +140,8 @@
             "reason": "grandfathered by S31: 1977 chars when the limits were set, +5%"
         },
         "build_project": {
-            "limit": 2015,
-            "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%; lowered to its size when Target Platforms cut its result field list; build-and-run-on-device added run_device and patch (core paid for them: run_build lost its result field list)"
+            "limit": 1951,
+            "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%; lowered to its size when Target Platforms cut its result field list; build-and-run-on-device added run_device and patch (core paid for them: run_build lost its result field list); 1951 measured after mcp-budget-trim cut the job sentence and what method already says (the craftsman merge took core over 99,000)"
         },
         "send_input": {
             "limit": 2000,
@@ -156,16 +156,16 @@
             "reason": "grandfathered by S31: 1793 chars when the limits were set, +5%; 2280 measured on the upstream sync (upstream's Stochastic Tiling layers); 2369 with S11's hex_tiling and hex_rotation beside them; 2719 with agent-authoring's blend map slots (index, path) and Terrain Layer factors (uv_scale, uv_offset, tint, four factors)"
         },
         "inspect_ui": {
-            "limit": 1792,
-            "reason": "grandfathered by S31: 1707 chars when the limits were set, +5% (tighter than its HTML UI cap 1956)"
+            "limit": 1687,
+            "reason": "grandfathered by S31: 1707 chars when the limits were set, +5% (tighter than its HTML UI cap 1956); 1687 measured after mcp-budget-trim cut what the detail and at parameters already say (the craftsman merge took core over 99,000)"
         },
         "play": {
-            "limit": 1776,
-            "reason": "grandfathered by S31 at 1555 chars (+5% = 1632); S24 added keep_changes (+154): 1709 when S31 merged S24; input-recorder-and-input-scripts' input (replay a .input.json from Play's start) beside project-test-runner's data, after both trimmed its description (that spec's budget rule)"
+            "limit": 1704,
+            "reason": "grandfathered by S31 at 1555 chars (+5% = 1632); S24 added keep_changes (+154): 1709 when S31 merged S24; input-recorder-and-input-scripts' input (replay a .input.json from Play's start) beside project-test-runner's data, after both trimmed its description (that spec's budget rule); 1704 measured after mcp-budget-trim cut the job sentence (timeout_seconds and wait say it) and wording (the craftsman merge took core over 99,000)"
         },
         "wait": {
-            "limit": 1610,
-            "reason": "grandfathered by S31: 1534 chars when the limits were set, +5%"
+            "limit": 1464,
+            "reason": "grandfathered by S31: 1534 chars when the limits were set, +5%; 1464 measured after mcp-budget-trim cut its result field list (the craftsman merge took core over 99,000)"
         },
         "create_ui_document": {
             "limit": 1300,
