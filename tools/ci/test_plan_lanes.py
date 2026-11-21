@@ -175,12 +175,13 @@ class Rules(unittest.TestCase):
 
     def test_push_runs_the_builds_only(self):
         r = decide("push", plan(["engine/core/Foo.cpp"], mcp=["test_a.py"]))
-        self.assertEqual(runs(r), {"changes", "unit", "htmlui", "smoke", *pl.PLATFORM_LANES})
+        self.assertEqual(runs(r), {"changes", "unit", "asan", "htmlui", "smoke", *pl.PLATFORM_LANES})
         self.assertIn("build only", r["lanes"]["unit"]["why"])
         self.assertEqual(r["mcp"]["mode"], "none")
-        # ASan keeps no ccache entry (the 10 GB budget): a build on push would warm nothing
-        self.assertIn("no ccache entry", r["lanes"]["asan"]["why"])
-        self.assertEqual(r["build_only"], ["unit", "htmlui", "windows-editor-tests"])
+        # ASan keeps a ccache entry per binary (line tables only fit them in the budget), which only main saves
+        self.assertIn("build only", r["lanes"]["asan"]["why"])
+        self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["unit_run"])), ["core", "editor"])
+        self.assertEqual(r["build_only"], ["unit", "asan", "htmlui", "windows-editor-tests"])
 
     def test_push_runs_what_the_queue_left_out(self):
         # the merge queue does not run the advisory lanes, so the push to main does: every merged change
@@ -200,8 +201,8 @@ class Rules(unittest.TestCase):
         self.assertIn("every game export", r["lanes"]["smoke"]["why"])
         # it follows the list: a lane taken off it is the queue's again, and the push builds only
         r = decide("push", p, advisory=("mcp",))
-        self.assertEqual(runs(r), {"changes", "unit", "htmlui", "mcp", *pl.PLATFORM_LANES})
-        self.assertEqual(r["build_only"], ["unit", "htmlui", "windows-editor-tests"])
+        self.assertEqual(runs(r), {"changes", "unit", "asan", "htmlui", "mcp", *pl.PLATFORM_LANES})
+        self.assertEqual(r["build_only"], ["unit", "asan", "htmlui", "windows-editor-tests"])
         self.assertIn("build only", r["lanes"]["unit"]["why"])
         # a push nothing reads runs nothing
         r = decide("push", plan(["README.md"], builds=()), advisory=ADVISORY)
@@ -268,8 +269,8 @@ class Rules(unittest.TestCase):
             {"job": "editor-2", "suite": "editor", "part": "2/2", "other": "1"}])
         both = [line for line in pl.github_output(doc, {"core": True, "editor": True}).splitlines() if line.startswith("asan_jobs=")]
         self.assertEqual(json.loads(both[0].split("=", 1)[1]), [{"job": "core", "suite": "core"}, {"job": "editor", "suite": "editor"}])
-        # a lane that does not run has no jobs (push builds the unit trees, not ASan's)
-        doc["lanes"] = dict(doc["lanes"], asan={"run": False, "why": "push"})
+        # a lane that does not run has no jobs
+        doc["lanes"] = dict(doc["lanes"], asan={"run": False, "why": "no unit test sees the change"})
         self.assertIn("asan_jobs=[]", pl.github_output(doc, {"core": True, "editor": True}).splitlines())
 
     def test_unit_jobs(self):

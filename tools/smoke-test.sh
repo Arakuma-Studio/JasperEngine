@@ -116,6 +116,9 @@ cp -r "$PROJECT" "$ROOT/$OUT/project"
 # cache's own ccache.conf decides
 CCACHE_FLAGS=()
 [[ -n "${CCACHE_MAXSIZE:-}" ]] && CCACHE_FLAGS=(-e "CCACHE_MAXSIZE=$CCACHE_MAXSIZE")
+# JASPERENGINE_DEBUG_INFO when set (CI: lines, the game's objects with line tables only,
+# engine/cmake/JasperDebugInfo.cmake)
+[[ -n "${JASPERENGINE_DEBUG_INFO:-}" ]] && CCACHE_FLAGS+=(-e "JASPERENGINE_DEBUG_INFO=$JASPERENGINE_DEBUG_INFO")
 
 # DOCKER_CPUS caps the CPUs of the run (and llvmpipe/lavapipe's thread count) on a shared host.
 CPU_FLAGS=()

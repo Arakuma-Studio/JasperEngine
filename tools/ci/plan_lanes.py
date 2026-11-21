@@ -17,10 +17,10 @@ applies CI's stricter rules:
   the test lanes and test runs --advisory names (ci.yml's ADVISORY_LANES): they cannot block a merge,
   so the queue does not wait for them (listed under advisory_off; a test run of a job that still
   builds, under build_only too). Lint and the platform builds stay whatever the list says;
-- push: the build lanes (caches and plan inputs), not ASan, which keeps no cache entry, and smoke when a
-  game's export reads the change, so its Compile builds' ccache stays warm; the test lanes build only
-  (build_only: their tests ran in the merge queue), but for the advisory ones the queue left out, which
-  run as the queue would have run them;
+- push: the build lanes (caches and plan inputs), and smoke when a game's export reads the change, so its
+  Compile builds' ccache stays warm; the test lanes build only (build_only: their tests ran in the merge
+  queue; ASan's two binaries too, each keeping a ccache entry), but for the advisory ones the queue left
+  out, which run as the queue would have run them;
 - full (workflow_dispatch with full: true): every lane, the whole MCP CI suite;
 - nightly: as full, and MCP also runs the CI_EXCLUDED files CI can run (NIGHTLY_LEFT_OUT says which
   it cannot);
@@ -259,7 +259,7 @@ def run_advisory_on_push(result: dict, advisory: set[str], queue: dict) -> None:
             lanes[name] = {"run": queue["lanes"][name]["run"],
                            "why": f"push to main: advisory (ADVISORY_LANES), so not run in the merge queue: "
                                   f"{queue['lanes'][name]['why']}"}
-        elif name in ("unit", "htmlui"):
+        elif name in ("unit", "asan", "htmlui"):
             result["build_only"].append(name)
     if "mcp" in advisory:
         result["mcp"] = queue["mcp"]
@@ -319,7 +319,7 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
             lane(name, True, f"push to main: the build keeps the caches warm ({first} changed)")
         for name in ("unit", "htmlui"):
             lane(name, True, "push to main: build only (the caches and the deps dumps); its tests ran in the merge queue")
-        lane("asan", False, "push to main: ASan keeps no ccache entry (the 10 GB budget) and its tests ran in the merge queue")
+        lane("asan", True, "push to main: build only (each binary's ccache entry); its tests ran in the merge queue")
         for name in ("lint", "mcp"):
             lane(name, False, "push to main: its tests ran in the merge queue")
         # only main saves caches: the games' Compile builds would otherwise never find a warm ccache

@@ -45,6 +45,12 @@ env:
   # no precompiled headers (tools/build.sh, tools/ci/macos.sh): a GCC one is not the same bytes twice, so
   # a lost ccache entry of it misses every unit built on it; warm builds are faster without
   JASPERENGINE_PCH: "OFF"
+  # line tables only where a build has debug information (engine/cmake/JasperDebugInfo.cmake; tools/build.sh,
+  # tools/smoke-test.sh and CMake's own default pass it on): backtraces and sanitizer reports keep each
+  # frame's function and file:line, and the objects, so the ccache entries, are a fraction of the size
+  # (MSVC has no such level: Windows keeps /Z7). build-release.yml's editors and players, local builds and
+  # users' exported games keep full debug information
+  JASPERENGINE_DEBUG_INFO: lines
 
 defaults:
   run:
@@ -219,7 +225,7 @@ jobs:
       - uses: ./.github/actions/ccache-restore
         with:
           lane: linux
-          max-size: 1.6G
+          max-size: 0.95G
           toolchain: ${{ steps.image.outputs.tag }}
 
       - name: Build the editor and the engine sample project
@@ -312,13 +318,11 @@ jobs:
         id: image
         with:
           target: linux
-      # only the core tests keep an entry (the 10 GB budget, docs/testing.md "CI"): the editor's
-      # RelWithDebInfo working set is 4 GB
+      # an entry per binary (docs/testing.md "CI"), both editor parts restoring the editor's
       - uses: ./.github/actions/ccache-restore
-        if: matrix.suite == 'core'
         with:
           lane: unit-${{ matrix.suite }}
-          max-size: 1.4G
+          max-size: ${{ matrix.suite == 'core' && '0.4G' || '0.85G' }}
           toolchain: ${{ steps.image.outputs.tag }}
 
       # (on push, as the tests below, a failure does not fail the job: its result is its build's)
@@ -468,9 +472,8 @@ jobs:
 
       # one entry per binary: the lead's build holds both parts' objects
       - uses: ./.github/actions/ccache-save
-        # the lead of each suite only (both editor parts hold the same objects); unit-editor keeps no
-        # cache entry: its working set does not fit the repository's 10 GB budget
-        if: always() && env.UNIT_LEAD == 'true' && matrix.suite == 'core'
+        # the lead of each suite only (both editor parts hold the same objects)
+        if: always() && env.UNIT_LEAD == 'true'
         with:
           lane: unit-${{ matrix.suite }}
           prune: 'true'
@@ -486,9 +489,9 @@ jobs:
 
   # One job per test binary, side by side (tools/ci/plan_lanes.py asan_jobs), as the unit lane: in one
   # job a cold core build (79-116 min), the core tests (90) and the editor's build (168-175) left the
-  # editor tests no time in 270 min (merge-queue runs 44582666848, 44487933891, 44416194181). No ccache
-  # entry: each binary's working set is over what the 10 GB budget has left (docs/testing.md "CI"),
-  # so it runs on push only while advisory (the merge queue does not run it then).
+  # editor tests no time in 270 min (merge-queue runs 44582666848, 44487933891, 44416194181). Each keeps
+  # a ccache entry (docs/testing.md "CI"), so a push to main builds them, and runs their tests while
+  # advisory (the merge queue does not run them then).
   asan:
     name: asan (${{ matrix.job }})
     needs: changes
@@ -496,6 +499,9 @@ jobs:
     runs-on: ubuntu-latest
     # the editor's cold build and its tests (50-95 min, estimated)
     timeout-minutes: 330
+    permissions:
+      contents: read
+      actions: write  # ccache-save deletes the lane's older entry as soon as it saved the new one (push)
     strategy:
       fail-fast: false
       matrix:
@@ -511,6 +517,11 @@ jobs:
         id: image
         with:
           target: linux
+      - uses: ./.github/actions/ccache-restore
+        with:
+          lane: asan-${{ matrix.suite }}
+          max-size: ${{ matrix.suite == 'core' && '0.8G' || '1.7G' }}
+          toolchain: ${{ steps.image.outputs.tag }}
       # GPU suites included: they run under Xvfb on Mesa (tools/sanitizers/lsan.supp); the unit lane's filters
       - name: jasperengine-${{ matrix.suite }}-tests under ASan and UBSan
         # under the job's limit: a step past its own timeout fails (an advisory failure), where the job's
@@ -520,6 +531,8 @@ jobs:
           SUITE: ${{ matrix.suite }}
           FILTER_CORE: ${{ needs.changes.outputs.unit_filter_core }}
           FILTER_EDITOR: ${{ needs.changes.outputs.unit_filter_editor }}
+          # a push to main that only builds (the merge queue ran the tests): the cache
+          BUILD_ONLY: ${{ contains(fromJSON(needs.changes.outputs.build_only), 'asan') && 'RUN=0 ' || '' }}
         run: |
           filter="FILTER_${SUITE^^}"
           # the *GpuSlow suites (docs/testing.md Naming: over 5 min a test under ASan) run in the nightly
@@ -527,12 +540,13 @@ jobs:
           f="${!filter}"
           [[ -n "$f" ]] || f="*"
           if [[ "$f" == *-* ]]; then f="$f:*GpuSlow*"; else f="$f-*GpuSlow*"; fi
-          tools/ci/logged.sh "asan-$SUITE" "SANITIZE=address,undefined UNIT_SUITE=$SUITE UNIT_TEST_ARGS=$(printf %q "--gtest_filter=$f") tools/build.sh unit-tests"
+          tools/ci/logged.sh "asan-$SUITE" "${BUILD_ONLY}SANITIZE=address,undefined UNIT_SUITE=$SUITE UNIT_TEST_ARGS=$(printf %q "--gtest_filter=$f") tools/build.sh unit-tests"
 
-      # what an entry would take (none is kept): the job's cache started empty, so it holds this binary's objects
-      - name: ccache size
+      - uses: ./.github/actions/ccache-save
         if: always()
-        run: du -sh build/.cache/ccache || true
+        with:
+          lane: asan-${{ matrix.suite }}
+          prune: 'true'
       - uses: ./.github/actions/report
         if: always()
         with:
@@ -562,11 +576,11 @@ jobs:
         id: image
         with:
           target: linux
-      # a Release tree of 2,176 compiles: 1.66 GB of ccache, 28-36 min cold
+      # a Release tree of 2,176 compiles: 0.78 GB of ccache with line tables only, 28-36 min cold
       - uses: ./.github/actions/ccache-restore
         with:
           lane: htmlui
-          max-size: 1.7G
+          max-size: 0.85G
           toolchain: ${{ steps.image.outputs.tag }}
       # the performance tests' targets on a shared 4-vCPU runner (compat/PerfFixtures.h)
       - name: jasperengine-htmlui-tests (OpenGL)
@@ -685,6 +699,9 @@ jobs:
     if: needs.changes.outputs.run_smoke == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 300
+    permissions:
+      contents: read
+      actions: write  # ccache-save deletes the lane's older entry as soon as it saved the new one (push)
     env:
       JASPER_CI_REPRO: |-
         SMOKE_METHOD=compile SMOKE_DIR=build/smoke-post-processing tools/smoke-test.sh tools/fixtures/post-processing
@@ -705,6 +722,13 @@ jobs:
         id: image
         with:
           target: linux
+      # the player runtime and the two Compile builds (tools/smoke-test.sh mounts the same directory): 1.9 GB,
+      # of which what is left of the budget keeps the last-used part, the second Compile build (docs/testing.md "CI")
+      - uses: ./.github/actions/ccache-restore
+        with:
+          lane: smoke
+          max-size: 0.5G
+          toolchain: ${{ steps.image.outputs.tag }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: editor-install
@@ -750,6 +774,11 @@ jobs:
             build/smoke-*/*.log
           retention-days: 14
           if-no-files-found: ignore
+      - uses: ./.github/actions/ccache-save
+        if: always()
+        with:
+          lane: smoke
+          prune: 'true'
       - uses: ./.github/actions/report
         if: always()
         with:
@@ -785,7 +814,7 @@ jobs:
       - uses: ./.github/actions/ccache-restore
         with:
           lane: web
-          max-size: 0.6G
+          max-size: 0.3G
           toolchain: ${{ steps.image.outputs.tag }}
 
       - name: Web presets and option errors
@@ -859,7 +888,7 @@ jobs:
       - uses: ./.github/actions/ccache-restore
         with:
           lane: android
-          max-size: 0.7G
+          max-size: 0.3G
           toolchain: ${{ steps.image.outputs.tag }}
       # Gradle's distribution and dependencies (tools/build.sh sets GRADLE_USER_HOME=build/.cache/gradle)
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -917,7 +946,7 @@ jobs:
       matrix:
         include:
           - part: editor
-            ccache: 1.0G
+            ccache: 0.95G
           - part: engine-glcore
             ccache: ''
           - part: engine-d3d11
@@ -1079,7 +1108,7 @@ jobs:
       - uses: ./.github/actions/ccache-restore
         with:
           lane: macos
-          max-size: 1.4G
+          max-size: 0.9G
 
       - name: Editor (arm64)
         run: tools/ci/macos.sh editor
@@ -1138,7 +1167,7 @@ jobs:
   # entry already, this catches a failed prune). Housekeeping, not a lane: Check skips it.
   caches:
     name: caches
-    needs: [linux, unit, htmlui, smoke, web, android, windows, macos]
+    needs: [linux, unit, asan, htmlui, smoke, web, android, windows, macos]
     if: always() && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1163,7 +1192,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           for prefix in plan-inputs- gradle- ccache-linux- ccache-web- ccache-android- ccache-windows-editor- \
-                        ccache-macos- ccache-unit-core- ccache-htmlui-; do
+                        ccache-macos- ccache-unit-core- ccache-unit-editor- ccache-asan-core- ccache-asan-editor- \
+                        ccache-htmlui- ccache-smoke-; do
               gh cache list --repo "$GITHUB_REPOSITORY" --ref refs/heads/main --key "$prefix" --sort created_at \
                   --order desc --limit 100 --json id,key --jq '.[1:][] | "\(.id) \(.key)"' |
                   while read -r id key; do
