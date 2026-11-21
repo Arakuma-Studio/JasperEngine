@@ -15,6 +15,7 @@
 #include "lua.hpp"
 
 #include "LuaBridge.h"
+#include "script/binding/SceneConstructors.h"
 #include "LuaFunction.h"
 
 #include "Scene.h"
@@ -416,7 +417,7 @@ void LuaBinding::registerCullingClasses(lua_State *L){
     // is released; a group kept in a local keeps working
     luabridge::getGlobalNamespace(L)
         .beginClass<CullingGroup>("CullingGroup")
-        .addConstructor<void (*) (Scene*)>()
+        .addConstructor(sceneconstructors::ofScene<CullingGroup>())
         // Ends the group: isValid() is false from then on
         .addFunction("dispose", &CullingGroup::dispose)
         .addFunction("isValid", &CullingGroup::isValid)

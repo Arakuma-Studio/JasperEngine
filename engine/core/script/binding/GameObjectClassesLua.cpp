@@ -19,6 +19,7 @@
 #include "lua.hpp"
 
 #include "LuaBridge.h"
+#include "script/binding/SceneConstructors.h"
 #include "LuaBridgeAddon.h"
 #include "LuaFunction.h"
 #include "Scene.h"
@@ -1488,7 +1489,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<GameObject, EntityHandle>("GameObject")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<GameObject>(), sceneconstructors::ofEntity<GameObject>())
         .addStaticFunction("instantiate", &luaInstantiate)
         .addStaticFunction("destroy", &luaDestroy)
         .addStaticFunction("destroyImmediate", &luaDestroyImmediate)
@@ -1770,7 +1771,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Camera, GameObject>("Camera")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Camera>(), sceneconstructors::ofEntity<Camera>())
         .addProperty("enabled", &Camera::isEnabled, &Camera::setEnabled)
         // its Pixel Perfect Camera, nil without one (S41)
         .addFunction("getPixelPerfectCamera", +[](Camera* self) -> std::optional<PixelPerfectCamera> {
@@ -1837,7 +1838,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Light, GameObject>("Light")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Light>(), sceneconstructors::ofEntity<Light>())
         .addProperty("enabled", &Light::isEnabled, &Light::setEnabled)
         .addProperty("cullingMask", &getLuaCullingMask<Light>, &setLuaCullingMask<Light>)
         .addProperty("shading", &Light::getShading, &Light::setShading)
@@ -1901,7 +1902,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Light2D, GameObject>("Light2D")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Light2D>(), sceneconstructors::ofEntity<Light2D>())
         .addProperty("enabled", &Light2D::isEnabled, &Light2D::setEnabled)
         .addProperty("color", &Light2D::getColor, (void(Light2D::*)(Vector3))&Light2D::setColor)
         .addFunction("setColor", (void(Light2D::*)(const float, const float, const float))&Light2D::setColor)
@@ -1929,7 +1930,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     // S57's capsule shadows
     luabridge::getGlobalNamespace(L)
         .deriveClass<CapsuleShadowCaster, GameObject>("CapsuleShadowCaster")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<CapsuleShadowCaster>(), sceneconstructors::ofEntity<CapsuleShadowCaster>())
         .addProperty("enabled", &CapsuleShadowCaster::isEnabled, &CapsuleShadowCaster::setEnabled)
         .addProperty("castShadows", &CapsuleShadowCaster::getCastShadows, &CapsuleShadowCaster::setCastShadows)
         .addProperty("capsuleCount", &CapsuleShadowCaster::getCapsuleCount)
@@ -1951,7 +1952,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<ShadowCaster2D, GameObject>("ShadowCaster2D")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<ShadowCaster2D>(), sceneconstructors::ofEntity<ShadowCaster2D>())
         .addProperty("shape", &ShadowCaster2D::getShape, &ShadowCaster2D::setShape)
         .addFunction("addVertex", (void(ShadowCaster2D::*)(float, float))&ShadowCaster2D::addVertex)
         .addFunction("clearVertices", &ShadowCaster2D::clearVertices)
@@ -1976,7 +1977,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<ReflectionProbe, GameObject>("ReflectionProbe")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<ReflectionProbe>(), sceneconstructors::ofEntity<ReflectionProbe>())
         .addProperty("mode", &ReflectionProbe::getMode, &ReflectionProbe::setMode)
         .addProperty("updateMode", &ReflectionProbe::getUpdateMode, &ReflectionProbe::setUpdateMode)
         .addProperty("boxOffset", &ReflectionProbe::getBoxOffset, (void(ReflectionProbe::*)(Vector3))&ReflectionProbe::setBoxOffset)
@@ -2031,7 +2032,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     // Pavel Dobryakov's WebGL fluid on a GameObject (GameObject > Effects > Fluid Simulation)
     luabridge::getGlobalNamespace(L)
         .deriveClass<FluidSimulation, GameObject>("FluidSimulation")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<FluidSimulation>(), sceneconstructors::ofEntity<FluidSimulation>())
         .addProperty("enabled", &FluidSimulation::isEnabled, &FluidSimulation::setEnabled)
         .addProperty("output", &FluidSimulation::getOutput, &FluidSimulation::setOutput)
         .addProperty("interactive", &FluidSimulation::isInteractive, &FluidSimulation::setInteractive)
@@ -2094,7 +2095,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<LocalVolumetricFog, GameObject>("LocalVolumetricFog")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<LocalVolumetricFog>(), sceneconstructors::ofEntity<LocalVolumetricFog>())
         .addProperty("shape", &LocalVolumetricFog::getShape, &LocalVolumetricFog::setShape)
         .addProperty("size", &LocalVolumetricFog::getSize, (void(LocalVolumetricFog::*)(Vector3))&LocalVolumetricFog::setSize)
         .addFunction("setSize", (void(LocalVolumetricFog::*)(const float, const float, const float))&LocalVolumetricFog::setSize)
@@ -2111,7 +2112,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Mesh, GameObject>("Mesh")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Mesh>(), sceneconstructors::ofEntity<Mesh>())
         .addProperty("enabled", &Mesh::isEnabled, &Mesh::setEnabled)
         .addFunction("setTexture", 
             luabridge::overload<const std::string&>(&Mesh::setTexture),
@@ -2249,7 +2250,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Primitive, Mesh>("Primitive")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Primitive>(), sceneconstructors::ofEntity<Primitive>())
         .addFunction("createPlane", 
             luabridge::overload<float, float>(&Primitive::createPlane),
             luabridge::overload<float, float, unsigned int>(&Primitive::createPlane))
@@ -2282,14 +2283,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Mirror, Primitive>("Mirror")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Mirror>(), sceneconstructors::ofEntity<Mirror>())
         .addProperty("normal", &Mirror::getNormal, (void(Mirror::*)(Vector3))&Mirror::setNormal)
         .addFunction("setNormal", (void(Mirror::*)(const float, const float, const float))&Mirror::setNormal)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Lattice, GameObject>("Lattice")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Lattice>(), sceneconstructors::ofEntity<Lattice>())
         .addProperty("enabled", &Lattice::isEnabled, &Lattice::setEnabled)
         .addFunction("getLatticeComponent", &Lattice::getLatticeComponent)
         .addFunction("setResolution", &Lattice::setResolution)
@@ -2438,7 +2439,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Terrain, Mesh>("Terrain")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Terrain>(), sceneconstructors::ofEntity<Terrain>())
         .addProperty("enabled", &Terrain::isEnabled, &Terrain::setEnabled)
         // T3 R48: the material's Quality and features
         .addProperty("terrainQuality", &Terrain::getTerrainQuality, &Terrain::setTerrainQuality)
@@ -2483,7 +2484,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Tilemap, Mesh>("Tilemap")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Tilemap>(), sceneconstructors::ofEntity<Tilemap>())
         .addProperty("enabled", &Tilemap::isEnabled, &Tilemap::setEnabled)
         .addFunction("findRectByString", &Tilemap::findRectByString)
         .addFunction("findTileByString", &Tilemap::findTileByString)
@@ -2524,7 +2525,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Model, Mesh>("Model")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Model>(), sceneconstructors::ofEntity<Model>())
         .addProperty("enabled", &Model::isEnabled, &Model::setEnabled)
         .addFunction("loadOBJ", &Model::loadOBJ)
         .addFunction("loadGLTF", &Model::loadGLTF)
@@ -2568,7 +2569,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<MeshPolygon, Mesh>("MeshPolygon")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<MeshPolygon>(), sceneconstructors::ofEntity<MeshPolygon>())
         .addFunction("addVertex", 
             luabridge::overload<Vector3>(&MeshPolygon::addVertex),
             luabridge::overload<float, float>(&MeshPolygon::addVertex))
@@ -2825,7 +2826,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Points, GameObject>("Points")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Points>(), sceneconstructors::ofEntity<Points>())
         .addProperty("enabled", &Points::isEnabled, &Points::setEnabled)
         .addProperty("maxPoints", &Points::getMaxPoints, &Points::setMaxPoints)
         .addFunction("addPoint", 
@@ -2905,7 +2906,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<LineRenderer, GameObject>("LineRenderer")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<LineRenderer>(), sceneconstructors::ofEntity<LineRenderer>())
         .addProperty("enabled", &LineRenderer::isEnabled, &LineRenderer::setEnabled)
         .addProperty("maxLines", &LineRenderer::getMaxLines, &LineRenderer::setMaxLines)
         .addFunction("addLine", 
@@ -3019,7 +3020,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     // / nothing added without one). Positions are the stored points, oldest first
     luabridge::getGlobalNamespace(L)
         .deriveClass<TrailRenderer, GameObject>("TrailRenderer")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<TrailRenderer>(), sceneconstructors::ofEntity<TrailRenderer>())
         .addProperty("enabled", &TrailRenderer::isEnabled, &TrailRenderer::setEnabled)
         .addProperty("time", &TrailRenderer::getTime, &TrailRenderer::setTime)
         .addProperty("minVertexDistance", &TrailRenderer::getMinVertexDistance, &TrailRenderer::setMinVertexDistance)
@@ -3085,7 +3086,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Sprite, Mesh>("Sprite")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Sprite>(), sceneconstructors::ofEntity<Sprite>())
         .addProperty("enabled", &Sprite::isEnabled, &Sprite::setEnabled)
         .addFunction("getShadowCaster2D", &Sprite::getShadowCaster2D)
         .addFunction("removeShadowCaster2D", &Sprite::removeShadowCaster2D)
@@ -3217,7 +3218,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<RectTransform, GameObject>("RectTransform")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<RectTransform>(), sceneconstructors::ofEntity<RectTransform>())
         .addProperty("enabled", &RectTransform::isEnabled, &RectTransform::setEnabled)
         .addFunction("setSize", &RectTransform::setSize)
         .addProperty("width", &RectTransform::getWidth, &RectTransform::setWidth)
@@ -3287,7 +3288,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<CanvasGroup, EntityHandle>("CanvasGroup")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<CanvasGroup>(), sceneconstructors::ofEntity<CanvasGroup>())
         .addProperty("enabled", &CanvasGroup::isEnabled, &CanvasGroup::setEnabled)
         .addProperty("alpha", &CanvasGroup::getAlpha, &CanvasGroup::setAlpha)
         .addProperty("interactable", &CanvasGroup::isInteractable, &CanvasGroup::setInteractable)
@@ -3338,7 +3339,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<LayoutGroup, RectTransform>("LayoutGroup")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<LayoutGroup>(), sceneconstructors::ofEntity<LayoutGroup>())
         .addProperty("type", &LayoutGroup::getType, &LayoutGroup::setType)
         .addProperty("useAllWrapSpace", &LayoutGroup::isUseAllWrapSpace, &LayoutGroup::setUseAllWrapSpace)
         .addProperty("wrapCellWidth", &LayoutGroup::getWrapCellWidth, &LayoutGroup::setWrapCellWidth)
@@ -3354,7 +3355,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Polygon, RectTransform>("Polygon")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Polygon>(), sceneconstructors::ofEntity<Polygon>())
         .addFunction("addVertex", 
             luabridge::overload<Vector3>(&Polygon::addVertex),
             luabridge::overload<float, float>(&Polygon::addVertex))
@@ -3410,7 +3411,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Text, RectTransform>("Text")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Text>(), sceneconstructors::ofEntity<Text>())
         .addFunction("setFixedSize", &Text::setFixedSize)
         .addProperty("fixedWidth", &Text::isFixedWidth, &Text::setFixedWidth)
         .addProperty("fixedHeight", &Text::isFixedHeight, &Text::setFixedHeight)
@@ -3668,7 +3669,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Image, RectTransform>("Image")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Image>(), sceneconstructors::ofEntity<Image>())
         .addFunction("setPatchMargin", 
             luabridge::overload<unsigned int>(&Image::setPatchMargin),
             luabridge::overload<unsigned int, unsigned int, unsigned int, unsigned int>(&Image::setPatchMargin))
@@ -3730,7 +3731,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Button, Image>("Button")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Button>(), sceneconstructors::ofEntity<Button>())
         .addFunction("getLabelObject", &Button::getLabelObject)
         .addProperty("label", &Button::getLabel, &Button::setLabel)
         .addProperty("labelColor", &Button::getLabelColor, (void(Button::*)(Vector4))&Button::setLabelColor)
@@ -3811,7 +3812,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Panel, Image>("Panel")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Panel>(), sceneconstructors::ofEntity<Panel>())
         .addFunction("getHeaderImageObject", &Panel::getHeaderImageObject)
         .addFunction("getHeaderContainerObject", &Panel::getHeaderContainerObject)
         .addFunction("getHeaderTextObject", &Panel::getHeaderTextObject)
@@ -3843,7 +3844,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Scrollbar, Image>("Scrollbar")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Scrollbar>(), sceneconstructors::ofEntity<Scrollbar>())
         .addFunction("getBarObject", &Scrollbar::getBarObject)
         .addProperty("type", &Scrollbar::getType, &Scrollbar::setType)
         .addProperty("barSize", &Scrollbar::getBarSize, &Scrollbar::setBarSize)
@@ -3867,7 +3868,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<Progressbar, Image>("Progressbar")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<Progressbar>(), sceneconstructors::ofEntity<Progressbar>())
         .addFunction("getFillObject", &Progressbar::getFillObject)
         .addProperty("type", &Progressbar::getType, &Progressbar::setType)
         .addProperty("value", &Progressbar::getValue, &Progressbar::setValue)
@@ -3890,7 +3891,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<InputField, Image>("InputField")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<InputField>(), sceneconstructors::ofEntity<InputField>())
         .addFunction("getTextObject", &InputField::getTextObject)
         .addFunction("getSelectionObject", &InputField::getSelectionObject)
         .addProperty("disabled", &InputField::getDisabled, &InputField::setDisabled)
@@ -3929,7 +3930,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     // ui-multitouch: the on-screen controls (input sources feeding Input actions)
     luabridge::getGlobalNamespace(L)
         .deriveClass<OnScreenStick, Image>("OnScreenStick")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<OnScreenStick>(), sceneconstructors::ofEntity<OnScreenStick>())
         .addProperty("enabled", [] (const OnScreenStick* self) -> bool { return self->getStick().enabled; }, [] (OnScreenStick* self, bool value) { self->getStick().enabled = value; })
         .addProperty("mode", [] (const OnScreenStick* self) -> OnScreenStickMode { return self->getStick().mode; }, [] (OnScreenStick* self, OnScreenStickMode value) { self->getStick().mode = value; })
         .addProperty("background", [] (const OnScreenStick* self) -> Entity { return self->getStick().background; }, [] (OnScreenStick* self, Entity value) { self->getStick().background = value; })
@@ -3956,7 +3957,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<OnScreenButton, Image>("OnScreenButton")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<OnScreenButton>(), sceneconstructors::ofEntity<OnScreenButton>())
         .addProperty("enabled", [] (const OnScreenButton* self) -> bool { return self->getControl().enabled; }, [] (OnScreenButton* self, bool value) { self->getControl().enabled = value; })
         .addProperty("action", [] (const OnScreenButton* self) -> std::string { return self->getControl().action; }, [] (OnScreenButton* self, std::string value) { self->getControl().action = value; })
         .addProperty("value", [] (const OnScreenButton* self) -> float { return self->getControl().value; }, [] (OnScreenButton* self, float value) { self->getControl().value = std::max(-1.0f, std::min(1.0f, value)); })
@@ -3971,7 +3972,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<TouchArea, Image>("TouchArea")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<TouchArea>(), sceneconstructors::ofEntity<TouchArea>())
         .addProperty("enabled", [] (const TouchArea* self) -> bool { return self->getArea().enabled; }, [] (TouchArea* self, bool value) { self->getArea().enabled = value; })
         .addProperty("horizontalAction", [] (const TouchArea* self) -> std::string { return self->getArea().horizontalAction; }, [] (TouchArea* self, std::string value) { self->getArea().horizontalAction = value; })
         .addProperty("verticalAction", [] (const TouchArea* self) -> std::string { return self->getArea().verticalAction; }, [] (TouchArea* self, std::string value) { self->getArea().verticalAction = value; })
@@ -4688,7 +4689,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
     // plane or nowhere (API only); its sound directly or through an AudioSource
     luabridge::getGlobalNamespace(L)
         .deriveClass<VideoPlayer, EntityHandle>("VideoPlayer")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addConstructor(sceneconstructors::ofScene<VideoPlayer>(), sceneconstructors::ofEntity<VideoPlayer>())
         .addProperty("enabled", &VideoPlayer::isEnabled, &VideoPlayer::setEnabled)
         .addProperty("source", &VideoPlayer::getSource, &VideoPlayer::setSource)
         .addProperty("clip", &VideoPlayer::getClip, &VideoPlayer::setClip)
@@ -4774,7 +4775,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .deriveClass<AudioSource, EntityHandle>("AudioSource")
         .addProperty("enabled", &AudioSource::isEnabled, &AudioSource::setEnabled)
         // Entity before bool: a number must bind the entity overload, not is3D
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity), void (*) (Scene*, bool)> ()
+        .addConstructor(sceneconstructors::ofScene<AudioSource>(), sceneconstructors::ofEntity<AudioSource>(), sceneconstructors::ofSceneWith<AudioSource, bool>())
         .addFunction("loadSound", &AudioSource::loadSound)
         .addFunction("destroySound", &AudioSource::destroySound)
         .addFunction("getGameObject", &AudioSource::getGameObject)

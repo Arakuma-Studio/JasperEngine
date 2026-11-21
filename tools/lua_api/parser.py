@@ -3780,6 +3780,8 @@ class Builder:
                 if not call.targs:
                     for arg in call.args:
                         targ = self.lambda_ctor_targ(arg)
+                        if targ is None:
+                            targ = self.scene_ctor_targ(arg)
                         if targ is not None:
                             c.lua_ctors.append(self.ctor_sig(c, targ))
             fs = re.match(r'^FunctionSubscribe<(.*?)\((.*)\)>$', c.cpp) or \
@@ -3792,6 +3794,23 @@ class Builder:
                     self.function_member(c, m)
                 else:
                     self.property_member(c, m)
+
+    @staticmethod
+    def scene_ctor_targ(arg):
+        # script/binding/SceneConstructors.h: sceneconstructors::ofScene<T>() is T(Scene*),
+        # ofEntity<T>() T(Scene*, Entity), ofSceneWith<T, A>() T(Scene*, A); None for other args
+        m = re.match(r'^sceneconstructors::(ofScene|ofEntity|ofSceneWith)<([^,<>]+)(?:,([^<>]+))?>\(\)$',
+                     ''.join(tok.t for tok in arg))
+        if not m:
+            return None
+        line, cond = arg[0].line, arg[0].cond
+        params = ['Scene', '*']
+        if m.group(1) == 'ofEntity':
+            params += [',', 'Entity']
+        elif m.group(1) == 'ofSceneWith' and m.group(3):
+            params += [','] + re.findall(r'[A-Za-z_][A-Za-z0-9_:]*|\S', m.group(3))
+        toks = ['void', '('] + params + [')']
+        return [Tok('id' if re.match(r'[A-Za-z_]', t) else 'op', t, line, cond) for t in toks]
 
     @staticmethod
     def lambda_ctor_targ(arg):
