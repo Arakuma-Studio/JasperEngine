@@ -32,7 +32,7 @@ namespace {
         report.method = "prebuilt";
         report.id = "20261119-142233-prebuilt";
         std::vector<ReachEdge> edges;
-        char path[96], asset[96], scene[64];
+        char path[112], asset[96], scene[64];   // path = "assets/" + asset: room for the whole asset
         for (int i = 0; i < 20000; i++) {
             std::snprintf(asset, sizeof(asset), "textures/area%02d/props/prop_%05d.png", i % 40, i);
             std::snprintf(path, sizeof(path), "assets/%s", asset);
