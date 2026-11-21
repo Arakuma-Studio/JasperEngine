@@ -389,8 +389,8 @@ The tier never turns Cavity off, because it's art direction, not a quality extra
 - R3: the depth-step mask compares the second difference of 1 / view z across opposite taps with
   5% of the centre's (affine on any plane, so slanted surfaces keep their lines).
 - R4: per tap valley adds `max(h - bias, 0)` and ridge `max(-h - bias, 0)`, both times the
-  attenuation and the tap's weight, then a fixed gain of 2 before Valley and Ridge. The kernel's
-  rings have a constant RMS radius (1 / sqrt(3) of the disk) for 4, 8 and 16 samples.
+  attenuation and the tap's weight, then a fixed gain of 2 before Valley and Ridge. Ring k of n
+  sits at (k + 0.5) / n of the disk, so 4, 8 and 16 samples share the mean radius (half the disk).
 - R5: the apply multiplies the display-encoded colour by `factor^(1 / 2.2)`: exact for a
   power-law encoding, close under sRGB and the tone curves.
 - §8 fog: Cavity fades with the analytic distance fog (linear, exponential, squared) at the

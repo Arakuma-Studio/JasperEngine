@@ -152,8 +152,9 @@ float cavityScreen(vec2 uv, float depthCentre){
 #ifdef CAVITY_WORLD
 // x valley, y ridge: the obscurance of the taps above the surface's plane and the openness of
 // those below it, on a fixed disk of rings of four arms whose radius is the world radius on
-// screen (its RMS radius 1 / sqrt(3) of it whatever the count, so the count changes smoothness,
-// not width), the 4n arms of n rings evenly spaced in angle
+// screen: ring k of n at (k + 0.5) / n of it, the n quantiles of one radial spread, so every
+// count has the same mean radius (half the disk) and the count changes smoothness, not width;
+// the 4n arms of n rings evenly spaced in angle
 vec2 cavityWorld(vec2 uv, vec3 P, vec3 n){
     float radius = cavity.world.x;
     // the radius's pixels at this depth (clip w: -z in perspective, 1 in orthographic)
@@ -170,7 +171,6 @@ vec2 cavityWorld(vec2 uv, vec3 P, vec3 n){
 
     int samples = int(cavity.world.w + 0.5);
     float rings = float(samples / 4);
-    float norm = 1.0 / sqrt(4.0 * rings * rings - 1.0);
     float attenuation = cavity.worldLimits.y;
 
     float valley = 0.0;
@@ -183,7 +183,7 @@ vec2 cavityWorld(vec2 uv, vec3 P, vec3 n){
         float arm = float(i - (i / 4) * 4);
         // rotated off the screen axes, ring by ring between the previous ring's arms
         float angle = 1.5707963 * (arm + ring / rings) + 0.3926991;
-        float reach = diskPixels * (2.0 * ring + 1.0) * norm;
+        float reach = diskPixels * (ring + 0.5) / rings;
         vec2 tapUV = uv + vec2(cos(angle), sin(angle)) * reach * cavity.texel.zw;
         // a tap under a pixel away reads the centre: it fades out
         float weight = smoothstep(0.5, 1.0, reach);
