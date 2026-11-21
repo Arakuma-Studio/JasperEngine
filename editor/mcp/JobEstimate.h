@@ -3,7 +3,7 @@
 
 #pragma once
 
-// Job estimates and reports (docs/specs/S92-agent-feedback-area-lights.md R13-R16). A long job
+// Job estimates and reports, implemented in McpJobs.cpp (docs/specs/S92-agent-feedback-area-lights.md R13-R16). A long job
 // (record_game, build_project, bake_impostors, export_title) gets an estimate when it is submitted:
 // a cost model per kind, corrected by the median measured/model ratio of the kind's last 16
 // completions in the project's .jasperengine/user/job-history.json (clamped to [0.25, 4]). On
