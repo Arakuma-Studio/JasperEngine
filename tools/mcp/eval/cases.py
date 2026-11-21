@@ -1220,6 +1220,32 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "guard_area_light",
+        "kind": "guard",
+        "what_happened": "S92 adds Area Lights (Light Type Area: a Rectangle or Disc emitting from its face) and the nits unit. "
+                         "Without them an agent fakes a soft panel with a row of point lights or an emissive quad, and sizes "
+                         "the panel with the transform's scale, which does not size it.",
+        "text_at_issue": "jasper://docs/lighting 'Area Light ... type: \"area\" ... areaWidth, areaHeight ... in metres: the "
+                         "transform's scale does not size it ... intensityUnit: \"nits\" (or set_light_unit nits)'; "
+                         "set_light_unit 'nits (area)'",
+        "source": "docs/specs/S92-agent-feedback-area-lights.md R32, R34, R39",
+        "prompt": "Hang a soft 1.2 m by 0.4 m rectangular panel light 2 m above the Desk, facing down, at 500 nits.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject: 15 Desk", {"entities": [{"id": 15, "path": "Desk"}]})},
+            {"tool": "create_entity", "result": ok("Created GameObject 21 \"Panel Light\" (point_light).",
+                                                   {"entity": {"id": 21, "path": "Panel Light"}, "entity_id": 21})},
+            {"tool": "add_component", "result": ok("Added light to GameObject 21 \"Panel Light\".", {"entity": {"id": 21}})},
+            {"tool": "set_properties", "result": ok("Set the properties of GameObject 21 \"Panel Light\" (one undo step).",
+                                                    {"entity": {"id": 21}})},
+            {"tool": "set_light_unit", "result": ok("Set the unit of 1 light(s), as bright as before (EV100 15).",
+                                                    {"lights": [{"entity": {"id": 21}, "unit": "Nits", "intensity": 500}], "ev100": 15})},
+        ],
+        "checks": {"calls": [{"tool": "set_properties", "args": {"values": {"light": {"type": "area", "areaWidth": 1.2,
+                                                                                     "areaHeight": 0.4}}}}],
+                   "must_not_call": [{"tool": "set_properties", "args": {"values": {"transform": {"scale": "*"}}}}]},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_physics_body",
         "kind": "guard",
         "what_happened": "In-editor-era models added a Rigidbody without a collider, pre-scaled collider sizes or guessed them "
