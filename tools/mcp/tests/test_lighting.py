@@ -188,7 +188,8 @@ def _face_direction(face: int, u: float, v: float) -> tuple[float, float, float]
     return x / length, y / length, z / length
 
 
-def _write_sun_cross(path, sun: tuple[float, float, float], tile: int = 64, radius_degrees: float = 2.0) -> None:
+def _write_sun_cross(path, sun: tuple[float, float, float], tile: int = 64, radius_degrees: float = 2.0,
+                     radiance: float = 3000.0) -> None:
     """a 4:3 cube cross .hdr (flat RGBE scanlines): a blue sky over a dark ground and a sun disc"""
     cos_radius = math.cos(math.radians(radius_degrees))
     width, height = tile * 4, tile * 3
@@ -203,7 +204,7 @@ def _write_sun_cross(path, sun: tuple[float, float, float], tile: int = 64, radi
                     v = 2.0 * (y + (s // 3 + 0.5) / 3.0) / tile - 1.0
                     d = _face_direction(face, u, v)
                     if d[0] * sun[0] + d[1] * sun[1] + d[2] * sun[2] >= cos_radius:
-                        c = (3000.0, 2900.0, 2700.0)
+                        c = (radiance, radiance * 0.97, radiance * 0.9)
                     elif d[1] >= 0.0:
                         c = (0.3 * (0.6 + 0.4 * d[1]), 0.5 * (0.6 + 0.4 * d[1]), 0.9 * (0.6 + 0.4 * d[1]))
                     else:
