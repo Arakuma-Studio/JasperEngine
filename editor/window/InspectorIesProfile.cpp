@@ -76,7 +76,7 @@ namespace {
             }
         }
         ImGui::Dummy(ImVec2(size, size));
-        UIProbe::item("ies.polar_plot");
+        editor::UIProbe::item("ies.polar_plot");
     }
 
     void iesRow(const char* label, const std::string& value){
