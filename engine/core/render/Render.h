@@ -50,6 +50,9 @@ namespace jasperengine{
     //                           adding alpha)
     //   MAX_PREMULTIPLIED       MAX of source and destination, colour and alpha (all factors ONE)
     //   ERASE_PREMULTIPLIED     ZERO, ONE_MINUS_SRC_ALPHA (dst x (1 - src alpha): knockout)
+    // and S92's Cavity, dynamic path only:
+    //   MULTIPLY_2X             DST_COLOR, SRC_COLOR (dst x 2 src: 0.5 leaves it as it is;
+    //                           alpha ZERO, ONE, kept)
     enum class BlendMode : uint8_t {
         NONE,
         ALPHA,
@@ -64,7 +67,8 @@ namespace jasperengine{
         SUBTRACT_PREMULTIPLIED,
         LIGHT_PREMULTIPLIED,
         MAX_PREMULTIPLIED,
-        ERASE_PREMULTIPLIED
+        ERASE_PREMULTIPLIED,
+        MULTIPLY_2X
     };
 
     enum class DepthCompare{
@@ -204,7 +208,10 @@ namespace jasperengine{
         TITLE_3D_POST,
         TITLE_ENV,
         TITLE_GLINT_SPRITE,
-        TITLE_GLINT
+        TITLE_GLINT,
+        // S92's Cavity (cavity.frag): one fullscreen multiply inside the colour pass, after the
+        // opaque queue; 'Scr' Screen, 'Wld' World
+        CAVITY
     };
 
     enum class AttributeType{
@@ -512,7 +519,10 @@ namespace jasperengine{
         // a fullscreen pass into one face and mip level of an RGBA8 colour texture, no depth
         // attachment, no blending (CameraRender::startRenderPass(TextureRender*, face, mip):
         // the reflection probe prefilter)
-        PIP_RTT_COLORONLY = 1 << 15
+        PIP_RTT_COLORONLY = 1 << 15,
+        // PIP_DEPTH with a second RGBA8 attachment: the depth pre-pass that also writes the
+        // view-space normals Cavity reads (S92 R2, DEPTH 'Cvn' programs only)
+        PIP_DEPTH_NORMALS = 1 << 16
     };
 
     // the depth attachment of an offscreen framebuffer
