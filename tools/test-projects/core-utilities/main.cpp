@@ -10,7 +10,8 @@
 // culling-group-and-simulation-distance AC17 in the same build: a scene layer with a 10,000-sphere
 // Culling Group and one with 1,000 Simulation Culling components. From 4 s of game time (after
 // main.lua's Performance line, so the gate's ordered lines do not race) 200 frames of each scene's
-// evaluation time give the p99, at or under the web budgets of R22 (0.5 ms the group, 0.25 ms the
+// evaluation time give the p99, on a Release build (BUILD_TYPE=Release: R22's figures are release
+// ones), at or under the web budgets of R22 (0.5 ms the group, 0.25 ms the
 // simulation): "[gate] culling group p99 within 0.5 ms", "[gate] simulation culling p99 within
 // 0.25 ms". Then the scripted camera move: the group's camera turns away (every sphere becomes
 // invisible, no band changes: 10,000 events) and the simulation camera moves 30 m back (the far
@@ -48,13 +49,14 @@ namespace {
     int becameInvisible = 0;
     bool done = false;
 
+    // sorts them: the p99, and the median the line also prints (load or a slower kernel)
     double p99(std::vector<double>& times){
         std::sort(times.begin(), times.end());
         return times[(size_t)(times.size() * 0.99)];
     }
 
-    void gateBudget(const char* name, double value, double budget){
-        Log::print("[gate] %s p99 %.4f ms over %d frames", name, value, SAMPLES);
+    void gateBudget(const char* name, const std::vector<double>& sorted, double value, double budget){
+        Log::print("[gate] %s p99 %.4f ms (p50 %.4f) over %d frames", name, value, sorted[sorted.size() / 2], SAMPLES);
         if (value <= budget){
             Log::print("[gate] %s p99 within %g ms", name, budget);
         }else{
@@ -120,8 +122,10 @@ namespace {
                 return;
             }
             if (movedFrames < 0){
-                gateBudget("culling group", p99(groupTimes), GROUP_BUDGET_MS);
-                gateBudget("simulation culling", p99(simulationTimes), SIMULATION_BUDGET_MS);
+                const double groupP99 = p99(groupTimes);
+                gateBudget("culling group", groupTimes, groupP99, GROUP_BUDGET_MS);
+                const double simulationP99 = p99(simulationTimes);
+                gateBudget("simulation culling", simulationTimes, simulationP99, SIMULATION_BUDGET_MS);
                 groupCamera.setTarget(Vector3(0.0f, 0.0f, 1.0f));
                 simulationCamera.setPosition(0.0f, 0.0f, 30.0f);
                 movedFrames = 0;

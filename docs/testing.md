@@ -149,10 +149,12 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   look in a desktop browser.
 - A gate baseline can also list `console` lines (`{"text", "level"}`, `"ordered": true`): each must
   appear at that console level (log, info, warning, error), in order; an error listed there is
-  expected and fails nothing. `GATE=core-utilities` (after `WEB_PROJECT=core-utilities tools/build.sh
-  web`) checks the logger's browser console sink and a Lua `Timer` that way.
-- `GATE=mesh-raycast` (after `WEB_PROJECT=mesh-raycast tools/build.sh web`) times 10,000
-  MeshRaycast rays against 1,000 meshes in WebAssembly and fails on a p99 over 4 ms (S26 AC17).
+  expected and fails nothing. `GATE=core-utilities` (after `BUILD_TYPE=Release WEB_PROJECT=core-utilities
+  tools/build.sh web`) checks the logger's browser console sink and a Lua `Timer` that way, and the
+  Culling Group and Simulation Culling evaluation p99 against their release web budgets.
+- `GATE=mesh-raycast` (after `BUILD_TYPE=Release WEB_PROJECT=mesh-raycast tools/build.sh web`: its budgets are release figures) times 10,000
+  MeshRaycast rays against 1,000 meshes in WebAssembly and fails on a p99 over 4 ms (S26 AC17), then
+  10,000 overlap queries of each kind against 0.04 ms (spatial-queries AC15).
 - The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13), `pcss` (PCSS's two views
   of the shadow atlas in one WebGL2 draw, the Ultra tier's contact hardening) and `terrain`, a
   terrain displaced by a 16-bit heightmap, which WebGL2 and GLES3 cannot sample as R16 (the
