@@ -168,6 +168,10 @@ TEST_F(AreaLightGpu, ShadowedAreaLightDrawsItsShadow){
     light->setPosition(0.6f, 2.0f, 0.2f);
     light->setShadows(true);
     ASSERT_TRUE(render()) << "the scene never finished loading";
+    // its map drawn again once everything has loaded, so the golden does not depend on the frame
+    // the casters' depth programs arrived in (a warm shader cache loads them sooner)
+    light->requestShadowUpdate();
+    ASSERT_TRUE(render()) << "the scene never finished loading";
     EXPECT_GE(scene.getComponent<LightComponent>(light->getEntity()).shadowMapIndex, 0) << "the Area Light got no shadow map";
     const CompareResult result = compareTargetWithGolden("area_rectangle_shadowed", areaLightOptions());
     EXPECT_TRUE(result.passed) << result.message;
