@@ -700,6 +700,16 @@ wait until clicked, shot). Red controls are named per criterion.
   from MEMFS; a failed fetch prints `[input] failed` with the URL and exits 10.
 - **AC7.** A recording holds input, not shots: the replay is checked by its compared checkpoints (the
   state hash and a `math.random` value every frame) and the replayed presses, not by a shot.
-- **Not done in this change:** the web gate and the Android run (AC12, AC13): the `input` test
-  project has no `Replay` scene, HTML UI `#play` button or `tests/Input/menu.input.json` yet, and
-  neither lane ran here. A player's seed is applied when its Lua state opens after the engine starts.
+- **The input test project.** It is a compiled project with one scene, so its Replay part is a menu
+  in that scene, not a scene of its own: `lua/replay.lua` (required by `main.lua`) makes the UI
+  Document `assets/ui/menu.html`, whose `#play` logs `[gate] clicked`, and a `math.random` spawner
+  it checkpoints; `assets/tests/Input/menu.input.json` taps through it. It has no physics ball: AC7's
+  MCP test builds a scene of its own. The document is made at the first update: a UI
+  Document made while `main.lua` runs at init hung the web page before its first frame.
+- **Web gates.** AC12's run is the gate `input-script` (`"project": "input"`, a second gate of the
+  same build) rather than a run inside `input.json`, which keeps its pointer-lock run. R30 has
+  `input-script-url` (the gate serves the menu script at `/scripts/menu.input.json`: browser_gate's
+  new `"serve"`) and `input-script-url-missing` (a 404 exits 10 naming the URL before the engine
+  starts: browser_gate's new `"no_ready"`).
+- **Android.** `tools/android-emulator-test.sh` accepts `/` in `--setprop` values (a content path).
+- A player's seed is applied when its Lua state opens after the engine starts.
