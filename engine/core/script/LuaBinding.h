@@ -142,8 +142,6 @@ namespace jasperengine {
         static void registerCoroutineClasses(lua_State *L);
         static void registerScriptClasses(lua_State *L);
 
-        static void init();
-
         // Shader library values from Lua (binding directory). A Material is a copy
         // (Mesh:getMaterial): the shader its submesh draws with when the material names none
         // (the mesh's customShader, else the scene default) is kept beside the copy's userdata
@@ -164,6 +162,9 @@ namespace jasperengine {
         static void releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry);
 
     public:
+        // runs the project's main.lua (Engine starts the project with it; tests run it too)
+        static void init();
+
         // the names without the module: any use logs once that it is not compiled (R15)
         static void registerDialogueStubs(lua_State *L);
         LuaBinding();
