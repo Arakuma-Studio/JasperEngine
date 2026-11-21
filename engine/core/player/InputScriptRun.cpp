@@ -3,6 +3,7 @@
 
 #include "player/InputScriptRun.h"
 
+#include "Engine.h"
 #include "Log.h"
 #include "input/InputRecorder.h"
 #include "input/InputReplay.h"
@@ -28,6 +29,7 @@ namespace {
         uint64_t pendingShotFrame = 0;
         int shots = 0;
         bool shotFailed = false;
+        bool heldForShot = false;       // the game waits for the shot's frame (it is drawn offscreen from the next one)
     };
 
     State& state(){
@@ -128,8 +130,15 @@ void ready(){
     options.blockRealInput = !s.options.inputAllowReal;
     options.stopOnDivergence = s.options.inputStrict;
     options.host.shot = [](const std::string& name, uint64_t frame, std::string&) {
-        state().pendingShot = name;
-        state().pendingShotFrame = frame;
+        State& run = state();
+        run.pendingShot = name;
+        run.pendingShotFrame = frame;
+        // the step runs inside a frame that already chose not to draw offscreen: the game holds
+        // until the next one draws this state offscreen, as the editor's shot holds the game
+        if (!Engine::isSimulationHeld()) {
+            Engine::setSimulationHeld(true);
+            run.heldForShot = true;
+        }
         return true;
     };
     options.host.busy = []() { return !state().pendingShot.empty(); };
@@ -143,15 +152,20 @@ bool wantsOffscreenFrame(){
 
 void frameDrawn(const FrameReader& reader){
     State& s = state();
-    if (s.pendingShot.empty())
+    // the frame of the step itself was not drawn offscreen: the next one is
+    if (s.pendingShot.empty() || !reader)
         return;
     const std::string name = s.pendingShot;
     s.pendingShot.clear();
+    if (s.heldForShot) {
+        Engine::setSimulationHeld(false);
+        s.heldForShot = false;
+    }
     std::vector<uint8_t> rgba;
     int width = 0, height = 0;
     std::string error;
     const std::string path = shotPath(name);
-    if (reader && reader(rgba, width, height, error) && width > 0 && height > 0) {
+    if (reader(rgba, width, height, error) && width > 0 && height > 0) {
         for (size_t i = 3; i < rgba.size(); i += 4) rgba[i] = 255;
         std::string png;
         if (stbi_write_png_to_func(&appendPng, &png, width, height, 4, rgba.data(), width * 4)) {
@@ -166,9 +180,9 @@ void frameDrawn(const FrameReader& reader){
         } else {
             error = "cannot encode the PNG";
         }
-    } else if (!reader) {
-        error = "the frame did not draw offscreen";
     }
+    if (error.empty())
+        error = "the frame could not be read back";
     s.shotFailed = true;
     Log::error("[input] shot %s failed: %s", name.c_str(), error.c_str());
 }
@@ -185,6 +199,8 @@ void reset(){
     State& s = state();
     if (s.replay)
         s.replay->stop();
+    if (s.heldForShot)
+        Engine::setSimulationHeld(false);
     s = State();
 }
 
