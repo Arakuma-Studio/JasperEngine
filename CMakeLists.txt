@@ -940,6 +940,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/profiler/ProfilerWindow.cpp
     ${EDITOR_DIR}/mcp/McpAutoSync.cpp
     ${EDITOR_DIR}/mcp/McpCall.cpp
+    ${EDITOR_DIR}/mcp/McpCallLog.cpp
     ${EDITOR_DIR}/mcp/McpDialogs.cpp
     ${EDITOR_DIR}/mcp/McpContext.cpp
     ${EDITOR_DIR}/mcp/McpInstructions.cpp

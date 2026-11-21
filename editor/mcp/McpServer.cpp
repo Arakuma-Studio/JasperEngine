@@ -122,6 +122,15 @@ private:
 
 constexpr size_t ACTIVITY_LOG_SIZE = 300;
 
+// The call log's rotation size; JASPER_TEST_MCP_LOG_MAX_BYTES lowers it so a test rotates in a few calls
+uint64_t callLogMaxBytes() {
+    if (const char* value = std::getenv("JASPER_TEST_MCP_LOG_MAX_BYTES"); value && *value) {
+        const long long bytes = std::atoll(value);
+        if (bytes > 0) return static_cast<uint64_t>(bytes);
+    }
+    return McpCallLog::DEFAULT_MAX_BYTES;
+}
+
 std::string shorten(const std::string& text, size_t max) {
     std::string out;
     out.reserve(std::min(text.size(), max));
@@ -190,6 +199,14 @@ void McpServer::start(App& app) {
     sink->minLevel.store(LogLevel::Off, std::memory_order_relaxed);
     logSink = Logger::addSink(std::move(sink));
     httpChangesAllowed = AppSettings::getMcpHttpAllowChanges();
+
+    // JASPER_MCP_LOG wins over Log Calls To File: an agent or a test chooses the file per editor
+    if (const char* logPath = std::getenv("JASPER_MCP_LOG"); logPath && *logPath) {
+        callLogFromEnv = true;
+        callLog.open(FileUtils::pathFromUtf8(logPath), callLogMaxBytes());
+    } else if (AppSettings::getMcpLogCalls()) {
+        callLog.open(defaultCallLogPath(), callLogMaxBytes());
+    }
 
     const McpLaunchOptions& options = mcpLaunchOptions();
 #ifndef _WIN32
@@ -281,6 +298,20 @@ void McpServer::stop() {
     runSettles();
     // Let the answers already given reach the stdio client before the process exits
     if (stdioTransport) stdioTransport->flush(2000);
+    callLog.close();
+}
+
+void McpServer::setCallLogEnabled(bool enabled) {
+    if (callLogFromEnv) return;
+    if (enabled) {
+        callLog.open(defaultCallLogPath(), callLogMaxBytes());
+    } else {
+        callLog.close();
+    }
+}
+
+std::filesystem::path McpServer::defaultCallLogPath() {
+    return AppSettings::getConfigDirectory() / "mcp-calls.jsonl";
 }
 
 void McpServer::setHttpEnabled(bool enabled, int port) {
@@ -367,8 +398,14 @@ std::vector<McpActivityEntry> McpServer::activity() const {
     return std::vector<McpActivityEntry>(activityLog.begin(), activityLog.end());
 }
 
+std::vector<McpToolCounts::Row> McpServer::toolCounts() const {
+    std::lock_guard<std::mutex> lock(activityMutex);
+    return toolCountTable.rows();
+}
+
 void McpServer::clearActivity() {
     std::lock_guard<std::mutex> lock(activityMutex);
+    toolCountTable.clear();
     activityLog.erase(std::remove_if(activityLog.begin(), activityLog.end(),
         [](const McpActivityEntry& entry) { return entry.status != "running"; }), activityLog.end());
 }
@@ -387,8 +424,9 @@ uint64_t McpServer::beginActivity(const std::string& client, const std::string& 
     return entry.seq;
 }
 
-void McpServer::endActivity(uint64_t seq, const ToolResult& result, double durationMs, bool cancelled) {
+void McpServer::endActivity(uint64_t seq, const std::string& tool, const ToolResult& result, double durationMs, bool cancelled) {
     std::lock_guard<std::mutex> lock(activityMutex);
+    toolCountTable.record(tool, result.isError && !cancelled);
     for (auto it = activityLog.rbegin(); it != activityLog.rend(); ++it) {
         if (it->seq != seq) continue;
         it->status = cancelled ? "cancelled" : (result.isError ? "error" : "ok");
@@ -1009,6 +1047,8 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
         clientName = session->clientName;
     }
     const uint64_t seq = beginActivity(client, name, args);
+    const auto received = std::chrono::system_clock::now();
+    const std::string group = McpRegistry::groupOf(*def);
     const std::string key = inflightKey(session->id, id);
     const bool gated = session->transport == "http";
 
@@ -1023,13 +1063,15 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
     autoSync->settle = mayChange(*def, args);
 
     auto call = std::make_shared<McpCall>(*this, name, args,
-        [this, id, reply, seq, key, autoSync](McpCall& done, const ToolResult& result) {
+        [this, id, reply, seq, key, autoSync, received, group, client](McpCall& done, const ToolResult& result) {
             {
                 std::lock_guard<std::mutex> lock(inflightMutex);
                 inflight.erase(key);
                 inflightReplies.erase(key);
             }
-            endActivity(seq, result, done.elapsedMs(), done.cancelled());
+            endActivity(seq, done.tool(), result, done.elapsedMs(), done.cancelled());
+            const bool logged = callLog.isOpen();
+            uint64_t resultBytes = 0;
             trace("done", done.tool() + " " + key + (done.cancelled() ? " cancelled" : result.isError ? " error" : " ok"));
             // A cancelled request gets no response (MCP cancellation)
             std::function<void()> respond;
@@ -1037,10 +1079,15 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
                 Json out = result.toJson();
                 McpAutoSync::attach(out, autoSync->report);
                 capResultSize(out);
+                if (logged) resultBytes = out.dump(-1, ' ', false, Json::error_handler_t::replace).size();
                 auto response = std::make_shared<Json>(makeResult(id, std::move(out)));
                 respond = [reply, response]() { reply->respond(std::move(*response)); };
             } else {
                 respond = [reply]() { reply->cancelled(); };
+            }
+            if (logged) {
+                callLog.append({received, done.tool(), group, client, done.elapsedMs(), !result.isError && !done.cancelled(),
+                                McpCallLog::errorKindOf(result, done.cancelled()), resultBytes});
             }
             // What the tool wrote is its own, not an external change: settled on the main thread
             // once the handler has returned, and only then answered

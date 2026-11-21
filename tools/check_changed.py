@@ -119,6 +119,7 @@ SELF_TESTS = {"tools/check_changed.py": "tools/test_check_changed.py", "tools/ch
               "tools/ci/report.py": "tools/test_check_changed.py",   # (its parsers read check-changed's logs)
               "tools/mcp/shard.py": "tools/mcp/test_shard.py", "tools/mcp/test_shard.py": "tools/mcp/test_shard.py",
               "tools/mcp/build_cache.py": "tools/mcp/test_build_cache.py", "tools/mcp/test_build_cache.py": "tools/mcp/test_build_cache.py",
+              "tools/mcp/call_profile.py": "tools/mcp/test_call_profile.py", "tools/mcp/test_call_profile.py": "tools/mcp/test_call_profile.py",
               "tools/check_fanout.py": "tools/test_check_fanout.py", "tools/test_check_fanout.py": "tools/test_check_fanout.py",
               "tools/xcode_sync_sources.py": "tools/test_xcode_sync_sources.py",
               "tools/test_xcode_sync_sources.py": "tools/test_xcode_sync_sources.py",

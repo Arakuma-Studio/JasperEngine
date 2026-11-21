@@ -732,3 +732,123 @@ async def test_http_read_only_mode():
         raise
     finally:
         await raw_cm.__aexit__(None, None, None)
+
+
+# -- call log (S92 R17, R18, AC5) ---------------------------------------------
+
+
+CALL_LOG_FIELDS = ["ts", "tool", "group", "ms", "ok", "error_kind", "result_bytes", "client"]
+CALL_LOG_CAP = 2048
+
+
+def call_log_lines(path) -> list[dict]:
+    """The calls in <path>.1 then <path>: each a complete JSON line."""
+    rows = []
+    for f in (path.with_name(path.name + ".1"), path):
+        if f.exists():
+            rows += [json.loads(line) for line in f.read_text().splitlines()]
+    return rows
+
+
+async def call_log_wait(raw: RawEditor, path, count: int) -> list[dict]:
+    """The log once it holds `count` calls (the writer flushes on its own thread)."""
+    deadline = time.monotonic() + 30
+    while True:
+        rows = call_log_lines(path)
+        if len(rows) >= count or time.monotonic() > deadline:
+            return rows
+        await asyncio.sleep(0.05)
+
+
+async def test_call_log():
+    """JASPER_MCP_LOG: one line per tools/call with exactly the fields, in order; no argument, path,
+    entity name or result text ever reaches it (a secret-looking value in an argument, a key and a
+    name is absent); the client is the initialize handshake's name; past the cap
+    (JASPER_TEST_MCP_LOG_MAX_BYTES) the file moves to <file>.1 whole lines at a time. Then Log Calls
+    To File (settings.yaml mcp.log_calls) writes mcp-calls.jsonl beside settings.yaml."""
+    import datetime
+    import re
+    import shutil
+    import tempfile
+    from pathlib import Path
+
+    secret = "sk-SECRET-" + uuid.uuid4().hex
+    logdir = Path(tempfile.mkdtemp(prefix="je-call-log-"))
+    log = logdir / "calls.jsonl"
+    env = {"JASPER_MCP_LOG": str(log), "JASPER_TEST_MCP_LOG_MAX_BYTES": str(CALL_LOG_CAP)}
+    try:
+        async with RawEditor(create=True, name="MCP Protocol", env=env) as raw:
+            init = await raw.initialize()
+            if "error" in init:
+                raw.fail(f"initialize failed: {init['error']}")
+            started = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)
+            calls = [("editor_status", {}), ("create_entity", {"name": secret, "type": "box"}),
+                     ("find_entities", {"name": secret}), ("create_entity", {"name": "Box", "bogus_" + secret: 1})]
+            results = []
+            for i, (tool, args) in enumerate(calls, start=10):
+                raw.send({"jsonrpc": "2.0", "id": i, "method": "tools/call", "params": {"name": tool, "arguments": args}})
+                results.append((await raw.response(i))["result"])
+            if results[1].get("isError") or not results[3].get("isError"):
+                raw.fail(f"create_entity should succeed, the unknown argument fail: {results[1]!r:.300} {results[3]!r:.300}")
+            rows = await call_log_wait(raw, log, len(calls))
+            ended = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=1)
+            if len(rows) != len(calls):
+                raw.fail(f"{len(rows)} log lines for {len(calls)} calls: {rows}")
+            for row, (tool, _), result in zip(rows, calls, results):
+                if list(row) != CALL_LOG_FIELDS:
+                    raw.fail(f"log line fields {list(row)}, expected exactly {CALL_LOG_FIELDS}")
+                if row["tool"] != tool or row["group"] != "core" or row["client"] != "jasper-harness-raw":
+                    raw.fail(f"tool, group or client wrong in {row}")
+                ts = datetime.datetime.fromisoformat(row["ts"].replace("Z", "+00:00"))
+                if not started <= ts <= ended or not re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z", row["ts"]):
+                    raw.fail(f"ts {row['ts']} is not the call's UTC time")
+                if not isinstance(row["ms"], (int, float)) or not 0 <= row["ms"] <= (ended - started).total_seconds() * 1000:
+                    raw.fail(f"ms {row['ms']!r} out of range")
+                sent = len(json.dumps(result, separators=(",", ":"), ensure_ascii=False).encode())
+                if not isinstance(row["result_bytes"], int) or abs(row["result_bytes"] - sent) > max(16, sent // 50):
+                    raw.fail(f"result_bytes {row['result_bytes']!r}, the result sent was {sent} bytes")
+            if [r["ok"] for r in rows] != [True, True, True, False] or [r["error_kind"] for r in rows] != [None, None, None, "error"]:
+                raw.fail(f"ok / error_kind wrong: {[(r['ok'], r['error_kind']) for r in rows]}")
+
+            # past the cap: <file>.1 holds the older whole lines, the file the newer ones
+            rotated = log.with_name(log.name + ".1")
+            next_id = 100
+            while not rotated.exists() and next_id < 200:
+                raw.send({"jsonrpc": "2.0", "id": next_id, "method": "tools/call", "params": {"name": "editor_status", "arguments": {}}})
+                await raw.response(next_id)
+                next_id += 1
+                await call_log_wait(raw, log, len(calls) + next_id - 100)
+            if not rotated.exists():
+                raw.fail(f"no {rotated.name} after {next_id - 100} more calls with a {CALL_LOG_CAP}-byte cap")
+            for f in (rotated, log):
+                if f.stat().st_size > CALL_LOG_CAP:
+                    raw.fail(f"{f.name} is {f.stat().st_size} bytes, over the {CALL_LOG_CAP}-byte cap")
+            rows = call_log_lines(log)
+            if any(list(r) != CALL_LOG_FIELDS for r in rows) or rows[-1]["tool"] != "editor_status":
+                raw.fail(f"rotated lines must stay whole calls: {rows}")
+            if [r["ts"] for r in rows] != sorted(r["ts"] for r in rows):
+                raw.fail(f"{rotated.name} must hold the older calls")
+            text = rotated.read_bytes() + log.read_bytes()
+            if secret.encode() in text or b"bogus_" in text:
+                raw.fail("an argument reached the call log")
+        if secret.encode() in log.read_bytes():
+            raise TestFailure("an argument reached the call log at exit")
+
+        # the MCP Server window's Log Calls To File, saved per user
+        async with RawEditor(create=True, name="MCP Protocol",
+                             settings={"mcp": {"http_token": HTTP_TOKEN, "log_calls": True}}) as raw:
+            await raw.initialize()
+            raw.send({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "editor_status", "arguments": {}}})
+            await raw.response(2)
+            default_log = raw.scratch.root / "mcp-calls.jsonl"
+            rows = await call_log_wait(raw, default_log, 1)
+            if [r.get("tool") for r in rows] != ["editor_status"]:
+                raw.fail(f"Log Calls To File should write {default_log.name} beside settings.yaml: {rows}")
+    finally:
+        shutil.rmtree(logdir, ignore_errors=True)
+
+
+async def test_call_log_is_off_by_default(ed: Editor):
+    """No JASPER_MCP_LOG and no Log Calls To File: nothing is written (an open log creates its file at start)."""
+    await ed.call("editor_status")
+    ed.check(not (ed.scratch.root / "mcp-calls.jsonl").exists(), "the call log is opt-in")

@@ -86,6 +86,7 @@ recording, nothing when unset (`tools/mcp/tests/test_recorder_integrity.py`).
 `JASPER_MESH_LOAD_HOLD_FILE=<path>` holds the first load (the binding) of the meshes of a scene that
 loaded a model in the background while that file exists, so what else loads the same model meanwhile
 (a Project window thumbnail's preview) comes first (`tools/mcp/tests/test_model_texture_bind.py`).
+`JASPER_TEST_MCP_LOG_MAX_BYTES=<bytes>` lowers the MCP call log's 16 MB rotation size (`test_call_log` in `tools/mcp/tests/test_protocol.py`).
 `JASPER_TEST_MATERIAL_THUMBNAIL_STUCK=<project-relative file>` keeps a material thumbnail loading while that file exists (`test_material_thumbnail.py`).
 `JASPER_TEST_TRANSITION_TWIN_SKEW=<coverage>` shifts the CPU evaluation a transition capture's `transition_edges` compares the frames with, for the lint's red path (`tools/mcp/tests/test_contact_sheet.py`).
 `JASPER_TEST_STAGING_HOLD=<path>` holds a Project Hub import or template copy with part of its files in
