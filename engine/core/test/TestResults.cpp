@@ -479,12 +479,12 @@ std::string jasperengine::gametest::newRunId() {
 }
 
 std::string jasperengine::gametest::beginLine(int cases, const std::string& runId) {
-    return "[test] begin " + Json{{"cases", cases}, {"run", runId}}.dump();
+    return "begin " + Json{{"cases", cases}, {"run", runId}}.dump();
 }
 
 std::string jasperengine::gametest::caseLine(const CaseResult& result) {
     constexpr size_t MAX_LINE = 16 * 1024;
-    const std::string prefix = "[test] case ";
+    const std::string prefix = "case ";
     Json json = caseJson(result, 20);
     std::string line = prefix + json.dump(-1, ' ', false, Json::error_handler_t::replace);
     if (line.size() <= MAX_LINE) return line;
@@ -507,7 +507,7 @@ std::string jasperengine::gametest::caseLine(const CaseResult& result) {
 }
 
 std::string jasperengine::gametest::summaryLine(const Counts& counts) {
-    return "[test] summary " + countsJson(counts).dump();
+    return "summary " + countsJson(counts).dump();
 }
 
 std::string jasperengine::gametest::hostPlatformName() {
