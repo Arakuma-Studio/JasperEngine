@@ -12,6 +12,7 @@ namespace jasperengine{
     enum class LightType;
     enum class LightShading;
     enum class LightUnit;
+    enum class AreaLightShape;
 
     class JASPERENGINE_API Light: public GameObject{
     public:
