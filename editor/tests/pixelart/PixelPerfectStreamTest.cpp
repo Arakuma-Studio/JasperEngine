@@ -263,8 +263,18 @@ TEST(PixelFxShaders, ShaderCacheVersionCoversPixelFx){
     EXPECT_GE(std::stoi(name.substr(1)), 64) << name;
 }
 
-// S50's tile frame clamp (MESH 'Tcl' 54, TILE_CLAMP_FRAME in mesh and library:sprite) is cached under v65, after
-// S48's v64: an older cache holds tilemap programs that sample past their frames
+// S50's tile frame clamp (MESH 'Tcl' 54, TILE_CLAMP_FRAME in mesh and library:sprite) is cached under v65 or later
+// (S92's Cavity took v66), after S48's v64: an older cache holds tilemap programs that sample past their frames
 TEST(TilemapShaders, ShaderCacheVersionCoversTheTileClamp){
-    EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v65");
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 65) << name;
+}
+
+// S92's Cavity depth programs (DEPTH 'Cvn' 26, includes/depth_normals.glsl and the compiler's main wrapper)
+// are cached under v66 or later: an older cache holds depth programs without the normals output
+TEST(CavityShaders, ShaderCacheVersionCoversTheDepthNormals){
+    const std::string name = editor::App::getUserShaderCacheDir().filename().string();
+    ASSERT_EQ(name.rfind('v', 0), 0u) << name;
+    EXPECT_GE(std::stoi(name.substr(1)), 66) << name;
 }
