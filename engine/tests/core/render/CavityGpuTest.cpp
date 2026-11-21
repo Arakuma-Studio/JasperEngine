@@ -1517,63 +1517,87 @@ TEST_F(CavityGpu, PrepassGainsTheNormalsAttachmentOnlyWithCavity){
 
 // R1, AC1: a scene rendered below the output's size (Render Scale 0.85) or at a fixed resolution,
 // with or without SSAO's pre-pass, gets Cavity along the cube's whole edge (every row brightened:
-// no band or dropout) and the faces stay; SSAO on or off gives the same ridge row by row
+// no band or dropout) and the faces stay. With SSAO's pre-pass the frame's Cavity is the one
+// without it pixel for pixel (a pre-pass of another size than the colour pass leaves pixels out),
+// on the front cube and on a tilted one (sloped faces)
 TEST_F(CavityGpu, ScaledAndFixedResolutionsApplyAlongTheWholeEdge){
     JASPER_REQUIRE_GPU();
     Primitive cube(&scene);
     makeFrontCube(cube, cavityUnlit(0.3f, 0.3f, 0.3f));
+    Primitive tilted(&scene);
+    tilted.createBox(1.0f, 1.0f, 1.0f);
+    tilted.setPosition(0.0f, 0.6f, 0.0f);
+    tilted.setRotation(30.0f, 45.0f, 0.0f);
+    tilted.setMaterial(cavityUnlit(0.3f, 0.3f, 0.3f));
+    tilted.setVisible(false);
     const struct { const char* name; float scale; bool ssao; bool fixed; } cases[] = {
         {"Render Scale 0.85", 0.85f, false, false},
         {"Render Scale 0.85, SSAO", 0.85f, true, false},
         {"fixed 480 x 270", 1.0f, false, true},
         {"fixed 480 x 270, SSAO", 1.0f, true, true},
     };
-    std::vector<double> rows[4];
-    for (int k = 0; k < 4; k++){
-        const auto& c = cases[k];
-        SCOPED_TRACE(c.name);
-        scene.setSSAOEnabled(c.ssao);
-        scene.setFixedResolutionEnabled(c.fixed);
-        if (c.fixed)
-            scene.setFixedResolutionSize(480, 270);
-        PostProcessingSettings off;
-        off.renderScale = c.scale;
-        PostProcessingSettings on = cavityOn(CavityType::BOTH);
-        on.renderScale = c.scale;
-        const CavityFrame without = frameWith(off);
-        const CavityFrame with = frameWith(on);
-        expectDrawn(c.name);
-        int x = 0, top = 0, bottom = 0, unused = 0;
-        ASSERT_TRUE(project(Vector3(0.0f, 0.9f, CUBE_EDGE_Z), x, top));
-        ASSERT_TRUE(project(Vector3(0.0f, 0.1f, CUBE_EDGE_Z), unused, bottom));
-        int dropouts = 0;
-        double weakest = 255.0;
-        for (int y = top; y <= bottom; y++){
-            const double ridge = cavityWindowMax(with, without, x, y, 3);
-            rows[k].push_back(ridge);
-            weakest = std::min(weakest, ridge);
-            dropouts += ridge < CAVITY_VISIBLE ? 1 : 0;
+    // on - off of each case, per pixel, for the front cube and the tilted one
+    std::vector<double> deltas[2][4];
+    for (int shape = 0; shape < 2; shape++){
+        cube.setVisible(shape == 0);
+        tilted.setVisible(shape == 1);
+        for (int k = 0; k < 4; k++){
+            const auto& c = cases[k];
+            SCOPED_TRACE(std::string(c.name) + (shape == 0 ? ", front cube" : ", tilted cube"));
+            scene.setSSAOEnabled(c.ssao);
+            scene.setFixedResolutionEnabled(c.fixed);
+            if (c.fixed)
+                scene.setFixedResolutionSize(480, 270);
+            PostProcessingSettings off;
+            off.renderScale = c.scale;
+            PostProcessingSettings on = cavityOn(CavityType::BOTH);
+            on.renderScale = c.scale;
+            const CavityFrame without = frameWith(off);
+            const CavityFrame with = frameWith(on);
+            expectDrawn(c.name);
+            for (int y = 0; y < with.height; y++)
+                for (int x = 0; x < with.width; x++)
+                    deltas[shape][k].push_back(cavityDelta(with, without, x, y));
+            if (shape != 0)
+                continue;
+            int x = 0, top = 0, bottom = 0, unused = 0;
+            ASSERT_TRUE(project(Vector3(0.0f, 0.9f, CUBE_EDGE_Z), x, top));
+            ASSERT_TRUE(project(Vector3(0.0f, 0.1f, CUBE_EDGE_Z), unused, bottom));
+            int dropouts = 0, rows = 0;
+            double weakest = 255.0;
+            for (int y = top; y <= bottom; y++){
+                const double ridge = cavityWindowMax(with, without, x, y, 3);
+                weakest = std::min(weakest, ridge);
+                dropouts += ridge < CAVITY_VISIBLE ? 1 : 0;
+                rows++;
+            }
+            const CubeReading reading = readFrontCube(with, without);
+            std::printf("[measured] %s: %d of %d edge rows without cavity, weakest %.1f, faces %.1f\n",
+                        c.name, dropouts, rows, weakest, reading.faces);
+            EXPECT_EQ(dropouts, 0) << "rows of the edge Cavity left out";
+            EXPECT_LE(reading.faces, CAVITY_NEUTRAL);
         }
-        const CubeReading reading = readFrontCube(with, without);
-        std::printf("[measured] %s: %d of %d edge rows without cavity, weakest %.1f, faces %.1f\n",
-                    c.name, dropouts, (int)rows[k].size(), weakest, reading.faces);
-        EXPECT_EQ(dropouts, 0) << "rows of the edge Cavity left out";
-        EXPECT_LE(reading.faces, CAVITY_NEUTRAL);
     }
-    // SSAO's pre-pass gives the ridge the scene's own pre-pass gives
-    for (int k : {1, 3}){
-        SCOPED_TRACE(cases[k].name);
-        ASSERT_EQ(rows[k].size(), rows[k - 1].size());
-        double sum = 0.0, worst = 0.0;
-        for (size_t i = 0; i < rows[k].size(); i++){
-            const double d = std::abs(rows[k][i] - rows[k - 1][i]);
-            sum += d;
-            worst = std::max(worst, d);
+    // SSAO's pre-pass gives the Cavity the scene's own pre-pass gives, pixel for pixel
+    for (int shape = 0; shape < 2; shape++){
+        for (int k : {1, 3}){
+            SCOPED_TRACE(std::string(cases[k].name) + (shape == 0 ? ", front cube" : ", tilted cube"));
+            const std::vector<double>& with = deltas[shape][k];
+            const std::vector<double>& without = deltas[shape][k - 1];
+            ASSERT_EQ(with.size(), without.size());
+            size_t moved = 0, touched = 0;
+            double worst = 0.0;
+            for (size_t i = 0; i < with.size(); i++){
+                const double d = std::abs(with[i] - without[i]);
+                worst = std::max(worst, d);
+                moved += d > 4.0 ? 1 : 0;
+                touched += std::abs(without[i]) > 4.0 ? 1 : 0;
+            }
+            std::printf("[measured] %s (%s) against without SSAO: %zu of the %zu pixels Cavity moves differ by more than 4, worst %.1f\n",
+                        cases[k].name, shape == 0 ? "front cube" : "tilted cube", moved, touched, worst);
+            ASSERT_GT(touched, 100u) << "Cavity moved almost nothing without SSAO";
+            EXPECT_LE((double)moved, 0.02 * (double)touched) << "SSAO's pre-pass gives another Cavity";
         }
-        const double mean = rows[k].empty() ? 0.0 : sum / (double)rows[k].size();
-        std::printf("[measured] %s against without SSAO: mean %.2f, worst %.1f\n", cases[k].name, mean, worst);
-        EXPECT_LE(mean, 2.0) << "the ridge with SSAO's pre-pass is not the one without";
-        EXPECT_LE(worst, 8.0);
     }
     EXPECT_NO_ENGINE_ERRORS();
 }
@@ -1704,9 +1728,10 @@ TEST_F(CavityGpu, WorldModeOnPixelWideFeaturesWithoutNormalsStaysBounded){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// R2 (with Cavity off the pre-pass is unchanged; the shadows never change): turning Cavity on
-// leaves the shadow passes as they were: as many draws, triangles and pipelines, with the same
-// programs (the frame's draw list). The cube moves a hair each frame, so the passes redraw
+// R2 (the shadows never change): turning Cavity on leaves the shadow passes as they were: as many
+// draws, triangles and pipelines, and the same shadow on the floor (its pixels, where Cavity is
+// neutral: flat floor away from the cube). The cube moves a hair each frame, so the passes redraw.
+// (Which program a shadow draw ran is not readable here: depth programs carry no label)
 TEST_F(CavityGpu, ShadowPassesDrawTheSameWithCavity){
     JASPER_REQUIRE_GPU();
     Primitive ground(&scene);
@@ -1719,9 +1744,8 @@ TEST_F(CavityGpu, ShadowPassesDrawTheSameWithCavity){
     Light sun(&scene);
     sun.setType(LightType::DIRECTIONAL);
     sun.setDirection(0.3f, -1.0f, 0.6f);
+    sun.setIntensity(1.5f);
     sun.setShadows(true);
-    SystemRender::setDrawListEnabled(true);
-    struct DrawListReset{ ~DrawListReset(){ SystemRender::setDrawListEnabled(false); } } reset;
 
     auto shadowPasses = [&](){
         std::vector<std::string> record;
@@ -1734,17 +1758,16 @@ TEST_F(CavityGpu, ShadowPassesDrawTheSameWithCavity){
             const std::string label = pass.label;
             if (label.find("shadow") == std::string::npos || label == "shadow atlas view")
                 continue;
-            std::string line = label + ": " + std::to_string(pass.draws) + " draws, " + std::to_string(pass.triangles) +
-                               " triangles, " + std::to_string(pass.pipelines) + " pipelines";
-            for (uint32_t d = pass.firstDraw; d < pass.firstDraw + pass.numDraws && d < list.draws.size(); d++)
-                line += std::string("; ") + list.draws[d].pipeline + " / " + list.draws[d].shader;
-            record.push_back(line);
+            record.push_back(label + ": " + std::to_string(pass.draws) + " draws, " + std::to_string(pass.triangles) +
+                             " triangles, " + std::to_string(pass.pipelines) + " pipelines, " + std::to_string(pass.bindings) + " bindings");
         }
         return record;
     };
-    frameOff();
+    // the shadow's middle (the cube's centre along the light) and a band across it
+    const Vector3 shadow(0.3f, 0.0f, 0.6f);
+    const CavityFrame offFrame = frameOff();
     const std::vector<std::string> off = shadowPasses();
-    frameWith(cavityOn(CavityType::BOTH));
+    const CavityFrame onFrame = frameWith(cavityOn(CavityType::BOTH));
     expectDrawn("shadows");
     const std::vector<std::string> on = shadowPasses();
     for (const std::string& line : off)
@@ -1753,6 +1776,14 @@ TEST_F(CavityGpu, ShadowPassesDrawTheSameWithCavity){
         std::printf("[measured] Cavity on: %s\n", line.c_str());
     ASSERT_FALSE(off.empty()) << "no shadow pass drew";
     EXPECT_EQ(on, off) << "Cavity changed the shadow passes";
+    int sx = 0, sy = 0;
+    ASSERT_TRUE(project(shadow, sx, sy));
+    double worst = 0.0;
+    for (int j = -6; j <= 6; j++)
+        for (int i = -6; i <= 6; i++)
+            worst = std::max(worst, std::abs(cavityDelta(onFrame, offFrame, sx + i, sy + j)));
+    std::printf("[measured] shadow pixels: off %.1f, on %.1f, worst change %.1f\n", offFrame.luma(sx, sy), onFrame.luma(sx, sy), worst);
+    EXPECT_LE(worst, CAVITY_NEUTRAL) << "the cube's shadow changed with Cavity";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
