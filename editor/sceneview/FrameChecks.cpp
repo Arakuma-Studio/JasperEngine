@@ -747,9 +747,17 @@ bool PlaneBuckets::test(uint32_t face, const Triangle& triangle, const Vector3& 
         return false;
     }
     testedBy[face] = queries;
-    // the cheap rejections first: facing, then the plane distance of one corner
+    // the cheap rejections first: facing, then the corners' distances to the other's plane (what
+    // rejects nearly every parallel neighbour), before the overlap in the plane
     const Face& candidate = faces[face];
     if (candidate.normal.dotProduct(normal) < COPLANAR_COS){
+        return false;
+    }
+    auto onPlane = [this](const Triangle& t, const Vector3& n, const Vector3& p){
+        return std::fabs(n.dotProduct(t.a - p)) <= tolerance && std::fabs(n.dotProduct(t.b - p)) <= tolerance &&
+               std::fabs(n.dotProduct(t.c - p)) <= tolerance;
+    };
+    if (!onPlane(triangle, candidate.normal, candidate.triangle.a) && !onPlane(candidate.triangle, normal, triangle.a)){
         return false;
     }
     return coplanarOverlap(candidate.triangle, triangle, tolerance);
