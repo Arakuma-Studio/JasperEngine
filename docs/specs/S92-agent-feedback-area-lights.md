@@ -351,3 +351,8 @@ PR-body checks. Nothing here touches the do-not-copy list in `README.md`.
   handler's catch (`McpServer::failFromException`). The read tool named is the failing tool's group's get_/list_/find_
   tool sharing most of its noun words, else that group's first one, else `editor_status`. The test-only tool is
   `selftest_echo` with a `throw` argument (the existing `JASPER_MCP_SELFTEST_GROUP` group).
+- **Download Budget measure (W3).** A web build is held to `download_bytes_gzip`; a Mobile or Desktop build to
+  `build_bytes`, the build report's files as they are measured before packaging (the report does not measure an APK, AAB or
+  store download). The rows are labelled **Download Budget MB (Web|Mobile|Desktop)** under Player › Publishing Settings,
+  keys `player.download_budget_mb.<family>`; S53's per-scene `quality.render_budgets.<family>.download_mb` (cooked model
+  files a scene loads) is unrelated and unchanged.

@@ -35,6 +35,7 @@
 #include "Out.h"
 #include "Project.h"
 #include "command/type/ShaderOverridesCmd.h"
+#include "cook/BuildReport.h"
 #include "ShippingTypes.h"
 #include "players/PlayerRuntimes.h"
 #include "platform/AndroidTools.h"
@@ -577,6 +578,44 @@ Json artifactsJson(const fs::path& dir) {
     return list;
 }
 
+// S92 R10, R11: what the build weighs, and the Download Budget it was held to. Returns the next
+// step when the build is over its budget: the tools that inspect its largest category.
+std::string addBuildSizes(const ExportResult& report, Json& result) {
+    if (report.buildReport.empty()) return std::string();
+    result["build_report"] = FileUtils::pathToGenericUtf8(report.buildReport);
+    result["build_bytes"] = report.buildBytes;
+    result["build_categories"] = BuildReport::categoriesJson(report.buildCategories);
+    Json top = Json::array();
+    for (size_t i = 0; i < report.largestFiles.size() && i < 5; i++)
+        top.push_back({{"path", report.largestFiles[i].path}, {"bytes", report.largestFiles[i].bytes}});
+    result["top_files"] = top;
+    if (report.downloadBytesGzip) result["download_bytes_gzip"] = report.downloadBytesGzip;   // the name says it is an estimate
+    if (!report.downloadBudgetBytes) return std::string();
+    BuildReport sizes;
+    sizes.categories = report.buildCategories;
+    const auto largest = sizes.largestCategories(3);
+    const uint64_t actual = report.downloadBytesGzip ? report.downloadBytesGzip : report.buildBytes;
+    Json categories = Json::array();
+    for (const auto& [name, bytes] : largest) categories.push_back({{"category", name}, {"bytes", bytes}});
+    result["download_budget"] = {{"budget_bytes", report.downloadBudgetBytes}, {"actual_bytes", actual},
+                                 {"over", actual > report.downloadBudgetBytes}, {"largest_categories", categories}};
+    if (actual <= report.downloadBudgetBytes || largest.empty()) return std::string();
+    const std::string& family = report.downloadBudgetFamily;
+    const std::string& category = largest.front().first;
+    std::string inspect;
+    if (category == "textures")
+        inspect = "get_texture_cook_report {\"platforms\": [\"" + family + "\"]} lists each texture's disk bytes; set_texture_import_settings "
+                  "lowers max_size or quality";
+    else if (category == "models")
+        inspect = "inspect_models {\"platform\": \"" + family + "\"} lists each model's download; set_model_import_settings shrinks them";
+    else if (category == "engine")
+        inspect = "modules and module_reasons say why each engine module ships; set_project_settings {\"player.strip_engine_code\": true} "
+                  "leaves out the unused ones";
+    else
+        inspect = "top_files names the largest files; list_assets {\"details\": true} sizes the project's";
+    return "Over the Download Budget: " + category + " is the largest category (" + BuildReport::formatBytes(largest.front().second) + "). " + inspect + ".";
+}
+
 void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progress) {
     BuildRun& r = *run;
     Json result = {
@@ -611,6 +650,7 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
     // notices) and notes
     for (const BuildWarning& warning : r.result.warnings) result["warnings"].push_back({{"code", warning.code}, {"message", warning.message}});
     if (!r.result.notes.empty()) result["notes"] = r.result.notes;
+    const std::string budgetNext = addBuildSizes(r.result, result);
     if (progress.finished && !progress.failed) {
         result["artifacts"] = artifactsJson(outputDir);
         std::string message;
@@ -656,7 +696,8 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
         }
         if (r.warningCount) message += " " + std::to_string(r.warningCount) + " compiler warning(s).";
         if (!r.result.warnings.empty()) message += " " + std::to_string(r.result.warnings.size()) + " build warning(s): see warnings.";
-        if (!r.next.empty()) result["next"] = r.next;
+        const std::string next = r.next.empty() ? budgetNext : budgetNext.empty() ? r.next : r.next + "; " + budgetNext;
+        if (!next.empty()) result["next"] = next;
         r.job->succeed(message, result);
     } else if (r.job->cancelRequested()) {
         r.job->markCancelled("Build cancelled.");

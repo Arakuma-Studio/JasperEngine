@@ -3042,6 +3042,15 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (project->getBuildMethod() != "auto") exportNode["method"] = project->getBuildMethod();
         if (project->isPackContent()) exportNode["pack"] = true;
         if (!project->isStripEngineCode()) exportNode["stripEngineCode"] = false;
+        // Download Budget (S92 R11): only the families that have one, so an old project.yaml stays as it was
+        {
+            YAML::Node budgetNode;
+            for (size_t f = 0; f < kModelFamilyCount; f++) {
+                const double megabytes = project->getDownloadBudgetMB((ModelFamily)f);
+                if (megabytes > 0.0) budgetNode[modelFamilyName((ModelFamily)f)] = megabytes;
+            }
+            if (budgetNode.size()) exportNode["downloadBudgetMB"] = budgetNode;
+        }
         // Player > Target Platforms: only when not all six, in BuildPlatform order
         if (project->getTargetPlatforms() != Project::allTargetPlatforms) {
             YAML::Node targetsNode(YAML::NodeType::Sequence);
@@ -4066,6 +4075,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         project->setPackContent(exportNode["pack"] && exportNode["pack"].as<bool>());
         project->setStripEngineCode(!exportNode["stripEngineCode"] || exportNode["stripEngineCode"].as<bool>());
+        // absent families are off; a negative or non-finite value is off too
+        for (size_t f = 0; f < kModelFamilyCount; f++) {
+            const YAML::Node budgetNode = exportNode["downloadBudgetMB"];
+            const char* family = modelFamilyName((ModelFamily)f);
+            const double megabytes = budgetNode && budgetNode.IsMap() ? decodeFiniteDouble(budgetNode[family], 0.0) : 0.0;
+            project->setDownloadBudgetMB((ModelFamily)f, std::max(0.0, megabytes));
+        }
 
         if (exportNode["desktop"] && exportNode["desktop"].IsMap()) {
             const YAML::Node& desktopNode = exportNode["desktop"];

@@ -3547,16 +3547,25 @@ bool editor::Exporter::writeBuildReport(const fs::path& outputDir, const std::st
     buildReport.platform = config.mode == ExportMode::Player ? buildPlatformName(config.platform)
                          : config.mode == ExportMode::Web ? "web" : config.mode == ExportMode::Desktop ? "desktop" : "source";
     buildReport.method = method;
+    if (buildReport.platform == "web") buildReport.downloadBytesGzip = BuildReport::webDownloadGzipBytes(outputDir);
+    // S92 R11: the family's Download Budget; a build over it succeeds with the warning
+    ModelFamily family;
+    const uint64_t budget = BuildReport::budgetFamilyOf(buildReport.platform, family) ? BuildReport::budgetBytesOf(project->getDownloadBudgetMB(family)) : 0;
     const fs::path file = outputDir / BuildReport::kFileName;
     std::string error;
     if (!buildReport.write(file, error)) {
         setError("Build Report: " + error);
         return false;
     }
+    if (const std::string over = buildReport.overBudgetMessage(budget); !over.empty()) warn("W-BUILD-OVER-BUDGET", over);
     std::lock_guard<std::mutex> lock(progressMutex);
     result.buildReport = file;
     result.buildBytes = buildReport.totalBytes;
     result.buildCategories = buildReport.categories;
+    result.largestFiles = buildReport.largest;
+    result.downloadBytesGzip = buildReport.downloadBytesGzip;
+    result.downloadBudgetBytes = budget;
+    result.downloadBudgetFamily = BuildReport::budgetFamilyOf(buildReport.platform, family) ? modelFamilyName(family) : "";
     BuildReport::setLast(file);
     Out::info("%s", buildReport.summary().c_str());
     return true;
