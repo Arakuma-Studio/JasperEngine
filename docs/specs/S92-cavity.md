@@ -362,3 +362,7 @@ The tier never turns Cavity off, because it's art direction, not a quality extra
 - R3: a depth-discontinuity mask replaces Blender's object-ID mask, because there is no ID buffer.
 - Editor UX: a flat row list with prefixed labels, because the Inspector group table has no
   sub-headers.
+- Agent UX: the guide line is in `docs/mcp/guide/shaders.md`'s intro as well as in
+  `post-processing.md`'s Fields. Eval agents asked for edge highlights read `jasper://docs/shaders`
+  and forked a shader; they never opened the post-processing doc (0 of 4 samples passed with only
+  the post-processing line, 3 of 4 with the shaders line).
