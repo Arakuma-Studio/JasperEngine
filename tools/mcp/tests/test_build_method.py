@@ -96,6 +96,9 @@ async def test_prebuilt_linux_build(ed: Editor):
     r = await ed.call("build_project", mode="player", platform="linux", output_dir=str(out), timeout_seconds=600)
     ed.check_eq(r["status"], "succeeded", f"{r}")
     result = r["result"]
+    # S92 R13, R14: estimated as a prebuilt Linux build; nothing was downgraded
+    ed.check(r.get("estimate", {}).get("seconds", 0) > 0, f"an estimate: {r.get('estimate')}")
+    ed.check_eq(result.get("report", {}).get("fallbacks"), [], f"a report: {result.get('report')}")
     ed.check_eq(result["method_used"], "prebuilt")
     ed.check_eq(result["player_id"], RUNTIME)
     ed.check_eq(result["compile_reasons"], [])
