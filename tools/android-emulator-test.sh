@@ -428,7 +428,7 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
                 adb shell cmd locale set-system-locales "$LOCALE_CHANGE" >/dev/null 2>&1 ||
                     adb shell "setprop persist.sys.locale $LOCALE_CHANGE" >/dev/null 2>&1 || true
                 start=$SECONDS
-                localechanged="MISSING      '$wanted' after the system language became $LOCALE_CHANGE"
+                localechanged="MISSING      \"$wanted\" after the system language became $LOCALE_CHANGE"
                 while (( SECONDS - start <= TIMEOUT )); do
                     sleep 2
                     adb logcat -d -v tag > "$DIR/logcat.txt"
