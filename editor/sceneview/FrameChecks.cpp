@@ -420,6 +420,7 @@ namespace {
         // no selection: the visible renderers that could fit in the frame (a ground, a terrain or a
         // room around the eye never does, and is left out)
         float minX = 3.4e38f, minY = 3.4e38f, maxX = -3.4e38f, maxY = -3.4e38f;
+        bool fitting = false;
         AABB fittingBounds;
         std::vector<std::pair<float, Entity>> cut;
         for (const SceneBvh::Leaf& leaf : run.scene->getPickBvh().getLeaves()){
@@ -428,11 +429,12 @@ namespace {
             if (!projection.inFront || projection.maxX - projection.minX > 2.0f || projection.maxY - projection.minY > 2.0f) continue;
             minX = std::min(minX, projection.minX); maxX = std::max(maxX, projection.maxX);
             minY = std::min(minY, projection.minY); maxY = std::max(maxY, projection.maxY);
+            fitting = true;
             fittingBounds.merge(leaf.bounds);
             if (projection.outsideShare > OUT_OF_FRAME_SHARE) cut.emplace_back(projection.outsideShare, leaf.entity);
         }
         const float area = (maxX - minX) * (maxY - minY);
-        if (!(area > 1e-12f)){
+        if (!fitting || !(area > 1e-12f)){
             return;
         }
         const float inside = std::max(0.0f, std::min(maxX, 1.0f) - std::max(minX, -1.0f)) *
@@ -540,6 +542,11 @@ namespace {
 
     // true when it ran out of time before every pair was tested
     bool checkZFighting(Run& run, const std::function<bool()>& overBudget){
+        // a 2D or UI scene, or a camera without a depth test, draws in its sorting order: faces on one
+        // plane never fight there
+        if (run.sceneProject->sceneType != SceneType::SCENE_3D || !run.camera.depthTest){
+            return false;
+        }
         SceneBvh& bvh = run.scene->getPickBvh();
         std::vector<MeshCandidate> meshes;
         for (const SceneBvh::Leaf& leaf : bvh.getLeaves()){
