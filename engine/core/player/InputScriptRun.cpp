@@ -173,6 +173,14 @@ void frameDrawn(const FrameReader& reader){
     Log::error("[input] shot %s failed: %s", name.c_str(), error.c_str());
 }
 
+bool isFetchedUrl(const std::string& path){
+    for (const char* prefix : {"http://", "https://", "/", "./", "../"}) {
+        if (path.rfind(prefix, 0) == 0)
+            return true;
+    }
+    return false;
+}
+
 void reset(){
     State& s = state();
     if (s.replay)
