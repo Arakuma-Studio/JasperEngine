@@ -1,0 +1,82 @@
+name: Build engine
+
+# Compila el motor gráfico y el editor con el mismo camino documentado del repositorio
+# (tools/build.sh dentro de la imagen docker/linux.Dockerfile) y publica los binarios
+# como artefactos descargables. Es independiente de ci.yml: no planifica lanes ni
+# ejecuta tests, solo construye y entrega.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-engine-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # bash -eo pipefail en cada paso
+    shell: bash
+
+jobs:
+  linux:
+    name: linux (OpenGL)
+    runs-on: ubuntu-latest
+    # un build en frío del editor y el proyecto de ejemplo en un runner de 4 vCPU
+    timeout-minutes: 300
+    steps:
+      - name: Start
+        run: echo "JASPER_BUILD_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # el build necesita ~30 GB en /; el runner arranca con ~87 libres, así que solo
+      # elimina SDKs e imágenes cuando de verdad faltan
+      - uses: ./.github/actions/free-disk
+        with:
+          need: 30
+
+      # Construye la imagen Linux y dentro de ella el editor (con su install tree) y el
+      # proyecto de ejemplo. WERROR=1 es la regla del repositorio: el código debe compilar
+      # sin warnings.
+      - name: Build the editor and the engine sample project
+        env:
+          WERROR: 1
+        run: tools/build.sh linux
+
+      - name: Package the artifacts
+        run: |
+          mkdir -p dist
+          # tar conserva los bits de ejecutable que un zip perdería
+          tar -C build/linux -cJf dist/jasperengine-editor-linux-x64.tar.xz editor-install
+          if [[ -f build/linux/engine/jasperengine-project ]]; then
+              cp build/linux/engine/jasperengine-project dist/
+          fi
+          ls -lh dist
+
+      - name: Summary
+        run: |
+          {
+              echo "### JasperEngine compilado"
+              echo
+              echo "Tiempo: $(( $(date +%s) - JASPER_BUILD_STARTED )) s"
+              echo
+              echo '```'
+              du -sh build/linux/editor-install dist/*
+              echo '```'
+              echo
+              echo 'Editor: `dist/jasperengine-editor-linux-x64.tar.xz` → `editor-install/bin/jasperengine-editor`'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: jasperengine-linux-x64
+          path: dist/
+          retention-days: 30
+          if-no-files-found: error
