@@ -341,8 +341,12 @@ TILT=NONE
 
 async def test_area_light_and_ies_profile(ed: Editor):
     """S92 AC8: an Area Light and an IES Profile through set_properties: the values read back, the
-    variant takes their defines, the image changes, and a profile with a tilt is refused naming it."""
-    eid = STATE["sphere"]
+    variant takes their defines, the image changes, and a profile with a tilt is refused naming it.
+    Its own scene, so it runs alone too (-k)."""
+    await new_scene(ed, "AreaLights")
+    eid = await make_entity(ed, "Lit", "sphere")
+    await camera_at(ed, (0, 0.5, 3.0), (0, 0, 0))
+    await ed.call("set_properties", entity=eid, values={"mesh": {M + "roughnessFactor": 0.4, M + "metallicFactor": 0}})
     before = await shot(ed)
     panel = await make_entity(ed, "Panel", "point_light", position=[0.0, 1.5, 1.0])
     await ed.call("set_properties", entity=panel, values={"light": {
