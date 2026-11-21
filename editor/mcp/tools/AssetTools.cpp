@@ -346,7 +346,8 @@ bool color01(const Json& value, std::array<float, 4>& out, std::string& error) {
     if (value.is_string()) {
         std::string hex = value.get<std::string>();
         if (!hex.empty() && hex[0] == '#') hex.erase(0, 1);
-        if (hex.size() != 6 && hex.size() != 8) {
+        if ((hex.size() != 6 && hex.size() != 8) ||
+            !std::all_of(hex.begin(), hex.end(), [](unsigned char c) { return std::isxdigit(c) != 0; })) {
             error = "colors are [r,g,b(,a)] in 0..1 or \"#RRGGBB(AA)\".";
             return false;
         }

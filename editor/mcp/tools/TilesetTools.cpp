@@ -175,7 +175,8 @@ bool parsePropertyValue(const Json& value, TilePropertyType type, TilePropertyVa
                 out.color = color;
                 return true;
             }
-            if (value.is_string() && value.get<std::string>().rfind('#', 0) == 0 && (value.get<std::string>().size() == 7 || value.get<std::string>().size() == 9)) {
+            if (value.is_string() && value.get<std::string>().rfind('#', 0) == 0 && (value.get<std::string>().size() == 7 || value.get<std::string>().size() == 9) &&
+                std::all_of(value.get<std::string>().begin() + 1, value.get<std::string>().end(), [](unsigned char c) { return std::isxdigit(c) != 0; })) {
                 const std::string text = value.get<std::string>();
                 const auto byte = [&](size_t at) { return static_cast<float>(std::stoi(text.substr(at, 2), nullptr, 16)) / 255.0f; };
                 out.color = Vector4(byte(1), byte(3), byte(5), text.size() == 9 ? byte(7) : 1.0f);
