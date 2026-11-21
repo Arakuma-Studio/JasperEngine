@@ -1440,6 +1440,61 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "bad_record_fallback_unreported",
+        "kind": "bad",
+        "what_happened": "A movie came out of another H.264 encoder than libx264 (a bitrate instead of CRF quality); the "
+                         "result named only the encoder used, so the agent could not tell the user it was a downgrade.",
+        "text_at_issue": "record_game's result: report.fallbacks [{step, from, to, reason}] (S92 R14)",
+        "source": "docs/specs/S92-agent-feedback-area-lights.md R14",
+        "groups_enabled": ["editor_tools"],
+        "prompt": "Record 3 seconds of the game as an MP4 to captures/clip.mp4 and tell me if anything came out worse than asked.",
+        "mocks": [
+            {"tool": "record_game", "result": {
+                "text": "Recorded 90 frames to captures/clip.mp4.",
+                "real": True,
+                "structured": {"frames": 90, "fps": 30, "width": 1920, "height": 1080, "encoder": "h264_nvenc", "scene": "Main", "take": 1,
+                               "startFrame": 0, "warnings": [], "wallSeconds": 6.1, "maxQueued": 3, "output": "captures/clip.mp4",
+                               "estimated_bytes": 1555200, "movie": "captures/clip.mp4", "sidecar": "captures/clip.mp4.recording.json",
+                               "report": {"seconds": 6.4, "estimated_seconds": 5.9, "ratio": 1.08,
+                                          "fallbacks": [{"step": "encoder", "from": "libx264", "to": "h264_nvenc",
+                                                         "reason": "this FFmpeg has no libx264"}]},
+                               "job": {"job_id": "job-1", "kind": "record", "title": "Record 90 frame(s) to mp4", "status": "succeeded",
+                                       "message": "Recorded 90 frames to captures/clip.mp4.", "elapsed_seconds": 6.4, "progress": 1.0,
+                                       "estimate": {"seconds": 5.9, "bytes": 1555200, "basis": "history", "confidence": "medium"},
+                                       "log_tail": []}}}},
+        ],
+        "checks": {"calls": [{"tool": "record_game"}], "max_calls": {"record_game": 1}, "reply_must": [r"libx264"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_build_estimate_unknown",
+        "kind": "bad",
+        "what_happened": "Asked how long a build would take, an agent could only guess: no job said what it expected to cost.",
+        "text_at_issue": "a job's estimate {seconds, basis, confidence} and remaining_seconds (S92 R13, R16)",
+        "source": "docs/specs/S92-agent-feedback-area-lights.md R13, R16",
+        "prompt": "Start a Linux build of the game, don't wait for it to finish, and tell me about how long it should take.",
+        "mocks": [
+            {"tool": "build_project", "result": {
+                "text": "Job job-3 (Build Linux (Release)) is still running. Poll get_job with job_id \"job-3\" until its status is "
+                        "succeeded, failed or cancelled; cancel_job stops it.",
+                "real": True,
+                "structured": {"job_id": "job-3", "kind": "build", "title": "Build Linux (Release)", "status": "running",
+                               "message": "Cooking textures...", "elapsed_seconds": 0.4, "progress": 0.05, "holds": "export",
+                               "estimate": {"seconds": 240.0, "basis": "history", "confidence": "high"}, "remaining_seconds": 236.0,
+                               "log_tail": []}}},
+            {"tool": "get_job", "result": {
+                "text": "Build Linux (Release): running - Cooking textures...",
+                "real": True,
+                "structured": {"job_id": "job-3", "kind": "build", "title": "Build Linux (Release)", "status": "running",
+                               "message": "Cooking textures...", "elapsed_seconds": 3.0, "progress": 0.06, "holds": "export",
+                               "estimate": {"seconds": 240.0, "basis": "history", "confidence": "high"}, "remaining_seconds": 234.0,
+                               "log_tail": []}}},
+        ],
+        "checks": {"calls": [{"tool": "build_project"}],
+                   "reply_must": [r"\b(4|four)\s*min|\b2[34]\d\s*s"]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_shadow_softness",
         "kind": "guard",
         "what_happened": "The guide's Shadows digest names a light's softShadows and the scene's shadows_quality; guards it when "

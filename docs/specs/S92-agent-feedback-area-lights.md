@@ -295,3 +295,28 @@ PR-body checks. Nothing here touches the do-not-copy list in `README.md`.
 - **IES point lights in the per-object path.** Default: same atlas lookup, one fetch per light only where a profile is set.
 
 ## Deviations
+
+### W4 — Job estimates and reports
+
+- **R16's progress bar is the status bar's.** No editor progress bar showed MCP jobs, so the status bar
+  gains one per running job with an estimate (at most two): its progress, or the share of the
+  estimate elapsed when the job reports none (record_game), and "N s left" from
+  `jobRemainingSeconds` (the estimate early, the progress late). Its tooltip names the basis and
+  confidence. `get_job` carries `estimate` and `remaining_seconds` in `structuredContent`; its text
+  is unchanged.
+- **The fallbacks are the downgrades the code can take, no more.** record_game: another H.264 encoder
+  than libx264, fps or size clamped to the Recorder's limits, the size clamped to the GPU's maximum
+  texture size or to even sizes for 4:2:0, audio dropped (started mid-Play, or the deterministic
+  driver failed), frames recorded without waiting for what does not settle (S62). build_project:
+  Auto compiled instead of using the prebuilt player (with the reasons), a bigger player variant
+  than the one that fits, textures R6 left uncompressed (per family, with a count). A texture's
+  Max Size clamp is the user's setting, not a downgrade, and is not listed. bake_impostors: view
+  passes that could not be read back (the only downgrade its code has). export_title: the
+  `output_downscaled` warnings (an output over its max_size).
+- **History kinds are finer than the four tools.** Times differ by minutes across platforms and
+  methods, so the kinds are `record_game:<format>`, `build_project:<platform>:prebuilt|compiled`
+  (and `:source`), `bake_impostors`, `export_title:<format>` and `export_title:bake:dry_run`. A
+  build that compiled against a prebuilt estimate records its measure against the compiled model.
+  Only successes are recorded. `estimate.bytes` is given where a model of the output exists
+  (recordings, impostor atlases, baked title PNGs, a prebuilt build's player plus assets).
+- **export_title format glb is not a job** (it answers in one call), so it has no estimate.
