@@ -543,11 +543,12 @@ core tests already build scenes with physics, `PhysicsRayThreadsTest.cpp:27-30`)
   convex-vs-convex decision (its bounds test and GJK step on the shapes without their convex radius;
   intersecting cores, where Jolt would run EPA for a depth, overlap); a mesh or height field leaf gets
   its convex-vs-triangles decision triangle by triangle (back faces skipped, bounds, GJK step), and any
-  other leaf goes through Jolt's collide. A box query asks the broad phase with its oriented box.
-  `je-bench-physics-query` on box B (load about 10 on 12 cores, three runs): `overlap_box_p95_ms`
-  0.0084, 0.0084, 0.0071 (budget 0.0088), every other key within its budget. The answers equal `CollideShape`'s (PhysicsQueryReference keeps using it, as
-  the independent sweep) without the penetration depth an overlap never needed: the EPA on every body
-  a 5 m box held wholly inside had made `overlapBox` 4x over its budget (0.033 ms).
+  other leaf goes through Jolt's collide. A box query asks the broad phase with its oriented box. The
+  answers equal `CollideShape`'s (PhysicsQueryReference keeps using it, as the independent sweep)
+  without the penetration depth an overlap never needed: the EPA on every body a 5 m box held wholly
+  inside had made `overlapBox` 4x over its budget (0.033 ms). `je-bench-physics-query` on box B (load
+  about 10 on 12 cores, three runs): `overlap_box_p95_ms` 0.0084, 0.0084, 0.0071 against 0.0088, and
+  every other key within its budget.
 - **R3 casts.** Every hit at fraction 0 is dropped (touching at the start counts as overlapping,
   R1), not only those with positive penetration: without `mReturnDeepestPoint` Jolt reports no
   reliable depth there. A Box2D cast callback never returns -1 or 0 for a skipped shape (Box2D 3.1
