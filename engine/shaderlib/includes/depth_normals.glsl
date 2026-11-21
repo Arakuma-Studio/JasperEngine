@@ -17,17 +17,17 @@
 
 vec4 depthNormalsEncode(vec3 n){
     vec2 code = floor(octEncode(normalize(n)) * 4095.0 + 0.5);
-    vec2 high = floor(code / 16.0);
-    vec2 low = code - high * 16.0;
-    return vec4(high / 255.0, (low.x * 16.0 + low.y) / 255.0, 1.0);
+    vec2 codeHigh = floor(code / 16.0);
+    vec2 codeLow = code - codeHigh * 16.0;
+    return vec4(codeHigh / 255.0, (codeLow.x * 16.0 + codeLow.y) / 255.0, 1.0);
 }
 
 // xyz the normal, w 1 where one was written (0: none)
 vec4 depthNormalsDecode(vec4 texel){
-    vec2 high = floor(texel.rg * 255.0 + 0.5);
-    float low = floor(texel.b * 255.0 + 0.5);
-    float lowX = floor(low / 16.0);
-    vec2 code = high * 16.0 + vec2(lowX, low - lowX * 16.0);
+    vec2 codeHigh = floor(texel.rg * 255.0 + 0.5);
+    float codeLow = floor(texel.b * 255.0 + 0.5);
+    float codeLowX = floor(codeLow / 16.0);
+    vec2 code = codeHigh * 16.0 + vec2(codeLowX, codeLow - codeLowX * 16.0);
     return vec4(octDecode(code / 4095.0), step(0.5, texel.a));
 }
 

@@ -11463,7 +11463,7 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
     ssaoPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0)); // background -> depth ~1.0
     if (normals)
         ssaoPassRender.setColorActions(1, LoadAction::CLEAR, StoreAction::STORE, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
-    ssaoPassRender.setLabel(normals ? "depth and normals pre-pass" : "depth pre-pass");
+    ssaoPassRender.setLabel("depth pre-pass");
     ssaoPassRender.startRenderPass(&target.getRender());
     passResolution = Vector2((float)width, (float)height);
 

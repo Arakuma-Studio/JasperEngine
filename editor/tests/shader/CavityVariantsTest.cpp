@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 // S92's Cavity shaders (docs/specs/S92-cavity.md): the fullscreen draw and the depth programs
-// with normals ('Cvn') compile for every backend, and a fork of depth.frag of any age gets the
-// normals output (the compiler wraps its main), from the vertex stage when that stage writes
-// one, else "none".
+// with normals ('Cvn') compile for every backend an export targets, a fork of depth.frag of any
+// age gets the normals output (the compiler wraps its main), from the vertex stage when that
+// stage writes one, else "none"; an export ships them only with Cavity.
 
 #include "pool/ShaderPool.h"
 #include "shader/ShaderVariantCompiler.h"
@@ -19,27 +19,13 @@ using namespace jasperengine;
 
 namespace {
 
-    const ShaderBackend allBackends[] = {ShaderBackend::GLCore, ShaderBackend::GLES3, ShaderBackend::D3D11,
-                                         ShaderBackend::MetalMacOS, ShaderBackend::MetalIOS, ShaderBackend::Vulkan};
-
-    const char* backendName(ShaderBackend backend){
-        switch (backend){
-            case ShaderBackend::GLCore: return "glsl410";
-            case ShaderBackend::GLES3: return "glsl300es";
-            case ShaderBackend::D3D11: return "hlsl5";
-            case ShaderBackend::MetalMacOS: return "msl21macos";
-            case ShaderBackend::MetalIOS: return "msl21ios";
-            case ShaderBackend::Vulkan: return "spirv10";
-        }
-        return "?";
-    }
-
     void expectCompiles(ShaderKey key, const CustomShaderSources* sources = nullptr){
-        for (ShaderBackend backend : allBackends){
+        ASSERT_GE(ShaderPool::getShaderBackends().size(), 6u);
+        for (ShaderBackend backend : ShaderPool::getShaderBackends()){
             ShaderData data;
             std::string error, log;
             EXPECT_TRUE(ShaderVariantCompiler::compile(key, backend, sources, data, &error, &log))
-                << ShaderPool::getShaderKeyText(key) << " on " << backendName(backend) << ": " << error << "\n" << log;
+                << ShaderPool::getShaderKeyText(key) << " on " << ShaderPool::getShaderLangStr(backend) << ": " << error << "\n" << log;
         }
     }
 
@@ -94,7 +80,7 @@ namespace {
 
 }
 
-TEST(CavityShader, FullscreenVariantsCompileOnEveryBackend){
+TEST(CavityVariants, FullscreenVariantsCompileOnEveryBackend){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
     for (int type = 0; type < 3; type++){
         const uint64_t properties = ShaderPool::getCavityProperties(type != 1, type != 0);
@@ -102,7 +88,7 @@ TEST(CavityShader, FullscreenVariantsCompileOnEveryBackend){
     }
 }
 
-TEST(CavityShader, DepthProgramsWithNormalsCompileOnEveryBackend){
+TEST(CavityVariants, DepthProgramsWithNormalsCompileOnEveryBackend){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
     std::vector<SubmeshShaderInputs> cases;
     cases.push_back(meshInputs());
@@ -145,10 +131,10 @@ TEST(CavityShader, DepthProgramsWithNormalsCompileOnEveryBackend){
     expectCompiles(ShaderPool::getShaderKey(ShaderType::DEPTH, batched));
 }
 
-TEST(CavityShader, LibraryDepthProgramsWriteNormals){
+TEST(CavityVariants, LibraryDepthProgramsWriteNormals){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
     const uint64_t properties = cavityDepthProperties(meshInputs());
-    for (const char* shader : {"library:surface", "library:dissolve#WORLD_NOISE", "library:spin_bob"}){
+    for (const char* shader : {"library:simple_lit", "library:dissolve#WORLD_NOISE", "library:spin_bob"}){
         const CustomShaderSources sources = ShaderVariantCompiler::resolveCustomShaderSources(shader,
             [](const std::string&, std::string&){ return false; }, ShaderType::DEPTH);
         ASSERT_TRUE(sources.valid) << shader << ": " << sources.error;
@@ -161,7 +147,7 @@ TEST(CavityShader, LibraryDepthProgramsWriteNormals){
     }
 }
 
-TEST(CavityShader, OldDepthForksWriteNoNormalsAndCompile){
+TEST(CavityVariants, OldDepthForksWriteNoNormalsAndCompile){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
     const uint64_t properties = cavityDepthProperties(meshInputs());
 

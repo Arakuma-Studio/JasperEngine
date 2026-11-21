@@ -48,7 +48,7 @@ uniform u_fs_cavity {
 } cavity;
 
 #include "includes/depth_util.glsl"
-#include "includes/octahedral.glsl"
+// (and includes/octahedral.glsl, which has no guard of its own)
 #include "includes/depth_normals.glsl"
 
 // the depth target's v of a step up the screen: +1 where its row 0 is the bottom (GL)
