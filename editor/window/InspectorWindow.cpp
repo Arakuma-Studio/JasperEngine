@@ -7,6 +7,7 @@
 #include "animation/BoneOverlay.h"
 #include "pixelart/PixelArtAssign.h"
 #include "window/BitmapFontInspector.h"
+#include "recorder/InputRecordingInspector.h"
 #include "pixelart/PixelPerfectEditor.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "graph/GraphEditorHooks.h"
@@ -13611,6 +13612,10 @@ void editor::InspectorWindow::show(){
             // S45: a .spriteatlas
             if (!spriteAtlasInspector) spriteAtlasInspector = std::make_shared<SpriteAtlasInspector>(project);
             drewAssets = spriteAtlasInspector->draw(project->getInspectedAssets());
+        }
+        if (!drewAssets) {
+            if (!inputRecordingInspector) inputRecordingInspector = std::make_shared<recordinput::InputRecordingInspector>(project);
+            drewAssets = inputRecordingInspector->draw(project->getInspectedAssets());
         }
         if (assetsLocked) ImGui::EndDisabled();
         if (drewAssets) {
