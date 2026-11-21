@@ -9,9 +9,10 @@ its group, the instructions), so a sample always sees the current text. CASE.jso
 of cases.py (its mocks). Every call is appended to CALLS.jsonl. Nothing here touches an editor,
 a project or the network.
 
-Argument checks are the registry's (McpRegistry::addTool): an unknown top-level key fails with
-the editor's own message; a missing required key fails like the handlers do ("<key> is
-required."). tool_groups is answered from state, so enabling a group lists its tools
+Argument checks are the registry's (McpRegistry::argumentProblem): an unknown top-level key, or an
+unknown key of a closed object below it, fails with the editor's own message and its nearest valid
+name (NearestIdentifier in engine/core/util/NearestName.h); a missing required key fails like the
+handlers do ("<key> is required."). tool_groups is answered from state, so enabling a group lists its tools
 (notifications/tools/list_changed), as the editor does.
 """
 
@@ -26,6 +27,59 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from grade import args_match as partial_match  # noqa: E402  (the checks' matcher: re:, *)
 
 CORE = "core"
+
+
+def folded(name: str) -> str:
+    return name.replace("_", "").replace("-", "").lower()
+
+
+def distance(a: str, b: str) -> int:
+    row = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        diagonal, row[0] = row[0], i
+        for j, cb in enumerate(b, 1):
+            diagonal, row[j] = row[j], min(row[j] + 1, row[j - 1] + 1, diagonal + (ca != cb))
+    return row[len(b)]
+
+
+def nearest_identifier(target: str, candidates: list[str], cap: int = 2) -> str:
+    """NearestIdentifier (engine/core/util/NearestName.h): fold-equal, else within 2 edits as written,
+    else within 2 edits folded; the first candidate wins a tie."""
+    for c in candidates:
+        if folded(c) == folded(target):
+            return c
+    for key in (lambda n: n, folded):
+        best = min(candidates, key=lambda c: distance(key(target), key(c)), default="")
+        if best and distance(key(target), key(best)) <= cap:
+            return best
+    return ""
+
+
+def did_you_mean(target: str, candidates: list[str]) -> str:
+    near = nearest_identifier(target, candidates)
+    return f" (did you mean '{near}'?)" if near else ""
+
+
+def nested_key_problem(schema, value, path: str) -> str | None:
+    """McpRegistry.cpp's nestedKeyProblem: an unknown key of a closed object below the top level."""
+    if not isinstance(schema, dict):
+        return None
+    props = schema.get("properties")
+    if isinstance(value, dict) and isinstance(props, dict):
+        for key, item in value.items():
+            if key in props:
+                problem = nested_key_problem(props[key], item, f"{path}.{key}")
+                if problem:
+                    return problem
+            elif schema.get("additionalProperties") is False:
+                keys = list(props)
+                return f'{path}: unknown key "{key}"{did_you_mean(key, keys)}. Keys: {", ".join(keys) or "none"}.'
+    if isinstance(value, list) and isinstance(schema.get("items"), dict):
+        for i, item in enumerate(value):
+            problem = nested_key_problem(schema["items"], item, f"{path}[{i}]")
+            if problem:
+                return problem
+    return None
 
 
 def group_of(tool: dict) -> str:
@@ -60,7 +114,10 @@ class Stub:
         for key in args:
             if key not in props:
                 valid = ", ".join(props) or "none"
-                return f'Unknown argument "{key}" for {name}. Arguments: {valid}.'
+                return f'Unknown argument "{key}" for {name}{did_you_mean(key, list(props))}. Arguments: {valid}.'
+            problem = nested_key_problem(props[key], args[key], key)
+            if problem:
+                return problem
         for key in schema.get("required") or []:
             if key not in args or args[key] is None:
                 return f"{key} is required."
@@ -121,7 +178,7 @@ class Stub:
     def read_doc(self, uri: str, args: dict) -> dict:
         """read_file of a jasper:// doc, as AssetTools.cpp's readResourceFile answers it (lineWindow)."""
         if uri not in self.contents:
-            return error(f"Resource not found: {uri} The documents: read_file jasper://docs.")
+            return error(f"Resource not found: {uri}{did_you_mean(uri, list(self.contents))}. The documents: read_file jasper://docs.")
         lines = self.contents[uri].split("\n")
         if lines and lines[-1] == "":
             lines.pop()
@@ -133,7 +190,7 @@ class Stub:
     def call(self, name: str, args) -> dict:
         self.calls += 1
         if name not in self.tools:
-            res = error(f"Unknown tool: {name}")
+            res = error(f"Unknown tool: {name}{did_you_mean(name, self.order)}. tool_groups lists every tool by group.")
         elif not isinstance(args, dict):
             res = error("tools/call arguments must be an object.")
         else:

@@ -295,3 +295,30 @@ PR-body checks. Nothing here touches the do-not-copy list in `README.md`.
 - **IES point lights in the per-object path.** Default: same atlas lookup, one fetch per light only where a profile is set.
 
 ## Deviations
+
+### W1 — Names and faults
+
+- **R1, enum values are suggested, not refused up front.** Handlers take aliases their enums do not list
+  (`create_entity` type `box` for `cube`, `sun` for `directional_light`), so the registry refuses only unknown
+  arguments and unknown keys of closed objects before a call runs. For a string outside its enum (not even in
+  another case or with other underscores) it adds the nearest option to the handler's own error, right after the
+  handler's mention of the value (`McpRegistry::suggestEnumValue`); a component property's enum
+  (`McpValues::enumFromJson`) suggests one itself.
+- **R1, the matcher.** `NearestName.h` gains `NearestIdentifier` (a JasperEngine addition at its end, recorded in
+  `NOTICE.md`): a fold-equal candidate (case, `_` and `-` ignored) first, then `NearestName`, then `NearestName` of
+  the folded names. The CLI's `closeMatches` puts its answer first, so `call` suggests what the server does.
+- **R2, no `get_tool_help`.** That tool does not exist; an unknown tool's error names `tool_groups`, which lists
+  every tool by group. A `tools/call` of an unknown tool stays a JSON-RPC error (-32602), with the suggestion in its
+  message; inside `batch` it is the step's error result with the same text.
+- **R4, audit of `editor/mcp/tools/` (and `McpValues`, `McpRefs`).** No handler throws a `logic_error`-family
+  exception with a message meant for the agent. The two engine helpers that do (`applyInputActionsOp`'s
+  `invalid_argument`, `Catalog::getComponentType`'s) are caught by every MCP caller (`edit_input_actions`, `McpRefs`,
+  `EcsTools`). Agent text that could reach `std::stoi`/`stoul`/`stoull` and throw `invalid_argument` or
+  `out_of_range` (not the agent's message, and wrongly called "not caused by your arguments" now) is bounded
+  first: `read_console` `since`, tileset and `AssetTools` hex colours, the F-key names of `BuildTools`,
+  `submeshes[i]` and path indices in `McpValues`, the scene id of `jasper://scene-view/{scene}`. The remaining
+  `out_of_range` throws (ComponentArray, Tilemap, LayoutGroup, Model, Text) are internal faults.
+- **R3, the fault path.** Continuations (`waitUntil`, `afterFrames`) and the off-main-thread tool share the
+  handler's catch (`McpServer::failFromException`). The read tool named is the failing tool's group's get_/list_/find_
+  tool sharing most of its noun words, else that group's first one, else `editor_status`. The test-only tool is
+  `selftest_echo` with a `throw` argument (the existing `JASPER_MCP_SELFTEST_GROUP` group).

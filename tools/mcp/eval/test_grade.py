@@ -139,6 +139,20 @@ class StubTest(unittest.TestCase):
         self.assertTrue(res["isError"])
         self.assertEqual(res["content"][0]["text"], 'Unknown argument "speed" for play. Arguments: action.')
 
+    def test_names_get_the_registry_suggestion(self):
+        surface = {"tools": [{"name": "write_file", "inputSchema": {"type": "object", "properties": {
+            "path": {"type": "string"}, "edits": {"type": "array", "items": {
+                "type": "object", "additionalProperties": False,
+                "properties": {"new_text": {}, "old_text": {}, "replace_all": {}}}}}}}]}
+        s = stub_server.Stub(surface, {}, None)
+        self.assertEqual(s.call("write_file", {"pathName": "a"})["content"][0]["text"],
+                         'Unknown argument "pathName" for write_file. Arguments: path, edits.')
+        self.assertEqual(s.call("write_file", {"path": "a", "edits": [{"oldText": "x"}]})["content"][0]["text"],
+                         "edits[0]: unknown key \"oldText\" (did you mean 'old_text'?). Keys: new_text, old_text, replace_all.")
+        self.assertEqual(s.call("write_fiel", {})["content"][0]["text"],
+                         "Unknown tool: write_fiel (did you mean 'write_file'?). tool_groups lists every tool by group.")
+        self.assertEqual(stub_server.nearest_identifier("maxDocResluts", ["max_results", "max_doc_results"]), "max_doc_results")
+
     def test_required(self):
         self.assertEqual(self.stub().call("play", {})["content"][0]["text"], "action is required.")
 

@@ -5278,4 +5278,63 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    {
+        "id": "bad_internal_fault_as_argument_error",
+        "kind": "bad",
+        "what_happened": "A handler's std::out_of_range reached the agent verbatim ('Tool create_entity failed: "
+                         "vector::_M_range_check ...'); it read that as a bad argument and kept changing a correct call.",
+        "text_at_issue": "McpServer.cpp failFromException: 'Internal error in <tool> (not caused by your arguments); details in "
+                         "editor.log as fault <id>. Check the state with <read tool>, retry once, and report it if it repeats.'",
+        "source": "S92 section 3 (raw what() of logic_error reached agents); S92 R3",
+        "prompt": "Add a cube named Crate2 at position (2, 0, 0).",
+        "mocks": [
+            {"tool": "create_entity", "once": True, "result": err(
+                "Internal error in create_entity (not caused by your arguments); details in editor.log as fault 3fa9c021. "
+                "Check the state with get_entity, retry once, and report it if it repeats.")},
+            {"tool": "get_entity", "args": {"entity": "re:Crate2"}, "after": "create_entity", "result": ok(
+                "GameObject 22 \"Crate2\": transform, mesh. Position [2, 0, 0].", {"id": 22, "name": "Crate2", "path": "Crate2"})},
+            {"tool": "get_entity", "args": {"entity": "re:Crate2"}, "result": err(
+                "No GameObject \"Crate2\" in scene 1 \"Main\".")},
+            {"tool": "find_entities", "after": "create_entity", "result": ok(
+                "1 GameObject(s) match:\nCrate2 [22] mesh", {"entities": [{"id": 22, "path": "Crate2"}]})},
+            {"tool": "find_entities", "result": ok("0 GameObject(s) match.", {"entities": []})},
+            {"tool": "editor_status", "result": ok("Project \"Space Dodge\", scene 1 \"Main\" (edit mode).",
+                                                   {"project": {"name": "Space Dodge"}, "playing": False})},
+            {"tool": "create_entity", "result": ok(
+                "Created GameObject 22 \"Crate2\" (cube) in scene 1 \"Main\".",
+                {"entity": {"id": 22, "name": "Crate2", "path": "Crate2"}, "scene": {"id": 1, "name": "Main"}})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "create_entity", "args": {"name": "Crate2", "type": "re:^(cube|box)$"}}],
+                   "min_calls": {"create_entity": 2}, "max_calls": {"create_entity": 2},
+                   "any_of": [{"calls": ["get_entity"]}, {"calls": ["find_entities"]}, {"calls": ["editor_status"]}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_did_you_mean_nested_key",
+        "kind": "guard",
+        "what_happened": "A camelCase key inside a closed object (edits[0].oldText) was dropped silently before; the "
+                         "registry now refuses it naming the key meant, and the agent resends with that key.",
+        "text_at_issue": "McpRegistry.cpp nestedKeyProblem: 'edits[0]: unknown key \"oldText\" (did you mean 'old_text'?). "
+                         "Keys: ...'",
+        "source": "S92 R1 (nested closed objects, camelCase for snake_case)",
+        "files": GAME_FILES,
+        "history": [
+            {"user": "In the README, fix the typo 'spcae' (it should say 'space')."},
+            {"assistant": "Editing the README.", "calls": [{"tool": "write_file", "args": {
+                "path": "README.md", "edits": [{"oldText": "spcae", "newText": "space"}]},
+                "result": "edits[0]: unknown key \"oldText\" (did you mean 'old_text'?). Keys: new_text, old_text, "
+                          "replace_all."}]},
+        ],
+        "prompt": "Continue.",
+        "mocks": [
+            {"tool": "write_file", "args": {"edits": [{"old_text": "spcae", "new_text": "space"}]}, "result": ok(
+                "Wrote README.md (1 edit).", {"path": "README.md", "edits": 1})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "write_file", "args": {"edits": [{"old_text": "spcae", "new_text": "space"}]}}]},
+                              {"file_must": {"README.md": [r"space to shoot"]}}],
+                   "must_not_call": [{"tool": "write_file", "args": {"edits": [{"oldText": "*"}]}}],
+                   "max_calls": {"write_file": 2}},
+        "max_turns": 6,
+    },
 ]
