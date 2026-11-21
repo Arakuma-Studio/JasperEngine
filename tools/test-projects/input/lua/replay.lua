@@ -5,15 +5,18 @@
 --            same file fetched as a URL (GATE=input-script-url, R30)
 --   Android: debug.jasperengine.args=--input-script tests/Input/menu.input.json --quit-after-input
 -- Both expect "[gate] clicked", "[input] done" and exit code 0.
-local menu = UIDocument(Engine.getScene())
-menu.filename = "ui/menu.html"
-menu:load()
+-- made at the first update: a UIDocument made while main.lua runs at init hangs the web page
+local menu = nil
 
 MenuReady = false
 Clicked = false
 local spawned = 0
 
 Engine.onUpdate:add("replay", function()
+    if not menu then
+        menu = UIDocument(Engine.getScene())
+        menu.filename = "ui/menu.html"
+    end
     if not MenuReady and menu.loaded then
         local play = menu:getElementById("play")
         if play then
