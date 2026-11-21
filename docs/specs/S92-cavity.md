@@ -367,10 +367,18 @@ The tier never turns Cavity off, because it's art direction, not a quality extra
   and forked a shader; they never opened the post-processing doc (0 of 4 samples passed with only
   the post-processing line, 3 of 4 with the shaders line).
 - R1: the apply draw tests depth (LESS_EQUAL, no write) against the colour pass's depth, the
-  fragment writing the pre-pass's depth a hair nearer. That is the R6 mask: where the colour pass
+  fragment writing the pre-pass's depth nearer by 0.75 of the surface's own depth change across a
+  pixel on each axis (so every multisampled sample of the surface passes on a sloped face). That is the R6 mask: where the colour pass
   drew something nearer than the depth Cavity reads (a stencil-tested submesh, which no pre-pass
   draws), the test fails and the pixel stays as it is. It also keeps Cavity off what a forked
   colour shader draws away from its built-in depth program's geometry.
+- R2: the pre-pass normals are world-space (the object block alone; Cavity turns them to view
+  space), so a depth program takes no camera block for them: the G-buffer's depth-mismatch rule,
+  which counts a library depth program reading the camera block, and the shadow passes (block
+  uploads, the position-only index buffer) are as without Cavity. In a shadow pass a 'Cvn'
+  program still fetches the normal and writes an output with no attachment.
+- R2: a depth pre-pass is reused only at the colour pass's size; SSAO's (the view's size) is not
+  at a render scale below 1 or with fixed resolution, and Cavity then draws its own.
 - R2: the pre-pass normals are octahedral at 12 bits a component (rg the high bytes, b both low
   nibbles) with a written flag in alpha (cleared to 0), not the G-buffer's 16-bit split, which
   needs two attachments' worth of channels and has no room for the flag. The decode error is
@@ -390,8 +398,13 @@ The tier never turns Cavity off, because it's art direction, not a quality extra
 - R2: the G-buffer is the normals source when its depth draws every visible opaque mesh as the
   colour pass does (the scene-depth readers' rule, `hasVisibleGBufferDepthMismatch`), whether or
   not a scene-depth reader exists; otherwise the pre-pass, even with SSR on.
-- R3: the depth-step mask compares the second difference of 1 / view z across opposite taps with
-  5% of the centre's (affine on any plane, so slanted surfaces keep their lines).
+- R3: the depth-step mask is a one-surface test between the centre and each tap: each must lie
+  within 2 tap widths (at that depth) over the facing (|n.z|, at least 0.15) of the other's tangent
+  plane. Computed on a model of the test: a crease between faces up to 80 degrees from the view
+  reaches at most 0.46 of the margin, a curved surface 0.24; a step of 0.5% of the depth is masked
+  at Line Width 1 and 2, of 1% up to 4; a slanted plane is exactly 0 at any angle.
+- R4: where a pixel has no normal and both neighbours of an axis are background, World is
+  neutral there (no depth-rebuilt normal from the cleared depth).
 - R4: the bias is 0.15 L (not about 0.05 L): a smooth-shaded mesh's facets leave the plane of
   its interpolated normal by up to half their angle, and at 0.05 L a UV sphere's triangles drew a
   grid in World mode (the anti-goal). Creases and bevels are far steeper.
