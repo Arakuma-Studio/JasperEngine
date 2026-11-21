@@ -213,6 +213,7 @@ namespace jasperengine::editor::recordinput {
         bool holding = false;
         bool heldByUs = false;
         bool recordThisSession = false;
+        bool seeded = false;            // PlayData's beforeScripts is this session's seed
         uint32_t recordSeed = 0;
         fs::path recordFile;
 

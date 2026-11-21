@@ -6,7 +6,9 @@
 #include "EditorVersion.h"
 #include "Out.h"
 #include "Project.h"
+#include "script/LuaBinding.h"
 #include "test/GameTests.h"
+#include "test/PlayData.h"
 #include "test/TestRun.h"
 #include "util/FileUtils.h"
 #include "window/GameResolutions.h"
@@ -15,6 +17,7 @@
 #include "input/InputRecorder.h"
 #include "input/InputReplay.h"
 #include "io/AtomicFile.h"
+#include "lua.hpp"
 
 #include "stb_image_write.h"
 #include "yaml-cpp/yaml.h"
@@ -55,6 +58,20 @@ namespace {
         if (in) text << in.rdbuf();
         ok = static_cast<bool>(in) || !text.str().empty();
         return text.str();
+    }
+
+    // math.randomseed(seed) in the game's Lua state before any script's init (R16): the editor keeps
+    // one Lua state across sessions, so the seed goes in at the session's start, not when a state opens
+    void seedBeforeScripts(uint32_t seed) {
+        gametests::PlayData::get().beforeScripts = [seed]() {
+            lua_State* L = LuaBinding::getLuaState();
+            if (!L) return;
+            lua_getglobal(L, "math");
+            lua_getfield(L, -1, "randomseed");
+            lua_pushinteger(L, static_cast<lua_Integer>(seed));
+            if (lua_pcall(L, 1, 0, 0) != LUA_OK) lua_pop(L, 1);
+            lua_pop(L, 1);
+        };
     }
 
     void appendShotPng(void* context, void* data, int size) {
@@ -623,7 +640,10 @@ void RecordInput::playStarting() {
     if (pendingScript) {
         const input::ScriptHeader& h = pendingScript->header;
         sessionFps = std::max(1, h.fixedFps);
-        if (h.kind == input::ScriptKind::Recording && h.hasSeed) input::setPendingLuaSeed(h.seed);
+        if (h.kind == input::ScriptKind::Recording && h.hasSeed) {
+            seedBeforeScripts(h.seed);
+            seeded = true;
+        }
     } else if (armed) {
         if (input::InputRecorder::isRecording()) {
             Out::warning("Record Input: an input recording already runs (InputRecording.start): this Play is not recorded");
@@ -632,7 +652,8 @@ void RecordInput::playStarting() {
         recordThisSession = true;
         std::random_device device;
         recordSeed = static_cast<uint32_t>(device());
-        input::setPendingLuaSeed(recordSeed);
+        seedBeforeScripts(recordSeed);
+        seeded = true;
         sessionFps = currentSettings.frameRate;
     } else {
         return;
@@ -645,10 +666,9 @@ void RecordInput::playStarting() {
 void RecordInput::endSession() {
     if (recordThisSession) stopRecording();
     recordThisSession = false;
-    if (phase == Phase::Starting) {
-        // Play did not start: its seed goes with it
-        uint32_t unused = 0;
-        input::takePendingLuaSeed(unused);
+    if (seeded) {
+        gametests::PlayData::get().beforeScripts = nullptr;
+        seeded = false;
     }
     pendingScript.reset();
     if (replay && !replay->isDone()) replay->stop();
@@ -675,6 +695,11 @@ void RecordInput::tick() {
         // the scene runs: the recording and the replay start with the next frame, the game let go
         if (recordThisSession) beginRecording();
         if (pendingScript) startReplay();
+        // the scripts' init ran with the seed
+        if (seeded) {
+            gametests::PlayData::get().beforeScripts = nullptr;
+            seeded = false;
+        }
         phase = Phase::Running;
         applyHold(false);
         return;
