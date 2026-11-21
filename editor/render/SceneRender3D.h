@@ -20,6 +20,7 @@
 namespace jasperengine{
     class Sprite;
     enum class LightType;
+    enum class AreaLightShape;
     struct BuoyancyComponent;
     struct CharacterControllerComponent;
     struct ForceFieldComponent;
@@ -52,7 +53,7 @@ namespace jasperengine::editor{
         bool spotMaskReady = false;
         float spotMaskAspect = 1.0f;
         // an Area Light's outline as drawn (S92 R38)
-        AreaLightShape areaShape = AreaLightShape::RECTANGLE;
+        AreaLightShape areaShape{};  // (Rectangle)
         float areaHalfWidth = 0.0f;
         float areaHalfHeight = 0.0f;
         bool areaHandles = false;
