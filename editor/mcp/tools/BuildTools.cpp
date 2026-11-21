@@ -50,6 +50,10 @@
 #include "pool/ShaderPool.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
+#include "mcp/McpServer.h"
+#include "recorder/RecordInput.h"
+#include "input/InputScript.h"
+#include "player/RunControl.h"
 
 #include "stb_image.h"
 #include "stb_image_resize2.h"
@@ -2088,6 +2092,8 @@ struct PlayerRun {
     PlayerInputSender* sender = nullptr;
     std::string inputMethod;
     std::string inputError;
+    // input_script: the folder its shot steps write into (--input-shots); empty without one
+    fs::path inputShots;
 };
 
 constexpr size_t MAX_PLAYER_OUTPUT = 4 * 1024 * 1024;
@@ -2282,7 +2288,9 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
         data["exit_code"] = WEXITSTATUS(run->status);
         data["exited_early"] = true;
         how = "exited by itself after " + std::to_string(static_cast<int>(ran + 0.5)) + " s with code " + std::to_string(WEXITSTATUS(run->status));
-        if (WEXITSTATUS(run->status) != 0) crashed = true;
+        // 10, 11: the input script failed or diverged (its [input] lines say how), not a crash
+        const int code = WEXITSTATUS(run->status);
+        if (code != 0 && !(!run->inputShots.empty() && (code == player::EXIT_INPUT_FAILED || code == player::EXIT_INPUT_DIVERGED))) crashed = true;
     } else if (WIFSIGNALED(run->status)) {
         const int sig = WTERMSIG(run->status);
         data["signal"] = sig;
@@ -2315,6 +2323,36 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
         else if (run->nextAction < run->actions.size()) text += " Input: " + std::to_string(run->nextAction) + "/" +
                                                                 std::to_string(run->actions.size()) + " action(s) sent before the run ended.";
         else text += " Input: all " + std::to_string(run->actions.size()) + " action(s) sent (" + run->inputMethod + ").";
+    }
+
+    // input_script: its [input] lines and the PNGs of its shot steps (the first 4 as images)
+    if (!run->inputShots.empty()) {
+        Json inputLines = Json::array();
+        Json inputShots = Json::array();
+        std::string ending;
+        for (const std::string& line : lines) {
+            const size_t at = line.find("[input] ");
+            if (at == std::string::npos) continue;
+            const std::string entry = line.substr(at);
+            if (inputLines.size() < 60) inputLines.push_back(entry.size() > 2000 ? entry.substr(0, 2000) + "..." : entry);
+            if (entry.rfind("[input] done", 0) == 0 || entry.rfind("[input] failed", 0) == 0) ending = entry;
+            if (entry.rfind("[input] shot ", 0) != 0) continue;
+            const Json shot = Json::parse(entry.substr(13), nullptr, false);
+            if (!shot.is_object()) continue;
+            Json item = {{"name", shot.value("name", "")}, {"path", shot.value("path", "")}, {"frame", shot.value("frame", 0)},
+                         {"width", shot.value("width", 0)}, {"height", shot.value("height", 0)}};
+            if (result.images.size() < 4) {
+                const ScreenCapture capture = loadPlayerShot(FileUtils::pathFromUtf8(item["path"].get<std::string>()), run->maxWidth);
+                if (capture.ok) {
+                    item["image"] = static_cast<int>(result.images.size());
+                    result.images.push_back({Base64::encode(capture.png.data(), capture.png.size()), "image/png"});
+                }
+            }
+            inputShots.push_back(item);
+        }
+        data["input_script"] = {{"lines", inputLines}, {"shots", inputShots}, {"shots_folder", FileUtils::pathToGenericUtf8(run->inputShots)}};
+        text += " Input script: " + (ending.empty() ? std::string("no [input] done line (it did not finish)") : ending) + "; " +
+                std::to_string(inputShots.size()) + " shot(s).";
     }
 
     if (!run->playerShot.empty()) {
@@ -2366,10 +2404,75 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
     call->reply(std::move(result));
 }
 
+// resolutions: the player launched once per size (--resolution), one after another; the runs'
+// results side by side, the first 4 images of them all (input-recorder-and-input-scripts R24)
+void runBuildResolutions(const CallPtr& call, std::vector<std::string> sizes) {
+    auto results = std::make_shared<std::vector<ToolResult>>();
+    auto step = std::make_shared<std::function<void(size_t)>>();
+    *step = [call, sizes, results, step](size_t index) {
+        Json nested = call->args();
+        nested.erase("resolutions");
+        Json extra = nested.value("args", Json::array());
+        extra.push_back("--resolution");
+        extra.push_back(sizes[index]);
+        nested["args"] = extra;
+        McpServer::get().runNested(call, "run_build", nested, [call, sizes, results, step, index](const ToolResult& ran) {
+            results->push_back(ran);
+            if (index + 1 < sizes.size()) {
+                (*step)(index + 1);
+                return;
+            }
+            ToolResult merged;
+            Json runs = Json::array();
+            std::string text;
+            for (size_t i = 0; i < results->size(); i++) {
+                const ToolResult& r = (*results)[i];
+                Json data = r.structured.is_object() ? r.structured : Json::object();
+                data["resolution"] = sizes[i];
+                // the run's images, renumbered into the merged result's (the first 4 overall)
+                Json images = Json::array();
+                for (const ToolImage& image : r.images) {
+                    if (merged.images.size() >= 4) break;
+                    images.push_back(static_cast<int>(merged.images.size()));
+                    merged.images.push_back(image);
+                }
+                data["images"] = images;
+                runs.push_back(data);
+                text += (text.empty() ? "" : "\n") + sizes[i] + ": " + r.text.substr(0, r.text.find('\n'));
+                merged.isError = merged.isError || r.isError;
+            }
+            merged.text = text;
+            merged.structured = {{"runs", runs}};
+            call->reply(std::move(merged));
+            // (the chain held itself)
+            *step = nullptr;
+        });
+    };
+    (*step)(0);
+}
+
 void runBuildTool(const CallPtr& call) {
     McpContext& ctx = call->ctx();
     Project* project = ctx.project();
     const Json& args = call->args();
+    if (args.contains("resolutions") && args["resolutions"].is_array() && !args["resolutions"].empty()) {
+        std::vector<std::string> sizes;
+        for (const Json& item : args["resolutions"]) {
+            int width = 0, height = 0;
+            std::string error;
+            if (!item.is_string() || !recordinput::parseResolution(item.get<std::string>(), width, height, error)) {
+                call->fail("resolutions: " + (item.is_string() ? error : std::string("each is a \"WxH\" string")) + ".");
+                return;
+            }
+            sizes.push_back(std::to_string(width) + "x" + std::to_string(height));
+        }
+        if (args.contains("device") || sizes.size() > 8) {
+            call->fail(args.contains("device") ? "resolutions runs this computer's player: drop device." : "At most 8 resolutions.");
+            return;
+        }
+        runBuildResolutions(call, std::move(sizes));
+        return;
+    }
     // R23: a device's run (Android, the iOS Simulator, the browser)
     if (args.contains("device") && args["device"].is_string()) {
         builddevice::runBuildOnDevice(call);
@@ -2459,6 +2562,36 @@ void runBuildTool(const CallPtr& call) {
         run->inputDelay = std::clamp(args.value("input_delay_seconds", 1.0), 0.0, 120.0);
     }
 
+    // input_script: the engine's own input interpreter in the player, on any desktop and headless
+    // (input-recorder-and-input-scripts R24): its frame rate, the ready frame and its end are the player's
+    std::vector<std::string> inputScriptArgs;
+    if (args.contains("input_script") && args["input_script"].is_string()) {
+        if (!run->actions.empty()) {
+            call->fail("Pass input_script (the engine's input, any desktop) or input (X11 events), not both.");
+            return;
+        }
+        const std::string scriptText = args["input_script"].get<std::string>();
+        std::shared_ptr<input::ParsedScript> script;
+        std::string error;
+        if (!recordinput::RecordInput::get().loadReplay(scriptText, script, error)) {
+            call->fail(error);
+            return;
+        }
+        fs::path scriptPath = FileUtils::pathFromUtf8(scriptText);
+        if (scriptPath.is_relative()) scriptPath = project->getProjectPath() / scriptPath;
+        // its shots: Recordings/Input/<stem>/player/, a folder per --resolution
+        run->inputShots = project->getProjectPath() / "Recordings" / "Input" / recordinput::fileStem(scriptPath) / "player";
+        const Json& extra = args.value("args", Json::array());
+        for (size_t i = 0; extra.is_array() && i + 1 < extra.size(); i++) {
+            if (extra[i] == "--resolution" && extra[i + 1].is_string()) run->inputShots /= extra[i + 1].get<std::string>();
+        }
+        fs::create_directories(run->inputShots, ec);
+        for (const auto& entry : fs::directory_iterator(run->inputShots, ec)) {
+            if (entry.path().extension() == ".png") fs::remove(entry.path(), ec);
+        }
+        inputScriptArgs = {"--input-script", scriptPath.string(), "--input-shots", run->inputShots.string(), "--quit-after-input"};
+    }
+
     // screenshots: screenshots_at (seconds since launch), else the single screenshot
     double lastShot = 0.0;
     if (args.contains("screenshots_at") && !args["screenshots_at"].is_null()) {
@@ -2498,6 +2631,7 @@ void runBuildTool(const CallPtr& call) {
         controlArgs.insert(controlArgs.end(), {"--fixed-fps", std::to_string(args["fixed_fps"].get<double>())});
     if (args.value("after_ready", false)) controlArgs.push_back("--after-ready");
     if (args.value("headless", false)) controlArgs.push_back("--headless");
+    controlArgs.insert(controlArgs.end(), inputScriptArgs.begin(), inputScriptArgs.end());
     const bool playerControl = !controlArgs.empty() || args.contains("screenshot_frame");
     if (playerControl) {
         if (args.contains("screenshot_frame") && args["screenshot_frame"].is_number_integer())
@@ -2509,7 +2643,7 @@ void runBuildTool(const CallPtr& call) {
         // the player ends the run itself: seconds is only the limit
         if (!run->secondsGiven) run->seconds = 300.0;
     }
-    const bool wantScreenshot = args.value("screenshot", run->shots.empty() && !hasInputShots);
+    const bool wantScreenshot = args.value("screenshot", run->shots.empty() && !hasInputShots && run->inputShots.empty());
     if (playerControl && wantScreenshot && run->shots.empty()) {
         const fs::path logs = project->getProjectInternalPath() / "logs";
         fs::create_directories(logs, ec);
@@ -2836,7 +2970,8 @@ void registerBuildTools(McpRegistry& registry) {
         tool.title = "Run Build";
         tool.description =
             "Run the last build `seconds` here or on a device (get_build_info devices), screenshot it, stop it. input: "
-            "send_input events (desktop Linux/X11). screenshots_at: seconds since launch.";
+            "send_input events (desktop Linux/X11); input_script: a .input.json run by the engine (any desktop, headless). "
+            "screenshots_at: seconds since launch.";
         tool.inputSchema = object({
             {"path", string("Default: last build.")},
             {"device", string("")},
@@ -2844,6 +2979,8 @@ void registerBuildTools(McpRegistry& registry) {
             {"seconds", number("Default 5.", 0.5, 300)},
             {"input", Json{{"type", "array"}, {"maxItems", 500}, {"items", anyObject("")}}},
             {"input_delay_seconds", withDefault(number("", 0, 120), 1)},
+            {"input_script", string("Returns its shots.")},
+            {"resolutions", array(stringItem, "WxH: a launch each.")},
             {"space", withDefault(stringEnum("", {"window", "normalized"}), "window")},
             {"gap_ms", withDefault(number("", 0, 10000), 50)},
             {"screenshots_at", array(number(""), "")},

@@ -107,6 +107,9 @@ namespace jasperengine::editor::recorder {
         // starts with its first frame). False with `error` when it cannot (busy, no FFmpeg for a
         // movie, sizes...). `warnings` gets what was changed (audio off mid-play...)
         bool start(const Settings& settings, std::string& error);
+        // Starts with the Play session that is starting now (a replay's, input-recorder-and-input-scripts
+        // R23): frame 0 is its first game frame, as with Record on Play
+        bool startWithPlay(const Settings& settings, std::string& error);
         // stops and finalises (Stop Recording, F10, MCP cancel_job)
         void stop();
         // the editor about to start Play: Record on Play arms here (and the audio capture)
