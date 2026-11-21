@@ -13,6 +13,7 @@
 #include "reflect/ReflectTestSupport.h"
 
 #include "Catalog.h"
+#include "Factory.h"
 #include "component/ActionComponent.h"
 #include "component/MeshComponent.h"
 #include "component/AudioSourceComponent.h"
@@ -689,6 +690,34 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
     EXPECT_EQ(old.getWaterWakeResolution(), defaults.waterWakeResolution);
     EXPECT_FLOAT_EQ(old.getWaterWakeArea(), defaults.waterWakeArea);
     EXPECT_FLOAT_EQ(old.getWaterWakeFade(), defaults.waterWakeFade);
+}
+
+// S92: Cavity's post-processing fields reach both kinds of export: the prebuilt player's cooked
+// scene (the field table's records, keyed by name hash) and the compiled game's generated code
+// (an assignment per changed field, the type as its C++ enum)
+TEST(CookedScene, SceneSettingsKeepCavity) {
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    PostProcessingSettings settings;
+    settings.cavityEnabled = true;
+    settings.cavityType = CavityType::WORLD;
+    settings.cavityScreenWidth = 3.0f;
+    settings.cavityWorldRadius = 0.5f;
+    settings.cavityWorldSamples = 16;
+    settings.cavityMaxPixelRadius = 0.0f;
+    settings.cavityDebug = true;
+    scene->setPostProcessing(settings);
+
+    DecodedScene player;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {}, player, error)) << error;
+    EXPECT_TRUE(player.scene->scene->getPostProcessing() == settings);
+
+    const std::string code = Factory::formatPostProcessing(0, settings, "pp");
+    EXPECT_NE(code.find("pp.cavityEnabled = true;"), std::string::npos) << code;
+    EXPECT_NE(code.find("pp.cavityType = CavityType::WORLD;"), std::string::npos) << code;
+    EXPECT_NE(code.find("pp.cavityWorldSamples = 16;"), std::string::npos) << code;
+    EXPECT_EQ(code.find("cavityScreenRidge"), std::string::npos) << "defaults are not assigned\n" << code;
 }
 
 // A newer minor adds only length-prefixed fields: a player reads its content without them and warns
