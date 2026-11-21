@@ -299,9 +299,9 @@ namespace {
     // The overlap decision of Jolt's convex-vs-convex collide (its bounds test and its GJK step on
     // the shapes without their convex radius) without the penetration depth it then works out: where
     // the cores intersect (Jolt's EPA case) the shapes overlap, an overlap needs no depth
-    bool convexOverlap3D(const JPH::ConvexShape& query, JPH::Mat44Arg queryTransform, const JPH::ConvexShape& leaf, JPH::Vec3Arg leafScale,
-                         JPH::Mat44Arg leafTransform, float tolerance){
-        const JPH::Mat44 leafToQuery = queryTransform.InversedRotationTranslation() * leafTransform;
+    bool convexOverlap3D(const JPH::ConvexShape& query, const JPH::ConvexShape::Support& querySupport, JPH::Mat44Arg queryInverse,
+                         const JPH::ConvexShape& leaf, JPH::Vec3Arg leafScale, JPH::Mat44Arg leafTransform, float tolerance){
+        const JPH::Mat44 leafToQuery = queryInverse * leafTransform;
         if (!JPH::OrientedBox(leafToQuery, leaf.GetLocalBounds().Scaled(leafScale)).Overlaps(query.GetLocalBounds())){
             return false;
         }
@@ -309,14 +309,53 @@ namespace {
         if (axis.IsNearZero()){
             axis = JPH::Vec3::sAxisX();
         }
-        JPH::ConvexShape::SupportBuffer queryBuffer, leafBuffer;
-        const JPH::ConvexShape::Support* querySupport = query.GetSupportFunction(JPH::ConvexShape::ESupportMode::ExcludeConvexRadius, queryBuffer, JPH::Vec3::sReplicate(1.0f));
+        JPH::ConvexShape::SupportBuffer leafBuffer;
         const JPH::ConvexShape::Support* leafSupport = leaf.GetSupportFunction(JPH::ConvexShape::ESupportMode::ExcludeConvexRadius, leafBuffer, leafScale);
         const JPH::TransformedConvexObject<JPH::ConvexShape::Support> leafInQuery(leafToQuery, *leafSupport);
         JPH::EPAPenetrationDepth depth;
         JPH::Vec3 pointA, pointB;
-        return depth.GetPenetrationDepthStepGJK(*querySupport, querySupport->GetConvexRadius(), leafInQuery, leafSupport->GetConvexRadius(),
+        return depth.GetPenetrationDepthStepGJK(querySupport, querySupport.GetConvexRadius(), leafInQuery, leafSupport->GetConvexRadius(),
                                                 tolerance, axis, pointA, pointB) != JPH::EPAPenetrationDepth::EStatus::NotColliding;
+    }
+
+    // The same for a mesh or height field leaf, triangle by triangle as Jolt's convex-vs-triangles
+    // collide decides (back faces skipped, the triangle's bounds, the GJK step): true at the first
+    // triangle that overlaps
+    bool triangleOverlap3D(const JPH::ConvexShape& query, const JPH::ConvexShape::Support& querySupport, JPH::Mat44Arg queryInverse,
+                           const JPH::AABox& queryWorldBounds, const JPH::TransformedShape& leaf, float tolerance){
+        const JPH::AABox queryBounds = query.GetLocalBounds();
+        JPH::Shape::GetTrianglesContext context;
+        leaf.mShape->GetTrianglesStart(context, queryWorldBounds, leaf.mShapePositionCOM, leaf.mShapeRotation, leaf.GetShapeScale());
+        constexpr int BATCH = JPH::Shape::cGetTrianglesMinTrianglesRequested;
+        JPH::Float3 vertices[3 * BATCH];
+        for (;;){
+            const int count = leaf.mShape->GetTrianglesNext(context, BATCH, vertices);
+            if (count <= 0){
+                return false;
+            }
+            for (int t = 0; t < count; t++){
+                const JPH::Vec3 v0 = queryInverse * JPH::Vec3(vertices[3 * t]);
+                const JPH::Vec3 v1 = queryInverse * JPH::Vec3(vertices[3 * t + 1]);
+                const JPH::Vec3 v2 = queryInverse * JPH::Vec3(vertices[3 * t + 2]);
+                const JPH::Vec3 normal = (v1 - v0).Cross(v2 - v0);
+                if (normal.Dot(v0) > 0.0f){
+                    continue;
+                }
+                JPH::AABox triangleBounds = JPH::AABox::sFromTwoPoints(v0, v1);
+                triangleBounds.Encapsulate(v2);
+                if (!triangleBounds.Overlaps(queryBounds)){
+                    continue;
+                }
+                const JPH::TriangleConvexSupport triangle(v0, v1, v2);
+                JPH::Vec3 axis = -normal;
+                JPH::Vec3 pointA, pointB;
+                JPH::EPAPenetrationDepth depth;
+                if (depth.GetPenetrationDepthStepGJK(querySupport, querySupport.GetConvexRadius(), triangle, 0.0f, tolerance, axis, pointA, pointB)
+                        != JPH::EPAPenetrationDepth::EStatus::NotColliding){
+                    return true;
+                }
+            }
+        }
     }
 
     // Every collider the query shape touches, by the broad phase, then a yes / no per leaf shape of each
@@ -333,12 +372,21 @@ namespace {
                          const JPH::CollideShapeSettings& settings):
             system(system), layerFilter(layerFilter), bodyFilter(bodyFilter), settings(settings){ }
 
-        void run(const JPH::Shape& shape, JPH::Mat44Arg transform){
+        // the query shapes are convex (sphere, box, capsule)
+        void run(const JPH::ConvexShape& shape, JPH::Mat44Arg transform){
             query = &shape;
             queryTransform = transform;
+            queryInverse = transform.InversedRotationTranslation();
+            querySupport = shape.GetSupportFunction(JPH::ConvexShape::ESupportMode::ExcludeConvexRadius, querySupportBuffer, JPH::Vec3::sReplicate(1.0f));
             queryBounds = shape.GetWorldSpaceBounds(transform, JPH::Vec3::sReplicate(1.0f));
             Bodies bodies(*this);
-            system->getWorld3D()->GetBroadPhaseQuery().CollideAABox(queryBounds, bodies, JPH::BroadPhaseLayerFilter(), layerFilter);
+            const JPH::BroadPhaseQuery& broadPhase = system->getWorld3D()->GetBroadPhaseQuery();
+            if (shape.GetSubType() == JPH::EShapeSubType::Box){
+                // a turned box covers far less than its bounds
+                broadPhase.CollideOrientedBox(JPH::OrientedBox(transform, shape.GetLocalBounds().GetExtent()), bodies, JPH::BroadPhaseLayerFilter(), layerFilter);
+            }else{
+                broadPhase.CollideAABox(queryBounds, bodies, JPH::BroadPhaseLayerFilter(), layerFilter);
+            }
         }
 
     private:
@@ -346,8 +394,11 @@ namespace {
         const JPH::ObjectLayerFilter& layerFilter;
         const QueryBodyFilter3D& bodyFilter;
         const JPH::CollideShapeSettings& settings;
-        const JPH::Shape* query = nullptr;
+        const JPH::ConvexShape* query = nullptr;
         JPH::Mat44 queryTransform = JPH::Mat44::sIdentity();
+        JPH::Mat44 queryInverse = JPH::Mat44::sIdentity();
+        JPH::ConvexShape::SupportBuffer querySupportBuffer;
+        const JPH::ConvexShape::Support* querySupport = nullptr;
         JPH::AABox queryBounds;
         // the body being tested
         const JPH::Shape* bodyShape = nullptr;
@@ -373,9 +424,12 @@ namespace {
                 return true;
             }
             bool hit;
-            if (leaf.mShape->GetType() == JPH::EShapeType::Convex && query->GetType() == JPH::EShapeType::Convex){
-                hit = convexOverlap3D(static_cast<const JPH::ConvexShape&>(*query), queryTransform, static_cast<const JPH::ConvexShape&>(*leaf.mShape),
+            const JPH::EShapeType type = leaf.mShape->GetType();
+            if (type == JPH::EShapeType::Convex){
+                hit = convexOverlap3D(*query, *querySupport, queryInverse, static_cast<const JPH::ConvexShape&>(*leaf.mShape),
                                       leaf.GetShapeScale(), leaf.GetCenterOfMassTransform(), settings.mCollisionTolerance);
+            }else if (type == JPH::EShapeType::Mesh || type == JPH::EShapeType::HeightField){
+                hit = triangleOverlap3D(*query, *querySupport, queryInverse, queryBounds, leaf, settings.mCollisionTolerance);
             }else{
                 AnyHitCollector3D any;
                 leaf.CollideShape(query, JPH::Vec3::sReplicate(1.0f), queryTransform, settings, JPH::RVec3::sZero(), any);
@@ -462,7 +516,7 @@ namespace {
             overlap.out = &out;
             overlap.points = recording ? points : nullptr;
             withJoltShape(shape, rotation, [&](const JPH::Shape& joltShape, JPH::RMat44Arg transform){
-                overlap.run(joltShape, transform);
+                overlap.run(static_cast<const JPH::ConvexShape&>(joltShape), transform);
             });
             out.resize(physics::sortOverlapHits(out.data(), out.size()));
             if (recording){
@@ -491,7 +545,7 @@ namespace {
             BooleanOverlap3D overlap(system, layerFilter, bodyFilter, settings);
             overlap.points = points;
             withJoltShape(shape, rotation, [&](const JPH::Shape& joltShape, JPH::RMat44Arg transform){
-                overlap.run(joltShape, transform);
+                overlap.run(static_cast<const JPH::ConvexShape&>(joltShape), transform);
             });
             found = overlap.found;
             pointCount = overlap.pointCount;

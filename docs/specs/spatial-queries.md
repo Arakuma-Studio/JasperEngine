@@ -541,8 +541,9 @@ core tests already build scenes with physics, `PhysicsRayThreadsTest.cpp:27-30`)
   `NarrowPhaseQuery::CollideShape`: the broad phase lists the bodies, each body's leaf shapes inside
   the query's bounds are listed (`CollectTransformedShapes`), and a convex leaf gets Jolt's own
   convex-vs-convex decision (its bounds test and GJK step on the shapes without their convex radius;
-  intersecting cores, where Jolt would run EPA for a depth, overlap); a mesh or height field leaf goes
-  through Jolt's collide. The answers equal `CollideShape`'s (PhysicsQueryReference keeps using it, as
+  intersecting cores, where Jolt would run EPA for a depth, overlap); a mesh or height field leaf gets
+  its convex-vs-triangles decision triangle by triangle (back faces skipped, bounds, GJK step), and any
+  other leaf goes through Jolt's collide. A box query asks the broad phase with its oriented box. The answers equal `CollideShape`'s (PhysicsQueryReference keeps using it, as
   the independent sweep) without the penetration depth an overlap never needed: the EPA on every body
   a 5 m box held wholly inside had made `overlapBox` 4x over its budget.
 - **R3 casts.** Every hit at fraction 0 is dropped (touching at the start counts as overlapping,
