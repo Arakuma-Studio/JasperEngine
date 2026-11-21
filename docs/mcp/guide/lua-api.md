@@ -2607,13 +2607,17 @@ last transform update), `color` (Vector3),
 `range`, `intensity`, `innerConeAngle`, `outerConeAngle`, `shadows`, `cameraNear`,
 `cameraFar`, `automaticShadowCamera`, `numCascades` (0: the quality tier's), `cullingMask`, `shading`
 (`LightShading.*`, the stage evaluating it on MIXED-lighting materials), `intensityUnit`
-(`LightUnit.ENGINE`, `LUX` for a directional light, `CANDELA` or `LUMEN` for a point or spot;
-setting the property keeps the number, which then means the new unit),
+(`LightUnit.ENGINE`, `LUX` for a directional light, `CANDELA` or `LUMEN` for a point or spot,
+`NITS` for an area light; setting the property keeps the number, which then means the new unit),
 `useColorTemperature`, `colorTemperature` (Kelvin, 1000-20000, 6500 white; `color` filters
 it); methods `setDirection(x,y,z)`, `setColor(r,g,b)`, `setConeAngle(a)`, `setRange(r)`,
 `setIntensity(i)`, `setIntensityUnit(unit, preserveBrightness)` (true converts the intensity so
 the light stays as bright, through `scene.physicalLightEV100`), `setShadows(b)`,
 `setShadowCameraNearFar(n, f)`.
+Area Light (`LightType.AREA`) rw: `areaShape` (`AreaLightShape.RECTANGLE/DISC`), `areaWidth`,
+`areaHeight` (a Rectangle's), `areaRadius` (a Disc's), metres, not the transform's scale. A spot or
+point light's `iesProfile` (rw, an `.ies` path relative to the assets, `""` for none) shapes it,
+turned with the light; `intensity` stays the profile's peak.
 Shadows (`jasper://docs/shadows`) rw: `shadowType` (`ShadowType.NONE/HARD/SOFT`), `shadowStrength`
 (0-1), `shadowBias` and `shadowNormalBias` (shadow texels), `shadowResolution` (0: the tier's),
 `cascadeSplitMode` (`CascadeSplitMode.AUTO/MANUAL`), `cascadeSplits` (Vector3, fractions of the
@@ -3491,7 +3495,7 @@ gate.area = 0 ; gate:remove()
 | `SwingType` | `CONE`, `PYRAMID` |
 | `RigidbodyInterpolation` | `SCENE`, `NONE`, `INTERPOLATE`, `EXTRAPOLATE` |
 | `CameraType` | `CAMERA_UI`, `CAMERA_ORTHO`, `CAMERA_PERSPECTIVE` |
-| `LightType` | `DIRECTIONAL`, `POINT`, `SPOT` |
+| `LightType` | `DIRECTIONAL`, `POINT`, `SPOT`, `AREA` |
 | `JobLane` | `High`, `Normal`, `Background` |
 | `EaseType` | `LINEAR`, `STEP`, `QUAD_IN/OUT/IN_OUT`, `CUBIC_*`, `QUART_*`, `QUINT_*`, `SINE_*`, `EXPO_*`, `CIRC_*`, `ELASTIC_*`, `BACK_*`, `BOUNCE_*` (each `_IN`, `_OUT`, `_IN_OUT`), `CUSTOM`, `CURVE` (the Tween's `curve`) |
 | `WrapMode` | `Clamp` (also `ClampForever`, `Constant`), `Loop`, `PingPong`, `Linear`, `LoopWithOffset` (also `CycleWithOffset`) |
@@ -3542,10 +3546,11 @@ gate.area = 0 ; gate:remove()
 | `MaterialAlphaMode` | `AUTO`, `ALPHA_OPAQUE`, `MASK`, `BLEND` |
 | `MaterialLighting` | `AUTO`, `PIXEL`, `VERTEX`, `MIXED`, `NONE` |
 | `LightShading` | `BOTH`, `PIXEL`, `VERTEX` |
+| `AreaLightShape` | `RECTANGLE`, `DISC` (`light.areaShape`) |
 | `LightState` | `OFF`, `ON`, `AUTO` |
 | `ShadowQuality` | `NONE`, `LOW`, `MEDIUM`, `HIGH` |
 | `LitQuality` | `STANDARD`, `HIGH` (`scene.litQuality`) |
-| `LightUnit` | `ENGINE`, `LUX`, `CANDELA`, `LUMEN` (`light.intensityUnit`) |
+| `LightUnit` | `ENGINE`, `LUX`, `CANDELA`, `LUMEN`, `NITS` (`light.intensityUnit`) |
 | `SceneColorScale` | `FULL`, `HALF` |
 | `TonemapMode` | `NONE`, `ACES`, `NEUTRAL`, `REINHARD`, `AGX` (`PostProcessingSettings.tonemap`) |
 | `MonochromeMode` | `GRAYSCALE`, `SEPIA` (`PostProcessingSettings.monochromeMode`) |

@@ -1085,7 +1085,7 @@ void editor::SceneRender3D::createOrUpdateLightIcon(Entity entity, const Transfo
         } else if (lightType == LightType::POINT) {
             iconData.loadTextureFromMemory(bulb_icon_png, bulb_icon_png_len);
             lo.icon->setTexture("editor:resources:bulb_icon", iconData);
-        } else if (lightType == LightType::SPOT) {
+        } else if (lightType == LightType::SPOT || lightType == LightType::AREA) {
             iconData.loadTextureFromMemory(spot_icon_png, spot_icon_png_len);
             lo.icon->setTexture("editor:resources:spot_icon", iconData);
         }
@@ -1264,6 +1264,84 @@ void editor::SceneRender3D::createPointLightSphere(Entity entity, const Transfor
         Vector3 point2 = position + Vector3(0, std::cos(angle2) * range, std::sin(angle2) * range);
 
         lo.lines->addLine(point1, point2, sphereColor);
+    }
+}
+
+void editor::SceneRender3D::createAreaLightShape(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected) {
+    LightObjects& lo = lightObjects[entity];
+
+    lo.lines->setPosition(transform.worldPosition);
+    lo.lines->setRotation(transform.worldRotation);
+    // the shape is the light: drawn selected or not, brighter when selected
+    lo.lines->setVisible(true);
+
+    const float halfWidth = light.getAreaHalfWidth();
+    const float halfHeight = light.getAreaHalfHeight();
+    // the handles' size follows the camera: redrawn every frame while they show
+    if (!isSelected && !lo.areaHandles && lo.type == light.type && lo.direction == light.direction && lo.areaShape == light.areaShape &&
+            lo.areaHalfWidth == halfWidth && lo.areaHalfHeight == halfHeight) {
+        return;
+    }
+    lo.type = light.type;
+    lo.direction = light.direction;
+    lo.areaShape = light.areaShape;
+    lo.areaHalfWidth = halfWidth;
+    lo.areaHalfHeight = halfHeight;
+    lo.areaHandles = isSelected;
+
+    lo.lines->clearLines();
+    if (light.direction == Vector3::ZERO){
+        return;
+    }
+
+    // the light's local frame, as the renderer's (RenderSystem: right = forward x up)
+    const Vector3 forward = light.direction.normalized();
+    const Vector3 up = light.getLocalSpotProjectionUp();
+    const Vector3 right = forward.crossProduct(up).normalized();
+    const Vector4 color = isSelected ? Vector4(1.0f, 0.85f, 0.2f, 1.0f) : Vector4(1.0f, 0.85f, 0.2f, 0.55f);
+
+    if (light.areaShape == AreaLightShape::DISC){
+        const int segments = 32;
+        Vector3 previous = right * halfWidth;
+        for (int i = 1; i <= segments; i++){
+            const float angle = 2.0f * (float)M_PI * (float)i / (float)segments;
+            const Vector3 point = right * (std::cos(angle) * halfWidth) + up * (std::sin(angle) * halfHeight);
+            lo.lines->addLine(previous, point, color);
+            previous = point;
+        }
+    }else{
+        const Vector3 corners[4] = {
+            right * -halfWidth + up * -halfHeight, right * halfWidth + up * -halfHeight,
+            right * halfWidth + up * halfHeight, right * -halfWidth + up * halfHeight};
+        for (int i = 0; i < 4; i++){
+            lo.lines->addLine(corners[i], corners[(i + 1) % 4], color);
+        }
+        lo.lines->addLine(corners[0], corners[2], color * 0.6f);
+        lo.lines->addLine(corners[1], corners[3], color * 0.6f);
+    }
+    // the normal: the side it lights
+    const float normalLength = std::max(0.25f, std::min(halfWidth, halfHeight));
+    lo.lines->addLine(Vector3(0.0f, 0.0f, 0.0f), forward * normalLength, Vector4(0.9f, 0.9f, 0.9f, color.w));
+    lo.lines->addLine(forward * normalLength, forward * (normalLength * 0.8f) + right * (normalLength * 0.1f), Vector4(0.9f, 0.9f, 0.9f, color.w));
+    lo.lines->addLine(forward * normalLength, forward * (normalLength * 0.8f) - right * (normalLength * 0.1f), Vector4(0.9f, 0.9f, 0.9f, color.w));
+
+    if (!isSelected){
+        return;
+    }
+    // the size handles (SceneRender::getAreaHandleWorld): crosses in the light's plane
+    const Vector4 handleColor(1.0f, 1.0f, 1.0f, 1.0f);
+    const Vector4 selectedHandleColor(1.0f, 0.6f, 0.0f, 1.0f);
+    const int handles = light.areaShape == AreaLightShape::DISC ? 1 : 2;
+    for (int h = 0; h < handles; h++){
+        const Vector3 local = (h == 0) ? right * halfWidth : up * halfHeight;
+        Vector3 worldPoint;
+        if (!getAreaHandleWorld(entity, h, worldPoint)) continue;
+        const bool handleSelected = getSelectedAreaHandleEntity() == entity && getSelectedAreaHandleIndex() == h;
+        const float halfSize = getPointHandleHalfSize(worldPoint) * (handleSelected ? 0.75f : 0.5f);
+        const Vector4& crossColor = handleSelected ? selectedHandleColor : handleColor;
+        lo.lines->addLine(local - right * halfSize, local + right * halfSize, crossColor);
+        lo.lines->addLine(local - up * halfSize, local + up * halfSize, crossColor);
+        lo.lines->addLine(local - forward * halfSize, local + forward * halfSize, crossColor);
     }
 }
 
@@ -1657,6 +1735,9 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             }else if (light.type == LightType::SPOT){
                 createOrUpdateLightIcon(entity, transform, LightType::SPOT, newLight);
                 createSpotLightCones(entity, transform, light, isSelected);
+            }else if (light.type == LightType::AREA){
+                createOrUpdateLightIcon(entity, transform, LightType::AREA, newLight);
+                createAreaLightShape(entity, transform, light, isSelected);
             }
 
             if (displaySettings.hideLightIcons && lightObjects.find(entity) != lightObjects.end()) {

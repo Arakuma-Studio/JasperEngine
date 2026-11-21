@@ -990,6 +990,8 @@ void RenderSystem::load(){
     objectLightsCleared = false;
     directionalLightsOnlyKnown = false;
     nonDirectionalLightSeen = false;
+    areaLightSeen = false;
+    iesProfileSeen = false;
     loadedPipelines = 0;
     hasLights2D = false;
     hasShadows2D = false;
@@ -1148,6 +1150,13 @@ void RenderSystem::destroy(){
     }
     spotMaskAtlasPixels.clear();
     spotMaskAtlasEntries.fill({});
+    if (lightProfilesCreated){
+        lightProfiles.destroyTexture();
+        lightProfilesCreated = false;
+    }
+    lightProfileBands.clear();
+    // (read again when the scene loads again: an edited file shows then)
+    iesProfileCache.clear();
 
     auto skys = scene->getComponentArray<SkyboxComponent>();
     if (skys->size() > 0){
@@ -1463,6 +1472,14 @@ int RenderSystem::checkLightsAndShadow(){
         if (light.type != LightType::DIRECTIONAL){
             nonDirectionalLightSeen = true;
         }
+        // (S92: sticky as the general Lit is, so a light turned into an Area Light or given a
+        // profile and back reloads the variants once)
+        if (light.type == LightType::AREA){
+            areaLightSeen = true;
+        }
+        if ((light.type == LightType::SPOT || light.type == LightType::POINT) && !light.iesProfile.empty()){
+            iesProfileSeen = true;
+        }
     }
     directionalLightsOnly = hasLights && !nonDirectionalLightSeen;
 
@@ -1721,6 +1738,13 @@ void RenderSystem::loadSpotMaskTexture(ShaderData& shaderData, ObjectRender& ren
         shaderData.getTextureIndex(TextureShaderType::SPOTMASKATLAS),
         ShaderStageType::FRAGMENT,
         spotMaskAtlasCreated ? &spotMaskAtlas : &emptyWhite);
+    // S92: the light profiles (LTC tables, IES bands) of the variants with Area Lights or IES
+    // Profiles; a scene without either looks nothing up
+    if (areaLightSeen || iesProfileSeen){
+        const std::pair<int, int> slot = shaderData.getTextureIndexByName("u_lightProfiles");
+        if (slot.first != -1)
+            render.addTexture(slot, ShaderStageType::FRAGMENT, lightProfilesCreated ? &lightProfiles : &emptyBlack);
+    }
 }
 
 // inverse viewport size, used by USE_SSAO to convert gl_FragCoord to a screen UV.
@@ -1799,7 +1823,8 @@ void RenderSystem::fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, cons
 //-----Unified lighting: per-object light lists-----
 
 // spot_shadow.w of the lights block packs (shadow map index + 1) in 6 bits, the cascades
-// in 3 and the spot mask tile in 3 (7 = none): 12 bits, exact in a float
+// in 3 and the spot mask tile in 3 (7 = none), the occlusions in 2, an Area Light's Disc in 1 and
+// the IES Profile's band + 1 in 7 (S92): 22 bits, exact in a float
 static_assert(SPOT_MASK_ATLAS_TILES <= 7, "spot mask tiles must fit 3 bits, 7 meaning none");
 static_assert(MAX_SHADOW_ATLAS_SLOTS < 63 && MAX_POINT_SHADOW_ATLAS_SLOTS < 63, "shadow map indices must fit 6 bits");
 static_assert(MAX_SHADOWCASCADES <= 7, "shadow cascades must fit 3 bits");
@@ -1886,7 +1911,8 @@ namespace {
             const float ratio = bounds.distanceTo(position) / range;
             attenuation *= std::clamp(1.0f - ratio * ratio * ratio * ratio, 0.0f, 1.0f);
         }
-        if (withCone && positionType.w == 2.0f){
+        // (an Area Light's cone_shadow is its front hemisphere's, type 3)
+        if (withCone && positionType.w >= 2.0f){
             attenuation *= lightSpotAttenuation(towardsLight, directionRange, coneShadow.y, coneShadow.x);
         }
         return attenuation;
@@ -1932,6 +1958,7 @@ bool RenderSystem::SceneLight::operator==(const SceneLight& other) const{
         spot_mask == other.spot_mask &&
         cullingMask == other.cullingMask &&
         spotMaskTile == other.spotMaskTile &&
+        profileBits == other.profileBits &&
         shading == other.shading &&
         active == other.active;
 }
@@ -1977,14 +2004,21 @@ void RenderSystem::updateSceneLights(){
             type = 1.0f;
         if (light.type == LightType::SPOT)
             type = 2.0f;
+        if (light.type == LightType::AREA)
+            type = 3.0f;
+        const bool area = light.type == LightType::AREA;
 
         const bool spotMask = light.type == LightType::SPOT && light.spotMaskReady && light.spotMaskTile >= 0;
 
         SceneLight& sceneLight = sceneLights[i];
         sceneLight.position_type = Vector4(position.x, position.y, position.z, type);
         sceneLight.direction_range = Vector4(light.worldDirection.x, light.worldDirection.y, light.worldDirection.z, light.range);
-        sceneLight.color_intensity = Vector4(light.resolvedColor.x, light.resolvedColor.y, light.resolvedColor.z, light.resolvedIntensity);
-        sceneLight.cone_shadow = Vector4(light.innerConeCos, light.outerConeCos, (float)light.shadowMapIndex, (float)light.shadowCascades);
+        // an Area Light ranks and folds as what it gives far away in front: luminance x area, in
+        // its front hemisphere (cone cos 1 .. 0)
+        const float areaSize = area ? light.getAreaSize() : 1.0f;
+        sceneLight.color_intensity = Vector4(light.resolvedColor.x, light.resolvedColor.y, light.resolvedColor.z, light.resolvedIntensity * areaSize);
+        sceneLight.cone_shadow = area ? Vector4(1.0f, 0.0f, (float)light.shadowMapIndex, (float)light.shadowCascades)
+                                      : Vector4(light.innerConeCos, light.outerConeCos, (float)light.shadowMapIndex, (float)light.shadowCascades);
         sceneLight.spot_mask = Vector4(light.worldUp.x, light.worldUp.y, light.worldUp.z, spotMask ? light.spotMaskAspect : 0.0f);
         // the per-object lights block's form (includes/lights.glsl); spot_shadow.w is per draw
         const bool directional = light.type == LightType::DIRECTIONAL;
@@ -1995,6 +2029,22 @@ void RenderSystem::updateSceneLights(){
                                        light.resolvedColor.z * light.resolvedIntensity, spot ? light.outerConeCos : -2.0f);
         const Vector2 up = octahedralEncode(light.worldUp);
         sceneLight.packed[3] = Vector4(up.x, up.y, spotMask ? light.spotMaskAspect : 0.0f, 0.0f);
+        if (area){
+            // S92 (includes/lights.glsl getAreaLight): direction_inner.w 2 + the half width (over 1.5:
+            // an Area Light), spot_shadow.z minus the half height, colour times the area. A variant
+            // without USE_AREA_LIGHTS reads a spot of cone cos 0 .. 2 + w: its front hemisphere
+            sceneLight.packed[1].w = 2.0f + light.getAreaHalfWidth();
+            // (a light added without a direction faces down: a zero axis has no front)
+            if (light.worldDirection.squaredLength() < 1e-12f){
+                sceneLight.packed[1].x = 0.0f;
+                sceneLight.packed[1].y = -1.0f;
+                sceneLight.packed[1].z = 0.0f;
+            }
+            sceneLight.packed[2] = Vector4(sceneLight.packed[2].x * areaSize, sceneLight.packed[2].y * areaSize, sceneLight.packed[2].z * areaSize, 0.0f);
+            sceneLight.packed[3].z = -light.getAreaHalfHeight();
+        }
+        sceneLight.profileBits = ((area && light.areaShape == AreaLightShape::DISC) ? (1 << 14) : 0) |
+            (((light.type == LightType::SPOT || light.type == LightType::POINT) && light.iesProfileBand >= 0) ? ((light.iesProfileBand + 1) & 127) << 15 : 0);
         sceneLight.cullingMask = light.cullingMask;
         sceneLight.spotMaskTile = spotMask ? light.spotMaskTile : -1;
         sceneLight.shading = light.shading;
@@ -2195,7 +2245,7 @@ void RenderSystem::selectMeshLights(Entity entity, MeshComponent& mesh, const Tr
 
         // a spot whose cone misses the bounds gives the mesh nothing (it stays in reachMask,
         // so turning it towards the mesh picks again)
-        if (light.position_type.w == 2.0f && !spotReachesBounds(light.position_type, light.direction_range, light.cone_shadow.y, bounds))
+        if (light.position_type.w >= 2.0f && !spotReachesBounds(light.position_type, light.direction_range, light.cone_shadow.y, bounds))
             continue;
         if (directionalOnly && !candidate.directional){
             fold(i);
@@ -2331,7 +2381,9 @@ float RenderSystem::packObjectLightShadow(int sceneLight, bool perPixel) const{
     const int cascades = perPixel ? passLightCascades(light) : 0;
     // (bits 12-13: the capsule and contact shadows a shadowed pixel light takes, S57)
     const int occlusion = perPixel ? lightOcclusionBits(sceneLight) : 0;
-    return (float)((std::max(shadowSlot + 1, 0) & 63) | ((cascades & 7) << 6) | ((tile & 7) << 9) | (occlusion << 12));
+    // (bits 14-21: the Area Light's shape and the IES Profile's band, S92; the pixel lights' only)
+    const int profile = perPixel ? light.profileBits : 0;
+    return (float)((std::max(shadowSlot + 1, 0) & 63) | ((cascades & 7) << 6) | ((tile & 7) << 9) | (occlusion << 12) | profile);
 }
 
 // The records form of the block: the counts and the SH as the block form has them, then each
@@ -2465,6 +2517,9 @@ void RenderSystem::buildLegacyLighting(const MeshComponent& mesh, uint64_t prope
         if (n < count){
             const SceneLight& light = sceneLights[order[n]];
             block.position_type[n] = light.position_type;
+            // (an older fork knows no Area Light: a spot of its front hemisphere, its cone_shadow)
+            if (block.position_type[n].w == 3.0f)
+                block.position_type[n].w = 2.0f;
             block.direction_range[n] = light.direction_range;
             block.color_intensity[n] = light.color_intensity;
             block.inCon_ouCon_shadows_cascades[n] = light.cone_shadow;
@@ -3461,6 +3516,8 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.lights = hasLights;
     environment.lightCapacity = getLightCapacity(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject()));
     environment.directionalLightsOnly = directionalLightsOnly;
+    environment.areaLights = areaLightSeen;
+    environment.iesProfiles = iesProfileSeen;
     environment.shadows = hasShadows;
     environment.shadowsHQ = shadowHQVariants;
     environment.ibl = hasIBL;
@@ -4393,6 +4450,11 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         }
         if (environment.litQualityHigh && !p_unlit)
             variant.litDefines.push_back(MaterialPbr::LIT_QUALITY_DEFINE);
+        // S92: the pixel lights' Area Light and IES Profile paths, only where the scene has them
+        if (environment.areaLights && p_punctual && !p_unlit)
+            variant.litDefines.push_back(MaterialPbr::AREA_LIGHTS_DEFINE);
+        if (environment.iesProfiles && p_punctual && !p_unlit)
+            variant.litDefines.push_back(MaterialPbr::IES_DEFINE);
         if (inputs.voxelTier != 0){
             variant.litDefines.push_back(MaterialPbr::VOXEL_DEFINE);
             variant.litDefines.push_back(inputs.voxelTier == 1 ? MaterialPbr::VOXEL_TIER_HIGH_DEFINE
@@ -17868,9 +17930,19 @@ void RenderSystem::update(double dt){
     if (!directionalLightsOnlyKnown){
         directionalLightsOnlyKnown = true;
         loadedDirectionalLightsOnly = directionalLightsOnly;
-    }else if (directionalLightsOnly != loadedDirectionalLightsOnly){
-        loadedDirectionalLightsOnly = directionalLightsOnly;
-        needReloadMeshVariants();
+        loadedAreaLights = areaLightSeen;
+        loadedIesProfiles = iesProfileSeen;
+    }else{
+        if (directionalLightsOnly != loadedDirectionalLightsOnly){
+            loadedDirectionalLightsOnly = directionalLightsOnly;
+            needReloadMeshVariants();
+        }
+        // and whether the scene has an Area Light or an IES Profile (USE_AREA_LIGHTS, USE_IES)
+        if (areaLightSeen != loadedAreaLights || iesProfileSeen != loadedIesProfiles){
+            loadedAreaLights = areaLightSeen;
+            loadedIesProfiles = iesProfileSeen;
+            needReloadMeshVariants();
+        }
     }
     // the Lit Quality and the lobe tier are part of the built-in Lit's variants (builtin:lit)
     const PbrTier pbrTier = MaterialPbr::getRuntimeTier();
@@ -17894,6 +17966,7 @@ void RenderSystem::update(double dt){
     resolveLights();
     loadLights(numLights);
     updateSpotMaskAtlas(numLights);
+    updateLightProfiles();
     loadLights2D();
     loadAndProcessFog();
     // the atmosphere (height fog, volumetric fog and clouds): the fogged mesh variants carry the

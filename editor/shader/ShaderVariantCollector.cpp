@@ -102,6 +102,9 @@ namespace {
         // the water variants' 'Wex' and 'Wwk' (RenderSystem::update: the component counted, enabled or not)
         FACT_WATER_EXCLUDERS = 1u << 16,
         FACT_WATER_WAKES     = 1u << 17,
+        // S92: an Area Light, a spot or point light with an IES Profile (RenderSystem::checkLightsAndShadow)
+        FACT_AREA_LIGHTS     = 1u << 18,
+        FACT_IES_PROFILES    = 1u << 19,
     };
 
     // whether a shader reference reads the scene depth with these features (manifest @require
@@ -163,8 +166,14 @@ namespace {
                 if (light->type != LightType::DIRECTIONAL){
                     facts |= FACT_LOCAL_LIGHTS;
                 }
-                if (light->shadows && light->contactShadows && light->type != LightType::POINT){
+                if (light->shadows && light->contactShadows && light->type != LightType::POINT && light->type != LightType::AREA){
                     facts |= FACT_CONTACT_LIGHT;
+                }
+                if (light->type == LightType::AREA){
+                    facts |= FACT_AREA_LIGHTS;
+                }
+                if ((light->type == LightType::SPOT || light->type == LightType::POINT) && !light->iesProfile.empty()){
+                    facts |= FACT_IES_PROFILES;
                 }
             }
             if (registry->findComponent<CapsuleShadowCasterComponent>(entity)){
@@ -277,6 +286,8 @@ namespace {
         environment.oit = (facts & FACT_OIT_CAMERA) != 0;
         environment.waterExclusion = (facts & FACT_WATER_EXCLUDERS) != 0;
         environment.waterWake = (facts & FACT_WATER_WAKES) != 0;
+        environment.areaLights = (facts & FACT_AREA_LIGHTS) != 0;
+        environment.iesProfiles = (facts & FACT_IES_PROFILES) != 0;
         return environment;
     }
 
@@ -289,6 +300,7 @@ namespace {
             (e.tiledLights ? (1u << 26) : 0u) | (e.capsuleShadows ? (1u << 27) : 0u) | (e.contactShadows ? (1u << 28) : 0u) |
             (e.oit ? (1u << 29) : 0u) | (e.waterExclusion ? (1u << 30) : 0u) | (e.waterWake ? (1u << 31) : 0u) |
             (e.directionalLightsOnly ? (1ull << 32) : 0ull) |
+            (e.areaLights ? (1ull << 36) : 0ull) | (e.iesProfiles ? (1ull << 37) : 0ull) |
             // T3 R34: the tier a build may force
             (e.terrainForced ? (1ull << (static_cast<int>(e.terrainForcedTier) + 33)) : 0ull);
     }

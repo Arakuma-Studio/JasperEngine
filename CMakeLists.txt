@@ -1506,6 +1506,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/SoundEventDocument.cpp
     ${EDITOR_DIR}/audio/SoundEventRender.cpp
     ${EDITOR_DIR}/window/InspectorSoundEvent.cpp
+    ${EDITOR_DIR}/window/InspectorIesProfile.cpp
     ${EDITOR_DIR}/window/AudioCapturesWindow.cpp
     ${EDITOR_DIR}/window/SoundBrowserWindow.cpp
     ${EDITOR_DIR}/audio/SoundDrop.cpp

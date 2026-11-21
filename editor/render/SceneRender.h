@@ -150,6 +150,11 @@ namespace jasperengine::editor{
         // an end that fromWorld snaps to a bone axis does not drift the other end
         std::vector<CapsuleShadowShape> capsuleDragBase;
 
+        // Area Light size handle sub-selection (S92 R38): a Rectangle's width (0) and height (1)
+        // handles, a Disc's radius (0)
+        Entity selectedAreaHandleEntity = 0;  // NULL_ENTITY
+        int selectedAreaHandleIndex = -1;
+
         // world position of vertex pointIndex of the selected entity's Polygon/MeshPolygon
         // points (nullptr list / bad index -> false)
         bool getPolygonPointWorld(Entity entity, bool isMesh, int pointIndex, Vector3& worldPoint);
@@ -752,6 +757,19 @@ namespace jasperengine::editor{
         // other stays), the radius handle sets the radius to its distance from the segment
         bool capsulesWithHandleAt(Entity entity, int index, const Vector3& world, const std::vector<CapsuleShadowShape>& base,
                                   std::vector<CapsuleShadowShape>& capsules);
+
+        // Area Light size handles (the Move tool drags them, S92 R38): a Rectangle's right edge
+        // (Width) and top edge (Height), a Disc's edge (Radius), in the light's plane
+        int getSelectedAreaHandleIndex() const { return selectedAreaHandleIndex; }
+        Entity getSelectedAreaHandleEntity() const { return selectedAreaHandleEntity; }
+        void selectAreaHandle(Entity entity, int index);
+        void clearAreaHandleSelection();
+        int areaHandleCount(Entity entity);
+        int hitTestAreaHandle(Entity entity, float x, float y);
+        OBB getAreaHandleOBB(Entity entity, int index);
+        bool getAreaHandleWorld(Entity entity, int index, Vector3& worldPoint);
+        // the property handle `index` drags and its value with the handle at `world` (false: none)
+        bool areaSizeWithHandleAt(Entity entity, int index, const Vector3& world, std::string& property, float& value);
     };
 
 }

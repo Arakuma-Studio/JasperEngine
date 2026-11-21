@@ -177,6 +177,11 @@ namespace jasperengine::editor{
             return cssExtensions.find(ext) != cssExtensions.end();
         }
 
+        // a light's IES Profile (S92): an IESNA LM-63 photometric file
+        inline static bool isIesFile(const std::string& path) {
+            return fileExtension(path) == ".ies";
+        }
+
         // colour LUTs a scene's post-processing grades with besides image strips (.cube)
         inline static bool isColorLutFile(const std::string& path) {
             return fileExtension(path) == ".cube";
@@ -264,7 +269,7 @@ namespace jasperengine::editor{
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||
                    isHtmlFile(path) || isCssFile(path) || isColorLutFile(path) || isParticleEffectFile(path) || isPoseAnimationFile(path) ||
                    isAnimationClipFile(path) || isAnimatorAssetFile(path) ||
-                   isShakePresetFile(path) || isPaletteFile(path) || isTitleArtFile(path);
+                   isShakePresetFile(path) || isPaletteFile(path) || isTitleArtFile(path) || isIesFile(path);
         }
 
         inline static bool isScriptFile(const std::string& path) {

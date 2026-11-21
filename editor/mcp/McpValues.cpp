@@ -7,6 +7,7 @@
 #include "component/ButtonComponent.h"
 #include "component/Transform.h"
 #include "util/ProjectChecks.h"
+#include "render/IesProfile.h"
 #include "component/CanvasGroupComponent.h"
 #include "camera/ShakePresets.h"
 #include "camera/ShakePreset.h"
@@ -305,6 +306,7 @@ bool isAssetPathProperty(ComponentType component, const std::string& propertyNam
     return propertyName == "filename" || (component == ComponentType::PoseAnimatorComponent && propertyName == "animation") ||
            (component == ComponentType::AudioSourceComponent && propertyName == "event") ||
            (component == ComponentType::AnimatorComponent && propertyName == "controller") ||
+           (component == ComponentType::LightComponent && propertyName == "iesProfile") ||
            isPlayerClipProperty(component, propertyName) || isVertexAnimationProperty(component, propertyName) ||
            isPhysicsMaterialProperty(component, propertyName);
 }
@@ -3046,6 +3048,24 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                 }
             }
             if (isAssetPathProperty(component, propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
+            // a light's IES Profile (S92 R36): an .ies file the renderer reads (TILT=NONE, Type C)
+            if (component == ComponentType::LightComponent && propertyName == "iesProfile" && !text.empty()) {
+                std::string contents;
+                IesProfile profile;
+                std::string why;
+                if (!Util::isIesFile(text)) {
+                    error = "iesProfile: '" + text + "' is no .ies file: import an IESNA LM-63 file with import_files.";
+                    return nullptr;
+                }
+                if (!ProjectChecks::readFile(project->resolveAssetPath(text), contents)) {
+                    error = "iesProfile: '" + text + "' cannot be read: import it with import_files.";
+                    return nullptr;
+                }
+                if (!IesProfile::parse(contents, profile, why)) {
+                    error = "iesProfile: '" + text + "': " + why + ".";
+                    return nullptr;
+                }
+            }
             // an Asset script property is project-relative: a GUID given names its file
             if (stringType == PropertyType::Asset && propertyName.compare(0, 8, "scripts[") == 0 && Guid::isValidText(text)) {
                 const fs::path found = project->getAssetDatabase().getPath(Guid::parse(text));

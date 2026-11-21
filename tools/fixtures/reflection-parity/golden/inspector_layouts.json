@@ -5413,6 +5413,14 @@
   {
    "component": "light",
    "group": "",
+   "kind": "Asset",
+   "label": "IES Profile",
+   "path": "iesProfile",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
    "kind": "FloatPositive",
    "label": "Volumetric Intensity",
    "path": "volumetricIntensity",
@@ -7226,6 +7234,14 @@
    "kind": "Direction",
    "label": "Direction",
    "path": "direction",
+   "read_only": false
+  },
+  {
+   "component": "light",
+   "group": "",
+   "kind": "Asset",
+   "label": "IES Profile",
+   "path": "iesProfile",
    "read_only": false
   },
   {

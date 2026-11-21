@@ -78,6 +78,7 @@ Run the generator and commit its output:
 | `docs/mcp/guide/html-ui-effects.md`, `docs/mcp/guide/img/effects/`, `engine/shaderlib/effects/LICENSE.shaders-com.txt` | `tools/htmlui/gen_effects_docs.py` |
 | `engine/core/htmlui/effects/BuiltinEffectManifests.gen.cpp` | `tools/htmlui/gen_effect_manifests.py` |
 | `engine/core/render/BlueNoise64.h` | `tools/gen_blue_noise.py` |
+| `engine/core/render/LtcLut.h` | `python3 -I tools/gen_ltc_lut.py --source <clone of selfshadow/ltc_code at its recorded commit>` |
 | `tools/test-projects/noise/NoisePresetData.h` | `tools/noise/gen_test_project_presets.py` |
 | `engine/tests/core/noise/NoiseGoldenTable.inc` | `jasperengine-noise-golden --write-table`, only before a kernel first lands on main |
 | `editor/window/widget/RcssProperties.h` | `tools/gen_rcss_properties.py` |

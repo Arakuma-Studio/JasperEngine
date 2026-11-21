@@ -2,6 +2,7 @@
 1003 mesh/customDepthShader shader
 1004 linerenderer/customShader shader
 1005 light/spotMask texture
+1005 light/iesProfile ies_profile
 1006 terrain/heightMap texture
 1006 terrain/holeMap texture
 1006 terrain/treeData tree_data

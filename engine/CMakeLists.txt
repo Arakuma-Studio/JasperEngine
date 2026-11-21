@@ -1810,6 +1810,8 @@ set(JASPERENGINE_SRCS
     core/render/LightingTiers.cpp
     core/render/OrderIndependentTransparency.cpp
     core/render/TiledLights.cpp
+    core/render/AreaLightMath.cpp
+    core/render/IesProfile.cpp
     core/script/AsyncOwner.cpp
     core/script/LuaBinding.cpp
     core/script/LuaFunctionBase.cpp
@@ -1912,6 +1914,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/FoliagePhysics.cpp
     core/subsystem/RenderSystemBatch.cpp
     core/subsystem/RenderSystemLighting.cpp
+    core/subsystem/RenderSystemLightProfiles.cpp
     core/subsystem/RenderSystemTerrain.cpp
     core/subsystem/RenderSystemTerrainWorld.cpp
     core/subsystem/RenderSystemPixelArt.cpp

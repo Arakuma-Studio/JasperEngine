@@ -600,6 +600,18 @@ bool editor::CreateEntityCmd::execute(){
         light.range = 10.0f;
         light.intensity = 30.0f;
 
+    }else if (type == EntityCreationType::AREA_LIGHT){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<LightComponent>(entity, {});
+        updateFlags |= Catalog::getComponentStructuralUpdateFlags(ComponentType::LightComponent);
+
+        LightComponent& light = scene->getComponent<LightComponent>(entity);
+        light.type = LightType::AREA;
+        light.direction = Vector3(0.0f, -1.0f, 0.0f);
+        light.range = 10.0f;
+        light.intensity = 30.0f;
+
     }else if (type == EntityCreationType::POINT_LIGHT_2D){
 
         scene->addComponent<Transform>(entity, {});

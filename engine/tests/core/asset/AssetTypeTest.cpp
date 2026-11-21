@@ -36,5 +36,7 @@ TEST_F(AssetTypeTest, NamesRoundTripEveryValue) {
     EXPECT_EQ(assetTypeFromName("title_art"), AssetType::TitleArt);
     EXPECT_EQ(assetTypeFromName("sound_event"), AssetType::SoundEvent);
     EXPECT_EQ(static_cast<int>(AssetType::TitleArt), 34) << "the numbers are a file format: append only";
+    EXPECT_EQ(assetTypeFromName("ies_profile"), AssetType::IesProfile);
+    EXPECT_EQ(static_cast<int>(AssetType::IesProfile), 35) << "the numbers are a file format: append only";
     EXPECT_EQ(assetTypeFromName("nothing"), AssetType::Unknown);
 }

@@ -83,7 +83,8 @@ unchanged.
 ## Photometric lights and colour temperature
 
 A Light's `intensityUnit` is `engine` (the engine's own number, drawn as it is: every light of
-before), `lux` (directional), `candela` or `lumen` (point, spot). Physical units are drawn
+before), `lux` (directional), `candela` or `lumen` (point, spot), `nits` (area: its face's
+luminance). Physical units are drawn
 through the scene's `physical_light_ev100` (Physical Light Exposure: Sunny 15, Overcast 12,
 Interior 7, Night 2): at EV100 15 a 100000 lx sun is about 2.5 engine units. A spot's lumens
 spread over the whole sphere, so its cone does not change its brightness.
