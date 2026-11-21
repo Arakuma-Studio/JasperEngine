@@ -93,20 +93,11 @@ jobs:
           fetch-depth: 0
           filter: blob:none
 
-      # plan inputs from main (§10.2): the Ninja deps dumps (push to main), the MCP coverage map and the
-      # per-test seconds (nightly). A missing one widens its lane (fail open).
-      - name: Restore the deps dumps
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/ci-inputs/deps
-          key: plan-inputs-${{ github.run_id }}
-          restore-keys: plan-inputs-
-      - name: Restore the MCP coverage map
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/coverage/coverage-map.json
-          key: coverage-map-${{ github.run_id }}
-          restore-keys: coverage-map-
+      # plan inputs from main: the Ninja deps dumps (push to main) and the MCP coverage map (nightly) from
+      # the ci-plan-inputs data branch, which no cache eviction reaches (tools/ci/plan_inputs.py); the
+      # per-test seconds from the cache. A missing one widens its lane (fail open).
+      - name: Fetch the plan inputs
+        run: python3 tools/ci/plan_inputs.py fetch --out build/ci-inputs
       - name: Restore the MCP test seconds
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -126,6 +117,8 @@ jobs:
           MQ_BASE: ${{ github.event.merge_group.base_sha }}
           MQ_HEAD: ${{ github.event.merge_group.head_sha }}
           PUSH_BEFORE: ${{ github.event.before }}
+          # the selection's rollback: a repository variable set to true runs every test of every lane
+          FULL_SELECTION: ${{ vars.CI_FULL_SELECTION }}
         run: |
           case "$EVENT" in
               # the checked-out merge commit: base..HEAD is exactly the PR, and no scratch checkout is needed
@@ -140,9 +133,17 @@ jobs:
           args=(--event "$event" --base "$base" --head "$head" --out-dir build/ci-plan --github-output "$GITHUB_OUTPUT"
                 --advisory "$ADVISORY_LANES")
           [[ -d build/ci-inputs/deps ]] && args+=(--deps-from build/ci-inputs/deps)
-          [[ -f build/coverage/coverage-map.json ]] && args+=(--coverage-map build/coverage/coverage-map.json)
+          [[ -f build/ci-inputs/coverage-map.json ]] && args+=(--coverage-map build/ci-inputs/coverage-map.json)
           [[ -f build/ci-inputs/mcp-test-seconds.json ]] && args+=(--test-seconds build/ci-inputs/mcp-test-seconds.json)
+          [[ -f build/ci-inputs/manifest.json ]] && args+=(--inputs-manifest build/ci-inputs/manifest.json)
+          [[ "$FULL_SELECTION" == true ]] && args+=(--full-selection)
           tools/ci/logged.sh plan "python3 tools/ci/plan_lanes.py $(printf '%q ' "${args[@]}")"
+
+      # what each test lane runs and why (owner, dependency, policy, smoke; a whole suite: full or fallback)
+      - name: Test selection
+        if: always()
+        run: |
+          if [[ -f build/ci-plan/selection.md ]]; then cat build/ci-plan/selection.md >> "$GITHUB_STEP_SUMMARY"; fi
 
       # lanes.json at the artifact's root
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -421,7 +422,7 @@ jobs:
           [[ -n "$SHARD" ]] && args="UNIT_SHARD=$SHARD $args"
           tools/ci/logged.sh "unit-$SUITE" "${BUILD_ONLY}UNIT_SUITE=$SUITE ${args}WERROR=1 tools/build.sh unit-tests"
 
-      # plan inputs for PRs (tools/ci/plan_lanes.py --deps-from): the caches job saves them
+      # plan inputs for PRs (tools/ci/plan_lanes.py --deps-from): the plan-inputs job publishes them
       - name: Ninja deps dumps
         if: github.event_name == 'push' && env.UNIT_LEAD == 'true'
         run: tools/ci/logged.sh deps-dump 'tools/ci/dump_deps.sh build/ci-deps'
@@ -1150,10 +1151,81 @@ jobs:
           lane: ios
           status: ${{ job.status }}
 
+  # --------------------------------------------------------------- Shadow ---
+  # The merge queue runs every unit test, a full run every test: each failed test that a pull request's
+  # selection of the same diff would have left out is a miss (tools/ci/shadow.py, lanes.json shadow).
+  # Read-only: the record goes to the summary and the `shadow` artifact; the nightly gathers the
+  # artifacts into the tracked report (shadow.jsonl on ci-plan-inputs). Not a lane: Check skips it.
+  shadow:
+    name: shadow
+    needs: [changes, unit, asan, htmlui, mcp]
+    if: always() && needs.changes.result == 'success' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: tools/ci
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          pattern: ci-report-*
+          path: reports
+          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: plan
+          path: plan
+      - name: Judge the failures against a PR's selection
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 tools/ci/plan_inputs.py fetch --out build/ci-inputs
+          mkdir -p reports
+          python3 tools/ci/shadow.py check --lanes plan/lanes.json --reports reports --history build/ci-inputs/shadow.jsonl \
+              --run-id "$GITHUB_RUN_ID" --run-url "$RUN_URL" --out build/shadow/shadow.json --summary "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: shadow
+          path: build/shadow/shadow.json
+          retention-days: 30
+          if-no-files-found: error
+
+  # ---------------------------------------------------------- Plan inputs ---
+  # Push to main: the unit and htmlui lanes' deps dumps onto the ci-plan-inputs data branch, where PRs'
+  # changes job fetches them (tools/ci/plan_inputs.py). A dump a lane did not make keeps its last one.
+  # The one job with contents: write, on main's code only. Housekeeping, not a lane: Check skips it.
+  plan-inputs:
+    name: plan inputs
+    needs: [unit, htmlui]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          pattern: deps-*
+          path: build/ci-inputs/deps
+          merge-multiple: true
+      - name: Publish the deps dumps
+        run: |
+          shopt -s nullglob
+          sets=()
+          for f in build/ci-inputs/deps/*.deps; do
+              name="$(basename "$f" .deps)"
+              sets+=(--set "deps/$name=$f")
+          done
+          [[ ${#sets[@]} -gt 0 ]] || { echo "::warning::no deps dump to publish: PRs plan with the last ones"; exit 0; }
+          python3 tools/ci/plan_inputs.py publish --commit "$GITHUB_SHA" --run "$GITHUB_RUN_ID" "${sets[@]}"
+
   # -------------------------------------------------------------- Caches ---
-  # Push to main: the plan inputs from the unit and htmlui lanes' deps dumps, then one live entry per
-  # cache (§10.2: LRU must never evict one lane for another; each ccache-save prunes its lane's older
-  # entry already, this catches a failed prune). Housekeeping, not a lane: Check skips it.
+  # Push to main: one live entry per cache (§10.2: LRU must never evict one lane for another; each
+  # ccache-save prunes its lane's older entry already, this catches a failed prune). Housekeeping, not
+  # a lane: Check skips it.
   caches:
     name: caches
     needs: [linux, unit, htmlui, smoke, web, android, windows, macos]
@@ -1163,24 +1235,11 @@ jobs:
     permissions:
       actions: write
     steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        if: needs.unit.result == 'success' && needs.htmlui.result == 'success'
-        with:
-          pattern: deps-*
-          path: build/ci-inputs/deps
-          merge-multiple: true
-      - name: Save the plan inputs
-        if: needs.unit.result == 'success' && needs.htmlui.result == 'success'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: build/ci-inputs/deps
-          key: plan-inputs-${{ github.run_id }}
-
       - name: Keep the newest entry of each cache
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for prefix in plan-inputs- gradle- ccache-linux- ccache-web- ccache-android- ccache-windows-editor- \
+          for prefix in gradle- ccache-linux- ccache-web- ccache-android- ccache-windows-editor- \
                         ccache-macos- ccache-unit-core- ccache-htmlui-; do
               gh cache list --repo "$GITHUB_REPOSITORY" --ref refs/heads/main --key "$prefix" --sort created_at \
                   --order desc --limit 100 --json id,key --jq '.[1:][] | "\(.id) \(.key)"' |
@@ -1189,8 +1248,9 @@ jobs:
                       gh cache delete --repo "$GITHUB_REPOSITORY" "$id"
                   done
           done
-          # a lane that gave its entry up (docs/testing.md "CI"): its last one would hold the budget 7 days
-          for prefix in ccache-windows-engine-glcore-; do
+          # a lane that gave its entry up (docs/testing.md "CI"): its last one would hold the budget 7 days;
+          # the plan inputs moved to the ci-plan-inputs branch
+          for prefix in ccache-windows-engine-glcore- plan-inputs- coverage-map-; do
               gh cache list --repo "$GITHUB_REPOSITORY" --key "$prefix" --limit 100 --json id,key --jq '.[] | "\(.id) \(.key)"' |
                   while read -r id key; do
                       echo "delete $key"

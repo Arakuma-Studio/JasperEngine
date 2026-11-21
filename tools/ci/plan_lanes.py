@@ -26,6 +26,11 @@ applies CI's stricter rules:
   it cannot);
 - fail open: no plan, or a .github/ change, runs every lane (MCP: the whole CI suite); check-changed's
   own widenings (a missing deps dump or map) are kept and said, in `fallbacks`.
+- shadow (merge_group, push, full, nightly): lanes.json's `shadow` is what a pull request's selection
+  of the run's diff would run (full and nightly: the diff since --shadow-base), which
+  tools/ci/shadow.py judges the run's failures against;
+- rollback: --full-selection (ci.yml passes it when the repository variable CI_FULL_SELECTION is
+  true) runs a PR's or the queue's every lane whole for any change that builds.
 
 MCP shards: `tools/mcp/shard.py plan` over `run_tests.py --list` of the files, by the committed
 timings of CI's PR and merge-queue shards (tools/mcp/ci-timings.json, refitted daily), then for the
@@ -52,6 +57,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -93,6 +99,8 @@ NIGHTLY_LEFT_OUT = {
     "test_pixel_fx_export.py": "reads SMOKE_METHOD=compile smoke runs of tools/fixtures/pixel-fx-game made first on "
                                "the same machine (PFX_SMOKE_DIRS), which an MCP shard does not make",
 }
+# the repository variable that turns the selection off (ci.yml passes --full-selection when it is "true")
+FULL_SELECTION_VARIABLE = "CI_FULL_SELECTION"
 TEST_NAME = re.compile(r"^test_\w+\.py::\w+$")
 # run_tests.py --list through uv and the harness's pinned packages (tools/ci/test_plan_lanes.py's
 # scratch test files import nothing, and list without them)
@@ -249,16 +257,19 @@ def suite_choice(value) -> tuple[bool, str]:
 
 
 def decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_out: dict[str, str],
-           nightly_out: dict[str, str], advisory=()) -> dict:
+           nightly_out: dict[str, str], advisory=(), full_selection: bool = False) -> dict:
     """The lanes of an event, from check-changed's plan (None: there is none, plan_error says why),
-    in LANES order; advisory: ADVISORY_LANES."""
-    result = _decide(event, plan, plan_error, ci, left_out, nightly_out)
+    in LANES order; advisory: ADVISORY_LANES. full_selection (the rollback switch,
+    FULL_SELECTION_VARIABLE): a pull request or the merge queue runs every lane whole for any change
+    that builds."""
+    result = _decide(event, plan, plan_error, ci, left_out, nightly_out, full_selection)
     result["advisory_off"] = []
     result["build_only"] = []
     if event == "merge_group":
         leave_advisory_out(result, set(advisory))
     elif event == "push":
-        run_advisory_on_push(result, set(advisory), _decide("merge_group", plan, plan_error, ci, left_out, nightly_out))
+        run_advisory_on_push(result, set(advisory),
+                             _decide("merge_group", plan, plan_error, ci, left_out, nightly_out, full_selection))
     result["lanes"] = {name: result["lanes"][name] for name in LANES}
     return result
 
@@ -305,7 +316,7 @@ def run_advisory_on_push(result: dict, advisory: set[str], queue: dict) -> None:
 
 
 def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_out: dict[str, str],
-            nightly_out: dict[str, str]) -> dict:
+            nightly_out: dict[str, str], full_selection: bool = False) -> dict:
     lanes: dict[str, dict] = {}
     fallbacks: list[str] = []
     result = {"lanes": lanes, "unit_filter": {"core": "", "editor": ""}, "unit_run": {"core": False, "editor": False},
@@ -370,6 +381,10 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
         fallbacks.append(f"{github[0]} changed: every lane, the whole MCP CI suite")
         everything(f"{github[0]} changed (CI itself): every lane")
         return result
+    if full_selection:
+        fallbacks.append(f"the repository variable {FULL_SELECTION_VARIABLE} is true: every lane, every test (the selection's rollback)")
+        everything(f"{FULL_SELECTION_VARIABLE} is true: every lane, unfiltered")
+        return result
     for name in PLATFORM_LANES + ("lint",):
         lane(name, True, f"{first} changed (anything outside CI_NOTHING_READS builds)")
     queue = event == "merge_group"
@@ -429,6 +444,146 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
     return result
 
 
+# ---------------------------------------------------------------------------------------- selection
+
+SELECTION_LISTED = 40   # reasons listed per test lane in the job summary (all are in lanes.json)
+
+
+def _widening(fallbacks: list[str], words: tuple[str, ...], default: str) -> str:
+    hits = [f for f in fallbacks if any(w in f for w in words)]
+    return "; ".join(hits) or default
+
+
+def selection(event: str, plan: dict | None, result: dict, ci: list[str]) -> dict:
+    """What each test lane runs and why: per unit binary and for MCP, its mode (all, suites or files,
+    none) and the reason of each selected suite or file by kind (check_changed.REASON_KINDS); a whole
+    suite is `full` (the event runs everything) or a `fallback` (a widening, said why)."""
+    full = event in ("merge_group", "full", "nightly", "push")
+    fallbacks = result["fallbacks"]
+    lanes = result["lanes"]
+    reasons = (plan or {}).get("unit_reasons", {})
+    unit = {}
+    for binary in ("core", "editor", "htmlui"):
+        if binary == "htmlui":
+            run, flt, lane_why = lanes["htmlui"]["run"], result["htmlui_filter"], lanes["htmlui"]["why"]
+            queue_full = event in ("full", "nightly", "merge_group") or "every HTML UI test" in lane_why
+        else:
+            run, flt, lane_why = result["unit_run"][binary], result["unit_filter"][binary], lanes["unit"]["why"]
+            queue_full = full
+        if not run:
+            unit[binary] = {"mode": "none", "kind": "", "why": lane_why if not lanes["unit"]["run"] or binary == "htmlui"
+                            else "no unit test sees the change", "suites": []}
+        elif not flt:
+            unit[binary] = {"mode": "all", "kind": "full" if queue_full and event != "pull_request" else "fallback",
+                            "why": lane_why if full else _widening(fallbacks, ("unit test", "HTML UI test", f"{binary} filter",
+                                                                               ".github/", "no plan"), lane_why),
+                            "suites": []}
+        else:
+            names = (plan or {}).get("unit", {}).get(binary, []) if isinstance((plan or {}).get("unit"), dict) else []
+            known = reasons.get(binary, {})
+            unit[binary] = {"mode": "suites", "kind": "", "why": lane_why, "suites": [
+                {"suite": n, "kind": known.get(n, ["dependency", ""])[0], "why": known.get(n, ["", "sees the change"])[1]}
+                for n in names]}
+    mcp = result["mcp"]
+    picked = {f.rsplit("/", 1)[-1] for f in mcp["files"]}
+    if mcp["mode"] in ("ci", "nightly"):
+        files_sel = {"mode": mcp["mode"], "kind": "full" if event in ("full", "nightly") else "fallback",
+                     "why": lanes["mcp"]["why"] if event in ("full", "nightly") else
+                     _widening(fallbacks, ("MCP", "CI suite", "map", ".github/", "no plan"), lanes["mcp"]["why"]),
+                     "files": []}
+    else:
+        listed = plan.get("mcp_selected") or (plan.get("mcp") if isinstance(plan.get("mcp"), list) else []) if plan else []
+        files_sel = {"mode": mcp["mode"], "kind": "", "why": lanes["mcp"]["why"], "files": [
+            {"file": e["file"], "kind": e.get("kind", "dependency"), "why": e.get("reason", "")}
+            for e in listed if e["file"] in picked]}
+    files_sel["of"] = len(ci)
+    return {"unit": unit, "mcp": files_sel}
+
+
+def _kinds(entries: list[dict]) -> str:
+    counts: dict[str, int] = {}
+    for e in entries:
+        counts[e["kind"]] = counts.get(e["kind"], 0) + 1
+    return ", ".join(f"{n} {k}" for k, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
+
+
+def selection_markdown(sel: dict, fallbacks: list[str], manifest: dict) -> str:
+    """The job summary's account of the selection: a row per test lane, then each reason."""
+    lines = ["### Test selection", "", "| Lane | Selected | Why |", "|---|---|---|"]
+    titles = {"core": "unit (core)", "editor": "unit (editor)", "htmlui": "HTML UI"}
+    for binary, entry in sel["unit"].items():
+        if entry["mode"] == "suites":
+            picked, why = f"{len(entry['suites'])} suites", _kinds(entry["suites"])
+        else:
+            picked, why = entry["mode"], (f"{entry['kind']}: {entry['why']}" if entry["kind"] else entry["why"])
+        lines.append(f"| {titles[binary]} | {picked} | {why.replace('|', '/')} |")
+    m = sel["mcp"]
+    if m["mode"] in ("ci", "nightly"):
+        picked, why = f"all {m['of']} files", f"{m['kind']}: {m['why']}"
+    elif m["mode"] == "planned":
+        picked, why = f"{len(m['files'])} of {m['of']} files", _kinds(m["files"])
+    else:
+        picked, why = "none", m["why"]
+    if m.get("tests"):
+        picked += f" ({m['tests']} tests)"
+    lines.append(f"| MCP | {picked} | {why.replace('|', '/')} |")
+    entries = [f"- `{e['file']}` ({e['kind']}): {e['why']}" for e in m["files"]]
+    for binary, entry in sel["unit"].items():
+        entries += [f"- `{e['suite']}` ({titles[binary]}, {e['kind']}): {e['why']}" for e in entry["suites"]]
+    if entries:
+        lines += ["", f"<details><summary>Why each was selected ({len(entries)})</summary>", ""]
+        lines += entries[:SELECTION_LISTED]
+        if len(entries) > SELECTION_LISTED:
+            lines.append(f"- ... and {len(entries) - SELECTION_LISTED} more (the `plan` artifact's lanes.json lists all)")
+        lines += ["", "</details>"]
+    if fallbacks:
+        lines += ["", "Widened: " + "; ".join(fallbacks)]
+    inputs = []
+    for name, label in (("coverage-map", "coverage map"), ("deps/core-tests", "core deps dump"),
+                        ("deps/editor-tests", "editor deps dump"), ("deps/htmlui-tests", "HTML UI deps dump")):
+        made = manifest.get(name)
+        if made:
+            inputs.append(f"{label} of {str(made.get('commit', '?'))[:12]} (run {made.get('run', '?')}, "
+                          f"published {(time.time() - float(made.get('created', 0))) / 86400:.1f} days ago)")
+    if manifest:
+        lines += ["", "Plan inputs (ci-plan-inputs): " + ("; ".join(inputs) or "none")]
+    return "\n".join(lines) + "\n"
+
+
+# ---------------------------------------------------------------------------------------- shadow
+
+# the events that run more than a pull request would: their lanes.json carries a PR's selection of
+# their diff (tools/ci/shadow.py judges their failures against it)
+SHADOW_EVENTS = ("merge_group", "push", "full", "nightly")
+
+
+def shadow_selection(plan: dict, ci: list[str], left_out: dict[str, str], nightly_out: dict[str, str]) -> dict:
+    """What a pull request with plan's diff would run: per unit binary "all" or its suites, and the
+    MCP files ("all": the whole CI suite). Without the rollback switch: it measures the shortcut."""
+    r = decide("pull_request", plan, "", ci, left_out, nightly_out)
+    named = plan.get("unit") if isinstance(plan.get("unit"), dict) else {}
+    unit = {}
+    for binary in ("core", "editor", "htmlui"):
+        run = r["lanes"]["htmlui"]["run"] if binary == "htmlui" else r["unit_run"][binary]
+        flt = r["htmlui_filter"] if binary == "htmlui" else r["unit_filter"][binary]
+        unit[binary] = [] if not run else "all" if not flt else sorted(named.get(binary, []))
+    mode = r["mcp"]["mode"]
+    mcp = "all" if mode in ("ci", "nightly") else sorted(f.rsplit("/", 1)[-1] for f in r["mcp"]["files"])
+    return {"base": plan.get("base", ""), "files": plan.get("files") or [], "fallbacks": r["fallbacks"], "unit": unit, "mcp": mcp}
+
+
+def plan_shadow(event: str, plan: dict | None, error: str, shadow_base: str | None, compute) -> tuple[dict | None, str]:
+    """The PR-style plan a fuller run is judged against: its own diff's (the queue, a push), or for a
+    run with no diff of its own (full, nightly) the diff since shadow_base (compute(base) plans it)."""
+    if event not in SHADOW_EVENTS:
+        return None, "a pull request runs its own selection: nothing to shadow"
+    if event in ("full", "nightly"):
+        if not shadow_base:
+            return None, "no --shadow-base: no diff to plan a pull request's selection of"
+        plan, error = compute(shadow_base)
+    return (plan, "") if plan else (None, f"no PR-style plan ({error})")
+
+
 # ---------------------------------------------------------------------------------------- output
 
 def unit_jobs(unit_run: dict) -> list[dict]:
@@ -482,6 +637,20 @@ def github_output(doc: dict, unit_run: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def write_selection(doc: dict, event: str, plan: dict | None, result: dict, ci: list[str], tests: list[str] | None,
+                    manifest_path: Path | None, out: Path) -> None:
+    """lanes.json's selection, and <out>/selection.md for the job summary."""
+    sel = selection(event, plan, result, ci)
+    if tests and doc["mcp"]["shards"]:
+        sel["mcp"]["tests"] = len(tests)
+    doc["selection"] = sel
+    try:
+        manifest = json.loads(manifest_path.read_text()) if manifest_path else {}
+    except (OSError, ValueError):
+        manifest = {}
+    (out / "selection.md").write_text(selection_markdown(sel, result["fallbacks"], manifest))
+
+
 def head_checkout(head: str) -> tuple[Path, Path | None, str]:
     """The checkout of head: this one when it is at head, else a scratch worktree (removed after)."""
     here = resolve(cc.ROOT, "HEAD")
@@ -508,6 +677,11 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--test-seconds", type=Path, help="per-test seconds of earlier runs (mcp-test-seconds.json)")
     ap.add_argument("--github-output", type=Path, help="append the job outputs here ($GITHUB_OUTPUT)")
     ap.add_argument("--advisory", default="", help="ci.yml's ADVISORY_LANES: the test lanes that cannot fail Check")
+    ap.add_argument("--shadow-base", help="full and nightly: also plan a pull request's selection of the diff since "
+                    "this commit (lanes.json shadow, tools/ci/shadow.py)")
+    ap.add_argument("--full-selection", action="store_true",
+                    help=f"the rollback switch ({FULL_SELECTION_VARIABLE}): a PR or the queue runs every test of every lane")
+    ap.add_argument("--inputs-manifest", type=Path, help="the plan inputs' manifest.json (tools/ci/plan_inputs.py fetch)")
     args = ap.parse_args(argv)
 
     out = args.out_dir.resolve()
@@ -520,9 +694,15 @@ def main(argv: list[str]) -> int:
                                             args.deps_from.resolve() if args.deps_from else None,
                                             args.coverage_map.resolve() if args.coverage_map else None)
         ci, left_out, nightly_out = mcp_suites(root)
-        result = decide(args.event, plan, error, ci, left_out, nightly_out, args.advisory.split())
+        deps_from = args.deps_from.resolve() if args.deps_from else None
+        cmap = args.coverage_map.resolve() if args.coverage_map else None
+        shadow_plan, shadow_why = plan_shadow(
+            args.event, plan, error, None if head_error else args.shadow_base,
+            lambda base: run_check_changed(root, base, out / "shadow-check-changed.json", deps_from, cmap))
+        result = decide(args.event, plan, error, ci, left_out, nightly_out, args.advisory.split(), args.full_selection)
         shards: list[str] = []
         notes: list[str] = []
+        tests: list[str] | None = None
         if result["mcp"]["mode"] != "none":
             names = [f.rsplit("/", 1)[-1] for f in result["mcp"]["files"]]
             tests, why = list_tests(root, names)
@@ -547,6 +727,9 @@ def main(argv: list[str]) -> int:
                "files": plan["files"] if plan else None,
                "self_tests": plan["self_tests"] if plan else [],
                "checks": {"modules_off": plan["modules_off"] if plan else "", "navigation_off": bool(plan and plan["navigation_off"])}}
+        write_selection(doc, args.event, plan, result, ci, tests, args.inputs_manifest, out)
+        doc["shadow"] = shadow_selection(shadow_plan, ci, left_out, nightly_out) if shadow_plan else None
+        doc["shadow_why"] = "" if shadow_plan else shadow_why
         tmp = out / "lanes.json.tmp"
         tmp.write_text(json.dumps(doc, indent=1) + "\n")
         os.replace(tmp, out / "lanes.json")
@@ -562,6 +745,10 @@ def main(argv: list[str]) -> int:
             print(f"fallback: {line}")
         for line in notes:
             print(f"note: {line}")
+        sh = doc["shadow"]
+        print("shadow: " + (f"a PR's selection of {len(sh['files'])} file(s) against {str(sh['base'])[:12]}: "
+                            + ", ".join(f"{k} {v if v == 'all' else len(v)}" for k, v in [*sh["unit"].items(), ("mcp", sh["mcp"])])
+                            if sh else doc["shadow_why"]))
         return 0
     finally:
         if scratch is not None:

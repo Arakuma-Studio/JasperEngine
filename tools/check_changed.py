@@ -105,8 +105,14 @@ SELF_TESTS = {"tools/check_changed.py": "tools/test_check_changed.py", "tools/ch
               "tools/ci/release.sh": "tools/ci/test_release.py", "tools/ci/test_release.py": "tools/ci/test_release.py",
               "tools/ci/test_check_shader_lod.py": "tools/ci/test_check_shader_lod.py",
               "tools/ci/plan_lanes.py": "tools/ci/test_plan_lanes.py", "tools/ci/test_plan_lanes.py": "tools/ci/test_plan_lanes.py",
+              "tools/ci/plan_inputs.py": "tools/ci/test_plan_inputs.py", "tools/ci/test_plan_inputs.py": "tools/ci/test_plan_inputs.py",
+              "tools/ci/shadow.py": "tools/ci/test_shadow.py", "tools/ci/test_shadow.py": "tools/ci/test_shadow.py",
               "tools/ci/mcp_gate.py": "tools/ci/test_mcp_gate.py", "tools/ci/test_mcp_gate.py": "tools/ci/test_mcp_gate.py",
               "tools/ci/pr-evidence.sh": "tools/ci/test_pr_evidence.py", "tools/ci/test_pr_evidence.py": "tools/ci/test_pr_evidence.py"}
+# tools/<dir>/test_<x>.py beside a changed tools/<dir>/<x>.py is its owner test, unless it needs what
+# only its lane has (it takes arguments)
+SELF_TESTS_ELSEWHERE = {"tools/crash/test_symbolicate.py": "takes the built jasperengine-crash-test",
+                        "tools/ci/test_player_cli.py": "needs a built editor and the runtime image (the smoke lane)"}
 # the shader lint, with its own tests, when an engine shader changes (.claude/rules/rendering.md)
 SHADER_LINT_TEST = "tools/ci/test_check_shader_lod.py"
 # an MCP test file, or what classifies it, changes: every file must stay classified for the CI suite
@@ -164,6 +170,10 @@ COMPILE_PATHS = ("engine/CMakeLists.txt", "engine/project/*", "engine/player/*",
 SAVED_OUTPUT_FILES = ("test_saved_output_determinism.py",)
 SAVED_OUTPUT_PATHS = ("editor/Factory*", "editor/Generator*", "editor/Stream*", "editor/stream/*", "editor/reflect/*",
                       "engine/core/serialization/*")
+# why a test was selected: its own source changed (owner); it includes, runs, calls or loads what
+# changed (dependency); a rule watches the changed path (policy); a fixed quick sample of what nearly
+# everything runs (smoke). A whole suite run by a widening is a fallback (tools/ci/plan_lanes.py)
+REASON_KINDS = ("owner", "dependency", "policy", "smoke")
 TEST_DEF = re.compile(r"^\s*(TEST|TEST_F|TEST_P|TYPED_TEST|TYPED_TEST_P)\s*\(\s*(\w+)\s*,", re.M)
 TOOL_NAME = re.compile(r"\b\w+\.name\s*=\s*\"([a-z][a-z0-9_]*)\"")
 
@@ -304,6 +314,9 @@ class Plan:
     mcp_ci: bool = False
     mcp_files: list[str] = field(default_factory=list)
     mcp_reasons: dict[str, str] = field(default_factory=dict)
+    # why each was selected, by kind (REASON_KINDS); a unit suite's per test binary: suite -> (kind, why)
+    mcp_kinds: dict[str, str] = field(default_factory=dict)
+    unit_reasons: dict[str, dict[str, tuple[str, str]]] = field(default_factory=lambda: {"core": {}, "editor": {}, "htmlui": {}})
     mcp_notes: list[str] = field(default_factory=list)
     modules_off: str = ""                                    # the file that asks for MODULES_OFF_CHECK
     fallbacks: list[str] = field(default_factory=list)       # why a selection widened (--plan-json)
@@ -317,15 +330,30 @@ class Plan:
             self.builds.append(name)
             self.reasons[name] = why
 
-    def add_mcp(self, name: str, why: str) -> None:
+    def add_mcp(self, name: str, why: str, kind: str = "dependency") -> None:
         if name not in self.mcp_files:
             self.mcp_files.append(name)
             self.mcp_reasons[name] = why
+            self.mcp_kinds[name] = kind
+
+    def add_suites(self, binary: str, suites, kind: str, why: str) -> None:
+        for suite in suites:
+            self.unit_reasons[binary].setdefault(suite, (kind, why))
+
+
+def owner_test(path: str) -> str | None:
+    """The test beside a tool's Python (tools/<dir>/test_<x>.py of tools/<dir>/<x>.py, or itself)."""
+    if not (path.startswith("tools/") and path.endswith(".py")) or path.startswith("tools/mcp/tests/"):
+        return None
+    p = Path(path)
+    test = p if p.name.startswith("test_") else p.with_name(f"test_{p.name}")
+    rel = test.as_posix()
+    return rel if (ROOT / rel).is_file() and rel not in SELF_TESTS_ELSEWHERE else None
 
 
 def plan_builds(files: list[str], plan: Plan) -> None:
     for f in files:
-        test = SELF_TESTS.get(f)
+        test = SELF_TESTS.get(f) or owner_test(f)
         if test and test not in plan.self_tests:
             plan.self_tests.append(test)
         if match(f, CI_SUITE_GUARD_TRIGGERS) and CI_SUITE_GUARD not in plan.self_tests:
@@ -432,8 +460,10 @@ def suite_filter(suites: list[str]) -> str:
     return ":".join(f"{s}.*:*/{s}.*:{s}/*.*" for s in suites)
 
 
-def select_units(changed: list[str], deps: dict[str, list[str]], read=lambda p: (ROOT / p).read_text(errors="replace")):
-    """The test TUs of a tree that see the change, and their gtest suites."""
+def select_units(changed: list[str], deps: dict[str, list[str]], read=lambda p: (ROOT / p).read_text(errors="replace"),
+                 why: dict[str, str] | None = None):
+    """The test TUs of a tree that see the change, and their gtest suites; why (when given) gets each
+    unit's changed path, or the sibling header of one, that it is or includes."""
     effective = set()
     for f in changed:
         effective.update(siblings(f))
@@ -443,6 +473,8 @@ def select_units(changed: list[str], deps: dict[str, list[str]], read=lambda p: 
             continue
         if paths[0] in changed or effective.intersection(paths):
             units.append(paths[0])
+            if why is not None:
+                why.setdefault(paths[0], paths[0] if paths[0] in changed else next(p for p in paths if p in effective))
     suites = set()
     for unit in units:
         try:
@@ -450,6 +482,37 @@ def select_units(changed: list[str], deps: dict[str, list[str]], read=lambda p: 
         except OSError:
             pass
     return sorted(set(units)), sorted(suites)
+
+
+CONSUMER_STEPS = 6   # include steps nearest_consumers walks before it gives up
+# the vendored libraries: no walk through their insides (CI's compacted deps dumps keep only their sources)
+VENDORED = ("engine/libs/", "editor/libs/", "libs/")
+
+
+def nearest_consumers(path: str, deps: dict[str, list[str]]) -> tuple[list[str], dict[str, str], int]:
+    """A changed source the tree links but no test unit includes: the test units that include its
+    nearest consumers (a source of the tree that includes it, through that source's own header, then
+    theirs, a step at a time until a test unit includes one), each with the consumer it includes, and
+    the steps taken. Nothing when the tree does not compile or include it, or no chain reaches a test."""
+    libs = [paths for paths in deps.values() if paths and not is_test_source(paths[0])]
+    tests = [(paths[0], set(paths)) for paths in deps.values() if paths and is_test_source(paths[0])]
+    seen = set(siblings(path))
+    if not any(seen.intersection(paths) for paths in libs):
+        return [], {}, 0
+    frontier = set(seen)
+    for step in range(1, CONSUMER_STEPS + 1):
+        found = set()
+        for paths in libs:
+            if frontier.intersection(paths[1:]):
+                found.update(s for s in siblings(paths[0]) if s not in seen)
+        if not found:
+            break
+        seen |= found
+        hits = {unit: min(found & included) for unit, included in tests if found & included}
+        if hits:
+            return sorted(hits), hits, step
+        frontier = found
+    return [], {}, 0
 
 
 def in_image() -> bool:
@@ -491,8 +554,10 @@ def plan_units(changes: Changes, plan: Plan, deps_core: str | None, deps_editor:
             plan.htmlui_all = True
             plan.widen(plan.unit_notes, "HTML UI tests: all (no dependency database of their tree yet, their CMake or a test's data changed)")
         else:
-            units, suites = select_units(_code(changes.files), parse_ninja_deps(deps_htmlui, HTMLUI_TREE))
+            why: dict[str, str] = {}
+            units, suites = select_units(_code(changes.files), parse_ninja_deps(deps_htmlui, HTMLUI_TREE), why=why)
             plan.unit_htmlui.extend(suites)
+            record_units(plan, "htmlui", why)
             plan.unit_notes.append(f"htmlui: {len(units)} test unit(s) see the change")
     if plan.unit_all or "unit-tests" not in plan.builds:
         return
@@ -509,14 +574,37 @@ def plan_units(changes: Changes, plan: Plan, deps_core: str | None, deps_editor:
     for name, text, tree in (("core", deps_core, CORE_TREE), ("editor", deps_editor, EDITOR_TEST_TREE)):
         deps = parse_ninja_deps(text, tree)
         known = {p for paths in deps.values() for p in paths}
-        units, suites = select_units(cxx, deps)
+        why = {}
+        units, suites = select_units(cxx, deps, why=why)
         # a new test source no database has yet: its suites run anyway
         for f in changes.files:
             if is_test_source(f) and f not in known and (ROOT / f).is_file() and not f.startswith("engine/tests/htmlui/") and \
                     f.startswith("engine/tests/" if name == "core" else "editor/tests/"):
                 units.append(f)
+                why[f] = f
                 suites = sorted(set(suites) | set(gtest_suites((ROOT / f).read_text(errors="replace"))))
+        # a linked source no test unit includes (a .cpp behind another one's header): its nearest consumers
+        reached = set(why.values())
+        for f in cxx:
+            if not f.endswith(CXX) or is_test_source(f) or f in changes.deleted or f.startswith(VENDORED) \
+                    or reached.intersection(siblings(f)):
+                continue
+            near, via, steps = nearest_consumers(f, deps)
+            for unit in near:
+                if unit in why:
+                    continue
+                why[unit] = via[unit]
+                text = (ROOT / unit).read_text(errors="replace") if (ROOT / unit).is_file() else ""
+                found = gtest_suites(text)
+                suites = sorted(set(suites) | set(found))
+                plan.add_suites(name, found, "dependency", f"{unit} includes {via[unit]}, the nearest consumer of {f} "
+                                f"({steps} include step{'s' if steps > 1 else ''})")
+            if near:
+                units += [u for u in near if u not in units]
+                plan.unit_notes.append(f"{name}: no test unit includes {f}: {len(near)} that include its nearest consumers "
+                                       f"({steps} include step{'s' if steps > 1 else ''})")
         getattr(plan, f"unit_{name}").extend(suites)
+        record_units(plan, name, why)
         if units:
             plan.unit_notes.append(f"{name}: {len(units)} test unit(s) see the change: {', '.join(units[:6])}"
                                    f"{' ...' if len(units) > 6 else ''}")
@@ -524,12 +612,27 @@ def plan_units(changes: Changes, plan: Plan, deps_core: str | None, deps_editor:
     if [f for f in changes.files if f.startswith(("engine/shaders/", "engine/shaderlib/"))]:
         drawing = gpu_suites(ROOT / "engine" / "tests" / "core")
         plan.unit_core = sorted(set(plan.unit_core) | set(drawing))
+        plan.add_suites("core", drawing, "policy", "a shader changed: the suites that draw (*Gpu)")
         plan.unit_notes.append(f"a shader changed: the {len(drawing)} *Gpu suites of the core tests")
     new = [f for f in cxx if f.endswith(CXX) and not f.startswith(("engine/tests/", "editor/tests/"))
            and f not in changes.deleted and not any(f in p for p in (deps_core, deps_editor))]
     if new:
         plan.unit_notes.append(f"{len(new)} changed source(s) no test tree compiles or includes (e.g. {new[0]}): "
                                "their behaviour is the MCP tests' to cover")
+
+
+def record_units(plan: Plan, binary: str, why: dict[str, str]) -> None:
+    """The reason of each suite of the units select_units chose: its unit changed (owner), or includes
+    what changed (dependency)."""
+    for unit, path in sorted(why.items()):
+        try:
+            suites = gtest_suites((ROOT / unit).read_text(errors="replace"))
+        except OSError:
+            continue
+        if path == unit:
+            plan.add_suites(binary, suites, "owner", f"{unit} changed")
+        else:
+            plan.add_suites(binary, suites, "dependency", f"{unit} includes {path}")
 
 
 def _code(files: list[str]) -> list[str]:
@@ -619,7 +722,7 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
         name = Path(f).name
         if f.startswith("tools/mcp/tests/") and name.startswith("test_") and name.endswith(".py"):
             if f not in changes.deleted:
-                plan.add_mcp(name, "the test file changed")
+                plan.add_mcp(name, "the test file changed", "owner")
         elif f.startswith("tools/mcp/tests/golden/"):
             pass   # (by path, below)
         elif f.startswith("tools/mcp/tests/") or (f.startswith("tools/mcp/") and f.endswith(".py")):
@@ -631,7 +734,7 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
     # the contributor docs have a drift check of their own
     agent_docs = [f for f in files if f in ("AGENTS.md", "CLAUDE.md") or f.startswith(".claude/rules/")]
     if agent_docs and "test_agent_docs.py" in sources:
-        plan.add_mcp("test_agent_docs.py", f"checks {agent_docs[0]}")
+        plan.add_mcp("test_agent_docs.py", f"checks {agent_docs[0]}", "policy")
     # the tools a changed MCP tool source defines: the files that call them, unless the map says
     # exactly which functions the change touches and who runs them
     for f in files:
@@ -658,11 +761,11 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
                 plan.add_mcp(test, f"loads {f}")
                 hit = True
         if f.startswith("docs/mcp/guide/") and "test_docs.py" in sources:
-            plan.add_mcp("test_docs.py", f"the guide changed ({f})")
+            plan.add_mcp("test_docs.py", f"the guide changed ({f})", "policy")
             hit = True
         if f.startswith(SHADER_DIRS) and "test_shader_library.py" in sources:
             # any shader: its compile matrix, and the CI suite for what draws with it
-            plan.add_mcp("test_shader_library.py", f"compiles {f}")
+            plan.add_mcp("test_shader_library.py", f"compiles {f}", "policy")
             if not plan.mcp_ci:
                 plan.fallbacks.append(f"a shader changed ({f}): the CI suite as well")
             plan.mcp_ci = True
@@ -675,11 +778,11 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
     compile_path = [f for f in files if match(f, COMPILE_PATHS)]
     for t in COMPILE_FILES if compile_path else ():
         if t in sources:
-            plan.add_mcp(t, f"compiles a game ({compile_path[0]} changed)")
+            plan.add_mcp(t, f"compiles a game ({compile_path[0]} changed)", "policy")
     saved_output = [f for f in files if match(f, SAVED_OUTPUT_PATHS)]
     for t in SAVED_OUTPUT_FILES if saved_output else ():
         if t in sources:
-            plan.add_mcp(t, f"guards what a save writes ({saved_output[0]} changed)")
+            plan.add_mcp(t, f"guards what a save writes ({saved_output[0]} changed)", "policy")
     # the engine's and the editor's C++: the coverage map
     # (the unit tests' own sources are no editor code: nothing an MCP test could run)
     code = [f for f in files if f.startswith(("engine/", "editor/", "libs/")) and f.endswith(CXX)
@@ -698,7 +801,7 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
     if engine_runtime:
         for t in GAME_BUILD_FILES:
             if t in sources:
-                plan.add_mcp(t, f"runs a game of the engine ({engine_runtime[0]} changed)")
+                plan.add_mcp(t, f"runs a game of the engine ({engine_runtime[0]} changed)", "policy")
 
 
 def touched_functions(entry: dict, ranges: list[tuple[int, int, bool]] | None) -> tuple[list[list], bool]:
@@ -767,7 +870,7 @@ def select_by_map(changes: Changes, code: list[str], cmap: dict, sources: dict[s
             rest = sorted((t for i, t in enumerate(tests) if common >> i & 1 and t in sources),
                           key=lambda t: (seconds.get(t, 1e9), t))
             for t in rest[:COMMON_SAMPLE]:
-                plan.add_mcp(t, f"a quick file that runs {f}'s common code")
+                plan.add_mcp(t, f"a quick file that runs {f}'s common code", "smoke")
             plan.mcp_notes.append(f"{f}: code nearly every editor runs: the {COMMON_SAMPLE} quickest files of those that run it")
         if not names and not common:
             unrun.append(f)
@@ -922,7 +1025,7 @@ def plan_document(changes: Changes, plan: Plan, cmap_info: str, deps_from: Path 
     unit = {"core": suites(plan.unit_all, plan.unit_core) if unit_built else [],
             "editor": suites(plan.unit_all, plan.unit_editor) if unit_built else [],
             "htmlui": suites(plan.htmlui_all, plan.unit_htmlui) if "htmlui-tests" in plan.builds else []}
-    selected = [{"file": f, "reason": plan.mcp_reasons[f]} for f in plan.mcp_files]
+    selected = [{"file": f, "reason": plan.mcp_reasons[f], "kind": plan.mcp_kinds.get(f, "dependency")} for f in plan.mcp_files]
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(ROOT), capture_output=True, text=True, errors="replace")
     return {
         "base": changes.base, "base_ref": changes.base_ref, "head": head.stdout.strip() if head.returncode == 0 else "",
@@ -931,6 +1034,8 @@ def plan_document(changes: Changes, plan: Plan, cmap_info: str, deps_from: Path 
         "unit": "all" if all(v == "all" for v in unit.values()) else unit,
         "mcp": "all" if plan.mcp_all else "ci" if plan.mcp_ci else selected,
         "mcp_selected": selected,
+        # suite -> [kind, why] per test binary (REASON_KINDS)
+        "unit_reasons": {b: {s: list(r) for s, r in sorted(plan.unit_reasons[b].items())} for b in ("core", "editor", "htmlui")},
         "self_tests": plan.self_tests, "modules_off": plan.modules_off, "navigation_off": "navigation-off" in plan.builds,
         "fallbacks": plan.fallbacks, "notes": plan.unit_notes + plan.mcp_notes,
         "map": cmap_info, "deps_from": str(deps_from) if deps_from else None,

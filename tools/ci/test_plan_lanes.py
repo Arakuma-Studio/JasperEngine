@@ -239,6 +239,23 @@ class Rules(unittest.TestCase):
         self.assertEqual(r["mcp"]["mode"], "ci")
         self.assertTrue(any(".github/workflows/ci.yml" in f for f in r["fallbacks"]))
 
+    def test_the_rollback_variable_selects_every_test(self):
+        # CI_FULL_SELECTION=true (a repository variable): the selection is not trusted, every lane runs whole
+        p = plan(["engine/core/Foo.cpp"], builds=("linux", "unit-tests"), unit={"core": ["Foo"], "editor": [], "htmlui": []},
+                 mcp=["test_a.py"])
+        for event in ("pull_request", "merge_group"):
+            r = pl.decide(event, p, "", CI, LEFT_OUT, NIGHTLY_OUT, full_selection=True)
+            self.assertEqual(runs(r), set(pl.LANES), event)
+            self.assertEqual((r["unit_run"], r["unit_filter"], r["htmlui_filter"]),
+                             ({"core": True, "editor": True}, {"core": "", "editor": ""}, ""))
+            self.assertEqual((r["mcp"]["mode"], len(r["mcp"]["files"])), ("ci", 3))
+            self.assertTrue(any("CI_FULL_SELECTION" in f for f in r["fallbacks"]), r["fallbacks"])
+        # prose nothing reads still runs nothing; push stays the build lanes
+        r = pl.decide("pull_request", plan(["docs/specs/S1.md"], builds=()), "", CI, LEFT_OUT, NIGHTLY_OUT, full_selection=True)
+        self.assertEqual(runs(r), {"changes"})
+        r = pl.decide("push", p, "", CI, LEFT_OUT, NIGHTLY_OUT, full_selection=True)
+        self.assertEqual(r["mcp"]["mode"], "none")
+
     def test_github_output(self):
         r = decide("pull_request", plan(["engine/core/Foo.cpp"], unit={"core": ["Foo"], "editor": [], "htmlui": []}))
         doc = {"full": False, "lanes": r["lanes"], "unit_filter": r["unit_filter"], "htmlui_filter": r["htmlui_filter"],
@@ -306,6 +323,75 @@ for _i in range(2):
 
 def sh(cwd: Path, *args: str) -> str:
     return subprocess.run(list(args), cwd=str(cwd), check=True, capture_output=True, text=True).stdout
+
+
+class Selection(unittest.TestCase):
+    """lanes.json's selection: what each test lane runs, and why (the job summary prints it)."""
+
+    def test_reasons_of_a_planned_change(self):
+        p = plan(["engine/core/Foo.cpp", "tools/mcp/tests/test_b.py"], builds=("linux", "unit-tests"),
+                 unit={"core": ["Foo", "FooGpu"], "editor": [], "htmlui": []}, mcp=["test_a.py", "test_b.py", "test_long.py"])
+        p["unit_reasons"] = {"core": {"Foo": ["dependency", "engine/tests/core/FooTest.cpp includes engine/core/Foo.h"],
+                                      "FooGpu": ["policy", "a shader changed: the suites that draw (*Gpu)"]},
+                             "editor": {}, "htmlui": {}}
+        p["mcp"] = [{"file": "test_a.py", "reason": "runs engine/core/Foo.cpp (the changed functions)", "kind": "dependency"},
+                    {"file": "test_b.py", "reason": "the test file changed", "kind": "owner"},
+                    {"file": "test_long.py", "reason": "runs engine/core/Foo.cpp", "kind": "dependency"}]
+        r = decide("pull_request", p)
+        sel = pl.selection("pull_request", p, r, CI)
+        self.assertEqual(sel["unit"]["core"]["mode"], "suites")
+        self.assertEqual(sel["unit"]["core"]["suites"], [
+            {"suite": "Foo", "kind": "dependency", "why": "engine/tests/core/FooTest.cpp includes engine/core/Foo.h"},
+            {"suite": "FooGpu", "kind": "policy", "why": "a shader changed: the suites that draw (*Gpu)"}])
+        self.assertEqual(sel["unit"]["editor"], {"mode": "none", "kind": "", "why": "no unit test sees the change", "suites": []})
+        # MCP: the CI suite's planned files only, each with its reason
+        self.assertEqual(sel["mcp"]["mode"], "planned")
+        self.assertEqual(sel["mcp"]["files"], [
+            {"file": "test_a.py", "kind": "dependency", "why": "runs engine/core/Foo.cpp (the changed functions)"},
+            {"file": "test_b.py", "kind": "owner", "why": "the test file changed"}])
+        self.assertEqual(sel["mcp"]["of"], 3)
+        md = pl.selection_markdown(sel, r["fallbacks"], {})
+        self.assertIn("| unit (core) | 2 suites |", md)
+        self.assertIn("1 dependency, 1 policy", md)
+        self.assertIn("`test_b.py` (owner): the test file changed", md)
+
+    def test_a_widening_says_it_is_a_fallback_and_why(self):
+        p = plan(["engine/CMakeLists.txt"], unit="all", mcp="ci", fallbacks=["no coverage map: the CI suite for the C++ change"])
+        r = decide("pull_request", p)
+        sel = pl.selection("pull_request", p, r, CI)
+        self.assertEqual((sel["unit"]["core"]["mode"], sel["unit"]["core"]["kind"]), ("all", "fallback"))
+        self.assertEqual((sel["mcp"]["mode"], sel["mcp"]["kind"]), ("ci", "fallback"))
+        self.assertIn("no coverage map", sel["mcp"]["why"])
+        md = pl.selection_markdown(sel, r["fallbacks"], {"coverage-map": {"commit": "abcdef1234567", "run": "9", "created": 0}})
+        self.assertIn("| MCP | all 3 files |", md)
+        self.assertIn("fallback: no coverage map", md)
+        self.assertIn("coverage map of abcdef123456 (run 9", md)
+        # the merge queue and a full run: the whole suites by rule, not by a fallback
+        r = decide("merge_group", plan(["engine/core/Foo.cpp"], unit={"core": ["Foo"], "editor": [], "htmlui": []}))
+        sel = pl.selection("merge_group", plan(["engine/core/Foo.cpp"]), r, CI)
+        self.assertEqual((sel["unit"]["editor"]["mode"], sel["unit"]["editor"]["kind"]), ("all", "full"))
+        sel = pl.selection("full", None, decide("full", None), CI)
+        self.assertEqual((sel["mcp"]["mode"], sel["mcp"]["kind"]), ("ci", "full"))
+
+
+class Shadow(unittest.TestCase):
+    """lanes.json's shadow: what a pull request's selection would run for a fuller run's diff."""
+
+    def test_the_pr_selection_of_a_plan(self):
+        p = plan(["engine/core/Foo.cpp"], builds=("linux", "unit-tests"), unit={"core": ["Foo"], "editor": [], "htmlui": ["Css"]},
+                 mcp=["test_a.py", "test_long.py"])
+        p["base"] = "b" * 40
+        self.assertEqual(pl.shadow_selection(p, CI, LEFT_OUT, NIGHTLY_OUT), {
+            "base": "b" * 40, "files": ["engine/core/Foo.cpp"], "fallbacks": [],
+            "unit": {"core": ["Foo"], "editor": [], "htmlui": ["Css"]}, "mcp": ["test_a.py"]})
+        # what a PR widens to, it widens to here too; the rollback switch does not apply (it measures the shortcut)
+        sh = pl.shadow_selection(plan(["engine/x.cpp"], unit="all", mcp="ci", fallbacks=["no coverage map"]), CI, LEFT_OUT, NIGHTLY_OUT)
+        self.assertEqual((sh["unit"], sh["mcp"]), ({"core": "all", "editor": "all", "htmlui": "all"}, "all"))
+        self.assertIn("no coverage map", sh["fallbacks"])
+        sh = pl.shadow_selection(plan([".github/workflows/ci.yml"], builds=()), CI, LEFT_OUT, NIGHTLY_OUT)
+        self.assertEqual(sh["mcp"], "all")
+        sh = pl.shadow_selection(plan(["docs/specs/S1.md"], builds=()), CI, LEFT_OUT, NIGHTLY_OUT)
+        self.assertEqual((sh["unit"], sh["mcp"]), ({"core": [], "editor": [], "htmlui": []}, []))
 
 
 class Shards(unittest.TestCase):
@@ -409,6 +495,10 @@ class Runs(unittest.TestCase):
         self.assertEqual(sorted(t for c in shard["chunks"] for t in c["tests"]),
                          ["test_made_0", "test_made_1", "test_one", "test_two"])
         self.assertTrue(doc["lanes"]["linux"]["run"] and doc["lanes"]["windows"]["run"])
+        # the reasons, in lanes.json and as the job summary's Markdown
+        self.assertEqual(doc["selection"]["mcp"]["files"], [{"file": "test_a.py", "kind": "owner", "why": "the test file changed"}])
+        self.assertEqual(doc["selection"]["mcp"]["tests"], 4)
+        self.assertIn("`test_a.py` (owner): the test file changed", (self.tmp / "out/selection.md").read_text())
 
     def plan_with_timings(self, event, committed: str, cache: dict | None = None):
         head = self.commit("tools/mcp/ci-timings.json", committed)
@@ -462,6 +552,24 @@ class Runs(unittest.TestCase):
         # what check_gate and the report expect a report from
         self.assertEqual(doc["unit_jobs"], ["core", "editor-1", "editor-2"])
         self.assertEqual(doc["asan_jobs"], ["core", "editor"])
+
+    def test_fuller_runs_carry_the_pr_selection_as_their_shadow(self):
+        head = self.commit("tools/mcp/tests/test_a.py", TEST_FILE.format(extra="# changed"))
+        code, doc, out = self.run_main("--event", "merge_group", "--base", self.base, "--head", head,
+                                       "--out-dir", str(self.tmp / "out"))
+        self.assertEqual(code, 0, out)
+        self.assertEqual((doc["shadow"]["files"], doc["shadow"]["mcp"]), (["tools/mcp/tests/test_a.py"], ["test_a.py"]))
+        # the nightly has no diff of its own: the PR selection of the one since --shadow-base
+        code, doc, out = self.run_main("--event", "nightly", "--base", head, "--head", head, "--shadow-base", self.base,
+                                       "--out-dir", str(self.tmp / "out"))
+        self.assertEqual(code, 0, out)
+        self.assertEqual((doc["mcp"]["mode"], doc["shadow"]["mcp"], doc["shadow"]["base"]), ("nightly", ["test_a.py"], self.base))
+        code, doc, out = self.run_main("--event", "nightly", "--base", head, "--head", head, "--out-dir", str(self.tmp / "out"))
+        self.assertEqual(doc["shadow"], None)
+        self.assertIn("--shadow-base", doc["shadow_why"])
+        # a pull request runs its selection: nothing to shadow
+        code, doc, out = self.run_main("--event", "pull_request", "--base", self.base, "--head", head, "--out-dir", str(self.tmp / "out"))
+        self.assertEqual(doc["shadow"], None)
 
     def test_no_plan_fails_open_and_an_unlistable_suite_fails_the_lane(self):
         head = self.commit("engine/core/Foo.cpp", "int foo = 2;\n")

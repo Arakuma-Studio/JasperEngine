@@ -164,6 +164,16 @@ class Builds(unittest.TestCase):
             self.assertEqual(p.builds, ["linux", "unit-tests", "web", "android"], trigger)
             self.assertTrue(p.unit_all and p.mcp_all, trigger)
 
+    def test_a_tool_runs_the_test_beside_it(self):
+        # tools/<dir>/x.py with tools/<dir>/test_x.py beside it: its owner test (before: none, unless listed)
+        self.assertEqual(self.plan("tools/procmat/import_mm_nodes.py").self_tests, ["tools/procmat/test_import_mm_nodes.py"])
+        self.assertEqual(self.plan("tools/procmat/test_import_mm_nodes.py").self_tests, ["tools/procmat/test_import_mm_nodes.py"])
+        self.assertEqual(self.plan("tools/ci/unit_split.py").self_tests, ["tools/ci/test_unit_split.py"])
+        # a test that needs arguments (a built binary) is left to its lane; no test beside it: nothing
+        self.assertEqual(self.plan("tools/crash/symbolicate.py").self_tests, [])
+        self.assertEqual(self.plan("tools/ci/test_player_cli.py").self_tests, [])
+        self.assertEqual(self.plan("tools/gen_blue_noise.py").self_tests, [])
+
     def test_ci_nothing_reads(self):
         for f in ("docs/specs/S01-cxx20.md", "docs/superpowers/specs/x.md", "docs/engine-gaps/a.md",
                   "docs/openengine-analysis/b.md", "docs/test-cleanup/c.md", "PIXEL-ART-LEDGER.md", "README.md",
@@ -247,6 +257,68 @@ class Units(unittest.TestCase):
 
     def test_filter(self):
         self.assertEqual(cc.suite_filter(["Foo"]), "Foo.*:*/Foo.*:Foo/*.*")
+
+    def test_each_suite_says_why_it_runs(self):
+        # (the plan's reasons: the test unit that changed, or that includes what changed)
+        why = {}
+        cc.select_units(["engine/core/Foo.cpp", "engine/tests/core/BarTest.cpp"], self.deps, SOURCES.__getitem__, why)
+        self.assertEqual(why, {"engine/tests/core/FooTest.cpp": "engine/core/Foo.h",
+                               "engine/tests/core/BarTest.cpp": "engine/tests/core/BarTest.cpp"})
+        p = cc.Plan()
+        files = ["engine/core/Foo.cpp", "engine/tests/core/BarTest.cpp"]
+        cc.plan_builds(files, p)
+        tmp = Path(tempfile.mkdtemp(prefix="cc-why-"))
+        try:
+            cc.use_root(tmp)
+            for unit, text in SOURCES.items():
+                (tmp / unit).parent.mkdir(parents=True, exist_ok=True)
+                (tmp / unit).write_text(text)
+            cc.plan_units(cc.Changes("b", "x", files), p, DEPS, DEPS)
+        finally:
+            cc.use_root(REAL_ROOT)
+            shutil.rmtree(tmp, ignore_errors=True)
+        self.assertEqual(p.unit_reasons["core"]["Foo"], ("dependency", "engine/tests/core/FooTest.cpp includes engine/core/Foo.h"))
+        self.assertEqual(p.unit_reasons["core"]["Bar"], ("owner", "engine/tests/core/BarTest.cpp changed"))
+
+    def test_a_source_no_test_includes_selects_its_nearest_consumers(self):
+        # Qux.cpp is linked into the test binary, but no test unit includes Qux.h: Foo.cpp does, so the
+        # tests of Foo (which include Foo.h) run Qux's code. Before: no suite at all
+        deps = DEPS + """
+CMakeFiles/jasperengine.dir/core/Qux.cpp.o: #deps 2, deps mtime 1 (VALID)
+    /src/engine/core/Qux.cpp
+    /src/engine/core/Qux.h
+
+CMakeFiles/jasperengine-editor.dir/core/Foo.cpp.o: #deps 3, deps mtime 1 (VALID)
+    /src/engine/core/Foo.cpp
+    /src/engine/core/Foo.h
+    /src/engine/core/Qux.h
+
+CMakeFiles/jasperengine.dir/core/Lone.cpp.o: #deps 1, deps mtime 1 (VALID)
+    /src/engine/core/Lone.cpp
+"""
+        parsed = cc.parse_ninja_deps(deps, Path("/src/build/linux/core-tests"), Path("/nonexistent"))
+        self.assertEqual(cc.select_units(["engine/core/Qux.cpp"], parsed, SOURCES.__getitem__), ([], []))
+        units, via, steps = cc.nearest_consumers("engine/core/Qux.cpp", parsed)
+        self.assertEqual((units, via, steps), (["engine/tests/core/FooTest.cpp"], {"engine/tests/core/FooTest.cpp": "engine/core/Foo.h"}, 1))
+        # nothing includes it, or it is not in this tree: nothing
+        self.assertEqual(cc.nearest_consumers("engine/core/Lone.cpp", parsed)[0], [])
+        self.assertEqual(cc.nearest_consumers("editor/Other.cpp", parsed)[0], [])
+        tmp = Path(tempfile.mkdtemp(prefix="cc-consumers-"))
+        try:
+            cc.use_root(tmp)
+            for unit, text in SOURCES.items():
+                (tmp / unit).parent.mkdir(parents=True, exist_ok=True)
+                (tmp / unit).write_text(text)
+            p = cc.Plan()
+            files = ["engine/core/Qux.cpp"]
+            cc.plan_builds(files, p)
+            cc.plan_units(cc.Changes("b", "x", files), p, deps, deps)
+        finally:
+            cc.use_root(REAL_ROOT)
+            shutil.rmtree(tmp, ignore_errors=True)
+        self.assertEqual(p.unit_core, ["Foo", "FooFixture", "FooParam"])
+        self.assertEqual(p.unit_reasons["core"]["Foo"][0], "dependency")
+        self.assertIn("nearest consumer", p.unit_reasons["core"]["Foo"][1])
 
     def test_cmake_or_no_database_runs_every_unit_test(self):
         for files, deps in ((["engine/CMakeLists.txt"], (DEPS, DEPS)), (["engine/core/Foo.cpp"], (None, DEPS))):
@@ -380,6 +452,21 @@ class Mcp(unittest.TestCase):
         self.assertIn("commits behind", cc.map_staleness({"created": time.time(), "commit": "x"}, time.time(),
                                                          lambda c: cc.MAP_MAX_COMMITS + 1))
         self.assertIsNone(cc.map_staleness({"created": time.time(), "commit": "x"}, time.time(), lambda c: 3))
+
+    def test_each_file_says_what_kind_of_reason_selected_it(self):
+        # owner (the test changed), dependency (it runs, calls or loads what changed), policy (a rule
+        # watches the path), smoke (a quick sample of code nearly every editor runs)
+        p = self.plan(["tools/mcp/tests/test_other.py", "editor/App.cpp", "AGENTS.md", "editor/Exporter.cpp"])
+        self.assertEqual(p.mcp_kinds, {"test_other.py": "owner", "test_render.py": "dependency",
+                                       "test_agent_docs.py": "policy", "test_build.py": "policy"})
+        tests = [f"test_{c}.py" for c in "abcdefghijklmnopqrst"]
+        cmap = mapfile({"editor/A.cpp": ("blob", [(1, 9, list(range(20)))])}, tests=tests)
+        q = cc.Plan()
+        cc.plan_mcp(cc.Changes("b", "x", ["editor/A.cpp"]), q, cmap, {t: "x\n" for t in tests}, None)
+        self.assertEqual(set(q.mcp_kinds.values()), {"smoke"})
+        doc = cc.plan_document(cc.Changes("b", "x", ["editor/App.cpp"]), p, "map", None)
+        self.assertIn({"file": "test_render.py", "reason": p.mcp_reasons["test_render.py"], "kind": "dependency"},
+                      doc["mcp_selected"])
 
     def test_test_files_tools_fixtures(self):
         self.assertEqual(self.plan(["tools/mcp/tests/test_other.py"]).mcp_files, ["test_other.py"])

@@ -434,6 +434,9 @@ tools/check-changed --no-mcp                  # builds and unit tests only, said
 tools/build.sh exec linux tools/check-changed # inside the Linux image (no web or Android build there)
 ```
 
+- Tool tests: a changed `tools/<dir>/<x>.py` runs `tools/<dir>/test_<x>.py` beside it (and a changed
+  test itself), unless it takes arguments only its lane has (`SELF_TESTS_ELSEWHERE`); `SELF_TESTS`
+  names the rest. CI's lint lane runs every tool test that needs no build (`tools/ci/lint.sh`).
 - Lints with triggers: a changed MCP test file runs `tools/ci/check-mcp-ci-suite.py`; a changed
   engine source (not `engine/libs`, `engine/tests`) runs `tools/check_event_clears.py` (every
   `FunctionSubscribe` member is in its holder's `forEachEvent`, every component holder in
@@ -446,7 +449,12 @@ tools/build.sh exec linux tools/check-changed # inside the Linux image (no web o
 - Unit tests: the gtest suites (`TEST`, `TEST_F`, `TEST_P`, typed) of the test units that see the
   change, in `jasperengine-core-tests` and `jasperengine-editor-tests` (`--gtest_filter`, through
   `tools/build.sh unit-tests` and its no-silent-green gate); a changed test file always runs; a
-  CMake change, or test trees not built yet, run them all.
+  CMake change, or test trees not built yet, run them all. A changed source the tree links but no test
+  unit includes (a `.cpp` whose functions only other sources call) runs the units that include its
+  nearest consumers: the sources that include it, through their own headers, a step at a time until a
+  test unit includes one (`nearest_consumers`; on `main`'s dumps of 2026-11-20 it takes the core
+  tree's sources that selected nothing from 620 of 2,175 to 240, the editor tree's from 1,659 of
+  4,333 to 600; what is left registers itself, as the Lua bindings do, and no include reaches it).
 - MCP tests: the files that executed the functions the diff's hunks touch (coverage map: the whole
   file when a changed line is outside every function, a declaration or a type; a header then also
   through its `.cpp`; only new lines outside the functions touch nothing old, a new function counts
@@ -1063,10 +1071,10 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 - **Push to `main`** builds, and runs the tests of the advisory lanes the queue left out
   (`tools/ci/plan_lanes.py` `build_only` lists what builds without its tests); the other tests ran in
   the queue. A push run gates nothing: a failing advisory test shows in its report and job summary.
-  It saves the caches (ccache per lane, the deps dumps `changes` plans from): a PR restores what `main`
-  saved, never what the queue did. The unit and HTML UI tests run in a step of their own after the
-  build and the deps dumps that continues on error, so the job's result, which the `caches` job's
-  plan inputs follow, stays its build's; the lane's report carries the tests' failure, and
+  It saves the caches (ccache per lane): a PR restores what `main` saved, never what the queue did; and
+  publishes the deps dumps `changes` plans from (below, "Plan inputs"). The unit and HTML UI tests run
+  in a step of their own after the build and the deps dumps that continues on error, so the job's
+  result stays its build's; the lane's report carries the tests' failure, and
   `tools/ci/check_gate.py` reads it.
 - **ccache in CI**: a build runs with no size limit (a cleanup in the middle of a build evicts the
   restored entries it has not reached yet, and each miss then evicts more: a PR that changed one test
@@ -1090,7 +1098,7 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   | Windows editor | 0.91 | 1.0G | yes |
   | Android | 0.63 | 0.7G | yes |
   | web | 0.48 | 0.6G | yes |
-  | Gradle, Vulkan SDK, plan inputs, coverage map, MCP timings | 0.73, 0.21, under 0.01 each | | yes |
+  | Gradle, Vulkan SDK, MCP timings | 0.73, 0.21, under 0.01 | | yes |
   | Windows OpenGL | 1.4 | | no: the lane ends with its slowest leg, and D3D11 and Vulkan cold (57-99 min) take about as long as OpenGL cold with the core tests (79-108) |
   | unit-editor | 4.0 | | no |
   | asan-core, asan-editor | 5.3 both (one job, PR 26) | | no: neither binary's fits what is left, so ASan runs on push only while advisory, cold |
@@ -1102,13 +1110,84 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   second list, so its last entry goes at once instead of holding the budget for 7 days.
 - **Full run on any branch**: `gh workflow run ci.yml --ref <branch> -f full=true`.
 
+### Plan inputs
+
+`changes` plans a PR from two inputs made on `main`: the Ninja deps dumps of the three test trees
+(`tools/ci/dump_deps.sh`, by the unit and htmlui lanes on every push) and the MCP coverage map (the
+nightly's coverage shards). They live on the data branch `ci-plan-inputs`, not in the cache: GitHub
+evicted the cache entries of both for days at a time (of the 135 PR and merge-queue runs from
+2026-11-14 to 2026-11-20, 11 had a map; of the 67 PR runs after the first deps dump was saved, 11 had
+none), and each missing input widened its lane to everything. `tools/ci/plan_inputs.py`:
+
+- `publish` replaces the branch with one parentless commit holding `manifest.json` (each input's
+  `main` commit and run), `coverage-map.json.gz`, `deps/<tree>.deps.gz` and `shadow.jsonl` (below),
+  over what the branch held; a push another job won is retried on top of it. The deps dumps are
+  compacted first (every object with its dependencies inside the repository, a vendored library's
+  with its source: 152 MB of dumps become 34 MB, 1.6 MB compressed), and select the same suites
+  (`tools/ci/test_plan_inputs.py`; 150 sampled sources of the real dumps, 0 differences).
+- Writers: the `plan inputs` job of a push to `main` (the deps dumps) and the nightly's `Coverage
+  map` job on `main`, the only jobs with `contents: write`, running `main`'s code. The branch is
+  outside the `main` ruleset; a PR, a fork or another branch's run never writes it.
+- `fetch` (the `changes` job, read-only) writes what the branch has into `build/ci-inputs`; no
+  branch or no input fetches nothing, and the plan widens as before. Locally:
+  `python3 tools/ci/plan_inputs.py fetch --out /tmp/inputs`, then `tools/check-changed --deps-from
+  /tmp/inputs/deps` with `JASPER_MCP_COVERAGE_MAP=/tmp/inputs/coverage-map.json`.
+- Freshness: the map is remade every night and a map older than 14 days or 400 commits still widens
+  (`MAP_MAX_AGE_DAYS`, `MAP_MAX_COMMITS`); the deps dumps on every push to `main`.
+
+### Why a test runs
+
+The plan records a reason for every suite and MCP file it selects (`check_changed.REASON_KINDS`), in
+`check-changed.json` (`unit_reasons`, `mcp_selected[].kind`) and `lanes.json` (`selection`), and the
+`changes` job prints it in its summary (`selection.md`: a row per test lane, the first 40 reasons,
+what widened the plan and the plan inputs' commits and when they were published):
+
+| Kind | A suite or file runs because |
+|---|---|
+| `owner` | its own source changed (a test unit, an MCP test file) |
+| `dependency` | it includes what changed (Ninja's deps), or runs, calls or loads it (the coverage map, a tool's name, a path) |
+| `policy` | a rule watches the changed path: a shader's `*Gpu` suites, the compile and game-build files, the save guard, the agent-docs and guide checks |
+| `smoke` | it is one of the 10 quickest files that run code nearly every editor runs |
+| `full` | the event runs the whole suite (merge queue units, a full run, the nightly) |
+| `fallback` | a widening ran the whole suite, and says which (no map, a stale map, a new source, CMake, a test's data, `.github/`) |
+
+**Shadow mode** measures what the selection would miss before anyone trusts it further. A run that
+runs more than a PR would (every unit test: the merge queue's, or the push to `main`'s while the unit
+lane is advisory; a `full=true` run; the nightly: the whole MCP suite) carries in `lanes.json` a `shadow`: what a PR's selection of its diff would run
+(`plan_lanes.py shadow_selection`; the nightly's diff is the one since the coverage map's commit,
+`--shadow-base`, planned with the inputs a PR would have had). `tools/ci/shadow.py check` judges each
+failed test of a scope the run ran whole (unit core, editor, HTML UI, MCP) against it:
+
+- **caught**: the PR selection runs it; **miss**: it leaves it out; **pre-existing or flaky**: left
+  out, but the history saw it fail within 7 days; **no change to blame**: the diff is empty.
+- `ci.yml`'s `shadow` job (merge queue, push, dispatch; read-only) prints the record in its summary
+  and uploads it as the artifact `shadow`; the nightly's `Shadow selection` job judges its own MCP
+  run, gathers the `shadow` artifacts of CI's runs since its last record, appends them to
+  `shadow.jsonl` on `ci-plan-inputs` (the tracked report, the newest 500 records) and prints
+  `shadow.py report` of it. `python3 tools/ci/plan_inputs.py fetch --out /tmp/i && python3
+  tools/ci/shadow.py report --history /tmp/i/shadow.jsonl` reads it anywhere.
+- A miss is a selection gap until shown otherwise: find why the selection left the test out (a
+  dependency no input records), and fix the rule with a test in `tools/test_check_changed.py`.
+- Replayed over the 50 merge-queue runs with plans from 2026-11-16 to 2026-11-20 (their
+  `check-changed.json` against their unit, HTML UI and MCP reports): 422 failures caught, 91
+  pre-existing or flaky, 6 misses: five HTML UI tests at their first failure in run 43871305894 (a
+  change with no HTML UI file; they failed in every later run that ran them, so `main` had broken
+  them), and `PhysicsContactsTest.ContactProcessingCostIsSmall` (a cost budget, failed again two days
+  later on an unrelated change).
+
+**Rollback**: the repository variable `CI_FULL_SELECTION` set to `true` turns the selection off: a PR
+or merge-queue run whose change builds runs every lane whole (unit and HTML UI unfiltered, the whole
+MCP CI suite), and its plan says so in `fallbacks`; prose nothing reads still runs nothing.
+`gh variable set CI_FULL_SELECTION --body true` sets it, `gh variable delete CI_FULL_SELECTION` lifts
+it; the next run's `changes` reads it.
+
 ### The nightly and releases
 
 - **Nightly** (`nightly.yml`, 03:17 UTC, or dispatched): the slow configurations (HTML UI on Vulkan
   and under ASan, TSan, texture formats on lavapipe, the unity builds of the editor, the engine and
   both unit-test trees, every fixture's smoke on OpenGL, GLES3 and Vulkan through
-  `tools/ci/nightly-smoke.sh`, the pthreads web gate, prebuilt player parity) and the whole MCP CI suite, which also refreshes the coverage map and the
-  nightly's own shard timings (the `mcp-timings` cache). A failure opens or updates the issue
+  `tools/ci/nightly-smoke.sh`, the pthreads web gate, prebuilt player parity) and the whole MCP CI suite, which also refreshes the coverage map (below, "Plan
+  inputs") and the nightly's own shard timings (the `mcp-timings` cache). A failure opens or updates the issue
   labelled `nightly`. When `main` moved, it publishes the prerelease `nightly-YYYYMMDD` (the newest 14
   are kept); the slow lanes do not hold it back.
 - **Stable** (`release.yml`, dispatched with a `vX.Y.Z` version, an optional commit that defaults to
