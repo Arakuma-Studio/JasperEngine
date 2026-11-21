@@ -739,7 +739,8 @@ TEST(MeshRaycast, OverlapFindsTreesByTheirBounds){
 }
 
 // The walk keeps every tree whose world bounds can touch the shape though the Terrain turns and
-// scales unevenly (a world box's preimage is no box): it equals testing every tree's bounds
+// scales unevenly (a world box's preimage is no box): it equals testing every tree's bounds, also
+// for small spheres just past a tree's bounds' corner, far from the tree itself
 TEST(MeshRaycast, OverlapTreesMatchAScanOnATurnedTerrain){
     foliagetest::FoliageFixture fixture;
     TerrainTreePrototype prototype;
@@ -761,7 +762,7 @@ TEST(MeshRaycast, OverlapTreesMatchAScanOnATurnedTerrain){
     store->apply({}, added, {}, &delta);
     fixture.foliage->treesChanged(fixture.entity, delta);
     fixture.scene->getComponent<Transform>(fixture.entity).modelMatrix =
-        Matrix4::composeTRS(Vector3(7.0f, -2.0f, 3.0f), Quaternion(10.0f, 30.0f, 0.0f), Vector3(1.5f, 1.0f, 0.6f));
+        Matrix4::composeTRS(Vector3(7.0f, -2.0f, 3.0f), Quaternion(35.0f, 45.0f, 0.0f), Vector3(2.0f, 1.0f, 0.5f));
     fixture.settle();
 
     std::vector<FoliageSystem::FoliageInBox> every;
@@ -776,11 +777,20 @@ TEST(MeshRaycast, OverlapTreesMatchAScanOnATurnedTerrain){
     std::uniform_real_distribution<float> size(0.2f, 6.0f);
     std::vector<MeshOverlapHit> hits;
     size_t total = 0;
-    for (int q = 0; q < 2000; q++){
-        const Vector3 center(place(rng), height(rng), place(rng));
+    std::uniform_real_distribution<float> unit(0.0f, 1.0f);
+    for (int q = 0; q < 4000; q++){
+        Vector3 center(place(rng), height(rng), place(rng));
         const bool box = q % 2 == 1;
-        const float radius = size(rng);
+        float radius = size(rng);
         const Vector3 half(size(rng), size(rng), size(rng));
+        if (q % 4 == 0){
+            // a 0.3 m sphere 0.25 m out of a corner of a tree's bounds, along the diagonal
+            const AABB& bounds = every[(size_t)q / 4 % every.size()].bounds;
+            const Vector3 sign(unit(rng) < 0.5f ? -1.0f : 1.0f, unit(rng) < 0.5f ? -1.0f : 1.0f, unit(rng) < 0.5f ? -1.0f : 1.0f);
+            const Vector3 corner = bounds.getCenter() + bounds.getHalfSize() * sign;
+            center = corner + sign * (0.25f / 1.7320508f);
+            radius = 0.3f;
+        }
         std::vector<uint64_t> expected;
         for (const FoliageSystem::FoliageInBox& tree : every){
             const Vector3& mn = tree.bounds.getMinimum();
