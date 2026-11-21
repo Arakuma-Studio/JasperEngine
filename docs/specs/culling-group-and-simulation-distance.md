@@ -619,6 +619,6 @@ Unit tests in `engine/tests/core/subsystem/CullingSystemTest.cpp` (suites `Culli
   game time (after the Performance line it also checks in order). The scripted move turns the group's
   camera away (10,000 events, every one becoming invisible) and moves the simulation camera 30 m back
   (500 culled). R22's figures are release ones, so the gate runs on `BUILD_TYPE=Release`: a Debug
-  build measured 2.19 ms and 0.505 ms. On the first Release run (build box B, under other jobs) the
-  simulation p99 was 0.095 ms and the events as expected, and the group p99 0.515 ms: over its 0.5 ms
-  web budget.
+  build measured 2.19 ms and 0.505 ms. Release runs on build box B, shared with other jobs: the group
+  p99 0.515, 0.355 and 0.385 ms (p50 0.19-0.23), the simulation p99 0.095, 0.085 and 0.090 ms, the
+  events as expected each time; the first run's group p99 was over its 0.5 ms budget, the next two under.
