@@ -102,9 +102,9 @@ async def test_fields_round_trip(ed: Editor):
 
 
 async def test_cavity_lua(ed: Editor):
-    """S92 AC10: the Cavity fields are PostProcessingSettings properties in Lua (CavityType by name), and
-    what a script assigns reads back through MCP."""
-    ed.require_tools("create_scene", "eval_lua", "get_scene_settings")
+    """S92 AC9, AC10: the Cavity fields are PostProcessingSettings properties in Lua (CavityType by name),
+    what a script assigns reads back through MCP, and get_post_processing_status reports it."""
+    ed.require_tools("create_scene", "eval_lua", "get_scene_settings", "get_post_processing_status")
     sid = (await ed.call("create_scene", name="CavityLua", type="3d"))["scene"]["id"]
     out = await ed.call("eval_lua", scene=sid, allow_edit_mode=True, code=(
         "local p = scene.postProcessing p.cavityEnabled = true p.cavityType = CavityType.WORLD "
@@ -114,6 +114,9 @@ async def test_cavity_lua(ed: Editor):
     ed.check_eq(out["values"], [True, 1, 0.5, 16, 1.0, 0], "read back in Lua")
     ed.check_eq(await post(ed, sid), {"cavity_enabled": True, "cavity_type": "world", "cavity_world_radius": 0.5,
                                       "cavity_world_samples": 16, "cavity_debug": True}, "what Lua set, through MCP")
+    # the status: what the settings resolve to (no device tier applies in edit mode)
+    cavity = (await ed.call("get_post_processing_status", scene=sid))["cavity"]
+    ed.check_eq((cavity["enabled"], cavity["type"], cavity["world_samples"]), (True, "world", 16), f"status: {cavity}")
 
 
 async def test_presets_one_named_undo_step(ed: Editor):
