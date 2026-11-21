@@ -2818,6 +2818,9 @@ std::string editor::Generator::mainSource(const std::vector<editor::SceneBuildIn
     };
     emitLayerCollisionMatrix("Physics", tagsAndLayers.layerCollisionMatrix3D);
     emitLayerCollisionMatrix("Physics2D", tagsAndLayers.layerCollisionMatrix2D);
+    // Queries Hit Triggers: only when off (the engine's default is on)
+    if (!queriesHitTriggers3D) mainContent += "    Physics::setQueriesHitTriggers(false);\n";
+    if (!queriesHitTriggers2D) mainContent += "    Physics2D::setQueriesHitTriggers(false);\n";
 
     // 3D world capacity, before any scene (and its world) is made: the same as in the editor
     mainContent += "#ifdef JASPERENGINE_PHYSICS_3D\n";

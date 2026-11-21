@@ -415,6 +415,8 @@ namespace jasperengine {
         static double pinnedShaderTime;
         // read by Log from any thread (the frame of a line)
         static std::atomic<uint64_t> gameFrames;
+        // every frame run, paused or not (getFrameIndex)
+        static uint64_t frameIndex;
         static double unscaledDeltatime;
         static double unscaledTime;
         static double fixedTime;
@@ -856,6 +858,9 @@ namespace jasperengine {
         // Scaled seconds and frames the update loop has run (since start; not while paused or held)
         static double getGameTime();
         static uint64_t getGameFrames();
+        // Frames the engine has run, paused, held or in the editor's edit mode too: the key of
+        // what a cache keeps for one frame (main thread)
+        static uint64_t getFrameIndex();
 
         // The frame delta before timeScale (Unity's Time.unscaledDeltaTime): the measured frame
         // time capped by maxDeltatime, or the fixed frame delta when set; 0 while the app is

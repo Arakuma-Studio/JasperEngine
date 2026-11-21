@@ -2373,6 +2373,22 @@ void editor::Project::setPhysics3DWorldSettings(const Physics3DWorldSettings& se
     physics3DWorld.maxContactConstraints = PhysicsSystem::getDefaultMaxContactConstraints3D();
 }
 
+void editor::Project::setPhysicsQuerySettings(const PhysicsQuerySettings& settings){
+    physicsQueries = settings;
+    applyPhysicsQuerySettings();
+}
+
+const editor::PhysicsQuerySettings& editor::Project::getPhysicsQuerySettings() const{
+    return physicsQueries;
+}
+
+void editor::Project::applyPhysicsQuerySettings() const{
+    // a Build Profile's settings snapshot leaves the engine to the open project
+    if (settingsSnapshot) return;
+    Physics::setQueriesHitTriggers(physicsQueries.hitTriggers3D);
+    Physics2D::setQueriesHitTriggers(physicsQueries.hitTriggers2D);
+}
+
 const editor::Physics3DWorldSettings& editor::Project::getPhysics3DWorldSettings() const{
     return physics3DWorld;
 }
@@ -6688,6 +6704,7 @@ void editor::Project::resetConfigs() {
     if (!settingsSnapshot) SortingLayers::reset();
     setLayerCollisionMatrices(allLayersCollide(), allLayersCollide());
     setPhysics3DWorldSettings(Physics3DWorldSettings());
+    setPhysicsQuerySettings(PhysicsQuerySettings());
     unreadableInputNode.clear();
     inputMigration = InputActionsMigration();
     setShaderGlobals({});
@@ -8650,6 +8667,7 @@ void editor::Project::prepareGenerator(Generator& target, const Project& setting
     target.setDefaultFilterPoint(settings.defaultFilterMode == TextureFilterMode::Point);
     target.setBitmapTextCacheMiB(settings.bitmapTextCacheMiB);
     target.setShippedTerrainTiers(getGeneratedTerrainTiers());
+    target.setPhysicsQueries(settings.physicsQueries.hitTriggers3D, settings.physicsQueries.hitTriggers2D);
 }
 
 // the scenes main.cpp registers: all of them, or those of `only` (a Build Profile's Scene List and the
@@ -10915,6 +10933,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setDefaultFilterPoint(defaultFilterMode == TextureFilterMode::Point);
     generator.setBitmapTextCacheMiB(bitmapTextCacheMiB);
     generator.setShippedTerrainTiers(terraincore::TERRAIN_ALL_TIERS);
+    generator.setPhysicsQueries(physicsQueries.hitTriggers3D, physicsQueries.hitTriggers2D);
     generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints, getSortingLayers(), getTransparencySortMode(), getTransparencySortAxis()}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings, applicationSettings.allowInsecureHttp, getShaderGlobals(), getPlayerSettings(), getAudioSettings(), debugSettings, particleWorldBudget);
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
@@ -11606,6 +11625,7 @@ void editor::Project::start(uint32_t sceneId) {
     // Play starts from the project's layer collision matrices, whatever an earlier Play's
     // scripts did to them
     applyLayerCollisionMatrices();
+    applyPhysicsQuerySettings();
     // a review left from the last Play of this scene goes with the new one
     PlayChangeReview::get().discard(sceneId);
     // and from clean input (Project Settings > Input, no runtime rebinding), in the Game view's Input Scheme
@@ -11920,8 +11940,10 @@ void editor::Project::stop(uint32_t sceneId) {
                 mainSceneProject->scene->getSystem<UISystem>()->resetSelection();
             }
 
-            // matrix changes made by scripts last only for the Play, never reaching project.yaml
+            // matrix and queriesHitTriggers changes made by scripts last only for the Play, never
+            // reaching project.yaml
             applyLayerCollisionMatrices();
+            applyPhysicsQuerySettings();
             // so do held input, rebinding overrides, simulated input sources and a forced input scheme
             InputSchemeTracker::setOverride(std::nullopt);
             resetPlayInput();

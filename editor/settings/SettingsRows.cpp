@@ -23,6 +23,7 @@
 #include "command/type/ShaderGlobalsCmd.h"
 #include "command/type/InputActionsCmd.h"
 #include "command/type/DebugSettingsCmd.h"
+#include "command/type/PhysicsQuerySettingsCmd.h"
 #include "titleart/TitleArtSettingsCmd.h"
 #include "command/type/DrawSubmissionSettingsCmd.h"
 #include "command/type/SortingLayersCmd.h"
@@ -781,6 +782,36 @@ Setting debugSetting(const std::string& key, const std::string& type, const std:
             command->setNoMerge();
             if (!p->getProjectCommandHistory()->addCommand(command)) {
                 error = "the debug settings could not be applied";
+                return false;
+            }
+        }
+        return true;
+    };
+    return s;
+}
+
+// Project Settings > Physics / Physics 2D > Queries Hit Triggers: one undoable step per change
+Setting queriesHitTriggersSetting(const std::string& key, bool is2D) {
+    Setting s;
+    s.key = key;
+    s.type = "bool";
+    s.description = std::string("Whether ") + (is2D ? "2D" : "3D") + " queries (raycasts, overlaps, casts) report trigger colliders when their "
+                    "QueryTriggerInteraction is UseGlobal (default true). Undoable (undo scope project).";
+    s.get = [is2D](SettingsContext& ctx) {
+        const PhysicsQuerySettings& queries = ctx.project()->getPhysicsQuerySettings();
+        return Json(is2D ? queries.hitTriggers2D : queries.hitTriggers3D);
+    };
+    s.set = [is2D](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+        bool b;
+        if (!readBool(value, b, error)) return false;
+        Project* p = ctx.project();
+        PhysicsQuerySettings changed = p->getPhysicsQuerySettings();
+        (is2D ? changed.hitTriggers2D : changed.hitTriggers3D) = b;
+        if (apply && changed != p->getPhysicsQuerySettings()) {
+            auto* command = new PhysicsQuerySettingsCmd(p, p->getPhysicsQuerySettings(), changed);
+            command->setNoMerge();
+            if (!p->getProjectCommandHistory()->addCommand(command)) {
+                error = "the queries hit triggers setting could not be applied";
                 return false;
             }
         }
@@ -3158,9 +3189,11 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        add(queriesHitTriggersSetting("physics.queries_hit_triggers", false));
         add(boolSetting("physics2d.enabled", "2D physics (Box2D). Off leaves Rigidbody2Ds and joints out of builds.",
                         [](Project& p) { return p.isPhysics2DEnabled(); }, [](Project& p, bool v) { p.setPhysics2DEnabled(v); }));
         add(layerCollisionSetting("physics2d.layer_collision_matrix", false));
+        add(queriesHitTriggersSetting("physics2d.queries_hit_triggers", true));
         // ---- navigation (S19; agent types and areas: Window > AI > Navigation, set_navigation_settings)
         add(boolSetting("navigation.include_in_builds", "Recast/Detour in exported builds. Off: navmesh bakes, queries and agents fail; grids still work.",
                         [](Project& p) { return p.getNavigationSettings().includeInBuilds; },
@@ -4755,7 +4788,9 @@ const Placement placements[] = {
     {"physics.max_bodies", "Physics", "3D World Capacity", "Max Bodies", "jolt capacity limit rigidbodies"},
     {"physics.max_body_pairs", "Physics", "3D World Capacity", "Max Body Pairs", "jolt capacity limit contacts"},
     {"physics.max_contact_constraints", "Physics", "3D World Capacity", "Max Contact Constraints", "jolt capacity limit contacts"},
+    {"physics.queries_hit_triggers", "Physics", "", "Queries Hit Triggers", "raycast overlap cast trigger sensor querytriggerinteraction"},
     {"physics2d.enabled", "Physics 2D", "", "2D Physics", "box2d rigidbody 2d"},
+    {"physics2d.queries_hit_triggers", "Physics 2D", "", "Queries Hit Triggers", "raycast overlap cast trigger sensor querytriggerinteraction 2d"},
     {"physics2d.layer_collision_matrix", "Physics 2D", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
     {"animation.animation_entities", "Animation", "", "Animation Entities", "model clips animation player animator entities auto"},
     {"navigation.include_in_builds", "Navigation", "", "Include in Builds", "navmesh recast detour strip export"},

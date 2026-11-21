@@ -444,6 +444,8 @@ JASPERENGINE_INIT void init() {
         if (game.collision3D[layer] != LAYER_MASK_EVERYTHING) Physics::setLayerCollisionMask(layer, game.collision3D[layer]);
         if (game.collision2D[layer] != LAYER_MASK_EVERYTHING) Physics2D::setLayerCollisionMask(layer, game.collision2D[layer]);
     }
+    Physics::setQueriesHitTriggers(game.queriesHitTriggers3D);
+    Physics2D::setQueriesHitTriggers(game.queriesHitTriggers2D);
     // the voices and the project's mixer, before the first scene (as a Compile build's init)
     player::applyAudio(game);
     // Player > Saved Data, before a script can save (as a Compile build's init)

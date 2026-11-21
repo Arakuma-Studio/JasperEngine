@@ -84,6 +84,8 @@ namespace jasperengine {
         static void registerParticleClasses(lua_State *L);
         static void registerFoliageClasses(lua_State *L);
         static void registerCoreClasses(lua_State *L);
+        // spatial queries: Physics / Physics2D overlaps and casts, MeshRaycast overlaps (PhysicsQueryLua.cpp)
+        static void registerPhysicsQueryClasses(lua_State *L);
         static void registerECSClasses(lua_State *L);
         static void registerAudioClasses(lua_State *L);
         static void registerIOClasses(lua_State *L);

@@ -12,7 +12,9 @@
 #include "component/Transform.h"
 #include "object/LineRenderer.h"
 #include "physics/PhysicsDebugLines.h"
+#include "physics/PhysicsQueryDebug.h"
 #include "registry/PhysicsLayers.h"
+#include "Engine.h"
 
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "util/JoltPhysicsAux.h"
@@ -145,9 +147,24 @@ void PhysicsSystem::recordDebugContact3D(const JPH::ContactManifold& manifold){
 }
 #endif
 
+PhysicsQueryDebug& PhysicsSystem::getQueryDebug(){
+    if (!queryDebug){
+        queryDebug = std::make_unique<PhysicsQueryDebug>();
+    }
+    return *queryDebug;
+}
+
 void PhysicsSystem::updateDebugLines(){
     const bool on = Physics::isDebugDraw();
-    if (!on){
+    // the recorded queries (Physics.debugDrawQueries, query_physics {draw}) draw on their own
+    bool queries = false;
+    double now = 0.0;
+    if (queryDebug){
+        now = Engine::getUnscaledTime();
+        queryDebug->releaseIfIdle(now, Physics::isDebugDrawQueries());
+        queries = queryDebug->liveCount(now) > 0;
+    }
+    if (!on && !queries){
         if (debugLinesShown && debugLinesEntity != NULL_ENTITY && scene->isEntityCreated(debugLinesEntity)){
             LineRenderer lines(scene, debugLinesEntity);
             lines.clearLines();
@@ -173,6 +190,15 @@ void PhysicsSystem::updateDebugLines(){
     lines.clearLines();
     lines.setVisible(true);
     debugLinesShown = true;
+
+    if (queries){
+        queryDebug->forEachLive(now, [&](const PhysicsQueryDebug::Entry& entry){
+            PhysicsQueryDebug::emitLines(entry, [&](const Vector3& a, const Vector3& b, const Vector4& color){ lines.addLine(a, b, color); });
+        });
+    }
+    if (!on){
+        return;
+    }
 
 #ifdef JASPERENGINE_PHYSICS_3D
     if (world3DReady){

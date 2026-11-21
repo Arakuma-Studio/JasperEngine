@@ -340,6 +340,9 @@ namespace jasperengine::editor {
         bool defaultFilterPoint = false;
         // the styled bitmap glyph cache's MiB (S51), emitted when it is not 0
         int bitmapTextCacheMiB = 0;
+        // Project Settings > Physics / Physics 2D > Queries Hit Triggers (set only when off)
+        bool queriesHitTriggers3D = true;
+        bool queriesHitTriggers2D = true;
         // setBuildTiers: what mainSource writes instead of the engine's current tiers
         int buildLightMode = -1;
         std::vector<int> buildShadowTiers;
@@ -453,6 +456,7 @@ namespace jasperengine::editor {
         void setPixelsPerUnit(int value) { pixelsPerUnit = value; }
         void setDefaultFilterPoint(bool point) { defaultFilterPoint = point; }
         void setBitmapTextCacheMiB(int value) { bitmapTextCacheMiB = value; }
+        void setPhysicsQueries(bool hitTriggers3D, bool hitTriggers2D) { queriesHitTriggers3D = hitTriggers3D; queriesHitTriggers2D = hitTriggers2D; }
         static std::string inputSettingsInitSource(const std::string& actionsAsset, float deadzone);
         // Project Settings > Graphics > Shader Globals in the generated main.cpp: the declarations
         // (with their defaults) before any scene loads; "" when the project declares none

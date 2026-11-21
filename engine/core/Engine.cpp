@@ -222,6 +222,7 @@ double Engine::shaderTime = 0.0;
 bool Engine::shaderTimeFixed = false;
 double Engine::pinnedShaderTime = -1.0;
 std::atomic<uint64_t> Engine::gameFrames{0};
+uint64_t Engine::frameIndex = 0;
 // the clocks of Time (EngineTime.h): the unscaled frame delta and its sum, the fixed steps' sum,
 // the game time at the last scene load, the wall clock at start
 double Engine::unscaledDeltatime = 0.0;
@@ -1423,6 +1424,10 @@ double Engine::getGameTime(){
 
 uint64_t Engine::getGameFrames(){
     return gameFrames.load(std::memory_order_relaxed);
+}
+
+uint64_t Engine::getFrameIndex(){
+    return frameIndex;
 }
 
 void Engine::setSimulationHeld(bool held){
@@ -2663,6 +2668,7 @@ void Engine::runFrame(bool draw){
 
     // memory the last-but-one frame allocated per frame goes back now
     memory::frameArena().beginFrame();
+    frameIndex++;
     // job results posted for the main thread, then (single-thread mode) the queued jobs:
     // everything urgent, Background work for the pump budget
     jobs::drainMainQueue();
