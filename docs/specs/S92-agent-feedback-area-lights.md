@@ -311,7 +311,8 @@ PR-body checks. Nothing here touches the do-not-copy list in `README.md`.
   `tools/gen_ltc_lut.py`; no fit of our own. They are RGBA16F only, sharing one texture
   (`u_lightProfiles`) and sampler with the IES bands: RGBA16F filters on all five backends (GLES 3.0
   and WebGL2 core), so the RGBA8 form has no device to run on.
-- **W8, R33 Disc:** both tiers draw a Disc as a regular octagon of its area.
+- **W8, R33 Disc:** a Disc is a regular polygon of its area: an octagon for the diffuse on every tier,
+  sixteen sides for High's LTC specular (an octagon showed in sharp reflections).
 - **W8, R33 lobes:** a material with extended lobes (clear coat, sheen, ...) lights them from the
   diffuse's representative direction on every tier; LTC is the base GGX's on High.
 - **W8, R33 other shaders:** `USE_AREA_LIGHTS` and `USE_IES` are the built-in Lit's (and its

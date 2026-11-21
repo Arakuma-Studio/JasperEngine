@@ -123,7 +123,7 @@ with the Move tool, the white crosses on its edges resize it (one undo step a dr
 
 - The built-in Lit shades it per pixel, per object and from screen tiles, in its `USE_AREA_LIGHTS`
   variants (a scene without an Area Light compiles none). The diffuse is the shape's vector form
-  factor clipped by the horizon (a Disc is an octagon of its area). The specular is the most
+  factor clipped by the horizon (a Disc is an octagon of its area, sixteen sides for High's specular). The specular is the most
   representative point with Karis's energy normalisation on Standard and lower, and the GGX LTC
   (Heitz et al. 2016, the tables of `engine/core/render/LtcLut.h`) on High.
 - **Shadows** on: one perspective map of 120 degrees along its axis in the shadow atlas, PCSS sized

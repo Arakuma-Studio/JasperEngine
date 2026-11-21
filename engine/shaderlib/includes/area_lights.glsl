@@ -3,7 +3,7 @@
 // render/AreaLightMath.cpp, whose unit tests hold them to numeric integrals.
 //
 //   - Diffuse, every tier: the shape's vector form factor (its edges' integrals, a rational fit in
-//     place of acos; a disc is an octagon of its area), clipped by the receiver's horizon as a
+//     place of acos; a disc is an octagon of its area, sixteen sides for the LTC specular), clipped by the receiver's horizon as a
 //     sphere of the same vector (closed form): exact where the light is whole above the horizon.
 //   - Specular, Standard and lower: the most representative point (the reflection ray's hit
 //     clamped to the shape) lit as a point light with the irradiance of a disc of the shape's area
@@ -32,10 +32,11 @@ struct AreaLight {
 };
 
 const float AREA_PI = 3.14159265358979;
-// a disc's octagon of the same area: circumradius r * sqrt(pi / (2 sqrt 2))
-const float AREA_OCTAGON_SCALE = 1.05390736;
-const vec2 AREA_OCTAGON[8] = vec2[8](vec2(1.0, 0.0), vec2(0.70710678, 0.70710678), vec2(0.0, 1.0), vec2(-0.70710678, 0.70710678),
-                                     vec2(-1.0, 0.0), vec2(-0.70710678, -0.70710678), vec2(0.0, -1.0), vec2(0.70710678, -0.70710678));
+// a disc is a regular polygon of its area (AreaLightMath::corners): 8 sides for the diffuse, 16 for
+// the LTC specular. Per side count: the circumradius scale sqrt(2 pi / (n sin(2 pi / n))) and the
+// step's cos and sin
+const vec3 AREA_DISC_8 = vec3(1.05390736, 0.70710678, 0.70710678);
+const vec3 AREA_DISC_16 = vec3(1.01300156, 0.92387953, 0.38268343);
 const vec2 AREA_RECTANGLE[4] = vec2[4](vec2(-1.0, -1.0), vec2(1.0, -1.0), vec2(1.0, 1.0), vec2(-1.0, 1.0));
 
 // the light of the object's list as an Area Light, false for any other light (includes/lights.glsl
@@ -61,8 +62,7 @@ bool getAreaLight(int index, Light light, vec3 worldPosition, out AreaLight area
     return true;
 }
 
-vec3 areaCorner(AreaLight area, int k){
-    vec2 c = area.disc ? AREA_OCTAGON[k] * AREA_OCTAGON_SCALE : AREA_RECTANGLE[k];
+vec3 areaCorner(AreaLight area, vec2 c){
     return area.center + area.right * (c.x * area.halfWidth) + area.up * (c.y * area.halfHeight);
 }
 
@@ -78,15 +78,18 @@ vec3 areaEdgeFormFactor(vec3 v1, vec3 v2){
     return cross(v1, v2) * thetaSinTheta;
 }
 
-// the shape's vector form factor from p, each corner through m first, facing the light
-vec3 areaVectorFormFactor(AreaLight area, vec3 p, mat3 m){
-    int count = area.disc ? 8 : 4;
-    vec3 first = normalize(m * (areaCorner(area, 0) - p));
+// the shape's vector form factor from p, each corner through m first, facing the light; a disc
+// as the polygon of disc (AREA_DISC_8 or AREA_DISC_16), its corners stepped by a rotation
+vec3 areaVectorFormFactor(AreaLight area, vec3 p, mat3 m, vec3 disc){
+    int count = area.disc ? ((disc.y > 0.8) ? 16 : 8) : 4;
+    vec2 corner = area.disc ? vec2(disc.x, 0.0) : AREA_RECTANGLE[0];
+    vec3 first = normalize(m * (areaCorner(area, corner) - p));
     vec3 previous = first;
     vec3 sum = vec3(0.0);
-    for (int k = 1; k < 8; k++){
+    for (int k = 1; k < 16; k++){
         if (k >= count) break;
-        vec3 current = normalize(m * (areaCorner(area, k) - p));
+        corner = area.disc ? vec2(corner.x * disc.y - corner.y * disc.z, corner.x * disc.z + corner.y * disc.y) : AREA_RECTANGLE[k];
+        vec3 current = normalize(m * (areaCorner(area, corner) - p));
         sum += areaEdgeFormFactor(previous, current);
         previous = current;
     }
@@ -118,7 +121,7 @@ void areaLightShade(AreaLight area, MaterialInfo info, vec3 p, vec3 n, vec3 v, f
         return;
     }
     vec3 luminance = area.luminance * (shadow * area.window);
-    vec3 f = areaVectorFormFactor(area, p, mat3(1.0));
+    vec3 f = areaVectorFormFactor(area, p, mat3(1.0), AREA_DISC_8);
     float len = length(f);
     if (len <= 1e-9){
         return;
@@ -146,7 +149,7 @@ void areaLightShade(AreaLight area, MaterialInfo info, vec3 p, vec3 n, vec3 v, f
             t1v = (dot(t1v, t1v) > 1e-10) ? normalize(t1v) : normalize(cross(n, (abs(n.y) < 0.99) ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
             vec3 t2v = cross(n, t1v);
             mat3 minv = mat3(vec3(t1.x, 0.0, t1.y), vec3(0.0, 1.0, 0.0), vec3(t1.z, 0.0, t1.w));
-            vec3 fs = areaVectorFormFactor(area, p, minv * transpose(mat3(t1v, t2v, n)));
+            vec3 fs = areaVectorFormFactor(area, p, minv * transpose(mat3(t1v, t2v, n)), AREA_DISC_16);
             float lenS = length(fs);
             float ltc = (lenS > 1e-9) ? areaSphereFormFactor(fs.z / lenS, lenS) : 0.0;
             specular += luminance * ltc * (info.f0 * t2.x + (info.f90 - info.f0) * t2.y) * litEnergyCompensation;

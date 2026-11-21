@@ -66,7 +66,7 @@ float AreaLightMath::area(const Shape& shape){
     return shape.disc ? AREA_PI * shape.halfWidth * shape.halfHeight : 4.0f * shape.halfWidth * shape.halfHeight;
 }
 
-int AreaLightMath::corners(const Shape& shape, Vector3 out[MAX_CORNERS]){
+int AreaLightMath::corners(const Shape& shape, Vector3 out[MAX_CORNERS], int discSides){
     if (!shape.disc){
         out[0] = shape.center - shape.right * shape.halfWidth - shape.up * shape.halfHeight;
         out[1] = shape.center + shape.right * shape.halfWidth - shape.up * shape.halfHeight;
@@ -74,14 +74,17 @@ int AreaLightMath::corners(const Shape& shape, Vector3 out[MAX_CORNERS]){
         out[3] = shape.center - shape.right * shape.halfWidth + shape.up * shape.halfHeight;
         return 4;
     }
-    // an octagon of the disc's area: circumradius r * sqrt(pi / (2 sqrt 2))
-    const float scale = 1.05390736f;
-    for (int i = 0; i < DISC_SIDES; i++){
-        const float angle = (float)i * (2.0f * AREA_PI / (float)DISC_SIDES);
+    // a regular polygon of the disc's area: circumradius r * sqrt(2 pi / (n sin(2 pi / n))), the
+    // shader's steps of a rotation by 2 pi / n
+    const int sides = std::clamp(discSides, 3, MAX_CORNERS);
+    const float step = 2.0f * AREA_PI / (float)sides;
+    const float scale = std::sqrt(2.0f * AREA_PI / ((float)sides * std::sin(step)));
+    for (int i = 0; i < sides; i++){
+        const float angle = (float)i * step;
         out[i] = shape.center + shape.right * (std::cos(angle) * shape.halfWidth * scale) +
                  shape.up * (std::sin(angle) * shape.halfHeight * scale);
     }
-    return DISC_SIDES;
+    return sides;
 }
 
 Vector3 AreaLightMath::edgeFormFactor(const Vector3& v1, const Vector3& v2){
@@ -197,7 +200,7 @@ float AreaLightMath::ltcIntegral(const Shape& shape, const Vector3& position, co
         b * t1.x + d * normal.x, b * t1.y + d * normal.y, b * t1.z + d * normal.z,
     };
     Vector3 polygon[MAX_CORNERS];
-    const int count = corners(shape, polygon);
+    const int count = corners(shape, polygon, DISC_SIDES_SPECULAR);
     Vector3 f = areaVectorFormFactor(polygon, count, position, m);
     // the polygon's winding seen from the receiver decides the sign: face it to the light
     const Vector3 toCenter = shape.center - position;

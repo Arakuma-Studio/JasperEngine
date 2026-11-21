@@ -26,13 +26,15 @@ namespace jasperengine {
             bool disc = false;
         };
 
-        // a disc is drawn as a regular octagon of the same area
+        // a disc is drawn as a regular polygon of the same area: an octagon for its diffuse (a smooth
+        // term), sixteen sides for the LTC specular, whose sharp reflections would show an octagon
         constexpr int DISC_SIDES = 8;
-        constexpr int MAX_CORNERS = DISC_SIDES;
+        constexpr int DISC_SIDES_SPECULAR = 16;
+        constexpr int MAX_CORNERS = DISC_SIDES_SPECULAR;
 
         JASPERENGINE_API float area(const Shape& shape);
-        // the corners, counter-clockwise seen from the front: 4 for a rectangle, 8 for a disc
-        JASPERENGINE_API int corners(const Shape& shape, Vector3 out[MAX_CORNERS]);
+        // the corners, counter-clockwise seen from the front: 4 for a rectangle, discSides for a disc
+        JASPERENGINE_API int corners(const Shape& shape, Vector3 out[MAX_CORNERS], int discSides = DISC_SIDES);
 
         // the edge's share of the vector form factor of the polygon seen from the origin, between two
         // unit vectors (a rational fit of acos(x) / sin(acos(x)), as Hill and Heitz 2017 do)
