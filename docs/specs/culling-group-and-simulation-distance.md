@@ -613,3 +613,12 @@ Unit tests in `engine/tests/core/subsystem/CullingSystemTest.cpp` (suites `Culli
   `je-bench-culling` executable gated by `tools/perf/check_bench.py`.
 - **AC17 (web gate)** is not done: no web build or `core-utilities` gate change was made in this
   change; the single-threaded path (parallelFor inline) is covered by `CullingGroupTest.ParallelEqualsSerial`.
+- **AC17 (integration pass).** `tools/test-projects/core-utilities` holds the two sets in scene layers
+  of their own (a 10,000-sphere group; 1,000 Simulation Culling components), so each scene's
+  `CullingSystem::getStats().evaluateMs` is one of them; the gate reads 200 frames of each from 4 s of
+  game time (after the Performance line it also checks in order). The scripted move turns the group's
+  camera away (10,000 events, every one becoming invisible) and moves the simulation camera 30 m back
+  (500 culled). R22's figures are release ones, so the gate runs on `BUILD_TYPE=Release`: a Debug
+  build measured 2.19 ms and 0.505 ms. On the first Release run (build box B, under other jobs) the
+  simulation p99 was 0.095 ms and the events as expected, and the group p99 0.515 ms: over its 0.5 ms
+  web budget.
