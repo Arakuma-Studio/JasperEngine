@@ -2953,3 +2953,46 @@ entities:
         cylindricalBillboard: false
       titleart:
         enabled: true
+  - type: Entity
+    entity: 1105
+    name: SimulationCullingComponent
+    components:
+      transform:
+        position: [104, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      simulationculling:
+        enabled: false
+        simulationDistance: 8.5
+        reducedRateDistance: 6.4
+        reducedUpdateInterval: 3
+        hysteresis: 4.3
+        boundsRadius: 3.8
+        simulateWhenVisible: false
+        freezeWhenGroundNotLoaded: false
+        cullScripts: false
+        cullAnimator: false
+        cullPhysics: false
+  - type: Entity
+    entity: 1106
+    name: DialogueRunnerComponent
+    components:
+      transform:
+        position: [105, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      dialoguerunner:
+        dialogue: ""
+        startEntry: Reflection parity
+        autoStart: true
+        seed: 0
