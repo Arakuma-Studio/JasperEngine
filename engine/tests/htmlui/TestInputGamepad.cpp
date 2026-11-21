@@ -1009,18 +1009,46 @@ TEST_F(InputGamepadCursorTest, CursorFrameBench){
 
     constexpr int benchFrames = 300;
     double total = 0.0;
-    testsupport::ThreadAllocationCount allocations;
+    uint64_t cursorAllocations = 0;
+    std::vector<Vector2> path;
+    path.reserve(benchFrames);
     for (int i = 0; i < benchFrames; i++){
         // back and forth across the buttons: a hover change most frames
         if (GamepadCursor::getPosition().x > 700.0f)
             GamepadCursor::setPosition(Vector2(10.0f, 10.0f));
+        const testsupport::ThreadAllocationCount allocations;
         const auto start = std::chrono::steady_clock::now();
         GamepadCursor::update(cursorFrame);
         total += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
+        cursorAllocations += allocations.count();
+        path.push_back(GamepadCursor::getPosition());
     }
     const double us = total / benchFrames;
-    std::printf("[bench] cursor_frame_us %.2f (budget 20 us desktop, 60 us mobile), %.1f allocations per frame\n", us,
-                double(allocations.count()) / benchFrames);
+
+    // the documents' own mouse move along the same path (RmlUi's hover and event dispatch): what
+    // the cursor's frame may allocate, since the cursor adds nothing of its own
+    uint64_t documentAllocations = 0;
+    for (const Vector2& point : path){
+        const testsupport::ThreadAllocationCount allocations;
+        system().eventOnPointerMove(0, point.x, point.y, 0, false, false);
+        documentAllocations += allocations.count();
+    }
+
+    // still (the stick at rest): no allocation at all
+    Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_X, 0.0f);
+    Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_Y, 0.0f);
+    GamepadCursor::update(cursorFrame);
+    const testsupport::ThreadAllocationCount still;
+    for (int i = 0; i < benchFrames; i++)
+        GamepadCursor::update(cursorFrame);
+
+    std::printf("[bench] cursor_frame_us %.2f (budget 20 us desktop, 60 us mobile), %.1f allocations per moving frame "
+                "(the documents' own mouse move: %.1f), %llu in %d still frames\n", us, double(cursorAllocations) / benchFrames,
+                double(documentAllocations) / benchFrames, (unsigned long long)still.count(), benchFrames);
+    if (testsupport::countsAllocations()){
+        EXPECT_EQ(still.count(), 0u) << "an active cursor that does not move allocates nothing";
+        EXPECT_LE(cursorAllocations, documentAllocations) << "a moving cursor allocates no more than the documents' pointer move";
+    }
     if (testsupport::perfSlack() > 0.0) {
         EXPECT_LE(us, 20.0 * testsupport::perfSlack());
     }

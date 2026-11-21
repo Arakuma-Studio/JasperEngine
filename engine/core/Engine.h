@@ -511,6 +511,7 @@ namespace jasperengine {
         // Input, the game's events or the input scheme. True when the UI took it
         enum CursorPhase { CURSOR_DOWN, CURSOR_UP, CURSOR_MOVE };
         static bool dispatchCursorPointer(CursorPhase phase, float x, float y);
+        static bool dispatchCursorMove(float x, float y);
         // wheel lines (GLFW's signs: up and left are positive) at the documents' mouse pointer
         static bool dispatchCursorWheel(float dx, float dy);
         // systemDraw: a high surrogate that never got its low one is typed as U+FFFD
@@ -534,6 +535,8 @@ namespace jasperengine {
         // the snapshot with the debug overlay's Scene on top when it has one (keys: only while
         // a field of the overlay has the focus)
         static std::vector<Scene*> getInputScenes(bool keys);
+        // the same (keys false) into out, top layer first, reusing its storage (the gamepad cursor's frame)
+        static void getInputScenesTopFirst(std::vector<Scene*>& out);
         static bool ensureCompositeFramebuffer();
         static void beginCompositeFramebuffer();
         // a screen transition may draw this frame through the composite target (Vulkan,
