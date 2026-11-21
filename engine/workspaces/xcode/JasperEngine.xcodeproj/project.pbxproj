@@ -5125,6 +5125,7 @@
 		4A534E47839B8E430E7A3B51 /* SaveGameStore.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47FCF68ADBEB8D1DD4 /* SaveGameStore.h */; };
 		4A534E47C8038C88571DF3CC /* SaveValue.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473A1A1625794C3BA7 /* SaveValue.h */; };
 		4A534E47A738013D78827E06 /* CancellableEvent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4718BD5F7E76CC0509 /* CancellableEvent.h */; };
+		4A534E470B49733052D991A0 /* SceneConstructors.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47ED1050B5CDC423D4 /* SceneConstructors.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9829,6 +9830,7 @@
 		4A534E47FCF68ADBEB8D1DD4 /* SaveGameStore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SaveGameStore.h; sourceTree = "<group>"; };
 		4A534E473A1A1625794C3BA7 /* SaveValue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SaveValue.h; sourceTree = "<group>"; };
 		4A534E4718BD5F7E76CC0509 /* CancellableEvent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CancellableEvent.h; sourceTree = "<group>"; };
+		4A534E47ED1050B5CDC423D4 /* SceneConstructors.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SceneConstructors.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10412,6 +10414,7 @@
 				4A534E53BC6A5E7A1DB2D134 /* SaveGameLua.cpp */,
 				4A534E530B2EA3DAEC0E3A21 /* DialogueClassesLua.cpp */,
 				4A534E53C8E60EBFCA4D4D8F /* PhysicsQueryLua.cpp */,
+				4A534E47ED1050B5CDC423D4 /* SceneConstructors.h */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -17391,6 +17394,7 @@
 				4A534E47839B8E430E7A3B51 /* SaveGameStore.h in Headers */,
 				4A534E47C8038C88571DF3CC /* SaveValue.h in Headers */,
 				4A534E47A738013D78827E06 /* CancellableEvent.h in Headers */,
+				4A534E470B49733052D991A0 /* SceneConstructors.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
