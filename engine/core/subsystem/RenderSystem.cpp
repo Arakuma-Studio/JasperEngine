@@ -1155,6 +1155,8 @@ void RenderSystem::destroy(){
         lightProfilesCreated = false;
     }
     lightProfileBands.clear();
+    // (read again when the scene loads again: an edited file shows then)
+    iesProfileCache.clear();
 
     auto skys = scene->getComponentArray<SkyboxComponent>();
     if (skys->size() > 0){
