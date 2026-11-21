@@ -29,7 +29,8 @@
     "sphere_cast_p95_ms": {"max": 0.013, "spec": "spatial-queries R19 sphereCast r 0.5 m over 30 m, p95"},
     "lua_overlap_nonalloc_p95_ms": {"max": 0.011, "spec": "spatial-queries R19 Lua Physics.overlapSphereNonAlloc r 5 m, binding included, p95"},
     "overlap_circle_2d_p95_ms": {"max": 0.0044, "spec": "spatial-queries R19 2D overlapCircle r 100 points, caller buffer, p95"},
-    "mesh_overlap_p95_ms": {"max": 0.011, "spec": "spatial-queries R19 MeshRaycast.overlapSphere, 10,000 leaves, no refit due, p95"}
+    "mesh_overlap_p95_ms": {"max": 0.011, "spec": "spatial-queries R19 MeshRaycast.overlapSphere, 10,000 leaves, no refit due, p95"},
+    "mesh_overlap_trees_p95_ms": {"max": 0.011, "spec": "spatial-queries R19 MeshRaycast.overlapSphere r 5 m among T5's 50,000 bench trees (a cell walk), the leaves' budget, p95"}
   },
   "je-bench-picking": {
     "pick_p99_ms_1000x1k": {"max": 1.0, "spec": "R28 closest hit, 1,000 entities x 1k tris, p99 of 10k rays"},

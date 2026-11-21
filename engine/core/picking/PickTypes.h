@@ -103,6 +103,9 @@ namespace jasperengine {
         PickKind kind = PickKind::MESH;
         // the instance of an INSTANCE hit, -1 otherwise
         int32_t instance = -1;
+        // TREE: the tree (entity is its Terrain); -1 / 0 otherwise. DETAIL: the layer in prototype
+        uint64_t foliageId = 0;
+        int32_t prototype = -1;
     };
 
 }

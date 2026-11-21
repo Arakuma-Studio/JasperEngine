@@ -553,9 +553,18 @@ core tests already build scenes with physics, `PhysicsRayThreadsTest.cpp:27-30`)
   R1), not only those with positive penetration: without `mReturnDeepestPoint` Jolt reports no
   reliable depth there. A Box2D cast callback never returns -1 or 0 for a skipped shape (Box2D 3.1
   carries the value into its next tree as the maximum fraction, and 0 stops the cast).
-- **R12 foliage.** Foliage trees have no SceneBvh leaves (rays walk FoliageSystem's cells), so the
-  drawn overlaps return SceneBvh leaves only: default kinds are `MESH | INSTANCE | BOUNDS` and
-  `MeshOverlapHit` has no `foliageId` / `prototype`. A box walk of the foliage cells is follow-up work.
+- **R12 foliage.** Foliage has no SceneBvh leaves, so the overlaps walk FoliageSystem's cells as rays
+  do (`FoliageSystem::forEachFoliageInBox`, no allocation): the tree cells under the query's box (or
+  the resident ones when they are fewer), each tree first by its position, and a tree is a hit when
+  its LOD0 mesh's box under its matrix touches the shape (bounds, as a leaf). The walk pads the box by
+  sqrt(3) times the terrain's axis scale ratio, so a turned or unevenly scaled Terrain loses no tree.
+  Only resident trees (within Tree Distance plus a cell) and placed details exist on the CPU, so only
+  they are found. Details are opt-in (`DETAIL`) as for rays: `foliageId` 0, the layer in `prototype`.
+  Lua gains `MeshRaycast.TREE` and `DETAIL` (T5 bound neither); a NonAlloc form writes the Terrain's
+  id per tree. `query_physics {world: drawn}` names a tree by `tree_id` and `prototype` as
+  `raycast_meshes` does. `je-bench-physics-query` gains `mesh_overlap_trees_p95_ms` (T5's 50,000
+  bench trees, r = 5 m spheres at trees, the leaves' budget 0.011): 0.0099, 0.0082, 0.0083 on box B
+  (load about 20 on 12 cores, three runs), every other key within its budget.
 - **R18 / risks "one error per call site".** One error per query function per process (an atomic
   flag each), for C++ and Lua alike, naming "outside the physics step: queue the query for onUpdate".
 - **R22 undo.** The existing Physics rows apply without undo; the two new rows go through a new
