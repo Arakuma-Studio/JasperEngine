@@ -704,8 +704,10 @@ wait until clicked, shot). Red controls are named per criterion.
   in that scene, not a scene of its own: `lua/replay.lua` (required by `main.lua`) makes the UI
   Document `assets/ui/menu.html`, whose `#play` logs `[gate] clicked`, and a `math.random` spawner
   it checkpoints; `assets/tests/Input/menu.input.json` taps through it. It has no physics ball: AC7's
-  MCP test builds a scene of its own. The document is made at the first update: a UI
-  Document made while `main.lua` runs at init hung the web page before its first frame.
+  MCP test builds a scene of its own. The document is made at the first update: `main.lua` runs
+  before the game's init sets a scene, so `Engine.getScene()` is nil there (an object made with it
+  is now a Lua error; it used to write through a null scene, and the failed `main.lua` then closed
+  the Lua state under the engine, which hung the web page).
 - **Web gates.** AC12's run is the gate `input-script` (`"project": "input"`, a second gate of the
   same build) rather than a run inside `input.json`, which keeps its pointer-lock run. R30 has
   `input-script-url` (the gate serves the menu script at `/scripts/menu.input.json`: browser_gate's

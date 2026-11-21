@@ -5,7 +5,7 @@
 --            same file fetched as a URL (GATE=input-script-url, R30)
 --   Android: debug.jasperengine.args=--input-script tests/Input/menu.input.json --quit-after-input
 -- Both expect "[gate] clicked", "[input] done" and exit code 0.
--- made at the first update: a UIDocument made while main.lua runs at init hangs the web page
+-- made at the first update: main.lua runs before the game's init sets a scene (Engine.getScene() is nil)
 local menu = nil
 
 MenuReady = false
