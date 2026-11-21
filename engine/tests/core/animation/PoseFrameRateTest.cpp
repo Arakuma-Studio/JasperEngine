@@ -22,7 +22,7 @@ using namespace animatortest;
 
 namespace {
 
-    constexpr double kDt = 1.0 / 60.0;
+    constexpr double kPoseFrameRateDt = 1.0 / 60.0;
 
     class AnimatorInstance : public AnimatorFixture, public ::testing::Test {
     protected:
@@ -58,7 +58,7 @@ TEST_F(AnimatorInstance, PoseFrameRateRootMotion){
     float previous = position(spine).x;
     float previousRoot = position(root).z;
     for (frame = 1; frame <= 60; frame++){
-        step(kDt);
+        step(kPoseFrameRateDt);
         const float x = position(spine).x;
         if (x != previous) changes++;
         previous = x;
@@ -90,7 +90,7 @@ TEST_F(AnimatorInstance, PoseFrameRateSmoothIsTheRedControl){
     int changes = 0;
     float previous = position(spine).x;
     for (frame = 1; frame <= 60; frame++){
-        step(kDt);
+        step(kPoseFrameRateDt);
         if (position(spine).x != previous) changes++;
         previous = position(spine).x;
     }
@@ -107,14 +107,14 @@ TEST_F(AnimatorInstance, HitStopExemptAnimatorRuns){
     const float frozenStart = position(spine).x;
     for (int i = 0; i < 6; i++){
         // what Engine::runFrame gives the scene: the frame time times the hit's factor (0)
-        const double world = kDt * pixelart::HitStop::beginFrame(kDt, kDt);
+        const double world = kPoseFrameRateDt * pixelart::HitStop::beginFrame(kPoseFrameRateDt, kPoseFrameRateDt);
         step(world);
     }
     EXPECT_FLOAT_EQ(position(spine).x, frozenStart) << "frozen with the world";
 
     scene.addComponent<HitStopExemptComponent>(root, {});
     for (int i = 0; i < 6; i++){
-        const double world = kDt * pixelart::HitStop::beginFrame(kDt, kDt);
+        const double world = kPoseFrameRateDt * pixelart::HitStop::beginFrame(kPoseFrameRateDt, kPoseFrameRateDt);
         step(world);
     }
     EXPECT_GT(position(spine).x, frozenStart + 1e-3f) << "exempt: it runs through the freeze";

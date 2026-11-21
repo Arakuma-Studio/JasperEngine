@@ -103,12 +103,14 @@ namespace jasperengine {
                 Removed,    // gone (also the old half of an unpaired rename)
                 Moved,      // oldPath -> path, paired by the backend
                 Changed,    // something happened at path: the stat decides (FSEvents)
-                Rescan      // events were lost under path (overflow): diff it against the index
+                Rescan,     // events were lost under path (overflow): diff it against the index
+                ScanDone    // a polling pass ended, after its events (no path)
             };
             Type type = Type::Modified;
             std::filesystem::path path;
             std::filesystem::path oldPath;
             bool directory = false;   // known to be a directory (a backend may not know)
+            uint32_t source = 0;      // which of the service's backends saw it (0: the project's)
         };
 
         // The service side of a backend
@@ -122,6 +124,8 @@ namespace jasperengine {
             virtual void onBackendFailed(const std::string& reason) = 0;
             // The probe file of the self-test was seen (FileWatchService, Auto)
             virtual void onProbe() {}
+            // A polling pass ended with nothing to report (a pass with events ends them with ScanDone)
+            virtual void onScanCompleted() {}
         };
 
     }

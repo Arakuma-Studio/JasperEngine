@@ -24,7 +24,7 @@ namespace {
         uint32_t draws;
     };
 
-    void walk(FoliageQuality quality, const Caps& caps) {
+    void foliageBudgetWalk(FoliageQuality quality, const Caps& caps) {
         Engine::setFoliageQuality(quality);
         {
             Scene1 bench(std::string("t5-budget-") + std::to_string(static_cast<int>(quality)));
@@ -64,10 +64,10 @@ namespace {
 
 TEST(FoliageBudgetGpu, BenchSceneWithinCountsHigh) {
     JASPER_REQUIRE_GPU();
-    walk(FoliageQuality::HIGH, {400000, 30000, 500, 1200});
+    foliageBudgetWalk(FoliageQuality::HIGH, {400000, 30000, 500, 1200});
 }
 
 TEST(FoliageBudgetGpu, BenchSceneWithinCountsLow) {
     JASPER_REQUIRE_GPU();
-    walk(FoliageQuality::LOW, {30000, 8000, 60, 150});
+    foliageBudgetWalk(FoliageQuality::LOW, {30000, 8000, 60, 150});
 }

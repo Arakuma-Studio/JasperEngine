@@ -418,7 +418,7 @@ namespace {
     // bodies are all asleep (a dormant contact, what the body rests on) and drops the others.
     // A dormant contact goes once a body of it wakes: Jolt reports the contacts it still has
     // afresh in that update, and a pair that came apart is not reported again.
-    class ContactTracker final : public JPH::ContactListener {
+    class PlacementContactTracker final : public JPH::ContactListener {
     public:
         struct Contact {
             uint32_t body1 = 0;
@@ -1180,7 +1180,7 @@ struct PlacementWorld::Impl {
     JPH::BroadPhaseLayerInterfaceTable broadPhaseLayers{Layers::COUNT, BroadPhaseLayers::COUNT};
     JPH::ObjectLayerPairFilterTable layerPairs{Layers::COUNT};
     std::unique_ptr<JPH::ObjectVsBroadPhaseLayerFilterTable> objectVsBroadPhase;
-    ContactTracker contactTracker;
+    PlacementContactTracker contactTracker;
     JPH::PhysicsSystem physics;
 
     std::vector<std::unique_ptr<DynamicBody>> moverBodies;       // insertion order
@@ -1741,7 +1741,7 @@ struct PlacementWorld::Impl {
             body->onContextOnly = true;
         }
         const JPH::Vec3 up = upDirection();
-        contactTracker.forEach([&](const ContactTracker::Contact& contact) {
+        contactTracker.forEach([&](const PlacementContactTracker::Contact& contact) {
             auto first = bodies.find(contact.body1);
             auto second = bodies.find(contact.body2);
             if (first == bodies.end() || second == bodies.end()) return;
@@ -1844,11 +1844,11 @@ struct PlacementWorld::Impl {
     void beginGhosts(DynamicBody& body) {
         endGhosts(body);
         body.ghosts = overlapping(body, GHOST_DEPTH);
-        for (uint32_t other : body.ghosts) contactTracker.ghosts.insert(ContactTracker::pairOf(bodyKey(body.id), other));
+        for (uint32_t other : body.ghosts) contactTracker.ghosts.insert(PlacementContactTracker::pairOf(bodyKey(body.id), other));
     }
 
     void endGhosts(DynamicBody& body) {
-        for (uint32_t other : body.ghosts) contactTracker.ghosts.erase(ContactTracker::pairOf(bodyKey(body.id), other));
+        for (uint32_t other : body.ghosts) contactTracker.ghosts.erase(PlacementContactTracker::pairOf(bodyKey(body.id), other));
         body.ghosts.clear();
     }
 
@@ -1915,7 +1915,7 @@ struct PlacementWorld::Impl {
             std::vector<uint32_t> kept;
             for (uint32_t other : body.ghosts) {
                 if (std::binary_search(still.begin(), still.end(), other) && bodies.count(other)) kept.push_back(other);
-                else contactTracker.ghosts.erase(ContactTracker::pairOf(bodyKey(body.id), other));
+                else contactTracker.ghosts.erase(PlacementContactTracker::pairOf(bodyKey(body.id), other));
             }
             body.ghosts.swap(kept);
         }
@@ -2620,7 +2620,7 @@ bool PlacementWorld::contactsOverflowed() const {
 float PlacementWorld::getMaxPenetration() const {
     float deepest = 0.0f;
 #ifdef JASPERENGINE_PHYSICS_3D
-    impl->contactTracker.forEach([&](const ContactTracker::Contact& contact) { deepest = std::max(deepest, contact.depth); });
+    impl->contactTracker.forEach([&](const PlacementContactTracker::Contact& contact) { deepest = std::max(deepest, contact.depth); });
 #endif
     return deepest;
 }

@@ -32,7 +32,7 @@ using Clock = std::chrono::steady_clock;
 
 namespace {
 
-    double ms(Clock::time_point since) {
+    double titleLocalisationBenchMs(Clock::time_point since) {
         return std::chrono::duration<double, std::milli>(Clock::now() - since).count();
     }
 
@@ -62,7 +62,7 @@ TEST(TitleLocalisationBench, MatchAndGlobal) {
     const auto start = Clock::now();
     size_t found = 0;
     for (int i = 0; i < 10000; i++) found += TitleArtLanguage::match(i % 2 ? "zh-HK" : "pt-PT", available).empty() ? 0 : 1;
-    const double perMatchUs = ms(start) * 1000.0 / 10000.0;
+    const double perMatchUs = titleLocalisationBenchMs(start) * 1000.0 / 10000.0;
     std::printf("TitleArtLanguage::match: %.3f us\n", perMatchUs);
     EXPECT_EQ(found, 10000u);
     // the wall-clock budgets: enforced where perfSlack() asks for them (the benchmark run)
@@ -77,7 +77,7 @@ TEST(TitleLocalisationBench, MatchAndGlobal) {
     for (int i = 0; i < 100; i++) ids.push_back(TitleArtLanguage::addListener([&marked](const std::string&) { marked++; }));
     const auto set = Clock::now();
     ASSERT_TRUE(TitleArtLanguage::setGlobal("de"));
-    const double setMs = ms(set);
+    const double setMs = titleLocalisationBenchMs(set);
     std::printf("TitleArt.setLanguage with 100 listeners: %.4f ms\n", setMs);
     EXPECT_EQ(marked, 100u);
     if (slack > 0.0) {
@@ -93,19 +93,19 @@ TEST(TitleLocalisationBench, StringsFiles) {
     const std::vector<TitleStringsDocument> docs = {{"assets/bench.titleart", &doc}};
     auto start = Clock::now();
     const std::string csv = exportTitleStringsCsv(docs, {});
-    const double csvOut = ms(start);
+    const double csvOut = titleLocalisationBenchMs(start);
     start = Clock::now();
     TitleStringsFile parsed;
     std::string error;
     ASSERT_TRUE(parseTitleStringsCsv(csv, parsed, error)) << error;
-    const double csvIn = ms(start);
+    const double csvIn = titleLocalisationBenchMs(start);
     EXPECT_EQ(parsed.rows.size(), 1000u);
     start = Clock::now();
     const auto xliff = exportTitleStringsXliff(docs, {"de"});
-    const double xliffOut = ms(start);
+    const double xliffOut = titleLocalisationBenchMs(start);
     start = Clock::now();
     ASSERT_TRUE(parseTitleStringsXliff(xliff.front().second, parsed, error)) << error;
-    const double xliffIn = ms(start);
+    const double xliffIn = titleLocalisationBenchMs(start);
     EXPECT_EQ(parsed.rows.size(), 1000u);
     std::printf("CSV 1,000 rows: export %.2f ms, parse %.2f ms; XLIFF 1,000 units: export %.2f ms, parse %.2f ms\n", csvOut, csvIn, xliffOut, xliffIn);
     EXPECT_LE(csvOut, 50.0);
@@ -134,7 +134,7 @@ TEST(TitleLocalisationBench, PngEncoder) {
         std::string error;
         const auto start = Clock::now();
         ASSERT_TRUE(encodeTitlePng(image, options, png, error)) << error;
-        const double took = ms(start);
+        const double took = titleLocalisationBenchMs(start);
         std::printf("PNG 4,096 x 2,048 %d-bit: %.1f ms on %d workers (%zu bytes)\n", depth, took, jobs::system().getWorkerCount(), png.size());
         EXPECT_LE(took, depth == 8 ? 250.0 : 600.0);
     }

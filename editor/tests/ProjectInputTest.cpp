@@ -99,7 +99,7 @@ namespace {
         return YAML::Dump(root);
     }
 
-    std::string readText(const std::filesystem::path& path) {
+    std::string projectInputReadText(const std::filesystem::path& path) {
         std::ifstream file(path, std::ios::binary);
         return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
     }
@@ -209,10 +209,10 @@ TEST_F(ProjectInputTest, TheConvertedAssetIsWrittenOnceAndFoundAgain) {
         ASSERT_TRUE(project.loadProject(root, false));
         EXPECT_EQ(project.getInputActionsAsset().generic_string(), "assets/InputManager.inputactions");
         EXPECT_FALSE(project.getInputActionsMigration().pending) << "written when the project loads";
-        first = readText(root / "assets" / "InputManager.inputactions");
+        first = projectInputReadText(root / "assets" / "InputManager.inputactions");
         EXPECT_EQ(InputManagerFormat::actionsToJson(managerActionsOf(first)), InputManagerFormat::actionsToJson(customActions()));
         // opening a project never rewrites project.yaml: it keeps the older node until saved
-        EXPECT_NE(readText(root / "project.yaml").find("version: 1"), std::string::npos);
+        EXPECT_NE(projectInputReadText(root / "project.yaml").find("version: 1"), std::string::npos);
     }
     // the same node again (not saved meanwhile): the asset as it is now, edits made to it included
     {
@@ -241,7 +241,7 @@ TEST_F(ProjectInputTest, TheConvertedAssetIsWrittenOnceAndFoundAgain) {
         project.setSkipProjectLock(true);
         ASSERT_TRUE(project.loadProject(root, false));
         EXPECT_EQ(project.getInputActionsAsset().generic_string(), "assets/InputManager 2.inputactions");
-        EXPECT_EQ(readText(root / "assets" / "InputManager.inputactions"), "{\"version\":1,\"maps\":[]}\n");
+        EXPECT_EQ(projectInputReadText(root / "assets" / "InputManager.inputactions"), "{\"version\":1,\"maps\":[]}\n");
         EXPECT_TRUE(std::filesystem::exists(root / "assets" / "InputManager 2.inputactions"));
     }
 }

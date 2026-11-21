@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    using ms = std::chrono::milliseconds;
+    using fileWatchServiceMs = std::chrono::milliseconds;
 
     class FileWatchServiceTests : public ::testing::TestWithParam<WatchBackendKind> {
     protected:
@@ -35,8 +35,8 @@ namespace {
             if (GetParam() == WatchBackendKind::Native && !FileWatcher::hasNative()) GTEST_SKIP() << "no native backend here";
         }
         void startWatching() {
-            ASSERT_TRUE(service.start(dir.path, GetParam(), ms(250)));
-            ASSERT_TRUE(waitFor([this]() { return service.stats().indexReady; }, timeLimit(ms(5000))));
+            ASSERT_TRUE(service.start(dir.path, GetParam(), fileWatchServiceMs(250)));
+            ASSERT_TRUE(waitFor([this]() { return service.stats().indexReady; }, timeLimit(fileWatchServiceMs(5000))));
         }
     };
 
@@ -70,9 +70,9 @@ TEST_P(FileWatchServiceTests, SeesChangesThroughLinkedFolders) {
     };
     auto settled = [&](const fs::path& path, FileChangeKind kind) {
         return waitFor([&]() {
-            service.flush(timeLimit(ms(1000)));
+            service.flush(timeLimit(fileWatchServiceMs(1000)));
             return sawAt(path, kind);
-        }, timeLimit(ms(10000)));
+        }, timeLimit(fileWatchServiceMs(10000)));
     };
 
     writeText(elsewhere.path / "lib" / "a.txt", "changed");
@@ -93,9 +93,9 @@ TEST_P(FileWatchServiceTests, SeesChangesThroughLinkedFolders) {
     got.clear();
     EXPECT_TRUE(waitFor([&]() {
         writeText(later.path / "b.txt", "changed " + std::to_string(got.size()));
-        service.flush(timeLimit(ms(1000)));
+        service.flush(timeLimit(fileWatchServiceMs(1000)));
         return sawAt(dir.path / "later" / "b.txt", FileChangeKind::Modified);
-    }, timeLimit(ms(10000)))) << pathsOf(got);
+    }, timeLimit(fileWatchServiceMs(10000)))) << pathsOf(got);
 
     // the link removed: what it held is gone, the folder itself is not touched
     got.clear();
@@ -148,7 +148,7 @@ TEST_P(FileWatchServiceTests, FlushBarrier) {
         const fs::path file = dir.path / ("f" + std::to_string(i) + ".txt");
         writeText(file, std::to_string(i));
         got.clear();
-        ASSERT_TRUE(service.flush(timeLimit(ms(250))));
+        ASSERT_TRUE(service.flush(timeLimit(fileWatchServiceMs(250))));
         const bool found = std::any_of(got.begin(), got.end(), [&](const FileChange& c) { return c.path == file; });
         if (!found) misses++;
     }
@@ -164,7 +164,7 @@ TEST_P(FileWatchServiceTests, FlushJournalLeavesDeliveryToThePump) {
     const fs::path file = dir.path / "journal.txt";
     uint64_t cursor = service.journalHead();
     writeText(file, "x");
-    ASSERT_TRUE(service.flushJournal(timeLimit(ms(250))));
+    ASSERT_TRUE(service.flushJournal(timeLimit(fileWatchServiceMs(250))));
     const std::vector<FileChange> journal = service.journalSince(cursor);
     EXPECT_TRUE(std::any_of(journal.begin(), journal.end(), [&](const FileChange& c) { return c.path == file; }));
     EXPECT_TRUE(got.empty());
@@ -177,19 +177,19 @@ TEST_P(FileWatchServiceTests, UnsubscribeWaitsForInFlight) {
     std::atomic<bool> started{false}, finished{false};
     FileWatchSubscription subscription = service.subscribe({}, [&](std::span<const FileChange>) {
         started = true;
-        std::this_thread::sleep_for(ms(300));
+        std::this_thread::sleep_for(fileWatchServiceMs(300));
         finished = true;
     }, DeliverOn::Worker);
     writeText(dir.path / "slow.txt", "x");
-    ASSERT_TRUE(waitFor([&]() { return started.load(); }, timeLimit(ms(3000))));
+    ASSERT_TRUE(waitFor([&]() { return started.load(); }, timeLimit(fileWatchServiceMs(3000))));
     subscription.reset();
     // returned only after the callback on the dispatcher thread ended
     EXPECT_TRUE(finished);
     // and it is never called again
     started = false;
     writeText(dir.path / "after.txt", "y");
-    service.flush(timeLimit(ms(500)));
-    std::this_thread::sleep_for(ms(300));
+    service.flush(timeLimit(fileWatchServiceMs(500)));
+    std::this_thread::sleep_for(fileWatchServiceMs(300));
     EXPECT_FALSE(started);
 }
 
@@ -209,10 +209,10 @@ TEST_P(FileWatchServiceTests, SelfUnsubscribe) {
         }, DeliverOn::Worker);
     }
     writeText(dir.path / "one.txt", "1");
-    ASSERT_TRUE(waitFor([&]() { return calls.load() == 1; }, timeLimit(ms(3000))));
+    ASSERT_TRUE(waitFor([&]() { return calls.load() == 1; }, timeLimit(fileWatchServiceMs(3000))));
     writeText(dir.path / "two.txt", "2");
-    service.flush(timeLimit(ms(500)));
-    std::this_thread::sleep_for(ms(300));
+    service.flush(timeLimit(fileWatchServiceMs(500)));
+    std::this_thread::sleep_for(fileWatchServiceMs(300));
     EXPECT_EQ(calls.load(), 1);
 }
 
@@ -237,10 +237,10 @@ TEST_P(FileWatchServiceTests, FilterExtensionsGlobs) {
     writeText(dir.path / "lua" / "top.lua", "return 1");
     writeText(dir.path / "lua" / "deep" / "x.lua", "return 2");
     writeText(dir.path / "other" / "y.lua", "return 3");
-    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
+    ASSERT_TRUE(service.flush(timeLimit(fileWatchServiceMs(1000))));
     // a folder created with files in it settles in a second pass
-    std::this_thread::sleep_for(ms(400));
-    service.flush(timeLimit(ms(1000)));
+    std::this_thread::sleep_for(fileWatchServiceMs(400));
+    service.flush(timeLimit(fileWatchServiceMs(1000)));
 
     EXPECT_EQ(pathsOf(images), "a.png b.svg ");
     std::sort(scripts.begin(), scripts.end(), [](const FileChange& l, const FileChange& r) { return l.path < r.path; });
@@ -255,7 +255,7 @@ TEST_P(FileWatchServiceTests, PriorityOrder) {
     FileWatchSubscription high = service.subscribe({}, [&](std::span<const FileChange>) { order.push_back(10); }, DeliverOn::MainThread, 10);
     FileWatchSubscription mid = service.subscribe({}, [&](std::span<const FileChange>) { order.push_back(5); }, DeliverOn::MainThread, 5);
     writeText(dir.path / "p.txt", "x");
-    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
+    ASSERT_TRUE(service.flush(timeLimit(fileWatchServiceMs(1000))));
     EXPECT_EQ(order, (std::vector<int>{10, 5, 0}));
 }
 
@@ -301,7 +301,7 @@ TEST_P(FileWatchServiceTests, JournalCursorsAndPause) {
 
     service.setPaused(true);
     writeText(dir.path / "while-paused.txt", "x");
-    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
+    ASSERT_TRUE(service.flush(timeLimit(fileWatchServiceMs(1000))));
     // Auto Refresh off: in the journal, not delivered
     EXPECT_TRUE(delivered.empty());
     EXPECT_EQ(service.externalChangesSince(cursor), 1u);
@@ -325,7 +325,7 @@ TEST_P(FileWatchServiceTests, JournalCursorsAndPause) {
 
     service.setPaused(false);
     writeText(dir.path / "after.txt", "x");
-    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
+    ASSERT_TRUE(service.flush(timeLimit(fileWatchServiceMs(1000))));
     EXPECT_EQ(pathsOf(delivered), "after.txt ");
 }
 
@@ -333,16 +333,16 @@ TEST_P(FileWatchServiceTests, AnUndeliveredEditIsNotLostToTheEditorsRewrite) {
     startWatching();
     const fs::path file = dir.path / "clip.anim";
     writeText(file, "first");
-    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
+    ASSERT_TRUE(service.flush(timeLimit(fileWatchServiceMs(1000))));
     uint64_t cursor = service.journalHead();
     // another program's edit, which the editor rewrites (a GUID line) before the watcher
     // delivered it: the editor's bytes would make its events look like the echo of that write
-    std::this_thread::sleep_for(ms(20));
+    std::this_thread::sleep_for(fileWatchServiceMs(20));
     writeText(file, "second, from another program");
     service.reportEditorReplacing(file);
     writeText(file, "second, from another program, with the editor's line");
     service.reportEditorWrite(file, true);
-    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
+    ASSERT_TRUE(service.flush(timeLimit(fileWatchServiceMs(1000))));
 
     std::vector<FileChange> journal = service.journalSince(cursor);
     std::vector<ChangeOrigin> origins;
@@ -363,7 +363,7 @@ TEST_P(FileWatchServiceTests, StoppedConsumersStartOver) {
     startWatching();
     uint64_t cursor = service.journalHead();
     writeText(dir.path / "x.txt", "x");
-    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
+    ASSERT_TRUE(service.flush(timeLimit(fileWatchServiceMs(1000))));
     service.stop();
     startWatching();
     // the old cursor points before this journal: one Rescan of the root
@@ -376,7 +376,7 @@ TEST_P(FileWatchServiceTests, StoppedConsumersStartOver) {
 TEST_P(FileWatchServiceTests, JournalAfterARestartReadsItsOwnChanges) {
     startWatching();
     writeText(dir.path / "before.txt", "x");
-    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
+    ASSERT_TRUE(service.flush(timeLimit(fileWatchServiceMs(1000))));
     service.stop();
     startWatching();
     // the sequence goes on past the restart: the new changes are read where they were written
@@ -384,7 +384,7 @@ TEST_P(FileWatchServiceTests, JournalAfterARestartReadsItsOwnChanges) {
     uint64_t cursor = start;
     ASSERT_GT(cursor, 1u);
     writeText(dir.path / "after.txt", "x");
-    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
+    ASSERT_TRUE(service.flush(timeLimit(fileWatchServiceMs(1000))));
     std::vector<FileChange> journal = service.journalSince(cursor);
     EXPECT_NE(pathsOf(journal).find("after.txt"), std::string::npos) << pathsOf(journal);
     EXPECT_EQ(pathsOf(journal).find("before.txt"), std::string::npos) << pathsOf(journal);
@@ -394,9 +394,9 @@ TEST_P(FileWatchServiceTests, JournalAfterARestartReadsItsOwnChanges) {
 TEST_P(FileWatchServiceTests, IdleCostsNothing) {
     startWatching();
     // let the self-test and the first pass finish
-    std::this_thread::sleep_for(ms(GetParam() == WatchBackendKind::Native ? 2500 : 600));
+    std::this_thread::sleep_for(fileWatchServiceMs(GetParam() == WatchBackendKind::Native ? 2500 : 600));
     const FileWatchService::Stats before = service.stats();
-    std::this_thread::sleep_for(ms(1000));
+    std::this_thread::sleep_for(fileWatchServiceMs(1000));
     const FileWatchService::Stats after = service.stats();
     EXPECT_EQ(after.events, before.events);
     EXPECT_EQ(after.delivered, before.delivered);
@@ -419,7 +419,7 @@ TEST(FileWatchServiceOff, OffAttachesForTheEditorsWritesOnly) {
     service.setWarningHandler([](const std::string&) {});
     EXPECT_FALSE(service.start(dir.path, WatchBackendKind::Off));
     EXPECT_TRUE(service.isAttached());
-    EXPECT_FALSE(service.flush(timeLimit(ms(100))));
+    EXPECT_FALSE(service.flush(timeLimit(fileWatchServiceMs(100))));
     EXPECT_STREQ(FileWatchService::stateName(service.stats().state), "off");
     WatchFilter filter;
     filter.deliverEditorWrites = true;

@@ -15,11 +15,11 @@ using namespace jasperengine;
 using namespace jasperengine::editor;
 
 namespace {
-    const DocumentKind kKinds[] = {DocumentKind::Scene, DocumentKind::Project, DocumentKind::Material, DocumentKind::Prefab};
+    const DocumentKind kStreamMigrationsKinds[] = {DocumentKind::Scene, DocumentKind::Project, DocumentKind::Material, DocumentKind::Prefab};
 }
 
 TEST(StreamMigrations, TablesAreOrderedAndReachCurrent){
-    for (DocumentKind kind : kKinds){
+    for (DocumentKind kind : kStreamMigrationsKinds){
         SCOPED_TRACE(StreamMigrations::kindName(kind));
         const auto& table = StreamMigrations::table(kind);
         int previous = -1;

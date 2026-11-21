@@ -31,7 +31,7 @@ namespace {
                     {"gradient", {{"stops", Json::array({{{"pos", 0}, {"color", a}}, {{"pos", 1}, {"color", b}}})}}}};
     }
 
-    Json textLayer(const char* id, const char* text, double size, Json face, Json extra = Json::object()) {
+    Json titleArtScenesTextLayer(const char* id, const char* text, double size, Json face, Json extra = Json::object()) {
         Json layer{{"id", id}, {"type", "text"}, {"name", id}, {"text", text}, {"size", size}, {"style", {{"face", face}, {"rims", Json::array()}}}};
         for (auto it = extra.begin(); it != extra.end(); ++it) layer[it.key()] = it.value();
         return layer;
@@ -68,13 +68,13 @@ namespace {
                  return Json::array({below, group});
              }},
             {"effects_only_blur", [] {
-                 Json a = textLayer("00000001", "FF", 90, solidFace("#ffffff"));
+                 Json a = titleArtScenesTextLayer("00000001", "FF", 90, solidFace("#ffffff"));
                  Json adj{{"id", "00000002"}, {"type", "adjustment"}, {"adjustment", {{"type", "effects_only"}}},
                           {"effects", Json::array({effect("00000003", "test_blur", {{"radius", 6}})})}};
                  return Json::array({a, adj});
              }},
             {"part_effects_2d", [] {
-                 Json layer = textLayer("00000001", "FF", 90, solidFace("#ffd040"));
+                 Json layer = titleArtScenesTextLayer("00000001", "FF", 90, solidFace("#ffd040"));
                  layer["style"]["rims"] = Json::array({Json{{"id", "00000011"}, {"width", 8}, {"material", solidFace("#802000")}}});
                  layer["part_effects"] = {{"rim:00000011", Json::array({effect("00000021", "test_glow", {{"size", 12}})})}};
                  return Json::array({layer});
@@ -107,7 +107,7 @@ namespace {
                  return Json::array({group});
              }},
             {"flip_2d", [] {
-                 Json layer = textLayer("00000001", "F", 120, Json{{"fill", gradientFill("#ffffff", "#ff8000")}, {"bevel", {{"enabled", true}, {"size", 6}}}},
+                 Json layer = titleArtScenesTextLayer("00000001", "F", 120, Json{{"fill", gradientFill("#ffffff", "#ff8000")}, {"bevel", {{"enabled", true}, {"size", 6}}}},
                                         {{"transform", {{"flip_x", true}, {"rotation", 15}}}});
                  return Json::array({layer});
              }},
@@ -156,7 +156,7 @@ namespace {
     }
 
     std::shared_ptr<const TitleArtDoc> materialDoc(const Json& face) {
-        Json layer = textLayer("00000001", "FF", 110, face);
+        Json layer = titleArtScenesTextLayer("00000001", "FF", 110, face);
         layer["style"]["rims"] = Json::array({Json{{"id", "00000011"}, {"width", 5}, {"material", solidFace("#202020")}}});
         return sceneDoc(Json::array({layer}), 224, 144);
     }
@@ -166,7 +166,7 @@ namespace {
         return a;
     }
 
-    Pixels renderScene(const std::shared_ptr<const TitleArtDoc>& doc, uint32_t flags = 0) {
+    Pixels titleArtScenesRenderScene(const std::shared_ptr<const TitleArtDoc>& doc, uint32_t flags = 0) {
         auto renderer = makeRenderer();
         RenderRequest request;
         request.doc = doc;
@@ -181,7 +181,7 @@ namespace {
         return name.find("pattern") != std::string::npos || name.find("texture") != std::string::npos || name.find("sheen") != std::string::npos;
     }
 
-    void expectGolden(const std::string& name, const Pixels& p) {
+    void titleArtScenesExpectGolden(const std::string& name, const Pixels& p) {
         jasperengine::test::CompareOptions options;
         options.pixelThreshold = hashed(name) ? 24 : 2;
         options.maxBadFraction = hashed(name) ? 0.005 : 0.0;
@@ -193,8 +193,8 @@ namespace {
     }
 
     void expectFallbackAgrees(const std::string& name, const std::shared_ptr<const TitleArtDoc>& doc) {
-        Pixels floatPath = renderScene(doc);
-        Pixels fallback = renderScene(doc, TITLE_ART_TEST_NO_FLOAT_TARGETS | TITLE_ART_TEST_NO_R16F | TITLE_ART_TEST_NO_RGBA32F);
+        Pixels floatPath = titleArtScenesRenderScene(doc);
+        Pixels fallback = titleArtScenesRenderScene(doc, TITLE_ART_TEST_NO_FLOAT_TARGETS | TITLE_ART_TEST_NO_R16F | TITLE_ART_TEST_NO_RGBA32F);
         const Difference d = compare(floatPath, fallback);
         EXPECT_LE(d.mean, 1.0) << name << ": mean " << d.mean;
         EXPECT_LE(d.overFraction, 0.005) << name << ": " << d.overFraction * 100.0 << " % over 8/255";
@@ -218,23 +218,23 @@ namespace {
 TEST_F(TitleArtScenesGpu, CompositorScenes) {
     for (const auto& [name, scene] : compositorScenes()) {
         SCOPED_TRACE(name);
-        expectGolden("compositor_" + name, renderScene(sceneDoc(scene())));
+        titleArtScenesExpectGolden("compositor_" + name, titleArtScenesRenderScene(sceneDoc(scene())));
     }
 }
 
 TEST_F(TitleArtScenesGpu, MaterialMembers) {
     for (const auto& [name, face] : materialCases()) {
         SCOPED_TRACE(name);
-        expectGolden("material_" + name, renderScene(materialDoc(face)));
+        titleArtScenesExpectGolden("material_" + name, titleArtScenesRenderScene(materialDoc(face)));
     }
 }
 
 TEST_F(TitleArtScenesGpu, OriginAsymmetric) {
     // an "F", a top-to-bottom gradient and a shadow falling down-right: any flip moves them
-    Json f = textLayer("00000001", "F", 160, Json{{"fill", gradientFill("#ffffff", "#ff2000", 90)}},
+    Json f = titleArtScenesTextLayer("00000001", "F", 160, Json{{"fill", gradientFill("#ffffff", "#ff2000", 90)}},
                        {{"effects", Json::array({effect("00000002", "test_shadow", {{"angle", 60}, {"distance", 14}, {"size", 2}, {"opacity", 1}})})}});
     auto doc = sceneDoc(Json::array({f}), 256, 256);
-    Pixels p = renderScene(doc);
+    Pixels p = titleArtScenesRenderScene(doc);
     ASSERT_EQ(p.width, 256);
     auto alphaAt = [&p](int x, int y) { return p.bytes[((size_t)y * p.width + x) * 4 + 3]; };
     auto redAt = [&p](int x, int y) { return p.bytes[((size_t)y * p.width + x) * 4 + 0]; };
@@ -251,17 +251,17 @@ TEST_F(TitleArtScenesGpu, OriginAsymmetric) {
     EXPECT_EQ(alphaAt(sx, sy), 255);
     EXPECT_LT(redAt(sx, sy), 10);
     EXPECT_EQ(alphaAt(128 - 48 - 7, 128 - 64 - 9), 0);
-    expectGolden("origin_asymmetric", p);
+    titleArtScenesExpectGolden("origin_asymmetric", p);
     // the RGBA8 path on the same fixture
-    Pixels fallback = renderScene(doc, TITLE_ART_TEST_NO_FLOAT_TARGETS | TITLE_ART_TEST_NO_R16F | TITLE_ART_TEST_NO_RGBA32F);
-    expectGolden("origin_asymmetric_rgba8", fallback);
+    Pixels fallback = titleArtScenesRenderScene(doc, TITLE_ART_TEST_NO_FLOAT_TARGETS | TITLE_ART_TEST_NO_R16F | TITLE_ART_TEST_NO_RGBA32F);
+    titleArtScenesExpectGolden("origin_asymmetric_rgba8", fallback);
 }
 
 TEST_F(TitleArtScenesGpu, BoundedJfa) {
     // bevel-only elements: the field flooded as far as the bevel reads shades like the whole
     // frame's, within 1/255, in at most ceil(log2(R + 2)) + 1 flood passes
     Json face{{"fill", {{"kind", "solid"}, {"color", "#c0a060"}}}, {"bevel", {{"enabled", true}, {"size", 6}}}};
-    Json layer = textLayer("00000001", "FF", 120, face);
+    Json layer = titleArtScenesTextLayer("00000001", "FF", 120, face);
     layer["style"]["rims"] = Json::array({Json{{"id", "00000011"}, {"width", 6}, {"material", Json{{"fill", {{"kind", "solid"}, {"color", "#603010"}}}, {"bevel", {{"enabled", true}, {"size", 3}}}}}}});
     auto doc = sceneDoc(Json::array({layer}), 320, 200);
     auto bounded = makeRenderer();
@@ -289,7 +289,7 @@ TEST_F(TitleArtScenesGpu, FallbackAgrees) {
 TEST_F(TitleArtScenesGpu, Deterministic) {
     for (const auto& [name, scene] : compositorScenes()) {
         auto doc = sceneDoc(scene());
-        EXPECT_TRUE(identical(renderScene(doc), renderScene(doc))) << name;
+        EXPECT_TRUE(identical(titleArtScenesRenderScene(doc), titleArtScenesRenderScene(doc))) << name;
     }
 }
 
@@ -304,8 +304,8 @@ TEST_F(TitleArtScenesGpuSlow, ElementVariantsDrawTheWholeProgram) {
         for (const auto& [name, face] : materialCases()) {
             SCOPED_TRACE(name + (path ? " (rgba8)" : ""));
             auto doc = materialDoc(face);
-            const Pixels variant = renderScene(doc, path);
-            const Pixels whole = renderScene(doc, path | TITLE_ART_TEST_ELEMENT_WHOLE);
+            const Pixels variant = titleArtScenesRenderScene(doc, path);
+            const Pixels whole = titleArtScenesRenderScene(doc, path | TITLE_ART_TEST_ELEMENT_WHOLE);
             const Difference d = compare(variant, whole, 1.0);
             std::printf("[ variant ] %-28s %s max %.2f, mean %.4f\n", name.c_str(), path ? "rgba8" : "float", d.max, d.mean);
             EXPECT_LE(d.max, 1.0) << "max " << d.max << ", mean " << d.mean;

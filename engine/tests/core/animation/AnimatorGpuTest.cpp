@@ -39,7 +39,7 @@ using namespace animatortest;
 
 namespace {
 
-    CompareOptions goldenTolerance(){
+    CompareOptions animatorGoldenTolerance(){
         CompareOptions options;
         const bool goldenBackend = std::strcmp(HeadlessContext::getBackendName(), "glcore") == 0;
         options.pixelThreshold = 16;
@@ -160,7 +160,7 @@ TEST(AnimatorGpu, ThreeControllerPosesAndARetargetedWalk){
         ASSERT_FALSE(component.skinBindings.empty());
         EXPECT_TRUE(component.skinBindings[0].animatorDriven);
     }
-    EXPECT_GOLDEN_OPTIONS("animator_poses", goldenTolerance());
+    EXPECT_GOLDEN_OPTIONS("animator_poses", animatorGoldenTolerance());
     animators.clear();
     models.clear();
     Engine::removeScene(&scene);

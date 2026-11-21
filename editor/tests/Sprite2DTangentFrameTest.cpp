@@ -355,14 +355,14 @@ TEST(Sprite2DNormalMapManifest, CatalogShaderReadsMaterialNormalMap) {
 
 namespace {
 
-    struct Headless {
+    struct Sprite2DTangentFrameHeadless {
         bool ready = false;
         std::unique_ptr<Project> project;
     };
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
+    Sprite2DTangentFrameHeadless& sprite2DTangentFrameHeadless() {
+        static Sprite2DTangentFrameHeadless h = []() {
+            Sprite2DTangentFrameHeadless out;
             physicstest::installTestSystem();
             Engine::setAsyncLoading(false);
             const fs::path root = fs::temp_directory_path() / ("jasper-light2d-height-test-" + std::to_string(::getpid()));
@@ -382,52 +382,52 @@ namespace {
     }
 
     uint32_t newScene2D() {
-        Project* p = headless().project.get();
+        Project* p = sprite2DTangentFrameHeadless().project.get();
         if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
         p->createNewScene("Lights", SceneType::SCENE_2D);
         return p->getSelectedSceneId();
     }
 
-    Scene* sceneOf(uint32_t sceneId) { return headless().project->getScene(sceneId)->scene; }
+    Scene* sprite2DTangentFrameSceneOf(uint32_t sceneId) { return sprite2DTangentFrameHeadless().project->getScene(sceneId)->scene; }
 
 }
 
 TEST(Sprite2DLightHeight, CreatedLight2DIsAt64) {
-    ASSERT_TRUE(headless().ready);
+    ASSERT_TRUE(sprite2DTangentFrameHeadless().ready);
     const uint32_t sceneId = newScene2D();
-    CreateEntityCmd* create = new CreateEntityCmd(headless().project.get(), sceneId, "Light 2D", EntityCreationType::POINT_LIGHT_2D);
+    CreateEntityCmd* create = new CreateEntityCmd(sprite2DTangentFrameHeadless().project.get(), sceneId, "Light 2D", EntityCreationType::POINT_LIGHT_2D);
     create->setQuiet(true);
     CommandHandle::get(sceneId)->addCommandNoMerge(create);
     const Entity entity = create->getEntity();
-    ASSERT_TRUE(sceneOf(sceneId)->findComponent<Light2DComponent>(entity));
-    EXPECT_EQ(sceneOf(sceneId)->getComponent<Light2DComponent>(entity).height, 64.0f);
-    EXPECT_EQ(sceneOf(sceneId)->getComponent<Light2DComponent>(entity).range, 200.0f);
+    ASSERT_TRUE(sprite2DTangentFrameSceneOf(sceneId)->findComponent<Light2DComponent>(entity));
+    EXPECT_EQ(sprite2DTangentFrameSceneOf(sceneId)->getComponent<Light2DComponent>(entity).height, 64.0f);
+    EXPECT_EQ(sprite2DTangentFrameSceneOf(sceneId)->getComponent<Light2DComponent>(entity).range, 200.0f);
 
     ASSERT_TRUE(CommandHandle::get(sceneId)->undo());
-    EXPECT_FALSE(sceneOf(sceneId)->isEntityCreated(entity)) << "undo removes the light";
+    EXPECT_FALSE(sprite2DTangentFrameSceneOf(sceneId)->isEntityCreated(entity)) << "undo removes the light";
     ASSERT_TRUE(CommandHandle::get(sceneId)->redo());
     const Entity redone = create->getEntity();
-    ASSERT_TRUE(sceneOf(sceneId)->findComponent<Light2DComponent>(redone));
-    EXPECT_EQ(sceneOf(sceneId)->getComponent<Light2DComponent>(redone).height, 64.0f) << "redo";
+    ASSERT_TRUE(sprite2DTangentFrameSceneOf(sceneId)->findComponent<Light2DComponent>(redone));
+    EXPECT_EQ(sprite2DTangentFrameSceneOf(sceneId)->getComponent<Light2DComponent>(redone).height, 64.0f) << "redo";
 }
 
 TEST(Sprite2DLightHeight, AddedLight2DIsAt64) {
-    ASSERT_TRUE(headless().ready);
+    ASSERT_TRUE(sprite2DTangentFrameHeadless().ready);
     const uint32_t sceneId = newScene2D();
-    CreateEntityCmd* create = new CreateEntityCmd(headless().project.get(), sceneId, "Empty", EntityCreationType::GAMEOBJECT);
+    CreateEntityCmd* create = new CreateEntityCmd(sprite2DTangentFrameHeadless().project.get(), sceneId, "Empty", EntityCreationType::GAMEOBJECT);
     create->setQuiet(true);
     CommandHandle::get(sceneId)->addCommandNoMerge(create);
     const Entity entity = create->getEntity();
 
-    CommandHandle::get(sceneId)->addCommandNoMerge(new AddComponentCmd(headless().project.get(), sceneId, entity, ComponentType::Light2DComponent));
-    ASSERT_TRUE(sceneOf(sceneId)->findComponent<Light2DComponent>(entity));
-    EXPECT_EQ(sceneOf(sceneId)->getComponent<Light2DComponent>(entity).height, 64.0f);
+    CommandHandle::get(sceneId)->addCommandNoMerge(new AddComponentCmd(sprite2DTangentFrameHeadless().project.get(), sceneId, entity, ComponentType::Light2DComponent));
+    ASSERT_TRUE(sprite2DTangentFrameSceneOf(sceneId)->findComponent<Light2DComponent>(entity));
+    EXPECT_EQ(sprite2DTangentFrameSceneOf(sceneId)->getComponent<Light2DComponent>(entity).height, 64.0f);
 
     ASSERT_TRUE(CommandHandle::get(sceneId)->undo());
-    EXPECT_FALSE(sceneOf(sceneId)->findComponent<Light2DComponent>(entity)) << "undo removes the component";
+    EXPECT_FALSE(sprite2DTangentFrameSceneOf(sceneId)->findComponent<Light2DComponent>(entity)) << "undo removes the component";
     ASSERT_TRUE(CommandHandle::get(sceneId)->redo());
-    ASSERT_TRUE(sceneOf(sceneId)->findComponent<Light2DComponent>(entity));
-    EXPECT_EQ(sceneOf(sceneId)->getComponent<Light2DComponent>(entity).height, 64.0f) << "redo";
+    ASSERT_TRUE(sprite2DTangentFrameSceneOf(sceneId)->findComponent<Light2DComponent>(entity));
+    EXPECT_EQ(sprite2DTangentFrameSceneOf(sceneId)->getComponent<Light2DComponent>(entity).height, 64.0f) << "redo";
 }
 
 namespace {

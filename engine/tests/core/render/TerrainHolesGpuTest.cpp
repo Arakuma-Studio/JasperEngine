@@ -24,14 +24,14 @@ using namespace jasperengine::test;
 namespace {
 
     // World units per pixel of the frame: 160 x 90 metres, centred on the terrain
-    constexpr float VIEW_WIDTH = 160.0f;
-    constexpr float VIEW_HEIGHT = 90.0f;
+    constexpr float TERRAIN_HOLES_VIEW_WIDTH = 160.0f;
+    constexpr float TERRAIN_HOLES_VIEW_HEIGHT = 90.0f;
 
-    struct PixelColor {
+    struct TerrainHolesPixelColor {
         int r, g, b;
     };
 
-    bool sameColor(const uint8_t* pixel, const PixelColor& color, int tolerance){
+    bool sameColor(const uint8_t* pixel, const TerrainHolesPixelColor& color, int tolerance){
         return std::abs(pixel[0] - color.r) <= tolerance && std::abs(pixel[1] - color.g) <= tolerance && std::abs(pixel[2] - color.b) <= tolerance;
     }
 
@@ -45,7 +45,7 @@ namespace {
             TerrainGpuFixture::SetUp();
             scene.setBackgroundColor(0.0f, 0.0f, 0.0f, 1.0f);
             camera.setType(CameraType::CAMERA_ORTHO);
-            camera.setOrtho(-VIEW_WIDTH * 0.5f, VIEW_WIDTH * 0.5f, -VIEW_HEIGHT * 0.5f, VIEW_HEIGHT * 0.5f, 1.0f, 400.0f);
+            camera.setOrtho(-TERRAIN_HOLES_VIEW_WIDTH * 0.5f, TERRAIN_HOLES_VIEW_WIDTH * 0.5f, -TERRAIN_HOLES_VIEW_HEIGHT * 0.5f, TERRAIN_HOLES_VIEW_HEIGHT * 0.5f, 1.0f, 400.0f);
             camera.setPosition(0.0f, 200.0f, 0.0f);
             camera.setUp(0.0f, 0.0f, -1.0f);
             camera.setTarget(0.0f, 0.0f, 0.0f);
@@ -74,8 +74,8 @@ namespace {
         }
 
         Vector2 worldOfPixel(int x, int y) const{
-            return Vector2((static_cast<float>(x) + 0.5f) / FRAME_WIDTH * VIEW_WIDTH - VIEW_WIDTH * 0.5f,
-                           (static_cast<float>(y) + 0.5f) / FRAME_HEIGHT * VIEW_HEIGHT - VIEW_HEIGHT * 0.5f);
+            return Vector2((static_cast<float>(x) + 0.5f) / FRAME_WIDTH * TERRAIN_HOLES_VIEW_WIDTH - TERRAIN_HOLES_VIEW_WIDTH * 0.5f,
+                           (static_cast<float>(y) + 0.5f) / FRAME_HEIGHT * TERRAIN_HOLES_VIEW_HEIGHT - TERRAIN_HOLES_VIEW_HEIGHT * 0.5f);
         }
 
         // the point is this close, in texels, to a texel edge of the map (a pixel centre on an edge
@@ -87,7 +87,7 @@ namespace {
         }
 
         // every pixel on the terrain: through a hole it is `through`, else `solid`
-        void expectMask(const std::vector<uint8_t>& frame, const PixelColor& solid, const PixelColor& through, const char* pass){
+        void expectMask(const std::vector<uint8_t>& frame, const TerrainHolesPixelColor& solid, const TerrainHolesPixelColor& through, const char* pass){
             const terraincore::HoleMapView view{holeTexels.data(), holeWidth, holeHeight};
             int wrong = 0;
             int compared = 0;
@@ -126,7 +126,7 @@ namespace {
         }
 
         void floorBelow(float r, float g, float b, Primitive& floor){
-            floor.createPlane(VIEW_WIDTH * 2.0f, VIEW_WIDTH * 2.0f);
+            floor.createPlane(TERRAIN_HOLES_VIEW_WIDTH * 2.0f, TERRAIN_HOLES_VIEW_WIDTH * 2.0f);
             floor.setPosition(0.0f, -20.0f, 0.0f);
             floor.setColor(r, g, b);
             floor.setReceiveLights(false);
@@ -142,7 +142,7 @@ TEST_F(TerrainHolesGpu, CpuMatchesGpu){
     ASSERT_TRUE(render());
     std::vector<uint8_t> frame;
     ASSERT_TRUE(readFrame(frame));
-    expectMask(frame, PixelColor{26, 204, 51}, PixelColor{0, 0, 0}, "colour");
+    expectMask(frame, TerrainHolesPixelColor{26, 204, 51}, TerrainHolesPixelColor{0, 0, 0}, "colour");
     EXPECT_NE(component().holeMap.getRender(nullptr), nullptr);
 }
 
@@ -152,8 +152,8 @@ TEST_F(TerrainHolesGpu, EveryPassCuts){
     asymmetricHoles();
     Primitive floor(&scene);
     floorBelow(0.8f, 0.1f, 0.7f, floor);
-    const PixelColor solid{26, 204, 51};
-    const PixelColor through{204, 26, 179};
+    const TerrainHolesPixelColor solid{26, 204, 51};
+    const TerrainHolesPixelColor through{204, 26, 179};
 
     // the colour pass over what lies below
     ASSERT_TRUE(render());
@@ -204,11 +204,11 @@ TEST_F(TerrainHolesGpu, ACutAfterTheFirstFrameDraws){
     flatTerrain(0.0f);
     Primitive floor(&scene);
     floorBelow(0.8f, 0.1f, 0.7f, floor);
-    const PixelColor solid{26, 204, 51};
-    const PixelColor through{204, 26, 179};
+    const TerrainHolesPixelColor solid{26, 204, 51};
+    const TerrainHolesPixelColor through{204, 26, 179};
     const auto pixel = [](const std::vector<uint8_t>& frame, float x, float z){
-        const int px = static_cast<int>((x + VIEW_WIDTH * 0.5f) / VIEW_WIDTH * FRAME_WIDTH);
-        const int py = static_cast<int>((z + VIEW_HEIGHT * 0.5f) / VIEW_HEIGHT * FRAME_HEIGHT);
+        const int px = static_cast<int>((x + TERRAIN_HOLES_VIEW_WIDTH * 0.5f) / TERRAIN_HOLES_VIEW_WIDTH * FRAME_WIDTH);
+        const int py = static_cast<int>((z + TERRAIN_HOLES_VIEW_HEIGHT * 0.5f) / TERRAIN_HOLES_VIEW_HEIGHT * FRAME_HEIGHT);
         return &frame[(static_cast<size_t>(py) * FRAME_WIDTH + px) * 4];
     };
     ASSERT_TRUE(render());
@@ -245,7 +245,7 @@ TEST_F(TerrainHolesGpu, ShadowMapHasTheHole){
     terrain->setSize(40.0f);
     setHoles(8, 8, [](int x, int y){ return x >= 3 && x < 5 && y >= 3 && y < 5; });
     Primitive floor(&scene);
-    floor.createPlane(VIEW_WIDTH * 2.0f, VIEW_WIDTH * 2.0f);
+    floor.createPlane(TERRAIN_HOLES_VIEW_WIDTH * 2.0f, TERRAIN_HOLES_VIEW_WIDTH * 2.0f);
     floor.setPosition(0.0f, 0.0f, 0.0f);
     floor.setColor(0.9f, 0.9f, 0.9f);
     sun.setDirection(1.0f, -1.0f, 0.0f);
@@ -259,8 +259,8 @@ TEST_F(TerrainHolesGpu, ShadowMapHasTheHole){
     // a point of the floor at world (x, z) is under the terrain's (x - 30, z). The terrain spans x -80 to -40
     // at y 30, so its shadow is x -50 to -10, in view beside it; the hole, at its centre, shows at x -30
     const auto pixelAt = [&](float x, float z) -> const uint8_t* {
-        const int px = static_cast<int>((x + VIEW_WIDTH * 0.5f) / VIEW_WIDTH * FRAME_WIDTH);
-        const int py = static_cast<int>((z + VIEW_HEIGHT * 0.5f) / VIEW_HEIGHT * FRAME_HEIGHT);
+        const int px = static_cast<int>((x + TERRAIN_HOLES_VIEW_WIDTH * 0.5f) / TERRAIN_HOLES_VIEW_WIDTH * FRAME_WIDTH);
+        const int py = static_cast<int>((z + TERRAIN_HOLES_VIEW_HEIGHT * 0.5f) / TERRAIN_HOLES_VIEW_HEIGHT * FRAME_HEIGHT);
         return &frame[(static_cast<size_t>(py) * FRAME_WIDTH + px) * 4];
     };
     const int inHole = pixelAt(-30.0f, 0.0f)[1];
@@ -288,10 +288,10 @@ TEST_F(TerrainHolesGpu, LibraryShaderCuts){
     EXPECT_NE(mesh.submeshes[0].shaderProperties & ShaderPool::getTerrainHolesProperty(ShaderType::MESH), 0u);
     const terraincore::HoleMapView view{holeTexels.data(), holeWidth, holeHeight};
     EXPECT_TRUE(terraincore::isHole(view, 8.0f / 37.0f, 6.0f / 23.0f));
-    const Vector2 uvToPixel((8.0f / 37.0f * TERRAIN_SIZE - TERRAIN_SIZE * 0.5f + VIEW_WIDTH * 0.5f) / VIEW_WIDTH * FRAME_WIDTH,
-                            (6.0f / 23.0f * TERRAIN_SIZE - TERRAIN_SIZE * 0.5f + VIEW_HEIGHT * 0.5f) / VIEW_HEIGHT * FRAME_HEIGHT);
+    const Vector2 uvToPixel((8.0f / 37.0f * TERRAIN_SIZE - TERRAIN_SIZE * 0.5f + TERRAIN_HOLES_VIEW_WIDTH * 0.5f) / TERRAIN_HOLES_VIEW_WIDTH * FRAME_WIDTH,
+                            (6.0f / 23.0f * TERRAIN_SIZE - TERRAIN_SIZE * 0.5f + TERRAIN_HOLES_VIEW_HEIGHT * 0.5f) / TERRAIN_HOLES_VIEW_HEIGHT * FRAME_HEIGHT);
     const uint8_t* pixel = &frame[(static_cast<size_t>(uvToPixel.y) * FRAME_WIDTH + static_cast<size_t>(uvToPixel.x)) * 4];
-    EXPECT_TRUE(sameColor(pixel, PixelColor{204, 26, 179}, 16)) << int(pixel[0]) << ", " << int(pixel[1]) << ", " << int(pixel[2]);
+    EXPECT_TRUE(sameColor(pixel, TerrainHolesPixelColor{204, 26, 179}, 16)) << int(pixel[0]) << ", " << int(pixel[1]) << ", " << int(pixel[2]);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -319,7 +319,7 @@ TEST_F(TerrainHolesGpu, NoHoleNoCost){
     }
     std::vector<uint8_t> frame;
     ASSERT_TRUE(readFrame(frame));
-    expectMask(frame, PixelColor{26, 204, 51}, PixelColor{0, 0, 0}, "after the first cut");
+    expectMask(frame, TerrainHolesPixelColor{26, 204, 51}, TerrainHolesPixelColor{0, 0, 0}, "after the first cut");
 
     // the last fill reloads it back
     component().holeMap = Texture();
@@ -372,6 +372,6 @@ TEST_F(TerrainHolesGpu, WrongFormatWarnsOnceAndDrawsNoHoles){
     std::vector<uint8_t> frame;
     ASSERT_TRUE(readFrame(frame));
     const size_t center = (static_cast<size_t>(FRAME_HEIGHT / 2) * FRAME_WIDTH + FRAME_WIDTH / 2) * 4;
-    EXPECT_TRUE(sameColor(&frame[center], PixelColor{26, 204, 51}, 16));
+    EXPECT_TRUE(sameColor(&frame[center], TerrainHolesPixelColor{26, 204, 51}, 16));
     EXPECT_EQ(log.count(D_LOG_WARN, "hole map"), 1u);
 }

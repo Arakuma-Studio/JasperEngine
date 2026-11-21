@@ -34,11 +34,11 @@ using namespace jasperengine;
 
 namespace {
 
-    constexpr float DT = 1.0f / 60.0f;
-    constexpr float M = 64.0f;
-    constexpr int CHUNK_CELLS = 8;
+    constexpr float SCENE_DT = 1.0f / 60.0f;
+    constexpr float PX_PER_METRE = 64.0f;
+    constexpr int SCENE_CHUNK_CELLS = 8;
 
-    enum TestTile : int32_t { FULL = 0, ONE_WAY = 1, SENSOR = 2 };
+    enum SceneTile : int32_t { TILE_FULL = 0, TILE_ONE_WAY = 1, TILE_SENSOR = 2 };
 
     std::shared_ptr<TilesetRuntime> makeTilesetRuntime() {
         auto data = std::make_shared<TilesetData>();
@@ -73,19 +73,19 @@ namespace {
 
         void SetUp() override {
             updateTime = Engine::getUpdateTime();
-            Engine::setUpdateTime(DT);
+            Engine::setUpdateTime(SCENE_DT);
             scene = std::make_unique<Scene>();
             test::disableSubSystems(*scene);
             scene->getScheduler().setEnabled("PhysicsSystem", true);
             physics = scene->getSystem<PhysicsSystem>().get();
-            physics->setPointsToMeterScale2D(M);
+            physics->setPointsToMeterScale2D(PX_PER_METRE);
             physics->setGravity2D(0.0f, -10.0f);
 
             map = test::makeTransformEntity(*scene);
             Rigidbody2DComponent body;
             body.type = BodyType::STATIC;
             scene->addComponent<Rigidbody2DComponent>(map, body);
-            layer.cells.edit().setChunkSize(CHUNK_CELLS);
+            layer.cells.edit().setChunkSize(SCENE_CHUNK_CELLS);
         }
 
         void TearDown() override {
@@ -110,7 +110,7 @@ namespace {
         void step() {
             resolveTransforms();
             Input::beginFixedStep();
-            scene->fixedUpdate(DT);
+            scene->fixedUpdate(SCENE_DT);
             Input::endFixedStep();
             resolveTransforms();
         }
@@ -135,9 +135,9 @@ namespace {
         }
 
         void floorAcrossChunks() {
-            for (int x = 0; x < CHUNK_CELLS * 3; x++) {
-                cells().setTile(CellCoord{x, 0}, FULL);
-                cells().setTile(CellCoord{x, 1}, FULL);
+            for (int x = 0; x < SCENE_CHUNK_CELLS * 3; x++) {
+                cells().setTile(CellCoord{x, 0}, TILE_FULL);
+                cells().setTile(CellCoord{x, 1}, TILE_FULL);
             }
         }
     };
@@ -167,9 +167,9 @@ TEST_F(TilemapColliderScene, GeneratesChunkedCollidersAndShapes) {
 }
 
 TEST_F(TilemapColliderScene, EditRebuildsOnlyTouchedAndBorderChunks) {
-    for (int y = 0; y < 3 * CHUNK_CELLS; y++) {
-        for (int x = 0; x < 3 * CHUNK_CELLS; x++) {
-            cells().setTile(CellCoord{x, y}, FULL);
+    for (int y = 0; y < 3 * SCENE_CHUNK_CELLS; y++) {
+        for (int x = 0; x < 3 * SCENE_CHUNK_CELLS; x++) {
+            cells().setTile(CellCoord{x, y}, TILE_FULL);
         }
     }
     updateColliders();
@@ -248,7 +248,7 @@ TEST_F(TilemapColliderScene, RaycastAgainstAGeneratedColliderByIndex) {
 
 TEST_F(TilemapColliderScene, SensorsFireThroughTheEngine) {
     for (int x = 2; x < 6; x++) {
-        cells().setTile(CellCoord{x, 3}, SENSOR);
+        cells().setTile(CellCoord{x, 3}, TILE_SENSOR);
     }
     updateColliders();
     EXPECT_EQ(collider.generatedPolygons, 4u);
@@ -298,7 +298,7 @@ TEST_F(TilemapColliderScene, BuildBudgets) {
     for (int y = 0; y < 256; y++) {
         for (int x = 0; x < 256; x++) {
             if ((x * 7 + y * 3) % 11 != 0) {
-                cells.setTile(CellCoord{x, y}, FULL);
+                cells.setTile(CellCoord{x, y}, TILE_FULL);
             }
         }
     }

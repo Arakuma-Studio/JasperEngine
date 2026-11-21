@@ -27,7 +27,11 @@ runs:
       shell: bash
       run: |
         if ! command -v ccache > /dev/null; then
-            if [[ "$RUNNER_OS" == Windows ]]; then choco install ccache --no-progress -y; else brew install ccache; fi
+            if [[ "$RUNNER_OS" == Windows ]]; then
+                tools/ci/retry.sh choco install ccache --no-progress -y
+            else
+                tools/ci/retry.sh brew install ccache
+            fi
         fi
         ccache --version | sed -n 1p
 

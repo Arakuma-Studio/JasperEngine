@@ -28,7 +28,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    titleart::TitleArtDoc document() {
+    titleart::TitleArtDoc psdExportPlanDocument() {
         titleart::TitleArtDoc doc = titleart::makeNewTitleArt();
         doc.root["canvas"] = Json{{"width", 64}, {"height", 32}};
         doc.root["exposed"] = Json::array();
@@ -66,7 +66,7 @@ namespace {
 }
 
 TEST(PsdExportPlan, LayersGroupsClipsAdjustments) {
-    const titleart::TitleArtDoc doc = document();
+    const titleart::TitleArtDoc doc = psdExportPlanDocument();
     const PsdExportPlan plan = planPsdExport(doc, {});
     EXPECT_EQ(plan.jobs[(size_t)plan.mergedJob].purpose, "merged");
     // top level, bottom first
@@ -119,7 +119,7 @@ TEST(PsdExportPlan, LayersGroupsClipsAdjustments) {
 TEST(PsdExportPlan, SplitTitles) {
     PsdPlanOptions options;
     options.splitTitles = true;
-    const PsdExportPlan plan = planPsdExport(document(), options);
+    const PsdExportPlan plan = planPsdExport(psdExportPlanDocument(), options);
     const PsdPlanNode* title = named(plan.nodes, "Title");
     ASSERT_NE(title, nullptr);
     ASSERT_EQ(title->kind, PsdPlanNode::Kind::Group);
@@ -140,7 +140,7 @@ TEST(PsdExportPlan, SplitTitles) {
 }
 
 TEST(PsdExportPlan, AssembleWriteAndRead) {
-    const PsdExportPlan plan = planPsdExport(document(), {});
+    const PsdExportPlan plan = planPsdExport(psdExportPlanDocument(), {});
     constexpr int W = 16, H = 8;
     std::vector<texsynth::Image> renders;
     for (size_t i = 0; i < plan.jobs.size(); i++) {
@@ -174,7 +174,7 @@ TEST(PsdExportPlan, AssembleWriteAndRead) {
 // RGBA16F size however many layers it has (red control: holding the renders, as a batch does,
 // is far over that for this plan)
 TEST(PsdExportPlan, StreamingMatchesTheBatchUnderTheMemoryCap) {
-    const PsdExportPlan plan = planPsdExport(document(), {});
+    const PsdExportPlan plan = planPsdExport(psdExportPlanDocument(), {});
     constexpr int W = 64, H = 32;
     const size_t cap = 3 * (size_t)W * H * 8;
     for (int bits : {8, 16}) {
@@ -222,7 +222,7 @@ TEST(PsdExportPlan, StreamingMatchesTheBatchUnderTheMemoryCap) {
 }
 
 TEST(PsdExportPlan, AssemblerRefusesARenderItDoesNotExpect) {
-    const PsdExportPlan plan = planPsdExport(document(), {});
+    const PsdExportPlan plan = planPsdExport(psdExportPlanDocument(), {});
     PsdAssembler assembler(plan, 8, 72, 16, 8, nullptr);
     std::string error;
     texsynth::Image wrong = texsynth::Image::make(4, 4, 4, 8);

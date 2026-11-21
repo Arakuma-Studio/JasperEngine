@@ -31,7 +31,7 @@ using namespace jasperengine;
 
 namespace {
 
-    constexpr float DT = 1.0f / 60.0f;
+    constexpr float CHARACTER_CONTROLLER_DT = 1.0f / 60.0f;
 
     class CharacterControllerTest : public ::testing::Test {
     protected:
@@ -41,7 +41,7 @@ namespace {
 
         void SetUp() override{
             updateTime = Engine::getUpdateTime();
-            Engine::setUpdateTime(DT);
+            Engine::setUpdateTime(CHARACTER_CONTROLLER_DT);
             scene = std::make_unique<Scene>();
             test::disableSubSystems(*scene);
             scene->getScheduler().setEnabled("PhysicsSystem", true);
@@ -117,7 +117,7 @@ namespace {
             Input::beginFixedStep();
             if (scripts)
                 scripts();
-            scene->fixedUpdate(DT);
+            scene->fixedUpdate(CHARACTER_CONTROLLER_DT);
             Input::endFixedStep();
             resolveTransforms();
         }
@@ -241,7 +241,7 @@ TEST_F(CharacterControllerTest, CollisionFlags){
     CharacterController cc(scene.get(), walker);
     steps(5);
     int flags = 0;
-    steps(60, [&](){ flags = cc.move(Vector3(2.0f, -0.5f, 0.0f) * DT); });
+    steps(60, [&](){ flags = cc.move(Vector3(2.0f, -0.5f, 0.0f) * CHARACTER_CONTROLLER_DT); });
     EXPECT_TRUE(flags & CharacterCollision_Sides) << flags;
     EXPECT_TRUE(flags & CharacterCollision_Below) << flags;
     EXPECT_EQ(cc.getCollisionFlags(), flags);
@@ -252,7 +252,7 @@ TEST_F(CharacterControllerTest, CollisionFlags){
     CharacterController up(scene.get(), jumper);
     steps(5);
     bool above = false;
-    steps(30, [&](){ above = above || (up.move(Vector3(0.0f, 3.0f, 0.0f) * DT) & CharacterCollision_Above); });
+    steps(30, [&](){ above = above || (up.move(Vector3(0.0f, 3.0f, 0.0f) * CHARACTER_CONTROLLER_DT) & CharacterCollision_Above); });
     EXPECT_TRUE(above);
     EXPECT_LT(foot(jumper), 2.0f - 1.8f + 0.05f);
 }
@@ -392,7 +392,7 @@ TEST_F(CharacterControllerTest, HitCallbackOncePerContact){
     int movesAtWall = 0;
     steps(60, [&](){
         const int before = (int)wallHits.size();
-        cc.move(Vector3(2.0f, 0.0f, 0.0f) * DT);
+        cc.move(Vector3(2.0f, 0.0f, 0.0f) * CHARACTER_CONTROLLER_DT);
         moves++;
         const int added = (int)wallHits.size() - before;
         EXPECT_LE(added, 1);
@@ -403,7 +403,7 @@ TEST_F(CharacterControllerTest, HitCallbackOncePerContact){
     EXPECT_EQ((int)wallHits.size(), movesAtWall);
     EXPECT_NEAR(wallHits.back().normal.x, -1.0f, 0.05f);
     EXPECT_NEAR(wallHits.back().moveDirection.x, 1.0f, 1e-4f);
-    EXPECT_NEAR(wallHits.back().moveLength, 2.0f * DT, 1e-4f);
+    EXPECT_NEAR(wallHits.back().moveLength, 2.0f * CHARACTER_CONTROLLER_DT, 1e-4f);
 }
 
 TEST_F(CharacterControllerTest, CharacterVsCharacterBlocks){
@@ -412,13 +412,13 @@ TEST_F(CharacterControllerTest, CharacterVsCharacterBlocks){
     const Entity blocker = controller(Vector3(3.0f, 0.0f, 0.0f));
     CharacterController cc(scene.get(), mover);
     steps(5);
-    steps(120, [&](){ cc.move(Vector3(2.0f, 0.0f, 0.0f) * DT); });
+    steps(120, [&](){ cc.move(Vector3(2.0f, 0.0f, 0.0f) * CHARACTER_CONTROLLER_DT); });
     EXPECT_LT(position(mover).x, position(blocker).x - 0.8f + 0.05f);
     EXPECT_GT(position(mover).x, 1.5f);
 
     // with characterCollisions off they pass through each other
     component(mover).characterCollisions = false;
-    steps(120, [&](){ cc.move(Vector3(2.0f, 0.0f, 0.0f) * DT); });
+    steps(120, [&](){ cc.move(Vector3(2.0f, 0.0f, 0.0f) * CHARACTER_CONTROLLER_DT); });
     EXPECT_GT(position(mover).x, position(blocker).x + 1.0f);
 }
 

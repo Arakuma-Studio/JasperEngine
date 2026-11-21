@@ -284,6 +284,16 @@ std::vector<std::string> StringUtils::split(const std::string& text, char separa
     return out;
 }
 
+std::string StringUtils::toLowerAscii(std::string_view text) {
+    std::string out(text);
+    for (char& c : out) {
+        if (c >= 'A' && c <= 'Z') {
+            c = static_cast<char>(c - 'A' + 'a');
+        }
+    }
+    return out;
+}
+
 size_t StringUtils::countCodepoints(const std::string& text) {
     bool hadInvalid = false;
     size_t count = 0;

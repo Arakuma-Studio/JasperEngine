@@ -44,21 +44,21 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    struct Headless {
+    struct SpriteNormalsApplyHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
         std::unique_ptr<editor::Platform> platform;
     };
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
-            const fs::path root = fs::temp_directory_path() / ("jasper-spritenormals-apply-test-" + std::to_string(::getpid()));
-            fs::remove_all(root);
-            fs::create_directories(root / "config");
-            setenv("XDG_CONFIG_HOME", (root / "config").c_str(), 1);
-            out.dir = root / "project";
+    SpriteNormalsApplyHeadless& spriteNormalsApplyHeadless() {
+        static SpriteNormalsApplyHeadless h = []() {
+            SpriteNormalsApplyHeadless out;
+            const fs::path spriteNormalsApplyRoot = fs::temp_directory_path() / ("jasper-spritenormals-apply-test-" + std::to_string(::getpid()));
+            fs::remove_all(spriteNormalsApplyRoot);
+            fs::create_directories(spriteNormalsApplyRoot / "config");
+            setenv("XDG_CONFIG_HOME", (spriteNormalsApplyRoot / "config").c_str(), 1);
+            out.dir = spriteNormalsApplyRoot / "project";
             fs::create_directories(out.dir / ".jasperengine");
             std::ofstream(out.dir / "project.yaml") << "name: spritenormalsapply\n";
             AppSettings::initialize();
@@ -77,12 +77,12 @@ namespace {
         return h;
     }
 
-    Project* project() { return headless().project.get(); }
-    const fs::path& root() { return headless().dir; }
+    Project* spriteNormalsApplyProject() { return spriteNormalsApplyHeadless().project.get(); }
+    const fs::path& spriteNormalsApplyRoot() { return spriteNormalsApplyHeadless().dir; }
 
-    std::string folder(const std::string& name) {
-        fs::remove_all(root() / "assets" / name);
-        fs::create_directories(root() / "assets" / name);
+    std::string spriteNormalsApplyFolder(const std::string& name) {
+        fs::remove_all(spriteNormalsApplyRoot() / "assets" / name);
+        fs::create_directories(spriteNormalsApplyRoot() / "assets" / name);
         return "assets/" + name;
     }
 
@@ -91,34 +91,34 @@ namespace {
         for (size_t i = 0; i < image.data.size(); i++) image.data[i] = static_cast<uint8_t>(i * 13);
         std::vector<uint8_t> png;
         ASSERT_TRUE(ts::encodePng(image, png));
-        const fs::path path = root() / fs::u8path(rel);
+        const fs::path path = spriteNormalsApplyRoot() / fs::u8path(rel);
         fs::create_directories(path.parent_path());
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
         file.write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()));
     }
 
-    uint32_t newScene() {
-        Project* p = project();
+    uint32_t spriteNormalsApplyNewScene() {
+        Project* p = spriteNormalsApplyProject();
         if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
         p->createNewScene("Apply", SceneType::SCENE_2D);
         return p->getSelectedSceneId();
     }
 
-    SceneProject* sceneProject(uint32_t sceneId) { return project()->getScene(sceneId); }
-    Scene* sceneOf(uint32_t sceneId) { return sceneProject(sceneId)->scene; }
-    CommandHistory* history(uint32_t sceneId) { return CommandHandle::get(sceneId); }
+    SceneProject* sceneProject(uint32_t sceneId) { return spriteNormalsApplyProject()->getScene(sceneId); }
+    Scene* spriteNormalsApplySceneOf(uint32_t sceneId) { return sceneProject(sceneId)->scene; }
+    CommandHistory* spriteNormalsApplyHistory(uint32_t sceneId) { return CommandHandle::get(sceneId); }
 
-    Entity create(uint32_t sceneId, const std::string& name, EntityCreationType type) {
-        auto* cmd = new CreateEntityCmd(project(), sceneId, name, type);
+    Entity spriteNormalsApplyCreate(uint32_t sceneId, const std::string& name, EntityCreationType type) {
+        auto* cmd = new CreateEntityCmd(spriteNormalsApplyProject(), sceneId, name, type);
         cmd->setQuiet(true);
-        history(sceneId)->addCommandNoMerge(cmd);
+        spriteNormalsApplyHistory(sceneId)->addCommandNoMerge(cmd);
         return cmd->getEntity();
     }
 
     // A Sprite drawing `texture` sampled Nearest, clamped
-    Entity sprite(uint32_t sceneId, const std::string& texture, const std::string& name = "Hero") {
-        const Entity e = create(sceneId, name, EntityCreationType::SPRITE);
-        Texture& base = sceneOf(sceneId)->getComponent<MeshComponent>(e).submeshes[0].material.baseColorTexture;
+    Entity spriteNormalsApplySprite(uint32_t sceneId, const std::string& texture, const std::string& name = "Hero") {
+        const Entity e = spriteNormalsApplyCreate(sceneId, name, EntityCreationType::SPRITE);
+        Texture& base = spriteNormalsApplySceneOf(sceneId)->getComponent<MeshComponent>(e).submeshes[0].material.baseColorTexture;
         base = Texture(texture);
         base.setMinFilter(TextureFilter::NEAREST);
         base.setMagFilter(TextureFilter::NEAREST);
@@ -128,7 +128,7 @@ namespace {
     }
 
     const Material& material(uint32_t sceneId, Entity e, int submesh = 0) {
-        return sceneOf(sceneId)->getComponent<MeshComponent>(e).submeshes[submesh].material;
+        return spriteNormalsApplySceneOf(sceneId)->getComponent<MeshComponent>(e).submeshes[submesh].material;
     }
 
     sn::ApplyRequest still(uint32_t sceneId, Entity e, const std::string& normal, const std::string& color) {
@@ -142,13 +142,13 @@ namespace {
 
     // the Sprite Animations targeting `sprite` (actions have no Transform: CreateEntityCmd's
     // parent becomes their target)
-    std::vector<Entity> animationsOf(Scene* scene, Entity sprite) {
+    std::vector<Entity> animationsOf(Scene* scene, Entity spriteNormalsApplySprite) {
         std::vector<Entity> out;
         auto animations = scene->getComponentArray<SpriteAnimationComponent>();
         for (size_t i = 0; animations && i < animations->size(); i++) {
             const Entity e = animations->getEntity(i);
             const ActionComponent* action = scene->findComponent<ActionComponent>(e);
-            if (scene->isEntityCreated(e) && action && action->target == sprite) out.push_back(e);
+            if (scene->isEntityCreated(e) && action && action->target == spriteNormalsApplySprite) out.push_back(e);
         }
         return out;
     }
@@ -156,15 +156,15 @@ namespace {
 }
 
 TEST(SpriteNormalsApply, StillMapOntoASprite) {
-    const std::string dir = folder("still");
+    const std::string dir = spriteNormalsApplyFolder("still");
     writePng(dir + "/hero.png", 32, 32);
     writePng(dir + "/hero_normal.png", 32, 32);
-    const uint32_t sceneId = newScene();
-    const Entity hero = sprite(sceneId, dir + "/hero.png");
+    const uint32_t sceneId = spriteNormalsApplyNewScene();
+    const Entity hero = spriteNormalsApplySprite(sceneId, dir + "/hero.png");
     sceneProject(sceneId)->isModified = false;
-    const size_t before = history(sceneId)->position();
+    const size_t before = spriteNormalsApplyHistory(sceneId)->position();
 
-    const sn::ApplyResult r = sn::applyToSprite(project(), still(sceneId, hero, dir + "/hero_normal.png", dir + "/hero.png"));
+    const sn::ApplyResult r = sn::applyToSprite(spriteNormalsApplyProject(), still(sceneId, hero, dir + "/hero_normal.png", dir + "/hero.png"));
     ASSERT_TRUE(r.ok) << r.error.message;
     EXPECT_EQ(r.submeshes, std::vector<int>{0});
     EXPECT_EQ(r.undoName, "Assign Normal Map");
@@ -177,176 +177,176 @@ TEST(SpriteNormalsApply, StillMapOntoASprite) {
     EXPECT_EQ(normal.getWrapU(), TextureWrap::CLAMP_TO_EDGE);
     EXPECT_EQ(normal.getWrapV(), TextureWrap::MIRRORED_REPEAT);
     EXPECT_TRUE(sceneProject(sceneId)->isModified);
-    EXPECT_EQ(history(sceneId)->position(), before + 1) << "one undo step";
+    EXPECT_EQ(spriteNormalsApplyHistory(sceneId)->position(), before + 1) << "one undo step";
 
-    ASSERT_TRUE(history(sceneId)->undo());
+    ASSERT_TRUE(spriteNormalsApplyHistory(sceneId)->undo());
     EXPECT_TRUE(material(sceneId, hero).normalTexture.getPath().empty());
-    EXPECT_EQ(history(sceneId)->position(), before);
-    ASSERT_TRUE(history(sceneId)->redo());
+    EXPECT_EQ(spriteNormalsApplyHistory(sceneId)->position(), before);
+    ASSERT_TRUE(spriteNormalsApplyHistory(sceneId)->redo());
     EXPECT_EQ(material(sceneId, hero).normalTexture.getPath(), dir + "/hero_normal.png");
 }
 
 TEST(SpriteNormalsApply, OnlyTheMatchingSubmeshesAndSeveralMapsInOneStep) {
-    const std::string dir = folder("tilemap");
+    const std::string dir = spriteNormalsApplyFolder("tilemap");
     writePng(dir + "/grass.png", 32, 32);
     writePng(dir + "/rock.png", 16, 16);
     writePng(dir + "/grass_normal.png", 32, 32);
     writePng(dir + "/rock_normal.png", 16, 16);
-    const uint32_t sceneId = newScene();
-    const Entity map = create(sceneId, "Tilemap", EntityCreationType::TILEMAP);
-    MeshComponent& mesh = sceneOf(sceneId)->getComponent<MeshComponent>(map);
+    const uint32_t sceneId = spriteNormalsApplyNewScene();
+    const Entity map = spriteNormalsApplyCreate(sceneId, "Tilemap", EntityCreationType::TILEMAP);
+    MeshComponent& mesh = spriteNormalsApplySceneOf(sceneId)->getComponent<MeshComponent>(map);
     mesh.numSubmeshes = 2;
     mesh.submeshes[0].material.baseColorTexture = Texture(dir + "/grass.png");
     mesh.submeshes[1].material.baseColorTexture = Texture(dir + "/rock.png");
 
-    sn::ApplyResult r = sn::applyToSprite(project(), still(sceneId, map, dir + "/rock_normal.png", dir + "/rock.png"));
+    sn::ApplyResult r = sn::applyToSprite(spriteNormalsApplyProject(), still(sceneId, map, dir + "/rock_normal.png", dir + "/rock.png"));
     ASSERT_TRUE(r.ok) << r.error.message;
     EXPECT_EQ(r.submeshes, std::vector<int>{1});
     EXPECT_TRUE(material(sceneId, map, 0).normalTexture.getPath().empty());
     EXPECT_EQ(material(sceneId, map, 1).normalTexture.getPath(), dir + "/rock_normal.png");
-    ASSERT_TRUE(history(sceneId)->undo());
+    ASSERT_TRUE(spriteNormalsApplyHistory(sceneId)->undo());
 
     // both tilesets' maps in one step
     sn::ApplyRequest both;
     both.sceneId = sceneId;
     both.entity = map;
     both.maps = {{dir + "/grass_normal.png", dir + "/grass.png"}, {dir + "/rock_normal.png", dir + "/rock.png"}};
-    const size_t before = history(sceneId)->position();
-    r = sn::applyToSprite(project(), both);
+    const size_t before = spriteNormalsApplyHistory(sceneId)->position();
+    r = sn::applyToSprite(spriteNormalsApplyProject(), both);
     ASSERT_TRUE(r.ok) << r.error.message;
     EXPECT_EQ(r.submeshes, (std::vector<int>{0, 1}));
     EXPECT_EQ(material(sceneId, map, 0).normalTexture.getPath(), dir + "/grass_normal.png");
     EXPECT_EQ(material(sceneId, map, 1).normalTexture.getPath(), dir + "/rock_normal.png");
-    EXPECT_EQ(history(sceneId)->position(), before + 1);
-    ASSERT_TRUE(history(sceneId)->undo());
+    EXPECT_EQ(spriteNormalsApplyHistory(sceneId)->position(), before + 1);
+    ASSERT_TRUE(spriteNormalsApplyHistory(sceneId)->undo());
     EXPECT_TRUE(material(sceneId, map, 0).normalTexture.getPath().empty());
     EXPECT_TRUE(material(sceneId, map, 1).normalTexture.getPath().empty());
 
     // one pair that does not match: nothing is applied
     both.maps[1].colorSourcePath = dir + "/sand.png";
-    r = sn::applyToSprite(project(), both);
+    r = sn::applyToSprite(spriteNormalsApplyProject(), both);
     EXPECT_FALSE(r.ok);
     EXPECT_EQ(r.error.kind, "not_a_sprite");
     EXPECT_TRUE(material(sceneId, map, 0).normalTexture.getPath().empty());
-    EXPECT_EQ(history(sceneId)->position(), before);
+    EXPECT_EQ(spriteNormalsApplyHistory(sceneId)->position(), before);
 }
 
 TEST(SpriteNormalsApply, ApplyToSpritesIsOneStepAllOrNothing) {
-    const std::string dir = folder("many");
+    const std::string dir = spriteNormalsApplyFolder("many");
     writePng(dir + "/a.png", 16, 16);
     writePng(dir + "/a_normal.png", 16, 16);
     writePng(dir + "/b.png", 16, 16);
     writePng(dir + "/b_normal.png", 8, 8);
-    const uint32_t sceneId = newScene();
-    const Entity a = sprite(sceneId, dir + "/a.png", "A");
-    const Entity b = sprite(sceneId, dir + "/b.png", "B");
-    const size_t before = history(sceneId)->position();
+    const uint32_t sceneId = spriteNormalsApplyNewScene();
+    const Entity a = spriteNormalsApplySprite(sceneId, dir + "/a.png", "A");
+    const Entity b = spriteNormalsApplySprite(sceneId, dir + "/b.png", "B");
+    const size_t before = spriteNormalsApplyHistory(sceneId)->position();
 
     // b's map has the wrong size: a's assignment is undone too
-    sn::ApplyResult r = sn::applyToSprites(project(), {still(sceneId, a, dir + "/a_normal.png", dir + "/a.png"),
+    sn::ApplyResult r = sn::applyToSprites(spriteNormalsApplyProject(), {still(sceneId, a, dir + "/a_normal.png", dir + "/a.png"),
                                                        still(sceneId, b, dir + "/b_normal.png", dir + "/b.png")});
     EXPECT_FALSE(r.ok);
     EXPECT_EQ(r.error.kind, "size_mismatch");
     EXPECT_TRUE(material(sceneId, a).normalTexture.getPath().empty());
-    EXPECT_EQ(history(sceneId)->position(), before);
-    EXPECT_FALSE(history(sceneId)->canRedo()) << "a rolled back step leaves nothing to redo";
+    EXPECT_EQ(spriteNormalsApplyHistory(sceneId)->position(), before);
+    EXPECT_FALSE(spriteNormalsApplyHistory(sceneId)->canRedo()) << "a rolled back step leaves nothing to redo";
 
     writePng(dir + "/b_normal.png", 16, 16);
-    r = sn::applyToSprites(project(), {still(sceneId, a, dir + "/a_normal.png", dir + "/a.png"), still(sceneId, b, dir + "/b_normal.png", dir + "/b.png")});
+    r = sn::applyToSprites(spriteNormalsApplyProject(), {still(sceneId, a, dir + "/a_normal.png", dir + "/a.png"), still(sceneId, b, dir + "/b_normal.png", dir + "/b.png")});
     ASSERT_TRUE(r.ok) << r.error.message;
-    EXPECT_EQ(history(sceneId)->position(), before + 1);
+    EXPECT_EQ(spriteNormalsApplyHistory(sceneId)->position(), before + 1);
     EXPECT_EQ(material(sceneId, b).normalTexture.getPath(), dir + "/b_normal.png");
-    ASSERT_TRUE(history(sceneId)->undo());
+    ASSERT_TRUE(spriteNormalsApplyHistory(sceneId)->undo());
     EXPECT_TRUE(material(sceneId, a).normalTexture.getPath().empty());
     EXPECT_TRUE(material(sceneId, b).normalTexture.getPath().empty());
 
     // two scenes: refused (the first made non-transient, so the new scene does not replace it)
     sceneProject(sceneId)->transientId = false;
     sceneProject(sceneId)->isModified = false;
-    project()->createNewScene("Other", SceneType::SCENE_2D);
-    const uint32_t other = project()->getSelectedSceneId();
+    spriteNormalsApplyProject()->createNewScene("Other", SceneType::SCENE_2D);
+    const uint32_t other = spriteNormalsApplyProject()->getSelectedSceneId();
     ASSERT_NE(other, sceneId);
-    const Entity c = sprite(other, dir + "/a.png", "C");
-    r = sn::applyToSprites(project(), {still(sceneId, a, dir + "/a_normal.png", dir + "/a.png"), still(other, c, dir + "/a_normal.png", dir + "/a.png")});
+    const Entity c = spriteNormalsApplySprite(other, dir + "/a.png", "C");
+    r = sn::applyToSprites(spriteNormalsApplyProject(), {still(sceneId, a, dir + "/a_normal.png", dir + "/a.png"), still(other, c, dir + "/a_normal.png", dir + "/a.png")});
     EXPECT_FALSE(r.ok);
     EXPECT_EQ(r.error.kind, "not_a_sprite");
     EXPECT_NE(r.error.message.find("scenes"), std::string::npos) << r.error.message;
-    EXPECT_FALSE(sn::applyToSprites(project(), {}).ok);
+    EXPECT_FALSE(sn::applyToSprites(spriteNormalsApplyProject(), {}).ok);
 }
 
 TEST(SpriteNormalsApply, Refusals) {
-    const std::string dir = folder("refusals");
+    const std::string dir = spriteNormalsApplyFolder("refusals");
     writePng(dir + "/hero.png", 32, 32);
     writePng(dir + "/small_normal.png", 16, 16);
     writePng(dir + "/hero_normal.png", 32, 32);
-    const uint32_t sceneId = newScene();
-    const Entity hero = sprite(sceneId, dir + "/hero.png");
-    const size_t before = history(sceneId)->position();
+    const uint32_t sceneId = spriteNormalsApplyNewScene();
+    const Entity hero = spriteNormalsApplySprite(sceneId, dir + "/hero.png");
+    const size_t before = spriteNormalsApplyHistory(sceneId)->position();
 
-    sn::ApplyResult r = sn::applyToSprite(project(), still(sceneId, hero, dir + "/small_normal.png", dir + "/hero.png"));
+    sn::ApplyResult r = sn::applyToSprite(spriteNormalsApplyProject(), still(sceneId, hero, dir + "/small_normal.png", dir + "/hero.png"));
     EXPECT_FALSE(r.ok);
     EXPECT_EQ(r.error.kind, "size_mismatch");
     EXPECT_EQ(r.error.message, "The sprite's texture is 32x32 but the normal map is 16x16; they must match pixel for pixel.");
 
-    r = sn::applyToSprite(project(), still(sceneId, hero, dir + "/hero_normal.png", dir + "/other.png"));
+    r = sn::applyToSprite(spriteNormalsApplyProject(), still(sceneId, hero, dir + "/hero_normal.png", dir + "/other.png"));
     EXPECT_EQ(r.error.kind, "not_a_sprite");
     EXPECT_EQ(r.error.message, "Its texture is " + dir + "/hero.png, not " + dir + "/other.png.");
 
-    const Entity empty = create(sceneId, "Empty", EntityCreationType::GAMEOBJECT);
-    r = sn::applyToSprite(project(), still(sceneId, empty, dir + "/hero_normal.png", dir + "/hero.png"));
+    const Entity empty = spriteNormalsApplyCreate(sceneId, "Empty", EntityCreationType::GAMEOBJECT);
+    r = sn::applyToSprite(spriteNormalsApplyProject(), still(sceneId, empty, dir + "/hero_normal.png", dir + "/hero.png"));
     EXPECT_EQ(r.error.kind, "not_a_sprite");
 
-    r = sn::applyToSprite(project(), still(sceneId, hero, dir + "/missing_normal.png", dir + "/hero.png"));
+    r = sn::applyToSprite(spriteNormalsApplyProject(), still(sceneId, hero, dir + "/missing_normal.png", dir + "/hero.png"));
     EXPECT_FALSE(r.ok);
     EXPECT_EQ(r.error.kind, "invalid_source");
 
     sceneProject(sceneId)->playState = ScenePlayState::PLAYING;
-    r = sn::applyToSprite(project(), still(sceneId, hero, dir + "/hero_normal.png", dir + "/hero.png"));
+    r = sn::applyToSprite(spriteNormalsApplyProject(), still(sceneId, hero, dir + "/hero_normal.png", dir + "/hero.png"));
     sceneProject(sceneId)->playState = ScenePlayState::STOPPED;
     EXPECT_EQ(r.error.kind, "scene_playing");
     EXPECT_FALSE(r.error.fix.empty());
 
-    EXPECT_EQ(history(sceneId)->position(), before + 1) << "only the Empty GameObject was added";
+    EXPECT_EQ(spriteNormalsApplyHistory(sceneId)->position(), before + 1) << "only the Empty GameObject was added";
     // a refusal keeps the user's redo tail
-    ASSERT_TRUE(history(sceneId)->undo());
-    ASSERT_TRUE(history(sceneId)->canRedo());
-    r = sn::applyToSprite(project(), still(sceneId, hero, dir + "/small_normal.png", dir + "/hero.png"));
+    ASSERT_TRUE(spriteNormalsApplyHistory(sceneId)->undo());
+    ASSERT_TRUE(spriteNormalsApplyHistory(sceneId)->canRedo());
+    r = sn::applyToSprite(spriteNormalsApplyProject(), still(sceneId, hero, dir + "/small_normal.png", dir + "/hero.png"));
     EXPECT_EQ(r.error.kind, "size_mismatch");
-    EXPECT_TRUE(history(sceneId)->canRedo()) << "nothing was added, so nothing is dropped";
-    ASSERT_TRUE(history(sceneId)->redo());
+    EXPECT_TRUE(spriteNormalsApplyHistory(sceneId)->canRedo()) << "nothing was added, so nothing is dropped";
+    ASSERT_TRUE(spriteNormalsApplyHistory(sceneId)->redo());
     EXPECT_TRUE(material(sceneId, hero).normalTexture.getPath().empty());
     EXPECT_FALSE(sn::applyToSprite(nullptr, still(sceneId, hero, "", "")).ok);
 }
 
 TEST(SpriteNormalsApply, LinkedMaterialWarns) {
-    const std::string dir = folder("linked");
+    const std::string dir = spriteNormalsApplyFolder("linked");
     writePng(dir + "/hero.png", 8, 8);
     writePng(dir + "/hero_normal.png", 8, 8);
-    const uint32_t sceneId = newScene();
-    const Entity hero = sprite(sceneId, dir + "/hero.png");
-    project()->linkMaterialFile(sceneId, hero, 0, dir + "/hero.material");
-    const sn::ApplyResult r = sn::applyToSprite(project(), still(sceneId, hero, dir + "/hero_normal.png", dir + "/hero.png"));
+    const uint32_t sceneId = spriteNormalsApplyNewScene();
+    const Entity hero = spriteNormalsApplySprite(sceneId, dir + "/hero.png");
+    spriteNormalsApplyProject()->linkMaterialFile(sceneId, hero, 0, dir + "/hero.material");
+    const sn::ApplyResult r = sn::applyToSprite(spriteNormalsApplyProject(), still(sceneId, hero, dir + "/hero_normal.png", dir + "/hero.png"));
     ASSERT_TRUE(r.ok) << r.error.message;
     ASSERT_EQ(r.warnings.size(), 1u);
     EXPECT_EQ(r.warnings[0].kind, "material_linked");
     EXPECT_EQ(r.warnings[0].message, "The sprite's material comes from " + dir + "/hero.material; the scene's copy changed, the file did not.");
-    project()->unlinkMaterialFile(sceneId, hero, 0);
+    spriteNormalsApplyProject()->unlinkMaterialFile(sceneId, hero, 0);
 }
 
 TEST(SpriteNormalsApply, AnimatedSourceMakesTheAnimation) {
-    const std::string dir = folder("animated");
+    const std::string dir = spriteNormalsApplyFolder("animated");
     writePng(dir + "/old.png", 16, 16);
     writePng(dir + "/walk_sheet.png", 64, 32);
     writePng(dir + "/walk_sheet_normal.png", 64, 32);
-    const uint32_t sceneId = newScene();
-    Scene* scene = sceneOf(sceneId);
-    const Entity hero = sprite(sceneId, dir + "/old.png");
+    const uint32_t sceneId = spriteNormalsApplyNewScene();
+    Scene* scene = spriteNormalsApplySceneOf(sceneId);
+    const Entity hero = spriteNormalsApplySprite(sceneId, dir + "/old.png");
     SpriteComponent& before = scene->getComponent<SpriteComponent>(hero);
     before.framesRect[0] = {"x", Rect(0, 0, 4, 4)};
     before.framesRect[1] = {"y", Rect(4, 0, 4, 4)};
     before.framesRect[2] = {"z", Rect(8, 0, 4, 4)};
     before.numFramesRect = 3;
-    const size_t start = history(sceneId)->position();
+    const size_t start = spriteNormalsApplyHistory(sceneId)->position();
 
     sn::ApplyRequest r;
     r.sceneId = sceneId;
@@ -357,11 +357,11 @@ TEST(SpriteNormalsApply, AnimatedSourceMakesTheAnimation) {
     r.frames = {{0, 0, 32, 32}, {32, 0, 32, 32}};
     r.frameMs = {80, 120};
     r.loopCount = 0;
-    sn::ApplyResult result = sn::applyToSprite(project(), r);
+    sn::ApplyResult result = sn::applyToSprite(spriteNormalsApplyProject(), r);
     ASSERT_TRUE(result.ok) << result.error.message;
     EXPECT_EQ(result.undoName, "Assign Animated Sprite");
     EXPECT_TRUE(result.createdAnimation);
-    EXPECT_EQ(history(sceneId)->position(), start + 1) << "one undo step, the animation included";
+    EXPECT_EQ(spriteNormalsApplyHistory(sceneId)->position(), start + 1) << "one undo step, the animation included";
 
     const Material& m = material(sceneId, hero);
     EXPECT_EQ(m.baseColorTexture.getPath(), dir + "/walk_sheet.png");
@@ -395,13 +395,13 @@ TEST(SpriteNormalsApply, AnimatedSourceMakesTheAnimation) {
     EXPECT_EQ(action.state, ActionState::Running) << "autoplay when created";
 
     // undo: everything back, the animation gone; redo: all again
-    ASSERT_TRUE(history(sceneId)->undo());
+    ASSERT_TRUE(spriteNormalsApplyHistory(sceneId)->undo());
     EXPECT_EQ(material(sceneId, hero).baseColorTexture.getPath(), dir + "/old.png");
     EXPECT_TRUE(material(sceneId, hero).normalTexture.getPath().empty());
     EXPECT_EQ(scene->getComponent<SpriteComponent>(hero).numFramesRect, 3u);
     EXPECT_EQ(scene->getComponent<SpriteComponent>(hero).framesRect[2].name, "z");
     EXPECT_TRUE(animationsOf(scene, hero).empty());
-    ASSERT_TRUE(history(sceneId)->redo());
+    ASSERT_TRUE(spriteNormalsApplyHistory(sceneId)->redo());
     EXPECT_EQ(material(sceneId, hero).baseColorTexture.getPath(), dir + "/walk_sheet.png");
     ASSERT_EQ(animationsOf(scene, hero).size(), 1u);
 
@@ -410,7 +410,7 @@ TEST(SpriteNormalsApply, AnimatedSourceMakesTheAnimation) {
     r.frames = {{0, 0, 32, 32}};
     r.frameMs = {50};
     r.loopCount = 1;
-    result = sn::applyToSprite(project(), r);
+    result = sn::applyToSprite(spriteNormalsApplyProject(), r);
     ASSERT_TRUE(result.ok) << result.error.message;
     EXPECT_FALSE(result.createdAnimation);
     EXPECT_EQ(result.animation, existing);
@@ -420,17 +420,17 @@ TEST(SpriteNormalsApply, AnimatedSourceMakesTheAnimation) {
     EXPECT_EQ(updated.framesTime[0], 50);
     EXPECT_EQ(updated.framesTime[1], 0);
     EXPECT_FALSE(updated.loop);
-    ASSERT_TRUE(history(sceneId)->undo());
+    ASSERT_TRUE(spriteNormalsApplyHistory(sceneId)->undo());
     EXPECT_EQ(scene->getComponent<SpriteAnimationComponent>(existing).framesSize, 2u);
     EXPECT_TRUE(scene->getComponent<SpriteAnimationComponent>(existing).loop);
 }
 
 TEST(SpriteNormalsApply, AnimatedRefusals) {
-    const std::string dir = folder("animrefuse");
+    const std::string dir = spriteNormalsApplyFolder("animrefuse");
     writePng(dir + "/sheet.png", 64, 32);
     writePng(dir + "/sheet_normal.png", 64, 32);
-    const uint32_t sceneId = newScene();
-    const Entity hero = sprite(sceneId, dir + "/sheet.png");
+    const uint32_t sceneId = spriteNormalsApplyNewScene();
+    const Entity hero = spriteNormalsApplySprite(sceneId, dir + "/sheet.png");
     sn::ApplyRequest r;
     r.sceneId = sceneId;
     r.entity = hero;
@@ -438,23 +438,23 @@ TEST(SpriteNormalsApply, AnimatedRefusals) {
     r.atlasPath = dir + "/sheet.png";
     // (a sprite holds any number of frames: only past ARRAY_INDEX_LIMIT is a count refused)
     r.frames.assign(ARRAY_INDEX_LIMIT + 1, {0, 0, 1, 1});
-    sn::ApplyResult result = sn::applyToSprite(project(), r);
+    sn::ApplyResult result = sn::applyToSprite(spriteNormalsApplyProject(), r);
     EXPECT_FALSE(result.ok);
     EXPECT_EQ(result.error.kind, "too_many_frames");
     EXPECT_EQ(result.error.message, "The animation has 65537 frames; a Sprite holds at most 65536.");
 
     // frames outside the atlas
     r.frames = {{0, 0, 32, 32}, {48, 0, 32, 32}};
-    result = sn::applyToSprite(project(), r);
+    result = sn::applyToSprite(spriteNormalsApplyProject(), r);
     EXPECT_EQ(result.error.kind, "frames_mismatch");
     EXPECT_EQ(result.error.message, "Frame 1 [48, 0, 32, 32] is not inside the 64x32 atlas.");
 
     // a mesh that is not a Sprite can't hold frames
-    const Entity plane = create(sceneId, "Plane", EntityCreationType::PLANE);
+    const Entity plane = spriteNormalsApplyCreate(sceneId, "Plane", EntityCreationType::PLANE);
     r.entity = plane;
     r.frames = {{0, 0, 32, 32}};
-    result = sn::applyToSprite(project(), r);
+    result = sn::applyToSprite(spriteNormalsApplyProject(), r);
     EXPECT_FALSE(result.ok);
     EXPECT_EQ(result.error.kind, "not_a_sprite");
-    EXPECT_TRUE(animationsOf(sceneOf(sceneId), hero).empty());
+    EXPECT_TRUE(animationsOf(spriteNormalsApplySceneOf(sceneId), hero).empty());
 }

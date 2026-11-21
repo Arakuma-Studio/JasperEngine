@@ -26,7 +26,7 @@ using namespace jasperengine::titleart::test;
 
 namespace {
 
-    Json goldMaterial() {
+    Json titleArtRendererGoldMaterial() {
         return Json{{"fill", {{"kind", "linear"}, {"angle", 90},
                               {"gradient", {{"stops", Json::array({{{"pos", 0}, {"color", "#fff4b0"}}, {{"pos", 0.5}, {"color", "#e0a020"}}, {{"pos", 1}, {"color", "#7a4a08"}}})}}}}},
                     {"bevel", {{"enabled", true}, {"size", 4}, {"depth", 4}}},
@@ -35,7 +35,7 @@ namespace {
                     {"gloss", {{"enabled", true}}}};
     }
 
-    Json rim(const char* id, double width, const char* color, bool bevel) {
+    Json titleArtRendererRim(const char* id, double width, const char* color, bool bevel) {
         Json material = solidFace(color);
         if (bevel) material["bevel"] = {{"enabled", true}, {"size", 2}};
         return Json{{"id", id}, {"width", width}, {"material", material}};
@@ -46,9 +46,9 @@ namespace {
     Json classicLayer(const char* id = "00000001", Json position = Json::array({0, 0})) {
         Json layer{{"id", id}, {"type", "text"}, {"name", "Title"}, {"text", "FFFF"}, {"size", 200},
                    {"transform", {{"position", position}}},
-                   {"style", {{"face", goldMaterial()},
-                              {"rims", Json::array({rim("00000011", 4, "#7a2a00", true), rim("00000012", 3, "#ffe080", true),
-                                                    rim("00000013", 5, "#3a0a00", true), rim("00000014", 3, "#000000", false)})}}},
+                   {"style", {{"face", titleArtRendererGoldMaterial()},
+                              {"rims", Json::array({titleArtRendererRim("00000011", 4, "#7a2a00", true), titleArtRendererRim("00000012", 3, "#ffe080", true),
+                                                    titleArtRendererRim("00000013", 5, "#3a0a00", true), titleArtRendererRim("00000014", 3, "#000000", false)})}}},
                    {"effects", Json::array({effect("00000021", "outer_glow", Json::object()), effect("00000022", "drop_shadow", Json::object())})}};
         return layer;
     }
@@ -58,7 +58,7 @@ namespace {
         return makeDoc({{"canvas", canvas(w, h)}, {"layers", Json::array({classicLayer()})}});
     }
 
-    RenderRequest requestOf(std::shared_ptr<const TitleArtDoc> doc, float scale = 1.0f) {
+    RenderRequest titleArtRendererRequestOf(std::shared_ptr<const TitleArtDoc> doc, float scale = 1.0f) {
         RenderRequest r;
         r.doc = std::move(doc);
         r.pxScale = scale;
@@ -93,7 +93,7 @@ TEST_F(TitleArtRendererGpu, SolidShapeDrawsItsPixels) {
     auto renderer = makeRenderer();
     auto doc = makeDoc({{"canvas", canvas(256, 128)}, {"layers", Json::array({shapeLayer("00000001", "rect", 64, solidFace("#ff0000"))})}});
     std::unique_ptr<TitleRenderJob> job;
-    Pixels p = render(*renderer, requestOf(doc), &job);
+    Pixels p = render(*renderer, titleArtRendererRequestOf(doc), &job);
     ASSERT_EQ(p.width, 256);
     ASSERT_EQ(p.height, 128);
     EXPECT_EQ(job->image().frame, (TitleRectI{0, 0, 256, 128}));
@@ -115,7 +115,7 @@ TEST_F(TitleArtRendererGpu, SolidShapeDrawsItsPixels) {
 TEST_F(TitleArtRendererGpu, JobMembers) {
     auto renderer = makeRenderer();
     auto doc = classicDoc(640, 360);
-    std::unique_ptr<TitleRenderJob> job = renderer->begin(requestOf(doc));
+    std::unique_ptr<TitleRenderJob> job = renderer->begin(titleArtRendererRequestOf(doc));
     ASSERT_TRUE(job);
     ASSERT_GT(job->passesTotal(), 10u);
     // every program the job binds, and only the renderer's
@@ -164,7 +164,7 @@ TEST_F(TitleArtRendererGpu, JobMembers) {
 
     // split into tiles of at least 256 x 256: the same image byte for byte
     Pixels whole = readImage(job->image());
-    std::unique_ptr<TitleRenderJob> split = renderer->begin(requestOf(doc));
+    std::unique_ptr<TitleRenderJob> split = renderer->begin(titleArtRendererRequestOf(doc));
     const uint32_t before = split->passesTotal();
     split->splitOversizedSteps(1);
     EXPECT_GT(split->passesTotal(), before);
@@ -177,7 +177,7 @@ TEST_F(TitleArtRendererGpu, SlicedEqualsOneShot) {
     // the bake's one call and the preview's 1-pass slices after ten edits and their undo
     auto oneShotRenderer = makeRenderer();
     auto doc = classicDoc(640, 360);
-    Pixels oneShot = render(*oneShotRenderer, requestOf(doc));
+    Pixels oneShot = render(*oneShotRenderer, titleArtRendererRequestOf(doc));
 
     auto previewRenderer = makeRenderer();
     std::shared_ptr<const TitleArtDoc> current = doc;
@@ -186,10 +186,10 @@ TEST_F(TitleArtRendererGpu, SlicedEqualsOneShot) {
             root["layers"][0]["style"]["rims"][i % 4]["width"] = 2.0 + i;
             root["layers"][0]["transform"]["position"] = Json::array({i * 3, -i * 2});
         });
-        std::unique_ptr<TitleRenderJob> job = previewRenderer->begin(requestOf(current));
+        std::unique_ptr<TitleRenderJob> job = previewRenderer->begin(titleArtRendererRequestOf(current));
         ASSERT_TRUE(runJob(*job, {0, 1}));
     }
-    std::unique_ptr<TitleRenderJob> undone = previewRenderer->begin(requestOf(doc));
+    std::unique_ptr<TitleRenderJob> undone = previewRenderer->begin(titleArtRendererRequestOf(doc));
     ASSERT_TRUE(runJob(*undone, {0, 1}));
     Pixels sliced = readImage(undone->image());
     EXPECT_TRUE(identical(oneShot, sliced));
@@ -206,9 +206,9 @@ TEST_F(TitleArtRendererGpu, RenderTwiceFreshIds) {
         for (Json& r : layer["style"]["rims"]) r["id"] = "9" + std::to_string(1000000 + n++);
         for (Json& e : layer["effects"]) e["id"] = "8" + std::to_string(1000000 + n++);
     });
-    Pixels first = render(*renderer, requestOf(a));
+    Pixels first = render(*renderer, titleArtRendererRequestOf(a));
     auto fresh = makeRenderer();
-    Pixels second = render(*fresh, requestOf(b));
+    Pixels second = render(*fresh, titleArtRendererRequestOf(b));
     EXPECT_TRUE(identical(first, second));
 }
 
@@ -216,40 +216,40 @@ TEST_F(TitleArtRendererGpu, CacheCascade) {
     auto renderer = makeRenderer();
     auto doc = classicDoc();
     Pixels full;
-    const uint64_t fullPasses = passesOf(*renderer, requestOf(doc), &full);
+    const uint64_t fullPasses = passesOf(*renderer, titleArtRendererRequestOf(doc), &full);
     ASSERT_GT(fullPasses, 20u);
     RecordProperty("full_passes", (int)fullPasses);
 
     // a face colour change re-shades the stack, never the masks or distance fields
     auto recoloured = edited(doc, [](Json& root) { root["layers"][0]["style"]["face"]["bevel"]["highlight_color"] = "#ffe0e0"; });
     Pixels colour;
-    const uint64_t colourPasses = passesOf(*renderer, requestOf(recoloured), &colour);
+    const uint64_t colourPasses = passesOf(*renderer, titleArtRendererRequestOf(recoloured), &colour);
     RecordProperty("colour_passes", (int)colourPasses);
     // R42: the faces shade over the kept rims, the effects reuse what they drew from the
     // unchanged alpha (their blurs and fields): stack, placement, compose, output and one pass
     // per effect
     EXPECT_LE(colourPasses, 8u);
     auto freshRenderer = makeRenderer();
-    EXPECT_TRUE(identical(colour, render(*freshRenderer, requestOf(recoloured)))) << "the cached colour change differs from a fresh render";
+    EXPECT_TRUE(identical(colour, render(*freshRenderer, titleArtRendererRequestOf(recoloured)))) << "the cached colour change differs from a fresh render";
 
     // a whole-pixel move re-places the cached node: the compose and the output
     auto moved = edited(doc, [](Json& root) { root["layers"][0]["transform"]["position"] = Json::array({40, -24}); });
     Pixels move;
-    render(*renderer, requestOf(doc));
-    const uint64_t movePasses = passesOf(*renderer, requestOf(moved), &move);
+    render(*renderer, titleArtRendererRequestOf(doc));
+    const uint64_t movePasses = passesOf(*renderer, titleArtRendererRequestOf(moved), &move);
     EXPECT_LE(movePasses, 2u);
     auto freshMove = makeRenderer();
-    EXPECT_TRUE(identical(move, render(*freshMove, requestOf(moved)))) << "the re-placed node differs from a fresh render";
+    EXPECT_TRUE(identical(move, render(*freshMove, titleArtRendererRequestOf(moved)))) << "the re-placed node differs from a fresh render";
 
     // the outermost rim's width: only its own mask, field and the stack re-run
     auto wider = edited(doc, [](Json& root) { root["layers"][0]["style"]["rims"][3]["width"] = 3.5; });
-    render(*renderer, requestOf(doc));
+    render(*renderer, titleArtRendererRequestOf(doc));
     Pixels rimImage;
-    const uint64_t rimPasses = passesOf(*renderer, requestOf(wider), &rimImage);
+    const uint64_t rimPasses = passesOf(*renderer, titleArtRendererRequestOf(wider), &rimImage);
     RecordProperty("rim_passes", (int)rimPasses);
     EXPECT_LE((double)rimPasses, 0.6 * (double)fullPasses);
     auto freshRim = makeRenderer();
-    EXPECT_TRUE(identical(rimImage, render(*freshRim, requestOf(wider))));
+    EXPECT_TRUE(identical(rimImage, render(*freshRim, titleArtRendererRequestOf(wider))));
     EXPECT_GT(renderer->stats().cacheHits, 0u);
     std::printf("[ cascade  ] full %llu, colour %llu, move %llu, outer rim %llu passes\n", (unsigned long long)fullPasses,
                 (unsigned long long)colourPasses, (unsigned long long)movePasses, (unsigned long long)rimPasses);
@@ -259,7 +259,7 @@ TEST_F(TitleArtRendererGpu, RoiMemory) {
     auto renderer = makeRenderer();
     // the classic fixture at 1920 x 1080: R44's 96 MB
     std::unique_ptr<TitleRenderJob> job;
-    render(*renderer, requestOf(classicDoc()), &job);
+    render(*renderer, titleArtRendererRequestOf(classicDoc()), &job);
     const size_t peak = renderer->poolStats().peakBytes;
     RecordProperty("peak_bytes", (int)peak);
     std::printf("[ memory   ] classic fixture peak %.1f MB\n", peak / 1048576.0);
@@ -271,7 +271,7 @@ TEST_F(TitleArtRendererGpu, RoiMemory) {
     auto corner = makeDoc({{"canvas", canvas(1920, 1080)},
                            {"layers", Json::array({shapeLayer("00000001", "rect", 20, solidFace("#00ff00"),
                                                               {{"transform", {{"position", Json::array({-900, 500})}}}})})}});
-    render(*small, requestOf(corner));
+    render(*small, titleArtRendererRequestOf(corner));
     const size_t canvasBytes = (size_t)1920 * 1080 * (colorFormatBytes(TitleArtCaps::select(SystemRender::getFeatures(), 0).format(TitleBuffer::Accumulator).format) + 4);
     // the canvas accumulator and the output, plus small targets only
     EXPECT_LE(small->poolStats().peakBytes, canvasBytes + ((size_t)1 << 20));
@@ -280,10 +280,10 @@ TEST_F(TitleArtRendererGpu, RoiMemory) {
 TEST_F(TitleArtRendererGpu, DeviceLoss) {
     auto renderer = makeRenderer();
     auto doc = classicDoc(640, 360);
-    Pixels before = render(*renderer, requestOf(doc));
+    Pixels before = render(*renderer, titleArtRendererRequestOf(doc));
     // nothing cached: the job runs every pass
     renderer->trim();
-    std::unique_ptr<TitleRenderJob> job = renderer->begin(requestOf(doc));
+    std::unique_ptr<TitleRenderJob> job = renderer->begin(titleArtRendererRequestOf(doc));
     // mid-render: a few steps, then the device goes
     for (int i = 0; i < 8 && !job->done(); i++) {
         SystemRender::updateGpuCreation();
@@ -296,14 +296,14 @@ TEST_F(TitleArtRendererGpu, DeviceLoss) {
     EXPECT_NE(job->error().find("device_lost"), std::string::npos) << job->error();
     EXPECT_EQ(renderer->cacheEntries(), 0u);
     // a new render after the loss starts from nothing and draws the same image
-    Pixels after = render(*renderer, requestOf(doc));
+    Pixels after = render(*renderer, titleArtRendererRequestOf(doc));
     EXPECT_TRUE(identical(before, after));
 }
 
 TEST_F(TitleArtRendererGpu, OverridesEqualEdits) {
     auto renderer = makeRenderer();
     auto doc = classicDoc(640, 360);
-    RenderRequest overridden = requestOf(doc);
+    RenderRequest overridden = titleArtRendererRequestOf(doc);
     overridden.overrides.push_back({"00000001", "style.face.bevel.highlight_color", Json("#80ff80")});
     overridden.overrides.push_back({"00000001", "transform.position", Json::array({12, 8})});
     Pixels viaOverrides = render(*renderer, overridden);
@@ -314,7 +314,7 @@ TEST_F(TitleArtRendererGpu, OverridesEqualEdits) {
         root["layers"][0]["transform"]["position"] = Json::array({12, 8});
     });
     auto fresh = makeRenderer();
-    EXPECT_TRUE(identical(viaOverrides, render(*fresh, requestOf(edit))));
+    EXPECT_TRUE(identical(viaOverrides, render(*fresh, titleArtRendererRequestOf(edit))));
 }
 
 TEST_F(TitleArtRendererGpu, KeptSplit) {
@@ -323,7 +323,7 @@ TEST_F(TitleArtRendererGpu, KeptSplit) {
                         {"layers", Json::array({shapeLayer("00000001", "rect", 100, solidFace("#2040ff")),
                                                 shapeLayer("00000002", "ellipse", 60, solidFace("#ff2020"),
                                                            {{"effects", Json::array({effect("00000003", "test_shadow")})}})})}});
-    RenderRequest request = requestOf(doc);
+    RenderRequest request = titleArtRendererRequestOf(doc);
     request.keepSplits = {"00000002"};
     request.output = TitleOutputFormat::Linear;
     std::unique_ptr<TitleRenderJob> job;
@@ -332,7 +332,7 @@ TEST_F(TitleArtRendererGpu, KeptSplit) {
     const TitleImage& split = job->splits().layers.at("00000002");
     Pixels kept = readImage(split);
     // the layer alone (isolated) is the same composite
-    RenderRequest alone = requestOf(doc);
+    RenderRequest alone = titleArtRendererRequestOf(doc);
     alone.isolateLayer = "00000002";
     alone.output = TitleOutputFormat::Linear;
     std::unique_ptr<TitleRenderJob> isolatedJob;
@@ -354,10 +354,10 @@ TEST_F(TitleArtRendererGpu, KeptSplit) {
 TEST_F(TitleArtRendererGpu, GlyphCell) {
     auto renderer = makeRenderer();
     Json layer{{"id", "00000001"}, {"type", "text"}, {"text", "FF"}, {"size", 80},
-               {"style", {{"face", solidFace("#ffd000")}, {"rims", Json::array({rim("00000011", 6, "#301000", false)})}}},
+               {"style", {{"face", solidFace("#ffd000")}, {"rims", Json::array({titleArtRendererRim("00000011", 6, "#301000", false)})}}},
                {"effects", Json::array({effect("00000021", "test_shadow")})}};
     auto doc = makeDoc({{"canvas", canvas(320, 160)}, {"layers", Json::array({layer})}});
-    RenderRequest request = requestOf(doc);
+    RenderRequest request = titleArtRendererRequestOf(doc);
     request.glyphCell = GlyphCellRequest{"00000001", 1, GlyphCellRequest::Back};
     request.output = TitleOutputFormat::Linear;
     std::unique_ptr<TitleRenderJob> job;
@@ -385,7 +385,7 @@ TEST_F(TitleArtRendererGpu, GlyphCell) {
 TEST_F(TitleArtRendererGpu, IdleIsFree) {
     auto renderer = makeRenderer();
     {
-        Pixels p = render(*renderer, requestOf(classicDoc(320, 180)));
+        Pixels p = render(*renderer, titleArtRendererRequestOf(classicDoc(320, 180)));
         ASSERT_GT(p.width, 0);
     }
     renderer->trim();
@@ -406,10 +406,10 @@ TEST_F(TitleArtRendererGpu, ClassicFixtureBudget) {
     // R41 on the test device: the classic-style fixture at 1920 x 1080 within llvmpipe's 8 s
     auto renderer = makeRenderer();
     auto doc = classicDoc();
-    render(*renderer, requestOf(doc));     // the programs compile
+    render(*renderer, titleArtRendererRequestOf(doc));     // the programs compile
     renderer->trim();
     const auto start = std::chrono::steady_clock::now();
-    std::unique_ptr<TitleRenderJob> job = renderer->begin(requestOf(doc));
+    std::unique_ptr<TitleRenderJob> job = renderer->begin(titleArtRendererRequestOf(doc));
     ASSERT_TRUE(runJob(*job));
     jasperengine::test::finishGpu();
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
@@ -429,7 +429,7 @@ TEST_F(TitleArtRendererGpu, SixteenBitOutput) {
     if (!SystemRender::getFeatures().renderRGBA16F) GTEST_SKIP() << "this device renders no half floats";
     auto renderer = makeRenderer();
     auto doc = makeDoc({{"canvas", canvas(128, 64)}, {"layers", Json::array({shapeLayer("00000001", "rect", 32, solidFace("#ff8000"))})}});
-    RenderRequest request = requestOf(doc);
+    RenderRequest request = titleArtRendererRequestOf(doc);
     request.outputBitDepth = 16;
     std::unique_ptr<TitleRenderJob> job;
     Pixels p = render(*renderer, request, &job);
@@ -459,12 +459,12 @@ TEST_F(TitleArtRendererGpu, CanvasPositionsKeyTheNode) {
     for (const char* align : {"layer", "canvas"}) {
         SCOPED_TRACE(align);
         auto renderer = makeRenderer();
-        render(*renderer, requestOf(docWith(align, Json::array({0, 0}))));
+        render(*renderer, titleArtRendererRequestOf(docWith(align, Json::array({0, 0}))));
         auto moved = docWith(align, Json::array({5, -3}));
         Pixels move;
-        const uint64_t passes = passesOf(*renderer, requestOf(moved), &move);
+        const uint64_t passes = passesOf(*renderer, titleArtRendererRequestOf(moved), &move);
         auto fresh = makeRenderer();
-        EXPECT_TRUE(identical(move, render(*fresh, requestOf(moved)))) << "the moved layer differs from a fresh render";
+        EXPECT_TRUE(identical(move, render(*fresh, titleArtRendererRequestOf(moved)))) << "the moved layer differs from a fresh render";
         if (std::string(align) == "layer") {
             EXPECT_LE(passes, 2u) << "a layer-anchored pattern moves with its cached node";
         } else {
@@ -504,9 +504,9 @@ TEST_F(TitleArtRendererGpu, GeneratorGetsItsFollowedLayer) {
     };
     auto renderer = makeRenderer();
     std::unique_ptr<TitleRenderJob> job;
-    Pixels followed = render(*renderer, requestOf(docFollowing("00000001")), &job);
-    Pixels alone = render(*renderer, requestOf(docFollowing("")));
-    Pixels itself = render(*renderer, requestOf(docFollowing("00000002")), &job);
+    Pixels followed = render(*renderer, titleArtRendererRequestOf(docFollowing("00000001")), &job);
+    Pixels alone = render(*renderer, titleArtRendererRequestOf(docFollowing("")));
+    Pixels itself = render(*renderer, titleArtRendererRequestOf(docFollowing("00000002")), &job);
     TitleEffectRegistry::get().removeGenerator("test_follow");
     ASSERT_FALSE(followed.bytes.empty());
     // the rect's centre: green where the generator follows it, the rect's red where it follows nothing
@@ -534,8 +534,8 @@ TEST_F(TitleArtRendererGpu, IsolationKeysTheGroupNode) {
     Json group{{"id", "00000001"}, {"type", "group"},
                {"children", Json::array({shapeLayer("00000002", "rect", 80, solidFace("#2040ff")), shapeLayer("00000003", "ellipse", 30, solidFace("#ff2020"))})}};
     auto doc = makeDoc({{"canvas", canvas(320, 160)}, {"layers", Json::array({group})}});
-    RenderRequest whole = requestOf(doc);
-    RenderRequest alone = requestOf(doc);
+    RenderRequest whole = titleArtRendererRequestOf(doc);
+    RenderRequest alone = titleArtRendererRequestOf(doc);
     alone.isolateLayer = "00000002";
     auto freshWhole = makeRenderer();
     auto freshAlone = makeRenderer();

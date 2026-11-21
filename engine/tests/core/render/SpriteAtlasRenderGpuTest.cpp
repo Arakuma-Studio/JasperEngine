@@ -56,14 +56,14 @@ namespace {
         std::map<std::string, std::string> noOffsets;      // the same with the trim offsets dropped
     };
 
-    std::string writeText(const std::filesystem::path& path, const std::string& text) {
+    std::string spriteAtlasRenderWriteText(const std::filesystem::path& path, const std::string& text) {
         io::AtomicWriteOptions options;
         options.durability = io::Durability::Cache;
         EXPECT_TRUE(io::writeFileAtomic(path, text, options).ok());
         return path.string();
     }
 
-    std::string readText(const std::filesystem::path& path) {
+    std::string spriteAtlasRenderReadText(const std::filesystem::path& path) {
         std::ifstream in(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     }
@@ -81,11 +81,11 @@ namespace {
                                           std::string("panel.png")}) {
             const std::filesystem::path remapFile = dir / (std::filesystem::path(member).stem().string() + ".remap.json");
             out.remaps[member] = remapFile.string();
-            SpriteSheetParseResult parsed = parseSheet(readText(remapFile));
+            SpriteSheetParseResult parsed = parseSheet(spriteAtlasRenderReadText(remapFile));
             EXPECT_TRUE(parsed.ok()) << member << ": " << parsed.error;
             if (!parsed.ok()) continue;
             for (SpriteFrame& f : parsed.sheet->frames) f.offset = Vector2(0, 0);
-            out.noOffsets[member] = writeText(dir / (std::filesystem::path(member).stem().string() + ".nooffsets.json"), writeSheet(*parsed.sheet));
+            out.noOffsets[member] = spriteAtlasRenderWriteText(dir / (std::filesystem::path(member).stem().string() + ".nooffsets.json"), writeSheet(*parsed.sheet));
             if (member != "panel.png") out.sources.push_back(member);
         }
         return out;

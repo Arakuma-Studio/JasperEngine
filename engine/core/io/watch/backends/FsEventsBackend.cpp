@@ -77,6 +77,7 @@ namespace jasperengine::watch {
         FSEventStreamRef stream = nullptr;
         dispatch_queue_t queue = nullptr;
         bool deadForTesting = false;
+        // held by start, flush and stop: the stream is not closed under a flush that uses it
         std::mutex flushMutex;
         // the barrier (flush, start): the markers of the barrier in progress are those numbered
         // from markerFloor (0: none in progress) up to markerGeneration, the last one written;
@@ -86,6 +87,8 @@ namespace jasperengine::watch {
         uint64_t markerFloor = 0;
         uint64_t markerGeneration = 0;
         bool markerSeen = false;
+        // stop() is waiting for flushMutex: the barrier in progress gives up
+        bool stopping = false;
 
         static void callback(ConstFSEventStreamRef, void* info, size_t count, void* paths, const FSEventStreamEventFlags* flags,
                              const FSEventStreamEventId*);
@@ -159,7 +162,13 @@ bool FsEventsBackend::openStream(std::string& error) {
         error = "FSEventStreamCreate failed";
         return false;
     }
-    queue = dispatch_queue_create("org.jasperengine.filewatcher", DISPATCH_QUEUE_SERIAL);
+    // A queue without a QoS of its own runs the callbacks at fseventsd's, utility: under CPU
+    // contention they waited behind every default-QoS thread, and a flush, which waits for the
+    // marker's callback on a condition variable (no QoS override), missed its deadline
+    // (FileWatchServiceTests.FlushBarrier/Native: p99 169 ms against 52 ms, with the CPUs
+    // oversubscribed twice on macOS 26). The editor's main thread is what waits.
+    queue = dispatch_queue_create("org.jasperengine.filewatcher",
+                                  dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0));
     FSEventStreamSetDispatchQueue(stream, queue);
     if (!FSEventStreamStart(stream)) {
         FSEventStreamSetDispatchQueue(stream, nullptr);
@@ -174,25 +183,37 @@ bool FsEventsBackend::openStream(std::string& error) {
     return true;
 }
 
+// The service stops a linked folder's backend on its dispatcher while a flush on the caller's
+// thread may be inside barrier() on the same stream: closing it there released the stream under
+// FSEventStreamFlushAsync. The barrier gives up at once, and the stream closes once it returned.
 void FsEventsBackend::stop() {
+    {
+        std::lock_guard<std::mutex> lock(markerMutex);
+        stopping = true;
+    }
+    markerSeenCv.notify_all();
+    std::lock_guard<std::mutex> lock(flushMutex);
     closeStream();
+    std::lock_guard<std::mutex> markerLock(markerMutex);
+    stopping = false;
 }
 
+// On the stream's own serial queue, where FSEvents runs its callbacks: none runs while the stream
+// is invalidated and released, and none is called after it. Released from another thread, the
+// stream was freed under a callback FSEvents was about to make (EXC_BAD_ACCESS in _Xcallback_rpc
+// on the stream's queue, FileWatchServiceTests.SeesChangesThroughLinkedFolders on macOS 26). Once
+// this returns no callback touches `this`.
 void FsEventsBackend::closeStream() {
-    if (stream) {
-        FSEventStreamStop(stream);
-        FSEventStreamSetDispatchQueue(stream, nullptr);
-        FSEventStreamInvalidate(stream);
-        FSEventStreamRelease(stream);
-        stream = nullptr;
-    }
-    if (queue) {
-        // serial queue: this empty block runs after a callback already on it returned, so no
-        // callback touches `this` once it is done
-        dispatch_sync_f(queue, nullptr, [](void*) {});
-        dispatch_release(queue);
-        queue = nullptr;
-    }
+    if (!stream) return;
+    dispatch_sync_f(queue, stream, [](void* context) {
+        FSEventStreamRef closing = static_cast<FSEventStreamRef>(context);
+        FSEventStreamStop(closing);
+        FSEventStreamInvalidate(closing);
+        FSEventStreamRelease(closing);
+    });
+    stream = nullptr;
+    dispatch_release(queue);
+    queue = nullptr;
 }
 
 void FsEventsBackend::callback(ConstFSEventStreamRef, void* info, size_t count, void* paths, const FSEventStreamEventFlags* flags,
@@ -310,8 +331,8 @@ bool FsEventsBackend::barrier(std::chrono::steady_clock::time_point deadline) {
         const auto now = std::chrono::steady_clock::now();
         {
             std::unique_lock<std::mutex> lock(markerMutex);
-            markerSeenCv.wait_until(lock, std::min(deadline, now + FLUSH_ASK), [this]() { return markerSeen; });
-            if (markerSeen || std::chrono::steady_clock::now() >= deadline) {
+            markerSeenCv.wait_until(lock, std::min(deadline, now + FLUSH_ASK), [this]() { return markerSeen || stopping; });
+            if (markerSeen || stopping || std::chrono::steady_clock::now() >= deadline) {
                 seen = markerSeen;
                 markerFloor = 0;
                 break;

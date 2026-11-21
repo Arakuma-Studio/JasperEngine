@@ -182,16 +182,16 @@ namespace {
 
     // ---- one headless project for the asset and preview tests
 
-    struct Headless {
+    struct CameraShakeHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
         std::unique_ptr<editor::Platform> platform;
     };
 
-    Headless& headless(){
-        static Headless h = [](){
-            Headless out;
+    CameraShakeHeadless& cameraShakeHeadless(){
+        static CameraShakeHeadless h = [](){
+            CameraShakeHeadless out;
             const fs::path root = fs::temp_directory_path() / ("jasper-camera-shake-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
             fs::create_directories(root / "config");
@@ -215,7 +215,7 @@ namespace {
         return h;
     }
 
-    std::string readAll(const fs::path& path){
+    std::string cameraShakeReadAll(const fs::path& path){
         std::ifstream file(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     }
@@ -381,15 +381,15 @@ protected:
 };
 
 TEST_F(CameraShakeEditor, ShakeAssetEditIsOneProjectUndoStep){
-    ASSERT_TRUE(headless().ready);
-    Project* project = headless().project.get();
-    const fs::path file = headless().dir / "shakes" / "boom.shake";
+    ASSERT_TRUE(cameraShakeHeadless().ready);
+    Project* project = cameraShakeHeadless().project.get();
+    const fs::path file = cameraShakeHeadless().dir / "shakes" / "boom.shake";
     fs::create_directories(file.parent_path());
     camera::ShakePresetFile original;
     original.preset = *camera::findBuiltinShakePreset("explosion");
     std::string error;
     ASSERT_TRUE(inspectorcamera::writeShakePresetFile(project, file, original, error)) << error;
-    const std::string first = readAll(file);
+    const std::string first = cameraShakeReadAll(file);
     CommandHistory* history = project->getProjectCommandHistory();
     const size_t steps = history->position();
 
@@ -398,7 +398,7 @@ TEST_F(CameraShakeEditor, ShakeAssetEditIsOneProjectUndoStep){
     edited.preset.type = camera::ShakeType::Sustained;
     ASSERT_TRUE(inspectorcamera::writeShakePresetFile(project, file, edited, error)) << error;
     EXPECT_EQ(history->position(), steps + 1) << "one project undo step";
-    camera::ShakeParseResult parsed = camera::parseShakePreset(readAll(file));
+    camera::ShakeParseResult parsed = camera::parseShakePreset(cameraShakeReadAll(file));
     ASSERT_TRUE(parsed.ok());
     EXPECT_EQ(parsed.file->preset, edited.preset);
 
@@ -406,14 +406,14 @@ TEST_F(CameraShakeEditor, ShakeAssetEditIsOneProjectUndoStep){
     EXPECT_EQ(history->position(), steps + 1) << "the same text adds no step";
 
     history->undo();
-    EXPECT_EQ(readAll(file), first) << "undo puts the previous values back";
+    EXPECT_EQ(cameraShakeReadAll(file), first) << "undo puts the previous values back";
     history->redo();
-    EXPECT_EQ(camera::parseShakePreset(readAll(file)).file->preset, edited.preset);
+    EXPECT_EQ(camera::parseShakePreset(cameraShakeReadAll(file)).file->preset, edited.preset);
 }
 
 TEST_F(CameraShakeEditor, EditModePreviewLeavesTheSceneUnmodified){
-    ASSERT_TRUE(headless().ready);
-    Project* project = headless().project.get();
+    ASSERT_TRUE(cameraShakeHeadless().ready);
+    Project* project = cameraShakeHeadless().project.get();
     project->createNewScene("ShakePreview", SceneType::SCENE_3D);
     SceneProject* sceneProject = project->getScene(project->getSelectedSceneId());
     ASSERT_TRUE(sceneProject && sceneProject->scene);

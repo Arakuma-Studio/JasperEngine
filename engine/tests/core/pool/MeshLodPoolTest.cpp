@@ -19,7 +19,7 @@ using namespace jasperengine;
 
 namespace {
 
-    constexpr float PI = 3.14159265358979f;
+    constexpr float MESH_LOD_POOL_PI = 3.14159265358979f;
 
     // a UV sphere of radius 1; flat: every triangle has its own vertices and face normal (the
     // hard-edged meshes whose normals made the old error grow far past the real deviation)
@@ -28,10 +28,10 @@ namespace {
         std::vector<float> uv;
         for (unsigned int y = 0; y <= stacks; y++){
             const float v = (float)y / stacks;
-            const float phi = v * PI;
+            const float phi = v * MESH_LOD_POOL_PI;
             for (unsigned int x = 0; x <= slices; x++){
                 const float u = (float)x / slices;
-                const float theta = u * 2.0f * PI;
+                const float theta = u * 2.0f * MESH_LOD_POOL_PI;
                 positions.insert(positions.end(), {std::sin(phi) * std::cos(theta), std::cos(phi), std::sin(phi) * std::sin(theta)});
                 uv.insert(uv.end(), {u, v});
             }
@@ -89,7 +89,7 @@ namespace {
     }
 
     // exact distance from a point to a triangle soup, by brute force
-    double nearest(const float* p, const std::vector<float>& positions, const std::vector<uint32_t>& indices){
+    double meshLodPoolNearest(const float* p, const std::vector<float>& positions, const std::vector<uint32_t>& indices){
         auto sub = [](const double* a, const double* b, double* o){ for (int i = 0; i < 3; i++) o[i] = a[i] - b[i]; };
         auto dot = [](const double* a, const double* b){ return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; };
         const double q[3] = {p[0], p[1], p[2]};
@@ -146,14 +146,14 @@ namespace {
                         float p[3];
                         for (int k = 0; k < 3; k++)
                             p[k] = positions[from[t] * 3 + k] * w + positions[from[t + 1] * 3 + k] * u + positions[from[t + 2] * 3 + k] * v;
-                        worst = std::max(worst, nearest(p, positions, to));
+                        worst = std::max(worst, meshLodPoolNearest(p, positions, to));
                     }
                 }
                 const float centroid[3] = {
                     (positions[from[t] * 3] + positions[from[t + 1] * 3] + positions[from[t + 2] * 3]) / 3.0f,
                     (positions[from[t] * 3 + 1] + positions[from[t + 1] * 3 + 1] + positions[from[t + 2] * 3 + 1]) / 3.0f,
                     (positions[from[t] * 3 + 2] + positions[from[t + 1] * 3 + 2] + positions[from[t + 2] * 3 + 2]) / 3.0f};
-                worst = std::max(worst, nearest(centroid, positions, to));
+                worst = std::max(worst, meshLodPoolNearest(centroid, positions, to));
             }
         };
         sample(a, b);

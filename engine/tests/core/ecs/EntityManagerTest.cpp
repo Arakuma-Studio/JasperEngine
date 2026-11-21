@@ -189,7 +189,7 @@ TEST(EntityManager, DestroyingAMissingEntityDoesNothing){
 
 namespace {
 
-    void expectSame(const EntityManager& manager, const reference::MapEntityManager& model){
+    void entityManagerExpectSame(const EntityManager& manager, const reference::MapEntityManager& model){
         ASSERT_EQ(manager.getEntityList(), model.getEntityList());
         ASSERT_EQ(manager.getLastUserEntity(), model.getLastUserEntity());
         for (const std::string& name : {std::string("a"), std::string("b"), std::string(""), std::string("missing")}){
@@ -277,11 +277,11 @@ TEST(EntityManagerTest, DifferentialAgainstMapModel){
                 }
             }
             if (step % 50 == 0){
-                expectSame(manager, model);
+                entityManagerExpectSame(manager, model);
                 if (::testing::Test::HasFatalFailure()) FAIL() << "seed " << seed << " step " << step;
             }
         }
-        expectSame(manager, model);
+        entityManagerExpectSame(manager, model);
         if (::testing::Test::HasFatalFailure()) FAIL() << "seed " << seed;
     }
 }

@@ -25,7 +25,7 @@ using namespace jasperengine::editor::pixelart;
 
 namespace {
 
-    ParticleEffectDocument preset(const std::string& name){
+    ParticleEffectDocument pixelPresetsPreset(const std::string& name){
         ParticleEffectDocument d;
         std::string error;
         EXPECT_TRUE(buildPixelParticlePreset(name, PixelPresetBuild(), d, error)) << name << ": " << error;
@@ -56,7 +56,7 @@ namespace {
 
     // the spark alone: one particle at a known velocity (px/s, y up), its floor on or off
     ParticleEffectDocument oneSpark(float vx, float vy, bool floor){
-        ParticleEffectDocument d = preset("pixel_spark");
+        ParticleEffectDocument d = pixelPresetsPreset("pixel_spark");
         d.emission.bursts[0].count = MinMaxCurve(1.0f);
         d.main.startSpeed = MinMaxCurve(0.0f);
         d.main.startLifetime = MinMaxCurve(5.0f);
@@ -72,17 +72,17 @@ namespace {
 
 TEST(PixelPresets, EveryPresetValidates){
     for (const std::string& name : pixelParticlePresetNames()){
-        const ParticleEffectDocument d = preset(name);
+        const ParticleEffectDocument d = pixelPresetsPreset(name);
         EXPECT_TRUE(ParticleCompiler::compile(d)->valid) << name;
         EXPECT_EQ(d.designPixelsPerUnit, 1.0f) << name;
         EXPECT_FALSE(pixelParticlePresetLabel(name).empty());
-        for (const std::string& child : pixelParticlePresetChildren(name)) EXPECT_TRUE(ParticleCompiler::compile(preset(child))->valid) << child;
+        for (const std::string& child : pixelParticlePresetChildren(name)) EXPECT_TRUE(ParticleCompiler::compile(pixelPresetsPreset(child))->valid) << child;
     }
     EXPECT_EQ(pixelParticlePresetNames().size(), 9u);
     EXPECT_EQ(pixelParticlePresetChildren("pixel_fire"), std::vector<std::string>{"pixel_smoke"});
     // the two loops are Analytic
-    EXPECT_EQ(preset("pixel_smoke_loop").simulationMode, SimulationMode::Analytic);
-    EXPECT_EQ(preset("pixel_ember_loop").simulationMode, SimulationMode::Analytic);
+    EXPECT_EQ(pixelPresetsPreset("pixel_smoke_loop").simulationMode, SimulationMode::Analytic);
+    EXPECT_EQ(pixelPresetsPreset("pixel_ember_loop").simulationMode, SimulationMode::Analytic);
     // made for PPU 16: lengths and speeds over 16, sizes still in pixels
     PixelPresetBuild sixteen;
     sixteen.pixelsPerUnit = 16;
@@ -153,7 +153,7 @@ TEST(PixelPresets, SparkBouncesAtPixelfxsShare){
 TEST(PixelPresets, GritAndDebrisBounceAsPixelfx){
     struct Case { const char* name; double share; float vy0; };
     for (const Case& c : {Case{"pixel_grit", 0.25, -300.0f}, Case{"pixel_debris_shard", 0.35, 0.0f}, Case{"pixel_debris_chunk", 0.30, 0.0f}}){
-        ParticleEffectDocument d = preset(c.name);
+        ParticleEffectDocument d = pixelPresetsPreset(c.name);
         d.emission.bursts = {Burst()};
         d.emission.bursts[0].count = MinMaxCurve(1.0f);
         d.main.startSpeed = MinMaxCurve(0.0f);
@@ -189,7 +189,7 @@ TEST(PixelPresets, GritAndDebrisBounceAsPixelfx){
 
 TEST(PixelPresets, GritAndDebrisSettleUntilTheyDie){
     for (const std::string& name : {std::string("pixel_grit"), std::string("pixel_debris_shard")}){
-        ParticleEffectDocument d = preset(name);
+        ParticleEffectDocument d = pixelPresetsPreset(name);
         d.interpolate = false;
         if (d.emission.bursts.empty()){
             Burst b;
@@ -219,9 +219,9 @@ TEST(PixelPresets, GritAndDebrisSettleUntilTheyDie){
 }
 
 TEST(PixelPresets, FireLeavesSmokeAtAThirdOfItsDeaths){
-    ParticleEffectDocument fire = preset("pixel_fire");
+    ParticleEffectDocument fire = pixelPresetsPreset("pixel_fire");
     fire.emission.rateOverTime = MinMaxCurve(300.0f);   // more deaths a second, the same share
-    auto smoke = compiled(preset("pixel_smoke"));
+    auto smoke = compiled(pixelPresetsPreset("pixel_smoke"));
     PresetRun run(compiled(fire), 9);
     run.runtime.bindSubEmitters([&](const SubEmitterEntry& entry) -> std::shared_ptr<const CompiledEffect> {
         return entry.effect == "preset:pixel_smoke" ? smoke : nullptr;

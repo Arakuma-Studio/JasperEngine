@@ -41,22 +41,22 @@ using namespace jasperengine::test;
 
 namespace {
 
-    constexpr int kTexels = 16;
-    constexpr int kScale = 4;
+    constexpr int kSpritePixelFxTexels = 16;
+    constexpr int kSpritePixelFxScale = 4;
     // the read-back square around the sprite: its 64 pixels plus 8 texels of room on each side
-    constexpr int kCrop = (kTexels + 16) * kScale;
+    constexpr int kCrop = (kSpritePixelFxTexels + 16) * kSpritePixelFxScale;
 
-    struct Rgba { uint8_t r, g, b, a; };
+    struct SpritePixelFxRgba { uint8_t r, g, b, a; };
 
     // A 16 x 16 character with a transparent margin of 3 texels: a dark body, a lighter face, a
     // half-transparent texel and a notch, so outlines, bevels and keys have corners to follow
     std::vector<uint8_t> characterPixels(){
-        const Rgba clear{0, 0, 0, 0};
-        const Rgba body{58, 68, 102, 255}, face{232, 183, 150, 255}, eye{24, 20, 37, 255}, boot{139, 69, 19, 255}, glass{90, 200, 230, 128};
+        const SpritePixelFxRgba clear{0, 0, 0, 0};
+        const SpritePixelFxRgba body{58, 68, 102, 255}, face{232, 183, 150, 255}, eye{24, 20, 37, 255}, boot{139, 69, 19, 255}, glass{90, 200, 230, 128};
         std::vector<uint8_t> pixels;
-        for (int y = 0; y < kTexels; y++){
-            for (int x = 0; x < kTexels; x++){
-                Rgba c = clear;
+        for (int y = 0; y < kSpritePixelFxTexels; y++){
+            for (int x = 0; x < kSpritePixelFxTexels; x++){
+                SpritePixelFxRgba c = clear;
                 if (x >= 3 && x < 13 && y >= 3 && y < 13){
                     c = body;
                     if (y >= 4 && y < 8 && x >= 5 && x < 11) c = face;
@@ -75,17 +75,17 @@ namespace {
     // bled across the frame would draw the neighbour's colour along the edge
     std::vector<uint8_t> atlasPixels(){
         std::vector<uint8_t> pixels;
-        for (int y = 0; y < kTexels; y++){
-            for (int x = 0; x < kTexels * 2; x++){
-                const bool left = x < kTexels;
-                const int fx = x % kTexels;
-                const bool edge = fx == 0 || fx == kTexels - 1 || y == 0 || y == kTexels - 1;
+        for (int y = 0; y < kSpritePixelFxTexels; y++){
+            for (int x = 0; x < kSpritePixelFxTexels * 2; x++){
+                const bool left = x < kSpritePixelFxTexels;
+                const int fx = x % kSpritePixelFxTexels;
+                const bool edge = fx == 0 || fx == kSpritePixelFxTexels - 1 || y == 0 || y == kSpritePixelFxTexels - 1;
                 const bool cross = fx == 7 || fx == 8 || y == 7 || y == 8;
-                Rgba c{0, 0, 0, 0};
+                SpritePixelFxRgba c{0, 0, 0, 0};
                 if (left && (cross || (edge && (fx < 4 || y < 4))))
-                    c = Rgba{220, 60, 60, 255};
+                    c = SpritePixelFxRgba{220, 60, 60, 255};
                 if (!left && (edge || cross))
-                    c = Rgba{60, 220, 90, 255};
+                    c = SpritePixelFxRgba{60, 220, 90, 255};
                 pixels.insert(pixels.end(), {c.r, c.g, c.b, c.a});
             }
         }
@@ -93,17 +93,17 @@ namespace {
     }
 
     // 6-step ramps, dark to light (sRGB bytes): a fire, a stone, an ice and a poison
-    const std::vector<Rgba> fireRamp = {{42, 14, 8, 255}, {90, 26, 12, 255}, {168, 50, 15, 255}, {232, 96, 26, 255}, {255, 154, 46, 255}, {255, 210, 90, 255}};
-    const std::vector<Rgba> stoneRamp = {{30, 28, 32, 255}, {62, 58, 64, 255}, {96, 92, 98, 255}, {132, 128, 130, 255}, {170, 166, 160, 255}, {210, 206, 196, 255}};
-    const std::vector<Rgba> iceRamp = {{18, 30, 66, 255}, {30, 64, 124, 255}, {52, 110, 180, 255}, {96, 170, 220, 255}, {160, 220, 245, 255}, {230, 250, 255, 255}};
-    const std::vector<Rgba> poisonRamp = {{20, 36, 18, 255}, {36, 72, 30, 255}, {58, 116, 40, 255}, {96, 164, 52, 255}, {150, 210, 70, 255}, {214, 244, 120, 255}};
+    const std::vector<SpritePixelFxRgba> fireRamp = {{42, 14, 8, 255}, {90, 26, 12, 255}, {168, 50, 15, 255}, {232, 96, 26, 255}, {255, 154, 46, 255}, {255, 210, 90, 255}};
+    const std::vector<SpritePixelFxRgba> stoneRamp = {{30, 28, 32, 255}, {62, 58, 64, 255}, {96, 92, 98, 255}, {132, 128, 130, 255}, {170, 166, 160, 255}, {210, 206, 196, 255}};
+    const std::vector<SpritePixelFxRgba> iceRamp = {{18, 30, 66, 255}, {30, 64, 124, 255}, {52, 110, 180, 255}, {96, 170, 220, 255}, {160, 220, 245, 255}, {230, 250, 255, 255}};
+    const std::vector<SpritePixelFxRgba> poisonRamp = {{20, 36, 18, 255}, {36, 72, 30, 255}, {58, 116, 40, 255}, {96, 164, 52, 255}, {150, 210, 70, 255}, {214, 244, 120, 255}};
 
     struct SpriteSetup {
         std::vector<std::string> features;
         ShaderUniformValues params;
         bool atlas = false;
         MaterialBlendMode blend = MaterialBlendMode::AUTO;
-        const std::vector<Rgba>* ramp = nullptr;  // u_fxRampTexture; null: the default grey ramp
+        const std::vector<SpritePixelFxRgba>* ramp = nullptr;  // u_fxRampTexture; null: the default grey ramp
     };
 
     class SpritePixelFxGpu : public ::testing::Test {
@@ -134,15 +134,15 @@ namespace {
         void setup_(Sprite& sprite, const SpriteSetup& s){ setup(sprite, s); }
 
         void setup(Sprite& sprite, const SpriteSetup& s){
-            sprite.setSize(kTexels * kScale, kTexels * kScale);
+            sprite.setSize(kSpritePixelFxTexels * kSpritePixelFxScale, kSpritePixelFxTexels * kSpritePixelFxScale);
             sprite.setPivotPreset(PivotPreset::CENTER);
             sprite.setPosition(0.0f, 0.0f, 0.0f);
             MeshComponent& mesh = sprite.getComponent<MeshComponent>();
             Submesh& submesh = mesh.submeshes[0];
             std::vector<uint8_t>& pixels = s.atlas ? atlas : character;
-            const int width = s.atlas ? kTexels * 2 : kTexels;
+            const int width = s.atlas ? kSpritePixelFxTexels * 2 : kSpritePixelFxTexels;
             submesh.material.baseColorTexture.setData(s.atlas ? "sprite-fx-gpu|atlas" : "sprite-fx-gpu|character",
-                TextureData(width, kTexels, (unsigned int)pixels.size(), ColorFormat::RGBA, 4, pixels.data()));
+                TextureData(width, kSpritePixelFxTexels, (unsigned int)pixels.size(), ColorFormat::RGBA, 4, pixels.data()));
             submesh.material.baseColorTexture.setMinFilter(TextureFilter::NEAREST);
             submesh.material.baseColorTexture.setMagFilter(TextureFilter::NEAREST);
             submesh.needUpdateTexture = true;
@@ -155,7 +155,7 @@ namespace {
             material.blendMode = s.blend;
             if (s.ramp){
                 rampBytes.clear();
-                for (const Rgba& c : *s.ramp)
+                for (const SpritePixelFxRgba& c : *s.ramp)
                     rampBytes.insert(rampBytes.end(), {c.r, c.g, c.b, c.a});
                 Texture ramp;
                 ramp.setData("sprite-fx-gpu|ramp" + std::to_string((uintptr_t)s.ramp),
@@ -256,22 +256,22 @@ namespace {
     struct NewCase {
         std::string name;
         SpriteSetup setup;
-        std::vector<Rgba> extra;  // effect colours (outline, inline, shadow) besides the art's and the ramp's
+        std::vector<SpritePixelFxRgba> extra;  // effect colours (outline, inline, shadow) besides the art's and the ramp's
         bool blocks = true;       // AC4: a screen-space dither without S41's grid works on screen pixels
     };
 
     // every colour a draw without blending may show: the background, the art's opaque colours,
     // the half-transparent texel over black, the ramp's and the case's own
-    std::vector<Rgba> allowedColours(const NewCase& c, const std::vector<uint8_t>& art){
-        std::vector<Rgba> out = {{0, 0, 0, 255}};
+    std::vector<SpritePixelFxRgba> allowedColours(const NewCase& c, const std::vector<uint8_t>& art){
+        std::vector<SpritePixelFxRgba> out = {{0, 0, 0, 255}};
         for (size_t i = 0; i < art.size(); i += 4){
             if (art[i + 3] == 255)
                 out.push_back({art[i], art[i + 1], art[i + 2], 255});
         }
         // the half-transparent glass texel, blended over black (the art's own partial alpha)
         out.push_back({uint8_t(90 * 128 / 255), uint8_t(200 * 128 / 255), uint8_t(230 * 128 / 255), 255});
-        const std::vector<Rgba>& ramp = c.setup.ramp ? *c.setup.ramp : std::vector<Rgba>{};
-        for (const Rgba& r : ramp)
+        const std::vector<SpritePixelFxRgba>& ramp = c.setup.ramp ? *c.setup.ramp : std::vector<SpritePixelFxRgba>{};
+        for (const SpritePixelFxRgba& r : ramp)
             out.push_back(r);
         if (!c.setup.ramp){
             for (int i = 0; i < 8; i++){
@@ -279,7 +279,7 @@ namespace {
                 out.push_back({v, v, v, 255});
             }
         }
-        for (const Rgba& e : c.extra)
+        for (const SpritePixelFxRgba& e : c.extra)
             out.push_back(e);
         // the glass texel's half alpha over black takes whatever colour an effect gave it
         const size_t whole = out.size();
@@ -289,25 +289,25 @@ namespace {
     }
 
     // a byte off at most (the gamma 2.2 round trip of the engine's linear colours)
-    bool near(const uint8_t* p, const Rgba& c){
+    bool near(const uint8_t* p, const SpritePixelFxRgba& c){
         return std::abs(int(p[0]) - c.r) <= 1 && std::abs(int(p[1]) - c.g) <= 1 && std::abs(int(p[2]) - c.b) <= 1;
     }
 
     // the character's half-transparent glass texel (4, 9) in the crop (8 texels of room), whose own
     // alpha blends it over whatever an effect draws behind it: the art's blend, not the effect's
     bool glassPixel(size_t pixel){
-        const int x = int(pixel % kCrop) / kScale - 8, y = int(pixel / kCrop) / kScale - 8;
+        const int x = int(pixel % kCrop) / kSpritePixelFxScale - 8, y = int(pixel / kCrop) / kSpritePixelFxScale - 8;
         return x == 4 && y == 9;
     }
 
-    ::testing::AssertionResult noBlends(const std::vector<uint8_t>& crop, const std::vector<Rgba>& allowed, bool skipGlass = true){
+    ::testing::AssertionResult noBlends(const std::vector<uint8_t>& crop, const std::vector<SpritePixelFxRgba>& allowed, bool skipGlass = true){
         int bad = 0;
         std::string first;
         for (size_t i = 0; i < crop.size(); i += 4){
             if (skipGlass && glassPixel(i / 4))
                 continue;
             bool ok = false;
-            for (const Rgba& c : allowed)
+            for (const SpritePixelFxRgba& c : allowed)
                 ok = ok || near(&crop[i], c);
             if (!ok && bad++ == 0){
                 first = "pixel (" + std::to_string((i / 4) % kCrop) + ", " + std::to_string((i / 4) / kCrop) + ") is " +
@@ -321,11 +321,11 @@ namespace {
 
     // AC4: each texel of the sprite (4 x 4 pixels, on a grid aligned with the crop) is one colour
     ::testing::AssertionResult uniformBlocks(const std::vector<uint8_t>& crop){
-        for (int by = 0; by < kCrop; by += kScale){
-            for (int bx = 0; bx < kCrop; bx += kScale){
+        for (int by = 0; by < kCrop; by += kSpritePixelFxScale){
+            for (int bx = 0; bx < kCrop; bx += kSpritePixelFxScale){
                 const uint8_t* first = &crop[(size_t(by) * kCrop + bx) * 4];
-                for (int y = 0; y < kScale; y++){
-                    for (int x = 0; x < kScale; x++){
+                for (int y = 0; y < kSpritePixelFxScale; y++){
+                    for (int x = 0; x < kSpritePixelFxScale; x++){
                         const uint8_t* p = &crop[(size_t(by + y) * kCrop + bx + x) * 4];
                         if (std::memcmp(p, first, 4) != 0)
                             return ::testing::AssertionFailure() << "the texel block at (" << bx << ", " << by << ") is not one colour";
@@ -337,14 +337,14 @@ namespace {
     }
 
     Vector4 v2(float x, float y){ return Vector4(x, y, 0.0f, 0.0f); }
-    Vector4 linear(const Rgba& c){ return Color::sRGBToLinear(Vector4(c.r / 255.0f, c.g / 255.0f, c.b / 255.0f, c.a / 255.0f)); }
+    Vector4 spritePixelFxLinear(const SpritePixelFxRgba& c){ return Color::sRGBToLinear(Vector4(c.r / 255.0f, c.g / 255.0f, c.b / 255.0f, c.a / 255.0f)); }
 
 }
 
 // AC3, AC4: each S48 feature at fixed values (golden/sprite_fx/<name>.png, tolerance 0 on GL; the
 // Vulkan goldens run in the batch landing), no blend in any of them, and hard texel blocks
 TEST_F(SpritePixelFxGpu, NewFeatures){
-    const Rgba yellow{255, 216, 0, 255}, white{255, 255, 255, 255}, inkBlue{20, 24, 90, 255}, black{0, 0, 0, 255};
+    const SpritePixelFxRgba yellow{255, 216, 0, 255}, white{255, 255, 255, 255}, inkBlue{20, 24, 90, 255}, black{0, 0, 0, 255};
     const std::vector<NewCase> cases = {
         {"dither_4x4_sprite", {{"DITHER_FADE"}, {{"ditherFadeAmount", v1(0.5f)}}}, {}},
         {"dither_8x8_sprite", {{"DITHER_FADE"}, {{"ditherFadeAmount", v1(0.5f)}, {"ditherMatrix", v1(1.0f)}}}, {}},
@@ -355,20 +355,20 @@ TEST_F(SpritePixelFxGpu, NewFeatures){
         {"ramp_petrify", {{"RAMP_RECOLOR"}, {{"rampBevel", v1(1.0f)}}, false, MaterialBlendMode::AUTO, &stoneRamp}, {}},
         {"ramp_frozen", {{"RAMP_RECOLOR"}, {{"rampBevel", v1(1.0f)}}, false, MaterialBlendMode::AUTO, &iceRamp}, {}},
         {"ramp_poison", {{"RAMP_RECOLOR"}, {{"rampBevel", v1(0.5f)}, {"rampPulse", v1(2.0f)}}, false, MaterialBlendMode::AUTO, &poisonRamp}, {}},
-        {"outline_pixel4_w1", {{"OUTLINE", "OUTLINE_STYLE_PIXEL4"}, {{"outlineColor", linear(yellow)}, {"outlineWidth", v1(1.0f)}}}, {yellow}},
-        {"outline_pixel4_w2", {{"OUTLINE", "OUTLINE_STYLE_PIXEL4"}, {{"outlineColor", linear(yellow)}, {"outlineWidth", v1(2.0f)}}}, {yellow}},
-        {"outline_pixel8_w1", {{"OUTLINE", "OUTLINE_STYLE_PIXEL8"}, {{"outlineColor", linear(yellow)}, {"outlineWidth", v1(1.0f)}}}, {yellow}},
-        {"outline_pixel8_w2", {{"OUTLINE", "OUTLINE_STYLE_PIXEL8"}, {{"outlineColor", linear(yellow)}, {"outlineWidth", v1(2.0f)}}}, {yellow}},
+        {"outline_pixel4_w1", {{"OUTLINE", "OUTLINE_STYLE_PIXEL4"}, {{"outlineColor", spritePixelFxLinear(yellow)}, {"outlineWidth", v1(1.0f)}}}, {yellow}},
+        {"outline_pixel4_w2", {{"OUTLINE", "OUTLINE_STYLE_PIXEL4"}, {{"outlineColor", spritePixelFxLinear(yellow)}, {"outlineWidth", v1(2.0f)}}}, {yellow}},
+        {"outline_pixel8_w1", {{"OUTLINE", "OUTLINE_STYLE_PIXEL8"}, {{"outlineColor", spritePixelFxLinear(yellow)}, {"outlineWidth", v1(1.0f)}}}, {yellow}},
+        {"outline_pixel8_w2", {{"OUTLINE", "OUTLINE_STYLE_PIXEL8"}, {{"outlineColor", spritePixelFxLinear(yellow)}, {"outlineWidth", v1(2.0f)}}}, {yellow}},
         {"outline_ramp_darkest", {{"OUTLINE", "OUTLINE_STYLE_PIXEL4"}, {{"outlineColorFrom", v1(1.0f)}}, false, MaterialBlendMode::AUTO, &iceRamp}, {}},
         {"outline_selout", {{"OUTLINE", "OUTLINE_STYLE_PIXEL8"}, {{"outlineColorFrom", v1(2.0f)}}, false, MaterialBlendMode::AUTO, &stoneRamp}, {}},
-        {"outline_inline", {{"OUTLINE", "OUTLINE_STYLE_PIXEL4"}, {{"outlineColor", linear(yellow)}, {"inlineWidth", v1(1.0f)}, {"inlineColor", linear(inkBlue)}}},
+        {"outline_inline", {{"OUTLINE", "OUTLINE_STYLE_PIXEL4"}, {{"outlineColor", spritePixelFxLinear(yellow)}, {"inlineWidth", v1(1.0f)}, {"inlineColor", spritePixelFxLinear(inkBlue)}}},
          {yellow, inkBlue}},
-        {"drop_shadow", {{"DROP_SHADOW"}, {{"shadowColor", linear(inkBlue)}, {"shadowOffset", v2(2.0f, -1.0f)}}}, {inkBlue}},
-        {"drop_shadow_outline", {{"DROP_SHADOW", "OUTLINE", "OUTLINE_STYLE_PIXEL4"}, {{"shadowColorFrom", v1(1.0f)}, {"outlineColor", linear(white)}}, false,
+        {"drop_shadow", {{"DROP_SHADOW"}, {{"shadowColor", spritePixelFxLinear(inkBlue)}, {"shadowOffset", v2(2.0f, -1.0f)}}}, {inkBlue}},
+        {"drop_shadow_outline", {{"DROP_SHADOW", "OUTLINE", "OUTLINE_STYLE_PIXEL4"}, {{"shadowColorFrom", v1(1.0f)}, {"outlineColor", spritePixelFxLinear(white)}}, false,
                                  MaterialBlendMode::AUTO, &stoneRamp}, {white}},
         // the grown quad: an atlas frame whose art touches every edge keeps its outline whole,
         // and the neighbour frame never bleeds in
-        {"outline_no_margin", {{"OUTLINE", "OUTLINE_STYLE_PIXEL4"}, {{"outlineColor", linear(white)}}, true}, {white}},
+        {"outline_no_margin", {{"OUTLINE", "OUTLINE_STYLE_PIXEL4"}, {{"outlineColor", spritePixelFxLinear(white)}}, true}, {white}},
     };
     for (const NewCase& c : cases){
         SCOPED_TRACE(c.name);
@@ -429,7 +429,7 @@ TEST_F(SpritePixelFxGpu, GrownQuad){
         minX = box.getMinimum().x;
         minY = box.getMinimum().y;
     };
-    const float texel = float(kScale);  // the sprite is 64 units over 16 texels
+    const float texel = float(kSpritePixelFxScale);  // the sprite is 64 units over 16 texels
     float w = 0, x = 0, y = 0;
     boundsOf({{}, {}}, w, x, y);
     EXPECT_FLOAT_EQ(w, 64.0f);
@@ -477,7 +477,7 @@ TEST_F(SpritePixelFxGpu, TintAlphaKeepsTheBodyOutOfTheOutline){
 // A value written after the update (a coroutine, onPostUpdate): the draw flushes it, so at the
 // next update needUpdateShaderUniforms is already clear and only the write counter says so
 TEST_F(SpritePixelFxGpu, AWriteAfterTheUpdateGrowsTheQuad){
-    const float texel = float(kScale);
+    const float texel = float(kSpritePixelFxScale);
     Sprite sprite(&scene);
     setup_(sprite, {{"OUTLINE", "OUTLINE_STYLE_PIXEL4"}, {{"outlineWidth", v1(1.0f)}}});
     ASSERT_TRUE(settle());
@@ -494,7 +494,7 @@ TEST_F(SpritePixelFxGpu, AWriteAfterTheUpdateGrowsTheQuad){
 
 // R7: the quad grows for the shader the sprite draws with: its own, the mesh's or the scene's
 TEST_F(SpritePixelFxGpu, TheQuadGrowsWithTheMeshOrSceneShader){
-    const float texel = float(kScale);
+    const float texel = float(kSpritePixelFxScale);
     Sprite sprite(&scene);
     setup_(sprite, {{"OUTLINE", "OUTLINE_STYLE_PIXEL4"}, {{"outlineWidth", v1(2.0f)}}});
     MeshComponent& mesh = sprite.getComponent<MeshComponent>();
@@ -554,7 +554,7 @@ TEST_F(SpritePixelFxGpu, KeyMatchesCpu){
         for (uint32_t seed : {0u, 1u, 7u, 1234u}){
             SCOPED_TRACE("frame " + std::to_string(frame.w) + "x" + std::to_string(frame.h) + " seed " + std::to_string(seed));
             Sprite sprite(&scene);
-            sprite.setSize(frame.w * kScale, frame.h * kScale);
+            sprite.setSize(frame.w * kSpritePixelFxScale, frame.h * kSpritePixelFxScale);
             sprite.setPivotPreset(PivotPreset::CENTER);
             Submesh& submesh = sprite.getComponent<MeshComponent>().submeshes[0];
             submesh.material.baseColorTexture.setData("sprite-fx-gpu|key" + std::to_string(frame.w) + "x" + std::to_string(frame.h),
@@ -580,11 +580,11 @@ TEST_F(SpritePixelFxGpu, KeyMatchesCpu){
             const int width = int(target.getWidth()), height = int(target.getHeight());
             std::vector<uint8_t> rgba;
             ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), width, height, rgba));
-            const int left = width / 2 - frame.w * kScale / 2, top = height / 2 - frame.h * kScale / 2;
+            const int left = width / 2 - frame.w * kSpritePixelFxScale / 2, top = height / 2 - frame.h * kSpritePixelFxScale / 2;
             int worst = 0;
             for (int y = 0; y < frame.h; y++){
                 for (int x = 0; x < frame.w; x++){
-                    const uint8_t* p = &rgba[(size_t(top + y * kScale + kScale / 2) * width + left + x * kScale + kScale / 2) * 4];
+                    const uint8_t* p = &rgba[(size_t(top + y * kSpritePixelFxScale + kSpritePixelFxScale / 2) * width + left + x * kSpritePixelFxScale + kSpritePixelFxScale / 2) * 4];
                     // rows from the top of the image; the key counts from the frame's bottom
                     const float cpu = pixelart::pfxDissolveKey(x, frame.h - 1 - y, frame.w, frame.h, dissolve);
                     worst = std::max(worst, std::abs(int(p[0]) - int(std::lround(cpu * 255.0f))));

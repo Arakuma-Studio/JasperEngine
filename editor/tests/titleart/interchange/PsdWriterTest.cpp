@@ -59,7 +59,7 @@ namespace {
         return l;
     }
 
-    PsdWriteDocument document(int bps) {
+    PsdWriteDocument psdWriterDocument(int bps) {
         PsdWriteDocument doc;
         doc.width = W;
         doc.height = H;
@@ -146,12 +146,12 @@ namespace {
     void streamed(int bps) {
         std::vector<uint8_t> batch;
         std::string error;
-        ASSERT_TRUE(writePsd(document(bps), batch, error)) << error;
+        ASSERT_TRUE(writePsd(psdWriterDocument(bps), batch, error)) << error;
         const fs::path dir = fs::temp_directory_path() / ("je_psd_spool_" + std::to_string(::getpid()) + "_" + std::to_string(bps));
         fs::create_directories(dir);
         const fs::path spoolPath = dir / "x.spool";
         {
-            PsdWriteDocument doc = document(bps);
+            PsdWriteDocument doc = psdWriterDocument(bps);
             PsdChannelSpool spool;
             ASSERT_TRUE(spool.open(spoolPath, error)) << error;
             spoolAll(doc.layers, bps * 8, spool);
@@ -171,8 +171,8 @@ namespace {
         fs::remove_all(dir);
     }
 
-    void roundTrip(int bps) {
-        const PsdWriteDocument doc = document(bps);
+    void psdWriterRoundTrip(int bps) {
+        const PsdWriteDocument doc = psdWriterDocument(bps);
         std::vector<uint8_t> bytes, again;
         std::string error;
         ASSERT_TRUE(writePsd(doc, bytes, error)) << error;
@@ -241,15 +241,15 @@ TEST(PsdWriterTest, StreamedFileEqualsTheBatchFile16) {
 }
 
 TEST(PsdWriter, RoundTrip8) {
-    roundTrip(1);
+    psdWriterRoundTrip(1);
 }
 
 TEST(PsdWriter, RoundTrip16) {
-    roundTrip(2);
+    psdWriterRoundTrip(2);
 }
 
 TEST(PsdWriter, TransparentColourIsZero) {
-    PsdWriteDocument doc = document(1);
+    PsdWriteDocument doc = psdWriterDocument(1);
     std::vector<uint8_t> bytes;
     std::string error;
     ASSERT_TRUE(writePsd(doc, bytes, error));
@@ -325,7 +325,7 @@ TEST(PsdWriter, PsdReadAccepts) {
     for (int bps : {1, 2}) {
         std::vector<uint8_t> bytes;
         std::string error;
-        ASSERT_TRUE(writePsd(document(bps), bytes, error)) << error;
+        ASSERT_TRUE(writePsd(psdWriterDocument(bps), bytes, error)) << error;
         const fs::path good = dir / ("good" + std::to_string(bps * 8) + ".psd");
         std::ofstream(good, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()), (std::streamsize)bytes.size());
         EXPECT_EQ(std::system((python + " -I \"" + script + "\" --check --icc \"" + good.string() + "\"").c_str()), 0) << bps * 8 << "-bit";

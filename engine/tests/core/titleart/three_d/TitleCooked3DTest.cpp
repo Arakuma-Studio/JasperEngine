@@ -48,7 +48,7 @@ namespace {
                         {"scene_3d", {{"supersample", 1}, {"environment", {{"preset", "softbox"}, {"rotation", 25}}}}}});
     }
 
-    std::string bundledHdriDir() {
+    std::string cookedBundledHdriDir() {
         return (std::filesystem::path(jasperengine::test::testPaths().sourceDir) / ".." / ".." / ".." / "editor" / "resources" / "titleart" / "hdri")
             .lexically_normal()
             .string();
@@ -59,17 +59,17 @@ namespace {
             setTitleHdriLoader(nullptr);
             return;
         }
-        const std::string dir = bundledHdriDir();
+        const std::string dir = cookedBundledHdriDir();
         setTitleHdriLoader([dir](const std::string& slug) { return loadTitleHdriFromDirectory(slug, dir); });
     }
 
-    bool hasProblem(const TitleRenderJob& job, const char* code) {
+    bool titleCooked3DHasProblem(const TitleRenderJob& job, const char* code) {
         for (const TitleProblem& p : job.problems())
             if (p.code == code) return true;
         return false;
     }
 
-    void writeBytes(const std::filesystem::path& path, const std::vector<uint8_t>& bytes) {
+    void titleCooked3DWriteBytes(const std::filesystem::path& path, const std::vector<uint8_t>& bytes) {
         std::filesystem::create_directories(path.parent_path());
         std::ofstream out(path, std::ios::binary);
         out.write(reinterpret_cast<const char*>(bytes.data()), (std::streamsize)bytes.size());
@@ -96,25 +96,25 @@ namespace {
             r.outputScale = 1.0;
             three_d::TitleMesher mesher;
             const std::string file = titleCookedMeshFile(TITLE_PATH, "00000001", tier);
-            writeBytes(dir / file, writeTitleMesh(*mesher.build(r)));
+            titleCooked3DWriteBytes(dir / file, writeTitleMesh(*mesher.build(r)));
             entry["meshes"]["00000001"][titleTierName(tier)] = file;
         }
         Environment3D env;
         env.preset = "softbox";
         const TitleEnvScene* scene = titleEnvironmentPreset("softbox");
         const std::shared_ptr<const TitleHdri> hdri = loadTitleHdri(scene->hdri);
-        EXPECT_TRUE(hdri) << "the bundled Studio Small 09 at " << bundledHdriDir();
+        EXPECT_TRUE(hdri) << "the bundled Studio Small 09 at " << cookedBundledHdriDir();
         const TitleEnvCube cube = buildTitleEnvironmentCpu(*scene, hdri.get(), titleHdriYaw("softbox"), titleEnvironmentFace(env, 1.0, TitleTier::High));
         std::vector<uint8_t> ktx2;
         std::string error;
         EXPECT_TRUE(writeTitleEnvironmentKtx2(cube, {{"JE.titleart.environment", "softbox"}}, ktx2, error)) << error;
         const std::string family = "desktop";
         const std::string envFile = titleCookedEnvironmentFile(family, "softbox");
-        writeBytes(dir / envFile, ktx2);
+        titleCooked3DWriteBytes(dir / envFile, ktx2);
         index["environments"][family]["softbox"] = envFile;
         index["titles"][TITLE_PATH] = entry;
         const std::string text = index.dump(1);
-        writeBytes(dir / TITLE_COOKED_INDEX_FILE, std::vector<uint8_t>(text.begin(), text.end()));
+        titleCooked3DWriteBytes(dir / TITLE_COOKED_INDEX_FILE, std::vector<uint8_t>(text.begin(), text.end()));
         return root;
     }
 
@@ -184,7 +184,7 @@ TEST_F(TitleCooked3DGpu, APlayerDrawsTheExportsDataAsTheEditorDoes) {
         r.tier = tier;
         std::unique_ptr<TitleRenderJob> job;
         editor[tier] = render(*renderer, r, &job);
-        EXPECT_FALSE(hasProblem(*job, "environment_missing")) << "tier " << tier;
+        EXPECT_FALSE(titleCooked3DHasProblem(*job, "environment_missing")) << "tier " << tier;
     }
 
     // the game: no HDRI, no mesher; the export's index and files
@@ -240,13 +240,13 @@ TEST_F(TitleCooked3DGpu, APlayerDrawsTheExportsDataAsTheEditorDoes) {
         r.testFlags = TITLE_ART_TEST_NO_MESHER;
         std::unique_ptr<TitleRenderJob> job;
         const Pixels nothing = render(*renderer, r, &job);
-        EXPECT_TRUE(hasProblem(*job, "mesher_unavailable"));
+        EXPECT_TRUE(titleCooked3DHasProblem(*job, "mesher_unavailable"));
         EXPECT_LT(nothing.at(256, 128)[3], 1.0f / 255.0f);
         TitleJobSpec spec;
         cooked->fill(1, spec);
         r.cookedMeshes3D = spec.cookedMeshes3D;
         const Pixels studio = render(*renderer, r, &job);
-        EXPECT_TRUE(hasProblem(*job, "environment_missing"));
+        EXPECT_TRUE(titleCooked3DHasProblem(*job, "environment_missing"));
         EXPECT_GT(compare(editor[1], studio, 24.0).mean, 3.0) << "the studio stand-in is not the softbox";
     }
 }

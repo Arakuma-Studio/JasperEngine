@@ -139,7 +139,7 @@ namespace {
         return Vector3();
     }
 
-    void expectNear(const Vector3& actual, const Vector3& expected, const std::string& what){
+    void placedModelVariantsExpectNear(const Vector3& actual, const Vector3& expected, const std::string& what){
         EXPECT_NEAR(actual.x, expected.x, 1e-4f) << what;
         EXPECT_NEAR(actual.y, expected.y, 1e-4f) << what;
         EXPECT_NEAR(actual.z, expected.z, 1e-4f) << what;
@@ -168,10 +168,10 @@ TEST_F(PlacedModel, SkinnedBlendShapeLoadsAtRestAsStaticGeometry){
     EXPECT_EQ(attributes.count(AttributeType::MORPHNORMAL0), 0u) << "no blend shape input";
     EXPECT_EQ(attributes.count(AttributeType::TEXCOORD1), 1u) << "the UVs stay";
     // the file's 0.5 weight, baked
-    expectNear(vertex(mesh, AttributeType::POSITION, 0), Vector3(0, 0.25f, 0), "position 0");
-    expectNear(vertex(mesh, AttributeType::POSITION, 1), Vector3(1, 0.25f, 0), "position 1");
-    expectNear(vertex(mesh, AttributeType::POSITION, 2), Vector3(0, 1.25f, 0), "position 2");
-    expectNear(vertex(mesh, AttributeType::NORMAL, 0), Vector3(std::sqrt(0.5f), 0, std::sqrt(0.5f)), "normal 0");
+    placedModelVariantsExpectNear(vertex(mesh, AttributeType::POSITION, 0), Vector3(0, 0.25f, 0), "position 0");
+    placedModelVariantsExpectNear(vertex(mesh, AttributeType::POSITION, 1), Vector3(1, 0.25f, 0), "position 1");
+    placedModelVariantsExpectNear(vertex(mesh, AttributeType::POSITION, 2), Vector3(0, 1.25f, 0), "position 2");
+    placedModelVariantsExpectNear(vertex(mesh, AttributeType::NORMAL, 0), Vector3(std::sqrt(0.5f), 0, std::sqrt(0.5f)), "normal 0");
 }
 
 TEST_F(PlacedModel, TheLoaderFlagsLuaCanPassKeepTheSkin){

@@ -31,13 +31,13 @@ namespace {
         return JASPER_TEST_SOURCE_DIR "/fixtures/shader/zero_cost_mesh_variants.txt";
     }
 
-    struct Case{
+    struct ShaderZeroCostCase{
         std::function<void(SubmeshShaderInputs&, MeshShaderEnvironment&)> apply;
     };
 
     // what a submesh can be, one thing at a time (each applied over every lighting setup below)
-    const std::vector<Case>& meshCases(){
-        static const std::vector<Case> cases = {
+    const std::vector<ShaderZeroCostCase>& meshCases(){
+        static const std::vector<ShaderZeroCostCase> cases = {
             {[](SubmeshShaderInputs&, MeshShaderEnvironment&){}},
             {[](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.baseColorTexture = true; }},
             {[](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.baseColorTexture = true; i.normalTexture = true; }},
@@ -108,7 +108,7 @@ namespace {
     std::set<uint64_t> enumerateVariants(){
         std::set<uint64_t> variants;
         for (const auto& setup : lightingSetups()){
-            for (const Case& meshCase : meshCases()){
+            for (const ShaderZeroCostCase& meshCase : meshCases()){
                 SubmeshShaderInputs inputs = setup.first;
                 MeshShaderEnvironment environment = setup.second;
                 meshCase.apply(inputs, environment);

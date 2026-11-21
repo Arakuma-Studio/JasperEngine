@@ -57,7 +57,7 @@ namespace {
     }
 
     // Where two texts first differ, a few lines of each
-    std::string firstDifference(const std::string& a, const std::string& b) {
+    std::string compatFirstDifference(const std::string& a, const std::string& b) {
         std::istringstream ia(a), ib(b);
         std::string la, lb;
         for (int line = 1;; line++) {
@@ -296,7 +296,7 @@ TEST(Compat, CorpusRoundTrip) {
                                    (original.find("particlesystem:") == std::string::npos || original.find("inlineEffect:") != std::string::npos);
         if (editorWritten) {
             const std::string difference =
-                firstDifference(withoutComputedValues(withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(first))))),
+                compatFirstDifference(withoutComputedValues(withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(first))))),
                                 withoutComputedValues(withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(original))))));
             EXPECT_TRUE(difference.empty()) << "the save changed more than the version line, at " << difference;
             EXPECT_EQ(shaderKeySet(first), shaderKeySet(original)) << "the shader keys";

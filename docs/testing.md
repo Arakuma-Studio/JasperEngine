@@ -442,7 +442,8 @@ also holds `journal.txt` with it (`native-crash-journal` checks the same on the 
   (`tools/check-physics-off.sh all-off`): the editor's engine has every module, so only this shows a
   source that got a header through a module's code, which breaks Compile builds and the smaller players.
 - **CI owns the full suite** (below, "CI"): a PR runs the lanes its diff needs, the merge queue
-  every build and unit test plus the planned MCP files, the nightly the whole MCP CI suite;
+  every lane that can block the merge, the advisory run a push to `main` dispatches the advisory test
+  lanes the queue left out, the nightly the whole MCP CI suite;
   `gh workflow run ci.yml --ref <branch> -f full=true` runs everything on a branch. check-changed is
   a selection and says so in every summary. The MCP files outside the CI suite (`MCP_SUITE=all`)
   run only where someone runs them.
@@ -538,8 +539,39 @@ A file's tests share an editor and run in order, so a file is one piece of work,
 `TESTS_INDEPENDENT = "why"` (each test sets up what it needs and runs in an editor of its own, in
 any order) or `TESTS_INDEPENDENT = ("why", ["test_x_*"])` for some of its tests (those use nothing
 the file's other tests leave, nor do the others use theirs): their tests may be split into chunks,
-each with its own worker process and editor (`run_tests.py --split-seconds N`). `test_html_ui_examples.py` (each example's golden) and the
-Khronos models of `test_materials_pbr.py` (`test_khronos_<Model>`) declare it.
+each with its own worker process and editor (`run_tests.py --split-seconds N`). `test_html_ui_examples.py` (each example's golden), the
+Khronos models of `test_materials_pbr.py` (`test_khronos_<Model>`) and the parts of the Title Art
+library's gate (`test_title_library.py`, `test_gate_<k>_of_8`) declare it.
+
+### Setup cost
+
+The runner prints `== setup` before its summary and writes `setup` into `--json`: each chunk's wall
+time and its tests' time, and each editor's `scratch` (its directory and project copy), `start` (to
+the tool list), `first_call` (the first tool call, which waits for the project to load), `close`, and
+`shared` for the file's editor (the others are started by its tests). Measured:
+
+- This split's first CI run, 44838269359 (the CI suite in 7 shards: 438 chunks, 2,649 tests): 8.79 h
+  of chunk time, 8.59 h of it inside the tests. 693 editors, 409 of them the files' and 284 started by
+  tests in 56 files (`test_saved_output_determinism.py` 36, `test_post_fx_settings.py` 35,
+  `test_reflection.py` 34, `test_project_audio_defaults.py` 29); medians: start 0.37 s, first call
+  1.93 s, close 0.58 s. Outside the tests a median 1.3 s a chunk (the worker's start, 0.5 s of it
+  importing the harness, and the file's editor close). Setup at most 0.77 h (8.7%): the files' editors
+  0.36 h, the tests' own 0.31 h.
+- The load, in the Linux image on llvmpipe at 2 to 4 CPUs: 1.5 s, the same for `create` and a
+  `tools/fixtures` copy; 0.6 s of it is the engine API the editor syncs into
+  `.jasperengine/engine-api` (3,554 files).
+- Fixture copies take milliseconds (23 s for the whole run): of the CI files, 343 start on `create`, 21
+  on `pose-animation`, 15 on `html-ui`, none on `build/fixture-unity`; the largest `tools/fixtures`
+  project is `reflection-parity` (14 MB, 2 files), the next 1.5 MB. A file's first test takes as long
+  whatever its fixture (CI median: `create` 6.0 s, `pose-animation` 4.5 s, `html-ui` 6.9 s).
+
+So each file keeps a worker process and an editor of its own: a reset between files in one editor
+(`create_project` with `unsaved: "discard"`) takes 1.6 s against 2.3 s for a new editor's start,
+load and close, under 1% of the suite, and would hand the editor's process state (settings, layout,
+Lua, tool groups, console) to the next file. A pre-synced engine API cannot help `create`
+(`--create` takes an empty directory only). For shard planning: a chunk costs about 1.3 s outside
+its tests plus 2 to 3 s for its editor inside its first test, not the 20 s of `shard.py`'s
+`CHUNK_OVERHEAD`.
 
 ### Caches and CPU caps
 
@@ -920,7 +952,12 @@ name of its own) or listed in `jasperengine_skip_unity_build(REASON ... SOURCES 
 sources that include Xlib (macros such as `None` and `Status`), and the HTML UI and MCP tool
 sources, which keep one generic helper set (`lower`, `trim`, `Target`...) per file. A new
 `namespace {}` helper in our code must not reuse a name another source of the target defines at
-file scope.
+file scope. Nor may a source hand the sources after it anything at file scope: a `using namespace`
+of anything but `jasperengine` and `jasperengine::editor` (take the names it uses, or put the
+tests in that namespace), a global alias such as `using Json = ...` (give it a name of the file's
+own), or a macro (`#undef` it at the end). A name an engine header shares with an editor one
+(`SelectionState`, `View`, `pixelart`, `test`) is spelled out where both are in sight. Each tree
+CI builds compiles with `UNITY=1`: `tools/build.sh linux`, and `unit-tests` for both suites.
 
 ### Build speed
 
@@ -978,7 +1015,7 @@ edit rebuilds of one tree, with the host's load recorded) and `tools/perf/build_
 ## CI
 
 GitHub Actions (`.github/workflows/`) runs on every pull request to `main`, in the merge queue, on
-every push to `main`, every night and for a release. Each step is a one-line call to a script in this
+every push to `main` and in the advisory run it dispatches, every night and for a release. Each step is a one-line call to a script in this
 repository, in the same Docker images `tools/build.sh` builds, so every lane reproduces locally with
 the command its report prints. The design is `docs/superpowers/specs/2026-11-12-ci-design.md`.
 
@@ -992,7 +1029,7 @@ Jobs of `ci.yml`; a lane's command is also its repro.
 | `lint` | the repository's and the workflows' lints |
 | `linux` | `WERROR=1 tools/build.sh linux`; its editor install feeds `mcp` and `smoke` |
 | `unit` (one job per test binary: `core`; `editor-1`, `editor-2`) | `UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>' WERROR=1 tools/build.sh unit-tests`, plus the scalar picking rerun (core); each editor part with `UNIT_SHARD=<k>/2`, after compiling half the objects (`UNIT_BUILD_PART=<k>/2`) and taking the other half from the other part (below) |
-| `asan` | `SANITIZE=address,undefined tools/build.sh unit-tests` |
+| `asan` (one job per test binary: `core`, `editor`) | `SANITIZE=address,undefined UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>-*GpuSlow*' tools/build.sh unit-tests`, the unit lane's filter without the `*GpuSlow*` suites (the nightly runs them under ASan) |
 | `htmlui` | `JASPER_HTMLUI_PERF_SLACK=3 tools/build.sh htmlui-tests` |
 | `mcp` (one job per shard) | `tools/ci/mcp_shard.sh <k> build/ci-plan`: the CI suite's planned files, `-j 2`, without the fixture project |
 | `smoke` | `SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/post-processing`, the prebuilt `tools/fixtures/unified-lighting` and a project from each template |
@@ -1004,8 +1041,10 @@ Jobs of `ci.yml`; a lane's command is also its repro.
 | `check` | the one required status, `Check` (`tools/ci/check_gate.py`): green only when every lane that had to run passed |
 
 `Check` treats a skipped lane as passed only when `changes` said the lane was not needed. A test lane
-that ran no test, an MCP shard that ran no file, a unit job (`unit-core`, `unit-editor-<k>`) without a
-report or that ran no test, or a merge-queue or full run that skipped a lane turns it red.
+that ran no test, an MCP shard that ran no file, a unit job (`unit-core`, `unit-editor-<k>`) or an
+ASan job (`asan-core`, `asan-editor`) without a report or that ran no test, or a merge-queue or full
+run that skipped a lane turns it red. The one skip the queue may make is of an advisory lane or test
+run that `changes` planned off for being advisory (`lanes.json` `advisory_off`).
 
 **The editor parts.** The editor tests' build is most of their lane (runs 43737549764 and 43773511699:
 the build 110 and 137 min, the 5,268 tests 7 min). Each part (`tools/ci/plan_lanes.py` `UNIT_PARTS`)
@@ -1014,8 +1053,7 @@ compiles every other object into the restored ccache, uploads the files that add
 longer than its own part took, not at all when that part has not started or ended without them, or
 when its own part compiled under a tenth of its objects (a warm cache: the other part's hit too). It
 then builds the binary from the cache, compiling whatever it did not get, and runs its shard. Only
-the first part saves the `unit-editor` cache and the deps dump on push; the second only compiles its
-objects there. The hits need a configure whose objects do not depend on a precompiled header built in
+the first part makes the deps dump on push; the second only compiles its objects there. The hits need a configure whose objects do not depend on a precompiled header built in
 the job: a GCC `.gch` is not the same bytes twice, so a unit built on the other part's misses. A skipped MCP test fails its shard unless `tools/ci/mcp-allowed-skips.txt` lists it
 with the reason and the lane where it does run; a new entry is reviewed like any change.
 PR and merge-queue shards run without `JASPER_SLOW_BUILD`: the tests that build a real game (an hour
@@ -1026,22 +1064,65 @@ on every change a game's build reads.
 until `main` is green through CI, and `windows-editor-tests` (the Windows editor job's test run,
 reported apart from the job, until the suite passes on Windows): `Check` ignores their failures, and
 the report shows them first, marked advisory. Lint and the platform builds always block, the
-Windows jobs' builds and the core tests' run included.
+Windows jobs' builds and the core tests' run included. Since an advisory lane cannot block a merge,
+the merge queue does not run it (`tools/ci/plan_lanes.py --advisory "$ADVISORY_LANES"`): of `unit`
+(every job of it), `asan`, `htmlui`, `mcp`, `smoke` and `windows-editor-tests` (the editor leg still
+builds), the ones the list names; taking a lane off the list puts it back in the queue with no other
+edit. Lint and the platform lanes run in the queue whatever the list says. The advisory run a push to
+`main` dispatches runs what the queue left out instead, as the queue would have (below), so every
+merged change still gets their results, in that run's report and the `advisory-red` issue.
+
+### How the MCP shards are balanced
+
+`changes` plans the `mcp` lane's shards (`tools/ci/plan_lanes.py`, `tools/mcp/shard.py plan`): each
+file is one chunk (one editor, its tests in order), a `TESTS_INDEPENDENT` file's tests are cut into
+chunks of about 10 min, and the chunks go longest first to whichever of a shard's two workers ends
+first. The lane ends with its slowest shard, so the times have to be right:
+
+- **Committed timings first**: `tools/mcp/ci-timings.json` holds each CI-suite file's seconds (its
+  tests summed) and each test of a `TESTS_INDEPENDENT` file, medians of PR and merge-queue shards. A
+  file's tests without a time of their own share what its seconds leave (a test split since the
+  refit keeps the file's total), at least the file's default when some are timed. Then the nightly's
+  per-test seconds (the `mcp-timings` cache) for the files it lacks, then its default a test (the
+  suite's mean). The nightly plans by its own seconds alone: its shards build the games a PR's skip.
+  An unreadable file is left out, and the report's fallbacks say so.
+- **The refit**: `mcp-timings-refit.yml`, daily and on demand, runs `tools/ci/mcp_timings.py fetch`
+  (the `mcp.json` of the newest 20 ci.yml runs of this repository's own branches) and `refit`: one
+  sample per run of each file, the median after dropping samples over 3 times or under a third of it,
+  nothing from a single sample, and a new value only outside 25 % (at least 15 s) of the committed one.
+  When an entry moved, it force-pushes `ci/mcp-timings-refit` and opens or updates its pull request
+  (`tools/mcp/ci-timings.json` is on `CI_NOTHING_READS`: its PR runs only `changes` and `Check`).
+  GitHub Actions may not open pull requests here and its token's push starts no pull_request run:
+  with the secret `MCP_TIMINGS_TOKEN` it does both, without it the job dispatches `ci.yml` on the branch
+  and fails until the PR exists.
+- **The shard count**: the fewest shards that no larger count (up to 8 on a PR and in the queue) beats
+  by more than the 4 min of setup each added shard costs (checkout, image, editor install: median
+  236 s over 46 shards). Once the longest chunk sets the length, more shards save nothing.
+- **A long test** is a piece no plan splits: the Title Art library's gate (52 to 103 min as one test)
+  runs as `test_gate_<k>_of_8`. The longest chunk now is `test_voxels.py` (38 min).
+
+From the PR and merge-queue runs of 2026-11-19/20 (`tools/ci/mcp_timings.py fetch`, then each plan
+replayed on the measured medians): planned without timings (15 of 20 runs: the cache was gone) the 8
+shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each, a PR's skip them)
+18 to 81 min in 7 shards; by the committed timings, 7 shards of 38 to 42 min.
 
 ### What each event runs
 
-| | PR push | merge queue | push to `main` | `full=true` dispatch |
-|---|---|---|---|---|
-| `changes`, `Check` | yes | yes | yes | yes |
-| `lint` | unless every path is one nothing reads | same | no | yes |
-| platform builds | when anything that builds changed | yes | yes, to warm the caches | yes |
-| `unit`, `asan`, `htmlui` | the suites the plan selects | all, unfiltered | no | all |
-| `mcp` | the planned CI-suite files | the planned files, over the group's diff against `main` | no | the whole CI suite |
-| `smoke` | when a game-building path changed | yes | no | yes |
+| | PR push | merge queue | push to `main` | advisory run | `full=true` dispatch |
+|---|---|---|---|---|---|
+| `changes`, `Check` | yes | yes | yes | yes | yes |
+| `lint` | unless every path is one nothing reads | same | no | no | yes |
+| `linux`, `web`, `android`, `windows`, `macos` | when anything that builds changed | yes | yes, to warm the caches (`windows`: the editor leg's build only) | `linux` when `mcp` or `smoke` runs (their editor install); `windows` for `windows-editor-tests` (the editor leg only) | yes |
+| `ios` | when anything that builds changed | yes | no (no cache) | no | yes |
+| `unit`, `htmlui` | the suites the plan selects | all, unfiltered; not while advisory | build only (the caches, the deps dumps) | while advisory all, unfiltered | all |
+| `asan` | the unit lane's suites | all, unfiltered; not while advisory | no (no cache) | while advisory all | all |
+| `mcp` | the planned CI-suite files | the planned files, over the group's diff against `main`; not while advisory | no | while advisory the planned files, over the diff since the last advisory run | the whole CI suite |
+| `smoke` | when a game-building path changed | yes; not while advisory | no (no cache) | while advisory yes | yes |
+| `windows-editor-tests` | with the Windows editor leg | the same; not while advisory | no | while advisory yes | yes |
 
 - **Nothing reads it**: a change only under `docs/specs/`, `docs/superpowers/`, `docs/engine-gaps/`,
-  `docs/openengine-analysis/`, `docs/test-cleanup/`, `.claude/`, a root `*-LEDGER.md` or `README.md`
-  runs only `changes` and `Check`, on a PR and in the queue. The rest of `docs/` counts as building:
+  `docs/openengine-analysis/`, `docs/test-cleanup/`, `.claude/`, a root `*-LEDGER.md`, `README.md` or
+  `tools/mcp/ci-timings.json` runs only `changes` and `Check`, on a PR and in the queue. The rest of `docs/` counts as building:
   the editor embeds the MCP guide, and tests read other docs.
 - **Ledgers** ride in the PR of the work they record, so they cost no run of their own.
 - **Stricter than check-changed**: any building change runs every platform lane, Web and Android
@@ -1050,29 +1131,74 @@ Windows jobs' builds and the core tests' run included.
 - **MCP in the merge queue** is planned from the coverage map, not the whole suite: a regression the
   map misses is the nightly's to find. A planned file outside the CI suite (it needs the fixture
   project, or is `CI_EXCLUDED`) is listed under "not run in CI"; `MCP_SUITE=all` locally covers it.
-- **Push to `main`** builds only: its tests ran in the queue. It saves the caches (ccache per lane,
-  the deps dumps `changes` plans from): a PR restores what `main` saved, never what the queue did.
+- **Push to `main`** builds what keeps a cache and nothing else (`tools/ci/plan_lanes.py` `build_only`
+  lists what builds without its tests): it saves the caches (ccache per lane, the deps dumps `changes`
+  plans from), and a PR restores what `main` saved, never what the queue did. The queue built and
+  tested the same commit, so a push runs no check: not `ios`, `smoke`, ASan or the Windows engine
+  legs, which keep no cache entry, nor any step the queue ran (`MAIN_STAGE` in `ci.yml`).
+- **One push run at a time.** Merge-queue groups land one push each, some minutes apart (2026-11-15
+  to 20: 21 pushes, gaps of 62 s, 3 and 4 min among 20). Push runs share one concurrency group without
+  cancel-in-progress: one runs, the newest waits, and GitHub drops an older waiting run before it takes
+  a runner. A push run's `changes` job first waits `ADMISSION_SECONDS` (300) and steps aside, running
+  no lane (`superseded_by` in `lanes.json`), when `main` moved on by then with a path that builds: the
+  newer run builds and saves. A newer push that touches only paths nothing reads does not supersede it.
+  Each push run plans against the head of the last push run that finished (`gh run list`), so a dropped
+  run's change is still built.
+- **The advisory run.** A push that builds dispatches `ci.yml` with `advisory: true` on `main`. That
+  run, named "Advisory tests of main at <sha>", runs the tests of the `ADVISORY_LANES` lanes the queue
+  left out, as the queue would have, plus the jobs they need (above). Advisory runs share their own
+  concurrency group: one at a time, the newest waiting. Each is planned against the head of the last
+  advisory run that finished, so one run tests every push since that one, and its report starts
+  "Advisory tests of the changes since <sha>". With no earlier run, it runs every advisory lane and
+  the whole MCP CI suite. `Check` stays green on an advisory failure, so the run keeps one issue,
+  labelled `advisory-red`: opened or commented on by each run with a failing, cancelled or missing job,
+  closed by the first green one. A run takes about 4.5 h (ASan). Over the pushes of 2026-11-15 to 20,
+  a model with 270 min runs gives each merged change its results 5.7 h after it lands on average (at
+  most 8.8 h), in 15 runs instead of 21, never two at once. Running them in every push run took 4.5 h
+  but up to three runs at a time (five or six at two to four times the pushes); an hourly schedule
+  averaged 5.9 h (7.5 to 7.9 h at two to four times the pushes). The unit and HTML UI jobs build again
+  in the advisory run (the editor tests' tree keeps no cache entry), about 150 Linux minutes a run.
 - **ccache in CI**: a build runs with no size limit (a cleanup in the middle of a build evicts the
   restored entries it has not reached yet, and each miss then evicts more: a PR that changed one test
   file hit 5 of 5,279 compiles). `ccache-save` then evicts every entry the run neither used nor wrote
   and prints the rest, the lane's working set, on every run; on `main` it cuts that to the lane's cap
-  (`max-size` in `ci.yml`), oldest-used first, and saves it. A cap below the working set loses the
-  start of the build, not all of it. The caps share GitHub's 10 GB per repository with the Gradle,
-  Vulkan SDK, uv and plan caches (about 1.2 GB), and the working sets (PR 26, no precompiled headers)
-  add up to more: linux 1.5 GB, unit-core 1.4, unit-editor 4.0, asan 5.3, htmlui 1.6, smoke 3.5,
-  web 0.5, android 0.6, macOS 1.6, Windows editor 0.9, Windows OpenGL 1.4. So linux, unit-core, web,
-  Android, macOS and the Windows editor and OpenGL jobs keep a whole one (8.6 GB of caps); unit-editor,
-  asan, htmlui and smoke keep none and build cold (their jobs still reuse what an earlier step of the
-  same job compiled), as do Windows D3D11 and Vulkan.
+  (`max-size` in `ci.yml`), oldest-used first, saves it and deletes the lane's older entry (`prune`;
+  the `caches` job, after every lane, deletes them again). Each lane's old and new entries would
+  otherwise both live until the push's slowest lane ended, and past the 10 GB GitHub evicts the least
+  recently used entries of any lane: during push run 44629653601 the repository held 11.7 GB, two
+  entries of linux, unit-core and Android, and the plan inputs, the coverage map and the Vulkan SDK
+  were gone. A cap below the working set loses the start of the build, not all of it. The caches
+  share GitHub's 10 GB per repository (the repository's `max_cache_size_gb`); working sets from each
+  lane's `ccache-save` (no precompiled headers), sizes as saved:
+
+  | Cache | Working set (GB) | Cap | Entry |
+  |---|---|---|---|
+  | linux | 1.5 (saved 1.44-1.46) | 1.6G | yes |
+  | unit-core | 1.34 | 1.4G | yes |
+  | macOS | 1.30-1.37 | 1.4G | yes |
+  | htmlui | 1.66 (2,176 compiles, Release) | 1.7G | yes |
+  | Windows editor | 0.91 | 1.0G | yes |
+  | Android | 0.63 | 0.7G | yes |
+  | web | 0.48 | 0.6G | yes |
+  | Gradle, Vulkan SDK, plan inputs, coverage map, MCP timings | 0.73, 0.21, under 0.01 each | | yes |
+  | Windows OpenGL | 1.4 | | no: the lane ends with its slowest leg, and D3D11 and Vulkan cold (57-99 min) take about as long as OpenGL cold with the core tests (79-108) |
+  | unit-editor | 4.0 | | no |
+  | asan-core, asan-editor | 5.3 both (one job, PR 26) | | no: neither binary's fits what is left, so ASan never runs on push, and runs cold |
+  | smoke | 3.5 | | no |
+
+  At most 8.4 GB of caps plus 0.95 GB of the rest, 9.35 GB (8.8 GB at these working sets). A cache
+  with no entry builds cold, its job still reusing what an earlier step of the same job compiled, as
+  do Windows D3D11 and Vulkan. A lane that gives its entry up has its prefix in the `caches` job's
+  second list, so its last entry goes at once instead of holding the budget for 7 days.
 - **Full run on any branch**: `gh workflow run ci.yml --ref <branch> -f full=true`.
 
 ### The nightly and releases
 
 - **Nightly** (`nightly.yml`, 03:17 UTC, or dispatched): the slow configurations (HTML UI on Vulkan
-  and under ASan, TSan, texture formats on lavapipe, the unity build, every fixture's smoke on
-  OpenGL, GLES3 and Vulkan through `tools/ci/nightly-smoke.sh`, the pthreads web gate, prebuilt
-  player parity) and the whole MCP CI suite, which also refreshes the coverage map and the shard
-  timings. A failure opens or updates the issue
+  and under ASan, TSan, texture formats on lavapipe, the unity builds of the editor, the engine and
+  both unit-test trees, every fixture's smoke on OpenGL, GLES3 and Vulkan through
+  `tools/ci/nightly-smoke.sh`, the pthreads web gate, prebuilt player parity) and the whole MCP CI suite, which also refreshes the coverage map and the
+  nightly's own shard timings (the `mcp-timings` cache). A failure opens or updates the issue
   labelled `nightly`. When `main` moved, it publishes the prerelease `nightly-YYYYMMDD` (the newest 14
   are kept); the slow lanes do not hold it back.
 - **Stable** (`release.yml`, dispatched with a `vX.Y.Z` version, an optional commit that defaults to
@@ -1090,6 +1216,8 @@ Windows jobs' builds and the core tests' run included.
   `ci-report.yml` writes it for a pull request from a fork, whose run cannot.
 - **Merge queue**: a group that fails removes the PR and posts the same report on it, prefixed
   "Removed from the merge queue". The commit it names is the queue's merge commit.
+- **Advisory run**: its report heads the job summary; a failing, cancelled or missing job opens or
+  comments on the issue labelled `advisory-red`, and the first green run closes it (above).
 - **`main`**: a failed push opens or updates the issue labelled `ci-red`, and comments on the PR that
   made the commit.
 - **Each run**: the same text in the job summaries; per lane the artifacts `ci-report-<lane>` (JSON:
@@ -1100,6 +1228,25 @@ gh pr checks <N> --watch                       # wait for Check
 gh pr view <N> --comments                      # the report
 gh run download <run> -p 'ci-report-*'         # its JSON, per lane
 ```
+
+### Test time budget
+
+`tools/ci/time-budget.json` holds what CI time a test may cost: per suite (`core`, `editor`, `htmlui`,
+`mcp`, by lane) a cap for one test, for MCP also for one file, and the suite's total on a complete run
+(no filter: the merge queue's unit and HTML UI lanes, the editor's two parts added up); the tests and
+files above a cap are listed with their measured seconds and a reason. `report.py collect` measures
+each lane's tests against it and the PR comment lists what is over, marked advisory: `Check` does not
+count it. A listed test may grow by `tolerance` (2: one runner measured the same tests 1.4 to 1.7 times another), a total by `total_tolerance` (1.5).
+What is over gets cheaper (above, "Writing load-robust tests"; one owner per contract, a smaller check
+where it covers the same contract) or its budget raised in the PR, with the reason a reviewer reads:
+
+```sh
+python3 tools/ci/time_budget.py check --lane mcp-3 build/test-results/mcp.json      # what the report would list
+python3 tools/ci/time_budget.py allow mcp test_x.py::test_y 300 --reason "why it must cost this"
+python3 tools/ci/time_budget.py ratchet --lane unit-core build/test-results/core.xml # lower what got cheaper
+```
+
+Its tests: `python3 -I tools/ci/test_time_budget.py`.
 
 ### Reproducing a lane
 
@@ -1113,6 +1260,52 @@ gh run download <run> -p 'ci-report-*'         # its JSON, per lane
   `tools/ci/mcp_shard.sh <k> build/ci-plan`.
 - Windows: `tools/ci/windows.sh <step>` in Git Bash inside an x64 Native Tools prompt. macOS:
   `tools/ci/macos.sh <step>` with Xcode.
+
+### Job setup
+
+What a job does before its build or test step, paid by every job of a run (about 30 Linux jobs on a
+PR or in the queue, about 100 in the nightly).
+
+- **Free disk** (`.github/actions/free-disk`): an `ubuntu-latest` runner starts with about 87 GB
+  free of 145 (2026-11-20). The action removes the preinstalled Android SDK, .NET, GHC, CodeQL and
+  Docker images (about 26 GB, 1-2.5 min) only when `/` has less free than the job's `need`: its
+  largest use of `/` seen in its reports' `disk` line (the build tree, the image and the caches), plus
+  a quarter and 10 GB. Measured use in GB (2026-11-20, PR, queue and nightly runs) and the `need`
+  set:
+
+  | Job | Use | `need` |
+  |---|---|---|
+  | `asan` (editor; core 30) | 55 | 80 |
+  | `android` (every ABI, queue) | 44 | 65 |
+  | `unit` (editor; core 19) | 40 | 60 |
+  | `smoke` | 33 | 55 |
+  | `web` | 17 | 35 |
+  | `linux`, `htmlui` | 14, 13 | 30 |
+  | `mcp` | 5 | 20 |
+  | nightly `slow` (TSan; the others 5-30) | 56 | 80 |
+  | nightly MCP and coverage shards | 23 | 40 |
+  | nightly `parity` | 87 | none: always frees |
+  | release players Linux, Android, web | 44, 49, 12 | 65, 75, 25 |
+
+  A job without `need` always frees. A job whose `need` is not met after the removal gets a warning
+  in its log; raise its `need` when its reported use grows.
+- **Image** (`.github/actions/image`): pulls `ghcr.io/<owner>/jasperengine-<target>-build:<tag>`
+  anonymously (the packages are public) and logs `image: pulled <ref> in <n> s`. A tag the registry
+  does not have (a PR that changes `docker/`, until its merge runs `images.yml`) is built in the job
+  from the registry's layer cache and logs `is not in the registry; building it`, then
+  `image: built <ref> in <n> s`; a missing tag is asked for once, any other pull failure twice.
+  `images.yml` pushes zstd layers, which unpack about 4 times as fast as gzip (Docker 23 or later
+  pulls them; `JASPER_DOCKER_IMAGE=<ref>` needs one locally); tags pushed before that stay gzip until
+  the weekly rebuild.
+- **Editor install** (artifact `editor-install`, from `linux` to `mcp` and `smoke`; the nightly's
+  `nightly-editor-install`): `tools/ci/editor_install.sh pack` leaves out the folders the install copies
+  unchanged from the checkout (the Title Art HDRIs, fonts and thumbnails, the sound library: half the
+  archive, already compressed), and `unpack` copies them back from the job's checkout of the same
+  commit: 199 MB to 100 MB. A folder the build changed travels in the archive.
+- **Checkout**: depth 1, except `changes` (every commit, `filter: blob:none`), `mcp` (depth 2: the
+  title golden ledger compares the merge commit with its base) and the nightly's and the release's
+  build jobs (every commit and tag for `git describe`, `filter: blob:none`: the history without the
+  old file contents).
 
 ### Measured lane times
 
@@ -1129,7 +1322,7 @@ Cold builds on a GitHub-hosted `ubuntu-latest` runner (4 vCPU), ccache off, 2026
 | `UNIT_SUITE=core RUN=0 tools/build.sh unit-tests` | 43 |
 | `UNIT_SUITE=editor RUN=0 tools/build.sh unit-tests` | 111 |
 | `SKIP_ENGINE=1 tools/build.sh linux` | 73 |
-| the same three with `UNITY=1` | do not compile (a file-scope `lower` defined twice in one unit, `LuaBridgeAddon.h` and `GradientField.cpp` broken by a neighbour's macros); the nightly's unity job builds them |
+| the same three with `UNITY=1` | not measured on a runner; on a 16-core host, "Unity build (R25)" below |
 
 From the first PR runs (cold): the core tests ran in 65 min on llvmpipe, the editor tests' share is
 in the editor leg; under ASan the `*GpuSlow` suites took 135 of 167 test minutes (hence their
@@ -1147,6 +1340,10 @@ the rest is estimated from the non-ASan times (GPU tests 1.9 times slower under 
 from the tests both measured): the core tests about 132 min, of which five GPU tests 37 min, now
 `*GpuSlow` (a full local ASan run, a loaded host: 74 of 222 min); `VoxelSoakSlow.IncrementalEqualsRebuild`
 (about 10 min, CPU) stays. The editor tests under ASan: 62 min for the 4,308 a local run reached.
+In one job (merge-queue runs 44416194181, 44487933891, 44582664923, 44582666848) the cold core build took
+79-116 min, the core tests 90 and the editor's build 168-175, so the 270-min step ended before the
+editor tests: hence a job per binary, cold about 3-3.5 h for core and 3.7-4.6 h for the editor (its
+tests estimated).
 
 ### Pins
 
@@ -1158,6 +1355,17 @@ The Chrome for Testing headless shell in `docker/web.Dockerfile`, and `uv` and K
 `docker/linux.Dockerfile`, are pinned by version and sha256 and bumped by hand, as are the MCP
 harness's packages (`tools/mcp/requirements.txt`). Every workflow action is pinned by its full commit
 SHA, with its version in a comment.
+
+### Downloads retry, builds and tests do not
+
+A one-off network failure while fetching something does not fail a job: the images' apt
+(`docker/apt-retries.conf`), `wget` and `curl` retry with their own flags, `sdkmanager` in a loop;
+Gradle retries through `systemProp.org.gradle.internal.*` in
+`engine/workspaces/androidstudio/gradle.properties` (Gradle 9.6 ignores the keys without
+`systemProp.`), and the NDK is installed before Gradle with a retry; a workflow's download commands
+(`brew`, `choco`, `curl`, `gh release download`) run through `tools/ci/retry.sh`, and the Vulkan SDK
+action gets a second step when the first fails. Nothing else is retried: a flaky test gets `DISABLED_`
+and an issue.
 
 ## Known gaps
 
@@ -1244,12 +1452,19 @@ leaks (S08's reflection tests leaked about 84 MB that way).
 
 ### Unity build (R25)
 
-`UNITY=1 tools/build.sh linux` and the unity engine and test trees build. A cold build of
-`jasperengine-editor` (the editor and the shared engine) in the Linux image, `-j 8`, no ccache,
-Release, before the S01 merge: 1,361 s without unity, 1,034 s with it, **24 % faster**, under R25's
-25 %. The option stays (so new sources stay unity-safe),
-and no preset or job recommends it for speed. The server ran other builds at the same time, so
-the figure is approximate; re-measure on an idle host before deciding otherwise.
+`UNITY=1 tools/build.sh linux` and `UNITY=1 tools/build.sh unit-tests` (both suites) build. On a
+16-core host shared with other builds, `JOBS=8 CPUS=8 WERROR=1`, ccache off, precompiled headers
+on, 2026-11-17, one run each (seconds):
+
+| Tree | Cold | Cold, unity | Scene.cpp edited | unity | Project.cpp edited | unity |
+|---|---|---|---|---|---|---|
+| `SKIP_ENGINE=1 tools/build.sh linux` (Release) | 1,517 | 960 (-37 %) | 16 | 18 | 31 | 68 |
+| `UNIT_SUITE=core RUN=0 tools/build.sh unit-tests` | 954 | 738 (-23 %) | 69 | 82 | | |
+| `UNIT_SUITE=editor RUN=0 tools/build.sh unit-tests` | 2,910 | 1,910 (-34 %) | 52 | 50 | 78 | 138 |
+
+An edit rebuilds the 16 sources of its unit, and with ccache a unit misses whenever any of them
+changes, or when a source added to or removed from the target moves the batch boundaries after it.
+No PR lane builds unity; the nightly's unity job keeps `tools/build.sh linux` unity-safe.
 
 ### MCP, smoke (after the S01 merge)
 

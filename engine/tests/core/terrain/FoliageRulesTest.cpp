@@ -17,12 +17,12 @@ using namespace terraintest;
 
 namespace {
 
-    constexpr float SIZE = 256.0f;
-    constexpr float MAX_HEIGHT = 100.0f;
+    constexpr float FOLIAGE_RULES_SIZE = 256.0f;
+    constexpr float FOLIAGE_RULES_MAX_HEIGHT = 100.0f;
 
     // Height rising along +X over the map, a slope that is known everywhere
     std::unique_ptr<RawMapStore> makeRampStore(int size = 128, float rise = 0.5f) {
-        auto store = std::make_unique<RawMapStore>(SIZE, MAX_HEIGHT);
+        auto store = std::make_unique<RawMapStore>(FOLIAGE_RULES_SIZE, FOLIAGE_RULES_MAX_HEIGHT);
         store->addMap(HEIGHT, size, size, 1, 16);
         fillHeight(*store, size, size, [&](int x, int) { return rise * (static_cast<float>(x) + 0.5f) / static_cast<float>(size); });
         std::vector<std::pair<MapId, TexelRect>> dirty;
@@ -83,7 +83,7 @@ namespace {
         return nullptr;
     }
 
-    double count(const OpEntry& entry, std::string_view key) {
+    double foliageRulesCount(const OpEntry& entry, std::string_view key) {
         const OpParam* value = field(entry, key);
         return value ? value->number : -1.0;
     }
@@ -135,7 +135,7 @@ TEST(FoliageRules, SlopeHeightLayerRules) {
     EXPECT_GT(lowResult.rejected.height, 0);
     EXPECT_GT(lowResult.trees.size(), 0u);
     for (const TreeRecord& tree : lowResult.trees) {
-        EXPECT_LE(tree.height * MAX_HEIGHT, 25.0f + 1e-3f);
+        EXPECT_LE(tree.height * FOLIAGE_RULES_MAX_HEIGHT, 25.0f + 1e-3f);
     }
 
     // a surface layer's weight: a blend map full in its first channel on the -X half
@@ -151,7 +151,7 @@ TEST(FoliageRules, SlopeHeightLayerRules) {
     EXPECT_GT(onLayer.rejected.layer, 0);
     EXPECT_GT(onLayer.trees.size(), 0u);
     for (const TreeRecord& tree : onLayer.trees) {
-        EXPECT_LT(foliageTreeLocalX(tree, SIZE), 1.0f);
+        EXPECT_LT(foliageTreeLocalX(tree, FOLIAGE_RULES_SIZE), 1.0f);
     }
 }
 
@@ -176,7 +176,7 @@ TEST(FoliageRules, LayerPastNineReadsTheAlpha) {
     EXPECT_GT(onLayer.rejected.layer, 0);
     ASSERT_GT(onLayer.trees.size(), 0u);
     for (const TreeRecord& tree : onLayer.trees) {
-        EXPECT_LT(foliageTreeLocalX(tree, SIZE), 1.0f) << "layer 10 is the -X half, where blend map 1's alpha is 0";
+        EXPECT_LT(foliageTreeLocalX(tree, FOLIAGE_RULES_SIZE), 1.0f) << "layer 10 is the -X half, where blend map 1's alpha is 0";
     }
 }
 
@@ -193,7 +193,7 @@ TEST(FoliageRules, NoiseMask) {
     EXPECT_GT(result.rejected.noise, 0);
     EXPECT_GT(result.trees.size(), 0u);
     for (const TreeRecord& tree : result.trees) {
-        EXPECT_LE(foliageTreeLocalZ(tree, SIZE), 1.0f);
+        EXPECT_LE(foliageTreeLocalZ(tree, FOLIAGE_RULES_SIZE), 1.0f);
     }
 }
 
@@ -211,7 +211,7 @@ TEST(FoliageRules, HolesAreExcluded) {
     EXPECT_GT(excluded.rejected.hole, 0);
     EXPECT_GT(excluded.trees.size(), 0u);
     for (const TreeRecord& tree : excluded.trees) {
-        EXPECT_LE(foliageTreeLocalX(tree, SIZE), 0.0f);
+        EXPECT_LE(foliageTreeLocalX(tree, FOLIAGE_RULES_SIZE), 0.0f);
     }
 
     scatter.rules.excludeHoles = false;
@@ -230,7 +230,7 @@ TEST(FoliageRules, SplineZoneIsExcluded) {
     const FoliageTreeScatterResult result = scatterTreesByRules(*store, scatter, {});
     EXPECT_GT(result.rejected.spline, 0);
     for (const TreeRecord& tree : result.trees) {
-        EXPECT_GT(std::abs(foliageTreeLocalZ(tree, SIZE)), 10.0f);
+        EXPECT_GT(std::abs(foliageTreeLocalZ(tree, FOLIAGE_RULES_SIZE)), 10.0f);
     }
 }
 
@@ -243,12 +243,12 @@ TEST(FoliageRules, MinSpacingHolds) {
     EXPECT_GT(result.rejected.spacing, 0);
     ASSERT_GT(result.trees.size(), 50u);
     for (size_t i = 0; i < result.trees.size(); i++) {
-        const float xi = foliageTreeLocalX(result.trees[i], SIZE);
-        const float zi = foliageTreeLocalZ(result.trees[i], SIZE);
+        const float xi = foliageTreeLocalX(result.trees[i], FOLIAGE_RULES_SIZE);
+        const float zi = foliageTreeLocalZ(result.trees[i], FOLIAGE_RULES_SIZE);
         EXPECT_GE(std::hypot(xi, zi), 6.0f - 1e-3f) << "existing trees count";
         for (size_t j = i + 1; j < result.trees.size(); j++) {
-            const float dx = xi - foliageTreeLocalX(result.trees[j], SIZE);
-            const float dz = zi - foliageTreeLocalZ(result.trees[j], SIZE);
+            const float dx = xi - foliageTreeLocalX(result.trees[j], FOLIAGE_RULES_SIZE);
+            const float dz = zi - foliageTreeLocalZ(result.trees[j], FOLIAGE_RULES_SIZE);
             ASSERT_GE(std::sqrt(dx * dx + dz * dz), 6.0f - 2e-3f);
         }
     }
@@ -286,8 +286,8 @@ TEST(FoliageRules, DryRunMatchesARealRun) {
     const TerrainOpResult real = fixture.run(op);
     ASSERT_TRUE(real.ok) << real.error;
     ASSERT_EQ(real.ops.size(), 1u);
-    EXPECT_GT(count(real.ops[0], "instances_added"), 0.0);
-    EXPECT_EQ(count(preview.ops[0], "instances_added"), count(real.ops[0], "instances_added"));
+    EXPECT_GT(foliageRulesCount(real.ops[0], "instances_added"), 0.0);
+    EXPECT_EQ(foliageRulesCount(preview.ops[0], "instances_added"), foliageRulesCount(real.ops[0], "instances_added"));
     EXPECT_EQ(field(preview.ops[0], "hash")->text, field(real.ops[0], "hash")->text);
     const OpParam* previewRejected = field(preview.ops[0], "rejected");
     const OpParam* realRejected = field(real.ops[0], "rejected");
@@ -296,7 +296,7 @@ TEST(FoliageRules, DryRunMatchesARealRun) {
     }
 
     // the host holds the result until the caller commits; a commit lands exactly the added count
-    EXPECT_EQ(fixture.host.current().size(), static_cast<size_t>(count(real.ops[0], "instances_added")));
+    EXPECT_EQ(fixture.host.current().size(), static_cast<size_t>(foliageRulesCount(real.ops[0], "instances_added")));
 }
 
 TEST(FoliageRules, InvalidInputChangesNothing) {
@@ -394,9 +394,9 @@ TEST(FoliageRules, ModesOnTrees) {
     replace.shape.max = Vector2(0.0f, 128.0f);
     const TerrainOpResult replaced = fixture.run(replace);
     ASSERT_TRUE(replaced.ok) << replaced.error;
-    EXPECT_GT(count(replaced.ops[0], "instances_removed"), 0.0);
+    EXPECT_GT(foliageRulesCount(replaced.ops[0], "instances_removed"), 0.0);
     for (const TreeRecord& tree : fixture.host.current().records()) {
-        EXPECT_GE(foliageTreeLocalX(tree, SIZE), 0.0f);
+        EXPECT_GE(foliageTreeLocalX(tree, FOLIAGE_RULES_SIZE), 0.0f);
     }
 
     // remove by rule
@@ -407,7 +407,7 @@ TEST(FoliageRules, ModesOnTrees) {
     });
     ASSERT_TRUE(fixture.run(remove).ok);
     for (const TreeRecord& tree : fixture.host.current().records()) {
-        EXPECT_GT(tree.height * MAX_HEIGHT, 40.0f - 1e-3f);
+        EXPECT_GT(tree.height * FOLIAGE_RULES_MAX_HEIGHT, 40.0f - 1e-3f);
     }
 }
 
@@ -430,7 +430,7 @@ TEST(FoliageRules, PlaceRemoveAndClearOps) {
     const TreeRecord* first = fixture.host.current().find(static_cast<uint32_t>(ids->items[0].number));
     ASSERT_NE(first, nullptr);
     EXPECT_EQ(first->prototypeId, 1);
-    EXPECT_NEAR(foliageTreeLocalX(*first, SIZE), 10.0f, 1e-3f);
+    EXPECT_NEAR(foliageTreeLocalX(*first, FOLIAGE_RULES_SIZE), 10.0f, 1e-3f);
 
     // outside the terrain: named, and nothing lands
     Op outside = place;
@@ -445,7 +445,7 @@ TEST(FoliageRules, PlaceRemoveAndClearOps) {
     removeOne.params = obj({{"ids", list({num(ids->items[0].number)})}});
     const TerrainOpResult removed = fixture.run(removeOne);
     ASSERT_TRUE(removed.ok) << removed.error;
-    EXPECT_EQ(count(removed.ops[0], "instances_removed"), 1.0);
+    EXPECT_EQ(foliageRulesCount(removed.ops[0], "instances_removed"), 1.0);
     EXPECT_EQ(fixture.host.current().size(), 1u);
 
     Op unknownId = removeOne;
@@ -458,7 +458,7 @@ TEST(FoliageRules, PlaceRemoveAndClearOps) {
     clear.params = obj({{"target", str("all")}});
     const TerrainOpResult cleared = fixture.run(clear);
     ASSERT_TRUE(cleared.ok) << cleared.error;
-    EXPECT_EQ(count(cleared.ops[0], "instances_removed"), 1.0);
+    EXPECT_EQ(foliageRulesCount(cleared.ops[0], "instances_removed"), 1.0);
     EXPECT_TRUE(fixture.host.current().empty());
 
     // ids are not given again, even after everything went
@@ -487,7 +487,7 @@ TEST(FoliageRules, ConvertTakesTheHostsInstances) {
     op.params = obj({{"host", num(12)}});
     const TerrainOpResult result = fixture.run(op);
     ASSERT_TRUE(result.ok) << result.error;
-    EXPECT_EQ(count(result.ops[0], "instances_added"), 1.0);
+    EXPECT_EQ(foliageRulesCount(result.ops[0], "instances_added"), 1.0);
     ASSERT_EQ(fixture.host.convertedHosts.size(), 1u);
     EXPECT_EQ(fixture.host.convertedHosts[0], "12");
     const TreeRecord& tree = fixture.host.current().records()[0];
@@ -495,8 +495,8 @@ TEST(FoliageRules, ConvertTakesTheHostsInstances) {
     EXPECT_EQ(tree.heightRatio, 192);
     // it stays where it was, whatever the surface under it
     FoliageRuleSurface surface(*fixture.store);
-    EXPECT_NEAR(tree.height * MAX_HEIGHT + tree.yOffset, 40.0f, 1e-3f);
-    EXPECT_NEAR(surface.height(8.0f, 8.0f), tree.height * MAX_HEIGHT, 1e-3f);
+    EXPECT_NEAR(tree.height * FOLIAGE_RULES_MAX_HEIGHT + tree.yOffset, 40.0f, 1e-3f);
+    EXPECT_NEAR(surface.height(8.0f, 8.0f), tree.height * FOLIAGE_RULES_MAX_HEIGHT, 1e-3f);
 
     op.params = obj({{"host", num(13)}});
     EXPECT_FALSE(fixture.run(op).ok);

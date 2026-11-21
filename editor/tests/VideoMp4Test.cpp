@@ -52,7 +52,7 @@ namespace {
         return std::string(JASPER_HTMLUI_VIDEO_FIXTURES) + "/" + name;
     }
 
-    std::string readBytes(const std::string& path){
+    std::string videoMp4ReadBytes(const std::string& path){
         std::ifstream in(path, std::ios::binary);
         return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     }
@@ -232,7 +232,7 @@ TEST_F(VideoMp4Test, Mp4ProbeFastStartRotationAndCodecs){
     EXPECT_EQ(shown.error.code, MediaErrorCode::SRC_NOT_SUPPORTED);
 
     // WebM is not ISO-BMFF; neither is garbage
-    const std::string webm = readBytes(webmFixture("testcard.webm"));
+    const std::string webm = videoMp4ReadBytes(webmFixture("testcard.webm"));
     EXPECT_FALSE(Mp4Probe::sniff((const uint8_t*)webm.data(), webm.size()));
     const uint8_t garbage[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
     EXPECT_FALSE(Mp4Probe::sniff(garbage, sizeof(garbage)));
@@ -243,7 +243,7 @@ TEST_F(VideoMp4Test, Mp4ProbeFastStartRotationAndCodecs){
 }
 
 TEST_F(VideoMp4Test, Mp4ProbeTruncatedFiles){
-    const std::string whole = readBytes(clip("h264_aac_160x90.mp4"));
+    const std::string whole = videoMp4ReadBytes(clip("h264_aac_160x90.mp4"));
     // the moov box cut short
     std::unique_ptr<MediaByteSource> cut = MediaByteSource::openMemory(std::vector<uint8_t>(whole.begin(), whole.begin() + 400), "cut.mp4");
     const Mp4ProbeResult shortMoov = Mp4Probe::probe(*cut);
@@ -251,7 +251,7 @@ TEST_F(VideoMp4Test, Mp4ProbeTruncatedFiles){
     EXPECT_FALSE(shortMoov.ok);
     EXPECT_FALSE(shortMoov.error.empty());
     // moov at the end, the file cut in its media data: no moov
-    const std::string end = readBytes(clip("h264_aac_160x90_moov_end.mp4"));
+    const std::string end = videoMp4ReadBytes(clip("h264_aac_160x90_moov_end.mp4"));
     std::unique_ptr<MediaByteSource> head = MediaByteSource::openMemory(std::vector<uint8_t>(end.begin(), end.begin() + 3000), "head.mp4");
     const Mp4ProbeResult noMoov = Mp4Probe::probe(*head);
     EXPECT_FALSE(noMoov.ok);
@@ -627,7 +627,7 @@ namespace {
 }
 
 TEST_F(MediaCacheTest, DownloadsIntoTheCache){
-    const std::string bytes = readBytes(clip("h264_aac_160x90.mp4"));
+    const std::string bytes = videoMp4ReadBytes(clip("h264_aac_160x90.mp4"));
     server->addFile("ad.mp4", bytes, "\"v1\"");
     const std::string url = server->url("/file/ad.mp4");
     EXPECT_EQ(MediaCache::pathFor(url).rfind((root / "data" / ".cache" / "media").string() + "/", 0), 0u) << MediaCache::pathFor(url);
@@ -637,7 +637,7 @@ TEST_F(MediaCacheTest, DownloadsIntoTheCache){
     ASSERT_EQ(download->getStatus(), MediaDownload::Status::COMPLETE) << download->getError().message;
     EXPECT_FALSE(download->isFromCache());
     EXPECT_EQ(download->getProgress(), 1.0);
-    EXPECT_EQ(readBytes(download->getFilePath()), bytes);
+    EXPECT_EQ(videoMp4ReadBytes(download->getFilePath()), bytes);
     MediaCache::release(download);
 
     // again: from the cache at once, revalidated with the ETag (304 keeps it)
@@ -647,7 +647,7 @@ TEST_F(MediaCacheTest, DownloadsIntoTheCache){
     ASSERT_TRUE(waitFor([&]{ return server->requests("/file/ad.mp4") == 2; }));
     waitFor([]{ return HttpTesting::runningTransfers() == 0; }, 5.0);
     waitFor([]{ return false; }, 0.1);
-    EXPECT_EQ(readBytes(cached->getFilePath()), bytes);
+    EXPECT_EQ(videoMp4ReadBytes(cached->getFilePath()), bytes);
     MediaCache::release(cached);
 
     // offline with the complete copy: plays from the cache (the failed check is no error)
@@ -663,7 +663,7 @@ TEST_F(MediaCacheTest, DownloadsIntoTheCache){
 }
 
 TEST_F(MediaCacheTest, ResumesAPartialDownload){
-    const std::string bytes = readBytes(clip("h264_aac_160x90.mp4"));
+    const std::string bytes = videoMp4ReadBytes(clip("h264_aac_160x90.mp4"));
     server->addFile("resume.mp4", bytes, "\"r\"");
     server->cutNext("resume.mp4", 5000);
     const std::string url = server->url("/file/resume.mp4");
@@ -679,12 +679,12 @@ TEST_F(MediaCacheTest, ResumesAPartialDownload){
     std::shared_ptr<MediaDownload> second = MediaCache::acquire(url);
     ASSERT_TRUE(waitFor([&]{ return second->getStatus() != MediaDownload::Status::DOWNLOADING; }));
     ASSERT_EQ(second->getStatus(), MediaDownload::Status::COMPLETE) << second->getError().message;
-    EXPECT_EQ(readBytes(second->getFilePath()), bytes);
+    EXPECT_EQ(videoMp4ReadBytes(second->getFilePath()), bytes);
     MediaCache::release(second);
 }
 
 TEST_F(MediaCacheTest, EvictsTheLeastRecentlyUsed){
-    const std::string bytes = readBytes(clip("h264_aac_160x90.mp4"));
+    const std::string bytes = videoMp4ReadBytes(clip("h264_aac_160x90.mp4"));
     for (const char* name : {"a.mp4", "b.mp4", "c.mp4"})
         server->addFile(name, bytes, std::string("\"") + name + "\"");
     MediaCache::setLimit(bytes.size() * 2 + 1000);
@@ -705,7 +705,7 @@ TEST_F(MediaCacheTest, EvictsTheLeastRecentlyUsed){
 }
 
 TEST_F(MediaCacheTest, CancelledWithItsLastOwner){
-    const std::string bytes = readBytes(clip("h264_aac_160x90.mp4"));
+    const std::string bytes = videoMp4ReadBytes(clip("h264_aac_160x90.mp4"));
     server->addFile("slow.mp4", bytes, "");
     const std::string url = server->url("/file/slow.mp4?trickle=200");
     std::shared_ptr<MediaDownload> a = MediaCache::acquire(url);
@@ -725,7 +725,7 @@ TEST_F(MediaCacheTest, CancelledWithItsLastOwner){
 TEST_F(MediaCacheTest, FastStartPlaysWhileDownloading){
     if (!ffmpeg())
         GTEST_SKIP();
-    const std::string bytes = readBytes(clip("h264_aac_160x90.mp4"));
+    const std::string bytes = videoMp4ReadBytes(clip("h264_aac_160x90.mp4"));
     server->addFile("fast.mp4", bytes, "");
     std::unique_ptr<IVideoSource> source = VideoSourceFactory::create(server->url("/file/fast.mp4?trickle=250"), VideoSourceFactory::Options{false, true});
     EXPECT_EQ(source->getState(), IVideoSource::State::BUFFERING);
@@ -754,7 +754,7 @@ TEST_F(MediaCacheTest, FastStartPlaysWhileDownloading){
 TEST_F(MediaCacheTest, MoovAtTheEndPlaysOnceDownloaded){
     if (!ffmpeg())
         GTEST_SKIP();
-    const std::string bytes = readBytes(clip("h264_aac_160x90_moov_end.mp4"));
+    const std::string bytes = videoMp4ReadBytes(clip("h264_aac_160x90_moov_end.mp4"));
     server->addFile("end.mp4", bytes, "");
     std::unique_ptr<IVideoSource> source = VideoSourceFactory::create(server->url("/file/end.mp4?trickle=100"), VideoSourceFactory::Options{false, true});
     ASSERT_TRUE(waitFor([&]{

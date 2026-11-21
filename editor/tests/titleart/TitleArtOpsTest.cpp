@@ -50,7 +50,7 @@ namespace {
     }
 
     // Title (text, two rims, an effect), a group "Logo" holding "Spark" twice and a shape
-    TitleArtDoc sample() {
+    TitleArtDoc titleArtOpsSample() {
         const std::string text = R"({"format": "jasperengine.titleart", "version": 1,
           "material_links": {},
           "layers": [
@@ -69,7 +69,7 @@ namespace {
         return parsed.doc;
     }
 
-    const TitleOpProblem* failure(const TitleOpsResult& r) {
+    const TitleOpProblem* titleArtOpsFailure(const TitleOpsResult& r) {
         for (const TitleOpProblem& p : r.problems) {
             if (p.severity == "error") return &p;
         }
@@ -81,7 +81,7 @@ namespace {
         void SetUp() override {
             ASSERT_TRUE(titleart::TitleEffectRegistry::get().add(testShadow()));
             ASSERT_TRUE(titleart::TitleEffectRegistry::get().add(layerOnly()));
-            doc = sample();
+            doc = titleArtOpsSample();
         }
         void TearDown() override {
             titleart::TitleEffectRegistry::get().removeEffect("test_shadow");
@@ -118,7 +118,7 @@ TEST_F(TitleArtOpsTest, SetClampsAndEchoesPixels) {
 TEST_F(TitleArtOpsTest, BadPathsSuggestTheNearestName) {
     const TitleOpsResult r = apply(Json{{"op", "set"}, {"layer", "Title"}, {"values", {{"face.bevl.size", 4}}}});
     EXPECT_FALSE(r.ok);
-    const TitleOpProblem* p = failure(r);
+    const TitleOpProblem* p = titleArtOpsFailure(r);
     ASSERT_TRUE(p);
     EXPECT_EQ(p->code, "bad_path");
     EXPECT_EQ(p->nearest, "bevel");
@@ -126,12 +126,12 @@ TEST_F(TitleArtOpsTest, BadPathsSuggestTheNearestName) {
     EXPECT_NE(r.error().find("did you mean 'bevel'"), std::string::npos) << r.error();
     EXPECT_NE(r.error().find("Nothing was applied."), std::string::npos);
     const TitleOpsResult layer = apply(Json{{"op", "set"}, {"layer", "Titel"}, {"values", {{"opacity", 1}}}});
-    ASSERT_TRUE(failure(layer));
-    EXPECT_EQ(failure(layer)->code, "bad_layer");
-    EXPECT_EQ(failure(layer)->nearest, "Title");
+    ASSERT_TRUE(titleArtOpsFailure(layer));
+    EXPECT_EQ(titleArtOpsFailure(layer)->code, "bad_layer");
+    EXPECT_EQ(titleArtOpsFailure(layer)->nearest, "Title");
     const TitleOpsResult op = apply(Json{{"op", "sett"}});
-    ASSERT_TRUE(failure(op));
-    EXPECT_EQ(failure(op)->nearest, "set");
+    ASSERT_TRUE(titleArtOpsFailure(op));
+    EXPECT_EQ(titleArtOpsFailure(op)->nearest, "set");
 }
 
 TEST_F(TitleArtOpsTest, BatchesAreAllOrNothing) {
@@ -140,8 +140,8 @@ TEST_F(TitleArtOpsTest, BatchesAreAllOrNothing) {
                                                 Json{{"op", "set"}, {"layer", "Title"}, {"values", {{"opacity", "half"}}}}}));
     EXPECT_FALSE(r.ok);
     EXPECT_EQ(r.failedOp, 2);
-    EXPECT_EQ(failure(r)->op, 2);
-    EXPECT_EQ(failure(r)->code, "bad_value");
+    EXPECT_EQ(titleArtOpsFailure(r)->op, 2);
+    EXPECT_EQ(titleArtOpsFailure(r)->code, "bad_value");
     EXPECT_TRUE(r.changes.empty());
     EXPECT_EQ(titleart::writeTitleArt(r.doc), titleart::writeTitleArt(doc)) << "nothing applied";
 }
@@ -149,7 +149,7 @@ TEST_F(TitleArtOpsTest, BatchesAreAllOrNothing) {
 TEST_F(TitleArtOpsTest, LayersAreAddressedByPathDuplicatesAndIds) {
     auto opacity = [&](const std::string& ref) {
         const TitleOpsResult r = apply(Json{{"op", "set"}, {"layer", ref}, {"values", {{"opacity", 0.5}}}});
-        return r.ok ? r.changes[0].layer : (failure(r) ? failure(r)->code : std::string("?"));
+        return r.ok ? r.changes[0].layer : (titleArtOpsFailure(r) ? titleArtOpsFailure(r)->code : std::string("?"));
     };
     EXPECT_EQ(opacity("Logo/Spark"), "00000003");
     EXPECT_EQ(opacity("Logo/Spark#1"), "00000004") << "#N: the Nth same-named sibling after the first";
@@ -157,8 +157,8 @@ TEST_F(TitleArtOpsTest, LayersAreAddressedByPathDuplicatesAndIds) {
     EXPECT_EQ(opacity("Badge"), "00000005") << "a bare name found anywhere";
     EXPECT_EQ(opacity("Spark"), "ambiguous") << "a bare name of several layers is refused";
     const TitleOpsResult r = apply(Json{{"op", "set"}, {"layer", "Spark"}, {"values", {{"opacity", 0.5}}}});
-    ASSERT_TRUE(failure(r));
-    EXPECT_EQ(failure(r)->validHere, (std::vector<std::string>{"Logo/Spark", "Logo/Spark#1"}));
+    ASSERT_TRUE(titleArtOpsFailure(r));
+    EXPECT_EQ(titleArtOpsFailure(r)->validHere, (std::vector<std::string>{"Logo/Spark", "Logo/Spark#1"}));
     EXPECT_EQ(opacity("Logo/Nope"), "bad_layer");
 }
 
@@ -202,13 +202,13 @@ TEST_F(TitleArtOpsTest, AddLayerPlacesItAndAppliesValues) {
     EXPECT_EQ(children[2]["text"], "Win");
     EXPECT_EQ(children[2]["style"]["face"]["fill"]["color"], "#ff0000");
     EXPECT_EQ(r.undoName, "Add Text Layer");
-    EXPECT_EQ(failure(apply(Json{{"op", "add_layer"}, {"type", "txt"}}))->nearest, "text");
-    EXPECT_EQ(failure(apply(Json{{"op", "add_layer"}, {"type", "text"}, {"parent", "Title"}}))->code, "bad_layer");
-    EXPECT_EQ(failure(apply(Json{{"op", "add_layer"}, {"type", "text"}, {"look", "gold"}}))->code, "not_available");
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "add_layer"}, {"type", "txt"}}))->nearest, "text");
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "add_layer"}, {"type", "text"}, {"parent", "Title"}}))->code, "bad_layer");
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "add_layer"}, {"type", "text"}, {"look", "gold"}}))->code, "not_available");
     const TitleOpsResult adjustment = apply(Json{{"op", "add_layer"}, {"type", "adjustment"}, {"adjustment", "levels"}});
     ASSERT_TRUE(adjustment.ok) << adjustment.error();
     EXPECT_EQ(adjustment.doc.layers().back()["adjustment"]["type"], "levels");
-    EXPECT_EQ(failure(apply(Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", "nope"}}))->code, "bad_value");
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", "nope"}}))->code, "bad_value");
 }
 
 TEST_F(TitleArtOpsTest, RemoveLayerClearsWhatNamesIt) {
@@ -236,7 +236,7 @@ TEST_F(TitleArtOpsTest, DuplicateMoveGroupUngroup) {
     ASSERT_TRUE(move.ok) << move.error();
     EXPECT_EQ(move.doc.layers().size(), 1u);
     EXPECT_EQ(move.doc.layers()[0]["children"][1]["id"], "00000001");
-    EXPECT_EQ(failure(apply(Json{{"op", "move_layer"}, {"layer", "Logo"}, {"parent", "Logo"}}))->code, "bad_layer")
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "move_layer"}, {"layer", "Logo"}, {"parent", "Logo"}}))->code, "bad_layer")
         << "a layer cannot move into itself";
 
     const TitleOpsResult grouped = apply(Json{{"op", "group"}, {"layers", Json::array({"Logo/Spark", "Logo/Badge"})}, {"name", "Pair"}});
@@ -246,7 +246,7 @@ TEST_F(TitleArtOpsTest, DuplicateMoveGroupUngroup) {
     EXPECT_EQ(logo[0]["name"], "Spark");
     EXPECT_EQ(logo[1]["name"], "Pair") << "the group takes the topmost member's place";
     EXPECT_EQ(logo[1]["children"].size(), 2u);
-    EXPECT_EQ(failure(apply(Json{{"op", "group"}, {"layers", Json::array({"Title", "Logo/Badge"})}}))->code, "bad_layer")
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "group"}, {"layers", Json::array({"Title", "Logo/Badge"})}}))->code, "bad_layer")
         << "siblings only";
 
     const TitleOpsResult ungrouped = apply(Json{{"op", "ungroup"}, {"layer", "Logo"}});
@@ -271,10 +271,10 @@ TEST_F(TitleArtOpsTest, EffectOps) {
     EXPECT_EQ(stack[0]["params"]["color"], "#000000");
     EXPECT_EQ(add.undoName, "Add Effect Test Shadow");
     EXPECT_TRUE(add.newIds["0"].contains("effect"));
-    EXPECT_EQ(failure(apply(Json{{"op", "add_effect"}, {"layer", "Title"}, {"type", "test_shadw"}}))->nearest, "test_shadow");
-    EXPECT_EQ(failure(apply(Json{{"op", "add_effect"}, {"layer", "Title"}, {"part", "rim#1"}, {"type", "test_layer_only"}}))->code, "bad_value");
-    EXPECT_EQ(failure(apply(Json{{"op", "add_effect"}, {"layer", "Title"}, {"part", "rim#9"}, {"type", "test_shadow"}}))->code, "bad_value");
-    EXPECT_EQ(failure(apply(Json{{"op", "add_effect"}, {"layer", "Title"}, {"part", "bevel"}, {"type", "test_shadow"}}))->code, "not_available");
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "add_effect"}, {"layer", "Title"}, {"type", "test_shadw"}}))->nearest, "test_shadow");
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "add_effect"}, {"layer", "Title"}, {"part", "rim#1"}, {"type", "test_layer_only"}}))->code, "bad_value");
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "add_effect"}, {"layer", "Title"}, {"part", "rim#9"}, {"type", "test_shadow"}}))->code, "bad_value");
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "add_effect"}, {"layer", "Title"}, {"part", "bevel"}, {"type", "test_shadow"}}))->code, "not_available");
 
     const TitleOpsResult two = apply(Json::array({Json{{"op", "add_effect"}, {"layer", "Title"}, {"type", "test_shadow"}, {"index", 0}},
                                                   Json{{"op", "move_effect"}, {"layer", "Title"}, {"effect", "fx:test_shadow#1"}, {"index", 0}},
@@ -283,8 +283,8 @@ TEST_F(TitleArtOpsTest, EffectOps) {
     EXPECT_EQ(two.doc.layers()[0]["effects"].size(), 1u);
     EXPECT_NE(two.doc.layers()[0]["effects"][0]["id"], "00000021");
     const TitleOpsResult missing = apply(Json{{"op", "remove_effect"}, {"layer", "Title"}, {"effect", "fx:outer_glow"}});
-    ASSERT_TRUE(failure(missing));
-    EXPECT_EQ(failure(missing)->validHere, (std::vector<std::string>{"fx:test_shadow"}));
+    ASSERT_TRUE(titleArtOpsFailure(missing));
+    EXPECT_EQ(titleArtOpsFailure(missing)->validHere, (std::vector<std::string>{"fx:test_shadow"}));
 }
 
 TEST_F(TitleArtOpsTest, RimAndMaskOps) {
@@ -303,7 +303,7 @@ TEST_F(TitleArtOpsTest, RimAndMaskOps) {
     const TitleOpsResult moved = apply(Json{{"op", "move_rim"}, {"layer", "Title"}, {"rim", "rim:00000012"}, {"index", 0}});
     ASSERT_TRUE(moved.ok) << moved.error();
     EXPECT_EQ(moved.doc.layers()[0]["style"]["rims"][0]["id"], "00000012");
-    EXPECT_EQ(failure(apply(Json{{"op", "add_rim"}, {"layer", "Logo"}}))->code, "bad_layer") << "groups have no rims";
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "add_rim"}, {"layer", "Logo"}}))->code, "bad_layer") << "groups have no rims";
 
     const TitleOpsResult mask = apply(Json{{"op", "add_mask"}, {"layer", "Title"}, {"type", "layer"}, {"values", {{"layer", "Logo/Badge"}, {"feather", 4}}}});
     ASSERT_TRUE(mask.ok) << mask.error();
@@ -313,7 +313,7 @@ TEST_F(TitleArtOpsTest, RimAndMaskOps) {
     const TitleOpsResult removed = apply(Json{{"op", "remove_mask"}, {"layer", "Logo/Badge"}, {"mask", "mask#0"}});
     ASSERT_TRUE(removed.ok) << removed.error();
     EXPECT_TRUE(titleart::findLayer(removed.doc.root, "00000005")->value("masks", Json::array()).empty());
-    EXPECT_EQ(failure(apply(Json{{"op", "add_mask"}, {"layer", "Title"}, {"type", "noise"}}))->code, "bad_value");
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "add_mask"}, {"layer", "Title"}, {"type", "noise"}}))->code, "bad_value");
 }
 
 TEST_F(TitleArtOpsTest, ExposeChecksItsTargets) {
@@ -323,12 +323,12 @@ TEST_F(TitleArtOpsTest, ExposeChecksItsTargets) {
     const Json& exposed = r.doc.root["exposed"].back();
     EXPECT_EQ(exposed["targets"][0]["layer"], "00000001");
     EXPECT_EQ(exposed["targets"][0]["field"], "style.face.fill.color") << "stored in its long form";
-    EXPECT_EQ(failure(apply(Json{{"op", "expose"}, {"name", "size"}, {"type", "color"},
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "expose"}, {"name", "size"}, {"type", "color"},
                                  {"targets", Json::array({Json{{"layer", "Title"}, {"field", "size"}}})}}))->code, "bad_value")
         << "a number field is not a colour";
-    EXPECT_EQ(failure(apply(Json{{"op", "expose"}, {"name", "Bad Name"}, {"type", "text"},
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "expose"}, {"name", "Bad Name"}, {"type", "text"},
                                  {"targets", Json::array({Json{{"layer", "Title"}, {"field", "text"}}})}}))->code, "bad_value");
-    EXPECT_EQ(failure(apply(Json{{"op", "expose"}, {"name", "title"}, {"type", "text"},
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "expose"}, {"name", "title"}, {"type", "text"},
                                  {"targets", Json::array({Json{{"layer", "Title"}, {"field", "text"}}})}}))->code, "bad_value")
         << "exposed already";
     const TitleOpsResult scheme = apply(Json{{"op", "expose"}, {"name", "colors"}, {"type", "color_scheme"}});
@@ -336,7 +336,7 @@ TEST_F(TitleArtOpsTest, ExposeChecksItsTargets) {
     const TitleOpsResult un = apply(Json{{"op", "unexpose"}, {"name", "title"}});
     ASSERT_TRUE(un.ok);
     EXPECT_TRUE(un.doc.root["exposed"].empty());
-    EXPECT_EQ(failure(apply(Json{{"op", "unexpose"}, {"name", "titel"}}))->nearest, "title");
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "unexpose"}, {"name", "titel"}}))->nearest, "title");
 }
 
 TEST_F(TitleArtOpsTest, LinkedMaterialsStayEqual) {
@@ -363,7 +363,7 @@ TEST_F(TitleArtOpsTest, LinkedMaterialsStayEqual) {
         Json{{"op", "unlink_material"}, {"layer", "Title"}, {"material", "rim#0.material"}}}));
     ASSERT_TRUE(unlinked.ok) << unlinked.error();
     EXPECT_FALSE(unlinked.doc.root["material_links"].contains(key));
-    EXPECT_EQ(failure(apply(Json{{"op", "link_material"}, {"layer", "Title"}, {"material", "opacity"}}))->code, "bad_path");
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "link_material"}, {"layer", "Title"}, {"material", "opacity"}}))->code, "bad_path");
 }
 
 TEST_F(TitleArtOpsTest, ReservedOpsNameTheirOwner) {
@@ -371,9 +371,9 @@ TEST_F(TitleArtOpsTest, ReservedOpsNameTheirOwner) {
         // an op its owner registered in this build (S86's, once registerTitle3DEditor ran) is no longer pending
         if (TitleArtOps::pendingOwner(reserved.name).empty()) continue;
         const TitleOpsResult r = apply(Json{{"op", reserved.name}});
-        ASSERT_TRUE(failure(r)) << reserved.name;
-        EXPECT_EQ(failure(r)->code, "not_available") << reserved.name;
-        EXPECT_NE(failure(r)->message.find(reserved.owner), std::string::npos) << reserved.name;
+        ASSERT_TRUE(titleArtOpsFailure(r)) << reserved.name;
+        EXPECT_EQ(titleArtOpsFailure(r)->code, "not_available") << reserved.name;
+        EXPECT_NE(titleArtOpsFailure(r)->message.find(reserved.owner), std::string::npos) << reserved.name;
     }
     // the table's owner, whether or not a test before this one ran S84's registration (the
     // order of the suites differs between platforms)
@@ -431,8 +431,8 @@ TEST_F(TitleArtOpsTest, CreateFromPicksTheImporterByContent) {
 TEST_F(TitleArtOpsTest, ARegisteredOpRunsInTheBatch) {
     const std::string name = "test_fill_color";
     const TitleOpsResult before = apply(Json{{"op", name}, {"layer", "Title"}});
-    ASSERT_TRUE(failure(before));
-    EXPECT_EQ(failure(before)->code, "bad_op");
+    ASSERT_TRUE(titleArtOpsFailure(before));
+    EXPECT_EQ(titleArtOpsFailure(before)->code, "bad_op");
     ASSERT_TRUE(TitleArtOps::registerOp(name, [](TitleOpContext& ctx, const Json& op) {
         Json* layer = ctx.layer(op);
         if (!layer) return false;
@@ -443,14 +443,14 @@ TEST_F(TitleArtOpsTest, ARegisteredOpRunsInTheBatch) {
     const TitleOpsResult r = apply(Json::array({Json{{"op", name}, {"layer", "Title"}, {"color", "#123456"}},
                                                 Json{{"op", name}, {"layer", "Nope"}}}));
     EXPECT_FALSE(r.ok) << "all or nothing for registered ops too";
-    EXPECT_EQ(failure(r)->code, "bad_layer");
+    EXPECT_EQ(titleArtOpsFailure(r)->code, "bad_layer");
     const TitleOpsResult ok = apply(Json{{"op", name}, {"layer", "Title"}, {"color", "#123456"}});
     ASSERT_TRUE(ok.ok) << ok.error();
     EXPECT_EQ(ok.doc.layers()[0]["style"]["face"]["fill"]["color"], "#123456");
     EXPECT_TRUE(TitleArtOps::unregisterOp(name));
     const TitleOpsResult after = apply(Json{{"op", name}, {"layer", "Title"}});
-    ASSERT_TRUE(failure(after));
-    EXPECT_EQ(failure(after)->code, "bad_op");
+    ASSERT_TRUE(titleArtOpsFailure(after));
+    EXPECT_EQ(titleArtOpsFailure(after)->code, "bad_op");
 }
 
 TEST_F(TitleArtOpsTest, CommitInvariantsClearAClipWithoutABase) {
@@ -471,7 +471,7 @@ TEST_F(TitleArtOpsTest, SetTextDropsCharAdjustmentsPastTheEnd) {
     EXPECT_FALSE(r.doc.layers()[0]["chars"].contains("4"));
     const TitleOpsResult kept = TitleArtOps::apply(adjusted.doc, Json{{"op", "set_text"}, {"layer", "Title"}, {"text", "Win"}, {"keep_chars", true}});
     EXPECT_TRUE(kept.doc.layers()[0]["chars"].contains("4"));
-    EXPECT_EQ(failure(apply(Json{{"op", "set_text"}, {"layer", "Logo/Badge"}, {"text", "x"}}))->code, "bad_layer");
+    EXPECT_EQ(titleArtOpsFailure(apply(Json{{"op", "set_text"}, {"layer", "Logo/Badge"}, {"text", "x"}}))->code, "bad_layer");
 }
 
 TEST_F(TitleArtOpsTest, ARegisteredMemberIsSuggested) {
@@ -483,8 +483,8 @@ TEST_F(TitleArtOpsTest, ARegisteredMemberIsSuggested) {
     member.max = 10;
     ASSERT_TRUE(titleart::TitleArtSchema::get().addMember("layer.text", member));
     const TitleOpsResult r = apply(Json{{"op", "set"}, {"layer", "Title"}, {"values", {{"glint_rat", 2}}}});
-    ASSERT_TRUE(failure(r));
-    EXPECT_EQ(failure(r)->nearest, "glint_rate");
+    ASSERT_TRUE(titleArtOpsFailure(r));
+    EXPECT_EQ(titleArtOpsFailure(r)->nearest, "glint_rate");
     const TitleOpsResult ok = apply(Json{{"op", "set"}, {"layer", "Title"}, {"values", {{"glint_rate", 20}}}});
     ASSERT_TRUE(ok.ok) << ok.error();
     EXPECT_EQ(ok.doc.layers()[0]["glint_rate"], 10);

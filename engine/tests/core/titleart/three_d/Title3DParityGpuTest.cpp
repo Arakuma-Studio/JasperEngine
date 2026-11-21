@@ -105,7 +105,7 @@ namespace {
         }
     };
 
-    double luminance(const uint8_t* p) {
+    double title3DParityLuminance(const uint8_t* p) {
         return 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
     }
 
@@ -145,8 +145,8 @@ namespace {
                         }
                         if (worst > 24) over++;
                         if (r[3] > 200 && o[3] > 200) {
-                            toneRef += luminance(r);
-                            toneOurs += luminance(o);
+                            toneRef += title3DParityLuminance(r);
+                            toneOurs += title3DParityLuminance(o);
                             covered++;
                         }
                     }

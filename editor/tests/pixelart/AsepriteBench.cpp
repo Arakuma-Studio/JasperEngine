@@ -23,7 +23,7 @@ using namespace jasperengine::editor::pixelart::aseprite;
 
 namespace {
 
-    double elapsedMs(std::chrono::steady_clock::time_point start) {
+    double asepriteBenchElapsedMs(std::chrono::steady_clock::time_point start) {
         return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     }
 
@@ -78,7 +78,7 @@ namespace {
 
     // where two encodings of one document differ: the first frame whose chunk list or a chunk's
     // bytes differ (a failure message, "" when they are the same)
-    std::string firstDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) {
+    std::string asepriteBenchFirstDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) {
         ReadResult ra = read(a), rb = read(b);
         if (!ra.ok() || !rb.ok()) return "a file does not read";
         const auto& fa = ra.document->provenance->frames;
@@ -121,19 +121,19 @@ TEST(AsepriteBench, Codec) {
 
     auto start = std::chrono::steady_clock::now();
     ReadResult read1 = read(first);
-    report("read", elapsedMs(start), 40.0);
+    report("read", asepriteBenchElapsedMs(start), 40.0);
     ASSERT_TRUE(read1.ok()) << read1.error.message;
 
     start = std::chrono::steady_clock::now();
     const PixelImage frame = renderFrame(*read1.document, 10);
-    report("compose one frame", elapsedMs(start), 1.0);
+    report("compose one frame", asepriteBenchElapsedMs(start), 1.0);
     EXPECT_EQ(frame.width(), 256);
 
     std::vector<uint8_t> same;
     start = std::chrono::steady_clock::now();
     ASSERT_TRUE(write(*read1.document, same, &error)) << error.message;
-    report("write unchanged", elapsedMs(start), 5.0);
-    EXPECT_TRUE(same == first) << firstDifference(first, same);
+    report("write unchanged", asepriteBenchElapsedMs(start), 5.0);
+    EXPECT_TRUE(same == first) << asepriteBenchFirstDifference(first, same);
 
     Document changed = *read1.document;
     for (Cel& cel : changed.cels) {
@@ -144,7 +144,7 @@ TEST(AsepriteBench, Codec) {
     std::vector<uint8_t> all;
     start = std::chrono::steady_clock::now();
     ASSERT_TRUE(write(changed, all, &error)) << error.message;
-    report("write every cel changed", elapsedMs(start), 120.0);
+    report("write every cel changed", asepriteBenchElapsedMs(start), 120.0);
 }
 
 // R27: a 64x64, 24-frame, 4-tag file imports (compose, trim, pack, clips) in <= 50 ms on one thread
@@ -154,7 +154,7 @@ TEST(AsepriteBench, Import) {
     ctx.sourcePath = "sprites/hero64.aseprite";
     const auto start = std::chrono::steady_clock::now();
     const AsepriteImport import = AsepriteImport::run(doc, AsepriteImportSettings(), ctx);
-    report("import 64x64x24", elapsedMs(start), 50.0);
+    report("import 64x64x24", asepriteBenchElapsedMs(start), 50.0);
     ASSERT_TRUE(import.ok()) << import.error.message;
     EXPECT_EQ(import.sheet.frames.size(), 24u);
     EXPECT_EQ(import.clips.size(), 4u);

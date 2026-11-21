@@ -61,7 +61,7 @@ namespace {
         }
     }
 
-    ClipKey key(float time, std::vector<float> value, EaseType ease = EaseType::LINEAR){
+    ClipKey keyframeSamplingKey(float time, std::vector<float> value, EaseType ease = EaseType::LINEAR){
         ClipKey k;
         k.time = time;
         k.value = std::move(value);
@@ -69,7 +69,7 @@ namespace {
         return k;
     }
 
-    ClipTrackData track(ClipChannel channel, std::vector<ClipKey> keys, const std::string& path = ""){
+    ClipTrackData keyframeSamplingTrack(ClipChannel channel, std::vector<ClipKey> keys, const std::string& path = ""){
         ClipTrackData t;
         t.path = path;
         t.channel = channel;
@@ -85,7 +85,7 @@ namespace {
         return sample;
     }
 
-    void expectVector(const Vector3& actual, float x, float y, float z, float tolerance = 1e-5f){
+    void keyframeSamplingExpectVector(const Vector3& actual, float x, float y, float z, float tolerance = 1e-5f){
         EXPECT_NEAR(actual.x, x, tolerance);
         EXPECT_NEAR(actual.y, y, tolerance);
         EXPECT_NEAR(actual.z, z, tolerance);
@@ -97,7 +97,7 @@ namespace {
     }
 
     // every component bit for bit
-    void expectSameSample(const anim::TrackSample& a, const anim::TrackSample& b){
+    void keyframeSamplingExpectSameSample(const anim::TrackSample& a, const anim::TrackSample& b){
         EXPECT_EQ(a.valid, b.valid);
         EXPECT_EQ(a.vector.x, b.vector.x);
         EXPECT_EQ(a.vector.y, b.vector.y);
@@ -275,60 +275,60 @@ TEST(KeyframeSampling, EveryEaseFamilyAtASamplePoint){
 }
 
 TEST(KeyframeSampling, PositionLinearStepAndEased){
-    ClipTrackData position = track(ClipChannel::Position, {
-        key(0, {0, 0, 0}),
-        key(1, {2, 4, -2}, EaseType::STEP),
-        key(2, {4, 4, 4}, EaseType::QUAD_OUT),
-        key(3, {0, 0, 0})});
-    expectVector(sampleOne(position, 0.25f).vector, 0.5f, 1.0f, -0.5f);
-    expectVector(sampleOne(position, 1.5f).vector, 2, 4, -2);            // step holds the start
-    expectVector(sampleOne(position, 1.999f).vector, 2, 4, -2);
+    ClipTrackData position = keyframeSamplingTrack(ClipChannel::Position, {
+        keyframeSamplingKey(0, {0, 0, 0}),
+        keyframeSamplingKey(1, {2, 4, -2}, EaseType::STEP),
+        keyframeSamplingKey(2, {4, 4, 4}, EaseType::QUAD_OUT),
+        keyframeSamplingKey(3, {0, 0, 0})});
+    keyframeSamplingExpectVector(sampleOne(position, 0.25f).vector, 0.5f, 1.0f, -0.5f);
+    keyframeSamplingExpectVector(sampleOne(position, 1.5f).vector, 2, 4, -2);            // step holds the start
+    keyframeSamplingExpectVector(sampleOne(position, 1.999f).vector, 2, 4, -2);
     // quad_out at 0.5: 0.75 of the way from (4,4,4) to 0
-    expectVector(sampleOne(position, 2.5f).vector, 1, 1, 1);
+    keyframeSamplingExpectVector(sampleOne(position, 2.5f).vector, 1, 1, 1);
     // the ends are exactly the first and last keys
-    expectVector(sampleOne(position, -3.0f).vector, 0, 0, 0, 0.0f);
-    expectVector(sampleOne(position, 0.0f).vector, 0, 0, 0, 0.0f);
-    expectVector(sampleOne(position, 3.0f).vector, 0, 0, 0, 0.0f);
-    expectVector(sampleOne(position, 99.0f).vector, 0, 0, 0, 0.0f);
-    expectVector(sampleOne(track(ClipChannel::Scale, {key(0.5f, {3, 2, 1})}), 0.1f).vector, 3, 2, 1, 0.0f);
+    keyframeSamplingExpectVector(sampleOne(position, -3.0f).vector, 0, 0, 0, 0.0f);
+    keyframeSamplingExpectVector(sampleOne(position, 0.0f).vector, 0, 0, 0, 0.0f);
+    keyframeSamplingExpectVector(sampleOne(position, 3.0f).vector, 0, 0, 0, 0.0f);
+    keyframeSamplingExpectVector(sampleOne(position, 99.0f).vector, 0, 0, 0, 0.0f);
+    keyframeSamplingExpectVector(sampleOne(keyframeSamplingTrack(ClipChannel::Scale, {keyframeSamplingKey(0.5f, {3, 2, 1})}), 0.1f).vector, 3, 2, 1, 0.0f);
 }
 
 TEST(KeyframeSampling, VectorHermite){
-    ClipKey a = key(0, {0, 0, 0});
+    ClipKey a = keyframeSamplingKey(0, {0, 0, 0});
     a.inTangent = {0, 0, 0};
     a.outTangent = {1, 0, 0};
-    ClipKey b = key(2, {1, 0, 0});
+    ClipKey b = keyframeSamplingKey(2, {1, 0, 0});
     b.inTangent = {0, 0, 0};
     b.outTangent = {0, 0, 0};
     // t = 0.25 of a 2 s segment: h10 * td * 1 + h01 * 1 = 0.140625 * 2 + 0.15625
-    expectVector(sampleOne(track(ClipChannel::Position, {a, b}), 0.5f).vector, 0.4375f, 0, 0);
+    keyframeSamplingExpectVector(sampleOne(keyframeSamplingTrack(ClipChannel::Position, {a, b}), 0.5f).vector, 0.4375f, 0, 0);
 }
 
 TEST(KeyframeSampling, RotationSlerpHermiteAndZeroNormGuard){
     // identity to 90 degrees about y: halfway is 45 degrees about y
-    ClipTrackData rotation = track(ClipChannel::Rotation, {key(0, {0, 0, 0, 1}), key(1, {0, 0.70710678f, 0, 0.70710678f})});
+    ClipTrackData rotation = keyframeSamplingTrack(ClipChannel::Rotation, {keyframeSamplingKey(0, {0, 0, 0, 1}), keyframeSamplingKey(1, {0, 0.70710678f, 0, 0.70710678f})});
     anim::TrackSample half = sampleOne(rotation, 0.5f);
     EXPECT_EQ(half.channel, ClipChannel::Rotation);
     expectRotation(half.rotation, Quaternion(0.92387953f, 0, 0.38268343f, 0));
 
     // Hermite with zero tangents between q and the same q: q
-    ClipKey a = key(0, {0, 0.6f, 0, 0.8f});
+    ClipKey a = keyframeSamplingKey(0, {0, 0.6f, 0, 0.8f});
     a.inTangent = {0, 0, 0, 0};
     a.outTangent = {0, 0, 0, 0};
     ClipKey b = a;
     b.time = 1;
-    expectRotation(sampleOne(track(ClipChannel::Rotation, {a, b}), 0.3f).rotation, Quaternion(0.8f, 0, 0.6f, 0));
+    expectRotation(sampleOne(keyframeSamplingTrack(ClipChannel::Rotation, {a, b}), 0.3f).rotation, Quaternion(0.8f, 0, 0.6f, 0));
 
     // Hermite with tangents: normalized result of the cubic
-    ClipKey c = key(0, {0, 0, 0, 1});
+    ClipKey c = keyframeSamplingKey(0, {0, 0, 0, 1});
     c.inTangent = {0, 0, 0, 0};
     c.outTangent = {0, 1, 0, 0};
-    ClipKey d = key(1, {0, 0.70710678f, 0, 0.70710678f});
+    ClipKey d = keyframeSamplingKey(1, {0, 0.70710678f, 0, 0.70710678f});
     d.inTangent = {0, 0, 0, 0};
     d.outTangent = {0, 0, 0, 0};
     // t 0.5, td 1: h00 0.5, h10 0.125, h01 0.5, h11 -0.125 (in tangent 0)
     Quaternion cubic(0.5f + 0.5f * 0.70710678f, 0, 0.125f + 0.5f * 0.70710678f, 0);
-    expectRotation(sampleOne(track(ClipChannel::Rotation, {c, d}), 0.5f).rotation, cubic.normalized());
+    expectRotation(sampleOne(keyframeSamplingTrack(ClipChannel::Rotation, {c, d}), 0.5f).rotation, cubic.normalized());
 
     // the guard: the cubic of the AnimationClip runtime arrays directly (a clip's continuity
     // would never store -q after q), v_k = -v_k+1 with zero tangents is all zero at t 0.5
@@ -349,7 +349,7 @@ TEST(KeyframeSampling, RotationSlerpHermiteAndZeroNormGuard){
 }
 
 TEST(KeyframeSampling, MorphAndLatticeRows){
-    ClipTrackData morph = track(ClipChannel::Morph, {key(0, {0, 0.5f}), key(1, {1, 0}, EaseType::LINEAR)});
+    ClipTrackData morph = keyframeSamplingTrack(ClipChannel::Morph, {keyframeSamplingKey(0, {0, 0.5f}), keyframeSamplingKey(1, {1, 0}, EaseType::LINEAR)});
     anim::TrackSample previous;
     previous.offsets = {Vector3(9, 9, 9)};
     anim::TrackSample weights = sampleOne(morph, 0.25f, previous);
@@ -359,25 +359,25 @@ TEST(KeyframeSampling, MorphAndLatticeRows){
     EXPECT_TRUE(weights.offsets.empty());
 
     // morph Hermite: one weight 0 -> 1 over 1 s, out tangent 2, in tangent 0, t 0.5
-    ClipKey m0 = key(0, {0});
+    ClipKey m0 = keyframeSamplingKey(0, {0});
     m0.inTangent = {0};
     m0.outTangent = {2};
-    ClipKey m1 = key(1, {1});
+    ClipKey m1 = keyframeSamplingKey(1, {1});
     m1.inTangent = {0};
     m1.outTangent = {0};
-    anim::TrackSample cubic = sampleOne(track(ClipChannel::Morph, {m0, m1}), 0.5f);
+    anim::TrackSample cubic = sampleOne(keyframeSamplingTrack(ClipChannel::Morph, {m0, m1}), 0.5f);
     EXPECT_NEAR(cubic.weights[0], 0.125f * 2 + 0.5f, 1e-6f);
 
-    ClipTrackData lattice = track(ClipChannel::Lattice, {
-        key(0, {0, 0, 0, 1, 1, 1}),
-        key(2, {0, 2, 0, 3, 1, 1}, EaseType::STEP)});
+    ClipTrackData lattice = keyframeSamplingTrack(ClipChannel::Lattice, {
+        keyframeSamplingKey(0, {0, 0, 0, 1, 1, 1}),
+        keyframeSamplingKey(2, {0, 2, 0, 3, 1, 1}, EaseType::STEP)});
     lattice.points = {13, 40};
     anim::TrackSample offsets = sampleOne(lattice, 1.0f, weights);
     ASSERT_EQ(offsets.offsets.size(), 2u);
-    expectVector(offsets.offsets[0], 0, 1, 0);
-    expectVector(offsets.offsets[1], 2, 1, 1);
+    keyframeSamplingExpectVector(offsets.offsets[0], 0, 1, 0);
+    keyframeSamplingExpectVector(offsets.offsets[1], 2, 1, 1);
     EXPECT_TRUE(offsets.weights.empty());
-    expectVector(sampleOne(lattice, 5.0f).offsets[1], 3, 1, 1, 0.0f);
+    keyframeSamplingExpectVector(sampleOne(lattice, 5.0f).offsets[1], 3, 1, 1, 0.0f);
 
     ClipData clip;
     clip.tracks = {lattice};
@@ -387,7 +387,7 @@ TEST(KeyframeSampling, MorphAndLatticeRows){
 }
 
 TEST(KeyframeSampling, LoopingTracksRepeatTheirOwnKeys){
-    ClipTrackData looping = track(ClipChannel::Position, {key(0, {0, 0, 0}), key(1, {10, 0, 0})});
+    ClipTrackData looping = keyframeSamplingTrack(ClipChannel::Position, {keyframeSamplingKey(0, {0, 0, 0}), keyframeSamplingKey(1, {10, 0, 0})});
     looping.loop = true;
     ClipData clip;
     clip.tracks = {looping};
@@ -398,10 +398,10 @@ TEST(KeyframeSampling, LoopingTracksRepeatTheirOwnKeys){
     EXPECT_FLOAT_EQ(anim::trackTime(t, 0.5f), 0.5f);
     anim::TrackSample sample;
     ASSERT_TRUE(anim::sampleTrack(t, 2.5f, sample));
-    expectVector(sample.vector, 5, 0, 0);
+    keyframeSamplingExpectVector(sample.vector, 5, 0, 0);
     // without loop the last key holds
     looping.loop = false;
-    expectVector(sampleOne(looping, 2.5f).vector, 10, 0, 0, 0.0f);
+    keyframeSamplingExpectVector(sampleOne(looping, 2.5f).vector, 10, 0, 0, 0.0f);
 }
 
 TEST(KeyframeSampling, PropertyAndEmptyTracksAreNotSampled){
@@ -410,7 +410,7 @@ TEST(KeyframeSampling, PropertyAndEmptyTracksAreNotSampled){
     property.channel = ClipChannel::Property;
     property.component = "Light";
     property.property = "intensity";
-    clip.tracks = {property, track(ClipChannel::Position, {}, "Empty")};
+    clip.tracks = {property, keyframeSamplingTrack(ClipChannel::Position, {}, "Empty")};
     std::shared_ptr<const AnimationClip> built = AnimationClip::build(clip);
     std::vector<anim::TrackSample> samples;
     anim::sampleClipTracks(*built, 0.5f, samples);
@@ -430,11 +430,11 @@ TEST(KeyframeSampling, SamplingIsDeterministicWhateverTheCursor){
         if (t.channel == ClipChannel::Lattice) t.points = {1, 2};
         size_t width = c == 1 ? 4 : c == 3 ? 3 : c == 4 ? 6 : 3;
         for (int k = 0; k < 12; k++){
-            ClipKey key;
-            key.time = k * 0.25f;
-            key.ease = (EaseType)(random() % (int)EaseType::CUSTOM);
-            for (size_t i = 0; i < width; i++) key.value.push_back(unit(random));
-            t.keys.push_back(key);
+            ClipKey keyframeSamplingKey;
+            keyframeSamplingKey.time = k * 0.25f;
+            keyframeSamplingKey.ease = (EaseType)(random() % (int)EaseType::CUSTOM);
+            for (size_t i = 0; i < width; i++) keyframeSamplingKey.value.push_back(unit(random));
+            t.keys.push_back(keyframeSamplingKey);
         }
         clip.tracks.push_back(t);
     }
@@ -452,8 +452,8 @@ TEST(KeyframeSampling, SamplingIsDeterministicWhateverTheCursor){
             anim::sampleTrack(first->getTracks()[t], time, hinted, &cursors[t]);
             anim::sampleTrack(second->getTracks()[t], time, plain);
             anim::sampleTrack(second->getTracks()[t], time, stale, &far);
-            expectSameSample(hinted, plain);
-            expectSameSample(stale, plain);
+            keyframeSamplingExpectSameSample(hinted, plain);
+            keyframeSamplingExpectSameSample(stale, plain);
         }
     }
 }
@@ -482,11 +482,11 @@ TEST(KeyframeSampling, EntityTracksMatchTheClipSamplers){
     spin.setTarget(target);
     spin.start();
 
-    ClipTrackData position = track(ClipChannel::Position, {
-        key(0, {0, 0, 0}, EaseType::CUBIC_IN_OUT), key(1, {4, 2, 0}, EaseType::BOUNCE_OUT), key(2, {0, 6, 8})});
+    ClipTrackData position = keyframeSamplingTrack(ClipChannel::Position, {
+        keyframeSamplingKey(0, {0, 0, 0}, EaseType::CUBIC_IN_OUT), keyframeSamplingKey(1, {4, 2, 0}, EaseType::BOUNCE_OUT), keyframeSamplingKey(2, {0, 6, 8})});
     ClipData clip;
     clip.tracks = {position};
-    ClipTrackData rotation = track(ClipChannel::Rotation, {key(0, {0, 0, 0, 1}, EaseType::SINE_IN), key(2, {0, 0, 0, 1})}, "R");
+    ClipTrackData rotation = keyframeSamplingTrack(ClipChannel::Rotation, {keyframeSamplingKey(0, {0, 0, 0, 1}, EaseType::SINE_IN), keyframeSamplingKey(2, {0, 0, 0, 1})}, "R");
     quaternionToXYZW(r1, rotation.keys[1].value.data());
     clip.tracks.push_back(rotation);
     std::shared_ptr<const AnimationClip> built = AnimationClip::build(clip);
@@ -621,7 +621,7 @@ namespace {
         return anim::sampleQuaternion(at, values, nullptr, nullptr);
     }
 
-    bool sameBits(const Quaternion& a, const Quaternion& b){
+    bool keyframeSamplingSameBits(const Quaternion& a, const Quaternion& b){
         return a.w == b.w && a.x == b.x && a.y == b.y && a.z == b.z;
     }
 
@@ -671,7 +671,7 @@ TEST(KeyframeSampling, TieredSlerpMatchesSlerp){
         int differing = 0;
         for (int pair = 0; pair < 50; pair++){
             const std::pair<Quaternion, Quaternion> keys = keysApart(random, degrees, false);
-            differing += sameBits(sampledAt(0.3f, keys.first, keys.second), Quaternion::slerp(0.3f, keys.first, keys.second)) ? 0 : 1;
+            differing += keyframeSamplingSameBits(sampledAt(0.3f, keys.first, keys.second), Quaternion::slerp(0.3f, keys.first, keys.second)) ? 0 : 1;
         }
         EXPECT_GT(differing, 25) << degrees << " degrees between keys";
     }
@@ -679,27 +679,27 @@ TEST(KeyframeSampling, TieredSlerpMatchesSlerp){
         for (int pair = 0; pair < 100; pair++){
             const std::pair<Quaternion, Quaternion> keys = keysApart(random, degrees, pair % 2 == 1);
             const float t = (float)(pair + 1) / 101.0f;
-            ASSERT_TRUE(sameBits(sampledAt(t, keys.first, keys.second), Quaternion::slerp(t, keys.first, keys.second))) << degrees << " degrees";
+            ASSERT_TRUE(keyframeSamplingSameBits(sampledAt(t, keys.first, keys.second), Quaternion::slerp(t, keys.first, keys.second))) << degrees << " degrees";
         }
     }
 
     // the end keys, exactly: b on a's side of the hypersphere, as slerp gives it
     for (double degrees : {1.0, 4.0, 20.0, 30.0, 60.0}){
         const std::pair<Quaternion, Quaternion> keys = keysApart(random, degrees, false);
-        EXPECT_TRUE(sameBits(sampledAt(0.0f, keys.first, keys.second), keys.first)) << degrees;
-        EXPECT_TRUE(sameBits(sampledAt(1.0f, keys.first, keys.second), keys.second)) << degrees;
+        EXPECT_TRUE(keyframeSamplingSameBits(sampledAt(0.0f, keys.first, keys.second), keys.first)) << degrees;
+        EXPECT_TRUE(keyframeSamplingSameBits(sampledAt(1.0f, keys.first, keys.second), keys.second)) << degrees;
         const Quaternion opposite = -keys.second;
-        EXPECT_TRUE(sameBits(sampledAt(0.0f, keys.first, opposite), keys.first)) << degrees;
-        EXPECT_TRUE(sameBits(sampledAt(1.0f, keys.first, opposite), keys.second)) << degrees << " the shortest arc ends on a's side";
+        EXPECT_TRUE(keyframeSamplingSameBits(sampledAt(0.0f, keys.first, opposite), keys.first)) << degrees;
+        EXPECT_TRUE(keyframeSamplingSameBits(sampledAt(1.0f, keys.first, opposite), keys.second)) << degrees << " the shortest arc ends on a's side";
     }
 
     // an ease past the segment (Back, Elastic) extrapolates as slerp does; so do NaN and zero keys
     const std::pair<Quaternion, Quaternion> near = keysApart(random, 10.0, false);
     for (float t : {-0.2f, 1.3f}){
-        EXPECT_TRUE(sameBits(sampledAt(t, near.first, near.second), Quaternion::slerp(t, near.first, near.second))) << t;
+        EXPECT_TRUE(keyframeSamplingSameBits(sampledAt(t, near.first, near.second), Quaternion::slerp(t, near.first, near.second))) << t;
     }
     const Quaternion zero(0, 0, 0, 0);
-    EXPECT_TRUE(sameBits(sampledAt(0.5f, near.first, zero), Quaternion::slerp(0.5f, near.first, zero)));
+    EXPECT_TRUE(keyframeSamplingSameBits(sampledAt(0.5f, near.first, zero), Quaternion::slerp(0.5f, near.first, zero)));
     const Quaternion poisoned(NAN, 0, 0, 1);
     EXPECT_TRUE(std::isnan(sampledAt(0.5f, poisoned, near.second).w));
 }
@@ -714,9 +714,9 @@ TEST(KeyframeSampling, NaNTimesAndBinarySearch){
     // a long track: without a cursor (binary search) and with stale cursors anywhere, the
     // location is the linear scan's
     std::vector<ClipKey> keys;
-    for (int k = 0; k < 500; k++) keys.push_back(key(k * 0.1f, {(float)k, 0, 0}, (EaseType)(k % (int)EaseType::CUSTOM)));
+    for (int k = 0; k < 500; k++) keys.push_back(keyframeSamplingKey(k * 0.1f, {(float)k, 0, 0}, (EaseType)(k % (int)EaseType::CUSTOM)));
     ClipData clip;
-    clip.tracks = {track(ClipChannel::Position, keys)};
+    clip.tracks = {keyframeSamplingTrack(ClipChannel::Position, keys)};
     std::shared_ptr<const AnimationClip> built = AnimationClip::build(clip);
     const AnimationClip::Track& t = built->getTracks()[0];
     std::mt19937 random(5);
@@ -734,7 +734,7 @@ TEST(KeyframeSampling, NaNTimesAndBinarySearch){
         walking.index = random() % 600;
         anim::sampleTrack(t, at, plain);
         anim::sampleTrack(t, at, withCursor, &walking);
-        expectSameSample(plain, withCursor);
+        keyframeSamplingExpectSameSample(plain, withCursor);
     }
     // a NaN time samples the first key
     anim::TrackSample nan;
@@ -756,9 +756,9 @@ TEST(KeyframeSampling, SteppedKeysShowTheirOwnValueAtTheirTime){
     move.setTarget(target);
     move.start();
 
-    ClipTrackData position = track(ClipChannel::Position, {
-        key(0, {1, 0, 0}, EaseType::STEP), key(0.5f, {2, 0, 0}, EaseType::STEP),
-        key(1, {3, 0, 0}, EaseType::STEP), key(1.5f, {4, 0, 0})});
+    ClipTrackData position = keyframeSamplingTrack(ClipChannel::Position, {
+        keyframeSamplingKey(0, {1, 0, 0}, EaseType::STEP), keyframeSamplingKey(0.5f, {2, 0, 0}, EaseType::STEP),
+        keyframeSamplingKey(1, {3, 0, 0}, EaseType::STEP), keyframeSamplingKey(1.5f, {4, 0, 0})});
     ClipData clip;
     clip.tracks = {position};
     std::shared_ptr<const AnimationClip> built = AnimationClip::build(clip);
@@ -812,7 +812,7 @@ TEST(KeyframeSampling, StepFps){
     EXPECT_FLOAT_EQ(anim::holdStepTime(0.25f, 0.0f), 0.25f);
 
     // through sampleTrack: x keys 0 -> 3 (0.3 s) -> 1 (0.7 s) -> 1 (1 s)
-    ClipTrackData position = track(ClipChannel::Position, {key(0, {0, 0, 0}), key(0.3f, {3, 0, 0}), key(0.7f, {1, 0, 0}), key(1.0f, {1, 0, 0})});
+    ClipTrackData position = keyframeSamplingTrack(ClipChannel::Position, {keyframeSamplingKey(0, {0, 0, 0}), keyframeSamplingKey(0.3f, {3, 0, 0}), keyframeSamplingKey(0.7f, {1, 0, 0}), keyframeSamplingKey(1.0f, {1, 0, 0})});
     ClipData clip;
     clip.tracks = {position};
     std::shared_ptr<const AnimationClip> built = AnimationClip::build(clip);

@@ -31,16 +31,16 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    struct Headless {
+    struct ParticleChecksPanelHeadless {
         fs::path dir;
         bool ready = false;
         std::unique_ptr<Project> project;
         std::unique_ptr<editor::Platform> platform;
     };
 
-    Headless& headless(){
-        static Headless h = [](){
-            Headless out;
+    ParticleChecksPanelHeadless& particleChecksPanelHeadless(){
+        static ParticleChecksPanelHeadless h = [](){
+            ParticleChecksPanelHeadless out;
             const fs::path root = fs::temp_directory_path() / ("jasper-particle-checks-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
             fs::create_directories(root / "config");
@@ -85,7 +85,7 @@ namespace {
 }
 
 TEST(ParticleChecksPanel, RowsMatchTheToolsChecks){
-    Headless& h = headless();
+    ParticleChecksPanelHeadless& h = particleChecksPanelHeadless();
     ASSERT_TRUE(h.ready);
     ParticleQaSettings qa;
     qa.overdrawMobile = 6.0f;   // the project's thresholds reach both
@@ -135,7 +135,7 @@ TEST(ParticleChecksPanel, RowsMatchTheToolsChecks){
 // S91 AC15 in the window: the Particle Effect window hosts the panel on the effect it shows, with its
 // seed, and the hosted rows are the tool's
 TEST(ParticleChecksPanel, TheWindowsHostedRowsAreTheTools){
-    Headless& h = headless();
+    ParticleChecksPanelHeadless& h = particleChecksPanelHeadless();
     ASSERT_TRUE(h.ready);
     const std::string scope = "assets/fx/burst.particles";
     ParticleEffectWindow window(h.project.get());

@@ -16,23 +16,13 @@
 #include "voxel/VoxelEdit.h"
 #include "voxel/VoxelGenerator.h"
 #include "voxel/VoxelSample.h"
+#include "support/SystemTestAccess.h"
 
 #include <gtest/gtest.h>
 
 #include <filesystem>
 #include <memory>
 #include <string>
-
-namespace jasperengine {
-    // TEST-ONLY seam (System.h befriends it): detach / restore the instance
-    struct SystemTestAccess {
-        static System* swap(System* system) {
-            System* previous = System::systemInstance;
-            System::systemInstance = system;
-            return previous;
-        }
-    };
-}
 
 namespace jasperengine::editor::voxeltest {
 

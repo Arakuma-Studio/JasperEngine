@@ -214,7 +214,7 @@ namespace {
         return TitleArtValue::fromString(std::get<std::string>(arg));
     }
 
-    float fract(double value){
+    float sweepFract(double value){
         return (float)(value - std::floor(value));
     }
 
@@ -658,7 +658,7 @@ void TitleArtSystem::updateTitle(Entity entity, TitleArtRendererComponent& title
         // R34: the system writes the sweep unless a clip keyed it this frame
         if (title.sweepAuto && !title.sweepPositionKeyed){
             const double interval = std::max(0.01, (double)title.sweepInterval);
-            title.sweepPosition = std::min(1.0f, fract((double)title.liveTime / interval) * (float)interval * std::max(0.0f, title.sweepSpeed));
+            title.sweepPosition = std::min(1.0f, sweepFract((double)title.liveTime / interval) * (float)interval * std::max(0.0f, title.sweepSpeed));
         }
     }
     title.sweepPositionKeyed = false;

@@ -41,10 +41,10 @@ using namespace jasperengine;
 
 namespace {
 
-    using Clock = std::chrono::steady_clock;
+    using EntityDestroyScalingClock = std::chrono::steady_clock;
 
-    double secondsSince(Clock::time_point start) {
-        return std::chrono::duration<double>(Clock::now() - start).count();
+    double secondsSince(EntityDestroyScalingClock::time_point start) {
+        return std::chrono::duration<double>(EntityDestroyScalingClock::now() - start).count();
     }
 
     // A model copy as a glTF hero loads: the Model (Transform, Mesh, Model), an armature below
@@ -103,14 +103,14 @@ namespace {
 
     // seconds an entity to tear down a crowd of `copies` model copies
     double teardownSecondsPerEntity(int copies, Teardown teardown) {
-        const Clock::time_point made = Clock::now();
+        const EntityDestroyScalingClock::time_point made = EntityDestroyScalingClock::now();
         Crowd crowd(copies);
         const double making = secondsSince(made);
         const size_t entities = crowd.entities();
         // the last entity of the scene, made after the crowd: the holes are never at the end
         const Entity last = crowd.scene->createEntity();
         crowd.scene->addComponent<Transform>(last, Transform());
-        const Clock::time_point start = Clock::now();
+        const EntityDestroyScalingClock::time_point start = EntityDestroyScalingClock::now();
         switch (teardown) {
             case Teardown::DestroyEach:
                 // ascending ids, the order the scene made them in (the front of every array first)
@@ -515,7 +515,7 @@ TEST(ComponentArrayHoles, ComponentFoundByEntityStaysThroughRemovalsOfOthersAndR
 
 namespace {
 
-    Entity transformEntity(Scene& scene, Entity parent = NULL_ENTITY) {
+    Entity entityDestroyScalingTransformEntity(Scene& scene, Entity parent = NULL_ENTITY) {
         const Entity entity = scene.createEntity();
         scene.addComponent<Transform>(entity, Transform());
         if (parent != NULL_ENTITY) scene.addEntityChild(parent, entity, false);
@@ -532,10 +532,10 @@ namespace {
 
 TEST(EntityDestroyHierarchy, RootWithAChildLeftAfterHolesIsStillInTheHierarchy) {
     Scene scene;
-    const Entity parent = transformEntity(scene);
-    const Entity first = transformEntity(scene, parent);
-    const Entity second = transformEntity(scene, parent);
-    const Entity other = transformEntity(scene);
+    const Entity parent = entityDestroyScalingTransformEntity(scene);
+    const Entity first = entityDestroyScalingTransformEntity(scene, parent);
+    const Entity second = entityDestroyScalingTransformEntity(scene, parent);
+    const Entity other = entityDestroyScalingTransformEntity(scene);
     EXPECT_TRUE(revisionMovesWhenDestroying(scene, first));
     // `second` follows the hole `first` left: still the parent's child
     EXPECT_TRUE(revisionMovesWhenDestroying(scene, parent));
@@ -549,10 +549,10 @@ TEST(EntityDestroyHierarchy, RootWithAChildLeftAfterHolesIsStillInTheHierarchy) 
 
 TEST(EntityDestroyHierarchy, RootWhoseChildrenWentFirstIsALoneEntity) {
     Scene scene;
-    const Entity parent = transformEntity(scene);
-    const Entity first = transformEntity(scene, parent);
-    const Entity second = transformEntity(scene, parent);
-    const Entity other = transformEntity(scene);
+    const Entity parent = entityDestroyScalingTransformEntity(scene);
+    const Entity first = entityDestroyScalingTransformEntity(scene, parent);
+    const Entity second = entityDestroyScalingTransformEntity(scene, parent);
+    const Entity other = entityDestroyScalingTransformEntity(scene);
     EXPECT_TRUE(revisionMovesWhenDestroying(scene, second));
     EXPECT_TRUE(revisionMovesWhenDestroying(scene, first));
     // the holes after it are skipped: `other` is next, not its child
@@ -562,13 +562,13 @@ TEST(EntityDestroyHierarchy, RootWhoseChildrenWentFirstIsALoneEntity) {
 
 TEST(EntityDestroyHierarchy, RemainingSiblingsKeepTheirOrderAndQueriesTheirAnswers) {
     Scene scene;
-    const Entity root = transformEntity(scene);
+    const Entity root = entityDestroyScalingTransformEntity(scene);
     std::vector<Entity> children;
-    for (int i = 0; i < 6; i++) children.push_back(transformEntity(scene, root));
-    const Entity grandchild = transformEntity(scene, children[4]);
+    for (int i = 0; i < 6; i++) children.push_back(entityDestroyScalingTransformEntity(scene, root));
+    const Entity grandchild = entityDestroyScalingTransformEntity(scene, children[4]);
     const Entity mesh = children[5];
     scene.addComponent<MeshComponent>(mesh, MeshComponent());
-    const Entity tail = transformEntity(scene);
+    const Entity tail = entityDestroyScalingTransformEntity(scene);
     scene.addComponent<MeshComponent>(tail, MeshComponent());
 
     scene.destroyEntity(children[1]);
@@ -628,13 +628,13 @@ TEST(EntityDestroyHierarchy, CallbacksComeInDestroyOrderAndSeeTheEarlierOnesGone
 // the same entities with holes before and inside the branch as without
 TEST(EntityDestroyHierarchy, CollectHierarchyWalksPastHoles) {
     Scene scene;
-    const Entity before = transformEntity(scene);
-    const Entity root = transformEntity(scene);
-    const Entity a = transformEntity(scene, root);
-    const Entity gone = transformEntity(scene, root);
-    const Entity b = transformEntity(scene, root);
-    const Entity c = transformEntity(scene, b);
-    const Entity after = transformEntity(scene);
+    const Entity before = entityDestroyScalingTransformEntity(scene);
+    const Entity root = entityDestroyScalingTransformEntity(scene);
+    const Entity a = entityDestroyScalingTransformEntity(scene, root);
+    const Entity gone = entityDestroyScalingTransformEntity(scene, root);
+    const Entity b = entityDestroyScalingTransformEntity(scene, root);
+    const Entity c = entityDestroyScalingTransformEntity(scene, b);
+    const Entity after = entityDestroyScalingTransformEntity(scene);
     const Entity action = scene.createEntity();
     scene.addComponent<ActionComponent>(action, ActionComponent());
     scene.getComponent<ActionComponent>(action).target = c;
@@ -653,7 +653,7 @@ TEST(EntityDestroyHierarchy, CollectHierarchyWalksPastHoles) {
 TEST(EntityDestroyEditor, LockedParentIndexAnswersAsTheScan) {
     Scene scene;
     auto entity = [&scene](Entity parent = NULL_ENTITY) {
-        return transformEntity(scene, parent);
+        return entityDestroyScalingTransformEntity(scene, parent);
     };
     auto plain = [&scene]() { return scene.createEntity(); };
 

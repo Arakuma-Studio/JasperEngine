@@ -30,9 +30,9 @@ namespace {
     constexpr bool checkRatios = true;
 #endif
 
-    using Clock = std::chrono::steady_clock;
+    using CommandHistoryBenchClock = std::chrono::steady_clock;
 
-    double microseconds(Clock::duration duration) {
+    double microseconds(CommandHistoryBenchClock::duration duration) {
         return std::chrono::duration<double, std::micro>(duration).count();
     }
 
@@ -69,11 +69,11 @@ TEST(CommandHistoryBench, PushWithTrimming) {
     CommandHistory::maxEntries = 1000;
     CommandHistory history(1);
     constexpr int pushes = 10000;
-    const auto start = Clock::now();
+    const auto start = CommandHistoryBenchClock::now();
     for (int i = 0; i < pushes; i++) {
         history.addCommand(new UndoFake(state, "Set Value", i + 1));
     }
-    const double average = microseconds(Clock::now() - start) / pushes;
+    const double average = microseconds(CommandHistoryBenchClock::now() - start) / pushes;
     EXPECT_EQ(history.appliedCount(), 1000u);
     std::printf("[ bench ] push with trimming: %.2f us average (budget 50)\n", average);
     if (const double slack = perfSlack(); slack > 0.0) {
@@ -89,9 +89,9 @@ TEST(CommandHistoryBench, BigStepReleasedOffTheMainThread) {
     ASSERT_GE(history.bytes(), CommandHistory::OFF_THREAD_RELEASE_BYTES);
     history.undo();
     // the redo tail freed by a new step: BackgroundRelease takes the tree
-    const auto start = Clock::now();
+    const auto start = CommandHistoryBenchClock::now();
     history.addCommand(new UndoFake(state, "next", 2));
-    const double elapsed = microseconds(Clock::now() - start);
+    const double elapsed = microseconds(CommandHistoryBenchClock::now() - start);
     std::printf("[ bench ] 1000-GameObject step released in %.1f us on the main thread (budget 500)\n", elapsed);
     if (const double slack = perfSlack(); slack > 0.0) {
         EXPECT_LE(elapsed, 500.0 * slack);
@@ -116,12 +116,12 @@ TEST(CommandHistoryBench, YamlFootprintCostsLittleNextToTheEncode) {
     double footprintTime = 1e12;
     size_t bytes = 0;
     for (int run = 0; run < 5; run++) {
-        const auto encodeStart = Clock::now();
+        const auto encodeStart = CommandHistoryBenchClock::now();
         YAML::Node encoded = encodeScene(decoded);
-        encodeTime = std::min(encodeTime, microseconds(Clock::now() - encodeStart));
-        const auto footprintStart = Clock::now();
+        encodeTime = std::min(encodeTime, microseconds(CommandHistoryBenchClock::now() - encodeStart));
+        const auto footprintStart = CommandHistoryBenchClock::now();
         bytes = yamlFootprint(encoded);
-        footprintTime = std::min(footprintTime, microseconds(Clock::now() - footprintStart));
+        footprintTime = std::min(footprintTime, microseconds(CommandHistoryBenchClock::now() - footprintStart));
     }
     EXPECT_GT(bytes, 1000u * 64u);
     std::printf("[ bench ] yamlFootprint %.0f us, encode %.0f us (%.1f%%, budget 10%%)\n", footprintTime, encodeTime,

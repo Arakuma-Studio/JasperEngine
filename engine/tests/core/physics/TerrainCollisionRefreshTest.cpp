@@ -38,10 +38,10 @@ using namespace jasperengine;
 
 namespace {
 
-    constexpr float DT = 1.0f / 60.0f;
+    constexpr float TERRAIN_COLLISION_REFRESH_DT = 1.0f / 60.0f;
     constexpr int MAP = 33;
-    constexpr float SIZE = 32.0f;
-    constexpr float MAX_HEIGHT = 10.0f;
+    constexpr float TERRAIN_COLLISION_REFRESH_SIZE = 32.0f;
+    constexpr float TERRAIN_COLLISION_REFRESH_MAX_HEIGHT = 10.0f;
 
     class TerrainCollisionRefresh : public ::testing::Test {
     protected:
@@ -52,7 +52,7 @@ namespace {
 
         void SetUp() override{
             updateTime = Engine::getUpdateTime();
-            Engine::setUpdateTime(DT);
+            Engine::setUpdateTime(TERRAIN_COLLISION_REFRESH_DT);
             scene = std::make_unique<Scene>();
             test::disableSubSystems(*scene);
             scene->getScheduler().setEnabled("PhysicsSystem", true);
@@ -69,8 +69,8 @@ namespace {
         TerrainComponent& makeTerrain(bool runtimeEdits, bool withBody){
             terrainEntity = test::makeTransformEntity(*scene);
             TerrainComponent terrain;
-            terrain.terrainSize = SIZE;
-            terrain.maxHeight = MAX_HEIGHT;
+            terrain.terrainSize = TERRAIN_COLLISION_REFRESH_SIZE;
+            terrain.maxHeight = TERRAIN_COLLISION_REFRESH_MAX_HEIGHT;
             terrain.allowRuntimeEdits = runtimeEdits;
             const size_t bytes = static_cast<size_t>(MAP) * MAP * 2;
             unsigned char* raw = static_cast<unsigned char*>(std::malloc(bytes));
@@ -130,7 +130,7 @@ namespace {
         void steps(int count){
             for (int i = 0; i < count; i++){
                 resolveTransforms();
-                scene->fixedUpdate(DT);
+                scene->fixedUpdate(TERRAIN_COLLISION_REFRESH_DT);
                 resolveTransforms();
             }
         }
@@ -161,7 +161,7 @@ namespace {
 
 TEST(TerrainCollisionBlock, CoversTheEditGrownByACellInWholeBlocks){
     // 33 samples one unit apart over [-16, 16], padded to 34 by blocks of 2
-    const HeightFieldBlock block = JoltTerrainRefresh::blockOver(SIZE, 33, 34, 2, -1.5f, -1.5f, 1.5f, 1.5f, 1.0f, 1.0f);
+    const HeightFieldBlock block = JoltTerrainRefresh::blockOver(TERRAIN_COLLISION_REFRESH_SIZE, 33, 34, 2, -1.5f, -1.5f, 1.5f, 1.5f, 1.0f, 1.0f);
     // samples 14.5..17.5 reach 14..18; grown by one, 13..19; in blocks, 12..19
     EXPECT_EQ(block.x, 12u);
     EXPECT_EQ(block.w, 8u);
@@ -169,16 +169,16 @@ TEST(TerrainCollisionBlock, CoversTheEditGrownByACellInWholeBlocks){
     EXPECT_EQ(block.h, 8u);
 
     // the far edge takes the padding block with it
-    const HeightFieldBlock edge = JoltTerrainRefresh::blockOver(SIZE, 33, 34, 2, 15.0f, -16.0f, 16.0f, -15.0f, 1.0f, 1.0f);
+    const HeightFieldBlock edge = JoltTerrainRefresh::blockOver(TERRAIN_COLLISION_REFRESH_SIZE, 33, 34, 2, 15.0f, -16.0f, 16.0f, -15.0f, 1.0f, 1.0f);
     EXPECT_EQ(edge.x + edge.w, 34u);
     EXPECT_EQ(edge.y, 0u);
 
     // a mirrored axis flips the samples
-    const HeightFieldBlock mirrored = JoltTerrainRefresh::blockOver(SIZE, 33, 34, 2, 15.0f, 0.0f, 16.0f, 0.5f, -1.0f, 1.0f);
+    const HeightFieldBlock mirrored = JoltTerrainRefresh::blockOver(TERRAIN_COLLISION_REFRESH_SIZE, 33, 34, 2, 15.0f, 0.0f, 16.0f, 0.5f, -1.0f, 1.0f);
     EXPECT_EQ(mirrored.x, 0u);
 
     // past the terrain: nothing
-    EXPECT_TRUE(JoltTerrainRefresh::blockOver(SIZE, 33, 34, 2, 40.0f, 40.0f, 50.0f, 50.0f, 1.0f, 1.0f).empty());
+    EXPECT_TRUE(JoltTerrainRefresh::blockOver(TERRAIN_COLLISION_REFRESH_SIZE, 33, 34, 2, 40.0f, 40.0f, 50.0f, 50.0f, 1.0f, 1.0f).empty());
 }
 
 TEST_F(TerrainCollisionRefresh, SetHeightsMatchesRebuild){
@@ -191,7 +191,7 @@ TEST_F(TerrainCollisionRefresh, SetHeightsMatchesRebuild){
     ASSERT_TRUE(edit(terraincore::OpType::Lower, 4.0f, 3.0f).ok);
     ASSERT_TRUE(terrain.editState && terrain.editState->collisionDirty) << "the edit is waiting for the colliders";
     const TerrainEditState& state = *terrain.editState;
-    const HeightFieldBlock block = JoltTerrainRefresh::blockOver(SIZE, MAP, field(shape).GetSampleCount(), field(shape).GetBlockSize(),
+    const HeightFieldBlock block = JoltTerrainRefresh::blockOver(TERRAIN_COLLISION_REFRESH_SIZE, MAP, field(shape).GetSampleCount(), field(shape).GetBlockSize(),
                                                                  state.collisionMinX, state.collisionMinZ, state.collisionMaxX, state.collisionMaxZ, 1.0f, 1.0f);
     ASSERT_FALSE(block.empty());
     ASSERT_TRUE(JoltTerrainRefresh::refreshShape(scene.get(), terrain, Vector3(1, 1, 1), MAP, field(shape), block,
@@ -203,7 +203,7 @@ TEST_F(TerrainCollisionRefresh, SetHeightsMatchesRebuild){
     const std::vector<float> rebuilt = heightsOf(field(fresh));
     ASSERT_EQ(refreshed.size(), rebuilt.size());
     // within what 8 bits per sample of a block can say about a 10 unit range
-    const float quantum = MAX_HEIGHT / 255.0f;
+    const float quantum = TERRAIN_COLLISION_REFRESH_MAX_HEIGHT / 255.0f;
     for (size_t i = 0; i < rebuilt.size(); i++){
         if (rebuilt[i] == JPH::HeightFieldShapeConstants::cNoCollisionValue){
             EXPECT_EQ(refreshed[i], rebuilt[i]) << i;
@@ -227,7 +227,7 @@ TEST_F(TerrainCollisionRefresh, AHoleCutRefreshesAsTheBuildOpensIt){
     ASSERT_TRUE(edit(terraincore::OpType::CutHoles, 4.0f, 0.0f).ok);
     ASSERT_TRUE(terrain.editState && terrain.editState->collisionDirty);
     const TerrainEditState& state = *terrain.editState;
-    const HeightFieldBlock block = JoltTerrainRefresh::blockOver(SIZE, MAP, field(shape).GetSampleCount(), field(shape).GetBlockSize(),
+    const HeightFieldBlock block = JoltTerrainRefresh::blockOver(TERRAIN_COLLISION_REFRESH_SIZE, MAP, field(shape).GetSampleCount(), field(shape).GetBlockSize(),
                                                                  state.collisionMinX, state.collisionMinZ, state.collisionMaxX, state.collisionMaxZ, 1.0f, 1.0f);
     ASSERT_TRUE(JoltTerrainRefresh::refreshShape(scene.get(), terrain, Vector3(1, 1, 1), MAP, field(shape), block,
                                                  JoltShapeBuilder::sharedPhysicsTempAllocator()));
@@ -253,7 +253,7 @@ TEST_F(TerrainCollisionRefresh, AHeightPastTheRangeOrMostOfTheShapeIsBuiltAgain)
     ASSERT_TRUE(shape) << error;
     ASSERT_TRUE(edit(terraincore::OpType::Raise, 3.0f, 3.0f).ok);
     const TerrainEditState& state = *terrain.editState;
-    const HeightFieldBlock block = JoltTerrainRefresh::blockOver(SIZE, MAP, field(shape).GetSampleCount(), field(shape).GetBlockSize(),
+    const HeightFieldBlock block = JoltTerrainRefresh::blockOver(TERRAIN_COLLISION_REFRESH_SIZE, MAP, field(shape).GetSampleCount(), field(shape).GetBlockSize(),
                                                                  state.collisionMinX, state.collisionMinZ, state.collisionMaxX, state.collisionMaxZ, 1.0f, 1.0f);
     EXPECT_FALSE(JoltTerrainRefresh::refreshShape(scene.get(), terrain, Vector3(1, 1, 1), MAP, field(shape), block,
                                                   JoltShapeBuilder::sharedPhysicsTempAllocator()));

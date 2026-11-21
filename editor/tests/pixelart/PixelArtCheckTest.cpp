@@ -21,12 +21,12 @@ using Json = nlohmann::json;
 
 namespace {
 
-    PixelArtDrawable sprite(const std::string& entity, const std::string& texture, Vector3 position = Vector3(16, 16, 0)){
+    PixelArtDrawable pixelArtCheckSprite(const std::string& entity, const std::string& pixelArtCheckTexture, Vector3 position = Vector3(16, 16, 0)){
         PixelArtDrawable d;
         d.kind = DrawableKind::Sprite;
         d.scene = "scenes/Main.scene";
         d.entity = entity;
-        d.texture = texture;
+        d.texture = pixelArtCheckTexture;
         d.textureField = "mesh.submeshes[0].material.baseColorTexture";
         d.minFilter = TextureFilter::NEAREST;
         d.magFilter = TextureFilter::NEAREST;
@@ -38,7 +38,7 @@ namespace {
         return d;
     }
 
-    PixelArtTexture texture(const std::string& path){
+    PixelArtTexture pixelArtCheckTexture(const std::string& path){
         PixelArtTexture t;
         t.path = path;
         t.exists = true;
@@ -73,9 +73,9 @@ namespace {
         scene.camera.exists = true;
         scene.camera.entity = "/Main Camera";
         scene.camera.hasComponent = true;
-        scene.drawables.push_back(sprite("/Hero", "sprites/hero.png"));
+        scene.drawables.push_back(pixelArtCheckSprite("/Hero", "sprites/hero.png"));
         input.scenes.push_back(scene);
-        input.textures["sprites/hero.png"] = texture("sprites/hero.png");
+        input.textures["sprites/hero.png"] = pixelArtCheckTexture("sprites/hero.png");
         return input;
     }
 
@@ -86,7 +86,7 @@ namespace {
         return nullptr;
     }
 
-    RuleStatus statusOf(const PixelArtCheckInput& input, const std::string& rule){
+    RuleStatus pixelArtCheckStatusOf(const PixelArtCheckInput& input, const std::string& rule){
         const CheckResult result = run(input, {rule});
         return result.rules.empty() ? RuleStatus::Pass : result.rules.front().status;
     }
@@ -130,7 +130,7 @@ TEST(PixelArtCheck, PixelArtMode){
     EXPECT_EQ(to["graphics.scaling_mode"], "integer");
     EXPECT_EQ(to["graphics.default_filter_mode"], "point");
     EXPECT_FALSE(to.count("player.window_width")) << "1280 x 720 is 4 x 320 x 180 already";
-    EXPECT_EQ(statusOf(cleanInput(), "pixel_art_mode"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(cleanInput(), "pixel_art_mode"), RuleStatus::Pass);
     // with no pixel-art content and the mode off there is nothing to check
     PixelArtCheckInput empty;
     empty.project = input.project;
@@ -160,15 +160,15 @@ TEST(PixelArtCheck, IntegerScale){
     EXPECT_EQ(add.field, "pixelperfectcamera");
     EXPECT_EQ(add.to["referenceWidth"], 640) << "the reference is the fixed resolution";
     // red control: with the Pixel Perfect Camera every screen is a whole scale
-    EXPECT_EQ(statusOf(cleanInput(), "integer_scale"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(cleanInput(), "integer_scale"), RuleStatus::Pass);
     // a scene with integer scaling but no Pixel Perfect Camera warns (nothing snaps)
     PixelArtCheckInput noCamera = cleanInput();
     noCamera.scenes.front().camera.hasComponent = false;
-    EXPECT_EQ(statusOf(noCamera, "integer_scale"), RuleStatus::Warn);
+    EXPECT_EQ(pixelArtCheckStatusOf(noCamera, "integer_scale"), RuleStatus::Warn);
     // a Stretch Fill camera warns
     PixelArtCheckInput stretch = cleanInput();
     stretch.scenes.front().camera.component.upscaleMode = PixelUpscaleMode::STRETCH_FILL;
-    EXPECT_EQ(statusOf(stretch, "integer_scale"), RuleStatus::Warn);
+    EXPECT_EQ(pixelArtCheckStatusOf(stretch, "integer_scale"), RuleStatus::Warn);
 }
 
 TEST(PixelArtCheck, Filtering){
@@ -183,7 +183,7 @@ TEST(PixelArtCheck, Filtering){
     EXPECT_EQ(f->measured, (Json{{"min_filter", "linear"}, {"mag_filter", "linear"}}));
     EXPECT_EQ(f->expected, (Json{{"min_filter", "nearest"}, {"mag_filter", "nearest"}}));
     EXPECT_EQ(f->options.front().changes.front().to, (Json{{"min_filter", "nearest"}, {"mag_filter", "nearest"}}));
-    EXPECT_EQ(statusOf(cleanInput(), "filtering"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(cleanInput(), "filtering"), RuleStatus::Pass);
 }
 
 TEST(PixelArtCheck, MipmapsCompression){
@@ -207,12 +207,12 @@ TEST(PixelArtCheck, MipmapsCompression){
     t.settings.pixelArt = true;
     t.settings.quality.reset();
     t.settings.type = TextureImportType::Sprite;
-    EXPECT_EQ(statusOf(input, "mipmaps_compression"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(input, "mipmaps_compression"), RuleStatus::Pass);
     // a max size that clamps the art warns (uneven pixels)
     PixelArtCheckInput clamped = cleanInput();
     clamped.textures["sprites/hero.png"].settings.maxSize = 32;
     clamped.textures["sprites/hero.png"].width = 64;
-    EXPECT_EQ(statusOf(clamped, "mipmaps_compression"), RuleStatus::Warn);
+    EXPECT_EQ(pixelArtCheckStatusOf(clamped, "mipmaps_compression"), RuleStatus::Warn);
     // a lossy .aseprite sheet
     PixelArtCheckInput sheet = cleanInput();
     PixelArtTexture ase;
@@ -252,8 +252,8 @@ TEST(PixelArtCheck, TexelSize){
     // deliberate big pixels: 2 x 2 warns
     PixelArtCheckInput big = cleanInput();
     big.scenes.front().drawables.front().worldScale = Vector3(2, 2, 1);
-    EXPECT_EQ(statusOf(big, "texel_size"), RuleStatus::Warn);
-    EXPECT_EQ(statusOf(cleanInput(), "texel_size"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(big, "texel_size"), RuleStatus::Warn);
+    EXPECT_EQ(pixelArtCheckStatusOf(cleanInput(), "texel_size"), RuleStatus::Pass);
 }
 
 TEST(PixelArtCheck, OffGrid){
@@ -269,14 +269,14 @@ TEST(PixelArtCheck, OffGrid){
     const Json to = f->options.front().changes.front().to;
     EXPECT_NEAR(to[0].get<double>(), 10.0, 1e-5) << "S41's snap of 10.3 is 10";
     EXPECT_NEAR(to[1].get<double>(), 20.0, 1e-5);
-    EXPECT_EQ(statusOf(cleanInput(), "off_grid"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(cleanInput(), "off_grid"), RuleStatus::Pass);
     // a CENTER pivot of an odd size sits on half pixels by design: its anchor is the quad's corner
     PixelArtCheckInput centred = cleanInput();
     PixelArtDrawable& c = centred.scenes.front().drawables.front();
     c.width = c.height = 15;
     c.pivot = Vector2(7.5f, 7.5f);
     c.position = c.worldPosition = Vector3(7.5f, 7.5f, 0.0f);
-    EXPECT_EQ(statusOf(centred, "off_grid"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(centred, "off_grid"), RuleStatus::Pass);
 }
 
 TEST(PixelArtCheck, Rotation){
@@ -295,14 +295,14 @@ TEST(PixelArtCheck, Rotation){
     // 90-degree steps pass, and so does Rotate On Grid with the render texture
     PixelArtCheckInput quarter = cleanInput();
     quarter.scenes.front().drawables.front().worldRotation = Quaternion(0.0f, 0.0f, 90.0f);
-    EXPECT_EQ(statusOf(quarter, "rotation"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(quarter, "rotation"), RuleStatus::Pass);
     input.scenes.front().drawables.front().pixelRotation = PixelRotation::ON_GRID;
-    EXPECT_EQ(statusOf(input, "rotation"), RuleStatus::Pass);
-    EXPECT_EQ(statusOf(cleanInput(), "rotation"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(input, "rotation"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(cleanInput(), "rotation"), RuleStatus::Pass);
     // a rolled camera warns
     PixelArtCheckInput rolled = cleanInput();
     rolled.scenes.front().camera.roll = 15.0f;
-    EXPECT_EQ(statusOf(rolled, "rotation"), RuleStatus::Warn);
+    EXPECT_EQ(pixelArtCheckStatusOf(rolled, "rotation"), RuleStatus::Warn);
 }
 
 TEST(PixelArtCheck, FontAntialiasing){
@@ -333,13 +333,13 @@ TEST(PixelArtCheck, FontAntialiasing){
         info.partialAlphaShare = 0.0f;
         return info;
     });
-    EXPECT_EQ(statusOf(input, "font_antialiasing"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(input, "font_antialiasing"), RuleStatus::Pass);
     input.scenes.front().drawables.back().fontSize = 15;
     const CheckResult off = run(input, {"font_antialiasing"});
     ASSERT_TRUE(findingOf(off, "font_antialiasing"));
     EXPECT_EQ(findingOf(off, "font_antialiasing")->options.front().changes.front().to, 20) << "the nearest whole multiple";
     setFontAnalyzer(nullptr);
-    EXPECT_EQ(statusOf(cleanInput(), "font_antialiasing"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(cleanInput(), "font_antialiasing"), RuleStatus::Pass);
 }
 
 // S51 deviation 11: the default analysis is S51's, so the font rule judges real bitmap fonts (the
@@ -355,7 +355,7 @@ TEST(PixelArtCheck, FontAntialiasingReadsBitmapFonts){
     text.fontSize = 18;
     text.hasTransform = true;
     input.scenes.front().drawables.push_back(text);
-    EXPECT_EQ(statusOf(input, "font_antialiasing"), RuleStatus::Pass) << "the built-in pixel font at 2x its native 9";
+    EXPECT_EQ(pixelArtCheckStatusOf(input, "font_antialiasing"), RuleStatus::Pass) << "the built-in pixel font at 2x its native 9";
 
     input.scenes.front().drawables.back().fontSize = 16;
     const CheckResult off = run(input, {"font_antialiasing"});
@@ -382,7 +382,7 @@ TEST(PixelArtCheck, FontAntialiasingReadsBitmapFonts){
     // a font `paths` names is judged at its native size; a missing .bitmapfont FAILs
     PixelArtCheckInput paths = cleanInput();
     paths.fontPaths = {"builtin:pixel"};
-    EXPECT_EQ(statusOf(paths, "font_antialiasing"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(paths, "font_antialiasing"), RuleStatus::Pass);
     paths.fontPaths = {"fonts/missing.bitmapfont"};
     const CheckResult missing = run(paths, {"font_antialiasing"});
     ASSERT_TRUE(findingOf(missing, "font_antialiasing"));
@@ -419,7 +419,7 @@ TEST(PixelArtCheck, FontAnalysisMadeWhereTheInputIsBuilt){
     analyzeFonts(input);
     EXPECT_EQ(calls, 2) << "one Text chain, one font path";
     EXPECT_EQ(input.fonts.count(fontAnalysisKey({"fonts/hud.bitmapfont", "fonts/extra.fnt"}, 27)), 1u);
-    EXPECT_EQ(statusOf(input, "font_antialiasing"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(input, "font_antialiasing"), RuleStatus::Pass);
     EXPECT_EQ(calls, 2) << "the rule read the input's analyses";
     setFontAnalyzer(nullptr);
 }
@@ -467,7 +467,7 @@ TEST(PixelArtCheck, ParticlesGrid){
     EXPECT_EQ(findingOf(alphaResult, "particles_grid")->options.front().changes.back().to, (Json{{"fade", "dither"}}));
     // red control: billboard, whole-pixel sizes, point filtering, a snapping camera, the module dithering
     sparks.particleFade = "dither";
-    EXPECT_EQ(statusOf(input, "particles_grid"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(input, "particles_grid"), RuleStatus::Pass);
 }
 
 TEST(PixelArtCheck, AntiAliasing){
@@ -479,7 +479,7 @@ TEST(PixelArtCheck, AntiAliasing){
     EXPECT_EQ(f->status, RuleStatus::Warn);
     EXPECT_EQ(f->measured["fxaa"], true);
     EXPECT_EQ(f->options.front().changes.front().field, "post_processing.fxaa_enabled");
-    EXPECT_EQ(statusOf(cleanInput(), "anti_aliasing"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(cleanInput(), "anti_aliasing"), RuleStatus::Pass);
 }
 
 TEST(PixelArtCheck, Palette){
@@ -495,7 +495,7 @@ TEST(PixelArtCheck, Palette){
     ASSERT_TRUE(f);
     EXPECT_EQ(f->status, RuleStatus::Fail);
     // red control: no Default Palette, nothing to measure
-    EXPECT_EQ(statusOf(cleanInput(), "palette"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(cleanInput(), "palette"), RuleStatus::Pass);
 }
 
 TEST(PixelArtCheck, SpriteVariants){
@@ -514,14 +514,14 @@ TEST(PixelArtCheck, SpriteVariants){
     // red control: 24 variants are within the budget
     input.scenes.front().spriteVariants["library:sprite [A, B]"].clear();
     for (int i = 0; i < 24; i++) input.scenes.front().spriteVariants["library:sprite [A, B]"].insert("mesh:variant" + std::to_string(i));
-    EXPECT_EQ(statusOf(input, "sprite_variants"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(input, "sprite_variants"), RuleStatus::Pass);
 }
 
 // R11-R14: ids in rule order, verdicts from fixes, selections, determinism
 TEST(PixelArtCheck, Deterministic){
     PixelArtCheckInput input = cleanInput();
     input.scenes.front().drawables.front().minFilter = TextureFilter::LINEAR;
-    input.scenes.front().drawables.push_back(sprite("/B", "sprites/hero.png", Vector3(1.25f, 3.0f, 0.0f)));
+    input.scenes.front().drawables.push_back(pixelArtCheckSprite("/B", "sprites/hero.png", Vector3(1.25f, 3.0f, 0.0f)));
     input.scenes.front().fxaa = true;
     const std::string a = run(input).toJson().dump();
     const std::string b = run(input).toJson().dump();
@@ -599,7 +599,7 @@ TEST(PixelArtCheck, RotationFixKeepsFlips){
     Quaternion fixed(to[0].get<float>(), to[1].get<float>(), to[2].get<float>());
     PixelArtCheckInput after = cleanInput();
     after.scenes.front().drawables.front().rotation = after.scenes.front().drawables.front().worldRotation = fixed;
-    EXPECT_EQ(statusOf(after, "rotation"), RuleStatus::Pass) << change.to.dump();
+    EXPECT_EQ(pixelArtCheckStatusOf(after, "rotation"), RuleStatus::Pass) << change.to.dump();
     const Vector3 normal = fixed.normalize() * Vector3(0, 0, 1);
     EXPECT_LT(normal.z, -0.99f) << "still facing away: the flip is kept";
 }
@@ -609,7 +609,7 @@ TEST(PixelArtCheck, MipmapsCompressionReadsTheProjectsTextureSettings){
     PixelArtTexture& t = input.textures["sprites/hero.png"];
     t.width = 600;
     t.height = 300;
-    EXPECT_EQ(statusOf(input, "mipmaps_compression"), RuleStatus::Pass) << "2048 by default: kept whole";
+    EXPECT_EQ(pixelArtCheckStatusOf(input, "mipmaps_compression"), RuleStatus::Pass) << "2048 by default: kept whole";
     // Project Settings > Textures caps every platform at 256: the art is resized (uneven pixels)
     input.project.textureSettings.defaultMaxSize = {256, 256, 256, 256};
     const CheckResult result = run(input, {"mipmaps_compression"});
@@ -670,7 +670,7 @@ TEST(PixelArtCheck, RenderScale){
     // a pixel-art scene without one: those devices blur it
     PixelArtCheckInput bare = input;
     bare.scenes.front().camera.hasComponent = false;
-    EXPECT_EQ(statusOf(bare, "render_scale"), RuleStatus::Fail);
+    EXPECT_EQ(pixelArtCheckStatusOf(bare, "render_scale"), RuleStatus::Fail);
     // the scene's own render scale or dynamic resolution
     PixelArtCheckInput scaled = cleanInput();
     scaled.scenes.front().camera.hasComponent = false;
@@ -684,7 +684,7 @@ TEST(PixelArtCheck, RenderScale){
     EXPECT_EQ(sceneFinding->options.front().changes[0].field, "post_processing.render_scale");
     EXPECT_EQ(sceneFinding->options.front().changes[1].field, "post_processing.dynamic_resolution_enabled");
     // red control: every tier at full resolution
-    EXPECT_EQ(statusOf(cleanInput(), "render_scale"), RuleStatus::Pass);
+    EXPECT_EQ(pixelArtCheckStatusOf(cleanInput(), "render_scale"), RuleStatus::Pass);
     // the preset's project part raises the caps too (pixel_art_mode's fix)
     PixelArtCheckInput off = input;
     off.project.modeEnabled = false;

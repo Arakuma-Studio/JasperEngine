@@ -67,21 +67,21 @@ namespace {
 
     // ---- one headless project for this file
 
-    struct Headless {
+    struct SpriteNormalsSessionHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
         std::unique_ptr<editor::Platform> platform;
     };
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
-            const fs::path root = fs::temp_directory_path() / ("jasper-spritenormals-session-test-" + std::to_string(::getpid()));
-            fs::remove_all(root);
-            fs::create_directories(root / "config");
-            setenv("XDG_CONFIG_HOME", (root / "config").c_str(), 1);
-            out.dir = root / "project";
+    SpriteNormalsSessionHeadless& spriteNormalsSessionHeadless() {
+        static SpriteNormalsSessionHeadless h = []() {
+            SpriteNormalsSessionHeadless out;
+            const fs::path spriteNormalsSessionRoot = fs::temp_directory_path() / ("jasper-spritenormals-session-test-" + std::to_string(::getpid()));
+            fs::remove_all(spriteNormalsSessionRoot);
+            fs::create_directories(spriteNormalsSessionRoot / "config");
+            setenv("XDG_CONFIG_HOME", (spriteNormalsSessionRoot / "config").c_str(), 1);
+            out.dir = spriteNormalsSessionRoot / "project";
             fs::create_directories(out.dir / ".jasperengine");
             std::ofstream(out.dir / "project.yaml") << "name: spritenormals\n";
             AppSettings::initialize();
@@ -101,29 +101,29 @@ namespace {
         return h;
     }
 
-    Project* project() { return headless().project.get(); }
-    const fs::path& root() { return headless().dir; }
+    Project* spriteNormalsSessionProject() { return spriteNormalsSessionHeadless().project.get(); }
+    const fs::path& spriteNormalsSessionRoot() { return spriteNormalsSessionHeadless().dir; }
 
     // a fresh folder under assets per test
-    std::string folder(const std::string& name) {
-        fs::remove_all(root() / "assets" / name);
-        fs::create_directories(root() / "assets" / name);
+    std::string spriteNormalsSessionFolder(const std::string& name) {
+        fs::remove_all(spriteNormalsSessionRoot() / "assets" / name);
+        fs::create_directories(spriteNormalsSessionRoot() / "assets" / name);
         return "assets/" + name;
     }
 
-    void writeBytes(const fs::path& path, const std::vector<uint8_t>& bytes) {
+    void spriteNormalsSessionWriteBytes(const fs::path& path, const std::vector<uint8_t>& bytes) {
         fs::create_directories(path.parent_path());
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
         file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     }
 
-    std::string readAll(const fs::path& path) {
+    std::string spriteNormalsSessionReadAll(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     }
 
     // A shaded ball on transparency: w x h, a disk of radius r per frame cell of `cell` pixels
-    sn::Image balls(int w, int h, int cell, float r) {
+    sn::Image spriteNormalsSessionBalls(int w, int h, int cell, float r) {
         sn::Image image = sn::Image::make(w, h, 4, 8);
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
@@ -140,17 +140,17 @@ namespace {
         return image;
     }
 
-    void writePng(const std::string& rel, const sn::Image& image) {
+    void spriteNormalsSessionWritePng(const std::string& rel, const sn::Image& image) {
         std::vector<uint8_t> png;
         ASSERT_TRUE(ts::encodePng(image, png));
-        writeBytes(root() / fs::u8path(rel), png);
+        spriteNormalsSessionWriteBytes(spriteNormalsSessionRoot() / fs::u8path(rel), png);
     }
 
     // walk.gif of the generator's fixtures (8 frames)
     void copyWalkGif(const std::string& rel) {
         const fs::path fixture = fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / "spritenormals" / "tests" / "fixtures" / "inputs" / "walk.gif";
-        fs::create_directories((root() / fs::u8path(rel)).parent_path());
-        fs::copy_file(fixture, root() / fs::u8path(rel), fs::copy_options::overwrite_existing);
+        fs::create_directories((spriteNormalsSessionRoot() / fs::u8path(rel)).parent_path());
+        fs::copy_file(fixture, spriteNormalsSessionRoot() / fs::u8path(rel), fs::copy_options::overwrite_existing);
     }
 
     std::vector<std::string> kinds(const std::vector<sn::Problem>& problems) {
@@ -160,7 +160,7 @@ namespace {
     }
 
     // a copy: the problems are usually a temporary
-    std::optional<sn::Problem> findKind(const std::vector<sn::Problem>& problems, const std::string& kind) {
+    std::optional<sn::Problem> spriteNormalsSessionFindKind(const std::vector<sn::Problem>& problems, const std::string& kind) {
         for (const sn::Problem& p : problems) {
             if (p.kind == kind) return p;
         }
@@ -178,7 +178,7 @@ namespace {
     std::vector<sn::OutputFile> generateFiles(const sn::Spec& spec, const Scene* scene = nullptr, sn::Prepared* keep = nullptr) {
         sn::Prepared prepared;
         std::vector<sn::Problem> problems;
-        EXPECT_TRUE(sn::prepare(root(), spec, scene, prepared, problems)) << (problems.empty() ? "" : problems[0].message);
+        EXPECT_TRUE(sn::prepare(spriteNormalsSessionRoot(), spec, scene, prepared, problems)) << (problems.empty() ? "" : problems[0].message);
         const sn::Result result = sn::generate(prepared.request);
         EXPECT_EQ(result.status, sn::Status::Ok);
         std::vector<sn::OutputFile> files;
@@ -202,26 +202,26 @@ namespace {
         return recipe.value_or(json());
     }
 
-    uint32_t newScene() {
-        Project* p = project();
+    uint32_t spriteNormalsSessionNewScene() {
+        Project* p = spriteNormalsSessionProject();
         if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
         p->createNewScene("Sprites", SceneType::SCENE_2D);
         return p->getSelectedSceneId();
     }
 
-    Scene* sceneOf(uint32_t sceneId) { return project()->getScene(sceneId)->scene; }
+    Scene* spriteNormalsSessionSceneOf(uint32_t sceneId) { return spriteNormalsSessionProject()->getScene(sceneId)->scene; }
 
-    Entity create(uint32_t sceneId, const std::string& name, EntityCreationType type) {
-        auto* cmd = new CreateEntityCmd(project(), sceneId, name, type);
+    Entity spriteNormalsSessionCreate(uint32_t sceneId, const std::string& name, EntityCreationType type) {
+        auto* cmd = new CreateEntityCmd(spriteNormalsSessionProject(), sceneId, name, type);
         cmd->setQuiet(true);
         CommandHandle::get(sceneId)->addCommandNoMerge(cmd);
         return cmd->getEntity();
     }
 
     // A Sprite drawing `texture` (project-relative = assets-relative with the default assets dir)
-    Entity sprite(uint32_t sceneId, const std::string& texture) {
-        const Entity e = create(sceneId, "Hero", EntityCreationType::SPRITE);
-        sceneOf(sceneId)->getComponent<MeshComponent>(e).submeshes[0].material.baseColorTexture = Texture(texture);
+    Entity spriteNormalsSessionSprite(uint32_t sceneId, const std::string& texture) {
+        const Entity e = spriteNormalsSessionCreate(sceneId, "Hero", EntityCreationType::SPRITE);
+        spriteNormalsSessionSceneOf(sceneId)->getComponent<MeshComponent>(e).submeshes[0].material.baseColorTexture = Texture(texture);
         return e;
     }
 
@@ -247,24 +247,24 @@ TEST(SpriteNormalsSession, DefaultOutputs) {
     sn::Spec spec = stillSpec("assets/hero.gif");
     spec.output.atlas = "assets/out/atlas.png";
     spec.output.framesJson = true;
-    EXPECT_EQ(paths(sn::plannedOutputs(root(), spec, sn::SourceKind::Gif)),
+    EXPECT_EQ(paths(sn::plannedOutputs(spriteNormalsSessionRoot(), spec, sn::SourceKind::Gif)),
               (std::vector<std::string>{"normal=assets/hero_sheet_normal.png", "atlas=assets/out/atlas.png", "frames_json=assets/out/atlas.frames.json"}));
     spec.output.framesJsonPath = "assets/f.json";
     spec.output.normal = "assets/n.png";
-    EXPECT_EQ(paths(sn::plannedOutputs(root(), spec, sn::SourceKind::Image)), (std::vector<std::string>{"normal=assets/n.png", "frames_json=assets/f.json"}));
+    EXPECT_EQ(paths(sn::plannedOutputs(spriteNormalsSessionRoot(), spec, sn::SourceKind::Image)), (std::vector<std::string>{"normal=assets/n.png", "frames_json=assets/f.json"}));
 }
 
 TEST(SpriteNormalsSession, ResolveProjectFile) {
     fs::path abs;
     std::string error;
-    EXPECT_TRUE(sn::resolveProjectFile(root(), "assets/./x/../hero.png", abs, error)) << error;
-    EXPECT_EQ(abs, (root() / "assets" / "hero.png").lexically_normal());
-    EXPECT_EQ(sn::projectRelative(root(), abs), "assets/hero.png");
-    EXPECT_FALSE(sn::resolveProjectFile(root(), "../hero.png", abs, error));
+    EXPECT_TRUE(sn::resolveProjectFile(spriteNormalsSessionRoot(), "assets/./x/../hero.png", abs, error)) << error;
+    EXPECT_EQ(abs, (spriteNormalsSessionRoot() / "assets" / "hero.png").lexically_normal());
+    EXPECT_EQ(sn::projectRelative(spriteNormalsSessionRoot(), abs), "assets/hero.png");
+    EXPECT_FALSE(sn::resolveProjectFile(spriteNormalsSessionRoot(), "../hero.png", abs, error));
     EXPECT_NE(error.find("outside the project"), std::string::npos) << error;
-    EXPECT_FALSE(sn::resolveProjectFile(root(), "/tmp/hero.png", abs, error));
+    EXPECT_FALSE(sn::resolveProjectFile(spriteNormalsSessionRoot(), "/tmp/hero.png", abs, error));
     EXPECT_NE(error.find("absolute"), std::string::npos) << error;
-    EXPECT_FALSE(sn::resolveProjectFile(root(), ".jasperengine/hero.png", abs, error));
+    EXPECT_FALSE(sn::resolveProjectFile(spriteNormalsSessionRoot(), ".jasperengine/hero.png", abs, error));
     EXPECT_NE(error.find("hidden"), std::string::npos) << error;
     // outside a project: as given (an absolute path has a drive on Windows)
 #ifdef _WIN32
@@ -279,87 +279,87 @@ TEST(SpriteNormalsSession, ResolveProjectFile) {
 // ---- checkSpec
 
 TEST(SpriteNormalsSession, CheckSpecKinds) {
-    const std::string dir = folder("check");
-    writePng(dir + "/hero.png", balls(32, 32, 32, 12));
+    const std::string dir = spriteNormalsSessionFolder("check");
+    spriteNormalsSessionWritePng(dir + "/hero.png", spriteNormalsSessionBalls(32, 32, 32, 12));
     copyWalkGif(dir + "/walk.gif");
 
-    EXPECT_TRUE(sn::checkSpec(root(), stillSpec(dir + "/hero.png")).empty());
+    EXPECT_TRUE(sn::checkSpec(spriteNormalsSessionRoot(), stillSpec(dir + "/hero.png")).empty());
 
     // missing source, outside the project, in a hidden directory, no source at all
-    std::optional<sn::Problem> p = findKind(sn::checkSpec(root(), stillSpec(dir + "/nope.png")), "invalid_source");
+    std::optional<sn::Problem> p = spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), stillSpec(dir + "/nope.png")), "invalid_source");
     ASSERT_TRUE(p);
     EXPECT_EQ(p->field, "source");
     EXPECT_NE(p->message.find("does not exist"), std::string::npos);
-    EXPECT_TRUE(findKind(sn::checkSpec(root(), stillSpec("../outside.png")), "invalid_source"));
+    EXPECT_TRUE(spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), stillSpec("../outside.png")), "invalid_source"));
     std::vector<uint8_t> png;
-    ASSERT_TRUE(ts::encodePng(balls(8, 8, 8, 3), png));
-    writeBytes(root() / ".hidden" / "x.png", png);
-    p = findKind(sn::checkSpec(root(), stillSpec(".hidden/x.png")), "invalid_source");
+    ASSERT_TRUE(ts::encodePng(spriteNormalsSessionBalls(8, 8, 8, 3), png));
+    spriteNormalsSessionWriteBytes(spriteNormalsSessionRoot() / ".hidden" / "x.png", png);
+    p = spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), stillSpec(".hidden/x.png")), "invalid_source");
     ASSERT_TRUE(p);
     EXPECT_NE(p->message.find("hidden"), std::string::npos) << p->message;
-    EXPECT_TRUE(findKind(sn::checkSpec(root(), stillSpec("")), "invalid_source"));
+    EXPECT_TRUE(spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), stillSpec("")), "invalid_source"));
     // not an image
-    std::ofstream(root() / fs::u8path(dir) / "notes.png") << "text";
-    EXPECT_TRUE(findKind(sn::checkSpec(root(), stillSpec(dir + "/notes.png")), "invalid_source"));
+    std::ofstream(spriteNormalsSessionRoot() / fs::u8path(dir) / "notes.png") << "text";
+    EXPECT_TRUE(spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), stillSpec(dir + "/notes.png")), "invalid_source"));
 
     // a grid on a GIF
     sn::Spec gif = stillSpec(dir + "/walk.gif");
     gif.frames.mode = sn::FramesSpec::Mode::Grid;
     gif.frames.grid.tileWidth = gif.frames.grid.tileHeight = 8;
-    p = findKind(sn::checkSpec(root(), gif), "frames_mismatch");
+    p = spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), gif), "frames_mismatch");
     ASSERT_TRUE(p);
     EXPECT_EQ(p->message, "The frames come from the GIF; leave frames auto.");
     // frames none on a GIF
     gif.frames.mode = sn::FramesSpec::Mode::None;
-    p = findKind(sn::checkSpec(root(), gif), "frames_mismatch");
+    p = spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), gif), "frames_mismatch");
     ASSERT_TRUE(p);
     EXPECT_EQ(p->message, "An animation's frames come from the file; leave frames auto.");
     // an empty grid on a still
     sn::Spec grid = stillSpec(dir + "/hero.png");
     grid.frames.mode = sn::FramesSpec::Mode::Grid;
     grid.frames.grid.tileWidth = grid.frames.grid.tileHeight = 64;
-    EXPECT_TRUE(findKind(sn::checkSpec(root(), grid), "frames_mismatch"));
+    EXPECT_TRUE(spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), grid), "frames_mismatch"));
     // a cell outside the image
     sn::Spec cells = stillSpec(dir + "/hero.png");
     cells.frames.mode = sn::FramesSpec::Mode::Cells;
     cells.frames.cells = {{0, 0, 16, 16}, {20, 20, 16, 16}};
-    p = findKind(sn::checkSpec(root(), cells), "frames_mismatch");
+    p = spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), cells), "frames_mismatch");
     ASSERT_TRUE(p);
     EXPECT_EQ(p->field, "frames.cells[1]");
 
     // outputs: existing, colliding with the source, not .png, outside, the frames JSON not .json
-    writePng(dir + "/hero_normal.png", balls(32, 32, 32, 12));
-    p = findKind(sn::checkSpec(root(), stillSpec(dir + "/hero.png")), "output_exists");
+    spriteNormalsSessionWritePng(dir + "/hero_normal.png", spriteNormalsSessionBalls(32, 32, 32, 12));
+    p = spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), stillSpec(dir + "/hero.png")), "output_exists");
     ASSERT_TRUE(p);
     EXPECT_EQ(p->field, "output.normal");
     EXPECT_EQ(p->fix, "Pass overwrite, or another output path.");
     sn::Spec over = stillSpec(dir + "/hero.png");
     over.overwrite = true;
-    EXPECT_TRUE(sn::checkSpec(root(), over).empty());
+    EXPECT_TRUE(sn::checkSpec(spriteNormalsSessionRoot(), over).empty());
     sn::Spec collide = over;
     collide.output.normal = dir + "/hero.png";
-    p = findKind(sn::checkSpec(root(), collide), "output_invalid");
+    p = spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), collide), "output_invalid");
     ASSERT_TRUE(p);
     EXPECT_NE(p->message.find("replace the source"), std::string::npos) << p->message;
     sn::Spec jpg = over;
     jpg.output.normal = dir + "/hero_normal.jpg";
-    EXPECT_TRUE(findKind(sn::checkSpec(root(), jpg), "output_invalid"));
+    EXPECT_TRUE(spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), jpg), "output_invalid"));
     sn::Spec outside = over;
     outside.output.normal = "../hero_normal.png";
-    EXPECT_TRUE(findKind(sn::checkSpec(root(), outside), "output_invalid"));
+    EXPECT_TRUE(spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), outside), "output_invalid"));
     sn::Spec both = over;
     both.settings.height = true;
     both.output.height = dir + "/hero_normal.png";
-    p = findKind(sn::checkSpec(root(), both), "output_invalid");
+    p = spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), both), "output_invalid");
     ASSERT_TRUE(p);
     EXPECT_EQ(p->field, "output.height");
     sn::Spec frames = over;
     frames.output.framesJson = true;
     frames.output.framesJsonPath = dir + "/frames.txt";
-    EXPECT_TRUE(findKind(sn::checkSpec(root(), frames), "output_invalid"));
+    EXPECT_TRUE(spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), frames), "output_invalid"));
     sn::Spec latin = over;
     latin.output.normal = dir + "/h\xE9ro.png";
-    p = findKind(sn::checkSpec(root(), latin), "output_invalid");
+    p = spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), latin), "output_invalid");
     ASSERT_TRUE(p);
     EXPECT_NE(p->message.find("not valid UTF-8"), std::string::npos);
     EXPECT_TRUE(ts::isValidUtf8(p->message));
@@ -368,7 +368,7 @@ TEST(SpriteNormalsSession, CheckSpecKinds) {
     sn::Spec bad = over;
     bad.settings.strength = 9.0f;
     bad.settings.alphaThreshold = 2.0f;
-    std::vector<sn::Problem> problems = sn::checkSpec(root(), bad);
+    std::vector<sn::Problem> problems = sn::checkSpec(spriteNormalsSessionRoot(), bad);
     EXPECT_EQ(kinds(problems), (std::vector<std::string>{"invalid_settings", "invalid_settings"}));
 }
 
@@ -377,16 +377,16 @@ TEST(SpriteNormalsSession, CheckSpecKinds) {
 TEST(SpriteNormalsSession, TrustedRootsAreAPublishedSnapshot) {
     namespace sw = jasperengine::editor::safewrite;
     std::error_code ec;
-    fs::create_directories(project()->getProjectPath() / "assets", ec);
-    const fs::path projectReal = sw::resolvedPath(project()->getProjectPath());
-    const fs::path assetsReal = sw::resolvedPath(project()->getProjectPath() / "assets");
+    fs::create_directories(spriteNormalsSessionProject()->getProjectPath() / "assets", ec);
+    const fs::path projectReal = sw::resolvedPath(spriteNormalsSessionProject()->getProjectPath());
+    const fs::path assetsReal = sw::resolvedPath(spriteNormalsSessionProject()->getProjectPath() / "assets");
     std::atomic<bool> stop{false};
     std::atomic<int> bad{0};
     std::vector<std::thread> readers;
     for (int i = 0; i < 4; i++) {
         readers.emplace_back([&]() {
             while (!stop.load()) {
-                const std::vector<fs::path> roots = project()->getTrustedRoots();
+                const std::vector<fs::path> roots = spriteNormalsSessionProject()->getTrustedRoots();
                 // either configuration, whole: the project first, then (with "assets") the assets folder
                 const bool whole = (roots.size() == 1 && roots[0] == projectReal) ||
                                    (roots.size() == 2 && roots[0] == projectReal && roots[1] == assetsReal);
@@ -395,48 +395,48 @@ TEST(SpriteNormalsSession, TrustedRootsAreAPublishedSnapshot) {
         });
     }
     for (int i = 0; i < 200; i++) {
-        project()->setAssetsDir(i % 2 ? "." : "assets");
+        spriteNormalsSessionProject()->setAssetsDir(i % 2 ? "." : "assets");
     }
     stop = true;
     for (std::thread& t : readers) t.join();
-    project()->setAssetsDir(".");
+    spriteNormalsSessionProject()->setAssetsDir(".");
     EXPECT_EQ(bad.load(), 0) << "a reader saw a partial list";
-    EXPECT_EQ(project()->getTrustedRoots(), std::vector<fs::path>{projectReal});
+    EXPECT_EQ(spriteNormalsSessionProject()->getTrustedRoots(), std::vector<fs::path>{projectReal});
 }
 
 TEST(SpriteNormalsSession, OutputsMustBeInsideTheAssetsDirectory) {
-    const std::string dir = folder("assetsdir");
-    writePng(dir + "/hero.png", balls(16, 16, 16, 6));
+    const std::string dir = spriteNormalsSessionFolder("assetsdir");
+    spriteNormalsSessionWritePng(dir + "/hero.png", spriteNormalsSessionBalls(16, 16, 16, 6));
     // the project's assets directory is "assets" for this test (the Platform's asset path follows it)
-    project()->setAssetsDir("assets");
+    spriteNormalsSessionProject()->setAssetsDir("assets");
     sn::Spec spec = stillSpec(dir + "/hero.png");
-    EXPECT_TRUE(sn::checkSpec(root(), spec).empty()) << "the default output is beside the source, in assets/";
+    EXPECT_TRUE(sn::checkSpec(spriteNormalsSessionRoot(), spec).empty()) << "the default output is beside the source, in assets/";
     spec.output.normal = "elsewhere/hero_normal.png";
-    const std::vector<sn::Problem> problems = sn::checkSpec(root(), spec);
-    std::optional<sn::Problem> p = findKind(problems, "output_invalid");
-    project()->setAssetsDir(".");
+    const std::vector<sn::Problem> problems = sn::checkSpec(spriteNormalsSessionRoot(), spec);
+    std::optional<sn::Problem> p = spriteNormalsSessionFindKind(problems, "output_invalid");
+    spriteNormalsSessionProject()->setAssetsDir(".");
     ASSERT_TRUE(p);
     EXPECT_EQ(p->field, "output.normal");
     EXPECT_EQ(p->message, "elsewhere/hero_normal.png is outside the project's assets directory (assets).");
     // with the default assets directory "." the whole project is assets
-    EXPECT_TRUE(sn::checkSpec(root(), spec).empty());
+    EXPECT_TRUE(sn::checkSpec(spriteNormalsSessionRoot(), spec).empty());
 }
 
 // ---- symbolic links: every output stays inside the assets directory once links are resolved
 
 TEST(SpriteNormalsSession, OutputsThroughALinkOutOfTheAssetsAreRefused) {
     SKIP_WITHOUT_SYMLINKS();
-    const std::string dir = folder("links");
-    writePng(dir + "/hero.png", balls(16, 16, 16, 6));
+    const std::string dir = spriteNormalsSessionFolder("links");
+    spriteNormalsSessionWritePng(dir + "/hero.png", spriteNormalsSessionBalls(16, 16, 16, 6));
     copyWalkGif(dir + "/walk.gif");
-    const fs::path outside = root().parent_path() / "outside-links";
+    const fs::path outside = spriteNormalsSessionRoot().parent_path() / "outside-links";
     fs::remove_all(outside);
     fs::create_directories(outside);
-    const fs::path abs = root() / fs::u8path(dir);
+    const fs::path abs = spriteNormalsSessionRoot() / fs::u8path(dir);
     fs::create_directory_symlink(outside, abs / "out");
-    project()->setAssetsDir("assets");
+    spriteNormalsSessionProject()->setAssetsDir("assets");
     auto refusal = [&](const sn::Spec& spec, const std::string& field) {
-        for (const sn::Problem& p : sn::checkSpec(root(), spec)) {
+        for (const sn::Problem& p : sn::checkSpec(spriteNormalsSessionRoot(), spec)) {
             if (p.kind == "output_invalid" && p.field == field) return p.message;
         }
         return std::string();
@@ -469,11 +469,11 @@ TEST(SpriteNormalsSession, OutputsThroughALinkOutOfTheAssetsAreRefused) {
     fs::create_directory_symlink(abs / "real", abs / "inside");
     sn::Spec inside = stillSpec(dir + "/hero.png");
     inside.output.normal = dir + "/inside/hero_normal.png";
-    EXPECT_TRUE(sn::checkSpec(root(), inside).empty());
+    EXPECT_TRUE(sn::checkSpec(spriteNormalsSessionRoot(), inside).empty());
     // a link into a hidden directory of the project, with the whole project as assets
-    project()->setAssetsDir(".");
-    fs::create_directories(root() / ".jasperengine" / "links");
-    fs::create_directory_symlink(root() / ".jasperengine" / "links", abs / "hidden");
+    spriteNormalsSessionProject()->setAssetsDir(".");
+    fs::create_directories(spriteNormalsSessionRoot() / ".jasperengine" / "links");
+    fs::create_directory_symlink(spriteNormalsSessionRoot() / ".jasperengine" / "links", abs / "hidden");
     sn::Spec hidden = stillSpec(dir + "/hero.png");
     hidden.output.normal = dir + "/hidden/hero_normal.png";
     EXPECT_NE(refusal(hidden, "output.normal").find("hidden directory .jasperengine"), std::string::npos);
@@ -486,23 +486,23 @@ TEST(SpriteNormalsSession, OutputsThroughALinkOutOfTheAssetsAreRefused) {
     late.bytes = "bytes";
     std::string error;
     sn::Problem lateProblem;
-    const size_t before = project()->getProjectCommandHistory()->position();
-    EXPECT_FALSE(sn::writeOutputsUndoable(project(), {late}, error, &lateProblem));
+    const size_t before = spriteNormalsSessionProject()->getProjectCommandHistory()->position();
+    EXPECT_FALSE(sn::writeOutputsUndoable(spriteNormalsSessionProject(), {late}, error, &lateProblem));
     EXPECT_NE(error.find("symbolic link"), std::string::npos) << error;
     EXPECT_EQ(lateProblem.kind, "output_invalid");
     EXPECT_EQ(lateProblem.field, "output.normal");
     EXPECT_EQ(lateProblem.message, error);
     EXPECT_EQ(lateProblem.fix, "Write it to a folder of the assets directory that is not a link to elsewhere.");
     EXPECT_FALSE(fs::exists(outside / "late.png"));
-    EXPECT_EQ(project()->getProjectCommandHistory()->position(), before);
+    EXPECT_EQ(spriteNormalsSessionProject()->getProjectCommandHistory()->position(), before);
     fs::remove_all(abs);
     fs::remove_all(outside);
-    fs::remove_all(root() / ".jasperengine" / "links");
+    fs::remove_all(spriteNormalsSessionRoot() / ".jasperengine" / "links");
 }
 
 TEST(SpriteNormalsSession, ResolvedPathFollowsDanglingLinksAndRefusesLoops) {
     SKIP_WITHOUT_SYMLINKS();
-    const fs::path base = root().parent_path() / "resolve-links";
+    const fs::path base = spriteNormalsSessionRoot().parent_path() / "resolve-links";
     fs::remove_all(base);
     fs::create_directories(base / "real");
     const fs::path real = fs::weakly_canonical(base);
@@ -526,20 +526,20 @@ TEST(SpriteNormalsSession, ResolvedPathFollowsDanglingLinksAndRefusesLoops) {
 
 TEST(SpriteNormalsSession, OutputsThroughADanglingLinkAreRefused) {
     SKIP_WITHOUT_SYMLINKS();
-    const std::string dir = folder("dangling");
-    writePng(dir + "/hero.png", balls(16, 16, 16, 6));
+    const std::string dir = spriteNormalsSessionFolder("dangling");
+    spriteNormalsSessionWritePng(dir + "/hero.png", spriteNormalsSessionBalls(16, 16, 16, 6));
     copyWalkGif(dir + "/walk.gif");
-    const fs::path abs = root() / fs::u8path(dir);
-    const fs::path outside = root().parent_path() / "outside-dangling";
+    const fs::path abs = spriteNormalsSessionRoot() / fs::u8path(dir);
+    const fs::path outside = spriteNormalsSessionRoot().parent_path() / "outside-dangling";
     fs::remove_all(outside);
     // file links to files that don't exist (yet) outside the project, and a folder link to a missing folder
     for (const char* name : {"hero_normal.png", "hero_height.png", "hero.frames.json", "walk_sheet.png"}) {
         fs::create_symlink(outside / name, abs / name);
     }
     fs::create_directory_symlink(outside / "folder", abs / "gone");
-    project()->setAssetsDir("assets");
+    spriteNormalsSessionProject()->setAssetsDir("assets");
     auto refused = [&](const sn::Spec& spec, const std::string& field) {
-        for (const sn::Problem& p : sn::checkSpec(root(), spec)) {
+        for (const sn::Problem& p : sn::checkSpec(spriteNormalsSessionRoot(), spec)) {
             if (p.kind == "output_invalid" && p.field == field && p.message.find("symbolic link") != std::string::npos) return true;
         }
         return false;
@@ -573,20 +573,20 @@ TEST(SpriteNormalsSession, OutputsThroughADanglingLinkAreRefused) {
     late.bytes = "bytes";
     sn::Problem refusal;
     std::string error;
-    EXPECT_FALSE(sn::writeOutputsUndoable(project(), {late}, error, &refusal));
+    EXPECT_FALSE(sn::writeOutputsUndoable(spriteNormalsSessionProject(), {late}, error, &refusal));
     EXPECT_EQ(refusal.kind, "output_invalid");
-    EXPECT_FALSE(sn::outputsContained(project(), {late}, refusal));
+    EXPECT_FALSE(sn::outputsContained(spriteNormalsSessionProject(), {late}, refusal));
     EXPECT_FALSE(fs::exists(outside));
-    project()->setAssetsDir(".");
+    spriteNormalsSessionProject()->setAssetsDir(".");
     fs::remove_all(abs);
 }
 
 TEST(SpriteNormalsSession, RedoAndUndoNeverGoThroughALinkMadeInBetween) {
     SKIP_WITHOUT_SYMLINKS();
-    const std::string dir = folder("redo");
-    const fs::path abs = root() / fs::u8path(dir);
+    const std::string dir = spriteNormalsSessionFolder("redo");
+    const fs::path abs = spriteNormalsSessionRoot() / fs::u8path(dir);
     fs::create_directories(abs / "sub");
-    const fs::path outside = root().parent_path() / "outside-redo";
+    const fs::path outside = spriteNormalsSessionRoot().parent_path() / "outside-redo";
     fs::remove_all(outside);
     fs::create_directories(outside);
     sn::OutputFile file;
@@ -594,9 +594,9 @@ TEST(SpriteNormalsSession, RedoAndUndoNeverGoThroughALinkMadeInBetween) {
     file.path = dir + "/sub/x_normal.png";
     file.absolute = abs / "sub" / "x_normal.png";
     file.bytes = "first";
-    CommandHistory* history = project()->getProjectCommandHistory();
+    CommandHistory* history = spriteNormalsSessionProject()->getProjectCommandHistory();
     std::string error;
-    ASSERT_TRUE(sn::writeOutputsUndoable(project(), {file}, error)) << error;
+    ASSERT_TRUE(sn::writeOutputsUndoable(spriteNormalsSessionProject(), {file}, error)) << error;
     ASSERT_TRUE(history->undo());
     EXPECT_FALSE(fs::exists(file.absolute));
     // the folder becomes a link out of the assets: the redo is refused (nothing written through
@@ -613,7 +613,7 @@ TEST(SpriteNormalsSession, RedoAndUndoNeverGoThroughALinkMadeInBetween) {
     fs::create_directories(abs / "sub");
     ASSERT_TRUE(history->redo());
     EXPECT_EQ(history->position(), undone + 1);
-    EXPECT_EQ(readAll(file.absolute), "first");
+    EXPECT_EQ(spriteNormalsSessionReadAll(file.absolute), "first");
     // a link again, a file of theirs behind it: the undo is refused (removes nothing through
     // it) and the history keeps its place, saying why and how to fix it
     fs::remove_all(abs / "sub");
@@ -622,7 +622,7 @@ TEST(SpriteNormalsSession, RedoAndUndoNeverGoThroughALinkMadeInBetween) {
     const size_t done = history->position();
     EXPECT_FALSE(history->undo()) << "a refused undo is not taken";
     EXPECT_EQ(history->position(), done);
-    EXPECT_EQ(readAll(outside / "x_normal.png"), "theirs") << "the undo was not applied";
+    EXPECT_EQ(spriteNormalsSessionReadAll(outside / "x_normal.png"), "theirs") << "the undo was not applied";
     EXPECT_NE(history->lastRefusal().find(dir + "/sub/x_normal.png"), std::string::npos) << history->lastRefusal();
     EXPECT_NE(history->lastRefusal().find("Remove the link, then undo again."), std::string::npos) << history->lastRefusal();
     EXPECT_EQ(history->undoRefusedLastTry(), history->lastRefusal()) << "the Edit menu's note";
@@ -647,10 +647,10 @@ TEST(SpriteNormalsSession, RedoAndUndoNeverGoThroughALinkMadeInBetween) {
 // link after the guard passed is never followed (WriteFilesCmd::writeBeneath, util/SafeWrite.h)
 TEST(SpriteNormalsSession, ALinkPlantedAfterTheCheckIsNotFollowed) {
     SKIP_WITHOUT_SYMLINKS();
-    const std::string dir = folder("toctou");
-    const fs::path abs = root() / fs::u8path(dir);
+    const std::string dir = spriteNormalsSessionFolder("toctou");
+    const fs::path abs = spriteNormalsSessionRoot() / fs::u8path(dir);
     fs::create_directories(abs / "sub");
-    const fs::path outside = root().parent_path() / "outside-toctou";
+    const fs::path outside = spriteNormalsSessionRoot().parent_path() / "outside-toctou";
     fs::remove_all(outside);
     fs::create_directories(outside);
     // the guard passes, then the folder becomes a link out of the project (as a racing process would)
@@ -664,16 +664,16 @@ TEST(SpriteNormalsSession, ALinkPlantedAfterTheCheckIsNotFollowed) {
         return true;
     };
     std::string error;
-    const size_t before = project()->getProjectCommandHistory()->position();
-    EXPECT_FALSE(ProjectFileWrites::writeUndoable(project(), {{abs / "sub" / "x.png", "bytes"}}, error, nullptr, plant,
-                                                  sn::outputsRoot(project())));
+    const size_t before = spriteNormalsSessionProject()->getProjectCommandHistory()->position();
+    EXPECT_FALSE(ProjectFileWrites::writeUndoable(spriteNormalsSessionProject(), {{abs / "sub" / "x.png", "bytes"}}, error, nullptr, plant,
+                                                  sn::outputsRoot(spriteNormalsSessionProject())));
     EXPECT_NE(error.find("symbolic link"), std::string::npos) << error;
     EXPECT_FALSE(fs::exists(outside / "x.png")) << "nothing written through the link";
-    EXPECT_EQ(project()->getProjectCommandHistory()->position(), before) << "no step";
+    EXPECT_EQ(spriteNormalsSessionProject()->getProjectCommandHistory()->position(), before) << "no step";
     // the direct writer (the CLI, the watcher) too
     std::string failed;
     sn::OutputFile out{"normal", dir + "/sub/y.png", abs / "sub" / "y.png", "bytes"};
-    EXPECT_FALSE(sn::writeOutputsDirect({out}, failed, error, sn::outputsRoot(project())));
+    EXPECT_FALSE(sn::writeOutputsDirect({out}, failed, error, sn::outputsRoot(spriteNormalsSessionProject())));
     EXPECT_FALSE(fs::exists(outside / "y.png"));
     fs::remove_all(abs);
     fs::remove_all(outside);
@@ -681,28 +681,28 @@ TEST(SpriteNormalsSession, ALinkPlantedAfterTheCheckIsNotFollowed) {
 
 TEST(SpriteNormalsSession, TheSheetReplacesALinkInsteadOfWritingThroughIt) {
     SKIP_WITHOUT_SYMLINKS();
-    const std::string dir = folder("sheetlink");
-    const fs::path abs = root() / fs::u8path(dir);
-    const fs::path outside = root().parent_path() / "outside-sheet";
+    const std::string dir = spriteNormalsSessionFolder("sheetlink");
+    const fs::path abs = spriteNormalsSessionRoot() / fs::u8path(dir);
+    const fs::path outside = spriteNormalsSessionRoot().parent_path() / "outside-sheet";
     fs::remove_all(outside);
     fs::create_directories(outside);
     fs::create_symlink(outside / "sheet.png", abs / "sheet.png");
     {
         mcp::SheetWrite sheet;
         std::string error;
-        ASSERT_TRUE(sheet.write(root(), abs / "sheet.png", {1, 2, 3}, error)) << error;
+        ASSERT_TRUE(sheet.write(spriteNormalsSessionRoot(), abs / "sheet.png", {1, 2, 3}, error)) << error;
         sheet.commit();
     }
     EXPECT_FALSE(fs::exists(outside / "sheet.png")) << "not written through the dangling link";
     EXPECT_FALSE(fs::is_symlink(abs / "sheet.png"));
-    EXPECT_EQ(readAll(abs / "sheet.png"), std::string("\x01\x02\x03"));
+    EXPECT_EQ(spriteNormalsSessionReadAll(abs / "sheet.png"), std::string("\x01\x02\x03"));
     // a rollback of a replaced sheet puts its bytes back; nothing temporary is left
     {
         mcp::SheetWrite sheet;
         std::string error;
-        ASSERT_TRUE(sheet.write(root(), abs / "sheet.png", {9}, error)) << error;
+        ASSERT_TRUE(sheet.write(spriteNormalsSessionRoot(), abs / "sheet.png", {9}, error)) << error;
     }
-    EXPECT_EQ(readAll(abs / "sheet.png"), std::string("\x01\x02\x03"));
+    EXPECT_EQ(spriteNormalsSessionReadAll(abs / "sheet.png"), std::string("\x01\x02\x03"));
     EXPECT_EQ(std::distance(fs::directory_iterator(abs), fs::directory_iterator()), 1);
     fs::remove_all(abs);
     fs::remove_all(outside);
@@ -710,16 +710,16 @@ TEST(SpriteNormalsSession, TheSheetReplacesALinkInsteadOfWritingThroughIt) {
 
 TEST(SpriteNormalsSession, AnOutputThatIsTheSourceThroughALinkIsRefused) {
     SKIP_WITHOUT_SYMLINKS();
-    const std::string dir = folder("alias");
-    writePng(dir + "/hero.png", balls(16, 16, 16, 6));
-    const fs::path abs = root() / fs::u8path(dir);
+    const std::string dir = spriteNormalsSessionFolder("alias");
+    spriteNormalsSessionWritePng(dir + "/hero.png", spriteNormalsSessionBalls(16, 16, 16, 6));
+    const fs::path abs = spriteNormalsSessionRoot() / fs::u8path(dir);
     fs::create_symlink("hero.png", abs / "hero_link.png");
     fs::create_directory_symlink(abs, abs.parent_path() / "alias_dir");
     sn::Spec spec = stillSpec(dir + "/hero.png");
     spec.overwrite = true;
     for (const std::string& out : {dir + "/hero_link.png", std::string("assets/alias_dir/hero.png")}) {
         spec.output.normal = out;
-        std::optional<sn::Problem> p = findKind(sn::checkSpec(root(), spec), "output_invalid");
+        std::optional<sn::Problem> p = spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), spec), "output_invalid");
         ASSERT_TRUE(p) << out;
         EXPECT_NE(p->message.find("would replace the source"), std::string::npos) << out << ": " << p->message;
     }
@@ -727,7 +727,7 @@ TEST(SpriteNormalsSession, AnOutputThatIsTheSourceThroughALinkIsRefused) {
     spec.output.normal = dir + "/hero_n.png";
     spec.settings.height = true;
     spec.output.height = "assets/alias_dir/hero_n.png";
-    std::optional<sn::Problem> p = findKind(sn::checkSpec(root(), spec), "output_invalid");
+    std::optional<sn::Problem> p = spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), spec), "output_invalid");
     ASSERT_TRUE(p);
     EXPECT_EQ(p->field, "output.height");
     EXPECT_NE(p->message.find("Two outputs"), std::string::npos) << p->message;
@@ -737,68 +737,68 @@ TEST(SpriteNormalsSession, AnOutputThatIsTheSourceThroughALinkIsRefused) {
 
 TEST(SpriteNormalsSession, ALinkedAssetsDirectoryOrProjectKeepsWorking) {
     SKIP_WITHOUT_SYMLINKS();
-    const std::string dir = folder("linkedroot");
-    writePng(dir + "/hero.png", balls(16, 16, 16, 6));
+    const std::string dir = spriteNormalsSessionFolder("linkedroot");
+    spriteNormalsSessionWritePng(dir + "/hero.png", spriteNormalsSessionBalls(16, 16, 16, 6));
     // the assets directory is a link to a folder outside the project
-    const fs::path real = root().parent_path() / "real-assets";
+    const fs::path real = spriteNormalsSessionRoot().parent_path() / "real-assets";
     fs::remove_all(real);
     fs::create_directories(real / "art");
-    fs::copy_file(root() / fs::u8path(dir) / "hero.png", real / "art" / "hero.png");
-    fs::remove(root() / "linked");
-    fs::create_directory_symlink(real, root() / "linked");
-    project()->setAssetsDir("linked");
+    fs::copy_file(spriteNormalsSessionRoot() / fs::u8path(dir) / "hero.png", real / "art" / "hero.png");
+    fs::remove(spriteNormalsSessionRoot() / "linked");
+    fs::create_directory_symlink(real, spriteNormalsSessionRoot() / "linked");
+    spriteNormalsSessionProject()->setAssetsDir("linked");
     sn::Spec spec = stillSpec("linked/art/hero.png");
-    EXPECT_TRUE(sn::checkSpec(root(), spec).empty()) << "the default output, inside the linked assets directory";
+    EXPECT_TRUE(sn::checkSpec(spriteNormalsSessionRoot(), spec).empty()) << "the default output, inside the linked assets directory";
     spec.output.normal = "assets/elsewhere.png";
-    EXPECT_TRUE(findKind(sn::checkSpec(root(), spec), "output_invalid")) << "outside the assets directory, as before";
+    EXPECT_TRUE(spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), spec), "output_invalid")) << "outside the assets directory, as before";
     // its undoable write goes through
     spec.output.normal.clear();
     std::vector<sn::OutputFile> files = generateFiles(spec);
     ASSERT_EQ(files.size(), 1u);
     std::string error;
-    ASSERT_TRUE(sn::writeOutputsUndoable(project(), files, error)) << error;
+    ASSERT_TRUE(sn::writeOutputsUndoable(spriteNormalsSessionProject(), files, error)) << error;
     EXPECT_TRUE(fs::is_regular_file(real / "art" / "hero_normal.png"));
-    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
+    ASSERT_TRUE(spriteNormalsSessionProject()->getProjectCommandHistory()->undo());
     EXPECT_FALSE(fs::exists(real / "art" / "hero_normal.png"));
     // the assets directory is a trusted root; a link BELOW it leading further out is refused
-    const fs::path further = root().parent_path() / "further-out";
+    const fs::path further = spriteNormalsSessionRoot().parent_path() / "further-out";
     fs::remove_all(further);
     fs::create_directories(further);
     fs::create_directory_symlink(further, real / "out");
     sn::Spec escape = stillSpec("linked/art/hero.png");
     escape.output.normal = "linked/out/hero_normal.png";
-    std::optional<sn::Problem> refused = findKind(sn::checkSpec(root(), escape), "output_invalid");
+    std::optional<sn::Problem> refused = spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), escape), "output_invalid");
     ASSERT_TRUE(refused) << "a link below the linked assets directory, out of it";
     EXPECT_NE(refused->message.find("symbolic link"), std::string::npos) << refused->message;
     sn::OutputFile late;
     late.role = "normal";
     late.path = "linked/out/late.png";
-    late.absolute = root() / "linked" / "out" / "late.png";
+    late.absolute = spriteNormalsSessionRoot() / "linked" / "out" / "late.png";
     late.bytes = "bytes";
-    EXPECT_FALSE(sn::writeOutputsUndoable(project(), {late}, error));
+    EXPECT_FALSE(sn::writeOutputsUndoable(spriteNormalsSessionProject(), {late}, error));
     EXPECT_FALSE(fs::exists(further / "late.png"));
     fs::remove(real / "out");
     fs::remove_all(further);
-    project()->setAssetsDir(".");
+    spriteNormalsSessionProject()->setAssetsDir(".");
     // the project reached through a link
-    const fs::path via = root().parent_path() / "via-link";
+    const fs::path via = spriteNormalsSessionRoot().parent_path() / "via-link";
     fs::remove(via);
-    fs::create_directory_symlink(root(), via);
+    fs::create_directory_symlink(spriteNormalsSessionRoot(), via);
     sn::Spec through = stillSpec(dir + "/hero.png");
     EXPECT_TRUE(sn::checkSpec(via, through).empty());
-    project()->setAssetsDir("assets");
+    spriteNormalsSessionProject()->setAssetsDir("assets");
     EXPECT_TRUE(sn::checkSpec(via, through).empty()) << "assets/ named through the project's link";
-    project()->setAssetsDir(".");
+    spriteNormalsSessionProject()->setAssetsDir(".");
     fs::remove(via);
-    fs::remove(root() / "linked");
+    fs::remove(spriteNormalsSessionRoot() / "linked");
     fs::remove_all(real);
 }
 
 // ---- prepare, generate, encode
 
 TEST(SpriteNormalsSession, StillPrepareGenerateEncode) {
-    const std::string dir = folder("still");
-    writePng(dir + "/hero.png", balls(32, 32, 32, 12));
+    const std::string dir = spriteNormalsSessionFolder("still");
+    spriteNormalsSessionWritePng(dir + "/hero.png", spriteNormalsSessionBalls(32, 32, 32, 12));
     sn::Spec spec = stillSpec(dir + "/hero.png");
     spec.settings.height = true;
     spec.output.framesJson = true;
@@ -810,13 +810,13 @@ TEST(SpriteNormalsSession, StillPrepareGenerateEncode) {
     ASSERT_EQ(files.size(), 3u);
     EXPECT_EQ(files[0].role, "normal");
     EXPECT_EQ(files[0].path, dir + "/hero_normal.png");
-    EXPECT_EQ(files[0].absolute, root() / "assets" / "still" / "hero_normal.png");
+    EXPECT_EQ(files[0].absolute, spriteNormalsSessionRoot() / "assets" / "still" / "hero_normal.png");
     const json normal = recipeOf(files[0]);
     EXPECT_EQ(normal["role"], "normal");
     EXPECT_EQ(normal["source"]["path"], dir + "/hero.png");
     EXPECT_EQ(normal["source"]["kind"], "image");
-    EXPECT_EQ(normal["source"]["sha1"], ts::sha1Hex(reinterpret_cast<const uint8_t*>(readAll(root() / fs::u8path(dir) / "hero.png").data()),
-                                                    readAll(root() / fs::u8path(dir) / "hero.png").size()));
+    EXPECT_EQ(normal["source"]["sha1"], ts::sha1Hex(reinterpret_cast<const uint8_t*>(spriteNormalsSessionReadAll(spriteNormalsSessionRoot() / fs::u8path(dir) / "hero.png").data()),
+                                                    spriteNormalsSessionReadAll(spriteNormalsSessionRoot() / fs::u8path(dir) / "hero.png").size()));
     EXPECT_EQ(normal["outputs"]["normal"], dir + "/hero_normal.png");
     EXPECT_EQ(normal["outputs"]["height"], dir + "/hero_height.png");
     EXPECT_TRUE(normal["outputs"]["atlas"].is_null());
@@ -838,7 +838,7 @@ TEST(SpriteNormalsSession, StillPrepareGenerateEncode) {
 }
 
 TEST(SpriteNormalsSession, GifPrepareGenerateEncode) {
-    const std::string dir = folder("gif");
+    const std::string dir = spriteNormalsSessionFolder("gif");
     copyWalkGif(dir + "/walk.gif");
     sn::Spec spec = stillSpec(dir + "/walk.gif");
     spec.output.framesJson = true;
@@ -889,15 +889,15 @@ TEST(SpriteNormalsSession, GifPrepareGenerateEncode) {
 // ---- writes
 
 TEST(SpriteNormalsSession, WriteOutputsDirectIsAllOrNothing) {
-    const std::string dir = folder("direct");
-    writePng(dir + "/hero.png", balls(32, 32, 32, 12));
+    const std::string dir = spriteNormalsSessionFolder("direct");
+    spriteNormalsSessionWritePng(dir + "/hero.png", spriteNormalsSessionBalls(32, 32, 32, 12));
     std::vector<sn::OutputFile> files = generateFiles(stillSpec(dir + "/hero.png"));
     ASSERT_EQ(files.size(), 1u);
     // a second file under a path component that is a file: nothing is written
-    std::ofstream(root() / fs::u8path(dir) / "blocker") << "a file";
+    std::ofstream(spriteNormalsSessionRoot() / fs::u8path(dir) / "blocker") << "a file";
     sn::OutputFile blocked = files[0];
     blocked.path = dir + "/blocker/x.png";
-    blocked.absolute = root() / fs::u8path(dir) / "blocker" / "x.png";
+    blocked.absolute = spriteNormalsSessionRoot() / fs::u8path(dir) / "blocker" / "x.png";
     std::vector<sn::OutputFile> set = {files[0], blocked};
     std::string failed, error;
     EXPECT_FALSE(sn::writeOutputsDirect(set, failed, error));
@@ -906,7 +906,7 @@ TEST(SpriteNormalsSession, WriteOutputsDirectIsAllOrNothing) {
     EXPECT_FALSE(fs::exists(files[0].absolute));
     // the set alone goes through
     ASSERT_TRUE(sn::writeOutputsDirect(files, failed, error)) << error;
-    EXPECT_EQ(readAll(files[0].absolute), files[0].bytes);
+    EXPECT_EQ(spriteNormalsSessionReadAll(files[0].absolute), files[0].bytes);
 }
 
 TEST(SpriteNormalsSession, WriteOutputsUndoableNeedsAProject) {
@@ -930,9 +930,9 @@ namespace {
         if (!p->loadProject(dir, false)) std::exit(2);
         // no MCP server: the undoable write needs none (ProjectFileWrites)
         if (mcp::McpServer::get().isStarted()) std::exit(20);
-        writeBytes(dir / "assets" / "undo" / "hero.png", [] {
+        spriteNormalsSessionWriteBytes(dir / "assets" / "undo" / "hero.png", [] {
             std::vector<uint8_t> png;
-            ts::encodePng(balls(32, 32, 32, 12), png);
+            ts::encodePng(spriteNormalsSessionBalls(32, 32, 32, 12), png);
             return png;
         }());
         sn::Spec spec = stillSpec("assets/undo/hero.png");
@@ -949,13 +949,13 @@ namespace {
         if (!sn::writeOutputsUndoable(p, files, error)) std::exit(5);
         if (history->position() != before + 1) std::exit(6);
         for (const sn::OutputFile& f : files) {
-            if (readAll(f.absolute) != f.bytes) std::exit(7);
+            if (spriteNormalsSessionReadAll(f.absolute) != f.bytes) std::exit(7);
         }
         if (!history->undo()) std::exit(8);
         for (const sn::OutputFile& f : files) {
             if (fs::exists(f.absolute)) std::exit(9);
         }
-        if (!history->redo() || readAll(files[1].absolute) != files[1].bytes) std::exit(10);
+        if (!history->redo() || spriteNormalsSessionReadAll(files[1].absolute) != files[1].bytes) std::exit(10);
         std::fflush(stdout);
         // the forked editor ends without its static destructors: its jobs (thumbnails, imports)
         // may still read the App while it would be destroyed
@@ -991,9 +991,9 @@ namespace {
         if (mcp::McpServer::get().isStarted()) std::exit(20);
         SpriteNormalsWatcher* watcher = app.getSpriteNormalsWatcher();
         if (!watcher || SpriteNormalsWatcher::active() != watcher) std::exit(3);
-        writeBytes(dir / "assets" / "wake" / "hero.png", [] {
+        spriteNormalsSessionWriteBytes(dir / "assets" / "wake" / "hero.png", [] {
             std::vector<uint8_t> png;
-            ts::encodePng(balls(32, 32, 32, 12), png);
+            ts::encodePng(spriteNormalsSessionBalls(32, 32, 32, 12), png);
             return png;
         }());
         if (!settleWatcher(*watcher, true)) std::exit(4);
@@ -1061,42 +1061,42 @@ TEST(SpriteNormalsSessionDeathTest, WriteOutputsUndoableIsOneProjectStep) {
 // ---- staleness and recipes
 
 TEST(SpriteNormalsSession, StalenessFreshChangedMissing) {
-    const std::string dir = folder("stale");
-    writePng(dir + "/hero.png", balls(32, 32, 32, 12));
+    const std::string dir = spriteNormalsSessionFolder("stale");
+    spriteNormalsSessionWritePng(dir + "/hero.png", spriteNormalsSessionBalls(32, 32, 32, 12));
     std::vector<sn::OutputFile> files = generateFiles(stillSpec(dir + "/hero.png"));
     std::string failed, error;
     ASSERT_TRUE(sn::writeOutputsDirect(files, failed, error)) << error;
     const fs::path map = files[0].absolute;
 
-    sn::Staleness s = sn::checkStaleness(root(), map);
+    sn::Staleness s = sn::checkStaleness(spriteNormalsSessionRoot(), map);
     EXPECT_EQ(s.state, sn::Staleness::State::Fresh) << s.message;
     EXPECT_EQ(s.sourcePath, dir + "/hero.png");
-    EXPECT_EQ(s.sourceAbsolute, root() / "assets" / "stale" / "hero.png");
-    writePng(dir + "/hero.png", balls(32, 32, 32, 10));
-    s = sn::checkStaleness(root(), map);
+    EXPECT_EQ(s.sourceAbsolute, spriteNormalsSessionRoot() / "assets" / "stale" / "hero.png");
+    spriteNormalsSessionWritePng(dir + "/hero.png", spriteNormalsSessionBalls(32, 32, 32, 10));
+    s = sn::checkStaleness(spriteNormalsSessionRoot(), map);
     EXPECT_EQ(s.state, sn::Staleness::State::Changed);
     EXPECT_EQ(s.message, "hero.png changed since this map was made.");
     EXPECT_STREQ(sn::toString(s.state), "changed");
-    fs::remove(root() / fs::u8path(dir) / "hero.png");
-    s = sn::checkStaleness(root(), map);
+    fs::remove(spriteNormalsSessionRoot() / fs::u8path(dir) / "hero.png");
+    s = sn::checkStaleness(spriteNormalsSessionRoot(), map);
     EXPECT_EQ(s.state, sn::Staleness::State::Missing);
     EXPECT_STREQ(sn::toString(s.state), "missing");
 
     // no recipe, a garbled one
-    writePng(dir + "/plain.png", balls(8, 8, 8, 3));
-    EXPECT_EQ(sn::checkStaleness(root(), root() / fs::u8path(dir) / "plain.png").state, sn::Staleness::State::NoRecipe);
+    spriteNormalsSessionWritePng(dir + "/plain.png", spriteNormalsSessionBalls(8, 8, 8, 3));
+    EXPECT_EQ(sn::checkStaleness(spriteNormalsSessionRoot(), spriteNormalsSessionRoot() / fs::u8path(dir) / "plain.png").state, sn::Staleness::State::NoRecipe);
     std::vector<uint8_t> png, garbled;
-    ASSERT_TRUE(ts::encodePng(balls(8, 8, 8, 3), png));
+    ASSERT_TRUE(ts::encodePng(spriteNormalsSessionBalls(8, 8, 8, 3), png));
     ASSERT_TRUE(ts::insertRecipeChunk(png, R"({"format":"jasperengine.spritenormals","version":1,"source":{"path":5}})", garbled, error, sn::kRecipeKeyword));
-    writeBytes(root() / fs::u8path(dir) / "garbled.png", garbled);
-    s = sn::checkStaleness(root(), root() / fs::u8path(dir) / "garbled.png");
+    spriteNormalsSessionWriteBytes(spriteNormalsSessionRoot() / fs::u8path(dir) / "garbled.png", garbled);
+    s = sn::checkStaleness(spriteNormalsSessionRoot(), spriteNormalsSessionRoot() / fs::u8path(dir) / "garbled.png");
     EXPECT_EQ(s.state, sn::Staleness::State::Invalid);
     EXPECT_NE(s.message.find("source.path is a number"), std::string::npos) << s.message;
 }
 
 TEST(SpriteNormalsSession, SpecFromRecipeRoundTrip) {
-    const std::string dir = folder("roundtrip");
-    writePng(dir + "/sheet.png", balls(64, 32, 32, 12));
+    const std::string dir = spriteNormalsSessionFolder("roundtrip");
+    spriteNormalsSessionWritePng(dir + "/sheet.png", spriteNormalsSessionBalls(64, 32, 32, 12));
     // non-default settings, a grid of two frames
     sn::Spec spec = stillSpec(dir + "/sheet.png");
     spec.settings = sn::presetSettings(sn::Preset::Chunky);
@@ -1110,12 +1110,12 @@ TEST(SpriteNormalsSession, SpecFromRecipeRoundTrip) {
     std::string failed, error;
     ASSERT_TRUE(sn::writeOutputsDirect(files, failed, error)) << error;
 
-    const fs::path map = root() / fs::u8path(dir) / "sheet_normal.png";
+    const fs::path map = spriteNormalsSessionRoot() / fs::u8path(dir) / "sheet_normal.png";
     const std::optional<json> recipe = sn::readRecipe(map, &error);
     ASSERT_TRUE(recipe) << error;
     sn::Spec back;
     std::vector<std::string> notes;
-    ASSERT_TRUE(sn::specFromRecipe(*recipe, map, root(), back, notes, error)) << error;
+    ASSERT_TRUE(sn::specFromRecipe(*recipe, map, spriteNormalsSessionRoot(), back, notes, error)) << error;
     EXPECT_TRUE(notes.empty());
     EXPECT_EQ(back.source, dir + "/sheet.png");
     EXPECT_TRUE(back.overwrite);
@@ -1135,17 +1135,17 @@ TEST(SpriteNormalsSession, SpecFromRecipeRoundTrip) {
     plain.overwrite = true;
     const std::vector<sn::OutputFile> plainFiles = generateFiles(plain);
     ASSERT_TRUE(sn::writeOutputsDirect(plainFiles, failed, error)) << error;
-    ASSERT_TRUE(sn::specFromRecipe(*sn::readRecipe(map, &error), map, root(), back, notes, error)) << error;
+    ASSERT_TRUE(sn::specFromRecipe(*sn::readRecipe(map, &error), map, spriteNormalsSessionRoot(), back, notes, error)) << error;
     EXPECT_EQ(back.fingerprint(), plain.fingerprint());
     EXPECT_NE(back.fingerprint(), spec.fingerprint());
 
     // garbled or foreign recipes: errors, never exceptions
     bool ok = true;
-    EXPECT_NO_THROW(ok = sn::specFromRecipe(json::parse(R"({"format":1,"mode":"tileable"})"), map, root(), back, notes, error));
+    EXPECT_NO_THROW(ok = sn::specFromRecipe(json::parse(R"({"format":1,"mode":"tileable"})"), map, spriteNormalsSessionRoot(), back, notes, error));
     EXPECT_FALSE(ok);
     EXPECT_EQ(error, "not a sprite normals recipe");
     EXPECT_NO_THROW(ok = sn::specFromRecipe(json::parse(R"({"format":"jasperengine.spritenormals","version":1,"source":{"path":"a.png"},"settings":{"edges":"torus"}})"),
-                                            map, root(), back, notes, error));
+                                            map, spriteNormalsSessionRoot(), back, notes, error));
     EXPECT_FALSE(ok);
     EXPECT_NE(error.find("garbled"), std::string::npos) << error;
 }
@@ -1156,12 +1156,12 @@ TEST(SpriteNormalsSession, VersionOneRecipesKeepTheirRules) {
     std::vector<std::string> notes;
     std::string error;
     sn::Spec back;
-    const fs::path map = root() / "assets" / "old_normal.png";
+    const fs::path map = spriteNormalsSessionRoot() / "assets" / "old_normal.png";
     const json old = json::parse(R"({"format":"jasperengine.spritenormals","version":1,"source":{"path":"assets/old.png"},)"
                                  R"("settings":{"preset":"default","strength":1.5,"detail":3,"smoothing":1,"volume":1.15,"radius":"auto",)"
                                  R"("softness":1.15,"alpha_threshold":0.03,"edges":"transparent","ignore_outline":false,"regions":[],)"
                                  R"("directx":false,"height":false}})");
-    ASSERT_TRUE(sn::specFromRecipe(old, map, root(), back, notes, error)) << error;
+    ASSERT_TRUE(sn::specFromRecipe(old, map, spriteNormalsSessionRoot(), back, notes, error)) << error;
     EXPECT_EQ(back.settings.version, 1);
     EXPECT_EQ(back.settings.profile, sn::Profile::Rounded) << "a version 1 recipe without a profile is rounded";
     EXPECT_EQ(sn::settingsToJson(back.settings)["version"], 1);
@@ -1169,7 +1169,7 @@ TEST(SpriteNormalsSession, VersionOneRecipesKeepTheirRules) {
     v2["version"] = 2;
     v2["settings"]["profile"] = "auto";
     v2["settings"]["resolution_scale"] = "off";
-    ASSERT_TRUE(sn::specFromRecipe(v2, map, root(), back, notes, error)) << error;
+    ASSERT_TRUE(sn::specFromRecipe(v2, map, spriteNormalsSessionRoot(), back, notes, error)) << error;
     EXPECT_EQ(back.settings.version, 2);
     EXPECT_EQ(back.settings.profile, sn::Profile::Auto);
     EXPECT_EQ(back.settings.resolutionScale, sn::ResolutionScale::Off);
@@ -1217,7 +1217,7 @@ namespace {
         return p;
     }
 
-    void shutdownWhileRunning() {
+    void spriteNormalsSessionShutdownWhileRunning() {
         std::atomic<int> called{0};
         std::vector<std::shared_ptr<sn::SpriteNormalsRun>> runs;
         for (int i = 0; i < 3; i++) runs.push_back(sn::SpriteNormalsRun::start(heavy(), 1, [&called](sn::SpriteNormalsRun&) { called++; }));
@@ -1231,11 +1231,11 @@ namespace {
 }
 
 TEST(SpriteNormalsRun, FinishesCallsBackAndCancels) {
-    const std::string dir = folder("run");
-    writePng(dir + "/hero.png", balls(32, 32, 32, 12));
+    const std::string dir = spriteNormalsSessionFolder("run");
+    spriteNormalsSessionWritePng(dir + "/hero.png", spriteNormalsSessionBalls(32, 32, 32, 12));
     sn::Prepared prepared;
     std::vector<sn::Problem> problems;
-    ASSERT_TRUE(sn::prepare(root(), stillSpec(dir + "/hero.png"), nullptr, prepared, problems));
+    ASSERT_TRUE(sn::prepare(spriteNormalsSessionRoot(), stillSpec(dir + "/hero.png"), nullptr, prepared, problems));
     std::atomic<int> calls{0};
     std::shared_ptr<sn::SpriteNormalsRun> run = sn::SpriteNormalsRun::start(prepared, 2, [&calls](sn::SpriteNormalsRun& done) {
         EXPECT_TRUE(done.finished());
@@ -1266,11 +1266,11 @@ TEST(SpriteNormalsRun, FinishesCallsBackAndCancels) {
 }
 
 TEST(SpriteNormalsRun, AProjectSwitchMakesItsResultStale) {
-    const std::string dir = folder("generation");
-    writePng(dir + "/hero.png", balls(16, 16, 16, 6));
+    const std::string dir = spriteNormalsSessionFolder("generation");
+    spriteNormalsSessionWritePng(dir + "/hero.png", spriteNormalsSessionBalls(16, 16, 16, 6));
     sn::Prepared prepared;
     std::vector<sn::Problem> problems;
-    ASSERT_TRUE(sn::prepare(root(), stillSpec(dir + "/hero.png"), nullptr, prepared, problems));
+    ASSERT_TRUE(sn::prepare(spriteNormalsSessionRoot(), stillSpec(dir + "/hero.png"), nullptr, prepared, problems));
     std::shared_ptr<sn::SpriteNormalsRun> run = sn::SpriteNormalsRun::start(prepared);
     for (int i = 0; i < 500 && !run->finished(); i++) std::this_thread::sleep_for(std::chrono::milliseconds(10));
     ASSERT_TRUE(run->finished());
@@ -1281,17 +1281,17 @@ TEST(SpriteNormalsRun, AProjectSwitchMakesItsResultStale) {
 }
 
 TEST(SpriteNormalsRunDeathTest, ShutdownCancelsWaitsAndCallsNothingBack) {
-    GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(shutdownWhileRunning(), ::testing::ExitedWithCode(0), "");
+    GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(spriteNormalsSessionShutdownWhileRunning(), ::testing::ExitedWithCode(0), "");
 }
 
 // ---- the scene
 
 TEST(SpriteNormalsScene, FramesFromSpriteAndSpriteSources) {
-    const std::string dir = folder("sprite");
-    writePng(dir + "/sheet.png", balls(64, 32, 32, 12));
-    const uint32_t sceneId = newScene();
-    const Entity hero = sprite(sceneId, dir + "/sheet.png");
-    Scene* scene = sceneOf(sceneId);
+    const std::string dir = spriteNormalsSessionFolder("sprite");
+    spriteNormalsSessionWritePng(dir + "/sheet.png", spriteNormalsSessionBalls(64, 32, 32, 12));
+    const uint32_t sceneId = spriteNormalsSessionNewScene();
+    const Entity hero = spriteNormalsSessionSprite(sceneId, dir + "/sheet.png");
+    Scene* scene = spriteNormalsSessionSceneOf(sceneId);
 
     std::string texture, error;
     std::vector<sn::Cell> cells;
@@ -1307,7 +1307,7 @@ TEST(SpriteNormalsScene, FramesFromSpriteAndSpriteSources) {
     EXPECT_EQ(cells, (std::vector<sn::Cell>{{0, 0, 32, 32}, {32, 0, 32, 32}}));
 
     // not a sprite: no mesh
-    const Entity empty = create(sceneId, "Empty", EntityCreationType::GAMEOBJECT);
+    const Entity empty = spriteNormalsSessionCreate(sceneId, "Empty", EntityCreationType::GAMEOBJECT);
     EXPECT_FALSE(sn::framesFromSprite(scene, empty, 0, texture, cells, error));
     EXPECT_NE(error.find("no mesh"), std::string::npos) << error;
 
@@ -1316,8 +1316,8 @@ TEST(SpriteNormalsScene, FramesFromSpriteAndSpriteSources) {
     spec.sceneId = sceneId;
     spec.entity = hero;
     spec.settings = sn::presetSettings(sn::Preset::Crisp);
-    EXPECT_TRUE(sn::checkSpec(root(), spec, scene).empty());
-    EXPECT_TRUE(findKind(sn::checkSpec(root(), spec, nullptr), "not_a_sprite")) << "its scene must be given";
+    EXPECT_TRUE(sn::checkSpec(spriteNormalsSessionRoot(), spec, scene).empty());
+    EXPECT_TRUE(spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), spec, nullptr), "not_a_sprite")) << "its scene must be given";
     sn::Prepared prepared;
     const std::vector<sn::OutputFile> files = generateFiles(spec, scene, &prepared);
     EXPECT_EQ(prepared.sourcePath, dir + "/sheet.png");
@@ -1333,7 +1333,7 @@ TEST(SpriteNormalsScene, FramesFromSpriteAndSpriteSources) {
     // back to a spec: the texture is the source, with a note
     sn::Spec back;
     std::vector<std::string> notes;
-    ASSERT_TRUE(sn::specFromRecipe(recipe, root() / fs::u8path(files[0].path), root(), back, notes, error)) << error;
+    ASSERT_TRUE(sn::specFromRecipe(recipe, spriteNormalsSessionRoot() / fs::u8path(files[0].path), spriteNormalsSessionRoot(), back, notes, error)) << error;
     EXPECT_EQ(back.source, dir + "/sheet.png");
     EXPECT_FALSE(back.hasSprite());
     ASSERT_EQ(notes.size(), 1u);
@@ -1347,13 +1347,13 @@ TEST(SpriteNormalsScene, FramesFromSpriteAndSpriteSources) {
 }
 
 TEST(SpriteNormalsScene, LightCheck) {
-    const uint32_t sceneId = newScene();
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = spriteNormalsSessionNewScene();
+    Scene* scene = spriteNormalsSessionSceneOf(sceneId);
     scene->setAmbientLight2D(0.2f);
     sn::LightCheck c = sn::lightCheck(scene);
     EXPECT_EQ(c.lights, 0);
     EXPECT_FLOAT_EQ(c.ambientIntensity, 0.2f);
-    const Entity light = create(sceneId, "Light", EntityCreationType::POINT_LIGHT_2D);
+    const Entity light = spriteNormalsSessionCreate(sceneId, "Light", EntityCreationType::POINT_LIGHT_2D);
     Light2DComponent& l = scene->getComponent<Light2DComponent>(light);
     l.height = 0.0f;
     c = sn::lightCheck(scene);
@@ -1371,12 +1371,12 @@ TEST(SpriteNormalsScene, LightCheck) {
 }
 
 TEST(SpriteNormalsScene, SceneWarnings) {
-    const std::string dir = folder("warnings");
-    writePng(dir + "/hero.png", balls(32, 32, 32, 12));
-    const uint32_t sceneId = newScene();
-    Scene* scene = sceneOf(sceneId);
+    const std::string dir = spriteNormalsSessionFolder("warnings");
+    spriteNormalsSessionWritePng(dir + "/hero.png", spriteNormalsSessionBalls(32, 32, 32, 12));
+    const uint32_t sceneId = spriteNormalsSessionNewScene();
+    Scene* scene = spriteNormalsSessionSceneOf(sceneId);
     scene->setAmbientLight2D(0.2f);
-    const Entity hero = sprite(sceneId, dir + "/hero.png");
+    const Entity hero = spriteNormalsSessionSprite(sceneId, dir + "/hero.png");
     const sn::Settings settings;
     const std::vector<sn::Delay> still;
 
@@ -1386,7 +1386,7 @@ TEST(SpriteNormalsScene, SceneWarnings) {
     EXPECT_EQ(w[0].message, "This scene has no Light 2D.");
     EXPECT_EQ(w[0].fix, "Create a Light 2D (new lights get Height 64).");
     EXPECT_TRUE(w[0].field.empty());
-    const Entity light = create(sceneId, "Light", EntityCreationType::POINT_LIGHT_2D);
+    const Entity light = spriteNormalsSessionCreate(sceneId, "Light", EntityCreationType::POINT_LIGHT_2D);
     scene->getComponent<Light2DComponent>(light).height = 0.0f;
     w = sn::sceneWarnings(scene, hero, settings, 32, 32, still, true);
     ASSERT_EQ(kinds(w), std::vector<std::string>{"no_light_height"});
@@ -1464,20 +1464,20 @@ TEST(SpriteNormalsScene, SceneWarnings) {
     EXPECT_EQ(kinds(sn::sceneWarnings(nullptr, NULL_ENTITY, settings, 32, 32, {{47, 5}}, false)), std::vector<std::string>{"zero_delay"});
 
     // a linked material file (the Platform's project holds the links, no editor needed)
-    project()->linkMaterialFile(sceneId, hero, 0, dir + "/hero.material");
+    spriteNormalsSessionProject()->linkMaterialFile(sceneId, hero, 0, dir + "/hero.material");
     w = sn::sceneWarnings(scene, hero, settings, 32, 32, still, true);
     ASSERT_EQ(kinds(w), std::vector<std::string>{"material_linked"});
     EXPECT_EQ(w[0].message, "The sprite's material comes from " + dir + "/hero.material; the scene's copy changed, the file did not.");
-    project()->unlinkMaterialFile(sceneId, hero, 0);
+    spriteNormalsSessionProject()->unlinkMaterialFile(sceneId, hero, 0);
 }
 
 TEST(SpriteNormalsScene, SubmeshSourcesAndSpriteFrameRules) {
-    const std::string dir = folder("submesh");
-    writePng(dir + "/a.png", balls(32, 32, 32, 12));
-    writePng(dir + "/b.png", balls(16, 16, 16, 6));
-    const uint32_t sceneId = newScene();
-    Scene* scene = sceneOf(sceneId);
-    const Entity hero = sprite(sceneId, dir + "/a.png");
+    const std::string dir = spriteNormalsSessionFolder("submesh");
+    spriteNormalsSessionWritePng(dir + "/a.png", spriteNormalsSessionBalls(32, 32, 32, 12));
+    spriteNormalsSessionWritePng(dir + "/b.png", spriteNormalsSessionBalls(16, 16, 16, 6));
+    const uint32_t sceneId = spriteNormalsSessionNewScene();
+    Scene* scene = spriteNormalsSessionSceneOf(sceneId);
+    const Entity hero = spriteNormalsSessionSprite(sceneId, dir + "/a.png");
     MeshComponent& mesh = scene->getComponent<MeshComponent>(hero);
     mesh.numSubmeshes = 2;
     mesh.submeshes[1].material.baseColorTexture = Texture(dir + "/b.png");
@@ -1509,7 +1509,7 @@ TEST(SpriteNormalsScene, SubmeshSourcesAndSpriteFrameRules) {
     EXPECT_EQ(recipe["source"]["kind"], "sprite");
     sn::Spec back;
     std::vector<std::string> notes;
-    ASSERT_TRUE(sn::specFromRecipe(recipe, root() / fs::u8path(files[0].path), root(), back, notes, error)) << error;
+    ASSERT_TRUE(sn::specFromRecipe(recipe, spriteNormalsSessionRoot() / fs::u8path(files[0].path), spriteNormalsSessionRoot(), back, notes, error)) << error;
     EXPECT_EQ(back.submesh, 1u);
     EXPECT_EQ(back.source, dir + "/b.png");
     spec.submesh = 0;
@@ -1523,23 +1523,23 @@ TEST(SpriteNormalsScene, SubmeshSourcesAndSpriteFrameRules) {
     scene->setAmbientLight2D(0.2f);
     EXPECT_EQ(kinds(sn::sceneWarnings(scene, hero, sn::Settings(), 16, 16, {}, false)), (std::vector<std::string>{"no_light", "size_mismatch"}));
     EXPECT_EQ(kinds(sn::sceneWarnings(scene, hero, sn::Settings(), 16, 16, {}, false, 1)), std::vector<std::string>{"no_light"});
-    project()->linkMaterialFile(sceneId, hero, 1, dir + "/b.material");
+    spriteNormalsSessionProject()->linkMaterialFile(sceneId, hero, 1, dir + "/b.material");
     EXPECT_EQ(kinds(sn::sceneWarnings(scene, hero, sn::Settings(), 16, 16, {}, false, 1)), (std::vector<std::string>{"no_light", "material_linked"}));
     EXPECT_EQ(kinds(sn::sceneWarnings(scene, hero, sn::Settings(), 32, 32, {}, false, 0)), std::vector<std::string>{"no_light"});
-    project()->unlinkMaterialFile(sceneId, hero, 1);
+    spriteNormalsSessionProject()->unlinkMaterialFile(sceneId, hero, 1);
 
     // outside a project (empty projectDir) a Sprite's texture is its absolute path, whatever the working directory
     {
         const fs::path cwd = fs::current_path();
         fs::current_path(fs::temp_directory_path());
         sn::Spec loose = spec;
-        loose.output.normal = (root() / fs::u8path(dir) / "loose_normal.png").string();
+        loose.output.normal = (spriteNormalsSessionRoot() / fs::u8path(dir) / "loose_normal.png").string();
         sn::Prepared p0;
         std::vector<sn::Problem> problems;
         const bool ok = sn::prepare(fs::path(), loose, scene, p0, problems);
         fs::current_path(cwd);
         ASSERT_TRUE(ok) << (problems.empty() ? "" : problems[0].message);
-        EXPECT_EQ(p0.sourceAbsolute, (root() / fs::u8path(dir) / "a.png").lexically_normal());
+        EXPECT_EQ(p0.sourceAbsolute, (spriteNormalsSessionRoot() / fs::u8path(dir) / "a.png").lexically_normal());
         EXPECT_EQ(p0.request.color.width, 32);
         // plannedOutputs names the same files as prepare (the default normal beside the texture, the
         // height map, the frames JSON), from the same source path
@@ -1558,16 +1558,16 @@ TEST(SpriteNormalsScene, SubmeshSourcesAndSpriteFrameRules) {
         const std::vector<sn::PlannedOutput> planned = sn::plannedOutputs(fs::path(), defaults, sn::SourceKind::Image);
         EXPECT_EQ(paths(planned), paths(p0.outputs));
         ASSERT_FALSE(planned.empty());
-        EXPECT_EQ(planned[0].path, jasperengine::editor::FileUtils::pathToGenericUtf8((root() / fs::u8path(dir) / "a_normal.png").lexically_normal()));
+        EXPECT_EQ(planned[0].path, jasperengine::editor::FileUtils::pathToGenericUtf8((spriteNormalsSessionRoot() / fs::u8path(dir) / "a_normal.png").lexically_normal()));
     }
 
     // overlapping Sprite frames
     sc.framesRect[1] = {"b", Rect(8, 0, 16, 32)};
-    std::optional<sn::Problem> p = findKind(sn::checkSpec(root(), spec, scene), "frames_mismatch");
+    std::optional<sn::Problem> p = spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), spec, scene), "frames_mismatch");
     ASSERT_TRUE(p);
     EXPECT_EQ(p->fix, "Use frames none, or reslice the sprite without overlap");
     spec.frames.mode = sn::FramesSpec::Mode::None;
-    EXPECT_TRUE(sn::checkSpec(root(), spec, scene).empty());
+    EXPECT_TRUE(sn::checkSpec(spriteNormalsSessionRoot(), spec, scene).empty());
 
     // Cells recorded as the Sprite's: frames.from sprite, a sequence
     sn::Spec given = stillSpec(dir + "/a.png");
@@ -1583,7 +1583,7 @@ TEST(SpriteNormalsScene, SubmeshSourcesAndSpriteFrameRules) {
     EXPECT_EQ(recipeOf(files[0])["frames"]["from"], "given");
     EXPECT_TRUE(prepared.request.sequence) << "Cells with 2 or more cells are a sequence";
     given.frames.cells = {{0, 0, 20, 32}, {16, 0, 16, 32}};
-    p = findKind(sn::checkSpec(root(), given), "frames_mismatch");
+    p = spriteNormalsSessionFindKind(sn::checkSpec(spriteNormalsSessionRoot(), given), "frames_mismatch");
     ASSERT_TRUE(p);
     EXPECT_EQ(p->fix, "Give frames that do not overlap.");
 }
@@ -1592,8 +1592,8 @@ TEST(SpriteNormalsSession, OutsideAProjectPathsAreRelativeToThePng) {
     const fs::path dir = fs::temp_directory_path() / ("jasper-spritenormals-cli-" + std::to_string(::getpid()));
     fs::remove_all(dir);
     std::vector<uint8_t> png;
-    ASSERT_TRUE(ts::encodePng(balls(32, 32, 32, 12), png));
-    writeBytes(dir / "in" / "hero.png", png);
+    ASSERT_TRUE(ts::encodePng(spriteNormalsSessionBalls(32, 32, 32, 12), png));
+    spriteNormalsSessionWriteBytes(dir / "in" / "hero.png", png);
     sn::Spec spec = stillSpec((dir / "in" / "hero.png").string());
     spec.output.normal = (dir / "out" / "hero_n.png").string();
     spec.output.framesJson = true;
@@ -1628,19 +1628,19 @@ TEST(SpriteNormalsSession, SheetWriteRollsBackAndReportsAFailedRestore) {
     const fs::path dir = fs::temp_directory_path() / ("jasper-spritenormals-sheet-" + std::to_string(::getpid()));
     fs::remove_all(dir);
     const std::vector<uint8_t> old(8192, 'A'), sheet(8192, 'B');
-    auto readAll = [](const fs::path& path) {
+    auto spriteNormalsSessionReadAll = [](const fs::path& path) {
         std::ifstream in(path, std::ios::binary);
         return std::vector<uint8_t>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     };
-    writeBytes(dir / "shots" / "sheet.png", old);
+    spriteNormalsSessionWriteBytes(dir / "shots" / "sheet.png", old);
     std::string error, warning;
     {
         // replaced, then rolled back: the old bytes
         mcp::SheetWrite write;
         ASSERT_TRUE(write.write(dir, dir / "shots" / "sheet.png", sheet, error, &warning)) << error;
-        EXPECT_EQ(readAll(dir / "shots" / "sheet.png"), sheet);
+        EXPECT_EQ(spriteNormalsSessionReadAll(dir / "shots" / "sheet.png"), sheet);
         EXPECT_TRUE(write.rollback(&warning));
-        EXPECT_EQ(readAll(dir / "shots" / "sheet.png"), old);
+        EXPECT_EQ(spriteNormalsSessionReadAll(dir / "shots" / "sheet.png"), old);
     }
     {
         // a new file in new folders, rolled back by the destructor: none of them left
@@ -1655,7 +1655,7 @@ TEST(SpriteNormalsSession, SheetWriteRollsBackAndReportsAFailedRestore) {
         ASSERT_TRUE(write.write(dir, dir / "kept.png", sheet, error)) << error;
         write.commit();
     }
-    EXPECT_EQ(readAll(dir / "kept.png"), sheet);
+    EXPECT_EQ(spriteNormalsSessionReadAll(dir / "kept.png"), sheet);
     {
         // a path that can't be opened (a folder) is left alone
         fs::create_directories(dir / "folder.png");
@@ -1685,7 +1685,7 @@ TEST(SpriteNormalsSession, SheetWriteRollsBackAndReportsAFailedRestore) {
             EXPECT_FALSE(error.empty());
             EXPECT_TRUE(warning.empty()) << warning;
         }
-        EXPECT_EQ(readAll(dir / "shots" / "sheet.png"), old) << "the replaced file is whole";
+        EXPECT_EQ(spriteNormalsSessionReadAll(dir / "shots" / "sheet.png"), old) << "the replaced file is whole";
         EXPECT_EQ(std::distance(fs::directory_iterator(dir / "shots"), fs::directory_iterator()), 1) << "no temporary file left";
         // a small sheet goes through; its rollback can't write the 8 KiB back: reported
         mcp::SheetWrite write;
@@ -1695,7 +1695,7 @@ TEST(SpriteNormalsSession, SheetWriteRollsBackAndReportsAFailedRestore) {
         const bool restored = write.rollback(&warning);
         setrlimit(RLIMIT_FSIZE, &saved);
         std::signal(SIGXFSZ, previousHandler);
-        EXPECT_EQ(readAll(dir / "shots" / "sheet.png"), written ? tiny : old);
+        EXPECT_EQ(spriteNormalsSessionReadAll(dir / "shots" / "sheet.png"), written ? tiny : old);
         EXPECT_TRUE(written);
         EXPECT_FALSE(restored);
         EXPECT_NE(warning.find("its previous version could not be written back"), std::string::npos) << warning;

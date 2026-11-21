@@ -61,7 +61,7 @@ namespace {
 
     // a curve and gradient as upstream's (lines and trails) tests wrote them: keys, wraps;
     // colour keys from linear colours (S27's keys are sRGB-encoded)
-    Curve curveOf(std::vector<CurveKey> keys, CurveWrapMode pre = CurveWrapMode::Clamp, CurveWrapMode post = CurveWrapMode::Clamp){
+    Curve lineRendererStreamCurveOf(std::vector<CurveKey> keys, CurveWrapMode pre = CurveWrapMode::Clamp, CurveWrapMode post = CurveWrapMode::Clamp){
         Curve curve(std::move(keys));
         curve.preWrapMode = pre;
         curve.postWrapMode = post;
@@ -72,7 +72,7 @@ namespace {
         return GradientColorKey{time, Color::linearTosRGB(linear)};
     }
 
-    Gradient gradientOf(std::vector<GradientColorKey> colors, std::vector<GradientAlphaKey> alphas, GradientMode mode = GradientMode::Blend){
+    Gradient lineRendererStreamGradientOf(std::vector<GradientColorKey> colors, std::vector<GradientAlphaKey> alphas, GradientMode mode = GradientMode::Blend){
         Gradient gradient;
         gradient.colorKeys = std::move(colors);
         gradient.alphaKeys = std::move(alphas);
@@ -98,10 +98,10 @@ namespace {
         lines.loop = true;
         lines.useWorldSpace = true;
         lines.widthMultiplier = 0.35f;
-        lines.widthCurve = curveOf({CurveKey{0.0f, 1.0f, 0.0f, -2.0f}, CurveKey{1.0f, 0.25f, std::numeric_limits<float>::infinity(), 0.0f}},
+        lines.widthCurve = lineRendererStreamCurveOf({CurveKey{0.0f, 1.0f, 0.0f, -2.0f}, CurveKey{1.0f, 0.25f, std::numeric_limits<float>::infinity(), 0.0f}},
                                    CurveWrapMode::Clamp, CurveWrapMode::Loop);
         lines.widthUnit = LineWidthUnit::Pixels;
-        lines.colorGradient = gradientOf({linearKey(0.0f, Vector3(1, 0, 0)), linearKey(0.6f, Vector3(0.2f, 0.4f, 0.8f))},
+        lines.colorGradient = lineRendererStreamGradientOf({linearKey(0.0f, Vector3(1, 0, 0)), linearKey(0.6f, Vector3(0.2f, 0.4f, 0.8f))},
                                          {GradientAlphaKey{0.0f, 1.0f}, GradientAlphaKey{1.0f, 0.0f}}, GradientMode::Fixed);
         lines.numCornerVertices = 4;
         lines.numCapVertices = 6;
@@ -195,7 +195,7 @@ TEST(LineRendererStreamTest, TrailRoundTripKeepsNoRuntime){
     trail.time = 0.3f;
     trail.minVertexDistance = 0.1f;
     trail.widthMultiplier = 1.0f;
-    trail.widthCurve = curveOf({CurveKey{0.0f, 0.22307944f}, CurveKey{1.0f, 0.0f}});
+    trail.widthCurve = lineRendererStreamCurveOf({CurveKey{0.0f, 0.22307944f}, CurveKey{1.0f, 0.0f}});
     trail.colorGradient = twoColorsLinear(Vector4(1.0f, 0.3f, 0.0f, 1.0f), Vector4(1.0f, 0.3f, 0.0f, 0.0f));
     trail.emitting = false;
     trail.autodestruct = true;
@@ -325,12 +325,12 @@ TEST(LineRendererStreamTest, LineCatalogPositionsAndFlags){
 TEST(LineRendererStreamTest, FactoryEmitsCurvesGradientsAndFields){
     // S27's literals (stream/CurveCodec): the keys with their modes, a lambda for the wraps; a
     // step tangent is INFINITY
-    const Curve curve = curveOf({CurveKey{0.0f, 1.0f, 0.0f, std::numeric_limits<float>::infinity()}, CurveKey{1.0f, 0.0f}},
+    const Curve curve = lineRendererStreamCurveOf({CurveKey{0.0f, 1.0f, 0.0f, std::numeric_limits<float>::infinity()}, CurveKey{1.0f, 0.0f}},
                                 CurveWrapMode::PingPong, CurveWrapMode::Loop);
     EXPECT_EQ(Factory::formatCurve(curve),
               "[]{ Curve c = Curve({CurveKey{0.0f, 1.0f, 0.0f, INFINITY, 0}, CurveKey{1.0f, 0.0f, 0.0f, 0.0f, 0}}); "
               "c.preWrapMode = CurveWrapMode::PingPong; c.postWrapMode = CurveWrapMode::Loop; return c; }()");
-    const Gradient gradient = gradientOf({GradientColorKey{0.0f, Vector3(1, 0, 0)}}, {GradientAlphaKey{0.0f, 1.0f}, GradientAlphaKey{1.0f, 0.0f}}, GradientMode::Fixed);
+    const Gradient gradient = lineRendererStreamGradientOf({GradientColorKey{0.0f, Vector3(1, 0, 0)}}, {GradientAlphaKey{0.0f, 1.0f}, GradientAlphaKey{1.0f, 0.0f}}, GradientMode::Fixed);
     EXPECT_EQ(Factory::formatGradient(gradient),
               "[]{ Gradient g; g.colorKeys = {GradientColorKey{0.0f, Vector3(1.0f, 0.0f, 0.0f)}}; "
               "g.alphaKeys = {GradientAlphaKey{0.0f, 1.0f}, GradientAlphaKey{1.0f, 0.0f}}; g.mode = GradientMode::Fixed; return g; }()");
@@ -406,7 +406,7 @@ TEST(LineRendererStreamTest, FactoryCodeCompiles){
     scene.addComponent<LineRendererComponent>(entity, authoredLines());
     TrailRendererComponent trail;
     trail.time = 0.3f;
-    trail.widthCurve = curveOf({CurveKey{0.0f, 1.0f, 0.0f, std::numeric_limits<float>::infinity()}, CurveKey{1.0f, 0.0f}});
+    trail.widthCurve = lineRendererStreamCurveOf({CurveKey{0.0f, 1.0f, 0.0f, std::numeric_limits<float>::infinity()}, CurveKey{1.0f, 0.0f}});
     trail.colorGradient = twoColorsLinear(Vector4(1, 0, 0, 1), Vector4(0, 0, 1, 0));
     trail.shaderGlobalBindings = {{"tint", "_Tint"}};
     trail.customShader = "library:line_flipbook";

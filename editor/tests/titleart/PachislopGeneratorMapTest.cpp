@@ -38,7 +38,7 @@ namespace {
                                                            "shockwave", "magicCircle", "brushSwirl", "glints", "lensFlare",
                                                            "backlight", "fire", "smoke", "corona", "lightning"};
 
-    const Json& fixture() {
+    const Json& pachislopGeneratorMapFixture() {
         static const Json parsed = []() {
             std::ifstream in(std::string(JASPER_EDITOR_TEST_FIXTURES) + "/../titleart/fixtures/pachislop-generator-presets.json");
             std::stringstream text;
@@ -50,14 +50,14 @@ namespace {
 
     // Pachislop's param keys by generator type
     Json paramKeys() {
-        return fixture().is_object() ? fixture().value("_param_keys", Json::object()) : Json::object();
+        return pachislopGeneratorMapFixture().is_object() ? pachislopGeneratorMapFixture().value("_param_keys", Json::object()) : Json::object();
     }
 
     // the fixture's presets: "<pachislopType>/<presetId>" -> its params
     std::vector<std::pair<std::string, const Json*>> pachislopPresets() {
         std::vector<std::pair<std::string, const Json*>> out;
-        if (!fixture().is_object()) return out;
-        for (auto it = fixture().begin(); it != fixture().end(); ++it) {
+        if (!pachislopGeneratorMapFixture().is_object()) return out;
+        for (auto it = pachislopGeneratorMapFixture().begin(); it != pachislopGeneratorMapFixture().end(); ++it) {
             if (it.key().empty() || it.key()[0] == '_') continue;
             out.emplace_back(it.key(), &it.value());
         }
@@ -115,8 +115,8 @@ namespace {
 }
 
 TEST(PachislopGeneratorMapTest, FixtureParses) {
-    ASSERT_TRUE(fixture().is_object()) << "fixtures/pachislop-generator-presets.json does not parse";
-    ASSERT_TRUE(fixture().contains("_param_keys"));
+    ASSERT_TRUE(pachislopGeneratorMapFixture().is_object()) << "fixtures/pachislop-generator-presets.json does not parse";
+    ASSERT_TRUE(pachislopGeneratorMapFixture().contains("_param_keys"));
     EXPECT_EQ(pachislopPresets().size(), 72u);
 }
 

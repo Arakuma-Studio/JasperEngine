@@ -31,13 +31,13 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    const float legacyStep = 1.0f / 60.0f;
+    const float physics2DLegacyStep = 1.0f / 60.0f;
 
-    std::string fixturePath() {
+    std::string physics2DLegacyFixturePath() {
         return std::string(JASPER_EDITOR_TEST_FIXTURES) + "/physics2d/legacy_run.csv";
     }
 
-    Entity legacyEntity(Scene& scene, const Vector3& position, float rollDegrees = 0.0f) {
+    Entity physics2DLegacyEntity(Scene& scene, const Vector3& position, float rollDegrees = 0.0f) {
         Entity entity = scene.createEntity();
         Transform transform;
         transform.position = position;
@@ -49,7 +49,7 @@ namespace {
     }
 
     // a collider block as the editor wrote it before (numColliders, vertices, every flag)
-    std::string legacyCollider(const std::string& type, const std::string& pointA, const std::string& pointB, float radius,
+    std::string physics2DLegacyCollider(const std::string& type, const std::string& pointA, const std::string& pointB, float radius,
                                const std::string& vertices, float density, float friction, float restitution) {
         std::ostringstream yaml;
         yaml << "  - type: " << type << "\n"
@@ -72,7 +72,7 @@ namespace {
         return yaml.str();
     }
 
-    std::string legacyBody(const std::string& type, const std::vector<std::string>& colliders) {
+    std::string physics2DLegacyBody(const std::string& type, const std::vector<std::string>& colliders) {
         std::ostringstream yaml;
         yaml << "enabled: true\n"
              << "type: " << type << "\n"
@@ -82,7 +82,7 @@ namespace {
         return yaml.str();
     }
 
-    std::string legacyJoint(const std::string& type, Entity bodyA, Entity bodyB, const std::string& anchorA,
+    std::string physics2DLegacyJoint(const std::string& type, Entity bodyA, Entity bodyB, const std::string& anchorA,
                             const std::string& anchorB, const std::string& axis, bool autoAnchors, bool rope) {
         std::ostringstream yaml;
         yaml << "enabled: true\n"
@@ -98,15 +98,15 @@ namespace {
         return yaml.str();
     }
 
-    void addBody(Scene& scene, Entity entity, const std::string& yaml) {
+    void physics2DLegacyAddBody(Scene& scene, Entity entity, const std::string& yaml) {
         scene.addComponent<Rigidbody2DComponent>(entity, Stream::decodeRigidbody2DComponent(YAML::Load(yaml)));
     }
 
-    void addJoint(Scene& scene, Entity entity, const std::string& yaml) {
+    void physics2DLegacyAddJoint(Scene& scene, Entity entity, const std::string& yaml) {
         scene.addComponent<Joint2DComponent>(entity, Stream::decodeJoint2DComponent(YAML::Load(yaml)));
     }
 
-    void resolveTransforms(Scene& scene) {
+    void physics2DLegacyResolveTransforms(Scene& scene) {
         auto transforms = scene.getComponentArray<Transform>();
         for (size_t i = 0; i < transforms->size(); i++) {
             Transform& transform = transforms->getComponentFromIndex(i);
@@ -121,50 +121,50 @@ namespace {
     // centre, axis up) dropped on a static ground, a pendulum on a REVOLUTE joint at a world
     // point, and a ball on a DISTANCE rope from a static hook, with explicit world anchors.
     // Returns, every 10 steps, the pose of each dynamic body: "step,body,x,y,angle".
-    std::vector<std::string> runLegacyScene() {
+    std::vector<std::string> physics2DLegacyRunLegacyScene() {
         Scene scene;
         scene.setPhysicsInterpolation(false);
 
-        const Entity ground = legacyEntity(scene, Vector3(0, -40, 0));
-        addBody(scene, ground, legacyBody("static", {
-            legacyCollider("polygon", "[-800, -20]", "[800, 20]", 0, "[[-800, -20], [800, -20], [800, 20], [-800, 20]]", 1, 0.6f, 0)}));
+        const Entity ground = physics2DLegacyEntity(scene, Vector3(0, -40, 0));
+        physics2DLegacyAddBody(scene, ground, physics2DLegacyBody("static", {
+            physics2DLegacyCollider("polygon", "[-800, -20]", "[800, 20]", 0, "[[-800, -20], [800, -20], [800, 20], [-800, 20]]", 1, 0.6f, 0)}));
 
-        const Entity car = legacyEntity(scene, Vector3(0, 80, 0));
-        addBody(scene, car, legacyBody("dynamic", {
-            legacyCollider("polygon", "[-60, -15]", "[60, 15]", 0, "[[-60, -15], [60, -15], [60, 15], [-60, 15]]", 1, 0.6f, 0)}));
+        const Entity car = physics2DLegacyEntity(scene, Vector3(0, 80, 0));
+        physics2DLegacyAddBody(scene, car, physics2DLegacyBody("dynamic", {
+            physics2DLegacyCollider("polygon", "[-60, -15]", "[60, 15]", 0, "[[-60, -15], [60, -15], [60, 15], [-60, 15]]", 1, 0.6f, 0)}));
 
-        const Entity wheel = legacyEntity(scene, Vector3(45, 50, 0));
-        addBody(scene, wheel, legacyBody("dynamic", {
-            legacyCollider("circle", "[0, 0]", "[0, 0]", 18, "[]", 1, 0.9f, 0)}));
+        const Entity wheel = physics2DLegacyEntity(scene, Vector3(45, 50, 0));
+        physics2DLegacyAddBody(scene, wheel, physics2DLegacyBody("dynamic", {
+            physics2DLegacyCollider("circle", "[0, 0]", "[0, 0]", 18, "[]", 1, 0.9f, 0)}));
 
-        const Entity rearWheel = legacyEntity(scene, Vector3(-45, 50, 0));
-        addBody(scene, rearWheel, legacyBody("dynamic", {
-            legacyCollider("circle", "[0, 0]", "[0, 0]", 18, "[]", 1, 0.9f, 0)}));
+        const Entity rearWheel = physics2DLegacyEntity(scene, Vector3(-45, 50, 0));
+        physics2DLegacyAddBody(scene, rearWheel, physics2DLegacyBody("dynamic", {
+            physics2DLegacyCollider("circle", "[0, 0]", "[0, 0]", 18, "[]", 1, 0.9f, 0)}));
 
-        const Entity wheelJoint = legacyEntity(scene, Vector3(0, 0, 0));
-        addJoint(scene, wheelJoint, legacyJoint("wheel", car, wheel, "[45, 50]", "[0, 0]", "[0, 1]", true, false));
-        const Entity rearWheelJoint = legacyEntity(scene, Vector3(0, 0, 0));
-        addJoint(scene, rearWheelJoint, legacyJoint("wheel", car, rearWheel, "[-45, 50]", "[0, 0]", "[0, 1]", true, false));
+        const Entity wheelJoint = physics2DLegacyEntity(scene, Vector3(0, 0, 0));
+        physics2DLegacyAddJoint(scene, wheelJoint, physics2DLegacyJoint("wheel", car, wheel, "[45, 50]", "[0, 0]", "[0, 1]", true, false));
+        const Entity rearWheelJoint = physics2DLegacyEntity(scene, Vector3(0, 0, 0));
+        physics2DLegacyAddJoint(scene, rearWheelJoint, physics2DLegacyJoint("wheel", car, rearWheel, "[-45, 50]", "[0, 0]", "[0, 1]", true, false));
 
-        const Entity pivot = legacyEntity(scene, Vector3(300, 300, 0));
-        addBody(scene, pivot, legacyBody("static", {
-            legacyCollider("circle", "[0, 0]", "[0, 0]", 4, "[]", 1, 0.6f, 0)}));
-        const Entity bob = legacyEntity(scene, Vector3(380, 300, 0), 30.0f);
-        addBody(scene, bob, legacyBody("dynamic", {
-            legacyCollider("polygon", "[-10, -10]", "[10, 10]", 0, "[[-10, -10], [10, -10], [10, 10], [-10, 10]]", 2, 0.6f, 0)}));
-        const Entity hinge = legacyEntity(scene, Vector3(0, 0, 0));
-        addJoint(scene, hinge, legacyJoint("revolute", pivot, bob, "[300, 300]", "[0, 0]", "[0, 0]", true, false));
+        const Entity pivot = physics2DLegacyEntity(scene, Vector3(300, 300, 0));
+        physics2DLegacyAddBody(scene, pivot, physics2DLegacyBody("static", {
+            physics2DLegacyCollider("circle", "[0, 0]", "[0, 0]", 4, "[]", 1, 0.6f, 0)}));
+        const Entity bob = physics2DLegacyEntity(scene, Vector3(380, 300, 0), 30.0f);
+        physics2DLegacyAddBody(scene, bob, physics2DLegacyBody("dynamic", {
+            physics2DLegacyCollider("polygon", "[-10, -10]", "[10, 10]", 0, "[[-10, -10], [10, -10], [10, 10], [-10, 10]]", 2, 0.6f, 0)}));
+        const Entity hinge = physics2DLegacyEntity(scene, Vector3(0, 0, 0));
+        physics2DLegacyAddJoint(scene, hinge, physics2DLegacyJoint("revolute", pivot, bob, "[300, 300]", "[0, 0]", "[0, 0]", true, false));
 
-        const Entity hook = legacyEntity(scene, Vector3(-300, 300, 0));
-        addBody(scene, hook, legacyBody("static", {
-            legacyCollider("circle", "[0, 0]", "[0, 0]", 4, "[]", 1, 0.6f, 0)}));
-        const Entity ball = legacyEntity(scene, Vector3(-240, 260, 0));
-        addBody(scene, ball, legacyBody("dynamic", {
-            legacyCollider("circle", "[0, 0]", "[0, 0]", 10, "[]", 1, 0.6f, 0.2f)}));
-        const Entity rope = legacyEntity(scene, Vector3(0, 0, 0));
-        addJoint(scene, rope, legacyJoint("distance", hook, ball, "[-300, 300]", "[-240, 260]", "[0, 0]", false, true));
+        const Entity hook = physics2DLegacyEntity(scene, Vector3(-300, 300, 0));
+        physics2DLegacyAddBody(scene, hook, physics2DLegacyBody("static", {
+            physics2DLegacyCollider("circle", "[0, 0]", "[0, 0]", 4, "[]", 1, 0.6f, 0)}));
+        const Entity ball = physics2DLegacyEntity(scene, Vector3(-240, 260, 0));
+        physics2DLegacyAddBody(scene, ball, physics2DLegacyBody("dynamic", {
+            physics2DLegacyCollider("circle", "[0, 0]", "[0, 0]", 10, "[]", 1, 0.6f, 0.2f)}));
+        const Entity rope = physics2DLegacyEntity(scene, Vector3(0, 0, 0));
+        physics2DLegacyAddJoint(scene, rope, physics2DLegacyJoint("distance", hook, ball, "[-300, 300]", "[-240, 260]", "[0, 0]", false, true));
 
-        resolveTransforms(scene);
+        physics2DLegacyResolveTransforms(scene);
         scene.getSystem<PhysicsSystem>()->load();
 
         const std::vector<std::pair<std::string, Entity>> dynamics = {
@@ -172,8 +172,8 @@ namespace {
 
         std::vector<std::string> rows;
         for (int stepIndex = 1; stepIndex <= 120; stepIndex++) {
-            scene.getSystem<PhysicsSystem>()->fixedUpdate(legacyStep);
-            resolveTransforms(scene);
+            scene.getSystem<PhysicsSystem>()->fixedUpdate(physics2DLegacyStep);
+            physics2DLegacyResolveTransforms(scene);
             if (stepIndex % 10 != 0) continue;
             for (const auto& [name, entity] : dynamics) {
                 Rigidbody2D body(&scene, entity);
@@ -189,18 +189,18 @@ namespace {
 }
 
 TEST(Physics2DLegacy, OldSceneSimulatesAsRecordedOnMain) {
-    const std::vector<std::string> rows = runLegacyScene();
+    const std::vector<std::string> rows = physics2DLegacyRunLegacyScene();
 
     if (const char* record = std::getenv("JASPER_RECORD_PHYSICS2D_FIXTURE"); record && std::string(record) == "1") {
-        std::ofstream out(fixturePath());
-        ASSERT_TRUE(out.good()) << fixturePath();
+        std::ofstream out(physics2DLegacyFixturePath());
+        ASSERT_TRUE(out.good()) << physics2DLegacyFixturePath();
         out << "step,body,x,y,angle\n";
         for (const std::string& row : rows) out << row << "\n";
-        GTEST_SKIP() << "recorded " << fixturePath();
+        GTEST_SKIP() << "recorded " << physics2DLegacyFixturePath();
     }
 
-    std::ifstream in(fixturePath());
-    ASSERT_TRUE(in.good()) << "missing fixture " << fixturePath();
+    std::ifstream in(physics2DLegacyFixturePath());
+    ASSERT_TRUE(in.good()) << "missing fixture " << physics2DLegacyFixturePath();
     std::string line;
     std::getline(in, line); // header
     size_t index = 0;

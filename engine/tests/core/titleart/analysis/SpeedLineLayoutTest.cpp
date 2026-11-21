@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <vector>
 
 using namespace jasperengine;
@@ -19,14 +20,12 @@ using namespace jasperengine::titleart::analysis;
 
 namespace {
 
-    constexpr double PI = 3.14159265358979323846;
-
     // a 1920 x 1080 canvas around the layer's origin
     std::vector<TitleVec2> canvasFrame() {
         return {{-960.0, -540.0}, {960.0, -540.0}, {960.0, 540.0}, {-960.0, 540.0}};
     }
 
-    SpeedLineInput baseInput() {
+    SpeedLineInput speedLineLayoutBaseInput() {
         SpeedLineInput in;
         in.frame = canvasFrame();
         in.k = 1.0;
@@ -42,12 +41,12 @@ namespace {
         }
     }
 
-    struct Box {
+    struct SpeedLineLayoutBox {
         double x0, y0, x1, y1;
     };
 
     // two glyph-like boxes with a gap between them, canvas px
-    const std::vector<Box> GLYPHS = {{-300.0, -60.0, -80.0, 90.0}, {-40.0, -90.0, 280.0, 60.0}};
+    const std::vector<SpeedLineLayoutBox> GLYPHS = {{-300.0, -60.0, -80.0, 90.0}, {-40.0, -90.0, 280.0, 60.0}};
 
     // the boxes rasterised into frameGridSpec's lattice for a 1920 x 1080 canvas (6 px cells,
     // 320 x 192 from (-960, -576)), each cell holding its exact coverage
@@ -65,7 +64,7 @@ namespace {
             for (int i = 0; i < g.w; i++) {
                 const double cx0 = g.x0 + i * c, cy0 = g.y0 + j * c;
                 double area = 0.0;
-                for (const Box& b : GLYPHS) {
+                for (const SpeedLineLayoutBox& b : GLYPHS) {
                     const double w = std::max(0.0, std::min(cx0 + c, b.x1) - std::max(cx0, b.x0));
                     const double h = std::max(0.0, std::min(cy0 + c, b.y1) - std::max(cy0, b.y0));
                     area += w * h;
@@ -81,7 +80,7 @@ namespace {
     double farExit(double cx, double cy, double a) {
         const double dx = std::cos(a), dy = std::sin(a);
         double far = 0.0;
-        for (const Box& b : GLYPHS) {
+        for (const SpeedLineLayoutBox& b : GLYPHS) {
             double t0 = -1e30, t1 = 1e30;
             const double axes[2][4] = {{cx, dx, b.x0, b.x1}, {cy, dy, b.y0, b.y1}};
             bool miss = false;
@@ -109,7 +108,7 @@ namespace {
 TEST(SpeedLineLayoutTest, LinesStayOutsideTheEllipse) {
     for (const SpeedLineType type : {SpeedLineType::Focus, SpeedLineType::Flash, SpeedLineType::Beta}) {
         for (const double jitter : {0.0, 60.0}) {
-            SpeedLineInput in = baseInput();
+            SpeedLineInput in = speedLineLayoutBaseInput();
             in.type = type;
             in.center = {100.0, -50.0};
             in.jitter = jitter;
@@ -130,7 +129,7 @@ TEST(SpeedLineLayoutTest, LinesStayOutsideTheEllipse) {
 
 TEST(SpeedLineLayoutTest, LinesStayOutsideTheRectangle) {
     for (const double jitter : {0.0, 60.0}) {
-        SpeedLineInput in = baseInput();
+        SpeedLineInput in = speedLineLayoutBaseInput();
         in.shape = SpeedLineShape::Rect;
         in.center = {-80.0, 40.0};
         in.jitter = jitter;
@@ -158,7 +157,7 @@ TEST(SpeedLineLayoutTest, LinesStayOutsideThePaddedSilhouette) {
 
     for (const SpeedLineType type : {SpeedLineType::Focus, SpeedLineType::Flash}) {
         for (const double jitter : {0.0, 60.0}) {
-            SpeedLineInput in = baseInput();
+            SpeedLineInput in = speedLineLayoutBaseInput();
             in.type = type;
             in.shape = SpeedLineShape::Layer;
             in.silhouette = &grid;
@@ -177,7 +176,7 @@ TEST(SpeedLineLayoutTest, LinesStayOutsideThePaddedSilhouette) {
                 const double a = std::atan2(p.y - in.center.y, p.x - in.center.x);
                 const double r = std::hypot(p.x - in.center.x, p.y - in.center.y);
                 if (r < farExit(in.center.x, in.center.y, a) + in.padding - tol) close++;
-                for (const Box& b : GLYPHS) {
+                for (const SpeedLineLayoutBox& b : GLYPHS) {
                     if (p.x > b.x0 && p.x < b.x1 && p.y > b.y0 && p.y < b.y1) inGlyph++;
                 }
             });
@@ -188,7 +187,7 @@ TEST(SpeedLineLayoutTest, LinesStayOutsideThePaddedSilhouette) {
 }
 
 TEST(SpeedLineLayoutTest, TogglingSideKeepsTheOtherLines) {
-    SpeedLineInput in = baseInput();
+    SpeedLineInput in = speedLineLayoutBaseInput();
     in.type = SpeedLineType::Flow;
     in.angle = 0.3;
     const SpeedLineLayout both = layoutSpeedLines(in);
@@ -211,7 +210,7 @@ TEST(SpeedLineLayoutTest, TogglingSideKeepsTheOtherLines) {
     }
 
     // a radial type has no sides: the toggle changes nothing
-    SpeedLineInput radial = baseInput();
+    SpeedLineInput radial = speedLineLayoutBaseInput();
     const SpeedLineLayout a = layoutSpeedLines(radial);
     radial.side = SpeedLineSide::Back;
     const SpeedLineLayout b = layoutSpeedLines(radial);
@@ -220,7 +219,7 @@ TEST(SpeedLineLayoutTest, TogglingSideKeepsTheOtherLines) {
 }
 
 TEST(SpeedLineLayoutTest, NoLargeAngularGaps) {
-    SpeedLineInput in = baseInput();
+    SpeedLineInput in = speedLineLayoutBaseInput();
     in.jitter = 60.0;
     for (const double count : {16.0, 160.0, 600.0}) {
         in.count = count;
@@ -229,9 +228,9 @@ TEST(SpeedLineLayoutTest, NoLargeAngularGaps) {
         std::vector<double> angles;
         for (const SpeedLine& line : lay.lines) angles.push_back(std::atan2(line.y - in.center.y, line.x - in.center.x));
         std::sort(angles.begin(), angles.end());
-        double largest = angles.front() + 2.0 * PI - angles.back();
+        double largest = angles.front() + 2.0 * std::numbers::pi - angles.back();
         for (size_t i = 1; i < angles.size(); i++) largest = std::max(largest, angles[i] - angles[i - 1]);
-        const double mean = 2.0 * PI / (double)angles.size();
+        const double mean = 2.0 * std::numbers::pi / (double)angles.size();
         EXPECT_LE(largest, 2.0 * mean) << "count " << count;
     }
 }
@@ -240,7 +239,7 @@ TEST(SpeedLineLayoutTest, PxScalesAgreeInCanvasPx) {
     const Grid grid1 = glyphGrid(1.0), grid2 = glyphGrid(2.0);
     for (const SpeedLineShape shape : {SpeedLineShape::Ellipse, SpeedLineShape::Layer}) {
         for (const SpeedLineType type : {SpeedLineType::Focus, SpeedLineType::Flow, SpeedLineType::Flash}) {
-            SpeedLineInput in = baseInput();
+            SpeedLineInput in = speedLineLayoutBaseInput();
             in.type = type;
             in.shape = shape;
             in.center = {-10.0, 0.0};

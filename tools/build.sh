@@ -300,7 +300,7 @@ if [[ "${DOCKER_GPU:-0}" == 1 ]]; then
     ENV_FLAGS+=(-e DOCKER_GPU=1)
     [[ -n "${JE_GPU_DISPLAY:-}" ]] && ENV_FLAGS+=(-e "JE_GPU_DISPLAY=$JE_GPU_DISPLAY")
 fi
-for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_UPDATE_GOLDEN JASPER_TITLE_UPDATE_GOLDEN JASPER_TITLE_LIBRARY_SHARD JASPER_TITLE_LIBRARY_KINDS JASPER_TITLE_LIBRARY_ONLY JASPER_TEST_WRITE_ACTUAL \
+for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_UPDATE_GOLDEN JASPER_TITLE_UPDATE_GOLDEN JASPER_TITLE_LIBRARY_KINDS JASPER_TITLE_LIBRARY_ONLY JASPER_TEST_WRITE_ACTUAL \
             JASPER_TEST_KEEP_TEMP JASPER_REFLECT_WRITE_FIXTURE JASPER_BENCH_ENTITIES JASPER_HTMLUI_PERF_SLACK JASPER_TEST_PERF_SLACK \
             HTMLUI_LIVE_NETWORK JASPER_CHROME JASPER_ZERO_COST_UPDATE JASPER_PICK_SIMD \
             JASPER_HTMLUI_S16_OFF JASPER_HTMLUI_BATCHING JASPER_HTMLUI_SDF_PRIMITIVES JASPERENGINE_GPU_TIMER JASPER_HTMLUI_PROFILE \
@@ -822,8 +822,15 @@ android)
     mkdir -p "$ROOT/$APK_DIR"
     # Gradle's output also goes to gradle.log: a deprecation in our Gradle files fails the build
     # (tools/ci/check_gradle_warnings.py; the template sets --warning-mode all)
+    # The NDK app/build.gradle pins, installed before Gradle when the SDK lacks it: the Android Gradle
+    # plugin's own download of it has no retry (main's run 44404218432 failed on a Premature EOF)
     run bash -euo pipefail -c "
         cd engine/workspaces/androidstudio
+        ndk=\$(sed -n 's/^ *ndkVersion = \"\\(.*\\)\"\$/\\1/p' app/build.gradle)
+        [[ -n \"\$ndk\" ]] || { echo 'no ndkVersion in app/build.gradle' >&2; exit 1; }
+        if [[ ! -f \"\$ANDROID_HOME/ndk/\$ndk/source.properties\" ]]; then
+            /src/tools/ci/retry.sh bash -c \"sdkmanager --install 'ndk;\$ndk' > /dev/null && test -f '\$ANDROID_HOME/ndk/\$ndk/source.properties'\"
+        fi
         env $PROJECT_ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon assembleDebug 2>&1 | tee /src/$APK_DIR/gradle.log
         cp app/build/outputs/apk/debug/*.apk /src/$APK_DIR/
         python3 /src/tools/ci/check_gradle_warnings.py /src/$APK_DIR/gradle.log

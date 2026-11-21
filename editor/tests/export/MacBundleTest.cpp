@@ -20,7 +20,7 @@ using jasperengine::test::TestTempDir;
 
 namespace mac_bundle_test {
 
-    std::string readFile(const fs::path& path) {
+    std::string readBundleFile(const fs::path& path) {
         std::ifstream in(path, std::ios::binary);
         return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     }
@@ -48,8 +48,8 @@ TEST(MacBundle, PrivacyManifestAndPlistEntries) {
     std::vector<BuildWarning> warnings;
     std::string error;
     ASSERT_TRUE(platform::finishMacBundle(bundle, settings, warnings, error)) << error;
-    EXPECT_EQ(readFile(bundle / "Contents/Resources/PrivacyInfo.xcprivacy"), settings.privacyManifest);
-    const std::string plist = readFile(bundle / "Contents/Info.plist");
+    EXPECT_EQ(readBundleFile(bundle / "Contents/Resources/PrivacyInfo.xcprivacy"), settings.privacyManifest);
+    const std::string plist = readBundleFile(bundle / "Contents/Info.plist");
     EXPECT_NE(plist.find("<key>NSGKFriendListUsageDescription</key>\n\t<string>Game Center friends</string>"), std::string::npos) << plist;
     EXPECT_NE(plist.find("<key>CFBundleIdentifier</key>"), std::string::npos);
 }

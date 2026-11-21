@@ -606,11 +606,18 @@ Each backend test is parameterised over `{Native, Polling}`.
   shared `jasperengine::test::TempDir`. After the S04 merge S04's file-local helpers met others
   (`lowerExtension`, `joinRelative`, `cacheVersion`, `trim`, `fixture`...): they have file-specific
   names now.
-- **Delete hold under polling** is two poll intervals + 100 ms (R4's 200 ms with native events):
-  a scan between a save's delete and its rewrite would otherwise report a removal and an
-  addition (`FileWatcherTests.DeleteRecreate/Polling` under TSan's slowdown). One interval + 100 ms
-  was not enough where a slow scan or a preempted poll thread delays the next poll (the macOS CI
-  runner, merge-queue run 44236737165); a removal is still reported well within AC1's interval + 1 s.
+- **Delete hold under polling** lasts until the next completed scan (#37), on top of R4's 200 ms
+  (native events keep 200 ms alone): a scan between a save's delete and its rewrite reports a
+  removal, and only the next scan sees the file back. A time-based hold (one interval and 100 ms,
+  then two) bet on when that scan ends and lost where a slow scan or a preempted poll thread
+  delayed it (the macOS CI runner, merge-queue run 44236737165). The polling backend ends each pass
+  with a `ScanDone` raw event (after its events; a pass with none reports it only while a removal
+  waits, so an idle watch wakes nobody), each tagged with its backend (`RawEvent::source`: the
+  project's or a linked folder's), and the coalescer releases a removal at the second `ScanDone`
+  of its source, the first ending the scan that reported it. A retired linked backend releases
+  what it held. `Polling/FileWatcherPolling.DeleteRecreateAcrossALateScan` holds that scan past the
+  old hold through `watch::setPollingScanHookForTesting`. A removal comes out about two intervals
+  after it happened (the old hold: up to three intervals + 100 ms).
 - **S09 and S24 landed during the stream** (merged at the end). The `[Hot Reload]` Console
   lines are in S09's `asset` log category and the watcher's own warnings (a fallback to polling,
   an overflow) in `io`, so the Console's Category filter separates them. `FileWatchSubscription`

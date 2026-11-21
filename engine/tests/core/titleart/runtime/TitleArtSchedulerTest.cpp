@@ -104,7 +104,7 @@ namespace {
                                               std::make_shared<const TitleArtDoc>(), 0x1234u);
     }
 
-    TitleArtLiveState stateOf(const std::string& label, int priority = 0, bool visible = true){
+    TitleArtLiveState titleArtSchedulerStateOf(const std::string& label, int priority = 0, bool visible = true){
         TitleArtLiveState state;
         state.label = label;
         state.priority = priority;
@@ -113,7 +113,7 @@ namespace {
     }
 
     // one frame: steps within `budgetUs`, then every live's end of frame
-    TitleFrameReport frame(const std::vector<TitleArtLive*>& lives, const TitleJobFactory& factory, uint32_t budgetUs, double& clock,
+    TitleFrameReport titleArtSchedulerFrame(const std::vector<TitleArtLive*>& lives, const TitleJobFactory& factory, uint32_t budgetUs, double& clock,
                            double factor = 1.0){
         const TitleFrameReport report = TitleArtScheduler::schedule(lives, factory, budgetUs, factor);
         TitleLiveLimits limits;
@@ -131,11 +131,11 @@ TEST_F(TitleArtSchedulerTest, NoFrameRunsPastTheBudgetButTheGuaranteedStep) {
     auto log = std::make_shared<FakeLog>();
     const TitleJobFactory factory = fakeFactory(log, 10, 700);
     auto a = makeLive();
-    a->setState(stateOf("a"), 1, {});
+    a->setState(titleArtSchedulerStateOf("a"), 1, {});
     double clock = 0.0;
     int frames = 0;
     while (a->hasWork() && frames < 100){
-        const TitleFrameReport report = frame({a.get()}, factory, 2000, clock);
+        const TitleFrameReport report = titleArtSchedulerFrame({a.get()}, factory, 2000, clock);
         // R15: whole steps while spent + estimate <= budget; the first always runs
         EXPECT_LE(report.spentUs, 2000.0) << "frame " << frames;
         EXPECT_GE(report.steps, 1u) << "a visible request makes progress every frame";
@@ -149,8 +149,8 @@ TEST_F(TitleArtSchedulerTest, NoFrameRunsPastTheBudgetButTheGuaranteedStep) {
     // a step over the budget runs alone in its frame
     auto slow = std::make_shared<FakeLog>();
     auto b = makeLive();
-    b->setState(stateOf("b"), 2, {});
-    const TitleFrameReport over = frame({b.get()}, fakeFactory(slow, 3, 5000), 2000, clock);
+    b->setState(titleArtSchedulerStateOf("b"), 2, {});
+    const TitleFrameReport over = titleArtSchedulerFrame({b.get()}, fakeFactory(slow, 3, 5000), 2000, clock);
     EXPECT_EQ(over.steps, 1u);
     EXPECT_EQ(over.overBudgetSteps, 1u);
 }
@@ -162,9 +162,9 @@ TEST_F(TitleArtSchedulerTest, TheRuntimeFrameAdvancesOnTheMainLoopWithoutACommit
     TitleArtScheduler& scheduler = TitleArtScheduler::get();
     scheduler.setJobFactoryForTesting(fakeFactory(log, 8, 100000));
     auto live = makeLive();
-    live->setState(stateOf("preview"), 1, {});
+    live->setState(titleArtSchedulerStateOf("preview"), 1, {});
     scheduler.add(live.get());
-    for (int frame = 0; frame < 5; frame++){
+    for (int titleArtSchedulerFrame = 0; titleArtSchedulerFrame < 5; titleArtSchedulerFrame++){
         diag::heartbeat();
         TitleArtSystem::runRuntimeFrame(true);
     }
@@ -179,10 +179,10 @@ TEST_F(TitleArtSchedulerTest, TheRuntimeFrameAdvancesOnTheMainLoopWithoutACommit
 TEST_F(TitleArtSchedulerTest, PlatformFactorScalesEstimates) {
     auto log = std::make_shared<FakeLog>();
     auto a = makeLive();
-    a->setState(stateOf("a"), 1, {});
+    a->setState(titleArtSchedulerStateOf("a"), 1, {});
     double clock = 0.0;
     // 300 us steps on a mobile device (x 6): one a frame in 2 ms
-    const TitleFrameReport report = frame({a.get()}, fakeFactory(log, 6, 300), 2000, clock, titlePlatformFactor(DevicePlatformGroup::Mobile));
+    const TitleFrameReport report = titleArtSchedulerFrame({a.get()}, fakeFactory(log, 6, 300), 2000, clock, titlePlatformFactor(DevicePlatformGroup::Mobile));
     EXPECT_EQ(report.steps, 1u);
     EXPECT_DOUBLE_EQ(report.spentUs, 1800.0);
     EXPECT_EQ(titlePlatformFactor(DevicePlatformGroup::Web), 4.0);
@@ -196,16 +196,16 @@ TEST_F(TitleArtSchedulerTest, PriorityThenVisibilityThenAge) {
     auto newLow = makeLive();
     auto high = makeLive();
     auto hiddenHigh = makeLive();
-    oldLow->setState(stateOf("oldLow", 0), 1, {});
-    newLow->setState(stateOf("newLow", 0), 2, {});
-    high->setState(stateOf("high", 5), 3, {});
-    TitleArtLiveState hiddenState = stateOf("hiddenHigh", 5, false);
+    oldLow->setState(titleArtSchedulerStateOf("oldLow", 0), 1, {});
+    newLow->setState(titleArtSchedulerStateOf("newLow", 0), 2, {});
+    high->setState(titleArtSchedulerStateOf("high", 5), 3, {});
+    TitleArtLiveState hiddenState = titleArtSchedulerStateOf("hiddenHigh", 5, false);
     hiddenState.renderWhenHidden = true;
     hiddenHigh->setState(hiddenState, 4, {});
     double clock = 0.0;
     std::vector<TitleArtLive*> lives = {newLow.get(), oldLow.get(), hiddenHigh.get(), high.get()};
     // each step is over the budget: one title a frame, in the scheduler's order
-    for (int i = 0; i < 4; i++) frame(lives, factory, 1000, clock);
+    for (int i = 0; i < 4; i++) titleArtSchedulerFrame(lives, factory, 1000, clock);
     ASSERT_EQ(log->started.size(), 4u);
     EXPECT_EQ(log->started[0], "high") << "the highest priority first";
     EXPECT_EQ(log->started[1], "hiddenHigh") << "then, at the same priority, visible before hidden";
@@ -216,14 +216,14 @@ TEST_F(TitleArtSchedulerTest, PriorityThenVisibilityThenAge) {
 TEST_F(TitleArtSchedulerTest, HiddenTitlesGetNoSteps) {
     auto log = std::make_shared<FakeLog>();
     auto counter = makeLive();
-    counter->setState(stateOf("counter", 0, false), 1, {});
+    counter->setState(titleArtSchedulerStateOf("counter", 0, false), 1, {});
     double clock = 0.0;
-    for (int i = 0; i < 10; i++) frame({counter.get()}, fakeFactory(log, 2, 100), 2000, clock);
+    for (int i = 0; i < 10; i++) titleArtSchedulerFrame({counter.get()}, fakeFactory(log, 2, 100), 2000, clock);
     EXPECT_TRUE(log->stepped.empty()) << "R13: a hidden counter costs nothing";
     EXPECT_EQ(counter->status().pending, "hidden");
     // shown again, it renders
-    counter->setState(stateOf("counter", 0, true), 1, {});
-    frame({counter.get()}, fakeFactory(log, 2, 100), 2000, clock);
+    counter->setState(titleArtSchedulerStateOf("counter", 0, true), 1, {});
+    titleArtSchedulerFrame({counter.get()}, fakeFactory(log, 2, 100), 2000, clock);
     EXPECT_EQ(counter->front().hash, 1u);
 }
 
@@ -231,12 +231,12 @@ TEST_F(TitleArtSchedulerTest, NewStateUnderHalfDoneRestarts) {
     auto log = std::make_shared<FakeLog>();
     const TitleJobFactory factory = fakeFactory(log, 10, 1000);
     auto a = makeLive();
-    a->setState(stateOf("first"), 1, {});
+    a->setState(titleArtSchedulerStateOf("first"), 1, {});
     double clock = 0.0;
-    frame({a.get()}, factory, 2000, clock);     // 2 of 10 steps: 20 %
-    a->setState(stateOf("second"), 2, {});
+    titleArtSchedulerFrame({a.get()}, factory, 2000, clock);     // 2 of 10 steps: 20 %
+    a->setState(titleArtSchedulerStateOf("second"), 2, {});
     EXPECT_EQ(a->restarts(), 1) << "R12: under 50 % done, the render starts again with the new state";
-    while (a->hasWork()) frame({a.get()}, factory, 2000, clock);
+    while (a->hasWork()) titleArtSchedulerFrame({a.get()}, factory, 2000, clock);
     EXPECT_EQ(a->front().hash, 2u);
     EXPECT_EQ(log->started, (std::vector<std::string>{"first", "second"}));
 }
@@ -245,17 +245,17 @@ TEST_F(TitleArtSchedulerTest, NewStateOverHalfDoneFinishesThenRendersTheLatest) 
     auto log = std::make_shared<FakeLog>();
     const TitleJobFactory factory = fakeFactory(log, 10, 1000);
     auto a = makeLive();
-    a->setState(stateOf("first"), 1, {});
+    a->setState(titleArtSchedulerStateOf("first"), 1, {});
     double clock = 0.0;
-    for (int i = 0; i < 3; i++) frame({a.get()}, factory, 2000, clock);   // 60 %
+    for (int i = 0; i < 3; i++) titleArtSchedulerFrame({a.get()}, factory, 2000, clock);   // 60 %
     // a keyed parameter that changes every frame cannot starve the render (R12)
-    a->setState(stateOf("second"), 2, {});
-    a->setState(stateOf("third"), 3, {});
+    a->setState(titleArtSchedulerStateOf("second"), 2, {});
+    a->setState(titleArtSchedulerStateOf("third"), 3, {});
     EXPECT_EQ(a->restarts(), 0);
-    frame({a.get()}, factory, 2000, clock);
-    frame({a.get()}, factory, 2000, clock);
+    titleArtSchedulerFrame({a.get()}, factory, 2000, clock);
+    titleArtSchedulerFrame({a.get()}, factory, 2000, clock);
     EXPECT_EQ(a->front().hash, 1u) << "the first render finished and shows";
-    while (a->hasWork()) frame({a.get()}, factory, 2000, clock);
+    while (a->hasWork()) titleArtSchedulerFrame({a.get()}, factory, 2000, clock);
     EXPECT_EQ(a->front().hash, 3u) << "then the latest state, never the one in between";
     EXPECT_EQ(log->started, (std::vector<std::string>{"first", "third"}));
 }
@@ -264,11 +264,11 @@ TEST_F(TitleArtSchedulerTest, CoalescingKeepsOneQueuedRequest) {
     auto log = std::make_shared<FakeLog>();
     const TitleJobFactory factory = fakeFactory(log, 1, 100);
     auto a = makeLive();
-    TitleArtLiveState hidden = stateOf("x", 0, false);
+    TitleArtLiveState hidden = titleArtSchedulerStateOf("x", 0, false);
     for (uint64_t h = 1; h <= 20; h++) a->setState(hidden, h, {});
     double clock = 0.0;
-    a->setState(stateOf("latest"), 20, {});
-    while (a->hasWork()) frame({a.get()}, factory, 2000, clock);
+    a->setState(titleArtSchedulerStateOf("latest"), 20, {});
+    while (a->hasWork()) titleArtSchedulerFrame({a.get()}, factory, 2000, clock);
     EXPECT_EQ(log->started, (std::vector<std::string>{"latest"})) << "a queued request is replaced, never stacked";
     EXPECT_EQ(a->front().hash, 20u);
 }
@@ -278,19 +278,19 @@ TEST_F(TitleArtSchedulerTest, ShownBeforeStateSwapsFromTheCacheWithoutRendering)
     const TitleJobFactory factory = fakeFactory(log, 2, 100);
     auto a = makeLive();
     double clock = 0.0;
-    a->setState(stateOf("A"), 1, {});
-    while (a->hasWork()) frame({a.get()}, factory, 2000, clock);
-    a->setState(stateOf("B"), 2, {});
-    while (a->hasWork()) frame({a.get()}, factory, 2000, clock);
+    a->setState(titleArtSchedulerStateOf("A"), 1, {});
+    while (a->hasWork()) titleArtSchedulerFrame({a.get()}, factory, 2000, clock);
+    a->setState(titleArtSchedulerStateOf("B"), 2, {});
+    while (a->hasWork()) titleArtSchedulerFrame({a.get()}, factory, 2000, clock);
     const uint64_t stepsBefore = a->stepsRun();
     // R14: toggling back to the previous text renders nothing
-    a->setState(stateOf("A"), 1, {});
+    a->setState(titleArtSchedulerStateOf("A"), 1, {});
     EXPECT_FALSE(a->hasWork());
-    frame({a.get()}, factory, 2000, clock);
+    titleArtSchedulerFrame({a.get()}, factory, 2000, clock);
     EXPECT_EQ(a->front().hash, 1u);
     EXPECT_EQ(a->stepsRun(), stepsBefore);
     // and the state already shown is dropped at once
-    a->setState(stateOf("A"), 1, {});
+    a->setState(titleArtSchedulerStateOf("A"), 1, {});
     EXPECT_FALSE(a->hasWork());
 }
 
@@ -299,19 +299,19 @@ TEST_F(TitleArtSchedulerTest, AllocationFailuresRetryAfterTwoFourEightSecondsThe
     const TitleJobFactory factory = fakeFactory(log, 1, 100);
     auto a = makeLive();
     double clock = 0.0;
-    a->setState(stateOf("A"), 1, {});
-    while (a->hasWork()) frame({a.get()}, factory, 2000, clock);
+    a->setState(titleArtSchedulerStateOf("A"), 1, {});
+    while (a->hasWork()) titleArtSchedulerFrame({a.get()}, factory, 2000, clock);
     ASSERT_EQ(a->front().hash, 1u);
     // every later attempt fails: the previous image stays
     auto failing = [log](const TitleJobSpec& spec) -> std::unique_ptr<TitleJob> {
         log->started.push_back(spec.label);
         return std::make_unique<FakeJob>(log, spec.label, 1, 100, true);
     };
-    a->setState(stateOf("B"), 2, {});
+    a->setState(titleArtSchedulerStateOf("B"), 2, {});
     std::vector<double> attempts;
     for (int i = 0; i < 60 * 20; i++){
         const size_t before = log->started.size();
-        frame({a.get()}, failing, 2000, clock);
+        titleArtSchedulerFrame({a.get()}, failing, 2000, clock);
         if (log->started.size() > before) attempts.push_back(clock);
     }
     ASSERT_EQ(attempts.size(), 4u) << "the first attempt and three retries";
@@ -322,8 +322,8 @@ TEST_F(TitleArtSchedulerTest, AllocationFailuresRetryAfterTwoFourEightSecondsThe
     EXPECT_TRUE(a->status().failed);
     EXPECT_EQ(a->status().pending, "failed");
     // a new state tries again
-    a->setState(stateOf("C"), 3, {});
-    while (a->hasWork()) frame({a.get()}, factory, 2000, clock);
+    a->setState(titleArtSchedulerStateOf("C"), 3, {});
+    while (a->hasWork()) titleArtSchedulerFrame({a.get()}, factory, 2000, clock);
     EXPECT_EQ(a->front().hash, 3u);
     EXPECT_FALSE(a->status().failed);
 }
@@ -423,7 +423,7 @@ namespace {
         TitleLiveLimits limits;
         double seconds = 0.0;
         for (int render = 0; render < 6; render++){
-            live->setState(stateOf("render " + std::to_string(render)), 100 + render, {});
+            live->setState(titleArtSchedulerStateOf("render " + std::to_string(render)), 100 + render, {});
             while (live->hasWork() && run.frames < 10000){
                 const double start = *clock;
                 const TitleFrameReport report = TitleArtScheduler::schedule({live.get()}, context);
@@ -477,28 +477,28 @@ TEST_F(TitleArtSchedulerTest, RenderTiersFollowTheSimulatedDevice) {
     QualityResolver::reset();
     QualityResolver::setPlatformGroup(DevicePlatformGroup::Desktop);
     auto live = makeLive();
-    TitleArtRuntime::setState(*live, stateOf("tiers"));
+    TitleArtRuntime::setState(*live, titleArtSchedulerStateOf("tiers"));
     EXPECT_EQ(live->state().fxTier, (int)FxTier::Desktop);
     const uint64_t desktop = live->stateHash();
-    const uint64_t prebake = TitleArtRuntime::prebakeKeyOf(*live, stateOf("tiers"));
+    const uint64_t prebake = TitleArtRuntime::prebakeKeyOf(*live, titleArtSchedulerStateOf("tiers"));
 
     QualityResolver::setPlatformGroup(DevicePlatformGroup::Mobile);
-    TitleArtRuntime::setState(*live, stateOf("tiers"));
+    TitleArtRuntime::setState(*live, titleArtSchedulerStateOf("tiers"));
     EXPECT_EQ(live->state().fxTier, (int)FxTier::Mobile) << "a phone draws S83's mobile reductions";
     EXPECT_NE(live->stateHash(), desktop) << "the simulated device renders again";
-    EXPECT_EQ(TitleArtRuntime::prebakeKeyOf(*live, stateOf("tiers")), prebake);
-    EXPECT_EQ(TitleArtRuntime::stateHashOf(*live, stateOf("tiers")), live->stateHash()) << "the hash a prebaked image is given matches";
+    EXPECT_EQ(TitleArtRuntime::prebakeKeyOf(*live, titleArtSchedulerStateOf("tiers")), prebake);
+    EXPECT_EQ(TitleArtRuntime::stateHashOf(*live, titleArtSchedulerStateOf("tiers")), live->stateHash()) << "the hash a prebaked image is given matches";
 
     QualityResolver::setPlatformGroup(DevicePlatformGroup::Web);
-    TitleArtRuntime::setState(*live, stateOf("tiers"));
+    TitleArtRuntime::setState(*live, titleArtSchedulerStateOf("tiers"));
     EXPECT_EQ(live->state().fxTier, (int)FxTier::Mobile) << "the web takes the mobile tier";
 
     QualityResolver::setPlatformGroup(DevicePlatformGroup::Desktop);
     QualityResolver::setTier(DeviceTier::Low);
-    TitleArtRuntime::setState(*live, stateOf("tiers"));
+    TitleArtRuntime::setState(*live, titleArtSchedulerStateOf("tiers"));
     EXPECT_EQ(live->state().fxTier, (int)FxTier::Mobile) << "a Low desktop device takes it too";
     QualityResolver::setTier(DeviceTier::High);
-    TitleArtRuntime::setState(*live, stateOf("tiers"));
+    TitleArtRuntime::setState(*live, titleArtSchedulerStateOf("tiers"));
     EXPECT_EQ(live->state().fxTier, (int)FxTier::Desktop);
     QualityResolver::reset();
 }
