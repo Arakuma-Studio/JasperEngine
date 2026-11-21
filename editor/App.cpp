@@ -1986,7 +1986,10 @@ void editor::App::showFooter(){
         }
         for (size_t i = 0; i < jobBars.size(); i++) {
             if (i > 0) ImGui::SameLine(0.0f, gap);
+            // no frame padding: the bar sits on the footer's text line
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, 0.0f));
             ImGui::ProgressBar(jobBars[i].share, ImVec2(jobBarWidth, ImGui::GetTextLineHeight()), jobBars[i].overlay.c_str());
+            ImGui::PopStyleVar();
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", jobBars[i].tooltip.c_str());
         }
         for (size_t i = 0; i < indicators.size(); i++) {
