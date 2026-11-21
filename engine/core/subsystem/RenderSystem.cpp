@@ -2032,6 +2032,12 @@ void RenderSystem::updateSceneLights(){
             // an Area Light), spot_shadow.z minus the half height, colour times the area. A variant
             // without USE_AREA_LIGHTS reads a spot of cone cos 0 .. 2 + w: its front hemisphere
             sceneLight.packed[1].w = 2.0f + light.getAreaHalfWidth();
+            // (a light added without a direction faces down: a zero axis has no front)
+            if (light.worldDirection.squaredLength() < 1e-12f){
+                sceneLight.packed[1].x = 0.0f;
+                sceneLight.packed[1].y = -1.0f;
+                sceneLight.packed[1].z = 0.0f;
+            }
             sceneLight.packed[2] = Vector4(sceneLight.packed[2].x * areaSize, sceneLight.packed[2].y * areaSize, sceneLight.packed[2].z * areaSize, 0.0f);
             sceneLight.packed[3].z = -light.getAreaHalfHeight();
         }
