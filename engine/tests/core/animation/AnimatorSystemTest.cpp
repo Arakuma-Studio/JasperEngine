@@ -556,7 +556,7 @@ TEST_F(AnimatorSystemTest, SimulationCulledAnimatorAdvancesNothing){
     data.wrap = ClipWrapMode::Loop;
     data.tracks = {track("Hips", ClipChannel::Position, {key(0, {0, 0, 0}), key(1, {1, 0, 0})})};
     data.events = {event(0.5f, "tick")};
-    AnimatorComponent& component = animator(controllerFile("c", oneState(clip("simcull", data))));
+    AnimatorComponent& component = animator(controllerFile("c", animatorSystemOneState(clip("simcull", data))));
     component.cullingMode = AnimatorCullingMode::AlwaysAnimate;
     listen();
     step(0.0);

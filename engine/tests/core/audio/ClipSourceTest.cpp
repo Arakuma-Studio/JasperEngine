@@ -271,7 +271,7 @@ TEST(AudioImportTable, ParseSetAndKeyOfTheSample){
 TEST(AudioClipSource, ForceMonoMeanOfChannels){
     const std::vector<float> left = sine(24000, 440.0);
     const std::vector<float> right = sine(24000, 660.0);
-    const auto bytes = wavBytes({left, right});
+    const auto bytes = clipSourceWavBytes({left, right});
     ClipImportSettings settings;
     settings.trimHeadFrames = 100;
     settings.trimTailFrames = 200;
@@ -315,7 +315,7 @@ TEST(AudioClipSource, ForceMonoMeanOfChannels){
         EXPECT_TRUE(once.instance->hasEnded());
     }
     // a mono file ignores it
-    AudioClipSource single(decoded(wavBytes({left})), mono);
+    AudioClipSource single(decoded(clipSourceWavBytes({left})), mono);
     EXPECT_EQ(single.getChannels(), 1u);
     EXPECT_EQ(single.getFileChannels(), 1u);
 }
