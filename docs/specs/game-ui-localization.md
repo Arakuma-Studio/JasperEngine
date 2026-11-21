@@ -641,18 +641,11 @@ Unit tests follow docs/testing.md naming. "Red" says what fails without the chan
   rather than wrapped in bidi controls, so it reads backwards whatever the text shaper does with
   RLO/PDF.
 - **D-9 Capture in release (AC12).** Capture compiles out with `JASPERENGINE_L10N_CAPTURE=0` (release
-  players); `CaptureCompiledOutOfRelease` (an `nm` check in a release core build) is not added: the
-  release engine tree of `tools/build.sh linux` compiles the capture-off path warning-free.
+  players). The check is `tools/l10n/check_capture_symbols.py` over the release and editor engines
+  (D-11), not the spec's `CaptureCompiledOutOfRelease` gtest.
 - **D-10 Inactive cost (R27, AC3).** `InactiveCostsNothing` counts 0 allocations across 600 rounds of
   every lookup call without tables; the start, document load and frame loop of the spec's version
   need a running engine the core test binary does not have.
-- **D-12 Guide and tool text (R36, R37).** The agent guide's "Other areas" index names the area alone
-  (`localization`, read as `jasper://docs/localization`) without its tools in parentheses: with
-  them the guide left 1,458 of the 1,500 bytes of headroom `tool_budget.py` requires. The tools are
-  named in the `localization` group's description and in `docs/mcp/guide/localization.md`.
-  `configure_game_view`'s `language` description gained the example `en-XA` but not the word
-  "pseudo": the tool would pass its 1,500-character limit; `docs/mcp/guide/ui.md` explains the two
-  pseudo-locales.
 - **D-11 How the rest was built.** The OS locale hooks go through `System::notifyLocalesMayHaveChanged`,
   which re-resolves only when the language list changed (an Android configuration change is also a
   rotation); the prebuilt Android activity now keeps running on `locale|layoutDirection` changes.
@@ -671,10 +664,3 @@ Unit tests follow docs/testing.md naming. "Red" says what fails without the chan
   `configure_game_view`'s `language` description gained the example `en-XA` but not the word
   "pseudo": the tool would pass its 1,500-character limit; `docs/mcp/guide/ui.md` explains the two
   pseudo-locales.
-- **D-11 Not built in this change:** the Text Inspector's key picker with its missing badge and the UI
-  Document's read-only Localization foldout (R32), the Game view Stats overlay's Localization item
-  (R31), the window's Rename Key dialog, Find References, Import/Export dialogs, Pseudo Preview
-  column and Extract to Table (R28; rename, import and export are `edit_string_table` ops), the
-  pseudo goldens (AC9), the benchmarks (AC10 `LocalizationBench`), the Android/web/desktop OS
-  locale event call sites and their manual checks (R10, AC15: `localesChanged()` re-resolves, tested
-  with a fake System), and the slow-lane export test (AC14).
