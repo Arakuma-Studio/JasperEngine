@@ -142,7 +142,7 @@ TEST_F(AreaLightGpu, RectangleAndDiscDrawOnStandardAndHigh){
             ASSERT_TRUE(render()) << "the scene never finished loading";
             EXPECT_NE(groundLitDefines() & areaBit, 0u) << "the ground's Lit has no Area Light path";
             // the profiles texture (the LTC tables) is made for a scene with an Area Light
-            EXPECT_TRUE(scene.getSystem<RenderSystem>()->getLightProfilesTexture().isCreated());
+            EXPECT_TRUE(scene.getSystem<RenderSystem>()->hasLightProfiles());
 
             const std::string name = std::string("area_") + (shape == AreaLightShape::DISC ? "disc" : "rectangle") +
                                      (quality == LitQuality::HIGH ? "_high" : "_standard");
@@ -187,7 +187,7 @@ TEST_F(AreaLightGpu, IesProfileShapesASpot){
     spot.setIesProfile(JASPER_TEST_SOURCE_DIR "/fixtures/ies/oval_beam.ies");
     ASSERT_TRUE(render()) << "the scene never finished loading";
 
-    RenderSystem* render = scene.getSystem<RenderSystem>();
+    std::shared_ptr<RenderSystem> render = scene.getSystem<RenderSystem>();
     EXPECT_EQ(render->getLightProfileBands(), 1);
     EXPECT_EQ(scene.getComponent<LightComponent>(spot.getEntity()).iesProfileBand, 0);
     EXPECT_NE(groundLitDefines() & MaterialPbr::getDefineBit(MaterialPbr::IES_DEFINE), 0u) << "the ground's Lit has no IES path";
@@ -214,7 +214,7 @@ TEST_F(AreaLightGpu, SceneWithoutThemKeepsItsVariants){
     ASSERT_TRUE(render()) << "the scene never finished loading";
     const uint64_t bits = MaterialPbr::getDefineBit(MaterialPbr::AREA_LIGHTS_DEFINE) | MaterialPbr::getDefineBit(MaterialPbr::IES_DEFINE);
     EXPECT_EQ(groundLitDefines() & bits, 0u);
-    EXPECT_FALSE(scene.getSystem<RenderSystem>()->getLightProfilesTexture().isCreated());
+    EXPECT_FALSE(scene.getSystem<RenderSystem>()->hasLightProfiles());
     EXPECT_EQ(scene.getSystem<RenderSystem>()->getLightProfileBands(), 0);
     EXPECT_NO_ENGINE_ERRORS();
 }

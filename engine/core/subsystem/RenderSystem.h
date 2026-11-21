@@ -2504,8 +2504,8 @@ namespace jasperengine{
 		// S92: the profiles' bands of the lights (iesProfileBand) and the texture holding them
 		void updateLightProfiles();
 	public:
-		// the light profiles' texture (tests): its bands, after the LTC tables
-		const TextureRender& getLightProfilesTexture() const { return lightProfiles; }
+		// the light profiles' texture (tests): whether it is made, its bands after the LTC tables
+		bool hasLightProfiles() const { return lightProfilesCreated; }
 		int getLightProfileBands() const { return (int)lightProfileBands.size(); }
 	private:
 		// unified lighting: the scene's lights, then the lights each mesh is lit by
