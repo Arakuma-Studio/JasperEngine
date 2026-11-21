@@ -19,6 +19,10 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
 `UI_EFFECT`; `list_ui_effects`, `jasper://docs/html-ui-effects`); a document's GPU work is not a
 `library:` shader and takes no material.
 
+A Blender-style cavity, edge highlight or bevel look on 3D meshes is not a shader: it is the
+scene's Cavity post effect, `set_scene_settings` `post_processing.cavity_enabled`
+(jasper://docs/post-processing).
+
 - **Mesh shaders go on a material**, per submesh: `set_properties` on the mesh with
   `submeshes[0].material.shader = "library:toon"` (`""` is the built-in Lit shader). A
   `.material` file takes the same keys (`create_material` / `update_material` `values`), and

@@ -1337,11 +1337,11 @@ CASES = [
         "what_happened": "S92 adds Cavity (post_processing.cavity_*): Blender-viewport ridge and valley shading from the "
                          "scene's depth and normals. Asked for Blender-style edge highlights, an agent without the line reaches "
                          "for Edge Detect (luma outlines of the 2D image) or forks a post shader.",
-        "text_at_issue": "jasper://docs/post-processing, Fields: 'Cavity, for a Blender-style cavity, edge highlight or bevel "
-                         "look on 3D meshes (not Edge Detect ... and not a custom post shader): cavity_enabled, cavity_type ...'",
+        "text_at_issue": "jasper://docs/shaders, Library shaders: 'A Blender-style cavity, edge highlight or bevel look on 3D "
+                         "meshes is not a shader: it is the scene's Cavity post effect ...'; jasper://docs/post-processing, Fields: "
+                         "'Cavity, for a Blender-style cavity ... (not Edge Detect ... and not a custom post shader)'",
         "source": "docs/specs/S92-cavity.md, Agent UX",
-        "prompt": "The Crate and the Enemy stand in for my low-poly rocks. Make my low-poly rocks show Blender-style edge "
-                  "highlights.",
+        "prompt": "The Crate stands in for my low-poly rocks. Make my low-poly rocks show Blender-style edge highlights.",
         "mocks": [
             {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
                 "Scene 1 \"Main\" settings:\npost_processing = {\"cavity_enabled\":true}",

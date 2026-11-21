@@ -2054,7 +2054,6 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("ANAMORPHIC_239", FilmGateMask::ANAMORPHIC_239)
         .endNamespace();
 
-    // Cavity (S92)
     luabridge::getGlobalNamespace(L)
         .beginNamespace("CavityType")
         .addVariable("SCREEN", CavityType::SCREEN)
@@ -2543,7 +2542,6 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("edgeDetectThreshold", &PostProcessingSettings::edgeDetectThreshold, &PostProcessingSettings::edgeDetectThreshold)
         .addProperty("edgeDetectIntensity", &PostProcessingSettings::edgeDetectIntensity, &PostProcessingSettings::edgeDetectIntensity)
         .addProperty("edgeDetectColor", &PostProcessingSettings::edgeDetectColor, &PostProcessingSettings::edgeDetectColor)
-        // Cavity (S92)
         .addProperty("cavityEnabled", &PostProcessingSettings::cavityEnabled, &PostProcessingSettings::cavityEnabled)
         .addProperty("cavityType", &PostProcessingSettings::cavityType, &PostProcessingSettings::cavityType)
         .addProperty("cavityScreenRidge", &PostProcessingSettings::cavityScreenRidge, &PostProcessingSettings::cavityScreenRidge)
