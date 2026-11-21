@@ -35,8 +35,12 @@ def plan(files, builds=("linux",), unit=None, mcp=(), fallbacks=(), selected=Non
             "fallbacks": list(fallbacks), "self_tests": [], "modules_off": "", "navigation_off": False}
 
 
-def decide(event, p, error=""):
-    return pl.decide(event, p, error, CI, LEFT_OUT, NIGHTLY_OUT)
+# ci.yml's ADVISORY_LANES during the rollout
+ADVISORY = ("unit", "asan", "htmlui", "mcp", "smoke", "windows-editor-tests")
+
+
+def decide(event, p, error="", advisory=()):
+    return pl.decide(event, p, error, CI, LEFT_OUT, NIGHTLY_OUT, **({"advisory": advisory} if advisory else {}))
 
 
 def runs(result):
@@ -130,6 +134,45 @@ class Rules(unittest.TestCase):
         r = decide("merge_group", plan(["editor/App.cpp"]))
         self.assertEqual(runs(r), set(pl.LANES) - {"mcp"})
 
+    def test_merge_group_leaves_the_advisory_lanes_out(self):
+        # an advisory lane cannot block a merge, so the queue does not wait hours for it (queue runs
+        # of #124-#126: 217-276 min, ASan the longest, the slowest blocking job 96-137)
+        p = plan(["editor/App.cpp"], unit={"core": ["Foo"], "editor": [], "htmlui": []}, mcp=["test_b.py"])
+        r = decide("merge_group", p, advisory=ADVISORY)
+        self.assertEqual(runs(r), {"changes", "lint", *pl.PLATFORM_LANES})
+        self.assertEqual(r["advisory_off"], ["unit", "asan", "htmlui", "mcp", "smoke", "windows-editor-tests"])
+        # the windows editor leg still builds, without its advisory test run
+        self.assertEqual(r["build_only"], ["windows-editor-tests"])
+        for name in ("unit", "asan", "htmlui", "mcp", "smoke"):
+            self.assertIn("ADVISORY_LANES", r["lanes"][name]["why"], name)
+        self.assertEqual(r["mcp"], {"mode": "none", "files": [], "not_in_ci": []})
+        # it follows the list: a lane taken off it runs in the queue again
+        r = decide("merge_group", p, advisory=("unit", "htmlui", "mcp", "smoke"))
+        self.assertEqual(runs(r), set(pl.LANES) - {"unit", "htmlui", "mcp", "smoke"})
+        self.assertEqual((r["advisory_off"], r["build_only"]), (["unit", "htmlui", "mcp", "smoke"], []))
+        self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["unit_run"])), ["core", "editor"])
+        self.assertEqual(decide("merge_group", p, advisory=()), decide("merge_group", p))
+        self.assertEqual(runs(decide("merge_group", p)), set(pl.LANES))
+        # only the lanes the push to main runs instead: lint and the platform builds stay in the queue
+        r = decide("merge_group", p, advisory=("lint", "linux", "windows", "mcp"))
+        self.assertEqual(runs(r), set(pl.LANES) - {"mcp"})
+        self.assertEqual(r["advisory_off"], ["mcp"])
+        # however the queue widened: a .github change, no plan
+        for q in (plan([".github/workflows/ci.yml"], builds=()), None):
+            r = decide("merge_group", q, "exit 2", advisory=ADVISORY)
+            self.assertEqual(runs(r), {"changes", "lint", *pl.PLATFORM_LANES}, q)
+        # a group nothing reads runs nothing, and leaves nothing out for being advisory
+        r = decide("merge_group", plan(["README.md"], builds=()), advisory=ADVISORY)
+        self.assertEqual((runs(r), r["advisory_off"], r["build_only"]), ({"changes"}, [], []))
+
+    def test_advisory_lanes_change_no_pull_request_and_no_full_run(self):
+        for event, p in (("pull_request", plan(["engine/core/Foo.cpp"], unit="all", mcp=["test_a.py"])),
+                         ("pull_request", plan([".github/workflows/ci.yml"])), ("full", None), ("nightly", None),
+                         ("workflow_dispatch", plan(["editor/App.cpp"], mcp=["test_a.py"]))):
+            r = decide(event, p, advisory=ADVISORY)
+            self.assertEqual(r, decide(event, p), event)
+            self.assertEqual((r["advisory_off"], r["build_only"]), ([], []), event)
+
     def test_push_runs_the_builds_only(self):
         r = decide("push", plan(["engine/core/Foo.cpp"], mcp=["test_a.py"]))
         self.assertEqual(runs(r), {"changes", "unit", "htmlui", "smoke", *pl.PLATFORM_LANES})
@@ -137,6 +180,32 @@ class Rules(unittest.TestCase):
         self.assertEqual(r["mcp"]["mode"], "none")
         # ASan keeps no ccache entry (the 10 GB budget): a build on push would warm nothing
         self.assertIn("no ccache entry", r["lanes"]["asan"]["why"])
+        self.assertEqual(r["build_only"], ["unit", "htmlui", "windows-editor-tests"])
+
+    def test_push_runs_what_the_queue_left_out(self):
+        # the merge queue does not run the advisory lanes, so the push to main does: every merged change
+        # still gets their results, as the queue would have run them
+        p = plan(["editor/window/InspectorX.cpp"], unit={"core": ["Foo"], "editor": [], "htmlui": ["Css"]},
+                 mcp=["test_a.py", "test_fixture.py"])
+        r = decide("push", p, advisory=ADVISORY)
+        self.assertEqual(runs(r), set(pl.LANES) - {"lint"})
+        self.assertEqual((r["build_only"], r["advisory_off"]), ([], []))
+        self.assertEqual((r["unit_run"], r["unit_filter"], r["htmlui_filter"]),
+                         ({"core": True, "editor": True}, {"core": "", "editor": ""}, ""))
+        self.assertEqual(r["mcp"], decide("merge_group", p)["mcp"])
+        self.assertEqual(r["mcp"]["files"], ["tools/mcp/tests/test_a.py"])
+        for name in ("unit", "asan", "htmlui", "mcp", "smoke"):
+            self.assertIn("ADVISORY_LANES", r["lanes"][name]["why"], name)
+        # (smoke: every game export, as in the queue, not only the cache warming)
+        self.assertIn("every game export", r["lanes"]["smoke"]["why"])
+        # it follows the list: a lane taken off it is the queue's again, and the push builds only
+        r = decide("push", p, advisory=("mcp",))
+        self.assertEqual(runs(r), {"changes", "unit", "htmlui", "mcp", *pl.PLATFORM_LANES})
+        self.assertEqual(r["build_only"], ["unit", "htmlui", "windows-editor-tests"])
+        self.assertIn("build only", r["lanes"]["unit"]["why"])
+        # a push nothing reads runs nothing
+        r = decide("push", plan(["README.md"], builds=()), advisory=ADVISORY)
+        self.assertEqual((runs(r), r["build_only"]), ({"changes"}, []))
 
     def test_push_warms_the_smoke_cache_when_an_export_reads_the_change(self):
         # only main saves caches, so a smoke lane that never runs on push never warms its ccache
@@ -177,7 +246,8 @@ class Rules(unittest.TestCase):
         lines = pl.github_output(doc, r["unit_run"]).splitlines()
         keys = [line.split("=", 1)[0] for line in lines]
         self.assertEqual(keys, ["full", *[f"run_{n}" for n in pl.LANES], "unit_filter_core", "unit_filter_editor",
-                                "unit_run_core", "unit_run_editor", "unit_jobs", "asan_jobs", "htmlui_filter", "mcp_shards"])
+                                "unit_run_core", "unit_run_editor", "unit_jobs", "asan_jobs", "htmlui_filter", "mcp_shards",
+                                "build_only"])
         self.assertIn("unit_filter_core=Foo.*:*/Foo.*:Foo/*.*", lines)
         self.assertIn('mcp_shards=["1","2"]', lines)
         self.assertIn("unit_run_editor=false", lines)
@@ -187,6 +257,10 @@ class Rules(unittest.TestCase):
         self.assertIn('asan_jobs=[{"job":"core","suite":"core"}]', lines)
         doc["mcp"]["shards"] = []
         self.assertIn("mcp_shards=[]", pl.github_output(doc, r["unit_run"]).splitlines())
+        # the jobs that build but skip a test run (fromJSON in ci.yml: a list even when empty)
+        self.assertIn("build_only=[]", pl.github_output(doc, r["unit_run"]).splitlines())
+        self.assertIn('build_only=["windows-editor-tests"]',
+                      pl.github_output(dict(doc, build_only=["windows-editor-tests"]), r["unit_run"]).splitlines())
         both = [line for line in pl.github_output(doc, {"core": True, "editor": True}).splitlines() if line.startswith("unit_jobs=")]
         self.assertEqual(json.loads(both[0].split("=", 1)[1]), [
             {"job": "core", "suite": "core", "part": "", "other": ""},
@@ -244,14 +318,19 @@ class Shards(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def test_about_twenty_minutes_a_shard_up_to_the_cap(self):
+    def test_more_shards_while_each_saves_more_than_its_setup(self):
         tests = [f"test_f{i}.py::test_x" for i in range(100)]
-        # 100 files of 10 min (+ 20 s overhead): 2 workers a shard, two files each: 25 shards
+        # 100 files of 10 min, 2 workers a shard: 10 shards of 5 files a worker; 11 or 12 take as long,
+        # and 13 save 10 min for 3 more setups (12 min)
         times = {t: 600.0 for t in tests}
-        self.assertEqual(self.shard_count(tests, times, 256), 25)
+        self.assertEqual(self.shard_count(tests, times, 256), 10)
         self.assertEqual(self.shard_count(tests, times, 8), 8)
         self.assertEqual(self.shard_count(tests[:1], {}, 8), 1)
-        # one file longer than a shard: it alone sets the length, no more shards for it
+        # 8 files of 5 min: a second shard halves 20 min, more than its 4 min setup
+        self.assertEqual(self.shard_count(tests[:8], {t: 300.0 for t in tests}, 8), 2)
+        # 4 files of 100 s: a second shard would save less than its setup
+        self.assertEqual(self.shard_count(tests[:4], {t: 100.0 for t in tests}, 8), 1)
+        # one file longer than all the rest: it alone sets the length, no more shards for it
         self.assertEqual(self.shard_count(tests[:3], {tests[0]: 7200.0}, 256), 1)
 
     def shard_count(self, tests, times, cap):
@@ -285,6 +364,7 @@ class Runs(unittest.TestCase):
         self.real_root = pl.cc.ROOT
         pl.cc.ROOT = root
         pl.LIST_WITH_UV = False
+        self.shard = pl.load_module(HERE.parent / "mcp" / "shard.py", "test_plan_lanes_runs_shard")
 
     def tearDown(self):
         pl.cc.ROOT = self.real_root
@@ -330,6 +410,39 @@ class Runs(unittest.TestCase):
                          ["test_made_0", "test_made_1", "test_one", "test_two"])
         self.assertTrue(doc["lanes"]["linux"]["run"] and doc["lanes"]["windows"]["run"])
 
+    def plan_with_timings(self, event, committed: str, cache: dict | None = None):
+        head = self.commit("tools/mcp/ci-timings.json", committed)
+        args = ["--event", event, "--base", self.base, "--head", head, "--out-dir", str(self.tmp / "out")]
+        if cache is not None:
+            (self.tmp / "cache.json").write_text(json.dumps(cache))
+            args += ["--test-seconds", str(self.tmp / "cache.json")]
+        code, doc, out = self.run_main(*args)
+        self.assertEqual(code, 0, out)
+        plan = json.loads((self.tmp / "out/mcp-plan/plan.json").read_text())
+        return doc, {c["file"]: c["seconds"] for s in plan["shards"].values() for c in s["chunks"]}
+
+    COMMITTED = json.dumps({"format": 1, "default_test_seconds": 20.0, "runs": [], "tests": {},
+                            "files": {"test_a.py": {"seconds": 1200.0, "tests": 4}}})
+
+    def test_the_committed_timings_first_the_cache_for_the_rest(self):
+        cache = {"test_a.py::test_one": 5.0, "test_b.py::test_one": 100.0}
+        doc, seconds = self.plan_with_timings("full", self.COMMITTED, cache)
+        overhead = self.shard.CHUNK_OVERHEAD
+        self.assertEqual(seconds["test_a.py"], 1200.0 + overhead)                       # committed, not the cache's 5 s
+        self.assertEqual(seconds["test_b.py"], 100.0 + 3 * 20.0 + overhead)              # the cache, else its default
+        self.assertTrue(any("tools/mcp/ci-timings.json" in n for n in doc["notes"]), doc["notes"])
+
+    def test_the_nightly_plans_by_its_own_seconds(self):
+        # its shards build the games a PR's skip: the committed PR timings would misjudge them
+        doc, seconds = self.plan_with_timings("nightly", self.COMMITTED, {"test_a.py::test_one": 500.0})
+        self.assertEqual(seconds["test_a.py"], 500.0 + 3 * self.shard.DEFAULT_SECONDS + self.shard.CHUNK_OVERHEAD)
+
+    def test_an_unreadable_committed_file_is_said_and_left_out(self):
+        doc, seconds = self.plan_with_timings("full", "{", {"test_a.py::test_one": 5.0})
+        self.assertEqual(seconds["test_a.py"], 5.0 + 3 * self.shard.DEFAULT_SECONDS + self.shard.CHUNK_OVERHEAD)
+        self.assertTrue(any("tools/mcp/ci-timings.json" in f and "left out" in f for f in doc["fallbacks"]),
+                        doc["fallbacks"])
+
     def test_an_older_head_is_planned_in_a_worktree_of_its_own(self):
         old = self.commit("engine/core/Foo.cpp", "int foo = 1;\n")
         self.commit("docs/specs/S1.md", "c\n")                      # HEAD is past it
@@ -362,6 +475,20 @@ class Runs(unittest.TestCase):
         self.assertEqual(doc["mcp"]["shards"], ["1"])
         self.assertFalse((self.tmp / "out/mcp-plan/plan-1.json").exists())
         self.assertTrue(any("could not be planned" in f for f in doc["fallbacks"]), doc["fallbacks"])
+
+    def test_the_queue_reads_the_advisory_lanes(self):
+        head = self.commit("tools/mcp/tests/test_a.py", TEST_FILE.format(extra="# changed"))
+        gh = self.tmp / "gh.txt"
+        code, doc, out = self.run_main("--event", "merge_group", "--base", self.base, "--head", head,
+                                       "--out-dir", str(self.tmp / "out"), "--github-output", str(gh),
+                                       "--advisory", " ".join(ADVISORY))
+        self.assertEqual(code, 0, out)
+        self.assertEqual(doc["advisory_off"], ["unit", "asan", "htmlui", "mcp", "smoke", "windows-editor-tests"])
+        self.assertEqual((doc["mcp"]["mode"], doc["mcp"]["shards"], doc["asan_jobs"]), ("none", [], []))
+        lines = gh.read_text().splitlines()
+        for line in ("run_unit=false", "run_asan=false", "run_mcp=false", "run_linux=true", "asan_jobs=[]", "mcp_shards=[]",
+                     'build_only=["windows-editor-tests"]'):
+            self.assertIn(line, lines)
 
     def test_unusable_arguments_exit_2(self):
         with self.assertRaises(SystemExit) as e, redirect_stdout(io.StringIO()):

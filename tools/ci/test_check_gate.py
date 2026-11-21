@@ -209,6 +209,38 @@ class GateTest(unittest.TestCase):
         self.assertEqual(status, 0, out)
         self.assertRegex(out, r"(?m)^unit\s+success\s+ok \(build only on push\)$")
 
+    def test_push_runs_the_advisory_lanes_tests(self):
+        # the merge queue left them to the push (tools/ci/plan_lanes.py): build_only names what still only builds
+        p = plan(event="push", off=("lint",))
+        p["build_only"] = []
+        status, out = self.gate(needs_for(p), p, reports_for(p) + [
+            {"lane": "windows-editor-tests", "status": "success", "sha": "", "commands": [], "failures": [], "artifacts": [],
+             "tests": {"ran": 900, "failed": 0, "skipped": 0, "disabled": 0}}])
+        self.assertEqual(status, 0, out)
+        self.assertRegex(out, r"(?m)^unit\s+success\s+ok \(50 tests\)$")
+        self.assertRegex(out, r"(?m)^windows-editor-tests\s+success\s+ok \(900 tests\)$")
+        advisory = "unit asan htmlui mcp smoke windows-editor-tests"
+        status, out = self.gate(needs_for(p), p, reports_for(p, ran={"unit": 0}), advisory=advisory)
+        self.assertEqual(status, 0, out)
+        self.assertRegex(out, r"(?m)^unit\s+success\s+advisory \(rollout\): 0 tests ran$")
+        self.assertRegex(out, r"(?m)^windows-editor-tests\s+missing\s+advisory \(rollout\): no report, so no proof tests ran$")
+        # the push's test steps continue on error (the job's result is its build's, which the caches
+        # follow): the report's own status says the tests failed
+        reps = [dict(r, status="failure") if r["lane"] == "htmlui" else r for r in reports_for(p)]
+        status, out = self.gate(needs_for(p), p, reps, advisory=advisory)
+        self.assertEqual(status, 0, out)
+        self.assertRegex(out, r"(?m)^htmlui\s+success\s+advisory \(rollout\): failing$")
+        status, out = self.gate(needs_for(p), p, reps)
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^htmlui\s+success\s+FAIL: failing$")
+        # what the push builds only needs no test
+        p["build_only"] = ["unit", "htmlui", "windows-editor-tests"]
+        status, out = self.gate(needs_for(p), p, reports_for(p, ran={"unit": 0, "htmlui": 0}))
+        self.assertEqual(status, 0, out)
+        self.assertRegex(out, r"(?m)^htmlui\s+success\s+ok \(build only on push\)$")
+        self.assertRegex(out, r"(?m)^asan\s+success\s+ok \(50 tests\)$")
+        self.assertNotIn("windows-editor-tests", out)
+
     def test_zero_test_unit_suite_fails(self):
         p = plan()
         p["unit_run"] = {"core": True, "editor": True}
@@ -316,6 +348,52 @@ class GateTest(unittest.TestCase):
         p = plan(event="merge_group", off=tuple(n for n in LANES if n != "changes"))
         status, out = self.gate(needs_for(p), p, reports_for(p))
         self.assertEqual(status, 0, out)
+
+    def test_merge_group_skips_the_advisory_lanes_it_planned_off(self):
+        # the queue leaves ADVISORY_LANES to the push to main (tools/ci/plan_lanes.py advisory_off): Check
+        # waits for the blocking lanes only
+        deferred = ("unit", "asan", "htmlui", "mcp", "smoke")
+        advisory = "unit asan htmlui mcp smoke windows-editor-tests"
+        p = plan(event="merge_group", off=deferred)
+        p["advisory_off"] = [*deferred, "windows-editor-tests"]
+        p["build_only"] = ["windows-editor-tests"]
+        reps = [r for r in reports_for(p) if r["lane"] != "windows-editor-tests"]
+        status, out = self.gate(needs_for(p), p, reps, advisory=advisory)
+        self.assertEqual(status, 0, out)
+        for name in deferred:
+            self.assertRegex(out, rf"(?m)^{name}\s+skipped\s+ok \(not planned: not needed\)$")
+        self.assertRegex(out, r"(?m)^windows-editor-tests\s+skipped\s+ok \(advisory: not run in the merge queue\)$")
+        # a lane Check does not hold advisory: the queue skips it at its peril
+        status, out = self.gate(needs_for(p), p, reps, advisory="unit htmlui mcp smoke windows-editor-tests")
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^asan\s+skipped\s+FAIL: the merge queue skips no lane$")
+        # advisory, but planned off for another reason (or by a plan that names no reason)
+        q = dict(p, advisory_off=["unit", "htmlui", "mcp", "smoke", "windows-editor-tests"])
+        status, out = self.gate(needs_for(q), q, reps, advisory=advisory)
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^asan\s+skipped\s+FAIL: the merge queue skips no lane$")
+        q = {k: v for k, v in p.items() if k not in ("advisory_off", "build_only")}
+        status, out = self.gate(needs_for(q), q, reps, advisory=advisory)
+        self.assertEqual(status, 1, out)
+        # a blocking lane is never skipped for being "advisory"
+        q = plan(event="merge_group", off=("linux",))
+        q["advisory_off"] = ["linux"]
+        status, out = self.gate(needs_for(q), q, reports_for(q), advisory=advisory)
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^linux\s+skipped\s+FAIL: the merge queue skips no lane$")
+        # the editor leg's test run: skipped only while advisory and planned off for it
+        for advisory_lanes, off in (("unit asan htmlui mcp smoke", p["advisory_off"]), (advisory, list(deferred))):
+            q = dict(p, advisory_off=off)
+            status, out = self.gate(needs_for(q), q, reps, advisory=advisory_lanes)
+            self.assertEqual(status, 1, (advisory_lanes, out))
+            self.assertRegex(out, r"(?m)^windows-editor-tests\s+skipped\s+FAIL: the merge queue skips no test run$")
+        # nor in a full run
+        q = plan(event="full", full=True)
+        q["advisory_off"] = q["build_only"] = ["windows-editor-tests"]
+        status, out = self.gate(needs_for(q), q, [r for r in reports_for(q) if r["lane"] != "windows-editor-tests"],
+                                advisory=advisory)
+        self.assertEqual(status, 1, out)
+        self.assertRegex(out, r"(?m)^windows-editor-tests\s+skipped\s+FAIL: a full run skips no test run$")
 
     def test_changes_failure_fails(self):
         p = plan()

@@ -838,7 +838,7 @@ def load_lanes(path: Path | None) -> dict:
     """lanes.json (tools/ci/plan_lanes.py), reduced to what render and check_gate read."""
     data = load_json(path) if path else None
     out = {"ok": False, "event": "", "full": False, "lanes": {}, "shards": [], "not_in_ci": [], "unit_jobs": [],
-           "asan_jobs": []}
+           "asan_jobs": [], "advisory_off": [], "build_only": []}
     if not isinstance(data, dict) or not isinstance(data.get("lanes"), dict):
         return out
     out["ok"] = True
@@ -856,6 +856,14 @@ def load_lanes(path: Path | None) -> dict:
     # the asan matrix's jobs (asan-<job> reports); a plan without them had one asan job
     if isinstance(data.get("asan_jobs"), list):
         out["asan_jobs"] = [j for j in data["asan_jobs"][:20] if isinstance(j, str) and ASAN_JOB_RE.match(j)]
+    # the merge queue's advisory lanes and test runs planned off for being advisory; the lanes and test
+    # runs whose job runs without its tests
+    for key in ("advisory_off", "build_only"):
+        if isinstance(data.get(key), list):
+            out[key] = [n for n in data[key][:40] if isinstance(n, str) and LANE_RE.match(n)]
+    if out["event"] == "push" and not isinstance(data.get("build_only"), list):
+        # a plan from before build_only: the push built every test tree without its tests
+        out["build_only"] = ["unit", "asan", "htmlui", *TEST_REPORTS]
     mcp = data.get("mcp") if isinstance(data.get("mcp"), dict) else {}
     out["shards"] = [s for s in (mcp.get("shards") or [])[:100] if isinstance(s, str) and re.match(r"^[0-9A-Za-z_-]{1,20}$", s)] \
         if isinstance(mcp.get("shards"), list) else []
@@ -935,11 +943,11 @@ def lane_base(lane: str) -> str:
     return "unit" if UNIT_REPORT_RE.match(lane) else "asan" if ASAN_REPORT_RE.match(lane) else lane
 
 
-def lane_jobs(name: str, shards: list[str], event: str = "", unit_jobs: list[str] = (),
-              asan_jobs: list[str] = ()) -> list[str]:
+def lane_jobs(name: str, shards: list[str], unit_jobs: list[str] = (), asan_jobs: list[str] = (),
+              build_only: list[str] = ()) -> list[str]:
     """The reports a planned lane makes: one per MCP shard, one per unit job (a test binary, or a part
-    of one), one per asan job (a test binary), one per Windows leg (and the editor leg's test run but on
-    push, which builds only), else its own."""
+    of one), one per asan job (a test binary), one per Windows leg (and the editor leg's test run, but
+    where lanes.json lists it under build_only), else its own."""
     if name == "mcp" and shards:
         return [f"mcp-{s}" for s in shards]
     if name == "unit" and unit_jobs:
@@ -947,7 +955,7 @@ def lane_jobs(name: str, shards: list[str], event: str = "", unit_jobs: list[str
     if name == "asan" and asan_jobs:
         return [f"asan-{j}" for j in asan_jobs]
     if name == "windows":
-        return [f"windows-{p}" for p in WINDOWS_PARTS] + ([] if event == "push" else list(TEST_REPORTS))
+        return [f"windows-{p}" for p in WINDOWS_PARTS] + [t for t in TEST_REPORTS if t not in build_only]
     return [name]
 
 
@@ -1058,7 +1066,7 @@ def render(reports: dict[str, dict], lanes: dict, run_url: str, sha: str, adviso
     for name, lane in lanes["lanes"].items():
         if name in ("report", "check") or not lane["run"]:
             continue
-        expected += lane_jobs(name, shards, lanes["event"], unit_jobs, asan_jobs)
+        expected += lane_jobs(name, shards, unit_jobs, asan_jobs, lanes["build_only"])
     expected += [name for name in reports if name not in expected]
     states: dict[str, str] = {}
     for name in expected:
@@ -1101,7 +1109,7 @@ def render(reports: dict[str, dict], lanes: dict, run_url: str, sha: str, adviso
             if not lane["run"]:
                 passed.append(f"{name} (skipped: {md(lane['why']) or 'not needed'})")
                 continue
-            for n in lane_jobs(name, shards, lanes["event"], unit_jobs, asan_jobs):
+            for n in lane_jobs(name, shards, unit_jobs, asan_jobs, lanes["build_only"]):
                 if states.get(n) == "success":
                     tests = reports[n]["tests"]["ran"] if n in reports else 0
                     label = lane_label(n, shards, unit_jobs)
@@ -1146,7 +1154,7 @@ def render(reports: dict[str, dict], lanes: dict, run_url: str, sha: str, adviso
             if not lane["run"]:
                 details.append(f"- {name}: skipped ({md(lane['why']) or 'not needed'})")
                 continue
-            for n in lane_jobs(name, shards, lanes["event"], unit_jobs, asan_jobs):
+            for n in lane_jobs(name, shards, unit_jobs, asan_jobs, lanes["build_only"]):
                 state = {"success": "passed", "missing": "no report"}.get(states.get(n, "missing"), states.get(n, ""))
                 details.append(f"- {lane_label(n, shards, unit_jobs)}: {state}{count_note(reports[n]) if n in reports else ''}")
         for name in expected:

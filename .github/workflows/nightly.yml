@@ -102,10 +102,14 @@ jobs:
     steps:
       - name: Start
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+      # every commit and tag (git describe stamps the build) but no old blob: they are never read
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          filter: blob:none
       - uses: ./.github/actions/free-disk
+        with:
+          need: 80
       - uses: ./.github/actions/image
         id: image
         with:
@@ -152,6 +156,8 @@ jobs:
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk
+        with:
+          need: 30
       - uses: ./.github/actions/image
         id: image
         with:
@@ -191,6 +197,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          filter: blob:none
+      # no need: it always frees, its trees and players took 87 GB of / (the nightly of 2026-11-20)
       - uses: ./.github/actions/free-disk
       - uses: ./.github/actions/image
         id: image
@@ -272,7 +280,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          filter: blob:none
       - uses: ./.github/actions/free-disk
+        with:
+          need: 20
       - uses: ./.github/actions/image
         id: image
         with:
@@ -285,11 +296,12 @@ jobs:
       - name: Build the editor
         run: |
           tools/ci/logged.sh linux-build 'SKIP_ENGINE=1 tools/build.sh linux'
-          tar -C build/linux -cf build/editor-install.tar editor-install
+          tools/ci/editor_install.sh pack build/linux/editor-install build/editor-install.tar.zst
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nightly-editor-install
-          path: build/editor-install.tar
+          path: build/editor-install.tar.zst
+          compression-level: 0
           if-no-files-found: error
           retention-days: 3
       - uses: ./.github/actions/report
@@ -320,6 +332,8 @@ jobs:
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk
+        with:
+          need: 40
       - uses: ./.github/actions/image
         id: image
         with:
@@ -338,7 +352,7 @@ jobs:
           name: nightly-plan
           path: build/ci-plan
       - name: Unpack the editor
-        run: mkdir -p build/linux && tar -C build/linux -xf build/editor-install.tar
+        run: tools/ci/editor_install.sh unpack build/editor-install.tar.zst build/linux
       - name: MCP shard ${{ matrix.shard }}
         env:
           SHARD: ${{ matrix.shard }}
@@ -363,6 +377,8 @@ jobs:
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk
+        with:
+          need: 40
       - uses: ./.github/actions/image
         id: image
         with:
@@ -377,7 +393,7 @@ jobs:
           name: nightly-editor-install
           path: build
       - name: Unpack the editor
-        run: mkdir -p build/linux && tar -C build/linux -xf build/editor-install.tar
+        run: tools/ci/editor_install.sh unpack build/editor-install.tar.zst build/linux
       - name: Smoke runs, then the two MCP files
         run: tools/ci/logged.sh export-checks tools/ci/nightly-export-checks.sh
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -481,7 +497,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          filter: blob:none
       - uses: ./.github/actions/free-disk
+        with:
+          need: 25
       - uses: ./.github/actions/image
         id: image
         with:
@@ -522,6 +541,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk
+        with:
+          need: 40
       - uses: ./.github/actions/image
         id: image
         with:

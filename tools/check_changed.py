@@ -129,12 +129,15 @@ BUILDS_NOTHING = ("docs/*", "*.md", "LICENSE", "NOTICE.md", ".claude/*")
 # (tools/ci/plan_lanes.py). A path joins only with a note saying nothing reads it:
 #   docs/specs, docs/superpowers, docs/engine-gaps, docs/openengine-analysis, docs/test-cleanup:
 #     design prose; no CMake, test or lint opens them (tools/rebrand.py only allow-lists superpowers);
-#   the root *-LEDGER.md and README.md: status prose; no CMake install, test or lint opens them.
+#   the root *-LEDGER.md and README.md: status prose; no CMake install, test or lint opens them;
+#   tools/mcp/ci-timings.json: only the MCP shard planner reads it, to balance the shards, and every
+#     plan runs the union check, so no value in it can lose or break a test (its daily refit's PR
+#     would otherwise build every platform).
 # Not here: .claude/ (tools/mcp/tests/test_agent_docs.py and tools/check_agent_docs.py read its
 # rules), docs/mcp/guide and docs/unity-glossary.md (the editor embeds them), the rest of docs/
 # (tests read keyboard-shortcuts.md, the golden ledgers under docs/html-ui and docs/titleart, ...)
 CI_NOTHING_READS = ("docs/specs/*", "docs/superpowers/*", "docs/engine-gaps/*", "docs/openengine-analysis/*",
-                    "docs/test-cleanup/*")
+                    "docs/test-cleanup/*", "tools/mcp/ci-timings.json")
 CI_NOTHING_READS_ROOT = ("*-LEDGER.md", "README.md")
 # what --deps-from reads: `ninja -t deps` of build/linux/<name> (tools/ci/dump_deps.sh writes them)
 DEPS_DUMPS = ("core-tests", "editor-tests", "htmlui-tests")

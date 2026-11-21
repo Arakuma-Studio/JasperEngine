@@ -91,6 +91,7 @@ Run the generator and commit its output:
 | `editor/tests/procmat/SpirvInterpreterFixtures.h` | `tools/build.sh exec linux python3 tools/procmat/gen_interpreter_fixtures.py build/procmat-sweep/procmat-sweep` (after building `tools/procmat/sweep`) |
 | `editor/tests/procmat/SpirvOracleCases.h` | `python3 -I tools/procmat/spirv_oracle.py` |
 | `editor/tests/procmat/ExpanderReference.txt` | `python3 -I tools/procmat/expand_nodes.py --write-reference editor/tests/procmat/ExpanderReference.txt` |
+| `tools/mcp/ci-timings.json` | `python3 tools/ci/mcp_timings.py fetch --out <dir>`, then `refit --results <dir> --write` (the daily `.github/workflows/mcp-timings-refit.yml` opens its PR) |
 | `docs/editor/keyboard-shortcuts.md` | the unit test `CommandCatalog.MarkdownReferenceMatchesDocs` with `JASPER_UPDATE_SHORTCUT_DOCS=1`, inside the image (the variable is not forwarded into it) |
 
 - `tools/lua_api` produces the Lua API data, joined stubs and completion data at build time.

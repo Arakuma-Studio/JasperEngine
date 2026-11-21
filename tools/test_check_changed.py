@@ -166,12 +166,14 @@ class Builds(unittest.TestCase):
 
     def test_ci_nothing_reads(self):
         for f in ("docs/specs/S01-cxx20.md", "docs/superpowers/specs/x.md", "docs/engine-gaps/a.md",
-                  "docs/openengine-analysis/b.md", "docs/test-cleanup/c.md", "PIXEL-ART-LEDGER.md", "README.md"):
+                  "docs/openengine-analysis/b.md", "docs/test-cleanup/c.md", "PIXEL-ART-LEDGER.md", "README.md",
+                  "tools/mcp/ci-timings.json"):
             self.assertTrue(cc.ci_reads_nothing(f), f)
         # the editor embeds the guide; tests read other docs; .claude/rules is test_agent_docs.py's
         for f in ("docs/mcp/guide/code.md", "docs/unity-glossary.md", "docs/editor/keyboard-shortcuts.md",
                   "docs/html-ui/goldens-S16.md", "docs/specs-index.md", "tools/README.md", "docs/FOO-LEDGER.md",
-                  ".claude/rules/mcp.md", "AGENTS.md", "engine/core/Foo.cpp", ".github/workflows/ci.yml"):
+                  ".claude/rules/mcp.md", "AGENTS.md", "engine/core/Foo.cpp", ".github/workflows/ci.yml",
+                  "tools/mcp/gpu_lane.json", "tools/mcp/tests/ci-timings.json"):
             self.assertFalse(cc.ci_reads_nothing(f), f)
 
     def test_the_engine_with_every_module_off(self):

@@ -4,11 +4,13 @@ name: CI
 # (tools/ci/plan_lanes.py over tools/check-changed); each lane runs one repository script, the same command
 # a developer runs (its JASPER_CI_REPRO); `report` writes the PR comment; `Check` is the one required status.
 #
-# - pull_request: the planned lanes. merge_group: every lane, unit and HTML UI unfiltered, MCP planned over
-#   the group's diff. push to main: the build lanes only, to save the caches and plan inputs PRs restore.
+# - pull_request: the planned lanes. merge_group: every lane but the ADVISORY_LANES ones, which cannot block
+#   the merge, unit and HTML UI unfiltered, MCP planned over the group's diff. push to main: the build lanes,
+#   to save the caches and plan inputs PRs restore, and the tests of the advisory lanes the queue left out.
 #   workflow_dispatch with full: everything, the whole MCP CI suite included, on any branch.
 # - The test lanes in ADVISORY_LANES report but do not fail Check until main is green through CI (D2, §14.1
-#   phase 7). Lint and every platform build lane block.
+#   phase 7); the merge queue does not run them (tools/ci/plan_lanes.py --advisory). Lint and every platform
+#   build lane block.
 # - Caches (§10.2): PRs and the queue restore; push to main saves, and the caches job keeps one entry each.
 on:
   pull_request:
@@ -50,7 +52,8 @@ defaults:
     shell: bash
 
 jobs:
-  # timeouts fit a cold build (an image change or an evicted ccache) on a 4-vCPU runner, not a warm one
+  # timeouts fit a cold build (an image change or an evicted ccache) on a 4-vCPU runner, not a warm one;
+  # free-disk's need is the lane's measured use of / plus a quarter and 10 GB (docs/testing.md "Job setup")
   # ------------------------------------------------------------- Planning ---
   changes:
     name: changes
@@ -80,6 +83,7 @@ jobs:
       unit_filter_editor: ${{ steps.plan.outputs.unit_filter_editor }}
       htmlui_filter: ${{ steps.plan.outputs.htmlui_filter }}
       mcp_shards: ${{ steps.plan.outputs.mcp_shards }}
+      build_only: ${{ steps.plan.outputs.build_only }}
     steps:
       - name: Start
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
@@ -133,7 +137,8 @@ jobs:
                   [[ "$FULL" == true ]] && event=full
                   base="$(git merge-base origin/main HEAD)" head="$GITHUB_SHA" ;;
           esac
-          args=(--event "$event" --base "$base" --head "$head" --out-dir build/ci-plan --github-output "$GITHUB_OUTPUT")
+          args=(--event "$event" --base "$base" --head "$head" --out-dir build/ci-plan --github-output "$GITHUB_OUTPUT"
+                --advisory "$ADVISORY_LANES")
           [[ -d build/ci-inputs/deps ]] && args+=(--deps-from build/ci-inputs/deps)
           [[ -f build/coverage/coverage-map.json ]] && args+=(--coverage-map build/coverage/coverage-map.json)
           [[ -f build/ci-inputs/mcp-test-seconds.json ]] && args+=(--test-seconds build/ci-inputs/mcp-test-seconds.json)
@@ -208,6 +213,8 @@ jobs:
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk
+        with:
+          need: 30
       - uses: ./.github/actions/image
         id: image
         with:
@@ -228,9 +235,10 @@ jobs:
               python3 tools/ci/warning-summary.py build/test-results/linux-build.log >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # tar keeps the executable bits a zipped artifact loses
+      # tar keeps the executable bits a zipped artifact loses; the folders the install copies unchanged
+      # from the checkout stay out (half the bytes): mcp and smoke check out the same commit
       - name: Pack the editor install
-        run: tar -C build/linux --zstd -cf build/editor-install.tar.zst editor-install
+        run: tools/ci/editor_install.sh pack build/linux/editor-install build/editor-install.tar.zst
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: editor-install
@@ -297,11 +305,15 @@ jobs:
     env:
       JASPER_CI_REPRO: ${{ matrix.part && format('UNIT_SHARD={0} ', matrix.part) || '' }}UNIT_SUITE=${{ matrix.suite }} WERROR=1 tools/build.sh unit-tests
       UNIT_LEAD: ${{ matrix.part == '' || startsWith(matrix.part, '1/') }}
+      # false on a push to main that builds only (the merge queue ran the tests)
+      UNIT_TESTS: ${{ !contains(fromJSON(needs.changes.outputs.build_only), 'unit') }}
     steps:
       - name: Start
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk
+        with:
+          need: 60
       - uses: ./.github/actions/image
         id: image
         with:
@@ -315,8 +327,11 @@ jobs:
           max-size: 1.4G
           toolchain: ${{ steps.image.outputs.tag }}
 
+      # (on push, as the tests below, a failure does not fail the job: its result is its build's)
       - name: CMake presets and option errors
-        if: github.event_name != 'push' && matrix.suite == 'core'
+        id: presets
+        if: env.UNIT_TESTS == 'true' && matrix.suite == 'core'
+        continue-on-error: ${{ github.event_name == 'push' }}
         run: tools/ci/logged.sh unit-presets 'tools/build.sh exec linux tools/ci/check-presets.sh'
 
       # a part: this part's objects, as the ccache files they added, for the other part. Only a speed-up:
@@ -353,7 +368,7 @@ jobs:
           if-no-files-found: error
       - name: Wait for part ${{ matrix.other }}'s objects
         id: other
-        if: ${{ !cancelled() && matrix.part != '' && (github.event_name != 'push' || env.UNIT_LEAD == 'true') }}
+        if: ${{ !cancelled() && matrix.part != '' && (github.event_name != 'push' || env.UNIT_LEAD == 'true' || env.UNIT_TESTS == 'true') }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -406,26 +421,6 @@ jobs:
           [[ -n "$SHARD" ]] && args="UNIT_SHARD=$SHARD $args"
           tools/ci/logged.sh "unit-$SUITE" "${BUILD_ONLY}UNIT_SUITE=$SUITE ${args}WERROR=1 tools/build.sh unit-tests"
 
-      # S26 AC2: the picking suites again on the scalar slab test (the run above took the CPU's AVX2);
-      # its XML goes beside the core run's instead of over it
-      - name: Picking on the scalar path
-        if: ${{ !cancelled() && github.event_name != 'push' && matrix.suite == 'core' }}
-        run: |
-          [[ -f build/test-results/core.xml ]] && mv build/test-results/core.xml build/test-results/core.main.xml
-          status=0
-          tools/ci/logged.sh unit-picking-scalar "JASPER_PICK_SIMD=scalar UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=MeshBvh.*:SceneBvh.*:MeshRaycast.*:PickCache.*' WERROR=1 tools/build.sh unit-tests" || status=1
-          [[ -f build/test-results/core.xml ]] && mv build/test-results/core.xml build/test-results/core-picking-scalar.xml
-          [[ -f build/test-results/core.main.xml ]] && mv build/test-results/core.main.xml build/test-results/core.xml
-          exit "$status"
-
-      - name: Warnings
-        if: always()
-        run: |
-          for log in "build/test-results/unit-${{ matrix.suite }}-part.log" "build/test-results/unit-${{ matrix.suite }}.log"; do
-              [[ -f "$log" ]] && python3 tools/ci/warning-summary.py "$log" >> "$GITHUB_STEP_SUMMARY"
-          done
-          true
-
       # plan inputs for PRs (tools/ci/plan_lanes.py --deps-from): the caches job saves them
       - name: Ninja deps dumps
         if: github.event_name == 'push' && env.UNIT_LEAD == 'true'
@@ -437,6 +432,45 @@ jobs:
           path: build/ci-deps/
           retention-days: 1
           if-no-files-found: error
+
+      # push to main while unit is advisory (the merge queue did not run it): every test, after the build
+      # above and the deps dumps, continuing on error so the job's result, which the caches job's plan
+      # inputs follow, stays its build's; the report says the tests failed
+      - name: jasperengine-${{ matrix.suite }}-tests (push to main)
+        id: push-tests
+        if: github.event_name == 'push' && env.UNIT_TESTS == 'true'
+        continue-on-error: true
+        timeout-minutes: 150
+        env:
+          SUITE: ${{ matrix.suite }}
+          SHARD: ${{ matrix.part }}
+        run: |
+          args=""
+          [[ -n "$SHARD" ]] && args="UNIT_SHARD=$SHARD "
+          tools/ci/logged.sh "unit-$SUITE-tests" "UNIT_SUITE=$SUITE ${args}WERROR=1 tools/build.sh unit-tests"
+
+      # S26 AC2: the picking suites again on the scalar slab test (the run above took the CPU's AVX2);
+      # its XML goes beside the core run's instead of over it
+      - name: Picking on the scalar path
+        id: picking
+        if: ${{ !cancelled() && env.UNIT_TESTS == 'true' && matrix.suite == 'core' }}
+        continue-on-error: ${{ github.event_name == 'push' }}
+        run: |
+          [[ -f build/test-results/core.xml ]] && mv build/test-results/core.xml build/test-results/core.main.xml
+          status=0
+          tools/ci/logged.sh unit-picking-scalar "JASPER_PICK_SIMD=scalar UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=MeshBvh.*:SceneBvh.*:MeshRaycast.*:PickCache.*' WERROR=1 tools/build.sh unit-tests" || status=1
+          [[ -f build/test-results/core.xml ]] && mv build/test-results/core.xml build/test-results/core-picking-scalar.xml
+          [[ -f build/test-results/core.main.xml ]] && mv build/test-results/core.main.xml build/test-results/core.xml
+          exit "$status"
+
+      - name: Warnings
+        if: always()
+        run: |
+          for log in "build/test-results/unit-${{ matrix.suite }}-part.log" "build/test-results/unit-${{ matrix.suite }}.log" \
+                     "build/test-results/unit-${{ matrix.suite }}-tests.log"; do
+              [[ -f "$log" ]] && python3 tools/ci/warning-summary.py "$log" >> "$GITHUB_STEP_SUMMARY"
+          done
+          true
 
       # one entry per binary: the lead's build holds both parts' objects
       - uses: ./.github/actions/ccache-save
@@ -450,13 +484,17 @@ jobs:
         if: always()
         with:
           lane: unit-${{ matrix.job }}
-          status: ${{ job.status }}
+          # (a push's test steps continue on error)
+          status: >-
+            ${{ github.event_name == 'push' && job.status == 'success'
+            && (steps.presets.outcome == 'failure' || steps.push-tests.outcome == 'failure' || steps.picking.outcome == 'failure')
+            && 'failure' || job.status }}
 
   # One job per test binary, side by side (tools/ci/plan_lanes.py asan_jobs), as the unit lane: in one
   # job a cold core build (79-116 min), the core tests (90) and the editor's build (168-175) left the
   # editor tests no time in 270 min (merge-queue runs 44582666848, 44487933891, 44416194181). No ccache
   # entry: each binary's working set is over what the 10 GB budget has left (docs/testing.md "CI"),
-  # so it does not run on push either.
+  # so it runs on push only while advisory (the merge queue does not run it then).
   asan:
     name: asan (${{ matrix.job }})
     needs: changes
@@ -475,6 +513,8 @@ jobs:
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk
+        with:
+          need: 80
       - uses: ./.github/actions/image
         id: image
         with:
@@ -519,11 +559,15 @@ jobs:
       actions: write  # ccache-save deletes the lane's older entry as soon as it saved the new one (push)
     env:
       JASPER_CI_REPRO: JASPER_HTMLUI_PERF_SLACK=3 tools/build.sh htmlui-tests
+      # false on a push to main that builds only (the merge queue ran the tests)
+      HTMLUI_TESTS: ${{ !contains(fromJSON(needs.changes.outputs.build_only), 'htmlui') }}
     steps:
       - name: Start
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk
+        with:
+          need: 30
       - uses: ./.github/actions/image
         id: image
         with:
@@ -547,14 +591,6 @@ jobs:
           [[ -n "$FILTER" ]] && args="HTMLUI_TEST_ARGS=$(printf %q "--gtest_filter=$FILTER") "
           tools/ci/logged.sh htmlui "${BUILD_ONLY}JASPER_HTMLUI_PERF_SLACK=3 ${args}tools/build.sh htmlui-tests"
 
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: failure()
-        with:
-          name: golden-diffs-htmlui
-          path: build/linux/htmlui-tests-glcore/tests/htmlui/htmlui-test-output/
-          retention-days: 14
-          if-no-files-found: ignore
-
       - name: Ninja deps dumps
         if: github.event_name == 'push'
         run: tools/ci/logged.sh deps-dump 'tools/ci/dump_deps.sh build/ci-deps'
@@ -566,6 +602,24 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+      # push to main while htmlui is advisory (the merge queue did not run it): the tests after the build
+      # and the deps dumps, continuing on error so the job's result (the caches job's plan inputs) stays
+      # its build's; the report says the tests failed
+      - name: jasperengine-htmlui-tests (OpenGL, push to main)
+        id: push-tests
+        if: github.event_name == 'push' && env.HTMLUI_TESTS == 'true'
+        continue-on-error: true
+        timeout-minutes: 180
+        run: tools/ci/logged.sh htmlui-tests 'JASPER_HTMLUI_PERF_SLACK=3 tools/build.sh htmlui-tests'
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure() || steps.push-tests.outcome == 'failure'
+        with:
+          name: golden-diffs-htmlui
+          path: build/linux/htmlui-tests-glcore/tests/htmlui/htmlui-test-output/
+          retention-days: 14
+          if-no-files-found: ignore
+
       - uses: ./.github/actions/ccache-save
         if: always()
         with:
@@ -575,7 +629,7 @@ jobs:
         if: always()
         with:
           lane: htmlui
-          status: ${{ job.status }}
+          status: ${{ github.event_name == 'push' && job.status == 'success' && steps.push-tests.outcome == 'failure' && 'failure' || job.status }}
 
   # ------------------------------------------------------------------ MCP ---
   # One job per shard of the planned CI-suite files (tools/mcp/shard.py plans, in changes); none planned
@@ -604,6 +658,8 @@ jobs:
         with:
           fetch-depth: 2
       - uses: ./.github/actions/free-disk
+        with:
+          need: 20
       - uses: ./.github/actions/image
         with:
           target: linux
@@ -616,7 +672,7 @@ jobs:
           name: plan
           path: build/ci-plan
       - name: Unpack the editor install
-        run: mkdir -p build/linux && tar -C build/linux --zstd -xf build/editor-install.tar.zst
+        run: tools/ci/editor_install.sh unpack build/editor-install.tar.zst build/linux
 
       - name: MCP shard ${{ matrix.shard }}
         # under the job's limit: a step past its own timeout fails (advisory), where the job's timeout
@@ -653,6 +709,8 @@ jobs:
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk
+        with:
+          need: 55
       # the no-compiler image of the prebuilt builds, then the build image (the last sets JASPER_DOCKER_IMAGE)
       - uses: ./.github/actions/image
         with:
@@ -667,7 +725,7 @@ jobs:
           path: build
       - name: Unpack the editor install
         id: install
-        run: mkdir -p build/linux && tar -C build/linux --zstd -xf build/editor-install.tar.zst
+        run: tools/ci/editor_install.sh unpack build/editor-install.tar.zst build/linux
 
       - name: Player runtime (Linux, OpenGL, full, release)
         id: players
@@ -734,6 +792,8 @@ jobs:
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk
+        with:
+          need: 35
       - uses: ./.github/actions/image
         id: image
         with:
@@ -808,6 +868,8 @@ jobs:
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk
+        with:
+          need: 65
       - uses: ./.github/actions/image
         id: image
         with:
@@ -923,10 +985,11 @@ jobs:
         if: matrix.part == 'editor'
         run: tools/ci/windows.sh editor
       # reported apart (windows-editor-tests, in ADVISORY_LANES while the suite settles on Windows): the
-      # leg's build gates, its test run is listed; a hang costs TEST_TIMEOUT, not the leg
+      # leg's build gates, its test run is listed; a hang costs TEST_TIMEOUT, not the leg. While advisory
+      # it runs on push to main, not in the merge queue; else the reverse (build_only)
       - name: Editor unit tests (CPU suites)
         id: editor-tests
-        if: matrix.part == 'editor' && github.event_name != 'push'
+        if: matrix.part == 'editor' && !contains(fromJSON(needs.changes.outputs.build_only), 'windows-editor-tests')
         continue-on-error: true
         timeout-minutes: 75
         env:
