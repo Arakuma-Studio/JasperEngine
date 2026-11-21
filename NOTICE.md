@@ -548,6 +548,50 @@ Ported or copied, each file keeping the original notice next to ours:
 
 The `blob_47` sheet layout follows cr31's "Blob" Wang tileset page (minimum 7x7 packing, found by Caeles at OpenGameArt.org), and `blob_47_godot` follows the layout of Godot's "3x3 minimal" autotile template; both are layouts of index numbers, no code or image from them ships here. `tileset::cellHash` uses the block step and finaliser of MurmurHash3 (Austin Appleby, public domain).
 
+## Area Lights' LTC tables (S92)
+
+`engine/core/render/LtcLut.h` holds the fitted GGX tables `fit/results/ltc_1.dds` and `ltc_2.dds` of
+[selfshadow/ltc_code](https://github.com/selfshadow/ltc_code) at `31e5e96b54f98f33098f8503003119ba2231a1c6`,
+converted bit for bit by `tools/gen_ltc_lut.py`, for the High Lit Quality's Area Lights. The shading code
+(`engine/shaderlib/includes/area_lights.glsl`, `engine/core/render/AreaLightMath.cpp`) is ours, after the paper:
+Real-Time Polygonal-Light Shading with Linearly Transformed Cosines. Eric Heitz, Jonathan Dupuy, Stephen Hill and
+David Neubelt. ACM Transactions on Graphics (Proceedings of ACM SIGGRAPH 2016) 35(4), 2016. The tables' licence
+(BSD-2-Clause with a request to cite the paper):
+
+```
+Copyright (c) 2017, Eric Heitz, Jonathan Dupuy, Stephen Hill and David Neubelt.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* If you use (or adapt) the source code in your own work, please include a 
+  reference to the paper:
+
+  Real-Time Polygonal-Light Shading with Linearly Transformed Cosines.
+  Eric Heitz, Jonathan Dupuy, Stephen Hill and David Neubelt.
+  ACM Transactions on Graphics (Proceedings of ACM SIGGRAPH 2016) 35(4), 2016.
+  Project page: https://eheitzresearch.wordpress.com/415-2/
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
 ## Ideas re-implemented, no code copied
 
 [ozz-animation](https://github.com/guillaumeblanc/ozz-animation) (MIT, 0.17.0 `744eb9d`, (c) Guillaume Blanc): `editor/animation/ClipReduction.*` re-implements the idea of its `AnimationOptimizer` and `decimate.h` (a hierarchical error metric and Ramer-Douglas-Peucker decimation), with the changes of `docs/specs/S77-clip-quality.md` D5. No ozz source ships here.

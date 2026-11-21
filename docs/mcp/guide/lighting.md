@@ -1,4 +1,4 @@
-# Lighting: tiles, capsule and contact shadows, OIT, hair
+# Lighting: tiles, capsule and contact shadows, OIT, hair, area lights, IES profiles
 
 For agents: what to set and how to check it. The full reference is `docs/rendering/lighting.md`.
 
@@ -19,6 +19,18 @@ For agents: what to set and how to check it. The full reference is `docs/renderi
   `contactShadowSampleCount` 8..16. Off on the Low tier.
 - Order Independent transparency: `set_properties` on the `camera`:
   `transparencyMode: "order_independent"`, `oitWeightScale`. Only alpha-blended materials take it.
+- Area Light (a soft panel, window or screen): a `light` with `type: "area"` (`add_component` then
+  `set_properties`), `areaShape` `rectangle` (`areaWidth`, `areaHeight`) or `disc` (`areaRadius`),
+  in metres: the transform's scale does not size it. It lights only in front of its face, along
+  `direction`. `intensity` is the face's brightness: `intensityUnit: "nits"` (or `set_light_unit`
+  `nits`) for physical units; 1 m x 1 m at 1 lights like a point light of 1 far in front. `shadows:
+  true` draws one 120 degree map. Lit Quality Standard approximates the highlight; High is exact
+  (LTC).
+- IES Profile (a real luminaire's beam): copy the `.ies` file in with `import_files`, then
+  `set_properties` `iesProfile: "assets/lights/name.ies"` on a spot or point light; it turns with the
+  light (vertical angle 0 along `direction`) and `intensity` stays its peak (the asset Inspector shows
+  the file's peak candela). Files with `TILT=INCLUDE`, a tilt file or a photometric type other than C
+  are refused, and the error names which.
 - Hair: the material's `pbr.hair.enabled: true` (the Inspector's Shading Model: Hair) and its
   `primaryColor`, `primaryShift`, `primaryWidth`, `secondaryColor`, `secondaryShift`,
   `secondaryWidth`, `rotation`, `flowMap`.
