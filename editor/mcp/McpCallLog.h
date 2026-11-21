@@ -28,7 +28,7 @@ namespace jasperengine::editor::mcp {
         double ms = 0.0;
         bool ok = true;
         std::string errorKind;      // empty when ok (errorKindOf)
-        uint64_t resultBytes = 0;   // the JSON-RPC result as sent (0 when cancelled)
+        uint64_t resultBytes = 0;   // the tools/call result (content, structuredContent) as sent; 0 when cancelled
     };
 
     // The opt-in call log (JASPER_MCP_LOG=<path>, or Log Calls To File in the MCP Server window):
