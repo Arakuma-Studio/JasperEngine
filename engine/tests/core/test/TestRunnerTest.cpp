@@ -384,6 +384,20 @@ Test.case("two", function(t) end)
     }
 }
 
+// R26: the log's category puts "[test] " before each protocol line, so the line itself starts with
+// its kind ("[test] [test] summary" missed the Android expectation of AC13)
+TEST(TestRunnerCore, ProtocolLinesLeaveTheCategoryToTheLog) {
+    Counts counts;
+    counts.total = 4;
+    counts.passed = 3;
+    counts.skipped = 1;
+    EXPECT_EQ(summaryLine(counts), "summary {\"error\":0,\"excluded_edit\":0,\"failed\":0,\"hung\":0,\"passed\":3,\"skipped\":1,\"total\":4}");
+    EXPECT_EQ(beginLine(4, "r1"), "begin {\"cases\":4,\"run\":\"r1\"}");
+    CaseResult result;
+    result.spec.name = "one";
+    EXPECT_EQ(caseLine(result).rfind("case {", 0), 0u) << caseLine(result);
+}
+
 TEST(TestRunnerCore, HangAndTimeoutAreDifferent) {
     FakeHost host;
     host.files["h.test.lua"] = R"(
