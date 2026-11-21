@@ -58,6 +58,20 @@ SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 STATUSES = ("success", "failure", "cancelled", "skipped")
 KINDS = ("build", "test", "smoke", "gate", "lint", "infra")
 TOP_DIRS = ("engine", "editor", "tools", "libs", "docs", "docker", "CMakeLists.txt", "build", ".github")
+TIME_SUITES = ("core", "editor", "htmlui", "mcp")
+TIME_NAME_RE = re.compile(r"^[\w./:<>=-]{1,300}$")
+
+
+def time_budget():
+    """tools/ci/time_budget.py beside this file (the report job checks out tools/ci only), or None"""
+    import importlib.util
+    path = Path(__file__).resolve().parent / "time_budget.py"
+    spec = importlib.util.spec_from_file_location("ci_time_budget_of_report", path)
+    if spec is None or not path.is_file():
+        return None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 # what a lane is, for the comment's headings (design §11.2)
 LANE_TITLES = {
@@ -756,6 +770,13 @@ def collect(lane: str, results: Path, out: Path, env: dict | None = None) -> dic
     }
     if left_out:
         data["left_out"] = left_out
+    try:
+        tb = time_budget()
+        summary = tb.lane_summary(lane, files, "\n".join(commands)) if tb else None
+        if summary:
+            data["time"] = summary
+    except Exception as error:  # noqa: BLE001  (the budget is advisory: it never costs the report)
+        print(f"report.py: no test-time budget for {lane}: {error!r}", file=sys.stderr)
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
@@ -817,7 +838,25 @@ def sanitise_report(data) -> dict | None:
         "left_out": [{"file": text_field(x.get("file"), 300), "reason": text_field(x.get("reason"), 500)}
                      for x in (data.get("left_out") or [])[:200] if isinstance(x, dict)]
         if isinstance(data.get("left_out"), list) else [],
+        **({"time": sanitise_time(data["time"])} if isinstance(data.get("time"), dict) and sanitise_time(data["time"]) else {}),
     }
+
+
+def number_field(value) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value < 10**9 else None
+
+
+def sanitise_time(data: dict) -> dict | None:
+    """A lane's test time (tools/ci/time_budget.py lane_summary): its suite, total and what went over"""
+    if data.get("suite") not in TIME_SUITES:
+        return None
+    over = []
+    for f in data.get("over") if isinstance(data.get("over"), list) else []:
+        if not isinstance(f, dict) or f.get("kind") not in ("test", "file") or not isinstance(f.get("name"), str) \
+                or not TIME_NAME_RE.match(f["name"]) or number_field(f.get("seconds")) is None or number_field(f.get("budget")) is None:
+            continue
+        over.append({"kind": f["kind"], "name": f["name"], "seconds": number_field(f["seconds"]), "budget": number_field(f["budget"])})
+    return {"suite": data["suite"], "seconds": int_field(data.get("seconds")), "complete": data.get("complete") is True, "over": over[:20]}
 
 
 def load_reports(directory: Path) -> dict[str, dict]:
@@ -1142,6 +1181,7 @@ def render(reports: dict[str, dict], lanes: dict, run_url: str, sha: str, adviso
     if advisory_red:
         banner = ["> **advisory (rollout): failing** — " + " · ".join(lane_label(n, shards, unit_jobs) for n in advisory_red)
                   + " (shown, not counted: `ADVISORY_LANES`)", ""]
+    banner += time_section(reports, lambda n: lane_label(n, shards, unit_jobs))
 
     if not red:
         verdict = f"✅ CI passed on `{sha_short}`: {jobs} jobs" if not missing else \
@@ -1170,6 +1210,29 @@ def render(reports: dict[str, dict], lanes: dict, run_url: str, sha: str, adviso
             f"{lead}❌ CI failed on `{sha_short}` — {len(red)} of {jobs} jobs · {run_link} · {minutes(seconds)}", ""]
     parts += [lane_section(name) for name in red]
     return assemble(head, banner, parts, [""] + footer())
+
+
+def time_section(reports: dict[str, dict], label) -> list[str]:
+    """The tests, MCP files and suite totals over tools/ci/time-budget.json: advisory, never counted by Check"""
+    times = {name: r["time"] for name, r in reports.items() if isinstance(r.get("time"), dict)}
+    if not times:
+        return []
+    try:
+        tb = time_budget()
+        budget = tb.load_budget() if tb else None
+    except (OSError, ValueError):
+        budget = None
+    if budget is None:
+        return []
+    lines = []
+    for name, t in sorted(times.items()):
+        if t["over"]:
+            lines += [f"{md(label(name))}:"] + tb.render(t["over"], t["suite"])
+    for total in tb.check_totals(budget, list(times.values())):
+        lines += tb.render([total], total["name"])
+    if not lines:
+        return []
+    return ["**Test time over budget** (advisory, not counted by `Check`; `tools/ci/time-budget.json`):", ""] + lines[:60] + [""]
 
 
 # ---------------------------------------------------------------------------

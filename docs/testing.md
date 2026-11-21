@@ -1137,6 +1137,25 @@ gh pr view <N> --comments                      # the report
 gh run download <run> -p 'ci-report-*'         # its JSON, per lane
 ```
 
+### Test time budget
+
+`tools/ci/time-budget.json` holds what CI time a test may cost: per suite (`core`, `editor`, `htmlui`,
+`mcp`, by lane) a cap for one test, for MCP also for one file, and the suite's total on a complete run
+(no filter: the merge queue's unit and HTML UI lanes, the editor's two parts added up); the tests and
+files above a cap are listed with their measured seconds and a reason. `report.py collect` measures
+each lane's tests against it and the PR comment lists what is over, marked advisory: `Check` does not
+count it. A listed test may grow by `tolerance` (2: one runner measured the same tests 1.4 to 1.7 times another), a total by `total_tolerance` (1.5).
+What is over gets cheaper (above, "Writing load-robust tests"; one owner per contract, a smaller check
+where it covers the same contract) or its budget raised in the PR, with the reason a reviewer reads:
+
+```sh
+python3 tools/ci/time_budget.py check --lane mcp-3 build/test-results/mcp.json      # what the report would list
+python3 tools/ci/time_budget.py allow mcp test_x.py::test_y 300 --reason "why it must cost this"
+python3 tools/ci/time_budget.py ratchet --lane unit-core build/test-results/core.xml # lower what got cheaper
+```
+
+Its tests: `python3 -I tools/ci/test_time_budget.py`.
+
 ### Reproducing a lane
 
 - Run the printed command. It is the lane's command narrowed to the failure, for example
