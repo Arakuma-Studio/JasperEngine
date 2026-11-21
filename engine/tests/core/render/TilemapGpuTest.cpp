@@ -87,7 +87,7 @@ namespace {
         return path;
     }
 
-    std::shared_ptr<TilesetData> makeTileset(const std::string& atlas) {
+    std::shared_ptr<TilesetData> tilemapMakeTileset(const std::string& atlas) {
         auto data = std::make_shared<TilesetData>();
         data->name = "gpu";
         data->tileWidth = TILE;
@@ -125,7 +125,7 @@ namespace {
             camera.activate();
             tilesetPath = (dir.path() / "gpu.tileset").string();
             atlas = writeAtlas(dir.path());
-            TilesetPool::set(tilesetPath, makeTileset(atlas));
+            TilesetPool::set(tilesetPath, tilemapMakeTileset(atlas));
             layer = std::make_unique<TilemapLayer>(&scene);
             scene.addComponent<GridComponent>(layer->getEntity(), GridComponent());
             TilemapLayerComponent& component = layer->getComponent<TilemapLayerComponent>();

@@ -23,13 +23,13 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-namespace ta = jasperengine::titleanim;
+namespace tanim = jasperengine::titleanim;
 namespace tt = jasperengine::titleart;
 using Json = tt::Json;
 
 namespace {
 
-    tt::TitleArtDoc title(const std::string& text = "WIN"){
+    tt::TitleArtDoc titleAnimOpsTitle(const std::string& text = "WIN"){
         registerTitleAnimOps();
         registerTitleAnimPresetOp();
         tt::NewTitleArtOptions options;
@@ -37,12 +37,12 @@ namespace {
         return tt::makeNewTitleArt(options);
     }
 
-    TitleOpsResult applyOps(const tt::TitleArtDoc& doc, Json ops){
+    TitleOpsResult titleAnimOpsApplyOps(const tt::TitleArtDoc& doc, Json ops){
         return TitleArtOps::apply(doc, ops);
     }
 
-    tt::TitleArtDoc applied(const tt::TitleArtDoc& doc, Json ops){
-        const TitleOpsResult r = applyOps(doc, std::move(ops));
+    tt::TitleArtDoc titleAnimOpsApplied(const tt::TitleArtDoc& doc, Json ops){
+        const TitleOpsResult r = titleAnimOpsApplyOps(doc, std::move(ops));
         EXPECT_TRUE(r.ok) << r.error();
         return r.doc;
     }
@@ -52,7 +52,7 @@ namespace {
         return members;
     }
 
-    std::string textLayer(const tt::TitleArtDoc& doc){
+    std::string titleAnimOpsTextLayer(const tt::TitleArtDoc& doc){
         return mainTextLayerOf(doc);
     }
 
@@ -69,14 +69,14 @@ namespace {
 }
 
 TEST(TitleAnimOpsTest, EveryOpAndAllOrNothing){
-    tt::TitleArtDoc doc = title();
-    doc = applied(doc, Json::array({op("add_animation", {{"name", "Intro"}, {"role", "intro"}, {"duration", 0.5}})}));
-    ta::TitleAnimationSet set = tt::readAnimationSet(doc);
+    tt::TitleArtDoc doc = titleAnimOpsTitle();
+    doc = titleAnimOpsApplied(doc, Json::array({op("add_animation", {{"name", "Intro"}, {"role", "intro"}, {"duration", 0.5}})}));
+    tanim::TitleAnimationSet set = tt::readAnimationSet(doc);
     ASSERT_EQ(set.animations.size(), 1u);
     EXPECT_EQ(set.defaultName, "Intro") << "the first animation is the default";
     EXPECT_TRUE(tt::isTitleArtId(set.animations[0].id));
 
-    doc = applied(doc, Json::array({
+    doc = titleAnimOpsApplied(doc, Json::array({
         op("set_track", {{"animation", "Intro"}, {"field", "transform.scale"}, {"relative", true}, {"keys", Json::array({Json::array({0, 2, "quad_in"}), Json::array({0.5, 1})})}}),
         op("set_key", {{"animation", "Intro"}, {"field", "opacity"}, {"time", 0.25}, {"value", 0.5}}),
         op("set_marker", {{"animation", "Intro"}, {"name", "onImpact"}, {"time", 0.25}}),
@@ -90,26 +90,26 @@ TEST(TitleAnimOpsTest, EveryOpAndAllOrNothing){
     set = tt::readAnimationSet(doc);
     ASSERT_EQ(set.animations.size(), 2u);
     EXPECT_EQ(set.defaultName, "Other");
-    const ta::TitleAnimation* intro = set.find("Intro");
+    const tanim::TitleAnimation* intro = set.find("Intro");
     ASSERT_NE(intro, nullptr);
     EXPECT_FLOAT_EQ(intro->duration, 1.0f) << "retime scales the duration";
     EXPECT_FLOAT_EQ(intro->markers[0].time, 0.5f);
     EXPECT_FLOAT_EQ(intro->flipbook.fps, 12.0f);
-    const ta::TitleAnimation* other = set.find("Other");
+    const tanim::TitleAnimation* other = set.find("Other");
     EXPECT_EQ(other->tracks.size(), 1u) << "a track without keys goes";
     EXPECT_TRUE(other->markers.empty());
 
     // a rename follows the references; removing one clears them
-    doc = applied(doc, Json::array({op("set_animation", {{"animation", "Other"}, {"values", {{"next", "Intro"}}}}),
+    doc = titleAnimOpsApplied(doc, Json::array({op("set_animation", {{"animation", "Other"}, {"values", {{"next", "Intro"}}}}),
                                     op("set_animation", {{"animation", "Intro"}, {"values", {{"name", "Start"}}}})}));
     set = tt::readAnimationSet(doc);
     EXPECT_EQ(set.find("Other")->next, "Start");
-    doc = applied(doc, Json::array({op("remove_animation", {{"animation", "Start"}})}));
+    doc = titleAnimOpsApplied(doc, Json::array({op("remove_animation", {{"animation", "Start"}})}));
     set = tt::readAnimationSet(doc);
     EXPECT_EQ(set.find("Other")->next, "");
 
     // all or nothing: the second op fails, with its index, and nothing is applied
-    const TitleOpsResult bad = applyOps(doc, Json::array({op("set_marker", {{"animation", "Other"}, {"name", "a"}, {"time", 0}}),
+    const TitleOpsResult bad = titleAnimOpsApplyOps(doc, Json::array({op("set_marker", {{"animation", "Other"}, {"name", "a"}, {"time", 0}}),
                                                        op("set_key", {{"animation", "Nope"}, {"field", "opacity"}, {"time", 0}})}));
     ASSERT_FALSE(bad.ok);
     EXPECT_EQ(bad.failedOp, 1);
@@ -121,47 +121,47 @@ TEST(TitleAnimOpsTest, EveryOpAndAllOrNothing){
 }
 
 TEST(TitleAnimOpsTest, ErrorsListTheAlternatives){
-    tt::TitleArtDoc doc = title();
-    const std::string layer = textLayer(doc);
-    doc = applied(doc, Json::array({op("add_animation", {{"name", "A"}})}));
+    tt::TitleArtDoc doc = titleAnimOpsTitle();
+    const std::string layer = titleAnimOpsTextLayer(doc);
+    doc = titleAnimOpsApplied(doc, Json::array({op("add_animation", {{"name", "A"}})}));
     // not animatable: the layer's animatable fields
-    TitleOpsResult r = applyOps(doc, Json::array({op("set_key", {{"animation", "A"}, {"layer", "id:" + layer}, {"field", "name"}, {"time", 0}, {"value", "x"}})}));
+    TitleOpsResult r = titleAnimOpsApplyOps(doc, Json::array({op("set_key", {{"animation", "A"}, {"layer", "id:" + layer}, {"field", "name"}, {"time", 0}, {"value", "x"}})}));
     ASSERT_FALSE(r.ok);
     EXPECT_EQ(r.problems[0].code, "not_animatable");
     EXPECT_NE(std::find(r.problems[0].validHere.begin(), r.problems[0].validHere.end(), "opacity"), r.problems[0].validHere.end());
     // a whole value and its component
-    doc = applied(doc, Json::array({op("set_key", {{"animation", "A"}, {"layer", "id:" + layer}, {"field", "tint"}, {"time", 0}, {"value", "#ff0000"}})}));
-    r = applyOps(doc, Json::array({op("set_key", {{"animation", "A"}, {"layer", "id:" + layer}, {"field", "tint.r"}, {"time", 0}, {"value", 0.5}})}));
+    doc = titleAnimOpsApplied(doc, Json::array({op("set_key", {{"animation", "A"}, {"layer", "id:" + layer}, {"field", "tint"}, {"time", 0}, {"value", "#ff0000"}})}));
+    r = titleAnimOpsApplyOps(doc, Json::array({op("set_key", {{"animation", "A"}, {"layer", "id:" + layer}, {"field", "tint.r"}, {"time", 0}, {"value", 0.5}})}));
     ASSERT_FALSE(r.ok);
     EXPECT_EQ(r.problems[0].code, "component_conflict");
     // relative on a stepped field; a reseed on what is not a seed; a merged layer's glyph colour
-    r = applyOps(doc, Json::array({op("set_track", {{"animation", "A"}, {"layer", "id:" + layer}, {"field", "text"}, {"relative", true},
+    r = titleAnimOpsApplyOps(doc, Json::array({op("set_track", {{"animation", "A"}, {"layer", "id:" + layer}, {"field", "text"}, {"relative", true},
                                                  {"keys", Json::array({Json::array({0, "A"})})}})}));
     ASSERT_FALSE(r.ok);
     EXPECT_EQ(r.problems[0].code, "relative_stepped");
-    r = applyOps(doc, Json::array({op("set_track", {{"animation", "A"}, {"layer", "id:" + layer}, {"field", "opacity"}, {"reseed", {{"rate", 4}}}})}));
+    r = titleAnimOpsApplyOps(doc, Json::array({op("set_track", {{"animation", "A"}, {"layer", "id:" + layer}, {"field", "opacity"}, {"reseed", {{"rate", 4}}}})}));
     ASSERT_FALSE(r.ok);
     EXPECT_EQ(r.problems[0].code, "reseed_not_seed");
-    tt::TitleArtDoc merged = applied(doc, Json::array({op("set", {{"layer", "id:" + layer}, {"values", {{"glyph_mode", "merged"}}}})}));
-    r = applyOps(merged, Json::array({op("set_track", {{"animation", "A"}, {"layer", "id:" + layer}, {"field", "glyph.opacity"},
+    tt::TitleArtDoc merged = titleAnimOpsApplied(doc, Json::array({op("set", {{"layer", "id:" + layer}, {"values", {{"glyph_mode", "merged"}}}})}));
+    r = titleAnimOpsApplyOps(merged, Json::array({op("set_track", {{"animation", "A"}, {"layer", "id:" + layer}, {"field", "glyph.opacity"},
                                                     {"keys", Json::array({Json::array({0, 1})})}})}));
     ASSERT_FALSE(r.ok);
     EXPECT_EQ(r.problems[0].code, "glyph_color_needs_cells");
     // shorthands are stored long form
-    doc = applied(doc, Json::array({op("set_key", {{"animation", "A"}, {"layer", "id:" + layer}, {"field", "face.opacity"}, {"time", 0}, {"value", 0.5}})}));
+    doc = titleAnimOpsApplied(doc, Json::array({op("set_key", {{"animation", "A"}, {"layer", "id:" + layer}, {"field", "face.opacity"}, {"time", 0}, {"value", 0.5}})}));
     bool longForm = false;
-    const ta::TitleAnimationSet stored = tt::readAnimationSet(doc);
-    for (const ta::TitleTrack& t : stored.find("A")->tracks) longForm = longForm || t.field == "style.face.opacity";
+    const tanim::TitleAnimationSet stored = tt::readAnimationSet(doc);
+    for (const tanim::TitleTrack& t : stored.find("A")->tracks) longForm = longForm || t.field == "style.face.opacity";
     EXPECT_TRUE(longForm);
 }
 
 TEST(TitleAnimOpsTest, SetKeyDefaultsToTheSampledValue){
-    tt::TitleArtDoc doc = title();
-    doc = applied(doc, Json::array({op("add_animation", {{"name", "A"}, {"duration", 1}}),
+    tt::TitleArtDoc doc = titleAnimOpsTitle();
+    doc = titleAnimOpsApplied(doc, Json::array({op("add_animation", {{"name", "A"}, {"duration", 1}}),
                                     op("set_track", {{"animation", "A"}, {"field", "opacity"}, {"keys", Json::array({Json::array({0, 0}), Json::array({1, 1})})}}),
                                     op("set_key", {{"animation", "A"}, {"field", "opacity"}, {"time", 0.25}})}));
-    const ta::TitleAnimationSet stored = tt::readAnimationSet(doc);
-    const ta::TitleTrack& t = stored.find("A")->tracks[0];
+    const tanim::TitleAnimationSet stored = tt::readAnimationSet(doc);
+    const tanim::TitleTrack& t = stored.find("A")->tracks[0];
     ASSERT_EQ(t.keys.size(), 3u);
     EXPECT_NEAR(t.keys[1].key.value[0], 0.25f, 1e-5f);
 }
@@ -187,37 +187,37 @@ TEST(TitleAnimPresetsTest, EveryPresetAppliesToThreeTitles){
     // §6.4's class column: these are title live only at their defaults (D7: 19 of 28)
     const std::set<std::string> titleLive = {"stamp_in", "glow_up", "bounce_in", "flip_in", "zoom_punch", "slide_in", "pop_in", "fade_in", "neon_flicker",
                                              "shake", "flash", "heartbeat", "jelly", "idle_shimmer", "win_pulse", "float_loop", "breathe", "zoom_out", "fade_out"};
-    std::vector<tt::TitleArtDoc> docs = {title("WIN"), title("BIG WIN\nMEGA")};
+    std::vector<tt::TitleArtDoc> docs = {titleAnimOpsTitle("WIN"), titleAnimOpsTitle("BIG WIN\nMEGA")};
     // a title with rays, a plate and a group
-    tt::TitleArtDoc rich = title("JACKPOT");
-    rich = applied(rich, Json::array({op("add_layer", {{"type", "shape"}, {"name", "Plate"}})}));
+    tt::TitleArtDoc rich = titleAnimOpsTitle("JACKPOT");
+    rich = titleAnimOpsApplied(rich, Json::array({op("add_layer", {{"type", "shape"}, {"name", "Plate"}})}));
     docs.push_back(rich);
     int live = 0;
     for (const TitleAnimPreset& p : TitleAnimPresets::all()){
         if (p.scope != "builtin") continue;
         for (size_t d = 0; d < docs.size(); d++){
-            const TitleOpsResult r = applyOps(docs[d], Json::array({op("add_animation", {{"name", "P"}, {"preset", p.id}})}));
+            const TitleOpsResult r = titleAnimOpsApplyOps(docs[d], Json::array({op("add_animation", {{"name", "P"}, {"preset", p.id}})}));
             ASSERT_TRUE(r.ok) << p.id << ": " << r.error();
-            const ta::TitleAnimationSet set = tt::readAnimationSet(r.doc);
-            const ta::TitleAnimation* a = set.find("P");
+            const tanim::TitleAnimationSet set = tt::readAnimationSet(r.doc);
+            const tanim::TitleAnimation* a = set.find("P");
             ASSERT_NE(a, nullptr);
             EXPECT_FALSE(a->tracks.empty()) << p.id;
             EXPECT_TRUE(a->hasPresetSource);
             EXPECT_EQ(a->presetId, p.id);
-            for (const ta::TitleTrack& t : a->tracks){
+            for (const tanim::TitleTrack& t : a->tracks){
                 EXPECT_EQ(t.fromPreset, p.id);
                 EXPECT_FALSE(t.orphan) << p.id << " " << t.field;
             }
             for (const TitleOpProblem& n : r.problems) EXPECT_NE(n.code, "preset_part_unavailable") << p.id << ": " << n.message;
             const auto lib = tt::compileAnimations(r.doc, nullptr, nullptr);
-            const ta::CompiledTitleAnimation* c = lib->find("P");
+            const tanim::CompiledTitleAnimation* c = lib->find("P");
             ASSERT_NE(c, nullptr);
             bool allLive = true;
-            for (const ta::CompiledTitleTrack& t : c->tracks) allLive = allLive && t.cls == ta::TrackClass::TitleLive;
+            for (const tanim::CompiledTitleTrack& t : c->tracks) allLive = allLive && t.cls == tanim::TrackClass::TitleLive;
             EXPECT_EQ(allLive, titleLive.count(p.id) > 0) << p.id;
             if (d == 0 && allLive) live++;
             // no track fails to resolve, and the loops are loops
-            if (p.wrap == "loop") { EXPECT_EQ(c->wrap, ta::AnimWrap::Loop) << p.id; }
+            if (p.wrap == "loop") { EXPECT_EQ(c->wrap, tanim::AnimWrap::Loop) << p.id; }
             if (p.overlay) { EXPECT_TRUE(c->overlay) << p.id; }
         }
     }
@@ -225,16 +225,16 @@ TEST(TitleAnimPresetsTest, EveryPresetAppliesToThreeTitles){
 }
 
 TEST(TitleAnimPresetsTest, EditPresetParametersRegeneratesOnlyItsTracks){
-    tt::TitleArtDoc doc = title();
-    doc = applied(doc, Json::array({op("add_animation", {{"name", "A"}, {"preset", "stamp_in"}}),
+    tt::TitleArtDoc doc = titleAnimOpsTitle();
+    doc = titleAnimOpsApplied(doc, Json::array({op("add_animation", {{"name", "A"}, {"preset", "stamp_in"}}),
                                     op("set_key", {{"animation", "A"}, {"field", "live.tint_amount"}, {"time", 0.1}, {"value", 0.5}})}));
     const size_t tracks = tt::readAnimationSet(doc).find("A")->tracks.size();
-    doc = applied(doc, Json::array({op("apply_animation_preset", {{"animation", "A"}, {"preset", "stamp_in"}, {"params", {{"from_scale", 4}}}})}));
-    const ta::TitleAnimationSet set = tt::readAnimationSet(doc);
-    const ta::TitleAnimation* a = set.find("A");
+    doc = titleAnimOpsApplied(doc, Json::array({op("apply_animation_preset", {{"animation", "A"}, {"preset", "stamp_in"}, {"params", {{"from_scale", 4}}}})}));
+    const tanim::TitleAnimationSet set = tt::readAnimationSet(doc);
+    const tanim::TitleAnimation* a = set.find("A");
     EXPECT_EQ(a->tracks.size(), tracks) << "regenerated, not added";
     bool userTrack = false, scale = false;
-    for (const ta::TitleTrack& t : a->tracks){
+    for (const tanim::TitleTrack& t : a->tracks){
         userTrack = userTrack || (t.field == "live.tint_amount" && t.fromPreset.empty());
         if (t.field == "transform.scale"){
             scale = true;
@@ -245,27 +245,27 @@ TEST(TitleAnimPresetsTest, EditPresetParametersRegeneratesOnlyItsTracks){
     EXPECT_TRUE(scale);
     EXPECT_EQ(a->markers.size(), 1u) << "its marker is regenerated, not doubled";
     // unknown names answer with the alternatives
-    const TitleOpsResult bad = applyOps(doc, Json::array({op("apply_animation_preset", {{"animation", "A"}, {"preset", "stamp_inn"}})}));
+    const TitleOpsResult bad = titleAnimOpsApplyOps(doc, Json::array({op("apply_animation_preset", {{"animation", "A"}, {"preset", "stamp_inn"}})}));
     ASSERT_FALSE(bad.ok);
     EXPECT_EQ(bad.problems[0].code, "unknown_preset");
     EXPECT_EQ(bad.problems[0].nearest, "stamp_in");
     // mode replace clears what else is on the targets; at offsets it
-    tt::TitleArtDoc replaced = applied(doc, Json::array({op("apply_animation_preset", {{"animation", "A"}, {"preset", "fade_in"}, {"mode", "replace"}, {"at", 0.2}})}));
-    const ta::TitleAnimationSet after = tt::readAnimationSet(replaced);
+    tt::TitleArtDoc replaced = titleAnimOpsApplied(doc, Json::array({op("apply_animation_preset", {{"animation", "A"}, {"preset", "fade_in"}, {"mode", "replace"}, {"at", 0.2}})}));
+    const tanim::TitleAnimationSet after = tt::readAnimationSet(replaced);
     bool only = true;
-    for (const ta::TitleTrack& t : after.find("A")->tracks) only = only && t.field == "opacity";
+    for (const tanim::TitleTrack& t : after.find("A")->tracks) only = only && t.field == "opacity";
     EXPECT_TRUE(only);
     EXPECT_NEAR(after.find("A")->tracks[0].keys[0].key.time, 0.2f, 1e-5f);
 }
 
 TEST(TitleAnimPresetsTest, SaveAsPresetRoundTrip){
-    tt::TitleArtDoc doc = title();
-    const std::string layer = textLayer(doc);
-    doc = applied(doc, Json::array({op("add_animation", {{"name", "A"}, {"role", "intro"}, {"duration", 2}}),
+    tt::TitleArtDoc doc = titleAnimOpsTitle();
+    const std::string layer = titleAnimOpsTextLayer(doc);
+    doc = titleAnimOpsApplied(doc, Json::array({op("add_animation", {{"name", "A"}, {"role", "intro"}, {"duration", 2}}),
                                     op("set_track", {{"animation", "A"}, {"field", "opacity"}, {"keys", Json::array({Json::array({0, 0}), Json::array({2, 1})})}}),
                                     op("set_track", {{"animation", "A"}, {"layer", "id:" + layer}, {"field", "opacity"}, {"keys", Json::array({Json::array({0, 0.5}), Json::array({2, 1})})}}),
                                     op("set_marker", {{"animation", "A"}, {"name", "go"}, {"time", 1}})}));
-    const ta::TitleAnimationSet set = tt::readAnimationSet(doc);
+    const tanim::TitleAnimationSet set = tt::readAnimationSet(doc);
     Json preset;
     std::string error;
     ASSERT_TRUE(titleAnimationToPreset(doc, *set.find("A"), "my_fade", "My Fade", preset, error)) << error;
@@ -283,10 +283,10 @@ TEST(TitleAnimPresetsTest, SaveAsPresetRoundTrip){
     EXPECT_EQ(parsed.group, "in");
     EXPECT_DOUBLE_EQ(parsed.defaultDuration, 2.0);
     // a track on another layer cannot be a preset
-    tt::TitleArtDoc two = applied(doc, Json::array({op("add_layer", {{"type", "shape"}, {"name", "Plate"}})}));
+    tt::TitleArtDoc two = titleAnimOpsApplied(doc, Json::array({op("add_layer", {{"type", "shape"}, {"name", "Plate"}})}));
     std::string plate;
     for (const Json& l : two.layers()) if (l.value("name", std::string()) == "Plate") plate = l.value("id", std::string());
-    two = applied(two, Json::array({op("set_key", {{"animation", "A"}, {"layer", "id:" + plate}, {"field", "opacity"}, {"time", 0}, {"value", 1}})}));
+    two = titleAnimOpsApplied(two, Json::array({op("set_key", {{"animation", "A"}, {"layer", "id:" + plate}, {"field", "opacity"}, {"time", 0}, {"value", 1}})}));
     Json refused;
     EXPECT_FALSE(titleAnimationToPreset(two, *tt::readAnimationSet(two).find("A"), "x", "X", refused, error));
     EXPECT_NE(error.find("Plate"), std::string::npos) << error;
@@ -306,27 +306,27 @@ TEST(TitleAnimPresetsTest, NoDeniedTermsInBuiltinIds){
 TEST(TitleFlipbookTest, FrameTimes){
     {
         // a float duration just over a whole number of frames adds no frame (0.2f x 10 = 2.00000003)
-        ta::TitleAnimation a;
+        tanim::TitleAnimation a;
         a.name = "Tenth";
         a.duration = 0.2f;
         a.flipbook.fps = 10.0f;
-        ta::CompiledTitleAnimation c;
-        ta::compileTitleOnly(a, c, nullptr);
+        tanim::CompiledTitleAnimation c;
+        tanim::compileTitleOnly(a, c, nullptr);
         EXPECT_EQ(titleFlipbookFrameTimes(c).size(), 3u);
     }
-    ta::CompiledTitleAnimation a;
+    tanim::CompiledTitleAnimation a;
     a.duration = 0.5;
     a.flipbookSettings.fps = 10;
     std::vector<double> t = titleFlipbookFrameTimes(a);
     ASSERT_EQ(t.size(), 6u) << "once includes D";
     EXPECT_DOUBLE_EQ(t.back(), 0.5);
-    a.wrap = ta::AnimWrap::Loop;
+    a.wrap = tanim::AnimWrap::Loop;
     t = titleFlipbookFrameTimes(a);
     ASSERT_EQ(t.size(), 5u) << "a loop excludes D";
     EXPECT_NEAR(t.back(), 0.4, 1e-9);
     a.duration = 60.0;
     a.flipbookSettings.fps = 60;
-    EXPECT_EQ(titleFlipbookFrameTimes(a).size(), ta::TITLE_ANIM_MAX_FLIPBOOK_FRAMES);
+    EXPECT_EQ(titleFlipbookFrameTimes(a).size(), tanim::TITLE_ANIM_MAX_FLIPBOOK_FRAMES);
 }
 
 TEST(TitleFlipbookTest, ConstantFrameSizeDedupeAndGutters){
@@ -380,10 +380,10 @@ TEST(TitleFlipbookTest, EstimateEqualsWritten){
     for (const texsynth::Image& page : p.pages) expected.add(page.width, page.height);
     for (const char* f : TITLE_FLIPBOOK_FAMILIES) EXPECT_EQ(expected.of(f), p.bytes.of(f)) << f;
     EXPECT_LT(p.bytes.mobile, p.bytes.desktop) << "ASTC 6x6 is the smallest";
-    ta::CompiledTitleAnimation a;
+    tanim::CompiledTitleAnimation a;
     a.name = "A";
     a.duration = 9.0 / 30.0;
-    a.wrap = ta::AnimWrap::Loop;
+    a.wrap = tanim::AnimWrap::Loop;
     a.flipbookSettings.fps = 30;
     tt::AnimationPlan plan;
     plan.name = "A";

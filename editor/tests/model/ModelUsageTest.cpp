@@ -24,7 +24,7 @@ using namespace jasperengine::editor::test;
 
 namespace {
 
-    void writeText(const fs::path& file, const std::string& text){
+    void modelUsageWriteText(const fs::path& file, const std::string& text){
         fs::create_directories(file.parent_path());
         std::ofstream(file, std::ios::binary) << text;
     }
@@ -60,7 +60,7 @@ TEST(ModelUsage, ScenesMarkBlendedSubmeshesAndReaders){
     EXPECT_TRUE(index.decideReadWrite("models/panel.gltf", ModelReadWrite::On, ScriptMeshData::Automatic, false, true).keep);
     EXPECT_TRUE(index.decideReadWrite("models/panel.gltf", ModelReadWrite::Automatic, ScriptMeshData::Automatic, true, true).keep);
 
-    writeText(dir.path() / "Readers.scene", kReaderScene);
+    modelUsageWriteText(dir.path() / "Readers.scene", kReaderScene);
     index.refresh(*project);
     usage = index.usageOf("models/panel.gltf");
     EXPECT_EQ(usage.objects(), 2);
@@ -77,7 +77,7 @@ TEST(ModelUsage, ScenesMarkBlendedSubmeshesAndReaders){
 
     // a script's mesh-reading call keeps every model, unless the project says release
     fs::remove(dir.path() / "Readers.scene");
-    writeText(dir.path() / "scripts" / "Spawner.lua", "local Spawner = {}\nfunction Spawner:init() self.body:createMeshCollider() end\nreturn Spawner\n");
+    modelUsageWriteText(dir.path() / "scripts" / "Spawner.lua", "local Spawner = {}\nfunction Spawner:init() self.body:createMeshCollider() end\nreturn Spawner\n");
     index.refresh(*project);
     ASSERT_EQ(index.scriptReaders().size(), 1u);
     EXPECT_NE(index.scriptReaders()[0].find("scripts/Spawner.lua calls createMeshCollider"), std::string::npos) << index.scriptReaders()[0];

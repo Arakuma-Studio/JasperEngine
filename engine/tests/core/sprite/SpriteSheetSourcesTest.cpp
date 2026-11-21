@@ -46,7 +46,7 @@ namespace {
         ~FakeProvider() { ImportedAssets::setSheetProvider(nullptr); }
     };
 
-    std::string writeText(const std::filesystem::path& path, const std::string& text) {
+    std::string writeSourceText(const std::filesystem::path& path, const std::string& text) {
         io::AtomicWriteOptions options;
         options.durability = io::Durability::Cache;
         EXPECT_TRUE(io::writeFileAtomic(path, text, options).ok());
@@ -205,11 +205,11 @@ TEST(SpriteSheetSources, AtlasAndRemapsThroughImportedAssets) {
     sword.offset = Vector2(3, 2);
     sword.pivot = Vector2(8, 8);
     atlas.frames.push_back(sword);
-    provider.files["ui/icons.spriteatlas#sheet"] = writeText(dir.path() / "sheet.json", writeSheet(atlas));
+    provider.files["ui/icons.spriteatlas#sheet"] = writeSourceText(dir.path() / "sheet.json", writeSheet(atlas));
     provider.files["ui/icons.spriteatlas#image#0"] = (dir.path() / "page0-a.png").string();
     SpriteSheetData remap = atlas;
     remap.source = "items/sword.png";
-    provider.files["items/sword.png#sheet"] = writeText(dir.path() / "member.json", writeSheet(remap));
+    provider.files["items/sword.png#sheet"] = writeSourceText(dir.path() / "member.json", writeSheet(remap));
     provider.files["items/sword.png#image#0"] = (dir.path() / "page0-a.png").string();
     SpriteSheetPool::invalidate("ui/icons.spriteatlas");
     SpriteSheetPool::invalidate("items/sword.png");
@@ -243,7 +243,7 @@ TEST(SpriteSheetSources, InlineRectMapsIntoTheTrimmedPage) {
     whole.sourceSize = Vector2(32, 16);
     whole.offset = Vector2(4, 2);
     remap.frames.push_back(whole);
-    provider.files["legacy/sheet.png#sheet"] = writeText(dir.path() / "member.json", writeSheet(remap));
+    provider.files["legacy/sheet.png#sheet"] = writeSourceText(dir.path() / "member.json", writeSheet(remap));
     provider.files["legacy/sheet.png#atlas"] = provider.files["legacy/sheet.png#sheet"];
     SpriteSheetPool::invalidate("legacy/sheet.png");
 

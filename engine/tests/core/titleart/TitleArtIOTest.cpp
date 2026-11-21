@@ -21,8 +21,8 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    std::string readFixture(const std::string& name) {
-        const fs::path path = fs::path(test::testPaths().sourceDir) / "titleart" / "fixtures" / "v1" / name;
+    std::string titleArtIOReadFixture(const std::string& name) {
+        const fs::path path = fs::path(jasperengine::test::testPaths().sourceDir) / "titleart" / "fixtures" / "v1" / name;
         std::ifstream file(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     }
@@ -40,7 +40,7 @@ namespace {
 
 TEST_F(TitleArtIOTest, CanonicalRoundTrip) {
     for (const char* name : {"minimal.titleart", "every-layer-type.titleart", "unknown-data.titleart"}) {
-        const TitleArtParseResult first = parseTitleArt(readFixture(name));
+        const TitleArtParseResult first = parseTitleArt(titleArtIOReadFixture(name));
         ASSERT_TRUE(first.ok) << name << ": " << first.error.toString();
         const std::string text = writeTitleArt(first.doc);
         const TitleArtParseResult second = parseTitleArt(text);
@@ -64,7 +64,7 @@ TEST_F(TitleArtIOTest, CanonicalTextFormatting) {
 }
 
 TEST_F(TitleArtIOTest, EveryMemberIsWrittenWithItsDefault) {
-    const TitleArtParseResult parsed = parseTitleArt(readFixture("minimal.titleart"));
+    const TitleArtParseResult parsed = parseTitleArt(titleArtIOReadFixture("minimal.titleart"));
     ASSERT_TRUE(parsed.ok);
     const Json& root = parsed.doc.root;
     EXPECT_EQ(root["canvas"]["width"], 1920);
@@ -94,7 +94,7 @@ TEST_F(TitleArtIOTest, EveryMemberIsWrittenWithItsDefault) {
 }
 
 TEST_F(TitleArtIOTest, EveryLayerTypeTakesItsDefaults) {
-    const TitleArtParseResult parsed = parseTitleArt(readFixture("every-layer-type.titleart"));
+    const TitleArtParseResult parsed = parseTitleArt(titleArtIOReadFixture("every-layer-type.titleart"));
     ASSERT_TRUE(parsed.ok) << parsed.error.toString();
     const Json& root = parsed.doc.root;
     const Json* text = findLayer(root, "00000003");
@@ -152,7 +152,7 @@ TEST_F(TitleArtIOTest, EveryLayerTypeTakesItsDefaults) {
 }
 
 TEST_F(TitleArtIOTest, UnknownDataSurvivesEdits) {
-    TitleArtParseResult parsed = parseTitleArt(readFixture("unknown-data.titleart"));
+    TitleArtParseResult parsed = parseTitleArt(titleArtIOReadFixture("unknown-data.titleart"));
     ASSERT_TRUE(parsed.ok);
     // an edit through the field API, then save and read again, twice
     for (int pass = 0; pass < 2; pass++) {
@@ -342,7 +342,7 @@ TEST_F(TitleArtIOTest, NewDocumentIsCreateTitleArtDefault) {
 }
 
 TEST_F(TitleArtIOTest, FieldShorthandsExpand) {
-    TitleArtDoc doc = parseTitleArt(readFixture("every-layer-type.titleart")).doc;
+    TitleArtDoc doc = parseTitleArt(titleArtIOReadFixture("every-layer-type.titleart")).doc;
     const Json* text = findLayer(doc.root, "00000003");
     ASSERT_TRUE(text);
     auto expand = [&](const std::string& path) { return expandFieldShorthand(text, path); };

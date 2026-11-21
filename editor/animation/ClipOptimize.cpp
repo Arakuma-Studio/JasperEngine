@@ -32,7 +32,7 @@ namespace{
         return editor::FileUtils::pathFromUtf8(FileData::getSystemPath(path));
     }
 
-    double rounded(double value){
+    double optimizeRounded(double value){
         return std::round(value * 1000.0) / 1000.0;
     }
 
@@ -147,7 +147,7 @@ anim::ClipOptimizeResult anim::runClipOptimize(const ClipOptimizeRequest& reques
     ClipOptimizeRecord record;
     record.toleranceMm = result.toleranceMm;
     record.skinDistanceMm = result.skinDistanceMm;
-    record.maxErrorMm = rounded(result.measured.maxErrorMm);
+    record.maxErrorMm = optimizeRounded(result.measured.maxErrorMm);
     if (!request.inPlace){
         record.sourceSha1 = clipSourceSha1(request.reference);
         record.source = result.displayName;

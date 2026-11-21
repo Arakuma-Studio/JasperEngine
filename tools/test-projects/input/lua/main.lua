@@ -34,3 +34,6 @@ InputActions.onSchemeChanged = function(scheme, previous)
     Log.print("[gate] scheme " .. scheme)
     if FormUIOnScheme then FormUIOnScheme() end
 end
+
+-- the Replay menu and its input script (lua/replay.lua)
+require("replay")

@@ -18,6 +18,7 @@
 #include "util/Util.h"
 
 #include "json.hpp"
+#include "util/StringUtils.h"
 
 #include <algorithm>
 #include <atomic>
@@ -62,7 +63,7 @@ std::string format(const char* pattern, double value) {
     return text;
 }
 
-double numberOr(const Json& value, double fallback) {
+double cliNumberOr(const Json& value, double fallback) {
     return value.is_number() ? value.get<double>() : fallback;
 }
 
@@ -78,11 +79,6 @@ bool parseInteger(const std::string& text, long& out) {
     char* end = nullptr;
     out = std::strtol(text.c_str(), &end, 10);
     return end && *end == '\0';
-}
-
-std::string lower(std::string text) {
-    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-    return text;
 }
 
 // JSON on stdout: invalid UTF-8 in a path is replaced, never thrown
@@ -141,7 +137,7 @@ struct AnalyzeOptions {
     std::vector<std::string> inputs;
 };
 
-struct Input {
+struct ClipInput {
     std::string path;                                   // as given; a built-in clip: essentials:<id>, library:<id>
     fs::path file;                                      // a file input
     const SoundManifestClip* essential = nullptr;
@@ -162,9 +158,9 @@ std::string itemLine(const Json& item) {
     const Json& loudness = item["loudness"];
     const Json& peak = item["peak"];
     std::string line = std::to_string(item.value("n", 0)) + ". " + item.value("path", std::string()) + ": " +
-                       format("%.2f s", numberOr(item["format"]["duration_s"], 0.0)) + ", ";
+                       format("%.2f s", cliNumberOr(item["format"]["duration_s"], 0.0)) + ", ";
     line += loudness["momentary_max"].is_number() ? format("%.1f LUFS-M", loudness["momentary_max"].get<double>()) : std::string("no loudness");
-    line += ", TP " + format("%.1f dBTP", numberOr(peak["true_peak_dbtp"], AudioMeter::SILENCE_DB));
+    line += ", TP " + format("%.1f dBTP", cliNumberOr(peak["true_peak_dbtp"], AudioMeter::SILENCE_DB));
     line += ", " + item.value("kind", std::string());
     if (item.contains("type")) line += " (" + item["type"].get<std::string>() + ")";
     const std::string notes = AudioAnalysis::notesSummary(item["notes"]);
@@ -197,7 +193,7 @@ bool renderImage(const Json& items, const std::vector<const AudioAnalysis::Signa
         };
         input.momentary = curve(item.value("momentary", Json()));
         input.shortTerm = curve(item.value("short_term", Json()));
-        input.truePeakDbtp = numberOr(item["peak"]["true_peak_dbtp"], AudioMeter::SILENCE_DB);
+        input.truePeakDbtp = cliNumberOr(item["peak"]["true_peak_dbtp"], AudioMeter::SILENCE_DB);
         image = AudioImages::render(input, AudioImages::fileLanes(mode), width);
     }
     if (!AudioImages::encodePng(image, png)) return false;
@@ -206,7 +202,7 @@ bool renderImage(const Json& items, const std::vector<const AudioAnalysis::Signa
 }
 
 // One input to its item: as analyze_audio makes it, without a project (no cache, no .meta)
-void analyzeInput(const Input& input, const AnalyzeOptions& options, bool keepSignal, Outcome& out) {
+void analyzeInput(const ClipInput& input, const AnalyzeOptions& options, bool keepSignal, Outcome& out) {
     if (!input.error.empty()) {
         out.error = input.error;
         return;
@@ -390,13 +386,13 @@ int listLibrary(bool json, const std::string& type, const std::string& query) {
         return EXIT_ERROR;
     }
     std::vector<std::string> words;
-    std::istringstream split(lower(query));
+    std::istringstream split(StringUtils::toLowerAscii(query));
     for (std::string word; split >> word;) words.push_back(word);
     std::vector<const SoundManifestClip*> clips;
     for (const SoundManifestClip& clip : library.all()) {
         if (!type.empty() && clip.type != type) continue;
-        std::string haystack = lower(clip.id) + "\n" + lower(clip.description);
-        for (const std::string& tag : clip.tags) haystack += "\n" + lower(tag);
+        std::string haystack = StringUtils::toLowerAscii(clip.id) + "\n" + StringUtils::toLowerAscii(clip.description);
+        for (const std::string& tag : clip.tags) haystack += "\n" + StringUtils::toLowerAscii(tag);
         if (std::all_of(words.begin(), words.end(), [&](const std::string& w) { return haystack.find(w) != std::string::npos; })) {
             clips.push_back(&clip);
         }
@@ -522,7 +518,7 @@ int SoundLibraryCli::runAudioAnalyze(int argc, char** argv, const char* executab
     }
 
     // the inputs, references expanded in order (a reference that matches nothing is an error entry)
-    std::vector<Input> inputs;
+    std::vector<ClipInput> inputs;
     bool references = false;
     for (const std::string& text : options.inputs) {
         if (SoundEssentials::isReference(text)) {

@@ -13,6 +13,7 @@
 #include "ProjectFileIndex.h"
 
 #include <algorithm>
+#include <atomic>
 #include <condition_variable>
 #include <functional>
 #include <map>
@@ -52,6 +53,27 @@ namespace {
         return key.size() > dir.size() && key.compare(0, dir.size(), dir) == 0 && key[dir.size()] == '/';
     }
 
+    // setPollingScanHookForTesting
+    std::atomic<bool> pollingScanHooked{false};
+    std::mutex pollingScanHookMutex;
+    std::function<void()> pollingScanHook;
+
+    void runPollingScanHook() {
+        if (!pollingScanHooked.load()) return;
+        std::function<void()> hook;
+        {
+            std::lock_guard<std::mutex> lock(pollingScanHookMutex);
+            hook = pollingScanHook;
+        }
+        if (hook) hook();
+    }
+
+}
+
+void jasperengine::watch::setPollingScanHookForTesting(std::function<void()> hook) {
+    std::lock_guard<std::mutex> lock(pollingScanHookMutex);
+    pollingScanHooked = static_cast<bool>(hook);
+    pollingScanHook = std::move(hook);
 }
 
 namespace jasperengine::watch {
@@ -164,6 +186,7 @@ void PollingBackend::run() {
             jobs::detail::timedWait(wakeCv, lock, interval, [this]() { return stopRequested; });
             if (stopRequested) break;
         }
+        runPollingScanHook();
         std::lock_guard<std::mutex> lock(scanMutex);
         scanLocked(false);
     }
@@ -401,7 +424,13 @@ void PollingBackend::scanLocked(bool flushing) {
     rotate(code, codeCursor, whole ? code.size() : CODE_WHOLE_MAX, std::chrono::microseconds(0));
     rotate(assets, assetCursor, assets.size(), whole ? std::chrono::microseconds(0) : ASSET_BUDGET);
 
-    if (events.empty() || suppressForTesting) return;
+    if (suppressForTesting) return;
+    if (events.empty()) {
+        sink->onScanCompleted();
+        return;
+    }
+    // the pass's end rides with its events: a removal it reports waits for the next pass's end
+    events.push_back(RawEvent{RawEvent::Type::ScanDone, {}, {}, false});
     sink->onRawEvents(std::move(events));
 }
 

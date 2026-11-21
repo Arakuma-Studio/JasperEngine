@@ -53,15 +53,15 @@ namespace {
         return d;
     }
 
-    struct Sample {
+    struct ParticleUpstreamBehaviourSample {
         Vector3 position;
         Vector3 direction;
     };
 
-    std::vector<Sample> samples(const ParticleEffectDocument& d, uint32_t seed = 1){
+    std::vector<ParticleUpstreamBehaviourSample> particleUpstreamBehaviourSamples(const ParticleEffectDocument& d, uint32_t seed = 1){
         Sim sim(d, seed);
         sim.ticks(1);
-        std::vector<Sample> out;
+        std::vector<ParticleUpstreamBehaviourSample> out;
         for (uint32_t i = 0; i < sim.count(); i++){
             const Vector3 v(sim.ch(ChVelX, i), sim.ch(ChVelY, i), sim.ch(ChVelZ, i));
             out.push_back({Vector3(sim.ch(ChPosX, i), sim.ch(ChPosY, i), sim.ch(ChPosZ, i)), v.normalized()});
@@ -265,15 +265,15 @@ TEST(ParticleUpstreamShape, SphereSurfaceAndVolume){
     ShapeModule shape = shapeOf(ShapeType::Sphere);
     shape.radius = 2.0f;
     shape.radiusThickness = 0.0f;
-    for (const Sample& s : samples(burstOf(shape))){
+    for (const ParticleUpstreamBehaviourSample& s : particleUpstreamBehaviourSamples(burstOf(shape))){
         ASSERT_NEAR(s.position.length(), 2.0f, 1e-4f);
         ASSERT_NEAR(s.direction.dotProduct(s.position / 2.0f), 1.0f, 1e-3f) << "outward";
     }
     // the whole volume: uniform, so the share inside half the radius is (1/2)^3
     shape.radiusThickness = 1.0f;
     int inside = 0;
-    const std::vector<Sample> volume = samples(burstOf(shape));
-    for (const Sample& s : volume){
+    const std::vector<ParticleUpstreamBehaviourSample> volume = particleUpstreamBehaviourSamples(burstOf(shape));
+    for (const ParticleUpstreamBehaviourSample& s : volume){
         ASSERT_LE(s.position.length(), 2.0f + 1e-4f);
         if (s.position.length() < 1.0f) inside++;
     }
@@ -286,7 +286,7 @@ TEST(ParticleUpstreamShape, ConeDirectionsTiltWithTheDistanceFromTheAxis){
     shape.angle = 30.0f;
     shape.radiusThickness = 0.0f;
     // on the rim: every direction leaves at the cone angle, tilted outward
-    for (const Sample& s : samples(burstOf(shape))){
+    for (const ParticleUpstreamBehaviourSample& s : particleUpstreamBehaviourSamples(burstOf(shape))){
         ASSERT_NEAR(s.position.y, 0.0f, 1e-5f);
         ASSERT_NEAR(Vector3(s.position.x, 0, s.position.z).length(), 1.0f, 1e-4f);
         ASSERT_NEAR(tiltDegrees(s.direction), 30.0f, 0.5f);
@@ -296,8 +296,8 @@ TEST(ParticleUpstreamShape, ConeDirectionsTiltWithTheDistanceFromTheAxis){
     // normalized radius r by atan(r tan(angle)) (the frustum's own rays)
     shape.radiusThickness = 1.0f;
     int inner = 0;
-    const std::vector<Sample> base = samples(burstOf(shape));
-    for (const Sample& s : base){
+    const std::vector<ParticleUpstreamBehaviourSample> base = particleUpstreamBehaviourSamples(burstOf(shape));
+    for (const ParticleUpstreamBehaviourSample& s : base){
         const float d = Vector3(s.position.x, 0, s.position.z).length();
         ASSERT_NEAR(tiltDegrees(s.direction), std::atan(d * std::tan(30.0f * kDegree)) / kDegree, 0.5f);
         if (d < 0.5f) inner++;
@@ -309,14 +309,14 @@ TEST(ParticleUpstreamShape, PointConeAndConeVolume){
     ShapeModule shape = shapeOf(ShapeType::Cone, ShapeEmitFrom::Base);
     shape.radius = 0.0f;
     shape.angle = 20.0f;
-    for (const Sample& s : samples(burstOf(shape))){
+    for (const ParticleUpstreamBehaviourSample& s : particleUpstreamBehaviourSamples(burstOf(shape))){
         ASSERT_NEAR(s.position.length(), 0.0f, 1e-6f);
         ASSERT_LE(tiltDegrees(s.direction), 20.0f + 1e-2f);
     }
     // Cone Volume: on its ray from the apex, no higher than the length
     shape.emitFrom = ShapeEmitFrom::Volume;
     shape.length = 3.0f;
-    for (const Sample& s : samples(burstOf(shape))){
+    for (const ParticleUpstreamBehaviourSample& s : particleUpstreamBehaviourSamples(burstOf(shape))){
         const float along = s.position.dotProduct(s.direction);
         ASSERT_GE(along, -1e-5f);
         ASSERT_LE(s.position.y, 3.0f + 1e-4f);
@@ -328,8 +328,8 @@ TEST(ParticleUpstreamShape, RandomDirectionIsUniformAndTheShapeTransformApplies)
     ShapeModule shape = shapeOf(ShapeType::Cone, ShapeEmitFrom::Base);
     shape.randomizeDirection = 1.0f;
     Vector3 sum(0, 0, 0);
-    const std::vector<Sample> random = samples(burstOf(shape));
-    for (const Sample& s : random) sum = sum + s.direction;
+    const std::vector<ParticleUpstreamBehaviourSample> random = particleUpstreamBehaviourSamples(burstOf(shape));
+    for (const ParticleUpstreamBehaviourSample& s : random) sum = sum + s.direction;
     EXPECT_LT((sum / (float)random.size()).length(), 0.05f);
 
     // a cone turned 90 degrees around X emits along +Z, moved by the position
@@ -338,7 +338,7 @@ TEST(ParticleUpstreamShape, RandomDirectionIsUniformAndTheShapeTransformApplies)
     turned.radius = 0.0f;
     turned.rotation = Vector3(90.0f, 0.0f, 0.0f);
     turned.position = Vector3(1.0f, 2.0f, 3.0f);
-    const std::vector<Sample> one = samples(burstOf(turned, 4));
+    const std::vector<ParticleUpstreamBehaviourSample> one = particleUpstreamBehaviourSamples(burstOf(turned, 4));
     ASSERT_FALSE(one.empty());
     EXPECT_NEAR(one[0].direction.z, 1.0f, 1e-5f);
     EXPECT_NEAR((one[0].position - Vector3(1, 2, 3)).length(), 0.0f, 1e-5f);
@@ -346,7 +346,7 @@ TEST(ParticleUpstreamShape, RandomDirectionIsUniformAndTheShapeTransformApplies)
     // disabled: the origin, straight up
     ShapeModule off = shapeOf(ShapeType::Sphere);
     off.enabled = false;
-    const std::vector<Sample> o = samples(burstOf(off, 4));
+    const std::vector<ParticleUpstreamBehaviourSample> o = particleUpstreamBehaviourSamples(burstOf(off, 4));
     ASSERT_FALSE(o.empty());
     EXPECT_NEAR(o[0].position.length(), 0.0f, 1e-6f);
     EXPECT_NEAR(o[0].direction.y, 1.0f, 1e-6f);
@@ -359,13 +359,13 @@ TEST(ParticleUpstreamShape, EulerOrderIsZThenXThenY){
     turned.angle = 0.0f;
     turned.radius = 0.0f;
     turned.rotation = Vector3(90.0f, 0.0f, 90.0f);
-    const std::vector<Sample> s = samples(burstOf(turned, 4));
+    const std::vector<ParticleUpstreamBehaviourSample> s = particleUpstreamBehaviourSamples(burstOf(turned, 4));
     ASSERT_FALSE(s.empty());
     EXPECT_NEAR(s[0].direction.x, -1.0f, 1e-5f);
     ShapeModule edge = shapeOf(ShapeType::Edge);
     edge.radius = 1.0f;
     edge.rotation = Vector3(90.0f, 0.0f, 90.0f);
-    for (const Sample& e : samples(burstOf(edge, 50))){
+    for (const ParticleUpstreamBehaviourSample& e : particleUpstreamBehaviourSamples(burstOf(edge, 50))){
         // the edge's X axis now runs along Z
         ASSERT_NEAR(e.position.x, 0.0f, 1e-5f);
         ASSERT_NEAR(e.position.y, 0.0f, 1e-5f);
@@ -572,7 +572,7 @@ namespace {
                     {"type": "emission", "rateOverTime": 60},
                     {"type": "shape", "enabled": false}]})";
 
-    void frames(Scene& scene, int n){
+    void particleUpstreamBehaviourFrames(Scene& scene, int n){
         for (int i = 0; i < n; i++) scene.getSystem<ParticleSubsystem>()->update(1.0 / 60.0);
     }
 
@@ -585,11 +585,11 @@ TEST(ParticleUpstreamScene, PlayOnAwakeFillsAndNoPlayOnAwakeWaits){
     ParticleSystem waiting(&scene);
     waiting.setPlayOnAwake(false);
     ASSERT_TRUE(waiting.setInlineEffect(kCounterEffect));
-    frames(scene, 10);
+    particleUpstreamBehaviourFrames(scene, 10);
     EXPECT_GT(awake.getParticleCount(), 0u);
     EXPECT_EQ(waiting.getParticleCount(), 0u);
     waiting.play();
-    frames(scene, 10);
+    particleUpstreamBehaviourFrames(scene, 10);
     EXPECT_GT(waiting.getParticleCount(), 0u);
 }
 
@@ -602,15 +602,15 @@ TEST(ParticleUpstreamScene, PlayStartsAsALoadAfterAnEditTimePreview){
     ParticleSystem previewed(&scene);
     ASSERT_TRUE(previewed.setInlineEffect(kCounterEffect));
     std::shared_ptr<ParticleSubsystem> particles = scene.getSystem<ParticleSubsystem>();
-    frames(scene, 1);
+    particleUpstreamBehaviourFrames(scene, 1);
     particles->stop(stopped.getEntity(), true);
-    frames(scene, 5);
+    particleUpstreamBehaviourFrames(scene, 5);
     EXPECT_EQ(stopped.getParticleCount(), 0u);
     ASSERT_GT(previewed.getParticleCount(), 0u);
 
     particles->resetForPlay();
     EXPECT_EQ(previewed.getParticleCount(), 0u) << "no particle of the preview is left";
-    frames(scene, 10);
+    particleUpstreamBehaviourFrames(scene, 10);
     EXPECT_GT(stopped.getParticleCount(), 0u) << "Play On Awake plays it";
     EXPECT_GT(previewed.getParticleCount(), 0u);
     EXPECT_TRUE(stopped.isPlaying());
@@ -624,9 +624,9 @@ TEST(ParticleUpstreamScene, StopActionDisable){
         "stopAction": "disable",
         "modules": [{"type": "main", "startLifetime": 0.2, "startSpeed": 0},
                     {"type": "emission", "rateOverTime": 60}, {"type": "shape", "enabled": false}]})"));
-    frames(scene, 10);
+    particleUpstreamBehaviourFrames(scene, 10);
     EXPECT_TRUE(system.isActive());
-    frames(scene, 60);
+    particleUpstreamBehaviourFrames(scene, 60);
     EXPECT_FALSE(system.isActive()) << "0.5 s of emission and 0.2 s of life later";
 }
 
@@ -639,7 +639,7 @@ TEST(ParticleUpstreamScene, StopActionDestroy){
         "stopAction": "destroy",
         "modules": [{"type": "main", "startLifetime": 0.2, "startSpeed": 0},
                     {"type": "emission", "rateOverTime": 50}, {"type": "shape", "enabled": false}]})"));
-    frames(scene, 60);
+    particleUpstreamBehaviourFrames(scene, 60);
     ObjectManager::update(0.0);
     EXPECT_FALSE(scene.isEntityCreated(entity));
 }
@@ -653,9 +653,9 @@ TEST(ParticleUpstreamScene, ChildrenFollowPlayAndStop){
     child.setPlayOnAwake(false);
     ASSERT_TRUE(child.setInlineEffect(kCounterEffect));
     parent.addChild(&child);
-    frames(scene, 2);
+    particleUpstreamBehaviourFrames(scene, 2);
     parent.play(true);
-    frames(scene, 5);
+    particleUpstreamBehaviourFrames(scene, 5);
     EXPECT_TRUE(parent.isPlaying());
     EXPECT_TRUE(child.isPlaying());
     parent.stop(true, true);
@@ -663,7 +663,7 @@ TEST(ParticleUpstreamScene, ChildrenFollowPlayAndStop){
     EXPECT_FALSE(child.isPlaying());
     // without the children: only itself
     parent.play(false);
-    frames(scene, 2);
+    particleUpstreamBehaviourFrames(scene, 2);
     EXPECT_TRUE(parent.isPlaying());
     EXPECT_FALSE(child.isPlaying());
 }
@@ -677,13 +677,13 @@ TEST(ParticleUpstreamScene, DeactivatedGameObjectClearsAndReplaysOnReactivation)
     ASSERT_TRUE(system.setInlineEffect(R"({"version": 1, "duration": 5, "seed": 3, "maxParticles": 100, "cullingMode": "alwaysSimulate",
         "modules": [{"type": "main", "startLifetime": 10, "startSpeed": 0},
                     {"type": "emission", "rateOverTime": 60}, {"type": "shape", "enabled": false}]})"));
-    frames(scene, 20);
+    particleUpstreamBehaviourFrames(scene, 20);
     ASSERT_GT(system.getParticleCount(), 10u);
     system.setActive(false);
-    frames(scene, 1);
+    particleUpstreamBehaviourFrames(scene, 1);
     EXPECT_EQ(system.getParticleCount(), 0u);
     system.setActive(true);
-    frames(scene, 10);
+    particleUpstreamBehaviourFrames(scene, 10);
     EXPECT_GT(system.getParticleCount(), 0u) << "Play On Awake plays it again";
     EXPECT_LT(system.getParticleCount(), 20u);
 }

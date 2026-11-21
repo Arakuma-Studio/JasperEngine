@@ -40,8 +40,10 @@ every test that takes an editor runs on EDITOR = {"create": True, ...} or EDITOR
 (e.g. a tools/fixtures project). The runner checks this and exits 2 otherwise. New test files are
 written CI-capable by default (docs/mcp/README.md).
 
-Each file runs in its own Python process. Exit code: 0 when nothing failed, 1 when a test failed or
-a worker crashed, 2 when --suite ci holds a file that relies on the default fixture.
+Each file runs in its own Python process. Before its summary the run prints what the chunks spent
+besides their tests' work (`== setup`, and `setup` in --json: setup_report). Exit code: 0 when
+nothing failed, 1 when a test failed or a worker crashed, 2 when --suite ci holds a file that relies
+on the default fixture.
 """
 
 from __future__ import annotations
@@ -139,6 +141,8 @@ async def _run_file(path: Path, filt: list[str], results_path: Path, url: str | 
         except Exception as ex:  # noqa: BLE001
             ed_error = f"editor failed to start: {ex}"
             raise
+        if e.timing is not None:
+            e.timing["shared"] = True   # the file's editor (the others are the tests' own)
         ed = e
         return ed
 
@@ -192,7 +196,7 @@ async def _run_file(path: Path, filt: list[str], results_path: Path, url: str | 
         detail = f"the plan names {path.name}::{name}, which the file does not have"
         print(f"FAIL {path.name}::{name} (0.0s)\n     {detail}", flush=True)
         results.append({"name": f"{path.name}::{name}", "status": "fail", "detail": detail, "seconds": 0.0})
-    results_path.write_text(json.dumps(results))
+    results_path.write_text(json.dumps({"results": results, "editors": harness.editor_timings}))
 
 
 def worker_main(args) -> int:
@@ -484,6 +488,8 @@ def main() -> int:
     gpu_displays = [d for d in os.environ.get("JASPER_MCP_GPU_DISPLAYS", gpu_env.get("DISPLAY", "")).split(",") if d]
 
     file_seconds: dict[str, float] = {}
+    # each chunk's wall time, its tests' time and its editors' setup (setup_report)
+    setups: list[dict] = []
 
     def run(chunk: Chunk, index: int, display: str = "") -> tuple[Chunk, int, str, list]:
         f = chunk.file
@@ -524,9 +530,13 @@ def main() -> int:
         else:
             p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
             out = p.stdout
-        results = json.loads(res.read_text()) if res.exists() else []
+        written = json.loads(res.read_text()) if res.exists() else {}
+        results = written.get("results", [])
+        wall = round(time.monotonic() - started, 1)
         if chunk.tests is None:
-            file_seconds[f.name] = round(time.monotonic() - started, 1)
+            file_seconds[f.name] = wall
+        setups.append({"chunk": chunk.label, "seconds": wall, "tests": round(sum(r["seconds"] for r in results), 2),
+                       "editors": written.get("editors", [])})
         return chunk, p.returncode, out, results
 
     # -j N: each worker takes the first chunk whose runtimes are built (or, when only chunks that
@@ -609,6 +619,9 @@ def main() -> int:
             TEST_SECONDS.write_text(json.dumps({**test_seconds, **{r["name"]: r["seconds"] for r in all_results}},
                                                indent=1, sort_keys=True))
     shutil.rmtree(tmp, ignore_errors=True)
+    setup = setup_report(setups)
+    if setups and not args.url:
+        print("\n== setup\n" + setup["text"])
     n = {s: sum(1 for r in all_results if r["status"] == s) for s in ("pass", "fail", "skip")}
     print("\n== summary")
     for r in all_results:
@@ -627,11 +640,34 @@ def main() -> int:
             "plan": str(args.plan) if args.plan else None,
             "left_out": [{"file": name, "reason": why} for name, why in excluded], "passed": n["pass"], "failed": n["fail"],
             "skipped": n["skip"], "crashed": crashed, "seconds": round(elapsed, 1), "results": all_results,
+            "setup": {"totals": setup["totals"], "chunks": setups},
         }, indent=1))
     if not all_results and not crashed:
         print("run_tests: no test ran", file=sys.stderr)
         return 1
     return 1 if n["fail"] or crashed else 0
+
+
+def setup_report(setups: list[dict]) -> dict:
+    """What the chunks spent besides their tests' own work (docs/testing.md, "Setup cost"): every editor's
+    scratch copy, start, first call (the project's load) and close, and the time outside the tests (the
+    worker's start and the file's editor close). Its totals and the text the run prints."""
+    editors = [e for s in setups for e in s["editors"]]
+    shared = sum(1 for e in editors if e.get("shared"))
+    totals = {key: round(sum(e.get(key) or 0.0 for e in editors), 1) for key in ("scratch", "start", "first_call", "close")}
+    totals.update(chunks=len(setups), editors=len(editors), shared_editors=shared,
+                  outside_tests=round(sum(max(0.0, s["seconds"] - s["tests"]) for s in setups), 1),
+                  chunk_seconds=round(sum(s["seconds"] for s in setups), 1))
+    spent = totals["scratch"] + totals["start"] + totals["first_call"] + totals["outside_tests"] \
+        + sum(e.get("close") or 0.0 for e in editors if not e.get("shared"))
+    spent = min(spent, totals["chunk_seconds"])   # (a first call holds its tool's own work too)
+    share = f" ({100 * spent / totals['chunk_seconds']:.1f}%)" if totals["chunk_seconds"] else ""
+    text = (f"{len(setups)} chunk(s), {len(editors)} editor(s): {shared} of the files, {len(editors) - shared} started "
+            f"by tests; project copies {totals['scratch']:.1f} s, starts {totals['start']:.1f} s, first calls "
+            f"{totals['first_call']:.1f} s (the project's load and the call), closes {totals['close']:.1f} s; outside "
+            f"the tests (worker start, the file's editor close) {totals['outside_tests']:.1f} s; at most {spent:.1f} s "
+            f"of {totals['chunk_seconds']:.1f} s{share}")
+    return {"totals": totals, "text": text}
 
 
 def _collect_names(path: Path) -> list[tuple[str, object]]:

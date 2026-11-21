@@ -31,11 +31,11 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    constexpr int RATE = 48000;
+    constexpr int MUSIC_PLAYER_RATE = 48000;
     constexpr double DT = 0.02;
     constexpr int FRAME = 960;
 
-    void writeTone(const fs::path& path, double seconds, int rate, int channels = 1) {
+    void musicPlayerWriteTone(const fs::path& path, double seconds, int rate, int channels = 1) {
         fs::create_directories(path.parent_path());
         const uint32_t frames = (uint32_t)std::lround(seconds * rate);
         std::ofstream out(path, std::ios::binary);
@@ -85,11 +85,11 @@ namespace {
             AudioImportTable::clear();
             AudioSystem::resetSoundEventRuntime();
             MusicPlayer::reset();
-            writeTone(root / "assets" / "a.wav", 8.0, RATE);
-            writeTone(root / "assets" / "b.wav", 8.0, RATE);
-            writeTone(root / "assets" / "c.wav", 1.0, RATE);
-            writeTone(root / "assets" / "slow.wav", 2.0, 44100);
-            writeTone(root / "assets" / "hit.wav", 0.3, RATE);
+            musicPlayerWriteTone(root / "assets" / "a.wav", 8.0, MUSIC_PLAYER_RATE);
+            musicPlayerWriteTone(root / "assets" / "b.wav", 8.0, MUSIC_PLAYER_RATE);
+            musicPlayerWriteTone(root / "assets" / "c.wav", 1.0, MUSIC_PLAYER_RATE);
+            musicPlayerWriteTone(root / "assets" / "slow.wav", 2.0, 44100);
+            musicPlayerWriteTone(root / "assets" / "hit.wav", 0.3, MUSIC_PLAYER_RATE);
             ClipImportSettings tempo;
             tempo.bpm = 120.0f;
             AudioImportTable::set("a.wav", tempo);
@@ -166,7 +166,7 @@ TEST_F(MusicPlayerTest, AClipTrackIsAProtectedVoiceThatOutlivesTheScenesSounds) 
     scene->getSystem<AudioSystem>()->stopSceneSounds();
     run(2);
     EXPECT_EQ(Audio::getMusic(), "a.wav");
-    EXPECT_NEAR(Audio::getMusicTime(), 7.0 * FRAME / RATE, 1e-6);
+    EXPECT_NEAR(Audio::getMusicTime(), 7.0 * FRAME / MUSIC_PLAYER_RATE, 1e-6);
 
     MusicPlayer::reset();
     bool stoppedForScene = false;

@@ -36,7 +36,7 @@ namespace {
 
     JE_LOG_CATEGORY(logCategoryBench, "bench", LogLevel::Info)
 
-    using Clock = std::chrono::steady_clock;
+    using LoggerBenchClock = std::chrono::steady_clock;
 
     void expectWithin(double measured, double budget, const char* what) {
         const double slack = testsupport::perfSlack();
@@ -52,12 +52,12 @@ TEST(LoggerBench, Filtered) {
     Logger::setCategoryLevel(logCategoryBench(), LogLevel::Error);
     constexpr int calls = 20000000;
     int value = 0;
-    const auto start = Clock::now();
+    const auto start = LoggerBenchClock::now();
     for (int i = 0; i < calls; i++) {
         JE_LOG_INFO(logCategoryBench(), "filtered %d", value);
         value += i & 1;
     }
-    const double ns = std::chrono::duration<double, std::nano>(Clock::now() - start).count() / calls;
+    const double ns = std::chrono::duration<double, std::nano>(LoggerBenchClock::now() - start).count() / calls;
     Logger::setCategoryLevel(logCategoryBench(), LogLevel::Info);
     EXPECT_GE(value, 0);
     expectWithin(ns, 3.0, "filtered call, ns");
@@ -82,9 +82,9 @@ TEST(LoggerBench, AsyncEnabled4Threads) {
             testsupport::ThreadAllocationCount count;
             uint64_t pacingAllocations = 0;
             for (int i = 0; i < perThread; i++) {
-                const auto start = Clock::now();
+                const auto start = LoggerBenchClock::now();
                 Logger::write(LogLevel::Info, logCategoryBench(), text, nullptr, 0, &keys[t * perThread + i]);
-                latencies[t].push_back(std::chrono::duration<double, std::micro>(Clock::now() - start).count());
+                latencies[t].push_back(std::chrono::duration<double, std::micro>(LoggerBenchClock::now() - start).count());
                 // Drain bounded batches outside the measured write cost.
                 if (i % 64 == 63) {
                     const testsupport::ThreadAllocationCount pacing;
@@ -111,10 +111,10 @@ TEST(LoggerBench, BacktraceCapture) {
     void* frames[LogRecord::MAX_FRAMES];
     Backtrace::capture(frames, LogRecord::MAX_FRAMES);
     constexpr int captures = 2000;
-    const auto start = Clock::now();
+    const auto start = LoggerBenchClock::now();
     size_t total = 0;
     for (int i = 0; i < captures; i++) total += Backtrace::capture(frames, LogRecord::MAX_FRAMES);
-    const double us = std::chrono::duration<double, std::micro>(Clock::now() - start).count() / captures;
+    const double us = std::chrono::duration<double, std::micro>(LoggerBenchClock::now() - start).count() / captures;
     EXPECT_GT(total, 0u);
     expectWithin(us, 20.0, "raw backtrace capture, us");
 }
@@ -166,14 +166,14 @@ TEST(LoggerBench, DrainCpuAt10kPerSecond) {
     getrusage(RUSAGE_SELF, &before);
     timespec threadBefore{};
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &threadBefore);
-    const auto start = Clock::now();
+    const auto start = LoggerBenchClock::now();
     // 10,000 records over one second, in steps of 10 per millisecond
     for (int i = 0; i < 10000; i++) {
         Logger::write(LogLevel::Info, logCategoryBench(), text, nullptr, 0, &keys[i]);
         if (i % 10 == 9) std::this_thread::sleep_until(start + std::chrono::microseconds(100 * (i + 1)));
     }
     Logger::flush();
-    const double wall = std::chrono::duration<double>(Clock::now() - start).count();
+    const double wall = std::chrono::duration<double>(LoggerBenchClock::now() - start).count();
     const long long drainAfter = threadCpuNs("je-log");
     rusage after{};
     getrusage(RUSAGE_SELF, &after);

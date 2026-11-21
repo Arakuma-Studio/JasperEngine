@@ -26042,6 +26042,48 @@
     true
    ]
   },
+  "DialogueRunnerComponent": {
+   "autoStart": [
+    0,
+    0,
+    true
+   ],
+   "currentNode": [
+    1,
+    0,
+    true
+   ],
+   "dialogue": [
+    18,
+    0,
+    true
+   ],
+   "isRunning": [
+    0,
+    0,
+    true
+   ],
+   "seed": [
+    8,
+    0,
+    true
+   ],
+   "startEntry": [
+    1,
+    0,
+    true
+   ],
+   "state": [
+    1,
+    0,
+    true
+   ],
+   "view": [
+    16,
+    0,
+    true
+   ]
+  },
   "FluidSimulationComponent": {
    "aspectRatio": [
     2,
@@ -30752,6 +30794,78 @@
     false
    ],
    "shape": [
+    13,
+    0,
+    true
+   ]
+  },
+  "SimulationCullingComponent": {
+   "boundsRadius": [
+    2,
+    0,
+    true
+   ],
+   "cullAnimator": [
+    0,
+    0,
+    true
+   ],
+   "cullPhysics": [
+    0,
+    0,
+    true
+   ],
+   "cullScripts": [
+    0,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "focusDistance": [
+    2,
+    0,
+    true
+   ],
+   "freezeWhenGroundNotLoaded": [
+    0,
+    0,
+    true
+   ],
+   "hysteresis": [
+    2,
+    0,
+    true
+   ],
+   "reason": [
+    13,
+    0,
+    true
+   ],
+   "reducedRateDistance": [
+    2,
+    0,
+    true
+   ],
+   "reducedUpdateInterval": [
+    8,
+    0,
+    true
+   ],
+   "simulateWhenVisible": [
+    0,
+    0,
+    true
+   ],
+   "simulationDistance": [
+    2,
+    0,
+    true
+   ],
+   "state": [
     13,
     0,
     true

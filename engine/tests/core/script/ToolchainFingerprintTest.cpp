@@ -21,7 +21,7 @@ using namespace jasperengine;
 
 namespace {
 
-    const FingerprintMismatch* find(const std::vector<FingerprintMismatch>& mismatches, const std::string& field) {
+    const FingerprintMismatch* toolchainFingerprintFind(const std::vector<FingerprintMismatch>& mismatches, const std::string& field) {
         for (const FingerprintMismatch& mismatch : mismatches) {
             if (field == mismatch.field) return &mismatch;
         }
@@ -55,7 +55,7 @@ namespace {
         return fp;
     }
 
-    void writeFile(const std::filesystem::path& path, const std::string& prefix, size_t markerOffset, const std::string& marker, size_t total) {
+    void toolchainFingerprintWriteFile(const std::filesystem::path& path, const std::string& prefix, size_t markerOffset, const std::string& marker, size_t total) {
         std::ofstream out(path, std::ios::binary);
         std::string chunk(1 << 20, '\x7f');
         size_t written = 0;
@@ -92,12 +92,12 @@ TEST(ToolchainFingerprint, CompareNamesEachDifferingField) {
     library.compilerMinor = 3;
     const std::vector<FingerprintMismatch> mismatches = compare(gccEditor(), library);
     ASSERT_EQ(mismatches.size(), 3u);
-    ASSERT_NE(find(mismatches, "iteratorDebugLevel"), nullptr);
-    EXPECT_TRUE(find(mismatches, "iteratorDebugLevel")->hard);
-    EXPECT_EQ(find(mismatches, "iteratorDebugLevel")->library, 2u);
-    EXPECT_EQ(find(mismatches, "iteratorDebugLevel")->editor, 0u);
-    EXPECT_TRUE(find(mismatches, "ndebug")->hard);
-    EXPECT_FALSE(find(mismatches, "compilerMinor")->hard) << "a GCC minor version is soft";
+    ASSERT_NE(toolchainFingerprintFind(mismatches, "iteratorDebugLevel"), nullptr);
+    EXPECT_TRUE(toolchainFingerprintFind(mismatches, "iteratorDebugLevel")->hard);
+    EXPECT_EQ(toolchainFingerprintFind(mismatches, "iteratorDebugLevel")->library, 2u);
+    EXPECT_EQ(toolchainFingerprintFind(mismatches, "iteratorDebugLevel")->editor, 0u);
+    EXPECT_TRUE(toolchainFingerprintFind(mismatches, "ndebug")->hard);
+    EXPECT_FALSE(toolchainFingerprintFind(mismatches, "compilerMinor")->hard) << "a GCC minor version is soft";
 
     const ScriptLibraryCheck check = checkFingerprint(library, gccEditor());
     EXPECT_FALSE(check.ok);
@@ -150,9 +150,9 @@ TEST(ToolchainFingerprint, VendorFamilies) {
     ToolchainFingerprint mingw = msvcEditor();
     mingw.compilerVendor = toolchain::VendorMinGW;
     mismatches = compare(msvcEditor(), mingw);
-    ASSERT_NE(find(mismatches, "compilerVendor"), nullptr);
-    EXPECT_TRUE(find(mismatches, "compilerVendor")->hard) << "MinGW vs MSVC";
-    EXPECT_NE(find(mismatches, "compilerVendor")->hint.find("MinGW"), std::string::npos);
+    ASSERT_NE(toolchainFingerprintFind(mismatches, "compilerVendor"), nullptr);
+    EXPECT_TRUE(toolchainFingerprintFind(mismatches, "compilerVendor")->hard) << "MinGW vs MSVC";
+    EXPECT_NE(toolchainFingerprintFind(mismatches, "compilerVendor")->hint.find("MinGW"), std::string::npos);
 }
 
 TEST(ToolchainFingerprint, MsvcNewerStlIsHard) {
@@ -203,7 +203,7 @@ TEST(ToolchainFingerprint, ScanMarkerAt50MegabytesWithinBudget) {
     const std::filesystem::path library = dir.path() / "libscripts.so";
     const ToolchainFingerprint fp = gccEditor();
     // a decoy prefix of the marker before the real one
-    writeFile(library, "JE_TOOLCHAIN_FP_V1{broken", 50u << 20, makeToolchainMarker(fp).text, 64u << 20);
+    toolchainFingerprintWriteFile(library, "JE_TOOLCHAIN_FP_V1{broken", 50u << 20, makeToolchainMarker(fp).text, 64u << 20);
 
     const auto start = std::chrono::steady_clock::now();
     const std::optional<ToolchainFingerprint> found = scanMarker(library);
@@ -218,14 +218,14 @@ TEST(ToolchainFingerprint, ScanMarkerAt50MegabytesWithinBudget) {
 
     // a marker cut by the 8 MB chunk boundary is still found
     const std::filesystem::path straddling = dir.path() / "straddling.so";
-    writeFile(straddling, "", (8u << 20) - 20, makeToolchainMarker(fp).text, 9u << 20);
+    toolchainFingerprintWriteFile(straddling, "", (8u << 20) - 20, makeToolchainMarker(fp).text, 9u << 20);
     EXPECT_TRUE(scanMarker(straddling).has_value());
 }
 
 TEST(ToolchainFingerprint, MissingMarkerIsRefused) {
     test::TempDir dir;
     const std::filesystem::path library = dir.path() / "old.so";
-    writeFile(library, "", 1024, "no marker here", 4096);
+    toolchainFingerprintWriteFile(library, "", 1024, "no marker here", 4096);
     const ScriptLibraryCheck check = checkScriptLibrary(library, currentToolchainFingerprint());
     EXPECT_FALSE(check.ok);
     EXPECT_FALSE(check.markerFound);

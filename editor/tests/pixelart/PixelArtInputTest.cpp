@@ -44,16 +44,16 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    struct Headless {
+    struct PixelArtInputHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
         std::unique_ptr<editor::Platform> platform;
     };
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
+    PixelArtInputHeadless& pixelArtInputHeadless() {
+        static PixelArtInputHeadless h = []() {
+            PixelArtInputHeadless out;
             const fs::path root = fs::temp_directory_path() / ("jasper-pixelart-input-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
             fs::create_directories(root / "config");
@@ -75,19 +75,19 @@ namespace {
         return h;
     }
 
-    Project* project() { return headless().project.get(); }
+    Project* pixelArtInputProject() { return pixelArtInputHeadless().project.get(); }
 
     // a new 2D scene, saved at once: the scene before stays open (File > New Scene asks about an
     // unsaved one, which a headless project never answers, and replaces an untouched new one)
-    uint32_t newScene(const std::string& name) {
-        Project* p = project();
+    uint32_t pixelArtInputNewScene(const std::string& name) {
+        Project* p = pixelArtInputProject();
         if (SceneProject* current = p->getSelectedScene(); current && !current->filepath.empty()) {
             EXPECT_TRUE(p->saveSceneToPath(current->id, current->filepath));
         }
         p->createNewScene(name, SceneType::SCENE_2D);
         const uint32_t id = p->getSelectedSceneId();
         EXPECT_EQ(p->getScene(id)->name, name) << "the new scene is selected";
-        EXPECT_TRUE(p->saveSceneToPath(id, headless().dir / "scenes" / (name + ".scene")));
+        EXPECT_TRUE(p->saveSceneToPath(id, pixelArtInputHeadless().dir / "scenes" / (name + ".scene")));
         return id;
     }
 
@@ -96,12 +96,12 @@ namespace {
         return *static_cast<Vector3*>(Catalog::getProperty(scene, entity, ComponentType::Transform, "position").ref);
     }
 
-    Entity sprite(uint32_t sceneId, const std::string& name, Vector3 position, TextureFilter filter = TextureFilter::NEAREST) {
-        auto* cmd = new CreateEntityCmd(project(), sceneId, name, EntityCreationType::SPRITE);
+    Entity pixelArtInputSprite(uint32_t sceneId, const std::string& name, Vector3 position, TextureFilter filter = TextureFilter::NEAREST) {
+        auto* cmd = new CreateEntityCmd(pixelArtInputProject(), sceneId, name, EntityCreationType::SPRITE);
         cmd->setQuiet(true);
         CommandHandle::get(sceneId)->addCommandNoMerge(cmd);
         const Entity e = cmd->getEntity();
-        Scene* scene = project()->getScene(sceneId)->scene;
+        Scene* scene = pixelArtInputProject()->getScene(sceneId)->scene;
         MeshComponent& mesh = scene->getComponent<MeshComponent>(e);
         // the quad a frame would build (no frame runs here)
         mesh.numSubmeshes = std::max(mesh.numSubmeshes, 1u);
@@ -115,14 +115,14 @@ namespace {
 
     // saved under scenes/ and closed: the check reads it from its file
     fs::path saveAndClose(uint32_t sceneId, const std::string& file) {
-        const fs::path path = headless().dir / "scenes" / file;
+        const fs::path path = pixelArtInputHeadless().dir / "scenes" / file;
         fs::create_directories(path.parent_path());
-        EXPECT_TRUE(project()->saveSceneToPath(sceneId, path));
+        EXPECT_TRUE(pixelArtInputProject()->saveSceneToPath(sceneId, path));
         // the last open scene does not close: another one stays open
         static int opened = 0;
-        newScene("Open" + std::to_string(++opened));
+        pixelArtInputNewScene("Open" + std::to_string(++opened));
         std::string error;
-        EXPECT_TRUE(project()->closeSceneNow(sceneId, UnsavedChoice::Discard, &error)) << error;
+        EXPECT_TRUE(pixelArtInputProject()->closeSceneNow(sceneId, UnsavedChoice::Discard, &error)) << error;
         return path;
     }
 
@@ -135,60 +135,60 @@ namespace {
 }
 
 TEST(PixelArtInput, ClosedScenesAreDecodedOnceWhileUnchanged) {
-    ASSERT_TRUE(headless().ready);
-    const uint32_t id = newScene("Cached");
-    sprite(id, "Hero", Vector3(4, 4, 0));
+    ASSERT_TRUE(pixelArtInputHeadless().ready);
+    const uint32_t id = pixelArtInputNewScene("Cached");
+    pixelArtInputSprite(id, "Hero", Vector3(4, 4, 0));
     const fs::path file = saveAndClose(id, "Cached.scene");   // where newScene saved it
 
     px::Scope scope;
     scope.scenes = {"scenes/Cached.scene"};
     std::vector<px::PixelProblem> errors;
-    const px::PixelArtCheckInput cold = px::inputFromProject(*project(), scope, errors);
+    const px::PixelArtCheckInput cold = px::inputFromProject(*pixelArtInputProject(), scope, errors);
     ASSERT_TRUE(errors.empty()) << errors.front().message;
     ASSERT_TRUE(sceneNamed(cold, "scenes/Cached.scene"));
     EXPECT_GE(px::lastInputReads().scenesDecoded, 1);
     // warm: the same input, no file decoded again
-    const px::PixelArtCheckInput warm = px::inputFromProject(*project(), scope, errors);
+    const px::PixelArtCheckInput warm = px::inputFromProject(*pixelArtInputProject(), scope, errors);
     EXPECT_EQ(px::lastInputReads().scenesDecoded, 0);
     ASSERT_EQ(cold.scenes.size(), 1u);
     ASSERT_EQ(warm.scenes.size(), 1u);
     EXPECT_EQ(cold.scenes.front().drawables.size(), warm.scenes.front().drawables.size());
     // a newer file is decoded again
     fs::last_write_time(file, fs::last_write_time(file) + std::chrono::seconds(2));
-    px::inputFromProject(*project(), scope, errors);
+    px::inputFromProject(*pixelArtInputProject(), scope, errors);
     EXPECT_EQ(px::lastInputReads().scenesDecoded, 1);
     // and an asset batch that moves files forgets it all
     px::forgetInputCache();
-    px::inputFromProject(*project(), scope, errors);
+    px::inputFromProject(*pixelArtInputProject(), scope, errors);
     EXPECT_GE(px::lastInputReads().scenesDecoded, 1);
 }
 
 TEST(PixelArtInput, ALayerSceneUnderAPixelPerfectCameraIsPixelArt) {
-    ASSERT_TRUE(headless().ready);
-    const uint32_t parent = newScene("Parent");
-    px::PixelArtMode::setupNewScene(*project(), parent);   // a Main Camera with a Pixel Perfect Camera
-    const uint32_t layer = newScene("Layer");
-    sprite(layer, "Ui", Vector3(2, 2, 0), TextureFilter::LINEAR);
+    ASSERT_TRUE(pixelArtInputHeadless().ready);
+    const uint32_t parent = pixelArtInputNewScene("Parent");
+    px::PixelArtMode::setupNewScene(*pixelArtInputProject(), parent);   // a Main Camera with a Pixel Perfect Camera
+    const uint32_t layer = pixelArtInputNewScene("Layer");
+    pixelArtInputSprite(layer, "Ui", Vector3(2, 2, 0), TextureFilter::LINEAR);
 
     px::Scope scope;
     scope.scenes = {"Layer"};
     std::vector<px::PixelProblem> errors;
     // red control: not a layer of the camera's scene, not pixel art (Pixel Art Mode is off)
-    const px::PixelArtCheckInput alone = px::inputFromProject(*project(), scope, errors);
+    const px::PixelArtCheckInput alone = px::inputFromProject(*pixelArtInputProject(), scope, errors);
     ASSERT_EQ(alone.scenes.size(), 1u);
     EXPECT_FALSE(alone.scenes.front().pixelArt);
 
-    ASSERT_TRUE(project()->addChildScene(parent, layer, true));
+    ASSERT_TRUE(pixelArtInputProject()->addChildScene(parent, layer, true));
     // the scene it is a layer of draws through its Pixel Perfect Camera
     px::Scope parentScope;
     parentScope.scenes = {"Parent"};
-    const px::PixelArtCheckInput parentInput = px::inputFromProject(*project(), parentScope, errors);
+    const px::PixelArtCheckInput parentInput = px::inputFromProject(*pixelArtInputProject(), parentScope, errors);
     ASSERT_EQ(parentInput.scenes.size(), 1u);
     ASSERT_TRUE(parentInput.scenes.front().camera.exists) << "a saved main camera";
     ASSERT_TRUE(parentInput.scenes.front().camera.hasComponent);
     ASSERT_FALSE(parentInput.scenes.front().camera.perspective);
     ASSERT_TRUE(parentInput.scenes.front().pixelArt);
-    const px::PixelArtCheckInput layered = px::inputFromProject(*project(), scope, errors);
+    const px::PixelArtCheckInput layered = px::inputFromProject(*pixelArtInputProject(), scope, errors);
     ASSERT_EQ(layered.scenes.size(), 1u);
     EXPECT_TRUE(layered.scenes.front().pixelArt);
     ASSERT_EQ(layered.scenes.front().drawables.size(), 1u);
@@ -198,14 +198,14 @@ TEST(PixelArtInput, ALayerSceneUnderAPixelPerfectCameraIsPixelArt) {
 }
 
 TEST(PixelArtInput, CollectorsAddALaterSpecsDrawables) {
-    ASSERT_TRUE(headless().ready);
-    const uint32_t id = newScene("Batch");
-    px::PixelArtMode::setupNewScene(*project(), id);
-    const Entity batch = sprite(id, "Batch", Vector3(0, 0, 0));
+    ASSERT_TRUE(pixelArtInputHeadless().ready);
+    const uint32_t id = pixelArtInputNewScene("Batch");
+    px::PixelArtMode::setupNewScene(*pixelArtInputProject(), id);
+    const Entity batch = pixelArtInputSprite(id, "Batch", Vector3(0, 0, 0));
     px::Scope scope;
     scope.scenes = {"Batch"};
     std::vector<px::PixelProblem> errors;
-    const px::PixelArtCheckInput first = px::inputFromProject(*project(), scope, errors);
+    const px::PixelArtCheckInput first = px::inputFromProject(*pixelArtInputProject(), scope, errors);
     ASSERT_EQ(first.scenes.size(), 1u);
     const size_t before = first.scenes.front().drawables.size();
 
@@ -216,7 +216,7 @@ TEST(PixelArtInput, CollectorsAddALaterSpecsDrawables) {
         d.texture = "sprites/batch.png";
         out.push_back(d);
     });
-    const px::PixelArtCheckInput input = px::inputFromProject(*project(), scope, errors);
+    const px::PixelArtCheckInput input = px::inputFromProject(*pixelArtInputProject(), scope, errors);
     px::unregisterDrawableCollector("sprite_batch");
     ASSERT_EQ(input.scenes.size(), 1u);
     ASSERT_EQ(input.scenes.front().drawables.size(), before + 1);
@@ -225,25 +225,25 @@ TEST(PixelArtInput, CollectorsAddALaterSpecsDrawables) {
     EXPECT_EQ(added.entity, "/Batch");
     EXPECT_TRUE(added.hasTransform);
     EXPECT_TRUE(input.textures.count("sprites/batch.png")) << "its texture is a pixel-art texture of the scene";
-    EXPECT_EQ(px::inputFromProject(*project(), scope, errors).scenes.front().drawables.size(), before);
+    EXPECT_EQ(px::inputFromProject(*pixelArtInputProject(), scope, errors).scenes.front().drawables.size(), before);
 }
 
 TEST(PixelArtInput, ProjectScopeReadsUnlistedSceneFiles) {
-    ASSERT_TRUE(headless().ready);
-    const uint32_t id = newScene("Listed");
-    sprite(id, "Hero", Vector3(4, 4, 0));
+    ASSERT_TRUE(pixelArtInputHeadless().ready);
+    const uint32_t id = pixelArtInputNewScene("Listed");
+    pixelArtInputSprite(id, "Hero", Vector3(4, 4, 0));
     const fs::path listed = saveAndClose(id, "Listed.scene");
     // a scene file the project does not list (copied in by hand)
-    const fs::path unlisted = headless().dir / "scenes" / "Unlisted.scene";
+    const fs::path unlisted = pixelArtInputHeadless().dir / "scenes" / "Unlisted.scene";
     fs::copy_file(listed, unlisted, fs::copy_options::overwrite_existing);
-    project()->getAssetDatabase().refresh();
+    pixelArtInputProject()->getAssetDatabase().refresh();
 
     std::vector<px::PixelProblem> errors;
-    const px::PixelArtCheckInput build = px::inputFromProject(*project(), px::Scope(), errors);
+    const px::PixelArtCheckInput build = px::inputFromProject(*pixelArtInputProject(), px::Scope(), errors);
     EXPECT_FALSE(sceneNamed(build, "scenes/Unlisted.scene")) << "the build scenes do not name it";
     px::Scope all;
     all.allScenes = true;
-    const px::PixelArtCheckInput everything = px::inputFromProject(*project(), all, errors);
+    const px::PixelArtCheckInput everything = px::inputFromProject(*pixelArtInputProject(), all, errors);
     const px::PixelArtScene* found = sceneNamed(everything, "scenes/Unlisted.scene");
     ASSERT_TRUE(found) << "the Project scope reads every scene file";
     EXPECT_TRUE(sceneNamed(everything, "scenes/Listed.scene"));
@@ -252,15 +252,15 @@ TEST(PixelArtInput, ProjectScopeReadsUnlistedSceneFiles) {
 }
 
 TEST(PixelArtFix, AFixPlannedBeforeAnEditIsRefused) {
-    ASSERT_TRUE(headless().ready);
-    const uint32_t id = newScene("Stale");
-    px::PixelArtMode::setupNewScene(*project(), id);
+    ASSERT_TRUE(pixelArtInputHeadless().ready);
+    const uint32_t id = pixelArtInputNewScene("Stale");
+    px::PixelArtMode::setupNewScene(*pixelArtInputProject(), id);
     // off whole pixels whatever the project's Pixels Per Unit
-    const Entity hero = sprite(id, "Hero", Vector3(4.0037f, 4.0f, 0.0f));
+    const Entity hero = pixelArtInputSprite(id, "Hero", Vector3(4.0037f, 4.0f, 0.0f));
     px::Scope scope;
     scope.scenes = {"Stale"};
     std::vector<px::PixelProblem> errors;
-    const px::PixelArtCheckInput input = px::inputFromProject(*project(), scope, errors);
+    const px::PixelArtCheckInput input = px::inputFromProject(*pixelArtInputProject(), scope, errors);
     ASSERT_TRUE(errors.empty()) << errors.front().message;
     ASSERT_EQ(input.scenes.size(), 1u);
     ASSERT_TRUE(input.scenes.front().pixelArt);
@@ -269,18 +269,18 @@ TEST(PixelArtFix, AFixPlannedBeforeAnEditIsRefused) {
     ASSERT_EQ(plan.fixes.size(), 1u);
 
     // the sprite moves after the check: the planned move would put it back where the check saw it
-    Scene* scene = project()->getScene(id)->scene;
+    Scene* scene = pixelArtInputProject()->getScene(id)->scene;
     positionOf(scene, hero) = Vector3(10.2537f, 4.0f, 0.0f);
     px::FixApplyReport report;
     std::string error;
-    EXPECT_FALSE(px::applyFixPlan(*project(), plan, px::fixStepName(plan), report, error, &scope));
+    EXPECT_FALSE(px::applyFixPlan(*pixelArtInputProject(), plan, px::fixStepName(plan), report, error, &scope));
     EXPECT_EQ(error.rfind("stale: ", 0), 0u) << error;
     EXPECT_FLOAT_EQ(positionOf(scene, hero).x, 10.2537f) << "the newer edit stays";
 
     // a plan from the current state applies
-    const px::FixPlan fresh = px::plan(px::run(px::inputFromProject(*project(), scope, errors), {"off_grid"}), {"off_grid"});
+    const px::FixPlan fresh = px::plan(px::run(px::inputFromProject(*pixelArtInputProject(), scope, errors), {"off_grid"}), {"off_grid"});
     ASSERT_EQ(fresh.fixes.size(), 1u);
-    EXPECT_TRUE(px::applyFixPlan(*project(), fresh, px::fixStepName(fresh), report, error, &scope)) << error;
+    EXPECT_TRUE(px::applyFixPlan(*pixelArtInputProject(), fresh, px::fixStepName(fresh), report, error, &scope)) << error;
     const float x = positionOf(scene, hero).x;
     EXPECT_NE(x, 10.2537f);
     EXPECT_NEAR(x, 10.2537f, 0.5f) << "moved onto whole pixels from where it is now";

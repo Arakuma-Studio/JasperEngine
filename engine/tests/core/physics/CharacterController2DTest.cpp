@@ -32,9 +32,9 @@ using namespace jasperengine;
 
 namespace {
 
-    constexpr float DT = 1.0f / 60.0f;
+    constexpr float CHARACTER_CONTROLLER2D_DT = 1.0f / 60.0f;
     // points a metre
-    constexpr float M = 64.0f;
+    constexpr float CharacterController2DM = 64.0f;
 
     class CharacterController2DTest : public ::testing::Test {
     protected:
@@ -44,12 +44,12 @@ namespace {
 
         void SetUp() override{
             updateTime = Engine::getUpdateTime();
-            Engine::setUpdateTime(DT);
+            Engine::setUpdateTime(CHARACTER_CONTROLLER2D_DT);
             scene = std::make_unique<Scene>();
             test::disableSubSystems(*scene);
             scene->getScheduler().setEnabled("PhysicsSystem", true);
             physics = scene->getSystem<PhysicsSystem>().get();
-            physics->setPointsToMeterScale2D(M);
+            physics->setPointsToMeterScale2D(CharacterController2DM);
             physics->setGravity2D(0.0f, -9.81f);
         }
 
@@ -77,7 +77,7 @@ namespace {
         }
 
         // a capsule standing with its feet at `foot` (points)
-        Entity controller(Vector2 foot, float radius = 0.4f * M, float height = 1.8f * M, float stepOffset = 0.3f * M){
+        Entity controller(Vector2 foot, float radius = 0.4f * CharacterController2DM, float height = 1.8f * CharacterController2DM, float stepOffset = 0.3f * CharacterController2DM){
             const Entity entity = test::makeTransformEntity(*scene);
             Transform& transform = scene->getComponent<Transform>(entity);
             transform.position = Vector3(foot.x, foot.y + height * 0.5f, 0.0f);
@@ -121,7 +121,7 @@ namespace {
             Input::beginFixedStep();
             if (scripts)
                 scripts();
-            scene->fixedUpdate(DT);
+            scene->fixedUpdate(CHARACTER_CONTROLLER2D_DT);
             Input::endFixedStep();
             resolveTransforms();
         }
@@ -131,16 +131,16 @@ namespace {
                 step(scripts);
         }
 
-        Entity floor(float width = 40.0f * M){
-            return box(Vector2(0.0f, -0.5f * M), Vector2(width, 1.0f * M), BodyType::STATIC);
+        Entity floor(float width = 40.0f * CharacterController2DM){
+            return box(Vector2(0.0f, -0.5f * CharacterController2DM), Vector2(width, 1.0f * CharacterController2DM), BodyType::STATIC);
         }
 
         // 6 steps of 0.2 m risers and 0.3 m treads from x = startX, and a top landing
         void stairs(float startX = 0.0f){
             for (int k = 1; k <= 6; k++){
-                const float start = startX + (k - 1) * 0.3f * M;
-                const float end = startX + (6 * 0.3f + 10.0f) * M;
-                const float height = 0.2f * M * k;
+                const float start = startX + (k - 1) * 0.3f * CharacterController2DM;
+                const float end = startX + (6 * 0.3f + 10.0f) * CharacterController2DM;
+                const float height = 0.2f * CharacterController2DM * k;
                 box(Vector2((start + end) * 0.5f, height * 0.5f), Vector2(end - start, height), BodyType::STATIC);
             }
         }
@@ -151,69 +151,69 @@ namespace {
 TEST_F(CharacterController2DTest, Stairs){
     floor();
     stairs();
-    const Entity walker = controller(Vector2(-1.0f * M, 0.0f));
+    const Entity walker = controller(Vector2(-1.0f * CharacterController2DM, 0.0f));
     CharacterController2D cc(scene.get(), walker);
     steps(30, [&](){ cc.simpleMove(Vector2(0.0f, 0.0f)); });
     ASSERT_TRUE(cc.isGrounded());
 
-    steps(240, [&](){ cc.simpleMove(Vector2(2.0f * M, 0.0f)); });
-    EXPECT_NEAR(foot(walker), 1.2f * M, 0.05f * M);
+    steps(240, [&](){ cc.simpleMove(Vector2(2.0f * CharacterController2DM, 0.0f)); });
+    EXPECT_NEAR(foot(walker), 1.2f * CharacterController2DM, 0.05f * CharacterController2DM);
     EXPECT_TRUE(cc.isGrounded());
-    EXPECT_GT(position(walker).x, 1.8f * M);
+    EXPECT_GT(position(walker).x, 1.8f * CharacterController2DM);
 
     // and down again past the first riser, never off the ground more than 2 steps in a row
     // (stick to floor); a step climbed lands up to a radius further on, so it walks back further
     int airborne = 0, longest = 0;
     steps(360, [&](){
-        cc.simpleMove(Vector2(-2.0f * M, 0.0f));
+        cc.simpleMove(Vector2(-2.0f * CharacterController2DM, 0.0f));
         airborne = cc.isGrounded() ? 0 : airborne + 1;
         longest = std::max(longest, airborne);
     });
-    EXPECT_NEAR(foot(walker), 0.0f, 0.05f * M);
+    EXPECT_NEAR(foot(walker), 0.0f, 0.05f * CharacterController2DM);
     EXPECT_LE(longest, 2);
 }
 
 TEST_F(CharacterController2DTest, StepOffsetUnderTheRiserStops){
     floor();
     stairs();
-    const Entity walker = controller(Vector2(-1.0f * M, 0.0f), 0.4f * M, 1.8f * M, 0.1f * M);
+    const Entity walker = controller(Vector2(-1.0f * CharacterController2DM, 0.0f), 0.4f * CharacterController2DM, 1.8f * CharacterController2DM, 0.1f * CharacterController2DM);
     CharacterController2D cc(scene.get(), walker);
-    steps(240, [&](){ cc.simpleMove(Vector2(2.0f * M, 0.0f)); });
-    EXPECT_LT(position(walker).x, 0.05f * M);
-    EXPECT_NEAR(foot(walker), 0.0f, 0.05f * M);
+    steps(240, [&](){ cc.simpleMove(Vector2(2.0f * CharacterController2DM, 0.0f)); });
+    EXPECT_LT(position(walker).x, 0.05f * CharacterController2DM);
+    EXPECT_NEAR(foot(walker), 0.0f, 0.05f * CharacterController2DM);
     EXPECT_TRUE(cc.isGrounded());
 }
 
 TEST_F(CharacterController2DTest, Slopes){
-    floor(80.0f * M);
+    floor(80.0f * CharacterController2DM);
     // a 30 degree ramp rising along +X from x = 0
     const float rise30 = 30.0f * 0.01745329f;
-    box(Vector2(std::cos(rise30) * 10.0f * M, std::sin(rise30) * 10.0f * M - 0.25f * M), Vector2(20.0f * M, 0.5f * M), BodyType::STATIC, 30.0f);
-    const Entity climber = controller(Vector2(-1.0f * M, 0.0f));
+    box(Vector2(std::cos(rise30) * 10.0f * CharacterController2DM, std::sin(rise30) * 10.0f * CharacterController2DM - 0.25f * CharacterController2DM), Vector2(20.0f * CharacterController2DM, 0.5f * CharacterController2DM), BodyType::STATIC, 30.0f);
+    const Entity climber = controller(Vector2(-1.0f * CharacterController2DM, 0.0f));
     CharacterController2D cc(scene.get(), climber);
     steps(10, [&](){ cc.simpleMove(Vector2(0.0f, 0.0f)); });
     const float start = foot(climber);
-    steps(180, [&](){ cc.simpleMove(Vector2(2.0f * M, 0.0f)); });
-    EXPECT_GT(foot(climber) - start, 1.0f * M);
+    steps(180, [&](){ cc.simpleMove(Vector2(2.0f * CharacterController2DM, 0.0f)); });
+    EXPECT_GT(foot(climber) - start, 1.0f * CharacterController2DM);
 }
 
 TEST_F(CharacterController2DTest, SteepSlope){
     // a 50 degree ramp in the air: the controller stands on it, cannot climb it, is not grounded
     const float rise50 = 50.0f * 0.01745329f;
-    const Vector2 rampCenter(0.0f, 30.0f * M);
-    box(rampCenter, Vector2(60.0f * M, 0.5f * M), BodyType::STATIC, 50.0f);
+    const Vector2 rampCenter(0.0f, 30.0f * CharacterController2DM);
+    box(rampCenter, Vector2(60.0f * CharacterController2DM, 0.5f * CharacterController2DM), BodyType::STATIC, 50.0f);
     const Vector2 normal(-std::sin(rise50), std::cos(rise50));
-    const Entity slider = controller(rampCenter + normal * (0.25f * M) + Vector2(0.0f, 0.1f * M));
+    const Entity slider = controller(rampCenter + normal * (0.25f * CharacterController2DM) + Vector2(0.0f, 0.1f * CharacterController2DM));
     CharacterController2D cc(scene.get(), slider);
     steps(2, [&](){ cc.simpleMove(Vector2(0.0f, 0.0f)); });
     const float before = foot(slider);
     bool sawSteep = false, sawGrounded = false;
     steps(60, [&](){
-        cc.simpleMove(Vector2(2.0f * M, 0.0f));
+        cc.simpleMove(Vector2(2.0f * CharacterController2DM, 0.0f));
         sawSteep = sawSteep || cc.isOnSteepSlope();
         sawGrounded = sawGrounded || cc.isGrounded();
     });
-    EXPECT_LT(foot(slider) - before, 0.05f * M);
+    EXPECT_LT(foot(slider) - before, 0.05f * CharacterController2DM);
     EXPECT_TRUE(sawSteep);
     EXPECT_FALSE(sawGrounded);
 }
@@ -221,46 +221,46 @@ TEST_F(CharacterController2DTest, SteepSlope){
 TEST_F(CharacterController2DTest, CollisionFlags){
     floor();
     // a wall at x = 2 m and a ceiling 2.2 m up over x in [-6, -4] m
-    box(Vector2(2.5f * M, 2.0f * M), Vector2(1.0f * M, 4.0f * M), BodyType::STATIC);
-    box(Vector2(-5.0f * M, 2.45f * M), Vector2(2.0f * M, 0.5f * M), BodyType::STATIC);
+    box(Vector2(2.5f * CharacterController2DM, 2.0f * CharacterController2DM), Vector2(1.0f * CharacterController2DM, 4.0f * CharacterController2DM), BodyType::STATIC);
+    box(Vector2(-5.0f * CharacterController2DM, 2.45f * CharacterController2DM), Vector2(2.0f * CharacterController2DM, 0.5f * CharacterController2DM), BodyType::STATIC);
     const Entity walker = controller(Vector2(0.0f, 0.0f));
     CharacterController2D cc(scene.get(), walker);
     steps(5, [&](){ cc.simpleMove(Vector2(0.0f, 0.0f)); });
     int flags = 0;
-    steps(90, [&](){ flags = cc.move(Vector2(2.0f * M * DT, -0.5f * M * DT)); });
+    steps(90, [&](){ flags = cc.move(Vector2(2.0f * CharacterController2DM * CHARACTER_CONTROLLER2D_DT, -0.5f * CharacterController2DM * CHARACTER_CONTROLLER2D_DT)); });
     EXPECT_TRUE(flags & CharacterCollision_Sides);
     EXPECT_TRUE(flags & CharacterCollision_Below);
-    EXPECT_LT(position(walker).x, 2.0f * M - 0.4f * M + 0.05f * M);
+    EXPECT_LT(position(walker).x, 2.0f * CharacterController2DM - 0.4f * CharacterController2DM + 0.05f * CharacterController2DM);
 
     // under the ceiling: up into it
-    const Entity jumper = controller(Vector2(-5.0f * M, 0.0f));
+    const Entity jumper = controller(Vector2(-5.0f * CharacterController2DM, 0.0f));
     CharacterController2D up(scene.get(), jumper);
-    steps(30, [&](){ flags = up.move(Vector2(0.0f, 2.0f * M * DT)); });
+    steps(30, [&](){ flags = up.move(Vector2(0.0f, 2.0f * CharacterController2DM * CHARACTER_CONTROLLER2D_DT)); });
     EXPECT_TRUE(flags & CharacterCollision_Above);
-    EXPECT_LT(foot(jumper) + 1.8f * M, 2.2f * M + 0.01f * M);
+    EXPECT_LT(foot(jumper) + 1.8f * CharacterController2DM, 2.2f * CharacterController2DM + 0.01f * CharacterController2DM);
 }
 
 TEST_F(CharacterController2DTest, MovingPlatform){
-    const Entity platform = box(Vector2(0.0f, 1.0f * M), Vector2(6.0f * M, 0.2f * M), BodyType::KINEMATIC);
-    const Entity rider = controller(Vector2(0.0f, 1.1f * M));
+    const Entity platform = box(Vector2(0.0f, 1.0f * CharacterController2DM), Vector2(6.0f * CharacterController2DM, 0.2f * CharacterController2DM), BodyType::KINEMATIC);
+    const Entity rider = controller(Vector2(0.0f, 1.1f * CharacterController2DM));
     steps(2);
     ASSERT_TRUE(component(rider).isGrounded);
-    Rigidbody2D(scene.get(), platform).setLinearVelocity(Vector2(1.0f * M, 0.0f));
+    Rigidbody2D(scene.get(), platform).setLinearVelocity(Vector2(1.0f * CharacterController2DM, 0.0f));
     const float start = position(rider).x;
     // an idle controller: no move calls
     steps(120);
-    EXPECT_NEAR(position(rider).x - start, 2.0f * M, 0.05f * M);
+    EXPECT_NEAR(position(rider).x - start, 2.0f * CharacterController2DM, 0.05f * CharacterController2DM);
     EXPECT_TRUE(component(rider).isGrounded);
     EXPECT_EQ(component(rider).groundEntity, platform);
-    EXPECT_NEAR(component(rider).groundVelocity.x, 1.0f * M, 0.01f * M);
+    EXPECT_NEAR(component(rider).groundVelocity.x, 1.0f * CharacterController2DM, 0.01f * CharacterController2DM);
 }
 
 TEST_F(CharacterController2DTest, PlatformDropsAway){
-    const Entity platform = box(Vector2(0.0f, 1.0f * M), Vector2(3.0f * M, 0.2f * M), BodyType::KINEMATIC);
-    const Entity rider = controller(Vector2(0.0f, 1.1f * M));
+    const Entity platform = box(Vector2(0.0f, 1.0f * CharacterController2DM), Vector2(3.0f * CharacterController2DM, 0.2f * CharacterController2DM), BodyType::KINEMATIC);
+    const Entity rider = controller(Vector2(0.0f, 1.1f * CharacterController2DM));
     steps(10);
     ASSERT_TRUE(component(rider).isGrounded);
-    Rigidbody2D(scene.get(), platform).setPosition(Vector2(0.0f, -20.0f * M));
+    Rigidbody2D(scene.get(), platform).setPosition(Vector2(0.0f, -20.0f * CharacterController2DM));
     int steppedUntilAir = 0;
     while (component(rider).isGrounded && steppedUntilAir < 10){
         step();
@@ -273,54 +273,54 @@ TEST_F(CharacterController2DTest, PlatformDropsAway){
 TEST_F(CharacterController2DTest, Push){
     floor();
     // 10 kg: a 0.5 m square at 40 kg/m2
-    const Entity crate = box(Vector2(1.5f * M, 0.25f * M), Vector2(0.5f * M, 0.5f * M), BodyType::DYNAMIC, 0.0f, 40.0f);
+    const Entity crate = box(Vector2(1.5f * CharacterController2DM, 0.25f * CharacterController2DM), Vector2(0.5f * CharacterController2DM, 0.5f * CharacterController2DM), BodyType::DYNAMIC, 0.0f, 40.0f);
     const Entity pusher = controller(Vector2(0.0f, 0.0f));
     CharacterController2D cc(scene.get(), pusher);
     steps(10, [&](){ cc.simpleMove(Vector2(0.0f, 0.0f)); });
     ASSERT_NEAR(Rigidbody2D(scene.get(), crate).getMass(), 10.0f, 0.01f);
     Rigidbody2D body(scene.get(), crate);
     const float start = body.getPosition().x;
-    steps(60, [&](){ cc.simpleMove(Vector2(2.0f * M, 0.0f)); });
-    EXPECT_GT(body.getPosition().x - start, 0.5f * M);
+    steps(60, [&](){ cc.simpleMove(Vector2(2.0f * CharacterController2DM, 0.0f)); });
+    EXPECT_GT(body.getPosition().x - start, 0.5f * CharacterController2DM);
 }
 
 TEST_F(CharacterController2DTest, NoPushWhenDisabled){
     floor();
-    const Entity crate = box(Vector2(1.5f * M, 0.25f * M), Vector2(0.5f * M, 0.5f * M), BodyType::DYNAMIC, 0.0f, 40.0f);
+    const Entity crate = box(Vector2(1.5f * CharacterController2DM, 0.25f * CharacterController2DM), Vector2(0.5f * CharacterController2DM, 0.5f * CharacterController2DM), BodyType::DYNAMIC, 0.0f, 40.0f);
     const Entity pusher = controller(Vector2(0.0f, 0.0f));
     component(pusher).pushBodies = false;
     CharacterController2D cc(scene.get(), pusher);
     steps(10, [&](){ cc.simpleMove(Vector2(0.0f, 0.0f)); });
     Rigidbody2D body(scene.get(), crate);
     const float start = body.getPosition().x;
-    steps(60, [&](){ cc.simpleMove(Vector2(2.0f * M, 0.0f)); });
-    EXPECT_LT(std::fabs(body.getPosition().x - start), 0.01f * M);
+    steps(60, [&](){ cc.simpleMove(Vector2(2.0f * CharacterController2DM, 0.0f)); });
+    EXPECT_LT(std::fabs(body.getPosition().x - start), 0.01f * CharacterController2DM);
     // stopped at the crate, a skin off it
-    EXPECT_LT(position(pusher).x, 1.25f * M - 0.4f * M);
+    EXPECT_LT(position(pusher).x, 1.25f * CharacterController2DM - 0.4f * CharacterController2DM);
 }
 
 TEST_F(CharacterController2DTest, LayerMatrixAndMask){
     floor();
-    const Entity wall = box(Vector2(1.5f * M, 2.0f * M), Vector2(0.5f * M, 4.0f * M), BodyType::STATIC);
+    const Entity wall = box(Vector2(1.5f * CharacterController2DM, 2.0f * CharacterController2DM), Vector2(0.5f * CharacterController2DM, 4.0f * CharacterController2DM), BodyType::STATIC);
     scene->setEntityLayer(wall, 3);
     Physics2D::ignoreLayerCollision(0, 3, true);
     const Entity walker = controller(Vector2(0.0f, 0.0f));
     CharacterController2D cc(scene.get(), walker);
-    steps(90, [&](){ cc.simpleMove(Vector2(2.0f * M, 0.0f)); });
+    steps(90, [&](){ cc.simpleMove(Vector2(2.0f * CharacterController2DM, 0.0f)); });
     // through the ignored layer
-    EXPECT_GT(position(walker).x, 2.0f * M);
+    EXPECT_GT(position(walker).x, 2.0f * CharacterController2DM);
     Physics2D::resetLayerCollisionMatrix();
 
     // the collider bits: a controller whose mask leaves the wall's category out goes through
-    Entity second = controller(Vector2(-3.0f * M, 0.0f));
+    Entity second = controller(Vector2(-3.0f * CharacterController2DM, 0.0f));
     component(second).maskBits = 0xFFFF & ~2;
-    Rigidbody2DComponent& rigidbody = scene->getComponent<Rigidbody2DComponent>(box(Vector2(-1.5f * M, 2.0f * M), Vector2(0.5f * M, 4.0f * M), BodyType::STATIC));
+    Rigidbody2DComponent& rigidbody = scene->getComponent<Rigidbody2DComponent>(box(Vector2(-1.5f * CharacterController2DM, 2.0f * CharacterController2DM), Vector2(0.5f * CharacterController2DM, 4.0f * CharacterController2DM), BodyType::STATIC));
     rigidbody.colliders[0].categoryBits = 2;
     rigidbody.needUpdateColliders = true;
     CharacterController2D through(scene.get(), second);
     // 2.5 m in 75 steps: from x = -3 m past the wall at -1.5 m
-    steps(75, [&](){ through.simpleMove(Vector2(2.0f * M, 0.0f)); });
-    EXPECT_GT(position(second).x, -1.0f * M);
+    steps(75, [&](){ through.simpleMove(Vector2(2.0f * CharacterController2DM, 0.0f)); });
+    EXPECT_GT(position(second).x, -1.0f * CharacterController2DM);
 }
 
 TEST_F(CharacterController2DTest, TeleportFollowsTheTransform){
@@ -329,10 +329,10 @@ TEST_F(CharacterController2DTest, TeleportFollowsTheTransform){
     CharacterController2D cc(scene.get(), walker);
     steps(5, [&](){ cc.simpleMove(Vector2(0.0f, 0.0f)); });
     Transform& transform = scene->getComponent<Transform>(walker);
-    transform.position = Vector3(10.0f * M, 0.9f * M + 1.0f, 0.0f);
+    transform.position = Vector3(10.0f * CharacterController2DM, 0.9f * CharacterController2DM + 1.0f, 0.0f);
     transform.needUpdate = true;
     steps(5, [&](){ cc.simpleMove(Vector2(0.0f, 0.0f)); });
-    EXPECT_NEAR(position(walker).x, 10.0f * M, 0.01f);
+    EXPECT_NEAR(position(walker).x, 10.0f * CharacterController2DM, 0.01f);
     EXPECT_TRUE(cc.isGrounded());
 }
 
@@ -345,7 +345,7 @@ TEST_F(CharacterController2DTest, RefusedWithRigidbody){
     test::LogCapture log;
     CharacterController2D cc(scene.get(), both);
     const Vector2 before = position(both);
-    EXPECT_EQ(cc.move(Vector2(1.0f * M, 0.0f)), CharacterCollision_None);
+    EXPECT_EQ(cc.move(Vector2(1.0f * CharacterController2DM, 0.0f)), CharacterCollision_None);
     EXPECT_EQ(position(both), before);
     EXPECT_TRUE(component(both).refusedWithRigidbody);
     EXPECT_TRUE(log.contains("Rigidbody 2D"));

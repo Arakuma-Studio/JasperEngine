@@ -118,7 +118,7 @@ namespace jasperengine::editor {
 
 namespace {
 
-    using Access = SpriteNormalsWindowTestAccess;
+    using WindowAccess = SpriteNormalsWindowTestAccess;
 
     // The editor's Platform, counting the calls of getAssetPath (what the session's checks read
     // through System::instance()) made off the main thread
@@ -135,7 +135,7 @@ namespace {
 
     // ---- images
 
-    ts::Image disk(int w, int h, int cells = 1) {
+    ts::Image spriteNormalsWindowDisk(int w, int h, int cells = 1) {
         ts::Image image = ts::Image::make(w, h, 4, 8);
         const int cw = w / cells;
         for (int c = 0; c < cells; c++) {
@@ -157,19 +157,19 @@ namespace {
         return image;
     }
 
-    void writeBytes(const fs::path& path, const std::vector<uint8_t>& bytes) {
+    void spriteNormalsWindowWriteBytes(const fs::path& path, const std::vector<uint8_t>& bytes) {
         fs::create_directories(path.parent_path());
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
         file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     }
 
-    void writePng(const fs::path& path, const ts::Image& image) {
+    void spriteNormalsWindowWritePng(const fs::path& path, const ts::Image& image) {
         std::vector<uint8_t> png;
         ASSERT_TRUE(ts::encodePng(image, png));
-        writeBytes(path, png);
+        spriteNormalsWindowWriteBytes(path, png);
     }
 
-    std::string readAll(const fs::path& path) {
+    std::string spriteNormalsWindowReadAll(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     }
@@ -247,7 +247,7 @@ namespace {
 
     // ---- the editor in a child process
 
-    struct World {
+    struct SpriteNormalsWindowWorld {
         fs::path dir;
         Project* p = nullptr;
         uint32_t sceneId = 0;
@@ -262,15 +262,15 @@ namespace {
         fs::path file(const std::string& rel) const { return dir / fs::u8path(rel); }
     };
 
-    Entity create(World& w, const std::string& name, EntityCreationType type) {
+    Entity spriteNormalsWindowCreate(SpriteNormalsWindowWorld& w, const std::string& name, EntityCreationType type) {
         auto* cmd = new CreateEntityCmd(w.p, w.sceneId, name, type);
         cmd->setQuiet(true);
         w.scene()->addCommandNoMerge(cmd);
         return cmd->getEntity();
     }
 
-    Entity sprite(World& w, const std::string& name, const std::string& texture, int width, int height) {
-        const Entity e = create(w, name, EntityCreationType::SPRITE);
+    Entity spriteNormalsWindowSprite(SpriteNormalsWindowWorld& w, const std::string& name, const std::string& texture, int width, int height) {
+        const Entity e = spriteNormalsWindowCreate(w, name, EntityCreationType::SPRITE);
         Scene* scene = w.sceneObject();
         Texture& base = scene->getComponent<MeshComponent>(e).submeshes[0].material.baseColorTexture;
         base = Texture(texture);
@@ -284,18 +284,18 @@ namespace {
         return e;
     }
 
-    void runInEditor(const std::string& name, const std::function<void(World&)>& body, bool mcpServer = false) {
+    void spriteNormalsWindowRunInEditor(const std::string& name, const std::function<void(SpriteNormalsWindowWorld&)>& body, bool mcpServer = false) {
         const fs::path root = fs::temp_directory_path() / ("jasper-sn-window-" + name + "-" + std::to_string(::getpid()));
         fs::remove_all(root);
         fs::create_directories(root / "config");
         setenv("XDG_CONFIG_HOME", (root / "config").c_str(), 1);
-        World w;
+        SpriteNormalsWindowWorld w;
         w.dir = root / "project";
         fs::create_directories(w.dir / ".jasperengine");
         std::ofstream(w.dir / "project.yaml") << "name: snwindow\n";
-        writePng(w.dir / "assets/hero.png", disk(32, 32));
-        writePng(w.dir / "assets/walk.png", disk(128, 32, 4));
-        writeBytes(w.dir / "assets/blink.gif", gif(16, {10, 20, 30}));
+        spriteNormalsWindowWritePng(w.dir / "assets/hero.png", spriteNormalsWindowDisk(32, 32));
+        spriteNormalsWindowWritePng(w.dir / "assets/walk.png", spriteNormalsWindowDisk(128, 32, 4));
+        spriteNormalsWindowWriteBytes(w.dir / "assets/blink.gif", gif(16, {10, 20, 30}));
 
         AppSettings::initialize();
         App& app = Backend::getApp();
@@ -315,15 +315,15 @@ namespace {
 
         w.p->createNewScene("Normals", SceneType::SCENE_2D);
         w.sceneId = w.p->getSelectedSceneId();
-        w.hero = sprite(w, "Hero", "assets/hero.png", 32, 32);
-        w.walker = sprite(w, "Walker", "assets/walk.png", 32, 32);
+        w.hero = spriteNormalsWindowSprite(w, "Hero", "assets/hero.png", 32, 32);
+        w.walker = spriteNormalsWindowSprite(w, "Walker", "assets/walk.png", 32, 32);
         SpriteComponent& walk = w.sceneObject()->getComponent<SpriteComponent>(w.walker);
         for (int i = 0; i < 4; i++) {
             walk.framesRect[i].name = "frame_" + std::to_string(i);
             walk.framesRect[i].rect = Rect(static_cast<float>(i * 32), 0.0f, 32.0f, 32.0f);
         }
         walk.numFramesRect = 4;
-        w.light = create(w, "Light 2D", EntityCreationType::POINT_LIGHT_2D);
+        w.light = spriteNormalsWindowCreate(w, "Light 2D", EntityCreationType::POINT_LIGHT_2D);
         w.sceneObject()->getComponent<Light2DComponent>(w.light).height = 0.0f;
         w.p->clearSelectedEntities(w.sceneId);
 
@@ -349,23 +349,23 @@ namespace {
 
 #define IN_EDITOR(name, ...)                                                    \
     do {                                                                        \
-        auto inEditor = [&](World& w) __VA_ARGS__;                              \
-        GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(runInEditor(name, inEditor), ::testing::ExitedWithCode(0), ""); \
+        auto inEditor = [&](SpriteNormalsWindowWorld& w) __VA_ARGS__;                              \
+        GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(spriteNormalsWindowRunInEditor(name, inEditor), ::testing::ExitedWithCode(0), ""); \
     } while (0)
 
 // ... with the MCP server started
 #define IN_EDITOR_WITH_MCP(name, ...)                                           \
     do {                                                                        \
-        auto inEditor = [&](World& w) __VA_ARGS__;                              \
-        GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(runInEditor(name, inEditor, true), ::testing::ExitedWithCode(0), ""); \
+        auto inEditor = [&](SpriteNormalsWindowWorld& w) __VA_ARGS__;                              \
+        GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(spriteNormalsWindowRunInEditor(name, inEditor, true), ::testing::ExitedWithCode(0), ""); \
     } while (0)
 
     // the window's runs (and Save All, Shift-click jobs) to their end; the debounce clock moved past
-    bool settle(SpriteNormalsWindow& window, int maxMs = 20000) {
+    bool spriteNormalsWindowSettle(SpriteNormalsWindow& window, int maxMs = 20000) {
         for (int i = 0; i < maxMs / 2; i++) {
-            Access::advance(window, 0.2);
-            if (!Access::busy(window)) {
-                Access::tick(window);
+            WindowAccess::advance(window, 0.2);
+            if (!WindowAccess::busy(window)) {
+                WindowAccess::tick(window);
                 return true;
             }
             usleep(2000);
@@ -373,7 +373,7 @@ namespace {
         return false;
     }
 
-    const SpriteNormalsWindow::WarningRow* row(const SpriteNormalsWindow& window, const std::string& kind) {
+    const SpriteNormalsWindow::WarningRow* spriteNormalsWindowRow(const SpriteNormalsWindow& window, const std::string& kind) {
         for (const SpriteNormalsWindow::WarningRow& r : window.getWarnings()) {
             if (r.kind == kind) return &r;
         }
@@ -421,8 +421,8 @@ TEST(SpriteNormalsWindowDeathTest, OpenSourcesSingle) {
 
 TEST(SpriteNormalsWindowDeathTest, BatchSaveAllIsOneUndoStep) {
     IN_EDITOR("batch", {
-        writePng(w.file("assets/a.png"), disk(16, 16));
-        writePng(w.file("assets/b.png"), disk(24, 24));
+        spriteNormalsWindowWritePng(w.file("assets/a.png"), spriteNormalsWindowDisk(16, 16));
+        spriteNormalsWindowWritePng(w.file("assets/b.png"), spriteNormalsWindowDisk(24, 24));
         SpriteNormalsWindow window(w.p);
         std::string error;
         ASSERT_TRUE(window.openSources({w.file("assets/hero.png"), w.file("assets/a.png"), w.file("assets/b.png")}, error)) << error;
@@ -433,7 +433,7 @@ TEST(SpriteNormalsWindowDeathTest, BatchSaveAllIsOneUndoStep) {
         const size_t before = w.projectHistory()->position();
         std::vector<std::string> written;
         ASSERT_TRUE(window.save(false, written, error)) << error;
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         for (const char* name : {"assets/hero_normal.png", "assets/a_normal.png", "assets/b_normal.png"}) {
             EXPECT_TRUE(fs::exists(w.file(name))) << name;
             EXPECT_TRUE(sn::readRecipeHead(w.file(name)).has_value()) << name;
@@ -533,13 +533,13 @@ TEST(SpriteNormalsWindowDeathTest, HighResolutionPresetsProfileScaleAndVersion) 
         int width, height;
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
         window.open();
-        Access::setAdvancedOpen(window, true);
+        WindowAccess::setAdvancedOpen(window, true);
         s = window.getSettings();
         s.version = 1;
         s.profile = sn::Profile::Inflate;
         window.setSettings(s);
-        ASSERT_TRUE(settle(window));
-        Access::drawFrame(window);
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
+        WindowAccess::drawFrame(window);
         EXPECT_EQ(window.getSettings().version, 1) << "drawing changes nothing";
         ImGui::DestroyContext(context);
     });
@@ -552,9 +552,9 @@ TEST(SpriteNormalsWindowDeathTest, ToonStepsChangeTheResultAndTheRecipeRestoresT
         SpriteNormalsWindow window(w.p);
         std::string error;
         ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
-        ASSERT_TRUE(settle(window));
-        ASSERT_TRUE(Access::shown(window));
-        const sn::Image smooth = Access::shown(window)->result().normal;
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
+        ASSERT_TRUE(WindowAccess::shown(window));
+        const sn::Image smooth = WindowAccess::shown(window)->result().normal;
         auto distinct = [](const sn::Image& image) {
             std::set<uint32_t> colours;
             for (size_t i = 0; i < image.pixelCount(); i++) {
@@ -567,8 +567,8 @@ TEST(SpriteNormalsWindowDeathTest, ToonStepsChangeTheResultAndTheRecipeRestoresT
 
         window.setPreset(sn::Preset::Toon);
         EXPECT_EQ(window.getSettings().quantize, sn::presetSettings(sn::Preset::Toon).quantize);
-        ASSERT_TRUE(settle(window));
-        const sn::Image toon = Access::shown(window)->result().normal;
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
+        const sn::Image toon = WindowAccess::shown(window)->result().normal;
         EXPECT_NE(toon.data, smooth.data);
         const sn::Quantize& q = window.getSettings().quantize;
         EXPECT_LE(distinct(toon), static_cast<size_t>(1 + q.directions * q.tilts));
@@ -578,8 +578,8 @@ TEST(SpriteNormalsWindowDeathTest, ToonStepsChangeTheResultAndTheRecipeRestoresT
         s.quantize.directions = 4;
         s.quantize.tilts = 1;
         window.setSettings(s);
-        ASSERT_TRUE(settle(window));
-        EXPECT_LE(distinct(Access::shown(window)->result().normal), 5u);
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
+        EXPECT_LE(distinct(WindowAccess::shown(window)->result().normal), 5u);
         {
             ImGuiContext* context = ImGui::CreateContext();
             ImGui::SetCurrentContext(context);
@@ -591,11 +591,11 @@ TEST(SpriteNormalsWindowDeathTest, ToonStepsChangeTheResultAndTheRecipeRestoresT
             int width, height;
             io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
             window.open();
-            Access::setAdvancedOpen(window, true);
-            Access::drawFrame(window);
+            WindowAccess::setAdvancedOpen(window, true);
+            WindowAccess::drawFrame(window);
             s.quantize.directions = 12;   // no segmented button: the Advanced combo's
             window.setSettings(s);
-            Access::drawFrame(window);
+            WindowAccess::drawFrame(window);
             ImGui::DestroyContext(context);
         }
         EXPECT_EQ(w.p->getSpriteNormalsSettings().settings.quantize.directions, 12) << "the project's last settings";
@@ -612,11 +612,11 @@ TEST(SpriteNormalsWindowDeathTest, ToonStepsChangeTheResultAndTheRecipeRestoresT
         s.quantize.rotationDeg = 30.0f;
         window.setSettings(s);
         window.setOutput("assets/maps/hero_toon.png");
-        ASSERT_TRUE(settle(window));
-        const sn::Image saved = Access::shown(window)->result().normal;
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
+        const sn::Image saved = WindowAccess::shown(window)->result().normal;
         std::vector<std::string> written;
         ASSERT_TRUE(window.save(false, written, error)) << error;
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         const std::optional<nlohmann::json> recipe = sn::readRecipeHead(w.file("assets/maps/hero_toon.png"));
         ASSERT_TRUE(recipe.has_value());
         EXPECT_EQ((*recipe)["settings"]["quantize"].dump(), R"({"directions":6,"flat_deg":15,"rotation_deg":30,"tilts":3})");
@@ -625,8 +625,8 @@ TEST(SpriteNormalsWindowDeathTest, ToonStepsChangeTheResultAndTheRecipeRestoresT
             ASSERT_TRUE(again.openRecipe(w.file("assets/maps/hero_toon.png"), error)) << error;
             EXPECT_EQ(again.getSettings().preset, sn::Preset::Crisp);
             EXPECT_EQ(again.getSettings().quantize, s.quantize);
-            ASSERT_TRUE(settle(again));
-            EXPECT_EQ(Access::shown(again)->result().normal.data, saved.data) << "regenerating gives the same pixels";
+            ASSERT_TRUE(spriteNormalsWindowSettle(again));
+            EXPECT_EQ(WindowAccess::shown(again)->result().normal.data, saved.data) << "regenerating gives the same pixels";
         }
         ts::Image file;
         ASSERT_TRUE(ts::loadImage(w.file("assets/maps/hero_toon.png"), file, error)) << error;
@@ -638,9 +638,9 @@ TEST(SpriteNormalsWindowDeathTest, ToonStepsChangeTheResultAndTheRecipeRestoresT
         s.quantize.directions = 0;
         window.setSettings(s);
         window.setOutput("assets/maps/hero_off.png");
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         ASSERT_TRUE(window.save(false, written, error)) << error;
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         SpriteNormalsWindow off(w.p);
         ASSERT_TRUE(off.openRecipe(w.file("assets/maps/hero_off.png"), error)) << error;
         EXPECT_EQ(off.getSettings().preset, sn::Preset::Toon);
@@ -653,46 +653,46 @@ TEST(SpriteNormalsWindowDeathTest, DebounceStartsOneRun) {
         SpriteNormalsWindow window(w.p);
         std::string error;
         ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
-        Access::tick(window);
-        EXPECT_EQ(Access::worker(window), nullptr) << "no run before 150 ms";
-        Access::advance(window, 0.1);
-        EXPECT_EQ(Access::worker(window), nullptr);
-        Access::advance(window, 0.06);
-        ASSERT_NE(Access::worker(window), nullptr) << "the run starts 150 ms after the last change";
-        ASSERT_TRUE(settle(window));
+        WindowAccess::tick(window);
+        EXPECT_EQ(WindowAccess::worker(window), nullptr) << "no run before 150 ms";
+        WindowAccess::advance(window, 0.1);
+        EXPECT_EQ(WindowAccess::worker(window), nullptr);
+        WindowAccess::advance(window, 0.06);
+        ASSERT_NE(WindowAccess::worker(window), nullptr) << "the run starts 150 ms after the last change";
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         EXPECT_TRUE(window.hasResult());
         EXPECT_FALSE(window.isStale());
         // two changes 0.1 s apart: one run, 150 ms after the second
         sn::Settings s = window.getSettings();
         s.strength = 2.0f;
         window.setSettings(s);
-        Access::advance(window, 0.1);
+        WindowAccess::advance(window, 0.1);
         s.strength = 2.5f;
         window.setSettings(s);
         EXPECT_TRUE(window.isStale());
-        Access::advance(window, 0.1);
-        EXPECT_EQ(Access::worker(window), nullptr) << "the second change restarted the wait";
-        Access::advance(window, 0.06);
-        const std::shared_ptr<sn::SpriteNormalsRun> run = Access::worker(window);
+        WindowAccess::advance(window, 0.1);
+        EXPECT_EQ(WindowAccess::worker(window), nullptr) << "the second change restarted the wait";
+        WindowAccess::advance(window, 0.06);
+        const std::shared_ptr<sn::SpriteNormalsRun> run = WindowAccess::worker(window);
         ASSERT_NE(run, nullptr);
         EXPECT_FLOAT_EQ(run->prepared().request.settings.strength, 2.5f);
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         EXPECT_FALSE(window.isStale());
     });
 }
 
 TEST(SpriteNormalsWindowDeathTest, LargeSourceIsNotLive) {
     IN_EDITOR("large", {
-        writePng(w.file("assets/big.png"), disk(1100, 1000));
+        spriteNormalsWindowWritePng(w.file("assets/big.png"), spriteNormalsWindowDisk(1100, 1000));
         SpriteNormalsWindow window(w.p);
         std::string error;
         ASSERT_TRUE(window.openSources({w.file("assets/big.png")}, error)) << error;
-        Access::advance(window, 0.5);
-        EXPECT_EQ(Access::worker(window), nullptr) << "over 1,048,576 pixels: no live run";
-        EXPECT_FALSE(Access::debouncePending(window));
+        WindowAccess::advance(window, 0.5);
+        EXPECT_EQ(WindowAccess::worker(window), nullptr) << "over 1,048,576 pixels: no live run";
+        EXPECT_FALSE(WindowAccess::debouncePending(window));
         ASSERT_TRUE(window.regenerate(error)) << error;
-        EXPECT_NE(Access::worker(window), nullptr);
-        ASSERT_TRUE(settle(window, 60000));
+        EXPECT_NE(WindowAccess::worker(window), nullptr);
+        ASSERT_TRUE(spriteNormalsWindowSettle(window, 60000));
         EXPECT_TRUE(window.hasResult());
     });
 }
@@ -707,39 +707,39 @@ TEST(SpriteNormalsWindowDeathTest, SaveWritesOneStepAndAsksBeforeReplacing) {
         ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
         EXPECT_FALSE(window.save(false, written, error)) << "no result yet";
         EXPECT_EQ(error, "Nothing to save: wait for the preview.");
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         const size_t before = w.projectHistory()->position();
         ASSERT_TRUE(window.save(false, written, error)) << error;
         ASSERT_EQ(written, std::vector<std::string>{"assets/hero_normal.png"});
         EXPECT_EQ(w.projectHistory()->position(), before + 1);
         EXPECT_EQ(window.getStatus(), "Saved hero_normal.png (Project undo).");
-        const std::string first = readAll(w.file("assets/hero_normal.png"));
+        const std::string first = spriteNormalsWindowReadAll(w.file("assets/hero_normal.png"));
         EXPECT_TRUE(sn::readRecipe(w.file("assets/hero_normal.png")).has_value());
         // the shown result's bytes: the Normal view shows exactly what was written
         sn::Source decoded;
         std::vector<sn::Problem> problems;
         ASSERT_TRUE(sn::loadSource(w.file("assets/hero_normal.png"), decoded, problems));
-        EXPECT_EQ(decoded.color.data, Access::shown(window)->result().normal.data);
+        EXPECT_EQ(decoded.color.data, WindowAccess::shown(window)->result().normal.data);
         // again: refused without overwrite; the Replace Files? confirm overwrites
         EXPECT_FALSE(window.save(false, written, error));
         EXPECT_NE(error.find("already exists"), std::string::npos) << error;
-        Access::refreshWarningsNow(window);
-        ASSERT_NE(row(window, "output_exists"), nullptr);
-        EXPECT_EQ(row(window, "output_exists")->text, "hero_normal.png exists: Save replaces it (undo puts it back).");
+        WindowAccess::refreshWarningsNow(window);
+        ASSERT_NE(spriteNormalsWindowRow(window, "output_exists"), nullptr);
+        EXPECT_EQ(spriteNormalsWindowRow(window, "output_exists")->text, "hero_normal.png exists: Save replaces it (undo puts it back).");
         sn::Settings s = window.getSettings();
         s.detail = 7.0f;
         window.setSettings(s);
-        ASSERT_TRUE(settle(window));
-        Access::holdConfirms(window, true);
-        Access::requestSave(window);
-        ASSERT_TRUE(Access::lastConfirm(window)) << "Save asks before replacing";
-        EXPECT_EQ(readAll(w.file("assets/hero_normal.png")), first) << "nothing written before the answer";
-        Access::lastConfirm(window)();
-        const std::string second = readAll(w.file("assets/hero_normal.png"));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
+        WindowAccess::holdConfirms(window, true);
+        WindowAccess::requestSave(window);
+        ASSERT_TRUE(WindowAccess::lastConfirm(window)) << "Save asks before replacing";
+        EXPECT_EQ(spriteNormalsWindowReadAll(w.file("assets/hero_normal.png")), first) << "nothing written before the answer";
+        WindowAccess::lastConfirm(window)();
+        const std::string second = spriteNormalsWindowReadAll(w.file("assets/hero_normal.png"));
         EXPECT_NE(second, first);
         EXPECT_EQ(w.projectHistory()->position(), before + 2);
         ASSERT_TRUE(w.projectHistory()->undo());
-        EXPECT_EQ(readAll(w.file("assets/hero_normal.png")), first) << "project undo puts the previous bytes back";
+        EXPECT_EQ(spriteNormalsWindowReadAll(w.file("assets/hero_normal.png")), first) << "project undo puts the previous bytes back";
     });
 }
 
@@ -750,7 +750,7 @@ TEST(SpriteNormalsWindowDeathTest, SaveAndAssignIsOneSceneStep) {
         std::vector<std::string> written;
         ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, false, error)) << error;
         EXPECT_TRUE(window.getAssign()) << "opened from the Inspector: Assign on";
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         const size_t sceneBefore = w.scene()->position();
         const size_t projectBefore = w.projectHistory()->position();
         ASSERT_TRUE(window.save(false, written, error)) << error;
@@ -785,7 +785,7 @@ TEST(SpriteNormalsWindowDeathTest, UndoRouting) {
         uint32_t sceneId = 0;
         EXPECT_FALSE(window.undoGoesToScene(sceneId)) << "nothing assigned yet: the project";
         ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, false, error)) << error;
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         ASSERT_TRUE(window.save(false, written, error)) << error;
         ASSERT_TRUE(window.undoGoesToScene(sceneId)) << "the assign is the scene's newest step";
         EXPECT_EQ(sceneId, w.sceneId);
@@ -806,7 +806,7 @@ TEST(SpriteNormalsWindowDeathTest, UndoRouting) {
 
 TEST(SpriteNormalsWindowDeathTest, GifSaveAndAssignMakesTheAnimation) {
     IN_EDITOR("gif", {
-        const Entity blinker = sprite(w, "Blinker", "assets/hero.png", 16, 16);
+        const Entity blinker = spriteNormalsWindowSprite(w, "Blinker", "assets/hero.png", 16, 16);
         SpriteNormalsWindow window(w.p);
         std::string error;
         std::vector<std::string> written;
@@ -815,7 +815,7 @@ TEST(SpriteNormalsWindowDeathTest, GifSaveAndAssignMakesTheAnimation) {
         EXPECT_EQ(window.framesSummary(), "3 frames from the GIF");
         window.setAssignTarget(w.sceneId, blinker, 0);
         window.setAssign(true);
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         ASSERT_TRUE(window.hasResult());
         const size_t sceneBefore = w.scene()->position();
         ASSERT_TRUE(window.save(false, written, error)) << error;
@@ -856,15 +856,15 @@ TEST(SpriteNormalsWindowDeathTest, OpenForEntity) {
         EXPECT_TRUE(window.getAssign());
         EXPECT_EQ(window.framesSummary(), "4 frames 32 x 32 from Sprite \"Walker\"");
         EXPECT_EQ(window.sourceSummary(), "128 x 32 PNG, 4 frames 32 x 32 (from Sprite \"Walker\")");
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         ASSERT_TRUE(window.hasResult());
-        EXPECT_EQ(Access::shown(window)->prepared().request.cells.size(), 4u);
+        EXPECT_EQ(WindowAccess::shown(window)->prepared().request.cells.size(), 4u);
         window.setOpen(false);
         // now: written and assigned with the window closed
         SpriteNormalsWindow quick(w.p);
         ASSERT_TRUE(quick.openForEntity(w.sceneId, w.walker, 0, true, error)) << error;
         EXPECT_FALSE(quick.isOpen());
-        ASSERT_TRUE(settle(quick));
+        ASSERT_TRUE(spriteNormalsWindowSettle(quick));
         EXPECT_TRUE(fs::exists(w.file("assets/walk_normal.png")));
         EXPECT_EQ(w.material(w.walker).normalTexture.getPath(), "assets/walk_normal.png");
         EXPECT_FALSE(quick.isOpen());
@@ -880,39 +880,39 @@ TEST(SpriteNormalsWindowDeathTest, ShiftClickRegeneratesOrOpensTheWindow) {
             SpriteNormalsWindow window(w.p);
             ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, false, error)) << error;
             window.setPreset(sn::Preset::Detailed);
-            ASSERT_TRUE(settle(window));
+            ASSERT_TRUE(spriteNormalsWindowSettle(window));
             ASSERT_TRUE(window.save(false, written, error)) << error;
             window.setPreset(sn::Preset::Soft);
         }
         EXPECT_EQ(w.p->getSpriteNormalsSettings().settings.preset, sn::Preset::Soft);
-        writeBytes(w.file("assets/other_normal.png"), {1, 2, 3});
-        const std::string otherBefore = readAll(w.file("assets/other_normal.png"));
+        spriteNormalsWindowWriteBytes(w.file("assets/other_normal.png"), {1, 2, 3});
+        const std::string otherBefore = spriteNormalsWindowReadAll(w.file("assets/other_normal.png"));
         // modify the source: the regeneration differs, with the recipe's settings (two disks: the
         // same image again would write the same bytes, a no-op step oe-port's history drops)
-        writePng(w.file("assets/hero.png"), disk(32, 32, 2));
+        spriteNormalsWindowWritePng(w.file("assets/hero.png"), spriteNormalsWindowDisk(32, 32, 2));
         SpriteNormalsWindow quick(w.p);
         const size_t before = w.projectHistory()->position();
         ASSERT_TRUE(quick.openForEntity(w.sceneId, w.hero, 0, true, error)) << error;
         EXPECT_FALSE(quick.isOpen());
-        ASSERT_TRUE(settle(quick));
+        ASSERT_TRUE(spriteNormalsWindowSettle(quick));
         EXPECT_EQ(w.projectHistory()->position(), before + 1);
         const std::optional<nlohmann::json> recipe = sn::readRecipeHead(w.file("assets/hero_normal.png"));
         ASSERT_TRUE(recipe.has_value());
         EXPECT_EQ((*recipe)["settings"]["preset"], "detailed") << "the recipe's settings, not the last ones";
-        EXPECT_EQ(readAll(w.file("assets/other_normal.png")), otherBefore) << "only the file the recipe names";
+        EXPECT_EQ(spriteNormalsWindowReadAll(w.file("assets/other_normal.png")), otherBefore) << "only the file the recipe names";
         // a non-generated file at the default path: the window opens, nothing is written
-        writeBytes(w.file("assets/walk_normal.png"), {9, 9, 9});
+        spriteNormalsWindowWriteBytes(w.file("assets/walk_normal.png"), {9, 9, 9});
         SpriteNormalsWindow walker(w.p);
         ASSERT_TRUE(walker.openForEntity(w.sceneId, w.walker, 0, true, error)) << error;
         EXPECT_TRUE(walker.isOpen());
-        ASSERT_TRUE(settle(walker));
-        EXPECT_EQ(readAll(w.file("assets/walk_normal.png")), std::string("\x09\x09\x09"));
+        ASSERT_TRUE(spriteNormalsWindowSettle(walker));
+        EXPECT_EQ(spriteNormalsWindowReadAll(w.file("assets/walk_normal.png")), std::string("\x09\x09\x09"));
         ASSERT_FALSE(walker.getNotices().empty());
         EXPECT_NE(walker.getNotices()[0].find("was not generated"), std::string::npos) << walker.getNotices()[0];
-        Access::holdConfirms(walker, true);
-        Access::requestSave(walker);
-        EXPECT_TRUE(Access::lastConfirm(walker)) << "Save asks to replace it";
-        EXPECT_EQ(readAll(w.file("assets/walk_normal.png")), std::string("\x09\x09\x09"));
+        WindowAccess::holdConfirms(walker, true);
+        WindowAccess::requestSave(walker);
+        EXPECT_TRUE(WindowAccess::lastConfirm(walker)) << "Save asks to replace it";
+        EXPECT_EQ(spriteNormalsWindowReadAll(w.file("assets/walk_normal.png")), std::string("\x09\x09\x09"));
     });
 }
 
@@ -934,7 +934,7 @@ TEST(SpriteNormalsWindowDeathTest, OpenRecipeRestores) {
             s.profile = sn::Profile::Dome;
             window.setSettings(s);
             window.setOutput("assets/maps/walk_n.png");
-            ASSERT_TRUE(settle(window));
+            ASSERT_TRUE(spriteNormalsWindowSettle(window));
             ASSERT_TRUE(window.save(false, written, error)) << error;
         }
         SpriteNormalsWindow window(w.p);
@@ -946,7 +946,7 @@ TEST(SpriteNormalsWindowDeathTest, OpenRecipeRestores) {
         EXPECT_EQ(window.currentSpec().output.normal, "assets/maps/walk_n.png");
         ASSERT_FALSE(window.getNotices().empty());
         EXPECT_NE(window.getNotices().back().find("its source is unchanged"), std::string::npos) << window.getNotices().back();
-        writePng(w.file("assets/walk.png"), disk(128, 32, 2));
+        spriteNormalsWindowWritePng(w.file("assets/walk.png"), spriteNormalsWindowDisk(128, 32, 2));
         ASSERT_TRUE(window.openRecipe(w.file("assets/maps/walk_n.png"), error)) << error;
         EXPECT_EQ(window.getNotices().back(), "walk.png changed since this normal map was generated.");
         // no recipe
@@ -961,20 +961,20 @@ TEST(SpriteNormalsWindowDeathTest, RegenerateFromRecipe) {
         {
             SpriteNormalsWindow window(w.p);
             ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
-            ASSERT_TRUE(settle(window));
+            ASSERT_TRUE(spriteNormalsWindowSettle(window));
             ASSERT_TRUE(window.save(false, written, error)) << error;
         }
-        const std::string first = readAll(w.file("assets/hero_normal.png"));
-        writePng(w.file("assets/hero.png"), disk(32, 32, 1));
+        const std::string first = spriteNormalsWindowReadAll(w.file("assets/hero_normal.png"));
+        spriteNormalsWindowWritePng(w.file("assets/hero.png"), spriteNormalsWindowDisk(32, 32, 1));
         // the same image re-encoded is not different: make it so
-        ts::Image changed = disk(32, 32);
+        ts::Image changed = spriteNormalsWindowDisk(32, 32);
         changed.pixel(16, 16)[0] = 3;
-        writePng(w.file("assets/hero.png"), changed);
+        spriteNormalsWindowWritePng(w.file("assets/hero.png"), changed);
         const size_t before = w.projectHistory()->position();
         ASSERT_TRUE(SpriteNormalsWindow::regenerateFromRecipe(w.p, w.file("assets/hero_normal.png"), written, error)) << error;
         EXPECT_EQ(written, std::vector<std::string>{"assets/hero_normal.png"});
         EXPECT_EQ(w.projectHistory()->position(), before + 1);
-        EXPECT_NE(readAll(w.file("assets/hero_normal.png")), first);
+        EXPECT_NE(spriteNormalsWindowReadAll(w.file("assets/hero_normal.png")), first);
         EXPECT_EQ(sn::checkStaleness(w.dir, w.file("assets/hero_normal.png")).state, sn::Staleness::State::Fresh);
         fs::remove(w.file("assets/hero.png"));
         EXPECT_FALSE(SpriteNormalsWindow::regenerateFromRecipe(w.p, w.file("assets/hero_normal.png"), written, error));
@@ -991,7 +991,7 @@ TEST(SpriteNormalsWindowDeathTest, Eyedropper) {
         ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
         ASSERT_TRUE(window.pickRegionColour(-1, 16, 16, error)) << error;
         ASSERT_EQ(window.getSettings().regions.size(), 1u) << "Alt-click with no region makes region 1";
-        const ts::Image hero = disk(32, 32);
+        const ts::Image hero = spriteNormalsWindowDisk(32, 32);
         const uint8_t* p = hero.pixel(16, 16);
         EXPECT_EQ(window.getSettings().regions[0].colors[0], (uint32_t(p[0]) << 16) | (uint32_t(p[1]) << 8) | p[2]);
         EXPECT_FALSE(window.pickRegionColour(0, 0, 0, error));
@@ -1014,20 +1014,20 @@ TEST(SpriteNormalsWindowDeathTest, LitPreviewFollowsTheLight) {
         sn::Settings s = window.getSettings();
         s.detail = 0.0f;
         window.setSettings(s);
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         float x, y, height;
-        Access::light(window, x, y, height);
+        WindowAccess::light(window, x, y, height);
         EXPECT_FLOAT_EQ(x, 0.0f) << "default: up-left of the centre by half the side";
         EXPECT_FLOAT_EQ(y, 0.0f);
         EXPECT_NEAR(height, 19.2f, 1e-3f);
         window.setLight(-20.0f, 16.0f, 20.0f);
-        const sn::Image left = Access::lit(window);
+        const sn::Image left = WindowAccess::lit(window);
         ASSERT_EQ(left.width, 32);
         EXPECT_GT(luminance(left, 0, 16), luminance(left, 16, 32) + 5.0);
         window.setLight(52.0f, 16.0f, 20.0f);
-        const sn::Image right = Access::lit(window);
+        const sn::Image right = WindowAccess::lit(window);
         EXPECT_GT(luminance(right, 16, 32), luminance(right, 0, 16) + 5.0);
-        EXPECT_FALSE(Access::gpuValid(window)) << "no GPU objects headless";
+        EXPECT_FALSE(WindowAccess::gpuValid(window)) << "no GPU objects headless";
     });
 }
 
@@ -1036,17 +1036,17 @@ TEST(SpriteNormalsWindowDeathTest, PlayStepsTheGifFrames) {
         SpriteNormalsWindow window(w.p);
         std::string error;
         ASSERT_TRUE(window.openSources({w.file("assets/blink.gif")}, error)) << error;
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         ASSERT_TRUE(window.hasResult());
         window.setPlaying(true);
         EXPECT_EQ(window.getFrame(), 0);
-        Access::advance(window, 0.05);
+        WindowAccess::advance(window, 0.05);
         EXPECT_EQ(window.getFrame(), 0);
-        Access::advance(window, 0.05);
+        WindowAccess::advance(window, 0.05);
         EXPECT_EQ(window.getFrame(), 1) << "frame 0 lasts 100 ms";
-        Access::advance(window, 0.2);
+        WindowAccess::advance(window, 0.2);
         EXPECT_EQ(window.getFrame(), 2) << "frame 1 lasts 200 ms";
-        Access::advance(window, 0.3);
+        WindowAccess::advance(window, 0.3);
         EXPECT_EQ(window.getFrame(), 0) << "frame 2 lasts 300 ms, then it loops";
         window.setPlaying(false);
         window.setFrame(-1);
@@ -1061,27 +1061,27 @@ TEST(SpriteNormalsWindowDeathTest, WarningsAndFixes) {
         SpriteNormalsWindow window(w.p);
         std::string error;
         ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, false, error)) << error;
-        ASSERT_TRUE(settle(window));
-        Access::refreshWarningsNow(window);
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
+        WindowAccess::refreshWarningsNow(window);
         auto same = [&](const std::string& kind) {
-            const SpriteNormalsWindow::WarningRow* r = row(window, kind);
+            const SpriteNormalsWindow::WarningRow* r = spriteNormalsWindowRow(window, kind);
             if (!r) return false;
             for (const sn::Problem& p : sn::sceneWarnings(w.sceneObject(), w.hero, window.getSettings(), 32, 32, {}, window.getAssign())) {
                 if (p.kind == kind) return p.message == r->text;
             }
             return false;
         };
-        ASSERT_NE(row(window, "no_light_height"), nullptr);
+        ASSERT_NE(spriteNormalsWindowRow(window, "no_light_height"), nullptr);
         EXPECT_TRUE(same("no_light_height")) << "Phase 2's message verbatim";
         size_t before = w.scene()->position();
         ASSERT_TRUE(window.applyFix("no_light_height", "Set Height 64", error)) << error;
         EXPECT_FLOAT_EQ(w.sceneObject()->getComponent<Light2DComponent>(w.light).height, 64.0f);
         EXPECT_EQ(w.scene()->position(), before + 1);
-        EXPECT_EQ(row(window, "no_light_height"), nullptr);
+        EXPECT_EQ(spriteNormalsWindowRow(window, "no_light_height"), nullptr);
         // no light: Create Light 2D (height 64)
         w.sceneObject()->destroyEntity(w.light);
-        Access::refreshWarningsNow(window);
-        ASSERT_NE(row(window, "no_light"), nullptr);
+        WindowAccess::refreshWarningsNow(window);
+        ASSERT_NE(spriteNormalsWindowRow(window, "no_light"), nullptr);
         EXPECT_TRUE(same("no_light"));
         before = w.scene()->position();
         ASSERT_TRUE(window.applyFix("no_light", "Create Light 2D", error)) << error;
@@ -1089,13 +1089,13 @@ TEST(SpriteNormalsWindowDeathTest, WarningsAndFixes) {
         const std::vector<Entity> selected = w.p->getSelectedEntities(w.sceneId);
         ASSERT_EQ(selected.size(), 1u) << "the new light is selected";
         EXPECT_FLOAT_EQ(w.sceneObject()->getComponent<Light2DComponent>(selected[0]).height, 64.0f);
-        EXPECT_EQ(row(window, "no_light"), nullptr);
+        EXPECT_EQ(spriteNormalsWindowRow(window, "no_light"), nullptr);
         // directx with a target
         sn::Settings s = window.getSettings();
         s.directx = true;
         window.setSettings(s);
-        Access::refreshWarningsNow(window);
-        ASSERT_NE(row(window, "directx_in_engine"), nullptr);
+        WindowAccess::refreshWarningsNow(window);
+        ASSERT_NE(spriteNormalsWindowRow(window, "directx_in_engine"), nullptr);
         EXPECT_TRUE(same("directx_in_engine"));
         ASSERT_TRUE(window.applyFix("directx_in_engine", "Switch to OpenGL", error)) << error;
         EXPECT_FALSE(window.getSettings().directx);
@@ -1104,19 +1104,19 @@ TEST(SpriteNormalsWindowDeathTest, WarningsAndFixes) {
         normal.setMinFilter(TextureFilter::LINEAR);
         w.material(w.hero).normalTexture = normal;
         window.setAssign(false);
-        Access::refreshWarningsNow(window);
-        ASSERT_NE(row(window, "filter_mismatch"), nullptr);
+        WindowAccess::refreshWarningsNow(window);
+        ASSERT_NE(spriteNormalsWindowRow(window, "filter_mismatch"), nullptr);
         EXPECT_TRUE(same("filter_mismatch"));
         ASSERT_TRUE(window.applyFix("filter_mismatch", "Match Base Texture", error)) << error;
         EXPECT_EQ(w.material(w.hero).normalTexture.getMinFilter(), TextureFilter::NEAREST);
         // size mismatch: another image's map for Hero
-        writePng(w.file("assets/wide.png"), disk(48, 32));
+        spriteNormalsWindowWritePng(w.file("assets/wide.png"), spriteNormalsWindowDisk(48, 32));
         SpriteNormalsWindow other(w.p);
         ASSERT_TRUE(other.openSources({w.file("assets/wide.png")}, error)) << error;
         other.setAssignTarget(w.sceneId, w.hero, 0);
-        ASSERT_TRUE(settle(other));
-        Access::refreshWarningsNow(other);
-        const SpriteNormalsWindow::WarningRow* size = row(other, "size_mismatch");
+        ASSERT_TRUE(spriteNormalsWindowSettle(other));
+        WindowAccess::refreshWarningsNow(other);
+        const SpriteNormalsWindow::WarningRow* size = spriteNormalsWindowRow(other, "size_mismatch");
         ASSERT_NE(size, nullptr);
         EXPECT_TRUE(size->error);
         ASSERT_TRUE(other.applyFix("size_mismatch", "Use Base Texture", error)) << error;
@@ -1127,12 +1127,12 @@ TEST(SpriteNormalsWindowDeathTest, WarningsAndFixes) {
 
 TEST(SpriteNormalsWindowDeathTest, ProjectSwitchDuringARun) {
     IN_EDITOR("switch", {
-        writePng(w.file("assets/big.png"), disk(1024, 1024));
+        spriteNormalsWindowWritePng(w.file("assets/big.png"), spriteNormalsWindowDisk(1024, 1024));
         SpriteNormalsWindow window(w.p);
         std::string error;
         ASSERT_TRUE(window.openSources({w.file("assets/big.png")}, error)) << error;
         ASSERT_TRUE(window.regenerate(error)) << error;
-        const std::shared_ptr<sn::SpriteNormalsRun> run = Access::worker(window);
+        const std::shared_ptr<sn::SpriteNormalsRun> run = WindowAccess::worker(window);
         ASSERT_NE(run, nullptr);
         window.resetForProjectSwitch();
         for (int i = 0; i < 5000 && !run->finished(); i++) usleep(2000);
@@ -1140,7 +1140,7 @@ TEST(SpriteNormalsWindowDeathTest, ProjectSwitchDuringARun) {
         EXPECT_EQ(window.itemCount(), 0u);
         EXPECT_FALSE(window.hasResult());
         EXPECT_FALSE(window.hasAssignTarget());
-        Access::tick(window);
+        WindowAccess::tick(window);
         EXPECT_FALSE(fs::exists(w.file("assets/big_normal.png")));
     });
 }
@@ -1199,17 +1199,17 @@ TEST(SpriteNormalsWindowDeathTest, AnotherSourceDropsTheAssignTarget) {
         {
             SpriteNormalsWindow window(w.p);
             ASSERT_TRUE(window.openSources({w.file("assets/walk.png")}, error)) << error;
-            ASSERT_TRUE(settle(window));
+            ASSERT_TRUE(spriteNormalsWindowSettle(window));
             ASSERT_TRUE(window.save(false, written, error)) << error;
         }
         SpriteNormalsWindow window(w.p);
         ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, false, error)) << error;
         ASSERT_TRUE(window.getAssign());
         // the same image typed again keeps Hero as the target
-        ASSERT_TRUE(Access::setSource(window, "assets/hero.png", error)) << error;
+        ASSERT_TRUE(WindowAccess::setSource(window, "assets/hero.png", error)) << error;
         EXPECT_TRUE(window.hasAssignTarget());
         // another image: Hero does not draw it, so no Save & Assign onto Hero
-        ASSERT_TRUE(Access::setSource(window, "assets/walk.png", error)) << error;
+        ASSERT_TRUE(WindowAccess::setSource(window, "assets/walk.png", error)) << error;
         EXPECT_FALSE(window.hasAssignTarget());
         EXPECT_FALSE(window.getAssign());
         // Edit Normal Map on walk_normal.png after the wand on Hero: no target either
@@ -1217,7 +1217,7 @@ TEST(SpriteNormalsWindowDeathTest, AnotherSourceDropsTheAssignTarget) {
         ASSERT_TRUE(window.openRecipe(w.file("assets/walk_normal.png"), error)) << error;
         EXPECT_FALSE(window.hasAssignTarget());
         EXPECT_FALSE(window.getAssign());
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         ASSERT_TRUE(window.save(true, written, error)) << error;
         EXPECT_TRUE(w.material(w.hero).normalTexture.getPath().empty()) << "Hero untouched";
     });
@@ -1229,19 +1229,19 @@ TEST(SpriteNormalsWindowDeathTest, StartRegenerateRunsOnTheWorker) {
         std::vector<std::string> written;
         SpriteNormalsWindow window(w.p);
         ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         ASSERT_TRUE(window.save(false, written, error)) << error;
-        const std::string first = readAll(w.file("assets/hero_normal.png"));
-        ts::Image changed = disk(32, 32);
+        const std::string first = spriteNormalsWindowReadAll(w.file("assets/hero_normal.png"));
+        ts::Image changed = spriteNormalsWindowDisk(32, 32);
         changed.pixel(16, 16)[0] = 3;
-        writePng(w.file("assets/hero.png"), changed);
+        spriteNormalsWindowWritePng(w.file("assets/hero.png"), changed);
         const size_t before = w.projectHistory()->position();
         ASSERT_TRUE(window.startRegenerate(w.file("assets/hero_normal.png"), error)) << error;
         EXPECT_TRUE(window.hasPendingJobs());
-        EXPECT_EQ(readAll(w.file("assets/hero_normal.png")), first) << "nothing written on the UI thread";
-        ASSERT_TRUE(settle(window));
+        EXPECT_EQ(spriteNormalsWindowReadAll(w.file("assets/hero_normal.png")), first) << "nothing written on the UI thread";
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         EXPECT_FALSE(window.hasPendingJobs());
-        EXPECT_NE(readAll(w.file("assets/hero_normal.png")), first);
+        EXPECT_NE(spriteNormalsWindowReadAll(w.file("assets/hero_normal.png")), first);
         EXPECT_EQ(w.projectHistory()->position(), before + 1) << "one project undo step";
         EXPECT_EQ(sn::checkStaleness(w.dir, w.file("assets/hero_normal.png")).state, sn::Staleness::State::Fresh);
         fs::remove(w.file("assets/hero.png"));
@@ -1263,7 +1263,7 @@ TEST(SpriteNormalsWindowDeathTest, StoredSettingsSurviveAProjectSwitch) {
         stored.settings.strength = 5.0f;
         stored.view = 3;
         w.p->getSpriteNormalsSettings() = stored;
-        Access::tick(window);
+        WindowAccess::tick(window);
         EXPECT_FLOAT_EQ(window.getSettings().strength, 5.0f) << "taken from the project";
         EXPECT_EQ(window.getView(), SpriteNormalsWindow::View::Split);
         ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
@@ -1278,23 +1278,23 @@ TEST(SpriteNormalsWindowDeathTest, OrbitStopsWithTheWindow) {
         std::string error;
         SpriteNormalsWindow window(w.p);
         window.setOrbit(true);
-        Access::advance(window, 0.5);
-        EXPECT_DOUBLE_EQ(Access::orbitTime(window), 0.0) << "no source, no result: nothing orbits";
+        WindowAccess::advance(window, 0.5);
+        EXPECT_DOUBLE_EQ(WindowAccess::orbitTime(window), 0.0) << "no source, no result: nothing orbits";
         ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         // settle() can return in the step the result appears, before any shown time has passed
-        Access::advance(window, 0.5);
-        const double t = Access::orbitTime(window);
+        WindowAccess::advance(window, 0.5);
+        const double t = WindowAccess::orbitTime(window);
         EXPECT_GT(t, 0.0) << "open with a result: the orbit runs";
         window.setOpen(false);
-        Access::advance(window, 0.5);
-        EXPECT_DOUBLE_EQ(Access::orbitTime(window), t) << "closed: the orbit stands still";
+        WindowAccess::advance(window, 0.5);
+        EXPECT_DOUBLE_EQ(WindowAccess::orbitTime(window), t) << "closed: the orbit stands still";
     });
 }
 
 TEST(SpriteNormalsWindowDeathTest, SaveAllRegeneratesItemsChangedMeanwhile) {
     IN_EDITOR("saveallstale", {
-        writePng(w.file("assets/a.png"), disk(16, 16));
+        spriteNormalsWindowWritePng(w.file("assets/a.png"), spriteNormalsWindowDisk(16, 16));
         SpriteNormalsWindow window(w.p);
         std::string error;
         std::vector<std::string> written;
@@ -1304,14 +1304,14 @@ TEST(SpriteNormalsWindowDeathTest, SaveAllRegeneratesItemsChangedMeanwhile) {
         sn::Settings s = window.getSettings();
         s.strength = 3.25f;
         window.setSettings(s);
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         for (const char* name : {"assets/hero_normal.png", "assets/a_normal.png"}) {
             const std::optional<nlohmann::json> recipe = sn::readRecipeHead(w.file(name));
             ASSERT_TRUE(recipe.has_value()) << name;
             EXPECT_DOUBLE_EQ((*recipe)["settings"]["strength"].get<double>(), 3.25) << name;
         }
         // written: only the shown item keeps its decoded result
-        EXPECT_FALSE(Access::itemHasResult(window, 1));
+        EXPECT_FALSE(WindowAccess::itemHasResult(window, 1));
     });
 }
 
@@ -1321,10 +1321,10 @@ TEST(SpriteNormalsWindowDeathTest, QuickJobChecksItsTargetAndIgnoresARepeat) {
         SpriteNormalsWindow window(w.p);
         ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, true, error)) << error;
         ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, true, error)) << error;
-        EXPECT_EQ(Access::quickJobs(window), 1u) << "a repeated Shift-click is ignored while the first runs";
+        EXPECT_EQ(WindowAccess::quickJobs(window), 1u) << "a repeated Shift-click is ignored while the first runs";
         // the target draws another image by the time the run ends: nothing written or assigned
         w.material(w.hero).baseColorTexture = Texture("assets/walk.png");
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         EXPECT_FALSE(fs::exists(w.file("assets/hero_normal.png")));
         EXPECT_TRUE(w.material(w.hero).normalTexture.getPath().empty());
     });
@@ -1337,7 +1337,7 @@ TEST(SpriteNormalsWindowDeathTest, UndoRoutingKnowsItsOwnStep) {
         std::vector<std::string> written;
         uint32_t sceneId = 0;
         ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, false, error)) << error;
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         ASSERT_TRUE(window.save(false, written, error)) << error;
         ASSERT_TRUE(window.undoGoesToScene(sceneId));
         // undone, then another edit takes the same position: not the assign
@@ -1359,7 +1359,7 @@ TEST(SpriteNormalsWindowDeathTest, ShiftClickUsesTheDefaultMapsRecipe) {
             SpriteNormalsWindow window(w.p);
             ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
             window.setPreset(sn::Preset::Detailed);
-            ASSERT_TRUE(settle(window));
+            ASSERT_TRUE(spriteNormalsWindowSettle(window));
             ASSERT_TRUE(window.save(false, written, error)) << error;
             window.setPreset(sn::Preset::Soft);
         }
@@ -1367,7 +1367,7 @@ TEST(SpriteNormalsWindowDeathTest, ShiftClickUsesTheDefaultMapsRecipe) {
         SpriteNormalsWindow quick(w.p);
         ASSERT_TRUE(quick.openForEntity(w.sceneId, w.hero, 0, true, error)) << error;
         EXPECT_FALSE(quick.isOpen());
-        ASSERT_TRUE(settle(quick));
+        ASSERT_TRUE(spriteNormalsWindowSettle(quick));
         const std::optional<nlohmann::json> recipe = sn::readRecipeHead(w.file("assets/hero_normal.png"));
         ASSERT_TRUE(recipe.has_value());
         EXPECT_EQ((*recipe)["settings"]["preset"], "detailed") << "the map's own settings, not the last ones (soft)";
@@ -1383,12 +1383,12 @@ TEST(SpriteNormalsWindowDeathTest, RegenerateWaitsForTheSceneToStop) {
         std::vector<std::string> written;
         SpriteNormalsWindow window(w.p);
         ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         ASSERT_TRUE(window.save(false, written, error)) << error;
-        const std::string first = readAll(w.file("assets/hero_normal.png"));
-        ts::Image changed = disk(32, 32);
+        const std::string first = spriteNormalsWindowReadAll(w.file("assets/hero_normal.png"));
+        ts::Image changed = spriteNormalsWindowDisk(32, 32);
         changed.pixel(16, 16)[1] = 7;
-        writePng(w.file("assets/hero.png"), changed);
+        spriteNormalsWindowWritePng(w.file("assets/hero.png"), changed);
         SceneProject* sp = w.p->getScene(w.sceneId);
         // refused while playing
         sp->playState = ScenePlayState::PLAYING;
@@ -1397,17 +1397,17 @@ TEST(SpriteNormalsWindowDeathTest, RegenerateWaitsForTheSceneToStop) {
         // started while stopped, the scene plays when it ends: it waits
         sp->playState = ScenePlayState::STOPPED;
         ASSERT_TRUE(window.startRegenerate(w.file("assets/hero_normal.png"), error)) << error;
-        Access::waitWorkers(window);
+        WindowAccess::waitWorkers(window);
         sp->playState = ScenePlayState::PLAYING;
-        for (int i = 0; i < 10; i++) Access::advance(window, 0.1);
-        EXPECT_EQ(readAll(w.file("assets/hero_normal.png")), first) << "nothing written during play";
+        for (int i = 0; i < 10; i++) WindowAccess::advance(window, 0.1);
+        EXPECT_EQ(spriteNormalsWindowReadAll(w.file("assets/hero_normal.png")), first) << "nothing written during play";
         SpriteNormalsWindow::RegenerateOutcome outcome = window.regenerateOutcome(w.file("assets/hero_normal.png"));
         EXPECT_TRUE(outcome.known);
         EXPECT_FALSE(outcome.finished);
         EXPECT_NE(outcome.message.find("once the scene stops"), std::string::npos) << outcome.message;
         sp->playState = ScenePlayState::STOPPED;
-        ASSERT_TRUE(settle(window));
-        EXPECT_NE(readAll(w.file("assets/hero_normal.png")), first);
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
+        EXPECT_NE(spriteNormalsWindowReadAll(w.file("assets/hero_normal.png")), first);
         outcome = window.regenerateOutcome(w.file("assets/hero_normal.png"));
         EXPECT_TRUE(outcome.finished && outcome.ok);
         EXPECT_EQ(outcome.message, "Regenerated hero_normal.png.");
@@ -1419,23 +1419,23 @@ TEST(SpriteNormalsWindowDeathTest, RegenerateOutcomesAndSameNamesInTwoFolders) {
         std::string error;
         std::vector<std::string> written;
         for (const char* dir : {"assets/a", "assets/b"}) {
-            writePng(w.file(std::string(dir) + "/hero.png"), disk(32, 32));
+            spriteNormalsWindowWritePng(w.file(std::string(dir) + "/hero.png"), spriteNormalsWindowDisk(32, 32));
             SpriteNormalsWindow maker(w.p);
             ASSERT_TRUE(maker.openSources({w.file(std::string(dir) + "/hero.png")}, error)) << error;
-            ASSERT_TRUE(settle(maker));
+            ASSERT_TRUE(spriteNormalsWindowSettle(maker));
             ASSERT_TRUE(maker.save(false, written, error)) << error;
         }
         SpriteNormalsWindow window(w.p);
         ASSERT_TRUE(window.startRegenerate(w.file("assets/a/hero_normal.png"), error)) << error;
         ASSERT_TRUE(window.startRegenerate(w.file("assets/b/hero_normal.png"), error)) << error;
-        EXPECT_EQ(Access::quickJobs(window), 2u) << "same file name, another folder: its own job";
+        EXPECT_EQ(WindowAccess::quickJobs(window), 2u) << "same file name, another folder: its own job";
         ASSERT_TRUE(window.startRegenerate(w.file("assets/a/hero_normal.png"), error)) << error;
-        EXPECT_EQ(Access::quickJobs(window), 2u) << "the same file again: ignored while it runs";
+        EXPECT_EQ(WindowAccess::quickJobs(window), 2u) << "the same file again: ignored while it runs";
         // b's write fails (a folder took its place): its outcome says so, a's says written
-        Access::waitWorkers(window);
+        WindowAccess::waitWorkers(window);
         fs::remove(w.file("assets/b/hero_normal.png"));
         fs::create_directories(w.file("assets/b/hero_normal.png"));
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         const SpriteNormalsWindow::RegenerateOutcome a = window.regenerateOutcome(w.file("assets/a/hero_normal.png"));
         const SpriteNormalsWindow::RegenerateOutcome b = window.regenerateOutcome(w.file("assets/b/hero_normal.png"));
         EXPECT_TRUE(a.finished && a.ok) << a.message;
@@ -1452,7 +1452,7 @@ TEST(SpriteNormalsWindowDeathTest, UndoRoutingSurvivesUndoEditCycles) {
         std::vector<std::string> written;
         uint32_t sceneId = 0;
         ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, false, error)) << error;
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         ASSERT_TRUE(window.save(false, written, error)) << error;
         ASSERT_TRUE(window.undoGoesToScene(sceneId));
         ASSERT_TRUE(w.scene()->undo());
@@ -1473,15 +1473,15 @@ TEST(SpriteNormalsWindowDeathTest, ProblemsFollowTheGameObject) {
         SpriteNormalsWindow window(w.p);
         std::string error;
         ASSERT_TRUE(window.openForEntity(w.sceneId, w.walker, 0, false, error)) << error;
-        Access::tick(window);
-        EXPECT_TRUE(Access::problems(window).empty());
+        WindowAccess::tick(window);
+        EXPECT_TRUE(WindowAccess::problems(window).empty());
         // re-sliced with the same number of frames, now overlapping: found on the next change
         SpriteComponent& walk = w.sceneObject()->getComponent<SpriteComponent>(w.walker);
         walk.framesRect[1].rect = Rect(16.0f, 0.0f, 32.0f, 32.0f);
         sn::Settings s = window.getSettings();
         s.strength = 9.0f;   // out of range: a settings problem too
         window.setSettings(s);
-        const std::vector<sn::Problem>& problems = Access::problems(window);
+        const std::vector<sn::Problem>& problems = WindowAccess::problems(window);
         ASSERT_GE(problems.size(), 2u);
         EXPECT_EQ(problems[0].kind, "invalid_settings") << "settings problems first, as checkSpec lists them";
         bool overlap = false;
@@ -1491,27 +1491,27 @@ TEST(SpriteNormalsWindowDeathTest, ProblemsFollowTheGameObject) {
         w.material(w.walker).baseColorTexture = Texture("assets/hero.png");
         s.strength = 9.5f;
         window.setSettings(s);
-        EXPECT_EQ(Access::problems(window)[0].kind, "invalid_settings");
+        EXPECT_EQ(WindowAccess::problems(window)[0].kind, "invalid_settings");
     });
 }
 
 TEST(SpriteNormalsWindowDeathTest, ALargeItemsManualResultSurvivesARowSwitch) {
     IN_EDITOR("batchkeep", {
-        writePng(w.file("assets/big.png"), disk(1100, 1000));
+        spriteNormalsWindowWritePng(w.file("assets/big.png"), spriteNormalsWindowDisk(1100, 1000));
         SpriteNormalsWindow window(w.p);
         std::string error;
         ASSERT_TRUE(window.openSources({w.file("assets/hero.png"), w.file("assets/big.png")}, error)) << error;
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         window.selectItem(1);
         ASSERT_TRUE(window.regenerate(error)) << error;
-        ASSERT_TRUE(settle(window, 60000));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window, 60000));
         ASSERT_TRUE(window.hasResult());
         window.selectItem(0);
-        ASSERT_TRUE(settle(window));
-        EXPECT_TRUE(Access::itemHasResult(window, 1)) << "not saved, not live: kept";
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
+        EXPECT_TRUE(WindowAccess::itemHasResult(window, 1)) << "not saved, not live: kept";
         window.selectItem(1);
         EXPECT_TRUE(window.hasResult()) << "shown again at once, no second Generate";
-        EXPECT_EQ(Access::worker(window), nullptr);
+        EXPECT_EQ(WindowAccess::worker(window), nullptr);
     });
 }
 
@@ -1524,13 +1524,13 @@ TEST(SpriteNormalsWindowDeathTest, JobWorkersNeverTouchTheSystem) {
         {
             SpriteNormalsWindow maker(w.p);
             ASSERT_TRUE(maker.openSources({w.file("assets/hero.png")}, error)) << error;
-            ASSERT_TRUE(settle(maker));
+            ASSERT_TRUE(spriteNormalsWindowSettle(maker));
             ASSERT_TRUE(maker.save(false, written, error)) << error;
         }
-        ts::Image changed = disk(32, 32);
+        ts::Image changed = spriteNormalsWindowDisk(32, 32);
         changed.pixel(16, 16)[2] = 9;
-        writePng(w.file("assets/hero.png"), changed);
-        const std::string before = readAll(w.file("assets/hero_normal.png"));
+        spriteNormalsWindowWritePng(w.file("assets/hero.png"), changed);
+        const std::string before = spriteNormalsWindowReadAll(w.file("assets/hero_normal.png"));
         SpriteNormalsWindow window(w.p);
         // the System is one that notes every asset-path read made off this thread (the project's
         // assets directory the main thread may be changing): the workers make none, the checks
@@ -1542,12 +1542,12 @@ TEST(SpriteNormalsWindowDeathTest, JobWorkersNeverTouchTheSystem) {
         ASSERT_TRUE(window.startRegenerate(w.file("assets/hero_normal.png"), error)) << error;
         EXPECT_EQ(window.regenerateOutcome(w.file("assets/hero_normal.png")).message, "Regenerating hero_normal.png...");
         ASSERT_TRUE(window.openForEntity(w.sceneId, w.walker, 0, true, error)) << error;
-        Access::waitWorkers(window);
+        WindowAccess::waitWorkers(window);
         EXPECT_EQ(counting.offMainThread.load(), 0) << "a worker read the System's asset path";
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         EXPECT_EQ(counting.offMainThread.load(), 0);
         jasperengine::SystemTestAccess::swap(w.platform);
-        EXPECT_NE(readAll(w.file("assets/hero_normal.png")), before);
+        EXPECT_NE(spriteNormalsWindowReadAll(w.file("assets/hero_normal.png")), before);
         EXPECT_TRUE(window.regenerateOutcome(w.file("assets/hero_normal.png")).ok);
         EXPECT_EQ(w.material(w.walker).normalTexture.getPath(), "assets/walk_normal.png");
         // a project switch forgets the outcomes
@@ -1573,9 +1573,9 @@ TEST(SpriteNormalsWindowDeathTest, ShiftClickNeverWritesWhileAnySceneplays) {
         other()->playState = ScenePlayState::STOPPED;
         // started while stopped, another scene plays when it ends: nothing written or assigned
         ASSERT_TRUE(window.openForEntity(normals, w.hero, 0, true, error)) << error;
-        Access::waitWorkers(window);
+        WindowAccess::waitWorkers(window);
         other()->playState = ScenePlayState::PLAYING;
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         EXPECT_FALSE(fs::exists(w.file("assets/hero_normal.png")));
         EXPECT_TRUE(w.material(w.hero).normalTexture.getPath().empty());
         other()->playState = ScenePlayState::STOPPED;
@@ -1592,7 +1592,7 @@ TEST(SpriteNormalsWindowDeathTest, SaveNeedsNoMcpServerAndRefreshesTheEditor) {
         std::string error;
         std::vector<std::string> written;
         ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, false, error)) << error;
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         // Save & Assign: the file, one project step
         const size_t before = w.projectHistory()->position();
         ASSERT_TRUE(window.save(false, written, error)) << error;
@@ -1617,10 +1617,10 @@ TEST(SpriteNormalsWindowDeathTest, SaveNeedsNoMcpServerAndRefreshesTheEditor) {
         sn::Settings s = window.getSettings();
         s.detail = 7.0f;
         window.setSettings(s);
-        ASSERT_TRUE(settle(window));
-        const std::string first = readAll(normal);
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
+        const std::string first = spriteNormalsWindowReadAll(normal);
         ASSERT_TRUE(window.save(true, written, error)) << error;
-        EXPECT_NE(readAll(normal), first);
+        EXPECT_NE(spriteNormalsWindowReadAll(normal), first);
         EXPECT_FALSE(texture.hasData()) << "the texture reading the replaced file is released";
         EXPECT_EQ(texture.getPath(), "assets/hero_normal.png");
     });
@@ -1641,7 +1641,7 @@ TEST(SpriteNormalsWindowDeathTest, SaveWithTheMcpServerIsNoExternalChange) {
         std::string error;
         std::vector<std::string> written;
         ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         ASSERT_TRUE(window.save(false, written, error)) << error;
         // the window's write went through the server's file sync: not a change made behind its back
         nlohmann::json sync = mcp::w4::syncFiles(ctx, {}, true);
@@ -1653,7 +1653,7 @@ TEST(SpriteNormalsWindowDeathTest, SaveWithTheMcpServerIsNoExternalChange) {
         sync = mcp::w4::syncFiles(ctx, {}, true);
         EXPECT_FALSE(listed(sync, "added", "assets/hero_normal.png")) << sync.dump();
         // a file written behind the editor's back is listed (the full sync does see changes)
-        writePng(w.file("assets/elsewhere.png"), disk(8, 8));
+        spriteNormalsWindowWritePng(w.file("assets/elsewhere.png"), spriteNormalsWindowDisk(8, 8));
         sync = mcp::w4::syncFiles(ctx, {}, true);
         EXPECT_TRUE(listed(sync, "added", "assets/elsewhere.png")) << sync.dump();
     });
@@ -1672,11 +1672,11 @@ TEST(SpriteNormalsWindowDeathTest, AnOutputThroughALinkOutOfTheAssetsIsRefused) 
         std::string error;
         std::vector<std::string> written;
         ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
-        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(spriteNormalsWindowSettle(window));
         ASSERT_TRUE(window.hasResult());
         window.setOutput("assets/out/hero_normal.png");
         bool refused = false;
-        for (const sn::Problem& p : Access::problems(window)) {
+        for (const sn::Problem& p : WindowAccess::problems(window)) {
             if (p.kind == "output_invalid" && p.message.find("symbolic link") != std::string::npos) refused = true;
         }
         EXPECT_TRUE(refused) << "the window lists the problem";
@@ -1694,9 +1694,13 @@ TEST(SpriteNormalsWindowDeathTest, AnOutputThroughALinkOutOfTheAssetsIsRefused) 
         // an output that is the source through a link: refused (never replaced, even with overwrite)
         fs::create_symlink("hero.png", w.file("assets/hero_link.png"));
         window.setOutput("assets/hero_link.png");
-        const std::string source = readAll(w.file("assets/hero.png"));
+        const std::string source = spriteNormalsWindowReadAll(w.file("assets/hero.png"));
         EXPECT_FALSE(window.save(true, written, error));
         EXPECT_NE(error.find("would replace the source"), std::string::npos) << error;
-        EXPECT_EQ(readAll(w.file("assets/hero.png")), source);
+        EXPECT_EQ(spriteNormalsWindowReadAll(w.file("assets/hero.png")), source);
     });
 }
+
+// not for the sources after this one in a unity build
+#undef IN_EDITOR
+#undef IN_EDITOR_WITH_MCP

@@ -29,7 +29,7 @@ using namespace jasperengine::camera;
 
 namespace {
 
-    constexpr float kDt = 1.0f / 60.0f;
+    constexpr float kCameraShakePixelDt = 1.0f / 60.0f;
 
     // pixelfx src/core/act.js, `get shake()`: shakeT counts down from shake0
     void actJsShake(float amp, float shakeT, float shake0, float& x, float& y){
@@ -89,16 +89,16 @@ TEST(ShakeInstance, Kick){
     EXPECT_EQ(kick.units, ShakeUnits::Pixels);
     ShakeInstance instance(kick, 7);
     for (int i = 0; i < 10; i++){
-        const ShakeOffset offset = instance.update(kDt);
+        const ShakeOffset offset = instance.update(kCameraShakePixelDt);
         float x = 0.0f, y = 0.0f;
-        actJsShake(3.0f, 0.25f - i * kDt, 0.25f, x, y);
+        actJsShake(3.0f, 0.25f - i * kCameraShakePixelDt, 0.25f, x, y);
         EXPECT_FLOAT_EQ(offset.pixels.x, x) << "tick " << i;
         EXPECT_FLOAT_EQ(offset.pixels.y, y) << "tick " << i;
         EXPECT_EQ(offset.position, Vector3(0, 0, 0));
         EXPECT_EQ(offset.rotation, Vector3(0, 0, 0));
     }
     // the kick ends at its length
-    for (int i = 10; i < 20; i++) instance.update(kDt);
+    for (int i = 10; i < 20; i++) instance.update(kCameraShakePixelDt);
     EXPECT_TRUE(instance.isFinished());
     EXPECT_EQ(instance.getOffset().pixels, Vector3(0, 0, 0));
 }
@@ -109,11 +109,11 @@ TEST(ShakeInstance, TickHoldsTheOffsetBetweenTicks){
     ASSERT_TRUE(rumble);
     EXPECT_EQ(rumble->tick, 30.0f);
     ShakeInstance instance(*rumble, 11);
-    Vector3 previous = instance.update(kDt).pixels;
+    Vector3 previous = instance.update(kCameraShakePixelDt).pixels;
     int changes = 0;
     bool changedLastFrame = false;
     for (int i = 0; i < 120; i++){
-        const Vector3 now = instance.update(kDt).pixels;
+        const Vector3 now = instance.update(kCameraShakePixelDt).pixels;
         const bool changed = now != previous;
         EXPECT_FALSE(changed && changedLastFrame) << "frame " << i;
         if (changed) changes++;
@@ -176,7 +176,7 @@ TEST(CameraShaker, PixelSnap){
     CameraShake::kick(3.0f, 0.5f);
     bool moved = false;
     for (int i = 0; i < 120; i++){
-        fixture.system().step(kDt, kDt);
+        fixture.system().step(kCameraShakePixelDt, kCameraShakePixelDt);
         const ShakerRuntime& runtime = *fixture.shaker().runtime;
         EXPECT_TRUE(wholePixels(runtime.offsetPosition.x, pixel)) << "frame " << i << ": " << runtime.offsetPosition.x;
         EXPECT_TRUE(wholePixels(runtime.offsetPosition.y, pixel)) << "frame " << i << ": " << runtime.offsetPosition.y;
@@ -193,7 +193,7 @@ TEST(CameraShaker, PixelSnapOffKeepsTheRoll){
     CameraShake::shake(ShakeSource("earthquake"));
     bool offGrid = false, rolled = false;
     for (int i = 0; i < 120; i++){
-        fixture.system().step(kDt, kDt);
+        fixture.system().step(kCameraShakePixelDt, kCameraShakePixelDt);
         const ShakerRuntime& runtime = *fixture.shaker().runtime;
         if (!wholePixels(runtime.offsetPosition.x, pixel)) offGrid = true;
         if (runtime.offsetRotation.z != 0.0f) rolled = true;
@@ -209,12 +209,12 @@ TEST(CameraShaker, TickRate){
     fixture.shaker().tickRate = 30.0f;
     CameraShake::shake(ShakeSource("electrocute"));
     CameraShake::shake(ShakeSource("earthquake"));
-    fixture.system().step(kDt, kDt);
+    fixture.system().step(kCameraShakePixelDt, kCameraShakePixelDt);
     Vector3 previous = fixture.shaker().runtime->offsetPosition;
     bool changedLastFrame = false;
     int changes = 0;
     for (int i = 0; i < 120; i++){
-        fixture.system().step(kDt, kDt);
+        fixture.system().step(kCameraShakePixelDt, kCameraShakePixelDt);
         const Vector3 now = fixture.shaker().runtime->offsetPosition;
         const bool changed = now != previous;
         EXPECT_FALSE(changed && changedLastFrame) << "frame " << i;
@@ -228,11 +228,11 @@ TEST(CameraShaker, TickRate){
     // the red control: Tick Rate 0 changes it every frame
     OrthoShaker every;
     CameraShake::shake(ShakeSource("earthquake"));
-    every.system().step(kDt, kDt);
+    every.system().step(kCameraShakePixelDt, kCameraShakePixelDt);
     Vector3 previous = every.shaker().runtime->offsetPosition;
     int consecutive = 0;
     for (int i = 0; i < 30; i++){
-        every.system().step(kDt, kDt);
+        every.system().step(kCameraShakePixelDt, kCameraShakePixelDt);
         const Vector3 now = every.shaker().runtime->offsetPosition;
         if (now != previous) consecutive++;
         previous = now;

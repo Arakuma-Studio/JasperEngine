@@ -167,7 +167,7 @@ namespace {
             fs::remove_all(headless().dir.parent_path(), ec);
         }
     };
-    [[maybe_unused]] ::testing::Environment* const tempProjectCleanup = ::testing::AddGlobalTestEnvironment(new TempProjectCleanup);
+    [[maybe_unused]] ::testing::Environment* const animationWindowClipTempProjectCleanup = ::testing::AddGlobalTestEnvironment(new TempProjectCleanup);
 
     std::string readAll(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);

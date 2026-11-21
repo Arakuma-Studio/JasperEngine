@@ -24,11 +24,14 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <memory>
 #include <thread>
+#include <vector>
 
 using namespace terrainworldtest;
 using jasperengine::Entity;
@@ -238,6 +241,40 @@ TEST(TerrainWorldStreaming, ZeroWorkersStillLoad) {
     jasperengine::jobs::shutdown();
     jasperengine::jobs::initialize(jasperengine::jobs::Config{});
     jasperengine::AssetIOService::instance().start();
+}
+
+// D9 pumps every scene's worlds on the main thread, and scenes are made on others (a game's loader, the
+// editor's previews): their systems join the pump's list while it walks it, two threads' at once.
+// Unguarded, two appends left a destroyed system listed and the pump read it (ASan,
+// ShaderPoolThreadsGpu.TwoThreadsLoadScenesThatMakeTheSameNewVariant); SANITIZE=thread reports the race
+// on every run, ASan when a walk meets a reallocation.
+TEST(TerrainWorldStreaming, PumpsWhileOtherThreadsMakeScenes) {
+    constexpr int loaders = 2;
+    constexpr int scenesEach = 16;
+    std::vector<std::unique_ptr<Scene>> made[loaders];
+    std::atomic<bool> walking{false};
+    std::atomic<int> finished{0};
+    std::vector<std::thread> threads;
+    for (int t = 0; t < loaders; t++) {
+        threads.emplace_back([&, t] {
+            while (!walking.load()) std::this_thread::yield();
+            for (int i = 0; i < scenesEach; i++) made[t].push_back(std::make_unique<Scene>());
+            finished.fetch_add(1);
+        });
+    }
+    int runtimes = 0;
+    do {
+        TerrainWorldSystem::pumpAll();
+        TerrainWorldSystem::forEachRuntime([&](TerrainWorldRuntime&) { runtimes++; });
+        walking.store(true);
+    } while (finished.load() < loaders);
+    for (std::thread& thread : threads) thread.join();
+    EXPECT_EQ(runtimes, 0);
+    // the main thread lets them go, as the engine's scenes go; the pump then walks none of them
+    for (auto& scenes : made) scenes.clear();
+    TerrainWorldSystem::pumpAll();
+    TerrainWorldSystem::forEachRuntime([&](TerrainWorldRuntime&) { runtimes++; });
+    EXPECT_EQ(runtimes, 0);
 }
 
 TEST(TerrainWorldZeroCost, PlainTerrainCostsNothing) {

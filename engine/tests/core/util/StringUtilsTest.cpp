@@ -124,6 +124,13 @@ TEST(StringUtils, SplitTrimsAndSkipsEmptyParts){
 
 // The rules nlohmann::json and the log hold text to: no overlong forms, no encoded surrogates,
 // nothing past U+10FFFF; a repair replaces each bad byte with U+FFFD and keeps the rest
+TEST(StringUtils, ToLowerAsciiLowersOnlyAsciiLetters){
+    EXPECT_EQ(StringUtils::toLowerAscii("Hello, WORLD 42_Z"), "hello, world 42_z");
+    // the UTF-8 of \u00C9 and \u00E9 is left as it is, byte for byte
+    EXPECT_EQ(StringUtils::toLowerAscii("\xC3\x89T\xC3\xA9"), "\xC3\x89t\xC3\xA9");
+    EXPECT_EQ(StringUtils::toLowerAscii(""), "");
+}
+
 TEST(StringUtils, ValidatesAndRepairsUtf8){
     for (const char* valid : {"", "plain ASCII text, longer than eight bytes", "caf\xC3\xA9", "\xE2\x82\xAC",
                               "\xF0\x9F\x98\x80", "\xF4\x8F\xBF\xBF", "a\xEF\xBF\xBDz"}){

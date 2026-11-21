@@ -37,19 +37,19 @@ maxValues:
 }
 
 TEST(SceneMaxValues, OldBlockSavedUnchanged) {
-    test::DecodedScene decoded = test::decodeSceneText(OLD_SCENE, "Old.scene");
+    jasperengine::editor::test::DecodedScene decoded = jasperengine::editor::test::decodeSceneText(OLD_SCENE, "Old.scene");
     ASSERT_TRUE(decoded.scene);
-    const YAML::Node saved = test::encodeScene(decoded);
+    const YAML::Node saved = jasperengine::editor::test::encodeScene(decoded);
     ASSERT_TRUE(saved["maxValues"]) << "an older editor's block is kept";
     const YAML::Node old = YAML::Load(OLD_SCENE)["maxValues"];
     std::string why;
-    EXPECT_TRUE(test::structurallyEqual(saved["maxValues"], old, &why)) << why;
+    EXPECT_TRUE(jasperengine::editor::test::structurallyEqual(saved["maxValues"], old, &why)) << why;
 }
 
 TEST(SceneMaxValues, NewSceneWritesNone) {
     std::string text = OLD_SCENE;
     text = text.substr(0, text.find("maxValues:"));
-    test::DecodedScene decoded = test::decodeSceneText(text, "New.scene");
+    jasperengine::editor::test::DecodedScene decoded = jasperengine::editor::test::decodeSceneText(text, "New.scene");
     ASSERT_TRUE(decoded.scene);
-    EXPECT_FALSE(test::encodeScene(decoded)["maxValues"]) << "no capacities to write";
+    EXPECT_FALSE(jasperengine::editor::test::encodeScene(decoded)["maxValues"]) << "no capacities to write";
 }

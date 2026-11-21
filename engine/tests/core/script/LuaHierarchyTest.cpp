@@ -11,6 +11,8 @@
 #include "subsystem/RenderSystem.h"
 #include "script/LuaBinding.h"
 #include "../ecs/EcsTestUtil.h"
+#include "TestSystem.h"
+#include "support/TestTempDir.h"
 
 #include "lua.hpp"
 #include "LuaBridge.h"
@@ -24,7 +26,7 @@ using jasperengine::test::makeTransformEntity;
 
 namespace {
 
-    std::string runLua(lua_State* L, const std::string& code){
+    std::string runHierarchyLua(lua_State* L, const std::string& code){
         if (luaL_loadstring(L, code.c_str()) != LUA_OK || lua_pcall(L, 0, 0, 0) != LUA_OK){
             std::string error = lua_tostring(L, -1) ? lua_tostring(L, -1) : "(error)";
             lua_pop(L, 1);
@@ -78,7 +80,7 @@ TEST(LuaHierarchy, ParentChildrenFind){
     lua_pushinteger(L, arm); lua_setglobal(L, "ARM");
     lua_pushinteger(L, leg); lua_setglobal(L, "LEG");
     lua_pushinteger(L, hand); lua_setglobal(L, "HAND");
-    EXPECT_EQ(runLua(L, R"(
+    EXPECT_EQ(runHierarchyLua(L, R"(
         local root = hierRoot
         assert(root.parent == nil, "a root has no parent")
         assert(root.childCount == 2, "two children, got " .. tostring(root.childCount))
@@ -106,7 +108,7 @@ TEST(LuaHierarchy, SetParentKeepsWorldOrLocal){
 
     luabridge::setGlobal(L, GameObject(&scene, holder), "holder");
     luabridge::setGlobal(L, GameObject(&scene, item), "item");
-    EXPECT_EQ(runLua(L, R"(
+    EXPECT_EQ(runHierarchyLua(L, R"(
         -- moved this frame: the world matrix catches up only at the transform update
         holder.position = Vector3(20, 0, 0)
         item:setParent(holder)
@@ -138,3 +140,47 @@ TEST(LuaHierarchy, SetParentRefusesCycleAndOtherScene){
     GameObject(&scene, child).setParent(&strangerObject);
     EXPECT_EQ(scene.getComponent<Transform>(child).parent, parent);  // another scene: refused
 }
+
+// main.lua runs before the game's init sets a scene, so Engine.getScene() is nil there: an object
+// made with it is a Lua error naming the fix, not an entity written through a null Scene (a crash
+// here; on the web a page that hung before its first frame)
+TEST(LuaHierarchy, ObjectsMadeWithoutASceneFail){
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_NE(L, nullptr);
+    for (const char* code : {"GameObject(nil)", "GameObject(nil, 1)", "Sprite(nil)", "Camera(nil)", "AudioSource(nil, true)",
+                             "PositionTween(nil)", "CullingGroup(nil)"}) {
+        const std::string error = runLua(L, std::string("local object = ") + code);
+        EXPECT_NE(error.find("the scene is nil"), std::string::npos) << code << ": " << error;
+    }
+
+    // a scene still makes them, over a new entity or one it has
+    Scene scene;
+    const Entity existing = named(scene, "Existing");
+    luabridge::setGlobal(L, &scene, "testScene");
+    EXPECT_EQ(runLua(L, "local made = GameObject(testScene); assert(made.entity ~= nil)\n"
+                        "local over = GameObject(testScene, " + std::to_string(existing) + "); assert(over.entity == " +
+                        std::to_string(existing) + ")\n"
+                        "local sound = AudioSource(testScene, false); assert(sound.entity ~= nil)"), "");
+    lua_pushnil(L);
+    lua_setglobal(L, "testScene");
+}
+
+// main.lua's error (here the object of the test above, made at init) is logged and the game runs
+// on in the same state: closing it left the binding's state pointer dangling, which every later
+// script and frame then used (a crash on desktop, a hung web page)
+TEST(LuaHierarchy, AFailingMainLuaKeepsTheState){
+    test::TestTempDir dir("lua-main-error");
+    test::TestTempDir::write(dir / "main.lua", "Before = 1\nlocal menu = UIDocument(Engine.getScene())\nAfter = 2\n");
+    const std::string luaDir = dir.path().string();
+    test::TestSystem::get().setPathProvider({nullptr, [luaDir]() { return luaDir; }, nullptr});
+    LuaBinding::recreateLuaState();
+    LuaBinding::init();
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_NE(L, nullptr);
+    EXPECT_EQ(runLua(L, "assert(Before == 1, 'what main.lua ran before its error stays')\n"
+                        "assert(After == nil, 'nothing after it ran')\n"
+                        "local scene = GameObject ~= nil\nassert(scene, 'the bindings are still there')"), "");
+    test::TestSystem::get().clearPathProvider();
+    LuaBinding::recreateLuaState();
+}
+

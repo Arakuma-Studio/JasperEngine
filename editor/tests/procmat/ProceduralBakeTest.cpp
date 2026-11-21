@@ -36,7 +36,7 @@ namespace {
 
     const std::string GRAPH_GUID = "0123456789abcdef0123456789abcdef";
 
-    graph::Graph graphOf(std::vector<std::pair<std::string, std::string>> nodes, std::vector<std::array<std::string, 4>> edges) {
+    graph::Graph proceduralBakeGraphOf(std::vector<std::pair<std::string, std::string>> nodes, std::vector<std::array<std::string, 4>> edges) {
         graph::Graph file;
         file.kind = PROCEDURAL_MATERIAL_KIND;
         for (const auto& [id, type] : nodes) {
@@ -60,7 +60,7 @@ namespace {
 
     // perlin into Height and Roughness
     graph::Graph stoneGraph() {
-        return graphOf({{"n1", "perlin"}, {"out", MATERIAL_OUTPUT_NODE}}, {{"n1", "output", "out", "height"}, {"n1", "output", "out", "roughness"}});
+        return proceduralBakeGraphOf({{"n1", "perlin"}, {"out", MATERIAL_OUTPUT_NODE}}, {{"n1", "output", "out", "height"}, {"n1", "output", "out", "roughness"}});
     }
 
     std::string hashOf(const graph::Graph& file, const std::shared_ptr<const NodeLibrary>& library, BakeOptions options = BakeOptions()) {
@@ -129,7 +129,7 @@ TEST(ProceduralBake, AHeightAloneBakesANormalMadeFromIt) {
 }
 
 TEST(ProceduralBake, AConnectedNormalIsTurnedIntoTheEnginesConvention) {
-    const graph::Graph file = graphOf({{"n1", "perlin"}, {"n2", "normal_map2"}, {"out", MATERIAL_OUTPUT_NODE}},
+    const graph::Graph file = proceduralBakeGraphOf({{"n1", "perlin"}, {"n2", "normal_map2"}, {"out", MATERIAL_OUTPUT_NODE}},
                                       {{"n1", "output", "n2", "Bump"}, {"n2", "normal", "out", "normal"}});
     PassPlan plan;
     std::vector<std::string> outputs;
@@ -189,7 +189,7 @@ TEST(ProceduralBake, TheHashFollowsInputsAndNothingElse) {
     EXPECT_NE(hashOf(file, library, seeded), base) << "the seed is";
 
     // a node's source, resolved: a library update that changes what a node draws makes the bake stale
-    const graph::Graph waves = graphOf({{"n1", "wave"}, {"out", MATERIAL_OUTPUT_NODE}}, {{"n1", "out", "out", "roughness"}});
+    const graph::Graph waves = proceduralBakeGraphOf({{"n1", "wave"}, {"out", MATERIAL_OUTPUT_NODE}}, {{"n1", "out", "out", "roughness"}});
     EXPECT_NE(hashOf(waves, waveLibrary("$uv.x*2.0")), hashOf(waves, waveLibrary("$uv.x*3.0")));
     EXPECT_EQ(hashOf(waves, waveLibrary("$uv.x*2.0")), hashOf(waves, waveLibrary("$uv.x*2.0")));
 }
@@ -397,7 +397,7 @@ TEST(ProceduralBake, TheNormalMadeFromTheHeightIsInTheEnginesConvention) {
 }
 
 TEST(ProceduralBake, ALibraryNormalIsTurnedIntoTheEnginesConvention) {
-    const graph::Graph file = graphOf({{"n1", "perlin"}, {"n2", "normal_map2"}, {"out", MATERIAL_OUTPUT_NODE}},
+    const graph::Graph file = proceduralBakeGraphOf({{"n1", "perlin"}, {"n2", "normal_map2"}, {"out", MATERIAL_OUTPUT_NODE}},
                                       {{"n1", "output", "n2", "Bump"}, {"n2", "normal", "out", "normal"}, {"n1", "output", "out", "height"}});
     std::map<std::string, OutputImage> images = interpreted(file);
     ASSERT_TRUE(images.count("normal") && images.count("height"));
@@ -436,7 +436,7 @@ TEST(ProceduralBake, ARerollOfTheGraphsSeedMakesItsBakeStaleAndAGivenSeedDoesNot
 
 TEST(ProceduralBake, ConnectingOrDisconnectingAnOutputMakesItsBakeStale) {
     BakedProject project(stoneGraph());
-    graph::Graph more = graphOf({{"n1", "perlin"}, {"out", MATERIAL_OUTPUT_NODE}},
+    graph::Graph more = proceduralBakeGraphOf({{"n1", "perlin"}, {"out", MATERIAL_OUTPUT_NODE}},
                                 {{"n1", "output", "out", "height"}, {"n1", "output", "out", "roughness"}, {"n1", "output", "out", "emission"}});
     more.passthrough["guid"] = GRAPH_GUID;
     project.write(more);
@@ -444,7 +444,7 @@ TEST(ProceduralBake, ConnectingOrDisconnectingAnOutputMakesItsBakeStale) {
     EXPECT_EQ(status.state, BakeState::Stale) << "the .material lacks the emission now connected";
     EXPECT_NE(status.reason.find("emission is connected"), std::string::npos) << status.reason;
 
-    graph::Graph fewer = graphOf({{"n1", "perlin"}, {"out", MATERIAL_OUTPUT_NODE}}, {{"n1", "output", "out", "roughness"}});
+    graph::Graph fewer = proceduralBakeGraphOf({{"n1", "perlin"}, {"out", MATERIAL_OUTPUT_NODE}}, {{"n1", "output", "out", "roughness"}});
     fewer.passthrough["guid"] = GRAPH_GUID;
     project.write(fewer);
     status = bakeStatus(project.dir.path(), project.recipe);
@@ -490,7 +490,7 @@ TEST(ProceduralBake, ATileabilityFailNamesTheScaleAndItsSingleEdit) {
 }
 
 TEST(ProceduralBake, ANormalRowOffersToLetTheBakeMakeTheNormal) {
-    const graph::Graph file = graphOf({{"n1", "perlin"}, {"n2", "normal_map2"}, {"out", MATERIAL_OUTPUT_NODE}},
+    const graph::Graph file = proceduralBakeGraphOf({{"n1", "perlin"}, {"n2", "normal_map2"}, {"out", MATERIAL_OUTPUT_NODE}},
                                       {{"n1", "output", "n2", "Bump"}, {"n2", "normal", "out", "normal"}, {"n1", "output", "out", "height"}});
     qa::Json report = {{"checks", qa::Json::array({{{"id", "normal"}, {"status", "WARN"}, {"limited_by", "a DirectX normal map."}}})},
                        {"fixes", qa::Json::array()}};
@@ -502,7 +502,7 @@ TEST(ProceduralBake, ANormalRowOffersToLetTheBakeMakeTheNormal) {
 
 TEST(ProceduralBake, AScaleThatIsNoRepeatCountGetsNoFix) {
     // a Tiler's Rnd Scale and instance sizes are fractions by design (the descriptor steps them by 0.01)
-    graph::Graph file = graphOf({{"t1", "tiler"}, {"out", MATERIAL_OUTPUT_NODE}}, {{"t1", "output", "out", "roughness"}});
+    graph::Graph file = proceduralBakeGraphOf({{"t1", "tiler"}, {"out", MATERIAL_OUTPUT_NODE}}, {{"t1", "output", "out", "roughness"}});
     file.findNode("t1")->params["scale"] = 0.35;
     file.findNode("t1")->params["scale_x"] = 0.8;
     qa::Json report = {{"checks", qa::Json::array({{{"id", "tileability"}, {"status", "FAIL"}, {"threshold", 1.5},
@@ -515,7 +515,7 @@ TEST(ProceduralBake, AScaleThatIsNoRepeatCountGetsNoFix) {
 
 TEST(ProceduralBake, ARepeatCountOtherThanAScaleGetsItsFix) {
     // bricks' rows are a repeat count across the tile, as the descriptor's `tiles` says
-    graph::Graph file = graphOf({{"b1", "bricks3"}, {"out", MATERIAL_OUTPUT_NODE}}, {{"b1", "bricks_pattern", "out", "height"}});
+    graph::Graph file = proceduralBakeGraphOf({{"b1", "bricks3"}, {"out", MATERIAL_OUTPUT_NODE}}, {{"b1", "bricks_pattern", "out", "height"}});
     file.findNode("b1")->params["rows"] = 6.5;
     qa::Json report = {{"checks", qa::Json::array({{{"id", "tileability"}, {"status", "FAIL"}, {"threshold", 1.5},
                                                     {"measured", {{"height", 4.0}}}, {"limited_by", "seam 4.0 on height."}}})},

@@ -39,14 +39,14 @@ using namespace animatortest;
 
 namespace {
 
-    constexpr float kDt = 1.0f / 30.0f;
+    constexpr float kAnimatorHumanoidDt = 1.0f / 30.0f;
 
-    std::string readFixture(const std::string& name){
+    std::string animatorHumanoidReadFixture(const std::string& name){
         std::ifstream file(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models/") + name, std::ios::binary);
         return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
     }
 
-    double degreesBetween(const Quaternion& a, const Quaternion& b){
+    double animatorHumanoidDegreesBetween(const Quaternion& a, const Quaternion& b){
         return pose::radToDeg(pose::angleBetween(pose::Quatd(a).normalized(), pose::Quatd(b).normalized()));
     }
 
@@ -60,9 +60,9 @@ namespace {
             hero = prefix + "hero_animated.gltf";
             robot = prefix + "robot_apose.gltf";
             tpose = prefix + "hero_tpose.gltf";
-            animtest::writeAsset(hero, readFixture("hero_animated.gltf"));
-            animtest::writeAsset(robot, readFixture("robot_apose.gltf"));
-            animtest::writeAsset(tpose, readFixture("hero_tpose.gltf"));
+            animtest::writeAsset(hero, animatorHumanoidReadFixture("hero_animated.gltf"));
+            animtest::writeAsset(robot, animatorHumanoidReadFixture("robot_apose.gltf"));
+            animtest::writeAsset(tpose, animatorHumanoidReadFixture("hero_tpose.gltf"));
         }
 
         Entity load(const std::string& path, float x){
@@ -80,8 +80,8 @@ namespace {
             scene.getSystem<ActionSystem>()->update(0.0);
             step(0.0);
             for (int i = 0; i < frames; i++){
-                scene.getSystem<ActionSystem>()->update(kDt);
-                step(kDt);
+                scene.getSystem<ActionSystem>()->update(kAnimatorHumanoidDt);
+                step(kAnimatorHumanoidDt);
             }
         }
 
@@ -120,7 +120,7 @@ namespace {
                 EXPECT_NE(ea, NULL_ENTITY) << name;
                 EXPECT_NE(eb, NULL_ENTITY) << name;
                 if (ea == NULL_ENTITY || eb == NULL_ENTITY) continue;
-                const double d = degreesBetween(rotation(ea), rotation(eb));
+                const double d = animatorHumanoidDegreesBetween(rotation(ea), rotation(eb));
                 const double m = (pose::Vec3d(position(ea)) - pose::Vec3d(position(eb))).length();
                 if (d > worst.degrees){ worst.degrees = d; worst.bone = name; }
                 worst.meters = std::max(worst.meters, m);
@@ -132,7 +132,7 @@ namespace {
         double motion(Entity entity, const std::string& bone){
             const Entity e = findByName(entity, bone);
             if (e == NULL_ENTITY || !restOf.count(e)) return 0.0;
-            return degreesBetween(rotation(e), restOf[e]);
+            return animatorHumanoidDegreesBetween(rotation(e), restOf[e]);
         }
 
         // every bone's rotation now (before playing: the rest)

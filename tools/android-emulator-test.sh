@@ -48,7 +48,7 @@
 #   --setprop NAME=VALUE  an Android system property set before each launch (repeatable),
 #                       e.g. debug.jasperengine.titleart_rgba8=1 (the render gate's forced RGBA8 path),
 #                       or player arguments: "debug.jasperengine.args=--run-tests --test-filter tag:smoke".
-#                       VALUE is letters, digits and _ . - : , = and spaces only: it reaches the
+#                       VALUE is letters, digits and _ . - : , = / and spaces only: it reaches the
 #                       device's shell double-quoted, where none of those is special
 #   --self-test         check the --setprop rule (what passes, what is refused) and exit
 #   --golden DIR        check what the screen shows: each run waits for the engine's
@@ -115,14 +115,15 @@ usage() {
 # --setprop's VALUE reaches `adb shell` (a shell on the device) inside double quotes: no quote,
 # $, backquote, backslash, ; | & < > ( ) or newline, so nothing in it is special there
 setprop_valid() {
-    local rule='^[A-Za-z0-9_.]+=[A-Za-z0-9_.:,= -]*$'
+    local rule='^[A-Za-z0-9_.]+=[A-Za-z0-9_.:,=/ -]*$'
     [[ "$1" =~ $rule ]]
 }
 
 if [[ "${1:-}" == --self-test ]]; then
     failed=0
     for ok in "debug.jasperengine.titleart_rgba8=1" "debug.jasperengine.args=--run-tests --test-filter tag:smoke" \
-              "debug.jasperengine.args=--test-filter=tag:smoke,tag:red --keep-test-data" "a.b="; do
+              "debug.jasperengine.args=--test-filter=tag:smoke,tag:red --keep-test-data" "a.b=" \
+              "debug.jasperengine.args=--input-script tests/Input/menu.input.json --quit-after-input"; do
         setprop_valid "$ok" || { echo "self-test: refused a good value: $ok" >&2; failed=1; }
     done
     for bad in "debug.x=a;reboot" "debug.x=\$(id)" "debug.x=\`id\`" "debug.x=a\"b" "debug.x=a'b" "debug.x=a|b" "debug.x=a&b" \
@@ -181,7 +182,7 @@ while [[ $# -gt 0 ]]; do
             [[ "$2" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "android-emulator-test: --scene takes a name of letters, digits, _ and - (got $2)" >&2; exit 2; }
             SCENES+=("$2"); shift 2 ;;
         --setprop)
-            setprop_valid "$2" || { echo "android-emulator-test: --setprop takes NAME=VALUE, VALUE of letters, digits, spaces and _ . - : , = (got $2)" >&2; exit 2; }
+            setprop_valid "$2" || { echo "android-emulator-test: --setprop takes NAME=VALUE, VALUE of letters, digits, spaces and _ . - : , = / (got $2)" >&2; exit 2; }
             SETPROPS+=("$2"); shift 2 ;;
         --golden) GOLDEN="$2"; shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
@@ -251,7 +252,7 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
     -e APK="$APK_IN" -e BUNDLETOOL="$BUNDLETOOL_IN" -e OUT="/src/$OUT" -e ORDERED="$ORDERED" -e TIMEOUT="$TIMEOUT" -e SECONDS_TO_RUN="$SECONDS_TO_RUN" \
     -e TWO_FINGER_TAP="$TWO_FINGER_TAP" -e TAP_AFTER="$TAP_AFTER" -e RELAUNCH="$RELAUNCH" -e LOCALE_CHANGE="$LOCALE_CHANGE" \
     -e IME_AFTER="$IME_AFTER" -e IME_EDITOR_INFO="$IME_EDITOR_INFO" \
-    -e EXPECT_NATIVE_CRASH="$EXPECT_NATIVE_CRASH" \
+    -e EXPECT_NATIVE_CRASH="$EXPECT_NATIVE_CRASH" -e KILL_AFTER="$KILL_AFTER" \
     -e SCENES="${SCENES[*]+"${SCENES[*]}"}" -e SETPROPS="$SETPROP_LINES" -e SCREENSHOT_ON_PRESENT="$([[ -n "$GOLDEN" ]] && echo 1 || echo 0)" \
     -e GPU="${EMULATOR_GPU:-swangle_indirect}" \
     -e BOOT_TIMEOUT="${EMULATOR_BOOT_TIMEOUT:-600}" -e MEMORY="${EMULATOR_MEMORY:-3072}" -e CORES="${EMULATOR_CORES:-4}" \
@@ -454,7 +455,7 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
                 adb shell cmd locale set-system-locales "$LOCALE_CHANGE" >/dev/null 2>&1 ||
                     adb shell "setprop persist.sys.locale $LOCALE_CHANGE" >/dev/null 2>&1 || true
                 start=$SECONDS
-                localechanged="MISSING      '$wanted' after the system language became $LOCALE_CHANGE"
+                localechanged="MISSING      \"$wanted\" after the system language became $LOCALE_CHANGE"
                 while (( SECONDS - start <= TIMEOUT )); do
                     sleep 2
                     adb logcat -d -v tag > "$DIR/logcat.txt"

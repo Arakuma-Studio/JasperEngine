@@ -36,7 +36,7 @@ namespace {
         return data;
     }
 
-    std::vector<std::string> names(const PoseAnimationData& data){
+    std::vector<std::string> poseUiLogicNames(const PoseAnimationData& data){
         std::vector<std::string> out;
         for (const PoseKey& key : data.poses) out.push_back(key.name);
         return out;
@@ -194,22 +194,22 @@ TEST(PoseUiLogic, DuplicateAndAdd){
     data.poses[1].name = "Contact R";
     poseui::Edit edit = poseui::duplicatePoses(data, {1}, false, false);
     ASSERT_TRUE(edit.changed);
-    EXPECT_EQ(names(edit.data), (std::vector<std::string>{"P0", "Contact R", "Contact R", "P2"}));
+    EXPECT_EQ(poseUiLogicNames(edit.data), (std::vector<std::string>{"P0", "Contact R", "Contact R", "P2"}));
     EXPECT_EQ(edit.selection, (std::vector<int>{2}));
     EXPECT_EQ(edit.primary, 2);
 
     edit = poseui::duplicatePoses(data, {0, 1}, true, false);
-    EXPECT_EQ(names(edit.data), (std::vector<std::string>{"P0", "Contact R", "P2", "P0", "Contact R"}));
+    EXPECT_EQ(poseUiLogicNames(edit.data), (std::vector<std::string>{"P0", "Contact R", "P2", "P0", "Contact R"}));
     EXPECT_EQ(edit.selection, (std::vector<int>{3, 4}));
 
     edit = poseui::duplicatePoses(data, {1}, false, true);
-    EXPECT_EQ(names(edit.data), (std::vector<std::string>{"P0", "Contact R", "Contact L", "P2"}));
+    EXPECT_EQ(poseUiLogicNames(edit.data), (std::vector<std::string>{"P0", "Contact R", "Contact L", "P2"}));
     const BodyPose mirrored = mirrorBodyPose(data.poses[1].body);
     EXPECT_EQ(edit.data.poses[2].body.angles, mirrored.angles);
 
     // "+" duplicates the primary pose after it, an empty animation gets a neutral pose
     edit = poseui::addPose(data, 0);
-    EXPECT_EQ(names(edit.data), (std::vector<std::string>{"P0", "P0", "Contact R", "P2"}));
+    EXPECT_EQ(poseUiLogicNames(edit.data), (std::vector<std::string>{"P0", "P0", "Contact R", "P2"}));
     EXPECT_EQ(edit.primary, 1);
     edit = poseui::addPose(PoseAnimationData(), -1);
     ASSERT_EQ(edit.data.poses.size(), 1u);
@@ -222,7 +222,7 @@ TEST(PoseUiLogic, DuplicateAndAdd){
 TEST(PoseUiLogic, DeleteMirrorPasteMove){
     PoseAnimationData data = animationOf(4);
     poseui::Edit edit = poseui::deletePoses(data, {1, 2}, 2);
-    EXPECT_EQ(names(edit.data), (std::vector<std::string>{"P0", "P3"}));
+    EXPECT_EQ(poseUiLogicNames(edit.data), (std::vector<std::string>{"P0", "P3"}));
     EXPECT_EQ(edit.primary, 1);
     edit = poseui::deletePoses(data, {3}, 3);
     EXPECT_EQ(edit.primary, 2);
@@ -254,7 +254,7 @@ TEST(PoseUiLogic, DeleteMirrorPasteMove){
     EXPECT_FLOAT_EQ(edit.data.poses[0].lift, 0.3f);
 
     edit = poseui::movePoses(data, {1, 2}, 2, poseui::reorderForShift(4, {1, 2}, -1));
-    EXPECT_EQ(names(edit.data), (std::vector<std::string>{"P1", "P2", "P0", "P3"}));
+    EXPECT_EQ(poseUiLogicNames(edit.data), (std::vector<std::string>{"P1", "P2", "P0", "P3"}));
     EXPECT_EQ(edit.selection, (std::vector<int>{0, 1}));
     EXPECT_EQ(edit.primary, 1);
 }
@@ -576,7 +576,7 @@ TEST(PoseUiLogic, ApplyTemplateReplacesOrAppends){
 
     const poseui::Edit replaced = poseui::applyTemplate(current, walk, editor::PoseTemplateApply::Replace, {1, 2}, 2);
     EXPECT_TRUE(replaced.changed);
-    EXPECT_EQ(names(replaced.data), (std::vector<std::string>{"WP0", "WP1", "WP2", "WP3"}));
+    EXPECT_EQ(poseUiLogicNames(replaced.data), (std::vector<std::string>{"WP0", "WP1", "WP2", "WP3"}));
     EXPECT_EQ(replaced.data.settings.frameRate, 60);                 // the template's settings
     EXPECT_TRUE(replaced.data.settings.loop);
     EXPECT_EQ(replaced.data.previewModel, "models/hero.gltf");      // the asset keeps its preview model
@@ -585,7 +585,7 @@ TEST(PoseUiLogic, ApplyTemplateReplacesOrAppends){
 
     const poseui::Edit appended = poseui::applyTemplate(current, walk, editor::PoseTemplateApply::Append, {1}, 1);
     EXPECT_TRUE(appended.changed);
-    EXPECT_EQ(names(appended.data), (std::vector<std::string>{"P0", "P1", "P2", "WP0", "WP1", "WP2", "WP3"}));
+    EXPECT_EQ(poseUiLogicNames(appended.data), (std::vector<std::string>{"P0", "P1", "P2", "WP0", "WP1", "WP2", "WP3"}));
     EXPECT_EQ(appended.data.settings.frameRate, 24);                 // the animation's settings stay
     EXPECT_EQ(appended.selection, (std::vector<int>{3, 4, 5, 6}));
     EXPECT_EQ(appended.primary, 3);

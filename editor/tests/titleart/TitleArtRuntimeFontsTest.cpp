@@ -29,20 +29,20 @@ namespace {
     constexpr const char* FONT = "assets/fonts/SourceSans3-Regular.otf";
     constexpr const char* DOC = "assets/titles/score.titleart";
 
-    struct Headless {
+    struct TitleArtRuntimeFontsHeadless {
         bool ready = false;
         std::unique_ptr<Project> project;
         fs::path dir;
     };
 
-    std::string readAll(const fs::path& path) {
+    std::string titleArtRuntimeFontsReadAll(const fs::path& path) {
         std::ifstream in(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     }
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
+    TitleArtRuntimeFontsHeadless& titleArtRuntimeFontsHeadless() {
+        static TitleArtRuntimeFontsHeadless h = []() {
+            TitleArtRuntimeFontsHeadless out;
             jasperengine::editor::test::ensureEngine();
             const fs::path root = fs::temp_directory_path() / ("jasper-titleart-fonts-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
@@ -75,12 +75,12 @@ namespace {
 
     // the build's assets: the export copies every asset before the Title Art step
     fs::path buildAssets() {
-        const fs::path build = headless().dir.parent_path() / "build-assets";
+        const fs::path build = titleArtRuntimeFontsHeadless().dir.parent_path() / "build-assets";
         fs::remove_all(build);
         fs::create_directories(build / "assets" / "titles");
         fs::create_directories(build / "assets" / "fonts");
-        fs::copy_file(headless().dir / DOC, build / DOC);
-        fs::copy_file(headless().dir / FONT, build / FONT);
+        fs::copy_file(titleArtRuntimeFontsHeadless().dir / DOC, build / DOC);
+        fs::copy_file(titleArtRuntimeFontsHeadless().dir / FONT, build / FONT);
         return build;
     }
 
@@ -105,9 +105,9 @@ namespace {
 }
 
 TEST(TitleArtRuntimeFonts, ARealtimeTitlesFontShipsAsTheSubsetItsDocumentNames) {
-    ASSERT_TRUE(headless().ready);
+    ASSERT_TRUE(titleArtRuntimeFontsHeadless().ready);
     const fs::path build = buildAssets();
-    const TitleArtFontShipResult result = shipTitleArtFonts(headless().project.get(), realtimePlan(), build);
+    const TitleArtFontShipResult result = shipTitleArtFonts(titleArtRuntimeFontsHeadless().project.get(), realtimePlan(), build);
     ASSERT_TRUE(result.ok) << result.error;
     ASSERT_EQ(result.shipped.size(), 1u);
     ASSERT_EQ(result.credits.size(), 1u);
@@ -116,7 +116,7 @@ TEST(TitleArtRuntimeFonts, ARealtimeTitlesFontShipsAsTheSubsetItsDocumentNames) 
     EXPECT_LT(result.bytesAfter * 4, result.bytesBefore) << "a few characters of a full Latin font: " << result.shipped[0];
 
     // the build's document names the subset, which is there and keeps the characters asked for
-    const titleart::TitleArtParseResult shipped = titleart::parseTitleArt(readAll(build / DOC));
+    const titleart::TitleArtParseResult shipped = titleart::parseTitleArt(titleArtRuntimeFontsReadAll(build / DOC));
     ASSERT_TRUE(shipped.ok);
     const std::string fontPath = shipped.doc.layers()[0]["font"]["path"].get<std::string>();
     EXPECT_NE(fontPath, FONT);
@@ -127,17 +127,17 @@ TEST(TitleArtRuntimeFonts, ARealtimeTitlesFontShipsAsTheSubsetItsDocumentNames) 
     EXPECT_NE(result.shipped[0].find("(20 characters"), std::string::npos)
         << "W, I, N (the document), J, A, C, K, P, O, T (the override), 0-9 (Additional Characters): " << result.shipped[0];
     // the project's own document is not touched
-    EXPECT_NE(readAll(headless().dir / DOC).find(FONT), std::string::npos);
+    EXPECT_NE(titleArtRuntimeFontsReadAll(titleArtRuntimeFontsHeadless().dir / DOC).find(FONT), std::string::npos);
 }
 
 TEST(TitleArtRuntimeFonts, BakedOnlyTitlesShipNoFont) {
-    ASSERT_TRUE(headless().ready);
+    ASSERT_TRUE(titleArtRuntimeFontsHeadless().ready);
     const fs::path build = buildAssets();
     TitleArtExportPlan plan;
     plan.bakedTitles.insert(DOC);
-    const TitleArtFontShipResult result = shipTitleArtFonts(headless().project.get(), plan, build);
+    const TitleArtFontShipResult result = shipTitleArtFonts(titleArtRuntimeFontsHeadless().project.get(), plan, build);
     EXPECT_TRUE(result.ok);
     EXPECT_TRUE(result.shipped.empty());
     EXPECT_TRUE(result.credits.empty());
-    EXPECT_NE(readAll(build / DOC).find(FONT), std::string::npos) << "the document is left as it is";
+    EXPECT_NE(titleArtRuntimeFontsReadAll(build / DOC).find(FONT), std::string::npos) << "the document is left as it is";
 }

@@ -76,14 +76,14 @@ namespace {
         fs::path path;
     };
 
-    std::string read(const fs::path& file) {
+    std::string assetIdentityRead(const fs::path& file) {
         std::ifstream in(file, std::ios::binary);
         std::ostringstream text;
         text << in.rdbuf();
         return text.str();
     }
 
-    void write(const fs::path& file, const std::string& text) {
+    void assetIdentityWrite(const fs::path& file, const std::string& text) {
         fs::create_directories(file.parent_path());
         std::ofstream out(file, std::ios::binary | std::ios::trunc);
         out << text;
@@ -98,12 +98,12 @@ namespace {
         return fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures" / name;
     }
 
-    fs::path copyFixture(const std::string& name, const fs::path& into) {
+    fs::path assetIdentityCopyFixture(const std::string& name, const fs::path& into) {
         fs::copy(repoFixture(name), into, fs::copy_options::recursive);
         return into;
     }
 
-    std::string gltf(const std::vector<std::string>& meshNames, const std::string& padding = std::string()) {
+    std::string assetIdentityGltf(const std::vector<std::string>& meshNames, const std::string& padding = std::string()) {
         std::string meshes;
         for (size_t i = 0; i < meshNames.size(); i++) {
             meshes += std::string(i ? ", " : "") + (meshNames[i].empty() ? "{\"primitives\": []}" : "{\"name\": \"" + meshNames[i] + "\", \"primitives\": []}");
@@ -304,13 +304,13 @@ TEST(AssetTypes, ExrIsATexture) {
 // the next scan and answers to the path old references hold
 TEST(AssetDatabase, ExistingExrGainsASidecar) {
     AssetTestDir dir;
-    write(dir.path / "assets/a.png", "png content");
+    assetIdentityWrite(dir.path / "assets/a.png", "png content");
     {
         AssetDatabase database;
         database.open(dir.path, "assets");
         database.waitForBackgroundWork();
     }
-    write(dir.path / "assets/env.exr", "exr content");
+    assetIdentityWrite(dir.path / "assets/env.exr", "exr content");
     AssetDatabase database;
     database.open(dir.path, "assets");
     database.waitForBackgroundWork();
@@ -325,8 +325,8 @@ TEST(AssetDatabase, ExistingExrGainsASidecar) {
 // AC1: two machines upgrading the same commit write the same identities
 TEST(AssetIdentity, UpgradeIsDeterministic) {
     AssetTestDir first, second;
-    const fs::path a = copyFixture("legacy_paths_project", first.path / "project");
-    const fs::path b = copyFixture("legacy_paths_project", second.path / "project");
+    const fs::path a = assetIdentityCopyFixture("legacy_paths_project", first.path / "project");
+    const fs::path b = assetIdentityCopyFixture("legacy_paths_project", second.path / "project");
     AssetDatabase dbA, dbB;
     dbA.open(a, "assets");
     dbB.open(b, "assets");
@@ -344,18 +344,18 @@ TEST(AssetIdentity, UpgradeIsDeterministic) {
         EXPECT_TRUE(guids.insert(guid).second) << relative << " shares its GUID";
         EXPECT_EQ(guid.str(), AssetDatabase::legacyGuid(relative)) << relative;
         if (info->identity == AssetIdentity::Sidecar) {
-            const std::string metaA = read(a / AssetTypes::metaPathFor(relative));
+            const std::string metaA = assetIdentityRead(a / AssetTypes::metaPathFor(relative));
             EXPECT_FALSE(metaA.empty()) << relative;
-            EXPECT_EQ(metaA, read(b / AssetTypes::metaPathFor(relative))) << relative;
+            EXPECT_EQ(metaA, assetIdentityRead(b / AssetTypes::metaPathFor(relative))) << relative;
             EXPECT_EQ(metaA.find('\r'), std::string::npos);
         } else {
             // the file is the original with its guid line inserted, nothing else
-            std::string upgraded = read(a / relative);
+            std::string upgraded = assetIdentityRead(a / relative);
             const std::string line = "guid: " + guid.str() + "\n";
             const size_t at = upgraded.find(line);
             ASSERT_NE(at, std::string::npos) << relative;
             upgraded.erase(at, line.size());
-            EXPECT_EQ(upgraded, read(repoFixture("legacy_paths_project") / relative)) << relative;
+            EXPECT_EQ(upgraded, assetIdentityRead(repoFixture("legacy_paths_project") / relative)) << relative;
         }
     }
     EXPECT_EQ(dbA.assetCount(), tracked);
@@ -368,7 +368,7 @@ TEST(AssetIdentity, UpgradeIsDeterministic) {
 
 TEST(AssetDatabase, OpeningAgainChangesNothing) {
     AssetTestDir dir;
-    const fs::path project = copyFixture("legacy_paths_project", dir.path / "project");
+    const fs::path project = assetIdentityCopyFixture("legacy_paths_project", dir.path / "project");
     {
         AssetDatabase database;
         database.open(project, "assets");
@@ -387,8 +387,8 @@ TEST(AssetDatabase, OpeningAgainChangesNothing) {
 // AC3: a file moved without its meta adopts it
 TEST(AssetDatabase, ExternalMoveWithoutMeta) {
     AssetTestDir dir;
-    write(dir.path / "assets/a.png", "png a content");
-    write(dir.path / "assets/other.png", "other");
+    assetIdentityWrite(dir.path / "assets/a.png", "png a content");
+    assetIdentityWrite(dir.path / "assets/other.png", "other");
     AssetDatabase database;
     database.open(dir.path, "assets");
     database.waitForBackgroundWork();
@@ -410,7 +410,7 @@ TEST(AssetDatabase, ExternalMoveWithoutMeta) {
 // AC3 variant: no hash, two candidates with the orphan's name and size: the orphan stays
 TEST(AssetDatabase, ExternalMoveWithoutMetaAmbiguousKeepsOrphan) {
     AssetTestDir dir;
-    write(dir.path / "assets/a.png", "same size");
+    assetIdentityWrite(dir.path / "assets/a.png", "same size");
     AssetDatabase database;
     database.setBackgroundHashing(false);
     database.open(dir.path, "assets");
@@ -419,7 +419,7 @@ TEST(AssetDatabase, ExternalMoveWithoutMetaAmbiguousKeepsOrphan) {
     fs::create_directories(dir.path / "assets/x");
     fs::create_directories(dir.path / "assets/y");
     fs::rename(dir.path / "assets/a.png", dir.path / "assets/x/a.png");
-    write(dir.path / "assets/y/a.png", "same size");
+    assetIdentityWrite(dir.path / "assets/y/a.png", "same size");
     database.refresh();
     const std::vector<AssetDatabase::OrphanMeta> orphans = database.getOrphanMetas();
     ASSERT_EQ(orphans.size(), 1u);
@@ -430,7 +430,7 @@ TEST(AssetDatabase, ExternalMoveWithoutMetaAmbiguousKeepsOrphan) {
 
     // one candidate by name and size: adopted without a hash
     AssetTestDir single;
-    write(single.path / "assets/b.png", "bbb");
+    assetIdentityWrite(single.path / "assets/b.png", "bbb");
     AssetDatabase other;
     other.setBackgroundHashing(false);
     other.open(single.path, "assets");
@@ -445,7 +445,7 @@ TEST(AssetDatabase, ExternalMoveWithoutMetaAmbiguousKeepsOrphan) {
 TEST(AssetDatabase, ExternalDirectoryMove) {
     AssetTestDir dir;
     for (int i = 0; i < 50; i++) {
-        write(dir.path / "assets/pack" / ("tex" + std::to_string(i) + ".png"), "texture " + std::to_string(i));
+        assetIdentityWrite(dir.path / "assets/pack" / ("tex" + std::to_string(i) + ".png"), "texture " + std::to_string(i));
     }
     AssetDatabase database;
     database.open(dir.path, "assets");
@@ -466,8 +466,8 @@ TEST(AssetDatabase, ExternalDirectoryMove) {
 // AC6: a copy made outside the editor gets a new GUID, its sub-assets derived from it
 TEST(AssetDatabase, DuplicateMetaResolution) {
     AssetTestDir dir;
-    write(dir.path / "assets/a.png", "aaa");
-    write(dir.path / "assets/ship.gltf", gltf({"Hull", "", "Mast"}));
+    assetIdentityWrite(dir.path / "assets/a.png", "aaa");
+    assetIdentityWrite(dir.path / "assets/ship.gltf", assetIdentityGltf({"Hull", "", "Mast"}));
     AssetDatabase database;
     database.open(dir.path, "assets");
     const Guid a = database.getAssetGuid("assets/a.png");
@@ -490,20 +490,20 @@ TEST(AssetDatabase, DuplicateMetaResolution) {
     }
     // the copy's meta holds its new identity
     AssetMeta meta;
-    ASSERT_TRUE(AssetMeta::parse(read(dir.path / "assets/b.png.meta"), meta));
+    ASSERT_TRUE(AssetMeta::parse(assetIdentityRead(dir.path / "assets/b.png.meta"), meta));
     EXPECT_EQ(meta.guid, b);
 }
 
 // AC7: sub-asset GUIDs survive a reorder (by key) and a rename of an unnamed mesh (by index)
 TEST(SubAssets, StableKeys) {
     AssetTestDir dir;
-    write(dir.path / "assets/ship.gltf", gltf({"Hull", "Mast", ""}));
+    assetIdentityWrite(dir.path / "assets/ship.gltf", assetIdentityGltf({"Hull", "Mast", ""}));
     AssetDatabase database;
     database.open(dir.path, "assets");
     const std::map<std::string, Guid> before = subAssetGuids(database, "assets/ship.gltf");
     ASSERT_EQ(before.size(), 4u); // three meshes, one material
 
-    write(dir.path / "assets/ship.gltf", gltf({"Mast", "Hull", ""}, " "));
+    assetIdentityWrite(dir.path / "assets/ship.gltf", assetIdentityGltf({"Mast", "Hull", ""}, " "));
     touchLater(dir.path / "assets/ship.gltf");
     database.refresh();
     std::map<std::string, Guid> after = subAssetGuids(database, "assets/ship.gltf");
@@ -511,7 +511,7 @@ TEST(SubAssets, StableKeys) {
     EXPECT_EQ(after.at("mesh:Mast"), before.at("mesh:Mast"));
     EXPECT_EQ(after.at("mesh#2"), before.at("mesh#2"));
 
-    write(dir.path / "assets/ship.gltf", gltf({"Mast", "Hull", "Keel"}, "  "));
+    assetIdentityWrite(dir.path / "assets/ship.gltf", assetIdentityGltf({"Mast", "Hull", "Keel"}, "  "));
     touchLater(dir.path / "assets/ship.gltf");
     database.refresh();
     after = subAssetGuids(database, "assets/ship.gltf");
@@ -522,8 +522,8 @@ TEST(SubAssets, StableKeys) {
 // AC9: path fallback for non-prefab types only (PREFABS.md §3)
 TEST(AssetResolve, PathFallbackNonPrefab) {
     AssetTestDir dir;
-    write(dir.path / "assets/a.png", "aaa");
-    write(dir.path / "enemy.prefab", "type: Prefab\nversion: 3\nnextEntity: 1\nroot: 0\nmembers: []\n");
+    assetIdentityWrite(dir.path / "assets/a.png", "aaa");
+    assetIdentityWrite(dir.path / "enemy.prefab", "type: Prefab\nversion: 3\nnextEntity: 1\nroot: 0\nmembers: []\n");
     AssetDatabase database;
     database.open(dir.path, "assets");
     const Guid unknown = Guid::parse("0123456789abcdef0123456789abcdef");
@@ -540,7 +540,7 @@ TEST(AssetResolve, PathFallbackNonPrefab) {
     EXPECT_EQ(former.by, AssetDatabase::ResolvedBy::Former);
     EXPECT_EQ(former.path, "assets/a.png");
     AssetMeta meta;
-    ASSERT_TRUE(AssetMeta::parse(read(dir.path / "assets/a.png.meta"), meta));
+    ASSERT_TRUE(AssetMeta::parse(assetIdentityRead(dir.path / "assets/a.png.meta"), meta));
     EXPECT_EQ(meta.formerGuids, std::vector<Guid>{unknown});
 
     // without a GUID: the legacy GUID of the hint, else the file at the hint
@@ -550,7 +550,7 @@ TEST(AssetResolve, PathFallbackNonPrefab) {
 
 TEST(AssetDatabase, InFileFormerGuids) {
     AssetTestDir dir;
-    write(dir.path / "level.scene", "id: 1\nname: Level\nentities: []\n");
+    assetIdentityWrite(dir.path / "level.scene", "id: 1\nname: Level\nentities: []\n");
     AssetDatabase database;
     database.open(dir.path, "assets");
     const Guid former = Guid::parse("0123456789abcdef0123456789abcdef");
@@ -560,7 +560,7 @@ TEST(AssetDatabase, InFileFormerGuids) {
     ASSERT_TRUE(AssetDatabase::readInFileIdentity(dir.path / "level.scene", guid, formerGuids));
     EXPECT_EQ(guid, database.getAssetGuid("level.scene"));
     EXPECT_EQ(formerGuids, std::vector<Guid>{former});
-    EXPECT_EQ(read(dir.path / "level.scene"),
+    EXPECT_EQ(assetIdentityRead(dir.path / "level.scene"),
               "guid: " + guid.str() + "\nformerGuids: [" + former.str() + "]\nid: 1\nname: Level\nentities: []\n");
 }
 
@@ -569,7 +569,7 @@ TEST(AssetDatabase, InFileFormerGuids) {
 // AC5: deleting the cache changes no answer
 TEST(AssetIndex, CacheIsDisposable) {
     AssetTestDir dir;
-    const fs::path project = copyFixture("legacy_paths_project", dir.path / "project");
+    const fs::path project = assetIdentityCopyFixture("legacy_paths_project", dir.path / "project");
     const AssetIndex::Roots roots{"assets", "scripts"};
 
     auto answers = [&]() {
@@ -603,7 +603,7 @@ TEST(AssetIndex, CacheIsDisposable) {
 
 TEST(AssetIndex, EdgesOfClosedFiles) {
     AssetTestDir dir;
-    const fs::path project = copyFixture("legacy_paths_project", dir.path / "project");
+    const fs::path project = assetIdentityCopyFixture("legacy_paths_project", dir.path / "project");
     AssetDatabase database;
     database.open(project, "assets");
     AssetIndex index;
@@ -811,20 +811,20 @@ entities:
 // an empty queue when woken only for the save)
 TEST(AssetDatabase, CacheSaveIsDeferredAndFlushedOnClose) {
     AssetTestDir dir;
-    write(dir.path / "assets/a.png", "a");
-    write(dir.path / "scenes/Main.scene", "id: 1\nname: Main\nentities: []\n");
+    assetIdentityWrite(dir.path / "assets/a.png", "a");
+    assetIdentityWrite(dir.path / "scenes/Main.scene", "id: 1\nname: Main\nentities: []\n");
     AssetDatabase database;
     database.open(dir.path, "assets");
     database.waitForBackgroundWork();
     const Guid scene = database.getAssetGuid("scenes/Main.scene");
     ASSERT_FALSE(scene.isNull());
     for (int i = 0; i < 20; i++) {
-        write(dir.path / "scenes/Main.scene", "id: 1\nname: Main\nentities: []\n# save " + std::to_string(i) + "\n");
+        assetIdentityWrite(dir.path / "scenes/Main.scene", "id: 1\nname: Main\nentities: []\n# save " + std::to_string(i) + "\n");
         database.registerAsset(dir.path / "scenes/Main.scene", scene.str());
     }
     database.waitForBackgroundWork();
     database.close();
-    const std::string cache = read(dir.path / ".jasperengine/assetdb/index.json");
+    const std::string cache = assetIdentityRead(dir.path / ".jasperengine/assetdb/index.json");
     EXPECT_NE(cache.find(scene.str()), std::string::npos);
 
     // the cache written on close describes the file as it is: a warm open finds nothing changed
@@ -837,13 +837,13 @@ TEST(AssetDatabase, CacheSaveIsDeferredAndFlushedOnClose) {
 // The poll's walk runs on another thread: a scan taken before the database changed is dropped
 TEST(AssetDatabase, StaleScanIsDropped) {
     AssetTestDir dir;
-    write(dir.path / "assets/a.png", "a");
+    assetIdentityWrite(dir.path / "assets/a.png", "a");
     AssetDatabase database;
     database.setBackgroundHashing(false);
     database.open(dir.path, "assets");
     const AssetDatabase::DiskScan before = database.scanDisk();
     ASSERT_TRUE(before.valid);
-    write(dir.path / "assets/b.png", "b");
+    assetIdentityWrite(dir.path / "assets/b.png", "b");
     database.importAssets(dir.path / "assets/b.png");      // the editor imported it meanwhile
     EXPECT_TRUE(database.refresh(before).empty());          // b.png must not come back as removed
     EXPECT_FALSE(database.getAssetGuid("assets/b.png").isNull());
@@ -855,8 +855,8 @@ TEST(AssetDatabase, StaleScanIsDropped) {
 // Mode set while it was being imported) survive the GUID's write
 TEST(AssetDatabase, SettingsWrittenBeforeTheGuidSurvive) {
     AssetTestDir dir;
-    write(dir.path / "assets/walk.png", "w");
-    write(dir.path / "assets/walk.png.meta", "metaVersion: 1\nimport:\n  spriteSheet:\n    mode: multiple\n");
+    assetIdentityWrite(dir.path / "assets/walk.png", "w");
+    assetIdentityWrite(dir.path / "assets/walk.png.meta", "metaVersion: 1\nimport:\n  spriteSheet:\n    mode: multiple\n");
     AssetDatabase database;
     database.setBackgroundHashing(false);
     database.open(dir.path, "assets");
@@ -936,11 +936,11 @@ namespace {
 TEST(AssetIdentityLinks, OneFileIsNeverACopy) {
     LinkProject p;
     const fs::path file = p.project / "assets" / "a.prefab";
-    write(file, prefabText(LINK_GUID_A));
-    const std::string bytes = read(file);
+    assetIdentityWrite(file, prefabText(LINK_GUID_A));
+    const std::string bytes = assetIdentityRead(file);
     if (!makeFileLink(file, p.project / "assets" / "sym.prefab")) GTEST_SKIP() << "no symbolic links here";
     ASSERT_TRUE(makeHardLink(file, p.project / "assets" / "hard.prefab"));
-    write(p.project / "assets" / "copy.prefab", bytes);
+    assetIdentityWrite(p.project / "assets" / "copy.prefab", bytes);
 
     for (int pass = 0; pass < 2; pass++) {
         if (pass == 0) p.open();                // the scan on open
@@ -948,7 +948,7 @@ TEST(AssetIdentityLinks, OneFileIsNeverACopy) {
             p.database.close();
             p.open();                           // and from the cache
         }
-        EXPECT_EQ(read(file), bytes) << "pass " << pass;
+        EXPECT_EQ(assetIdentityRead(file), bytes) << "pass " << pass;
         const std::string copied = AssetDatabase::readGuid(p.project / "assets" / "copy.prefab");
         EXPECT_NE(copied, LINK_GUID_A) << "a real copy gets a GUID of its own";
         EXPECT_EQ(p.database.getGuid("assets/a.prefab"), LINK_GUID_A);
@@ -963,7 +963,7 @@ TEST(AssetIdentityLinks, OneFileIsNeverACopy) {
 
     // made while the project is open: the refresh and an import decide the same
     const fs::path other = p.project / "assets" / "b.prefab";
-    write(other, prefabText(LINK_GUID_B));
+    assetIdentityWrite(other, prefabText(LINK_GUID_B));
     ASSERT_TRUE(makeHardLink(other, p.project / "assets" / "bhard.prefab"));
     p.database.refresh();
     EXPECT_EQ(p.database.getGuid("assets/bhard.prefab"), LINK_GUID_B);
@@ -986,7 +986,7 @@ TEST(AssetIdentityLinks, OneFileIsNeverACopy) {
 TEST(AssetIdentityLinks, HardLinkOfASidecarAssetGetsNoMeta) {
     LinkProject p;
     const fs::path file = p.project / "assets" / "tile.png";
-    write(file, "not really a png");
+    assetIdentityWrite(file, "not really a png");
     p.open();
     const std::string guid = p.database.getGuid("assets/tile.png");
     ASSERT_FALSE(guid.empty());
@@ -1005,8 +1005,8 @@ TEST(AssetIdentityLinks, HardLinkOfASidecarAssetGetsNoMeta) {
 // (no entries, no metas under it, no file system call needed), and a real copy made through it is a copy.
 TEST(AssetIdentityLinks, LinkToAProjectFolderIsOneAssetUnderTwoNames) {
     LinkProject p;
-    write(p.project / "assets" / "real" / "a.prefab", prefabText(LINK_GUID_A));
-    write(p.project / "assets" / "real" / "tile.png", "png");
+    assetIdentityWrite(p.project / "assets" / "real" / "a.prefab", prefabText(LINK_GUID_A));
+    assetIdentityWrite(p.project / "assets" / "real" / "tile.png", "png");
     if (!makeDirLink(p.project / "assets" / "real", p.project / "assets" / "alias")) GTEST_SKIP() << "no symbolic links here";
     p.open();
     const std::string tile = p.database.getGuid("assets/real/tile.png");
@@ -1053,11 +1053,11 @@ TEST(AssetIdentityLinks, FolderMovedBehindALinkIsAMove) {
     LinkProject p;
     const fs::path old = p.project / "assets" / "kit";
     const fs::path moved = p.project / "assets" / "kit_real";
-    write(old / "a.prefab", prefabText(LINK_GUID_A));
-    write(old / "tile.png", "png");
+    assetIdentityWrite(old / "a.prefab", prefabText(LINK_GUID_A));
+    assetIdentityWrite(old / "tile.png", "png");
     p.open();
     const std::string tile = p.database.getGuid("assets/kit/tile.png");
-    const std::string prefabBytes = read(old / "a.prefab"), metaBytes = read(old / "tile.png.meta");
+    const std::string prefabBytes = assetIdentityRead(old / "a.prefab"), metaBytes = assetIdentityRead(old / "tile.png.meta");
 
     fs::rename(old, moved);
     if (!makeDirLink(moved, old)) GTEST_SKIP() << "no symbolic links here";
@@ -1068,8 +1068,8 @@ TEST(AssetIdentityLinks, FolderMovedBehindALinkIsAMove) {
     }
     EXPECT_EQ(movedFrom["assets/kit_real/a.prefab"], "assets/kit/a.prefab");
     EXPECT_EQ(movedFrom["assets/kit_real/tile.png"], "assets/kit/tile.png");
-    EXPECT_EQ(read(moved / "a.prefab"), prefabBytes);
-    EXPECT_EQ(read(moved / "tile.png.meta"), metaBytes);
+    EXPECT_EQ(assetIdentityRead(moved / "a.prefab"), prefabBytes);
+    EXPECT_EQ(assetIdentityRead(moved / "tile.png.meta"), metaBytes);
     EXPECT_EQ(p.database.getGuid("assets/kit_real/a.prefab"), LINK_GUID_A);
     EXPECT_EQ(p.database.getGuid("assets/kit/a.prefab"), LINK_GUID_A);
     EXPECT_EQ(p.database.getPath(tile), fs::path("assets/kit_real/tile.png"));
@@ -1078,13 +1078,13 @@ TEST(AssetIdentityLinks, FolderMovedBehindALinkIsAMove) {
     p.database.close();
     p.open();
     EXPECT_EQ(p.database.getPath(tile), fs::path("assets/kit_real/tile.png"));
-    EXPECT_EQ(read(moved / "a.prefab"), prefabBytes);
+    EXPECT_EQ(assetIdentityRead(moved / "a.prefab"), prefabBytes);
 
     fs::remove(old);
     fs::rename(moved, old);
     p.database.refresh();
     EXPECT_EQ(p.database.getPath(tile), fs::path("assets/kit/tile.png"));
-    EXPECT_EQ(read(old / "a.prefab"), prefabBytes);
+    EXPECT_EQ(assetIdentityRead(old / "a.prefab"), prefabBytes);
 }
 
 // R7: a link out of the project is a project folder: indexed by the project path, metas beside the
@@ -1092,10 +1092,10 @@ TEST(AssetIdentityLinks, FolderMovedBehindALinkIsAMove) {
 TEST(AssetIdentityLinks, LinkOutOfTheProjectIsAProjectFolder) {
     LinkProject p;
     const fs::path shared = p.outside / "shared";
-    write(shared / "tile.png", "png");
-    write(shared / "sub" / "a.prefab", prefabText(LINK_GUID_A));
-    write(p.outside / "extra" / "more.json", "{}");
-    write(p.outside / "single.png", "single");
+    assetIdentityWrite(shared / "tile.png", "png");
+    assetIdentityWrite(shared / "sub" / "a.prefab", prefabText(LINK_GUID_A));
+    assetIdentityWrite(p.outside / "extra" / "more.json", "{}");
+    assetIdentityWrite(p.outside / "single.png", "single");
     if (!makeDirLink(shared, p.project / "assets" / "shared")) GTEST_SKIP() << "no symbolic links here";
     ASSERT_TRUE(makeDirLink(p.outside / "extra", shared / "more"));
     ASSERT_TRUE(makeDirLink(shared, shared / "loop"));             // leads to the folder it is in
@@ -1127,11 +1127,11 @@ TEST(AssetIdentityLinks, LinkOutOfTheProjectIsAProjectFolder) {
     EXPECT_EQ(p.database.getOrphanMetas().size(), 0u);
 
     // the same on the next session, from the metas
-    const std::string meta = read(shared / "tile.png.meta");
+    const std::string meta = assetIdentityRead(shared / "tile.png.meta");
     p.database.close();
     p.open();
     EXPECT_EQ(p.database.getGuid("assets/shared/tile.png"), tile);
-    EXPECT_EQ(read(shared / "tile.png.meta"), meta);
+    EXPECT_EQ(assetIdentityRead(shared / "tile.png.meta"), meta);
     EXPECT_TRUE(p.database.refresh().empty()) << "the walk of a linked folder finds it as it is";
 
     // two names for one outside folder: one asset, at the first name in path order
@@ -1141,7 +1141,7 @@ TEST(AssetIdentityLinks, LinkOutOfTheProjectIsAProjectFolder) {
     EXPECT_EQ(p.database.getGuid("assets/zshared/tile.png"), tile);
 
     // a change seen through the link
-    write(shared / "tile.png", "another png");
+    assetIdentityWrite(shared / "tile.png", "another png");
     touchLater(shared / "tile.png");
     bool modified = false;
     for (const AssetDatabase::Change& change : p.database.refresh()) {
@@ -1160,9 +1160,9 @@ TEST(AssetIdentityLinks, LinkOutOfTheProjectIsAProjectFolder) {
 // R7: bounded: the walk through links stops at its limit, with what it reached kept
 TEST(AssetIdentityLinks, WalkThroughLinksIsBounded) {
     LinkProject p;
-    for (int i = 0; i < 40; i++) write(p.outside / "big" / ("f" + std::to_string(i) + ".txt"), "x");
+    for (int i = 0; i < 40; i++) assetIdentityWrite(p.outside / "big" / ("f" + std::to_string(i) + ".txt"), "x");
     if (!makeDirLink(p.outside / "big", p.project / "assets" / "big")) GTEST_SKIP() << "no symbolic links here";
-    write(p.project / "assets" / "own.txt", "mine");
+    assetIdentityWrite(p.project / "assets" / "own.txt", "mine");
     AssetDatabase::setLinkedEntryLimitForTesting(10);
     p.open();
     size_t linked = 0;
@@ -1180,7 +1180,7 @@ TEST(AssetIdentityLinks, WalkThroughLinksIsBounded) {
 TEST(AssetIdentityLinks, ReadOnlyTargetIsReported) {
     LinkProject p;
     const fs::path shared = p.outside / "shared";
-    write(shared / "tile.png", "png");
+    assetIdentityWrite(shared / "tile.png", "png");
     if (!makeDirLink(shared, p.project / "assets" / "shared")) GTEST_SKIP() << "no symbolic links here";
     // root ignores the folder's permissions, and on Windows fs::permissions only sets the read-only
     // attribute, which doesn't refuse a new file in a folder: a folder at the .meta's name blocks it
@@ -1230,7 +1230,7 @@ TEST(AssetIdentityLinks, ReadOnlyTargetIsReported) {
 // and nothing written there, even when an import names a file behind it
 TEST(AssetIdentityLinks, LinkOutsideTheAssetRootIsNotScanned) {
     LinkProject p;
-    write(p.outside / "tile.png", "png");
+    assetIdentityWrite(p.outside / "tile.png", "png");
     if (!makeDirLink(p.outside, p.project / "lib")) GTEST_SKIP() << "no symbolic links here";
     p.open();
     EXPECT_FALSE(fs::exists(p.outside / "tile.png.meta"));
@@ -1252,8 +1252,8 @@ TEST(AssetIdentityLinks, LinkOutsideTheAssetRootIsNotScanned) {
 // A pinned root swapped for a link: not read, not written, whichever operation comes; back, it works
 TEST(AssetIdentityLinks, RootSwappedForALinkIsNotFollowed) {
     LinkProject p;
-    write(p.outside / "tile.png", "png");
-    write(p.project / "assets" / "own.png", "own");
+    assetIdentityWrite(p.outside / "tile.png", "png");
+    assetIdentityWrite(p.project / "assets" / "own.png", "own");
     const fs::path root = p.project / "assets";
     p.database.setPinnedRoots({{root, safewrite::resolvedPath(root)}}, fs::path());
     p.open();
@@ -1284,7 +1284,7 @@ TEST(AssetIdentityLinks, RootSwappedForALinkIsNotFollowed) {
     // a root that was a link when it was pinned stays followed
     const fs::path linked = p.dir.path / "linked_project";
     fs::create_directories(linked);
-    write(p.outside / "second" / "b.png", "png");
+    assetIdentityWrite(p.outside / "second" / "b.png", "png");
     ASSERT_TRUE(makeDirLink(p.outside / "second", linked / "assets"));
     AssetDatabase other;
     other.setBackgroundHashing(false);
@@ -1297,8 +1297,8 @@ TEST(AssetIdentityLinks, RootSwappedForALinkIsNotFollowed) {
 // R8: a project without links: no table, keys as written, no change
 TEST(AssetIdentityLinks, NoLinksChangeNothing) {
     LinkProject p;
-    write(p.project / "assets" / "a.prefab", prefabText(LINK_GUID_A));
-    write(p.project / "assets" / "tile.png", "png");
+    assetIdentityWrite(p.project / "assets" / "a.prefab", prefabText(LINK_GUID_A));
+    assetIdentityWrite(p.project / "assets" / "tile.png", "png");
     p.open();
     EXPECT_TRUE(p.database.getLinkedOutTargets().empty());
     EXPECT_EQ(p.database.toRelative("assets/nothing/../tile.png"), fs::path("assets/tile.png"));

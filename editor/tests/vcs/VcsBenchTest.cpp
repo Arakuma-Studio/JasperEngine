@@ -22,13 +22,13 @@ namespace scene = jasperengine::editor::vcs::scene;
 
 namespace {
 
-    using Clock = std::chrono::steady_clock;
+    using VcsBenchClock = std::chrono::steady_clock;
 
-    double msSince(Clock::time_point start) {
-        return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+    double vcsBenchMsSince(VcsBenchClock::time_point start) {
+        return std::chrono::duration<double, std::milli>(VcsBenchClock::now() - start).count();
     }
 
-    void budget(const char* what, double measured, double limit, bool enforced = true) {
+    void vcsBenchBudget(const char* what, double measured, double limit, bool enforced = true) {
         std::printf("[ VcsBench ] %s: %.2f ms (budget %.0f ms%s)\n", what, measured, limit, enforced ? "" : ", reported");
         const double slack = editor::test::perfSlack();
         if (enforced && slack > 0.0) {
@@ -80,11 +80,11 @@ TEST(VcsBench, StatusPollOfATenThousandFileRepository) {
         double ms = 0.0;
         size_t changed = 0;
         std::thread poll([&]() {
-            const Clock::time_point start = Clock::now();
+            const VcsBenchClock::time_point start = VcsBenchClock::now();
             VcsSnapshot snapshot;
             const VcsResult result = provider.status(snapshot, StatusDepth::Fast);
             snapshot.finalize(nullptr);
-            ms = msSince(start);
+            ms = vcsBenchMsSince(start);
             EXPECT_TRUE(result.ok) << result.message;
             changed = snapshot.changedCount();
         });
@@ -92,7 +92,7 @@ TEST(VcsBench, StatusPollOfATenThousandFileRepository) {
         EXPECT_EQ(changed, 200u);
         if (round > 0) best = std::min(best, ms);
     }
-    budget("status poll, 10k-file repository", best, 400.0);
+    vcsBenchBudget("status poll, 10k-file repository", best, 400.0);
 }
 
 TEST(VcsBench, SnapshotSwapAndAggregationAtTwentyThousandEntries) {
@@ -112,24 +112,24 @@ TEST(VcsBench, SnapshotSwapAndAggregationAtTwentyThousandEntries) {
     SnapshotPtr current;
     for (int round = 0; round < 5; round++) {
         VcsSnapshot snapshot = raw;
-        const Clock::time_point start = Clock::now();
+        const VcsBenchClock::time_point start = VcsBenchClock::now();
         snapshot.finalize(nullptr);
         // the main thread's part: the pointer swap
         SnapshotPtr fresh = std::make_shared<const VcsSnapshot>(std::move(snapshot));
         current.swap(fresh);
-        best = std::min(best, msSince(start));
+        best = std::min(best, vcsBenchMsSince(start));
     }
     ASSERT_TRUE(current);
     EXPECT_EQ(current->entries.size(), 20000u);
     ASSERT_NE(current->findDir("assets"), nullptr);
     EXPECT_EQ(current->findDir("assets")->state, DirState::Conflict);
-    budget("snapshot swap and directory aggregation, 20k entries", best, 1.0);
+    vcsBenchBudget("snapshot swap and directory aggregation, 20k entries", best, 1.0);
 
     // a row's lookup (R25: <= 2 us)
-    const Clock::time_point start = Clock::now();
+    const VcsBenchClock::time_point start = VcsBenchClock::now();
     size_t found = 0;
     for (int i = 0; i < 20000; i++) found += current->find(current->entries[static_cast<size_t>(i)].path) != nullptr;
-    const double perRowUs = msSince(start) * 1000.0 / 20000.0;
+    const double perRowUs = vcsBenchMsSince(start) * 1000.0 / 20000.0;
     EXPECT_EQ(found, 20000u);
     std::printf("[ VcsBench ] status lookup per row: %.3f us (budget 2 us)\n", perRowUs);
     if (editor::test::perfSlack() > 0.0) {
@@ -146,14 +146,14 @@ TEST(VcsBench, DiffOfATwoThousandEntityScene) {
         double ms = 0.0, parseMs = 0.0;
         // on a job thread, as the editor runs it
         std::thread job([&]() {
-            const Clock::time_point start = Clock::now();
+            const VcsBenchClock::time_point start = VcsBenchClock::now();
             // both sides at once, as scene-diff and the merge driver read them
             std::vector<scene::SceneYamlModel> models;
             std::vector<std::string> errors;
             EXPECT_TRUE(scene::SceneYamlModel::parseAll({base, current}, models, errors)) << errors[0] << errors[1];
-            parseMs = msSince(start);
+            parseMs = vcsBenchMsSince(start);
             const scene::SceneDiffResult diff = scene::diffScenes(models[0], models[1]);
-            ms = msSince(start);
+            ms = vcsBenchMsSince(start);
             modified = diff.modified;
         });
         job.join();
@@ -164,7 +164,7 @@ TEST(VcsBench, DiffOfATwoThousandEntityScene) {
     }
     EXPECT_EQ(modified, 40u);
     std::printf("[ VcsBench ] (of which parsing both sides, each on a job: %.2f ms; %zu bytes each)\n", bestParse, base.size());
-    budget("scene diff, 2,000 GameObjects (parse both + diff)", best, 150.0);
+    vcsBenchBudget("scene diff, 2,000 GameObjects (parse both + diff)", best, 150.0);
 }
 
 TEST(VcsBench, NoProcessOnTheMainThreadDuringACompletedSession) {

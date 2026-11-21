@@ -42,7 +42,7 @@ using namespace jasperengine;
 
 namespace {
 
-    typedef char ErrorText[256];
+    typedef char WidgetErrorText[256];
 
     // doc.tooltip: the document's tooltips
     struct UIDocumentTooltip {
@@ -190,9 +190,9 @@ namespace {
         return provider;
     }
 
-    bool setProviderImpl(lua_State* L, UIItemsView* view, ErrorText error){
+    bool setProviderImpl(lua_State* L, UIItemsView* view, WidgetErrorText error){
         if (!view->isValid()){
-            std::snprintf(error, sizeof(ErrorText), "%s", kHtmlUIDeadElementMessage);
+            std::snprintf(error, sizeof(WidgetErrorText), "%s", kHtmlUIDeadElementMessage);
             return false;
         }
         lua_getfield(L, 2, "count");
@@ -205,7 +205,7 @@ namespace {
     int itemsViewSetProvider(lua_State* L){
         UIItemsView* view = luabridge::detail::Userdata::get<UIItemsView>(L, 1, false);
         luaL_checktype(L, 2, LUA_TTABLE);
-        ErrorText error;
+        WidgetErrorText error;
         if (!view || !setProviderImpl(L, view, error))
             return luaL_error(L, "%s", view ? error : kHtmlUIDeadElementMessage);
         return 0;
@@ -272,11 +272,11 @@ namespace {
 
     // ---- tooltips ----
 
-    bool readTooltipOptions(lua_State* L, int index, UITooltipOptions& options, ErrorText error){
+    bool readTooltipOptions(lua_State* L, int index, UITooltipOptions& options, WidgetErrorText error){
         if (lua_isnoneornil(L, index))
             return true;
         if (!lua_istable(L, index)){
-            std::snprintf(error, sizeof(ErrorText), "setTooltip: options must be a table");
+            std::snprintf(error, sizeof(WidgetErrorText), "setTooltip: options must be a table");
             return false;
         }
         lua_getfield(L, index, "placement");
@@ -332,7 +332,7 @@ namespace {
         htmlui::TooltipManager::setTooltip(element, std::move(spec));
     }
 
-    bool setTooltipImpl(lua_State* L, UIElement* self, ErrorText error){
+    bool setTooltipImpl(lua_State* L, UIElement* self, WidgetErrorText error){
         UITooltipOptions options;
         if (!readTooltipOptions(L, 3, options, error))
             return false;
@@ -342,7 +342,7 @@ namespace {
         }else if (luabridge::detail::Userdata::isInstance<UIElement>(L, 2)){
             const UIElement* content = luabridge::detail::Userdata::get<UIElement>(L, 2, true);
             if (!content || !content->isValid()){
-                std::snprintf(error, sizeof(ErrorText), "setTooltip: the content element is gone");
+                std::snprintf(error, sizeof(WidgetErrorText), "setTooltip: the content element is gone");
                 return false;
             }
             self->setTooltip(*content, options);
@@ -351,7 +351,7 @@ namespace {
         }else if (lua_isnil(L, 2)){
             self->clearTooltip();
         }else{
-            std::snprintf(error, sizeof(ErrorText), "setTooltip: a text, an element or a function expected");
+            std::snprintf(error, sizeof(WidgetErrorText), "setTooltip: a text, an element or a function expected");
             return false;
         }
         return true;
@@ -361,7 +361,7 @@ namespace {
         UIElement* self = luabridge::detail::Userdata::get<UIElement>(L, 1, false);
         if (!self || !self->isValid())
             return luaL_error(L, "%s", kHtmlUIDeadElementMessage);
-        ErrorText error;
+        WidgetErrorText error;
         if (!setTooltipImpl(L, self, error))
             return luaL_error(L, "%s", error);
         return 0;

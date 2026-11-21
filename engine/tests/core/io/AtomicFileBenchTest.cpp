@@ -28,7 +28,7 @@ using jasperengine::test::TestTempDir;
 namespace {
 
     template<typename Fn>
-    double medianMs(int runs, Fn&& fn) {
+    double atomicFileBenchMedianMs(int runs, Fn&& fn) {
         std::vector<double> times;
         for (int i = 0; i < runs; i++) {
             const auto start = std::chrono::steady_clock::now();
@@ -58,11 +58,11 @@ TEST(AtomicFileBench, CacheWriteNearPlainWrite) {
         // APFS makes a new file 2-4x slower than it overwrites one (BF4, macOS 26.2), and an
         // atomic write needs a new file however it publishes: the plain write there makes a new
         // file too, so the bound is what the atomic write adds beyond that
-        plain = medianMs(41, [&](int i) { plainWrite(dir / ("plain-new" + std::to_string(attempt * 41 + i)), bytes); });
+        plain = atomicFileBenchMedianMs(41, [&](int i) { plainWrite(dir / ("plain-new" + std::to_string(attempt * 41 + i)), bytes); });
 #else
-        plain = medianMs(41, [&](int i) { plainWrite(dir / ("plain" + std::to_string(i % 4)), bytes); });
+        plain = atomicFileBenchMedianMs(41, [&](int i) { plainWrite(dir / ("plain" + std::to_string(i % 4)), bytes); });
 #endif
-        atomic = medianMs(41, [&](int i) { io::writeFileAtomic(dir / ("atomic" + std::to_string(i % 4)), bytes, cache); });
+        atomic = atomicFileBenchMedianMs(41, [&](int i) { io::writeFileAtomic(dir / ("atomic" + std::to_string(i % 4)), bytes, cache); });
         if (atomic <= plain * 1.5 + 0.05) break;
     }
     std::printf("[ bench    ] 64 KB: ofstream %.3f ms, Cache atomic %.3f ms\n", plain, atomic);
@@ -82,8 +82,8 @@ TEST(AtomicFileBench, DocumentWriteOverhead) {
     const double budget = 25.0 * (slack > 0.0 ? slack : 1.0);
     double plain = 0, durable = 0;
     for (int attempt = 0; attempt < 3; attempt++) {
-        plain = medianMs(9, [&](int i) { plainWrite(dir / ("plain" + std::to_string(i % 3)), bytes); });
-        durable = medianMs(9, [&](int i) { io::writeFileAtomic(dir / ("doc" + std::to_string(i % 3)), bytes, document); });
+        plain = atomicFileBenchMedianMs(9, [&](int i) { plainWrite(dir / ("plain" + std::to_string(i % 3)), bytes); });
+        durable = atomicFileBenchMedianMs(9, [&](int i) { io::writeFileAtomic(dir / ("doc" + std::to_string(i % 3)), bytes, document); });
         if (durable - plain <= budget) break;
     }
     std::printf("[ bench    ] 1 MB: ofstream %.3f ms, Document atomic %.3f ms (budget: %.1f ms more)\n", plain, durable, budget);

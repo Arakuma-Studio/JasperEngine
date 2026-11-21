@@ -41,7 +41,7 @@ namespace {
         }
     };
 
-    std::string lower(std::string text){
+    std::string testHttpServerLower(std::string text){
         for (char& c : text) c = (char)std::tolower((unsigned char)c);
         return text;
     }
@@ -88,7 +88,7 @@ namespace {
             if (!line.empty() && line.back() == '\r') line.pop_back();
             const size_t colon = line.find(':');
             if (colon == std::string::npos) continue;
-            request.headers.emplace_back(lower(trim(line.substr(0, colon))), trim(line.substr(colon + 1)));
+            request.headers.emplace_back(testHttpServerLower(trim(line.substr(0, colon))), trim(line.substr(colon + 1)));
         }
         request.body = buffer.substr(headerEnd + 4);
         const std::string length = request.header("content-length");
@@ -130,7 +130,7 @@ namespace {
         return out;
     }
 
-    uint32_t crc32(const std::string& data){
+    uint32_t testHttpServerCrc32(const std::string& data){
         static uint32_t table[256];
         static bool ready = false;
         if (!ready){
@@ -161,7 +161,7 @@ namespace {
             out.append(data, pos, n);
             pos += n;
         } while (pos < data.size());
-        const uint32_t crc = crc32(data);
+        const uint32_t crc = testHttpServerCrc32(data);
         const uint32_t size = (uint32_t)data.size();
         for (int i = 0; i < 4; i++) out += (char)((crc >> (8 * i)) & 0xFF);
         for (int i = 0; i < 4; i++) out += (char)((size >> (8 * i)) & 0xFF);

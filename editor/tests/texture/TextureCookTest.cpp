@@ -50,13 +50,13 @@ namespace {
             return file;
         }
 
-        TextureCookResult cook(const fs::path& file, const TextureImportSettings& settings, TextureFamily family,
+        TextureCookResult cook(const fs::path& file, const TextureImportSettings& settings, TextureFamily textureCookFamily,
                                const std::function<bool()>& cancelled = nullptr){
             TextureCookRequest request;
             request.source = file;
             request.assetPath = file.filename().generic_string();
             request.settings = settings;
-            request.family = family;
+            request.family = textureCookFamily;
             return TextureCooker::cook(cache, request, cancelled);
         }
 
@@ -68,12 +68,12 @@ namespace {
     };
 
     TextureImportSettings cookSettings(TextureImportType type, TextureCookQuality quality, const std::string& format = std::string(),
-                                       TextureFamily family = TextureFamily::Desktop, float rdo = -1.0f){
+                                       TextureFamily textureCookFamily = TextureFamily::Desktop, float rdo = -1.0f){
         TextureImportSettings settings;
         settings.type = type;
         settings.quality = quality;
         if (!format.empty() || rdo >= 0.0f){
-            TexturePlatformSettings& p = settings.platforms[(size_t)family];
+            TexturePlatformSettings& p = settings.platforms[(size_t)textureCookFamily];
             p.override = true;
             if (!format.empty()) p.format = format;
             if (rdo >= 0.0f) p.rdo = rdo;
@@ -93,12 +93,12 @@ namespace {
     }
 
     // the prepared mip 0 a cook compares against (RGBA8 layouts)
-    PreparedTexture cookReference(const fs::path& file, const TextureImportSettings& settings, TextureFamily family){
+    PreparedTexture cookReference(const fs::path& file, const TextureImportSettings& settings, TextureFamily textureCookFamily){
         std::array<TextureData, 6> faces;
         std::string error;
         EXPECT_GT(TextureCooker::decodeSource(file, false, faces, error), 0) << error;
         PreparedTexture prepared;
-        const TextureProcessing processing = settings.resolve(family, TextureProjectSettings()).processing();
+        const TextureProcessing processing = settings.resolve(textureCookFamily, TextureProjectSettings()).processing();
         EXPECT_TRUE(TexturePrepare::prepare({&faces[0]}, processing, prepared, error)) << error;
         return prepared;
     }
@@ -255,9 +255,9 @@ TEST(TextureCook, PixelArtLossless){
     const fs::path file = writeCorpusImage(image, bench.scratch.path / "src");
     TextureImportSettings settings;
     settings.pixelArt = true;
-    for (TextureFamily family : {TextureFamily::Desktop, TextureFamily::Mobile, TextureFamily::AndroidEtc2, TextureFamily::Web}){
-        SCOPED_TRACE(textureFamilyName(family));
-        const TextureCookResult result = bench.cook(file, settings, family);
+    for (TextureFamily textureCookFamily : {TextureFamily::Desktop, TextureFamily::Mobile, TextureFamily::AndroidEtc2, TextureFamily::Web}){
+        SCOPED_TRACE(textureFamilyName(textureCookFamily));
+        const TextureCookResult result = bench.cook(file, settings, textureCookFamily);
         ASSERT_TRUE(result.ok) << result.error;
         const std::vector<uint8_t> bytes = bench.artifact(result.record.key);
         Ktx2MemorySource source(bytes);
@@ -489,10 +489,10 @@ TEST(TextureEncodeQuality, FoliageTransparentTexelsStayTransparentAfterBc7){
 TEST(TextureEncodeQuality, ColourUnderTransparentTexelsIsKept){
     CookBench bench("cook-under-alpha");
     const fs::path file = bench.source("foliage");
-    for (TextureFamily family : {TextureFamily::Desktop, TextureFamily::Mobile, TextureFamily::AndroidEtc2, TextureFamily::Web}){
-        SCOPED_TRACE(textureFamilyName(family));
+    for (TextureFamily textureCookFamily : {TextureFamily::Desktop, TextureFamily::Mobile, TextureFamily::AndroidEtc2, TextureFamily::Web}){
+        SCOPED_TRACE(textureFamilyName(textureCookFamily));
         const TextureImportSettings settings = cookSettings(TextureImportType::Default, TextureCookQuality::Normal);
-        const TextureCookResult result = bench.cook(file, settings, family);
+        const TextureCookResult result = bench.cook(file, settings, textureCookFamily);
         ASSERT_TRUE(result.ok) << result.error;
         const std::vector<uint8_t> bytes = bench.artifact(result.record.key);
         GpuTextureFormat format;
@@ -501,7 +501,7 @@ TEST(TextureEncodeQuality, ColourUnderTransparentTexelsIsKept){
         std::string error;
         ASSERT_TRUE(decodeKtx2ForPreview(bytes, 0, format, width, height, faces, decoded, error)) << error;
         ASSERT_EQ(format, GpuTextureFormat::RGBA8);
-        const PreparedTexture reference = cookReference(file, settings, family);
+        const PreparedTexture reference = cookReference(file, settings, textureCookFamily);
         ASSERT_EQ(reference.faces[0][0].width, width);
         double squared = 0.0;
         size_t samples = 0;
@@ -518,7 +518,7 @@ TEST(TextureEncodeQuality, ColourUnderTransparentTexelsIsKept){
         ASSERT_GT(samples, 0u);
         const double mse = squared / (double)samples;
         const double psnr = mse <= 0.0 ? 100.0 : 10.0 * std::log10(255.0 * 255.0 / mse);
-        std::printf("[ quality ] %-12s %-10s RGB under alpha 0: %.2f dB, whole texture %.2f dB\n", textureFamilyName(family),
+        std::printf("[ quality ] %-12s %-10s RGB under alpha 0: %.2f dB, whole texture %.2f dB\n", textureFamilyName(textureCookFamily),
                     result.record.format.c_str(), psnr, result.record.psnr);
         EXPECT_GE(psnr, 30.0) << result.record.format;
         EXPECT_GE(result.record.psnr, 34.0) << result.record.format;
@@ -583,10 +583,10 @@ TEST(TextureCookDeterminism, SameBytesAtAnyConcurrencyAndTwice){
             in.settings.type = image.type;
             in.hasSettings = true;
             inputs[name] = in;
-            for (TextureFamily family : {TextureFamily::Desktop, TextureFamily::Mobile, TextureFamily::AndroidEtc2, TextureFamily::Web}){
+            for (TextureFamily textureCookFamily : {TextureFamily::Desktop, TextureFamily::Mobile, TextureFamily::AndroidEtc2, TextureFamily::Web}){
                 TextureBatchItem item;
                 item.assetPath = name;
-                item.family = family;
+                item.family = textureCookFamily;
                 items.push_back(item);
             }
         }

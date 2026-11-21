@@ -36,23 +36,23 @@ using namespace terraintest;
 
 namespace {
 
-    constexpr int SIZE = 16;
+    constexpr int TERRAIN_EDIT_SIZE = 16;
 
     // A map in memory under an id of its own
     void giveMap(Texture& texture, const std::string& id, int channels, int bits, uint8_t fill) {
         const int bytesPerChannel = bits / 8;
-        const size_t bytes = static_cast<size_t>(SIZE) * SIZE * channels * bytesPerChannel;
+        const size_t bytes = static_cast<size_t>(TERRAIN_EDIT_SIZE) * TERRAIN_EDIT_SIZE * channels * bytesPerChannel;
         unsigned char* raw = static_cast<unsigned char*>(std::malloc(bytes));
         std::memset(raw, fill, bytes);
         const ColorFormat format = channels == 4 ? ColorFormat::RGBA : (bits == 16 ? ColorFormat::RED16 : ColorFormat::RED);
-        TextureData data(SIZE, SIZE, static_cast<unsigned int>(bytes), format, channels, raw);
+        TextureData data(TERRAIN_EDIT_SIZE, TERRAIN_EDIT_SIZE, static_cast<unsigned int>(bytes), format, channels, raw);
         data.setDataOwned(false);
         texture.setData(id, data);
         texture.getData().setDataOwned(true);
     }
 
-    void makeTerrain(TerrainComponent& terrain, const std::string& name) {
-        terrain.terrainSize = static_cast<float>(SIZE);
+    void terrainEditMakeTerrain(TerrainComponent& terrain, const std::string& name) {
+        terrain.terrainSize = static_cast<float>(TERRAIN_EDIT_SIZE);
         terrain.maxHeight = 8.0f;
         giveMap(terrain.heightMap, name + "-height", 1, 16, 0x40);
     }
@@ -79,12 +79,12 @@ namespace {
 
 TEST(TerrainEdit, StoreReadsAndWritesTheComponentsMaps) {
     TerrainComponent terrain;
-    makeTerrain(terrain, "t1-store");
+    terrainEditMakeTerrain(terrain, "t1-store");
     TerrainComponentStore store(nullptr, 1, terrain);
 
     const MapFormat format = store.format(HEIGHT);
     ASSERT_TRUE(format.exists);
-    EXPECT_EQ(format.bounds.w, SIZE);
+    EXPECT_EQ(format.bounds.w, TERRAIN_EDIT_SIZE);
     EXPECT_EQ(format.channels, 1);
     EXPECT_EQ(format.bitsPerChannel, 16);
     EXPECT_FALSE(store.format(HOLE).exists);
@@ -128,12 +128,12 @@ TEST(TerrainEdit, StoreReadsAndWritesTheComponentsMaps) {
     EXPECT_FLOAT_EQ(texel.y, 15.0f);
     EXPECT_EQ(store.beginLarge(HEIGHT, format.bounds), nullptr);
     EXPECT_EQ(store.takeUndoHook(), nullptr);
-    EXPECT_EQ(store.preferredBlock(HEIGHT).w, SIZE);
+    EXPECT_EQ(store.preferredBlock(HEIGHT).w, TERRAIN_EDIT_SIZE);
 }
 
 TEST(TerrainEdit, CreatesAndRemovesMaps) {
     TerrainComponent terrain;
-    makeTerrain(terrain, "t1-create");
+    terrainEditMakeTerrain(terrain, "t1-create");
     terrain.foliageLayers.resize(1);
     TerrainComponentStore store(nullptr, 1, terrain);
 
@@ -176,7 +176,7 @@ TEST(TerrainEdit, CreatesAndRemovesMaps) {
 TEST(TerrainEdit, EventsFireOncePerFrameForEveryRoute) {
     Scene scene;
     TerrainComponent terrain;
-    makeTerrain(terrain, "t1-events");
+    terrainEditMakeTerrain(terrain, "t1-events");
     terrain.blendMaps.resize(1);
     giveMap(terrain.blendMaps[0], "t1-events-blend", 4, 8, 0);
     terrain.foliageLayers.resize(1);
@@ -283,7 +283,7 @@ TEST(TerrainEdit, EventsFireOncePerFrameForEveryRoute) {
 TEST(TerrainEdit, EventsDeliverFromMeshSystemUpdate) {
     Scene scene;
     TerrainComponent terrain;
-    makeTerrain(terrain, "t1-events-update");
+    terrainEditMakeTerrain(terrain, "t1-events-update");
     TerrainComponentStore store(&scene, 7, terrain);
     int deliveries = 0;
     Subscription subscription = TerrainEditEvents::subscribe(&scene, [&](Entity, MapId, TexelRect) { deliveries++; });
@@ -303,7 +303,7 @@ TEST(TerrainEdit, EventsKeepScenesApart) {
     Scene sceneA;
     Scene sceneB;
     TerrainComponent terrain;
-    makeTerrain(terrain, "t1-events-scenes");
+    terrainEditMakeTerrain(terrain, "t1-events-scenes");
     TerrainComponentStore storeA(&sceneA, 5, terrain);
     TerrainComponentStore storeB(&sceneB, 5, terrain);   // the same entity number in another scene
 
@@ -348,7 +348,7 @@ TEST(TerrainEdit, ZeroCostWhenUnused) {
     scene.addComponent<TerrainComponent>(entity, {});
     scene.addComponent<MeshComponent>(entity, {});
     TerrainComponent& terrain = scene.getComponent<TerrainComponent>(entity);
-    makeTerrain(terrain, "t1-zero-cost");
+    terrainEditMakeTerrain(terrain, "t1-zero-cost");
     addCamera(scene);
     MeshSystem& system = *scene.getSystem<MeshSystem>();
     system.update(0.016);
@@ -397,7 +397,7 @@ namespace {
             component.levels = 3;
             scene.addComponent<TerrainComponent>(entity, component);
             scene.addComponent<MeshComponent>(entity, {});
-            makeTerrain(terrain(), name);
+            terrainEditMakeTerrain(terrain(), name);
             addCamera(scene);
             system().update(0.016);
         }
@@ -494,7 +494,7 @@ TEST(TerrainEdit, SplineConformSeesRevision) {
     scene.addComponent<Transform>(ground, {});
     scene.addComponent<TerrainComponent>(ground, {});
     TerrainComponent& terrain = scene.getComponent<TerrainComponent>(ground);
-    makeTerrain(terrain, "t1-conform");
+    terrainEditMakeTerrain(terrain, "t1-conform");
     terrain.needUpdateTerrain = false;
 
     const Entity road = scene.createEntity();

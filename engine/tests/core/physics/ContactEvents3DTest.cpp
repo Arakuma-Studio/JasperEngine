@@ -32,7 +32,7 @@ using namespace jasperengine;
 
 namespace {
 
-    constexpr float DT = 1.0f / 60.0f;
+    constexpr float CONTACT_DT = 1.0f / 60.0f;
 
     class ContactEvents3DTest : public ::testing::Test {
     protected:
@@ -42,7 +42,7 @@ namespace {
 
         void SetUp() override{
             updateTime = Engine::getUpdateTime();
-            Engine::setUpdateTime(DT);
+            Engine::setUpdateTime(CONTACT_DT);
             scene = std::make_unique<Scene>();
             test::disableSubSystems(*scene);
             scene->getScheduler().setEnabled("PhysicsSystem", true);
@@ -99,7 +99,7 @@ namespace {
         void steps(int count){
             for (int i = 0; i < count; i++){
                 resolveTransforms();
-                scene->fixedUpdate(DT);
+                scene->fixedUpdate(CONTACT_DT);
                 resolveTransforms();
             }
         }

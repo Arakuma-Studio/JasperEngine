@@ -104,7 +104,7 @@ namespace {
     }
 
     // a 16-bit mono PCM WAV of a sine
-    void writeTone(const fs::path& path, double seconds, double frequency = 1000.0, double amplitude = 0.5, int rate = 44100) {
+    void audioMixerWriteTone(const fs::path& path, double seconds, double frequency = 1000.0, double amplitude = 0.5, int rate = 44100) {
         fs::create_directories(path.parent_path());
         const uint32_t samples = (uint32_t)(seconds * rate);
         std::ofstream out(path, std::ios::binary);
@@ -146,7 +146,7 @@ namespace {
             AudioMixer::setMasterPaused(false);
             AudioMixer::unload();
             SoundPool::clear();
-            writeTone(root / "assets" / "tone.wav", 0.5);
+            audioMixerWriteTone(root / "assets" / "tone.wav", 0.5);
             scene = new Scene();
             // the game's main scene (its camera is the 3D listener)
             Engine::setScene(scene);
@@ -707,7 +707,7 @@ TEST_F(AudioSourceTest, TheGlobalBudgetStealsTheLeastImportantVoice) {
 }
 
 TEST_F(AudioSourceTest, IsPlayingFollowsTheVoiceForLoopsAndPitch) {
-    writeTone(root / "assets" / "short.wav", 0.1);
+    audioMixerWriteTone(root / "assets" / "short.wav", 0.1);
     AudioSource loop = source("short.wav");
     loop.setLooping(true);
     loop.setPitch(1.5f);
@@ -728,7 +728,7 @@ TEST_F(AudioSourceTest, IsPlayingFollowsTheVoiceForLoopsAndPitch) {
 }
 
 TEST_F(AudioSourceTest, EventsFireOnStartPauseStopAndTheNaturalEnd) {
-    writeTone(root / "assets" / "short.wav", 0.1);
+    audioMixerWriteTone(root / "assets" / "short.wav", 0.1);
     AudioSource sound = source("short.wav");
     std::vector<std::string> events;
     AudioSourceComponent& audio = sound.getComponent<AudioSourceComponent>();
@@ -808,7 +808,7 @@ TEST_F(AudioSourceTest, ListenerPauseSparesIgnoreListenerPauseSources) {
 }
 
 TEST_F(AudioSourceTest, AutoStreamsBigFilesAndDecodesSmallOnes) {
-    writeTone(root / "assets" / "music.wav", 12.0);   // ~1 MiB of 16-bit mono
+    audioMixerWriteTone(root / "assets" / "music.wav", 12.0);   // ~1 MiB of 16-bit mono
     ASSERT_GE(fs::file_size(root / "assets" / "music.wav"), SoundPool::streamingThreshold);
     EXPECT_EQ(SoundPool::resolveLoadType("music.wav", AudioLoadType::Auto), AudioLoadType::Streaming);
     EXPECT_EQ(SoundPool::resolveLoadType("tone.wav", AudioLoadType::Auto), AudioLoadType::DecompressOnLoad);
@@ -937,7 +937,7 @@ TEST_F(AudioMixerRuntimeTest, AnotherMixerWithAnotherMasterIdKeepsMastersVoices)
     const unsigned int handle = sfx.getComponent<AudioSourceComponent>().handle;
     // a voice the engine does not register (the HTML UI video's, the Inspector preview's)
     SoLoud::Wav loose;
-    writeTone(root / "assets" / "loose.wav", 1.0);
+    audioMixerWriteTone(root / "assets" / "loose.wav", 1.0);
     ASSERT_EQ(loose.load((root / "assets" / "loose.wav").string().c_str()), SoLoud::SO_NO_ERROR);
     loose.setLooping(true);
     const unsigned int looseHandle = AudioMixer::play("", loose, false, Vector3(0, 0, 0), 1.0f, false, 0.0);
@@ -1277,7 +1277,7 @@ TEST_F(AudioSourceTest, AHeadlessRunPlaysItsSoundsAsANormalRunDoes) {
     AudioSystem::close();
     AudioSystem::setBackend(AudioBackend::Auto);
     platformConfig().silentAudio = true;
-    writeTone(root / "assets" / "short.wav", 0.1);
+    audioMixerWriteTone(root / "assets" / "short.wav", 0.1);
     AudioSource sound = source("short.wav");
     std::vector<std::string> events;
     AudioSourceComponent& audio = sound.getComponent<AudioSourceComponent>();

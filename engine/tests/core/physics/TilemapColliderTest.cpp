@@ -17,18 +17,18 @@ using namespace jasperengine;
 
 namespace {
 
-    constexpr float M = 64.0f;       // pixels per metre, the engine's default
-    constexpr float DT = 1.0f / 60.0f;
+    constexpr float TilemapColliderM = 64.0f;       // pixels per metre, the engine's default
+    constexpr float TILEMAP_COLLIDER_DT = 1.0f / 60.0f;
     constexpr int CHUNK_CELLS = 8;
     constexpr int CHUNKS = 64;
-    constexpr int CELL = 16;
+    constexpr int TILEMAP_COLLIDER_CELL = 16;
 
-    enum TestTile : int32_t { FULL = 0, ONE_WAY = 1, SENSOR = 2 };
+    enum TilemapColliderTestTile : int32_t { FULL = 0, ONE_WAY = 1, SENSOR = 2 };
 
-    TilesetData makeTileset() {
+    TilesetData tilemapColliderMakeTileset() {
         TilesetData data;
-        data.tileWidth = CELL;
-        data.tileHeight = CELL;
+        data.tileWidth = TILEMAP_COLLIDER_CELL;
+        data.tileHeight = TILEMAP_COLLIDER_CELL;
         TilesetSource source;
         source.id = 0;
         data.sources.push_back(source);
@@ -43,11 +43,11 @@ namespace {
         return data;
     }
 
-    struct World {
+    struct TilemapColliderWorld {
         b2WorldId id;
         b2BodyId ground;
 
-        World() {
+        TilemapColliderWorld() {
             b2WorldDef def = b2DefaultWorldDef();
             def.gravity = {0.0f, -10.0f};
             id = b2CreateWorld(&def);
@@ -55,14 +55,14 @@ namespace {
             ground = b2CreateBody(id, &body);
         }
 
-        ~World() {
+        ~TilemapColliderWorld() {
             b2DestroyWorld(id);
         }
 
         void addChain(const std::vector<TilePoint>& points, bool loop) {
             std::vector<b2Vec2> vertices(points.size());
             for (size_t i = 0; i < points.size(); i++) {
-                vertices[i] = {(float)points[i].x / M, (float)points[i].y / M};
+                vertices[i] = {(float)points[i].x / TilemapColliderM, (float)points[i].y / TilemapColliderM};
             }
             b2ChainDef def = b2DefaultChainDef();
             def.points = vertices.data();
@@ -75,7 +75,7 @@ namespace {
         void addPolygon(const std::vector<TilePoint>& points, bool sensor) {
             std::vector<b2Vec2> vertices(points.size());
             for (size_t i = 0; i < points.size(); i++) {
-                vertices[i] = {(float)points[i].x / M, (float)points[i].y / M};
+                vertices[i] = {(float)points[i].x / TilemapColliderM, (float)points[i].y / TilemapColliderM};
             }
             b2Hull hull = b2ComputeHull(vertices.data(), (int)vertices.size());
             ASSERT_TRUE(b2ValidateHull(&hull));
@@ -98,20 +98,20 @@ namespace {
         b2BodyId addBox(float xPx, float yPx, float sizePx) {
             b2BodyDef def = b2DefaultBodyDef();
             def.type = b2_dynamicBody;
-            def.position = {xPx / M, yPx / M};
+            def.position = {xPx / TilemapColliderM, yPx / TilemapColliderM};
             def.enableSleep = false;
             const b2BodyId body = b2CreateBody(id, &def);
             b2ShapeDef shape = b2DefaultShapeDef();
             shape.friction = 0.0f;
             shape.enableSensorEvents = true;
-            const float half = sizePx * 0.5f / M;
+            const float half = sizePx * 0.5f / TilemapColliderM;
             const b2Polygon polygon = b2MakeBox(half, half);
             b2CreatePolygonShape(body, &shape, &polygon);
             return body;
         }
 
         void step() {
-            b2World_Step(id, DT, 4);
+            b2World_Step(id, TILEMAP_COLLIDER_DT, 4);
         }
     };
 
@@ -126,27 +126,27 @@ namespace {
     }
 
     // the box slides across the floor at a speed; returns the worst speed loss, as a fraction
-    double worstSpeedLoss(World& world, double speedPxPerSecond, double* fell = nullptr) {
-        const float floorEndPx = (float)(CHUNK_CELLS * CHUNKS * CELL);
+    double worstSpeedLoss(TilemapColliderWorld& world, double speedPxPerSecond, double* fell = nullptr) {
+        const float floorEndPx = (float)(CHUNK_CELLS * CHUNKS * TILEMAP_COLLIDER_CELL);
         const float sizePx = 20.0f;
         const b2BodyId box = world.addBox(20.0f, 32.0f + sizePx * 0.5f, sizePx);
         // settle on the floor before the push
         for (int i = 0; i < 30; i++) {
             world.step();
         }
-        const float speed = (float)speedPxPerSecond / M;
+        const float speed = (float)speedPxPerSecond / TilemapColliderM;
         b2Body_SetLinearVelocity(box, {speed, 0.0f});
         double worst = 0.0;
-        const int maxSteps = (int)(floorEndPx / M / speed / DT) + 120;
+        const int maxSteps = (int)(floorEndPx / TilemapColliderM / speed / TILEMAP_COLLIDER_DT) + 120;
         for (int i = 0; i < maxSteps; i++) {
             world.step();
             const b2Vec2 velocity = b2Body_GetLinearVelocity(box);
             worst = std::max(worst, std::fabs((double)velocity.x - speed) / speed);
             const b2Vec2 position = b2Body_GetPosition(box);
             if (fell) {
-                *fell = std::min(*fell, (double)position.y * M);
+                *fell = std::min(*fell, (double)position.y * TilemapColliderM);
             }
-            if (position.x * M > floorEndPx - 3.0f * sizePx) {
+            if (position.x * TilemapColliderM > floorEndPx - 3.0f * sizePx) {
                 break;
             }
         }
@@ -156,7 +156,7 @@ namespace {
 }
 
 TEST(TilemapColliderSlide, BoxKeepsItsSpeedAcrossSixtyFourChunks) {
-    const TilesetData tileset = makeTileset();
+    const TilesetData tileset = tilemapColliderMakeTileset();
     const TileCells cells = makeFloor();
     TileColliderSettings settings;
     settings.cells = &cells;
@@ -168,7 +168,7 @@ TEST(TilemapColliderSlide, BoxKeepsItsSpeedAcrossSixtyFourChunks) {
     }
 
     for (double pxPerSecond : {128.0, 640.0, 2560.0}) {
-        World world;
+        TilemapColliderWorld world;
         for (const TileColliderChunk& chunk : chunks) {
             world.addChunk(chunk);
         }
@@ -187,11 +187,11 @@ TEST(TilemapColliderSlide, BoxKeepsItsSpeedAcrossSixtyFourChunks) {
 TEST(TilemapColliderSlide, ChunksClosingTheirOwnOutlineCatchTheBox) {
     double worst = 0.0;
     for (double pxPerSecond : {128.0, 640.0, 2560.0}) {
-        World world;
+        TilemapColliderWorld world;
         const double topPx = 32.0;
         for (int chunk = 0; chunk < CHUNKS; chunk++) {
-            const double right = (double)((chunk + 1) * CHUNK_CELLS * CELL);
-            const double left = (double)(chunk * CHUNK_CELLS * CELL);
+            const double right = (double)((chunk + 1) * CHUNK_CELLS * TILEMAP_COLLIDER_CELL);
+            const double left = (double)(chunk * CHUNK_CELLS * TILEMAP_COLLIDER_CELL);
             world.addChain({{right, 0.0}, {right, topPx}, {left, topPx}, {left, 0.0}}, true);
         }
         const double loss = worstSpeedLoss(world, pxPerSecond);
@@ -202,7 +202,7 @@ TEST(TilemapColliderSlide, ChunksClosingTheirOwnOutlineCatchTheBox) {
 }
 
 TEST(TilemapColliderOneWay, PassesFromBelowAndBlocksFromAbove) {
-    const TilesetData tileset = makeTileset();
+    const TilesetData tileset = tilemapColliderMakeTileset();
     TileCells cells(CHUNK_CELLS);
     for (int x = 0; x < 32; x++) {
         cells.setTile(CellCoord{x, 8}, ONE_WAY);   // a platform at y = 144 px across the chunk border
@@ -214,7 +214,7 @@ TEST(TilemapColliderOneWay, PassesFromBelowAndBlocksFromAbove) {
 
     // from below: thrown up through the platform
     {
-        World world;
+        TilemapColliderWorld world;
         for (int c = 0; c < 4; c++) {
             world.addChunk(builder.build(ChunkCoord{c, 1}));
         }
@@ -223,14 +223,14 @@ TEST(TilemapColliderOneWay, PassesFromBelowAndBlocksFromAbove) {
         bool above = false;
         for (int i = 0; i < 60 && !above; i++) {
             world.step();
-            above = b2Body_GetPosition(box).y * M > 160.0f;
+            above = b2Body_GetPosition(box).y * TilemapColliderM > 160.0f;
         }
         EXPECT_TRUE(above) << "the one-way platform stopped a box coming from below";
     }
 
     // from above: it lands on the platform, on either side of the chunk border
     for (float xPx : {100.0f, 120.0f, 136.0f}) {
-        World world;
+        TilemapColliderWorld world;
         for (int c = 0; c < 4; c++) {
             world.addChunk(builder.build(ChunkCoord{c, 1}));
         }
@@ -238,12 +238,12 @@ TEST(TilemapColliderOneWay, PassesFromBelowAndBlocksFromAbove) {
         for (int i = 0; i < 120; i++) {
             world.step();
         }
-        EXPECT_NEAR(b2Body_GetPosition(box).y * M, 144.0f + 10.0f, 1.0f) << "x " << xPx;
+        EXPECT_NEAR(b2Body_GetPosition(box).y * TilemapColliderM, 144.0f + 10.0f, 1.0f) << "x " << xPx;
     }
 }
 
 TEST(TilemapColliderSensors, FireEventsOnABodyPassingThrough) {
-    const TilesetData tileset = makeTileset();
+    const TilesetData tileset = tilemapColliderMakeTileset();
     TileCells cells(CHUNK_CELLS);
     for (int x = 2; x < 6; x++) {
         cells.setTile(CellCoord{x, 1}, SENSOR);
@@ -256,7 +256,7 @@ TEST(TilemapColliderSensors, FireEventsOnABodyPassingThrough) {
     EXPECT_TRUE(chunk.loops.empty());
     EXPECT_TRUE(chunk.chains.empty());
 
-    World world;
+    TilemapColliderWorld world;
     world.addChunk(chunk);
     const b2BodyId box = world.addBox(32.0f, 100.0f, 10.0f);
     int begun = 0;

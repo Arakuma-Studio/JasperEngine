@@ -18,7 +18,7 @@ namespace ta = jasperengine::titleart;
 
 namespace {
 
-    bool has(const std::vector<std::string>& terms, const std::string& term) {
+    bool searchTermsHas(const std::vector<std::string>& terms, const std::string& term) {
         return std::find(terms.begin(), terms.end(), term) != terms.end();
     }
 
@@ -63,17 +63,17 @@ TEST(SearchTermsTest, ParsesVersionOneWithFoldedSymmetricGroups) {
 
     const SearchTerms& terms = SearchTerms::builtin();
     // stored folded: フチ is looked up as ふち, ボカシ and ぼかし are one term
-    EXPECT_TRUE(has(terms.synonymsOf(foldForSearch("フチ")), "rim"));
-    EXPECT_TRUE(has(terms.synonymsOf(foldForSearch("フチ")), "outline"));
-    EXPECT_TRUE(has(terms.synonymsOf("rim"), foldForSearch("フチ")));     // both directions
-    EXPECT_TRUE(has(terms.synonymsOf(foldForSearch("ボカシ")), "blur"));
-    EXPECT_TRUE(has(terms.synonymsOf("blur"), "ぼかし"));
-    EXPECT_TRUE(has(terms.synonymsOf("光彩"), "glow"));
-    EXPECT_TRUE(has(terms.synonymsOf("縦書き"), "vertical"));
-    EXPECT_TRUE(has(terms.synonymsOf("長体"), "horizontal scale"));
-    EXPECT_TRUE(has(terms.synonymsOf("縦中横"), "tate chu yoko"));
-    EXPECT_TRUE(has(terms.synonymsOf("dry brush"), "かすれ"));            // a phrase
-    EXPECT_FALSE(has(terms.synonymsOf("rim"), "rim"));                     // not itself
+    EXPECT_TRUE(searchTermsHas(terms.synonymsOf(foldForSearch("フチ")), "rim"));
+    EXPECT_TRUE(searchTermsHas(terms.synonymsOf(foldForSearch("フチ")), "outline"));
+    EXPECT_TRUE(searchTermsHas(terms.synonymsOf("rim"), foldForSearch("フチ")));     // both directions
+    EXPECT_TRUE(searchTermsHas(terms.synonymsOf(foldForSearch("ボカシ")), "blur"));
+    EXPECT_TRUE(searchTermsHas(terms.synonymsOf("blur"), "ぼかし"));
+    EXPECT_TRUE(searchTermsHas(terms.synonymsOf("光彩"), "glow"));
+    EXPECT_TRUE(searchTermsHas(terms.synonymsOf("縦書き"), "vertical"));
+    EXPECT_TRUE(searchTermsHas(terms.synonymsOf("長体"), "horizontal scale"));
+    EXPECT_TRUE(searchTermsHas(terms.synonymsOf("縦中横"), "tate chu yoko"));
+    EXPECT_TRUE(searchTermsHas(terms.synonymsOf("dry brush"), "かすれ"));            // a phrase
+    EXPECT_FALSE(searchTermsHas(terms.synonymsOf("rim"), "rim"));                     // not itself
     EXPECT_TRUE(terms.synonymsOf("zzz").empty());
 
     EXPECT_FALSE(SearchTerms::parse(R"({"version": 2, "groups": [], "names_ja": {}})", parsed, &error));

@@ -37,9 +37,9 @@ using namespace animatortest;
 
 namespace {
 
-    constexpr float kDt = 1.0f / 60.0f;
+    constexpr float kAnimatorSystemDt = 1.0f / 60.0f;
 
-    std::string fixturePath(const std::string& name){
+    std::string animatorSystemFixturePath(const std::string& name){
         return std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/" + name;
     }
 
@@ -70,7 +70,7 @@ namespace {
         }
     };
 
-    ClipTrackData propertyTrack(const std::string& path, const std::string& component, const std::string& name, std::vector<ClipKey> keys){
+    ClipTrackData animatorSystemPropertyTrack(const std::string& path, const std::string& component, const std::string& name, std::vector<ClipKey> keys){
         ClipTrackData t;
         t.path = path;
         t.channel = ClipChannel::Property;
@@ -80,7 +80,7 @@ namespace {
         return t;
     }
 
-    ControllerDef oneState(const std::string& clip, AnimatorStateLoop loop = AnimatorStateLoop::Inherit){
+    ControllerDef animatorSystemOneState(const std::string& clip, AnimatorStateLoop loop = AnimatorStateLoop::Inherit){
         StateDef s = state("Play", clip);
         s.loop = loop;
         return controller({}, {s});
@@ -110,7 +110,7 @@ TEST_F(AnimatorSystemTest, MatchesThePlayer){
     AnimationPlayer player(&scene, twin);
     player.addClip(path, "walk");
     player.setPlayAutomatically(true);
-    animator(controllerFile("c", oneState(path)));
+    animator(controllerFile("c", animatorSystemOneState(path)));
     // binary-exact steps: both players reach the loop's end at exactly the same time
     const float dt = 1.0f / 64.0f;
     for (int i = 0; i < 90; i++){
@@ -165,7 +165,7 @@ TEST_F(AnimatorSystemTest, LayersWithMaskAndAdditive){
     EXPECT_NEAR(position(head).y, 0.4f + 0.25f, 1e-5f);
     Animator object(&scene, root);
     object.setLayerWeight(2, 0.0f);
-    step(kDt);
+    step(kAnimatorSystemDt);
     EXPECT_EQ(position(head).y, 0.4f) << "an additive layer at weight 0 changes nothing";
     EXPECT_EQ(object.getLayerIndex("Upper"), 1);
 }
@@ -184,15 +184,15 @@ TEST_F(AnimatorSystemTest, PropertyTracksPlayOnTheAnimator){
 
     ClipData glow;
     glow.wrap = ClipWrapMode::ClampForever;
-    glow.tracks = {propertyTrack("Lamp", "light", "intensity", {key(0, {1}), key(1, {3})}),
-                   propertyTrack("Box", "gameobject", "active", {key(0, {1}), key(0.5f, {0})})};
+    glow.tracks = {animatorSystemPropertyTrack("Lamp", "light", "intensity", {key(0, {1}), key(1, {3})}),
+                   animatorSystemPropertyTrack("Box", "gameobject", "active", {key(0, {1}), key(0.5f, {0})})};
     ClipData bright;
     bright.wrap = ClipWrapMode::Loop;
-    bright.tracks = {propertyTrack("Lamp", "light", "intensity", {key(0, {5}), key(1, {5})})};
+    bright.tracks = {animatorSystemPropertyTrack("Lamp", "light", "intensity", {key(0, {5}), key(1, {5})})};
 
     AvatarMaskDef mask;
     mask.paths = {{"Hips", 1.0f}};
-    ControllerDef def = oneState(clip("glow", glow));
+    ControllerDef def = animatorSystemOneState(clip("glow", glow));
     LayerDef top;
     top.name = "Bright";
     top.weight = 0.0f;
@@ -219,7 +219,7 @@ TEST_F(AnimatorSystemTest, PropertyTracksPlayOnTheAnimator){
 
     // the layer at weight 0 changes nothing
     object.setLayerWeight(1, 0.0f);
-    step(kDt);
+    step(kAnimatorSystemDt);
     EXPECT_NEAR(intensity(), 3.0f, 1e-5f);
 }
 
@@ -330,25 +330,25 @@ TEST_F(AnimatorSystemTest, EventsLeaderOnlyAllAndSeek){
 // AC8: one Animator driving three skinned meshes of two models fires an event once per pass
 TEST_F(AnimatorSystemTest, EventsOncePerAnimator){
     Model first(&scene);
-    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(first.getEntity(), fixturePath("hero_tpose.gltf"), false, false, false));
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(first.getEntity(), animatorSystemFixturePath("hero_tpose.gltf"), false, false, false));
     scene.getComponent<ModelComponent>(first.getEntity()).needUpdateModel = false;
     Model second(&scene);
-    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(second.getEntity(), fixturePath("robot_apose.gltf"), false, false, false));
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(second.getEntity(), animatorSystemFixturePath("robot_apose.gltf"), false, false, false));
     scene.getComponent<ModelComponent>(second.getEntity()).needUpdateModel = false;
     Model third(&scene);
-    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(third.getEntity(), fixturePath("hero_tpose.gltf"), false, false, false));
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(third.getEntity(), animatorSystemFixturePath("hero_tpose.gltf"), false, false, false));
     scene.getComponent<ModelComponent>(third.getEntity()).needUpdateModel = false;
     scene.addEntityChild(root, first.getEntity(), false);
     scene.addEntityChild(root, second.getEntity(), false);
     scene.addEntityChild(root, third.getEntity(), false);
     ClipData data = slide("Hips", 1.0f);
     data.events = {event(0.25f, "hit")};
-    animator(controllerFile("c", oneState(clip("hit", data))));
+    animator(controllerFile("c", animatorSystemOneState(clip("hit", data))));
     listen();
     step(0.0);
     ASSERT_TRUE(instance().bound);
     EXPECT_EQ(instance().rig.skins.size(), 3u);
-    for (int i = 0; i < 300; i++) step(kDt);
+    for (int i = 0; i < 300; i++) step(kAnimatorSystemDt);
     EXPECT_EQ(count("hit"), 5u) << "300 frames = 5 loops";
 }
 
@@ -356,12 +356,12 @@ TEST_F(AnimatorSystemTest, RootMotionAcrossLoopWraps){
     ClipData data;
     data.wrap = ClipWrapMode::Loop;
     data.tracks = {track("Hips", ClipChannel::Position, {key(0, {0, 1, 0}), key(0.5f, {0, 1.2f, 1}), key(1, {0, 1, 2})})};
-    AnimatorComponent& component = animator(controllerFile("c", oneState(clip("walk", data))));
+    AnimatorComponent& component = animator(controllerFile("c", animatorSystemOneState(clip("walk", data))));
     component.applyRootMotion = true;
     step(0.0);
     float previous = position(root).z;
     for (int i = 0; i < 600; i++){
-        step(kDt);
+        step(kAnimatorSystemDt);
         const float z = position(root).z;
         EXPECT_GE(z, previous - 1e-5f) << "no backward step at a wrap (frame " << i << ")";
         previous = z;
@@ -379,7 +379,7 @@ TEST_F(AnimatorSystemTest, RootMotionConfigurableBoneAndBakeFlags){
     data.tracks = {track("Hips", ClipChannel::Position, {key(0, {0, 1, 0}), key(1, {0, 1, 5})}),
                    track("Mover", ClipChannel::Position, {key(0, {0, 0, 0}), key(1, {3, 2, 0})})};
     data.unknownKeys.push_back({"root_motion", "{\"bone\": \"Mover\", \"bake_position_y\": false}"});
-    AnimatorComponent& component = animator(controllerFile("c", oneState(clip("move", data))));
+    AnimatorComponent& component = animator(controllerFile("c", animatorSystemOneState(clip("move", data))));
     component.applyRootMotion = true;
     step(0.0);
     step(0.25, 4);
@@ -391,7 +391,7 @@ TEST_F(AnimatorSystemTest, RootMotionConfigurableBoneAndBakeFlags){
 }
 
 TEST_F(AnimatorSystemTest, OnAnimatorMoveReceivesTheDelta){
-    AnimatorComponent& component = animator(controllerFile("c", oneState(clip("walk", slide("Hips", 1.0f)))));
+    AnimatorComponent& component = animator(controllerFile("c", animatorSystemOneState(clip("walk", slide("Hips", 1.0f)))));
     component.applyRootMotion = true;
     Vector3 total(0, 0, 0);
     component.onAnimatorMove.add("test", [&](Vector3 delta, Quaternion){ total = total + delta; });
@@ -416,7 +416,7 @@ TEST_F(AnimatorSystemTest, MontageSectionsChainJumpAndInterrupt){
     own.function = "onWindup";
     montage.events = {own};
     const std::string path = montageFile("attack", montage);
-    animator(controllerFile("c", oneState(clip("idle", hold("Hips", Vector3(0, 1, 0))))));
+    animator(controllerFile("c", animatorSystemOneState(clip("idle", hold("Hips", Vector3(0, 1, 0))))));
     listen();
     std::vector<std::pair<std::string, bool>> ended;
     scene.getComponent<AnimatorComponent>(root).onMontageEnded.add("test", [&](const std::string& m, bool interrupted){
@@ -451,7 +451,7 @@ TEST_F(AnimatorSystemTest, MontageSectionsChainJumpAndInterrupt){
     // a second montage on the slot blends the first out, interrupted
     ended.clear();
     ASSERT_TRUE(object.playMontage(path));
-    step(kDt, 3);
+    step(kAnimatorSystemDt, 3);
     ASSERT_GE(ended.size(), 1u);
     EXPECT_TRUE(ended[0].second);
 }
@@ -464,7 +464,7 @@ TEST_F(AnimatorSystemTest, ExposedWritesOnlyListedBonesAndAttachments){
                    track("Hips/Spine", ClipChannel::Position, {key(0, {0, 0.3f, 0}), key(1, {1, 0.3f, 0})}),
                    track("Hips/Spine/Head", ClipChannel::Position, {key(0, {0, 0.4f, 0}), key(1, {1, 0.4f, 0})}),
                    track("Hips/Leg", ClipChannel::Position, {key(0, {0.1f, -0.5f, 0}), key(1, {1, -0.5f, 0})})};
-    AnimatorComponent& component = animator(controllerFile("c", oneState(clip("all", data))));
+    AnimatorComponent& component = animator(controllerFile("c", animatorSystemOneState(clip("all", data))));
     component.writeBones = AnimatorWriteBones::Exposed;
     component.exposedBones = {"Hips/Leg"};
     step(0.0);
@@ -481,13 +481,13 @@ TEST_F(AnimatorSystemTest, ExposedWritesOnlyListedBonesAndAttachments){
 // AC11: the Animator's skin matrices are what the render system computes from the bone transforms
 TEST_F(AnimatorSystemTest, SkinMatricesMatchTheRenderSystem){
     Model model(&scene);
-    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), fixturePath("hero_animated.gltf"), false, false, false));
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), animatorSystemFixturePath("hero_animated.gltf"), false, false, false));
     scene.getComponent<ModelComponent>(model.getEntity()).needUpdateModel = false;
     const Entity hero = model.getEntity();
     scene.getComponent<Transform>(hero).position = Vector3(2, 0, -1);
     scene.getComponent<Transform>(hero).rotation = aboutY(30);
-    const std::string walk = fixturePath("hero_animated.gltf") + "#Walk";
-    animator(controllerFile("c", oneState(walk)), hero);
+    const std::string walk = animatorSystemFixturePath("hero_animated.gltf") + "#Walk";
+    animator(controllerFile("c", animatorSystemOneState(walk)), hero);
     step(0.0);
     ASSERT_TRUE(instance(hero).bound);
     ASSERT_FALSE(instance(hero).rig.skins.empty());
@@ -514,7 +514,7 @@ TEST_F(AnimatorSystemTest, SkinMatricesMatchTheRenderSystem){
 
 TEST_F(AnimatorSystemTest, CullUpdateTransformsAdvancesWithoutWriting){
     Model model(&scene);
-    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), fixturePath("hero_animated.gltf"), false, false, false));
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), animatorSystemFixturePath("hero_animated.gltf"), false, false, false));
     scene.getComponent<ModelComponent>(model.getEntity()).needUpdateModel = false;
     const Entity hero = model.getEntity();
     const Entity camera = scene.createEntity();
@@ -529,7 +529,7 @@ TEST_F(AnimatorSystemTest, CullUpdateTransformsAdvancesWithoutWriting){
     data.wrap = ClipWrapMode::Loop;
     data.tracks = {track("Hero/mixamorig:Hips", ClipChannel::Position, {key(0, {0, 1, 0}), key(1, {1, 1, 0})})};
     data.events = {event(0.5f, "tick")};
-    AnimatorComponent& component = animator(controllerFile("c", oneState(clip("cull", data))), hero);
+    AnimatorComponent& component = animator(controllerFile("c", animatorSystemOneState(clip("cull", data))), hero);
     component.cullingMode = AnimatorCullingMode::CullUpdateTransforms;
     listen(hero);
     step(0.0);
@@ -592,11 +592,11 @@ TEST_F(AnimatorSystemTest, ClipOverridesHotReloadAndOwnership){
     AnimatorComponent& component = animator(path);
     component.clipOverrides = {{a, b}};
     step(0.0);
-    step(kDt);
+    step(kAnimatorSystemDt);
     EXPECT_NEAR(position(hips).x, 2.0f, 1e-6f) << "the override plays";
     component.clipOverrides.clear();
     component.needsLoad = true;
-    step(kDt);
+    step(kAnimatorSystemDt);
     EXPECT_NEAR(position(hips).x, 1.0f, 1e-6f);
     step(0.3);
     const double time = instance().layers[0].current.time;
@@ -610,9 +610,9 @@ TEST_F(AnimatorSystemTest, ClipOverridesHotReloadAndOwnership){
     // a second Animator on the hierarchy below drives nothing
     animtest::takeWarnings();
     // (its root bone is the hips the first one animates)
-    const std::string c2 = controllerFile("c2", oneState(clip("spine", hold("", Vector3(0, 9, 0)))));
+    const std::string c2 = controllerFile("c2", animatorSystemOneState(clip("spine", hold("", Vector3(0, 9, 0)))));
     animator(c2, hips);
-    step(kDt);
+    step(kAnimatorSystemDt);
     EXPECT_FALSE(instance(hips).bound);
     EXPECT_TRUE(instance(hips).bindFailed);
 }
@@ -661,7 +661,7 @@ TEST(AnimatorSystemDeterminism, ParallelEqualsSerial){
             for (size_t i = 0; i < roots.size(); i++){
                 Animator(&f.scene, roots[i]).setFloat("Speed", 0.5f + 0.5f * std::sin(0.01f * (float)(frame + (int)i)));
             }
-            f.step(kDt);
+            f.step(kAnimatorSystemDt);
         }
         auto transforms = f.scene.getComponentArray<Transform>();
         for (size_t i = 0; i < transforms->size(); i++){
@@ -699,9 +699,9 @@ TEST(AnimatorSystemAllocations, ZeroAllocationsInTheSteadyState){
     size_t fired = 0;
     component.onEvent.add("test", [&](const AnimationEvent&){ fired++; });
     f.step(0.0);
-    for (int i = 0; i < 120; i++) f.step(kDt);
+    for (int i = 0; i < 120; i++) f.step(kAnimatorSystemDt);
     testsupport::AllocationCountScope scope;
-    for (int i = 0; i < 600; i++) f.step(kDt);
+    for (int i = 0; i < 600; i++) f.step(kAnimatorSystemDt);
     EXPECT_EQ(scope.count(), 0u);
     EXPECT_GE(fired, 10u) << "events fired during the measurement";
 }
@@ -714,8 +714,8 @@ TEST_F(AnimatorSystemTest, PlayerScenesUnchanged){
     player.setPlayAutomatically(true);
     std::vector<Vector3> withSystem;
     for (int i = 0; i < 240; i++){
-        scene.getSystem<ActionSystem>()->update(kDt);
-        step(kDt);
+        scene.getSystem<ActionSystem>()->update(kAnimatorSystemDt);
+        step(kAnimatorSystemDt);
         withSystem.push_back(position(hips));
     }
     Scene other;
@@ -732,7 +732,7 @@ TEST_F(AnimatorSystemTest, PlayerScenesUnchanged){
     otherPlayer.addClip(path, "walk");
     otherPlayer.setPlayAutomatically(true);
     for (int i = 0; i < 240; i++){
-        other.getSystem<ActionSystem>()->update(kDt);
+        other.getSystem<ActionSystem>()->update(kAnimatorSystemDt);
         const Vector3 p = other.getComponent<Transform>(otherHips).position;
         EXPECT_EQ(std::memcmp(&p, &withSystem[(size_t)i], sizeof(Vector3)), 0) << "frame " << i;
     }
@@ -742,7 +742,7 @@ TEST_F(AnimatorSystemTest, PlayerScenesUnchanged){
 // document commit or the hot reload does) evaluates the new controller, the runtime kept
 TEST_F(AnimatorSystemTest, PreviewPicksUpAnEditedController){
     const std::string clipPath = clip("slide", slide("Hips", 1.0f));
-    ControllerDef def = oneState(clipPath);
+    ControllerDef def = animatorSystemOneState(clipPath);
     const std::string path = controllerFile("edited", def);
     animator(path);
     std::string error;

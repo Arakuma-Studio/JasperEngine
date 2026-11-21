@@ -32,7 +32,7 @@ namespace {
     }
 
     // the pixels of a live's front image
-    Pixels frontPixels(const TitleArtLive& live){
+    Pixels runtimeFrontPixels(const TitleArtLive& live){
         const TitleDisplayImage& front = live.front();
         Pixels out;
         out.width = front.width;
@@ -48,7 +48,7 @@ namespace {
     }
 
     // frames of the scheduler over one live until it has no work; the frames it took
-    int runFrames(TitleArtLive& live, const TitleJobFactory& factory, uint32_t budgetUs, int maxFrames = std::numeric_limits<int>::max()){
+    int runtimeRunFrames(TitleArtLive& live, const TitleJobFactory& factory, uint32_t budgetUs, int maxFrames = std::numeric_limits<int>::max()){
         TitleLiveLimits limits;
         double clock = 0.0;
         const auto start = std::chrono::steady_clock::now();
@@ -67,9 +67,9 @@ namespace {
     }
 
     // a budget no step reaches: each job runs to its end in a frame (once its programs are built)
-    constexpr uint32_t UNLIMITED = 1000000000u;
+    constexpr uint32_t RUNTIME_UNLIMITED = 1000000000u;
 
-    TitleArtLiveState state(){
+    TitleArtLiveState runtimeState(){
         TitleArtLiveState s;
         s.label = "TitleArt/Test";
         return s;
@@ -97,11 +97,11 @@ TEST_F(TitleArtRuntimeGpu, RealtimeMatchesBake) {
     // first: the title's images are its pool's targets, given back when the title goes)
     auto fresh = makeRenderer();
     TitleArtLive live("assets/test.titleart", TitleArtRenderMode::REALTIME, doc, 1);
-    live.setState(state(), 1, {});
-    const int frames = runFrames(live, makeRendererJobFactory(*fresh, &assets), 300);
+    live.setState(runtimeState(), 1, {});
+    const int frames = runtimeRunFrames(live, makeRendererJobFactory(*fresh, &assets), 300);
     ASSERT_TRUE(live.front().valid()) << live.status().error;
     EXPECT_GT(frames, 1) << "the render was spread over frames";
-    EXPECT_TRUE(identical(frontPixels(live), baked)) << "R10: a Realtime title shows what its bake shows";
+    EXPECT_TRUE(identical(runtimeFrontPixels(live), baked)) << "R10: a Realtime title shows what its bake shows";
     EXPECT_EQ(live.status().pixelPath, std::string(SystemRender::getFeatures().renderRGBA16F && SystemRender::getFeatures().filterRGBA16F ? "float" : "rgba8"));
 }
 
@@ -111,13 +111,13 @@ TEST_F(TitleArtRuntimeGpu, DoubleBuffer) {
     auto doc = twoShapes("#2040ff");
     const TitleJobFactory factory = makeRendererJobFactory(*renderer, &assets);
     TitleArtLive live("assets/test.titleart", TitleArtRenderMode::REALTIME, doc, 1);
-    live.setState(state(), 1, {});
-    runFrames(live, factory, UNLIMITED);
+    live.setState(runtimeState(), 1, {});
+    runtimeRunFrames(live, factory, RUNTIME_UNLIMITED);
     ASSERT_TRUE(live.front().valid());
-    const Pixels first = frontPixels(live);
+    const Pixels first = runtimeFrontPixels(live);
 
     // a colour override renders into its own target: every frame until the swap shows the old image
-    live.setState(state(), 2, {FieldOverride{"00000001", "style.face.fill.color", Json("#20ff40")}});
+    live.setState(runtimeState(), 2, {FieldOverride{"00000001", "style.face.fill.color", Json("#20ff40")}});
     TitleLiveLimits limits;
     double clock = 0.0;
     int frames = 0;
@@ -126,14 +126,14 @@ TEST_F(TitleArtRuntimeGpu, DoubleBuffer) {
         RuntimeShaderCompiler::beginFrame();
         TitleArtScheduler::schedule({&live}, factory, 200, 1.0);
         SystemRender::commit();
-        if (live.front().hash == 1u) { EXPECT_TRUE(identical(frontPixels(live), first)) << "R17: never a half-made image, frame " << frames; }
+        if (live.front().hash == 1u) { EXPECT_TRUE(identical(runtimeFrontPixels(live), first)) << "R17: never a half-made image, frame " << frames; }
         size_t cache = 0;
         clock += 1.0 / 60.0;
         live.endFrame(clock, 1.0 / 60.0, limits, cache);
         frames++;
     }
     ASSERT_EQ(live.front().hash, 2u);
-    const Pixels second = frontPixels(live);
+    const Pixels second = runtimeFrontPixels(live);
     EXPECT_FALSE(identical(first, second));
     RenderRequest edited;
     edited.doc = doc;
@@ -143,13 +143,13 @@ TEST_F(TitleArtRuntimeGpu, DoubleBuffer) {
 
     // R14: back to the first state from the cache, no step
     const uint64_t steps = live.stepsRun();
-    live.setState(state(), 1, {});
+    live.setState(runtimeState(), 1, {});
     EXPECT_FALSE(live.hasWork());
     size_t cache = 0;
     live.endFrame(clock + 0.1, 0.1, limits, cache);
     EXPECT_EQ(live.front().hash, 1u);
     EXPECT_EQ(live.stepsRun(), steps);
-    EXPECT_TRUE(identical(frontPixels(live), first));
+    EXPECT_TRUE(identical(runtimeFrontPixels(live), first));
 }
 
 TEST_F(TitleArtRuntimeGpu, FailedTargetsKeepThePreviousImage) {
@@ -158,19 +158,19 @@ TEST_F(TitleArtRuntimeGpu, FailedTargetsKeepThePreviousImage) {
     auto doc = twoShapes("#2040ff");
     const TitleJobFactory factory = makeRendererJobFactory(*renderer, &assets);
     TitleArtLive live("assets/test.titleart", TitleArtRenderMode::REALTIME, doc, 1);
-    live.setState(state(), 1, {});
-    runFrames(live, factory, UNLIMITED);
+    live.setState(runtimeState(), 1, {});
+    runtimeRunFrames(live, factory, RUNTIME_UNLIMITED);
     ASSERT_TRUE(live.front().valid());
-    const Pixels first = frontPixels(live);
-    TitleArtLiveState failing = state();
+    const Pixels first = runtimeFrontPixels(live);
+    TitleArtLiveState failing = runtimeState();
     failing.testFlags = TITLE_ART_TEST_FAIL_TARGETS;
     live.setState(failing, 2, {});
-    runFrames(live, factory, UNLIMITED, 5);
+    runtimeRunFrames(live, factory, RUNTIME_UNLIMITED, 5);
     const TitleArtLiveStatus s = live.status();
     EXPECT_TRUE(s.failed);
     EXPECT_NE(s.error.find("out_of_target_memory"), std::string::npos) << s.error;
     EXPECT_EQ(live.front().hash, 1u) << "R19: the previous image stays";
-    EXPECT_TRUE(identical(frontPixels(live), first));
+    EXPECT_TRUE(identical(runtimeFrontPixels(live), first));
 }
 
 TEST_F(TitleArtRuntimeGpu, ForcedRgba8) {
@@ -179,17 +179,17 @@ TEST_F(TitleArtRuntimeGpu, ForcedRgba8) {
     auto doc = twoShapes("#2040ff");
     const TitleJobFactory factory = makeRendererJobFactory(*renderer, &assets);
     TitleArtLive floatLive("assets/test.titleart", TitleArtRenderMode::REALTIME, doc, 1);
-    floatLive.setState(state(), 1, {});
-    runFrames(floatLive, factory, UNLIMITED);
+    floatLive.setState(runtimeState(), 1, {});
+    runtimeRunFrames(floatLive, factory, RUNTIME_UNLIMITED);
     TitleArtLive rgba8("assets/test.titleart", TitleArtRenderMode::REALTIME, doc, 1);
-    TitleArtLiveState forced = state();
+    TitleArtLiveState forced = runtimeState();
     forced.testFlags = TITLE_ART_TEST_NO_FLOAT_TARGETS;
     rgba8.setState(forced, 2, {});
-    runFrames(rgba8, factory, UNLIMITED);
+    runtimeRunFrames(rgba8, factory, RUNTIME_UNLIMITED);
     ASSERT_TRUE(floatLive.front().valid() && rgba8.front().valid());
     EXPECT_EQ(rgba8.status().pixelPath, "rgba8") << "R21: the path is readable";
     // S80 §6.3's tolerance of the RGBA8 path against the float one
-    const Difference d = compare(frontPixels(floatLive), frontPixels(rgba8));
+    const Difference d = compare(runtimeFrontPixels(floatLive), runtimeFrontPixels(rgba8));
     EXPECT_LE(d.mean, 1.0);
     EXPECT_LE(d.max, 48.0);
     EXPECT_LE(d.overFraction, 0.005);

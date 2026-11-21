@@ -37,7 +37,7 @@ namespace {
         return names;
     }
 
-    uint8_t targetBit(BuildPlatform platform) {
+    uint8_t targetPlatformsCmdTargetBit(BuildPlatform platform) {
         return static_cast<uint8_t>(1u << static_cast<unsigned>(platform));
     }
 }
@@ -59,7 +59,7 @@ TEST(TargetPlatformsCmd, UndoRedo) {
     // the history owns the command from here (and frees one that fails)
     const bool added = project.getProjectCommandHistory()->addCommand(command);
     ASSERT_TRUE(added) << "player.target_platforms refused";
-    EXPECT_EQ(project.getTargetPlatforms(), targetBit(BuildPlatform::Android) | targetBit(BuildPlatform::IOS));
+    EXPECT_EQ(project.getTargetPlatforms(), targetPlatformsCmdTargetBit(BuildPlatform::Android) | targetPlatformsCmdTargetBit(BuildPlatform::IOS));
     EXPECT_EQ(savedTargets(root), "android,ios") << "saved at once, in BuildPlatform order";
 
     ASSERT_TRUE(project.getProjectCommandHistory()->undo());
@@ -67,12 +67,12 @@ TEST(TargetPlatformsCmd, UndoRedo) {
     EXPECT_EQ(savedTargets(root), "") << "all six again: the key is gone";
 
     ASSERT_TRUE(project.getProjectCommandHistory()->redo());
-    EXPECT_EQ(project.getTargetPlatforms(), targetBit(BuildPlatform::Android) | targetBit(BuildPlatform::IOS));
+    EXPECT_EQ(project.getTargetPlatforms(), targetPlatformsCmdTargetBit(BuildPlatform::Android) | targetPlatformsCmdTargetBit(BuildPlatform::IOS));
     EXPECT_EQ(savedTargets(root), "android,ios");
 
     // the last target cannot go: refused, nothing changes
     ProjectSettingsValuesCmd empty(&project, {{"player.target_platforms", editor::mcp::Json::array()}}, "Set Target Platforms");
     EXPECT_FALSE(empty.execute());
     EXPECT_NE(empty.failure().find("non-empty list of windows, linux, macos, android, ios, web"), std::string::npos) << empty.failure();
-    EXPECT_EQ(project.getTargetPlatforms(), targetBit(BuildPlatform::Android) | targetBit(BuildPlatform::IOS));
+    EXPECT_EQ(project.getTargetPlatforms(), targetPlatformsCmdTargetBit(BuildPlatform::Android) | targetPlatformsCmdTargetBit(BuildPlatform::IOS));
 }
