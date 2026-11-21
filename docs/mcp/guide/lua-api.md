@@ -1731,7 +1731,7 @@ runner.onEnd = function(r, result) Log.print("ended: " .. result) end
 runner:start("greet", {player = "Ana"})                          -- {player} in a text, or in an expression
 runner:choose(1)                                                  -- or runner:advance() on a line without choices
 Dialogue.variables.set("gold", 20)
-local saved = Dialogue.variables.toTable()                       -- values and visit counts, for a save
+Dialogue.variables.save("slot1")                                 -- values and visits as SaveGame namespace "dialogue"; load(slot)
 ```
 
 - `state` is `idle`, `line`, `waiting` or `ended`; `isRunning`, `currentNode`, `currentLine` (the
