@@ -31,8 +31,8 @@ namespace jasperengine {
     // project's or the scene's value in: render scale and MSAA (RenderSystem's post-processing
     // tiers), the shadow tier and distance, the LOD biases (LOD selection multiplies lodBias()
     // into each mesh's, contract C4), Lit Quality, Texture Quality, bloom, SSAO, volumetrics, the
-    // target frame rate, pixel lights and the particle budget. With no tier, no thermal step and
-    // no memory pressure every getter returns its input (one branch).
+    // target frame rate, pixel lights, the particle budget and Cavity's World samples. With no
+    // tier, no thermal step and no memory pressure every getter returns its input (one branch).
     //
     // Main thread. getRevision() goes up with every change, so a consumer that caches what it
     // resolved (RenderSystem's post-processing tiers, the instance views' LODs) checks it once a

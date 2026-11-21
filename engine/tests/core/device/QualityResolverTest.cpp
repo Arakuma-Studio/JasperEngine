@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+#include <optional>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -57,6 +59,7 @@ TEST_F(QualityResolverTest, NoTierChangesNothing){
     EXPECT_EQ(QualityResolver::targetFrameRate(-1), -1);
     EXPECT_EQ(QualityResolver::textureQuality(1), 1);
     EXPECT_EQ(QualityResolver::particleBudget(1000u), 1000u);
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(16), 16);
 }
 
 // R3's defaults: Low halves, Low shadows, LOD Bias 0.5, no volumetrics or SSAO; Medium 0.85;
@@ -299,4 +302,56 @@ TEST_F(QualityResolverTest, SettingsJsonRoundTrip){
     // a newer player's cell is ignored
     ASSERT_TRUE(DeviceSettings::fromJson("{\"tiers\": {\"mobile\": {\"low\": {\"future_cell\": 1}}}}", back, error)) << error;
     EXPECT_EQ(back, DeviceSettings());
+}
+
+// S92: Cavity's World samples are as authored on High and Ultra, at most 8 on Medium and 4 on Low
+// (a cap: never raised, never off); a Critical thermal step takes the tier below's cap; the cell
+// is 4, 8 or 16, and a project saved before it gets the defaults
+TEST_F(QualityResolverTest, CavitySamplesCappedByTier){
+    QualityResolver::setSettings(mobileOnly());
+    QualityResolver::setPlatformGroup(DevicePlatformGroup::Mobile);
+
+    QualityResolver::setTier(DeviceTier::Low);
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(16), 4);
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(8), 4);
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(4), 4);
+    QualityResolver::setTier(DeviceTier::Medium);
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(16), 8);
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(8), 8);
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(4), 4) << "a cap never raises the scene's value";
+    for (DeviceTier tier : {DeviceTier::High, DeviceTier::Ultra}){
+        QualityResolver::setTier(tier);
+        EXPECT_EQ(QualityResolver::cavityWorldSamples(16), 16);
+    }
+
+    QualityResolver::setTier(DeviceTier::High);
+    QualityResolver::forceThermalResponse(ThermalState::Critical);
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(16), 8) << "Critical: Medium's post-processing cells";
+    QualityResolver::resetResponse();
+    EXPECT_EQ(QualityResolver::cavityWorldSamples(16), 16);
+
+    float value = 0.0f;
+    std::string error;
+    EXPECT_FALSE(DeviceOverrides::validate(DeviceOverride::Cavity, 6.0f, error));
+    EXPECT_NE(error.find("4, 8 or 16"), std::string::npos) << error;
+    EXPECT_TRUE(DeviceOverrides::parse(DeviceOverride::Cavity, "16", value, error)) << error;
+    EXPECT_FLOAT_EQ(value, 16.0f);
+    DeviceOverride field;
+    ASSERT_TRUE(DeviceOverrides::fromKey("cavity_samples", field));
+    EXPECT_EQ(field, DeviceOverride::Cavity);
+
+    // the defaults are not written; an older project's table (no cavity_samples) gets them
+    EXPECT_EQ(DeviceSettings().toJson(), "{}");
+    DeviceSettings old;
+    ASSERT_TRUE(DeviceSettings::fromJson("{\"tiers\": {\"mobile\": {\"low\": {\"render_scale\": 0.6}}}}", old, error)) << error;
+    EXPECT_EQ(old.tier(DevicePlatformGroup::Mobile, DeviceTier::Low).get(DeviceOverride::Cavity), std::optional<float>(4.0f));
+    EXPECT_EQ(old.tier(DevicePlatformGroup::Mobile, DeviceTier::Medium).get(DeviceOverride::Cavity), std::optional<float>(8.0f));
+    EXPECT_FALSE(old.tier(DevicePlatformGroup::Mobile, DeviceTier::High).get(DeviceOverride::Cavity).has_value());
+    EXPECT_FALSE(DeviceSettings::fromJson("{\"tiers\": {\"web\": {\"high\": {\"cavity_samples\": 12}}}}", old, error));
+    // a cleared default stays cleared
+    DeviceSettings cleared;
+    cleared.tier(DevicePlatformGroup::Web, DeviceTier::Low).set(DeviceOverride::Cavity, std::nullopt);
+    DeviceSettings back;
+    ASSERT_TRUE(DeviceSettings::fromJson(cleared.toJson(), back, error)) << error;
+    EXPECT_EQ(back, cleared);
 }
