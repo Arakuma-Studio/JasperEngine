@@ -224,12 +224,14 @@ int lightPackedBits(int index){
     #endif
 }
 #endif
-#if defined(LIGHTS_FS_DECLARED) && defined(USE_PUNCTUAL) && defined(USE_AREA_LIGHTS) && defined(USE_LIT_QUALITY) && \
+// (LIGHT_PROFILES_OFF: a variant they would take past the bind limits, ShaderVariantCompiler::compile,
+// leaves both out: its IES lights draw with their cones, its Area Lights with the representative point)
+#if defined(LIGHTS_FS_DECLARED) && defined(USE_PUNCTUAL) && defined(USE_AREA_LIGHTS) && defined(USE_LIT_QUALITY) && !defined(LIGHT_PROFILES_OFF) && \
     !(defined(PBR_CLEARCOAT) || defined(PBR_SHEEN) || defined(PBR_ANISOTROPY) || defined(PBR_IRIDESCENCE) || \
       defined(PBR_TRANSMISSION) || defined(PBR_SPECULAR) || defined(PBR_HAIR))
     #define AREA_LIGHTS_LTC
 #endif
-#if defined(LIGHTS_FS_DECLARED) && defined(USE_PUNCTUAL) && defined(USE_IES) && !defined(DIRECTIONAL_LIGHTS_ONLY)
+#if defined(LIGHTS_FS_DECLARED) && defined(USE_PUNCTUAL) && defined(USE_IES) && !defined(DIRECTIONAL_LIGHTS_ONLY) && !defined(LIGHT_PROFILES_OFF)
     #define LIGHTS_IES
 #endif
 #if defined(AREA_LIGHTS_LTC) || defined(LIGHTS_IES)
