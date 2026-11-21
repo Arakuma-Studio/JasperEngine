@@ -333,7 +333,7 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
 
   ```sh
   ANDROID_PROJECT=game-tests tools/build.sh android
-  tools/android-emulator-test.sh build/android-game-tests/app-debug.apk --ordered \
+  tools/android-emulator-test.sh build/android-game-tests/app-debug.apk \
       --setprop "debug.jasperengine.args=--run-tests --test-filter tag:smoke" \
       --expect-file tools/test-projects/game-tests/android-expect.txt
   ```
