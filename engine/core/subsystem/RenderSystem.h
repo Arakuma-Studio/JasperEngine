@@ -597,6 +597,17 @@ namespace jasperengine{
 		float probeSeconds = 0.0f;     // frame law: seconds until it probes one rung up (0: none)
 	};
 
+	// Cavity (S92) as the main camera drew it last frame (RenderSystem::getCavityStatus, MCP
+	// get_post_processing_status): what the device tier resolved and where the normals came from
+	struct CavityStatus {
+		bool active = false;               // drawn last frame (enabled, a 3D main camera with depth)
+		CavityType type = CavityType::BOTH;    // as drawn
+		int worldSamples = 0;              // after the device tier's cap (0 when World is not drawn)
+		const char* normals = "none";      // "gbuffer" (SSR's), "prepass" or "none"
+		bool addedPrepass = false;         // Cavity alone asked for the sampled depth pre-pass
+		uint32_t draws = 0;                // its full-screen draws last frame (0 or 1)
+	};
+
 	// What the shader variant of a submesh depends on in its mesh and GameObject
 	struct SubmeshShaderInputs {
 		// vertex attributes, see RenderSystem::scanSubmeshAttributes
@@ -2266,6 +2277,8 @@ namespace jasperengine{
 		// the game's events were paused at the last tick: the editor's edit mode (and Pause), where
 		// the controller does not run and a pinned scale does not apply
 		bool dynamicResolutionEditPaused = false;
+		// Cavity as the main camera drew it last frame (getCavityStatus)
+		CavityStatus cavityStatus;
 		// why the controller did not run this frame ("" when it did), DynamicResolutionStatus::idle
 		const char* dynamicResolutionIdle = "off";
 		float dynamicResolutionScale = 1.0f;
@@ -3857,6 +3870,7 @@ namespace jasperengine{
 		// one, else the settings'), whether the controller runs, and its state
 		float getAppliedRenderScale() const;
 		DynamicResolutionStatus getDynamicResolutionStatus() const;
+		CavityStatus getCavityStatus() const { return cavityStatus; }
 		bool isDynamicResolutionRunning() const { return dynamicResolutionRunning; }
 		const DynamicResolutionController& getDynamicResolution() const { return dynamicResolution; }
 		// pins the applied scale (0.5..1) while the uber pass runs; 0 or below releases it
