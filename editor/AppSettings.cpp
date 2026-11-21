@@ -177,6 +177,7 @@ int AppSettings::mcpHttpPort = 47615;
 std::string AppSettings::mcpHttpToken;
 bool AppSettings::mcpHttpAllowChanges = true;
 std::string AppSettings::mcpToolGroups;
+bool AppSettings::mcpLogCalls = false;
 bool AppSettings::htmlUiAutoImport = true;
 bool AppSettings::assetAutoRefresh = true;
 std::string AppSettings::assetWatcher = "auto";
@@ -579,6 +580,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (mcpNode["http_port"]) mcpHttpPort = mcpNode["http_port"].as<int>();
             if (mcpNode["http_token"]) mcpHttpToken = mcpNode["http_token"].as<std::string>();
             if (mcpNode["allow_changes"]) mcpHttpAllowChanges = mcpNode["allow_changes"].as<bool>();
+            if (mcpNode["log_calls"]) mcpLogCalls = mcpNode["log_calls"].as<bool>();
             // "a,b", "all" or a list of group names
             if (mcpNode["tool_groups"]) {
                 const YAML::Node groups = mcpNode["tool_groups"];
@@ -908,6 +910,7 @@ bool AppSettings::saveSettings() {
         // The token lives in its own owner-only file (getMcpHttpTokenPath), not here
         mcpNode["allow_changes"] = mcpHttpAllowChanges;
         if (!mcpToolGroups.empty()) mcpNode["tool_groups"] = mcpToolGroups;
+        if (mcpLogCalls) mcpNode["log_calls"] = true;
         settingsData["mcp"] = mcpNode;
 
         YAML::Node latticeNode;
@@ -1646,6 +1649,15 @@ bool AppSettings::getMcpHttpAllowChanges() {
 
 void AppSettings::setMcpHttpAllowChanges(bool allow) {
     mcpHttpAllowChanges = allow;
+    saveSettings();
+}
+
+bool AppSettings::getMcpLogCalls() {
+    return mcpLogCalls;
+}
+
+void AppSettings::setMcpLogCalls(bool enabled) {
+    mcpLogCalls = enabled;
     saveSettings();
 }
 

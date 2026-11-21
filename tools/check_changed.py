@@ -96,6 +96,7 @@ SELF_TESTS = {"tools/check_changed.py": "tools/test_check_changed.py", "tools/ch
               "tools/test_check_changed.py": "tools/test_check_changed.py", "tools/mcp/coverage_map.py": "tools/test_check_changed.py",
               "tools/mcp/shard.py": "tools/mcp/test_shard.py", "tools/mcp/test_shard.py": "tools/mcp/test_shard.py",
               "tools/mcp/build_cache.py": "tools/mcp/test_build_cache.py", "tools/mcp/test_build_cache.py": "tools/mcp/test_build_cache.py",
+              "tools/mcp/call_profile.py": "tools/mcp/test_call_profile.py", "tools/mcp/test_call_profile.py": "tools/mcp/test_call_profile.py",
               "tools/check_fanout.py": "tools/test_check_fanout.py", "tools/test_check_fanout.py": "tools/test_check_fanout.py",
               "tools/xcode_sync_sources.py": "tools/test_xcode_sync_sources.py",
               "tools/test_xcode_sync_sources.py": "tools/test_xcode_sync_sources.py",

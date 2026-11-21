@@ -104,7 +104,8 @@ editor/mcp/
   McpSchema.{h,cpp}       JSON Schema builders (object, vec3, entityRef...)
   McpToolGroups.{h,cpp}   the tool groups tools/list hides until a session enables them
   McpInstructions.cpp     const char* mcpServerInstructions(): the agent guide text
-  McpActivityWindow.{h,cpp}  editor panel: server status, connected clients, call log
+  McpActivityWindow.{h,cpp}  editor panel: server status, connected clients, recent calls, per-tool counts
+  McpCallLog.{h,cpp}      the opt-in argument-free JSONL call log (JASPER_MCP_LOG, Log Calls To File)
   McpJobs.{h,cpp}         long operations (export, build, compile, play startup) as jobs
   McpLaunch.{h,cpp}       `jasperengine-editor mcp` command line, stdio fd setup, --headless Xvfb
   McpAutoSync.{h,cpp}     picks up files the agent edited on disk before every tools/call (the watcher's journal)

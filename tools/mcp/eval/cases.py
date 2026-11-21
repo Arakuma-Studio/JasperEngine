@@ -5278,4 +5278,20 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
+    # ---- S92 W5: the MCP call log (docs/mcp/guide/profiling.md "The MCP call log")
+    {
+        "id": "guard_mcp_call_log",
+        "kind": "guard",
+        "what_happened": "New text (S92 R17, R19): asked which of its own tool calls are slow or fail over many sessions, an "
+                         "agent points at the opt-in call log (JASPER_MCP_LOG or Log Calls To File) and call_profile.py, "
+                         "instead of timing calls by hand or reading editor.log.",
+        "text_at_issue": "docs/mcp/guide/profiling.md 'The MCP call log'",
+        "source": "docs/specs/S92-agent-feedback-area-lights.md R17-R19; no failure on record",
+        "prompt": "Over the next week I want to see which of your editor tool calls are slow or fail most, across all our "
+                  "sessions. What should I turn on in the editor and how do I read the result afterwards? Answer in a few "
+                  "lines from the editor's docs; change nothing.",
+        "checks": {"reply_must": [r"JASPER_MCP_LOG|Log Calls To File", r"call_profile"],
+                   "must_not_call": ["write_file", "set_project_settings"]},
+        "max_turns": 8,
+    },
 ]
