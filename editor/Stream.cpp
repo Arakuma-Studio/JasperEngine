@@ -5292,9 +5292,13 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     {
         const SceneSettings defaults;
         scene->setAmbientSource(node["ambientSource"] ? decodeEnum(node, "ambientSource", StreamSchema::ambientSource()) : defaults.ambientSource);
-        scene->setAmbientSkyColor(node["ambientSkyColor"] ? decodeVector3(node["ambientSkyColor"]) : Color::linearTosRGB(defaults.ambientSkyColor));
-        scene->setAmbientEquatorColor(node["ambientEquatorColor"] ? decodeVector3(node["ambientEquatorColor"]) : Color::linearTosRGB(defaults.ambientEquatorColor));
-        scene->setAmbientGroundColor(node["ambientGroundColor"] ? decodeVector3(node["ambientGroundColor"]) : Color::linearTosRGB(defaults.ambientGroundColor));
+        // (an absent key on a scene already at the default leaves it untouched: exact, no sRGB round trip)
+        if (node["ambientSkyColor"]) scene->setAmbientSkyColor(decodeVector3(node["ambientSkyColor"]));
+        else if (scene->getAmbientSkyColorLinear() != defaults.ambientSkyColor) scene->setAmbientSkyColor(Color::linearTosRGB(defaults.ambientSkyColor));
+        if (node["ambientEquatorColor"]) scene->setAmbientEquatorColor(decodeVector3(node["ambientEquatorColor"]));
+        else if (scene->getAmbientEquatorColorLinear() != defaults.ambientEquatorColor) scene->setAmbientEquatorColor(Color::linearTosRGB(defaults.ambientEquatorColor));
+        if (node["ambientGroundColor"]) scene->setAmbientGroundColor(decodeVector3(node["ambientGroundColor"]));
+        else if (scene->getAmbientGroundColorLinear() != defaults.ambientGroundColor) scene->setAmbientGroundColor(Color::linearTosRGB(defaults.ambientGroundColor));
     }
 
     // absent key restores the engine default so decoding into a reused scene (play restore) is exact
