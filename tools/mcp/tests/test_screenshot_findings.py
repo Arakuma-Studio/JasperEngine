@@ -65,6 +65,11 @@ async def overlay_shot(ed: Editor, s: dict, name: str) -> None:
     shutil.copyfile(ed.project / relative, out / f"{name}.png")
 
 
+def numbers(fix: str, key: str) -> list[float]:
+    """The [x, y, z] after `key: ` in a finding's fix"""
+    return [float(v) for v in re.search(key + r": \[([^\]]*)\]", fix).group(1).split(",")]
+
+
 def kinds(r: dict) -> list[str]:
     return [f["kind"] for f in r["findings"]]
 
@@ -120,10 +125,8 @@ async def test_camera_facing_away(ed: Editor):
     ed.check(f"set_transform {{entity: {s['camera']}" in empty["fix"] and "target" in empty["fix"],
              f"the fix moves and aims the game camera: {empty}")
     # the fix's own values frame the cube again
-    position = [float(v) for v in re.search(r"position: \[([^\]]*)\]", empty["fix"]).group(1).split(",")]
-    target = [float(v) for v in re.search(r"target: \[([^\]]*)\]", empty["fix"]).group(1).split(",")]
-    await ed.call("set_transform", scene=s["scene"], entity=s["camera"], position=position, space="world")
-    await ed.call("set_properties", scene=s["scene"], entity=s["camera"], values={"camera": {"target": target}})
+    await ed.call("set_transform", scene=s["scene"], entity=s["camera"], position=numbers(empty["fix"], "position"), space="world")
+    await ed.call("set_properties", scene=s["scene"], entity=s["camera"], values={"camera": {"target": numbers(empty["fix"], "target")}})
     r = await shoot(ed, s, "game", "away fixed")
     ed.check("empty_frame" not in kinds(r), f"aimed at the cube by the fix: {r['findings']}")
 
@@ -152,8 +155,9 @@ async def test_tiny_object(ed: Editor):
     r = await shoot(ed, s, "scene", "tiny")
     small = finding(ed, r, "subject_too_small")
     ed.check_eq(small["entities"], [s["cube"]])
-    await ed.call("frame_entity", scene=s["scene"], entity=s["cube"])
-    await ed.call("wait", frames=30)
+    # frame_entity frames a metre at least: the fix brings the Scene view camera close by hand
+    ed.check(small["fix"].startswith("set_scene_camera {position: "), f"{small}")
+    await ed.call("set_scene_camera", scene=s["scene"], position=numbers(small["fix"], "position"), target=numbers(small["fix"], "target"))
     r = await shoot(ed, s, "scene", "tiny framed")
     ed.check("subject_too_small" not in kinds(r), f"framed: {r['findings']}")
 
@@ -186,8 +190,7 @@ async def test_coplanar_quads(ed: Editor):
     ed.check_eq(sorted(fight["entities"]), sorted([floor, decal]))
     ed.check(fight["fix"].startswith(f"set_transform {{entity: {decal},"), f"the smaller one moves: {fight}")
     await overlay_shot(ed, s, "frame-checks-z-fighting")
-    position = [float(v) for v in re.search(r"position: \[([^\]]*)\]", fight["fix"]).group(1).split(",")]
-    await ed.call("set_transform", scene=s["scene"], entity=decal, position=position, space="world")
+    await ed.call("set_transform", scene=s["scene"], entity=decal, position=numbers(fight["fix"], "position"), space="world")
     r = await shoot(ed, s, "scene", "coplanar fixed")
     ed.check("z_fighting" not in kinds(r), f"5 mm apart: {r['findings']}")
 

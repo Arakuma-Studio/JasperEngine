@@ -56,7 +56,8 @@ make its fix (or tell the user why not) before judging the image. The kinds:
 - `empty_frame`: no renderer's bounds meet the camera's frustum.
 - `subject_out_of_frame`: the selection (with none, the visible objects that could fit the
   frame) more than half outside it; `subject_too_small`: the selection under 1 % of the image.
-  The Scene view's fix is `frame_entity`; the Game view's moves and aims its main camera.
+  The Scene view's fix is `frame_entity` (`set_scene_camera` for a subject too small for it); the
+  Game view's moves and aims its main camera.
 - `texture_missing`: a visible renderer's material references a missing asset
   (`list_missing_assets`, `retarget_asset_references`).
 - `z_fighting`: two renderers with coplanar, same-facing faces overlapping within 1 mm.

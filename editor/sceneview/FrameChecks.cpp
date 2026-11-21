@@ -248,12 +248,14 @@ namespace {
         // The call that brings `subject` into the view: frame_entity in the Scene view; in the Game
         // view the camera moved (back, when closer is false, only as far as it must) and aimed at it
         std::string frameFix(const std::vector<Entity>& entities, const AABB& subject, bool closer) const{
-            if (request.sceneView){
+            Scene* cameraScene = request.cameraScene;
+            const Transform* transform = cameraScene->findComponent<Transform>(request.camera);
+            const bool is3D = sceneProject->sceneType == SceneType::SCENE_3D;
+            // frame_entity frames at least a metre across: a smaller subject is brought closer by hand
+            if (request.sceneView && (!closer || !is3D || !transform || !usable(subject))){
                 if (!entities.empty()) return "frame_entity {" + entityList(entities) + "}";
                 return "set_scene_camera {frame_all: true}";
             }
-            Scene* cameraScene = request.cameraScene;
-            const Transform* transform = cameraScene->findComponent<Transform>(request.camera);
             if (!transform || !usable(subject)){
                 return "move the main camera (#" + std::to_string(request.camera) + ") with set_transform to look at it";
             }
@@ -268,11 +270,17 @@ namespace {
             if (camera.type == CameraType::CAMERA_PERSPECTIVE){
                 const float halfY = std::max(camera.yfov * 0.5f, 0.01f);
                 const float halfX = std::atan(std::tan(halfY) * std::max(camera.aspect, 0.0001f));
-                const float fit = radius * 1.1f / std::sin(std::min(halfY, halfX));
+                // fitted, and never inside the near plane
+                const float fit = std::max(radius * 1.1f / std::sin(std::min(halfY, halfX)), radius + 2.0f * std::max(camera.nearClip, 0.0f));
                 Vector3 toCenter = center - eye;
                 const float distance = toCenter.length();
                 const Vector3 direction = distance > 1e-4f ? toCenter / distance : forward;
                 newEye = center - direction * (closer ? fit : std::max(distance, fit));
+                if (request.sceneView){
+                    return "set_scene_camera {position: " + vec(newEye) + ", target: " + vec(center) + "}";
+                }
+            }else if (request.sceneView){
+                return "set_scene_camera {target: " + vec(center) + ", ortho_size: " + num(radius * 1.25f) + "}";
             }else{
                 // an orthographic camera slides across its view, keeping its depth
                 const Vector3 toCenter = center - eye;
