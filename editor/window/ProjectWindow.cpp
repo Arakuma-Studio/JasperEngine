@@ -1295,6 +1295,8 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.40f, 0.20f, 0.60f, 1.0f));
         case FileType::COLOR_LUT:
             return ImGui::GetColorU32(ImVec4(0.06f, 0.46f, 0.43f, 1.0f));
+        case FileType::IES_PROFILE:
+            return ImGui::GetColorU32(ImVec4(0.95f, 0.78f, 0.25f, 1.0f));
         case FileType::POSE_ANIMATION:
             return ImGui::GetColorU32(ImVec4(0.23f, 0.43f, 0.65f, 1.0f));
         case FileType::HUMANOID:
@@ -3253,6 +3255,8 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
         }else if (Util::isColorLutFile(fileEntry.extension)){
             fileEntry.type = FileType::COLOR_LUT;
             fileEntry.icon = lutIcon.getRender();
+        }else if (Util::isIesFile(fileEntry.extension)){
+            fileEntry.type = FileType::IES_PROFILE;
         }else if (Util::isPoseAnimationFile(fileEntry.extension)){
             fileEntry.type = FileType::POSE_ANIMATION;
             fileEntry.icon = poseAnimationIcon.getRender();

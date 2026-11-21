@@ -257,6 +257,7 @@ static std::vector<editor::EnumEntry>& entriesSpriteDrawMode = *editor::Inspecto
 static std::vector<editor::EnumEntry>& entriesLightType = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kLightType);
 static std::vector<editor::EnumEntry>& entriesShadowCaster2DShape = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kShadowCaster2DShape);
 static std::vector<editor::EnumEntry>& entriesLightShading = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kLightShading);
+static std::vector<editor::EnumEntry>& entriesAreaLightShape = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kAreaLightShape);
 static std::vector<editor::EnumEntry>& entriesCullingMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kCullingMode);
 static std::vector<editor::EnumEntry>& entriesLodFadeMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kLodFadeMode);
 static std::vector<editor::EnumEntry>& entriesFogType = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kFogType);
@@ -11038,6 +11039,8 @@ void editor::InspectorWindow::drawLightIntensityRows(ComponentType cpType, Scene
     std::vector<LightUnit> units = {LightUnit::ENGINE};
     if (light.type == LightType::DIRECTIONAL){
         units.push_back(LightUnit::LUX);
+    }else if (light.type == LightType::AREA){
+        units.push_back(LightUnit::NITS);
     }else{
         units.push_back(LightUnit::CANDELA);
         units.push_back(LightUnit::LUMEN);
@@ -11059,7 +11062,8 @@ void editor::InspectorWindow::drawLightIntensityRows(ComponentType cpType, Scene
         }
         ImGui::EndCombo();
     }
-    ImGui::SameLine(); helpMarker("Engine: the engine's own intensity, drawn as it is. Lux (directional), Candela and Lumen (point, spot): "
+    ImGui::SameLine(); helpMarker("Engine: the engine's own intensity, drawn as it is. Lux (directional), Candela and Lumen (point, spot), "
+                                  "Nits (an area light's face): "
                                   "physical units, converted on the CPU through the scene's Physical Light Exposure. Changing the unit keeps "
                                   "the light as bright.");
 }
@@ -11172,6 +11176,27 @@ void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProj
     drawLightTemperatureRows(cpType, sceneProject, entities);
     if (light.type != LightType::POINT){
         propertyRow(RowPropertyType::Direction, cpType, "direction", "Direction", sceneProject, entities);
+    }
+    if (light.type == LightType::AREA){
+        // S92 R32: the shape emits from its front along Direction, sized here, not by the scale
+        RowSettings settingsShape;
+        settingsShape.enumEntries = &entriesAreaLightShape;
+        settingsShape.help = "Rectangle (Width x Height) or Disc (Radius), emitting from its front along Direction. Its Intensity is "
+                             "the face's brightness (Nits in physical units); the transform's scale does not size it.";
+        propertyRow(RowPropertyType::Enum, cpType, "areaShape", "Shape", sceneProject, entities, settingsShape);
+        if (light.areaShape == AreaLightShape::DISC){
+            propertyRow(RowPropertyType::FloatPositive, cpType, "areaRadius", "Radius", sceneProject, entities, settingsFloat);
+        }else{
+            propertyRow(RowPropertyType::FloatPositive, cpType, "areaWidth", "Width", sceneProject, entities, settingsFloat);
+            propertyRow(RowPropertyType::FloatPositive, cpType, "areaHeight", "Height", sceneProject, entities, settingsFloat);
+        }
+    }
+    if (light.type == LightType::SPOT || light.type == LightType::POINT){
+        // S92 R37: an .ies file shaping the light, turned with it; Intensity stays its peak
+        RowSettings settingsIes;
+        settingsIes.help = "An .ies photometric file (IESNA LM-63) shaping the light, turned with it: vertical angle 0 along its "
+                           "forward axis. Intensity stays the profile's peak. Empty: the light's own shape.";
+        propertyRow(RowPropertyType::Asset, cpType, "iesProfile", "IES Profile", sceneProject, entities, settingsIes);
     }
     if (light.type != LightType::DIRECTIONAL){
         RowSettings settingsVolumetric = settingsFloat;

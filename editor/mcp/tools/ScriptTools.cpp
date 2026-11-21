@@ -123,6 +123,7 @@ std::string assetType(const fs::path& path) {
     // Sprite Atlases (S45)
     if (SpriteSheetSources::isAtlasPath(p)) return "sprite_atlas";
     if (Util::isColorLutFile(p)) return "color_lut";
+    if (Util::isIesFile(p)) return "ies_profile";
     if (Util::isParticleEffectFile(p)) return "particle_effect";
     if (Util::isModelFile(p)) return "model";
     if (Util::isAudioFile(p)) return "audio";

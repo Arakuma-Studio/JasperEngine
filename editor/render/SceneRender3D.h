@@ -51,6 +51,11 @@ namespace jasperengine::editor{
         float range = 0.0f;
         bool spotMaskReady = false;
         float spotMaskAspect = 1.0f;
+        // an Area Light's outline as drawn (S92 R38)
+        AreaLightShape areaShape = AreaLightShape::RECTANGLE;
+        float areaHalfWidth = 0.0f;
+        float areaHalfHeight = 0.0f;
+        bool areaHandles = false;
     };
 
     struct BodyObjects{
@@ -132,6 +137,8 @@ namespace jasperengine::editor{
         void createDirectionalLightArrow(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected);
         void createPointLightSphere(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected);
         void createSpotLightCones(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected);
+        // an Area Light's rectangle or disc and its normal, with its size handles when selected
+        void createAreaLightShape(Entity entity, const Transform& transform, const LightComponent& light, bool isSelected);
 
     protected:
         void hideAllGizmos() override;

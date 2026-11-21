@@ -65,7 +65,8 @@ namespace jasperengine::editor {
         PALETTE,            // .palette (the Palette window; a thumbnail of its swatches)
         NOISE_GRAPH,        // .noisegraph (the Noise Graph window)
         TILESET,            // .tileset (the Tileset Editor; a thumbnail of its tiles)
-        TITLE_ART           // .titleart (the Inspector's summary; the Title Designer, S82): its fresh output or a render
+        TITLE_ART,          // .titleart (the Inspector's summary; the Title Designer, S82): its fresh output or a render
+        IES_PROFILE         // .ies (S92: the Inspector's polar plot and metadata)
     };
 
     struct FileEntry {

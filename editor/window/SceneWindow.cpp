@@ -1696,6 +1696,27 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 }
             }
 
+            // Area Light size handles of a selected Area Light (S92 R38): Width, Height or Radius
+            if (gizmoSelected == GizmoSelected::TRANSLATE && !sceneProject->sceneRender->hasEditLayer()) {
+                std::vector<Entity> selEntities = project->getSelectedEntities(sceneId);
+                if (selEntities.size() == 1 && !io.KeyShift && sceneProject->sceneRender->areaHandleCount(selEntities[0]) > 0) {
+                    Entity selEntity = selEntities[0];
+                    if (!sceneProject->sceneRender->isAnyGizmoSideSelected()) {
+                        int handleHit = sceneProject->sceneRender->hitTestAreaHandle(selEntity, x, y);
+                        if (handleHit >= 0) {
+                            sceneProject->sceneRender->selectAreaHandle(selEntity, handleHit);
+                            subSelectionClickConsumesRelease[sceneId] = true;
+                            project->updateSceneRender(sceneId);
+                            sceneProject->sceneRender->mouseHoverEvent(x, y);
+                        } else if (sceneProject->sceneRender->getSelectedAreaHandleIndex() >= 0) {
+                            sceneProject->sceneRender->clearAreaHandleSelection();
+                            project->updateSceneRender(sceneId);
+                            sceneProject->sceneRender->mouseHoverEvent(x, y);
+                        }
+                    }
+                }
+            }
+
             // Capsule Shadow Caster handles of a selected caster: the capsules' ends and radius
             // (3D translate; the same side guard as the blocks above)
             if (gizmoSelected == GizmoSelected::TRANSLATE && !sceneProject->sceneRender->hasEditLayer()) {

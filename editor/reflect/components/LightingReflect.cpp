@@ -37,7 +37,22 @@ namespace {
     // contact shadows march towards a directional or spot light that casts shadows
     bool lightCastsContactShadows(const void* light) {
         const LightComponent* l = static_cast<const LightComponent*>(light);
-        return l->type != LightType::POINT && l->shadows;
+        return l->type != LightType::POINT && l->type != LightType::AREA && l->shadows;
+    }
+
+    // S92: an Area Light's shape and size, a spot or point light's IES Profile
+    bool lightArea(const void* light) { return static_cast<const LightComponent*>(light)->type == LightType::AREA; }
+    bool lightAreaRectangle(const void* light) {
+        const LightComponent* l = static_cast<const LightComponent*>(light);
+        return l->type == LightType::AREA && l->areaShape == AreaLightShape::RECTANGLE;
+    }
+    bool lightAreaDisc(const void* light) {
+        const LightComponent* l = static_cast<const LightComponent*>(light);
+        return l->type == LightType::AREA && l->areaShape == AreaLightShape::DISC;
+    }
+    bool lightTakesIesProfile(const void* light) {
+        const LightType type = static_cast<const LightComponent*>(light)->type;
+        return type == LightType::SPOT || type == LightType::POINT;
     }
 
     constexpr uint64_t kShadowCamera = UpdateFlags_LightShadowCamera;
@@ -114,10 +129,24 @@ namespace {
         // photometric units and colour temperature (util/LightPhotometry.h), resolved on the CPU
         JE_FIELD(LightComponent, intensityUnit, .enumDesc = &enums::kLightUnit, .flags = OmitIfDefault | CodegenIfChanged, .label = "Unit",
                  .tooltip = "What Intensity is in: Engine (unitless), Lux (a directional light), Candela or Lumen (a point or spot light), "
-                            "converted through the scene's Physical Light Exposure."),
+                            "Nits (an area light's face), converted through the scene's Physical Light Exposure."),
         JE_FIELD(LightComponent, useColorTemperature, .flags = OmitIfDefault | CodegenIfChanged, .label = "Use Temperature"),
         JE_FIELD(LightComponent, colorTemperature, .ops = &ops::Kelvin, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Kelvin,
                  .uiMin = 1000.0f, .uiMax = 20000.0f, .label = "Temperature"),
+        // S92 R32, R37: the Area Light's shape (sized here, not by the transform's scale) and the
+        // IES Profile of a spot or point light, written only away from their defaults
+        JE_FIELD(LightComponent, areaShape, .enumDesc = &enums::kAreaLightShape, .flags = OmitIfDefault | CodegenIfChanged,
+                 .updateFlags = kShadowCamera, .label = "Shape", .visibleIf = &lightArea),
+        JE_FIELD(LightComponent, areaWidth, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kShadowCamera, .unit = Unit::Meters,
+                 .min = 0.01f, .label = "Width", .visibleIf = &lightAreaRectangle),
+        JE_FIELD(LightComponent, areaHeight, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kShadowCamera, .unit = Unit::Meters,
+                 .min = 0.01f, .label = "Height", .visibleIf = &lightAreaRectangle),
+        JE_FIELD(LightComponent, areaRadius, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kShadowCamera, .unit = Unit::Meters,
+                 .min = 0.005f, .label = "Radius", .visibleIf = &lightAreaDisc),
+        JE_FIELD(LightComponent, iesProfile, .asset = AssetKind::IesProfile, .flags = OmitIfDefault | CodegenIfChanged, .label = "IES Profile",
+                 .tooltip = "An .ies photometric file shaping the light, turned with it (vertical angle 0 along its forward axis). "
+                            "Intensity stays the profile's peak.",
+                 .visibleIf = &lightTakesIesProfile),
         JE_PROXY(LightComponent, "shadowCameraNear", shadowCameraNearFar.x, .flags = NoDefault, .updateFlags = kShadowCamera, .min = 0.0f,
                  .label = "Near Plane", .group = "Shadows"),
         JE_PROXY(LightComponent, "shadowCameraFar", shadowCameraNearFar.y, .flags = NoDefault, .updateFlags = kShadowCamera, .min = 0.0f,
@@ -130,7 +159,7 @@ namespace {
         "shadowStrength", "shadowNormalBias", "cascadeSplitMode", "cascadeSplits", "shadowDistance", "shadowAngularDiameter",
         "shadowSourceRadius", "shadowUpdateMode", "contactShadows", "contactShadowLength", "contactShadowThickness",
         "contactShadowSampleCount", "volumetricIntensity", "shading", "intensityUnit", "useColorTemperature", "colorTemperature",
-        "enabled"
+        "areaShape", "areaWidth", "areaHeight", "areaRadius", "iesProfile", "enabled"
     };
 
     // ---------------------------------------------------------------- Light 2D
