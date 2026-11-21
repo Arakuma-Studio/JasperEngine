@@ -369,9 +369,9 @@ The tier never turns Cavity off, because it's art direction, not a quality extra
 - R1: the apply draw tests depth (LESS_EQUAL, no write) against the colour pass's depth, the
   fragment writing the pre-pass's depth nearer by 0.75 of the depth change to its steeper
   non-background neighbour on each axis, so every multisampled sample of the surface passes on a
-  sloped face and by a crease. A stencil-tested submesh nearer than that keeps its pixels. That is the R6 mask: where the colour pass
-  drew something nearer than the depth Cavity reads (a stencil-tested submesh, which no pre-pass
-  draws), the test fails and the pixel stays as it is. It also keeps Cavity off what a forked
+  sloped face and by a crease. That is the R6 mask: where the colour pass drew something nearer
+  than the depth Cavity reads (a stencil-tested submesh, which no pre-pass draws), the test fails
+  and the pixel stays as it is. It also keeps Cavity off what a forked
   colour shader draws away from its built-in depth program's geometry.
 - R2: the pre-pass normals are world-space (the object block alone; Cavity turns them to view
   space), so a depth program takes no camera block for them: the G-buffer's depth-mismatch rule,
