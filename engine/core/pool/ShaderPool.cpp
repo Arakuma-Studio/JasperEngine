@@ -220,6 +220,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::TITLE_GLINT;
         return true;
     }
+    if (typeToken == "cavity") {
+        shaderType = ShaderType::CAVITY;
+        return true;
+    }
 
     return false;
 }
@@ -649,6 +653,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::TITLE_ENV: return lowerCase ? "titleenv" : "Title Environment";
         case ShaderType::TITLE_GLINT_SPRITE: return lowerCase ? "titleglintsprite" : "Title Glint Sprite";
         case ShaderType::TITLE_GLINT: return lowerCase ? "titleglint" : "Title Glint";
+        case ShaderType::CAVITY: return lowerCase ? "cavity" : "Cavity";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -750,6 +755,14 @@ uint64_t ShaderPool::getTerrainWorldProperty(ShaderType shaderType){
     }
 }
 
+uint64_t ShaderPool::getDepthNormalsProperty(){
+    return shaderPropertyBit(26);
+}
+
+uint64_t ShaderPool::getCavityProperties(bool screen, bool world){
+    return (screen ? shaderPropertyBit(0) : 0) | (world ? shaderPropertyBit(1) : 0);
+}
+
 uint64_t ShaderPool::getTerrainHolesProperty(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:    return shaderPropertyBit(52);
@@ -792,7 +805,7 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return 55;
-        case ShaderType::DEPTH:  return 26;
+        case ShaderType::DEPTH:  return 27;
         case ShaderType::GBUFFER: return 28;
         case ShaderType::UI:     return 6;
         case ShaderType::POINTS: return 5;
@@ -836,6 +849,8 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::TITLE_ENV: return 4;
         case ShaderType::TITLE_GLINT_SPRITE: return 0;
         case ShaderType::TITLE_GLINT: return 4;
+        // S92's terms: 'Scr' Screen, 'Wld' World (both: Both)
+        case ShaderType::CAVITY: return 2;
         default:                 return 0;
     }
 }
@@ -965,6 +980,7 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 23: return shortName ? "Dth" : "Foliage Dither";
             case 24: return shortName ? "Thl" : "Terrain Holes"; // T3 R20
             case 25: return shortName ? "Twd" : "Terrain World"; // T4 R58
+            case 26: return shortName ? "Cvn" : "Cavity Normals"; // S92 R2
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -1038,6 +1054,11 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
     } else if (shaderType == ShaderType::LIGHTING_PASS) {
         switch (bit) {
             case 0: return shortName ? "Oir" : "OIT Resolve";
+        }
+    } else if (shaderType == ShaderType::CAVITY) {
+        switch (bit) {
+            case 0: return shortName ? "Scr" : "Screen";
+            case 1: return shortName ? "Wld" : "World";
         }
     } else if (shaderType == ShaderType::PASS_PREVIEW) {
         switch (bit) {

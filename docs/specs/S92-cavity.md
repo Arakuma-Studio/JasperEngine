@@ -366,3 +366,40 @@ The tier never turns Cavity off, because it's art direction, not a quality extra
   `post-processing.md`'s Fields. Eval agents asked for edge highlights read `jasper://docs/shaders`
   and forked a shader; they never opened the post-processing doc (0 of 4 samples passed with only
   the post-processing line, 3 of 4 with the shaders line).
+- R1: the apply draw tests depth (LESS_EQUAL, no write) against the colour pass's depth, the
+  fragment writing the pre-pass's depth a hair nearer. That is the R6 mask: where the colour pass
+  drew something nearer than the depth Cavity reads (a stencil-tested submesh, which no pre-pass
+  draws), the test fails and the pixel stays as it is. It also keeps Cavity off what a forked
+  colour shader draws away from its built-in depth program's geometry.
+- R2: the pre-pass normals are octahedral at 12 bits a component (rg the high bytes, b both low
+  nibbles) with a written flag in alpha (cleared to 0), not the G-buffer's 16-bit split, which
+  needs two attachments' worth of channels and has no room for the flag. The decode error is
+  about 0.03 degrees.
+- R2: every 'Cvn' depth fragment stage is wrapped at compile time (`#define main`, then a `main`
+  that writes the normals attachment), so forks of `depth.frag` of any age write it. The normal
+  comes from the vertex stage's `v_depthNormal` when that stage writes one (`depth.vert`,
+  `includes/surface_depth_vs.glsl`, a fork made from them), else the pixel says "none". On a
+  "none" pixel Screen is neutral and World rebuilds the normal from depth, so a fork, a mesh
+  without normals and a library shader whose hook moves vertices (`spin_bob`, `water`,
+  `foliage`, `impostor`) never read garbage and draw no triangle-edge lines. `dissolve` and
+  `flipbook`, whose hooks leave the position, keep the vertex normal. The built-in depth program
+  takes the rest normal of morph targets, as the G-buffer does.
+- R2: the pre-pass normals wait until every loaded mesh has reloaded with its 'Cvn' depth
+  programs after Cavity turns on; those frames draw no Cavity (status inactive) rather than
+  reading a pre-pass with holes.
+- R2: the G-buffer is the normals source when its depth draws every visible opaque mesh as the
+  colour pass does (the scene-depth readers' rule, `hasVisibleGBufferDepthMismatch`), whether or
+  not a scene-depth reader exists; otherwise the pre-pass, even with SSR on.
+- R3: the depth-step mask compares the second difference of 1 / view z across opposite taps with
+  5% of the centre's (affine on any plane, so slanted surfaces keep their lines).
+- R4: the bias is 0.15 L (not about 0.05 L): a smooth-shaded mesh's facets leave the plane of
+  its interpolated normal by up to half their angle, and at 0.05 L a UV sphere's triangles drew a
+  grid in World mode (the anti-goal). Creases and bevels are far steeper.
+- R4: per tap valley adds `max(h - bias, 0)` and ridge `max(-h - bias, 0)`, both times the
+  attenuation and the tap's weight, then a fixed gain of 2 before Valley and Ridge. Ring k of n
+  sits at (k + 0.5) / n of the disk, so 4, 8 and 16 samples share the mean radius (half the disk).
+- R5: the apply multiplies the display-encoded colour by `factor^(1 / 2.2)`: exact for a
+  power-law encoding, close under sRGB and the tone curves.
+- §8 fog: Cavity fades with the analytic distance fog (linear, exponential, squared) at the
+  pixel's fog distance, so a fogged far object shows none. The height and volumetric fogs are
+  drawn over it after, as D1 has it.

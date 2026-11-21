@@ -467,6 +467,7 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, true, false)) defs.push_back({"USE_FOLIAGE_WIND", "1"});
     if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, false, true)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::DEPTH, ShaderPool::SpriteBatchInput::SNAP_PIVOT)) defs.push_back({"HAS_SNAP_PIVOT", "1"}); // 'Spv' (S52)
+    if (prop & ShaderPool::getDepthNormalsProperty()) defs.push_back({"DEPTH_NORMALS", "1"});      // 'Cvn' (S92; its main is wrapped, prepareVariantArgs)
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -791,6 +792,11 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
     }else if (shaderType == ShaderType::TRANSITION){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "transition.frag";
+    }else if (shaderType == ShaderType::CAVITY){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "cavity.frag";
+        if (properties & shaderPropertyBit(0)) args.defines.push_back({"CAVITY_SCREEN", "1"});   // 'Scr'
+        if (properties & shaderPropertyBit(1)) args.defines.push_back({"CAVITY_WORLD", "1"});    // 'Wld'
     }else if (shaderType == ShaderType::PASS_PREVIEW){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "pass_preview.frag";
@@ -1256,6 +1262,28 @@ bool isOverBindLimits(const ShaderData& data){
     return samplers > 16;
 }
 
+// Whether a vertex stage (its file and the includes it reaches among the sources) writes S92's
+// v_depthNormal (includes/depth_normals.glsl): the engine's and the library's depth programs, a
+// fork made from them; not a fork made before them
+bool vertexWritesDepthNormal(const std::unordered_map<std::string, std::string>& files, const std::string& vertFile){
+    std::vector<std::string> pending = {vertFile};
+    std::set<std::string> seen;
+    while (!pending.empty()){
+        const std::string file = pending.back();
+        pending.pop_back();
+        if (!seen.insert(file).second)
+            continue;
+        auto source = files.find(file);
+        if (source == files.end())
+            continue;
+        if (source->second.find("v_depthNormal") != std::string::npos)
+            return true;
+        for (const std::string& include : ShaderVariantCompiler::getIncludeKeys(source->second))
+            pending.push_back(include);
+    }
+    return false;
+}
+
 // The compiler arguments of one variant for a backend: entry points, sources and #defines
 // (compile and preprocess). False with an error when the key or its sources are unusable.
 bool prepareVariantArgs(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
@@ -1350,6 +1378,43 @@ bool prepareVariantArgs(ShaderKey key, ShaderBackend backend, const CustomShader
         // the line numbers of errors stay the file's
         wrapped.insert(versionEnd + 1, "#define main oitShadeMain\n#line 2\n");
         wrapped += "\n#undef main\n#include \"includes/oit.glsl\"\nvoid main(){\n    oitShadeMain();\n    g_finalColor = oitAccumulate(g_finalColor);\n}\n";
+        source->second = wrapped;
+    }
+
+    // S92's normals of the depth pre-pass ('Cvn'): the program's own main runs, then
+    // includes/depth_normals.glsl writes the second attachment, so a fork of depth.frag of any
+    // age writes it too. From the vertex stage's v_depthNormal when that stage writes one (the
+    // engine's and the library's, a fork made from them), else "none" (Cavity rebuilds it)
+    if (shaderType == ShaderType::DEPTH && (properties & ShaderPool::getDepthNormalsProperty())){
+        auto source = args.fileBuffers.find(args.frag_file);
+        if (source == args.fileBuffers.end()){
+            error = "Cavity's depth normals need the depth program's fragment shader (" + args.frag_file + ")";
+            return false;
+        }
+        std::string wrapped = source->second;
+        const size_t versionEnd = wrapped.find('\n');
+        if (wrapped.compare(0, 8, "#version") != 0 || versionEnd == std::string::npos){
+            error = "Cavity's depth normals need a fragment shader starting with #version (" + args.frag_file + ")";
+            return false;
+        }
+        if (vertexWritesDepthNormal(args.fileBuffers, args.vert_file))
+            args.defines.push_back({"DEPTH_NORMALS_VARYING", "1"});
+        // the line numbers of errors stay the file's
+        wrapped.insert(versionEnd + 1, "#define main depthNormalsShadeMain\n#line 2\n");
+        wrapped += "\n#undef main\n#include \"includes/depth_normals.glsl\"\n"
+                   "layout(location = 1) out vec4 frag_depthNormal;\n"
+                   "#ifdef DEPTH_NORMALS_VARYING\n"
+                   "in vec4 v_depthNormal;\n"
+                   "#endif\n"
+                   "void main(){\n"
+                   "    depthNormalsShadeMain();\n"
+                   "#ifdef DEPTH_NORMALS_VARYING\n"
+                   "    // a double-sided material's back faces, as the G-buffer turns them\n"
+                   "    frag_depthNormal = v_depthNormal.w > 0.5 ? depthNormalsEncode(gl_FrontFacing ? v_depthNormal.xyz : -v_depthNormal.xyz) : vec4(0.0);\n"
+                   "#else\n"
+                   "    frag_depthNormal = vec4(0.0);\n"
+                   "#endif\n"
+                   "}\n";
         source->second = wrapped;
     }
 
