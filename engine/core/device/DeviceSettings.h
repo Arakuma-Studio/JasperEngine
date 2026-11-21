@@ -31,9 +31,10 @@ namespace jasperengine {
         Volumetrics,      // 0: no volumetric fog or clouds (Atmosphere Quality Off)
         TargetFrameRate,  // frames per second at most
         MaxPixelLights,   // per-object lights at most
-        ParticleBudget    // live particles at most
+        ParticleBudget,   // live particles at most
+        Cavity            // Cavity's World samples at most (4, 8, 16; S92): never turns Cavity off
     };
-    constexpr int DEVICE_OVERRIDE_COUNT = 14;
+    constexpr int DEVICE_OVERRIDE_COUNT = 15;
 
     struct DeviceOverrideInfo {
         enum class Kind { Cap, Multiplier, AtLeast, Off };
@@ -93,7 +94,8 @@ namespace jasperengine {
         std::array<int, DEVICE_PLATFORM_GROUP_COUNT> uploadBudgetMB = {32, 8, 6};
 
         // the defaults (spec S56 R3): Low halves the render scale, has Low shadows, LOD Bias 0.5,
-        // no volumetrics and no SSAO; Medium renders at 0.85; High and Ultra are the project
+        // no volumetrics and no SSAO; Medium renders at 0.85; High and Ultra are the project.
+        // Cavity's World samples (S92): at most 8 on Medium, 4 on Low
         DeviceSettings();
 
         DeviceTierOverrides& tier(DevicePlatformGroup group, DeviceTier tier){ return tiers[(size_t)group][(size_t)tier]; }

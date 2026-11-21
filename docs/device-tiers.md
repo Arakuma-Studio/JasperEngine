@@ -84,13 +84,14 @@ Settings window focused, MCP `undo` scope `project`).
 | Target Frame Rate | fps | at most (the platform's default rate counts as above it) |
 | Max Pixel Lights | lights | at most |
 | Particle Budget | particles | at most |
+| Cavity Samples | 4, 8, 16 | Cavity's World samples at most (Screen lines unchanged; never turns Cavity off) |
 
 The defaults:
 
 | Tier | Overrides |
 |---|---|
-| Low | Render Scale 0.5, Shadow Quality Low, LOD Bias 0.5, no Volumetrics, no SSAO |
-| Medium | Render Scale 0.85 |
+| Low | Render Scale 0.5, Shadow Quality Low, LOD Bias 0.5, no Volumetrics, no SSAO, Cavity Samples 4 |
+| Medium | Render Scale 0.85, Cavity Samples 8 |
 | High, Ultra | none: the project's values |
 
 A project saved before device tiers existed has these defaults, and they never change a High or

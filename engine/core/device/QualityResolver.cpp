@@ -284,7 +284,8 @@ bool QualityResolver::ssao(bool enabled){
 }
 
 int QualityResolver::cavityWorldSamples(int samples){
-    return samples;
+    const auto& c = resolvedCell(DeviceOverride::Cavity);
+    return c ? std::min(samples, (int)*c) : samples;
 }
 
 AtmosphereQuality QualityResolver::volumetrics(AtmosphereQuality quality){

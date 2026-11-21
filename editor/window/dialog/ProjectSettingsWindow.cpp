@@ -2621,6 +2621,7 @@ namespace {
             case DeviceOverride::TargetFrameRate: return 30.0f;
             case DeviceOverride::MaxPixelLights: return 4.0f;
             case DeviceOverride::ParticleBudget: return 16384.0f;
+            case DeviceOverride::Cavity: return 8.0f;
             default: return 0.0f;
         }
     }
@@ -2653,6 +2654,12 @@ namespace {
                 static const char* const samples[] = {"Off", "2x", "4x"};
                 int index = value >= 4.0f ? 2 : (value >= 2.0f ? 1 : 0);
                 if (ImGui::Combo("##Cell", &index, samples, 3)) value = index == 2 ? 4.0f : (index == 1 ? 2.0f : 1.0f);
+                break;
+            }
+            case DeviceOverride::Cavity: {
+                static const char* const samples[] = {"4", "8", "16"};
+                int index = value >= 16.0f ? 2 : (value >= 8.0f ? 1 : 0);
+                if (ImGui::Combo("##Cell", &index, samples, 3)) value = index == 2 ? 16.0f : (index == 1 ? 8.0f : 4.0f);
                 break;
             }
             case DeviceOverride::TextureQuality: {
