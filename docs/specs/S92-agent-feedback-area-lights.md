@@ -298,11 +298,12 @@ PR-body checks. Nothing here touches the do-not-copy list in `README.md`.
 
 ### W4 — Job estimates and reports
 
-- **R16's progress bar is the status bar's.** No editor progress bar showed MCP jobs, so the status bar
-  gains one per running job with an estimate (at most two): its progress, or the share of the
-  estimate elapsed when the job reports none (record_game), and "N s left" from
-  `jobRemainingSeconds` (the estimate early, the progress late). Its tooltip names the basis and
-  confidence. `get_job` carries `estimate` and `remaining_seconds` in `structuredContent`; its text
+- **R16's progress bar is the footer's.** No editor progress bar showed MCP jobs, so the footer (the
+  bar along the editor's bottom, with the Console line and the FPS) gains one per running job with
+  an estimate (at most two): its progress, or the share of the estimate elapsed when the job reports
+  none (record_game), and "N s left" from `jobRemainingSeconds` (the estimate early, the progress
+  late). Its tooltip names the basis and confidence. (`StatusBar` is not used: the footer is drawn
+  over it.) `get_job` carries `estimate` and `remaining_seconds` in `structuredContent`; its text
   is unchanged.
 - **The fallbacks are the downgrades the code can take, no more.** record_game: another H.264 encoder
   than libx264, fps or size clamped to the Recorder's limits, the size clamped to the GPU's maximum
