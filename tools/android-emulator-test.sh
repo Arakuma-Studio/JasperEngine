@@ -32,8 +32,8 @@
 #                       and launch it again; the expected lines are then checked on the new
 #                       process only (SaveGame's slot survives: tools/test-projects/savegame)
 #   --locale-change TAG once the expected lines are in, set the system language to TAG
-#                       (`adb shell cmd locale set-system-locales`, falling back to the
-#                       persist.sys.locale property) while the game runs, and require its
+#                       (`adb shell cmd locale set-system-locales`, falling back to the app's own
+#                       locales, `cmd locale set-app-locales`) while the game runs, and require its
 #                       '[Localization] language <TAG's language>' line within --timeout: the game
 #                       language re-resolves without a relaunch (game-ui-localization.md R10, AC15).
 #                       The language is restored to en-US after
@@ -452,8 +452,12 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             if [[ -n "$LOCALE_CHANGE" && -z "$crashes" ]]; then
                 wanted="[Localization] language ${LOCALE_CHANGE%%-*}"
                 log "changing the system language to $LOCALE_CHANGE"
-                adb shell cmd locale set-system-locales "$LOCALE_CHANGE" >/dev/null 2>&1 ||
-                    adb shell "setprop persist.sys.locale $LOCALE_CHANGE" >/dev/null 2>&1 || true
+                # the system list where the image has the command; else the locales of the app
+                # (Android 13+), which reach the running activity as the same configuration change
+                if ! adb shell cmd locale set-system-locales "$LOCALE_CHANGE" > "$DIR/locale.txt" 2>&1 ||
+                   grep -qiE "unknown|error|exception" "$DIR/locale.txt"; then
+                    adb shell cmd locale set-app-locales "$PACKAGE" --locales "$LOCALE_CHANGE" >> "$DIR/locale.txt" 2>&1 || true
+                fi
                 start=$SECONDS
                 localechanged="MISSING      \"$wanted\" after the system language became $LOCALE_CHANGE"
                 while (( SECONDS - start <= TIMEOUT )); do
@@ -464,8 +468,8 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
                         break
                     fi
                 done
-                adb shell cmd locale set-system-locales en-US >/dev/null 2>&1 ||
-                    adb shell "setprop persist.sys.locale en-US" >/dev/null 2>&1 || true
+                adb shell cmd locale set-system-locales en-US >/dev/null 2>&1 || true
+                adb shell cmd locale set-app-locales "$PACKAGE" --locales "" >/dev/null 2>&1 || true
             fi
             adb logcat -d -v tag > "$DIR/logcat.txt"
             adb logcat -d -v threadtime > "$DIR/logcat-full.txt"
