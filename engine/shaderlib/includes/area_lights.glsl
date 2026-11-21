@@ -139,9 +139,9 @@ void areaLightShade(AreaLight area, MaterialInfo info, vec3 p, vec3 n, vec3 v, f
             // the LTC tables: rows 0-63 of u_lightProfiles, the inverse matrix's terms in the first
             // 64 columns, the albedo and Fresnel share in the next
             vec2 uv = vec2(info.perceptualRoughness, sqrt(1.0 - NdotV)) * (63.0 / 64.0) + 0.5 / 64.0;
-            float rowsScale = LIGHT_PROFILE_LUT_ROWS / float(textureSize(sampler2D(u_lightProfiles, u_lightProfiles_smp), 0).y);
-            vec4 t1 = textureLod(sampler2D(u_lightProfiles, u_lightProfiles_smp), vec2(uv.x * 0.5, uv.y * rowsScale), 0.0);
-            vec4 t2 = textureLod(sampler2D(u_lightProfiles, u_lightProfiles_smp), vec2(0.5 + uv.x * 0.5, uv.y * rowsScale), 0.0);
+            float rowsScale = LIGHT_PROFILE_LUT_ROWS / float(textureSize(sampler2D(u_lightProfiles, LIGHT_PROFILES_SAMPLER), 0).y);
+            vec4 t1 = textureLod(sampler2D(u_lightProfiles, LIGHT_PROFILES_SAMPLER), vec2(uv.x * 0.5, uv.y * rowsScale), 0.0);
+            vec4 t2 = textureLod(sampler2D(u_lightProfiles, LIGHT_PROFILES_SAMPLER), vec2(0.5 + uv.x * 0.5, uv.y * rowsScale), 0.0);
             vec3 t1v = v - n * dot(v, n);
             t1v = (dot(t1v, t1v) > 1e-10) ? normalize(t1v) : normalize(cross(n, (abs(n.y) < 0.99) ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
             vec3 t2v = cross(n, t1v);

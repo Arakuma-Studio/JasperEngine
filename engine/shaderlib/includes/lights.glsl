@@ -239,7 +239,14 @@ int lightPackedBits(int index){
     #define IES_GRID_COLUMNS 128.0
     #define IES_GRID_ROWS 33.0
     uniform texture2D u_lightProfiles;
-    uniform sampler u_lightProfiles_smp;
+    // the spot masks' sampler where the variant has one (both linear and clamped to the edge), so
+    // the profiles take no sampler slot of their own there
+    #ifdef LIGHTS_SPOT_MASKS
+        #define LIGHT_PROFILES_SAMPLER u_spotMaskAtlas_smp
+    #else
+        uniform sampler u_lightProfiles_smp;
+        #define LIGHT_PROFILES_SAMPLER u_lightProfiles_smp
+    #endif
 #endif
 
 #include "includes/punctual.glsl"

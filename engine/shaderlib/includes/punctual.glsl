@@ -77,11 +77,11 @@ float lightIesAttenuation(Light light, vec3 pointToLight, int lightIndex)
     float x = dot(ray, right);
     float y = dot(ray, up);
     float horizontal = (abs(x) + abs(y) > 1e-6) ? fract(atan(y, x) * 0.15915494309 + 1.0) : 0.0;
-    vec2 size = vec2(textureSize(sampler2D(u_lightProfiles, u_lightProfiles_smp), 0));
+    vec2 size = vec2(textureSize(sampler2D(u_lightProfiles, LIGHT_PROFILES_SAMPLER), 0));
     vec2 uv = vec2((vertical * (IES_GRID_COLUMNS - 1.0) + 0.5) / size.x,
                    (LIGHT_PROFILE_LUT_ROWS + float(band) * IES_GRID_ROWS + horizontal * (IES_GRID_ROWS - 1.0) + 0.5) / size.y);
     // one level: an explicit LOD keeps the lookup legal in any loop
-    return textureLod(sampler2D(u_lightProfiles, u_lightProfiles_smp), uv, 0.0).r;
+    return textureLod(sampler2D(u_lightProfiles, LIGHT_PROFILES_SAMPLER), uv, 0.0).r;
 }
 #endif
 
