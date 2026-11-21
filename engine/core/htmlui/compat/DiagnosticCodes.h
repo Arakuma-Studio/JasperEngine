@@ -16,8 +16,9 @@ namespace jasperengine::htmlui::compat {
     enum class Severity : uint8_t { Error, Warning, Info };
 
     // Areas of the stable diagnostic codes HTMLUI-<AREA>-NNNN (phase-2 §3.4, Appendix F).
-    // Append only: phase 5 added FX after SVG (the UI effects); game-ui-localization.md L10N after it.
-    enum class DiagArea : uint8_t { GEN, HTML, CSS, SEL, AT, IMP, SVG, FX, L10N };
+    // Append only: phase 5 added FX after SVG (the UI effects); game-ui-localization.md LOC after it.
+    // An area is capital letters only: the checks and tools read a code as HTMLUI-[A-Z]+-NNNN.
+    enum class DiagArea : uint8_t { GEN, HTML, CSS, SEL, AT, IMP, SVG, FX, LOC };
 
     struct DiagCode {
         DiagArea area = DiagArea::GEN;
@@ -164,8 +165,8 @@ namespace jasperengine::htmlui::compat {
         inline constexpr DiagCode SvgInternalCss{DiagArea::SVG, 3};
         // FX (phase 5, the UI effects: phase-5-effects.md 3.13)
         inline constexpr DiagCode EffectUnknown{DiagArea::FX, 1};
-        // L10N (game-ui-localization.md R11)
-        inline constexpr DiagCode L10nChildElements{DiagArea::L10N, 1};
+        // LOC (game-ui-localization.md R11)
+        inline constexpr DiagCode L10nChildElements{DiagArea::LOC, 1};
         inline constexpr DiagCode EffectWrongContext{DiagArea::FX, 2};
         inline constexpr DiagCode EffectPositionalArg{DiagArea::FX, 3};
         inline constexpr DiagCode EffectUnknownParam{DiagArea::FX, 4};
