@@ -32,7 +32,9 @@ A baseline's "reload_after": TEXT reloads the page (Page.reload, the same profil
 IndexedDB stays) once a console line contains TEXT, then waits for the ready line again; the console
 checks see both loads. "quota_bytes" sets the site's storage quota (Storage.overrideQuotaForOrigin)
 before the page opens. "project" names the test project whose build the gate runs (default: the
-gate's own name), for a second gate of one build.
+gate's own name), for a second gate of one build. "serve" ({"/url/path": "repository-relative file"})
+serves more files beside the build, same-origin (an input script the page fetches by URL). "no_ready":
+true: the page ends before the engine starts (a launch option refused), so no ready line is awaited.
 
 A baseline's "click": n clicks the canvas centre n times after the run (CDP Input.dispatchMouseEvent:
 trusted events, so a page can lock the pointer), each followed by "after_click_seconds" (default 2)
@@ -353,6 +355,9 @@ def main() -> int:
     args = parser.parse_args()
 
     baseline = json.loads(args.baseline.read_text()) if args.baseline else {}
+    # a run that ends before the engine starts (a launch option it refuses) has no ready line to wait for
+    if baseline.get("no_ready"):
+        args.until_ready = False
     # a baseline's "seconds" is its own default run length (a scene that needs a while: S19's bakes)
     default_seconds = (2.0 if args.until_ready else 10.0)
     seconds = args.seconds if args.seconds is not None else float(baseline.get("seconds", default_seconds))
@@ -365,7 +370,10 @@ def main() -> int:
         if args.root is None or not (args.root / args.page).is_file():
             print(f"browser_gate: no {args.page} in {args.root} (--root, or --editor-served)", file=sys.stderr)
             return 2
-        server = make_server(args.root, 0, cross_origin_isolation=not args.no_isolation, quiet=True)
+        # "serve": {"/url/path": "repository-relative file"} serves files beside the build (a script the page fetches)
+        repo = Path(__file__).resolve().parents[2]
+        extra = {url: repo / path for url, path in baseline.get("serve", {}).items()}
+        server = make_server(args.root, 0, cross_origin_isolation=not args.no_isolation, quiet=True, extra_files=extra)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         page_url = f"http://127.0.0.1:{server.server_port}/{args.page}?" + "&".join([READY_QUERY] + baseline.get("query", []) + args.query)
 

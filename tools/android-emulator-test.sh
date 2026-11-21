@@ -43,7 +43,7 @@
 #   --setprop NAME=VALUE  an Android system property set before each launch (repeatable),
 #                       e.g. debug.jasperengine.titleart_rgba8=1 (the render gate's forced RGBA8 path),
 #                       or player arguments: "debug.jasperengine.args=--run-tests --test-filter tag:smoke".
-#                       VALUE is letters, digits and _ . - : , = and spaces only: it reaches the
+#                       VALUE is letters, digits and _ . - : , = / and spaces only: it reaches the
 #                       device's shell double-quoted, where none of those is special
 #   --self-test         check the --setprop rule (what passes, what is refused) and exit
 #   --golden DIR        check what the screen shows: each run waits for the engine's
@@ -110,14 +110,15 @@ usage() {
 # --setprop's VALUE reaches `adb shell` (a shell on the device) inside double quotes: no quote,
 # $, backquote, backslash, ; | & < > ( ) or newline, so nothing in it is special there
 setprop_valid() {
-    local rule='^[A-Za-z0-9_.]+=[A-Za-z0-9_.:,= -]*$'
+    local rule='^[A-Za-z0-9_.]+=[A-Za-z0-9_.:,=/ -]*$'
     [[ "$1" =~ $rule ]]
 }
 
 if [[ "${1:-}" == --self-test ]]; then
     failed=0
     for ok in "debug.jasperengine.titleart_rgba8=1" "debug.jasperengine.args=--run-tests --test-filter tag:smoke" \
-              "debug.jasperengine.args=--test-filter=tag:smoke,tag:red --keep-test-data" "a.b="; do
+              "debug.jasperengine.args=--test-filter=tag:smoke,tag:red --keep-test-data" "a.b=" \
+              "debug.jasperengine.args=--input-script tests/Input/menu.input.json --quit-after-input"; do
         setprop_valid "$ok" || { echo "self-test: refused a good value: $ok" >&2; failed=1; }
     done
     for bad in "debug.x=a;reboot" "debug.x=\$(id)" "debug.x=\`id\`" "debug.x=a\"b" "debug.x=a'b" "debug.x=a|b" "debug.x=a&b" \
@@ -172,7 +173,7 @@ while [[ $# -gt 0 ]]; do
             [[ "$2" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "android-emulator-test: --scene takes a name of letters, digits, _ and - (got $2)" >&2; exit 2; }
             SCENES+=("$2"); shift 2 ;;
         --setprop)
-            setprop_valid "$2" || { echo "android-emulator-test: --setprop takes NAME=VALUE, VALUE of letters, digits, spaces and _ . - : , = (got $2)" >&2; exit 2; }
+            setprop_valid "$2" || { echo "android-emulator-test: --setprop takes NAME=VALUE, VALUE of letters, digits, spaces and _ . - : , = / (got $2)" >&2; exit 2; }
             SETPROPS+=("$2"); shift 2 ;;
         --golden) GOLDEN="$2"; shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
