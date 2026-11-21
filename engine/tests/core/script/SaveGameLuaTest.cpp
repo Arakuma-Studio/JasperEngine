@@ -129,7 +129,10 @@ TEST_F(SaveGameLua, MigrationsRunInOrder){
         local again, info2 = SaveGame.read("slot1")
         assert(again.gold == 7 and info2.migratedFrom == nil, "migrated once")
     )"), "");
-    EXPECT_EQ(fs::last_write_time(file), stamp) << "the files keep the old version until the next write";
+    // clock ticks: gtest would print time points with C++20 chrono formatting, unavailable
+    // below macOS 13.3 (the engine's deployment target is 12.0)
+    EXPECT_EQ(fs::last_write_time(file).time_since_epoch().count(), stamp.time_since_epoch().count())
+        << "the files keep the old version until the next write";
     EXPECT_EQ(fs::file_size(file), size);
     EXPECT_FALSE(fs::exists(dir.path() / "saves" / "slot1.g3.jsave"));
 
