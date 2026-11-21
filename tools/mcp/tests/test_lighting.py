@@ -292,7 +292,7 @@ async def test_gradient_ambient_fields_and_lua(ed: Editor):
     ed.check_eq(harness.find_key(got, "ambient_source"), "gradient")
     sky = harness.find_key(got, "ambient_sky_color")
     ed.check(abs(sky[2] - 0.9) < 1e-3, f"sky color read back: {sky}")
-    await ed.call("save_scene", scene=scene)
+    await ed.call("save_scene", scene=scene, path="scenes/GradientAmbient.scene")
     text = (ed.project / "scenes/GradientAmbient.scene").read_text()
     ed.check("ambientSource: gradient" in text and "ambientSkyColor" in text, "the scene file has the gradient")
     ed.check("ambientEquatorColor" not in text, "a default colour is not written")
