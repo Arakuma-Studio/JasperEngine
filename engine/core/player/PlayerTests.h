@@ -27,7 +27,7 @@ namespace jasperengine::player {
     public:
         // false + error when the sandbox cannot be made
         static bool begin(const gametest::CaseSpec& spec, const std::string& runId, int caseNumber, std::string& folder, std::string& error);
-        // data:// back to the game's folder; the sandbox deleted unless kept
+        // data:// back to the launch's sandbox; the case's deleted unless kept
         static void end(const std::string& folder, bool keep);
         // the scripts of every running scene released (onDisable, onDestroy), then a new Lua state
         static void resetLua();
@@ -38,6 +38,10 @@ namespace jasperengine::player {
 
     class JASPERENGINE_API PlayerTests {
     public:
+        // RunControl, when the engine starts a --run-tests launch: data:// is a sandbox of the
+        // launch's own before the start scene runs and between cases, deleted at the run's end
+        // unless kept (R25)
+        static void launch(const LaunchOptions& options);
         // RunControl, at the ready frame of a --run-tests launch
         static void begin(const LaunchOptions& options);
         // RunControl, after every drawn frame of the run; reader reads the frame when it drew offscreen

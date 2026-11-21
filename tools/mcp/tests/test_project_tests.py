@@ -433,7 +433,7 @@ function Roller:init()
     self.go = GameObject(self.scene, self.entity)
     self.wall = GameObject.find("Wall")
 end
-function Roller:update()
+function Roller:onUpdate()
     if Input.isKeyPressed(Input.KEY_RIGHT) then
         local p = self.go.position
         self.go.position = Vector3(math.min(p.x + 0.25, self.wall.position.x - 1), p.y, p.z)

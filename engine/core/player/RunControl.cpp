@@ -209,6 +209,9 @@ void RunControl::engineStarted() {
     State& s = state();
     s.started = std::chrono::steady_clock::now();
     InputScriptRun::engineStarted(s.options);
+#if JASPERENGINE_TEST_RUNNER
+    if (s.options.runTests) PlayerTests::launch(s.options);
+#endif
     if (s.options.fixedFps > 0.0)
         Engine::setFixedDeltatime(1.0 / s.options.fixedFps);
     if (s.options.fixedFps > 0.0 && s.options.afterReady) {

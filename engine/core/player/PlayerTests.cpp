@@ -43,6 +43,22 @@ namespace {
         return readFile("asset://tests/" + path, out) || readFile("content://tests/" + path, out);
     }
 
+    // R25: the launch's own data:// before the start scene runs and between cases ("" until launch)
+    std::string& launchFolder() {
+        static auto* folder = new std::string();
+        return *folder;
+    }
+
+    // the run is over: PlayerPrefs written, the launch's sandbox deleted unless kept
+    void endLaunch(bool keep) {
+        UserSettingsStore::instance().save();
+        UserSettingsStore::instance().unload();
+        if (!keep && !launchFolder().empty()) {
+            std::error_code ec;
+            fs::remove_all(launchFolder(), ec);
+        }
+    }
+
     gametest::Json& snapshotIndex() {
         static auto* index = new gametest::Json(gametest::Json::object());
         return *index;
@@ -249,11 +265,23 @@ bool PlayerSession::begin(const gametest::CaseSpec& spec, const std::string& run
 void PlayerSession::end(const std::string& folder, bool keep) {
     UserSettingsStore::instance().save();
     UserSettingsStore::instance().unload();
-    setUserDataOverride("");
+    setUserDataOverride(launchFolder());
     if (!keep && !folder.empty()) {
         std::error_code ec;
         fs::remove_all(folder, ec);
     }
+}
+
+void PlayerTests::launch(const LaunchOptions&) {
+    std::error_code ec;
+    const fs::path folder = fs::path(System::instance().getUserDataPath()) / ".jasper-test-runs" / ("launch-" + gametest::newRunId());
+    fs::create_directories(folder, ec);
+    if (ec) {
+        Log::error("[test] cannot make the launch's data folder %s: %s", folder.string().c_str(), ec.message().c_str());
+        return;
+    }
+    launchFolder() = folder.string();
+    setUserDataOverride(launchFolder());
 }
 
 bool PlayerTests::running() {
@@ -288,6 +316,7 @@ void PlayerTests::begin(const LaunchOptions& options) {
     }
     if (plan.empty()) {
         Log::error("[test] no tests in this build: build a Development Build with Include Tests");
+        endLaunch(options.keepTestData);
         RunControl::requestQuit(EXIT_NO_TESTS);
         return;
     }
@@ -296,6 +325,7 @@ void PlayerTests::begin(const LaunchOptions& options) {
         if (gametest::matchesFilter(spec, options.testFilter)) selected.push_back(spec);
     if (selected.empty()) {
         Log::error("[test] no test matched \"%s\"", options.testFilter.c_str());
+        endLaunch(options.keepTestData);
         RunControl::requestQuit(EXIT_NO_TESTS);
         return;
     }
@@ -317,7 +347,7 @@ void PlayerTests::begin(const LaunchOptions& options) {
     std::error_code absoluteError;
     const fs::path absoluteResults = fs::absolute(r.resultsFile, absoluteError);
     if (!absoluteError) r.resultsFile = absoluteResults;
-    r.host =std::make_unique<PlayerHost>();
+    r.host = std::make_unique<PlayerHost>();
     r.host->runId = runOptions.runId;
     r.host->startScene = SceneManager::getCurrentSceneId();
     r.host->keepData = options.keepTestData;
@@ -340,6 +370,7 @@ void PlayerTests::frame(const FrameReader& reader) {
     const gametest::Counts& c = result.counts;
     const bool none = c.total == 0;
     const bool bad = c.failed + c.error + c.hung > 0;
+    endLaunch(r.host && r.host->keepData);
     r.runner.reset();
     RunControl::requestQuit(none ? EXIT_NO_TESTS : bad ? EXIT_TESTS_FAILED : EXIT_OK);
 }
