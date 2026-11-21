@@ -119,17 +119,18 @@ vec4 cavityDepthNormal(vec2 uv, vec3 P){
     return vec4(dot(n, P) > 0.0 ? -n : n, 1.0);
 }
 
-// the window depth's change to a neighbour on one axis, the smaller of its two sides that are not
-// the background (0: both are)
+// the window depth's change to a neighbour on one axis, the larger of its two sides that are not
+// the background (0: both are). The larger: a pixel by a crease has samples on the other face,
+// whose depth runs as that side's
 float cavityDepthSlope(float depth01, vec2 uvMinus, vec2 uvPlus){
     float dMinus = cavityDepth(uvMinus);
     float dPlus = cavityDepth(uvPlus);
-    float slope = 1.0;
+    float slope = 0.0;
     if (dMinus < 1.0)
         slope = abs(depth01 - dMinus);
     if (dPlus < 1.0)
-        slope = min(slope, abs(dPlus - depth01));
-    return slope < 1.0 ? slope : 0.0;
+        slope = max(slope, abs(dPlus - depth01));
+    return slope;
 }
 
 // Blender-like soft ceiling: x (1 - c x) up to its top 0.25 / c at x = 0.5 / c
@@ -312,7 +313,7 @@ void main(){
     factor = clamp(factor, 0.0, 2.0);
 
     // nearer than the pre-pass's depth by 0.75 of a pixel's depth change on each axis (from the
-    // flatter side, not the background: a sample is at most half a pixel off on each), for the
+    // steeper side, not the background: a sample is at most half a pixel off on each), for the
     // LESS_EQUAL test (see the top)
     vec2 t = cavity.depthTexel.zw;
     gl_FragDepth = max(depth01 - 0.75 * (cavityDepthSlope(depth01, uv - vec2(t.x, 0.0), uv + vec2(t.x, 0.0)) +
