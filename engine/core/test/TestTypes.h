@@ -50,10 +50,10 @@ namespace jasperengine::gametest {
         // keys this version does not know: kept on rewrite, warned once
         std::vector<std::string> unknownKeys;
 
-        Json toJson() const;
+        JASPERENGINE_API Json toJson() const;
         // the JSON form (an exported build's tests/tests.json, or tests.yaml read by the editor);
         // false + error for a newer version or a bad value
-        static bool fromJson(const Json& json, Settings& out, std::string& error);
+        JASPERENGINE_API static bool fromJson(const Json& json, Settings& out, std::string& error);
     };
 
     struct CaseSpec {

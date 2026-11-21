@@ -162,8 +162,8 @@ namespace jasperengine::input {
         std::vector<std::string> eventLabels;   // "touch tap" of each event (errors)
         size_t events = 0;
         // the last frame an action is due on (recordings), or the sum of the scripts' frames
-        uint32_t lastFrame() const;
-        const std::string& stringAt(int32_t index) const;
+        JASPERENGINE_API uint32_t lastFrame() const;
+        JASPERENGINE_API const std::string& stringAt(int32_t index) const;
     };
 
     // How the events of a list are read
@@ -204,7 +204,7 @@ namespace jasperengine::input {
         std::set<std::string> actions;      // Input Actions forced down (InputActions::inject)
         std::set<std::string> managerActions;   // the Input Manager's actions held through the source
         std::map<std::string, float> axes;
-        bool empty() const;
+        JASPERENGINE_API bool empty() const;
     };
 
     // Releases what `held` holds (Engine::system*, the forced Input Actions, the Input Manager's
