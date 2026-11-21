@@ -75,6 +75,8 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             "cmakeBuildJobs", "cmakeCCompiler", "cmakeCxxCompiler", "cmakeGenerator", "selectedScene", "tabs", "terrainEditor",
             // upstream's project.yaml blocks (SYNC#4): the editor writes and reads them
             "audio", "physics3DWorld", "playerCrash", "presentation", "shaderGlobals", "uiScale",
+            // Project Settings > Physics / Physics 2D > Queries Hit Triggers (spatial queries)
+            "physicsQueries",
             // S87: Project Settings > Localization
             "localization",
             // Project Settings > Voxels (T6 R7)

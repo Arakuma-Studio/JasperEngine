@@ -78,6 +78,8 @@ namespace jasperengine::editor::mcp {
     // BuildProfileTools.cpp: edit_build_profile (build-profiles), registered with the publish tools
     void registerBuildProfileTools(McpRegistry& registry);
     void registerWorldTools(McpRegistry& registry);
+    // spatial-queries: query_physics (PhysicsQueryTools.cpp)
+    void registerPhysicsQueryTools(McpRegistry& registry);
     // AnimatorTools.cpp: edit_animator (Animator Controllers, anim layers spec 11.5)
     void registerAnimatorTools(McpRegistry& registry);
     void registerLatticeTools(McpRegistry& registry);

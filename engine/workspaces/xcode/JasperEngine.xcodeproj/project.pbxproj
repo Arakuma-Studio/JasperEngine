@@ -5100,6 +5100,16 @@
 		4A534E53DA09EC5C72658167 /* DialogueVariables.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53E74DB844AF1D67EC /* DialogueVariables.cpp */; };
 		4A534E539FBAE080AFA1A35F /* DialogueRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53CB8B28243C275A9E /* DialogueRunner.cpp */; };
 		4A534E532A91A91EAEC02537 /* DialogueClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E530B2EA3DAEC0E3A21 /* DialogueClassesLua.cpp */; };
+		4A534E530652583A0F926C60 /* PhysicsQueries.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53409864A13A46E65E /* PhysicsQueries.cpp */; };
+		4A534E53D403D38480C66DB6 /* PhysicsQueries2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */; };
+		4A534E53787F595627F6B486 /* PhysicsQueryDebug.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53E8DA31A26A60CF23 /* PhysicsQueryDebug.cpp */; };
+		4A534E53C17A15D3FC2029C7 /* PhysicsQueryReference.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53D9A877F63C620597 /* PhysicsQueryReference.cpp */; };
+		4A534E53E523C8F90AE5EF1A /* PhysicsQueryLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53C8E60EBFCA4D4D8F /* PhysicsQueryLua.cpp */; };
+		4A534E53519130B949B127BD /* PhysicsQueries.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53409864A13A46E65E /* PhysicsQueries.cpp */; };
+		4A534E53ED6BAD3FA848849B /* PhysicsQueries2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */; };
+		4A534E53507EFF084157E0B0 /* PhysicsQueryDebug.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53E8DA31A26A60CF23 /* PhysicsQueryDebug.cpp */; };
+		4A534E534000F52E30631F8D /* PhysicsQueryReference.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53D9A877F63C620597 /* PhysicsQueryReference.cpp */; };
+		4A534E53AB7BAEFA1B69AD21 /* PhysicsQueryLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53C8E60EBFCA4D4D8F /* PhysicsQueryLua.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9784,6 +9794,11 @@
 		4A534E53E74DB844AF1D67EC /* DialogueVariables.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueVariables.cpp; sourceTree = "<group>"; };
 		4A534E53CB8B28243C275A9E /* DialogueRunner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueRunner.cpp; sourceTree = "<group>"; };
 		4A534E530B2EA3DAEC0E3A21 /* DialogueClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E53409864A13A46E65E /* PhysicsQueries.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueries.cpp; sourceTree = "<group>"; };
+		4A534E53CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueries2D.cpp; sourceTree = "<group>"; };
+		4A534E53E8DA31A26A60CF23 /* PhysicsQueryDebug.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueryDebug.cpp; sourceTree = "<group>"; };
+		4A534E53D9A877F63C620597 /* PhysicsQueryReference.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueryReference.cpp; sourceTree = "<group>"; };
+		4A534E53C8E60EBFCA4D4D8F /* PhysicsQueryLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueryLua.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10364,6 +10379,7 @@
 				4A534E47D07BD1437308A3A2 /* LocalizationClassesLua.cpp */,
 				4A534E53BC6A5E7A1DB2D134 /* SaveGameLua.cpp */,
 				4A534E530B2EA3DAEC0E3A21 /* DialogueClassesLua.cpp */,
+				4A534E53C8E60EBFCA4D4D8F /* PhysicsQueryLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -11221,6 +11237,10 @@
 				5452524E4733A6D0ECC250AF /* JoltTerrainRefresh.h */,
 				54574C44FD5752CF7DB6BCCA /* TerrainWorldCollision.cpp */,
 				54574C442B54D4346813C175 /* TerrainWorldCollision.h */,
+				4A534E53409864A13A46E65E /* PhysicsQueries.cpp */,
+				4A534E53CCB4B580F75D7FC3 /* PhysicsQueries2D.cpp */,
+				4A534E53E8DA31A26A60CF23 /* PhysicsQueryDebug.cpp */,
+				4A534E53D9A877F63C620597 /* PhysicsQueryReference.cpp */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -20057,6 +20077,11 @@
 				4A534E53DA09EC5C72658167 /* DialogueVariables.cpp in Sources */,
 				4A534E539FBAE080AFA1A35F /* DialogueRunner.cpp in Sources */,
 				4A534E532A91A91EAEC02537 /* DialogueClassesLua.cpp in Sources */,
+				4A534E53519130B949B127BD /* PhysicsQueries.cpp in Sources */,
+				4A534E53ED6BAD3FA848849B /* PhysicsQueries2D.cpp in Sources */,
+				4A534E53507EFF084157E0B0 /* PhysicsQueryDebug.cpp in Sources */,
+				4A534E534000F52E30631F8D /* PhysicsQueryReference.cpp in Sources */,
+				4A534E53AB7BAEFA1B69AD21 /* PhysicsQueryLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -21094,6 +21119,11 @@
 				4A534E53C5D22ADACAEF273F /* DialogueVariables.cpp in Sources */,
 				4A534E53CDDF0C04F459F2AF /* DialogueRunner.cpp in Sources */,
 				4A534E53D0B4CA2E28C49C96 /* DialogueClassesLua.cpp in Sources */,
+				4A534E530652583A0F926C60 /* PhysicsQueries.cpp in Sources */,
+				4A534E53D403D38480C66DB6 /* PhysicsQueries2D.cpp in Sources */,
+				4A534E53787F595627F6B486 /* PhysicsQueryDebug.cpp in Sources */,
+				4A534E53C17A15D3FC2029C7 /* PhysicsQueryReference.cpp in Sources */,
+				4A534E53E523C8F90AE5EF1A /* PhysicsQueryLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -78,7 +78,7 @@ namespace jasperengine {
 
     private:
         // Engine's input scenes, top layer first, and the cancel of the cursor's press (Engine befriends this class)
-        static std::vector<Scene*> scenesTopFirst();
+        static void scenesTopFirst(std::vector<Scene*>& out);
         static void cancelPress();
         friend struct GamepadCursorAccess;
     };

@@ -15,6 +15,7 @@
 #include "System.h"
 #include "jobs/JobSystem.h"
 #include "pool/AnimationClipPool.h"
+#include "registry/PhysicsLayers.h"
 #include "render/SystemRender.h"
 #include "script/LuaBinding.h"
 #include "subsystem/AnimatorSystem.h"
@@ -163,6 +164,8 @@ namespace {
         static MonitorHandle m24 = nullptr;
         static MonitorHandle m25 = nullptr;
         static MonitorHandle m26 = nullptr;
+        static MonitorHandle m27 = nullptr;
+        static MonitorHandle m28 = nullptr;
         const FrameTimeSample frame = FrameTimes::latest();
         counter(handle(m0, "FPS", MonitorUnit::Quantity), frame.fps);
         counter(handle(m1, "CPU frame ms", MonitorUnit::TimeMs), frame.cpuMs);
@@ -245,6 +248,15 @@ namespace {
         const double threadCpu = PerfSampler::mainThreadCpuMsLastSecond();
         if (isEnabled() && threadCpu >= 0.0)
             counter(handle(m26, "Main thread CPU ms", MonitorUnit::TimeMs), threadCpu);
+        // the spatial queries and raycasts of the frame (Physics counts them with a relaxed add)
+        static uint64_t queriesBefore = Physics::getQueryCount();
+        static uint64_t queryHitsBefore = Physics::getQueryHitCount();
+        const uint64_t queries = Physics::getQueryCount();
+        const uint64_t queryHits = Physics::getQueryHitCount();
+        counter(handle(m27, "Physics queries", MonitorUnit::Quantity), (double)(queries - queriesBefore));
+        counter(handle(m28, "Physics query hits", MonitorUnit::Quantity), (double)(queryHits - queryHitsBefore));
+        queriesBefore = queries;
+        queryHitsBefore = queryHits;
         // the slower ones (a walk of every GPU allocation, /proc) four times a second, whatever
         // the frame rate
         const auto now = std::chrono::steady_clock::now();

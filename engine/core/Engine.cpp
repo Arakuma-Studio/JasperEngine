@@ -222,6 +222,7 @@ double Engine::shaderTime = 0.0;
 bool Engine::shaderTimeFixed = false;
 double Engine::pinnedShaderTime = -1.0;
 std::atomic<uint64_t> Engine::gameFrames{0};
+uint64_t Engine::frameIndex = 0;
 // the clocks of Time (EngineTime.h): the unscaled frame delta and its sum, the fixed steps' sum,
 // the game time at the last scene load, the wall clock at start
 double Engine::unscaledDeltatime = 0.0;
@@ -1423,6 +1424,10 @@ double Engine::getGameTime(){
 
 uint64_t Engine::getGameFrames(){
     return gameFrames.load(std::memory_order_relaxed);
+}
+
+uint64_t Engine::getFrameIndex(){
+    return frameIndex;
 }
 
 void Engine::setSimulationHeld(bool held){
@@ -2663,6 +2668,7 @@ void Engine::runFrame(bool draw){
 
     // memory the last-but-one frame allocated per frame goes back now
     memory::frameArena().beginFrame();
+    frameIndex++;
     // job results posted for the main thread, then (single-thread mode) the queued jobs:
     // everything urgent, Background work for the pump budget
     jobs::drainMainQueue();
@@ -3497,6 +3503,14 @@ std::vector<Scene*> Engine::getInputScenes(bool keys){
             inputScenes.push_back(overlay);
     }
     return inputScenes;
+}
+
+void Engine::getInputScenesTopFirst(std::vector<Scene*>& out){
+    out.clear();
+    if (Scene* overlay = DebugOverlay::getScene())
+        out.push_back(overlay);
+    std::lock_guard<std::mutex> lock(sceneListMutex);
+    out.insert(out.end(), scenes.rbegin(), scenes.rend());
 }
 
 bool Engine::transformCoordPos(float& x, float& y){
@@ -4848,9 +4862,11 @@ bool Engine::isGamepadCursorShown(){
 }
 
 bool Engine::dispatchCursorPointer(CursorPhase phase, float x, float y){
-    const std::vector<Scene*> scenes = getInputScenes(false);
     const int button = D_MOUSE_BUTTON_LEFT;
     bool consumed = false;
+    if (phase == CURSOR_MOVE)
+        return dispatchCursorMove(x, y);
+    const std::vector<Scene*> scenes = getInputScenes(false);
     if (phase == CURSOR_DOWN){
         Scene* documentScene = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
             return documents->eventOnPointerDown(0, button, x, y, 0, false, false);
@@ -4878,32 +4894,48 @@ bool Engine::dispatchCursorPointer(CursorPhase phase, float x, float y){
                 return documents->dispatchWorldPointer(0, button, x, y, 0, PointerPhase::UP, false, covered);
             }))
             consumed = true;
-    }else{
-        // as the mouse: below the document it is over, documents lose their hover
-        UIDocumentSystem* over = nullptr;
-        for (UIDocumentSystem* documents : documentSystemsTopFirst(scenes)){
-            if (over && !documents->hasPointerCapture(0, D_MOUSE_BUTTON_1, false)){
-                documents->eventOnMouseLeave();
-                continue;
-            }
-            if (documents->eventOnPointerMove(0, x, y, 0, false, false)){
-                over = over ? over : documents;
-                consumed = true;
-            }
+    }
+    return consumed;
+}
+
+bool Engine::dispatchCursorMove(float x, float y){
+    // the cursor's frame: the scenes into a reused buffer, no std::function (R26)
+    static std::vector<Scene*> topFirst;
+    getInputScenesTopFirst(topFirst);
+    bool consumed = false;
+    // as the mouse: below the document it is over, documents lose their hover
+    bool over = false;
+    for (Scene* scene : topFirst){
+        if (!canSendDocumentEvents(scene))
+            continue;
+        UIDocumentSystem* documents = scene->getSystem<UIDocumentSystem>().get();
+        if (over && !documents->hasPointerCapture(0, D_MOUSE_BUTTON_1, false)){
+            documents->eventOnMouseLeave();
+            continue;
         }
-        bool overComponentUI = false;
-        for (Scene* scene : scenes){
-            if (canSendUIEvents(scene)){
-                UISystem* ui = scene->getSystem<UISystem>().get();
-                if (ui->eventOnPointerMove(-1, x, y, false))
-                    consumed = true;
-                overComponentUI = overComponentUI || ui->isPointerOverUI(-1);
-            }
-        }
-        if (dispatchToWorldDocuments(scenes, consumed || overComponentUI, false, [&](UIDocumentSystem* documents, bool covered){
-                return documents->dispatchWorldPointer(0, -1, x, y, 0, PointerPhase::MOVE, false, covered);
-            }))
+        if (documents->eventOnPointerMove(0, x, y, 0, false, false)){
+            over = true;
             consumed = true;
+        }
+    }
+    bool overComponentUI = false;
+    for (auto it = topFirst.rbegin(); it != topFirst.rend(); ++it){
+        if (canSendUIEvents(*it)){
+            UISystem* ui = (*it)->getSystem<UISystem>().get();
+            if (ui->eventOnPointerMove(-1, x, y, false))
+                consumed = true;
+            overComponentUI = overComponentUI || ui->isPointerOverUI(-1);
+        }
+    }
+    // the documents on meshes, after the screen-space UI that covers them
+    bool covered = consumed || overComponentUI;
+    for (Scene* scene : topFirst){
+        if (!canSendDocumentEvents(scene))
+            continue;
+        if (scene->getSystem<UIDocumentSystem>()->dispatchWorldPointer(0, -1, x, y, 0, PointerPhase::MOVE, false, covered)){
+            consumed = true;
+            covered = true;
+        }
     }
     return consumed;
 }

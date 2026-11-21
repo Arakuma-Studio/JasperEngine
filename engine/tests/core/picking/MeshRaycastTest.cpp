@@ -25,6 +25,8 @@
 #include "terrain/TerrainHoles.h"
 #include "object/Tilemap.h"
 #include "picking/PickingTestUtil.h"
+#include "support/AllocationCounter.h"
+#include "Engine.h"
 #include "util/Angle.h"
 
 #include <gtest/gtest.h>
@@ -580,5 +582,76 @@ TEST(MeshRaycast, TerrainHoleMisses){
     hit = MeshRaycast::raycast(&scene, slanted, LAYER_MASK_EVERYTHING);
     if (hit.hit && hit.entity == terrain.getEntity()){
         EXPECT_FALSE(querySurface(component, hit.point.x, hit.point.z).hole);
+    }
+}
+
+namespace jasperengine {
+    // the engine's frame counter, advanced as the run loop does each frame
+    struct EngineTestAccess {
+        static void nextFrame(){ Engine::frameIndex++; }
+    };
+}
+
+// spatial-queries AC11: within a frame overlaps see the bounds of its first overlap (current =
+// true refits now), the next frame the new ones; overlaps without a rebuild allocate nothing
+TEST(MeshRaycast, OverlapSnapshotRefitsOncePerFrame){
+    Scene scene;
+    Primitive box(&scene);
+    box.createBox(1, 1, 1);
+    Primitive other(&scene);
+    other.createBox(1, 1, 1);
+    other.setPosition(20, 0, 0);
+    settleScene(scene);
+    std::vector<MeshOverlapHit> hits;
+    EngineTestAccess::nextFrame();
+    ASSERT_EQ(MeshRaycast::overlapSphere(&scene, Vector3(0, 0, 0), 1.0f, hits), 1u);
+    EXPECT_EQ(hits[0].entity, box.getEntity());
+
+    // moved within the frame: the snapshot still has it where it was
+    box.setPosition(10, 0, 0);
+    settleScene(scene);
+    EXPECT_EQ(MeshRaycast::overlapSphere(&scene, Vector3(0, 0, 0), 1.0f, hits), 1u);
+    EXPECT_EQ(MeshRaycast::overlapSphere(&scene, Vector3(10, 0, 0), 1.0f, hits), 0u);
+    MeshRaycastOptions current = MeshRaycast::overlapOptions();
+    current.current = true;
+    EXPECT_EQ(MeshRaycast::overlapSphere(&scene, Vector3(10, 0, 0), 1.0f, hits, LAYER_MASK_DEFAULT_RAYCAST, current), 1u);
+
+    // the next frame sees the new bounds
+    box.setPosition(-10, 0, 0);
+    settleScene(scene);
+    EXPECT_EQ(MeshRaycast::overlapBox(&scene, Vector3(-10, 0, 0), Vector3(1, 1, 1), Quaternion::IDENTITY, hits), 0u);
+    EngineTestAccess::nextFrame();
+    ASSERT_EQ(MeshRaycast::overlapBox(&scene, Vector3(-10, 0, 0), Vector3(1, 1, 1), Quaternion(0.9238795f, 0.0f, 0.3826834f, 0.0f), hits), 1u);
+    EXPECT_EQ(hits[0].entity, box.getEntity());
+
+    // 1,000 overlaps without a rebuild (the first 50 after a move: refits, under
+    // SceneBvh::REBUILD_AFTER_REFITS) allocate nothing once warm
+    if (testsupport::countsAllocations()){
+        Primitive added(&scene);
+        added.createBox(1, 1, 1);
+        added.setPosition(40, 0, 0);
+        settleScene(scene);
+        EngineTestAccess::nextFrame();
+        hits.reserve(16);
+        // warm: the rebuild the new object asked for, and one refit
+        MeshRaycast::overlapSphere(&scene, Vector3(20, 0, 0), 8.0f, hits);
+        other.setPosition(21, 0, 0);
+        settleScene(scene);
+        EngineTestAccess::nextFrame();
+        MeshRaycast::overlapSphere(&scene, Vector3(20, 0, 0), 8.0f, hits);
+        uint64_t allocations = 0;
+        size_t found = 0;
+        for (int i = 0; i < 1000; i++){
+            if (i < 50){
+                other.setPosition(20.0f + (float)(i % 7), 0, 0);
+                settleScene(scene);
+            }
+            EngineTestAccess::nextFrame();
+            testsupport::AllocationCountScope scope;
+            found += MeshRaycast::overlapSphere(&scene, Vector3(20, 0, 0), 8.0f, hits);
+            allocations += scope.count();
+        }
+        EXPECT_EQ(found, 1000u);
+        EXPECT_EQ(allocations, 0u);
     }
 }

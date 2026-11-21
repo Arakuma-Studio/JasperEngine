@@ -32,6 +32,7 @@
 #include <RmlUi/Core/Factory.h>
 
 #include <atomic>
+#include <string_view>
 #include <cmath>
 
 using namespace jasperengine;
@@ -56,7 +57,7 @@ namespace {
     }
 
     // a DOM pointer event type: what makes a listening page take the pointer
-    bool isPointerEvent(const std::string& type){
+    bool isPointerEvent(std::string_view type){
         static const char* const types[] = {"click", "dblclick", "mousedown", "mouseup", "mousemove", "mouseover", "mouseout",
                                             "wheel", "mousescroll", "contextmenu"};
         for (const char* name : types){
@@ -66,30 +67,37 @@ namespace {
         return type.compare(0, 7, "pointer") == 0 || type.compare(0, 5, "touch") == 0;
     }
 
+    bool isPointerListener(const HtmlUIEventListener& listener){
+        return isPointerEvent(listener.getDomType()) || isPointerEvent(listener.getRmlType());
+    }
+
+    bool isClickListener(const HtmlUIEventListener& listener){
+        const std::string& type = listener.getDomType();
+        return type == "click" || type == "pointerdown" || type == "mousedown";
+    }
+
     // a pointer listener on the element: addEventListener (Lua or C++) or a data-event-* binding
     // (the engine's inline handlers: on* attributes are JavaScript, dropped by the compat layer)
     bool listensForPointer(Rml::Element* element){
         if (!element)
             return false;
-        for (HtmlUIEventListener* listener : HtmlUIEventListener::listenersOf(element)){
-            if (isPointerEvent(listener->getDomType()) || isPointerEvent(listener->getRmlType()))
-                return true;
-        }
+        if (HtmlUIEventListener::anyListenerOf(element, &isPointerListener))
+            return true;
         for (const auto& attribute : element->GetAttributes()){
-            if (attribute.first.compare(0, 11, "data-event-") == 0 && isPointerEvent(attribute.first.substr(11)))
+            if (attribute.first.compare(0, 11, "data-event-") == 0 && isPointerEvent(std::string_view(attribute.first).substr(11)))
                 return true;
         }
         return false;
     }
 
     bool listensForClick(Rml::Element* element){
-        for (HtmlUIEventListener* listener : HtmlUIEventListener::listenersOf(element)){
-            const std::string& type = listener->getDomType();
-            if (type == "click" || type == "pointerdown" || type == "mousedown")
-                return true;
-        }
-        return element->HasAttribute("data-event-click") || element->HasAttribute("data-event-pointerdown") ||
-               element->HasAttribute("data-event-mousedown");
+        if (HtmlUIEventListener::anyListenerOf(element, &isClickListener))
+            return true;
+        // the names past the small-string buffer, built once
+        static const Rml::String clickAttribute = "data-event-click";
+        static const Rml::String pointerdownAttribute = "data-event-pointerdown";
+        static const Rml::String mousedownAttribute = "data-event-mousedown";
+        return element->HasAttribute(clickAttribute) || element->HasAttribute(pointerdownAttribute) || element->HasAttribute(mousedownAttribute);
     }
 
     // a background colour with alpha, a decorator or a background image layer

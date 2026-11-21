@@ -62,6 +62,7 @@ namespace jasperengine{
 	class CharacterController2DSystem;
 	class CharacterControllerSystem;
 	class WaterSystem;
+	class PhysicsQueryDebug;
 	struct WaterSample;
 	class JoltPairFilter3D;
 	class ContactRecorder3D;
@@ -264,6 +265,8 @@ namespace jasperengine{
 		// entity of the scene, made when first needed
 		Entity debugLinesEntity = NULL_ENTITY;
 		bool debugLinesShown = false;
+		// the spatial queries drawn by Physics.debugDrawQueries, made by the first one recorded
+		std::unique_ptr<PhysicsQueryDebug> queryDebug;
 #ifdef JASPERENGINE_PHYSICS_3D
 		std::unordered_map<Entity, std::vector<PhysicsDebugLines::EdgeCache>> debugEdgeCaches3D;
 		// the contact points and normals of the last step (Physics.debugDrawContacts), written by
@@ -724,6 +727,9 @@ namespace jasperengine{
 		// Physics.debugDraw: the runtime collider lines of this scene (3D and 2D), drawn while on
 		size_t getDebugLineCount() const;
 		Entity getDebugLinesEntity() const { return debugLinesEntity; }
+		// Physics.debugDrawQueries: this scene's recent queries (made on first use; null before)
+		PhysicsQueryDebug& getQueryDebug();
+		const PhysicsQueryDebug* findQueryDebug() const { return queryDebug.get(); }
 
 		// Told by ScriptMessages: a script defining contact messages appeared or went
 		static void onScriptReceiversChanged(Scene* scene, Entity entity);

@@ -21,16 +21,14 @@ namespace jasperengine {
 
     // the file's helpers reach the Engine internals through GamepadCursor's friendship
     struct GamepadCursorAccess {
-        static std::vector<Scene*> scenes(){ return GamepadCursor::scenesTopFirst(); }
+        static void scenes(std::vector<Scene*>& out){ GamepadCursor::scenesTopFirst(out); }
         static void cancelPress(){ GamepadCursor::cancelPress(); }
     };
 
 }
 
-std::vector<Scene*> GamepadCursor::scenesTopFirst(){
-    std::vector<Scene*> scenes = Engine::getInputScenes(false);
-    std::reverse(scenes.begin(), scenes.end());
-    return scenes;
+void GamepadCursor::scenesTopFirst(std::vector<Scene*>& out){
+    Engine::getInputScenesTopFirst(out);
 }
 
 void GamepadCursor::cancelPress(){
@@ -61,9 +59,11 @@ namespace {
         return std::isfinite(value) ? value : fallback;
     }
 
-    // the input scenes, top layer first
-    std::vector<Scene*> cursorScenes(){
-        return GamepadCursorAccess::scenes();
+    // the input scenes, top layer first, in a buffer reused every frame (no allocation per frame)
+    const std::vector<Scene*>& cursorScenes(){
+        static std::vector<Scene*> buffer;
+        GamepadCursorAccess::scenes(buffer);
+        return buffer;
     }
 
     // the focused element of the top scene that has one, its centre
@@ -234,7 +234,7 @@ void GamepadCursor::update(double deltaTime){
             deactivateCursor();
         return;
     }
-    const std::vector<Scene*> scenes = cursorScenes();
+    const std::vector<Scene*>& scenes = cursorScenes();
     const float dt = (std::isfinite(deltaTime) && deltaTime > 0.0) ? (float)deltaTime : 0.0f;
     const float canvasHeight = (float)Engine::getCanvasHeight();
 
@@ -339,7 +339,7 @@ void GamepadCursor::prepareNavigation(){
 void GamepadCursor::followFocus(){
     if (!cursorActive)
         return;
-    const std::vector<Scene*> scenes = cursorScenes();
+    const std::vector<Scene*>& scenes = cursorScenes();
     if (!jumpToNewFocus(scenes))
         return;
     Engine::dispatchCursorPointer(Engine::CURSOR_MOVE, cursorPosition.x, cursorPosition.y);

@@ -526,4 +526,65 @@ core tests already build scenes with physics, `PhysicsRayThreadsTest.cpp:27-30`)
 
 ## Deviations
 
-None yet.
+- **D1 / R15 frame key.** `Engine::getFrameCount()` does not exist and `Engine::getGameFrames()`
+  stops while paused and in the editor's edit mode (a `world: drawn` overlap there would never
+  refit). `Engine::getFrameIndex()` is added: every engine frame, paused or not, one increment
+  beside the frame arena's reset. Tests advance it through `EngineTestAccess`.
+- **D2 buffers.** The 3D collector (its `OnBody` and its `TransformedShape` context give the entity,
+  trigger flag and collider index with no second body lock) and the 2D callbacks write straight into
+  the caller's vector; there is no fixed 256-entry array. The 2D first forms keep only the lowest
+  `(body, collider)` hit, with no buffer. The Lua forms use one main-thread buffer each.
+- **D2 query box.** Box query shapes use Jolt's default convex radius (5 cm, at most half the
+  smallest half extent): the corners are rounded by that much, the faces are exact; shallow pairs
+  then need GJK only.
+- **D2 overlaps without contact points.** Overlaps and checks do not call
+  `NarrowPhaseQuery::CollideShape`: the broad phase lists the bodies, each body's leaf shapes inside
+  the query's bounds are listed (`CollectTransformedShapes`), and a convex leaf gets Jolt's own
+  convex-vs-convex decision (its bounds test and GJK step on the shapes without their convex radius;
+  intersecting cores, where Jolt would run EPA for a depth, overlap); a mesh or height field leaf gets
+  its convex-vs-triangles decision triangle by triangle (back faces skipped, bounds, GJK step), and any
+  other leaf goes through Jolt's collide. A box query asks the broad phase with its oriented box. The
+  answers equal `CollideShape`'s (PhysicsQueryReference keeps using it, as the independent sweep)
+  without the penetration depth an overlap never needed: the EPA on every body a 5 m box held wholly
+  inside had made `overlapBox` 4x over its budget (0.033 ms). `je-bench-physics-query` on box B (load
+  about 10 on 12 cores, three runs): `overlap_box_p95_ms` 0.0084, 0.0084, 0.0071 against 0.0088, and
+  every other key within its budget.
+- **R3 casts.** Every hit at fraction 0 is dropped (touching at the start counts as overlapping,
+  R1), not only those with positive penetration: without `mReturnDeepestPoint` Jolt reports no
+  reliable depth there. A Box2D cast callback never returns -1 or 0 for a skipped shape (Box2D 3.1
+  carries the value into its next tree as the maximum fraction, and 0 stops the cast).
+- **R12 foliage.** Foliage trees have no SceneBvh leaves (rays walk FoliageSystem's cells), so the
+  drawn overlaps return SceneBvh leaves only: default kinds are `MESH | INSTANCE | BOUNDS` and
+  `MeshOverlapHit` has no `foliageId` / `prototype`. A box walk of the foliage cells is follow-up work.
+- **R18 / risks "one error per call site".** One error per query function per process (an atomic
+  flag each), for C++ and Lua alike, naming "outside the physics step: queue the query for onUpdate".
+- **R22 undo.** The existing Physics rows apply without undo; the two new rows go through a new
+  `PhysicsQuerySettingsCmd` (one step per changed row, from the dialog's OK and from
+  `set_project_settings physics.queries_hit_triggers` / `physics2d.queries_hit_triggers`).
+- **R23 toolbar.** The Game view has no Physics menu and no Contacts item: Queries is a toggle button
+  beside Physics (icon when narrow), saved in the editor preferences (`physics_queries`).
+- **R27 monitors.** Every query (and every `Physics` / `Physics2D` raycast) does one relaxed add on
+  two process-wide counters; the profiler's `publishMonitors` publishes per-frame differences (in
+  profiler builds) and the Stats panel the difference since its last draw. Raycasts are also drawn
+  by the query debug draw, as a zero-radius cast.
+- **R28 Lua extras.** The ignore list is a trailing table (after `qti`, after `colliders` in a
+  NonAlloc form). `Physics.overlapBoxNonAlloc` takes `results` before the optional rotation (Unity);
+  `MeshRaycast.overlapBoxNonAlloc` takes the rotation first (§6's example). 2D box and capsule
+  `angle` arguments are optional (0). The two enums are bound with typed values in
+  `PhysicsQueryLua.cpp` (its own `Stack` specializations).
+- **R25 details.** `query_physics` `verify` checks physics overlaps only (no drawn-world reference);
+  its `raycast` drops the `ignore` bodies after the cast (`Physics.raycast` has no ignore list);
+  `world: drawn` refits now (`current`). An unnamed layer is named by its number in the hint.
+- **R37 / AC23 modules.** `Physics.raycast` does select a module today: functions bound only under
+  `JASPERENGINE_PHYSICS_3D` / `_2D` reach `physics3d` / `physics2d` in the module scan. The queries do
+  the same (as `raycast`), so AC23 checks they reach the same modules as `raycast` and need no runtime
+  shaders. The scan matches member names, so `MeshRaycast.overlapSphere` / `overlapBox`, which share
+  their names with the `Physics` ones, keep the physics module too (the safe side).
+- **AC3 fixture.** The fixture is written with `JASPER_TEST_UPDATE_GOLDEN=1` (the variable
+  `tools/build.sh` forwards into the image), by the same test on the tree without the change.
+- **AC15 timing.** A browser's clock is too coarse for one 0.04 ms call: the gate times batches of
+  100 calls and takes the p99 of the per-call mean over 100 batches. `MeshRaycast.overlapSphere` is
+  timed from C++, `Physics.overlapSphereNonAlloc` through Lua.
+- **D8 ring.** An entry holds the `QueryShape`, the sweep and up to 4 hit points (more than 96 bytes);
+  the scene's `PhysicsQueryDebug` is made by the first recorded query and its ring freed after 10 s
+  with debug draw off and nothing live.

@@ -134,6 +134,9 @@ namespace jasperengine::player {
         Vector3 transparencySortAxis = Vector3(0.0f, 1.0f, 0.0f);
         std::array<uint32_t, MAX_LAYERS> collision3D{};
         std::array<uint32_t, MAX_LAYERS> collision2D{};
+        // Project Settings > Physics / Physics 2D > Queries Hit Triggers (absent: true)
+        bool queriesHitTriggers3D = true;
+        bool queriesHitTriggers2D = true;
 
         // Player > Logging and Crash Handling (a Compile build's macros)
         std::string logLevel;

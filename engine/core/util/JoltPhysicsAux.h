@@ -378,6 +378,7 @@ namespace jasperengine{
 	private:
 		bool onlyStatic;
 		const std::vector<Entity>* ignoreEntities = nullptr;
+		bool hitTriggers = true;
 
 		bool isIgnored(Entity entity) const{
 			if (!ignoreEntities){
@@ -392,13 +393,17 @@ namespace jasperengine{
 		}
 
 	public:
-		explicit OnlyStaticBodyFilter(const bool onlyStatic, const std::vector<Entity>* ignoreEntities = nullptr){
+		explicit OnlyStaticBodyFilter(const bool onlyStatic, const std::vector<Entity>* ignoreEntities = nullptr, bool hitTriggers = true){
 			this->onlyStatic = onlyStatic;
 			this->ignoreEntities = ignoreEntities;
+			this->hitTriggers = hitTriggers;
 		}
 
 		virtual bool ShouldCollideLocked(const JPH::Body &inBody) const override{
 			if (onlyStatic && inBody.GetMotionType() != JPH::EMotionType::Static){
+				return false;
+			}
+			if (!hitTriggers && inBody.IsSensor()){
 				return false;
 			}
 			if (isIgnored(PhysicsCallbacks::bodyEntity(inBody.GetUserData()))){

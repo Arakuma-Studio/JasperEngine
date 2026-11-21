@@ -292,16 +292,20 @@ void UISystem::callLegacy(FunctionSubscribe<void(float, float)> UIComponent::* e
 // Unity's HandlePointerExitAndEnter: exit to the old chain's GameObjects the new one does not
 // have (deepest first), then enter to the new ones (root first)
 void UISystem::updateEnterChain(UIPointerState& state, Entity newHit){
-    std::vector<Entity> chain;
+    // built in a reused buffer: a move over the same element allocates nothing (the copies below
+    // only when the chain changed, since the messages may move pointers and come back here)
+    static thread_local std::vector<Entity> walk;
+    walk.clear();
     for (Entity current = newHit; current != NULL_ENTITY && scene->isEntityCreated(current);){
-        chain.push_back(current);
+        walk.push_back(current);
         const Transform* transform = scene->findComponent<Transform>(current);
         current = transform ? transform->parent : NULL_ENTITY;
     }
     state.hit = newHit;
-    if (chain == state.enterChain)
+    if (walk == state.enterChain)
         return;
 
+    const std::vector<Entity> chain = walk;
     const std::vector<Entity> old = state.enterChain;
     state.enterChain = chain;
     const int pointerId = state.pointerId;
@@ -1046,13 +1050,15 @@ bool UISystem::eventOnPointerMove(int pointerId, float x, float y, bool touch){
     validatePointers();
 
     const Vector2 point(x, y);
-    // the mouse's other held buttons follow it (one position)
-    std::vector<int> moved;
+    // the mouse's other held buttons follow it (one position); at most three pointers, on the
+    // stack (a move per frame allocates nothing: the gamepad cursor's budget)
+    int movedIds[3];
+    size_t movedCount = 0;
     if (isMousePointer(pointerId) && !touch){
-        moved.push_back(-1);
+        movedIds[movedCount++] = -1;
         for (int other : {-2, -3}){
             if (findPointer(other))
-                moved.push_back(other);
+                movedIds[movedCount++] = other;
         }
         if (!findPointer(-1)){
             UIPointerState& mouse = pointers[-1];
@@ -1064,7 +1070,7 @@ bool UISystem::eventOnPointerMove(int pointerId, float x, float y, bool touch){
         // a finger that went down elsewhere (a document, the game) does not hover
         if (!findPointer(pointerId))
             return false;
-        moved.push_back(pointerId);
+        movedIds[movedCount++] = pointerId;
     }
 
     CursorType cursor = CursorType::ARROW;
@@ -1072,7 +1078,8 @@ bool UISystem::eventOnPointerMove(int pointerId, float x, float y, bool touch){
     const Entity hit = raycastHit(point, &panelHit);
     bool consumed = false;
 
-    for (int id : moved){
+    for (size_t m = 0; m < movedCount; m++){
+        const int id = movedIds[m];
         UIPointerState* state = findPointer(id);
         if (!state)
             continue;

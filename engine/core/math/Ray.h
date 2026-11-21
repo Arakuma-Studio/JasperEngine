@@ -99,7 +99,8 @@ namespace jasperengine {
         // also every hit into it, nearest first and one per collider. broadPhaseLayer3D < 0
         // searches every 3D broad phase layer. The scene queries above skip the Ignore
         // Raycast layer (LAYER_MASK_DEFAULT_RAYCAST); Physics and Physics2D take a mask.
-        RayReturn cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool onlyStatic, uint16_t categoryBits, uint16_t maskBits, const std::vector<Entity>* ignoreEntities, uint32_t layerMask, std::vector<RayReturn>* allHits) const;
+        // hitTriggers false skips trigger colliders (sensor bodies in 3D, sensor shapes in 2D).
+        RayReturn cast(Scene* scene, RayFilter raytest, int broadPhaseLayer3D, bool onlyStatic, uint16_t categoryBits, uint16_t maskBits, const std::vector<Entity>* ignoreEntities, uint32_t layerMask, std::vector<RayReturn>* allHits, bool hitTriggers = true) const;
 
         friend class Physics;
         friend class Physics2D;
