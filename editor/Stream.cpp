@@ -2362,6 +2362,8 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["drawMode"] = drawModeKey(ds.drawMode);
     if (ds.showStats)
         sceneNode["showStats"] = ds.showStats;
+    if (ds.frameChecks)
+        sceneNode["frameChecks"] = ds.frameChecks;
     // S41: written only when turned off (on by default)
     if (!ds.pixelZoom) sceneNode["pixelZoom"] = false;
     if (!ds.pixelGrid) sceneNode["pixelGrid"] = false;
@@ -2413,6 +2415,7 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["drawMode"] && node["drawMode"].IsScalar())
         drawModeFromKey(node["drawMode"].as<std::string>(), ds.drawMode);
     ds.showStats = node["showStats"] ? YamlNumbers::as<bool>(node["showStats"]) : false;
+    ds.frameChecks = node["frameChecks"] ? YamlNumbers::as<bool>(node["frameChecks"]) : false;
     decodeNavOverlaySettings(node["navigation"], ds.navigation);
     decodeTerrainOverlaySettings(node["terrainOverlay"], ds.terrainOverlay);
     if (node["showGrid2D"])           ds.showGrid2D           = YamlNumbers::as<bool>(node["showGrid2D"]);

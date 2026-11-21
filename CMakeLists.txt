@@ -918,6 +918,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/picking/BvhDiskCache.cpp
     ${EDITOR_DIR}/picking/IconPicker.cpp
     ${EDITOR_DIR}/picking/ScenePicker.cpp
+    ${EDITOR_DIR}/sceneview/FrameChecks.cpp
     ${EDITOR_DIR}/sceneview/SceneViewController.cpp
     ${EDITOR_DIR}/sceneview/SceneViewMath.cpp
     ${EDITOR_DIR}/sceneview/SceneViewState.cpp
