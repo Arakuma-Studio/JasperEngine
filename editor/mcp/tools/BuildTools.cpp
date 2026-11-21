@@ -2713,7 +2713,7 @@ void registerBuildTools(McpRegistry& registry) {
         tool.name = "get_build_info";
         tool.title = "Get Build Info";
         tool.description =
-            "Build Settings state: toolchains (cmake/compiler, emsdk; missing ones listed), graphics APIs and last "
+            "Build Settings state: toolchains (missing ones listed), graphics APIs and last "
             "output dir per mode, jobs, scenes in build, shader count (include_shaders: keys for edit_build_shaders), "
             "running job, last result (sizes: get_build_report). Call before build_project.";
         tool.inputSchema = object({
@@ -2754,9 +2754,9 @@ void registerBuildTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Build;  // busy policy (McpServer::busyRefusal)
         tool.title = "Build Project";
         tool.description =
-            "Build Settings > Build, as a job. player: a game per platform (prebuilt, or compiled); desktop/web: this "
+            "Build Settings > Build, as a job. player: a game per platform; desktop/web: this "
             "computer/web; source: a CMake project; omitted: get_build_info's default platform. profile: a Build Profile sets "
-            "platform, API, flavour, folder. run_device: Build And Run. Saves scenes first. Past timeout_seconds: job_id (get_job).";
+            "platform, API, flavour, folder. run_device: Build And Run. Saves scenes first.";
         tool.inputSchema = object({
             {"mode", stringEnum("", {"player", "desktop", "web", "source"})},
             {"output_dir", string("Absolute, outside project.")},

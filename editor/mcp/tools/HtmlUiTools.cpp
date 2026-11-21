@@ -2054,8 +2054,8 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.title = "Inspect UI Document";
         tool.description =
             "A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = "
-            "send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model, "
-            "styles + rule file:line. at: hit test. file: a .html/.css's diagnostics (= "
+            "send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics. file: a .html/.css's "
+            "diagnostics (= "
             "`jasperengine-editor check --ui`). l10n: String Tables. Lua content: play only.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
@@ -2063,7 +2063,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
             {"file", assetPath(".html/.css: diagnostics only.")},
             {"selector", string("Default: whole document.")},
             {"at", vec2("Hit test (canvas px): element stack.")},
-            {"detail", withDefault(stringEnum("full: box model, attributes, styles + sources (max 20 elements).",
+            {"detail", withDefault(stringEnum("full: box model, attributes, styles + rule file:line (max 20 elements).",
                                               {"tree", "full"}), "tree")},
             {"depth", integer("Descendant levels (default tree 3, full 0).", 0, 16)},
             {"styles", array(Json{{"type", "string"}}, "Computed CSS properties.")},
@@ -2090,10 +2090,10 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.title = "Assert UI Layout";
         tool.description =
             "Assert a live HTML/CSS UI document's layout: passed + each failure (ref, numbers, rects), "
-            "on failure an image with them outlined. Checks {type, selector}: exists, count and selected "
+            "outlined in an image. Checks {type, selector}: exists, count and selected "
             "(count|min|max), visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), "
-            "within_parent (container), within_viewport, contrast (min_ratio, background where the UI is "
-            "transparent), min_size (width, height), virtual_window (max rows), tooltip (text). viewports, "
+            "within_parent (container), within_viewport, contrast (min_ratio, background under a "
+            "transparent UI), min_size (width, height), virtual_window (max rows), tooltip (text). viewports, "
             "languages: more layouts. 0 matches fail.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
