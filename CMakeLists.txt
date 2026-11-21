@@ -943,6 +943,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/McpContext.cpp
     ${EDITOR_DIR}/mcp/McpInstructions.cpp
     ${EDITOR_DIR}/mcp/McpJobs.cpp
+    ${EDITOR_DIR}/mcp/JobEstimate.cpp
     ${EDITOR_DIR}/mcp/McpRefs.cpp
     ${EDITOR_DIR}/mcp/McpRegistry.cpp
     ${EDITOR_DIR}/mcp/McpSchema.cpp

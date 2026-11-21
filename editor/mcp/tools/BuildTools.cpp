@@ -503,6 +503,8 @@ struct BuildRun {
     ExportResult result;                  // a player build's report (taken before the exporter goes)
     std::string next;                     // the success result's next: a platform the game does not target
     Json unreadableScenes = Json::array();  // generate_shaders: the scenes its list could not read (R4)
+    uint64_t workFiles = 0;               // S92: what the estimate's model counted (the Assets folder)
+    uint64_t workBytes = 0;
 };
 
 // Never destroyed: a build still running at exit must not be joined from a static destructor
@@ -577,8 +579,58 @@ Json artifactsJson(const fs::path& dir) {
     return list;
 }
 
+// S92 R13: a build's history kind (platform and method: their times differ by minutes)
+std::string buildHistoryKind(ExportMode mode, BuildPlatform platform, jobmodel::BuildKind kind) {
+    if (mode == ExportMode::SourceCode) return "build_project:source";
+    if (mode != ExportMode::Player) return std::string("build_project:") + modeName(mode);
+    return std::string("build_project:") + buildPlatformName(platform) + (kind == jobmodel::BuildKind::Prebuilt ? ":prebuilt" : ":compiled");
+}
+
+jobmodel::BuildKind buildModelKind(ExportMode mode, BuildPlatform platform, bool prebuilt) {
+    if (mode == ExportMode::SourceCode) return jobmodel::BuildKind::Source;
+    if (mode == ExportMode::Player && prebuilt) return jobmodel::BuildKind::Prebuilt;
+    return mode == ExportMode::Web || (mode == ExportMode::Player && platform == BuildPlatform::Web) ? jobmodel::BuildKind::CompiledWeb
+                                                                                                    : jobmodel::BuildKind::CompiledDesktop;
+}
+
+// S92 R13: the estimate at submit: the files and bytes of the Assets folder, and the method the
+// exporter will pick (chooseBuildMethod, as get_build_info shows it)
+void estimateBuildJob(BuildRun& run, Project* project) {
+    std::error_code ec;
+    size_t seen = 0;
+    for (auto it = fs::recursive_directory_iterator(project->getAssetsPath(), fs::directory_options::skip_permission_denied, ec);
+         !ec && it != fs::recursive_directory_iterator() && seen < 200000; it.increment(ec), seen++) {
+        if (!it->is_regular_file(ec)) continue;
+        run.workFiles++;
+        run.workBytes += it->file_size(ec);
+    }
+    bool prebuilt = false;
+    uint64_t bytes = 0;
+    if (run.mode == ExportMode::Player) {
+        std::string findError;
+        const std::optional<PlayerInfo> runtime = PlayerRuntimes::find(
+            Exporter::playerIdFor(run.config, run.config.developmentBuild || project->isDevelopmentBuild()), run.config.playersDir, false, findError);
+        const BuildMethodChoice choice = Exporter::chooseBuildMethod(project, run.config, runtime ? &*runtime : nullptr);
+        prebuilt = choice.method == BuildMethod::Prebuilt && runtime;
+        if (prebuilt && runtime->shippedBytes > 0) bytes = runtime->shippedBytes + run.workBytes;
+    }
+    const jobmodel::BuildKind kind = buildModelKind(run.mode, run.config.platform, prebuilt);
+    run.job->estimateFor(project->getProjectPath(), buildHistoryKind(run.mode, run.config.platform, kind),
+                         jobmodel::buildSeconds(kind, run.workFiles, run.workBytes), bytes);
+}
+
+// S92 R14: the downgrades the build took; a build whose method was not the one estimated records
+// its measure against the model of what ran
+void reportBuildJob(BuildRun& r) {
+    for (const BuildFallback& f : r.result.fallbacks) r.job->addFallback({f.step, f.from, f.to, f.reason});
+    if (r.mode != ExportMode::Player || r.shadersOnly || r.result.methodUsed == BuildMethod::Auto) return;
+    const jobmodel::BuildKind kind = buildModelKind(r.mode, r.config.platform, r.result.methodUsed == BuildMethod::Prebuilt);
+    r.job->setHistoryModel(buildHistoryKind(r.mode, r.config.platform, kind), jobmodel::buildSeconds(kind, r.workFiles, r.workBytes));
+}
+
 void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progress) {
     BuildRun& r = *run;
+    reportBuildJob(r);
     Json result = {
         {"mode", r.shadersOnly ? "shaders" : modeName(r.mode)},
         {"errors", diagnosticsJson(r, "error")},
@@ -1119,6 +1171,7 @@ void buildProjectTool(const CallPtr& call) {
         std::lock_guard<std::mutex> lock(manager().mutex);
         manager().active = run;
     }
+    estimateBuildJob(*run, project);
     Out::info("MCP: %s to %s", modeLabel, FileUtils::pathToUtf8(outputDir).c_str());
     run->exporter->startExport(project, config);
     startRun(run);

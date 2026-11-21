@@ -74,7 +74,8 @@ void recordGameTool(const CallPtr& call) {
     settings.format = format == "mov" ? recorder::Format::Mov : recorder::Format::Mp4;
     const std::string quality = args.value("quality", std::string("high"));
     settings.quality = quality == "low" ? recorder::Quality::Low : (quality == "medium" ? recorder::Quality::Medium : recorder::Quality::High);
-    settings.frameRate = std::clamp(args.value("fps", 30), recorder::kMinFrameRate, recorder::kMaxFrameRate);
+    const int askedFps = args.value("fps", 30);
+    settings.frameRate = std::clamp(askedFps, recorder::kMinFrameRate, recorder::kMaxFrameRate);
     settings.captureAudio = args.value("audio", false);
     settings.exitPlayMode = args.value("exit_play", true);
     settings.recordOnPlay = false;
@@ -82,6 +83,18 @@ void recordGameTool(const CallPtr& call) {
         settings.resolution = recorder::Resolution::Custom;
         settings.customWidth = std::clamp(args.value("width", 1920), recorder::kMinSize, recorder::kMaxSize);
         settings.customHeight = std::clamp(args.value("height", 1080), recorder::kMinSize, recorder::kMaxSize);
+    }
+    // S92 R14: the arguments the Recorder's limits changed (the session adds its own clamps)
+    std::vector<JobFallback> clamped;
+    if (askedFps != settings.frameRate) {
+        clamped.push_back({"frame_rate", std::to_string(askedFps), std::to_string(settings.frameRate),
+                           "the Recorder records " + std::to_string(recorder::kMinFrameRate) + "-" + std::to_string(recorder::kMaxFrameRate) + " fps"});
+    }
+    if (settings.resolution == recorder::Resolution::Custom &&
+        (args.value("width", 1920) != settings.customWidth || args.value("height", 1080) != settings.customHeight)) {
+        clamped.push_back({"resolution", std::to_string(args.value("width", 1920)) + "x" + std::to_string(args.value("height", 1080)),
+                           std::to_string(settings.customWidth) + "x" + std::to_string(settings.customHeight),
+                           "the Recorder records " + std::to_string(recorder::kMinSize) + "-" + std::to_string(recorder::kMaxSize) + " px a side"});
     }
     // the frames: an interval from start_frame (frames, or seconds at fps)
     int64_t frames = args.value("frames", (int64_t)0);
@@ -111,8 +124,15 @@ void recordGameTool(const CallPtr& call) {
         return;
     }
     JobPtr job = ctx.jobs().create("record", "Record " + std::to_string(frames) + " frame(s) to " + format);
+    // S92 R13: frames x the output size, corrected by this project's last recordings of the format
+    const int outputWidth = session.outputWidth(), outputHeight = session.outputHeight();
+    job->estimateFor(ctx.project()->getProjectPath(), "record_game:" + format,
+                     jobmodel::recordSeconds(frames, outputWidth, outputHeight, settings.kind == recorder::Kind::Movie),
+                     recorder::estimateRecordingBytes(session.settings(), outputWidth, outputHeight, frames));
+    for (const JobFallback& fallback : clamped) job->addFallback(fallback);
     job->setCancelHandler([]() { recorder::RecorderSession::get().stop(); });
     session.setOnFinished([job, settings](const recorder::Result& result) {
+        for (const recorder::Result::Downgrade& d : result.downgrades) job->addFallback({d.step, d.from, d.to, d.reason});
         Json data = result.sidecarJson();
         Json files = Json::array();
         for (const fs::path& file : result.files) files.push_back(FileUtils::pathToGenericUtf8(file));

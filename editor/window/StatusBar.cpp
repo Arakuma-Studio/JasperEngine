@@ -10,15 +10,50 @@
 #include "reload/HotReloadService.h"
 #include "texture/TextureCookQueue.h"
 #include "model/ModelCookQueue.h"
+#include "mcp/McpServer.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
+
+namespace {
+
+    // S92 R16: the running MCP jobs that have an estimate (record_game, build_project, ...): their
+    // progress, or the share of the estimate elapsed, and the time left
+    void drawJobEstimates() {
+        int shown = 0;
+        for (const mcp::JobPtr& job : mcp::McpServer::get().jobs().list()) {
+            if (job->finished()) break;   // the running ones come first
+            mcp::JobEstimate estimate;
+            if (!job->estimate(estimate)) continue;
+            if (++shown > 2) break;
+            const double elapsed = job->elapsedSeconds();
+            const double progress = job->progress();
+            const double left = mcp::jobRemainingSeconds(estimate.seconds, elapsed, progress);
+            const double share = progress >= 0.0 ? progress : (estimate.seconds > 0.0 ? std::min(0.99, elapsed / estimate.seconds) : 0.0);
+            const std::string overlay = job->title() + " \xC2\xB7 " + (left >= 0.5 ? mcp::formatJobDuration(left) + " left" : std::string("finishing"));
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, 0.0f));
+            ImGui::ProgressBar(static_cast<float>(share), ImVec2(Theme::dpi(280.0f), ImGui::GetTextLineHeight()), overlay.c_str());
+            ImGui::PopStyleVar();
+            if (ImGui::BeginItemTooltip()) {
+                ImGui::Text("%s (%s)", job->title().c_str(), job->id().c_str());
+                ImGui::Text("Estimated %s from the %s, %s confidence; %s elapsed", mcp::formatJobDuration(estimate.seconds).c_str(),
+                            estimate.basis == "history" ? "last runs" : "cost model", estimate.confidence.c_str(),
+                            mcp::formatJobDuration(elapsed).c_str());
+                ImGui::TextDisabled("An MCP job: get_job reads it, cancel_job stops it.");
+                ImGui::EndTooltip();
+            }
+            ImGui::SameLine();
+        }
+    }
+
+}
 
 std::string StatusBar::transientText;
 double StatusBar::transientUntil = 0.0;
@@ -93,6 +128,7 @@ void StatusBar::show() {
             ImGui::PopStyleVar();
             ImGui::SameLine();
         }
+        drawJobEstimates();
         // shader and pipeline creation off the render thread (spec S32 R25): "Compiling shaders 3"
         const GpuCreationStats creation = SystemRender::getGpuCreationStats();
         const size_t compiling = creation.pendingShaders + creation.pendingPipelines + creation.pendingWarmDraws;

@@ -4,6 +4,7 @@
 #include "McpJobs.h"
 
 #include <algorithm>
+#include <cmath>
 
 using namespace jasperengine::editor::mcp;
 
@@ -52,13 +53,17 @@ void McpJob::log(const std::string& line) {
 }
 
 void McpJob::succeed(const std::string& message, Json result) {
-    std::lock_guard<std::mutex> lock(mutex);
-    if (jobStatus != JobStatus::Running) return;
-    jobStatus = JobStatus::Succeeded;
-    jobProgress = 1.0;
-    jobMessage = message;
-    jobResult = std::move(result);
-    endTime = std::chrono::steady_clock::now();
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (jobStatus != JobStatus::Running) return;
+        jobStatus = JobStatus::Succeeded;
+        jobProgress = 1.0;
+        jobMessage = message;
+        endTime = std::chrono::steady_clock::now();
+        addReport(result, std::chrono::duration<double>(endTime - startTime).count());
+        jobResult = std::move(result);
+    }
+    recordHistory();
 }
 
 void McpJob::fail(const std::string& message, Json result) {
@@ -66,8 +71,77 @@ void McpJob::fail(const std::string& message, Json result) {
     if (jobStatus != JobStatus::Running) return;
     jobStatus = JobStatus::Failed;
     jobMessage = message;
-    jobResult = std::move(result);
     endTime = std::chrono::steady_clock::now();
+    addReport(result, std::chrono::duration<double>(endTime - startTime).count());
+    jobResult = std::move(result);
+}
+
+void McpJob::setEstimate(JobEstimate estimate, std::string kind, std::filesystem::path file) {
+    std::lock_guard<std::mutex> lock(mutex);
+    hasEstimate = true;
+    historyModel = estimate.modelSeconds;
+    jobEstimate = std::move(estimate);
+    historyKind = std::move(kind);
+    historyFile = std::move(file);
+}
+
+void McpJob::estimateFor(const std::filesystem::path& projectPath, const std::string& kind, double modelSeconds, uint64_t bytes) {
+    const std::filesystem::path file = JobHistory::fileFor(projectPath);
+    setEstimate(JobHistory::load(file).estimate(kind, modelSeconds, bytes), kind, file);
+}
+
+void McpJob::setHistoryModel(std::string kind, double modelSeconds) {
+    std::lock_guard<std::mutex> lock(mutex);
+    historyKind = std::move(kind);
+    historyModel = modelSeconds;
+}
+
+void McpJob::addFallback(JobFallback fallback) {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (std::find(fallbacks.begin(), fallbacks.end(), fallback) == fallbacks.end()) fallbacks.push_back(std::move(fallback));
+}
+
+bool McpJob::estimate(JobEstimate& out) const {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (hasEstimate) out = jobEstimate;
+    return hasEstimate;
+}
+
+double McpJob::progress() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return jobProgress;
+}
+
+double McpJob::elapsedSeconds() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    const auto end = jobStatus == JobStatus::Running ? std::chrono::steady_clock::now() : endTime;
+    return std::chrono::duration<double>(end - startTime).count();
+}
+
+void McpJob::addReport(Json& result, double seconds) const {
+    if (!hasEstimate || !result.is_object()) return;
+    Json list = Json::array();
+    for (const JobFallback& f : fallbacks) list.push_back({{"step", f.step}, {"from", f.from}, {"to", f.to}, {"reason", f.reason}});
+    const double estimated = std::round(jobEstimate.seconds * 10.0) / 10.0;
+    result["report"] = {{"seconds", std::round(seconds * 10.0) / 10.0},
+                        {"estimated_seconds", estimated},
+                        {"ratio", estimated > 0.0 ? Json(std::round(seconds / estimated * 100.0) / 100.0) : Json(nullptr)},
+                        {"fallbacks", list}};
+}
+
+void McpJob::recordHistory() const {
+    std::string kind;
+    std::filesystem::path file;
+    double seconds = 0.0, model = 0.0;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!hasEstimate || historyFile.empty() || historyKind.empty()) return;
+        kind = historyKind;
+        file = historyFile;
+        model = historyModel;
+        seconds = std::chrono::duration<double>(endTime - startTime).count();
+    }
+    JobHistory::record(file, kind, seconds, model);
 }
 
 void McpJob::markCancelled(const std::string& message) {
@@ -135,6 +209,13 @@ Json McpJob::toJson(int logLines) const {
         {"elapsed_seconds", std::chrono::duration<double>(end - startTime).count()}
     };
     out["progress"] = jobProgress >= 0.0 ? Json(jobProgress) : Json(nullptr);
+    if (hasEstimate) {
+        out["estimate"] = jobEstimate.toJson();
+        if (jobStatus == JobStatus::Running) {
+            const double left = jobRemainingSeconds(jobEstimate.seconds, std::chrono::duration<double>(end - startTime).count(), jobProgress);
+            out["remaining_seconds"] = std::round(left * 10.0) / 10.0;
+        }
+    }
     if (jobBusy != JobBusy::None) out["holds"] = jobBusyName(jobBusy);
     if (cancelFlag) out["cancel_requested"] = true;
     Json tail = Json::array();

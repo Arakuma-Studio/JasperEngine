@@ -140,6 +140,7 @@ namespace jasperengine::editor {
         fs::path executable;
         std::vector<fs::path> artifacts;
         std::vector<BuildWarning> warnings;
+        std::vector<BuildFallback> fallbacks;
         // what the user does next ("Open on a Mac with Xcode")
         std::vector<std::string> notes;
         // S34: the engine modules the build ships (a prebuilt player's: the ones the project
