@@ -563,7 +563,8 @@ core tests already build scenes with physics, `PhysicsRayThreadsTest.cpp:27-30`)
   Lua gains `MeshRaycast.TREE` and `DETAIL` (T5 bound neither); a NonAlloc form writes the Terrain's
   id per tree. `query_physics {world: drawn}` names a tree by `tree_id` and `prototype` as
   `raycast_meshes` does. `je-bench-physics-query` gains `mesh_overlap_trees_p95_ms` (T5's 50,000
-  bench trees, spheres at trees, with the leaves' budget).
+  bench trees, r = 5 m spheres at trees, the leaves' budget 0.011): 0.0099, 0.0082, 0.0083 on box B
+  (load about 20 on 12 cores, three runs), every other key within its budget.
 - **R18 / risks "one error per call site".** One error per query function per process (an atomic
   flag each), for C++ and Lua alike, naming "outside the physics step: queue the query for onUpdate".
 - **R22 undo.** The existing Physics rows apply without undo; the two new rows go through a new
