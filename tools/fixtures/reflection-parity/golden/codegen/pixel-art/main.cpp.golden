@@ -131,6 +131,7 @@ JASPERENGINE_INIT void init() {
         DebugOverlaySettings debugOverlay;
         debugOverlay.enabled = Engine::isDevelopmentBuild();
         debugOverlay.allowLua = Engine::isDevelopmentBuild();
+        debugOverlay.commands = Engine::isDevelopmentBuild();
         DebugOverlay::configure(debugOverlay);
     }
 

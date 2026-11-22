@@ -8605,6 +8605,22 @@
   {
    "component": "uidocument",
    "group": "",
+   "kind": "Bool",
+   "label": "Is Menu",
+   "path": "isMenu",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Bool",
+   "label": "Gamepad Cursor",
+   "path": "gamepadCursor",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
    "kind": "Enum",
    "label": "Render Mode",
    "path": "renderMode",
@@ -8674,6 +8690,22 @@
    "kind": "Bool",
    "label": "Interactive",
    "path": "interactive",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Bool",
+   "label": "Is Menu",
+   "path": "isMenu",
+   "read_only": false
+  },
+  {
+   "component": "uidocument",
+   "group": "",
+   "kind": "Bool",
+   "label": "Gamepad Cursor",
+   "path": "gamepadCursor",
    "read_only": false
   },
   {

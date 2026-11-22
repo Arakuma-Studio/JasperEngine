@@ -48,10 +48,10 @@ TEST(SignalBench, InvokeOneSubscriberOverDirectCall) {
 TEST(SignalBench, CancellableEmitOverSignal) {
     constexpr int calls = 20000000;
     Signal<int> signal;
-    Subscription subscription = signal.subscribe([](int v) { sink = sink + v; });
+    Subscription subscription = signal.subscribe([](int v) { signalBenchSink = signalBenchSink + v; });
     CancellableEvent<int> idle("onIdle");
     CancellableEvent<int> busy("onBusy");
-    Subscription listener = busy.subscribe([](CancelEventArgs&, int v) { sink = sink + v; });
+    Subscription listener = busy.subscribe([](CancelEventArgs&, int v) { signalBenchSink = signalBenchSink + v; });
     volatile bool plainFlag = false;
 
     auto time = [](auto&& body) {
@@ -59,10 +59,10 @@ TEST(SignalBench, CancellableEmitOverSignal) {
         for (int i = 0; i < calls; i++) body(i & 1);
         return std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / calls;
     };
-    const double flagNs = time([&](int v) { if (plainFlag) sink = sink + v; });
-    const double idleNs = time([&](int v) { if (idle.emit(v)) sink = sink + 1; });
+    const double flagNs = time([&](int v) { if (plainFlag) signalBenchSink = signalBenchSink + v; });
+    const double idleNs = time([&](int v) { if (idle.emit(v)) signalBenchSink = signalBenchSink + 1; });
     const double signalNs = time([&](int v) { signal.invoke(v); });
-    const double busyNs = time([&](int v) { if (busy.emit(v)) sink = sink + 1; });
+    const double busyNs = time([&](int v) { if (busy.emit(v)) signalBenchSink = signalBenchSink + 1; });
     std::printf("[bench] bool test %.2f ns, idle CancellableEvent::emit %.2f ns (budget +1); Signal::invoke %.2f ns, "
                 "CancellableEvent::emit with 1 listener %.2f ns (budget +5)\n", flagNs, idleNs, signalNs, busyNs);
     if (testsupport::perfSlack() > 0.0) {

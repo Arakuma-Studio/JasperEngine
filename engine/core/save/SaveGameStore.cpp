@@ -191,6 +191,7 @@ namespace jasperengine::savegame {
         bool folderSet = false;
         std::map<std::string, Slot, std::less<>> slots;
         std::unique_ptr<jobs::SerialQueue> queue;
+        jobs::JobSystem* queueSystem = nullptr;     // the job system the queue was made on
         uint64_t epoch = 1;
         uint64_t useCounter = 0;
 
@@ -435,7 +436,12 @@ namespace jasperengine::savegame {
         // ------------------------------------------------------------ writing
 
         void ensureQueue(){
-            if (!queue) queue = std::make_unique<jobs::SerialQueue>("savegame", jobs::Lane::Background);
+            // a new engine run in the same process (a recreated Android activity) has a new job
+            // system; the shut-down one cancels what its queues are given
+            jobs::JobSystem* current = &jobs::system();
+            if (queue && queueSystem == current) return;
+            queue = std::make_unique<jobs::SerialQueue>("savegame", jobs::Lane::Background, jobs::GateClass::Default, current);
+            queueSystem = current;
         }
 
         void dispatch(Slot& slot, const std::shared_ptr<WriteJob>& job){

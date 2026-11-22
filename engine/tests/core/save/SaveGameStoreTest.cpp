@@ -6,6 +6,7 @@
 
 #include "Engine.h"
 #include "Log.h"
+#include "io/AssetIOService.h"
 #include "io/AtomicFile.h"
 #include "jobs/JobSystem.h"
 #include "save/SaveGameStore.h"
@@ -310,6 +311,23 @@ TEST_F(SaveGameStoreTest, FlushOnPauseWritesPending){
     store.reset();
     store.setFolder(dir.path() / "saves");
     EXPECT_EQ(readJson("slot1"), R"({"a":2})");
+}
+
+// a new engine run in the same process (a recreated Android activity) restarts the job system: the
+// store's writes go to the new one, not to the shut-down system that cancels them (they then waited
+// for a flush; the full core run showed it as SaveGameStoreSlow's write never starting)
+TEST_F(SaveGameStoreTest, WritesLandAfterTheJobSystemRestarts){
+    ASSERT_TRUE(writeAndFlush("slot1", R"({"a":1})").ok());
+    // the asset readers keep the job system they started with: restarted with it (FoliageSystemCore)
+    AssetIOService::instance().stop();
+    jobs::shutdown();
+    jobs::initialize(jobs::Config{});
+    AssetIOService::instance().start();
+    bool landed = false;
+    ASSERT_TRUE(store.write("slot1", "main", storePayload(R"({"a":2})"), savegame::WriteOptions(),
+                            [&](const savegame::SaveError& error){ landed = error.ok(); }).ok());
+    EXPECT_TRUE(drainUntil([&]{ return landed; })) << "the write ran on a worker of the new job system";
+    EXPECT_TRUE(fs::exists(dir.path() / "saves" / "slot1.g2.jsave"));
 }
 
 TEST_F(SaveGameStoreTest, TooLargeNamesTheNamespaces){

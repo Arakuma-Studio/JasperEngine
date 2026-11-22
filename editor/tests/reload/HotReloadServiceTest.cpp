@@ -479,7 +479,7 @@ TEST_F(HotReloadServiceTests, DialogueEditInPlayKeepsTheRunner) {
         out.replace(out.find("%TEXT%"), 6, text);
         return dialogueText(out);
     };
-    writeText(file, withText("Halt."));
+    hotReloadServiceWriteText(file, withText("Halt."));
     std::string error;
     std::shared_ptr<const dialogue::Program> program = dialogue::Programs::load(file.string(), &error);
     ASSERT_TRUE(program) << error;
@@ -499,7 +499,7 @@ TEST_F(HotReloadServiceTests, DialogueEditInPlayKeepsTheRunner) {
         set.changes.push_back(change);
         service.apply(set, ApplyOptions());
     };
-    writeText(file, withText("Halt! Who goes there?"));
+    hotReloadServiceWriteText(file, withText("Halt! Who goes there?"));
     apply();
     EXPECT_EQ(lines, (std::vector<std::string>{"Halt.", "Halt! Who goes there?"})) << "the presented line is sent again";
     EXPECT_EQ(runner.getState(), dialogue::RunnerState::Line);
@@ -511,7 +511,7 @@ TEST_F(HotReloadServiceTests, DialogueEditInPlayKeepsTheRunner) {
     });
     std::string ended = "-";
     runner.onEnd = [&](dialogue::Runner&, const std::string& result) { ended = result; };
-    writeText(file, dialogueText(""));
+    hotReloadServiceWriteText(file, dialogueText(""));
     apply();
     Log::removeListener(listener);
     EXPECT_EQ(runner.getState(), dialogue::RunnerState::Ended);

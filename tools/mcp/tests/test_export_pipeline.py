@@ -28,6 +28,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import zipfile
 import zlib
 from pathlib import Path
 
@@ -486,9 +487,21 @@ async def test_build_report_history_survives_restart(ed: Editor):
 
 
 async def install_stand_in_runtime(ed: Editor) -> None:
+    """test_build_method's stand-in player, advertising every module of the full variant: the earlier
+    tests of this file leave scripts in the project (a C++ one among them), which need every module"""
     info = await ed.call("get_build_info")
     if not any(p["id"] == RUNTIME and p["installed"] for p in info["players"]):
-        archive = runtime_archive(ed.scratch.root / f"jasperengine-player-{RUNTIME}.zip", info["editor_version"])
+        plain = runtime_archive(ed.scratch.root / f"plain-{RUNTIME}.zip", info["editor_version"])
+        archive = ed.scratch.root / f"jasperengine-player-{RUNTIME}.zip"
+        modules = json.loads((REPO / "engine" / "player" / "variants.json").read_text())["variants"][0]["modules"]
+        with zipfile.ZipFile(plain) as source, zipfile.ZipFile(archive, "w") as target:
+            for item in source.infolist():
+                data = source.read(item.filename)
+                if item.filename == "player-info.json":
+                    player = json.loads(data)
+                    player["features"] = modules
+                    data = json.dumps(player).encode()
+                target.writestr(item, data)
         r = await ed.call("install_player_runtime", archive=str(archive), timeout_seconds=120)
         ed.check_eq(r["status"], "succeeded", f"{r}")
 

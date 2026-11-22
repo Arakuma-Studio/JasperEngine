@@ -16,6 +16,7 @@
 #include "util/FileUtils.h"
 #include "util/ImageDiff.h"
 #include "util/ProjectFileWrites.h"
+#include "window/EditorModal.h"
 
 #include "imgui.h"
 
@@ -437,9 +438,10 @@ void TestRunnerWindow::show(App&, Project* project) {
         ImGui::OpenPopup("Create Test Script##TestRunner");
         scriptPopup = false;
     }
-    if (ImGui::BeginPopupModal("Create Test Script##TestRunner", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::InputText("Name", scriptName, sizeof(scriptName));
-        if (ImGui::Button("Create")) {
+    if (EditorModal::begin("Create Test Script##TestRunner", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        EditorModal::message("A new Tests/<name>.test.lua from the template.");
+        EditorModal::inputText("Name", "name", scriptName, sizeof(scriptName));
+        if (EditorModal::button("Create", "ok")) {
             std::string start;
             if (const SceneProject* sp = project->getScene(project->getStartSceneId()))
                 start = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(sp->filepath));
@@ -453,7 +455,7 @@ void TestRunnerWindow::show(App&, Project* project) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+        if (EditorModal::button("Cancel", "cancel")) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
     ImGui::End();

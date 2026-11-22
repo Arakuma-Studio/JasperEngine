@@ -535,3 +535,9 @@ craftsman-end-motor (a port reconstructed from a retail binary). Nothing here is
 - **Risks** the `run-as` fallback through `adb exec-in ... cat` is not implemented: a device whose
   `run-as` cannot copy the pushed patch fails the patch with "this device's run-as is not usable",
   the risk section's default for such devices.
+- **AC9, AC13 (integration pass).** AC9 ran in the Linux image: an editor on Xvfb with its HTTP MCP
+  server, `build_project {mode: "web", development: true, run_device: "web"}` through
+  `jasperengine-editor call`, then `browser_gate.py --editor-served` (its ready line read back from
+  `read_console categories ["device"]`). AC13's screenshot is of that run: the Console's device strip
+  with the Default browser device Running, its URL, Stop and Screenshot. No emulator was attached to
+  that editor (the emulator image has no X server for the editor's window).

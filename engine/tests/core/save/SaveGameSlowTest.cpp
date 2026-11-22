@@ -41,6 +41,15 @@ TEST(SaveGameStoreSlow, FlushPastTheLimitLogsAbandoned){
     store.setFolder(dir.path() / "saves");
     std::atomic<bool> entered{false};
     std::atomic<bool> release{false};
+    // a failed assertion returns early: the injector (it refers to this frame) and the held write go
+    // with it, or the next flush of the process spins in it for ever (the next test hung so)
+    struct Cleanup {
+        std::atomic<bool>& release;
+        ~Cleanup(){
+            release = true;
+            io::setAtomicFileFaultInjector(nullptr);
+        }
+    } cleanup{release};
     io::setAtomicFileFaultInjector([&](std::string_view step, const fs::path& path) -> std::error_code {
         if (step == "write" && path.string().find(".jsave") != std::string::npos){
             entered = true;

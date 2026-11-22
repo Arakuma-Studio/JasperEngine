@@ -7507,8 +7507,12 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
         }
 
         if (!std::filesystem::exists(projectFile)) {
-            // a file in its place is no project folder: nothing could be saved there
-            if (!std::filesystem::is_directory(projectPath) && !std::filesystem::create_directories(projectPath)) {
+            // a file in its place is no project folder: nothing could be saved there. Judged after the
+            // creation: projectPath is set above, so getUserDataPath() on another thread may create the
+            // folder first, and create_directories then answers false for a folder that is there.
+            std::error_code createError;
+            std::filesystem::create_directories(projectPath, createError);
+            if (!std::filesystem::is_directory(projectPath)) {
                 throw std::runtime_error(FileUtils::pathToGenericUtf8(projectPath) + " is not a folder");
             }
             Out::info("Created project directory: \"%s\"", projectPath.string().c_str());

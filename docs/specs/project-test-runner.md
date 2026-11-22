@@ -816,3 +816,12 @@ case tagged `red`, a skipped case, an Edit Mode case, goldens for `level1_start`
   file Record Input wrote replays as a case the same way.
 - **Not done in this change** (each named in the PR): the web gate, the Android run and the release
   `.text` size (AC12, AC13, AC18) run in the integration pass.
+- **AC12, AC13, AC18 (integration pass).** AC12: the web gate first wedged the page after the first
+  case's `[test] begin` and the Android player crashed (SIGSEGV in `ChunkAccess::testConfig`): `Test.config`
+  iterated `items()` of a temporary JSON already destroyed. With the table kept, `GATE=game-tests`
+  passes (3 passed, 1 skipped, exit code 0). AC18: the release glcore player (`tools/build.sh players`,
+  full variant) of the tree before this spec's merge (5eb7d4088) against the tree after it (bd427002c):
+  `.text` 39,219,810 against 39,271,938 bytes (+52,128). None of it is the runner (no `gametest::` or
+  `PlayerTests` symbol in the release player); the input scripts that came with the merge
+  (`input::Script*`, about 22.5 KB of functions, compiled in every player for `--input-script`), the
+  `data://` override and the link's layout make it, so `.text` is not equal to the base tree's.
