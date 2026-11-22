@@ -1808,6 +1808,11 @@
       3,
       "lumen",
       "Lumen"
+     ],
+     [
+      4,
+      "nits",
+      "Nits"
      ]
     ],
     "shading": [
