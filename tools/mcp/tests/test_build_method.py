@@ -96,9 +96,12 @@ async def test_prebuilt_linux_build(ed: Editor):
     r = await ed.call("build_project", mode="player", platform="linux", output_dir=str(out), timeout_seconds=600)
     ed.check_eq(r["status"], "succeeded", f"{r}")
     result = r["result"]
-    # S92 R13, R14: estimated as a prebuilt Linux build; nothing was downgraded
+    # S92 R13, R14: an estimate at submit; the report's fallbacks are the downgrades the build took:
+    # here at most the bigger player variant, exactly when the build warned W-PLAYER-VARIANT
     ed.check(r.get("estimate", {}).get("seconds", 0) > 0, f"an estimate: {r.get('estimate')}")
-    ed.check_eq(result.get("report", {}).get("fallbacks"), [], f"a report: {result.get('report')}")
+    fallbacks = result.get("report", {}).get("fallbacks")
+    variant = any(isinstance(w, dict) and w.get("code") == "W-PLAYER-VARIANT" for w in result.get("warnings", []))
+    ed.check_eq([f["step"] for f in fallbacks or []], ["player"] if variant else [], f"a report: {result.get('report')}")
     ed.check_eq(result["method_used"], "prebuilt")
     ed.check_eq(result["player_id"], RUNTIME)
     ed.check_eq(result["compile_reasons"], [])
