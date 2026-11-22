@@ -6,7 +6,9 @@
 
 // The CPU time of the calling thread (docs/specs/release-performance-and-gpu-quirks.md R5, D3):
 // what it computed, without its waits on the driver, locks and I/O. Read at most once a second
-// (Linux and Android serve it with a system call; Windows advances it at the scheduler tick).
+// (Linux and Android serve it with a system call). Windows on x64 counts the thread's cycles, its
+// first read measuring the counter's rate over 2 ms; elsewhere on Windows it advances at the
+// scheduler tick (about 15.6 ms).
 
 #include "Export.h"
 

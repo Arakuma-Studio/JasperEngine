@@ -510,3 +510,10 @@ NVIDIA lane, `tools/mcp/gpu_lane.json` class `gpu`). The web gate extends a gate
    still differed by 1 between the two editors, which box B never reproduced (9 runs, and 3 of a
    control with two rule editors). There the test accepts test_batching's same-image tolerance
    (every channel within 1); where the rules do not apply them (the GPU lane) it keeps AC21's 0.
+17. **The Windows thread clock (R5, D3)** is `QueryThreadCycleTime` on x64, divided by the time-stamp
+   counter's rate that the first read measures over 2 ms, where the CPU reports an invariant counter;
+   `GetThreadTimes` serves elsewhere. `GetThreadTimes` does not only round to the scheduler tick: it
+   charges a whole tick to the thread the tick finds running, so AC5's frames (2 ms of work after
+   20 ms of sleep) read 14.06 ms a frame on a CI runner (run 45035957551), not R5's +-0.3 ms.
+   `ThreadCpuClock.ResolvesAFramesWork` holds the clock to a 3 ms spin, and AC5's limit is 6 ms on
+   every platform.

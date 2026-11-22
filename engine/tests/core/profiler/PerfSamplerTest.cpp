@@ -185,17 +185,32 @@ TEST_F(PerfSamplerTest, ThreadCpuSeparatesWaitingFromWork){
     PerfSampler::tickForTest(1.0);
     const PerfSummary summary = PerfSampler::summary();
     EXPECT_TRUE(summary.threadClock);
-#if defined(_WIN32)
-    EXPECT_LT(summary.mainThreadCpuMs, 8.0);
-#else
     EXPECT_LT(summary.mainThreadCpuMs, 6.0);
-#endif
     EXPECT_GE(summary.mainThreadCpuMs, 0.0);
     EXPECT_GT(summary.cpuMsAvg, 20.0);
     EXPECT_GE(PerfSampler::mainThreadCpuMsLastSecond(), 0.0);
     const std::string json = PerfSampler::toJson(summary);
     EXPECT_NE(json.find("\"main_thread_cpu\":\"thread_clock\""), std::string::npos) << json;
     EXPECT_NE(json.find("\"frame_ms\""), std::string::npos) << json;
+}
+
+// R5: the thread clock resolves one frame's work: a 3 ms spin reads more than nothing and no more
+// than the wall time around it (a clock that advances at the scheduler tick reads 0 or 15.6 ms)
+TEST(ThreadCpuClock, ResolvesAFramesWork){
+    ASSERT_TRUE(ThreadCpuClock::isAvailable());
+    for (int i = 0; i < 5; i++){
+        const auto wallStart = Clock::now();
+        const double cpuStart = ThreadCpuClock::nowMs();
+        const auto spinEnd = Clock::now() + std::chrono::milliseconds(3);
+        volatile uint64_t work = 0;
+        while (Clock::now() < spinEnd)
+            work = work + 1;
+        const double cpuEnd = ThreadCpuClock::nowMs();
+        const double wallMs = std::chrono::duration<double, std::milli>(Clock::now() - wallStart).count();
+        ASSERT_GE(cpuStart, 0.0);
+        EXPECT_GT(cpuEnd - cpuStart, 0.0) << "spin " << i;
+        EXPECT_LE(cpuEnd - cpuStart, wallMs + 0.1) << "spin " << i << " of " << wallMs << " ms";
+    }
 }
 
 // AC6: a window of 30 committed seconds goes to the game, then a new one starts
