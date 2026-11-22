@@ -69,11 +69,14 @@ inside) and the engine's own rays (particle collision, Foot IK) are unchanged.
 
 ### Fixed steps in a long frame (S96)
 
-A long frame runs every fixed step it needs: the old limit of 100 fixed steps a frame, which logged
-"Dropping fixed-update steps" every time a frame reached it, is now as many as `Time.maximumDeltaTime`
-lets through (`Time.maximumFixedStepsPerFrame` 0, S96). At the default 60 Hz a frame never needed 100
-steps, so a game at the default step plays the same; one with a step of 400 Hz or more no longer drops
-steps in a long frame. `Time.maximumFixedStepsPerFrame` brings a cap back.
+The old limit of 100 fixed steps a frame, which logged "Dropping fixed-update steps" every time a
+frame reached it, is now as many as `Time.maximumDeltaTime` lets through:
+`ceil(maximumDeltaTime / fixedDeltaTime) + 1`, 16 at the default 60 Hz and 0.25 s (S96). A time scale
+does not raise it, as in Unity. At time scale 1 a frame never drops a step, and one with a step of 400 Hz
+or more no longer drops steps in a long frame. A frame whose scaled time passes `maximumDeltaTime`
+(time scale 20 at 60 fps, or time scale 2 in a 0.25 s frame) now drops the steps past the cap, logged once
+and counted in `Time.droppedFixedSteps`: raise `Time.maximumDeltaTime` to run them.
+`Time.maximumFixedStepsPerFrame` only lowers the cap.
 
 ### IK solvers (S77)
 

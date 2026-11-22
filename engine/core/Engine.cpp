@@ -1250,18 +1250,16 @@ int Engine::getMaxFixedStepsPerFrame(){
 }
 
 int Engine::getFixedStepCap(){
-    if (maxFixedStepsPerFrame > 0){
-        return maxFixedStepsPerFrame;
-    }
     if (!(updateTime > 0.0)){
         return 1;
     }
-    // a frame's game time is at most this (runFrame: the fixed frame delta replaces the measured
-    // one, maxDeltatime caps that, then the time scale applies); +1 for the part of a step the
-    // last frame left, and the whole steps it left (a fixed step made shorter since)
-    const double frameSeconds = (fixedDeltatime > 0.0 ? fixedDeltatime : maxDeltatime) * std::max(1.0, timeScale);
-    const double steps = std::ceil(frameSeconds / updateTime) + 1.0 + std::floor(updateTimeCount / updateTime);
-    return (int)std::clamp(steps, 1.0, (double)std::numeric_limits<int>::max());
+    // the spiral-of-death guard, Unity's Maximum Allowed Timestep: the steps of the longest frame
+    // runFrame lets through (the fixed frame delta when set, else maxDeltatime), +1 for the part of
+    // a step the last frame left. Neither the time scale nor a script raises it: every step past it
+    // would make the next frame longer still
+    const double frameSeconds = fixedDeltatime > 0.0 ? fixedDeltatime : maxDeltatime;
+    const int bound = (int)std::clamp(std::ceil(frameSeconds / updateTime) + 1.0, 1.0, (double)std::numeric_limits<int>::max());
+    return maxFixedStepsPerFrame > 0 ? std::min(maxFixedStepsPerFrame, bound) : bound;
 }
 
 uint64_t Engine::getDroppedFixedSteps(){

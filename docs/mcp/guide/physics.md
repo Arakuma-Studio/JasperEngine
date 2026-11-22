@@ -266,10 +266,11 @@ applies before the next step.
 | World > Bounce Threshold, Sleep Threshold, Speculative Distance (3D) | `physics_3d_bounce_threshold` (1 m/s), `physics_3d_sleep_threshold` (0.03 m/s), `physics_3d_speculative_distance` (0.02 m) | | |
 | World > Collision Steps (3D) | `physics_3d_collision_steps` / `physics3DCollisionSteps` | 1 | collision passes per fixed step, 1-4: more for very fast bodies |
 
-A frame runs at most `Time.maximumFixedStepsPerFrame` fixed steps: 0 (default) is automatic, as many
-as `Time.maximumDeltaTime` lets a frame last (400 Hz with 0.25 s: 101), so none are dropped. A cap
-set lower drops the rest of a long frame: the Console warns once per Play and
-`Time.droppedFixedSteps` and `editor_status` `physics.dropped_fixed_steps` count them.
+A frame runs at most as many fixed steps as `Time.maximumDeltaTime` lets a frame last (400 Hz with
+0.25 s: 101), whatever `Time.timeScale` is: a long frame at time scale 1 drops none. A
+`Time.maximumFixedStepsPerFrame` above 0 lowers that cap (a higher value is held at it). A frame past
+the cap drops the rest: the Console warns once per Play and `Time.droppedFixedSteps` and
+`editor_status` `physics.dropped_fixed_steps` count them; a higher `Time.maximumDeltaTime` raises the cap.
 
 ## 2D bodies, colliders and materials
 

@@ -593,7 +593,7 @@ suites) or `harness.over_budget`.
 | AC-27 | REQ-30, REQ-31, REQ-32, REQ-34, D11 | `Physics2DWorldSettingsTest.DefaultsAreBitIdentical`: 600 steps of a stacked scene with every setting at its default equal today's poses bit for bit (red control: none, it is a guard). `...PointsPerMeterRebuilds`: changing 64 → 1 with bodies live keeps positions, keeps velocity in points/s and makes the 1 kg box weigh 1 kg (mass recomputed); `...MaxRotation`: a wheel driven by torque at 50 Hz exceeds 39 rad/s only with 360°/step or `allowFastRotation` (red: capped at 39.3); `...WorldTuning`: a bouncing ball under `physics2DBounceThreshold` 5 m/s stops bouncing earlier than at 1 |
 | AC-28 | REQ-30..REQ-35 data | `StreamSceneTest.PhysicsWorldSettingsRoundTrip`: non-default values round-trip; defaults write no key; a `7f48d7e8d`-era scene loads with every default; `FactoryTest` emits them; `ReflectParity.*` and `CatalogSnapshot` regenerated with added keys only |
 | AC-29 | REQ-35 | `Physics3DBodyTest.WorldSettingsApply`: velocity iterations 1 vs 10 changes a 10-box stack's drift (measured); collision steps 2 runs two collision passes (Jolt's step listener count); defaults are bit-identical to today over 600 steps |
-| AC-30 | REQ-36, REQ-37 | `ScriptSchedulerTest.FixedStepCapFollowsMaximumDeltaTime` (editor suite): at 1/400 s and a 0.25 s frame, 100 steps run and none dropped (red: 100 steps with a drop warning, from the cap); `maximumFixedStepsPerFrame = 10` drops and logs once over 5 such frames; `Time.droppedFixedSteps` counts them |
+| AC-30 | REQ-36, REQ-37 | `ScriptSchedulerTest.FixedStepCapFollowsMaximumDeltaTime` (editor suite): at 1/400 s and a 0.25 s frame, 100 steps run and none dropped (red: 100 steps with a drop warning, from the cap); `maximumFixedStepsPerFrame = 10` drops and logs once over 5 such frames; `Time.droppedFixedSteps` counts them; neither time scale 20 nor a cap of 100000 raises the bound |
 | AC-31 | REQ-43, REQ-44 | Manual with screenshots from `tools/editor-shot.sh` on a scratch copy: the Wheel Collider Inspector and gizmo, the Attach To Parent Body line, the scene's Physics 2D World foldout |
 | AC-32 | REQ-38 | `tools/check-physics-off.sh` passes; `tools/build.sh web` and `tools/build.sh android` build; `test_physics_contacts_export.py`-style export test `test_vehicles_export.py` (`PREBUILT_PLAYERS = ["glcore-release"]`, `JASPER_SLOW_BUILD=1`): an exported car drives (a Lua marker line in the player log after 2 s) |
 | AC-33 | REQ-46..REQ-48 | `test_docs.py`; `tools/mcp/gen_tool_docs.py --check`; `tools/mcp/tool_budget.py --check tools/mcp/budget.json`; the three eval cases of REQ-47 fail without their text and pass with it (Orquester accounts) |
@@ -686,14 +686,15 @@ WP-B (queries):
 - 2D `Overlap*` (first) returns the collider of the lowest GameObject then collider index, so the
   answer is deterministic.
 
-- **WP-E, REQ-36 automatic cap.** The automatic cap is `ceil(F / fixedDeltaTime) + 1` where `F` is the
-  longest game time a frame can have: `Time.captureDeltaTime` when set (it replaces the measured
-  delta and is not capped by `maximumDeltaTime`), else `Time.maximumDeltaTime`, times `Time.timeScale`
-  when above 1, plus the whole steps the last frame left (only after `fixedDeltaTime` was made
-  shorter). At time scale 1 without a capture delta it is the spec's formula; the spec's alone
-  would drop steps a capture delta or a time scale above 1 lets through (a regression against the
-  old cap of 100). The warning fires only when a whole step is dropped (the old code also warned
-  when exactly 100 steps ran and nothing was left).
+- **WP-E, REQ-36 cap.** The cap is a hard bound, `ceil(F / fixedDeltaTime) + 1` where `F` is
+  `Time.captureDeltaTime` when set (it replaces the measured delta and is not capped by
+  `maximumDeltaTime`), else `Time.maximumDeltaTime`; `maximumFixedStepsPerFrame` only lowers it (a
+  higher value is held at the bound). A time scale does not raise it, as Unity's Maximum Allowed
+  Timestep bounds a frame's scaled time (the lead's decision when this PR landed: a spiral-of-death
+  guard; a first version scaled it with a time scale above 1 and the backlog, which let a 0.25 s
+  frame at time scale 20 run 2002 steps at 400 Hz). So a long frame at a time scale above 1 drops
+  the steps past the bound, as it did past the old cap of 100. The warning fires only when a whole
+  step is dropped (the old code also warned when exactly 100 steps ran and nothing was left).
 - **WP-E, REQ-39 cooked scenes.** Cooked format 1.6 appends the physics world settings as a
   field-tagged record and also `physics2DSubSteps`, which prebuilt players never received (a
   missing setting of the same family, `SceneSettingsCodec.cpp`).

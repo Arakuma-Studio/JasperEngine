@@ -379,6 +379,22 @@ TEST_F(CoroutineTest, FixedStepCapFollowsMaximumDeltaTime) {
     EXPECT_EQ(Engine::getMaxFixedStepsPerFrame(), 0);
     EXPECT_EQ(Engine::getDroppedFixedSteps(), 0u);
 
+    // the cap is a hard bound (the spiral-of-death guard): neither a time scale nor a script raises
+    // it. Red: time scale 20 let the 0.25 s frame run 2002 steps, and a script's 100000 was taken as is
+    const int bound = Engine::getFixedStepCap();
+    EXPECT_LE(bound, 102);
+    Engine::setTimeScale(20.0f);
+    EXPECT_EQ(Engine::getFixedStepCap(), bound) << "time scale 20";
+    ASSERT_EQ(run("Time.maximumFixedStepsPerFrame = 100000"), "");
+    EXPECT_EQ(Engine::getFixedStepCap(), bound) << "a script's cap above the bound";
+    steps = 0;
+    frames(1);
+    EXPECT_EQ(steps, bound) << "20 x 0.25 s is 2000 steps: the frame runs the bound and drops the rest";
+    EXPECT_GE(Engine::getDroppedFixedSteps(), 1800u);
+    ASSERT_EQ(run("Time.maximumFixedStepsPerFrame = 3"), "");
+    EXPECT_EQ(Engine::getFixedStepCap(), 3) << "a lower cap still applies";
+    Engine::setTimeScale(1.0f);
+
     // the drops emptied the accumulator: one 60 Hz frame leaves the part of a step every other test
     // starts from (a 1/60 s double frame is a hair short of the 1/60 s float step)
     Engine::setUpdateTime(1.0f / 60.0f);

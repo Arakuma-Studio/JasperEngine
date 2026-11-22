@@ -1582,7 +1582,7 @@ prefer `Time` in new code: its names are Unity's and they avoid the `Engine.upda
 | `frameCount` | ro | frames the update loop has run |
 | `timeScale` | rw | game speed, [0, 100]: scales the frame delta, physics, actions, tweens, animations, particles, `Coroutine.wait` and timers (not `waitRealtime`, unscaled timers, audio, HTML UI) |
 | `maximumDeltaTime` | rw | cap of a frame's delta (default 0.25; values <= 0 are ignored with a warning) |
-| `maximumFixedStepsPerFrame` | rw | fixed steps a frame may run; 0 (default) automatic: as many as `maximumDeltaTime` lets through, none dropped. A lower cap drops the rest of a long frame (one warning per Play) |
+| `maximumFixedStepsPerFrame` | rw | fixed steps a frame may run; 0 (default) automatic: as many as `maximumDeltaTime` lets through, whatever the time scale (none dropped at time scale 1), also the most a higher value gives. A lower cap drops the rest of a long frame (one warning per Play) |
 | `droppedFixedSteps` | ro | fixed steps the cap dropped since Play (or the game) started |
 | `captureDeltaTime` | rw | when > 0 every frame advances exactly this many seconds (before `timeScale`); 0 = measured frames |
 | `smoothDeltaTime` | ro | exponential average of `deltaTime` |
@@ -3853,10 +3853,11 @@ Rigidbody wrappers by index.
 36. **Inspector fields come from the saved file.** A script whose saved file no longer has a
     `properties` table has no fields; while you edit it in the code editor, a missing table keeps
     them until you save (cutting and pasting the table loses no value).
-36. **No fixed step is dropped by default.** A long frame (up to `Time.maximumDeltaTime`) runs all
-    its fixed steps (`Time.maximumFixedStepsPerFrame` 0, automatic); the old cap of 100 steps a
-    frame is gone. A game with a very small `Time.fixedDeltaTime` that relied on it sets
-    `Time.maximumFixedStepsPerFrame`, and reads `Time.droppedFixedSteps`.
+36. **The fixed-step cap follows `Time.maximumDeltaTime`.** A long frame (up to
+    `Time.maximumDeltaTime`) at time scale 1 runs all its fixed steps; the old cap of 100 steps a
+    frame is now `ceil(maximumDeltaTime / fixedDeltaTime) + 1` (16 at 60 Hz), which a time scale does
+    not raise. A game at a high `Time.timeScale` that drops steps (`Time.droppedFixedSteps`) raises
+    `Time.maximumDeltaTime`; `Time.maximumFixedStepsPerFrame` only lowers the cap.
 
 ## 7. Hot reload and editor scripts
 
