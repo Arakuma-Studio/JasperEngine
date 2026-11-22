@@ -605,10 +605,12 @@ core tests already build scenes with physics, `PhysicsRayThreadsTest.cpp:27-30`)
   the scene's `PhysicsQueryDebug` is made by the first recorded query and its ring freed after 10 s
   with debug draw off and nothing live.
 - **R19 on box A.** On box A (a 2.4 GHz Haswell, slower per core than box B) `overlap_box_p95_ms`
-  measured 0.0093-0.0112 ms and `overlap_sphere_p95_ms` 0.0060-0.0079 ms. An overlap now tests a body
-  of one convex shape in place, under the read lock that keeps the shape alive, instead of through
-  three `TransformedShape` copies (six atomic reference counts a body); the answers are the same
-  (`PhysicsQuery.OverlapMatchesReference`). Six runs: overlapSphere 0.0048-0.0052 ms in five and
-  0.0066 in one; overlapBox 0.0080-0.0085 ms in three and 0.0093-0.0095 in three, still over its
-  0.0088 there; `mesh_overlap_trees_p95_ms` (the foliage cell walk, not changed) 0.0106-0.0109 ms
-  in three and 0.0112-0.0119 in three, over its 0.011.
+  measured 0.0093-0.0112 ms, `overlap_sphere_p95_ms` 0.0060-0.0079 ms and `mesh_overlap_trees_p95_ms`
+  0.0106-0.0119 ms. An overlap now tests a body of one convex shape in place, under the read lock that
+  keeps the shape alive, instead of through three `TransformedShape` copies; a box query takes a leaf
+  wholly inside its core (the box less its rounded edge) without the GJK step that would find the
+  same; a tree's instance matrix is written out instead of two 4x4 products of zeros and ones (the
+  same values). The answers are the same (`PhysicsQuery.OverlapMatchesReference`,
+  `LuaPhysicsQuery.MeshOverlapReadsTrees`). Six quiet runs: overlapBox 0.0064-0.0071 ms in four and
+  0.0097-0.0099 in two, still over its 0.0088 there; overlapSphere 0.0050-0.0062 in five and 0.0069
+  in one; the trees 0.0099-0.0105 in five and 0.0126 in one.

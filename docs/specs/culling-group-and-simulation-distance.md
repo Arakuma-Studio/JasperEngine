@@ -622,11 +622,12 @@ Unit tests in `engine/tests/core/subsystem/CullingSystemTest.cpp` (suites `Culli
   build measured 2.19 ms and 0.505 ms. Release runs on build box B, shared with other jobs: the group
   p99 0.515, 0.355 and 0.385 ms (p50 0.19-0.23), the simulation p99 0.095, 0.085 and 0.090 ms, the
   events as expected each time; the first run's group p99 was over its 0.5 ms budget, the next two under.
-- **R22 on box A.** `je-bench-culling` measured `group_10k_follow_eval_ms` 0.25-0.29 ms (budget 0.22)
-  and `group_10k_eval_ms` 0.12-0.14 ms (0.132) on box A (a 2.4 GHz Haswell). A group's evaluation
-  now chooses the cameras it tests once and tests each sphere's planes without a branch apiece, and a
-  group evaluated on the workers reads its followed spheres' positions in the same chunks (a destroyed
-  GameObject is still dropped and warned about once: `CullingGroupTest.ManyFollowsReadOnWorkers`).
-  Six runs: follow 0.15-0.16 ms in five and 0.19 in one, fixed 0.119-0.125 ms in five and 0.139 and
-  0.154 in two of them, `ground_1k_ms` 0.012-0.021 ms but 0.043 in that 0.154 run (every key of that
-  run was higher: box A also runs production services).
+- **R22 on box A.** `je-bench-culling` measured `group_10k_follow_eval_ms` 0.25-0.29 ms (budget 0.22),
+  `group_10k_eval_ms` 0.126-0.133 ms (0.132) and `ground_1k_ms` 0.017-0.024 ms (0.022) on box A (a
+  2.4 GHz Haswell), run after run between steady runs of a main-thread-only loop: costs at the edge,
+  not noise. A group's evaluation now chooses the cameras it tests once and tests each sphere's planes
+  without a branch apiece; a group on the workers reads its followed spheres' positions in the same
+  chunks (a destroyed GameObject is still dropped and warned about once:
+  `CullingGroupTest.ManyFollowsReadOnWorkers`) and is claimed 256 spheres at a time, so a worker that
+  wakes late holds little of it; the ground rule finds the TerrainWorldSystem once a pass instead of
+  once a check. Six quiet runs: follow 0.099-0.170 ms, fixed 0.080-0.113 ms, ground 0.002-0.009 ms.
