@@ -943,6 +943,9 @@ void FileWatchService::unsubscribe(uint64_t id) {
     // callback unsubscribing itself)
     const std::thread::id self = std::this_thread::get_id();
     shared->subscribersCv.wait(lock, [&]() { return subscriber->inFlight == 0 || subscriber->callingThread == self; });
+    // the subscriber's last reference may go with `subscriber`, and its callback with it: one owning
+    // another subscription unsubscribes that one, which takes this lock
+    lock.unlock();
 }
 
 bool FileWatchService::deliverOne(const std::shared_ptr<Subscriber>& subscriber, size_t maxBatch) {

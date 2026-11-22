@@ -229,6 +229,38 @@ TEST(FileWatchService, DestructionDropsACallbackThatOwnsItsSubscription) {
     EXPECT_EQ(dropped, 1);
 }
 
+// A callback can own another subscription: unsubscribing drops the callback's last reference, and the
+// subscription it owned unsubscribes in turn, which must not wait for a lock the first one still holds
+TEST(FileWatchService, UnsubscribingDropsACallbackThatOwnsAnotherSubscription) {
+    WatchTempDir dir;
+    // left alone on a hang: the stuck thread holds its lock for good
+    auto* owner = new FileWatchService();
+    owner->setWarningHandler([](const std::string&) {});
+    owner->start(dir.path, WatchBackendKind::Off);
+    WatchFilter filter;
+    filter.deliverEditorWrites = true;
+    auto innerCalls = std::make_shared<std::atomic<int>>(0);
+    auto inner = std::make_shared<FileWatchSubscription>(owner->subscribe(filter, [innerCalls](std::span<const FileChange>) { (*innerCalls)++; }));
+    auto outer = std::make_shared<FileWatchSubscription>(owner->subscribe(filter, [inner](std::span<const FileChange>) {}));
+    inner.reset();
+    auto done = std::make_shared<std::atomic<bool>>(false);
+    std::thread unsubscribing([outer, done]() {
+        outer->reset();
+        done->store(true);
+    });
+    if (!waitFor([&]() { return done->load(); }, timeLimit(fileWatchServiceMs(5000)))) {
+        unsubscribing.detach();
+        FAIL() << "unsubscribe deadlocked dropping a callback that owns another subscription";
+    }
+    unsubscribing.join();
+    // and that one is gone too
+    writeText(dir.path / "a.material", "x");
+    owner->reportEditorWrite(dir.path / "a.material", false);
+    owner->pump(5.0);
+    EXPECT_EQ(innerCalls->load(), 0);
+    delete owner;
+}
+
 TEST_P(FileWatchServiceTests, FilterExtensionsGlobs) {
     startWatching();
     std::vector<FileChange> images, scripts, editorOnly;
