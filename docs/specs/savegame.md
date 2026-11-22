@@ -675,3 +675,9 @@ without the change because the code it calls does not exist, plus the specific r
   named `save` in a file that sees it (the editor's Recorder window was the first).
 - **D-l Android kill and relaunch.** `tools/android-emulator-test.sh` gains `--kill-relaunch-after
   TEXT` (HOME, `am kill`, relaunch; the expectations then apply to the new process).
+- **Mac pass.** AC11's `SaveGameKillSlow.KillDuringWritesLeavesAReadableSlot` passed on an arm64 Mac
+  (`tools/ci/macos.sh tests`). AC23's iOS checklist (`checklists/savegame.md`) ran on the simulator with
+  `tools/test-projects/savegame` built for it: steps 1-4 passed (`savegame: written`, `savegame: big
+  ok`; `Documents/saves` held `big.g1.jsave` and `slot1.g1.jsave`; a SIGKILL, then the relaunch read
+  `savegame: read ok gen 1`). Step 5 needs a game that saves in `onApplicationPause` (the test project
+  does not), step 6 a nearly full disk, step 7 the dev console: not run.

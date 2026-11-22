@@ -610,3 +610,9 @@ Red controls are run on the base commit first and named in the PR.
   characters with `input text` (the field keeps five) and presses Enter: `adb` has no way to press
   an input method's action key, so the submit is the hardware Enter path, not `onEditorAction`, and
   the IME's own buffer is not read.
+- **iOS (Mac pass).** The iOS builds ran on an arm64 Mac with Xcode 26.6: `tools/ci/macos.sh xcode ios`
+  (the engine's Xcode project for the simulator), the prebuilt iOS player (`tools/ci/players-apple.sh ios
+  development`, device and simulator slices) and `tools/ci/ios_packaging.sh`, whose game runs on the
+  simulator. Typing into a field on the simulator did not run: `simctl` has no way to type or tap, and
+  the Simulator window takes keys only from a person (or UI scripting, which needs Accessibility rights
+  on that Mac); the Japanese and Chinese keyboard pass that would remove the sentinel did not run either.

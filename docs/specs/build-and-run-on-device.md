@@ -541,3 +541,12 @@ craftsman-end-motor (a port reconstructed from a retail binary). Nothing here is
   `read_console categories ["device"]`). AC13's screenshot is of that run: the Console's device strip
   with the Default browser device Running, its URL, Stop and Screenshot. No emulator was attached to
   that editor (the emulator image has no X server for the editor's window).
+- **AC11 (Mac pass).** `tools/ci/ios_packaging.sh development` ran in full on an arm64 Mac (macOS 26.2,
+  Xcode 26.6, an iPhone 17 simulator on iOS 26.5) and passed: the simulator build ran and showed its scene,
+  the device build stopped before signing (W-IOS-NO-TEAM), the team build failed with "Xcode has no account
+  for the team", the unsigned archive was made and `-exportArchive` stopped at "No profiles" (no developer
+  account), `publish prepare` passed, and step 6 installed in full, then patched (`installed: patched`,
+  `simctl install` once) with the patched script's line in `log stream`. Seen there: the Console shows
+  each Lua `print` of a Simulator run twice (the app's stdout file and its `os_log` line), and stopping
+  the `log stream` logs "Failed to send SIGTERM to process group ...: Operation not permitted"; neither
+  fails the run.

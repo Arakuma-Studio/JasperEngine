@@ -657,6 +657,14 @@ Unit tests follow docs/testing.md naming. "Red" says what fails without the chan
   `LocalizationBench.Switch` measures the re-resolve and 300 keyed lookups without RmlUi documents.
   AC12's check is `tools/l10n/check_capture_symbols.py` over the release and editor engines (the
   capture code defines `jasperengine_l10n_capture`), not a gtest.
+- **D-11a macOS and iOS hooks (Mac pass).** Both ran on an arm64 Mac with `tools/test-projects/localization`
+  (macOS: `cmake -S engine -G Ninja -DPROJECT_ROOT=...`; iOS: the same project for the simulator with
+  `-G Xcode -DCMAKE_SYSTEM_NAME=iOS`, on a simulator device of its own). The game starts in `en`; the
+  app's own `AppleLanguages` is set to `de` (`defaults write` of its domain, inside the simulator for
+  iOS, so the user's languages stay), which alone logs nothing; then the notification System
+  Settings posts, `AppleLanguagePreferencesChangedNotification` (distributed on macOS, Darwin through
+  `notifyutil -p` in the simulator), and both log `[Localization] language de` and the game's
+  `onLanguageChanged` line (`Spielen`). Windows is still not run.
 - **D-12 Guide and tool text (R36, R37).** The agent guide's "Other areas" index names the area alone
   (`localization`, read as `jasper://docs/localization`) without its tools in parentheses: with
   them the guide left 1,458 of the 1,500 bytes of headroom `tool_budget.py` requires. The tools are

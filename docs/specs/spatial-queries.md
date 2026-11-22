@@ -591,6 +591,13 @@ core tests already build scenes with physics, `PhysicsRayThreadsTest.cpp:27-30`)
   their names with the `Physics` ones, keep the physics module too (the safe side).
 - **AC3 fixture.** The fixture is written with `JASPER_TEST_UPDATE_GOLDEN=1` (the variable
   `tools/build.sh` forwards into the image), by the same test on the tree without the change.
+- **AC3 on macOS (Mac pass).** The city and the rays draw through `test::cityUniform` and
+  `cityUniformInt`, libstdc++'s `uniform_real_distribution` and `uniform_int_distribution` spelled
+  out, with the rays' z drawn before x as GCC evaluated `Vector3(along(rng), 6.0f, along(rng))`: the
+  standard leaves the distributions and the argument order to the compiler, and macOS (libc++, clang)
+  built another city and failed the fixture (ray 1). Same fixture; green on Linux (13 PhysicsQuery
+  tests) and on an arm64 Mac (`tools/ci/macos.sh tests`). `NoAllocations` skips with "cannot count
+  allocations", the reason the macOS and Windows gates allow.
 - **AC15 timing.** A browser's clock is too coarse for one 0.04 ms call: the gate times batches of
   100 calls and takes the p99 of the per-call mean over 100 batches. `MeshRaycast.overlapSphere` is
   timed from C++, `Physics.overlapSphereNonAlloc` through Lua.
