@@ -203,12 +203,20 @@ TEST(CameraShaker, PixelSnapOffKeepsTheRoll){
 }
 
 TEST(CameraShaker, TickRate){
+    // fixed seeds: the counts below are of these shakes, not of whatever random seed a run drew
+    // (a random earthquake changed 24 of 30 frames at Tick Rate 0, issue #138)
+    auto seeded = [](int seed){
+        ShakeOptions options;
+        options.hasSeed = true;
+        options.seed = seed;
+        return options;
+    };
     // Tick Rate 30 at 60 fps: the applied offset changes at most every other frame
     {
     OrthoShaker fixture;
     fixture.shaker().tickRate = 30.0f;
-    CameraShake::shake(ShakeSource("electrocute"));
-    CameraShake::shake(ShakeSource("earthquake"));
+    CameraShake::shake(ShakeSource("electrocute"), seeded(11));
+    CameraShake::shake(ShakeSource("earthquake"), seeded(23));
     fixture.system().step(kCameraShakePixelDt, kCameraShakePixelDt);
     Vector3 previous = fixture.shaker().runtime->offsetPosition;
     bool changedLastFrame = false;
@@ -227,7 +235,7 @@ TEST(CameraShaker, TickRate){
 
     // the red control: Tick Rate 0 changes it every frame
     OrthoShaker every;
-    CameraShake::shake(ShakeSource("earthquake"));
+    CameraShake::shake(ShakeSource("earthquake"), seeded(23));
     every.system().step(kCameraShakePixelDt, kCameraShakePixelDt);
     Vector3 previous = every.shaker().runtime->offsetPosition;
     int consecutive = 0;
