@@ -213,8 +213,9 @@ Counts: FIXED 3 (AU2, AU3, S5 audio), PARTIAL 3 (AU1, AU5, AU6), MISSING 1 (AU4)
   not a slot). It follows the parent, is copied, deleted, prefabbed and made persistent with it, and
   plays through the unchanged `AudioSystem` (D6).
 - **REQ-25 Hidden as an entity.** The Hierarchy, `get_scene_tree`, `find_entities` and the Scene
-  view picking do not show slot entities. Lua `GameObject` child APIs still count them; the docs
-  say so (Unity's HideInHierarchy behaves the same way).
+  view picking do not show slot entities. Neither do the Lua `GameObject` child APIs (`childCount`,
+  `getChild`, `getChildren`, `findChild`) nor `GameObject.find`: in Unity a further Audio Source is a
+  component, not a child.
 - **REQ-26 Shown as components.** The Inspector draws the slots of the selected GameObject as
   further "Audio Source" sections, with the same rows, context menu (Remove, Reset, Copy, Paste,
   Move Up/Down to reorder slots) and undo. Add Component > Audio Source on a GameObject that has one
@@ -442,7 +443,7 @@ narrowly: `UNIT_SUITE=editor UNIT_TEST_ARGS=--gtest_filter=<Suite>.*`,
 | A wrapper source per filtered source may break voice bookkeeping that compares samples (hot reload generation, `stopAudioSource`, the voice budget) | The wrapper is the voice's sample everywhere, as `AudioClipSource` already is. AC2, AC3 and the existing `AudioMixerTest` suites guard this. If a path compares the pool sample, it compares the wrapper's inner sample |
 | Echo and reverb instances allocate on the audio thread (SoLoud allocates lazily) | Accepted, as for group effects today. The Inspector shows a cost badge; the guide recommends a group for reverb shared by many sources |
 | Keeping unused clips raises steady memory compared with today's drop at release | 16 MiB default, 0 restores today's behaviour, and low memory clears it. AC10 and AC12 bound it |
-| Hidden child slots leak into scripts that count children | Documented in REQ-25 (Unity's HideInHierarchy does the same). If a blocker shows up in prefab overrides, the fallback is visible children named "Audio Source 2", recorded in Deviations. The slot data stays the same, so no migration is needed |
+| Hidden child slots leak into scripts that count children | The Lua child APIs and `GameObject.find` skip them (REQ-25). If a blocker shows up in prefab overrides, the fallback is visible children named "Audio Source 2", recorded in Deviations. The slot data stays the same, so no migration is needed |
 | `AudioSource(scene)` gaining a Transform changes what a script sees (D8) | It is deliberate. The sound is unchanged (blend 0, AC19), and "Changes" in `docs/mcp/guide/audio.md` and `docs/scripting.md` notes it |
 | Spatial Blend between 0 and 1 loses Doppler | Unity's Doppler also scales with the blend; ours is off below 1. Recorded in the guide |
 | Streaming from an Android APK or iOS bundle is not exercised by any test here | Unverified. AC27 builds Android. A device run belongs to `tools/android-emulator-test.sh`, recorded as a follow-up if not run |
@@ -568,6 +569,11 @@ REQ-18 to REQ-23, REQ-31.
 - **WP-D, REQ-26: a new slot is at Spatial Blend 1, as Add Component's Audio Source on the GameObject; Move Up/Down reorder
   the slots among themselves** (the GameObject's own source stays first). The slot sections are not recorded in
   `get_inspector_layout`, which names one component of a type.
+- **WP-D, REQ-25: scripts do not see slots as children.** The first draft let the Lua child APIs count them, as Unity's
+  HideInHierarchy objects. Unity's model has no child for a further Audio Source, so `childCount`, `getChild`,
+  `getChildren`, `findChild` and `GameObject.find` skip them (`AudioSourceSlotsTest.ScriptsWalkingChildrenSeeNoSlots`). A
+  slot is still reachable as a source (`AudioSource.getAll`, `findObjectOfType("AudioSource")`), and `source:getGameObject()`
+  on a slot returns the slot's own entity, whose `parent` is the GameObject.
 - **WP-D, REQ-28: `get_entity` lists `audio_sources` only on a GameObject that has a slot**; `add_component`'s added entry of
   a slot carries `audio_source` (its entity) and `slot`. `add_component AudioSource` values go to the new slot.
 

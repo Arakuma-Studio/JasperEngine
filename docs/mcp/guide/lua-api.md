@@ -2754,8 +2754,8 @@ the mixer's curves), `getParameter(name)` -> number or nil (the value heard now)
 Several sources on one GameObject (Unity's `GetComponents<AudioSource>()`, `AddComponent`,
 `Destroy`): static `AudioSource.getAll(gameObject)` (its own source first, then the further ones in
 order), `AudioSource.add(gameObject)` (its own when it has none, else a further one: a hidden child
-at its origin, Spatial Blend 1) and `AudioSource.remove(source)`. The further ones are child
-entities: `getChildCount()` and `getChildren()` count them.
+at its origin, Spatial Blend 1) and `AudioSource.remove(source)`. As Unity's components, the
+further ones are not in `childCount`, `getChild`, `getChildren`, `findChild` or `GameObject.find`.
 
 ### 4.13 Rigidbody2D (EntityHandle) - 2D physics (Box2D)
 

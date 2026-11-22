@@ -261,8 +261,9 @@ lowpass:setParameter("cutoff", 525, 0.9)
   lists `audio_sources: [{entity, slot}]`. It moves, copies, prefabs and persists with the
   GameObject. Lua: `AudioSource.getAll(gameObject)` (its own first, then the others in order),
   `AudioSource.add(gameObject)` (its own when it has none, else a further one at Spatial Blend 1),
-  `AudioSource.remove(source)`; `GameObject.findObjectOfType("AudioSource")` finds them too. The
-  GameObject's child APIs (`getChildCount`, `getChildren`) count them, as Unity's hidden objects.
+  `AudioSource.remove(source)`; `GameObject.findObjectOfType("AudioSource")` finds them too. As
+  Unity's components, they are not in the GameObject's `childCount`, `getChildren`, `findChild` or
+  `GameObject.find`.
 
 ## 8. Scene loads, persistence, devices
 

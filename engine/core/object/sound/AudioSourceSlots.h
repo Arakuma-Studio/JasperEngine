@@ -20,7 +20,8 @@ namespace jasperengine {
     // is the GameObject's own AudioSourceComponent; each further one is a slot, a child with a
     // Transform at the local origin and an AudioSourceComponent whose `slot` is 1, 2, ... It is an
     // ordinary child entity everywhere (copies, prefabs, persistence, an engine without slots);
-    // the editor's listings hide it and the Inspector shows it as another Audio Source.
+    // the editor's listings and the scripts' child APIs and GameObject.find skip it, and the
+    // Inspector shows it as another Audio Source.
     class JASPERENGINE_API AudioSourceSlots {
     public:
         // a slot: an AudioSourceComponent with slot > 0 on a child of a GameObject

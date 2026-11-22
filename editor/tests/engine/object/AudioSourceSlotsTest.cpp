@@ -226,6 +226,32 @@ TEST_F(AudioSourceSlotsTest, LuaGetsAddsAndRemovesSources) {
     EXPECT_EQ(lua("return again.entity == car.entity"), "true") << "a GameObject without its own source gets it back first";
 }
 
+// REQ-25: a further Audio Source is a component, as in Unity: the child APIs and GameObject.find
+// leave its slot entity out, while the GameObject's real children stay
+TEST_F(AudioSourceSlotsTest, ScriptsWalkingChildrenSeeNoSlots) {
+    Scene* scene = newScene();
+    const Entity car = entity(scene, "Car");
+    const Entity wheel = entity(scene, "Wheel", car);
+    GameObject carObject(scene, car);
+    AudioSourceSlots::add(carObject);
+    const Entity horn = AudioSourceSlots::add(carObject).getEntity();
+    ASSERT_TRUE(AudioSourceSlots::isSlot(scene, horn));
+    const std::string hornName = scene->getEntityName(horn);
+    EXPECT_EQ(carObject.getChildCount(), 1u);
+    EXPECT_EQ(carObject.getChild(0)->getEntity(), wheel);
+    EXPECT_FALSE(carObject.getChild(1).has_value());
+    EXPECT_FALSE(carObject.findChild(hornName).has_value());
+
+    Engine::setScene(scene);
+    setScene("S", scene);
+    lua("car = GameObject(S, " + std::to_string(car) + ")\nHORN = '" + hornName + "'");
+    EXPECT_EQ(lua("local children = car:getChildren(); return car.childCount .. ' ' .. #children .. ' ' .. children[1].name"), "1 1 Wheel");
+    EXPECT_EQ(lua("return tostring(car:findChild(HORN))"), "nil");
+    EXPECT_EQ(lua("return tostring(GameObject.find(HORN)) .. ' ' .. tostring(GameObject.find('Car/' .. HORN))"), "nil nil");
+    EXPECT_EQ(lua("return GameObject.find('Car/Wheel').name"), "Wheel");
+    EXPECT_EQ(lua("return #AudioSource.getAll(car)"), "2") << "the sources still hold both";
+}
+
 // AC26 (REQ-24, S5): a persistent GameObject keeps the voices of both its sources across a load
 TEST_F(AudioSourceSlotsTest, SlotsMoveWithDontDestroyOnLoad) {
     Scene* first = nullptr;
