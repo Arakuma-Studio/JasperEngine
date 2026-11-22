@@ -808,13 +808,12 @@ float CullingSystem::resolveRadius(Entity entity, SimulationCullingComponent& co
     return component.resolvedRadius;
 }
 
-bool CullingSystem::groundLoaded(Entity entity, const Vector3& position, float radius, bool withinDistance, bool all, uint32_t& scriptChecks) {
-    (void)entity;
+bool CullingSystem::groundLoaded(TerrainWorldSystem* worlds, const Vector3& position, float radius, bool withinDistance, bool all, uint32_t& scriptChecks) {
     bool loaded = true;
 #if JASPERENGINE_TERRAIN_WORLD
-    if (auto worlds = scene->findSystem<TerrainWorldSystem>(); worlds && worlds->hasWorlds()) {
-        loaded = worlds->isAreaLoaded(position.x, position.z, radius + 1.0f);
-    }
+    if (worlds) loaded = worlds->isAreaLoaded(position.x, position.z, radius + 1.0f);
+#else
+    (void)worlds;
 #endif
     // the game's own streaming: only within simulation distance (a far one is culled anyway)
     if (loaded && groundCheck && withinDistance && (all || scriptChecks < MAX_GROUND_CHECKS_PER_FRAME)) {
@@ -829,9 +828,12 @@ void CullingSystem::evaluateSimulation(bool all, const std::vector<Entity>* only
     const float scale = SimulationCulling::getDistanceScale() * QualityResolver::simulationDistanceScale();
     float tileSize = 0.0f;
     bool terrain = false;
+    // looked up once a pass (a lookup per ground check was most of R22's ground rule)
+    TerrainWorldSystem* terrainWorlds = nullptr;
 #if JASPERENGINE_TERRAIN_WORLD
     if (auto worlds = scene->findSystem<TerrainWorldSystem>(); worlds && worlds->hasWorlds()) {
         terrain = true;
+        terrainWorlds = worlds.get();
         tileSize = worlds->getTileSize();
     }
 #endif
@@ -895,7 +897,7 @@ void CullingSystem::evaluateSimulation(bool all, const std::vector<Entity>* only
                 const bool due = all || !component.groundChecked || !component.groundLoaded || moved ||
                                  ((frameCounter + ordinal + groundCursor) % 8) == 0;
                 if (due) {
-                    component.groundLoaded = groundLoaded(entity, position, radius, distance <= simulation, all, scriptChecks);
+                    component.groundLoaded = groundLoaded(terrainWorlds, position, radius, distance <= simulation, all, scriptChecks);
                     component.groundChecked = true;
                     component.groundCheckX = position.x;
                     component.groundCheckZ = position.z;
