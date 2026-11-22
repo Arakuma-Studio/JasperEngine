@@ -484,6 +484,20 @@ Each red control is recorded by running the test on the base commit first; the P
   parsed per compile (`DocumentLoader::restyleSheets`, the last four compiles), and on a touch device
   both pointer variants' sheets are parsed, compiled and resolved for the document as soon as the
   background compile is in (`HtmlUIContext::update`, `DocumentLoader::prewarmSheets`).
+- **R23 on box A.** On box A (a 2.4 GHz Haswell) the first pointer switch after the load took
+  1.21-1.33 ms in every run, the later ones 0.73-0.96. Two things were the first switch's own: the
+  other scheme's rules (`html[data-input-scheme=...]`) match new combinations under the other sheet,
+  whose definitions RmlUi built then (6), and the prompts hidden since the load (the `.kbd` texts)
+  were measured for the first time (9 strings shaped). The prewarm now resolves the other variant's
+  definitions with the root's scheme attribute set to the one its pointer comes with (put back
+  after) and measures each text never laid out with the font it has. Every switch also dirtied
+  every variable of every element: a sheet swap marked each custom property of the old and new
+  definitions changed, though the variants declare them alike (four `--html-*` ones per element from
+  the user-agent sheet, about sixty on the root), so all 246 elements computed their values again;
+  RmlUi now leaves out the custom properties both definitions declare alike (fork patch IDA-1 in
+  `docs/html-ui/FORK.md`), and a switch computes 87. The first switch now does the same work as the
+  later ones (the same definition, layout and allocation counts). Six quiet runs: the first switch
+  0.69-0.94 ms, a pointer switch 0.60-0.66 ms, a scheme switch 0.31-0.36 ms.
 - **AC16.** `GameWindowTest.InputSchemeMenu` is in `editor/tests/PlayStartupScenesTest.cpp` (it needs
   that file's play-session access) and drives `GameWindow::chooseInputScheme`, which the menu calls.
 - **AC17.** `InputSchemeEditorTest.OldScenesUnchanged` checks the three components' codecs (old values
