@@ -64,36 +64,63 @@ namespace {
 
 }
 
+// std::round's half away from zero, without its libm call (a fifth of a hash): clamped first, so the
+// truncation is exact and the remainder decides the step
 int32_t quantizeState(float value){
-    const double scaled = std::round(static_cast<double>(value) * 1024.0);
+    const double scaled = static_cast<double>(value) * 1024.0;
     if (!(scaled == scaled))
         return 0;
-    return static_cast<int32_t>(std::clamp(scaled, -2147483648.0, 2147483647.0));
+    if (scaled >= 2147483647.0)
+        return 2147483647;
+    if (scaled <= -2147483648.0)
+        return -2147483647 - 1;
+    const int64_t whole = static_cast<int64_t>(scaled);
+    const double rest = scaled - static_cast<double>(whole);
+    return static_cast<int32_t>(whole + (rest >= 0.5 ? 1 : rest <= -0.5 ? -1 : 0));
 }
 
 uint64_t hashState(const std::vector<Scene*>& scenes, const ScriptJson& values){
     Hasher h;
+    size_t transformCount = 0;
+    for (Scene* scene : scenes) {
+        auto* transforms = scene ? scene->getComponentArray<Transform>() : nullptr;
+        transformCount += transforms ? transforms->size() : 0;
+    }
+    // R17 checkpoints: 12 fields an entity, appended where the digest reads them
+    h.bytesSeen.reserve(transformCount * 12 * sizeof(int32_t) + 256);
+    std::vector<std::pair<Entity, size_t>> order;
     for (Scene* scene : scenes) {
         if (!scene)
             continue;
         auto* transforms = scene->getComponentArray<Transform>();
         if (!transforms)
             continue;
-        // a scene's fields gathered first: one append a scene
-        const std::vector<Entity> entities = transformEntities(scene);
-        std::vector<int32_t> fields;
-        fields.reserve(entities.size() * 12);
-        for (Entity entity : entities) {
-            const Transform* t = scene->findComponent<Transform>(entity);
-            if (!t)
-                continue;
-            fields.push_back(static_cast<int32_t>(entity));
-            fields.push_back(scene->isEntityActiveInHierarchy(entity) ? 1 : 0);
-            for (float v : {t->worldPosition.x, t->worldPosition.y, t->worldPosition.z, t->worldRotation.w, t->worldRotation.x,
-                            t->worldRotation.y, t->worldRotation.z, t->worldScale.x, t->worldScale.y, t->worldScale.z})
-                fields.push_back(quantizeState(v));
+        // the slots in entity order, so each Transform is read where it is (no lookup by entity);
+        // they mostly are in that order already
+        order.clear();
+        order.reserve(transforms->size());
+        for (size_t i = 0; i < transforms->size(); i++)
+            order.emplace_back(transforms->getEntity(i), i);
+        if (!std::is_sorted(order.begin(), order.end()))
+            std::sort(order.begin(), order.end());
+        const bool allActive = !scene->hasInactiveEntities();
+        // gathered a chunk at a time on the stack, then appended
+        constexpr size_t kChunk = 128;
+        int32_t chunk[kChunk * 12];
+        for (size_t first = 0; first < order.size(); first += kChunk) {
+            const size_t last = std::min(order.size(), first + kChunk);
+            int32_t* field = chunk;
+            for (size_t k = first; k < last; k++) {
+                const Entity entity = order[k].first;
+                const Transform& t = transforms->getComponentFromIndex(order[k].second);
+                *field++ = static_cast<int32_t>(entity);
+                *field++ = allActive || scene->isEntityActiveInHierarchy(entity) ? 1 : 0;
+                for (float v : {t.worldPosition.x, t.worldPosition.y, t.worldPosition.z, t.worldRotation.w, t.worldRotation.x,
+                                t.worldRotation.y, t.worldRotation.z, t.worldScale.x, t.worldScale.y, t.worldScale.z})
+                    *field++ = quantizeState(v);
+            }
+            h.bytes(chunk, static_cast<size_t>(field - chunk) * sizeof(int32_t));
         }
-        h.bytes(fields.data(), fields.size() * sizeof(int32_t));
     }
     // nlohmann::json keeps an object's keys sorted: name order
     if (values.is_object()) {
