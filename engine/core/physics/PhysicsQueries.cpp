@@ -302,8 +302,20 @@ namespace {
     bool convexOverlap3D(const JPH::ConvexShape& query, const JPH::ConvexShape::Support& querySupport, JPH::Mat44Arg queryInverse,
                          const JPH::ConvexShape& leaf, JPH::Vec3Arg leafScale, JPH::Mat44Arg leafTransform, float tolerance){
         const JPH::Mat44 leafToQuery = queryInverse * leafTransform;
-        if (!JPH::OrientedBox(leafToQuery, leaf.GetLocalBounds().Scaled(leafScale)).Overlaps(query.GetLocalBounds())){
+        const JPH::AABox leafBounds = leaf.GetLocalBounds().Scaled(leafScale);
+        if (!JPH::OrientedBox(leafToQuery, leafBounds).Overlaps(query.GetLocalBounds())){
             return false;
+        }
+        // a leaf wholly inside a box query's core (the box less its rounded edge, whose radius is far
+        // wider than any rounding here) overlaps it, as the GJK step would find: R19's box over a
+        // street holds most bodies it finds
+        const float queryRadius = querySupport.GetConvexRadius();
+        if (query.GetSubType() == JPH::EShapeSubType::Box && queryRadius > 1.0e-3f){
+            JPH::AABox core = query.GetLocalBounds();
+            core.ExpandBy(JPH::Vec3::sReplicate(-queryRadius));
+            if (core.Contains(leafBounds.Transformed(leafToQuery))){
+                return true;
+            }
         }
         JPH::Vec3 axis = leafToQuery.GetTranslation();
         if (axis.IsNearZero()){

@@ -3267,9 +3267,19 @@ namespace {
         const float w = instance.rotation[3] / 32767.0f;
         const Quaternion rotation(w, x, y, z);
         const float height = instance.scale * static_cast<float>(instance.heightRatio) / 128.0f;
-        return Matrix4::translateMatrix(Vector3(instance.position[0], instance.position[1], instance.position[2])) *
-               rotation.getRotationMatrix() *
-               Matrix4::scaleMatrix(Vector3(instance.scale, height, instance.scale));
+        // translate * rotate * scale written out: each column of the rotation times its scale, the
+        // position in the last. The two 4x4 products it replaces only added zeros and multiplied by
+        // ones, so every entry is the same value (an overlap builds one per candidate tree, R19)
+        const Matrix4 rotated = rotation.getRotationMatrix();
+        const float scale[3] = {instance.scale, height, instance.scale};
+        Matrix4 out;
+        for (int c = 0; c < 3; c++) {
+            for (int r = 0; r < 3; r++) out.set(c, r, scale[c] * rotated.get(c, r));
+        }
+        out.set(3, 0, instance.position[0]);
+        out.set(3, 1, instance.position[1]);
+        out.set(3, 2, instance.position[2]);
+        return out;
     }
 
     bool foliageRayBox(const Vector3& origin, const Vector3& direction, const float boxMin[3], const float boxMax[3], float maxT) {
