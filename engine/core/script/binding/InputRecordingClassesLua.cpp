@@ -31,6 +31,7 @@
 #include <ctime>
 #include <memory>
 #include <string>
+#include <vector>
 
 using namespace jasperengine;
 
@@ -292,9 +293,8 @@ namespace {
     // the recording's frame, else the first replay's; -1 when idle
     int64_t luaFrame(){
         if (input::InputRecorder::isRecording()) return input::InputRecorder::frame();
-        for (const std::shared_ptr<input::Replay>& replay : input::Replay::running())
-            return replay->frame();
-        return -1;
+        const std::vector<std::shared_ptr<input::Replay>> replays = input::Replay::running();
+        return replays.empty() ? -1 : replays.front()->frame();
     }
 
     // InputRecording.checkpoint(name, value) -> true | nil, err: numbers, booleans, strings, vectors

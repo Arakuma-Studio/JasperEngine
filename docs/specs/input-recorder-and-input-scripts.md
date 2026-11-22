@@ -694,6 +694,13 @@ wait until clicked, shot). Red controls are named per criterion.
   (at most 8, not with `device`) launches once per size and returns `runs`, each run's images among
   the first 4. run_build runs this computer's player on Linux and macOS only: on Windows it was never
   implemented (it says so), so R24's Windows desktop is not covered here.
+- **AC11 on macOS (Mac pass).** `test_desktop_player_runs_input_script`'s steps ran on an arm64 Mac
+  with a macos-universal-metal-release runtime in place of the Linux glcore one (the test itself builds
+  Linux runtimes only). The first run gave 1600x1200 shots for 800x600: a headless player's window
+  was sized in points, so a Retina screen doubled its pixels. A headless player's window is now
+  sized in backing pixels (`WindowMac::showHeadless`); the run then passed: both sizes exit 0 with
+  `01_menu` and `02_game` at 800x600 and 600x800 and the `[input] done` line. A windowed run keeps
+  `--resolution` in points.
 - **Web input-script URL.** The page's `main()` fetches an `--input-script` that is a URL or a page
   path (`http(s)://`, `/`, `./`, `../`) with a synchronous same-origin `XMLHttpRequest` before the
   engine starts, so every web build has it (not only the prebuilt player's loader), and runs the copy

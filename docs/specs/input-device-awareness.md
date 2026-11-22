@@ -491,3 +491,7 @@ Each red control is recorded by running the test on the base commit first; the P
 - **AC18.** CDP cannot send a gamepad: the web gate's tap and key give two lines (`Touch`, then
   `Keyboard&Mouse`; the page starts on Keyboard&Mouse). The Android mouse and touchscreen taps run
   after the two-finger tap in `tools/android-two-finger-tap.sh`.
+- **R19 iOS (Mac pass).** The iOS builds ran on an arm64 Mac (the Xcode project for the simulator, the
+  prebuilt iOS player, `tools/ci/ios_packaging.sh`); the indirect-pointer tagging did not: the
+  simulator turns the Mac's pointer into touches and `simctl` sends no trackpad pointer, so it still
+  needs a device.

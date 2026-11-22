@@ -33,14 +33,14 @@ namespace jasperengine::dialogue {
         const std::string& asString() const { return std::get<3>(*this); }
 
         // false, 0, "" and nothing are false
-        bool truthy() const;
+        JASPERENGINE_API bool truthy() const;
         // the same type and value (nothing equals nothing)
-        bool same(const Value& other) const;
+        JASPERENGINE_API bool same(const Value& other) const;
         // "true", "3", "3.5", the text, "" for nothing: what a message argument and a log show
-        std::string toText() const;
+        JASPERENGINE_API std::string toText() const;
         // the JSON-like spelling: true, 3, "text", nil
-        std::string describe() const;
-        const char* typeName() const;
+        JASPERENGINE_API std::string describe() const;
+        JASPERENGINE_API const char* typeName() const;
     };
 
 }

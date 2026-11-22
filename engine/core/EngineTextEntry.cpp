@@ -8,8 +8,11 @@
 
 #include "Input.h"
 #include "Scene.h"
+// a build without the HTML UI (JASPERENGINE_HTMLUI 0) has neither RmlUi nor these headers' sources
+#if JASPERENGINE_HTMLUI
 #include "htmlui/RmlTextInputHandler.h"
 #include "htmlui/TextEntryTraits.h"
+#endif
 #include "input/InputScheme.h"
 #include "input/TextEntry.h"
 #include "input/TextInputSync.h"
@@ -64,6 +67,7 @@ void Engine::systemTextInputState(const std::u16string& units, int selectionStar
     FieldEdits edits;
     keyboardSync.update(units, selectionStart, selectionEnd, composingStart, composingEnd, edits);
 
+#if JASPERENGINE_HTMLUI
     // the keyboard's own selection, in code points: what the resync compares the field with
     std::u32string text;
     std::vector<size_t> unitToCodepoint;
@@ -73,6 +77,7 @@ void Engine::systemTextInputState(const std::u16string& units, int selectionStar
         return (int)unitToCodepoint[unit < 0 ? unitCount : std::min(unit, unitCount)];
     };
     RmlTextInputHandler::noteKeyboardText(codepointsToUtf8(text, 0, text.size()), codepointAt(selectionStart), codepointAt(selectionEnd));
+#endif
 }
 
 void Engine::resetTextInputState(const std::string& utf8, size_t caret){
@@ -84,7 +89,11 @@ void Engine::resetTextInputState(const std::string& utf8, size_t caret){
 void Engine::systemEditorAction(EnterKey key){
     // Enter on the focused field, with its hint (documents: htmlui::runEnterKeyAction; a component
     // InputField submits on the Enter character)
+#if JASPERENGINE_HTMLUI
     const htmlui::ActionKeyScope scope(key);
+#else
+    (void)key;
+#endif
     // a document field takes the key alone: its character would reach the game once the field blurred
     const bool documentField = wantsTextComposition();
     setInputSource(InputSourceTag::Synthetic);
@@ -96,11 +105,13 @@ void Engine::systemEditorAction(EnterKey key){
 }
 
 bool Engine::getTextEntryFocus(TextEntryTraits& traits, bool& keyboardOpen){
+#if JASPERENGINE_HTMLUI
     if (RmlTextInputHandler::getActive()){
         traits = RmlTextInputHandler::getKeyboardTraits();
         keyboardOpen = RmlTextInputHandler::isKeyboardShown();
         return true;
     }
+#endif
     const std::vector<Scene*> scenes = getInputScenes(false);
     for (auto it = scenes.rbegin(); it != scenes.rend(); ++it){
         if ((*it)->getSystem<UISystem>()->getTypingInputFieldTraits(traits)){

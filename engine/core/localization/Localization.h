@@ -64,8 +64,8 @@ namespace jasperengine {
         std::map<std::string, std::vector<std::string>> fonts;      // localization.fonts
         std::vector<LocalizationNamespace> namespaces;
 
-        static bool fromJson(std::string_view json, LocalizationManifest& out, std::string* error = nullptr);
-        std::string toJson() const;
+        JASPERENGINE_API static bool fromJson(std::string_view json, LocalizationManifest& out, std::string* error = nullptr);
+        JASPERENGINE_API std::string toJson() const;
     };
 
     class JASPERENGINE_API Localization {
