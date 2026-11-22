@@ -284,8 +284,18 @@ async def test_reading_closed_scenes_makes_no_gpu_resources():
         await build_info(ed)
 
         async def alive() -> dict:
-            await ed.call("wait", frames=5, timeout_seconds=300)
-            return (await ed.call("get_render_stats"))["alive"]
+            """once the device settled: no shader or pipeline being made (one the editor was still
+            making at the first count would count as made by the read) and two equal reads in a row"""
+            last = None
+            for _ in range(60):
+                await ed.call("wait", frames=5, timeout_seconds=300)
+                stats = await ed.call("get_render_stats")
+                creation = stats["shader_creation"]
+                idle = not (creation["pending_shaders"] or creation["pending_pipelines"] or creation["pending_warm_draws"])
+                if idle and stats["alive"] == last:
+                    return last
+                last = stats["alive"] if idle else None
+            return last
 
         before = await alive()
         for name in ("Spawned", "Lit", "Foggy", "Flat"):
