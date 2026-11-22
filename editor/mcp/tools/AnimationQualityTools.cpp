@@ -1296,7 +1296,12 @@ void optimizeAnimationTool(const CallPtr& call) {
     if (args.contains("skin_distance_mm")) state->reduction.skinDistanceMm = args["skin_distance_mm"].get<double>();
     if (args.contains("joints")) {
         for (const Json& joint : args["joints"]) {
-            state->reduction.joints.push_back({joint.at("path").get<std::string>(), joint.at("tolerance_mm").get<double>()});
+            if (!joint.is_object() || !joint.contains("path") || !joint["path"].is_string() || !joint.contains("tolerance_mm") ||
+                !joint["tolerance_mm"].is_number()) {
+                call->fail("joints: give each entry a path (the bone's path) and a tolerance_mm (0.01 to 100).");
+                return;
+            }
+            state->reduction.joints.push_back({joint["path"].get<std::string>(), joint["tolerance_mm"].get<double>()});
         }
     }
     if (args.contains("output")) {

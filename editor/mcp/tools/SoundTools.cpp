@@ -1230,6 +1230,10 @@ void setAudioImportSettingsTool(const CallPtr& call) {
         call->fail("Give settings, provenance or labels to set.");
         return;
     }
+    if (!args.contains("paths") || !args["paths"].is_array()) {
+        call->fail("paths: pass a list of the sound files to set, inside the assets folder.");
+        return;
+    }
     // a file written since the last look has no .meta yet, and the section needs its GUID beside it
     project->refreshAssetDatabase(true);
     auto labels = std::make_shared<std::vector<std::string>>();
@@ -1245,7 +1249,7 @@ void setAudioImportSettingsTool(const CallPtr& call) {
     }
     auto work = std::make_shared<ImportWork>();
     work->cacheDirectory = AudioAnalysis::cacheDirectory(project->getProjectPath());
-    for (const Json& value : args.at("paths")) {
+    for (const Json& value : args["paths"]) {
         ClipEdit clip;
         clip.rel = value.get<std::string>();
         std::string error;
