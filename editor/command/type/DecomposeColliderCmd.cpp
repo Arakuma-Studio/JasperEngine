@@ -119,16 +119,17 @@ std::shared_ptr<ColliderDecomposition> ColliderDecomposition::start(Project* pro
         return nullptr;
     }
 
+    // the list is the main thread's (start, find, land): the job holds its own reference
     runningDecompositions().push_back(decomposition);
     if (jobs::hasSystem() && !jobs::system().isSingleThreaded()){
-        jobs::submit([decomposition]() { decomposition->run(); }, {jobs::Lane::Background, jobs::GateClass::Default, "decompose-collider"});
+        jobs::submit([decomposition]() { decomposition->run(decomposition); }, {jobs::Lane::Background, jobs::GateClass::Default, "decompose-collider"});
     }else{
-        decomposition->run();
+        decomposition->run(decomposition);
     }
     return decomposition;
 }
 
-void ColliderDecomposition::run(){
+void ColliderDecomposition::run(const std::shared_ptr<ColliderDecomposition>& self){
     DecompositionParams params = DecompositionParams::fromQuality(request.quality);
     params.maxHulls = request.maxHulls;
     std::string error;
@@ -142,10 +143,7 @@ void ColliderDecomposition::run(){
         });
     failure = error;
     // the history and the scene are the main thread's
-    std::shared_ptr<ColliderDecomposition> self = find(request.sceneId, request.entity, request.index);
-    getEditorHost().enqueueMainThreadTask([self]() {
-        if (self) self->land();
-    });
+    getEditorHost().enqueueMainThreadTask([self]() { self->land(); });
 }
 
 void ColliderDecomposition::land(){

@@ -94,7 +94,8 @@ namespace jasperengine::editor{
         bool succeeded = false;
         std::string failure;
 
-        void run();
+        // on the job (or in start() without workers); `self` keeps it alive until it lands
+        void run(const std::shared_ptr<ColliderDecomposition>& self);
         void land();
     };
 
