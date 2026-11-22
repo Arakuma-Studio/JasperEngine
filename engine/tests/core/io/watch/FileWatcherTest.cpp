@@ -56,9 +56,8 @@ namespace {
                 changes.insert(changes.end(), batch.begin(), batch.end());
                 changesReady.notify_all();
             }, DeliverOn::Worker);
-            // the index is built and the backend armed before the first edit
+            // the index is built and every backend armed (a polling one has its baseline) before the first edit
             ASSERT_TRUE(waitFor([this]() { return service.stats().indexReady; }, timeLimit(fileWatcherMs(5000))));
-            if (GetParam() == WatchBackendKind::Polling) std::this_thread::sleep_for(POLL_INTERVAL * 2);
         }
 
         // within 1 s (native) or interval + 1 s (polling) (AC1)
