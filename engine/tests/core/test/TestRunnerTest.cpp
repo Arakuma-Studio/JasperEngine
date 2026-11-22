@@ -701,8 +701,9 @@ end)
     EXPECT_EQ(fresh.status, Status::Passed) << (fresh.failures.empty() ? "" : fresh.failures[0].message);
     EXPECT_GE(LuaBinding::getLuaStateGeneration(), generation + 2) << "a new Lua state per case";
     ASSERT_EQ(host.folders.size(), 2u);
-    EXPECT_NE(host.folders[0].find(".jasper-test-runs/run-test/1"), std::string::npos) << host.folders[0];
-    EXPECT_NE(host.folders[1].find(".jasper-test-runs/run-test/2"), std::string::npos) << host.folders[1];
+    // (the folders are native paths: backslashes on Windows)
+    EXPECT_NE(std::filesystem::path(host.folders[0]).generic_string().find(".jasper-test-runs/run-test/1"), std::string::npos) << host.folders[0];
+    EXPECT_NE(std::filesystem::path(host.folders[1]).generic_string().find(".jasper-test-runs/run-test/2"), std::string::npos) << host.folders[1];
     EXPECT_FALSE(std::filesystem::exists(host.folders[0])) << "the sandbox goes with its case";
     EXPECT_TRUE(getUserDataOverride().empty()) << "data:// is the game's again after the run";
 }
