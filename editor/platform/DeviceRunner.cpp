@@ -537,6 +537,10 @@ namespace {
             std::error_code ec;
             fs::remove(stdoutFile, ec);
             fs::remove(stderrFile, ec);
+            std::string executable = request.executableName.empty() ? request.package.stem().string() : request.executableName;
+            // a patch run has no package: the installed app's bundle names the process
+            if (executable.empty() && simctl({"get_app_container", device.id, appId, "app"}, output) == 0)
+                executable = FileUtils::pathFromUtf8(deviceLastLine(output)).stem().string();
             std::vector<std::string> args = {"launch", "--terminate-running-process", "--stdout=" + stdoutFile.string(), "--stderr=" + stderrFile.string(),
                                              device.id, appId};
             args.insert(args.end(), request.playerArgs.begin(), request.playerArgs.end());
@@ -551,7 +555,6 @@ namespace {
             started();
             running = true;
             pump.start();
-            const std::string executable = request.executableName.empty() ? request.package.stem().string() : request.executableName;
             std::vector<std::string> stream = {"xcrun", "simctl", "spawn", device.id, "log", "stream", "--style", "compact", "--level", "debug",
                                                "--predicate", "process == \"" + executable + "\""};
             logThread = std::thread([this, stream]() {
