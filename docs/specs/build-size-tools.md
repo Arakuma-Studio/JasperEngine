@@ -554,3 +554,7 @@ Force To Mono (P3):
 - Auto treats a null correlation (one channel constant) as not cancelling: only the width decides then.
 - The mono WAV cook writes only the `fmt ` and `data` chunks: a clip's loop and trims come from its import
   settings, not from `smpl` or `cue ` chunks, which the engine does not read.
+- **R23 on box A.** `BuildReportBench.LargeReport` parsed and compared two 20,000-file reports in
+  80.6-89.2 ms on box A (a 2.4 GHz Haswell; RelWithDebInfo, `JASPER_TEST_PERF_SLACK=1`), the compare
+  24-31 ms of it: an `unordered_map` node per file. `compareBuildReports` keys the files in one
+  open-addressed array sized up front: 62-69 ms (the compare 11-14 ms) over three runs, the same rows.

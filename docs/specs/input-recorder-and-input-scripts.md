@@ -722,3 +722,8 @@ wait until clicked, shot). Red controls are named per criterion.
   starts: browser_gate's new `"no_ready"`).
 - **Android.** `tools/android-emulator-test.sh` accepts `/` in `--setprop` values (a content path).
 - A player's seed is applied when its Lua state opens after the engine starts.
+- **R34 on box A.** `StateHashBench.Hash2000Transforms` took 0.22 ms on box A (a 2.4 GHz Haswell):
+  `std::round` is a libm call there, ten a Transform, and each Transform was looked up by entity.
+  `quantizeState` now rounds half away from zero itself (pinned against `std::round`), and the hash
+  reads each Transform by its slot in entity order, skipping the hierarchy walk when no GameObject is
+  inactive: 0.11-0.13 ms (six runs), the same hashes.

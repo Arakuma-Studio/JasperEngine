@@ -537,3 +537,17 @@ Unit tests: `engine/tests/core/diag/JournalTest.cpp` (new file, suite `Journal`,
   Symbolicate Command passes as `--symbols`); its folders are saved per project in
   `.jasperengine/user/build.yaml` (the editor's per-project user settings). Mark Handled on a
   group marks every report of it. A binary file (crash.dmp) in a text tab shows a placeholder.
+- **R29 on box A.** `diag::journal::log` took 296-370 ns on box A (a 2.4 GHz Haswell VM on kvm-clock).
+  It now formats with its write position in a register and inline short copies, finds the ring
+  offset without a 64-bit division, counts an entry as it is reserved (an entry still being copied
+  at a crash counts as dropped), and stamps entries from `CLOCK_MONOTONIC_COARSE` where that clock
+  ticks at 1 ms or finer (Linux at HZ=1000: a stamp then lags by less than the millisecond R2 prints;
+  coarser kernels, most Android ones, and the other systems keep the precise clock). Six runs
+  each: 190-213 ns in `JournalBench.LogWithFourFields`, 199-221 ns for `je-bench-diag`'s
+  `journal_log_4f_ns`. `JournalBench.LuaLogWithFourFields` measures R29's Lua figure, a new 4-field
+  table at each call: 1.01-1.14 us, and 0 allocations in the binding for a table built once.
+- **R31 on box A.** `CrashUserBench` times the capture's main-thread share beyond the readback, R31's
+  figure: the stand-in readback (a copy of the frame) is timed on its own and printed, as the
+  capture's log line reports a real one; 0.04-0.08 ms beyond an 8-12 ms copy. The encode's downscale
+  divided per pixel (66 ms on box A); it now finds its column spans once and divides each mean
+  through an exact reciprocal, with the same bytes: 36-40 ms (six runs).
