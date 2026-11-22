@@ -42,7 +42,8 @@ namespace {
                          {"languages", Json::array({Json{{"code", "de"}}, Json{{"code", "ja"}}})}};
         Json layers = Json::array();
         for (size_t i = 0; i < rows; i++) {
-            char id[9];
+            // room for a whole size_t: GCC's -Wformat-truncation counts its 16 digits (ASan's -O1)
+            char id[17];
             std::snprintf(id, sizeof(id), "%08zx", i + 1);
             layers.push_back(Json{{"id", id}, {"type", "text"}, {"name", "Line " + std::to_string(i)}, {"text", "Line number " + std::to_string(i)},
                                   {"text_key", "line_" + std::to_string(i)},
