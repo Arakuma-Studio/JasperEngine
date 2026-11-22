@@ -10,3 +10,7 @@ are not vendored (the decoder links `libs/brotli/`).
 The editor uses it to import `.woff2` web fonts as TrueType or OpenType files: Brotli, then the
 glyf/loca and hmtx transforms reversed (`editor/titleart/fonts/WebFontDecode`,
 docs/specs/S82-title-designer.md R59). Shipped games never link it.
+
+Sanitized builds compile `woff2_common.cc` without UBSan's alignment check (`CMakeLists.txt`, at
+`woff2_decoder`): `ComputeULongSum` reads a table's words as `uint32_t` in place, and a table need
+not start on 4 bytes. The source stays unmodified.
