@@ -551,6 +551,8 @@ craftsman-end-motor (a port reconstructed from a retail binary). Nothing here is
   stdout/stderr, and the run reads both, so every line showed twice. The unified log's copy goes to the
   Console, with its level (the engine's warnings are its default type) and its category; a stdout or
   stderr line waits 3 s for its unified copy and goes on alone only when none came (a `printf` past
-  the engine's log, or no `log stream`). Stopping the `log stream` no longer warns "Failed to send
+  the engine's log, or no `log stream`). A Patch And Run names the process from the installed app
+  (`simctl get_app_container ... app`): its request has no package, and its `log stream` used to
+  match no process. Stopping the `log stream` no longer warns "Failed to send
   SIGTERM to process group": the second SIGTERM of a stop found the process exited and not yet
   reaped, a group macOS refuses to signal (EPERM).
