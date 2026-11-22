@@ -379,6 +379,40 @@ TEST_P(FileWatcherPolling, AnEditAfterTheIndexIsReadyIsReported) {
     expectChangesReported(dir, service, FileWatchService::State::Polling);
 }
 
+// The same in a folder linked in from out of the root, which a polling backend of its own watches:
+// started once the service reported its index ready, that backend's baseline could come after an edit
+// (SeesChangesThroughLinkedFolders/Polling, 1 in 900 under load). The hook holds every baseline until
+// the edit is made; where they all come before the index is ready, it gives up.
+TEST_P(FileWatcherPolling, AnEditInALinkedFolderAfterTheIndexIsReadyIsReported) {
+    WatchTempDir elsewhere;
+    const fs::path edit = elsewhere.path / "lib" / "a.lua";
+    writeText(edit, "return 1");
+    std::error_code ec;
+    fs::create_directory_symlink(elsewhere.path / "lib", dir.path / "shared", ec);
+    if (ec) GTEST_SKIP() << "no symbolic links here";
+    auto edited = std::make_shared<std::atomic<bool>>(false);
+    struct Unhook {
+        ~Unhook() { watch::setPollingScanHookForTesting(nullptr); }
+    } unhook;
+    watch::setPollingScanHookForTesting([edited]() {
+        waitFor([&]() { return edited->load(); }, timeLimit(fileWatcherMs(300)));
+    });
+    ASSERT_TRUE(service.start(dir.path, GetParam(), POLL_INTERVAL));
+    subscription = service.subscribe({}, [this](std::span<const FileChange> batch) {
+        std::lock_guard<std::mutex> lock(mutex);
+        changes.insert(changes.end(), batch.begin(), batch.end());
+    }, DeliverOn::Worker);
+    ASSERT_TRUE(waitFor([this]() { return service.stats().indexReady; }, timeLimit(fileWatcherMs(5000))));
+    writeText(edit, "return 2, edited");
+    edited->store(true);
+    const fs::path seen = dir.path / "shared" / "a.lua";
+    EXPECT_TRUE(waitFor([&]() {
+        service.flush(timeLimit(fileWatcherMs(1000)));
+        std::lock_guard<std::mutex> lock(mutex);
+        return std::any_of(changes.begin(), changes.end(), [&](const FileChange& c) { return c.path == seen && c.kind == FileChangeKind::Modified; });
+    }, timeLimit(fileWatcherMs(3000)))) << fileWatcherDescribe(take());
+}
+
 INSTANTIATE_TEST_SUITE_P(Polling, FileWatcherPolling, ::testing::Values(WatchBackendKind::Polling),
                          [](const ::testing::TestParamInfo<WatchBackendKind>&) { return std::string("Polling"); });
 
@@ -466,6 +500,41 @@ TEST(FileWatcherBackends, StopEndsAFlushOnAnotherThread) {
             EXPECT_EQ(sink.afterStop.load(), 0) << watcher->name();
         }
     }
+}
+
+// The service starts a polling backend on its own index walk, so the tree is walked once: that walk is
+// the backend's first look, and what changed after it is reported, a new entry of the root included
+TEST(FileWatcherBackends, APollingBaselineGivenIsItsFirstLook) {
+    struct EventSink : watch::WatchSink {
+        std::mutex mutex;
+        std::vector<watch::RawEvent> events;
+        void onRawEvents(std::vector<watch::RawEvent>&& batch) override {
+            std::lock_guard<std::mutex> lock(mutex);
+            events.insert(events.end(), batch.begin(), batch.end());
+        }
+        void onBackendFailed(const std::string&) override {}
+    };
+    WatchTempDir dir;
+    writeText(dir.path / "kept.txt", "kept");
+    writeText(dir.path / "sub" / "old.txt", "old");
+    ProjectFileIndex baseline;
+    baseline.reset(dir.path);
+    baseline.build();
+    // after that walk, before the backend starts
+    writeText(dir.path / "new.txt", "new");
+    writeText(dir.path / "sub" / "old.txt", "old, changed");
+    EventSink sink;
+    std::unique_ptr<FileWatcher> watcher = FileWatcher::createPolling(POLL_INTERVAL, std::move(baseline));
+    std::string error;
+    ASSERT_TRUE(watcher->start(dir.path, sink, error)) << error;
+    ASSERT_TRUE(watcher->flush(timeLimit(fileWatcherMs(2000))));
+    watcher->stop();
+    auto saw = [&](watch::RawEvent::Type type, const fs::path& path) {
+        return std::any_of(sink.events.begin(), sink.events.end(), [&](const watch::RawEvent& e) { return e.type == type && e.path == path; });
+    };
+    EXPECT_TRUE(saw(watch::RawEvent::Type::Created, dir.path / "new.txt"));
+    EXPECT_TRUE(saw(watch::RawEvent::Type::Modified, dir.path / "sub" / "old.txt"));
+    EXPECT_FALSE(std::any_of(sink.events.begin(), sink.events.end(), [&](const watch::RawEvent& e) { return e.path == dir.path / "kept.txt"; }));
 }
 
 #if defined(JASPERENGINE_WATCH_FSEVENTS)
