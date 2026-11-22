@@ -199,6 +199,8 @@
 #include <limits>
 #include <utility>
 #include <iostream>
+#include <map>
+#include <mutex>
 #include <fstream>
 #include <sstream>
 #include <iomanip>
@@ -3554,8 +3556,30 @@ void editor::App::engineInit(int argc, char** argv) {
     // the clip editor's history timeline (undo routing, R5b) after the listeners above
     AnimationClipController::installHistoryTimeline(&project);
 
+    // Test hook: a Title Art program builds only once `delay:<n>` main-loop iterations passed since
+    // it was first asked for, or never (`fail`), so a render meeting a program still being built, or
+    // one that cannot be built, is not left to a slow host (test_title_art_programs.py)
+    struct TitleProgramTestBuild {
+        long delayBeats = 0;
+        bool fail = false;
+        std::mutex lock;
+        std::map<jasperengine::ShaderKey, uint64_t> asked;
+    };
+    static TitleProgramTestBuild titleProgramTest;
+    if (const char* value = std::getenv("JASPER_TEST_TITLE_PROGRAM_BUILD")) {
+        const std::string spec = value;
+        if (spec == "fail") titleProgramTest.fail = true;
+        else if (spec.rfind("delay:", 0) == 0) titleProgramTest.delayBeats = std::max(0L, std::strtol(spec.c_str() + 6, nullptr, 10));
+    }
     ShaderPool::setShaderBuilder([this](jasperengine::ShaderKey shaderKey) -> jasperengine::ShaderBuildResult {
         static jasperengine::editor::ShaderBuilder builder;  // Make static to reuse
+        if ((titleProgramTest.fail || titleProgramTest.delayBeats > 0) && ShaderPool::getShaderTypeFromKey(shaderKey) == ShaderType::TITLE_ART) {
+            if (titleProgramTest.fail) return jasperengine::ShaderBuildResult(jasperengine::ShaderData(), ResourceLoadState::Failed);
+            std::lock_guard<std::mutex> guard(titleProgramTest.lock);
+            const uint64_t now = diag::heartbeats();
+            const uint64_t first = titleProgramTest.asked.emplace(shaderKey, now).first->second;
+            if (now - first < static_cast<uint64_t>(titleProgramTest.delayBeats)) return jasperengine::ShaderBuildResult(jasperengine::ShaderData(), ResourceLoadState::Loading);
+        }
         return builder.buildShader(shaderKey, &project);
     }, &jasperengine::editor::ShaderBuilder::getRunningBuildCount);
     // a project UI effect's .frag changed (hot reload, phase 5): its compiled variants go from

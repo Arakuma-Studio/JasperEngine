@@ -54,7 +54,7 @@ namespace {
         return file;
     }
 
-    ResolvedModelSettings settingsOf(OptimizeMesh optimize, MeshCompression compression, GenerateLods lods = GenerateLods::Off){
+    ResolvedModelSettings modelCookSettingsOf(OptimizeMesh optimize, MeshCompression compression, GenerateLods lods = GenerateLods::Off){
         ResolvedModelSettings settings;
         settings.optimizeMesh = optimize;
         settings.meshCompression = compression;
@@ -63,12 +63,12 @@ namespace {
     }
 
     ::testing::AssertionResult cookModel(const fs::path& source, const ResolvedModelSettings& settings, Cooked& out,
-                                    ModelFamily family = ModelFamily::Desktop){
+                                    ModelFamily modelCookFamily = ModelFamily::Desktop){
         ModelCookRequest request;
         request.source = source;
         request.assetPath = source.filename().generic_string();
         request.settings = settings;
-        request.family = family;
+        request.family = modelCookFamily;
         std::string error;
         if (!ModelCooker::cookToMemory(request, out.glb, out.record, error))
             return ::testing::AssertionFailure() << "cook: " << error;
@@ -114,7 +114,7 @@ namespace {
         return doc.json()["meshes"][mesh]["primitives"][primitive]["attributes"][semantic].get<size_t>();
     }
 
-    std::vector<uint32_t> indicesOf(const GltfDocument& doc, size_t mesh, size_t primitive){
+    std::vector<uint32_t> modelCookIndicesOf(const GltfDocument& doc, size_t mesh, size_t primitive){
         std::vector<uint32_t> out;
         std::string error;
         const GJson& json = doc.json()["meshes"][mesh]["primitives"][primitive];
@@ -142,7 +142,7 @@ namespace {
                 bytes.append(reinterpret_cast<const char*>(streams[s].data() + v * sizes[s]), sizes[s]);
             return bytes;
         };
-        const std::vector<uint32_t> list = indicesOf(doc, mesh, primitive);
+        const std::vector<uint32_t> list = modelCookIndicesOf(doc, mesh, primitive);
         std::vector<std::string> out;
         for (size_t t = 0; t + 2 < list.size(); t += 3){
             std::string c[3] = {corner(list[t]), corner(list[t + 1]), corner(list[t + 2])};
@@ -177,7 +177,7 @@ TEST(ModelCook, KeepsNodesMeshesPrimitivesMaterialsAndAnimationsForEverySetting)
     for (IndexFormat index : {IndexFormat::Auto, IndexFormat::Bits32})
     for (ModelNormals normals : {ModelNormals::Import, ModelNormals::Calculate})
     for (GenerateLods lods : {GenerateLods::Automatic, GenerateLods::On, GenerateLods::Off}){
-        ResolvedModelSettings settings = settingsOf(optimize, compression, lods);
+        ResolvedModelSettings settings = modelCookSettingsOf(optimize, compression, lods);
         settings.weldVertices = weld;
         settings.indexFormat = index;
         settings.normals = normals;
@@ -189,7 +189,7 @@ TEST(ModelCook, KeepsNodesMeshesPrimitivesMaterialsAndAnimationsForEverySetting)
         // the same triangles in every primitive (LOD 0 is never reduced), the extras kept
         for (size_t m = 0; m < 2; m++){
             for (size_t p = 0; p < original.json()["meshes"][m]["primitives"].size(); p++)
-                EXPECT_EQ(indicesOf(cooked.doc, m, p).size(), indicesOf(original, m, p).size()) << why;
+                EXPECT_EQ(modelCookIndicesOf(cooked.doc, m, p).size(), modelCookIndicesOf(original, m, p).size()) << why;
         }
         EXPECT_EQ(cooked.doc.json()["extras"]["kept"], "by the cook") << why;
         EXPECT_EQ(cooked.doc.json()["accessors"].size() >= original.json()["accessors"].size(), true) << "accessors keep their indices";
@@ -205,7 +205,7 @@ TEST(ModelCook, LosslessWithoutOptimizeDecodesToTheSourceBytes){
     std::string error;
     ASSERT_TRUE(original.load(source, error)) << error;
     Cooked cooked;
-    ASSERT_TRUE(cookModel(source, settingsOf(OptimizeMesh::Nothing, MeshCompression::Lossless), cooked));
+    ASSERT_TRUE(cookModel(source, modelCookSettingsOf(OptimizeMesh::Nothing, MeshCompression::Lossless), cooked));
     // every accessor of the source: the same element bytes
     for (size_t a = 0; a < original.json()["accessors"].size(); a++){
         std::vector<uint8_t> before, after;
@@ -230,7 +230,7 @@ TEST(ModelCook, OptimizeOnlyReordersAndNeverWorsensTheVertexCache){
     ASSERT_TRUE(original.load(source, error)) << error;
     for (OptimizeMesh optimize : {OptimizeMesh::Everything, OptimizeMesh::PolygonOrder, OptimizeMesh::VertexOrder}){
         Cooked cooked;
-        ASSERT_TRUE(cookModel(source, settingsOf(optimize, MeshCompression::Lossless), cooked));
+        ASSERT_TRUE(cookModel(source, modelCookSettingsOf(optimize, MeshCompression::Lossless), cooked));
         for (size_t m = 0; m < 2; m++){
             for (size_t p = 0; p < original.json()["meshes"][m]["primitives"].size(); p++){
                 // the same triangles of the same vertex values, bit for bit
@@ -254,7 +254,7 @@ TEST(ModelCook, BlendedPrimitivesKeepTheirTriangleOrder){
     std::string error;
     ASSERT_TRUE(original.load(source, error)) << error;
     Cooked cooked;
-    ASSERT_TRUE(cookModel(source, settingsOf(OptimizeMesh::Everything, MeshCompression::Lossless), cooked));
+    ASSERT_TRUE(cookModel(source, modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless), cooked));
     // Body/1 is BLEND: welded and fetch-ordered, drawn in the source's order
     EXPECT_EQ(triangles(cooked.doc, 0, 1), triangles(original, 0, 1));
     EXPECT_NE(triangles(cooked.doc, 0, 0), triangles(original, 0, 0)) << "the opaque one was reordered";
@@ -265,7 +265,7 @@ TEST(ModelCook, BlendedPrimitivesKeepTheirTriangleOrder){
     ModelCookRequest request;
     request.source = source;
     request.assetPath = "model.glb";
-    request.settings = settingsOf(OptimizeMesh::Everything, MeshCompression::Lossless);
+    request.settings = modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless);
     request.blended = {{-1, 0}};
     std::vector<uint8_t> glb;
     ModelCookRecord record;
@@ -288,7 +288,7 @@ TEST(ModelCook, LossyLevelsStayWithinTheirDocumentedError){
     for (const Level& level : {Level{MeshCompression::Low, 0.3}, Level{MeshCompression::Medium, 1.0}, Level{MeshCompression::High, 1.0}}){
         const ModelCooker::QuantizationBits bits = ModelCooker::quantizationBits(level.compression);
         Cooked cooked;
-        ASSERT_TRUE(cookModel(source, settingsOf(OptimizeMesh::Nothing, level.compression), cooked));
+        ASSERT_TRUE(cookModel(source, modelCookSettingsOf(OptimizeMesh::Nothing, level.compression), cooked));
         const char* name = meshCompressionName(level.compression);
         int c0 = 0, c1 = 0;
         const std::vector<float> p0 = floats(original, attribute(original, 0, 0, "POSITION"), c0);
@@ -330,7 +330,7 @@ TEST(ModelCook, WritesKhrMeshoptCompressionAsTheExtensionDefinesIt){
     ScratchDir scratch("model-cook-layout");
     const fs::path source = writeSource(scratch, makeTestModel(8, true));
     Cooked cooked;
-    ASSERT_TRUE(cookModel(source, settingsOf(OptimizeMesh::Everything, MeshCompression::High), cooked));
+    ASSERT_TRUE(cookModel(source, modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::High), cooked));
     const GJson& root = cooked.doc.json();
     // a fallback buffer without data, the extension required
     ASSERT_EQ(root["buffers"].size(), 2u);
@@ -375,7 +375,7 @@ TEST(ModelCook, WritesKhrMeshoptCompressionAsTheExtensionDefinesIt){
 
     // Off: no codec, nothing required of it
     Cooked plain;
-    ASSERT_TRUE(cookModel(source, settingsOf(OptimizeMesh::Everything, MeshCompression::Off), plain));
+    ASSERT_TRUE(cookModel(source, modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Off), plain));
     for (const GJson& view : plain.doc.json()["bufferViews"])
         EXPECT_FALSE(view.contains("extensions"));
     EXPECT_EQ(plain.doc.json()["buffers"].size(), 1u);
@@ -386,7 +386,7 @@ TEST(ModelCook, BakedLevelsAreTheRuntimesLevelsOverTheCookedData){
     ScratchDir scratch("model-cook-lods");
     const fs::path source = writeSource(scratch, makeTestModel(24, true));
     Cooked cooked;
-    ASSERT_TRUE(cookModel(source, settingsOf(OptimizeMesh::Everything, MeshCompression::Lossless, GenerateLods::Automatic), cooked));
+    ASSERT_TRUE(cookModel(source, modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless, GenerateLods::Automatic), cooked));
     const GJson& root = cooked.doc.json();
     const GJson& primitive = root["meshes"][0]["primitives"][0];
     ASSERT_TRUE(primitive.contains("extensions"));
@@ -399,7 +399,7 @@ TEST(ModelCook, BakedLevelsAreTheRuntimesLevelsOverTheCookedData){
     lodSource.positions = floats(cooked.doc, attribute(cooked.doc, 0, 0, "POSITION"), components);
     lodSource.normals = floats(cooked.doc, attribute(cooked.doc, 0, 0, "NORMAL"), components);
     lodSource.uvs = floats(cooked.doc, attribute(cooked.doc, 0, 0, "TEXCOORD_0"), components);
-    lodSource.indices = indicesOf(cooked.doc, 0, 0);
+    lodSource.indices = modelCookIndicesOf(cooked.doc, 0, 0);
     lodSource.indexType = root["accessors"][primitive["indices"].get<size_t>()]["componentType"] == gltf::UNSIGNED_INT
                               ? AttributeDataType::UNSIGNED_INT : AttributeDataType::UNSIGNED_SHORT;
     const std::shared_ptr<MeshLodData> runtime = MeshLodPool::buildLevels(lodSource, MeshLodRecipe::runtime());
@@ -437,7 +437,7 @@ TEST(ModelCook, BakedLevelsAreTheRuntimesLevelsOverTheCookedData){
     EXPECT_EQ(std::find(required.begin(), required.end(), "JE_mesh_lods"), required.end()) << "a reader without it draws LOD 0";
 
     // On with Smallest: fewer triangles per level; Off: no levels
-    ResolvedModelSettings smallest = settingsOf(OptimizeMesh::Everything, MeshCompression::Lossless, GenerateLods::On);
+    ResolvedModelSettings smallest = modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless, GenerateLods::On);
     smallest.lodReduction = LodReduction::Smallest;
     smallest.lodCount = 2;
     Cooked small;
@@ -445,7 +445,7 @@ TEST(ModelCook, BakedLevelsAreTheRuntimesLevelsOverTheCookedData){
     ASSERT_EQ(small.record.lods.size(), 2u);
     EXPECT_LT(small.record.lods[0].triangles, cooked.record.lods[0].triangles);
     Cooked none;
-    ASSERT_TRUE(cookModel(source, settingsOf(OptimizeMesh::Everything, MeshCompression::Lossless, GenerateLods::Off), none));
+    ASSERT_TRUE(cookModel(source, modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless, GenerateLods::Off), none));
     EXPECT_FALSE(none.doc.json()["meshes"][0]["primitives"][0].contains("extensions"));
     EXPECT_TRUE(none.record.lods.empty());
 }
@@ -463,14 +463,14 @@ TEST(ModelCook, IndexFormatAutoPicks16BitsAndRefuses16PastItsRange){
     build.json["meshes"].push_back({{"name", "Big"}, {"primitives", GJson::array({primitive})}});
     build.json["nodes"] = GJson::array({{{"mesh", 0}}});
     const fs::path source = writeSource(scratch, build.glb());
-    ResolvedModelSettings settings = settingsOf(OptimizeMesh::Nothing, MeshCompression::Off);
+    ResolvedModelSettings settings = modelCookSettingsOf(OptimizeMesh::Nothing, MeshCompression::Off);
     settings.indexFormat = IndexFormat::Bits16;
     Cooked cooked;
     const ::testing::AssertionResult refused = cookModel(source, settings, cooked);
     ASSERT_FALSE(refused);
     EXPECT_NE(std::string(refused.message()).find("16-bit"), std::string::npos) << refused.message();
     // welded, the mesh fits 16 bits: Auto takes them
-    settings = settingsOf(OptimizeMesh::Everything, MeshCompression::Off);
+    settings = modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Off);
     ASSERT_TRUE(cookModel(source, settings, cooked));
     const GJson& root = cooked.doc.json();
     EXPECT_EQ(root["accessors"][root["meshes"][0]["primitives"][0]["indices"].get<size_t>()]["componentType"], gltf::UNSIGNED_SHORT);
@@ -490,7 +490,7 @@ TEST(ModelCook, CalculatedNormalsCreaseAtTheSmoothingAngle){
     build.json["meshes"].push_back({{"name", "Cube"}, {"primitives", {primitive}}});
     build.json["nodes"] = GJson::array({{{"mesh", 0}}});
     const fs::path source = writeSource(scratch, build.glb());
-    ResolvedModelSettings settings = settingsOf(OptimizeMesh::Everything, MeshCompression::Lossless);
+    ResolvedModelSettings settings = modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Lossless);
     settings.normals = ModelNormals::Calculate;
     settings.smoothingAngle = 60.0f;
     Cooked cooked;
@@ -514,8 +514,8 @@ TEST(ModelCook, CooksAreDeterministicAndCachedByContent){
     ScratchDir scratch("model-cook-cache");
     const fs::path source = writeSource(scratch, makeTestModel(10, false));
     Cooked a, b;
-    ASSERT_TRUE(cookModel(source, settingsOf(OptimizeMesh::Everything, MeshCompression::Medium, GenerateLods::Automatic), a));
-    ASSERT_TRUE(cookModel(source, settingsOf(OptimizeMesh::Everything, MeshCompression::Medium, GenerateLods::Automatic), b));
+    ASSERT_TRUE(cookModel(source, modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Medium, GenerateLods::Automatic), a));
+    ASSERT_TRUE(cookModel(source, modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Medium, GenerateLods::Automatic), b));
     EXPECT_EQ(a.glb, b.glb);
 
     ModelCookCache cache;
@@ -600,11 +600,11 @@ TEST(ModelCook, ReadsMeshoptCompressedSourcesAndRejectsCorruptStreams){
     ScratchDir scratch("model-cook-meshopt-source");
     const fs::path source = writeSource(scratch, makeTestModel(8, true));
     Cooked first;
-    ASSERT_TRUE(cookModel(source, settingsOf(OptimizeMesh::Everything, MeshCompression::Medium), first));
+    ASSERT_TRUE(cookModel(source, modelCookSettingsOf(OptimizeMesh::Everything, MeshCompression::Medium), first));
     // the cook of a cook (gltfpack's files take the same path): the same triangles again
     const fs::path cookedFile = writeSource(scratch, first.glb, "cooked.glb");
     Cooked second;
-    ASSERT_TRUE(cookModel(cookedFile, settingsOf(OptimizeMesh::Nothing, MeshCompression::Lossless), second));
+    ASSERT_TRUE(cookModel(cookedFile, modelCookSettingsOf(OptimizeMesh::Nothing, MeshCompression::Lossless), second));
     EXPECT_EQ(asSet(triangles(second.doc, 0, 0)), asSet(triangles(first.doc, 0, 0)));
     // a truncated stream: an error naming the bufferView, never the decoder's assert
     GJson root = first.doc.json();
@@ -646,7 +646,7 @@ TEST(ModelCookBench, HundredThousandTrianglesUnderTwoSeconds){
     for (MeshCompression compression : {MeshCompression::Lossless, MeshCompression::Medium}){
         const auto start = std::chrono::steady_clock::now();
         Cooked cooked;
-        ASSERT_TRUE(cookModel(source, settingsOf(OptimizeMesh::Everything, compression, GenerateLods::Automatic), cooked));
+        ASSERT_TRUE(cookModel(source, modelCookSettingsOf(OptimizeMesh::Everything, compression, GenerateLods::Automatic), cooked));
         const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
         EXPECT_EQ(cooked.record.after.triangles, 100352);
         std::printf("[bench] cook of 100,352 triangles (%s, LODs) %.3f s (cook %.0f ms; budget 2 s); %.2f MB -> %.2f MB\n",
@@ -691,7 +691,7 @@ TEST(ModelCookBench, ACookedModelLoadsNoSlowerThanItsSource){
     const double sourceSeconds = loadSeconds(source);
     for (MeshCompression compression : {MeshCompression::Lossless, MeshCompression::Medium}){
         Cooked cooked;
-        ASSERT_TRUE(cookModel(source, settingsOf(OptimizeMesh::Everything, compression, GenerateLods::Automatic), cooked));
+        ASSERT_TRUE(cookModel(source, modelCookSettingsOf(OptimizeMesh::Everything, compression, GenerateLods::Automatic), cooked));
         const fs::path file = writeSource(scratch, cooked.glb, std::string("cooked_") + meshCompressionName(compression) + ".glb");
         const double seconds = loadSeconds(file);
         std::printf("[bench] load of 100,352 triangles: source %.1f ms, %s cook %.1f ms\n", sourceSeconds * 1000.0, meshCompressionName(compression), seconds * 1000.0);

@@ -6,6 +6,7 @@
 # renamedSettings tells an agent asking for the old keys)
 # (plus the keys upstream's settingsTable added in SYNC#4, 047eccf9b..27d562a6b: audio.*, debug.*,
 # graphics.ui_scale, web.viewport_fit_cover and the native plugins' android/ios/macos/web keys)
+# (plus player.target_platforms, which the agents of a game read through get_project_settings)
 android.abis
 android.adaptive_icon_background
 android.adaptive_icon_foreground
@@ -108,6 +109,7 @@ player.logging.file
 player.logging.level
 player.pack_native_resources
 player.product_name
+player.target_platforms
 player.threading.io_threads
 player.threading.reserved_frame_workers
 player.threading.web_multithreaded

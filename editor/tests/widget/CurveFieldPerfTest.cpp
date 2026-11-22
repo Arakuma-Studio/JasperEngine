@@ -64,7 +64,7 @@ namespace {
         }
     };
 
-    Curve wave(int i) {
+    Curve curveFieldPerfWave(int i) {
         Curve curve;
         for (int k = 0; k < 12; k++) {
             const float t = (float)k / 11.0f;
@@ -79,7 +79,7 @@ namespace {
 TEST(CurveFieldPerf, TwentyFieldsAFrame) {
     Offscreen gui;
     std::vector<Curve> curves;
-    for (int i = 0; i < 20; i++) curves.push_back(wave(i));
+    for (int i = 0; i < 20; i++) curves.push_back(curveFieldPerfWave(i));
     gui.frame(curves);   // the first frame builds the polylines
     constexpr int kFrames = 1000;
     const auto start = std::chrono::steady_clock::now();
@@ -97,7 +97,7 @@ TEST(CurveFieldPerf, AChangedCurveRedraws) {
     gui.frame(curves);
     const double straight = gui.frame(curves);
     EXPECT_EQ(gui.frame(curves), straight);   // the same curve draws the same
-    curves[0] = wave(3);
+    curves[0] = curveFieldPerfWave(3);
     gui.frame(curves);
     const double wavy = gui.frame(curves);
     // the thumbnail follows the new value, and back

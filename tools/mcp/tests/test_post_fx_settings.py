@@ -1,18 +1,16 @@
-"""S13 post FX through MCP (docs/specs/S13-post-fx.md AC16, AC18): every new post_processing field
+"""S13 post FX through MCP (docs/specs/S13-post-fx.md AC16): every new post_processing field
 round-trips through set_scene_settings / get_scene_settings and the scene file (enums by their
 lower-case names), the film / vhs / mobile_adaptive presets apply as one named undo step,
-inspect_color_lut reports the OpenEngine .cube fixtures and their errors, a .cube is a colour LUT
-asset (lut_texture takes it, get_post_processing_status reads its stage), and every scene of
-tools/fixtures re-saves byte-identically (no S13 key is written while its fields are default)."""
+inspect_color_lut reports the OpenEngine .cube fixtures and their errors, and a .cube is a colour LUT
+asset (lut_texture takes it, get_post_processing_status reads its stage). AC18 (the fixtures re-save
+with no S13 key, a second save the same bytes) is test_reflection.py's test_golden_resave_<project>
+and Compat.CorpusRoundTrip (editor tests)."""
 
 from __future__ import annotations
 
 import shutil
-import tempfile
-from pathlib import Path
 
 import harness
-import yaml
 from harness import Editor
 
 CI = True
@@ -172,44 +170,3 @@ async def test_inspect_color_lut(ed: Editor):
     (ed.project / "assets" / "luts" / "identity.cube").write_text(cube("Identity", 5))
     out = await ed.call("inspect_color_lut", path="assets/luts/identity.cube")
     ed.check_eq((out["title"], out["size_3d"], out["proposed_encoding"], out["stage"]), ("Identity", 5, "srgb", "display"))
-
-
-async def test_resave_identical(ed: Editor):
-    """AC18: every scene of every tools/fixtures project opens and saves with its postProcessing
-    unchanged and no S13 key, and a second open and save gives the same bytes. (The fixtures are
-    partly hand-written: their first save writes the editor's full form, before and after S13.)"""
-    ed.require_tools("list_scenes", "open_scene", "save_scene", "close_scene")
-    projects = sorted(p.parent for p in (harness.REPO / "tools" / "fixtures").glob("*/project.yaml"))
-    ed.check(len(projects) >= 5, f"fixture projects: {projects}")
-    checked = 0
-    for source in projects:
-        async with Editor(source, label=source.name) as fixture:
-            scenes = [s for s in (await fixture.call("list_scenes"))["scenes"] if s.get("path")]
-            # an unsaved scene stays open while each fixture scene is closed and opened again
-            await fixture.call("create_scene", name="Keeper", type="3d")
-            for scene in scenes:
-                path = fixture.project / scene["path"]
-                original = yaml.safe_load(path.read_text())
-                opened = await fixture.call("open_scene", scene=scene["path"])
-                await fixture.call("save_scene", scene=opened["scene"]["id"])
-                first = path.read_bytes()
-                saved = yaml.safe_load(first)
-                before_pp = (original.get("scene") or {}).get("postProcessing")
-                after_pp = (saved.get("scene") or {}).get("postProcessing")
-                # (an S13 key written for a default would show here: the saved struct is the old one)
-                ed.check(after_pp == before_pp, f"{source.name}/{scene['path']}: postProcessing {before_pp} -> {after_pp}")
-                # once in the editor's form, a scene saves the same bytes again (two more rounds:
-                # a legacy scene's first saves also bring its references up to date)
-                saves = [first]
-                for _ in range(2):
-                    await fixture.call("close_scene", scene=opened["scene"]["id"], unsaved="discard")
-                    opened = await fixture.call("open_scene", scene=scene["path"])
-                    await fixture.call("save_scene", scene=opened["scene"]["id"])
-                    saves.append(path.read_bytes())
-                if saves[2] != saves[1]:
-                    fixture.keep = True
-                    (Path(tempfile.gettempdir()) / f"resave-{source.name}-{path.name}").write_bytes(saves[2])
-                ed.check(saves[2] == saves[1], f"{source.name}/{scene['path']} re-saves byte-identically "
-                                               f"({len(saves[1])} -> {len(saves[2])} bytes)")
-                checked += 1
-    print(f"{checked} fixture scenes re-saved byte-identically, postProcessing unchanged")

@@ -120,30 +120,30 @@ namespace jasperengine::editor {
 
 namespace {
 
-    using Access = TitleDesignerWindowTestAccess;
+    using DesignerAccess = TitleDesignerWindowTestAccess;
 
-    struct World {
+    struct TitleDesignerWindowWorld {
         fs::path dir;
         Project* p = nullptr;
         App* app = nullptr;
     };
 
-    void writeText(const fs::path& path, const std::string& text) {
+    void titleDesignerWindowWriteText(const fs::path& path, const std::string& text) {
         fs::create_directories(path.parent_path());
         std::ofstream(path, std::ios::binary) << text;
     }
 
-    std::string readAll(const fs::path& path) {
+    std::string titleDesignerWindowReadAll(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     }
 
-    void runInEditor(const std::string& name, const std::function<void(World&)>& body) {
+    void runInEditor(const std::string& name, const std::function<void(TitleDesignerWindowWorld&)>& body) {
         const fs::path root = fs::temp_directory_path() / ("jasper-title-designer-" + name + "-" + std::to_string(::getpid()));
         fs::remove_all(root);
         fs::create_directories(root / "config");
         setenv("XDG_CONFIG_HOME", (root / "config").c_str(), 1);
-        World w;
+        TitleDesignerWindowWorld w;
         w.dir = root / "project";
         fs::create_directories(w.dir / ".jasperengine");
         std::ofstream(w.dir / "project.yaml") << "name: titledesigner\n";
@@ -186,18 +186,18 @@ namespace {
 
 #define IN_EDITOR(name, ...)                                                    \
     do {                                                                        \
-        auto inEditor = [&](World& w) __VA_ARGS__;                              \
+        auto inEditor = [&](TitleDesignerWindowWorld& w) __VA_ARGS__;                              \
         GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(runInEditor(name, inEditor), ::testing::ExitedWithCode(0), ""); \
     } while (0)
 
-    fs::path newTitle(World& w, const std::string& name) {
+    fs::path newTitle(TitleDesignerWindowWorld& w, const std::string& name) {
         std::string error;
         std::shared_ptr<TitleArtDocument> doc = TitleArtDocument::create(w.p, "assets/" + name + ".titleart", nullptr, "Create Title Art", &error);
         EXPECT_TRUE(doc) << error;
         return doc ? doc->absolutePath() : fs::path();
     }
 
-    std::string titleLayer(TitleDesignerWindow& window) {
+    std::string titleDesignerWindowTitleLayer(TitleDesignerWindow& window) {
         std::string out;
         ta::forEachLayer(window.designer().committed().root, [&](const ta::Json& l, const ta::Json*, int) {
             if (ta::layerTypeOf(l) == ta::LayerType::Text && out.empty()) out = l.value("id", std::string());
@@ -236,10 +236,10 @@ TEST(TitleDesignerWindowDeathTest, OpensFromEveryEntryAndClosedCostsNothing) {
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
         ASSERT_NE(window, nullptr);
         window->setOpen(false);
-        EXPECT_FALSE(Access::hasCanvas(*window)) << "closed: no canvas view";
+        EXPECT_FALSE(DesignerAccess::hasCanvas(*window)) << "closed: no canvas view";
         EXPECT_EQ(TitleCanvasView::liveCount(), 0u);
-        EXPECT_FALSE(Access::hasFontCatalog(*window)) << "closed: no font listing";
-        for (int i = 0; i < 120; i++) Access::drawFrame(*window);
+        EXPECT_FALSE(DesignerAccess::hasFontCatalog(*window)) << "closed: no font listing";
+        for (int i = 0; i < 120; i++) DesignerAccess::drawFrame(*window);
         EXPECT_EQ(TitleCanvasView::liveCount(), 0u) << "show() returns at its first line";
 
         const fs::path file = newTitle(w, "logo");
@@ -247,7 +247,7 @@ TEST(TitleDesignerWindowDeathTest, OpensFromEveryEntryAndClosedCostsNothing) {
         std::string error;
         ASSERT_TRUE(window->open(file, &error)) << error;
         EXPECT_TRUE(window->isOpen());
-        EXPECT_TRUE(Access::hasCanvas(*window));
+        EXPECT_TRUE(DesignerAccess::hasCanvas(*window));
         EXPECT_EQ(TitleCanvasView::liveCount(), 1u);
         EXPECT_EQ(window->documentPath().lexically_normal(), file.lexically_normal());
         // closing destroys the live parts within the frame and empties the queue of its requests
@@ -281,18 +281,18 @@ TEST(TitleDesignerWindowDeathTest, EmptyState) {
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
         const fs::path file = newTitle(w, "empty");
         ASSERT_TRUE(window->open(file, nullptr));
-        EXPECT_FALSE(Access::contentEmpty(*window)) << "a new document has its Title";
-        const std::string title = titleLayer(*window);
+        EXPECT_FALSE(DesignerAccess::contentEmpty(*window)) << "a new document has its Title";
+        const std::string title = titleDesignerWindowTitleLayer(*window);
         ASSERT_TRUE(window->runOps(editsToOps({{title, "visible", false}}), "Hide Layer"));
-        EXPECT_TRUE(Access::contentEmpty(*window)) << "hidden: the card comes back";
+        EXPECT_TRUE(DesignerAccess::contentEmpty(*window)) << "hidden: the card comes back";
         ASSERT_TRUE(window->runOps(ta::Json::parse(R"([{"op": "remove_layer", "layer": "Title"}])"), "Delete Layer"));
-        EXPECT_TRUE(Access::contentEmpty(*window));
-        ASSERT_TRUE(Access::pressKey(*window, "titleDesigner.editText")) << "Enter on an empty title adds a text";
-        EXPECT_FALSE(Access::contentEmpty(*window));
+        EXPECT_TRUE(DesignerAccess::contentEmpty(*window));
+        ASSERT_TRUE(DesignerAccess::pressKey(*window, "titleDesigner.editText")) << "Enter on an empty title adds a text";
+        EXPECT_FALSE(DesignerAccess::contentEmpty(*window));
         ASSERT_EQ(window->designer().selection().size(), 1u);
-        ASSERT_NE(Access::textEdit(*window), nullptr);
-        EXPECT_TRUE(Access::textEdit(*window)->active()) << "the new text is being edited";
-        Access::endTextEdit(*window, false);
+        ASSERT_NE(DesignerAccess::textEdit(*window), nullptr);
+        EXPECT_TRUE(DesignerAccess::textEdit(*window)->active()) << "the new text is being edited";
+        DesignerAccess::endTextEdit(*window, false);
     });
 }
 
@@ -304,36 +304,36 @@ TEST(TitleDesignerWindowDeathTest, TextEditing) {
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
         const fs::path file = newTitle(w, "text");
         ASSERT_TRUE(window->open(file, nullptr));
-        const std::string title = titleLayer(*window);
+        const std::string title = titleDesignerWindowTitleLayer(*window);
         CommandHistory* history = w.p->getProjectCommandHistory();
         const size_t position = history->position();
-        Access::beginTextEdit(*window, title, true);
-        TitleTextEdit* edit = Access::textEdit(*window);
+        DesignerAccess::beginTextEdit(*window, title, true);
+        TitleTextEdit* edit = DesignerAccess::textEdit(*window);
         ASSERT_TRUE(edit && edit->active());
-        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        for (int i = 0; i < 3; i++) DesignerAccess::drawFrame(*window);
         edit->typeText("\xE6\xBF\x80\xE7\x86\xB1");      // 激熱 replaces the selected placeholder
-        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        for (int i = 0; i < 3; i++) DesignerAccess::drawFrame(*window);
         const ta::Json* layer = layerById(window->designer().working(), title);
         ASSERT_NE(layer, nullptr);
         EXPECT_EQ(layer->value("text", std::string()), "\xE6\xBF\x80\xE7\x86\xB1") << "the working document shows the typing";
         EXPECT_EQ(history->position(), position) << "nothing committed while typing";
-        Access::endTextEdit(*window, false);
+        DesignerAccess::endTextEdit(*window, false);
         EXPECT_EQ(layerById(window->designer().committed(), title)->value("text", std::string()), "Title") << "Esc restores";
         EXPECT_EQ(layerById(window->designer().working(), title)->value("text", std::string()), "Title");
         EXPECT_EQ(history->position(), position) << "Esc adds no step";
 
-        Access::beginTextEdit(*window, title, true);
-        edit = Access::textEdit(*window);
-        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        DesignerAccess::beginTextEdit(*window, title, true);
+        edit = DesignerAccess::textEdit(*window);
+        for (int i = 0; i < 3; i++) DesignerAccess::drawFrame(*window);
         edit->compose("\xE3\x81\x92\xE3\x81\x8D\xE3\x81\x82\xE3\x81\xA4", 12);    // げきあつ
-        for (int i = 0; i < 2; i++) Access::drawFrame(*window);
+        for (int i = 0; i < 2; i++) DesignerAccess::drawFrame(*window);
         EXPECT_NE(edit->previewText().find("\xE3\x81\x92\xE3\x81\x8D"), std::string::npos) << "the preedit is in the preview";
         EXPECT_EQ(edit->text().find("\xE3\x81\x92"), std::string::npos) << "and not in the text";
         EXPECT_TRUE(edit->composing());
         edit->commitComposition("\xE6\xBF\x80\xE7\x86\xB1");
-        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        for (int i = 0; i < 3; i++) DesignerAccess::drawFrame(*window);
         EXPECT_EQ(edit->text(), "\xE6\xBF\x80\xE7\x86\xB1");
-        Access::endTextEdit(*window, true);
+        DesignerAccess::endTextEdit(*window, true);
         EXPECT_EQ(history->position(), position + 1);
         EXPECT_EQ(history->top()->name(), "Edit Text");
         EXPECT_EQ(layerById(window->designer().committed(), title)->value("text", std::string()), "\xE6\xBF\x80\xE7\x86\xB1");
@@ -348,11 +348,11 @@ TEST(TitleDesignerWindowDeathTest, SearchJumpClearsTheField) {
         ASSERT_TRUE(window->open(file, nullptr));
         ASSERT_TRUE(window->runOps(ta::Json::parse(R"([{"op": "add_effect", "layer": "Title", "type": "outer_glow"}])"), "Add Effect Outer Glow to Title"));
         ASSERT_TRUE(window->select({"Title"}));
-        const std::vector<std::string> hits = Access::search(*window, "glow");
+        const std::vector<std::string> hits = DesignerAccess::search(*window, "glow");
         ASSERT_FALSE(hits.empty()) << "glow shows live rows";
-        Access::jumpToHit(*window, "glow", 0);
-        EXPECT_TRUE(Access::searchText(*window).empty()) << "the field is cleared after a jump";
-        EXPECT_FALSE(Access::flashRow(*window).empty()) << "the row flashes";
+        DesignerAccess::jumpToHit(*window, "glow", 0);
+        EXPECT_TRUE(DesignerAccess::searchText(*window).empty()) << "the field is cleared after a jump";
+        EXPECT_FALSE(DesignerAccess::flashRow(*window).empty()) << "the row flashes";
         EXPECT_NE(window->designer().primary().kind, NodeKind::Document);
     });
 }
@@ -402,13 +402,13 @@ TEST(TitleDesignerWindowDeathTest, LibraryPreviewEqualsApply) {
         CommandHistory* history = w.p->getProjectCommandHistory();
         const size_t position = history->position();
         const LibraryItem red{"red", "Red Face", "Minimal"};
-        ASSERT_TRUE(Access::applyLibrary(*window, LibraryTab::Looks, red, true));
+        ASSERT_TRUE(DesignerAccess::applyLibrary(*window, LibraryTab::Looks, red, true));
         EXPECT_EQ(history->position(), position) << "a preview is no step";
         const std::string previewed = ta::writeTitleArt(window->designer().shown());
-        ASSERT_TRUE(Access::applyLibrary(*window, LibraryTab::Looks, red, false));
+        ASSERT_TRUE(DesignerAccess::applyLibrary(*window, LibraryTab::Looks, red, false));
         EXPECT_EQ(history->position(), position + 1);
         EXPECT_EQ(history->top()->name(), "Apply Look Red Face");
-        EXPECT_EQ(readAll(file), previewed) << "the committed document is the previewed one";
+        EXPECT_EQ(titleDesignerWindowReadAll(file), previewed) << "the committed document is the previewed one";
         setLibraryProvider(nullptr);
     });
 }
@@ -421,11 +421,11 @@ TEST(TitleDesignerWindowDeathTest, ExposeDialogIsAnEditorModal) {
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
         const fs::path file = newTitle(w, "expose");
         ASSERT_TRUE(window->open(file, nullptr));
-        const std::string layer = titleLayer(*window);
+        const std::string layer = titleDesignerWindowTitleLayer(*window);
         ASSERT_FALSE(layer.empty());
         const size_t exposedBefore = window->designer().committed().root.value("exposed", ta::Json::array()).size();
-        Access::exposeField(*window, FieldRef{layer, "text"}, "Text");
-        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        DesignerAccess::exposeField(*window, FieldRef{layer, "text"}, "Text");
+        for (int i = 0; i < 3; i++) DesignerAccess::drawFrame(*window);
         EditorDialogInfo info;
         ASSERT_TRUE(EditorModal::topModal(info));
         EXPECT_NE(info.title.find("Expose as Parameter"), std::string::npos) << info.title;
@@ -435,7 +435,7 @@ TEST(TitleDesignerWindowDeathTest, ExposeDialogIsAnEditorModal) {
         EXPECT_EQ(info.fields[0].value.text, "text") << "the label is the suggested name";
         std::string error;
         ASSERT_TRUE(EditorModal::answer("ok", {{"name", EditorDialogValue::ofText("headline")}}, error)) << error;
-        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        for (int i = 0; i < 3; i++) DesignerAccess::drawFrame(*window);
         EXPECT_FALSE(EditorModal::topModal(info)) << "Expose closes it";
         const ta::Json& exposed = window->designer().committed().root.value("exposed", ta::Json::array());
         ASSERT_EQ(exposed.size(), exposedBefore + 1);
@@ -454,10 +454,10 @@ TEST(TitleDesignerWindowDeathTest, RealLibraryInViewByDefault) {
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
         const fs::path file = newTitle(w, "library");
         ASSERT_TRUE(window->open(file, nullptr));
-        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        for (int i = 0; i < 3; i++) DesignerAccess::drawFrame(*window);
         EXPECT_EQ(window->state()["library"].value("provider", std::string()), "registered");
         EXPECT_TRUE(window->state()["library"].value("shown", false)) << "the strip is in view by default";
-        TitleLibraryProvider* library = Access::library(*window);
+        TitleLibraryProvider* library = DesignerAccess::library(*window);
         ASSERT_NE(library, nullptr);
         const std::vector<LibraryItem> looks = library->items(LibraryTab::Looks);
         ASSERT_GT(looks.size(), 100u) << "S84's built-in Looks, not a starter set";
@@ -467,12 +467,12 @@ TEST(TitleDesignerWindowDeathTest, RealLibraryInViewByDefault) {
         ASSERT_TRUE(window->select({"Title"}));
         CommandHistory* history = w.p->getProjectCommandHistory();
         const size_t position = history->position();
-        ASSERT_TRUE(Access::applyLibrary(*window, LibraryTab::Looks, *gold, true));
+        ASSERT_TRUE(DesignerAccess::applyLibrary(*window, LibraryTab::Looks, *gold, true));
         EXPECT_EQ(history->position(), position) << "a preview is no step";
-        const ta::Json previewedLayer = *layerById(window->designer().shown(), titleLayer(*window));
-        ASSERT_TRUE(Access::applyLibrary(*window, LibraryTab::Looks, *gold, false));
+        const ta::Json previewedLayer = *layerById(window->designer().shown(), titleDesignerWindowTitleLayer(*window));
+        ASSERT_TRUE(DesignerAccess::applyLibrary(*window, LibraryTab::Looks, *gold, false));
         EXPECT_EQ(history->top()->name(), "Apply Look " + gold->name);
-        const ta::Json* layer = layerById(window->designer().committed(), titleLayer(*window));
+        const ta::Json* layer = layerById(window->designer().committed(), titleDesignerWindowTitleLayer(*window));
         ASSERT_NE(layer, nullptr);
         EXPECT_FALSE((*layer)["style"]["rims"].empty());
         EXPECT_EQ(previewedLayer["style"]["rims"].size(), (*layer)["style"]["rims"].size()) << "the preview runs the ops the click commits";
@@ -480,8 +480,8 @@ TEST(TitleDesignerWindowDeathTest, RealLibraryInViewByDefault) {
         const size_t rims = (*layer)["style"]["rims"].size();
         const size_t effects = (*layer)["effects"].size();
         // applying it again replaces, never stacks
-        ASSERT_TRUE(Access::applyLibrary(*window, LibraryTab::Looks, *gold, false));
-        layer = layerById(window->designer().committed(), titleLayer(*window));
+        ASSERT_TRUE(DesignerAccess::applyLibrary(*window, LibraryTab::Looks, *gold, false));
+        layer = layerById(window->designer().committed(), titleDesignerWindowTitleLayer(*window));
         EXPECT_EQ((*layer)["style"]["rims"].size(), rims);
         EXPECT_EQ((*layer)["effects"].size(), effects);
     });
@@ -495,13 +495,13 @@ TEST(TitleDesignerWindowDeathTest, LettersGizmo) {
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
         const fs::path file = newTitle(w, "letters");
         ASSERT_TRUE(window->open(file, nullptr));
-        const std::string layer = titleLayer(*window);
+        const std::string layer = titleDesignerWindowTitleLayer(*window);
         ASSERT_FALSE(layer.empty());
-        Access::beginTextEdit(*window, layer, false);
-        ASSERT_NE(Access::textEdit(*window), nullptr);
-        Access::textEdit(*window)->select(1, 3);
-        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
-        TitleLetterGizmo& gizmo = Access::letters(*window);
+        DesignerAccess::beginTextEdit(*window, layer, false);
+        ASSERT_NE(DesignerAccess::textEdit(*window), nullptr);
+        DesignerAccess::textEdit(*window)->select(1, 3);
+        for (int i = 0; i < 3; i++) DesignerAccess::drawFrame(*window);
+        TitleLetterGizmo& gizmo = DesignerAccess::letters(*window);
         ASSERT_EQ(gizmo.selected().size(), 2u) << "one gizmo per selected character";
         EXPECT_EQ(gizmo.selected()[0].index, 1);
         EXPECT_EQ(gizmo.selected()[1].index, 2);
@@ -512,7 +512,7 @@ TEST(TitleDesignerWindowDeathTest, LettersGizmo) {
         const ta::Json values = gizmo.values(ImVec2(c.x + r, c.y), false);
         CommandHistory* history = w.p->getProjectCommandHistory();
         const size_t position = history->position();
-        Access::commitLetters(*window, values, gizmo.stepName());
+        DesignerAccess::commitLetters(*window, values, gizmo.stepName());
         gizmo.end();
         EXPECT_EQ(history->position(), position + 1) << "one step";
         EXPECT_EQ(history->top()->name(), "Rotate Letters");
@@ -535,17 +535,17 @@ TEST(TitleDesignerWindowDeathTest, TabCyclesRegions) {
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
         const fs::path file = newTitle(w, "tab");
         ASSERT_TRUE(window->open(file, nullptr));
-        Access::requestFocus(*window);
-        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        DesignerAccess::requestFocus(*window);
+        for (int i = 0; i < 3; i++) DesignerAccess::drawFrame(*window);
         auto focus = [&]() { return window->state().value("keyboard_focus", std::string()); };
         auto tab = [&](bool back) {
             ImGuiIO& io = ImGui::GetIO();
             io.AddKeyEvent(ImGuiMod_Shift, back);
             io.AddKeyEvent(ImGuiKey_Tab, true);
-            Access::drawFrame(*window);
+            DesignerAccess::drawFrame(*window);
             io.AddKeyEvent(ImGuiKey_Tab, false);
             io.AddKeyEvent(ImGuiMod_Shift, false);
-            Access::drawFrame(*window);
+            DesignerAccess::drawFrame(*window);
             return focus();
         };
         EXPECT_EQ(focus(), "toolbar");
@@ -581,9 +581,9 @@ TEST(TitleDesignerWindowDeathTest, IdleFramesMakeNoDocumentPasses) {
             for (const char* panel : {"layers", "properties"}) {
                 ASSERT_TRUE(window->setPanel(panel, &error)) << error;
                 // past the lint's 300 ms debounce and the first layout of every row
-                for (int i = 0; i < 40; i++) Access::drawFrame(*window);
+                for (int i = 0; i < 40; i++) DesignerAccess::drawFrame(*window);
                 const uint64_t before = window->state()["timings"].value("document_passes", (uint64_t)0);
-                for (int i = 0; i < 30; i++) Access::drawFrame(*window);
+                for (int i = 0; i < 30; i++) DesignerAccess::drawFrame(*window);
                 const uint64_t after = window->state()["timings"].value("document_passes", (uint64_t)0);
                 EXPECT_EQ(after - before, 0u) << count << " layers, " << panel << " shown: passes on idle frames";
             }
@@ -600,7 +600,7 @@ TEST(TitleDesignerWindowDeathTest, IndexBuildSpansFrames) {
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
         const fs::path file = newTitle(w, "indexframes");
         ASSERT_TRUE(window->open(file, nullptr));
-        const std::string layer = titleLayer(*window);
+        const std::string layer = titleDesignerWindowTitleLayer(*window);
         ta::Json ops = ta::Json::array();
         for (int i = 0; i < 4; i++) ops.push_back({{"op", "add_rim"}, {"layer", "id:" + layer}});
         for (const char* type : {"outer_glow", "drop_shadow", "inner_glow", "gradient_overlay"}) ops.push_back({{"op", "add_effect"}, {"layer", "id:" + layer}, {"type", type}});
@@ -609,13 +609,13 @@ TEST(TitleDesignerWindowDeathTest, IndexBuildSpansFrames) {
         ASSERT_TRUE(window->select({"Title"}, &error)) << error;
         ASSERT_TRUE(window->setPanel("properties", &error)) << error;
         window->setSearch("glow");
-        Access::setIndexUnitsPerFrame(*window, 1);
+        DesignerAccess::setIndexUnitsPerFrame(*window, 1);
         auto timings = [&]() { return window->state()["timings"]; };
         auto drain = [&](int& frames, int& most) {
             frames = 0;
             most = 0;
             for (int i = 0; i < 200; i++) {
-                Access::drawFrame(*window);
+                DesignerAccess::drawFrame(*window);
                 most = std::max(most, timings().value("index_units_frame", 0));
                 if (timings().value("index_building", false)) frames++;
                 else if (timings().value("index_entries", (size_t)0) > 0) break;
@@ -627,13 +627,13 @@ TEST(TitleDesignerWindowDeathTest, IndexBuildSpansFrames) {
         EXPECT_LE(most, 1) << "no frame collects more than its share";
         // an edit: the old index answers the search while the new one builds
         ASSERT_TRUE(window->runOps(ta::Json::array({{{"op", "set"}, {"layer", "id:" + layer}, {"values", {{"size", 150}}}}}), "Change Size", &error)) << error;
-        Access::drawFrame(*window);
+        DesignerAccess::drawFrame(*window);
         ASSERT_TRUE(timings().value("index_building", false)) << "a build after the edit";
-        EXPECT_GT(Access::servedHits(*window, "glow"), 0u) << "the stale index answers mid-build";
+        EXPECT_GT(DesignerAccess::servedHits(*window, "glow"), 0u) << "the stale index answers mid-build";
         drain(frames, most);
         EXPECT_GE(timings().value("index_frames", 0), 10);
         EXPECT_LE(most, 1);
-        const std::vector<std::string> spread = Access::indexRows(*window);
+        const std::vector<std::string> spread = DesignerAccess::indexRows(*window);
         // the same document in one pass
         PropertyIndex full;
         clearRecordedRows();
@@ -652,23 +652,23 @@ TEST(TitleDesignerWindowDeathTest, CjkFontNotice) {
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
         const fs::path file = newTitle(w, "cjk");
         ASSERT_TRUE(window->open(file, nullptr));
-        const std::string layer = titleLayer(*window);
+        const std::string layer = titleDesignerWindowTitleLayer(*window);
         ASSERT_FALSE(layer.empty());
         std::string error;
         ASSERT_TRUE(window->runOps(ta::Json::array({{{"op", "set_text"}, {"layer", "id:" + layer}, {"text", "\xE6\xBF\x80\xE7\x86\xB1 JACKPOT"}}}), "Set Text", &error)) << error;
         auto notices = [&]() { return window->state().value("notices", ta::Json::array()); };
-        Access::setSystemCjk(*window, []() { return 0; });
-        Access::drawFrame(*window);
+        DesignerAccess::setSystemCjk(*window, []() { return 0; });
+        DesignerAccess::drawFrame(*window);
         EXPECT_EQ(notices(), ta::Json::array({"cjk_font_missing"})) << "no CJK font and Japanese text";
-        Access::setSystemCjk(*window, []() { return -1; });
-        Access::drawFrame(*window);
+        DesignerAccess::setSystemCjk(*window, []() { return -1; });
+        DesignerAccess::drawFrame(*window);
         EXPECT_TRUE(notices().empty()) << "not while the search runs";
-        Access::setSystemCjk(*window, []() { return 1; });
-        Access::drawFrame(*window);
+        DesignerAccess::setSystemCjk(*window, []() { return 1; });
+        DesignerAccess::drawFrame(*window);
         EXPECT_TRUE(notices().empty()) << "a CJK font was found";
-        Access::setSystemCjk(*window, []() { return 0; });
+        DesignerAccess::setSystemCjk(*window, []() { return 0; });
         ASSERT_TRUE(window->runOps(ta::Json::array({{{"op", "set_text"}, {"layer", "id:" + layer}, {"text", "JACKPOT"}}}), "Set Text", &error)) << error;
-        Access::drawFrame(*window);
+        DesignerAccess::drawFrame(*window);
         EXPECT_TRUE(notices().empty()) << "no CJK text";
     });
 }
@@ -678,14 +678,14 @@ TEST(TitleDesignerWindowDeathTest, ReadOnly) {
     IN_EDITOR("readonly", {
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
         const fs::path file = w.dir / "assets/newer.titleart";
-        writeText(file, R"({"format": "jasperengine.titleart", "version": 99, "guid": "a1b2c3d4e5f60718293a4b5c6d7e8f91", "layers": []})");
+        titleDesignerWindowWriteText(file, R"({"format": "jasperengine.titleart", "version": 99, "guid": "a1b2c3d4e5f60718293a4b5c6d7e8f91", "layers": []})");
         std::string error;
         ASSERT_TRUE(window->open(file, &error)) << error;
         EXPECT_FALSE(window->designer().editable());
         EXPECT_FALSE(window->designer().readOnlyReason().empty());
         EXPECT_FALSE(window->runOps(ta::Json::parse(R"([{"op": "set", "values": {"seed": 3}}])"), "Change Seed", &error));
         EXPECT_FALSE(error.empty());
-        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        for (int i = 0; i < 3; i++) DesignerAccess::drawFrame(*window);
     });
 }
 
@@ -709,14 +709,14 @@ TEST(TitleDesignerWindowDeathTest, ShortcutContext) {
         }
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
         ASSERT_TRUE(window->open(newTitle(w, "keys"), nullptr));
-        ASSERT_TRUE(Access::pressKey(*window, "titleDesigner.toolHand"));
+        ASSERT_TRUE(DesignerAccess::pressKey(*window, "titleDesigner.toolHand"));
         EXPECT_EQ(window->tool(), Tool::Hand);
-        ASSERT_TRUE(Access::pressKey(*window, "titleDesigner.toolRotate"));
+        ASSERT_TRUE(DesignerAccess::pressKey(*window, "titleDesigner.toolRotate"));
         EXPECT_EQ(window->tool(), Tool::Rotate);
         // Ctrl+D duplicates the selection as one step
         ASSERT_TRUE(window->select({"Title"}));
         const size_t position = w.p->getProjectCommandHistory()->position();
-        ASSERT_TRUE(Access::pressKey(*window, "titleDesigner.duplicate"));
+        ASSERT_TRUE(DesignerAccess::pressKey(*window, "titleDesigner.duplicate"));
         EXPECT_EQ(w.p->getProjectCommandHistory()->position(), position + 1);
         EXPECT_EQ(w.p->getProjectCommandHistory()->top()->name(), "Duplicate Layer");
     });
@@ -732,25 +732,25 @@ TEST(TitleDesignerWindowDeathTest, FlagsArrangeAndNudgeBurst) {
         ASSERT_TRUE(window->select({"Title"}));
         CommandHistory* history = w.p->getProjectCommandHistory();
         size_t position = history->position();
-        ASSERT_TRUE(Access::pressKey(*window, "titleDesigner.toggleLock"));
+        ASSERT_TRUE(DesignerAccess::pressKey(*window, "titleDesigner.toggleLock"));
         EXPECT_EQ(history->position(), ++position);
         EXPECT_EQ(history->top()->name(), "Lock Layer");
-        ASSERT_TRUE(Access::pressKey(*window, "titleDesigner.toggleLock"));
+        ASSERT_TRUE(DesignerAccess::pressKey(*window, "titleDesigner.toggleLock"));
         EXPECT_EQ(history->top()->name(), "Unlock Layer");
         position = history->position();
-        ASSERT_TRUE(Access::pressKey(*window, "titleDesigner.toFront"));
+        ASSERT_TRUE(DesignerAccess::pressKey(*window, "titleDesigner.toFront"));
         EXPECT_EQ(history->top()->name(), "Bring to Front");
         position = history->position();
         double clock = 100.0;
-        Access::setClock(*window, [&clock]() { return clock; });
+        DesignerAccess::setClock(*window, [&clock]() { return clock; });
         for (int i = 0; i < 5; i++) {
-            ASSERT_TRUE(Access::pressKey(*window, "titleDesigner.nudgeRight"));
+            ASSERT_TRUE(DesignerAccess::pressKey(*window, "titleDesigner.nudgeRight"));
             clock += 0.2;
         }
         EXPECT_EQ(history->position(), position + 1) << "a burst of nudges is one step";
         EXPECT_EQ(history->top()->name(), "Nudge");
         clock += 2.0;
-        ASSERT_TRUE(Access::pressKey(*window, "titleDesigner.nudgeRight"));
+        ASSERT_TRUE(DesignerAccess::pressKey(*window, "titleDesigner.nudgeRight"));
         EXPECT_EQ(history->position(), position + 2) << "after a pause a new burst";
         const ta::Json* title = nullptr;
         ta::forEachLayer(window->designer().committed().root, [&](const ta::Json& l, const ta::Json*, int) {
@@ -767,12 +767,12 @@ TEST(TitleDesignerWindowDeathTest, LintWording) {
     IN_EDITOR("lint", {
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
         ASSERT_TRUE(window->open(newTitle(w, "lint"), nullptr));
-        Access::refreshLint(*window);
-        EXPECT_GT(Access::checksRun(*window), 0u) << "the document checks ran";
-        for (const CheckFinding& f : Access::lintFindings(*window)) {
+        DesignerAccess::refreshLint(*window);
+        EXPECT_GT(DesignerAccess::checksRun(*window), 0u) << "the document checks ran";
+        for (const CheckFinding& f : DesignerAccess::lintFindings(*window)) {
             for (const char* word : {"good", "approved", "looks great"}) EXPECT_EQ(f.message.find(word), std::string::npos) << f.message;
         }
-        Access::drawFrame(*window);
+        DesignerAccess::drawFrame(*window);
     });
 }
 
@@ -785,17 +785,17 @@ TEST(TitleDesignerWindowDeathTest, AddPaletteEntries) {
         ASSERT_TRUE(window->open(newTitle(w, "add"), nullptr));
         ASSERT_TRUE(window->select({"Title"}));
         window->openAddPalette("effects", "power glow");
-        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        for (int i = 0; i < 3; i++) DesignerAccess::drawFrame(*window);
         const ta::Json add = window->state().value("add", ta::Json::object());
         bool lightGlow = false;
         for (const ta::Json& id : add.value("entries", ta::Json::array())) lightGlow = lightGlow || id == "fx:light_glow";
         EXPECT_TRUE(lightGlow) << add.dump();
         window->closeAddPalette();
-        for (int i = 0; i < 2; i++) Access::drawFrame(*window);
+        for (int i = 0; i < 2; i++) DesignerAccess::drawFrame(*window);
         EXPECT_FALSE(window->state().contains("add")) << "closed";
 
         CommandHistory* history = w.p->getProjectCommandHistory();
-        const std::vector<AddEntry> entries = buildAddEntries("", Access::addTarget(*window));
+        const std::vector<AddEntry> entries = buildAddEntries("", DesignerAccess::addTarget(*window));
         auto entry = [&](const std::string& id) {
             for (const AddEntry& e : entries) {
                 if (e.id == id) return e;
@@ -805,25 +805,25 @@ TEST(TitleDesignerWindowDeathTest, AddPaletteEntries) {
         };
         // the preview equals the commit (the same ops, the same id seed)
         const AddEntry recipe = entry("recipe:long_shadow");
-        ASSERT_TRUE(Access::previewAddEntry(*window, recipe));
+        ASSERT_TRUE(DesignerAccess::previewAddEntry(*window, recipe));
         const std::string previewed = ta::writeTitleArt(window->designer().shown());
         size_t position = history->position();
         std::string error;
-        ASSERT_TRUE(Access::addEntry(*window, recipe, &error)) << error;
+        ASSERT_TRUE(DesignerAccess::addEntry(*window, recipe, &error)) << error;
         EXPECT_EQ(history->position(), position + 1);
         EXPECT_EQ(history->top()->name(), "Add Effect Long Shadow to Title");
         EXPECT_EQ(ta::writeTitleArt(window->designer().committed()), previewed) << "R44: committed = previewed";
         ASSERT_EQ(window->designer().primary().kind, NodeKind::Effect) << "the new effect is selected";
 
         ASSERT_TRUE(window->select({"Title"}));
-        ASSERT_TRUE(Access::addEntry(*window, entry("style:dry_brush"), &error)) << error;
+        ASSERT_TRUE(DesignerAccess::addEntry(*window, entry("style:dry_brush"), &error)) << error;
         EXPECT_EQ(history->top()->name(), "Turn On Dry Brush (\xE3\x81\x8B\xE3\x81\x99\xE3\x82\x8C)");
-        EXPECT_EQ(Access::forceOpen(*window), (std::vector<std::string>{"Appearance", "Erode"}));
+        EXPECT_EQ(DesignerAccess::forceOpen(*window), (std::vector<std::string>{"Appearance", "Erode"}));
         EXPECT_EQ(window->designer().primary().kind, NodeKind::Layer) << "a style setting selects its layer, never an effect row";
 
         ASSERT_TRUE(window->select({"Title"}));
         position = history->position();
-        ASSERT_TRUE(Access::addEntry(*window, entry("follow:fire:behind"), &error)) << error;
+        ASSERT_TRUE(DesignerAccess::addEntry(*window, entry("follow:fire:behind"), &error)) << error;
         EXPECT_EQ(history->position(), position + 1);
         EXPECT_EQ(history->top()->name(), "Add Layer Flames Behind");
         const std::vector<std::string> layers = window->designer().selectedLayers();
@@ -831,14 +831,14 @@ TEST(TitleDesignerWindowDeathTest, AddPaletteEntries) {
         const ta::Json* fire = layerById(window->designer().committed(), layers[0]);
         ASSERT_NE(fire, nullptr);
         EXPECT_EQ(ta::layerTypeOf(*fire), ta::LayerType::Generator) << "a generator entry adds a layer row";
-        EXPECT_EQ(fire->value("follow", std::string()), titleLayer(*window));
+        EXPECT_EQ(fire->value("follow", std::string()), titleDesignerWindowTitleLayer(*window));
         // S83 R41: the generator layer and the text's stack have cost classes
         CostBadge badge;
-        EXPECT_TRUE(Access::effectCost(*window, layers[0], -1, badge));
+        EXPECT_TRUE(DesignerAccess::effectCost(*window, layers[0], -1, badge));
         EXPECT_FALSE(badge.cls.empty());
-        EXPECT_TRUE(Access::effectCost(*window, titleLayer(*window), 0, badge)) << "the Long Shadow effect";
+        EXPECT_TRUE(DesignerAccess::effectCost(*window, titleDesignerWindowTitleLayer(*window), 0, badge)) << "the Long Shadow effect";
         EXPECT_NE(badge.tooltip.find("mobile"), std::string::npos) << badge.tooltip;
-        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        for (int i = 0; i < 3; i++) DesignerAccess::drawFrame(*window);
     });
 }
 
@@ -852,24 +852,24 @@ TEST(TitleDesignerWindowDeathTest, FollowMissingAndPreviewLive) {
             {"op": "add_layer", "type": "generator", "generator": "fire", "follow": "Other"}])"), "Add Layers"));
         ASSERT_TRUE(window->runOps(ta::Json::parse(R"([{"op": "remove_layer", "layer": "Other"}])"), "Delete Layer"));
         ASSERT_TRUE(window->setPanel("layers"));
-        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        for (int i = 0; i < 3; i++) DesignerAccess::drawFrame(*window);
         // (the Layers row and the generator page read the same problems)
         EXPECT_FALSE(titleFollowProblems(window->designer().committed()).empty());
 
         ASSERT_TRUE(window->runOps(ta::Json::parse(R"([{"op": "add_effect", "layer": "Title", "type": "light_glow"}])"), "Add Effect"));
-        const ta::Json* title = layerById(window->designer().committed(), titleLayer(*window));
+        const ta::Json* title = layerById(window->designer().committed(), titleDesignerWindowTitleLayer(*window));
         ASSERT_NE(title, nullptr);
         const std::string effect = (*title)["effects"][0].value("id", std::string());
         const std::string before = ta::writeTitleArt(window->designer().committed());
-        window->setLivePreview(titleLayer(*window), effect, true);
-        const std::vector<ta::FieldOverride> overrides = Access::liveOverrides(*window);
+        window->setLivePreview(titleDesignerWindowTitleLayer(*window), effect, true);
+        const std::vector<ta::FieldOverride> overrides = DesignerAccess::liveOverrides(*window);
         EXPECT_FALSE(overrides.empty()) << "Light Glow's live params play";
         for (const ta::FieldOverride& o : overrides) EXPECT_EQ(o.path.rfind("effects[0].params.", 0), 0u) << o.path;
         EXPECT_TRUE(window->state()["live_previews"].size() == 1);
-        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+        for (int i = 0; i < 3; i++) DesignerAccess::drawFrame(*window);
         EXPECT_EQ(ta::writeTitleArt(window->designer().committed()), before) << "Preview Live changes no document byte";
-        window->setLivePreview(titleLayer(*window), effect, false);
-        EXPECT_TRUE(Access::liveOverrides(*window).empty());
+        window->setLivePreview(titleDesignerWindowTitleLayer(*window), effect, false);
+        EXPECT_TRUE(DesignerAccess::liveOverrides(*window).empty());
     });
 }
 
@@ -881,7 +881,7 @@ TEST(TitleDesignerWindowDeathTest, ThreeDRowsPartsAndModes) {
         TitleDesignerWindow* window = w.app->getTitleDesignerWindow();
         ASSERT_TRUE(window->open(newTitle(w, "threed"), nullptr));
         ASSERT_TRUE(window->select({"Title"}));
-        auto hits = [&](const std::string& query) { return Access::search(*window, query); };
+        auto hits = [&](const std::string& query) { return DesignerAccess::search(*window, query); };
         auto contains = [](const std::vector<std::string>& paths, const std::string& path) {
             return std::find(paths.begin(), paths.end(), path) != paths.end();
         };
@@ -904,7 +904,7 @@ TEST(TitleDesignerWindowDeathTest, ThreeDRowsPartsAndModes) {
         EXPECT_TRUE(contains(hits("roughness"), "style_3d.face.roughness"));
         for (const char* panel : {"properties", "layers"}) {
             ASSERT_TRUE(window->setPanel(panel));
-            for (int i = 0; i < 3; i++) Access::drawFrame(*window);
+            for (int i = 0; i < 3; i++) DesignerAccess::drawFrame(*window);
         }
         // the document's 3D Scene and Runtime (S81)
         ASSERT_TRUE(window->select({}));
@@ -914,7 +914,7 @@ TEST(TitleDesignerWindowDeathTest, ThreeDRowsPartsAndModes) {
         for (const char* mode : {"realtime_high", "realtime_medium", "realtime_low", "glyph_atlas", "realtime"}) {
             EXPECT_TRUE(window->setPreviewAs(mode, &error)) << mode << ": " << error;
             EXPECT_EQ(window->state()["preview_as"], mode);
-            for (int i = 0; i < 2; i++) Access::drawFrame(*window);
+            for (int i = 0; i < 2; i++) DesignerAccess::drawFrame(*window);
         }
         // a material applied the way the picker commits it is one named step
         const size_t position = history->position();
@@ -942,10 +942,13 @@ TEST(TitleDesignerWindowDeathTest, InContextPlacement) {
         std::string error;
         ASSERT_TRUE(window->openInContext(context, &error)) << error;
         EXPECT_EQ(window->state()["background"], "in_context");
-        const titleart::TitleRect stage = Access::stageRect(*window);
+        const titleart::TitleRect stage = DesignerAccess::stageRect(*window);
         EXPECT_DOUBLE_EQ(stage.width, 1280.0) << "the stage is the instance's screen";
         EXPECT_DOUBLE_EQ(stage.height, 720.0);
-        for (int i = 0; i < 3; i++) Access::drawFrame(*window);
-        ASSERT_NE(Access::inContext(*window), nullptr);
+        for (int i = 0; i < 3; i++) DesignerAccess::drawFrame(*window);
+        ASSERT_NE(DesignerAccess::inContext(*window), nullptr);
     });
 }
+
+// not for the sources after this one in a unity build
+#undef IN_EDITOR

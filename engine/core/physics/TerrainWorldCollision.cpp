@@ -52,8 +52,7 @@ namespace {
 
     JPH::ShapeRefC buildHeightField(const std::vector<float>& samples, int side, float spacing) {
         JPH::HeightFieldShapeSettings settings(samples.data(), JPH::Vec3::sZero(), JPH::Vec3(spacing, 1.0f, spacing), static_cast<JPH::uint32>(side));
-        // R23: 1 cm, at most 8 bits a sample
-        settings.mBitsPerSample = std::min<JPH::uint32>(8u, std::max<JPH::uint32>(1u, settings.CalculateBitsPerSampleForError(TerrainWorldCollision::CHUNK_MAX_ERROR)));
+        settings.mBitsPerSample = TerrainWorldCollision::CHUNK_BITS_PER_SAMPLE;
         JPH::ShapeSettings::ShapeResult result = settings.Create();
         if (!result.IsValid()) return nullptr;
         return result.Get();

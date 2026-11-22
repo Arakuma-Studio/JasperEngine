@@ -24,7 +24,7 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using titleart::Json;
+using TitleJson = titleart::Json;
 namespace fs = std::filesystem;
 
 namespace {
@@ -172,9 +172,9 @@ namespace {
         return source.stem().string();
     }
 
-    void report(bool json, const std::string& input, bool ok, const std::string& text, const Json& structured) {
+    void report(bool json, const std::string& input, bool ok, const std::string& text, const TitleJson& structured) {
         if (json) {
-            Json line = Json{{"input", input}, {"ok", ok}, {"text", text}};
+            TitleJson line = TitleJson{{"input", input}, {"ok", ok}, {"text", text}};
             if (!structured.is_null()) line["result"] = structured;
             std::cout << line.dump() << std::endl;
         } else {
@@ -185,7 +185,7 @@ namespace {
     // ---- import ----
 
     // a strings file into the documents its rows name (or --title)
-    bool importStrings(const fs::path& file, const fs::path& project, const Args& args, Json& result, std::string& text) {
+    bool importStrings(const fs::path& file, const fs::path& project, const Args& args, TitleJson& result, std::string& text) {
         std::string body, error;
         if (!readAll(file, body)) {
             text = "cannot read the file";
@@ -208,7 +208,7 @@ namespace {
                 return false;
             }
         }
-        result = Json::array();
+        result = TitleJson::array();
         bool ok = true;
         for (const std::string& document : documents) {
             const fs::path path = (FileUtils::pathFromUtf8(document).is_absolute() ? FileUtils::pathFromUtf8(document) : project / document).lexically_normal();
@@ -216,7 +216,7 @@ namespace {
             titleart::TitleArtParseResult parsed;
             if (readAll(path, docText)) parsed = titleart::parseTitleArt(docText);
             if (!parsed.ok) {
-                result.push_back(Json{{"document", document}, {"ok", false}, {"error", parsed.error.message.empty() ? "cannot read it" : parsed.error.message}});
+                result.push_back(TitleJson{{"document", document}, {"ok", false}, {"error", parsed.error.message.empty() ? "cannot read it" : parsed.error.message}});
                 ok = false;
                 continue;
             }
@@ -224,26 +224,26 @@ namespace {
             options.documentPath = path.string();
             options.projectPath = project.string();
             options.assetsPath = assetsOf(project).string();
-            Json op = Json{{"op", "import_strings"}, {"file", file.string()}, {"add_languages", args.flags.count("add-languages") > 0}};
+            TitleJson op = TitleJson{{"op", "import_strings"}, {"file", file.string()}, {"add_languages", args.flags.count("add-languages") > 0}};
             // the rows of another document stay out of this one: route by the document's own path
             const TitleOpsResult r = TitleArtOps::apply(parsed.doc, op, options);
             if (!r.ok) {
-                result.push_back(Json{{"document", document}, {"ok", false}, {"error", r.error()}});
+                result.push_back(TitleJson{{"document", document}, {"ok", false}, {"error", r.error()}});
                 ok = false;
                 continue;
             }
             if (!assetio::writeFile(path, titleart::writeTitleArt(r.doc), assetio::Durability::Document, &error)) {
-                result.push_back(Json{{"document", document}, {"ok", false}, {"error", error}});
+                result.push_back(TitleJson{{"document", document}, {"ok", false}, {"error", error}});
                 ok = false;
                 continue;
             }
-            result.push_back(Json{{"document", document}, {"ok", true}, {"report", r.reports.value("0", Json::object())}});
+            result.push_back(TitleJson{{"document", document}, {"ok", true}, {"report", r.reports.value("0", TitleJson::object())}});
         }
         text = std::to_string(documents.size()) + " document(s)";
         return ok;
     }
 
-    bool importOne(const fs::path& source, const fs::path& project, const fs::path& into, const Args& args, Json& result, std::string& text) {
+    bool importOne(const fs::path& source, const fs::path& project, const fs::path& into, const Args& args, TitleJson& result, std::string& text) {
         std::string kind = args.values.count("kind") ? args.values.at("kind") : "auto";
         if (kind == "auto") {
             std::string ext = source.extension().string();
@@ -259,7 +259,7 @@ namespace {
         if (kind == "ps_styles") {
             // a library op: the looks it writes are its result
             options.documentPath = (into / (stemOf(source) + ".titleart")).string();
-            Json op = Json{{"op", "import_ps_styles"}, {"file", source.string()}, {"overwrite", args.flags.count("overwrite") > 0}};
+            TitleJson op = TitleJson{{"op", "import_ps_styles"}, {"file", source.string()}, {"overwrite", args.flags.count("overwrite") > 0}};
             const TitleOpsResult r = TitleArtOps::apply(titleart::makeNewTitleArt(), op, options);
             if (!r.ok) {
                 text = r.error();
@@ -270,7 +270,7 @@ namespace {
                 text = error;
                 return false;
             }
-            result = r.reports.value("0", Json::object());
+            result = r.reports.value("0", TitleJson::object());
             text = std::to_string(r.files.size()) + " look(s) written";
             return true;
         }
@@ -313,8 +313,8 @@ namespace {
     // ---- export ----
 
     // the render formats' `options` from the flags (dashes to underscores)
-    bool exportOptions(const Args& args, Json& options, std::string& error) {
-        options = Json::object();
+    bool exportOptions(const Args& args, TitleJson& options, std::string& error) {
+        options = TitleJson::object();
         const auto number = [&](const char* flag, const char* key) {
             if (!args.values.count(flag)) return true;
             char* end = nullptr;
@@ -339,11 +339,11 @@ namespace {
         return true;
     }
 
-    Json languagesArg(const Args& args) {
+    TitleJson languagesArg(const Args& args) {
         if (!args.values.count("languages")) return nullptr;
         const std::string value = args.values.at("languages");
         if (value == "all") return "all";
-        Json list = Json::array();
+        TitleJson list = TitleJson::array();
         std::stringstream ss(value);
         std::string code;
         while (std::getline(ss, code, ',')) {
@@ -391,7 +391,7 @@ int TitleArtCli::runImport(int argc, char** argv, const char* executableName) {
     int failed = 0;
     const std::vector<fs::path> files = expand(args.inputs, "");
     for (const fs::path& file : files) {
-        Json result;
+        TitleJson result;
         std::string text;
         const bool ok = importOne(file, project, into, args, result, text);
         failed += ok ? 0 : 1;
@@ -455,8 +455,8 @@ int TitleArtCli::runExport(int argc, char** argv, const char* executableName) {
         std::vector<TitleStringsDocument> docs;
         for (const auto& [file, doc] : loaded) docs.push_back({file, &doc});
         std::vector<std::string> languages;
-        const Json asked = languagesArg(args);
-        if (asked.is_array()) for (const Json& c : asked) languages.push_back(c.get<std::string>());
+        const TitleJson asked = languagesArg(args);
+        if (asked.is_array()) for (const TitleJson& c : asked) languages.push_back(c.get<std::string>());
         const std::string stem = documents.size() == 1 ? documents.front().stem().string() : "strings";
         const fs::path dir = !out.empty() ? out : project / "Recordings" / "Title Art" / (documents.size() == 1 ? stem : std::string());
         std::vector<std::pair<fs::path, std::string>> files;
@@ -469,7 +469,7 @@ int TitleArtCli::runExport(int argc, char** argv, const char* executableName) {
                 files.emplace_back(dir / (stem + "." + lower + ".xlf"), text);
             }
         }
-        Json written = Json::array();
+        TitleJson written = TitleJson::array();
         for (const auto& [path, text] : files) {
             if (fs::exists(path, ec) && !args.flags.count("overwrite")) {
                 report(json, path.generic_string(), false, "output_exists (pass --overwrite)", nullptr);
@@ -482,12 +482,12 @@ int TitleArtCli::runExport(int argc, char** argv, const char* executableName) {
             }
             written.push_back(path.generic_string());
         }
-        report(json, std::to_string(documents.size()) + " document(s)", true, "wrote " + std::to_string(files.size()) + " file(s)", Json{{"files", written}});
+        report(json, std::to_string(documents.size()) + " document(s)", true, "wrote " + std::to_string(files.size()) + " file(s)", TitleJson{{"files", written}});
         return EXIT_DONE;
     }
 
     // the render formats: one session of one headless editor for the whole batch
-    Json options;
+    TitleJson options;
     if (!exportOptions(args, options, error)) {
         std::cerr << error << "\n";
         return EXIT_USAGE;
@@ -498,8 +498,8 @@ int TitleArtCli::runExport(int argc, char** argv, const char* executableName) {
     for (const fs::path& d : documents) {
         std::error_code rel;
         const std::string relative = fs::relative(d, project, rel).generic_string();
-        Json arguments = Json{{"path", relative}, {"format", format}, {"options", options}, {"wait", true}, {"timeout_seconds", 3600}};
-        const Json languages = languagesArg(args);
+        TitleJson arguments = TitleJson{{"path", relative}, {"format", format}, {"options", options}, {"wait", true}, {"timeout_seconds", 3600}};
+        const TitleJson languages = languagesArg(args);
         if (!languages.is_null()) arguments["languages"] = languages;
         if (!out.empty()) {
             arguments["out"] = outside ? (fs::path("Recordings") / "Title Art" / ".cli" / d.stem()).generic_string()
@@ -517,11 +517,11 @@ int TitleArtCli::runExport(int argc, char** argv, const char* executableName) {
             continue;
         }
         const cli::CallResult& r = results[i];
-        Json structured = r.structured.is_null() ? Json() : Json::parse(r.structured.dump());
+        TitleJson structured = r.structured.is_null() ? TitleJson() : TitleJson::parse(r.structured.dump());
         bool ok = r.ok;
         if (ok && outside && structured.is_object() && structured.contains("files")) {
-            Json moved = Json::array();
-            for (const Json& f : structured["files"]) {
+            TitleJson moved = TitleJson::array();
+            for (const TitleJson& f : structured["files"]) {
                 const fs::path from = (project / FileUtils::pathFromUtf8(f.get<std::string>())).lexically_normal();
                 const fs::path to = out / from.filename();
                 fs::create_directories(out, ec);

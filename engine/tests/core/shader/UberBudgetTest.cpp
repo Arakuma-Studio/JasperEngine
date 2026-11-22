@@ -26,17 +26,17 @@ using namespace jasperengine;
 namespace {
 
     // SPIR-V opcodes (the unified specification, section 3.49)
-    constexpr uint32_t OP_ENTRY_POINT = 15;
-    constexpr uint32_t OP_FUNCTION = 54;
-    constexpr uint32_t OP_FUNCTION_END = 56;
-    constexpr uint32_t OP_FUNCTION_CALL = 57;
+    constexpr uint32_t UBER_BUDGET_OP_ENTRY_POINT = 15;
+    constexpr uint32_t UBER_BUDGET_OP_FUNCTION = 54;
+    constexpr uint32_t UBER_BUDGET_OP_FUNCTION_END = 56;
+    constexpr uint32_t UBER_BUDGET_OP_FUNCTION_CALL = 57;
     // OpImageSampleImplicitLod .. OpImageDrefGather: every instruction that reads a texture
-    constexpr uint32_t OP_IMAGE_SAMPLE_FIRST = 87;
-    constexpr uint32_t OP_IMAGE_SAMPLE_LAST = 97;
+    constexpr uint32_t UBER_BUDGET_OP_IMAGE_SAMPLE_FIRST = 87;
+    constexpr uint32_t UBER_BUDGET_OP_IMAGE_SAMPLE_LAST = 97;
 
     // the texture reads of one invocation of the entry point: each function's own reads plus,
     // for every call it makes, the callee's (loops count once: the uber pass samples in none)
-    int countSamples(const std::vector<uint32_t>& words){
+    int uberBudgetCountSamples(const std::vector<uint32_t>& words){
         std::map<uint32_t, int> own;
         std::map<uint32_t, std::vector<uint32_t>> calls;
         uint32_t entry = 0;
@@ -46,15 +46,15 @@ namespace {
             const uint32_t count = words[offset] >> 16;
             if (count == 0 || offset + count > words.size())
                 return -1;
-            if (opcode == OP_ENTRY_POINT && count > 2)
+            if (opcode == UBER_BUDGET_OP_ENTRY_POINT && count > 2)
                 entry = words[offset + 2];
-            else if (opcode == OP_FUNCTION && count > 2)
+            else if (opcode == UBER_BUDGET_OP_FUNCTION && count > 2)
                 current = words[offset + 2];
-            else if (opcode == OP_FUNCTION_END)
+            else if (opcode == UBER_BUDGET_OP_FUNCTION_END)
                 current = 0;
-            else if (opcode == OP_FUNCTION_CALL && count > 3 && current != 0)
+            else if (opcode == UBER_BUDGET_OP_FUNCTION_CALL && count > 3 && current != 0)
                 calls[current].push_back(words[offset + 3]);
-            else if (opcode >= OP_IMAGE_SAMPLE_FIRST && opcode <= OP_IMAGE_SAMPLE_LAST && current != 0)
+            else if (opcode >= UBER_BUDGET_OP_IMAGE_SAMPLE_FIRST && opcode <= UBER_BUDGET_OP_IMAGE_SAMPLE_LAST && current != 0)
                 own[current]++;
             offset += count;
         }
@@ -98,7 +98,7 @@ namespace {
             if (backend == ShaderBackend::Vulkan && stage.bytecode.data && stage.bytecode.size >= 20){
                 std::vector<uint32_t> words(stage.bytecode.size / sizeof(uint32_t));
                 std::memcpy(words.data(), stage.bytecode.data, words.size() * sizeof(uint32_t));
-                budget.samples = countSamples(words);
+                budget.samples = uberBudgetCountSamples(words);
             }
         }
         return budget;

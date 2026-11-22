@@ -676,13 +676,19 @@ bool TitleGlyphAtlas::readPrebaked(const std::string& manifestPath, TitleGlyphAt
     }
     auto readPng = [&](const std::string& path, int width, int height, std::vector<uint8_t>& pixels){
         TextureData image;
-        if (!image.loadTextureFromFile(path.c_str()) || image.getWidth() != width || image.getHeight() != height ||
-            image.getSize() != (unsigned int)(width * height * 4)){
+        const bool loaded = image.loadTextureFromFile(path.c_str());
+        const bool fits = loaded && image.getWidth() == width && image.getHeight() == height &&
+                          image.getSize() == (unsigned int)(width * height * 4);
+        if (fits){
+            const uint8_t* bytes = static_cast<const uint8_t*>(image.getData());
+            pixels.assign(bytes, bytes + (size_t)width * height * 4);
+        }
+        // a TextureData does not own what it decodes (dataOwned): the copy is all that stays
+        if (loaded) image.releaseImageData();
+        if (!fits){
             error = "cannot read " + path;
             return false;
         }
-        const uint8_t* bytes = static_cast<const uint8_t*>(image.getData());
-        pixels.assign(bytes, bytes + (size_t)width * height * 4);
         return true;
     };
     const int side = out.manifest.value("page_size", 0);

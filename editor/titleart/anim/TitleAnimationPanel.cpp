@@ -277,8 +277,11 @@ namespace {
             Backend::getApp().requestRedraw();
             return nullptr;
         }
+        const uint64_t waits = TitleArtRenderHost::editor().notReadyCount();
         if (!renderer->render(request, frame, error)){
-            p.status = error;
+            // a program still being built: the pose renders on a later frame, the previous image staying
+            if (TitleArtRenderHost::editor().notReadyCount() != waits) Backend::getApp().requestRedraw();
+            else p.status = error;
             return nullptr;
         }
         if (frame.image.width <= 0 || frame.image.height <= 0) return nullptr;

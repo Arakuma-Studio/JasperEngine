@@ -21,8 +21,8 @@ namespace fs = std::filesystem;
 namespace {
 
     // [0,1]x[0,1] over 100x100 pixels (y down)
-    View unitView() {
-        View v;
+    curveops::View curveEditorOpsUnitView() {
+        curveops::View v;
         v.t0 = 0.0f;
         v.t1 = 1.0f;
         v.v0 = 0.0f;
@@ -38,7 +38,7 @@ namespace {
 
 TEST(CurveEditorOps, HitTest) {
     const Curve curve = Curve::linear(0.0f, 0.0f, 1.0f, 1.0f);
-    const View view = unitView();
+    const curveops::View view = curveEditorOpsUnitView();
     const std::vector<const Curve*> curves{&curve};
     const std::vector<bool> editable{true};
     // the key at (1, 1) is the pixel (100, 0)
@@ -131,7 +131,7 @@ TEST(CurveEditorOps, TangentModes) {
     setClampedAuto(curve, 1);
     EXPECT_EQ(curve.keys[1].inTangent, 0.0f);   // a peak is flat
     // the slope a handle dragged to a point gives; never across its key
-    const View view = unitView();
+    const curveops::View view = curveEditorOpsUnitView();
     EXPECT_NEAR(slopeTowards(CurveKey{0.5f, 0.5f}, Side::Out, view, 75.0f, 25.0f), 1.0f, 1e-5f);
     EXPECT_GT(std::fabs(slopeTowards(CurveKey{0.5f, 0.5f}, Side::In, view, 75.0f, 25.0f)), 1000.0f);
 }
@@ -195,11 +195,11 @@ TEST(CurveEditorOps, CopyPasteAndFrame) {
     EXPECT_EQ(curve.keys.size(), 5u);
     EXPECT_FLOAT_EQ(curve.keys[0].value, 1.0f);
     // F: the keys framed with a margin
-    const View pixels = unitView();
-    const View all = frame({&curve}, {}, pixels, 0.1f, 0.1f);
+    const curveops::View pixels = curveEditorOpsUnitView();
+    const curveops::View all = frame({&curve}, {}, pixels, 0.1f, 0.1f);
     EXPECT_LT(all.t0, 0.0f);
     EXPECT_GT(all.t1, 2.5f);
-    const View one = frame({&curve}, {{0, 0}}, pixels, 0.1f, 0.5f);
+    const curveops::View one = frame({&curve}, {{0, 0}}, pixels, 0.1f, 0.5f);
     EXPECT_NEAR(one.t1 - one.t0, 0.6f, 1e-5f);
 }
 

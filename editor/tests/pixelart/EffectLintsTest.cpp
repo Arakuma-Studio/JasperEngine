@@ -27,7 +27,7 @@ namespace {
         return image;
     }
 
-    const LintResult* find(const LintReport& report, const std::string& id) {
+    const LintResult* effectLintsFind(const LintReport& report, const std::string& id) {
         for (const LintResult& r : report.results)
             if (r.id == id) return &r;
         return nullptr;
@@ -306,14 +306,14 @@ TEST(EffectLints, ReportAndVerdict) {
     EXPECT_EQ(ok.results.size(), 10u);
     EXPECT_EQ(ok.fail + ok.warn, 0) << toJson(ok).dump();
     EXPECT_EQ(effectVerdict(ok), Verdict::Clean);
-    EXPECT_EQ(find(ok, "transition_edges")->status, LintStatus::Skip);
+    EXPECT_EQ(effectLintsFind(ok, "transition_edges")->status, LintStatus::Skip);
 
     // a leftover pixel: fixable
     PixelImage leftover(80, 80);
     leftover.set(33, 33, kRed);
     input.frames.back() = &leftover;
     const LintReport warn = runEffectLints(input);
-    EXPECT_EQ(find(warn, "one_shot_end")->status, LintStatus::Warn);
+    EXPECT_EQ(effectLintsFind(warn, "one_shot_end")->status, LintStatus::Warn);
     EXPECT_EQ(effectVerdict(warn), Verdict::Fixable);
 
     // not deterministic: a person decides (code)
@@ -337,14 +337,14 @@ TEST(EffectLints, WholeViewSkipsTheLintsThatCountTheSceneBehind) {
     EffectLintInput input;
     input.frames = {&a, &b, &a, &b, &a};
     input.palette = {Rgba8{200, 40, 40, 255}};
-    EXPECT_EQ(find(runEffectLints(input), "flicker")->status, LintStatus::Pass) << "the blink is lost in the whole view's pixels";
-    EXPECT_EQ(find(runEffectLints(input), "off_palette")->status, LintStatus::Fail) << "the background counts as off palette";
+    EXPECT_EQ(effectLintsFind(runEffectLints(input), "flicker")->status, LintStatus::Pass) << "the blink is lost in the whole view's pixels";
+    EXPECT_EQ(effectLintsFind(runEffectLints(input), "off_palette")->status, LintStatus::Fail) << "the background counts as off palette";
     input.wholeView = true;
     const LintReport report = runEffectLints(input);
     for (const char* id : {"flicker", "off_palette", "partial_alpha"}) {
-        ASSERT_NE(find(report, id), nullptr) << id;
-        EXPECT_EQ(find(report, id)->status, LintStatus::Skip) << id;
-        EXPECT_NE(find(report, id)->message.find("scene mode"), std::string::npos) << find(report, id)->message;
+        ASSERT_NE(effectLintsFind(report, id), nullptr) << id;
+        EXPECT_EQ(effectLintsFind(report, id)->status, LintStatus::Skip) << id;
+        EXPECT_NE(effectLintsFind(report, id)->message.find("scene mode"), std::string::npos) << effectLintsFind(report, id)->message;
     }
 }
 

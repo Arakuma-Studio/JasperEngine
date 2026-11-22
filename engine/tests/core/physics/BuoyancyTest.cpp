@@ -34,7 +34,7 @@ using namespace jasperengine;
 
 namespace {
 
-    constexpr float DT = 1.0f / 60.0f;
+    constexpr float BUOYANCY_DT = 1.0f / 60.0f;
 
     class BuoyancyTest : public ::testing::Test {
     protected:
@@ -44,11 +44,11 @@ namespace {
 
         void SetUp() override{
             updateTime = Engine::getUpdateTime();
-            Engine::setUpdateTime(DT);
+            Engine::setUpdateTime(BUOYANCY_DT);
             // the shader clock advances exactly a frame's delta: reproducible waves
             Engine::setFixedDeltatime(0.0);
             Engine::latchShaderTime();
-            Engine::setFixedDeltatime(DT);
+            Engine::setFixedDeltatime(BUOYANCY_DT);
             scene = std::make_unique<Scene>();
             test::disableSubSystems(*scene);
             scene->getScheduler().setEnabled("PhysicsSystem", true);
@@ -116,10 +116,10 @@ namespace {
         // a frame of one fixed step: the scene clock advanced by it (as Engine::runFrame does),
         // then the step
         void step(){
-            scene->advanceSceneTime(DT);
+            scene->advanceSceneTime(BUOYANCY_DT);
             resolveTransforms();
             Input::beginFixedStep();
-            scene->fixedUpdate(DT);
+            scene->fixedUpdate(BUOYANCY_DT);
             Input::endFixedStep();
             resolveTransforms();
         }

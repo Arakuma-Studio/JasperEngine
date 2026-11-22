@@ -6,6 +6,7 @@
 // the drawn views is tested by TitlePropertyIndexTest.IndexFromViews (the window's tests).
 
 #include "titleart/designer/TitlePropertyIndex.h"
+#include "support/EditorTestSupport.h"
 
 #include <gtest/gtest.h>
 
@@ -47,7 +48,7 @@ namespace {
     }
 
     // a layer's rows as the collect pass would record them
-    PropertyIndex sampleIndex() {
+    PropertyIndex titlePropertyIndexSampleIndex() {
         PropertyIndex index;
         index.add(row("rim1.width", "Width", {"Rim 1"}));
         index.add(row("rim2.width", "Width", {"Rim 2"}));
@@ -66,7 +67,7 @@ namespace {
 
 // Red control: without the synonym groups (an empty SearchTerms) "フチ" finds nothing.
 TEST(TitlePropertyIndexTest, RimSynonymFindsRimRows) {
-    const PropertyIndex index = sampleIndex();
+    const PropertyIndex index = titlePropertyIndexSampleIndex();
     const std::vector<std::string> hits = ids(index, index.query("フチ", 0));
     EXPECT_TRUE(holds(hits, "rim1.width"));
     EXPECT_TRUE(holds(hits, "rim2.width"));
@@ -84,7 +85,7 @@ TEST(TitlePropertyIndexTest, RimSynonymFindsRimRows) {
 
 // Red control: dropping "ぼかし" (or "softness") from the blur group makes the two sets differ.
 TEST(TitlePropertyIndexTest, BlurInEnglishAndJapaneseFindsTheSameRows) {
-    const PropertyIndex index = sampleIndex();
+    const PropertyIndex index = titlePropertyIndexSampleIndex();
     const std::set<std::string> english = idSet(index, index.query("blur", 0));
     const std::set<std::string> japanese = idSet(index, index.query("ぼかし", 0));
     EXPECT_EQ(english, (std::set<std::string>{"shadow.blur", "glow.softness"}));
@@ -118,7 +119,7 @@ TEST(TitlePropertyIndexTest, GlowInJapaneseFindsTheOuterGlowOffer) {
 
 // Red control: without the enum tier "Ring" finds nothing.
 TEST(TitlePropertyIndexTest, EnumValueLabelFindsItsRow) {
-    const PropertyIndex index = sampleIndex();
+    const PropertyIndex index = titlePropertyIndexSampleIndex();
     const std::vector<SearchHit> hits = index.query("Ring", 0);
     ASSERT_EQ(hits.size(), 1u);
     EXPECT_EQ(index.entry(hits[0].entry).rowId, "face.gloss");
@@ -132,7 +133,7 @@ TEST(TitlePropertyIndexTest, EnumValueLabelFindsItsRow) {
 
 // Red control: without the spread tier "rim width" finds only labels holding both words.
 TEST(TitlePropertyIndexTest, WordsSpreadOverLabelAndLocation) {
-    const PropertyIndex index = sampleIndex();
+    const PropertyIndex index = titlePropertyIndexSampleIndex();
     const std::vector<SearchHit> hits = index.query("rim width", 0);
     EXPECT_EQ(ids(index, hits), (std::vector<std::string>{"rim1.width", "rim2.width"}));
     for (const SearchHit& hit : hits) EXPECT_EQ(hit.tier, searchtier::SPREAD);
@@ -177,11 +178,8 @@ TEST(TitlePropertyIndexTest, TierOrderHolds) {
 // R26 / AC31: a query answers in well under 1 ms. Red control: folding the entries' texts per
 // query instead of once in add() takes several milliseconds here.
 TEST(TitlePropertyIndexTest, ThousandEntriesQueryUnderOneMillisecond) {
-#if defined(JASPERENGINE_SANITIZE_ADDRESS) || defined(JASPERENGINE_SANITIZE_THREAD) || defined(JASPERENGINE_SANITIZE_UNDEFINED)
-    constexpr bool checkBudgets = false;
-#else
-    constexpr bool checkBudgets = true;
-#endif
+    // a wall-clock budget: printed always, enforced where perfSlack() asks for it (the benchmark run)
+    const double slack = jasperengine::editor::test::perfSlack();
     const char* labels[] = {"Width", "Color", "Opacity", "Size", "Softness", "Angle", "Distance", "Blur", "Gloss",
                             "Horizontal Scale", "Tracking", "Spread"};
     const char* sections[] = {"Bevel", "Finish", "Outer Glow", "Drop Shadow", "Fill"};
@@ -204,7 +202,7 @@ TEST(TitlePropertyIndexTest, ThousandEntriesQueryUnderOneMillisecond) {
                            (rounds * (sizeof(queries) / sizeof(queries[0])));
     std::printf("[ bench ] Properties search over 1000 entries: %.3f ms per query (budget 1)\n", average);
     EXPECT_GT(found, 0u);
-    if (checkBudgets) {
-        EXPECT_LT(average, 1.0);
+    if (slack > 0.0) {
+        EXPECT_LT(average, 1.0 * slack);
     }
 }

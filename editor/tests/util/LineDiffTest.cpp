@@ -156,7 +156,7 @@ TEST(LineDiffBench, SingleEditTenThousandLines) {
         ASSERT_EQ(changes.size(), 1u);
     }
     std::printf("[ LineDiffBench ] one edit in 10,000 lines: %.3f ms (budget 1 ms)\n", best);
-    const double slack = test::perfSlack();
+    const double slack = jasperengine::editor::test::perfSlack();
     if (slack > 0.0) {
         EXPECT_LE(best, 1.0 * slack);
     }

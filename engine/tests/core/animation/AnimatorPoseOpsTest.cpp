@@ -28,7 +28,7 @@ namespace {
         return q;
     }
 
-    void randomPose(Pose& pose, std::mt19937& random){
+    void animatorPoseOpsRandomPose(Pose& pose, std::mt19937& random){
         std::uniform_real_distribution<float> u(-2.0f, 2.0f);
         std::uniform_real_distribution<float> s(0.5f, 1.5f);
         for (size_t b = 0; b < pose.boneCount(); b++){
@@ -45,7 +45,7 @@ namespace {
         ~BackendScope(){ setPoseOpsBackend(previous); }
     };
 
-    float maxDifference(const Pose& a, const Pose& b){
+    float animatorPoseOpsMaxDifference(const Pose& a, const Pose& b){
         float worst = 0.0f;
         for (size_t i = 0; i < a.floatCount(); i++) worst = std::max(worst, std::fabs(a.raw()[i] - b.raw()[i]));
         return worst;
@@ -63,8 +63,8 @@ TEST(AnimatorPoseOps, SimdMatchesScalar){
     std::vector<float> channelMask(8, 0.0f);
     for (int iteration = 0; iteration < 10000; iteration++){
         Pose a(bones, channels), b(bones, channels), d(bones, channels);
-        randomPose(a, random);
-        randomPose(b, random);
+        animatorPoseOpsRandomPose(a, random);
+        animatorPoseOpsRandomPose(b, random);
         poseMakeDelta(d, b, a);
         for (size_t i = 0; i < bones; i++) mask[i] = w(random);
         for (size_t i = 0; i < channels; i++) channelMask[i] = w(random);
@@ -88,7 +88,7 @@ TEST(AnimatorPoseOps, SimdMatchesScalar){
             delta.resize(bones, channels);
             poseMakeDelta(delta, a, b);
         }
-        for (int k = 0; k < 4; k++) worst = std::max(worst, maxDifference(results[0][k], results[1][k]));
+        for (int k = 0; k < 4; k++) worst = std::max(worst, animatorPoseOpsMaxDifference(results[0][k], results[1][k]));
     }
     EXPECT_LE(worst, 1e-5f) << "back end " << poseNativeBackendName();
 }
@@ -96,8 +96,8 @@ TEST(AnimatorPoseOps, SimdMatchesScalar){
 TEST(AnimatorPoseOps, MaskOverrideKeepsUnmaskedBonesExactly){
     std::mt19937 random(7);
     Pose base(8, 2), layer(8, 2), out(8, 2);
-    randomPose(base, random);
-    randomPose(layer, random);
+    animatorPoseOpsRandomPose(base, random);
+    animatorPoseOpsRandomPose(layer, random);
     std::vector<float> mask = {1, 0, 1, 0, 1, 0, 1, 0};
     std::vector<float> channelMask = {0, 1, 0, 0};
     poseBlend(out, base, layer, 1.0f, mask.data(), channelMask.data());
@@ -122,8 +122,8 @@ TEST(AnimatorPoseOps, MaskOverrideKeepsUnmaskedBonesExactly){
 TEST(AnimatorPoseOps, AdditiveZeroWeightIsBitIdentical){
     std::mt19937 random(9);
     Pose base(12, 3), delta(12, 3), out(12, 3);
-    randomPose(base, random);
-    randomPose(delta, random);
+    animatorPoseOpsRandomPose(base, random);
+    animatorPoseOpsRandomPose(delta, random);
     // -0 positions are kept as -0 (no 0 added)
     base.setPosition(3, Vector3(-0.0f, -0.0f, 1.0f));
     for (PoseBackend backend : {PoseBackend::Scalar, PoseBackend::Native}){
@@ -139,16 +139,16 @@ TEST(AnimatorPoseOps, AdditiveZeroWeightIsBitIdentical){
 TEST(AnimatorPoseOps, AdditiveAtItsReferenceChangesNothing){
     std::mt19937 random(11);
     Pose base(10, 2), reference(10, 2), delta(10, 2), out(10, 2);
-    randomPose(base, random);
-    randomPose(reference, random);
+    animatorPoseOpsRandomPose(base, random);
+    animatorPoseOpsRandomPose(reference, random);
     // the clip sampled at its reference frame is the reference: an identity delta
     poseMakeDelta(delta, reference, reference);
     poseAdditive(out, base, delta, 1.0f, nullptr, nullptr);
-    EXPECT_LE(maxDifference(out, base), 1e-6f);
+    EXPECT_LE(animatorPoseOpsMaxDifference(out, base), 1e-6f);
 
     // a real delta applied fully: base * (ref^-1 * pose)
     Pose pose(10, 2);
-    randomPose(pose, random);
+    animatorPoseOpsRandomPose(pose, random);
     poseMakeDelta(delta, pose, reference);
     poseAdditive(out, base, delta, 1.0f, nullptr, nullptr);
     for (size_t b = 0; b < 10; b++){
@@ -206,8 +206,8 @@ TEST(AnimatorPoseOps, ElementOpsMatchTheKernels){
     const size_t bones = 29;
     const size_t channels = 5;
     Pose base(bones, channels), layer(bones, channels), blended(bones, channels), added(bones, channels);
-    randomPose(base, random);
-    randomPose(layer, random);
+    animatorPoseOpsRandomPose(base, random);
+    animatorPoseOpsRandomPose(layer, random);
     // (masks span the pose's padded strides, as the kernels read them in lanes)
     std::vector<float> mask(base.stride(), 0.0f), channelMask(base.channelStride(), 0.0f);
     for (size_t b = 0; b < bones; b++) mask[b] = w(random);

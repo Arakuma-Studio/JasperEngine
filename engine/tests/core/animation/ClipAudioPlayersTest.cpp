@@ -44,7 +44,7 @@ using namespace jasperengine;
 
 namespace {
 
-    constexpr double kDt = 1.0 / 60.0;
+    constexpr double kPlayersDt = 1.0 / 60.0;
 
     ClipAudioCue sourceCue(float time, const std::string& path, ClipCueStop stop = ClipCueStop::None){
         ClipAudioCue cue;
@@ -103,7 +103,7 @@ namespace {
             return prefix + name + ".anim";
         }
         void step(int count = 1){
-            for (int i = 0; i < count; i++) scene.getSystem<ActionSystem>()->update(kDt);
+            for (int i = 0; i < count; i++) scene.getSystem<ActionSystem>()->update(kPlayersDt);
         }
         AudioSourceComponent& source(){ return scene.getComponent<AudioSourceComponent>(engine); }
     };
@@ -121,7 +121,7 @@ TEST_F(ClipCues, SourceCueAsksForAStartPlacedInsideTheFrame){
     ASSERT_TRUE(source().startTrigger);
     EXPECT_TRUE(source().timelineStart);
     const double fraction = (0.26 - 15.0 / 60.0) * 60.0;
-    EXPECT_EQ(source().timelineDelayFrames, (uint32_t)std::llround(fraction * kDt * 48000.0));
+    EXPECT_EQ(source().timelineDelayFrames, (uint32_t)std::llround(fraction * kPlayersDt * 48000.0));
     EXPECT_FLOAT_EQ(source().timelineSpeedScale, 1.0f);
     // once per crossing: the next update leaves it alone
     source().startTrigger = false;
@@ -199,7 +199,7 @@ TEST(TimelineActions, AnAudioActionStartsOncePerPass){
     LegacyTimeline timeline = legacyTimeline(scene, 0.11f, 0.4f, true);
     std::vector<int> starts;
     for (int frame = 0; frame < 72; frame++){
-        scene.getSystem<ActionSystem>()->update(kDt);
+        scene.getSystem<ActionSystem>()->update(kPlayersDt);
         AudioSourceComponent& audio = scene.getComponent<AudioSourceComponent>(timeline.step);
         if (audio.startTrigger){
             starts.push_back(frame);
@@ -224,7 +224,7 @@ TEST(TimelineActions, AStartIsPlacedWhereTheAnimationReachesTheFrame){
     AudioSourceComponent* audio = nullptr;
     int frame = 0;
     for (; frame < 30; frame++){
-        scene.getSystem<ActionSystem>()->update(kDt);
+        scene.getSystem<ActionSystem>()->update(kPlayersDt);
         audio = &scene.getComponent<AudioSourceComponent>(timeline.step);
         if (audio->startTrigger) break;
     }
@@ -240,7 +240,7 @@ TEST(ClipAudioBench, TwoHundredPlayersCrossingACueAFrame){
         Scene scene;
         static int run = 0;
         const std::string path = "cues/bench" + std::to_string(run++) + ".anim";
-        animtest::writeAsset(path, anim::writeClip(loopClip((float)kDt, cues ? std::vector<ClipAudioCue>{sourceCue(0.0f, "Engine")}
+        animtest::writeAsset(path, anim::writeClip(loopClip((float)kPlayersDt, cues ? std::vector<ClipAudioCue>{sourceCue(0.0f, "Engine")}
                                                                                  : std::vector<ClipAudioCue>{})));
         for (int p = 0; p < 200; p++){
             Entity root = scene.createEntity();
@@ -254,7 +254,7 @@ TEST(ClipAudioBench, TwoHundredPlayersCrossingACueAFrame){
             player.addClip(path, "Run");
             player.play("Run");
         }
-        for (int i = 0; i < 5; i++) scene.getSystem<ActionSystem>()->update(kDt);
+        for (int i = 0; i < 5; i++) scene.getSystem<ActionSystem>()->update(kPlayersDt);
         std::vector<double> ms;
         for (int i = 0; i < 300; i++){
 #ifdef _WIN32
@@ -264,13 +264,13 @@ TEST(ClipAudioBench, TwoHundredPlayersCrossingACueAFrame){
                 return (((uint64_t)kernel.dwHighDateTime << 32) | kernel.dwLowDateTime) + (((uint64_t)user.dwHighDateTime << 32) | user.dwLowDateTime);
             };
             const uint64_t a = cpuTicks();
-            scene.getSystem<ActionSystem>()->update(kDt);
+            scene.getSystem<ActionSystem>()->update(kPlayersDt);
             const uint64_t b = cpuTicks();
             ms.push_back((double)(b - a) * 1e-4);
 #else
             timespec a, b;
             clock_gettime(CLOCK_THREAD_CPUTIME_ID, &a);
-            scene.getSystem<ActionSystem>()->update(kDt);
+            scene.getSystem<ActionSystem>()->update(kPlayersDt);
             clock_gettime(CLOCK_THREAD_CPUTIME_ID, &b);
             ms.push_back((double)(b.tv_sec - a.tv_sec) * 1e3 + (double)(b.tv_nsec - a.tv_nsec) * 1e-6);
 #endif

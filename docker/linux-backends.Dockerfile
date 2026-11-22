@@ -16,7 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Ubuntu 22.04's Vulkan headers (1.3.204) predate VK_EXT_descriptor_buffer: newer ones in
 # /usr/local, which FindVulkan searches first (the loader stays the system one)
 ARG VULKAN_HEADERS=1.3.296
-RUN wget -qO- https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v${VULKAN_HEADERS}.tar.gz \
+RUN wget --tries=5 --waitretry=10 --timeout=60 --retry-connrefused --retry-on-http-error=429,500,502,503,504 -qO- \
+        https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v${VULKAN_HEADERS}.tar.gz \
         | tar -xz -C /tmp \
     && cp -r /tmp/Vulkan-Headers-${VULKAN_HEADERS}/include/vulkan /tmp/Vulkan-Headers-${VULKAN_HEADERS}/include/vk_video /usr/local/include/ \
     && rm -rf /tmp/Vulkan-Headers-${VULKAN_HEADERS}

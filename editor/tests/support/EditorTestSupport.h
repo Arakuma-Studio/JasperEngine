@@ -31,7 +31,8 @@ namespace jasperengine::editor::test {
     void useProjectPaths(Project* project);
 
     // A headless Project that lives as long as the test binary (a file's static): its scenes and
-    // their renders are released when the tests end (~Project leaves them: LeakSanitizer). useProjectPaths registers its project too.
+    // their renders are released when the tests end (its ~Project runs after the engine's shutdown and
+    // leaves them: LeakSanitizer). useProjectPaths registers its project too.
     void releaseAtExit(Project* project);
 
     // editor/tests/fixtures/<relative>
@@ -45,10 +46,8 @@ namespace jasperengine::editor::test {
     double perfSlack();
 
     // Closes a test's loaded Project as a project switch does: its scenes' undo histories go,
-    // then the scenes and their renders (Project::releaseScenes). A Project frees none of them
-    // itself, the editor's lives as long as the process (and the CLI's have no renderer): a test
-    // that loads a project and drops it without this leaks every scene (LeakSanitizer reported
-    // tens of MB at the end of the editor tree). Call it before the Project is destroyed.
+    // then the scenes and their renders (Project::releaseScenes). ~Project frees the scenes too,
+    // not their histories, which outlive it (CommandHandle). Call it before the Project is destroyed.
     void closeProject(Project& project);
 
     // A scene file decoded the way Project::loadScene decodes it (report installed), into a

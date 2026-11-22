@@ -9,6 +9,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
 
 #if defined(__ANDROID__)
 #include <dlfcn.h>
@@ -26,6 +28,16 @@ namespace {
     // 0 idle, 1 a trim queued or running, 2 one more after it
     std::atomic<int> trimState(0);
     std::atomic<uint64_t> trims(0);
+    // setHeapTrimHeldForTesting
+    std::atomic<bool> trimHeld(false);
+    std::mutex trimHeldMutex;
+    std::condition_variable trimHeldChanged;
+
+    void waitWhileTrimHeld(){
+        if (!trimHeld.load()) return;
+        std::unique_lock<std::mutex> lock(trimHeldMutex);
+        trimHeldChanged.wait(lock, [](){ return !trimHeld.load(); });
+    }
 
     bool trimSupported(){
 #if defined(__ANDROID__)
@@ -43,6 +55,7 @@ namespace {
 
     void runTrims(){
         do {
+            waitWhileTrimHeld();
             const auto start = std::chrono::steady_clock::now();
             memory::releaseFreeHeap();
             trims++;
@@ -99,4 +112,16 @@ void memory::requestHeapTrim(){
 
 uint64_t memory::heapTrimCount(){
     return trims.load();
+}
+
+bool memory::heapTrimPending(){
+    return trimState.load() != 0;
+}
+
+void memory::setHeapTrimHeldForTesting(bool hold){
+    {
+        std::lock_guard<std::mutex> lock(trimHeldMutex);
+        trimHeld.store(hold);
+    }
+    trimHeldChanged.notify_all();
 }

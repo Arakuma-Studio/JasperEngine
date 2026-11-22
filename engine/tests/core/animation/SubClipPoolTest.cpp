@@ -39,13 +39,13 @@ using namespace jasperengine;
 
 namespace {
 
-    std::string readFile(const std::string& path){
+    std::string subClipPoolReadFile(const std::string& path){
         std::ifstream file(path, std::ios::binary);
         return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
     }
 
     std::string heroText(){
-        return readFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/hero_animated.gltf");
+        return subClipPoolReadFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/hero_animated.gltf");
     }
 
     // each test (and each --gtest_repeat run) gets its own copy: generations outlive clear()
@@ -354,14 +354,14 @@ namespace {
     };
 
     // Engine::setAsyncLoading for one test
-    struct AsyncLoadingScope{
-        explicit AsyncLoadingScope(bool enable): was(Engine::isAsyncLoading()){ Engine::setAsyncLoading(enable); }
-        ~AsyncLoadingScope(){ Engine::setAsyncLoading(was); }
+    struct SubClipPoolAsyncLoadingScope{
+        explicit SubClipPoolAsyncLoadingScope(bool enable): was(Engine::isAsyncLoading()){ Engine::setAsyncLoading(enable); }
+        ~SubClipPoolAsyncLoadingScope(){ Engine::setAsyncLoading(was); }
         bool was;
     };
 
     // polls until the build is done (10 s at most)
-    std::shared_ptr<const AnimationClip> pollUntilDone(const std::string& path, std::string* error = nullptr){
+    std::shared_ptr<const AnimationClip> subClipPoolPollUntilDone(const std::string& path, std::string* error = nullptr){
         const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(10);
         bool loading = true;
         std::shared_ptr<const AnimationClip> clip;
@@ -383,7 +383,7 @@ TEST_F(SubClipPool, PollOrLoadBuildsSubClipsOffTheCallingThread){
     Model holder(&scene);
     ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(holder.getEntity(), model, false, false, false));
     ASSERT_TRUE(ModelPool::getGLTF(MeshSystem::getModelFilenameKey(model)));
-    AsyncLoadingScope async(true);
+    SubClipPoolAsyncLoadingScope async(true);
 
     std::shared_ptr<const AnimationClip> walk;
     {
@@ -400,7 +400,7 @@ TEST_F(SubClipPool, PollOrLoadBuildsSubClipsOffTheCallingThread){
         EXPECT_FALSE(AnimationClipPool::get(clip("Walk")));
         loader.release();
         std::string pollError;
-        walk = pollUntilDone(clip("Walk"), &pollError);
+        walk = subClipPoolPollUntilDone(clip("Walk"), &pollError);
         ASSERT_TRUE(walk) << pollError;
     }
     EXPECT_EQ(walk->getTracks().size(), 8u);
@@ -411,7 +411,7 @@ TEST_F(SubClipPool, PollOrLoadBuildsSubClipsOffTheCallingThread){
 
     // a failure comes back from the build with its error, and is not cached
     std::string error;
-    EXPECT_FALSE(pollUntilDone(clip("Run"), &error));
+    EXPECT_FALSE(subClipPoolPollUntilDone(clip("Run"), &error));
     EXPECT_NE(error.find("Run"), std::string::npos) << error;
 
     // a build in flight when the model is invalidated is forgotten: the next poll builds again
@@ -421,7 +421,7 @@ TEST_F(SubClipPool, PollOrLoadBuildsSubClipsOffTheCallingThread){
         EXPECT_TRUE(loading);
         AnimationClipPool::invalidateModel(model);
         loader.release();
-        std::shared_ptr<const AnimationClip> idle = pollUntilDone(clip("Idle"), &error);
+        std::shared_ptr<const AnimationClip> idle = subClipPoolPollUntilDone(clip("Idle"), &error);
         ASSERT_TRUE(idle) << error;
         EXPECT_EQ(idle->getSource().name, "Idle");
     }

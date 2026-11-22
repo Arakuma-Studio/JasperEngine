@@ -40,15 +40,15 @@ namespace ta = jasperengine::titleart;
 
 namespace {
 
-    struct Headless {
+    struct TitleDesignerStateHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
     };
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
+    TitleDesignerStateHeadless& titleDesignerStateHeadless() {
+        static TitleDesignerStateHeadless h = []() {
+            TitleDesignerStateHeadless out;
             const fs::path root = fs::temp_directory_path() / ("jasper-title-designer-state-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
             fs::create_directories(root / "config");
@@ -69,25 +69,25 @@ namespace {
         return h;
     }
 
-    Project* project() { return headless().project.get(); }
-    CommandHistory* history() { return project()->getProjectCommandHistory(); }
-    std::string topName() {
-        const UndoEntry* top = history()->top();
+    Project* titleDesignerStateProject() { return titleDesignerStateHeadless().project.get(); }
+    CommandHistory* titleDesignerStateHistory() { return titleDesignerStateProject()->getProjectCommandHistory(); }
+    std::string titleDesignerStateTopName() {
+        const UndoEntry* top = titleDesignerStateHistory()->top();
         return top ? top->name() : std::string();
     }
 
-    std::string readAll(const fs::path& path) {
+    std::string titleDesignerStateReadAll(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     }
 
     // a document with a text layer "Title" of three rims (widths 2, 3, 5) and an outer glow
-    fs::path makeDocument(const std::string& name) {
-        fs::create_directories(headless().dir / "assets" / "designer");
+    fs::path titleDesignerStateMakeDocument(const std::string& name) {
+        fs::create_directories(titleDesignerStateHeadless().dir / "assets" / "designer");
         const std::string relative = "assets/designer/" + name + ".titleart";
-        fs::remove(headless().dir / relative);
+        fs::remove(titleDesignerStateHeadless().dir / relative);
         std::string error;
-        std::shared_ptr<TitleArtDocument> document = TitleArtDocument::create(project(), relative, nullptr, "Create Title Art", &error);
+        std::shared_ptr<TitleArtDocument> document = TitleArtDocument::create(titleDesignerStateProject(), relative, nullptr, "Create Title Art", &error);
         EXPECT_TRUE(document) << error;
         const ta::Json ops = ta::Json::parse(R"([
             {"op": "add_rim", "layer": "Title", "values": {"width": 2}},
@@ -111,14 +111,14 @@ namespace {
 
     class TitleDesignerStateTest : public ::testing::Test {
     protected:
-        void SetUp() override { ASSERT_TRUE(headless().ready) << "the headless project did not open"; }
+        void SetUp() override { ASSERT_TRUE(titleDesignerStateHeadless().ready) << "the headless project did not open"; }
         void TearDown() override { TitleArtDocument::closeAll(); }
     };
 
     // a minimal host for the collect pass
-    class Host : public PropertyHost {
+    class TitleDesignerStateHost : public PropertyHost {
     public:
-        explicit Host(TitleDesignerState& state) : state(state) {}
+        explicit TitleDesignerStateHost(TitleDesignerState& state) : state(state) {}
         TitleDesignerState& designerState() override { return state; }
         bool sectionOpen(const std::string&, bool defaultOpen) override { return defaultOpen; }
         void setSectionOpen(const std::string&, bool) override {}
@@ -130,11 +130,11 @@ namespace {
 // AC29 (R75, D3): a gesture stages every frame and commits once on release; Esc adds nothing.
 // Red control: setCommitPerStageForTesting (a commit per frame) gives N steps and fails.
 TEST_F(TitleDesignerStateTest, OneStepPerGestureAndEscRestores) {
-    TitleDesignerState state(project());
-    ASSERT_TRUE(state.open(makeDocument("gesture"), nullptr));
+    TitleDesignerState state(titleDesignerStateProject());
+    ASSERT_TRUE(state.open(titleDesignerStateMakeDocument("gesture"), nullptr));
     const std::string title = layerId(state, "Title");
     const std::string before = state.document()->text();
-    const size_t position = history()->position();
+    const size_t position = titleDesignerStateHistory()->position();
 
     state.beginGesture("Rotate Layer");
     for (int frame = 1; frame <= 30; frame++) {
@@ -143,8 +143,8 @@ TEST_F(TitleDesignerStateTest, OneStepPerGestureAndEscRestores) {
     EXPECT_EQ(state.working().layers()[0]["transform"]["rotation"].get<double>(), 45.0) << "the working copy shows the drag";
     EXPECT_EQ(state.document()->text(), before) << "nothing written while staged";
     ASSERT_TRUE(state.endGesture(nullptr));
-    EXPECT_EQ(history()->position(), position + 1) << "one step for the 30-frame drag";
-    EXPECT_EQ(topName(), "Rotate Layer");
+    EXPECT_EQ(titleDesignerStateHistory()->position(), position + 1) << "one step for the 30-frame drag";
+    EXPECT_EQ(titleDesignerStateTopName(), "Rotate Layer");
 
     const std::string after = state.document()->text();
     state.beginGesture("Rotate Layer");
@@ -152,14 +152,14 @@ TEST_F(TitleDesignerStateTest, OneStepPerGestureAndEscRestores) {
     state.cancelGesture();
     EXPECT_EQ(state.document()->text(), after) << "Esc restores";
     EXPECT_EQ(state.working().root, state.committed().root);
-    EXPECT_EQ(history()->position(), position + 1) << "Esc adds no step";
+    EXPECT_EQ(titleDesignerStateHistory()->position(), position + 1) << "Esc adds no step";
 }
 
 // AC5 (R22): shift-each moves each rim from its own start; set-all gives each the value; the
 // step says how many. Red control: applying the scrub as set-all gives 4, 4, 4.
 TEST_F(TitleDesignerStateTest, ShiftEachVersusSetAll) {
-    TitleDesignerState state(project());
-    ASSERT_TRUE(state.open(makeDocument("multitarget"), nullptr));
+    TitleDesignerState state(titleDesignerStateProject());
+    ASSERT_TRUE(state.open(titleDesignerStateMakeDocument("multitarget"), nullptr));
     const std::string title = layerId(state, "Title");
     std::vector<FieldRef> rims;
     for (int i = 0; i < 3; i++) rims.push_back({title, "style.rims[" + std::to_string(i) + "].width"});
@@ -176,7 +176,7 @@ TEST_F(TitleDesignerStateTest, ShiftEachVersusSetAll) {
     state.beginGesture(name);
     ASSERT_TRUE(state.stage(editsToOps(edits), nullptr));
     ASSERT_TRUE(state.endGesture(nullptr));
-    EXPECT_EQ(topName(), "Change Rim Width on 3 Rims");
+    EXPECT_EQ(titleDesignerStateTopName(), "Change Rim Width on 3 Rims");
     EXPECT_DOUBLE_EQ(fieldValue(state.committed(), rims[0])->get<double>(), 4.0);
     EXPECT_DOUBLE_EQ(fieldValue(state.committed(), rims[1])->get<double>(), 5.0);
     EXPECT_DOUBLE_EQ(fieldValue(state.committed(), rims[2])->get<double>(), 7.0);
@@ -190,10 +190,10 @@ TEST_F(TitleDesignerStateTest, ShiftEachVersusSetAll) {
 // uses, so the committed document equals the previewed one byte for byte, and a preview is
 // never a step (D8)
 TEST_F(TitleDesignerStateTest, CommittedPreviewEqualsThePreviewedDocument) {
-    TitleDesignerState state(project());
-    ASSERT_TRUE(state.open(makeDocument("preview"), nullptr));
+    TitleDesignerState state(titleDesignerStateProject());
+    ASSERT_TRUE(state.open(titleDesignerStateMakeDocument("preview"), nullptr));
     const std::string title = layerId(state, "Title");
-    const size_t position = history()->position();
+    const size_t position = titleDesignerStateHistory()->position();
     PreviewItem item;
     item.kind = PreviewItem::Kind::Effect;
     item.id = "drop_shadow";
@@ -201,12 +201,12 @@ TEST_F(TitleDesignerStateTest, CommittedPreviewEqualsThePreviewedDocument) {
     item.stepName = "Add Effect Drop Shadow to Title";
     ASSERT_TRUE(state.setPreview(item, nullptr));
     EXPECT_TRUE(state.previewActive());
-    EXPECT_EQ(history()->position(), position) << "a preview is no step";
+    EXPECT_EQ(titleDesignerStateHistory()->position(), position) << "a preview is no step";
     EXPECT_NE(ta::writeTitleArt(state.shown()), state.document()->text());
     const std::string previewed = ta::writeTitleArt(state.shown());
     ASSERT_TRUE(state.commitPreview(nullptr));
-    EXPECT_EQ(history()->position(), position + 1);
-    EXPECT_EQ(topName(), "Add Effect Drop Shadow to Title");
+    EXPECT_EQ(titleDesignerStateHistory()->position(), position + 1);
+    EXPECT_EQ(titleDesignerStateTopName(), "Add Effect Drop Shadow to Title");
     EXPECT_EQ(state.document()->text(), previewed) << "the commit is the previewed document, ids included";
     // clearing a preview restores the working document
     item.id = "inner_shadow";
@@ -219,8 +219,8 @@ TEST_F(TitleDesignerStateTest, CommittedPreviewEqualsThePreviewedDocument) {
 // R74: an outside commit (an agent's edit_title) while a drag is staged cancels the drag, keeps
 // the selection by id and reports the change
 TEST_F(TitleDesignerStateTest, OutsideChangeCancelsTheStagedDrag) {
-    TitleDesignerState state(project());
-    ASSERT_TRUE(state.open(makeDocument("outside"), nullptr));
+    TitleDesignerState state(titleDesignerStateProject());
+    ASSERT_TRUE(state.open(titleDesignerStateMakeDocument("outside"), nullptr));
     const std::string title = layerId(state, "Title");
     state.selectOne({NodeKind::Layer, title, {}, {}});
     state.beginGesture("Move Layer");
@@ -240,11 +240,11 @@ TEST_F(TitleDesignerStateTest, OutsideChangeCancelsTheStagedDrag) {
 
 // AC6 (R12): Esc walks effect -> layer -> group -> document; selection is never a step
 TEST_F(TitleDesignerStateTest, NodePathsAndTheEscWalk) {
-    TitleDesignerState state(project());
-    ASSERT_TRUE(state.open(makeDocument("paths"), nullptr));
+    TitleDesignerState state(titleDesignerStateProject());
+    ASSERT_TRUE(state.open(titleDesignerStateMakeDocument("paths"), nullptr));
     const std::string title = layerId(state, "Title");
     ASSERT_TRUE(state.commit(ta::Json::parse(R"([{"op": "group", "layers": ["Title"], "name": "Logo"}])"), "Group Layers", nullptr));
-    const size_t position = history()->position();
+    const size_t position = titleDesignerStateHistory()->position();
     NodeRef node;
     std::string error;
     ASSERT_TRUE(nodeFromPath(state.committed(), "Logo/Title/fx:outer_glow", node, &error)) << error;
@@ -266,7 +266,7 @@ TEST_F(TitleDesignerStateTest, NodePathsAndTheEscWalk) {
     EXPECT_EQ(layerPathOf(state.committed(), state.primary().layer), "Logo");
     state.selectParent();
     EXPECT_EQ(state.primary().kind, NodeKind::Document);
-    EXPECT_EQ(history()->position(), position) << "selection is view state";
+    EXPECT_EQ(titleDesignerStateHistory()->position(), position) << "selection is view state";
 }
 
 // AC9 (R26, D4): the index comes from the drawn views: a row hidden by its `when` is not a hit
@@ -274,8 +274,8 @@ TEST_F(TitleDesignerStateTest, NodePathsAndTheEscWalk) {
 // Japanese and synonym searches reach the real rows. Red control: an index built from the
 // schema tables (every pattern) would list bevel.fit and the 3D rows.
 TEST_F(TitleDesignerStateTest, IndexFromViews) {
-    TitleDesignerState state(project());
-    ASSERT_TRUE(state.open(makeDocument("index"), nullptr));
+    TitleDesignerState state(titleDesignerStateProject());
+    ASSERT_TRUE(state.open(titleDesignerStateMakeDocument("index"), nullptr));
     const std::string title = layerId(state, "Title");
     state.selectOne({NodeKind::Layer, title, {}, {}});
     // a section S86 would register: only on Dimension 3D layers
@@ -294,7 +294,7 @@ TEST_F(TitleDesignerStateTest, IndexFromViews) {
         fieldRow(ctx, {{layers[0], "transform.rotation"}}, {.label = "Extrusion Depth"});
     };
     addSection(section);
-    Host host(state);
+    TitleDesignerStateHost host(state);
     PropertyIndex index;
     collectIndex(state, &host, index, false);
     removeSection("test3d");
@@ -331,8 +331,8 @@ TEST_F(TitleDesignerStateTest, IndexFromViews) {
 // not its rims and effects), and gives what a full build gives. Counted rows, not milliseconds.
 // Red control: no replay re-collects every row (incremental == full).
 TEST_F(TitleDesignerStateTest, IncrementalIndexMatchesAFullBuild) {
-    TitleDesignerState state(project());
-    ASSERT_TRUE(state.open(makeDocument("incremental"), nullptr));
+    TitleDesignerState state(titleDesignerStateProject());
+    ASSERT_TRUE(state.open(titleDesignerStateMakeDocument("incremental"), nullptr));
     const std::string title = layerId(state, "Title");
     const std::string ref = "id:" + title;
     ta::Json ops = ta::Json::array();
@@ -340,7 +340,7 @@ TEST_F(TitleDesignerStateTest, IncrementalIndexMatchesAFullBuild) {
     for (const char* type : {"outer_glow", "drop_shadow", "inner_glow", "gradient_overlay"}) ops.push_back({{"op", "add_effect"}, {"layer", ref}, {"type", type}});
     ASSERT_TRUE(state.commit(ops, "Add Rims and Effects", nullptr));
     state.selectOne({NodeKind::Layer, title, {}, {}});
-    Host host(state);
+    TitleDesignerStateHost host(state);
     PropertyIndex index;
     auto snapshot = [&]() {
         std::vector<std::string> out;
@@ -376,14 +376,14 @@ TEST_F(TitleDesignerStateTest, IncrementalIndexMatchesAFullBuild) {
 // reported by name.
 TEST_F(TitleDesignerStateTest, EveryNumericRowHasItsDefault) {
     const fs::path fixture = fs::path(JASPER_TEST_REPO_DIR) / "engine/tests/core/titleart/fixtures/v1/every-layer-type.titleart";
-    std::string text = readAll(fixture);
+    std::string text = titleDesignerStateReadAll(fixture);
     ASSERT_FALSE(text.empty()) << fixture;
-    fs::create_directories(headless().dir / "assets" / "designer");
-    const fs::path file = headless().dir / "assets/designer/every.titleart";
+    fs::create_directories(titleDesignerStateHeadless().dir / "assets" / "designer");
+    const fs::path file = titleDesignerStateHeadless().dir / "assets/designer/every.titleart";
     std::ofstream(file, std::ios::binary) << text;
-    TitleDesignerState state(project());
+    TitleDesignerState state(titleDesignerStateProject());
     ASSERT_TRUE(state.open(file, nullptr));
-    Host host(state);
+    TitleDesignerStateHost host(state);
     PropertyIndex index;
     collectIndex(state, &host, index, true);
     size_t numeric = 0;
@@ -425,7 +425,7 @@ TEST_F(TitleDesignerStateTest, SettingsAndWorkspaceRoundTrip) {
     EXPECT_EQ(TitleDesignerSettings::decode(YAML::Node()).layersWidth, 260.0f) << "a missing block takes its defaults";
 
     TitleDesignerWorkspace workspace;
-    workspace.load(headless().dir);
+    workspace.load(titleDesignerStateHeadless().dir);
     workspace.touch("designer/a.titleart");
     workspace.touch("designer/b.titleart");
     DocumentView& view = workspace.view("0123456789abcdef0123456789abcdef");
@@ -436,7 +436,7 @@ TEST_F(TitleDesignerStateTest, SettingsAndWorkspaceRoundTrip) {
     view.backdrop.kind = "black";
     ASSERT_TRUE(workspace.save());
     TitleDesignerWorkspace again;
-    again.load(headless().dir);
+    again.load(titleDesignerStateHeadless().dir);
     ASSERT_EQ(again.recent().size(), 2u);
     EXPECT_EQ(again.recent()[0], "designer/b.titleart");
     const DocumentView& loaded = again.view("0123456789abcdef0123456789abcdef");

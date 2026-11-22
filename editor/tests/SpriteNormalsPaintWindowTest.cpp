@@ -106,11 +106,11 @@ namespace jasperengine::editor {
 
 namespace {
 
-    using Access = SpriteNormalsPaintWindowTestAccess;
-    using Px = std::array<uint8_t, 4>;
+    using PaintWindowAccess = SpriteNormalsPaintWindowTestAccess;
+    using SpriteNormalsPaintWindowPx = std::array<uint8_t, 4>;
     using Pixels = std::vector<std::array<int, 2>>;
 
-    ts::Image disk(int w, int h, int cells = 1) {
+    ts::Image spriteNormalsPaintWindowDisk(int w, int h, int cells = 1) {
         ts::Image image = ts::Image::make(w, h, 4, 8);
         const int cw = w / cells;
         for (int c = 0; c < cells; c++) {
@@ -131,19 +131,19 @@ namespace {
         return image;
     }
 
-    void writeBytes(const fs::path& path, const std::vector<uint8_t>& bytes) {
+    void spriteNormalsPaintWindowWriteBytes(const fs::path& path, const std::vector<uint8_t>& bytes) {
         fs::create_directories(path.parent_path());
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
         file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     }
 
-    void writePng(const fs::path& path, const ts::Image& image) {
+    void spriteNormalsPaintWindowWritePng(const fs::path& path, const ts::Image& image) {
         std::vector<uint8_t> png;
         ASSERT_TRUE(ts::encodePng(image, png));
-        writeBytes(path, png);
+        spriteNormalsPaintWindowWriteBytes(path, png);
     }
 
-    struct World {
+    struct SpriteNormalsPaintWindowWorld {
         fs::path dir;
         Project* p = nullptr;
         uint32_t sceneId = 0;
@@ -152,18 +152,18 @@ namespace {
         fs::path file(const std::string& rel) const { return dir / fs::u8path(rel); }
     };
 
-    void runInEditor(const std::string& name, const std::function<void(World&)>& body) {
+    void spriteNormalsPaintWindowRunInEditor(const std::string& name, const std::function<void(SpriteNormalsPaintWindowWorld&)>& body) {
         const fs::path root = fs::temp_directory_path() / ("jasper-sn-paint-" + name + "-" + std::to_string(::getpid()));
         fs::remove_all(root);
         fs::create_directories(root / "config");
         setenv("XDG_CONFIG_HOME", (root / "config").c_str(), 1);
-        World w;
+        SpriteNormalsPaintWindowWorld w;
         w.dir = root / "project";
         fs::create_directories(w.dir / ".jasperengine");
         std::ofstream(w.dir / "project.yaml") << "name: snpaint\n";
-        writePng(w.dir / "assets/hero.png", disk(32, 32));
-        writePng(w.dir / "assets/walk.png", disk(128, 32, 4));
-        writePng(w.dir / "assets/wide.png", disk(48, 32));
+        spriteNormalsPaintWindowWritePng(w.dir / "assets/hero.png", spriteNormalsPaintWindowDisk(32, 32));
+        spriteNormalsPaintWindowWritePng(w.dir / "assets/walk.png", spriteNormalsPaintWindowDisk(128, 32, 4));
+        spriteNormalsPaintWindowWritePng(w.dir / "assets/wide.png", spriteNormalsPaintWindowDisk(48, 32));
 
         AppSettings::initialize();
         App& app = Backend::getApp();
@@ -217,15 +217,15 @@ namespace {
 
 #define IN_EDITOR(name, ...)                                                    \
     do {                                                                        \
-        auto inEditor = [&](World& w) __VA_ARGS__;                              \
-        GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(runInEditor(name, inEditor), ::testing::ExitedWithCode(0), ""); \
+        auto inEditor = [&](SpriteNormalsPaintWindowWorld& w) __VA_ARGS__;                              \
+        GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(spriteNormalsPaintWindowRunInEditor(name, inEditor), ::testing::ExitedWithCode(0), ""); \
     } while (0)
 
-    bool settle(SpriteNormalsWindow& window, int maxMs = 20000) {
+    bool spriteNormalsPaintWindowSettle(SpriteNormalsWindow& window, int maxMs = 20000) {
         for (int i = 0; i < maxMs / 2; i++) {
-            Access::advance(window, 0.2);
-            if (!Access::busy(window)) {
-                Access::tick(window);
+            PaintWindowAccess::advance(window, 0.2);
+            if (!PaintWindowAccess::busy(window)) {
+                PaintWindowAccess::tick(window);
                 return true;
             }
             usleep(2000);
@@ -234,11 +234,11 @@ namespace {
     }
 
     // a window with the source open and its first result shown
-    std::unique_ptr<SpriteNormalsWindow> openWindow(World& w, const std::string& source) {
+    std::unique_ptr<SpriteNormalsWindow> openWindow(SpriteNormalsPaintWindowWorld& w, const std::string& source) {
         auto window = std::make_unique<SpriteNormalsWindow>(w.p);
         std::string error;
         EXPECT_TRUE(window->openSources({w.file(source)}, error)) << error;
-        EXPECT_TRUE(settle(*window));
+        EXPECT_TRUE(spriteNormalsPaintWindowSettle(*window));
         EXPECT_TRUE(window->hasResult());
         return window;
     }
@@ -254,7 +254,7 @@ namespace {
         return out;
     }
 
-    Px at(const sn::PaintOverlay& o, int x, int y) {
+    SpriteNormalsPaintWindowPx spriteNormalsPaintWindowAt(const sn::PaintOverlay& o, int x, int y) {
         const uint8_t* p = &o.rgba[(static_cast<size_t>(y) * o.width + x) * 4];
         return {p[0], p[1], p[2], p[3]};
     }
@@ -268,7 +268,7 @@ namespace {
     }
 
     // a painted map at `output` written by the session (paint mode replace, `ops`)
-    void writePaintedMap(World& w, const std::string& source, const std::string& output, const char* ops) {
+    void writePaintedMap(SpriteNormalsPaintWindowWorld& w, const std::string& source, const std::string& output, const char* ops) {
         sn::Spec spec;
         spec.source = source;
         spec.settings = sn::presetSettings(sn::Preset::Default);
@@ -287,7 +287,7 @@ namespace {
         ASSERT_TRUE(sn::writeOutputsDirect(files, failed, error)) << error;
     }
 
-    const SpriteNormalsWindow::WarningRow* row(const SpriteNormalsWindow& window, const std::string& kind) {
+    const SpriteNormalsWindow::WarningRow* spriteNormalsPaintWindowRow(const SpriteNormalsWindow& window, const std::string& kind) {
         for (const SpriteNormalsWindow::WarningRow& r : window.getWarnings()) {
             if (r.kind == kind) return &r;
         }
@@ -307,7 +307,7 @@ TEST(SpriteNormalsPaintWindowDeathTest, StrokesTouchTheLineAndTheFootprintOnce) 
         ASSERT_TRUE(window->paintStroke({{8, 8}, {14, 12}}));
         const Pixels line = sn::linePixels({8, 8}, {14, 12});
         EXPECT_EQ(painted(window->paintOverlay()), (std::set<std::array<int, 2>>(line.begin(), line.end())));
-        EXPECT_EQ(at(window->paintOverlay(), 8, 8), (Px{128, 128, 255, 255}));
+        EXPECT_EQ(spriteNormalsPaintWindowAt(window->paintOverlay(), 8, 8), (SpriteNormalsPaintWindowPx{128, 128, 255, 255}));
         window->clearPaint();
 
         // footprints: round and square 3 (3 x 3), round 4 (4 x 4 without corners), square 4
@@ -327,21 +327,21 @@ TEST(SpriteNormalsPaintWindowDeathTest, StrokesTouchTheLineAndTheFootprintOnce) 
         window->clearPaint();
         window->setPaintBrush(brushOf(3, sn::PaintBrush::Shape::Square, 0.5f));
         window->paintStroke({{10, 16}, {20, 16}, {10, 16}, {20, 16}});
-        for (const auto& p : painted(window->paintOverlay())) EXPECT_EQ(at(window->paintOverlay(), p[0], p[1])[3], 128);
+        for (const auto& p : painted(window->paintOverlay())) EXPECT_EQ(spriteNormalsPaintWindowAt(window->paintOverlay(), p[0], p[1])[3], 128);
         // Erase 0.5 in one stroke halves once (two strokes: twice)
         window->setPaintTool(sn::PaintTool::Erase);
         window->paintStroke({{12, 16}, {12, 16}, {13, 16}, {12, 16}});
-        EXPECT_EQ(at(window->paintOverlay(), 12, 16)[3], 64);
+        EXPECT_EQ(spriteNormalsPaintWindowAt(window->paintOverlay(), 12, 16)[3], 64);
         window->paintStroke({{12, 16}});
-        EXPECT_EQ(at(window->paintOverlay(), 12, 16)[3], 32);
+        EXPECT_EQ(spriteNormalsPaintWindowAt(window->paintOverlay(), 12, 16)[3], 32);
         // the shown normal is the composite; Show paint off shows the generation
         window->setPaintTool(sn::PaintTool::Flatten);
         window->setPaintBrush(brushOf(1));
         window->paintStroke({{16, 10}});
-        const sn::Image& shown = Access::displayed(*window);
-        EXPECT_EQ(Px({shown.pixel(16, 10)[0], shown.pixel(16, 10)[1], shown.pixel(16, 10)[2], shown.pixel(16, 10)[3]}), (Px{128, 128, 255, 255}));
+        const sn::Image& shown = PaintWindowAccess::displayed(*window);
+        EXPECT_EQ(SpriteNormalsPaintWindowPx({shown.pixel(16, 10)[0], shown.pixel(16, 10)[1], shown.pixel(16, 10)[2], shown.pixel(16, 10)[3]}), (SpriteNormalsPaintWindowPx{128, 128, 255, 255}));
         window->setShowPaint(false);
-        EXPECT_NE(std::memcmp(Access::displayed(*window).pixel(16, 10), "\x80\x80\xff", 3), 0);
+        EXPECT_NE(std::memcmp(PaintWindowAccess::displayed(*window).pixel(16, 10), "\x80\x80\xff", 3), 0);
         window->setShowPaint(true);
     });
 }
@@ -360,12 +360,12 @@ TEST(SpriteNormalsPaintWindowDeathTest, EveryPaintStateDrawsAFrame) {
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
         SpriteNormalsWindow window(w.p);
         window.open();
-        Access::setPaintOpen(window, true);
-        Access::drawFrame(window);   // no source: the brushes say why they are off
+        PaintWindowAccess::setPaintOpen(window, true);
+        PaintWindowAccess::drawFrame(window);   // no source: the brushes say why they are off
         std::string error;
         ASSERT_TRUE(window.openForEntity(w.sceneId, w.walker, 0, false, error)) << error;
-        ASSERT_TRUE(settle(window));
-        Access::setPaintOpen(window, true);
+        ASSERT_TRUE(spriteNormalsPaintWindowSettle(window));
+        PaintWindowAccess::setPaintOpen(window, true);
         window.setHighlightPainted(true);
         for (sn::PaintTool tool : {sn::PaintTool::Angle, sn::PaintTool::Flatten, sn::PaintTool::Smooth, sn::PaintTool::Erase}) {
             window.setPaintTool(tool);
@@ -378,14 +378,14 @@ TEST(SpriteNormalsPaintWindowDeathTest, EveryPaintStateDrawsAFrame) {
                 for (SpriteNormalsWindow::View v : {SpriteNormalsWindow::View::Color, SpriteNormalsWindow::View::Normal, SpriteNormalsWindow::View::Lit,
                                                     SpriteNormalsWindow::View::Split}) {
                     window.setView(v);
-                    Access::drawFrame(window);
+                    PaintWindowAccess::drawFrame(window);
                 }
             }
         }
         window.setFrame(1);
-        Access::drawFrame(window);
+        PaintWindowAccess::drawFrame(window);
         window.setShowPaint(false);
-        Access::drawFrame(window);
+        PaintWindowAccess::drawFrame(window);
         // unsaved paint: Discard (the close and project-switch prompts' choice) drops it
         window.setPaintTool(sn::PaintTool::Flatten);
         window.setPaintBrush(brushOf(2));
@@ -398,7 +398,7 @@ TEST(SpriteNormalsPaintWindowDeathTest, EveryPaintStateDrawsAFrame) {
         window.discardPaint();
         EXPECT_FALSE(window.hasUnsavedPaint());
         window.setOpen(false);
-        Access::drawFrame(window);
+        PaintWindowAccess::drawFrame(window);
         ImGui::DestroyContext(context);
     });
 }
@@ -410,7 +410,7 @@ TEST(SpriteNormalsPaintWindowDeathTest, MirrorXWithinTheCellMirrorsTheDirection)
         auto window = std::make_unique<SpriteNormalsWindow>(w.p);
         std::string error;
         ASSERT_TRUE(window->openForEntity(w.sceneId, w.walker, 0, false, error)) << error;
-        ASSERT_TRUE(settle(*window));
+        ASSERT_TRUE(spriteNormalsPaintWindowSettle(*window));
         ASSERT_TRUE(window->hasResult());
         window->setPaintTool(sn::PaintTool::Angle);
         sn::PaintBrush b = brushOf(1);
@@ -420,9 +420,9 @@ TEST(SpriteNormalsPaintWindowDeathTest, MirrorXWithinTheCellMirrorsTheDirection)
         // frame 1 is x 32..63: (36, 16) mirrors to 32 + 32 - 1 - 4 = 59
         ASSERT_TRUE(window->paintStroke({{36, 16}}));
         EXPECT_EQ(painted(window->paintOverlay()), (std::set<std::array<int, 2>>{{36, 16}, {59, 16}}));
-        EXPECT_EQ(at(window->paintOverlay(), 36, 16), (Px{218, 128, 218, 255}));
-        EXPECT_EQ(at(window->paintOverlay(), 59, 16), (Px{37, 128, 218, 255}));
-        EXPECT_EQ(Access::undoSteps(*window), 1u) << "the mirrored pixels join the stroke";
+        EXPECT_EQ(spriteNormalsPaintWindowAt(window->paintOverlay(), 36, 16), (SpriteNormalsPaintWindowPx{218, 128, 218, 255}));
+        EXPECT_EQ(spriteNormalsPaintWindowAt(window->paintOverlay(), 59, 16), (SpriteNormalsPaintWindowPx{37, 128, 218, 255}));
+        EXPECT_EQ(PaintWindowAccess::undoSteps(*window), 1u) << "the mirrored pixels join the stroke";
     });
 }
 
@@ -433,7 +433,7 @@ TEST(SpriteNormalsPaintWindowDeathTest, WandExactToleranceContiguousAndFrames) {
         auto window = std::make_unique<SpriteNormalsWindow>(w.p);
         std::string error;
         ASSERT_TRUE(window->openForEntity(w.sceneId, w.walker, 0, false, error)) << error;
-        ASSERT_TRUE(settle(*window));
+        ASSERT_TRUE(spriteNormalsPaintWindowSettle(*window));
         window->setPaintTool(sn::PaintTool::Flatten);
         auto fill = [&](float tolerance, bool contiguous, bool all) {
             window->clearPaint();
@@ -460,7 +460,7 @@ TEST(SpriteNormalsPaintWindowDeathTest, WandExactToleranceContiguousAndFrames) {
         std::string why;
         ASSERT_TRUE(ts::loadImage(w.file("assets/walk.png"), source, why)) << why;
         for (const auto& p : painted(window->paintOverlay())) EXPECT_EQ(std::memcmp(source.pixel(p[0], p[1]), source.pixel(16, 16), 3), 0);
-        EXPECT_GT(Access::undoSteps(*window), 0u);
+        EXPECT_GT(PaintWindowAccess::undoSteps(*window), 0u);
         // a transparent pixel: nothing
         window->clearPaint();
         EXPECT_FALSE(window->wandFill(0, 0));
@@ -511,12 +511,12 @@ TEST(SpriteNormalsPaintWindowDeathTest, UndoRedoCapClearAndUnsavedPaint) {
         // the project's undo of the Save removes the map: the strokes are unsaved again, and said so
         EXPECT_TRUE(w.p->getProjectCommandHistory()->undo());
         EXPECT_FALSE(fs::exists(map));
-        Access::checkTarget(*window);
+        PaintWindowAccess::checkTarget(*window);
         EXPECT_TRUE(window->hasUnsavedPaint());
         EXPECT_NE(window->getStatus().find("hero_normal.png is gone"), std::string::npos) << window->getStatus();
         // redo puts the saved file back: saved again
         EXPECT_TRUE(w.p->getProjectCommandHistory()->redo());
-        Access::checkTarget(*window);
+        PaintWindowAccess::checkTarget(*window);
         EXPECT_FALSE(window->hasUnsavedPaint());
         // a stroke redo is dropped when another history's step is undone (the App does it)
         window->paintStroke({{20, 20}});
@@ -527,7 +527,7 @@ TEST(SpriteNormalsPaintWindowDeathTest, UndoRedoCapClearAndUnsavedPaint) {
 
         // the cap: 256 steps, the oldest dropped
         for (int i = 0; i < 260; i++) window->paintStroke({{8 + i % 16, 8 + (i / 16) % 16}});
-        EXPECT_EQ(Access::undoSteps(*window), 256u);
+        EXPECT_EQ(PaintWindowAccess::undoSteps(*window), 256u);
 
         // discarding goes back to the saved paint
         window->discardPaint();
@@ -546,12 +546,12 @@ TEST(SpriteNormalsPaintWindowDeathTest, OpeningAPaintedMapLoadsItsPaintAndAMisma
             EXPECT_EQ(window->paintedPixelCount(), 9u);
             EXPECT_FALSE(window->hasUnsavedPaint());
             EXPECT_FALSE(window->canUndoPaint());
-            EXPECT_EQ(std::memcmp(Access::displayed(*window).pixel(11, 11), "\x80\x80\xff", 3), 0) << "composited over the new result";
+            EXPECT_EQ(std::memcmp(PaintWindowAccess::displayed(*window).pixel(11, 11), "\x80\x80\xff", 3), 0) << "composited over the new result";
             // Edit Normal Map... too
             std::string error;
             ASSERT_TRUE(window->openRecipe(w.file("assets/hero_normal.png"), error)) << error;
             EXPECT_EQ(window->paintedPixelCount(), 9u);
-            ASSERT_TRUE(settle(*window));
+            ASSERT_TRUE(spriteNormalsPaintWindowSettle(*window));
             // another output path without a paint layer: Save As, the paint stays, unsaved for that file
             window->setOutput("assets/other_normal.png");
             EXPECT_EQ(window->paintedPixelCount(), 9u);
@@ -565,8 +565,8 @@ TEST(SpriteNormalsPaintWindowDeathTest, OpeningAPaintedMapLoadsItsPaintAndAMisma
         writePaintedMap(w, "assets/wide.png", "assets/hero_normal.png", R"([{"op":"flatten","where":{"rect":[20,10,3,3]}}])");
         auto window = openWindow(w, "assets/hero.png");
         EXPECT_TRUE(window->paintSizeMismatch());
-        Access::refreshWarningsNow(*window);
-        const SpriteNormalsWindow::WarningRow* mismatch = row(*window, "paint_size_mismatch");
+        PaintWindowAccess::refreshWarningsNow(*window);
+        const SpriteNormalsWindow::WarningRow* mismatch = spriteNormalsPaintWindowRow(*window, "paint_size_mismatch");
         ASSERT_NE(mismatch, nullptr);
         EXPECT_TRUE(mismatch->error);
         EXPECT_EQ(mismatch->fixes, (std::vector<std::string>{"Clear Paint"}));
@@ -595,7 +595,7 @@ TEST(SpriteNormalsPaintWindowDeathTest, SamplingSetsTheDirectionToTheCompositedN
         // an unpainted pixel: the generation's normal there
         ASSERT_TRUE(window->samplePaintDirection(9, 20));
         EXPECT_EQ(window->getPaintTool(), sn::PaintTool::Angle);
-        const sn::Image composed = Access::composed(*window);
+        const sn::Image composed = PaintWindowAccess::composed(*window);
         const std::array<float, 3> n = sn::decodeDirection(composed.pixel(9, 20));
         const std::array<float, 3> d = window->getPaintBrush().direction;
         const float length = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
@@ -625,7 +625,7 @@ TEST(SpriteNormalsPaintWindowDeathTest, ScriptedOpsAndBatchModeNeverPaints) {
         ASSERT_TRUE(sn::paintOpsFromJson(nlohmann::json::parse(R"([{"op":"flatten","where":{"rect":[8,8,4,4]}}])"), ops, problems));
         EXPECT_TRUE(window->applyPaintOps(ops, &problems));
         EXPECT_EQ(window->paintedPixelCount(), 16u);
-        EXPECT_EQ(Access::undoSteps(*window), 1u);
+        EXPECT_EQ(PaintWindowAccess::undoSteps(*window), 1u);
         ASSERT_TRUE(sn::paintOpsFromJson(nlohmann::json::parse(R"([{"op":"flatten","where":{"frame":3}}])"), ops, problems));
         EXPECT_FALSE(window->applyPaintOps(ops, &problems));
         ASSERT_FALSE(problems.empty());
@@ -635,7 +635,7 @@ TEST(SpriteNormalsPaintWindowDeathTest, ScriptedOpsAndBatchModeNeverPaints) {
         // a batch: the brushes are off (each map keeps its own paint when saved)
         std::string error;
         ASSERT_TRUE(window->openSources({w.file("assets/hero.png"), w.file("assets/walk.png")}, error)) << error;
-        settle(*window);
+        spriteNormalsPaintWindowSettle(*window);
         EXPECT_FALSE(window->paintDisabledReason().empty());
         window->setPaintTool(sn::PaintTool::Flatten);
         EXPECT_FALSE(window->paintStroke({{16, 16}}));
@@ -646,29 +646,29 @@ TEST(SpriteNormalsPaintWindowDeathTest, ScriptedOpsAndBatchModeNeverPaints) {
 // composite shown (printed; a loose bound only)
 TEST(SpriteNormalsPaintWindowDeathTest, StrokeSamplesOnALargeAtlas) {
     IN_EDITOR("bench", {
-        writePng(w.file("assets/big.png"), disk(2048, 2048));
+        spriteNormalsPaintWindowWritePng(w.file("assets/big.png"), spriteNormalsPaintWindowDisk(2048, 2048));
         auto window = std::make_unique<SpriteNormalsWindow>(w.p);
         std::string error;
         ASSERT_TRUE(window->openSources({w.file("assets/big.png")}, error)) << error;
         ASSERT_TRUE(window->regenerate(error)) << error;
-        ASSERT_TRUE(settle(*window, 120000));
+        ASSERT_TRUE(spriteNormalsPaintWindowSettle(*window, 120000));
         ASSERT_TRUE(window->hasResult());
-        Access::displayed(*window);
+        PaintWindowAccess::displayed(*window);
         for (sn::PaintTool tool : {sn::PaintTool::Flatten, sn::PaintTool::Smooth}) {
             window->setPaintTool(tool);
             sn::PaintBrush b = brushOf(8);
             b.smoothRadius = 2;
             window->setPaintBrush(b);
-            Access::beginStroke(*window);
+            PaintWindowAccess::beginStroke(*window);
             double total = 0.0;
             const int samples = 20;
             for (int k = 0; k < samples; k++) {
                 const auto t0 = std::chrono::steady_clock::now();
-                Access::strokeTo(*window, 700 + k * 30, 900 + k * 10);
-                Access::displayed(*window);
+                PaintWindowAccess::strokeTo(*window, 700 + k * 30, 900 + k * 10);
+                PaintWindowAccess::displayed(*window);
                 total += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
             }
-            Access::endStroke(*window);
+            PaintWindowAccess::endStroke(*window);
             std::fprintf(stderr, "[ bench ] 2048x2048 %s size 8: %.1f ms per stroke sample\n", tool == sn::PaintTool::Smooth ? "Smooth r2" : "Flatten", total / samples);
             EXPECT_LT(total / samples, 5000.0);
         }
@@ -683,7 +683,7 @@ TEST(SpriteNormalsPaintWindowDeathTest, EveryRetargetAsksBeforeDroppingUnsavedSt
     IN_EDITOR("retarget", {
         writePaintedMap(w, "assets/walk.png", "assets/walk_normal.png", R"([{"op":"flatten","where":{"rect":[40,10,4,4]}}])");
         auto window = openWindow(w, "assets/hero.png");
-        Access::holdConfirms(*window, true);
+        PaintWindowAccess::holdConfirms(*window, true);
         window->setPaintTool(sn::PaintTool::Flatten);
         window->setPaintBrush(brushOf(2));
         std::string error;
@@ -692,8 +692,8 @@ TEST(SpriteNormalsPaintWindowDeathTest, EveryRetargetAsksBeforeDroppingUnsavedSt
             {"openSources", [&] { return window->openSources({w.file("assets/walk.png")}, error); }},
             {"openRecipe", [&] { return window->openRecipe(w.file("assets/walk_normal.png"), error); }},
             {"openForEntity", [&] { return window->openForEntity(w.sceneId, w.walker, 0, false, error); }},
-            {"setSourcePath", [&] { return Access::setSourcePath(*window, "assets/walk.png", error); }},
-            {"setSourceEntity", [&] { return Access::setSourceEntity(*window, w.sceneId, w.walker, error); }},
+            {"setSourcePath", [&] { return PaintWindowAccess::setSourcePath(*window, "assets/walk.png", error); }},
+            {"setSourceEntity", [&] { return PaintWindowAccess::setSourceEntity(*window, w.sceneId, w.walker, error); }},
             {"output with paint", [&] {
                  window->setOutput("assets/walk_normal.png");
                  return true;
@@ -703,19 +703,19 @@ TEST(SpriteNormalsPaintWindowDeathTest, EveryRetargetAsksBeforeDroppingUnsavedSt
             SCOPED_TRACE(name);
             std::string e;
             ASSERT_TRUE(window->openSources({w.file("assets/hero.png")}, e)) << e;   // nothing unsaved: no question
-            ASSERT_TRUE(settle(*window));
+            ASSERT_TRUE(spriteNormalsPaintWindowSettle(*window));
             ASSERT_TRUE(window->paintStroke({{16, 16}}));
             ASSERT_TRUE(window->hasUnsavedPaint());
             const std::string before = window->currentSpec().fingerprint() + window->currentSpec().output.normal;
             const sn::PaintOverlay painted = window->paintOverlay();
-            Access::holdConfirms(*window, true);
+            PaintWindowAccess::holdConfirms(*window, true);
             ASSERT_TRUE(call()) << error;
             EXPECT_EQ(window->paintOverlay(), painted) << "the strokes are kept while asking";
             EXPECT_EQ(window->currentSpec().fingerprint() + window->currentSpec().output.normal, before) << "nothing retargeted yet";
-            std::function<void()> discard = Access::lastConfirm(*window);
+            std::function<void()> discard = PaintWindowAccess::lastConfirm(*window);
             ASSERT_TRUE(discard);
             discard();
-            settle(*window);
+            spriteNormalsPaintWindowSettle(*window);
             EXPECT_FALSE(window->hasUnsavedPaint());
             EXPECT_NE(window->currentSpec().fingerprint() + window->currentSpec().output.normal, before) << "retargeted after Discard";
             // walk's map has paint (16 px): loaded with it
@@ -726,17 +726,17 @@ TEST(SpriteNormalsPaintWindowDeathTest, EveryRetargetAsksBeforeDroppingUnsavedSt
         // the Use Base Texture fix (a source the assign target does not draw)
         std::string e;
         ASSERT_TRUE(window->openSources({w.file("assets/hero.png")}, e)) << e;
-        ASSERT_TRUE(settle(*window));
+        ASSERT_TRUE(spriteNormalsPaintWindowSettle(*window));
         window->setAssignTarget(w.sceneId, w.walker, 0);
         ASSERT_TRUE(window->paintStroke({{16, 16}}));
         ASSERT_TRUE(window->applyFix("size_mismatch", "Use Base Texture", e)) << e;
         EXPECT_FALSE(window->currentSpec().hasSprite()) << "asked first";
-        Access::lastConfirm(*window)();
+        PaintWindowAccess::lastConfirm(*window)();
         EXPECT_TRUE(window->currentSpec().hasSprite());
         EXPECT_FALSE(window->hasUnsavedPaint());
         // the scripted path drops them without asking
         ASSERT_TRUE(window->openSources({w.file("assets/hero.png")}, e)) << e;
-        ASSERT_TRUE(settle(*window));
+        ASSERT_TRUE(spriteNormalsPaintWindowSettle(*window));
         ASSERT_TRUE(window->paintStroke({{16, 16}}));
         window->setConfirmPaintDiscard(false);
         ASSERT_TRUE(window->openSources({w.file("assets/walk.png")}, e)) << e;
@@ -754,12 +754,12 @@ TEST(SpriteNormalsPaintWindowDeathTest, ATargetRewrittenOnDiskIsTheNewSavedState
         std::vector<std::string> written;
         std::string error;
         ASSERT_TRUE(window->save(true, written, error)) << error;
-        Access::checkTarget(*window);
+        PaintWindowAccess::checkTarget(*window);
         EXPECT_FALSE(window->hasUnsavedPaint()) << "our own Save is not a change on disk";
         ASSERT_TRUE(window->paintStroke({{10, 16}}));
         // another tool (a regeneration) writes the map with other paint
         writePaintedMap(w, "assets/hero.png", "assets/hero_normal.png", R"([{"op":"flatten","where":{"rect":[8,8,3,3]}}])");
-        Access::checkTarget(*window);
+        PaintWindowAccess::checkTarget(*window);
         EXPECT_TRUE(window->hasUnsavedPaint());
         EXPECT_NE(window->getStatus().find("changed on disk"), std::string::npos) << window->getStatus();
         EXPECT_EQ(window->paintedPixelCount(), 8u) << "the window's strokes stay";
@@ -769,7 +769,7 @@ TEST(SpriteNormalsPaintWindowDeathTest, ATargetRewrittenOnDiskIsTheNewSavedState
 TEST(SpriteNormalsPaintWindowDeathTest, StrokesRecompositeAndRelightOnlyTheirPixels) {
     IN_EDITOR("dirty", {
         auto window = openWindow(w, "assets/hero.png");
-        EXPECT_FALSE(Access::litFull(*window).empty());
+        EXPECT_FALSE(PaintWindowAccess::litFull(*window).empty());
         // the Angle brush starts tilted (azimuth 135, tilt 40), not facing the viewer
         float az = 0, tilt = 0;
         sn::anglesOf(window->getPaintBrush().direction, az, tilt);
@@ -779,15 +779,15 @@ TEST(SpriteNormalsPaintWindowDeathTest, StrokesRecompositeAndRelightOnlyTheirPix
         sn::PaintBrush b = brushOf(3);
         b.direction = window->getPaintBrush().direction;
         window->setPaintBrush(b);
-        Access::displayed(*window);
+        PaintWindowAccess::displayed(*window);
         ASSERT_TRUE(window->paintStroke({{10, 10}, {20, 14}}));
         window->setPaintTool(sn::PaintTool::Smooth);
         ASSERT_TRUE(window->paintStroke({{12, 20}, {22, 18}}));
-        EXPECT_EQ(Access::displayed(*window).data, Access::composed(*window).data) << "incremental composite == full";
-        const sn::Image partial = Access::litAfterStroke(*window);
-        EXPECT_EQ(partial.data, Access::litFull(*window).data) << "the stroke's lit pixels == a full render";
+        EXPECT_EQ(PaintWindowAccess::displayed(*window).data, PaintWindowAccess::composed(*window).data) << "incremental composite == full";
+        const sn::Image partial = PaintWindowAccess::litAfterStroke(*window);
+        EXPECT_EQ(partial.data, PaintWindowAccess::litFull(*window).data) << "the stroke's lit pixels == a full render";
         window->undoPaint();
-        EXPECT_EQ(Access::displayed(*window).data, Access::composed(*window).data);
+        EXPECT_EQ(PaintWindowAccess::displayed(*window).data, PaintWindowAccess::composed(*window).data);
     });
 }
 
@@ -799,25 +799,25 @@ TEST(SpriteNormalsPaintWindowDeathTest, SmoothsTopologyFollowsEveryNewResult) {
         window->setPaintTool(sn::PaintTool::Smooth);
         window->setPaintBrush(brushOf(3));
         ASSERT_TRUE(window->paintStroke({{16, 16}}));
-        EXPECT_EQ(Access::topology(*window).owner, std::vector<int>(32 * 32, 0)) << "one whole-image cell";
+        EXPECT_EQ(PaintWindowAccess::topology(*window).owner, std::vector<int>(32 * 32, 0)) << "one whole-image cell";
         // frames changed, regenerated twice (a freed run's address may come back for the next one)
         sn::FramesSpec grid;
         grid.mode = sn::FramesSpec::Mode::Grid;
         grid.grid.tileWidth = grid.grid.tileHeight = 16;
         window->setFrames(grid);
-        ASSERT_TRUE(settle(*window));
+        ASSERT_TRUE(spriteNormalsPaintWindowSettle(*window));
         std::string error;
         ASSERT_TRUE(window->regenerate(error)) << error;
-        ASSERT_TRUE(settle(*window));
+        ASSERT_TRUE(spriteNormalsPaintWindowSettle(*window));
         ASSERT_TRUE(window->paintStroke({{8, 8}}));
-        const sn::PaintTopology now = Access::topology(*window);
-        const sn::Image source = disk(32, 32);
+        const sn::PaintTopology now = PaintWindowAccess::topology(*window);
+        const sn::Image source = spriteNormalsPaintWindowDisk(32, 32);
         sn::Image rgba = sn::Image::make(32, 32, 4, 8);
         rgba.data = source.data;
         const sn::PaintTopology expected = sn::paintTopology(rgba, {{0, 0, 16, 16}, {16, 0, 16, 16}, {0, 16, 16, 16}, {16, 16, 16, 16}}, 0.03f);
         EXPECT_EQ(now.owner, expected.owner) << "the new result's four cells";
         EXPECT_EQ(now.island, expected.island);
-        EXPECT_EQ(Access::displayed(*window).data, Access::composed(*window).data);
+        EXPECT_EQ(PaintWindowAccess::displayed(*window).data, PaintWindowAccess::composed(*window).data);
     });
 }
 
@@ -840,12 +840,12 @@ TEST(SpriteNormalsPaintWindowDeathTest, AnOutsideRewriteWithoutStrokesIsAdopted)
         std::string error;
         ASSERT_TRUE(sn::encodeOutputs(prepared, result, files, error)) << error;
         ASSERT_TRUE(sn::writeOutputsUndoable(w.p, files, error)) << error;
-        Access::checkTarget(*window);
+        PaintWindowAccess::checkTarget(*window);
         EXPECT_EQ(window->paintedPixelCount(), 0u) << "no strokes here: the file's (empty) paint is taken";
         EXPECT_FALSE(window->hasUnsavedPaint());
         // its undo brings the painted file back: taken again
         EXPECT_TRUE(w.p->getProjectCommandHistory()->undo());
-        Access::checkTarget(*window);
+        PaintWindowAccess::checkTarget(*window);
         EXPECT_EQ(window->paintedPixelCount(), 9u);
         EXPECT_FALSE(window->hasUnsavedPaint());
     });
@@ -859,15 +859,15 @@ TEST(SpriteNormalsPaintWindowDeathTest, StrokesEvictedFromTheUndoCapStillKeepThe
         window->setPaintTool(sn::PaintTool::Flatten);
         window->setPaintBrush(brushOf(2));
         // every patch is over the cap: the stack is empty after each stroke, the strokes are not
-        Access::undoByteLimit(*window, 1);
+        PaintWindowAccess::undoByteLimit(*window, 1);
         ASSERT_TRUE(window->paintStroke({{16, 16}}));
-        EXPECT_EQ(Access::undoSteps(*window), 0u);
+        EXPECT_EQ(PaintWindowAccess::undoSteps(*window), 0u);
         EXPECT_FALSE(window->canUndoPaint());
         ASSERT_EQ(window->paintedPixelCount(), 4u);
         EXPECT_TRUE(window->hasUnsavedPaint());
         // another tool writes the map with other paint: the saved state, the window's strokes stay
         writePaintedMap(w, "assets/hero.png", "assets/hero_normal.png", R"([{"op":"flatten","where":{"rect":[8,8,3,3]}}])");
-        Access::checkTarget(*window);
+        PaintWindowAccess::checkTarget(*window);
         EXPECT_EQ(window->paintedPixelCount(), 4u) << "the strokes are not replaced by the file's paint";
         EXPECT_TRUE(window->hasUnsavedPaint());
         EXPECT_NE(window->getStatus().find("changed on disk"), std::string::npos) << window->getStatus();
@@ -875,7 +875,7 @@ TEST(SpriteNormalsPaintWindowDeathTest, StrokesEvictedFromTheUndoCapStillKeepThe
         window->discardPaint();
         EXPECT_EQ(window->paintedPixelCount(), 9u);
         writePaintedMap(w, "assets/hero.png", "assets/hero_normal.png", R"([{"op":"flatten","where":{"rect":[14,14,2,2]}}])");
-        Access::checkTarget(*window);
+        PaintWindowAccess::checkTarget(*window);
         EXPECT_EQ(window->paintedPixelCount(), 4u);
         EXPECT_FALSE(window->hasUnsavedPaint());
     });
@@ -918,3 +918,6 @@ TEST(SpriteNormalsPaintWindowDeathTest, PaintSaveNeedsNoServerAndStaysInsideTheA
         EXPECT_GT(sn::readPaint(map).value_or(sn::PaintOverlay()).paintedCount(), 0u);
     });
 }
+
+// not for the sources after this one in a unity build
+#undef IN_EDITOR

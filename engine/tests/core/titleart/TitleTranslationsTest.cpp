@@ -19,7 +19,7 @@ using namespace jasperengine::titleart::test;
 
 namespace {
 
-    TitleArtDoc multilingual() {
+    TitleArtDoc titleTranslationsMultilingual() {
         Json root = Json{{"format", TITLE_ART_FORMAT}, {"version", TITLE_ART_VERSION}, {"source_language", "en"},
                          {"languages", Json::array({Json{{"code", "de"}}, Json{{"code", "ja"}, {"font", fontRef(DELA_GOTHIC)}}})}};
         root["layers"] = Json::array({
@@ -33,34 +33,34 @@ namespace {
         return parseTitleArtJson(root).doc;
     }
 
-    const Json& layer(const TitleArtDoc& doc, const char* id) {
+    const Json& titleTranslationsLayer(const TitleArtDoc& doc, const char* id) {
         return *findLayer(doc.root, id);
     }
 
 }
 
 TEST(TitleTranslationsTest, MembersInheritAndOverride) {
-    const TitleArtDoc doc = multilingual();
+    const TitleArtDoc doc = titleTranslationsMultilingual();
     const TitleArtDoc de = resolveTitleLanguage(doc, "de");
-    const Json& title = layer(de, "0000000a");
+    const Json& title = titleTranslationsLayer(de, "0000000a");
     EXPECT_EQ(title["text"], "GROSSER GEWINN");
     EXPECT_DOUBLE_EQ(title["size"].get<double>(), 60.0) << "size x size_scale";
     EXPECT_DOUBLE_EQ(title["tracking"].get<double>(), 2.0) << "a present override wins";
     EXPECT_EQ(title["font"]["path"], OSWALD) << "an absent override inherits the layer's member";
     EXPECT_EQ(title["language"], "de") << "the shaping language is the code";
-    EXPECT_FALSE(layer(de, "0000000b")["visible"].get<bool>()) << "only_languages hides it outside Japanese";
+    EXPECT_FALSE(titleTranslationsLayer(de, "0000000b")["visible"].get<bool>()) << "only_languages hides it outside Japanese";
 
     const TitleArtDoc ja = resolveTitleLanguage(doc, "ja");
-    EXPECT_EQ(layer(ja, "0000000a")["font"]["path"], DELA_GOTHIC) << "the Language's font when the Translation has none";
-    EXPECT_TRUE(layer(ja, "0000000a")["vertical"].get<bool>());
-    EXPECT_TRUE(layer(ja, "0000000b")["visible"].get<bool>());
-    EXPECT_EQ(layer(ja, "0000000c")["font"].is_null(), true) << "a brand word (translate false) keeps its own font";
-    EXPECT_EQ(layer(ja, "0000000c")["text"], "ACME");
+    EXPECT_EQ(titleTranslationsLayer(ja, "0000000a")["font"]["path"], DELA_GOTHIC) << "the Language's font when the Translation has none";
+    EXPECT_TRUE(titleTranslationsLayer(ja, "0000000a")["vertical"].get<bool>());
+    EXPECT_TRUE(titleTranslationsLayer(ja, "0000000b")["visible"].get<bool>());
+    EXPECT_EQ(titleTranslationsLayer(ja, "0000000c")["font"].is_null(), true) << "a brand word (translate false) keeps its own font";
+    EXPECT_EQ(titleTranslationsLayer(ja, "0000000c")["text"], "ACME");
 
     const TitleArtDoc en = resolveTitleLanguage(doc, "");
-    EXPECT_EQ(layer(en, "0000000a")["text"], "BIG WIN");
-    EXPECT_EQ(layer(en, "0000000a")["language"], "en") << "the source shapes with source_language";
-    EXPECT_FALSE(layer(en, "0000000b")["visible"].get<bool>()) << "the source is hidden unless listed";
+    EXPECT_EQ(titleTranslationsLayer(en, "0000000a")["text"], "BIG WIN");
+    EXPECT_EQ(titleTranslationsLayer(en, "0000000a")["language"], "en") << "the source shapes with source_language";
+    EXPECT_FALSE(titleTranslationsLayer(en, "0000000b")["visible"].get<bool>()) << "the source is hidden unless listed";
 
     // resolving a resolved copy changes nothing
     EXPECT_EQ(writeTitleArt(resolveTitleLanguage(de, "de")), writeTitleArt(de));
@@ -68,41 +68,41 @@ TEST(TitleTranslationsTest, MembersInheritAndOverride) {
 }
 
 TEST(TitleTranslationsTest, ExposedTextOverrideWinsInEveryLanguage) {
-    const TitleArtDoc doc = multilingual();
+    const TitleArtDoc doc = titleTranslationsMultilingual();
     for (const char* code : {"", "de", "ja"}) {
         TitleArtDoc resolved = resolveTitleLanguage(doc, code);
         applyFieldOverrides(resolved, {FieldOverride{"0000000a", "text", "SCORE 100"}});
-        EXPECT_EQ(layer(resolved, "0000000a")["text"], "SCORE 100") << code;
+        EXPECT_EQ(titleTranslationsLayer(resolved, "0000000a")["text"], "SCORE 100") << code;
     }
     // the language still supplies the layout
     TitleArtDoc ja = resolveTitleLanguage(doc, "ja");
     applyFieldOverrides(ja, {FieldOverride{"0000000a", "text", "SCORE 100"}});
-    EXPECT_TRUE(layer(ja, "0000000a")["vertical"].get<bool>());
+    EXPECT_TRUE(titleTranslationsLayer(ja, "0000000a")["vertical"].get<bool>());
 }
 
 TEST(TitleTranslationsTest, SparseTranslationsFollowTheSource) {
-    TitleArtDoc doc = multilingual();
+    TitleArtDoc doc = titleTranslationsMultilingual();
     // the writer emits text, status, source_hash, then only the present overrides, in table order
-    const Json& de = layer(doc, "0000000a")["translations"]["de"];
+    const Json& de = titleTranslationsLayer(doc, "0000000a")["translations"]["de"];
     std::vector<std::string> keys;
     for (auto it = de.begin(); it != de.end(); ++it) keys.push_back(it.key());
     EXPECT_EQ(keys, std::vector<std::string>({"text", "status", "source_hash", "size_scale", "tracking"}));
     // a later source edit reaches the language that does not override it
     findLayer(doc.root, "0000000a")->operator[]("line_height") = 2.0;
     normalizeTitleArt(doc);
-    EXPECT_DOUBLE_EQ(layer(resolveTitleLanguage(doc, "de"), "0000000a")["line_height"].get<double>(), 2.0);
+    EXPECT_DOUBLE_EQ(titleTranslationsLayer(resolveTitleLanguage(doc, "de"), "0000000a")["line_height"].get<double>(), 2.0);
     // and survives a save
     EXPECT_EQ(writeTitleArt(parseTitleArt(writeTitleArt(doc)).doc), writeTitleArt(doc));
 }
 
 // AC3's red control: a Translation that wrote every member would freeze today's source values
 TEST(TitleTranslationsTest, AFullTranslationWouldFreezeTheSource) {
-    TitleArtDoc doc = multilingual();
+    TitleArtDoc doc = titleTranslationsMultilingual();
     Json& de = (*findLayer(doc.root, "0000000a"))["translations"]["de"];
     de["line_height"] = 1.1;    // what a non-sparse writer would have stored
     findLayer(doc.root, "0000000a")->operator[]("line_height") = 2.0;
     normalizeTitleArt(doc);
-    EXPECT_DOUBLE_EQ(layer(resolveTitleLanguage(doc, "de"), "0000000a")["line_height"].get<double>(), 1.1)
+    EXPECT_DOUBLE_EQ(titleTranslationsLayer(resolveTitleLanguage(doc, "de"), "0000000a")["line_height"].get<double>(), 1.1)
         << "the frozen value no longer follows the source: why Translations are sparse";
 }
 
@@ -135,7 +135,7 @@ TEST(TitleTranslationsTest, MonolingualIsUntouched) {
 }
 
 TEST(TitleTranslationsTest, WhichLanguagesDiffer) {
-    TitleArtDoc doc = multilingual();
+    TitleArtDoc doc = titleTranslationsMultilingual();
     EXPECT_TRUE(titleLanguageDiffers(doc, "de"));
     EXPECT_TRUE(titleLanguageDiffers(doc, "ja"));
     // a language with no translation, no font and no only_languages difference reuses the source set

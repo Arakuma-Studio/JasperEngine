@@ -5,6 +5,7 @@
 
 #include "util/PlatformRules.h"
 #include "json.hpp"
+#include "util/StringUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -24,11 +25,6 @@ namespace {
 
     GlobalState& state(){
         static GlobalState s;
-        return s;
-    }
-
-    std::string lower(std::string s){
-        for (char& c : s) c = (char)std::tolower((unsigned char)c);
         return s;
     }
 
@@ -53,8 +49,8 @@ namespace {
             size_t end = tag.find('-', start);
             if (end == std::string::npos) end = tag.size();
             const std::string part = tag.substr(start, end - start);
-            if (index == 0) p.language = lower(part);
-            else if (index == 1 && part.size() == 4 && alpha(part)) p.script = lower(part);
+            if (index == 0) p.language = StringUtils::toLowerAscii(part);
+            else if (index == 1 && part.size() == 4 && alpha(part)) p.script = StringUtils::toLowerAscii(part);
             else if (p.region.empty() && index <= 2 && ((part.size() == 2 && alpha(part)) || (part.size() == 3 && digits(part)))) p.region = part;
             else if (index >= 1) break;
             index++;
@@ -78,7 +74,7 @@ std::vector<std::string> TitleArtLanguageTable::available() const{
 
 std::string TitleArtLanguageTable::setFile(const std::string& code) const{
     for (const auto& set : sets){
-        if (lower(set.first) == lower(code)) return set.second;
+        if (StringUtils::toLowerAscii(set.first) == StringUtils::toLowerAscii(code)) return set.second;
     }
     return "";
 }
@@ -134,7 +130,7 @@ namespace {
             cache.parts.clear();
             for (const std::string& a : available){
                 const std::string c = TitleArtLanguage::canonicalize(a);
-                cache.lowered.push_back(lower(c));
+                cache.lowered.push_back(StringUtils::toLowerAscii(c));
                 cache.parts.push_back(partsOf(c));
             }
         }
@@ -147,7 +143,7 @@ std::string TitleArtLanguage::match(const std::string& candidate, const std::vec
     const std::string wanted = canonicalize(candidate);
     if (wanted.empty()) return "";
     const AvailableCache& av = prepared(available);
-    const std::string wantedLower = lower(wanted);
+    const std::string wantedLower = StringUtils::toLowerAscii(wanted);
     for (size_t i = 0; i < available.size(); i++){
         if (av.lowered[i] == wantedLower) return available[i];
     }

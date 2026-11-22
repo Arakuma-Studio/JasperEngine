@@ -1,6 +1,9 @@
 # Emscripten build image for the engine (web target).
 FROM emscripten/emsdk:6.0.10
 
+# apt retries a one-off network failure (apt-retries.conf); the curl below has its own retries
+COPY apt-retries.conf /etc/apt/apt.conf.d/80-retries
+
 RUN apt-get update && apt-get install -y --no-install-recommends ninja-build ccache \
     && rm -rf /var/lib/apt/lists/* \
     && git config --system --add safe.directory '*'
@@ -33,7 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libdrm2 libgbm1 libxkbcommon0 libx11-6 libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 \
         libxrandr2 libpango-1.0-0 libcairo2 libasound2t64 libexpat1 libglib2.0-0t64 libudev1 \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL -o /tmp/chrome-headless-shell.zip \
+    && curl --retry 5 --retry-all-errors --connect-timeout 30 -fsSL -o /tmp/chrome-headless-shell.zip \
         "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_HEADLESS_SHELL_VERSION}/linux64/chrome-headless-shell-linux64.zip" \
     && echo "${CHROME_HEADLESS_SHELL_SHA256}  /tmp/chrome-headless-shell.zip" | sha256sum -c - \
     && unzip -q /tmp/chrome-headless-shell.zip -d /opt \

@@ -20,7 +20,7 @@ using namespace jasperengine;
 namespace {
 
     // R1's example
-    const char* const kExample = R"({
+    const char* const kClipAudioExample = R"({
   "format": "jasperengine.anim",
   "version": 3,
   "frame_rate": 30,
@@ -36,7 +36,7 @@ namespace {
 }
 )";
 
-    bool hasWarning(const std::vector<ClipWarning>& warnings, const std::string& path, const std::string& text){
+    bool audioHasWarning(const std::vector<ClipWarning>& warnings, const std::string& path, const std::string& text){
         for (const ClipWarning& warning : warnings){
             if (warning.path == path && warning.message.find(text) != std::string::npos) return true;
         }
@@ -51,7 +51,7 @@ namespace {
 }
 
 TEST(ClipAudio, RoundTripsTheSpecExampleAsVersionThree){
-    anim::ClipParseResult parsed = anim::parseClip(kExample);
+    anim::ClipParseResult parsed = anim::parseClip(kClipAudioExample);
     ASSERT_TRUE(parsed.ok()) << parsed.error.toString();
     EXPECT_TRUE(parsed.warnings.empty()) << parsed.warnings.front().path << ": " << parsed.warnings.front().message;
     const ClipData& data = *parsed.data;
@@ -129,17 +129,17 @@ TEST(ClipAudio, DropsInvalidCuesWithAWarningEach){
     ])"));
     ASSERT_TRUE(parsed.ok()) << parsed.error.toString();
     const std::vector<ClipWarning>& w = parsed.warnings;
-    EXPECT_TRUE(hasWarning(w, "audio[0]", "exactly one of")) << "two kinds in one cue";
-    EXPECT_TRUE(hasWarning(w, "audio[1]", "needs a sound"));
-    EXPECT_TRUE(hasWarning(w, "audio[2]", "is not a binding path"));
-    EXPECT_TRUE(hasWarning(w, "audio[3]", "needs a snapshot name"));
-    EXPECT_TRUE(hasWarning(w, "audio[4].time", "expected a time"));
-    EXPECT_TRUE(hasWarning(w, "audio[5].time", "negative time"));
-    EXPECT_TRUE(hasWarning(w, "audio[5].volume_db", "outside"));
-    EXPECT_TRUE(hasWarning(w, "audio[5].pitch_semitones", "outside"));
-    EXPECT_TRUE(hasWarning(w, "audio[5].stop", "expected none or state_exit"));
-    EXPECT_TRUE(hasWarning(w, "audio[5].colour", "unknown key"));
-    EXPECT_TRUE(hasWarning(w, "audio[6]", "expected {"));
+    EXPECT_TRUE(audioHasWarning(w, "audio[0]", "exactly one of")) << "two kinds in one cue";
+    EXPECT_TRUE(audioHasWarning(w, "audio[1]", "needs a sound"));
+    EXPECT_TRUE(audioHasWarning(w, "audio[2]", "is not a binding path"));
+    EXPECT_TRUE(audioHasWarning(w, "audio[3]", "needs a snapshot name"));
+    EXPECT_TRUE(audioHasWarning(w, "audio[4].time", "expected a time"));
+    EXPECT_TRUE(audioHasWarning(w, "audio[5].time", "negative time"));
+    EXPECT_TRUE(audioHasWarning(w, "audio[5].volume_db", "outside"));
+    EXPECT_TRUE(audioHasWarning(w, "audio[5].pitch_semitones", "outside"));
+    EXPECT_TRUE(audioHasWarning(w, "audio[5].stop", "expected none or state_exit"));
+    EXPECT_TRUE(audioHasWarning(w, "audio[5].colour", "unknown key"));
+    EXPECT_TRUE(audioHasWarning(w, "audio[6]", "expected {"));
     ASSERT_EQ(parsed.data->audio.size(), 1u) << "only the repairable cue stays";
     const ClipAudioCue& kept = parsed.data->audio[0];
     EXPECT_EQ(kept.time, 0.0f);
@@ -152,7 +152,7 @@ TEST(ClipAudio, DropsInvalidCuesWithAWarningEach){
 TEST(ClipAudio, AnOlderVersionWithCuesIsSavedAsVersionThree){
     anim::ClipParseResult parsed = anim::parseClip(clipWith(R"([{"time": 0.5, "snapshot": "Build"}])", 1));
     ASSERT_TRUE(parsed.ok());
-    EXPECT_TRUE(hasWarning(parsed.warnings, "version", "saved as version 3"));
+    EXPECT_TRUE(audioHasWarning(parsed.warnings, "version", "saved as version 3"));
     EXPECT_NE(anim::writeClip(*parsed.data).find("\"version\": 3,"), std::string::npos);
 }
 

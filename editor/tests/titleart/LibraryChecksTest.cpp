@@ -92,7 +92,7 @@ namespace {
         return image;
     }
 
-    TitleArtDoc docWith(const Json& layer, const Json& extra = Json::object()) {
+    TitleArtDoc libraryChecksDocWith(const Json& layer, const Json& extra = Json::object()) {
         Json root = Json{{"format", titleart::TITLE_ART_FORMAT}, {"version", titleart::TITLE_ART_VERSION}, {"layers", Json::array({layer})}};
         for (auto it = extra.begin(); it != extra.end(); ++it) root[it.key()] = it.value();
         titleart::TitleArtParseResult parsed = titleart::parseTitleArtJson(root);
@@ -100,7 +100,7 @@ namespace {
         return parsed.doc;
     }
 
-    Json textLayer(Json face) {
+    Json libraryChecksTextLayer(Json face) {
         return Json{{"id", "00000001"}, {"type", "text"}, {"name", "Title"}, {"text", "WIN"}, {"size", 200},
                     {"style", {{"face", std::move(face)}, {"rims", Json::array({Json{{"width", 6}, {"material", {{"fill", {{"kind", "solid"}, {"color", "#000000"}}}}}}})}}}};
     }
@@ -161,7 +161,7 @@ TEST(LibraryChecksTest, AFlatMetalFailsTheRangeAndABandedOnePasses) {
 }
 
 TEST(LibraryChecksTest, ThePixelChecksSkipWithoutARenderFunction) {
-    const TitleArtDoc doc = docWith(textLayer(Json{{"bevel", {{"enabled", true}}}}));
+    const TitleArtDoc doc = libraryChecksDocWith(libraryChecksTextLayer(Json{{"bevel", {{"enabled", true}}}}));
     TitleCheckContext context{doc, "assets/title.titleart"};
     for (const char* id : {"color_scheme_match", "metal_range"}) {
         const TitleCheckReport report = runCheck(id, context);
@@ -171,7 +171,7 @@ TEST(LibraryChecksTest, ThePixelChecksSkipWithoutARenderFunction) {
 }
 
 TEST(LibraryChecksTest, MetalRangeRendersTheFaceWithoutRimsAndFixesTheFinish) {
-    const TitleArtDoc doc = docWith(textLayer(Json{{"bevel", {{"enabled", true}}}}));
+    const TitleArtDoc doc = libraryChecksDocWith(libraryChecksTextLayer(Json{{"bevel", {{"enabled", true}}}}));
     TitleCheckContext context{doc, "assets/title.titleart"};
     bool banded = false;
     std::vector<titleart::RenderRequest> requests;
@@ -197,7 +197,7 @@ TEST(LibraryChecksTest, MetalRangeRendersTheFaceWithoutRimsAndFixesTheFinish) {
 
     // the same face with light and dark bands (a new document: a new run renders again)
     banded = true;
-    const TitleArtDoc twin = docWith(textLayer(Json{{"bevel", {{"enabled", true}}}, {"opacity", 0.99}}));
+    const TitleArtDoc twin = libraryChecksDocWith(libraryChecksTextLayer(Json{{"bevel", {{"enabled", true}}}, {"opacity", 0.99}}));
     TitleCheckContext twinContext{twin, "assets/title.titleart"};
     twinContext.render = context.render;
     report = runCheck("metal_range", twinContext);
@@ -205,7 +205,7 @@ TEST(LibraryChecksTest, MetalRangeRendersTheFaceWithoutRimsAndFixesTheFinish) {
     EXPECT_EQ(report.checks[0].status, TitleCheckStatus::Pass) << report.checks[0].message;
 
     // a face that is not metal is not judged
-    const TitleArtDoc paint = docWith(textLayer(Json::object()));
+    const TitleArtDoc paint = libraryChecksDocWith(libraryChecksTextLayer(Json::object()));
     TitleCheckContext paintContext{paint, "assets/title.titleart"};
     paintContext.render = context.render;
     report = runCheck("metal_range", paintContext);
@@ -217,9 +217,9 @@ TEST(LibraryChecksTest, ColorSchemeMatchFailsAnOliveGoldFaceWithTheSchemeAsItsFi
     // the scheme travels in the document (as an exposed color_scheme parameter's data does)
     const Json scheme = Json{{"format", titleart::TITLE_COLORS_FORMAT}, {"version", titleart::TITLE_COLORS_VERSION}, {"id", "s84-test-gold"},
                              {"paints", {{"face", {{"fill", {{"kind", "linear"}, {"gradient", goldRamp()}}}}}}}};
-    Json layer = textLayer(Json{{"fill", {{"kind", "linear"}, {"gradient", goldRamp()}}}});
+    Json layer = libraryChecksTextLayer(Json{{"fill", {{"kind", "linear"}, {"gradient", goldRamp()}}}});
     layer["look"] = Json{{"id", "casino/outline-gold"}, {"color_scheme", "s84-test-gold"}};
-    const TitleArtDoc doc = docWith(layer, Json{{"color_schemes", {{"s84-test-gold", scheme}}}});
+    const TitleArtDoc doc = libraryChecksDocWith(layer, Json{{"color_schemes", {{"s84-test-gold", scheme}}}});
     double shift = 40.0;
     TitleCheckContext context{doc, "assets/title.titleart"};
     context.render = [&](const titleart::RenderRequest&, TitleCheckImage& out, std::string&) {
@@ -236,7 +236,7 @@ TEST(LibraryChecksTest, ColorSchemeMatchFailsAnOliveGoldFaceWithTheSchemeAsItsFi
     shift = 0.0;
     Json twinLayer = layer;
     twinLayer["name"] = "Twin";
-    const TitleArtDoc twin = docWith(twinLayer, Json{{"color_schemes", {{"s84-test-gold", scheme}}}});
+    const TitleArtDoc twin = libraryChecksDocWith(twinLayer, Json{{"color_schemes", {{"s84-test-gold", scheme}}}});
     TitleCheckContext twinContext{twin, "assets/title.titleart"};
     twinContext.render = context.render;
     report = runCheck("color_scheme_match", twinContext);
@@ -244,7 +244,7 @@ TEST(LibraryChecksTest, ColorSchemeMatchFailsAnOliveGoldFaceWithTheSchemeAsItsFi
     EXPECT_EQ(report.checks[0].status, TitleCheckStatus::Pass) << report.checks[0].message;
 
     // no layer records a scheme: nothing to compare
-    const TitleArtDoc plain = docWith(textLayer(Json::object()));
+    const TitleArtDoc plain = libraryChecksDocWith(libraryChecksTextLayer(Json::object()));
     TitleCheckContext plainContext{plain, "assets/title.titleart"};
     plainContext.render = context.render;
     report = runCheck("color_scheme_match", plainContext);
@@ -253,10 +253,10 @@ TEST(LibraryChecksTest, ColorSchemeMatchFailsAnOliveGoldFaceWithTheSchemeAsItsFi
 }
 
 TEST(LibraryChecksTest, StyleLintReportsOneResultPerFindingWithTheLook) {
-    Json layer = textLayer(Json::object());
+    Json layer = libraryChecksTextLayer(Json::object());
     layer["style"]["rims"] = Json::array({Json{{"width", 1}, {"material", {{"fill", {{"kind", "solid"}, {"color", "#000000"}}}}}}});
     layer["look"] = Json{{"id", "casino/outline-gold"}};
-    const TitleArtDoc doc = docWith(layer);
+    const TitleArtDoc doc = libraryChecksDocWith(layer);
     TitleCheckContext context{doc, "assets/title.titleart"};
     TitleCheckReport report = runCheck("style_lint", context);
     ASSERT_EQ(report.checks.size(), 1u);
@@ -271,17 +271,17 @@ TEST(LibraryChecksTest, StyleLintReportsOneResultPerFindingWithTheLook) {
     EXPECT_TRUE(thin.fix.contains("ops"));
 
     // hollow letters with nothing to cut through render nothing: a failure
-    Json hollow = textLayer(Json::object());
+    Json hollow = libraryChecksTextLayer(Json::object());
     hollow["style"]["rims"] = Json::array();
     hollow["style"]["knockout"] = true;
-    const TitleArtDoc hollowDoc = docWith(hollow);
+    const TitleArtDoc hollowDoc = libraryChecksDocWith(hollow);
     TitleCheckContext hollowContext{hollowDoc, "assets/title.titleart"};
     report = runCheck("style_lint", hollowContext);
     ASSERT_EQ(report.checks.size(), 1u);
     EXPECT_EQ(report.checks[0].id, "style_lint.noop_knockout");
     EXPECT_EQ(report.checks[0].status, TitleCheckStatus::Fail);
 
-    const TitleArtDoc clean = docWith(textLayer(Json::object()));
+    const TitleArtDoc clean = libraryChecksDocWith(libraryChecksTextLayer(Json::object()));
     TitleCheckContext cleanContext{clean, "assets/title.titleart"};
     report = runCheck("style_lint", cleanContext);
     ASSERT_EQ(report.checks.size(), 1u);

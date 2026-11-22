@@ -55,6 +55,8 @@
 
 #include "SpriteRotate.h"
 
+#include "math/PortableMath.h"
+
 #include <algorithm>
 #include <cmath>
 #include <initializer_list>
@@ -164,10 +166,10 @@ namespace jasperengine::editor::pixelart::draw {
                         const int divk = -1 + k / 3;
                         const double ex = dx + modk, ey = dy + divk;
                         // clockwise on screen: the source lies at the output turned back by the angle
-                        const double dir = std::atan2(ey, ex) - radians;
+                        const double dir = portablemath::atan2(ey, ex) - radians;
                         const double mag = std::sqrt(ex * ex + ey * ey);
-                        ox = static_cast<int>(roundHalfAway(pivotX * 3.0 + 1.0 + mag * std::cos(dir)));
-                        oy = static_cast<int>(roundHalfAway(pivotY * 3.0 + 1.0 + mag * std::sin(dir)));
+                        ox = static_cast<int>(roundHalfAway(pivotX * 3.0 + 1.0 + mag * portablemath::cos(dir)));
+                        oy = static_cast<int>(roundHalfAway(pivotY * 3.0 + 1.0 + mag * portablemath::sin(dir)));
                         if (ox >= 0 && ox < w * 3 && oy >= 0 && oy < h * 3) {
                             found = true;
                             break;
@@ -582,7 +584,10 @@ namespace jasperengine::editor::pixelart::draw {
         }
         const RotSource src{w, h, rgba};
         const double radians = turn * (3.14159265358979323846 / 180.0);
-        const double cosA = std::cos(radians), sinA = std::sin(radians);
+        // the C library's sin and cos differ in the last bit (MSVC's sin of 45 degrees is its cos),
+        // which moves the pixels on a boundary: the goldens are the same on every platform
+        double sinA = 0.0, cosA = 0.0;
+        portablemath::sincos(radians, sinA, cosA);
         switch (method) {
             case RotateMethod::Nearest: return rotateNearest(src, cosA, sinA, pivotX, pivotY);
             case RotateMethod::Rotxel: return rotateRotxel(src, radians, pivotX, pivotY);

@@ -45,7 +45,7 @@ namespace {
                     {"style", {{"face", std::move(face)}, {"rims", std::move(rims)}}}};
     }
 
-    TitleArtDoc docWith(const Json& layer) {
+    TitleArtDoc styleLintDocWith(const Json& layer) {
         Json root = Json{{"format", titleart::TITLE_ART_FORMAT}, {"version", titleart::TITLE_ART_VERSION}, {"layers", Json::array({layer})}};
         titleart::TitleArtParseResult parsed = titleart::parseTitleArtJson(root);
         EXPECT_TRUE(parsed.ok) << parsed.error.toString();
@@ -85,9 +85,9 @@ namespace {
     };
     Twins twins(const Json& badLayer, const Json& goodLayer, const std::string& rule) {
         Twins t;
-        const TitleArtDoc bad = docWith(badLayer);
+        const TitleArtDoc bad = styleLintDocWith(badLayer);
         t.bad = findings(bad, rule);
-        t.good = findings(docWith(goodLayer), rule);
+        t.good = findings(styleLintDocWith(goodLayer), rule);
         if (!t.bad.empty() && !t.bad[0].fix.is_null()) t.fixed = findings(fixedBy(bad, t.bad[0]), rule);
         return t;
     }
@@ -115,20 +115,20 @@ TEST(StyleLintTest, ContrastFiresOnNeighbouringRingsOfOneLightnessAndItsSeparato
 
 TEST(StyleLintTest, ContrastExemptsTwoDarkRingsSpectraAndBandedMetals) {
     // two near-black rings are one keyline
-    EXPECT_TRUE(findings(docWith(text2D(solid("#ffd040"), Json::array({rim("#101010", 3), rim("#000000", 3)}))), "contrast").empty());
+    EXPECT_TRUE(findings(styleLintDocWith(text2D(solid("#ffd040"), Json::array({rim("#101010", 3), rim("#000000", 3)}))), "contrast").empty());
     // a spectrum face next to a rim of its mean lightness
     Json rainbow = Json{{"fill", {{"kind", "linear"}, {"gradient", {{"stops", Json::array({Json{{"pos", 0}, {"color", "#ff0000"}}, Json{{"pos", 0.5}, {"color", "#00ff00"}},
                                                                                         Json{{"pos", 1}, {"color", "#0000ff"}}})}}}}}};
-    EXPECT_TRUE(findings(docWith(text2D(rainbow, Json::array({rim("#909090", 6)}))), "contrast").empty());
+    EXPECT_TRUE(findings(styleLintDocWith(text2D(rainbow, Json::array({rim("#909090", 6)}))), "contrast").empty());
     // two banded metals of one mean lightness separate through their banding
     auto banded = [](const char* mid) {
         return Json{{"fill", {{"kind", "linear"}, {"gradient", {{"stops", Json::array({Json{{"pos", 0}, {"color", "#ffffff"}}, Json{{"pos", 0.5}, {"color", mid}},
                                                                                      Json{{"pos", 1}, {"color", "#ffffff"}}})}}}}}};
     };
     Json metals = text2D(banded("#303030"), Json::array({Json{{"width", 6}, {"material", banded("#383838")}}}));
-    EXPECT_TRUE(findings(docWith(metals), "contrast").empty());
+    EXPECT_TRUE(findings(styleLintDocWith(metals), "contrast").empty());
     // the same two as flat paints of those mean lightnesses do merge
-    EXPECT_EQ(findings(docWith(text2D(solid("#a0a0a0"), Json::array({rim("#a8a8a8", 6)}))), "contrast").size(), 1u);
+    EXPECT_EQ(findings(styleLintDocWith(text2D(solid("#a0a0a0"), Json::array({rim("#a8a8a8", 6)}))), "contrast").size(), 1u);
 }
 
 TEST(StyleLintTest, ContrastOnA3DBandInsertsABand) {
@@ -136,7 +136,7 @@ TEST(StyleLintTest, ContrastOnA3DBandInsertsABand) {
     Json layer = Json{{"id", "00000001"}, {"type", "text"}, {"name", "Title"}, {"text", "WIN"}, {"size", 200}, {"dimension", "3d"},
                       {"style_3d", {{"face", {{"color", "#ffd040"}}},
                                     {"bands", Json::array({Json{{"grow", 3}, {"material", {{"color", "#ffe070"}}}}, Json{{"grow", 3}, {"material", {{"color", "#000000"}}}}})}}}};
-    const TitleArtDoc doc = docWith(layer);
+    const TitleArtDoc doc = styleLintDocWith(layer);
     ASSERT_TRUE(doc.layers()[0]["style_3d"].is_object());
     const std::vector<StyleLintFinding> bad = findings(doc, "contrast");
     ASSERT_EQ(bad.size(), 1u);
@@ -167,7 +167,7 @@ TEST(StyleLintTest, ThinRimsFireAndScaleToEightPercent) {
     EXPECT_TRUE(t.good.empty());
     EXPECT_TRUE(t.fixed.empty());
     // no rim at all is a choice (a plain face), not thin rims
-    EXPECT_TRUE(findings(docWith(text2D(solid("#ffd040"), Json::array())), "rims_thin").empty());
+    EXPECT_TRUE(findings(styleLintDocWith(text2D(solid("#ffd040"), Json::array())), "rims_thin").empty());
 }
 
 TEST(StyleLintTest, ThickRimsFireAndScaleToTwelvePercent) {
@@ -184,7 +184,7 @@ TEST(StyleLintTest, ThickBandsOfA3DLayerScaleTheirGrowAndBevels) {
     Json layer = Json{{"id", "00000001"}, {"type", "text"}, {"name", "Title"}, {"text", "WIN"}, {"size", 200}, {"dimension", "3d"},
                       {"style_3d", {{"face", {{"color", "#ffd040"}}}, {"bevel", {{"width", 4}}},
                                     {"bands", Json::array({Json{{"grow", 8}, {"material", {{"color", "#000000"}}}}, Json{{"grow", 8}, {"material", {{"color", "#ffffff"}}}}})}}}};
-    const TitleArtDoc doc = docWith(layer);
+    const TitleArtDoc doc = styleLintDocWith(layer);
     const std::vector<StyleLintFinding> bad = findings(doc, "rims_thick");
     ASSERT_EQ(bad.size(), 1u);
     EXPECT_DOUBLE_EQ(bad[0].measured, 20.0) << "the letter's outside bevel 4 + grows 8 + 8";
@@ -193,7 +193,7 @@ TEST(StyleLintTest, ThickBandsOfA3DLayerScaleTheirGrowAndBevels) {
     // 3D titles read their edge from the extrusion: thin bands are fine
     layer["style_3d"]["bevel"]["width"] = 0;
     layer["style_3d"]["bands"] = Json::array({Json{{"grow", 1}, {"material", {{"color", "#000000"}}}}});
-    EXPECT_TRUE(findings(docWith(layer), "rims_thin").empty());
+    EXPECT_TRUE(findings(styleLintDocWith(layer), "rims_thin").empty());
 }
 
 TEST(StyleLintTest, HardShadowFiresAndSoftens) {
@@ -211,7 +211,7 @@ TEST(StyleLintTest, HardShadowFiresAndSoftens) {
     EXPECT_TRUE(t.good.empty());
     EXPECT_TRUE(t.fixed.empty());
     // a tinted (light) shadow is a choice
-    EXPECT_TRUE(findings(docWith(withShadow(1.0, 2, "#c08040")), "hard_shadow").empty());
+    EXPECT_TRUE(findings(styleLintDocWith(withShadow(1.0, 2, "#c08040")), "hard_shadow").empty());
 }
 
 TEST(StyleLintTest, ALayerWideSpectrumOnSeveralLinesSpansEachLine) {
@@ -230,7 +230,7 @@ TEST(StyleLintTest, ALayerWideSpectrumOnSeveralLinesSpansEachLine) {
     EXPECT_EQ(t.bad[0].fix["ops"][0]["values"]["face.fill.span"], "line");
     EXPECT_TRUE(t.good.empty());
     EXPECT_TRUE(t.fixed.empty());
-    EXPECT_TRUE(findings(docWith(rainbow("layer", "BIG WIN\n")), "spectrum_span").empty()) << "one line (a trailing break is no line)";
+    EXPECT_TRUE(findings(styleLintDocWith(rainbow("layer", "BIG WIN\n")), "spectrum_span").empty()) << "one line (a trailing break is no line)";
 }
 
 TEST(StyleLintTest, HollowLettersWithoutRimsOrUnderAnOpaqueFace) {
@@ -249,7 +249,7 @@ TEST(StyleLintTest, HollowLettersWithoutRimsOrUnderAnOpaqueFace) {
 
     Json opaque = text2D(solid("#ffd040"), Json::array({rim("#000000", 6)}));
     opaque["style"]["knockout"] = true;
-    const TitleArtDoc doc = docWith(opaque);
+    const TitleArtDoc doc = styleLintDocWith(opaque);
     const std::vector<StyleLintFinding> covered = findings(doc, "noop_knockout");
     ASSERT_EQ(covered.size(), 1u);
     EXPECT_EQ(covered[0].element, "face");
@@ -270,7 +270,7 @@ TEST(StyleLintTest, ErodeAtAmountOrEdgeZeroTakesTheStartingValues) {
     EXPECT_FALSE(t.bad[0].fix["ops"][0]["values"].contains("style.erode.edge")) << "the edge was set: it stays";
     EXPECT_TRUE(t.good.empty());
     EXPECT_TRUE(t.fixed.empty());
-    const TitleArtDoc edgeless = docWith(eroded(0.4, 0));
+    const TitleArtDoc edgeless = styleLintDocWith(eroded(0.4, 0));
     const std::vector<StyleLintFinding> e = findings(edgeless, "noop_erode");
     ASSERT_EQ(e.size(), 1u);
     EXPECT_TRUE(findings(fixedBy(edgeless, e[0]), "noop_erode").empty());
@@ -280,19 +280,19 @@ TEST(StyleLintTest, GuideLayersAndWhatIsInsideAGuideGroupAreSkipped) {
     Json bad = text2D(solid("#ffd040"), Json::array({rim("#000000", 1)}));
     Json guide = bad;
     guide["guide"] = true;
-    EXPECT_FALSE(findings(docWith(bad), "rims_thin").empty());
-    EXPECT_TRUE(findings(docWith(guide), "rims_thin").empty());
+    EXPECT_FALSE(findings(styleLintDocWith(bad), "rims_thin").empty());
+    EXPECT_TRUE(findings(styleLintDocWith(guide), "rims_thin").empty());
     Json child = bad;
     child["id"] = "00000002";
     Json group = Json{{"id", "00000003"}, {"type", "group"}, {"name", "Guides"}, {"guide", true}, {"children", Json::array({child})}};
-    EXPECT_TRUE(lintDocument(docWith(group)).empty());
+    EXPECT_TRUE(lintDocument(styleLintDocWith(group)).empty());
 }
 
 // ---- parity with lint.ts ----
 
 namespace {
 
-    std::string snake(const std::string& camel) {
+    std::string styleLintSnake(const std::string& camel) {
         std::string out;
         for (char c : camel) {
             if (std::isupper(static_cast<unsigned char>(c))) {
@@ -317,18 +317,18 @@ namespace {
 
     // keys camelCase -> snake_case, and enum values with them ("shapeBurst" -> "shape_burst",
     // "whiteGloss" -> "white_gloss"); free text stays
-    Json snakeTree(const Json& v, const std::string& key = {}) {
+    Json styleLintSnakeTree(const Json& v, const std::string& key = {}) {
         if (v.is_object()) {
             Json out = Json::object();
-            for (auto it = v.begin(); it != v.end(); ++it) out[snake(it.key())] = snakeTree(it.value(), it.key());
+            for (auto it = v.begin(); it != v.end(); ++it) out[styleLintSnake(it.key())] = styleLintSnakeTree(it.value(), it.key());
             return out;
         }
         if (v.is_array()) {
             Json out = Json::array();
-            for (const Json& item : v) out.push_back(snakeTree(item, key));
+            for (const Json& item : v) out.push_back(styleLintSnakeTree(item, key));
             return out;
         }
-        if (v.is_string() && key != "text" && key != "name" && camelIdentifier(v.get<std::string>())) return snake(v.get<std::string>());
+        if (v.is_string() && key != "text" && key != "name" && camelIdentifier(v.get<std::string>())) return styleLintSnake(v.get<std::string>());
         return v;
     }
 
@@ -345,7 +345,7 @@ namespace {
         else if (source.contains("shape")) l["shape"] = source["shape"];
         if (p.value("kind", std::string()) == "title3d") {
             l["dimension"] = "3d";
-            Json s = snakeTree(p["style3d"]);
+            Json s = styleLintSnakeTree(p["style3d"]);
             for (Json& band : s["bands"]) {
                 if (band.contains("shape")) {
                     band["plate"] = band["shape"];
@@ -355,7 +355,7 @@ namespace {
             l["style_3d"] = s;
         } else {
             l["dimension"] = "2d";
-            Json s = snakeTree(p["style"]);
+            Json s = styleLintSnakeTree(p["style"]);
             for (Json& r : s["rims"]) {
                 r["offset"] = Json::array({r.value("offset_x", 0.0), r.value("offset_y", 0.0)});
                 r.erase("offset_x");
@@ -394,7 +394,7 @@ TEST(StyleLintTest, MatchesPachislop) {
     size_t compared = 0, theirFindings = 0;
     for (const Json& c : cases) {
         const std::string name = c["case"].get<std::string>();
-        const TitleArtDoc doc = docWith(fromPachislop(c["layer"]));
+        const TitleArtDoc doc = styleLintDocWith(fromPachislop(c["layer"]));
         const std::vector<StyleLintFinding> ours = lintDocument(doc);
         std::vector<std::string> ourIds, theirIds;
         for (const StyleLintFinding& f : ours) ourIds.push_back(f.rule);

@@ -25,10 +25,10 @@ using namespace jasperengine::test;
 
 namespace {
 
-    using Change = AssetDatabase::Change;
+    using AssetDatabaseChange = AssetDatabase::Change;
 
-    const std::string guidA = "0123456789abcdef0123456789abcdef";
-    const std::string guidB = "fedcba9876543210fedcba9876543210";
+    const std::string assetDatabaseGuidA = "0123456789abcdef0123456789abcdef";
+    const std::string assetDatabaseGuidB = "fedcba9876543210fedcba9876543210";
 
     std::string prefab(const std::string& guid, const std::string& name = "Thing"){
         std::string text;
@@ -46,8 +46,8 @@ namespace {
             database.open(project.path());
         }
 
-        size_t count(const std::vector<Change>& changes, Change::Type type){
-            return std::count_if(changes.begin(), changes.end(), [type](const Change& c){ return c.type == type; });
+        size_t count(const std::vector<AssetDatabaseChange>& changes, AssetDatabaseChange::Type type){
+            return std::count_if(changes.begin(), changes.end(), [type](const AssetDatabaseChange& c){ return c.type == type; });
         }
     };
 
@@ -66,10 +66,10 @@ TEST(AssetDatabaseGuid, GeneratedGuidsAreThirtyTwoHexDigits){
 }
 
 TEST(AssetDatabaseGuid, IsGuidChecksLengthAndDigits){
-    EXPECT_TRUE(AssetDatabase::isGuid(guidA));
+    EXPECT_TRUE(AssetDatabase::isGuid(assetDatabaseGuidA));
     EXPECT_TRUE(AssetDatabase::isGuid("0123456789ABCDEF0123456789ABCDEF"));
-    EXPECT_FALSE(AssetDatabase::isGuid(guidA.substr(1)));
-    EXPECT_FALSE(AssetDatabase::isGuid(guidA + "0"));
+    EXPECT_FALSE(AssetDatabase::isGuid(assetDatabaseGuidA.substr(1)));
+    EXPECT_FALSE(AssetDatabase::isGuid(assetDatabaseGuidA + "0"));
     EXPECT_FALSE(AssetDatabase::isGuid("0123456789abcdef0123456789abcdeg"));
     EXPECT_FALSE(AssetDatabase::isGuid(""));
 }
@@ -93,20 +93,20 @@ TEST(AssetDatabaseGuid, TracksEveryAssetType){
 
 TEST(AssetDatabaseGuid, ReadGuidFindsTheTopLevelKey){
     TempDir dir;
-    dir.write("a.prefab", "name: A\nguid: " + guidA + "  # the asset\n");
-    dir.write("b.prefab", "name: B\nchild:\n  guid: " + guidB + "\n");
-    dir.write("c.prefab", "guid: \"" + guidB + "\"\r\nname: C\r\n");
-    EXPECT_EQ(AssetDatabase::readGuid(dir.file("a.prefab")), guidA);
+    dir.write("a.prefab", "name: A\nguid: " + assetDatabaseGuidA + "  # the asset\n");
+    dir.write("b.prefab", "name: B\nchild:\n  guid: " + assetDatabaseGuidB + "\n");
+    dir.write("c.prefab", "guid: \"" + assetDatabaseGuidB + "\"\r\nname: C\r\n");
+    EXPECT_EQ(AssetDatabase::readGuid(dir.file("a.prefab")), assetDatabaseGuidA);
     EXPECT_EQ(AssetDatabase::readGuid(dir.file("b.prefab")), "");
-    EXPECT_EQ(AssetDatabase::readGuid(dir.file("c.prefab")), guidB);
+    EXPECT_EQ(AssetDatabase::readGuid(dir.file("c.prefab")), assetDatabaseGuidB);
     EXPECT_EQ(AssetDatabase::readGuid(dir.file("missing.prefab")), "");
 }
 
 TEST(AssetDatabaseGuid, WriteGuidReplacesTheLine){
     TempDir dir;
-    dir.write("a.prefab", prefab(guidA));
-    ASSERT_TRUE(AssetDatabase::writeGuid(dir.file("a.prefab"), guidB));
-    EXPECT_EQ(dir.read("a.prefab"), prefab(guidB));
+    dir.write("a.prefab", prefab(assetDatabaseGuidA));
+    ASSERT_TRUE(AssetDatabase::writeGuid(dir.file("a.prefab"), assetDatabaseGuidB));
+    EXPECT_EQ(dir.read("a.prefab"), prefab(assetDatabaseGuidB));
 }
 
 TEST(AssetDatabaseGuid, AnOutsideSaveDuringTheWriteIsNotOverwritten){
@@ -122,67 +122,67 @@ TEST(AssetDatabaseGuid, AnOutsideSaveDuringTheWriteIsNotOverwritten){
         }
         return {};
     });
-    const bool ok = AssetDatabase::writeGuid(dir.file("a.prefab"), guidA);
+    const bool ok = AssetDatabase::writeGuid(dir.file("a.prefab"), assetDatabaseGuidA);
     io::setAtomicFileFaultInjector(nullptr);
     ASSERT_TRUE(saved);
     ASSERT_TRUE(ok);
-    EXPECT_EQ(dir.read("a.prefab"), prefab(guidA, "SavedOutside")) << "the GUID goes into the outside save, read again";
+    EXPECT_EQ(dir.read("a.prefab"), prefab(assetDatabaseGuidA, "SavedOutside")) << "the GUID goes into the outside save, read again";
 }
 
 TEST(AssetDatabaseGuid, WriteGuidInsertsAfterCommentsAndDocumentStart){
     TempDir dir;
     dir.write("a.prefab", "# a prefab\n---\nname: A\n");
-    ASSERT_TRUE(AssetDatabase::writeGuid(dir.file("a.prefab"), guidA));
-    EXPECT_EQ(dir.read("a.prefab"), "# a prefab\n---\nguid: " + guidA + "\nname: A\n");
+    ASSERT_TRUE(AssetDatabase::writeGuid(dir.file("a.prefab"), assetDatabaseGuidA));
+    EXPECT_EQ(dir.read("a.prefab"), "# a prefab\n---\nguid: " + assetDatabaseGuidA + "\nname: A\n");
 }
 
 TEST(AssetDatabaseGuid, WriteGuidKeepsWindowsLineEnds){
     TempDir dir;
     dir.write("a.prefab", "name: A\r\n");
-    ASSERT_TRUE(AssetDatabase::writeGuid(dir.file("a.prefab"), guidA));
-    EXPECT_EQ(dir.read("a.prefab"), "guid: " + guidA + "\r\nname: A\r\n");
+    ASSERT_TRUE(AssetDatabase::writeGuid(dir.file("a.prefab"), assetDatabaseGuidA));
+    EXPECT_EQ(dir.read("a.prefab"), "guid: " + assetDatabaseGuidA + "\r\nname: A\r\n");
 }
 
 TEST(AssetDatabaseGuid, WriteGuidRewritesAFlowStyleMap){
     TempDir dir;
     dir.write("a.prefab", "{name: A, guid: x}\n");
-    ASSERT_TRUE(AssetDatabase::writeGuid(dir.file("a.prefab"), guidA));
+    ASSERT_TRUE(AssetDatabase::writeGuid(dir.file("a.prefab"), assetDatabaseGuidA));
     const YAML::Node node = YAML::LoadFile(dir.file("a.prefab").string());
-    EXPECT_EQ(node["guid"].as<std::string>(), guidA);
+    EXPECT_EQ(node["guid"].as<std::string>(), assetDatabaseGuidA);
     EXPECT_EQ(node["name"].as<std::string>(), "A");
 }
 
 TEST(AssetDatabaseGuid, ReadGuidReadsAFlowStyleMap){
     TempDir dir;
-    dir.write("a.prefab", "{name: A, guid: " + guidA + ", entities: []}\n");
-    dir.write("b.prefab", "# another tool's prefab\n{name: B, child: {guid: " + guidB + "}}\n");
-    dir.write("c.prefab", "--- {guid: '" + guidB + "', name: C}\n");
+    dir.write("a.prefab", "{name: A, guid: " + assetDatabaseGuidA + ", entities: []}\n");
+    dir.write("b.prefab", "# another tool's prefab\n{name: B, child: {guid: " + assetDatabaseGuidB + "}}\n");
+    dir.write("c.prefab", "--- {guid: '" + assetDatabaseGuidB + "', name: C}\n");
     // block style with a flow value spread over lines: still read line by line
-    dir.write("d.prefab", "name: D\nentities: [\n  {name: child}\n]\nguid: " + guidA + "\n");
-    EXPECT_EQ(AssetDatabase::readGuid(dir.file("a.prefab")), guidA);
+    dir.write("d.prefab", "name: D\nentities: [\n  {name: child}\n]\nguid: " + assetDatabaseGuidA + "\n");
+    EXPECT_EQ(AssetDatabase::readGuid(dir.file("a.prefab")), assetDatabaseGuidA);
     EXPECT_EQ(AssetDatabase::readGuid(dir.file("b.prefab")), "");
-    EXPECT_EQ(AssetDatabase::readGuid(dir.file("c.prefab")), guidB);
-    EXPECT_EQ(AssetDatabase::readGuid(dir.file("d.prefab")), guidA);
+    EXPECT_EQ(AssetDatabase::readGuid(dir.file("c.prefab")), assetDatabaseGuidB);
+    EXPECT_EQ(AssetDatabase::readGuid(dir.file("d.prefab")), assetDatabaseGuidA);
 }
 
 TEST(AssetDatabaseGuid, WriteGuidOutputReadsBackInBothStyles){
     TempDir dir;
     const std::map<std::string, std::string> files = {
         {"block-new.prefab", "name: A\nentities: []\n"},
-        {"block-old.prefab", prefab(guidB, "A")},
+        {"block-old.prefab", prefab(assetDatabaseGuidB, "A")},
         {"flow-new.prefab", "{name: A, entities: [{name: child}]}\n"},
-        {"flow-old.prefab", "{name: A, guid: " + guidB + "}\n"},
+        {"flow-old.prefab", "{name: A, guid: " + assetDatabaseGuidB + "}\n"},
         {"flow-multiline.prefab", "{\n  name: A,\n  guid: x\n}\n"},
     };
     for (const auto& [name, text] : files){
         dir.write(name, text);
-        ASSERT_TRUE(AssetDatabase::writeGuid(dir.file(name), guidA)) << name;
-        EXPECT_EQ(AssetDatabase::readGuid(dir.file(name)), guidA) << name << ":\n" << dir.read(name);
+        ASSERT_TRUE(AssetDatabase::writeGuid(dir.file(name), assetDatabaseGuidA)) << name;
+        EXPECT_EQ(AssetDatabase::readGuid(dir.file(name)), assetDatabaseGuidA) << name << ":\n" << dir.read(name);
         const YAML::Node node = YAML::LoadFile(dir.file(name).string());
         EXPECT_EQ(node["name"].as<std::string>(), "A") << name;
         // and again: a GUID written once is replaced in place
-        ASSERT_TRUE(AssetDatabase::writeGuid(dir.file(name), guidB)) << name;
-        EXPECT_EQ(AssetDatabase::readGuid(dir.file(name)), guidB) << name << ":\n" << dir.read(name);
+        ASSERT_TRUE(AssetDatabase::writeGuid(dir.file(name), assetDatabaseGuidB)) << name;
+        EXPECT_EQ(AssetDatabase::readGuid(dir.file(name)), assetDatabaseGuidB) << name << ":\n" << dir.read(name);
     }
     const YAML::Node nested = YAML::LoadFile(dir.file("flow-new.prefab").string());
     EXPECT_EQ(nested["entities"][0]["name"].as<std::string>(), "child");
@@ -191,10 +191,10 @@ TEST(AssetDatabaseGuid, WriteGuidOutputReadsBackInBothStyles){
 TEST(AssetDatabaseGuid, InFileIdentityRoundTripsInBothStyles){
     // S04's identity: the former GUIDs travel with the GUID through a flow style rewrite too
     TempDir dir;
-    const Guid current = Guid::parse(guidA);
-    const std::vector<Guid> former = {Guid::parse(guidB)};
+    const Guid current = Guid::parse(assetDatabaseGuidA);
+    const std::vector<Guid> former = {Guid::parse(assetDatabaseGuidB)};
     for (const std::string& text : {std::string("name: A\n"), std::string("{name: A, entities: [{name: child}]}\n"),
-                                   "{name: A, guid: " + guidB + ", formerGuids: [" + guidB + "]}\n"}){
+                                   "{name: A, guid: " + assetDatabaseGuidB + ", formerGuids: [" + assetDatabaseGuidB + "]}\n"}){
         dir.write("x.prefab", text);
         Guid read;
         std::vector<Guid> readFormer;
@@ -205,7 +205,7 @@ TEST(AssetDatabaseGuid, InFileIdentityRoundTripsInBothStyles){
         EXPECT_EQ(YAML::LoadFile(dir.file("x.prefab").string())["name"].as<std::string>(), "A");
     }
     // a flow style document another tool wrote reads as it is
-    dir.write("y.prefab", "{name: Y, guid: " + guidA + ", formerGuids: [" + guidB + "]}\n");
+    dir.write("y.prefab", "{name: Y, guid: " + assetDatabaseGuidA + ", formerGuids: [" + assetDatabaseGuidB + "]}\n");
     Guid read;
     std::vector<Guid> readFormer;
     ASSERT_TRUE(AssetDatabase::readInFileIdentity(dir.file("y.prefab"), read, readFormer));
@@ -215,28 +215,28 @@ TEST(AssetDatabaseGuid, InFileIdentityRoundTripsInBothStyles){
 
 TEST(AssetDatabaseGuid, WriteGuidFailsWithoutAFile){
     TempDir dir;
-    EXPECT_FALSE(AssetDatabase::writeGuid(dir.file("none.prefab"), guidA));
+    EXPECT_FALSE(AssetDatabase::writeGuid(dir.file("none.prefab"), assetDatabaseGuidA));
 }
 
 TEST_F(AssetDatabaseTest, OpenRegistersEveryPrefab){
-    project.write("prefabs/a.prefab", prefab(guidA));
-    project.write("prefabs/deep/b.prefab", prefab(guidB));
+    project.write("prefabs/a.prefab", prefab(assetDatabaseGuidA));
+    project.write("prefabs/deep/b.prefab", prefab(assetDatabaseGuidB));
     project.write("scenes/main.scene", "name: Main\n");
     open();
     EXPECT_TRUE(database.isOpen());
-    EXPECT_EQ(database.getPath(guidA), std::filesystem::path("prefabs/a.prefab"));
-    EXPECT_EQ(database.getGuid("prefabs/deep/b.prefab"), guidB);
-    EXPECT_TRUE(database.contains(guidB));
+    EXPECT_EQ(database.getPath(assetDatabaseGuidA), std::filesystem::path("prefabs/a.prefab"));
+    EXPECT_EQ(database.getGuid("prefabs/deep/b.prefab"), assetDatabaseGuidB);
+    EXPECT_TRUE(database.contains(assetDatabaseGuidB));
     // a scene is an asset too: written before GUIDs, it gets its path's legacy GUID
     EXPECT_EQ(database.getGuid("scenes/main.scene"), AssetDatabase::legacyGuid("scenes/main.scene"));
 }
 
 TEST_F(AssetDatabaseTest, OpenSkipsHiddenAndBuildDirectories){
-    project.write(".jasperengine/cache.prefab", prefab(guidA));
-    project.write("build/out.prefab", prefab(guidB));
+    project.write(".jasperengine/cache.prefab", prefab(assetDatabaseGuidA));
+    project.write("build/out.prefab", prefab(assetDatabaseGuidB));
     open();
-    EXPECT_FALSE(database.contains(guidA));
-    EXPECT_FALSE(database.contains(guidB));
+    EXPECT_FALSE(database.contains(assetDatabaseGuidA));
+    EXPECT_FALSE(database.contains(assetDatabaseGuidB));
 }
 
 TEST_F(AssetDatabaseTest, LegacyPrefabsGetTheirPathGuidWrittenIntoThem){
@@ -258,8 +258,8 @@ TEST_F(AssetDatabaseTest, AWalkOlderThanADeletionBringsNothingBack){
     std::error_code ec;
     std::filesystem::remove_all(project.file("assets/rbs"), ec);
     ASSERT_FALSE(ec);
-    const std::vector<Change> changes = database.refresh(scan);
-    EXPECT_EQ(count(changes, Change::Type::Added), 0u);
+    const std::vector<AssetDatabaseChange> changes = database.refresh(scan);
+    EXPECT_EQ(count(changes, AssetDatabaseChange::Type::Added), 0u);
     EXPECT_TRUE(database.getGuid("assets/rbs/new/sheet.png").empty());
     EXPECT_FALSE(std::filesystem::exists(project.file("assets/rbs"))) << "the meta made the folder again";
 }
@@ -310,31 +310,31 @@ TEST_F(AssetDatabaseTest, AnInvalidGuidIsReplaced){
 }
 
 TEST_F(AssetDatabaseTest, ADuplicatedGuidStaysWithOneFileAndTheOtherGetsANewOne){
-    project.write("a.prefab", prefab(guidA));
-    project.write("b.prefab", prefab(guidA));
+    project.write("a.prefab", prefab(assetDatabaseGuidA));
+    project.write("b.prefab", prefab(assetDatabaseGuidA));
     open();
     const std::string a = database.getGuid("a.prefab");
     const std::string b = database.getGuid("b.prefab");
     EXPECT_NE(a, b);
-    EXPECT_TRUE(a == guidA || b == guidA);
+    EXPECT_TRUE(a == assetDatabaseGuidA || b == assetDatabaseGuidA);
     EXPECT_TRUE(AssetDatabase::isGuid(a) && AssetDatabase::isGuid(b));
 }
 
 TEST_F(AssetDatabaseTest, ADuplicatedGuidStaysWithTheFileTheCacheKnows){
-    project.write("b.prefab", prefab(guidA));
+    project.write("b.prefab", prefab(assetDatabaseGuidA));
     open();
     database.close();
-    project.write("a.prefab", prefab(guidA));   // a copy made outside the editor
+    project.write("a.prefab", prefab(assetDatabaseGuidA));   // a copy made outside the editor
     open();
-    EXPECT_EQ(database.getGuid("b.prefab"), guidA);
-    EXPECT_NE(database.getGuid("a.prefab"), guidA);
+    EXPECT_EQ(database.getGuid("b.prefab"), assetDatabaseGuidA);
+    EXPECT_NE(database.getGuid("a.prefab"), assetDatabaseGuidA);
 }
 
 TEST_F(AssetDatabaseTest, OpenWritesTheCache){
-    project.write("a.prefab", prefab(guidA));
+    project.write("a.prefab", prefab(assetDatabaseGuidA));
     open();
     EXPECT_TRUE(project.exists(".jasperengine/assetdb/index.json"));
-    EXPECT_NE(project.read(".jasperengine/assetdb/index.json").find(guidA), std::string::npos);
+    EXPECT_NE(project.read(".jasperengine/assetdb/index.json").find(assetDatabaseGuidA), std::string::npos);
 }
 
 #if defined(__linux__)
@@ -342,183 +342,183 @@ TEST_F(AssetDatabaseTest, OpenWritesTheCache){
 // JSON cache: its entry is left out, the others are cached, and the open does not throw (it
 // failed the project's load)
 TEST_F(AssetDatabaseTest, ANonUtf8NameIsLeftOutOfTheCache){
-    project.write("a.prefab", prefab(guidA));
-    project.write("caf\xe9.prefab", prefab(guidB));
+    project.write("a.prefab", prefab(assetDatabaseGuidA));
+    project.write("caf\xe9.prefab", prefab(assetDatabaseGuidB));
     ASSERT_NO_THROW(open());
-    EXPECT_EQ(database.getGuid("caf\xe9.prefab"), guidB);
+    EXPECT_EQ(database.getGuid("caf\xe9.prefab"), assetDatabaseGuidB);
     const std::string cache = project.read(".jasperengine/assetdb/index.json");
-    EXPECT_NE(cache.find(guidA), std::string::npos);
-    EXPECT_EQ(cache.find(guidB), std::string::npos);
+    EXPECT_NE(cache.find(assetDatabaseGuidA), std::string::npos);
+    EXPECT_EQ(cache.find(assetDatabaseGuidB), std::string::npos);
     database.close();
     ASSERT_NO_THROW(open());
-    EXPECT_EQ(database.getGuid("caf\xe9.prefab"), guidB);
+    EXPECT_EQ(database.getGuid("caf\xe9.prefab"), assetDatabaseGuidB);
 }
 #endif
 
 TEST_F(AssetDatabaseTest, CloseForgetsEverything){
-    project.write("a.prefab", prefab(guidA));
+    project.write("a.prefab", prefab(assetDatabaseGuidA));
     open();
     database.close();
     EXPECT_FALSE(database.isOpen());
-    EXPECT_FALSE(database.contains(guidA));
+    EXPECT_FALSE(database.contains(assetDatabaseGuidA));
     EXPECT_TRUE(database.refresh().empty());
 }
 
 TEST_F(AssetDatabaseTest, ReopeningKeepsTheGuids){
     project.write("a.prefab", prefab(""));
-    project.write("b.prefab", prefab(guidB));
+    project.write("b.prefab", prefab(assetDatabaseGuidB));
     open();
     const std::string a = database.getGuid("a.prefab");
     database.close();
     open();
     EXPECT_EQ(database.getGuid("a.prefab"), a);
-    EXPECT_EQ(database.getGuid("b.prefab"), guidB);
+    EXPECT_EQ(database.getGuid("b.prefab"), assetDatabaseGuidB);
 }
 
 TEST_F(AssetDatabaseTest, RefreshWithoutChangesReportsNothing){
-    project.write("a.prefab", prefab(guidA));
+    project.write("a.prefab", prefab(assetDatabaseGuidA));
     open();
     EXPECT_TRUE(database.refresh().empty());
 }
 
 TEST_F(AssetDatabaseTest, RefreshSeesAddedFiles){
     open();
-    project.write("new.prefab", prefab(guidB));
-    const std::vector<Change> changes = database.refresh();
+    project.write("new.prefab", prefab(assetDatabaseGuidB));
+    const std::vector<AssetDatabaseChange> changes = database.refresh();
     ASSERT_EQ(changes.size(), 1u);
-    EXPECT_EQ(changes[0].type, Change::Type::Added);
-    EXPECT_EQ(changes[0].guid, guidB);
+    EXPECT_EQ(changes[0].type, AssetDatabaseChange::Type::Added);
+    EXPECT_EQ(changes[0].guid, assetDatabaseGuidB);
     EXPECT_EQ(changes[0].path, std::filesystem::path("new.prefab"));
 }
 
 TEST_F(AssetDatabaseTest, RefreshSeesRemovedFiles){
-    project.write("a.prefab", prefab(guidA));
+    project.write("a.prefab", prefab(assetDatabaseGuidA));
     open();
     std::filesystem::remove(project.file("a.prefab"));
-    const std::vector<Change> changes = database.refresh();
+    const std::vector<AssetDatabaseChange> changes = database.refresh();
     ASSERT_EQ(changes.size(), 1u);
-    EXPECT_EQ(changes[0].type, Change::Type::Removed);
-    EXPECT_EQ(changes[0].guid, guidA);
-    EXPECT_FALSE(database.contains(guidA));
+    EXPECT_EQ(changes[0].type, AssetDatabaseChange::Type::Removed);
+    EXPECT_EQ(changes[0].guid, assetDatabaseGuidA);
+    EXPECT_FALSE(database.contains(assetDatabaseGuidA));
 }
 
 TEST_F(AssetDatabaseTest, RefreshSeesMovedFiles){
-    project.write("a.prefab", prefab(guidA));
+    project.write("a.prefab", prefab(assetDatabaseGuidA));
     open();
     std::filesystem::rename(project.file("a.prefab"), project.file("moved/a.prefab"));
-    const std::vector<Change> changes = database.refresh();
+    const std::vector<AssetDatabaseChange> changes = database.refresh();
     ASSERT_EQ(changes.size(), 1u);
-    EXPECT_EQ(changes[0].type, Change::Type::Moved);
+    EXPECT_EQ(changes[0].type, AssetDatabaseChange::Type::Moved);
     EXPECT_EQ(changes[0].path, std::filesystem::path("moved/a.prefab"));
     EXPECT_EQ(changes[0].oldPath, std::filesystem::path("a.prefab"));
-    EXPECT_EQ(database.getPath(guidA), std::filesystem::path("moved/a.prefab"));
+    EXPECT_EQ(database.getPath(assetDatabaseGuidA), std::filesystem::path("moved/a.prefab"));
 }
 
 TEST_F(AssetDatabaseTest, RefreshSeesModifiedFiles){
-    project.write("a.prefab", prefab(guidA));
+    project.write("a.prefab", prefab(assetDatabaseGuidA));
     open();
-    project.write("a.prefab", prefab(guidA, "A much longer name than before"));
-    const std::vector<Change> changes = database.refresh();
+    project.write("a.prefab", prefab(assetDatabaseGuidA, "A much longer name than before"));
+    const std::vector<AssetDatabaseChange> changes = database.refresh();
     ASSERT_EQ(changes.size(), 1u);
-    EXPECT_EQ(changes[0].type, Change::Type::Modified);
-    EXPECT_EQ(changes[0].guid, guidA);
+    EXPECT_EQ(changes[0].type, AssetDatabaseChange::Type::Modified);
+    EXPECT_EQ(changes[0].guid, assetDatabaseGuidA);
 }
 
 TEST_F(AssetDatabaseTest, RefreshPutsBackAGuidAnotherToolDropped){
-    project.write("a.prefab", prefab(guidA));
+    project.write("a.prefab", prefab(assetDatabaseGuidA));
     open();
     project.write("a.prefab", prefab("", "Rewritten by another tool, without its GUID"));
-    const std::vector<Change> changes = database.refresh();
+    const std::vector<AssetDatabaseChange> changes = database.refresh();
     ASSERT_EQ(changes.size(), 1u);
-    EXPECT_EQ(changes[0].type, Change::Type::Modified);
-    EXPECT_EQ(AssetDatabase::readGuid(project.file("a.prefab")), guidA);
+    EXPECT_EQ(changes[0].type, AssetDatabaseChange::Type::Modified);
+    EXPECT_EQ(AssetDatabase::readGuid(project.file("a.prefab")), assetDatabaseGuidA);
 }
 
 TEST_F(AssetDatabaseTest, RefreshGivesACopyANewGuid){
-    project.write("a.prefab", prefab(guidA));
+    project.write("a.prefab", prefab(assetDatabaseGuidA));
     open();
     std::filesystem::copy_file(project.file("a.prefab"), project.file("copy.prefab"));
-    const std::vector<Change> changes = database.refresh();
+    const std::vector<AssetDatabaseChange> changes = database.refresh();
     ASSERT_EQ(changes.size(), 1u);
-    EXPECT_EQ(changes[0].type, Change::Type::Added);
-    EXPECT_NE(changes[0].guid, guidA);
-    EXPECT_EQ(database.getGuid("a.prefab"), guidA);
+    EXPECT_EQ(changes[0].type, AssetDatabaseChange::Type::Added);
+    EXPECT_NE(changes[0].guid, assetDatabaseGuidA);
+    EXPECT_EQ(database.getGuid("a.prefab"), assetDatabaseGuidA);
     EXPECT_EQ(AssetDatabase::readGuid(project.file("copy.prefab")), changes[0].guid);
 }
 
 TEST_F(AssetDatabaseTest, RefreshOfAFileReplacedByAnotherAsset){
-    project.write("a.prefab", prefab(guidA));
+    project.write("a.prefab", prefab(assetDatabaseGuidA));
     open();
-    project.write("a.prefab", prefab(guidB, "Another asset entirely"));
-    const std::vector<Change> changes = database.refresh();
-    EXPECT_EQ(count(changes, Change::Type::Removed), 1u);
-    EXPECT_EQ(count(changes, Change::Type::Added), 1u);
-    EXPECT_EQ(database.getGuid("a.prefab"), guidB);
-    EXPECT_FALSE(database.contains(guidA));
+    project.write("a.prefab", prefab(assetDatabaseGuidB, "Another asset entirely"));
+    const std::vector<AssetDatabaseChange> changes = database.refresh();
+    EXPECT_EQ(count(changes, AssetDatabaseChange::Type::Removed), 1u);
+    EXPECT_EQ(count(changes, AssetDatabaseChange::Type::Added), 1u);
+    EXPECT_EQ(database.getGuid("a.prefab"), assetDatabaseGuidB);
+    EXPECT_FALSE(database.contains(assetDatabaseGuidA));
 }
 
 TEST_F(AssetDatabaseTest, MoveAssetsKeepsTheGuids){
-    project.write("dir/a.prefab", prefab(guidA));
-    project.write("dir/b.prefab", prefab(guidB));
+    project.write("dir/a.prefab", prefab(assetDatabaseGuidA));
+    project.write("dir/b.prefab", prefab(assetDatabaseGuidB));
     open();
     std::filesystem::rename(project.file("dir"), project.file("other"));
-    const std::vector<Change> changes = database.moveAssets(project.path() / "dir", project.path() / "other");
-    EXPECT_EQ(count(changes, Change::Type::Moved), 2u);
-    EXPECT_EQ(database.getPath(guidA), std::filesystem::path("other/a.prefab"));
-    EXPECT_EQ(database.getPath(guidB), std::filesystem::path("other/b.prefab"));
+    const std::vector<AssetDatabaseChange> changes = database.moveAssets(project.path() / "dir", project.path() / "other");
+    EXPECT_EQ(count(changes, AssetDatabaseChange::Type::Moved), 2u);
+    EXPECT_EQ(database.getPath(assetDatabaseGuidA), std::filesystem::path("other/a.prefab"));
+    EXPECT_EQ(database.getPath(assetDatabaseGuidB), std::filesystem::path("other/b.prefab"));
 }
 
 TEST_F(AssetDatabaseTest, RenamingAwayFromAnAssetTypeRemovesTheAsset){
-    project.write("a.prefab", prefab(guidA));
+    project.write("a.prefab", prefab(assetDatabaseGuidA));
     open();
     std::filesystem::rename(project.file("a.prefab"), project.file("a.bak"));
-    const std::vector<Change> changes = database.moveAssets(project.path() / "a.prefab", project.path() / "a.bak");
+    const std::vector<AssetDatabaseChange> changes = database.moveAssets(project.path() / "a.prefab", project.path() / "a.bak");
     ASSERT_EQ(changes.size(), 1u);
-    EXPECT_EQ(changes[0].type, Change::Type::Removed);
-    EXPECT_FALSE(database.contains(guidA));
+    EXPECT_EQ(changes[0].type, AssetDatabaseChange::Type::Removed);
+    EXPECT_FALSE(database.contains(assetDatabaseGuidA));
 }
 
 TEST_F(AssetDatabaseTest, RemoveAssetsTakesADirectory){
-    project.write("dir/a.prefab", prefab(guidA));
-    project.write("dir/sub/b.prefab", prefab(guidB));
+    project.write("dir/a.prefab", prefab(assetDatabaseGuidA));
+    project.write("dir/sub/b.prefab", prefab(assetDatabaseGuidB));
     project.write("keep.prefab", prefab(""));
     open();
-    const std::vector<Change> changes = database.removeAssets(project.path() / "dir");
-    EXPECT_EQ(count(changes, Change::Type::Removed), 2u);
-    EXPECT_FALSE(database.contains(guidA));
-    EXPECT_FALSE(database.contains(guidB));
+    const std::vector<AssetDatabaseChange> changes = database.removeAssets(project.path() / "dir");
+    EXPECT_EQ(count(changes, AssetDatabaseChange::Type::Removed), 2u);
+    EXPECT_FALSE(database.contains(assetDatabaseGuidA));
+    EXPECT_FALSE(database.contains(assetDatabaseGuidB));
     EXPECT_FALSE(database.getGuid("keep.prefab").empty());
 }
 
 TEST_F(AssetDatabaseTest, ImportAssetsAddsNewFiles){
     open();
-    project.write("imported/a.prefab", prefab(guidA));
-    const std::vector<Change> changes = database.importAssets(project.path() / "imported");
+    project.write("imported/a.prefab", prefab(assetDatabaseGuidA));
+    const std::vector<AssetDatabaseChange> changes = database.importAssets(project.path() / "imported");
     ASSERT_EQ(changes.size(), 1u);
-    EXPECT_EQ(changes[0].type, Change::Type::Added);
-    EXPECT_EQ(database.getGuid("imported/a.prefab"), guidA);
+    EXPECT_EQ(changes[0].type, AssetDatabaseChange::Type::Added);
+    EXPECT_EQ(database.getGuid("imported/a.prefab"), assetDatabaseGuidA);
 }
 
 TEST_F(AssetDatabaseTest, ImportingAFileBackKeepsItsGuid){
-    project.write("a.prefab", prefab(guidA));
+    project.write("a.prefab", prefab(assetDatabaseGuidA));
     open();
     const std::string text = project.read("a.prefab");
     std::filesystem::remove(project.file("a.prefab"));
     database.removeAssets(project.path() / "a.prefab");
     project.write("a.prefab", text);
     database.importAssets(project.path() / "a.prefab");
-    EXPECT_EQ(database.getGuid("a.prefab"), guidA);
+    EXPECT_EQ(database.getGuid("a.prefab"), assetDatabaseGuidA);
 }
 
 TEST_F(AssetDatabaseTest, ImportingACopyGivesItANewGuidAndRedoRepeatsIt){
-    project.write("a.prefab", prefab(guidA));
+    project.write("a.prefab", prefab(assetDatabaseGuidA));
     open();
     std::filesystem::copy_file(project.file("a.prefab"), project.file("b.prefab"));
     std::map<std::string, std::string> copyGuids;
-    const std::vector<Change> first = database.importAssets(project.path() / "b.prefab", true, &copyGuids);
+    const std::vector<AssetDatabaseChange> first = database.importAssets(project.path() / "b.prefab", true, &copyGuids);
     ASSERT_EQ(first.size(), 1u);
     const std::string copyGuid = database.getGuid("b.prefab");
-    EXPECT_NE(copyGuid, guidA);
+    EXPECT_NE(copyGuid, assetDatabaseGuidA);
     EXPECT_EQ(copyGuids["b.prefab"], copyGuid);
 
     // undo (the copy deleted), then redo: the same GUID again
@@ -530,21 +530,21 @@ TEST_F(AssetDatabaseTest, ImportingACopyGivesItANewGuidAndRedoRepeatsIt){
 }
 
 TEST_F(AssetDatabaseTest, ImportingAFileWhoseTwinIsGoneTreatsItAsMoved){
-    project.write("a.prefab", prefab(guidA));
+    project.write("a.prefab", prefab(assetDatabaseGuidA));
     open();
     std::filesystem::rename(project.file("a.prefab"), project.file("b.prefab"));
-    const std::vector<Change> changes = database.importAssets(project.path() / "b.prefab");
+    const std::vector<AssetDatabaseChange> changes = database.importAssets(project.path() / "b.prefab");
     ASSERT_EQ(changes.size(), 1u);
-    EXPECT_EQ(changes[0].type, Change::Type::Moved);
+    EXPECT_EQ(changes[0].type, AssetDatabaseChange::Type::Moved);
     EXPECT_EQ(changes[0].oldPath, std::filesystem::path("a.prefab"));
 }
 
 TEST_F(AssetDatabaseTest, RegisterAssetTakesTheGuidOverFromItsOldPath){
-    project.write("a.prefab", prefab(guidA));
+    project.write("a.prefab", prefab(assetDatabaseGuidA));
     open();
-    project.write("saved.prefab", prefab(guidA));
-    database.registerAsset(project.path() / "saved.prefab", guidA);
-    EXPECT_EQ(database.getPath(guidA), std::filesystem::path("saved.prefab"));
+    project.write("saved.prefab", prefab(assetDatabaseGuidA));
+    database.registerAsset(project.path() / "saved.prefab", assetDatabaseGuidA);
+    EXPECT_EQ(database.getPath(assetDatabaseGuidA), std::filesystem::path("saved.prefab"));
     EXPECT_EQ(database.getGuid("a.prefab"), "");
 }
 

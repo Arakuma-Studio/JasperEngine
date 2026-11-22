@@ -29,7 +29,7 @@ using namespace jasperengine;
 
 namespace {
 
-    const char* callbackTag = "core-tests-gamepad-linux";
+    const char* gamepadCallbackTag = "core-tests-gamepad-linux";
 
     class GamepadLinuxTest : public ::testing::Test {
     protected:
@@ -44,17 +44,17 @@ namespace {
             writer = open((dir / "dev/js0").c_str(), O_RDWR | O_NONBLOCK);
             ASSERT_GE(writer, 0);
             writeIds("045e");
-            Engine::onGamepadConnect.add(callbackTag, [this](int id) { events.push_back("connect " + std::to_string(id)); });
-            Engine::onGamepadDisconnect.add(callbackTag, [this](int id) { events.push_back("disconnect " + std::to_string(id)); });
-            Engine::onGamepadButtonDown.add(callbackTag, [this](int, int button) { events.push_back("down " + std::to_string(button)); });
-            Engine::onGamepadButtonUp.add(callbackTag, [this](int, int button) { events.push_back("up " + std::to_string(button)); });
+            Engine::onGamepadConnect.add(gamepadCallbackTag, [this](int id) { events.push_back("connect " + std::to_string(id)); });
+            Engine::onGamepadDisconnect.add(gamepadCallbackTag, [this](int id) { events.push_back("disconnect " + std::to_string(id)); });
+            Engine::onGamepadButtonDown.add(gamepadCallbackTag, [this](int, int button) { events.push_back("down " + std::to_string(button)); });
+            Engine::onGamepadButtonUp.add(gamepadCallbackTag, [this](int, int button) { events.push_back("up " + std::to_string(button)); });
         }
 
         void TearDown() override {
-            Engine::onGamepadConnect.remove(callbackTag);
-            Engine::onGamepadDisconnect.remove(callbackTag);
-            Engine::onGamepadButtonDown.remove(callbackTag);
-            Engine::onGamepadButtonUp.remove(callbackTag);
+            Engine::onGamepadConnect.remove(gamepadCallbackTag);
+            Engine::onGamepadDisconnect.remove(gamepadCallbackTag);
+            Engine::onGamepadButtonDown.remove(gamepadCallbackTag);
+            Engine::onGamepadButtonUp.remove(gamepadCallbackTag);
             if (writer >= 0) close(writer);
         }
 

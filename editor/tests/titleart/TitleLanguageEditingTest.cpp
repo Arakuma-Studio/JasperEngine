@@ -20,7 +20,7 @@ using titleart::Json;
 
 namespace {
 
-    titleart::TitleArtDoc sample() {
+    titleart::TitleArtDoc titleLanguageEditingSample() {
         registerTitleLanguageOps();
         Json root = Json{{"format", titleart::TITLE_ART_FORMAT}, {"version", 1}};
         root["layers"] = Json::array({Json{{"id", "0000000a"}, {"type", "text"}, {"name", "Title"}, {"text", "WIN"}, {"size", 100},
@@ -32,7 +32,7 @@ namespace {
 }
 
 TEST(TitleLanguageEditing, OverridablesGoToTheTranslation) {
-    const titleart::TitleArtDoc doc = sample();
+    const titleart::TitleArtDoc doc = titleLanguageEditingSample();
     const Json routed = routeTitleLanguageOps(doc, "de", Json::array({Json{{"op", "set"}, {"layer", "Title"},
         {"values", Json{{"text", "GEWINN"}, {"size", 80}, {"transform.position", Json::array({15, 20})}, {"face.fill.color", "#ff0000"}}}}}));
     ASSERT_EQ(routed.size(), 2u);
@@ -61,7 +61,7 @@ TEST(TitleLanguageEditing, OverridablesGoToTheTranslation) {
 }
 
 TEST(TitleLanguageEditing, ApplyToSource) {
-    titleart::TitleArtDoc doc = sample();
+    titleart::TitleArtDoc doc = titleLanguageEditingSample();
     doc = TitleArtOps::apply(doc, Json{{"op", "set_translation"}, {"layer", "Title"}, {"language", "de"}, {"text", "GEWINN"},
                                        {"values", Json{{"size_scale", 0.5}}}}).doc;
     EXPECT_EQ(titleLayerOverrides(*titleart::findLayer(doc.root, "0000000a"), "de"), std::vector<std::string>({"size_scale"}));

@@ -15,7 +15,7 @@ namespace {
         return Base64::encode(reinterpret_cast<const unsigned char*>(text.data()), text.size());
     }
 
-    std::string decode(const std::string& encoded){
+    std::string base64Decode(const std::string& encoded){
         const std::vector<unsigned char> bytes = Base64::decode(encoded);
         return std::string(bytes.begin(), bytes.end());
     }
@@ -32,10 +32,10 @@ TEST(Base64, EncodesTheRfc4648Vectors){
 }
 
 TEST(Base64, DecodesTheRfc4648Vectors){
-    EXPECT_EQ(decode("Zg=="), "f");
-    EXPECT_EQ(decode("Zm8="), "fo");
-    EXPECT_EQ(decode("Zm9vYmFy"), "foobar");
-    EXPECT_EQ(decode(""), "");
+    EXPECT_EQ(base64Decode("Zg=="), "f");
+    EXPECT_EQ(base64Decode("Zm8="), "fo");
+    EXPECT_EQ(base64Decode("Zm9vYmFy"), "foobar");
+    EXPECT_EQ(base64Decode(""), "");
 }
 
 TEST(Base64, RoundTripsEveryByteValue){
@@ -52,5 +52,5 @@ TEST(Base64, UsesThePlusAndSlashAlphabet){
 }
 
 TEST(Base64, DecodingStopsAtTheFirstNonAlphabetCharacter){
-    EXPECT_EQ(decode("Zm9v!YmFy"), "foo");
+    EXPECT_EQ(base64Decode("Zm9v!YmFy"), "foo");
 }

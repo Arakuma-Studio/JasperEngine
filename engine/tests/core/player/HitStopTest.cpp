@@ -22,7 +22,7 @@ using namespace jasperengine;
 
 namespace {
 
-    constexpr double kDt = 1.0 / 60.0;
+    constexpr double kHitStopDt = 1.0 / 60.0;
 
     class HitStop : public ::testing::Test {
     protected:
@@ -30,7 +30,7 @@ namespace {
         void TearDown() override { pixelart::HitStop::reset(); }
 
         // one engine frame of `dt` unscaled seconds at time scale 1: the world's factor
-        double frame(double dt = kDt){ return pixelart::HitStop::beginFrame(dt, dt); }
+        double frame(double dt = kHitStopDt){ return pixelart::HitStop::beginFrame(dt, dt); }
 
         Entity node(Entity parent = NULL_ENTITY){
             Entity entity = scene.createEntity();
@@ -51,7 +51,7 @@ TEST_F(HitStop, IdleIsOneAndFree){
     EXPECT_FALSE(pixelart::HitStop::isFrameActive());
     EXPECT_EQ(pixelart::HitStop::getFactor(), 1.0f);
     const Entity e = node();
-    EXPECT_EQ(pixelart::HitStop::deltaFor(&scene, e, kDt), kDt);
+    EXPECT_EQ(pixelart::HitStop::deltaFor(&scene, e, kHitStopDt), kHitStopDt);
 }
 
 TEST_F(HitStop, FreezesForItsUnscaledSecondsThenResumes){
@@ -94,7 +94,7 @@ TEST_F(HitStop, OverlapsKeepTheLongerTimeAndTheLowerScale){
     pixelart::HitStop::Options frozen;
     frozen.timeScale = 0.0f;
     pixelart::HitStop::play(0.05f, frozen);
-    EXPECT_NEAR(pixelart::HitStop::getRemaining(), 0.2 - kDt, 1e-6) << "the longer remaining time";
+    EXPECT_NEAR(pixelart::HitStop::getRemaining(), 0.2 - kHitStopDt, 1e-6) << "the longer remaining time";
     EXPECT_EQ(frame(), 0.0) << "the lower scale";
     pixelart::HitStop::play(0.5f, slow);
     EXPECT_FLOAT_EQ(pixelart::HitStop::getRemaining(), 0.5f);
@@ -115,10 +115,10 @@ TEST_F(HitStop, ExemptGameObjectsAndTheirChildrenRun){
     EXPECT_TRUE(pixelart::HitStop::isExempt(&scene, sword)) << "includeChildren";
     EXPECT_FALSE(pixelart::HitStop::isExempt(&scene, enemy));
     // the systems' per-entity delta: the world's (frozen) one becomes the unfrozen one
-    EXPECT_NEAR(pixelart::HitStop::deltaFor(&scene, hero, 0.0), kDt, 1e-12);
-    EXPECT_NEAR(pixelart::HitStop::deltaFor(&scene, sword, 0.0), kDt, 1e-12);
+    EXPECT_NEAR(pixelart::HitStop::deltaFor(&scene, hero, 0.0), kHitStopDt, 1e-12);
+    EXPECT_NEAR(pixelart::HitStop::deltaFor(&scene, sword, 0.0), kHitStopDt, 1e-12);
     EXPECT_EQ(pixelart::HitStop::deltaFor(&scene, enemy, 0.0), 0.0);
-    EXPECT_NEAR(pixelart::HitStop::getUnfrozenDeltaTime(), kDt, 1e-12);
+    EXPECT_NEAR(pixelart::HitStop::getUnfrozenDeltaTime(), kHitStopDt, 1e-12);
 
     // includeChildren off: the child freezes with the world (resolved again next frame)
     scene.getComponent<HitStopExemptComponent>(hero).includeChildren = false;
@@ -158,13 +158,13 @@ TEST_F(HitStop, OnlyFreezesTheListedAndTheWorldRuns){
     pixelart::HitStop::play(0.1f, options);
     EXPECT_EQ(frame(), 1.0) << "the world's delta is not scaled";
     EXPECT_EQ(pixelart::HitStop::getWorldFactor(), 1.0);
-    EXPECT_EQ(pixelart::HitStop::deltaFor(&scene, fighter, kDt), 0.0);
-    EXPECT_EQ(pixelart::HitStop::deltaFor(&scene, fist, kDt), 0.0) << "and its descendants";
-    EXPECT_EQ(pixelart::HitStop::deltaFor(&scene, bystander, kDt), kDt);
+    EXPECT_EQ(pixelart::HitStop::deltaFor(&scene, fighter, kHitStopDt), 0.0);
+    EXPECT_EQ(pixelart::HitStop::deltaFor(&scene, fist, kHitStopDt), 0.0) << "and its descendants";
+    EXPECT_EQ(pixelart::HitStop::deltaFor(&scene, bystander, kHitStopDt), kHitStopDt);
     // an exempt GameObject inside an only target still runs
     scene.addComponent<HitStopExemptComponent>(fist, {});
     frame();
-    EXPECT_EQ(pixelart::HitStop::deltaFor(&scene, fist, kDt), kDt);
+    EXPECT_EQ(pixelart::HitStop::deltaFor(&scene, fist, kHitStopDt), kHitStopDt);
 }
 
 TEST_F(HitStop, ScriptsOfExemptGameObjectsReadTheUnfrozenDelta){
@@ -176,12 +176,12 @@ TEST_F(HitStop, ScriptsOfExemptGameObjectsReadTheUnfrozenDelta){
     // (Engine::getDeltatime() is the world's frozen 0 here)
     {
         pixelart::HitStop::ScriptScope scope(&scene, hero);
-        EXPECT_NEAR(pixelart::HitStop::getScriptDeltaTime(), kDt, 1e-12);
+        EXPECT_NEAR(pixelart::HitStop::getScriptDeltaTime(), kHitStopDt, 1e-12);
         {
             pixelart::HitStop::ScriptScope inner(&scene, enemy);
             EXPECT_EQ(pixelart::HitStop::getScriptDeltaTime(), (double)Engine::getDeltatime());
         }
-        EXPECT_NEAR(pixelart::HitStop::getScriptDeltaTime(), kDt, 1e-12) << "the scope nests";
+        EXPECT_NEAR(pixelart::HitStop::getScriptDeltaTime(), kHitStopDt, 1e-12) << "the scope nests";
     }
     EXPECT_EQ(pixelart::HitStop::getScriptDeltaTime(), (double)Engine::getDeltatime()) << "outside any script";
 }

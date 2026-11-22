@@ -36,8 +36,8 @@ using namespace jasperengine::pixelart;
 
 namespace {
 
-    constexpr int kTexels = 16;
-    constexpr int kScale = 4;
+    constexpr int kPaletteSwapTexels = 16;
+    constexpr int kPaletteSwapScale = 4;
     constexpr const char* kSourcePath = "tests/gpu-swap-source.palette";
     constexpr const char* kTargetPath = "tests/gpu-swap-target.palette";
 
@@ -60,12 +60,12 @@ namespace {
         return palette;
     }
 
-    std::vector<uint8_t> texturePixels() {
+    std::vector<uint8_t> paletteSwapTexturePixels() {
         const Palette palette = sourcePalette();
         const Rgba8 offPalette[2] = {{177, 62, 84}, {12, 200, 220}};
         std::vector<uint8_t> pixels;
-        for (int y = 0; y < kTexels; y++) {
-            for (int x = 0; x < kTexels; x++) {
+        for (int y = 0; y < kPaletteSwapTexels; y++) {
+            for (int x = 0; x < kPaletteSwapTexels; x++) {
                 const int pick = (x + y * 3) % 10;
                 // index 0 is the transparent slot: draw its RGB opaque, it must not swap
                 Rgba8 color = pick < 8 ? palette.colors[pick] : offPalette[pick - 8];
@@ -80,7 +80,7 @@ namespace {
     protected:
         Scene scene;
         Camera camera{&scene};
-        std::vector<uint8_t> pixels = texturePixels();
+        std::vector<uint8_t> pixels = paletteSwapTexturePixels();
 
         void SetUp() override{
             JASPER_REQUIRE_GPU();
@@ -103,12 +103,12 @@ namespace {
 
         // a 64 x 64 sprite at the centre (4 pixels a texel), Nearest
         Sprite& addSprite(Sprite& sprite){
-            sprite.setSize(kTexels * kScale, kTexels * kScale);
+            sprite.setSize(kPaletteSwapTexels * kPaletteSwapScale, kPaletteSwapTexels * kPaletteSwapScale);
             sprite.setPivotPreset(PivotPreset::CENTER);
             sprite.setPosition(0.0f, 0.0f, 0.0f);
             Submesh& submesh = sprite.getComponent<MeshComponent>().submeshes[0];
             submesh.material.baseColorTexture.setData("palette-swap-gpu|texture",
-                TextureData(kTexels, kTexels, (unsigned int)pixels.size(), ColorFormat::RGBA, 4, pixels.data()));
+                TextureData(kPaletteSwapTexels, kPaletteSwapTexels, (unsigned int)pixels.size(), ColorFormat::RGBA, 4, pixels.data()));
             submesh.material.baseColorTexture.setMinFilter(TextureFilter::NEAREST);
             submesh.material.baseColorTexture.setMagFilter(TextureFilter::NEAREST);
             submesh.needUpdateTexture = true;
@@ -160,11 +160,11 @@ namespace {
             std::vector<uint8_t> rgba;
             EXPECT_TRUE(readTexture(target.getRender().getColorTexture(), width, height, rgba));
             std::vector<Rgba8> texels;
-            const int left = width / 2 - kTexels * kScale / 2, top = height / 2 - kTexels * kScale / 2;
-            for (int y = 0; y < kTexels; y++){
-                for (int x = 0; x < kTexels; x++){
+            const int left = width / 2 - kPaletteSwapTexels * kPaletteSwapScale / 2, top = height / 2 - kPaletteSwapTexels * kPaletteSwapScale / 2;
+            for (int y = 0; y < kPaletteSwapTexels; y++){
+                for (int x = 0; x < kPaletteSwapTexels; x++){
                     // the texture's first row is the sprite's top
-                    const int px = left + x * kScale + kScale / 2, py = top + y * kScale + kScale / 2;
+                    const int px = left + x * kPaletteSwapScale + kPaletteSwapScale / 2, py = top + y * kPaletteSwapScale + kPaletteSwapScale / 2;
                     const uint8_t* p = &rgba[(size_t(py) * width + px) * 4];
                     texels.push_back(Rgba8{p[0], p[1], p[2], 255});
                 }
@@ -199,7 +199,7 @@ namespace {
                 if (actual[i] == wanted[i])
                     continue;
                 if (differing++ == 0){
-                    first = "texel (" + std::to_string(i % kTexels) + ", " + std::to_string(i / kTexels) + ") is " + toHex(actual[i]) +
+                    first = "texel (" + std::to_string(i % kPaletteSwapTexels) + ", " + std::to_string(i / kPaletteSwapTexels) + ") is " + toHex(actual[i]) +
                             ", expected " + toHex(wanted[i]);
                 }
             }
@@ -481,7 +481,7 @@ TEST_F(PaletteSwapGpu, Batched){
     for (int i = 0; i < 64; i++){
         sprites.push_back(std::make_unique<Sprite>(&scene));
         Sprite& sprite = addSprite(*sprites.back());
-        sprite.setSize(kTexels * 2, kTexels * 2);
+        sprite.setSize(kPaletteSwapTexels * 2, kPaletteSwapTexels * 2);
         sprite.setPosition(24.0f + float(i % 16) * 38.0f, 40.0f + float(i / 16) * 70.0f, 0.0f);
         usePalette(sprite, {"PALETTE_SWAP"}, float(i % 4));
     }

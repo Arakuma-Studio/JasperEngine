@@ -33,8 +33,11 @@ namespace{
     // one row per member: name, snake name, type, accessor, range, help
     #define PP_FIELD(member, snake, type, minV, maxV, help) \
         F{#member, snake, type, [](PostProcessingSettings& s) -> void* { return &s.member; }, nullptr, nullptr, nullptr, minV, maxV, help}
+    // (an Enum is read and written as an int: the cook codec, the scene codec, equality)
     #define PP_ENUM(member, snake, names, cppType, values, help) \
-        F{#member, snake, T::Enum, [](PostProcessingSettings& s) -> void* { return &s.member; }, names, cppType, values, 0.0f, 0.0f, help}
+        F{#member, snake, T::Enum, [](PostProcessingSettings& s) -> void* { \
+            static_assert(sizeof(s.member) == sizeof(int), #member " is read and written as an int"); return &s.member; }, \
+          names, cppType, values, 0.0f, 0.0f, help}
 }
 
 const std::vector<PostProcessingSettings::Field>& PostProcessingSettings::getFields(){
