@@ -291,12 +291,16 @@ std::string TitleDesignerWindow::pickLayer(ImVec2 screen, bool drill) {
                     TitleRenderedImage image;
                     std::string error;
                     std::vector<uint8_t> alpha;
+                    const uint64_t waits = TitleArtRenderHost::editor().notReadyCount();
                     if (TitleArtRenderHost::editor().render(project, request, image, error)) {
                         alpha.resize((size_t)image.image.width * image.image.height);
                         for (int y = 0; y < image.image.height; y++) {
                             for (int x = 0; x < image.image.width; x++) alpha[(size_t)y * image.image.width + x] = image.image.pixel(x, y)[3];
                         }
                         pickFrames[id] = {image.frame.x, image.frame.y, image.image.width, image.image.height};
+                    } else if (TitleArtRenderHost::editor().notReadyCount() != waits) {
+                        // its program is still being built: not under the cursor this time, asked again on the next click
+                        continue;
                     }
                     pickCache[id] = {key, alpha};
                     cached = pickCache.find(id);

@@ -47,9 +47,9 @@ namespace {
 
 namespace {
 
-    constexpr float PI = 3.14159265358979323846f;
+    constexpr float TEXT_EFFECT_PI = 3.14159265358979323846f;
 
-    TextEffectLayer layerOf(TextEffectType type){
+    TextEffectLayer textEffectLayerOf(TextEffectType type){
         TextEffectLayer layer;
         TextEffects::setType(layer, type);   // (the type's default amplitude)
         return layer;
@@ -112,7 +112,7 @@ namespace {
 // ---- the formulas -----------------------------------------------------------------------------
 
 TEST(TextEffectFormulas, WaveAtZeroAndAQuarterPeriod){
-    TextEffectLayer wave = layerOf(TextEffectType::Wave);
+    TextEffectLayer wave = textEffectLayerOf(TextEffectType::Wave);
     wave.amplitude = 0.2f;
     wave.duration = 2.0f;
     wave.phaseStep = 0.3f;
@@ -122,7 +122,7 @@ TEST(TextEffectFormulas, WaveAtZeroAndAQuarterPeriod){
             for (Vector2& c : glyph.corners) c = Vector2(10.0f, 10.0f);
             TextEffects::applyLayer(wave, i, 5, t, 30.0f, false, glyph);
             // y down: + A em cos(2 pi t/T - 0.3 i)
-            const float expected = 0.2f * 30.0f * std::cos(2.0f * PI * t / 2.0f - 0.3f * (float)i);
+            const float expected = 0.2f * 30.0f * std::cos(2.0f * TEXT_EFFECT_PI * t / 2.0f - 0.3f * (float)i);
             EXPECT_NEAR(glyph.corners[0].y - 10.0f, expected, 1e-4f);
             EXPECT_NEAR(glyph.corners[2].x, 10.0f, 1e-5f);
         }
@@ -151,7 +151,7 @@ TEST(TextEffectFormulas, GrowFromTheBottomAndUnfoldFromTheMiddle){
         g.corners[0] = Vector2(0, 0); g.corners[1] = Vector2(10, 0); g.corners[2] = Vector2(10, 20); g.corners[3] = Vector2(0, 20);
         return g;
     };
-    TextEffectLayer grow = layerOf(TextEffectType::Grow);
+    TextEffectLayer grow = textEffectLayerOf(TextEffectType::Grow);
     grow.duration = 1.0f;
     grow.spread = 1.0f;   // all at once: q = p
     TextEffectGlyphState g = box();
@@ -159,7 +159,7 @@ TEST(TextEffectFormulas, GrowFromTheBottomAndUnfoldFromTheMiddle){
     EXPECT_NEAR(g.corners[0].y, 15.0f, 1e-4f);   // the top a quarter up from the bottom
     EXPECT_NEAR(g.corners[3].y, 20.0f, 1e-4f);
 
-    TextEffectLayer unfold = layerOf(TextEffectType::Unfold);
+    TextEffectLayer unfold = textEffectLayerOf(TextEffectType::Unfold);
     unfold.duration = 1.0f;
     unfold.spread = 1.0f;
     g = box();
@@ -174,7 +174,7 @@ TEST(TextEffectFormulas, GrowFromTheBottomAndUnfoldFromTheMiddle){
 }
 
 TEST(TextEffectFormulas, ColoursCompose){
-    TextEffectLayer gradient = layerOf(TextEffectType::Gradient);
+    TextEffectLayer gradient = textEffectLayerOf(TextEffectType::Gradient);
     gradient.spread = 1.0f;
     gradient.duration = 1.0f;
     gradient.mix = TextEffectMix::Add;
@@ -217,7 +217,7 @@ TEST(TextEffectComponentTest, WaveMovesTheGlyphsAndStopRestoresThem){
     // the effect: a colour attribute, the glyphs from the same base
     t.scene.addComponent<TextEffectComponent>(t.entity, TextEffectComponent());
     TextEffectComponent& effect = t.effect();
-    effect.layers[0] = layerOf(TextEffectType::Wave);
+    effect.layers[0] = textEffectLayerOf(TextEffectType::Wave);
     effect.layers[0].amplitude = 0.2f;
     effect.layers[0].duration = 2.0f;
     effect.useUnscaledTime = false;
@@ -236,7 +236,7 @@ TEST(TextEffectComponentTest, WaveMovesTheGlyphsAndStopRestoresThem){
     // half a period later: cos(pi - 0.3 i)
     t.update(1.0);
     moved = t.positions();
-    EXPECT_NEAR(moved[0].y - plain[0].y, 0.2f * 20.0f * std::cos(PI), 1e-3f);
+    EXPECT_NEAR(moved[0].y - plain[0].y, 0.2f * 20.0f * std::cos(TEXT_EFFECT_PI), 1e-3f);
 
     // stop: the plain text again
     TextEffect(&t.scene, t.entity).stop();
@@ -249,7 +249,7 @@ TEST(TextEffectComponentTest, WaveMovesTheGlyphsAndStopRestoresThem){
 TEST(TextEffectComponentTest, TypewriterRevealsAndCompletes){
     TextScene t("Hi there");
     TextEffectComponent& effect = t.effect();
-    effect.layers[0] = layerOf(TextEffectType::Typewriter);
+    effect.layers[0] = textEffectLayerOf(TextEffectType::Typewriter);
     effect.layers[0].charactersPerSecond = 10.0f;
     effect.loop = false;
     effect.useUnscaledTime = false;
@@ -289,7 +289,7 @@ TEST(TextEffectComponentTest, TypewriterRevealsAndCompletes){
 TEST(TextEffectComponentTest, RangeAndWordsSelectTheCharacters){
     TextScene t("one two three");
     TextEffectComponent& effect = t.effect();
-    effect.layers[0] = layerOf(TextEffectType::Wave);
+    effect.layers[0] = textEffectLayerOf(TextEffectType::Wave);
     effect.layers[0].amplitude = 0.5f;
     effect.layers[0].phaseStep = 0.0f;
     effect.useUnscaledTime = false;
@@ -323,7 +323,7 @@ TEST(TextEffectComponentTest, RangeAndWordsSelectTheCharacters){
 TEST(TextEffectComponentTest, LoopRestartsAndTimeScales){
     TextScene t("Loop");
     TextEffectComponent& effect = t.effect();
-    effect.layers[0] = layerOf(TextEffectType::FadeIn);
+    effect.layers[0] = textEffectLayerOf(TextEffectType::FadeIn);
     effect.layers[0].duration = 0.5f;
     effect.loop = true;
     effect.useUnscaledTime = true;
@@ -358,10 +358,10 @@ TEST(TextEffectComponentTest, LoopRestartsAndTimeScales){
 TEST(TextEffectComponentTest, LayersComposeAndEditModeHolds){
     TextScene t("AB");
     TextEffectComponent& effect = t.effect();
-    effect.layers[0] = layerOf(TextEffectType::Gradient);
+    effect.layers[0] = textEffectLayerOf(TextEffectType::Gradient);
     effect.layers[0].mix = TextEffectMix::Replace;
     effect.layers[0].gradient = {{Vector4(1.0f, 0.0f, 0.0f, 1.0f), 0.0f}};
-    effect.layers[1] = layerOf(TextEffectType::FadeIn);
+    effect.layers[1] = textEffectLayerOf(TextEffectType::FadeIn);
     effect.layers[1].duration = 1.0f;
     effect.layers[1].spread = 1.0f;
     effect.useUnscaledTime = false;
@@ -530,7 +530,7 @@ TEST(TextEffectFormulas, GrowAndUnfoldHonourAmplitude){
         g.corners[0] = Vector2(0, 0); g.corners[1] = Vector2(10, 0); g.corners[2] = Vector2(10, 20); g.corners[3] = Vector2(0, 20);
         return g;
     };
-    TextEffectLayer grow = layerOf(TextEffectType::Grow);
+    TextEffectLayer grow = textEffectLayerOf(TextEffectType::Grow);
     EXPECT_FLOAT_EQ(grow.amplitude, 1.0f);
     grow.duration = 1.0f;
     grow.spread = 1.0f;
@@ -545,7 +545,7 @@ TEST(TextEffectFormulas, GrowAndUnfoldHonourAmplitude){
     TextEffects::applyLayer(grow, 0, 1, 0.0f, 20.0f, false, g);
     EXPECT_NEAR(g.corners[0].y, 40.0f, 1e-4f);
 
-    TextEffectLayer unfold = layerOf(TextEffectType::Unfold);
+    TextEffectLayer unfold = textEffectLayerOf(TextEffectType::Unfold);
     unfold.duration = 1.0f;
     unfold.spread = 1.0f;
     unfold.amplitude = 0.5f;
@@ -586,7 +586,7 @@ TEST(TextEffectComponentTest, TypeChangeMovesADefaultAmplitude){
 TEST(TextEffectComponentTest, ReducedMotionCompletesMotionOnlyEffects){
     TextScene t("Hi there");
     TextEffectComponent& effect = t.effect();
-    effect.layers[0] = layerOf(TextEffectType::Grow);
+    effect.layers[0] = textEffectLayerOf(TextEffectType::Grow);
     effect.loop = true;
     effect.useUnscaledTime = false;
     int completed = 0;
@@ -624,14 +624,14 @@ TEST(TextEffectStreamTest, NonDefaultFieldsRoundTrip){
     EXPECT_EQ(back.visibleCharacters, 7);
 
     TextEffectComponent effect;
-    effect.layers[0] = layerOf(TextEffectType::Wave);
+    effect.layers[0] = textEffectLayerOf(TextEffectType::Wave);
     effect.layers[0].amplitude = 0.3f;
     effect.layers[0].phaseStep = 0.5f;
-    effect.layers[2] = layerOf(TextEffectType::Gradient);
+    effect.layers[2] = textEffectLayerOf(TextEffectType::Gradient);
     effect.layers[2].mix = TextEffectMix::Add;
     effect.layers[2].gradient = {TextEffectGradientStop{Vector4(1.0f, 1.0f, 0.0f, 1.0f), 0.0f},
                                  TextEffectGradientStop{Vector4(1.0f, 0.5f, 0.0f, 0.8f), 1.0f}};
-    effect.layers[3] = layerOf(TextEffectType::Grow);   // amplitude 1: the type's default, not written
+    effect.layers[3] = textEffectLayerOf(TextEffectType::Grow);   // amplitude 1: the type's default, not written
     effect.loop = false;
     effect.useUnscaledTime = false;
     effect.startIndex = 2;

@@ -17,12 +17,12 @@ using namespace jasperengine::player;
 
 namespace {
 
-    std::variant<LaunchOptions, ParseError> run(std::vector<std::string> args, ParseMode mode = ParseMode::Strict) {
+    std::variant<LaunchOptions, ParseError> launchOptionsRun(std::vector<std::string> args, ParseMode mode = ParseMode::Strict) {
         return parse(args, mode);
     }
 
     LaunchOptions ok(std::vector<std::string> args, ParseMode mode = ParseMode::Strict) {
-        auto result = run(std::move(args), mode);
+        auto result = launchOptionsRun(std::move(args), mode);
         if (auto* error = std::get_if<ParseError>(&result)) {
             ADD_FAILURE() << error->message;
             return LaunchOptions();
@@ -31,7 +31,7 @@ namespace {
     }
 
     std::string refused(std::vector<std::string> args, ParseMode mode = ParseMode::Strict) {
-        auto result = run(std::move(args), mode);
+        auto result = launchOptionsRun(std::move(args), mode);
         if (auto* error = std::get_if<ParseError>(&result)) return error->message;
         ADD_FAILURE() << "accepted";
         return "";

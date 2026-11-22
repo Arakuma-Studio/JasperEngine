@@ -2583,6 +2583,42 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "bad_build_check_on_the_host_not_the_targets",
+        "kind": "bad",
+        "what_happened": "In a game that ships on Android and iOS only, an agent proved a change by building for Linux, the "
+                         "machine it ran on: no setting, description or result said where the game ships, and build_project "
+                         "with no mode built this computer's player.",
+        "text_at_issue": "build_project mode (default desktop) 'desktop/web: this computer/web'; get_build_info without "
+                         "target_platforms/default_platform; the game AGENTS.md without a Target platforms section",
+        "source": "docs/superpowers/specs/2026-11-12-target-platforms-design.md 1, 5.5",
+        "files": GAME_FILES,
+        "prompt": "I raised the player's speed in scripts/player.lua. Make sure the game still builds after this change.",
+        "mocks": [
+            # recorded with player.target_platforms = [android, ios] (dump_surface.py RECORD_WORLD)
+            {"tool": "get_build_info", "result": {"recorded": "build_info_mobile"}},
+            {"tool": "get_project_settings", "args": {"keys": ["player.target_platforms"]}, "result": {"recorded": "targets_mobile_get"}},
+            {"tool": "get_project_settings", "result": {"recorded": "project_settings_mobile"}},
+            {"tool": "build_project", "args": {"platform": "re:^(android|ios)$"}, "result": ok(
+                "Build android (Release): succeeded - Built android (prebuilt player android-universal-gles3-release) in "
+                "/work/space-dodge-android.",
+                {"job_id": "job-3", "status": "succeeded", "result": {
+                    "mode": "player", "platform": "android", "method_used": "prebuilt", "output_dir": "/work/space-dodge-android",
+                    "artifacts": ["SpaceDodge.aab"], "errors": [], "warnings": [], "error_count": 0, "warning_count": 0}})},
+            {"tool": "build_project", "result": ok(
+                "Build Desktop player (Release): succeeded - Built the Desktop player /work/space-dodge-desktop/SpaceDodge. "
+                "Try it with run_build.",
+                {"job_id": "job-3", "status": "succeeded", "result": {
+                    "mode": "desktop", "output_dir": "/work/space-dodge-desktop", "executable": "/work/space-dodge-desktop/SpaceDodge",
+                    "errors": [], "warnings": [], "error_count": 0, "warning_count": 0}})},
+        ],
+        "shell": [{"match": r"jasperengine-editor\s+check", "output": "No problems found.\n"},
+                  {"match": r"git (diff|status|log)", "output": ""}],
+        "checks": {"calls": [{"tool": "build_project", "args": {"platform": "re:^(android|ios)$"}}],
+                   "must_not_call": [{"tool": "build_project", "args": {"mode": "re:^(desktop|web)$"}},
+                                     {"tool": "build_project", "args": {"platform": "re:^(windows|linux|macos|web)$"}}]},
+        "max_turns": 14,
+    },
+    {
         "id": "guard_build_output_inside_project",
         "kind": "guard",
         "what_happened": "An export into a folder inside the project is refused by every front end (the editor would import "

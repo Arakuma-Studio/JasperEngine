@@ -32,7 +32,7 @@ using namespace jasperengine::physics3dtest;
 namespace {
 
     float speedAfterDamping(float v0, float damping, int steps) {
-        return v0 * std::pow(1.0f - damping * STEP, (float)steps);
+        return v0 * std::pow(1.0f - damping * physics3dtest::STEP, (float)steps);
     }
 
     Vector3 up(const Quaternion& rotation) {
@@ -391,8 +391,8 @@ TEST(Physics3DBody, InterpolationIsPerBody) {
     world.resolve();
     const float stepX = world.rb(none).getPosition().x;
     EXPECT_NEAR(world.transform(none).position.x, stepX, 1e-5f) << "NONE draws the step pose";
-    EXPECT_NEAR(world.transform(interpolated).position.x, stepX - 6.0f * STEP * 0.5f, 1e-4f) << "half way from the previous step";
-    EXPECT_NEAR(world.transform(extrapolated).position.x, stepX + 6.0f * STEP * 0.5f, 1e-4f) << "ahead by v alpha dt";
+    EXPECT_NEAR(world.transform(interpolated).position.x, stepX - 6.0f * physics3dtest::STEP * 0.5f, 1e-4f) << "half way from the previous step";
+    EXPECT_NEAR(world.transform(extrapolated).position.x, stepX + 6.0f * physics3dtest::STEP * 0.5f, 1e-4f) << "ahead by v alpha dt";
 }
 
 TEST(Physics3DBody, InterpolationIsPerBody2D) {
@@ -427,12 +427,12 @@ TEST(Physics3DBody, InterpolationIsPerBody2D) {
         Rigidbody2D(&scene, e).setLinearDamping(0.0f);
         Rigidbody2D(&scene, e).setLinearVelocity(Vector2(120, 0));
     }
-    for (int i = 0; i < 2; i++) { physics->fixedUpdate(STEP); resolve(); }
+    for (int i = 0; i < 2; i++) { physics->fixedUpdate(physics3dtest::STEP); resolve(); }
     physics->interpolate(0.5);
     resolve();
     const float stepX = Rigidbody2D(&scene, none).getPosition().x;
     EXPECT_NEAR(scene.getComponent<Transform>(none).position.x, stepX, 1e-3f);
-    EXPECT_NEAR(scene.getComponent<Transform>(extrapolated).position.x, stepX + 120.0f * STEP * 0.5f, 1e-2f);
+    EXPECT_NEAR(scene.getComponent<Transform>(extrapolated).position.x, stepX + 120.0f * physics3dtest::STEP * 0.5f, 1e-2f);
 }
 
 // ---- T15: capacity -----------------------------------------------------------------------------
@@ -598,7 +598,7 @@ TEST(Physics3DBody, DebugDrawLines2D) {
     Rigidbody2D(&scene, e).createCircleCollider(Vector2(0, 0), 10);
     PhysicsSystem* physics = scene.getSystem<PhysicsSystem>().get();
     physics->load();
-    physics->fixedUpdate(STEP);
+    physics->fixedUpdate(physics3dtest::STEP);
     Physics::setDebugDraw(true);
     physics->draw();
     EXPECT_GT(physics->getDebugLineCount(), 0u);

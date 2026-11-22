@@ -433,7 +433,7 @@ TEST_F(UIComponentsTest, SubmitClicksOnDown) {
 
     Engine::systemKeyDown(D_KEY_ENTER, false, 0);
     EXPECT_TRUE(btn(a).pressed);
-    EXPECT_EQ(ui().getButtonState(a), SelectionState::PRESSED);
+    EXPECT_EQ(ui().getButtonState(a), jasperengine::SelectionState::PRESSED);
     EXPECT_EQ(counts["press"], 1);
     EXPECT_EQ(counts["click"], 1) << "Unity's Submit clicks on the press";
     EXPECT_EQ(counts["legacyClick"], 1);
@@ -525,7 +525,7 @@ TEST_F(UIComponentsTest, NonInteractableAndCanvasGroup) {
     btn(a).needUpdateButton = true;
     frame();
     EXPECT_EQ(ui().getSelected(), a) << "a selection that became non-interactable stays";
-    EXPECT_EQ(ui().getButtonState(a), SelectionState::DISABLED);
+    EXPECT_EQ(ui().getButtonState(a), jasperengine::SelectionState::DISABLED);
     int clicks = 0;
     btn(a).onClick.add("t", std::function<void()>([&]() { clicks++; }));
     key(D_KEY_ENTER);

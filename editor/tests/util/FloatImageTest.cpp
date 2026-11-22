@@ -56,12 +56,12 @@ namespace {
         std::string file(const std::string& name) const { return (dir / name).string(); }
     };
 
-    std::vector<uint8_t> readBytes(const std::string& path) {
+    std::vector<uint8_t> floatImageReadBytes(const std::string& path) {
         std::ifstream in(path, std::ios::binary);
         return std::vector<uint8_t>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     }
 
-    void writeBytes(const std::string& path, const std::vector<uint8_t>& bytes) {
+    void floatImageWriteBytes(const std::string& path, const std::vector<uint8_t>& bytes) {
         std::ofstream out(path, std::ios::binary | std::ios::trunc);
         out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     }
@@ -164,12 +164,12 @@ namespace {
             FreeEXRErrorMessage(err);
         if (size == 0 || !memory)
             return false;
-        writeBytes(path, std::vector<uint8_t>(memory, memory + size));
+        floatImageWriteBytes(path, std::vector<uint8_t>(memory, memory + size));
         std::free(memory);
         return true;
     }
 
-    uint32_t crc32(const uint8_t* data, size_t size) {
+    uint32_t floatImageCrc32(const uint8_t* data, size_t size) {
         uint32_t crc = 0xFFFFFFFFu;
         for (size_t i = 0; i < size; i++) {
             crc ^= data[i];
@@ -188,7 +188,7 @@ namespace {
         for (int i = 0; i < 4; i++)
             chunk.push_back(static_cast<uint8_t>(type[i]));
         chunk.insert(chunk.end(), payload.begin(), payload.end());
-        const uint32_t crc = crc32(chunk.data() + 4, chunk.size() - 4);
+        const uint32_t crc = floatImageCrc32(chunk.data() + 4, chunk.size() - 4);
         for (int s = 24; s >= 0; s -= 8)
             chunk.push_back(static_cast<uint8_t>(crc >> s));
         // (copied into place: GCC 11's -Wstringop-overread misreads vector::insert's reallocation)
@@ -458,7 +458,7 @@ TEST_F(FloatImageTest, Png16BitEveryChannelCountExact) {
         std::vector<unsigned char> png;
         ASSERT_TRUE(editor::encodePng16(w, h, channels, reinterpret_cast<const unsigned char*>(samples.data()),
                                         samples.size() * 2, png));
-        writeBytes(file("image16.png"), std::vector<uint8_t>(png.begin(), png.end()));
+        floatImageWriteBytes(file("image16.png"), std::vector<uint8_t>(png.begin(), png.end()));
 
         FloatImage read;
         std::string error;
@@ -488,11 +488,11 @@ TEST_F(FloatImageTest, PngGammaAndSrgbChunksIgnored) {
     const int w = 8, h = 4;
     const std::vector<uint8_t> samples = pattern8(w, h, 3);
     ASSERT_TRUE(stbi_write_png(file("plain.png").c_str(), w, h, 3, samples.data(), w * 3));
-    std::vector<uint8_t> png = readBytes(file("plain.png"));
+    std::vector<uint8_t> png = floatImageReadBytes(file("plain.png"));
     // gAMA 1/2.2 (45455) and sRGB perceptual: a colour-managed reader would change the values
     png = withChunk(png, "gAMA", {0x00, 0x00, 0xB1, 0x8F});
     png = withChunk(png, "sRGB", {0x00});
-    writeBytes(file("gamma.png"), png);
+    floatImageWriteBytes(file("gamma.png"), png);
     FloatImage read;
     std::string error;
     ASSERT_TRUE(editor::readFloatImage(file("gamma.png"), read, &error)) << error;
@@ -536,7 +536,7 @@ TEST_F(FloatImageTest, TgaBothOriginsAndRle) {
     }
     for (bool top : {true, false}) {
         SCOPED_TRACE(top ? "top-left origin" : "bottom-left origin");
-        writeBytes(file("image.tga"), makeTga(w, h, 4, bgra, top));
+        floatImageWriteBytes(file("image.tga"), makeTga(w, h, 4, bgra, top));
         FloatImage read;
         std::string error;
         ASSERT_TRUE(editor::readFloatImage(file("image.tga"), read, &error)) << error;
@@ -547,7 +547,7 @@ TEST_F(FloatImageTest, TgaBothOriginsAndRle) {
 
     // grey, uncompressed
     const std::vector<uint8_t> grey = {0, 128, 255, 7, 77, 177};
-    writeBytes(file("grey.tga"), makeTga(w, h, 1, grey, false));
+    floatImageWriteBytes(file("grey.tga"), makeTga(w, h, 1, grey, false));
     FloatImage read;
     std::string error;
     ASSERT_TRUE(editor::readFloatImage(file("grey.tga"), read, &error)) << error;
@@ -599,11 +599,11 @@ TEST_F(FloatImageTest, Errors) {
     // a truncated EXR: half of the data, then only part of the header
     const FloatImage written = makeImage(64, 64, 4, false);
     ASSERT_TRUE(editor::writeExr(file("full.exr"), written, false, &error)) << error;
-    const std::vector<uint8_t> full = readBytes(file("full.exr"));
+    const std::vector<uint8_t> full = floatImageReadBytes(file("full.exr"));
     ASSERT_GT(full.size(), 200u);
     for (size_t keep : {full.size() / 2, full.size() - 1, static_cast<size_t>(40), static_cast<size_t>(6)}) {
         SCOPED_TRACE("truncated to " + std::to_string(keep) + " bytes");
-        writeBytes(file("truncated.exr"), std::vector<uint8_t>(full.begin(), full.begin() + static_cast<long>(keep)));
+        floatImageWriteBytes(file("truncated.exr"), std::vector<uint8_t>(full.begin(), full.begin() + static_cast<long>(keep)));
         error.clear();
         EXPECT_FALSE(editor::readFloatImage(file("truncated.exr"), read, &error));
         EXPECT_NE(error.find("truncated.exr"), std::string::npos) << error;
@@ -615,8 +615,8 @@ TEST_F(FloatImageTest, Errors) {
     // a truncated PNG
     const std::vector<uint8_t> samples = pattern8(32, 32, 4);
     ASSERT_TRUE(stbi_write_png(file("full.png").c_str(), 32, 32, 4, samples.data(), 32 * 4));
-    const std::vector<uint8_t> png = readBytes(file("full.png"));
-    writeBytes(file("truncated.png"), std::vector<uint8_t>(png.begin(), png.begin() + static_cast<long>(png.size() / 2)));
+    const std::vector<uint8_t> png = floatImageReadBytes(file("full.png"));
+    floatImageWriteBytes(file("truncated.png"), std::vector<uint8_t>(png.begin(), png.begin() + static_cast<long>(png.size() / 2)));
     EXPECT_FALSE(editor::readFloatImage(file("truncated.png"), read, &error));
     EXPECT_NE(error.find("truncated.png: corrupt or truncated PNG"), std::string::npos) << error;
 
@@ -627,7 +627,7 @@ TEST_F(FloatImageTest, Errors) {
     ASSERT_TRUE(stbi_write_jpg(file("image.jpg").c_str(), 32, 32, 4, samples.data(), 90));
     EXPECT_FALSE(editor::readFloatImage(file("image.jpg"), read, &error));
     EXPECT_NE(error.find("unsupported image format"), std::string::npos) << error;
-    writeBytes(file("empty.png"), {});
+    floatImageWriteBytes(file("empty.png"), {});
     EXPECT_FALSE(editor::readFloatImage(file("empty.png"), read, &error));
     EXPECT_NE(error.find("empty.png: the file is empty"), std::string::npos) << error;
     fs::copy_file(file("image.bmp"), file("fake.exr"));

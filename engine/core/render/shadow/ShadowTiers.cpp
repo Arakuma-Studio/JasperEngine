@@ -23,7 +23,7 @@ namespace {
         {4, 4096, 1024, 512, 150.0f, ShadowSoftFilter::PCSS, CascadeTransition::BLEND, true, true, 576 * MB},
     };
 
-    const char* const tierNames[] = {"low", "medium", "high", "ultra"};
+    const char* const shadowTierNames[] = {"low", "medium", "high", "ultra"};
 
     // the project's tiers by Engine::Platform, -1 for the default
     int platformTiers[ShadowTiers::PLATFORM_COUNT] = {-1, -1, -1, -1, -1, -1};
@@ -100,14 +100,14 @@ const char* ShadowTiers::getName(ShadowTier tier){
     int index = static_cast<int>(tier);
     if (index < 0 || index > 3)
         return "high";
-    return tierNames[index];
+    return shadowTierNames[index];
 }
 
 bool ShadowTiers::fromName(const char* name, ShadowTier& tier){
     if (!name)
         return false;
     for (int i = 0; i < 4; i++){
-        if (std::strcmp(name, tierNames[i]) == 0){
+        if (std::strcmp(name, shadowTierNames[i]) == 0){
             tier = static_cast<ShadowTier>(i);
             return true;
         }

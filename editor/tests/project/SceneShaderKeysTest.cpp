@@ -36,7 +36,7 @@ namespace {
         }
     };
 
-    std::string describe(const std::set<ShaderKey>& keys) {
+    std::string sceneShaderKeysDescribe(const std::set<ShaderKey>& keys) {
         std::string text;
         for (ShaderKey key : keys) text += ShaderPool::getShaderKeyText(key) + " ";
         return text;
@@ -76,7 +76,7 @@ TEST_F(SceneShaderKeys, ASaveDoesNotDependOnWhatHasDrawn) {
     std::set<ShaderKey> afterDraw;
     project.collectSavedShaderKeys(&sceneProject, afterDraw);
 
-    EXPECT_EQ(afterDraw, beforeDraw) << "before: " << describe(beforeDraw) << "\nafter: " << describe(afterDraw);
+    EXPECT_EQ(afterDraw, beforeDraw) << "before: " << sceneShaderKeysDescribe(beforeDraw) << "\nafter: " << sceneShaderKeysDescribe(afterDraw);
     sceneProject.scene = nullptr;
 }
 
@@ -91,6 +91,6 @@ TEST_F(SceneShaderKeys, TheFilesKeysStay) {
     sceneProject.shaderKeys.insert(recorded);
     std::set<ShaderKey> saved;
     project.collectSavedShaderKeys(&sceneProject, saved);
-    EXPECT_EQ(saved.count(recorded), 1u) << describe(saved);
+    EXPECT_EQ(saved.count(recorded), 1u) << sceneShaderKeysDescribe(saved);
     sceneProject.scene = nullptr;
 }

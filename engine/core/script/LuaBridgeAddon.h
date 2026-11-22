@@ -120,8 +120,8 @@ namespace luabridge
         }
     };
 
-    template<> struct Stack<AssetRef> : AssetPathStack<AssetRef>{};
-    template<> struct Stack<ShaderRef> : AssetPathStack<ShaderRef>{};
+    template<> struct Stack<jasperengine::AssetRef> : AssetPathStack<jasperengine::AssetRef>{};
+    template<> struct Stack<jasperengine::ShaderRef> : AssetPathStack<jasperengine::ShaderRef>{};
 
     // A character (Engine.onCharInput, UISystem:eventOnCharInput): a one-character UTF-8 string
     // in Lua, as the event handlers get it; a code point number is taken too
@@ -153,189 +153,191 @@ namespace luabridge
         }
     };
 
-    template<> struct Stack<Scaling> : EnumWrapper<Scaling>{};
-    template<> struct Stack<jasperengine::Platform> : EnumWrapper<jasperengine::Platform>{};  // qualified: the editor has a Platform class too
-    template<> struct Stack<GraphicBackend> : EnumWrapper<GraphicBackend>{};
-    template<> struct Stack<TextureStrategy> : EnumWrapper<TextureStrategy>{};
-    template<> struct Stack<TextureType> : EnumWrapper<TextureType>{};
-    template<> struct Stack<ColorFormat> : EnumWrapper<ColorFormat>{};
-    template<> struct Stack<PrimitiveType> : EnumWrapper<PrimitiveType>{};
-    template<> struct Stack<CullingMode> : EnumWrapper<CullingMode>{};
-    template<> struct Stack<WindingOrder> : EnumWrapper<WindingOrder>{};
-    template<> struct Stack<LodFadeMode> : EnumWrapper<LodFadeMode>{};
-    template<> struct Stack<MaterialAlphaMode> : EnumWrapper<MaterialAlphaMode>{};
-    template<> struct Stack<MaterialLighting> : EnumWrapper<MaterialLighting>{};
-    template<> struct Stack<TerrainQualitySetting> : EnumWrapper<TerrainQualitySetting>{};
-    template<> struct Stack<TerrainOffscreenShadows> : EnumWrapper<TerrainOffscreenShadows>{};
-    template<> struct Stack<TerrainMacroMode> : EnumWrapper<TerrainMacroMode>{};
-    template<> struct Stack<TerrainCliffProjection> : EnumWrapper<TerrainCliffProjection>{};
-    template<> struct Stack<TextureFilter> : EnumWrapper<TextureFilter>{};
-    template<> struct Stack<TextureWrap> : EnumWrapper<TextureWrap>{};
-    template<> struct Stack<CursorType> : EnumWrapper<CursorType>{};
-    template<> struct Stack<MouseMode> : EnumWrapper<MouseMode>{};
-    template<> struct Stack<TouchPhase> : EnumWrapper<TouchPhase>{};
-    template<> struct Stack<PointerLockState> : EnumWrapper<PointerLockState>{};
-    template<> struct Stack<InputActionPhase> : EnumWrapper<InputActionPhase>{};
-    template<> struct Stack<InputActionType> : EnumWrapper<InputActionType>{};
-    template<> struct Stack<CharacterCollisionFlags> : EnumWrapper<CharacterCollisionFlags>{};
-    template<> struct Stack<WaterVolumeWaves> : EnumWrapper<WaterVolumeWaves>{};
-    template<> struct Stack<WaterExcluderShape> : EnumWrapper<WaterExcluderShape>{};
-    template<> struct Stack<WaterWakeResolution> : EnumWrapper<WaterWakeResolution>{};
-    template<> struct Stack<BuoyancyColumns> : EnumWrapper<BuoyancyColumns>{};
-    template<> struct Stack<spline::SplineType> : EnumWrapper<spline::SplineType>{};
-    template<> struct Stack<spline::TangentMode> : EnumWrapper<spline::TangentMode>{};
-    template<> struct Stack<SplineExtrudeShape> : EnumWrapper<SplineExtrudeShape>{};
-    template<> struct Stack<SplineWidthSource> : EnumWrapper<SplineWidthSource>{};
-    template<> struct Stack<SplineCornerStyle> : EnumWrapper<SplineCornerStyle>{};
-    template<> struct Stack<SplineGrade> : EnumWrapper<SplineGrade>{};
-    template<> struct Stack<SplineConform> : EnumWrapper<SplineConform>{};
-    template<> struct Stack<SplineCollision> : EnumWrapper<SplineCollision>{};
-    template<> struct Stack<SplineInstantiateMode> : EnumWrapper<SplineInstantiateMode>{};
-    template<> struct Stack<SplineSpacingFit> : EnumWrapper<SplineSpacingFit>{};
-    template<> struct Stack<SplinePlantMode> : EnumWrapper<SplinePlantMode>{};
-    template<> struct Stack<SplineAnimateMethod> : EnumWrapper<SplineAnimateMethod>{};
-    template<> struct Stack<SplineLoop> : EnumWrapper<SplineLoop>{};
-    template<> struct Stack<SplineEasing> : EnumWrapper<SplineEasing>{};
-    template<> struct Stack<SplineAlignment> : EnumWrapper<SplineAlignment>{};
-    template<> struct Stack<ResourceLoadState> : EnumWrapper<ResourceLoadState>{};
-    template<> struct Stack<LightState> : EnumWrapper<LightState>{};
-    template<> struct Stack<UIEventState> : EnumWrapper<UIEventState>{};
+    // Qualified: a source including this may see same-named types of other namespaces (the editor's
+    // Platform and SelectionState, particles::CullingMode), and in a unity build so may every source after it
+    template<> struct Stack<jasperengine::Scaling> : EnumWrapper<jasperengine::Scaling>{};
+    template<> struct Stack<jasperengine::Platform> : EnumWrapper<jasperengine::Platform>{};
+    template<> struct Stack<jasperengine::GraphicBackend> : EnumWrapper<jasperengine::GraphicBackend>{};
+    template<> struct Stack<jasperengine::TextureStrategy> : EnumWrapper<jasperengine::TextureStrategy>{};
+    template<> struct Stack<jasperengine::TextureType> : EnumWrapper<jasperengine::TextureType>{};
+    template<> struct Stack<jasperengine::ColorFormat> : EnumWrapper<jasperengine::ColorFormat>{};
+    template<> struct Stack<jasperengine::PrimitiveType> : EnumWrapper<jasperengine::PrimitiveType>{};
+    template<> struct Stack<jasperengine::CullingMode> : EnumWrapper<jasperengine::CullingMode>{};
+    template<> struct Stack<jasperengine::WindingOrder> : EnumWrapper<jasperengine::WindingOrder>{};
+    template<> struct Stack<jasperengine::LodFadeMode> : EnumWrapper<jasperengine::LodFadeMode>{};
+    template<> struct Stack<jasperengine::MaterialAlphaMode> : EnumWrapper<jasperengine::MaterialAlphaMode>{};
+    template<> struct Stack<jasperengine::MaterialLighting> : EnumWrapper<jasperengine::MaterialLighting>{};
+    template<> struct Stack<jasperengine::TerrainQualitySetting> : EnumWrapper<jasperengine::TerrainQualitySetting>{};
+    template<> struct Stack<jasperengine::TerrainOffscreenShadows> : EnumWrapper<jasperengine::TerrainOffscreenShadows>{};
+    template<> struct Stack<jasperengine::TerrainMacroMode> : EnumWrapper<jasperengine::TerrainMacroMode>{};
+    template<> struct Stack<jasperengine::TerrainCliffProjection> : EnumWrapper<jasperengine::TerrainCliffProjection>{};
+    template<> struct Stack<jasperengine::TextureFilter> : EnumWrapper<jasperengine::TextureFilter>{};
+    template<> struct Stack<jasperengine::TextureWrap> : EnumWrapper<jasperengine::TextureWrap>{};
+    template<> struct Stack<jasperengine::CursorType> : EnumWrapper<jasperengine::CursorType>{};
+    template<> struct Stack<jasperengine::MouseMode> : EnumWrapper<jasperengine::MouseMode>{};
+    template<> struct Stack<jasperengine::TouchPhase> : EnumWrapper<jasperengine::TouchPhase>{};
+    template<> struct Stack<jasperengine::PointerLockState> : EnumWrapper<jasperengine::PointerLockState>{};
+    template<> struct Stack<jasperengine::InputActionPhase> : EnumWrapper<jasperengine::InputActionPhase>{};
+    template<> struct Stack<jasperengine::InputActionType> : EnumWrapper<jasperengine::InputActionType>{};
+    template<> struct Stack<jasperengine::CharacterCollisionFlags> : EnumWrapper<jasperengine::CharacterCollisionFlags>{};
+    template<> struct Stack<jasperengine::WaterVolumeWaves> : EnumWrapper<jasperengine::WaterVolumeWaves>{};
+    template<> struct Stack<jasperengine::WaterExcluderShape> : EnumWrapper<jasperengine::WaterExcluderShape>{};
+    template<> struct Stack<jasperengine::WaterWakeResolution> : EnumWrapper<jasperengine::WaterWakeResolution>{};
+    template<> struct Stack<jasperengine::BuoyancyColumns> : EnumWrapper<jasperengine::BuoyancyColumns>{};
+    template<> struct Stack<jasperengine::spline::SplineType> : EnumWrapper<jasperengine::spline::SplineType>{};
+    template<> struct Stack<jasperengine::spline::TangentMode> : EnumWrapper<jasperengine::spline::TangentMode>{};
+    template<> struct Stack<jasperengine::SplineExtrudeShape> : EnumWrapper<jasperengine::SplineExtrudeShape>{};
+    template<> struct Stack<jasperengine::SplineWidthSource> : EnumWrapper<jasperengine::SplineWidthSource>{};
+    template<> struct Stack<jasperengine::SplineCornerStyle> : EnumWrapper<jasperengine::SplineCornerStyle>{};
+    template<> struct Stack<jasperengine::SplineGrade> : EnumWrapper<jasperengine::SplineGrade>{};
+    template<> struct Stack<jasperengine::SplineConform> : EnumWrapper<jasperengine::SplineConform>{};
+    template<> struct Stack<jasperengine::SplineCollision> : EnumWrapper<jasperengine::SplineCollision>{};
+    template<> struct Stack<jasperengine::SplineInstantiateMode> : EnumWrapper<jasperengine::SplineInstantiateMode>{};
+    template<> struct Stack<jasperengine::SplineSpacingFit> : EnumWrapper<jasperengine::SplineSpacingFit>{};
+    template<> struct Stack<jasperengine::SplinePlantMode> : EnumWrapper<jasperengine::SplinePlantMode>{};
+    template<> struct Stack<jasperengine::SplineAnimateMethod> : EnumWrapper<jasperengine::SplineAnimateMethod>{};
+    template<> struct Stack<jasperengine::SplineLoop> : EnumWrapper<jasperengine::SplineLoop>{};
+    template<> struct Stack<jasperengine::SplineEasing> : EnumWrapper<jasperengine::SplineEasing>{};
+    template<> struct Stack<jasperengine::SplineAlignment> : EnumWrapper<jasperengine::SplineAlignment>{};
+    template<> struct Stack<jasperengine::ResourceLoadState> : EnumWrapper<jasperengine::ResourceLoadState>{};
+    template<> struct Stack<jasperengine::LightState> : EnumWrapper<jasperengine::LightState>{};
+    template<> struct Stack<jasperengine::UIEventState> : EnumWrapper<jasperengine::UIEventState>{};
     // platform services (System, Screen, Input.deviceOrientation)
-    template<> struct Stack<SystemLanguage> : EnumWrapper<SystemLanguage>{};
-    template<> struct Stack<ScreenOrientation> : EnumWrapper<ScreenOrientation>{};
-    template<> struct Stack<DeviceOrientation> : EnumWrapper<DeviceOrientation>{};
-    template<> struct Stack<DeviceType> : EnumWrapper<DeviceType>{};
-    template<> struct Stack<DeviceTier> : EnumWrapper<DeviceTier>{};
-    template<> struct Stack<ThermalState> : EnumWrapper<ThermalState>{};
-    template<> struct Stack<NetworkReachability> : EnumWrapper<NetworkReachability>{};
-    template<> struct Stack<HapticFeedback> : EnumWrapper<HapticFeedback>{};
-    template<> struct Stack<SleepTimeout> : EnumWrapper<SleepTimeout>{};
+    template<> struct Stack<jasperengine::SystemLanguage> : EnumWrapper<jasperengine::SystemLanguage>{};
+    template<> struct Stack<jasperengine::ScreenOrientation> : EnumWrapper<jasperengine::ScreenOrientation>{};
+    template<> struct Stack<jasperengine::DeviceOrientation> : EnumWrapper<jasperengine::DeviceOrientation>{};
+    template<> struct Stack<jasperengine::DeviceType> : EnumWrapper<jasperengine::DeviceType>{};
+    template<> struct Stack<jasperengine::DeviceTier> : EnumWrapper<jasperengine::DeviceTier>{};
+    template<> struct Stack<jasperengine::ThermalState> : EnumWrapper<jasperengine::ThermalState>{};
+    template<> struct Stack<jasperengine::NetworkReachability> : EnumWrapper<jasperengine::NetworkReachability>{};
+    template<> struct Stack<jasperengine::HapticFeedback> : EnumWrapper<jasperengine::HapticFeedback>{};
+    template<> struct Stack<jasperengine::SleepTimeout> : EnumWrapper<jasperengine::SleepTimeout>{};
 
-    template<> struct Stack<EntityPool> : EnumWrapper<EntityPool>{};
+    template<> struct Stack<jasperengine::EntityPool> : EnumWrapper<jasperengine::EntityPool>{};
 
-    template<> struct Stack<ResourceType> : EnumWrapper<ResourceType>{};
-    template<> struct Stack<jobs::Lane> : EnumWrapper<jobs::Lane>{};
+    template<> struct Stack<jasperengine::ResourceType> : EnumWrapper<jasperengine::ResourceType>{};
+    template<> struct Stack<jasperengine::jobs::Lane> : EnumWrapper<jasperengine::jobs::Lane>{};
 
-    template<> struct Stack<RotationOrder> : EnumWrapper<RotationOrder>{};
+    template<> struct Stack<jasperengine::RotationOrder> : EnumWrapper<jasperengine::RotationOrder>{};
 
-    template<> struct Stack<FogType> : EnumWrapper<FogType>{};
-    template<> struct Stack<FogColorMode> : EnumWrapper<FogColorMode>{};
-    template<> struct Stack<FogVolumeShape> : EnumWrapper<FogVolumeShape>{};
-    template<> struct Stack<FogVolumeFalloff> : EnumWrapper<FogVolumeFalloff>{};
-    template<> struct Stack<CloudsPreset> : EnumWrapper<CloudsPreset>{};
-    template<> struct Stack<CloudsRendering> : EnumWrapper<CloudsRendering>{};
-    template<> struct Stack<AtmosphereQuality> : EnumWrapper<AtmosphereQuality>{};
-    template<> struct Stack<AtmosphereQualityOverride> : EnumWrapper<AtmosphereQualityOverride>{};
-    template<> struct Stack<CameraType> : EnumWrapper<CameraType>{};
-    template<> struct Stack<PlayMode> : EnumWrapper<PlayMode>{};
-    template<> struct Stack<FrustumPlane> : EnumWrapper<FrustumPlane>{};
-    template<> struct Stack<LightType> : EnumWrapper<LightType>{};
-    template<> struct Stack<LightShading> : EnumWrapper<LightShading>{};
-    template<> struct Stack<ShadowCaster2DShape> : EnumWrapper<ShadowCaster2DShape>{};
-    template<> struct Stack<ShadowQuality> : EnumWrapper<ShadowQuality>{};
+    template<> struct Stack<jasperengine::FogType> : EnumWrapper<jasperengine::FogType>{};
+    template<> struct Stack<jasperengine::FogColorMode> : EnumWrapper<jasperengine::FogColorMode>{};
+    template<> struct Stack<jasperengine::FogVolumeShape> : EnumWrapper<jasperengine::FogVolumeShape>{};
+    template<> struct Stack<jasperengine::FogVolumeFalloff> : EnumWrapper<jasperengine::FogVolumeFalloff>{};
+    template<> struct Stack<jasperengine::CloudsPreset> : EnumWrapper<jasperengine::CloudsPreset>{};
+    template<> struct Stack<jasperengine::CloudsRendering> : EnumWrapper<jasperengine::CloudsRendering>{};
+    template<> struct Stack<jasperengine::AtmosphereQuality> : EnumWrapper<jasperengine::AtmosphereQuality>{};
+    template<> struct Stack<jasperengine::AtmosphereQualityOverride> : EnumWrapper<jasperengine::AtmosphereQualityOverride>{};
+    template<> struct Stack<jasperengine::CameraType> : EnumWrapper<jasperengine::CameraType>{};
+    template<> struct Stack<jasperengine::PlayMode> : EnumWrapper<jasperengine::PlayMode>{};
+    template<> struct Stack<jasperengine::FrustumPlane> : EnumWrapper<jasperengine::FrustumPlane>{};
+    template<> struct Stack<jasperengine::LightType> : EnumWrapper<jasperengine::LightType>{};
+    template<> struct Stack<jasperengine::LightShading> : EnumWrapper<jasperengine::LightShading>{};
+    template<> struct Stack<jasperengine::ShadowCaster2DShape> : EnumWrapper<jasperengine::ShadowCaster2DShape>{};
+    template<> struct Stack<jasperengine::ShadowQuality> : EnumWrapper<jasperengine::ShadowQuality>{};
     // 3D shadows (S10)
-    template<> struct Stack<ShadowType> : EnumWrapper<ShadowType>{};
-    template<> struct Stack<ShadowUpdateMode> : EnumWrapper<ShadowUpdateMode>{};
+    template<> struct Stack<jasperengine::ShadowType> : EnumWrapper<jasperengine::ShadowType>{};
+    template<> struct Stack<jasperengine::ShadowUpdateMode> : EnumWrapper<jasperengine::ShadowUpdateMode>{};
     // S57's lighting
-    template<> struct Stack<TransparencyMode> : EnumWrapper<TransparencyMode>{};
-    template<> struct Stack<ShadingModel> : EnumWrapper<ShadingModel>{};
-    template<> struct Stack<CapsuleCastShadows> : EnumWrapper<CapsuleCastShadows>{};
-    template<> struct Stack<CapsuleDirection> : EnumWrapper<CapsuleDirection>{};
-    template<> struct Stack<LightMode> : EnumWrapper<LightMode>{};
-    template<> struct Stack<CascadeSplitMode> : EnumWrapper<CascadeSplitMode>{};
-    template<> struct Stack<ShadowTier> : EnumWrapper<ShadowTier>{};
-    template<> struct Stack<SceneColorScale> : EnumWrapper<SceneColorScale>{};
-    template<> struct Stack<PlanarReflectionResolution> : EnumWrapper<PlanarReflectionResolution>{};
-    template<> struct Stack<LitQuality> : EnumWrapper<LitQuality>{};
-    template<> struct Stack<LightUnit> : EnumWrapper<LightUnit>{};
-    template<> struct Stack<TonemapMode> : EnumWrapper<TonemapMode>{};
-    template<> struct Stack<MonochromeMode> : EnumWrapper<MonochromeMode>{};
-    template<> struct Stack<FilmGrainType> : EnumWrapper<FilmGrainType>{};
-    template<> struct Stack<FilmGateMask> : EnumWrapper<FilmGateMask>{};
-    template<> struct Stack<PaletteDither> : EnumWrapper<PaletteDither>{};
-    template<> struct Stack<PaletteDistance> : EnumWrapper<PaletteDistance>{};
-    template<> struct Stack<PalettePrecision> : EnumWrapper<PalettePrecision>{};
-    template<> struct Stack<LutInputEncoding> : EnumWrapper<LutInputEncoding>{};
-    template<> struct Stack<AudioSourceState> : EnumWrapper<AudioSourceState>{};
-    template<> struct Stack<AudioSourceAttenuation> : EnumWrapper<AudioSourceAttenuation>{};
-    template<> struct Stack<AudioLoadType> : EnumWrapper<AudioLoadType>{};
-    template<> struct Stack<AudioPlayOn> : EnumWrapper<AudioPlayOn>{};
+    template<> struct Stack<jasperengine::TransparencyMode> : EnumWrapper<jasperengine::TransparencyMode>{};
+    template<> struct Stack<jasperengine::ShadingModel> : EnumWrapper<jasperengine::ShadingModel>{};
+    template<> struct Stack<jasperengine::CapsuleCastShadows> : EnumWrapper<jasperengine::CapsuleCastShadows>{};
+    template<> struct Stack<jasperengine::CapsuleDirection> : EnumWrapper<jasperengine::CapsuleDirection>{};
+    template<> struct Stack<jasperengine::LightMode> : EnumWrapper<jasperengine::LightMode>{};
+    template<> struct Stack<jasperengine::CascadeSplitMode> : EnumWrapper<jasperengine::CascadeSplitMode>{};
+    template<> struct Stack<jasperengine::ShadowTier> : EnumWrapper<jasperengine::ShadowTier>{};
+    template<> struct Stack<jasperengine::SceneColorScale> : EnumWrapper<jasperengine::SceneColorScale>{};
+    template<> struct Stack<jasperengine::PlanarReflectionResolution> : EnumWrapper<jasperengine::PlanarReflectionResolution>{};
+    template<> struct Stack<jasperengine::LitQuality> : EnumWrapper<jasperengine::LitQuality>{};
+    template<> struct Stack<jasperengine::LightUnit> : EnumWrapper<jasperengine::LightUnit>{};
+    template<> struct Stack<jasperengine::TonemapMode> : EnumWrapper<jasperengine::TonemapMode>{};
+    template<> struct Stack<jasperengine::MonochromeMode> : EnumWrapper<jasperengine::MonochromeMode>{};
+    template<> struct Stack<jasperengine::FilmGrainType> : EnumWrapper<jasperengine::FilmGrainType>{};
+    template<> struct Stack<jasperengine::FilmGateMask> : EnumWrapper<jasperengine::FilmGateMask>{};
+    template<> struct Stack<jasperengine::PaletteDither> : EnumWrapper<jasperengine::PaletteDither>{};
+    template<> struct Stack<jasperengine::PaletteDistance> : EnumWrapper<jasperengine::PaletteDistance>{};
+    template<> struct Stack<jasperengine::PalettePrecision> : EnumWrapper<jasperengine::PalettePrecision>{};
+    template<> struct Stack<jasperengine::LutInputEncoding> : EnumWrapper<jasperengine::LutInputEncoding>{};
+    template<> struct Stack<jasperengine::AudioSourceState> : EnumWrapper<jasperengine::AudioSourceState>{};
+    template<> struct Stack<jasperengine::AudioSourceAttenuation> : EnumWrapper<jasperengine::AudioSourceAttenuation>{};
+    template<> struct Stack<jasperengine::AudioLoadType> : EnumWrapper<jasperengine::AudioLoadType>{};
+    template<> struct Stack<jasperengine::AudioPlayOn> : EnumWrapper<jasperengine::AudioPlayOn>{};
 
-    template<> struct Stack<EaseType> : EnumWrapper<EaseType>{};
-    template<> struct Stack<ActionState> : EnumWrapper<ActionState>{};
+    template<> struct Stack<jasperengine::EaseType> : EnumWrapper<jasperengine::EaseType>{};
+    template<> struct Stack<jasperengine::ActionState> : EnumWrapper<jasperengine::ActionState>{};
 
-    template<> struct Stack<FileErrors> : EnumWrapper<FileErrors>{};
+    template<> struct Stack<jasperengine::FileErrors> : EnumWrapper<jasperengine::FileErrors>{};
 
-    template<> struct Stack<AnchorPreset> : EnumWrapper<AnchorPreset>{};
-    template<> struct Stack<LayoutGroupType> : EnumWrapper<LayoutGroupType>{};
+    template<> struct Stack<jasperengine::AnchorPreset> : EnumWrapper<jasperengine::AnchorPreset>{};
+    template<> struct Stack<jasperengine::LayoutGroupType> : EnumWrapper<jasperengine::LayoutGroupType>{};
     // Canvas Groups (ui canvas group spec 7.6)
-    template<> struct Stack<CanvasGroupRenderMode> : EnumWrapper<CanvasGroupRenderMode>{};
-    template<> struct Stack<AlphaTweenTarget> : EnumWrapper<AlphaTweenTarget>{};
+    template<> struct Stack<jasperengine::CanvasGroupRenderMode> : EnumWrapper<jasperengine::CanvasGroupRenderMode>{};
+    template<> struct Stack<jasperengine::AlphaTweenTarget> : EnumWrapper<jasperengine::AlphaTweenTarget>{};
     // ui-scaling-text: the Canvas Scaler and Text Effect enums
-    template<> struct Stack<UIScaleMode> : EnumWrapper<UIScaleMode>{};
-    template<> struct Stack<ScreenMatchMode> : EnumWrapper<ScreenMatchMode>{};
-    template<> struct Stack<PhysicalUnit> : EnumWrapper<PhysicalUnit>{};
-    template<> struct Stack<TextEffectType> : EnumWrapper<TextEffectType>{};
-    template<> struct Stack<TextEffectMix> : EnumWrapper<TextEffectMix>{};
-    template<> struct Stack<PivotPreset> : EnumWrapper<PivotPreset>{};
-    template<> struct Stack<SpriteDrawMode> : EnumWrapper<SpriteDrawMode>{};
-    template<> struct Stack<PixelUpscaleMode> : EnumWrapper<PixelUpscaleMode>{};
-    template<> struct Stack<PixelRotation> : EnumWrapper<PixelRotation>{};
+    template<> struct Stack<jasperengine::UIScaleMode> : EnumWrapper<jasperengine::UIScaleMode>{};
+    template<> struct Stack<jasperengine::ScreenMatchMode> : EnumWrapper<jasperengine::ScreenMatchMode>{};
+    template<> struct Stack<jasperengine::PhysicalUnit> : EnumWrapper<jasperengine::PhysicalUnit>{};
+    template<> struct Stack<jasperengine::TextEffectType> : EnumWrapper<jasperengine::TextEffectType>{};
+    template<> struct Stack<jasperengine::TextEffectMix> : EnumWrapper<jasperengine::TextEffectMix>{};
+    template<> struct Stack<jasperengine::PivotPreset> : EnumWrapper<jasperengine::PivotPreset>{};
+    template<> struct Stack<jasperengine::SpriteDrawMode> : EnumWrapper<jasperengine::SpriteDrawMode>{};
+    template<> struct Stack<jasperengine::PixelUpscaleMode> : EnumWrapper<jasperengine::PixelUpscaleMode>{};
+    template<> struct Stack<jasperengine::PixelRotation> : EnumWrapper<jasperengine::PixelRotation>{};
     // Sprite Batch and Sprite Sort Point (S52)
-    template<> struct Stack<SpriteBatchMode> : EnumWrapper<SpriteBatchMode>{};
-    template<> struct Stack<SpriteBatchSpace> : EnumWrapper<SpriteBatchSpace>{};
-    template<> struct Stack<SpriteSortPoint> : EnumWrapper<SpriteSortPoint>{};
+    template<> struct Stack<jasperengine::SpriteBatchMode> : EnumWrapper<jasperengine::SpriteBatchMode>{};
+    template<> struct Stack<jasperengine::SpriteBatchSpace> : EnumWrapper<jasperengine::SpriteBatchSpace>{};
+    template<> struct Stack<jasperengine::SpriteSortPoint> : EnumWrapper<jasperengine::SpriteSortPoint>{};
 
-    template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
+    template<> struct Stack<jasperengine::ScrollbarType> : EnumWrapper<jasperengine::ScrollbarType>{};
     // ui-components: the Button's Selectable enums
-    template<> struct Stack<ButtonTransition> : EnumWrapper<ButtonTransition>{};
-    template<> struct Stack<NavigationMode> : EnumWrapper<NavigationMode>{};
-    template<> struct Stack<SelectionState> : EnumWrapper<SelectionState>{};
-    template<> struct Stack<MoveDirection> : EnumWrapper<MoveDirection>{};
-    template<> struct Stack<ProgressbarType> : EnumWrapper<ProgressbarType>{};
+    template<> struct Stack<jasperengine::ButtonTransition> : EnumWrapper<jasperengine::ButtonTransition>{};
+    template<> struct Stack<jasperengine::NavigationMode> : EnumWrapper<jasperengine::NavigationMode>{};
+    template<> struct Stack<jasperengine::SelectionState> : EnumWrapper<jasperengine::SelectionState>{};
+    template<> struct Stack<jasperengine::MoveDirection> : EnumWrapper<jasperengine::MoveDirection>{};
+    template<> struct Stack<jasperengine::ProgressbarType> : EnumWrapper<jasperengine::ProgressbarType>{};
 
-    template<> struct Stack<Collider2DType> : EnumWrapper<Collider2DType>{};
-    template<> struct Stack<Collider3DType> : EnumWrapper<Collider3DType>{};
-    template<> struct Stack<BodyType> : EnumWrapper<BodyType>{};
-    template<> struct Stack<Joint2DType> : EnumWrapper<Joint2DType>{};
-    template<> struct Stack<JointLimitState2D> : EnumWrapper<JointLimitState2D>{};
-    template<> struct Stack<CollisionDetectionMode2D> : EnumWrapper<CollisionDetectionMode2D>{};
-    template<> struct Stack<RigidbodySleepMode2D> : EnumWrapper<RigidbodySleepMode2D>{};
-    template<> struct Stack<JointAnchorSpace> : EnumWrapper<JointAnchorSpace>{};
-    template<> struct Stack<JointBreakAction> : EnumWrapper<JointBreakAction>{};
-    template<> struct Stack<PhysicsMaterialCombine> : EnumWrapper<PhysicsMaterialCombine>{};
-    template<> struct Stack<UIDocumentRenderMode> : EnumWrapper<UIDocumentRenderMode>{};
-    template<> struct Stack<FluidOutput> : EnumWrapper<FluidOutput>{};
-    template<> struct Stack<VideoPlayerSource> : EnumWrapper<VideoPlayerSource>{};
-    template<> struct Stack<VideoTimeUpdateMode> : EnumWrapper<VideoTimeUpdateMode>{};
-    template<> struct Stack<VideoRenderMode> : EnumWrapper<VideoRenderMode>{};
-    template<> struct Stack<VideoAspectRatio> : EnumWrapper<VideoAspectRatio>{};
-    template<> struct Stack<VideoAudioOutputMode> : EnumWrapper<VideoAudioOutputMode>{};
+    template<> struct Stack<jasperengine::Collider2DType> : EnumWrapper<jasperengine::Collider2DType>{};
+    template<> struct Stack<jasperengine::Collider3DType> : EnumWrapper<jasperengine::Collider3DType>{};
+    template<> struct Stack<jasperengine::BodyType> : EnumWrapper<jasperengine::BodyType>{};
+    template<> struct Stack<jasperengine::Joint2DType> : EnumWrapper<jasperengine::Joint2DType>{};
+    template<> struct Stack<jasperengine::JointLimitState2D> : EnumWrapper<jasperengine::JointLimitState2D>{};
+    template<> struct Stack<jasperengine::CollisionDetectionMode2D> : EnumWrapper<jasperengine::CollisionDetectionMode2D>{};
+    template<> struct Stack<jasperengine::RigidbodySleepMode2D> : EnumWrapper<jasperengine::RigidbodySleepMode2D>{};
+    template<> struct Stack<jasperengine::JointAnchorSpace> : EnumWrapper<jasperengine::JointAnchorSpace>{};
+    template<> struct Stack<jasperengine::JointBreakAction> : EnumWrapper<jasperengine::JointBreakAction>{};
+    template<> struct Stack<jasperengine::PhysicsMaterialCombine> : EnumWrapper<jasperengine::PhysicsMaterialCombine>{};
+    template<> struct Stack<jasperengine::UIDocumentRenderMode> : EnumWrapper<jasperengine::UIDocumentRenderMode>{};
+    template<> struct Stack<jasperengine::FluidOutput> : EnumWrapper<jasperengine::FluidOutput>{};
+    template<> struct Stack<jasperengine::VideoPlayerSource> : EnumWrapper<jasperengine::VideoPlayerSource>{};
+    template<> struct Stack<jasperengine::VideoTimeUpdateMode> : EnumWrapper<jasperengine::VideoTimeUpdateMode>{};
+    template<> struct Stack<jasperengine::VideoRenderMode> : EnumWrapper<jasperengine::VideoRenderMode>{};
+    template<> struct Stack<jasperengine::VideoAspectRatio> : EnumWrapper<jasperengine::VideoAspectRatio>{};
+    template<> struct Stack<jasperengine::VideoAudioOutputMode> : EnumWrapper<jasperengine::VideoAudioOutputMode>{};
     // bound enums that had none: LuaBridge pushed them as unregistered userdata (an error
     // reading probe.mode) and took no integer for them
-    template<> struct Stack<ReflectionProbeMode> : EnumWrapper<ReflectionProbeMode>{};
-    template<> struct Stack<ReflectionProbeUpdateMode> : EnumWrapper<ReflectionProbeUpdateMode>{};
-    template<> struct Stack<ParticleEmitterShape> : EnumWrapper<ParticleEmitterShape>{};
-    template<> struct Stack<RigidbodyMotionQuality> : EnumWrapper<RigidbodyMotionQuality>{};
-    template<> struct Stack<Joint3DType> : EnumWrapper<Joint3DType>{};
-    template<> struct Stack<ShaderType> : EnumWrapper<ShaderType>{};
-    template<> struct Stack<TextureAlphaBorder> : EnumWrapper<TextureAlphaBorder>{};
+    template<> struct Stack<jasperengine::ReflectionProbeMode> : EnumWrapper<jasperengine::ReflectionProbeMode>{};
+    template<> struct Stack<jasperengine::ReflectionProbeUpdateMode> : EnumWrapper<jasperengine::ReflectionProbeUpdateMode>{};
+    template<> struct Stack<jasperengine::ParticleEmitterShape> : EnumWrapper<jasperengine::ParticleEmitterShape>{};
+    template<> struct Stack<jasperengine::RigidbodyMotionQuality> : EnumWrapper<jasperengine::RigidbodyMotionQuality>{};
+    template<> struct Stack<jasperengine::Joint3DType> : EnumWrapper<jasperengine::Joint3DType>{};
+    template<> struct Stack<jasperengine::ShaderType> : EnumWrapper<jasperengine::ShaderType>{};
+    template<> struct Stack<jasperengine::TextureAlphaBorder> : EnumWrapper<jasperengine::TextureAlphaBorder>{};
 
     // shader library render state (Material, UI/points/lines)
-    template<> struct Stack<MaterialBlendMode> : EnumWrapper<MaterialBlendMode>{};
-    template<> struct Stack<MaterialCullMode> : EnumWrapper<MaterialCullMode>{};
-    template<> struct Stack<MaterialDepthWrite> : EnumWrapper<MaterialDepthWrite>{};
-    template<> struct Stack<MaterialDepthTest> : EnumWrapper<MaterialDepthTest>{};
+    template<> struct Stack<jasperengine::MaterialBlendMode> : EnumWrapper<jasperengine::MaterialBlendMode>{};
+    template<> struct Stack<jasperengine::MaterialCullMode> : EnumWrapper<jasperengine::MaterialCullMode>{};
+    template<> struct Stack<jasperengine::MaterialDepthWrite> : EnumWrapper<jasperengine::MaterialDepthWrite>{};
+    template<> struct Stack<jasperengine::MaterialDepthTest> : EnumWrapper<jasperengine::MaterialDepthTest>{};
     // phase 2: the extra pass's order
-    template<> struct Stack<MaterialPassOrder> : EnumWrapper<MaterialPassOrder>{};
-    template<> struct Stack<MaterialStencilCompare> : EnumWrapper<MaterialStencilCompare>{};
-    template<> struct Stack<MaterialStencilOp> : EnumWrapper<MaterialStencilOp>{};
-    template<> struct Stack<MaterialColorWriteBits> : EnumWrapper<MaterialColorWriteBits>{};
+    template<> struct Stack<jasperengine::MaterialPassOrder> : EnumWrapper<jasperengine::MaterialPassOrder>{};
+    template<> struct Stack<jasperengine::MaterialStencilCompare> : EnumWrapper<jasperengine::MaterialStencilCompare>{};
+    template<> struct Stack<jasperengine::MaterialStencilOp> : EnumWrapper<jasperengine::MaterialStencilOp>{};
+    template<> struct Stack<jasperengine::MaterialColorWriteBits> : EnumWrapper<jasperengine::MaterialColorWriteBits>{};
     // Line and Trail Renderers (lines and trails spec 6.6)
-    template<> struct Stack<LineRendererMode> : EnumWrapper<LineRendererMode>{};
-    template<> struct Stack<LineWidthUnit> : EnumWrapper<LineWidthUnit>{};
-    template<> struct Stack<LineAlignment> : EnumWrapper<LineAlignment>{};
-    template<> struct Stack<LineTextureMode> : EnumWrapper<LineTextureMode>{};
+    template<> struct Stack<jasperengine::LineRendererMode> : EnumWrapper<jasperengine::LineRendererMode>{};
+    template<> struct Stack<jasperengine::LineWidthUnit> : EnumWrapper<jasperengine::LineWidthUnit>{};
+    template<> struct Stack<jasperengine::LineAlignment> : EnumWrapper<jasperengine::LineAlignment>{};
+    template<> struct Stack<jasperengine::LineTextureMode> : EnumWrapper<jasperengine::LineTextureMode>{};
 
     template <>
     struct Stack <Touch>
@@ -459,8 +461,8 @@ namespace luabridge
     };
 
     // feature debug-overlay: LogLevel.INFO .. ERROR, DebugOverlay.STATS_*
-    template<> struct Stack<LogLevel> : EnumWrapper<LogLevel>{};
-    template<> struct Stack<DebugOverlaySettings::Stats> : EnumWrapper<DebugOverlaySettings::Stats>{};
+    template<> struct Stack<jasperengine::LogLevel> : EnumWrapper<jasperengine::LogLevel>{};
+    template<> struct Stack<jasperengine::DebugOverlaySettings::Stats> : EnumWrapper<jasperengine::DebugOverlaySettings::Stats>{};
 
     // Entity type is not necessary here because it already exists Stack<unsigned int>
 

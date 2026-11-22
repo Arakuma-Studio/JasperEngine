@@ -1201,7 +1201,7 @@ MCP tests are in `tools/mcp/tests/test_title_art_3d*.py`. Engine goldens live in
 | AC6 | R10 | `TitleSolidsTest`: band 2's grow is the sum of bands 0..2; z placement follows the formula for offsets -5, 0, 3; a round band grows per island; a rigged glyph's stack is 0.25 % of size in front of the shared one |
 | AC7 | R11 | `InflateMesherTest`: the grid step formula for three shapes; no T-junction (every boundary edge is shared by the wall); heights equal `height·(profile(d/maxDist)-1)` at sampled nodes (1e-4); a thin stroke peaks lower than a wide one (shared maxDist); detail 4 at 1× clamps h to 0.75; the node cap at 200k holds; a height-only edit reuses the field (cache hit counter) |
 | AC8 | R12, R13, R15 | `OrbMesherTest`: n follows `(π/2)·sqrt(r)` clamped to 24..128 in steps of 8; triangles = 12 n²; normals equal the ellipsoid's. `TitleMeshTest`: vertex size 24 B; vertices ≤ 0.65 × triangles on the R46 title; 16-bit indices below 65,536 vertices; two builds byte-identical; the meshopt ACMR is lower than before optimisation |
-| AC9 | R30, R41 | `Title3DFallbackGpu`: Gold 3D "BIG" rendered with float targets and with `TITLE_ART_TEST_NO_FLOAT_TARGETS` agree within mean 2/255 and ≤ 1 % of pixels over 24/255 (glint off), and mean 3/255 with glint on. Red control: decoding the fallback as plain colour fails by > 20/255 |
+| AC9 | R30, R41 | `Title3DFallbackGpuSlow`: Gold 3D "BIG" rendered with float targets and with `TITLE_ART_TEST_NO_FLOAT_TARGETS` agree within mean 2/255 and ≤ 1 % of pixels over 24/255 (glint off), and mean 3/255 with glint on. Red control: decoding the fallback as plain colour fails by > 20/255 |
 | AC10 | R18-R20 | `TitleLitGpu` goldens on GL core and Vulkan: chrome, gold (ramp + bend), clearcoat plastic, iridescent, glass (opacity), emissive, each on a bevelled "A" in `studio`. Red controls: `gradient_bend` forced to 0 changes the gold golden by more than 8 % of pixels; `env_multiplier` 2 brightens the reflection terms only (the diffuse-only render is unchanged) |
 | AC11 | R21 | `TitleGemGpu`: a sapphire "A" over a gold bed band refracts the bed (pixels behind the gem differ from env-only by > 10 %); with nothing behind, the env refraction path; dispersion separates channels at the edges. The Medium tier golden uses one IOR (pass count lower by the behind pass) |
 | AC12 | R22, R23 | `TitleSurfaceGpu`: crumple, hammered, liquid, flakes and a pattern goldens; caps show no seams along earcut edges (a test counts luminance discontinuities along the cap's internal edges: 0 over 16/255). Red control: without the cap rebuild, seams are found. Env lock: a layer at rotation_y 40 with lock on reflects the head-on image within the goldens' tolerance |
@@ -1446,7 +1446,7 @@ rest of S82 lands in 6B.
     so `TITLE_LIT` has 25 bits) projects an Image or artwork Vector layer's picture: the face texture premultiplied, the
     edge texture of nearest inside colours (Felzenszwalb-Huttenlocher), made on a job (`TitlePicture3D`). Caps rebuild
     their layer position from the view ray (unrigged parts).
-28. **Implementation: the parity goldens are a core GPU test** (`Title3DParityGpu.PachislopLooks`), not
+28. **Implementation: the parity goldens are a core GPU test** (`Title3DParityGpuSlow.PachislopLooks`), not
     `test_title_art_3d_parity.py`: S84's look converter is not in this tree, so the 40 looks are transcribed as JSON
     (`titleart/fixtures/pachislop3d/`, by hand from Pachislop's look helpers, no code run) and `title3DFromPachislop`
     (R67) converts their 3D part; their 2D effects map onto S80's (keyline -> outline, outerGlow -> outer_glow) and,
@@ -1653,7 +1653,7 @@ rest of S82 lands in 6B.
     against 0.62, 0.45, 0.30, 0.28 undithered). Its convex decode biases each of the chain's 30 passes upward, as S83
     Deviation 43 found for the scatter. A dither of half a code in linear light came to 0.72, 0.54, 0.30, 0.31.
     `TitleTargetPoolStats::floatAcquires` counts the float targets a render takes.
-    Test: `Title3DFallbackGpu.TheGlintRunsWithoutFloatTargetsOnEveryTier`. Each tier's forced render takes no float
+    Test: `Title3DFallbackGpuSlow.TheGlintRunsWithoutFloatTargetsOnEveryTier`. Each tier's forced render takes no float
     target, runs as many glint passes as the float render, shows its glint, and stays within AC9's mean 3/255. Red
     control: the earlier glint took the float targets above. AO, the gem behind copy and the environments: 34.
     S84's `fallback_parity` keeps 32's glint-off share rule: the stars still come from 8-bit light, and Gold 3D "BIG"
@@ -1677,7 +1677,7 @@ rest of S82 lands in 6B.
     cube costs a CPU build in place of the GPU one; players load cooked cubes (R26) and build none.
     `Title3DStats::environmentCpuBuilds` and `floatRenderTargets` count the CPU builds and the float targets made
     outside the pool.
-    Test: `Title3DFallbackGpu.AOAndGemsRenderWithoutFloatTargets` renders "BIG" with a sapphire face over gold bands
+    Test: `Title3DFallbackGpuSlow.AOAndGemsRenderWithoutFloatTargets` renders "BIG" with a sapphire face over gold bands
     and AO, at every tier, float and forced on separate renderers. The forced render takes no float target, makes no
     float render target, builds its cube on the CPU, runs the same AO and behind passes, and shows both: it differs
     from the forced renders without the copy and without AO. The float-vs-forced mean at Bake, High, Medium, Low is

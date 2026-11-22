@@ -37,7 +37,7 @@ namespace {
 
     constexpr unsigned int kRate = 44100;
 
-    std::string fixture(const char* name) {
+    std::string audioFileCheckFixture(const char* name) {
         return std::string(JASPER_TEST_REPO_DIR) + "/engine/tests/core/fixtures/audio/" + name;
     }
 
@@ -46,25 +46,25 @@ namespace {
         return std::vector<unsigned char>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     }
 
-    void putU32(std::vector<unsigned char>& bytes, size_t at, uint32_t value) {
+    void audioFileCheckPutU32(std::vector<unsigned char>& bytes, size_t at, uint32_t value) {
         for (int i = 0; i < 4; i++) bytes[at + i] = (unsigned char)(value >> (8 * i));
     }
 
     // a 16-bit PCM WAV of `channels` x `frames` at 0.25
-    std::vector<unsigned char> wavBytes(unsigned int channels, unsigned int frames) {
+    std::vector<unsigned char> audioFileCheckWavBytes(unsigned int channels, unsigned int frames) {
         std::vector<unsigned char> out(44 + (size_t)frames * channels * 2, 0);
         std::memcpy(&out[0], "RIFF", 4);
-        putU32(out, 4, (uint32_t)(out.size() - 8));
+        audioFileCheckPutU32(out, 4, (uint32_t)(out.size() - 8));
         std::memcpy(&out[8], "WAVEfmt ", 8);
-        putU32(out, 16, 16);
+        audioFileCheckPutU32(out, 16, 16);
         out[20] = 1;
         out[22] = (unsigned char)channels;
-        putU32(out, 24, kRate);
-        putU32(out, 28, kRate * channels * 2);
+        audioFileCheckPutU32(out, 24, kRate);
+        audioFileCheckPutU32(out, 28, kRate * channels * 2);
         out[32] = (unsigned char)(channels * 2);
         out[34] = 16;
         std::memcpy(&out[36], "data", 4);
-        putU32(out, 40, frames * channels * 2);
+        audioFileCheckPutU32(out, 40, frames * channels * 2);
         for (size_t i = 44; i + 1 < out.size(); i += 2) {
             const int16_t v = 8192;
             out[i] = (unsigned char)(v & 0xFF);
@@ -85,7 +85,7 @@ namespace {
 
     // the Kenney Ogg with its comment header counting `comments` comments, the page CRC rewritten
     std::vector<unsigned char> oggWithCommentCount(uint32_t comments) {
-        std::vector<unsigned char> bytes = readBytes(fixture("spaceEngineLow_003.ogg"));
+        std::vector<unsigned char> bytes = readBytes(audioFileCheckFixture("spaceEngineLow_003.ogg"));
         // the second page holds the comment header ("\x03vorbis", vendor length and text, count)
         const size_t second = 27 + bytes[26] + bytes[27];
         EXPECT_EQ(std::memcmp(&bytes[second], "OggS", 4), 0);
@@ -96,9 +96,9 @@ namespace {
         EXPECT_EQ(std::memcmp(&bytes[packet], "\x03vorbis", 7), 0);
         const uint32_t vendor = (uint32_t)bytes[packet + 7] | ((uint32_t)bytes[packet + 8] << 8) |
                                 ((uint32_t)bytes[packet + 9] << 16) | ((uint32_t)bytes[packet + 10] << 24);
-        putU32(bytes, packet + 11 + vendor, comments);
-        putU32(bytes, second + 22, 0);
-        putU32(bytes, second + 22, oggCrc(&bytes[second], pageSize));
+        audioFileCheckPutU32(bytes, packet + 11 + vendor, comments);
+        audioFileCheckPutU32(bytes, second + 22, 0);
+        audioFileCheckPutU32(bytes, second + 22, oggCrc(&bytes[second], pageSize));
         return bytes;
     }
 
@@ -157,7 +157,7 @@ TEST(AudioFileLoads, AWavOfMoreThanEightChannelsIsRefused) {
     // Wav::loadwav and WavStream decode 512 frames at a time into float[512 * 8]: 12 channels
     // overflow that stack buffer
     GTEST_FLAG_SET(death_test_style, "threadsafe");
-    const fs::path path = writeTemp("twelve.wav", wavBytes(12, 4096));
+    const fs::path path = writeTemp("twelve.wav", audioFileCheckWavBytes(12, 4096));
     for (const char* type : kLoadTypes) {
         SCOPED_TRACE(type);
         const std::string id = path.string() + "#" + type;
@@ -172,9 +172,9 @@ TEST(AudioFileLoads, APipeWrittenWavLoadsAtTheFramesItHolds) {
     // ffmpeg and sox write a WAV to a pipe with RIFF and data sizes of 0xFFFFFFFF: SoLoud took the
     // data size as the length (12 hours of 16-bit stereo, 8 GB decoded) of a 1 s file
     GTEST_FLAG_SET(death_test_style, "threadsafe");
-    std::vector<unsigned char> bytes = wavBytes(1, kRate);
-    putU32(bytes, 4, 0xFFFFFFFFu);
-    putU32(bytes, 40, 0xFFFFFFFFu);
+    std::vector<unsigned char> bytes = audioFileCheckWavBytes(1, kRate);
+    audioFileCheckPutU32(bytes, 4, 0xFFFFFFFFu);
+    audioFileCheckPutU32(bytes, 40, 0xFFFFFFFFu);
     const fs::path path = writeTemp("pipe.wav", bytes);
     for (const char* type : kLoadTypes) {
         SCOPED_TRACE(type);
@@ -212,7 +212,7 @@ TEST(AudioFileLoads, AnOggCommentHeaderBeyondItsPacketIsRefused) {
 // ---- AudioFileCheck itself -------------------------------------------------------------------------
 
 TEST(AudioFileCheck, ReadsWhatSoLoudWillDecode) {
-    const std::vector<unsigned char> bytes = readBytes(fixture("spaceEngineLow_003.ogg"));
+    const std::vector<unsigned char> bytes = readBytes(audioFileCheckFixture("spaceEngineLow_003.ogg"));
     AudioFileFormat format;
     std::string error;
     ASSERT_TRUE(AudioFileCheck::check(bytes.data(), bytes.size(), AudioDecode::Whole, format, error)) << error;
@@ -222,12 +222,12 @@ TEST(AudioFileCheck, ReadsWhatSoLoudWillDecode) {
     EXPECT_EQ(format.frames, 220500u) << "the last page's granule (stb_vorbis decodes past it)";
 
     for (const char* name : {"sweep.flac", "sweep.mp3"}) {
-        const std::vector<unsigned char> file = readBytes(fixture(name));
+        const std::vector<unsigned char> file = readBytes(audioFileCheckFixture(name));
         ASSERT_TRUE(AudioFileCheck::check(file.data(), file.size(), AudioDecode::Stream, format, error)) << name << ": " << error;
         EXPECT_EQ(format.channels, 1u);
         EXPECT_EQ(format.sampleRate, kRate);
     }
-    std::vector<unsigned char> wav = wavBytes(2, 1000);
+    std::vector<unsigned char> wav = audioFileCheckWavBytes(2, 1000);
     ASSERT_TRUE(AudioFileCheck::check(wav.data(), wav.size(), AudioDecode::Whole, format, error)) << error;
     EXPECT_EQ(format.codec, "wav");
     EXPECT_EQ(format.frames, 1000u);
@@ -237,7 +237,7 @@ TEST(AudioFileCheck, ReadsWhatSoLoudWillDecode) {
 TEST(AudioFileCheck, RefusesWithAReason) {
     AudioFileFormat format;
     std::string error;
-    std::vector<unsigned char> twelve = wavBytes(12, 64);
+    std::vector<unsigned char> twelve = audioFileCheckWavBytes(12, 64);
     EXPECT_FALSE(AudioFileCheck::check(twelve.data(), twelve.size(), AudioDecode::Stream, format, error));
     EXPECT_EQ(error, "12 channels (1-8 are supported)");
 
@@ -251,9 +251,9 @@ TEST(AudioFileCheck, RefusesWithAReason) {
 }
 
 TEST(AudioFileCheck, AWavsSizesBecomeTheBytesItHolds) {
-    std::vector<unsigned char> bytes = wavBytes(1, 1000);
-    putU32(bytes, 4, 0xFFFFFFFFu);
-    putU32(bytes, 40, 0xFFFFFFFFu);
+    std::vector<unsigned char> bytes = audioFileCheckWavBytes(1, 1000);
+    audioFileCheckPutU32(bytes, 4, 0xFFFFFFFFu);
+    audioFileCheckPutU32(bytes, 40, 0xFFFFFFFFu);
     ASSERT_TRUE(AudioFileCheck::wavSizesNeedClamping(bytes.data(), bytes.size()));
     AudioFileFormat format;
     std::string error;

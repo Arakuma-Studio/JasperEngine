@@ -72,6 +72,16 @@ RECORD = {
 }
 # edit-mode results first (the play calls come last)
 RECORD = {"eval_lua_edit_mode": ("eval_lua", {"code": "return 1"}), **RECORD}
+# Recorded once the world is built (its scenes in the build), in order: a game that ships on
+# Android and iOS only, then every platform again, so the project the samples copy targets all six
+ALL_PLATFORMS = ["windows", "linux", "macos", "android", "ios", "web"]
+RECORD_WORLD = {
+    "targets_mobile_set": ("set_project_settings", {"values": {"player.target_platforms": ["android", "ios"]}}),
+    "build_info_mobile": ("get_build_info", {}),
+    "targets_mobile_get": ("get_project_settings", {"keys": ["player.target_platforms"]}),
+    "project_settings_mobile": ("get_project_settings", {}),
+    "targets_reset": ("set_project_settings", {"values": {"player.target_platforms": ALL_PLATFORMS}}),
+}
 
 
 async def build_world(ed) -> None:
@@ -107,15 +117,20 @@ async def record(out: Path) -> dict:
         resources = await ed.session.list_resources()
         templates = await ed.session.list_resource_templates()
         recorded = {}
-        for key, (tool, args) in RECORD.items():
-            try:
-                r = await ed.call_raw(tool, args)
-            except Exception as exc:  # a JSON-RPC error (an unknown tool): its message is the result
-                recorded[key] = {"tool": tool, "args": args, "text": str(exc), "structured": None, "is_error": True}
-                continue
-            recorded[key] = {"tool": tool, "args": args, "text": r.text,
-                             "structured": r.structured, "is_error": r.is_error}
+
+        async def record_calls(calls: dict) -> None:
+            for key, (tool, args) in calls.items():
+                try:
+                    r = await ed.call_raw(tool, args)
+                except Exception as exc:  # a JSON-RPC error (an unknown tool): its message is the result
+                    recorded[key] = {"tool": tool, "args": args, "text": str(exc), "structured": None, "is_error": True}
+                    continue
+                recorded[key] = {"tool": tool, "args": args, "text": r.text,
+                                 "structured": r.structured, "is_error": r.is_error}
+
+        await record_calls(RECORD)
         await build_world(ed)
+        await record_calls(RECORD_WORLD)
         contents = {}
         for res in resources.resources:
             uri = str(res.uri)

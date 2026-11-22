@@ -19,7 +19,7 @@ using namespace jasperengine;
 
 namespace {
 
-    enum TestTile : int32_t { FULL = 0, TRIANGLE = 1, ONE_WAY = 2, SENSOR = 3, L_SHAPE = 4 };
+    enum TilemapColliderBuilderTestTile : int32_t { FULL = 0, TRIANGLE = 1, ONE_WAY = 2, SENSOR = 3, L_SHAPE = 4 };
 
     TilesetData testTileset() {
         TilesetData data;
@@ -82,7 +82,7 @@ namespace {
         return a.x == b.x && a.y == b.y;
     }
 
-    std::string describe(const TilePoint& p) {
+    std::string tilemapColliderBuilderDescribe(const TilePoint& p) {
         return "(" + std::to_string(p.x) + ", " + std::to_string(p.y) + ")";
     }
 
@@ -91,7 +91,7 @@ namespace {
         for (size_t i = 0; i + (loop ? 0 : 1) < count; i++) {
             const TilePoint& a = points[i];
             const TilePoint& b = points[(i + 1) % count];
-            EXPECT_GT(std::hypot(b.x - a.x, b.y - a.y), 0.32) << describe(a) << " to " << describe(b);
+            EXPECT_GT(std::hypot(b.x - a.x, b.y - a.y), 0.32) << tilemapColliderBuilderDescribe(a) << " to " << tilemapColliderBuilderDescribe(b);
         }
     }
 
@@ -130,7 +130,7 @@ namespace {
         for (const TileColliderChain* chain : open) {
             const TilePoint& start = chain->points[1];
             const bool fresh = byStart.emplace(std::make_pair(start.x, start.y), chain).second;
-            EXPECT_TRUE(fresh) << "two chains start at " << describe(start);
+            EXPECT_TRUE(fresh) << "two chains start at " << tilemapColliderBuilderDescribe(start);
         }
         std::set<const TileColliderChain*> used;
         for (const TileColliderChain* first : open) {
@@ -145,14 +145,14 @@ namespace {
                 const TilePoint& end = chain->points[count - 2];
                 auto next = byStart.find(std::make_pair(end.x, end.y));
                 if (next == byStart.end()) {
-                    ADD_FAILURE() << "no chain continues at " << describe(end);
+                    ADD_FAILURE() << "no chain continues at " << tilemapColliderBuilderDescribe(end);
                     break;
                 }
                 const std::vector<TilePoint>& nextPoints = next->second->points;
                 EXPECT_TRUE(samePoint(chain->points[count - 3], nextPoints[0]))
-                    << describe(chain->points[count - 3]) << " != " << describe(nextPoints[0]);
+                    << tilemapColliderBuilderDescribe(chain->points[count - 3]) << " != " << tilemapColliderBuilderDescribe(nextPoints[0]);
                 EXPECT_TRUE(samePoint(chain->points[count - 1], nextPoints[2]))
-                    << describe(chain->points[count - 1]) << " != " << describe(nextPoints[2]);
+                    << tilemapColliderBuilderDescribe(chain->points[count - 1]) << " != " << tilemapColliderBuilderDescribe(nextPoints[2]);
                 chain = next->second;
             }
             rings.push_back(std::move(ring));
@@ -216,7 +216,7 @@ TEST(TilemapColliderBuilder, SingleFullCellIsCounterClockwiseLoop) {
     ASSERT_EQ(points.size(), 4u);
     EXPECT_GT(signedArea(points), 0.0);
     EXPECT_DOUBLE_EQ(signedArea(points), 256.0);
-    EXPECT_TRUE(samePoint(points[0], TilePoint{32.0, 48.0})) << describe(points[0]);
+    EXPECT_TRUE(samePoint(points[0], TilePoint{32.0, 48.0})) << tilemapColliderBuilderDescribe(points[0]);
 }
 
 TEST(TilemapColliderBuilder, HolesAreClockwiseAndSolidsCounterClockwise) {
@@ -316,7 +316,7 @@ TEST(TilemapColliderBuilder, ThreePointOverlapOnManyChunkFloor) {
         ASSERT_GE(right.size(), 4u);
         ASSERT_GE(left.size(), 4u);
         const size_t n = right.size();
-        EXPECT_TRUE(samePoint(right[n - 3], left[0])) << describe(right[n - 3]) << " " << describe(left[0]);
+        EXPECT_TRUE(samePoint(right[n - 3], left[0])) << tilemapColliderBuilderDescribe(right[n - 3]) << " " << tilemapColliderBuilderDescribe(left[0]);
         EXPECT_TRUE(samePoint(right[n - 2], left[1]));
         EXPECT_TRUE(samePoint(right[n - 1], left[2]));
         // the crossing is at the border, the ghost one cell beyond it
@@ -458,7 +458,7 @@ TEST(TilemapColliderBuilder, TilesSourceOnDualGridIsDrawnPosition) {
     settings.dualGrid = true;
     const TileColliderChunk chunk = TileColliderBuilder(settings).build(ChunkCoord{0, 0});
     ASSERT_EQ(chunk.loops.size(), 1u);
-    EXPECT_TRUE(samePoint(chunk.loops[0].points[0], TilePoint{40.0, 40.0})) << describe(chunk.loops[0].points[0]);
+    EXPECT_TRUE(samePoint(chunk.loops[0].points[0], TilePoint{40.0, 40.0})) << tilemapColliderBuilderDescribe(chunk.loops[0].points[0]);
 }
 
 TEST(TilemapColliderBuilder, OffsetAndTileAnchorMoveShapes) {
@@ -470,7 +470,7 @@ TEST(TilemapColliderBuilder, OffsetAndTileAnchorMoveShapes) {
     settings.tileAnchor = TilePoint{1.0, 0.0};
     const TileColliderChunk chunk = TileColliderBuilder(settings).build(ChunkCoord{0, 0});
     ASSERT_EQ(chunk.loops.size(), 1u);
-    EXPECT_TRUE(samePoint(chunk.loops[0].points[0], TilePoint{35.0, 14.0})) << describe(chunk.loops[0].points[0]);
+    EXPECT_TRUE(samePoint(chunk.loops[0].points[0], TilePoint{35.0, 14.0})) << tilemapColliderBuilderDescribe(chunk.loops[0].points[0]);
 }
 
 TEST(TilemapColliderBuilder, PolygonsGeometryIsConvexAndCoversTheUnion) {
@@ -502,7 +502,7 @@ TEST(TilemapColliderBuilder, PolygonsGeometryIsConvexAndCoversTheUnion) {
             const TilePoint& a = polygon.points[i];
             const TilePoint& b = polygon.points[(i + 1) % n];
             const TilePoint& c = polygon.points[(i + 2) % n];
-            EXPECT_GE((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x), -1e-3) << "reflex vertex at " << describe(b);
+            EXPECT_GE((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x), -1e-3) << "reflex vertex at " << tilemapColliderBuilderDescribe(b);
         }
         area += signedArea(polygon.points);
     }

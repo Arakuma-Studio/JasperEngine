@@ -50,7 +50,7 @@ namespace {
         }
     };
 
-    CompareOptions backendOptions() {
+    CompareOptions voxelRenderBackendOptions() {
         CompareOptions options;
         if (std::strcmp(HeadlessContext::getBackendName(), "glcore") != 0) {
             options.pixelThreshold = 16;
@@ -181,7 +181,7 @@ namespace {
         }
 
         void expectGolden(const std::string& name) {
-            const CompareResult result = compareTargetWithGolden(name, backendOptions());
+            const CompareResult result = compareTargetWithGolden(name, voxelRenderBackendOptions());
             std::printf("[gpu] %s on %s: largest difference %d, %zu pixels over the threshold, mean %.4f\n",
                         name.c_str(), HeadlessContext::getBackendName(), result.maxDiff, result.badPixels, result.meanDiff);
             EXPECT_TRUE(result.passed) << result.message;

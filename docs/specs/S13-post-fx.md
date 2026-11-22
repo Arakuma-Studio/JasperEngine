@@ -376,7 +376,7 @@ per-file header, so we add the OE copyright line to each copied file.
 | AC15 | Pass counts in the frame stats: halation with bloom adds 0 passes, halation alone adds 2, VHS/damage/grain types add 0 | `test_post_fx_golden.py::test_pass_counts` |
 | AC16 | Every new field round-trips through set/get. Presets apply as one undo. `inspect_color_lut` reports fixtures and errors | `tools/mcp/tests/test_post_fx_settings.py` |
 | AC17 | Dynamic resolution wiring in Play. `fake_gpu_ms 40` at a 60 fps target reaches min scale within 2 s. `fake_gpu_ms 5` returns to max within 10 s. `force_render_scale 0.5` halves the uber source size (status `render_scale_applied`). Edit mode never changes scale | `tools/mcp/tests/test_dynamic_resolution.py` |
-| AC18 | Old scenes re-save byte-identically: every scene in `tools/fixtures/*` is opened, saved and diffed | `test_post_fx_settings.py::test_resave_identical` |
+| AC18 | Old scenes re-save byte-identically: every scene in `tools/fixtures/*` is opened, saved and diffed | `test_reflection.py::test_golden_resave_<project>`, `Compat.CorpusRoundTrip` (Deviation 15) |
 | AC19 | Inspector: new rows and groups present. A `.cube` drop sets `lut_texture` and shows the encoding row. VHS shows FXAA inactive. Each is one undo step | extend `tools/mcp/tests/test_post_process_inspector.py` |
 | AC20 | Lua: a fixture script toggles `vhsEnabled`, sets `filmGrainType`, reads `scene:getDynamicResolution().scale`. The exported game logs the values and screenshots differ from the off frame | `tools/fixtures/post-processing/scripts/` + `tools/smoke-test.sh` scheduled shots |
 | AC21 | Export cooks a 65³ `.cube` to a `.jlut` ≤ 300 KB, and the exported game's bake matches the editor's (±2/255) | smoke-test fixture + gtest `CubeLut.JlutRoundTrip` |
@@ -485,6 +485,12 @@ per-file header, so we add the OE copyright line to each copied file.
 14. **AC18**: the fixtures are partly hand-written, so a first save writes the editor's full form
     (before and after S13); the test checks that the saved `postProcessing` equals the file's and
     that a second open and save gives the same bytes.
+15. **AC18's owners**: `test_post_fx_settings.py::test_resave_identical` is gone (10 CI minutes a run).
+    The saved `postProcessing` with no S13 key is `test_reflection.py::test_golden_resave_<project>`:
+    every scene of every `tools/fixtures` project saved, compared line for line with its golden,
+    which carries the pre-S13 block; a second round trip writing the same bytes is
+    `Compat.CorpusRoundTrip` (editor tests, every `tools/fixtures` scene) and
+    `test_materials_pbr.py::test_legacy_resave_identical`.
 
 ## Record (implementation)
 

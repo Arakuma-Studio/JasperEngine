@@ -41,9 +41,9 @@ using namespace jasperengine::test;
 namespace {
 
     // MESH 'Dlo' (ShaderPool::getDirectionalOnlyProperty), by its number: older engines have no name for it
-    constexpr uint64_t DIRECTIONAL_ONLY_BIT = 1ull << 44;
+    constexpr uint64_t DRAW_PERF_DIRECTIONAL_ONLY_BIT = 1ull << 44;
 
-    std::vector<uint8_t> readTarget(){
+    std::vector<uint8_t> readDrawPerfTarget(){
         Framebuffer& target = GpuEnvironment::target();
         std::vector<uint8_t> rgba;
         readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba);
@@ -109,7 +109,7 @@ namespace {
 
         // the mean luminance of the target's centre (a 20 x 20 square)
         float centreLuminance(){
-            const std::vector<uint8_t> rgba = readTarget();
+            const std::vector<uint8_t> rgba = readDrawPerfTarget();
             Framebuffer& target = GpuEnvironment::target();
             const int width = (int)target.getWidth();
             const int height = (int)target.getHeight();
@@ -237,7 +237,7 @@ TEST_F(DrawPerfGpu, SunOnlySceneDrawsDirectionalOnly){
     Primitive& made = box(0.0f, 0.0f, 0.0f, true);
     settle();
     const Submesh& submesh = made.getComponent<MeshComponent>().submeshes[0];
-    EXPECT_NE(submesh.shaderProperties & DIRECTIONAL_ONLY_BIT, 0u) << "a sun-only scene's Lit is not 'Dlo'";
+    EXPECT_NE(submesh.shaderProperties & DRAW_PERF_DIRECTIONAL_ONLY_BIT, 0u) << "a sun-only scene's Lit is not 'Dlo'";
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 44), "Dlo");
 
     // a point light, even switched off, takes the general variant
@@ -245,13 +245,13 @@ TEST_F(DrawPerfGpu, SunOnlySceneDrawsDirectionalOnly){
     lights.back()->setType(LightType::POINT);
     lights.back()->setEnabled(false);
     settle();
-    EXPECT_EQ(made.getComponent<MeshComponent>().submeshes[0].shaderProperties & DIRECTIONAL_ONLY_BIT, 0u)
+    EXPECT_EQ(made.getComponent<MeshComponent>().submeshes[0].shaderProperties & DRAW_PERF_DIRECTIONAL_ONLY_BIT, 0u)
         << "a point light in the scene, and the Lit is still 'Dlo'";
 
     // and keeps it until the scene loads again: lights that come and go reload nothing
     lights.pop_back();
     settle();
-    EXPECT_EQ(made.getComponent<MeshComponent>().submeshes[0].shaderProperties & DIRECTIONAL_ONLY_BIT, 0u)
+    EXPECT_EQ(made.getComponent<MeshComponent>().submeshes[0].shaderProperties & DRAW_PERF_DIRECTIONAL_ONLY_BIT, 0u)
         << "the point light gone, and the Lit is 'Dlo' again (every mesh reloaded)";
     EXPECT_NO_ENGINE_ERRORS();
 }
@@ -265,17 +265,17 @@ TEST_F(DrawPerfGpu, DirectionalOnlyDrawsTheSameImage){
     for (int i = 0; i < 6; i++)
         box(-3.0f + 1.2f * (float)i, -0.5f + 0.2f * (float)i, 26.0f - 0.5f * (float)i, true).setScale(1.5f);
     settle();
-    ASSERT_NE(boxes[0]->getComponent<MeshComponent>().submeshes[0].shaderProperties & DIRECTIONAL_ONLY_BIT, 0u);
-    const std::vector<uint8_t> directional = readTarget();
+    ASSERT_NE(boxes[0]->getComponent<MeshComponent>().submeshes[0].shaderProperties & DRAW_PERF_DIRECTIONAL_ONLY_BIT, 0u);
+    const std::vector<uint8_t> directional = readDrawPerfTarget();
     // the general variant: a point light that gives no light
     lights.push_back(std::make_unique<Light>(&scene));
     lights.back()->setType(LightType::POINT);
     lights.back()->setEnabled(false);
     settle();
     const uint64_t general = boxes[0]->getComponent<MeshComponent>().submeshes[0].shaderProperties;
-    ASSERT_EQ(general & DIRECTIONAL_ONLY_BIT, 0u);
+    ASSERT_EQ(general & DRAW_PERF_DIRECTIONAL_ONLY_BIT, 0u);
     ASSERT_EQ(general & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS), 0u);
-    const std::vector<uint8_t> generalImage = readTarget();
+    const std::vector<uint8_t> generalImage = readDrawPerfTarget();
     ASSERT_EQ(generalImage.size(), directional.size());
     size_t differing = 0;
     for (size_t i = 0; i < generalImage.size(); i++){
@@ -295,7 +295,7 @@ TEST_F(DrawPerfGpu, ArrivingPointLightIsDrawnByDirectionalOnlyMeshes){
     Primitive& lit = box(0.0f, 0.0f, 24.0f, true);
     lit.setScale(3.0f);
     settle();
-    ASSERT_NE(lit.getComponent<MeshComponent>().submeshes[0].shaderProperties & DIRECTIONAL_ONLY_BIT, 0u);
+    ASSERT_NE(lit.getComponent<MeshComponent>().submeshes[0].shaderProperties & DRAW_PERF_DIRECTIONAL_ONLY_BIT, 0u);
     const float before = centreLuminance();
     // a bright point light in front of the box: the very next frame shows it, whether the box
     // still draws 'Dlo' (the light in its ambient) or already the general variant
@@ -334,7 +334,7 @@ TEST_F(DrawPerfGpu, LightsComingAndGoingReloadNothing){
         const Submesh& submesh = made->getComponent<MeshComponent>().submeshes[0];
         properties.push_back(submesh.shaderProperties);
         pipelines.push_back(submesh.render.getPipelineId(PIP_RTT));
-        EXPECT_EQ(submesh.shaderProperties & DIRECTIONAL_ONLY_BIT, 0u);
+        EXPECT_EQ(submesh.shaderProperties & DRAW_PERF_DIRECTIONAL_ONLY_BIT, 0u);
     }
     for (int round = 0; round < 3; round++){
         lights.pop_back();

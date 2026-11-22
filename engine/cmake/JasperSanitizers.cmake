@@ -78,6 +78,11 @@ if(jasperengineSanitize)
                 list(APPEND jasperengineSanitizeOptions -fno-sanitize=function)
             endif()
         endif()
+        # Debug at -O1: at -O0 every inlined check of UBSan and ASan stays out of line with its own
+        # data, and the editor test binary's data alone passed 2 GB, which the x86-64 small code
+        # model cannot reach (ld.lld: relocation R_X86_64_PC32 out of range). -O1 keeps Debug's
+        # assertions, and the frame pointer keeps the reports' stacks
+        list(APPEND jasperengineSanitizeOptions $<$<CONFIG:Debug>:-O1>)
         add_compile_options(${jasperengineSanitizeOptions})
         add_link_options("-fsanitize=${jasperengineSanitizeFlag}")
     endif()

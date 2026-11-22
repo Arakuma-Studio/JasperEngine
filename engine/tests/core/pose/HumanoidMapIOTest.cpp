@@ -15,9 +15,9 @@ using posetest::anyWarningContains;
 
 namespace {
 
-    using Parsed = posetest::ParsedHumanoid;
+    using HumanoidMapIOParsed = posetest::ParsedHumanoid;
 
-    Parsed parse(const std::string& text){
+    HumanoidMapIOParsed humanoidMapIOParse(const std::string& text){
         return posetest::parseHumanoid(text);
     }
 
@@ -64,7 +64,7 @@ TEST(HumanoidMapIO, NulloptEmptyAndNameRoundTrip){
     slot(overrides, HumanBone::Head) = "Kopf \xC3\xBC";
     const std::string text = writeHumanoidOverrides(overrides);
 
-    Parsed back = parse(text);
+    HumanoidMapIOParsed back = humanoidMapIOParse(text);
     ASSERT_TRUE(back.ok) << back.error;
     EXPECT_TRUE(back.warnings.empty());
     EXPECT_EQ(back.overrides, overrides);
@@ -81,7 +81,7 @@ TEST(HumanoidMapIO, EverySlotRoundTrips){
         overrides.bones[i] = (i % 3 == 0) ? std::string() : std::string("bone_") + std::to_string(i);
     }
     const std::string text = writeHumanoidOverrides(overrides);
-    Parsed back = parse(text);
+    HumanoidMapIOParsed back = humanoidMapIOParse(text);
     ASSERT_TRUE(back.ok) << back.error;
     EXPECT_TRUE(back.warnings.empty());
     EXPECT_EQ(back.overrides, overrides);
@@ -97,7 +97,7 @@ TEST(HumanoidMapIO, EverySlotRoundTrips){
 }
 
 TEST(HumanoidMapIO, ParsesTheSpecExample){
-    Parsed parsed = parse("{\"format\": \"jasperengine.humanoid\", \"version\": 1,\n"
+    HumanoidMapIOParsed parsed = humanoidMapIOParse("{\"format\": \"jasperengine.humanoid\", \"version\": 1,\n"
                           " \"bones\": {\"hips\": \"mixamorig:Hips\", \"left_toes\": \"\"}}");
     ASSERT_TRUE(parsed.ok) << parsed.error;
     EXPECT_TRUE(parsed.warnings.empty());
@@ -111,14 +111,14 @@ TEST(HumanoidMapIO, ParsesTheSpecExample){
 }
 
 TEST(HumanoidMapIO, MissingBonesIsAllAuto){
-    Parsed parsed = parse("{\"format\": \"jasperengine.humanoid\", \"version\": 1}");
+    HumanoidMapIOParsed parsed = humanoidMapIOParse("{\"format\": \"jasperengine.humanoid\", \"version\": 1}");
     ASSERT_TRUE(parsed.ok);
     EXPECT_TRUE(parsed.warnings.empty());
     EXPECT_TRUE(parsed.overrides.empty());
 }
 
 TEST(HumanoidMapIO, UnknownSlotsKeysAndBadValuesWarn){
-    Parsed parsed = parse("{\"format\": \"jasperengine.humanoid\", \"version\": 1, \"extra\": 1, "
+    HumanoidMapIOParsed parsed = humanoidMapIOParse("{\"format\": \"jasperengine.humanoid\", \"version\": 1, \"extra\": 1, "
                           "\"bones\": {\"hips\": \"H\", \"tail\": \"T\", \"head\": 5, \"neck\": null, \"left_hand\": []}}");
     ASSERT_TRUE(parsed.ok) << parsed.error;
     EXPECT_TRUE(anyWarningContains(parsed.warnings, "unknown key 'extra'"));
@@ -130,27 +130,27 @@ TEST(HumanoidMapIO, UnknownSlotsKeysAndBadValuesWarn){
     EXPECT_FALSE(parsed.overrides.bones[boneIndex(HumanBone::Head)].has_value());
     EXPECT_FALSE(parsed.overrides.bones[boneIndex(HumanBone::Neck)].has_value());
 
-    parsed = parse("{\"format\": \"jasperengine.humanoid\", \"version\": 1, \"bones\": [1]}");
+    parsed = humanoidMapIOParse("{\"format\": \"jasperengine.humanoid\", \"version\": 1, \"bones\": [1]}");
     ASSERT_TRUE(parsed.ok);
     EXPECT_TRUE(anyWarningContains(parsed.warnings, "bones"));
     EXPECT_TRUE(parsed.overrides.empty());
 }
 
 TEST(HumanoidMapIO, BadFormatOrVersionFails){
-    EXPECT_FALSE(parse("").ok);
-    EXPECT_FALSE(parse("nonsense").ok);
-    EXPECT_FALSE(parse("[]").ok);
-    EXPECT_FALSE(parse("{\"version\": 1}").ok);
-    EXPECT_FALSE(parse("{\"format\": \"jasperengine.poseanim\", \"version\": 1}").ok);
+    EXPECT_FALSE(humanoidMapIOParse("").ok);
+    EXPECT_FALSE(humanoidMapIOParse("nonsense").ok);
+    EXPECT_FALSE(humanoidMapIOParse("[]").ok);
+    EXPECT_FALSE(humanoidMapIOParse("{\"version\": 1}").ok);
+    EXPECT_FALSE(humanoidMapIOParse("{\"format\": \"jasperengine.poseanim\", \"version\": 1}").ok);
     // version 2 is the Avatar form (anim-retarget); 3 is newer than this engine
-    EXPECT_TRUE(parse("{\"format\": \"jasperengine.humanoid\", \"version\": 2, \"bones\": {}}").ok);
-    Parsed parsed = parse("{\"format\": \"jasperengine.humanoid\", \"version\": 3, \"bones\": {}}");
+    EXPECT_TRUE(humanoidMapIOParse("{\"format\": \"jasperengine.humanoid\", \"version\": 2, \"bones\": {}}").ok);
+    HumanoidMapIOParsed parsed = humanoidMapIOParse("{\"format\": \"jasperengine.humanoid\", \"version\": 3, \"bones\": {}}");
     EXPECT_FALSE(parsed.ok);
     EXPECT_NE(parsed.error.find("version"), std::string::npos) << parsed.error;
-    EXPECT_FALSE(parse("{\"format\": \"jasperengine.humanoid\", \"version\": 0}").ok);
-    EXPECT_FALSE(parse("{\"format\": \"jasperengine.humanoid\", \"version\": \"1\"}").ok);
+    EXPECT_FALSE(humanoidMapIOParse("{\"format\": \"jasperengine.humanoid\", \"version\": 0}").ok);
+    EXPECT_FALSE(humanoidMapIOParse("{\"format\": \"jasperengine.humanoid\", \"version\": \"1\"}").ok);
 
-    Parsed missing = parse("{\"format\": \"jasperengine.humanoid\"}");
+    HumanoidMapIOParsed missing = humanoidMapIOParse("{\"format\": \"jasperengine.humanoid\"}");
     EXPECT_TRUE(missing.ok);
     EXPECT_TRUE(anyWarningContains(missing.warnings, "version"));
 

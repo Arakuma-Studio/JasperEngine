@@ -22,7 +22,7 @@ using namespace jasperengine::navtest;
 namespace {
 
     // one cell of the 0.2 m bakes
-    constexpr float CELL = 0.2f;
+    constexpr float NAV_GAMEPLAY_QUERY_CELL = 0.2f;
     // chi-square with one degree of freedom at p = 0.001
     constexpr double CHI2_1DOF_P001 = 10.828;
 
@@ -294,10 +294,10 @@ TEST_F(NavRandomTest, SameIsland){
     for (int i = 0; i < 1000; i++) {
         nav::NavHit hit;
         ASSERT_TRUE(nav->randomPoint(hit, {}, query));
-        EXPECT_LT(hit.position.x, -6.5f + CELL) << hit.position.toString();
+        EXPECT_LT(hit.position.x, -6.5f + NAV_GAMEPLAY_QUERY_CELL) << hit.position.toString();
         nav::NavHit near;
         if (nav->randomPoint(near, {}, around)) {
-            EXPECT_LT(near.position.x, -6.5f + CELL) << near.position.toString();
+            EXPECT_LT(near.position.x, -6.5f + NAV_GAMEPLAY_QUERY_CELL) << near.position.toString();
             EXPECT_LE(Vector3(near.position.x + 7.0f, 0.0f, near.position.z).length(), 5.0f + 1e-3f);
         }
     }
@@ -305,7 +305,7 @@ TEST_F(NavRandomTest, SameIsland){
     for (int i = 0; i < 200; i++) {
         nav::NavHit hit;
         ASSERT_TRUE(nav->randomPoint(hit, {}, query));
-        EXPECT_GT(hit.position.x, -5.5f - CELL) << hit.position.toString();
+        EXPECT_GT(hit.position.x, -5.5f - NAV_GAMEPLAY_QUERY_CELL) << hit.position.toString();
         EXPECT_LT(hit.position.x, 0.0f) << hit.position.toString();
     }
 }
@@ -322,8 +322,8 @@ TEST_F(NavPathTest, CornerAreasAndCost){
     EXPECT_TRUE(path.cornerFlags.front() & nav::CORNER_START);
     EXPECT_TRUE(path.cornerFlags.back() & nav::CORNER_END);
     EXPECT_EQ(path.cornerAreas.back(), nav::AREA_WALKABLE);
-    EXPECT_NEAR(path.areaLengths[3], 2.0f, CELL);
-    EXPECT_NEAR(path.areaLengths[nav::AREA_WALKABLE], 18.0f, 2.0f * CELL);
+    EXPECT_NEAR(path.areaLengths[3], 2.0f, NAV_GAMEPLAY_QUERY_CELL);
+    EXPECT_NEAR(path.areaLengths[nav::AREA_WALKABLE], 18.0f, 2.0f * NAV_GAMEPLAY_QUERY_CELL);
     EXPECT_NEAR(sumLengths(path), path.length, 1e-3f);
     EXPECT_NEAR(path.cost, path.areaLengths[nav::AREA_WALKABLE] * 1.0f + path.areaLengths[3] * 4.0f, 1e-3f);
     EXPECT_FALSE(path.polys.empty());
@@ -336,9 +336,9 @@ TEST_F(NavPathTest, CornerAreasAndCost){
     ASSERT_EQ(crossed.status, nav::PathStatus::Complete);
     bool enters = false, leaves = false;
     for (size_t i = 0; i + 1 < crossed.corners.size(); i++) {
-        if (std::fabs(crossed.corners[i].x + 1.0f) < CELL && crossed.cornerAreas[i] == 3)
+        if (std::fabs(crossed.corners[i].x + 1.0f) < NAV_GAMEPLAY_QUERY_CELL && crossed.cornerAreas[i] == 3)
             enters = true;
-        if (std::fabs(crossed.corners[i].x - 1.0f) < CELL && crossed.cornerAreas[i] == nav::AREA_WALKABLE)
+        if (std::fabs(crossed.corners[i].x - 1.0f) < NAV_GAMEPLAY_QUERY_CELL && crossed.cornerAreas[i] == nav::AREA_WALKABLE)
             leaves = true;
     }
     EXPECT_TRUE(enters && leaves) << crossed.corners.size() << " corners";
@@ -374,7 +374,7 @@ TEST_F(NavPathTest, LinkCornerAndCost){
     const float linkLength = path.corners[linkCorner].distance(path.corners[linkCorner + 1]);
     EXPECT_NEAR(path.areaLengths[nav::AREA_JUMP], linkLength, 1e-3f);
     // the link's ends snap to the mesh
-    EXPECT_NEAR(linkLength, 5.0f, 3.0f * CELL);
+    EXPECT_NEAR(linkLength, 5.0f, 3.0f * NAV_GAMEPLAY_QUERY_CELL);
     EXPECT_NEAR(path.cost, path.areaLengths[nav::AREA_WALKABLE] + 3.0f * linkLength, 1e-3f);
     EXPECT_NEAR(sumLengths(path), path.length, 1e-3f);
 }
@@ -387,14 +387,14 @@ TEST_F(NavPathTest, RaycastCost){
     EXPECT_FALSE(nav->raycast(Vector3(0.0f, 0.0f, -3.0f), Vector3(0.0f, 0.0f, 3.0f), hit));
     // the cost walks the polygons' heights, the distance is in the plane (S19): equal to 1e-3 relative
     EXPECT_NEAR(hit.cost, hit.distance * 4.0f, 1e-3f * hit.distance * 4.0f);
-    EXPECT_NEAR(hit.distance, 6.0f, CELL);
+    EXPECT_NEAR(hit.distance, 6.0f, NAV_GAMEPLAY_QUERY_CELL);
     // across it: 18 m of floor and 2 of mud
     EXPECT_FALSE(nav->raycast(Vector3(-9.0f, 0.0f, 0.0f), Vector3(9.0f, 0.0f, 0.0f), hit));
-    EXPECT_NEAR(hit.cost, 16.0f + 2.0f * 4.0f, 3.0f * CELL);
+    EXPECT_NEAR(hit.cost, 16.0f + 2.0f * 4.0f, 3.0f * NAV_GAMEPLAY_QUERY_CELL);
     // blocked at the edge as S19's raycast (NavQueryTest.Raycast): hit, position and normal kept,
     // the cost of the part up to the wall
     EXPECT_TRUE(nav->raycast(Vector3(5.0f, 0.0f, 0.0f), Vector3(20.0f, 0.0f, 0.0f), hit));
-    EXPECT_NEAR(hit.position.x, 14.5f, 2.0f * CELL);
+    EXPECT_NEAR(hit.position.x, 14.5f, 2.0f * NAV_GAMEPLAY_QUERY_CELL);
     EXPECT_NEAR(hit.normal.x, -1.0f, 0.05f);
     EXPECT_NEAR(hit.cost, hit.distance, 1e-3f * hit.distance);
 }
@@ -423,7 +423,7 @@ TEST_F(NavFilterTest, PerQueryAreaCost){
     EXPECT_FLOAT_EQ(filter.getAreaCost(3), 10.0f);
     const nav::NavPath detour = nav->calculatePath(from, to, filter);
     ASSERT_EQ(detour.status, nav::PathStatus::Complete);
-    EXPECT_GT(maxZ(detour), 3.0f - CELL);
+    EXPECT_GT(maxZ(detour), 3.0f - NAV_GAMEPLAY_QUERY_CELL);
     EXPECT_NEAR(detour.areaLengths[3], 0.0f, 1e-3f);
     // the project's costs did not change
     EXPECT_FLOAT_EQ(nav::getSettings().areas[3].cost, 1.0f);

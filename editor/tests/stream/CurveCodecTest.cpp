@@ -25,7 +25,7 @@ using namespace jasperengine::test;
 
 namespace {
 
-    Curve sample() {
+    Curve curveCodecSample() {
         Curve curve({{0.0f, 0.0f, 0.0f, 2.5f}, {0.4f, 1.25f, 0.1f, INFINITY}, {1.0f, 1.0f, 0.0f, 0.0f}});
         curve.keys[0].setBothModes(CurveTangentMode::ClampedAuto);
         curve.keys[2].setInMode(CurveTangentMode::Linear);
@@ -36,7 +36,7 @@ namespace {
 }
 
 TEST(CurveCodec, YamlIsByteStable) {
-    const Curve curve = sample();
+    const Curve curve = curveCodecSample();
     const std::string first = YAML::Dump(curvecodec::curveToYaml(curve));
     Curve read;
     std::string reason;

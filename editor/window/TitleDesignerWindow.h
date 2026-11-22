@@ -410,6 +410,7 @@ namespace jasperengine::editor {
         uint64_t lintChange = ~0ull;
         bool lintPopup = false;
         bool pixelChecksRun = false;
+        bool pixelChecksWaiting = false;    // Check Rendered met a program still being built: run again next frame
 
         // ---- external changes (R74) ----
         std::string chipText;

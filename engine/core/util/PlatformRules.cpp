@@ -4,6 +4,7 @@
 #include "PlatformRules.h"
 
 #include "Engine.h"
+#include "util/StringUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -12,11 +13,6 @@
 using namespace jasperengine;
 
 namespace {
-
-    std::string lower(std::string value){
-        for (char& c : value) c = (char)std::tolower((unsigned char)c);
-        return value;
-    }
 
     std::string upper(std::string value){
         for (char& c : value) c = (char)std::toupper((unsigned char)c);
@@ -67,15 +63,15 @@ std::string LocaleRules::normalize(const std::string& tag){
         if (part.empty()) continue;
         std::string piece;
         if (first){
-            piece = lower(part);
+            piece = StringUtils::toLowerAscii(part);
         }else if (part.size() == 4 && isAlpha(part)){
             // script: title case (Hant)
-            piece = lower(part);
+            piece = StringUtils::toLowerAscii(part);
             piece[0] = (char)std::toupper((unsigned char)piece[0]);
         }else if ((part.size() == 2 && isAlpha(part)) || (part.size() == 3 && isDigits(part))){
             piece = upper(part);
         }else{
-            piece = lower(part);
+            piece = StringUtils::toLowerAscii(part);
         }
         if (!out.empty()) out += '-';
         out += piece;
@@ -86,7 +82,7 @@ std::string LocaleRules::normalize(const std::string& tag){
 
 std::string LocaleRules::languageCode(const std::string& tag){
     const std::vector<std::string> parts = subtags(normalize(tag));
-    return parts.empty() ? std::string() : lower(parts[0]);
+    return parts.empty() ? std::string() : StringUtils::toLowerAscii(parts[0]);
 }
 
 std::string LocaleRules::scriptCode(const std::string& tag){
@@ -112,7 +108,7 @@ SystemLanguage LocaleRules::toSystemLanguage(const std::string& tag){
     if (language.empty()) return SystemLanguage::Unknown;
 
     if (language == "zh" || language == "zho" || language == "chi"){
-        const std::string script = lower(scriptCode(normalized));
+        const std::string script = StringUtils::toLowerAscii(scriptCode(normalized));
         const std::string region = regionCode(normalized);
         if (script == "hant") return SystemLanguage::ChineseTraditional;
         if (script == "hans") return SystemLanguage::ChineseSimplified;
@@ -255,7 +251,7 @@ std::string UrlRules::check(const std::string& url){
     }
     // one letter is a Windows drive ("C:\\Windows\\...exe"), a local program for ShellExecute
     if (colon < 2) return "the URL has no scheme (\"" + url.substr(0, colon + 1) + "\" is a drive letter; write https://...)";
-    const std::string scheme = lower(url.substr(0, colon));
+    const std::string scheme = StringUtils::toLowerAscii(url.substr(0, colon));
     if (scheme == "javascript" || scheme == "data" || scheme == "file" || scheme == "vbscript"){
         return scheme + ": URLs are not opened (they run code or read local files)";
     }
@@ -296,7 +292,7 @@ const char* PlatformRules::orientationName(ScreenOrientation orientation){
 }
 
 bool PlatformRules::parseOrientationName(const std::string& name, ScreenOrientation& out){
-    const std::string value = lower(name);
+    const std::string value = StringUtils::toLowerAscii(name);
     for (int i = (int)ScreenOrientation::Portrait; i <= (int)ScreenOrientation::AutoRotation; i++){
         if (value == orientationName((ScreenOrientation)i)){
             out = (ScreenOrientation)i;

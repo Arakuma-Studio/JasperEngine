@@ -205,6 +205,11 @@ namespace foliagebench {
                 TextureData data(ATLAS, ATLAS, static_cast<unsigned int>(bytes), ColorFormat::RGBA, 4, raw);
                 data.setDataOwned(false);
                 texture.setData(id, data);
+                // an earlier test's entry of this id, still pooled, is kept: these pixels go unused
+                if (texture.getData().getData() != raw) {
+                    std::free(raw);
+                    return;
+                }
                 texture.getData().setDataOwned(true);
             };
             TerrainComponent& terrain = component();

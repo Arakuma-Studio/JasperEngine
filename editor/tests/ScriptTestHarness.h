@@ -33,18 +33,7 @@
 #include "support/PosixCompat.h"
 #include <vector>
 #include "log/Logger.h"
-
-namespace jasperengine {
-    // TEST-ONLY seam (System.h befriends it): detach / restore the instance. The same
-    // definition as SpriteNormalsEngineFreeTest.cpp's (one definition across the binary)
-    struct SystemTestAccess {
-        static System* swap(System* system) {
-            System* previous = System::systemInstance;
-            System::systemInstance = system;
-            return previous;
-        }
-    };
-}
+#include "support/SystemTestAccess.h"
 
 namespace jasperengine::scripttest {
 

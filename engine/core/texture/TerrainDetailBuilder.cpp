@@ -52,7 +52,7 @@ namespace {
     };
 
     // A map shared by several layers is read once, and the array takes the largest of them
-    struct SourceFiles {
+    struct DetailSourceFiles {
         std::map<std::string, TextureData> files;
         int width = 0;
         int height = 0;
@@ -82,7 +82,7 @@ namespace {
         return std::span<const TerrainSurfaceLayer>(terrain.surfaceLayers.data(), std::min(terrain.surfaceLayers.size(), static_cast<size_t>(TERRAIN_MAX_LAYERS)));
     }
 
-    std::vector<SliceSources> gatherSources(std::span<const TerrainSurfaceLayer> layers, const DetailPlan& plan, SourceFiles& files) {
+    std::vector<SliceSources> gatherSources(std::span<const TerrainSurfaceLayer> layers, const DetailPlan& plan, DetailSourceFiles& files) {
         std::vector<SliceSources> sources(plan.sliceKeys.size());
         // no more layers than the plan has colour slices for
         const size_t layerCount = std::min({layers.size(), static_cast<size_t>(DETAIL_MAX_LAYERS), static_cast<size_t>(plan.colorSlices)});
@@ -109,7 +109,7 @@ namespace {
         return sources;
     }
 
-    void resizeSources(SourceFiles& files, int width, int height) {
+    void resizeSources(DetailSourceFiles& files, int width, int height) {
         for (auto& entry : files.files) {
             // A map that failed to load is kept so it is not retried, but it has nothing to resize
             if (!entry.second.getData()) {
@@ -207,7 +207,7 @@ bool jasperengine::terraincore::buildDetailPixels(const TerrainComponent& terrai
 }
 
 bool jasperengine::terraincore::buildDetailPixels(std::span<const TerrainSurfaceLayer> layers, const DetailPlan& plan, const DetailBuildOptions& options, DetailPixels& out) {
-    SourceFiles files;
+    DetailSourceFiles files;
     const std::vector<SliceSources> sliceSources = gatherSources(layers, plan, files);
     int width = files.width;
     int height = files.height;
@@ -330,7 +330,7 @@ bool jasperengine::terraincore::buildDetailSliceTop(const TerrainComponent& terr
 
 bool jasperengine::terraincore::buildDetailSliceTop(std::span<const TerrainSurfaceLayer> layers, const DetailPlan& plan, int slice, int maxSize, std::vector<uint8_t>& rgba, int& width, int& height) {
     if (slice < 0 || slice >= static_cast<int>(plan.sliceKeys.size())) return false;
-    SourceFiles files;
+    DetailSourceFiles files;
     const std::vector<SliceSources> sliceSources = gatherSources(layers, plan, files);
     width = files.width;
     height = files.height;

@@ -91,6 +91,7 @@ Run the generator and commit its output:
 | `editor/tests/procmat/SpirvInterpreterFixtures.h` | `tools/build.sh exec linux python3 tools/procmat/gen_interpreter_fixtures.py build/procmat-sweep/procmat-sweep` (after building `tools/procmat/sweep`) |
 | `editor/tests/procmat/SpirvOracleCases.h` | `python3 -I tools/procmat/spirv_oracle.py` |
 | `editor/tests/procmat/ExpanderReference.txt` | `python3 -I tools/procmat/expand_nodes.py --write-reference editor/tests/procmat/ExpanderReference.txt` |
+| `tools/mcp/ci-timings.json` | `python3 tools/ci/mcp_timings.py fetch --out <dir>`, then `refit --results <dir> --write` (the daily `.github/workflows/mcp-timings-refit.yml` opens its PR) |
 | `docs/editor/keyboard-shortcuts.md` | the unit test `CommandCatalog.MarkdownReferenceMatchesDocs` with `JASPER_UPDATE_SHORTCUT_DOCS=1`, inside the image (the variable is not forwarded into it) |
 
 - `tools/lua_api` produces the Lua API data, joined stubs and completion data at build time.
@@ -170,6 +171,8 @@ Writing tests (the rest is in `docs/testing.md`; read it before adding one):
 - Test at the lowest layer that fails without the change; don't repeat the case in a wrapper.
 - Extend an existing test file or table before adding one: every MCP file costs shard time on every
   merge.
+- A test over its time budget (`tools/ci/time-budget.json`, docs/testing.md "Test time budget") gets
+  cheaper, or its budget raised in the same PR with a reason.
 - A deliberate behaviour change updates the tests pinning it in the same commit, and says so.
 - Rewrite goldens one suite at a time, look at every changed image, and say why in the commit.
 - Sanitizer suppressions cover third-party code only: fix engine and editor reports.

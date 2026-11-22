@@ -25,19 +25,9 @@
 #include "Catalog.h"
 #include "Stream.h"
 #include "mcp/McpValues.h"
+#include "support/SystemTestAccess.h"
 
 #include <cmath>
-
-namespace jasperengine {
-    // TEST-ONLY seam (System.h befriends it): detach / restore the instance
-    struct SystemTestAccess {
-        static System* swap(System* system) {
-            System* previous = System::systemInstance;
-            System::systemInstance = system;
-            return previous;
-        }
-    };
-}
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -54,7 +44,7 @@ namespace {
     }
 
     // a screen of a given size and dpi
-    class ScreenSystem : public System {
+    class CanvasScalerScreenSystem : public System {
     public:
         int width = 2400;
         int height = 1080;
@@ -78,7 +68,7 @@ namespace {
     // Installs a ScreenSystem and puts the Engine's display settings back after the test
     class CanvasScalerViewTest : public ::testing::Test {
     protected:
-        ScreenSystem system;
+        CanvasScalerScreenSystem system;
         System* previous = nullptr;
 
         void SetUp() override {

@@ -12,15 +12,24 @@
 
 #include <gtest/gtest.h>
 
+#include <string>
+
 using namespace jasperengine::editor;
 
 namespace {
+
+    // an absolute path on this platform (a Windows one has a drive), as a build's project path is
+#ifdef _WIN32
+    const std::string PROJECT = "C:/projects/Status";
+#else
+    const std::string PROJECT = "/projects/Status";
+#endif
 
     ScriptBuildEvent buildEvent(ScriptBuildEvent::Kind kind) {
         ScriptBuildEvent event;
         event.kind = kind;
         event.row = "cpp";
-        event.projectPath = "/projects/Status";
+        event.projectPath = PROJECT;
         return event;
     }
 
@@ -39,7 +48,7 @@ TEST(ScriptStatus, ReportsWhatABuildPostedBeforeTheFrameApplies) {
     ScriptBuildEvent finished = buildEvent(ScriptBuildEvent::Kind::Finished);
     finished.success = false;
     finished.seconds = 2.0;
-    finished.output = {"/projects/Status/scripts/Spinner.cpp:10:14: error: 'notDeclaredAnywhere' was not declared in this scope"};
+    finished.output = {PROJECT + "/scripts/Spinner.cpp:10:14: error: 'notDeclaredAnywhere' was not declared in this scope"};
     Generator::buildEvents().invoke(finished);
 
     const auto json = status.toJson();

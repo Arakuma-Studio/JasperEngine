@@ -14,7 +14,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace tlglsl {
+namespace tonemapglsl {
 
     struct vec3 {
         float x = 0, y = 0, z = 0;
@@ -61,7 +61,8 @@ namespace tlglsl {
 
 }
 
-using namespace tlglsl;
+// the tests live in the shim's namespace: a using-directive would reach the next sources of a unity unit
+namespace tonemapglsl {
 
 namespace {
 
@@ -199,3 +200,5 @@ TEST(TitleToneMapTest, PackedAoPrepassRoundTrips) {
     const vec4 packed = hd_packNormalDepth(vec4(0.0f, 0.0f, 1.0f, 0.1234f));
     EXPECT_GT(std::abs(hd_unpackNormalDepth(vec4(code(packed.x), code(packed.y), code(packed.z), 0.0f)).w - 0.1234f), 1e-3f);
 }
+
+}  // namespace tonemapglsl

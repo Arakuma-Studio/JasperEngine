@@ -16,7 +16,7 @@ using namespace jasperengine;
 
 namespace {
 
-    std::string makeAssetDir(){
+    std::string makeAnimAssetDir(){
         std::random_device device;
         std::filesystem::path dir = std::filesystem::temp_directory_path() /
                                     ("jasperengine-anim-tests-" + std::to_string(device()));
@@ -59,7 +59,7 @@ namespace {
 }
 
 const std::string& animtest::assetDir(){
-    static const std::string dir = makeAssetDir();
+    static const std::string dir = makeAnimAssetDir();
     return dir;
 }
 

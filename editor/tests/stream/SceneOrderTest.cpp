@@ -38,15 +38,15 @@ namespace {
     }
 
     std::vector<std::string> order(Scene& scene) {
-        std::vector<std::string> names;
+        std::vector<std::string> sceneOrderNames;
         auto transforms = scene.getComponentArray<Transform>();
         for (size_t i = 0; i < transforms->size(); i++) {
-            names.push_back(scene.getEntityName(transforms->getEntity(i)));
+            sceneOrderNames.push_back(scene.getEntityName(transforms->getEntity(i)));
         }
-        return names;
+        return sceneOrderNames;
     }
 
-    std::vector<std::string> names(Scene& scene, const std::vector<Entity>& entities) {
+    std::vector<std::string> sceneOrderNames(Scene& scene, const std::vector<Entity>& entities) {
         std::vector<std::string> out;
         for (Entity entity : entities) out.push_back(scene.getEntityName(entity));
         return out;
@@ -116,12 +116,12 @@ TEST(SceneOrder, TheSortKeepsGameObjectsWithoutATransformInTheirPlace) {
     // C moved before A in the Transform order: the Skybox stays after A
     scene.moveChildToIndex(c, scene.getComponentArray<Transform>()->getIndex(a));
     ProjectUtils::sortEntitiesByTransformOrder(&scene, entities, c);
-    EXPECT_EQ(names(scene, entities), (std::vector<std::string>{"Light", "C", "A", "Skybox", "B"}));
+    EXPECT_EQ(sceneOrderNames(scene, entities), (std::vector<std::string>{"Light", "C", "A", "Skybox", "B"}));
 
     // the undo cannot tell from the list: the list from before puts the Skybox back
     const std::vector<Entity> before = {light, a, sky, b, c};
     scene.moveChildToIndex(c, scene.getComponentArray<Transform>()->size());
     ProjectUtils::sortEntitiesByTransformOrder(&scene, entities);
     ProjectUtils::keepUntransformedPlaces(&scene, before, entities);
-    EXPECT_EQ(names(scene, entities), (std::vector<std::string>{"Light", "A", "Skybox", "B", "C"}));
+    EXPECT_EQ(sceneOrderNames(scene, entities), (std::vector<std::string>{"Light", "A", "Skybox", "B", "C"}));
 }

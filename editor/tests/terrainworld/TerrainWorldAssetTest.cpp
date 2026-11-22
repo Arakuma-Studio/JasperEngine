@@ -28,15 +28,15 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    struct ScratchDir {
+    struct TerrainWorldAssetScratchDir {
         fs::path path;
-        ScratchDir() {
+        TerrainWorldAssetScratchDir() {
             std::random_device device;
             path = fs::temp_directory_path() / ("je-terrainworld-" + std::to_string(device()) + "-" +
                                                 std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
             fs::create_directories(path);
         }
-        ~ScratchDir() {
+        ~TerrainWorldAssetScratchDir() {
             std::error_code ec;
             fs::remove_all(path, ec);
         }
@@ -85,7 +85,7 @@ TEST(TerrainWorldAsset, AssetTypeValueIs31) {
 }
 
 TEST(TerrainWorldAsset, TerrainWorldIsOneAsset) {
-    ScratchDir dir;
+    TerrainWorldAssetScratchDir dir;
     const fs::path project = dir.path / "project";
     fs::create_directories(project / "assets");
     std::ofstream(project / "project.yaml") << "name: worlds\n";
@@ -110,7 +110,7 @@ TEST(TerrainWorldAsset, TerrainWorldIsOneAsset) {
 }
 
 TEST(TerrainWorldAsset, ManifestRoundTrip) {
-    ScratchDir dir;
+    TerrainWorldAssetScratchDir dir;
     WorldManifest manifest = smallManifest(128);
     manifest.guid = "0123456789abcdef0123456789abcdef";
     manifest.maps.blendMaps = 2;
@@ -143,7 +143,7 @@ TEST(TerrainWorldAsset, ManifestRoundTrip) {
 
 TEST(TerrainWorldAsset, TileListIsFiles) {
     // R48: tiles added on two branches merge with no manifest change: the set is the files present
-    ScratchDir dir;
+    TerrainWorldAssetScratchDir dir;
     WorldManifest manifest = smallManifest();
     std::string error;
     const fs::path folder = dir.path / "W.terrainworld";
@@ -168,7 +168,7 @@ TEST(TerrainWorldAsset, TileListIsFiles) {
 }
 
 TEST(TerrainWorldCook, DeterministicPackAndSeamRepair) {
-    ScratchDir dir;
+    TerrainWorldAssetScratchDir dir;
     WorldManifest manifest = smallManifest();
     std::string error;
     const fs::path folder = dir.path / "W.terrainworld";
@@ -210,7 +210,7 @@ TEST(TerrainWorldCook, DeterministicPackAndSeamRepair) {
 }
 
 TEST(TerrainWorldCook, WebLimits) {
-    ScratchDir dir;
+    TerrainWorldAssetScratchDir dir;
     WorldManifest manifest = smallManifest(512);
     std::string error;
     const fs::path folder = dir.path / "Big.terrainworld";

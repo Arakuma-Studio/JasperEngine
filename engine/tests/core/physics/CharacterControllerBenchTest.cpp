@@ -30,7 +30,7 @@ using namespace jasperengine;
 
 namespace {
 
-    constexpr float DT = 1.0f / 60.0f;
+    constexpr float CHARACTER_CONTROLLER_BENCH_DT = 1.0f / 60.0f;
 
     struct BenchScene{
         std::unique_ptr<Scene> scene = std::make_unique<Scene>();
@@ -38,7 +38,7 @@ namespace {
         float updateTime = Engine::getUpdateTime();
 
         BenchScene(){
-            Engine::setUpdateTime(DT);
+            Engine::setUpdateTime(CHARACTER_CONTROLLER_BENCH_DT);
             test::disableSubSystems(*scene);
             scene->getScheduler().setEnabled("PhysicsSystem", true);
             physics = scene->getSystem<PhysicsSystem>().get();
@@ -89,7 +89,7 @@ namespace {
         void step(){
             resolveTransforms();
             Input::beginFixedStep();
-            scene->fixedUpdate(DT);
+            scene->fixedUpdate(CHARACTER_CONTROLLER_BENCH_DT);
             Input::endFixedStep();
             resolveTransforms();
         }
@@ -156,7 +156,7 @@ TEST(CharacterControllerBench, TenControllersAndThePostStep){
         s.resolveTransforms();
         const auto stepStart = std::chrono::steady_clock::now();
         Input::beginFixedStep();
-        s.scene->fixedUpdate(DT);
+        s.scene->fixedUpdate(CHARACTER_CONTROLLER_BENCH_DT);
         Input::endFixedStep();
         total += moved + std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - stepStart).count();
         s.resolveTransforms();
@@ -193,7 +193,7 @@ TEST(CharacterControllerBench, TenControllersWithoutInnerBodies){
         s.resolveTransforms();
         const auto stepStart = std::chrono::steady_clock::now();
         Input::beginFixedStep();
-        s.scene->fixedUpdate(DT);
+        s.scene->fixedUpdate(CHARACTER_CONTROLLER_BENCH_DT);
         Input::endFixedStep();
         total += moved + std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - stepStart).count();
         s.resolveTransforms();

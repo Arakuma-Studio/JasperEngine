@@ -26,7 +26,7 @@ using namespace jasperengine::editor::test;
 namespace {
 
     // the texture fixture project (a glTF model and PNG textures), loaded headless
-    std::unique_ptr<Project> loadFixture(const fs::path& dir){
+    std::unique_ptr<Project> setAssetMetaCmdLoadFixture(const fs::path& dir){
         fs::copy(fs::path(JASPER_TEST_REPO_DIR) / "tools/fixtures/textures", dir, fs::copy_options::recursive | fs::copy_options::overwrite_existing);
         auto project = std::make_unique<Project>();
         project->setSkipProjectLock(true);
@@ -39,7 +39,7 @@ namespace {
 
 TEST(SetAssetMetaCmd, EveryWriteListenerHearsEveryWrite){
     jasperengine::test::TestTempDir dir{"meta-listeners"};
-    std::unique_ptr<Project> project = loadFixture(dir.path());
+    std::unique_ptr<Project> project = setAssetMetaCmdLoadFixture(dir.path());
     ASSERT_TRUE(project);
     int first = 0, second = 0;
     const int a = 0, b = 0;
@@ -65,7 +65,7 @@ TEST(SetAssetMetaCmd, EveryWriteListenerHearsEveryWrite){
 
 TEST(SetAssetMetaCmd, TextureAndModelAppliesBothRecook){
     jasperengine::test::TestTempDir dir{"meta-two-queues"};
-    std::unique_ptr<Project> project = loadFixture(dir.path());
+    std::unique_ptr<Project> project = setAssetMetaCmdLoadFixture(dir.path());
     ASSERT_TRUE(project);
     project->getAssetIndex().waitUntilReady();
     TextureCookQueue& textures = TextureCookQueue::get();

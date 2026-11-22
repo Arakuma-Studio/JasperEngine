@@ -146,7 +146,7 @@ namespace {
         return animator;
     }
 
-    void expectSameAuthored(const VertexAnimatorComponent& a, const VertexAnimatorComponent& b) {
+    void vertexAnimatorExpectSameAuthored(const VertexAnimatorComponent& a, const VertexAnimatorComponent& b) {
         EXPECT_EQ(a.enabled, b.enabled);
         EXPECT_EQ(a.animation, b.animation);
         EXPECT_EQ(a.guid, b.guid);
@@ -338,7 +338,7 @@ TEST(VertexAnimatorComponent, StreamRoundTripKeepsOnlyTheAuthoredFields) {
     EXPECT_EQ(node["attachments"][0]["entity"].as<Entity>(), 7u);
 
     const VertexAnimatorComponent decoded = Stream::decodeVertexAnimatorComponent(node);
-    expectSameAuthored(decoded, authoredAnimator());
+    vertexAnimatorExpectSameAuthored(decoded, authoredAnimator());
     EXPECT_TRUE(decoded.needsLoad);
     EXPECT_FALSE(decoded.started);
     EXPECT_FALSE(decoded.preview);
@@ -412,7 +412,7 @@ TEST(VertexAnimatorComponent, DecodingOverAnAnimatorResetsItsRunAndClearsCallbac
     old.onInstanceEvent.add("script", std::function<void(int, const AnimationEvent&)>([&calls](int, const AnimationEvent&) { calls++; }));
 
     const VertexAnimatorComponent decoded = Stream::decodeVertexAnimatorComponent(Stream::encodeVertexAnimatorComponent(old), &old);
-    expectSameAuthored(decoded, old);
+    vertexAnimatorExpectSameAuthored(decoded, old);
     EXPECT_TRUE(decoded.preview) << "the Inspector's Preview toggle stays";
     EXPECT_FALSE(decoded.started);
     EXPECT_TRUE(decoded.needsLoad);
@@ -436,7 +436,7 @@ TEST(VertexAnimatorComponent, SceneComponentsClipboardAndProjectUtils) {
     const Entity copy = other.createUserEntity();
     Stream::decodeComponents(copy, NULL_ENTITY, &other, components);
     ASSERT_TRUE(other.findComponent<VertexAnimatorComponent>(copy));
-    expectSameAuthored(other.getComponent<VertexAnimatorComponent>(copy), authoredAnimator());
+    vertexAnimatorExpectSameAuthored(other.getComponent<VertexAnimatorComponent>(copy), authoredAnimator());
 
     // Paste Component Values; Add Component gives the defaults
     const Entity target = scene.createUserEntity();
@@ -444,8 +444,8 @@ TEST(VertexAnimatorComponent, SceneComponentsClipboardAndProjectUtils) {
     scene.addComponent<VertexAnimatorComponent>(target, {});
     EntityClipboard::applyComponentValue(&scene, target, ComponentType::VertexAnimatorComponent,
                                          EntityClipboard::encodeComponent(&scene, entity, ComponentType::VertexAnimatorComponent));
-    expectSameAuthored(scene.getComponent<VertexAnimatorComponent>(target), authoredAnimator());
-    expectSameAuthored(Stream::decodeVertexAnimatorComponent(EntityClipboard::encodeDefaultComponent(ComponentType::VertexAnimatorComponent)),
+    vertexAnimatorExpectSameAuthored(scene.getComponent<VertexAnimatorComponent>(target), authoredAnimator());
+    vertexAnimatorExpectSameAuthored(Stream::decodeVertexAnimatorComponent(EntityClipboard::encodeDefaultComponent(ComponentType::VertexAnimatorComponent)),
                        VertexAnimatorComponent());
 
     std::vector<Entity> entities{target};
@@ -453,7 +453,7 @@ TEST(VertexAnimatorComponent, SceneComponentsClipboardAndProjectUtils) {
     EXPECT_FALSE(scene.findComponent<VertexAnimatorComponent>(target));
     ProjectUtils::addEntityComponent(&scene, target, ComponentType::VertexAnimatorComponent, entities, removed);
     ASSERT_TRUE(scene.findComponent<VertexAnimatorComponent>(target));
-    expectSameAuthored(scene.getComponent<VertexAnimatorComponent>(target), authoredAnimator());
+    vertexAnimatorExpectSameAuthored(scene.getComponent<VertexAnimatorComponent>(target), authoredAnimator());
 }
 
 TEST(VertexAnimatorComponent, PrefabOverridesOfScalarsAndAttachments) {

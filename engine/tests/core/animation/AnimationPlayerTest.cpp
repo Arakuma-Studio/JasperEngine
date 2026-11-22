@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include "AnimTestEnvironment.h"
+#include "AnimatorTestUtil.h"
 #include "support/AllocationCounter.h"
 
 #include "Engine.h"
@@ -48,28 +49,12 @@
 #endif
 
 using namespace jasperengine;
+using namespace animatortest;
 
 namespace {
 
-    ClipKey key(float time, std::vector<float> value, EaseType ease = EaseType::LINEAR){
-        ClipKey k;
-        k.time = time;
-        k.value = std::move(value);
-        k.ease = ease;
-        return k;
-    }
-
-    ClipTrackData track(const std::string& path, ClipChannel channel, std::vector<ClipKey> keys, bool relative = false){
-        ClipTrackData t;
-        t.path = path;
-        t.channel = channel;
-        t.relative = relative;
-        t.keys = std::move(keys);
-        return t;
-    }
-
     // position x goes 0 -> `x` over 1 s on `path`
-    ClipData slide(const std::string& path, float x, ClipWrapMode wrap = ClipWrapMode::Once, float length = -1.0f){
+    ClipData playerSlide(const std::string& path, float x, ClipWrapMode wrap = ClipWrapMode::Once, float length = -1.0f){
         ClipData data;
         data.wrap = wrap;
         data.length = length;
@@ -77,7 +62,7 @@ namespace {
         return data;
     }
 
-    ClipEventData event(float time, const std::string& function, std::vector<AnimationEventArg> args = {}){
+    ClipEventData playerEvent(float time, const std::string& function, std::vector<AnimationEventArg> args = {}){
         ClipEventData e;
         e.time = time;
         e.function = function;
@@ -146,7 +131,7 @@ namespace {
 // S77 R16: sample() shows its pose in the call, as without async loading
 TEST_F(Player, SampleLoadsAnAnimInTheCallInAsyncLoading){
     // large enough for the thread pool otherwise
-    animtest::writeAsset(prefix + "slide.anim", anim::writeClip(slide("Arm", 3.0f)) + std::string(70000, ' '));
+    animtest::writeAsset(prefix + "slide.anim", anim::writeClip(playerSlide("Arm", 3.0f)) + std::string(70000, ' '));
     AnimationPlayer object(&scene, root);
     object.addClip(prefix + "slide.anim", "slide");
     const bool wasAsync = Engine::isAsyncLoading();
@@ -163,7 +148,7 @@ TEST_F(Player, SampleLoadsAnAnimInTheCallInAsyncLoading){
 TEST_F(Player, IdleAllocatesNothingAndMarksNothingDirty){
     if (!testsupport::countsAllocations()) GTEST_SKIP() << "this build cannot count allocations";
     constexpr double kIdleDt = 1.0 / 60.0;
-    AnimationPlayer idle = player({{"slide", slide("Arm", 3.0f)}});
+    AnimationPlayer idle = player({{"slide", playerSlide("Arm", 3.0f)}});
     step(kIdleDt, 3);
     {
         testsupport::AllocationCountScope scope;
@@ -192,7 +177,7 @@ TEST_F(Player, IdleAllocatesNothingAndMarksNothingDirty){
 }
 
 TEST_F(Player, PlaysAutomaticallyAndSamplesTheClip){
-    AnimationPlayer object = player({{"walk", slide("Arm", 10)}}, true);
+    AnimationPlayer object = player({{"walk", playerSlide("Arm", 10)}}, true);
     EXPECT_FALSE(object.isPlaying());
     step(0.0);
     EXPECT_TRUE(object.isPlaying("walk"));
@@ -221,7 +206,7 @@ TEST_F(Player, PlaysAutomaticallyAndSamplesTheClip){
 // R40: an authored list with duplicate state names plays the later ones as "<name> 2" and says
 // so once per player (again only when the list changes)
 TEST_F(Player, DuplicateStateNamesWarnOncePerPlayer){
-    AnimationPlayer object = player({{"walk", slide("Arm", 10)}});
+    AnimationPlayer object = player({{"walk", playerSlide("Arm", 10)}});
     AnimationPlayerComponent& component = scene.getComponent<AnimationPlayerComponent>(root);
     AnimationPlayerClip copy = component.clips[0];
     component.clips.push_back(copy);
@@ -273,21 +258,21 @@ TEST_F(Player, DuplicateStateNamesWarnOncePerPlayer){
 }
 
 TEST_F(Player, DefaultClipAndNoAutoplay){
-    AnimationPlayer object = player({{"idle", slide("Arm", 1)}, {"walk", slide("Arm", 10)}}, true);
+    AnimationPlayer object = player({{"idle", playerSlide("Arm", 1)}, {"walk", playerSlide("Arm", 10)}}, true);
     object.setDefaultClip("walk");
     step(0.5);
     EXPECT_TRUE(object.isPlaying("walk"));
     EXPECT_FALSE(object.isPlaying("idle"));
 
     Entity other = child(root, "Other");
-    AnimationPlayer quiet = player({{"a", slide("", 3)}}, false, other);
+    AnimationPlayer quiet = player({{"a", playerSlide("", 3)}}, false, other);
     step(0.5);
     EXPECT_FALSE(quiet.isPlaying());
     EXPECT_NEAR(x(other), 0.0f, 1e-6f) << "a player that plays nothing writes nothing";
 }
 
 TEST_F(Player, OnceStopsAtItsEndAndKeepsThePose){
-    AnimationPlayer object = player({{"wave", slide("Arm", 10)}});
+    AnimationPlayer object = player({{"wave", playerSlide("Arm", 10)}});
     std::vector<std::string> finished;
     object.getOnFinish().add("test", std::function<void(const std::string&)>([&finished](const std::string& state){
         finished.push_back(state);
@@ -323,8 +308,8 @@ TEST_F(Player, OnceStopsAtItsEndAndKeepsThePose){
 // R1b, the review's probe: onFinish -> crossFade("idle") blends from the end pose (10) to the
 // idle (12) with no dip toward the rest (5)
 TEST_F(Player, OnFinishCrossFadeDoesNotDipTowardRest){
-    ClipData attack = slide("Arm", 10);
-    ClipData idle = slide("Arm", 0, ClipWrapMode::Loop);
+    ClipData attack = playerSlide("Arm", 10);
+    ClipData idle = playerSlide("Arm", 0, ClipWrapMode::Loop);
     idle.tracks[0].keys[0].value = {12, 0, 0};
     idle.tracks[0].keys[1].value = {12, 0, 0};
     AnimationPlayer object = player({{"attack", attack}, {"idle", idle}});
@@ -354,7 +339,7 @@ TEST_F(Player, OnFinishCrossFadeDoesNotDipTowardRest){
 // R1b: a crossfade (or a queue with a fade) issued shortly before a once state ends keeps its pose
 // while it fades: no dip toward the rest (0 here)
 TEST_F(Player, CrossFadeNearTheEndOfAOnceStateDoesNotDip){
-    ClipData a = slide("Arm", 0);
+    ClipData a = playerSlide("Arm", 0);
     a.tracks[0].keys[0].value = {10, 0, 0};
     a.tracks[0].keys[1].value = {10, 0, 0};
     ClipData b = a;
@@ -381,7 +366,7 @@ TEST_F(Player, CrossFadeNearTheEndOfAOnceStateDoesNotDip){
 
 // R17 / I1: the playing state queued again with a fade restarts at its end
 TEST_F(Player, QueueingThePlayingStateWithAFadeRestartsIt){
-    AnimationPlayer object = player({{"wave", slide("Arm", 10)}, {"loop", slide("Arm", 10, ClipWrapMode::Loop)}});
+    AnimationPlayer object = player({{"wave", playerSlide("Arm", 10)}, {"loop", playerSlide("Arm", 10, ClipWrapMode::Loop)}});
     object.play("wave");
     step(0.25);
     object.queue("wave", 0.2f);
@@ -398,9 +383,9 @@ TEST_F(Player, QueueingThePlayingStateWithAFadeRestartsIt){
 
 // I2: a queued crossfade's state fires its events at 0, and the outgoing state fades the same frame
 TEST_F(Player, QueuedCrossfadeFiresItsStartEvents){
-    ClipData a = slide("Arm", 10);
-    ClipData b = slide("Arm", 20);
-    b.events = {event(0.0f, "bStart"), event(0.05f, "bEarly")};
+    ClipData a = playerSlide("Arm", 10);
+    ClipData b = playerSlide("Arm", 20);
+    b.events = {playerEvent(0.0f, "bStart"), playerEvent(0.05f, "bEarly")};
     AnimationPlayer object = player({{"a", a}, {"b", b}});
     std::vector<std::string> fired;
     object.getOnEvent().add("test", std::function<void(const AnimationEvent&)>([&](const AnimationEvent& e){
@@ -420,9 +405,9 @@ TEST_F(Player, QueuedCrossfadeFiresItsStartEvents){
 
 // M1, M2, M7, M8
 TEST_F(Player, QueueDetails){
-    AnimationPlayer object = player({{"a", slide("Arm", 10)}, {"b", slide("Arm", 4)},
-                                     {"back", slide("Arm", 10, ClipWrapMode::Loop)},
-                                     {"empty", ClipData()}, {"pong", slide("Arm", 10, ClipWrapMode::PingPong)}});
+    AnimationPlayer object = player({{"a", playerSlide("Arm", 10)}, {"b", playerSlide("Arm", 4)},
+                                     {"back", playerSlide("Arm", 10, ClipWrapMode::Loop)},
+                                     {"empty", ClipData()}, {"pong", playerSlide("Arm", 10, ClipWrapMode::PingPong)}});
     // stop(name) clears the queue
     object.play("a");
     object.queue("b");
@@ -463,7 +448,7 @@ TEST_F(Player, RenamedSiblingsChangeWhatAPathSelects){
     Entity hero = child(root, "Body");
     Entity leg = child(hero, "Leg", Vector3(1, 0, 0));
     Entity arm2 = child(hero, "Arm", Vector3(42, 0, 0));
-    AnimationPlayer object = player({{"walk", slide("Arm", 10, ClipWrapMode::Loop)}}, false, hero);
+    AnimationPlayer object = player({{"walk", playerSlide("Arm", 10, ClipWrapMode::Loop)}}, false, hero);
     object.play("walk");
     step(0.0);
     step(0.5);
@@ -479,7 +464,7 @@ TEST_F(Player, RenamedSiblingsChangeWhatAPathSelects){
     Entity pair = child(root, "Pair");
     Entity first = child(pair, "Arm", Vector3(1, 0, 0));
     Entity second = child(pair, "Arm", Vector3(42, 0, 0));
-    AnimationPlayer other = player({{"reach", slide("Arm#1", 10, ClipWrapMode::Loop)}}, false, pair);
+    AnimationPlayer other = player({{"reach", playerSlide("Arm#1", 10, ClipWrapMode::Loop)}}, false, pair);
     other.play("reach");
     step(0.0);
     step(0.5);
@@ -493,9 +478,9 @@ TEST_F(Player, RenamedSiblingsChangeWhatAPathSelects){
 }
 
 TEST_F(Player, WrapModes){
-    AnimationPlayer object = player({{"loop", slide("Arm", 10, ClipWrapMode::Loop)},
-                                     {"pong", slide("Arm/Hand", 10, ClipWrapMode::PingPong)},
-                                     {"clamp", slide("", 10, ClipWrapMode::ClampForever)}});
+    AnimationPlayer object = player({{"loop", playerSlide("Arm", 10, ClipWrapMode::Loop)},
+                                     {"pong", playerSlide("Arm/Hand", 10, ClipWrapMode::PingPong)},
+                                     {"clamp", playerSlide("", 10, ClipWrapMode::ClampForever)}});
     std::vector<std::string> finished;
     object.getOnFinish().add("test", std::function<void(const std::string&)>([&finished](const std::string& state){
         finished.push_back(state);
@@ -530,7 +515,7 @@ TEST_F(Player, WrapModes){
 }
 
 TEST_F(Player, BackwardsPlayStartsAtTheEnd){
-    AnimationPlayer object = player({{"wave", slide("Arm", 10)}});
+    AnimationPlayer object = player({{"wave", playerSlide("Arm", 10)}});
     object.getState("wave").setSpeed(-1.0f);
     object.play("wave");
     step(0.25);
@@ -548,7 +533,7 @@ TEST_F(Player, BackwardsPlayStartsAtTheEnd){
 
 // R1: Σwᵢvᵢ + (1 - Σwᵢ)·rest
 TEST_F(Player, BlendFillsWithTheRestValue){
-    AnimationPlayer object = player({{"walk", slide("Arm", 10)}});
+    AnimationPlayer object = player({{"walk", playerSlide("Arm", 10)}});
     object.blend("walk", 0.5f, 0.0f);
     object.getState("walk").setTime(1.0f);
     object.getState("walk").setSpeed(0.0f);
@@ -565,9 +550,9 @@ TEST_F(Player, BlendFillsWithTheRestValue){
 }
 
 TEST_F(Player, CrossFadeTimeline){
-    ClipData a = slide("Arm", 10);
+    ClipData a = playerSlide("Arm", 10);
     a.tracks[0].keys[0].value = {10, 0, 0};    // constant 10
-    ClipData b = slide("Arm", 0);
+    ClipData b = playerSlide("Arm", 0);
     b.tracks[0].keys[0].value = {20, 0, 0};    // constant 20
     b.tracks[0].keys[1].value = {20, 0, 0};
     a.wrap = ClipWrapMode::Loop;
@@ -598,7 +583,7 @@ TEST_F(Player, CrossFadeTimeline){
 
 // a fade-in from nothing starts at the rest pose, not with a snap (R1)
 TEST_F(Player, FadeInStartsFromRest){
-    ClipData a = slide("Arm", 0);
+    ClipData a = playerSlide("Arm", 0);
     a.tracks[0].keys[0].value = {25, 0, 0};
     a.tracks[0].keys[1].value = {25, 0, 0};
     AnimationPlayer object = player({{"a", a}});
@@ -609,7 +594,7 @@ TEST_F(Player, FadeInStartsFromRest){
 
 // two clips on disjoint bones don't drag each other to rest; a state at weight 0 writes nothing
 TEST_F(Player, DisjointClipsDoNotPullEachOther){
-    AnimationPlayer object = player({{"arm", slide("Arm", 10)}, {"hand", slide("Arm/Hand", 4)}});
+    AnimationPlayer object = player({{"arm", playerSlide("Arm", 10)}, {"hand", playerSlide("Arm/Hand", 4)}});
     object.blend("arm", 1.0f, 0.0f);
     object.blend("hand", 1.0f, 0.0f);
     step(0.0);
@@ -633,7 +618,7 @@ TEST_F(Player, CrossfadeFromAnEntityAnimationIsContinuous){
     step(0.1, 2);
     EXPECT_NEAR(x(arm), 30.0f, 1e-4f);
 
-    ClipData a = slide("Arm", 0);
+    ClipData a = playerSlide("Arm", 0);
     a.tracks[0].keys[0].value = {10, 0, 0};
     a.tracks[0].keys[1].value = {10, 0, 0};
     AnimationPlayer object = player({{"a", a}});
@@ -645,7 +630,7 @@ TEST_F(Player, CrossfadeFromAnEntityAnimationIsContinuous){
 }
 
 TEST_F(Player, QueuePlaysAfterTheOthersFinish){
-    AnimationPlayer object = player({{"a", slide("Arm", 10)}, {"b", slide("Arm/Hand", 4)}});
+    AnimationPlayer object = player({{"a", playerSlide("Arm", 10)}, {"b", playerSlide("Arm/Hand", 4)}});
     std::vector<std::string> finished;
     object.getOnFinish().add("test", std::function<void(const std::string&)>([&finished](const std::string& state){
         finished.push_back(state);
@@ -665,7 +650,7 @@ TEST_F(Player, QueuePlaysAfterTheOthersFinish){
     EXPECT_EQ(finished, (std::vector<std::string>{"a", "b"}));
 
     // a loop finishes its current cycle first
-    AnimationPlayer looping = player({{"l", slide("Arm", 10, ClipWrapMode::Loop)}, {"c", slide("Arm", 2)}});
+    AnimationPlayer looping = player({{"l", playerSlide("Arm", 10, ClipWrapMode::Loop)}, {"c", playerSlide("Arm", 2)}});
     looping.play("l");
     step(0.0);
     step(1.5);
@@ -693,7 +678,7 @@ TEST_F(Player, QueuePlaysAfterTheOthersFinish){
 }
 
 TEST_F(Player, QueueWithAFadeStartsBeforeTheEnd){
-    ClipData a = slide("Arm", 0);
+    ClipData a = playerSlide("Arm", 0);
     a.tracks[0].keys[0].value = {10, 0, 0};
     a.tracks[0].keys[1].value = {10, 0, 0};
     ClipData b = a;
@@ -716,7 +701,7 @@ TEST_F(Player, QueueWithAFadeStartsBeforeTheEnd){
 }
 
 TEST_F(Player, StopRewindAndUnknownNames){
-    AnimationPlayer object = player({{"walk", slide("Arm", 10, ClipWrapMode::Loop)}});
+    AnimationPlayer object = player({{"walk", playerSlide("Arm", 10, ClipWrapMode::Loop)}});
     object.play("walk");
     step(0.5);
     object.stop();
@@ -751,7 +736,7 @@ TEST_F(Player, StopRewindAndUnknownNames){
 }
 
 TEST_F(Player, DisabledOrInactiveStopsTime){
-    AnimationPlayer object = player({{"walk", slide("Arm", 10)}});
+    AnimationPlayer object = player({{"walk", playerSlide("Arm", 10)}});
     object.play("walk");
     step(0.25);
     object.setEnabled(false);
@@ -788,7 +773,7 @@ TEST_F(Player, RelativeTracksAddToTheRest){
 
 // R2: the rest survives rebinding and clip reloads; a fade-out after a rename ends at the scene pose
 TEST_F(Player, RestIsKeptAcrossRenamesAndReloads){
-    AnimationPlayer object = player({{"walk", slide("Arm", 10, ClipWrapMode::Loop)}});
+    AnimationPlayer object = player({{"walk", playerSlide("Arm", 10, ClipWrapMode::Loop)}});
     object.play("walk");
     step(0.0);
     step(0.5);
@@ -800,7 +785,7 @@ TEST_F(Player, RestIsKeptAcrossRenamesAndReloads){
     EXPECT_NEAR(x(arm), 7.5f, 1e-5f);
     // the file edited: the new clip plays from the same rest
     std::string path = scene.getComponent<AnimationPlayerComponent>(root).clips[0].clip;
-    animtest::writeAsset(path, anim::writeClip(slide("Arm", 20, ClipWrapMode::Loop)));
+    animtest::writeAsset(path, anim::writeClip(playerSlide("Arm", 20, ClipWrapMode::Loop)));
     AnimationClipPool::invalidate(path);
     step(0.0);
     EXPECT_NEAR(x(arm), 15.0f, 1e-4f);
@@ -815,7 +800,7 @@ TEST_F(Player, RestIsKeptAcrossRenamesAndReloads){
 // a decode (or paste) over a playing player changes the authored list and sets needsLoad, keeping
 // the runtime: the states rebuild and rebind, the rest taken at the start of the run stays (R2)
 TEST_F(Player, ClipListChangeRebindsAndKeepsTheRest){
-    AnimationPlayer object = player({{"walk", slide("Arm", 10, ClipWrapMode::Loop)}});
+    AnimationPlayer object = player({{"walk", playerSlide("Arm", 10, ClipWrapMode::Loop)}});
     object.play("walk");
     step(0.0);
     step(0.5);
@@ -824,9 +809,9 @@ TEST_F(Player, ClipListChangeRebindsAndKeepsTheRest){
 
     // the entry now names another file and a second entry appears (what Stream decode writes)
     AnimationPlayerComponent& component = scene.getComponent<AnimationPlayerComponent>(root);
-    component.clips[0].clip = clip("walk2", slide("Arm", 20, ClipWrapMode::Loop));
+    component.clips[0].clip = clip("walk2", playerSlide("Arm", 20, ClipWrapMode::Loop));
     AnimationPlayerClip extra;
-    extra.clip = clip("wave", slide("Arm/Hand", 4));
+    extra.clip = clip("wave", playerSlide("Arm/Hand", 4));
     extra.name = "wave";
     component.clips.push_back(extra);
     component.needsLoad = true;
@@ -849,7 +834,7 @@ TEST_F(Player, ClipListChangeRebindsAndKeepsTheRest){
 }
 
 TEST_F(Player, RebindsAfterRenameAndReparent){
-    AnimationPlayer object = player({{"walk", slide("Arm/Hand", 10, ClipWrapMode::Loop)}});
+    AnimationPlayer object = player({{"walk", playerSlide("Arm/Hand", 10, ClipWrapMode::Loop)}});
     object.play("walk");
     step(0.0);
     step(0.5);
@@ -884,7 +869,7 @@ TEST_F(Player, RebindsAfterRenameAndReparent){
 TEST_F(Player, WaitsForModelsToLoad){
     scene.addComponent<ModelComponent>(arm, {});
     scene.getComponent<ModelComponent>(arm).needUpdateModel = true;
-    AnimationPlayer object = player({{"walk", slide("Arm", 10)}});
+    AnimationPlayer object = player({{"walk", playerSlide("Arm", 10)}});
     object.play("walk");
     step(0.25);
     EXPECT_NEAR(x(arm), 5.0f, 1e-6f);
@@ -896,8 +881,8 @@ TEST_F(Player, WaitsForModelsToLoad){
 }
 
 TEST_F(Player, EventsFireOncePerCrossingInTimeOrder){
-    ClipData data = slide("Arm", 10, ClipWrapMode::Loop);
-    data.events = {event(0.0f, "onStart"), event(0.5f, "onStep", {AnimationEvent::stringArg("left"), AnimationEvent::numberArg(2)})};
+    ClipData data = playerSlide("Arm", 10, ClipWrapMode::Loop);
+    data.events = {playerEvent(0.0f, "onStart"), playerEvent(0.5f, "onStep", {AnimationEvent::stringArg("left"), AnimationEvent::numberArg(2)})};
     AnimationPlayer object = player({{"walk", data}});
     std::vector<std::string> fired;
     std::vector<AnimationEvent> received;
@@ -925,10 +910,10 @@ TEST_F(Player, EventsFireOncePerCrossingInTimeOrder){
 
 // R16: during a crossfade only the incoming state fires
 TEST_F(Player, OnlyTheIncomingStateFiresDuringACrossfade){
-    ClipData a = slide("Arm", 10, ClipWrapMode::Loop);
-    a.events = {event(0.5f, "footA")};
-    ClipData b = slide("Arm", 10, ClipWrapMode::Loop);
-    b.events = {event(0.5f, "footB")};
+    ClipData a = playerSlide("Arm", 10, ClipWrapMode::Loop);
+    a.events = {playerEvent(0.5f, "footA")};
+    ClipData b = playerSlide("Arm", 10, ClipWrapMode::Loop);
+    b.events = {playerEvent(0.5f, "footB")};
     AnimationPlayer object = player({{"a", a}, {"b", b}});
     std::vector<std::string> fired;
     object.getOnEvent().add("test", std::function<void(const AnimationEvent&)>([&](const AnimationEvent& e){
@@ -956,8 +941,8 @@ TEST_F(Player, EventsReachLuaSubscribersAndScriptMethods){
         "animLog = {}\n"
         "function animOnEvent(event) animLog[#animLog + 1] = event.functionName .. ':' .. tostring(event.args[1]) .. ':' .. tostring(event.args[2]) .. ':' .. event.state end\n"
         "function animOnFinish(state) animLog[#animLog + 1] = 'finish:' .. state end\n"), LUA_OK);
-    ClipData data = slide("Arm", 10);
-    data.events = {event(0.5f, "onStep", {AnimationEvent::stringArg("left"), AnimationEvent::boolArg(true)})};
+    ClipData data = playerSlide("Arm", 10);
+    data.events = {playerEvent(0.5f, "onStep", {AnimationEvent::stringArg("left"), AnimationEvent::boolArg(true)})};
     AnimationPlayer object = player({{"wave", data}});
     lua_getglobal(L, "animOnEvent");
     object.getOnEvent().add("lua", L);
@@ -1008,7 +993,7 @@ TEST_F(Player, EventsReachLuaSubscribersAndScriptMethods){
 }
 
 TEST_F(Player, ClonesBindTheirOwnHierarchy){
-    AnimationPlayer object = player({{"walk", slide("Arm", 10, ClipWrapMode::Loop)}}, true);
+    AnimationPlayer object = player({{"walk", playerSlide("Arm", 10, ClipWrapMode::Loop)}}, true);
     object.getOnEvent().add("test", std::function<void(const AnimationEvent&)>([](const AnimationEvent&){}));
     step(0.0);
     step(0.5);
@@ -1032,7 +1017,7 @@ TEST_F(Player, ModelPlayAnimationGoesToThePlayer){
     scene.addComponent<MeshComponent>(root, {});
     // loaded (a model still loading defers the player, R10)
     scene.getComponent<ModelComponent>(root).needUpdateModel = false;
-    AnimationPlayer object = player({{"walk", slide("Arm", 10, ClipWrapMode::Loop)}, {"run", slide("Arm", 20, ClipWrapMode::Loop)}});
+    AnimationPlayer object = player({{"walk", playerSlide("Arm", 10, ClipWrapMode::Loop)}, {"run", playerSlide("Arm", 20, ClipWrapMode::Loop)}});
     object.setDefaultFadeTime(0.5f);
     Model model(&scene, root);
     model.playAnimation("walk", 0.0f);
@@ -1077,10 +1062,10 @@ TEST_F(Player, ModelPlayAnimationGoesToThePlayer){
 }
 
 TEST_F(Player, PreviewWritesAndRestores){
-    AnimationPlayer object = player({{"walk", slide("Arm", 10)}});
+    AnimationPlayer object = player({{"walk", playerSlide("Arm", 10)}});
     std::vector<std::string> fired;
-    ClipData withEvent = slide("Arm/Hand", 4);
-    withEvent.events = {event(0.5f, "step")};
+    ClipData withEvent = playerSlide("Arm/Hand", 4);
+    withEvent.events = {playerEvent(0.5f, "step")};
     object.getOnEvent().add("test", std::function<void(const AnimationEvent&)>([&](const AnimationEvent& e){
         fired.push_back(e.functionName);
     }));
@@ -1124,7 +1109,7 @@ TEST_F(Player, PreviewWritesAndRestores){
 }
 
 TEST_F(Player, ResetPlayersStartsOver){
-    AnimationPlayer object = player({{"walk", slide("Arm", 10, ClipWrapMode::Loop)}}, true);
+    AnimationPlayer object = player({{"walk", playerSlide("Arm", 10, ClipWrapMode::Loop)}}, true);
     object.getOnFinish().add("test", std::function<void(const std::string&)>([](const std::string&){}));
     step(0.5);
     scene.getSystem<ActionSystem>()->resetPlayers();

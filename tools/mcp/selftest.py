@@ -219,6 +219,20 @@ async def test_parallel():
                            capture_output=True, text=True, env=env)
         ok(r.returncode == 0 and "3 passed, 0 failed, 0 skipped" in r.stdout and "[chunk 3/3]" in r.stdout,
            f"runner: --split-seconds splits a TESTS_INDEPENDENT file: {r.stdout[-300:]}")
+        # setup: every editor's start, first call and close, the file's own and a test's
+        (tests / "test_setup.py").write_text(
+            'from harness import Editor\nEDITOR = {"create": True}\n\nasync def test_shared(ed):\n'
+            '    await ed.call("editor_status")\n\nasync def test_own():\n'
+            '    async with Editor(create=True) as own:\n        await own.call("editor_status")\n')
+        r = subprocess.run(runner + ["--json", str(Path(root) / "setup.json"), str(tests / "test_setup.py")],
+                           capture_output=True, text=True)
+        setup = json.loads((Path(root) / "setup.json").read_text()).get("setup", {})
+        editors = (setup.get("chunks") or [{}])[0].get("editors", [])
+        ok(r.returncode == 0 and "\n== setup\n1 chunk(s), 2 editor(s): 1 of the files, 1 started by tests" in r.stdout
+           and [e.get("shared", False) for e in editors] == [True, False]
+           and all(e["start"] > 0 and e["close"] > 0 and e["first_tool"] == "editor_status" for e in editors)
+           and setup["totals"]["outside_tests"] > 0,
+           f"runner: reports each editor's start, first call and close: {r.stdout[-400:]}")
     r = subprocess.run(run + ["-k", "test_protocol.py::test_initialize"], capture_output=True, text=True)
     ok(r.returncode == 0 and "1 passed, 0 failed, 0 skipped" in r.stdout, "runner: -k filters")
     env = dict(os.environ, FAKE_DIRTY_STDOUT="1")

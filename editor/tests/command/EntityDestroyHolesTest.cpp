@@ -62,21 +62,21 @@ namespace {
         return h;
     }
 
-    Project* project() {
+    Project* entityDestroyHolesProject() {
         return holesHeadless().project.get();
     }
 
-    uint32_t newScene() {
-        Project* p = project();
+    uint32_t entityDestroyHolesNewScene() {
+        Project* p = entityDestroyHolesProject();
         if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
         p->createNewScene("Holes", SceneType::SCENE_3D);
         return p->getSelectedSceneId();
     }
 
-    Entity create(uint32_t sceneId, const std::string& name, Entity parent = NULL_ENTITY) {
+    Entity entityDestroyHolesCreate(uint32_t sceneId, const std::string& name, Entity parent = NULL_ENTITY) {
         CreateEntityCmd* cmd = parent == NULL_ENTITY
-            ? new CreateEntityCmd(project(), sceneId, name, EntityCreationType::GAMEOBJECT)
-            : new CreateEntityCmd(project(), sceneId, name, EntityCreationType::GAMEOBJECT, parent);
+            ? new CreateEntityCmd(entityDestroyHolesProject(), sceneId, name, EntityCreationType::GAMEOBJECT)
+            : new CreateEntityCmd(entityDestroyHolesProject(), sceneId, name, EntityCreationType::GAMEOBJECT, parent);
         cmd->setQuiet(true);
         CommandHandle::get(sceneId)->addCommandNoMerge(cmd);
         return cmd->getEntity();
@@ -89,24 +89,24 @@ namespace {
 
     void removeFirst(uint32_t sceneId, Scene* scene, Entity a, FirstGoes how) {
         if (how == FirstGoes::DeleteCommand) {
-            CommandHandle::get(sceneId)->addCommandNoMerge(new DeleteEntityCmd(project(), sceneId, a));
+            CommandHandle::get(sceneId)->addCommandNoMerge(new DeleteEntityCmd(entityDestroyHolesProject(), sceneId, a));
             return;
         }
         scene->destroyEntity(a);
-        ProjectUtils::reconcileTrackedEntities(scene, project()->getScene(sceneId)->entities, project(), sceneId);
+        ProjectUtils::reconcileTrackedEntities(scene, entityDestroyHolesProject()->getScene(sceneId)->entities, entityDestroyHolesProject(), sceneId);
         if (how == FirstGoes::DestroyedAndCompacted) scene->compactComponents();
     }
 
     // A goes first (before the others in the arrays), then C (below P) is deleted and the delete undone
     void deleteAfterDelete(FirstGoes how) {
-        const uint32_t sceneId = newScene();
-        Scene* scene = project()->getScene(sceneId)->scene;
-        const Entity a = create(sceneId, "A");
-        const Entity p = create(sceneId, "P");
-        const Entity c = create(sceneId, "C", p);
-        create(sceneId, "D");
+        const uint32_t sceneId = entityDestroyHolesNewScene();
+        Scene* scene = entityDestroyHolesProject()->getScene(sceneId)->scene;
+        const Entity a = entityDestroyHolesCreate(sceneId, "A");
+        const Entity p = entityDestroyHolesCreate(sceneId, "P");
+        const Entity c = entityDestroyHolesCreate(sceneId, "C", p);
+        entityDestroyHolesCreate(sceneId, "D");
         removeFirst(sceneId, scene, a, how);
-        CommandHandle::get(sceneId)->addCommandNoMerge(new DeleteEntityCmd(project(), sceneId, c));
+        CommandHandle::get(sceneId)->addCommandNoMerge(new DeleteEntityCmd(entityDestroyHolesProject(), sceneId, c));
         EXPECT_FALSE(scene->isEntityCreated(c));
         CommandHandle::get(sceneId)->undo();
         ASSERT_TRUE(scene->isEntityCreated(c));
@@ -117,18 +117,18 @@ namespace {
 
     // A goes first, then C is moved from below P to after U (below T)
     void moveAfterDelete(FirstGoes how) {
-        const uint32_t sceneId = newScene();
-        Scene* scene = project()->getScene(sceneId)->scene;
-        const Entity a = create(sceneId, "A");
-        const Entity p = create(sceneId, "P");
-        const Entity c = create(sceneId, "C", p);
-        const Entity t = create(sceneId, "T");
-        const Entity u = create(sceneId, "U", t);
+        const uint32_t sceneId = entityDestroyHolesNewScene();
+        Scene* scene = entityDestroyHolesProject()->getScene(sceneId)->scene;
+        const Entity a = entityDestroyHolesCreate(sceneId, "A");
+        const Entity p = entityDestroyHolesCreate(sceneId, "P");
+        const Entity c = entityDestroyHolesCreate(sceneId, "C", p);
+        const Entity t = entityDestroyHolesCreate(sceneId, "T");
+        const Entity u = entityDestroyHolesCreate(sceneId, "U", t);
         removeFirst(sceneId, scene, a, how);
         Entity oldParent = NULL_ENTITY;
         size_t oldIndex = 0;
         bool hasTransform = false;
-        std::vector<Entity> list = project()->getScene(sceneId)->entities;
+        std::vector<Entity> list = entityDestroyHolesProject()->getScene(sceneId)->entities;
         // C's index counted by a walk (an index read would have closed the holes before the move)
         size_t indexBefore = 0;
         scene->getComponentArray<Transform>()->forEach([&indexBefore, c](Entity entity, Transform&) {
@@ -171,13 +171,13 @@ TEST(EntityDestroyHoles, Control_MoveAfterDeleteCompacted) {
 
 // The delete commands leave no holes behind them (the next step reads packed arrays)
 TEST(EntityDestroyHoles, DeleteCommandLeavesNoHoles) {
-    const uint32_t sceneId = newScene();
-    Scene* scene = project()->getScene(sceneId)->scene;
-    const Entity a = create(sceneId, "A");
-    const Entity p = create(sceneId, "P");
-    create(sceneId, "C", p);
-    create(sceneId, "D");
-    CommandHandle::get(sceneId)->addCommandNoMerge(new DeleteEntityCmd(project(), sceneId, std::vector<Entity>{a, p}));
+    const uint32_t sceneId = entityDestroyHolesNewScene();
+    Scene* scene = entityDestroyHolesProject()->getScene(sceneId)->scene;
+    const Entity a = entityDestroyHolesCreate(sceneId, "A");
+    const Entity p = entityDestroyHolesCreate(sceneId, "P");
+    entityDestroyHolesCreate(sceneId, "C", p);
+    entityDestroyHolesCreate(sceneId, "D");
+    CommandHandle::get(sceneId)->addCommandNoMerge(new DeleteEntityCmd(entityDestroyHolesProject(), sceneId, std::vector<Entity>{a, p}));
     EXPECT_FALSE(scene->getComponentArray<Transform>()->hasHoles());
     CommandHandle::get(sceneId)->undo();
     EXPECT_FALSE(scene->getComponentArray<Transform>()->hasHoles());

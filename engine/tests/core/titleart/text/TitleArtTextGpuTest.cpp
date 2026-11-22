@@ -53,14 +53,14 @@ namespace {
 
     class TitleArtMaskGpu : public TitleArtTextGpu {};
 
-    Json textLayer(const char* id, const std::string& text, const char* font, double size, Json extra = Json::object()) {
+    Json titleArtTextLayer(const char* id, const std::string& text, const char* font, double size, Json extra = Json::object()) {
         Json layer{{"id", id}, {"type", "text"}, {"name", id}, {"text", text}, {"font", fontRef(font)}, {"size", size},
                    {"style", {{"face", solidFace("#ffffff")}, {"rims", Json::array({{{"id", "00000101"}, {"width", 4}, {"material", solidFace("#c02020")}}})}}}};
         for (auto it = extra.begin(); it != extra.end(); ++it) layer[it.key()] = it.value();
         return layer;
     }
 
-    TitleArtDoc docOf(int w, int h, const std::vector<Json>& layers) {
+    TitleArtDoc titleArtTextDocOf(int w, int h, const std::vector<Json>& layers) {
         Json root{{"format", TITLE_ART_FORMAT}, {"version", TITLE_ART_VERSION}, {"guid", "0123456789abcdef0123456789abcdef"}};
         root["canvas"] = canvas(w, h);
         root["layers"] = Json::array();
@@ -83,7 +83,7 @@ namespace {
         return false;
     }
 
-    bool hasProblem(const std::vector<TitleProblem>& problems, const char* code) {
+    bool titleArtTextHasProblem(const std::vector<TitleProblem>& problems, const char* code) {
         for (const TitleProblem& p : problems) {
             if (p.code == code) return true;
         }
@@ -94,10 +94,10 @@ namespace {
 
 TEST_F(TitleArtTextGpu, Vertical) {
     std::vector<TitleProblem> problems;
-    const Pixels p = renderWithText(docOf(256, 512, {textLayer("00000001", "縦書き12。", DELA_GOTHIC, 80, Json{{"vertical", true}})}), &problems);
+    const Pixels p = renderWithText(titleArtTextDocOf(256, 512, {titleArtTextLayer("00000001", "縦書き12。", DELA_GOTHIC, 80, Json{{"vertical", true}})}), &problems);
     ASSERT_TRUE(drewSomething(p));
-    EXPECT_FALSE(hasProblem(problems, "glyph_missing"));
-    EXPECT_FALSE(hasProblem(problems, "geometry_unavailable"));
+    EXPECT_FALSE(titleArtTextHasProblem(problems, "glyph_missing"));
+    EXPECT_FALSE(titleArtTextHasProblem(problems, "geometry_unavailable"));
     // a column: far taller than it is wide
     int x0 = p.width, x1 = -1, y0 = p.height, y1 = -1;
     for (int y = 0; y < p.height; y++) {
@@ -115,7 +115,7 @@ TEST_F(TitleArtTextGpu, Vertical) {
 
 TEST_F(TitleArtTextGpu, Variable) {
     auto weighted = [&](int wght) {
-        return renderWithText(docOf(512, 160, {textLayer("00000001", "Bold", SOURCE_SANS_VF, 110, Json{{"variations", {{"wght", wght}}}})}));
+        return renderWithText(titleArtTextDocOf(512, 160, {titleArtTextLayer("00000001", "Bold", SOURCE_SANS_VF, 110, Json{{"variations", {{"wght", wght}}}})}));
     };
     const Pixels regular = weighted(400), heavy = weighted(800);
     ASSERT_TRUE(drewSomething(regular)) << "the CFF2 face opened (FontFaceRasterizer::Optional) and drew";
@@ -138,7 +138,7 @@ TEST_F(TitleArtTextGpu, Standard) {
     doc.root["canvas"]["height"] = 360;
     const Pixels p = renderWithText(doc, &problems);
     ASSERT_TRUE(drewSomething(p));
-    EXPECT_FALSE(hasProblem(problems, "glyph_missing"));
+    EXPECT_FALSE(titleArtTextHasProblem(problems, "glyph_missing"));
     expectGolden("standard", p);
 }
 
@@ -147,7 +147,7 @@ TEST_F(TitleArtMaskGpu, RimJoins) {
         Json layer = shapeLayer("00000001", "star", 180, solidFace("#ffd040"),
                                 Json{{"points", 5}, {"inner", 0.4}});
         layer["style"]["rims"] = Json::array({{{"id", "00000101"}, {"width", 8}, {"join", join}, {"material", solidFace("#202020")}}});
-        return renderWithText(docOf(320, 320, {layer}));
+        return renderWithText(titleArtTextDocOf(320, 320, {layer}));
     };
     const Pixels miter = star("miter"), round = star("round");
     ASSERT_TRUE(drewSomething(miter));

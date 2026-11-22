@@ -28,7 +28,7 @@ using namespace jasperengine::titleart::test;
 
 namespace {
 
-    constexpr double PI = 3.14159265358979323846;
+    constexpr double TITLE_MESHER_PI = 3.14159265358979323846;
 
     Shapes oneShape(const Contour& outer, std::vector<Contour> holes = {}) {
         return {{outer, std::move(holes)}};
@@ -143,7 +143,7 @@ TEST(BevelProfileTest, PresetsFollowTheFormulas) {
     ASSERT_EQ(round.size(), 1u);
     ASSERT_EQ(round[0].size(), 7u);
     for (int k = 0; k <= 6; k++) {
-        const double t = k / 6.0 * PI / 2;
+        const double t = k / 6.0 * TITLE_MESHER_PI / 2;
         EXPECT_NEAR(round[0][k].o, std::sin(t), 1e-6);
         EXPECT_NEAR(round[0][k].h, 1 - std::cos(t), 1e-6);
     }
@@ -153,7 +153,7 @@ TEST(BevelProfileTest, PresetsFollowTheFormulas) {
     shape.profile = BevelProfileKind::Cove;
     const auto cove = unitBevel(shape, 6)[0];
     for (int k = 0; k <= 6; k++) {
-        const double t = k / 6.0 * PI / 2;
+        const double t = k / 6.0 * TITLE_MESHER_PI / 2;
         EXPECT_NEAR(cove[k].o, 1 - std::cos(t), 1e-6);
         EXPECT_NEAR(cove[k].h, std::sin(t), 1e-6);
     }
@@ -167,8 +167,8 @@ TEST(BevelProfileTest, PresetsFollowTheFormulas) {
     ASSERT_EQ(tube.size(), 13u);
     for (int k = 0; k <= 12; k++) {
         const double s = k / 12.0;
-        EXPECT_NEAR(tube[k].o, (1 - std::cos(s * PI)) / 2, 1e-6);
-        EXPECT_NEAR(tube[k].h, -std::sin(s * PI), 1e-6);
+        EXPECT_NEAR(tube[k].o, (1 - std::cos(s * TITLE_MESHER_PI)) / 2, 1e-6);
+        EXPECT_NEAR(tube[k].h, -std::sin(s * TITLE_MESHER_PI), 1e-6);
     }
     shape.profile = BevelProfileKind::Inset;
     const auto inset = unitBevel(shape, 6);

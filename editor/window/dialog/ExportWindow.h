@@ -59,6 +59,8 @@ namespace jasperengine::editor {
         // Host desktop / Web: build a player (true) or export the source project.
         bool m_buildPlayer = true;
         bool m_platformInitialized = false;
+        // the project the remembered platform belongs to: another project opens on its own default
+        fs::path m_platformProjectPath;
         uint32_t m_selectedSceneId = NULL_PROJECT_SCENE;
         // Build And Run: launch the built player once the export finishes.
         bool m_runAfterBuild = false;
@@ -134,6 +136,9 @@ namespace jasperengine::editor {
         // ---- S30: game builds for every platform (prebuilt player or compiled) ----
         using ShipPlatform = ::jasperengine::editor::BuildPlatform;
         ShipPlatform shipPlatform() const;
+        static ShipPlatform shipPlatformOf(BuildPlatform platform);
+        static BuildPlatform listPlatformOf(ShipPlatform platform);
+        void drawTargetPlatformNotice();
         std::map<int, int> m_playerBackendIndex;      // per platform: the graphics API this session
         std::string playerBackend() const;            // its runtime name (glcore, d3d11, ...)
         BuildMethodChoice m_methodChoice;

@@ -63,7 +63,7 @@ TEST(Physics3DReview, SixDOFDriveWithoutStiffnessOrDampingDoesNothing) {
 TEST(Physics3DReview, SixDOFDamperOnlyDampsLikeUnity) {
     // force = damping x (0 - v): v(n) = v0 (1 - c dt / m)^n
     const float c = 2.0f;
-    const float expected = 10.0f * std::pow(1.0f - c * STEP / 1.0f, 60.0f);
+    const float expected = 10.0f * std::pow(1.0f - c * physics3dtest::STEP / 1.0f, 60.0f);
     const float measured = dampedSpeed(true, 0.0f, c, 60);
     EXPECT_NEAR(measured, expected, expected * 0.02f);
     EXPECT_GT(measured, 1.0f) << "damped, not stopped";

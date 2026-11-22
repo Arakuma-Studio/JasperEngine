@@ -65,7 +65,7 @@ using namespace jasperengine::test;
 
 namespace {
 
-    constexpr float GEN_SCALE = 0.25f;
+    constexpr float MOBILE_GEN_SCALE = 0.25f;
     // the preset documents' canvas and the targets a 0.25 render of it makes
     constexpr int CANVAS_W = 1920, CANVAS_H = 1080;
     constexpr int TARGET_W = 480, TARGET_H = 270;
@@ -120,7 +120,7 @@ namespace {
 
     bool renderPreset(const std::string& type, const Json& preset, const Json& overrides, FxTier tier, GenImage& out, std::string& error) {
         std::vector<TitleProblem> problems;
-        if (!renderGenDocument(generatorPresetDocument(type, preset, overrides), GEN_SCALE, out, error, 0, &problems, tier)) return false;
+        if (!renderGenDocument(generatorPresetDocument(type, preset, overrides), MOBILE_GEN_SCALE, out, error, 0, &problems, tier)) return false;
         for (const TitleProblem& p : problems) {
             if (p.code == "glyph_missing" || p.code == "asset_missing" || p.code == "generator_unavailable") {
                 error = p.code + ": " + p.message;
@@ -143,7 +143,7 @@ namespace {
     }
 
     // §6.4's static limits per class (C3 is not bounded by taps, C4 by nothing)
-    bool withinClass(const FxCost& c, CostClass cls) {
+    bool mobileWithinClass(const FxCost& c, CostClass cls) {
         switch (cls) {
             case CostClass::C0: return c.fre <= 1.0 && c.maxTapsPerPixel <= 16;
             case CostClass::C1: return c.fre <= 3.0 && c.maxTapsPerPixel <= 64;
@@ -350,12 +350,12 @@ TEST(TitleGenMobile, EstimateWithinClass) {
         const Json values = presetValues(*def, firstPreset(c.type));
         const ParamValues p(values);
         const FxCost m = def->estimate(p, mobileSize, FxTier::Mobile);
-        EXPECT_TRUE(withinClass(m, def->costClass)) << m.fre << " FRE, " << m.maxTapsPerPixel << " taps over " << costClassName(def->costClass);
+        EXPECT_TRUE(mobileWithinClass(m, def->costClass)) << m.fre << " FRE, " << m.maxTapsPerPixel << " taps over " << costClassName(def->costClass);
         EXPECT_GE(m.passes, 1);
         if (std::string(c.type) == "lens_flare") {
-            EXPECT_TRUE(withinClass(m, CostClass::C0)) << "the mobile flare: " << m.fre << " FRE, " << m.maxTapsPerPixel << " taps";
+            EXPECT_TRUE(mobileWithinClass(m, CostClass::C0)) << "the mobile flare: " << m.fre << " FRE, " << m.maxTapsPerPixel << " taps";
             // control: the desktop flare's full-canvas pass is not C0
-            EXPECT_FALSE(withinClass(def->estimate(p, mobileSize, FxTier::Desktop), CostClass::C0));
+            EXPECT_FALSE(mobileWithinClass(def->estimate(p, mobileSize, FxTier::Desktop), CostClass::C0));
         }
     }
 }
@@ -364,7 +364,7 @@ TEST_F(TitleGenMobileGpu, PassesWithinEstimate) {
     // the followed layer: the standard title as the preset documents draw it (no effects)
     GenImage title;
     std::string error;
-    ASSERT_TRUE(renderGenDocument(standardTitleDocument(), GEN_SCALE, title, error)) << error;
+    ASSERT_TRUE(renderGenDocument(standardTitleDocument(), MOBILE_GEN_SCALE, title, error)) << error;
     ASSERT_EQ(title.width, TARGET_W);
     ASSERT_EQ(title.height, TARGET_H);
     std::vector<float> premul(title.rgba.size());
@@ -377,8 +377,8 @@ TEST_F(TitleGenMobileGpu, PassesWithinEstimate) {
     ASSERT_TRUE(follow) << kit->error();
     // canvas px (centre origin, +y up) -> the 0.25 render's target px
     TitleAffine documentToTarget;
-    documentToTarget.a = GEN_SCALE;
-    documentToTarget.d = -GEN_SCALE;
+    documentToTarget.a = MOBILE_GEN_SCALE;
+    documentToTarget.d = -MOBILE_GEN_SCALE;
     documentToTarget.tx = TARGET_W * 0.5;
     documentToTarget.ty = TARGET_H * 0.5;
     CountingRunner runner(*kit);
@@ -388,7 +388,7 @@ TEST_F(TitleGenMobileGpu, PassesWithinEstimate) {
         ASSERT_TRUE(def && def->render && def->estimate);
         const Json values = presetValues(*def, firstPreset(c.type));
         const ParamValues p(values, &def->globalLight);
-        GeneratorContext ctx = context(runner, TARGET_W, TARGET_H, GEN_SCALE, documentToTarget);
+        GeneratorContext ctx = context(runner, TARGET_W, TARGET_H, MOBILE_GEN_SCALE, documentToTarget);
         ctx.canvasWidth = CANVAS_W;
         ctx.canvasHeight = CANVAS_H;
         ctx.tier = FxTier::Mobile;
@@ -406,7 +406,7 @@ TEST_F(TitleGenMobileGpu, PassesWithinEstimate) {
             def->render(ctx, *target, p);
         })) << kit->error();
         kit->release(target);
-        const FxCost estimate = def->estimate(p, FxSize{TARGET_W, TARGET_H, GEN_SCALE}, FxTier::Mobile);
+        const FxCost estimate = def->estimate(p, FxSize{TARGET_W, TARGET_H, MOBILE_GEN_SCALE}, FxTier::Mobile);
         std::printf("[mobile passes] %s: %d run, %d estimated\n", c.type, runner.counted, estimate.passes);
         EXPECT_GE(runner.counted, 1) << "the mobile path drew nothing";
         EXPECT_LE(runner.counted, estimate.passes);
@@ -420,16 +420,16 @@ namespace {
 
     // FireGpu's "L": a stem x 100..140, rows 200..360 and a foot x 100..300, rows 320..360
     // (target px); every edge on an even pixel, so the half-resolution shape is exact
-    constexpr int L_SIZE = 400;
-    constexpr int STEM_X0 = 100, STEM_X1 = 140, STEM_TOP = 200, FOOT_X1 = 300, FOOT_TOP = 320, L_BOTTOM = 360;
+    constexpr int MOBILE_L_SIZE = 400;
+    constexpr int MOBILE_STEM_X0 = 100, MOBILE_STEM_X1 = 140, MOBILE_STEM_TOP = 200, MOBILE_FOOT_X1 = 300, MOBILE_FOOT_TOP = 320, MOBILE_L_BOTTOM = 360;
 
-    std::vector<float> lShape() {
-        std::vector<float> rgba((size_t)L_SIZE * L_SIZE * 4, 0.0f);
-        for (int y = 0; y < L_SIZE; y++) {
-            for (int x = 0; x < L_SIZE; x++) {
-                const bool stem = x >= STEM_X0 && x < STEM_X1 && y >= STEM_TOP && y < L_BOTTOM;
-                const bool foot = x >= STEM_X0 && x < FOOT_X1 && y >= FOOT_TOP && y < L_BOTTOM;
-                if (stem || foot) std::fill_n(&rgba[((size_t)y * L_SIZE + x) * 4], 4, 1.0f);
+    std::vector<float> mobileLShape() {
+        std::vector<float> rgba((size_t)MOBILE_L_SIZE * MOBILE_L_SIZE * 4, 0.0f);
+        for (int y = 0; y < MOBILE_L_SIZE; y++) {
+            for (int x = 0; x < MOBILE_L_SIZE; x++) {
+                const bool stem = x >= MOBILE_STEM_X0 && x < MOBILE_STEM_X1 && y >= MOBILE_STEM_TOP && y < MOBILE_L_BOTTOM;
+                const bool foot = x >= MOBILE_STEM_X0 && x < MOBILE_FOOT_X1 && y >= MOBILE_FOOT_TOP && y < MOBILE_L_BOTTOM;
+                if (stem || foot) std::fill_n(&rgba[((size_t)y * MOBILE_L_SIZE + x) * 4], 4, 1.0f);
             }
         }
         return rgba;
@@ -460,16 +460,16 @@ namespace {
 }
 
 TEST_F(FireMobileGpu, BakedFieldAgrees) {
-    TargetRef* shape = upload(lShape(), L_SIZE, L_SIZE);
+    TargetRef* shape = upload(mobileLShape(), MOBILE_L_SIZE, MOBILE_L_SIZE);
     ASSERT_TRUE(shape) << kit->error();
     // canvas px (centre origin, +y up) -> target px, at px_scale 1
     TitleAffine documentToTarget;
     documentToTarget.d = -1.0;
-    documentToTarget.tx = L_SIZE * 0.5;
-    documentToTarget.ty = L_SIZE * 0.5;
-    GeneratorContext full = context(*kit, L_SIZE, L_SIZE, 1.0f, documentToTarget);
-    full.canvasWidth = L_SIZE;
-    full.canvasHeight = L_SIZE;
+    documentToTarget.tx = MOBILE_L_SIZE * 0.5;
+    documentToTarget.ty = MOBILE_L_SIZE * 0.5;
+    GeneratorContext full = context(*kit, MOBILE_L_SIZE, MOBILE_L_SIZE, 1.0f, documentToTarget);
+    full.canvasWidth = MOBILE_L_SIZE;
+    full.canvasHeight = MOBILE_L_SIZE;
     constexpr double HEIGHT = 150.0;
     const TitleVec2 up{0.0, 1.0};   // Fire's default direction, -90 (y up)
 
@@ -482,7 +482,7 @@ TEST_F(FireMobileGpu, BakedFieldAgrees) {
             EffectContext e = gen::effectContext(ctx);
             fx::Scratch source;
             const TargetRef* content = shape;
-            if (ctx.width != L_SIZE) {
+            if (ctx.width != MOBILE_L_SIZE) {
                 source = fx::scratch(e);
                 if (!source || !fx::copy(e, *shape, *source)) return;
                 content = source.get();
@@ -502,7 +502,7 @@ TEST_F(FireMobileGpu, BakedFieldAgrees) {
     GeneratorContext half = gen::reducedContext(full, 2);
     const std::vector<float> baked = bake(half, 0.35, hw, hh);
     const std::vector<float> otherSpread = bake(half, 1.0, hw, hh);
-    ASSERT_EQ(reference.size(), (size_t)L_SIZE * L_SIZE);
+    ASSERT_EQ(reference.size(), (size_t)MOBILE_L_SIZE * MOBILE_L_SIZE);
     ASSERT_EQ(baked.size(), (size_t)hw * hh);
     ASSERT_EQ(otherSpread.size(), baked.size());
 
@@ -512,10 +512,10 @@ TEST_F(FireMobileGpu, BakedFieldAgrees) {
         GenPixelStats s;
         double sum = 0.0;
         size_t over = 0;
-        const double sx = (double)hw / L_SIZE, sy = (double)hh / L_SIZE;
-        for (int y = 0; y < L_SIZE; y++) {
-            for (int x = 0; x < L_SIZE; x++) {
-                const double a = baseCoverage(reference[(size_t)y * L_SIZE + x]) * 255.0;
+        const double sx = (double)hw / MOBILE_L_SIZE, sy = (double)hh / MOBILE_L_SIZE;
+        for (int y = 0; y < MOBILE_L_SIZE; y++) {
+            for (int x = 0; x < MOBILE_L_SIZE; x++) {
+                const double a = baseCoverage(reference[(size_t)y * MOBILE_L_SIZE + x]) * 255.0;
                 const double b = baseCoverage(bilinearAt(field, hw, hh, (x + 0.5) * sx, (y + 0.5) * sy)) * 255.0;
                 const double d = std::fabs(std::round(a) - std::round(b));
                 sum += d;
@@ -523,8 +523,8 @@ TEST_F(FireMobileGpu, BakedFieldAgrees) {
                 if (d > 8.0) over++;
             }
         }
-        s.mean = sum / ((double)L_SIZE * L_SIZE);
-        s.fractionOver8 = (double)over / ((double)L_SIZE * L_SIZE);
+        s.mean = sum / ((double)MOBILE_L_SIZE * MOBILE_L_SIZE);
+        s.fractionOver8 = (double)over / ((double)MOBILE_L_SIZE * MOBILE_L_SIZE);
         return s;
     };
     const GenPixelStats agree = compare(baked);
