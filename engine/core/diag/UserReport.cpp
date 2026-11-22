@@ -79,17 +79,37 @@ namespace je_user_report {
     }
 
     // RGBA rows top first to RGB at most maxWidth wide (an area average: each destination pixel
-    // is the mean of the source pixels it covers)
+    // is the mean of the source pixels it covers). R31's 60 ms at 1080p leave no room for divisions
+    // per pixel: the columns' spans are found once, and a mean divides through an exact reciprocal
     std::vector<uint8_t> downscale(const std::vector<uint8_t>& rgba, int width, int height, int maxWidth, int& outWidth, int& outHeight) {
         outWidth = std::max(1, std::min(width, maxWidth));
         outHeight = std::max(1, static_cast<int>(static_cast<int64_t>(height) * outWidth / width));
         std::vector<uint8_t> rgb(static_cast<size_t>(outWidth) * outHeight * 3);
+        std::vector<int> columns(static_cast<size_t>(outWidth) * 2);
+        int widest = 1;
+        for (int x = 0; x < outWidth; x++) {
+            const int x0 = static_cast<int>(static_cast<int64_t>(x) * width / outWidth);
+            const int x1 = std::max(x0 + 1, static_cast<int>(static_cast<int64_t>(x + 1) * width / outWidth));
+            columns[static_cast<size_t>(x) * 2] = x0;
+            columns[static_cast<size_t>(x) * 2 + 1] = x1;
+            widest = std::max(widest, x1 - x0);
+        }
+        // (sum + count / 2) / count as (n * ceil(2^32 / count)) >> 32: exact while n and count are
+        // below 2^16 (n * count < 2^32), so for blocks of at most 256 pixels; larger ones divide
+        std::vector<uint64_t> reciprocals;
         for (int y = 0; y < outHeight; y++) {
             const int y0 = static_cast<int>(static_cast<int64_t>(y) * height / outHeight);
             const int y1 = std::max(y0 + 1, static_cast<int>(static_cast<int64_t>(y + 1) * height / outHeight));
-            for (int x = 0; x < outWidth; x++) {
-                const int x0 = static_cast<int>(static_cast<int64_t>(x) * width / outWidth);
-                const int x1 = std::max(x0 + 1, static_cast<int>(static_cast<int64_t>(x + 1) * width / outWidth));
+            const int rows = y1 - y0;
+            const bool fast = static_cast<int64_t>(rows) * widest <= 256;
+            if (fast && reciprocals.size() <= static_cast<size_t>(rows * widest)) {
+                for (size_t count = reciprocals.size(); count <= static_cast<size_t>(rows * widest); count++)
+                    reciprocals.push_back(count == 0 ? 0 : ((uint64_t(1) << 32) + count - 1) / count);
+            }
+            uint8_t* out = rgb.data() + static_cast<size_t>(y) * outWidth * 3;
+            for (int x = 0; x < outWidth; x++, out += 3) {
+                const int x0 = columns[static_cast<size_t>(x) * 2];
+                const int x1 = columns[static_cast<size_t>(x) * 2 + 1];
                 uint32_t sum[3] = {0, 0, 0};
                 for (int sy = y0; sy < y1; sy++) {
                     const uint8_t* row = rgba.data() + (static_cast<size_t>(sy) * width + x0) * 4;
@@ -99,9 +119,13 @@ namespace je_user_report {
                         sum[2] += row[2];
                     }
                 }
-                const uint32_t count = static_cast<uint32_t>((y1 - y0) * (x1 - x0));
-                uint8_t* out = rgb.data() + (static_cast<size_t>(y) * outWidth + x) * 3;
-                for (int c = 0; c < 3; c++) out[c] = static_cast<uint8_t>((sum[c] + count / 2) / count);
+                const uint32_t count = static_cast<uint32_t>(rows * (x1 - x0));
+                if (fast) {
+                    const uint64_t reciprocal = reciprocals[count];
+                    for (int c = 0; c < 3; c++) out[c] = static_cast<uint8_t>((static_cast<uint64_t>(sum[c] + count / 2) * reciprocal) >> 32);
+                } else {
+                    for (int c = 0; c < 3; c++) out[c] = static_cast<uint8_t>((sum[c] + count / 2) / count);
+                }
             }
         }
         return rgb;
