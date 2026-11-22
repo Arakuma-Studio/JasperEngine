@@ -12,13 +12,15 @@ The editor reads X events at the start of a frame and ImGui acts on them in that
 step here waits for editor frames (Ui.frames), never for wall-clock time alone:
 on a loaded host one frame can take a second, and a fixed sleep let the next step start before
 the editor had seen the last one (a drag that never started, a press read before its release, a
-history row read before its click). Two rules on top of that:
+history row read before its click). Three rules on top of that:
  - a press and its release, and each step of a drag, land in different frames: ImGui starts a
    drag only from a move it sees with the button already down, and a widget never sees a press
    that is released in the same frame;
  - a click waits until ImGui's clock has moved past its double-click time since the previous
    release (DOUBLE_CLICK_SECONDS; ImGui's clock is the wall clock between frames). On a busy host
-   frames can come in bursts: two clicks a couple of fast frames apart read as a double click.
+   frames can come in bursts: two clicks a couple of fast frames apart read as a double click;
+ - a press waits while a progress modal ("Loading", assets and shaders being prepared) is up: it
+   takes every click, and the window under it never sees one.
 Positions are window coordinates from the editor (find_ui_item rects, view_rect_in_window, the
 rects of editor_status and focus_window), turned into screen points with the window's origin.
 """
@@ -39,6 +41,12 @@ DOUBLE_CLICK_SECONDS = 0.45
 SETTLE_FRAMES = 2
 # a label no control has: find_ui_item with it only waits its two frames
 FRAME_PACER = "##ui_input frame pacer (no such item)"
+# progress modals (EditorModal Role::Progress: "Loading" while assets and shaders are prepared) take
+# every click while they are up and close by themselves; editor_status reports no dialog for them,
+# only that they hold the focus (windows.focused)
+PROGRESS_MODALS = ("Loading",)
+# editor frames a press waits for a progress modal to close (each a second at worst on a loaded host)
+PROGRESS_FRAMES = 1200
 
 
 class Ui:
@@ -174,10 +182,21 @@ class Ui:
             await asyncio.sleep(wait)
             await self.frames(1)
 
+    async def _wait_progress_modal(self) -> None:
+        """Until no progress modal is up: a press under one never reaches the window below (a
+        first click right after a project opened, while its shaders were still prepared)."""
+        for _ in range(PROGRESS_FRAMES // 2):
+            focused = ((await self.ed.call("editor_status")).get("windows") or {}).get("focused", "")
+            if focused not in PROGRESS_MODALS:
+                return
+            await self.frames(2)
+        self.ed.fail(f"a progress modal ({focused}) stayed up for {PROGRESS_FRAMES} editor frames: no click gets through")
+
     async def press(self, point: tuple[int, int] | None = None, button: str = "1") -> None:
         if point is not None:
             await self._pointer(point)
         await self._clear_double_click()
+        await self._wait_progress_modal()
         self.xdo("mousedown", button)
         self.buttons_down.add(button)
         await self.frames()
@@ -214,6 +233,7 @@ class Ui:
         if point is not None:
             await self._pointer(point)
         await self._clear_double_click()
+        await self._wait_progress_modal()
         self.xdo("click", "--repeat", "2", "--delay", "40", button)
         await self.frames(4)
         self.last_release = time.monotonic()
