@@ -29,10 +29,12 @@
 
 #include "lua.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -409,10 +411,28 @@ TEST_F(LogListenerTest, CrossRemovalDoesNotDeadlock) {
     delete shared;
 }
 
-// past 1,000 lines waiting for the main thread, worker lines are counted and reported once
+// past 1,000 lines waiting for the main thread, worker lines are counted and reported once.
+// A thread an earlier test left running may log meanwhile (a sharded run: 101 dropped, not 100):
+// its lines take queue slots and join the count, so they are told apart by their text and
+// counted, and with none the checks are exact.
 TEST_F(LogListenerTest, PendingQueueOverflowIsReported) {
+    const std::string report = "lines logged by other threads were not given to the log listeners";
+    auto ours = [report](const std::string& message) {
+        return message.rfind("flood ", 0) == 0 || message == "after the flood" || message.find(report) != std::string::npos;
+    };
+    std::atomic<size_t> foreign{0}, foreignInfo{0};
+    const LogListenerId watch = Log::addListener([&](const LogEntry& entry) {
+        if (entry.mainThread || ours(entry.message)) return;
+        foreign++;
+        if (entry.level == LogLevel::Info) foreignInfo++;
+    }, LogDelivery::AnyThread);
+    // what waited before the count started goes to no one here
+    Log::dispatchPending();
+    const size_t infoBefore = Log::getCount(LogLevel::Info);
     std::vector<std::string> got;
     const LogListenerId id = Log::addListener([&got](const LogEntry& entry) { got.push_back(entry.message); });
+    // both capture this frame: gone however the test ends
+    struct Remove { LogListenerId a, b; ~Remove() { Log::removeListener(a); Log::removeListener(b); } } remove{id, watch};
     std::thread([]() {
         for (int i = 0; i < 1100; i++)
             printDistinct("flood", i);
@@ -420,19 +440,39 @@ TEST_F(LogListenerTest, PendingQueueOverflowIsReported) {
     EXPECT_EQ(Log::getPendingCount(), 1000u);
     Log::dispatchPending();
     ASSERT_EQ(got.size(), 1000u);
-    EXPECT_EQ(got.front(), "flood 0");
-    EXPECT_EQ(got.back(), "flood 999");
+    // the flood's lines in order from its first, as many as the foreign ones left room for
+    size_t flooded = 0;
+    for (const std::string& message : got) {
+        if (message.rfind("flood ", 0) != 0) continue;
+        EXPECT_EQ(message, "flood " + std::to_string(flooded)) << "in order, none skipped";
+        flooded++;
+    }
+    ASSERT_GT(flooded, 0u);
+    // every queued line not the flood's is a foreign one
+    EXPECT_LE(1000u - flooded, foreign.load());
 
-    // the next worker line has room again: the report comes with it
+    // the next worker line has room again: the report comes with it (or with a foreign line
+    // that found the room first)
     got.clear();
     std::thread([]() { Log::print("after the flood"); }).join();
     Log::dispatchPending();
-    ASSERT_EQ(got.size(), 2u);
-    EXPECT_EQ(got[0], "after the flood");
-    EXPECT_NE(got[1].find("100 lines logged by other threads were not given to the log listeners"), std::string::npos) << got[1];
+    EXPECT_NE(std::find(got.begin(), got.end(), "after the flood"), got.end());
+    size_t reports = 0, dropped = 0;
+    for (const std::string& message : got) {
+        const size_t at = message.find(report);
+        if (at == std::string::npos) continue;
+        reports++;
+        dropped = std::strtoul(message.c_str() + message.find(": ") + 2, nullptr, 10);
+    }
+    ASSERT_EQ(reports, 1u) << "reported once";
+    // the flood's 100 past the limit and the slots foreign lines took; a foreign line that came
+    // while the queue was full is dropped and counted too
+    EXPECT_GE(dropped, 1100u - flooded);
+    EXPECT_LE(dropped, 1100u - flooded + foreign.load());
     // every line is in the buffer and counted, dispatched or not
-    EXPECT_EQ(Log::getCount(LogLevel::Info), 1101u);
-    Log::removeListener(id);
+    const size_t info = Log::getCount(LogLevel::Info) - infoBefore;
+    EXPECT_GE(info, 1101u);
+    EXPECT_LE(info, 1101u + foreignInfo.load());
 }
 
 // 5. Lua: RegisterEvent on Log.onMessageReceived, a traceback with warnings; the script released, no more calls
