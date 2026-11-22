@@ -684,10 +684,15 @@ void VehicleSystem::preStepVehicles(){
         }
     }
 
-    for (auto& group : groupScratch){
-        if (group.second.empty()){
+    for (auto it = groupScratch.begin(); it != groupScratch.end();){
+        // a body with no wheel this step (gone, or its wheels gone) leaves the scratch, which so
+        // holds only this step's vehicle bodies, not every body that ever had wheels
+        if (it->second.empty()){
+            it = groupScratch.erase(it);
             continue;
         }
+        auto& group = *it;
+        ++it;
         const Entity bodyEntity = group.first;
         const RigidbodyComponent& rigidbody = scene->getComponent<RigidbodyComponent>(bodyEntity);
         // out of the world (disabled this step, removed by a script): no vehicle until it is back

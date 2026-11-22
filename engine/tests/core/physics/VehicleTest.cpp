@@ -34,6 +34,13 @@
 
 using namespace jasperengine;
 
+namespace jasperengine {
+    // VehicleSystem.h befriends it
+    struct VehicleSystemTestAccess {
+        static size_t scratchBodies(const VehicleSystem& vehicles) { return vehicles.groupScratch.size(); }
+    };
+}
+
 namespace {
 
     constexpr float VEHICLE_DT = 1.0f / 60.0f;
@@ -175,7 +182,8 @@ namespace {
 }
 
 // AC-1 (REQ-1, REQ-2, REQ-9): the wheels under a dynamic body make one vehicle; disabling one
-// builds it again with three; removing the last removes it
+// builds it again with three; removing the last removes it, and the system keeps nothing of its body
+// (red before the prune: its key stayed in the per-step scratch)
 TEST_F(VehicleTest, WheelsMakeOneConstraint){
     floor();
     const VehicleCar c = car();
@@ -213,9 +221,11 @@ TEST_F(VehicleTest, WheelsMakeOneConstraint){
     }
     EXPECT_NEAR(sprung, 1500.0f, 15.0f);
 
+    EXPECT_EQ(VehicleSystemTestAccess::scratchBodies(physics->getVehicles3D()), 1u);
     for (Entity w : c.wheels) scene->removeComponent<WheelColliderComponent>(w);
     step();
     EXPECT_EQ(physics->getVehicles3D().count(), 0u);
+    EXPECT_EQ(VehicleSystemTestAccess::scratchBodies(physics->getVehicles3D()), 0u);
 }
 
 // REQ-2: a wheel with no dynamic body above it does nothing and says why once

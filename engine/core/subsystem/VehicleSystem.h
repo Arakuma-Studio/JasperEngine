@@ -39,6 +39,9 @@ namespace jasperengine{
     // or the body changes, and gone with the last wheel. Before each world step the inputs go in;
     // after it the read-outs come out and the wheels' Transforms follow their poses.
     class JASPERENGINE_API VehicleSystem{
+        // TEST-ONLY seam: the scratch's size (engine/tests/core/physics/VehicleTest.cpp)
+        friend struct VehicleSystemTestAccess;
+
     public:
         // what a wheel was built with: a difference builds the vehicle again
         struct WheelBuild{
