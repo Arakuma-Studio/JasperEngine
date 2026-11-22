@@ -213,7 +213,20 @@ namespace {
             bool isInteger;
             lua_Integer integer;
             std::string_view text;
+            // the text's first 8 bytes, big-endian and zero-padded: most comparisons end here
+            uint64_t prefix;
+            // the stack slot of its value, 0 when the table was too big to keep it there
+            int slot;
         };
+        // one list per depth, reused by every table of that depth (no allocation per table)
+        std::vector<std::vector<Key>> keyLists;
+
+        static uint64_t prefixOf(std::string_view text){
+            uint64_t prefix = 0;
+            for (size_t i = 0; i < 8; i++)
+                prefix = prefix << 8 | (i < text.size() ? static_cast<unsigned char>(text[i]) : 0u);
+            return prefix;
+        }
 
         bool table(int index, int depth){
             index = lua_absindex(L, index);
@@ -229,59 +242,92 @@ namespace {
             }
             lua_pop(L, 1);
 
-            std::vector<Key> keys;
+            if (keyLists.size() <= static_cast<size_t>(depth)) keyLists.resize(static_cast<size_t>(depth) + 1);
+            std::vector<Key>& keys = keyLists[static_cast<size_t>(depth)];
+            keys.clear();
+            // each pair stays on the stack (the key pushed again for lua_next), so the sorted pass
+            // reads its value without pushing and looking up the key a second time
+            const int base = lua_gettop(L);
+            bool onStack = true;
             lua_pushnil(L);
             while (lua_next(L, index) != 0){
-                lua_pop(L, 1);
-                const int type = lua_type(L, -1);
-                if (type == LUA_TNUMBER && lua_isinteger(L, -1)){
-                    const lua_Integer k = lua_tointeger(L, -1);
-                    if (k < 1 || k > n) keys.push_back({true, k, {}});
+                const int type = lua_type(L, -2);
+                Key key{false, 0, {}, 0, 0};
+                if (type == LUA_TNUMBER && lua_isinteger(L, -2)){
+                    const lua_Integer k = lua_tointeger(L, -2);
+                    if (k >= 1 && k <= n){
+                        lua_pop(L, 1);
+                        continue;
+                    }
+                    key.isInteger = true;
+                    key.integer = k;
                 } else if (type == LUA_TSTRING){
                     size_t length = 0;
                     // the key stays in the table, so its text outlives this loop
-                    const char* s = lua_tolstring(L, -1, &length);
-                    keys.push_back({false, 0, std::string_view(s, length)});
+                    const char* s = lua_tolstring(L, -2, &length);
+                    key.text = std::string_view(s, length);
+                    key.prefix = prefixOf(key.text);
                 } else {
-                    const std::string what = type == LUA_TNUMBER ? "float" : luaL_typename(L, -1);
-                    lua_pop(L, 1);
+                    const std::string what = type == LUA_TNUMBER ? "float" : luaL_typename(L, -2);
+                    lua_settop(L, base);
                     return fail("cannot save a " + what + " key");
                 }
+                if (onStack && !lua_checkstack(L, 3)) onStack = false;
+                if (onStack){
+                    key.slot = lua_gettop(L);
+                    lua_pushvalue(L, -2);
+                } else {
+                    lua_pop(L, 1);
+                }
+                keys.push_back(key);
             }
             std::sort(keys.begin(), keys.end(), [](const Key& a, const Key& b){
                 if (a.isInteger != b.isInteger) return a.isInteger;
                 if (a.isInteger) return a.integer < b.integer;
+                if (a.prefix != b.prefix) return a.prefix < b.prefix;
                 return a.text < b.text;
             });
 
             open.push_back(self);
             out.push_back(static_cast<char>(TagTable));
             putVarint(out, static_cast<uint64_t>(n));
+            // the keys down to the value being written: this level's slot, rewritten per value
+            steps.push_back({true, 0, {}});
             for (lua_Integer i = 1; i <= n; i++){
                 lua_rawgeti(L, index, i);
-                steps.push_back({true, i, {}});
+                steps.back() = {true, i, {}};
                 const bool ok = value(-1, depth);
                 lua_pop(L, 1);
                 if (!ok) return false;
-                steps.pop_back();
             }
-            putVarint(out, keys.size());
-            for (const Key& key : keys){
+            const size_t pairs = keys.size();
+            putVarint(out, pairs);
+            // indexed again for each pair: the values' tables (the next depth) may grow keyLists
+            for (size_t k = 0; k < pairs; k++){
+                const Key key = keyLists[static_cast<size_t>(depth)][k];
                 if (key.isInteger){
                     putInteger(out, static_cast<int64_t>(key.integer));
-                    lua_rawgeti(L, index, key.integer);
-                    steps.push_back({true, key.integer, {}});
+                    steps.back() = {true, key.integer, {}};
                 } else {
                     putString(out, key.text);
-                    lua_pushlstring(L, key.text.data(), key.text.size());
-                    lua_rawget(L, index);
-                    steps.push_back({false, 0, key.text});
+                    steps.back() = {false, 0, key.text};
                 }
-                const bool ok = value(-1, depth);
-                lua_pop(L, 1);
+                bool ok;
+                if (key.slot != 0){
+                    ok = value(key.slot, depth);
+                } else {
+                    if (key.isInteger) lua_rawgeti(L, index, key.integer);
+                    else {
+                        lua_pushlstring(L, key.text.data(), key.text.size());
+                        lua_rawget(L, index);
+                    }
+                    ok = value(-1, depth);
+                    lua_pop(L, 1);
+                }
                 if (!ok) return false;
-                steps.pop_back();
             }
+            steps.pop_back();
+            lua_settop(L, base);
             open.pop_back();
             return true;
         }
@@ -479,14 +525,27 @@ namespace {
                 uint64_t n = 0;
                 if (!r.counts(n, 1, "array count")) return false;
                 const int top = lua_gettop(L);
-                lua_createtable(L, static_cast<int>(std::min<uint64_t>(n, 1u << 20)), 0);
-                const int table = lua_gettop(L);
+                // the array's values wait on the stack until the pair count is read, so the table is
+                // made with both parts sized (a hash part grown key by key rehashes log2(m) times, a
+                // tenth of a large decode); a stack too small for them fills the table as it reads
+                const bool staged = n <= (1u << 20) && lua_checkstack(L, static_cast<int>(n) + 4);
+                int table = 0;
+                if (!staged){
+                    lua_createtable(L, static_cast<int>(std::min<uint64_t>(n, 1u << 20)), 0);
+                    table = lua_gettop(L);
+                }
                 for (uint64_t i = 0; i < n; i++){
                     if (!pushValue(L, r, depth + 1)){ lua_settop(L, top); return false; }
-                    lua_rawseti(L, table, static_cast<lua_Integer>(i + 1));
+                    if (!staged) lua_rawseti(L, table, static_cast<lua_Integer>(i + 1));
                 }
                 uint64_t m = 0;
                 if (!r.counts(m, 2, "pair count")){ lua_settop(L, top); return false; }
+                if (staged){
+                    lua_createtable(L, static_cast<int>(n), static_cast<int>(std::min<uint64_t>(m, 1u << 20)));
+                    table = top + 1;
+                    lua_insert(L, table);
+                    for (lua_Integer i = static_cast<lua_Integer>(n); i >= 1; i--) lua_rawseti(L, table, i);
+                }
                 for (uint64_t i = 0; i < m; i++){
                     uint8_t keyTag = 0;
                     if (!r.keyTag(keyTag)){ lua_settop(L, top); return false; }
@@ -883,15 +942,9 @@ bool savegame::encodeLua(lua_State* L, int index, std::string& out, SaveError& e
 bool savegame::decodeLua(lua_State* L, std::string_view payload, SaveError& error){
     Reader reader(payload, error);
     const int top = lua_gettop(L);
-    if (!pushValue(L, reader, 0)){
-        lua_settop(L, top);
-        return false;
-    }
-    if (!reader.finish()){
-        lua_settop(L, top);
-        return false;
-    }
-    return true;
+    const bool ok = pushValue(L, reader, 0) && reader.finish();
+    if (!ok) lua_settop(L, top);
+    return ok;
 }
 
 bool savegame::validatePayload(std::string_view payload, SaveError& error){
