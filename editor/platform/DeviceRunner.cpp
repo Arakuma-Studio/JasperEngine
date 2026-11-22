@@ -547,6 +547,7 @@ namespace {
             // "com.example.game: 12345"
             const size_t colon = output.rfind(':');
             pid = colon == std::string::npos ? 0 : std::atol(output.substr(colon + 1).c_str());
+            merge = std::make_unique<SimulatorLogMerge>(appId, [this](LogLevel level, const std::string& text) { line(level, text); });
             started();
             running = true;
             pump.start();
@@ -554,7 +555,7 @@ namespace {
             std::vector<std::string> stream = {"xcrun", "simctl", "spawn", device.id, "log", "stream", "--style", "compact", "--level", "debug",
                                                "--predicate", "process == \"" + executable + "\""};
             logThread = std::thread([this, stream]() {
-                logRunner.run(stream, fs::path(), [this](const std::string& text) { osLogLine(text); }, withEnv ? &env : nullptr);
+                logRunner.run(stream, fs::path(), [this](const std::string& text) { merge->unifiedLine(text); }, withEnv ? &env : nullptr);
             });
             monitorThread = std::thread([this]() { monitor(); });
             return true;
@@ -564,6 +565,7 @@ namespace {
             if (!running) return;
             std::string output;
             simctl({"terminate", device.id, appId}, output);
+            if (merge) merge->flush(-1.0, true);
             finish(std::nullopt, true);
             halt();
         }
@@ -601,6 +603,7 @@ namespace {
         long pid = 0;
         fs::path stdoutFile, stderrFile;
         uint64_t stdoutRead = 0, stderrRead = 0;
+        std::unique_ptr<SimulatorLogMerge> merge;
         CommandRunner logRunner;
         std::thread logThread, monitorThread;
         std::atomic<bool> running{false};
@@ -618,22 +621,8 @@ namespace {
             return container.empty() ? fs::path() : FileUtils::pathFromUtf8(container) / "Library" / player::DEVELOPMENT_CONTENT_DIR;
         }
 
-        // "2026-11-20 10:00:00.123 Df Game[1234:5678] [com.example:render] text"
-        void osLogLine(const std::string& text) {
-            static const std::regex compact(R"(^\S+ \S+ (\w+)\s+\S+\[\d+:\w+\] (.*)$)");
-            std::smatch match;
-            if (!std::regex_match(text, match, compact)) {
-                if (text.rfind("Filtering the log data", 0) == 0 || text.rfind("Timestamp", 0) == 0) return;
-                line(LogLevel::Info, text);
-                return;
-            }
-            const std::string kind = match[1].str();
-            const LogLevel level = kind == "Db" ? LogLevel::Debug : kind == "E" ? LogLevel::Error : kind == "F" ? LogLevel::Fatal : LogLevel::Info;
-            line(level, match[2].str());
-        }
-
         // the launch's stdout and stderr files, read on as they grow
-        void tail(const fs::path& file, uint64_t& offset, LogLevel level) {
+        void tail(const fs::path& file, uint64_t& offset, bool stderrStream) {
             std::ifstream in(file, std::ios::binary);
             if (!in) return;
             in.seekg(static_cast<std::streamoff>(offset));
@@ -642,22 +631,23 @@ namespace {
             if (complete == std::string::npos) return;
             offset += complete + 1;
             std::istringstream lines(chunk.substr(0, complete));
-            for (std::string text; std::getline(lines, text);)
-                if (!text.empty()) line(level, text);
+            for (std::string text; std::getline(lines, text);) merge->consoleLine(text, stderrStream);
         }
 
         void monitor() {
             while (running) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 if (!running) break;
-                tail(stdoutFile, stdoutRead, LogLevel::Info);
-                tail(stderrFile, stderrRead, LogLevel::Warn);
+                tail(stdoutFile, stdoutRead, false);
+                tail(stderrFile, stderrRead, true);
+                merge->flush();
 #ifndef _WIN32
                 // a simulator app is a process of this Mac
                 if (pid > 0 && ::kill(static_cast<pid_t>(pid), 0) != 0) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(300));
-                    tail(stdoutFile, stdoutRead, LogLevel::Info);
-                    tail(stderrFile, stderrRead, LogLevel::Warn);
+                    tail(stdoutFile, stdoutRead, false);
+                    tail(stderrFile, stderrRead, true);
+                    merge->flush(-1.0, true);
                     finish(std::nullopt, false);
                     running = false;
                     break;
