@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainQualityPanel.h"
+#include "lighting/ExtractSun.h"
 #include "Engine.h"
 #include "mcp/TerrainMaterialInfo.h"
 #include "animation/BoneOverlay.h"
@@ -531,6 +532,14 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                     if (changed) {
                         value = static_cast<ShadowQuality>(currentItem);
                     }
+                }
+            }
+            if constexpr (std::is_same_v<T, AmbientSource>) {
+                const char* sourceNames[] = { "Skybox", "Gradient" };
+                int currentItem = std::clamp(static_cast<int>(value), 0, 1);
+                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, sourceNames, IM_ARRAYSIZE(sourceNames));
+                if (changed) {
+                    value = static_cast<AmbientSource>(currentItem);
                 }
             }
             if constexpr (std::is_same_v<T, LitQuality>) {
@@ -13269,6 +13278,47 @@ void editor::InspectorWindow::drawSkyboxComponent(ComponentType cpType, ScenePro
     propertyRow(RowPropertyType::Float, cpType, "rotation", "Rotation", sceneProject, entities);
 
     endTable();
+
+    // S92 R28: the sun of the sky's HDR image as the scene's main Directional Light
+    separatorText("Sun");
+    beginTable(cpType, getLabelSize("Remove Sun Disc"), "sky_sun");
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Remove Sun Disc");
+    ImGui::SetItemTooltip("Also turn on the sky images' Remove Sun Disc import setting: the cook clamps the sun's disc to the sky "
+                          "around it, so image-based lighting does not count the sun the light now gives. HDR images only.");
+    ImGui::TableNextColumn();
+    ImGui::Checkbox("##extract_sun_remove_disc", &extractSunRemoveDisc);
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::TableNextColumn();
+    if (ImGui::Button(ICON_FA_SUN " Extract Sun")) {
+        ExtractSunResult result;
+        std::string error;
+        extractSunFailed = !ExtractSun::apply(project, sceneProject->id, extractSunRemoveDisc, result, error);
+        if (extractSunFailed) {
+            extractSunMessage = error;
+        } else {
+            char text[160];
+            std::snprintf(text, sizeof(text), "%s the Directional Light: intensity %.3g%s, the sun %.0fx the sky's mean.",
+                          result.created ? "Created" : "Aligned", result.intensity, result.unit == LightUnit::LUX ? " lux" : "",
+                          result.peakRatio);
+            extractSunMessage = text;
+        }
+    }
+    ImGui::SetItemTooltip("Finds the sun in the sky's HDR image (the brightest spot, at least 20 times the sky's mean) and sets the "
+                          "scene's main Directional Light to its direction, colour and intensity, creating one when there is none, "
+                          "so the sun casts shadows. One undo step.");
+    if (!extractSunMessage.empty()) {
+        ImGui::PushTextWrapPos(0.0f);
+        if (extractSunFailed)
+            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " %s", extractSunMessage.c_str());
+        else
+            ImGui::TextDisabled("%s", extractSunMessage.c_str());
+        ImGui::PopTextWrapPos();
+    }
+    endTable();
 }
 
 // (upstream's drawParticleSystemLegacy rows of ui-scaling-text, Unscaled Time and the "UI particles" note, are S20's
@@ -13894,14 +13944,26 @@ void editor::InspectorWindow::show(){
 
             LightState currentLightState = jasperengine::editor::Catalog::getSceneProperty<LightState>(sceneProject->scene, "light_state");
             if (currentLightState != LightState::OFF) {
-                ImGui::SeparatorText("Global Illumination");
+                ImGui::SeparatorText("Environment Lighting");
 
                 if (ImGui::BeginTable("scene_globalillum_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Intensity"));
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Equator Color"));
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
-                    drawScenePropertyRow<Vector3>(sceneProject, "global_illumination_color", "Color", ScenePropertyInputType::ColorRGB);
-                    drawScenePropertyRow<float>(sceneProject, "global_illumination_intensity", "Intensity", ScenePropertyInputType::SliderFloat, -1.0f, 0.0f, 1.0f);
+                    drawScenePropertyRow<AmbientSource>(sceneProject, "ambient_source", "Source", ScenePropertyInputType::Combo, 7 * ImGui::GetFontSize(), 0.0f, 1.0f,
+                        "Where lit surfaces take their ambient light from:\n"
+                        "- Skybox: the sky's image on Lit materials (image-based lighting); the Ambient Color where the scene has no "
+                        "sky image, and on shaders and particles that take no image-based lighting\n"
+                        "- Gradient: Sky, Equator and Ground colours by the way a surface faces, on every lit shader. The sky's image "
+                        "still gives Lit its reflections. Costs nothing over Skybox.");
+                    if (jasperengine::editor::Catalog::getSceneProperty<AmbientSource>(sceneProject->scene, "ambient_source") == AmbientSource::GRADIENT) {
+                        drawScenePropertyRow<Vector3>(sceneProject, "ambient_sky_color", "Sky Color", ScenePropertyInputType::ColorRGB);
+                        drawScenePropertyRow<Vector3>(sceneProject, "ambient_equator_color", "Equator Color", ScenePropertyInputType::ColorRGB);
+                        drawScenePropertyRow<Vector3>(sceneProject, "ambient_ground_color", "Ground Color", ScenePropertyInputType::ColorRGB);
+                    } else {
+                        drawScenePropertyRow<Vector3>(sceneProject, "global_illumination_color", "Ambient Color", ScenePropertyInputType::ColorRGB);
+                        drawScenePropertyRow<float>(sceneProject, "global_illumination_intensity", "Intensity", ScenePropertyInputType::SliderFloat, -1.0f, 0.0f, 1.0f);
+                    }
 
                     ImGui::EndTable();
                 }

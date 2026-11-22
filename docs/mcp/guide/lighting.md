@@ -34,6 +34,15 @@ For agents: what to set and how to check it. The full reference is `docs/renderi
 - Hair: the material's `pbr.hair.enabled: true` (the Inspector's Shading Model: Hair) and its
   `primaryColor`, `primaryShift`, `primaryWidth`, `secondaryColor`, `secondaryShift`,
   `secondaryWidth`, `rotation`, `flowMap`.
+- A Skybox with an HDR image (.hdr, .exr) whose sun casts no shadow: `set_scene_settings`
+  `extract_sun: {remove_sun_disc: true}` creates or aligns the main Directional Light (direction,
+  colour, intensity; lux when the light is in lux) and clamps the sun out of the sky's lighting.
+  Refused when the sky has no distinct sun (its brightest spot under 20x its mean): place the light
+  by hand.
+- Ambient light by facing (sky above, ground below) instead of the sky image: `set_scene_settings`
+  `ambient_source: "gradient"` with `ambient_sky_color`, `ambient_equator_color`,
+  `ambient_ground_color` (sRGB). The default `skybox` lights Lit with the sky image, and with
+  `global_illumination_color` / `_intensity` where there is none.
 
 ## Checking
 

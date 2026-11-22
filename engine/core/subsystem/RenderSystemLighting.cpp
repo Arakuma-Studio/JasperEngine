@@ -491,7 +491,7 @@ void RenderSystem::applyObjectLights(ObjectRender& render, int slotVS, unsigned 
             tiledObjectLightsBlock.counts.w = (tiles && tiles->masks) ? 1.0f : 0.0f;
             // the lights over the cap are the tiles' now: the scene ambient alone
             for (int c = 0; c < 3; c++)
-                tiledObjectLightsBlock.sh[c] = Vector4(0.0f, 0.0f, 0.0f, lightListAmbient[c]);
+                tiledObjectLightsBlock.sh[c] = lightListAmbientSH[c];
             if (tiles && tiles->uploaded){
                 tiledObjectLightsBlock.tileGrid = tiles->tileGrid;
                 tiledObjectLightsBlock.tileCount = tiles->tileCount;

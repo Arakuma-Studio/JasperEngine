@@ -43,6 +43,7 @@
 #include "render/UIDrawColor.h"
 #include "render/PipelineState.h"
 #include "render/LodFade.h"
+#include "render/AmbientGradient.h"
 #include <cfloat>
 #include <optional>
 #include "htmlui/HtmlUIClock.h"
@@ -961,6 +962,8 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
 
     lightListEpoch = 1;
     lightListCap = 0;
+    for (int c = 0; c < 3; c++)
+        lightListAmbientSH[c] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
     lightCapacityTier = 8;
     directionalLightsOnly = false;
     loadedDirectionalLightsOnly = false;
@@ -1813,7 +1816,10 @@ void RenderSystem::fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, cons
     // linear fog (type 0) reads start and end, the exponential ones the density
     const float fogParam = (fogColorType.w == 0.0f) ? fogDensityStartEnd.z : fogDensityStartEnd.x;
     litFrame.cameraPosition_fogEnd = Vector4(frame.cameraPosition.x, frame.cameraPosition.y, frame.cameraPosition.z, fogDensityStartEnd.w);
-    litFrame.ambient_fogType = Vector4(frame.ambient.x, frame.ambient.y, frame.ambient.z, fogColorType.w);
+    // (Gradient: none of the ambient is uniform for Lit, it takes the object's SH whole)
+    const bool gradientAmbient = scene->getAmbientSource() == AmbientSource::GRADIENT;
+    litFrame.ambient_fogType = gradientAmbient ? Vector4(0.0f, 0.0f, 0.0f, fogColorType.w)
+                                               : Vector4(frame.ambient.x, frame.ambient.y, frame.ambient.z, fogColorType.w);
     litFrame.fogColor_param = Vector4(fogColorType.x, fogColorType.y, fogColorType.z, fogParam);
     litFrame.cameraForward_pcf = Vector4(frame.cameraDirection.x, frame.cameraDirection.y, frame.cameraDirection.z, pcfRadius);
     litFrame.viewport_ssao_envRotation = Vector4(viewport.x, viewport.y, viewport.z + 2.0f * viewport.w, environment.w);
@@ -2056,14 +2062,36 @@ void RenderSystem::updateSceneLights(){
     }
 
     // what every mesh's pick depends on
-    const Vector3 ambient = scene->getGlobalIlluminationColorLinear() * scene->getGlobalIlluminationIntensity();
+    Vector4 ambient[3];
+    Vector3 flatAmbient;
+    Vector3 litFlatAmbient;
+    sceneAmbient(ambient, flatAmbient, litFlatAmbient);
+    const bool ambientChanged = ambient[0] != lightListAmbientSH[0] || ambient[1] != lightListAmbientSH[1] || ambient[2] != lightListAmbientSH[2];
     const int cap = std::clamp(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject()), 1, MAX_LIGHTS_PER_OBJECT);
-    if (restructured || ambient != lightListAmbient || cap != lightListCap){
+    if (restructured || ambientChanged || cap != lightListCap){
         lightListEpoch++;
-        lightListAmbient = ambient;
+        for (int c = 0; c < 3; c++)
+            lightListAmbientSH[c] = ambient[c];
         lightListCap = cap;
         changedLights.clear();
     }
+}
+
+void RenderSystem::sceneAmbient(Vector4 sh[3], Vector3& flat, Vector3& litFlat) const{
+    if (scene->getAmbientSource() == AmbientSource::GRADIENT){
+        const Vector3 sky = scene->getAmbientSkyColorLinear();
+        const Vector3 equator = scene->getAmbientEquatorColorLinear();
+        const Vector3 ground = scene->getAmbientGroundColorLinear();
+        AmbientGradient::project(sky, equator, ground, sh);
+        flat = AmbientGradient::average(sky, equator, ground);
+        // Lit takes the whole SH as its environment light (none of it is uniform)
+        litFlat = Vector3(0.0f, 0.0f, 0.0f);
+        return;
+    }
+    flat = scene->getGlobalIlluminationColorLinear() * scene->getGlobalIlluminationIntensity();
+    litFlat = flat;
+    for (int c = 0; c < 3; c++)
+        sh[c] = Vector4(0.0f, 0.0f, 0.0f, flat[c]);
 }
 
 namespace {
@@ -2199,7 +2227,7 @@ void RenderSystem::selectMeshLights(Entity entity, MeshComponent& mesh, const Tr
     }
 
     for (int c = 0; c < 3; c++){
-        picked.sh[c] = Vector4(0.0f, 0.0f, 0.0f, lightListAmbient[c]);
+        picked.sh[c] = lightListAmbientSH[c];
     }
 
     picked.foldedDirectional = false;
@@ -2357,7 +2385,7 @@ void RenderSystem::buildObjectLights(const MeshComponent& mesh, uint64_t propert
 
     block.data[0] = Vector4((float)pixelCount, (float)vertexCount, 0.0f, 0.0f);
     for (int c = 0; c < 3; c++){
-        sh[c] = (picked.epoch != 0) ? picked.sh[c] : Vector4(0.0f, 0.0f, 0.0f, lightListAmbient[c]);
+        sh[c] = (picked.epoch != 0) ? picked.sh[c] : lightListAmbientSH[c];
     }
 
     for (int n = 0; n < pixelCount + vertexCount; n++){
@@ -2398,7 +2426,7 @@ void RenderSystem::buildObjectLightRecords(const MeshComponent& mesh, uint64_t p
 
     block.counts = Vector4((float)pixelCount, (float)vertexCount, 0.0f, 0.0f);
     for (int c = 0; c < 3; c++){
-        block.sh[c] = (picked.epoch != 0) ? picked.sh[c] : Vector4(0.0f, 0.0f, 0.0f, lightListAmbient[c]);
+        block.sh[c] = (picked.epoch != 0) ? picked.sh[c] : lightListAmbientSH[c];
     }
     for (int n = 0; n < pixelCount; n++){
         Vector4& pair = block.records[n >> 1];
@@ -2545,8 +2573,8 @@ void RenderSystem::buildLegacyLighting(const MeshComponent& mesh, uint64_t prope
     Vector4 sh[3];
     bool leftOut = false;
     for (int c = 0; c < 3; c++){
-        sh[c] = (picked.epoch != 0) ? picked.sh[c] : Vector4(0.0f, 0.0f, 0.0f, lightListAmbient[c]);
-        leftOut = leftOut || sh[c].w != lightListAmbient[c];
+        sh[c] = (picked.epoch != 0) ? picked.sh[c] : lightListAmbientSH[c];
+        leftOut = leftOut || sh[c] != lightListAmbientSH[c];
     }
     if (pixelCount > count){
         const LightBounds bounds(mesh.lights.bounds, Vector3(0.0f, 0.0f, 0.0f));
@@ -2563,7 +2591,7 @@ void RenderSystem::buildLegacyLighting(const MeshComponent& mesh, uint64_t prope
         // divided by PI (foldLight), as Lit-like forks divide their direct light
         Vector3 flat;
         for (int c = 0; c < 3; c++){
-            flat[c] = lightListAmbient[c] + std::max(sh[c].w - lightListAmbient[c], 0.0f);
+            flat[c] = lightListAmbientSH[c].w + std::max(sh[c].w - lightListAmbientSH[c].w, 0.0f);
         }
         block.globalIllum = Vector4(flat.x, flat.y, flat.z, 1.0f);
     }
@@ -4883,7 +4911,11 @@ void RenderSystem::fillFrameBlock(frame_t& frame, const CameraComponent& camera,
         frame.mainLightColor = Vector4(light.resolvedColor, 1.0f);
     }
 
-    frame.ambient = Vector4(scene->getGlobalIlluminationColorLinear() * scene->getGlobalIlluminationIntensity(), 1.0f);
+    Vector4 ambientSH[3];
+    Vector3 flatAmbient;
+    Vector3 litFlatAmbient;
+    sceneAmbient(ambientSH, flatAmbient, litFlatAmbient);
+    frame.ambient = Vector4(flatAmbient, 1.0f);
 }
 
 Vector2 RenderSystem::passFrameResolution(const CameraComponent& camera) const{
@@ -7262,7 +7294,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             TextureRender* prefiltered = &emptyCubeBlack;
             // the prefiltered map the SSR composite rebuilds the reflection with too
             skyEnvironment(prefiltered);
-            if (prefiltered != &emptyCubeBlack)
+            // under a Gradient ambient the sky gives reflections alone: the gradient, in the
+            // object's SH, is the diffuse ambient (black irradiance; Lit adds the SH as overflow,
+            // which takes a scene light: without one the sky stays the ambient)
+            if (prefiltered != &emptyCubeBlack && !(loadedAmbientGradient && hasLights))
                 irradiance = skyArray->getComponentFromIndex(0).irradianceMap.get();
             render.addTexture(shaderData.getTextureIndex(TextureShaderType::IRRADIANCEMAP), ShaderStageType::FRAGMENT, irradiance);
             render.addTexture(shaderData.getTextureIndex(TextureShaderType::PREFILTEREDMAP), ShaderStageType::FRAGMENT, prefiltered);
@@ -18047,6 +18082,13 @@ void RenderSystem::update(double dt){
     if (hasIBL != newHasIBL){
         hasIBL = newHasIBL;
         needReloadMeshes();
+    }
+    // the meshes bind the sky's irradiance map or not by the ambient source
+    const bool ambientGradient = scene->getAmbientSource() == AmbientSource::GRADIENT;
+    if (ambientGradient != loadedAmbientGradient){
+        loadedAmbientGradient = ambientGradient;
+        if (hasIBL || hasReflectionProbes)
+            needReloadMeshes();
     }
 
     for (int i = 0; i < transforms->size(); i++){

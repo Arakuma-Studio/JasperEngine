@@ -4790,7 +4790,9 @@ const std::vector<std::pair<std::string, std::string>>& textureSettingFields() {
         {"channel", "channel"}, {"quality", "quality"}, {"effort", "effort"}, {"streamable", "streamable"},
         {"ship_source", "shipSource"},
         // S42 R4, R6, R7
-        {"pixel_art", "pixelArt"}, {"alpha_clip", "alphaClip"}, {"filter_mode", "filterMode"}, {"pixels_per_unit", "pixelsPerUnit"}};
+        {"pixel_art", "pixelArt"}, {"alpha_clip", "alphaClip"}, {"filter_mode", "filterMode"}, {"pixels_per_unit", "pixelsPerUnit"},
+        // S92 R29
+        {"remove_sun_disc", "removeSunDisc"}};
     return fields;
 }
 
