@@ -673,6 +673,10 @@ Each backend test is parameterised over `{Native, Polling}`.
   tries up to 3; with none live it fails and the service polls (`Degraded`). The marker is what proves
   delivery, so the barrier asks with `FlushAsync` and waits on the marker up to its deadline. A root
   with no writable `.jasperengine/` has no marker: it asks once and waits 100 ms, the deadline at most.
+- **`FSEventStreamFlushAsync` has no effect on macOS 26.2**, so a barrier waits for the stream's
+  50 ms latency (R18), and AC6 takes about 50 s there. The marker is still what makes it a barrier. A
+  loaded macOS runner once took over 250 ms for one flush, so `FlushBarrier` gives each flush a 5 s
+  timeout, as a guard, and enforces AC6's 250 ms only in the benchmark run (`perfSlack`).
 
 ### Watch follow-ups (fix/watch-followups)
 
