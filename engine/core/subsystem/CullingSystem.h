@@ -36,6 +36,7 @@
 namespace jasperengine{
 
     class LineRenderer;
+    class TerrainWorldSystem;
     template <typename Ret> class LuaFunction;
 
     class JASPERENGINE_API CullingSystem : public SubSystem {
@@ -63,7 +64,7 @@ namespace jasperengine{
         // script ground checks in one frame at most (D12)
         static constexpr uint32_t MAX_GROUND_CHECKS_PER_FRAME = 256;
         static constexpr uint32_t PARALLEL_THRESHOLD = 4096;
-        static constexpr uint32_t PARALLEL_CHUNK = 1024;
+        static constexpr uint32_t PARALLEL_CHUNK = 256;
 
         explicit CullingSystem(Scene* scene);
         ~CullingSystem() override;
@@ -250,7 +251,8 @@ namespace jasperengine{
         void ensureSimFlags(Entity entity);
         float resolveRadius(Entity entity, SimulationCullingComponent& component);
         // `all`: a first evaluation, never capped
-        bool groundLoaded(Entity entity, const Vector3& position, float radius, bool withinDistance, bool all, uint32_t& scriptChecks);
+        // `worlds`: the scene's TerrainWorldSystem when it has worlds, found once a pass (null otherwise)
+        bool groundLoaded(TerrainWorldSystem* worlds, const Vector3& position, float radius, bool withinDistance, bool all, uint32_t& scriptChecks);
         void evaluateSimulation(bool all, const std::vector<Entity>* only);
         void applyTransition(const Transition& transition);
         void applyFlags(Entity root, const SimulationCullingComponent& component, SimulationState state);
