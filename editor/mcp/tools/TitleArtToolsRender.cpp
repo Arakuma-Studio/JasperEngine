@@ -37,6 +37,7 @@
 #include "util/SafeWrite.h"
 
 #include <cstring>
+#include <regex>
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
@@ -362,6 +363,7 @@ namespace {
 void runFrameTask(const CallPtr& call, const std::string& kind, const std::string& title, std::shared_ptr<FrameTask> task) {
     McpContext& ctx = call->ctx();
     JobPtr job = ctx.jobs().create(kind, title);
+    if (!task->historyKind.empty()) job->estimateFor(ctx.project()->getProjectPath(), task->historyKind, task->modelSeconds, task->modelBytes);
     job->setProgress(0.0, "starting");
     auto state = std::make_shared<FrameTickState>();
     state->job = job;
@@ -379,6 +381,20 @@ void runFrameTask(const CallPtr& call, const std::string& kind, const std::strin
         reply.images = task->images;
         return reply;
     });
+}
+
+void addDownscaleFallbacks(McpJob& job, const std::vector<std::string>& warnings) {
+    // "output_downscaled: output 'logo' would be 9000 x 3000, over max_size 4096; ..." (a bake),
+    // "output_downscaled: 9000 x 3000 is over max_size 4096; ..." (the other formats)
+    static const std::regex size("(\\d+) x (\\d+)"), limit("max_size (\\d+)"), output("output '([^']*)'");
+    for (const std::string& warning : warnings) {
+        if (warning.rfind("output_downscaled:", 0) != 0) continue;
+        std::smatch sized, limited, named;
+        if (!std::regex_search(warning, sized, size) || !std::regex_search(warning, limited, limit)) continue;
+        const bool hasName = std::regex_search(warning, named, output);
+        job.addFallback({"resolution", sized[1].str() + "x" + sized[2].str(), "max_size " + limited[1].str(),
+                         (hasName ? "output '" + named[1].str() + "' " : std::string("the image ")) + "is over its max_size: scaled down"});
+    }
 }
 
 // ==================================================================== render_title

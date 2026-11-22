@@ -963,8 +963,17 @@ void exportTitleTool(const CallPtr& call) {
         call->fail("bad_value: " + error + ". Nothing was written.", Json{{"code", "bad_value"}});
         return;
     }
+    // S92 R13: layers x canvas per output baked (a PNG is about a third of its RGBA)
+    const size_t outputCount = !options.outputs.empty() ? options.outputs.size()
+                             : doc.root.contains("outputs") && doc.root["outputs"].is_array() ? std::max<size_t>(doc.root["outputs"].size(), 1) : 1;
+    const double modelSeconds = jobmodel::titleExportSeconds(titleart::countLayers(doc.root), doc.canvasWidth(), doc.canvasHeight(), outputCount);
+    const uint64_t modelBytes = options.dryRun ? 0 : outputCount * static_cast<uint64_t>(std::max(doc.canvasWidth(), 1)) *
+                                                     static_cast<uint64_t>(std::max(doc.canvasHeight(), 1)) * 4u / 3u;
     auto job = std::make_shared<TitleArtBakeJob>(project, file, std::move(doc), options);
     auto task = std::make_shared<FrameTask>();
+    task->historyKind = options.dryRun ? "export_title:bake:dry_run" : "export_title:bake";
+    task->modelSeconds = modelSeconds;
+    task->modelBytes = modelBytes;
     std::weak_ptr<FrameTask> weakTask = task;
     task->tick = [job, flipbooks, relative, project, weakTask](McpJob& mcpJob) {
         auto t = weakTask.lock();
@@ -972,6 +981,7 @@ void exportTitleTool(const CallPtr& call) {
         if (!job->done()) {
             const bool done = job->step(8.0);
             mcpJob.setProgress(job->progress() * (flipbooks ? 0.5 : 1.0), job->progressText());
+            if (done) addDownscaleFallbacks(mcpJob, job->result().warnings);
             if (!done || !job->result().ok) {
                 if (done) {
                     Json out = fromOrdered(job->result().toJson());

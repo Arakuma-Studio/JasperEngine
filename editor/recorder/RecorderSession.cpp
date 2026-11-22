@@ -725,7 +725,9 @@ bool RecorderSession::arm(const Settings& settings, bool fromPlayStart, std::str
     working = Result();
     int gw = 0, gh = 0;
     if (host.gameViewSize) host.gameViewSize(gw, gh);
-    outputSize(current, gw > 0 ? gw : 1920, gh > 0 ? gh : 1080, host.maxTextureSize ? host.maxTextureSize() : 0, width, height);
+    const int maxTexture = host.maxTextureSize ? host.maxTextureSize() : 0;
+    outputSize(current, gw > 0 ? gw : 1920, gh > 0 ? gh : 1080, maxTexture, width, height);
+    noteSizeDowngrade(gw > 0 ? gw : 1920, gh > 0 ? gh : 1080, maxTexture);
     frameRange(current, first, last);
     sink = std::make_unique<Sink>();
     sink->settings = current;
@@ -758,17 +760,22 @@ bool RecorderSession::arm(const Settings& settings, bool fromPlayStart, std::str
         }
         sink->ffmpeg = ffmpegInfo.path;
         sink->encoder = current.format == Format::Mov ? std::string("prores_ks") : ffmpegInfo.h264;
+        // pickH264's first choice (CRF quality control); the others take a bitrate
+        if (current.format == Format::Mp4 && sink->encoder != "libx264")
+            working.downgrades.push_back({"encoder", "libx264", sink->encoder, "this FFmpeg has no libx264"});
     }
     // audio is the deterministic driver's, from the scene's start: only a recording that starts with Play has it
     const bool playing = host.isPlaying() || (host.isPlayStarting && host.isPlayStarting());
     audio = current.kind == Kind::Movie && current.captureAudio;
     if (audio && playing && !fromPlayStart) {
         working.warnings.push_back("Capture Audio needs the recording to start with Play: this one has no audio");
+        working.downgrades.push_back({"audio", "captured", "none", "Capture Audio needs the recording to start with Play"});
         audio = false;
     }
     if (audio && !AudioSystem::beginDeterministic()) {
         AudioSystem::endDeterministic();
         working.warnings.push_back("the deterministic audio driver did not start: no audio");
+        working.downgrades.push_back({"audio", "captured", "none", "the deterministic audio driver did not start"});
         audio = false;
     }
     sink->audio = audio;
@@ -815,6 +822,28 @@ bool RecorderSession::arm(const Settings& settings, bool fromPlayStart, std::str
     }
     if (host.isPlaying()) beginRecording();
     return true;
+}
+
+void RecorderSession::noteSizeDowngrade(int gameWidth, int gameHeight, int maxTextureSize) {
+    int askedWidth = gameWidth, askedHeight = gameHeight;
+    if (current.resolution == Resolution::Custom) {
+        askedWidth = current.customWidth;
+        askedHeight = current.customHeight;
+    } else if (current.resolution != Resolution::MatchGameView) {
+        presetSize(current.resolution, askedWidth, askedHeight);
+    }
+    if (askedWidth == width && askedHeight == height) return;
+    const int limit = maxTextureSize > 0 ? std::min(kMaxSize, maxTextureSize) : kMaxSize;
+    std::string reason;
+    if (std::max(askedWidth, askedHeight) > limit) {
+        reason = limit < kMaxSize ? "over the GPU's maximum texture size " + std::to_string(limit) : "over the Recorder's maximum " + std::to_string(kMaxSize);
+    } else if (std::min(askedWidth, askedHeight) < kMinSize) {
+        reason = "under the Recorder's minimum " + std::to_string(kMinSize);
+    } else {
+        reason = "4:2:0 video needs even sizes";
+    }
+    working.downgrades.push_back({"resolution", std::to_string(askedWidth) + "x" + std::to_string(askedHeight),
+                                  std::to_string(width) + "x" + std::to_string(height), reason});
 }
 
 void RecorderSession::warnAboutFreeSpace() {
@@ -964,6 +993,7 @@ void RecorderSession::checkHold(const FrameMarks& before) {
         if (before.textureEpoch != drawn.textureEpoch) add("textures becoming ready");
         if (before.created != drawn.created) add("shaders or pipelines being made");
         working.warnings.push_back("frame " + std::to_string(frameIndex) + " on: recorded without waiting for what does not settle: " + what);
+        working.downgrades.push_back({"settle", "every frame settled", "frame " + std::to_string(frameIndex) + " on unsettled", what});
         settleGivenUp = true;
     }
 }

@@ -15,6 +15,9 @@ as a job. `mode: desktop` is this computer's platform and `mode: web` the web (t
   from source (minutes; this computer's platform and the web only). The result says which:
   `method_used`, `compile_reasons[]`.
 - `prebuilt` fails with the reasons when the project needs native code; `compile` always compiles.
+- The job has an `estimate` from submit (`seconds`, `basis` model or history; `remaining_seconds`
+  in get_job). Its result's `report.fallbacks` names each downgrade (compiled instead of prebuilt,
+  a bigger player variant, textures left uncompressed): tell the user.
 - **development**: the development flavour (profiler, `--profile`); else release.
 - **graphics_api**: `opengl`/`glcore`, `gles3`/`opengles`, `vulkan`, `d3d11`, `metal`. Each
   platform has its list (get_build_info `platforms`).
