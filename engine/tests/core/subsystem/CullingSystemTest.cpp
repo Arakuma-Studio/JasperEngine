@@ -407,6 +407,47 @@ TEST_F(CullingGroupTest, ParallelEqualsSerial){
     EXPECT_EQ(states[0], states[1]);
 }
 
+TEST_F(CullingGroupTest, ManyFollowsReadOnWorkers){
+    // R22: above PARALLEL_THRESHOLD the follows are read on the workers; a destroyed GameObject
+    // still warns once and leaves its sphere where it was, and the others keep following
+    camera(Vector3(0, 0, 0), true);
+    for (int run = 0; run < 2; run++){
+        culling->setParallelEvaluation(run == 0);
+        CullingGroup group(scene.get());
+        const float distances[] = {10.0f};
+        group.setBoundingDistances(distances);
+        group.setDistanceReferencePoint(Vector3(0, 0, 0));
+        const uint32_t count = CullingSystem::PARALLEL_THRESHOLD + 904;
+        group.setBoundingSphereCount(count);
+        std::vector<Entity> targets;
+        for (uint32_t i = 0; i < count; i++) targets.push_back(object(Vector3(static_cast<float>(i % 50), 0, 5)));
+        resolveTransforms();
+        for (uint32_t i = 0; i < count; i++) group.setSphereTarget(i, targets[i], 0.5f);
+        frame();
+        moveTo(targets[4000], Vector3(0, 0, 40));
+        frame();
+        EXPECT_NEAR(group.getSphere(4000).position.z, 40.0f, 1e-4f) << run;
+        EXPECT_EQ(group.getDistance(4000), 1) << run;
+        {
+            test::LogCapture capture;
+            scene->destroyEntity(targets[17]);
+            moveTo(targets[4000], Vector3(0, 0, 2));
+            frame();
+            frame();
+            EXPECT_EQ(capture.count(D_LOG_WARN, "keeps its last position"), 1u) << run;
+        }
+        EXPECT_NEAR(group.getSphere(17).position.x, 17.0f, 1e-4f) << run;
+        EXPECT_NEAR(group.getSphere(4000).position.z, 2.0f, 1e-4f) << run;
+        EXPECT_EQ(group.getDistance(4000), 0) << run;
+        moveTo(targets[count - 1], Vector3(0, 0, 60));
+        frame();
+        EXPECT_NEAR(group.getSphere(count - 1).position.z, 60.0f, 1e-4f) << run << ": the follow moved into the dropped one's slot still follows";
+        group.dispose();
+        for (Entity target : targets) if (target != targets[17]) scene->destroyEntity(target);
+    }
+    culling->setParallelEvaluation(true);
+}
+
 TEST_F(CullingGroupTest, NoAllocationsAndZeroCost){
     // AC6: a scene with neither groups nor components touches nothing and allocates nothing
     {

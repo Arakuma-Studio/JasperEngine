@@ -30,6 +30,7 @@
 #include <array>
 #include <functional>
 #include <memory>
+#include <atomic>
 #include <vector>
 
 namespace jasperengine{
@@ -237,8 +238,12 @@ namespace jasperengine{
 
         void evaluateGroups();
         void evaluateGroup(uint32_t slot, GroupSlot& group);
+        // the followed spheres where their GameObjects are now; a destroyed one stops following
+        void updateFollows(GroupSlot& group);
+        // `gone` non-null: the range reads its followed spheres' positions first, and a GameObject
+        // without a Transform sets it (updateFollows then drops it)
         void evaluateRange(GroupSlot& group, uint32_t begin, uint32_t end, const Vector3& reference, Entity camera, bool anyCamera,
-                           std::vector<CullingGroupEvent>& out);
+                           std::vector<CullingGroupEvent>& out, std::atomic<bool>* gone = nullptr);
         void dispatchGroupEvents(uint32_t slot);
 
         void gatherFocuses();
