@@ -208,7 +208,6 @@ namespace jasperengine::editor::recordinput {
         // the session
         enum class Phase : uint8_t { Idle, Starting, Running };
         Phase phase = Phase::Idle;
-        uint32_t playSceneId = 0;
         int sessionFps = 0;
         bool holding = false;
         bool heldByUs = false;
