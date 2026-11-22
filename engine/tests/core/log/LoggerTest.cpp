@@ -241,7 +241,12 @@ TEST(LoggerTest, QueueFullDropsLowFirst) {
     const auto start = std::chrono::steady_clock::now();
     Logger::write(LogLevel::Warn, logCategoryLoggerTest(), "warning on a full queue");
     const double waitedMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-    EXPECT_LT(waitedMs, 50.0) << "a warning waits at most 5 ms for room";
+    // a wall-clock budget (the wait is 5 ms; a warning that waited for room forever never got
+    // here): enforced where perfSlack() asks for it (the benchmark run)
+    std::printf("[bench] logger: a warning on a full queue waited %.2f ms (budget 50)\n", waitedMs);
+    if (const double slack = testsupport::perfSlack(); slack > 0.0) {
+        EXPECT_LT(waitedMs, 50.0 * slack) << "a warning waits at most 5 ms for room";
+    }
 
     {
         std::lock_guard<std::mutex> lock(mutex);
