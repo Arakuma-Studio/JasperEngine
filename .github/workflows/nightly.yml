@@ -70,17 +70,20 @@ jobs:
             ccache: linux
             run: UNITY=1 tools/build.sh linux
           # the test trees too: a file-local name two test sources define fails here, not in a user's
-          # unity build (each its own job: on 4 vCPUs the three cold builds are about 3 h in a row)
+          # unity build (each its own job: on 4 vCPUs the three cold builds are about 3 h in a row).
+          # 3 jobs: Ninja's default 6 compiles of 16-source units held 15-18 GB (measured locally), past
+          # the runner's 16 GB, and the editor tests' job died with its runner (nightlies 44898047889,
+          # 45017712750). Line tables and no PCH as in ci.yml: less memory, and the unit-core entry hits
           - name: Unity build (core tests)
             id: unity-core-tests
             image: linux
             ccache: unit-core
-            run: UNITY=1 RUN=0 UNIT_SUITE=core tools/build.sh unit-tests
+            run: JOBS=3 JASPERENGINE_DEBUG_INFO=lines JASPERENGINE_PCH=OFF UNITY=1 RUN=0 UNIT_SUITE=core tools/build.sh unit-tests
           - name: Unity build (editor tests)
             id: unity-editor-tests
             image: linux
             ccache: unit-core
-            run: UNITY=1 RUN=0 UNIT_SUITE=editor tools/build.sh unit-tests
+            run: JOBS=3 JASPERENGINE_DEBUG_INFO=lines JASPERENGINE_PCH=OFF UNITY=1 RUN=0 UNIT_SUITE=editor tools/build.sh unit-tests
           - name: Smoke tests (OpenGL, every fixture)
             id: smoke-opengl
             image: linux
