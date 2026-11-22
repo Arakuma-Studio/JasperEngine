@@ -3,7 +3,8 @@
 
 // A dialogue's source text edited in the editor (docs/specs/dialogue-graphs.md R21, R26, AC7): the
 // translations of that key turn needs_review in the same undo step, and one undo puts both files
-// back byte for byte; a new dialogue gets its namespace, source language and GUID.
+// back byte for byte; a new dialogue gets its namespace, source language and GUID; an export ships
+// it cooked (R16).
 
 #include <gtest/gtest.h>
 
@@ -11,10 +12,12 @@
 #include "TempDir.h"
 
 #include "Engine.h"
+#include "Exporter.h"
 #include "Project.h"
 #include "command/CommandHistory.h"
 #include "dialogue/DialogueEditor.h"
 #include "dialogue/DialogueKind.h"
+#include "dialogue/DialogueProgram.h"
 #include "graph/GraphDocument.h"
 #include "localization/StringTableDocument.h"
 
@@ -130,4 +133,36 @@ TEST_F(DialogueEditTest, NewDialogueGetsNamespaceLanguageAndGuid) {
     second.kind = "dialogue";
     dialogues::prepareNew(&project, project.getAssetsPath() / "sub" / "guard.dialogue", second, false);
     EXPECT_EQ(second.metadata.value("namespace", std::string()), "guard_2");
+}
+
+// R16: the export writes a dialogue as its compiled program, which the game reads by the same path
+TEST_F(DialogueEditTest, ExportShipsTheCompiledProgram) {
+    std::string guard = GUARD;
+    // no namespace: the game's comes from the file's stem, as the editor's does
+    const std::string named = R"("metadata": {"namespace": "guard", "source_language": "en"})";
+    guard.replace(guard.find(named), named.size(), R"("metadata": {"source_language": "en"})");
+    const fs::path source = project.getAssetsPath() / "talk" / "Village Elder.dialogue";
+    writeDialogueFile(source, guard);
+    const fs::path shipped = dir.path() / "export" / "assets" / "talk" / "Village Elder.dialogue";
+    fs::create_directories(shipped.parent_path());
+    std::string error;
+    ASSERT_TRUE(Exporter::cookDialogue(source, shipped, "talk/Village Elder.dialogue", error)) << error;
+    const std::string bytes = readDialogueFile(shipped);
+    ASSERT_TRUE(dialogue::Program::isCooked(bytes));
+    const std::shared_ptr<const dialogue::Program> game = dialogue::Programs::fromText("talk/Village Elder.dialogue", bytes, &error);
+    ASSERT_TRUE(game) << error;
+    const std::shared_ptr<const dialogue::Program> editor = dialogue::Programs::fromText("talk/Village Elder.dialogue", guard, &error);
+    ASSERT_TRUE(editor) << error;
+    EXPECT_EQ(game->cook(), editor->cook());
+    EXPECT_EQ(game->ns, "village_elder");
+    EXPECT_EQ(game->identity(), "6a1f0000-0000-4000-8000-0000000000d1");
+    ASSERT_EQ(game->nodes.size(), 2u);
+    EXPECT_EQ(game->str(game->nodes[1].text), "Halt.");
+
+    // one that does not load is left to the caller, which ships it as it is
+    writeDialogueFile(source, "{not json");
+    const fs::path broken = dir.path() / "export" / "assets" / "talk" / "broken.dialogue";
+    EXPECT_FALSE(Exporter::cookDialogue(source, broken, "talk/broken.dialogue", error));
+    EXPECT_NE(error.find("is not a dialogue"), std::string::npos) << error;
+    EXPECT_FALSE(fs::exists(broken));
 }

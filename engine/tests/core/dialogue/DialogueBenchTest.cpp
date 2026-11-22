@@ -3,7 +3,7 @@
 
 // Dialogue load and step costs (docs/specs/dialogue-graphs.md R16-R17, AC13), printed as [bench]
 // lines; the wall-clock budgets apply through perfSlack() (the benchmark server), the memory and
-// allocation counts always.
+// allocation counts always. A game loads the cooked file an export ships (R16, D-15).
 
 #include "DialogueTestSupport.h"
 
@@ -62,20 +62,31 @@ namespace {
 TEST(DialogueBench, Load500) {
     registerDialogueKind();
     const std::string text = largeDialogue();
-    std::shared_ptr<const Program> program;
-    double best = 1e9, bestParse = 1e9, bestCompile = 1e9;
+    // the editor's (and the export's) load: the JSON parsed into the graph model, then compiled
+    std::shared_ptr<const Program> compiled;
+    double bestParse = 1e9, bestCompile = 1e9;
     for (int round = 0; round < 5; round++) {
         const Clock::time_point start = Clock::now();
         graph::LoadReport report;
         const graph::Graph parsed = graph::load(text, report);
-        const double parse = msSince(start);
+        bestParse = std::min(bestParse, msSince(start));
         const Clock::time_point compiling = Clock::now();
-        program = Program::compile(parsed, "bench.dialogue");
+        compiled = Program::compile(parsed, "bench.dialogue");
         bestCompile = std::min(bestCompile, msSince(compiling));
-        bestParse = std::min(bestParse, parse);
-        best = std::min(best, msSince(start));
     }
-    ASSERT_TRUE(program);
+    ASSERT_TRUE(compiled);
+    // a game's load (R16): the file the export cooked, read by path as Programs::load reads it
+    const std::string cooked = compiled->cook();
+    std::shared_ptr<const Program> program;
+    double best = 1e9;
+    for (int round = 0; round < 5; round++) {
+        const Clock::time_point start = Clock::now();
+        std::string error;
+        program = Programs::fromText("bench.dialogue", cooked, &error);
+        best = std::min(best, msSince(start));
+        ASSERT_TRUE(program) << error;
+    }
+    EXPECT_EQ(program->cook(), cooked) << "the cooked program is the compiled one";
     ASSERT_EQ(program->nodes.size(), 500u);
     const size_t texts = program->options.size() + program->variants.size();
     EXPECT_EQ(texts, 1500u);
@@ -85,9 +96,9 @@ TEST(DialogueBench, Load500) {
     // what a node's record holds, and what each option or variant adds to its node's share
     const double perNodeRecord = static_cast<double>(memory - sourceTexts - program->options.size() * sizeof(ProgramOption) -
                                                      program->variants.size() * sizeof(ProgramVariant)) / static_cast<double>(program->nodes.size());
-    std::printf("[bench] dialogue load 500 nodes, 1996 edges, 1500 texts: %.2f ms (budget 3 ms desktop; JSON parse %.2f, compile %.2f); "
-                "%zu bytes, %zu of source texts; %.0f bytes per node (%.0f without its options' %zu-byte records)\n",
-                best, bestParse, bestCompile, memory, sourceTexts, perNode, perNodeRecord, sizeof(ProgramOption));
+    std::printf("[bench] dialogue load 500 nodes, 1996 edges, 1500 texts: %.3f ms cooked (budget 3 ms desktop; %zu bytes); the editor's JSON "
+                "parse %.2f ms and compile %.2f; %zu bytes, %zu of source texts; %.0f bytes per node (%.0f without its options' %zu-byte records)\n",
+                best, cooked.size(), bestParse, bestCompile, memory, sourceTexts, perNode, perNodeRecord, sizeof(ProgramOption));
     EXPECT_LE(perNodeRecord, 160.0) << "R16: a node's record and its share of the expressions and strings";
     if (testsupport::perfSlack() > 0.0) {
         EXPECT_LE(best, 3.0 * testsupport::perfSlack());

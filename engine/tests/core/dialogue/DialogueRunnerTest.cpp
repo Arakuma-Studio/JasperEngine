@@ -18,6 +18,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <sstream>
 
 using namespace jasperengine;
@@ -443,4 +444,119 @@ TEST_F(DialogueRunnerTest, ComponentRunnerMirrorsItsState) {
     EXPECT_EQ(component.state, "ended");
     EXPECT_FALSE(component.isRunning);
     EXPECT_EQ(events, (std::vector<std::string>{"n3", "end left"}));
+}
+
+// R16: what an export ships, the compiled program's bytes at the dialogue's path, loads by that path
+// and plays as the source does
+TEST_F(DialogueRunnerTest, CookedFilePlaysAsItsSource) {
+    const std::filesystem::path assets = std::filesystem::path(test::testPaths().assetDir) / "dialogue";
+    std::string error;
+    const std::shared_ptr<const Program> source = Programs::fromText("dialogue/walk.dialogue", readFile(assets / "walk.dialogue"), &error);
+    ASSERT_TRUE(source) << error;
+    const std::string cooked = source->cook();
+    ASSERT_TRUE(Program::isCooked(cooked));
+    EXPECT_EQ(source->cook(), cooked) << "equal programs give equal bytes";
+    const std::filesystem::path dir = std::filesystem::path(test::testPaths().binaryDir) / "dialogue-cooked";
+    std::filesystem::create_directories(dir);
+    const std::string path = (dir / "walk.dialogue").string();
+    std::ofstream(path, std::ios::binary) << cooked;
+
+    const std::shared_ptr<const Program> program = Programs::load(path, &error);
+    ASSERT_TRUE(program) << error;
+    EXPECT_EQ(program->cook(), cooked) << "every field read back";
+    EXPECT_EQ(program->path, path);
+    EXPECT_EQ(program->identity(), source->identity());
+    EXPECT_EQ(program->ns, source->ns);
+    EXPECT_EQ(program->variablesUsed, source->variablesUsed);
+    Runner runner;
+    Transcript transcript;
+    transcript.attach(runner);
+    Handlers::onAction("quest", [&](Runner&, std::string_view verb, std::span<const Value> args) {
+        transcript.lines.push_back("action " + describeCall("quest." + std::string(verb), args));
+        return false;
+    });
+    runner.setDialogue(program);
+    ASSERT_TRUE(runner.start());
+    transcript.lines.push_back("choose 1");
+    ASSERT_TRUE(runner.choose(1));
+    transcript.lines.push_back("advance");
+    ASSERT_TRUE(runner.advance());
+    EXPECT_EQ(runner.getResult(), "paid");
+    EXPECT_EQ(transcript.text(), readFile(assets / "walk.expected.txt"));
+
+    // the fields walk.dialogue leaves out: tags, voice, mood, variant modes, once, when_false, styles,
+    // a waiting action, a jump into another file, variables of each type
+    GraphText g;
+    Json first = option("o1", "Ask", "visited(\"n3\") or chance(0.5)", "$asked = true; shop.open(1, \"two\")");
+    first["once"] = true;
+    first["tags"] = Json::array({"lore", "gate"});
+    Json second = option("o2", "Leave");
+    second["when_false"] = "disable";
+    second["style"] = "exit";
+    g.node("n1", "entry", {{"name", "start"}})
+     .node("n2", "line", {{"speaker", "guard"}, {"mood", "angry"}, {"text", "Who {name}?"}, {"voice", "audio/halt.ogg"}, {"tags", "a, b"},
+                          {"variant_mode", "once"}, {"variants", {{{"id", "v1"}, {"text", "Again?"}}}}, {"options", {first, second}}})
+     .node("n3", "action", {{"action", "quest.start:intro"}, {"wait", true}})
+     .node("n4", "jump", {{"entry", "inside"}, {"dialogue", {{"guid", "g-2"}, {"path", "dialogue/other.dialogue"}}}});
+    g.wire("n1", "next", "n2").wire("n2", "o1", "n3").wire("n3", "next", "n4");
+    g.variable("asked", false).variable("name", "stranger").variable("gold", 2.5);
+    const std::shared_ptr<const Program> rich = g.program("rich.dialogue");
+    ASSERT_TRUE(rich);
+    const std::shared_ptr<const Program> back = Program::fromCooked(rich->cook(), "rich.dialogue", &error);
+    ASSERT_TRUE(back) << error;
+    EXPECT_EQ(back->cook(), rich->cook());
+    ASSERT_TRUE(back->defaultOf("name"));
+    EXPECT_TRUE(back->defaultOf("name")->same(Value("stranger")));
+    EXPECT_EQ(back->exprs.calls.size(), rich->exprs.calls.size());
+    EXPECT_EQ(back->exprs.calls[0].name, rich->exprs.calls[0].name);
+}
+
+// R16: a damaged cooked file is refused with a reason, never run past its arrays or its stack
+TEST_F(DialogueRunnerTest, CookedFileRefusesDamage) {
+    const std::filesystem::path assets = std::filesystem::path(test::testPaths().assetDir) / "dialogue";
+    std::string error;
+    const std::shared_ptr<const Program> source = Programs::fromText("walk.dialogue", readFile(assets / "walk.dialogue"), &error);
+    ASSERT_TRUE(source) << error;
+    const std::string cooked = source->cook();
+    for (size_t size = 0; size < cooked.size(); size++) {
+        error.clear();
+        EXPECT_FALSE(Program::fromCooked(std::string_view(cooked).substr(0, size), "walk.dialogue", &error)) << size << " bytes";
+        EXPECT_FALSE(error.empty()) << size;
+    }
+    EXPECT_FALSE(Program::fromCooked(cooked + '\0', "walk.dialogue", &error));
+    EXPECT_NE(error.find("after its end"), std::string::npos) << error;
+    std::string newer = cooked;
+    newer[4] = static_cast<char>(Program::COOKED_VERSION + 1);
+    EXPECT_FALSE(Programs::fromText("walk.dialogue", newer, &error));
+    EXPECT_NE(error.find("export the game again"), std::string::npos) << error;
+
+    // what only the checks can catch: indexes and stacks a well-formed file could still carry
+    auto refused = [&](const std::function<void(Program&)>& damage) {
+        Program copy = *source;
+        damage(copy);
+        return !Program::fromCooked(copy.cook(), "walk.dialogue", &error);
+    };
+    ASSERT_FALSE(refused([](Program&) {}));
+    EXPECT_TRUE(refused([](Program& p) { p.nodes[0].next = static_cast<int32_t>(p.nodes.size()); }));
+    EXPECT_TRUE(refused([](Program& p) { p.nodes[2].text.offset = static_cast<uint32_t>(p.strings.size()); }));
+    EXPECT_TRUE(refused([](Program& p) { p.nodes[2].optionsCount = static_cast<uint16_t>(p.options.size() + 1); }));
+    EXPECT_TRUE(refused([](Program& p) { p.options[0].condition.count = static_cast<uint32_t>(p.exprs.code.size() + 1); }));
+    EXPECT_TRUE(refused([](Program& p) { p.exprs.code[0].operand = static_cast<uint32_t>(p.exprs.names.size() + p.exprs.constants.size()); }));
+    EXPECT_TRUE(refused([](Program& p) { p.exprs.code[p.nodes[1].expr.first].op = Op::Add; })) << "an operator with nothing to pop";
+    EXPECT_TRUE(refused([](Program& p) { p.exprs.code[0].op = static_cast<Op>(200); }));
+    EXPECT_TRUE(refused([](Program& p) { p.entries[0].second = -1; }));
+
+    // any byte changed: refused, or a program the runner can play
+    for (size_t at = sizeof(Program::COOKED_MAGIC); at < cooked.size(); at++) {
+        std::string damaged = cooked;
+        damaged[at] = static_cast<char>(damaged[at] ^ 0x5A);
+        const std::shared_ptr<const Program> program = Program::fromCooked(damaged, "walk.dialogue", &error);
+        if (!program) continue;
+        Runner runner;
+        runner.setDialogue(program);
+        runner.start();
+        for (int i = 0; i < 8 && runner.isRunning(); i++) {
+            if (!runner.choose(1)) runner.advance();
+        }
+    }
 }

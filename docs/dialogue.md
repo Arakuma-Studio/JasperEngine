@@ -166,3 +166,7 @@ never shown; `run_dialogue {entity}` drives a runner in Play.
 The module `dialogue` (`JASPERENGINE_DIALOGUE`) is in every prebuilt player. An export that has no
 `.dialogue`, no Dialogue Runner and no script naming `Dialogue` leaves it out and ships no
 `.dialogue` file; without it the Lua names exist and log once that the module is not compiled.
+An export ships each `.dialogue` cooked, at the same path: its compiled program as bytes
+(`dialogue::Program::cook`), which the game reads without parsing JSON or compiling (a 500-node
+dialogue in well under a millisecond). A file that does not load ships as it is, so the game logs
+the editor's error. A game still reads a JSON `.dialogue`, so earlier exports keep working.

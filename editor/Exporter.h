@@ -656,6 +656,11 @@ namespace jasperengine::editor {
         // without them, or not a well-formed PNG, as it is); false when it is not a .png or could
         // not be read or written this way (the caller then copies the file)
         static bool copyPngWithoutEditorChunks(const std::filesystem::path& source, const std::filesystem::path& destination);
+        // dialogue-graphs.md R16: a .dialogue written to `destination` as its compiled program
+        // (dialogue::Program::cook), which the game reads at `assetPath` without parsing JSON; false
+        // with `error` when it does not compile (the caller ships it as it is: the game logs the same)
+        static bool cookDialogue(const std::filesystem::path& source, const std::filesystem::path& destination, const std::string& assetPath,
+                                 std::string& error);
         // What the HTML/CSS of each UI Document refers to (HtmlUIDependencies): a missing
         // file, a path outside the assets directory or a remote URL is an error with
         // file:line:column (project-relative); an absolute path is a warning. documents =
