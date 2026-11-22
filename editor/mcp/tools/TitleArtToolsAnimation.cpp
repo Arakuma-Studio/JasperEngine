@@ -447,6 +447,7 @@ void mcp::titletools::renderTitleAnimation(const CallPtr& call, RenderSpec spec)
             result["saved_to"] = s->project->normalizeToProjectRelative(file).generic_string();
         }
         t->text = "Rendered " + std::to_string(s->frames.size()) + " frame(s) of '" + s->name + "' (" + titleAnimRenderAsName(s->as) + ") of " + s->relative + ".";
+        job.setImages(t->images);
         job.succeed(t->text, result);
         return true;
     };

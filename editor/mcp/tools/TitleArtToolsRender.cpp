@@ -579,6 +579,8 @@ namespace {
         }
         result["cells"] = cells;
         task.text = text + ".";
+        // a reply past the call's wait is a job_id: get_job then returns the images
+        job.setImages(task.images);
         job.succeed(task.text, result);
         return true;
     }
@@ -1088,6 +1090,7 @@ void checkTitleTool(const CallPtr& call) {
         t->text = std::string(titleCheckStatusName(report.verdict == TitleCheckStatus::Skip ? TitleCheckStatus::Pass : report.verdict)) + " " + rel +
                   ": " + std::to_string(counts[0]) + " pass, " + std::to_string(counts[1]) + " warn, " + std::to_string(counts[2]) + " fail, " +
                   std::to_string(counts[3]) + " skipped. " + TitleArtChecks::guidance();
+        job.setImages(t->images);
         job.succeed(t->text, result);
         return true;
     };
