@@ -350,9 +350,12 @@ TEST(ProjectSaveTest, SizeBudgetKeysOptional) {
         EXPECT_TRUE(project.getSizeBudgets().empty());
         EXPECT_FALSE(project.isSizeBudgetFail());
         ASSERT_TRUE(project.saveProjectFile());
-        std::ifstream in(root / "project.yaml", std::ios::binary);
-        const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        EXPECT_EQ(text.find("sizeBudget"), std::string::npos) << text;
+        {
+            // closed before the next save: Windows cannot replace a file a reader holds open
+            std::ifstream in(root / "project.yaml", std::ios::binary);
+            const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            EXPECT_EQ(text.find("sizeBudget"), std::string::npos) << text;
+        }
         project.setSizeBudgets({{"web", "textures", 1.5}, {"all", "total", 200.0}});
         project.setSizeBudgetFail(true);
         ASSERT_TRUE(project.saveProjectFile());

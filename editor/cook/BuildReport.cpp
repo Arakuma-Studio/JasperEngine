@@ -105,7 +105,8 @@ void BuildReport::addTree(const fs::path& root, const std::map<std::string, std:
         if (!it->is_regular_file(ec))
             continue;
         BuildReportFile file;
-        file.path = prefix + FileUtils::pathToUtf8(it->path().lexically_relative(root));
+        // '/' on every platform: categoryOf and the cooked sources match on it, and reports compare across platforms
+        file.path = prefix + FileUtils::pathToGenericUtf8(it->path().lexically_relative(root));
         if (file.path == kFileName)
             continue;
         file.category = categoryOf(file.path);

@@ -436,10 +436,13 @@ TEST(GameWindowTest, InputSchemeMenu) {
         // edit mode: nothing forced until Play starts
         EXPECT_FALSE(InputSchemeTracker::getOverride().has_value());
 
-        std::ifstream file(Workspace::getUserDirectory(dir) / "workspace.yaml");
-        const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-        EXPECT_NE(text.find("inputScheme: gamepad"), std::string::npos) << text;
-        EXPECT_NE(text.find("simulateTouch: false"), std::string::npos) << text;
+        {
+            // closed before the next save: Windows cannot replace a file a reader holds open
+            std::ifstream file(Workspace::getUserDirectory(dir) / "workspace.yaml");
+            const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            EXPECT_NE(text.find("inputScheme: gamepad"), std::string::npos) << text;
+            EXPECT_NE(text.find("simulateTouch: false"), std::string::npos) << text;
+        }
 
         // Play start (Project::start: applyInputSchemeOverride, then the input reset)
         project.applyInputSchemeOverride();
