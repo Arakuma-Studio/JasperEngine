@@ -25,7 +25,7 @@ namespace {
                Matrix4::lookAtMatrix(Vector3(0, 0, 50), Vector3(0, 0, 0), Vector3(0, 1, 0));
     }
 
-    ShadowBounds box(float x, float y, float z, float half = 0.5f){
+    ShadowBounds shadowCacheBox(float x, float y, float z, float half = 0.5f){
         ShadowBounds b;
         b.min = Vector3(x - half, y - half, z - half);
         b.max = Vector3(x + half, y + half, z + half);
@@ -83,7 +83,7 @@ TEST(ShadowCache, UnchangedKeySkips){
 TEST(ShadowCache, DynamicCasterRestoresItsRectOnly){
     const ShadowSlotInput input = slotInput();
     ShadowSlotState state = warm(input);
-    const std::vector<ShadowCasterChange> changes = {moved(box(-5, 0, 0), box(-4, 0, 0), false)};
+    const std::vector<ShadowCasterChange> changes = {moved(shadowCacheBox(-5, 0, 0), shadowCacheBox(-4, 0, 0), false)};
     const ShadowSlotDecision decision = ShadowCache::evaluate(state, input, changes, 2);
     EXPECT_EQ(decision.path, ShadowSlotPath::RESTORE_DYNAMIC);
     EXPECT_EQ(decision.cause, ShadowDirtyCause::DYNAMIC_CASTER);
@@ -101,7 +101,7 @@ TEST(ShadowCache, DynamicCasterRestoresItsRectOnly){
 TEST(ShadowCache, StaticCasterRendersTheStaticLayer){
     const ShadowSlotInput input = slotInput();
     ShadowSlotState state = warm(input);
-    const std::vector<ShadowCasterChange> changes = {moved(box(2, 2, 0), box(3, 2, 0), true)};
+    const std::vector<ShadowCasterChange> changes = {moved(shadowCacheBox(2, 2, 0), shadowCacheBox(3, 2, 0), true)};
     const ShadowSlotDecision decision = ShadowCache::evaluate(state, input, changes, 2);
     EXPECT_EQ(decision.path, ShadowSlotPath::RENDER_STATIC);
     EXPECT_EQ(decision.cause, ShadowDirtyCause::STATIC_CASTER);
@@ -115,7 +115,7 @@ TEST(ShadowCache, WithoutStaticLayerAChangeRedrawsInFull){
     input.hasStaticLayer = false;
     ShadowSlotState state;
     EXPECT_EQ(ShadowCache::evaluate(state, input, none, 1).path, ShadowSlotPath::FULL);
-    const std::vector<ShadowCasterChange> changes = {moved(box(-5, 0, 0), box(-4, 0, 0), false)};
+    const std::vector<ShadowCasterChange> changes = {moved(shadowCacheBox(-5, 0, 0), shadowCacheBox(-4, 0, 0), false)};
     const ShadowSlotDecision decision = ShadowCache::evaluate(state, input, changes, 2);
     EXPECT_EQ(decision.path, ShadowSlotPath::FULL);
     EXPECT_EQ(decision.cause, ShadowDirtyCause::DYNAMIC_CASTER);
@@ -127,8 +127,8 @@ TEST(ShadowCache, ChangesOutsideTheSlotSkip){
     ShadowSlotState state = warm(input);
     // far outside the slot's box, and in a layer the slot does not draw
     const std::vector<ShadowCasterChange> changes = {
-        moved(box(50, 0, 0), box(51, 0, 0), false),
-        moved(box(0, 0, 0), box(1, 0, 0), true, 2u)};
+        moved(shadowCacheBox(50, 0, 0), shadowCacheBox(51, 0, 0), false),
+        moved(shadowCacheBox(0, 0, 0), shadowCacheBox(1, 0, 0), true, 2u)};
     EXPECT_EQ(ShadowCache::evaluate(state, input, changes, 2).path, ShadowSlotPath::SKIP);
 }
 
@@ -136,14 +136,14 @@ TEST(ShadowCache, MovingIntoTheSlotDirtiesIt){
     const ShadowSlotInput input = slotInput();
     ShadowSlotState state = warm(input);
     // from outside (old) to inside (new), and the other way: both dirty it
-    std::vector<ShadowCasterChange> changes = {moved(box(50, 0, 0), box(5, 0, 0), false)};
+    std::vector<ShadowCasterChange> changes = {moved(shadowCacheBox(50, 0, 0), shadowCacheBox(5, 0, 0), false)};
     EXPECT_EQ(ShadowCache::evaluate(state, input, changes, 2).path, ShadowSlotPath::RESTORE_DYNAMIC);
-    changes = {moved(box(5, 0, 0), box(50, 0, 0), false)};
+    changes = {moved(shadowCacheBox(5, 0, 0), shadowCacheBox(50, 0, 0), false)};
     EXPECT_EQ(ShadowCache::evaluate(state, input, changes, 3).path, ShadowSlotPath::RESTORE_DYNAMIC);
     // removed (no new bounds) and added (no old bounds)
-    changes = {moved(box(5, 0, 0), ShadowBounds(), true)};
+    changes = {moved(shadowCacheBox(5, 0, 0), ShadowBounds(), true)};
     EXPECT_EQ(ShadowCache::evaluate(state, input, changes, 4).cause, ShadowDirtyCause::STATIC_CASTER);
-    changes = {moved(ShadowBounds(), box(5, 0, 0), false)};
+    changes = {moved(ShadowBounds(), shadowCacheBox(5, 0, 0), false)};
     EXPECT_EQ(ShadowCache::evaluate(state, input, changes, 5).cause, ShadowDirtyCause::DYNAMIC_CASTER);
 }
 
@@ -182,7 +182,7 @@ TEST(ShadowCache, CasterLayerChangesAreTheCastersCause){
     ShadowSlotState state = warm(base);
     ShadowSlotInput input = base;
     input.key.casterMask = 1u | 8u;
-    const std::vector<ShadowCasterChange> changes = {moved(box(0, 0, 0), box(0, 0, 0), true, 1u | 8u)};
+    const std::vector<ShadowCasterChange> changes = {moved(shadowCacheBox(0, 0, 0), shadowCacheBox(0, 0, 0), true, 1u | 8u)};
     const ShadowSlotDecision decision = ShadowCache::evaluate(state, input, changes, 2);
     EXPECT_EQ(decision.cause, ShadowDirtyCause::STATIC_CASTER);
     EXPECT_EQ(decision.path, ShadowSlotPath::RENDER_STATIC);
@@ -221,7 +221,7 @@ TEST(ShadowCache, OnDemandIgnoresCastersUntilRequested){
     input.mode = ShadowUpdateMode::ON_DEMAND;
     ShadowSlotState state;
     EXPECT_EQ(ShadowCache::evaluate(state, input, none, 1).cause, ShadowDirtyCause::FIRST);
-    const std::vector<ShadowCasterChange> changes = {moved(box(0, 0, 0), box(1, 0, 0), true)};
+    const std::vector<ShadowCasterChange> changes = {moved(shadowCacheBox(0, 0, 0), shadowCacheBox(1, 0, 0), true)};
     EXPECT_EQ(ShadowCache::evaluate(state, input, changes, 2).path, ShadowSlotPath::SKIP);
     // a light change still redraws (On Demand: on enable, a light or resolution change)
     input.key.lightRevision++;
@@ -239,7 +239,7 @@ TEST(ShadowCache, OtherCamerasSkipOrRedrawOnly){
     ShadowSlotState state;
     EXPECT_EQ(ShadowCache::evaluate(state, input, none, 1).path, ShadowSlotPath::FULL);
     EXPECT_EQ(ShadowCache::evaluate(state, input, none, 2).path, ShadowSlotPath::SKIP);
-    const std::vector<ShadowCasterChange> changes = {moved(box(0, 0, 0), box(1, 0, 0), false)};
+    const std::vector<ShadowCasterChange> changes = {moved(shadowCacheBox(0, 0, 0), shadowCacheBox(1, 0, 0), false)};
     const ShadowSlotDecision decision = ShadowCache::evaluate(state, input, changes, 3);
     EXPECT_EQ(decision.path, ShadowSlotPath::FULL);
     EXPECT_EQ(decision.cause, ShadowDirtyCause::DYNAMIC_CASTER);
@@ -257,14 +257,14 @@ TEST(ShadowCache, IntersectsAndProjectsPerspectiveCameras){
     // a spot-like camera at the origin looking down -Z
     const Matrix4 spot = Matrix4::perspectiveMatrix(1.0f, 1.0f, 0.1f, 20.0f) *
                          Matrix4::lookAtMatrix(Vector3(0, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0));
-    EXPECT_TRUE(ShadowCache::intersects(spot, box(0, 0, -5)));
-    EXPECT_FALSE(ShadowCache::intersects(spot, box(0, 0, 5)));
-    EXPECT_FALSE(ShadowCache::intersects(spot, box(0, 0, -30)));
-    EXPECT_FALSE(ShadowCache::intersects(spot, box(20, 0, -5)));
+    EXPECT_TRUE(ShadowCache::intersects(spot, shadowCacheBox(0, 0, -5)));
+    EXPECT_FALSE(ShadowCache::intersects(spot, shadowCacheBox(0, 0, 5)));
+    EXPECT_FALSE(ShadowCache::intersects(spot, shadowCacheBox(0, 0, -30)));
+    EXPECT_FALSE(ShadowCache::intersects(spot, shadowCacheBox(20, 0, -5)));
     const ShadowRect slot{256, 0, 256, 256};
     // a box across the camera plane can cover any of the slot
-    EXPECT_EQ(ShadowCache::projectedRect(spot, slot, box(0, 0, 0)), slot);
-    const ShadowRect centred = ShadowCache::projectedRect(spot, slot, box(0, 0, -5));
+    EXPECT_EQ(ShadowCache::projectedRect(spot, slot, shadowCacheBox(0, 0, 0)), slot);
+    const ShadowRect centred = ShadowCache::projectedRect(spot, slot, shadowCacheBox(0, 0, -5));
     EXPECT_FALSE(centred.empty());
     EXPECT_GE(centred.x, slot.x);
     EXPECT_LE(centred.x + centred.width, slot.x + slot.width);
@@ -274,10 +274,10 @@ TEST(ShadowCache, IntersectsAndProjectsPerspectiveCameras){
 TEST(ShadowCasterRegistry, ReportsAddsMovesTogglesAndRemovals){
     ShadowCasterRegistry registry;
     ShadowCasterState a;
-    a.bounds = box(0, 0, 0);
+    a.bounds = shadowCacheBox(0, 0, 0);
     a.layerBit = 1u;
     ShadowCasterState b = a;
-    b.bounds = box(5, 0, 0);
+    b.bounds = shadowCacheBox(5, 0, 0);
     b.isStatic = true;
 
     registry.beginUpdate();
@@ -300,7 +300,7 @@ TEST(ShadowCasterRegistry, ReportsAddsMovesTogglesAndRemovals){
     // a move reports old and new bounds; a revision bump (a mesh reload) too
     registry.beginUpdate();
     ShadowCasterState movedA = a;
-    movedA.bounds = box(1, 0, 0);
+    movedA.bounds = shadowCacheBox(1, 0, 0);
     EXPECT_TRUE(registry.update(10, movedA));
     ShadowCasterState reloadedB = b;
     reloadedB.revision++;
@@ -345,7 +345,7 @@ TEST(ShadowCache, CapsulesOnlyCharacterMovingKeepsTheStaticCacheValid){
         character.capsuleShadowsOnly = capsulesOnly;
 
         ShadowCasterState ground;
-        ground.bounds = box(0.0f, 0.0f, 0.0f, 5.0f);
+        ground.bounds = shadowCacheBox(0.0f, 0.0f, 0.0f, 5.0f);
         ground.layerBit = 1u;
         ground.isStatic = true;
 
@@ -357,7 +357,7 @@ TEST(ShadowCache, CapsulesOnlyCharacterMovingKeepsTheStaticCacheValid){
             registry.update(1, ground);
             if (character.castsShadowMaps()){
                 ShadowCasterState walking;
-                walking.bounds = box(-3.0f + 0.5f * (float)frame, 0.0f, 1.0f);
+                walking.bounds = shadowCacheBox(-3.0f + 0.5f * (float)frame, 0.0f, 1.0f);
                 walking.layerBit = 1u;
                 registry.update(2, walking);
             }

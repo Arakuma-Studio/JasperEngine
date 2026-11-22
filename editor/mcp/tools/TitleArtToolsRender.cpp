@@ -964,68 +964,99 @@ void checkTitleTool(const CallPtr& call) {
     }
     auto state = std::make_shared<std::tuple<std::shared_ptr<TitleArtDocument>, std::vector<const CheckDef*>, Json, fs::path, std::string>>(
         document, checks, args, file, relative);
+    // the checks' context lives over the ticks: a pass that met a program still being built runs
+    // again on a later frame and finds the renders it finished in the context's cache (S80
+    // Deviation 61)
+    struct CheckRun {
+        CheckRun(const titleart::TitleArtDoc& document, const std::string& rel) : doc(document), context(doc, rel) {}
+        titleart::TitleArtDoc doc;          // the document as the call found it (the context reads it)
+        TitleCheckContext context;
+        texsynth::Image lastRender;
+        std::shared_ptr<void> animationRenderer;
+        uint64_t passWaits = 0;             // the host's notReadyCount() as this pass began
+    };
+    auto runs = std::make_shared<std::unique_ptr<CheckRun>>();
     auto task = std::make_shared<FrameTask>();
     std::weak_ptr<FrameTask> weakTask = task;
-    task->tick = [state, project, weakTask](McpJob& job) {
+    task->tick = [state, project, weakTask, runs](McpJob& job) {
         auto t = weakTask.lock();
         if (!t) return true;
         auto& [doc, selected, a, path, rel] = *state;
-        TitleCheckContext context(doc->doc(), rel);
-        context.file = path;
-        context.assets = TitleArtRenderHost::editor().resolver(project);
-        context.loadWarnings = doc->warnings();
-        context.versionError = doc->versionError();
-        // S83's runtime checks: the project's Realtime and Glyph Atlas titles that show it
-        std::vector<std::string> runtimeUses;
-        for (const TitleArtShippedInstance& instance : planTitleArtExport(project).instances) {
-            if (instance.title != rel || instance.mode == TitleArtRenderMode::BAKED) continue;
-            runtimeUses.push_back(instance.where + ": " + instance.object + (instance.mode == TitleArtRenderMode::REALTIME ? " (realtime)" : " (glyph_atlas)"));
-        }
-        context.runtimeInstances = runtimeUses;
-        if (a.contains("backgrounds") && a["backgrounds"].is_array() && !a["backgrounds"].empty()) {
-            context.options.backgrounds.clear();
-            for (const Json& b : a["backgrounds"]) if (b.is_string()) context.options.backgrounds.push_back(b.get<std::string>());
-        }
-        context.options.failOnWarn = a.value("fail_on", std::string("fail")) == "warn";
-        // S87 R18: the languages to check ("all" default) and the project's
-        if (a.contains("languages")) {
-            std::string languageError;
-            if (!titleExportLanguages(doc->doc(), toOrdered(a["languages"]), context.options.languages, languageError)) {
-                job.fail("bad_value: " + languageError);
-                return true;
+        if (!*runs) {
+            auto made = std::make_unique<CheckRun>(doc->doc(), rel);
+            TitleCheckContext& context = made->context;
+            context.file = path;
+            context.assets = TitleArtRenderHost::editor().resolver(project);
+            context.loadWarnings = doc->warnings();
+            context.versionError = doc->versionError();
+            // S83's runtime checks: the project's Realtime and Glyph Atlas titles that show it
+            std::vector<std::string> runtimeUses;
+            for (const TitleArtShippedInstance& instance : planTitleArtExport(project).instances) {
+                if (instance.title != rel || instance.mode == TitleArtRenderMode::BAKED) continue;
+                runtimeUses.push_back(instance.where + ": " + instance.object + (instance.mode == TitleArtRenderMode::REALTIME ? " (realtime)" : " (glyph_atlas)"));
             }
-        }
-        if (project) context.options.projectLanguages = project->getLocalizationSettings().languages;
-        context.options.renderScale = std::clamp(a.value("render_scale", 1.0f), 0.05f, 1.0f);
-        const std::string baseline = a.value("baseline", std::string());
-        if (baseline.rfind("rev:", 0) == 0) {
-            context.options.baseline = revisionRenderPath(project, doc->guid(), std::strtoull(baseline.c_str() + 4, nullptr, 10)).string();
-        } else if (!baseline.empty()) {
-            fs::path baselineFile;
-            std::string error;
-            if (!McpRefs::resolveProjectPath(project, baseline, baselineFile, error, true)) {
-                job.fail("baseline: " + error);
-                return true;
+            context.runtimeInstances = runtimeUses;
+            if (a.contains("backgrounds") && a["backgrounds"].is_array() && !a["backgrounds"].empty()) {
+                context.options.backgrounds.clear();
+                for (const Json& b : a["backgrounds"]) if (b.is_string()) context.options.backgrounds.push_back(b.get<std::string>());
             }
-            context.options.baseline = baselineFile.string();
+            context.options.failOnWarn = a.value("fail_on", std::string("fail")) == "warn";
+            // S87 R18: the languages to check ("all" default) and the project's
+            if (a.contains("languages")) {
+                std::string languageError;
+                if (!titleExportLanguages(made->doc, toOrdered(a["languages"]), context.options.languages, languageError)) {
+                    job.fail("bad_value: " + languageError);
+                    return true;
+                }
+            }
+            if (project) context.options.projectLanguages = project->getLocalizationSettings().languages;
+            context.options.renderScale = std::clamp(a.value("render_scale", 1.0f), 0.05f, 1.0f);
+            const std::string baseline = a.value("baseline", std::string());
+            if (baseline.rfind("rev:", 0) == 0) {
+                context.options.baseline = revisionRenderPath(project, doc->guid(), std::strtoull(baseline.c_str() + 4, nullptr, 10)).string();
+            } else if (!baseline.empty()) {
+                fs::path baselineFile;
+                std::string error;
+                if (!McpRefs::resolveProjectPath(project, baseline, baselineFile, error, true)) {
+                    job.fail("baseline: " + error);
+                    return true;
+                }
+                context.options.baseline = baselineFile.string();
+            }
+            // S85: the anim checks' animation, their renders and asset lookups
+            if (doc->editable()) setupAnimationChecks(context, project, std::make_shared<const titleart::TitleArtDoc>(made->doc), a, made->animationRenderer);
+            if (doc->editable()) {
+                CheckRun* run = made.get();
+                context.render = [project, run](const titleart::RenderRequest& request, TitleCheckImage& out, std::string& error) {
+                    TitleArtRenderHost& host = TitleArtRenderHost::editor();
+                    // once a render of this pass met a program still being built, the pass runs
+                    // again anyway: the renders after it wait for that pass instead of repeating
+                    if (host.notReadyCount() != run->passWaits) {
+                        error = "not_ready: an earlier render of this check waits for a title art program";
+                        return false;
+                    }
+                    TitleRenderedImage image;
+                    if (!host.render(project, request, image, error)) return false;
+                    out.width = image.image.width;
+                    out.height = image.image.height;
+                    out.rgba = image.image.data;
+                    out.frame = image.frame;
+                    if (request.isolateLayer.empty() && request.overrides.empty() && request.testFlags == 0 && run->lastRender.empty()) run->lastRender = image.image;
+                    return true;
+                };
+            }
+            *runs = std::move(made);
         }
-        texsynth::Image lastRender;
-        // S85: the anim checks' animation, their renders and asset lookups
-        std::shared_ptr<void> animationRenderer;
-        if (doc->editable()) setupAnimationChecks(context, project, std::make_shared<const titleart::TitleArtDoc>(doc->doc()), a, animationRenderer);
-        if (doc->editable()) {
-            context.render = [project, &lastRender](const titleart::RenderRequest& request, TitleCheckImage& out, std::string& error) {
-                TitleRenderedImage image;
-                if (!TitleArtRenderHost::editor().render(project, request, image, error)) return false;
-                out.width = image.image.width;
-                out.height = image.image.height;
-                out.rgba = image.image.data;
-                out.frame = image.frame;
-                if (request.isolateLayer.empty() && request.overrides.empty() && request.testFlags == 0 && lastRender.empty()) lastRender = image.image;
-                return true;
-            };
-        }
+        TitleCheckContext& context = (*runs)->context;
+        const texsynth::Image& lastRender = (*runs)->lastRender;
+        (*runs)->passWaits = TitleArtRenderHost::editor().notReadyCount();
         const TitleCheckReport report = TitleArtChecks::run(selected, context);
+        // a render met a program still being built: the checks run again on a later frame, as the
+        // frames build it
+        if (TitleArtRenderHost::editor().notReadyCount() != (*runs)->passWaits) {
+            job.setProgress(-1.0, "waiting for title art programs to be built");
+            return false;
+        }
         Json result = fromOrdered(report.toJson());
         result["path"] = rel;
         result["rev"] = doc->revision();

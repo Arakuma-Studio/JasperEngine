@@ -17,18 +17,18 @@ using namespace terraintest;
 namespace {
 
     constexpr float QUANTUM = 1.0f / 65535.0f;
-    constexpr float BYTE = 1.0f / 255.0f;
-    constexpr int SIZE = 8;              // texel centres at -3.5, -2.5, ... 3.5
-    constexpr float MAX_HEIGHT = 10.0f;
+    constexpr float TERRAIN_OPS_KERNELS_BYTE = 1.0f / 255.0f;
+    constexpr int TERRAIN_OPS_KERNELS_SIZE = 8;              // texel centres at -3.5, -2.5, ... 3.5
+    constexpr float TERRAIN_OPS_KERNELS_MAX_HEIGHT = 10.0f;
 
     std::unique_ptr<RawMapStore> flatStore(float value) {
-        auto store = std::make_unique<RawMapStore>(static_cast<float>(SIZE), MAX_HEIGHT);
-        addFlatHeight(*store, SIZE, value);
+        auto store = std::make_unique<RawMapStore>(static_cast<float>(TERRAIN_OPS_KERNELS_SIZE), TERRAIN_OPS_KERNELS_MAX_HEIGHT);
+        addFlatHeight(*store, TERRAIN_OPS_KERNELS_SIZE, value);
         return store;
     }
 
     float heightAt(const std::vector<float>& heights, int x, int y) {
-        return heights[static_cast<size_t>(y) * SIZE + x];
+        return heights[static_cast<size_t>(y) * TERRAIN_OPS_KERNELS_SIZE + x];
     }
 
     void expectAll(const TerrainMapStore& store, float value, float tolerance = QUANTUM) {
@@ -45,7 +45,7 @@ namespace {
 
     std::vector<float> uniformBlend(float r, float g, float b) {
         std::vector<float> values;
-        for (int i = 0; i < SIZE * SIZE; i++) {
+        for (int i = 0; i < TERRAIN_OPS_KERNELS_SIZE * TERRAIN_OPS_KERNELS_SIZE; i++) {
             values.insert(values.end(), {r, g, b, 1.0f});
         }
         return values;
@@ -118,7 +118,7 @@ TEST(TerrainOpsKernels, SetHeightLerpsByWeight) {
 
 TEST(TerrainOpsKernels, LiftFloorsOnlyLifts) {
     auto store = flatStore(0.0f);
-    fillHeight(*store, SIZE, SIZE, [](int x, int) { return x < 4 ? 0.2f : 0.8f; });
+    fillHeight(*store, TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE, [](int x, int) { return x < 4 ? 0.2f : 0.8f; });
     Op op = allOp(OpType::LiftFloors);
     op.height = 5.0f;
     ASSERT_TRUE(apply(*store, op).ok);
@@ -129,7 +129,7 @@ TEST(TerrainOpsKernels, LiftFloorsOnlyLifts) {
 
 TEST(TerrainOpsKernels, FlattenPeaksOnlyLowers) {
     auto store = flatStore(0.0f);
-    fillHeight(*store, SIZE, SIZE, [](int x, int) { return x < 4 ? 0.2f : 0.8f; });
+    fillHeight(*store, TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE, [](int x, int) { return x < 4 ? 0.2f : 0.8f; });
     Op op = allOp(OpType::FlattenPeaks);
     op.height = 5.0f;
     ASSERT_TRUE(apply(*store, op).ok);
@@ -140,7 +140,7 @@ TEST(TerrainOpsKernels, FlattenPeaksOnlyLowers) {
 
 TEST(TerrainOpsKernels, SmoothGoesTowardTheBlur) {
     auto store = flatStore(0.0f);
-    fillHeight(*store, SIZE, SIZE, [](int x, int y) { return x == 4 && y == 4 ? 0.9f : 0.0f; });
+    fillHeight(*store, TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE, [](int x, int y) { return x == 4 && y == 4 ? 0.9f : 0.0f; });
     Op op = allOp(OpType::Smooth);
     ASSERT_TRUE(apply(*store, op).ok);
     const std::vector<float> after = readHeights(*store);
@@ -153,7 +153,7 @@ TEST(TerrainOpsKernels, SmoothGoesTowardTheBlur) {
 
 TEST(TerrainOpsKernels, SmoothStepFollowsTheRadius) {
     constexpr int WIDE = 64;
-    auto store = std::make_unique<RawMapStore>(static_cast<float>(WIDE), MAX_HEIGHT);
+    auto store = std::make_unique<RawMapStore>(static_cast<float>(WIDE), TERRAIN_OPS_KERNELS_MAX_HEIGHT);
     addFlatHeight(*store, WIDE, 0.0f);
     fillHeight(*store, WIDE, WIDE, [](int x, int y) { return x == 32 && y == 32 ? 0.9f : 0.0f; });
     // radius 16 texels: step 4, so the peak reaches the samples 4 texels away and no others
@@ -169,7 +169,7 @@ TEST(TerrainOpsKernels, SmoothStepFollowsTheRadius) {
 
 TEST(TerrainOpsKernels, SharpenGoesAwayFromTheBlur) {
     auto store = flatStore(0.0f);
-    fillHeight(*store, SIZE, SIZE, [](int x, int y) { return x == 4 && y == 4 ? 0.45f : 0.0f; });
+    fillHeight(*store, TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE, [](int x, int y) { return x == 4 && y == 4 ? 0.45f : 0.0f; });
     Op op = allOp(OpType::Sharpen);
     ASSERT_TRUE(apply(*store, op).ok);
     const std::vector<float> after = readHeights(*store);
@@ -190,8 +190,8 @@ TEST(TerrainOpsKernels, AddNoiseFollowsTheField) {
     ASSERT_TRUE(result.ops[0].seed.has_value());
     EXPECT_EQ(*result.ops[0].seed, 9u) << "reported back (R8)";
     const std::vector<float> after = readHeights(*store);
-    for (int y = 0; y < SIZE; y++) {
-        for (int x = 0; x < SIZE; x++) {
+    for (int y = 0; y < TERRAIN_OPS_KERNELS_SIZE; y++) {
+        for (int x = 0; x < TERRAIN_OPS_KERNELS_SIZE; x++) {
             const float expected = 0.5f + noise::compat::fractal(static_cast<float>(x) / 2.0f, static_cast<float>(y) / 2.0f, 9, 3) * 0.1f;
             EXPECT_NEAR(heightAt(after, x, y), expected, QUANTUM);
         }
@@ -200,7 +200,7 @@ TEST(TerrainOpsKernels, AddNoiseFollowsTheField) {
 
 TEST(TerrainOpsKernels, Terrace) {
     auto store = flatStore(0.0f);
-    fillHeight(*store, SIZE, SIZE, [](int x, int) { return static_cast<float>(x) / 7.0f; });
+    fillHeight(*store, TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE, [](int x, int) { return static_cast<float>(x) / 7.0f; });
     Op op = allOp(OpType::Terrace);
     op.steps = 3;   // levels 0, 0.5, 1
     ASSERT_TRUE(apply(*store, op).ok);
@@ -233,7 +233,7 @@ TEST(TerrainOpsKernels, StampAddsTheMaskAsRelief) {
 
 TEST(TerrainOpsKernels, Erode) {
     constexpr int WIDE = 32;
-    auto store = std::make_unique<RawMapStore>(static_cast<float>(WIDE), MAX_HEIGHT);
+    auto store = std::make_unique<RawMapStore>(static_cast<float>(WIDE), TERRAIN_OPS_KERNELS_MAX_HEIGHT);
     addFlatHeight(*store, WIDE, 0.0f);
     fillHeight(*store, WIDE, WIDE, [](int x, int) { return 0.9f - static_cast<float>(x) * 0.02f; });
     const uint64_t before = mapHash(*store, HEIGHT);
@@ -252,7 +252,7 @@ TEST(TerrainOpsKernels, Erode) {
 TEST(TerrainOpsKernels, ErodeIsSeeded) {
     auto run = [](uint32_t seed) {
         constexpr int WIDE = 32;
-        RawMapStore store(static_cast<float>(WIDE), MAX_HEIGHT);
+        RawMapStore store(static_cast<float>(WIDE), TERRAIN_OPS_KERNELS_MAX_HEIGHT);
         addFlatHeight(store, WIDE, 0.0f);
         fillHeight(store, WIDE, WIDE, [](int x, int) { return 0.9f - static_cast<float>(x) * 0.02f; });
         Op op;
@@ -276,7 +276,7 @@ TEST(TerrainOpsKernels, RampFollowsItsEnds) {
     op.heights = FilterRange{2.0f, 9.0f};
     ASSERT_TRUE(apply(*store, op).ok);
     const std::vector<float> after = readHeights(*store);
-    for (int x = 0; x < SIZE; x++) {
+    for (int x = 0; x < TERRAIN_OPS_KERNELS_SIZE; x++) {
         EXPECT_NEAR(heightAt(after, x, 4), 0.2f + static_cast<float>(x) / 7.0f * 0.7f, QUANTUM * 2.0f);
     }
     EXPECT_NEAR(heightAt(after, 3, 0), 0.0f, QUANTUM) << "outside the capsule";
@@ -284,7 +284,7 @@ TEST(TerrainOpsKernels, RampFollowsItsEnds) {
 
 TEST(TerrainOpsKernels, RampDefaultsToTheSurfaceAtItsEnds) {
     auto store = flatStore(0.0f);
-    fillHeight(*store, SIZE, SIZE, [](int x, int) { return x < 4 ? 0.2f : 0.6f; });
+    fillHeight(*store, TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE, [](int x, int) { return x < 4 ? 0.2f : 0.6f; });
     Op op;
     op.type = OpType::Ramp;
     op.shape.type = ShapeType::Polyline;
@@ -299,7 +299,7 @@ TEST(TerrainOpsKernels, RampDefaultsToTheSurfaceAtItsEnds) {
 
 TEST(TerrainOpsKernels, RemapHeights) {
     auto store = flatStore(0.0f);
-    fillHeight(*store, SIZE, SIZE, [](int x, int) { return x < 4 ? 0.2f : 0.6f; });
+    fillHeight(*store, TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE, [](int x, int) { return x < 4 ? 0.2f : 0.6f; });
     Op op = allOp(OpType::RemapHeights);
     op.inRange = FilterRange{2.0f, 6.0f};
     op.outRange = FilterRange{4.0f, 5.0f};
@@ -310,10 +310,10 @@ TEST(TerrainOpsKernels, RemapHeights) {
 }
 
 TEST(TerrainOpsKernels, PaintLayerNormalizesWithinItsMap) {
-    RawMapStore store(static_cast<float>(SIZE), MAX_HEIGHT);
-    addFlatHeight(store, SIZE, 0.0f);
-    store.addMap(blend(0), SIZE, SIZE, 4, 8);
-    store.write(blend(0), TexelRect{0, 0, SIZE, SIZE}, uniformBlend(0.4f, 0.4f, 0.2f));
+    RawMapStore store(static_cast<float>(TERRAIN_OPS_KERNELS_SIZE), TERRAIN_OPS_KERNELS_MAX_HEIGHT);
+    addFlatHeight(store, TERRAIN_OPS_KERNELS_SIZE, 0.0f);
+    store.addMap(blend(0), TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE, 4, 8);
+    store.write(blend(0), TexelRect{0, 0, TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE}, uniformBlend(0.4f, 0.4f, 0.2f));
 
     Op op = allOp(OpType::PaintLayer);
     op.layer = 1;
@@ -321,17 +321,17 @@ TEST(TerrainOpsKernels, PaintLayerNormalizesWithinItsMap) {
     ASSERT_TRUE(apply(store, op).ok);
     std::vector<float> texel(4);
     store.read(blend(0), TexelRect{2, 2, 1, 1}, texel);
-    EXPECT_NEAR(texel[0], 0.2f, BYTE);
-    EXPECT_NEAR(texel[1], 0.7f, BYTE);
-    EXPECT_NEAR(texel[2], 0.1f, BYTE);
+    EXPECT_NEAR(texel[0], 0.2f, TERRAIN_OPS_KERNELS_BYTE);
+    EXPECT_NEAR(texel[1], 0.7f, TERRAIN_OPS_KERNELS_BYTE);
+    EXPECT_NEAR(texel[2], 0.1f, TERRAIN_OPS_KERNELS_BYTE);
     EXPECT_EQ(texel[3], 1.0f);
 }
 
 TEST(TerrainOpsKernels, PaintLayerWithoutNormalizeKeepsOtherChannels) {
-    RawMapStore store(static_cast<float>(SIZE), MAX_HEIGHT);
-    addFlatHeight(store, SIZE, 0.0f);
-    store.addMap(blend(0), SIZE, SIZE, 4, 8);
-    store.write(blend(0), TexelRect{0, 0, SIZE, SIZE}, uniformBlend(0.4f, 0.4f, 0.2f));
+    RawMapStore store(static_cast<float>(TERRAIN_OPS_KERNELS_SIZE), TERRAIN_OPS_KERNELS_MAX_HEIGHT);
+    addFlatHeight(store, TERRAIN_OPS_KERNELS_SIZE, 0.0f);
+    store.addMap(blend(0), TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE, 4, 8);
+    store.write(blend(0), TexelRect{0, 0, TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE}, uniformBlend(0.4f, 0.4f, 0.2f));
     Op op = allOp(OpType::PaintLayer);
     op.layer = 0;
     op.normalize = false;
@@ -339,9 +339,9 @@ TEST(TerrainOpsKernels, PaintLayerWithoutNormalizeKeepsOtherChannels) {
     ASSERT_TRUE(apply(store, op).ok);
     std::vector<float> texel(4);
     store.read(blend(0), TexelRect{2, 2, 1, 1}, texel);
-    EXPECT_NEAR(texel[0], 0.7f, BYTE);
-    EXPECT_NEAR(texel[1], 0.4f, BYTE);
-    EXPECT_NEAR(texel[2], 0.2f, BYTE);
+    EXPECT_NEAR(texel[0], 0.7f, TERRAIN_OPS_KERNELS_BYTE);
+    EXPECT_NEAR(texel[1], 0.4f, TERRAIN_OPS_KERNELS_BYTE);
+    EXPECT_NEAR(texel[2], 0.2f, TERRAIN_OPS_KERNELS_BYTE);
 }
 
 TEST(TerrainOpsKernels, FirstPaintCreatesTheBlendMap) {
@@ -359,7 +359,7 @@ TEST(TerrainOpsKernels, FirstPaintCreatesTheBlendMap) {
     ASSERT_TRUE(store->format(blend(1)).exists);
     std::vector<float> texel(4);
     store->read(blend(1), TexelRect{4, 4, 1, 1}, texel);
-    EXPECT_NEAR(texel[1], 1.0f, BYTE);
+    EXPECT_NEAR(texel[1], 1.0f, TERRAIN_OPS_KERNELS_BYTE);
     store->read(blend(1), TexelRect{0, 0, 1, 1}, texel);
     EXPECT_EQ(texel[1], 0.0f);
     EXPECT_EQ(texel[3], 1.0f) << "a new blend map is opaque";
@@ -375,13 +375,13 @@ TEST(TerrainOpsKernels, FirstPaintCreatesTheBlendMap) {
 }
 
 TEST(TerrainOpsKernels, PaintBaseClearsChannels) {
-    RawMapStore store(static_cast<float>(SIZE), MAX_HEIGHT);
-    addFlatHeight(store, SIZE, 0.0f);
-    store.addMap(blend(0), SIZE, SIZE, 4, 8);
-    store.addMap(blend(1), SIZE, SIZE, 4, 8);
+    RawMapStore store(static_cast<float>(TERRAIN_OPS_KERNELS_SIZE), TERRAIN_OPS_KERNELS_MAX_HEIGHT);
+    addFlatHeight(store, TERRAIN_OPS_KERNELS_SIZE, 0.0f);
+    store.addMap(blend(0), TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE, 4, 8);
+    store.addMap(blend(1), TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE, 4, 8);
     const std::vector<float> start = uniformBlend(0.8f, 0.4f, 0.2f);
-    store.write(blend(0), TexelRect{0, 0, SIZE, SIZE}, start);
-    store.write(blend(1), TexelRect{0, 0, SIZE, SIZE}, start);
+    store.write(blend(0), TexelRect{0, 0, TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE}, start);
+    store.write(blend(1), TexelRect{0, 0, TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE}, start);
 
     Op op = allOp(OpType::PaintBase);
     op.strength = 0.5f;
@@ -389,10 +389,10 @@ TEST(TerrainOpsKernels, PaintBaseClearsChannels) {
     ASSERT_TRUE(apply(store, op).ok);
     std::vector<float> texel(4);
     store.read(blend(0), TexelRect{2, 2, 1, 1}, texel);
-    EXPECT_NEAR(texel[0], 0.4f, BYTE);
-    EXPECT_NEAR(texel[1], 0.2f, BYTE);
+    EXPECT_NEAR(texel[0], 0.4f, TERRAIN_OPS_KERNELS_BYTE);
+    EXPECT_NEAR(texel[1], 0.2f, TERRAIN_OPS_KERNELS_BYTE);
     store.read(blend(1), TexelRect{2, 2, 1, 1}, texel);
-    EXPECT_NEAR(texel[0], 0.8f, BYTE) << "the other map stays";
+    EXPECT_NEAR(texel[0], 0.8f, TERRAIN_OPS_KERNELS_BYTE) << "the other map stays";
 
     Op every = allOp(OpType::PaintBase);
     ASSERT_TRUE(apply(store, every).ok);
@@ -402,7 +402,7 @@ TEST(TerrainOpsKernels, PaintBaseClearsChannels) {
 
 TEST(TerrainOpsKernels, PaintByRulesLaterOverEarlier) {
     auto store = flatStore(0.0f);
-    fillHeight(*store, SIZE, SIZE, [](int x, int) { return x < 4 ? 0.2f : 0.8f; });
+    fillHeight(*store, TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE, [](int x, int) { return x < 4 ? 0.2f : 0.8f; });
     Op op = allOp(OpType::PaintByRules);
     PaintRule ground;
     ground.layer = 1;
@@ -414,42 +414,42 @@ TEST(TerrainOpsKernels, PaintByRulesLaterOverEarlier) {
     ASSERT_TRUE(result.ok) << result.error;
     std::vector<float> texel(4);
     store->read(blend(0), TexelRect{1, 1, 1, 1}, texel);
-    EXPECT_NEAR(texel[1], 1.0f, BYTE);
-    EXPECT_NEAR(texel[2], 0.0f, BYTE);
+    EXPECT_NEAR(texel[1], 1.0f, TERRAIN_OPS_KERNELS_BYTE);
+    EXPECT_NEAR(texel[2], 0.0f, TERRAIN_OPS_KERNELS_BYTE);
     store->read(blend(0), TexelRect{6, 1, 1, 1}, texel);
-    EXPECT_NEAR(texel[1], 0.0f, BYTE);
-    EXPECT_NEAR(texel[2], 1.0f, BYTE);
+    EXPECT_NEAR(texel[1], 0.0f, TERRAIN_OPS_KERNELS_BYTE);
+    EXPECT_NEAR(texel[2], 1.0f, TERRAIN_OPS_KERNELS_BYTE);
 }
 
 TEST(TerrainOpsKernels, PaintDensityGoesTowardOne) {
-    RawMapStore store(static_cast<float>(SIZE), MAX_HEIGHT);
-    addFlatHeight(store, SIZE, 0.0f);
-    store.addMap(density(1), SIZE, SIZE, 1, 8);
+    RawMapStore store(static_cast<float>(TERRAIN_OPS_KERNELS_SIZE), TERRAIN_OPS_KERNELS_MAX_HEIGHT);
+    addFlatHeight(store, TERRAIN_OPS_KERNELS_SIZE, 0.0f);
+    store.addMap(density(1), TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE, 1, 8);
     Op op = allOp(OpType::PaintDensity);
     op.layer = 1;
     op.strength = 0.5f;
     ASSERT_TRUE(apply(store, op).ok);
     std::vector<float> value(1);
     store.read(density(1), TexelRect{3, 3, 1, 1}, value);
-    EXPECT_NEAR(value[0], 0.5f, BYTE);
+    EXPECT_NEAR(value[0], 0.5f, TERRAIN_OPS_KERNELS_BYTE);
     ASSERT_TRUE(apply(store, op).ok);
     store.read(density(1), TexelRect{3, 3, 1, 1}, value);
-    EXPECT_NEAR(value[0], 0.75f, 1.5f * BYTE);
+    EXPECT_NEAR(value[0], 0.75f, 1.5f * TERRAIN_OPS_KERNELS_BYTE);
 }
 
 TEST(TerrainOpsKernels, EraseDensityGoesTowardZero) {
-    RawMapStore store(static_cast<float>(SIZE), MAX_HEIGHT);
-    addFlatHeight(store, SIZE, 0.0f);
-    store.addMap(density(0), SIZE, SIZE, 1, 8);
-    const std::vector<float> full(SIZE * SIZE, 1.0f);
-    store.write(density(0), TexelRect{0, 0, SIZE, SIZE}, full);
+    RawMapStore store(static_cast<float>(TERRAIN_OPS_KERNELS_SIZE), TERRAIN_OPS_KERNELS_MAX_HEIGHT);
+    addFlatHeight(store, TERRAIN_OPS_KERNELS_SIZE, 0.0f);
+    store.addMap(density(0), TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE, 1, 8);
+    const std::vector<float> full(TERRAIN_OPS_KERNELS_SIZE * TERRAIN_OPS_KERNELS_SIZE, 1.0f);
+    store.write(density(0), TexelRect{0, 0, TERRAIN_OPS_KERNELS_SIZE, TERRAIN_OPS_KERNELS_SIZE}, full);
     Op op = allOp(OpType::EraseDensity);
     op.layer = 0;
     op.strength = 0.75f;
     ASSERT_TRUE(apply(store, op).ok);
     std::vector<float> value(1);
     store.read(density(0), TexelRect{3, 3, 1, 1}, value);
-    EXPECT_NEAR(value[0], 0.25f, BYTE);
+    EXPECT_NEAR(value[0], 0.25f, TERRAIN_OPS_KERNELS_BYTE);
 }
 
 TEST(TerrainOpsKernels, PlaceObjects) {
@@ -485,9 +485,9 @@ TEST(TerrainOpsKernels, EraseObjects) {
 TEST(TerrainOpsKernels, ImportHeightmapIsADeltaOfTheSameSize) {
     auto store = flatStore(0.5f);
     Op op = allOp(OpType::ImportHeightmap);
-    op.importedWidth = SIZE;
-    op.importedHeight = SIZE;
-    op.importedHeights.assign(SIZE * SIZE, 0.5f);
+    op.importedWidth = TERRAIN_OPS_KERNELS_SIZE;
+    op.importedHeight = TERRAIN_OPS_KERNELS_SIZE;
+    op.importedHeights.assign(TERRAIN_OPS_KERNELS_SIZE * TERRAIN_OPS_KERNELS_SIZE, 0.5f);
     op.importedHeights[3] = 0.75f;
     op.importedHeights[4] = 1.5f;
     const TerrainOpResult result = apply(*store, op);
@@ -499,15 +499,15 @@ TEST(TerrainOpsKernels, ImportHeightmapIsADeltaOfTheSameSize) {
     EXPECT_EQ(heightAt(after, 4, 0), 1.0f);
 
     Op otherSize = op;
-    otherSize.importedWidth = SIZE * 2;
-    otherSize.importedHeight = SIZE / 2;
+    otherSize.importedWidth = TERRAIN_OPS_KERNELS_SIZE * 2;
+    otherSize.importedHeight = TERRAIN_OPS_KERNELS_SIZE / 2;
     const TerrainOpResult refused = apply(*store, otherSize);
     EXPECT_FALSE(refused.ok) << "another size is the structural path";
     EXPECT_EQ(refused.errors[0].field, "ops[0].resolution");
 
     Op shaped = circleOp(OpType::ImportHeightmap, 0.0f, 0.0f, 2.0f);
-    shaped.importedWidth = SIZE;
-    shaped.importedHeight = SIZE;
+    shaped.importedWidth = TERRAIN_OPS_KERNELS_SIZE;
+    shaped.importedHeight = TERRAIN_OPS_KERNELS_SIZE;
     shaped.importedHeights = op.importedHeights;
     EXPECT_FALSE(apply(*store, shaped).ok) << "it takes no shape";
 }
@@ -533,12 +533,12 @@ TEST(TerrainOpsKernels, FractalFillKeepsItsBytes) {
 
     // set_terrain_maps' own loop (editor/mcp/TerrainMaps.cpp)
     const std::vector<uint8_t> bytes = readAllBytes(*store, HEIGHT);
-    for (int y = 0; y < SIZE; y++) {
-        for (int x = 0; x < SIZE; x++) {
+    for (int y = 0; y < TERRAIN_OPS_KERNELS_SIZE; y++) {
+        for (int x = 0; x < TERRAIN_OPS_KERNELS_SIZE; x++) {
             float sum = 0.0f, weight = 1.0f, weightSum = 0.0f, f = 3.0f;
             for (int o = 0; o < 4; o++) {
-                const float nx = (static_cast<float>(x) / static_cast<float>(SIZE - 1)) * f;
-                const float ny = (static_cast<float>(y) / static_cast<float>(SIZE - 1)) * f;
+                const float nx = (static_cast<float>(x) / static_cast<float>(TERRAIN_OPS_KERNELS_SIZE - 1)) * f;
+                const float ny = (static_cast<float>(y) / static_cast<float>(TERRAIN_OPS_KERNELS_SIZE - 1)) * f;
                 sum += (noise::compat::value(nx, ny, 7 + static_cast<uint32_t>(o * 1013)) * 2.0f - 1.0f) * weight;
                 weightSum += weight;
                 weight *= 0.5f;
@@ -546,7 +546,7 @@ TEST(TerrainOpsKernels, FractalFillKeepsItsBytes) {
             }
             const float h = std::max(0.0f, std::min(1.0f, 0.5f + sum / weightSum * 0.25f));
             const unsigned int quantized = static_cast<unsigned int>(std::lround(h * 65535.0f));
-            const size_t at = (static_cast<size_t>(y) * SIZE + x) * 2;
+            const size_t at = (static_cast<size_t>(y) * TERRAIN_OPS_KERNELS_SIZE + x) * 2;
             ASSERT_EQ(static_cast<unsigned int>(bytes[at] | (bytes[at + 1] << 8)), quantized) << x << ", " << y;
         }
     }
@@ -554,8 +554,8 @@ TEST(TerrainOpsKernels, FractalFillKeepsItsBytes) {
 
 TEST(TerrainOpsKernels, RandomNoiseIsSeededAndPortable) {
     auto run = [](uint32_t seed) {
-        RawMapStore store(static_cast<float>(SIZE), MAX_HEIGHT);
-        addFlatHeight(store, SIZE, 0.0f);
+        RawMapStore store(static_cast<float>(TERRAIN_OPS_KERNELS_SIZE), TERRAIN_OPS_KERNELS_MAX_HEIGHT);
+        addFlatHeight(store, TERRAIN_OPS_KERNELS_SIZE, 0.0f);
         Op op;
         op.type = OpType::FillNoise;
         op.fill = FillMode::RandomNoise;

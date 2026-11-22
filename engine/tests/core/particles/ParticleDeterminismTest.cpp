@@ -69,10 +69,10 @@ namespace {
         return compileOrFail(d);
     }
 
-    struct Family {
+    struct ParticleDeterminismFamily {
         EmitterRuntime runtime;
         EmitterInput input;
-        Family(jobs::JobSystem& js, uint32_t chunk){
+        ParticleDeterminismFamily(jobs::JobSystem& js, uint32_t chunk){
             runtime.bind(parentEffect());
             // the parent, its children and theirs: three levels
             const auto child = childEffect();
@@ -85,11 +85,11 @@ namespace {
         }
     };
 
-    uint64_t simulate(int workers, uint32_t chunk, int ticks){
+    uint64_t particleDeterminismSimulate(int workers, uint32_t chunk, int ticks){
         jobs::Config config;
         config.workers = workers;
         jobs::JobSystem js(config);
-        Family run(js, chunk);
+        ParticleDeterminismFamily run(js, chunk);
         for (int t = 0; t < ticks; t++) run.runtime.step(run.input);
         EXPECT_GT(run.runtime.count(), 500u);
         // the depth-3 chain is bound and ran
@@ -105,10 +105,10 @@ namespace {
 }
 
 TEST(ParticleDeterminism, WorkerCountIndependent){
-    const uint64_t reference = simulate(0, 4096, 600);
+    const uint64_t reference = particleDeterminismSimulate(0, 4096, 600);
     for (int workers : {0, 1, 2, 8}){
         for (uint32_t chunk : {256u, 4096u}){
-            EXPECT_EQ(simulate(workers, chunk, 600), reference) << workers << " workers, chunks of " << chunk;
+            EXPECT_EQ(particleDeterminismSimulate(workers, chunk, 600), reference) << workers << " workers, chunks of " << chunk;
         }
     }
 }
@@ -120,14 +120,14 @@ TEST(ParticleDeterminism, ScalarAndSimdAreBitIdentical){
     setForceScalarKernels(true);
     uint64_t scalar = 0;
     {
-        Family run(js, 4096);
+        ParticleDeterminismFamily run(js, 4096);
         for (int t = 0; t < 300; t++) run.runtime.step(run.input);
         scalar = run.runtime.stateHash();
     }
     setForceScalarKernels(false);
     uint64_t native = 0;
     {
-        Family run(js, 4096);
+        ParticleDeterminismFamily run(js, 4096);
         for (int t = 0; t < 300; t++) run.runtime.step(run.input);
         native = run.runtime.stateHash();
     }

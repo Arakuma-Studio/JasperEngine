@@ -519,7 +519,7 @@ TEST(AsepriteCodecTest, EditTouchesOnlyItsChunks) {
 
 namespace {
 
-    Document makeDocument(ColorMode mode) {
+    Document asepriteCodecMakeDocument(ColorMode mode) {
         Document d;
         d.width = 8;
         d.height = 6;
@@ -778,7 +778,7 @@ namespace {
 TEST(AsepriteCodecTest, WriteRoundTrip) {
     for (ColorMode mode : {ColorMode::Rgba, ColorMode::Grayscale, ColorMode::Indexed}) {
         SCOPED_TRACE(colorModeName(mode));
-        const Document doc = makeDocument(mode);
+        const Document doc = asepriteCodecMakeDocument(mode);
         std::vector<uint8_t> bytes;
         CodecError error;
         ASSERT_TRUE(write(doc, bytes, &error)) << error.kind << ": " << error.message;
@@ -796,7 +796,7 @@ TEST(AsepriteCodecTest, WriteRoundTrip) {
     }
     // every blend mode, on a layer and on a group
     for (int m = 0; m <= static_cast<int>(BlendMode::Divide); m++) {
-        Document doc = makeDocument(ColorMode::Rgba);
+        Document doc = asepriteCodecMakeDocument(ColorMode::Rgba);
         doc.layers[1].blend = static_cast<BlendMode>(m);
         doc.layers[2].blend = static_cast<BlendMode>(18 - m);
         std::vector<uint8_t> bytes;
@@ -811,7 +811,7 @@ TEST(AsepriteCodecTest, WriteRoundTrip) {
 // A document without a palette (an RGBA sprite made in code) is written with the 256 black
 // entries any reader starts from, so the file it gives re-saves byte for byte
 TEST(AsepriteCodecTest, PaletteLessDocumentResavesIdentically) {
-    Document doc = makeDocument(ColorMode::Rgba);
+    Document doc = asepriteCodecMakeDocument(ColorMode::Rgba);
     doc.palette.clear();
     std::vector<uint8_t> bytes;
     CodecError error;
@@ -826,7 +826,7 @@ TEST(AsepriteCodecTest, PaletteLessDocumentResavesIdentically) {
 
 // A new file follows Aseprite 1.3.5's layout: the 8-bit palette chunk when it can hold the palette
 TEST(AsepriteCodecTest, NewFileLayout) {
-    Document doc = makeDocument(ColorMode::Rgba);
+    Document doc = asepriteCodecMakeDocument(ColorMode::Rgba);
     for (PaletteEntry& e : doc.palette) e.name.reset();
     std::vector<uint8_t> bytes;
     ASSERT_TRUE(write(doc, bytes, nullptr));
@@ -854,7 +854,7 @@ TEST(AsepriteCodecTest, NewFileLayout) {
 
 // Unknown chunks and user data with no owner go back where they were (R5)
 TEST(AsepriteCodecTest, KeepsUnknownChunksInPlace) {
-    Document doc = makeDocument(ColorMode::Rgba);
+    Document doc = asepriteCodecMakeDocument(ColorMode::Rgba);
     doc.opaque.clear();
     OpaqueChunk afterLayer;
     afterLayer.type = 0x2017;   // the unused path chunk
@@ -873,7 +873,7 @@ TEST(AsepriteCodecTest, KeepsUnknownChunksInPlace) {
 }
 
 TEST(AsepriteCodecTest, IndexedCelWithoutPaletteColourIsATypedError) {
-    Document doc = makeDocument(ColorMode::Indexed);
+    Document doc = asepriteCodecMakeDocument(ColorMode::Indexed);
     PixelImage img = *doc.celRecord(2, 0)->image;
     img.set(0, 0, {1, 2, 3, 255});   // drops the index plane, and is no palette colour
     doc.celRecord(2, 0)->image = std::make_shared<const PixelImage>(img);

@@ -7,6 +7,9 @@ FROM ubuntu:24.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 
+# apt retries a one-off network failure (apt-retries.conf); each wget and curl below has its own retries
+COPY apt-retries.conf /etc/apt/apt.conf.d/80-retries
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates python3 file git \
         libx11-6 libxcursor1 libxi6 libxrandr2 libxext6 libxkbcommon0 \
@@ -27,7 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libdrm2 libgbm1 libxcb1 libxcomposite1 libxdamage1 libxfixes3 \
         libpango-1.0-0 libcairo2 libasound2t64 libexpat1 libglib2.0-0t64 libudev1 \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL -o /tmp/chrome-headless-shell.zip \
+    && curl --retry 5 --retry-all-errors --connect-timeout 30 -fsSL -o /tmp/chrome-headless-shell.zip \
         "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_HEADLESS_SHELL_VERSION}/linux64/chrome-headless-shell-linux64.zip" \
     && echo "${CHROME_HEADLESS_SHELL_SHA256}  /tmp/chrome-headless-shell.zip" | sha256sum -c - \
     && unzip -q /tmp/chrome-headless-shell.zip -d /opt \
@@ -39,7 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # uv runs the editor's MCP checks of the smoke test (tools/mcp/nav_smoke.py), as in docker/linux.Dockerfile
 ARG UV_VERSION=0.13.5
 ARG UV_SHA256=f68d291c75783122dad58ab77def0e13f3233f358731db5d6d7e8715603b928f
-RUN wget -q -O /tmp/uv.tar.gz \
+RUN wget --tries=5 --waitretry=10 --timeout=60 --retry-connrefused --retry-on-http-error=429,500,502,503,504 -q -O /tmp/uv.tar.gz \
         "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
     && echo "${UV_SHA256}  /tmp/uv.tar.gz" | sha256sum -c - \
     && tar -xzf /tmp/uv.tar.gz -C /tmp \

@@ -343,3 +343,29 @@ These are the author's calls, not the owner's decisions. Check them while readin
 - "First target" follows the Build Settings list order, not the storage order.
 - Build Settings forgets its selected platform when another project opens.
 - This PR creates the repository-URL constant and uses it only in `Generator.cpp`.
+
+## Deviations
+
+Recorded by the implementation (branch `feat/target-platforms`).
+
+- **Source backends while the host is a target.** 5.5 makes a source export with no `backends` and no saved
+  selection use the union of the target platforms' presets. Every project without the key targets all six,
+  so that union is every backend, which would change what an old project's source export compiles (G5). The
+  default is the host's presets while the host is a target (today's behaviour), and the targets' presets
+  otherwise; `get_build_info.source.backends` reports the same.
+- **`build_project` with a `platform` and no `mode`.** Before, `mode` defaulted to desktop and a `platform`
+  without `mode: player` was ignored. With the schema default gone, a `platform` with no `mode` builds that
+  platform's player (5.5's "an explicit platform is unchanged").
+- **The `next` of a non-target build** is the top-level `structuredContent.next` of `build_project`'s
+  finished result (and `result.next` in `get_job`); a call that returns `{job_id}` before the build ends
+  carries it only in the job's result.
+- **`build_project`'s description** also drops its result field list ("Result: output_dir, artifacts, ...",
+  against the MCP text rules) to fit its budget; `tools/mcp/budget.json` is lowered to the new size.
+- **The repository URL** (5.6, `Generator.cpp:1270`, `:1751`) is another unit's change; this branch leaves
+  those lines alone.
+- **User docs.** There was no Build Settings or Player settings page under `docs/editor/`; the setting gets
+  its own page, `docs/editor/build-settings.md`, and `docs/shipping.md` links it.
+- **`SettingsRegistry.CoversMcpKeys`** covers the row through its fixture list
+  (`editor/tests/fixtures/settings/mcp-keys-before-s25.txt`), with a note in its header.
+- **One more unit test,** `ProjectTargetPlatforms.DefaultBuildPlatformIsTheHostOrTheFirstTargetInTheListOrder`,
+  pins `Project::defaultBuildPlatform()`.

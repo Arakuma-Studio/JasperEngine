@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <mutex>
 
 using namespace jasperengine;
 using namespace jasperengine::terraincore;
@@ -31,7 +32,15 @@ namespace {
         return host;
     }
 
-    // every live system, for the pump; main thread only
+    // every live system, for the pump. Scenes are made and let go on other threads too (a game's
+    // loader, the editor's previews), so the list is only touched under this mutex, which the walks
+    // hold throughout: a system goes (its destructor) between walks, never under one. Recursive, and
+    // walked by index, for a walk's own thread making a scene (a log listener's script)
+    std::recursive_mutex& liveSystemsMutex() {
+        static std::recursive_mutex mutex;
+        return mutex;
+    }
+
     std::vector<TerrainWorldSystem*>& liveSystems() {
         static std::vector<TerrainWorldSystem*> systems;
         return systems;
@@ -45,17 +54,6 @@ namespace {
     bool& pumpHeld() {
         static bool held = false;
         return held;
-    }
-
-    // R15: the camera's velocity, from its last two positions
-    struct FocusTrack {
-        Vector3 last;
-        double at = -1.0;
-    };
-
-    std::map<std::pair<const Scene*, Entity>, FocusTrack>& focusTracks() {
-        static std::map<std::pair<const Scene*, Entity>, FocusTrack> tracks;
-        return tracks;
     }
 
     // ------------------------------------------------------------------ R27: foliage
@@ -326,15 +324,14 @@ void TerrainWorldSystem::setHost(Host host) {
 TerrainWorldSystem::TerrainWorldSystem(Scene* scene): SubSystem(scene) {
     declareHookType(scene->getComponentId<TerrainWorldComponent>());
     declareHookType(scene->getComponentId<TerrainComponent>());
+    std::lock_guard<std::recursive_mutex> lock(liveSystemsMutex());
     liveSystems().push_back(this);
 }
 
 TerrainWorldSystem::~TerrainWorldSystem() {
+    std::lock_guard<std::recursive_mutex> lock(liveSystemsMutex());
     std::vector<TerrainWorldSystem*>& systems = liveSystems();
     systems.erase(std::remove(systems.begin(), systems.end(), this), systems.end());
-    for (auto it = focusTracks().begin(); it != focusTracks().end();) {
-        it = it->first.first == scene ? focusTracks().erase(it) : std::next(it);
-    }
 }
 
 void TerrainWorldSystem::load() {}
@@ -506,7 +503,7 @@ void TerrainWorldSystem::updateFocuses(TerrainWorldRuntime& runtime, const Terra
         focus.id = id;
         focus.x = transform->worldPosition.x - origin.x;
         focus.z = transform->worldPosition.z - origin.z;
-        FocusTrack& track = focusTracks()[{scene, entity}];
+        FocusTrack& track = focusTracks[entity];
         if (track.at >= 0.0 && now > track.at) {
             const float dt = static_cast<float>(now - track.at);
             focus.velocityX = (transform->worldPosition.x - track.last.x) / dt;
@@ -524,8 +521,10 @@ void TerrainWorldSystem::updateFocuses(TerrainWorldRuntime& runtime, const Terra
 }
 
 void TerrainWorldSystem::forEachRuntime(const std::function<void(TerrainWorldRuntime& runtime)>& fn) {
-    for (TerrainWorldSystem* system : liveSystems()) {
-        for (auto& [entity, runtime] : system->runtimes) fn(*runtime);
+    std::lock_guard<std::recursive_mutex> lock(liveSystemsMutex());
+    const std::vector<TerrainWorldSystem*>& systems = liveSystems();
+    for (size_t i = 0; i < systems.size(); i++) {
+        for (auto& [entity, runtime] : systems[i]->runtimes) fn(*runtime);
     }
 }
 
@@ -539,7 +538,9 @@ void TerrainWorldSystem::pumpAll() {
     const double now = Engine::getRealtimeSinceStartup();
     if (lastPumpAll() >= 0.0 && now - lastPumpAll() < 0.001) return;
     lastPumpAll() = now;
-    for (TerrainWorldSystem* system : liveSystems()) system->pump(now);
+    std::lock_guard<std::recursive_mutex> lock(liveSystemsMutex());
+    const std::vector<TerrainWorldSystem*>& systems = liveSystems();
+    for (size_t i = 0; i < systems.size(); i++) systems[i]->pump(now);
 }
 
 void TerrainWorldSystem::pump(double now) {

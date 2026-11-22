@@ -48,7 +48,7 @@ namespace {
         return std::string(JASPER_TEST_REPO_DIR "/engine/tests/render/assets/khronos/") + sample + "/glTF-Binary/" + sample + ".glb";
     }
 
-    std::vector<uint8_t> readTarget(){
+    std::vector<uint8_t> readModelCapacityTarget(){
         Framebuffer& target = GpuEnvironment::target();
         std::vector<uint8_t> rgba;
         readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba);
@@ -197,7 +197,7 @@ namespace {
         const MeshComponent& mesh = scene.getComponent<MeshComponent>(model.getEntity());
         submeshes = mesh.numSubmeshes;
         expectWholePrimitives(mesh, file);
-        std::vector<uint8_t> frame = readTarget();
+        std::vector<uint8_t> frame = readModelCapacityTarget();
         Engine::removeScene(&scene);
         return frame;
     }
@@ -311,7 +311,7 @@ namespace {
     // cross it at z = 0, seen from a camera in the plane x = its target's x
     int platesOnTheMiddleRow(){
         Framebuffer& target = GpuEnvironment::target();
-        const std::vector<uint8_t> rgba = readTarget();
+        const std::vector<uint8_t> rgba = readModelCapacityTarget();
         const int width = (int)target.getWidth();
         const int row = (int)target.getHeight() / 2;
         if (rgba.size() < (size_t)(row + 1) * width * 4)

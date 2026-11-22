@@ -72,7 +72,7 @@ namespace {
         return layer;
     }
 
-    Json group(int n, std::vector<Json> children, bool visible = true) {
+    Json titleArtScenesParityGroup(int n, std::vector<Json> children, bool visible = true) {
         Json g{{"id", idOf(n)}, {"type", "group"}, {"name", "Group"}, {"visible", visible}, {"children", Json::array()}};
         for (Json& child : children) g["children"].push_back(std::move(child));
         return g;
@@ -106,10 +106,10 @@ namespace {
     // inside a visible one, BIG in the visible one; only BIG draws. `hide` false shows every
     // group (the red control's scene).
     std::vector<Json> nestedGroups(bool hide) {
-        Json shownInner = group(2, {title(3, "激アツ", 200)});
-        Json hiddenOuter = group(1, {shownInner}, !hide);
-        Json hiddenInner = group(5, {title(6, "確定", 0)}, !hide);
-        Json outer = group(4, {hiddenInner, title(7, "BIG", -200)});
+        Json shownInner = titleArtScenesParityGroup(2, {title(3, "激アツ", 200)});
+        Json hiddenOuter = titleArtScenesParityGroup(1, {shownInner}, !hide);
+        Json hiddenInner = titleArtScenesParityGroup(5, {title(6, "確定", 0)}, !hide);
+        Json outer = titleArtScenesParityGroup(4, {hiddenInner, title(7, "BIG", -200)});
         return {hiddenOuter, outer};
     }
 
@@ -123,8 +123,8 @@ namespace {
         scenes.push_back({"clipping", {title(1, "BIG"), zebra}});
 
         // inside the group the hue shift reaches only 確定; at the top level BIG too
-        scenes.push_back({"adjustment-in-group", {title(1, "BIG", -150), group(2, {title(3, "確定", 120), hueShift(4)})}});
-        scenes.push_back({"adjustment-outside-group", {title(1, "BIG", -150), group(2, {title(3, "確定", 120)}), hueShift(4)}});
+        scenes.push_back({"adjustment-in-group", {title(1, "BIG", -150), titleArtScenesParityGroup(2, {title(3, "確定", 120), hueShift(4)})}});
+        scenes.push_back({"adjustment-outside-group", {title(1, "BIG", -150), titleArtScenesParityGroup(2, {title(3, "確定", 120)}), hueShift(4)}});
 
         Json blur{{"id", idOf(3)}, {"type", "adjustment"}, {"name", "Effects only"}, {"adjustment", {{"type", "effects_only"}}}};
         blur["effects"] = Json::array({standard::standardEffect(idOf(0x201).c_str(), "gaussian_blur", Json{{"radius", 12}})});
@@ -153,7 +153,7 @@ namespace {
 
         // an unlinked radial mask on the group shapes both members as one; Pachislop's
         // gradientMask() angle -90 (counter-clockwise: down) is 90 here (unused by a radial one)
-        Json radial = group(1, {title(2, "BIG", -150), title(3, "確定", 120)});
+        Json radial = titleArtScenesParityGroup(1, {title(2, "BIG", -150), title(3, "確定", 120)});
         radial["masks"] = Json::array({Json{{"id", idOf(0x301)}, {"type", "gradient"}, {"linked", false}, {"shape", "radial"},
                                             {"position", Json::array({0, 0})}, {"angle", 90}, {"length", 300}, {"inner", 0.4}, {"mid", 0.5}}});
         scenes.push_back({"mask-group-radial", {radial}});
@@ -187,7 +187,7 @@ namespace {
         return scenes;
     }
 
-    bool renderScene(const std::vector<Json>& layers, Rgba8Image& out, std::string& error) {
+    bool titleArtScenesParityRenderScene(const std::vector<Json>& layers, Rgba8Image& out, std::string& error) {
         return renderDocument(standard::standardDocument(layers), 0.25f, TitleOutputFormat::Srgb8, nullptr, &out, error);
     }
 
@@ -211,7 +211,7 @@ TEST_F(TitleArtScenesParityGpu, Scenes) {
         SCOPED_TRACE(name);
         Rgba8Image out;
         std::string error;
-        ASSERT_TRUE(renderScene(layers, out, error)) << error;
+        ASSERT_TRUE(titleArtScenesParityRenderScene(layers, out, error)) << error;
         expectParity(("scene/" + name).c_str(), out);
         rendered[name] = std::move(out);
     }
@@ -223,12 +223,12 @@ TEST_F(TitleArtScenesParityGpu, Scenes) {
     // - hidden groups drawn are not hidden groups
     Rgba8Image shown;
     std::string error;
-    ASSERT_TRUE(renderScene(nestedGroups(false), shown, error)) << error;
+    ASSERT_TRUE(titleArtScenesParityRenderScene(nestedGroups(false), shown, error)) << error;
     const BlockStats hidden = againstReference("nested-hidden-groups", shown);
     EXPECT_FALSE(withinParity(hidden)) << "the parity metric passes hidden groups drawn: " << hidden.text();
     // - the title without the Sunburst's luminance is not the masked title
     Rgba8Image unmasked;
-    ASSERT_TRUE(renderScene({title(1, "確定")}, unmasked, error)) << error;
+    ASSERT_TRUE(titleArtScenesParityRenderScene({title(1, "確定")}, unmasked, error)) << error;
     const BlockStats lit = againstReference("mask-from-layer-luminance", unmasked);
     EXPECT_FALSE(withinParity(lit)) << "the parity metric passes the title without its luminance mask: " << lit.text();
 }

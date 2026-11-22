@@ -80,7 +80,7 @@ namespace {
         }
     };
 
-    std::vector<uint8_t> readTarget(){
+    std::vector<uint8_t> readMeshLodTarget(){
         Framebuffer& target = GpuEnvironment::target();
         std::vector<uint8_t> rgba;
         readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba);
@@ -416,13 +416,13 @@ namespace {
             Coverage coverage;
             sphere.setVisible(false);
             GpuEnvironment::drawFrames(2);
-            coverage.background = readTarget();
+            coverage.background = readMeshLodTarget();
             sphere.setVisible(true);
             auto level = [&](int forced){
                 sphere.forceLod(forced);
                 GpuEnvironment::drawFrames(2);
                 sphere.forceLod(-1);
-                return readTarget();
+                return readMeshLodTarget();
             };
             coverage.fine = level(0);
             coverage.coarse = level(1);
@@ -473,7 +473,7 @@ TEST_F(LodFadeGpu, ALevelChangeCrossFades){
     GpuEnvironment::drawFrames(17);
     EXPECT_EQ(sphere.getCurrentLod(), 1);
     EXPECT_EQ(appliedPipeline(), steady) << "back on the steady pipeline after the fade";
-    const std::vector<uint8_t> done = readTarget();
+    const std::vector<uint8_t> done = readMeshLodTarget();
     EXPECT_GOLDEN("lod_crossfade_done");
     GpuEnvironment::drawFrames(1);
     EXPECT_EQ(render().getLodStats().fadeDraws, 0u);
@@ -481,7 +481,7 @@ TEST_F(LodFadeGpu, ALevelChangeCrossFades){
     // the end of a fade is the level drawn alone, pixel for pixel
     sphere.forceLod(1);
     GpuEnvironment::drawFrames(2);
-    EXPECT_EQ(readTarget(), done);
+    EXPECT_EQ(readMeshLodTarget(), done);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -499,7 +499,7 @@ TEST_F(LodFadeGpu, TheTwoLevelsOfAFadeLeaveNoHole){
     sphere.setLodBias(biasCoarse);
     GpuEnvironment::drawFrames(15);
     ASSERT_TRUE(mesh.lodFade.plan.fading());
-    const std::vector<uint8_t> mid = readTarget();
+    const std::vector<uint8_t> mid = readMeshLodTarget();
 
     const Holes holes = countHoles(mid, coverage);
     ASSERT_GT(holes.both, 1000u);
@@ -552,10 +552,10 @@ TEST_F(LodFadeGpu, AFadingMeshUnderTiledLightsKeepsItsLighting){
     GpuEnvironment::drawFrames(15);
     ASSERT_TRUE(mesh.lodFade.plan.fading());
     EXPECT_NE(appliedPipeline(), steady) << "a fading draw uses the fade variant";
-    const std::vector<uint8_t> mid = readTarget();
+    const std::vector<uint8_t> mid = readMeshLodTarget();
     GpuEnvironment::drawFrames(17);
     ASSERT_FALSE(mesh.lodFade.plan.fading());
-    const std::vector<uint8_t> done = readTarget();
+    const std::vector<uint8_t> done = readMeshLodTarget();
 
     // the mean over the middle of the sphere, where the levels differ least: as bright mid-fade
     const int width = (int)GpuEnvironment::target().getWidth(), height = (int)GpuEnvironment::target().getHeight();
@@ -612,7 +612,7 @@ TEST_F(LodFadeGpu, ALevelChangeSnapsUntilItsFadeVariantIsBuilt){
     EXPECT_FALSE(mesh.lodFade.plan.fading()) << "a fade started with its variant still building";
     EXPECT_EQ(render().getLodStats().fadeDraws, 0u);
     EXPECT_EQ(appliedPipeline(), steady);
-    const Holes holes = countHoles(readTarget(), coverage);
+    const Holes holes = countHoles(readMeshLodTarget(), coverage);
     ASSERT_GT(holes.both, 1000u);
     EXPECT_EQ(holes.holes, 0u) << "pixels both levels cover that the snap left empty";
 

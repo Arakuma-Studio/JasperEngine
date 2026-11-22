@@ -201,8 +201,11 @@ void getJobTool(const CallPtr& call) {
     }
     const int logLines = call->args().value("log_lines", 40);
     Json data = job->toJson(logLines);
-    call->ok(job->title() + ": " + jobStatusName(job->status()) +
-             (job->message().empty() ? std::string() : " - " + job->message()), data);
+    const std::string status = data.value("status", std::string());
+    ToolResult reply = ToolResult::success(job->title() + ": " + status + (job->message().empty() ? std::string() : " - " + job->message()), data);
+    // a job sets its images before it succeeds: the status read with the data says they are there
+    if (status == jobStatusName(JobStatus::Succeeded)) reply.images = job->images();
+    call->reply(std::move(reply));
 }
 
 void cancelJobTool(const CallPtr& call) {

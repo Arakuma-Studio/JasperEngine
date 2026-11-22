@@ -82,24 +82,24 @@ namespace {
 
     // ---------------------------------------------------------------- headless project
 
-    struct Headless {
+    struct VatBakerHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
     };
 
-    fs::path repoFile(const fs::path& relative) {
+    fs::path vatBakerRepoFile(const fs::path& relative) {
         return (fs::path(JASPER_TEST_FIXTURES_DIR) / ".." / ".." / ".." / relative).lexically_normal();
     }
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
-            const fs::path root = fs::temp_directory_path() / ("jasper-vat-baker-test-" + std::to_string(::getpid()));
-            fs::remove_all(root);
-            fs::create_directories(root / "config");
-            setenv("XDG_CONFIG_HOME", (root / "config").c_str(), 1);
-            out.dir = root / "project";
+    VatBakerHeadless& vatBakerHeadless() {
+        static VatBakerHeadless h = []() {
+            VatBakerHeadless out;
+            const fs::path vatBakerRoot = fs::temp_directory_path() / ("jasper-vat-baker-test-" + std::to_string(::getpid()));
+            fs::remove_all(vatBakerRoot);
+            fs::create_directories(vatBakerRoot / "config");
+            setenv("XDG_CONFIG_HOME", (vatBakerRoot / "config").c_str(), 1);
+            out.dir = vatBakerRoot / "project";
             fs::create_directories(out.dir / ".jasperengine");
             fs::create_directories(out.dir / "assets" / "models");
             std::ofstream(out.dir / "project.yaml") << "name: vatbaker\nassetsDir: assets\n";
@@ -118,58 +118,58 @@ namespace {
         return h;
     }
 
-    Project* project() { return headless().project.get(); }
-    const fs::path& root() { return headless().dir; }
-    CommandHistory* history(uint32_t sceneId) { return CommandHandle::get(sceneId); }
-    Scene* sceneOf(uint32_t sceneId) { return project()->getScene(sceneId)->scene; }
+    Project* vatBakerProject() { return vatBakerHeadless().project.get(); }
+    const fs::path& vatBakerRoot() { return vatBakerHeadless().dir; }
+    CommandHistory* vatBakerHistory(uint32_t sceneId) { return CommandHandle::get(sceneId); }
+    Scene* vatBakerSceneOf(uint32_t sceneId) { return vatBakerProject()->getScene(sceneId)->scene; }
 
-    std::string readAll(const fs::path& path) {
+    std::string vatBakerReadAll(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     }
 
-    void writeAll(const fs::path& path, const std::string& content) {
+    void vatBakerWriteAll(const fs::path& path, const std::string& content) {
         fs::create_directories(path.parent_path());
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
         file << content;
     }
 
     // a fresh assets/models per test, with every fixture model
-    void resetAssets() {
-        const fs::path models = root() / "assets" / "models";
+    void vatBakerResetAssets() {
+        const fs::path models = vatBakerRoot() / "assets" / "models";
         fs::remove_all(models);
-        fs::remove_all(root() / "assets" / "anim");
+        fs::remove_all(vatBakerRoot() / "assets" / "anim");
         fs::create_directories(models);
         const fs::path pose = fs::path("tools") / "fixtures" / "pose-animation" / "assets" / "models";
         const fs::path vat = fs::path("tools") / "fixtures" / "vertex-animation" / "assets" / "models";
-        fs::copy_file(repoFile(pose / "hero_animated.gltf"), models / "hero.gltf", fs::copy_options::overwrite_existing);
-        fs::copy_file(repoFile(pose / "hero_tpose.gltf"), models / "tpose.gltf", fs::copy_options::overwrite_existing);
-        fs::copy_file(repoFile(vat / "rigid_arm.gltf"), models / "rigid_arm.gltf", fs::copy_options::overwrite_existing);
-        fs::copy_file(repoFile(vat / "morph_blob.gltf"), models / "morph_blob.gltf", fs::copy_options::overwrite_existing);
+        fs::copy_file(vatBakerRepoFile(pose / "hero_animated.gltf"), models / "hero.gltf", fs::copy_options::overwrite_existing);
+        fs::copy_file(vatBakerRepoFile(pose / "hero_tpose.gltf"), models / "tpose.gltf", fs::copy_options::overwrite_existing);
+        fs::copy_file(vatBakerRepoFile(vat / "rigid_arm.gltf"), models / "rigid_arm.gltf", fs::copy_options::overwrite_existing);
+        fs::copy_file(vatBakerRepoFile(vat / "morph_blob.gltf"), models / "morph_blob.gltf", fs::copy_options::overwrite_existing);
         for (const char* name : {"hero.gltf", "tpose.gltf", "rigid_arm.gltf", "morph_blob.gltf"}) {
             MeshSystem::invalidateModelFile((models / name).string());
         }
         AnimationClipPool::clear();
     }
 
-    uint32_t newScene() {
-        Project* p = project();
+    uint32_t vatBakerNewScene() {
+        Project* p = vatBakerProject();
         if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
         p->createNewScene("Vat", SceneType::SCENE_3D);
         return p->getSelectedSceneId();
     }
 
-    Entity loadModel(uint32_t sceneId, const std::string& assetsRelative, const std::string& name = "Hero") {
-        CreateEntityCmd* create = new CreateEntityCmd(project(), sceneId, name, EntityCreationType::MODEL);
+    Entity vatBakerLoadModel(uint32_t sceneId, const std::string& assetsRelative, const std::string& name = "Hero") {
+        CreateEntityCmd* create = new CreateEntityCmd(vatBakerProject(), sceneId, name, EntityCreationType::MODEL);
         create->setQuiet(true);
-        history(sceneId)->addCommandNoMerge(create);
+        vatBakerHistory(sceneId)->addCommandNoMerge(create);
         const Entity entity = create->getEntity();
-        history(sceneId)->addCommandNoMerge(new ModelLoadCmd(project(), sceneId, entity, assetsRelative));
-        EXPECT_FALSE(sceneOf(sceneId)->getComponent<ModelComponent>(entity).loadedFilename.empty()) << assetsRelative;
+        vatBakerHistory(sceneId)->addCommandNoMerge(new ModelLoadCmd(vatBakerProject(), sceneId, entity, assetsRelative));
+        EXPECT_FALSE(vatBakerSceneOf(sceneId)->getComponent<ModelComponent>(entity).loadedFilename.empty()) << assetsRelative;
         return entity;
     }
 
-    VatBakeSpec modelSpec(const std::string& model, std::vector<std::string> clips = {}) {
+    VatBakeSpec vatBakerModelSpec(const std::string& model, std::vector<std::string> clips = {}) {
         VatBakeSpec spec;
         spec.source.kind = VatSourceKind::Model;
         spec.source.path = "assets/models/" + model;
@@ -177,7 +177,7 @@ namespace {
         return spec;
     }
 
-    bool hasKind(const std::vector<VatIssue>& issues, const std::string& kind, bool* error = nullptr) {
+    bool vatBakerHasKind(const std::vector<VatIssue>& issues, const std::string& kind, bool* error = nullptr) {
         for (const VatIssue& issue : issues) {
             if (issue.kind == kind) {
                 if (error) *error = issue.error;
@@ -187,7 +187,7 @@ namespace {
         return false;
     }
 
-    std::string kinds(const std::vector<VatIssue>& issues) {
+    std::string vatBakerKinds(const std::vector<VatIssue>& issues) {
         std::string out;
         for (const VatIssue& issue : issues) out += issue.kind + "(" + issue.message + ") ";
         return out;
@@ -197,19 +197,19 @@ namespace {
 
     // every vertex of every mesh under `root`: its rest (identity skin, root space) and its
     // position posed by `clip` at `time` (CpuSkin, root space)
-    struct RefVertex {
+    struct VatBakerRefVertex {
         Vector3 rest;
         Vector3 posed;
     };
 
-    Vector3 apply(const Matrix4& m, const Vector3& p) {
+    Vector3 vatBakerApply(const Matrix4& m, const Vector3& p) {
         return Vector3(m.get(0, 0) * p.x + m.get(1, 0) * p.y + m.get(2, 0) * p.z + m.get(3, 0),
                        m.get(0, 1) * p.x + m.get(1, 1) * p.y + m.get(2, 1) * p.z + m.get(3, 1),
                        m.get(0, 2) * p.x + m.get(1, 2) * p.y + m.get(2, 2) * p.z + m.get(3, 2));
     }
 
-    std::vector<RefVertex> referencePose(Scene* scene, Entity rootEntity, const std::shared_ptr<const AnimationClip>& clip, float time) {
-        std::vector<RefVertex> out;
+    std::vector<VatBakerRefVertex> vatBakerReferencePose(Scene* scene, Entity rootEntity, const std::shared_ptr<const AnimationClip>& clip, float time) {
+        std::vector<VatBakerRefVertex> out;
         cpuskin::updateTransforms(scene);
         const Matrix4 rootInverse = scene->getComponent<Transform>(rootEntity).modelMatrix.inverse();
         // rest first
@@ -236,7 +236,7 @@ namespace {
             EXPECT_TRUE(cpuskin::cpuDeform(source, identity, mesh->morphWeights, nullptr, rest, &error)) << error;
             const Matrix4 toRoot = rootInverse * scene->getComponent<Transform>(entity).modelMatrix;
             std::vector<Vector3> r;
-            for (const Vector3& p : rest.positions) r.push_back(apply(toRoot, p));
+            for (const Vector3& p : rest.positions) r.push_back(vatBakerApply(toRoot, p));
             meshes.push_back(entity);
             rests.push_back(r);
         }
@@ -256,7 +256,7 @@ namespace {
             std::string error;
             EXPECT_TRUE(cpuskin::deformEntity(scene, meshes[m], posed, &error)) << error;
             const Matrix4 toRoot = rootInverse * scene->getComponent<Transform>(meshes[m]).modelMatrix;
-            for (size_t v = 0; v < posed.positions.size(); v++) out.push_back({rests[m][v], apply(toRoot, posed.positions[v])});
+            for (size_t v = 0; v < posed.positions.size(); v++) out.push_back({rests[m][v], vatBakerApply(toRoot, posed.positions[v])});
         }
         scene->getSystem<ActionSystem>()->restorePlayerPreview(session);
         cpuskin::updateTransforms(scene);
@@ -264,19 +264,19 @@ namespace {
         return out;
     }
 
-    std::string restKey(const Vector3& p) {
+    std::string vatBakerRestKey(const Vector3& p) {
         char text[96];
         std::snprintf(text, sizeof(text), "%.4f,%.4f,%.4f", std::round(p.x * 1e4) / 1e4, std::round(p.y * 1e4) / 1e4, std::round(p.z * 1e4) / 1e4);
         return text;
     }
 
-    float distance(const Vector3& a, const Vector3& b) {
+    float vatBakerDistance(const Vector3& a, const Vector3& b) {
         const float dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
         return std::sqrt(dx * dx + dy * dy + dz * dz);
     }
 
     // a payload texel as floats
-    void texel(const VatPayload& payload, uint64_t index, float out[4]) {
+    void vatBakerTexel(const VatPayload& payload, uint64_t index, float out[4]) {
         if (payload.precision == VatPrecision::Float) {
             std::memcpy(out, payload.bytes.data() + index * 16, 16);
         } else {
@@ -296,7 +296,7 @@ namespace {
             const Vector3 rest(mesh.positions[v * 3], mesh.positions[v * 3 + 1], mesh.positions[v * 3 + 2]);
             if (data.mode == VatMode::Vertices) {
                 float t[4];
-                texel(payload, jasperengine::vat::vatTexelIndex(VatMode::Vertices, data.layout, globalFrame, (int)mesh.vatIndex[v], 0), t);
+                vatBakerTexel(payload, jasperengine::vat::vatTexelIndex(VatMode::Vertices, data.layout, globalFrame, (int)mesh.vatIndex[v], 0), t);
                 out.push_back(Vector3(rest.x + t[0], rest.y + t[1], rest.z + t[2]));
             } else {
                 Vector3 sum(0, 0, 0);
@@ -304,8 +304,8 @@ namespace {
                     const float w = mesh.weights[v * 4 + k];
                     if (w == 0.0f) continue;
                     float q[4], ts[4];
-                    texel(payload, jasperengine::vat::vatTexelIndex(VatMode::Bones, data.layout, globalFrame, mesh.joints[v * 4 + k], 0), q);
-                    texel(payload, jasperengine::vat::vatTexelIndex(VatMode::Bones, data.layout, globalFrame, mesh.joints[v * 4 + k], 1), ts);
+                    vatBakerTexel(payload, jasperengine::vat::vatTexelIndex(VatMode::Bones, data.layout, globalFrame, mesh.joints[v * 4 + k], 0), q);
+                    vatBakerTexel(payload, jasperengine::vat::vatTexelIndex(VatMode::Bones, data.layout, globalFrame, mesh.joints[v * 4 + k], 1), ts);
                     const Vector3 p = applyBone(q, ts, ts[3], rest);
                     sum = Vector3(sum.x + w * p.x, sum.y + w * p.y, sum.z + w * p.z);
                 }
@@ -316,30 +316,30 @@ namespace {
     }
 
     // the largest distance between the baked mesh at `globalFrame` and the reference pose
-    float frameError(const VatBakeResult& result, int globalFrame, const std::vector<RefVertex>& reference) {
+    float frameError(const VatBakeResult& result, int globalFrame, const std::vector<VatBakerRefVertex>& reference) {
         std::map<std::string, std::vector<Vector3>> byRest;
-        for (const RefVertex& v : reference) byRest[restKey(v.rest)].push_back(v.posed);
+        for (const VatBakerRefVertex& v : reference) byRest[vatBakerRestKey(v.rest)].push_back(v.posed);
         const std::vector<Vector3> decoded = decodeFrame(result, globalFrame);
         float worst = 0.0f;
         for (size_t v = 0; v < decoded.size(); v++) {
             const Vector3 rest(result.mesh.positions[v * 3], result.mesh.positions[v * 3 + 1], result.mesh.positions[v * 3 + 2]);
-            auto it = byRest.find(restKey(rest));
+            auto it = byRest.find(vatBakerRestKey(rest));
             if (it == byRest.end()) {
                 ADD_FAILURE() << "baked vertex " << v << " has no source vertex at its rest";
                 return 1e9f;
             }
             float best = 1e9f;
-            for (const Vector3& p : it->second) best = std::min(best, distance(p, decoded[v]));
+            for (const Vector3& p : it->second) best = std::min(best, vatBakerDistance(p, decoded[v]));
             worst = std::max(worst, best);
         }
         return worst;
     }
 
     std::unique_ptr<VatBakeSession> bake(const VatBakeSpec& spec) {
-        auto session = std::make_unique<VatBakeSession>(project());
+        auto session = std::make_unique<VatBakeSession>(vatBakerProject());
         session->setSpec(spec);
         const bool ok = session->run();
-        EXPECT_TRUE(ok) << session->error() << " / " << kinds(session->failureIssues());
+        EXPECT_TRUE(ok) << session->error() << " / " << vatBakerKinds(session->failureIssues());
         return session;
     }
 
@@ -441,20 +441,20 @@ TEST(VatBakerTypes, BoneDecompositionRoundTripsAndKeepsMirrors) {
     decomposeBone(matrix, q, t, s);
     EXPECT_NEAR(s, 1.5f, 1e-5f);
     const Vector3 p(0.3f, -0.7f, 2.0f);
-    EXPECT_LT(distance(applyBone(q, t, s, p), apply(matrix, p)), 1e-5f);
+    EXPECT_LT(vatBakerDistance(applyBone(q, t, s, p), vatBakerApply(matrix, p)), 1e-5f);
     // a mirror is a rotation with a negative uniform scale
     const Matrix4 mirror = matrix * Matrix4::scaleMatrix(Vector3(-1, -1, -1));
     decomposeBone(mirror, q, t, s);
     EXPECT_NEAR(s, -1.5f, 1e-5f);
-    EXPECT_LT(distance(applyBone(q, t, s, p), apply(mirror, p)), 1e-5f);
+    EXPECT_LT(vatBakerDistance(applyBone(q, t, s, p), vatBakerApply(mirror, p)), 1e-5f);
     // the tangent frame maps +X, +Z to the tangent and the normal
     float frame[4];
     const float origin[3] = {0, 0, 0};
     tangentFrame(Vector3(0, 1, 0), Vector3(1, 0, 0), frame);
     const Vector3 z = applyBone(frame, origin, 1.0f, Vector3(0, 0, 1));
     const Vector3 x = applyBone(frame, origin, 1.0f, Vector3(1, 0, 0));
-    EXPECT_LT(distance(z, Vector3(0, 1, 0)), 1e-6f);
-    EXPECT_LT(distance(x, Vector3(1, 0, 0)), 1e-6f);
+    EXPECT_LT(vatBakerDistance(z, Vector3(0, 1, 0)), 1e-6f);
+    EXPECT_LT(vatBakerDistance(x, Vector3(1, 0, 0)), 1e-6f);
 }
 
 TEST(VatBakerTypes, TooLargeFixesAreOrderedByEffect) {
@@ -622,7 +622,7 @@ TEST(VatBakerCompute, PrecisionAutoSwitchesToFloatFarFromRest) {
     std::string error;
     ASSERT_TRUE(computeVatBake(input, out, error)) << error;
     EXPECT_EQ(out.data.layout.precision, VatPrecision::Float);
-    EXPECT_TRUE(hasKind(out.report.warnings, "precision_switched")) << kinds(out.report.warnings);
+    EXPECT_TRUE(vatBakerHasKind(out.report.warnings, "precision_switched")) << vatBakerKinds(out.report.warnings);
     EXPECT_GT(out.halfErrorMm, out.report.toleranceMm);
     // the same near rest stays half
     input.clips[0] = movingClip("Near", 1, 1.0f, 10.0f, ClipWrapMode::Loop, [](size_t, float t) {
@@ -630,7 +630,7 @@ TEST(VatBakerCompute, PrecisionAutoSwitchesToFloatFarFromRest) {
     });
     ASSERT_TRUE(computeVatBake(input, out, error)) << error;
     EXPECT_EQ(out.data.layout.precision, VatPrecision::Half);
-    EXPECT_FALSE(hasKind(out.report.warnings, "precision_switched"));
+    EXPECT_FALSE(vatBakerHasKind(out.report.warnings, "precision_switched"));
     // forced half stays half
     input.precision = VatPrecisionChoice::Half;
     input.clips[0] = movingClip("Away", 1, 1.0f, 10.0f, ClipWrapMode::Loop, [](size_t, float t) {
@@ -648,7 +648,7 @@ TEST(VatBakerCompute, ValidationKindsOfTheBake) {
         VatBakeInput input;
         input.renderers = {quadRenderer("A")};
         EXPECT_FALSE(computeVatBake(input, out, error));
-        EXPECT_TRUE(hasKind(out.report.warnings, "no_animation"));
+        EXPECT_TRUE(vatBakerHasKind(out.report.warnings, "no_animation"));
     }
     // clip_limit
     {
@@ -658,7 +658,7 @@ TEST(VatBakerCompute, ValidationKindsOfTheBake) {
             input.clips.push_back(movingClip("C" + std::to_string(i), 1, 0.0f, 10.0f, ClipWrapMode::Loop, [](size_t, float) { return Matrix4(); }));
         }
         EXPECT_FALSE(computeVatBake(input, out, error));
-        EXPECT_TRUE(hasKind(out.report.warnings, "clip_limit"));
+        EXPECT_TRUE(vatBakerHasKind(out.report.warnings, "clip_limit"));
     }
     // bone_limit: Bones forced on a skin of 65536 joints moving apart
     {
@@ -703,7 +703,7 @@ TEST(VatBakerCompute, ValidationKindsOfTheBake) {
         clip.samples.push_back(sample);
         input.clips.push_back(clip);
         EXPECT_FALSE(computeVatBake(input, out, error));
-        EXPECT_TRUE(hasKind(out.report.warnings, "bone_limit")) << kinds(out.report.warnings);
+        EXPECT_TRUE(vatBakerHasKind(out.report.warnings, "bone_limit")) << vatBakerKinds(out.report.warnings);
         // Auto takes Vertices and says why
         input.mode = VatModeChoice::Auto;
         ASSERT_TRUE(computeVatBake(input, out, error)) << error;
@@ -738,7 +738,7 @@ TEST(VatBakerCompute, ValidationKindsOfTheBake) {
         big.samples.assign(600000, still);
         input.clips.push_back(big);
         EXPECT_FALSE(computeVatBake(input, out, error));
-        EXPECT_TRUE(hasKind(out.report.warnings, "too_large")) << kinds(out.report.warnings);
+        EXPECT_TRUE(vatBakerHasKind(out.report.warnings, "too_large")) << vatBakerKinds(out.report.warnings);
     }
     // events_dropped, large_interpolation_error, mixed_rest
     {
@@ -757,10 +757,10 @@ TEST(VatBakerCompute, ValidationKindsOfTheBake) {
         clip.events = {inside, past};
         input.clips.push_back(clip);
         ASSERT_TRUE(computeVatBake(input, out, error)) << error;
-        EXPECT_TRUE(hasKind(out.report.warnings, "events_dropped"));
+        EXPECT_TRUE(vatBakerHasKind(out.report.warnings, "events_dropped"));
         ASSERT_EQ(out.data.clips[0].events.size(), 1u);
         EXPECT_EQ(out.data.clips[0].events[0].function, "onStep");
-        EXPECT_TRUE(hasKind(out.report.warnings, "large_interpolation_error")) << kinds(out.report.warnings);
+        EXPECT_TRUE(vatBakerHasKind(out.report.warnings, "large_interpolation_error")) << vatBakerKinds(out.report.warnings);
         EXPECT_GT(out.report.clips[0].interpolationErrorMm, out.report.toleranceMm);
         // a skinned quad whose bind pose collapsed to a point: each vertex's own bone places it,
         // so the first frame is the rest
@@ -780,7 +780,7 @@ TEST(VatBakerCompute, ValidationKindsOfTheBake) {
             }
         }
         ASSERT_TRUE(computeVatBake(input, out, error)) << error;
-        EXPECT_TRUE(hasKind(out.report.warnings, "mixed_rest")) << kinds(out.report.warnings);
+        EXPECT_TRUE(vatBakerHasKind(out.report.warnings, "mixed_rest")) << vatBakerKinds(out.report.warnings);
         EXPECT_EQ(out.mesh.positions[3], 1.0f) << "the rest is the first frame (vertex 1 at x = 1)";
     }
 }
@@ -821,7 +821,7 @@ TEST(VatBakerCompute, ALoopThatDoesntEndWhereItStartsIsNotToldToRaiseFps) {
         // jumps back 1 m between its last frame and its first: no fps fixes that
         const VatBakeOutput out = bake([](size_t, float t) { return Matrix4::translateMatrix(Vector3(t / 3.0f, 0, 0)); }, 3.0f);
         const VatIssue issue = issueOf(out);
-        ASSERT_EQ(issue.kind, "large_interpolation_error") << kinds(out.report.warnings);
+        ASSERT_EQ(issue.kind, "large_interpolation_error") << vatBakerKinds(out.report.warnings);
         EXPECT_NEAR(out.report.clips[0].interpolationErrorMm, 500.0f, 20.0f) << "half the jump, at the seam";
         EXPECT_NE(issue.message.find("doesn't end where it starts"), std::string::npos) << issue.message;
         EXPECT_NE(issue.fix.find("once or clamp_forever"), std::string::npos) << issue.fix;
@@ -837,7 +837,7 @@ TEST(VatBakerCompute, ALoopThatDoesntEndWhereItStartsIsNotToldToRaiseFps) {
         // pair of frames alike, so the fix is a higher rate
         const VatBakeOutput out = bake([](size_t, float t) { return Matrix4::rotateZMatrix(t * 720.0f); }, 1.0f);
         const VatIssue issue = issueOf(out);
-        ASSERT_EQ(issue.kind, "large_interpolation_error") << kinds(out.report.warnings);
+        ASSERT_EQ(issue.kind, "large_interpolation_error") << vatBakerKinds(out.report.warnings);
         EXPECT_NEAR(out.report.clips[0].interpolationErrorMm, 1414.2f * (1.0f - std::cos(12.0f * 3.14159265f / 180.0f)), 1.0f)
             << "the chord of 24 degrees at the far corner";
         EXPECT_EQ(issue.message.find("doesn't end where it starts"), std::string::npos) << issue.message;
@@ -863,21 +863,21 @@ TEST(VatBakerCompute, CancelStopsTheBake) {
 class VatBaker_ : public ::testing::Test {
 protected:
     void SetUp() override {
-        ASSERT_TRUE(headless().ready);
-        resetAssets();
+        ASSERT_TRUE(vatBakerHeadless().ready);
+        vatBakerResetAssets();
     }
 };
 
 TEST_F(VatBaker_, HeroBakesInBothModesAndMatchesCpuSkin) {
-    const uint32_t sceneId = newScene();
-    const Entity hero = loadModel(sceneId, "models/hero.gltf");
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = vatBakerNewScene();
+    const Entity hero = vatBakerLoadModel(sceneId, "models/hero.gltf");
+    Scene* scene = vatBakerSceneOf(sceneId);
     const std::shared_ptr<const AnimationClip> walk = AnimationClipPool::getOrLoad("models/hero.gltf#Walk");
     const std::shared_ptr<const AnimationClip> idle = AnimationClipPool::getOrLoad("models/hero.gltf#Idle");
     ASSERT_TRUE(walk && idle);
 
     for (VatModeChoice mode : {VatModeChoice::Vertices, VatModeChoice::Bones}) {
-        VatBakeSpec spec = modelSpec("hero.gltf", {"Walk", "Idle"});
+        VatBakeSpec spec = vatBakerModelSpec("hero.gltf", {"Walk", "Idle"});
         spec.mode = mode;
         std::unique_ptr<VatBakeSession> session = bake(spec);
         const VatBakeResult* result = session->result();
@@ -911,12 +911,12 @@ TEST_F(VatBaker_, HeroBakesInBothModesAndMatchesCpuSkin) {
         const float bound = mode == VatModeChoice::Vertices ? result->report.quantizationErrorMm / 1000.0f + 2e-5f : 1e-3f;
         for (int frame : {0, 7, 29}) {
             const float time = clipSampleTime(walk->getLength(), ClipWrapMode::Loop, data.clips[0].frames, data.clips[0].fps, frame);
-            EXPECT_LE(frameError(*result, data.clips[0].start + frame, referencePose(scene, hero, walk, time)), bound)
+            EXPECT_LE(frameError(*result, data.clips[0].start + frame, vatBakerReferencePose(scene, hero, walk, time)), bound)
                 << modeChoiceName(mode) << " Walk frame " << frame;
         }
         for (int frame : {0, 33, 59}) {
             const float time = clipSampleTime(idle->getLength(), ClipWrapMode::Loop, data.clips[1].frames, data.clips[1].fps, frame);
-            EXPECT_LE(frameError(*result, data.clips[1].start + frame, referencePose(scene, hero, idle, time)), bound)
+            EXPECT_LE(frameError(*result, data.clips[1].start + frame, vatBakerReferencePose(scene, hero, idle, time)), bound)
                 << modeChoiceName(mode) << " Idle frame " << frame;
         }
         // the preview asset is in the pool
@@ -925,9 +925,9 @@ TEST_F(VatBaker_, HeroBakesInBothModesAndMatchesCpuSkin) {
 }
 
 TEST_F(VatBaker_, OnceClipsIncludeTheEndFrame) {
-    const uint32_t sceneId = newScene();
-    const Entity hero = loadModel(sceneId, "models/hero.gltf");
-    VatBakeSpec spec = modelSpec("hero.gltf", {"Walk"});
+    const uint32_t sceneId = vatBakerNewScene();
+    const Entity hero = vatBakerLoadModel(sceneId, "models/hero.gltf");
+    VatBakeSpec spec = vatBakerModelSpec("hero.gltf", {"Walk"});
     spec.mode = VatModeChoice::Vertices;
     spec.clipOverrides.push_back({"Walk", ClipWrapMode::Once, 0.0f});
     std::unique_ptr<VatBakeSession> session = bake(spec);
@@ -936,13 +936,13 @@ TEST_F(VatBaker_, OnceClipsIncludeTheEndFrame) {
     EXPECT_EQ(result->data.clips[0].frames, 31);
     EXPECT_EQ(result->data.clips[0].wrap, ClipWrapMode::Once);
     const std::shared_ptr<const AnimationClip> walk = AnimationClipPool::getOrLoad("models/hero.gltf#Walk");
-    EXPECT_LE(frameError(*result, 30, referencePose(sceneOf(sceneId), hero, walk, walk->getLength())),
+    EXPECT_LE(frameError(*result, 30, vatBakerReferencePose(vatBakerSceneOf(sceneId), hero, walk, walk->getLength())),
               result->report.quantizationErrorMm / 1000.0f + 2e-5f);
 }
 
 TEST_F(VatBaker_, AutoPicksTheModeAndSaysWhy) {
     {
-        std::unique_ptr<VatBakeSession> session = bake(modelSpec("hero.gltf", {"Walk"}));
+        std::unique_ptr<VatBakeSession> session = bake(vatBakerModelSpec("hero.gltf", {"Walk"}));
         ASSERT_TRUE(session->result());
         EXPECT_EQ(session->result()->data.mode, VatMode::Bones) << session->result()->report.modeReason;
         EXPECT_NE(session->result()->report.modeReason.find("skin and rigid parts only"), std::string::npos);
@@ -950,7 +950,7 @@ TEST_F(VatBaker_, AutoPicksTheModeAndSaysWhy) {
         EXPECT_EQ(session->estimate().mode, VatMode::Bones);
     }
     {
-        std::unique_ptr<VatBakeSession> session = bake(modelSpec("morph_blob.gltf"));
+        std::unique_ptr<VatBakeSession> session = bake(vatBakerModelSpec("morph_blob.gltf"));
         ASSERT_TRUE(session->result());
         EXPECT_EQ(session->result()->data.mode, VatMode::Vertices);
         EXPECT_NE(session->result()->report.modeReason.find("morph targets"), std::string::npos) << session->result()->report.modeReason;
@@ -962,7 +962,7 @@ TEST_F(VatBaker_, AutoPicksTheModeAndSaysWhy) {
         EXPECT_NEAR(highest, 0.4f, 1e-3f);
     }
     {
-        std::unique_ptr<VatBakeSession> session = bake(modelSpec("rigid_arm.gltf", {"Swing"}));
+        std::unique_ptr<VatBakeSession> session = bake(vatBakerModelSpec("rigid_arm.gltf", {"Swing"}));
         ASSERT_TRUE(session->result());
         const VatBakeResult* result = session->result();
         EXPECT_EQ(result->data.mode, VatMode::Bones) << result->report.modeReason;
@@ -974,7 +974,7 @@ TEST_F(VatBaker_, AutoPicksTheModeAndSaysWhy) {
         EXPECT_NEAR(result->mesh.materials[1].baseColor[2], 0.8f, 1e-6f) << "blue";
     }
     {
-        std::unique_ptr<VatBakeSession> session = bake(modelSpec("rigid_arm.gltf", {"Stretch"}));
+        std::unique_ptr<VatBakeSession> session = bake(vatBakerModelSpec("rigid_arm.gltf", {"Stretch"}));
         ASSERT_TRUE(session->result());
         EXPECT_EQ(session->result()->data.mode, VatMode::Vertices);
         EXPECT_NE(session->result()->report.modeReason.find("nonuniform_bone_scale"), std::string::npos)
@@ -984,12 +984,12 @@ TEST_F(VatBaker_, AutoPicksTheModeAndSaysWhy) {
 
 TEST_F(VatBaker_, EstimateAgreesWithTheBake) {
     for (VatModeChoice mode : {VatModeChoice::Vertices, VatModeChoice::Bones}) {
-        VatBakeSpec spec = modelSpec("hero.gltf", {"Walk", "Idle"});
+        VatBakeSpec spec = vatBakerModelSpec("hero.gltf", {"Walk", "Idle"});
         spec.mode = mode;
         spec.fps = 24.0f;
-        VatBakeSession session(project());
+        VatBakeSession session(vatBakerProject());
         session.setSpec(spec);
-        EXPECT_FALSE(hasErrors(session.check())) << kinds(session.check());
+        EXPECT_FALSE(hasErrors(session.check())) << vatBakerKinds(session.check());
         const VatEstimate estimate = session.estimate();
         ASSERT_TRUE(session.run()) << session.error();
         const VatReport& report = session.result()->report;
@@ -1011,29 +1011,29 @@ TEST_F(VatBaker_, EstimateAgreesWithTheBake) {
 
 TEST_F(VatBaker_, CheckFindsEveryProblemBeforeSampling) {
     auto check = [](const VatBakeSpec& spec) {
-        VatBakeSession session(project());
+        VatBakeSession session(vatBakerProject());
         session.setSpec(spec);
         return session.check();
     };
     bool error = false;
-    EXPECT_TRUE(hasKind(check(modelSpec("missing.gltf")), "invalid_source", &error));
+    EXPECT_TRUE(vatBakerHasKind(check(vatBakerModelSpec("missing.gltf")), "invalid_source", &error));
     EXPECT_TRUE(error);
-    EXPECT_TRUE(hasKind(check(modelSpec("tpose.gltf")), "no_animation", &error)) << "a model without animations";
+    EXPECT_TRUE(vatBakerHasKind(check(vatBakerModelSpec("tpose.gltf")), "no_animation", &error)) << "a model without animations";
     EXPECT_TRUE(error);
-    EXPECT_TRUE(hasKind(check(modelSpec("hero.gltf", {"Moonwalk"})), "invalid_settings", &error));
-    VatBakeSpec zero = modelSpec("hero.gltf");
+    EXPECT_TRUE(vatBakerHasKind(check(vatBakerModelSpec("hero.gltf", {"Moonwalk"})), "invalid_settings", &error));
+    VatBakeSpec zero = vatBakerModelSpec("hero.gltf");
     zero.fps = 0.0f;
-    EXPECT_TRUE(hasKind(check(zero), "invalid_settings"));
-    VatBakeSpec socket = modelSpec("hero.gltf", {"Walk"});
+    EXPECT_TRUE(vatBakerHasKind(check(zero), "invalid_settings"));
+    VatBakeSpec socket = vatBakerModelSpec("hero.gltf", {"Walk"});
     socket.sockets = {"Hero/NoSuchBone"};
-    EXPECT_TRUE(hasKind(check(socket), "socket_not_found", &error));
+    EXPECT_TRUE(vatBakerHasKind(check(socket), "socket_not_found", &error));
     EXPECT_TRUE(error);
     // too big for mobile: every clip at 240 fps in Vertices mode, with the fixes
-    VatBakeSpec big = modelSpec("hero.gltf");
+    VatBakeSpec big = vatBakerModelSpec("hero.gltf");
     big.mode = VatModeChoice::Vertices;
     big.fps = 240.0f;
     const std::vector<VatIssue> bigIssues = check(big);
-    EXPECT_TRUE(hasKind(bigIssues, "too_large", &error)) << kinds(bigIssues);
+    EXPECT_TRUE(vatBakerHasKind(bigIssues, "too_large", &error)) << vatBakerKinds(bigIssues);
     EXPECT_TRUE(error);
     for (const VatIssue& issue : bigIssues) {
         if (issue.kind == "too_large") {
@@ -1041,37 +1041,37 @@ TEST_F(VatBaker_, CheckFindsEveryProblemBeforeSampling) {
         }
     }
     // float Vertices of Walk and Idle at 240 fps: fits, but over the 32 MB of mobile
-    VatBakeSpec heavy = modelSpec("hero.gltf", {"Walk", "Idle"});
+    VatBakeSpec heavy = vatBakerModelSpec("hero.gltf", {"Walk", "Idle"});
     heavy.mode = VatModeChoice::Vertices;
     heavy.precision = VatPrecisionChoice::Float;
     heavy.fps = 240.0f;
-    EXPECT_TRUE(hasKind(check(heavy), "memory_high", &error)) << kinds(check(heavy));
+    EXPECT_TRUE(vatBakerHasKind(check(heavy), "memory_high", &error)) << vatBakerKinds(check(heavy));
     EXPECT_FALSE(error);
     // an explicit output that exists
-    writeAll(root() / "assets" / "models" / "taken.vat", "{}");
-    VatBakeSpec taken = modelSpec("hero.gltf", {"Walk"});
+    vatBakerWriteAll(vatBakerRoot() / "assets" / "models" / "taken.vat", "{}");
+    VatBakeSpec taken = vatBakerModelSpec("hero.gltf", {"Walk"});
     taken.output = "assets/models/taken.vat";
-    EXPECT_TRUE(hasKind(check(taken), "output_exists", &error));
+    EXPECT_TRUE(vatBakerHasKind(check(taken), "output_exists", &error));
     EXPECT_TRUE(error);
     taken.overwrite = true;
-    EXPECT_FALSE(hasKind(check(taken), "output_exists"));
+    EXPECT_FALSE(vatBakerHasKind(check(taken), "output_exists"));
     // replace needs a GameObject; a crowd needs a count and an area
-    VatBakeSpec replace = modelSpec("hero.gltf", {"Walk"});
+    VatBakeSpec replace = vatBakerModelSpec("hero.gltf", {"Walk"});
     replace.place = VatPlace::Replace;
     EXPECT_TRUE(hasErrors(check(replace)));
-    VatBakeSpec crowd = modelSpec("hero.gltf", {"Walk"});
+    VatBakeSpec crowd = vatBakerModelSpec("hero.gltf", {"Walk"});
     crowd.place = VatPlace::Crowd;
-    EXPECT_FALSE(hasErrors(check(crowd))) << kinds(check(crowd));
+    EXPECT_FALSE(hasErrors(check(crowd))) << vatBakerKinds(check(crowd));
     crowd.crowd.count = 0;
-    EXPECT_TRUE(hasKind(check(crowd), "invalid_settings", &error)) << kinds(check(crowd));
+    EXPECT_TRUE(vatBakerHasKind(check(crowd), "invalid_settings", &error)) << vatBakerKinds(check(crowd));
     EXPECT_TRUE(error);
     crowd.crowd.count = 10;
     crowd.crowd.area = 0.0f;
-    EXPECT_TRUE(hasKind(check(crowd), "invalid_settings")) << kinds(check(crowd));
+    EXPECT_TRUE(vatBakerHasKind(check(crowd), "invalid_settings")) << vatBakerKinds(check(crowd));
 }
 
 TEST_F(VatBaker_, AnimFilesTheirEventsUnboundTracksAndNoMesh) {
-    const fs::path anim = root() / "assets" / "anim";
+    const fs::path anim = vatBakerRoot() / "assets" / "anim";
     // a clip of the hero's Walk keys plus a track no node answers and two events
     ClipData walk;
     std::vector<ClipWarning> warnings;
@@ -1091,24 +1091,24 @@ TEST_F(VatBaker_, AnimFilesTheirEventsUnboundTracksAndNoMesh) {
     step.args.push_back(AnimationEvent::stringArg("left"));
     walk.events.push_back(step);
     anim::normalize(walk);
-    writeAll(anim / "walk.anim", anim::writeClip(walk));
+    vatBakerWriteAll(anim / "walk.anim", anim::writeClip(walk));
 
     VatBakeSpec spec;
     spec.source.kind = VatSourceKind::Anim;
     spec.source.path = "assets/models/hero.gltf";
     spec.source.anims = {"assets/anim/walk.anim"};
-    VatBakeSession session(project());
+    VatBakeSession session(vatBakerProject());
     session.setSpec(spec);
     const std::vector<VatIssue> issues = session.check();
-    EXPECT_TRUE(hasKind(issues, "unbound_tracks")) << kinds(issues);
-    EXPECT_FALSE(hasErrors(issues)) << kinds(issues);
+    EXPECT_TRUE(vatBakerHasKind(issues, "unbound_tracks")) << vatBakerKinds(issues);
+    EXPECT_FALSE(hasErrors(issues)) << vatBakerKinds(issues);
     ASSERT_TRUE(session.run()) << session.error();
     const VatBakeResult* result = session.result();
     ASSERT_EQ(result->data.clips.size(), 1u);
     EXPECT_EQ(result->data.clips[0].name, "walk");
     ASSERT_EQ(result->data.clips[0].events.size(), 1u) << "events come from the .anim";
     EXPECT_EQ(result->data.clips[0].events[0].function, "onFootstep");
-    EXPECT_TRUE(hasKind(result->report.warnings, "unbound_tracks"));
+    EXPECT_TRUE(vatBakerHasKind(result->report.warnings, "unbound_tracks"));
     ASSERT_EQ(result->data.recipe.sources.size(), 1u);
     EXPECT_EQ(result->data.recipe.sources[0].kind, "anim");
     EXPECT_EQ(result->data.recipe.sources[0].clips, std::vector<std::string>{"assets/anim/walk.anim"});
@@ -1120,36 +1120,36 @@ TEST_F(VatBaker_, AnimFilesTheirEventsUnboundTracksAndNoMesh) {
     EXPECT_TRUE(hashedAnim && hashedModel);
 
     // a GameObject with nothing to draw
-    const uint32_t sceneId = newScene();
-    Scene* scene = sceneOf(sceneId);
-    CreateEntityCmd* create = new CreateEntityCmd(project(), sceneId, "Empty", EntityCreationType::GAMEOBJECT);
+    const uint32_t sceneId = vatBakerNewScene();
+    Scene* scene = vatBakerSceneOf(sceneId);
+    CreateEntityCmd* create = new CreateEntityCmd(vatBakerProject(), sceneId, "Empty", EntityCreationType::GAMEOBJECT);
     create->setQuiet(true);
-    history(sceneId)->addCommandNoMerge(create);
+    vatBakerHistory(sceneId)->addCommandNoMerge(create);
     VatBakeSpec empty;
     empty.source.kind = VatSourceKind::Anim;
     empty.source.sceneId = sceneId;
-    empty.source.path = EntityPath::of(*project()->getScene(sceneId), create->getEntity());
+    empty.source.path = EntityPath::of(*vatBakerProject()->getScene(sceneId), create->getEntity());
     empty.source.anims = {"assets/anim/walk.anim"};
-    VatBakeSession nothing(project());
+    VatBakeSession nothing(vatBakerProject());
     nothing.setSpec(empty);
     const std::vector<VatIssue> emptyIssues = nothing.check();
-    EXPECT_TRUE(hasKind(emptyIssues, "no_animation") || hasKind(emptyIssues, "no_mesh")) << kinds(emptyIssues);
+    EXPECT_TRUE(vatBakerHasKind(emptyIssues, "no_animation") || vatBakerHasKind(emptyIssues, "no_mesh")) << vatBakerKinds(emptyIssues);
     (void)scene;
 }
 
 // ==================================================================== writing, undo, staleness, rebake
 
 TEST_F(VatBaker_, WrittenFilesLoadAndFollowTheExistingFileRule) {
-    std::unique_ptr<VatBakeSession> session = bake(modelSpec("hero.gltf", {"Walk", "Idle"}));
+    std::unique_ptr<VatBakeSession> session = bake(vatBakerModelSpec("hero.gltf", {"Walk", "Idle"}));
     VatWriteResult written;
     std::string error;
     ASSERT_TRUE(session->write(written, error)) << error;
     EXPECT_EQ(written.vat, "assets/models/hero.vat");
     EXPECT_EQ(written.mesh, "assets/models/hero.vat.glb");
     EXPECT_FALSE(written.rewritten);
-    const fs::path vatFile = root() / written.vat;
+    const fs::path vatFile = vatBakerRoot() / written.vat;
     ASSERT_TRUE(fs::exists(vatFile));
-    ASSERT_TRUE(fs::exists(root() / written.mesh));
+    ASSERT_TRUE(fs::exists(vatBakerRoot() / written.mesh));
 
     // the pool loads the files
     std::string loadError;
@@ -1159,9 +1159,9 @@ TEST_F(VatBaker_, WrittenFilesLoadAndFollowTheExistingFileRule) {
     EXPECT_EQ(asset->getData().guid, written.guid);
     EXPECT_EQ(asset->getPayload().bytes, session->result()->payload().bytes);
     // and the mesh loads through MeshSystem with its _VAT_INDEX rows
-    const uint32_t sceneId = newScene();
-    const Entity model = loadModel(sceneId, "models/hero.vat.glb", "Loaded");
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = vatBakerNewScene();
+    const Entity model = vatBakerLoadModel(sceneId, "models/hero.vat.glb", "Loaded");
+    Scene* scene = vatBakerSceneOf(sceneId);
     size_t vertices = 0;
     for (const auto& node : scene->getComponent<ModelComponent>(model).meshNodesMapping) {
         if (const MeshComponent* mesh = scene->findComponent<MeshComponent>(node.second)) {
@@ -1180,14 +1180,14 @@ TEST_F(VatBaker_, WrittenFilesLoadAndFollowTheExistingFileRule) {
     EXPECT_EQ(vertices, session->result()->mesh.vertexCount());
 
     // the same source and clips again: rewritten, GUID kept
-    std::unique_ptr<VatBakeSession> again = bake(modelSpec("hero.gltf", {"Idle", "Walk"}));
+    std::unique_ptr<VatBakeSession> again = bake(vatBakerModelSpec("hero.gltf", {"Idle", "Walk"}));
     VatWriteResult rewritten;
     ASSERT_TRUE(again->write(rewritten, error)) << error;
     EXPECT_EQ(rewritten.vat, "assets/models/hero.vat");
     EXPECT_TRUE(rewritten.rewritten);
     EXPECT_EQ(rewritten.guid, written.guid);
     // other clips of the same model: another asset
-    std::unique_ptr<VatBakeSession> walkOnly = bake(modelSpec("hero.gltf", {"Walk"}));
+    std::unique_ptr<VatBakeSession> walkOnly = bake(vatBakerModelSpec("hero.gltf", {"Walk"}));
     VatWriteResult other;
     ASSERT_TRUE(walkOnly->write(other, error)) << error;
     EXPECT_EQ(other.vat, "assets/models/hero 2.vat");
@@ -1195,9 +1195,9 @@ TEST_F(VatBaker_, WrittenFilesLoadAndFollowTheExistingFileRule) {
     EXPECT_NE(other.guid, written.guid);
 
     // another source with that default name: a free name
-    fs::copy_file(root() / "assets/models/rigid_arm.gltf", root() / "assets/models/hero_copy.gltf");
-    writeAll(root() / "assets/models/rigid_arm.vat", readAll(vatFile));      // a hero .vat under the arm's name
-    std::unique_ptr<VatBakeSession> arm = bake(modelSpec("rigid_arm.gltf", {"Swing"}));
+    fs::copy_file(vatBakerRoot() / "assets/models/rigid_arm.gltf", vatBakerRoot() / "assets/models/hero_copy.gltf");
+    vatBakerWriteAll(vatBakerRoot() / "assets/models/rigid_arm.vat", vatBakerReadAll(vatFile));      // a hero .vat under the arm's name
+    std::unique_ptr<VatBakeSession> arm = bake(vatBakerModelSpec("rigid_arm.gltf", {"Swing"}));
     VatWriteResult free;
     ASSERT_TRUE(arm->write(free, error)) << error;
     EXPECT_EQ(free.vat, "assets/models/rigid_arm 2.vat");
@@ -1205,26 +1205,26 @@ TEST_F(VatBaker_, WrittenFilesLoadAndFollowTheExistingFileRule) {
     EXPECT_NE(free.guid, written.guid);
 
     // files only: one project undo step
-    CommandHistory* projectHistory = project()->getProjectCommandHistory();
+    CommandHistory* projectHistory = vatBakerProject()->getProjectCommandHistory();
     ASSERT_TRUE(projectHistory->undo());
-    EXPECT_FALSE(fs::exists(root() / "assets/models/rigid_arm 2.vat"));
-    EXPECT_FALSE(fs::exists(root() / "assets/models/rigid_arm 2.vat.glb"));
+    EXPECT_FALSE(fs::exists(vatBakerRoot() / "assets/models/rigid_arm 2.vat"));
+    EXPECT_FALSE(fs::exists(vatBakerRoot() / "assets/models/rigid_arm 2.vat.glb"));
     ASSERT_TRUE(projectHistory->redo());
-    EXPECT_TRUE(fs::exists(root() / "assets/models/rigid_arm 2.vat"));
+    EXPECT_TRUE(fs::exists(vatBakerRoot() / "assets/models/rigid_arm 2.vat"));
 
     // an explicit existing path is refused without overwrite
-    VatBakeSpec explicitSpec = modelSpec("rigid_arm.gltf", {"Swing"});
+    VatBakeSpec explicitSpec = vatBakerModelSpec("rigid_arm.gltf", {"Swing"});
     explicitSpec.output = "assets/models/hero.vat";
-    VatBakeSession refused(project());
+    VatBakeSession refused(vatBakerProject());
     refused.setSpec(explicitSpec);
     EXPECT_FALSE(refused.run());
-    EXPECT_TRUE(hasKind(refused.failureIssues(), "output_exists"));
+    EXPECT_TRUE(vatBakerHasKind(refused.failureIssues(), "output_exists"));
 }
 
 TEST_F(VatBaker_, PlaceBesideAndReplaceAreOneUndoStep) {
-    const uint32_t sceneId = newScene();
-    const Entity hero = loadModel(sceneId, "models/hero.gltf");
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = vatBakerNewScene();
+    const Entity hero = vatBakerLoadModel(sceneId, "models/hero.gltf");
+    Scene* scene = vatBakerSceneOf(sceneId);
     scene->getComponent<Transform>(hero).position = Vector3(2.0f, 0.0f, -1.0f);
     AnimationPlayerComponent player;
     AnimationPlayerClip entry;
@@ -1237,7 +1237,7 @@ TEST_F(VatBaker_, PlaceBesideAndReplaceAreOneUndoStep) {
         VatBakeSpec spec;
         spec.source.kind = VatSourceKind::Entity;
         spec.source.sceneId = sceneId;
-        spec.source.path = EntityPath::of(*project()->getScene(sceneId), hero);
+        spec.source.path = EntityPath::of(*vatBakerProject()->getScene(sceneId), hero);
         spec.place = place;
         spec.output = place == VatPlace::Beside ? "assets/models/beside.vat" : "assets/models/replace.vat";
         std::unique_ptr<VatBakeSession> session = bake(spec);
@@ -1256,34 +1256,34 @@ TEST_F(VatBaker_, PlaceBesideAndReplaceAreOneUndoStep) {
         ASSERT_TRUE(animator);
         EXPECT_EQ(animator->animation, place == VatPlace::Beside ? "models/beside.vat" : "models/replace.vat");
         EXPECT_EQ(animator->guid, written.guid);
-        EXPECT_EQ(project()->getScene(sceneId)->selectedEntities, std::vector<Entity>{placed});
+        EXPECT_EQ(vatBakerProject()->getScene(sceneId)->selectedEntities, std::vector<Entity>{placed});
         EXPECT_EQ(scene->isEntityActive(hero), place != VatPlace::Replace);
 
         // one undo takes back the GameObject, the source's state and the files
-        ASSERT_TRUE(history(sceneId)->undo());
+        ASSERT_TRUE(vatBakerHistory(sceneId)->undo());
         EXPECT_FALSE(scene->isEntityCreated(placed) && scene->findComponent<VertexAnimatorComponent>(placed));
         EXPECT_TRUE(scene->isEntityActive(hero));
-        EXPECT_FALSE(fs::exists(root() / written.vat));
-        EXPECT_FALSE(fs::exists(root() / written.mesh));
+        EXPECT_FALSE(fs::exists(vatBakerRoot() / written.vat));
+        EXPECT_FALSE(fs::exists(vatBakerRoot() / written.mesh));
         // redo puts everything back
-        ASSERT_TRUE(history(sceneId)->redo());
-        EXPECT_TRUE(fs::exists(root() / written.vat));
+        ASSERT_TRUE(vatBakerHistory(sceneId)->redo());
+        EXPECT_TRUE(fs::exists(vatBakerRoot() / written.vat));
         ASSERT_TRUE(scene->findComponent<VertexAnimatorComponent>(placed));
         EXPECT_EQ(scene->isEntityActive(hero), place != VatPlace::Replace);
         // undo keeps a file edited since
-        const std::string edited = readAll(root() / written.vat) + " ";
-        writeAll(root() / written.vat, edited);
-        ASSERT_TRUE(history(sceneId)->undo());
-        EXPECT_TRUE(fs::exists(root() / written.vat)) << "changed after the bake: kept";
-        EXPECT_FALSE(fs::exists(root() / written.mesh));
-        fs::remove(root() / written.vat);
+        const std::string edited = vatBakerReadAll(vatBakerRoot() / written.vat) + " ";
+        vatBakerWriteAll(vatBakerRoot() / written.vat, edited);
+        ASSERT_TRUE(vatBakerHistory(sceneId)->undo());
+        EXPECT_TRUE(fs::exists(vatBakerRoot() / written.vat)) << "changed after the bake: kept";
+        EXPECT_FALSE(fs::exists(vatBakerRoot() / written.mesh));
+        fs::remove(vatBakerRoot() / written.vat);
     }
 }
 
 TEST_F(VatBaker_, PlaceCrowdMakesTheGameObjectACrowdInOneUndoStep) {
-    const uint32_t sceneId = newScene();
-    const Entity arm = loadModel(sceneId, "models/rigid_arm.gltf", "Arm");
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = vatBakerNewScene();
+    const Entity arm = vatBakerLoadModel(sceneId, "models/rigid_arm.gltf", "Arm");
+    Scene* scene = vatBakerSceneOf(sceneId);
     scene->getComponent<Transform>(arm).position = Vector3(4.0f, 1.0f, 0.0f);
     AnimationPlayerComponent player;
     AnimationPlayerClip entry;
@@ -1295,7 +1295,7 @@ TEST_F(VatBaker_, PlaceCrowdMakesTheGameObjectACrowdInOneUndoStep) {
     VatBakeSpec spec;
     spec.source.kind = VatSourceKind::Entity;
     spec.source.sceneId = sceneId;
-    spec.source.path = EntityPath::of(*project()->getScene(sceneId), arm);
+    spec.source.path = EntityPath::of(*vatBakerProject()->getScene(sceneId), arm);
     spec.place = VatPlace::Crowd;
     spec.crowd.count = 150;
     spec.crowd.area = 6.0f;
@@ -1334,20 +1334,20 @@ TEST_F(VatBaker_, PlaceCrowdMakesTheGameObjectACrowdInOneUndoStep) {
     ASSERT_TRUE(animator);
     EXPECT_EQ(animator->animation, "models/crowd.vat");
     EXPECT_TRUE(animator->randomStart) << "out of step";
-    EXPECT_EQ(project()->getScene(sceneId)->selectedEntities, std::vector<Entity>{placed});
+    EXPECT_EQ(vatBakerProject()->getScene(sceneId)->selectedEntities, std::vector<Entity>{placed});
 
     // one undo step: the crowd GameObject and the files
-    ASSERT_TRUE(history(sceneId)->undo());
+    ASSERT_TRUE(vatBakerHistory(sceneId)->undo());
     EXPECT_FALSE(scene->isEntityCreated(placed) && scene->findComponent<InstancedMeshComponent>(placed));
-    EXPECT_FALSE(fs::exists(root() / written.vat));
-    ASSERT_TRUE(history(sceneId)->redo());
+    EXPECT_FALSE(fs::exists(vatBakerRoot() / written.vat));
+    ASSERT_TRUE(vatBakerHistory(sceneId)->redo());
     ASSERT_TRUE(scene->findComponent<InstancedMeshComponent>(placed));
     EXPECT_EQ(scene->getComponent<InstancedMeshComponent>(placed).instances.size(), 150u);
-    EXPECT_TRUE(fs::exists(root() / written.vat));
-    ASSERT_TRUE(history(sceneId)->undo());
+    EXPECT_TRUE(fs::exists(vatBakerRoot() / written.vat));
+    ASSERT_TRUE(vatBakerHistory(sceneId)->undo());
 
     // a crowd from a file source goes to the selected scene, at its origin
-    VatBakeSpec fileSpec = modelSpec("rigid_arm.gltf", {"Swing"});
+    VatBakeSpec fileSpec = vatBakerModelSpec("rigid_arm.gltf", {"Swing"});
     fileSpec.place = VatPlace::Crowd;
     fileSpec.crowd.count = 3;
     fileSpec.output = "assets/models/crowd2.vat";
@@ -1355,31 +1355,31 @@ TEST_F(VatBaker_, PlaceCrowdMakesTheGameObjectACrowdInOneUndoStep) {
     VatWriteResult fileWritten;
     ASSERT_TRUE(fileSession->write(fileWritten, error)) << error;
     ASSERT_NE(fileWritten.entity, NULL_ENTITY);
-    EXPECT_EQ(fileWritten.sceneId, project()->getSelectedSceneId());
+    EXPECT_EQ(fileWritten.sceneId, vatBakerProject()->getSelectedSceneId());
     ASSERT_TRUE(scene->findComponent<InstancedMeshComponent>(fileWritten.entity));
     EXPECT_EQ(scene->getComponent<InstancedMeshComponent>(fileWritten.entity).instances.size(), 3u);
     // the crowd builder refuses settings it can't use (the check refuses them first)
     std::vector<Command*> commands;
     VatCrowd bad;
     bad.count = MAX_CROWD + 1;
-    EXPECT_FALSE(crowdPlacement(bad)(project(), sceneId, fileWritten.entity, commands, error));
+    EXPECT_FALSE(crowdPlacement(bad)(vatBakerProject(), sceneId, fileWritten.entity, commands, error));
     EXPECT_TRUE(commands.empty());
     EXPECT_NE(error.find("crowd count"), std::string::npos) << error;
 }
 
 TEST_F(VatBaker_, StalenessAndRebakeKeepEdits) {
-    VatBakeSpec spec = modelSpec("hero.gltf", {"Walk", "Idle"});
+    VatBakeSpec spec = vatBakerModelSpec("hero.gltf", {"Walk", "Idle"});
     spec.sockets = {"Hero/mixamorig:Hips"};
     std::unique_ptr<VatBakeSession> session = bake(spec);
     ASSERT_EQ(session->result()->sockets.sockets, 1);
     VatWriteResult written;
     std::string error;
     ASSERT_TRUE(session->write(written, error)) << error;
-    EXPECT_TRUE(checkVatStaleness(project(), written.vat).empty()) << kinds(checkVatStaleness(project(), written.vat));
+    EXPECT_TRUE(checkVatStaleness(vatBakerProject(), written.vat).empty()) << vatBakerKinds(checkVatStaleness(vatBakerProject(), written.vat));
 
     // hand edits: rename Walk, its speed, wrap, interpolate and an event; rename the socket
-    const fs::path vatFile = root() / written.vat;
-    jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(readAll(vatFile));
+    const fs::path vatFile = vatBakerRoot() / written.vat;
+    jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(vatBakerReadAll(vatFile));
     ASSERT_TRUE(parsed.ok());
     VatData edited = *parsed.data;
     edited.clips[0].name = "Stroll";
@@ -1391,19 +1391,19 @@ TEST_F(VatBaker_, StalenessAndRebakeKeepEdits) {
     event.function = "onStep";
     edited.clips[0].events.push_back(event);
     edited.sockets[0].name = "Pelvis";
-    writeAll(vatFile, jasperengine::vat::writeVat(edited));
+    vatBakerWriteAll(vatFile, jasperengine::vat::writeVat(edited));
 
     // the source changes: stale
-    writeAll(root() / "assets/models/hero.gltf", readAll(root() / "assets/models/hero.gltf") + "\n");
-    std::vector<VatIssue> stale = checkVatStaleness(project(), written.vat);
-    EXPECT_TRUE(hasKind(stale, "vat-source-changed")) << kinds(stale);
-    MeshSystem::invalidateModelFile((root() / "assets/models/hero.gltf").string());
+    vatBakerWriteAll(vatBakerRoot() / "assets/models/hero.gltf", vatBakerReadAll(vatBakerRoot() / "assets/models/hero.gltf") + "\n");
+    std::vector<VatIssue> stale = checkVatStaleness(vatBakerProject(), written.vat);
+    EXPECT_TRUE(vatBakerHasKind(stale, "vat-source-changed")) << vatBakerKinds(stale);
+    MeshSystem::invalidateModelFile((vatBakerRoot() / "assets/models/hero.gltf").string());
 
     VatWriteResult rebaked;
-    ASSERT_TRUE(rebakeVat(project(), written.vat, rebaked, error)) << error;
+    ASSERT_TRUE(rebakeVat(vatBakerProject(), written.vat, rebaked, error)) << error;
     EXPECT_EQ(rebaked.vat, written.vat);
     EXPECT_EQ(rebaked.guid, written.guid);
-    parsed = jasperengine::vat::parseVat(readAll(vatFile));
+    parsed = jasperengine::vat::parseVat(vatBakerReadAll(vatFile));
     ASSERT_TRUE(parsed.ok()) << parsed.error;
     const VatData& now = *parsed.data;
     ASSERT_EQ(now.clips.size(), 2u);
@@ -1417,39 +1417,39 @@ TEST_F(VatBaker_, StalenessAndRebakeKeepEdits) {
     EXPECT_EQ(now.clips[1].frames, 61) << "a ping-pong clip keeps its end frame";
     ASSERT_EQ(now.sockets.size(), 1u);
     EXPECT_EQ(now.sockets[0].name, "Pelvis");
-    EXPECT_TRUE(checkVatStaleness(project(), written.vat).empty()) << kinds(checkVatStaleness(project(), written.vat));
+    EXPECT_TRUE(checkVatStaleness(vatBakerProject(), written.vat).empty()) << vatBakerKinds(checkVatStaleness(vatBakerProject(), written.vat));
 
     // a clip removed by hand stays removed
     edited = now;
     edited.clips.erase(edited.clips.begin() + 1);
-    writeAll(vatFile, jasperengine::vat::writeVat(edited));
-    ASSERT_TRUE(rebakeVat(project(), written.vat, rebaked, error)) << error;
-    parsed = jasperengine::vat::parseVat(readAll(vatFile));
+    vatBakerWriteAll(vatFile, jasperengine::vat::writeVat(edited));
+    ASSERT_TRUE(rebakeVat(vatBakerProject(), written.vat, rebaked, error)) << error;
+    parsed = jasperengine::vat::parseVat(vatBakerReadAll(vatFile));
     ASSERT_TRUE(parsed.ok());
     ASSERT_EQ(parsed.data->clips.size(), 1u);
     EXPECT_EQ(parsed.data->clips[0].name, "Stroll");
 
     // missing source, broken mesh
-    fs::remove(root() / "assets/models/hero.gltf");
-    stale = checkVatStaleness(project(), written.vat);
-    EXPECT_TRUE(hasKind(stale, "vat-source-missing")) << kinds(stale);
-    writeAll(root() / written.mesh, "not a glb");
-    stale = checkVatStaleness(project(), written.vat);
-    EXPECT_TRUE(hasKind(stale, "vat-mesh-mismatch")) << kinds(stale);
+    fs::remove(vatBakerRoot() / "assets/models/hero.gltf");
+    stale = checkVatStaleness(vatBakerProject(), written.vat);
+    EXPECT_TRUE(vatBakerHasKind(stale, "vat-source-missing")) << vatBakerKinds(stale);
+    vatBakerWriteAll(vatBakerRoot() / written.mesh, "not a glb");
+    stale = checkVatStaleness(vatBakerProject(), written.vat);
+    EXPECT_TRUE(vatBakerHasKind(stale, "vat-mesh-mismatch")) << vatBakerKinds(stale);
     // a generated field changed by hand
-    std::string text = readAll(vatFile);
+    std::string text = vatBakerReadAll(vatFile);
     const size_t at = text.find("\"layout_hash\": \"");
     ASSERT_NE(at, std::string::npos);
     text[at + 16] = text[at + 16] == 'a' ? 'b' : 'a';
-    writeAll(vatFile, text);
-    stale = checkVatStaleness(project(), written.vat);
-    EXPECT_TRUE(hasKind(stale, "vat-layout-mismatch") || hasKind(stale, "vat-mesh-mismatch")) << kinds(stale);
+    vatBakerWriteAll(vatFile, text);
+    stale = checkVatStaleness(vatBakerProject(), written.vat);
+    EXPECT_TRUE(vatBakerHasKind(stale, "vat-layout-mismatch") || vatBakerHasKind(stale, "vat-mesh-mismatch")) << vatBakerKinds(stale);
 }
 
 TEST_F(VatBaker_, CancelMidRunLeavesTheSceneAtRestAndWritesNothing) {
-    const uint32_t sceneId = newScene();
-    const Entity hero = loadModel(sceneId, "models/hero.gltf");
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = vatBakerNewScene();
+    const Entity hero = vatBakerLoadModel(sceneId, "models/hero.gltf");
+    Scene* scene = vatBakerSceneOf(sceneId);
     AnimationPlayerComponent player;
     AnimationPlayerClip entry;
     entry.clip = "models/hero.gltf#Walk";
@@ -1466,10 +1466,10 @@ TEST_F(VatBaker_, CancelMidRunLeavesTheSceneAtRestAndWritesNothing) {
     VatBakeSpec spec;
     spec.source.kind = VatSourceKind::Entity;
     spec.source.sceneId = sceneId;
-    spec.source.path = EntityPath::of(*project()->getScene(sceneId), hero);
+    spec.source.path = EntityPath::of(*vatBakerProject()->getScene(sceneId), hero);
     spec.output = "assets/models/cancelled.vat";
     spec.fps = 120.0f;
-    VatBakeSession session(project());
+    VatBakeSession session(vatBakerProject());
     session.setSpec(spec);
     ASSERT_TRUE(session.start()) << session.error();
     EXPECT_FALSE(session.advance(0.001)) << "a slice of one sample";
@@ -1486,10 +1486,10 @@ TEST_F(VatBaker_, CancelMidRunLeavesTheSceneAtRestAndWritesNothing) {
     VatWriteResult written;
     std::string error;
     EXPECT_FALSE(session.write(written, error));
-    EXPECT_FALSE(fs::exists(root() / "assets/models/cancelled.vat"));
+    EXPECT_FALSE(fs::exists(vatBakerRoot() / "assets/models/cancelled.vat"));
 
     // an edit between two slices fails the bake
-    VatBakeSession edited(project());
+    VatBakeSession edited(vatBakerProject());
     edited.setSpec(spec);
     ASSERT_TRUE(edited.start());
     EXPECT_FALSE(edited.advance(0.001));
@@ -1500,16 +1500,16 @@ TEST_F(VatBaker_, CancelMidRunLeavesTheSceneAtRestAndWritesNothing) {
 }
 
 TEST_F(VatBaker_, LatticeTracksBakeAsVertices) {
-    const uint32_t sceneId = newScene();
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = vatBakerNewScene();
+    Scene* scene = vatBakerSceneOf(sceneId);
     // a GameObject holding a box and a lattice around it, with a clip moving one lattice point
-    CreateEntityCmd* rootCmd = new CreateEntityCmd(project(), sceneId, "Jelly", EntityCreationType::GAMEOBJECT);
+    CreateEntityCmd* rootCmd = new CreateEntityCmd(vatBakerProject(), sceneId, "Jelly", EntityCreationType::GAMEOBJECT);
     rootCmd->setQuiet(true);
-    history(sceneId)->addCommandNoMerge(rootCmd);
+    vatBakerHistory(sceneId)->addCommandNoMerge(rootCmd);
     const Entity jelly = rootCmd->getEntity();
-    CreateEntityCmd* boxCmd = new CreateEntityCmd(project(), sceneId, "Box", EntityCreationType::BOX, jelly);
+    CreateEntityCmd* boxCmd = new CreateEntityCmd(vatBakerProject(), sceneId, "Box", EntityCreationType::BOX, jelly);
     boxCmd->setQuiet(true);
-    history(sceneId)->addCommandNoMerge(boxCmd);
+    vatBakerHistory(sceneId)->addCommandNoMerge(boxCmd);
     const Entity box = boxCmd->getEntity();
     const Entity cage = scene->createUserEntity();
     scene->setEntityName(cage, "Cage");
@@ -1523,7 +1523,7 @@ TEST_F(VatBaker_, LatticeTracksBakeAsVertices) {
     binding.lattice = cage;
     modifier.bindings.push_back(binding);
     scene->addComponent<LatticeModifierComponent>(box, modifier);
-    project()->getScene(sceneId)->entities.push_back(cage);
+    vatBakerProject()->getScene(sceneId)->entities.push_back(cage);
 
     ClipData clip;
     clip.guid = "fedcba9876543210fedcba9876543210";
@@ -1540,19 +1540,19 @@ TEST_F(VatBaker_, LatticeTracksBakeAsVertices) {
     }
     clip.tracks.push_back(track);
     anim::normalize(clip);
-    writeAll(root() / "assets/anim/jelly.anim", anim::writeClip(clip));
+    vatBakerWriteAll(vatBakerRoot() / "assets/anim/jelly.anim", anim::writeClip(clip));
 
     VatBakeSpec spec;
     spec.source.kind = VatSourceKind::Anim;
     spec.source.sceneId = sceneId;
-    spec.source.path = EntityPath::of(*project()->getScene(sceneId), jelly);
+    spec.source.path = EntityPath::of(*vatBakerProject()->getScene(sceneId), jelly);
     spec.source.anims = {"assets/anim/jelly.anim"};
-    VatBakeSession session(project());
+    VatBakeSession session(vatBakerProject());
     session.setSpec(spec);
     const std::vector<VatIssue> issues = session.check();
-    ASSERT_FALSE(hasErrors(issues)) << kinds(issues);
+    ASSERT_FALSE(hasErrors(issues)) << vatBakerKinds(issues);
     EXPECT_EQ(session.estimate().mode, VatMode::Vertices) << session.estimate().modeReason;
-    ASSERT_TRUE(session.run()) << session.error() << kinds(session.failureIssues());
+    ASSERT_TRUE(session.run()) << session.error() << vatBakerKinds(session.failureIssues());
     const VatBakeResult* result = session.result();
     EXPECT_EQ(result->data.mode, VatMode::Vertices);
     EXPECT_NE(result->report.modeReason.find("lattice"), std::string::npos) << result->report.modeReason;
@@ -1560,21 +1560,21 @@ TEST_F(VatBaker_, LatticeTracksBakeAsVertices) {
     const std::vector<Vector3> start = decodeFrame(*result, 0);
     const std::vector<Vector3> half = decodeFrame(*result, result->data.clips[0].frames / 2);
     float moved = 0.0f;
-    for (size_t v = 0; v < start.size(); v++) moved = std::max(moved, distance(start[v], half[v]));
+    for (size_t v = 0; v < start.size(); v++) moved = std::max(moved, vatBakerDistance(start[v], half[v]));
     EXPECT_GT(moved, 0.05f);
     // the scene is back at rest
     EXPECT_EQ(scene->getComponent<LatticeComponent>(cage).offsets[26], Vector3(0, 0, 0));
 }
 
 TEST_F(VatBaker_, SceneSourcesConvertTheirAnimationsAndReportMaterials) {
-    const uint32_t sceneId = newScene();
-    const Entity arm = loadModel(sceneId, "models/rigid_arm.gltf", "Arm");
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = vatBakerNewScene();
+    const Entity arm = vatBakerLoadModel(sceneId, "models/rigid_arm.gltf", "Arm");
+    Scene* scene = vatBakerSceneOf(sceneId);
     // the model's entity Animations (Swing, Stretch) are the GameObject's clips
     VatBakeSpec spec;
     spec.source.kind = VatSourceKind::Entity;
     spec.source.sceneId = sceneId;
-    spec.source.path = EntityPath::of(*project()->getScene(sceneId), arm);
+    spec.source.path = EntityPath::of(*vatBakerProject()->getScene(sceneId), arm);
     spec.clips = {"Swing"};
     // one part draws with a library shader, the other with a project fork
     int part = 0;
@@ -1585,12 +1585,12 @@ TEST_F(VatBaker_, SceneSourcesConvertTheirAnimationsAndReportMaterials) {
     }
     ASSERT_EQ(part, 2);
     {
-        VatBakeSession session(project());
+        VatBakeSession session(vatBakerProject());
         session.setSpec(spec);
         const std::vector<VatIssue> issues = session.check();
-        EXPECT_FALSE(hasErrors(issues)) << kinds(issues);
-        EXPECT_TRUE(hasKind(issues, "material_simplified")) << kinds(issues);
-        EXPECT_TRUE(hasKind(issues, "materials_not_vat_ready")) << kinds(issues);
+        EXPECT_FALSE(hasErrors(issues)) << vatBakerKinds(issues);
+        EXPECT_TRUE(vatBakerHasKind(issues, "material_simplified")) << vatBakerKinds(issues);
+        EXPECT_TRUE(vatBakerHasKind(issues, "materials_not_vat_ready")) << vatBakerKinds(issues);
         bool swing = false, stretch = false;
         for (const VatSourceClip& clip : session.sourceClips()) {
             swing |= clip.name == "Swing";
@@ -1599,20 +1599,20 @@ TEST_F(VatBaker_, SceneSourcesConvertTheirAnimationsAndReportMaterials) {
         EXPECT_TRUE(swing && stretch) << "entity Animations become clips";
         ASSERT_TRUE(session.run()) << session.error();
         EXPECT_EQ(session.result()->data.mode, VatMode::Bones) << session.result()->report.modeReason;
-        EXPECT_TRUE(hasKind(session.result()->report.warnings, "materials_not_vat_ready"));
+        EXPECT_TRUE(vatBakerHasKind(session.result()->report.warnings, "materials_not_vat_ready"));
         EXPECT_EQ(session.result()->data.recipe.sources[0].kind, "entity");
         EXPECT_EQ(session.result()->data.recipe.sources[0].clips, std::vector<std::string>{"Swing"});
     }
     // a playing scene refuses
-    project()->getScene(sceneId)->playState = ScenePlayState::PLAYING;
+    vatBakerProject()->getScene(sceneId)->playState = ScenePlayState::PLAYING;
     {
-        VatBakeSession session(project());
+        VatBakeSession session(vatBakerProject());
         session.setSpec(spec);
         bool error = false;
-        EXPECT_TRUE(hasKind(session.check(), "scene_playing", &error));
+        EXPECT_TRUE(vatBakerHasKind(session.check(), "scene_playing", &error));
         EXPECT_TRUE(error);
     }
-    project()->getScene(sceneId)->playState = ScenePlayState::STOPPED;
+    vatBakerProject()->getScene(sceneId)->playState = ScenePlayState::STOPPED;
 
     // a GameObject that moves but draws nothing
     ClipData move;
@@ -1629,19 +1629,19 @@ TEST_F(VatBaker_, SceneSourcesConvertTheirAnimationsAndReportMaterials) {
     }
     move.tracks.push_back(track);
     anim::normalize(move);
-    writeAll(root() / "assets/anim/move.anim", anim::writeClip(move));
-    CreateEntityCmd* create = new CreateEntityCmd(project(), sceneId, "Mover", EntityCreationType::GAMEOBJECT);
+    vatBakerWriteAll(vatBakerRoot() / "assets/anim/move.anim", anim::writeClip(move));
+    CreateEntityCmd* create = new CreateEntityCmd(vatBakerProject(), sceneId, "Mover", EntityCreationType::GAMEOBJECT);
     create->setQuiet(true);
-    history(sceneId)->addCommandNoMerge(create);
+    vatBakerHistory(sceneId)->addCommandNoMerge(create);
     VatBakeSpec mover;
     mover.source.kind = VatSourceKind::Anim;
     mover.source.sceneId = sceneId;
-    mover.source.path = EntityPath::of(*project()->getScene(sceneId), create->getEntity());
+    mover.source.path = EntityPath::of(*vatBakerProject()->getScene(sceneId), create->getEntity());
     mover.source.anims = {"assets/anim/move.anim"};
-    VatBakeSession nothing(project());
+    VatBakeSession nothing(vatBakerProject());
     nothing.setSpec(mover);
     bool error = false;
-    EXPECT_TRUE(hasKind(nothing.check(), "no_mesh", &error)) << kinds(nothing.check());
+    EXPECT_TRUE(vatBakerHasKind(nothing.check(), "no_mesh", &error)) << vatBakerKinds(nothing.check());
     EXPECT_TRUE(error);
 }
 
@@ -1650,7 +1650,7 @@ TEST_F(VatBaker_, PoseAnimationsBakeThroughTheirClip) {
         return "{\"name\": \"" + name + "\", \"hold\": 0.3, \"grounded\": true, \"lift\": 0, \"transition\": null, "
                "\"offset\": {\"left\": 0, \"forward\": 0}, \"angles\": {\"left_upper_arm.raise\": " + std::to_string(raise) + "}}";
     };
-    writeAll(root() / "assets/anim/raise.poseanim",
+    vatBakerWriteAll(vatBakerRoot() / "assets/anim/raise.poseanim",
              "{\"format\": \"jasperengine.poseanim\", \"version\": 1, \"preview_model\": \"models/hero.gltf\", "
              "\"frame_rate\": 30, \"loop\": true, "
              "\"feel\": {\"transition\": {\"curve\": \"spring\", \"duration\": 0.2, \"overshoot\": 0.25, \"anticipation\": 0.06}, "
@@ -1677,7 +1677,7 @@ TEST_F(VatBaker_, PoseAnimationsBakeThroughTheirClip) {
     float moved = 0.0f;
     for (int frame = 1; frame < result->data.clips[0].frames; frame++) {
         const std::vector<Vector3> later = decodeFrame(*result, frame);
-        for (size_t v = 0; v < first.size(); v++) moved = std::max(moved, distance(first[v], later[v]));
+        for (size_t v = 0; v < first.size(); v++) moved = std::max(moved, vatBakerDistance(first[v], later[v]));
     }
     EXPECT_GT(moved, 0.2f) << "the left arm raised 70 degrees";
     // its default output is next to the pose animation
@@ -1717,7 +1717,7 @@ namespace {
             out.baseColorImage.push_back(texture >= 0 && (size_t)texture < model.textures.size() ? model.textures[(size_t)texture].source : -1);
             out.materialNames.push_back(material.name);
         }
-        const std::string bytes = readAll(file);
+        const std::string bytes = vatBakerReadAll(file);
         // the JSON chunk: after the 12-byte header and the chunk's 8-byte header
         if (bytes.size() > 20) {
             uint32_t length = 0;
@@ -1751,14 +1751,14 @@ namespace {
     std::string sourceImage(const std::string& model) {
         tinygltf::Model gltf;
         std::string error;
-        EXPECT_TRUE(MeshSystem::parseGLTFFile((root() / "assets/models" / model).string(), gltf, &error)) << error;
+        EXPECT_TRUE(MeshSystem::parseGLTFFile((vatBakerRoot() / "assets/models" / model).string(), gltf, &error)) << error;
         if (gltf.images.empty()) return "";
         return std::string(gltf.images[0].image.begin(), gltf.images[0].image.end());
     }
 
     unsigned int sourceImageWidth(const std::string& model) { return pngWidth(sourceImage(model)); }
 
-    std::string base64(const std::string& bytes) {
+    std::string vatBakerBase64(const std::string& bytes) {
         static const char* alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
         std::string out;
         size_t i = 0;
@@ -1778,8 +1778,8 @@ namespace {
 
     // the arm as a GameObject playing Swing (an Animation Player state)
     Entity armWithPlayer(uint32_t sceneId, const std::string& name = "Arm") {
-        const Entity arm = loadModel(sceneId, "models/rigid_arm.gltf", name);
-        Scene* scene = sceneOf(sceneId);
+        const Entity arm = vatBakerLoadModel(sceneId, "models/rigid_arm.gltf", name);
+        Scene* scene = vatBakerSceneOf(sceneId);
         AnimationPlayerComponent player;
         AnimationPlayerClip entry;
         entry.clip = "models/rigid_arm.gltf#Swing";
@@ -1793,7 +1793,7 @@ namespace {
         VatBakeSpec spec;
         spec.source.kind = VatSourceKind::Entity;
         spec.source.sceneId = sceneId;
-        spec.source.path = EntityPath::of(*project()->getScene(sceneId), entity);
+        spec.source.path = EntityPath::of(*vatBakerProject()->getScene(sceneId), entity);
         return spec;
     }
 
@@ -1825,9 +1825,9 @@ namespace {
 
     // two open scenes (createNewScene closes the one before): the second selected
     uint32_t secondScene(uint32_t& first, SceneType type = SceneType::SCENE_3D) {
-        first = newScene();
+        first = vatBakerNewScene();
         std::string error;
-        const uint32_t second = project()->createSceneNow("Second", type, {}, false, UnsavedChoice::Discard, &error);
+        const uint32_t second = vatBakerProject()->createSceneNow("Second", type, {}, false, UnsavedChoice::Discard, &error);
         EXPECT_NE(second, NULL_PROJECT_SCENE) << error;
         return second;
     }
@@ -1855,13 +1855,13 @@ namespace {
         }
         move.tracks.push_back(track);
         anim::normalize(move);
-        writeAll(file, anim::writeClip(move));
+        vatBakerWriteAll(file, anim::writeClip(move));
     }
 
 }
 
 TEST_F(VatBaker_, EmbeddedTexturesAreStoredInsideTheGlb) {
-    std::unique_ptr<VatBakeSession> session = bake(modelSpec("morph_blob.gltf"));
+    std::unique_ptr<VatBakeSession> session = bake(vatBakerModelSpec("morph_blob.gltf"));
     const VatBakeResult* result = session->result();
     ASSERT_TRUE(result);
     ASSERT_EQ(result->embeddedImages.size(), 1u);
@@ -1880,20 +1880,20 @@ TEST_F(VatBaker_, EmbeddedTexturesAreStoredInsideTheGlb) {
     size_t previewFiles = 0;
     for (const auto& entry : fs::directory_iterator(fs::path(previewMesh).parent_path())) previewFiles += entry.is_regular_file();
     EXPECT_EQ(previewFiles, 2u) << "the .vat and its glb, no image file";
-    EXPECT_TRUE(jasperengine::vat::parseVat(readAll(previewVat)).ok());
-    EXPECT_EQ(fs::path(previewVat).lexically_relative(root()).generic_string().compare(0, 13, ".jasperengine"), 0);
+    EXPECT_TRUE(jasperengine::vat::parseVat(vatBakerReadAll(previewVat)).ok());
+    EXPECT_EQ(fs::path(previewVat).lexically_relative(vatBakerRoot()).generic_string().compare(0, 13, ".jasperengine"), 0);
     VatWriteResult written;
     std::string error;
     ASSERT_TRUE(session->write(written, error)) << error;
     EXPECT_EQ(written.files, (std::vector<std::string>{"assets/models/morph_blob.vat", "assets/models/morph_blob.vat.glb"}));
-    EXPECT_FALSE(fs::exists(root() / "assets/models/morph_blob_Checker.png"));
-    const GlbImages glb = glbImages(root() / written.mesh);
+    EXPECT_FALSE(fs::exists(vatBakerRoot() / "assets/models/morph_blob_Checker.png"));
+    const GlbImages glb = glbImages(vatBakerRoot() / written.mesh);
     ASSERT_EQ(glb.images.size(), 1u);
     EXPECT_EQ(glb.images[0], result->embeddedImages[0].bytes) << "the image is a buffer view of the glb";
     // the engine loads the glb's material with its texture decoded
-    const uint32_t sceneId = newScene();
-    const Entity loaded = loadModel(sceneId, "models/morph_blob.vat.glb", "Loaded");
-    const std::vector<const Material*> materials = materialsOf(sceneOf(sceneId), loaded);
+    const uint32_t sceneId = vatBakerNewScene();
+    const Entity loaded = vatBakerLoadModel(sceneId, "models/morph_blob.vat.glb", "Loaded");
+    const std::vector<const Material*> materials = materialsOf(vatBakerSceneOf(sceneId), loaded);
     ASSERT_EQ(materials.size(), 1u);
     const Texture& texture = materials[0]->baseColorTexture;
     EXPECT_FALSE(texture.empty());
@@ -1901,8 +1901,8 @@ TEST_F(VatBaker_, EmbeddedTexturesAreStoredInsideTheGlb) {
     std::shared_ptr<std::array<TextureData, 6>> data = TextureDataPool::get(texture.getId());
     ASSERT_TRUE(data) << "decoded into the texture pool";
     EXPECT_EQ(data->at(0).getWidth(), sourceImageWidth("morph_blob.gltf"));
-    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
-    EXPECT_FALSE(fs::exists(root() / written.mesh));
+    ASSERT_TRUE(vatBakerProject()->getProjectCommandHistory()->undo());
+    EXPECT_FALSE(fs::exists(vatBakerRoot() / written.mesh));
     session.reset();
     EXPECT_FALSE(fs::exists(previewMesh)) << "the preview files go with the session";
 }
@@ -1922,25 +1922,25 @@ TEST_F(VatBaker_, AClosedSceneOrDeletedSourceIsRefusedNotACrash) {
             std::unique_ptr<VatBakeSession> session = bake(spec);
             ASSERT_TRUE(session->result());
             std::string error;
-            ASSERT_TRUE(project()->closeSceneNow(sceneId, UnsavedChoice::Discard, &error)) << error;
+            ASSERT_TRUE(vatBakerProject()->closeSceneNow(sceneId, UnsavedChoice::Discard, &error)) << error;
             VatWriteResult written;
             VatIssue issue;
             EXPECT_FALSE(session->write(written, error, &issue));
             EXPECT_EQ(issue.kind, "invalid_source");
             EXPECT_EQ(issue.fix, "bake again");
             EXPECT_NE(error.find("scene was closed"), std::string::npos) << error;
-            EXPECT_FALSE(fs::exists(root() / "assets/models/Arm.vat"));
+            EXPECT_FALSE(fs::exists(vatBakerRoot() / "assets/models/Arm.vat"));
         }
         // the source GameObject deleted between the bake and write()
         {
-            const uint32_t sceneId = newScene();
+            const uint32_t sceneId = vatBakerNewScene();
             const Entity arm = armWithPlayer(sceneId);
             VatBakeSpec spec = entitySpec(sceneId, arm);
             spec.place = place;
             spec.crowd.count = 3;
             std::unique_ptr<VatBakeSession> session = bake(spec);
             ASSERT_TRUE(session->result());
-            sceneOf(sceneId)->destroyEntity(arm);
+            vatBakerSceneOf(sceneId)->destroyEntity(arm);
             VatWriteResult written;
             VatIssue issue;
             std::string error;
@@ -1957,10 +1957,10 @@ TEST_F(VatBaker_, AClosedSceneOrDeletedSourceIsRefusedNotACrash) {
         std::unique_ptr<VatBakeSession> session = bake(entitySpec(sceneId, armWithPlayer(sceneId)));
         ASSERT_TRUE(session->result());
         std::string error;
-        ASSERT_TRUE(project()->closeSceneNow(sceneId, UnsavedChoice::Discard, &error)) << error;
+        ASSERT_TRUE(vatBakerProject()->closeSceneNow(sceneId, UnsavedChoice::Discard, &error)) << error;
         VatWriteResult written;
         EXPECT_TRUE(session->write(written, error)) << error;
-        EXPECT_TRUE(fs::exists(root() / written.vat));
+        EXPECT_TRUE(fs::exists(vatBakerRoot() / written.vat));
     }
     // closed while the worker encodes: the bake fails (nothing kept to write)
     {
@@ -1968,13 +1968,13 @@ TEST_F(VatBaker_, AClosedSceneOrDeletedSourceIsRefusedNotACrash) {
         const uint32_t sceneId = secondScene(keep);
         VatBakeSpec spec = entitySpec(sceneId, armWithPlayer(sceneId));
         spec.place = VatPlace::Beside;
-        VatBakeSession session(project());
+        VatBakeSession session(vatBakerProject());
         session.setSpec(spec);
         ASSERT_TRUE(session.start()) << session.error();
         while (session.state() == VatBakeState::Posing) session.advance(1000.0);
         ASSERT_EQ(session.state(), VatBakeState::Encoding);
         std::string error;
-        ASSERT_TRUE(project()->closeSceneNow(sceneId, UnsavedChoice::Discard, &error)) << error;
+        ASSERT_TRUE(vatBakerProject()->closeSceneNow(sceneId, UnsavedChoice::Discard, &error)) << error;
         while (!session.advance(1000.0)) {}
         EXPECT_EQ(session.state(), VatBakeState::Failed);
         ASSERT_FALSE(session.failureIssues().empty());
@@ -1985,15 +1985,15 @@ TEST_F(VatBaker_, AClosedSceneOrDeletedSourceIsRefusedNotACrash) {
     }
     // deleted between two posing slices
     {
-        const uint32_t sceneId = newScene();
+        const uint32_t sceneId = vatBakerNewScene();
         const Entity arm = armWithPlayer(sceneId);
         VatBakeSpec spec = entitySpec(sceneId, arm);
         spec.fps = 120.0f;
-        VatBakeSession session(project());
+        VatBakeSession session(vatBakerProject());
         session.setSpec(spec);
         ASSERT_TRUE(session.start());
         EXPECT_FALSE(session.advance(0.001));
-        sceneOf(sceneId)->destroyEntity(arm);
+        vatBakerSceneOf(sceneId)->destroyEntity(arm);
         EXPECT_TRUE(session.advance(0.001));
         EXPECT_EQ(session.state(), VatBakeState::Failed);
         ASSERT_FALSE(session.failureIssues().empty());
@@ -2003,8 +2003,8 @@ TEST_F(VatBaker_, AClosedSceneOrDeletedSourceIsRefusedNotACrash) {
 
 // review 2: a scene command that fails is deleted once (CreateVatCmd owns it)
 TEST_F(VatBaker_, CreateVatCmdDeletesAFailedSceneCommandOnce) {
-    const uint32_t sceneId = newScene();
-    const fs::path vat = root() / "assets/models/cmd.vat";
+    const uint32_t sceneId = vatBakerNewScene();
+    const fs::path vat = vatBakerRoot() / "assets/models/cmd.vat";
     // a Model that can't load (a missing FBX: prepareModelFile fails)
     {
         VatPlacement placement;
@@ -2012,10 +2012,10 @@ TEST_F(VatBaker_, CreateVatCmdDeletesAFailedSceneCommandOnce) {
         placement.name = "Missing (VAT)";
         placement.model = "models/missing.fbx";
         placement.animation = "models/cmd.vat";
-        auto* command = new CreateVatCmd(project(), sceneId, {{vat, "{}"}}, placement);
+        auto* command = new CreateVatCmd(vatBakerProject(), sceneId, {{vat, "{}"}}, placement);
         auto failure = std::make_shared<std::string>();
         command->reportFailureTo(failure);
-        EXPECT_FALSE(history(sceneId)->addCommand(command));
+        EXPECT_FALSE(vatBakerHistory(sceneId)->addCommand(command));
         EXPECT_NE(failure->find("could not load 'models/missing.fbx'"), std::string::npos) << *failure;
         EXPECT_FALSE(fs::exists(vat)) << "the files are put back";
     }
@@ -2033,10 +2033,10 @@ TEST_F(VatBaker_, CreateVatCmdDeletesAFailedSceneCommandOnce) {
             commands.push_back(new CountedCmd(&deleted, 2, true));
             return true;
         };
-        auto* command = new CreateVatCmd(project(), sceneId, {{vat, "{}"}}, placement);
+        auto* command = new CreateVatCmd(vatBakerProject(), sceneId, {{vat, "{}"}}, placement);
         auto failure = std::make_shared<std::string>();
         command->reportFailureTo(failure);
-        EXPECT_FALSE(history(sceneId)->addCommand(command));
+        EXPECT_FALSE(vatBakerHistory(sceneId)->addCommand(command));
         EXPECT_NE(failure->find("refused a crowd change (command 2)"), std::string::npos) << *failure;
         EXPECT_EQ(deleted, (std::map<int, int>{{0, 1}, {1, 1}, {2, 1}}));
         EXPECT_FALSE(fs::exists(vat));
@@ -2047,9 +2047,9 @@ TEST_F(VatBaker_, CreateVatCmdDeletesAFailedSceneCommandOnce) {
 TEST_F(VatBaker_, AnotherClipOfTheSameModelTakesAFreeName) {
     std::string error;
     VatWriteResult swing;
-    ASSERT_TRUE(bake(modelSpec("rigid_arm.gltf", {"Swing"}))->write(swing, error)) << error;
+    ASSERT_TRUE(bake(vatBakerModelSpec("rigid_arm.gltf", {"Swing"}))->write(swing, error)) << error;
     EXPECT_EQ(swing.vat, "assets/models/rigid_arm.vat");
-    std::unique_ptr<VatBakeSession> stretchSession = bake(modelSpec("rigid_arm.gltf", {"Stretch"}));
+    std::unique_ptr<VatBakeSession> stretchSession = bake(vatBakerModelSpec("rigid_arm.gltf", {"Stretch"}));
     std::string planned;
     bool rewrite = true;
     ASSERT_TRUE(stretchSession->plannedOutput(planned, rewrite, error)) << error;
@@ -2058,16 +2058,16 @@ TEST_F(VatBaker_, AnotherClipOfTheSameModelTakesAFreeName) {
     VatWriteResult stretch;
     ASSERT_TRUE(stretchSession->write(stretch, error)) << error;
     EXPECT_EQ(stretch.vat, "assets/models/rigid_arm 2.vat");
-    jasperengine::vat::VatParseResult first = jasperengine::vat::parseVat(readAll(root() / swing.vat));
-    jasperengine::vat::VatParseResult second = jasperengine::vat::parseVat(readAll(root() / stretch.vat));
+    jasperengine::vat::VatParseResult first = jasperengine::vat::parseVat(vatBakerReadAll(vatBakerRoot() / swing.vat));
+    jasperengine::vat::VatParseResult second = jasperengine::vat::parseVat(vatBakerReadAll(vatBakerRoot() / stretch.vat));
     ASSERT_TRUE(first.ok() && second.ok());
     ASSERT_EQ(first.data->clips.size(), 1u);
     EXPECT_EQ(first.data->clips[0].name, "Swing") << "the earlier bake is untouched";
     ASSERT_EQ(second.data->clips.size(), 1u);
     EXPECT_EQ(second.data->clips[0].name, "Stretch") << "the new clip keeps its name";
     // the same clip again (before a bake too): the existing file is rewritten
-    VatBakeSession again(project());
-    again.setSpec(modelSpec("rigid_arm.gltf", {"Swing"}));
+    VatBakeSession again(vatBakerProject());
+    again.setSpec(vatBakerModelSpec("rigid_arm.gltf", {"Swing"}));
     ASSERT_TRUE(again.plannedOutput(planned, rewrite, error)) << error;
     EXPECT_EQ(planned, "assets/models/rigid_arm.vat");
     EXPECT_TRUE(rewrite);
@@ -2083,41 +2083,41 @@ TEST_F(VatBaker_, EmbeddedImagesFromDataUrisAndSameNamesStayInTheGlb) {
     ASSERT_EQ(png.compare(0, 4, "\x89PNG"), 0);
     // morph_blob with its image as a data: URI
     {
-        nlohmann::json gltf = nlohmann::json::parse(readAll(root() / "assets/models/morph_blob.gltf"));
-        gltf["images"][0] = {{"name", "Checker"}, {"uri", "data:image/png;base64," + base64(png)}};
-        writeAll(root() / "assets/models/blob_uri.gltf", gltf.dump());
-        MeshSystem::invalidateModelFile((root() / "assets/models/blob_uri.gltf").string());
-        std::unique_ptr<VatBakeSession> session = bake(modelSpec("blob_uri.gltf"));
+        nlohmann::json gltf = nlohmann::json::parse(vatBakerReadAll(vatBakerRoot() / "assets/models/morph_blob.gltf"));
+        gltf["images"][0] = {{"name", "Checker"}, {"uri", "data:image/png;base64," + vatBakerBase64(png)}};
+        vatBakerWriteAll(vatBakerRoot() / "assets/models/blob_uri.gltf", gltf.dump());
+        MeshSystem::invalidateModelFile((vatBakerRoot() / "assets/models/blob_uri.gltf").string());
+        std::unique_ptr<VatBakeSession> session = bake(vatBakerModelSpec("blob_uri.gltf"));
         ASSERT_TRUE(session->result());
-        EXPECT_FALSE(hasKind(session->result()->report.warnings, "material_simplified")) << kinds(session->result()->report.warnings);
+        EXPECT_FALSE(vatBakerHasKind(session->result()->report.warnings, "material_simplified")) << vatBakerKinds(session->result()->report.warnings);
         ASSERT_EQ(session->result()->embeddedImages.size(), 1u) << "the data: URI image is kept";
         EXPECT_EQ(session->result()->embeddedImages[0].bytes, png);
         VatWriteResult written;
         std::string error;
         ASSERT_TRUE(session->write(written, error)) << error;
-        const GlbImages glb = glbImages(root() / written.mesh);
+        const GlbImages glb = glbImages(vatBakerRoot() / written.mesh);
         ASSERT_EQ(glb.images.size(), 1u);
         EXPECT_EQ(glb.images[0], png);
     }
     // two materials with different images of the same name
     {
-        nlohmann::json gltf = nlohmann::json::parse(readAll(root() / "assets/models/rigid_arm.gltf"));
+        nlohmann::json gltf = nlohmann::json::parse(vatBakerReadAll(vatBakerRoot() / "assets/models/rigid_arm.gltf"));
         const std::string other = png + std::string("\0\0\0\0", 4);    // trailing bytes: another file, still a PNG
-        gltf["images"] = nlohmann::json::array({{{"name", "Skin"}, {"uri", "data:image/png;base64," + base64(png)}},
-                                                {{"name", "Skin"}, {"uri", "data:image/png;base64," + base64(other)}}});
+        gltf["images"] = nlohmann::json::array({{{"name", "Skin"}, {"uri", "data:image/png;base64," + vatBakerBase64(png)}},
+                                                {{"name", "Skin"}, {"uri", "data:image/png;base64," + vatBakerBase64(other)}}});
         gltf["textures"] = nlohmann::json::array({{{"source", 0}}, {{"source", 1}}});
         gltf["materials"][0]["pbrMetallicRoughness"]["baseColorTexture"] = {{"index", 0}};
         gltf["materials"][1]["pbrMetallicRoughness"]["baseColorTexture"] = {{"index", 1}};
-        writeAll(root() / "assets/models/skins.gltf", gltf.dump());
-        MeshSystem::invalidateModelFile((root() / "assets/models/skins.gltf").string());
-        std::unique_ptr<VatBakeSession> session = bake(modelSpec("skins.gltf", {"Swing"}));
+        vatBakerWriteAll(vatBakerRoot() / "assets/models/skins.gltf", gltf.dump());
+        MeshSystem::invalidateModelFile((vatBakerRoot() / "assets/models/skins.gltf").string());
+        std::unique_ptr<VatBakeSession> session = bake(vatBakerModelSpec("skins.gltf", {"Swing"}));
         ASSERT_TRUE(session->result());
         ASSERT_EQ(session->result()->embeddedImages.size(), 2u);
         VatWriteResult written;
         std::string error;
         ASSERT_TRUE(session->write(written, error)) << error;
         EXPECT_EQ(written.files.size(), 2u) << "the .vat and its glb only";
-        const GlbImages glb = glbImages(root() / written.mesh);
+        const GlbImages glb = glbImages(vatBakerRoot() / written.mesh);
         ASSERT_EQ(glb.images.size(), 2u);
         ASSERT_EQ(glb.baseColorImage.size(), 2u);
         ASSERT_EQ(glb.materialNames, (std::vector<std::string>{"Red", "Blue"}));
@@ -2128,17 +2128,17 @@ TEST_F(VatBaker_, EmbeddedImagesFromDataUrisAndSameNamesStayInTheGlb) {
     }
     // a user texture named as the old extraction would have named it: never touched
     {
-        const fs::path user = root() / "assets/models/morph_blob_Checker.png";
-        writeAll(user, "the user's own texture");
+        const fs::path user = vatBakerRoot() / "assets/models/morph_blob_Checker.png";
+        vatBakerWriteAll(user, "the user's own texture");
         std::string error;
         VatWriteResult written;
-        ASSERT_TRUE(bake(modelSpec("morph_blob.gltf"))->write(written, error)) << error;
+        ASSERT_TRUE(bake(vatBakerModelSpec("morph_blob.gltf"))->write(written, error)) << error;
         VatWriteResult rebaked;
-        ASSERT_TRUE(rebakeVat(project(), written.vat, rebaked, error)) << error;
-        EXPECT_EQ(readAll(user), "the user's own texture");
+        ASSERT_TRUE(rebakeVat(vatBakerProject(), written.vat, rebaked, error)) << error;
+        EXPECT_EQ(vatBakerReadAll(user), "the user's own texture");
         for (const std::string& file : rebaked.files) EXPECT_EQ(file.find(".png"), std::string::npos) << file;
         size_t pngs = 0;
-        for (const auto& entry : fs::directory_iterator(root() / "assets/models")) pngs += entry.path().extension() == ".png";
+        for (const auto& entry : fs::directory_iterator(vatBakerRoot() / "assets/models")) pngs += entry.path().extension() == ".png";
         EXPECT_EQ(pngs, 1u) << "only the user's";
     }
 }
@@ -2147,34 +2147,34 @@ TEST_F(VatBaker_, EmbeddedImagesFromDataUrisAndSameNamesStayInTheGlb) {
 TEST_F(VatBaker_, AClipRemovedByHandIsNotStale) {
     std::string error;
     VatWriteResult written;
-    ASSERT_TRUE(bake(modelSpec("hero.gltf", {"Walk", "Idle"}))->write(written, error)) << error;
-    jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(readAll(root() / written.vat));
+    ASSERT_TRUE(bake(vatBakerModelSpec("hero.gltf", {"Walk", "Idle"}))->write(written, error)) << error;
+    jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(vatBakerReadAll(vatBakerRoot() / written.vat));
     ASSERT_TRUE(parsed.ok());
     VatData edited = *parsed.data;
     edited.clips.erase(edited.clips.begin());
-    writeAll(root() / written.vat, jasperengine::vat::writeVat(edited));
-    const std::vector<VatIssue> stale = checkVatStaleness(project(), written.vat);
-    EXPECT_TRUE(stale.empty()) << kinds(stale);
-    VertexAnimationPool::invalidate((root() / written.vat).string());
+    vatBakerWriteAll(vatBakerRoot() / written.vat, jasperengine::vat::writeVat(edited));
+    const std::vector<VatIssue> stale = checkVatStaleness(vatBakerProject(), written.vat);
+    EXPECT_TRUE(stale.empty()) << vatBakerKinds(stale);
+    VertexAnimationPool::invalidate((vatBakerRoot() / written.vat).string());
     std::string loadError;
-    EXPECT_TRUE(VertexAnimationPool::getOrLoad((root() / written.vat).string(), &loadError)) << loadError;
+    EXPECT_TRUE(VertexAnimationPool::getOrLoad((vatBakerRoot() / written.vat).string(), &loadError)) << loadError;
 }
 
 // review 8: a GameObject bake hashes the files it read (models under the root), not the scene
 TEST_F(VatBaker_, GameObjectBakesHashTheFilesTheyReadNotTheScene) {
-    const uint32_t sceneId = newScene();
-    Scene* scene = sceneOf(sceneId);
-    CreateEntityCmd* group = new CreateEntityCmd(project(), sceneId, "Group", EntityCreationType::GAMEOBJECT);
+    const uint32_t sceneId = vatBakerNewScene();
+    Scene* scene = vatBakerSceneOf(sceneId);
+    CreateEntityCmd* group = new CreateEntityCmd(vatBakerProject(), sceneId, "Group", EntityCreationType::GAMEOBJECT);
     group->setQuiet(true);
-    history(sceneId)->addCommandNoMerge(group);
-    CreateEntityCmd* child = new CreateEntityCmd(project(), sceneId, "Limb", EntityCreationType::MODEL, group->getEntity());
+    vatBakerHistory(sceneId)->addCommandNoMerge(group);
+    CreateEntityCmd* child = new CreateEntityCmd(vatBakerProject(), sceneId, "Limb", EntityCreationType::MODEL, group->getEntity());
     child->setQuiet(true);
-    history(sceneId)->addCommandNoMerge(child);
-    history(sceneId)->addCommandNoMerge(new ModelLoadCmd(project(), sceneId, child->getEntity(), "models/rigid_arm.gltf"));
+    vatBakerHistory(sceneId)->addCommandNoMerge(child);
+    vatBakerHistory(sceneId)->addCommandNoMerge(new ModelLoadCmd(vatBakerProject(), sceneId, child->getEntity(), "models/rigid_arm.gltf"));
     ASSERT_FALSE(scene->getComponent<ModelComponent>(child->getEntity()).loadedFilename.empty());
-    writeMoveClip(root() / "assets/anim/limb.anim", "Limb", 1.0f);
+    writeMoveClip(vatBakerRoot() / "assets/anim/limb.anim", "Limb", 1.0f);
     std::string error;
-    ASSERT_TRUE(project()->saveSceneNow(sceneId, root() / "assets/scenes/hashes.scene", &error)) << error;
+    ASSERT_TRUE(vatBakerProject()->saveSceneNow(sceneId, vatBakerRoot() / "assets/scenes/hashes.scene", &error)) << error;
 
     VatBakeSpec spec;
     spec.source.kind = VatSourceKind::Anim;
@@ -2190,26 +2190,26 @@ TEST_F(VatBaker_, GameObjectBakesHashTheFilesTheyReadNotTheScene) {
     EXPECT_FALSE(hashed(data, "assets/scenes/hashes.scene"));
     VatWriteResult written;
     ASSERT_TRUE(session->write(written, error)) << error;
-    EXPECT_TRUE(checkVatStaleness(project(), written.vat).empty());
+    EXPECT_TRUE(checkVatStaleness(vatBakerProject(), written.vat).empty());
 
     // the scene edited and saved: not stale
     scene->getComponent<Transform>(group->getEntity()).position = Vector3(3, 0, 0);
-    ASSERT_TRUE(project()->saveSceneNow(sceneId, {}, &error)) << error;
-    EXPECT_TRUE(checkVatStaleness(project(), written.vat).empty()) << kinds(checkVatStaleness(project(), written.vat));
+    ASSERT_TRUE(vatBakerProject()->saveSceneNow(sceneId, {}, &error)) << error;
+    EXPECT_TRUE(checkVatStaleness(vatBakerProject(), written.vat).empty()) << vatBakerKinds(checkVatStaleness(vatBakerProject(), written.vat));
     // the child's model changed: stale
-    writeAll(root() / "assets/models/rigid_arm.gltf", readAll(root() / "assets/models/rigid_arm.gltf") + "\n");
-    std::vector<VatIssue> stale = checkVatStaleness(project(), written.vat);
-    ASSERT_TRUE(hasKind(stale, "vat-source-changed")) << kinds(stale);
+    vatBakerWriteAll(vatBakerRoot() / "assets/models/rigid_arm.gltf", vatBakerReadAll(vatBakerRoot() / "assets/models/rigid_arm.gltf") + "\n");
+    std::vector<VatIssue> stale = checkVatStaleness(vatBakerProject(), written.vat);
+    ASSERT_TRUE(vatBakerHasKind(stale, "vat-source-changed")) << vatBakerKinds(stale);
     EXPECT_NE(stale[0].message.find("rigid_arm.gltf"), std::string::npos) << stale[0].message;
     std::string closeError;
-    project()->closeSceneNow(sceneId, UnsavedChoice::Discard, &closeError);
+    vatBakerProject()->closeSceneNow(sceneId, UnsavedChoice::Discard, &closeError);
 }
 
 // review 9: what a glTF material carries is carried (names, unlit, foliage), the rest reported
 TEST_F(VatBaker_, MaterialsKeepWhatGltfCarriesAndReportTheRest) {
-    const uint32_t sceneId = newScene();
+    const uint32_t sceneId = vatBakerNewScene();
     const Entity arm = armWithPlayer(sceneId);
-    Scene* scene = sceneOf(sceneId);
+    Scene* scene = vatBakerSceneOf(sceneId);
     std::vector<Material*> parts;
     for (const auto& node : scene->getComponent<ModelComponent>(arm).meshNodesMapping) {
         MeshComponent* mesh = scene->findComponent<MeshComponent>(node.second);
@@ -2250,15 +2250,15 @@ TEST_F(VatBaker_, MaterialsKeepWhatGltfCarriesAndReportTheRest) {
     VatWriteResult written;
     std::string error;
     ASSERT_TRUE(session->write(written, error)) << error;
-    const GlbImages glb = glbImages(root() / written.mesh);
+    const GlbImages glb = glbImages(vatBakerRoot() / written.mesh);
     EXPECT_NE(glb.json.find("KHR_materials_unlit"), std::string::npos);
     EXPECT_NE(glb.json.find("jasperengine_foliage_transmission"), std::string::npos);
     // the engine reads the foliage transmission back
-    const uint32_t loadScene = newScene();
-    const Entity loaded = loadModel(loadScene, "models/materials.vat.glb", "Loaded");
+    const uint32_t loadScene = vatBakerNewScene();
+    const Entity loaded = vatBakerLoadModel(loadScene, "models/materials.vat.glb", "Loaded");
     bool foliage = false;
     int unlit = 0, lit = 0;
-    for (const Material* material : materialsOf(sceneOf(loadScene), loaded)) {
+    for (const Material* material : materialsOf(vatBakerSceneOf(loadScene), loaded)) {
         foliage |= std::fabs(material->foliageTransmission - 0.4f) < 1e-6f;
         // and draws Red unlit, Blue as before
         if (material->baseColorFactor.x > 0.5f) {
@@ -2277,9 +2277,9 @@ TEST_F(VatBaker_, MaterialsKeepWhatGltfCarriesAndReportTheRest) {
 // unlit is the lighting the source draws with, resolved against its shader: library:unlit on
 // Auto is unlit, a None that library:toon does not list draws toon's per pixel default
 TEST_F(VatBaker_, UnlitIsTheLightingTheSourceDrawsWith) {
-    const uint32_t sceneId = newScene();
+    const uint32_t sceneId = vatBakerNewScene();
     const Entity arm = armWithPlayer(sceneId);
-    Scene* scene = sceneOf(sceneId);
+    Scene* scene = vatBakerSceneOf(sceneId);
     std::vector<Material*> parts;
     for (const auto& node : scene->getComponent<ModelComponent>(arm).meshNodesMapping) {
         MeshComponent* mesh = scene->findComponent<MeshComponent>(node.second);
@@ -2307,10 +2307,10 @@ TEST_F(VatBaker_, UnlitIsTheLightingTheSourceDrawsWith) {
     VatWriteResult written;
     std::string error;
     ASSERT_TRUE(session->write(written, error)) << error;
-    const uint32_t loadScene = newScene();
-    const Entity loaded = loadModel(loadScene, "models/unlit_source.vat.glb", "Loaded");
+    const uint32_t loadScene = vatBakerNewScene();
+    const Entity loaded = vatBakerLoadModel(loadScene, "models/unlit_source.vat.glb", "Loaded");
     int unlit = 0;
-    for (const Material* material : materialsOf(sceneOf(loadScene), loaded)) {
+    for (const Material* material : materialsOf(vatBakerSceneOf(loadScene), loaded)) {
         const bool isRed = material->baseColorFactor.x > 0.5f;
         EXPECT_EQ(material->lighting, isRed ? MaterialLighting::NONE : MaterialLighting::AUTO) << (isRed ? "Red" : "Blue");
         unlit += material->lighting == MaterialLighting::NONE;
@@ -2321,13 +2321,13 @@ TEST_F(VatBaker_, UnlitIsTheLightingTheSourceDrawsWith) {
 // review 10: a source outside the assets folder bakes under it by default (the same folder
 // under assets/), so the default output is one an explicit output and placement accept
 TEST_F(VatBaker_, ASourceOutsideAssetsBakesUnderAssets) {
-    writeMoveClip(root() / "anim/outside.anim", "", 1.0f);
+    writeMoveClip(vatBakerRoot() / "anim/outside.anim", "", 1.0f);
     VatBakeSpec spec;
     spec.source.kind = VatSourceKind::Anim;
     spec.source.path = "assets/models/rigid_arm.gltf";
     spec.source.anims = {"anim/outside.anim"};
     spec.place = VatPlace::Beside;
-    newScene();
+    vatBakerNewScene();
     std::unique_ptr<VatBakeSession> session = bake(spec);
     ASSERT_TRUE(session->result());
     std::string planned, error;
@@ -2337,19 +2337,19 @@ TEST_F(VatBaker_, ASourceOutsideAssetsBakesUnderAssets) {
     VatWriteResult written;
     ASSERT_TRUE(session->write(written, error)) << error;
     EXPECT_EQ(written.vat, "assets/anim/outside.vat");
-    EXPECT_TRUE(fs::exists(root() / "assets/anim/outside.vat.glb"));
-    EXPECT_FALSE(fs::exists(root() / "anim/outside.vat"));
+    EXPECT_TRUE(fs::exists(vatBakerRoot() / "assets/anim/outside.vat.glb"));
+    EXPECT_FALSE(fs::exists(vatBakerRoot() / "anim/outside.vat"));
     ASSERT_NE(written.entity, NULL_ENTITY) << "placed: the files are assets";
-    EXPECT_EQ(sceneOf(written.sceneId)->getComponent<VertexAnimatorComponent>(written.entity).animation, "anim/outside.vat");
-    fs::remove_all(root() / "anim");
+    EXPECT_EQ(vatBakerSceneOf(written.sceneId)->getComponent<VertexAnimatorComponent>(written.entity).animation, "anim/outside.vat");
+    fs::remove_all(vatBakerRoot() / "anim");
 }
 
 // review 11: the rest pose is captured after previews of the source stop, and a scene edited
 // between check() and start() is checked again
 TEST_F(VatBaker_, TheRestIsCapturedWithoutPreviewsAndAfterEdits) {
-    const uint32_t sceneId = newScene();
+    const uint32_t sceneId = vatBakerNewScene();
     const Entity arm = armWithPlayer(sceneId);
-    Scene* scene = sceneOf(sceneId);
+    Scene* scene = vatBakerSceneOf(sceneId);
     VatBakeSpec spec = entitySpec(sceneId, arm);
     spec.mode = VatModeChoice::Bones;
     const std::vector<float> rest = restOf(spec);
@@ -2373,9 +2373,9 @@ TEST_F(VatBaker_, TheRestIsCapturedWithoutPreviewsAndAfterEdits) {
     });
     scene->getSystem<ActionSystem>()->previewPlayer(arm, pose, preview);
     cpuskin::updateTransforms(scene);
-    VatBakeSession session(project());
+    VatBakeSession session(vatBakerProject());
     session.setSpec(spec);
-    EXPECT_FALSE(hasErrors(session.check())) << kinds(session.check());
+    EXPECT_FALSE(hasErrors(session.check())) << vatBakerKinds(session.check());
     EXPECT_TRUE(stopped) << "check() stops the preview before it captures the rest";
     ASSERT_TRUE(session.run()) << session.error();
     EXPECT_LE(largestDifference(session.result()->mesh.positions, rest), 1e-5f);
@@ -2385,11 +2385,11 @@ TEST_F(VatBaker_, TheRestIsCapturedWithoutPreviewsAndAfterEdits) {
     Entity part = NULL_ENTITY;
     for (const auto& node : scene->getComponent<ModelComponent>(arm).meshNodesMapping) part = node.second;
     ASSERT_NE(part, NULL_ENTITY);
-    VatBakeSession later(project());
+    VatBakeSession later(vatBakerProject());
     later.setSpec(spec);
     EXPECT_FALSE(hasErrors(later.check()));
     const Quaternion turned(0.9238795f, 0.0f, 0.0f, 0.3826834f);
-    history(sceneId)->addCommandNoMerge(new PropertyCmd<Quaternion>(project(), sceneId, part, ComponentType::Transform, "rotation", turned));
+    vatBakerHistory(sceneId)->addCommandNoMerge(new PropertyCmd<Quaternion>(vatBakerProject(), sceneId, part, ComponentType::Transform, "rotation", turned));
     ASSERT_TRUE(later.run()) << later.error();
     const std::vector<float> edited = restOf(spec);
     EXPECT_GT(largestDifference(edited, rest), 1e-3f) << "the edit moved the rest";
@@ -2398,7 +2398,7 @@ TEST_F(VatBaker_, TheRestIsCapturedWithoutPreviewsAndAfterEdits) {
 
 // review 12: Rebake keeps the recipe's fps (a longer source clip is not resampled at the old rate)
 TEST_F(VatBaker_, RebakeKeepsTheRecipeFps) {
-    const fs::path clip = root() / "assets/anim/slide.anim";
+    const fs::path clip = vatBakerRoot() / "assets/anim/slide.anim";
     writeMoveClip(clip, "", 1.04f);
     VatBakeSpec spec;
     spec.source.kind = VatSourceKind::Anim;
@@ -2407,15 +2407,15 @@ TEST_F(VatBaker_, RebakeKeepsTheRecipeFps) {
     std::string error;
     VatWriteResult written;
     ASSERT_TRUE(bake(spec)->write(written, error)) << error;
-    jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(readAll(root() / written.vat));
+    jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(vatBakerReadAll(vatBakerRoot() / written.vat));
     ASSERT_TRUE(parsed.ok());
     ASSERT_EQ(parsed.data->clips[0].frames, 31) << "round(1.04 x 30)";
     // the source clip gets longer: 3 s at the recipe's 30 fps is 90 frames (not 3 s at the
     // 29.8 fps the 1.04 s clip was sampled at)
     writeMoveClip(clip, "", 3.0f);
     VatWriteResult rebaked;
-    ASSERT_TRUE(rebakeVat(project(), written.vat, rebaked, error)) << error;
-    parsed = jasperengine::vat::parseVat(readAll(root() / written.vat));
+    ASSERT_TRUE(rebakeVat(vatBakerProject(), written.vat, rebaked, error)) << error;
+    parsed = jasperengine::vat::parseVat(vatBakerReadAll(vatBakerRoot() / written.vat));
     ASSERT_TRUE(parsed.ok());
     EXPECT_EQ(parsed.data->clips[0].frames, 90);
     EXPECT_FLOAT_EQ(parsed.data->clips[0].fps, 30.0f);
@@ -2426,20 +2426,20 @@ TEST_F(VatBaker_, RebakeKeepsTheRecipeFps) {
     VatWriteResult fast;
     ASSERT_TRUE(bake(spec)->write(fast, error)) << error;
     writeMoveClip(clip, "", 3.0f);
-    ASSERT_TRUE(rebakeVat(project(), fast.vat, rebaked, error)) << error;
-    parsed = jasperengine::vat::parseVat(readAll(root() / fast.vat));
+    ASSERT_TRUE(rebakeVat(vatBakerProject(), fast.vat, rebaked, error)) << error;
+    parsed = jasperengine::vat::parseVat(vatBakerReadAll(vatBakerRoot() / fast.vat));
     ASSERT_TRUE(parsed.ok());
     EXPECT_EQ(parsed.data->clips[0].frames, 180) << "3 s at 60 fps";
 }
 
 // review 13: a non-loop wrap edited in the file survives a re-bake of the same clips and a Rebake
 TEST_F(VatBaker_, AllowedWrapEditsSurviveRebakes) {
-    VatBakeSpec spec = modelSpec("hero.gltf", {"Walk"});
+    VatBakeSpec spec = vatBakerModelSpec("hero.gltf", {"Walk"});
     spec.clipOverrides = {{"Walk", ClipWrapMode::Once, 0.0f}};
     std::string error;
     VatWriteResult written;
     ASSERT_TRUE(bake(spec)->write(written, error)) << error;
-    std::shared_ptr<VatDocument> document = VatDocument::open(project(), written.vat, &error);
+    std::shared_ptr<VatDocument> document = VatDocument::open(vatBakerProject(), written.vat, &error);
     ASSERT_TRUE(document) << error;
     VatData data = document->data();
     data.clips[0].wrap = ClipWrapMode::PingPong;
@@ -2451,13 +2451,13 @@ TEST_F(VatBaker_, AllowedWrapEditsSurviveRebakes) {
     VatWriteResult again;
     ASSERT_TRUE(bake(spec)->write(again, error)) << error;
     ASSERT_EQ(again.vat, written.vat);
-    jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(readAll(root() / written.vat));
+    jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(vatBakerReadAll(vatBakerRoot() / written.vat));
     ASSERT_TRUE(parsed.ok());
     EXPECT_EQ(parsed.data->clips[0].wrap, ClipWrapMode::PingPong);
     // and a Rebake
     VatWriteResult rebaked;
-    ASSERT_TRUE(rebakeVat(project(), written.vat, rebaked, error)) << error;
-    parsed = jasperengine::vat::parseVat(readAll(root() / written.vat));
+    ASSERT_TRUE(rebakeVat(vatBakerProject(), written.vat, rebaked, error)) << error;
+    parsed = jasperengine::vat::parseVat(vatBakerReadAll(vatBakerRoot() / written.vat));
     ASSERT_TRUE(parsed.ok());
     EXPECT_EQ(parsed.data->clips[0].wrap, ClipWrapMode::PingPong);
     EXPECT_EQ(parsed.data->clips[0].frames, 31) << "non-loop rows keep the end frame";
@@ -2465,9 +2465,9 @@ TEST_F(VatBaker_, AllowedWrapEditsSurviveRebakes) {
 
 // review 15: a crowd's area is in metres whatever the source's scale and rotation
 TEST_F(VatBaker_, ACrowdOfAScaledSourceKeepsItsAreaInMetres) {
-    const uint32_t sceneId = newScene();
+    const uint32_t sceneId = vatBakerNewScene();
     const Entity arm = armWithPlayer(sceneId);
-    Scene* scene = sceneOf(sceneId);
+    Scene* scene = vatBakerSceneOf(sceneId);
     const Quaternion tilted(0.7071068f, 0.7071068f, 0.0f, 0.0f);
     scene->getComponent<Transform>(arm).position = Vector3(2.0f, 0.0f, 1.0f);
     scene->getComponent<Transform>(arm).rotation = tilted;
@@ -2514,49 +2514,49 @@ TEST_F(VatBaker_, TwoDScenesRefuseThePlacement) {
     uint32_t threeD = 0;
     const uint32_t flat = secondScene(threeD, SceneType::SCENE_2D);
     ASSERT_NE(flat, threeD);
-    ASSERT_EQ(project()->getScene(flat)->sceneType, SceneType::SCENE_2D);
-    VatBakeSpec spec = modelSpec("rigid_arm.gltf", {"Swing"});
+    ASSERT_EQ(vatBakerProject()->getScene(flat)->sceneType, SceneType::SCENE_2D);
+    VatBakeSpec spec = vatBakerModelSpec("rigid_arm.gltf", {"Swing"});
     spec.place = VatPlace::Beside;
     {
-        VatBakeSession session(project());
+        VatBakeSession session(vatBakerProject());
         session.setSpec(spec);
         bool error = false;
-        EXPECT_TRUE(hasKind(session.check(), "invalid_settings", &error)) << kinds(session.check());
+        EXPECT_TRUE(vatBakerHasKind(session.check(), "invalid_settings", &error)) << vatBakerKinds(session.check());
         EXPECT_TRUE(error);
         EXPECT_FALSE(session.run());
     }
     // checked with the 3D scene selected, written with the 2D one
-    project()->setSelectedSceneId(threeD);
+    vatBakerProject()->setSelectedSceneId(threeD);
     std::unique_ptr<VatBakeSession> session = bake(spec);
     ASSERT_TRUE(session->result());
-    project()->setSelectedSceneId(flat);
+    vatBakerProject()->setSelectedSceneId(flat);
     VatWriteResult written;
     VatIssue issue;
     std::string error;
     EXPECT_FALSE(session->write(written, error, &issue));
     EXPECT_EQ(issue.kind, "invalid_settings");
     EXPECT_NE(error.find("3D scene"), std::string::npos) << error;
-    EXPECT_FALSE(fs::exists(root() / "assets/models/rigid_arm.vat"));
+    EXPECT_FALSE(fs::exists(vatBakerRoot() / "assets/models/rigid_arm.vat"));
     // an import placed into it is refused before anything is written
     VatImportResult result;
     VatImportDetection detection;
     detection.assetName = "Wave";
     VatImportWriteOptions options;
     options.place = VatPlace::Beside;
-    EXPECT_FALSE(writeVatImport(project(), result, detection, options, written, error));
+    EXPECT_FALSE(writeVatImport(vatBakerProject(), result, detection, options, written, error));
     EXPECT_NE(error.find("3D scene"), std::string::npos) << error;
     // a GameObject source of a 2D scene can still bake its files
-    project()->setSelectedSceneId(threeD);
+    vatBakerProject()->setSelectedSceneId(threeD);
 }
 
 TEST_F(VatBaker_, AGameObjectBakesAgainAfterBakesPlacementsAndADeleteUndone) {
-    const uint32_t sceneId = newScene();
-    const Entity hero = loadModel(sceneId, "models/hero.gltf");
-    Scene* scene = sceneOf(sceneId);
+    const uint32_t sceneId = vatBakerNewScene();
+    const Entity hero = vatBakerLoadModel(sceneId, "models/hero.gltf");
+    Scene* scene = vatBakerSceneOf(sceneId);
     VatBakeSpec spec;
     spec.source.kind = VatSourceKind::Entity;
     spec.source.sceneId = sceneId;
-    spec.source.path = EntityPath::of(*project()->getScene(sceneId), hero);
+    spec.source.path = EntityPath::of(*vatBakerProject()->getScene(sceneId), hero);
     spec.clips = {"Walk"};
     spec.fps = 5.0f;
     // every bake of the same GameObject: the same layout, and the source's rest mesh unchanged
@@ -2566,10 +2566,10 @@ TEST_F(VatBaker_, AGameObjectBakesAgainAfterBakesPlacementsAndADeleteUndone) {
         VatBakeSpec run = spec;
         run.place = place;
         run.output = output;
-        VatBakeSession session(project());
+        VatBakeSession session(vatBakerProject());
         session.setSpec(run);
         if (!session.run()) {
-            ADD_FAILURE() << what << ": " << session.error() << " / " << kinds(session.failureIssues());
+            ADD_FAILURE() << what << ": " << session.error() << " / " << vatBakerKinds(session.failureIssues());
             return false;
         }
         const VatReport& report = session.result()->report;
@@ -2583,8 +2583,8 @@ TEST_F(VatBaker_, AGameObjectBakesAgainAfterBakesPlacementsAndADeleteUndone) {
             VatBakeTarget target;
             std::vector<VatIssue> issues;
             VatPoser poser;
-            EXPECT_TRUE(resolveVatSource(project(), spec.source, target, issues)) << what << ": " << kinds(issues);
-            EXPECT_TRUE(poser.begin(target, {}, issues, error)) << what << ": " << error << " " << kinds(issues);
+            EXPECT_TRUE(resolveVatSource(vatBakerProject(), spec.source, target, issues)) << what << ": " << vatBakerKinds(issues);
+            EXPECT_TRUE(poser.begin(target, {}, issues, error)) << what << ": " << error << " " << vatBakerKinds(issues);
             EXPECT_FALSE(poser.renderers.empty()) << what;
             if (!poser.renderers.empty()) {
                 if (rest.empty()) rest = poser.renderers[0].source.positions;
@@ -2604,36 +2604,36 @@ TEST_F(VatBaker_, AGameObjectBakesAgainAfterBakesPlacementsAndADeleteUndone) {
     EXPECT_TRUE(again("after place beside"));
     EXPECT_TRUE(again("replace", VatPlace::Replace, "assets/models/again_replace.vat"));
     EXPECT_FALSE(scene->isEntityActive(hero)) << "replace disables the source";
-    ASSERT_TRUE(history(sceneId)->undo());
+    ASSERT_TRUE(vatBakerHistory(sceneId)->undo());
     EXPECT_TRUE(scene->isEntityActive(hero));
     EXPECT_TRUE(again("after undoing replace"));
-    ASSERT_TRUE(history(sceneId)->undo());
+    ASSERT_TRUE(vatBakerHistory(sceneId)->undo());
     EXPECT_TRUE(again("after undoing place beside"));
 
     // deleted, then brought back by undo: its Model builds the meshes in the next MeshSystem
     // update (until then they hold submeshes without vertex data, which read as "no POSITION")
-    history(sceneId)->addCommandNoMerge(new DeleteEntityCmd(project(), sceneId, hero));
+    vatBakerHistory(sceneId)->addCommandNoMerge(new DeleteEntityCmd(vatBakerProject(), sceneId, hero));
     ASSERT_FALSE(scene->isEntityCreated(hero));
-    ASSERT_TRUE(history(sceneId)->undo());
+    ASSERT_TRUE(vatBakerHistory(sceneId)->undo());
     ASSERT_TRUE(scene->isEntityCreated(hero));
     ASSERT_TRUE(scene->getComponent<ModelComponent>(hero).needUpdateModel);
-    EXPECT_TRUE(vatSourceLoading(project(), spec.source));
+    EXPECT_TRUE(vatSourceLoading(vatBakerProject(), spec.source));
     {
-        VatBakeSession session(project());
+        VatBakeSession session(vatBakerProject());
         session.setSpec(spec);
         bool error = false;
         const std::vector<VatIssue> issues = session.check();
-        EXPECT_TRUE(hasKind(issues, "source_loading", &error)) << kinds(issues);
+        EXPECT_TRUE(vatBakerHasKind(issues, "source_loading", &error)) << vatBakerKinds(issues);
         EXPECT_TRUE(error);
-        EXPECT_FALSE(hasKind(issues, "invalid_source")) << kinds(issues);
+        EXPECT_FALSE(vatBakerHasKind(issues, "invalid_source")) << vatBakerKinds(issues);
         EXPECT_FALSE(session.run());
     }
     // the refused bake changed nothing: the load is still the engine's to do
     EXPECT_TRUE(scene->getComponent<ModelComponent>(hero).needUpdateModel);
     scene->getSystem<MeshSystem>()->update(0);
-    EXPECT_FALSE(vatSourceLoading(project(), spec.source));
+    EXPECT_FALSE(vatSourceLoading(vatBakerProject(), spec.source));
     EXPECT_TRUE(again("after its deletion was undone and the model loaded"));
     EXPECT_TRUE(again("and once more"));
     // a file source never waits
-    EXPECT_FALSE(vatSourceLoading(project(), modelSpec("hero.gltf").source));
+    EXPECT_FALSE(vatSourceLoading(vatBakerProject(), vatBakerModelSpec("hero.gltf").source));
 }

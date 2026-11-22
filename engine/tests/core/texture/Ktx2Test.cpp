@@ -22,7 +22,7 @@ using namespace jasperengine;
 
 namespace {
 
-    bool zstdCompress(std::span<const uint8_t> in, std::vector<uint8_t>& out, int level, void*){
+    bool ktx2ZstdCompress(std::span<const uint8_t> in, std::vector<uint8_t>& out, int level, void*){
         out.resize(ZSTD_compressBound(in.size()));
         const size_t written = ZSTD_compress(out.data(), out.size(), in.data(), in.size(), level);
         if (ZSTD_isError(written))
@@ -43,7 +43,7 @@ namespace {
         return out;
     }
 
-    Ktx2::WriteDesc describe(GpuTextureFormat format, int width, int height, int faces, const std::vector<std::vector<uint8_t>>& levels){
+    Ktx2::WriteDesc ktx2Describe(GpuTextureFormat format, int width, int height, int faces, const std::vector<std::vector<uint8_t>>& levels){
         Ktx2::WriteDesc desc;
         desc.format = format;
         desc.srgb = format == GpuTextureFormat::RGBA8 || format == GpuTextureFormat::BC7;
@@ -83,7 +83,7 @@ TEST(Ktx2, RoundTripsEveryFormat){
             const auto bytes = makeLevels(format, width, height, 1, levels, (uint32_t)f + 1);
             std::vector<uint8_t> file;
             std::string error;
-            ASSERT_TRUE(Ktx2::write(describe(format, width, height, 1, bytes), file, error, zstd, zstdCompress)) << error;
+            ASSERT_TRUE(Ktx2::write(ktx2Describe(format, width, height, 1, bytes), file, error, zstd, ktx2ZstdCompress)) << error;
 
             Ktx2MemorySource source(file);
             Ktx2Image image;
@@ -105,7 +105,7 @@ TEST(Ktx2, RoundTripsEveryFormat){
 TEST(Ktx2, SrgbTravelsInTheDfd){
     const auto bytes = makeLevels(GpuTextureFormat::BC7, 16, 16, 1, 1, 7);
     for (bool srgb : {false, true}){
-        Ktx2::WriteDesc desc = describe(GpuTextureFormat::BC7, 16, 16, 1, bytes);
+        Ktx2::WriteDesc desc = ktx2Describe(GpuTextureFormat::BC7, 16, 16, 1, bytes);
         desc.srgb = srgb;
         std::vector<uint8_t> file;
         std::string error;
@@ -118,7 +118,7 @@ TEST(Ktx2, SrgbTravelsInTheDfd){
     // linear data stays linear whatever the flag says
     // (the descriptor's spans point into these: they outlive the write)
     const std::vector<std::vector<uint8_t>> bc5Levels = makeLevels(GpuTextureFormat::BC5, 16, 16, 1, 1, 8);
-    Ktx2::WriteDesc desc = describe(GpuTextureFormat::BC5, 16, 16, 1, bc5Levels);
+    Ktx2::WriteDesc desc = ktx2Describe(GpuTextureFormat::BC5, 16, 16, 1, bc5Levels);
     desc.srgb = true;
     std::vector<uint8_t> file;
     std::string error;
@@ -134,7 +134,7 @@ TEST(Ktx2, RoundTripsCubemaps){
     const auto bytes = makeLevels(GpuTextureFormat::ASTC_6x6, size, size, 6, levels, 11);
     std::vector<uint8_t> file;
     std::string error;
-    ASSERT_TRUE(Ktx2::write(describe(GpuTextureFormat::ASTC_6x6, size, size, 6, bytes), file, error, 9, zstdCompress)) << error;
+    ASSERT_TRUE(Ktx2::write(ktx2Describe(GpuTextureFormat::ASTC_6x6, size, size, 6, bytes), file, error, 9, ktx2ZstdCompress)) << error;
     Ktx2MemorySource source(file);
     Ktx2Image image;
     ASSERT_TRUE(Ktx2::read(source, 0, image, error)) << error;
@@ -145,12 +145,12 @@ TEST(Ktx2, RoundTripsCubemaps){
 
 TEST(Ktx2, KeyValuesRoundTripAndRewrite){
     const auto bytes = makeLevels(GpuTextureFormat::RGBA8, 8, 8, 1, 4, 3);
-    Ktx2::WriteDesc desc = describe(GpuTextureFormat::RGBA8, 8, 8, 1, bytes);
+    Ktx2::WriteDesc desc = ktx2Describe(GpuTextureFormat::RGBA8, 8, 8, 1, bytes);
     desc.keyValues["JE.flags"] = "alpha,coverage";
     desc.keyValues["KTXwriter"] = "JasperEngine";
     std::vector<uint8_t> file;
     std::string error;
-    ASSERT_TRUE(Ktx2::write(desc, file, error, 5, zstdCompress));
+    ASSERT_TRUE(Ktx2::write(desc, file, error, 5, ktx2ZstdCompress));
     Ktx2Info info;
     ASSERT_TRUE(Ktx2::parseInfo(file, file.size(), info, error));
     EXPECT_EQ(info.keyValues["JE.flags"], "alpha,coverage");
@@ -173,7 +173,7 @@ TEST(Ktx2, LevelsAreStoredSmallestFirst){
     const auto bytes = makeLevels(GpuTextureFormat::BC1, 64, 64, 1, 7, 5);
     std::vector<uint8_t> file;
     std::string error;
-    ASSERT_TRUE(Ktx2::write(describe(GpuTextureFormat::BC1, 64, 64, 1, bytes), file, error));
+    ASSERT_TRUE(Ktx2::write(ktx2Describe(GpuTextureFormat::BC1, 64, 64, 1, bytes), file, error));
     Ktx2Info info;
     ASSERT_TRUE(Ktx2::parseInfo(file, file.size(), info, error));
     for (uint32_t level = 1; level < info.levelCount; level++)
@@ -187,7 +187,7 @@ TEST(Ktx2, ReadingFromAMipLimitTouchesOnlyTheKeptLevels){
         const auto bytes = makeLevels(GpuTextureFormat::BC7, 256, 128, 1, 9, 9);
         std::vector<uint8_t> file;
         std::string error;
-        ASSERT_TRUE(Ktx2::write(describe(GpuTextureFormat::BC7, 256, 128, 1, bytes), file, error, zstd, zstdCompress));
+        ASSERT_TRUE(Ktx2::write(ktx2Describe(GpuTextureFormat::BC7, 256, 128, 1, bytes), file, error, zstd, ktx2ZstdCompress));
         Ktx2Info info;
         ASSERT_TRUE(Ktx2::parseInfo(file, file.size(), info, error));
 
@@ -215,7 +215,7 @@ TEST(Ktx2, PrefixSourceLoadsWhatItHolds){
     const auto bytes = makeLevels(GpuTextureFormat::RGBA8, 128, 128, 1, 8, 13);
     std::vector<uint8_t> file;
     std::string error;
-    ASSERT_TRUE(Ktx2::write(describe(GpuTextureFormat::RGBA8, 128, 128, 1, bytes), file, error));
+    ASSERT_TRUE(Ktx2::write(ktx2Describe(GpuTextureFormat::RGBA8, 128, 128, 1, bytes), file, error));
     Ktx2Info info;
     ASSERT_TRUE(Ktx2::parseInfo(file, file.size(), info, error));
     // the bytes up to the end of level 1: levels 1..7 load, level 0 does not
@@ -232,7 +232,7 @@ TEST(Ktx2, MalformedFilesFailCleanly){
     const auto bytes = makeLevels(GpuTextureFormat::BC3, 64, 32, 1, 7, 17);
     std::vector<uint8_t> file;
     std::string error;
-    ASSERT_TRUE(Ktx2::write(describe(GpuTextureFormat::BC3, 64, 32, 1, bytes), file, error, 4, zstdCompress));
+    ASSERT_TRUE(Ktx2::write(ktx2Describe(GpuTextureFormat::BC3, 64, 32, 1, bytes), file, error, 4, ktx2ZstdCompress));
 
     auto fails = [](std::vector<uint8_t> broken){
         Ktx2MemorySource source(broken);
@@ -286,7 +286,7 @@ TEST(Ktx2, FuzzedFilesNeverCrash){
             for (int faces : {1, 6}){
                 const auto bytes = makeLevels(format, 24, 24, faces, fullMipCount(24, 24), (uint32_t)format * 7 + (uint32_t)zstd);
                 std::vector<uint8_t> file;
-                ASSERT_TRUE(Ktx2::write(describe(format, 24, 24, faces, bytes), file, error, zstd, zstdCompress));
+                ASSERT_TRUE(Ktx2::write(ktx2Describe(format, 24, 24, faces, bytes), file, error, zstd, ktx2ZstdCompress));
                 seeds.push_back(std::move(file));
             }
         }
@@ -342,7 +342,7 @@ TEST(Ktx2, WritesUastcFilesTheReaderRecognises){
         desc.levels.push_back(level);
     std::vector<uint8_t> file;
     std::string error;
-    ASSERT_TRUE(Ktx2::write(desc, file, error, 9, zstdCompress)) << error;
+    ASSERT_TRUE(Ktx2::write(desc, file, error, 9, ktx2ZstdCompress)) << error;
     Ktx2MemorySource source(file);
     Ktx2Image image;
     ASSERT_TRUE(Ktx2::read(source, 0, image, error)) << error;

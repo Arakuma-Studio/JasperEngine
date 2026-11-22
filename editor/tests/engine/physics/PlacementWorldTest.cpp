@@ -59,7 +59,7 @@ namespace {
         return 2.0f * std::acos(std::min(1.0f, dot));
     }
 
-    const float DEG = 3.14159265f / 180.0f;
+    const float PLACEMENT_WORLD_DEG = 3.14159265f / 180.0f;
 
     // A floor whose top is y = 0 (a static triangle mesh)
     Entity floorBox(TestScene& t, float size = 20.0f) {
@@ -185,7 +185,7 @@ TEST(PlacementWorldSettle, LiftedBodiesForgetTheFloor) {
 TEST(PlacementWorldSettle, SphereRollsOffRamp) {
     TestScene t;
     const Entity ramp = t.box(Vector3(6, 0.2f, 2), Vector3(0, 1, 0));
-    t.setRotation(ramp, axisAngle(Vector3(0, 0, 1), 20.0f * DEG));
+    t.setRotation(ramp, axisAngle(Vector3(0, 0, 1), 20.0f * PLACEMENT_WORLD_DEG));
     const Entity ball = t.sphere(0.25f, Vector3(2.0f, 2.2f, 0));
     t.resolve();
 
@@ -421,7 +421,7 @@ TEST(PlacementWorldControl, TeleportPastThreshold) {
     EXPECT_NEAR(state.pose.position.x, 10.0f / 120.0f, 1e-3f);
 
     // past it: there in one step, flagged
-    const Quaternion turned = axisAngle(Vector3(0, 1, 0), 30.0f * DEG);
+    const Quaternion turned = axisAngle(Vector3(0, 1, 0), 30.0f * PLACEMENT_WORLD_DEG);
     world.setTarget(crate, {Vector3(8, 1, -2), turned});
     world.step();
     state = world.getState(crate);
@@ -449,7 +449,7 @@ TEST(PlacementWorldControl, RotationTakesTheShorterWay) {
         world.setGravity(Vector3(0, 0, 0));
         ASSERT_TRUE(world.addMover(crate));
 
-        const Quaternion target = axisAngle(Vector3(0, 1, 0), degrees * DEG);
+        const Quaternion target = axisAngle(Vector3(0, 1, 0), degrees * PLACEMENT_WORLD_DEG);
         world.setTarget(crate, {Vector3(1, 2, 3), target});
         world.step();
         const PlacementBodyState first = world.getState(crate);
@@ -462,7 +462,7 @@ TEST(PlacementWorldControl, RotationTakesTheShorterWay) {
 
         for (int i = 0; i < 120; i++) world.step();
         const PlacementBodyState done = world.getState(crate);
-        EXPECT_LT(angleBetween(done.pose.rotation, target), 0.5f * DEG) << degrees;
+        EXPECT_LT(angleBetween(done.pose.rotation, target), 0.5f * PLACEMENT_WORLD_DEG) << degrees;
         // turning about its centre leaves the root where it is
         EXPECT_NEAR(done.pose.position.x, 1.0f, 1e-3f);
         EXPECT_NEAR(done.pose.position.y, 2.0f, 1e-3f);
@@ -819,7 +819,7 @@ TEST(PlacementWorldColliders, ChildMeshesMergeIntoOneScaledBody) {
     const PlacementBodyState state = world.getState(table);
     EXPECT_NEAR(state.pose.position.y, 0.0f, 1e-3f);
     EXPECT_NEAR(world.getMoversBounds().getMaximum().y, 1.5f, 2e-3f);
-    EXPECT_LT(angleBetween(state.pose.rotation, axisAngle(Vector3(0, 1, 0), 0.5f)), 0.5f * DEG);
+    EXPECT_LT(angleBetween(state.pose.rotation, axisAngle(Vector3(0, 1, 0), 0.5f)), 0.5f * PLACEMENT_WORLD_DEG);
 }
 
 namespace {
@@ -1218,9 +1218,9 @@ TEST(PlacementWorldContext, NeighboursStandOnContextOutsideTheRegion) {
     boxes.push_back(t.box(Vector3(0.14f, 0.14f, 0.14f), Vector3(-0.1f, 1.75f, -0.08f), props));
     boxes.push_back(t.box(Vector3(0.12f, 0.12f, 0.12f), Vector3(0.09f, 2.0f, 0.06f), props));
     boxes.push_back(t.box(Vector3(0.16f, 0.1f, 0.12f), Vector3(0.0f, 2.3f, 0.1f), props));
-    t.setRotation(boxes[0], axisAngle(Vector3(0, 1, 0), 25.0f * DEG) * axisAngle(Vector3(1, 0, 0), 12.0f * DEG));
-    t.setRotation(boxes[1], axisAngle(Vector3(0, 1, 0), 40.0f * DEG) * axisAngle(Vector3(0, 0, 1), 15.0f * DEG));
-    t.setRotation(boxes[2], axisAngle(Vector3(1, 0, 0), 30.0f * DEG) * axisAngle(Vector3(0, 0, 1), -10.0f * DEG));
+    t.setRotation(boxes[0], axisAngle(Vector3(0, 1, 0), 25.0f * PLACEMENT_WORLD_DEG) * axisAngle(Vector3(1, 0, 0), 12.0f * PLACEMENT_WORLD_DEG));
+    t.setRotation(boxes[1], axisAngle(Vector3(0, 1, 0), 40.0f * PLACEMENT_WORLD_DEG) * axisAngle(Vector3(0, 0, 1), 15.0f * PLACEMENT_WORLD_DEG));
+    t.setRotation(boxes[2], axisAngle(Vector3(1, 0, 0), 30.0f * PLACEMENT_WORLD_DEG) * axisAngle(Vector3(0, 0, 1), -10.0f * PLACEMENT_WORLD_DEG));
     t.resolve();
 
     PlacementWorldSettings settings;
@@ -1381,7 +1381,7 @@ TEST(PlacementWorldContext, InstancedMeshesAreBoxes) {
     const Entity one = single.box(Vector3(2, 1, 1), Vector3(0, 0, 0));
     InstancedMeshComponent lone;
     InstanceData turned;
-    turned.rotation = axisAngle(Vector3(0, 1, 0), 90.0f * DEG);
+    turned.rotation = axisAngle(Vector3(0, 1, 0), 90.0f * PLACEMENT_WORLD_DEG);
     lone.instances = {turned};
     single.scene.addComponent<InstancedMeshComponent>(one, lone);
     single.resolve();
@@ -1529,7 +1529,7 @@ namespace {
         const Entity parent = t.entity(at);
         t.setScale(parent, Vector3(4, 1, 1));
         const Entity plank = t.box(Vector3(2, 0.2f, 0.2f), Vector3(0, 0, 0), parent);
-        t.setRotation(plank, axisAngle(Vector3(0, 1, 0), 90.0f * DEG));
+        t.setRotation(plank, axisAngle(Vector3(0, 1, 0), 90.0f * PLACEMENT_WORLD_DEG));
         return parent;
     }
 
@@ -1562,7 +1562,7 @@ TEST(PlacementWorldReview, NonUniformParentScaleWithARotatedChild) {
     const Entity instancedEntity = field.box(Vector3(2, 0.2f, 0.2f), Vector3(0, 0, 0), parent);
     InstancedMeshComponent instanced;
     InstanceData turned;
-    turned.rotation = axisAngle(Vector3(0, 1, 0), 90.0f * DEG);
+    turned.rotation = axisAngle(Vector3(0, 1, 0), 90.0f * PLACEMENT_WORLD_DEG);
     instanced.instances = {turned};
     field.scene.addComponent<InstancedMeshComponent>(instancedEntity, instanced);
     field.resolve();
@@ -1819,9 +1819,9 @@ TEST(PlacementWorldReview, BallsStopOnGentleSlopesAndRollDownSteepOnes) {
     for (const float degrees : {5.0f, 30.0f}) {
         TestScene t;
         const Entity slope = t.box(Vector3(12, 0.2f, 4), Vector3(0, 0, 0));
-        t.setRotation(slope, axisAngle(Vector3(0, 0, 1), degrees * DEG));
+        t.setRotation(slope, axisAngle(Vector3(0, 0, 1), degrees * PLACEMENT_WORLD_DEG));
         // just above the slope's surface, 2 m up its length
-        const float angle = degrees * DEG;
+        const float angle = degrees * PLACEMENT_WORLD_DEG;
         const Vector3 normal(-std::sin(angle), std::cos(angle), 0);
         const Vector3 along(std::cos(angle), std::sin(angle), 0);
         const Entity ball = t.sphere(0.2f, along * 2.0f + normal * (0.1f + 0.21f));

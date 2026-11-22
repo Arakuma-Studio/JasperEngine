@@ -46,10 +46,10 @@ using namespace jasperengine::navtest;
 
 namespace {
 
-    int kWorkers = 8;
-    constexpr float kTick = 1.0f / 60.0f;
+    int kNavBenchWorkers = 8;
+    constexpr float kNavBenchTick = 1.0f / 60.0f;
 
-    jobs::Config benchConfig(int workers) {
+    jobs::Config navBenchConfig(int workers) {
         jobs::Config config;
         config.workers = workers;
         config.reserveForFrame = 0;
@@ -57,7 +57,7 @@ namespace {
         return config;
     }
 
-    double msSince(bench::Clock::time_point start) {
+    double navBenchMsSince(bench::Clock::time_point start) {
         return bench::secondsSince(start) * 1000.0;
     }
 
@@ -69,7 +69,7 @@ namespace {
         options.system = &system;
         nav::NavBake bake(input, input->nonEmptyTiles, options);
         bake.wait();
-        milliseconds = msSince(start);
+        milliseconds = navBenchMsSince(start);
         nav::NavMeshData data;
         data.header.config = input->config;
         data.header.maxTiles = input->tileCount();
@@ -101,19 +101,19 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         const std::string arg = argv[i];
         if (arg == "--workers" && i + 1 < argc)
-            kWorkers = std::max(1, std::atoi(argv[++i]));
+            kNavBenchWorkers = std::max(1, std::atoi(argv[++i]));
         else if (arg == "--count-allocs")
             countAllocs = true;
     }
     const unsigned hardware = std::thread::hardware_concurrency();
-    if (hardware > 1 && (int)hardware - 1 < kWorkers)
-        kWorkers = (int)hardware - 1;
+    if (hardware > 1 && (int)hardware - 1 < kNavBenchWorkers)
+        kNavBenchWorkers = (int)hardware - 1;
     Engine::systemInit(argc, argv, new testsupport::JobsTestSystem());
-    Engine::setUpdateTime(kTick);
-    std::printf("je-bench-nav: %d workers, %u hardware threads\n", kWorkers, hardware);
+    Engine::setUpdateTime(kNavBenchTick);
+    std::printf("je-bench-nav: %d workers, %u hardware threads\n", kNavBenchWorkers, hardware);
     bench::Results results("je-bench-nav");
-    jobs::JobSystem pool(benchConfig(kWorkers));
-    jobs::JobSystem single(benchConfig(0));
+    jobs::JobSystem pool(navBenchConfig(kNavBenchWorkers));
+    jobs::JobSystem single(navBenchConfig(0));
 
     // ---- bench_nav_city: collect, full bake (all workers and one thread), memory and size
     Scene scene;
@@ -127,7 +127,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "collect failed: %s\n", error.c_str());
         return 1;
     }
-    results.add("city_collect_ms", msSince(start), "ms");
+    results.add("city_collect_ms", navBenchMsSince(start), "ms");
     results.add("city_tiles", (double)input->tileCount(), "tiles");
     double bakeMs = 0.0, bake1Ms = 0.0;
     nav::NavMeshData data = bakeAll(input, pool, bakeMs);
@@ -154,7 +154,7 @@ int main(int argc, char** argv) {
         resolveTransforms(scene);
         start = bench::Clock::now();
         const NavBakeResult result = nav->bakeNow(fixture.surface, NavBakeMode::DIRTY);
-        results.add("city_bake_incremental_ms", msSince(start), "ms");
+        results.add("city_bake_incremental_ms", navBenchMsSince(start), "ms");
         results.add("city_bake_incremental_tiles", (double)result.tilesBuilt, "tiles");
     }
 
@@ -174,7 +174,7 @@ int main(int argc, char** argv) {
                 continue;
             auto t = bench::Clock::now();
             const nav::NavPath path = runtime.findPath(sa.position, sb.position, filter, extents);
-            const double ms = msSince(t);
+            const double ms = navBenchMsSince(t);
             // R26 times paths between connected points; a pair across islands (a roof) searches
             // the whole node budget and fails, timed on its own
             if (path.status == nav::PathStatus::Complete) {
@@ -185,10 +185,10 @@ int main(int argc, char** argv) {
             }
             t = bench::Clock::now();
             runtime.samplePosition(a, 6.0f, filter);
-            samples.push_back(msSince(t));
+            samples.push_back(navBenchMsSince(t));
             t = bench::Clock::now();
             runtime.raycast(sa.position, sb.position, filter, extents);
-            raycasts.push_back(msSince(t));
+            raycasts.push_back(navBenchMsSince(t));
         }
         results.add("query_path_p95_ms", bench::percentile(paths, 0.95), "ms");
         results.add("query_path_complete_share", (double)complete / std::max<size_t>(1, paths.size() + unreachable.size()), "of pairs");
@@ -209,7 +209,7 @@ int main(int argc, char** argv) {
             const nav::NavFilter masked = nav::NavFilter::fromSettings((uint16_t)(nav::ALL_AREAS & ~(1u << area)));
             const auto t = bench::Clock::now();
             runtime.findRandomPoint(masked, random, -1, hit);
-            firsts.push_back(msSince(t));
+            firsts.push_back(navBenchMsSince(t));
         }
         results.add("query_random_first_ms", bench::percentile(firsts, 0.5), "ms");
         const nav::NavFilter filter = nav::NavFilter::fromSettings(nav::ALL_AREAS);
@@ -219,7 +219,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < 1000; i++) {
             auto t = bench::Clock::now();
             runtime.findRandomPoint(filter, random, -1, hit);
-            anywhere.push_back(msSince(t));
+            anywhere.push_back(navBenchMsSince(t));
             if (hit.hit)
                 points.push_back(hit.position);
         }
@@ -228,15 +228,15 @@ int main(int argc, char** argv) {
         for (const Vector3& p : points) {
             auto t = bench::Clock::now();
             runtime.findRandomPointAround(p, 10.0f, filter, extents, random, -1, hit);
-            around.push_back(msSince(t));
+            around.push_back(navBenchMsSince(t));
             t = bench::Clock::now();
             runtime.findClosestEdge(p, filter, extents, 5.0f);
-            walls.push_back(msSince(t));
+            walls.push_back(navBenchMsSince(t));
             const float a = angle(direction);
             const Vector3 to = p + Vector3(std::cos(a) * 2.0f, 0.0f, std::sin(a) * 2.0f);
             t = bench::Clock::now();
             runtime.moveAlongSurface(p, to, filter, extents, hit);
-            moves.push_back(msSince(t));
+            moves.push_back(navBenchMsSince(t));
         }
         results.add("query_random_p95_ms", bench::percentile(anywhere, 0.95), "ms");
         results.add("query_random_circle_p95_ms", bench::percentile(around, 0.95), "ms");
@@ -252,7 +252,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < 20; i++) {
             const auto t = bench::Clock::now();
             nav::labelIslands(runtime.detourNavMesh(), labels);
-            times.push_back(msSince(t));
+            times.push_back(navBenchMsSince(t));
         }
         results.add("city_islands_ms", bench::percentile(times, 0.5), "ms");
         results.add("city_islands", (double)labels.islands.size(), "islands");
@@ -278,7 +278,7 @@ int main(int argc, char** argv) {
             const Vector3 p(coordinate(random), height(random), coordinate(random));
             const auto t = bench::Clock::now();
             const nav::NavLocation location = runtime.locate(p, filter, extents, 5.0f);
-            locates.push_back(msSince(t));
+            locates.push_back(navBenchMsSince(t));
             if (!location.onMesh || location.island < 0)
                 continue;
             if (!hasGround && location.island == largest) {
@@ -297,7 +297,7 @@ int main(int argc, char** argv) {
                 const auto t = bench::Clock::now();
                 for (int i = 0; i < 1000; i++)
                     runtime.isReachable(ground, roof, filter, extents);
-                rejects.push_back(msSince(t));
+                rejects.push_back(navBenchMsSince(t));
             }
             results.add("query_reject_disconnected_us", bench::percentile(rejects, 0.5), "us");
             results.add("query_reject_searches", (double)(runtime.getSearchCount() - searches), "searches");
@@ -348,7 +348,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < 20; i++) {
             const auto t = bench::Clock::now();
             count = system->getFindings(options).size();
-            times.push_back(msSince(t));
+            times.push_back(navBenchMsSince(t));
         }
         results.add("findings_city_ms", bench::percentile(times, 0.5), "ms");
         results.add("findings_city_count", (double)count, "findings");
@@ -377,7 +377,7 @@ int main(int argc, char** argv) {
             agents.push_back(entity);
         }
         resolveTransforms(crowdScene);
-        crowdScene.fixedUpdate(kTick);
+        crowdScene.fixedUpdate(kNavBenchTick);
         for (Entity entity : agents) {
             nav::NavHit hit;
             while (!system->samplePosition(Vector3(coordinate(random), 3.0f, coordinate(random)), 6.0f, hit)) {
@@ -385,12 +385,12 @@ int main(int argc, char** argv) {
             NavMeshAgent(&crowdScene, entity).setDestination(hit.position);
         }
         for (int warm = 0; warm < 60; warm++)
-            crowdScene.fixedUpdate(kTick);
+            crowdScene.fixedUpdate(kNavBenchTick);
         std::vector<double> ticks;
         for (int tick = 0; tick < 300; tick++) {
             const auto t = bench::Clock::now();
-            crowdScene.fixedUpdate(kTick);
-            ticks.push_back(msSince(t));
+            crowdScene.fixedUpdate(kNavBenchTick);
+            ticks.push_back(navBenchMsSince(t));
         }
         results.add("crowd_" + std::to_string(count) + "_tick_ms", bench::percentile(ticks, 0.5), "ms");
         results.add("crowd_" + std::to_string(count) + "_tick_p95_ms", bench::percentile(ticks, 0.95), "ms");
@@ -424,7 +424,7 @@ int main(int argc, char** argv) {
                 agents.push_back(entity);
             }
             resolveTransforms(*crowdScene);
-            crowdScene->fixedUpdate(kTick);
+            crowdScene->fixedUpdate(kNavBenchTick);
             for (Entity entity : agents) {
                 nav::NavHit hit;
                 while (!system->samplePosition(Vector3(coordinate(random), 3.0f, coordinate(random)), 6.0f, hit)) {
@@ -432,7 +432,7 @@ int main(int argc, char** argv) {
                 NavMeshAgent(crowdScene.get(), entity).setDestination(hit.position);
             }
             for (int warm = 0; warm < 60; warm++)
-                crowdScene->fixedUpdate(kTick);
+                crowdScene->fixedUpdate(kNavBenchTick);
             return crowdScene;
         };
         std::unique_ptr<Scene> plain = makeCrowd(false);
@@ -440,11 +440,11 @@ int main(int argc, char** argv) {
         std::vector<double> extra;
         for (int tick = 0; tick < 600; tick++) {
             auto t = bench::Clock::now();
-            plain->fixedUpdate(kTick);
-            const double without = msSince(t);
+            plain->fixedUpdate(kNavBenchTick);
+            const double without = navBenchMsSince(t);
             t = bench::Clock::now();
-            watched->fixedUpdate(kTick);
-            extra.push_back(msSince(t) - without);
+            watched->fixedUpdate(kNavBenchTick);
+            extra.push_back(navBenchMsSince(t) - without);
         }
         results.add("stuck_100_extra_ms", std::max(0.0, bench::percentile(extra, 0.5)), "ms");
     }
@@ -472,7 +472,7 @@ int main(int argc, char** argv) {
         carveScene.addComponent<NavMeshObstacleComponent>(obstacle, component);
         resolveTransforms(carveScene);
         for (int i = 0; i < 10; i++)
-            carveScene.fixedUpdate(kTick);
+            carveScene.fixedUpdate(kNavBenchTick);
         std::vector<double> worst;
         int maxTicks = 0;
         for (int move = 0; move < 20; move++) {
@@ -483,8 +483,8 @@ int main(int argc, char** argv) {
             double maxMs = 0.0;
             do {
                 const auto t = bench::Clock::now();
-                carveScene.fixedUpdate(kTick);
-                maxMs = std::max(maxMs, msSince(t));
+                carveScene.fixedUpdate(kNavBenchTick);
+                maxMs = std::max(maxMs, navBenchMsSince(t));
                 ticks++;
             } while (system->samplePosition(Vector3(-10.0f + (float)move, 0.0f, 0.0f), 0.3f, hit) && ticks < 10);
             worst.push_back(maxMs);
@@ -505,7 +505,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < 30; i++) {
             const auto t = bench::Clock::now();
             const nav::GridPath path = solver.solve(maze, nav::GridCell{0, 0}, nav::GridCell{255, 255}, nav::GridQuery(), costs);
-            times.push_back(msSince(t));
+            times.push_back(navBenchMsSince(t));
             if (path.status != nav::PathStatus::Complete)
                 std::fprintf(stderr, "the maze path is not complete\n");
         }
@@ -519,7 +519,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < 1000; i++) {
             const auto t = bench::Clock::now();
             solver.solve(closed, nav::GridCell{1, 1}, nav::GridCell{250, 250}, nav::GridQuery(), costs);
-            times.push_back(msSince(t) * 1000.0);
+            times.push_back(navBenchMsSince(t) * 1000.0);
         }
         results.add("grid_reject_us", bench::percentile(times, 0.5), "us");
         // a batch of 200 paths on 128^2 over 4 threads (3 workers and the caller)
@@ -548,7 +548,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < 10; i++) {
             const auto t = bench::Clock::now();
             nav::solveGridBatch(field, requests, costs, pool4, paths, 4);
-            times.push_back(msSince(t));
+            times.push_back(navBenchMsSince(t));
         }
         results.add("grid_batch_200_4t_ms", bench::percentile(times, 0.5), "ms");
         results.add("grid_batch_threads", (double)std::min<size_t>(4, jobs::system().getWorkerCount() + 1), "threads");
@@ -556,7 +556,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < 10; i++) {
             const auto t = bench::Clock::now();
             nav::solveGridBatch(field, requests, costs, pool4, paths, 1);
-            times.push_back(msSince(t));
+            times.push_back(navBenchMsSince(t));
         }
         results.add("grid_batch_200_1t_ms", bench::percentile(times, 0.5), "ms");
         // where the single-thread time goes: without smoothing, and the unreachable goals alone
@@ -572,7 +572,7 @@ int main(int argc, char** argv) {
                 for (int i = 0; i < 10; i++) {
                     const auto t = bench::Clock::now();
                     nav::solveGridBatch(field, list, costs, pool4, paths, 1);
-                    samples.push_back(msSince(t));
+                    samples.push_back(navBenchMsSince(t));
                 }
                 return bench::percentile(samples, 0.5);
             };
@@ -598,14 +598,14 @@ int main(int argc, char** argv) {
         for (int b = 0; b < 20; b++) {
             const auto t = bench::Clock::now();
             for (int i = 0; i < 10000; i++)
-                system->fixedUpdate(kTick);
-            batches.push_back(msSince(t) * 1000.0 / 10000.0);
+                system->fixedUpdate(kNavBenchTick);
+            batches.push_back(navBenchMsSince(t) * 1000.0 / 10000.0);
         }
         results.add("empty_tick_us", bench::percentile(batches, 0.5), "us");
         if (countAllocs && testsupport::countsAllocations()) {
             testsupport::AllocationCountScope scope;
             for (int i = 0; i < 10000; i++)
-                system->fixedUpdate(kTick);
+                system->fixedUpdate(kNavBenchTick);
             results.add("empty_tick_allocations", (double)scope.count(), "allocations");
         }
     }

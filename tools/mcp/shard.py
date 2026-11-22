@@ -18,8 +18,11 @@ The union check: every test `run_tests.py --list` lists (MCP_SUITE=all) is in ex
 of exactly one shard, and no chunk names a test that does not exist; `merge` checks the same of
 the results (every planned test reported once, nothing else), so no test is lost or run twice.
 
-Timings come from earlier runs: their logs (the runner's `PASS file::test (12.3s)` lines) or their
---json results; the last file given wins for a test. A test with no time counts DEFAULT_SECONDS.
+Timings come from the committed tools/mcp/ci-timings.json (tools/ci/mcp_timings.py refits it daily
+from CI's shards; docs/testing.md, "How the MCP shards are balanced"), which wins for every file it
+knows, and from earlier runs: their logs (the runner's `PASS file::test (12.3s)` lines) or their
+--json results; the last of those given wins for a test. A test with no time counts a share of its
+file's committed seconds, else the committed default, else DEFAULT_SECONDS.
 Longest processing time first: chunks sorted by time, each to the worker (of any shard it may run
 on) that finishes it first. Pinned chunks go to their shard only: the files that build games
 (PREBUILT_PLAYERS, or a compile: BUILD_FILES) to --pin-builds, where the shared player cache and
@@ -43,8 +46,10 @@ HERE = Path(__file__).resolve().parent
 TESTS = HERE / "tests"
 GPU_LANE = HERE / "gpu_lane.json"
 DEFAULT_SECONDS = 30.0
-# an editor's start, its project copy and its close: what a chunk costs besides its tests
-CHUNK_OVERHEAD = 20.0
+# what a chunk costs besides its tests' own times: its worker's start and its editor's close (about 2 s
+# measured, 2*wall - test seconds over 100 shards of 20 CI runs), and the editor's start a split
+# chunk adds (a file's first test, which pays it, takes 2.4 s more than the median of the others)
+CHUNK_OVERHEAD = 5.0
 # the files that compile a game (method "compile", docs/testing.md "Compiled and prebuilt game builds")
 BUILD_FILES = ("test_build.py", "test_html_ui_effects_export.py", "test_hub.py", "test_busy.py", "test_lifecycle_export.py")
 LINE = re.compile(r"^(PASS|FAIL|SKIP) (\S+?\.py)::(\S+) \(([\d.]+)s\)")
@@ -91,22 +96,55 @@ def load_tests(path: Path) -> list[str]:
 
 
 def load_timings(paths: list[Path]) -> dict[str, float]:
+    """file::test -> seconds; from a committed timings file (tools/mcp/ci-timings.json) also
+    file::* (a file's seconds, its tests summed) and * (its default a test). The committed file wins, wherever it
+    comes in the list, for every file it knows: the others' times of that file's tests are dropped.
+    An unreadable file is left out (said on stderr): a plan by fewer times is still a plan."""
     times: dict[str, float] = {}
+    committed: dict[str, float] = {}
+    known: set[str] = set()
     for p in paths:
-        text = p.read_text(errors="replace")
-        if p.suffix == ".json":
-            data = json.loads(text)
-            if isinstance(data, dict) and "results" in data:
-                for r in data["results"]:
-                    times[r["name"]] = float(r["seconds"])
+        try:
+            text = p.read_text(errors="replace")
+            data = json.loads(text) if p.suffix == ".json" else None
+            if isinstance(data, dict) and "files" in data and "format" in data:
+                for file, entry in data["files"].items():
+                    committed[f"{file}::*"] = float(entry["seconds"])
+                    known.add(file)
+                committed.update({k: float(v) for k, v in data.get("tests", {}).items() if "::" in k})
+                committed["*"] = float(data.get("default_test_seconds", DEFAULT_SECONDS))
+            elif isinstance(data, dict) and "results" in data:
+                times.update({r["name"]: float(r["seconds"]) for r in data["results"]})
             elif isinstance(data, dict):   # {name: seconds}
                 times.update({k: float(v) for k, v in data.items() if "::" in k})
+        except (OSError, ValueError, TypeError, KeyError, AttributeError) as e:
+            print(f"shard.py: {p}: left out ({type(e).__name__}: {e})", file=sys.stderr)
+            continue
+        if data is not None:
             continue
         for line in text.splitlines():
             m = LINE.match(line)
             if m:
                 times[f"{m.group(2)}::{m.group(3)}"] = float(m.group(4))
+    times = {k: v for k, v in times.items() if k.split("::")[0] not in known}
+    times.update(committed)
     return times
+
+
+def file_seconds(file: str, names: list[str], times: dict[str, float]) -> list[float]:
+    """Each test's seconds: its own time; else, in a file the committed timings know, a share of what
+    the file's seconds leave after its timed tests (a file split into more tests since the refit
+    keeps its total), at least the default when some are timed (a test added to a timed file); else
+    the committed default, else DEFAULT_SECONDS."""
+    default = times.get("*", DEFAULT_SECONDS)
+    own = [times.get(f"{file}::{t}") for t in names]
+    timed = [s for s in own if s is not None]
+    untimed = len(own) - len(timed)
+    share = default
+    if untimed and f"{file}::*" in times:
+        share = (times[f"{file}::*"] - sum(timed)) / untimed
+        share = max(share, default) if timed else share
+    return [share if s is None else s for s in own]
 
 
 def gpu_classes(path: Path = GPU_LANE) -> dict[str, str]:
@@ -156,7 +194,7 @@ def make_chunks(tests: list[str], times: dict[str, float], chunk_seconds: float,
     chunks: list[Chunk] = []
     for file, names in by_file.items():
         path = tests_dir / file
-        seconds = [times.get(f"{file}::{t}", DEFAULT_SECONDS) for t in names]
+        seconds = file_seconds(file, names, times)
         pin = pin_builds if pin_builds and path.is_file() and builds_games(path) else ""
         groups: list[list[int]] = []
         patterns = independent_patterns(path) if path.is_file() else []

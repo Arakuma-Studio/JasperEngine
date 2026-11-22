@@ -85,6 +85,12 @@ namespace jasperengine {
             std::function<void()> callback;
         };
 
+        // R15: a focus's velocity, from its last two positions
+        struct FocusTrack {
+            Vector3 last;
+            double at = -1.0;
+        };
+
         // R27: T5's foliage, one region per resident tile
         struct FoliageTile {
             std::shared_ptr<terraincore::FoliageRegion> region;
@@ -100,6 +106,7 @@ namespace jasperengine {
         std::map<Entity, std::unique_ptr<TerrainWorldRuntime>> runtimes;
         std::map<Entity, std::map<uint32_t, FoliageTile>> foliageTiles;
         std::map<Entity, std::string> errors;
+        std::map<Entity, FocusTrack> focusTracks;
         std::vector<AreaCallback> areaCallbacks;
         int nextCallbackId = 1;
         double lastPump = -1.0;

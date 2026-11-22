@@ -56,7 +56,7 @@ namespace {
     // a .gltf (+ .bin) with the triangle on the given nodes and scene roots
     // morph: the primitive also has a morph target (the normals' view as its POSITION
     // displacements), which a placed copy bakes in (an ordinary load rejects the bake)
-    fs::path writeGltf(const std::string& name, const nlohmann::json& nodes, const nlohmann::json& roots, bool morph = false) {
+    fs::path gltfMeshOffsetWriteGltf(const std::string& name, const nlohmann::json& nodes, const nlohmann::json& roots, bool morph = false) {
         const fs::path dir = fs::temp_directory_path() / "jasperengine-editor-tests-gltf";
         fs::create_directories(dir);
         const std::vector<unsigned char> buffer = triangleBuffer();
@@ -131,7 +131,7 @@ TEST_F(GltfMeshOffset, NestedMeshNodeKeepsItsTransforms) {
         {{"name", "Offset"}, {"translation", {0, 2, 0}}, {"scale", {2, 2, 2}}, {"children", {2}}},
         {{"name", "Mesh"}, {"translation", {0, 0, 3}}, {"mesh", 0}},
     };
-    const fs::path path = writeGltf("nested", nodes, {0});
+    const fs::path path = gltfMeshOffsetWriteGltf("nested", nodes, {0});
 
     Scene scene;
     Model model(&scene);
@@ -156,7 +156,7 @@ TEST_F(GltfMeshOffset, MeshAtTheRootIsNotBaked) {
     const nlohmann::json nodes = {
         {{"name", "Mesh"}, {"translation", {0, 0, 3}}, {"mesh", 0}},
     };
-    const fs::path path = writeGltf("root", nodes, {0});
+    const fs::path path = gltfMeshOffsetWriteGltf("root", nodes, {0});
 
     Scene scene;
     Model model(&scene);
@@ -176,7 +176,7 @@ TEST_F(GltfMeshOffset, MeshUnderAnotherSceneRoot) {
         {{"name", "Empty"}, {"translation", {5, 0, 0}}},
         {{"name", "Mesh"}, {"translation", {0, 0, 3}}, {"scale", {-1, 1, 1}}, {"mesh", 0}},
     };
-    const fs::path path = writeGltf("roots", nodes, {0, 1});
+    const fs::path path = gltfMeshOffsetWriteGltf("roots", nodes, {0, 1});
 
     Scene scene;
     Model model(&scene);
@@ -202,7 +202,7 @@ TEST_F(GltfMeshOffset, MirroredRootOnTheEntityIsCompensated) {
     const nlohmann::json nodes = {
         {{"name", "Mesh"}, {"translation", {0, 0, 3}}, {"scale", {-1, 1, 1}}, {"mesh", 0}},
     };
-    const fs::path path = writeGltf("mirrored-root", nodes, {0});
+    const fs::path path = gltfMeshOffsetWriteGltf("mirrored-root", nodes, {0});
 
     Scene scene;
     Model model(&scene);
@@ -223,7 +223,7 @@ TEST_F(GltfMeshOffset, MirroredRootOnTheEntityIsCompensated) {
 }
 
 TEST_F(GltfMeshOffset, PreviewLoadPreservesGeometryOfTheOriginal) {
-    const fs::path path = writeGltf("offthread", nestedNodes, {0});
+    const fs::path path = gltfMeshOffsetWriteGltf("offthread", nestedNodes, {0});
     Scene scene;
     std::shared_ptr<MeshSystem> meshSystem = scene.getSystem<MeshSystem>();
 
@@ -252,7 +252,7 @@ TEST_F(GltfMeshOffset, LoadingThreadPreservesBothGeometryModes) {
     // a game's loading thread (Engine.startAsyncThread, full-resolution images) and the main
     // thread load instances of one file at once: they share the pooled model, the main thread
     // its first load's bake, the loading thread (foliage chunks) one it appends meanwhile
-    const fs::path path = writeGltf("loadingthread", nestedNodes, {0});
+    const fs::path path = gltfMeshOffsetWriteGltf("loadingthread", nestedNodes, {0});
 
     Scene first;
     Model pooled(&first);
@@ -291,7 +291,7 @@ TEST_F(GltfMeshOffset, LoadingThreadPreservesBothGeometryModes) {
 TEST_F(GltfMeshOffset, SceneLoadKeepsTheSavedRootTransform) {
     // a scene load (changeRootTransform off): the saved entity transform is the root's, so only
     // the nodes between the root and the mesh are baked, as on the first load
-    const fs::path path = writeGltf("sceneload", nestedNodes, {0});
+    const fs::path path = gltfMeshOffsetWriteGltf("sceneload", nestedNodes, {0});
     Scene scene;
     Model model(&scene);
     ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), path.string(), false, false, false));
@@ -304,7 +304,7 @@ TEST_F(GltfMeshOffset, FoliageBakesTheWholeNodeTransform) {
     std::shared_ptr<MeshSystem> meshSystem = scene.getSystem<MeshSystem>();
 
     // loadPlacedModel's load. Nested: Root * Offset * Mesh, (2x + 1, 2y + 2, 2z + 6), as merged nodes bake
-    const fs::path nested = writeGltf("foliage-nested", nestedNodes, {0});
+    const fs::path nested = gltfMeshOffsetWriteGltf("foliage-nested", nestedNodes, {0});
     Model chunk(&scene);
     ASSERT_TRUE(meshSystem->loadPlacedModel(chunk.getEntity(), nested.string()));
     expectVector(scene.getComponent<Transform>(chunk.getEntity()).position, Vector3(0, 0, 0), "chunk position");
@@ -315,7 +315,7 @@ TEST_F(GltfMeshOffset, FoliageBakesTheWholeNodeTransform) {
     const nlohmann::json rootNodes = {
         {{"name", "Mesh"}, {"translation", {0, 0, 3}}, {"scale", {-1, 1, 1}}, {"mesh", 0}},
     };
-    const fs::path root = writeGltf("foliage-root", rootNodes, {0});
+    const fs::path root = gltfMeshOffsetWriteGltf("foliage-root", rootNodes, {0});
     Model rootChunk(&scene);
     ASSERT_TRUE(meshSystem->loadPlacedModel(rootChunk.getEntity(), root.string()));
     const MeshComponent& rootMesh = scene.getComponent<MeshComponent>(rootChunk.getEntity());
@@ -325,7 +325,7 @@ TEST_F(GltfMeshOffset, FoliageBakesTheWholeNodeTransform) {
 
     // a mesh with a blend shape bakes too: the copy draws it at rest, its default weights (none
     // here) in the vertices with the node's transform and its winding
-    const fs::path morph = writeGltf("foliage-morph", rootNodes, {0}, true);
+    const fs::path morph = gltfMeshOffsetWriteGltf("foliage-morph", rootNodes, {0}, true);
     Model morphChunk(&scene);
     ASSERT_TRUE(meshSystem->loadPlacedModel(morphChunk.getEntity(), morph.string()));
     const MeshComponent& morphMesh = scene.getComponent<MeshComponent>(morphChunk.getEntity());
@@ -334,7 +334,7 @@ TEST_F(GltfMeshOffset, FoliageBakesTheWholeNodeTransform) {
 
     // a file without node transforms is not baked (and renders as before)
     const nlohmann::json plainNodes = {{{"name", "Mesh"}, {"mesh", 0}}};
-    const fs::path plain = writeGltf("foliage-plain", plainNodes, {0});
+    const fs::path plain = gltfMeshOffsetWriteGltf("foliage-plain", plainNodes, {0});
     Model plainChunk(&scene);
     ASSERT_TRUE(meshSystem->loadPlacedModel(plainChunk.getEntity(), plain.string()));
     const MeshComponent& plainMesh = scene.getComponent<MeshComponent>(plainChunk.getEntity());

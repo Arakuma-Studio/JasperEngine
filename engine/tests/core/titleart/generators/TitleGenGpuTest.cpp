@@ -10,7 +10,7 @@
 //   golden limits.
 // - TitleGenParityGpu.PachislopPresets (AC4): the ported presets against Pachislop's references
 //   (golden/titleart/pachislop/generator/), trimmed and centred, with S80 AC12's metric.
-// - TitleGenGpu.Deterministic (AC5): a preset rendered twice from fresh renderers is identical;
+// - TitleGenGpuSlow.Deterministic (AC5): a preset rendered twice from fresh renderers is identical;
 //   another seed changes it.
 // - TitleGenGpu.FallbackWithinClass (AC6): the RGBA8 path (TITLE_ART_TEST_NO_FLOAT_TARGETS, and
 //   TITLE_ART_TEST_NO_FLOAT_BLEND) agrees with the float path within each definition's class.
@@ -52,7 +52,7 @@ namespace {
 
     // every preset of every S83 generator (the definitions with a preset file; S80's Fill and
     // Pattern Fill have their own goldens)
-    std::vector<PresetCase> presetCases() {
+    std::vector<PresetCase> genPresetCases() {
         std::vector<PresetCase> cases;
         for (const GeneratorDef* d : TitleEffectRegistry::get().generators()) {
             if (!d->presetFile || std::string(d->type) == "pattern_fill") continue;
@@ -94,6 +94,8 @@ namespace {
     };
 
     class TitleGenParityGpu : public TitleGenGpu {};
+    // over 5 min under ASan: the PR ASan lane leaves it to the nightly (docs/testing.md, Naming)
+    class TitleGenGpuSlow : public TitleGenGpu {};
 
     bool presetRender(const PresetCase& c, GenImage& out, std::string& error, uint32_t flags = 0, const Json& overrides = Json::object()) {
         std::vector<TitleProblem> problems;
@@ -110,7 +112,7 @@ namespace {
 }
 
 TEST_F(TitleGenGpu, PresetGoldens) {
-    const std::vector<PresetCase> cases = presetCases();
+    const std::vector<PresetCase> cases = genPresetCases();
     ASSERT_FALSE(cases.empty());
     std::set<std::string> types;
     for (const PresetCase& c : cases) {
@@ -135,7 +137,7 @@ const std::map<std::string, const char*> PARITY_EXCEPTIONS = {
 
 TEST_F(TitleGenParityGpu, PachislopPresets) {
     int compared = 0;
-    for (const PresetCase& c : presetCases()) {
+    for (const PresetCase& c : genPresetCases()) {
         if (c.source.empty()) continue;
         SCOPED_TRACE(c.type + "/" + c.id + " <- " + c.source);
         std::string refName = c.source;
@@ -170,7 +172,7 @@ TEST_F(TitleGenParityGpu, PachislopPresets) {
     EXPECT_GE(compared, 72) << "the ported presets of §6.8";
     EXPECT_LE(PARITY_EXCEPTIONS.size(), 10u);
     // red control: the metric tells particle fields apart (Gold Dust reseeded misses its reference)
-    for (const PresetCase& c : presetCases()) {
+    for (const PresetCase& c : genPresetCases()) {
         if (c.source != "particles/goldDust") continue;
         GenImage ref, out;
         std::string error;
@@ -181,8 +183,8 @@ TEST_F(TitleGenParityGpu, PachislopPresets) {
     }
 }
 
-TEST_F(TitleGenGpu, Deterministic) {
-    for (const PresetCase& c : presetCases()) {
+TEST_F(TitleGenGpuSlow, Deterministic) {
+    for (const PresetCase& c : genPresetCases()) {
         SCOPED_TRACE(c.type + "/" + c.id);
         GenImage a, b, reseeded;
         std::string error;
@@ -217,7 +219,7 @@ TEST_F(TitleGenGpu, Deterministic) {
 TEST_F(TitleGenGpu, FallbackWithinClass) {
     for (uint32_t flags : {TITLE_ART_TEST_NO_FLOAT_TARGETS | TITLE_ART_TEST_NO_R16F | TITLE_ART_TEST_NO_RGBA32F, TITLE_ART_TEST_NO_FLOAT_BLEND}) {
         std::set<std::string> done;
-        for (const PresetCase& c : presetCases()) {
+        for (const PresetCase& c : genPresetCases()) {
             // each definition at its first preset (its default look)
             if (!done.insert(c.type).second) continue;
             SCOPED_TRACE(c.type + "/" + c.id + " flags " + std::to_string(flags));

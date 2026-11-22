@@ -39,7 +39,8 @@ namespace jasperengine {
         static std::string getVersion();
         // what the user should install (MEDIA_ERR_SRC_NOT_SUPPORTED's message)
         static const char* missingLibrariesMessage();
-        // tests: forget the loaded set and load again (another JASPERENGINE_FFMPEG_DIR)
+        // tests: forget the loaded set and load again (another JASPERENGINE_FFMPEG_DIR), while no
+        // other thread opens or probes a video
         static void reloadForTesting();
     };
 

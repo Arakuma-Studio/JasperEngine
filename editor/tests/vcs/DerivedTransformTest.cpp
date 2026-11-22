@@ -33,7 +33,7 @@ namespace {
 
     const char* const kDerived[] = {"worldPosition", "worldRotation", "worldScale", "localMatrix", "modelMatrix", "normalMatrix"};
 
-    fs::path goldenDir() {
+    fs::path derivedTransformGoldenDir() {
         return fs::path(JASPER_TEST_FIXTURES_DIR) / "vcs" / "world";
     }
 
@@ -47,7 +47,7 @@ namespace {
     }
 
     // scene name -> GameObject path -> its world values
-    YAML::Node worldOf(const YAML::Node& dump) {
+    YAML::Node derivedTransformWorldOf(const YAML::Node& dump) {
         YAML::Node out(YAML::NodeType::Map);
         for (const YAML::Node& scene : dump["scenes"]) {
             YAML::Node entities(YAML::NodeType::Map);
@@ -179,8 +179,8 @@ TEST(Stream, DerivedTransformWorldMatricesUnchanged) {
         spec.env.emplace_back("ASAN_OPTIONS", std::string(asan ? asan : "") + (asan && *asan ? ":" : "") + "detect_leaks=0");
         const ProcessResult result = runOffMain(spec);
         ASSERT_EQ(result.exitCode, 0) << result.message();
-        const YAML::Node world = worldOf(YAML::LoadFile(out.string()));
-        const fs::path golden = goldenDir() / (name + ".yaml");
+        const YAML::Node world = derivedTransformWorldOf(YAML::LoadFile(out.string()));
+        const fs::path golden = derivedTransformGoldenDir() / (name + ".yaml");
         if (update) {
             writeFile(golden, YAML::Dump(world) + "\n");
             continue;

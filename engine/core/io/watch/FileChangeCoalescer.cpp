@@ -31,8 +31,23 @@ void FileChangeCoalescer::setQuietWindow(std::chrono::milliseconds quiet) {
     settings.quiet = std::clamp(quiet, std::chrono::milliseconds(50), std::chrono::milliseconds(2000));
 }
 
-void FileChangeCoalescer::setDeleteHold(std::chrono::milliseconds hold) {
-    settings.deleteHold = std::max(hold, std::chrono::milliseconds(200));
+void FileChangeCoalescer::setRemovalsWaitForScan(bool wait) {
+    settings.removalWaitsForScan = wait;
+}
+
+void FileChangeCoalescer::holdRemoval(Entry& entry) {
+    auto it = scansDone.find(entry.source);
+    entry.scanAtRemoval = it == scansDone.end() ? 0 : it->second;
+}
+
+bool FileChangeCoalescer::waitsForScan(const Entry& entry) const {
+    if (!settings.removalWaitsForScan || entry.state != State::Removed) return false;
+    auto it = scansDone.find(entry.source);
+    return (it == scansDone.end() ? 0 : it->second) < entry.scanAtRemoval + 2;
+}
+
+bool FileChangeCoalescer::awaitingScan() const {
+    return std::any_of(entries.begin(), entries.end(), [this](const auto& item) { return waitsForScan(item.second); });
 }
 
 size_t FileChangeCoalescer::pendingCount() const {
@@ -51,21 +66,30 @@ FileChangeCoalescer::Entry& FileChangeCoalescer::fresh(const std::string& key, S
     entry.order = nextOrder++;
     entry.first = now;
     entry.last = now;
+    entry.source = eventSource;
     return entry;
 }
 
 void FileChangeCoalescer::touch(Entry& entry, Clock::time_point now) {
     entry.last = now;
+    entry.source = eventSource;
     entry.sampled = false;
     coalesced++;
 }
 
 void FileChangeCoalescer::add(const watch::RawEvent& event, Clock::time_point now) {
+    eventSource = event.source;
+    if (event.type == watch::RawEvent::Type::ScanDone) {
+        scansDone[event.source]++;
+        return;
+    }
     const std::string key = watch::pathToUtf8(event.path.lexically_normal());
     if (key.empty()) return;
     switch (event.type) {
         case watch::RawEvent::Type::Rescan:
             if (std::find(rescans.begin(), rescans.end(), key) == rescans.end()) rescans.push_back(key);
+            return;
+        case watch::RawEvent::Type::ScanDone:
             return;
         case watch::RawEvent::Type::Created:
             created(key, event.directory, now);
@@ -175,6 +199,7 @@ void FileChangeCoalescer::dropMoved(const std::string& key) {
     if (source != entries.end() && source->second.state == State::MovedFrom && source->second.link == key) {
         source->second.state = State::Removed;
         source->second.link.clear();
+        holdRemoval(source->second);
     }
 }
 
@@ -187,6 +212,7 @@ void FileChangeCoalescer::removed(const std::string& key, bool directory, Clock:
         entry.existedBefore = true;
         entry.before = index;
         entry.directory = directory || index.directory;
+        holdRemoval(entry);
         return;
     }
     Entry& entry = it->second;
@@ -197,6 +223,7 @@ void FileChangeCoalescer::removed(const std::string& key, bool directory, Clock:
             return;
         case State::Modified:
             entry.state = State::Removed;
+            holdRemoval(entry);
             return;
         case State::Moved: {
             // what the rename brought left again: its source is gone, and so is what was here
@@ -205,6 +232,7 @@ void FileChangeCoalescer::removed(const std::string& key, bool directory, Clock:
                 entry.state = State::Removed;
                 entry.link.clear();
                 entry.modifiedAfterMove = false;
+                holdRemoval(entry);
             } else {
                 entries.erase(it);
             }
@@ -288,6 +316,7 @@ void FileChangeCoalescer::moved(const std::string& from, const std::string& to, 
                     gone.existedBefore = true;
                     gone.before = before;
                     gone.directory = before.directory;
+                    holdRemoval(gone);
                 }
                 auto start = entries.find(origin);
                 if (origin == to) {
@@ -368,7 +397,10 @@ void FileChangeCoalescer::pairByIdentity(Clock::time_point now) {
 }
 
 FileChangeCoalescer::Clock::time_point FileChangeCoalescer::readyAt(const Entry& entry) const {
-    if (entry.state == State::Removed) return entry.last + std::max(settings.quiet, settings.deleteHold);
+    if (entry.state == State::Removed) {
+        if (waitsForScan(entry)) return Clock::time_point::max();
+        return entry.last + std::max(settings.quiet, settings.deleteHold);
+    }
     const Clock::time_point quiet = entry.last + settings.quiet;
     if (entry.sampled && !entry.directory) return std::max(quiet, entry.sampledAt + settings.settleGap);
     return quiet;
@@ -436,6 +468,7 @@ std::vector<FileChange> FileChangeCoalescer::take(Clock::time_point now, bool fo
             } else if (entry.state == State::Modified) {
                 entry.state = State::Removed;
                 entry.last = now;
+                holdRemoval(entry);
                 if (force) {
                     out.push_back(makeChange(FileChangeKind::Removed, key, entry.before, entry.directory));
                     entries.erase(it);
@@ -446,6 +479,7 @@ std::vector<FileChange> FileChangeCoalescer::take(Clock::time_point now, bool fo
                     entry.state = State::Removed;
                     entry.link.clear();
                     entry.last = now;
+                    holdRemoval(entry);
                 } else {
                     entries.erase(it);
                 }

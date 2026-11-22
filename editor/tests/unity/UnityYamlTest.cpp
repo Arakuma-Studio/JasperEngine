@@ -15,8 +15,10 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::editor::unity;
 namespace fs = std::filesystem;
+
+// the tests live in the namespace they test: a using-directive would reach the next sources of a unity unit
+namespace jasperengine::editor::unity {
 
 namespace {
 
@@ -119,3 +121,5 @@ TEST(UnityYamlTest, ProjectIndexesGuidsAndFindsItsRoot) {
     const YAML::Node meta = project.metaOf(project.pathOf("000000000000000000000000a11ce003"));
     ASSERT_TRUE(meta && meta["TextureImporter"]);
 }
+
+}  // namespace jasperengine::editor::unity

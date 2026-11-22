@@ -26,7 +26,7 @@ namespace {
         return f;
     }
 
-    SpriteFrameGeometryInput sized(unsigned w, unsigned h) {
+    SpriteFrameGeometryInput spriteSlicedGeometrySized(unsigned w, unsigned h) {
         SpriteFrameGeometryInput in;
         in.width = w;
         in.height = h;
@@ -44,7 +44,7 @@ TEST(SpriteSlicedGeometry, CornersKeepTheirSizeAtEverySize) {
     EXPECT_TRUE(spriteFrameHasBorder(frame));
     for (unsigned w : {24u, 48u, 101u}) {
         for (unsigned h : {16u, 32u, 77u}) {
-            const SpriteSlicedMesh m = spriteFrameSliced(frame, sized(w, h));
+            const SpriteSlicedMesh m = spriteFrameSliced(frame, spriteSlicedGeometrySized(w, h));
             ASSERT_FALSE(m.empty);
             EXPECT_FLOAT_EQ(m.width, static_cast<float>(w));
             EXPECT_FLOAT_EQ(m.x[0], 0.0f);
@@ -64,14 +64,14 @@ TEST(SpriteSlicedGeometry, CornersKeepTheirSizeAtEverySize) {
             EXPECT_FLOAT_EQ(m.v[3], 0.0f);
         }
     }
-    const SpriteSlicedMesh m = spriteFrameSliced(frame, sized(48, 32));
+    const SpriteSlicedMesh m = spriteFrameSliced(frame, spriteSlicedGeometrySized(48, 32));
     EXPECT_FLOAT_EQ(m.textureRect.getX(), 8.0f / 64.0f);
     EXPECT_FLOAT_EQ(m.textureRect.getWidth(), 24.0f / 64.0f);
 }
 
 TEST(SpriteSlicedGeometry, NativeSizePivotAndSmallSprites) {
     const SpriteFrame frame = panelFrame();
-    SpriteFrameGeometryInput native = sized(0, 0);
+    SpriteFrameGeometryInput native = spriteSlicedGeometrySized(0, 0);
     native.pivot = PivotPreset::CENTER;
     const SpriteSlicedMesh n = spriteFrameSliced(frame, native);
     EXPECT_FLOAT_EQ(n.width, 24.0f);
@@ -79,12 +79,12 @@ TEST(SpriteSlicedGeometry, NativeSizePivotAndSmallSprites) {
     EXPECT_FLOAT_EQ(n.x[3], 12.0f);
     EXPECT_FLOAT_EQ(n.y[0], -8.0f);
     // narrower than both borders: the corners share the width
-    const SpriteSlicedMesh small = spriteFrameSliced(frame, sized(6, 4));
+    const SpriteSlicedMesh small = spriteFrameSliced(frame, spriteSlicedGeometrySized(6, 4));
     EXPECT_FLOAT_EQ(small.x[1], 3.0f);
     EXPECT_FLOAT_EQ(small.x[2], 3.0f);
     EXPECT_FLOAT_EQ(small.y[1], 2.0f);
     // a UI camera (y down): the image's top row at the lowest y, as createSprite's quad has it
-    SpriteFrameGeometryInput ui = sized(48, 32);
+    SpriteFrameGeometryInput ui = spriteSlicedGeometrySized(48, 32);
     ui.uiCamera = true;
     ui.flipY = false;
     const SpriteSlicedMesh u = spriteFrameSliced(frame, ui);
@@ -99,7 +99,7 @@ TEST(SpriteSlicedGeometry, ATrimmedFrameKeepsItsTrim) {
     SpriteFrame frame = panelFrame();
     frame.offset = Vector2(2, 0);       // two transparent columns on the left trimmed away
     frame.rect = Rect(8, 4, 22, 16);
-    const SpriteSlicedMesh m = spriteFrameSliced(frame, sized(48, 32));
+    const SpriteSlicedMesh m = spriteFrameSliced(frame, spriteSlicedGeometrySized(48, 32));
     EXPECT_FLOAT_EQ(m.x[0], 2.0f);     // where the trimmed pixels start inside the corner
     EXPECT_FLOAT_EQ(m.x[1], 4.0f);
     EXPECT_FLOAT_EQ(m.u[0], 0.0f);

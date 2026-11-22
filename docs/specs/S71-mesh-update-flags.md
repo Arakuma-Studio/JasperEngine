@@ -17,6 +17,8 @@ branch it cost about 1.5 ms per call. Measure it on today's code. If it is still
 
 ## 3. Acceptance
 - AC1. A CPU-ratio test (Stop on 600 boxes vs a baseline) that fails if the cost returns, robust under load (CPU time, not wall clock).
+  Today: `test_mesh_update_flags.py` on play stop's `stop_cpu_ms`, totals of 15 rounds, changed Meshes under 3.2 and moved boxes
+  under 2.5 times rebuilding them (Decision 8).
 - AC2. Same flags proven. `tools/check-changed` green.
 
 ## Deviations
@@ -66,3 +68,29 @@ tables and their array operations, and the tests size the slots through the same
 7. Outside the spec, because it blocked the gate: `CanvasGroupTest.PerformanceBudgets` skipped itself above a load of half the cores, and
    a skip fails `tools/check-changed`, so no change that selects it could pass on a busy server. Its wall-clock budgets now go through
    `perfSlack()`, as `AGENTS.md` asks.
+8. **The gate after main moved on (2026-11-15).** CI read 1.95 and 1.59 against 1.85 and 1.6, while Stop itself had become 2 to 4
+   times cheaper. Two later commits made the rebuild baseline cheaper. The main-thread CPU of the Stop restore, totals of five rounds:
+   - `CameraTextureLink::resolve` at every Stop fell from 0.3 to 0.9 s to 0.03 s with `dc/mesh-memory` (6cf53eff4, merged in 3618eab04).
+   - The world-transform pass after each decoded GameObject fell from 0.25 s to 0.045 s with the affine transform forms (28d0dea9b).
+   - What only a moved or changed Stop pays, the Mesh comparison, stayed at 0.16 to 0.26 s a Stop throughout.
+
+   The restore's ratio went 0.91 (S71's merge), 0.86 (c3077274a), 1.60 (3618eab04), 1.75 (28d0dea9b), 1.93 (main). The test also
+   counted the editor frames drawn while Stop ran, a share that grows with the host's load. It now reads the Stop's own main-thread
+   CPU, its call and its teardown (`stop_cpu_ms` in play stop's structured result, `Project::getLastStopCpuMs`), over 15 rounds.
+   That still varies from one editor to the next. On a host at load 16 to 25:
+   - Five rounds, five editors: changed 2.07 to 2.37, moved 1.55 to 2.01.
+   - Fifteen rounds, five editors: changed 2.11 to 2.59, moved 1.61 to 1.88.
+
+   The limits are the highest of those times about 1.25: 3.2 and 2.5.
+9. **What the gate no longer sees.** With `dc/mesh-memory` a Mesh holds only the submeshes it uses, so the property maps that made
+   the old update flags cost 1 ms a call are small. Red controls, fifteen rounds, three editors each:
+   - The old flags restored (the oracle of `ChangedUpdateFlagsTest`): changed 2.65 to 2.95, moved 1.67 to 1.79. Under the limits,
+     and within reach of a green run.
+   - The old flags with every Mesh decoded at Stop: changed 1.33 to 1.49, moved 1.41 to 1.45. Cheaper than today's Stop: the
+     comparison that keeps a moved Mesh costs more CPU than its decode, and what it buys is the Mesh reload at the next frame,
+     which the Stop's CPU does not include.
+
+   So the ratio guards against a gross regression of Stop, not against the flags' cost. That cost is held exactly elsewhere:
+   - `ChangedUpdateFlagsBench.AMeshCostsMicroseconds` checks, on any machine, that the flags of a 16-slot Mesh cost under a
+     twentieth of its property lists' diff, and R2's 50 µs where `perfSlack()` allows.
+   - `UndoProjectTest.StopKeepsAMeshAPlayOnlyMoved` checks that a moved Mesh is not decoded.

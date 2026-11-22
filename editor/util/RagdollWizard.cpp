@@ -29,7 +29,7 @@ namespace {
                 case editor::PropertyType::Bool: multi.addPropertyCmd<bool>(project, sceneId, entity, type, name, *static_cast<bool*>(property.ref)); break;
                 case editor::PropertyType::Float: multi.addPropertyCmd<float>(project, sceneId, entity, type, name, *static_cast<float*>(property.ref)); break;
                 case editor::PropertyType::Int:
-                case editor::PropertyType::Enum: multi.addPropertyCmd<int>(project, sceneId, entity, type, name, *static_cast<int*>(property.ref)); break;
+                case editor::PropertyType::Enum: multi.addPropertyCmd<int>(project, sceneId, entity, type, name, (int)editor::readPropertyInteger(property, property.ref)); break;
                 case editor::PropertyType::UInt: multi.addPropertyCmd<unsigned int>(project, sceneId, entity, type, name, *static_cast<unsigned int*>(property.ref)); break;
                 case editor::PropertyType::String: multi.addPropertyCmd<std::string>(project, sceneId, entity, type, name, *static_cast<std::string*>(property.ref)); break;
                 case editor::PropertyType::Vector3: multi.addPropertyCmd<Vector3>(project, sceneId, entity, type, name, *static_cast<Vector3*>(property.ref)); break;

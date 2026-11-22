@@ -3039,6 +3039,16 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (project->getBuildMethod() != "auto") exportNode["method"] = project->getBuildMethod();
         if (project->isPackContent()) exportNode["pack"] = true;
         if (!project->isStripEngineCode()) exportNode["stripEngineCode"] = false;
+        // Player > Target Platforms: only when not all six, in BuildPlatform order
+        if (project->getTargetPlatforms() != Project::allTargetPlatforms) {
+            YAML::Node targetsNode(YAML::NodeType::Sequence);
+            for (BuildPlatform platform : {BuildPlatform::Windows, BuildPlatform::Linux, BuildPlatform::MacOS, BuildPlatform::Android,
+                                           BuildPlatform::IOS, BuildPlatform::Web}) {
+                if (project->isTargetPlatform(platform)) targetsNode.push_back(buildPlatformName(platform));
+            }
+            targetsNode.SetStyle(YAML::EmitterStyle::Flow);
+            exportNode["targetPlatforms"] = targetsNode;
+        }
 
         const DesktopExportSettings& desktop = project->getDesktopExportSettings();
         if (desktop.graphicBackendConfigured) {
@@ -4000,6 +4010,32 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setPhysics3DWorldSettings(world);
     }
 
+
+    {
+        // Player > Target Platforms; missing: all six (every project before it). Unknown names are
+        // dropped, and a list left empty targets all six, each with a warning
+        uint8_t targets = Project::allTargetPlatforms;
+        const YAML::Node targetsNode = node["export"] && node["export"].IsMap() ? node["export"]["targetPlatforms"] : YAML::Node();
+        if (targetsNode && targetsNode.IsSequence()) {
+            targets = 0;
+            for (const YAML::Node& entry : targetsNode) {
+                const std::string name = entry.IsScalar() ? entry.as<std::string>() : std::string();
+                BuildPlatform platform;
+                if (parseBuildPlatform(name, platform)) {
+                    targets |= Project::targetPlatformBit(platform);
+                } else {
+                    Out::warning("Project Settings > Player > Target Platforms: unknown platform '%s' in export.targetPlatforms (dropped)",
+                                 entry.IsScalar() ? name.c_str() : "(not a name)");
+                }
+            }
+        }
+        if (targetsNode && (!targetsNode.IsSequence() || targets == 0)) {
+            Out::warning("Project Settings > Player > Target Platforms: export.targetPlatforms in project.yaml is %s: targeting all six platforms",
+                         targetsNode.IsSequence() ? "empty" : "not a list");
+            targets = Project::allTargetPlatforms;
+        }
+        project->setTargetPlatforms(targets);
+    }
 
     if (node["export"] && node["export"].IsMap()) {
         const YAML::Node& exportNode = node["export"];

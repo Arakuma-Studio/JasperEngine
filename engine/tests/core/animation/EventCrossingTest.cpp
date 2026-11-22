@@ -28,7 +28,7 @@ namespace {
     }
 
     // the names of what crossed
-    std::vector<std::string> crossed(const AnimationClip& clip, ClipWrapMode wrap, float from, float to, bool start = false){
+    std::vector<std::string> eventCrossingCrossed(const AnimationClip& clip, ClipWrapMode wrap, float from, float to, bool start = false){
         std::vector<anim::CrossedEvent> indices;
         anim::collectCrossedEvents(clip, wrap, from, to, start, indices);
         std::vector<std::string> names;
@@ -36,7 +36,7 @@ namespace {
         return names;
     }
 
-    using Names = std::vector<std::string>;
+    using EventCrossingNames = std::vector<std::string>;
 
 }
 
@@ -66,43 +66,43 @@ TEST(EventCrossing, WrapClipTime){
 TEST(EventCrossing, OnceForwardAndBackward){
     std::shared_ptr<const AnimationClip> clip = eventClip();
     // forward fires from < t <= to; a state that just started also fires at its start
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::Once, 0.0f, 0.3f), (Names{"at25"}));
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::Once, 0.0f, 0.3f, true), (Names{"at0", "at25"}));
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::Once, 0.25f, 0.5f), (Names{"at50"}));
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::Once, 0.6f, 5.0f), (Names{"at100"})) << "past the end: up to the end";
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::Once, 0.3f, 0.3f), (Names{}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::Once, 0.0f, 0.3f), (EventCrossingNames{"at25"}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::Once, 0.0f, 0.3f, true), (EventCrossingNames{"at0", "at25"}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::Once, 0.25f, 0.5f), (EventCrossingNames{"at50"}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::Once, 0.6f, 5.0f), (EventCrossingNames{"at100"})) << "past the end: up to the end";
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::Once, 0.3f, 0.3f), (EventCrossingNames{}));
     // backward fires to <= t < from, in reverse order; started at its length it fires there
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::Once, 1.0f, 0.2f), (Names{"at50", "at25"}));
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::Once, 1.0f, 0.2f, true), (Names{"at100", "at50", "at25"}));
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::Once, 0.5f, -1.0f), (Names{"at25", "at0"}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::Once, 1.0f, 0.2f), (EventCrossingNames{"at50", "at25"}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::Once, 1.0f, 0.2f, true), (EventCrossingNames{"at100", "at50", "at25"}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::Once, 0.5f, -1.0f), (EventCrossingNames{"at25", "at0"}));
     // clamp_forever holding at its end crosses nothing more
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::ClampForever, 1.0f, 1.5f), (Names{}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::ClampForever, 1.0f, 1.5f), (EventCrossingNames{}));
 }
 
 TEST(EventCrossing, LoopBoundariesSplitTheInterval){
     std::shared_ptr<const AnimationClip> clip = eventClip();
     // the end of a cycle, then the start of the next
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::Loop, 0.9f, 1.3f), (Names{"at100", "at0", "at25"}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::Loop, 0.9f, 1.3f), (EventCrossingNames{"at100", "at0", "at25"}));
     // reaching the boundary exactly fires both (the next update starts past them)
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::Loop, 0.6f, 1.0f), (Names{"at100", "at0"}));
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::Loop, 1.0f, 1.2f), (Names{})) << "at the boundary already: both fired";
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::Loop, 0.6f, 1.0f), (EventCrossingNames{"at100", "at0"}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::Loop, 1.0f, 1.2f), (EventCrossingNames{})) << "at the boundary already: both fired";
     // a loop just started at 0 fires its start event, not the end of a cycle before it
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::Loop, 0.0f, 0.1f, true), (Names{"at0"}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::Loop, 0.0f, 0.1f, true), (EventCrossingNames{"at0"}));
     // backward: the start of the cycle, then the end of the previous one
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::Loop, 1.3f, 0.9f), (Names{"at25", "at0", "at100"}));
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::Loop, 1.0f, 0.9f, true), (Names{"at100"}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::Loop, 1.3f, 0.9f), (EventCrossingNames{"at25", "at0", "at100"}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::Loop, 1.0f, 0.9f, true), (EventCrossingNames{"at100"}));
     // low frame rate: an update spanning several cycles fires each event once, in order
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::Loop, 0.3f, 3.6f), (Names{"at50", "at100", "at0", "at25"}));
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::Loop, 3.6f, 0.3f), (Names{"at50", "at25", "at0", "at100"}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::Loop, 0.3f, 3.6f), (EventCrossingNames{"at50", "at100", "at0", "at25"}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::Loop, 3.6f, 0.3f), (EventCrossingNames{"at50", "at25", "at0", "at100"}));
 }
 
 TEST(EventCrossing, PingPongCrossesEachEventOnTheWayBack){
     std::shared_ptr<const AnimationClip> clip = eventClip();
     // 0.9 -> 1.6 is clip time 0.9 -> 1 -> 0.4: the end, then 0.5 on the way back
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::PingPong, 0.9f, 1.6f), (Names{"at100", "at50"}));
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::PingPong, 1.6f, 2.1f), (Names{"at25", "at0"}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::PingPong, 0.9f, 1.6f), (EventCrossingNames{"at100", "at50"}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::PingPong, 1.6f, 2.1f), (EventCrossingNames{"at25", "at0"}));
     // several legs in one update: once each
-    EXPECT_EQ(crossed(*clip, ClipWrapMode::PingPong, 0.1f, 5.0f), (Names{"at25", "at50", "at100", "at0"}));
+    EXPECT_EQ(eventCrossingCrossed(*clip, ClipWrapMode::PingPong, 0.1f, 5.0f), (EventCrossingNames{"at25", "at50", "at100", "at0"}));
 }
 
 TEST(EventCrossing, PositionsOrderEventsOnTheTimeLine){
@@ -122,5 +122,5 @@ TEST(EventCrossing, PositionsOrderEventsOnTheTimeLine){
     late.function = "late";
     data.events.push_back(late);
     std::shared_ptr<const AnimationClip> cut = AnimationClip::build(data);
-    EXPECT_EQ(crossed(*cut, ClipWrapMode::Loop, 0.0f, 3.0f, true), (Names{}));
+    EXPECT_EQ(eventCrossingCrossed(*cut, ClipWrapMode::Loop, 0.0f, 3.0f, true), (EventCrossingNames{}));
 }

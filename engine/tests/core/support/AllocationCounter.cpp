@@ -53,7 +53,7 @@ namespace{
         return enabled;
     }
 
-    void count(std::size_t bytes){
+    void allocationCounterCount(std::size_t bytes){
         allocations.fetch_add(1, std::memory_order_relaxed);
         allocatedBytes.fetch_add(bytes, std::memory_order_relaxed);
         uint64_t largest = largestBytes.load(std::memory_order_relaxed);
@@ -73,7 +73,7 @@ namespace{
 #if defined(JASPERENGINE_SANITIZE_ADDRESS)
     // every allocation, whatever its entry point, reaches the sanitizer's allocator
     constexpr bool countAtWrappers = false;
-    void onAllocate(const volatile void*, std::size_t bytes){ count(bytes); }
+    void onAllocate(const volatile void*, std::size_t bytes){ allocationCounterCount(bytes); }
     void onFree(const volatile void*){}
     [[maybe_unused]] const int hooksInstalled = __sanitizer_install_malloc_and_free_hooks(onAllocate, onFree);
 #else
@@ -81,7 +81,7 @@ namespace{
 #endif
 
     void* alignedCounted(std::size_t bytes, std::size_t alignment){
-        if (countAtWrappers) count(bytes);
+        if (countAtWrappers) allocationCounterCount(bytes);
         void* memory = nullptr;
         if (posix_memalign(&memory, alignment < sizeof(void*) ? sizeof(void*) : alignment, bytes ? bytes : 1) != 0)
             return nullptr;
@@ -91,21 +91,21 @@ namespace{
 
 extern "C" {
     void* __real_malloc(std::size_t bytes);
-    void* __real_calloc(std::size_t count, std::size_t bytes);
+    void* __real_calloc(std::size_t allocationCounterCount, std::size_t bytes);
     void* __real_realloc(void* memory, std::size_t bytes);
 
     void* __wrap_malloc(std::size_t bytes){
-        if (countAtWrappers) count(bytes);
+        if (countAtWrappers) allocationCounterCount(bytes);
         return __real_malloc(bytes);
     }
 
     void* __wrap_calloc(std::size_t items, std::size_t bytes){
-        if (countAtWrappers) count(items * bytes);
+        if (countAtWrappers) allocationCounterCount(items * bytes);
         return __real_calloc(items, bytes);
     }
 
     void* __wrap_realloc(void* memory, std::size_t bytes){
-        if (countAtWrappers) count(bytes);
+        if (countAtWrappers) allocationCounterCount(bytes);
         return __real_realloc(memory, bytes);
     }
 }

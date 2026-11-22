@@ -53,7 +53,7 @@ namespace {
         return os << c.name;
     }
 
-    std::vector<uint8_t> readTarget(){
+    std::vector<uint8_t> readTextureLateBindTarget(){
         Framebuffer& target = GpuEnvironment::target();
         std::vector<uint8_t> rgba;
         readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba);
@@ -61,7 +61,7 @@ namespace {
     }
 
     // mean over the pixels of the largest channel difference (0..255)
-    double meanDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
+    double lateBindMeanDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
         if (a.size() != b.size() || a.empty())
             return 255.0;
         double sum = 0.0;
@@ -175,7 +175,7 @@ namespace {
             plane.setMaterial(material);
             EXPECT_TRUE(render()) << "the scene never finished loading";
             GpuEnvironment::drawFrames(3);
-            return readTarget();
+            return readTextureLateBindTarget();
         }
     };
 
@@ -210,11 +210,11 @@ TEST_P(TextureLateBindGpu, AnImageReadyAfterTheMaterialWasBoundIsBound){
         return current->getSystem<RenderSystem>()->isAllLoaded() && TexturePool::get(renderId) != nullptr;
     }, 120);
     GpuEnvironment::drawFrames(3);
-    const std::vector<uint8_t> after = readTarget();
+    const std::vector<uint8_t> after = readTextureLateBindTarget();
 
     EXPECT_NE(TexturePool::get(renderId), nullptr) << c.name << ": the mesh never made the GPU texture of its image";
-    ASSERT_GT(meanDifference(standIn, reference), 4.0) << c.name << ": the stand-in draws as the image (the case shows nothing)";
-    EXPECT_LT(meanDifference(after, reference), 1.0) << c.name << ": the mesh still draws the stand-in for its image";
+    ASSERT_GT(lateBindMeanDifference(standIn, reference), 4.0) << c.name << ": the stand-in draws as the image (the case shows nothing)";
+    EXPECT_LT(lateBindMeanDifference(after, reference), 1.0) << c.name << ": the mesh still draws the stand-in for its image";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -269,11 +269,11 @@ TEST_P(TextureLateBindGpu, AnImageReplacedAfterTheMaterialWasBoundIsBound){
         return current->getSystem<RenderSystem>()->isAllLoaded() && TexturePool::get(renderId) != nullptr;
     }, 120);
     GpuEnvironment::drawFrames(3);
-    const std::vector<uint8_t> after = readTarget();
+    const std::vector<uint8_t> after = readTextureLateBindTarget();
 
     EXPECT_NE(TexturePool::get(renderId), nullptr) << c.name << ": the mesh never asked for its image's new pixels";
-    ASSERT_GT(meanDifference(before, reference), 4.0) << c.name << ": the old image draws as the new one (the case shows nothing)";
-    EXPECT_LT(meanDifference(after, reference), 1.0) << c.name << ": the mesh still draws the old image";
+    ASSERT_GT(lateBindMeanDifference(before, reference), 4.0) << c.name << ": the old image draws as the new one (the case shows nothing)";
+    EXPECT_LT(lateBindMeanDifference(after, reference), 1.0) << c.name << ": the mesh still draws the old image";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -304,7 +304,7 @@ TEST(TextureRebuiltGpu, EveryMaterialHoldingAGpuTextureRebuiltInPlaceBindsItAgai
         right.setMaterial(caseMaterial(Slot::BaseColor, id));
         EXPECT_TRUE(GpuEnvironment::runFrames(loaded));
         GpuEnvironment::drawFrames(3);
-        return readTarget();
+        return readTextureLateBindTarget();
     };
     registerImage("bf15-shared-final", red);
     const std::vector<uint8_t> reference = draw("bf15-shared-final");
@@ -327,7 +327,7 @@ TEST(TextureRebuiltGpu, EveryMaterialHoldingAGpuTextureRebuiltInPlaceBindsItAgai
         return current->getSystem<RenderSystem>()->isAllLoaded() && TexturePool::get("bf15-shared") != nullptr;
     }, 120);
     GpuEnvironment::drawFrames(3);
-    EXPECT_LT(meanDifference(readTarget(), reference), 1.0) << "a plane draws the old image, or nothing";
+    EXPECT_LT(lateBindMeanDifference(readTextureLateBindTarget(), reference), 1.0) << "a plane draws the old image, or nothing";
     // the same image, new pixels: bound again, not a texture edit (render-correctness spec 8)
     EXPECT_EQ(RenderSystem::getTextureVariantChecks(), variantChecks) << "rebinding the same image resolved the variants again";
     Engine::removeScene(&scene);

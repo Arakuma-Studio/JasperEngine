@@ -40,15 +40,15 @@ namespace {
 #endif
     }
 
-    struct Headless {
+    struct FontLicenceHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
     };
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
+    FontLicenceHeadless& fontLicenceHeadless() {
+        static FontLicenceHeadless h = []() {
+            FontLicenceHeadless out;
             const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
             const fs::path root = fs::temp_directory_path() / ("jasper-title-font-import-test-" + std::to_string((long long)stamp));
             fs::remove_all(root);
@@ -71,12 +71,12 @@ namespace {
         return h;
     }
 
-    Project* project() { return headless().project.get(); }
-    fs::path assets() { return headless().dir / "assets"; }
-    CommandHistory* history() { return project()->getProjectCommandHistory(); }
+    Project* fontLicenceProject() { return fontLicenceHeadless().project.get(); }
+    fs::path fontLicenceAssets() { return fontLicenceHeadless().dir / "assets"; }
+    CommandHistory* fontLicenceHistory() { return fontLicenceProject()->getProjectCommandHistory(); }
 
-    std::string topName() {
-        const UndoEntry* top = history()->top();
+    std::string fontLicenceTopName() {
+        const UndoEntry* top = fontLicenceHistory()->top();
         return top ? top->name() : std::string();
     }
 
@@ -94,7 +94,7 @@ namespace {
     FontCopyRequest systemCopy(const fs::path& source) {
         FontCopyRequest request;
         request.source = source;
-        request.assetsDir = assets();
+        request.assetsDir = fontLicenceAssets();
         request.folder = SYSTEM_FONTS_FOLDER;
         request.from = FontImportSource::System;
         return request;
@@ -102,7 +102,7 @@ namespace {
 
     class FontLicenceTest : public ::testing::Test {
     protected:
-        void SetUp() override { ASSERT_TRUE(headless().ready) << "the headless project did not open"; }
+        void SetUp() override { ASSERT_TRUE(fontLicenceHeadless().ready) << "the headless project did not open"; }
     };
 
 }
@@ -136,27 +136,27 @@ TEST_F(FontLicenceTest, FsType) {
     EXPECT_EQ(readFontLicence(bytes.data(), bytes.size(), 0).embedding, EmbeddingLicence::Restricted);
 
     // Restricted: asks, writes nothing, until the request says Copy Anyway
-    const size_t position = history()->position();
+    const size_t position = fontLicenceHistory()->position();
     FontImportPlan plan = planFontCopy(systemCopy(restricted));
     EXPECT_FALSE(plan.ok);
     EXPECT_TRUE(plan.needsLicenceConfirmation);
     EXPECT_EQ(plan.error, restrictedLicenceQuestion());
     EXPECT_TRUE(plan.items.empty());
     std::string error;
-    EXPECT_FALSE(commitFontImport(project(), plan, error));
-    EXPECT_EQ(history()->position(), position);
-    EXPECT_FALSE(fs::exists(assets() / SYSTEM_FONTS_FOLDER / "OswaldRestricted.ttf"));
+    EXPECT_FALSE(commitFontImport(fontLicenceProject(), plan, error));
+    EXPECT_EQ(fontLicenceHistory()->position(), position);
+    EXPECT_FALSE(fs::exists(fontLicenceAssets() / SYSTEM_FONTS_FOLDER / "OswaldRestricted.ttf"));
 
     FontCopyRequest confirmed = systemCopy(restricted);
     confirmed.licenceConfirmed = true;
     plan = planFontCopy(confirmed);
     ASSERT_TRUE(plan.ok) << plan.error;
     EXPECT_EQ(plan.licenceNote, systemFontLicenceNote());
-    ASSERT_TRUE(commitFontImport(project(), plan, error)) << error;
-    EXPECT_EQ(history()->position(), position + 1) << "one step";
-    EXPECT_EQ(topName(), "Import Font Oswald");
+    ASSERT_TRUE(commitFontImport(fontLicenceProject(), plan, error)) << error;
+    EXPECT_EQ(fontLicenceHistory()->position(), position + 1) << "one step";
+    EXPECT_EQ(fontLicenceTopName(), "Import Font Oswald");
     EXPECT_EQ(plan.assetPath, "TitleArt/Fonts/System/OswaldRestricted.ttf");
-    EXPECT_EQ(readBytes(assets() / plan.assetPath), bytes);
+    EXPECT_EQ(readBytes(fontLicenceAssets() / plan.assetPath), bytes);
 
     // Installable, Preview & Print and Editable: copied at once, each with the note, one step each
     struct Copied {
@@ -165,19 +165,19 @@ TEST_F(FontLicenceTest, FsType) {
     };
     for (const Copied& copied : {Copied{"OswaldInstallable.ttf", 0x0000}, Copied{"OswaldPreview.ttf", 0x0004}, Copied{"OswaldEditable.ttf", 0x0008}}) {
         const fs::path source = systemFontWithFsType(scratch, copied.file, copied.fsType);
-        const size_t before = history()->position();
+        const size_t before = fontLicenceHistory()->position();
         const FontImportPlan direct = planFontCopy(systemCopy(source));
         ASSERT_TRUE(direct.ok) << copied.file << ": " << direct.error;
         EXPECT_FALSE(direct.needsLicenceConfirmation);
         EXPECT_EQ(direct.licenceNote, systemFontLicenceNote());
-        ASSERT_TRUE(commitFontImport(project(), direct, error)) << error;
-        EXPECT_EQ(history()->position(), before + 1) << copied.file;
-        EXPECT_TRUE(fs::is_regular_file(assets() / SYSTEM_FONTS_FOLDER / copied.file)) << copied.file;
+        ASSERT_TRUE(commitFontImport(fontLicenceProject(), direct, error)) << error;
+        EXPECT_EQ(fontLicenceHistory()->position(), before + 1) << copied.file;
+        EXPECT_TRUE(fs::is_regular_file(fontLicenceAssets() / SYSTEM_FONTS_FOLDER / copied.file)) << copied.file;
     }
 
     // undo removes the copy
-    ASSERT_TRUE(history()->undo());
-    EXPECT_FALSE(fs::exists(assets() / SYSTEM_FONTS_FOLDER / "OswaldEditable.ttf"));
+    ASSERT_TRUE(fontLicenceHistory()->undo());
+    EXPECT_FALSE(fs::exists(fontLicenceAssets() / SYSTEM_FONTS_FOLDER / "OswaldEditable.ttf"));
 }
 
 // Red control: always writing under the source's name replaces the project's other font
@@ -190,17 +190,17 @@ TEST_F(FontLicenceTest, ImportsTakeFreeNamesAndReuseTheSameFile) {
     std::string error;
     FontImportPlan plan = planFontCopy(request);
     ASSERT_TRUE(plan.ok) << plan.error;
-    ASSERT_TRUE(commitFontImport(project(), plan, error)) << error;
+    ASSERT_TRUE(commitFontImport(fontLicenceProject(), plan, error)) << error;
     EXPECT_EQ(plan.assetPath, "TitleArt/Fonts/Names/Brand.ttf");
 
     // the same bytes again: the file that is there, nothing written, no step
-    const size_t position = history()->position();
+    const size_t position = fontLicenceHistory()->position();
     plan = planFontCopy(request);
     ASSERT_TRUE(plan.ok) << plan.error;
     EXPECT_TRUE(plan.alreadyPresent);
     EXPECT_EQ(plan.assetPath, "TitleArt/Fonts/Names/Brand.ttf");
-    ASSERT_TRUE(commitFontImport(project(), plan, error)) << error;
-    EXPECT_EQ(history()->position(), position);
+    ASSERT_TRUE(commitFontImport(fontLicenceProject(), plan, error)) << error;
+    EXPECT_EQ(fontLicenceHistory()->position(), position);
 
     // other bytes under the same name: "Brand 1.ttf"
     request.source = second;
@@ -214,21 +214,21 @@ TEST_F(FontLicenceTest, ImportsTakeFreeNamesAndReuseTheSameFile) {
 TEST_F(FontLicenceTest, WebFontConversionWritesTheSfntAsOneStep) {
     WebFontConversionRequest request;
     request.source = webFontFixturesDir() / "Oswald-wght.woff2";
-    request.assetsDir = assets();
+    request.assetsDir = fontLicenceAssets();
     request.folder = FONTS_FOLDER;
     const FontImportPlan plan = planWebFontConversion(request);
     ASSERT_TRUE(plan.ok) << plan.error;
     EXPECT_EQ(plan.assetPath, "TitleArt/Fonts/Oswald-wght.ttf");
     EXPECT_EQ(plan.family, "Oswald");
-    const size_t position = history()->position();
+    const size_t position = fontLicenceHistory()->position();
     std::string error;
-    ASSERT_TRUE(commitFontImport(project(), plan, error)) << error;
-    EXPECT_EQ(history()->position(), position + 1);
-    EXPECT_EQ(topName(), "Import Font Oswald");
-    const std::vector<uint8_t> written = readBytes(assets() / plan.assetPath);
+    ASSERT_TRUE(commitFontImport(fontLicenceProject(), plan, error)) << error;
+    EXPECT_EQ(fontLicenceHistory()->position(), position + 1);
+    EXPECT_EQ(fontLicenceTopName(), "Import Font Oswald");
+    const std::vector<uint8_t> written = readBytes(fontLicenceAssets() / plan.assetPath);
     ASSERT_GE(written.size(), 4u);
     EXPECT_EQ(be32(written, 0), 0x00010000u) << "a TrueType sfnt";
-    EXPECT_FALSE(fs::exists(assets() / FONTS_FOLDER / "Oswald-wght.woff2")) << "the web font itself is not copied";
+    EXPECT_FALSE(fs::exists(fontLicenceAssets() / FONTS_FOLDER / "Oswald-wght.woff2")) << "the web font itself is not copied";
 
     // a damaged web font is refused with the decoder's reason
     ScratchDir scratch("convert");
