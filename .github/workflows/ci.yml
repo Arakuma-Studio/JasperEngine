@@ -1032,6 +1032,18 @@ jobs:
       # reported apart (windows-editor-tests, in ADVISORY_LANES while the suite settles on Windows): the
       # leg's build gates, its test run is listed; a hang costs TEST_TIMEOUT, not the leg. While advisory
       # it runs in the advisory run, not in the merge queue; never on push (build_only)
+      # the version control tests' svn and svnadmin (the Linux image and the macOS job have them; the
+      # runner image does not): SlikSVN's command-line client, whose installer puts them in its bin
+      - name: Subversion
+        if: matrix.part == 'editor' && !contains(fromJSON(needs.changes.outputs.build_only), 'windows-editor-tests')
+        run: |
+          bin='C:\Program Files\SlikSvn\bin'
+          if ! command -v svnadmin > /dev/null; then
+              tools/ci/retry.sh choco install sliksvn --no-progress -y
+              echo "$bin" >> "$GITHUB_PATH"
+              PATH="$(cygpath -u "$bin"):$PATH"
+          fi
+          svn --version --quiet && svnadmin --version --quiet
       - name: Editor unit tests (CPU suites)
         id: editor-tests
         if: matrix.part == 'editor' && !contains(fromJSON(needs.changes.outputs.build_only), 'windows-editor-tests')
