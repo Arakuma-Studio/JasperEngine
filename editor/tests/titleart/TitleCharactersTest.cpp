@@ -69,20 +69,20 @@ namespace {
         mutable std::map<std::string, std::shared_ptr<FontFace>> faces;
     };
 
-    TitleCharacterSet preset(const std::string& name) {
+    TitleCharacterSet titleCharactersPreset(const std::string& name) {
         TitleCharacterSet set;
         EXPECT_TRUE(titleCharacterPreset(name, set)) << name;
         return set;
     }
 
-    std::string utf8(const std::vector<uint32_t>& cps) {
+    std::string titleCharactersUtf8(const std::vector<uint32_t>& cps) {
         std::string out;
         for (uint32_t cp : cps) out += titleUtf8Of(cp);
         return out;
     }
 
     // a new document whose text layer uses `font`, with the given Characters
-    titleart::TitleArtDoc document(const std::string& font, const TJson& characters) {
+    titleart::TitleArtDoc titleCharactersDocument(const std::string& font, const TJson& characters) {
         titleart::TitleArtDoc doc = titleart::makeNewTitleArt();
         if (!font.empty()) doc.root["layers"][0]["font"] = TJson{{"path", font}, {"guid", ""}};
         doc.root["runtime"]["characters"] = characters;
@@ -103,16 +103,16 @@ namespace {
 // code points (R53 says 25; the list is authoritative, recorded as a deviation).
 TEST(TitleCharacters, PresetCounts) {
     EXPECT_EQ(titleCharacterPresetNames(), std::vector<std::string>({"digits", "latin", "latin_extended", "kana", "joyo_kanji"}));
-    const TitleCharacterSet digits = preset("digits");
+    const TitleCharacterSet digits = titleCharactersPreset("digits");
     EXPECT_EQ(digits.size(), 24u);
     EXPECT_EQ(digits.toUtf8(), " $%+,-./0123456789:x\u00a3\u00a5\u00d7\u20ac");
-    EXPECT_EQ(preset("latin").size(), 95u);
-    EXPECT_TRUE(preset("latin").contains(0x20) && preset("latin").contains(0x7e) && !preset("latin").contains(0x7f));
+    EXPECT_EQ(titleCharactersPreset("latin").size(), 95u);
+    EXPECT_TRUE(titleCharactersPreset("latin").contains(0x20) && titleCharactersPreset("latin").contains(0x7e) && !titleCharactersPreset("latin").contains(0x7f));
     // 95 + 432 (U+00A0-U+024F) + 256 + 112 + 48
-    EXPECT_EQ(preset("latin_extended").size(), 943u);
+    EXPECT_EQ(titleCharactersPreset("latin_extended").size(), 943u);
     // 64 + 96 + 96 + 16 + 240
-    EXPECT_EQ(preset("kana").size(), 512u);
-    const TitleCharacterSet joyo = preset("joyo_kanji");
+    EXPECT_EQ(titleCharactersPreset("kana").size(), 512u);
+    const TitleCharacterSet joyo = titleCharactersPreset("joyo_kanji");
     EXPECT_EQ(joyo.size(), 2136u);
     EXPECT_TRUE(joyo.contains(0x4e00)) << "一";
     EXPECT_TRUE(joyo.contains(0x20b9f)) << "the 2010 list's form of shikaru, outside the BMP";
@@ -140,7 +140,7 @@ TEST(TitleCharacters, SetOperations) {
     a.merge(b);
     EXPECT_TRUE(a.contains('z'));
     EXPECT_EQ(a, b);
-    EXPECT_EQ(utf8(a.missingFrom("zebra!?!")), "er!?") << "in order of appearance, once each";
+    EXPECT_EQ(titleCharactersUtf8(a.missingFrom("zebra!?!")), "er!?") << "in order of appearance, once each";
     TitleCharacterSet file;
     file.addUtf8("\xef\xbb\xbf" "a\r\n\tb", true);
     EXPECT_EQ(file.toUtf8(), "ab") << "a text file's BOM, line ends and tabs are not characters";
@@ -149,7 +149,7 @@ TEST(TitleCharacters, SetOperations) {
 // R53: presets ∪ Custom ∪ Custom File ∪ the document's texts (every depth, exposed defaults,
 // translations when present)
 TEST(TitleCharacters, DocumentCharacters) {
-    titleart::TitleArtDoc doc = document("", TJson{{"presets", TJson::array({"digits"})}, {"custom", "\xc3\x86\xc3\x98"},
+    titleart::TitleArtDoc doc = titleCharactersDocument("", TJson{{"presets", TJson::array({"digits"})}, {"custom", "\xc3\x86\xc3\x98"},
                                                    {"custom_file", TJson{{"path", "strings.csv"}, {"guid", ""}}}, {"document_text", true}});
     doc.root["layers"][0]["text"] = "\xe7\xa2\xba\xe5\xae\x9a";      // 確定
     doc.root["layers"][0]["translations"] = TJson{{"de", TJson{{"text", "Gr\xc3\xb6\xc3\x9f" "e"}}}};
@@ -170,7 +170,7 @@ TEST(TitleCharacters, DocumentCharacters) {
     EXPECT_EQ(report.customCount, 2u);
     for (const char* text : {"0123456789", "\xc3\x86\xc3\x98", "\xe5\xa4\xa7\xe5\xbd\x93\xe3\x82\x8a", "id,textwn",
                              "\xe7\xa2\xba\xe5\xae\x9a", "Gr\xc3\xb6\xc3\x9f" "e", "Nest"}) {
-        EXPECT_TRUE(set.missingFrom(text).empty()) << text << " misses " << utf8(set.missingFrom(text));
+        EXPECT_TRUE(set.missingFrom(text).empty()) << text << " misses " << titleCharactersUtf8(set.missingFrom(text));
     }
     EXPECT_FALSE(set.contains(0xfeff));
     EXPECT_FALSE(set.contains('\r'));
@@ -201,8 +201,8 @@ TEST(TitleCharacters, DocumentCharacters) {
 // R55: the characters a dynamic layer's chain cannot draw, naming the character, title and font
 TEST(TitleCharacters, MissingGlyphs) {
     FixtureFonts fonts;
-    const titleart::TitleArtDoc doc = document("Oswald-wght.ttf", TJson{{"presets", TJson::array({"latin"})}});
-    TitleCharacterSet chars = preset("latin");
+    const titleart::TitleArtDoc doc = titleCharactersDocument("Oswald-wght.ttf", TJson{{"presets", TJson::array({"latin"})}});
+    TitleCharacterSet chars = titleCharactersPreset("latin");
     chars.addUtf8("\xe7\xa2\xba \xe3\x80\x80");      // 確, a space and an ideographic space
     const std::vector<TitleMissingCharacters> missing = findTitleMissingCharacters(doc, chars, fonts, "titles/logo.titleart");
     ASSERT_EQ(missing.size(), 1u);
@@ -254,15 +254,15 @@ TEST(TitleCharacters, LuaLiteralScan) {
     EXPECT_EQ(literals[4].value, "AB");
     EXPECT_EQ(literals[4].parameter, "text");
 
-    const std::vector<TitleCharsWarning> warnings = titleLiteralCharsWarnings(literals, preset("latin"), "titles/logo.titleart");
+    const std::vector<TitleCharsWarning> warnings = titleLiteralCharsWarnings(literals, titleCharactersPreset("latin"), "titles/logo.titleart");
     ASSERT_EQ(warnings.size(), 2u);
     EXPECT_EQ(warnings[0].code, "W-TITLEART-CHARS");
     EXPECT_EQ(warnings[0].file, "scripts/hud.lua");
     EXPECT_EQ(warnings[0].line, 2);
-    EXPECT_EQ(utf8(warnings[0].codepoints), "\xc3\x86");
+    EXPECT_EQ(titleCharactersUtf8(warnings[0].codepoints), "\xc3\x86");
     EXPECT_EQ(warnings[0].message.rfind("scripts/hud.lua:2: ", 0), 0u) << warnings[0].message;
     EXPECT_NE(warnings[0].message.find("add them to Characters > Custom"), std::string::npos) << warnings[0].message;
-    EXPECT_EQ(utf8(warnings[1].codepoints), "\xc3\xb6\xc3\x9f");
+    EXPECT_EQ(titleCharactersUtf8(warnings[1].codepoints), "\xc3\xb6\xc3\x9f");
     EXPECT_EQ(warnings[1].parameter, "label");
 }
 
@@ -292,7 +292,7 @@ TEST(TitleCharacters, CharactersCheck) {
 
     // Custom 確 on a Latin font: coverage warns, naming a project font that has it; the Kana
     // preset's gaps are counted, not warned about (a preset is a broad range)
-    titleart::TitleArtDoc doc = document("Oswald-wght.ttf", TJson{{"presets", TJson::array({"latin", "kana"})}, {"custom", "\xe7\xa2\xba"}});
+    titleart::TitleArtDoc doc = titleCharactersDocument("Oswald-wght.ttf", TJson{{"presets", TJson::array({"latin", "kana"})}, {"custom", "\xe7\xa2\xba"}});
     TitleCheckReport report = run(doc);
     const TitleCheckResult* coverage = findResult(report, "characters.coverage");
     ASSERT_TRUE(coverage);

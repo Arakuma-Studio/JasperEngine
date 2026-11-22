@@ -28,6 +28,7 @@
 # JASPERENGINE_EDITOR_VERSION (or JASPERENGINE_VERSION) stamps the build with that version instead of git describe.
 # BUILD_TYPE overrides the CMake build type (default Release; Debug for web; RelWithDebInfo for
 # unit-tests; Debug for every sanitizer build). SKIP_ENGINE=1 builds only the editor for linux.
+# JASPERENGINE_DEBUG_INFO=lines (CI) gives every tree line tables only where it has debug information.
 # JOBS caps build parallelism and, with CPUS (default: DOCKER_CPUS, else JOBS), the CPUs the
 # container may use (docker --cpus), which also caps what ignores JOBS: the Android gradle/ninja
 # build and the test binaries. DOCKER_CPUS is the same cap under the name tools/smoke-test.sh
@@ -42,7 +43,10 @@
 # instead of building docker/<target>.Dockerfile (CI pulls ghcr.io/<owner>/jasperengine-<target>-build:
 # <image-tag> and passes it, .github/actions/image).
 # unit-tests: UNIT_TEST_ARGS goes to both test binaries (e.g. --gtest_filter=Vector3.*), RUN=0
-# builds only, UNIT_SUITE=core or editor builds and runs one of the two; JASPER_TEST_UPDATE_GOLDEN=1
+# builds only, UNIT_SUITE=core or editor builds and runs one of the two; UNIT_SHARD=K/N runs shard K
+# of N of the tests UNIT_TEST_ARGS selects (whole suites, tools/ci/unit_split.py args);
+# UNIT_BUILD_PART=K/N compiles only part K of N of the test binary's objects and stops (CI's unit
+# jobs share their parts through ccache, tools/ci/unit_split.py objects); JASPER_TEST_UPDATE_GOLDEN=1
 # rewrites the core goldens (glcore only) and the reflection snapshot; JASPER_REFLECT_WRITE_FIXTURE=1
 # regenerates tools/fixtures/reflection-parity/AllComponents.scene (docs/specs/S08-reflection.md);
 # JASPER_BENCH_ENTITIES sets the reflection codec benchmark's scene size (ReflectCodecBench).
@@ -95,7 +99,7 @@ EDITOR_MIN_TESTS=150
 HTMLUI_MAX_SKIPPED=75
 
 usage() {
-    sed -n '2,79p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,80p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -297,21 +301,22 @@ if [[ "${DOCKER_GPU:-0}" == 1 ]]; then
     ENV_FLAGS+=(-e DOCKER_GPU=1)
     [[ -n "${JE_GPU_DISPLAY:-}" ]] && ENV_FLAGS+=(-e "JE_GPU_DISPLAY=$JE_GPU_DISPLAY")
 fi
-for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_UPDATE_GOLDEN JASPER_TITLE_UPDATE_GOLDEN JASPER_TITLE_LIBRARY_SHARD JASPER_TITLE_LIBRARY_KINDS JASPER_TITLE_LIBRARY_ONLY JASPER_TEST_WRITE_ACTUAL \
+for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_UPDATE_GOLDEN JASPER_TITLE_UPDATE_GOLDEN JASPER_TITLE_LIBRARY_KINDS JASPER_TITLE_LIBRARY_ONLY JASPER_TEST_WRITE_ACTUAL \
             JASPER_TEST_KEEP_TEMP JASPER_REFLECT_WRITE_FIXTURE JASPER_BENCH_ENTITIES JASPER_HTMLUI_PERF_SLACK JASPER_TEST_PERF_SLACK \
             HTMLUI_LIVE_NETWORK JASPER_CHROME JASPER_ZERO_COST_UPDATE JASPER_PICK_SIMD \
             JASPER_HTMLUI_S16_OFF JASPER_HTMLUI_BATCHING JASPER_HTMLUI_SDF_PRIMITIVES JASPERENGINE_GPU_TIMER JASPER_HTMLUI_PROFILE \
             JASPER_TEST_UPDATE_FIXTURES JASPER_SLOW_BUILD JASPER_SLOW_TESTS JASPER_BUILD_TIMEOUT JASPER_MCP_PERF_SLACK \
             JASPER_UPDATE_GOLDEN JASPER_PARTICLES_UPDATE_GOLDEN JASPER_POST_FX_UPDATE_GOLDEN JASPER_REFLECTION_UPDATE_GOLDEN \
             JASPER_RENDER_UPDATE_GOLDEN JASPER_SCENE_VIEW_UPDATE_GOLDEN JASPER_SHADOW_UPDATE_GOLDEN \
-            JASPERENGINE_VERSION JASPERENGINE_EDITOR_VERSION; do
+            JASPERENGINE_VERSION JASPERENGINE_EDITOR_VERSION JASPERENGINE_DEBUG_INFO; do
     # (JASPER_HTMLUI_PERF_SLACK: the HTML UI performance tests' tolerance on a loaded host, compat_perf_test.cpp;
     # JASPER_TEST_PERF_SLACK: the core tests' wall-clock budgets are enforced only when it is set;
     # JASPER_PICK_SIMD: the picking BVH's slab test path, scalar|avx2|neon, S26 AC2;
     # JASPER_TEST_UPDATE_FIXTURES: the editor's TextureFormatFixtures writes the GPU format test's cooks, S14;
     # JASPER_SLOW_BUILD, JASPER_SLOW_TESTS, JASPER_BUILD_TIMEOUT, JASPER_MCP_PERF_SLACK: the MCP suite's opt-ins;
     # JASPER_*_UPDATE_GOLDEN: the MCP tests' golden update modes, so mcp-tests can rewrite them in the image;
-    # JASPERENGINE_VERSION / JASPERENGINE_EDITOR_VERSION: a release's stamp, which package_player.py names archives by)
+    # JASPERENGINE_VERSION / JASPERENGINE_EDITOR_VERSION: a release's stamp, which package_player.py names archives by;
+    # JASPERENGINE_DEBUG_INFO: for the games the editor and the scripts configure in the image, below)
     [[ -n "${!name:-}" ]] && ENV_FLAGS+=(-e "$name=${!name}")
 done
 # Sanitizer runtime options for every run (tools/sanitizers/*.supp: third-party code only)
@@ -327,6 +332,9 @@ ENV_FLAGS+=(
 # through the header; no unit of a Linux build uses __DATE__ or __TIME__ (the web image's build
 # id does, and is not given this)
 [[ "$IMAGE_TARGET" == linux ]] && ENV_FLAGS+=(-e "CCACHE_SLOPPINESS=pch_defines,time_macros")
+# The Android Gradle plugin unpacks the NDK inside each container (the image has none), which gives its
+# compiler a new mtime, ccache's default compiler check, on every run: name it by its version instead
+[[ "$IMAGE_TARGET" == android ]] && ENV_FLAGS+=(-e "CCACHE_COMPILERCHECK=%compiler% --version")
 MOUNT_FLAGS=()
 # mcp-tests: the fixture project the default-fixture tests copy (the places
 # tools/mcp/harness.py default_fixture() looks in), mounted where the harness finds it
@@ -425,6 +433,19 @@ fi
 # the standalone engine tree's development and test builds (linux's sample project, unit-tests,
 # htmlui-tests) with precompiled headers; exports, web, Android and players keep it off
 DEV_ENGINE_FLAGS="-DJASPERENGINE_PCH=ON"
+# JASPERENGINE_PCH=OFF (CI, ci.yml): none in any tree. A GCC precompiled header is not the same bytes
+# twice, so once ccache has lost its entry every unit built on it misses; and a warm build without
+# them is faster (docs/testing.md "Build speed")
+if [[ -n "${JASPERENGINE_PCH:-}" ]]; then
+    [[ "$JASPERENGINE_PCH" =~ ^(ON|OFF)$ ]] || { echo "build.sh: JASPERENGINE_PCH is ON or OFF, got '$JASPERENGINE_PCH'" >&2; exit 2; }
+    DEV_ENGINE_FLAGS="-DJASPERENGINE_PCH=$JASPERENGINE_PCH"
+    OPTION_FLAGS="$OPTION_FLAGS -DJASPERENGINE_PCH=$JASPERENGINE_PCH"
+fi
+# JASPERENGINE_DEBUG_INFO=lines (CI, ci.yml): line tables only instead of full debug information
+# (engine/cmake/JasperDebugInfo.cmake), explicit in every tree so that unsetting it goes back to full
+DEBUG_INFO="${JASPERENGINE_DEBUG_INFO:-full}"
+[[ "$DEBUG_INFO" =~ ^(full|lines)$ ]] || { echo "build.sh: JASPERENGINE_DEBUG_INFO is full or lines, got '$DEBUG_INFO'" >&2; exit 2; }
+OPTION_FLAGS="$OPTION_FLAGS -DJASPERENGINE_DEBUG_INFO=$DEBUG_INFO"
 VARIANT="$CXX_SUFFIX$VARIANT"
 
 case "$TARGET" in
@@ -625,6 +646,19 @@ unit-tests)
     # a filtered run proves only that something ran; an unfiltered one has to reach AC7's counts
     CORE_MIN=$CORE_MIN_TESTS
     EDITOR_MIN=$EDITOR_MIN_TESTS
+    UNIT_SHARD="${UNIT_SHARD:-}"
+    UNIT_BUILD_PART="${UNIT_BUILD_PART:-}"
+    for part in "$UNIT_SHARD" "$UNIT_BUILD_PART"; do
+        [[ -z "$part" || "$part" =~ ^[1-9][0-9]*/[1-9][0-9]*$ ]] || { echo "UNIT_SHARD and UNIT_BUILD_PART are K/N, e.g. 1/2" >&2; exit 1; }
+    done
+    PART_NINJA_FLAGS="${JOBS:+-j $JOBS}"
+    [[ "${KEEP_GOING:-0}" == 1 ]] && PART_NINJA_FLAGS="$PART_NINJA_FLAGS -k 0"
+    # a shard of an unfiltered run has its share of AC7's counts
+    if [[ -n "$UNIT_SHARD" ]]; then
+        SHARDS="${UNIT_SHARD#*/}"
+        CORE_MIN=$(( (CORE_MIN + SHARDS - 1) / SHARDS ))
+        EDITOR_MIN=$(( (EDITOR_MIN + SHARDS - 1) / SHARDS ))
+    fi
     if [[ "${UNIT_TEST_ARGS:-}" == *--gtest_filter* ]]; then CORE_MIN=1; EDITOR_MIN=1; fi
     # (UNIT_SUITES=core|editor: the name S03's interim target used)
     UNIT_SUITE="${UNIT_SUITE:-${UNIT_SUITES:-all}}"
@@ -634,29 +668,50 @@ unit-tests)
     [[ "$UNIT_SUITE" != editor ]] && CORE=1
     [[ "$UNIT_SUITE" != core ]] && EDITOR=1
     run bash -euo pipefail -c "
+        # <tree> <target>: the target, or with UNIT_BUILD_PART only that part of its objects
+        build_tests() {
+            if [[ -n '$UNIT_BUILD_PART' ]]; then
+                python3 -I tools/ci/unit_split.py objects --build-dir \"\$1\" --target \"\$2\" --part '$UNIT_BUILD_PART' > \"\$1/unit-build-part.txt\"
+                ninja -C \"\$1\" -f unit-part.ninja $PART_NINJA_FLAGS \$(cat \"\$1/unit-build-part.txt\")
+            else
+                cmake --build \"\$1\" --target \"\$2\" $JOBS_FLAG
+            fi
+        }
+        # <binary>: the test arguments, with UNIT_SHARD narrowed to that shard's suites
+        test_args() {
+            if [[ -n '$UNIT_SHARD' ]]; then
+                python3 -I tools/ci/unit_split.py args --binary \"\$1\" --shard '$UNIT_SHARD' -- ${UNIT_TEST_ARGS:-}
+            else
+                echo '${UNIT_TEST_ARGS:-}'
+            fi
+        }
         if [[ $CORE == 1 ]]; then
             cmake --preset $CORE_PRESET -S engine -B $CORE_DIR -DCMAKE_BUILD_TYPE=$BT -DGRAPHIC_BACKEND=$LINUX_BACKEND \
                 $OPTION_FLAGS -DJASPERENGINE_WARNINGS=ON -DJASPERENGINE_WERROR=$WERROR_VALUE $DEV_ENGINE_FLAGS $CCACHE_FLAGS
-            cmake --build $CORE_DIR --target jasperengine-core-tests $JOBS_FLAG
+            build_tests $CORE_DIR jasperengine-core-tests
         fi
         if [[ $EDITOR == 1 ]]; then
             cmake --preset $EDITOR_PRESET -B $EDITOR_DIR -DCMAKE_BUILD_TYPE=$BT $OPTION_FLAGS \
                 -DJASPERENGINE_WERROR=$WERROR_VALUE $CCACHE_FLAGS
-            cmake --build $EDITOR_DIR --target jasperengine-editor-tests $JOBS_FLAG
+            build_tests $EDITOR_DIR jasperengine-editor-tests
         fi
-        [[ '${RUN:-1}' == 0 ]] && exit 0
+        [[ '${RUN:-1}' == 0 || -n '$UNIT_BUILD_PART' ]] && exit 0
         set -f  # a --gtest_filter pattern is not a glob
         status=0
         if [[ $CORE == 1 ]]; then
             rm -f $RESULTS/$CORE_RESULT.xml
-            env $VK_ENV tools/with-xvfb.sh $TEST_WRAP \
-                $CORE_DIR/tests/core/jasperengine-core-tests --gtest_output=xml:$RESULTS/$CORE_RESULT.xml ${UNIT_TEST_ARGS:-} || status=1
+            if args=\$(test_args $CORE_DIR/tests/core/jasperengine-core-tests); then
+                env $VK_ENV tools/with-xvfb.sh $TEST_WRAP \
+                    $CORE_DIR/tests/core/jasperengine-core-tests --gtest_output=xml:$RESULTS/$CORE_RESULT.xml \$args || status=1
+            fi
             $GTEST_GATE --xml $RESULTS/$CORE_RESULT.xml --min-tests $CORE_MIN --max-skipped 0 || status=1
         fi
         if [[ $EDITOR == 1 ]]; then
             rm -f $RESULTS/$EDITOR_RESULT.xml
-            tools/with-xvfb.sh $TEST_WRAP \
-                $EDITOR_DIR/jasperengine-editor-tests --gtest_output=xml:$RESULTS/$EDITOR_RESULT.xml ${UNIT_TEST_ARGS:-} || status=1
+            if args=\$(test_args $EDITOR_DIR/jasperengine-editor-tests); then
+                tools/with-xvfb.sh $TEST_WRAP \
+                    $EDITOR_DIR/jasperengine-editor-tests --gtest_output=xml:$RESULTS/$EDITOR_RESULT.xml \$args || status=1
+            fi
             $GTEST_GATE --xml $RESULTS/$EDITOR_RESULT.xml --min-tests $EDITOR_MIN --max-skipped 0 || status=1
         fi
         exit \$status
@@ -771,8 +826,15 @@ android)
     mkdir -p "$ROOT/$APK_DIR"
     # Gradle's output also goes to gradle.log: a deprecation in our Gradle files fails the build
     # (tools/ci/check_gradle_warnings.py; the template sets --warning-mode all)
+    # The NDK app/build.gradle pins, installed before Gradle when the SDK lacks it: the Android Gradle
+    # plugin's own download of it has no retry (main's run 44404218432 failed on a Premature EOF)
     run bash -euo pipefail -c "
         cd engine/workspaces/androidstudio
+        ndk=\$(sed -n 's/^ *ndkVersion = \"\\(.*\\)\"\$/\\1/p' app/build.gradle)
+        [[ -n \"\$ndk\" ]] || { echo 'no ndkVersion in app/build.gradle' >&2; exit 1; }
+        if [[ ! -f \"\$ANDROID_HOME/ndk/\$ndk/source.properties\" ]]; then
+            /src/tools/ci/retry.sh bash -c \"sdkmanager --install 'ndk;\$ndk' > /dev/null && test -f '\$ANDROID_HOME/ndk/\$ndk/source.properties'\"
+        fi
         env $PROJECT_ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon assembleDebug 2>&1 | tee /src/$APK_DIR/gradle.log
         cp app/build/outputs/apk/debug/*.apk /src/$APK_DIR/
         python3 /src/tools/ci/check_gradle_warnings.py /src/$APK_DIR/gradle.log

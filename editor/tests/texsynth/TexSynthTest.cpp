@@ -635,7 +635,7 @@ TEST(TexSynthRecipe, NonUtf8PathsAreReportedNotThrown) {
     Request r = basicRequest(Mode::Extend, 16, 16, 16);
     const Result result = synthesize(r);
     ASSERT_EQ(result.status, Status::Ok);
-    r.examples[0].image.path = dir / "caf\xE9.png";
+    r.examples[0].image.path = dir / jasperengine::editor::FileUtils::pathFromUtf8("caf\xE9.png");   // (a fs::path of the bytes throws on Windows)
     RecipePaths paths;
     paths.projectDir = dir;
     paths.outputs["primary"] = dir / "out.png";

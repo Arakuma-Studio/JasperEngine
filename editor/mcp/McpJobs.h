@@ -71,6 +71,10 @@ namespace jasperengine::editor::mcp {
         Json toJson(int logLines = 40) const;
         std::string message() const;
         Json result() const;
+        // the images of its result (a preview): get_job returns them with a succeeded job's result,
+        // as the call's own reply does when it waits for the end
+        void setImages(std::vector<ToolImage> images);
+        std::vector<ToolImage> images() const;
 
     private:
         mutable std::mutex mutex;
@@ -83,6 +87,7 @@ namespace jasperengine::editor::mcp {
         std::string jobMessage;
         std::deque<std::string> logLines;
         Json jobResult = Json::object();
+        std::vector<ToolImage> jobImages;
         bool cancelFlag = false;
         std::function<void()> cancelHandler;
         std::chrono::steady_clock::time_point startTime;

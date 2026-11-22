@@ -45,7 +45,7 @@ namespace {
         }
     };
 
-    std::string base64(const std::vector<uint8_t>& bytes){
+    std::string vatShaderVariantsBase64(const std::vector<uint8_t>& bytes){
         static const char* table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
         std::string out;
         for (size_t i = 0; i < bytes.size(); i += 3){
@@ -78,11 +78,11 @@ namespace {
         };
         const size_t p = put(positions, 36), n = put(normals, 36), v = put(vatIndex, 12), j = put(joints, 12), w = put(weights, 48), i = put(indices, 6);
         std::ostringstream json;
-        json << "{\"asset\":{\"version\":\"2.0\"},\"extensionsUsed\":[\"" << vat::VAT_GLTF_EXTENSION << "\"],"
+        json << "{\"asset\":{\"version\":\"2.0\"},\"extensionsUsed\":[\"" << jasperengine::vat::VAT_GLTF_EXTENSION << "\"],"
              << "\"scene\":0,\"scenes\":[{\"nodes\":[0]}],\"nodes\":[{\"mesh\":0}],"
              << "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1,"
-             << (bones ? "\"JOINTS_0\":3,\"WEIGHTS_0\":4" : std::string("\"") + vat::VAT_INDEX_ATTRIBUTE + "\":2") << "},\"indices\":5}]}],"
-             << "\"buffers\":[{\"byteLength\":" << data.size() << ",\"uri\":\"data:application/octet-stream;base64," << base64(data) << "\"}],"
+             << (bones ? "\"JOINTS_0\":3,\"WEIGHTS_0\":4" : std::string("\"") + jasperengine::vat::VAT_INDEX_ATTRIBUTE + "\":2") << "},\"indices\":5}]}],"
+             << "\"buffers\":[{\"byteLength\":" << data.size() << ",\"uri\":\"data:application/octet-stream;base64," << vatShaderVariantsBase64(data) << "\"}],"
              << "\"bufferViews\":["
              << "{\"buffer\":0,\"byteOffset\":" << p << ",\"byteLength\":36},{\"buffer\":0,\"byteOffset\":" << n << ",\"byteLength\":36},"
              << "{\"buffer\":0,\"byteOffset\":" << v << ",\"byteLength\":12},{\"buffer\":0,\"byteOffset\":" << j << ",\"byteLength\":12},"
@@ -101,36 +101,36 @@ namespace {
         return path.string();
     }
 
-    std::shared_ptr<const vat::VertexAnimation> makeAsset(vat::VatMode mode){
-        vat::VatData data;
+    std::shared_ptr<const jasperengine::vat::VertexAnimation> makeAsset(jasperengine::vat::VatMode mode){
+        jasperengine::vat::VatData data;
         data.mode = mode;
         data.mesh = "test.vat.glb";
-        vat::VatClip clip;
+        jasperengine::vat::VatClip clip;
         clip.name = "Idle";
         clip.frames = 1;
         data.clips.push_back(clip);
-        data.layout.precision = vat::VatPrecision::Float;
+        data.layout.precision = jasperengine::vat::VatPrecision::Float;
         data.layout.width = 8;
         data.layout.height = 1;
         data.layout.samples = 1;
         data.layout.normals = false;
-        if (mode == vat::VatMode::Bones)
+        if (mode == jasperengine::vat::VatMode::Bones)
             data.layout.bones = 2;
         else
             data.layout.vertices = 3;
-        data.layout.layoutHash = vat::computeLayoutHash(data);
-        vat::VatPayload payload;
-        payload.precision = vat::VatPrecision::Float;
+        data.layout.layoutHash = jasperengine::vat::computeLayoutHash(data);
+        jasperengine::vat::VatPayload payload;
+        payload.precision = jasperengine::vat::VatPrecision::Float;
         payload.width = 8;
         payload.height = 1;
         payload.bytes.assign(8 * 16, 0);
         std::string error;
-        auto asset = vat::VertexAnimation::create(data, payload, vat::VatSocketTracks(), &error);
+        auto asset = jasperengine::vat::VertexAnimation::create(data, payload, jasperengine::vat::VatSocketTracks(), &error);
         EXPECT_TRUE(asset) << error;
         return asset;
     }
 
-    struct Keys {
+    struct VatShaderVariantsKeys {
         bool vertices = false;      // MESH 'Vat'
         bool bones = false;         // MESH 'Vab'
         bool rest = false;          // MESH without either
@@ -139,13 +139,13 @@ namespace {
         bool depthBones = false;    // DEPTH 'Vab'
     };
 
-    Keys collect(Scene& scene){
+    VatShaderVariantsKeys vatShaderVariantsCollect(Scene& scene){
         ShaderVariantContent content;
         content.registry = &scene;
         content.entities = scene.getEntityList();
         std::set<ShaderKey> keys;
         ShaderVariantCollector::collectScene(&scene, content, {}, keys);
-        Keys out;
+        VatShaderVariantsKeys out;
         for (ShaderKey key : keys){
             const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
             const ShaderType type = ShaderPool::getShaderTypeFromKey(key);
@@ -183,7 +183,7 @@ namespace {
         return entity;
     }
 
-    void addAnimator(Scene& scene, Entity entity, std::shared_ptr<const vat::VertexAnimation> asset, const std::string& path = ""){
+    void addAnimator(Scene& scene, Entity entity, std::shared_ptr<const jasperengine::vat::VertexAnimation> asset, const std::string& path = ""){
         VertexAnimatorComponent animator;
         animator.animation = path;
         animator.asset = asset;
@@ -195,8 +195,8 @@ namespace {
 TEST_F(VatShaderVariants, VerticesModeShipsVatNextToRest){
     auto scene = std::make_unique<Scene>();
     const Entity entity = addModel(*scene, writeVatGltf("vertices", false));
-    addAnimator(*scene, entity, makeAsset(vat::VatMode::Vertices));
-    const Keys keys = collect(*scene);
+    addAnimator(*scene, entity, makeAsset(jasperengine::vat::VatMode::Vertices));
+    const VatShaderVariantsKeys keys = vatShaderVariantsCollect(*scene);
     EXPECT_TRUE(keys.vertices);
     EXPECT_TRUE(keys.depthVertices);
     EXPECT_TRUE(keys.rest) << "drawn at rest until its animation is on the GPU";
@@ -207,8 +207,8 @@ TEST_F(VatShaderVariants, VerticesModeShipsVatNextToRest){
 TEST_F(VatShaderVariants, BonesModeShipsVabWithoutSkinning){
     auto scene = std::make_unique<Scene>();
     const Entity entity = addModel(*scene, writeVatGltf("bones", true));
-    addAnimator(*scene, entity, makeAsset(vat::VatMode::Bones));
-    const Keys keys = collect(*scene);
+    addAnimator(*scene, entity, makeAsset(jasperengine::vat::VatMode::Bones));
+    const VatShaderVariantsKeys keys = vatShaderVariantsCollect(*scene);
     EXPECT_TRUE(keys.bones);
     EXPECT_TRUE(keys.depthBones);
     EXPECT_TRUE(keys.rest);
@@ -220,7 +220,7 @@ TEST_F(VatShaderVariants, UnreadableAssetShipsBothModes){
     auto scene = std::make_unique<Scene>();
     const Entity entity = addModel(*scene, writeVatGltf("unreadable", false));
     addAnimator(*scene, entity, nullptr, "assets/vat/missing.vat");
-    const Keys keys = collect(*scene);
+    const VatShaderVariantsKeys keys = vatShaderVariantsCollect(*scene);
     EXPECT_TRUE(keys.vertices);
     EXPECT_TRUE(keys.bones);
     EXPECT_TRUE(keys.rest);
@@ -229,7 +229,7 @@ TEST_F(VatShaderVariants, UnreadableAssetShipsBothModes){
 TEST_F(VatShaderVariants, NoAnimatorShipsNone){
     auto scene = std::make_unique<Scene>();
     addModel(*scene, writeVatGltf("plain", true));
-    const Keys keys = collect(*scene);
+    const VatShaderVariantsKeys keys = vatShaderVariantsCollect(*scene);
     EXPECT_TRUE(keys.rest);
     EXPECT_FALSE(keys.vertices);
     EXPECT_FALSE(keys.bones);

@@ -45,12 +45,12 @@ using namespace jasperengine::pose;
 
 namespace {
 
-    std::string readFile(const std::string& path){
+    std::string humanoidModelReadFile(const std::string& path){
         std::ifstream file(path, std::ios::binary);
         return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
     }
 
-    double degreesBetween(const Quaternion& a, const Quaternion& b){
+    double humanoidModelDegreesBetween(const Quaternion& a, const Quaternion& b){
         return radToDeg(angleBetween(Quatd(a).normalized(), Quatd(b).normalized()));
     }
 
@@ -61,8 +61,8 @@ namespace {
             dir = "models/humanoid" + std::to_string(run++) + "/";
             hero = dir + "hero_animated.gltf";
             robot = dir + "robot_apose.gltf";
-            animtest::writeAsset(hero, readFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/hero_animated.gltf"));
-            animtest::writeAsset(robot, readFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/robot_apose.gltf"));
+            animtest::writeAsset(hero, humanoidModelReadFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/hero_animated.gltf"));
+            animtest::writeAsset(robot, humanoidModelReadFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/robot_apose.gltf"));
             AnimationClipPool::clear();
             AnimatorAssetPool::clear();
         }
@@ -181,7 +181,7 @@ TEST_F(HumanoidModel, ConvertedWalkReproducesTheSourceOnItsRig){
             }
             const Quaternion expected = track >= 0 ? samples[(size_t)track].rotation
                                                    : scene.getComponent<BoneComponent>(output.entity).bindRotation;
-            EXPECT_LT(degreesBetween(output.rotation, expected), output.kind == anim::HumanoidOutput::Kind::Extra ? 0.05 : 1e-3)
+            EXPECT_LT(humanoidModelDegreesBetween(output.rotation, expected), output.kind == anim::HumanoidOutput::Kind::Extra ? 0.05 : 1e-3)
                 << path << " t " << t;
         }
     }
@@ -239,7 +239,7 @@ TEST_F(HumanoidModel, MirroredRightHandCurlDrivesTheLeftHand){
         const anim::HumanoidOutput* otherOut = mirror ? rightOut : left;
         EXPECT_TRUE(anim::isLive(binding, *curledOut)) << "mirror " << mirror;
         EXPECT_FALSE(anim::isLive(binding, *otherOut)) << "mirror " << mirror;
-        EXPECT_NEAR(degreesBetween(curledOut->rotation, mirror ? leftRest : rightRest), 35.0, 0.05) << "mirror " << mirror;
+        EXPECT_NEAR(humanoidModelDegreesBetween(curledOut->rotation, mirror ? leftRest : rightRest), 35.0, 0.05) << "mirror " << mirror;
     }
 }
 
@@ -324,20 +324,20 @@ TEST_F(HumanoidModel, OneSidedHandClipLeavesTheOtherHandToTheIdle){
         return scene.getComponent<Transform>(slots.target->extraEntities[(size_t)extraIndex(bone)]).rotation;
     };
     // unmirrored: the right index points, the left hand is the idle's
-    EXPECT_NEAR(degreesBetween(local(HumanExtraBone::RightIndexProximal), turned(HumanExtraBone::RightIndexProximal, 0.0)), 50.0, 0.05);
-    EXPECT_LT(degreesBetween(local(HumanExtraBone::LeftIndexProximal), turned(HumanExtraBone::LeftIndexProximal, 25.0)), 0.05)
+    EXPECT_NEAR(humanoidModelDegreesBetween(local(HumanExtraBone::RightIndexProximal), turned(HumanExtraBone::RightIndexProximal, 0.0)), 50.0, 0.05);
+    EXPECT_LT(humanoidModelDegreesBetween(local(HumanExtraBone::LeftIndexProximal), turned(HumanExtraBone::LeftIndexProximal, 25.0)), 0.05)
         << "the left index keeps the idle's curl (not snapped to rest)";
-    EXPECT_LT(degreesBetween(local(HumanExtraBone::LeftMiddleProximal), turned(HumanExtraBone::LeftMiddleProximal, 25.0)), 0.05);
-    EXPECT_LT(degreesBetween(local(HumanExtraBone::RightMiddleProximal), turned(HumanExtraBone::RightMiddleProximal, 25.0)), 0.05);
+    EXPECT_LT(humanoidModelDegreesBetween(local(HumanExtraBone::LeftMiddleProximal), turned(HumanExtraBone::LeftMiddleProximal, 25.0)), 0.05);
+    EXPECT_LT(humanoidModelDegreesBetween(local(HumanExtraBone::RightMiddleProximal), turned(HumanExtraBone::RightMiddleProximal, 25.0)), 0.05);
 
     // mirrored: the left index points (by 50 degrees from its rest), the right hand is the idle's
     player.getState("point").setMirror(true);
     step(0.1);
     const Quaternion leftRest = scene.getComponent<BoneComponent>(slots.target->extraEntities[(size_t)extraIndex(HumanExtraBone::LeftIndexProximal)]).bindRotation;
-    EXPECT_NEAR(degreesBetween(local(HumanExtraBone::LeftIndexProximal), leftRest), 50.0, 0.05) << "the mirrored point drives the left hand";
-    EXPECT_LT(degreesBetween(local(HumanExtraBone::RightIndexProximal), turned(HumanExtraBone::RightIndexProximal, 25.0)), 0.05)
+    EXPECT_NEAR(humanoidModelDegreesBetween(local(HumanExtraBone::LeftIndexProximal), leftRest), 50.0, 0.05) << "the mirrored point drives the left hand";
+    EXPECT_LT(humanoidModelDegreesBetween(local(HumanExtraBone::RightIndexProximal), turned(HumanExtraBone::RightIndexProximal, 25.0)), 0.05)
         << "the right index is the idle's again";
-    EXPECT_LT(degreesBetween(local(HumanExtraBone::LeftMiddleProximal), turned(HumanExtraBone::LeftMiddleProximal, 25.0)), 0.05);
+    EXPECT_LT(humanoidModelDegreesBetween(local(HumanExtraBone::LeftMiddleProximal), turned(HumanExtraBone::LeftMiddleProximal, 25.0)), 0.05);
 }
 
 // ---- a bad hands-and-head override (review H2, L-6) ----
@@ -518,7 +518,7 @@ TEST_F(HumanoidModel, RetargetedEntryPlaysOnTheRobot){
     for (const anim::HumanoidOutput& output : binding.outputs){
         const Transform& transform = scene.getComponent<Transform>(output.entity);
         if (output.channel == ClipChannel::Rotation){
-            EXPECT_LT(degreesBetween(transform.rotation, output.rotation), 0.05) << scene.getEntityName(output.entity);
+            EXPECT_LT(humanoidModelDegreesBetween(transform.rotation, output.rotation), 0.05) << scene.getEntityName(output.entity);
         }else{
             EXPECT_LT((Vec3d(transform.position) - Vec3d(output.position)).length(), 1e-4);
         }
@@ -529,7 +529,7 @@ TEST_F(HumanoidModel, RetargetedEntryPlaysOnTheRobot){
     const Entity leftThigh = slots.target->slotEntities[(size_t)boneIndex(HumanBone::LeftUpperLeg)];
     const Quaternion before = scene.getComponent<Transform>(leftThigh).rotation;
     step(0.0);
-    EXPECT_GT(degreesBetween(scene.getComponent<Transform>(leftThigh).rotation, before), 1.0);
+    EXPECT_GT(humanoidModelDegreesBetween(scene.getComponent<Transform>(leftThigh).rotation, before), 1.0);
 }
 
 TEST_F(HumanoidModel, MaskedHumanoidLayerOverAGenericWalk){
@@ -582,7 +582,7 @@ TEST_F(HumanoidModel, MaskedHumanoidLayerOverAGenericWalk){
     for (const anim::HumanoidOutput& output : binding.outputs){
         if (output.entity == rightForearm){
             foundArm = true;
-            EXPECT_LT(degreesBetween(scene.getComponent<Transform>(rightForearm).rotation, output.rotation), 0.05);
+            EXPECT_LT(humanoidModelDegreesBetween(scene.getComponent<Transform>(rightForearm).rotation, output.rotation), 0.05);
         }
         if (output.entity == leftThigh){
             foundThigh = true;
@@ -601,9 +601,9 @@ TEST_F(HumanoidModel, MaskedHumanoidLayerOverAGenericWalk){
     std::vector<anim::TrackSample> samples;
     anim::sampleClipTracks(*walk, player.getState("Walk").getTime(), samples);
     const Quaternion walked = samples[(size_t)track].rotation;
-    EXPECT_GT(degreesBetween(walked, scene.getComponent<BoneComponent>(leftThigh).bindRotation), 1.0) << "the walk moves the thigh";
-    EXPECT_GT(degreesBetween(walked, waveThigh), 1.0) << "the wave's thigh differs (the mask is what keeps the walk's)";
-    EXPECT_LT(degreesBetween(scene.getComponent<Transform>(leftThigh).rotation, walked), 0.05);
+    EXPECT_GT(humanoidModelDegreesBetween(walked, scene.getComponent<BoneComponent>(leftThigh).bindRotation), 1.0) << "the walk moves the thigh";
+    EXPECT_GT(humanoidModelDegreesBetween(walked, waveThigh), 1.0) << "the wave's thigh differs (the mask is what keeps the walk's)";
+    EXPECT_LT(humanoidModelDegreesBetween(scene.getComponent<Transform>(leftThigh).rotation, walked), 0.05);
 }
 
 // ---- spec 13: performance (host, Release) ----

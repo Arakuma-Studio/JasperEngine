@@ -22,7 +22,7 @@ using namespace jasperengine;
 
 namespace {
 
-    void expectClose(const Matrix4& actual, const Matrix4& expected, const char* what){
+    void transformPropagationExpectClose(const Matrix4& actual, const Matrix4& expected, const char* what){
         for (int c = 0; c < 4; c++){
             for (int r = 0; r < 4; r++){
                 const float a = actual.get(c, r);
@@ -40,7 +40,7 @@ namespace {
         if (const RectTransformComponent* layout = registry.findComponent<RectTransformComponent>(entity))
             origin += getUIPivotShift(*layout, transform.rotation, transform.scale);
         const Matrix4 local = Matrix4::translateMatrix(origin) * transform.rotation.getRotationMatrix() * Matrix4::scaleMatrix(transform.scale);
-        expectClose(transform.localMatrix, local, "local");
+        transformPropagationExpectClose(transform.localMatrix, local, "local");
         Matrix4 model = local;
         Vector3 worldPosition = origin;
         if (transform.parent != NULL_ENTITY){
@@ -48,8 +48,8 @@ namespace {
             model = parent.modelMatrix * local;
             worldPosition = parent.modelMatrix * origin;
         }
-        expectClose(transform.modelMatrix, model, "model");
-        expectClose(transform.normalMatrix, model.inverse().transpose(), "normal");
+        transformPropagationExpectClose(transform.modelMatrix, model, "model");
+        transformPropagationExpectClose(transform.normalMatrix, model.inverse().transpose(), "normal");
         EXPECT_NEAR(transform.worldPosition.x, worldPosition.x, 1e-4f);
         EXPECT_NEAR(transform.worldPosition.y, worldPosition.y, 1e-4f);
         EXPECT_NEAR(transform.worldPosition.z, worldPosition.z, 1e-4f);

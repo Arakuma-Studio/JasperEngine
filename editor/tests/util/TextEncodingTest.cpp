@@ -18,6 +18,8 @@
 #include <gtest/gtest.h>
 
 #include <fstream>
+#include <string>
+#include <vector>
 
 #ifdef _WIN32
     #ifndef NOMINMAX
@@ -59,6 +61,35 @@ TEST(TextEncoding, ProcessRunsInTheUtf8CodePage) {
     EXPECT_EQ(GetACP(), static_cast<UINT>(CP_UTF8)) << "the test binary has no UTF-8 manifest (jasperengine_add_windows_manifest)";
 }
 #endif
+
+// FileUtils' path conversions never throw, so a name that is not UTF-8 is reported where it is
+// checked: POSIX passes its bytes through; Windows (UTF-16 names, whose standard conversions
+// throw) carries a stray byte as U+DC80 + byte and a lone surrogate in its three-byte form
+TEST(TextEncoding, PathConversionsKeepNamesThatAreNotUtf8) {
+    for (const std::string& text : {std::string("assets/caf\xC3\xA9 \xF0\x9F\x99\x82.png"), std::string("assets/caf\xE9.png"),
+                                   std::string("\xC0\xAF\xE2\x82"), std::string("a\xED\xA0\x80z")}) {
+        std::string back;
+        EXPECT_NO_THROW(back = FileUtils::pathToUtf8(FileUtils::pathFromUtf8(text))) << text;
+        EXPECT_EQ(back, text);
+    }
+    EXPECT_EQ(FileUtils::pathToGenericUtf8(FileUtils::pathFromUtf8("assets/caf\xE9.png")), "assets/caf\xE9.png");
+#ifdef _WIN32
+    EXPECT_EQ(FileUtils::pathFromUtf8("caf\xE9").native(), std::wstring(L"caf\xDCE9"));
+    EXPECT_EQ(FileUtils::pathFromUtf8("\xC3\xA9").native(), std::wstring(L"\x00E9"));
+    // a lone surrogate an NTFS name can hold, outside the escapes' range: three bytes, and back
+    const fs::path lone(std::wstring(L"x\xD800y"));
+    std::string text;
+    EXPECT_NO_THROW(text = FileUtils::pathToUtf8(lone));
+    EXPECT_EQ(text, "x\xED\xA0\x80y");
+    EXPECT_EQ(FileUtils::pathFromUtf8(text), lone);
+    // such a file is found and named by a walk
+    TestTempDir dir("lone-surrogate");
+    std::ofstream(dir.path() / lone) << "x";
+    std::vector<std::string> names;
+    for (const fs::directory_entry& entry : fs::directory_iterator(dir.path())) names.push_back(FileUtils::pathToUtf8(entry.path().filename()));
+    EXPECT_EQ(names, std::vector<std::string>{"x\xED\xA0\x80y"});
+#endif
+}
 
 // A Chinese and emoji name in a project folder named in Portuguese and Japanese: the asset
 // database's scan, a material that references it and the assets root change all walk it

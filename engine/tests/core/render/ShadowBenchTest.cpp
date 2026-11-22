@@ -30,7 +30,7 @@ namespace {
         return values[values.size() / 2];
     }
 
-    ShadowBounds unitBox(float x, float z){
+    ShadowBounds shadowBenchUnitBox(float x, float z){
         ShadowBounds b;
         b.min = Vector3(x - 0.5f, 0.0f, z - 0.5f);
         b.max = Vector3(x + 0.5f, 1.0f, z + 0.5f);
@@ -50,7 +50,7 @@ TEST(ShadowBench, CascadeFitAndKeysPerCamera){
     input.lightDir = Vector3(-0.45f, -1.0f, -0.35f).normalized();
     input.cascades = 4;
     input.resolution = 2048;
-    input.casterBounds = unitBox(0.0f, 0.0f);
+    input.casterBounds = shadowBenchUnitBox(0.0f, 0.0f);
     input.casterBounds.min = Vector3(-60.0f, 0.0f, -60.0f);
     input.casterBounds.max = Vector3(60.0f, 12.0f, 60.0f);
 
@@ -91,7 +91,7 @@ TEST(ShadowBench, CasterRegistryTenThousandOnePercentMoving){
     constexpr uint32_t casters = 10000;
     std::vector<ShadowCasterState> states(casters);
     for (uint32_t i = 0; i < casters; i++){
-        states[i].bounds = unitBox((float)(i % 100) * 2.0f, (float)(i / 100) * 2.0f);
+        states[i].bounds = shadowBenchUnitBox((float)(i % 100) * 2.0f, (float)(i / 100) * 2.0f);
         states[i].revision = 1;
         states[i].layerBit = 1u;
         states[i].isStatic = (i % 10) != 0;

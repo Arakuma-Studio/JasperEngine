@@ -50,7 +50,7 @@ namespace {
     };
     int MockRef::releases = 0;
 
-    struct Tracked {
+    struct CommandBufferTracked {
         std::string text;
         std::shared_ptr<int> shared;
         MockRef luaRef;
@@ -66,7 +66,7 @@ namespace {
     class TrackedRegistry : public EntityRegistry {
     public:
         TrackedRegistry(){
-            registerComponent<Tracked>();
+            registerComponent<CommandBufferTracked>();
             registerComponent<BigTracked>();
         }
     };
@@ -162,13 +162,13 @@ TEST(CommandBufferTest, NonPodPayloadDestroyedOnce){
         TrackedRegistry registry;
         const Entity entity = registry.createEntity();
         EntityCommandBuffer buffer;
-        buffer.add<Tracked>(registry.makeRef(entity), Tracked{"text", shared, MockRef(11)});
+        buffer.add<CommandBufferTracked>(registry.makeRef(entity), CommandBufferTracked{"text", shared, MockRef(11)});
         buffer.add<BigTracked>(registry.makeRef(entity), BigTracked{shared, MockRef(12)});
         EXPECT_EQ(shared.use_count(), 3);
         buffer.playback(registry);
         EXPECT_EQ(MockRef::releases, 0);
         EXPECT_EQ(shared.use_count(), 3);
-        EXPECT_EQ(registry.getComponent<Tracked>(entity).text, "text");
+        EXPECT_EQ(registry.getComponent<CommandBufferTracked>(entity).text, "text");
         registry.destroyEntity(entity);
         EXPECT_EQ(MockRef::releases, 2);
         EXPECT_EQ(shared.use_count(), 1);
@@ -179,7 +179,7 @@ TEST(CommandBufferTest, NonPodPayloadDestroyedOnce){
         TrackedRegistry registry;
         const Entity entity = registry.createEntity();
         EntityCommandBuffer buffer;
-        buffer.add<Tracked>(registry.makeRef(entity), Tracked{"text", shared, MockRef(21)});
+        buffer.add<CommandBufferTracked>(registry.makeRef(entity), CommandBufferTracked{"text", shared, MockRef(21)});
         buffer.add<BigTracked>(registry.makeRef(entity), BigTracked{shared, MockRef(22)});
         // the buffer grows (moves its commands) without touching the payloads' owners
         for (int i = 0; i < 100; i++){
@@ -198,7 +198,7 @@ TEST(CommandBufferTest, NonPodPayloadDestroyedOnce){
         const EntityRef ref = registry.makeRef(entity);
         registry.destroyEntity(entity);
         EntityCommandBuffer buffer;
-        buffer.add<Tracked>(ref, Tracked{"text", shared, MockRef(31)});
+        buffer.add<CommandBufferTracked>(ref, CommandBufferTracked{"text", shared, MockRef(31)});
         buffer.playback(registry);
         EXPECT_EQ(MockRef::releases, 1);
         EXPECT_EQ(shared.use_count(), 1);

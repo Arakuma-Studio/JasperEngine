@@ -24,7 +24,7 @@ namespace apple_templates_test {
 
     const fs::path repo = JASPER_TEST_REPO_DIR;
 
-    std::string readFile(const fs::path& path) {
+    std::string readTemplateFile(const fs::path& path) {
         std::ifstream in(path, std::ios::binary);
         return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     }
@@ -70,7 +70,7 @@ using namespace apple_templates_test;
 TEST(AppleTemplates, XcodeDeploymentTargetsAreTheMinimums) {
     for (const char* file : {"engine/workspaces/xcode/JasperEngine.xcodeproj/project.pbxproj",
                              "engine/platform/apple/ios/player-template/JasperEnginePlayer.xcodeproj/project.pbxproj"}) {
-        const std::string pbx = readFile(repo / file);
+        const std::string pbx = readTemplateFile(repo / file);
         ASSERT_FALSE(pbx.empty()) << file;
         const std::regex target(R"((IPHONEOS|MACOSX)_DEPLOYMENT_TARGET = ([0-9.]+);)");
         int count = 0;
@@ -84,7 +84,7 @@ TEST(AppleTemplates, XcodeDeploymentTargetsAreTheMinimums) {
 // red before mobile-shipping: the CMake iOS app linked GameController only, and miniaudio's
 // AudioUnit calls had no AudioToolbox (Doriax 458bad1a3)
 TEST(AppleTemplates, CMakeIosLinksTheEngineFrameworks) {
-    const std::string cmake = readFile(repo / "engine/CMakeLists.txt");
+    const std::string cmake = readTemplateFile(repo / "engine/CMakeLists.txt");
     const std::string ios = cmakeBlock(cmake, "CMAKE_SYSTEM_NAME STREQUAL \"iOS\"");
     ASSERT_FALSE(ios.empty());
     for (const std::string& framework : Exporter::appleEngineFrameworks(true)) {
@@ -94,15 +94,15 @@ TEST(AppleTemplates, CMakeIosLinksTheEngineFrameworks) {
 
 // red before mobile-shipping: no Apple app bundle had a privacy manifest
 TEST(AppleTemplates, EveryAppleBundleShipsThePrivacyManifest) {
-    const std::string workspace = readFile(repo / "engine/workspaces/xcode/JasperEngine.xcodeproj/project.pbxproj");
+    const std::string workspace = readTemplateFile(repo / "engine/workspaces/xcode/JasperEngine.xcodeproj/project.pbxproj");
     EXPECT_NE(resourcesOf(workspace, "JasperEngine iOS").find("PrivacyInfo.xcprivacy in Resources"), std::string::npos);
     EXPECT_NE(resourcesOf(workspace, "JasperEngine macOS").find("PrivacyInfo.xcprivacy in Resources"), std::string::npos);
     EXPECT_NE(workspace.find("path = ios/PrivacyInfo.xcprivacy;"), std::string::npos);
     EXPECT_NE(workspace.find("path = macos/PrivacyInfo.xcprivacy;"), std::string::npos);
-    const std::string player = readFile(repo / "engine/platform/apple/ios/player-template/JasperEnginePlayer.xcodeproj/project.pbxproj");
+    const std::string player = readTemplateFile(repo / "engine/platform/apple/ios/player-template/JasperEnginePlayer.xcodeproj/project.pbxproj");
     EXPECT_NE(resourcesOf(player, "JasperEnginePlayer").find("PrivacyInfo.xcprivacy in Resources"), std::string::npos);
 
-    const std::string cmake = readFile(repo / "engine/CMakeLists.txt");
+    const std::string cmake = readTemplateFile(repo / "engine/CMakeLists.txt");
     const std::string ios = cmakeBlock(cmake, "CMAKE_SYSTEM_NAME STREQUAL \"iOS\"");
     EXPECT_NE(ios.find("workspaces/xcode/ios/PrivacyInfo.xcprivacy"), std::string::npos);
     const std::string mac = cmakeBlock(cmake, "CMAKE_SYSTEM_NAME STREQUAL \"Darwin\"");
@@ -113,7 +113,7 @@ TEST(AppleTemplates, EveryAppleBundleShipsThePrivacyManifest) {
         count++;
     }
     EXPECT_EQ(count, 2u);
-    EXPECT_NE(readFile(repo / "tools/players/ios_player.sh").find("include/"), std::string::npos) << "the template gets JasperNative.h";
+    EXPECT_NE(readTemplateFile(repo / "tools/players/ios_player.sh").find("include/"), std::string::npos) << "the template gets JasperNative.h";
 }
 
 // red before mobile-shipping: the templates linked and declared Google Mobile Ads (owner decision
@@ -138,7 +138,7 @@ TEST(AppleTemplates, NoAdMobLeft) {
             if (!textExtensions.count(ext)) continue;
             const std::string relative = it->path().lexically_relative(repo).generic_string();
             if (allowed.count(relative)) continue;
-            std::string text = readFile(it->path());
+            std::string text = readTemplateFile(it->path());
             std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             scanned++;
             for (const char* needle : needles) EXPECT_EQ(text.find(needle), std::string::npos) << relative << ": " << needle;
@@ -150,7 +150,7 @@ TEST(AppleTemplates, NoAdMobLeft) {
     const std::regex adNetworks(R"(SKAdNetworkItems|GADApplicationIdentifier)");
     for (const char* file : {"engine/workspaces/xcode/ios/Info.plist", "engine/workspaces/xcode/JasperEngine.xcodeproj/project.pbxproj",
                              "engine/workspaces/androidstudio/app/src/main/AndroidManifest.xml"}) {
-        const std::string text = readFile(repo / file);
+        const std::string text = readTemplateFile(repo / file);
         ASSERT_FALSE(text.empty()) << file;
         EXPECT_FALSE(std::regex_search(text, adNetworks)) << file;
     }

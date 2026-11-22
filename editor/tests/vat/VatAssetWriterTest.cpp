@@ -3,7 +3,7 @@
 
 // VatAssetWriter (vertex animation spec 2.1-2.3): encodeVatFiles turns a bake result into the
 // canonical .vat text and a glTF 2.0 .vat.glb: the payload and socket tracks read back through
-// vat::readVatGlb, the JSON reads back unchanged, tinygltf reads the glb (attributes, _VAT_INDEX,
+// jasperengine::vat::readVatGlb, the JSON reads back unchanged, tinygltf reads the glb (attributes, _VAT_INDEX,
 // index counts per primitive, materials with relative texture URIs, the extension used but not
 // required), the engine's MeshSystem::loadGLTF loads it, and every bad input is refused.
 
@@ -43,25 +43,25 @@ namespace {
     // default; 2 samples x 4 vertices x 2 texels = 16 half texels in 8 x 2; one socket
     struct Bake{
         std::string vatPath;
-        vat::VatData data;
+        jasperengine::vat::VatData data;
         ev::VatMeshData mesh;
-        vat::VatPayload payload;
-        vat::VatSocketTracks sockets;
+        jasperengine::vat::VatPayload payload;
+        jasperengine::vat::VatSocketTracks sockets;
     };
 
     Bake makeBake(){
         Bake bake;
         bake.vatPath = (testDir() / "assets" / "vat" / "quad.vat").generic_string();
-        vat::VatData& data = bake.data;
+        jasperengine::vat::VatData& data = bake.data;
         data.guid = "00112233445566778899aabbccddeeff";
-        data.mode = vat::VatMode::Vertices;
-        data.layout.precision = vat::VatPrecision::Half;
+        data.mode = jasperengine::vat::VatMode::Vertices;
+        data.layout.precision = jasperengine::vat::VatPrecision::Half;
         data.layout.width = 8;
         data.layout.height = 2;
         data.layout.samples = 2;
         data.layout.vertices = 4;
         data.layout.normals = true;
-        vat::VatClip clip;
+        jasperengine::vat::VatClip clip;
         clip.name = "Flap";
         clip.frames = 2;
         clip.fps = 2.0f;
@@ -70,7 +70,7 @@ namespace {
         data.bounds.extend(Vector3(1, 1, 0.5f));
         data.sockets.push_back({"Tip", "Quad/Tip"});
         data.recipe.sockets = {"Quad/Tip"};
-        vat::VatRecipeSource source;
+        jasperengine::vat::VatRecipeSource source;
         source.kind = "model";
         source.path = "models/quad.gltf";
         source.clips = {"Flap"};
@@ -98,7 +98,7 @@ namespace {
         material.emissiveTexture = material.baseColorTexture;
         mesh.materials.push_back(material);
 
-        bake.payload.precision = vat::VatPrecision::Half;
+        bake.payload.precision = jasperengine::vat::VatPrecision::Half;
         bake.payload.width = 8;
         bake.payload.height = 2;
         bake.payload.bytes.resize(8 * 2 * 8);
@@ -115,7 +115,7 @@ namespace {
     }
 
     // one edit of the sample bake must be refused with `message` in the error
-    void expectRefused(const std::function<void(Bake&)>& edit, const std::string& message){
+    void vatAssetWriterExpectRefused(const std::function<void(Bake&)>& edit, const std::string& message){
         Bake bake = makeBake();
         edit(bake);
         ev::VatEncodedFiles out;
@@ -175,21 +175,21 @@ TEST_F(VatAssetWriter, EncodesBothFiles){
     EXPECT_EQ(out.meshPath, bake.vatPath + ".glb");
     // the generated fields were filled in
     EXPECT_EQ(bake.data.mesh, "quad.vat.glb");
-    EXPECT_EQ(bake.data.layout.layoutHash, vat::computeLayoutHash(bake.data));
+    EXPECT_EQ(bake.data.layout.layoutHash, jasperengine::vat::computeLayoutHash(bake.data));
     EXPECT_EQ(bake.data.stats.bytes, 128u);
-    EXPECT_EQ(out.vatText, vat::writeVat(bake.data));
+    EXPECT_EQ(out.vatText, jasperengine::vat::writeVat(bake.data));
 
     // the JSON reads back clean and unchanged
-    vat::VatParseResult parsed = vat::parseVat(out.vatText);
+    jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(out.vatText);
     ASSERT_TRUE(parsed.ok()) << parsed.error;
     EXPECT_TRUE(parsed.warnings.empty());
-    EXPECT_EQ(vat::writeVat(*parsed.data), out.vatText);
+    EXPECT_EQ(jasperengine::vat::writeVat(*parsed.data), out.vatText);
 
     // the payload and sockets read back through the engine's reader
-    vat::VatGlbContents contents;
-    ASSERT_TRUE(vat::readVatGlb(out.glbBytes, contents, &error)) << error;
+    jasperengine::vat::VatGlbContents contents;
+    ASSERT_TRUE(jasperengine::vat::readVatGlb(out.glbBytes, contents, &error)) << error;
     EXPECT_EQ(contents.layoutHash, bake.data.layout.layoutHash);
-    EXPECT_EQ(contents.payload.precision, vat::VatPrecision::Half);
+    EXPECT_EQ(contents.payload.precision, jasperengine::vat::VatPrecision::Half);
     EXPECT_EQ(contents.payload.width, 8);
     EXPECT_EQ(contents.payload.height, 2);
     EXPECT_EQ(contents.payload.bytes, bake.payload.bytes);
@@ -197,7 +197,7 @@ TEST_F(VatAssetWriter, EncodesBothFiles){
     EXPECT_EQ(contents.sockets.frames, 2);
     EXPECT_EQ(contents.sockets.data, bake.sockets.data);
     // and build the runtime asset
-    EXPECT_TRUE(vat::VertexAnimation::create(*parsed.data, contents.payload, contents.sockets, &error)) << error;
+    EXPECT_TRUE(jasperengine::vat::VertexAnimation::create(*parsed.data, contents.payload, contents.sockets, &error)) << error;
 
     // deterministic
     Bake again = makeBake();
@@ -229,10 +229,10 @@ TEST_F(VatAssetWriter, GlbIsValidGltf){
     EXPECT_TRUE(err.empty()) << err;
 
     // the extension: used, not required
-    EXPECT_EQ(model.extensionsUsed, std::vector<std::string>{vat::VAT_GLTF_EXTENSION});
+    EXPECT_EQ(model.extensionsUsed, std::vector<std::string>{jasperengine::vat::VAT_GLTF_EXTENSION});
     EXPECT_TRUE(model.extensionsRequired.empty());
-    ASSERT_EQ(model.extensions.count(vat::VAT_GLTF_EXTENSION), 1u);
-    const tinygltf::Value& extension = model.extensions.at(vat::VAT_GLTF_EXTENSION);
+    ASSERT_EQ(model.extensions.count(jasperengine::vat::VAT_GLTF_EXTENSION), 1u);
+    const tinygltf::Value& extension = model.extensions.at(jasperengine::vat::VAT_GLTF_EXTENSION);
     EXPECT_EQ(extension.Get("version").GetNumberAsInt(), 1);
     EXPECT_EQ(extension.Get("layoutHash").Get<std::string>(), bake.data.layout.layoutHash);
     EXPECT_EQ(extension.Get("payload").Get("format").Get<std::string>(), "half");
@@ -281,10 +281,10 @@ TEST_F(VatAssetWriter, GlbIsValidGltf){
     EXPECT_EQ(position.minValues, (std::vector<double>{0, 0, 0}));
     EXPECT_EQ(position.maxValues, (std::vector<double>{1, 1, 0}));
     EXPECT_EQ(accessorValues(model, primitive.attributes.at("POSITION")), (std::vector<double>{0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0}));
-    const tinygltf::Accessor& vatIndex = model.accessors[primitive.attributes.at(vat::VAT_INDEX_ATTRIBUTE)];
+    const tinygltf::Accessor& vatIndex = model.accessors[primitive.attributes.at(jasperengine::vat::VAT_INDEX_ATTRIBUTE)];
     EXPECT_EQ(vatIndex.componentType, TINYGLTF_COMPONENT_TYPE_FLOAT);
     EXPECT_EQ(vatIndex.type, TINYGLTF_TYPE_SCALAR);
-    EXPECT_EQ(accessorValues(model, primitive.attributes.at(vat::VAT_INDEX_ATTRIBUTE)), (std::vector<double>{0, 1, 2, 3}));
+    EXPECT_EQ(accessorValues(model, primitive.attributes.at(jasperengine::vat::VAT_INDEX_ATTRIBUTE)), (std::vector<double>{0, 1, 2, 3}));
     EXPECT_EQ(model.accessors[primitive.attributes.at("TANGENT")].type, TINYGLTF_TYPE_VEC4);
 
     // materials: the given factors, the second primitive on the default material
@@ -313,12 +313,12 @@ TEST_F(VatAssetWriter, GlbIsValidGltf){
 
 TEST_F(VatAssetWriter, BonesModeKeepsTheSkinAttributes){
     Bake bake = makeBake();
-    bake.data.mode = vat::VatMode::Bones;
-    bake.data.layout.precision = vat::VatPrecision::Float;
+    bake.data.mode = jasperengine::vat::VatMode::Bones;
+    bake.data.layout.precision = jasperengine::vat::VatPrecision::Float;
     bake.data.layout.vertices = 0;
     bake.data.layout.bones = 2;
     bake.data.layout.normals = false;
-    bake.payload.precision = vat::VatPrecision::Float;
+    bake.payload.precision = jasperengine::vat::VatPrecision::Float;
     bake.payload.bytes.assign(8 * 2 * 16, 0);
     bake.mesh.joints = {0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0};
     bake.mesh.weights = {0.5f, 0.5f, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0.25f, 0.75f, 0, 0};
@@ -341,9 +341,9 @@ TEST_F(VatAssetWriter, BonesModeKeepsTheSkinAttributes){
     EXPECT_EQ(accessorValues(model, primitive.attributes.at("JOINTS_0"))[4], 1.0);
     EXPECT_EQ(accessorValues(model, primitive.attributes.at("WEIGHTS_0"))[13], 0.75);
     EXPECT_TRUE(model.skins.empty());
-    vat::VatParseResult parsed = vat::parseVat(out.vatText);
+    jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(out.vatText);
     ASSERT_TRUE(parsed.ok()) << parsed.error;
-    EXPECT_EQ(parsed.data->mode, vat::VatMode::Bones);
+    EXPECT_EQ(parsed.data->mode, jasperengine::vat::VatMode::Bones);
 }
 
 TEST_F(VatAssetWriter, TheEngineLoadsTheGlb){
@@ -372,54 +372,54 @@ TEST_F(VatAssetWriter, TheEngineLoadsTheGlb){
 }
 
 TEST_F(VatAssetWriter, RefusesInputsThatDisagree){
-    using vat::VatMode;
-    using vat::VatPrecision;
-    expectRefused([](Bake& b){ b.vatPath = (testDir() / "quad.glb").generic_string(); }, "the output must be a .vat file");
-    expectRefused([](Bake& b){ b.vatPath = (testDir() / ".vat").generic_string(); }, "the output must be a .vat file");
+    using jasperengine::vat::VatMode;
+    using jasperengine::vat::VatPrecision;
+    vatAssetWriterExpectRefused([](Bake& b){ b.vatPath = (testDir() / "quad.glb").generic_string(); }, "the output must be a .vat file");
+    vatAssetWriterExpectRefused([](Bake& b){ b.vatPath = (testDir() / ".vat").generic_string(); }, "the output must be a .vat file");
     // payload vs layout
-    expectRefused([](Bake& b){ b.payload.precision = VatPrecision::Float; }, "the payload is 8 x 2 float, the layout says 8 x 2 half");
-    expectRefused([](Bake& b){ b.payload.width = 4; }, "the layout says 8 x 2 half");
-    expectRefused([](Bake& b){ b.payload.bytes.pop_back(); }, "the payload has 127 bytes");
-    expectRefused([](Bake& b){
+    vatAssetWriterExpectRefused([](Bake& b){ b.payload.precision = VatPrecision::Float; }, "the payload is 8 x 2 float, the layout says 8 x 2 half");
+    vatAssetWriterExpectRefused([](Bake& b){ b.payload.width = 4; }, "the layout says 8 x 2 half");
+    vatAssetWriterExpectRefused([](Bake& b){ b.payload.bytes.pop_back(); }, "the payload has 127 bytes");
+    vatAssetWriterExpectRefused([](Bake& b){
         b.data.layout.width = b.payload.width = 0;
     }, "the payload is empty");
-    expectRefused([](Bake& b){ b.data.mode = VatMode::Bones; b.data.layout.bones = 2; }, "always float precision");
-    expectRefused([](Bake& b){ b.data.layout.height = b.payload.height = 1; b.payload.bytes.resize(64); },
+    vatAssetWriterExpectRefused([](Bake& b){ b.data.mode = VatMode::Bones; b.data.layout.bones = 2; }, "always float precision");
+    vatAssetWriterExpectRefused([](Bake& b){ b.data.layout.height = b.payload.height = 1; b.payload.bytes.resize(64); },
                   "generated field layout.height is invalid");
     // clips
-    expectRefused([](Bake& b){ b.data.clips.clear(); }, "no clips");
-    expectRefused([](Bake& b){
-        for (int i = 0; i < vat::VAT_MAX_CLIPS; i++) b.data.clips.push_back(b.data.clips[0]);
+    vatAssetWriterExpectRefused([](Bake& b){ b.data.clips.clear(); }, "no clips");
+    vatAssetWriterExpectRefused([](Bake& b){
+        for (int i = 0; i < jasperengine::vat::VAT_MAX_CLIPS; i++) b.data.clips.push_back(b.data.clips[0]);
     }, "at most 64");
-    expectRefused([](Bake& b){ b.data.clips[0].frames = 3; }, "generated field clips[0].frames is invalid");
-    expectRefused([](Bake& b){ b.data.clips[0].fps = 0; }, "generated field clips[0].fps is invalid");
-    expectRefused([](Bake& b){ b.data.clips.push_back(b.data.clips[0]); }, "clips[1].name");
-    expectRefused([](Bake& b){
+    vatAssetWriterExpectRefused([](Bake& b){ b.data.clips[0].frames = 3; }, "generated field clips[0].frames is invalid");
+    vatAssetWriterExpectRefused([](Bake& b){ b.data.clips[0].fps = 0; }, "generated field clips[0].fps is invalid");
+    vatAssetWriterExpectRefused([](Bake& b){ b.data.clips.push_back(b.data.clips[0]); }, "clips[1].name");
+    vatAssetWriterExpectRefused([](Bake& b){
         ClipEventData event;
         event.function = "not a function";
         b.data.clips[0].events.push_back(event);
     }, "clips[0].events[0].function");
     // mesh attributes
-    expectRefused([](Bake& b){ b.mesh.positions.clear(); }, "mesh positions");
-    expectRefused([](Bake& b){ b.mesh.positions.push_back(1); }, "mesh positions");
-    expectRefused([](Bake& b){ b.mesh.normals.pop_back(); }, "mesh normals has 11 values");
-    expectRefused([](Bake& b){ b.mesh.tangents.resize(12); }, "mesh tangents");
-    expectRefused([](Bake& b){ b.mesh.uv0.resize(6); }, "mesh uv0");
-    expectRefused([](Bake& b){ b.mesh.uv1.resize(2); }, "mesh uv1");
-    expectRefused([](Bake& b){ b.mesh.colors.resize(3); }, "mesh colors");
-    expectRefused([](Bake& b){ b.mesh.vatIndex.clear(); }, "mesh vatIndex");
-    expectRefused([](Bake& b){ b.mesh.vatIndex[2] = 4; }, "vatIndex of vertex 2 is 4");
-    expectRefused([](Bake& b){ b.mesh.vatIndex[1] = 0.5f; }, "vatIndex of vertex 1");
-    expectRefused([](Bake& b){ b.mesh.vatIndex[0] = -1; }, "vatIndex of vertex 0");
-    expectRefused([](Bake& b){ b.mesh.joints.assign(16, 0); }, "joints/weights are for bones mode");
-    expectRefused([](Bake& b){ b.mesh.weights.assign(16, 0); }, "joints/weights are for bones mode");
-    expectRefused([](Bake& b){
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.positions.clear(); }, "mesh positions");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.positions.push_back(1); }, "mesh positions");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.normals.pop_back(); }, "mesh normals has 11 values");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.tangents.resize(12); }, "mesh tangents");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.uv0.resize(6); }, "mesh uv0");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.uv1.resize(2); }, "mesh uv1");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.colors.resize(3); }, "mesh colors");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.vatIndex.clear(); }, "mesh vatIndex");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.vatIndex[2] = 4; }, "vatIndex of vertex 2 is 4");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.vatIndex[1] = 0.5f; }, "vatIndex of vertex 1");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.vatIndex[0] = -1; }, "vatIndex of vertex 0");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.joints.assign(16, 0); }, "joints/weights are for bones mode");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.weights.assign(16, 0); }, "joints/weights are for bones mode");
+    vatAssetWriterExpectRefused([](Bake& b){
         b.data.mode = VatMode::Bones;
         b.data.layout.precision = b.payload.precision = VatPrecision::Float;
         b.payload.bytes.resize(256);
         b.data.layout.bones = 2;
     }, "mesh joints has 0 values");
-    expectRefused([](Bake& b){
+    vatAssetWriterExpectRefused([](Bake& b){
         b.data.mode = VatMode::Bones;
         b.data.layout.precision = b.payload.precision = VatPrecision::Float;
         b.payload.bytes.resize(256);
@@ -429,22 +429,22 @@ TEST_F(VatAssetWriter, RefusesInputsThatDisagree){
         b.mesh.weights.assign(16, 0.25f);
     }, "mesh joint 2 (vertex 1) is past the 2 baked bones");
     // submeshes and materials
-    expectRefused([](Bake& b){ b.mesh.submeshes.clear(); }, "no submeshes");
-    expectRefused([](Bake& b){ b.mesh.submeshes[1].indices.clear(); }, "submesh 1 has 0 indices");
-    expectRefused([](Bake& b){ b.mesh.submeshes[1].indices.push_back(0); }, "submesh 1 has 4 indices");
-    expectRefused([](Bake& b){ b.mesh.submeshes[0].indices[1] = 4; }, "submesh 0 index 4 is past the 4 vertices");
-    expectRefused([](Bake& b){ b.mesh.submeshes[0].material = 1; }, "submesh 0 material 1 doesn't exist");
-    expectRefused([](Bake& b){ b.mesh.submeshes[0].material = -2; }, "submesh 0 material -2");
-    expectRefused([](Bake& b){ b.mesh.materials[0].alphaMode = "CUTOUT"; }, "alphaMode \"CUTOUT\"");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.submeshes.clear(); }, "no submeshes");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.submeshes[1].indices.clear(); }, "submesh 1 has 0 indices");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.submeshes[1].indices.push_back(0); }, "submesh 1 has 4 indices");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.submeshes[0].indices[1] = 4; }, "submesh 0 index 4 is past the 4 vertices");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.submeshes[0].material = 1; }, "submesh 0 material 1 doesn't exist");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.submeshes[0].material = -2; }, "submesh 0 material -2");
+    vatAssetWriterExpectRefused([](Bake& b){ b.mesh.materials[0].alphaMode = "CUTOUT"; }, "alphaMode \"CUTOUT\"");
     // sockets
-    expectRefused([](Bake& b){ b.sockets.data.pop_back(); }, "the socket tracks have 13 floats");
-    expectRefused([](Bake& b){ b.sockets.frames = 1; b.sockets.data.resize(7); }, "the socket tracks have 1 frames");
-    expectRefused([](Bake& b){ b.data.recipe.sockets.push_back("Quad/Root"); }, "recipe.sockets lists 2 sockets");
-    expectRefused([](Bake& b){
+    vatAssetWriterExpectRefused([](Bake& b){ b.sockets.data.pop_back(); }, "the socket tracks have 13 floats");
+    vatAssetWriterExpectRefused([](Bake& b){ b.sockets.frames = 1; b.sockets.data.resize(7); }, "the socket tracks have 1 frames");
+    vatAssetWriterExpectRefused([](Bake& b){ b.data.recipe.sockets.push_back("Quad/Root"); }, "recipe.sockets lists 2 sockets");
+    vatAssetWriterExpectRefused([](Bake& b){
         b.data.recipe.sockets.clear();
         b.data.sockets.push_back({"Other", "Quad/Other"});
     }, "2 sockets, the tracks have 1");
-    expectRefused([](Bake& b){ b.data.sockets[0].path = "Quad/Elsewhere"; }, "sockets[0].path");
+    vatAssetWriterExpectRefused([](Bake& b){ b.data.sockets[0].path = "Quad/Elsewhere"; }, "sockets[0].path");
     // a null error pointer is fine
     Bake bake = makeBake();
     bake.mesh.positions.clear();

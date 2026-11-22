@@ -36,11 +36,11 @@ namespace {
     constexpr const char* TITLE = "00000001";
     constexpr const char* GENERATOR = "00000301";
     constexpr float SCALE = 0.25f;
-    constexpr uint32_t UNLIMITED = 1000000000u;
+    constexpr uint32_t FXLIVE_UNLIMITED = 1000000000u;
 
     // the document of one definition: the standard title with the effect, or the generator's
     // first preset over (following) it; its L param exposed as "p"
-    struct Case {
+    struct TitleFxLiveCase {
         std::string label;
         std::shared_ptr<const TitleArtDoc> doc;
         std::string layer;
@@ -57,8 +57,8 @@ namespace {
         return std::make_shared<const TitleArtDoc>(parsed.doc);
     }
 
-    Case effectCase(const EffectDef& def, const char* key, std::vector<Json> before = {}, std::vector<Json> after = {}) {
-        Case c;
+    TitleFxLiveCase effectCase(const EffectDef& def, const char* key, std::vector<Json> before = {}, std::vector<Json> after = {}) {
+        TitleFxLiveCase c;
         c.label = std::string(def.type) + "." + key;
         std::vector<Json> effects = std::move(before);
         const int index = (int)effects.size();
@@ -72,8 +72,8 @@ namespace {
         return c;
     }
 
-    Case generatorCase(const GeneratorDef& def, const char* key) {
-        Case c;
+    TitleFxLiveCase generatorCase(const GeneratorDef& def, const char* key) {
+        TitleFxLiveCase c;
         c.label = std::string(def.type) + "." + key;
         const Json presets = loadGeneratorPresets(def.type);
         c.layer = GENERATOR;
@@ -109,7 +109,7 @@ namespace {
         }
     }
 
-    Pixels frontPixels(const TitleArtLive& live) {
+    Pixels fxLiveFrontPixels(const TitleArtLive& live) {
         const TitleDisplayImage& front = live.front();
         Pixels out;
         out.width = front.width;
@@ -124,7 +124,7 @@ namespace {
         return out;
     }
 
-    TitleArtLiveState stateOf() {
+    TitleArtLiveState titleFxLiveStateOf() {
         TitleArtLiveState s;
         s.label = "TitleArt/Live";
         s.resolution = SCALE;
@@ -132,12 +132,12 @@ namespace {
     }
 
     // frames of the scheduler until the live has no work (programs compile on the way)
-    int frames(TitleArtLive& live, const TitleJobFactory& factory, int maxFrames = std::numeric_limits<int>::max()) {
+    int titleFxLiveFrames(TitleArtLive& live, const TitleJobFactory& factory, int maxFrames = std::numeric_limits<int>::max()) {
         TitleLiveLimits limits;
         static double clock = 0.0;
         TitleScheduleContext context;
         context.factory = factory;
-        context.budgetUs = UNLIMITED;
+        context.budgetUs = FXLIVE_UNLIMITED;
         const auto start = std::chrono::steady_clock::now();
         int n = 0;
         while (live.hasWork() && n < maxFrames && std::chrono::steady_clock::now() - start < std::chrono::minutes(3)) {
@@ -153,7 +153,7 @@ namespace {
         return n;
     }
 
-    uint64_t hashOf(const std::vector<FieldOverride>& overrides) {
+    uint64_t titleFxLiveHashOf(const std::vector<FieldOverride>& overrides) {
         uint64_t h = 7;
         for (const FieldOverride& o : overrides) h = hashCombine(h, fnv1a64(o.layerId + "|" + o.path + "|" + o.value.dump()));
         return h;
@@ -167,7 +167,7 @@ namespace {
         TitleArtRenderer reference;         // the re-renders it is compared with
 
         // the full re-render of `overrides`, and the passes it ran
-        Pixels rerender(const Case& c, const std::vector<FieldOverride>& overrides, uint64_t& passes) {
+        Pixels rerender(const TitleFxLiveCase& c, const std::vector<FieldOverride>& overrides, uint64_t& passes) {
             RenderRequest r;
             r.doc = c.doc;
             r.pxScale = SCALE;
@@ -182,7 +182,7 @@ namespace {
         }
 
         // the title renders once, then each value composes live and matches a re-render
-        void runCase(const Case& c) {
+        void runCase(const TitleFxLiveCase& c) {
             SCOPED_TRACE(c.label);
             ASSERT_NE(c.param, nullptr);
             const TitleJobFactory factory = makeRendererJobFactory(renderer, &assets);
@@ -190,8 +190,8 @@ namespace {
             // every definition composes here; the budget's own decision is OverTheLiveBudgetReRenders
             // (a preset of 2,600 particles predicts 1.04 ms on the desktop tier)
             live.setLiveBudgetMs(1000.0);
-            live.setState(stateOf(), 1, {});
-            frames(live, factory);
+            live.setState(titleFxLiveStateOf(), 1, {});
+            titleFxLiveFrames(live, factory);
             ASSERT_TRUE(live.front().valid()) << live.status().error;
             const Json* layer = findLayer(c.doc->root, c.layer);
             ASSERT_NE(layer, nullptr);
@@ -204,13 +204,13 @@ namespace {
             for (const Json& value : valuesOf(*c.param, current)) {
                 SCOPED_TRACE(value.dump());
                 const std::vector<FieldOverride> overrides{FieldOverride{c.layer, c.field, value}};
-                const uint64_t hash = hashOf(overrides);
+                const uint64_t hash = titleFxLiveHashOf(overrides);
                 const uint64_t renders = live.rendersDone(), composes = live.liveComposesDone();
                 const uint64_t readbacks = analysis::gridReadbacks();
                 const uint64_t passesBefore = renderer.stats().passes;
-                live.setState(stateOf(), hash, overrides);
+                live.setState(titleFxLiveStateOf(), hash, overrides);
                 EXPECT_TRUE(live.liveWaiting()) << "a change of an L param composes live: " << live.status().liveFallback;
-                const int took = frames(live, factory);
+                const int took = titleFxLiveFrames(live, factory);
                 const uint64_t livePasses = renderer.stats().passes - passesBefore;
                 ASSERT_EQ(live.front().hash, hash) << live.status().error;
                 EXPECT_EQ(live.rendersDone(), renders) << "no re-render: " << live.status().liveFallback;
@@ -221,7 +221,7 @@ namespace {
                 const Pixels expected = rerender(c, overrides, fullPasses);
                 if (skips) EXPECT_LT(livePasses, fullPasses) << "the live frame runs the live effect and what is above it, not the title";
                 else EXPECT_LE(livePasses, fullPasses);
-                const Difference d = compare(frontPixels(live), expected);
+                const Difference d = compare(fxLiveFrontPixels(live), expected);
                 // S83 §6.5: F0 for scale_split, F1 for kernels
                 EXPECT_LE(d.mean, c.scaleSplit ? 1.0 : 1.5);
                 EXPECT_LE(d.max, c.scaleSplit ? 48.0 : 64.0);
@@ -265,7 +265,7 @@ TEST_F(TitleFxLiveGpu, S58MinimumSet) {
                          {"outer_glow", "intensity"}, {"outer_glow", "opacity"},          {"drop_shadow", "opacity"},  {"outline", "opacity"},
                          {"color_overlay", "opacity"}, {"color_overlay", "color"},        {"pattern_fill", "offset"},  {"pattern_fill", "rotation"}};
     for (const Entry& e : set) {
-        Case c;
+        TitleFxLiveCase c;
         if (const EffectDef* def = findEffect(e.type)) {
             c = effectCase(*def, e.param);
         } else if (const GeneratorDef* gen = findGenerator(e.type)) {
@@ -278,21 +278,21 @@ TEST_F(TitleFxLiveGpu, S58MinimumSet) {
         ASSERT_NE(c.param, nullptr);
         const TitleJobFactory factory = makeRendererJobFactory(renderer, &assets);
         TitleArtLive live("assets/live.titleart", TitleArtRenderMode::REALTIME, c.doc, hashTitleArt(*c.doc).document);
-        live.setState(stateOf(), 1, {});
-        frames(live, factory);
+        live.setState(titleFxLiveStateOf(), 1, {});
+        titleFxLiveFrames(live, factory);
         ASSERT_TRUE(live.front().valid()) << live.status().error;
         // a keyed track: a new value every frame (five frames of a ramp through the three values)
         const std::vector<Json> values = valuesOf(*c.param, Json());
         const uint64_t renders = live.rendersDone();
         for (int frame = 0; frame < 5; frame++) {
             const std::vector<FieldOverride> overrides{FieldOverride{c.layer, c.field, values[(size_t)frame % values.size()]}};
-            live.setState(stateOf(), hashOf(overrides) + (uint64_t)frame * 0x100000000ull, overrides);
+            live.setState(titleFxLiveStateOf(), titleFxLiveHashOf(overrides) + (uint64_t)frame * 0x100000000ull, overrides);
             EXPECT_TRUE(live.liveWaiting()) << "frame " << frame << ": " << live.status().liveFallback;
-            frames(live, factory);
+            titleFxLiveFrames(live, factory);
             EXPECT_TRUE(live.status().liveFallback.empty()) << live.status().liveFallback;
             if (frame == 4) {
                 uint64_t passes = 0;
-                const Difference d = compare(frontPixels(live), rerender(c, overrides, passes));
+                const Difference d = compare(fxLiveFrontPixels(live), rerender(c, overrides, passes));
                 EXPECT_LE(d.mean, 1.5);
                 EXPECT_LE(d.max, 64.0);
                 EXPECT_LE(d.overFraction, 0.02);
@@ -308,34 +308,34 @@ TEST_F(TitleFxLiveGpu, ALiveEffectBeforeOneWithoutALiveVariantReRenders) {
     const EffectDef* sweep = findEffect("gradient_overlay");
     ASSERT_NE(sweep, nullptr);
     ASSERT_NE(findEffect("gaussian_blur"), nullptr);
-    const Case c = effectCase(*sweep, "position", {}, {standardEffect("00000202", "gaussian_blur")});
+    const TitleFxLiveCase c = effectCase(*sweep, "position", {}, {standardEffect("00000202", "gaussian_blur")});
     const TitleJobFactory factory = makeRendererJobFactory(renderer, &assets);
     TitleArtLive live("assets/live.titleart", TitleArtRenderMode::REALTIME, c.doc, hashTitleArt(*c.doc).document);
-    live.setState(stateOf(), 1, {});
-    frames(live, factory);
+    live.setState(titleFxLiveStateOf(), 1, {});
+    titleFxLiveFrames(live, factory);
     ASSERT_TRUE(live.front().valid()) << live.status().error;
     const uint64_t renders = live.rendersDone();
     const std::vector<FieldOverride> overrides{FieldOverride{c.layer, c.field, Json(0.7)}};
-    live.setState(stateOf(), hashOf(overrides), overrides);
+    live.setState(titleFxLiveStateOf(), titleFxLiveHashOf(overrides), overrides);
     EXPECT_FALSE(live.liveWaiting());
     EXPECT_NE(live.status().liveFallback.find("Gaussian Blur after Gradient Overlay"), std::string::npos) << live.status().liveFallback;
     EXPECT_NE(live.status().liveFallback.find("has no live variant: the change re-renders"), std::string::npos);
-    frames(live, factory);
+    titleFxLiveFrames(live, factory);
     EXPECT_EQ(live.rendersDone(), renders + 1) << "it re-rendered";
     EXPECT_EQ(live.liveComposesDone(), 0u);
 }
 
 TEST_F(TitleFxLiveGpu, OverTheLiveBudgetReRenders) {
     // S81 R9: a live compose predicted over the title's budget re-renders (fx_live_budget)
-    const Case c = effectCase(*findEffect("light_glow"), "intensity");
+    const TitleFxLiveCase c = effectCase(*findEffect("light_glow"), "intensity");
     const TitleJobFactory factory = makeRendererJobFactory(renderer, &assets);
     TitleArtLive live("assets/live.titleart", TitleArtRenderMode::REALTIME, c.doc, hashTitleArt(*c.doc).document);
-    live.setState(stateOf(), 1, {});
-    frames(live, factory);
+    live.setState(titleFxLiveStateOf(), 1, {});
+    titleFxLiveFrames(live, factory);
     ASSERT_TRUE(live.front().valid()) << live.status().error;
     live.setLiveBudgetMs(1e-6);
     const std::vector<FieldOverride> overrides{FieldOverride{c.layer, c.field, Json(2.0)}};
-    live.setState(stateOf(), hashOf(overrides), overrides);
+    live.setState(titleFxLiveStateOf(), titleFxLiveHashOf(overrides), overrides);
     EXPECT_FALSE(live.liveWaiting());
     EXPECT_NE(live.status().liveFallback.find("over the title's live budget"), std::string::npos) << live.status().liveFallback;
 }

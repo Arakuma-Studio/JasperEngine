@@ -31,7 +31,7 @@ namespace {
         return entity;
     }
 
-    TrackReport track(const std::string& path, ClipChannel channel, TrackBindingStatus status) {
+    TrackReport inspectorClipHelpersTrack(const std::string& path, ClipChannel channel, TrackBindingStatus status) {
         TrackReport report;
         report.path = path;
         report.channel = channel;
@@ -95,7 +95,7 @@ TEST(InspectorClipHelpers, LabelsElideKeepingTheFileNameEnd) {
 TEST(InspectorClipHelpers, AnUncheckedReportSaysUnchecked) {
     // a report without a root: every track Unchecked
     ClipValidationReport report;
-    report.tracks.push_back(track("Arm", ClipChannel::Rotation, TrackBindingStatus::Unchecked));
+    report.tracks.push_back(inspectorClipHelpersTrack("Arm", ClipChannel::Rotation, TrackBindingStatus::Unchecked));
     EventReport event;
     event.function = "footstep";
     report.events.push_back(event);
@@ -106,9 +106,9 @@ TEST(InspectorClipHelpers, AnUncheckedReportSaysUnchecked) {
 
 TEST(InspectorClipHelpers, TheBindingsHeaderCountsProblems) {
     ClipValidationReport report;
-    report.tracks.push_back(track("Arm", ClipChannel::Rotation, TrackBindingStatus::Ok));
-    report.tracks.push_back(track("Arm/Hnd", ClipChannel::Position, TrackBindingStatus::MissingPath));
-    report.tracks.push_back(track("", ClipChannel::Property, TrackBindingStatus::NotSampled));
+    report.tracks.push_back(inspectorClipHelpersTrack("Arm", ClipChannel::Rotation, TrackBindingStatus::Ok));
+    report.tracks.push_back(inspectorClipHelpersTrack("Arm/Hnd", ClipChannel::Position, TrackBindingStatus::MissingPath));
+    report.tracks.push_back(inspectorClipHelpersTrack("", ClipChannel::Property, TrackBindingStatus::NotSampled));
     EventReport event;
     event.function = "footstep";
     event.status = EventHandlerStatus::NotFound;
@@ -121,8 +121,8 @@ TEST(InspectorClipHelpers, TheBindingsHeaderCountsProblems) {
 
     // the legacy layout counts once, not per track it hides
     report.legacyModelLayout = true;
-    report.tracks.push_back(track("Hero/Hips", ClipChannel::Rotation, TrackBindingStatus::LegacyModelLayout));
-    report.tracks.push_back(track("Hero/Hips/Spine", ClipChannel::Rotation, TrackBindingStatus::LegacyModelLayout));
+    report.tracks.push_back(inspectorClipHelpersTrack("Hero/Hips", ClipChannel::Rotation, TrackBindingStatus::LegacyModelLayout));
+    report.tracks.push_back(inspectorClipHelpersTrack("Hero/Hips/Spine", ClipChannel::Rotation, TrackBindingStatus::LegacyModelLayout));
     EXPECT_EQ(inspectorclips::problemCount(report), 3u);
     EXPECT_EQ(inspectorclips::bindingsSummary(report), "legacy model layout");
 }

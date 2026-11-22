@@ -26,8 +26,8 @@ namespace {
     // SPIR-V opcodes (the unified specification, section 3.49)
     constexpr uint32_t OP_NAME = 5;
     constexpr uint32_t OP_EXT_INST = 12;
-    constexpr uint32_t OP_FUNCTION = 54;
-    constexpr uint32_t OP_FUNCTION_END = 56;
+    constexpr uint32_t PIXEL_SNAP_SHADER_OP_FUNCTION = 54;
+    constexpr uint32_t PIXEL_SNAP_SHADER_OP_FUNCTION_END = 56;
     constexpr uint32_t OP_FNEGATE = 127;
     constexpr uint32_t OP_FADD = 129;
     constexpr uint32_t OP_FSUB = 131;
@@ -71,9 +71,9 @@ namespace {
                 if (opcode == OP_NAME && length > 2){
                     std::string name(reinterpret_cast<const char*>(&words[offset + 2]));
                     names[words[offset + 1]] = name.substr(0, name.find('('));
-                }else if (opcode == OP_FUNCTION && length > 2){
+                }else if (opcode == PIXEL_SNAP_SHADER_OP_FUNCTION && length > 2){
                     current = words[offset + 2];
-                }else if (opcode == OP_FUNCTION_END){
+                }else if (opcode == PIXEL_SNAP_SHADER_OP_FUNCTION_END){
                     current = 0;
                 }else if (isArithmetic(opcode) && current != 0){
                     count.arithmetic++;

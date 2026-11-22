@@ -21,19 +21,19 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    void put16(std::string& out, uint32_t value) {
+    void systemFontsPut16(std::string& out, uint32_t value) {
         out.push_back(static_cast<char>((value >> 8) & 0xFF));
         out.push_back(static_cast<char>(value & 0xFF));
     }
 
-    void put32(std::string& out, uint32_t value) {
-        put16(out, value >> 16);
-        put16(out, value & 0xFFFF);
+    void systemFontsPut32(std::string& out, uint32_t value) {
+        systemFontsPut16(out, value >> 16);
+        systemFontsPut16(out, value & 0xFFFF);
     }
 
     std::string utf16Be(const std::string& ascii) {
         std::string out;
-        for (char c : ascii) put16(out, static_cast<unsigned char>(c));
+        for (char c : ascii) systemFontsPut16(out, static_cast<unsigned char>(c));
         return out;
     }
 
@@ -45,86 +45,86 @@ namespace {
         std::vector<std::pair<std::string, std::string>> tables;
 
         std::string cmap;
-        put16(cmap, 0); put16(cmap, 1);
-        put16(cmap, 3); put16(cmap, 10); put32(cmap, 12);
-        put16(cmap, 12); put16(cmap, 0); put32(cmap, 16 + 12 * static_cast<uint32_t>(codepoints.size())); put32(cmap, 0);
-        put32(cmap, static_cast<uint32_t>(codepoints.size()));
+        systemFontsPut16(cmap, 0); systemFontsPut16(cmap, 1);
+        systemFontsPut16(cmap, 3); systemFontsPut16(cmap, 10); systemFontsPut32(cmap, 12);
+        systemFontsPut16(cmap, 12); systemFontsPut16(cmap, 0); systemFontsPut32(cmap, 16 + 12 * static_cast<uint32_t>(codepoints.size())); systemFontsPut32(cmap, 0);
+        systemFontsPut32(cmap, static_cast<uint32_t>(codepoints.size()));
         for (size_t i = 0; i < codepoints.size(); i++) {
-            put32(cmap, codepoints[i]); put32(cmap, codepoints[i]); put32(cmap, static_cast<uint32_t>(i + 1));
+            systemFontsPut32(cmap, codepoints[i]); systemFontsPut32(cmap, codepoints[i]); systemFontsPut32(cmap, static_cast<uint32_t>(i + 1));
         }
         tables.push_back({"cmap", cmap});
 
         std::string glyph;
-        put16(glyph, 1); put16(glyph, 100); put16(glyph, 0); put16(glyph, 900); put16(glyph, 700);
-        put16(glyph, 3); put16(glyph, 0);
+        systemFontsPut16(glyph, 1); systemFontsPut16(glyph, 100); systemFontsPut16(glyph, 0); systemFontsPut16(glyph, 900); systemFontsPut16(glyph, 700);
+        systemFontsPut16(glyph, 3); systemFontsPut16(glyph, 0);
         for (int i = 0; i < 4; i++) glyph.push_back(0x01);
-        for (int16_t dx : {100, 800, 0, -800}) put16(glyph, static_cast<uint16_t>(dx));
-        for (int16_t dy : {0, 0, 700, 0}) put16(glyph, static_cast<uint16_t>(dy));
+        for (int16_t dx : {100, 800, 0, -800}) systemFontsPut16(glyph, static_cast<uint16_t>(dx));
+        for (int16_t dy : {0, 0, 700, 0}) systemFontsPut16(glyph, static_cast<uint16_t>(dy));
         while (glyph.size() % 4) glyph.push_back(0);
         std::string glyf;
         std::string loca;
-        put32(loca, 0);
-        put32(loca, 0);   // .notdef: empty
+        systemFontsPut32(loca, 0);
+        systemFontsPut32(loca, 0);   // .notdef: empty
         for (size_t i = 0; i < codepoints.size(); i++) {
             glyf += glyph;
-            put32(loca, static_cast<uint32_t>(glyf.size()));
+            systemFontsPut32(loca, static_cast<uint32_t>(glyf.size()));
         }
         tables.push_back({"glyf", glyf});
 
         std::string head;
-        put32(head, 0x00010000); put32(head, 0x00010000); put32(head, 0); put32(head, 0x5F0F3CF5);
-        put16(head, 0x000B); put16(head, 1000);
-        for (int i = 0; i < 4; i++) put32(head, 0);   // created, modified
-        put16(head, 0); put16(head, 0); put16(head, 1000); put16(head, 800);
-        put16(head, 0); put16(head, 8); put16(head, 2); put16(head, 1); put16(head, 0);
+        systemFontsPut32(head, 0x00010000); systemFontsPut32(head, 0x00010000); systemFontsPut32(head, 0); systemFontsPut32(head, 0x5F0F3CF5);
+        systemFontsPut16(head, 0x000B); systemFontsPut16(head, 1000);
+        for (int i = 0; i < 4; i++) systemFontsPut32(head, 0);   // created, modified
+        systemFontsPut16(head, 0); systemFontsPut16(head, 0); systemFontsPut16(head, 1000); systemFontsPut16(head, 800);
+        systemFontsPut16(head, 0); systemFontsPut16(head, 8); systemFontsPut16(head, 2); systemFontsPut16(head, 1); systemFontsPut16(head, 0);
         tables.push_back({"head", head});
 
         std::string hhea;
-        put32(hhea, 0x00010000); put16(hhea, 800); put16(hhea, static_cast<uint16_t>(-200)); put16(hhea, 0);
-        put16(hhea, 1000); put16(hhea, 0); put16(hhea, 0); put16(hhea, 1000);
-        put16(hhea, 1); put16(hhea, 0); put16(hhea, 0);
-        for (int i = 0; i < 4; i++) put16(hhea, 0);
-        put16(hhea, 0); put16(hhea, glyphs);
+        systemFontsPut32(hhea, 0x00010000); systemFontsPut16(hhea, 800); systemFontsPut16(hhea, static_cast<uint16_t>(-200)); systemFontsPut16(hhea, 0);
+        systemFontsPut16(hhea, 1000); systemFontsPut16(hhea, 0); systemFontsPut16(hhea, 0); systemFontsPut16(hhea, 1000);
+        systemFontsPut16(hhea, 1); systemFontsPut16(hhea, 0); systemFontsPut16(hhea, 0);
+        for (int i = 0; i < 4; i++) systemFontsPut16(hhea, 0);
+        systemFontsPut16(hhea, 0); systemFontsPut16(hhea, glyphs);
         tables.push_back({"hhea", hhea});
 
         std::string hmtx;
-        for (uint32_t i = 0; i < glyphs; i++) { put16(hmtx, 1000); put16(hmtx, 100); }
+        for (uint32_t i = 0; i < glyphs; i++) { systemFontsPut16(hmtx, 1000); systemFontsPut16(hmtx, 100); }
         tables.push_back({"hmtx", hmtx});
         tables.push_back({"loca", loca});
 
         std::string maxp;
-        put32(maxp, 0x00010000); put16(maxp, glyphs); put16(maxp, 4); put16(maxp, 1);
-        for (int i = 0; i < 4; i++) put16(maxp, 0);
-        put16(maxp, 2);
-        for (int i = 0; i < 6; i++) put16(maxp, 0);
+        systemFontsPut32(maxp, 0x00010000); systemFontsPut16(maxp, glyphs); systemFontsPut16(maxp, 4); systemFontsPut16(maxp, 1);
+        for (int i = 0; i < 4; i++) systemFontsPut16(maxp, 0);
+        systemFontsPut16(maxp, 2);
+        for (int i = 0; i < 6; i++) systemFontsPut16(maxp, 0);
         tables.push_back({"maxp", maxp});
 
         const std::string familyText = utf16Be(family);
         const std::string postScriptText = utf16Be(postScript);
         std::string name;
-        put16(name, 0); put16(name, 2); put16(name, 6 + 12 * 2);
-        put16(name, 3); put16(name, 1); put16(name, 0x409); put16(name, 1);
-        put16(name, static_cast<uint32_t>(familyText.size())); put16(name, 0);
-        put16(name, 3); put16(name, 1); put16(name, 0x409); put16(name, 6);
-        put16(name, static_cast<uint32_t>(postScriptText.size())); put16(name, static_cast<uint32_t>(familyText.size()));
+        systemFontsPut16(name, 0); systemFontsPut16(name, 2); systemFontsPut16(name, 6 + 12 * 2);
+        systemFontsPut16(name, 3); systemFontsPut16(name, 1); systemFontsPut16(name, 0x409); systemFontsPut16(name, 1);
+        systemFontsPut16(name, static_cast<uint32_t>(familyText.size())); systemFontsPut16(name, 0);
+        systemFontsPut16(name, 3); systemFontsPut16(name, 1); systemFontsPut16(name, 0x409); systemFontsPut16(name, 6);
+        systemFontsPut16(name, static_cast<uint32_t>(postScriptText.size())); systemFontsPut16(name, static_cast<uint32_t>(familyText.size()));
         name += familyText + postScriptText;
         tables.push_back({"name", name});
 
         std::string post;
-        put32(post, 0x00030000); put32(post, 0); put16(post, static_cast<uint16_t>(-100)); put16(post, 50);
-        for (int i = 0; i < 5; i++) put32(post, 0);
+        systemFontsPut32(post, 0x00030000); systemFontsPut32(post, 0); systemFontsPut16(post, static_cast<uint16_t>(-100)); systemFontsPut16(post, 50);
+        for (int i = 0; i < 5; i++) systemFontsPut32(post, 0);
         tables.push_back({"post", post});
 
         std::string font;
-        put32(font, 0x00010000); put16(font, static_cast<uint32_t>(tables.size()));
-        put16(font, 128); put16(font, 3); put16(font, static_cast<uint32_t>(tables.size()) * 16 - 128);
+        systemFontsPut32(font, 0x00010000); systemFontsPut16(font, static_cast<uint32_t>(tables.size()));
+        systemFontsPut16(font, 128); systemFontsPut16(font, 3); systemFontsPut16(font, static_cast<uint32_t>(tables.size()) * 16 - 128);
         uint32_t offset = 12 + 16 * static_cast<uint32_t>(tables.size());
         std::string data;
         for (const auto& [tag, bytes] : tables) {
             font += tag;
-            put32(font, 0);
-            put32(font, base + offset + static_cast<uint32_t>(data.size()));
-            put32(font, static_cast<uint32_t>(bytes.size()));
+            systemFontsPut32(font, 0);
+            systemFontsPut32(font, base + offset + static_cast<uint32_t>(data.size()));
+            systemFontsPut32(font, static_cast<uint32_t>(bytes.size()));
             data += bytes;
             while (data.size() % 4) data.push_back(0);
         }
@@ -141,9 +141,9 @@ namespace {
             base += static_cast<uint32_t>(fonts.back().size());
         }
         std::string out = "ttcf";
-        put32(out, 0x00010000); put32(out, static_cast<uint32_t>(names.size()));
+        systemFontsPut32(out, 0x00010000); systemFontsPut32(out, static_cast<uint32_t>(names.size()));
         base = header;
-        for (const std::string& font : fonts) { put32(out, base); base += static_cast<uint32_t>(font.size()); }
+        for (const std::string& font : fonts) { systemFontsPut32(out, base); base += static_cast<uint32_t>(font.size()); }
         for (const std::string& font : fonts) out += font;
         return out;
     }

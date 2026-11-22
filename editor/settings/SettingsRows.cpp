@@ -1449,6 +1449,41 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         };
+        {
+            Setting s;
+            s.key = "player.target_platforms";
+            s.type = "list";
+            s.values = {"windows", "linux", "macos", "android", "ios", "web"};
+            s.description = "Target Platforms: the platforms this game ships on; Build Settings, build_project and get_build_info "
+                            "default to them. Non-empty.";
+            s.get = [](SettingsContext& ctx) {
+                Json list = Json::array();
+                for (BuildPlatform platform : {BuildPlatform::Windows, BuildPlatform::Linux, BuildPlatform::MacOS, BuildPlatform::Android,
+                                               BuildPlatform::IOS, BuildPlatform::Web}) {
+                    if (ctx.project()->isTargetPlatform(platform)) list.push_back(buildPlatformName(platform));
+                }
+                return list;
+            };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                const char* fix = "must be a non-empty list of windows, linux, macos, android, ios, web";
+                if (!value.is_array() || value.empty()) {
+                    error = fix;
+                    return false;
+                }
+                uint8_t targets = 0;
+                for (const Json& item : value) {
+                    BuildPlatform platform;
+                    if (!item.is_string() || !parseBuildPlatform(item.get<std::string>(), platform)) {
+                        error = fix;
+                        return false;
+                    }
+                    targets |= Project::targetPlatformBit(platform);
+                }
+                if (apply) ctx.project()->setTargetPlatforms(targets);
+                return true;
+            };
+            add(s);
+        }
         nameChoice("player.build_method", "Build Settings > Build Method: auto (a prebuilt player unless the project needs native code), prebuilt or compile.",
                    {"auto", "prebuilt", "compile"}, [](Project& p) { return p.getBuildMethod(); },
                    [](Project& p, const std::string& v) { p.setBuildMethod(v); });
@@ -4274,6 +4309,8 @@ const Placement placements[] = {
     {"player.threading.io_threads", "Player", "Threading", "Asset I/O Threads", "io loading threads"},
     {"player.threading.web_pump_budget_ms", "Player", "Threading", "Web Pump Budget", "web jobs"},
     {"player.threading.web_multithreaded", "Player", "Threading", "Web: Multithreaded", "pthreads cross origin isolated"},
+    {"player.target_platforms", "Player", "Publishing Settings", "Target Platforms",
+     "platforms targets ship export mobile desktop android ios web windows linux macos"},
     {"player.development_build", "Player", "Publishing Settings", "Development Build", "profiler"},
     {"player.pack_native_resources", "Player", "Publishing Settings", "Native Resource Pack", "resources pak"},
     {"player.build_method", "Player", "Publishing Settings", "Build Method", "prebuilt compile player"},

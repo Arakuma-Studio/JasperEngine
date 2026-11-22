@@ -442,3 +442,9 @@ None new (R19: the effect table already exposes parameters).
     the silent switch and mixes with Music app playback; an existing project's does not change.
 18. **AC7's `tools/ci/ios_packaging.sh` has not run:** the Mac was unreachable. Before that, the iOS player built
     and packaged with this work, ahead of the hook's final iOS-only form.
+19. **R12's meter reads the tap as a joined stream** (`AudioMeterMode::Joined`). The tap starts while the
+    Master plays (at an agent's first read, a visible window or a Reset), and a `Stream` meter took what came
+    before as silence: a join near a tone's crest read the step from silence through the true-peak filter,
+    up to 1 dB over the tone (CI read -0.07 dBTP behind the -1 dBTP limiter; locally 6 Play starts in 10 read
+    over -0.9 dBTP, while the limiter's output held its ceiling). The first 11 frames now only fill the filter; their samples still count.
+    `AudioMixerRuntimeTest.TheLoudnessReadingHoldsTheCeilingWhereverItJoins`.

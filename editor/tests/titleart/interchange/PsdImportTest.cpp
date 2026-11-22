@@ -29,7 +29,7 @@ using titleart::Json;
 
 namespace {
 
-    std::string fixture(const char* name) {
+    std::string psdImportFixture(const char* name) {
         return std::string(JASPER_TEST_REPO_DIR) + "/editor/tests/titleart/fixtures/psd/" + name;
     }
 
@@ -47,7 +47,7 @@ namespace {
 
         TitleCreateRequest request(const char* file) const {
             TitleCreateRequest r;
-            r.sourcePath = fixture(file);
+            r.sourcePath = psdImportFixture(file);
             r.documentPath = (project / "assets" / "titles" / "logo.titleart").string();
             r.projectPath = project.string();
             r.assetsPath = (project / "assets").string();
@@ -217,7 +217,7 @@ TEST_F(PsdImportTest, CmykRefusedButItsStylesRead) {
     EXPECT_FALSE(import("cmyk.psd", r, code, error));
     EXPECT_EQ(code, "psd_mode_unsupported");
     EXPECT_NE(error.find("CMYK"), std::string::npos);
-    std::ifstream in(fixture("cmyk.psd"), std::ios::binary);
+    std::ifstream in(psdImportFixture("cmyk.psd"), std::ios::binary);
     const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     psd::PsStyleFile styles;
     ASSERT_TRUE(psd::readPsStyles(bytes.data(), bytes.size(), styles, error)) << error;
@@ -245,7 +245,7 @@ TEST_F(PsdImportTest, ApplyAndImportStyleOps) {
     options.documentPath = (project / "assets" / "titles" / "logo.titleart").string();
     options.projectPath = project.string();
     options.assetsPath = (project / "assets").string();
-    TitleOpsResult applied = TitleArtOps::apply(doc, Json{{"op", "apply_ps_style"}, {"layer", "Title"}, {"file", fixture("styles.asl")},
+    TitleOpsResult applied = TitleArtOps::apply(doc, Json{{"op", "apply_ps_style"}, {"layer", "Title"}, {"file", psdImportFixture("styles.asl")},
                                                           {"style", "Shadows"}}, options);
     ASSERT_TRUE(applied.ok) << applied.error();
     const Json& title = applied.doc.root["layers"][0];
@@ -259,18 +259,18 @@ TEST_F(PsdImportTest, ApplyAndImportStyleOps) {
     EXPECT_DOUBLE_EQ((*drop)["params"]["distance"].get<double>(), 4.0) << "2 px at 100 px is 4 px at 200 px";
     EXPECT_EQ(applied.undoName, "Apply Photoshop Style Shadows");
     EXPECT_TRUE(applied.reports.contains("0"));
-    TitleOpsResult bitmap = TitleArtOps::apply(doc, Json{{"op", "apply_ps_style"}, {"layer", "Title"}, {"file", fixture("styles.asl")},
+    TitleOpsResult bitmap = TitleArtOps::apply(doc, Json{{"op", "apply_ps_style"}, {"layer", "Title"}, {"file", psdImportFixture("styles.asl")},
                                                          {"style", "Bitmap Pattern"}}, options);
     ASSERT_TRUE(bitmap.ok) << bitmap.error();
     ASSERT_EQ(bitmap.files.size(), 1u);
     EXPECT_NE(bitmap.files[0].path.generic_string().find("logo_assets"), std::string::npos);
     EXPECT_NE(bitmap.files[0].path.generic_string().find("patterns"), std::string::npos);
     EXPECT_EQ(bitmap.doc.root["layers"][0]["style"]["face"]["pattern"]["kind"], "custom");
-    TitleOpsResult bad = TitleArtOps::apply(doc, Json{{"op", "apply_ps_style"}, {"layer", "Title"}, {"file", fixture("styles.asl")}, {"style", "Nope"}},
+    TitleOpsResult bad = TitleArtOps::apply(doc, Json{{"op", "apply_ps_style"}, {"layer", "Title"}, {"file", psdImportFixture("styles.asl")}, {"style", "Nope"}},
                                             options);
     ASSERT_FALSE(bad.ok);
     // import_ps_styles: one .titlelook per style in the project's library
-    TitleOpsResult looks = TitleArtOps::apply(doc, Json{{"op", "import_ps_styles"}, {"file", fixture("styles.asl")}}, options);
+    TitleOpsResult looks = TitleArtOps::apply(doc, Json{{"op", "import_ps_styles"}, {"file", psdImportFixture("styles.asl")}}, options);
     ASSERT_TRUE(looks.ok) << looks.error();
     size_t titlelooks = 0;
     for (const TitleOpFile& f : looks.files) {
@@ -299,7 +299,7 @@ TEST_F(PsdImportTest, ApplyAndImportStyleOps) {
 }
 
 TEST_F(PsdImportTest, MalformedFilesFail) {
-    std::ifstream in(fixture("layers8.psd"), std::ios::binary);
+    std::ifstream in(psdImportFixture("layers8.psd"), std::ios::binary);
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     for (size_t cut : {size_t(10), size_t(40), size_t(300), bytes.size() / 2, bytes.size() - 7}) {
         psd::PsdFile file;

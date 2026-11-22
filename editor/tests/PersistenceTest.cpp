@@ -165,7 +165,7 @@ namespace {
         for (int i = 0; i < samples; i++) u16(0);
     }
 
-    std::vector<std::string> cppLog;
+    std::vector<std::string> persistenceCppLog;
 
     class CppManager : public ScriptBase {
     public:
@@ -174,12 +174,12 @@ namespace {
         void init() override {
             if (persistSingleton<CppManager>() != this) {
                 duplicate = true;
-                cppLog.push_back("duplicate");
+                persistenceCppLog.push_back("duplicate");
                 return;
             }
-            cppLog.push_back("first");
+            persistenceCppLog.push_back("first");
         }
-        void onDestroy() override { cppLog.push_back(std::string("destroy") + (duplicate ? "Dup" : "First")); }
+        void onDestroy() override { persistenceCppLog.push_back(std::string("destroy") + (duplicate ? "Dup" : "First")); }
     };
 
     // a C++ script entry filled in as the generated factory does
@@ -215,7 +215,7 @@ namespace {
         }
     }
 
-    void deleteCppScripts(Scene* scene) {
+    void persistenceDeleteCppScripts(Scene* scene) {
         if (!scene) return;
         auto scripts = scene->getComponentArray<ScriptComponent>();
         for (size_t i = 0; i < scripts->size(); i++) {
@@ -638,7 +638,7 @@ TEST_F(PersistenceTest, ScriptWrappersAndActionsFollow) {
 
 // C++ scripts: ScriptBase::dontDestroyOnLoad / persistSingleton, rebound by the move
 TEST_F(PersistenceTest, CppScriptsPersistAndRebind) {
-    cppLog.clear();
+    persistenceCppLog.clear();
     ObjectManager::setCppScriptHooks(nullptr, cleanupCppScripts);
     Scene* one = newScene();
     const Entity first = entity(one, "CppFirst");
@@ -656,14 +656,14 @@ TEST_F(PersistenceTest, CppScriptsPersistAndRebind) {
     Engine::addSceneLayer(two);
     ScriptRuntime::awakeScene(two);
     frame();
-    EXPECT_EQ(cppLog, (std::vector<std::string>{"first", "duplicate", "destroyDup"}));
+    EXPECT_EQ(persistenceCppLog, (std::vector<std::string>{"first", "duplicate", "destroyDup"}));
     EXPECT_EQ(two->findEntity("CppSecond"), NULL_ENTITY);
 
     ScriptRuntime::quitAll();
-    EXPECT_EQ(cppLog.back(), "destroyFirst");
-    deleteCppScripts(SceneManager::getPersistentScene());
-    deleteCppScripts(one);
-    deleteCppScripts(two);
+    EXPECT_EQ(persistenceCppLog.back(), "destroyFirst");
+    persistenceDeleteCppScripts(SceneManager::getPersistentScene());
+    persistenceDeleteCppScripts(one);
+    persistenceDeleteCppScripts(two);
     ObjectManager::setCppScriptHooks(nullptr, nullptr);
     Engine::removeAllScenes();
 }

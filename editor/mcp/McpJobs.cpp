@@ -113,6 +113,16 @@ Json McpJob::result() const {
     return jobResult;
 }
 
+void McpJob::setImages(std::vector<ToolImage> images) {
+    std::lock_guard<std::mutex> lock(mutex);
+    jobImages = std::move(images);
+}
+
+std::vector<ToolImage> McpJob::images() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return jobImages;
+}
+
 Json McpJob::toJson(int logLines) const {
     std::lock_guard<std::mutex> lock(mutex);
     const auto end = jobStatus == JobStatus::Running ? std::chrono::steady_clock::now() : endTime;

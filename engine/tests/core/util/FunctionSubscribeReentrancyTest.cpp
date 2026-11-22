@@ -29,7 +29,7 @@ namespace {
     using IntEvent = FunctionSubscribe<void(int)>;
     using BoolEvent = FunctionSubscribe<bool(int)>;
 
-    struct Listener {
+    struct FunctionSubscribeReentrancyListener {
         std::vector<std::string>* log = nullptr;
         std::string name;
 
@@ -68,12 +68,12 @@ TEST(FunctionSubscribe, CallsInSubscriptionOrderAndReplacesATag) {
 
 TEST(FunctionSubscribe, BindsMemberFunctions) {
     std::vector<std::string> log;
-    Listener first{&log, "first"};
-    auto second = std::make_shared<Listener>(Listener{&log, "second"});
+    FunctionSubscribeReentrancyListener first{&log, "first"};
+    auto second = std::make_shared<FunctionSubscribeReentrancyListener>(FunctionSubscribeReentrancyListener{&log, "second"});
 
     IntEvent event;
-    event.add<Listener, &Listener::onEvent>("first", &first);
-    event.add<Listener, &Listener::onEvent>("second", second);
+    event.add<FunctionSubscribeReentrancyListener, &FunctionSubscribeReentrancyListener::onEvent>("first", &first);
+    event.add<FunctionSubscribeReentrancyListener, &FunctionSubscribeReentrancyListener::onEvent>("second", second);
     event.call(7);
 
     EXPECT_EQ(log, (std::vector<std::string>{"first:7", "second:7"}));

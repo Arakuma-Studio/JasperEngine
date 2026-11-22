@@ -3012,23 +3012,43 @@ bool editor::Exporter::writeTitleArtRuntime() {
     Title3DCookPending cook3D;
     std::string settingsError;
     bool settingsFailed = false;
-    std::promise<void> done;
-    auto doneFuture = done.get_future();
     const fs::path assetsDst = getExportProjectRoot() / "assets";
     const std::vector<std::string> platforms = exportPlatformNames();
     const std::vector<TextureFamily> families = TextureCookQueue::familiesForExport(platforms, project->getTextureSettings().androidEtc2Fallback);
-    editor::getEditorHost().enqueueMainThreadTask([this, &prebaked, &fonts, &cooked3D, &cook3D, &settingsError, &settingsFailed, &done, assetsDst, &platforms, &families]() {
-        const TitleArtExportPlan plan = planTitleArtExport(project);
-        // the fonts first: the prebakes are keyed by the documents the player reads (relinked to the subsets)
-        fonts = shipTitleArtFonts(project, plan, assetsDst);
-        if (fonts.ok) prebaked = writeTitleArtPrebakes(project, plan, assetsDst, platforms);
-        // S86 R26, R38: the Realtime 3D titles' cooked meshes and environment cubes
-        if (fonts.ok && prebaked.ok) cook3D = beginTitleArt3DCook(project, plan, assetsDst, platforms, families, cooked3D);
-        // after the cook, which clears je-titleart/: the project's settings for the game (S81 R58)
-        if (fonts.ok && prebaked.ok && !writeTitleArtRuntimeSettings(project, plan, assetsDst, settingsError)) settingsFailed = true;
-        done.set_value();
-    });
-    doneFuture.get();
+    TitleArtExportPlan plan;
+    // on the main thread, asked again on later frames while a prebake meets a program the frames
+    // are still building (S80 Deviation 61); the deadline only guards against a hang
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(10);
+    for (bool first = true;; first = false) {
+        std::promise<void> done;
+        auto doneFuture = done.get_future();
+        editor::getEditorHost().enqueueMainThreadTask([this, &plan, &prebaked, &fonts, &cooked3D, &cook3D, &settingsError, &settingsFailed, &done, first, assetsDst, &platforms, &families]() {
+            if (first) {
+                plan = planTitleArtExport(project);
+                // the fonts first: the prebakes are keyed by the documents the player reads (relinked to the subsets)
+                fonts = shipTitleArtFonts(project, plan, assetsDst);
+            }
+            if (fonts.ok) writeTitleArtPrebakes(project, plan, assetsDst, platforms, prebaked);
+            const bool prebakedAll = fonts.ok && prebaked.ok && !prebaked.notReady;
+            // S86 R26, R38: the Realtime 3D titles' cooked meshes and environment cubes
+            if (prebakedAll) cook3D = beginTitleArt3DCook(project, plan, assetsDst, platforms, families, cooked3D);
+            // after the cook, which clears je-titleart/: the project's settings for the game (S81 R58)
+            if (prebakedAll && !writeTitleArtRuntimeSettings(project, plan, assetsDst, settingsError)) settingsFailed = true;
+            done.set_value();
+        });
+        doneFuture.get();
+        if (!fonts.ok || !prebaked.ok || !prebaked.notReady) break;
+        if (isCancelled()) {
+            setError("Build cancelled");
+            return false;
+        }
+        if (std::chrono::steady_clock::now() > deadline) {
+            setError("Cannot export: the Title Art prebakes still wait for their shader programs to be built");
+            return false;
+        }
+        setDetail("Title Art: waiting for its shader programs to be built");
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
     // the cubes on this worker: seconds of CPU a face size of 1024 takes
     finishTitleArt3DCook(cook3D, cooked3D);
     for (const std::string& line : fonts.shipped) Out::info("Title Art font %s", line.c_str());

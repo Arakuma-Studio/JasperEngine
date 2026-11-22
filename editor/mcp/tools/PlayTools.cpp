@@ -1683,6 +1683,8 @@ void playStop(const CallPtr& call, std::function<void()> after) {
         Json data = w3::playStateJson(c);
         data["problems"] = problemsSince(last.startLogId, 30);
         data["next_cursor"] = Out::lastLogId();
+        // the Stop's own main-thread CPU, without the frames drawn while it ran (S71's gate)
+        data["stop_cpu_ms"] = std::round(c.project()->getLastStopCpuMs() * 10.0) / 10.0;
         if (!kept.is_null()) data["kept_changes"] = kept;
         std::string text = "Stopped. " + sessionSummaryText(last) + " The scene is back to its edit-time state." + keepNote;
         if (!data["problems"].empty()) text += "\nProblems during the session:\n" + w3::formatConsoleText(data["problems"], 4000);

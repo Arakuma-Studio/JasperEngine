@@ -22,7 +22,8 @@ APPIMAGE="JasperEngine-$VERSION-linux-x86_64.AppImage"
 rm -rf "$OUT"
 mkdir -p "$OUT/cwd"
 
-gh release download "$VERSION" --repo "$REPO" -p "$APPIMAGE" -p SHA256SUMS -D "$OUT"
+# (--clobber: a retry overwrites what a failed try left)
+tools/ci/retry.sh gh release download "$VERSION" --repo "$REPO" -p "$APPIMAGE" -p SHA256SUMS -D "$OUT" --clobber
 grep -q "  $APPIMAGE\$" "$OUT/SHA256SUMS" || { echo "check-published: SHA256SUMS lists no $APPIMAGE" >&2; exit 1; }
 (cd "$OUT" && sha256sum -c --ignore-missing SHA256SUMS)
 chmod +x "$OUT/$APPIMAGE"

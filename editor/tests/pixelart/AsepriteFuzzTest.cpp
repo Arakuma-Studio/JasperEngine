@@ -22,14 +22,14 @@ using namespace jasperengine::editor::pixelart::testing;
 
 namespace {
 
-    const std::set<std::string> kKinds = {"not_aseprite", "truncated", "corrupt_chunk", "too_large", "unsupported_depth"};
+    const std::set<std::string> kAsepriteFuzzKinds = {"not_aseprite", "truncated", "corrupt_chunk", "too_large", "unsupported_depth"};
 
-    void put32(std::vector<uint8_t>& b, size_t at, uint32_t v) {
+    void asepriteFuzzPut32(std::vector<uint8_t>& b, size_t at, uint32_t v) {
         if (at + 4 > b.size()) return;
         for (int i = 0; i < 4; i++) b[at + static_cast<size_t>(i)] = static_cast<uint8_t>(v >> (8 * i));
     }
 
-    void put16(std::vector<uint8_t>& b, size_t at, uint32_t v) {
+    void asepriteFuzzPut16(std::vector<uint8_t>& b, size_t at, uint32_t v) {
         if (at + 2 > b.size()) return;
         b[at] = static_cast<uint8_t>(v);
         b[at + 1] = static_cast<uint8_t>(v >> 8);
@@ -86,11 +86,11 @@ TEST(AsepriteFuzzTest, Mutations) {
             // a chunk's size (or a count right after its header) inflated
             const size_t at = chunks[pick][rng() % chunks[pick].size()];
             const uint32_t values[] = {0, 5, 0xffffffffu, 0x7fffffffu, 0x10000u, static_cast<uint32_t>(rng())};
-            put32(bytes, at + ((rng() % 2) ? 0 : 6 + 4 * (rng() % 4)), values[rng() % 6]);
+            asepriteFuzzPut32(bytes, at + ((rng() % 2) ? 0 : 6 + 4 * (rng() % 4)), values[rng() % 6]);
         } else {
             // header fields: frames, size, depth, palette size
             const size_t fields[] = {6, 8, 10, 12, 32};
-            put16(bytes, fields[rng() % 5], static_cast<uint32_t>(rng()));
+            asepriteFuzzPut16(bytes, fields[rng() % 5], static_cast<uint32_t>(rng()));
         }
         // R6: no single allocation beyond what the bytes can decompress to (zlib's 1032:1) or a
         // full 65,536-entry palette, and no more in all than the 1 GiB + 64 MiB budgets
@@ -115,7 +115,7 @@ TEST(AsepriteFuzzTest, Mutations) {
             for (const CodecError& w : r.warnings) EXPECT_FALSE(w.kind.empty());
         } else {
             failed++;
-            EXPECT_TRUE(kKinds.count(r.error.kind)) << "iteration " << iteration << ": kind '" << r.error.kind << "' " << r.error.message;
+            EXPECT_TRUE(kAsepriteFuzzKinds.count(r.error.kind)) << "iteration " << iteration << ": kind '" << r.error.kind << "' " << r.error.message;
             EXPECT_FALSE(r.error.message.empty());
             EXPECT_FALSE(r.error.fix.empty()) << r.error.kind;
         }

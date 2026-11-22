@@ -17,7 +17,7 @@ using namespace jasperengine::terraincore;
 namespace {
 
     // a box frustum: x in [-b, b], y in [-b, b], z in [-b, b]
-    FoliageFrustum boxFrustum(float b) {
+    FoliageFrustum foliageCullBoxFrustum(float b) {
         FoliageFrustum frustum;
         const float planes[6][4] = {
             {1, 0, 0, b}, {-1, 0, 0, b}, {0, 1, 0, b}, {0, -1, 0, b}, {0, 0, 1, b}, {0, 0, -1, b}
@@ -66,7 +66,7 @@ TEST(FoliageCull, KeepsExactlyTheInstancesInTheFrustum) {
     FoliageDetailCull params;
     params.limitDistance = false;
     params.meshRadius = 0.0f;
-    const FoliageFrustum frustum = boxFrustum(5.0f);
+    const FoliageFrustum frustum = foliageCullBoxFrustum(5.0f);
     std::vector<FoliageInstance> out;
     std::vector<uint8_t> lods;
     cull(in, params, frustum, FoliageCellVisibility::Intersecting, out, lods);
@@ -94,7 +94,7 @@ TEST(FoliageCull, InsideCellsSkipPlaneTests) {
     const std::vector<FoliageInstance> in = grid(2.0f, 1.0f);
     FoliageDetailCull params;
     params.limitDistance = false;
-    const FoliageFrustum frustum = boxFrustum(100.0f);
+    const FoliageFrustum frustum = foliageCullBoxFrustum(100.0f);
     const float boxMin[3] = {-2.0f, 0.0f, -2.0f};
     const float boxMax[3] = {2.0f, 0.0f, 2.0f};
     EXPECT_EQ(classifyFoliageBox(frustum, boxMin, boxMax, 1.0f), FoliageCellVisibility::Inside);
@@ -151,7 +151,7 @@ TEST(FoliageCull, LodBucketsMatchSelectMeshLod) {
     for (int i = 0; i < 64; i++) in.push_back(instanceAt(static_cast<float>(i), 0.0f, 0.0f));
     std::vector<FoliageInstance> out;
     std::vector<uint8_t> lods;
-    cull(in, params, boxFrustum(1000.0f), FoliageCellVisibility::Inside, out, lods);
+    cull(in, params, foliageCullBoxFrustum(1000.0f), FoliageCellVisibility::Inside, out, lods);
     ASSERT_EQ(out.size(), in.size());
     for (size_t i = 0; i < out.size(); i++) {
         EXPECT_EQ(lods[i], expected(static_cast<float>(i), 1.0f));
@@ -165,7 +165,7 @@ TEST(FoliageCull, DensityIsAStableSubset) {
     for (int rank = 0; rank < 256; rank++) in.push_back(instanceAt(0.0f, 0.0f, static_cast<float>(rank) * 0.01f, static_cast<uint8_t>(rank)));
     FoliageDetailCull params;
     params.limitDistance = false;
-    const FoliageFrustum frustum = boxFrustum(100.0f);
+    const FoliageFrustum frustum = foliageCullBoxFrustum(100.0f);
 
     std::vector<FoliageInstance> previous;
     std::vector<uint8_t> lods;
@@ -217,7 +217,7 @@ TEST(FoliageCull, FadeMatchesTheOldShaderRange) {
     std::vector<FoliageInstance> in = {instanceAt(90.0f, 50.0f, 0.0f), instanceAt(10.0f, 0.0f, 0.0f), instanceAt(101.0f, 0.0f, 0.0f)};
     std::vector<FoliageInstance> out;
     std::vector<uint8_t> lods;
-    cull(in, params, boxFrustum(1000.0f), FoliageCellVisibility::Inside, out, lods);
+    cull(in, params, foliageCullBoxFrustum(1000.0f), FoliageCellVisibility::Inside, out, lods);
     ASSERT_EQ(out.size(), 2u);
     // height stays out of the distance, as the shader's XZ
     EXPECT_FLOAT_EQ(out[0].scale, 0.4f);
@@ -254,7 +254,7 @@ TEST(FoliageCull, ScaleZeroRemovesFoliage) {
     std::vector<FoliageInstance> in = {instanceAt(0.5f, 0.0f, 0.0f), instanceAt(30.0f, 0.0f, 0.0f)};
     std::vector<FoliageInstance> out;
     std::vector<uint8_t> lods;
-    cull(in, params, boxFrustum(1000.0f), FoliageCellVisibility::Inside, out, lods);
+    cull(in, params, foliageCullBoxFrustum(1000.0f), FoliageCellVisibility::Inside, out, lods);
     EXPECT_TRUE(out.empty());
     const float boxMin[3] = {0.0f, 0.0f, 0.0f};
     const float boxMax[3] = {8.0f, 0.0f, 8.0f};

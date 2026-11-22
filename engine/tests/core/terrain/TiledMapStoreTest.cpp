@@ -15,15 +15,15 @@ using jasperengine::Vector2;
 
 namespace {
 
-    constexpr MapId HEIGHT{MapKind::Height, 0};
+    constexpr MapId TILED_MAP_STORE_HEIGHT{MapKind::Height, 0};
 
-    struct World {
+    struct TiledMapStoreWorld {
         WorldLattice lattice;
         WorldMaps maps;
         MemoryTileAccess access;
         TiledMapStore store;
 
-        explicit World(bool autoAdd = true, int tileQuads = 64): lattice(smallLattice(tileQuads, 1.0f)), store(lattice, maps, access, TiledStoreOptions{autoAdd}) {
+        explicit TiledMapStoreWorld(bool autoAdd = true, int tileQuads = 64): lattice(smallLattice(tileQuads, 1.0f)), store(lattice, maps, access, TiledStoreOptions{autoAdd}) {
             maps.maxHeight = 16.0f;
             store.maps().maxHeight = 16.0f;
         }
@@ -38,7 +38,7 @@ namespace {
         return bytes;
     }
 
-    Op circle(OpType type, float x, float z, float radius) {
+    Op tiledMapStoreCircle(OpType type, float x, float z, float radius) {
         Op op;
         op.type = type;
         op.shape.type = ShapeType::Circle;
@@ -50,7 +50,7 @@ namespace {
 }
 
 TEST(TiledMapStore, WritesEveryCopy) {
-    World world;
+    TiledMapStoreWorld world;
     for (int z = -1; z <= 0; z++) {
         for (int x = -1; x <= 0; x++) ASSERT_TRUE(world.store.addTile(TileCoord(x, z)));
     }
@@ -58,7 +58,7 @@ TEST(TiledMapStore, WritesEveryCopy) {
     const TexelRect corner{world.m() - 3, world.m() - 3, 7, 7};
     std::vector<float> values(static_cast<size_t>(corner.area()));
     for (size_t i = 0; i < values.size(); i++) values[i] = 0.1f + 0.01f * static_cast<float>(i);
-    ASSERT_TRUE(world.store.write(HEIGHT, corner, values).ok);
+    ASSERT_TRUE(world.store.write(TILED_MAP_STORE_HEIGHT, corner, values).ok);
 
     const int n = world.n();
     for (int sz = -3; sz <= 3; sz++) {
@@ -81,7 +81,7 @@ TEST(TiledMapStore, WritesEveryCopy) {
 }
 
 TEST(TiledMapStore, ReadStitches) {
-    World world;
+    TiledMapStoreWorld world;
     for (int z = -1; z <= 0; z++) {
         for (int x = -1; x <= 0; x++) world.access.add(TileCoord(x, z), fixtureTile(world.lattice, TileCoord(x, z)));
     }
@@ -100,15 +100,15 @@ TEST(TiledMapStore, ReadStitches) {
 }
 
 TEST(TiledMapStore, WorldOfTexelOnLattice) {
-    World world(false, 256);
+    TiledMapStoreWorld world(false, 256);
     world.lattice.spacing = 0.5f;
     TiledMapStore store(world.lattice, world.maps, world.access);
     const int m = world.lattice.heightOrigin();
     for (int sample : {-65536, -257, -1, 0, 1, 255, 256, 65535}) {
-        const Vector2 at = store.worldOfTexel(HEIGHT, sample + m, -sample + m);
+        const Vector2 at = store.worldOfTexel(TILED_MAP_STORE_HEIGHT, sample + m, -sample + m);
         EXPECT_EQ(at.x, static_cast<float>(sample) * 0.5f);
         EXPECT_EQ(at.y, static_cast<float>(-sample) * 0.5f);
-        const Vector2 back = store.texelOfWorld(HEIGHT, at.x, at.y);
+        const Vector2 back = store.texelOfWorld(TILED_MAP_STORE_HEIGHT, at.x, at.y);
         EXPECT_EQ(back.x, static_cast<float>(sample + m));
         EXPECT_EQ(back.y, static_cast<float>(-sample + m));
     }
@@ -125,12 +125,12 @@ TEST(TiledMapStore, WorldOfTexelOnLattice) {
     EXPECT_EQ(store.worldOfTexel(hole, mh - 1, mh).x, -holeTexel * 0.5f);
     EXPECT_EQ(store.texelOfWorld(hole, holeTexel * 0.5f, 0.0f).x, static_cast<float>(mh));
     // the format is the addressable lattice, with no negative texel
-    EXPECT_EQ(store.format(HEIGHT).bounds, (TexelRect{0, 0, 2 * m + 1, 2 * m + 1}));
-    EXPECT_EQ(store.preferredBlock(HEIGHT), (TexelRect{m, m, 256, 256}));
+    EXPECT_EQ(store.format(TILED_MAP_STORE_HEIGHT).bounds, (TexelRect{0, 0, 2 * m + 1, 2 * m + 1}));
+    EXPECT_EQ(store.preferredBlock(TILED_MAP_STORE_HEIGHT), (TexelRect{m, m, 256, 256}));
 }
 
 TEST(TiledMapStore, DirtyRectsAndTilesReported) {
-    World world;
+    TiledMapStoreWorld world;
     ASSERT_TRUE(world.store.addTile(TileCoord(0, 0)));
     std::vector<std::pair<MapId, TexelRect>> dirty;
     world.store.takeDirty(dirty);
@@ -140,7 +140,7 @@ TEST(TiledMapStore, DirtyRectsAndTilesReported) {
     // a write across the high-x border: one tile made, both reported
     const TexelRect rect{world.m() + 60, world.m() + 10, 8, 4};
     std::vector<float> values(static_cast<size_t>(rect.area()), 0.5f);
-    const WriteResult wrote = world.store.write(HEIGHT, rect, values);
+    const WriteResult wrote = world.store.write(TILED_MAP_STORE_HEIGHT, rect, values);
     ASSERT_TRUE(wrote.ok);
     EXPECT_EQ(wrote.tilesCreated, 1);
     EXPECT_TRUE(world.access.present(TileCoord(1, 0)));
@@ -150,7 +150,7 @@ TEST(TiledMapStore, DirtyRectsAndTilesReported) {
     const std::vector<TileCoord> changed = world.access.takeChanged();
     EXPECT_EQ(changed.size(), 2u);
     // the same write again changes nothing and reports nothing
-    ASSERT_TRUE(world.store.write(HEIGHT, rect, values).ok);
+    ASSERT_TRUE(world.store.write(TILED_MAP_STORE_HEIGHT, rect, values).ok);
     dirty.clear();
     world.store.takeDirty(dirty);
     EXPECT_TRUE(dirty.empty());
@@ -158,18 +158,18 @@ TEST(TiledMapStore, DirtyRectsAndTilesReported) {
 }
 
 TEST(TiledMapStore, RefusedWholeByValidateOps) {
-    World world;
+    TiledMapStoreWorld world;
     ASSERT_TRUE(world.store.addTile(TileCoord(0, 0)));
     world.store.options().maxBoxTiles = 3;
     // a stroke that would make the world four tiles wide is refused before anything runs
-    Op far = circle(OpType::Raise, 64.0f * 3.5f, 32.0f, 10.0f);
+    Op far = tiledMapStoreCircle(OpType::Raise, 64.0f * 3.5f, 32.0f, 10.0f);
     far.delta = 1.0f;
     const TerrainOpResult refused = applyOps(world.store, std::span<const Op>(&far, 1));
     EXPECT_FALSE(refused.ok);
     EXPECT_NE(refused.error.find("3 tiles"), std::string::npos) << refused.error;
     EXPECT_EQ(world.access.count(), 1u) << "all or nothing";
     // inside the box it goes through and makes its tile
-    Op near = circle(OpType::Raise, 64.0f * 1.5f, 32.0f, 10.0f);
+    Op near = tiledMapStoreCircle(OpType::Raise, 64.0f * 1.5f, 32.0f, 10.0f);
     near.delta = 1.0f;
     const TerrainOpResult made = applyOps(world.store, std::span<const Op>(&near, 1));
     ASSERT_TRUE(made.ok) << made.error;
@@ -177,7 +177,7 @@ TEST(TiledMapStore, RefusedWholeByValidateOps) {
     EXPECT_TRUE(made.hasWarning("tile_created"));
     // past the world's limit of 16,384 m
     world.store.options().maxBoxTiles = 256;
-    Op edge = circle(OpType::Raise, 16384.0f + 10.0f, 0.0f, 4.0f);
+    Op edge = tiledMapStoreCircle(OpType::Raise, 16384.0f + 10.0f, 0.0f, 4.0f);
     edge.delta = 1.0f;
     EXPECT_FALSE(applyOps(world.store, std::span<const Op>(&edge, 1)).ok);
 }
@@ -185,13 +185,13 @@ TEST(TiledMapStore, RefusedWholeByValidateOps) {
 TEST(TiledMapStore, OpsMatchOneMap) {
     // the ops engine over a 2 x 2 world and over one map on the same samples: same bytes (AC26's
     // stand-in for T1's golden hashes, spec Deviations)
-    World world;
+    TiledMapStoreWorld world;
     for (int z = -1; z <= 0; z++) {
         for (int x = -1; x <= 0; x++) world.access.add(TileCoord(x, z), fixtureTile(world.lattice, TileCoord(x, z)));
     }
     constexpr int SIDE = 129;
     RawMapStore plain(static_cast<float>(SIDE), 16.0f);
-    plain.addMap(HEIGHT, SIDE, SIDE, 1, 16);
+    plain.addMap(TILED_MAP_STORE_HEIGHT, SIDE, SIDE, 1, 16);
     std::vector<uint8_t> seed(static_cast<size_t>(SIDE) * SIDE * 2);
     for (int y = 0; y < SIDE; y++) {
         for (int x = 0; x < SIDE; x++) {
@@ -200,21 +200,21 @@ TEST(TiledMapStore, OpsMatchOneMap) {
             seed[(static_cast<size_t>(y) * SIDE + x) * 2 + 1] = static_cast<uint8_t>(value >> 8);
         }
     }
-    ASSERT_TRUE(plain.writeBytes(HEIGHT, TexelRect{0, 0, SIDE, SIDE}, seed).ok);
+    ASSERT_TRUE(plain.writeBytes(TILED_MAP_STORE_HEIGHT, TexelRect{0, 0, SIDE, SIDE}, seed).ok);
 
     std::vector<Op> ops;
-    Op raise = circle(OpType::Raise, 3.0f, -2.0f, 20.0f);
+    Op raise = tiledMapStoreCircle(OpType::Raise, 3.0f, -2.0f, 20.0f);
     raise.delta = 2.0f;
     ops.push_back(raise);
-    Op smooth = circle(OpType::Smooth, -6.0f, 5.0f, 18.0f);
+    Op smooth = tiledMapStoreCircle(OpType::Smooth, -6.0f, 5.0f, 18.0f);
     smooth.iterations = 3;
     ops.push_back(smooth);
     // (add_noise anchors its field at the map's first texel, which a world puts at its addressable
     // corner: the same op, another field, so it is left out of this comparison)
-    Op terrace = circle(OpType::Terrace, 10.0f, 10.0f, 15.0f);
+    Op terrace = tiledMapStoreCircle(OpType::Terrace, 10.0f, 10.0f, 15.0f);
     terrace.steps = 5;
     ops.push_back(terrace);
-    Op set = circle(OpType::SetHeight, -20.0f, -20.0f, 9.0f);
+    Op set = tiledMapStoreCircle(OpType::SetHeight, -20.0f, -20.0f, 9.0f);
     set.height = 8.0f;
     ops.push_back(set);
     const TerrainOpResult plainResult = applyOps(plain, ops);
@@ -223,15 +223,15 @@ TEST(TiledMapStore, OpsMatchOneMap) {
     ASSERT_TRUE(worldResult.ok) << worldResult.error;
 
     std::vector<uint8_t> plainBytes(seed.size());
-    ASSERT_TRUE(plain.readBytes(HEIGHT, TexelRect{0, 0, SIDE, SIDE}, plainBytes));
+    ASSERT_TRUE(plain.readBytes(TILED_MAP_STORE_HEIGHT, TexelRect{0, 0, SIDE, SIDE}, plainBytes));
     std::vector<uint8_t> worldBytes(seed.size());
-    ASSERT_TRUE(world.store.readBytes(HEIGHT, TexelRect{world.m() - 64, world.m() - 64, SIDE, SIDE}, worldBytes));
+    ASSERT_TRUE(world.store.readBytes(TILED_MAP_STORE_HEIGHT, TexelRect{world.m() - 64, world.m() - 64, SIDE, SIDE}, worldBytes));
     EXPECT_EQ(worldBytes, plainBytes);
     for (size_t i = 0; i < ops.size(); i++) EXPECT_EQ(worldResult.ops[i].changedTexels, plainResult.ops[i].changedTexels) << i;
 }
 
 TEST(TiledMapStore, UndoRemovesCreatedTilesBytesIdentical) {
-    World world;
+    TiledMapStoreWorld world;
     ASSERT_TRUE(world.store.addTile(TileCoord(0, 0)));
     world.access.add(TileCoord(0, 0), fixtureTile(world.lattice, TileCoord(0, 0)));
     world.store.syncGutters(TileCoord(0, 0));
@@ -239,7 +239,7 @@ TEST(TiledMapStore, UndoRemovesCreatedTilesBytesIdentical) {
 
     // a stroke over the border, as T1's commands run it: an overlay, its delta, the store's hook
     OverlayMapStore overlay(world.store);
-    Op raise = circle(OpType::Raise, 64.0f, 30.0f, 12.0f);
+    Op raise = tiledMapStoreCircle(OpType::Raise, 64.0f, 30.0f, 12.0f);
     raise.delta = 3.0f;
     OpOptions inPlace;
     inPlace.inPlace = true;
@@ -286,7 +286,7 @@ TEST(TiledMapStore, UndoRemovesCreatedTilesBytesIdentical) {
 }
 
 TEST(TiledMapStore, LargeEditSnapshots) {
-    World world;
+    TiledMapStoreWorld world;
     for (int z = 0; z < 2; z++) {
         for (int x = 0; x < 2; x++) world.access.add(TileCoord(x, z), fixtureTile(world.lattice, TileCoord(x, z)));
     }
@@ -294,7 +294,7 @@ TEST(TiledMapStore, LargeEditSnapshots) {
     for (const TileCoord tile : world.access.coords()) world.store.syncGutters(tile);
     world.store.options().largeEditTexels = 32 * 32;
     const std::vector<uint8_t> before = fileOf(*world.access.tile(TileCoord(1, 1)));
-    Op raise = circle(OpType::Raise, 64.0f, 64.0f, 50.0f);
+    Op raise = tiledMapStoreCircle(OpType::Raise, 64.0f, 64.0f, 50.0f);
     raise.delta = 1.0f;
     const TerrainOpResult result = applyOps(world.store, std::span<const Op>(&raise, 1));
     ASSERT_TRUE(result.ok) << result.error;
@@ -308,23 +308,23 @@ TEST(TiledMapStore, LargeEditSnapshots) {
 }
 
 TEST(TiledMapStore, DryRunPredictsNoUndo) {
-    World world;
+    TiledMapStoreWorld world;
     for (int x = 0; x < 3; x++) world.access.add(TileCoord(x, 0), fixtureTile(world.lattice, TileCoord(x, 0)));
     world.store.options().largeEditTexels = 16 * 16;
-    const TexelRect rect = world.store.tileRect(HEIGHT, TileCoord(1, 0));
-    LargeEditPrediction prediction = world.store.predictLarge(HEIGHT, rect);
+    const TexelRect rect = world.store.tileRect(TILED_MAP_STORE_HEIGHT, TileCoord(1, 0));
+    LargeEditPrediction prediction = world.store.predictLarge(TILED_MAP_STORE_HEIGHT, rect);
     EXPECT_TRUE(prediction.large);
     EXPECT_TRUE(prediction.undoable);
     EXPECT_EQ(prediction.tiles, 3) << "the tile and the neighbours holding its borders";
     EXPECT_EQ(prediction.snapshotBytes, 3 * world.access.tile(TileCoord(0, 0))->cpuBytes());
     world.store.options().snapshotCapBytes = prediction.snapshotBytes - 1;
-    prediction = world.store.predictLarge(HEIGHT, rect);
+    prediction = world.store.predictLarge(TILED_MAP_STORE_HEIGHT, rect);
     EXPECT_FALSE(prediction.undoable) << "past the cap the call needs allow_no_undo";
-    EXPECT_FALSE(world.store.predictLarge(HEIGHT, TexelRect{rect.x, rect.y, 8, 8}).large);
+    EXPECT_FALSE(world.store.predictLarge(TILED_MAP_STORE_HEIGHT, TexelRect{rect.x, rect.y, 8, 8}).large);
 }
 
 TEST(TiledMapStore, SeamCheckAndRepair) {
-    World world;
+    TiledMapStoreWorld world;
     world.access.add(TileCoord(0, 0), fixtureTile(world.lattice, TileCoord(0, 0)));
     world.access.add(TileCoord(1, 0), fixtureTile(world.lattice, TileCoord(1, 0)));
     EXPECT_EQ(world.store.seamErrors(TileCoord(0, 0), false), 0);
@@ -342,7 +342,7 @@ TEST(TiledMapStore, SeamCheckAndRepair) {
 }
 
 TEST(TiledMapStore, PaintAcrossBorderSharesBlendSamples) {
-    World world;
+    TiledMapStoreWorld world;
     world.access.add(TileCoord(0, 0), fixtureTile(world.lattice, TileCoord(0, 0)));
     world.access.add(TileCoord(1, 0), fixtureTile(world.lattice, TileCoord(1, 0)));
     const MapId blend{MapKind::Blend, 0};

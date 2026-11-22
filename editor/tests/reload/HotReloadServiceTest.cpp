@@ -35,7 +35,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    void writeText(const fs::path& path, const std::string& text) {
+    void hotReloadServiceWriteText(const fs::path& path, const std::string& text) {
         fs::create_directories(path.parent_path());
         std::ofstream out(path, std::ios::binary | std::ios::trunc);
         out << text;
@@ -63,7 +63,7 @@ namespace {
         }
         void TearDown() override {
             service.detach();
-            // closes the project's scenes as a project switch does (a Project frees none itself)
+            // closes the project's scenes as a project switch does
             project.releaseScenes();
         }
         // what the editor's loop does with the watcher running (App::pollExternalChanges),
@@ -101,7 +101,7 @@ TEST_F(HotReloadServiceTests, TextureFailureKeepsTheOldOneAndRetriesOnce) {
     const uint32_t generation = TextureDataPool::generation(id);
 
     // a file that is not an image any more
-    writeText(file, "not a png");
+    hotReloadServiceWriteText(file, "not a png");
     const auto started = std::chrono::steady_clock::now();
     ApplyResult result = service.apply(ChangeSet::fromPaths({file}), ApplyOptions());
     ASSERT_EQ(result.pending.size(), 1u);
@@ -241,11 +241,11 @@ TEST_F(HotReloadServiceTests, RacyStampComparesTheBytes) {
 
 TEST_F(HotReloadServiceTests, ShaderIncludeReachesOnlyItsForks) {
     const fs::path root = project.getProjectPath();
-    writeText(root / "shaders" / "lib" / "common.glsl", "float common() { return 1.0; }\n");
-    writeText(root / "shaders" / "a.vert", "#version 450\nvoid main() {}\n");
-    writeText(root / "shaders" / "a.frag", "#version 450\n#include \"lib/common.glsl\"\nvoid main() {}\n");
-    writeText(root / "shaders" / "b.vert", "#version 450\nvoid main() {}\n");
-    writeText(root / "shaders" / "b.frag", "#version 450\nvoid main() {}\n");
+    hotReloadServiceWriteText(root / "shaders" / "lib" / "common.glsl", "float common() { return 1.0; }\n");
+    hotReloadServiceWriteText(root / "shaders" / "a.vert", "#version 450\nvoid main() {}\n");
+    hotReloadServiceWriteText(root / "shaders" / "a.frag", "#version 450\n#include \"lib/common.glsl\"\nvoid main() {}\n");
+    hotReloadServiceWriteText(root / "shaders" / "b.vert", "#version 450\nvoid main() {}\n");
+    hotReloadServiceWriteText(root / "shaders" / "b.frag", "#version 450\nvoid main() {}\n");
     const std::set<std::string> changed = {"shaders/lib/common.glsl"};
     EXPECT_TRUE(reload::shaderSourcesReach(&project, "shaders/a", 0, changed)) << "a includes it";
     EXPECT_FALSE(reload::shaderSourcesReach(&project, "shaders/b", 0, changed)) << "b does not";
@@ -307,7 +307,7 @@ TEST_F(HotReloadServiceTests, EditorWritesAndDeletesReachAnOpenGraph) {
     auto graphText = [](const std::string& nodes) {
         return R"({"formatVersion": 1, "kind": "reload_test", "kindVersion": 1, "nextId": 9, "nodes": [)" + nodes + R"(], "edges": []})";
     };
-    writeText(file, graphText(R"({"id": "n1", "type": "box", "position": [0, 0]})"));
+    hotReloadServiceWriteText(file, graphText(R"({"id": "n1", "type": "box", "position": [0, 0]})"));
     std::string error;
     std::shared_ptr<GraphDocument> document = GraphDocument::open(&project, file.string(), &error);
     ASSERT_TRUE(document) << error;
@@ -321,7 +321,7 @@ TEST_F(HotReloadServiceTests, EditorWritesAndDeletesReachAnOpenGraph) {
         set.changes.push_back(change);
         service.apply(set, ApplyOptions());
     };
-    writeText(file, graphText(R"({"id": "n1", "type": "box", "position": [0, 0]}, {"id": "n2", "type": "box", "position": [9, 9]})"));
+    hotReloadServiceWriteText(file, graphText(R"({"id": "n1", "type": "box", "position": [0, 0]}, {"id": "n2", "type": "box", "position": [9, 9]})"));
     apply(FileChangeKind::Modified);
     EXPECT_EQ(document->graph().nodes.size(), 2u) << "write_file's content reached the document";
 
@@ -341,22 +341,22 @@ TEST(ModelReloadTests, HierarchyMismatchIsReportedNotRebuilt) {
     auto gltf = [](const std::string& nodes, const std::string& roots) {
         return "{\"asset\": {\"version\": \"2.0\"}, \"scene\": 0, \"scenes\": [{\"nodes\": [" + roots + "]}], \"nodes\": [" + nodes + "]}";
     };
-    writeText(file, gltf("{\"name\": \"Root\", \"children\": [1]}, {\"name\": \"Arm\"}", "0"));
+    hotReloadServiceWriteText(file, gltf("{\"name\": \"Root\", \"children\": [1]}, {\"name\": \"Arm\"}", "0"));
     std::shared_ptr<MeshSystem::ModelReload> first = MeshSystem::parseModelForReload(file.string());
     MeshSystem::adoptModelReload(first);   // what the scene loaded
 
     // the same nodes with other contents: rebuilt in place
-    writeText(file, gltf("{\"name\": \"Root\", \"children\": [1], \"translation\": [1, 0, 0]}, {\"name\": \"Arm\"}", "0"));
+    hotReloadServiceWriteText(file, gltf("{\"name\": \"Root\", \"children\": [1], \"translation\": [1, 0, 0]}, {\"name\": \"Arm\"}", "0"));
     std::string why;
     EXPECT_TRUE(MeshSystem::modelHierarchyMatches(*MeshSystem::parseModelForReload(file.string()), why)) << why;
 
     // a node more: no rebuild, a reason that names it
-    writeText(file, gltf("{\"name\": \"Root\", \"children\": [1, 2]}, {\"name\": \"Arm\"}, {\"name\": \"Leg\"}", "0"));
+    hotReloadServiceWriteText(file, gltf("{\"name\": \"Root\", \"children\": [1, 2]}, {\"name\": \"Arm\"}, {\"name\": \"Leg\"}", "0"));
     EXPECT_FALSE(MeshSystem::modelHierarchyMatches(*MeshSystem::parseModelForReload(file.string()), why));
     EXPECT_NE(why.find("nodes"), std::string::npos) << why;
 
     // a broken file throws with the parser's message (the reload keeps the old one)
-    writeText(file, "{ not json");
+    hotReloadServiceWriteText(file, "{ not json");
     EXPECT_THROW(MeshSystem::parseModelForReload(file.string()), std::runtime_error);
 }
 
@@ -382,7 +382,7 @@ TEST(HotReloadKinds, FilesByKind) {
 
 TEST(HotReloadKinds, ChangeSetFromPathsAsksTheDisk) {
     TempDir dir;
-    writeText(dir.path() / "there.txt", "x");
+    hotReloadServiceWriteText(dir.path() / "there.txt", "x");
     ChangeSet set = ChangeSet::fromPaths({dir.path() / "there.txt", dir.path() / "gone.txt"});
     ASSERT_EQ(set.changes.size(), 2u);
     EXPECT_EQ(set.changes[0].kind, FileChangeKind::Modified);

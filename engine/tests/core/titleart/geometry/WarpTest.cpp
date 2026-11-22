@@ -32,7 +32,7 @@ namespace {
     }
 
     // a circle of radius r at (cx, cy) as four cubics (the shape refit has to keep smooth)
-    Path circle(double cx, double cy, double r) {
+    Path warpCircle(double cx, double cy, double r) {
         const double k = 0.5522847498 * r;
         Path p;
         p.moveTo(cx + r, cy);
@@ -82,7 +82,7 @@ TEST(WarpTest, StylesMatchPachislop) {
 
 TEST(WarpTest, IdentityWarpsLeaveOutlinesAlone) {
     const TitleRect box{-100, -50, 200, 100};
-    const Path c = circle(0, 0, 40);
+    const Path c = warpCircle(0, 0, 40);
     for (const WarpParams& w : {WarpParams{}, WarpParams{WarpStyle::Arc, 0, 0, 0}, WarpParams{WarpStyle::None, 50, 0, 0}}) {
         EXPECT_TRUE(warpIsIdentity(w));
         EXPECT_FALSE(makeWarper(box, w).has_value());
@@ -106,7 +106,7 @@ TEST(WarpTest, ArcRowsFollowCircles) {
 TEST(WarpTest, RefitKeepsCurvesWithinTolerance) {
     // the warped outline's points stay within the refit tolerance of the exact map of the input
     const TitleRect box{-120, -40, 240, 80};
-    const Path source = circle(30, 0, 35);
+    const Path source = warpCircle(30, 0, 35);
     for (WarpStyle style : {WarpStyle::Arc, WarpStyle::Flag, WarpStyle::Fisheye, WarpStyle::Twist, WarpStyle::Squeeze}) {
         SCOPED_TRACE(warpStyleName(style));
         const WarpParams warp{style, 70, 10, -20};

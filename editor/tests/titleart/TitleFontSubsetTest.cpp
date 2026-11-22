@@ -31,7 +31,7 @@ using jasperengine::test::TestTempDir;
 
 namespace {
 
-    std::vector<uint8_t> fixture(const std::string& name) {
+    std::vector<uint8_t> titleFontSubsetFixture(const std::string& name) {
         const fs::path path = fs::path(JASPER_TEST_REPO_DIR) / "engine" / "tests" / "core" / "titleart" / "fonts" / name;
         std::ifstream file(path, std::ios::binary);
         std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -131,7 +131,7 @@ namespace {
         hb_glyph_extents_t extents;
     };
 
-    std::vector<Shaped> shape(Font& f, const std::string& text, hb_direction_t direction, const char* variations = nullptr) {
+    std::vector<Shaped> titleFontSubsetShape(Font& f, const std::string& text, hb_direction_t direction, const char* variations = nullptr) {
         if (variations) {
             hb_variation_t v;
             EXPECT_TRUE(hb_variation_from_string(variations, -1, &v));
@@ -206,7 +206,7 @@ namespace {
 // AC15: a Latin subset of a CJK OFL font keeps the 95 code points and the vert closure (the
 // vertical forms of what it keeps), and shapes vertical text as the full font does
 TEST(TitleFontSubset, LatinKeepsCodepointsAndVertClosure) {
-    const std::vector<uint8_t> bytes = fixture("Stick-Regular.ttf");
+    const std::vector<uint8_t> bytes = titleFontSubsetFixture("Stick-Regular.ttf");
     const std::string vertical = "\xe3\x83\xbc\xe3\x80\x8c\xe3\x80\x8d\xef\xbc\x88\xef\xbc\x89";   // ー「」（）
     const TitleCharacterSet set = latinPlus(vertical);
     const TitleSubsetResult result = subsetOf(bytes, set);
@@ -223,10 +223,10 @@ TEST(TitleFontSubset, LatinKeepsCodepointsAndVertClosure) {
     EXPECT_EQ(latin, 95u);
     EXPECT_EQ(kept.size(), set.size()) << "only the set's code points";
 
-    const std::vector<Shaped> fullVertical = shape(full, vertical, HB_DIRECTION_TTB);
-    const std::vector<Shaped> subsetVertical = shape(subset, vertical, HB_DIRECTION_TTB);
+    const std::vector<Shaped> fullVertical = titleFontSubsetShape(full, vertical, HB_DIRECTION_TTB);
+    const std::vector<Shaped> subsetVertical = titleFontSubsetShape(subset, vertical, HB_DIRECTION_TTB);
     expectSameShaping(fullVertical, subsetVertical, "vertical");
-    const std::vector<Shaped> subsetHorizontal = shape(subset, vertical, HB_DIRECTION_LTR);
+    const std::vector<Shaped> subsetHorizontal = titleFontSubsetShape(subset, vertical, HB_DIRECTION_LTR);
     ASSERT_EQ(subsetHorizontal.size(), subsetVertical.size());
     EXPECT_NE(subsetHorizontal[0].glyph, subsetVertical[0].glyph) << "the subset has ー's vert form";
 }
@@ -250,15 +250,15 @@ TEST(TitleFontSubset, ReservedNamesOfThePackFonts) {
 
 TEST(TitleFontSubset, ShapesLikeTheFullFont) {
     for (const char* name : {"SourceSans3-Regular.otf", "DelaGothicOne-Regular.ttf"}) {
-        const std::vector<uint8_t> bytes = fixture(name);
+        const std::vector<uint8_t> bytes = titleFontSubsetFixture(name);
         const TitleSubsetResult result = subsetOf(bytes, latinPlus(""));
         ASSERT_TRUE(result.ok) << name << ": " << result.error;
         Font full(bytes), subset(result.bytes);
         for (const char* text : {"Office fit ffi! AVATAR Ty.", "Hello, World: 0123456789 $%&*@", "~{[(<quoted \"text\">)]}|"}) {
-            const std::vector<Shaped> a = shape(full, text, HB_DIRECTION_LTR), b = shape(subset, text, HB_DIRECTION_LTR);
+            const std::vector<Shaped> a = titleFontSubsetShape(full, text, HB_DIRECTION_LTR), b = titleFontSubsetShape(subset, text, HB_DIRECTION_LTR);
             expectSameShaping(a, b, std::string(name) + " \"" + text + "\"");
         }
-        const std::vector<Shaped> office = shape(subset, "Office", HB_DIRECTION_LTR);
+        const std::vector<Shaped> office = titleFontSubsetShape(subset, "Office", HB_DIRECTION_LTR);
         if (std::string(name) == "SourceSans3-Regular.otf") { EXPECT_LT(office.size(), 6u) << "the ffi ligature survived"; }
     }
 }
@@ -266,7 +266,7 @@ TEST(TitleFontSubset, ShapesLikeTheFullFont) {
 // AC15: a variable font keeps its axes and its instances (TrueType gvar and CFF2)
 TEST(TitleFontSubset, VariableAxesKept) {
     for (const char* name : {"Oswald-wght.ttf", "SourceSans3VF-Upright.otf"}) {
-        const std::vector<uint8_t> bytes = fixture(name);
+        const std::vector<uint8_t> bytes = titleFontSubsetFixture(name);
         TitleFontInfo info;
         std::string error;
         ASSERT_TRUE(readTitleFontInfo(bytes, 0, info, error)) << error;
@@ -285,9 +285,9 @@ TEST(TitleFontSubset, VariableAxesKept) {
         EXPECT_EQ(a.min_value, b.min_value);
         EXPECT_EQ(a.default_value, b.default_value);
         EXPECT_EQ(a.max_value, b.max_value);
-        const std::vector<Shaped> heavy = shape(subset, "Wordmark", HB_DIRECTION_LTR, "wght=700");
-        expectSameShaping(shape(full, "Wordmark", HB_DIRECTION_LTR, "wght=700"), heavy, std::string(name) + " wght 700");
-        const std::vector<Shaped> light = shape(subset, "Wordmark", HB_DIRECTION_LTR, "wght=300");
+        const std::vector<Shaped> heavy = titleFontSubsetShape(subset, "Wordmark", HB_DIRECTION_LTR, "wght=700");
+        expectSameShaping(titleFontSubsetShape(full, "Wordmark", HB_DIRECTION_LTR, "wght=700"), heavy, std::string(name) + " wght 700");
+        const std::vector<Shaped> light = titleFontSubsetShape(subset, "Wordmark", HB_DIRECTION_LTR, "wght=300");
         EXPECT_NE(heavy[0].xAdvance + heavy[1].xAdvance, light[0].xAdvance + light[1].xAdvance) << name << ": the axis still varies";
     }
 }
@@ -295,14 +295,14 @@ TEST(TitleFontSubset, VariableAxesKept) {
 // R54 budget: Latin from a ~400 KB font <= 200 ms (Release, server A); the CJK case of R54 (Joyo +
 // Kana from an 8 MB OTF <= 2 s) is measured on the largest CJK fixture, a 2.5 MB TTF, and logged
 TEST(TitleFontSubset, Timing) {
-    const std::vector<uint8_t> latinFont = fixture("SourceSans3-Regular.otf");
+    const std::vector<uint8_t> latinFont = titleFontSubsetFixture("SourceSans3-Regular.otf");
     const TitleSubsetResult latin = subsetOf(latinFont, latinPlus(""));
     ASSERT_TRUE(latin.ok) << latin.error;
     TitleCharacterSet cjk, kana;
     ASSERT_TRUE(titleCharacterPreset("joyo_kanji", cjk));
     ASSERT_TRUE(titleCharacterPreset("kana", kana));
     cjk.merge(kana);
-    const TitleSubsetResult japanese = subsetOf(fixture("DelaGothicOne-Regular.ttf"), cjk);
+    const TitleSubsetResult japanese = subsetOf(titleFontSubsetFixture("DelaGothicOne-Regular.ttf"), cjk);
     ASSERT_TRUE(japanese.ok) << japanese.error;
     std::printf("[ subset   ] Latin from SourceSans3-Regular.otf (%zu KB): %.1f ms, %zu KB, %d glyphs\n", latinFont.size() / 1024,
                 latin.ms, latin.bytes.size() / 1024, latin.glyphs);
@@ -319,7 +319,7 @@ TEST(TitleFontSubset, CacheBySetAndFont) {
     TestTempDir directory("title-subset-cache");
     TitleFontSubsetter subsetter(directory.path() / "subsets");
     TitleSubsetRequest request;
-    request.bytes = fixture("Oswald-wght.ttf");
+    request.bytes = titleFontSubsetFixture("Oswald-wght.ttf");
     request.codepoints = codepointsOf(latinPlus(""));
     const TitleSubsetResult first = subsetter.subset(request);
     ASSERT_TRUE(first.ok) << first.error;
@@ -338,7 +338,7 @@ TEST(TitleFontSubset, CacheBySetAndFont) {
 // R56: Restricted License fails unless acknowledged; Bitmap Only fails; No Subsetting ships whole;
 // Preview & Print, Editable and Installable ship
 TEST(TitleFontSubset, EmbeddingPermissions) {
-    const std::vector<uint8_t> bytes = fixture("Oswald-wght.ttf");
+    const std::vector<uint8_t> bytes = titleFontSubsetFixture("Oswald-wght.ttf");
     TitleFontInfo info;
     std::string error;
     ASSERT_TRUE(readTitleFontInfo(withFsType(bytes, 0x0002), 0, info, error)) << error;
@@ -401,7 +401,7 @@ TEST(TitleFontSubset, AcknowledgementFromTheMeta) {
 // R57: an OFL font whose copyright declares a Reserved Font Name is renamed in its subset, in the
 // Windows (UTF-16) and Mac (Roman) records alike; without one, or shipped whole, it keeps its names
 TEST(TitleFontSubset, ReservedFontNameRenamed) {
-    const std::vector<uint8_t> source = fixture("SourceSans3-Regular.otf");
+    const std::vector<uint8_t> source = titleFontSubsetFixture("SourceSans3-Regular.otf");
     TitleFontInfo info;
     std::string error;
     ASSERT_TRUE(readTitleFontInfo(source, 0, info, error)) << error;
@@ -429,7 +429,7 @@ TEST(TitleFontSubset, ReservedFontNameRenamed) {
     EXPECT_FALSE(subsetOf(source, latinPlus(""), false).renamed) << "renameReserved off";
 
     // Dela Gothic One declares none: its subset keeps its names
-    const std::vector<uint8_t> dela = fixture("DelaGothicOne-Regular.ttf");
+    const std::vector<uint8_t> dela = titleFontSubsetFixture("DelaGothicOne-Regular.ttf");
     const TitleSubsetResult kept = subsetOf(dela, latinPlus(""));
     ASSERT_TRUE(kept.ok) << kept.error;
     EXPECT_FALSE(kept.renamed);
@@ -455,7 +455,7 @@ TEST(TitleFontSubset, ReservedFontNameRenamed) {
 
     // the renamed subset still loads and shapes
     Font font(mac.bytes);
-    EXPECT_EQ(shape(font, "Logo", HB_DIRECTION_LTR).size(), 4u);
+    EXPECT_EQ(titleFontSubsetShape(font, "Logo", HB_DIRECTION_LTR).size(), 4u);
 }
 
 // R57: licenses/THIRD-PARTY-FONTS.txt names each shipped font with its licence, and carries the
@@ -463,7 +463,7 @@ TEST(TitleFontSubset, ReservedFontNameRenamed) {
 TEST(TitleFontSubset, CreditsText) {
     TitleFontInfo source, other;
     std::string error;
-    ASSERT_TRUE(readTitleFontInfo(fixture("SourceSans3-Regular.otf"), 0, source, error)) << error;
+    ASSERT_TRUE(readTitleFontInfo(titleFontSubsetFixture("SourceSans3-Regular.otf"), 0, source, error)) << error;
     other.family = "House Face";
     other.copyright = "(c) Our Studio";
     other.license = "Licensed to Our Studio for games";

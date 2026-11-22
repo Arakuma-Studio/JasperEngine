@@ -112,6 +112,14 @@ docker run --rm -v "$ROOT:/src" "$IMAGE" rm -rf "/src/$OUT"
 mkdir -p "$ROOT/$OUT" "$MAIN/build/.cache/ccache"
 cp -r "$PROJECT" "$ROOT/$OUT/project"
 
+# CCACHE_MAXSIZE when set (CI: 0, no limit while building, .github/actions/ccache-restore); else the
+# cache's own ccache.conf decides
+CCACHE_FLAGS=()
+[[ -n "${CCACHE_MAXSIZE:-}" ]] && CCACHE_FLAGS=(-e "CCACHE_MAXSIZE=$CCACHE_MAXSIZE")
+# JASPERENGINE_DEBUG_INFO when set (CI: lines, the game's objects with line tables only,
+# engine/cmake/JasperDebugInfo.cmake)
+[[ -n "${JASPERENGINE_DEBUG_INFO:-}" ]] && CCACHE_FLAGS+=(-e "JASPERENGINE_DEBUG_INFO=$JASPERENGINE_DEBUG_INFO")
+
 # DOCKER_CPUS caps the CPUs of the run (and llvmpipe/lavapipe's thread count) on a shared host.
 CPU_FLAGS=()
 [[ -n "${DOCKER_CPUS:-}" ]] && CPU_FLAGS=(--cpus "$DOCKER_CPUS" -e LP_NUM_THREADS="$DOCKER_CPUS")
@@ -130,6 +138,7 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
     -e GRAPHIC_BACKEND="$GRAPHIC_BACKEND" \
     -e GAME_FLAGS="$GAME_FLAGS" \
     -e CCACHE_DIR=/ccache \
+    ${CCACHE_FLAGS[@]+"${CCACHE_FLAGS[@]}"} \
     -e CMAKE_C_COMPILER_LAUNCHER=ccache -e CMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -e EDITOR="/src/$EDITOR" \
     -e SMOKE_GAME_ENV="${SMOKE_GAME_ENV:-}" \

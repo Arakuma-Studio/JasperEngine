@@ -43,18 +43,18 @@ namespace {
 #endif
     }
 
-    std::string fixturePath(const char* name){
-        return test::testPaths().assetDir + "/cubelut/" + name;
+    std::string cubeLutFixturePath(const char* name){
+        return jasperengine::test::testPaths().assetDir + "/cubelut/" + name;
     }
 
-    std::string readText(const std::string& path){
+    std::string cubeLutReadText(const std::string& path){
         std::ifstream in(path, std::ios::binary);
         std::ostringstream text;
         text << in.rdbuf();
         return text.str();
     }
 
-    void writeBytes(const std::filesystem::path& path, const void* data, size_t size){
+    void cubeLutWriteBytes(const std::filesystem::path& path, const void* data, size_t size){
         std::ofstream out(path, std::ios::binary);
         out.write((const char*)data, (std::streamsize)size);
     }
@@ -62,12 +62,12 @@ namespace {
     CubeLut parseFixture(const char* name){
         CubeLut lut;
         std::string error;
-        EXPECT_TRUE(parseCubeLut(readText(fixturePath(name)), lut, error)) << name << ": " << error;
+        EXPECT_TRUE(parseCubeLut(cubeLutReadText(cubeLutFixturePath(name)), lut, error)) << name << ": " << error;
         return lut;
     }
 
     // the error parsing text fails with
-    std::string parseError(const std::string& text){
+    std::string cubeLutParseError(const std::string& text){
         CubeLut lut;
         std::string error;
         EXPECT_FALSE(parseCubeLut(text, lut, error)) << text;
@@ -96,10 +96,10 @@ namespace {
         return encoding;
     }
 
-    using Look = std::function<Vector3(float, float, float)>;
+    using CubeLutLook = std::function<Vector3(float, float, float)>;
 
     // .cube text of a 3D table of side n holding look(r, g, b) of the normalised coordinate
-    std::string cubeText(const std::string& title, int n, const Look& look){
+    std::string cubeText(const std::string& title, int n, const CubeLutLook& look){
         std::string text = "TITLE \"" + title + "\"\nLUT_3D_SIZE " + std::to_string(n) + "\n";
         text.reserve(text.size() + (size_t)n * n * n * 27);
         char line[64];
@@ -122,7 +122,7 @@ namespace {
     }
 
     // a log-space look (ACEScct values in and out)
-    Vector3 logLook(float r, float g, float b){
+    Vector3 cubeLutLogLook(float r, float g, float b){
         const float pi = 3.14159265f;
         return Vector3(0.02f + 0.95f * r + 0.02f * std::sin(pi * r), 0.01f + 0.98f * g, 0.03f + 0.9f * b + 0.05f * r);
     }
@@ -142,7 +142,7 @@ namespace {
         return s;
     }
 
-    int maxDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, size_t* where = nullptr){
+    int cubeLutMaxDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, size_t* where = nullptr){
         EXPECT_EQ(a.size(), b.size());
         int worst = 0;
         for (size_t i = 0; i < std::min(a.size(), b.size()); i++){
@@ -338,35 +338,35 @@ TEST(CubeLut, ParsesNumberForms){
     EXPECT_FLOAT_EQ(lut.lut1D[3], 15.0f);
     EXPECT_FLOAT_EQ(lut.lut1D[4], 0.25f);
     EXPECT_FLOAT_EQ(lut.lut1D[5], 0.000125f);
-    EXPECT_EQ(parseError("LUT_1D_SIZE 2\n0,5 0 0\n1 1 1\n"), "line 2: Invalid RGB line in 1D LUT section.");
-    EXPECT_EQ(parseError("LUT_1D_SIZE 2\n0 0 0\n1 1 1e\n"), "line 3: Invalid RGB line in 1D LUT section.");
+    EXPECT_EQ(cubeLutParseError("LUT_1D_SIZE 2\n0,5 0 0\n1 1 1\n"), "line 2: Invalid RGB line in 1D LUT section.");
+    EXPECT_EQ(cubeLutParseError("LUT_1D_SIZE 2\n0 0 0\n1 1 1e\n"), "line 3: Invalid RGB line in 1D LUT section.");
 }
 
 TEST(CubeLut, RejectsMalformed){
     // missing size
-    EXPECT_EQ(parseError("# no size\nLUT_3D_INPUT_RANGE 0.0 1.0\n0 0 0\n"), "line 3: Missing LUT_1D_SIZE and/or LUT_3D_SIZE.");
-    EXPECT_EQ(parseError(""), "line 1: Missing LUT_1D_SIZE and/or LUT_3D_SIZE.");
+    EXPECT_EQ(cubeLutParseError("# no size\nLUT_3D_INPUT_RANGE 0.0 1.0\n0 0 0\n"), "line 3: Missing LUT_1D_SIZE and/or LUT_3D_SIZE.");
+    EXPECT_EQ(cubeLutParseError(""), "line 1: Missing LUT_1D_SIZE and/or LUT_3D_SIZE.");
     // 3D size 130 (the cap is 129), and other sizes out of range or malformed
-    EXPECT_EQ(parseError("TITLE \"big\"\nLUT_3D_SIZE 130\n0 0 0\n"), "line 2: LUT_3D_SIZE out of supported range (2-129).");
-    EXPECT_EQ(parseError("LUT_3D_SIZE 1\n0 0 0\n"), "line 1: LUT_3D_SIZE out of supported range (2-129).");
-    EXPECT_EQ(parseError("LUT_1D_SIZE 65537\n0 0 0\n"), "line 1: LUT_1D_SIZE out of supported range (2-65536).");
-    EXPECT_EQ(parseError("LUT_3D_SIZE abc\n0 0 0\n"), "line 1: Invalid LUT_3D_SIZE line.");
-    EXPECT_EQ(parseError("LUT_3D_SIZE 2\nLUT_3D_INPUT_RANGE 0\n" + rows(8)), "line 2: Invalid LUT_3D_INPUT_RANGE line.");
-    EXPECT_EQ(parseError("LUT_3D_SIZE 2\nLUT_3D_INPUT_RANGE 1 0\n" + rows(8)), "line 3: The input range's minimum must be below its maximum.");
+    EXPECT_EQ(cubeLutParseError("TITLE \"big\"\nLUT_3D_SIZE 130\n0 0 0\n"), "line 2: LUT_3D_SIZE out of supported range (2-129).");
+    EXPECT_EQ(cubeLutParseError("LUT_3D_SIZE 1\n0 0 0\n"), "line 1: LUT_3D_SIZE out of supported range (2-129).");
+    EXPECT_EQ(cubeLutParseError("LUT_1D_SIZE 65537\n0 0 0\n"), "line 1: LUT_1D_SIZE out of supported range (2-65536).");
+    EXPECT_EQ(cubeLutParseError("LUT_3D_SIZE abc\n0 0 0\n"), "line 1: Invalid LUT_3D_SIZE line.");
+    EXPECT_EQ(cubeLutParseError("LUT_3D_SIZE 2\nLUT_3D_INPUT_RANGE 0\n" + rows(8)), "line 2: Invalid LUT_3D_INPUT_RANGE line.");
+    EXPECT_EQ(cubeLutParseError("LUT_3D_SIZE 2\nLUT_3D_INPUT_RANGE 1 0\n" + rows(8)), "line 3: The input range's minimum must be below its maximum.");
     // per-channel DOMAIN
-    EXPECT_EQ(parseError("DOMAIN_MIN 0.0 0.1 0.0\nDOMAIN_MAX 1.0 1.0 1.0\nLUT_3D_SIZE 2\n" + rows(8)),
+    EXPECT_EQ(cubeLutParseError("DOMAIN_MIN 0.0 0.1 0.0\nDOMAIN_MAX 1.0 1.0 1.0\nLUT_3D_SIZE 2\n" + rows(8)),
               "line 1: Per-channel DOMAIN_MIN/DOMAIN_MAX is not supported.");
-    EXPECT_EQ(parseError("DOMAIN_MAX 1.0 1.0\nLUT_3D_SIZE 2\n" + rows(8)), "line 1: Invalid DOMAIN_MIN/DOMAIN_MAX line.");
+    EXPECT_EQ(cubeLutParseError("DOMAIN_MAX 1.0 1.0\nLUT_3D_SIZE 2\n" + rows(8)), "line 1: Invalid DOMAIN_MIN/DOMAIN_MAX line.");
     // incomplete data
-    EXPECT_EQ(parseError("LUT_3D_SIZE 2\n" + rows(7)), "line 8: Incomplete 3D LUT data (7 of 8 entries).");
-    EXPECT_EQ(parseError("LUT_3D_SIZE 2\n"), "line 1: Incomplete 3D LUT data (0 of 8 entries).");
-    EXPECT_EQ(parseError("LUT_1D_SIZE 3\n0 0 0\n1 1 1\n"), "line 3: Incomplete 1D LUT data (2 of 3 entries).");
-    EXPECT_EQ(parseError("LUT_1D_SIZE 2\nLUT_3D_SIZE 2\n0 0 0\n1 1 1\n" + rows(5)), "line 9: Incomplete 3D LUT data (5 of 8 entries).");
+    EXPECT_EQ(cubeLutParseError("LUT_3D_SIZE 2\n" + rows(7)), "line 8: Incomplete 3D LUT data (7 of 8 entries).");
+    EXPECT_EQ(cubeLutParseError("LUT_3D_SIZE 2\n"), "line 1: Incomplete 3D LUT data (0 of 8 entries).");
+    EXPECT_EQ(cubeLutParseError("LUT_1D_SIZE 3\n0 0 0\n1 1 1\n"), "line 3: Incomplete 1D LUT data (2 of 3 entries).");
+    EXPECT_EQ(cubeLutParseError("LUT_1D_SIZE 2\nLUT_3D_SIZE 2\n0 0 0\n1 1 1\n" + rows(5)), "line 9: Incomplete 3D LUT data (5 of 8 entries).");
     // trailing data
-    EXPECT_EQ(parseError("LUT_3D_SIZE 2\n" + rows(8) + "1 1 1\n"), "line 10: Unexpected content after LUT data.");
+    EXPECT_EQ(cubeLutParseError("LUT_3D_SIZE 2\n" + rows(8) + "1 1 1\n"), "line 10: Unexpected content after LUT data.");
     // a malformed row
-    EXPECT_EQ(parseError("LUT_3D_SIZE 2\n0 0 0\n1 x 0\n"), "line 3: Invalid RGB line in 3D LUT section.");
-    EXPECT_EQ(parseError("LUT_3D_SIZE 2\n0 0\n"), "line 2: Invalid RGB line in 3D LUT section.");
+    EXPECT_EQ(cubeLutParseError("LUT_3D_SIZE 2\n0 0 0\n1 x 0\n"), "line 3: Invalid RGB line in 3D LUT section.");
+    EXPECT_EQ(cubeLutParseError("LUT_3D_SIZE 2\n0 0\n"), "line 2: Invalid RGB line in 3D LUT section.");
 }
 
 // ---- input encoding (OpenEngine's proposal tests, one per row of its rule)
@@ -499,7 +499,7 @@ TEST(CubeLut, JlutRoundTrip){
         EXPECT_NEAR(back.lut3D[i], small.lut3D[i], 2.2f / 65535.0f) << i;
 
     // a 65^3 .cube cooks to at most 300 KB (33^3), and bakes within 2/255 of the .cube
-    const std::pair<const char*, Look> looks[] = {{"Display look", displayLook}, {"ACEScct look", logLook}};
+    const std::pair<const char*, CubeLutLook> looks[] = {{"Display look", displayLook}, {"ACEScct look", cubeLutLogLook}};
     for (const auto& [title, look] : looks){
         CubeLut cube;
         ASSERT_TRUE(parseCubeLut(cubeText(title, 65, look), cube, error)) << error;
@@ -516,7 +516,7 @@ TEST(CubeLut, JlutRoundTrip){
             PostColorLut::bake(settings, &cube, stage, 32, fromCube);
             PostColorLut::bake(settings, &cooked, stage, 32, fromJlut);
             size_t at = 0;
-            const int difference = maxDifference(fromCube, fromJlut, &at);
+            const int difference = cubeLutMaxDifference(fromCube, fromJlut, &at);
             // (the texel: index / 4 = g * 32 * 32 + b * 32 + r, channel index % 4)
             EXPECT_LE(difference, 2) << title << " stage " << (int)stage << " at byte " << at << ": " << (int)fromCube[at]
                                      << " vs " << (int)fromJlut[at];
@@ -543,10 +543,10 @@ TEST(CubeLut, JlutRoundTrip){
 // loadColorLut reads through the engine's io (absolute paths here), a .cube's cooked sibling
 // first; the cache parses once per path until invalidated
 TEST(CubeLut, LoadsFilesAndCaches){
-    const test::TempDir dir;
-    const std::string text = cubeText("ACEScct look", 9, logLook);
+    const jasperengine::test::TempDir dir;
+    const std::string text = cubeText("ACEScct look", 9, cubeLutLogLook);
     const std::filesystem::path cubePath = dir.path() / "look.cube";
-    writeBytes(cubePath, text.data(), text.size());
+    cubeLutWriteBytes(cubePath, text.data(), text.size());
 
     CubeLut lut;
     std::string error;
@@ -564,7 +564,7 @@ TEST(CubeLut, LoadsFilesAndCaches){
     cookedSource.title = "cooked";
     std::vector<uint8_t> bytes;
     ASSERT_TRUE(writeJlut(cookedSource, bytes));
-    writeBytes(dir.path() / "look.jlut", bytes.data(), bytes.size());
+    cubeLutWriteBytes(dir.path() / "look.jlut", bytes.data(), bytes.size());
     EXPECT_EQ(getCachedColorLut(cubePath.string()), first);
     invalidateColorLutCache(cubePath.string());
     const std::shared_ptr<const CubeLut> second = getCachedColorLut(cubePath.string());
@@ -577,7 +577,7 @@ TEST(CubeLut, LoadsFilesAndCaches){
     // failures: kept with their error, null
     const std::filesystem::path badPath = dir.path() / "bad.cube";
     const std::string bad = "LUT_3D_SIZE 2\n" + rows(3);
-    writeBytes(badPath, bad.data(), bad.size());
+    cubeLutWriteBytes(badPath, bad.data(), bad.size());
     EXPECT_FALSE(getCachedColorLut(badPath.string()));
     EXPECT_EQ(getCachedColorLutError(badPath.string()), "line 4: Incomplete 3D LUT data (3 of 8 entries).");
     EXPECT_FALSE(loadColorLut((dir.path() / "missing.cube").string(), lut, &error));
@@ -606,7 +606,7 @@ TEST(CubeLutBench, Bake32){
     CubeLut display, scene;
     std::string error;
     ASSERT_TRUE(parseCubeLut(cubeText("Display look", 33, displayLook), display, error)) << error;
-    ASSERT_TRUE(parseCubeLut(cubeText("ACEScct look", 33, logLook), scene, error)) << error;
+    ASSERT_TRUE(parseCubeLut(cubeText("ACEScct look", 33, cubeLutLogLook), scene, error)) << error;
     PostProcessingSettings settings = gradedSettings();
     settings.temperature = 0.1f;
     std::vector<uint8_t> rgba;
@@ -621,14 +621,14 @@ TEST(CubeLutBench, Bake32){
 }
 
 TEST(CubeLutBench, LoadJlut){
-    const test::TempDir dir;
+    const jasperengine::test::TempDir dir;
     CubeLut cube;
     std::string error;
     ASSERT_TRUE(parseCubeLut(cubeText("Display look", 65, displayLook), cube, error)) << error;
     std::vector<uint8_t> bytes;
     ASSERT_TRUE(writeJlut(cube, bytes));
     const std::string path = (dir.path() / "look.jlut").string();
-    writeBytes(path, bytes.data(), bytes.size());
+    cubeLutWriteBytes(path, bytes.data(), bytes.size());
     CubeLut lut;
     const double ms = bestMs(5, [&]{
         EXPECT_TRUE(loadColorLut(path, lut, &error)) << error;

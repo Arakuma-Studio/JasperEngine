@@ -30,7 +30,7 @@ using namespace jasperengine::editor::test;
 
 namespace {
 
-    std::unique_ptr<Project> loadFixture(const fs::path& dir){
+    std::unique_ptr<Project> modelExportLoadFixture(const fs::path& dir){
         fs::copy(fs::path(JASPER_TEST_REPO_DIR) / "tools/fixtures/textures", dir, fs::copy_options::recursive | fs::copy_options::overwrite_existing);
         const std::vector<uint8_t> model = makeTestModel(8, false);
         std::ofstream(dir / "assets" / "models" / "robot.glb", std::ios::binary).write(reinterpret_cast<const char*>(model.data()), (std::streamsize)model.size());
@@ -46,7 +46,7 @@ namespace {
 
 TEST(ModelExport, CooksEveryModelIntoTheIndexAndLeavesTheSourcesOut){
     jasperengine::test::TestTempDir dir{"model-export"};
-    std::unique_ptr<Project> project = loadFixture(dir.path());
+    std::unique_ptr<Project> project = modelExportLoadFixture(dir.path());
     ASSERT_TRUE(project);
     // one model ships its source too
     SetAssetMetaCmd ship(project.get(), "assets/models/panel.gltf", "import.modelImporter", YAML::Load("{version: 1, shipSource: true}"));
@@ -84,7 +84,7 @@ TEST(ModelExport, CooksEveryModelIntoTheIndexAndLeavesTheSourcesOut){
 
 TEST(ModelExport, ALoadErrorFailsTheExportNamingTheFile){
     jasperengine::test::TestTempDir dir{"model-export-error"};
-    std::unique_ptr<Project> project = loadFixture(dir.path());
+    std::unique_ptr<Project> project = modelExportLoadFixture(dir.path());
     ASSERT_TRUE(project);
     // a model that requires an extension the engine does not read (S53 R5): the game would load
     // it without that extension, so it does not cook and the export stops
@@ -105,7 +105,7 @@ TEST(ModelExport, ALoadErrorFailsTheExportNamingTheFile){
 
 TEST(ModelExport, ADracoModelShipsItsCookWithoutDraco){
     jasperengine::test::TestTempDir dir{"model-export-draco"};
-    std::unique_ptr<Project> project = loadFixture(dir.path());
+    std::unique_ptr<Project> project = modelExportLoadFixture(dir.path());
     ASSERT_TRUE(project);
     fs::copy_file(fs::path(JASPER_TEST_REPO_DIR) / "engine/tests/core/fixtures/gltf/s41/draco.glb", dir.path() / "assets" / "models" / "draco.glb");
     project->refreshAssetDatabase(true);

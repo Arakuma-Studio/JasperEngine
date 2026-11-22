@@ -23,7 +23,7 @@ using namespace jasperengine::editor::procmat;
 
 namespace {
 
-    std::shared_ptr<const NodeLibrary> repositoryLibrary() {
+    std::shared_ptr<const NodeLibrary> passPlannerRepositoryLibrary() {
         std::string error;
         auto library = NodeLibrary::fromDirectory(std::filesystem::path(JASPER_TEST_REPO_DIR) / "editor/procmat/nodes", error);
         EXPECT_TRUE(library) << error;
@@ -60,12 +60,12 @@ namespace {
     }
 
     // Graph::findNode looks nodes up in id order, as load() and the edit ops keep them
-    void sortById(graph::Graph& file) {
+    void passPlannerSortById(graph::Graph& file) {
         std::sort(file.nodes.begin(), file.nodes.end(), [](const graph::Node& a, const graph::Node& b) { return graph::idLess(a.id, b.id); });
         std::sort(file.edges.begin(), file.edges.end(), [](const graph::Edge& a, const graph::Edge& b) { return graph::idLess(a.id, b.id); });
     }
 
-    graph::Graph graphOf(std::vector<std::pair<std::string, std::string>> nodes, std::vector<std::array<std::string, 4>> edges) {
+    graph::Graph passPlannerGraphOf(std::vector<std::pair<std::string, std::string>> nodes, std::vector<std::array<std::string, 4>> edges) {
         graph::Graph file;
         file.kind = PROCEDURAL_MATERIAL_KIND;
         for (const auto& [id, type] : nodes) {
@@ -84,7 +84,7 @@ namespace {
             item.to.port = edge[3];
             file.edges.push_back(std::move(item));
         }
-        sortById(file);
+        passPlannerSortById(file);
         return file;
     }
 
@@ -103,7 +103,7 @@ namespace {
     }
 
     // A chain of a noise blended over and over, in one graph file
-    graph::Graph chainGraph(int blends) {
+    graph::Graph passPlannerChainGraph(int blends) {
         std::vector<std::pair<std::string, std::string>> nodes = {{"n1", "perlin"}, {"out", MATERIAL_OUTPUT_NODE}};
         std::vector<std::array<std::string, 4>> edges;
         std::string previous = "n1";
@@ -118,15 +118,15 @@ namespace {
             previous = blend;
         }
         edges.push_back({previous, "output", "out", "roughness"});
-        return graphOf(nodes, edges);
+        return passPlannerGraphOf(nodes, edges);
     }
 
 }
 
 TEST(PassPlanner, ASmallGraphIsOnePass) {
-    const auto library = repositoryLibrary();
+    const auto library = passPlannerRepositoryLibrary();
     ASSERT_TRUE(library);
-    const graph::Graph file = graphOf({{"n1", "perlin"}, {"out", MATERIAL_OUTPUT_NODE}}, {{"n1", "output", "out", "height"}});
+    const graph::Graph file = passPlannerGraphOf({{"n1", "perlin"}, {"out", MATERIAL_OUTPUT_NODE}}, {{"n1", "output", "out", "height"}});
     PassPlan plan;
     std::string error;
     PlanOptions options;
@@ -141,9 +141,9 @@ TEST(PassPlanner, ASmallGraphIsOnePass) {
 }
 
 TEST(PassPlanner, AGraphWithNothingConnectedIsAnError) {
-    const auto library = repositoryLibrary();
+    const auto library = passPlannerRepositoryLibrary();
     ASSERT_TRUE(library);
-    const graph::Graph file = graphOf({{"n1", "perlin"}, {"out", MATERIAL_OUTPUT_NODE}}, {});
+    const graph::Graph file = passPlannerGraphOf({{"n1", "perlin"}, {"out", MATERIAL_OUTPUT_NODE}}, {});
     PassPlan plan;
     std::string error;
     EXPECT_FALSE(planGraph(file, library, {}, PlanOptions(), plan, error));
@@ -151,9 +151,9 @@ TEST(PassPlanner, AGraphWithNothingConnectedIsAnError) {
 }
 
 TEST(PassPlanner, TheMaterialOutputGivesOneImagePerSlotAndOneOrm) {
-    const auto library = repositoryLibrary();
+    const auto library = passPlannerRepositoryLibrary();
     ASSERT_TRUE(library);
-    const graph::Graph file = graphOf({{"n1", "perlin"}, {"out", MATERIAL_OUTPUT_NODE}},
+    const graph::Graph file = passPlannerGraphOf({{"n1", "perlin"}, {"out", MATERIAL_OUTPUT_NODE}},
                                       {{"n1", "output", "out", "base_color"}, {"n1", "output", "out", "roughness"}, {"n1", "output", "out", "metallic"}});
     PassPlan plan;
     std::string error;
@@ -169,13 +169,13 @@ TEST(PassPlanner, TheMaterialOutputGivesOneImagePerSlotAndOneOrm) {
 }
 
 TEST(PassPlanner, ALongChainIsCutWithinTheLimits) {
-    const auto library = repositoryLibrary();
+    const auto library = passPlannerRepositoryLibrary();
     ASSERT_TRUE(library);
     PassPlan plan;
     std::string error;
     PlanOptions options;
     options.size = 64;
-    ASSERT_TRUE(planGraph(chainGraph(120), library, {}, options, plan, error)) << error;
+    ASSERT_TRUE(planGraph(passPlannerChainGraph(120), library, {}, options, plan, error)) << error;
     EXPECT_GT(plan.passes.size(), 1u) << "241 nodes do not fit one pass";
     for (const PlannedPass& pass : plan.passes) {
         EXPECT_LE(pass.fragment.size(), options.limits.glslBytes) << pass.label;
@@ -186,14 +186,14 @@ TEST(PassPlanner, ALongChainIsCutWithinTheLimits) {
 }
 
 TEST(PassPlanner, ThePlanOfAGraphIsDeterministic) {
-    const auto library = repositoryLibrary();
+    const auto library = passPlannerRepositoryLibrary();
     ASSERT_TRUE(library);
     PassPlan a, b;
     std::string error;
     PlanOptions options;
     options.size = 64;
-    ASSERT_TRUE(planGraph(chainGraph(40), library, {}, options, a, error)) << error;
-    ASSERT_TRUE(planGraph(chainGraph(40), library, {}, options, b, error)) << error;
+    ASSERT_TRUE(planGraph(passPlannerChainGraph(40), library, {}, options, a, error)) << error;
+    ASSERT_TRUE(planGraph(passPlannerChainGraph(40), library, {}, options, b, error)) << error;
     EXPECT_TRUE(a.sameStructure(b));
     for (size_t i = 0; i < a.passes.size(); i++) EXPECT_EQ(a.passes[i].uniforms, b.passes[i].uniforms);
 }
@@ -205,11 +205,11 @@ TEST(PassPlanner, AnOutputSampledRepeatedlyGetsABuffer) {
     std::string error;
     PlanOptions options;
     options.size = 64;
-    const graph::Graph few = graphOf({{"n", "noise"}, {"t", "tap3"}}, {{"n", "out", "t", "in"}});
+    const graph::Graph few = passPlannerGraphOf({{"n", "noise"}, {"t", "tap3"}}, {{"n", "out", "t", "in"}});
     ASSERT_TRUE(planGraph(few, library, {{"out", "t", "out"}}, options, plan, error)) << error;
     EXPECT_EQ(plan.passes.size(), 1u) << "three coordinates stay inline";
 
-    const graph::Graph many = graphOf({{"n", "noise"}, {"t", "tap4"}}, {{"n", "out", "t", "in"}});
+    const graph::Graph many = passPlannerGraphOf({{"n", "noise"}, {"t", "tap4"}}, {{"n", "out", "t", "in"}});
     ASSERT_TRUE(planGraph(many, library, {{"out", "t", "out"}}, options, plan, error)) << error;
     ASSERT_EQ(plan.passes.size(), 2u) << "four are worth a Buffer";
     EXPECT_EQ(plan.buffers.size(), 2u);
@@ -227,17 +227,17 @@ TEST(PassPlanner, AnInputCalledFromALoopGetsABuffer) {
     std::string error;
     PlanOptions options;
     options.size = 64;
-    const graph::Graph file = graphOf({{"n", "noise"}, {"l", "looped"}}, {{"n", "out", "l", "in"}});
+    const graph::Graph file = passPlannerGraphOf({{"n", "noise"}, {"l", "looped"}}, {{"n", "out", "l", "in"}});
     ASSERT_TRUE(planGraph(file, library, {{"out", "l", "out"}}, options, plan, error)) << error;
     EXPECT_EQ(plan.passes.size(), 2u);
     expectDependenciesFirst(plan);
 }
 
 TEST(PassPlanner, AnInputReadAsATextureGetsABufferWithLevels) {
-    const auto library = repositoryLibrary();
+    const auto library = passPlannerRepositoryLibrary();
     ASSERT_TRUE(library);
     // fast_blur_shader reads textureLod($in.texture, ...)
-    const graph::Graph file = graphOf({{"n", "perlin"}, {"b", "fast_blur_shader"}}, {{"n", "output", "b", "in"}});
+    const graph::Graph file = passPlannerGraphOf({{"n", "perlin"}, {"b", "fast_blur_shader"}}, {{"n", "output", "b", "in"}});
     PassPlan plan;
     std::string error;
     PlanOptions options;
@@ -251,9 +251,9 @@ TEST(PassPlanner, AnInputReadAsATextureGetsABufferWithLevels) {
 }
 
 TEST(PassPlanner, AnUnconnectedTextureInputIsAnError) {
-    const auto library = repositoryLibrary();
+    const auto library = passPlannerRepositoryLibrary();
     ASSERT_TRUE(library);
-    const graph::Graph file = graphOf({{"b", "fast_blur_shader"}}, {});
+    const graph::Graph file = passPlannerGraphOf({{"b", "fast_blur_shader"}}, {});
     PassPlan plan;
     std::string error;
     EXPECT_FALSE(planGraph(file, library, {{"out", "b", "low_pass"}}, PlanOptions(), plan, error));
@@ -261,9 +261,9 @@ TEST(PassPlanner, AnUnconnectedTextureInputIsAnError) {
 }
 
 TEST(PassPlanner, AnIterateBufferIsOneStepPerIteration) {
-    const auto library = repositoryLibrary();
+    const auto library = passPlannerRepositoryLibrary();
     ASSERT_TRUE(library);
-    graph::Graph file = graphOf({{"n", "perlin"}, {"s", "symmetric_nearest_neighbor"}}, {{"n", "output", "s", "in"}});
+    graph::Graph file = passPlannerGraphOf({{"n", "perlin"}, {"s", "symmetric_nearest_neighbor"}}, {{"n", "output", "s", "in"}});
     PassPlan plan;
     std::string error;
     PlanOptions options;
@@ -282,7 +282,7 @@ TEST(PassPlanner, AnIterateBufferIsOneStepPerIteration) {
 }
 
 TEST(PassPlanner, AShrinkingIterateChangesSizeAsItGoes) {
-    const auto library = repositoryLibrary();
+    const auto library = passPlannerRepositoryLibrary();
     ASSERT_TRUE(library);
     // auto_tones is the library's one shrinking Iterate Buffer
     Expander expander(library);
@@ -302,9 +302,9 @@ TEST(PassPlanner, AShrinkingIterateChangesSizeAsItGoes) {
 }
 
 TEST(PassPlanner, ACycleIsAnError) {
-    const auto library = repositoryLibrary();
+    const auto library = passPlannerRepositoryLibrary();
     ASSERT_TRUE(library);
-    const graph::Graph file = graphOf({{"a", "blend2"}, {"b", "blend2"}}, {{"a", "output", "b", "b"}, {"b", "output", "a", "b"}});
+    const graph::Graph file = passPlannerGraphOf({{"a", "blend2"}, {"b", "blend2"}}, {{"a", "output", "b", "b"}, {"b", "output", "a", "b"}});
     PassPlan plan;
     std::string error;
     EXPECT_FALSE(planGraph(file, library, {{"out", "a", "out"}}, PlanOptions(), plan, error));
@@ -312,9 +312,9 @@ TEST(PassPlanner, ACycleIsAnError) {
 }
 
 TEST(PassPlanner, EditsThatOnlyChangeValuesKeepTheStructure) {
-    const auto library = repositoryLibrary();
+    const auto library = passPlannerRepositoryLibrary();
     ASSERT_TRUE(library);
-    graph::Graph file = graphOf({{"n", "perlin"}, {"b", "blend"}, {"out", MATERIAL_OUTPUT_NODE}},
+    graph::Graph file = passPlannerGraphOf({{"n", "perlin"}, {"b", "blend"}, {"out", MATERIAL_OUTPUT_NODE}},
                                 {{"n", "output", "b", "s1"}, {"b", "output", "out", "base_color"}});
     PlanOptions options;
     options.size = 64;
@@ -355,7 +355,7 @@ TEST(PassPlanner, AValueEditInsideAnIterationRedrawsFromItsInitialStep) {
 }
 
 TEST(PassPlanner, APassKnowsWhereTheSizeOfEachBufferItReadsIs) {
-    const auto library = repositoryLibrary();
+    const auto library = passPlannerRepositoryLibrary();
     ASSERT_TRUE(library);
     // auto_tones' loop snaps to the nearest texel of a Buffer that halves each iteration (M4 of the review)
     Expander expander(library);
@@ -416,7 +416,7 @@ namespace {
 // R7: a value edit writes its slots without planning, and they hold what planning the edited graph gives,
 // for every float, colour and ramp of every shader node of the 30-node fixture (default or given)
 TEST(PassPlanner, AValueEditGivesTheUniformsPlanningWould) {
-    const auto library = repositoryLibrary();
+    const auto library = passPlannerRepositoryLibrary();
     const graph::Graph wall = brickWallFixture();
     const std::vector<PlanRoot> roots = materialBakeRoots(wall);
     PlanOptions options;
@@ -454,7 +454,7 @@ TEST(PassPlanner, AValueEditGivesTheUniformsPlanningWould) {
 
 // What is not a value edit is planned: an enum, a seed, a wire, a ramp key more, a value out of range
 TEST(PassPlanner, AnEditOfMoreThanValuesIsPlanned) {
-    const auto library = repositoryLibrary();
+    const auto library = passPlannerRepositoryLibrary();
     const graph::Graph wall = brickWallFixture();
     PlanOptions options;
     options.size = 64;

@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 
 #include "AnimTestEnvironment.h"
+#include "AnimatorTestUtil.h"
 #include "../pose/TestRigs.h"
 
 #include "Engine.h"
@@ -41,14 +42,15 @@
 #include <string>
 
 using namespace jasperengine;
+using namespace animatortest;
 
 namespace {
 
-    constexpr double PI = 3.14159265358979323846;
+    constexpr double ANIMATION_LAYERS_PI = 3.14159265358979323846;
 
     // (x, y, z, w) of a rotation of `degrees` about an axis
     std::vector<float> axisAngle(float degrees, float ax, float ay, float az){
-        const double half = degrees * PI / 360.0;
+        const double half = degrees * ANIMATION_LAYERS_PI / 360.0;
         const float s = (float)std::sin(half);
         return {ax * s, ay * s, az * s, (float)std::cos(half)};
     }
@@ -58,23 +60,8 @@ namespace {
         return quaternionFromXYZW(q.data());
     }
 
-    ClipKey key(float time, std::vector<float> value){
-        ClipKey k;
-        k.time = time;
-        k.value = std::move(value);
-        return k;
-    }
-
-    ClipTrackData track(const std::string& path, ClipChannel channel, std::vector<ClipKey> keys){
-        ClipTrackData t;
-        t.path = path;
-        t.channel = channel;
-        t.keys = std::move(keys);
-        return t;
-    }
-
     // walk: Leg x 0 -> 2 and Arm 0 -> 90 degrees about Z over 1 s
-    ClipData walk(ClipWrapMode wrap = ClipWrapMode::Loop){
+    ClipData animationLayersWalk(ClipWrapMode wrap = ClipWrapMode::Loop){
         ClipData data;
         data.wrap = wrap;
         data.tracks = {track("Arm", ClipChannel::Rotation, {key(0, axisAngle(0, 0, 0, 1)), key(1, axisAngle(90, 0, 0, 1))}),
@@ -89,13 +76,6 @@ namespace {
         data.tracks = {track("Arm", ClipChannel::Rotation, {key(0, axisAngle(45, 1, 0, 0)), key(length, axisAngle(45, 1, 0, 0))}),
                        track("Arm/Hand", ClipChannel::Position, {key(0, {0, 1, 0}), key(length, {0, 1, 0})})};
         return data;
-    }
-
-    ClipEventData event(float time, const std::string& function){
-        ClipEventData e;
-        e.time = time;
-        e.function = function;
-        return e;
     }
 
     float quatDot(const Quaternion& a, const Quaternion& b){
@@ -226,11 +206,11 @@ TEST_F(Layers, DefaultLayeringIsTheV1FastPath){
     // 4 ULP at the largest value here (Leg x near 6): room for a target's rounding, far under any change of a blend
     constexpr float tolerance = 2e-6f;
     size_t nextSample = 0;
-    ClipData run = walk();
+    ClipData run = animationLayersWalk();
     run.tracks[1].keys[1].value = {6, 0, 0};
     run.tracks[0].keys[1].value = axisAngle(-60, 0.6f, 0, 0.8f);
     AnimationPlayer object(&scene, root);
-    object.addClip(clip("walk", walk()), "walk");
+    object.addClip(clip("walk", animationLayersWalk()), "walk");
     object.addClip(clip("run", run), "run");
     object.setPlayAutomatically(false);
     object.play("walk");
@@ -270,7 +250,7 @@ TEST_F(Layers, DefaultLayeringIsTheV1FastPath){
 // Test 2: an Override layer with a transform mask on the arm
 TEST_F(Layers, OverrideLayerWithAMaskOwnsTheMaskedBones){
     const std::string armPath = mask("arm", armMask());
-    AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(), 1}},
+    AnimationPlayer object = player({{"walk", animationLayersWalk(), 0}, {"hold", hold(), 1}},
                                     {layer(anim::BASE_LAYER_NAME), layer("Holding", 1.0f, AnimationLayerBlend::Override, armPath)});
     object.play("walk");
     object.play("hold");
@@ -285,7 +265,7 @@ TEST_F(Layers, OverrideLayerWithAMaskOwnsTheMaskedBones){
 // leg is the base's
 TEST_F(Layers, LayerWeightBlendsWithTheLayersBelow){
     const std::string armPath = mask("arm", armMask());
-    AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(), 1}},
+    AnimationPlayer object = player({{"walk", animationLayersWalk(), 0}, {"hold", hold(), 1}},
                                     {layer(anim::BASE_LAYER_NAME), layer("Holding", 0.5f, AnimationLayerBlend::Override, armPath)});
     object.play("walk");
     object.play("hold");
@@ -303,7 +283,7 @@ TEST_F(Layers, LayerWeightBlendsWithTheLayersBelow){
 // Test 4: a fractional mask weight is a partial override (S21's nlerp at weight * mask)
 TEST_F(Layers, FractionalMaskWeightIsAPartialOverride){
     const std::string armPath = mask("arm", armMask(0.25f));
-    AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(), 1}},
+    AnimationPlayer object = player({{"walk", animationLayersWalk(), 0}, {"hold", hold(), 1}},
                                     {layer(anim::BASE_LAYER_NAME), layer("Holding", 1.0f, AnimationLayerBlend::Override, armPath)});
     object.play("walk");
     object.play("hold");
@@ -320,7 +300,7 @@ TEST_F(Layers, AdditiveLayersAddTheirDelta){
     nod.tracks = {track("Arm", ClipChannel::Rotation, {key(0, axisAngle(0, 1, 0, 0)), key(1, axisAngle(30, 1, 0, 0))}),
                   track("Arm/Hand", ClipChannel::Position, {key(0, {0, 0, 0}), key(1, {0, 2, 0})}),
                   track("Leg", ClipChannel::Scale, {key(0, {1, 1, 1}), key(1, {2, 3, 4})})};
-    AnimationPlayer object = player({{"walk", walk(ClipWrapMode::ClampForever), 0}, {"nod", nod, 1}},
+    AnimationPlayer object = player({{"walk", animationLayersWalk(ClipWrapMode::ClampForever), 0}, {"nod", nod, 1}},
                                     {layer(anim::BASE_LAYER_NAME), layer("Hit", 1.0f, AnimationLayerBlend::Additive)});
     object.play("walk");
     object.play("nod");
@@ -349,7 +329,7 @@ TEST_F(Layers, AdditiveLayersAddTheirDelta){
 
 // Test 6: play stops the same layer, PlayMode StopAll every layer
 TEST_F(Layers, PlayStopsTheSameLayerOrAll){
-    AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(), 1}, {"hold2", hold(), 1}},
+    AnimationPlayer object = player({{"walk", animationLayersWalk(), 0}, {"hold", hold(), 1}, {"hold2", hold(), 1}},
                                     {layer(anim::BASE_LAYER_NAME), layer("Holding")});
     object.play("walk");
     object.play("hold");
@@ -372,7 +352,7 @@ TEST_F(Layers, PlayStopsTheSameLayerOrAll){
 
 // Test 7: a queue per layer: hold2 starts when hold (once, 0.5 s) ends while walk loops on
 TEST_F(Layers, QueuesRunPerLayer){
-    AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(ClipWrapMode::Once, 0.5f), 1}, {"hold2", hold(), 1}},
+    AnimationPlayer object = player({{"walk", animationLayersWalk(), 0}, {"hold", hold(ClipWrapMode::Once, 0.5f), 1}, {"hold2", hold(), 1}},
                                     {layer(anim::BASE_LAYER_NAME), layer("Holding")});
     object.play("walk");
     object.play("hold");
@@ -394,7 +374,7 @@ TEST_F(Layers, QueuesRunPerLayer){
 TEST_F(Layers, EventsNeedALayerWeight){
     ClipData holdEvents = hold();
     holdEvents.events = {event(0.25f, "onHold")};
-    ClipData walkEvents = walk();
+    ClipData walkEvents = animationLayersWalk();
     walkEvents.events = {event(0.25f, "onStep")};
     anim::AvatarMaskDef none;
     none.defaultWeight = 0.0f;
@@ -417,7 +397,7 @@ TEST_F(Layers, EventsNeedALayerWeight){
 
 // Test 9: mixing transforms: the state animates only the given paths
 TEST_F(Layers, MixingTransformsLimitAState){
-    AnimationPlayer object = player({{"walk", walk(), 0}}, {});
+    AnimationPlayer object = player({{"walk", animationLayersWalk(), 0}}, {});
     AnimationPlayerComponent& component = scene.getComponent<AnimationPlayerComponent>(root);
     object.play("walk");
     step(0.25, 2);
@@ -580,12 +560,12 @@ TEST(ClipAdditiveReference, ReadWrittenAndClamped){
 
 // Test 12: the layers' runtime weights survive a clip list edit
 TEST_F(Layers, LayerRuntimeSurvivesAReload){
-    AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(), 1}}, {layer(anim::BASE_LAYER_NAME), layer("Holding", 1.0f)});
+    AnimationPlayer object = player({{"walk", animationLayersWalk(), 0}, {"hold", hold(), 1}}, {layer(anim::BASE_LAYER_NAME), layer("Holding", 1.0f)});
     object.play("walk");
     object.play("hold");
     step(0.1);
     object.setLayerWeight("Holding", 0.3f);
-    object.addClip(clip("extra", walk()), "extra");
+    object.addClip(clip("extra", animationLayersWalk()), "extra");
     step(0.1);
     EXPECT_NEAR(object.getLayerWeight("Holding"), 0.3f, 1e-6f);
     EXPECT_TRUE(object.isPlaying("hold"));
@@ -610,7 +590,7 @@ TEST_F(Layers, LayersWriteChannelsIndependently){
     ClipData armOnly;
     armOnly.wrap = ClipWrapMode::Loop;
     armOnly.tracks = {track("Arm", ClipChannel::Rotation, {key(0, axisAngle(45, 1, 0, 0)), key(1, axisAngle(45, 1, 0, 0))})};
-    AnimationPlayer object = player({{"walk", walk(), 0}, {"arm", armOnly, 1}}, {layer(anim::BASE_LAYER_NAME), layer("Upper")});
+    AnimationPlayer object = player({{"walk", animationLayersWalk(), 0}, {"arm", armOnly, 1}}, {layer(anim::BASE_LAYER_NAME), layer("Upper")});
     object.play("walk");
     object.play("arm");
     step(0.25, 2);
@@ -624,7 +604,7 @@ TEST_F(Layers, LayersWriteChannelsIndependently){
 }
 
 TEST_F(Layers, AuthoringLayersFromCode){
-    AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(), 0}}, {});
+    AnimationPlayer object = player({{"walk", animationLayersWalk(), 0}, {"hold", hold(), 0}}, {});
     EXPECT_EQ(object.getLayerCount(), 1);
     EXPECT_EQ(object.getLayerName(0), anim::BASE_LAYER_NAME);
     EXPECT_EQ(object.addLayer("Holding", 0.5f, "additive"), 1);
@@ -646,7 +626,7 @@ TEST_F(Layers, AuthoringLayersFromCode){
 
 TEST_F(Layers, LayeredEditModePreview){
     const std::string armPath = mask("arm", armMask());
-    AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(), 1}},
+    AnimationPlayer object = player({{"walk", animationLayersWalk(), 0}, {"hold", hold(), 1}},
                                     {layer(anim::BASE_LAYER_NAME), layer("Holding", 0.2f, AnimationLayerBlend::Override, armPath)});
     ActionSystem* system = scene.getSystem<ActionSystem>().get();
     anim::ClipPreviewSession session;
@@ -673,7 +653,7 @@ TEST_F(Layers, LayeredEditModePreview){
 }
 
 TEST_F(Layers, LuaApi){
-    AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(), 1}}, {layer(anim::BASE_LAYER_NAME), layer("Holding", 0.0f)});
+    AnimationPlayer object = player({{"walk", animationLayersWalk(), 0}, {"hold", hold(), 1}}, {layer(anim::BASE_LAYER_NAME), layer("Holding", 0.0f)});
     lua_State* L = LuaBinding::getLuaState();
     ASSERT_TRUE(L != nullptr);
     luabridge::setGlobal(L, object, "layersPlayer");
@@ -785,7 +765,7 @@ TEST_F(Layers, PerformanceBudget){
 }
 
 TEST_F(Layers, RemovingALayerShiftsRuntimeMoves){
-    AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(), 0}}, {layer(anim::BASE_LAYER_NAME), layer("A"), layer("B")});
+    AnimationPlayer object = player({{"walk", animationLayersWalk(), 0}, {"hold", hold(), 0}}, {layer(anim::BASE_LAYER_NAME), layer("A"), layer("B")});
     step(0.0);
     object.getState("hold").setLayer(2);
     EXPECT_TRUE(object.removeLayer("A"));
@@ -801,7 +781,7 @@ TEST_F(Layers, OcclusionMatchesTheFullComposition){
     ClipData hold2 = hold();
     hold2.tracks[0].keys[0].value = axisAngle(-30, 0, 1, 0);
     hold2.tracks[0].keys[1].value = axisAngle(-30, 0, 1, 0);
-    AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(), 1}, {"hold2", hold2, 1}},
+    AnimationPlayer object = player({{"walk", animationLayersWalk(), 0}, {"hold", hold(), 1}, {"hold2", hold2, 1}},
                                     {layer(anim::BASE_LAYER_NAME), layer("Upper", 1.0f)});
     object.play("walk");
     object.play("hold");
@@ -827,7 +807,7 @@ TEST_F(Layers, OcclusionMatchesTheFullComposition){
 TEST_F(Layers, ALayerWithoutItsMaskContributesNothing){
     const std::string broken = prefix + "broken.mask";
     animtest::writeAsset(broken, "{\"format\": \"jasperengine.mask\", \"version\": 1,,}");
-    AnimationPlayer object = player({{"walk", walk(), 0}, {"hold", hold(), 1}},
+    AnimationPlayer object = player({{"walk", animationLayersWalk(), 0}, {"hold", hold(), 1}},
                                     {layer(anim::BASE_LAYER_NAME), layer("Upper", 1.0f, AnimationLayerBlend::Override, broken)});
     object.play("walk");
     object.play("hold");

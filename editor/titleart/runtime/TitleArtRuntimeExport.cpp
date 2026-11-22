@@ -150,20 +150,22 @@ void editor::writeGlyphPrebake(Project* project, const TitleArtShippedInstance& 
     result.glyphCells += atlas->cellCount();
 }
 
-TitleArtPrebakeResult editor::writeTitleArtPrebakes(Project* project, const TitleArtExportPlan& plan, const fs::path& assetsDst,
-                                                   const std::vector<std::string>& platforms){
-    TitleArtPrebakeResult result;
-    if (!project) return result;
+void editor::writeTitleArtPrebakes(Project* project, const TitleArtExportPlan& plan, const fs::path& assetsDst, const std::vector<std::string>& platforms,
+                                   TitleArtPrebakeResult& result){
+    result.notReady = false;
+    if (!project) return;
     const fs::path assetsRelative = project->getAssetsPath().lexically_relative(project->getProjectPath());
     const std::string assetsPrefix = assetsRelative.empty() || assetsRelative == "." ? std::string() : assetsRelative.generic_string() + "/";
-    std::map<uint64_t, std::string> written;    // key -> file (dedup by state, R11)
-    for (const TitleArtShippedInstance& instance : plan.instances){
-        if (instance.mode == TitleArtRenderMode::BAKED || !instance.prebake) continue;
+    std::map<uint64_t, std::string>& written = result.keys;
+    for (size_t index = 0; index < plan.instances.size(); index++){
+        const TitleArtShippedInstance& instance = plan.instances[index];
+        if (instance.mode == TitleArtRenderMode::BAKED || !instance.prebake || result.instancesDone.count(index)) continue;
         std::string error;
         // the project's document renders (its fonts); the build's copy keys (the player hashes it)
         std::shared_ptr<titleart::TitleArtLive> live = titleart::TitleArtRuntime::create(instance.title, instance.mode, &error);
         if (!live){
             result.warnings.push_back("Title Art " + instance.object + " (" + instance.where + "): no prebaked image: " + error);
+            result.instancesDone.insert(index);
             continue;
         }
         std::string inAssetsTitle = instance.title;
@@ -180,8 +182,9 @@ TitleArtPrebakeResult editor::writeTitleArtPrebakes(Project* project, const Titl
         state.atlasPageSize = instance.atlasPageSize;
         state.atlasMaxPages = instance.atlasMaxPages;
         state.label = "TitleArt/" + instance.object;
-        if (instance.mode == TitleArtRenderMode::GLYPH_ATLAS)
+        if (instance.mode == TitleArtRenderMode::GLYPH_ATLAS && result.glyphsDone.insert(index).second)
             writeGlyphPrebake(project, instance, live->document(), shippedHash, state, assetsDst, assetsPrefix, result);
+        bool left = false;
         // S86 R37: a 3D title's state holds the tier it renders at on the device
         for (const int tier : titleArt3DPrebakeTiers(project, *live->document(), instance.qualityTier, platforms)){
             state.tier = tier;
@@ -197,7 +200,12 @@ TitleArtPrebakeResult editor::writeTitleArtPrebakes(Project* project, const Titl
             request.output = titleart::TitleOutputFormat::Srgb8;
             request.tier = tier;
             TitleRenderedImage image;
+            const uint64_t waits = TitleArtRenderHost::editor().notReadyCount();
             if (!TitleArtRenderHost::editor().render(project, request, image, error)){
+                if (TitleArtRenderHost::editor().notReadyCount() != waits){
+                    left = true;
+                    continue;
+                }
                 result.warnings.push_back("Title Art " + instance.object + " (" + instance.where + "): the initial state did not render (" + error +
                                           "): the game renders it at its first frame");
                 continue;
@@ -206,7 +214,7 @@ TitleArtPrebakeResult editor::writeTitleArtPrebakes(Project* project, const Titl
             if (!texsynth::encodePng(image.image, png)){
                 result.ok = false;
                 result.error = "cannot encode the prebaked image of " + instance.title;
-                return result;
+                return;
             }
             // the build's assets mirror the project's below the assets directory
             std::string inAssets = file;
@@ -217,17 +225,19 @@ TitleArtPrebakeResult editor::writeTitleArtPrebakes(Project* project, const Titl
             if (!assetio::writeFile(target, std::string_view(reinterpret_cast<const char*>(png.data()), png.size()), assetio::Durability::Cache, &error)){
                 result.ok = false;
                 result.error = "cannot write " + target.string() + ": " + error;
-                return result;
+                return;
             }
             written[key] = file;
             result.written.push_back(file);
             result.bytes += png.size();
         }
+        if (left) result.notReady = true;
+        else result.instancesDone.insert(index);
     }
+    if (result.notReady) return;
     if (written.size() > PREBAKE_COUNT_WARNING){
         result.warnings.push_back("W-TITLEART-PREBAKE-COUNT: " + std::to_string(written.size()) + " distinct initial states of Realtime titles were "
                                   "prebaked (" + std::to_string(result.bytes / 1024) + " KiB): fewer distinct overrides or sizes, or Prebake Initial "
                                   "State off on some, make the build smaller");
     }
-    return result;
 }

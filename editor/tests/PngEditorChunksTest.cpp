@@ -29,7 +29,7 @@ namespace ts = jasperengine::editor::texsynth;
 
 namespace {
 
-    uint32_t crc32(const uint8_t* data, size_t size) {
+    uint32_t pngEditorChunksCrc32(const uint8_t* data, size_t size) {
         uint32_t c = 0xFFFFFFFFu;
         for (size_t i = 0; i < size; i++) {
             c ^= data[i];
@@ -44,7 +44,7 @@ namespace {
         for (int s = 24; s >= 0; s -= 8) out.push_back(static_cast<uint8_t>(n >> s));
         out.insert(out.end(), type, type + 4);
         out.insert(out.end(), data.begin(), data.end());
-        const uint32_t crc = crc32(out.data() + 4, out.size() - 4);
+        const uint32_t crc = pngEditorChunksCrc32(out.data() + 4, out.size() - 4);
         for (int s = 24; s >= 0; s -= 8) out.push_back(static_cast<uint8_t>(crc >> s));
         return out;
     }
@@ -63,7 +63,7 @@ namespace {
         return out;
     }
 
-    bool contains(const std::vector<uint8_t>& bytes, const std::vector<uint8_t>& part) {
+    bool pngEditorChunksContains(const std::vector<uint8_t>& bytes, const std::vector<uint8_t>& part) {
         return std::search(bytes.begin(), bytes.end(), part.begin(), part.end()) != bytes.end();
     }
 
@@ -88,11 +88,11 @@ TEST(PngEditorChunks, DropsOnlyTheEditorTextChunks) {
 
     std::vector<uint8_t> stripped;
     ASSERT_TRUE(pngchunks::stripEditorChunks(tagged, stripped));
-    EXPECT_FALSE(contains(stripped, recipe));
-    EXPECT_FALSE(contains(stripped, paint));
-    EXPECT_FALSE(contains(stripped, synthesis));
-    EXPECT_TRUE(contains(stripped, comment)) << "another tool's chunk stays, CRC included";
-    EXPECT_TRUE(contains(stripped, foreign)) << "only the \"jasper.\" prefix goes";
+    EXPECT_FALSE(pngEditorChunksContains(stripped, recipe));
+    EXPECT_FALSE(pngEditorChunksContains(stripped, paint));
+    EXPECT_FALSE(pngEditorChunksContains(stripped, synthesis));
+    EXPECT_TRUE(pngEditorChunksContains(stripped, comment)) << "another tool's chunk stays, CRC included";
+    EXPECT_TRUE(pngEditorChunksContains(stripped, foreign)) << "only the \"jasper.\" prefix goes";
     EXPECT_EQ(stripped, withChunks(png, {comment, foreign})) << "the rest byte for byte";
     ts::Image a, b;
     std::string error;

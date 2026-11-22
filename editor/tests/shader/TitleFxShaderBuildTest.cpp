@@ -32,7 +32,7 @@ using namespace jasperengine::titleart;
 
 namespace {
 
-    std::string readFile(const std::filesystem::path& path) {
+    std::string titleFxShaderBuildReadFile(const std::filesystem::path& path) {
         std::ifstream in(path, std::ios::binary);
         std::stringstream text;
         text << in.rdbuf();
@@ -40,7 +40,7 @@ namespace {
     }
 
     // the repository root: the editor tests run from inside the build tree
-    std::filesystem::path repoRoot() {
+    std::filesystem::path titleFxShaderBuildRepoRoot() {
         std::filesystem::path p = std::filesystem::path(__FILE__).parent_path();
         for (int i = 0; i < 6 && !p.empty(); i++) {
             if (std::filesystem::exists(p / "engine" / "shaderlib" / "titleart_fx.frag")) return p;
@@ -114,14 +114,14 @@ TEST(TitleFxShaderBuild, EveryProgramEveryBackend) {
 }
 
 TEST(TitleFxShaderBuild, LoopsSampleWithoutDerivatives) {
-    const std::filesystem::path root = repoRoot();
+    const std::filesystem::path root = titleFxShaderBuildRepoRoot();
     ASSERT_FALSE(root.empty()) << "the repository's shaders are not found";
-    const std::string frag = readFile(root / "engine/shaderlib/titleart_fx.frag");
+    const std::string frag = titleFxShaderBuildReadFile(root / "engine/shaderlib/titleart_fx.frag");
     EXPECT_NE(frag.find("precision highp float;"), std::string::npos);
     int scanned = 0;
     for (const auto& entry : std::filesystem::directory_iterator(root / "engine/shaderlib/titleart/fx")) {
         if (entry.path().extension() != ".glsl") continue;
-        const std::string text = readFile(entry.path());
+        const std::string text = titleFxShaderBuildReadFile(entry.path());
         for (const std::string& body : loopBodies(text)) {
             EXPECT_EQ(body.find("texture("), std::string::npos) << entry.path().filename().string() << ": a loop samples with texture(:\n" << body.substr(0, 400);
         }
@@ -131,18 +131,18 @@ TEST(TitleFxShaderBuild, LoopsSampleWithoutDerivatives) {
 }
 
 TEST(TitleFxShaderBuild, NoClock) {
-    const std::filesystem::path root = repoRoot();
+    const std::filesystem::path root = titleFxShaderBuildRepoRoot();
     ASSERT_FALSE(root.empty());
     const std::regex time(R"(\b(u?[Tt]ime|iTime|uClock|clock)\b)");
     for (const auto& entry : std::filesystem::directory_iterator(root / "engine/shaderlib/titleart/fx")) {
-        const std::string text = readFile(entry.path());
+        const std::string text = titleFxShaderBuildReadFile(entry.path());
         EXPECT_FALSE(std::regex_search(text, time)) << entry.path().filename().string() << " reads a clock";
     }
     const std::regex clock(R"(std::chrono|\bclock\(\)|\btime\(|getTime|Engine::get(Delta|Frame|Time))");
     for (const auto& entry : std::filesystem::directory_iterator(root / "engine/core/titleart/effects")) {
         const std::string name = entry.path().filename().string();
         if (name.rfind("Tfx", 0) != 0 && name.find("Effect") == std::string::npos) continue;
-        const std::string text = readFile(entry.path());
+        const std::string text = titleFxShaderBuildReadFile(entry.path());
         EXPECT_FALSE(std::regex_search(text, clock)) << name << " reads a clock";
     }
 }

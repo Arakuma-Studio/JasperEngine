@@ -71,7 +71,7 @@ namespace {
         return map;
     }
 
-    float percentile(std::vector<float> values, float p) {
+    float noisePresetsPercentile(std::vector<float> values, float p) {
         std::sort(values.begin(), values.end());
         return values[static_cast<size_t>(p * static_cast<float>(values.size() - 1))];
     }
@@ -157,26 +157,26 @@ TEST(NoisePresets, Character) {
         SCOPED_TRACE("seed " + std::to_string(seed));
         {
             const Map map = generate(presets["plains"], seed);
-            EXPECT_LT(percentile(map.height, 0.95f) - percentile(map.height, 0.05f), 0.1f);
-            EXPECT_LT(percentile(slopes(map), 0.95f), 8.0f);
+            EXPECT_LT(noisePresetsPercentile(map.height, 0.95f) - noisePresetsPercentile(map.height, 0.05f), 0.1f);
+            EXPECT_LT(noisePresetsPercentile(slopes(map), 0.95f), 8.0f);
         }
         {
             const Map map = generate(presets["rolling_hills"], seed);
-            const float spread = percentile(map.height, 0.95f) - percentile(map.height, 0.05f);
+            const float spread = noisePresetsPercentile(map.height, 0.95f) - noisePresetsPercentile(map.height, 0.05f);
             EXPECT_GE(spread, 0.15f);
             EXPECT_LE(spread, 0.5f);
-            EXPECT_LT(percentile(slopes(map), 0.95f), 25.0f);
+            EXPECT_LT(noisePresetsPercentile(slopes(map), 0.95f), 25.0f);
         }
         {
             const Map map = generate(presets["mountains"], seed);
-            EXPECT_GT(percentile(map.height, 0.95f) - percentile(map.height, 0.05f), 0.4f);
-            EXPECT_GT(percentile(slopes(map), 0.95f), 30.0f);
+            EXPECT_GT(noisePresetsPercentile(map.height, 0.95f) - noisePresetsPercentile(map.height, 0.05f), 0.4f);
+            EXPECT_GT(noisePresetsPercentile(slopes(map), 0.95f), 30.0f);
         }
         {
             const graph::Graph& graph = presets["alpine"];
             const Map map = generate(graph, seed);
-            EXPECT_GT(percentile(map.height, 0.95f) - percentile(map.height, 0.05f), 0.4f);
-            EXPECT_GT(percentile(slopes(map), 0.95f), 30.0f);
+            EXPECT_GT(noisePresetsPercentile(map.height, 0.95f) - noisePresetsPercentile(map.height, 0.05f), 0.4f);
+            EXPECT_GT(noisePresetsPercentile(slopes(map), 0.95f), 30.0f);
             // flow: the hydraulic node's own output, through a copy of the graph that reads it
             graph::Graph withFlow = graph;
             std::string hydraulic;
@@ -207,12 +207,12 @@ TEST(NoisePresets, Character) {
             context.metresPerTexel = map.metresPerTexel;
             std::vector<float> flow(map.height.size());
             ASSERT_TRUE(result.graph->evaluateGrid(domain, context, result.graph->outputIndex("flow"), flow.data()));
-            EXPECT_GT(percentile(flow, 0.99f), percentile(flow, 0.5f) * 10.0f);
+            EXPECT_GT(noisePresetsPercentile(flow, 0.99f), noisePresetsPercentile(flow, 0.5f) * 10.0f);
         }
         {
             const Map map = generate(presets["canyons"], seed);
             EXPECT_GE(histogramPeaks(histogram(map.height, 24)), 2) << "bimodal";
-            EXPECT_GT(percentile(slopes(map), 0.99f), 45.0f);
+            EXPECT_GT(noisePresetsPercentile(slopes(map), 0.99f), 45.0f);
         }
         {
             const Map map = generate(presets["islands"], seed);

@@ -21,6 +21,10 @@ static constexpr float POINTER_DOUBLE_CLICK_MAX_DIST = 3.f; // [dp]
 static constexpr float POINTER_TOUCH_SLOP = 3.f;            // [dp] TOUCH_CLICK_MAX_DISTANCE
 static constexpr float POINTER_SCROLL_INERTIA_DELAY = 0.1f;
 static constexpr float POINTER_TOUCH_MOVEMENT_DECAY_RATE = 5.0f;
+// Fork (P7-H): on touch, a draggable element inside a scroll container starts its drag after a press this long
+// that moved at most this far; a touch that moves further first scrolls the container instead.
+static constexpr float TOUCH_LONG_PRESS_TIME = 0.4f;    // [s]
+static constexpr float TOUCH_LONG_PRESS_DISTANCE = 8.f; // [dp]
 
 namespace {
 	const char* PointerTypeName(PointerType type)
@@ -598,6 +602,19 @@ bool Context::ProcessPointerDown(const PointerInput& input)
 			if (pair.first != id && pair.second.drag == drag)
 				drag = nullptr;
 		state->drag = drag;
+
+		// Fork (P7-H): a finger that may pan a scroll container does not drag at once: the element waits for a
+		// long press (ProcessPointerMove)
+		TouchState& press = state->scroll;
+		press.drag_candidate = nullptr;
+		if (state->type == PointerType::Touch && drag && press.scroll_container && drag != press.scroll_container &&
+			(state->pan_x || state->pan_y) && press.scroll_container->IsPointWithinElement(state->position))
+		{
+			press.drag_candidate = drag->GetObserverPtr();
+			press.drag_candidate_verbose = state->drag_verbose;
+			press.start_time = GetSystemInterface()->GetElapsedTime();
+			state->drag = nullptr;
+		}
 	}
 
 	return !IsPointerInteracting(id);
@@ -616,9 +633,33 @@ bool Context::ProcessPointerMove(const PointerInput& input)
 	state->position = input.position;
 	const double now = GetSystemInterface()->GetElapsedTime();
 
-	// panning (G5-4)
+	// Fork (P7-H): a long press that stayed within TOUCH_LONG_PRESS_DISTANCE makes the waiting element the drag, which
+	// starts with this move; moving further first lets the finger pan
 	TouchState& scroll = state->scroll;
-	if (scroll.scroll_container && !state->drag)
+	if (scroll.drag_candidate)
+	{
+		const float long_press_distance = TOUCH_LONG_PRESS_DISTANCE * density_independent_pixel_ratio;
+		if ((input.position - scroll.start_position).SquaredMagnitude() > long_press_distance * long_press_distance)
+			scroll.drag_candidate = nullptr;
+		else if (now - scroll.start_time >= TOUCH_LONG_PRESS_TIME && !state->drag)
+		{
+			Element* candidate = scroll.drag_candidate.get();
+			scroll.drag_candidate = nullptr;
+			// (another pointer may have taken it meanwhile)
+			bool taken = candidate == drag;
+			for (const auto& pair : pointers)
+				taken = taken || (pair.first != id && pair.second.drag == candidate);
+			if (!taken)
+			{
+				state->drag = candidate;
+				state->drag_verbose = scroll.drag_candidate_verbose;
+				state->drag_started = false;
+			}
+		}
+	}
+
+	// panning (G5-4); not while a long press may still start a drag
+	if (scroll.scroll_container && !state->drag && !scroll.drag_candidate)
 	{
 		const Vector2f delta = input.position - scroll.last_position;
 		const Vector2f from_start = input.position - scroll.start_position;
