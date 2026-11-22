@@ -208,8 +208,15 @@ async def test_designer_canvas_and_animation_wait_for_programs(ed: Editor):
     async with Editor(create=True, name="Title Programs Designer", env=DELAYED) as slow:
         await slow.call("tool_groups", enable=["title_art", "editor_tools", "editor_ux"])
         await animated_title(slow)
-        await slow.call("focus_window", window="title_designer", title_designer={"path": PATH, "zoom": "fit", "background": "black",
-                                                                                 "animation": {"name": "Pulse", "time": 0.1}})
+        await slow.call("focus_window", window="title_designer", title_designer={"path": PATH, "zoom": "fit", "background": "black"})
+        # the pose as soon as the panel has drawn (its first frames), while the programs are still being built
+        for _ in range(120):
+            r = await slow.call_raw("focus_window", {"window": "title_designer", "title_designer": {"animation": {"name": "Pulse", "time": 0.1}}})
+            if not r.is_error:
+                break
+            ed.check("has not drawn yet" in r.text, r.text[:300])
+            await slow.call("wait", frames=1)
+        ed.check(not r.is_error, f"the panel previews the animation: {r.text[:300]}")
 
         async def settled(unlike: bytes = b"") -> tuple:
             """The window's state and image once the canvas is drawn and the image stays the same."""
