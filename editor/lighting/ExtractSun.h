@@ -10,13 +10,16 @@
 
 #pragma once
 
-#include "component/LightComponent.h"
 #include "ecs/Entity.h"
 #include "math/Vector3.h"
 
 #include <cstdint>
 #include <string>
 #include <vector>
+
+namespace jasperengine {
+    enum class LightUnit;   // component/LightComponent.h
+}
 
 namespace jasperengine::editor {
 
@@ -28,7 +31,7 @@ namespace jasperengine::editor {
         Vector3 direction;                  // the light's world direction (from the sun)
         Vector3 color;                      // linear, largest channel 1
         float intensity = 0.0f;             // in `unit`
-        LightUnit unit = LightUnit::ENGINE;
+        LightUnit unit{};                   // (value 0: ENGINE)
         float engineIntensity = 0.0f;
         float peakRatio = 0.0f;             // the sun's brightest block against the sky's mean luminance
         float discDegrees = 0.0f;           // the sun disc's angular radius
