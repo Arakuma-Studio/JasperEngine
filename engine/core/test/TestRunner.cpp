@@ -252,12 +252,15 @@ namespace {
         if (std::chrono::steady_clock::now() < interrupt.deadline) return;
         lua_sethook(L, nullptr, 0, 0);
         interrupt.fired = true;
-        std::string file;
-        int line = 0;
-        callerLocation(L, file, line);
         char message[256];
-        std::snprintf(message, sizeof(message), "script interrupted: %s:%d ran for %.1f s without yielding (test runner)",
-                      file.empty() ? "a function" : file.c_str(), line, interrupt.seconds);
+        {
+            // (gone before the raise: Lua is compiled as C, and luaL_error longjmps over this frame)
+            std::string file;
+            int line = 0;
+            callerLocation(L, file, line);
+            std::snprintf(message, sizeof(message), "script interrupted: %s:%d ran for %.1f s without yielding (test runner)",
+                          file.empty() ? "a function" : file.c_str(), line, interrupt.seconds);
+        }
         luaL_error(L, "%s", message);
     }
 

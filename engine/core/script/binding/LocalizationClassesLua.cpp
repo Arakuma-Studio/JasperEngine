@@ -15,16 +15,25 @@
 
 #include <cmath>
 #include <string>
+#include <string_view>
 
 using namespace jasperengine;
 
 namespace {
 
-    // a Lua table {name = value} -> arguments; numbers with no fraction become integers
+    // Lua is compiled as C: a raise (luaL_error, luaL_check*) longjmps over the C++ frames up to the
+    // pcall, running no destructor (MSVC may end the process). The functions check their arguments
+    // while their frame holds nothing with a destructor, and raise only then.
+
+    // the arguments at `index`: nil or a table, checked here before any is made
+    void checkArgs(lua_State* L, int index) {
+        if (!lua_isnoneornil(L, index)) luaL_checktype(L, index, LUA_TTABLE);
+    }
+
+    // a Lua table {name = value} (checkArgs first) -> arguments; numbers with no fraction become integers
     LocalizationArgs argsAt(lua_State* L, int index) {
         LocalizationArgs args;
         if (lua_isnoneornil(L, index)) return args;
-        luaL_checktype(L, index, LUA_TTABLE);
         lua_pushnil(L);
         while (lua_next(L, index) != 0) {
             if (lua_type(L, -2) == LUA_TSTRING) {
@@ -51,9 +60,10 @@ namespace {
     int luaGet(lua_State* L) {
         size_t length = 0;
         const char* key = luaL_checklstring(L, 1, &length);
-        const LocalizationArgs args = argsAt(L, 2);
+        checkArgs(L, 2);
         size_t fallbackLength = 0;
         const char* fallback = luaL_optlstring(L, 3, "", &fallbackLength);
+        const LocalizationArgs args = argsAt(L, 2);
         pushString(L, Localization::get(std::string_view(key, length), args, std::string_view(fallback, fallbackLength)));
         return 1;
     }
@@ -61,8 +71,9 @@ namespace {
     int luaFormat(lua_State* L) {
         size_t length = 0;
         const char* pattern = luaL_checklstring(L, 1, &length);
-        const LocalizationArgs args = argsAt(L, 2);
+        checkArgs(L, 2);
         const char* language = luaL_optstring(L, 3, "");
+        const LocalizationArgs args = argsAt(L, 2);
         pushString(L, Localization::format(std::string_view(pattern, length), args, language));
         return 1;
     }
@@ -128,7 +139,7 @@ namespace {
     }
 
     int luaIndex(lua_State* L) {
-        const std::string field = luaL_checkstring(L, 2);
+        const std::string_view field = luaL_checkstring(L, 2);
         if (field == "language") {
             pushString(L, Localization::getLanguage());
             return 1;
@@ -152,15 +163,15 @@ namespace {
 
     // Localization.onLanguageChanged = function(code) ... end
     int luaNewIndex(lua_State* L) {
-        const std::string field = luaL_checkstring(L, 2);
-        if (field == "onLanguageChanged") {
+        const char* field = luaL_checkstring(L, 2);
+        if (std::string_view(field) == "onLanguageChanged") {
             luaL_checktype(L, 3, LUA_TFUNCTION);
             lua_pushvalue(L, 3);
             Localization::onLanguageChanged = L;
             lua_settop(L, 3);
             return 0;
         }
-        return luaL_error(L, "Localization.%s is read-only", field.c_str());
+        return luaL_error(L, "Localization.%s is read-only", field);
     }
 
 }

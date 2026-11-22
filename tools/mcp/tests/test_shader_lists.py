@@ -284,8 +284,19 @@ async def test_reading_closed_scenes_makes_no_gpu_resources():
         await build_info(ed)
 
         async def alive() -> dict:
-            await ed.call("wait", frames=5, timeout_seconds=300)
-            return (await ed.call("get_render_stats"))["alive"]
+            """The device's resources once the open scene's own lazy work is done: a screenshot waits
+            for every shader being built (the Box's LOD cross-fade variant is built in the background
+            and its pipeline made at the next draw: a slow runner read it after five frames), and
+            the counts are read until two in a row agree."""
+            last = None
+            for _ in range(10):
+                await ed.call("screenshot", view="scene", max_width=64, timeout_seconds=300)
+                await ed.call("wait", frames=5, timeout_seconds=300)
+                counts = (await ed.call("get_render_stats"))["alive"]
+                if counts == last:
+                    return counts
+                last = counts
+            return last
 
         before = await alive()
         for name in ("Spawned", "Lit", "Foggy", "Flat"):

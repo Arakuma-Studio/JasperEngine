@@ -210,6 +210,10 @@ void CullingGroup::setSphereTarget(uint32_t index, Entity entity, float radius, 
         group->follows[slot - 1].entity = entity;
         group->follows[slot - 1].offset = offset;
     } else {
+        // doubling on every standard library (MSVC's grows by half, libstdc++'s doubles), so the memory
+        // getMemoryBytes reports by capacity (R24) is the same on every platform
+        if (group->follows.size() == group->follows.capacity())
+            group->follows.reserve(std::max<size_t>(1, group->follows.capacity() * 2));
         group->follows.push_back({index, entity, offset});
         group->meta[index] = (group->meta[index] & STATE_MASK) | (static_cast<uint32_t>(group->follows.size()) << 8);
     }
