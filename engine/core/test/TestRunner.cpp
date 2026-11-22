@@ -397,7 +397,10 @@ namespace jasperengine::gametest {
             TestChunk* c = chunk(L);
             luaL_checktype(L, 1, LUA_TTABLE);
             if (!c->loading) return luaL_error(L, "Test.config sets the file's defaults at its top level");
-            for (auto& [key, value] : optionsJson(L, 1).items()) c->configOptions[key] = value;
+            // named: a range-for over items() of the returned temporary would iterate a destroyed
+            // object (the Android player crashed in it)
+            const Json options = optionsJson(L, 1);
+            for (const auto& [key, value] : options.items()) c->configOptions[key] = value;
             return 0;
         }
 

@@ -52,8 +52,13 @@ adb shell "$down"
 sleep 0.3
 adb shell "$up"
 
-# the input scheme: a mouse (its pointers have the mouse tool type), then a finger
+# the input scheme: a mouse (its pointers have the mouse tool type), then a finger, in the middle of the
+# screen: `input` takes display pixels (`wm size`), not the touch device's axis range above
+size="$(adb shell wm size | tr -d '\r' | awk -F': ' '/Override size/ { o = $2 } /Physical size/ { p = $2 } END { print (o != "" ? o : p) }')"
+screen_w="${size%x*}" screen_h="${size#*x}"
+[[ "$screen_w" =~ ^[0-9]+$ && "$screen_h" =~ ^[0-9]+$ ]] || { echo "android-two-finger-tap: no screen size from wm size ($size)" >&2; exit 2; }
+echo "android-two-finger-tap: mouse and touchscreen taps at ($(( screen_w / 2 )), $(( screen_h / 2 ))) of ${screen_w}x${screen_h}"
 sleep 2
-adb shell input mouse tap $(( max_x / 2 )) $y || true
+adb shell input mouse tap $(( screen_w / 2 )) $(( screen_h / 2 )) || true
 sleep 2
-adb shell input touchscreen tap $(( max_x / 2 )) $y || true
+adb shell input touchscreen tap $(( screen_w / 2 )) $(( screen_h / 2 )) || true

@@ -5,7 +5,7 @@
 // without pthreads, WebAssembly on the scalar path. 1,000 spheres of about 1,000 triangles each
 // (one shared BVH) in a 200-unit cloud; once they are placed, 10,000 rays from outside the cloud
 // toward random points in it, each timed; the p99 must stay at or under 4 ms. Checked in a browser
-// (WEB_PROJECT=mesh-raycast tools/build.sh web, GATE=mesh-raycast tools/build.sh web-gate) by the
+// (BUILD_TYPE=Release WEB_PROJECT=mesh-raycast tools/build.sh web, GATE=mesh-raycast tools/build.sh web-gate) by the
 // line "[gate] mesh raycast p99 within 4 ms" (an error line otherwise, which fails the gate).
 //
 // spatial-queries AC15 in the same build: the spheres get static colliders and 1,000 more bodies

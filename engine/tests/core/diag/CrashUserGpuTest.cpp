@@ -17,6 +17,7 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <string>
 
 using namespace jasperengine;
@@ -72,9 +73,11 @@ TEST_F(CrashUserGpu, CaptureRetriesWhilePipelinesArePending) {
     EXPECT_FALSE(called);
     EXPECT_TRUE(diag::userreport::wantsCapture()) << "still waiting for a frame without stand-ins";
 
-    // then the first frame without one is read, and encoded
+    // then the first frame without one is read, and encoded on a worker: frames until the callback
+    // comes, however long the encode job waits for a worker on a loaded machine
     creationHeld = false;
-    for (int i = 0; i < 120 && !called; i++) GpuEnvironment::drawFrames(1);
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (!called && std::chrono::steady_clock::now() < until) GpuEnvironment::drawFrames(1);
     ASSERT_TRUE(called) << "the callback never ran";
     EXPECT_TRUE(ok) << error;
     ASSERT_TRUE(diag::userreport::draftHasScreenshot());

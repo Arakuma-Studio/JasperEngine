@@ -365,6 +365,39 @@ TEST(TestRunnerCore, ErrorsDoNotStopTheRun) {
     EXPECT_EQ(result.counts.error, 2);
 }
 
+// Test.config's table is the file's defaults for each case: an unknown key errors every case of the
+// file, naming it. (The table was iterated after its copy went: the Android player crashed in it,
+// and an ASan build reports the read)
+TEST(TestRunnerCore, ConfigAppliesToEveryCaseOfTheFile) {
+    FakeHost host;
+    host.files["f.test.lua"] = R"(
+Test.config{ tags = {"smoke", "config"}, colour = "red" }
+Test.case("one", function(t) end)
+Test.case("two", function(t) end)
+)";
+    const RunResult result = host.run(host.planOf("f.test.lua", {"one", "two"}));
+    for (const char* name : {"one", "two"}) {
+        const CaseResult& r = byName(result, name);
+        EXPECT_EQ(r.status, Status::Error) << name;
+        ASSERT_FALSE(r.failures.empty()) << name;
+        EXPECT_NE(r.failures[0].message.find("Test.config: unknown option \"colour\""), std::string::npos) << r.failures[0].message;
+    }
+}
+
+// R26: the log's category puts "[test] " before each protocol line, so the line itself starts with
+// its kind ("[test] [test] summary" missed the Android expectation of AC13)
+TEST(TestRunnerCore, ProtocolLinesLeaveTheCategoryToTheLog) {
+    Counts counts;
+    counts.total = 4;
+    counts.passed = 3;
+    counts.skipped = 1;
+    EXPECT_EQ(summaryLine(counts), "summary {\"error\":0,\"excluded_edit\":0,\"failed\":0,\"hung\":0,\"passed\":3,\"skipped\":1,\"total\":4}");
+    EXPECT_EQ(beginLine(4, "r1"), "begin {\"cases\":4,\"run\":\"r1\"}");
+    CaseResult result;
+    result.spec.name = "one";
+    EXPECT_EQ(caseLine(result).rfind("case {", 0), 0u) << caseLine(result);
+}
+
 TEST(TestRunnerCore, HangAndTimeoutAreDifferent) {
     FakeHost host;
     host.files["h.test.lua"] = R"(

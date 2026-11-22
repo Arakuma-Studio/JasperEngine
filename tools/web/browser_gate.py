@@ -363,6 +363,7 @@ def main() -> int:
     seconds = args.seconds if args.seconds is not None else float(baseline.get("seconds", default_seconds))
     if args.capture_timeout is None:
         args.capture_timeout = float(baseline.get("capture_timeout", 30.0))
+    server = None
     if args.editor_served:
         # the editor's server sends the isolation headers itself and relays the page's log
         page_url = args.editor_served + ("&" if "?" in args.editor_served else "?") + "&".join([READY_QUERY] + baseline.get("query", []) + args.query)
@@ -608,7 +609,9 @@ def main() -> int:
             chrome.wait(timeout=15)
         except subprocess.TimeoutExpired:
             chrome.kill()
-        server.shutdown()
+        # (an --editor-served page is the editor's server's)
+        if server:
+            server.shutdown()
         shutil.rmtree(profile, ignore_errors=True)
 
 

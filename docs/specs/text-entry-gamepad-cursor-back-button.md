@@ -601,3 +601,12 @@ Red controls are run on the base commit first and named in the PR.
   build (`ANDROID_ABIS=x86_64 tools/build.sh android`) and the web build compile with it and with
   parts A and C's platform code; the emulator suite (`tools/android-emulator-test.sh --ime`, AC7),
   the web gate's form (AC22) and an iOS build did not run.
+- **AC7, AC22 (integration pass).** The form is `tools/test-projects/input`'s `assets/form/form.html` with
+  `lua/FormUI.lua`: the game focuses the e-mail field (and makes its document a menu) at the input
+  scheme's second switch, since neither the web gate nor `adb` can click inside the canvas's document.
+  `GATE=input` then reads the IME textarea's `inputmode="email"` and `enterkeyhint="send"` and presses
+  Escape (`[gate] back`). On the emulator, `tools/android-emulator-test.sh --ime` reads the field's
+  EditorInfo from `dumpsys input_method` (`inputType=0x21 imeOptions=0x12000004`), types eight
+  characters with `input text` (the field keeps five) and presses Enter: `adb` has no way to press
+  an input method's action key, so the submit is the hardware Enter path, not `onEditorAction`, and
+  the IME's own buffer is not read.
