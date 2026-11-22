@@ -23,6 +23,7 @@
 #endif
 
 #include <cmath>
+#include <cstdint>
 #include <memory>
 #include <random>
 #include <vector>
@@ -65,15 +66,41 @@ namespace jasperengine::test {
         }
     }
 
+    // libstdc++'s uniform_real_distribution<float> and uniform_int_distribution<int> over mt19937,
+    // spelled out: the standard leaves both to the library, and ray_city_hits.txt was written with
+    // libstdc++ (libc++ draws other numbers from the same engine, and macOS failed the fixture)
+    inline float cityUniform(std::mt19937& rng, float a, float b){
+        float canonical = (float)rng() / 4294967296.0f;
+        if (canonical >= 1.0f)
+            canonical = std::nextafter(1.0f, 0.0f);
+        // two statements: clang fuses a * b + c of one expression on arm64, libstdc++'s x86-64 build does not
+        const float scaled = canonical * (b - a);
+        return scaled + a;
+    }
+
+    // Lemire's nearly divisionless method, as libstdc++ 11 downscales a 32-bit engine
+    inline int cityUniformInt(std::mt19937& rng, int a, int b){
+        const uint32_t range = (uint32_t)b - (uint32_t)a + 1u;
+        uint64_t product = (uint64_t)rng() * range;
+        uint32_t low = (uint32_t)product;
+        if (low < range){
+            const uint32_t threshold = (0u - range) % range;
+            while (low < threshold){
+                product = (uint64_t)rng() * range;
+                low = (uint32_t)product;
+            }
+        }
+        return a + (int)(product >> 32);
+    }
+
 #ifdef JASPERENGINE_PHYSICS_3D
     inline Collider3D cityCollider(std::mt19937& rng, bool trigger){
-        std::uniform_int_distribution<int> kind(0, 2);
-        std::uniform_real_distribution<float> size(0.3f, 0.7f);
+        auto size = [&rng](){ return cityUniform(rng, 0.3f, 0.7f); };
         Collider3D collider;
-        switch (kind(rng)){
-            case 0: collider.type = Collider3DType::SPHERE; collider.radius = size(rng); break;
-            case 1: collider.type = Collider3DType::BOX; collider.width = 2.0f * size(rng); collider.height = 2.0f * size(rng); collider.depth = 2.0f * size(rng); break;
-            default: collider.type = Collider3DType::CAPSULE; collider.radius = 0.5f * size(rng); collider.halfHeight = size(rng); break;
+        switch (cityUniformInt(rng, 0, 2)){
+            case 0: collider.type = Collider3DType::SPHERE; collider.radius = size(); break;
+            case 1: collider.type = Collider3DType::BOX; collider.width = 2.0f * size(); collider.height = 2.0f * size(); collider.depth = 2.0f * size(); break;
+            default: collider.type = Collider3DType::CAPSULE; collider.radius = 0.5f * size(); collider.halfHeight = size(); break;
         }
         collider.isTrigger = trigger;
         return collider;
@@ -99,16 +126,17 @@ namespace jasperengine::test {
         scene.addComponent<RigidbodyComponent>(city.ground, ground);
 
         std::mt19937 rng(seed);
-        std::uniform_real_distribution<float> jitter(-0.6f, 0.6f);
-        std::uniform_real_distribution<float> height(1.0f, 3.0f);
-        std::uniform_real_distribution<float> angle(0.0f, 6.2831853f);
         const int side = (int)std::ceil(std::sqrt((double)count));
         const float spacing = 2.0f * e / (float)side;
         for (size_t i = 0; i < count; i++){
-            const float x = -e + spacing * (0.5f + (float)(i % side)) + jitter(rng);
-            const float z = -e + spacing * (0.5f + (float)(i / side)) + jitter(rng);
-            const Quaternion rotation(angle(rng), Vector3(0.3f, 1.0f, 0.2f).normalized());
-            const Entity entity = placedEntity(scene, Vector3(x, height(rng), z), rotation);
+            // (no a * b + c in one expression: see cityUniform)
+            const float cellX = spacing * (0.5f + (float)(i % side));
+            const float cellZ = spacing * (0.5f + (float)(i / side));
+            const float x = -e + cellX + cityUniform(rng, -0.6f, 0.6f);
+            const float z = -e + cellZ + cityUniform(rng, -0.6f, 0.6f);
+            const Quaternion rotation(cityUniform(rng, 0.0f, 6.2831853f), Vector3(0.3f, 1.0f, 0.2f).normalized());
+            const float height = cityUniform(rng, 1.0f, 3.0f);
+            const Entity entity = placedEntity(scene, Vector3(x, height, z), rotation);
             RigidbodyComponent body;
             // a quarter triggers (every eighth body has a solid collider too: a trigger companion);
             // half the rest dynamic, put to sleep

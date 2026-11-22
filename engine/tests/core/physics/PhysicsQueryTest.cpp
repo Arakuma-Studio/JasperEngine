@@ -236,14 +236,18 @@ TEST(PhysicsQuery, TriggersFollowInteraction){
 TEST(PhysicsQuery, RaycastUnchangedByDefault){
     test::QueryCity city = test::buildQueryCity3D(2000);
     Scene* scene = city.scene.get();
+    // the fixture's rays: test::cityUniform draws what libstdc++ drew when it was written, z before
+    // x as GCC evaluated Vector3(along(rng), 6.0f, along(rng))
     std::mt19937 rng(23);
-    std::uniform_real_distribution<float> along(-city.extent, city.extent);
-    std::uniform_real_distribution<float> unit(-1.0f, 1.0f);
     std::ostringstream lines;
     char line[256];
     for (int i = 0; i < 1000; i++){
-        const Vector3 origin(along(rng), 6.0f, along(rng));
-        const Vector3 direction(unit(rng), -1.0f, unit(rng));
+        const float originZ = test::cityUniform(rng, -city.extent, city.extent);
+        const float originX = test::cityUniform(rng, -city.extent, city.extent);
+        const float directionZ = test::cityUniform(rng, -1.0f, 1.0f);
+        const float directionX = test::cityUniform(rng, -1.0f, 1.0f);
+        const Vector3 origin(originX, 6.0f, originZ);
+        const Vector3 direction(directionX, -1.0f, directionZ);
         const RayReturn hit = Physics::raycast(scene, origin, direction, 40.0f);
         const std::vector<RayReturn> all = Physics::raycastAll(scene, origin, direction, 40.0f);
         std::snprintf(line, sizeof(line), "%d %d %u %zu %.4f %zu\n", i, hit.hit ? 1 : 0, (unsigned)hit.body, hit.colliderIndex, hit.hit ? hit.distance : 0.0f, all.size());
@@ -396,7 +400,7 @@ TEST(PhysicsQuery, CastsHitNearestAndSkipStartInside){
 // AC6: no heap allocation once warmed up, both backends; the red control is Jolt's own collector
 TEST(PhysicsQuery, NoAllocations){
     if (!testsupport::countsAllocations()){
-        GTEST_SKIP() << "allocations are counted on Linux only";
+        GTEST_SKIP() << "this platform's test binary cannot count allocations";
     }
     test::QueryCity city = test::buildQueryCity3D(2000);
     Scene* scene = city.scene.get();
