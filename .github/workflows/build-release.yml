@@ -50,10 +50,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # every commit and tag (git describe stamps the build) but no old blob: they are never read
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
+          filter: blob:none
       - name: Check the channel, version and commit
         env:
           CHANNEL: ${{ inputs.channel }}
@@ -81,7 +83,10 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
+          filter: blob:none
       - uses: ./.github/actions/free-disk
+        with:
+          need: 65
       - uses: ./.github/actions/image
         id: image
         with:
@@ -122,7 +127,10 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
+          filter: blob:none
       - uses: ./.github/actions/free-disk
+        with:
+          need: 25
       - uses: ./.github/actions/image
         id: image
         with:
@@ -163,7 +171,10 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
+          filter: blob:none
       - uses: ./.github/actions/free-disk
+        with:
+          need: 75
       - uses: ./.github/actions/image
         id: image
         with:
@@ -210,6 +221,7 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
+          filter: blob:none
       # a second try when the first fails (ci.yml's windows job)
       - uses: jakoch/install-vulkan-sdk-action@7fe84289ddbf750f7eff9f8e4588e600e1dd06c8 # v1.8.1
         id: vulkan-sdk
@@ -269,6 +281,7 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
+          filter: blob:none
       # (nasm: dav1d's x86-64 assembly of the universal and simulator slices)
       - name: Install Ninja, ccache and NASM
         run: |
@@ -316,6 +329,7 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
+          filter: blob:none
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: player-archives-*
@@ -345,6 +359,7 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
+          filter: blob:none
       - uses: ./.github/actions/free-disk
       - uses: ./.github/actions/image
         id: image
@@ -406,6 +421,7 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
+          filter: blob:none
       # a second try when the first fails (ci.yml's windows job)
       - uses: jakoch/install-vulkan-sdk-action@7fe84289ddbf750f7eff9f8e4588e600e1dd06c8 # v1.8.1
         id: vulkan-sdk
@@ -467,6 +483,7 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
+          filter: blob:none
       # (nasm: dav1d's x86-64 assembly of the universal and simulator slices)
       - name: Install Ninja, ccache and NASM
         run: |
@@ -516,6 +533,7 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
+          filter: blob:none
       - uses: ./.github/actions/free-disk
       - uses: ./.github/actions/image
         id: image
@@ -573,6 +591,7 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
+          filter: blob:none
       - uses: ./.github/actions/free-disk
       - uses: ./.github/actions/image
         id: image
@@ -622,6 +641,7 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
+          filter: blob:none
       - uses: ./.github/actions/free-disk
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -661,6 +681,7 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
+          filter: blob:none
       - uses: ./.github/actions/free-disk
       - uses: ./.github/actions/image
         id: image

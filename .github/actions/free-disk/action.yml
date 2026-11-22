@@ -1,21 +1,21 @@
 name: Free disk
 description: >
-  Linux runners: removes the preinstalled Android SDK, .NET, GHC, the CodeQL bundle and every Docker
-  image, which a lane's build image and build tree need the room of (docs/superpowers/specs/2026-11-12-ci-design.md
-  §10.3). Prints df -h before and after. Does nothing on Windows and macOS.
+  Linux runners: when / has less free than the job needs, removes the preinstalled Android SDK, .NET,
+  GHC, the CodeQL bundle and every Docker image (free-disk.sh). Without need it always removes them.
+  Does nothing on Windows and macOS.
+inputs:
+  need:
+    description: >
+      The GB free on / the job needs: its measured peak use with a margin (docs/testing.md "CI", "Job
+      setup"). Empty: always remove.
+    required: false
+    default: ''
 runs:
   using: composite
   steps:
     - name: Free disk
       if: runner.os == 'Linux'
       shell: bash
-      run: |
-        df -h /
-        # in parallel: each removal is a few GB of small files
-        for dir in /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL; do
-            sudo rm -rf "$dir" &
-        done
-        # no container runs yet, so every image is unused
-        docker image prune --all --force > /dev/null &
-        wait
-        df -h /
+      env:
+        NEED: ${{ inputs.need }}
+      run: '"$GITHUB_ACTION_PATH/free-disk.sh"'

@@ -307,6 +307,23 @@ namespace {
         }
     };
 
+    // Once the service reports its index ready, an edit (new.lua) is reported
+    void expectChangesReported(const WatchTempDir& dir, FileWatchService& service, FileWatchService::State state) {
+        std::mutex mutex;
+        std::vector<FileChange> changes;
+        FileWatchSubscription subscription = service.subscribe({}, [&](std::span<const FileChange> batch) {
+            std::lock_guard<std::mutex> lock(mutex);
+            changes.insert(changes.end(), batch.begin(), batch.end());
+        }, DeliverOn::Worker);
+        ASSERT_TRUE(waitFor([&]() { return service.stats().indexReady; }, timeLimit(fileWatcherMs(10000))));
+        EXPECT_EQ(service.stats().state, state);
+        writeText(dir.path / "new.lua", "return 1");
+        EXPECT_TRUE(waitFor([&]() {
+            std::lock_guard<std::mutex> lock(mutex);
+            return !changes.empty();
+        }, timeLimit(fileWatcherMs(3000))));
+    }
+
 }
 
 // A save's delete and rewrite straddling a scan that comes late (a slow scan of a big project, a
@@ -341,6 +358,25 @@ TEST_P(FileWatcherPolling, DeleteRecreateAcrossALateScan) {
     ASSERT_EQ(got.size(), 1u) << fileWatcherDescribe(got);
     EXPECT_EQ(got[0].kind, FileChangeKind::Modified);
     EXPECT_EQ(got[0].path, target);
+}
+
+// An edit made once the service reported its index ready is reported. The polling backend's first
+// look at the tree is its baseline: taken after that edit, the edit was in it and never reported
+// (FsEventsStart.WithNoStreamServedTheServicePolls on macOS, a preempted poll thread). The hook
+// holds the baseline until the edit exists; where the baseline comes first it gives up.
+TEST_P(FileWatcherPolling, AnEditAfterTheIndexIsReadyIsReported) {
+    const fs::path edit = dir.path / "new.lua";
+    struct Unhook {
+        ~Unhook() { watch::setPollingScanHookForTesting(nullptr); }
+    } unhook;
+    watch::setPollingScanHookForTesting([edit]() {
+        waitFor([&]() {
+            std::error_code ec;
+            return fs::exists(edit, ec);
+        }, timeLimit(fileWatcherMs(300)));
+    });
+    ASSERT_TRUE(service.start(dir.path, GetParam(), POLL_INTERVAL));
+    expectChangesReported(dir, service, FileWatchService::State::Polling);
 }
 
 INSTANTIATE_TEST_SUITE_P(Polling, FileWatcherPolling, ::testing::Values(WatchBackendKind::Polling),
@@ -441,22 +477,6 @@ namespace {
         explicit DeadStreams(int count) { watch::setFsEventsDeadStreamsForTesting(count); }
         ~DeadStreams() { watch::setFsEventsDeadStreamsForTesting(0); }
     };
-
-    void expectChangesReported(const WatchTempDir& dir, FileWatchService& service, FileWatchService::State state) {
-        std::mutex mutex;
-        std::vector<FileChange> changes;
-        FileWatchSubscription subscription = service.subscribe({}, [&](std::span<const FileChange> batch) {
-            std::lock_guard<std::mutex> lock(mutex);
-            changes.insert(changes.end(), batch.begin(), batch.end());
-        }, DeliverOn::Worker);
-        ASSERT_TRUE(waitFor([&]() { return service.stats().indexReady; }, timeLimit(fileWatcherMs(10000))));
-        EXPECT_EQ(service.stats().state, state);
-        writeText(dir.path / "new.lua", "return 1");
-        EXPECT_TRUE(waitFor([&]() {
-            std::lock_guard<std::mutex> lock(mutex);
-            return !changes.empty();
-        }, timeLimit(fileWatcherMs(3000))));
-    }
 
 }
 

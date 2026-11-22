@@ -1,0 +1,110 @@
+name: MCP timings refit
+
+# Daily (or on demand): refits tools/mcp/ci-timings.json, the committed timings tools/ci/plan_lanes.py
+# plans ci.yml's MCP shards by, from the newest CI runs' shard results (tools/ci/mcp_timings.py: robust
+# medians, outliers and single samples dropped, a band against churn), and when an entry moved opens or
+# updates the standing pull request from ci/mcp-timings-refit. docs/testing.md, "How the MCP shards are
+# balanced".
+#
+# GitHub Actions may not open pull requests in this repository (Settings > Actions > General), and a
+# push with the workflow token starts no pull_request run: with the secret MCP_TIMINGS_TOKEN (a
+# fine-grained token, contents and pull requests read and write) it does both; without it the job
+# pushes the branch, dispatches ci.yml on it so Check reports on its head, and fails when it has no PR
+# yet, saying so.
+on:
+  schedule:
+    - cron: '43 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-timings-refit
+  cancel-in-progress: false
+
+jobs:
+  refit:
+    name: Refit the MCP shard timings
+    # not on a fork: its CI runs are not this repository's
+    if: github.repository == 'Arakuma-Studio/JasperEngine'
+    runs-on: ubuntu-slim
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    env:
+      BRANCH: ci/mcp-timings-refit
+      RUNS: build/mcp-timings-runs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ secrets.MCP_TIMINGS_TOKEN || github.token }}
+
+      - name: Fetch the newest CI runs' MCP results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/ci/mcp_timings.py fetch --out "$RUNS"
+
+      - name: Refit
+        id: refit
+        run: |
+          python3 tools/ci/mcp_timings.py refit --results "$RUNS" --write | tee build/refit.txt
+          python3 tools/ci/mcp_timings.py check
+          if git diff --quiet -- tools/mcp/ci-timings.json; then
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+          cat build/refit.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update the pull request
+        if: steps.refit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.MCP_TIMINGS_TOKEN || github.token }}
+          OWN_TOKEN: ${{ secrets.MCP_TIMINGS_TOKEN != '' }}
+          WORKFLOW_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add tools/mcp/ci-timings.json
+          git commit -q -m "ci: refit the MCP shard timings from the newest CI runs (tools/ci/mcp_timings.py)"
+          git push --force origin "$BRANCH"
+          {
+              echo "## Problem"
+              echo
+              echo "The MCP shards' committed timings moved outside the band (tools/ci/mcp_timings.py refit)."
+              echo
+              echo "## What changed"
+              echo
+              echo "tools/mcp/ci-timings.json, refitted by run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID:"
+              echo
+              echo '```'
+              cat build/refit.txt
+              echo '```'
+              echo
+              echo "## How it was verified"
+              echo
+              echo "\`python3 tools/ci/mcp_timings.py check\` passed; every shard plan runs the union check."
+              echo
+              echo "## Surfaces"
+              echo
+              echo "N/A: CI planning data only."
+              echo
+              echo "---"
+              echo "By the mcp-timings-refit workflow."
+          } > build/pr-body.md
+          pr="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
+          if [[ -n "$pr" ]]; then
+              gh pr edit "$pr" --body-file build/pr-body.md
+          elif ! gh pr create --base main --head "$BRANCH" --body-file build/pr-body.md \
+                  --title "ci: refit the MCP shard timings from the newest CI runs"; then
+              echo "::error::no pull request opened: allow GitHub Actions to create pull requests (Settings > Actions > General), or add the secret MCP_TIMINGS_TOKEN; $BRANCH is pushed"
+              exit 1
+          fi
+          # a push with the workflow token starts no pull_request run: Check reports on the head this way
+          if [[ "$OWN_TOKEN" != true ]]; then
+              GH_TOKEN="$WORKFLOW_TOKEN" gh workflow run ci.yml --ref "$BRANCH"
+          fi

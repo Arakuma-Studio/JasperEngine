@@ -99,8 +99,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     project(${APP_NAME})
 
-    # before any target: sanitizers apply to the whole tree (empty by default, as in every export)
+    # before any target: sanitizers and the debug information level apply to the whole tree (empty
+    # and full by default, as in every export)
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/JasperSanitizers.cmake)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/JasperDebugInfo.cmake)
 
     set(JASPERENGINE_SHARED OFF)
 
@@ -1076,7 +1078,8 @@ if(JASPERENGINE_SPLIT_SYMBOLS AND NOT ANDROID)
         add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Z7>)
         add_link_options(/DEBUG:FULL)
     else()
-        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-g>)
+        # -g, or line tables only with JASPERENGINE_DEBUG_INFO=lines (cmake/JasperDebugInfo.cmake)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:${JASPERENGINE_DEBUG_FLAG}>)
     endif()
 endif()
 if(JASPERENGINE_RELEASE_LINK)

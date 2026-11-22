@@ -62,6 +62,55 @@ class Chunks(Base):
         self.assertEqual(chunks[0].seconds, shard.DEFAULT_SECONDS + shard.CHUNK_OVERHEAD)
 
 
+class Timings(Base):
+    COMMITTED = {"format": 1, "default_test_seconds": 7.0, "files": {"test_whole.py": {"seconds": 300.0, "tests": 2},
+                 "test_free.py": {"seconds": 600.0, "tests": 6}}, "tests": {"test_free.py::test_0": 50.0}}
+    CACHE = {"test_whole.py::test_a": 999.0, "test_free.py::test_1": 40.0, "test_game.py::test_run": 80.0}
+
+    def seconds(self, order):
+        (self.tmp / "ci-timings.json").write_text(json.dumps(self.COMMITTED))
+        (self.tmp / "cache.json").write_text(json.dumps(self.CACHE))
+        times = shard.load_timings([self.tmp / name for name in order])
+        chunks = shard.make_chunks(TESTS, times, 10000.0, self.tmp)
+        return {c.file: round(c.seconds - shard.CHUNK_OVERHEAD, 1) for c in chunks}
+
+    def test_the_committed_file_first_then_the_cache_then_its_default(self):
+        for order in (["cache.json", "ci-timings.json"], ["ci-timings.json", "cache.json"]):
+            got = self.seconds(order)
+            # a file it knows: its seconds, whatever the cache says of its tests
+            self.assertEqual(got["test_whole.py"], 300.0, order)
+            # a test of an independent file by its own time; the file's other tests share what is left
+            self.assertEqual(got["test_free.py"], 600.0, order)
+            # a file it does not know: the cache; neither knows it: the committed default a test
+            self.assertEqual(got["test_game.py"], 80.0, order)
+            self.assertEqual(got["test_build.py"], 7.0, order)
+
+    def chunk_seconds(self, committed, tests):
+        (self.tmp / "ci-timings.json").write_text(json.dumps(committed))
+        chunks = shard.make_chunks(tests, shard.load_timings([self.tmp / "ci-timings.json"]), 10000.0, self.tmp)
+        return sum(c.seconds - shard.CHUNK_OVERHEAD for c in chunks)
+
+    def test_a_file_split_into_more_tests_keeps_its_seconds(self):
+        # test_whole.py's two tests, now three (one split in two since the refit): still 300 s
+        self.assertEqual(self.chunk_seconds(self.COMMITTED, ["test_whole.py::test_a", "test_whole.py::test_b",
+                                                             "test_whole.py::test_c"]), 300.0)
+
+    def test_a_file_of_short_tests_keeps_its_seconds(self):
+        # 2 s a test, under the 7 s default: the default is no floor for a file of untimed tests
+        short = dict(self.COMMITTED, files={"test_whole.py": {"seconds": 4.0, "tests": 2}})
+        self.assertEqual(self.chunk_seconds(short, ["test_whole.py::test_a", "test_whole.py::test_b"]), 4.0)
+
+    def test_a_test_added_to_a_timed_file_counts_the_default(self):
+        timed = dict(self.COMMITTED, tests={f"test_free.py::test_{i}": 100.0 for i in range(6)})
+        self.assertEqual(self.chunk_seconds(timed, [f"test_free.py::test_{i}" for i in range(7)]), 600.0 + 7.0)
+
+    def test_an_unreadable_file_is_left_out(self):
+        (self.tmp / "ci-timings.json").write_text('{"format": 1, "files": {"test_whole.py": ')
+        (self.tmp / "cache.json").write_text(json.dumps(self.CACHE))
+        times = shard.load_timings([self.tmp / "ci-timings.json", self.tmp / "cache.json"])
+        self.assertEqual(times, self.CACHE)
+
+
 class Plans(Base):
     def shards(self, *specs):
         return [shard.parse_shard(s) for s in specs]

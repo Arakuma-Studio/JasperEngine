@@ -64,7 +64,8 @@ jobs:
           password: ${{ github.token }}
 
       # the registry's layer cache (:buildcache), never the Actions cache: the web image alone would take
-      # 40% of its 10 GB
+      # 40% of its 10 GB. zstd layers: every Linux job pulls an image, and they unpack about 4 times as
+      # fast as gzip (the linux image's layers: 3.3 s against 13 s on one core)
       - name: Build and push
         run: |
           registry="ghcr.io/${OWNER,,}"
@@ -75,7 +76,8 @@ jobs:
                   echo "$name:$tag is in the registry"
                   continue
               fi
-              args=(--push --provenance=false --sbom=false
+              args=(--output "type=image,push=true,compression=zstd,compression-level=3,force-compression=true,oci-mediatypes=true"
+                    --provenance=false --sbom=false
                     --label "org.opencontainers.image.source=$SOURCE"
                     -t "$name:$tag" -t "$name:latest"
                     --cache-to "type=registry,ref=$name:buildcache,mode=max"

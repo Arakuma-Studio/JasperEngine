@@ -10,10 +10,11 @@ endif()
 project(jasperengine-editor)
 
 # Build options of our own targets (docs/testing.md), shared with the standalone engine tree:
-# sanitizers (before any target: they apply to the whole tree), warnings (on here; off in
-# engine/, which exported games build), warnings as errors, unity builds
+# sanitizers and the debug information level (before any target: they apply to the whole tree),
+# warnings (on here; off in engine/, which exported games build), warnings as errors, unity builds
 option(JASPERENGINE_WARNINGS "Warnings on the engine, editor and test targets" ON)
 include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperSanitizers.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperDebugInfo.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperUnityBuild.cmake)
 # precompiled headers and the linker of development and test builds (docs/testing.md "Build speed")

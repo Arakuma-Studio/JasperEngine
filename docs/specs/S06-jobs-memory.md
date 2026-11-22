@@ -596,6 +596,11 @@ Recorded by the implementer (branch `feat/s06-jobs-memory`).
 - **R2: High work always goes to the global High queue,** including from a worker. Only Normal
   work enters the local deques. A local High job could otherwise wait behind a long Normal
   chain on a busy worker, and it would sit below the High global queue in R1's order.
+- **AC23's storm size.** The 200 textures are the benchmark run's (`JASPER_TEST_PERF_SLACK`, where the
+  frame pace is enforced). Elsewhere the test loads four times the gate's Heavy max, at least 16
+  (16 on CI's 4 vCPUs): the gate's saturation is what it checks there, and a storm of 3 textures
+  already peaks at the Heavy max (11 of 11 on a 4-CPU container), so the 200 decodes only cost
+  CI 461-476 s (merge-queue runs 44745111854, 44735818671).
 - **D4: slab sizes.** Bare jobs use 128 B envelopes (96 B of closure, as specified). Tasks need
   the result slot, the dependents list and the refcount, so `TaskState` uses a 256 B slab class.
   Larger closures fall back to the heap and are counted (`totals.heap_envelopes`).

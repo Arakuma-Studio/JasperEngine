@@ -28,6 +28,7 @@
 # JASPERENGINE_EDITOR_VERSION (or JASPERENGINE_VERSION) stamps the build with that version instead of git describe.
 # BUILD_TYPE overrides the CMake build type (default Release; Debug for web; RelWithDebInfo for
 # unit-tests; Debug for every sanitizer build). SKIP_ENGINE=1 builds only the editor for linux.
+# JASPERENGINE_DEBUG_INFO=lines (CI) gives every tree line tables only where it has debug information.
 # JOBS caps build parallelism and, with CPUS (default: DOCKER_CPUS, else JOBS), the CPUs the
 # container may use (docker --cpus), which also caps what ignores JOBS: the Android gradle/ninja
 # build and the test binaries. DOCKER_CPUS is the same cap under the name tools/smoke-test.sh
@@ -98,7 +99,7 @@ EDITOR_MIN_TESTS=150
 HTMLUI_MAX_SKIPPED=75
 
 usage() {
-    sed -n '2,79p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,80p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -300,21 +301,22 @@ if [[ "${DOCKER_GPU:-0}" == 1 ]]; then
     ENV_FLAGS+=(-e DOCKER_GPU=1)
     [[ -n "${JE_GPU_DISPLAY:-}" ]] && ENV_FLAGS+=(-e "JE_GPU_DISPLAY=$JE_GPU_DISPLAY")
 fi
-for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_UPDATE_GOLDEN JASPER_TITLE_UPDATE_GOLDEN JASPER_TITLE_LIBRARY_SHARD JASPER_TITLE_LIBRARY_KINDS JASPER_TITLE_LIBRARY_ONLY JASPER_TEST_WRITE_ACTUAL \
+for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_UPDATE_GOLDEN JASPER_TITLE_UPDATE_GOLDEN JASPER_TITLE_LIBRARY_KINDS JASPER_TITLE_LIBRARY_ONLY JASPER_TEST_WRITE_ACTUAL \
             JASPER_TEST_KEEP_TEMP JASPER_REFLECT_WRITE_FIXTURE JASPER_BENCH_ENTITIES JASPER_HTMLUI_PERF_SLACK JASPER_TEST_PERF_SLACK \
             HTMLUI_LIVE_NETWORK JASPER_CHROME JASPER_ZERO_COST_UPDATE JASPER_PICK_SIMD \
             JASPER_HTMLUI_S16_OFF JASPER_HTMLUI_BATCHING JASPER_HTMLUI_SDF_PRIMITIVES JASPERENGINE_GPU_TIMER JASPER_HTMLUI_PROFILE \
             JASPER_TEST_UPDATE_FIXTURES JASPER_SLOW_BUILD JASPER_SLOW_TESTS JASPER_BUILD_TIMEOUT JASPER_MCP_PERF_SLACK \
             JASPER_UPDATE_GOLDEN JASPER_PARTICLES_UPDATE_GOLDEN JASPER_POST_FX_UPDATE_GOLDEN JASPER_REFLECTION_UPDATE_GOLDEN \
             JASPER_RENDER_UPDATE_GOLDEN JASPER_SCENE_VIEW_UPDATE_GOLDEN JASPER_SHADOW_UPDATE_GOLDEN \
-            JASPERENGINE_VERSION JASPERENGINE_EDITOR_VERSION; do
+            JASPERENGINE_VERSION JASPERENGINE_EDITOR_VERSION JASPERENGINE_DEBUG_INFO; do
     # (JASPER_HTMLUI_PERF_SLACK: the HTML UI performance tests' tolerance on a loaded host, compat_perf_test.cpp;
     # JASPER_TEST_PERF_SLACK: the core tests' wall-clock budgets are enforced only when it is set;
     # JASPER_PICK_SIMD: the picking BVH's slab test path, scalar|avx2|neon, S26 AC2;
     # JASPER_TEST_UPDATE_FIXTURES: the editor's TextureFormatFixtures writes the GPU format test's cooks, S14;
     # JASPER_SLOW_BUILD, JASPER_SLOW_TESTS, JASPER_BUILD_TIMEOUT, JASPER_MCP_PERF_SLACK: the MCP suite's opt-ins;
     # JASPER_*_UPDATE_GOLDEN: the MCP tests' golden update modes, so mcp-tests can rewrite them in the image;
-    # JASPERENGINE_VERSION / JASPERENGINE_EDITOR_VERSION: a release's stamp, which package_player.py names archives by)
+    # JASPERENGINE_VERSION / JASPERENGINE_EDITOR_VERSION: a release's stamp, which package_player.py names archives by;
+    # JASPERENGINE_DEBUG_INFO: for the games the editor and the scripts configure in the image, below)
     [[ -n "${!name:-}" ]] && ENV_FLAGS+=(-e "$name=${!name}")
 done
 # Sanitizer runtime options for every run (tools/sanitizers/*.supp: third-party code only)
@@ -439,6 +441,11 @@ if [[ -n "${JASPERENGINE_PCH:-}" ]]; then
     DEV_ENGINE_FLAGS="-DJASPERENGINE_PCH=$JASPERENGINE_PCH"
     OPTION_FLAGS="$OPTION_FLAGS -DJASPERENGINE_PCH=$JASPERENGINE_PCH"
 fi
+# JASPERENGINE_DEBUG_INFO=lines (CI, ci.yml): line tables only instead of full debug information
+# (engine/cmake/JasperDebugInfo.cmake), explicit in every tree so that unsetting it goes back to full
+DEBUG_INFO="${JASPERENGINE_DEBUG_INFO:-full}"
+[[ "$DEBUG_INFO" =~ ^(full|lines)$ ]] || { echo "build.sh: JASPERENGINE_DEBUG_INFO is full or lines, got '$DEBUG_INFO'" >&2; exit 2; }
+OPTION_FLAGS="$OPTION_FLAGS -DJASPERENGINE_DEBUG_INFO=$DEBUG_INFO"
 VARIANT="$CXX_SUFFIX$VARIANT"
 
 case "$TARGET" in
