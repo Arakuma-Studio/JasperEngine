@@ -25,6 +25,7 @@
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/ElementText.h>
 #include <RmlUi/Core/EventListener.h>
 #include <RmlUi/Core/Factory.h>
 #include <RmlUi/Core/StreamMemory.h>
@@ -34,6 +35,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <limits>
 #include <list>
 #include <mutex>
 #include <unordered_map>
@@ -1047,7 +1049,8 @@ void DocumentLoader::restyleSheets(Rml::ElementDocument* document, const CompatD
     document->SetStyleSheetContainer(std::move(combined));
 }
 
-void DocumentLoader::prewarmSheets(Rml::ElementDocument* document, const std::shared_ptr<const CompatDocument>& compiled){
+void DocumentLoader::prewarmSheets(Rml::ElementDocument* document, const std::shared_ptr<const CompatDocument>& compiled,
+                                   const char* scheme){
     if (!document || !compiled || !compiled->compiled)
         return;
     // parsed, and compiled for the document's context as it is now (RmlUi compiles a container's
@@ -1057,17 +1060,41 @@ void DocumentLoader::prewarmSheets(Rml::ElementDocument* document, const std::sh
         return;
     container->UpdateCompiledStyleSheet(document->GetContext());
     // and the elements' definitions resolved against it (the sheet caches them by the rules that
-    // match): the swap's restyle finds them instead of matching every selector again
+    // match): the swap's restyle finds them instead of matching every selector again. Under the
+    // scheme the swap comes with, whose attribute selectors match other rules (their definitions
+    // are new combinations, built once), the attribute put back after
     const Rml::StyleSheet* sheet = container->GetCompiledStyleSheet();
     if (!sheet)
         return;
+    const Rml::Variant* own = document->GetAttribute(kInputSchemeAttribute);
+    const Rml::String previous = own ? own->Get<Rml::String>() : Rml::String();
+    const bool swapScheme = scheme && (!own || previous != scheme);
+    if (swapScheme)
+        document->SetAttribute(kInputSchemeAttribute, Rml::String(scheme));
     std::vector<Rml::Element*> pending{document};
     while (!pending.empty()){
         Rml::Element* element = pending.back();
         pending.pop_back();
         sheet->GetElementDefinition(element);
+        // a text never laid out (hidden since the load: the other scheme's prompts) measured with
+        // the font it has, as its first layout will: the swap then finds its words' widths
+        if (scheme){
+            Rml::ElementText* text = rmlui_dynamic_cast<Rml::ElementText*>(element);
+            if (text && text->GetLines().empty() && !text->GetText().empty() && text->GetFontFaceHandle()){
+                Rml::String line;
+                int length = 0;
+                float width = 0.0f;
+                text->GenerateLine(line, length, width, 0, std::numeric_limits<float>::max(), 0.0f, true, true, true);
+            }
+        }
         for (int i = 0; i < element->GetNumChildren(); i++)
             pending.push_back(element->GetChild(i));
+    }
+    if (swapScheme){
+        if (own)
+            document->SetAttribute(kInputSchemeAttribute, previous);
+        else
+            document->RemoveAttribute(kInputSchemeAttribute);
     }
 }
 

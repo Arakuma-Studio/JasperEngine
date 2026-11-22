@@ -793,6 +793,15 @@ along a path across twelve buttons, glcore build). The pointer events' parameter
 lists `EventDispatcher` collects per dispatch and the hover chain's sets are built per event. The gamepad
 cursor adds no allocation of its own on top (the bench checks it), and a still or inactive cursor makes none.
 
+## Input-device-awareness patches
+
+Feature input-device-awareness (`docs/specs/input-device-awareness.md` R23, AC14: a pointer switch swaps a
+document's style sheets for the other hover variant's within 1 ms).
+
+| Id | Commits | Files | What and why | Upstream | Tests |
+|---|---|---|---|---|---|
+| IDA-1 | `rmlui: a definition change leaves out the custom properties both definitions declare alike (input-device-awareness R23)` | `Source/Core/ElementStyle.cpp` | `UpdateDefinition` marked every custom property of the old and the new definition as a changed variable, also when both declare it with the same value. A style sheet swapped for one with the same declarations (the engine's pointer variants differ in a few rules; the user-agent sheet gives every element four `--html-*` variables and the root about sixty) then dirtied every variable of every element, the children took them over, and each element computed all its values again (246 of 246 in the bench HUD, a string set built per element). A custom property both declare alike, with a value of plain tokens and the same importance, is left out, as the properties that compare equal already were; one with `var()` or a CSS-wide keyword stays changed (it depends on its context). | upstreamable (the same rule as upstream's for properties) | engine `InputSchemeDocumentTest.HoverFollowsPointer` (a variable both variants declare alike and one they declare apart, read across two swaps), `InputSchemeDocumentTest.SchemeSwitchCost` (the cost) |
+
 ## Upstream rebase rehearsal (p3-integration)
 
 Rehearsed in a scratch clone of `https://github.com/mikke89/RmlUi` (2026-10-11/12): upstream `master` at

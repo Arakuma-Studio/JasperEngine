@@ -254,11 +254,19 @@ TEST_F(InputSchemeDocumentTest, HoverFollowsPointer){
     const size_t prewarmed = htmlui::compat::DocumentLoader::cacheSize();
     ASSERT_EQ(prewarmed, cacheBefore + 3) << "the other pointer's variant was not prewarmed";
 
+    // the variables the tip reads: --tint follows the variant, --kept stays
+    const auto tint = [&](){ return element("tip")->GetComputedValues().color(); };
+    const auto kept = [&](){ return element("tip")->GetComputedValues().padding_left().value; };
+    EXPECT_EQ(tint(), Rml::Colourb(255, 0, 0, 255));
+    EXPECT_FLOAT_EQ(kept(), 4.0f);
+
     // the mouse: shown, from the cache
     Engine::systemMouseScroll(0, 1, 0);
     frames(2);
     EXPECT_EQ(InputSchemeTracker::getPointer(), InputScheme::KeyboardMouse);
     EXPECT_TRUE(displayed("tip"));
+    EXPECT_EQ(tint(), Rml::Colourb(0, 0, 255, 255));
+    EXPECT_FLOAT_EQ(kept(), 4.0f);
     const std::shared_ptr<const htmlui::compat::CompatDocument> fine = htmlui::compat::DocumentLoader::compiledOf(hover);
     EXPECT_NE(fine, coarse);
     EXPECT_FALSE(fine->options.coarsePointer);
@@ -271,6 +279,8 @@ TEST_F(InputSchemeDocumentTest, HoverFollowsPointer){
     Engine::systemTouchEnd(1, 300, 300);
     frames(2);
     EXPECT_FALSE(displayed("tip"));
+    EXPECT_EQ(tint(), Rml::Colourb(255, 0, 0, 255));
+    EXPECT_FLOAT_EQ(kept(), 4.0f);
     EXPECT_EQ(htmlui::compat::DocumentLoader::compiledOf(hover), coarse);
     EXPECT_EQ(htmlui::compat::DocumentLoader::cacheSize(), prewarmed);
     EXPECT_EQ(htmlui::compat::DocumentLoader::compiledOf(plain), plainCompile);

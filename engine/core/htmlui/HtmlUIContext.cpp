@@ -426,7 +426,9 @@ void HtmlUIContext::prewarmPointerVariants(){
         htmlui::compat::DocumentLoader::prewarmSheets(document, current);
         if (current)
             htmlui::compat::DocumentLoader::restyleSheets(document, *current);
-        htmlui::compat::DocumentLoader::prewarmSheets(document, other);
+        // the other variant under the scheme that comes with its pointer (a mouse: Keyboard&Mouse)
+        htmlui::compat::DocumentLoader::prewarmSheets(document, other,
+            InputSchemeTracker::htmlName(it->options.coarsePointer ? InputScheme::Touch : InputScheme::KeyboardMouse));
         it = pointerPrewarms.erase(it);
     }
 }
