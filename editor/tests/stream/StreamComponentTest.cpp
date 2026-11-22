@@ -265,7 +265,7 @@ TEST(StreamComponent, UIDocumentMenuAndCursorRoundTrip){
 
     document.isMenu = true;
     document.gamepadCursor = true;
-    const UIDocumentComponent decoded = roundTrip(ComponentType::UIDocumentComponent, document);
+    const UIDocumentComponent decoded = streamComponentRoundTrip(ComponentType::UIDocumentComponent, document);
     EXPECT_TRUE(decoded.isMenu);
     EXPECT_TRUE(decoded.gamepadCursor);
     EXPECT_NO_ENGINE_ERRORS();
