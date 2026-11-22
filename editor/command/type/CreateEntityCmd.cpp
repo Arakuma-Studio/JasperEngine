@@ -3,6 +3,7 @@
 
 #include "pixelart/BitmapFont.h"
 #include "CreateEntityCmd.h"
+#include "component/MeshComponent.h"
 #include "component/GridComponent.h"
 #include "component/TilemapLayerComponent.h"
 #include "component/SpriteBatchComponent.h"
