@@ -606,8 +606,9 @@ std::string addBuildSizes(const ExportResult& report, Json& result) {
     const std::string& category = largest.front().first;
     std::string inspect;
     if (category == "textures")
-        inspect = "get_texture_cook_report {\"platforms\": [\"" + family + "\"]} lists each texture's disk bytes; set_texture_import_settings "
-                  "lowers max_size or quality";
+        // the cooked files in top_files are hashes, and the tools are outside core: without both an agent stops at the hashes
+        inspect = "get_texture_cook_report {\"platforms\": [\"" + family + "\"]} (tool_groups: assets_pipeline) names the source texture of "
+                  "each cooked file with its disk bytes; set_texture_import_settings lowers max_size or quality";
     else if (category == "models")
         inspect = "inspect_models {\"platform\": \"" + family + "\"} lists each model's download; set_model_import_settings shrinks them";
     else if (category == "engine")

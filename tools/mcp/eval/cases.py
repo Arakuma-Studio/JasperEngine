@@ -2796,7 +2796,8 @@ CASES = [
                          "agents listed the output folder with du and guessed which assets to shrink.",
         "text_at_issue": "build_project result: build_bytes, build_categories, top_files, download_bytes_gzip, W-BUILD-OVER-BUDGET "
                          "and its next ('Over the Download Budget: textures is the largest category (5.1 MB). get_texture_cook_report "
-                         "{\"platforms\": [\"web\"]} lists each texture's disk bytes...'); jasper://docs/shipping Size",
+                         "{\"platforms\": [\"web\"]} (tool_groups: assets_pipeline) names the source texture of each cooked "
+                         "file...'); jasper://docs/shipping Size",
         "source": "docs/specs/S92-agent-feedback-area-lights.md R10, R11 (Crucible's build-size feedback); no transcript",
         "files": GAME_FILES,
         "prompt": "The web portal only takes games under 5 MB, and the project's web Download Budget is set to that. Build the web "
@@ -2833,8 +2834,8 @@ CASES = [
                                                                {"category": "engine", "bytes": 4404019},
                                                                {"category": "audio", "bytes": 1363148}]}},
                  "next": "Over the Download Budget: textures is the largest category (5.1 MB). get_texture_cook_report "
-                         "{\"platforms\": [\"web\"]} lists each texture's disk bytes; set_texture_import_settings lowers max_size "
-                         "or quality."}) | {"real": True}},
+                         "{\"platforms\": [\"web\"]} (tool_groups: assets_pipeline) names the source texture of each cooked "
+                         "file with its disk bytes; set_texture_import_settings lowers max_size or quality."}) | {"real": True}},
             {"tool": "get_texture_cook_report", "result": ok(
                 "Texture cook report: 3 textures; web: 3 cooked, 4.3 MB on disk (source 18.0 MB).",
                 {"textures": [
