@@ -619,8 +619,9 @@ TEST(VideoStream, RealTimeNeverBlocks){
             const VideoStream::FrameResult result = stream.acquireFrame(0, t, false, shown, frame);
             const auto took = std::chrono::steady_clock::now() - before;
             // a wall-clock budget: enforced where JASPER_HTMLUI_PERF_SLACK asks for it (compat/PerfFixtures.h)
+            const double tookMs = std::chrono::duration<double, std::milli>(took).count();
             if (const double slack = compat::benchmarkPerfSlack(); slack > 0.0){
-                EXPECT_LT(std::chrono::duration<double, std::milli>(took).count(), 20.0 * slack) << "a real-time request blocked";
+                EXPECT_LT(tookMs, 20.0 * slack) << "a real-time request blocked";
             }
             if (result == VideoStream::FrameResult::NEW || result == VideoStream::FrameResult::STALE){
                 EXPECT_GT(frame.sequence, shown);

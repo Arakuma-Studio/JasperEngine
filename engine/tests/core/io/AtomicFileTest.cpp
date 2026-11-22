@@ -224,8 +224,9 @@ TEST(AtomicFile, NonRetryableErrorFailsAtOnce){
     EXPECT_EQ(result.attempts, 1);
     // no retry is the attempt count; no backoff before failing, a wall-clock budget: enforced
     // where perfSlack() asks for it (the benchmark run)
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     if (const double slack = testsupport::perfSlack(); slack > 0.0){
-        EXPECT_LT(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count(), 150.0 * slack);
+        EXPECT_LT(ms, 150.0 * slack);
     }
     EXPECT_EQ(TestTempDir::read(target), "old");
 }
