@@ -398,9 +398,13 @@ TEST(SaveGameStore, NothingExistsUntilFirstUse){
     const std::string self = ::testing::internal::GetArgvs().front();
     TestTempDir scratch("savegame-child");
     // its own report file: the run's XML is the parent's
-    const std::string command = "\"" + self + "\" --gtest_also_run_disabled_tests"
-                                " --gtest_filter=SaveGameStore.DISABLED_NothingExistsUntilFirstUseChild"
-                                " \"--gtest_output=xml:" + (scratch / "child.xml").string() + "\"";
+    std::string command = "\"" + self + "\" --gtest_also_run_disabled_tests"
+                          " --gtest_filter=SaveGameStore.DISABLED_NothingExistsUntilFirstUseChild"
+                          " \"--gtest_output=xml:" + (scratch / "child.xml").string() + "\"";
+#ifdef _WIN32
+    // cmd.exe /c drops the outermost quotes of a line that holds more than two
+    command = "\"" + command + "\"";
+#endif
     const int status = std::system(command.c_str());
     EXPECT_EQ(status, 0) << command;
 }
