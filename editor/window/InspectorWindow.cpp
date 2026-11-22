@@ -4716,13 +4716,16 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         int* value = nullptr;
         std::map<Entity, int> eValue;
         bool dif = false;
-        int* defArr = nullptr;
+        // (read at the property's own width: an enum may be one byte)
+        bool hasDefault = false;
+        int defStored = 0;
         std::vector<EnumEntry>* enumEntries = nullptr;
         for (Entity& entity : entities){
             PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, cpType, id);
-            defArr = static_cast<int*>(prop.def);
+            hasDefault = prop.def != nullptr;
+            if (hasDefault) defStored = (int)readPropertyInteger(prop, prop.def);
             enumEntries = settings.enumEntries;
-            eValue[entity] = *static_cast<int*>(prop.ref);
+            eValue[entity] = (int)readPropertyInteger(prop, prop.ref);
             if (value){
                 if (*value != eValue[entity])
                     dif = true;
@@ -4741,8 +4744,8 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         int item_default = item_current;
 
         bool defChanged = false;
-        if (defArr){
-            int defValue = *defArr;
+        if (hasDefault){
+            int defValue = defStored;
             // Find index of default value in enumEntries
             for (size_t i = 0; i < enumEntries->size(); ++i) {
                 if ((*enumEntries)[i].value == defValue) {
@@ -11560,8 +11563,8 @@ namespace {
         switch (a.type){
             case PropertyType::Bool: return *static_cast<bool*>(a.ref) != *static_cast<bool*>(b.ref);
             case PropertyType::Int:
-            case PropertyType::Enum: return *static_cast<int*>(a.ref) != *static_cast<int*>(b.ref);
             case PropertyType::UInt:
+            case PropertyType::Enum: return editor::readPropertyInteger(a, a.ref) != editor::readPropertyInteger(b, b.ref);
             case PropertyType::Entity: return *static_cast<unsigned int*>(a.ref) != *static_cast<unsigned int*>(b.ref);
             case PropertyType::Float: return floatsDiffer(static_cast<float*>(a.ref), static_cast<float*>(b.ref), 1);
             case PropertyType::Double: return std::fabs(*static_cast<double*>(a.ref) - *static_cast<double*>(b.ref)) > 1e-4;

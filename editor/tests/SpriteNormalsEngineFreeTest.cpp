@@ -17,6 +17,7 @@
 #include "spritenormals/SpriteNormalsRecipe.h"
 #include "spritenormals/SpriteNormalsSession.h"
 #include "texsynth/SynthImage.h"
+#include "support/SystemTestAccess.h"
 
 #ifdef _WIN32
 #include <process.h>    // getpid
@@ -31,17 +32,6 @@
 #include <string>
 #include <vector>
 
-namespace jasperengine {
-    // TEST-ONLY seam (System.h befriends it): detach / restore the instance
-    struct SystemTestAccess {
-        static System* swap(System* system) {
-            System* previous = System::systemInstance;
-            System::systemInstance = system;
-            return previous;
-        }
-    };
-}
-
 namespace {
 
 namespace fs = std::filesystem;
@@ -55,7 +45,7 @@ fs::path testRoot(const std::string& name) {
     return root;
 }
 
-void writeBytes(const fs::path& path, const std::vector<uint8_t>& bytes) {
+void spriteNormalsEngineFreeWriteBytes(const fs::path& path, const std::vector<uint8_t>& bytes) {
     fs::create_directories(path.parent_path());
     std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 }
@@ -109,7 +99,7 @@ TEST(SpriteNormalsEngineFree, CheckSpecAndPrepareWithAProjectAndNoSystem) {
     const fs::path root = testRoot("noengine");
     fs::create_directories(root / "assets" / "art");
     std::ofstream(root / "project.yaml") << "name: NoEngine\nassetsDir: assets\n";
-    writeBytes(root / "assets" / "art" / "ball.png", ballPng());
+    spriteNormalsEngineFreeWriteBytes(root / "assets" / "art" / "ball.png", ballPng());
     std::fflush(nullptr);
     const pid_t child = fork();
     ASSERT_GE(child, 0) << "fork failed";
@@ -140,13 +130,13 @@ TEST(SpriteNormalsEngineFree, GarbledIsDecidedByTheErrorsOriginNotItsText) {
 
     // not a PNG (a JPEG's first bytes), a truncated PNG
     const std::vector<uint8_t> jpeg = {0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00};
-    writeBytes(root / sn::kRecipeKeyword / "photo.png", jpeg);
+    spriteNormalsEngineFreeWriteBytes(root / sn::kRecipeKeyword / "photo.png", jpeg);
     EXPECT_FALSE(sn::readRecipeHead(root / sn::kRecipeKeyword / "photo.png", &error, &origin));
     EXPECT_EQ(origin, sn::RecipeReadError::File);
     EXPECT_EQ(sn::checkStaleness(root, root / sn::kRecipeKeyword / "photo.png").state, sn::Staleness::State::Unreadable);
     std::vector<uint8_t> truncated = ballPng();
     truncated.resize(20);
-    writeBytes(root / "trunc.png", truncated);
+    spriteNormalsEngineFreeWriteBytes(root / "trunc.png", truncated);
     sn::readRecipeHead(root / "trunc.png", &error, &origin);
     EXPECT_NE(origin, sn::RecipeReadError::Chunk);
     EXPECT_NE(sn::checkStaleness(root, root / "trunc.png").state, sn::Staleness::State::Invalid);
@@ -163,13 +153,13 @@ TEST(SpriteNormalsEngineFree, GarbledIsDecidedByTheErrorsOriginNotItsText) {
             break;
         }
     }
-    writeBytes(root / "garbled.png", png);
+    spriteNormalsEngineFreeWriteBytes(root / "garbled.png", png);
     EXPECT_FALSE(sn::readRecipeHead(root / "garbled.png", &error, &origin));
     EXPECT_EQ(origin, sn::RecipeReadError::Chunk) << error;
     EXPECT_EQ(sn::checkStaleness(root, root / "garbled.png").state, sn::Staleness::State::Invalid);
 
     // a plain PNG: no recipe, no error
-    writeBytes(root / "plain.png", ballPng());
+    spriteNormalsEngineFreeWriteBytes(root / "plain.png", ballPng());
     EXPECT_FALSE(sn::readRecipeHead(root / "plain.png", &error, &origin));
     EXPECT_EQ(origin, sn::RecipeReadError::None);
     EXPECT_TRUE(error.empty());

@@ -25,7 +25,7 @@ using namespace jasperengine::editor::pixelart::cleanup;
 
 namespace {
 
-    double msSince(std::chrono::steady_clock::time_point start) {
+    double cleanupBenchMsSince(std::chrono::steady_clock::time_point start) {
         return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     }
 
@@ -70,7 +70,7 @@ TEST(CleanupBench, DetectionWithEightWorkers) {
         const RgbaImage image = benchUpscaled(cells, 8.0, 11);
         const auto start = std::chrono::steady_clock::now();
         const std::optional<Detection> found = detectGrid(image);
-        const double ms = msSince(start);
+        const double ms = cleanupBenchMsSince(start);
         ASSERT_TRUE(found.has_value());
         EXPECT_NEAR(found->spec.cellWidth, 8.0, 0.05);
         reportBudget(cells == 128 ? "detectGrid 1024x1024" : "detectGrid 2048x2048", ms, budget);
@@ -84,7 +84,7 @@ TEST(CleanupBench, WholeFixOfOnePicture) {
     recipe.autoPalette = AutoPalette{32, ProposeMethod::Dominant};
     const auto start = std::chrono::steady_clock::now();
     const std::optional<Outcome> outcome = runRecipe(image, recipe);
-    const double ms = msSince(start);
+    const double ms = cleanupBenchMsSince(start);
     ASSERT_TRUE(outcome.has_value());
     EXPECT_EQ(outcome->art.width, 128);
     reportBudget("whole fix 1024x1024, 32-colour auto palette", ms, 300.0);
@@ -110,7 +110,7 @@ TEST(CleanupBench, WholeFixOfASheet) {
     for (size_t i = 0; i < all.size(); i++) all[i] = static_cast<int>(i);
     sheet.animations.push_back(SheetAnimation{"animation-1", all});
     const AnimationOutcome outcome = runSheet(sheetArt.image, recipe, sheet, cache);
-    const double ms = msSince(start);
+    const double ms = cleanupBenchMsSince(start);
     EXPECT_EQ(outcome.frames.size(), frames.size());
     reportBudget("whole fix of an 8-frame sheet", ms, 900.0);
 }
@@ -128,7 +128,7 @@ TEST(CleanupBench, InteractiveRerunAfterOneSlider) {
     recipe.cleanup.strength = 0.9;
     const auto start = std::chrono::steady_clock::now();
     const Outcome outcome = runWithSpec(image, recipe, grid->spec, grid->detection, &cache);
-    const double ms = msSince(start);
+    const double ms = cleanupBenchMsSince(start);
     EXPECT_EQ(outcome.art.width, 128);
     reportBudget("re-run of a 128x128 output after one slider", ms, 33.0);
 }

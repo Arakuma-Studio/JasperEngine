@@ -74,7 +74,7 @@ namespace {
         return out;
     }
 
-    using Rows = std::vector<std::string>;
+    using CleanupSpecksRows = std::vector<std::string>;
 
 }
 
@@ -82,15 +82,15 @@ TEST(CleanupSpecks, MergesASpeckThatNearlyVotedForItsSurroundingsKeepsOneDrawnCl
     // (1, 1) is a blue speck whose cell half voted cream; (3, 1) is a blue speck drawn clearly
     const SpecksScene scene = specksScene({"CCCCC", "CBCBC", "CCCCC"}, {{6, "CCC"}});
     const Cleaned cleaned = cleanUp(scene.art, scene.samples, specksOptions(1, 0.5));
-    EXPECT_EQ(specksShow(cleaned.art), (Rows{"CCCCC", "CCCBC", "CCCCC"}));
+    EXPECT_EQ(specksShow(cleaned.art), (CleanupSpecksRows{"CCCCC", "CCCBC", "CCCCC"}));
     EXPECT_EQ(cleaned.specks, (std::vector<std::vector<int>>{{6}}));
-    EXPECT_EQ(specksShow(cleanUp(scene.art, scene.samples, specksOptions(1, 1)).art), (Rows{"CCCCC", "CCCCC", "CCCCC"}));
+    EXPECT_EQ(specksShow(cleanUp(scene.art, scene.samples, specksOptions(1, 1)).art), (CleanupSpecksRows{"CCCCC", "CCCCC", "CCCCC"}));
 }
 
 TEST(CleanupSpecks, MergesASpeckCloseInColourEvenWhenDrawnClearly) {
     const SpecksScene scene = specksScene({"CCC", "CGC", "CCC"});
-    EXPECT_EQ(specksShow(cleanUp(scene.art, scene.samples, specksOptions(1, 0.5)).art), (Rows{"CCC", "CCC", "CCC"}));
-    EXPECT_EQ(specksShow(cleanUp(scene.art, scene.samples, specksOptions(1, 0)).art), (Rows{"CCC", "CGC", "CCC"}));
+    EXPECT_EQ(specksShow(cleanUp(scene.art, scene.samples, specksOptions(1, 0.5)).art), (CleanupSpecksRows{"CCC", "CCC", "CCC"}));
+    EXPECT_EQ(specksShow(cleanUp(scene.art, scene.samples, specksOptions(1, 0)).art), (CleanupSpecksRows{"CCC", "CGC", "CCC"}));
 }
 
 TEST(CleanupSpecks, KeepsTwoPixelEyesUntilToldToMergeEverythingAndNeverWhenProtected) {
@@ -109,7 +109,7 @@ TEST(CleanupSpecks, NeverTakesAOnePixelDiagonalOutlineForASpeck) {
 TEST(CleanupSpecks, LeavesASpeckBroughtBackByHand) {
     const SpecksScene scene = specksScene({"CCCCC", "CGCGC", "CCCCC"});
     const Cleaned cleaned = cleanUp(scene.art, scene.samples, specksOptions(1, 1, {}, {8}));
-    EXPECT_EQ(specksShow(cleaned.art), (Rows{"CCCCC", "CCCGC", "CCCCC"}));
+    EXPECT_EQ(specksShow(cleaned.art), (CleanupSpecksRows{"CCCCC", "CCCGC", "CCCCC"}));
 }
 
 TEST(CleanupSpecks, DoesNothingWhenOff) {

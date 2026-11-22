@@ -29,17 +29,17 @@ using namespace jasperengine::editor::curveops;
 
 namespace {
 
-    const float INF = std::numeric_limits<float>::infinity();
+    const float CURVE_FIELD_LOGIC_INF = std::numeric_limits<float>::infinity();
 
     // 100 x 100 pixels at the origin showing [0, 1] x [0, 1]
-    View unitView(){
-        View view;
+    curveops::View curveFieldLogicUnitView(){
+        curveops::View view;
         view.x0 = 0.0f; view.y0 = 0.0f; view.x1 = 100.0f; view.y1 = 100.0f;
         view.t0 = 0.0f; view.t1 = 1.0f; view.v0 = 0.0f; view.v1 = 1.0f;
         return view;
     }
 
-    CurveKey key(float time, float value, float in = 0.0f, float out = 0.0f){
+    CurveKey curveFieldLogicKey(float time, float value, float in = 0.0f, float out = 0.0f){
         CurveKey k;
         k.time = time;
         k.value = value;
@@ -48,7 +48,7 @@ namespace {
         return k;
     }
 
-    Curve curveOf(std::vector<CurveKey> keys){
+    Curve curveFieldLogicCurveOf(std::vector<CurveKey> keys){
         Curve curve;
         curve.keys = std::move(keys);
         return curve;
@@ -63,7 +63,7 @@ namespace {
         }
     }
 
-    Hit hitOf(const Curve& curve, const View& view, float x, float y, float radius, const std::vector<KeyRef>& selection = {}){
+    Hit hitOf(const Curve& curve, const curveops::View& view, float x, float y, float radius, const std::vector<KeyRef>& selection = {}){
         return hitTest({&curve}, {true}, view, x, y, radius, 10.0f, selection);
     }
 
@@ -79,7 +79,7 @@ namespace {
 // ---- the view ----
 
 TEST(CurveFieldLogicTest, ViewMapsTimeAndValueToPixels){
-    View view;
+    curveops::View view;
     view.x0 = 10.0f; view.y0 = 20.0f; view.x1 = 210.0f; view.y1 = 120.0f;
     view.t0 = 0.0f; view.t1 = 2.0f; view.v0 = -1.0f; view.v1 = 1.0f;
     EXPECT_FLOAT_EQ(view.toX(0.0f), 10.0f);
@@ -94,11 +94,11 @@ TEST(CurveFieldLogicTest, ViewMapsTimeAndValueToPixels){
 }
 
 TEST(CurveFieldLogicTest, FrameCoversKeysAndValuesWithMargins){
-    View pixels = unitView();
+    curveops::View pixels = curveFieldLogicUnitView();
     pixels.x1 = 300.0f;
     pixels.y1 = 150.0f;
     const Curve line = Curve::linear(0.0f, 0.0f, 1.0f, 2.0f);
-    const View view = frame({&line}, {}, pixels, 0.1f, 0.0f);
+    const curveops::View view = frame({&line}, {}, pixels, 0.1f, 0.0f);
     EXPECT_FLOAT_EQ(view.t0, -0.1f);
     EXPECT_FLOAT_EQ(view.t1, 1.1f);
     EXPECT_FLOAT_EQ(view.v0, -0.2f);
@@ -107,19 +107,19 @@ TEST(CurveFieldLogicTest, FrameCoversKeysAndValuesWithMargins){
 
     // a flat curve: at least minSpan around its value; one key the same
     const Curve flat = Curve::constant(0.35f);
-    const View flatView = frame({&flat}, {}, pixels, 0.0f, 1.0f);
+    const curveops::View flatView = frame({&flat}, {}, pixels, 0.0f, 1.0f);
     EXPECT_NEAR(flatView.v0, -0.15f, 1e-6f);
     EXPECT_NEAR(flatView.v1, 0.85f, 1e-6f);
 
     // the overshoot between keys is in view: 4 s (1 - s) peaks at 1 between two keys at 0
-    const Curve bump = curveOf({key(0.0f, 0.0f, 4.0f, 4.0f), key(1.0f, 0.0f, -4.0f, -4.0f)});
-    const View bumpView = frame({&bump}, {}, pixels, 0.0f, 0.0f);
+    const Curve bump = curveFieldLogicCurveOf({curveFieldLogicKey(0.0f, 0.0f, 4.0f, 4.0f), curveFieldLogicKey(1.0f, 0.0f, -4.0f, -4.0f)});
+    const curveops::View bumpView = frame({&bump}, {}, pixels, 0.0f, 0.0f);
     EXPECT_NEAR(bumpView.v1, 1.0f, 1e-2f);
     EXPECT_FLOAT_EQ(bumpView.v0, 0.0f);
 
     // two curves are framed together
     const Curve low = Curve::linear(0.5f, -3.0f, 2.0f, -1.0f);
-    const View both = frame({&line, &low}, {}, pixels, 0.0f, 0.0f);
+    const curveops::View both = frame({&line, &low}, {}, pixels, 0.0f, 0.0f);
     EXPECT_FLOAT_EQ(both.t0, 0.0f);
     EXPECT_FLOAT_EQ(both.t1, 2.0f);
     EXPECT_FLOAT_EQ(both.v0, -3.0f);
@@ -127,16 +127,16 @@ TEST(CurveFieldLogicTest, FrameCoversKeysAndValuesWithMargins){
 }
 
 TEST(CurveFieldLogicTest, ZoomKeepsTheAnchorAndPanFollowsTheMouse){
-    const View view = unitView();
+    const curveops::View view = curveFieldLogicUnitView();
     // time spans halved around x = 25 (t 0.25), values kept
-    const View zoomed = zoom(view, 25.0f, 50.0f, 0.5f, 1.0f);
+    const curveops::View zoomed = zoom(view, 25.0f, 50.0f, 0.5f, 1.0f);
     EXPECT_FLOAT_EQ(zoomed.t0, 0.125f);
     EXPECT_FLOAT_EQ(zoomed.t1, 0.625f);
     EXPECT_FLOAT_EQ(zoomed.v0, 0.0f);
     EXPECT_FLOAT_EQ(zoomed.v1, 1.0f);
     EXPECT_FLOAT_EQ(zoomed.toTime(25.0f), 0.25f);
 
-    const View panned = pan(view, 10.0f, 20.0f);   // right and down: the graph follows
+    const curveops::View panned = pan(view, 10.0f, 20.0f);   // right and down: the graph follows
     EXPECT_FLOAT_EQ(panned.t0, -0.1f);
     EXPECT_FLOAT_EQ(panned.v0, 0.2f);
     EXPECT_FLOAT_EQ(panned.v1, 1.2f);
@@ -145,8 +145,8 @@ TEST(CurveFieldLogicTest, ZoomKeepsTheAnchorAndPanFollowsTheMouse){
 // ---- hit testing ----
 
 TEST(CurveFieldLogicTest, HitKeyFindsTheNearestWithinTheRadius){
-    const View view = unitView();
-    const Curve curve = curveOf({key(0.0f, 0.0f), key(0.5f, 0.5f), key(0.55f, 0.5f), key(1.0f, 1.0f)});
+    const curveops::View view = curveFieldLogicUnitView();
+    const Curve curve = curveFieldLogicCurveOf({curveFieldLogicKey(0.0f, 0.0f), curveFieldLogicKey(0.5f, 0.5f), curveFieldLogicKey(0.55f, 0.5f), curveFieldLogicKey(1.0f, 1.0f)});
     EXPECT_EQ(hitOf(curve, view, 1.0f, 99.0f, 4.0f).key, 0);
     EXPECT_EQ(hitOf(curve, view, 51.0f, 50.0f, 6.0f).key, 1);   // 1 px from key 1, 4 px from key 2
     EXPECT_EQ(hitOf(curve, view, 54.0f, 51.0f, 6.0f).key, 2);
@@ -158,8 +158,8 @@ TEST(CurveFieldLogicTest, HitKeyFindsTheNearestWithinTheRadius){
 }
 
 TEST(CurveFieldLogicTest, TangentHandlesAtAFixedPixelLength){
-    const View view = unitView();
-    const Curve curve = curveOf({key(0.0f, 0.0f), key(0.5f, 0.5f, 1.0f, 1.0f), key(1.0f, 1.0f, INF, INF)});
+    const curveops::View view = curveFieldLogicUnitView();
+    const Curve curve = curveFieldLogicCurveOf({curveFieldLogicKey(0.0f, 0.0f), curveFieldLogicKey(0.5f, 0.5f, 1.0f, 1.0f), curveFieldLogicKey(1.0f, 1.0f, CURVE_FIELD_LOGIC_INF, CURVE_FIELD_LOGIC_INF)});
     const float h = 10.0f / std::sqrt(2.0f);
 
     // slope 1 on a square view: 45 degrees; In to the left
@@ -172,7 +172,7 @@ TEST(CurveFieldLogicTest, TangentHandlesAtAFixedPixelLength){
     EXPECT_NEAR(iy, 50.0f + h, 1e-4f);
 
     // on a view twice as wide per time unit the same slope is flatter on screen
-    View wide = view;
+    curveops::View wide = view;
     wide.x1 = 200.0f;
     float fx, fy;
     handlePosition(curve.keys[1], Side::Out, wide, 10.0f, fx, fy);
@@ -197,7 +197,7 @@ TEST(CurveFieldLogicTest, TangentHandlesAtAFixedPixelLength){
 
 TEST(CurveFieldLogicTest, ClampedAutoIsMonotoneAndAutoIsCatmullRom){
     // interior Auto: the mean of the neighbouring slopes (1 and 0.5): 0.75
-    Curve curve = curveOf({key(0.0f, 0.0f, 5.0f, 5.0f), key(1.0f, 1.0f, 5.0f, 5.0f), key(3.0f, 2.0f, 5.0f, 5.0f)});
+    Curve curve = curveFieldLogicCurveOf({curveFieldLogicKey(0.0f, 0.0f, 5.0f, 5.0f), curveFieldLogicKey(1.0f, 1.0f, 5.0f, 5.0f), curveFieldLogicKey(3.0f, 2.0f, 5.0f, 5.0f)});
     for (size_t i = 0; i < curve.keys.size(); i++) setAuto(curve, i);
     EXPECT_FLOAT_EQ(curve.keys[1].inTangent, 0.75f);
     EXPECT_FLOAT_EQ(curve.keys[1].outTangent, 0.75f);
@@ -207,14 +207,14 @@ TEST(CurveFieldLogicTest, ClampedAutoIsMonotoneAndAutoIsCatmullRom){
     EXPECT_FALSE(curve.keys[1].broken());
 
     // Clamped Auto: a local extremum is flat and nothing overshoots it
-    Curve peak = curveOf({key(0.0f, 0.0f), key(1.0f, 1.0f), key(2.0f, 0.0f)});
+    Curve peak = curveFieldLogicCurveOf({curveFieldLogicKey(0.0f, 0.0f), curveFieldLogicKey(1.0f, 1.0f), curveFieldLogicKey(2.0f, 0.0f)});
     for (size_t i = 0; i < peak.keys.size(); i++) setClampedAuto(peak, i);
     EXPECT_FLOAT_EQ(peak.keys[1].inTangent, 0.0f);
     EXPECT_FLOAT_EQ(peak.keys[1].outTangent, 0.0f);
     expectSampledWithin(peak, 0.0f, 2.0f, 0.0f, 1.0f);
 
     // a steep side next to a shallow one: the mean 0.5 limited to 3 x 0.1
-    Curve knee = curveOf({key(0.0f, 0.0f), key(1.0f, 0.1f), key(2.0f, 1.0f)});
+    Curve knee = curveFieldLogicCurveOf({curveFieldLogicKey(0.0f, 0.0f), curveFieldLogicKey(1.0f, 0.1f), curveFieldLogicKey(2.0f, 1.0f)});
     for (size_t i = 0; i < knee.keys.size(); i++) setClampedAuto(knee, i);
     EXPECT_NEAR(knee.keys[1].outTangent, 0.3f, 1e-6f);
     expectSampledWithin(knee, 1.0f, 2.0f, 0.1f, 1.0f);
@@ -227,7 +227,7 @@ TEST(CurveFieldLogicTest, ClampedAutoIsMonotoneAndAutoIsCatmullRom){
 }
 
 TEST(CurveFieldLogicTest, LinearTangentsAreTheNeighbouringSlopes){
-    Curve curve = curveOf({key(0.0f, 0.0f), key(1.0f, 2.0f), key(3.0f, 3.0f)});
+    Curve curve = curveFieldLogicCurveOf({curveFieldLogicKey(0.0f, 0.0f), curveFieldLogicKey(1.0f, 2.0f), curveFieldLogicKey(3.0f, 3.0f)});
     for (size_t i = 0; i < curve.keys.size(); i++) setTangentMode(curve, i, Side::Both, CurveTangentMode::Linear);
     EXPECT_FLOAT_EQ(curve.keys[1].inTangent, 2.0f);
     EXPECT_FLOAT_EQ(curve.keys[1].outTangent, 0.5f);
@@ -240,14 +240,14 @@ TEST(CurveFieldLogicTest, LinearTangentsAreTheNeighbouringSlopes){
 }
 
 TEST(CurveFieldLogicTest, ConstantTangentsStepAndFreeKeepsTangents){
-    Curve curve = curveOf({key(0.0f, 0.0f), key(1.0f, 1.0f, 0.7f, 0.7f), key(2.0f, 3.0f)});
+    Curve curve = curveFieldLogicCurveOf({curveFieldLogicKey(0.0f, 0.0f), curveFieldLogicKey(1.0f, 1.0f, 0.7f, 0.7f), curveFieldLogicKey(2.0f, 3.0f)});
     setTangentMode(curve, 1, Side::Both, CurveTangentMode::Constant);
     EXPECT_TRUE(std::isinf(curve.keys[1].inTangent));
     EXPECT_TRUE(std::isinf(curve.keys[1].outTangent));
     EXPECT_FLOAT_EQ(curve.evaluate(0.5f), 0.0f);   // the segment before holds key 0
     EXPECT_FLOAT_EQ(curve.evaluate(1.5f), 1.0f);   // the segment after holds key 1
 
-    Curve smooth = curveOf({key(0.0f, 0.0f), key(1.0f, 1.0f, 0.7f, 0.7f), key(2.0f, 3.0f)});
+    Curve smooth = curveFieldLogicCurveOf({curveFieldLogicKey(0.0f, 0.0f), curveFieldLogicKey(1.0f, 1.0f, 0.7f, 0.7f), curveFieldLogicKey(2.0f, 3.0f)});
     setBroken(smooth, 1, true);
     EXPECT_TRUE(smooth.keys[1].broken());
     EXPECT_FALSE(smooth.keys[0].broken());
@@ -263,8 +263,8 @@ TEST(CurveFieldLogicTest, ConstantTangentsStepAndFreeKeepsTangents){
 }
 
 TEST(CurveFieldLogicTest, TangentDragMirrorsUnlessBroken){
-    const View view = unitView();
-    Curve curve = curveOf({key(0.0f, 0.0f), key(0.5f, 0.5f), key(1.0f, 1.0f)});
+    const curveops::View view = curveFieldLogicUnitView();
+    Curve curve = curveFieldLogicCurveOf({curveFieldLogicKey(0.0f, 0.0f), curveFieldLogicKey(0.5f, 0.5f), curveFieldLogicKey(1.0f, 1.0f)});
 
     // Out handle 10 px right, 10 px up: slope 1, mirrored to In
     dragTangent(curve, 1, Side::Out, slopeTowards(curve.keys[1], Side::Out, view, 60.0f, 40.0f));
@@ -290,7 +290,7 @@ TEST(CurveFieldLogicTest, TangentDragMirrorsUnlessBroken){
     EXPECT_FLOAT_EQ(curve.keys[1].outTangent, 0.0f);
     EXPECT_FLOAT_EQ(curve.keys[1].inTangent, 0.0f);
     // a non-finite slope or no such key: nothing
-    dragTangent(curve, 1, Side::Out, INF);
+    dragTangent(curve, 1, Side::Out, CURVE_FIELD_LOGIC_INF);
     EXPECT_FLOAT_EQ(curve.keys[1].outTangent, 0.0f);
     dragTangent(curve, 7, Side::Out, 1.0f);
     EXPECT_EQ(curve.keys.size(), 3u);
@@ -331,7 +331,7 @@ TEST(CurveFieldLogicTest, InsertKeyOnTheCurveWithAutoTangents){
 
 TEST(CurveFieldLogicTest, InsertAndDeleteRecomputeAutoNeighbours){
     // Clamped Auto neighbours follow a key added next to them
-    Curve curve = curveOf({key(0.0f, 0.0f), key(1.0f, 1.0f), key(2.0f, 2.0f)});
+    Curve curve = curveFieldLogicCurveOf({curveFieldLogicKey(0.0f, 0.0f), curveFieldLogicKey(1.0f, 1.0f), curveFieldLogicKey(2.0f, 2.0f)});
     for (size_t i = 0; i < curve.keys.size(); i++) setClampedAuto(curve, i);
     ASSERT_FLOAT_EQ(curve.keys[1].outTangent, 1.0f);
     ASSERT_EQ(addKeyAt(curve, 1.5f, 3.0f, nullptr), 2);
@@ -340,7 +340,7 @@ TEST(CurveFieldLogicTest, InsertAndDeleteRecomputeAutoNeighbours){
 
     // a Free key keeps its tangents when its neighbours change
     std::vector<KeyRef> selection = {{0, 2}};
-    Curve mixed = curveOf({key(0.0f, 0.0f), key(1.0f, 1.0f, 5.0f, 5.0f), key(2.0f, 2.0f), key(3.0f, 0.0f)});
+    Curve mixed = curveFieldLogicCurveOf({curveFieldLogicKey(0.0f, 0.0f), curveFieldLogicKey(1.0f, 1.0f, 5.0f, 5.0f), curveFieldLogicKey(2.0f, 2.0f), curveFieldLogicKey(3.0f, 0.0f)});
     std::vector<Curve*> curves = {&mixed};
     deleteKeys(curves, selection);
     ASSERT_EQ(mixed.keys.size(), 3u);
@@ -351,7 +351,7 @@ TEST(CurveFieldLogicTest, InsertAndDeleteRecomputeAutoNeighbours){
 
     // all Clamped Auto (0,0) (1,1) (2,2) (3,1.5): deleting key 2 gives key 1 the neighbours
     // (0, 0) and (3, 1.5): slopes 1 and 0.25, mean 0.625 within 3 x 0.25
-    Curve autos = curveOf({key(0.0f, 0.0f), key(1.0f, 1.0f), key(2.0f, 2.0f), key(3.0f, 1.5f)});
+    Curve autos = curveFieldLogicCurveOf({curveFieldLogicKey(0.0f, 0.0f), curveFieldLogicKey(1.0f, 1.0f), curveFieldLogicKey(2.0f, 2.0f), curveFieldLogicKey(3.0f, 1.5f)});
     for (size_t i = 0; i < autos.keys.size(); i++) setClampedAuto(autos, i);
     selection = {{0, 2}};
     curves = {&autos};
@@ -367,7 +367,7 @@ TEST(CurveFieldLogicTest, InsertAndDeleteRecomputeAutoNeighbours){
 }
 
 TEST(CurveFieldLogicTest, MoveKeyResortsAndKeepsTangents){
-    Curve curve = curveOf({key(0.0f, 0.0f, 3.0f, 3.0f), key(0.5f, 1.0f, 7.0f, 7.0f), key(1.0f, 0.0f, 9.0f, 9.0f)});
+    Curve curve = curveFieldLogicCurveOf({curveFieldLogicKey(0.0f, 0.0f, 3.0f, 3.0f), curveFieldLogicKey(0.5f, 1.0f, 7.0f, 7.0f), curveFieldLogicKey(1.0f, 0.0f, 9.0f, 9.0f)});
     const std::vector<Curve> original = {curve};
     std::vector<Curve*> curves = {&curve};
     // key 0 past key 1: it ends at index 1, its tangents with it, the selection following
@@ -399,7 +399,7 @@ TEST(CurveFieldLogicTest, MoveKeyResortsAndKeepsTangents){
     EXPECT_FLOAT_EQ(curve.keys[0].outTangent, 9.0f);
 
     // a Clamped Auto middle key follows its moved neighbour: (0,0) (1,1) (2,2) -> (2,4)
-    Curve autos = curveOf({key(0.0f, 0.0f), key(1.0f, 1.0f), key(2.0f, 2.0f)});
+    Curve autos = curveFieldLogicCurveOf({curveFieldLogicKey(0.0f, 0.0f), curveFieldLogicKey(1.0f, 1.0f), curveFieldLogicKey(2.0f, 2.0f)});
     for (size_t i = 0; i < autos.keys.size(); i++) setClampedAuto(autos, i);
     const std::vector<Curve> start = {autos};
     std::vector<Curve*> autoCurves = {&autos};

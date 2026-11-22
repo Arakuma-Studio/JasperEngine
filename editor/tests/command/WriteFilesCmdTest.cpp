@@ -37,12 +37,12 @@ namespace {
         }
     };
 
-    std::string read(const fs::path& path){
+    std::string writeFilesCmdRead(const fs::path& path){
         std::ifstream in(path, std::ios::binary);
         return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     }
 
-    void write(const fs::path& path, const std::string& text){
+    void writeFilesCmdWrite(const fs::path& path, const std::string& text){
         std::ofstream out(path, std::ios::binary | std::ios::trunc);
         out << text;
     }
@@ -63,20 +63,20 @@ TEST(WriteFilesCmd, UndoRedoCreatesAndRemovesFilesAndDirectories){
     CommandHistory history;
     const fs::path a = dir.path / "anim" / "deep" / "walk.poseanim";
     const fs::path b = dir.path / "existing.humanoid";
-    write(b, "old");
+    writeFilesCmdWrite(b, "old");
     int notified = 0;
     ASSERT_TRUE(history.addCommand(command({{a, "A"}, {b, "B"}}, "", &notified)));
-    EXPECT_EQ(read(a), "A");
-    EXPECT_EQ(read(b), "B");
+    EXPECT_EQ(writeFilesCmdRead(a), "A");
+    EXPECT_EQ(writeFilesCmdRead(b), "B");
     EXPECT_EQ(notified, 1);
     history.undo();
     EXPECT_FALSE(fs::exists(a));
     EXPECT_FALSE(fs::exists(dir.path / "anim"));   // the directories it created go too
-    EXPECT_EQ(read(b), "old");
+    EXPECT_EQ(writeFilesCmdRead(b), "old");
     EXPECT_EQ(notified, 2);
     history.redo();
-    EXPECT_EQ(read(a), "A");
-    EXPECT_EQ(read(b), "B");
+    EXPECT_EQ(writeFilesCmdRead(a), "A");
+    EXPECT_EQ(writeFilesCmdRead(b), "B");
     EXPECT_EQ(notified, 3);
 }
 
@@ -84,37 +84,37 @@ TEST(WriteFilesCmd, SameMergeKeyIsOneUndoStep){
     TempDir dir;
     CommandHistory history;
     const fs::path file = dir.path / "drag.poseanim";
-    write(file, "start");
+    writeFilesCmdWrite(file, "start");
     ASSERT_TRUE(history.addCommand(command({{file, "1"}}, "drag pose 0")));
     ASSERT_TRUE(history.addCommand(command({{file, "2"}}, "drag pose 0")));
     ASSERT_TRUE(history.addCommand(command({{file, "3"}}, "drag pose 0")));
-    EXPECT_EQ(read(file), "3");
+    EXPECT_EQ(writeFilesCmdRead(file), "3");
     EXPECT_EQ(history.position(), 1u);
     history.undo();
-    EXPECT_EQ(read(file), "start");     // back to before the first edit of the run
+    EXPECT_EQ(writeFilesCmdRead(file), "start");     // back to before the first edit of the run
     EXPECT_FALSE(history.canUndo());
     history.redo();
-    EXPECT_EQ(read(file), "3");
+    EXPECT_EQ(writeFilesCmdRead(file), "3");
 }
 
 TEST(WriteFilesCmd, OtherKeysOrNoKeyAreSeparateSteps){
     TempDir dir;
     CommandHistory history;
     const fs::path file = dir.path / "a.poseanim";
-    write(file, "0");
+    writeFilesCmdWrite(file, "0");
     ASSERT_TRUE(history.addCommand(command({{file, "1"}}, "drag pose 0")));
     ASSERT_TRUE(history.addCommand(command({{file, "2"}}, "drag pose 1")));
     ASSERT_TRUE(history.addCommand(command({{file, "3"}}, "")));
     ASSERT_TRUE(history.addCommand(command({{file, "4"}}, "")));
     EXPECT_EQ(history.position(), 4u);
     history.undo();
-    EXPECT_EQ(read(file), "3");
+    EXPECT_EQ(writeFilesCmdRead(file), "3");
     history.undo();
-    EXPECT_EQ(read(file), "2");
+    EXPECT_EQ(writeFilesCmdRead(file), "2");
     history.undo();
-    EXPECT_EQ(read(file), "1");
+    EXPECT_EQ(writeFilesCmdRead(file), "1");
     history.undo();
-    EXPECT_EQ(read(file), "0");
+    EXPECT_EQ(writeFilesCmdRead(file), "0");
     // a key does not merge across other files
     const fs::path other = dir.path / "b.poseanim";
     CommandHistory second;
@@ -128,13 +128,13 @@ TEST(WriteFilesCmd, AFailedWriteRestoresWhatTheCommandWrote){
     CommandHistory history;
     const fs::path first = dir.path / "walk.poseanim";
     const fs::path created = dir.path / "new.poseanim";
-    write(first, "before");
+    writeFilesCmdWrite(first, "before");
     const fs::path blocker = dir.path / "blocker";
-    write(blocker, "a file, not a directory");
+    writeFilesCmdWrite(blocker, "a file, not a directory");
     int notified = 0;
     // the third file's parent is a regular file: the write fails
     EXPECT_FALSE(history.addCommand(command({{first, "after"}, {created, "new"}, {blocker / "x.humanoid", "z"}}, "", &notified)));
-    EXPECT_EQ(read(first), "before");
+    EXPECT_EQ(writeFilesCmdRead(first), "before");
     EXPECT_FALSE(fs::exists(created));
     EXPECT_EQ(notified, 0);
     EXPECT_FALSE(history.canUndo());

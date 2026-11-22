@@ -44,7 +44,7 @@ using namespace jasperengine::test;
 namespace {
 
     // the goldens are glcore's; another backend is held to the cross-backend bound
-    CompareOptions goldenTolerance(){
+    CompareOptions particlesGoldenTolerance(){
         CompareOptions options;
         const bool goldenBackend = std::strcmp(HeadlessContext::getBackendName(), "glcore") == 0;
         options.pixelThreshold = 16;
@@ -135,7 +135,7 @@ TEST_F(ParticlesGpu, BillboardModes){
                burst(std::string(R"("renderMode": ")") + modes[i] + R"(", "texture": "particles/textures/spark.png", "blend": "additive")"));
     }
     ASSERT_TRUE(render(1.0));
-    EXPECT_GOLDEN_OPTIONS("particles_billboard_modes", goldenTolerance());
+    EXPECT_GOLDEN_OPTIONS("particles_billboard_modes", particlesGoldenTolerance());
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -147,7 +147,7 @@ TEST_F(ParticlesGpu, StretchedAndUntextured){
     system(Vector3(1.0f, 1.0f, 0.0f), burst(R"("renderMode": "billboard")"));
     system(Vector3(3.5f, 1.0f, 0.0f), burst(R"("renderMode": "billboard", "untexturedShape": "square")"));
     ASSERT_TRUE(render(0.6));
-    EXPECT_GOLDEN_OPTIONS("particles_stretched", goldenTolerance());
+    EXPECT_GOLDEN_OPTIONS("particles_stretched", particlesGoldenTolerance());
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -163,7 +163,7 @@ TEST_F(ParticlesGpu, MeshParticles){
     system(Vector3(1.5f, 1.0f, 0.0f), burst(R"("renderMode": "mesh", "meshes": [{"type": "primitive", "primitive": "sphere"},
         {"type": "primitive", "primitive": "torus"}], "meshSelection": "index", "lighting": "lit")", "", 16));
     ASSERT_TRUE(render(1.2));
-    EXPECT_GOLDEN_OPTIONS("particles_mesh", goldenTolerance());
+    EXPECT_GOLDEN_OPTIONS("particles_mesh", particlesGoldenTolerance());
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -176,7 +176,7 @@ TEST_F(ParticlesGpu, FrameBlending){
     system(Vector3(2.0f, 1.0f, 0.0f), burst(R"("renderMode": "billboard", "texture": "particles/textures/sheet.png")",
                                             sheet + R"(, "frameBlending": true})", 12, 0.5f));
     ASSERT_TRUE(render(1.375));
-    EXPECT_GOLDEN_OPTIONS("particles_frame_blend", goldenTolerance());
+    EXPECT_GOLDEN_OPTIONS("particles_frame_blend", particlesGoldenTolerance());
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -192,7 +192,7 @@ TEST_F(ParticlesGpu, SixWayLighting){
         "sixWayMapA": "particles/textures/sixway_a.png", "sixWayMapB": "particles/textures/sixway_b.png", "blend": "alpha",
         "sortMode": "byDistance")", "", 20, 0.6f));
     ASSERT_TRUE(render(1.0));
-    EXPECT_GOLDEN_OPTIONS("particles_sixway", goldenTolerance());
+    EXPECT_GOLDEN_OPTIONS("particles_sixway", particlesGoldenTolerance());
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -207,7 +207,7 @@ TEST_F(ParticlesGpu, SoftParticlesAndNearFade){
         "shader": "library:particles", "shaderFeatures": ["NEAR_FADE"], "shaderProperties": [{"name": "nearFadeStart", "value": [1.0, 0, 0, 0]}, {"name": "nearFadeEnd", "value": [3.0, 0, 0, 0]}])",
         "", 8, 0.3f));
     ASSERT_TRUE(render(1.0));
-    EXPECT_GOLDEN_OPTIONS("particles_soft_nearfade", goldenTolerance());
+    EXPECT_GOLDEN_OPTIONS("particles_soft_nearfade", particlesGoldenTolerance());
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -220,7 +220,7 @@ TEST_F(ParticlesGpu, TrailsAndRibbons){
     system(Vector3(2.0f, 1.5f, 0.0f), burst(R"("renderMode": "none", "blend": "additive")",
         gravity + R"(, {"type": "trails", "mode": "ribbon", "ribbonCount": 1, "lifetime": 1.0})", 10, 2.0f));
     ASSERT_TRUE(render(1.0));
-    EXPECT_GOLDEN_OPTIONS("particles_trails", goldenTolerance());
+    EXPECT_GOLDEN_OPTIONS("particles_trails", particlesGoldenTolerance());
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -377,7 +377,7 @@ TEST_F(ParticlesGpu, SubEmittersDrawWithTheirOwnRenderers){
     system(Vector3(3.5f, 1.0f, 0.0f), parent("death", "fx/bf23-middle.particles", 0.3f, R"("renderMode": "billboard")"));
     ParticleSystem& plain = system(Vector3(0.0f, 3.2f, 0.0f), burst(R"("renderMode": "billboard")", "", 6, 0.3f));
     ASSERT_TRUE(render(1.25));
-    EXPECT_GOLDEN_OPTIONS("particles_sub_emitters", goldenTolerance());
+    EXPECT_GOLDEN_OPTIONS("particles_sub_emitters", particlesGoldenTolerance());
     EXPECT_NO_ENGINE_ERRORS();
 
     ParticleSubsystem& subsystem = *scene.getSystem<ParticleSubsystem>();
@@ -598,7 +598,7 @@ TEST_F(ParticlesGpu, DistortionBendsTheSceneBehind){
     system(Vector3(0.4f, 1.0f, 0.0f), one("1, 1, 1, 1", distortion));
     system(Vector3(2.8f, 1.0f, 0.0f), one("1, 0.6, 0.6, 1", distortion));
     ASSERT_TRUE(render(0.5));
-    EXPECT_GOLDEN_OPTIONS("particles_distortion", goldenTolerance());
+    EXPECT_GOLDEN_OPTIONS("particles_distortion", particlesGoldenTolerance());
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -619,7 +619,7 @@ TEST_F(ParticlesGpu, RingParticles){
                                             R"(, "startRotation3D": true, "startRotationX": 50, "startRotation": 30)"));
     system(Vector3(2.6f, 1.0f, 0.0f), rings(R"("meshAlignment": "view", "ringInnerRadius": 0, "ringSegments": 6)", ""));
     ASSERT_TRUE(render(1.0));
-    EXPECT_GOLDEN_OPTIONS("particles_ring", goldenTolerance());
+    EXPECT_GOLDEN_OPTIONS("particles_ring", particlesGoldenTolerance());
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -647,7 +647,7 @@ TEST_F(ParticlesGpu, FollowParentChildrenStayOnTheirParents){
     system(Vector3(-2.0f, 0.0f, 0.0f), parent(false));
     system(Vector3(2.0f, 0.0f, 0.0f), parent(true));
     ASSERT_TRUE(render(1.5));
-    EXPECT_GOLDEN_OPTIONS("particles_follow", goldenTolerance());
+    EXPECT_GOLDEN_OPTIONS("particles_follow", particlesGoldenTolerance());
     EXPECT_NO_ENGINE_ERRORS();
     particles::ParticleEffectLibrary::clear();
 }

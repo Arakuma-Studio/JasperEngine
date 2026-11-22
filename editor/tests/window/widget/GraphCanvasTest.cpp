@@ -31,7 +31,7 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    struct Rig {
+    struct GraphCanvasRig {
         ImGuiContext* previous = nullptr;
         ImGuiContext* context = nullptr;
         GraphCanvas canvas;
@@ -39,7 +39,7 @@ namespace {
         std::vector<GraphCanvas::Link> links;
         std::vector<GraphCanvas::Group> groups;
 
-        Rig() {
+        GraphCanvasRig() {
             previous = ImGui::GetCurrentContext();
             context = ImGui::CreateContext();
             ImGui::SetCurrentContext(context);
@@ -59,7 +59,7 @@ namespace {
             nodes[2].position = ImVec2(100, 400);
             for (int i = 0; i < 3; i++) frame();
         }
-        ~Rig() {
+        ~GraphCanvasRig() {
             ImGui::DestroyContext(context);
             ImGui::SetCurrentContext(previous);
         }
@@ -124,7 +124,7 @@ namespace {
 }
 
 TEST(GraphCanvas, EscCancelsANodeDrag) {
-    Rig rig;
+    GraphCanvasRig rig;
     const ImVec2 start = rig.nodes[0].position;
     const ImVec2 at = rig.centre(0);
     rig.moveTo(at);
@@ -149,7 +149,7 @@ TEST(GraphCanvas, EscCancelsANodeDrag) {
 }
 
 TEST(GraphCanvas, EscEndsABoxSelect) {
-    Rig rig;
+    GraphCanvasRig rig;
     rig.nodes[2].selected = true;   // the press on the background clears it: Esc gives it back
     const ImVec2 empty = rig.canvas.toScreen(ImVec2(60, 60));
     rig.moveTo(empty);
@@ -168,7 +168,7 @@ TEST(GraphCanvas, EscEndsABoxSelect) {
 
 // BF23 F18: a plain click on a member of a multi-selection leaves that one; its drag moves them all
 TEST(GraphCanvas, APlainClickOnASelectedNodeCollapsesTheSelection) {
-    Rig rig;
+    GraphCanvasRig rig;
     rig.nodes[0].selected = true;
     rig.nodes[1].selected = true;
     const ImVec2 at = rig.centre(1);
@@ -184,7 +184,7 @@ TEST(GraphCanvas, APlainClickOnASelectedNodeCollapsesTheSelection) {
 
 // a press that does not move is a click: an off-grid node keeps its place and reports no move
 TEST(GraphCanvas, AClickOnAnOffGridNodeDoesNotMoveIt) {
-    Rig rig;
+    GraphCanvasRig rig;
     rig.nodes[0].position = ImVec2(107, 93);
     rig.nodes[1].position = ImVec2(413, 93);
     rig.nodes[0].selected = true;
@@ -204,7 +204,7 @@ TEST(GraphCanvas, AClickOnAnOffGridNodeDoesNotMoveIt) {
 
 // the gesture still ends normally without Esc
 TEST(GraphCanvas, ADragWithoutEscReportsItsMove) {
-    Rig rig;
+    GraphCanvasRig rig;
     const ImVec2 at = rig.centre(0);
     rig.moveTo(at);
     rig.frame();
@@ -239,7 +239,7 @@ TEST(GraphCanvas, ADataflowNodeIsSizedByItsPortsAndThumbnail) {
 }
 
 TEST(GraphCanvas, AWireDraggedToAPortConnects) {
-    Rig rig;
+    GraphCanvasRig rig;
     rig.dataflow();
     const GraphCanvas::Result released = rig.dragTo(rig.port(0, "out", true), rig.port(1, "b", false));
     EXPECT_EQ(released.connectFrom, (GraphCanvas::PortRef{1, "out", true}));
@@ -254,7 +254,7 @@ TEST(GraphCanvas, AWireDraggedToAPortConnects) {
 }
 
 TEST(GraphCanvas, AWireTheCallerRefusesConnectsNothing) {
-    Rig rig;
+    GraphCanvasRig rig;
     rig.dataflow();
     rig.canvas.canConnect = [](const GraphCanvas::PortRef&, const GraphCanvas::PortRef& input) { return input.port == "a"; };
     const GraphCanvas::Result refused = rig.dragTo(rig.port(0, "out", true), rig.port(1, "b", false));
@@ -268,7 +268,7 @@ TEST(GraphCanvas, AWireTheCallerRefusesConnectsNothing) {
 }
 
 TEST(GraphCanvas, AWireDroppedOnEmptyCanvasReportsWhere) {
-    Rig rig;
+    GraphCanvasRig rig;
     rig.dataflow();
     const ImVec2 empty = rig.canvas.toScreen(ImVec2(700, 500));
     const GraphCanvas::Result dropped = rig.dragTo(rig.port(0, "out", true), empty);
@@ -283,7 +283,7 @@ TEST(GraphCanvas, AWireDroppedOnEmptyCanvasReportsWhere) {
 }
 
 TEST(GraphCanvas, EscCancelsAWireDrag) {
-    Rig rig;
+    GraphCanvasRig rig;
     rig.dataflow();
     const ImVec2 from = rig.port(0, "out", true);
     rig.moveTo(from);
@@ -301,7 +301,7 @@ TEST(GraphCanvas, EscCancelsAWireDrag) {
 }
 
 TEST(GraphCanvas, AClickOnAWireSelectsItsLink) {
-    Rig rig;
+    GraphCanvasRig rig;
     rig.dataflow();
     GraphCanvas::Link wire;
     wire.id = 77;
@@ -322,7 +322,7 @@ TEST(GraphCanvas, AClickOnAWireSelectsItsLink) {
 }
 
 TEST(GraphCanvas, ThumbnailsAreDrawnAtEveryZoomAndPortsFadeOut) {
-    Rig rig;
+    GraphCanvasRig rig;
     rig.dataflow();
     rig.nodes[0].thumbnail = true;
     rig.nodes[2].position = ImVec2(100000, 100000);   // far outside the view
@@ -359,7 +359,7 @@ TEST(GraphCanvas, ThumbnailsAreDrawnAtEveryZoomAndPortsFadeOut) {
 }
 
 TEST(GraphCanvas, APressOnAGroupTitleDragsItsNodes) {
-    Rig rig;
+    GraphCanvasRig rig;
     GraphCanvas::Group group;
     group.id = 9;
     group.title = "Inputs";
@@ -376,7 +376,7 @@ TEST(GraphCanvas, APressOnAGroupTitleDragsItsNodes) {
 }
 
 TEST(GraphCanvas, FrameSelectedCentresTheSelection) {
-    Rig rig;
+    GraphCanvasRig rig;
     rig.nodes[1].selected = true;
     rig.canvas.frameSelected(rig.nodes);
     rig.frame();
@@ -388,7 +388,7 @@ TEST(GraphCanvas, FrameSelectedCentresTheSelection) {
 // S90 review M3: zoomed out, a point between two rows goes to the nearer port; a node on top hides
 // the ports under it
 TEST(GraphCanvas, APortPressGoesToTheNearestPortOfTheTopNode) {
-    Rig rig;
+    GraphCanvasRig rig;
     rig.dataflow();
     const ImVec2 at = rig.centre(1);
     rig.moveTo(at);
@@ -722,7 +722,7 @@ TEST(GraphCanvasCompat, NoPinsDrawsAsBefore) {
 
 // T2 R56, R58, AC41: the box grows around its footer and its error's wrapped message, both drawn inside it
 TEST(GraphCanvasPins, FooterAndErrorFitTheBox) {
-    Rig rig;
+    GraphCanvasRig rig;
     rig.dataflow();
     GraphCanvas::Node& node = rig.nodes[0];
     node.thumbnail = true;
@@ -763,7 +763,7 @@ TEST(GraphCanvasPins, FooterAndErrorFitTheBox) {
 namespace {
 
     // the vertices of one frame of the rig, with the mouse where it is
-    std::vector<ImDrawVert> drawnVertices(Rig& rig) {
+    std::vector<ImDrawVert> drawnVertices(GraphCanvasRig& rig) {
         ImGui::NewFrame();
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
@@ -789,7 +789,7 @@ namespace {
 
 // T2 R53, R58, AC41: a port an issue names has a red ring; during a wire drag a port canConnect refuses dims
 TEST(GraphCanvasPins, ErrorRingAndRefusedPortsDim) {
-    Rig rig;
+    GraphCanvasRig rig;
     rig.dataflow();
     const ImU32 coord = IM_COL32(255, 200, 90, 255), field = IM_COL32(120, 200, 255, 255);
     rig.nodes[1].inputs[0].color = field;
@@ -815,7 +815,7 @@ TEST(GraphCanvasPins, ErrorRingAndRefusedPortsDim) {
 
 // T2 R53, AC41: a wire is picked along its curve, not along the straight line between its ports
 TEST(GraphCanvasPins, AWireIsPickedAlongItsCurve) {
-    Rig rig;
+    GraphCanvasRig rig;
     rig.dataflow();
     rig.nodes[1].position = ImVec2(400, 340);
     GraphCanvas::Link wire;

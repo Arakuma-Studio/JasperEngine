@@ -23,7 +23,7 @@ using namespace jasperengine::titleart::test;
 
 namespace {
 
-    Path square(double cx, double cy, double half, bool clockwise = false) {
+    Path maskSquare(double cx, double cy, double half, bool clockwise = false) {
         Path p;
         p.moveTo(cx - half, cy - half);
         if (clockwise) {
@@ -73,7 +73,7 @@ namespace {
 }
 
 TEST(MaskRasterTest, FillsCoverTheirArea) {
-    const CoverageMask m = rasterizeElement(face({square(0, 0, 10)}), frameOf(40, 40));
+    const CoverageMask m = rasterizeElement(face({maskSquare(0, 0, 10)}), frameOf(40, 40));
     ASSERT_EQ(m.width, 40);
     ASSERT_EQ(m.height, 40);
     ASSERT_EQ(m.pixels.size(), 1600u);
@@ -83,34 +83,34 @@ TEST(MaskRasterTest, FillsCoverTheirArea) {
     EXPECT_EQ(at(m, 30, 20), 0);
     EXPECT_NEAR(coverage(m), 400, 2);
     // an edge through the middle of a pixel covers half of it (antialiasing the seeds read)
-    const CoverageMask half = rasterizeElement(face({square(0.5, 0, 10)}), frameOf(40, 40));
+    const CoverageMask half = rasterizeElement(face({maskSquare(0.5, 0, 10)}), frameOf(40, 40));
     EXPECT_NEAR(at(half, 10, 20), 128, 16);
     EXPECT_NEAR(at(half, 30, 20), 128, 16);
     // y up: a shape above the origin lands in the upper rows
-    const CoverageMask up = rasterizeElement(face({square(0, 10, 5)}), frameOf(40, 40));
+    const CoverageMask up = rasterizeElement(face({maskSquare(0, 10, 5)}), frameOf(40, 40));
     EXPECT_EQ(at(up, 20, 10), 255);
     EXPECT_EQ(at(up, 20, 30), 0);
     // twice the scale, twice the pixels per side
-    EXPECT_NEAR(coverage(rasterizeElement(face({square(0, 0, 10)}), frameOf(80, 80, 2.0))), 1600, 4);
+    EXPECT_NEAR(coverage(rasterizeElement(face({maskSquare(0, 0, 10)}), frameOf(80, 80, 2.0))), 1600, 4);
 }
 
 TEST(MaskRasterTest, FillRulesFollowTheOutline) {
-    Path nested = square(0, 0, 15);
-    nested.append(square(0, 0, 5));     // same winding: non-zero fills it, even-odd punches it
+    Path nested = maskSquare(0, 0, 15);
+    nested.append(maskSquare(0, 0, 5));     // same winding: non-zero fills it, even-odd punches it
     EXPECT_EQ(at(rasterizeElement(face({nested}), frameOf(40, 40)), 20, 20), 255);
     nested.evenOdd = true;
     EXPECT_EQ(at(rasterizeElement(face({nested}), frameOf(40, 40)), 20, 20), 0);
     // a counter (reversed contour) is a hole under non-zero too
-    Path counter = square(0, 0, 15);
-    counter.append(square(0, 0, 5, true));
+    Path counter = maskSquare(0, 0, 15);
+    counter.append(maskSquare(0, 0, 5, true));
     EXPECT_EQ(at(rasterizeElement(face({counter}), frameOf(40, 40)), 20, 20), 0);
 }
 
 TEST(MaskRasterTest, RimsStrokeTwiceTheirGrowWithTheirJoin) {
     // a 20 x 20 square grown by 5: 30 x 30, the corners as the join makes them
-    const CoverageMask miter = rasterizeElement(rimOf({square(0, 0, 10)}, 5, StrokeJoin::Miter), frameOf(40, 40));
-    const CoverageMask round = rasterizeElement(rimOf({square(0, 0, 10)}, 5, StrokeJoin::Round), frameOf(40, 40));
-    const CoverageMask bevel = rasterizeElement(rimOf({square(0, 0, 10)}, 5, StrokeJoin::Bevel), frameOf(40, 40));
+    const CoverageMask miter = rasterizeElement(rimOf({maskSquare(0, 0, 10)}, 5, StrokeJoin::Miter), frameOf(40, 40));
+    const CoverageMask round = rasterizeElement(rimOf({maskSquare(0, 0, 10)}, 5, StrokeJoin::Round), frameOf(40, 40));
+    const CoverageMask bevel = rasterizeElement(rimOf({maskSquare(0, 0, 10)}, 5, StrokeJoin::Bevel), frameOf(40, 40));
     for (const CoverageMask* m : {&miter, &round, &bevel}) {
         EXPECT_EQ(at(*m, 20, 20), 255) << "the fill is part of the rim";
         EXPECT_EQ(at(*m, 6, 20), 255) << "grown by 5 on each side";
@@ -254,8 +254,8 @@ TEST(MaskRasterTest, MitresFollowCanvas2DAtConcaveVertices) {
 }
 
 TEST(MaskRasterTest, FillCountersFloodsEnclosedPockets) {
-    Path ring = square(0, 0, 15);
-    ring.append(square(0, 0, 6, true));
+    Path ring = maskSquare(0, 0, 15);
+    ring.append(maskSquare(0, 0, 6, true));
     const CoverageMask open = rasterizeElement(rimOf({ring}, 1, StrokeJoin::Miter), frameOf(40, 40));
     EXPECT_EQ(at(open, 20, 20), 0) << "the counter stays open";
     const CoverageMask solid = rasterizeElement(rimOf({ring}, 1, StrokeJoin::Miter, true), frameOf(40, 40));
@@ -306,7 +306,7 @@ TEST(MaskRasterTest, OverlappingStrokesStayOuter) {
 }
 
 TEST(MaskRasterTest, OffsetsAndStrokes) {
-    TitleElement moved = rimOf({square(0, 0, 4)}, 1, StrokeJoin::Miter);
+    TitleElement moved = rimOf({maskSquare(0, 0, 4)}, 1, StrokeJoin::Miter);
     moved.offset = {0, -10};    // +y up: the rim drops
     const CoverageMask m = rasterizeElement(moved, frameOf(40, 40));
     EXPECT_EQ(at(m, 20, 30), 255);
@@ -329,7 +329,7 @@ TEST(MaskRasterTest, OffsetsAndStrokes) {
 }
 
 TEST(MaskRasterTest, ElementBoundsEnclosesTheMask) {
-    TitleElement e = rimOf({square(3, -2, 8)}, 4, StrokeJoin::Miter);
+    TitleElement e = rimOf({maskSquare(3, -2, 8)}, 4, StrokeJoin::Miter);
     e.offset = {2, 1};
     const TitleRect b = elementBounds(e);
     // a frame exactly on the bounds: nothing reaches its border

@@ -38,12 +38,12 @@ using namespace jasperengine::test;
 
 namespace {
 
-    std::string khronosFile(const std::string& sample){
+    std::string threadKhronosFile(const std::string& sample){
         return std::string(JASPER_TEST_REPO_DIR "/engine/tests/render/assets/khronos/") + sample + "/glTF-Binary/" + sample + ".glb";
     }
 
     // mean over the pixels of the largest channel difference (0..255)
-    double meanDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
+    double threadMeanDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
         if (a.size() != b.size() || a.empty())
             return 255.0;
         double sum = 0.0;
@@ -57,7 +57,7 @@ namespace {
         return sum / (double)pixels;
     }
 
-    std::vector<uint8_t> readTarget(){
+    std::vector<uint8_t> readModelLoadingThreadTarget(){
         Framebuffer& target = GpuEnvironment::target();
         std::vector<uint8_t> rgba;
         readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba);
@@ -65,7 +65,7 @@ namespace {
     }
 
     // every attribute of every submesh has its buffer on the mesh (an OBJ's are all in the one it builds)
-    void expectWholePrimitives(const MeshComponent& mesh, const std::string& what){
+    void threadExpectWholePrimitives(const MeshComponent& mesh, const std::string& what){
         if (mesh.buffer.getSize() > 0)
             return;
         for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
@@ -82,7 +82,7 @@ namespace {
 
     // `count` plates in a row, each of its own node, mesh, material and position, normal, UV and
     // index buffer views
-    std::string writePlates(TempDir& dir, const std::string& name, int count){
+    std::string threadWritePlates(TempDir& dir, const std::string& name, int count){
         std::string bin;
         std::string views, accessors, materials, nodes, meshes, roots;
         const auto add = [&](const void* data, size_t size, int target, const std::string& accessorType, int componentType, size_t elements, const std::string& bounds){
@@ -125,7 +125,7 @@ namespace {
     }
 
     // an OBJ of `count` of `total` plates, a material each
-    std::string writeObjPlates(TempDir& dir, const std::string& name, int count, int total){
+    std::string threadWriteObjPlates(TempDir& dir, const std::string& name, int count, int total){
         const std::string objName = name + ".obj", mtlName = name + ".mtl";
         std::ofstream obj(dir.file(objName));
         std::ofstream mtl(dir.file(mtlName));
@@ -191,13 +191,13 @@ namespace {
         GpuEnvironment::drawFrames(3);
         auto meshes = scene.getComponentArray<MeshComponent>();
         for (size_t i = 0; i < meshes->size(); i++)
-            expectWholePrimitives(meshes->getComponentFromIndex(i), what);
-        std::vector<uint8_t> frame = readTarget();
+            threadExpectWholePrimitives(meshes->getComponentFromIndex(i), what);
+        std::vector<uint8_t> frame = readModelLoadingThreadTarget();
         Engine::removeScene(&scene);
         return frame;
     }
 
-    std::vector<uint8_t> drawModel(const std::string& file, unsigned int& submeshes){
+    std::vector<uint8_t> threadDrawModel(const std::string& file, unsigned int& submeshes){
         ModelScene loaded;
         EXPECT_TRUE(loaded.model.loadModel(file)) << file;
         submeshes = 0;
@@ -244,7 +244,7 @@ namespace {
         EXPECT_EQ(threadHierarchy.bones, mainHierarchy.bones) << file;
         EXPECT_EQ(threadHierarchy.animations, mainHierarchy.animations) << file;
         const std::vector<uint8_t> threadFrame = drawScene(onThread->scene, file);
-        EXPECT_LT(meanDifference(threadFrame, mainFrame), 0.25) << file << ": the loading thread's frame is not the main thread's";
+        EXPECT_LT(threadMeanDifference(threadFrame, mainFrame), 0.25) << file << ": the loading thread's frame is not the main thread's";
         onThread.reset();
         GpuEnvironment::drawFrames(2);
     }
@@ -257,7 +257,7 @@ class ManyNodeLoadingThreadGpu : public ::testing::TestWithParam<const char*> {}
 TEST_P(ManyNodeLoadingThreadGpu, GivesTheMainThreadsHierarchyAndPixels){
     JASPER_REQUIRE_GPU();
     const int unfed = ObjectRender::getUnfedVertexInputLoads();
-    expectSameOnTheLoadingThread(khronosFile(GetParam()));
+    expectSameOnTheLoadingThread(threadKhronosFile(GetParam()));
     EXPECT_EQ(ObjectRender::getUnfedVertexInputLoads(), unfed);
     EXPECT_NO_ENGINE_ERRORS();
 }
@@ -269,7 +269,7 @@ TEST(ModelLoadingThreadGpu, LoadsAModelOfManyNodesWhole){
     JASPER_REQUIRE_GPU();
     TempDir dir;
     const int plates = 40;
-    const std::string file = writePlates(dir, "nodes", plates);
+    const std::string file = threadWritePlates(dir, "nodes", plates);
     expectSameOnTheLoadingThread(file);
 
     std::unique_ptr<ModelScene> onThread;
@@ -292,7 +292,7 @@ TEST(ModelLoadingThreadGpu, GivesASkinnedModelItsSkeletonAndAnimations){
 TEST(ModelLoadingThreadGpu, GivesAnObjTheMainThreadsPixels){
     JASPER_REQUIRE_GPU();
     TempDir dir;
-    expectSameOnTheLoadingThread(writeObjPlates(dir, "plates", 8, 8));
+    expectSameOnTheLoadingThread(threadWriteObjPlates(dir, "plates", 8, 8));
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -302,10 +302,10 @@ TEST(ModelLoadingThreadGpu, InARunningSceneCommitsOnTheMainThread){
     JASPER_REQUIRE_GPU();
     TempDir dir;
     const int plates = 20;
-    const std::string file = writePlates(dir, "running", plates);
+    const std::string file = threadWritePlates(dir, "running", plates);
 
     unsigned int submeshes = 0;
-    const std::vector<uint8_t> reference = drawModel(file, submeshes);
+    const std::vector<uint8_t> reference = threadDrawModel(file, submeshes);
     ASSERT_EQ(submeshes, (unsigned int)plates);
 
     ModelScene running;
@@ -324,7 +324,7 @@ TEST(ModelLoadingThreadGpu, InARunningSceneCommitsOnTheMainThread){
     })) << "the main thread never made the tree";
     GpuEnvironment::drawFrames(3);
     EXPECT_EQ(hierarchyOf(running.scene, running.model).meshes.size(), (size_t)plates);
-    EXPECT_LT(meanDifference(readTarget(), reference), 0.25);
+    EXPECT_LT(threadMeanDifference(readModelLoadingThreadTarget(), reference), 0.25);
     Engine::removeScene(&running.scene);
     EXPECT_NO_ENGINE_ERRORS();
 }
@@ -335,16 +335,16 @@ TEST(ModelLoadingThreadGpu, AnObjOfManyMaterialsLoadsWhole){
     JASPER_REQUIRE_GPU();
     TempDir dir;
     const int plates = 24;
-    const std::string whole = writeObjPlates(dir, "whole", plates, plates);
-    const std::string shorter = writeObjPlates(dir, "shorter", plates - 1, plates);
+    const std::string whole = threadWriteObjPlates(dir, "whole", plates, plates);
+    const std::string shorter = threadWriteObjPlates(dir, "shorter", plates - 1, plates);
 
     unsigned int submeshes = 0;
-    const std::vector<uint8_t> frame = drawModel(whole, submeshes);
+    const std::vector<uint8_t> frame = threadDrawModel(whole, submeshes);
     EXPECT_EQ(submeshes, (unsigned int)plates) << "materials were cut off";
     EXPECT_NO_ENGINE_ERRORS();
 
-    const std::vector<uint8_t> without = drawModel(shorter, submeshes);
-    EXPECT_GT(meanDifference(frame, without), 0.25) << "the last material's faces do not draw";
+    const std::vector<uint8_t> without = threadDrawModel(shorter, submeshes);
+    EXPECT_GT(threadMeanDifference(frame, without), 0.25) << "the last material's faces do not draw";
     expectSameOnTheLoadingThread(whole);
     EXPECT_NO_ENGINE_ERRORS();
 }

@@ -4,7 +4,7 @@
 - Used by: the HTML UI's `<video>` (`engine/core/media/Av1Decoder.cpp`,
   `docs/html-ui/phase-6-video.md`).
 
-## Vendored (byte for byte from the tag)
+## Vendored (byte for byte from the tag, but for the patch below)
 `COPYING`, `README.md`, `NEWS`, `THANKS.md`, `include/dav1d/*.h`, `include/common/*.h`,
 `include/compat/{msvc,gcc}/stdatomic.h`, `src/*.c`, `src/*.h`, `src/win32/thread.c`, and the asm:
 `src/x86/*` (the NASM files, their headers and `cpu.c`), `src/arm/*` (`asm.S`, the headers,
@@ -13,6 +13,11 @@ header).
 
 Not vendored: `tools/` (checkasm included), `tests/`, `examples/`, `doc/`, `gcovr.cfg`, the meson
 files, `package/`, and the code of other architectures (`src/ppc`, `src/riscv`, `src/loongarch`).
+
+## Patched
+- `include/compat/msvc/stdatomic.h`: `defined(__clang__) && __has_include_next(<stdatomic.h>)` is
+  two nested `#if`s, so cl never parses the macro it lacks (MSVC 19.52, VS 2026 18.x, makes that
+  error C7780; earlier versions let it pass). Re-apply after an update unless upstream has changed the line.
 
 ## Ours
 - `CMakeLists.txt`: replaces meson. 25 sources plus the 13 `*_tmpl.c` compiled twice

@@ -21,16 +21,16 @@ using namespace jasperengine;
 
 namespace {
 
-    constexpr uint32_t OP_ENTRY_POINT = 15;
-    constexpr uint32_t OP_FUNCTION = 54;
-    constexpr uint32_t OP_FUNCTION_END = 56;
-    constexpr uint32_t OP_FUNCTION_CALL = 57;
-    constexpr uint32_t OP_IMAGE_SAMPLE_FIRST = 87;
-    constexpr uint32_t OP_IMAGE_SAMPLE_LAST = 97;
+    constexpr uint32_t VOXEL_SHADER_OP_ENTRY_POINT = 15;
+    constexpr uint32_t VOXEL_SHADER_OP_FUNCTION = 54;
+    constexpr uint32_t VOXEL_SHADER_OP_FUNCTION_END = 56;
+    constexpr uint32_t VOXEL_SHADER_OP_FUNCTION_CALL = 57;
+    constexpr uint32_t VOXEL_SHADER_OP_IMAGE_SAMPLE_FIRST = 87;
+    constexpr uint32_t VOXEL_SHADER_OP_IMAGE_SAMPLE_LAST = 97;
 
     // The reads of one invocation: each function's own, plus its callees' per call. All branches
     // count, so this is the worst case.
-    int countSamples(const std::vector<uint32_t>& words) {
+    int voxelShaderCountSamples(const std::vector<uint32_t>& words) {
         std::map<uint32_t, int> own;
         std::map<uint32_t, std::vector<uint32_t>> calls;
         uint32_t entry = 0, current = 0;
@@ -38,11 +38,11 @@ namespace {
             const uint32_t opcode = words[offset] & 0xffffu;
             const uint32_t count = words[offset] >> 16;
             if (count == 0 || offset + count > words.size()) return -1;
-            if (opcode == OP_ENTRY_POINT && count > 2) entry = words[offset + 2];
-            else if (opcode == OP_FUNCTION && count > 2) current = words[offset + 2];
-            else if (opcode == OP_FUNCTION_END) current = 0;
-            else if (opcode == OP_FUNCTION_CALL && count > 3 && current != 0) calls[current].push_back(words[offset + 3]);
-            else if (opcode >= OP_IMAGE_SAMPLE_FIRST && opcode <= OP_IMAGE_SAMPLE_LAST && current != 0) own[current]++;
+            if (opcode == VOXEL_SHADER_OP_ENTRY_POINT && count > 2) entry = words[offset + 2];
+            else if (opcode == VOXEL_SHADER_OP_FUNCTION && count > 2) current = words[offset + 2];
+            else if (opcode == VOXEL_SHADER_OP_FUNCTION_END) current = 0;
+            else if (opcode == VOXEL_SHADER_OP_FUNCTION_CALL && count > 3 && current != 0) calls[current].push_back(words[offset + 3]);
+            else if (opcode >= VOXEL_SHADER_OP_IMAGE_SAMPLE_FIRST && opcode <= VOXEL_SHADER_OP_IMAGE_SAMPLE_LAST && current != 0) own[current]++;
             offset += count;
         }
         std::map<uint32_t, int> total;
@@ -77,7 +77,7 @@ namespace {
             if (stage.type != ShaderStageType::FRAGMENT || backend != ShaderBackend::Vulkan || !stage.bytecode.data) continue;
             std::vector<uint32_t> words(stage.bytecode.size / sizeof(uint32_t));
             std::memcpy(words.data(), stage.bytecode.data, words.size() * sizeof(uint32_t));
-            return countSamples(words);
+            return voxelShaderCountSamples(words);
         }
         return 0;
     }

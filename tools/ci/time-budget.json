@@ -1,0 +1,725 @@
+{
+ "_doc": "What a test, an MCP file and a suite may cost in CI: tools/ci/time_budget.py (docs/testing.md, \"Test time budget\")",
+ "tolerance": 2.0,
+ "total_tolerance": 1.5,
+ "suites": {
+  "core": {
+   "test_cap": 30,
+   "total": 5520
+  },
+  "editor": {
+   "test_cap": 20,
+   "total": 540
+  },
+  "htmlui": {
+   "test_cap": 60,
+   "total": 5280
+  },
+  "mcp": {
+   "test_cap": 120,
+   "file_cap": 600
+  }
+ },
+ "tests": {
+  "core": {
+   "TitleArtScenesGpuSlow.ElementVariantsDrawTheWholeProgram": {
+    "seconds": 799,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "ProcMatNodeImageGpuSlow.EveryShippedNodeDrawsWhatTheInterpreterDraws": {
+    "seconds": 652,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DFallbackGpuSlow.AOAndGemsRenderWithoutFloatTargets": {
+    "seconds": 285,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DFallbackGpuSlow.TheGlintRunsWithoutFloatTargetsOnEveryTier": {
+    "seconds": 283,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "ProcMatBudgetsGpuSlow.ABakeOf1024OnTheDeviceAndOnTheCpu": {
+    "seconds": 223,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TitleGenGpuSlow.Deterministic": {
+    "seconds": 212,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DParityGpuSlow.PachislopLooks": {
+    "seconds": 153,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "VoxelSoakSlow.IncrementalEqualsRebuild": {
+    "seconds": 122,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DRendererGpu.CompressedLightAgreesWithFloat": {
+    "seconds": 118,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TitleFxLiveGpu.EveryLiveParamComposesLikeARerender": {
+    "seconds": 92,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TitleGenGpu.FallbackWithinClass": {
+    "seconds": 75,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TitleGenParityGpu.PachislopPresets": {
+    "seconds": 74,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DRendererGpu.MoreEnvironmentsThanTheCacheKeepsBuildOnce": {
+    "seconds": 73,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "MeshBvh.MatchesBruteForceRandomRays": {
+    "seconds": 72,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TitleGenGpu.PresetGoldens": {
+    "seconds": 71,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TerrainFoliageGpu.AGpuOnlyDensityMapStopsWithOneError": {
+    "seconds": 61,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TerrainFoliageGpu.AFailedCpuReadableCookStopsTheWaitWithOneError": {
+    "seconds": 61,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TitleArtScenesGpu.FallbackAgrees": {
+    "seconds": 55,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DBakeBenchGpu.RealtimeTiers": {
+    "seconds": 44,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TerrainMaterialsGpu.BlockSizes": {
+    "seconds": 41,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DRendererGpu.TheGlintAddsLightPastTheLetters": {
+    "seconds": 37,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TerrainMaterialsGpu.MacroVariation": {
+    "seconds": 37,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "SSRCompositeGpu.ProbeIsReplacedUnderAToneCurve": {
+    "seconds": 33,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DRendererGpu.NewProgramsDrawOneAFrame": {
+    "seconds": 31,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TitleFxCatalogueGpu.PachislopParity": {
+    "seconds": 25,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TitleArtRendererGpu.SlicedEqualsOneShot": {
+    "seconds": 24,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "InstancingGoldenGpu.FadingMeshAmongBatchesMatchesUnbatched": {
+    "seconds": 24,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "SSRCompositeGpu.LocalProbeIsReplacedNotAdded": {
+    "seconds": 23,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DBakeBenchGpu.GoldBigBonusAndAColdEnvironment": {
+    "seconds": 23,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TerrainMaterialsGpu.CliffProjection": {
+    "seconds": 23,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TitleArtScenesGpu.MaterialMembers": {
+    "seconds": 22,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TitleGenMobileGpu.AgreesWithDesktop": {
+    "seconds": 20,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TitleFxGoldenGpu.Effects": {
+    "seconds": 19,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TitleArtScenesParityGpu.Scenes": {
+    "seconds": 18,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DRendererGpu.PatternsPrintAndRaiseTheFace": {
+    "seconds": 18,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TitleFxFallbackGpu.AgreesWithinItsClass": {
+    "seconds": 17,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DRendererGpu.GemsRefractTheLayersOwnOpaqueParts": {
+    "seconds": 17,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DRendererGpu.DebugViewsShowNormalsAndTheEnvironment": {
+    "seconds": 16,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DRendererGpu.AODarkensTheCrevicesAndKeepsOpenFaces": {
+    "seconds": 16,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DRendererGpu.AnImageLayerProjectsItsPicture": {
+    "seconds": 16,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DRendererGpu.DebugViewsAoInkAndWireframe": {
+    "seconds": 16,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DRendererGpu.AGold3DPlateDrawsLitPixels": {
+    "seconds": 16,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DRendererGpu.The3DRegionIsTheProjectedMesh": {
+    "seconds": 16,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TitleArt3DLiveGpu.MeshStatsAndASpinWithoutAMesh": {
+    "seconds": 16,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TerrainMaterialsGpu.MacroNormal": {
+    "seconds": 16,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DRendererGpu.APartsOwnEnvironmentLightsThatPartOnly": {
+    "seconds": 16,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DRendererGpu.TheBendChangesTheRampRedControl": {
+    "seconds": 16,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TerrainMaterialsGpu.FetchBudgets": {
+    "seconds": 16,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "Title3DRendererGpu.ACookedMeshDrawsWithoutTheMesher": {
+    "seconds": 16,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   }
+  },
+  "editor": {
+   "TitleFxShaderBuild.EveryProgramEveryBackend": {
+    "seconds": 42,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "GitLfsLocks.TwoUsers": {
+    "seconds": 32,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TitleEnvironmentCookTest.StudioCooksForEveryFamilyAndCaches": {
+    "seconds": 21,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TerrainUniformBudgetSlow.TerrainProgrammeVariantsFitGles3": {
+    "seconds": 19,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "LitUniformBudgetSlow.EveryMatrixVariantFits": {
+    "seconds": 12,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "TextureEncodeQuality.ColourFloors": {
+    "seconds": 12,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   }
+  },
+  "htmlui": {
+   "EffectPerfTest.CostTable": {
+    "seconds": 1667,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "HtmlUIRenderPerf.B1Examples": {
+    "seconds": 440,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "EffectLifecycleTest.HundredCyclesOfEveryStatefulEffect": {
+    "seconds": 408,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "EffectPerfTest.GridSteadyStateAndBudgets": {
+    "seconds": 323,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "RenderBatch.EquivalenceAllGoldenScenes": {
+    "seconds": 231,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "EffectPerfTest.StatefulSteadyState": {
+    "seconds": 156,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "EveryEffect/EffectGoldenTest.GoldensAndInvariants/fog": {
+    "seconds": 120,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "EveryEffect/EffectGoldenTest.GoldensAndInvariants/ink_flow": {
+    "seconds": 116,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "EveryEffect/EffectGoldenTest.GoldensAndInvariants/fluid_cursor_trail": {
+    "seconds": 96,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "EveryEffect/EffectGoldenTest.GoldensAndInvariants/fluid": {
+    "seconds": 95,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "EveryEffect/EffectGoldenTest.GoldensAndInvariants/smoke_flow": {
+    "seconds": 90,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "HtmlUIRenderPerf.B2List500": {
+    "seconds": 55,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "EveryEffect/EffectGoldenTest.GoldensAndInvariants/smoke_fill": {
+    "seconds": 53,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "HtmlUIRenderPerf.B6TextureList500": {
+    "seconds": 52,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "EveryEffect/EffectGoldenTest.GoldensAndInvariants/fluid_smoke": {
+    "seconds": 47,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "EveryEffect/EffectGoldenTest.GoldensAndInvariants/reaction_diffusion": {
+    "seconds": 40,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "HtmlUIRenderPerf.B3TextWall": {
+    "seconds": 36,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "EveryEffect/EffectGoldenTest.GoldensAndInvariants/particles": {
+    "seconds": 36,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "HtmlUIRenderPerf.B5TextEffects": {
+    "seconds": 34,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "HtmlUIRenderPerf.B7VirtualListScroll": {
+    "seconds": 33,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "EveryEffect/EffectGoldenTest.GoldensAndInvariants/boids": {
+    "seconds": 32,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   }
+  },
+  "mcp": {
+   "test_voxels.py::test_budgets_cave_world": {
+    "seconds": 2127,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_title_library.py::test_gate_1_of_8": {
+    "seconds": 1200,
+    "reason": "the Title Art library gate (S84 R36), an eighth of the library's items: estimated from the gate's 2,891-4,812 s in three PR runs, consecutive parts are uneven; ratchet once runs measure it"
+   },
+   "test_title_library.py::test_gate_2_of_8": {
+    "seconds": 1200,
+    "reason": "the Title Art library gate (S84 R36), an eighth of the library's items: estimated from the gate's 2,891-4,812 s in three PR runs, consecutive parts are uneven; ratchet once runs measure it"
+   },
+   "test_title_library.py::test_gate_3_of_8": {
+    "seconds": 1200,
+    "reason": "the Title Art library gate (S84 R36), an eighth of the library's items: estimated from the gate's 2,891-4,812 s in three PR runs, consecutive parts are uneven; ratchet once runs measure it"
+   },
+   "test_title_library.py::test_gate_4_of_8": {
+    "seconds": 1200,
+    "reason": "the Title Art library gate (S84 R36), an eighth of the library's items: estimated from the gate's 2,891-4,812 s in three PR runs, consecutive parts are uneven; ratchet once runs measure it"
+   },
+   "test_title_library.py::test_gate_5_of_8": {
+    "seconds": 1200,
+    "reason": "the Title Art library gate (S84 R36), an eighth of the library's items: estimated from the gate's 2,891-4,812 s in three PR runs, consecutive parts are uneven; ratchet once runs measure it"
+   },
+   "test_title_library.py::test_gate_6_of_8": {
+    "seconds": 1200,
+    "reason": "the Title Art library gate (S84 R36), an eighth of the library's items: estimated from the gate's 2,891-4,812 s in three PR runs, consecutive parts are uneven; ratchet once runs measure it"
+   },
+   "test_title_library.py::test_gate_7_of_8": {
+    "seconds": 1200,
+    "reason": "the Title Art library gate (S84 R36), an eighth of the library's items: estimated from the gate's 2,891-4,812 s in three PR runs, consecutive parts are uneven; ratchet once runs measure it"
+   },
+   "test_title_library.py::test_gate_8_of_8": {
+    "seconds": 1200,
+    "reason": "the Title Art library gate (S84 R36), an eighth of the library's items: estimated from the gate's 2,891-4,812 s in three PR runs, consecutive parts are uneven; ratchet once runs measure it"
+   },
+   "test_saved_output_determinism.py::test_fixture_scenes_save_the_same_drawn_or_not": {
+    "seconds": 984,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_post_fx_golden.py::test_pass_counts": {
+    "seconds": 535,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_post_fx_golden.py::test_goldens": {
+    "seconds": 479,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_stochastic_tiling.py::test_lit_fork_passes_agree": {
+    "seconds": 474,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_sound_library_data.py::test_d3_no_near_duplicates": {
+    "seconds": 413,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_saved_output_determinism.py::test_terrain_maps_draw_the_same_whatever_wrap_an_old_file_says": {
+    "seconds": 393,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_upgrade_from_main.py::test_fixture_upgrades": {
+    "seconds": 386,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_post_fx_golden.py::test_glitch": {
+    "seconds": 353,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_title_library_golden.py::test_goldens": {
+    "seconds": 294,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_water_boats.py::test_cargo_dry_boat_floats": {
+    "seconds": 237,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_buoyancy.py::test_play_floats_and_samples_agree": {
+    "seconds": 232,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_stochastic_tiling.py::test_lit_variants": {
+    "seconds": 206,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_reflection.py::test_inspector_layout_parity": {
+    "seconds": 203,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_materials_pbr.py::test_khronos_IridescenceMetallicSpheres": {
+    "seconds": 184,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_html_ui_effects.py::test_stateful_splat_in_play": {
+    "seconds": 180,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_shadows.py::test_no_shimmer_translate": {
+    "seconds": 168,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_shadows.py::test_no_shimmer_rotate": {
+    "seconds": 167,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_fluid_effect.py::test_pointer_path": {
+    "seconds": 164,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_materials_pbr.py::test_khronos_IridescenceDielectricSpheres": {
+    "seconds": 160,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_foliage_impostor.py::test_silhouette_matches_mesh": {
+    "seconds": 157,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_foliage_ui.py::test_alt_click_picks_and_alt_drag_places_nothing": {
+    "seconds": 146,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_post_fx_golden.py::test_defaults_unchanged": {
+    "seconds": 146,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_play_stop_gizmos.py::test_stop_right_after_start": {
+    "seconds": 144,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_shadows.py::test_shadow_invalidation": {
+    "seconds": 139,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_mesh_update_flags.py::test_stop_on_600_boxes_costs_what_it_should": {
+    "seconds": 130,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_foliage_ui.py::test_panel_rows_and_stamp_erase": {
+    "seconds": 121,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_water_boats.py::test_wake_behind_moving_hull": {
+    "seconds": 120,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_html_ui_docs.py::test_guide_snippets_play": {
+    "seconds": 119,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_shadows.py::test_shadow_goldens": {
+    "seconds": 117,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_water_boats.py::test_wake_holds_while_paused": {
+    "seconds": 111,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_reflection.py::test_golden_resave_pbr_extended_export": {
+    "seconds": 110,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_stochastic_tiling.py::test_lit_screenshots_off_and_on": {
+    "seconds": 109,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_scene_view_ui.py::test_click_waits_for_bvh": {
+    "seconds": 106,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_scene_view_ui.py::test_drop_refused_while_pending": {
+    "seconds": 105,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_water.py::test_waves_hold_while_paused": {
+    "seconds": 101,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_cpp_reload.py::test_cpp_reload_keeps_state": {
+    "seconds": 95,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_reflection.py::test_golden_resave_shader_library_export": {
+    "seconds": 94,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_project_audio_defaults.py::test_existing_projects_stay_as_they_are": {
+    "seconds": 90,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_title_art_3d.py::test_export_cooks_realtime_3d": {
+    "seconds": 89,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_pixel_art_mode.py::test_mode_off_does_nothing": {
+    "seconds": 86,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_animation_inspector.py::test_player_section": {
+    "seconds": 85,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_stochastic_tiling.py::test_lit_material_settings": {
+    "seconds": 80,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_sprite_draw.py::test_one_thousand_one_pixel_edits_stay_under_200_kb": {
+    "seconds": 80,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_audio_triggers.py::test_drop_3d_approach_speed_within_5_percent": {
+    "seconds": 79,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_foliage_impostor.py::test_panel_state_goes_out_of_date": {
+    "seconds": 79,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_stochastic_tiling.py::test_terrain_layer_settings": {
+    "seconds": 78,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_pixel_art_mode.py::test_mode_on": {
+    "seconds": 77,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_foliage_ui.py::test_mass_place_job_and_cancel": {
+    "seconds": 77,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_material_thumbnail.py::test_never_loading_material_gets_no_thumbnail": {
+    "seconds": 77,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_check_pixel_art.py::test_cost": {
+    "seconds": 75,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_shader_lists.py::test_stale_closed_scenes_match_an_export": {
+    "seconds": 73,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_atmosphere.py::test_clouds_modes": {
+    "seconds": 71,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_shadows.py::test_bias": {
+    "seconds": 71,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_stochastic_tiling.py::test_screenshots_off_and_on": {
+    "seconds": 70,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_model_clip_settings.py::test_wrap_writes_the_sidecar_and_play_loops": {
+    "seconds": 70,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_save_completeness.py::test_every_refresh_and_creator_keeps_the_branch_saved": {
+    "seconds": 69,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_render_perf.py::test_offview_caster_still_shadows_the_view": {
+    "seconds": 68,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_fluid_effect.py::test_splats": {
+    "seconds": 68,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_title_art_programs.py::test_check_title_pixel_checks_wait_for_programs": {
+    "seconds": 67,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_checks.py::test_cpp_cli_and_compile_scripts": {
+    "seconds": 66,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_html_ui_effects.py::test_stateful_effects": {
+    "seconds": 66,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_undo_ui.py::test_esc_cancels_a_terrain_stroke": {
+    "seconds": 66,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_shadows_ui.py::test_inspector_shadow_rows_undo": {
+    "seconds": 64,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_materials_pbr.py::test_khronos_TransmissionTest": {
+    "seconds": 64,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_reflection.py::test_golden_resave_stochastic_tiling": {
+    "seconds": 63,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_audio_markers.py::test_drop_3d_one_marker_per_pair_with_its_speed": {
+    "seconds": 63,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_atmosphere.py::test_local_volume_caps": {
+    "seconds": 62,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_materials_pbr.py::test_khronos_AnisotropyStrengthTest": {
+    "seconds": 61,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_title_library_mcp.py::test_sheet": {
+    "seconds": 61,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_jobs_memory_ui.py::test_reserved_frame_workers_from_project_settings": {
+    "seconds": 61,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   }
+  }
+ },
+ "files": {
+  "mcp": {
+   "test_title_library.py": {
+    "seconds": 4812,
+    "reason": "the Title Art library gate (S84 R36): 2,891-4,812 s in PR runs 44838738791, 44850307863, 44871357924; its eight parts run in editors of their own"
+   },
+   "test_voxels.py": {
+    "seconds": 2270,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_post_fx_golden.py": {
+    "seconds": 1511,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_saved_output_determinism.py": {
+    "seconds": 1428,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_stochastic_tiling.py": {
+    "seconds": 1240,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_materials_pbr.py": {
+    "seconds": 1028,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_reflection.py": {
+    "seconds": 841,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_shadows.py": {
+    "seconds": 815,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_water_boats.py": {
+    "seconds": 550,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_sound_library_data.py": {
+    "seconds": 439,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_upgrade_from_main.py": {
+    "seconds": 386,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_foliage_ui.py": {
+    "seconds": 343,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_recorder_integrity.py": {
+    "seconds": 337,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_scene_view_ui.py": {
+    "seconds": 332,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_scene_order.py": {
+    "seconds": 327,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_html_ui_effects.py": {
+    "seconds": 325,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   },
+   "test_fluid_effect.py": {
+    "seconds": 322,
+    "reason": "baseline: the most merge-queue runs 44745111854, 44735818671 and PR run 44850307863 measured when the budget began"
+   }
+  }
+ }
+}

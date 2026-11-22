@@ -42,15 +42,15 @@ namespace fs = std::filesystem;
 namespace {
 
     // one headless project for this file (a second Engine::systemInit would crash the tree)
-    struct Headless {
+    struct TreeEditCmdHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
     };
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
+    TreeEditCmdHeadless& treeEditCmdHeadless() {
+        static TreeEditCmdHeadless h = []() {
+            TreeEditCmdHeadless out;
             const fs::path root = fs::temp_directory_path() / ("jasper-tree-edit-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
             fs::create_directories(root / "config");
@@ -79,8 +79,8 @@ namespace {
         FoliageSystem* foliage = nullptr;
         std::shared_ptr<TreeStore> store;
 
-        TreeScene(): project(*headless().project) {
-            EXPECT_TRUE(headless().ready) << "the test project did not load";
+        TreeScene(): project(*treeEditCmdHeadless().project) {
+            EXPECT_TRUE(treeEditCmdHeadless().ready) << "the test project did not load";
             if (SceneProject* current = project.getSelectedScene()) current->isModified = false;
             std::string error;
             sceneId = project.createSceneNow("Trees", SceneType::SCENE_3D, {}, false, UnsavedChoice::Discard, &error);

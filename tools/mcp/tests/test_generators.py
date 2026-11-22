@@ -52,6 +52,10 @@ async def test_project_agents_file(ed: Editor):
     ed.check("`jasperengine-editor call <tool> [--flags]`" in agents, "it names the call CLI")
     # S53 R26: the model cook's tools, where an agent of the game finds them
     ed.check("inspect_models" in agents and "check_render_budgets" in agents, "AGENTS.md names inspect_models and check_render_budgets")
+    # where the game ships (Target Platforms), and the pages the physics switches are on (there is no Build page)
+    ed.check("## Target platforms" in agents and "`player.target_platforms`" in agents, "AGENTS.md names player.target_platforms")
+    ed.check("Project Settings > Physics > 3D Physics" in agents and "Physics 2D > 2D Physics" in agents, "the Physics pages")
+    ed.check("Project Settings > Build >" not in agents, "no Build page in Project Settings")
     # every agent working in the game reads it (CLAUDE.md imports it): the MCP guide holds the rest
     ed.check(len(agents.encode()) <= AGENTS_MD_BYTES, f"AGENTS.md is {len(agents.encode())} bytes, over {AGENTS_MD_BYTES}")
     ed.check_eq((target / "CLAUDE.md").read_text(encoding="utf-8"), "@AGENTS.md\n", "CLAUDE.md imports it")

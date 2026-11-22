@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <map>
 
+#include "EditorHost.h"
 #include "Factory.h"
 #include "Project.h"
 #include "Stream.h"
@@ -36,6 +37,7 @@
 #include <fstream>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
@@ -132,6 +134,18 @@ namespace {
 
         CommandHistory* history() { return CommandHandle::get(sceneId); }
         fs::path mainFile() const { return dir.path() / "Main Scene.scene"; }
+    };
+
+    // the scenes a Project deletes: sceneDeleting comes before each Scene and SceneRender go
+    class SceneIntegrityDeletingHost : public EditorHost {
+    public:
+        std::vector<uint32_t> deleted;
+        void sceneDeleting(uint32_t sceneId) override { deleted.push_back(sceneId); }
+    };
+
+    struct SceneIntegrityHostGuard {
+        explicit SceneIntegrityHostGuard(EditorHost* host) { setEditorHost(host); }
+        ~SceneIntegrityHostGuard() { setEditorHost(nullptr); }
     };
 
 }
@@ -489,4 +503,25 @@ TEST_F(SceneIntegrityTest, RelatedScenesAndDropRules) {
     // a reference from the HUD to the parent's GameObject works, from an unrelated scene not
     EXPECT_EQ(referenceDropProblem(*project, payload, child), "");
     EXPECT_NE(referenceDropProblem(*project, payload, stranger), "");
+}
+
+// ---- what the project owns -----------------------------------------------------------------------
+
+TEST_F(SceneIntegrityTest, ADestroyedProjectFreesItsScenes) {
+    std::vector<uint32_t> loaded;
+    for (const SceneProject& candidate : project->getScenes()) {
+        if (candidate.scene) loaded.push_back(candidate.id);
+    }
+    ASSERT_FALSE(loaded.empty());
+    for (uint32_t id : loaded) CommandHandle::remove(id);
+
+    SceneIntegrityDeletingHost host;
+    {
+        SceneIntegrityHostGuard guard(&host);
+        // dropped without releaseScenes (a test's or a tool's Project while the engine runs)
+        project.reset();
+    }
+    std::sort(loaded.begin(), loaded.end());
+    std::sort(host.deleted.begin(), host.deleted.end());
+    EXPECT_EQ(host.deleted, loaded) << "each loaded scene's Scene and SceneRender go with the Project";
 }

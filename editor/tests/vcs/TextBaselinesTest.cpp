@@ -18,7 +18,7 @@ using namespace jasperengine::editor::test;
 namespace {
 
     // Updates the cache until `file` leaves Pending (and None), pumping the service
-    const TextBaseline& settle(VcsService& service, TextBaselines& baselines, const std::vector<fs::path>& files, const fs::path& file) {
+    const TextBaseline& textBaselinesSettle(VcsService& service, TextBaselines& baselines, const std::vector<fs::path>& files, const fs::path& file) {
         pumpUntil(service, [&]() {
             baselines.update(service, files);
             const BaselineState state = baselines.get(file).state;
@@ -66,7 +66,7 @@ TEST(TextBaselines, GitStates) {
     TextBaselines baselines;
     const std::vector<fs::path> files = {repo / "a.lua", repo / "untracked.lua", repo / "added.lua", repo / "ignored.lua",
                                          repo / "renamed.lua", repo / "pointer.lua", repo / "binary.lua", box.path("elsewhere.lua")};
-    const TextBaseline& a = settle(service, baselines, files, files[0]);
+    const TextBaseline& a = textBaselinesSettle(service, baselines, files, files[0]);
     ASSERT_EQ(a.state, BaselineState::Ready) << a.error;
     EXPECT_EQ(a.revision, "HEAD");
     ASSERT_TRUE(a.lines);
@@ -75,11 +75,11 @@ TEST(TextBaselines, GitStates) {
     EXPECT_EQ(baselines.get(files[1]).state, BaselineState::Untracked);
     EXPECT_EQ(baselines.get(files[2]).state, BaselineState::NewFile);
     EXPECT_EQ(baselines.get(files[3]).state, BaselineState::Ignored);
-    const TextBaseline& renamed = settle(service, baselines, files, files[4]);
+    const TextBaseline& renamed = textBaselinesSettle(service, baselines, files, files[4]);
     ASSERT_EQ(renamed.state, BaselineState::Ready) << renamed.error;
     EXPECT_EQ(*renamed.lines, (std::vector<std::string>{"print('old')", ""}));
-    EXPECT_EQ(settle(service, baselines, files, files[5]).state, BaselineState::LfsPointer);
-    EXPECT_EQ(settle(service, baselines, files, files[6]).state, BaselineState::Binary);
+    EXPECT_EQ(textBaselinesSettle(service, baselines, files, files[5]).state, BaselineState::LfsPointer);
+    EXPECT_EQ(textBaselinesSettle(service, baselines, files, files[6]).state, BaselineState::Binary);
     EXPECT_EQ(baselines.get(files[7]).state, BaselineState::OutsideRepository);
 
     // a poll that changes nothing reads nothing again: the version stays
@@ -91,7 +91,7 @@ TEST(TextBaselines, GitStates) {
     // a commit moves HEAD: read again; the same text keeps the version
     box.gitOk(repo, {"commit", "-q", "-m", "rename", "--", "old.lua", "renamed.lua"});
     ASSERT_TRUE(refreshed(service));
-    settle(service, baselines, files, files[0]);
+    textBaselinesSettle(service, baselines, files, files[0]);
     pumpUntil(service, [&]() { baselines.update(service, files); return false; }, std::chrono::milliseconds(500));
     EXPECT_EQ(baselines.get(files[0]).version, version);
 
@@ -137,8 +137,8 @@ TEST(TextBaselines, ProviderCallsCounted) {
 
     TextBaselines baselines;
     const std::vector<fs::path> files = {repo / "a.lua", repo / "b.lua"};
-    ASSERT_EQ(settle(service, baselines, files, files[0]).state, BaselineState::Ready);
-    ASSERT_EQ(settle(service, baselines, files, files[1]).state, BaselineState::Ready);
+    ASSERT_EQ(textBaselinesSettle(service, baselines, files, files[0]).state, BaselineState::Ready);
+    ASSERT_EQ(textBaselinesSettle(service, baselines, files, files[1]).state, BaselineState::Ready);
     EXPECT_EQ(blobReads(), 2);
     ASSERT_TRUE(refreshed(service));
     pumpUntil(service, [&]() { baselines.update(service, files); return false; }, std::chrono::milliseconds(300));
@@ -192,7 +192,7 @@ TEST(TextBaselines, SvnBaselineIsBase) {
     // the code editor's baseline: bob's checked-out text
     TextBaselines baselines;
     const std::vector<fs::path> files = {bob / "a.lua"};
-    const TextBaseline& baseline = settle(service, baselines, files, files[0]);
+    const TextBaseline& baseline = textBaselinesSettle(service, baselines, files, files[0]);
     ASSERT_EQ(baseline.state, BaselineState::Ready) << baseline.error;
     EXPECT_EQ(*baseline.lines, (std::vector<std::string>{"first", ""}));
 

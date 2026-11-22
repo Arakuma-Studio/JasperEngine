@@ -23,6 +23,11 @@ namespace jasperengine { namespace memory {
 
     // trims completed since start (tests, diagnostics)
     JASPERENGINE_API uint64_t heapTrimCount();
+    // a trim is queued or running (tests)
+    JASPERENGINE_API bool heapTrimPending();
+    // Tests: while held, the trim job waits before each run, so requests made meanwhile merge
+    // however the caller is scheduled
+    JASPERENGINE_API void setHeapTrimHeldForTesting(bool held);
 
 }}
 

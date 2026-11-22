@@ -31,12 +31,12 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    std::string readText(const fs::path& path) {
+    std::string projectInputMigrationReadText(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);
         return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
     }
 
-    const fs::path fixture() {
+    const fs::path projectInputMigrationFixture() {
         return fs::path(JASPER_TEST_FIXTURES_DIR) / "upstream-input-project";
     }
 
@@ -45,7 +45,7 @@ namespace {
         jasperengine::test::TestTempDir dir{"upstream-input"};
 
         void SetUp() override {
-            fs::copy(fixture(), dir.path(), fs::copy_options::recursive | fs::copy_options::overwrite_existing);
+            fs::copy(projectInputMigrationFixture(), dir.path(), fs::copy_options::recursive | fs::copy_options::overwrite_existing);
             fs::remove(dir.path() / "expected-input-actions.json");
         }
 
@@ -57,7 +57,7 @@ namespace {
         std::vector<InputManagerAction> expected() const {
             std::vector<InputManagerAction> actions;
             std::string error;
-            EXPECT_TRUE(InputManagerFormat::parseActionsJson(readText(fixture() / "expected-input-actions.json"), actions, &error)) << error;
+            EXPECT_TRUE(InputManagerFormat::parseActionsJson(projectInputMigrationReadText(projectInputMigrationFixture() / "expected-input-actions.json"), actions, &error)) << error;
             return actions;
         }
     };
@@ -65,7 +65,7 @@ namespace {
 }
 
 TEST_F(ProjectInputMigrationTest, TheFixtureIsAnUpstreamInputNode) {
-    const YAML::Node yaml = YAML::LoadFile((fixture() / "project.yaml").string());
+    const YAML::Node yaml = YAML::LoadFile((projectInputMigrationFixture() / "project.yaml").string());
     ASSERT_TRUE(yaml["input"]);
     EXPECT_EQ(yaml["input"]["version"].as<int>(), 1);
     ASSERT_TRUE(yaml["input"]["actions"].IsSequence()) << "the shape the merge base's decodeProject threw on";
@@ -90,7 +90,7 @@ TEST_F(ProjectInputMigrationTest, AnUpstreamSavedProjectWithEditedInputLoads) {
     EXPECT_EQ(InputManagerFormat::actionsToJson(project.getInputManagerActions()), InputManagerFormat::actionsToJson(actions));
     InputActionAssetDesc desc;
     std::string error;
-    ASSERT_TRUE(InputActionAssetDesc::parse(readText(dir.path() / asset), desc, error)) << error;
+    ASSERT_TRUE(InputActionAssetDesc::parse(projectInputMigrationReadText(dir.path() / asset), desc, error)) << error;
     ASSERT_NE(desc.findMap(InputManagerFormat::MAP_NAME), nullptr);
     EXPECT_EQ(InputManagerFormat::actionsToJson(InputManagerFormat::fromMap(*desc.findMap(InputManagerFormat::MAP_NAME))),
               InputManagerFormat::actionsToJson(actions));
@@ -117,7 +117,7 @@ TEST_F(ProjectInputMigrationTest, TheGameReadsTheEditedActions) {
     Project project;
     project.setSkipProjectLock(true);
     ASSERT_TRUE(project.loadProject(dir.path(), false));
-    ASSERT_TRUE(InputActions::loadFromText(project.getInputActionsEnginePath(), readText(dir.path() / project.getInputActionsAsset())));
+    ASSERT_TRUE(InputActions::loadFromText(project.getInputActionsEnginePath(), projectInputMigrationReadText(dir.path() / project.getInputActionsAsset())));
     EXPECT_TRUE(InputActions::hasAction("Dash"));
     EXPECT_TRUE(InputActions::hasAction("Look X"));
     EXPECT_FALSE(InputActions::hasAction("Mouse X")) << "renamed in the older editor";

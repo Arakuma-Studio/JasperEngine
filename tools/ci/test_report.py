@@ -32,6 +32,7 @@ Fixtures in tools/ci/fixtures/report/, and where each comes from:
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -42,6 +43,7 @@ import tempfile
 import textwrap
 import time
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -98,6 +100,13 @@ class GtestTest(unittest.TestCase):
         self.assertEqual(failures[0]["kind"], "test")
         self.assertEqual(failures[0]["repro"],
                          "UNIT_TEST_ARGS=--gtest_filter=MeshBvh.Refit WERROR=1 UNIT_SUITE=core tools/build.sh unit-tests")
+
+    def test_a_shard_reproduces_the_test_alone(self):
+        # an editor part's run (UNIT_SHARD): one failing test needs no shard to run
+        tests, failures = report.parse_gtest_xml(FIXTURES / "gtest" / "core.xml",
+                                                 "UNIT_SHARD=2/2 UNIT_SUITE=editor WERROR=1 tools/build.sh unit-tests")
+        self.assertEqual(failures[0]["repro"],
+                         "UNIT_SUITE=core WERROR=1 UNIT_TEST_ARGS=--gtest_filter=MeshBvh.Refit tools/build.sh unit-tests")
 
     def test_crash_is_named_from_the_console(self):
         failures = report.parse_log(FIXTURES / "gtest" / "crash.log", "SANITIZE=address,undefined tools/build.sh unit-tests")
@@ -489,6 +498,39 @@ class RenderTest(unittest.TestCase):
         self.assertIn("htmlui: skipped (no HTML UI change)", body)
         self.assertTrue(body.rstrip().endswith("</details>"))
 
+    def test_the_advisory_run_names_the_changes_it_tested(self):
+        # one advisory run tests every push since the last one: the report says from where
+        lanes = lanes_json(lint=(False, "q"), htmlui=(False, "q"), web=(False, "q"), android=(False, "q"), macos=(False, "q"),
+                           ios=(False, "q"))
+        lanes["event"] = "advisory"
+        body = self.render(self.write(*self.green_reports(), lanes=lanes))
+        self.assertIn("Advisory tests of the changes since `aaaaaaa`: ✅ CI passed on `3f2c1ab`", body.splitlines()[1])
+        lanes["base"] = "not a sha"
+        body = self.render(self.write(*self.green_reports(), lanes=lanes))
+        self.assertIn("Advisory tests: ✅ CI passed", body.splitlines()[1])
+        lanes["event"] = "push"
+        self.assertTrue(self.render(self.write(*self.green_reports(), lanes=lanes)).splitlines()[1].startswith("✅"))
+
+    def test_render_counts_what_is_not_green(self):
+        # (the advisory run's issue closes only when nothing failed, was cancelled or left no report)
+        out = self.dir / "github-output"
+        args = ["render", "--reports", str(self.reports), "--lanes", str(self.dir / "lanes.json"), "--run-url", self.RUN,
+                "--sha", "3f2c1ab" + "0" * 33, "--advisory", "unit", "--out", str(self.dir / "comment.md"),
+                "--github-output", str(out)]
+        lanes = lanes_json(htmlui=(False, "no HTML UI change"))
+        self.write(*self.green_reports(), lanes=lanes)
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(report.main(args), 0)
+        self.assertEqual(out.read_text(), "failing=0\n")
+        for f in self.reports.glob("*.json"):
+            f.unlink()
+        unit = lane_report("unit", "failure", ran=412, failures=[failure("MeshBvh.Refit")])
+        self.write(unit, *[r for r in self.green_reports() if r["lane"] not in ("unit", "macos")], lanes=lanes)
+        out.unlink()
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(report.main(args), 0)
+        self.assertEqual(out.read_text(), "failing=2\n")
+
     def test_nested_artifact_dirs_and_missing_report(self):
         reports = [r for r in self.green_reports() if r["lane"] != "macos"]
         path = self.write(*reports, nested=True, lanes=lanes_json(htmlui=(False, "no HTML UI change")))
@@ -651,6 +693,47 @@ class WindowsLegsTest(unittest.TestCase):
         body = self.render(reports, lanes_json())
         self.assertIn("No report from: windows (editor-tests)", body)
 
+    def test_the_queue_leaves_the_advisory_lanes_out(self):
+        # tools/ci/plan_lanes.py plans them off (advisory_off) and the editor leg's test run too (build_only):
+        # the comment and the "Removed from the merge queue" report expect nothing of them
+        why = "the merge queue: advisory (ADVISORY_LANES), so it cannot block the merge; it runs on the push to main"
+        lanes = lanes_json(**{n: (False, why) for n in ("unit", "asan", "htmlui", "mcp", "smoke")})
+        lanes.update(event="merge_group", advisory_off=["unit", "asan", "htmlui", "mcp", "smoke", "windows-editor-tests"],
+                     build_only=["windows-editor-tests"])
+        lanes["mcp"] = {"mode": "none", "files": [], "not_in_ci": [], "shards": []}
+        names = ["changes", "lint", "linux", "web", "android", "macos", "ios"] + [f"windows-{p}" for p in report.WINDOWS_PARTS]
+        reports = [lane_report(n) for n in names]
+        advisory = ["unit", "asan", "htmlui", "mcp", "smoke", "windows-editor-tests"]
+        body = self.render(reports, lanes, advisory=advisory)
+        self.assertIn(f"CI passed on `3f2c1ab`: {len(names)} jobs", body.splitlines()[1])
+        self.assertNotIn("No report from", body)
+        self.assertNotIn("editor-tests", body)
+        self.assertIn("- unit: skipped (the merge queue: advisory \\(ADVISORY\\_LANES\\)", body)
+        # a blocking failure removes the PR, with the advisory lanes still expected of nobody
+        for old in self.reports.glob("*.json"):
+            old.unlink()
+        failed = lane_report("linux", "failure", failures=[failure("editor/App.cpp:3: error: x", "build")])
+        body = self.render([r for r in reports if r["lane"] != "linux"] + [failed], lanes, advisory=advisory,
+                           prefix="Removed from the merge queue:")
+        self.assertIn(f"Removed from the merge queue: ❌ CI failed on `3f2c1ab` — 1 of {len(names)} jobs", body.splitlines()[1])
+        self.assertNotIn("No report from", body)
+        self.assertIn("unit (skipped: the merge queue", body)
+
+    def test_the_push_expects_the_editor_tests_unless_it_builds_only(self):
+        names = ["changes", "linux", "unit", "asan", "htmlui", "smoke", "web", "android", "macos", "ios", "mcp-1", "mcp-2"]
+        legs = [f"windows-{p}" for p in report.WINDOWS_PARTS]
+        reports = [lane_report(n, ran=5 if n in ("unit", "asan", "htmlui", "mcp-1", "mcp-2") else 0) for n in names + legs]
+        lanes = dict(lanes_json(lint=(False, "push to main")), event="push", build_only=[])
+        body = self.render(reports, lanes)
+        self.assertIn("No report from: windows (editor-tests)", body)
+        for old in self.reports.glob("*.json"):
+            old.unlink()
+        for plan in (dict(lanes, build_only=["unit", "htmlui", "windows-editor-tests"]),
+                     {k: v for k, v in lanes.items() if k != "build_only"}):    # (a plan from before build_only)
+            body = self.render(reports, plan)
+            self.assertNotIn("No report from", body)
+            self.assertNotIn("editor-tests", body)
+
     def test_a_skipped_windows_lane_has_no_legs(self):
         names = ["changes", "lint", "linux", "unit", "asan", "htmlui", "smoke", "web", "android", "macos", "ios", "mcp-1", "mcp-2"]
         reports = [lane_report(n, ran=5 if n in ("unit", "asan", "htmlui", "mcp-1", "mcp-2") else 0) for n in names]
@@ -667,6 +750,92 @@ class LaneNameTest(unittest.TestCase):
         self.assertEqual((report.lane_label("unit-editor", []), report.lane_base("unit-editor")), ("unit (editor)", "unit"))
         self.assertEqual((report.lane_label("mcp-2", ["1", "2"]), report.lane_base("mcp-2")), ("mcp (2/2)", "mcp"))
         self.assertEqual((report.lane_label("unit", []), report.lane_base("unit")), ("unit", "unit"))
+
+    def test_editor_parts_name_their_lane(self):
+        # the editor tests run in two jobs (tools/ci/plan_lanes.py UNIT_PARTS), each its own report
+        jobs = ["core", "editor-1", "editor-2"]
+        self.assertEqual((report.lane_label("unit-editor-2", [], jobs), report.lane_base("unit-editor-2")),
+                         ("unit (editor 2/2)", "unit"))
+        self.assertEqual(report.lane_label("unit-core", [], jobs), "unit (core)")
+        self.assertEqual(report.lane_jobs("unit", [], jobs), ["unit-core", "unit-editor-1", "unit-editor-2"])
+        self.assertEqual(report.lane_jobs("unit", []), ["unit"])
+
+    def test_asan_jobs_name_their_lane(self):
+        # one asan job per test binary (tools/ci/plan_lanes.py asan_jobs), each its own report
+        self.assertEqual((report.lane_label("asan-core", []), report.lane_base("asan-core")), ("asan (core)", "asan"))
+        self.assertEqual((report.lane_label("asan-editor", []), report.lane_base("asan-editor")), ("asan (editor)", "asan"))
+        self.assertEqual(report.lane_jobs("asan", [], asan_jobs=["core", "editor"]), ["asan-core", "asan-editor"])
+        self.assertEqual(report.lane_jobs("asan", []), ["asan"])
+        # the nightly's ASan jobs are lanes of their own, not parts of asan
+        for nightly in ("asan-gpu-slow", "htmlui-asan"):
+            self.assertEqual((report.lane_label(nightly, []), report.lane_base(nightly)), (nightly, nightly))
+
+
+class UnitJobsTest(unittest.TestCase):
+    RUN = "https://github.com/o/r/actions/runs/812"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="unit-jobs-")
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def lanes(self, **extra):
+        path = self.dir / "lanes.json"
+        path.write_text(json.dumps(dict(lanes_json(), **extra)))
+        return report.load_lanes(path)
+
+    def test_load_lanes_reads_the_unit_jobs(self):
+        self.assertEqual(self.lanes(unit_jobs=["core", "editor-1", "editor-2"])["unit_jobs"], ["core", "editor-1", "editor-2"])
+        # not a job name: dropped (lanes.json is untrusted)
+        self.assertEqual(self.lanes(unit_jobs=["core", "../x", 3, "editor-1"])["unit_jobs"], ["core", "editor-1"])
+        # a plan from before the editor's parts: a job per planned binary
+        self.assertEqual(self.lanes(unit_run={"core": True, "editor": True})["unit_jobs"], ["core", "editor"])
+        self.assertEqual(self.lanes()["unit_jobs"], [])
+
+    def test_load_lanes_reads_what_the_queue_left_out(self):
+        lanes = self.lanes(advisory_off=["unit", "windows-editor-tests", "../x", 3], build_only=["windows-editor-tests"])
+        self.assertEqual((lanes["advisory_off"], lanes["build_only"]), (["unit", "windows-editor-tests"], ["windows-editor-tests"]))
+        self.assertEqual((self.lanes()["advisory_off"], self.lanes()["build_only"]), ([], []))
+
+    def test_load_lanes_reads_the_asan_jobs(self):
+        self.assertEqual(self.lanes(asan_jobs=["core", "editor"])["asan_jobs"], ["core", "editor"])
+        # not a job name: dropped (lanes.json is untrusted)
+        self.assertEqual(self.lanes(asan_jobs=["core", "editor-1", "../x", 3])["asan_jobs"], ["core"])
+        # a plan from before the split: one asan job
+        self.assertEqual(self.lanes()["asan_jobs"], [])
+
+    def test_a_missing_asan_job_is_reported(self):
+        reports_dir = self.dir / "reports"
+        reports_dir.mkdir()
+        names = ["changes", "lint", "linux", "unit", "smoke", "web", "android", "macos", "ios", "mcp-1", "mcp-2", "asan-core"]
+        names += [f"windows-{p}" for p in report.WINDOWS_PARTS] + list(report.TEST_REPORTS)
+        for n in names:
+            r = lane_report(n, ran=7 if n.startswith(("unit", "mcp", "asan")) or n in report.TEST_REPORTS else 0)
+            (reports_dir / f"{n}.json").write_text(json.dumps(r))
+        lanes = self.lanes(asan_jobs=["core", "editor"])
+        lanes["lanes"]["htmlui"] = {"run": False, "why": "no HTML UI change"}
+        body = report.render(report.load_reports(reports_dir), lanes, self.RUN, "3f2c1ab" + "0" * 33, [])
+        self.assertIn("No report from: asan (editor)", body)
+        self.assertIn("asan (core): passed, 7 tests", body)
+        self.assertNotIn("- asan:", body)
+
+    def test_a_missing_part_is_reported(self):
+        reports_dir = self.dir / "reports"
+        reports_dir.mkdir()
+        names = ["changes", "lint", "linux", "asan", "smoke", "web", "android", "macos", "ios", "mcp-1", "mcp-2",
+                 "unit-core", "unit-editor-1"]
+        names += [f"windows-{p}" for p in report.WINDOWS_PARTS] + list(report.TEST_REPORTS)
+        for n in names:
+            r = lane_report(n, ran=7 if n.startswith(("unit", "mcp", "asan")) or n in report.TEST_REPORTS else 0)
+            (reports_dir / f"{n}.json").write_text(json.dumps(r))
+        lanes = self.lanes(unit_jobs=["core", "editor-1", "editor-2"])
+        lanes["lanes"]["htmlui"] = {"run": False, "why": "no HTML UI change"}
+        body = report.render(report.load_reports(reports_dir), lanes, self.RUN, "3f2c1ab" + "0" * 33, [])
+        self.assertIn("No report from: unit (editor 2/2)", body)
+        self.assertIn("unit (editor 1/2): passed, 7 tests", body)
+        self.assertNotIn("- unit:", body)
 
 
 class GhTest(unittest.TestCase):
@@ -749,6 +918,26 @@ class GhTest(unittest.TestCase):
         self.assertEqual(calls[3]["args"][:2], ["api", f"repos/o/r/commits/{'d' * 40}/pulls"])
         self.assertEqual(calls[4]["args"][:3], ["pr", "comment", "12"])
         self.assertIn("issues/31", " ".join(calls[4]["args"]))
+
+    def test_issue_closes_when_green(self):
+        p, calls = self.run_report([["issue list", "44\n", 0]], "issue", "--label", "advisory-red", "--close",
+                                   "--body", str(self.body))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(calls[0]["args"][:7], ["issue", "list", "--repo", "o/r", "--label", "advisory-red", "--state"])
+        self.assertEqual(calls[1]["args"][:3], ["issue", "comment", "44"])
+        self.assertEqual(calls[1]["--body-file"], self.body.read_text())
+        self.assertEqual(calls[2]["args"], ["issue", "close", "44", "--repo", "o/r"])
+        self.assertEqual(len(calls), 3)
+        # none open: nothing to close, and no label made for it
+        self.log.unlink()
+        p, calls = self.run_report([["issue list", "", 0]], "issue", "--label", "advisory-red", "--close", "--body", str(self.body))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual([c["args"][:2] for c in calls], [["issue", "list"]])
+        self.assertIn("no open advisory-red issue", p.stdout)
+        # opening one needs a title
+        p, calls = self.run_report([], "issue", "--label", "advisory-red", "--body", str(self.body))
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("--title", p.stderr)
 
     def test_issue_label_is_checked(self):
         p, calls = self.run_report([], "issue", "--label", "bug", "--title", "t", "--body", str(self.body))

@@ -2030,3 +2030,10 @@ rest of S82 lands in 6B.
     red before this change (51 lines). `PachislopPortTest.HashedMapKeysMatchRawSources` (every map id and text keyed by
     hash ports the committed dump to the same files) and `RawDeniedMapKeyFails` cover the port. Spec documents keep the
     terms in §6.7.3's rename table and the denied-term list.
+35. **R36's gate: one render of its own.** The gate runs as `test_gate_<k>_of_8` (TESTS_INDEPENDENT, consecutive
+    parts; CI's shard balancing, §6.14.2's sharding). Each item renders once before its checks (the render-first node
+    cache path stays); the second render and its byte comparison are gone: two renders with identical bytes is
+    `check_title`'s default `deterministic` check, which the gate now requires to PASS for every item (red: without
+    it, the gate fails "did not run"). Measured with the second render dropped, the gate took 2,891 to 4,812 s in three
+    PR runs (44838738791, 44850307863, 44871357924), against 4,061 and 5,618 s with it (merge-queue runs 44735818671,
+    44745111854); runners differ by up to 1.7 times, so the saving is real but not one number.

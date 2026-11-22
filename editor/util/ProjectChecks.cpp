@@ -69,7 +69,7 @@ using Json = nlohmann::json;
 namespace {
 
 std::string lowerExtension(const fs::path& path) {
-    std::string ext = path.extension().string();
+    std::string ext = editor::FileUtils::pathToUtf8(path.extension());
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return ext;
 }
@@ -176,13 +176,14 @@ size_t editor::ProjectChecks::countSeverity(const std::vector<Finding>& findings
 
 std::string editor::ProjectChecks::projectRelative(const fs::path& projectRoot, const fs::path& absolute) {
     const fs::path rel = absolute.lexically_normal().lexically_relative(projectRoot.lexically_normal());
-    if (rel.empty() || *rel.begin() == "..") return absolute.generic_string();
+    // (FileUtils' conversions: string() throws on Windows for a name that UTF-8 can't hold)
+    if (rel.empty() || *rel.begin() == "..") return editor::FileUtils::pathToGenericUtf8(absolute);
     if (rel == ".") return "";
-    return rel.generic_string();
+    return editor::FileUtils::pathToGenericUtf8(rel);
 }
 
 bool editor::ProjectChecks::isSkippedDir(const fs::path& dir) {
-    const std::string name = dir.filename().string();
+    const std::string name = editor::FileUtils::pathToUtf8(dir.filename());
     return name.empty() || name[0] == '.' || name == "build";
 }
 
@@ -192,7 +193,7 @@ bool editor::ProjectChecks::isInSkippedDir(const fs::path& relative) {
     for (const fs::path& part : parent) {
         if (part == ".") continue;
         // at the project's top Recordings and EditorSettings hold no assets either (S27 R31)
-        if (top ? Project::isNonAssetTopLevelDir(part.string()) : isSkippedDir(part)) return true;
+        if (top ? Project::isNonAssetTopLevelDir(editor::FileUtils::pathToUtf8(part)) : isSkippedDir(part)) return true;
         top = false;
     }
     return false;
@@ -211,7 +212,7 @@ std::vector<fs::path> editor::ProjectChecks::findProjectFiles(const fs::path& pr
     for (watch::LinkedDirectoryIterator it(projectRoot, fs::directory_options::skip_permission_denied, ec), end; it != end && !ec;
          it.increment(ec)) {
         const fs::path& path = it->path();
-        const std::string name = path.filename().string();
+        const std::string name = editor::FileUtils::pathToUtf8(path.filename());
         if (it->is_directory(ec)) {
             if (isSkippedDir(path)) it.disable_recursion_pending();
             continue;
@@ -1751,7 +1752,7 @@ bool cachedStamp(const Json& entry, int64_t time, std::uintmax_t size) {
 }
 
 std::string lowerExt(const fs::path& path) {
-    std::string ext = path.extension().string();
+    std::string ext = editor::FileUtils::pathToUtf8(path.extension());
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return ext;
 }
@@ -1800,7 +1801,7 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
         bool exists = false;
         const int64_t time = stampTime(source, size, exists);
         if (!exists) return std::string();
-        const std::string key = source.lexically_normal().generic_string();
+        const std::string key = editor::FileUtils::pathToGenericUtf8(source.lexically_normal());
         if (cache.hashes.contains(key) && cachedStamp(cache.hashes[key], time, size) && cache.hashes[key][2].is_string()) {
             return cache.hashes[key][2].get<std::string>();
         }
@@ -1834,7 +1835,7 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
                 }
             }
             // a synthesized PNG may be the source of others too (synthesized from a synthesized one)
-            givenSources.insert(file.lexically_normal().generic_string());
+            givenSources.insert(editor::FileUtils::pathToGenericUtf8(file.lexically_normal()));
         }
         if (!givenSources.empty()) {
             // the textures made from the given files
@@ -1845,7 +1846,7 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
                 bool uses = false;
                 for (const editor::texsynth::SourceState& s :
                      editor::texsynth::checkRecipeSources(*recipe, png, projectRoot, [](const fs::path&) { return std::string("-"); })) {
-                    if (givenSources.count(s.resolved.lexically_normal().generic_string())) uses = true;
+                    if (givenSources.count(editor::FileUtils::pathToGenericUtf8(s.resolved.lexically_normal()))) uses = true;
                 }
                 if (uses) checked.push_back({png, *recipe});
             }

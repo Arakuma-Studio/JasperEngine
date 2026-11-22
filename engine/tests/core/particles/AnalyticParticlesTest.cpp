@@ -69,14 +69,14 @@ namespace {
         return p;
     }
 
-    bool sameBits(const AnalyticParticle& a, const AnalyticParticle& b){
+    bool analyticParticlesSameBits(const AnalyticParticle& a, const AnalyticParticle& b){
         return a.alive == b.alive && a.index == b.index && std::memcmp(&a.age, &b.age, sizeof(float)) == 0 &&
                std::memcmp(&a.position, &b.position, sizeof(Vector3)) == 0 && std::memcmp(&a.velocity, &b.velocity, sizeof(Vector3)) == 0 &&
                std::memcmp(&a.rotation, &b.rotation, sizeof(float)) == 0 && std::memcmp(&a.size, &b.size, sizeof(Vector2)) == 0 &&
                a.color == b.color && a.rampStep == b.rampStep && std::memcmp(&a.wobble, &b.wobble, sizeof(Vector2)) == 0;
     }
 
-    bool hasDiagnostic(const std::vector<Diagnostic>& list, const std::string& code, const std::string& path){
+    bool analyticParticlesHasDiagnostic(const std::vector<Diagnostic>& list, const std::string& code, const std::string& path){
         for (const Diagnostic& d : list){
             if (d.code == code && d.path.rfind(path, 0) == 0 && d.severity == Diagnostic::Severity::Error) return true;
         }
@@ -93,9 +93,9 @@ TEST(AnalyticParticles, UnsupportedModulesAreDiagnosedByPath){
     d.renderer.sortMode = SortMode::ByDistance;
     auto effect = ParticleCompiler::compile(d);
     EXPECT_FALSE(effect->valid);
-    EXPECT_TRUE(hasDiagnostic(effect->diagnostics, "analytic_unsupported", "modules.noise"));
-    EXPECT_TRUE(hasDiagnostic(effect->diagnostics, "analytic_unsupported", "modules.collision"));
-    EXPECT_TRUE(hasDiagnostic(effect->diagnostics, "analytic_unsupported", "modules.renderer.sortMode"));
+    EXPECT_TRUE(analyticParticlesHasDiagnostic(effect->diagnostics, "analytic_unsupported", "modules.noise"));
+    EXPECT_TRUE(analyticParticlesHasDiagnostic(effect->diagnostics, "analytic_unsupported", "modules.collision"));
+    EXPECT_TRUE(analyticParticlesHasDiagnostic(effect->diagnostics, "analytic_unsupported", "modules.renderer.sortMode"));
     for (const Diagnostic& diagnostic : effect->diagnostics){
         if (diagnostic.code == "analytic_unsupported"){
             EXPECT_EQ(diagnostic.fix, "disable it or use Simulated");
@@ -137,7 +137,7 @@ TEST(AnalyticParticles, LoopsAreExactlyPeriodic){
         for (uint32_t s = 0; s < p.slotCount; s++){
             const AnalyticParticle a = AnalyticParticles::evaluateAt(p, s, t);
             const AnalyticParticle b = AnalyticParticles::evaluateAt(p, s, t + d.duration);
-            ASSERT_TRUE(sameBits(a, b)) << "slot " << s << " at " << t;
+            ASSERT_TRUE(analyticParticlesSameBits(a, b)) << "slot " << s << " at " << t;
             alive += a.alive ? 1 : 0;
         }
     }
@@ -145,7 +145,7 @@ TEST(AnalyticParticles, LoopsAreExactlyPeriodic){
     // an hour in: the frame of its loop phase
     const double hour = 3600.37;
     for (uint32_t s = 0; s < p.slotCount; s++)
-        ASSERT_TRUE(sameBits(AnalyticParticles::evaluateAt(p, s, hour), AnalyticParticles::evaluateAt(p, s, std::fmod(hour, (double)d.duration))));
+        ASSERT_TRUE(analyticParticlesSameBits(AnalyticParticles::evaluateAt(p, s, hour), AnalyticParticles::evaluateAt(p, s, std::fmod(hour, (double)d.duration))));
 }
 
 TEST(AnalyticParticles, AliveCountMatchesEveryBirth){

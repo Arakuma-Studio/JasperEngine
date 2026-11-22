@@ -19,7 +19,7 @@ using namespace jasperengine;
 
 namespace {
 
-    const char* callbackTag = "core-tests-engine-lifecycle";
+    const char* engineLifecycleCallbackTag = "core-tests-engine-lifecycle";
 
 }
 
@@ -28,7 +28,7 @@ TEST(EngineVisibility, ChangeEventsOnceAndResets){
     ASSERT_TRUE(Engine::isVisible());
 
     std::vector<bool> events;
-    Engine::onVisibilityChanged.add(callbackTag, [&events](bool visible) { events.push_back(visible); });
+    Engine::onVisibilityChanged.add(engineLifecycleCallbackTag, [&events](bool visible) { events.push_back(visible); });
 
     Engine::systemVisibilityChanged(false);
     Engine::systemVisibilityChanged(false);
@@ -50,7 +50,7 @@ TEST(EngineVisibility, ChangeEventsOnceAndResets){
     EXPECT_TRUE(Engine::isVisible());
     EXPECT_EQ(events.size(), 3u);
 
-    Engine::onVisibilityChanged.remove(callbackTag);
+    Engine::onVisibilityChanged.remove(engineLifecycleCallbackTag);
 }
 
 // A macOS launch that fails before systemViewLoaded quits through applicationWillTerminate, which
@@ -62,7 +62,7 @@ TEST(EngineLifecycle, ViewDestroyedWithoutViewIsIgnored){
         if (Engine::isViewLoaded())
             Engine::systemViewDestroyed();
         int calls = 0;
-        Engine::onViewDestroyed.add(callbackTag, [&calls]() { calls++; });
+        Engine::onViewDestroyed.add(engineLifecycleCallbackTag, [&calls]() { calls++; });
         Engine::systemViewDestroyed();
         std::exit(calls == 0 && !Engine::isViewLoaded() ? 0 : 1);
     }, ::testing::ExitedWithCode(0), "");

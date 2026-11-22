@@ -689,6 +689,8 @@ void RenderSystem::appendBatchItem(BatchRun& run, const BatchRecord& record){
 
 //-----Keys-----
 
+static_assert((uint16_t)PIP_RTT_COLORONLY == PIP_RTT_COLORONLY, "BatchKey::pipType holds every PipelineType");
+
 bool RenderSystem::fillMeshKey(BatchKey& key, Entity entity, MeshComponent& mesh, const BatchRecord& record, bool mirrored){
     (void)entity;
     const Submesh& submesh = mesh.submeshes[0];
@@ -698,7 +700,7 @@ bool RenderSystem::fillMeshKey(BatchKey& key, Entity entity, MeshComponent& mesh
     const ObjectRender& render = depth ? submesh.depthRender : submesh.render;
 
     key.pass = batchPass.pass;
-    key.pipType = (uint8_t)batchPass.pipType;
+    key.pipType = (uint16_t)batchPass.pipType;
     key.mirrored = mirrored;
     key.noCull = passNoFaceCulling();
     key.pipeline = render.getPipelineId(batchPass.pipType);
@@ -1130,7 +1132,7 @@ bool RenderSystem::submitUI(Entity entity, UIComponent& ui, Transform& transform
 
     BatchKey key;
     key.pass = BatchPass::UI;
-    key.pipType = (uint8_t)pipType;
+    key.pipType = (uint16_t)pipType;
     key.pipeline = ui.render.getPipelineId(pipType);
     std::memcpy(key.cell, record->cell, sizeof(key.cell));
     key.scissor = SokolSystem::getRequestedScissor();

@@ -19,7 +19,7 @@ using namespace jasperengine::titleanim;
 
 namespace {
 
-    TitleTrack track(const std::string& field, std::vector<std::pair<float, std::vector<float>>> keys, bool relative = false){
+    TitleTrack titleAnimPlayerTrack(const std::string& field, std::vector<std::pair<float, std::vector<float>>> keys, bool relative = false){
         TitleTrack t;
         t.field = field;
         t.relative = relative;
@@ -32,7 +32,7 @@ namespace {
         return t;
     }
 
-    CompiledTitleAnimation compiled(const TitleAnimation& a){
+    CompiledTitleAnimation titleAnimPlayerCompiled(const TitleAnimation& a){
         CompiledTitleAnimation c;
         compileTitleOnly(a, c, nullptr);
         return c;
@@ -44,35 +44,35 @@ namespace {
         intro.name = "Intro";
         intro.duration = 0.5f;
         intro.next = "Idle";
-        intro.tracks.push_back(track("transform.scale", {{0.0f, {2.0f}}, {0.5f, {1.0f}}}, true));
-        intro.tracks.push_back(track("opacity", {{0.0f, {0.0f}}, {0.25f, {1.0f}}}));
+        intro.tracks.push_back(titleAnimPlayerTrack("transform.scale", {{0.0f, {2.0f}}, {0.5f, {1.0f}}}, true));
+        intro.tracks.push_back(titleAnimPlayerTrack("opacity", {{0.0f, {0.0f}}, {0.25f, {1.0f}}}));
         TitleMarker impact;
         impact.time = 0.3f;
         impact.name = "onImpact";
         intro.markers.push_back(impact);
-        lib->animations.push_back(compiled(intro));
+        lib->animations.push_back(titleAnimPlayerCompiled(intro));
 
         TitleAnimation idle;
         idle.name = "Idle";
         idle.duration = 1.0f;
         idle.wrap = AnimWrap::Loop;
-        idle.tracks.push_back(track("live.sweep_position", {{0.0f, {0.0f}}, {1.0f, {1.0f}}}));
+        idle.tracks.push_back(titleAnimPlayerTrack("live.sweep_position", {{0.0f, {0.0f}}, {1.0f, {1.0f}}}));
         TitleMarker beat;
         beat.time = 0.0f;
         beat.name = "onBeat";
         idle.markers.push_back(beat);
-        lib->animations.push_back(compiled(idle));
+        lib->animations.push_back(titleAnimPlayerCompiled(idle));
 
         TitleAnimation shake;
         shake.name = "Shake";
         shake.duration = 0.4f;
         shake.overlay = true;
-        shake.tracks.push_back(track("transform.position", {{0.0f, {0.0f, 0.0f}}, {0.2f, {10.0f, 0.0f}}, {0.4f, {0.0f, 0.0f}}}, true));
-        lib->animations.push_back(compiled(shake));
+        shake.tracks.push_back(titleAnimPlayerTrack("transform.position", {{0.0f, {0.0f, 0.0f}}, {0.2f, {10.0f, 0.0f}}, {0.4f, {0.0f, 0.0f}}}, true));
+        lib->animations.push_back(titleAnimPlayerCompiled(shake));
         return lib;
     }
 
-    TitleFrameGeometry frame(){
+    TitleFrameGeometry titleAnimPlayerFrame(){
         TitleFrameGeometry g;
         g.frameX = 100;
         g.frameY = 50;
@@ -90,7 +90,7 @@ namespace {
 }
 
 TEST(TitleAnimPlayerTest, CompanionUniforms){
-    TitleFrameGeometry g = frame();
+    TitleFrameGeometry g = titleAnimPlayerFrame();
     TitlePoseSummary s;
     CompanionAnimUniforms u;
     companionUniforms(s, g, TrackPivot::Origin, nullptr, -1, -1, 0.0f, u);
@@ -290,7 +290,7 @@ TEST(TitleAnimPlayerTest, ZeroAllocSteadyState){
     ASSERT_TRUE(player.playOverlay("Shake", {1.0f, 1, 0.0f, 0.0}));
     TitlePoseSummary s;
     CompanionAnimUniforms u;
-    const TitleFrameGeometry g = frame();
+    const TitleFrameGeometry g = titleAnimPlayerFrame();
     for (int i = 0; i < 60; i++){
         markers.clear();
         player.update(1.0 / 60.0, markers, finished);
@@ -316,7 +316,7 @@ TEST(TitleAnimDataIOTest, RoundTrip){
     e.authored.role = AnimRole::Intro;
     e.authored.duration = 0.8f;
     e.authored.next = "Idle";
-    TitleTrack scale = track("transform.scale", {{0.0f, {2.6f}}, {0.48f, {0.94f}}, {0.8f, {1.0f}}}, true);
+    TitleTrack scale = titleAnimPlayerTrack("transform.scale", {{0.0f, {2.6f}}, {0.48f, {0.94f}}, {0.8f, {1.0f}}}, true);
     scale.keys[0].key.ease = EaseType::QUAD_IN;
     scale.keys[1].key.ease = EaseType::SINE_OUT;
     e.authored.tracks.push_back(scale);

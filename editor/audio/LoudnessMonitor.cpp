@@ -38,6 +38,8 @@ void editor::LoudnessMonitor::drain() {
         if (frames == 0) break;
         if (!meter || meter->getSampleRate() != rate) {
             AudioMeterOptions options;
+            // the tap starts while the Master plays (Play start, a first read, a Reset): not after silence
+            options.mode = AudioMeterMode::Joined;
             options.bands = false;
             meter = std::make_unique<AudioMeter>(rate, channels, options);
         }

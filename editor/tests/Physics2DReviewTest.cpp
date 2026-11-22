@@ -136,10 +136,10 @@ TEST(Physics2DReview, OldColliderOverrideNamesAreMigratedAndCopied) {
 
 namespace {
 
-    struct Hanging {
+    struct Physics2DReviewHanging {
         World2D world;
         Entity anchor, weight, joint;
-        explicit Hanging(JointBreakAction action) {
+        explicit Physics2DReviewHanging(JointBreakAction action) {
             anchor = world.body(Vector3(0, 100, 0), BodyType::STATIC);
             weight = world.body(Vector3(0, 60, 0), BodyType::DYNAMIC);
             world.rb(weight).createCircleCollider(Vector2(0, 0), 8);
@@ -188,7 +188,7 @@ namespace {
 
 TEST(Physics2DReview, DisabledJointEnabledAgainBreaksAgain) {
     for (int way = 0; way < 2; way++) {
-        Hanging h(JointBreakAction::DISABLE);
+        Physics2DReviewHanging h(JointBreakAction::DISABLE);
         int calls = 0;
         Counter counter(&h.world.scene, h.joint, &calls);
         addScript(h.world, h.joint, &counter);
@@ -263,7 +263,7 @@ TEST(Physics2DReview, UnityMeanIsTheGeometricMean) {
 // ---- 7. C++ message overrides, whatever their access ---------------------------------------
 
 TEST(Physics2DReview, CppOverridesAreFoundWithoutNamingTheMember) {
-    Hanging h(JointBreakAction::CALLBACK_ONLY);
+    Physics2DReviewHanging h(JointBreakAction::CALLBACK_ONLY);
     int calls = 0;
     Counter counter(&h.world.scene, h.joint, &calls);
     Silent silent(&h.world.scene, h.weight);
@@ -474,7 +474,7 @@ TEST(Physics2DReview, ColliderRemovedDuringAStepReloadsTheBodyAndItsJoints) {
 }
 
 TEST(Physics2DReview, AJointWhoseBodyGoesAwayLeavesTheWorld) {
-    Hanging h(JointBreakAction::DESTROY);
+    Physics2DReviewHanging h(JointBreakAction::DESTROY);
     h.world.jointComponent(h.joint).breakForce = std::numeric_limits<float>::infinity();
     h.world.load();
     h.world.step(5);

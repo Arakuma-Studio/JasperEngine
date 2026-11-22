@@ -5,11 +5,11 @@
 
 #include "io/AtomicFile.h"
 #include "io/watch/FileWatchService.h"
+#include "io/watch/SharedFileReader.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 
-#include <fstream>
-#include <sstream>
+#include <utility>
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
@@ -61,16 +61,13 @@ bool assetio::rewriteFile(const fs::path& target, std::string_view bytes, Durabi
 }
 
 bool assetio::readFile(const fs::path& path, std::string& bytes) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) {
+    // shared for deletion on Windows (std::ifstream never is): a file the database or a background
+    // job reads can still be deleted or replaced meanwhile, by the user or another program
+    std::string read;
+    if (!SharedFileReader::readAll(path, read)) {
         return false;
     }
-    std::ostringstream buffer;
-    buffer << in.rdbuf();
-    if (in.bad()) {
-        return false;
-    }
-    bytes = buffer.str();
+    bytes = std::move(read);
     return true;
 }
 

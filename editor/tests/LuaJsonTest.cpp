@@ -8,10 +8,12 @@
 #include "ScriptDataTestSupport.h"
 
 #include "script/LuaJson.h"
+#include "support/EditorTestSupport.h"
 
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -361,12 +363,12 @@ TEST_F(LuaJsonTest, DecodesAMegabyteQuickly) {
     const auto start = std::chrono::steady_clock::now();
     EXPECT_EQ(eval("return #Json.decode(bigText)"), "16000");
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-    // the sanitizers slow everything several times: the bound means nothing there
-#if !defined(__SANITIZE_ADDRESS__)
-    EXPECT_LT(ms, 300.0);
-#else
-    (void)ms;
-#endif
+    // a wall-clock budget: printed always, enforced where perfSlack() asks for it (the benchmark
+    // run; never under the sanitizers, which slow everything several times)
+    std::printf("[bench] Json.decode of %s bytes: %.1f ms (budget 300)\n", eval("return #bigText").c_str(), ms);
+    if (const double slack = jasperengine::editor::test::perfSlack(); slack > 0.0) {
+        EXPECT_LT(ms, 300.0 * slack);
+    }
     EXPECT_EQ(eval("return tostring(Json.encode(Json.decode(bigText)) == Json.encode(Json.decode(Json.encode(Json.decode(bigText)))))"), "true");
     lua_pushnil(L);
     lua_setglobal(L, "bigText");

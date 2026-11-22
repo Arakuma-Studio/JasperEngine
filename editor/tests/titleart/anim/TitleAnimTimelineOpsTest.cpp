@@ -19,18 +19,18 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-namespace ta = jasperengine::titleanim;
+namespace tanim = jasperengine::titleanim;
 namespace tt = jasperengine::titleart;
 using Json = tt::Json;
 
 namespace {
 
-    ta::TitleTrack track(const std::string& field, std::vector<std::pair<float, float>> keys, const std::string& layer = ""){
-        ta::TitleTrack t;
+    tanim::TitleTrack titleAnimTimelineOpsTrack(const std::string& field, std::vector<std::pair<float, float>> keys, const std::string& layer = ""){
+        tanim::TitleTrack t;
         t.layer = layer;
         t.field = field;
         for (const auto& k : keys){
-            ta::TitleKey key;
+            tanim::TitleKey key;
             key.key.time = k.first;
             key.key.value = {k.second};
             t.keys.push_back(key);
@@ -38,8 +38,8 @@ namespace {
         return t;
     }
 
-    ta::TitleAnimation animationWith(std::vector<ta::TitleTrack> tracks){
-        ta::TitleAnimation a;
+    tanim::TitleAnimation animationWith(std::vector<tanim::TitleTrack> tracks){
+        tanim::TitleAnimation a;
         a.name = "A";
         a.tracks = std::move(tracks);
         return a;
@@ -55,13 +55,13 @@ namespace {
 TEST(TitleAnimTimelineOpsTest, SnapAndMove){
     EXPECT_DOUBLE_EQ(snapTitleKeyTime(0.51, 10), 0.5);
     EXPECT_DOUBLE_EQ(snapTitleKeyTime(0.51, 0), 0.51);
-    const ta::TitleAnimation a = animationWith({track("opacity", {{0.0f, 0.0f}, {1.0f, 1.0f}}), track("scale", {{0.0f, 1.0f}, {1.0f, 2.0f}})});
+    const tanim::TitleAnimation a = animationWith({titleAnimTimelineOpsTrack("opacity", {{0.0f, 0.0f}, {1.0f, 1.0f}}), titleAnimTimelineOpsTrack("scale", {{0.0f, 1.0f}, {1.0f, 2.0f}})});
     // moving one key snaps it; the other track is untouched
     const Json ops = titleMoveKeysOps(a, {{0, 1}}, 0.42, 30);
     ASSERT_EQ(ops.size(), 1u);
     EXPECT_EQ(ops[0]["field"], "opacity");
     // ops name a layer as edit_title resolves it: a bare id is "no layer"
-    const ta::TitleAnimation onLayer = animationWith({track("opacity", {{0.0f, 0.0f}, {1.0f, 1.0f}}, "00000001")});
+    const tanim::TitleAnimation onLayer = animationWith({titleAnimTimelineOpsTrack("opacity", {{0.0f, 0.0f}, {1.0f, 1.0f}}, "00000001")});
     EXPECT_EQ(titleMoveKeysOps(onLayer, {{0, 1}}, 0.5, 30)[0]["layer"], "id:00000001");
     EXPECT_NEAR(keyTime(ops[0], 1), 43.0 / 30.0, 1e-4) << "1.42 s is frame 42.6: the nearest frame";
     // a move onto another key's time replaces it (Unity's rule); the moved value wins
@@ -75,7 +75,7 @@ TEST(TitleAnimTimelineOpsTest, SnapAndMove){
 }
 
 TEST(TitleAnimTimelineOpsTest, ScaleAboutPivotDeleteDuplicatePaste){
-    const ta::TitleAnimation a = animationWith({track("opacity", {{0.0f, 0.0f}, {1.0f, 1.0f}, {2.0f, 0.5f}})});
+    const tanim::TitleAnimation a = animationWith({titleAnimTimelineOpsTrack("opacity", {{0.0f, 0.0f}, {1.0f, 1.0f}, {2.0f, 0.5f}})});
     const Json scaled = titleScaleKeysOps(a, {{0, 1}, {0, 2}}, 0.0, 0.5, 0);
     ASSERT_EQ(scaled.size(), 1u);
     EXPECT_NEAR(keyTime(scaled[0], 1), 0.5, 1e-4);
@@ -103,7 +103,7 @@ TEST(TitleAnimTimelineOpsTest, ScaleAboutPivotDeleteDuplicatePaste){
 }
 
 TEST(TitleAnimTimelineOpsTest, ConvertEasesStaysWithinTolerance){
-    ta::TitleAnimation a = animationWith({track("opacity", {{0.0f, 0.0f}, {1.0f, 10.0f}})});
+    tanim::TitleAnimation a = animationWith({titleAnimTimelineOpsTrack("opacity", {{0.0f, 0.0f}, {1.0f, 10.0f}})});
     a.tracks[0].keys[0].key.ease = EaseType::SINE_IN_OUT;
     const Json ops = titleConvertEasesOps(a, 0);
     ASSERT_EQ(ops.size(), 1u);
@@ -111,15 +111,15 @@ TEST(TitleAnimTimelineOpsTest, ConvertEasesStaysWithinTolerance){
     const Json& keys = ops[0]["keys"];
     ASSERT_GE(keys.size(), 3u);
     for (const Json& key : keys){
-        ta::TitleKey k;
+        tanim::TitleKey k;
         std::string error;
-        ASSERT_TRUE(ta::decodeKey(key, k, error)) << error;
+        ASSERT_TRUE(tanim::decodeKey(key, k, error)) << error;
         const float t = k.key.time;
         const float expected = 10.0f * Ease::getFunction(EaseType::SINE_IN_OUT)(t);
         EXPECT_NEAR(k.key.value[0], expected, 10.0f * 0.005f) << "at " << t;
     }
     // a track of plain linear keys has nothing to convert
-    EXPECT_TRUE(titleConvertEasesOps(animationWith({track("opacity", {{0.0f, 0.0f}, {1.0f, 1.0f}})}), 0).empty());
+    EXPECT_TRUE(titleConvertEasesOps(animationWith({titleAnimTimelineOpsTrack("opacity", {{0.0f, 0.0f}, {1.0f, 1.0f}})}), 0).empty());
 }
 
 TEST(TitleAnimTimelineOpsTest, RecordKeysAtThePlayheadFromRest){
@@ -130,7 +130,7 @@ TEST(TitleAnimTimelineOpsTest, RecordKeysAtThePlayheadFromRest){
         {"layers", Json::array({Json{{"id", "00000001"}, {"type", "shape"}, {"name", "Plate"}, {"opacity", 0.5}}})}});
     ASSERT_TRUE(parsed.ok) << parsed.error.toString();
     const tt::TitleArtDoc& doc = parsed.doc;
-    ta::TitleAnimation a;
+    tanim::TitleAnimation a;
     a.name = "A";
 
     const Json ops = Json::array({Json{{"op", "set"}, {"layer", "id:00000001"}, {"values", {{"opacity", 0.25}, {"name", "Back"}}}}});
@@ -155,12 +155,12 @@ TEST(TitleAnimTimelineOpsTest, RecordKeysAtThePlayheadFromRest){
     ASSERT_TRUE(added.ok) << added.error();
     const TitleOpsResult keyed = TitleArtOps::apply(added.doc, r.ops);
     ASSERT_TRUE(keyed.ok) << keyed.error();
-    const ta::TitleAnimationSet stored = tt::readAnimationSet(keyed.doc);
+    const tanim::TitleAnimationSet stored = tt::readAnimationSet(keyed.doc);
     ASSERT_EQ(stored.find("A")->tracks.size(), 1u);
     EXPECT_EQ(stored.find("A")->tracks[0].keys.size(), 2u);
 
     // with a track already, no zero key
-    ta::TitleAnimation b = animationWith({track("opacity", {{0.0f, 1.0f}}, "00000001")});
+    tanim::TitleAnimation b = animationWith({titleAnimTimelineOpsTrack("opacity", {{0.0f, 1.0f}}, "00000001")});
     const TitleRecordResult second = titleRecordRewrite(doc, b, 0.5, Json::array({Json{{"op", "set"}, {"layer", "id:00000001"}, {"values", {{"opacity", 0.25}}}}}));
     EXPECT_EQ(second.ops.size(), 1u);
 }

@@ -81,20 +81,20 @@ namespace {
     };
 
     // the scene's export MESH keys with the bit, and whether each has its twin
-    struct Keys {
+    struct DirectionalOnlyVariantsKeys {
         size_t directional = 0;
         size_t withoutTwin = 0;
         size_t lit = 0;
         std::string names;
     };
 
-    Keys collect(Scene& scene){
+    DirectionalOnlyVariantsKeys directionalOnlyVariantsCollect(Scene& scene){
         ShaderVariantContent content;
         content.registry = &scene;
         content.entities = scene.getEntityList();
         std::set<ShaderKey> keys;
         ShaderVariantCollector::collectScene(&scene, content, {}, keys);
-        Keys out;
+        DirectionalOnlyVariantsKeys out;
         for (ShaderKey key : keys){
             if (ShaderPool::getShaderTypeFromKey(key) != ShaderType::MESH)
                 continue;
@@ -123,7 +123,7 @@ TEST_F(DirectionalOnlyVariantKeys, SunOnlySceneShipsBothVariants){
     Primitive box(&scene);
     box.createBox(1.0f, 1.0f, 1.0f);
 
-    const Keys keys = collect(scene);
+    const DirectionalOnlyVariantsKeys keys = directionalOnlyVariantsCollect(scene);
     EXPECT_GT(keys.directional, 0u) << "no 'Dlo' variant for a sun-only scene:" << keys.names;
     EXPECT_EQ(keys.withoutTwin, 0u) << "a 'Dlo' variant without its general twin:" << keys.names;
 }
@@ -137,7 +137,7 @@ TEST_F(DirectionalOnlyVariantKeys, PointOrSpotLightShipsNone){
         local.setType(type);
         Primitive box(&scene);
         box.createBox(1.0f, 1.0f, 1.0f);
-        const Keys keys = collect(scene);
+        const DirectionalOnlyVariantsKeys keys = directionalOnlyVariantsCollect(scene);
         EXPECT_GT(keys.lit, 0u);
         EXPECT_EQ(keys.directional, 0u) << "a scene with a point or spot light ships 'Dlo':" << keys.names;
     }
@@ -150,7 +150,7 @@ TEST_F(DirectionalOnlyVariantKeys, AForkNeverGetsIt){
     Primitive box(&scene);
     box.createBox(1.0f, 1.0f, 1.0f);
     box.setCustomShader("shaders/myMesh");
-    const Keys keys = collect(scene);
+    const DirectionalOnlyVariantsKeys keys = directionalOnlyVariantsCollect(scene);
     EXPECT_EQ(keys.directional, 0u) << "a fork of the Lit got 'Dlo':" << keys.names;
 }
 

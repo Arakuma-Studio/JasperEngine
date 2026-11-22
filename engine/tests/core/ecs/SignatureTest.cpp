@@ -115,13 +115,13 @@ TEST(SignatureTest, LegacyStringParsesToLowBits){
 namespace {
 
     template<int N>
-    struct Marker {
+    struct SignatureMarker {
         int value = N;
     };
 
     template<int... N>
     std::vector<bool> registerMarkers(ComponentManager& manager, std::integer_sequence<int, N...>){
-        return {manager.registerComponent<Marker<N>>()...};
+        return {manager.registerComponent<SignatureMarker<N>>()...};
     }
 
 }
@@ -133,12 +133,12 @@ TEST(SignatureTest, TwoHundredFiftySeventhTypeFailsCleanly){
         ASSERT_TRUE(registered[i]) << i;
     }
     EXPECT_EQ(manager.getRegisteredCount(), 256u);
-    EXPECT_EQ(manager.getComponentId<Marker<255>>(), (ComponentId)255);
+    EXPECT_EQ(manager.getComponentId<SignatureMarker<255>>(), (ComponentId)255);
 
-    EXPECT_FALSE(manager.registerComponent<Marker<256>>());
-    EXPECT_FALSE(manager.isRegistered<Marker<256>>());
+    EXPECT_FALSE(manager.registerComponent<SignatureMarker<256>>());
+    EXPECT_FALSE(manager.isRegistered<SignatureMarker<256>>());
     EXPECT_EQ(manager.getRegisteredCount(), 256u);
-    EXPECT_THROW(manager.getComponentId<Marker<256>>(), std::out_of_range);
+    EXPECT_THROW(manager.getComponentId<SignatureMarker<256>>(), std::out_of_range);
     // the ids did not wrap: the first type keeps bit 0
-    EXPECT_EQ(manager.getComponentId<Marker<0>>(), (ComponentId)0);
+    EXPECT_EQ(manager.getComponentId<SignatureMarker<0>>(), (ComponentId)0);
 }

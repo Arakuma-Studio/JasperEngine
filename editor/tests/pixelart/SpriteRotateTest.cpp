@@ -88,11 +88,11 @@ namespace {
         return image;
     }
 
-    std::vector<int32_t> rotate(const PixelImage& image, double degrees, RotateMethod method) {
+    std::vector<int32_t> spriteRotateRotate(const PixelImage& image, double degrees, RotateMethod method) {
         return rotateMap(image.width(), image.height(), image.pixels(), degrees, (image.width() - 1) / 2.0, (image.height() - 1) / 2.0, method);
     }
 
-    PixelImage apply(const PixelImage& source, const std::vector<int32_t>& map, int w, int h) {
+    PixelImage spriteRotateApply(const PixelImage& source, const std::vector<int32_t>& map, int w, int h) {
         PixelImage out(w, h);
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
@@ -112,13 +112,13 @@ namespace {
         return out;
     }
 
-    std::vector<int32_t> identity(size_t n) {
+    std::vector<int32_t> spriteRotateIdentity(size_t n) {
         std::vector<int32_t> out(n);
         for (size_t i = 0; i < n; i++) out[i] = static_cast<int32_t>(i);
         return out;
     }
 
-    std::filesystem::path goldenDir() { return std::filesystem::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / "pixelart" / "golden"; }
+    std::filesystem::path spriteRotateGoldenDir() { return std::filesystem::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / "pixelart" / "golden"; }
 
     bool updateGoldens() {
         const char* update = std::getenv("JASPER_TEST_UPDATE_GOLDEN");
@@ -156,7 +156,7 @@ TEST(SpriteRotate, QuarterTurnsArePermutations) {
         const PixelImage image = patterned(side, side);
         for (RotateMethod method : kMethods) {
             for (double degrees : {90.0, 180.0, 270.0, -90.0, 450.0}) {
-                const std::vector<int32_t> map = rotate(image, degrees, method);
+                const std::vector<int32_t> map = spriteRotateRotate(image, degrees, method);
                 ASSERT_EQ(map.size(), static_cast<size_t>(side * side));
                 std::vector<int> seen(map.size(), 0);
                 for (int32_t i : map) {
@@ -166,7 +166,7 @@ TEST(SpriteRotate, QuarterTurnsArePermutations) {
                 for (int count : seen) EXPECT_EQ(count, 1) << methodName(method) << " " << degrees << " on " << side;
             }
             // a clockwise quarter turn: the top-left pixel goes to the top-right corner
-            const std::vector<int32_t> quarter = rotate(image, 90.0, method);
+            const std::vector<int32_t> quarter = spriteRotateRotate(image, 90.0, method);
             EXPECT_EQ(quarter[static_cast<size_t>(side - 1)], 0) << methodName(method);
         }
     }
@@ -176,10 +176,10 @@ TEST(SpriteRotate, FourQuarterTurnsAreTheIdentity) {
     for (int side : {5, 6, 9, 32}) {
         const PixelImage image = patterned(side, side);
         for (RotateMethod method : kMethods) {
-            const std::vector<int32_t> quarter = rotate(image, 90.0, method);
-            std::vector<int32_t> total = identity(quarter.size());
+            const std::vector<int32_t> quarter = spriteRotateRotate(image, 90.0, method);
+            std::vector<int32_t> total = spriteRotateIdentity(quarter.size());
             for (int i = 0; i < 4; i++) total = compose(total, quarter);
-            EXPECT_EQ(total, identity(quarter.size())) << methodName(method) << " on " << side;
+            EXPECT_EQ(total, spriteRotateIdentity(quarter.size())) << methodName(method) << " on " << side;
         }
     }
 }
@@ -188,8 +188,8 @@ TEST(SpriteRotate, TwoHalfTurnsOfARectangleAreTheIdentity) {
     for (auto [w, h] : {std::pair{12, 5}, std::pair{7, 10}}) {
         const PixelImage image = patterned(w, h);
         for (RotateMethod method : kMethods) {
-            const std::vector<int32_t> half = rotate(image, 180.0, method);
-            EXPECT_EQ(compose(half, half), identity(half.size())) << methodName(method) << " on " << w << "x" << h;
+            const std::vector<int32_t> half = spriteRotateRotate(image, 180.0, method);
+            EXPECT_EQ(compose(half, half), spriteRotateIdentity(half.size())) << methodName(method) << " on " << w << "x" << h;
         }
     }
 }
@@ -197,8 +197,8 @@ TEST(SpriteRotate, TwoHalfTurnsOfARectangleAreTheIdentity) {
 TEST(SpriteRotate, ZeroDegreesIsTheIdentity) {
     const PixelImage image = swordSprite();
     for (RotateMethod method : kMethods) {
-        EXPECT_EQ(rotate(image, 0.0, method), identity(24 * 24)) << methodName(method);
-        EXPECT_EQ(rotate(image, 360.0, method), identity(24 * 24)) << methodName(method);
+        EXPECT_EQ(spriteRotateRotate(image, 0.0, method), spriteRotateIdentity(24 * 24)) << methodName(method);
+        EXPECT_EQ(spriteRotateRotate(image, 360.0, method), spriteRotateIdentity(24 * 24)) << methodName(method);
     }
 }
 
@@ -206,7 +206,7 @@ TEST(SpriteRotate, ArbitraryAnglesSelectOnlySourcePixels) {
     const PixelImage image = swordSprite();
     for (RotateMethod method : kMethods) {
         for (double degrees : {30.0, 45.0, -17.5, 200.0}) {
-            const std::vector<int32_t> map = rotate(image, degrees, method);
+            const std::vector<int32_t> map = spriteRotateRotate(image, degrees, method);
             ASSERT_EQ(map.size(), static_cast<size_t>(24 * 24));
             int drawn = 0;
             for (int32_t i : map) {
@@ -224,7 +224,7 @@ TEST(SpriteRotate, ArbitraryAnglesSelectOnlySourcePixels) {
 TEST(SpriteRotate, IsDeterministic) {
     const PixelImage image = swordSprite();
     for (RotateMethod method : kMethods) {
-        EXPECT_EQ(rotate(image, 33.0, method), rotate(image, 33.0, method)) << methodName(method);
+        EXPECT_EQ(spriteRotateRotate(image, 33.0, method), spriteRotateRotate(image, 33.0, method)) << methodName(method);
     }
 }
 
@@ -232,8 +232,8 @@ TEST(SpriteRotate, MatchesTheGoldens) {
     const PixelImage image = swordSprite();
     for (RotateMethod method : kMethods) {
         for (int degrees : {30, 45}) {
-            const PixelImage rotated = apply(image, rotate(image, degrees, method), 24, 24);
-            const std::filesystem::path golden = goldenDir() / ("rotate_" + std::string(methodName(method)) + "_" + std::to_string(degrees) + ".png");
+            const PixelImage rotated = spriteRotateApply(image, spriteRotateRotate(image, degrees, method), 24, 24);
+            const std::filesystem::path golden = spriteRotateGoldenDir() / ("rotate_" + std::string(methodName(method)) + "_" + std::to_string(degrees) + ".png");
             if (updateGoldens()) {
                 ASSERT_TRUE(rotated.savePng(golden)) << golden;
                 continue;

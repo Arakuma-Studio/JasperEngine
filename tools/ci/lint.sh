@@ -78,6 +78,9 @@ check python3 -I tools/mcp/test_shard.py
 check python3 -I tools/mcp/test_build_cache.py
 check python3 -I tools/mcp/eval/test_grade.py
 check python3 -I tools/players/test_write_hashes.py
+# S90's node importer and the Lua API tools (S23 AC19): no other lane runs them
+check python3 -I tools/procmat/test_import_mm_nodes.py
+check bash -c 'cd tools && python3 -m unittest discover -s lua_api/tests -t .'
 for test in tools/ci/test_*.py; do
     case "$test" in
         # needs a built editor and the runtime image: the smoke lane's business

@@ -556,7 +556,7 @@ namespace{
         return seam;
     }
 
-    double rounded(double value, double decimals = 1000.0){
+    double reportRounded(double value, double decimals = 1000.0){
         return std::round(value * decimals) / decimals;
     }
 
@@ -885,39 +885,39 @@ nlohmann::json anim::clipReportJson(const ClipReport& report){
         out["compare"] = compare;
     }
     if (report.loopSeam){
-        out["loop_seam"] = {{"max_error_mm", rounded(report.loopSeam->maxErrorMm)}, {"worst_joint", report.loopSeam->worstJoint}};
+        out["loop_seam"] = {{"max_error_mm", reportRounded(report.loopSeam->maxErrorMm)}, {"worst_joint", report.loopSeam->worstJoint}};
     }
     if (report.rootMotion){
         const ClipRootMotionFacts& facts = *report.rootMotion;
         out["root_motion"] = {{"bone", facts.bone},
-                              {"net_translation_m", {rounded(facts.netTranslationMetres.x, 1e6), rounded(facts.netTranslationMetres.y, 1e6), rounded(facts.netTranslationMetres.z, 1e6)}},
-                              {"net_yaw_deg", rounded(facts.netYawDegrees)},
-                              {"average_speed_mps", rounded(facts.averageSpeedMps)},
-                              {"average_yaw_deg_s", rounded(facts.averageYawDegS)},
-                              {"loop_gap_mm", rounded(facts.loopGapMm)}};
+                              {"net_translation_m", {reportRounded(facts.netTranslationMetres.x, 1e6), reportRounded(facts.netTranslationMetres.y, 1e6), reportRounded(facts.netTranslationMetres.z, 1e6)}},
+                              {"net_yaw_deg", reportRounded(facts.netYawDegrees)},
+                              {"average_speed_mps", reportRounded(facts.averageSpeedMps)},
+                              {"average_yaw_deg_s", reportRounded(facts.averageYawDegS)},
+                              {"loop_gap_mm", reportRounded(facts.loopGapMm)}};
     }
     if (report.footSliding){
         const ClipFootSliding& sliding = *report.footSliding;
         nlohmann::json feet = nlohmann::json::array();
         for (const ClipFootSlide& foot : sliding.feet){
-            feet.push_back({{"bone", foot.bone}, {"contact_ratio", rounded(foot.contactRatio)}, {"max_slide_mm", rounded(foot.maxSlideMm)},
-                            {"worst_contact", {{"start", rounded(foot.worstStart)}, {"end", rounded(foot.worstEnd)}}}});
+            feet.push_back({{"bone", foot.bone}, {"contact_ratio", reportRounded(foot.contactRatio)}, {"max_slide_mm", reportRounded(foot.maxSlideMm)},
+                            {"worst_contact", {{"start", reportRounded(foot.worstStart)}, {"end", reportRounded(foot.worstEnd)}}}});
         }
         const bool judged = sliding.contactSource != "none";
         nlohmann::json block = {{"contact_source", sliding.contactSource},
-                                {"max_slide_mm", judged ? nlohmann::json(rounded(sliding.maxSlideMm)) : nlohmann::json(nullptr)},
-                                {"matching_ground_speed_mps", judged ? nlohmann::json(rounded(sliding.matchingGroundSpeedMps)) : nlohmann::json(nullptr)},
-                                {"move_speed_mps", judged ? nlohmann::json(rounded(sliding.moveSpeedMps)) : nlohmann::json(nullptr)},
+                                {"max_slide_mm", judged ? nlohmann::json(reportRounded(sliding.maxSlideMm)) : nlohmann::json(nullptr)},
+                                {"matching_ground_speed_mps", judged ? nlohmann::json(reportRounded(sliding.matchingGroundSpeedMps)) : nlohmann::json(nullptr)},
+                                {"move_speed_mps", judged ? nlohmann::json(reportRounded(sliding.moveSpeedMps)) : nlohmann::json(nullptr)},
                                 {"feet", feet}};
         if (!sliding.unknownFeet.empty()) block["unknown_feet"] = sliding.unknownFeet;
         out["foot_sliding"] = block;
     }
     if (report.transition){
         const ClipTransitionFacts& t = *report.transition;
-        out["transition"] = {{"from", t.from}, {"to", t.to}, {"duration_s", rounded(t.durationSeconds)}, {"at_s", rounded(t.atSeconds)},
-                             {"baseline_step_mm", rounded(t.baselineStepMm)}, {"max_step_mm", rounded(t.maxStepMm)},
-                             {"pop_ratio", rounded(t.popRatio, 100.0)}, {"worst_joint", t.worstJoint},
-                             {"worst_time_s", rounded(t.worstTimeSeconds)}, {"causes", t.causes}};
+        out["transition"] = {{"from", t.from}, {"to", t.to}, {"duration_s", reportRounded(t.durationSeconds)}, {"at_s", reportRounded(t.atSeconds)},
+                             {"baseline_step_mm", reportRounded(t.baselineStepMm)}, {"max_step_mm", reportRounded(t.maxStepMm)},
+                             {"pop_ratio", reportRounded(t.popRatio, 100.0)}, {"worst_joint", t.worstJoint},
+                             {"worst_time_s", reportRounded(t.worstTimeSeconds)}, {"causes", t.causes}};
     }
     return out;
 }
@@ -938,10 +938,10 @@ nlohmann::json anim::clipSkippedTracksJson(const ClipSkippedTracks& skipped){
 
 nlohmann::json anim::clipErrorJson(const ClipErrorReport& error){
     return {{"skin_distance_mm", error.skinDistanceMm},
-            {"max_error_mm", error.measured ? nlohmann::json(rounded(error.maxErrorMm)) : nlohmann::json(nullptr)},
-            {"mean_error_mm", error.measured ? nlohmann::json(rounded(error.meanErrorMm)) : nlohmann::json(nullptr)},
+            {"max_error_mm", error.measured ? nlohmann::json(reportRounded(error.maxErrorMm)) : nlohmann::json(nullptr)},
+            {"mean_error_mm", error.measured ? nlohmann::json(reportRounded(error.meanErrorMm)) : nlohmann::json(nullptr)},
             {"worst_joint", error.worstJoint},
-            {"worst_time_s", rounded(error.worstTimeSeconds, 1e6)}};
+            {"worst_time_s", reportRounded(error.worstTimeSeconds, 1e6)}};
 }
 
 nlohmann::json anim::clipWorstJointsJson(const ClipErrorReport& error, const ClipRig& rig, size_t top){
@@ -954,7 +954,7 @@ nlohmann::json anim::clipWorstJointsJson(const ClipErrorReport& error, const Cli
     });
     if (order.size() > top) order.resize(top);
     nlohmann::json out = nlohmann::json::array();
-    for (size_t bone : order) out.push_back({{"bone", rig.names[bone]}, {"max_mm", rounded(error.jointMaxMm[bone])}});
+    for (size_t bone : order) out.push_back({{"bone", rig.names[bone]}, {"max_mm", reportRounded(error.jointMaxMm[bone])}});
     return out;
 }
 

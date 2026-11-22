@@ -43,7 +43,7 @@ namespace {
         return data;
     }
 
-    std::string describe(const ClipWarning& warning){
+    std::string clipTangentModesDescribe(const ClipWarning& warning){
         return warning.path + ": " + warning.message;
     }
 
@@ -93,7 +93,7 @@ TEST(ClipTangentModes, ConstantStepsAndSurvivesNormalize){
     const ClipTrackData& out = data.tracks[0];
     EXPECT_EQ(out.keys[1].ease, EaseType::STEP);
     EXPECT_EQ(out.keys[0].ease, EaseType::LINEAR);
-    for (const ClipWarning& w : warnings) EXPECT_EQ(w.path.find("ease"), std::string::npos) << describe(w);
+    for (const ClipWarning& w : warnings) EXPECT_EQ(w.path.find("ease"), std::string::npos) << clipTangentModesDescribe(w);
     // sampled: the segment after the Constant key holds 4 until the next key
     std::shared_ptr<const AnimationClip> clip = AnimationClip::build(data);
     ASSERT_TRUE(clip);
@@ -128,7 +128,7 @@ TEST(ClipTangentModes, KeysWithoutAModeGetLinearTangents){
     EXPECT_FLOAT_EQ(out.keys[0].outTangent[0], 2.0f);
     EXPECT_FLOAT_EQ(out.keys[2].inTangent[0], 1.0f);
     EXPECT_FLOAT_EQ(out.keys[1].inTangent[0], 0.0f);
-    EXPECT_TRUE(warnings.empty()) << describe(warnings.front());
+    EXPECT_TRUE(warnings.empty()) << clipTangentModesDescribe(warnings.front());
 }
 
 // the modes are written ("tangent_mode") and read back; the text is a fixed point

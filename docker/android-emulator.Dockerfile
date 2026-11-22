@@ -16,7 +16,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN yes | sdkmanager --licenses >/dev/null \
-    && sdkmanager "emulator" "system-images;android-${EMULATOR_API};${EMULATOR_TAG};x86_64" >/dev/null \
+    # (sdkmanager has no retry of its own: up to 5 tries, pausing 10 s longer each time; apt's are the
+    # base image's apt-retries.conf)
+    && for try in 1 2 3 4 5; do \
+        sdkmanager "emulator" "system-images;android-${EMULATOR_API};${EMULATOR_TAG};x86_64" >/dev/null && break; \
+        [ "$try" -lt 5 ] || exit 1; echo "sdkmanager failed (try $try of 5); retrying" >&2; sleep $((try * 10)); \
+    done \
     # only what this layer adds: a chmod of the base's files would copy them into it
     && chmod -R a+rwX $ANDROID_HOME/emulator $ANDROID_HOME/system-images
 

@@ -36,7 +36,7 @@ using namespace jasperengine::test;
 
 namespace {
 
-    constexpr int SIZE = 32;
+    constexpr int WATER_WAVES_SIZE = 32;
 
     // r: the height, g and b: the world xz it is at (so the comparison needs no texel orientation),
     // a: a 1 x 1 white texture's 1, so a texel left undrawn shows. The texture also gives the draw
@@ -117,8 +117,8 @@ namespace {
 
         FramebufferRender target;
         FramebufferDesc desc;
-        desc.width = SIZE;
-        desc.height = SIZE;
+        desc.width = WATER_WAVES_SIZE;
+        desc.height = WATER_WAVES_SIZE;
         desc.color = ColorFormat::RGBA32F;
         desc.depth = DepthStencilFormat::NONE;
         desc.minFilter = TextureFilter::NEAREST;
@@ -149,7 +149,7 @@ namespace {
         SystemRender::commit();
 
         std::vector<float> read;
-        const bool readOk = readTextureFloat(target.getColorTexture(), SIZE, SIZE, read);
+        const bool readOk = readTextureFloat(target.getColorTexture(), WATER_WAVES_SIZE, WATER_WAVES_SIZE, read);
 
         object.destroy();
         shader.destroyShader();
@@ -159,7 +159,7 @@ namespace {
         SystemRender::executeQueue();
 
         ASSERT_TRUE(readOk);
-        ASSERT_EQ(read.size(), (size_t)SIZE * SIZE * 4);
+        ASSERT_EQ(read.size(), (size_t)WATER_WAVES_SIZE * WATER_WAVES_SIZE * 4);
         texels = read;
     }
 
@@ -201,11 +201,11 @@ TEST(WaterWavesGpu, MatchesTheCpuTwin){
 
     std::vector<float> texels;
     runProbe(PROBE, "tests/water_waves_probe.frag", block, texels);
-    ASSERT_EQ(texels.size(), (size_t)SIZE * SIZE * 4);
+    ASSERT_EQ(texels.size(), (size_t)WATER_WAVES_SIZE * WATER_WAVES_SIZE * 4);
 
     const float tolerance = 1e-3f * height + 1e-4f;
     float worst = 0.0f;
-    for (int i = 0; i < SIZE * SIZE; i++){
+    for (int i = 0; i < WATER_WAVES_SIZE * WATER_WAVES_SIZE; i++){
         const float gpu = texels[i * 4 + 0];
         const Vector2 xz(texels[i * 4 + 1], texels[i * 4 + 2]);
         ASSERT_EQ(texels[i * 4 + 3], 1.0f) << "texel " << i << " was not drawn";
@@ -234,11 +234,11 @@ TEST(WaterWavesGpu, GerstnerMatchesCpu){
 
     std::vector<float> texels;
     runProbe(GERSTNER_PROBE, "tests/water_gerstner_probe.frag", block, texels);
-    ASSERT_EQ(texels.size(), (size_t)SIZE * SIZE * 4);
+    ASSERT_EQ(texels.size(), (size_t)WATER_WAVES_SIZE * WATER_WAVES_SIZE * 4);
 
     const float tolerance = 1e-3f * params.height + 1e-4f;
     float worst = 0.0f;
-    for (int i = 0; i < SIZE * SIZE; i++){
+    for (int i = 0; i < WATER_WAVES_SIZE * WATER_WAVES_SIZE; i++){
         const float gpu = texels[i * 4 + 0];
         const Vector2 xz(texels[i * 4 + 1], texels[i * 4 + 2]);
         ASSERT_EQ(texels[i * 4 + 3], 1.0f) << "texel " << i << " was not drawn";
