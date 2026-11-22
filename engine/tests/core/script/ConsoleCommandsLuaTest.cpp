@@ -14,11 +14,7 @@
 
 #include <gtest/gtest.h>
 
-#include <cstdio>
 #include <string>
-
-// DIAGNOSTIC (to revert): where the Windows core tests die
-#define JE_PROBE(what) (std::fprintf(stderr, "[probe] %s:%d %s\n", __func__, __LINE__, what), std::fflush(stderr))
 
 using namespace jasperengine;
 
@@ -29,12 +25,9 @@ namespace {
         lua_State* L = nullptr;
 
         void SetUp() override{
-            JE_PROBE("setup");
             L = LuaBinding::getLuaState();
             ASSERT_NE(L, nullptr);
-            JE_PROBE("state");
             console::reset();
-            JE_PROBE("reset");
             console::setCommandsEnabled(true);
         }
         void TearDown() override{
@@ -44,7 +37,6 @@ namespace {
 
         // runs a chunk; "" or the error
         std::string run(const std::string& code){
-            JE_PROBE(code.substr(0, 60).c_str());
             const int top = lua_gettop(L);
             if (luaL_loadbuffer(L, code.data(), code.size(), "=test") != LUA_OK || lua_pcall(L, 0, 0, 0) != LUA_OK){
                 const char* message = lua_tostring(L, -1);
@@ -53,7 +45,6 @@ namespace {
                 return error;
             }
             lua_settop(L, top);
-            JE_PROBE("run ok");
             return std::string();
         }
     };
@@ -79,9 +70,7 @@ TEST_F(ConsoleCommandsLua, TableFormTypedArgs){
         }
         assert(ok, why)
     )"), "");
-    JE_PROBE("execute g");
     console::Result r = console::execute("g gem 7 1,2,3");
-    JE_PROBE("executed g");
     ASSERT_TRUE(r.ok()) << r.error;
     EXPECT_EQ(run(R"(
         assert(Seen.item == "gem" and Seen.first == "gem", "by name and by position")
@@ -90,9 +79,7 @@ TEST_F(ConsoleCommandsLua, TableFormTypedArgs){
         local ok, err = pcall(function() Seen.call:print("late") end)
         assert(not ok and tostring(err):find("has ended"), "the call is gone after run")
     )"), "");
-    JE_PROBE("execute give");
     r = console::execute("give gold");
-    JE_PROBE("executed give");
     ASSERT_TRUE(r.ok()) << r.error;
     EXPECT_EQ(run(R"(assert(Seen.count == 1 and Seen.where == nil, "the default, and an optional one left out"))"), "");
 
