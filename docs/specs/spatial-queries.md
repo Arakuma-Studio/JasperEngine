@@ -614,3 +614,16 @@ core tests already build scenes with physics, `PhysicsRayThreadsTest.cpp:27-30`)
   `LuaPhysicsQuery.MeshOverlapReadsTrees`). Six quiet runs: overlapBox 0.0064-0.0071 ms in four and
   0.0097-0.0099 in two, still over its 0.0088 there; overlapSphere 0.0050-0.0062 in five and 0.0069
   in one; the trees 0.0099-0.0105 in five and 0.0126 in one.
+- **R19 trees on box A, third pass.** The trees' runs spiked (0.0119-0.0161 ms in two of six) in
+  stretches of the run, a cold start among them: the walk was bound by how much it touched and
+  computed per tree, not by allocation (none) or page faults. Per query it scanned 153 instances in
+  3.1 cells and built two 4x4 products for the 31 that passed the point test, to cull 20 of them by
+  their sphere's cube. Now the local pads widen only a sphere's radius by the walk's sqrt(3) times
+  the axes' ratio (the offset of the sphere's centre as it is, the bound the world cube needs), so
+  137 instances in 2.8 cells are scanned and 25 pass; the cube test finds the sphere's world centre
+  without a matrix, its reach widened by 1e-5 of the coordinates' size so rounding cannot drop a
+  tree the matrices would keep; and a kept tree's world box is computed from the terrain's affine
+  matrix and the instance written out (Arvo's form, as `AABB::transform`). Six quiet runs: the trees
+  0.0059-0.0066 ms; overlapBox 0.0064-0.0066, overlapSphere 0.0049-0.0057, every budget of the
+  bench within its limit. Passing the query's sphere to the walk was measured and left out: its
+  cube-against-sphere cull dropped one tree in eleven for a wider API.

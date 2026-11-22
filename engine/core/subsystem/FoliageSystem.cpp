@@ -3421,6 +3421,83 @@ namespace {
                center.z + radius >= mn.z && center.z - radius <= mx.z;
     }
 
+    // How far from its position an instance's sphere reaches in the local walk, per unit of its scale:
+    // the sphere's radius padded as the walk pads world reach (padScale), the offset of its centre
+    // as it is (the instance's own rotation and scale move it, not the terrain's)
+    float foliageLocalReach(const Vector3& center, float radius, float padScale) {
+        return radius * padScale + center.length();
+    }
+
+    // The world box of a local box under the terrain's affine matrix times foliageInstanceMatrix(instance),
+    // written out (Arvo's interval form, as AABB::transform): an overlap makes one per tree its cube test
+    // keeps, and the two 4x4 products and the box's transform were most of what each cost
+    AABB foliageWorldBounds(const float model[4][3], const FoliageInstance& instance, const AABB& bounds) {
+        const float x = instance.rotation[0] / 32767.0f;
+        const float y = instance.rotation[1] / 32767.0f;
+        const float z = instance.rotation[2] / 32767.0f;
+        const float w = instance.rotation[3] / 32767.0f;
+        const float height = instance.scale * static_cast<float>(instance.heightRatio) / 128.0f;
+        const float scale[3] = {instance.scale, height, instance.scale};
+        const float xx = x * x, xy = x * y, xz = x * z, xw = x * w, yy = y * y, yz = y * z, yw = y * w, zz = z * z, zw = z * w;
+        // the instance's columns (getRotationMatrix's rows, each column times its scale) and position
+        const float rotation[3][3] = {{1 - 2 * (yy + zz), 2 * (xy + zw), 2 * (xz - yw)},
+                                      {2 * (xy - zw), 1 - 2 * (xx + zz), 2 * (yz + xw)},
+                                      {2 * (xz + yw), 2 * (yz - xw), 1 - 2 * (xx + yy)}};
+        float world[4][3];
+        for (int c = 0; c < 3; c++) {
+            for (int r = 0; r < 3; r++) {
+                world[c][r] = scale[c] * (rotation[c][0] * model[0][r] + rotation[c][1] * model[1][r] + rotation[c][2] * model[2][r]);
+            }
+        }
+        for (int r = 0; r < 3; r++) {
+            world[3][r] = instance.position[0] * model[0][r] + instance.position[1] * model[1][r] + instance.position[2] * model[2][r] + model[3][r];
+        }
+        const Vector3& lo = bounds.getMinimum();
+        const Vector3& hi = bounds.getMaximum();
+        const float oldMin[3] = {lo.x, lo.y, lo.z};
+        const float oldMax[3] = {hi.x, hi.y, hi.z};
+        float newMin[3] = {world[3][0], world[3][1], world[3][2]};
+        float newMax[3] = {world[3][0], world[3][1], world[3][2]};
+        for (int c = 0; c < 3; c++) {
+            for (int r = 0; r < 3; r++) {
+                const float a = world[c][r] * oldMin[c];
+                const float b = world[c][r] * oldMax[c];
+                newMin[r] += std::min(a, b);
+                newMax[r] += std::max(a, b);
+            }
+        }
+        return AABB(Vector3(newMin[0], newMin[1], newMin[2]), Vector3(newMax[0], newMax[1], newMax[2]));
+    }
+
+    // an affine matrix's columns applied to a point (Matrix4::transformAffine's sums)
+    Vector3 foliageAffinePoint(const float m[4][3], const Vector3& v) {
+        return Vector3(v.x * m[0][0] + v.y * m[1][0] + v.z * m[2][0] + m[3][0], v.x * m[0][1] + v.y * m[1][1] + v.z * m[2][1] + m[3][1],
+                       v.x * m[0][2] + v.y * m[1][2] + v.z * m[2][2] + m[3][2]);
+    }
+
+    // foliageInstanceMatrix(instance) applied to a point, without making the matrix: the same terms,
+    // rounded in another order
+    Vector3 foliageInstancePoint(const FoliageInstance& instance, const Vector3& point) {
+        const float x = instance.rotation[0] / 32767.0f;
+        const float y = instance.rotation[1] / 32767.0f;
+        const float z = instance.rotation[2] / 32767.0f;
+        const float w = instance.rotation[3] / 32767.0f;
+        const float height = instance.scale * static_cast<float>(instance.heightRatio) / 128.0f;
+        const float px = point.x * instance.scale, py = point.y * height, pz = point.z * instance.scale;
+        const float xx = x * x, xy = x * y, xz = x * z, xw = x * w, yy = y * y, yz = y * z, yw = y * w, zz = z * z, zw = z * w;
+        return Vector3((1 - 2 * (yy + zz)) * px + 2 * (xy - zw) * py + 2 * (xz + yw) * pz + instance.position[0],
+                       2 * (xy + zw) * px + (1 - 2 * (xx + zz)) * py + 2 * (yz - xw) * pz + instance.position[1],
+                       2 * (xz - yw) * px + 2 * (yz + xw) * py + (1 - 2 * (xx + yy)) * pz + instance.position[2]);
+    }
+
+    // The world reach of an instance's sphere, its centre found through the two matrices one after the
+    // other (the world matrix is made only for what the cube keeps): widened by far more than the
+    // rounding between the two ways, so the test still keeps every tree the world matrix's centre would
+    float foliageCenterReach(float reach, const Vector3& localCenter, const Vector3& worldCenter, float axisMax) {
+        const auto largest = [](const Vector3& v) { return std::max({std::fabs(v.x), std::fabs(v.y), std::fabs(v.z)}); };
+        return reach + 1.0e-5f * (largest(localCenter) * axisMax + largest(worldCenter) + reach);
+    }
+
 }
 
 void FoliageSystem::forEachFoliageInBox(const AABB& box, bool trees, bool details, FoliageInBoxVisit visit, void* context) const {
@@ -3431,8 +3508,9 @@ void FoliageSystem::forEachFoliageInBox(const AABB& box, bool trees, bool detail
         const RegionState& region = *regionPtr;
         if (!region.active || !region.inverseModel.isValid()) continue;
         // A world box's preimage is not a box when the terrain turns or scales unevenly: the local walk
-        // pads by sqrt(3) times its axes' scale ratio, so it keeps every instance whose world bounds can
-        // touch the box (each is then culled in world space by its sphere's cube)
+        // pads an instance's sphere radius by sqrt(3) times its axes' scale ratio (the offset of the
+        // sphere's centre as it is), so it keeps every instance whose world bounds can touch the box
+        // (each is then culled in world space by its sphere's cube)
         float axisMin = std::numeric_limits<float>::max();
         float axisMax = 0.0f;
         for (int c = 0; c < 3; c++) {
@@ -3451,34 +3529,47 @@ void FoliageSystem::forEachFoliageInBox(const AABB& box, bool trees, bool detail
         if (trees && !region.residentOrder.empty()) {
             float prototypeReach = 0.0f;
             for (const TreePrototypeState& prototype : region.prototypes) {
-                prototypeReach = std::max(prototypeReach, prototype.radius + prototype.center.length());
+                prototypeReach = std::max(prototypeReach, foliageLocalReach(prototype.center, prototype.radius, padScale));
             }
-            const float regionPad = prototypeReach * region.treeScaleMax * padScale;
+            // (and the rounding of the local box and positions, far below a tree's reach)
+            const float localSlack = 1.0e-5f * std::max({std::fabs(lo.x), std::fabs(lo.y), std::fabs(lo.z), std::fabs(hi.x), std::fabs(hi.y), std::fabs(hi.z)});
+            const float regionPad = prototypeReach * region.treeScaleMax + localSlack;
+            const bool affine = region.model.isAffine();
+            // its columns, read once (the walk's per-tree code reads them by the dozen)
+            float modelColumns[4][3];
+            for (int c = 0; c < 4; c++) {
+                for (int r = 0; r < 3; r++) modelColumns[c][r] = region.model.get(c, r);
+            }
             const auto visitCell = [&](const TreeCell& cell) {
                 if (cell.instances.empty()) return;
                 float reach = 0.0f;
                 for (const TreeProtoRange& range : cell.ranges) {
                     if (range.prototype < static_cast<int>(region.prototypes.size())) {
                         const TreePrototypeState& prototype = region.prototypes[range.prototype];
-                        reach = std::max(reach, (prototype.radius + prototype.center.length()) * range.maxScale);
+                        reach = std::max(reach, foliageLocalReach(prototype.center, prototype.radius, padScale) * range.maxScale);
                     }
                 }
-                if (!foliageBoxTouches(cell.boxMin, cell.boxMax, reach * padScale, lo, hi)) return;
+                if (!foliageBoxTouches(cell.boxMin, cell.boxMax, reach + localSlack, lo, hi)) return;
                 for (const TreeProtoRange& range : cell.ranges) {
                     if (range.prototype >= static_cast<int>(region.prototypes.size())) continue;
                     const TreePrototypeState& prototype = region.prototypes[range.prototype];
                     if (prototype.ready.empty() || !prototype.ready[0] || !(prototype.radius > 0.0f)) continue;
-                    const float pad = (prototype.radius + prototype.center.length()) * range.maxScale * padScale;
+                    const float pad = foliageLocalReach(prototype.center, prototype.radius, padScale) * range.maxScale + localSlack;
                     for (uint32_t i = range.first; i < range.first + range.count; i++) {
                         const FoliageInstance& instance = cell.instances[i];
                         if (!foliagePointTouches(instance.position, pad, lo, hi)) continue;
                         const float tall = instance.scale * std::max(1.0f, static_cast<float>(instance.heightRatio) / 128.0f);
-                        const Matrix4 world = region.model * foliageInstanceMatrix(instance);
-                        if (!foliageCubeTouches(world * prototype.center, prototype.radius * tall * axisMax, mn, mx)) continue;
+                        // the sphere's world centre without the matrices, which only a tree the cube
+                        // keeps needs (for its bounds)
+                        const Vector3 localCenter = foliageInstancePoint(instance, prototype.center);
+                        const Vector3 center = affine ? foliageAffinePoint(modelColumns, localCenter) : region.model * localCenter;
+                        const float reachWorld = foliageCenterReach(prototype.radius * tall * axisMax, localCenter, center, axisMax);
+                        if (!foliageCubeTouches(center, reachWorld, mn, mx)) continue;
                         found.tree = true;
                         found.id = makeTreeId(region.region->regionKey(), cell.slotIds[i]);
                         found.prototype = range.prototype;
-                        found.bounds = world * prototype.bounds;
+                        found.bounds = affine && prototype.bounds.isFinite() ? foliageWorldBounds(modelColumns, instance, prototype.bounds)
+                                                                             : (region.model * foliageInstanceMatrix(instance)) * prototype.bounds;
                         visit(context, found);
                     }
                 }
