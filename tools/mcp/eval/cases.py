@@ -1209,11 +1209,28 @@ CASES = [
                   "exactly from the sun in the image, as bright and as coloured, and don't let the sky light the scene "
                   "with the sun a second time.",
         "mocks": [
-            {"tool": "set_scene_settings", "args": {"extract_sun": "*"}, "result": ok(
-                "Created the main Directional Light \"Directional Light\" to the sky's sun (812x the sky's mean) (one undo step).",
-                {"scene_id": 1, "settings": {}, "sun": {"light": {"id": 9, "name": "Directional Light"}, "created": True,
+            {"tool": "set_scene_settings", "args": {"extract_sun": {"remove_sun_disc": True}}, "result": ok(
+                "Aligned the main Directional Light \"Directional Light\" to the sky's sun (812x the sky's mean) (one undo step).",
+                {"scene_id": 1, "settings": {}, "sun": {"light": {"id": 16, "name": "Directional Light"}, "created": False,
                  "direction": [-0.41, -0.64, -0.65], "color": [1.0, 0.93, 0.82], "intensity": 3.1, "unit": "engine",
                  "peak_ratio": 812.0, "disc_degrees": 0.9, "remove_sun_disc": ["assets/sky/desert.hdr"]}})},
+            # as the editor answers extract_sun without remove_sun_disc: the disc is left in, and next says so
+            {"tool": "set_scene_settings", "args": {"extract_sun": "*"}, "result": ok(
+                "Aligned the main Directional Light \"Directional Light\" to the sky's sun (812x the sky's mean) (one undo step).",
+                {"scene_id": 1, "settings": {}, "sun": {"light": {"id": 16, "name": "Directional Light"}, "created": False,
+                 "direction": [-0.41, -0.64, -0.65], "color": [1.0, 0.93, 0.82], "intensity": 3.1, "unit": "engine",
+                 "peak_ratio": 812.0, "disc_degrees": 0.9, "remove_sun_disc": []},
+                 "next": "Image-based lighting still has the sun: set_scene_settings extract_sun {\"remove_sun_disc\": true} "
+                         "clamps the sky's disc so it is not counted twice."})},
+            {"tool": "get_entity", "args": {"entity": "re:^(16|Directional Light)$"}, "result": ok(
+                "Directional Light [16] components: light transform",
+                {"id": 16, "name": "Directional Light", "path": "Directional Light", "components": {
+                    "light": {"type": "directional", "intensity": 1.0, "color": [1, 1, 1], "direction": [0, -1, 0],
+                              "shadows": True, "intensityUnit": "engine"}}}) | {"real": True}},
+            {"tool": "get_entity", "args": {"entity": "re:^(17|Skybox)$"}, "result": ok(
+                "Skybox [17] components: skybox",
+                {"id": 17, "name": "Skybox", "path": "Skybox", "components": {
+                    "skybox": {"texture": "assets/sky/desert.hdr"}}}) | {"real": True}},
             {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
         ],
         "checks": {"calls": [{"tool": "set_scene_settings", "args": {"extract_sun": {"remove_sun_disc": True}}}],
@@ -1240,9 +1257,10 @@ CASES = [
                 "Set 4 scene setting(s) (one undo step).", {"scene_id": 1, "settings": {"ambient_source": "gradient"}})},
             {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
         ],
-        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ambient_source": "gradient",
-                                                                                 "ambient_sky_color": "*",
-                                                                                 "ambient_ground_color": "*"}}}],
+        # the source and its colours may go in one call or several
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ambient_source": "gradient"}}},
+                             {"tool": "set_scene_settings", "args": {"settings": {"ambient_sky_color": "*"}}},
+                             {"tool": "set_scene_settings", "args": {"settings": {"ambient_ground_color": "*"}}}],
                    "must_not_call": [{"tool": "set_scene_settings", "args": {"settings": {"global_illumination_color": "*"}}}]},
         "max_turns": 10,
     },
@@ -1282,7 +1300,25 @@ CASES = [
         "source": "docs/specs/S92-agent-feedback-area-lights.md R32, R34, R39",
         "prompt": "Hang a soft 1.2 m by 0.4 m rectangular panel light 2 m above the Desk, facing down, at 500 nits.",
         "mocks": [
-            {"tool": "find_entities", "result": ok("1 GameObject: 15 Desk", {"entities": [{"id": 15, "path": "Desk"}]})},
+            # the world has no Desk: id 19 is free in it (15 is the Crate)
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nDesk [19] mesh",
+                                                   {"entities": [{"id": 19, "path": "Desk"}]})},
+            {"tool": "get_scene_tree", "result": ok(
+                "Scene 1 \"Main\" (3D, 9 GameObjects). Each line: Name [id] components (flags); children indented.\n"
+                "Main Camera [10] camera\nGround [11] mesh rigidbody\nPlayer [12] script sprite\n  Gun [13] sprite\n"
+                "  Shield [18] sprite\nEnemy [14] script sprite\nCrate [15] mesh\nDesk [19] mesh\n"
+                "Directional Light [16] light\nSkybox [17] skybox (no transform)\n",
+                {"entity_count": 9, "scene_id": 1, "scene_name": "Main", "truncated": False})},
+            {"tool": "get_entity", "args": {"entity": "re:^(19|Desk)$"}, "result": ok(
+                "Desk [19] components: mesh transform",
+                {"id": 19, "name": "Desk", "path": "Desk", "components": {
+                    "transform": {"position": [3, 0.75, 1], "rotation": [0, 0, 0, 1], "scale": [1.6, 0.05, 0.8]},
+                    "mesh": {"numSubmeshes": 1, "castShadows": True}}}) | {"real": True}},
+            {"tool": "list_component_types", "args": {"component": "re:(?i)^light$"}, "result": ok(
+                "light (Light), addable. Properties: type enum (directional, point, spot, area) default point; "
+                "direction vector3 default [0,0,-1]; color vector3; intensity float default 1; intensityUnit enum (engine, lux, "
+                "candela, lumen, nits) default engine; range float; shadows bool; areaShape enum (rectangle, disc) default "
+                "rectangle; areaWidth float default 1; areaHeight float default 1; areaRadius float default 0.5; iesProfile asset.")},
             {"tool": "create_entity", "result": ok("Created GameObject 21 \"Panel Light\" (point_light).",
                                                    {"entity": {"id": 21, "path": "Panel Light"}, "entity_id": 21})},
             {"tool": "add_component", "result": ok("Added light to GameObject 21 \"Panel Light\".", {"entity": {"id": 21}})},
@@ -1291,9 +1327,12 @@ CASES = [
             {"tool": "set_light_unit", "result": ok("Set the unit of 1 light(s), as bright as before (EV100 15).",
                                                     {"lights": [{"entity": {"id": 21}, "unit": "Nits", "intensity": 500}], "ev100": 15})},
         ],
-        "checks": {"calls": [{"tool": "set_properties", "args": {"values": {"light": {"type": "area", "areaWidth": 1.2,
-                                                                                     "areaHeight": 0.4}}}}],
-                   "must_not_call": [{"tool": "set_properties", "args": {"values": {"transform": {"scale": "*"}}}}]},
+        # the panel's values may go in with the component (add_component, create_entity) or after it (set_properties)
+        "checks": {"any_of": [{"calls": [{"tool": tool, "args": {"values": {"light": {"type": "area", "areaWidth": 1.2,
+                                                                                      "areaHeight": 0.4}}}}]}
+                              for tool in ("set_properties", "add_component", "create_entity")],
+                   "must_not_call": [{"tool": "set_properties", "args": {"values": {"transform": {"scale": "*"}}}},
+                                     {"tool": "create_entity", "args": {"scale": "*"}}]},
         "max_turns": 12,
     },
     {
@@ -2763,6 +2802,13 @@ CASES = [
         "prompt": "The web portal only takes games under 5 MB, and the project's web Download Budget is set to that. Build the web "
                   "version and find out which files make it too big. Don't change anything yet.",
         "mocks": [
+            {"tool": "get_project_settings", "result": ok(
+                "3 setting(s).", {"settings": {"player.download_budget_mb.desktop": 0.0, "player.download_budget_mb.mobile": 0.0,
+                                               "player.download_budget_mb.web": 5.0}}) | {"real": True}},
+            {"tool": "get_build_info", "result": ok(
+                "Host linux. Desktop player: available; Web: available (prebuilt player web-wasm32-gles3-release); source "
+                "export: available. 1 scene(s) in the build, 43 shader(s). Default platform: web.",
+                {"host_platform": "linux", "default_platform": "web", "last_build": None})},
             {"tool": "build_project", "result": ok(
                 "Build web (Release): succeeded - Built web (prebuilt player web-wasm32-gles3-release) in /work/space-dodge-web. "
                 "1 build warning(s): see warnings.",
@@ -2788,25 +2834,27 @@ CASES = [
                                                                {"category": "audio", "bytes": 1363148}]}},
                  "next": "Over the Download Budget: textures is the largest category (5.1 MB). get_texture_cook_report "
                          "{\"platforms\": [\"web\"]} lists each texture's disk bytes; set_texture_import_settings lowers max_size "
-                         "or quality."})},
+                         "or quality."}) | {"real": True}},
             {"tool": "get_texture_cook_report", "result": ok(
                 "Texture cook report: 3 textures; web: 3 cooked, 4.3 MB on disk (source 18.0 MB).",
                 {"textures": [
                     {"path": "assets/textures/background.png", "type": "default",
-                     "platforms": {"web": {"status": "cooked", "format": "ASTC 4x4", "width": 4096, "height": 4096, "mips": 13,
+                     "platforms": {"web": {"status": "cooked", "format": "ASTC 4x4", "key": "1f9a", "width": 4096, "height": 4096, "mips": 13,
                                            "disk_bytes": 2097152, "source_bytes": 9437184}}},
                     {"path": "assets/textures/ship_atlas.png", "type": "sprite",
-                     "platforms": {"web": {"status": "cooked", "format": "ASTC 4x4", "width": 2048, "height": 2048, "mips": 12,
+                     "platforms": {"web": {"status": "cooked", "format": "ASTC 4x4", "key": "7c02", "width": 2048, "height": 2048, "mips": 12,
                                            "disk_bytes": 1572864, "source_bytes": 6291456}}},
                     {"path": "assets/textures/asteroids.png", "type": "default",
-                     "platforms": {"web": {"status": "cooked", "format": "ASTC 4x4", "width": 2048, "height": 1024, "mips": 12,
+                     "platforms": {"web": {"status": "cooked", "format": "ASTC 4x4", "key": "a4d1", "width": 2048, "height": 1024, "mips": 12,
                                            "disk_bytes": 786432, "source_bytes": 3145728}}}],
                  "totals": {"web": {"textures": 3, "cooked": 3, "failed": 0, "cache_hits": 3, "vram_bytes": 22369621,
-                                    "disk_bytes": 4456448, "source_bytes": 18874368}}})},
+                                    "disk_bytes": 4456448, "source_bytes": 18874368}}}) | {"real": True}},
         ],
         "shell": [{"match": r"\bdu\b|\bls\b|\bfind\b", "output": ""}],
-        "checks": {"calls": [{"tool": "build_project", "args": {"platform": "web"}},
-                             {"tool": "get_texture_cook_report"}],
+        # mode web and the web player (platform web) are both the web build, held to the same budget
+        "checks": {"calls": [{"tool": "get_texture_cook_report"}],
+                   "any_of": [{"calls": [{"tool": "build_project", "args": {"platform": "web"}}]},
+                              {"calls": [{"tool": "build_project", "args": {"mode": "web"}}]}],
                    "order": [["build_project", "get_texture_cook_report"]],
                    "must_not_call": ["set_texture_import_settings", "set_project_settings"],
                    "reply_must": [r"(?i)background\.png"]},
@@ -5480,7 +5528,7 @@ CASES = [
                          "a small image) and changed nothing; the result's findings and next now name the over-bright light "
                          "and the call that lowers it (S92 R6, R7).",
         "text_at_issue": "screenshot result: findings [{kind: exposure_clipped, ...}] and next 'exposure_clipped: ... Fix: "
-                         "set_properties {entity: 3, values: {light: {intensity: 6}}} halves it.'",
+                         "set_properties {entity: 16, values: {light: {intensity: 0.75}}} halves it.'",
         "source": "S92 spec, Crucible's frame-checks idea (paraphrased); no failure on record",
         "prompt": "Take a Game view screenshot of the Main scene and fix anything that looks wrong with the lighting.",
         "mocks": [
@@ -5492,17 +5540,22 @@ CASES = [
                 {"view": "game", "width": 768, "height": 432, "findings_ms": 2.1,
                  "findings": [{"kind": "exposure_clipped", "severity": "warning",
                                "message": "41 % of the image is clipped white (luminance at or above 0.98); the brightest light "
-                                          "on it is Sun (#3), Directional at intensity 12.",
-                               "fix": "set_properties {entity: 3, values: {light: {intensity: 6}}} halves it", "entities": [3]}],
+                                          "on it is Directional Light (#16), Directional at intensity 1.5.",
+                               "fix": "set_properties {entity: 16, values: {light: {intensity: 0.75}}} halves it", "entities": [16]}],
                  "next": "exposure_clipped: 41 % of the image is clipped white (luminance at or above 0.98); the brightest "
-                         "light on it is Sun (#3), Directional at intensity 12. Fix: set_properties {entity: 3, values: "
-                         "{light: {intensity: 6}}} halves it."})},
-            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 3 \"Sun\".", {"entity": {"id": 3}})},
-            {"tool": "get_entity", "result": ok("GameObject 3 \"Sun\": transform, light (directional, intensity 12).",
-                                               {"id": 3, "components": {"light": {"type": "directional", "intensity": 12}}})},
-            {"tool": "find_entities", "result": ok("1 GameObject: 3 Sun", {"entities": [{"id": 3, "path": "Sun"}]})},
+                         "light on it is Directional Light (#16), Directional at intensity 1.5. Fix: set_properties "
+                         "{entity: 16, values: {light: {intensity: 0.75}}} halves it."})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 16 \"Directional Light\".",
+                                                    {"entity": {"id": 16}})},
+            {"tool": "get_entity", "args": {"entity": "re:^(16|Directional Light)$"}, "result": ok(
+                "Directional Light [16] components: light transform",
+                {"id": 16, "name": "Directional Light", "path": "Directional Light", "components": {
+                    "light": {"type": "directional", "intensity": 1.5, "color": [1, 1, 1], "shadows": True}}}) | {"real": True}},
         ],
-        "checks": {"calls": ["screenshot", {"tool": "set_properties", "args": {"entity": 3, "values": {"light": {"intensity": "*"}}}}]},
+        # an intensity that looks ordinary in the data: only the finding shows it clips; lowered below 1.5
+        "checks": {"calls": ["screenshot", {"tool": "set_properties", "args": {
+            "entity": "re:^(16|Directional Light)$",
+            "values": {"light": {"intensity": r"re:^(0(\.\d+)?|1(\.[0-4]\d*)?|\.\d+)$"}}}}]},
         "max_turns": 10,
     },
     {
@@ -5513,7 +5566,8 @@ CASES = [
         "text_at_issue": "screenshot result: findings [{kind: subject_out_of_frame}] and next 'subject_out_of_frame: Crate (#15) "
                          "(the selection) is 88 % outside the frame. Fix: frame_entity {entity: 15}.'",
         "source": "S92 spec (paraphrased); no failure on record",
-        "prompt": "Take a Scene view screenshot of the selected Crate and tell me how it looks.",
+        "prompt": "I lined the Scene view up on the selected Crate. Take a Scene view screenshot and tell me how the Crate "
+                  "looks.",
         "mocks": [
             {"tool": "screenshot", "after": "frame_entity", "result": ok(
                 "scene view screenshot 768x432 of scene \"Main\".", {"view": "scene", "width": 768, "height": 432, "findings": []})},
@@ -5530,7 +5584,13 @@ CASES = [
             {"tool": "set_scene_camera", "result": ok("Scene view camera set.", {"position": [2, 1, 3], "target": [0, 0, 0]})},
             {"tool": "get_selection", "result": ok("Selected: 15 Crate", {"entities": [{"id": 15, "path": "Crate"}]})},
         ],
-        "checks": {"calls": ["screenshot", {"tool": "frame_entity", "args": {"entity": 15}}]},
+        # the finding acted on: the Crate framed after the screenshot (frame_entity with no GameObject frames the
+        # selection), or, as the user aimed the view, the reply says it is out of frame instead of describing it
+        "checks": {"calls": ["screenshot"],
+                   "any_of": [{"calls": ["frame_entity"], "order": [["screenshot", "frame_entity"]]},
+                              {"reply_must": [r"(?i)(out of|outside) (the )?(frame|view|shot|screenshot)|off[- ]?screen"]}],
+                   "must_not_call": [{"tool": "frame_entity", "args": {"entity": "re:^(?!(15|Crate)$)"}},
+                                     {"tool": "frame_entity", "args": {"entities": ["re:^(?!(15|Crate)$)"]}}]},
         "max_turns": 10,
     },
     {
