@@ -149,7 +149,7 @@ TEST(LuaHierarchy, ObjectsMadeWithoutASceneFail){
     ASSERT_NE(L, nullptr);
     for (const char* code : {"GameObject(nil)", "GameObject(nil, 1)", "Sprite(nil)", "Camera(nil)", "AudioSource(nil, true)",
                              "PositionTween(nil)", "CullingGroup(nil)"}) {
-        const std::string error = runLua(L, std::string("local object = ") + code);
+        const std::string error = runHierarchyLua(L, std::string("local object = ") + code);
         EXPECT_NE(error.find("the scene is nil"), std::string::npos) << code << ": " << error;
     }
 
@@ -157,7 +157,7 @@ TEST(LuaHierarchy, ObjectsMadeWithoutASceneFail){
     Scene scene;
     const Entity existing = named(scene, "Existing");
     luabridge::setGlobal(L, &scene, "testScene");
-    EXPECT_EQ(runLua(L, "local made = GameObject(testScene); assert(made.entity ~= nil)\n"
+    EXPECT_EQ(runHierarchyLua(L, "local made = GameObject(testScene); assert(made.entity ~= nil)\n"
                         "local over = GameObject(testScene, " + std::to_string(existing) + "); assert(over.entity == " +
                         std::to_string(existing) + ")\n"
                         "local sound = AudioSource(testScene, false); assert(sound.entity ~= nil)"), "");
@@ -177,7 +177,7 @@ TEST(LuaHierarchy, AFailingMainLuaKeepsTheState){
     LuaBinding::init();
     lua_State* L = LuaBinding::getLuaState();
     ASSERT_NE(L, nullptr);
-    EXPECT_EQ(runLua(L, "assert(Before == 1, 'what main.lua ran before its error stays')\n"
+    EXPECT_EQ(runHierarchyLua(L, "assert(Before == 1, 'what main.lua ran before its error stays')\n"
                         "assert(After == nil, 'nothing after it ran')\n"
                         "local scene = GameObject ~= nil\nassert(scene, 'the bindings are still there')"), "");
     test::TestSystem::get().clearPathProvider();
