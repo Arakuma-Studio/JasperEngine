@@ -1201,8 +1201,8 @@ CASES = [
         "what_happened": "S92 R28 adds extract_sun to set_scene_settings: an HDRI sky lights the scene only through IBL, so "
                          "its sun casts no shadow. Without the parameter an agent guesses a Directional Light's angle by eye "
                          "and leaves the sun in the sky's lighting twice.",
-        "text_at_issue": "set_scene_settings description: 'extract_sun creates or aligns the main Directional Light to the "
-                         "skybox HDR image's sun'; its next: 'set_scene_settings extract_sun {\"remove_sun_disc\": true} "
+        "text_at_issue": "set_scene_settings description: 'extract_sun {remove_sun_disc} creates or aligns the main "
+                         "Directional Light to the skybox HDR's sun'; its next: 'set_scene_settings extract_sun {\"remove_sun_disc\": true} "
                          "clamps the sky's disc'; jasper://docs/lighting",
         "source": "docs/specs/S92-agent-feedback-area-lights.md R28, R29, R31",
         "prompt": "Our Skybox uses the HDR image assets/sky/desert.hdr. Make its sun cast shadows: a sun light pointing "

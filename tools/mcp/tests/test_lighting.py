@@ -243,6 +243,7 @@ async def test_extract_sun_creates_and_aligns_the_main_light(ed: Editor):
     scene = await make_scene(ed, "ExtractSun")
     sky = await named(ed, scene, "Skybox")
     await ed.check_error("set_scene_settings", scene=scene, extract_sun={}, contains="HDR")
+    await ed.check_error("set_scene_settings", scene=scene, extract_sun={"remove_disc": True}, contains="remove_sun_disc")
 
     await ed.call("delete_entities", scene=scene, entity=await sun_of(ed, scene))
     await ed.call("set_properties", scene=scene, entity=sky, values={"skybox": {"texture": {"cube": "assets/sky/sun_cross.hdr"}}})

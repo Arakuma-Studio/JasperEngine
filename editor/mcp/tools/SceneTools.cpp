@@ -1627,9 +1627,14 @@ void setSceneSettingsTool(const CallPtr& call) {
     }
     // S92 R28: extract_sun {remove_sun_disc} with or without settings
     const bool extractSun = args.contains("extract_sun") && !args["extract_sun"].is_null();
-    if (extractSun && !args["extract_sun"].is_object()) {
-        call->fail("extract_sun must be an object: {} or {\"remove_sun_disc\": true}.");
-        return;
+    if (extractSun) {
+        const Json& sun = args["extract_sun"];
+        const bool valid = sun.is_object() && (!sun.contains("remove_sun_disc") || sun["remove_sun_disc"].is_boolean()) &&
+                           sun.size() <= (sun.contains("remove_sun_disc") ? 1u : 0u);
+        if (!valid) {
+            call->fail("extract_sun must be {} or {\"remove_sun_disc\": true} (also clamps the sun out of the sky's lighting).");
+            return;
+        }
     }
     const Json noSettings = Json::object();
     const bool hasSettings = args.contains("settings") && !args["settings"].is_null();
@@ -2257,9 +2262,8 @@ void registerSceneTools(McpRegistry& registry) {
             "Set scene settings {name: value} (names and shapes: get_scene_settings). post_process replaces "
             "the pass list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": "
             "[0.5,0,0,0]}}]. post_processing {field: value} sets the fields named (null resets all); extract_sun "
-            "creates or aligns the main Directional Light to the skybox HDR image's sun. One undo step per call.";
-        tool.inputSchema = object({{"scene", sceneRef()}, {"settings", anyObject("")},
-                                   {"extract_sun", object({{"remove_sun_disc", withDefault(boolean(""), false)}})}});
+            "{remove_sun_disc} creates or aligns the main Directional Light to the skybox HDR's sun. One undo step per call.";
+        tool.inputSchema = object({{"scene", sceneRef()}, {"settings", anyObject("")}, {"extract_sun", anyObject("")}});
         tool.annotations.idempotent = true;
         tool.handler = setSceneSettingsTool;
         registry.addTool(std::move(tool));
