@@ -328,13 +328,16 @@ int ScriptEvent::luaAddListener(lua_State* L) {
     }
     if (lua_istable(L, 2) && lua_type(L, 3) == LUA_TSTRING) {
         const int32_t priority = checkPriority(L, 4, caller);
-        const std::string method = lua_tostring(L, 3);
-        lua_getfield(L, 2, method.c_str());
+        // checked before any C++ object lives in this frame: Lua is compiled as C, and luaL_error
+        // longjmps over the frame (no destructor runs; MSVC may end the process)
+        const char* methodName = lua_tostring(L, 3);
+        lua_getfield(L, 2, methodName);
         const bool callable = lua_isfunction(L, -1);
         lua_pop(L, 1);
         if (!callable) {
-            return luaL_error(L, "%s: the script has no method '%s'", caller, method.c_str());
+            return luaL_error(L, "%s: the script has no method '%s'", caller, methodName);
         }
+        const std::string method = methodName;
         for (const auto* list : {&self->listeners, &self->pending}) {
             for (const auto& listener : *list) {
                 if (!listener->removed && listener->function == LUA_NOREF && listener->method == method && sameRef(L, listener->owner, 2)) {

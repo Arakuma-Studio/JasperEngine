@@ -22,7 +22,9 @@
 
 #include <cmath>
 #include <span>
+#include <cstdio>
 #include <string>
+#include <string_view>
 #include <vector>
 #endif
 
@@ -142,22 +144,30 @@ namespace {
         }
     };
 
-    std::string prefixAt(lua_State* L, int index) {
-        std::string prefix = luaL_checkstring(L, index);
-        // "quest." and "quest" name the same prefix
-        while (!prefix.empty() && prefix.back() == '.') prefix.pop_back();
-        if (prefix.empty()) luaL_argerror(L, index, "a prefix (\"quest\")");
-        return prefix;
+    // Lua is compiled as C: a raise (luaL_error, luaL_check*) longjmps over the C++ frames up to the
+    // pcall, running no destructor (MSVC may end the process). The functions check their arguments
+    // while their frame holds nothing with a destructor, and raise only then.
+
+    // the prefix at `index` without its trailing dots ("quest." and "quest" name the same one), a
+    // view of the Lua string
+    std::string_view prefixAt(lua_State* L, int index) {
+        size_t length = 0;
+        const char* text = luaL_checklstring(L, index, &length);
+        while (length > 0 && text[length - 1] == '.') length--;
+        if (length == 0) luaL_argerror(L, index, "a prefix (\"quest\")");
+        return std::string_view(text, length);
     }
 
+    // the function at `index` (luaL_checktype'd by the caller)
     std::shared_ptr<LuaHandler> handlerAt(lua_State* L, int index) {
-        luaL_checktype(L, index, LUA_TFUNCTION);
         lua_pushvalue(L, index);
         return std::make_shared<LuaHandler>(L);
     }
 
     int luaOnAction(lua_State* L) {
-        const std::string prefix = prefixAt(L, 1);
+        const std::string_view prefixText = prefixAt(L, 1);
+        luaL_checktype(L, 2, LUA_TFUNCTION);
+        const std::string prefix(prefixText);
         std::shared_ptr<LuaHandler> handler = handlerAt(L, 2);
         dialogue::Handlers::onAction(prefix, [handler](dialogue::Runner& runner, std::string_view verb, std::span<const dialogue::Value> args) {
             const dialogue::Value result = handler->invoke(runner, verb, args);
@@ -167,7 +177,9 @@ namespace {
     }
 
     int luaOnCondition(lua_State* L) {
-        const std::string prefix = prefixAt(L, 1);
+        const std::string_view prefixText = prefixAt(L, 1);
+        luaL_checktype(L, 2, LUA_TFUNCTION);
+        const std::string prefix(prefixText);
         std::shared_ptr<LuaHandler> handler = handlerAt(L, 2);
         dialogue::Handlers::onCondition(prefix, [handler](dialogue::Runner& runner, std::string_view verb, std::span<const dialogue::Value> args) {
             return handler->invoke(runner, verb, args);
@@ -176,7 +188,7 @@ namespace {
     }
 
     int luaRemoveHandler(lua_State* L) {
-        dialogue::Handlers::remove(prefixAt(L, 1));
+        dialogue::Handlers::remove(std::string(prefixAt(L, 1)));
         return 0;
     }
 
@@ -250,13 +262,19 @@ namespace {
         return 1;
     }
 
-    int luaVariablesFromTable(lua_State* L) {
-        luaL_checktype(L, 1, LUA_TTABLE);
+    // the table at 1 into the store; false and why in `message`
+    bool variablesFromTable(lua_State* L, char* message, size_t size) {
         nlohmann::ordered_json json;
         std::string error;
-        if (!jsonAt(L, 1, json) || !dialogue::Variables::fromJson(json, &error)) {
-            return luaL_error(L, "Dialogue.variables.fromTable: %s", error.empty() ? "a table toTable() made" : error.c_str());
-        }
+        if (jsonAt(L, 1, json) && dialogue::Variables::fromJson(json, &error)) return true;
+        std::snprintf(message, size, "%s", error.empty() ? "a table toTable() made" : error.c_str());
+        return false;
+    }
+
+    int luaVariablesFromTable(lua_State* L) {
+        luaL_checktype(L, 1, LUA_TTABLE);
+        char message[512];
+        if (!variablesFromTable(L, message, sizeof(message))) return luaL_error(L, "Dialogue.variables.fromTable: %s", message);
         return 0;
     }
 
@@ -343,7 +361,7 @@ namespace {
     }
 
     int luaVariablesIndex(lua_State* L) {
-        const std::string field = luaL_checkstring(L, 2);
+        const std::string_view field = luaL_checkstring(L, 2);
         if (field == "onChanged") {
             if (!luabridge::push(L, &dialogue::Variables::onChanged)) lua_pushnil(L);
             return 1;
@@ -354,22 +372,21 @@ namespace {
 
     // Dialogue.variables.onChanged = function(name, value) ... end
     int luaVariablesNewIndex(lua_State* L) {
-        const std::string field = luaL_checkstring(L, 2);
-        if (field == "onChanged") {
+        const char* field = luaL_checkstring(L, 2);
+        if (std::string_view(field) == "onChanged") {
             luaL_checktype(L, 3, LUA_TFUNCTION);
             lua_pushvalue(L, 3);
             dialogue::Variables::onChanged = L;
             lua_settop(L, 3);
             return 0;
         }
-        return luaL_error(L, "Dialogue.variables.%s is read-only (use set)", field.c_str());
+        return luaL_error(L, "Dialogue.variables.%s is read-only (use set)", field);
     }
 
-    // {name = value}: start's and setArg's message arguments
+    // {name = value}: start's message arguments (nil or a table, checked by the caller)
     LocalizationArgs argsAt(lua_State* L, int index) {
         LocalizationArgs args;
         if (lua_isnoneornil(L, index)) return args;
-        luaL_checktype(L, index, LUA_TTABLE);
         lua_pushnil(L);
         while (lua_next(L, index) != 0) {
             if (lua_type(L, -2) == LUA_TSTRING) {
@@ -384,11 +401,12 @@ namespace {
         return args;
     }
 
+    // setArg's value: a number, a boolean or a string (luaL_checkstring'd by the caller otherwise)
     LocalizationValue argumentAt(lua_State* L, int index) {
         if (lua_isinteger(L, index)) return static_cast<int64_t>(lua_tointeger(L, index));
         if (lua_type(L, index) == LUA_TNUMBER) return static_cast<double>(lua_tonumber(L, index));
         if (lua_type(L, index) == LUA_TBOOLEAN) return std::string(lua_toboolean(L, index) ? "true" : "false");
-        return std::string(luaL_checkstring(L, index));
+        return std::string(lua_tostring(L, index));
     }
 
     DialogueRunner& runnerSelf(lua_State* L) {
@@ -515,7 +533,8 @@ void LuaBinding::registerDialogueClasses(lua_State* L) {
         .addConstructor <void (*) (Scene*, Entity)> ()
         .addFunction("start", +[](lua_State* state) -> int {
             DialogueRunner& self = runnerSelf(state);
-            const std::string entry = luaL_optstring(state, 2, "");
+            const char* entry = luaL_optstring(state, 2, "");
+            if (!lua_isnoneornil(state, 3)) luaL_checktype(state, 3, LUA_TTABLE);
             const LocalizationArgs args = argsAt(state, 3);
             lua_pushboolean(state, self.start(entry, args));
             return 1;
@@ -526,7 +545,10 @@ void LuaBinding::registerDialogueClasses(lua_State* L) {
         .addFunction("stop", &DialogueRunner::stop)
         .addFunction("setArg", +[](lua_State* state) -> int {
             DialogueRunner& self = runnerSelf(state);
-            self.setArg(luaL_checkstring(state, 2), argumentAt(state, 3));
+            const char* name = luaL_checkstring(state, 2);
+            const int type = lua_type(state, 3);
+            if (type != LUA_TNUMBER && type != LUA_TBOOLEAN) luaL_checkstring(state, 3);
+            self.setArg(name, argumentAt(state, 3));
             return 0;
         })
         .addProperty("dialogue", &DialogueRunner::getDialogue, &DialogueRunner::setDialogue)
