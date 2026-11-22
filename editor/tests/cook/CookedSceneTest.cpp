@@ -424,6 +424,85 @@ entities:
     EXPECT_LT(transforms->getIndex(axle), transforms->getIndex(wheel));
 }
 
+// The hierarchy record is read from a 1.6 file only (an older minor's records after the resources are
+// not it), and a link naming a GameObject the file did not make, or closing a loop, fails the load
+// as corrupt rather than reaching the registry, which checks neither. Red before the minor gate: the
+// 1.5 file got the link, and both corrupt files loaded
+TEST(CookedScene, HierarchyNeedsItsMinorAndTheScenesGameObjects) {
+    using namespace jasperengine::cook;
+    const char* text = R"(formatVersion: 1
+id: 4242
+name: Hierarchy
+scene:
+  backgroundColor: [0, 0, 0, 1]
+sceneType: scene_3d
+mainCamera: 0
+entities:
+  - type: Entity
+    entity: 1001
+    name: Car
+    components:
+      transform: {}
+    children:
+      - type: Entity
+        entity: 1002
+        name: Axle
+        components:
+          transform: {}
+        children:
+          - type: Entity
+            entity: 1003
+            name: Wheel
+            components:
+              transform: {}
+)";
+    DecodedScene source = decodeSceneText(text, "Hierarchy.scene");
+    ASSERT_EQ(source.scene->entities.size(), 3u);
+    const std::vector<uint8_t> bytes =
+        editor::cook::SceneCooker::cookScene(source.scene->scene, 4242, source.scene->entities, NULL_ENTITY, SceneResources{});
+    // the body ends with the hierarchy record: 2 links, (1002 under 1001) then (1003 under 1002), each
+    // GameObject a 2-byte varint
+    uint64_t stringsOffset = 0;
+    for (int i = 0; i < 8; i++) stringsOffset |= uint64_t(bytes[20 + i]) << (8 * i);
+    const size_t links = static_cast<size_t>(stringsOffset) - 9;
+    auto varintAt = [&](const std::vector<uint8_t>& in, size_t at) { return uint32_t(in[at] & 0x7F) | uint32_t(in[at + 1]) << 7; };
+    ASSERT_EQ(bytes[links], 2u);
+    ASSERT_EQ(varintAt(bytes, links + 1), 1002u);
+    ASSERT_EQ(varintAt(bytes, links + 3), 1001u);
+    ASSERT_EQ(varintAt(bytes, links + 7), 1002u);
+    auto withFirstParent = [&](uint32_t parent) {
+        std::vector<uint8_t> out = bytes;
+        out[links + 3] = static_cast<uint8_t>((parent & 0x7F) | 0x80);
+        out[links + 4] = static_cast<uint8_t>(parent >> 7);
+        return out;
+    };
+    auto load = [](const std::vector<uint8_t>& in, DecodedScene& to, std::string& error) {
+        to = emptyScene();
+        return CookedSceneLoader::loadScene(to.scene->scene, std::span<const uint8_t>(in.data(), in.size()), &error);
+    };
+
+    std::vector<uint8_t> v15 = bytes;
+    v15[6] = 5;
+    v15[7] = 0;
+    DecodedScene loaded;
+    std::string error;
+    ASSERT_TRUE(load(v15, loaded, error)) << error;
+    EXPECT_EQ(loaded.scene->scene->getComponent<Transform>(1002).parent, NULL_ENTITY) << "a 1.5 file has no hierarchy record";
+    EXPECT_EQ(loaded.scene->scene->getComponent<Transform>(1003).parent, NULL_ENTITY);
+
+    error.clear();
+    EXPECT_FALSE(load(withFirstParent(1009), loaded, error)) << "1009 is no GameObject of the file";
+    EXPECT_NE(error.find("corrupt scene hierarchy"), std::string::npos) << error;
+
+    error.clear();
+    EXPECT_FALSE(load(withFirstParent(1003), loaded, error)) << "1002 under 1003 under 1002";
+    EXPECT_NE(error.find("makes a loop"), std::string::npos) << error;
+
+    error.clear();
+    ASSERT_TRUE(load(bytes, loaded, error)) << error;
+    EXPECT_EQ(loaded.scene->scene->getComponent<Transform>(1003).parent, 1002u);
+}
+
 // S27: a Tween eased along its curve keeps the curve whole in a cooked scene (keys, tangent
 // modes, wraps), and a curve cooked before the modes (keys only) reads as clamp, free tangents
 TEST(CookedScene, TweenCurveKeepsModesAndWraps) {
