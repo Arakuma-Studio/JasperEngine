@@ -250,7 +250,8 @@ The complete reference is in [docs/mcp/guide/lua-api.md](mcp/guide/lua-api.md) (
 
 - **"Missing: ..." / the model is not humanoid.** Bones are mapped to body parts from their names
   (Mixamo, Blender/Rigify, Unreal, VRM and Unity names, and the `B-` names of Kevin Iglesias' packs:
-  `B-hips`, `B-upperArm.L`). When a name is unusual, press **Map
+  `B-hips`, `B-upperArm.L`; a `B-` model imported by an older editor is read as before until you
+  reimport it, as its notes say). When a name is unusual, press **Map
   Bones...** and pick the bone for each missing part; "Auto" goes back to automatic detection. The
   fix is saved next to the model (`hero.gltf.humanoid`) and ships with the game. Hips, spine, head,
   upper and lower arms and legs, hands and feet are required; chest, upper chest, neck, shoulders

@@ -173,7 +173,8 @@ Ideas only. Nothing is vendored or copied.
 - **R14.** **Lua (Animator).** `Animator:setLayerMeshSpaceRotation(layer, enabled)` and
   `Animator:getLayerMeshSpaceRotation(layer)`, where `layer` is an index or a name like `setLayerWeight`. It is a
   runtime override for this Animator only. It does not write the controller asset, and resets on rebind like the
-  other runtime layer values. An unknown layer is a Lua error naming the layers.
+  other runtime layer values. An unknown layer is warned once and ignored (the getter returns false), as on the
+  Animation Player.
 
 ### Functional: step 5, Animation Player
 
@@ -378,7 +379,7 @@ player:setLayerMeshSpaceRotation("Upper Body", true)
 | AC10 | R13 | Fade test: over a 0.3 s weight fade, the Spine's rig rotation is continuous (no step above the per-frame motion of either pose) |
 | AC11 | R20, R21, R22 | `AnimatorHotPathTest`: 0 allocations after bind with the option on. Option off: no scratch allocated (scratch size 0) |
 | AC12 | R23, R24 | `je-bench-anim`: Crowd200 within budget against a same-machine `main` baseline; `Crowd200MeshSpace` row within the S21 budgets; `docs/perf/animator.md` updated |
-| AC13 | R14 | Lua test: set and get by index and by name; an unknown layer raises an error naming the layers; the value resets on rebind; `tools/lua_api` output has both functions |
+| AC13 | R14 | Lua test: set and get by index and by name; an unknown layer is warned once and changes nothing; the value resets on rebind; `tools/lua_api` output has both functions |
 | AC14 | R15, R16, R18 | `AnimationPlayerTest`: the AC4 case on the Player meets the same bound, red without the option; Player and Animator agree within 1e-5 |
 | AC15 | R17 | Lua test: the Player's setter changes the authored field |
 | AC16 | R42, R43 | `AnimatorAssetIOTest`: an old controller re-saves byte for byte; a true value round-trips; a file written with the key reads in a build without the field (unknown-key path) and writes it back |
@@ -422,6 +423,20 @@ player:setLayerMeshSpaceRotation("Upper Body", true)
 | `layer_blend` sampling is slow on large controllers | Default 5 times and the boundary bones only; runs as a job past the usual limit (R36) |
 
 ## Deviations
+
+- **R1, R2: only for new imports and reimports (the lead's decision when landing).** A model imported before
+  these rules keeps the humanoid status it had. The rules are numbered (`pose::HUMANOID_NAME_RULES`: 1 the
+  original, 2 strips `b-` and never maps `proxy`), and a model's `.humanoid` sidecar records the rules of its import
+  as `name_rules` (optional, absent is 1, no sidecar version change). A model arriving in the open project (a new
+  import) or reimported (the Project window's Reimport, Reimport All Models, the Model Importer's and the Mesh Audit
+  window's Reimport, `reimport_models`) gets `name_rules: 2` written into its sidecar when rules 2 map its bones
+  otherwise than the rules it has; elsewhere nothing is written. A model that was in the project when it opened
+  keeps rules 1 until then, and its humanoid notes say "Reimport the model to apply the current naming". A model
+  put back after a delete counts as an import. The Mesh Space Rotation warnings (R29, R37), the Fit To Skeleton
+  of capsule shadows and other readings of a rig without a sidecar use the current rules.
+- **R14: an unknown layer is warned, not an error.** The Animator's setter and getter warn once per layer and
+  ignore an unknown one (the getter returns false), as the Animation Player's and the Animator's other name
+  lookups (`setFloat`, `play`) do, so the same script mistake does the same thing on either component.
 
 - **R5, D8: boundary bones of every masked layer.** The instance lists the boundary bones of every masked layer
   above 0, whatever its blending and option, not only of flagged Override layers. The editor's warning (R29) and

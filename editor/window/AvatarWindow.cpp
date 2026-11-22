@@ -317,9 +317,12 @@ void editor::AvatarWindow::autoMapAll(){
 }
 
 void editor::AvatarWindow::clearOverrides(){
+    // the overrides go; what the model is (its type, the naming rules of its import) stays
     const std::optional<pose::AnimationType> type = edited.animationType;
+    const std::optional<int> rules = edited.nameRules;
     edited = pose::HumanoidOverrides();
     edited.animationType = type;
+    edited.nameRules = rules;
     resolve();
 }
 

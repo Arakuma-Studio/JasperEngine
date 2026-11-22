@@ -227,7 +227,7 @@ RagdollBones RagdollBuilder::guessBones(Scene* scene, Entity root, std::vector<s
     pose::HumanoidMap map;
     std::string error;
     if (overrides.empty() || !pose::resolveHumanoid(skeleton, overrides, map, &error)){
-        map = pose::autoDetectHumanoid(skeleton);
+        map = pose::autoDetectHumanoid(skeleton, nullptr, overrides.detectNameRules());
     }
     auto entityOf = [&](pose::HumanBone slot) -> Entity {
         const std::string& name = map.bones[pose::boneIndex(slot)];

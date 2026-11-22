@@ -257,14 +257,31 @@ float Animator::getLayerWeight(int layer) const{
     return instance ? instance->getLayerWeight(layer) : 0.0f;
 }
 
-void Animator::setLayerMeshSpaceRotation(int layer, bool enabled){
+bool Animator::knownLayer(int layer, const std::string* name) const{
     anim::AnimatorInstance* instance = runtime();
-    if (instance) instance->setLayerMeshSpaceRotation(layer, enabled);
+    if (!instance) return false;
+    if (layer >= 0 && (size_t)layer < instance->layers.size()) return true;
+    // before its controller loads an Animator has no layers to name
+    if (instance->controller) unknown("layer", name ? *name : std::to_string(layer));
+    return false;
+}
+
+void Animator::setLayerMeshSpaceRotation(int layer, bool enabled){
+    if (knownLayer(layer, nullptr)) runtime()->setLayerMeshSpaceRotation(layer, enabled);
+}
+
+void Animator::setLayerMeshSpaceRotation(const std::string& layer, bool enabled){
+    const int index = getLayerIndex(layer);
+    if (knownLayer(index, &layer)) runtime()->setLayerMeshSpaceRotation(index, enabled);
 }
 
 bool Animator::getLayerMeshSpaceRotation(int layer) const{
-    anim::AnimatorInstance* instance = runtime();
-    return instance && instance->layerMeshSpaceRotation(layer);
+    return knownLayer(layer, nullptr) && runtime()->layerMeshSpaceRotation(layer);
+}
+
+bool Animator::getLayerMeshSpaceRotation(const std::string& layer) const{
+    const int index = getLayerIndex(layer);
+    return knownLayer(index, &layer) && runtime()->layerMeshSpaceRotation(index);
 }
 
 std::vector<Entity> Animator::getLayerBoundaryBones(int layer) const{

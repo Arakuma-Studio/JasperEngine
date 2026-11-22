@@ -4,6 +4,10 @@
 // Acceptance test 2: humanoid auto-detect and validation (spec 4.6)
 
 #include "TestUtil.h"
+#include "pose/HumanoidMapIO.h"
+#include "pose/ModelRig.h"
+
+#include <algorithm>
 
 #include <gtest/gtest.h>
 
@@ -62,6 +66,9 @@ TEST(PoseHumanoidMap, NameTokens){
     EXPECT_EQ(humanoidNameTokens("B-hips"), (V{"hips"}));
     EXPECT_EQ(humanoidNameTokens("B-upperArm.L"), (V{"upper", "arm", "l"}));
     EXPECT_EQ(humanoidNameTokens("B-spineProxy"), (V{"spine", "proxy"}));
+    // the rules before B- rigs (a model imported before them) keep the prefix
+    EXPECT_EQ(humanoidNameTokens("B-hips", HUMANOID_NAME_RULES_ORIGINAL), (V{"b", "hips"}));
+    EXPECT_EQ(humanoidNameTokens("b_Hips", HUMANOID_NAME_RULES_ORIGINAL), (V{"hips"}));
 }
 
 TEST(PoseHumanoidMap, KevinIglesiasBNames){
@@ -89,6 +96,25 @@ TEST(PoseHumanoidMap, KevinIglesiasBNames){
          {H::LeftFoot, "B-foot.%s"}, {H::LeftToes, "B-toe.%s"}},
         "L", "R");
     expectMap(skeletonFromList(bones), expected, "kevin iglesias");
+
+    // a model imported before the B- rules keeps the status it had: not a humanoid (B-hips reads
+    // "bhips", which names no slot)
+    const Skeleton skeleton = skeletonFromList(bones);
+    const HumanoidMap original = autoDetectHumanoid(skeleton, nullptr, HUMANOID_NAME_RULES_ORIGINAL);
+    EXPECT_EQ(original.bones[boneIndex(H::Hips)], "");
+    EXPECT_FALSE(validateHumanoid(skeleton, original, nullptr));
+    HumanoidOverrides imported;
+    HumanoidMap resolved;
+    std::vector<std::string> notes;
+    EXPECT_FALSE(resolveHumanoid(skeleton, imported, resolved, nullptr, &notes)) << "no name_rules: the original rules";
+    EXPECT_TRUE(std::any_of(notes.begin(), notes.end(), [](const std::string& note){ return note.find("Reimport the model") != std::string::npos; }))
+        << "the note names the way to the current rules";
+    imported.nameRules = HUMANOID_NAME_RULES;
+    notes.clear();
+    std::string error;
+    EXPECT_TRUE(resolveHumanoid(skeleton, imported, resolved, &error, &notes)) << error;
+    EXPECT_EQ(resolved.bones, expected.bones);
+    EXPECT_TRUE(std::none_of(notes.begin(), notes.end(), [](const std::string& note){ return note.find("Reimport") != std::string::npos; }));
 }
 
 TEST(PoseHumanoidMap, ProxyBonesNeverMapped){
@@ -99,6 +125,9 @@ TEST(PoseHumanoidMap, ProxyBonesNeverMapped){
             EXPECT_EQ(map.bones[s], "") << name << " mapped to " << humanBoneName(boneAt(s));
         }
     }
+    // the original rules map one as any other name (a model imported before keeps its map)
+    const HumanoidMap original = autoDetectHumanoid(skeletonFromList({{"root", ""}, {"spine_proxy", "root"}}), nullptr, HUMANOID_NAME_RULES_ORIGINAL);
+    EXPECT_EQ(original.bones[boneIndex(H::Spine)], "spine_proxy");
 }
 
 // the auto-detect's torso reading of one name (the Mesh Space Rotation warnings on rigs without a

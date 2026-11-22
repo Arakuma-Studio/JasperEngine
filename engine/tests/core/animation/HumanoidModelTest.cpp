@@ -395,7 +395,13 @@ TEST_F(HumanoidModel, SpineProxyNodeIsNotedOnceAndKept){
     HumanoidMap map;
     std::vector<std::string> notes;
     std::string error;
-    ASSERT_TRUE(resolveHumanoid(skeleton, HumanoidOverrides(), map, &error, &notes)) << error;
+    // imported before the B- rules (no name_rules): no humanoid, as it was
+    EXPECT_FALSE(resolveHumanoid(skeleton, HumanoidOverrides(), map, &error, &notes));
+    // a new import or a reimport records the current rules
+    HumanoidOverrides imported;
+    imported.nameRules = HUMANOID_NAME_RULES;
+    notes.clear();
+    ASSERT_TRUE(resolveHumanoid(skeleton, imported, map, &error, &notes)) << error;
     EXPECT_EQ(map.bones[boneIndex(HumanBone::Spine)], "B-spine");
 
     const std::string note = "B-spineProxy is a spine proxy bone for Unity's Spine Proxy. JasperEngine does not need it: "

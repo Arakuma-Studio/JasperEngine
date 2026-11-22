@@ -88,8 +88,12 @@ namespace jasperengine{
         // Mesh Space Rotation (docs/specs/mesh-space-rotation.md): a runtime override of this
         // Animator only (the controller is not written), cleared when the controller loads again;
         // ignored on layer 0 and Additive layers. The getter: the override, else the controller's.
+        // A layer by index or by name; an unknown one is warned once (as an unknown parameter) and
+        // ignored, false for the getter.
         void setLayerMeshSpaceRotation(int layer, bool enabled);
+        void setLayerMeshSpaceRotation(const std::string& layer, bool enabled);
         bool getLayerMeshSpaceRotation(int layer) const;
+        bool getLayerMeshSpaceRotation(const std::string& layer) const;
         // the GameObjects where the layer's mask starts or stops (its boundary bones, parents
         // first), empty before the rig is bound
         std::vector<Entity> getLayerBoundaryBones(int layer) const;
@@ -159,6 +163,9 @@ namespace jasperengine{
     private:
         anim::AnimatorInstance* runtime() const;
         void unknown(const std::string& what, const std::string& name) const;
+        // a layer index of the bound controller; else the layer (`name`, or the index) is warned
+        // as an unknown one
+        bool knownLayer(int layer, const std::string* name) const;
         // a parameter set as another type (a trigger set as a bool...): warned once per
         // (parameter, type), the value converted
         void mismatch(const std::string& name, AnimatorParameterType as) const;

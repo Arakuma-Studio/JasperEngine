@@ -3,12 +3,15 @@
 
 #include "PoseRigProvider.h"
 
+#include "Out.h"
 #include "Project.h"
 #include "Scene.h"
+#include "io/AtomicFile.h"
 #include "component/ModelComponent.h"
 #include "object/Model.h"
 #include "pose/HumanoidMapIO.h"
 #include "pose/ModelRig.h"
+#include "util/FbxImporter.h"
 #include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 #include "util/ProjectFileWrites.h"
@@ -182,4 +185,28 @@ bool editor::PoseRigProvider::setAnimationType(Project* project, const fs::path&
     if (type == pose::AnimationType::Humanoid) changed.animationType = type;
     else changed.animationType.reset();
     return ProjectFileWrites::writeUndoable(project, {{sidecarOf(model.lexically_normal()), pose::writeHumanoidOverrides(changed)}}, error);
+}
+
+bool editor::PoseRigProvider::adoptNameRules(Project* project, const fs::path& model){
+    const fs::path file = model.lexically_normal();
+    // an FBX is read through its converted .glb
+    if (FbxImporter::isFbxFile(file) && !project->importFbxModel(file)) return false;
+    const std::shared_ptr<const PoseRigInfo> info = forModelFile(project, file);
+    if (!info->sidecarError.empty()){
+        Out::warning("%s", unreadableSidecarRefusal(info->sidecarError).c_str());
+        return false;
+    }
+    const int rules = info->overrides.detectNameRules();
+    if (info->skeleton.bones.empty() || rules >= pose::HUMANOID_NAME_RULES) return false;
+    // the rules agree on this rig: nothing to record, its sidecar stays as it is (or absent)
+    if (pose::autoDetectHumanoid(info->skeleton, nullptr, rules).bones == pose::autoDetectHumanoid(info->skeleton, nullptr).bones) return false;
+    pose::HumanoidOverrides changed = info->overrides;
+    changed.nameRules = pose::HUMANOID_NAME_RULES;
+    const fs::path sidecar = sidecarOf(file);
+    const io::WriteResult written = io::writeFileAtomic(sidecar, pose::writeHumanoidOverrides(changed));
+    if (!written.ok()){
+        Out::warning("%s: %s", ProjectChecks::projectRelative(project->getProjectPath(), sidecar).c_str(), io::describeWriteError(written).c_str());
+        return false;
+    }
+    return true;
 }

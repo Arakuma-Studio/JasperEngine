@@ -417,7 +417,14 @@ std::shared_ptr<PoseSkin> pose::buildSkinFromGltf(const tinygltf::Model& gltf, c
 
 bool pose::resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& overrides, HumanoidMap& out,
                            std::string* error, std::vector<std::string>* notes){
-    out = autoDetectHumanoid(skeleton, notes);
+    // the naming rules the model was imported with: a model imported before a rules change keeps
+    // the map it had (said, with the way to the new one)
+    const int rules = overrides.detectNameRules();
+    out = autoDetectHumanoid(skeleton, notes, rules);
+    if (notes && rules < HUMANOID_NAME_RULES && autoDetectHumanoid(skeleton, nullptr, HUMANOID_NAME_RULES).bones != out.bones){
+        notes->push_back("auto-detect reads this model's bone names as when it was imported; Reimport the model to apply "
+                         "the current naming (B- bone names, proxy bones never mapped)");
+    }
 
     for (int s = 0; s < HUMAN_BONE_COUNT; s++){
         const std::optional<std::string>& value = overrides.bones[s];

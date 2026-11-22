@@ -1514,8 +1514,9 @@ TEST_F(Layers, MeshSpaceRotationFadesWithTheLayerWeight){
     EXPECT_LE(componentError(rig("Hips/Spine"), to), 1e-5f) << "the attack's spine once the fade ends";
 }
 
-// AC13: Lua sets and gets the option by index and by name, an unknown layer is an error naming the
-// layers, the controller file is not written and a reload of the controller clears the override
+// AC13: Lua sets and gets the option by index and by name, an unknown layer is warned once and
+// changes nothing (as on the Animation Player), the controller file is not written and a reload of
+// the controller clears the override
 TEST_F(Layers, MeshSpaceRotationFromLua){
     addBody();
     anim::ControllerDef def;
@@ -1534,10 +1535,9 @@ TEST_F(Layers, MeshSpaceRotationFromLua){
         "msrResult = tostring(a:getLayerMeshSpaceRotation('Upper Body'))\n"
         "a:setLayerMeshSpaceRotation(1, true)\n"
         "msrResult = msrResult .. '|' .. tostring(a:getLayerMeshSpaceRotation(1)) .. '|' .. tostring(a:getLayerMeshSpaceRotation('Upper Body'))\n"
-        "local ok, err = pcall(function() a:setLayerMeshSpaceRotation('Nope', true) end)\n"
-        "msrError = tostring(ok) .. ' ' .. tostring(err)\n"
-        "local ok2, err2 = pcall(function() return a:getLayerMeshSpaceRotation(7) end)\n"
-        "msrError2 = tostring(ok2) .. ' ' .. tostring(err2)\n"
+        "a:setLayerMeshSpaceRotation('Nope', true)\n"
+        "a:setLayerMeshSpaceRotation('Nope', true)\n"
+        "msrUnknown = tostring(a:getLayerMeshSpaceRotation(7))\n"
         "local ok3, err3 = pcall(function() a:setLayerMeshSpaceRotation(1) end)\n"
         "msrError3 = tostring(ok3) .. ' ' .. tostring(err3)\n"), LUA_OK) << lua_tostring(L, -1);
     auto global = [&](const char* name){
@@ -1547,9 +1547,12 @@ TEST_F(Layers, MeshSpaceRotationFromLua){
         return value;
     };
     EXPECT_EQ(global("msrResult"), "false|true|true");
-    EXPECT_NE(global("msrError").find("false"), std::string::npos);
-    EXPECT_NE(global("msrError").find("no layer \"Nope\"; the layers are 0 \"Base Layer\", 1 \"Upper Body\""), std::string::npos) << global("msrError");
-    EXPECT_NE(global("msrError2").find("no layer 7"), std::string::npos) << global("msrError2");
+    EXPECT_EQ(global("msrUnknown"), "false");
+    const std::vector<std::string> warnings = animtest::takeWarnings();
+    EXPECT_EQ(std::count_if(warnings.begin(), warnings.end(), [](const std::string& line){
+        return line.find("unknown layer \"Nope\"") != std::string::npos; }), 1) << "warned once";
+    EXPECT_EQ(std::count_if(warnings.begin(), warnings.end(), [](const std::string& line){
+        return line.find("unknown layer \"7\"") != std::string::npos; }), 1);
     EXPECT_EQ(global("msrError3").rfind("false ", 0), 0u) << "a missing enabled is an error, as on the Animation Player: " << global("msrError3");
     EXPECT_NE(global("msrError3").find("boolean expected"), std::string::npos) << global("msrError3");
     ASSERT_TRUE(instance().layerMeshSpaceApplies(1));
