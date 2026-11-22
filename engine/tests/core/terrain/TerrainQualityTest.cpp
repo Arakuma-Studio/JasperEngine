@@ -216,14 +216,12 @@ TEST(TerrainLayerSelect, Continuity) {
         float shareA[LAYERS] = {};
         float shareB[LAYERS] = {};
         float sumA = 0.0f;
-        float sumB = 0.0f;
         for (int i = 0; i < sa.count; i++) {
             shareA[sa.layer[i]] = sa.weight[i];
             sumA += sa.weight[i];
         }
         for (int i = 0; i < sb.count; i++) {
             shareB[sb.layer[i]] = sb.weight[i];
-            sumB += sb.weight[i];
         }
         // the scale of the rule is (sum of all) / (sum of the kept above the next): the bound is two input
         // steps times it, for a pair of layers near that swap

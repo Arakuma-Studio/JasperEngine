@@ -28,12 +28,11 @@ namespace jasperengine::editor {
     class Project;
     struct SceneProject;
     class FoliageOpRunner;
-    class TerrainEditWindow;
     class TerrainWorldTreeEdit;
 
     class TerrainFoliagePanel {
     public:
-        TerrainFoliagePanel(Project* project, TerrainEditWindow* window);
+        explicit TerrainFoliagePanel(Project* project);
         ~TerrainFoliagePanel();
 
         // The rows above Paint Trees' own. Returns true when they are the whole tool (Place As: Tree)
@@ -99,7 +98,6 @@ namespace jasperengine::editor {
         terraincore::TreeRecord strokeTree(const TerrainTreePrototype& authored);
 
         Project* project;
-        TerrainEditWindow* window;
 
         int prototype = 0;
         bool placeAsTree = true;
@@ -120,7 +118,6 @@ namespace jasperengine::editor {
         bool strokeEraseSelectedOnly = false;
         uint64_t strokeId = 0;
         uint64_t nextStrokeId = 1;
-        uint32_t strokeSeed = 1;
         std::mt19937 random;
         float pendingTrees = 0.0f;
         int strokeChanged = 0;
