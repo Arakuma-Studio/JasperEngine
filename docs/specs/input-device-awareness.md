@@ -496,8 +496,8 @@ Each red control is recorded by running the test on the base commit first; the P
   the user-agent sheet, about sixty on the root), so all 246 elements computed their values again;
   RmlUi now leaves out the custom properties both definitions declare alike (fork patch IDA-1 in
   `docs/html-ui/FORK.md`), and a switch computes 87. The first switch now does the same work as the
-  later ones (the same definition, layout and allocation counts). Six quiet runs: the first switch
-  0.69-0.94 ms, a pointer switch 0.60-0.66 ms, a scheme switch 0.31-0.36 ms.
+  later ones (the same definition, layout and allocation counts). Twelve quiet runs: the first
+  switch 0.69-0.94 ms, a pointer switch 0.58-0.68 ms, a scheme switch 0.31-0.36 ms.
 - **AC16.** `GameWindowTest.InputSchemeMenu` is in `editor/tests/PlayStartupScenesTest.cpp` (it needs
   that file's play-session access) and drives `GameWindow::chooseInputScheme`, which the menu calls.
 - **AC17.** `InputSchemeEditorTest.OldScenesUnchanged` checks the three components' codecs (old values
