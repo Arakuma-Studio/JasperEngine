@@ -929,6 +929,15 @@ set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
 if(MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>)
 endif()
+# Lua is compiled as C and raises (lua_error, luaL_error, luaL_check*) with longjmp, which on MSVC
+# unwinds the C++ frames it crosses as an exception does. /EHsc lets the compiler assume an extern
+# "C" function never throws, so a binding that had made a C++ object kept no unwind state for its
+# call to a raising Lua function, and the longjmp ended the process or faulted (the Windows core
+# tests in ConsoleCommandsLua and DialogueLua, CI runs 45006454127 and 45028312069). /EHs without
+# c treats every extern "C" call as one that may throw.
+if(MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+    string(REPLACE "/EHsc" "/EHs" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+endif()
 
 option(JASPERENGINE_SHARED "Build jasperengine as a shared library" OFF)
 
