@@ -16,7 +16,7 @@
 #include <set>
 #include <sstream>
 #include <string_view>
-#include <unordered_map>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -761,6 +761,54 @@ std::vector<const BuildReportFile*> BuildReport::unreferenced() const{
     return out;
 }
 
+namespace {
+
+    // A report's files by key (the source asset, else the path), open-addressed in one array
+    // sized up front, iterated in the list's order: an unordered_map's node per file was a third of
+    // comparing two 20,000-file reports
+    class ReportKeyedFiles {
+    public:
+        struct Side { const BuildReportFile* file = nullptr; uint64_t bytes = 0; };
+        struct Entry { std::string_view key; Side side; };
+
+        explicit ReportKeyedFiles(const std::vector<BuildReportFile>& list){
+            size_t capacity = 16;
+            while (capacity < list.size() * 2) capacity <<= 1;
+            slots.assign(capacity, kEmpty);
+            mask = capacity - 1;
+            entries.reserve(list.size());
+            for (const BuildReportFile& file : list){
+                const std::string_view key = file.source.empty() ? std::string_view(file.path) : std::string_view(file.source);
+                size_t at = std::hash<std::string_view>()(key) & mask;
+                while (slots[at] != kEmpty && entries[slots[at]].key != key) at = (at + 1) & mask;
+                if (slots[at] == kEmpty){
+                    slots[at] = static_cast<uint32_t>(entries.size());
+                    entries.push_back({key, {}});
+                }
+                Side& side = entries[slots[at]].side;
+                if (!side.file) side.file = &file;
+                side.bytes += file.bytes;
+            }
+        }
+
+        const Side* find(std::string_view key) const{
+            for (size_t at = std::hash<std::string_view>()(key) & mask; slots[at] != kEmpty; at = (at + 1) & mask){
+                if (entries[slots[at]].key == key) return &entries[slots[at]].side;
+            }
+            return nullptr;
+        }
+
+        const std::vector<Entry>& all() const{ return entries; }
+
+    private:
+        static constexpr uint32_t kEmpty = 0xFFFFFFFFu;
+        std::vector<uint32_t> slots;
+        std::vector<Entry> entries;
+        size_t mask = 0;
+    };
+
+}
+
 BuildReportDiff jasperengine::editor::compareBuildReports(const BuildReport& base, const BuildReport& head){
     BuildReportDiff diff;
     diff.platformDiffers = base.platform != head.platform;
@@ -774,20 +822,10 @@ BuildReportDiff jasperengine::editor::compareBuildReports(const BuildReport& bas
     }
     // a cooked file's name changes with its content: its source asset is what stays the same (D2).
     // Keyed by views into the reports' own strings: nothing is copied but the changed rows
-    struct Side { const BuildReportFile* file = nullptr; uint64_t bytes = 0; };
-    using Keyed = std::unordered_map<std::string_view, Side>;
-    auto keyed = [](const std::vector<BuildReportFile>& list){
-        Keyed out;
-        out.reserve(list.size());
-        for (const BuildReportFile& file : list){
-            Side& side = out[file.source.empty() ? std::string_view(file.path) : std::string_view(file.source)];
-            if (!side.file) side.file = &file;
-            side.bytes += file.bytes;
-        }
-        return out;
-    };
-    const Keyed before = keyed(base.hasFiles ? base.files : base.largest);
-    const Keyed after = keyed(head.hasFiles ? head.files : head.largest);
+    using Side = ReportKeyedFiles::Side;
+    auto keyed = [](const std::vector<BuildReportFile>& list){ return ReportKeyedFiles(list); };
+    const ReportKeyedFiles before = keyed(base.hasFiles ? base.files : base.largest);
+    const ReportKeyedFiles after = keyed(head.hasFiles ? head.files : head.largest);
     auto row = [&](std::string_view key, const Side* from, const Side* to){
         const uint64_t a = from ? from->bytes : 0, b = to ? to->bytes : 0;
         if (from && to && a == b){ diff.unchanged++; return; }
@@ -803,21 +841,19 @@ BuildReportDiff jasperengine::editor::compareBuildReports(const BuildReport& bas
         diff.changes.push_back(std::move(change));
     };
     if (!diff.partial){
-        for (const auto& [key, side] : before){
-            const auto it = after.find(key);
-            row(key, &side, it == after.end() ? nullptr : &it->second);
-        }
-        for (const auto& [key, side] : after)
-            if (!before.count(key)) row(key, nullptr, &side);
+        for (const ReportKeyedFiles::Entry& entry : before.all())
+            row(entry.key, &entry.side, after.find(entry.key));
+        for (const ReportKeyedFiles::Entry& entry : after.all())
+            if (!before.find(entry.key)) row(entry.key, nullptr, &entry.side);
     } else {
         // a report without the list names its largest only: a file missing from a 25-row list may
         // still have shipped, smaller, so only the base's largest are compared
-        for (const auto& entry : keyed(base.largest)){
-            const std::string_view key = entry.first;
-            const auto from = before.find(key);
-            const auto to = after.find(key);
-            if (to == after.end() && !head.hasFiles) continue;
-            row(key, &from->second, to == after.end() ? nullptr : &to->second);
+        const ReportKeyedFiles largest = keyed(base.largest);
+        for (const ReportKeyedFiles::Entry& entry : largest.all()){
+            const Side* from = before.find(entry.key);
+            const Side* to = after.find(entry.key);
+            if (!to && !head.hasFiles) continue;
+            row(entry.key, from, to);
         }
     }
     std::sort(diff.changes.begin(), diff.changes.end(), [](const BuildReportChange& a, const BuildReportChange& b){

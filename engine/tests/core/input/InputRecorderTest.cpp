@@ -19,8 +19,11 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
+#include <limits>
 
 namespace jasperengine {
     // the frame counter Engine::systemDraw advances after the latch
@@ -465,6 +468,22 @@ TEST(StateHash, QuantizesBelowAThousandth){
     EXPECT_EQ(hashWith(1.0f), hashWith(1.0001f));
     EXPECT_NE(hashWith(1.0f), hashWith(1.002f));
     EXPECT_NE(hashState({}, ScriptJson{{"score", 10}}), hashState({}, ScriptJson{{"score", 11}}));
+    // 1/1024 steps rounded half away from zero, clamped to int32: std::round's results
+    auto reference = [](float v) {
+        const double scaled = std::round(static_cast<double>(v) * 1024.0);
+        if (!(scaled == scaled)) return int32_t(0);
+        return static_cast<int32_t>(std::clamp(scaled, -2147483648.0, 2147483647.0));
+    };
+    const float edges[] = {0.0f, -0.0f, 0.5f / 1024, -0.5f / 1024, 1.5f / 1024, -1.5f / 1024, 0.49999997f / 1024, 1.0f, -3.25f,
+        2097151.9f, 2097152.0f, -2097152.0f, -2097152.5f, 3e38f, -3e38f, std::numeric_limits<float>::infinity(),
+        -std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::denorm_min()};
+    for (float v : edges) EXPECT_EQ(quantizeState(v), reference(v)) << v;
+    uint32_t bits = 12345;
+    for (int i = 0; i < 100000; i++) {
+        bits = bits * 1664525u + 1013904223u;
+        const float v = static_cast<float>(static_cast<int32_t>(bits)) / 65536.0f / static_cast<float>(1 + (bits >> 28));
+        ASSERT_EQ(quantizeState(v), reference(v)) << v;
+    }
 }
 
 TEST(StateHashBench, Hash2000Transforms){

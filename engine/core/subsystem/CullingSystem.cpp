@@ -33,6 +33,7 @@
 #include "lua.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -547,10 +548,8 @@ void CullingSystem::evaluateGroups() {
     }
 }
 
-void CullingSystem::evaluateGroup(uint32_t slot, GroupSlot& group) {
-    (void)slot;
-    // the followed spheres where their GameObjects are now (one lookup each: a destroyed GameObject
-    // has no Transform left)
+void CullingSystem::updateFollows(GroupSlot& group) {
+    // one lookup each: a destroyed GameObject has no Transform left
     auto transforms = scene->getComponentArray<Transform>();
     for (size_t f = 0; f < group.follows.size();) {
         Follow& follow = group.follows[f];
@@ -575,15 +574,25 @@ void CullingSystem::evaluateGroup(uint32_t slot, GroupSlot& group) {
         group.z[follow.index] = position.z;
         f++;
     }
+}
+
+void CullingSystem::evaluateGroup(uint32_t slot, GroupSlot& group) {
+    (void)slot;
     const uint32_t count = static_cast<uint32_t>(group.x.size());
+    // a group evaluated on the workers reads its follows there, in the same chunks (R22: a serial
+    // lookup each was a third of a 10,000-sphere evaluation); the others first, here
+    const bool parallel = count > PARALLEL_THRESHOLD;
+    if (!parallel) updateFollows(group);
     group.events.clear();
     if (count == 0) return;
     const Vector3 reference = referenceOf(group);
     const bool anyCamera = group.targetCamera == NULL_ENTITY;
     evaluatedSpheres += count;
-    if (count > PARALLEL_THRESHOLD) {
+    if (parallel) {
         const size_t chunks = (count + PARALLEL_CHUNK - 1) / PARALLEL_CHUNK;
         if (group.chunkEvents.size() < chunks) group.chunkEvents.resize(chunks);
+        std::atomic<bool> gone{false};
+        std::atomic<bool>* follows = group.follows.empty() ? nullptr : &gone;
         jobs::ParallelForOptions options;
         // single-threaded (web, JE_ECS_SERIAL) or a test asking for it: every chunk on this thread
         if (!parallelEvaluation) options.maxHelpers = 0;
@@ -591,21 +600,56 @@ void CullingSystem::evaluateGroup(uint32_t slot, GroupSlot& group) {
             std::vector<CullingGroupEvent>& out = group.chunkEvents[chunk];
             out.clear();
             const uint32_t begin = static_cast<uint32_t>(chunk * PARALLEL_CHUNK);
-            evaluateRange(group, begin, std::min(count, begin + PARALLEL_CHUNK), reference, group.targetCamera, anyCamera, out);
+            evaluateRange(group, begin, std::min(count, begin + PARALLEL_CHUNK), reference, group.targetCamera, anyCamera, out, follows);
         }, options);
         for (size_t chunk = 0; chunk < chunks; chunk++) {
             group.events.insert(group.events.end(), group.chunkEvents[chunk].begin(), group.chunkEvents[chunk].end());
         }
+        // a destroyed GameObject's sphere was evaluated where it was, as it is from now on: the
+        // follow is dropped (and warned about) as before
+        if (gone.load(std::memory_order_relaxed)) updateFollows(group);
     } else {
         evaluateRange(group, 0, count, reference, group.targetCamera, anyCamera, group.events);
     }
 }
 
 void CullingSystem::evaluateRange(GroupSlot& group, uint32_t begin, uint32_t end, const Vector3& reference, Entity camera, bool anyCamera,
-                                  std::vector<CullingGroupEvent>& out) {
+                                  std::vector<CullingGroupEvent>& out, std::atomic<bool>* gone) {
+    // lookups only (nothing writes the Transforms meanwhile), each sphere written by its own chunk
+    if (gone) {
+        auto transforms = scene->getComponentArray<Transform>();
+        for (uint32_t i = begin; i < end; i++) {
+            const uint32_t follow = group.meta[i] >> 8;
+            if (follow == 0) continue;
+            const Follow& target = group.follows[follow - 1];
+            const Transform* transform = transforms->findComponent(target.entity);
+            if (!transform) {
+                gone->store(true, std::memory_order_relaxed);
+                continue;
+            }
+            const Vector3 position = transform->worldPosition + target.offset;
+            group.x[i] = position.x;
+            group.y[i] = position.y;
+            group.z[i] = position.z;
+        }
+    }
     const float* distances = group.distances.data();
     const uint32_t distanceCount = group.distanceCount;
     const float hysteresis = group.hysteresis;
+    // the cameras this group tests, chosen once (R22: a sphere call each, with a branch per plane,
+    // was most of the evaluation); more than a few take sphereVisible's loop
+    constexpr size_t kInlineCameras = 4;
+    const CameraPlanes* tested[kInlineCameras];
+    size_t testedCount = 0;
+    bool inlineCameras = true;
+    for (const CameraPlanes& planes : cameraPlanes) {
+        if (!planes.usable || (!anyCamera && planes.entity != camera)) continue;
+        if (testedCount == kInlineCameras) {
+            inlineCameras = false;
+            break;
+        }
+        tested[testedCount++] = &planes;
+    }
     for (uint32_t i = begin; i < end; i++) {
         const float dx = group.x[i] - reference.x, dy = group.y[i] - reference.y, dz = group.z[i] - reference.z;
         const float radius = group.r[i];
@@ -620,7 +664,23 @@ void CullingSystem::evaluateRange(GroupSlot& group, uint32_t begin, uint32_t end
             for (uint32_t k = 0; k < distanceCount; k++) outward += distance > distances[k] + hysteresis ? 1u : 0u;
             band = std::max(oldBand, outward);
         }
-        const bool visible = sphereVisible(Vector3(group.x[i], group.y[i], group.z[i]), radius, camera, anyCamera);
+        bool visible = false;
+        if (inlineCameras) {
+            const float x = group.x[i], y = group.y[i], z = group.z[i];
+            for (size_t c = 0; c < testedCount && !visible; c++) {
+                const CameraPlanes& planes = *tested[c];
+                // every plane tested, the results joined without a branch (the same as stopping at
+                // the first plane that fails); the far plane passes when the camera has none
+                bool inside = true;
+                for (int p = 0; p < 6; p++) {
+                    const bool in = planes.nx[p] * x + planes.ny[p] * y + planes.nz[p] * z + planes.d[p] >= -radius;
+                    inside &= in || (p == 1 && planes.skipFar);
+                }
+                visible = inside;
+            }
+        } else {
+            visible = sphereVisible(Vector3(group.x[i], group.y[i], group.z[i]), radius, camera, anyCamera);
+        }
         const uint32_t state = band | (visible ? VISIBLE_BIT : 0u);
         if (state != old) {
             CullingGroupEvent event;

@@ -14,6 +14,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <string>
@@ -237,14 +238,15 @@ TEST(PerfSamplerBench, FrameCost){
     sample.cpuMs = 9.0f;
     const auto now = Clock::now();
     constexpr int frames = 2000000;
-    volatile uint32_t sink = 0;
 
-    // off: the one branch FrameTimes takes
+    // off: the one branch FrameTimes takes. The fence makes each frame read the flag again without
+    // adding work of its own: a volatile counter here was a store-to-load chain of ~5 cycles, 2.4 ns
+    // on the 2.4 GHz benchmark box, more than the budget whatever the branch cost
     auto start = Clock::now();
     for (int i = 0; i < frames; i++){
         if (PerfSampler::isActive())
             PerfSampler::onFrame(sample, now);
-        sink = sink + 1;
+        std::atomic_signal_fence(std::memory_order_seq_cst);
     }
     const double offNs = std::chrono::duration<double, std::nano>(Clock::now() - start).count() / frames;
 

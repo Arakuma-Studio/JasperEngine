@@ -12,6 +12,10 @@
 // - Keys (R3): a line `<ns>.<node>`, a variant `<ns>.<node>.<vid>`, an option `<ns>.<node>.<oid>`.
 // - compile() never refuses a graph: a node whose expression does not parse gets an empty one (the
 //   lint reports it, bad-expression); an unknown node type ends the conversation there.
+// - Cooked (R16): an export ships each `.dialogue` as its compiled program's bytes under the same
+//   path (cook()), which a game reads without parsing JSON or compiling (fromCooked(): bounds,
+//   indexes and every expression's stack checked, so a damaged file is refused, never run). The
+//   editor keeps the JSON; Programs reads either.
 // - Programs: the runtime's cache of loaded dialogues by path (FileData rules), reloaded when a file
 //   changes (the editor's hot reload in Play); listeners hear each reload.
 // - Thread-safety: a compiled program is immutable; the cache belongs to the main thread.
@@ -82,6 +86,14 @@ namespace jasperengine::dialogue {
     public:
         // `path`: what the runtime loads it by (and what a jump names); `issues` gets compile problems
         static std::shared_ptr<const Program> compile(const graph::Graph& graph, const std::string& path, std::vector<graph::Issue>* issues = nullptr);
+        // The cooked file: COOKED_MAGIC, a version, then every field (not the path, which is what the
+        // game loads it by). Equal programs give equal bytes.
+        std::string cook() const;
+        static bool isCooked(std::string_view bytes);
+        // null with `error` when the bytes are not a whole, consistent cooked program of this version
+        static std::shared_ptr<const Program> fromCooked(std::string_view bytes, const std::string& path, std::string* error = nullptr);
+        static constexpr char COOKED_MAGIC[4] = {'J', 'D', 'L', 'G'};
+        static constexpr uint32_t COOKED_VERSION = 1;
 
         std::string_view str(StrRef ref) const { return std::string_view(strings).substr(ref.offset, ref.length); }
         std::string_view nodeId(int index) const { return str(nodes[static_cast<size_t>(index)].id); }
@@ -135,7 +147,8 @@ namespace jasperengine::dialogue {
 
         // the dialogue at `path` (cached); null with `error` when it does not load
         static std::shared_ptr<const Program> load(const std::string& path, std::string* error = nullptr);
-        // a compiled program from text under that path (tests, the editor's walker)
+        // a compiled program from a file's bytes under that path, the JSON or the cooked form (tests,
+        // the editor's walker)
         static std::shared_ptr<const Program> fromText(const std::string& path, std::string_view text, std::string* error = nullptr);
         // a file changed (an absolute or asset path): every cached program of it recompiles and the
         // listeners hear it; true when one was cached

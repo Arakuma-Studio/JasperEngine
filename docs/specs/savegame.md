@@ -681,3 +681,10 @@ without the change because the code it calls does not exist, plus the specific r
   ok`; `Documents/saves` held `big.g1.jsave` and `slot1.g1.jsave`; a SIGKILL, then the relaunch read
   `savegame: read ok gen 1`). Step 5 needs a game that saves in `onApplicationPause` (the test project
   does not), step 6 a nearly full disk, step 7 the dev console: not run.
+- **D-m R27/R28 on box A.** Encoding 10,000 entries took 3.4-3.7 ms and decoding them 3.8-4.0 ms on
+  box A (a 2.4 GHz Haswell). The encoder now keeps each pair on the Lua stack from `lua_next` (a table
+  too big for the stack looks its values up as before), sorts keys by an 8-byte prefix first and
+  reuses its key lists; the decoder holds a table's array values on the stack until it has read the
+  pair count, so the table is made with both parts sized. Six runs: encode 2.43-2.65 ms and 2.98
+  in one, decode 3.12-3.53 ms. The bytes are the same; the order `pairs` visits a decoded table in may differ from
+  before (Lua never specified it; the same bytes give the same order).

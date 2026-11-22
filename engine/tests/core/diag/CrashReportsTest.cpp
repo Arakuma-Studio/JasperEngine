@@ -299,11 +299,15 @@ namespace {
 
     std::vector<uint8_t> captured;
     int capturedWidth = 0, capturedHeight = 0;
+    // the stand-in readback's own time: R31 budgets the capture beyond it
+    double readbackMs = 0.0;
 
     bool readCaptured(std::vector<uint8_t>& rgba, int& width, int& height, std::string&) {
+        const auto start = std::chrono::steady_clock::now();
         rgba = captured;
         width = capturedWidth;
         height = capturedHeight;
+        readbackMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
         return true;
     }
 
@@ -443,7 +447,9 @@ TEST(CrashUserBench, CreateReportWrites) {
     diag::userreport::beforeCaptureFrame();
     const auto captureStart = std::chrono::steady_clock::now();
     diag::userreport::frameDrawn(&readCaptured);
-    const double captureMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - captureStart).count();
+    // R31: the main thread's share beyond the readback's wait (here a copy of the frame), which
+    // the capture's log line reports on its own
+    const double captureMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - captureStart).count() - readbackMs;
     ASSERT_TRUE(pumpUntil(called));
     diag::userreport::reset();
     const auto encodeStart = std::chrono::steady_clock::now();
@@ -451,8 +457,8 @@ TEST(CrashUserBench, CreateReportWrites) {
     const double encodeMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - encodeStart).count();
     EXPECT_EQ(encoded.width, 1280);
 
-    std::printf("[bench] User report: createReport %.2f ms, capture main thread %.2f ms (+ the readback), encode 1920x1080 -> 1280x720 %.1f ms\n",
-                createMs, captureMs, encodeMs);
+    std::printf("[bench] User report: createReport %.2f ms, capture main thread %.2f ms (+ the readback, %.2f ms), encode 1920x1080 -> 1280x720 %.1f ms\n",
+                createMs, captureMs, readbackMs, encodeMs);
     const double slack = testsupport::perfSlack();
     if (slack > 0.0) {
         EXPECT_LE(createMs, 10.0 * slack) << "R14";

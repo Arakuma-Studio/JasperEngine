@@ -13,6 +13,7 @@
 #include "titleart/TitleArtExport.h"
 #include "localization/StringTableCook.h"
 #include "dialogue/DialogueEditor.h"
+#include "dialogue/DialogueProgram.h"
 #include "dialogue/DialogueVariables.h"
 #include "titleart/three_d/Title3DExport.h"
 #include "titleart/runtime/TitleArtRuntimeExport.h"
@@ -4316,6 +4317,15 @@ bool editor::Exporter::copyAssets() {
         // is, so the game logs the same error the editor does
         if (Util::isColorLutFile(entry.path().string()) && cookColorLut(entry.path(), destPath)) return TreeStep::Skip;
 
+        // A dialogue ships cooked (dialogue-graphs.md R16): its compiled program at the same path,
+        // which the game reads without parsing JSON. One that does not load ships as it is, so the
+        // game logs the same error the editor does
+        if (Util::isDialogueFile(entry.path().string())) {
+            std::string why;
+            if (cookDialogue(entry.path(), destPath, relPath.generic_string(), why)) return TreeStep::Skip;
+            Out::warning("%s ships uncooked: %s", relPath.generic_string().c_str(), why.c_str());
+        }
+
         // A bitmap font ships cooked (S51 R34): <name>.jfont next to where it was, which the game
         // loads in its place; one that does not load ships as it is (the game logs its error)
         if (Util::isBitmapFontFile(entry.path().string()) && cookBitmapFont(relPath, destPath)) return TreeStep::Skip;
@@ -4466,6 +4476,27 @@ bool editor::Exporter::copyPngWithoutEditorChunks(const fs::path& source, const 
     options.skipIfUnchanged = true;     // a re-export keeps the build cache's file time
     if (!io::writeFileAtomic(destination, std::string_view(reinterpret_cast<const char*>(shipped.data()), shipped.size()), options).ok()) {
         return false;   // copied as it is instead
+    }
+    return true;
+}
+
+bool editor::Exporter::cookDialogue(const fs::path& source, const fs::path& destination, const std::string& assetPath, std::string& error) {
+    std::ifstream in(source, std::ios::binary);
+    std::ostringstream text;
+    text << in.rdbuf();
+    if (!in) {
+        error = "it could not be read";
+        return false;
+    }
+    // the asset path: a namespace left to the file's stem comes out as the editor's
+    const std::shared_ptr<const dialogue::Program> program = dialogue::Programs::fromText(assetPath, text.str(), &error);
+    if (!program) return false;
+    io::AtomicWriteOptions options;
+    options.skipIfUnchanged = true;     // a re-export keeps the build cache's file time
+    const io::WriteResult written = io::writeFileAtomic(destination, program->cook(), options);
+    if (!written.ok()) {
+        error = written.message;
+        return false;
     }
     return true;
 }

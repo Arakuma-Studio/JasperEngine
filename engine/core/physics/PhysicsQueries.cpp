@@ -435,12 +435,32 @@ namespace {
                 leaf.CollideShape(query, JPH::Vec3::sReplicate(1.0f), queryTransform, settings, JPH::RVec3::sZero(), any);
                 hit = any.found;
             }
-            if (!hit){
+            return hit ? record(collider, leaf.GetCenterOfMassTransform().GetTranslation()) : true;
+        }
+
+        // A body whose shape is one convex shape (most bodies: one collider at its origin), tested
+        // in place under the read lock that keeps the shape alive: the TransformedShape copies a
+        // leaf takes cost six atomic reference counts a body, more than the test. The same
+        // transform and the same decision as testLeaf.
+        bool testConvexBody(const JPH::ConvexShape& shape, JPH::Mat44Arg centerOfMass){
+            if (!out && found){
+                return false;
+            }
+            const uint32_t collider = (uint32_t)shape.GetSubShapeUserData(JPH::SubShapeID());
+            if (hasCollider(collider)){
                 return true;
             }
+            if (!convexOverlap3D(*query, *querySupport, queryInverse, shape, JPH::Vec3::sReplicate(1.0f), centerOfMass, settings.mCollisionTolerance)){
+                return true;
+            }
+            return record(collider, centerOfMass.GetTranslation());
+        }
+
+        // a collider found: false to stop (a check is answered)
+        bool record(uint32_t collider, JPH::Vec3Arg point){
             found = true;
             if (points && pointCount < PhysicsQueryDebug::MAX_HIT_POINTS){
-                points[pointCount++] = fromJolt3(leaf.GetCenterOfMassTransform().GetTranslation());
+                points[pointCount++] = fromJolt3(point);
             }
             if (!out){
                 return false;
@@ -479,6 +499,17 @@ namespace {
                 }
                 const JPH::Body& body = lock.GetBody();
                 if (!owner.bodyFilter.ShouldCollideLocked(body)){
+                    return;
+                }
+                const JPH::Shape* shape = body.GetShape();
+                if (shape->GetType() == JPH::EShapeType::Convex){
+                    owner.entity = PhysicsCallbacks::bodyEntity(body.GetUserData());
+                    owner.sensor = body.IsSensor();
+                    owner.bodyShape = shape;
+                    owner.bodyFirstHit = owner.out ? owner.out->size() : 0;
+                    if (!owner.testConvexBody(static_cast<const JPH::ConvexShape&>(*shape), body.GetCenterOfMassTransform())){
+                        ForceEarlyOut();
+                    }
                     return;
                 }
                 const JPH::TransformedShape transformed = body.GetTransformedShape();

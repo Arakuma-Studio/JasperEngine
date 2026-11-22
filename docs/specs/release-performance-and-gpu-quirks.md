@@ -499,3 +499,8 @@ NVIDIA lane, `tools/mcp/gpu_lane.json` class `gpu`). The web gate extends a gate
 13. **`get_device_info`'s description** adds "driver, GPU quirks" (three words).
 14. **AC25** (the eval run) was not run by the implementer: it needs lent Orquester accounts; the
    case is in `tools/mcp/eval/cases.py` (`bad_frame_waits_not_computes`).
+15. **AC8's off frame.** `PerfSamplerBench.FrameCost` runs its off loop with a compiler fence
+   (`std::atomic_signal_fence`) where it had a `volatile` counter: the counter's store-to-load chain
+   alone took 2.37-2.62 ns a frame on box A (a 2.4 GHz Haswell), over R28's 2 ns whatever the branch
+   cost. The fence still makes each frame read the flag; the off frame measures 0.41-0.46 ns there
+   (six runs, `JASPER_TEST_PERF_SLACK=1`), the on frame 12.4-13.6 ns.

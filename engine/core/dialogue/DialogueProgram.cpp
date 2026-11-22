@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <filesystem>
 #include <map>
 
@@ -132,6 +133,125 @@ namespace {
         if (data.open(path.c_str()) != FileErrors::FILEDATA_OK) return false;
         out = data.readString();
         return true;
+    }
+
+    // ---- the cooked form: little-endian fixed-width fields, strings as a u32 length and bytes
+
+    struct DialogueCookWriter {
+        std::string out;
+
+        void u8(uint8_t v) { out.push_back(static_cast<char>(v)); }
+        void u16(uint16_t v) { u8(static_cast<uint8_t>(v)); u8(static_cast<uint8_t>(v >> 8)); }
+        void u32(uint32_t v) { for (int i = 0; i < 4; i++) u8(static_cast<uint8_t>(v >> (8 * i))); }
+        void i32(int32_t v) { u32(static_cast<uint32_t>(v)); }
+        void u64(uint64_t v) { for (int i = 0; i < 8; i++) u8(static_cast<uint8_t>(v >> (8 * i))); }
+        void str(std::string_view text) { u32(static_cast<uint32_t>(text.size())); out.append(text.data(), text.size()); }
+        void ref(StrRef r) { u32(r.offset); u32(r.length); }
+        void expr(Expr e) { u32(e.first); u32(e.count); }
+        void value(const Value& v) {
+            u8(static_cast<uint8_t>(v.index()));
+            if (v.isBool()) u8(v.asBool() ? 1 : 0);
+            else if (v.isNumber()) { uint64_t bits; const double d = v.asNumber(); std::memcpy(&bits, &d, sizeof(bits)); u64(bits); }
+            else if (v.isString()) str(v.asString());
+        }
+    };
+
+    struct DialogueCookReader {
+        const unsigned char* at;
+        const unsigned char* end;
+        bool ok = true;
+
+        size_t left() const { return static_cast<size_t>(end - at); }
+        bool take(size_t n) {
+            if (!ok || left() < n) return ok = false;
+            return true;
+        }
+        uint8_t u8() { if (!take(1)) return 0; return *at++; }
+        uint16_t u16() { if (!take(2)) return 0; const uint16_t v = static_cast<uint16_t>(at[0] | at[1] << 8); at += 2; return v; }
+        uint32_t u32() {
+            if (!take(4)) return 0;
+            const uint32_t v = static_cast<uint32_t>(at[0]) | static_cast<uint32_t>(at[1]) << 8 | static_cast<uint32_t>(at[2]) << 16 | static_cast<uint32_t>(at[3]) << 24;
+            at += 4;
+            return v;
+        }
+        int32_t i32() { return static_cast<int32_t>(u32()); }
+        uint64_t u64() { const uint64_t low = u32(); return low | static_cast<uint64_t>(u32()) << 32; }
+        void str(std::string& out) {
+            const uint32_t n = u32();
+            if (!take(n)) return;
+            out.assign(reinterpret_cast<const char*>(at), n);
+            at += n;
+        }
+        StrRef ref() { StrRef r; r.offset = u32(); r.length = u32(); return r; }
+        Expr expr() { Expr e; e.first = u32(); e.count = u32(); return e; }
+        Value value() {
+            switch (u8()) {
+                case 0: return Value();
+                case 1: return Value(u8() != 0);
+                case 2: { const uint64_t bits = u64(); double d; std::memcpy(&d, &bits, sizeof(d)); return Value(d); }
+                case 3: { std::string text; str(text); return Value(std::move(text)); }
+                default: ok = false; return Value();
+            }
+        }
+        // a count of records of at least `minBytes` each: never more than the bytes left could hold
+        uint32_t count(size_t minBytes) {
+            const uint32_t n = u32();
+            if (ok && static_cast<uint64_t>(n) * minBytes > left()) ok = false;
+            return ok ? n : 0;
+        }
+    };
+
+    // An expression the evaluator can run without reading outside its pool or its stack: operands
+    // in range, jumps forward inside it, and every instruction finding the values it pops (a jump's
+    // target sees the depth the fall-through brings)
+    bool cookedExprValid(const ExprPool& pool, Expr expr) {
+        if (static_cast<uint64_t>(expr.first) + expr.count > pool.code.size()) return false;
+        std::vector<int64_t> arriving(static_cast<size_t>(expr.count) + 1, -1);
+        int64_t depth = 0;
+        for (uint32_t pc = 0; pc < expr.count; pc++) {
+            if (arriving[pc] >= 0 && arriving[pc] != depth) return false;
+            const Instr& instr = pool.code[expr.first + pc];
+            auto needs = [&](int64_t n) { return depth >= n; };
+            switch (instr.op) {
+                case Op::Const:
+                    if (instr.operand >= pool.constants.size()) return false;
+                    depth++;
+                    break;
+                case Op::Var: case Op::Arg: case Op::Visited: case Op::Visits:
+                    if (instr.operand >= pool.names.size()) return false;
+                    depth++;
+                    break;
+                case Op::Random:
+                    depth++;
+                    break;
+                case Op::Not: case Op::Neg: case Op::Truthy: case Op::Chance:
+                    if (!needs(1)) return false;
+                    break;
+                case Op::Eq: case Op::Ne: case Op::Lt: case Op::Le: case Op::Gt: case Op::Ge:
+                case Op::Add: case Op::Sub: case Op::Mul: case Op::Div:
+                    if (!needs(2)) return false;
+                    depth--;
+                    break;
+                case Op::JumpIfFalse: case Op::JumpIfTrue:
+                    if (!needs(1) || instr.operand <= pc || instr.operand > expr.count) return false;
+                    if (arriving[instr.operand] >= 0 && arriving[instr.operand] != depth) return false;
+                    arriving[instr.operand] = depth;
+                    depth--;
+                    break;
+                case Op::CallCondition: case Op::CallAction:
+                    if (instr.operand >= pool.calls.size() || !needs(instr.argc)) return false;
+                    depth -= instr.argc;
+                    if (instr.op == Op::CallCondition) depth++;
+                    break;
+                case Op::Assign: case Op::AssignAdd: case Op::AssignSub:
+                    if (instr.operand >= pool.names.size() || !needs(1)) return false;
+                    depth--;
+                    break;
+                default:
+                    return false;
+            }
+        }
+        return arriving[expr.count] < 0 || arriving[expr.count] == depth;
     }
 
 }
@@ -335,6 +455,214 @@ size_t Program::textBytes() const {
     return bytes;
 }
 
+// ------------------------------------------------------------------ cooked
+
+std::string Program::cook() const {
+    DialogueCookWriter w;
+    w.out.reserve(64 + strings.size() + nodes.size() * 64 + options.size() * 52 + exprs.code.size() * 6);
+    w.out.append(COOKED_MAGIC, sizeof(COOKED_MAGIC));
+    w.u32(COOKED_VERSION);
+    w.str(guid);
+    w.str(ns);
+    w.str(sourceLanguage);
+    w.str(strings);
+    w.u32(static_cast<uint32_t>(nodes.size()));
+    for (const ProgramNode& node : nodes) {
+        w.u8(static_cast<uint8_t>(node.kind));
+        w.u8(static_cast<uint8_t>(node.variantMode));
+        w.u8(node.wait ? 1 : 0);
+        w.i32(node.next);
+        w.i32(node.alt);
+        w.ref(node.id);
+        w.ref(node.a);
+        w.ref(node.b);
+        w.ref(node.text);
+        w.ref(node.voice);
+        w.expr(node.expr);
+        w.u32(node.variantsFirst);
+        w.u16(node.variantsCount);
+        w.u32(node.optionsFirst);
+        w.u16(node.optionsCount);
+        w.u32(node.tagsFirst);
+        w.u16(node.tagsCount);
+    }
+    w.u32(static_cast<uint32_t>(options.size()));
+    for (const ProgramOption& option : options) {
+        w.ref(option.id);
+        w.ref(option.text);
+        w.ref(option.style);
+        w.expr(option.condition);
+        w.expr(option.action);
+        w.i32(option.target);
+        w.u32(option.tagsFirst);
+        w.u16(option.tagsCount);
+        w.u8(option.once ? 1 : 0);
+        w.u8(option.disable ? 1 : 0);
+    }
+    w.u32(static_cast<uint32_t>(variants.size()));
+    for (const ProgramVariant& variant : variants) {
+        w.ref(variant.id);
+        w.ref(variant.text);
+    }
+    w.u32(static_cast<uint32_t>(tags.size()));
+    for (const StrRef& tag : tags) w.ref(tag);
+    w.u32(static_cast<uint32_t>(entries.size()));
+    for (const auto& [name, index] : entries) {
+        w.ref(name);
+        w.i32(index);
+    }
+    w.u32(static_cast<uint32_t>(defaults.size()));
+    for (const auto& [name, value] : defaults) {
+        w.str(name);
+        w.value(value);
+    }
+    w.u32(static_cast<uint32_t>(variablesUsed.size()));
+    for (const std::string& name : variablesUsed) w.str(name);
+    w.u32(static_cast<uint32_t>(exprs.code.size()));
+    for (const Instr& instr : exprs.code) {
+        w.u8(static_cast<uint8_t>(instr.op));
+        w.u8(instr.argc);
+        w.u32(instr.operand);
+    }
+    w.u32(static_cast<uint32_t>(exprs.constants.size()));
+    for (const Value& value : exprs.constants) w.value(value);
+    w.u32(static_cast<uint32_t>(exprs.names.size()));
+    for (const std::string& name : exprs.names) w.str(name);
+    w.u32(static_cast<uint32_t>(exprs.calls.size()));
+    for (const CallSite& call : exprs.calls) {
+        w.str(call.prefix);
+        w.str(call.verb);
+    }
+    return std::move(w.out);
+}
+
+bool Program::isCooked(std::string_view bytes) {
+    return bytes.size() >= sizeof(COOKED_MAGIC) && std::memcmp(bytes.data(), COOKED_MAGIC, sizeof(COOKED_MAGIC)) == 0;
+}
+
+std::shared_ptr<const Program> Program::fromCooked(std::string_view bytes, const std::string& path, std::string* error) {
+    auto refuse = [&](const std::string& why) -> std::shared_ptr<const Program> {
+        if (error) *error = path + " is not a cooked dialogue: " + why;
+        return nullptr;
+    };
+    if (!isCooked(bytes)) return refuse("no cooked header");
+    DialogueCookReader r{reinterpret_cast<const unsigned char*>(bytes.data()) + sizeof(COOKED_MAGIC),
+                         reinterpret_cast<const unsigned char*>(bytes.data()) + bytes.size()};
+    const uint32_t version = r.u32();
+    if (r.ok && version != COOKED_VERSION) {
+        return refuse("version " + std::to_string(version) + ", this game reads " + std::to_string(COOKED_VERSION) + " (export the game again)");
+    }
+    auto program = std::make_shared<Program>();
+    program->path = path;
+    r.str(program->guid);
+    r.str(program->ns);
+    r.str(program->sourceLanguage);
+    r.str(program->strings);
+
+    program->nodes.resize(r.count(77));
+    for (ProgramNode& node : program->nodes) {
+        node.kind = static_cast<NodeKind>(r.u8());
+        node.variantMode = static_cast<VariantMode>(r.u8());
+        node.wait = r.u8() != 0;
+        node.next = r.i32();
+        node.alt = r.i32();
+        node.id = r.ref();
+        node.a = r.ref();
+        node.b = r.ref();
+        node.text = r.ref();
+        node.voice = r.ref();
+        node.expr = r.expr();
+        node.variantsFirst = r.u32();
+        node.variantsCount = r.u16();
+        node.optionsFirst = r.u32();
+        node.optionsCount = r.u16();
+        node.tagsFirst = r.u32();
+        node.tagsCount = r.u16();
+    }
+    program->options.resize(r.count(52));
+    for (ProgramOption& option : program->options) {
+        option.id = r.ref();
+        option.text = r.ref();
+        option.style = r.ref();
+        option.condition = r.expr();
+        option.action = r.expr();
+        option.target = r.i32();
+        option.tagsFirst = r.u32();
+        option.tagsCount = r.u16();
+        option.once = r.u8() != 0;
+        option.disable = r.u8() != 0;
+    }
+    program->variants.resize(r.count(16));
+    for (ProgramVariant& variant : program->variants) {
+        variant.id = r.ref();
+        variant.text = r.ref();
+    }
+    program->tags.resize(r.count(8));
+    for (StrRef& tag : program->tags) tag = r.ref();
+    program->entries.resize(r.count(12));
+    for (auto& [name, index] : program->entries) {
+        name = r.ref();
+        index = r.i32();
+    }
+    program->defaults.resize(r.count(5));
+    for (auto& [name, value] : program->defaults) {
+        r.str(name);
+        value = r.value();
+    }
+    program->variablesUsed.resize(r.count(4));
+    for (std::string& name : program->variablesUsed) r.str(name);
+    ExprPool& pool = program->exprs;
+    pool.code.resize(r.count(6));
+    for (Instr& instr : pool.code) {
+        instr.op = static_cast<Op>(r.u8());
+        instr.argc = r.u8();
+        instr.operand = r.u32();
+    }
+    pool.constants.resize(r.count(1));
+    for (Value& value : pool.constants) value = r.value();
+    pool.names.resize(r.count(4));
+    for (std::string& name : pool.names) r.str(name);
+    pool.calls.resize(r.count(8));
+    for (CallSite& call : pool.calls) {
+        r.str(call.prefix);
+        r.str(call.verb);
+        call.name = call.prefix + "." + call.verb;
+    }
+    if (!r.ok) return refuse("it ends early or a count is too large");
+    if (r.left() != 0) return refuse(std::to_string(r.left()) + " bytes after its end");
+
+    // everything the runner indexes with, checked once here so it never reads outside the program
+    const size_t stringBytes = program->strings.size();
+    auto refOk = [stringBytes](StrRef ref) { return static_cast<uint64_t>(ref.offset) + ref.length <= stringBytes; };
+    const int64_t nodeCount = static_cast<int64_t>(program->nodes.size());
+    auto targetOk = [nodeCount](int32_t target) { return target >= -1 && target < nodeCount; };
+    auto rangeOk = [](uint32_t first, uint32_t count, size_t size) { return static_cast<uint64_t>(first) + count <= size; };
+    for (const ProgramNode& node : program->nodes) {
+        if (node.kind > NodeKind::Unknown || node.variantMode > VariantMode::Once || !targetOk(node.next) || !targetOk(node.alt) ||
+            !refOk(node.id) || !refOk(node.a) || !refOk(node.b) || !refOk(node.text) || !refOk(node.voice) || !cookedExprValid(pool, node.expr) ||
+            !rangeOk(node.variantsFirst, node.variantsCount, program->variants.size()) ||
+            !rangeOk(node.optionsFirst, node.optionsCount, program->options.size()) || !rangeOk(node.tagsFirst, node.tagsCount, program->tags.size())) {
+            return refuse("a node is inconsistent");
+        }
+    }
+    for (const ProgramOption& option : program->options) {
+        if (!refOk(option.id) || !refOk(option.text) || !refOk(option.style) || !targetOk(option.target) || !cookedExprValid(pool, option.condition) ||
+            !cookedExprValid(pool, option.action) || !rangeOk(option.tagsFirst, option.tagsCount, program->tags.size())) {
+            return refuse("an option is inconsistent");
+        }
+    }
+    for (const ProgramVariant& variant : program->variants) {
+        if (!refOk(variant.id) || !refOk(variant.text)) return refuse("a variant is inconsistent");
+    }
+    for (const StrRef& tag : program->tags) {
+        if (!refOk(tag)) return refuse("a tag is inconsistent");
+    }
+    for (const auto& [name, index] : program->entries) {
+        if (!refOk(name) || index < 0 || index >= nodeCount) return refuse("an entry is inconsistent");
+    }
+    return program;
+}
+
 // ------------------------------------------------------------------ keys
 
 std::vector<SourceEntry> jasperengine::dialogue::sourceEntries(const graph::Graph& graph) {
@@ -377,6 +705,8 @@ std::string jasperengine::dialogue::namespaceOf(const graph::Graph& graph, std::
 // ------------------------------------------------------------------ cache
 
 std::shared_ptr<const Program> Programs::fromText(const std::string& path, std::string_view text, std::string* error) {
+    // an exported game's file (no JSON starts with the magic)
+    if (Program::isCooked(text)) return Program::fromCooked(text, path, error);
     graph::LoadReport report;
     const graph::Graph graph = graph::load(text, report);
     if (!report.ok) {

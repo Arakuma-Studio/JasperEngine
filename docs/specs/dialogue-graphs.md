@@ -558,14 +558,20 @@ handler checks; error names the fix).
   (each one undo step; ids and wires kept) rather than by dragging the rows.
 - **D-14 Create > Dialogue (R22).** The item sits in the Project window's Create menu directly (not in
   the catalog's `assets.create.*` commands).
-- **D-15 Load budget (R16, AC13).** Measured on the shared Linux build host (RelWithDebInfo, loaded):
-  the 500-node dialogue compiles in 2.7 ms, inside the 3 ms desktop budget, but the JSON parse
-  before it (the generic graph model's `graph::load` on nlohmann JSON, 370 KB of text) takes
-  17-24 ms; `DialogueBench.Load500` prints both and enforces the budget on the whole load only under
-  `perfSlack()`. A compiled program holds 134 bytes per node (its record and its share of strings
-  and expressions) plus 52 bytes per option and 16 per variant record, beside the source texts; the
-  test checks the 160-byte node budget on the former. Faster loading needs a cooked binary form of
-  the graph, which no graph kind has yet.
+- **D-15 Load budget (R16, AC13).** A game loads the dialogue the export cooks in place of its JSON,
+  at the same path: the compiled program as bytes (`Program::cook`), which `Programs::load` reads
+  through `Program::fromCooked` without parsing or compiling (every string reference, node index and
+  range checked, and each expression's stack simulated, so a damaged file is refused, never run;
+  `DialogueRunnerTest.CookedFilePlaysAsItsSource`, `CookedFileRefusesDamage`). On box A
+  (RelWithDebInfo, `JASPER_TEST_PERF_SLACK=1`, six runs) the 500-node dialogue loads in
+  0.23-0.28 ms, inside the 3 ms desktop budget; the editor keeps the JSON, whose parse into the
+  generic graph model (`graph::load` on nlohmann JSON, 370 KB of text) and compile take about 43 ms
+  and 5 ms there. `DialogueBench.Load500` prints both and enforces R16 on the cooked load. A cooked
+  file names its format version (a game refuses another one: "export the game again"), and a game
+  still reads a JSON `.dialogue`, so earlier exports keep working; a file that does not compile ships
+  as it is, so the game logs the editor's error. A compiled program holds 134 bytes per node (its
+  record and its share of strings and expressions) plus 52 bytes per option and 16 per variant
+  record, beside the source texts; the test checks the 160-byte node budget on the former.
 - **D-16 Saving in one call (R5, savegame.md).** Beside `toTable()`/`fromTable(t)`,
   `Dialogue.variables.save(slot, options?)` and `load(slot, options?)` write and read the store as
   the SaveGame namespace `dialogue` (through `SaveGame.write`/`read`, so migrations, callbacks and
