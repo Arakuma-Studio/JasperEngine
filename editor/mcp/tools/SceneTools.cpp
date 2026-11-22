@@ -2260,9 +2260,9 @@ void registerSceneTools(McpRegistry& registry) {
         tool.title = "Set Scene Settings";
         tool.description =
             "Set scene settings {name: value} (names and shapes: get_scene_settings). post_process replaces "
-            "the pass list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": "
-            "[0.5,0,0,0]}}]. post_processing {field: value} sets the fields named (null resets all); extract_sun "
-            "{remove_sun_disc} creates or aligns the main Directional Light to the skybox HDR's sun. One undo step per call.";
+            "the pass list: [{\"shader\":\"shaders/MyPost\",\"enabled\":true,\"uniforms\":{\"strength\":"
+            "[0.5,0,0,0]}}]. post_processing {field: value} sets the fields named (null resets all); extract_sun: a "
+            "Directional Light from the skybox HDR's sun; one undo step per call.";
         tool.inputSchema = object({{"scene", sceneRef()}, {"settings", anyObject("")}, {"extract_sun", anyObject("")}});
         tool.annotations.idempotent = true;
         tool.handler = setSceneSettingsTool;
