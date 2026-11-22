@@ -38,7 +38,9 @@ namespace {
     constexpr const char* kRememberKey = "jasper.language";
     constexpr const char* kPseudoAccented = "en-XA";
     constexpr const char* kPseudoRtl = "ar-XB";
+#if JASPERENGINE_L10N_CAPTURE
     constexpr size_t kRingSize = 1024;
+#endif
 
     struct LoadedNamespace {
         LocalizationNamespace info;
