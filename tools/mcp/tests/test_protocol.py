@@ -120,7 +120,21 @@ FAULT_CASES = [("out_of_range", "logic_error: vector"), ("invalid_argument", "lo
 
 
 async def test_errors_suggest_names_and_advise_faults():
-    async with Editor(create=True, name="MCP Errors", env={"JASPER_MCP_SELFTEST_GROUP": "1"}) as ed:
+    import shutil
+    import tempfile
+    from pathlib import Path
+    logdir = Path(tempfile.mkdtemp(prefix="je-fault-log-"))
+    calls_log = logdir / "calls.jsonl"
+    try:
+        await errors_suggest_names_and_advise_faults(calls_log)
+    finally:
+        shutil.rmtree(logdir, ignore_errors=True)
+
+
+async def errors_suggest_names_and_advise_faults(calls_log):
+    # the call log (JASPER_MCP_LOG) runs too: a fault is logged as error_kind "internal", never its text
+    env = {"JASPER_MCP_SELFTEST_GROUP": "1", "JASPER_MCP_LOG": str(calls_log)}
+    async with Editor(create=True, name="MCP Errors", env=env) as ed:
         await ed.call("create_entity", name="Crate", type="cube")
         problems = []
         for what, tool, args, suggestion, lists in NAME_CASES:
@@ -161,6 +175,21 @@ async def test_errors_suggest_names_and_advise_faults():
         r = await ed.call_raw("selftest_echo", {"throw": "runtime_error", "text": "boom"})
         if not (r.is_error and r.text.startswith("Tool selftest_echo failed: selftest boom")):
             problems.append(f"runtime_error: its message is not the error: {r.text!r}")
+
+        # the faults and the runtime_error, as the call log records them (its writer has its own thread)
+        expected = [("internal", raised) for raised, _ in FAULT_CASES] + [("error", "runtime_error")]
+        deadline = time.monotonic() + 30
+        while True:
+            rows = [row for row in call_log_lines(calls_log) if row.get("tool") == "selftest_echo"]
+            if len(rows) >= len(expected) or time.monotonic() > deadline:
+                break
+            await asyncio.sleep(0.05)
+        kinds = [(row.get("ok"), row.get("error_kind")) for row in rows]
+        if kinds != [(False, kind) for kind, _ in expected]:
+            problems.append(f"call log error kinds {kinds}, expected {[(False, kind) for kind, _ in expected]}")
+        logged = calls_log.read_bytes() if calls_log.exists() else b""
+        if b"boom" in logged or b"fault" in logged:
+            problems.append("a fault's text or id reached the call log")
         ed.check(not problems, "\n".join(problems))
         await ed.ping()
 
