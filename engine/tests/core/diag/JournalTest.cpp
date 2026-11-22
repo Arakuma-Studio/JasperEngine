@@ -11,13 +11,18 @@
 #include "LogCapture.h"
 
 #include "Log.h"
+#include "script/LuaBinding.h"
+
+#include "lua.hpp"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <regex>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace jasperengine;
@@ -57,6 +62,16 @@ TEST(Journal, FormatsKindAndSortedFields) {
     EXPECT_EQ(body(lines[0]),
               "level.start alpha=false hard=true name=forest-2 ratio=0.1 seed=42 "
               "zeta=\"needs quotes \\\"and\\\" \\\\ back\\nslash\"");
+
+    // numbers as %.9g, whichever path writes them
+    const std::pair<double, const char*> numbers[] = {{87.5, "87.5"}, {1.0 / 3, "0.333333333"}, {123456789.0, "123456789"}, {1e9, "1e+09"},
+        {1e-5, "1e-05"}, {-2.5, "-2.5"}, {0.00012345678912, "0.000123456789"}, {999999999.5, "1e+09"}, {99999999.95, "100000000"},
+        {12345.678901234, "12345.6789"}, {1e300, "1e+300"}, {-0.0, "-0"}, {0.5, "0.5"}, {100.0, "100"}};
+    for (const auto& [value, text] : numbers) {
+        const journal::Field field[] = {{"v", value}};
+        journal::log("n", field);
+        EXPECT_EQ(body(journal::entries(1)[0]), std::string("n v=") + text) << value;
+    }
 
     // a long entry ends in '~' at 256 bytes
     const std::string longText(300, 'x');
@@ -180,4 +195,55 @@ TEST(JournalBench, LogWithFourFields) {
     if (slack > 0.0) {
         EXPECT_LE(ns, 250.0 * slack) << "R29";
     }
+}
+
+// R29: Lua's Journal.log(kind, {4 fields}) as a game writes it, the table built at each call; the
+// binding itself allocates nothing (a table built once)
+TEST(JournalBench, LuaLogWithFourFields) {
+    JournalScope scope(32 << 10);
+    lua_State* L = LuaBinding::getLuaState();
+    ASSERT_EQ(luaL_dostring(L, R"(
+        function __journalBenchLog(n)
+            for i = 1, n do Journal.log("player.hit", {level = "forest-2", weapon = "bow", seed = 123456, hp = 87.5}) end
+        end
+        local fields = {level = "forest-2", weapon = "bow", seed = 123456, hp = 87.5}
+        function __journalBenchSame(n)
+            for i = 1, n do Journal.log("player.hit", fields) end
+        end
+    )"), LUA_OK) << lua_tostring(L, -1);
+    auto run = [&](const char* function, int n) {
+        lua_getglobal(L, function);
+        lua_pushinteger(L, n);
+        const auto start = std::chrono::steady_clock::now();
+        const int status = lua_pcall(L, 1, 0, 0);
+        const double ns = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / n;
+        EXPECT_EQ(status, LUA_OK) << (status == LUA_OK ? "" : lua_tostring(L, -1));
+        if (status != LUA_OK) lua_pop(L, 1);
+        return ns;
+    };
+    run("__journalBenchLog", 1000);
+    constexpr int kLogs = 100000;
+    double best = 1e9;
+    for (int round = 0; round < 3; round++) best = std::min(best, run("__journalBenchLog", kLogs));
+    run("__journalBenchSame", 1000);
+    uint64_t allocations = 0;
+    {
+        testsupport::ThreadAllocationCount count;
+        run("__journalBenchSame", 10000);
+        allocations = count.count();
+    }
+    EXPECT_EQ(body(journal::entries(1)[0]), "player.hit hp=87.5 level=forest-2 seed=123456 weapon=bow");
+    std::printf("[bench] Lua Journal.log, kind + a new 4-field table: %.0f ns (budget 1500); %llu allocations in 10,000 logs of one table\n",
+                best, static_cast<unsigned long long>(allocations));
+    if (testsupport::countsAllocations()) {
+        EXPECT_EQ(allocations, 0u) << "R29: the binding reads the table's strings in place";
+    }
+    const double slack = testsupport::perfSlack();
+    if (slack > 0.0) {
+        EXPECT_LE(best, 1500.0 * slack) << "R29";
+    }
+    lua_pushnil(L);
+    lua_setglobal(L, "__journalBenchLog");
+    lua_pushnil(L);
+    lua_setglobal(L, "__journalBenchSame");
 }
