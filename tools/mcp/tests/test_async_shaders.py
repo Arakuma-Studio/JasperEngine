@@ -196,6 +196,7 @@ async def test_forced_gpu_quirks_draw_the_same_image(ed: Editor):
     second reports the three quirks as forced on. A quirk changes how a frame is made, never what it shows."""
     await ball_scene(ed)
     shots = []
+    rule_quirks: set = set()
     for label, env in (("quirks-rules", {}), ("quirks-forced", {"JASPERENGINE_GPU_QUIRKS": ALL_QUIRKS_ON})):
         async with Editor(project=ed.project, label=label, env=env) as other:
             opened = await other.call("open_scene", scene="async_balls.scene")
@@ -208,6 +209,8 @@ async def test_forced_gpu_quirks_draw_the_same_image(ed: Editor):
             await idle(other)
             shots.append(await scene_shot(other))
             info = await other.call("get_device_info")
+            if not env:
+                rule_quirks = {q["name"] for q in info["quirks"]}
             if env:
                 forced = {q["name"]: q["source"] for q in info["quirks"]}
                 other.check_eq(forced, {"gl_no_worker_context": "forced_on", "gl_no_compile_threads": "forced_on",
@@ -215,4 +218,10 @@ async def test_forced_gpu_quirks_draw_the_same_image(ed: Editor):
     (w1, h1, a), (w2, h2, b) = shots
     ed.check_eq((w1, h1), (w2, h2), "the same view size")
     largest = max((abs(x - y) for x, y in zip(a, b)), default=255)
-    ed.check_eq(largest, 0, "the forced quirks draw the same pixels (max channel difference)")
+    # On a software GL the rules already apply gl_no_worker_context and gl_no_compile_threads, and
+    # gl_no_warm_draws acts only with a worker context: both editors make their frames the same way,
+    # and two editors' frames there are the same image within test_batching's 1 (two CI runs
+    # differed by 1). Where the quirks change how frames are made (the GPU lane), every channel holds.
+    same_path = {"gl_no_worker_context", "gl_no_compile_threads"} <= rule_quirks
+    ed.check(largest <= (1 if same_path else 0),
+             f"the forced quirks draw the same pixels: max channel difference {largest} (rules applied {sorted(rule_quirks)})")

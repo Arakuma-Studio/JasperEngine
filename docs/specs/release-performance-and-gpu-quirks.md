@@ -504,3 +504,9 @@ NVIDIA lane, `tools/mcp/gpu_lane.json` class `gpu`). The web gate extends a gate
    alone took 2.37-2.62 ns a frame on box A (a 2.4 GHz Haswell), over R28's 2 ns whatever the branch
    cost. The fence still makes each frame read the flag; the off frame measures 0.41-0.46 ns there
    (six runs, `JASPER_TEST_PERF_SLACK=1`), the on frame 12.4-13.6 ns.
+16. **AC21 on llvmpipe.** The CI runs the test on llvmpipe, where the rules already apply
+   `gl_no_worker_context` and `gl_no_compile_threads` and `gl_no_warm_draws` acts only with a worker
+   context, so both editors make their frames the same way. Two CI runs (44955597126, 44971786109)
+   still differed by 1 between the two editors, which box B never reproduced (9 runs, and 3 of a
+   control with two rule editors). There the test accepts test_batching's same-image tolerance
+   (every channel within 1); where the rules do not apply them (the GPU lane) it keeps AC21's 0.
