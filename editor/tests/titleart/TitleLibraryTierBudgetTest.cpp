@@ -75,21 +75,21 @@ namespace {
         mutable std::map<std::string, std::shared_ptr<FontFace>> faces;
     };
 
-    struct Case {
+    struct TitleLibraryTierBudgetCase {
         const char* ref;
         bool isTemplate;
         const char* sample;     // a look's text, a template's language
     };
 
     // the gate's samples of the items S84 Deviation 23 lists (looks: HERO, 大当り, 1234; templates: en, ja)
-    const Case CASES[] = {
+    const TitleLibraryTierBudgetCase CASES[] = {
         {"scifi/reactor-core-3d", false, "HERO"}, {"scifi/reactor-core-3d", false, "大当り"}, {"scifi/reactor-core-3d", false, "1234"},
         {"neon/tube-3d", false, "HERO"},          {"neon/tube-3d", false, "大当り"},          {"neon/tube-3d", false, "1234"},
         {"gems/treasure-banner", true, "en"},     {"gems/treasure-banner", true, "ja"},
     };
 
     // the document edit_title's create {look, text} / {template, language} makes
-    TitleArtDoc documentOf(const Case& c) {
+    TitleArtDoc titleLibraryTierBudgetDocumentOf(const TitleLibraryTierBudgetCase& c) {
         titleart::NewTitleArtOptions options;
         if (!c.isTemplate) options.text = c.sample;
         const TitleArtDoc start = titleart::makeNewTitleArt(options);
@@ -109,7 +109,7 @@ namespace {
         return out;
     }
 
-    titleart::three_d::TitleMeshRequest requestOf(const Json& layer, const TitleArtDoc& doc, const titleart::AssetResolver& assets, TitleTier tier) {
+    titleart::three_d::TitleMeshRequest titleLibraryTierBudgetRequestOf(const Json& layer, const TitleArtDoc& doc, const titleart::AssetResolver& assets, TitleTier tier) {
         auto content = titleart::makeGeometryTitleContentProvider();
         titleart::three_d::TitleMeshRequest request;
         request.source = titleart::three_d::collectTitleSource(layer, doc, *content, &assets, nullptr);
@@ -119,7 +119,7 @@ namespace {
         return request;
     }
 
-    uint32_t indicesOf(const titleart::TitleMesh& mesh, titleart::TitleSlotRole role, int band = -1) {
+    uint32_t titleLibraryTierBudgetIndicesOf(const titleart::TitleMesh& mesh, titleart::TitleSlotRole role, int band = -1) {
         uint32_t n = 0;
         for (const titleart::TitleMeshSlot& s : mesh.slots) {
             if (s.role == role && (band < 0 || s.band == band)) n += s.indexCount;
@@ -143,15 +143,15 @@ namespace {
 TEST_F(TitleLibraryTierBudget, TheLibrarysHeaviestItemsFitEveryTierWithTheirStack) {
     ASSERT_TRUE(fs::is_directory(TitleLibrary::packDir() / "fonts")) << "the staged pack: " << TitleLibrary::packDir().string();
     int overWithoutBudget = 0;
-    for (const Case& c : CASES) {
-        const TitleArtDoc doc = documentOf(c);
+    for (const TitleLibraryTierBudgetCase& c : CASES) {
+        const TitleArtDoc doc = titleLibraryTierBudgetDocumentOf(c);
         const std::vector<const Json*> layers = layers3D(doc);
         ASSERT_FALSE(layers.empty()) << c.ref;
         for (const Json* layer : layers) {
             std::array<float, 4> silhouette{};      // High's xy bounds (High drops no band here)
             for (TitleTier tier : {TitleTier::High, TitleTier::Medium, TitleTier::Low}) {
                 const std::string what = std::string(c.ref) + " (" + c.sample + ") '" + layer->value("name", std::string()) + "' at " + titleart::titleTierName(tier);
-                titleart::three_d::TitleMeshRequest request = requestOf(*layer, doc, fonts, tier);
+                titleart::three_d::TitleMeshRequest request = titleLibraryTierBudgetRequestOf(*layer, doc, fonts, tier);
                 titleart::three_d::TitleMesher mesher;
                 const auto mesh = mesher.build(request);
                 request.testFlags = titleart::three_d::MESHER_TEST_NO_TIER_BUDGET;
@@ -165,11 +165,11 @@ TEST_F(TitleLibraryTierBudget, TheLibrarysHeaviestItemsFitEveryTierWithTheirStac
                 // the stack the tier builds keeps every band of the unbudgeted mesh, and the bevels
                 const titleart::Title3D style = titleart::decodeStyle3D(*layer);
                 for (size_t b = 0; b < style.bands.size(); b++) {
-                    if (indicesOf(*unbudgeted, titleart::TitleSlotRole::BandFront, (int)b) == 0) continue;
-                    EXPECT_GT(indicesOf(*mesh, titleart::TitleSlotRole::BandFront, (int)b), 0u) << what << ": band " << b << " kept";
-                    EXPECT_GT(indicesOf(*mesh, titleart::TitleSlotRole::BandSide, (int)b), 0u) << what << ": band " << b << "'s side kept";
+                    if (titleLibraryTierBudgetIndicesOf(*unbudgeted, titleart::TitleSlotRole::BandFront, (int)b) == 0) continue;
+                    EXPECT_GT(titleLibraryTierBudgetIndicesOf(*mesh, titleart::TitleSlotRole::BandFront, (int)b), 0u) << what << ": band " << b << " kept";
+                    EXPECT_GT(titleLibraryTierBudgetIndicesOf(*mesh, titleart::TitleSlotRole::BandSide, (int)b), 0u) << what << ": band " << b << "'s side kept";
                 }
-                EXPECT_EQ(indicesOf(*mesh, titleart::TitleSlotRole::Bevel) > 0, indicesOf(*unbudgeted, titleart::TitleSlotRole::Bevel) > 0) << what << ": the bevel kept";
+                EXPECT_EQ(titleLibraryTierBudgetIndicesOf(*mesh, titleart::TitleSlotRole::Bevel) > 0, titleLibraryTierBudgetIndicesOf(*unbudgeted, titleart::TitleSlotRole::Bevel) > 0) << what << ": the bevel kept";
                 // the silhouette stays: a dropped band hands its grow to the next one out, coarsening
                 // keeps the outline (curve segments move it by their sagitta at most)
                 const std::array<float, 4> bounds = {mesh->boundsMin[0], mesh->boundsMin[1], mesh->boundsMax[0], mesh->boundsMax[1]};

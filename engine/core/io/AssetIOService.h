@@ -150,6 +150,12 @@ namespace jasperengine {
         static bool readFile(const std::string& path, uint64_t offset, uint32_t size,
                              std::vector<uint8_t>& out, std::string& error);
 
+        // Tests: `hook` runs on the reading thread after each failed attempt of a whole-file
+        // read that will be retried (null: none); `windowMs` > 0 replaces the 200 ms retry
+        // window (0: the default), so a test waits for the retry, not for time.
+        static void setRetryHookForTesting(std::function<void(const std::string& path)> hook);
+        static void setRetryWindowForTesting(int windowMs);
+
     private:
         friend struct detail::IoRequest;
         friend void detail::ioPublish(AssetIOService* service, detail::IoRequest* request, jobs::detail::TaskState* task);

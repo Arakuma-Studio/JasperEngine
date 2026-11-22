@@ -34,7 +34,7 @@ namespace {
         return binary ? loader.LoadBinaryFromFile(&model, &err, &warn, path) : loader.LoadASCIIFromFile(&model, &err, &warn, path);
     }
 
-    const GltfDiagnostic* find(const std::vector<GltfDiagnostic>& diagnostics, const std::string& extension){
+    const GltfDiagnostic* gltfLoadDiagnosticsFind(const std::vector<GltfDiagnostic>& diagnostics, const std::string& extension){
         for (const GltfDiagnostic& diagnostic : diagnostics){
             if (diagnostic.extension == extension)
                 return &diagnostic;
@@ -59,7 +59,7 @@ TEST(GltfLoadDiagnostics, AnUnreadRequiredExtensionIsAnErrorWithItsFix){
     std::string parseError;
     ASSERT_TRUE(MeshSystem::parseGLTFFile(path, parsed, &parseError)) << parseError;
     const std::vector<GltfDiagnostic> diagnostics = ModelLoadDiagnostics::get(path);
-    const GltfDiagnostic* found = find(diagnostics, "EXT_unknown_required_extension");
+    const GltfDiagnostic* found = gltfLoadDiagnosticsFind(diagnostics, "EXT_unknown_required_extension");
     ASSERT_NE(found, nullptr);
     EXPECT_EQ(found->severity, GltfDiagnosticSeverity::Error);
     EXPECT_NE(found->message.find("unsupported_required.gltf"), std::string::npos) << found->message;
@@ -91,7 +91,7 @@ TEST(GltfLoadDiagnostics, DracoWithoutTheEditorSaysTheCookTranscodesIt){
     GltfNormalizeResult result;
     EXPECT_FALSE(GltfNormalize::normalize(model, "draco.glb", result));
     EXPECT_FALSE(result.ok);
-    const GltfDiagnostic* found = find(result.diagnostics, "KHR_draco_mesh_compression");
+    const GltfDiagnostic* found = gltfLoadDiagnosticsFind(result.diagnostics, "KHR_draco_mesh_compression");
     ASSERT_NE(found, nullptr);
     EXPECT_EQ(found->severity, GltfDiagnosticSeverity::Error);
     EXPECT_TRUE(found->cookFixes);

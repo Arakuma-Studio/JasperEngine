@@ -15,15 +15,15 @@ using namespace jasperengine;
 namespace {
 
     // where a source pixel's centre (y down) lands on a quad drawing `frame`
-    Vector2 placeOf(const SpriteFrameQuad& quad, const SpriteFrame& frame, bool flipY, float px, float py){
-        const float u = (px - frame.offset.x) / frame.rect.getWidth();
-        const float v = (py - frame.offset.y) / frame.rect.getHeight();
+    Vector2 placeOf(const SpriteFrameQuad& quad, const SpriteFrame& spriteFrameGeometryFrame, bool flipY, float px, float py){
+        const float u = (px - spriteFrameGeometryFrame.offset.x) / spriteFrameGeometryFrame.rect.getWidth();
+        const float v = (py - spriteFrameGeometryFrame.offset.y) / spriteFrameGeometryFrame.rect.getHeight();
         const float x = quad.x0 + u * (quad.x1 - quad.x0);
         const float y = flipY ? quad.y0 + (1.0f - v) * (quad.y1 - quad.y0) : quad.y0 + v * (quad.y1 - quad.y0);
         return Vector2(x, y);
     }
 
-    SpriteFrame frame(bool trimmed){
+    SpriteFrame spriteFrameGeometryFrame(bool trimmed){
         SpriteFrame f;
         f.name = trimmed ? "trimmed" : "full";
         f.sourceSize = Vector2(16, 24);
@@ -44,8 +44,8 @@ TEST(SpriteFrameGeometryTest, TrimmedEqualsUntrimmed){
     const PivotPreset pivots[] = {PivotPreset::CENTER, PivotPreset::TOP_CENTER, PivotPreset::BOTTOM_CENTER, PivotPreset::LEFT_CENTER,
                                   PivotPreset::RIGHT_CENTER, PivotPreset::TOP_LEFT, PivotPreset::BOTTOM_LEFT, PivotPreset::TOP_RIGHT,
                                   PivotPreset::BOTTOM_RIGHT, PivotPreset::FRAME};
-    const SpriteFrame trimmed = frame(true);
-    const SpriteFrame full = frame(false);
+    const SpriteFrame trimmed = spriteFrameGeometryFrame(true);
+    const SpriteFrame full = spriteFrameGeometryFrame(false);
     for (PivotPreset pivot : pivots){
         for (bool ui : {false, true}){
             for (bool flipY : {false, true}){
@@ -76,7 +76,7 @@ TEST(SpriteFrameGeometryTest, TrimmedEqualsUntrimmed){
 
 TEST(SpriteFrameGeometryTest, UntrimmedIsCreateSpritesQuad){
     // a full frame with width/height 0 and PPU 1 is createSprite's quad of a 16x24 sprite
-    const SpriteFrame full = frame(false);
+    const SpriteFrame full = spriteFrameGeometryFrame(false);
     SpriteFrameGeometryInput in;
     in.pivot = PivotPreset::BOTTOM_CENTER;
     const SpriteFrameQuad q = spriteFrameQuad(full, in);
@@ -92,7 +92,7 @@ TEST(SpriteFrameGeometryTest, UntrimmedIsCreateSpritesQuad){
 }
 
 TEST(SpriteFrameGeometryTest, SizePixelsPerUnitAndRatio){
-    const SpriteFrame full = frame(false);
+    const SpriteFrame full = spriteFrameGeometryFrame(false);
     SpriteFrameGeometryInput in;
     in.pivot = PivotPreset::BOTTOM_LEFT;
     in.pixelsPerUnit = 8;
@@ -117,7 +117,7 @@ TEST(SpriteFrameGeometryTest, SizePixelsPerUnitAndRatio){
 }
 
 TEST(SpriteFrameGeometryTest, SameGeometrySwapsOnlyTheRect){
-    SpriteFrame a = frame(true);
+    SpriteFrame a = spriteFrameGeometryFrame(true);
     SpriteFrame b = a;
     b.rect = Rect(0, 0, 7, 9);   // another place in the page, the same trim
     SpriteFrameGeometryInput in;

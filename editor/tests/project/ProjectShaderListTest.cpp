@@ -27,7 +27,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    void writeText(const fs::path& path, const std::string& text) {
+    void projectShaderListWriteText(const fs::path& path, const std::string& text) {
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
         file << text;
     }
@@ -51,9 +51,9 @@ namespace {
         void SetUp() override {
             fs::create_directories(dir.path() / "assets");
             fs::create_directories(dir.path() / "scripts");
-            writeText(dir.path() / "Open.scene", sceneText(11, "Open"));
-            writeText(dir.path() / "Closed.scene", sceneText(12, "Closed"));
-            writeText(dir.path() / "project.yaml",
+            projectShaderListWriteText(dir.path() / "Open.scene", sceneText(11, "Open"));
+            projectShaderListWriteText(dir.path() / "Closed.scene", sceneText(12, "Closed"));
+            projectShaderListWriteText(dir.path() / "project.yaml",
                       "name: Lists\nassetsDir: assets\nluaDir: scripts\nscenes:\n  - filepath: Open.scene\n  - filepath: Closed.scene\n");
             project.setSkipProjectLock(true);
             ASSERT_TRUE(project.loadProject(dir.path(), false));
@@ -89,7 +89,7 @@ TEST_F(ProjectShaderList, AnUnchangedFileIsNotReadAgain) {
     EXPECT_EQ(project.refreshClosedSceneShaderKeys().scenesRead, 0u);
 
     // new bytes: read; a new stamp with the same bytes is the same file
-    writeText(dir.path() / "Closed.scene", sceneText(12, "Closed", "# changed\n"));
+    projectShaderListWriteText(dir.path() / "Closed.scene", sceneText(12, "Closed", "# changed\n"));
     EXPECT_EQ(project.refreshClosedSceneShaderKeys().scenesRead, 1u);
     fs::last_write_time(dir.path() / "Closed.scene", fs::last_write_time(dir.path() / "Closed.scene") + std::chrono::hours(1));
     EXPECT_EQ(project.refreshClosedSceneShaderKeys().scenesRead, 0u);
@@ -98,7 +98,7 @@ TEST_F(ProjectShaderList, AnUnchangedFileIsNotReadAgain) {
 TEST_F(ProjectShaderList, WhatTheKeysAlsoReadCountsAsAChange) {
     ASSERT_EQ(project.refreshClosedSceneShaderKeys().scenesRead, 1u);
     // a script can reach other variants (Project::scriptsMention)
-    writeText(dir.path() / "scripts" / "game.lua", "scene.postProcessing = true\n");
+    projectShaderListWriteText(dir.path() / "scripts" / "game.lua", "scene.postProcessing = true\n");
     EXPECT_EQ(project.refreshClosedSceneShaderKeys().scenesRead, 1u);
     EXPECT_EQ(project.refreshClosedSceneShaderKeys().scenesRead, 0u);
 }
@@ -111,7 +111,7 @@ TEST_F(ProjectShaderList, AScriptNamingATransitionAddsItsProgram) {
     project.collectBuildShaderKeys(keys);
     EXPECT_EQ(project.finishBuildShaderKeys(keys, {}, {}).count(transition), 0u) << "no script names one";
 
-    writeText(dir.path() / "scripts" / "game.lua", "Transition.play('iris', 0.5)\n");
+    projectShaderListWriteText(dir.path() / "scripts" / "game.lua", "Transition.play('iris', 0.5)\n");
     ASSERT_TRUE(project.refreshClosedSceneShaderKeys().complete());
     keys.clear();
     project.collectBuildShaderKeys(keys);
@@ -140,7 +140,7 @@ TEST_F(ProjectShaderList, AFileThatDoesNotReadIsNamed) {
     const std::set<ShaderKey> known = closedScene()->shaderKeys;
 
     for (const std::string& text : {std::string("id: [not yaml\n"), std::string("id: 12\nname: Empty\n")}) {
-        writeText(dir.path() / "Closed.scene", text);
+        projectShaderListWriteText(dir.path() / "Closed.scene", text);
         const ShaderListStatus status = project.refreshClosedSceneShaderKeys();
         EXPECT_TRUE(status.complete()) << text;
         ASSERT_EQ(status.unreadableScenes.size(), 1u) << text;
@@ -155,7 +155,7 @@ TEST_F(ProjectShaderList, AFileThatDoesNotReadIsNamed) {
     ASSERT_EQ(gone.unreadableScenes.size(), 1u);
     EXPECT_NE(gone.unreadableScenes[0].error.find("missing"), std::string::npos);
 
-    writeText(dir.path() / "Closed.scene", sceneText(12, "Closed"));
+    projectShaderListWriteText(dir.path() / "Closed.scene", sceneText(12, "Closed"));
     EXPECT_TRUE(project.refreshClosedSceneShaderKeys().unreadableScenes.empty()) << "and a fixed file reads again";
 }
 

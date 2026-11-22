@@ -19,18 +19,18 @@ using namespace jasperengine::vat;
 
 namespace {
 
-    struct Glb{
+    struct VatGlbGlb{
         nlohmann::json json;
         std::vector<uint8_t> bin;
     };
 
     // the sample asset's glb, as JSON + BIN to edit
-    Glb sampleGlb(){
+    VatGlbGlb sampleGlb(){
         VatData data = vattest::sampleData();
         std::vector<uint8_t> bytes = vattest::makeVatGlb(data.layout.layoutHash, vattest::samplePayload(data),
                                                          vattest::sampleSockets(data));
         uint32_t jsonLength = bytes[12] | (bytes[13] << 8) | (bytes[14] << 16) | ((uint32_t)bytes[15] << 24);
-        Glb glb;
+        VatGlbGlb glb;
         glb.json = nlohmann::json::parse(std::string(bytes.begin() + 20, bytes.begin() + 20 + jsonLength));
         glb.bin.assign(bytes.begin() + 20 + jsonLength + 8, bytes.end());
         return glb;
@@ -44,8 +44,8 @@ namespace {
         return error;
     }
 
-    std::string editError(const std::function<void(Glb&)>& edit){
-        Glb glb = sampleGlb();
+    std::string editError(const std::function<void(VatGlbGlb&)>& edit){
+        VatGlbGlb glb = sampleGlb();
         edit(glb);
         return readError(vattest::makeGlb(glb.json.dump(), glb.bin));
     }
@@ -133,56 +133,56 @@ TEST(VatGlb, ContainerErrors){
 }
 
 TEST(VatGlb, ExtensionErrors){
-    EXPECT_NE(editError([](Glb& g){ g.json.erase("extensions"); }).find("no JASPER_vertex_animation extension"), std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["extensions"].erase(EXT); }).find("rebake"), std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["extensions"][EXT] = 1; }).find("is not an object"), std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["extensions"][EXT]["version"] = 2; }).find("version 2"), std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["extensions"][EXT]["version"] = 0; }).find(".version"), std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["extensions"][EXT].erase("layoutHash"); }).find(".layoutHash"), std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["extensions"][EXT]["layoutHash"] = ""; }).find(".layoutHash"), std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["extensions"][EXT].erase("payload"); }).find(".payload: missing"), std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["extensions"][EXT]["payload"]["format"] = "rgba8"; }).find(".payload: expected"),
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json.erase("extensions"); }).find("no JASPER_vertex_animation extension"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["extensions"].erase(EXT); }).find("rebake"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["extensions"][EXT] = 1; }).find("is not an object"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["extensions"][EXT]["version"] = 2; }).find("version 2"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["extensions"][EXT]["version"] = 0; }).find(".version"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["extensions"][EXT].erase("layoutHash"); }).find(".layoutHash"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["extensions"][EXT]["layoutHash"] = ""; }).find(".layoutHash"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["extensions"][EXT].erase("payload"); }).find(".payload: missing"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["extensions"][EXT]["payload"]["format"] = "rgba8"; }).find(".payload: expected"),
               std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["extensions"][EXT]["payload"]["width"] = 0; }).find(".payload: expected"),
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["extensions"][EXT]["payload"]["width"] = 0; }).find(".payload: expected"),
               std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["extensions"][EXT]["payload"]["height"] = -3; }).find(".payload: expected"),
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["extensions"][EXT]["payload"]["height"] = -3; }).find(".payload: expected"),
               std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["extensions"][EXT]["payload"]["bufferView"] = 1.5; }).find(".payload: expected"),
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["extensions"][EXT]["payload"]["bufferView"] = 1.5; }).find(".payload: expected"),
               std::string::npos);
     // payload size vs width x height
-    EXPECT_NE(editError([](Glb& g){ g.json["extensions"][EXT]["payload"]["height"] = 5; }).find("payload: 768 bytes"),
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["extensions"][EXT]["payload"]["height"] = 5; }).find("payload: 768 bytes"),
               std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["extensions"][EXT]["payload"]["format"] = "half"; }).find("payload: 768 bytes"),
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["extensions"][EXT]["payload"]["format"] = "half"; }).find("payload: 768 bytes"),
               std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["extensions"][EXT]["sockets"] = 1; }).find(".sockets: expected"), std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["extensions"][EXT]["sockets"].erase("frames"); }).find(".sockets: expected"),
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["extensions"][EXT]["sockets"] = 1; }).find(".sockets: expected"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["extensions"][EXT]["sockets"].erase("frames"); }).find(".sockets: expected"),
               std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["extensions"][EXT]["sockets"]["count"] = 3; }).find("sockets: 392 bytes"),
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["extensions"][EXT]["sockets"]["count"] = 3; }).find("sockets: 392 bytes"),
               std::string::npos);
-    EXPECT_NE(editError([](Glb& g){
+    EXPECT_NE(editError([](VatGlbGlb& g){
         g.json["extensions"][EXT]["sockets"]["count"] = 1u << 30;
         g.json["extensions"][EXT]["sockets"]["frames"] = 1u << 30;
     }).find("sockets:"), std::string::npos);
 }
 
 TEST(VatGlb, BufferViewErrors){
-    EXPECT_NE(editError([](Glb& g){ g.json["extensions"][EXT]["payload"]["bufferView"] = 9; }).find("bufferView 9 doesn't exist"),
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["extensions"][EXT]["payload"]["bufferView"] = 9; }).find("bufferView 9 doesn't exist"),
               std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json.erase("bufferViews"); }).find("doesn't exist"), std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["bufferViews"][0] = 1; }).find("is not an object"), std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["bufferViews"][0].erase("byteLength"); }).find("no valid buffer"), std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["bufferViews"][0]["byteOffset"] = -4; }).find("no valid buffer"), std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["bufferViews"][0]["byteStride"] = 16; }).find("tightly packed"), std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["bufferViews"][0]["buffer"] = 1; }).find("the GLB's own buffer"), std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["buffers"][0]["uri"] = "data.bin"; }).find("the GLB's own buffer"), std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json.erase("buffers"); }).find("the GLB's own buffer"), std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["bufferViews"][1]["byteOffset"] = 100000; }).find("is past the BIN chunk"),
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json.erase("bufferViews"); }).find("doesn't exist"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["bufferViews"][0] = 1; }).find("is not an object"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["bufferViews"][0].erase("byteLength"); }).find("no valid buffer"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["bufferViews"][0]["byteOffset"] = -4; }).find("no valid buffer"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["bufferViews"][0]["byteStride"] = 16; }).find("tightly packed"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["bufferViews"][0]["buffer"] = 1; }).find("the GLB's own buffer"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["buffers"][0]["uri"] = "data.bin"; }).find("the GLB's own buffer"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json.erase("buffers"); }).find("the GLB's own buffer"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["bufferViews"][1]["byteOffset"] = 100000; }).find("is past the BIN chunk"),
               std::string::npos);
-    EXPECT_NE(editError([](Glb& g){ g.json["bufferViews"][0]["byteLength"] = 1u << 31; }).find("is past the BIN chunk"),
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.json["bufferViews"][0]["byteLength"] = 1u << 31; }).find("is past the BIN chunk"),
               std::string::npos);
     // a BIN chunk cut short
-    EXPECT_NE(editError([](Glb& g){ g.bin.resize(100); }).find("is past the BIN chunk"), std::string::npos);
+    EXPECT_NE(editError([](VatGlbGlb& g){ g.bin.resize(100); }).find("is past the BIN chunk"), std::string::npos);
     // no BIN chunk
-    Glb glb = sampleGlb();
+    VatGlbGlb glb = sampleGlb();
     EXPECT_NE(readError(vattest::makeGlb(glb.json.dump(), {}, false)).find("no BIN chunk"), std::string::npos);
 }

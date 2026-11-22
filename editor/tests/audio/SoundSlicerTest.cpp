@@ -17,21 +17,21 @@ namespace fs = std::filesystem;
 
 namespace {
 
-const double PI = 3.14159265358979323846;
-const unsigned int RATE = 48000;
+const double SOUND_SLICER_PI = 3.14159265358979323846;
+const unsigned int SOUND_SLICER_RATE = 48000;
 
 // decaying bursts at these times, seconds
 AudioAnalysis::Signal takes(const std::vector<double>& times, double seconds, double amplitude = 0.7) {
     AudioAnalysis::Signal signal;
     signal.channels = 1;
-    signal.sampleRate = RATE;
-    signal.frames = (size_t)(seconds * RATE);
+    signal.sampleRate = SOUND_SLICER_RATE;
+    signal.frames = (size_t)(seconds * SOUND_SLICER_RATE);
     signal.samples.assign(signal.frames, 0.0f);
     for (double at : times) {
-        const size_t start = (size_t)(at * RATE);
+        const size_t start = (size_t)(at * SOUND_SLICER_RATE);
         for (size_t i = start; i < signal.frames; i++) {
-            const double t = (double)(i - start) / RATE;
-            signal.samples[i] += (float)(amplitude * std::sin(2.0 * PI * 900.0 * t) * std::exp(-30.0 * t));
+            const double t = (double)(i - start) / SOUND_SLICER_RATE;
+            signal.samples[i] += (float)(amplitude * std::sin(2.0 * SOUND_SLICER_PI * 900.0 * t) * std::exp(-30.0 * t));
         }
     }
     return signal;
@@ -46,7 +46,7 @@ TEST(SoundSlicer, CutsOneSlicePerTake) {
     ASSERT_TRUE(SoundSlicer::detect(takes(times, 2.2), SoundSlicer::Options(), SoundTypes::TRANSIENT, slices, error)) << error;
     ASSERT_EQ(slices.size(), times.size());
     for (size_t i = 0; i < slices.size(); i++) {
-        const double start = (double)slices[i].startFrame / RATE;
+        const double start = (double)slices[i].startFrame / SOUND_SLICER_RATE;
         EXPECT_NEAR(start, times[i], 0.012) << i;
         EXPECT_LT(start, times[i] + 1e-3) << "the pre_ms lead";
         EXPECT_GT(slices[i].endFrame, slices[i].startFrame);
@@ -82,7 +82,7 @@ TEST(SoundSlicer, MaxLengthCutsAndTheCutFades) {
     std::string error;
     ASSERT_TRUE(SoundSlicer::detect(takes({0.2, 0.8}, 1.4), options, SoundTypes::TRANSIENT, slices, error)) << error;
     ASSERT_EQ(slices.size(), 2u);
-    EXPECT_LE(slices[0].endFrame - slices[0].startFrame, (uint32_t)(0.03 * RATE) + 1);
+    EXPECT_LE(slices[0].endFrame - slices[0].startFrame, (uint32_t)(0.03 * SOUND_SLICER_RATE) + 1);
     // the burst is loud where max_ms cut it
     EXPECT_GT(slices[0].fadeOutMs, 0.0);
     EXPECT_GT(slices[0].tailCutDb, -20.0);

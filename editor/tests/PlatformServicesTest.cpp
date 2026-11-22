@@ -23,6 +23,7 @@
 #include "Workspace.h"
 #include "window/DeviceProfiles.h"
 #include "support/EditorTestSupport.h"
+#include "support/SystemTestAccess.h"
 
 #include <filesystem>
 
@@ -38,17 +39,6 @@ namespace jasperengine::editor {
     struct GeneratorTestAccess {
         static std::string platformCMake(Generator& generator) {
             return generator.getPlatformCMakeConfig(true, WindowSettings(), "/project", "/project/assets", "/project/lua");
-        }
-    };
-}
-
-namespace jasperengine {
-    // TEST-ONLY seam (System.h befriends it): detach / restore the instance
-    struct SystemTestAccess {
-        static System* swap(System* system) {
-            System* previous = System::systemInstance;
-            System::systemInstance = system;
-            return previous;
         }
     };
 }
@@ -112,7 +102,7 @@ namespace {
         }
     };
 
-    uint8_t bits(std::initializer_list<ScreenOrientation> orientations) {
+    uint8_t platformServicesBits(std::initializer_list<ScreenOrientation> orientations) {
         uint8_t mask = 0;
         for (ScreenOrientation o : orientations) mask |= PlatformRules::orientationBit(o);
         return mask;
@@ -244,14 +234,14 @@ TEST(PlatformRules, AndroidRequestedOrientationOfEveryMask) {
         int expected = PlatformRules::ANDROID_FULL_USER;
         bool expectedUnsupported = false;
         if (mask == 0) expected = PlatformRules::ANDROID_USER;  // empty: the default set P, LL, LR
-        else if (mask == bits({P})) expected = PlatformRules::ANDROID_PORTRAIT;
-        else if (mask == bits({PU})) expected = PlatformRules::ANDROID_REVERSE_PORTRAIT;
-        else if (mask == bits({LL})) expected = PlatformRules::ANDROID_LANDSCAPE;
-        else if (mask == bits({LR})) expected = PlatformRules::ANDROID_REVERSE_LANDSCAPE;
-        else if (mask == bits({P, PU})) expected = PlatformRules::ANDROID_USER_PORTRAIT;
-        else if (mask == bits({LL, LR})) expected = PlatformRules::ANDROID_USER_LANDSCAPE;
-        else if (mask == bits({P, LL, LR})) expected = PlatformRules::ANDROID_USER;
-        else if (mask == bits({P, PU, LL, LR})) expected = PlatformRules::ANDROID_FULL_USER;
+        else if (mask == platformServicesBits({P})) expected = PlatformRules::ANDROID_PORTRAIT;
+        else if (mask == platformServicesBits({PU})) expected = PlatformRules::ANDROID_REVERSE_PORTRAIT;
+        else if (mask == platformServicesBits({LL})) expected = PlatformRules::ANDROID_LANDSCAPE;
+        else if (mask == platformServicesBits({LR})) expected = PlatformRules::ANDROID_REVERSE_LANDSCAPE;
+        else if (mask == platformServicesBits({P, PU})) expected = PlatformRules::ANDROID_USER_PORTRAIT;
+        else if (mask == platformServicesBits({LL, LR})) expected = PlatformRules::ANDROID_USER_LANDSCAPE;
+        else if (mask == platformServicesBits({P, LL, LR})) expected = PlatformRules::ANDROID_USER;
+        else if (mask == platformServicesBits({P, PU, LL, LR})) expected = PlatformRules::ANDROID_FULL_USER;
         else expectedUnsupported = true;
         EXPECT_EQ(value, expected) << "mask " << (int)mask;
         EXPECT_EQ(unsupported, expectedUnsupported) << "mask " << (int)mask;
@@ -315,23 +305,23 @@ TEST(PlatformRules, IosMasks) {
     EXPECT_EQ(PlatformRules::iosOrientationMask(PU), 4u);
     EXPECT_EQ(PlatformRules::iosOrientationMask(LL), 8u);   // UIInterfaceOrientationMaskLandscapeRight
     EXPECT_EQ(PlatformRules::iosOrientationMask(LR), 16u);  // ...LandscapeLeft
-    EXPECT_EQ(PlatformRules::iosSupportedMask(LL, bits({P})), 8u);
-    EXPECT_EQ(PlatformRules::iosSupportedMask(AUTO, bits({LL, LR})), 24u);
+    EXPECT_EQ(PlatformRules::iosSupportedMask(LL, platformServicesBits({P})), 8u);
+    EXPECT_EQ(PlatformRules::iosSupportedMask(AUTO, platformServicesBits({LL, LR})), 24u);
     EXPECT_EQ(PlatformRules::orientationFromIos(3), LL);
     EXPECT_EQ(PlatformRules::orientationFromIos(4), LR);
     EXPECT_EQ(PlatformRules::iosInterfaceOrientation(LL), 3);
-    EXPECT_EQ(PlatformRules::iosPlistOrientations(AUTO, bits({P, LL, LR})),
+    EXPECT_EQ(PlatformRules::iosPlistOrientations(AUTO, platformServicesBits({P, LL, LR})),
               (std::vector<std::string>{"UIInterfaceOrientationPortrait", "UIInterfaceOrientationLandscapeRight",
                                         "UIInterfaceOrientationLandscapeLeft"}));
-    EXPECT_EQ(PlatformRules::iosPlistOrientations(LR, bits({P, LL, LR})),
+    EXPECT_EQ(PlatformRules::iosPlistOrientations(LR, platformServicesBits({P, LL, LR})),
               (std::vector<std::string>{"UIInterfaceOrientationLandscapeLeft"}));
 }
 
 TEST(PlatformRules, ResolveOrientationAndNames) {
-    EXPECT_EQ(PlatformRules::resolveOrientation(P, LL, bits({P})), LL);
-    EXPECT_EQ(PlatformRules::resolveOrientation(LR, AUTO, bits({LL, LR})), LR);
-    EXPECT_EQ(PlatformRules::resolveOrientation(P, AUTO, bits({LR, LL})), LL);
-    EXPECT_EQ(PlatformRules::resolveOrientation(P, AUTO, bits({PU, LR})), LR);
+    EXPECT_EQ(PlatformRules::resolveOrientation(P, LL, platformServicesBits({P})), LL);
+    EXPECT_EQ(PlatformRules::resolveOrientation(LR, AUTO, platformServicesBits({LL, LR})), LR);
+    EXPECT_EQ(PlatformRules::resolveOrientation(P, AUTO, platformServicesBits({LR, LL})), LL);
+    EXPECT_EQ(PlatformRules::resolveOrientation(P, AUTO, platformServicesBits({PU, LR})), LR);
     EXPECT_EQ(PlatformRules::orientationFromSize(1920, 1080), LL);
     EXPECT_EQ(PlatformRules::orientationFromSize(1080, 1920), P);
     ScreenOrientation parsed;
@@ -553,9 +543,9 @@ TEST_F(PlatformServicesTest, OpenUrlRefusesUnsafeUrls) {
 // ---- 7. Screen ---------------------------------------------------------------------------------
 
 TEST_F(PlatformServicesTest, ScreenAutorotateRules) {
-    Screen::initialize(AUTO, bits({P, LL, LR}), true);
+    Screen::initialize(AUTO, platformServicesBits({P, LL, LR}), true);
     ASSERT_FALSE(system.policies.empty());
-    EXPECT_EQ(system.policies.back(), std::make_pair(AUTO, bits({P, LL, LR})));
+    EXPECT_EQ(system.policies.back(), std::make_pair(AUTO, platformServicesBits({P, LL, LR})));
     // Keep Screen On is a phone and tablet setting (Unity): a desktop starts at the system's
     EXPECT_FALSE(Screen::isMobileSleepPolicy());
     EXPECT_EQ(system.keepScreenOn.back(), false);
@@ -565,33 +555,33 @@ TEST_F(PlatformServicesTest, ScreenAutorotateRules) {
     system.policies.clear();
     Screen::setAutorotate(P, false);
     ASSERT_EQ(system.policies.size(), 1u);
-    EXPECT_EQ(system.policies.back().second, bits({LL, LR}));
+    EXPECT_EQ(system.policies.back().second, platformServicesBits({LL, LR}));
     EXPECT_FALSE(Screen::getAutorotate(P));
 
     // the last one cannot be turned off
     Screen::setAutorotate(LL, false);
     Screen::setAutorotate(LR, false);
     EXPECT_TRUE(Screen::getAutorotate(LR));
-    EXPECT_EQ(Screen::getAllowedMask(), bits({LR}));
+    EXPECT_EQ(Screen::getAllowedMask(), platformServicesBits({LR}));
 
     // a fixed request: autorotateTo* is stored, not applied (Unity)
     Screen::setOrientation(LL);
-    EXPECT_EQ(system.policies.back(), std::make_pair(LL, bits({LR})));
+    EXPECT_EQ(system.policies.back(), std::make_pair(LL, platformServicesBits({LR})));
     system.policies.clear();
     Screen::setAutorotate(P, true);
     EXPECT_TRUE(system.policies.empty());
     EXPECT_EQ(Screen::getRequestedOrientation(), LL);
     // back to auto-rotation: the stored set
     Screen::setOrientation(AUTO);
-    EXPECT_EQ(system.policies.back(), std::make_pair(AUTO, bits({P, LR})));
+    EXPECT_EQ(system.policies.back(), std::make_pair(AUTO, platformServicesBits({P, LR})));
     // outside the enum: ignored
     system.policies.clear();
     Screen::setOrientation((ScreenOrientation)9);
     EXPECT_TRUE(system.policies.empty());
 
     // a fixed default is always allowed
-    Screen::initialize(LR, bits({P}), false);
-    EXPECT_EQ(Screen::getAllowedMask(), bits({P, LR}));
+    Screen::initialize(LR, platformServicesBits({P}), false);
+    EXPECT_EQ(Screen::getAllowedMask(), platformServicesBits({P, LR}));
     EXPECT_EQ(Screen::getSleepTimeout(), SleepTimeout::SystemSetting);
     EXPECT_EQ(system.keepScreenOn.back(), false);
     // a script keeps it on everywhere
@@ -636,11 +626,11 @@ TEST(OsRules, AndroidOperatingSystemMatchesTheGamesRegex) {
 TEST(PresentationSettings, AndroidOrientationMigrates) {
     struct Case { const char* android; ScreenOrientation orientation; uint8_t allowed; bool migrated; };
     const Case cases[] = {
-        {"portrait", P, bits({P}), true},
-        {"landscape", LL, bits({LL}), true},
-        {"sensorPortrait", AUTO, bits({P, PU}), true},
-        {"sensorLandscape", AUTO, bits({LL, LR}), true},
-        {"fullSensor", AUTO, bits({P, PU, LL, LR}), true},
+        {"portrait", P, platformServicesBits({P}), true},
+        {"landscape", LL, platformServicesBits({LL}), true},
+        {"sensorPortrait", AUTO, platformServicesBits({P, PU}), true},
+        {"sensorLandscape", AUTO, platformServicesBits({LL, LR}), true},
+        {"fullSensor", AUTO, platformServicesBits({P, PU, LL, LR}), true},
         {"unspecified", AUTO, PlatformRules::DEFAULT_ALLOWED_ORIENTATIONS, false},
     };
     for (const Case& c : cases) {
@@ -660,7 +650,7 @@ TEST(PresentationSettings, ProjectYamlRoundTripAndMigration) {
         Stream::decodeProject(&project, node, workspace);
         const PresentationSettings& presentation = project.getPresentationSettings();
         EXPECT_EQ(presentation.defaultOrientation, AUTO);
-        EXPECT_EQ(presentation.allowedOrientations, bits({LL, LR}));
+        EXPECT_EQ(presentation.allowedOrientations, platformServicesBits({LL, LR}));
         // dropped: builds always kept the screen on
         EXPECT_TRUE(presentation.keepScreenOn);
         EXPECT_EQ(project.getAndroidProjectSettings().minSdk, 24u);
@@ -718,7 +708,7 @@ TEST(DeviceProfiles, SizesInsetsAndRotation) {
     EXPECT_FALSE(profileOrientationMask(*iphone) & PlatformRules::orientationBit(PU));
     EXPECT_EQ(nextProfileOrientation(*iphone, P, PlatformRules::ALL_ORIENTATIONS), LL);
     EXPECT_EQ(nextProfileOrientation(*iphone, LR, PlatformRules::ALL_ORIENTATIONS), P);
-    EXPECT_EQ(nextProfileOrientation(*iphone, P, bits({P})), P);
+    EXPECT_EQ(nextProfileOrientation(*iphone, P, platformServicesBits({P})), P);
 
     const DeviceProfile* pixel = findDeviceProfile("pixel_8");
     ASSERT_NE(pixel, nullptr);
@@ -758,12 +748,12 @@ TEST(EditorPlatform, SimulatedDeviceTurnsForTheGamesRequests) {
     editor::Platform::setShownOrientation(LL);
     EXPECT_EQ(platform.getScreenOrientation(), LL);
     // auto-rotation that still allows it keeps it
-    platform.applyOrientationPolicy(AUTO, bits({LL, LR}));
+    platform.applyOrientationPolicy(AUTO, platformServicesBits({LL, LR}));
     EXPECT_EQ(editor::Platform::getSimulation().orientation, LL);
-    platform.applyOrientationPolicy(AUTO, bits({LR}));
+    platform.applyOrientationPolicy(AUTO, platformServicesBits({LR}));
     EXPECT_EQ(editor::Platform::getSimulation().orientation, LR);
     // upside down: the iPhone cannot, it stays
-    platform.applyOrientationPolicy(PU, bits({PU}));
+    platform.applyOrientationPolicy(PU, platformServicesBits({PU}));
     EXPECT_EQ(editor::Platform::getSimulation().orientation, LR);
 
     // Play stop: the toolbar's orientation again, no request

@@ -54,7 +54,7 @@ namespace {
         return formats;
     }
 
-    fs::path fixtureDir(){
+    fs::path textureFormatFixturesFixtureDir(){
         return fs::path(JASPER_TEST_REPO_DIR) / "engine" / "tests" / "core" / "fixtures" / "texture_formats";
     }
 
@@ -95,12 +95,12 @@ TEST(TextureFormatFixtures, EveryFormatHasACookAndItsDecode){
     cache.open(scratch.path / "cache", "", 1ull << 30);
     std::error_code ec;
     if (update)
-        fs::create_directories(fixtureDir(), ec);
+        fs::create_directories(textureFormatFixturesFixtureDir(), ec);
     for (const FixtureFormat& f : fixtureFormats()){
         const std::string name = gpuFormatName(f.format);
         SCOPED_TRACE(name);
-        const fs::path ktx2Path = fixtureDir() / (name + ".ktx2");
-        const fs::path decodedPath = fixtureDir() / (name + ".decoded");
+        const fs::path ktx2Path = textureFormatFixturesFixtureDir() / (name + ".ktx2");
+        const fs::path decodedPath = textureFormatFixturesFixtureDir() / (name + ".decoded");
         if (update){
             std::vector<uint8_t> bytes;
             if (f.format == GpuTextureFormat::R16){

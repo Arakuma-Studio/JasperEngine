@@ -51,18 +51,18 @@ using namespace jasperengine::test;
 
 namespace {
 
-    struct PixelColor {
+    struct PixelPerfectPixelColor {
         uint8_t r = 0, g = 0, b = 0, a = 255;
-        bool operator==(const PixelColor& other) const { return r == other.r && g == other.g && b == other.b; }
-        bool operator!=(const PixelColor& other) const { return !(*this == other); }
+        bool operator==(const PixelPerfectPixelColor& other) const { return r == other.r && g == other.g && b == other.b; }
+        bool operator!=(const PixelPerfectPixelColor& other) const { return !(*this == other); }
     };
 
     // pure channels: they survive any sRGB encode and decode exactly
-    constexpr PixelColor kBlack{0, 0, 0, 255};
-    constexpr PixelColor kWhite{255, 255, 255, 255};
-    constexpr PixelColor kRed{255, 0, 0, 255};
-    constexpr PixelColor kBlue{0, 0, 255, 255};
-    constexpr PixelColor kGreen{0, 255, 0, 255};
+    constexpr PixelPerfectPixelColor kPixelPerfectBlack{0, 0, 0, 255};
+    constexpr PixelPerfectPixelColor kPixelPerfectWhite{255, 255, 255, 255};
+    constexpr PixelPerfectPixelColor kPixelPerfectRed{255, 0, 0, 255};
+    constexpr PixelPerfectPixelColor kBlue{0, 0, 255, 255};
+    constexpr PixelPerfectPixelColor kGreen{0, 255, 0, 255};
 
     // pixels kept alive for every texture made of them (TextureData does not own them)
     std::vector<uint8_t>& keepPixels(std::vector<uint8_t> pixels){
@@ -71,11 +71,11 @@ namespace {
         return *kept.back();
     }
 
-    TextureData pixelArtTexture(int width, int height, PixelColor (*texel)(int x, int y, int width, int height)){
+    TextureData pixelArtTexture(int width, int height, PixelPerfectPixelColor (*texel)(int x, int y, int width, int height)){
         std::vector<uint8_t> rgba((size_t)width * height * 4);
         for (int y = 0; y < height; y++){
             for (int x = 0; x < width; x++){
-                const PixelColor c = texel(x, y, width, height);
+                const PixelPerfectPixelColor c = texel(x, y, width, height);
                 uint8_t* p = &rgba[((size_t)y * width + x) * 4];
                 p[0] = c.r; p[1] = c.g; p[2] = c.b; p[3] = c.a;
             }
@@ -102,24 +102,24 @@ namespace {
         useNearestTexels(tilemap);
     }
 
-    PixelColor whiteTexel(int, int, int, int){ return kWhite; }
-    PixelColor checkerTexel(int x, int y, int, int){ return ((x + y) & 1) ? kBlue : kRed; }
+    PixelPerfectPixelColor whiteTexel(int, int, int, int){ return kPixelPerfectWhite; }
+    PixelPerfectPixelColor checkerTexel(int x, int y, int, int){ return ((x + y) & 1) ? kBlue : kPixelPerfectRed; }
     // a ring of one texel around a fill: the same under any flip or quarter turn
-    PixelColor ringTexel(int x, int y, int width, int height){
-        return (x == 0 || y == 0 || x == width - 1 || y == height - 1) ? kGreen : kRed;
+    PixelPerfectPixelColor ringTexel(int x, int y, int width, int height){
+        return (x == 0 || y == 0 || x == width - 1 || y == height - 1) ? kGreen : kPixelPerfectRed;
     }
 
-    struct Shot {
+    struct PixelPerfectShot {
         int width = 0, height = 0;
         std::vector<uint8_t> rgba;     // rows top first
-        PixelColor at(int x, int y) const{
+        PixelPerfectPixelColor at(int x, int y) const{
             const uint8_t* p = &rgba[((size_t)y * width + x) * 4];
-            return PixelColor{p[0], p[1], p[2], p[3]};
+            return PixelPerfectPixelColor{p[0], p[1], p[2], p[3]};
         }
     };
 
-    Shot readImage(){
-        Shot image;
+    PixelPerfectShot pixelPerfectReadImage(){
+        PixelPerfectShot image;
         Framebuffer& target = GpuEnvironment::target();
         image.width = (int)target.getWidth();
         image.height = (int)target.getHeight();
@@ -129,34 +129,34 @@ namespace {
 
     // the same image moved by dy rows (positive: the content down the screen), compared where both
     // have pixels
-    size_t shiftedRowDifferences(const Shot& image, const Shot& reference, int dy, int x0, int x1, int y0, int y1){
-        size_t differences = 0;
+    size_t shiftedRowDifferences(const PixelPerfectShot& image, const PixelPerfectShot& reference, int dy, int x0, int x1, int y0, int y1){
+        size_t pixelPerfectDifferences = 0;
         for (int y = y0; y < y1; y++){
             const int sy = y - dy;
             if (sy < y0 || sy >= y1)
                 continue;
             for (int x = x0; x < x1; x++){
                 if (image.at(x, y) != reference.at(x, sy))
-                    differences++;
+                    pixelPerfectDifferences++;
             }
         }
-        return differences;
+        return pixelPerfectDifferences;
     }
 
     // the same image moved by dx pixels (positive: the content to the right), compared where
     // both have pixels
-    size_t shiftedDifferences(const Shot& image, const Shot& reference, int dx, int x0, int x1, int y0, int y1){
-        size_t differences = 0;
+    size_t shiftedDifferences(const PixelPerfectShot& image, const PixelPerfectShot& reference, int dx, int x0, int x1, int y0, int y1){
+        size_t pixelPerfectDifferences = 0;
         for (int y = y0; y < y1; y++){
             for (int x = x0; x < x1; x++){
                 const int sx = x - dx;
                 if (sx < x0 || sx >= x1)
                     continue;
                 if (image.at(x, y) != reference.at(sx, y))
-                    differences++;
+                    pixelPerfectDifferences++;
             }
         }
-        return differences;
+        return pixelPerfectDifferences;
     }
 
     // the GPU environment's view as the suite found it: the suites after it draw at their own sizes
@@ -252,7 +252,7 @@ namespace {
     }
 
     // the runs of equal colour along each row and column of a rect of the image
-    std::set<int> runLengths(const Shot& image, int x0, int y0, int x1, int y1){
+    std::set<int> runLengths(const PixelPerfectShot& image, int x0, int y0, int x1, int y1){
         std::set<int> runs;
         for (int y = y0; y < y1; y++){
             int run = 1;
@@ -287,9 +287,9 @@ namespace {
         Vector2 pivot;       // the local origin's offset from the quad's bottom-left, pixels
     };
 
-    Shot composeReference(const std::vector<ReferenceSprite>& drawn, const Matrix4& viewProjection, int baseWidth, int baseHeight,
+    PixelPerfectShot composeReference(const std::vector<ReferenceSprite>& drawn, const Matrix4& viewProjection, int baseWidth, int baseHeight,
                            int screenWidth, int screenHeight, const Rect& viewport, int scale){
-        std::vector<PixelColor> base((size_t)baseWidth * baseHeight, kBlack);
+        std::vector<PixelPerfectPixelColor> base((size_t)baseWidth * baseHeight, kPixelPerfectBlack);
         for (const ReferenceSprite& s : drawn){
             // the four corners through the draw's MVP and the rule: an axis-aligned box of whole pixels
             const Vector3 corners[4] = {Vector3(-s.pivot.x, -s.pivot.y, 0), Vector3((float)s.width - s.pivot.x, -s.pivot.y, 0),
@@ -307,17 +307,17 @@ namespace {
                     if (x < 0 || y < 0 || x >= baseWidth || y >= baseHeight)
                         continue;
                     const bool ring = x == minX || y == minY || x == maxX - 1 || y == maxY - 1;
-                    base[(size_t)y * baseWidth + x] = ring ? kGreen : kRed;
+                    base[(size_t)y * baseWidth + x] = ring ? kGreen : kPixelPerfectRed;
                 }
             }
         }
-        Shot image;
+        PixelPerfectShot image;
         image.width = screenWidth;
         image.height = screenHeight;
         image.rgba.assign((size_t)screenWidth * screenHeight * 4, 0);
         for (int sy = 0; sy < screenHeight; sy++){
             for (int sx = 0; sx < screenWidth; sx++){
-                PixelColor c = kBlack;
+                PixelPerfectPixelColor c = kPixelPerfectBlack;
                 // screen rows are top first, viewports and base pixels count from the bottom
                 const int fromBottom = screenHeight - 1 - sy;
                 const int bx = (int)std::floor((sx - viewport.getX()) / scale);
@@ -331,7 +331,7 @@ namespace {
         return image;
     }
 
-    size_t differences(const Shot& a, const Shot& b){
+    size_t pixelPerfectDifferences(const PixelPerfectShot& a, const PixelPerfectShot& b){
         if (a.width != b.width || a.height != b.height)
             return SIZE_MAX;
         size_t count = 0;
@@ -382,13 +382,13 @@ TEST_F(PixelPerfectGpu, SnapParity){
         sprite("pixelart|parity|white", white, 1, 1, q.x, q.y);
 
     // the base pixel a quad lit in its cell (the k x k block's bottom-left screen pixel)
-    auto lit = [&](const Shot& image, const Quad& q, int k, int& x, int& y){
+    auto lit = [&](const PixelPerfectShot& image, const Quad& q, int k, int& x, int& y){
         int count = 0;
         for (int dy = 0; dy < 8; dy++){
             for (int dx = 0; dx < 8; dx++){
                 const int bx = q.cellX * 8 + dx;
                 const int by = q.cellY * 8 + dy;
-                if (image.at(bx * k, image.height - 1 - by * k) == kWhite){
+                if (image.at(bx * k, image.height - 1 - by * k) == kPixelPerfectWhite){
                     x = bx;
                     y = by;
                     count++;
@@ -397,7 +397,7 @@ TEST_F(PixelPerfectGpu, SnapParity){
         }
         return count;
     };
-    auto mismatches = [&](const Shot& image, int k, Kind only, bool every){
+    auto mismatches = [&](const PixelPerfectShot& image, int k, Kind only, bool every){
         const Matrix4 viewProjection = scene.getComponent<CameraComponent>(camera.getEntity()).viewProjectionMatrix;
         size_t count = 0;
         for (const Quad& q : quads){
@@ -418,7 +418,7 @@ TEST_F(PixelPerfectGpu, SnapParity){
         ppc.setUpscaleRenderTexture(path.texture);
         ASSERT_TRUE(render());
         ASSERT_EQ(scene.getComponent<PixelPerfectCameraComponent>(camera.getEntity()).layout.scale, path.k);
-        EXPECT_EQ(mismatches(readImage(), path.k, Kind::RANDOM, true), 0u) << "quads off the CPU twin's pixel";
+        EXPECT_EQ(mismatches(pixelPerfectReadImage(), path.k, Kind::RANDOM, true), 0u) << "quads off the CPU twin's pixel";
     }
 
     // D4's measure: the quads the rule without its bias rounds otherwise (the CPU), and the GPU
@@ -434,16 +434,16 @@ TEST_F(PixelPerfectGpu, SnapParity){
     ppc.setUpscaleRenderTexture(true);
     RenderSystem::setPixelSnapBias(0.0f);
     ASSERT_TRUE(render());
-    const size_t unbiasedGpu = mismatches(readImage(), 1, Kind::UNDER_HALF, false);
+    const size_t unbiasedGpu = mismatches(pixelPerfectReadImage(), 1, Kind::UNDER_HALF, false);
     RenderSystem::setPixelSnapBias(pixelart::kSnapBias);
     EXPECT_GT(unbiasedGpu, 0u) << "without the bias the GPU rounds the quads under the half down";
     ASSERT_TRUE(render());
-    EXPECT_EQ(mismatches(readImage(), 1, Kind::RANDOM, true), 0u) << "the bias restored";
+    EXPECT_EQ(mismatches(pixelPerfectReadImage(), 1, Kind::RANDOM, true), 0u) << "the bias restored";
 
     // red control: without snapping the lattice quads land elsewhere
     ppc.setPixelSnapping(false);
     ASSERT_TRUE(render());
-    const size_t latticeMisses = mismatches(readImage(), 1, Kind::LATTICE, false);
+    const size_t latticeMisses = mismatches(pixelPerfectReadImage(), 1, Kind::LATTICE, false);
     size_t latticeCount = 0;
     for (const Quad& q : quads)
         latticeCount += q.kind == Kind::LATTICE ? 1 : 0;
@@ -485,7 +485,7 @@ TEST_F(PixelPerfectGpu, ReferenceParity){
         ppc.setUpscaleMode(c.mode);
         ppc.setPixelSnapping(true);
         ASSERT_TRUE(render());
-        const Shot gpu = readImage();
+        const PixelPerfectShot gpu = pixelPerfectReadImage();
         const pixelart::PixelPerfectLayout& layout = scene.getComponent<PixelPerfectCameraComponent>(camera.getEntity()).layout;
         EXPECT_EQ(layout.scale, c.k);
         EXPECT_EQ(layout.baseWidth, c.baseWidth);
@@ -503,15 +503,15 @@ TEST_F(PixelPerfectGpu, ReferenceParity){
             drawn.push_back({16, 16, modelOf(floor.getEntity()) * Matrix4::translateMatrix(16.0f * i, 0.0f, 0.0f), Vector2(0.0f, 0.0f)});
         // the expected image from the hand layout, not the engine's
         const Rect viewport((float)c.viewportX, (float)c.viewportY, (float)(c.baseWidth * c.k), (float)(c.baseHeight * c.k));
-        const Shot reference = composeReference(drawn, viewProjection, c.baseWidth, c.baseHeight, c.screenWidth,
+        const PixelPerfectShot reference = composeReference(drawn, viewProjection, c.baseWidth, c.baseHeight, c.screenWidth,
                                                  c.screenHeight, viewport, c.k);
-        EXPECT_EQ(differences(gpu, reference), 0u);
+        EXPECT_EQ(pixelPerfectDifferences(gpu, reference), 0u);
 
         // red control: unsnapped, the hero (a fractional y) and the flipped sprite (a fractional
         // x) cover whole base pixels other than the reference's
         ppc.setPixelSnapping(false);
         ASSERT_TRUE(render());
-        const Shot loose = readImage();
+        const PixelPerfectShot loose = pixelPerfectReadImage();
         size_t blocks = 0;
         for (int by = 0; by < c.baseHeight; by++){
             for (int bx = 0; bx < c.baseWidth; bx++){
@@ -537,7 +537,7 @@ TEST_F(PixelPerfectGpu, EvenColumns){
         GpuEnvironment::setView(screen.first, screen.second, 320, 180, Scaling::LETTERBOX);
         ASSERT_TRUE(render());
         const pixelart::PixelPerfectLayout& layout = scene.getComponent<PixelPerfectCameraComponent>(camera.getEntity()).layout;
-        const Shot image = readImage();
+        const PixelPerfectShot image = pixelPerfectReadImage();
         const Rect v = layout.viewport;
         const int top = image.height - (int)(v.getY() + v.getHeight());
         const std::set<int> runs = runLengths(image, (int)v.getX(), top, (int)(v.getX() + v.getWidth()), top + (int)v.getHeight());
@@ -557,7 +557,7 @@ TEST_F(PixelPerfectGpu, EvenColumns){
     component.autoResize = false;
     camera.setOrtho(0.0f, 640.0f, 0.0f, 360.0f, -10.0f, 10.0f);
     ASSERT_TRUE(render());
-    const Shot fitted = readImage();
+    const PixelPerfectShot fitted = pixelPerfectReadImage();
     const Rect view = Engine::getViewRect();
     const int top = fitted.height - (int)(view.getY() + view.getHeight());
     const std::set<int> runs = runLengths(fitted, (int)view.getX(), top + 2, (int)(view.getX() + view.getWidth()) - 2,
@@ -603,11 +603,11 @@ TEST_F(PixelPerfectGpu, TilemapSeams){
             camera.setPosition(p, p * 0.5f, 1.0f);
             if (!render())
                 return SIZE_MAX;
-            const Shot image = readImage();
+            const PixelPerfectShot image = pixelPerfectReadImage();
             // the floor covers the target but its last column and row (the camera moved in)
             for (int y = 8; y < image.height - 8; y++)
                 for (int x = 8; x < image.width - 8; x++)
-                    if (image.at(x, y) == kBlack)
+                    if (image.at(x, y) == kPixelPerfectBlack)
                         holes++;
         }
         return holes;
@@ -636,17 +636,17 @@ TEST_F(PixelPerfectGpu, Rotation){
     Sprite& hero = sprite("pixelart|rotation|ring", pixelArtTexture(17, 11, &ringTexel), 17, 11, 160.0f, 90.0f, PivotPreset::CENTER);
 
     ASSERT_TRUE(render());
-    const Shot straight = readImage();
+    const PixelPerfectShot straight = pixelPerfectReadImage();
     hero.setRotation(0.0f, 0.0f, 37.0f);
     ASSERT_TRUE(render());
-    EXPECT_EQ(differences(readImage(), straight), 0u) << "37 degrees under 90 Degree Steps is the 0-degree step";
+    EXPECT_EQ(pixelPerfectDifferences(pixelPerfectReadImage(), straight), 0u) << "37 degrees under 90 Degree Steps is the 0-degree step";
     const Quaternion kept = scene.getComponent<Transform>(hero.getEntity()).rotation;
     EXPECT_NEAR(kept.getRoll(), 37.0f, 1e-3f) << "the Transform keeps the authored angle";
 
     ppc.setRotationMode(PixelRotation::ON_GRID);
     ASSERT_TRUE(render());
-    const Shot rotated = readImage();
-    EXPECT_GT(differences(rotated, straight), 0u);
+    const PixelPerfectShot rotated = pixelPerfectReadImage();
+    EXPECT_GT(pixelPerfectDifferences(rotated, straight), 0u);
     const pixelart::PixelPerfectLayout& layout = scene.getComponent<PixelPerfectCameraComponent>(camera.getEntity()).layout;
     const int k = layout.scale;
     // no partially covered base pixel: every k x k block is one colour
@@ -655,7 +655,7 @@ TEST_F(PixelPerfectGpu, Rotation){
         for (int bx = 0; bx < layout.baseWidth; bx++){
             const int x0 = (int)layout.viewport.getX() + bx * k;
             const int y0 = rotated.height - (int)layout.viewport.getY() - (by + 1) * k;
-            const PixelColor first = rotated.at(x0, y0);
+            const PixelPerfectPixelColor first = rotated.at(x0, y0);
             for (int dy = 0; dy < k; dy++)
                 for (int dx = 0; dx < k; dx++)
                     if (rotated.at(x0 + dx, y0 + dy) != first)
@@ -673,15 +673,15 @@ TEST_F(PixelPerfectGpu, Rotation){
         for (int bx = 0; bx < layout.baseWidth; bx++){
             const float wx = (float)bx + 0.5f - pivotX, wy = (float)by + 0.5f - pivotY;
             const float lx = c * wx + s * wy + 8.5f, ly = -s * wx + c * wy + 5.5f;
-            PixelColor expected = kBlack;
+            PixelPerfectPixelColor expected = kPixelPerfectBlack;
             if (lx >= 0.0f && ly >= 0.0f && lx < 17.0f && ly < 11.0f)
                 expected = ringTexel((int)lx, (int)ly, 17, 11);
             const int x0 = (int)layout.viewport.getX() + bx * k;
             const int y0 = rotated.height - (int)layout.viewport.getY() - (by + 1) * k;
-            const PixelColor got = rotated.at(x0, y0);
+            const PixelPerfectPixelColor got = rotated.at(x0, y0);
             if (got != expected && off++ < 64)
-                offPixels += " (" + std::to_string(bx) + "," + std::to_string(by) + (got == kGreen ? " green" : got == kRed ? " red" : " other") +
-                             (expected == kGreen ? "/green)" : expected == kRed ? "/red)" : "/black)");
+                offPixels += " (" + std::to_string(bx) + "," + std::to_string(by) + (got == kGreen ? " green" : got == kPixelPerfectRed ? " red" : " other") +
+                             (expected == kGreen ? "/green)" : expected == kPixelPerfectRed ? "/red)" : "/black)");
         }
     }
     EXPECT_LE(off, 8u) << "base pixels (x, y drawn/expected):" << offPixels;
@@ -702,11 +702,11 @@ TEST_F(PixelPerfectGpu, Smoothing){
         ppc.setUpscaleRenderTexture(texture);
         camera.setPosition(10.0f, 0.0f, 1.0f);
         ASSERT_TRUE(render());
-        const Shot reference = readImage();
+        const PixelPerfectShot reference = pixelPerfectReadImage();
         for (int step = 1; step <= 3; step++){
             camera.setPosition(10.0f + 0.25f * (float)step, 0.0f, 1.0f);
             ASSERT_TRUE(render());
-            const Shot shifted = readImage();
+            const PixelPerfectShot shifted = pixelPerfectReadImage();
             // the content moved left by step screen pixels: shifted(x) == reference(x + step)
             EXPECT_EQ(shiftedDifferences(shifted, reference, -step, 8, shifted.width - 8, 8, shifted.height - 8), 0u) << step;
             EXPECT_GT(shiftedDifferences(shifted, reference, 0, 8, shifted.width - 8, 8, shifted.height - 8), 0u) << step;
@@ -721,7 +721,7 @@ TEST_F(PixelPerfectGpu, Smoothing){
         for (int step = 1; step <= 3; step++){
             camera.setPosition(10.0f, 0.25f * (float)step, 1.0f);
             ASSERT_TRUE(render());
-            const Shot shifted = readImage();
+            const PixelPerfectShot shifted = pixelPerfectReadImage();
             // the camera went up: the content moved down by step screen rows (rows top first)
             EXPECT_EQ(shiftedRowDifferences(shifted, reference, step, 8, shifted.width - 8, 8, shifted.height - 8), 0u) << step;
             EXPECT_GT(shiftedRowDifferences(shifted, reference, -step, 8, shifted.width - 8, 8, shifted.height - 8), 0u) << step;
@@ -765,7 +765,7 @@ TEST_F(PixelPerfectGpu, UiImageParity){
     }
     // the base pixel a cell's image lit (base pixels y up), and the one the rule puts it on: the
     // corner of the quad nearest the grid origin, through the draw's own MVP
-    auto misses = [&](const Shot& image, int k, bool latticeOnly){
+    auto misses = [&](const PixelPerfectShot& image, int k, bool latticeOnly){
         const Matrix4 viewProjection = scene.getComponent<CameraComponent>(camera.getEntity()).viewProjectionMatrix;
         const pixelart::PixelPerfectLayout& layout = scene.getComponent<PixelPerfectCameraComponent>(camera.getEntity()).layout;
         size_t count = 0;
@@ -787,7 +787,7 @@ TEST_F(PixelPerfectGpu, UiImageParity){
                     const int screenY = image.height - 1 - ((int)layout.viewport.getY() + y * k);
                     if (std::abs(x - px) > 4 || std::abs(y - py) > 4)
                         continue;
-                    if (image.at(screenX, screenY) == kWhite){
+                    if (image.at(screenX, screenY) == kPixelPerfectWhite){
                         lit++;
                         at = at || (x == px && y == py);
                     }
@@ -808,13 +808,13 @@ TEST_F(PixelPerfectGpu, UiImageParity){
         ASSERT_GT(uis->size(), 0u);
         EXPECT_NE(uis->getComponentFromIndex(0).shaderProperties & ShaderPool::getPixelSnapProperty(ShaderType::UI), 0u)
             << "the images draw with the UI 'Pxs' variant";
-        EXPECT_EQ(misses(readImage(), k, false), 0u) << "images off the CPU twin's pixel";
+        EXPECT_EQ(misses(pixelPerfectReadImage(), k, false), 0u) << "images off the CPU twin's pixel";
         ppc.setPixelSnapping(false);
         ASSERT_TRUE(render());
         size_t lattice = 0;
         for (const Cell& c : cells)
             lattice += c.lattice ? 1 : 0;
-        EXPECT_GT((double)misses(readImage(), k, true), 0.4 * (double)lattice) << "the snap did nothing";
+        EXPECT_GT((double)misses(pixelPerfectReadImage(), k, true), 0.4 * (double)lattice) << "the snap did nothing";
     }
     EXPECT_NO_ENGINE_ERRORS();
 }
@@ -839,7 +839,7 @@ TEST_F(PixelPerfectGpu, ParticleCentres){
         systems.back()->setPosition(at.x, at.y, 0.0f);
         centres.push_back(at);
     }
-    auto misses = [&](const Shot& image){
+    auto misses = [&](const PixelPerfectShot& image){
         size_t count = 0;
         for (const Vector2& c : centres){
             // the snapped centre is a pixel corner: the block is the two pixels on each side
@@ -847,7 +847,7 @@ TEST_F(PixelPerfectGpu, ParticleCentres){
             for (int y = cy - 3; y < cy + 3; y++){
                 for (int x = cx - 3; x < cx + 3; x++){
                     const bool inside = x >= cx - 1 && x < cx + 1 && y >= cy - 1 && y < cy + 1;
-                    const bool lit = image.at(x, image.height - 1 - y) == kWhite;
+                    const bool lit = image.at(x, image.height - 1 - y) == kPixelPerfectWhite;
                     if (lit != inside){
                         count++;
                         y = cy + 3;
@@ -860,11 +860,11 @@ TEST_F(PixelPerfectGpu, ParticleCentres){
     };
     ASSERT_TRUE(render());
     GpuEnvironment::drawFrames(4);
-    EXPECT_EQ(misses(readImage()), 0u) << "particles off their snapped centres";
+    EXPECT_EQ(misses(pixelPerfectReadImage()), 0u) << "particles off their snapped centres";
     ppc.setPixelSnapping(false);
     ASSERT_TRUE(render());
     GpuEnvironment::drawFrames(4);
-    EXPECT_GT(misses(readImage()), 0u) << "the snap did nothing";
+    EXPECT_GT(misses(pixelPerfectReadImage()), 0u) << "the snap did nothing";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -882,14 +882,14 @@ TEST_F(PixelPerfectGpu, DepthProgramSnapsWithTheColour){
     for (int i = 0; i < 48; i++)
         sprite("pixelart|depth|ring", ring, 9, 7, place(random), place(random) * 0.55f);
     ASSERT_TRUE(render());
-    const Shot without = readImage();
+    const PixelPerfectShot without = pixelPerfectReadImage();
     scene.setDepthPrepassEnabled(true);
     ASSERT_TRUE(render());
     const MeshComponent& mesh = scene.getComponent<MeshComponent>(sprites[0]->getEntity());
     ASSERT_GT(mesh.numSubmeshes, 0u);
     EXPECT_NE(mesh.submeshes[0].depthShaderProperties & ShaderPool::getPixelSnapProperty(ShaderType::DEPTH), 0u)
         << "the sprites' depth programs are the 'Pxs' variant";
-    EXPECT_EQ(differences(readImage(), without), 0u) << "the pre-pass changed pixels";
+    EXPECT_EQ(pixelPerfectDifferences(pixelPerfectReadImage(), without), 0u) << "the pre-pass changed pixels";
     scene.setDepthPrepassEnabled(false);
     EXPECT_NO_ENGINE_ERRORS();
 }
@@ -903,7 +903,7 @@ TEST_F(PixelPerfectGpu, StretchFill){
     PixelPerfectCamera ppc = pixelPerfect(320, 180);
     ppc.setUpscaleMode(PixelUpscaleMode::STRETCH_FILL);
     ASSERT_TRUE(render());
-    const Shot image = readImage();
+    const PixelPerfectShot image = pixelPerfectReadImage();
     const pixelart::PixelPerfectLayout& layout = scene.getComponent<PixelPerfectCameraComponent>(camera.getEntity()).layout;
     const Rect v = layout.viewport;
     const float scaleX = v.getWidth() / 320.0f;
@@ -915,14 +915,14 @@ TEST_F(PixelPerfectGpu, StretchFill){
         const float left = ((float)x - v.getX()) / scaleX;
         const float right = ((float)x + 1.0f - v.getX()) / scaleX;
         const int texel = (int)std::floor(left);
-        const PixelColor got = image.at(x, y);
+        const PixelPerfectPixelColor got = image.at(x, y);
         if ((int)std::floor(right - 1e-4f) == texel){
             interior++;
             if (got != checkerTexel(texel, row, 0, 0))
                 interiorWrong++;
         }else{
             // a blend of this texel and the next: each channel between theirs
-            const PixelColor a = checkerTexel(texel, row, 0, 0), b = checkerTexel(texel + 1, row, 0, 0);
+            const PixelPerfectPixelColor a = checkerTexel(texel, row, 0, 0), b = checkerTexel(texel + 1, row, 0, 0);
             auto between = [](uint8_t value, uint8_t p, uint8_t q){ return value + 1 >= std::min(p, q) && value <= std::max(p, q) + 1; };
             if (!between(got.r, a.r, b.r) || !between(got.g, a.g, b.g) || !between(got.b, a.b, b.b))
                 seamWrong++;
@@ -995,7 +995,7 @@ TEST_F(PixelPerfectGpu, FixedResolutionDriven){
     ASSERT_TRUE(GpuEnvironment::runFrames([&layers](){
         return layers[0]->getSystem<RenderSystem>()->isAllLoaded() && layers[1]->getSystem<RenderSystem>()->isAllLoaded();
     }));
-    const Shot image = readImage();
+    const PixelPerfectShot image = pixelPerfectReadImage();
     Engine::removeScene(&hud);
     const Rect viewport = Engine::getViewRect();
     const int k = Engine::getPixelPerfectLayout().scale;
@@ -1003,7 +1003,7 @@ TEST_F(PixelPerfectGpu, FixedResolutionDriven){
     const int y = image.height / 2;
     std::vector<int> lit;
     for (int x = 0; x < image.width; x++)
-        if (image.at(x, y) == kWhite)
+        if (image.at(x, y) == kPixelPerfectWhite)
             lit.push_back(x);
     ASSERT_EQ(lit.size(), (size_t)k);
     EXPECT_EQ(lit.front(), (int)viewport.getX() + (int)pixelart::snap(40.5f) * k);

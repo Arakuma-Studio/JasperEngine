@@ -21,7 +21,7 @@ using namespace jasperengine;
 
 namespace {
 
-    struct Listener {
+    struct FunctionSubscribeCompatListener {
         int calls = 0;
         void onEvent(int value) { calls += value; }
         bool filter(int value) { return value > 0; }
@@ -76,8 +76,8 @@ TEST(FunctionSubscribeCompatTest, RemoveAndSubstring) {
 
 TEST(FunctionSubscribeCompatTest, MemberAndFreeFunctions) {
     FunctionSubscribe<void(int)> event;
-    Listener listener;
-    event.add<Listener, &Listener::onEvent>("member", &listener);
+    FunctionSubscribeCompatListener listener;
+    event.add<FunctionSubscribeCompatListener, &FunctionSubscribeCompatListener::onEvent>("member", &listener);
     event.call(3);
     EXPECT_EQ(listener.calls, 3);
     FunctionSubscribe<void()> plain;
@@ -90,8 +90,8 @@ TEST(FunctionSubscribeCompatTest, MemberAndFreeFunctions) {
 TEST(FunctionSubscribeCompatTest, CallRetFirstResultOrDefault) {
     FunctionSubscribe<bool(int)> event;
     EXPECT_TRUE(event.callRet(1, true)) << "no subscribers: the default";
-    Listener listener;
-    event.add<Listener, &Listener::filter>("first", &listener);
+    FunctionSubscribeCompatListener listener;
+    event.add<FunctionSubscribeCompatListener, &FunctionSubscribeCompatListener::filter>("first", &listener);
     event.add("second", [](int) { return true; });
     EXPECT_FALSE(event.callRet(-1, true)) << "the first subscriber answers";
     EXPECT_TRUE(event.callRet(5, false));

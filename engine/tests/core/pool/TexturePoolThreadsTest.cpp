@@ -52,7 +52,7 @@ using namespace jasperengine::test;
 namespace {
 
     // (six images, embedded, and few enough submeshes for a preview's one mesh)
-    const char* const PREVIEW_MODEL = JASPER_TEST_REPO_DIR "/engine/tests/render/assets/khronos/AnisotropyRotationTest/glTF-Binary/AnisotropyRotationTest.glb";
+    const char* const TEXTURE_PREVIEW_MODEL = JASPER_TEST_REPO_DIR "/engine/tests/render/assets/khronos/AnisotropyRotationTest/glTF-Binary/AnisotropyRotationTest.glb";
 
     const char* const UNCLAIMED_IMAGE = JASPER_TEST_REPO_DIR "/engine/tests/core/fixtures/particles/textures/spark.png";
 
@@ -147,7 +147,7 @@ TEST(TextureDataPoolThreads, AModelLoadingOnItsThreadSharesThePoolsWithTheMainTh
             Scene preview(EntityPool::System);
             Model model(&preview);
             MeshSystem::setImageDecodeMaxDimension(256);
-            EXPECT_TRUE(preview.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), PREVIEW_MODEL, false, false, false));
+            EXPECT_TRUE(preview.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), TEXTURE_PREVIEW_MODEL, false, false, false));
             MeshSystem::setImageDecodeMaxDimension(0);
             // this preview's images, as its GPU upload holds them: their cleanups come next to
             // the next preview's load, which finds the same ones in the pool
@@ -274,7 +274,7 @@ TEST(TextureDataPoolThreadsGpu, APreviewOnItsStrandSharesThePoolsWithTheFrames){
                 preview->camera.setFramebufferSize(64, 64);
                 preview->camera.setRenderToTexture(true);
                 preview->light.setType(LightType::DIRECTIONAL);
-                const bool loaded = preview->model.loadModel(PREVIEW_MODEL);
+                const bool loaded = preview->model.loadModel(TEXTURE_PREVIEW_MODEL);
                 MeshSystem::setImageDecodeMaxDimension(0);
                 EXPECT_TRUE(loaded);
                 {

@@ -165,7 +165,7 @@ namespace changed_update_flags_test {
 
     // a camera made here: the framebuffer its constructor allocates (a scene's registry or renderer
     // frees a scene camera's), shared by its copies, goes with `owned`
-    void own(test::OwnedFramebuffers& owned, const reflect::ComponentDesc& desc, const reflect::Value& value) {
+    void own(jasperengine::editor::test::OwnedFramebuffers& owned, const reflect::ComponentDesc& desc, const reflect::Value& value) {
         if (desc.type == ComponentType::CameraComponent) owned.keep(static_cast<const CameraComponent*>(value.get()));
     }
 
@@ -287,7 +287,7 @@ namespace changed_update_flags_test {
 using namespace changed_update_flags_test;
 
 TEST(ChangedUpdateFlags, EveryPropertyOfADefaultComponent) {
-    test::OwnedFramebuffers owned;
+    jasperengine::editor::test::OwnedFramebuffers owned;
     for (const reflect::ComponentDesc* desc : reflect::listingOrder()) {
         reflect::Value base(desc->body.ops);
         own(owned, *desc, base);
@@ -296,7 +296,7 @@ TEST(ChangedUpdateFlags, EveryPropertyOfADefaultComponent) {
 }
 
 TEST(ChangedUpdateFlags, EveryPropertyWithItsListsFilled) {
-    test::OwnedFramebuffers owned;
+    jasperengine::editor::test::OwnedFramebuffers owned;
     for (const reflect::ComponentDesc* desc : reflect::listingOrder()) {
         reflect::Value base(desc->body.ops);
         own(owned, *desc, base);
@@ -306,7 +306,7 @@ TEST(ChangedUpdateFlags, EveryPropertyWithItsListsFilled) {
 }
 
 TEST(ChangedUpdateFlags, ListsOfDifferentLengthsCompareTheElementsBothHave) {
-    test::OwnedFramebuffers owned;
+    jasperengine::editor::test::OwnedFramebuffers owned;
     for (const reflect::ComponentDesc* desc : reflect::listingOrder()) {
         reflect::Value empty(desc->body.ops);
         reflect::Value filled(desc->body.ops);
@@ -318,7 +318,7 @@ TEST(ChangedUpdateFlags, ListsOfDifferentLengthsCompareTheElementsBothHave) {
 }
 
 TEST(ChangedUpdateFlags, NaNDiffersFromItself) {
-    test::OwnedFramebuffers owned;
+    jasperengine::editor::test::OwnedFramebuffers owned;
     for (const reflect::ComponentDesc* desc : reflect::listingOrder()) {
         reflect::Value a(desc->body.ops);
         reflect::Value b(desc->body.ops);
@@ -337,7 +337,7 @@ TEST(ChangedUpdateFlags, NaNDiffersFromItself) {
 
 TEST(ChangedUpdateFlags, RandomPairs) {
     std::mt19937 random(51);
-    test::OwnedFramebuffers owned;
+    jasperengine::editor::test::OwnedFramebuffers owned;
     for (const reflect::ComponentDesc* desc : reflect::listingOrder()) {
         for (int round = 0; round < 30; round++) {
             reflect::Value a(desc->body.ops);
@@ -460,15 +460,15 @@ TEST(ChangedUpdateFlagsBench, AMeshCostsMicroseconds) {
     std::printf("[ bench ] a Mesh's update flags: %.2f us a call, %.2f us with its property lists (budget 50)\n", now, lists);
     EXPECT_NE(sink, 0u);
     EXPECT_LT(now * 20.0, lists);
-    if (const double slack = test::perfSlack(); slack > 0.0) {
+    if (const double slack = jasperengine::editor::test::perfSlack(); slack > 0.0) {
         EXPECT_LE(now, 50.0 * slack);
     }
 }
 
 // The other components on Stop's path: those that run update flags, with their lists filled
 TEST(ChangedUpdateFlagsBench, EveryComponentStaysUnderTheBudget) {
-    const double slack = test::perfSlack();
-    test::OwnedFramebuffers owned;
+    const double slack = jasperengine::editor::test::perfSlack();
+    jasperengine::editor::test::OwnedFramebuffers owned;
     for (const reflect::ComponentDesc* desc : reflect::listingOrder()) {
         if (desc->decodeApply != reflect::DecodeApply::UpdateFlags) continue;
         reflect::Value a(desc->body.ops);

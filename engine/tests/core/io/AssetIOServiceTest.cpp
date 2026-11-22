@@ -7,6 +7,7 @@
 
 #include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
+#include "jobs/detail/TimedWait.h"
 
 #include "JobsTestUtil.h"
 #include "TestPack.h"
@@ -15,6 +16,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -59,7 +61,7 @@ namespace{
         fs::path path;
     };
 
-    std::string asString(const std::vector<uint8_t>& bytes){
+    std::string assetIOServiceAsString(const std::vector<uint8_t>& bytes){
         return std::string(bytes.begin(), bytes.end());
     }
 
@@ -117,7 +119,7 @@ TEST_P(AssetIO, ReadsFileBytesIntoDecodeJob){
     request.path = dir.write("a.txt", "texture bytes");
     Outcome outcome;
     outcome.attach(request);
-    Task<std::string> task = service->submitRead(request, [](std::vector<uint8_t>&& bytes){ return asString(bytes); });
+    Task<std::string> task = service->submitRead(request, [](std::vector<uint8_t>&& bytes){ return assetIOServiceAsString(bytes); });
     finish(task);
     EXPECT_EQ(task.get(), "texture bytes");
     EXPECT_EQ(outcome.submitted.load(), 1);
@@ -129,7 +131,7 @@ TEST_P(AssetIO, ReadsOnlyTheRequestedByteRange){
     request.path = dir.write("range.bin", "0123456789abcdef");
     request.offset = 4;
     request.size = 6;
-    Task<std::string> task = service->submitRead(request, [](std::vector<uint8_t>&& bytes){ return asString(bytes); });
+    Task<std::string> task = service->submitRead(request, [](std::vector<uint8_t>&& bytes){ return assetIOServiceAsString(bytes); });
     finish(task);
     EXPECT_EQ(task.get(), "456789");
 }
@@ -165,21 +167,43 @@ TEST_P(AssetIO, ReadFailureResolvesOnFailure){
     EXPECT_EQ(outcome.total(), 1) << "exactly one of onSubmitted/onFailure";
 }
 
-// DISABLED_: flaky (#23): the writer thread can be scheduled past the 200 ms retry window on a
-// loaded runner; it needs a retry hook to wait for the state, not 60 ms
-TEST_P(AssetIO, DISABLED_RetryHalfWrittenFile){
-    // the file appears (as a hot-reload rename does) inside the 200 ms retry window
+TEST_P(AssetIO, RetryHalfWrittenFile){
+    // the file appears (as a hot-reload rename does) after the read's first attempt failed: the
+    // writer waits for that attempt, and a wide window keeps a writer scheduled late inside it
     const std::string path = dir.file("late.txt");
+    struct Hooks {
+        ~Hooks(){
+            AssetIOService::setRetryHookForTesting(nullptr);
+            AssetIOService::setRetryWindowForTesting(0);
+        }
+    } hooks;
+    std::mutex mutex;
+    std::condition_variable retried;
+    bool failedOnce = false;
+    AssetIOService::setRetryWindowForTesting(60000);
+    AssetIOService::setRetryHookForTesting([&](const std::string& attempted){
+        if (attempted != path)
+            return;
+        std::lock_guard<std::mutex> lock(mutex);
+        failedOnce = true;
+        retried.notify_all();
+    });
     std::thread writer([&]{
-        std::this_thread::sleep_for(std::chrono::milliseconds(60));
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            // (a hang guard: the read retries until the file is there)
+            if (!jobs::detail::timedWait(retried, lock, std::chrono::seconds(30), [&]{ return failedOnce; }))
+                return;
+        }
         dir.write("late.tmp", "arrived");
         fs::rename(dir.file("late.tmp"), path);
     });
     AssetIOService::ReadRequest request;
     request.path = path;
-    Task<std::string> task = service->submitRead(request, [](std::vector<uint8_t>&& bytes){ return asString(bytes); });
+    Task<std::string> task = service->submitRead(request, [](std::vector<uint8_t>&& bytes){ return assetIOServiceAsString(bytes); });
     finish(task);
     writer.join();
+    ASSERT_EQ(task.status(), TaskStatus::Completed);
     EXPECT_EQ(task.get(), "arrived");
 }
 
@@ -197,7 +221,7 @@ TEST_P(AssetIO, ReadsResourcePack){
     AssetIOService::ReadRequest request;
     request.path = testsupport::testPackPath();   // packed only: no such file on disk
     ASSERT_FALSE(fs::exists(fs::current_path() / testsupport::testPackPath()));
-    Task<std::string> task = service->submitRead(request, [](std::vector<uint8_t>&& bytes){ return asString(bytes); });
+    Task<std::string> task = service->submitRead(request, [](std::vector<uint8_t>&& bytes){ return assetIOServiceAsString(bytes); });
     finish(task);
     EXPECT_EQ(task.get(), testsupport::testPackContent());
 }
@@ -360,7 +384,7 @@ TEST_F(AssetIOReaders, AWaitRunsAQueuedReadItself){
     ASSERT_TRUE(system->getGate().tryAcquire(GateClass::Default));
     AssetIOService::ReadRequest request;
     request.path = dir.write("wait.txt", "waited");
-    Task<std::string> task = service->submitRead(request, [](std::vector<uint8_t>&& bytes){ return asString(bytes); });
+    Task<std::string> task = service->submitRead(request, [](std::vector<uint8_t>&& bytes){ return assetIOServiceAsString(bytes); });
     // no reader can claim it (no free slot): only the waiter's own read completes it
     testsupport::runWithWatchdog(10.0, "AWaitRunsAQueuedReadItself", [&]{
         EXPECT_EQ(task.get(), "waited");

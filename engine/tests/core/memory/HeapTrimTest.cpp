@@ -47,13 +47,14 @@ namespace {
     }
 #endif
 
-    bool waitForTrims(uint64_t count) {
+    // no trim queued or running (the job system pumped where it has no workers)
+    bool waitForIdle() {
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-        while (memory::heapTrimCount() < count && std::chrono::steady_clock::now() < deadline) {
+        while (memory::heapTrimPending() && std::chrono::steady_clock::now() < deadline) {
             jobs::pump(5.0);
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
-        return memory::heapTrimCount() >= count;
+        return !memory::heapTrimPending();
     }
 
 }
@@ -110,17 +111,22 @@ TEST(HeapTrim, NothingWhereTheAllocatorCannot) {
 }
 #endif
 
-// DISABLED_: flaky (#33): ten requests merge only if the caller is not preempted between them
-// while a trim runs; it needs the Background lane held until all are made
-TEST(HeapTrim, DISABLED_RequestsMerge) {
+TEST(HeapTrim, RequestsMerge) {
 #if HEAP_TRIM_TEST_SUPPORTED
+    // a trim an earlier test asked for ends first
+    ASSERT_TRUE(waitForIdle());
     const uint64_t before = memory::heapTrimCount();
+    struct Release {
+        ~Release() { memory::setHeapTrimHeldForTesting(false); }
+    } release;
+    // held, the first trim cannot end between the requests however this thread is scheduled
+    memory::setHeapTrimHeldForTesting(true);
     for (int i = 0; i < 10; i++) memory::requestHeapTrim();
-    ASSERT_TRUE(waitForTrims(before + 1));
-    // the job may have run between requests: at most one more run per request made while it ran
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    jobs::pump(5.0);
-    EXPECT_LE(memory::heapTrimCount() - before, 3u) << "ten requests in a row are one or two trims, not ten";
+    EXPECT_TRUE(memory::heapTrimPending());
+    EXPECT_EQ(memory::heapTrimCount(), before);
+    memory::setHeapTrimHeldForTesting(false);
+    ASSERT_TRUE(waitForIdle());
+    EXPECT_EQ(memory::heapTrimCount() - before, 2u) << "ten requests in a row are one trim and one rerun, not ten";
 #else
     const uint64_t before = memory::heapTrimCount();
     memory::requestHeapTrim();

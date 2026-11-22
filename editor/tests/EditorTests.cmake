@@ -92,6 +92,9 @@ jasperengine_add_test_target(jasperengine-editor-tests
         JASPER_EDITOR_TEST_CXX="${CMAKE_CXX_COMPILER}"
 )
 add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_helper je_vcs_process_helper)
+jasperengine_skip_unity_build(
+    REASON "replaces the global operator new and delete: in a batch GCC inlines them into their callers and reports a mismatched new and free"
+    SOURCES ${CMAKE_CURRENT_LIST_DIR}/support/AllocationProbe.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_compile_definitions(jasperengine-editor-tests PRIVATE JE_TEST_COUNTS_ALLOCATIONS)
     # the counter compiles in the tests' object library (jasperengine_add_test EDITOR), whose

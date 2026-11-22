@@ -14,7 +14,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace tlglsl {
+namespace iridescenceglsl {
 
     struct vec3 {
         float x = 0, y = 0, z = 0;
@@ -79,7 +79,8 @@ namespace tlglsl {
 
 }
 
-using namespace tlglsl;
+// the tests live in the shim's namespace: a using-directive would reach the next sources of a unity unit
+namespace iridescenceglsl {
 
 namespace {
 
@@ -121,3 +122,5 @@ TEST(TitleIridescence, TheEngineFilmReflectsGreenThere) {
         EXPECT_TRUE(green(film)) << film.x << " " << film.y << " " << film.z;
     }
 }
+
+}  // namespace iridescenceglsl

@@ -45,7 +45,7 @@ namespace {
         return titleart::makeNewTitleArt(o);
     }
 
-    TitleOpsResult applyOps(const TitleArtDoc& doc, const Json& ops) {
+    TitleOpsResult titleLibraryBuiltinsApplyOps(const TitleArtDoc& doc, const Json& ops) {
         TitleOpsOptions o;
         o.idSeed = 0x8484;
         return TitleArtOps::apply(doc, ops, o);
@@ -71,7 +71,7 @@ namespace {
         return v;
     }
 
-    const Json* titleLayer(const TitleOpsResult& r) {
+    const Json* titleLibraryBuiltinsTitleLayer(const TitleOpsResult& r) {
         const Json* found = nullptr;
         titleart::forEachLayer(r.doc.root, [&](const Json& l, const Json*, int) {
             if (l.value("name", std::string()) == "Title") found = &l;
@@ -91,7 +91,7 @@ namespace {
 
     // ---- AC7: Pachislop's layers in our names ----
 
-    std::string snake(const std::string& s) {
+    std::string titleLibraryBuiltinsSnake(const std::string& s) {
         std::string out;
         for (char c : s) {
             if (std::isupper((unsigned char)c)) {
@@ -104,15 +104,15 @@ namespace {
         return out;
     }
 
-    Json snakeTree(const Json& v) {
+    Json titleLibraryBuiltinsSnakeTree(const Json& v) {
         if (v.is_object()) {
             Json out = Json::object();
-            for (auto it = v.begin(); it != v.end(); ++it) out[snake(it.key())] = snakeTree(it.value());
+            for (auto it = v.begin(); it != v.end(); ++it) out[titleLibraryBuiltinsSnake(it.key())] = titleLibraryBuiltinsSnakeTree(it.value());
             return out;
         }
         if (v.is_array()) {
             Json out = Json::array();
-            for (const Json& e : v) out.push_back(snakeTree(e));
+            for (const Json& e : v) out.push_back(titleLibraryBuiltinsSnakeTree(e));
             return out;
         }
         return v;
@@ -155,7 +155,7 @@ namespace {
         if (theirs.is_boolean() && ours.is_boolean() && theirs != ours) out.push_back(path + ": " + theirs.dump() + " against ours " + ours.dump());
     }
 
-    Json readJson(const fs::path& file) {
+    Json titleLibraryBuiltinsReadJson(const fs::path& file) {
         std::ifstream in(file);
         std::stringstream ss;
         ss << in.rdbuf();
@@ -171,9 +171,9 @@ TEST_F(TitleLibraryBuiltins, CaptureRoundTripsEveryBuiltIn) {
     for (const LibraryItemInfo& item : looks) {
         if (item.scope != LibraryScope::BuiltIn || !item.available) continue;
         SCOPED_TRACE(item.ref);
-        const TitleOpsResult applied = applyOps(textDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", item.ref}});
+        const TitleOpsResult applied = titleLibraryBuiltinsApplyOps(textDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", item.ref}});
         ASSERT_TRUE(applied.ok) << applied.error();
-        const Json* layer = titleLayer(applied);
+        const Json* layer = titleLibraryBuiltinsTitleLayer(applied);
         ASSERT_NE(layer, nullptr);
         CaptureOptions options;
         options.name.en = "Captured";
@@ -184,7 +184,7 @@ TEST_F(TitleLibraryBuiltins, CaptureRoundTripsEveryBuiltIn) {
         auto files = std::map<std::string, std::string>(TitleLibrary::get().builtinFiles());
         files["looks/metal/captured.titlelook"] = writeLook(captured);
         TitleLibrary::get().setBuiltinsForTesting(files);
-        const TitleOpsResult again = applyOps(textDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/captured"}});
+        const TitleOpsResult again = titleLibraryBuiltinsApplyOps(textDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/captured"}});
         TitleLibrary::get().setBuiltinsForTesting({});
         ASSERT_TRUE(again.ok) << again.error();
         Json a = strippedIds(applied.doc.root["layers"]), b = strippedIds(again.doc.root["layers"]);
@@ -225,7 +225,7 @@ TEST_F(TitleLibraryBuiltins, EverySchemeOnEveryLookIsIdempotent) {
     int checked = 0;
     for (const LibraryItemInfo& look : TitleLibrary::get().items(LibraryKind::Look)) {
         if (look.scope != LibraryScope::BuiltIn || !look.available) continue;
-        const TitleOpsResult applied = applyOps(textDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", look.ref}});
+        const TitleOpsResult applied = titleLibraryBuiltinsApplyOps(textDoc(), Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", look.ref}});
         ASSERT_TRUE(applied.ok) << look.ref << ": " << applied.error();
         for (const LibraryItemInfo& scheme : TitleLibrary::get().items(LibraryKind::ColorScheme)) {
             if (scheme.scope != LibraryScope::BuiltIn) continue;
@@ -263,24 +263,24 @@ TEST_F(TitleLibraryBuiltins, Budgets) {
     // 16 rims on the layer, as R40 says
     Json rims = Json::array();
     for (int i = 0; i < 16; i++) rims.push_back(Json{{"op", "add_rim"}, {"layer", "Title"}, {"values", Json{{"width", 2}}}});
-    const TitleArtDoc doc16 = applyOps(textDoc(), rims).doc;
+    const TitleArtDoc doc16 = titleLibraryBuiltinsApplyOps(textDoc(), rims).doc;
     std::vector<double> look, scheme;
     for (int i = 0; i < 21; i++) {
         auto t = Clock::now();
-        const TitleOpsResult applied = applyOps(doc16, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/classic-gold"}});
+        const TitleOpsResult applied = titleLibraryBuiltinsApplyOps(doc16, Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", "metal/classic-gold"}});
         look.push_back(ms(t));
         ASSERT_TRUE(applied.ok);
         t = Clock::now();
-        ASSERT_TRUE(applyOps(applied.doc, Json{{"op", "apply_color_scheme"}, {"color_scheme", "gold"}}).ok);
+        ASSERT_TRUE(titleLibraryBuiltinsApplyOps(applied.doc, Json{{"op", "apply_color_scheme"}, {"color_scheme", "gold"}}).ok);
         scheme.push_back(ms(t));
     }
     Json layers = Json::array();
     for (int i = 0; i < 63; i++) layers.push_back(Json{{"op", "add_layer"}, {"type", "text"}, {"name", "Layer" + std::to_string(i)}, {"values", Json{{"text", "A"}}}});
-    const TitleArtDoc doc64 = applyOps(textDoc(), layers).doc;
+    const TitleArtDoc doc64 = titleLibraryBuiltinsApplyOps(textDoc(), layers).doc;
     std::vector<double> scheme64;
     for (int i = 0; i < 11; i++) {
         const auto t = Clock::now();
-        ASSERT_TRUE(applyOps(doc64, Json{{"op", "apply_color_scheme"}, {"color_scheme", "gold"}}).ok);
+        ASSERT_TRUE(titleLibraryBuiltinsApplyOps(doc64, Json{{"op", "apply_color_scheme"}, {"color_scheme", "gold"}}).ok);
         scheme64.push_back(ms(t));
     }
     std::cout << "AC21: index " << median(index) << " ms (R40 60), apply_look 16 rims " << median(look) << " ms (3), apply_color_scheme one layer " << median(scheme)
@@ -296,15 +296,15 @@ TEST_F(TitleLibraryBuiltins, Budgets) {
 
 TEST_F(TitleLibraryBuiltins, MatchesPachislop) {
     const fs::path repo = JASPER_TEST_REPO_DIR;
-    const Json dump = readJson(repo / "tools/titleart/pachislop-port/dump/pachislop-1c32502.json");
-    const Json map = readJson(repo / "editor/resources/titleart/pachislop-map.json");
+    const Json dump = titleLibraryBuiltinsReadJson(repo / "tools/titleart/pachislop-port/dump/pachislop-1c32502.json");
+    const Json map = titleLibraryBuiltinsReadJson(repo / "editor/resources/titleart/pachislop-map.json");
     std::map<std::string, std::string> ids;
     for (auto it = map["ids"].begin(); it != map["ids"].end(); ++it) {
         if (it.value().is_string()) ids[it.key()] = it.value().get<std::string>();
         else if (it.value().is_object() && it.value().contains("ref")) ids[it.key()] = it.value()["ref"].get<std::string>();
     }
     std::set<std::string> tunedLooks;
-    const Json overrides = readJson(repo / "tools/titleart/pachislop-port/overrides.json");
+    const Json overrides = titleLibraryBuiltinsReadJson(repo / "tools/titleart/pachislop-port/overrides.json");
     for (const char* section : {"looks", "color_schemes"}) {
         if (!overrides.contains(section)) continue;
         for (auto it = overrides[section].begin(); it != overrides[section].end(); ++it) {
@@ -333,13 +333,13 @@ TEST_F(TitleLibraryBuiltins, MatchesPachislop) {
             continue;
         }
         Json ops = Json::array({Json{{"op", "apply_look"}, {"layer", "Title"}, {"look", ids[lookId]}}, Json{{"op", "apply_color_scheme"}, {"layer", "Title"}, {"color_scheme", colourway}}});
-        const TitleOpsResult r = applyOps(doc, ops);
+        const TitleOpsResult r = titleLibraryBuiltinsApplyOps(doc, ops);
         ASSERT_TRUE(r.ok) << lookId << "/" << colourway << ": " << r.error();
-        const Json* layer = titleLayer(r);
+        const Json* layer = titleLibraryBuiltinsTitleLayer(r);
         ASSERT_NE(layer, nullptr);
         std::vector<std::string> diffs;
         if (is3D) compareTree(titleart::title3DFromPachislop(after["style3d"]), (*layer)["style_3d"], "style_3d", diffs);
-        else compareTree(snakeTree(after["style"]), (*layer)["style"], "style", diffs);
+        else compareTree(titleLibraryBuiltinsSnakeTree(after["style"]), (*layer)["style"], "style", diffs);
         const Json effects = after.value("effects", Json::array());
         ASSERT_EQ(effects.size(), (*layer)["effects"].size()) << lookId;
         for (size_t i = 0; i < effects.size(); i++) {

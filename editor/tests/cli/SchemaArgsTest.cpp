@@ -60,14 +60,14 @@ namespace {
         return it->second;
     }
 
-    Json parse(const std::vector<std::string>& tokens) {
+    Json schemaArgsParse(const std::vector<std::string>& tokens) {
         return parseToolArgs(toolSchema(), tokens, fakeFile);
     }
 
     // The UsageError message of these tokens ("" when they parse)
     std::string usageError(const std::vector<std::string>& tokens) {
         try {
-            parse(tokens);
+            schemaArgsParse(tokens);
         } catch (const UsageError& e) {
             return e.what();
         }
@@ -97,99 +97,99 @@ TEST(CallArgs, FlagsUseKebabOrSnakeCase) {
 }
 
 TEST(CallArgs, StringsAreVerbatim) {
-    EXPECT_EQ(parse({"--name", "Player 1"})["name"], "Player 1");
-    EXPECT_EQ(parse({"--name=a=b"})["name"], "a=b");
-    EXPECT_EQ(parse({"--name", "42"})["name"], "42");
+    EXPECT_EQ(schemaArgsParse({"--name", "Player 1"})["name"], "Player 1");
+    EXPECT_EQ(schemaArgsParse({"--name=a=b"})["name"], "a=b");
+    EXPECT_EQ(schemaArgsParse({"--name", "42"})["name"], "42");
 }
 
 TEST(CallArgs, IntegersAreStrictDecimal) {
-    EXPECT_EQ(parse({"--count", "7"})["count"], 7);
-    EXPECT_EQ(parse({"--count=-3"})["count"], -3);
+    EXPECT_EQ(schemaArgsParse({"--count", "7"})["count"], 7);
+    EXPECT_EQ(schemaArgsParse({"--count=-3"})["count"], -3);
     EXPECT_NE(usageError({"--count", "1.5"}).find("expects an integer"), std::string::npos);
     EXPECT_NE(usageError({"--count", "0x10"}), "");
     EXPECT_NE(usageError({"--count", "seven"}), "");
 }
 
 TEST(CallArgs, NumbersAreFinite) {
-    EXPECT_DOUBLE_EQ(parse({"--scale", "1.5"})["scale"].get<double>(), 1.5);
-    EXPECT_DOUBLE_EQ(parse({"--scale", "-2e3"})["scale"].get<double>(), -2000.0);
+    EXPECT_DOUBLE_EQ(schemaArgsParse({"--scale", "1.5"})["scale"].get<double>(), 1.5);
+    EXPECT_DOUBLE_EQ(schemaArgsParse({"--scale", "-2e3"})["scale"].get<double>(), -2000.0);
     EXPECT_NE(usageError({"--scale", "nan"}), "");
     EXPECT_NE(usageError({"--scale", "inf"}), "");
     EXPECT_NE(usageError({"--scale", "1e999"}), "");
 }
 
 TEST(CallArgs, BooleansAreTriState) {
-    EXPECT_FALSE(parse({"--name", "x"}).contains("select"));
-    EXPECT_EQ(parse({"--select"})["select"], true);
-    EXPECT_EQ(parse({"--select=false"})["select"], false);
-    EXPECT_EQ(parse({"--select", "off"})["select"], false);
-    EXPECT_EQ(parse({"--select", "YES"})["select"], true);
-    EXPECT_EQ(parse({"--select=0"})["select"], false);
-    EXPECT_EQ(parse({"--no-select"})["select"], false);
-    EXPECT_EQ(parse({"--select", "--name", "x"})["select"], true);
+    EXPECT_FALSE(schemaArgsParse({"--name", "x"}).contains("select"));
+    EXPECT_EQ(schemaArgsParse({"--select"})["select"], true);
+    EXPECT_EQ(schemaArgsParse({"--select=false"})["select"], false);
+    EXPECT_EQ(schemaArgsParse({"--select", "off"})["select"], false);
+    EXPECT_EQ(schemaArgsParse({"--select", "YES"})["select"], true);
+    EXPECT_EQ(schemaArgsParse({"--select=0"})["select"], false);
+    EXPECT_EQ(schemaArgsParse({"--no-select"})["select"], false);
+    EXPECT_EQ(schemaArgsParse({"--select", "--name", "x"})["select"], true);
     EXPECT_NE(usageError({"--select", "maybe"}).find("--select expects true/false"), std::string::npos);
     EXPECT_NE(usageError({"--select=maybe"}), "");
     EXPECT_NE(usageError({"--no-name"}).find("unknown flag"), std::string::npos);
 }
 
 TEST(CallArgs, EnumsListTheirValues) {
-    EXPECT_EQ(parse({"--mode", "merge"})["mode"], "merge");
+    EXPECT_EQ(schemaArgsParse({"--mode", "merge"})["mode"], "merge");
     const std::string error = usageError({"--mode", "mix"});
     EXPECT_NE(error.find("replace, merge"), std::string::npos) << error;
 }
 
 TEST(CallArgs, RefsAreIdsNamesOrQuotedNames) {
-    EXPECT_EQ(parse({"--entity", "42"})["entity"], 42);
-    EXPECT_TRUE(parse({"--entity", "42"})["entity"].is_number_integer());
-    EXPECT_EQ(parse({"--entity", "\"42\""})["entity"], "42");
-    EXPECT_EQ(parse({"--entity", "Player/Gun"})["entity"], "Player/Gun");
-    EXPECT_EQ(parse({"--entity", "Enemy#2"})["entity"], "Enemy#2");
+    EXPECT_EQ(schemaArgsParse({"--entity", "42"})["entity"], 42);
+    EXPECT_TRUE(schemaArgsParse({"--entity", "42"})["entity"].is_number_integer());
+    EXPECT_EQ(schemaArgsParse({"--entity", "\"42\""})["entity"], "42");
+    EXPECT_EQ(schemaArgsParse({"--entity", "Player/Gun"})["entity"], "Player/Gun");
+    EXPECT_EQ(schemaArgsParse({"--entity", "Enemy#2"})["entity"], "Enemy#2");
     EXPECT_NE(usageError({"--entity", "\"unterminated"}), "");
 }
 
 TEST(CallArgs, ScalarArrays) {
-    EXPECT_EQ(parse({"--position", "1,2,3"})["position"], (Json{1.0, 2.0, 3.0}));
-    EXPECT_EQ(parse({"--position", "[1, 2.5, 3]"})["position"], (Json{1, 2.5, 3}));
-    EXPECT_EQ(parse({"--tags", "a", "--tags", "b,c"})["tags"], (Json{"a", "b", "c"}));
-    EXPECT_EQ(parse({"--ids", "4,5"})["ids"], (Json{4, 5}));
+    EXPECT_EQ(schemaArgsParse({"--position", "1,2,3"})["position"], (Json{1.0, 2.0, 3.0}));
+    EXPECT_EQ(schemaArgsParse({"--position", "[1, 2.5, 3]"})["position"], (Json{1, 2.5, 3}));
+    EXPECT_EQ(schemaArgsParse({"--tags", "a", "--tags", "b,c"})["tags"], (Json{"a", "b", "c"}));
+    EXPECT_EQ(schemaArgsParse({"--ids", "4,5"})["ids"], (Json{4, 5}));
     EXPECT_NE(usageError({"--ids", "4,x"}), "");
     // the length is the validator's: 1,2 for a vec3 parses, then fails validation
-    const Json args = parse({"--name", "x", "--position", "1,2"});
+    const Json args = schemaArgsParse({"--name", "x", "--position", "1,2"});
     EXPECT_TRUE(hasError(validate(toolSchema(), args, true), "position: expected 3 items, got 2"));
 }
 
 TEST(CallArgs, FreeObjectsTakeJsonOrKeyValue) {
-    const Json args = parse({"--values", "transform={\"position\":[0,1,0]}", "--values", "label=Hello", "--values", "n=3"});
+    const Json args = schemaArgsParse({"--values", "transform={\"position\":[0,1,0]}", "--values", "label=Hello", "--values", "n=3"});
     EXPECT_EQ(args["values"]["transform"], (Json{{"position", {0, 1, 0}}}));
     EXPECT_EQ(args["values"]["label"], "Hello");
     EXPECT_EQ(args["values"]["n"], 3);
-    EXPECT_EQ(parse({"--values", "{\"a\": 1}"})["values"], (Json{{"a", 1}}));
-    EXPECT_EQ(parse({"--values", "t=@transform.json"})["values"]["t"], (Json{{"position", {0, 1, 0}}}));
+    EXPECT_EQ(schemaArgsParse({"--values", "{\"a\": 1}"})["values"], (Json{{"a", 1}}));
+    EXPECT_EQ(schemaArgsParse({"--values", "t=@transform.json"})["values"]["t"], (Json{{"position", {0, 1, 0}}}));
     EXPECT_NE(usageError({"--values", "novalue"}), "");
 }
 
 TEST(CallArgs, DeclaredObjectsAnyOfAndAny) {
-    EXPECT_EQ(parse({"--create", "{\"name\": \"A\"}"})["create"], (Json{{"name", "A"}}));
+    EXPECT_EQ(schemaArgsParse({"--create", "{\"name\": \"A\"}"})["create"], (Json{{"name", "A"}}));
     EXPECT_NE(usageError({"--create", "name=A"}).find("takes JSON"), std::string::npos);
-    EXPECT_EQ(parse({"--rotation", "{\"euler\": [0, 90, 0]}"})["rotation"], (Json{{"euler", {0, 90, 0}}}));
-    EXPECT_EQ(parse({"--value", "[1, 2]"})["value"], (Json{1, 2}));
-    EXPECT_EQ(parse({"--value", "plain words"})["value"], "plain words");   // any: not JSON = a string
-    EXPECT_EQ(parse({"--screenshot"})["screenshot"], true);                 // anyOf with a boolean branch
-    EXPECT_EQ(parse({"--screenshot", "scene"})["screenshot"], "scene");
-    EXPECT_EQ(parse({"--heightmap", "assets/h.png"})["heightmap"], "assets/h.png");
-    EXPECT_EQ(parse({"--heightmap", "{\"seed\": 4}"})["heightmap"], (Json{{"seed", 4}}));
+    EXPECT_EQ(schemaArgsParse({"--rotation", "{\"euler\": [0, 90, 0]}"})["rotation"], (Json{{"euler", {0, 90, 0}}}));
+    EXPECT_EQ(schemaArgsParse({"--value", "[1, 2]"})["value"], (Json{1, 2}));
+    EXPECT_EQ(schemaArgsParse({"--value", "plain words"})["value"], "plain words");   // any: not JSON = a string
+    EXPECT_EQ(schemaArgsParse({"--screenshot"})["screenshot"], true);                 // anyOf with a boolean branch
+    EXPECT_EQ(schemaArgsParse({"--screenshot", "scene"})["screenshot"], "scene");
+    EXPECT_EQ(schemaArgsParse({"--heightmap", "assets/h.png"})["heightmap"], "assets/h.png");
+    EXPECT_EQ(schemaArgsParse({"--heightmap", "{\"seed\": 4}"})["heightmap"], (Json{{"seed", 4}}));
 }
 
 TEST(CallArgs, AtFileValues) {
-    EXPECT_EQ(parse({"--name", "@name.txt"})["name"], "Text Name");
-    EXPECT_EQ(parse({"--position", "@pos.json"})["position"], (Json{1, 2, 3}));
-    EXPECT_EQ(parse({"@args.json"}), (Json{{"name", "FromFile"}, {"count", 3}}));
+    EXPECT_EQ(schemaArgsParse({"--name", "@name.txt"})["name"], "Text Name");
+    EXPECT_EQ(schemaArgsParse({"--position", "@pos.json"})["position"], (Json{1, 2, 3}));
+    EXPECT_EQ(schemaArgsParse({"@args.json"}), (Json{{"name", "FromFile"}, {"count", 3}}));
     EXPECT_NE(usageError({"--name", "@missing.txt"}).find("can't read @missing.txt"), std::string::npos);
 }
 
 TEST(CallArgs, OneJsonObjectOrFlags) {
-    EXPECT_EQ(parse({"{\"name\": \"A\", \"count\": 2}"}), (Json{{"name", "A"}, {"count", 2}}));
-    EXPECT_EQ(parse({}), Json::object());
+    EXPECT_EQ(schemaArgsParse({"{\"name\": \"A\", \"count\": 2}"}), (Json{{"name", "A"}, {"count", 2}}));
+    EXPECT_EQ(schemaArgsParse({}), Json::object());
     EXPECT_NE(usageError({"{\"name\": \"A\"}", "--count", "2"}).find("not both"), std::string::npos);
     EXPECT_NE(usageError({"--count", "2", "{\"name\": \"A\"}"}), "");
     EXPECT_NE(usageError({"[1, 2]"}), "");

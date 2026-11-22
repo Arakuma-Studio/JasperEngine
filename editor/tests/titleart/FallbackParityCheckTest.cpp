@@ -16,27 +16,27 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using titleart::Json;
+using TitleJson = titleart::Json;
 using titleart::TitleArtDoc;
 
 namespace {
 
-    TitleArtDoc docOf(bool glint) {
-        Json layer{{"id", "00000001"}, {"type", "text"}, {"name", "Title"}, {"text", "WIN"}, {"size", 200}, {"dimension", "3d"},
+    TitleArtDoc fallbackParityCheckDocOf(bool glint) {
+        TitleJson layer{{"id", "00000001"}, {"type", "text"}, {"name", "Title"}, {"text", "WIN"}, {"size", 200}, {"dimension", "3d"},
                    {"style_3d", {{"glint", {{"enabled", glint}}}}}};
-        Json root{{"format", titleart::TITLE_ART_FORMAT}, {"version", titleart::TITLE_ART_VERSION}, {"layers", Json::array({layer})}};
+        TitleJson root{{"format", titleart::TITLE_ART_FORMAT}, {"version", titleart::TITLE_ART_VERSION}, {"layers", TitleJson::array({layer})}};
         titleart::TitleArtParseResult parsed = titleart::parseTitleArtJson(root);
         EXPECT_TRUE(parsed.ok) << parsed.error.toString();
         return parsed.doc;
     }
 
     bool glintOn(const TitleArtDoc& doc) {
-        const Json* layer = titleart::findLayer(doc.root, "00000001");
+        const TitleJson* layer = titleart::findLayer(doc.root, "00000001");
         return layer && (*layer)["style_3d"]["glint"].value("enabled", false);
     }
 
     // a flat grey render; `changed` of its pixels (a band at the top) 60 codes brighter in colour
-    TitleCheckImage render(double changed) {
+    TitleCheckImage fallbackParityCheckRender(double changed) {
         TitleCheckImage image;
         image.width = 100;
         image.height = 100;
@@ -53,11 +53,11 @@ namespace {
     // on, by `withoutGlints` while they are off
     TitleCheckResult parity(bool glint, double withGlints, double withoutGlints) {
         registerBuiltinTitleChecks();
-        const TitleArtDoc doc = docOf(glint);
+        const TitleArtDoc doc = fallbackParityCheckDocOf(glint);
         TitleCheckContext context{doc, "assets/title.titleart"};
         context.render = [&](const titleart::RenderRequest& request, TitleCheckImage& out, std::string&) {
             const bool forced = (request.testFlags & titleart::TITLE_ART_TEST_NO_FLOAT_TARGETS) != 0;
-            out = render(forced ? (glintOn(*request.doc) ? withGlints : withoutGlints) : 0.0);
+            out = fallbackParityCheckRender(forced ? (glintOn(*request.doc) ? withGlints : withoutGlints) : 0.0);
             return true;
         };
         const TitleCheckReport report = TitleArtChecks::run({TitleArtChecks::find("fallback_parity")}, context);
@@ -93,14 +93,14 @@ TEST(FallbackParityCheckTest, EachCallRendersAtItsOwnOptions) {
     // two check_title calls on one document, the second at another render scale, from contexts
     // that live where the first one did (red: the second reused the first call's renders)
     registerBuiltinTitleChecks();
-    const TitleArtDoc doc = docOf(false);
+    const TitleArtDoc doc = fallbackParityCheckDocOf(false);
     std::vector<float> scales;
     for (float scale : {0.25f, 0.5f}) {
         TitleCheckContext context{doc, "assets/title.titleart"};
         context.options.renderScale = scale;
         context.render = [&](const titleart::RenderRequest& request, TitleCheckImage& out, std::string&) {
             scales.push_back(request.pxScale);
-            out = render(0.0);
+            out = fallbackParityCheckRender(0.0);
             return true;
         };
         TitleArtChecks::run({TitleArtChecks::find("fallback_parity")}, context);

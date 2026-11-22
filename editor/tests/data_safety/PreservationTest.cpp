@@ -37,7 +37,7 @@ namespace {
 
     using IssueKey = std::tuple<LoadIssueKind, std::string, std::string, int, LoadIssueFate>;
 
-    std::vector<IssueKey> keys(const LoadReport& report) {
+    std::vector<IssueKey> preservationKeys(const LoadReport& report) {
         std::vector<IssueKey> result;
         for (const LoadIssue& issue : report.issues) {
             if (issue.fate != LoadIssueFate::Info)
@@ -47,7 +47,7 @@ namespace {
         return result;
     }
 
-    const LoadIssue* findIssue(const LoadReport& report, const std::string& component, const std::string& field) {
+    const LoadIssue* preservationFindIssue(const LoadReport& report, const std::string& component, const std::string& field) {
         for (const LoadIssue& issue : report.issues) {
             if (issue.component == component && issue.field == field)
                 return &issue;
@@ -55,7 +55,7 @@ namespace {
         return nullptr;
     }
 
-    Entity entityNamed(const SceneProject& scene, const std::string& name) {
+    Entity preservationEntityNamed(const SceneProject& scene, const std::string& name) {
         for (Entity entity : scene.entities) {
             if (scene.scene->getEntityName(entity) == name)
                 return entity;
@@ -79,11 +79,11 @@ TEST(Preservation, RoundTrip) {
         {LoadIssueKind::UnknownRootKey, "", "stance", lineOf(text, "    stance:"), LoadIssueFate::Preserved},
     };
     std::sort(expected.begin(), expected.end());
-    EXPECT_EQ(keys(decoded.report), expected);
+    EXPECT_EQ(preservationKeys(decoded.report), expected);
     EXPECT_EQ(decoded.report.dropped(), 0u);
     EXPECT_EQ(decoded.report.preserved(), 6u);
 
-    const LoadIssue* type = findIssue(decoded.report, "light", "type");
+    const LoadIssue* type = preservationFindIssue(decoded.report, "light", "type");
     ASSERT_NE(type, nullptr);
     EXPECT_EQ(type->suggestion, "spot");
     EXPECT_EQ(type->value, "area");
@@ -94,7 +94,7 @@ TEST(Preservation, RoundTrip) {
               ": light.type: unknown value \"area\" (did you mean \"spot\"?) (in Player) \xE2\x80\x94 kept");
 
     // the live values took their defaults; the hierarchy and the other fields are intact
-    const Entity player = entityNamed(*decoded.scene, "Player");
+    const Entity player = preservationEntityNamed(*decoded.scene, "Player");
     ASSERT_NE(player, NULL_ENTITY);
     EXPECT_EQ(decoded.scene->scene->getComponent<LightComponent>(player).type, LightType::DIRECTIONAL);
     EXPECT_FLOAT_EQ(decoded.scene->scene->getComponent<LightComponent>(player).intensity, 3.0f);
@@ -116,7 +116,7 @@ TEST(Preservation, RoundTrip) {
 TEST(Preservation, Retire) {
     DecodedScene decoded = decodeSceneFile(fixture("data-safety/future.scene"));
     Scene* scene = decoded.scene->scene;
-    const Entity player = entityNamed(*decoded.scene, "Player");
+    const Entity player = preservationEntityNamed(*decoded.scene, "Player");
     ASSERT_NE(player, NULL_ENTITY);
     PreservedStore* store = findPreservedStore(scene);
     ASSERT_NE(store, nullptr);
@@ -162,7 +162,7 @@ TEST(Preservation, Retire) {
 TEST(Preservation, SingleComponentCopiesLeaveUnknownComponentsOut) {
     DecodedScene decoded = decodeSceneFile(fixture("data-safety/future.scene"));
     Scene* scene = decoded.scene->scene;
-    const Entity player = entityNamed(*decoded.scene, "Player");
+    const Entity player = preservationEntityNamed(*decoded.scene, "Player");
     const YAML::Node light = Stream::encodeComponents(player, scene, Catalog::componentTypeToSignature(scene, ComponentType::LightComponent));
     EXPECT_TRUE(light["light"]["areaSize"]);
     EXPECT_FALSE(light["jumpable"]);

@@ -35,14 +35,14 @@ namespace {
         return entities;
     }
 
-    struct Box {
+    struct GltfExtensionsBox {
         double min[3] = {1e30, 1e30, 1e30};
         double max[3] = {-1e30, -1e30, -1e30};
     };
 
     // the box around `positions` (xyz triples) through m (column-major)
-    Box transformedBox(const std::vector<double>& positions, const SoupMatrix& m){
-        Box box;
+    GltfExtensionsBox transformedBox(const std::vector<double>& positions, const SoupMatrix& m){
+        GltfExtensionsBox box;
         for (size_t v = 0; v + 2 < positions.size(); v += 3){
             for (int r = 0; r < 3; r++){
                 const double p = m[r] * positions[v] + m[4 + r] * positions[v + 1] + m[8 + r] * positions[v + 2] + m[12 + r];
@@ -53,7 +53,7 @@ namespace {
         return box;
     }
 
-    bool sameBox(const Box& a, const Box& b, double tolerance){
+    bool sameBox(const GltfExtensionsBox& a, const GltfExtensionsBox& b, double tolerance){
         for (int r = 0; r < 3; r++){
             if (std::fabs(a.min[r] - b.min[r]) > tolerance || std::fabs(a.max[r] - b.max[r]) > tolerance)
                 return false;
@@ -62,7 +62,7 @@ namespace {
     }
 
     // The embedded image is decoded and adopted by loadGLTFTexture before model.loadModel returns.
-    bool texturePixels(Texture texture, std::vector<uint8_t>& rgba, unsigned int& width, unsigned int& height){
+    bool gltfExtensionsTexturePixels(Texture texture, std::vector<uint8_t>& rgba, unsigned int& width, unsigned int& height){
         TextureLoadResult result = texture.load();
         if (result.state != ResourceLoadState::Finished || !texture.hasData() || !texture.getData().getData())
             return false;
@@ -83,7 +83,7 @@ TEST(GltfExtensionsTest, InstancingDrawsEveryInstance){
     std::vector<double> sourcePositions;
     int components = 0;
     ASSERT_TRUE(soupRead(source, source.meshes[0].primitives[0].attributes.at("POSITION"), sourcePositions, components));
-    std::vector<Box> expected;
+    std::vector<GltfExtensionsBox> expected;
     for (const tinygltf::Node& node : source.nodes)
         expected.push_back(transformedBox(sourcePositions, soupNodeMatrix(node)));
 
@@ -117,7 +117,7 @@ TEST(GltfExtensionsTest, InstancingDrawsEveryInstance){
         node.translation = {instance.position.x, instance.position.y, instance.position.z};
         node.rotation = {instance.rotation.x, instance.rotation.y, instance.rotation.z, instance.rotation.w};
         node.scale = {instance.scale.x, instance.scale.y, instance.scale.z};
-        const Box box = transformedBox(packedPositions, soupNodeMatrix(node));
+        const GltfExtensionsBox box = transformedBox(packedPositions, soupNodeMatrix(node));
         for (size_t e = 0; e < expected.size(); e++){
             if (!matched[e] && sameBox(box, expected[e], 2e-3)){
                 matched[e] = true;
@@ -169,7 +169,7 @@ TEST(GltfExtensionsTest, BasisTextureIsTheSource){
     ASSERT_NE(texture, nullptr) << "the ball draws untextured";
     std::vector<uint8_t> rgba;
     unsigned int width = 0, height = 0;
-    ASSERT_TRUE(texturePixels(*texture, rgba, width, height));
+    ASSERT_TRUE(gltfExtensionsTexturePixels(*texture, rgba, width, height));
     ASSERT_EQ(width, 16u);
     ASSERT_EQ(height, 16u);
     // ETC1S codes a 4 x 4 block with one colour line, so the 2 x 2 cells of a block blend: each

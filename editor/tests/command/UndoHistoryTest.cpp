@@ -302,26 +302,26 @@ TEST_F(CommandHistoryTests, InteractiveEditOfAClosedHistoryIsHarmless) {
 
 TEST_F(CommandHistoryTests, SelectionSteps) {
     // a fake scene selection read and written through the hooks
-    SelectionState selection;
-    CommandHistory::selectionHooks.read = [&selection](size_t, SelectionState& out) { out = selection; return true; };
-    CommandHistory::selectionHooks.restore = [&selection](size_t, const SelectionState& in) { selection = in; };
+    editor::SelectionState selection;
+    CommandHistory::selectionHooks.read = [&selection](size_t, editor::SelectionState& out) { out = selection; return true; };
+    CommandHistory::selectionHooks.restore = [&selection](size_t, const editor::SelectionState& in) { selection = in; };
 
     class Select : public UndoFake {
     public:
-        SelectionState& target;
-        SelectionState after;
-        Select(FakeState& state, SelectionState& target, SelectionState after, int value)
+        editor::SelectionState& target;
+        editor::SelectionState after;
+        Select(FakeState& state, editor::SelectionState& target, editor::SelectionState after, int value)
             : UndoFake(state, "Select", value), target(target), after(std::move(after)) {}
         bool execute() override { UndoFake::execute(); target = after; return true; }
         bool isNoOp() const override { return false; }
     };
 
     CommandHistory history(1);
-    SelectionState one;
+    editor::SelectionState one;
     one.entities = {5};
     one.active = 5;
     history.addCommand(new Select(state, selection, one, 1));
-    SelectionState two;
+    editor::SelectionState two;
     two.entities = {5, 6};
     two.active = 6;
     history.addCommand(new Select(state, selection, two, 2));

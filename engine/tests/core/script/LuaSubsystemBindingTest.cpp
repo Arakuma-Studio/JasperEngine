@@ -26,7 +26,7 @@ using jasperengine::test::makeTransformEntity;
 
 namespace {
 
-    std::string runLua(lua_State* L, const std::string& code){
+    std::string runSubsystemLua(lua_State* L, const std::string& code){
         if (luaL_loadstring(L, code.c_str()) != LUA_OK || lua_pcall(L, 0, 0, 0) != LUA_OK){
             std::string error = lua_tostring(L, -1) ? lua_tostring(L, -1) : "(error)";
             lua_pop(L, 1);
@@ -51,7 +51,7 @@ TEST(LuaSubsystems, NewMethodsCallable){
     luabridge::setGlobal(L, &scene, "subScene");
     lua_pushinteger(L, tween); lua_setglobal(L, "TWEEN");
     lua_pushinteger(L, plain); lua_setglobal(L, "PLAIN");
-    EXPECT_EQ(runLua(L, R"(
+    EXPECT_EQ(runSubsystemLua(L, R"(
         local scene = subScene
         assert(scene:getActionSystem():getDuration(TWEEN) == 2, "a 2 s tween")
         local render = scene:getRenderSystem()
@@ -79,7 +79,7 @@ TEST(LuaSubsystems, PhysicsSubscriptionsByTag){
 
     Scene scene;
     luabridge::setGlobal(L, &scene, "subScene");
-    EXPECT_EQ(runLua(L, R"(
+    EXPECT_EQ(runSubsystemLua(L, R"(
         local physics = subScene:getPhysicsSystem()
         physics.beginContact2D:add("mine", function() end)
         physics.endContact2D:add("theirs", function() end)
@@ -89,7 +89,7 @@ TEST(LuaSubsystems, PhysicsSubscriptionsByTag){
     EXPECT_FALSE(physics->beginContact2D.hasSubscribers());
     EXPECT_TRUE(physics->endContact2D.hasSubscribers());
 
-    EXPECT_EQ(runLua(L, "subScene:getPhysicsSystem():clearSubscriptions()"), "");
+    EXPECT_EQ(runSubsystemLua(L, "subScene:getPhysicsSystem():clearSubscriptions()"), "");
     EXPECT_FALSE(physics->endContact2D.hasSubscribers());
 }
 #endif
@@ -108,7 +108,7 @@ TEST(LuaSubsystems, ActionStartOmittedNewRunIsTrue){
 
     luabridge::setGlobal(L, &scene, "subScene");
     lua_pushinteger(L, animation); lua_setglobal(L, "ANIM");
-    EXPECT_EQ(runLua(L, "subScene:getActionSystem():actionStart(ANIM)"), "");
+    EXPECT_EQ(runSubsystemLua(L, "subScene:getActionSystem():actionStart(ANIM)"), "");
     // a new run, as C++ actionStart(e): its frames start again
     EXPECT_FALSE(scene.getComponent<AnimationComponent>(animation).actions[0].started);
 }

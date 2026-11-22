@@ -20,7 +20,7 @@ using namespace jasperengine;
 using namespace jasperengine::editor;
 
 namespace {
-    uint8_t targetBit(BuildPlatform platform) {
+    uint8_t streamProjectTargetPlatformsTargetBit(BuildPlatform platform) {
         return static_cast<uint8_t>(1u << static_cast<unsigned>(platform));
     }
 
@@ -42,14 +42,14 @@ namespace {
         return count;
     }
 
-    void ensureLogging() {
+    void streamProjectTargetPlatformsEnsureLogging() {
         if (!Out::memorySinkId()) Out::startLogging();
     }
 }
 
 TEST(StreamProjectTargetPlatforms, MissingKeyTargetsAll) {
     Project project;
-    project.setTargetPlatforms(targetBit(BuildPlatform::Android));
+    project.setTargetPlatforms(streamProjectTargetPlatformsTargetBit(BuildPlatform::Android));
     // a project.yaml from before Target Platforms
     Stream::decodeProject(&project, YAML::Load("vsync: true\nexport:\n  method: prebuilt\n"), Workspace());
     EXPECT_EQ(project.getTargetPlatforms(), Project::allTargetPlatforms);
@@ -62,7 +62,7 @@ TEST(StreamProjectTargetPlatforms, MissingKeyTargetsAll) {
     EXPECT_FALSE(encoded["export"] && encoded["export"]["targetPlatforms"]);
 
     // without an export map at all, too
-    project.setTargetPlatforms(targetBit(BuildPlatform::IOS));
+    project.setTargetPlatforms(streamProjectTargetPlatformsTargetBit(BuildPlatform::IOS));
     Stream::decodeProject(&project, YAML::Load("vsync: true\n"), Workspace());
     EXPECT_EQ(project.getTargetPlatforms(), Project::allTargetPlatforms);
 }
@@ -70,7 +70,7 @@ TEST(StreamProjectTargetPlatforms, MissingKeyTargetsAll) {
 TEST(StreamProjectTargetPlatforms, RoundTripsCanonical) {
     Project project;
     Stream::decodeProject(&project, YAML::Load("export:\n  targetPlatforms: [ios, android]\n"), Workspace());
-    EXPECT_EQ(project.getTargetPlatforms(), targetBit(BuildPlatform::Android) | targetBit(BuildPlatform::IOS));
+    EXPECT_EQ(project.getTargetPlatforms(), streamProjectTargetPlatformsTargetBit(BuildPlatform::Android) | streamProjectTargetPlatformsTargetBit(BuildPlatform::IOS));
     EXPECT_TRUE(project.isTargetPlatform(BuildPlatform::Android));
     EXPECT_FALSE(project.isTargetPlatform(BuildPlatform::Linux));
     EXPECT_EQ(encodedTargets(project), (std::vector<std::string>{"android", "ios"})) << "BuildPlatform order";
@@ -85,11 +85,11 @@ TEST(StreamProjectTargetPlatforms, RoundTripsCanonical) {
 }
 
 TEST(StreamProjectTargetPlatforms, UnknownAndEmptyFallBack) {
-    ensureLogging();
+    streamProjectTargetPlatformsEnsureLogging();
     Project project;
     uint64_t cursor = Out::lastLogId();
     Stream::decodeProject(&project, YAML::Load("export:\n  targetPlatforms: [android, playstation]\n"), Workspace());
-    EXPECT_EQ(project.getTargetPlatforms(), targetBit(BuildPlatform::Android)) << "the unknown name is dropped";
+    EXPECT_EQ(project.getTargetPlatforms(), streamProjectTargetPlatformsTargetBit(BuildPlatform::Android)) << "the unknown name is dropped";
     EXPECT_EQ(warningsSince(cursor, "playstation"), 1u) << "a load warning names it";
 
     cursor = Out::lastLogId();
@@ -112,19 +112,19 @@ TEST(StreamProjectTargetPlatforms, UnknownAndEmptyFallBack) {
 TEST(ProjectTargetPlatforms, DefaultBuildPlatformIsTheHostOrTheFirstTargetInTheListOrder) {
     Project project;
     EXPECT_EQ(project.defaultBuildPlatform(), hostBuildPlatform()) << "every platform is a target";
-    project.setTargetPlatforms(targetBit(BuildPlatform::IOS) | targetBit(BuildPlatform::Android));
+    project.setTargetPlatforms(streamProjectTargetPlatformsTargetBit(BuildPlatform::IOS) | streamProjectTargetPlatformsTargetBit(BuildPlatform::Android));
     EXPECT_EQ(project.defaultBuildPlatform(), BuildPlatform::Android);
-    project.setTargetPlatforms(targetBit(BuildPlatform::Web) | targetBit(BuildPlatform::IOS));
+    project.setTargetPlatforms(streamProjectTargetPlatformsTargetBit(BuildPlatform::Web) | streamProjectTargetPlatformsTargetBit(BuildPlatform::IOS));
     EXPECT_EQ(project.defaultBuildPlatform(), BuildPlatform::IOS);
     // Build Settings lists macOS before Linux
     if (hostBuildPlatform() == BuildPlatform::Windows) {
-        project.setTargetPlatforms(targetBit(BuildPlatform::Linux) | targetBit(BuildPlatform::MacOS));
+        project.setTargetPlatforms(streamProjectTargetPlatformsTargetBit(BuildPlatform::Linux) | streamProjectTargetPlatformsTargetBit(BuildPlatform::MacOS));
         EXPECT_EQ(project.defaultBuildPlatform(), BuildPlatform::MacOS);
     } else {
-        project.setTargetPlatforms(targetBit(BuildPlatform::Linux) | targetBit(BuildPlatform::MacOS) | targetBit(BuildPlatform::Windows));
+        project.setTargetPlatforms(streamProjectTargetPlatformsTargetBit(BuildPlatform::Linux) | streamProjectTargetPlatformsTargetBit(BuildPlatform::MacOS) | streamProjectTargetPlatformsTargetBit(BuildPlatform::Windows));
         EXPECT_EQ(project.defaultBuildPlatform(), hostBuildPlatform());
-        project.setTargetPlatforms(targetBit(BuildPlatform::Linux) | targetBit(BuildPlatform::MacOS) | targetBit(BuildPlatform::Web));
-        project.setTargetPlatforms(project.getTargetPlatforms() & ~targetBit(hostBuildPlatform()));
+        project.setTargetPlatforms(streamProjectTargetPlatformsTargetBit(BuildPlatform::Linux) | streamProjectTargetPlatformsTargetBit(BuildPlatform::MacOS) | streamProjectTargetPlatformsTargetBit(BuildPlatform::Web));
+        project.setTargetPlatforms(project.getTargetPlatforms() & ~streamProjectTargetPlatformsTargetBit(hostBuildPlatform()));
         EXPECT_EQ(project.defaultBuildPlatform(), hostBuildPlatform() == BuildPlatform::Linux ? BuildPlatform::MacOS : BuildPlatform::Linux);
     }
     project.setTargetPlatforms(0);

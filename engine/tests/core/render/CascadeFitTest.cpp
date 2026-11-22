@@ -40,7 +40,7 @@ namespace {
         return Matrix4::lookAtMatrix(position, position + forward, up);
     }
 
-    CascadeFitInput baseInput(){
+    CascadeFitInput cascadeFitBaseInput(){
         CascadeFitInput input;
         input.tanHalfY = std::tan(0.5f * 60.0f * 3.14159265f / 180.0f);
         input.aspect = 16.0f / 9.0f;
@@ -55,7 +55,7 @@ namespace {
     // the slice sphere of cascade c in light space, as the fit computes it
     void sliceSphere(const CascadeFitInput& input, const CascadeFitResult& result, unsigned int c,
                      const Vector3& cameraPosition, const Vector3& cameraForward,
-                     double light[3], float& radius){
+                     double cascadeFitLight[3], float& radius){
         const float depth = CascadeFit::sliceBoundingSphereCenter(result.splitNear[c], result.splitFar[c], input.tanHalfY, input.aspect);
         radius = CascadeFit::quantizeRadius(CascadeFit::sliceBoundingSphereRadius(result.splitNear[c], result.splitFar[c], input.tanHalfY, input.aspect));
         const Vector3 forward = cameraForward.normalized();
@@ -64,7 +64,7 @@ namespace {
             (double)cameraPosition.y + (double)forward.y * depth,
             (double)cameraPosition.z + (double)forward.z * depth};
         for (int r = 0; r < 3; r++){
-            light[r] = (double)result.view[0][r] * world[0] + (double)result.view[1][r] * world[1] + (double)result.view[2][r] * world[2];
+            cascadeFitLight[r] = (double)result.view[0][r] * world[0] + (double)result.view[1][r] * world[1] + (double)result.view[2][r] * world[2];
         }
     }
 
@@ -106,7 +106,7 @@ TEST(SphereRadius, MatchesBruteForceCorners){
 }
 
 TEST(Snap, TranslationWithinTexelKeepsVP){
-    CascadeFitInput input = baseInput();
+    CascadeFitInput input = cascadeFitBaseInput();
     const Vector3 forward = Vector3(0.2f, -0.3f, -1.0f).normalized();
     Vector3 position(12.3f, 4.5f, -7.8f);
     input.cameraView = cameraView(position, forward);
@@ -116,11 +116,11 @@ TEST(Snap, TranslationWithinTexelKeepsVP){
     // the largest step along light-space X that keeps every cascade's centre in its texel
     double margin = 1e30;
     for (unsigned int c = 0; c < first.cascades; c++){
-        double light[3];
+        double cascadeFitLight[3];
         float radius;
-        sliceSphere(input, first, c, position, forward, light, radius);
+        sliceSphere(input, first, c, position, forward, cascadeFitLight, radius);
         const double texel = first.texelWorld[c];
-        const double offset = light[0] - std::round(light[0] / texel) * texel;
+        const double offset = cascadeFitLight[0] - std::round(cascadeFitLight[0] / texel) * texel;
         margin = std::min(margin, texel * 0.5 - std::abs(offset));
     }
     ASSERT_GT(margin, 0.0);
@@ -144,7 +144,7 @@ TEST(Snap, TranslationWithinTexelKeepsVP){
 }
 
 TEST(Snap, RotationKeepsExtent){
-    CascadeFitInput input = baseInput();
+    CascadeFitInput input = cascadeFitBaseInput();
     const Vector3 position(3.0f, 2.0f, 1.0f);
     input.cameraView = cameraView(position, Vector3(0.0f, -0.2f, -1.0f));
     const CascadeFitResult first = CascadeFit::fit(input, nullptr);
@@ -160,7 +160,7 @@ TEST(Snap, RotationKeepsExtent){
 }
 
 TEST(Basis, NearVerticalLightIsFinite){
-    CascadeFitInput input = baseInput();
+    CascadeFitInput input = cascadeFitBaseInput();
     input.cameraView = cameraView(Vector3(0, 5, 0), Vector3(0, -0.5f, -1));
     const float tilt = 0.1f * 3.14159265f / 180.0f;
     for (float sign : {-1.0f, 1.0f}){
@@ -184,7 +184,7 @@ TEST(Basis, NearVerticalLightIsFinite){
 }
 
 TEST(Splits, ManualAndAutoMonotonic){
-    CascadeFitInput input = baseInput();
+    CascadeFitInput input = cascadeFitBaseInput();
     for (CascadeSplitMode mode : {CascadeSplitMode::AUTO, CascadeSplitMode::MANUAL}){
         for (unsigned int cascades = 1; cascades <= 4; cascades++){
             input.mode = mode;
@@ -221,7 +221,7 @@ TEST(Splits, ManualAndAutoMonotonic){
     }
 
     // the blend overlap: the next slice starts 0.175 of the cascade's depth before the split
-    input = baseInput();
+    input = cascadeFitBaseInput();
     input.cameraView = cameraView(Vector3(0, 0, 0), Vector3(0, 0, -1));
     const CascadeFitResult result = CascadeFit::fit(input, nullptr);
     for (unsigned int c = 0; c + 1 < result.cascades; c++){
@@ -232,7 +232,7 @@ TEST(Splits, ManualAndAutoMonotonic){
 }
 
 TEST(Freeze, NeverLosesCoverage){
-    CascadeFitInput input = baseInput();
+    CascadeFitInput input = cascadeFitBaseInput();
     input.freeze = true;
     std::mt19937 random(99);
     std::uniform_real_distribution<float> step(-0.15f, 0.15f);
@@ -257,14 +257,14 @@ TEST(Freeze, NeverLosesCoverage){
         input.cameraView = cameraView(position, forward);
         const CascadeFitResult result = CascadeFit::fit(input, hasPrevious ? &previous : nullptr);
         for (unsigned int c = 0; c < result.cascades; c++){
-            double light[3];
+            double cascadeFitLight[3];
             float radius;
-            sliceSphere(input, result, c, position, forward, light, radius);
+            sliceSphere(input, result, c, position, forward, cascadeFitLight, radius);
             const double slack = 1e-4 * result.radius[c];
-            ASSERT_LE(std::abs(light[0] - result.centerX[c]) + radius, result.radius[c] + slack) << "step " << i << " cascade " << c;
-            ASSERT_LE(std::abs(light[1] - result.centerY[c]) + radius, result.radius[c] + slack) << "step " << i << " cascade " << c;
-            ASSERT_LE(light[2] + radius, result.nearZ[c] + slack) << "step " << i << " cascade " << c;
-            ASSERT_GE(light[2] - radius, result.farZ[c] - slack) << "step " << i << " cascade " << c;
+            ASSERT_LE(std::abs(cascadeFitLight[0] - result.centerX[c]) + radius, result.radius[c] + slack) << "step " << i << " cascade " << c;
+            ASSERT_LE(std::abs(cascadeFitLight[1] - result.centerY[c]) + radius, result.radius[c] + slack) << "step " << i << " cascade " << c;
+            ASSERT_LE(cascadeFitLight[2] + radius, result.nearZ[c] + slack) << "step " << i << " cascade " << c;
+            ASSERT_GE(cascadeFitLight[2] - radius, result.farZ[c] - slack) << "step " << i << " cascade " << c;
             if (!result.refit[c])
                 kept++;
         }
@@ -276,7 +276,7 @@ TEST(Freeze, NeverLosesCoverage){
 }
 
 TEST(Freeze, AtMostOneRequestedRefitPerFrame){
-    CascadeFitInput input = baseInput();
+    CascadeFitInput input = cascadeFitBaseInput();
     input.freeze = true;
     Vector3 position(0.0f, 2.0f, 0.0f);
     const Vector3 forward = Vector3(0.1f, -0.2f, -1.0f).normalized();

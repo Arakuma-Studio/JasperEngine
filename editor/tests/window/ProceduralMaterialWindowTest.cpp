@@ -58,15 +58,15 @@ using procmat::test::ImageEvaluator;
 
 namespace {
 
-    struct Headless {
+    struct ProceduralMaterialWindowHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
     };
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
+    ProceduralMaterialWindowHeadless& proceduralMaterialWindowHeadless() {
+        static ProceduralMaterialWindowHeadless h = []() {
+            ProceduralMaterialWindowHeadless out;
             const fs::path root = fs::temp_directory_path() / ("jasper-procmat-window-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
             fs::create_directories(root / "config");
@@ -87,37 +87,37 @@ namespace {
         return h;
     }
 
-    bool started = false;
-    Project* project() {
-        started = true;
-        return headless().project.get();
+    bool proceduralMaterialWindowStarted = false;
+    Project* proceduralMaterialWindowProject() {
+        proceduralMaterialWindowStarted = true;
+        return proceduralMaterialWindowHeadless().project.get();
     }
-    fs::path assets() { return project()->getAssetsPath(); }
-    CommandHistory* history() { return project()->getProjectCommandHistory(); }
+    fs::path proceduralMaterialWindowAssets() { return proceduralMaterialWindowProject()->getAssetsPath(); }
+    CommandHistory* proceduralMaterialWindowHistory() { return proceduralMaterialWindowProject()->getProjectCommandHistory(); }
 
-    struct Cleanup : public ::testing::Environment {
+    struct ProceduralMaterialWindowCleanup : public ::testing::Environment {
         void TearDown() override {
-            if (!started) return;
+            if (!proceduralMaterialWindowStarted) return;
             std::error_code ec;
-            fs::remove_all(headless().dir.parent_path(), ec);
+            fs::remove_all(proceduralMaterialWindowHeadless().dir.parent_path(), ec);
         }
     };
-    [[maybe_unused]] ::testing::Environment* const cleanup = ::testing::AddGlobalTestEnvironment(new Cleanup);
+    [[maybe_unused]] ::testing::Environment* const proceduralMaterialWindowCleanup = ::testing::AddGlobalTestEnvironment(new ProceduralMaterialWindowCleanup);
 
-    void writeAll(const fs::path& path, const std::string& content) {
+    void proceduralMaterialWindowWriteAll(const fs::path& path, const std::string& content) {
         fs::create_directories(path.parent_path());
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
         file << content;
     }
 
-    std::string readAll(const fs::path& path) {
+    std::string proceduralMaterialWindowReadAll(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     }
 
     // Perlin (n1) -> Blend (n2) -> Material Output (n3): base colour; Perlin -> roughness too
     std::string writeMaterial(const std::string& name) {
-        writeAll(assets() / "materials" / (name + ".procmat"), R"({"formatVersion": 1, "kind": "procedural_material", "kindVersion": 1, "nextId": 7,
+        proceduralMaterialWindowWriteAll(proceduralMaterialWindowAssets() / "materials" / (name + ".procmat"), R"({"formatVersion": 1, "kind": "procedural_material", "kindVersion": 1, "nextId": 7,
             "nodes": [{"id": "n1", "type": "perlin", "position": [0, 0], "params": {}},
                       {"id": "n2", "type": "blend", "position": [300, 0], "params": {"amount": 0.5}},
                       {"id": "n3", "type": "material_output", "position": [600, 0], "params": {}}],
@@ -159,10 +159,10 @@ namespace {
     };
 
     // an ImGui frame loop of its own (the window's show(), the Inspector)
-    struct Frames {
+    struct ProceduralMaterialWindowFrames {
         ImGuiContext* previous = nullptr;
         ImGuiContext* context = nullptr;
-        Frames() {
+        ProceduralMaterialWindowFrames() {
             previous = ImGui::GetCurrentContext();
             context = ImGui::CreateContext();
             ImGui::SetCurrentContext(context);
@@ -174,7 +174,7 @@ namespace {
             int width, height;
             io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
         }
-        ~Frames() {
+        ~ProceduralMaterialWindowFrames() {
             ImGui::DestroyContext(context);
             ImGui::SetCurrentContext(previous);
         }
@@ -194,25 +194,25 @@ namespace {
     class ProceduralMaterialWindowTest : public ::testing::Test {
     protected:
         void SetUp() override {
-            ASSERT_TRUE(headless().ready);
+            ASSERT_TRUE(proceduralMaterialWindowHeadless().ready);
             procmat::registerProceduralMaterialKind();
         }
         void TearDown() override { GraphDocument::closeAll(); }
 
         // the editor's frame: the window's GPU work (App::engineRender), then its draw (App::show)
-        void step(ProceduralMaterialWindow& window, Frames& frames, double seconds = 1.0 / 60.0) {
+        void step(ProceduralMaterialWindow& window, ProceduralMaterialWindowFrames& frames, double seconds = 1.0 / 60.0) {
             clock += seconds;
             window.update(clock);
             frames.frame(window);
         }
-        void settle(ProceduralMaterialWindow& window, Frames& frames) {
+        void settle(ProceduralMaterialWindow& window, ProceduralMaterialWindowFrames& frames) {
             for (int i = 0; i < 40; i++) step(window, frames, 0.05);
         }
 
         double clock = 100.0;
     };
 
-    bool has(const std::vector<procmat::ProcMatThumbnails::Request>& requests, const std::string& id) {
+    bool proceduralMaterialWindowHas(const std::vector<procmat::ProcMatThumbnails::Request>& requests, const std::string& id) {
         return std::any_of(requests.begin(), requests.end(), [&](const auto& r) { return r.id == id; });
     }
 
@@ -222,10 +222,10 @@ namespace {
 // with the image before shown out of date until then
 TEST_F(ProceduralMaterialWindowTest, AValueEditIsUniformAndAStructuralOneRebuildsAfterTheDebounce) {
     Fake fake;
-    ProceduralMaterialWindow window(project(), fake.services());
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), fake.services());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeMaterial("live"))) << window.getStatus();
-    Frames frames;
+    ProceduralMaterialWindowFrames frames;
     settle(window, frames);
     ASSERT_TRUE(window.materialSession()->hasImage());
     EXPECT_FALSE(window.materialSession()->isStale());
@@ -259,19 +259,19 @@ TEST_F(ProceduralMaterialWindowTest, ThumbnailsFollowTheTierBudget) {
         SCOPED_TRACE(procmat::evaluatorTierName(tier));
         Fake fake;
         fake.tier = tier;
-        ProceduralMaterialWindow window(project(), fake.services());
+        ProceduralMaterialWindow window(proceduralMaterialWindowProject(), fake.services());
         window.setOpen(true);
         ASSERT_TRUE(window.openGraph(writeMaterial(std::string("tier_") + procmat::evaluatorTierName(tier))));
-        Frames frames;
+        ProceduralMaterialWindowFrames frames;
         step(window, frames);
         window.selectNodes({"n1"});
         // two frames: the canvas says which nodes it drew, then the requests follow
         step(window, frames);
         step(window, frames);
         const auto& requests = window.thumbnailRequests();
-        EXPECT_TRUE(has(requests, "n1")) << "the selection, on every tier";
-        EXPECT_EQ(has(requests, "n3"), tier != EvaluatorTier::Cpu) << "the Material Output on the device tiers";
-        EXPECT_EQ(has(requests, "n2"), tier == EvaluatorTier::Gpu) << "every visible node on a GPU only";
+        EXPECT_TRUE(proceduralMaterialWindowHas(requests, "n1")) << "the selection, on every tier";
+        EXPECT_EQ(proceduralMaterialWindowHas(requests, "n3"), tier != EvaluatorTier::Cpu) << "the Material Output on the device tiers";
+        EXPECT_EQ(proceduralMaterialWindowHas(requests, "n2"), tier == EvaluatorTier::Gpu) << "every visible node on a GPU only";
         EXPECT_EQ(requests.front().id, "n1") << "the selection first";
 
         const uint64_t before = window.thumbnails().finishedCount();
@@ -287,10 +287,10 @@ TEST_F(ProceduralMaterialWindowTest, ThumbnailsFollowTheTierBudget) {
 // R27: the preview follows the selection; Pin A keeps an output whatever is selected, until clicked again
 TEST_F(ProceduralMaterialWindowTest, ThePreviewFollowsTheSelectionAndAPinKeepsAnOutput) {
     Fake fake;
-    ProceduralMaterialWindow window(project(), fake.services());
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), fake.services());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeMaterial("pins")));
-    Frames frames;
+    ProceduralMaterialWindowFrames frames;
     settle(window, frames);
     EXPECT_TRUE(window.shownTarget().node.empty()) << "nothing selected: the material";
 
@@ -321,23 +321,23 @@ TEST_F(ProceduralMaterialWindowTest, ThePreviewFollowsTheSelectionAndAPinKeepsAn
 // R27: seed, Lock, Reroll and Variations as undo steps; a seed is a uniform for the preview
 TEST_F(ProceduralMaterialWindowTest, SeedLockRerollAndVariations) {
     Fake fake;
-    ProceduralMaterialWindow window(project(), fake.services());
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), fake.services());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeMaterial("seeds")));
-    Frames frames;
+    ProceduralMaterialWindowFrames frames;
     settle(window, frames);
     const int prepares = fake.material().prepares;
-    const size_t start = history()->position();
+    const size_t start = proceduralMaterialWindowHistory()->position();
 
     ASSERT_TRUE(window.setSeed(42));
     EXPECT_EQ(window.seed(), 42);
-    EXPECT_EQ(history()->position(), start + 1) << "one step";
+    EXPECT_EQ(proceduralMaterialWindowHistory()->position(), start + 1) << "one step";
     EXPECT_EQ(window.getDocument()->graph().metadata.value("seed", 0), 42) << "in the file";
     settle(window, frames);
 
     ASSERT_TRUE(window.rerollSeed());
     EXPECT_NE(window.seed(), 42);
-    EXPECT_EQ(history()->position(), start + 2);
+    EXPECT_EQ(proceduralMaterialWindowHistory()->position(), start + 2);
 
     const std::vector<int> seeds = window.variationSeeds();
     ASSERT_EQ(seeds.size(), 9u);
@@ -347,8 +347,8 @@ TEST_F(ProceduralMaterialWindowTest, SeedLockRerollAndVariations) {
     window.setVariationsOpen(true);
     step(window, frames);
     step(window, frames);
-    EXPECT_TRUE(has(window.thumbnailRequests(), "variation:0"));
-    EXPECT_TRUE(has(window.thumbnailRequests(), "variation:8"));
+    EXPECT_TRUE(proceduralMaterialWindowHas(window.thumbnailRequests(), "variation:0"));
+    EXPECT_TRUE(proceduralMaterialWindowHas(window.thumbnailRequests(), "variation:8"));
     settle(window, frames);
     EXPECT_TRUE(window.thumbnails().image("variation:4")) << "the grid's images";
     ASSERT_TRUE(window.adoptVariation(4));
@@ -364,9 +364,9 @@ TEST_F(ProceduralMaterialWindowTest, SeedLockRerollAndVariations) {
     settle(window, frames);
     EXPECT_EQ(fake.material().prepares, prepares) << "a seed change compiles nothing (R7)";
 
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(proceduralMaterialWindowHistory()->undo());
     EXPECT_FALSE(window.seedLocked()) << "Lock is a step too";
-    while (history()->position() > start) ASSERT_TRUE(history()->undo());
+    while (proceduralMaterialWindowHistory()->position() > start) ASSERT_TRUE(proceduralMaterialWindowHistory()->undo());
     EXPECT_EQ(window.seed(), 0);
     EXPECT_FALSE(window.getDocument()->graph().metadata.contains("seed"));
 }
@@ -374,7 +374,7 @@ TEST_F(ProceduralMaterialWindowTest, SeedLockRerollAndVariations) {
 // R27: Exposed Properties from the Inspector's row menu, Presets of their values, applied as one step
 TEST_F(ProceduralMaterialWindowTest, ExposedPropertiesAndPresets) {
     Fake fake;
-    ProceduralMaterialWindow window(project(), fake.services());
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), fake.services());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeMaterial("presets")));
     ASSERT_TRUE(window.setExposed("n2", "amount", true));
@@ -390,13 +390,13 @@ TEST_F(ProceduralMaterialWindowTest, ExposedPropertiesAndPresets) {
     ASSERT_TRUE(window.savePreset("Dry"));
     EXPECT_EQ(window.presetNames(), (std::vector<std::string>{"Wet", "Dry"}));
 
-    const size_t start = history()->position();
+    const size_t start = proceduralMaterialWindowHistory()->position();
     ASSERT_TRUE(window.applyPreset("Wet"));
-    EXPECT_EQ(history()->position(), start + 1) << "one step for every value";
+    EXPECT_EQ(proceduralMaterialWindowHistory()->position(), start + 1) << "one step for every value";
     const graph::Graph& g = window.getDocument()->graph();
     EXPECT_DOUBLE_EQ(g.findNode("n2")->params["amount"].get<double>(), 0.25);
     EXPECT_DOUBLE_EQ(g.findNode("n1")->params["scale_x"].get<double>(), 4.0) << "its default when the preset was saved";
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(proceduralMaterialWindowHistory()->undo());
     EXPECT_DOUBLE_EQ(window.getDocument()->graph().findNode("n2")->params["amount"].get<double>(), 0.9);
 
     ASSERT_TRUE(window.deletePreset("Dry"));
@@ -404,7 +404,7 @@ TEST_F(ProceduralMaterialWindowTest, ExposedPropertiesAndPresets) {
     ASSERT_TRUE(window.setExposed("n1", "scale_x", false));
     EXPECT_EQ(window.exposedProperties().size(), 1u);
 
-    Frames frames;
+    ProceduralMaterialWindowFrames frames;
     window.selectNodes({"n2"});
     EXPECT_TRUE(frames.frame(window)) << "the pane's rows and the Inspector draw";
 }
@@ -422,10 +422,10 @@ TEST_F(ProceduralMaterialWindowTest, TheCheckReportsRowsAreProblemsAndASingleEdi
                          {"op", {{"op", "setParam"}, {"node", "n2"}, {"name", "amount"}, {"value", 0.3}}}},
                         {{"check", "roughness"}, {"ops", nlohmann::json::array({{{"op", "setParam"}, {"node", "n1"}, {"name", "scale_x"}, {"value", 2}},
                                                                                  {{"op", "setParam"}, {"node", "n1"}, {"name", "scale_y"}, {"value", 2}}})}}})}};
-    ProceduralMaterialWindow window(project(), fake.services());
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), fake.services());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeMaterial("checks")));
-    Frames frames;
+    ProceduralMaterialWindowFrames frames;
     settle(window, frames);
     std::vector<GraphEditorWindow::Problem> rows = window.problems();
     auto find = [&](const std::string& code) -> const GraphEditorWindow::Problem* {
@@ -444,9 +444,9 @@ TEST_F(ProceduralMaterialWindowTest, TheCheckReportsRowsAreProblemsAndASingleEdi
     EXPECT_TRUE(rough->fix.empty()) << "two edits are the agent's to decide";
     EXPECT_EQ(rough->severity, graph::Severity::Warning);
 
-    const size_t start = history()->position();
+    const size_t start = proceduralMaterialWindowHistory()->position();
     ASSERT_TRUE(window.fixProblem(*tile));
-    EXPECT_EQ(history()->position(), start + 1);
+    EXPECT_EQ(proceduralMaterialWindowHistory()->position(), start + 1);
     EXPECT_DOUBLE_EQ(window.getDocument()->graph().findNode("n2")->params["amount"].get<double>(), 0.3);
     ASSERT_TRUE(window.inspectProblem(*rough));
     EXPECT_EQ(window.selectedNodes(), std::vector<std::string>{"n1"});
@@ -457,10 +457,10 @@ TEST_F(ProceduralMaterialWindowTest, TheTierLineAndTheBakeEstimate) {
     Fake fake;
     fake.tier = EvaluatorTier::Cpu;
     fake.slices = 3;
-    ProceduralMaterialWindow window(project(), fake.services());
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), fake.services());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeMaterial("bake")));
-    Frames frames;
+    ProceduralMaterialWindowFrames frames;
     EXPECT_LT(window.bakeEstimateSeconds(1024), 0.0) << "no estimate before an image";
     for (int i = 0; i < 10; i++) step(window, frames, 0.1);
     EXPECT_EQ(window.tier(), EvaluatorTier::Cpu);
@@ -478,7 +478,7 @@ TEST_F(ProceduralMaterialWindowTest, TheTierLineAndTheBakeEstimate) {
     EXPECT_EQ(fake.bakes[0].path, "assets/materials/bake.procmat");
 
     Fake gpu;
-    ProceduralMaterialWindow fast(project(), gpu.services());
+    ProceduralMaterialWindow fast(proceduralMaterialWindowProject(), gpu.services());
     fast.setOpen(true);
     ASSERT_TRUE(fast.openGraph(writeMaterial("bake_gpu")));
     EXPECT_EQ(fast.tierReason(), "");
@@ -486,13 +486,13 @@ TEST_F(ProceduralMaterialWindowTest, TheTierLineAndTheBakeEstimate) {
 
 // Assets > Create > Procedural Material: valid, laid out, and its image draws
 TEST_F(ProceduralMaterialWindowTest, TheStarterGraphIsValidAndDraws) {
-    writeAll(assets() / "materials" / "New Procedural Material.procmat", graph::save(procmat::starterProceduralMaterial("0123456789abcdef0123456789abcdef")));
+    proceduralMaterialWindowWriteAll(proceduralMaterialWindowAssets() / "materials" / "New Procedural Material.procmat", graph::save(procmat::starterProceduralMaterial("0123456789abcdef0123456789abcdef")));
     Fake fake;
-    ProceduralMaterialWindow window(project(), fake.services());
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), fake.services());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph("assets/materials/New Procedural Material.procmat")) << window.getStatus();
     EXPECT_TRUE(window.getDocument()->issues().empty());
-    Frames frames;
+    ProceduralMaterialWindowFrames frames;
     settle(window, frames);
     EXPECT_TRUE(window.materialSession()->hasImage()) << window.materialSession()->error();
     EXPECT_EQ(window.materialSession()->latest().outputs.size(), 2u) << "Base Color and ORM";
@@ -504,11 +504,11 @@ TEST_F(ProceduralMaterialWindowTest, TheStarterGraphIsValidAndDraws) {
 // review I3: the ball takes only the outputs the material has now: a disconnected Emission leaves it
 TEST_F(ProceduralMaterialWindowTest, TheBallDropsAnOutputTheMaterialNoLongerHas) {
     Fake fake;
-    ProceduralMaterialWindow window(project(), fake.services());
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), fake.services());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeMaterial("ball")));
     ASSERT_TRUE(window.connect("n1", "output", "n3", "emission"));
-    Frames frames;
+    ProceduralMaterialWindowFrames frames;
     settle(window, frames);
     std::vector<std::string> outputs = window.ballOutputs();
     EXPECT_NE(std::find(outputs.begin(), outputs.end(), "emission"), outputs.end());
@@ -528,29 +528,29 @@ TEST_F(ProceduralMaterialWindowTest, TheBallDropsAnOutputTheMaterialNoLongerHas)
 TEST_F(ProceduralMaterialWindowTest, AnUndetectedTierIsUnknownAndBudgetedAsSoftware) {
     Fake fake;
     fake.tierKnown = false;
-    ProceduralMaterialWindow window(project(), fake.services());
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), fake.services());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeMaterial("unknown_tier")));
-    Frames frames;
+    ProceduralMaterialWindowFrames frames;
     step(window, frames);
     window.selectNodes({"n1"});
     step(window, frames);
     step(window, frames);
     EXPECT_FALSE(window.tierKnown());
     EXPECT_EQ(window.tierLabel(), "unknown");
-    EXPECT_FALSE(has(window.thumbnailRequests(), "n2")) << "no image of every visible node on a device that may be software";
-    EXPECT_TRUE(has(window.thumbnailRequests(), "n3"));
+    EXPECT_FALSE(proceduralMaterialWindowHas(window.thumbnailRequests(), "n2")) << "no image of every visible node on a device that may be software";
+    EXPECT_TRUE(proceduralMaterialWindowHas(window.thumbnailRequests(), "n3"));
     EXPECT_EQ(window.tierReason(), "");
 }
 
 // review I5: a Variations cell adopts only the seed it pictures: not while its image is of other seeds
 TEST_F(ProceduralMaterialWindowTest, AVariationIsAdoptedOnlyOnceItsImageIsCurrent) {
     Fake fake;
-    ProceduralMaterialWindow window(project(), fake.services());
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), fake.services());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeMaterial("cells")));
     window.setVariationsOpen(true);
-    Frames frames;
+    ProceduralMaterialWindowFrames frames;
     settle(window, frames);
     ASSERT_TRUE(window.isVariationCurrent(2));
     ASSERT_TRUE(window.setSeed(77));
@@ -567,10 +567,10 @@ TEST_F(ProceduralMaterialWindowTest, AVariationIsAdoptedOnlyOnceItsImageIsCurren
 TEST_F(ProceduralMaterialWindowTest, AValueEditLeavesTheBakeEstimate) {
     Fake fake;
     fake.slices = 3;
-    ProceduralMaterialWindow window(project(), fake.services());
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), fake.services());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeMaterial("estimate")));
-    Frames frames;
+    ProceduralMaterialWindowFrames frames;
     for (int i = 0; i < 10; i++) step(window, frames, 0.1);
     const double estimate = window.bakeEstimateSeconds(1024);
     ASSERT_GT(estimate, 0.0);
@@ -584,10 +584,10 @@ TEST_F(ProceduralMaterialWindowTest, AValueEditLeavesTheBakeEstimate) {
 TEST_F(ProceduralMaterialWindowTest, ClosedPinsRowsAndBake) {
     Fake fake;
     fake.report = {{"checks", nlohmann::json::array({{{"id", "tileability"}, {"kind", "metric"}, {"status", "FAIL"}, {"measured", 3.2}}})}};
-    ProceduralMaterialWindow window(project(), fake.services());
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), fake.services());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeMaterial("closed")));
-    Frames frames;
+    ProceduralMaterialWindowFrames frames;
     settle(window, frames);
     auto hasRow = [&](const std::string& code) {
         for (const auto& row : window.problems()) if (row.code == code) return true;
@@ -646,11 +646,11 @@ TEST_F(ProceduralMaterialWindowTest, TheCheckRowsFixIsOneUndoStep) {
     services.checks = ProceduralMaterialWindow::defaultServices().checks;
     ASSERT_TRUE(services.checks);
     const std::string path = writeMaterial("tiles");
-    ProceduralMaterialWindow window(project(), services);
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), services);
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(path));
     ASSERT_TRUE(window.setParam("n1", "scale_x", 4.5));
-    Frames frames;
+    ProceduralMaterialWindowFrames frames;
     settle(window, frames);
     const GraphEditorWindow::Problem* tile = nullptr;
     const std::vector<GraphEditorWindow::Problem> rows = window.problems();
@@ -659,9 +659,9 @@ TEST_F(ProceduralMaterialWindowTest, TheCheckRowsFixIsOneUndoStep) {
     }
     ASSERT_TRUE(tile) << "a tileability row with its Fix";
     EXPECT_EQ(tile->nodeId, "n1");
-    const size_t start = history()->position();
+    const size_t start = proceduralMaterialWindowHistory()->position();
     ASSERT_TRUE(window.fixProblem(*tile)) << window.getStatus();
-    EXPECT_EQ(history()->position(), start + 1);
+    EXPECT_EQ(proceduralMaterialWindowHistory()->position(), start + 1);
     const double scale = window.getDocument()->graph().findNode("n1")->params["scale_x"].get<double>();
     EXPECT_EQ(scale, std::round(scale)) << "a whole number of repeats";
 }
@@ -670,10 +670,10 @@ TEST_F(ProceduralMaterialWindowTest, TheCheckRowsFixIsOneUndoStep) {
 TEST_F(ProceduralMaterialWindowTest, ADeviceFailureTheCpuTierContinuedPastIsAProblem) {
     Fake fake;
     fake.warnings = {"Pass 1 (normal) failed on test device: no. Continuing on the CPU tier, which is slower."};
-    ProceduralMaterialWindow window(project(), fake.services());
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), fake.services());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeMaterial("fallback")));
-    Frames frames;
+    ProceduralMaterialWindowFrames frames;
     settle(window, frames);
     bool found = false;
     for (const auto& row : window.problems()) {
@@ -685,11 +685,11 @@ TEST_F(ProceduralMaterialWindowTest, ADeviceFailureTheCpuTierContinuedPastIsAPro
 // re-review N1: between an edit and the next frame, no Variations cell counts as current
 TEST_F(ProceduralMaterialWindowTest, AVariationCellIsNotCurrentRightAfterAnEdit) {
     Fake fake;
-    ProceduralMaterialWindow window(project(), fake.services());
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), fake.services());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeMaterial("cells_now")));
     window.setVariationsOpen(true);
-    Frames frames;
+    ProceduralMaterialWindowFrames frames;
     settle(window, frames);
     ASSERT_TRUE(window.isVariationCurrent(0));
     ASSERT_TRUE(window.setSeed(5));
@@ -733,8 +733,8 @@ namespace {
 
     // a graph the editor's scan has seen (its GUID written then, as a project's files have theirs), so a bake
     // writes nothing into it
-    std::string indexed(const std::string& path) {
-        project()->onAssetFilesChanged(project()->getAssetDatabase().importAssets(project()->getProjectPath() / path));
+    std::string proceduralMaterialWindowIndexed(const std::string& path) {
+        proceduralMaterialWindowProject()->onAssetFilesChanged(proceduralMaterialWindowProject()->getAssetDatabase().importAssets(proceduralMaterialWindowProject()->getProjectPath() / path));
         return path;
     }
 
@@ -760,15 +760,15 @@ namespace {
 // reads the file)
 TEST_F(ProceduralMaterialWindowTest, AnEditMadeJustBeforeBakeIsBaked) {
     Fake fake;
-    ProceduralMaterialWindow window(project(), withTheBake(fake));
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), withTheBake(fake));
     window.setOpen(true);
-    ASSERT_TRUE(window.openGraph(indexed(writeMaterial("edit_bake"))));
+    ASSERT_TRUE(window.openGraph(proceduralMaterialWindowIndexed(writeMaterial("edit_bake"))));
     window.setBakeSize(64);
     const std::string before = planHash(window.getDocument()->graph(), 64, 0);
     ASSERT_TRUE(window.setParam("n2", "amount", 0.9));
     const std::string message = bakeAndWait(window);
     ASSERT_NE(message.find("Baked"), std::string::npos) << message;
-    const std::string baked = bakedHash(assets() / "materials" / "edit_bake" / "edit_bake_base_color.png");
+    const std::string baked = bakedHash(proceduralMaterialWindowAssets() / "materials" / "edit_bake" / "edit_bake_base_color.png");
     EXPECT_EQ(baked, planHash(window.getDocument()->graph(), 64, 0)) << "the bake is of the graph as edited";
     EXPECT_NE(baked, before);
 }
@@ -776,30 +776,30 @@ TEST_F(ProceduralMaterialWindowTest, AnEditMadeJustBeforeBakeIsBaked) {
 // Wiring round 2: Bake again re-bakes its own files; files of another graph at those paths are refused, never replaced
 TEST_F(ProceduralMaterialWindowTest, BakeTwiceRebakesAndAnotherGraphsFilesAreRefused) {
     Fake fake;
-    ProceduralMaterialWindow window(project(), withTheBake(fake));
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), withTheBake(fake));
     window.setOpen(true);
-    ASSERT_TRUE(window.openGraph(indexed(writeMaterial("twice"))));
+    ASSERT_TRUE(window.openGraph(proceduralMaterialWindowIndexed(writeMaterial("twice"))));
     window.setBakeSize(64);
     std::string message = bakeAndWait(window);
     ASSERT_NE(message.find("Baked"), std::string::npos) << message;
     ASSERT_TRUE(window.setParam("n2", "amount", 0.2));
     message = bakeAndWait(window);
     ASSERT_NE(message.find("Baked"), std::string::npos) << "a second Bake re-bakes its own files: " << message;
-    const fs::path first = assets() / "materials" / "twice" / "twice_base_color.png";
+    const fs::path first = proceduralMaterialWindowAssets() / "materials" / "twice" / "twice_base_color.png";
     EXPECT_EQ(bakedHash(first), planHash(window.getDocument()->graph(), 64, 0));
 
     // another graph whose output path holds this one's bake
-    const std::string other = indexed(writeMaterial("other_graph"));
-    fs::create_directories(assets() / "materials" / "other_graph");
-    const fs::path foreign = assets() / "materials" / "other_graph" / "other_graph_base_color.png";
+    const std::string other = proceduralMaterialWindowIndexed(writeMaterial("other_graph"));
+    fs::create_directories(proceduralMaterialWindowAssets() / "materials" / "other_graph");
+    const fs::path foreign = proceduralMaterialWindowAssets() / "materials" / "other_graph" / "other_graph_base_color.png";
     fs::copy_file(first, foreign, fs::copy_options::overwrite_existing);
-    const std::string foreignBytes = readAll(foreign);
+    const std::string foreignBytes = proceduralMaterialWindowReadAll(foreign);
     ASSERT_TRUE(window.openGraph(other));
     message = bakeAndWait(window);
     EXPECT_EQ(message.rfind("refused: ", 0), 0u) << "refused before it runs: " << message;
     EXPECT_NE(window.getBakeError().find("other_graph_base_color.png"), std::string::npos) << window.getBakeError();
     EXPECT_NE(window.getBakeError().find("not a bake of this graph"), std::string::npos) << window.getBakeError();
-    EXPECT_EQ(readAll(foreign), foreignBytes) << "nothing replaced";
+    EXPECT_EQ(proceduralMaterialWindowReadAll(foreign), foreignBytes) << "nothing replaced";
 }
 
 // Wiring round 2: a row's Fix is for the revision it was found on: after an edit, even in the same frame, it is refused
@@ -808,10 +808,10 @@ TEST_F(ProceduralMaterialWindowTest, AFixFoundBeforeAnEditIsRefused) {
     fake.report = {{"checks", nlohmann::json::array({{{"id", "tileability"}, {"kind", "metric"}, {"status", "FAIL"}, {"measured", 3.2}}})},
                    {"fixes", nlohmann::json::array({{{"check", "tileability"}, {"node", "n2"},
                                                      {"op", {{"op", "setParam"}, {"node", "n2"}, {"name", "amount"}, {"value", 0.3}}}}})}};
-    ProceduralMaterialWindow window(project(), fake.services());
+    ProceduralMaterialWindow window(proceduralMaterialWindowProject(), fake.services());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeMaterial("revision")));
-    Frames frames;
+    ProceduralMaterialWindowFrames frames;
     settle(window, frames);
     GraphEditorWindow::Problem tile;
     for (const auto& row : window.problems()) {
@@ -819,8 +819,8 @@ TEST_F(ProceduralMaterialWindowTest, AFixFoundBeforeAnEditIsRefused) {
     }
     ASSERT_EQ(tile.fix.size(), 1u);
     ASSERT_TRUE(window.setParam("n2", "amount", 0.7));
-    const size_t start = history()->position();
+    const size_t start = proceduralMaterialWindowHistory()->position();
     EXPECT_FALSE(window.fixProblem(tile)) << "found on the revision before the edit";
-    EXPECT_EQ(history()->position(), start);
+    EXPECT_EQ(proceduralMaterialWindowHistory()->position(), start);
     EXPECT_DOUBLE_EQ(window.getDocument()->graph().findNode("n2")->params["amount"].get<double>(), 0.7);
 }

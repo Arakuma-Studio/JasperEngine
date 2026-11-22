@@ -22,7 +22,7 @@ using namespace jasperengine;
 
 namespace {
 
-    using Look = std::function<Vector3(float, float, float)>;
+    using PostColorLutLook = std::function<Vector3(float, float, float)>;
 
     const PostColorLut::Stage STAGES[] = {PostColorLut::Stage::ALL, PostColorLut::Stage::CURVE, PostColorLut::Stage::GRADE};
 
@@ -36,7 +36,7 @@ namespace {
     }
 
     // a 3D CubeLut of side n holding look(r, g, b) of the normalised coordinate
-    CubeLut tableLut(const std::string& title, int n, const Look& look){
+    CubeLut tableLut(const std::string& title, int n, const PostColorLutLook& look){
         CubeLut lut;
         lut.title = title;
         lut.size3D = n;
@@ -62,7 +62,7 @@ namespace {
     }
 
     // a log-space look (ACEScct values in and out): darker, warmer
-    Vector3 logLook(float r, float g, float b){
+    Vector3 postColorLutLogLook(float r, float g, float b){
         return Vector3(0.9f * r + 0.03f, 0.88f * g + 0.01f, 0.85f * b);
     }
 
@@ -113,7 +113,7 @@ namespace {
     }
 
     // the largest channel difference; with `n` the first worst texel is printed (r, g, b, channel)
-    int maxDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, int n = 0){
+    int postColorLutMaxDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, int n = 0){
         EXPECT_EQ(a.size(), b.size());
         int worst = 0;
         size_t at = 0;
@@ -148,7 +148,7 @@ TEST(PostColorLut, IdentityCubeIsNeutral){
         EXPECT_EQ(stage, LutStage::DISPLAY);
         for (int n : {16, 32}){
             for (PostColorLut::Stage bakeStage : STAGES){
-                EXPECT_LE(maxDifference(bake(settings, &lut, bakeStage, n), bake(settings, nullptr, bakeStage, n)), 1)
+                EXPECT_LE(postColorLutMaxDifference(bake(settings, &lut, bakeStage, n), bake(settings, nullptr, bakeStage, n)), 1)
                     << "size " << n << " stage " << stageName(bakeStage) << " exposure " << settings.exposure;
             }
         }
@@ -206,8 +206,8 @@ TEST(PostColorLut, CubeMatchesStrip){
     for (const PostProcessingSettings& settings : {neutralGrading(), strongGrading()}){
         for (PostColorLut::Stage stage : {PostColorLut::Stage::ALL, PostColorLut::Stage::GRADE}){
             const std::vector<uint8_t> cube = bake(settings, &fromCube, stage, 32);
-            EXPECT_LE(maxDifference(cube, bake(settings, &fromStrip, stage, 32)), 1) << stageName(stage);
-            EXPECT_GT(maxDifference(cube, bake(settings, nullptr, stage, 32)), 20) << "the look applies (" << stageName(stage) << ")";
+            EXPECT_LE(postColorLutMaxDifference(cube, bake(settings, &fromStrip, stage, 32)), 1) << stageName(stage);
+            EXPECT_GT(postColorLutMaxDifference(cube, bake(settings, nullptr, stage, 32)), 20) << "the look applies (" << stageName(stage) << ")";
         }
     }
 
@@ -273,11 +273,11 @@ TEST(PostColorLut, SceneStageLogLut){
     EXPECT_FALSE(PostColorLut::hasCurve(off, &identityLog));
 
     // a look lands in the CURVE (and ALL) bakes, and GRADE ignores it
-    const CubeLut look = tableLut("ACEScct look", 33, logLook);
+    const CubeLut look = tableLut("ACEScct look", 33, postColorLutLogLook);
     for (const PostProcessingSettings& s : {neutral, settings}){
-        EXPECT_GT(maxDifference(bake(s, &look, PostColorLut::Stage::CURVE, 32), bake(s, nullptr, PostColorLut::Stage::CURVE, 32)), 8);
-        EXPECT_GT(maxDifference(bake(s, &look, PostColorLut::Stage::ALL, 32), bake(s, nullptr, PostColorLut::Stage::ALL, 32)), 8);
-        EXPECT_EQ(maxDifference(bake(s, &look, PostColorLut::Stage::GRADE, 32), bake(s, nullptr, PostColorLut::Stage::GRADE, 32)), 0);
+        EXPECT_GT(postColorLutMaxDifference(bake(s, &look, PostColorLut::Stage::CURVE, 32), bake(s, nullptr, PostColorLut::Stage::CURVE, 32)), 8);
+        EXPECT_GT(postColorLutMaxDifference(bake(s, &look, PostColorLut::Stage::ALL, 32), bake(s, nullptr, PostColorLut::Stage::ALL, 32)), 8);
+        EXPECT_EQ(postColorLutMaxDifference(bake(s, &look, PostColorLut::Stage::GRADE, 32), bake(s, nullptr, PostColorLut::Stage::GRADE, 32)), 0);
     }
 
     // before the tone curve: a CURVE texel is encode(toneMap(lut(exposure * x)))

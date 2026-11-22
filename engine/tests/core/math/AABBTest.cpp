@@ -15,7 +15,7 @@
 using namespace jasperengine;
 
 namespace {
-    AABB unitBox(){
+    AABB aABBUnitBox(){
         return AABB(Vector3(-1, -1, -1), Vector3(1, 1, 1));
     }
 }
@@ -49,7 +49,7 @@ TEST(AABB, InfiniteBoxHasInfiniteVolume){
 }
 
 TEST(AABB, CornersFollowTheEnum){
-    const AABB box = unitBox();
+    const AABB box = aABBUnitBox();
     EXPECT_EQ(box.getCorner(AABB::FAR_LEFT_BOTTOM), Vector3(-1, -1, -1));
     EXPECT_EQ(box.getCorner(AABB::NEAR_RIGHT_TOP), Vector3(1, 1, 1));
     EXPECT_EQ(box.getCorner(AABB::FAR_RIGHT_TOP), Vector3(1, 1, -1));
@@ -67,7 +67,7 @@ TEST(AABB, MergeWithAPointGrowsTheBox){
 }
 
 TEST(AABB, MergeWithBoxes){
-    AABB box = unitBox();
+    AABB box = aABBUnitBox();
     box.merge(AABB(Vector3(0, 0, 0), Vector3(3, 3, 3)));
     EXPECT_EQ(box.getMaximum(), Vector3(3, 3, 3));
     EXPECT_EQ(box.getMinimum(), Vector3(-1, -1, -1));
@@ -78,7 +78,7 @@ TEST(AABB, MergeWithBoxes){
 }
 
 TEST(AABB, IntersectsOverlappingAndTouchingBoxes){
-    const AABB box = unitBox();
+    const AABB box = aABBUnitBox();
     EXPECT_TRUE(box.intersects(AABB(Vector3(0.5f, 0.5f, 0.5f), Vector3(2, 2, 2))));
     EXPECT_TRUE(box.intersects(AABB(Vector3(1, -1, -1), Vector3(2, 1, 1))));
     EXPECT_FALSE(box.intersects(AABB(Vector3(1.1f, 0, 0), Vector3(2, 1, 1))));
@@ -87,14 +87,14 @@ TEST(AABB, IntersectsOverlappingAndTouchingBoxes){
 }
 
 TEST(AABB, IntersectionIsTheOverlap){
-    const AABB overlap = unitBox().intersection(AABB(Vector3(0, 0, 0), Vector3(5, 5, 5)));
+    const AABB overlap = aABBUnitBox().intersection(AABB(Vector3(0, 0, 0), Vector3(5, 5, 5)));
     EXPECT_EQ(overlap.getMinimum(), Vector3(0, 0, 0));
     EXPECT_EQ(overlap.getMaximum(), Vector3(1, 1, 1));
-    EXPECT_TRUE(unitBox().intersection(AABB(Vector3(2, 2, 2), Vector3(3, 3, 3))).isNull());
+    EXPECT_TRUE(aABBUnitBox().intersection(AABB(Vector3(2, 2, 2), Vector3(3, 3, 3))).isNull());
 }
 
 TEST(AABB, ContainsPointsAndBoxes){
-    const AABB box = unitBox();
+    const AABB box = aABBUnitBox();
     EXPECT_TRUE(box.contains(Vector3(0, 0, 0)));
     EXPECT_TRUE(box.contains(Vector3(1, 1, 1)));
     EXPECT_FALSE(box.contains(Vector3(1.01f, 0, 0)));
@@ -104,21 +104,21 @@ TEST(AABB, ContainsPointsAndBoxes){
 }
 
 TEST(AABB, DistanceToPoints){
-    const AABB box = unitBox();
+    const AABB box = aABBUnitBox();
     EXPECT_FLOAT_EQ(box.squaredDistance(Vector3(0.5f, 0, 0)), 0.0f);
     EXPECT_FLOAT_EQ(box.squaredDistance(Vector3(4, 0, 0)), 9.0f);
     EXPECT_FLOAT_EQ(box.distance(Vector3(4, 5, 1)), 5.0f);
 }
 
 TEST(AABB, IntersectsSpheres){
-    const AABB box = unitBox();
+    const AABB box = aABBUnitBox();
     EXPECT_TRUE(box.intersects(Sphere(Vector3(2, 0, 0), 1.0f)));
     EXPECT_FALSE(box.intersects(Sphere(Vector3(2, 2, 0), 1.0f)));
     EXPECT_TRUE(box.intersects(Sphere(Vector3(0, 0, 0), 0.1f)));
 }
 
 TEST(AABB, IntersectsAPlaneOnlyAcrossIt){
-    const AABB box = unitBox();
+    const AABB box = aABBUnitBox();
     EXPECT_TRUE(box.intersects(Plane(Vector3::UNIT_Y, 0.5f)));
     EXPECT_FALSE(box.intersects(Plane(Vector3::UNIT_Y, -2.0f)));
 }
@@ -138,7 +138,7 @@ TEST(AABB, TransformKeepsTheRotatedCornersInside){
 }
 
 TEST(AABB, EqualityAndCopy){
-    const AABB a = unitBox();
+    const AABB a = aABBUnitBox();
     AABB b = a;
     EXPECT_TRUE(a == b);
     b.setMaximumX(3);

@@ -103,13 +103,13 @@ namespace {
         return true;
     }
 
-    struct Registration {
-        Registration(){
+    struct DecoderRegistration {
+        DecoderRegistration(){
             GltfNormalize::setDracoDecoder(&decodeDraco);
             GltfNormalize::setWebpDecoder(&decodeWebp);
         }
     };
 
-    const Registration registration;
+    const DecoderRegistration registration;
 
 }

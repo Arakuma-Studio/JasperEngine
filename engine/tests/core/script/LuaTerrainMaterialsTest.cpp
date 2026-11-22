@@ -20,7 +20,7 @@ using namespace jasperengine;
 
 namespace {
 
-    std::string runLua(lua_State* L, const std::string& code){
+    std::string luaTerrainMaterialsRunLua(lua_State* L, const std::string& code){
         if (luaL_loadstring(L, code.c_str()) != LUA_OK || lua_pcall(L, 0, 0, 0) != LUA_OK){
             const std::string error = lua_tostring(L, -1);
             lua_pop(L, 1);
@@ -39,7 +39,7 @@ TEST(LuaTerrainMaterials, EveryMemberReadsAndWrites){
     ASSERT_NE(L, nullptr);
     luabridge::setGlobal(L, &terrainObject, "testTerrain");
 
-    const std::string error = runLua(L, R"(
+    const std::string error = luaTerrainMaterialsRunLua(L, R"(
         local t = testTerrain
         t.terrainQuality = TerrainQualitySetting.LOW
         assert(t.terrainQuality == TerrainQualitySetting.LOW)

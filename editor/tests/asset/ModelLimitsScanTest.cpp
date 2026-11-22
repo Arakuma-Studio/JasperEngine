@@ -16,7 +16,7 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    std::string gltf(const std::string& rest) {
+    std::string modelLimitsScanGltf(const std::string& rest) {
         return R"({"asset": {"version": "2.0"}, )" + rest + "}";
     }
 
@@ -30,14 +30,14 @@ namespace {
 
 TEST(ModelLimitsScan, AModelWithinThemHasNone) {
     ModelContents contents;
-    const std::string json = gltf(R"("meshes": [{"primitives": [{"targets": [)" + targets(MAX_MORPHTARGETS, R"({"POSITION": 0})") + "]}]}]");
+    const std::string json = modelLimitsScanGltf(R"("meshes": [{"primitives": [{"targets": [)" + targets(MAX_MORPHTARGETS, R"({"POSITION": 0})") + "]}]}]");
     ASSERT_TRUE(scanModelBytes(".gltf", json, contents));
     EXPECT_TRUE(contents.limits.empty());
 }
 
 TEST(ModelLimitsScan, TheMessageNamesTheModelTheCountAndTheLimit) {
     ModelContents contents;
-    ASSERT_TRUE(scanModelBytes(".gltf", gltf(R"("meshes": [{"name": "Face", "primitives": [{"targets": [)" +
+    ASSERT_TRUE(scanModelBytes(".gltf", modelLimitsScanGltf(R"("meshes": [{"name": "Face", "primitives": [{"targets": [)" +
                                              targets(MAX_MORPHTARGETS + 1, R"({"POSITION": 0})") + "]}]}]"), contents));
     ASSERT_EQ(contents.limits.size(), 1u);
     const std::string message = modelLimitMessage("assets/hero.glb", contents.limits[0]);
@@ -48,20 +48,20 @@ TEST(ModelLimitsScan, TheMessageNamesTheModelTheCountAndTheLimit) {
 // the loader's rule: what a target has lowers what the next ones may be
 TEST(ModelLimitsScan, BlendShapesCountAsTheLoaderKeepsThem) {
     ModelContents contents;
-    ASSERT_TRUE(scanModelBytes(".gltf", gltf(R"("meshes": [{"name": "Face", "primitives": [{"targets": [)" +
+    ASSERT_TRUE(scanModelBytes(".gltf", modelLimitsScanGltf(R"("meshes": [{"name": "Face", "primitives": [{"targets": [)" +
                                              targets(MAX_MORPHTARGETS + 1, R"({"POSITION": 0})") + "]}]}]"), contents));
     ASSERT_EQ(contents.limits.size(), 1u);
     EXPECT_EQ(contents.limits[0].what, "mesh 'Face'");
     EXPECT_EQ(contents.limits[0].count, (size_t)MAX_MORPHTARGETS + 1);
     EXPECT_EQ(contents.limits[0].limit, (size_t)MAX_MORPHTARGETS);
 
-    ASSERT_TRUE(scanModelBytes(".gltf", gltf(R"("meshes": [{"primitives": [{"targets": [)" +
+    ASSERT_TRUE(scanModelBytes(".gltf", modelLimitsScanGltf(R"("meshes": [{"primitives": [{"targets": [)" +
                                              targets(5, R"({"POSITION": 0, "NORMAL": 0})") + "]}]}]"), contents));
     ASSERT_EQ(contents.limits.size(), 1u);
     EXPECT_EQ(contents.limits[0].what, "mesh '#0'");
     EXPECT_EQ(contents.limits[0].limit, 4u);
 
-    ASSERT_TRUE(scanModelBytes(".gltf", gltf(R"("meshes": [{"primitives": [{"targets": [)" +
+    ASSERT_TRUE(scanModelBytes(".gltf", modelLimitsScanGltf(R"("meshes": [{"primitives": [{"targets": [)" +
                                              targets(3, R"({"POSITION": 0, "NORMAL": 0, "TANGENT": 0})") + "]}]}]"), contents));
     ASSERT_EQ(contents.limits.size(), 1u);
     EXPECT_EQ(contents.limits[0].limit, 2u);
@@ -78,7 +78,7 @@ TEST(ModelLimitsScan, MoreBuffersThanTheGpuPoolHolds) {
         primitives += std::string(i ? "," : "") + R"({"attributes": {"POSITION": )" + std::to_string(i) + "}}";
     }
     ModelContents contents;
-    ASSERT_TRUE(scanModelBytes(".gltf", gltf(R"("accessors": [)" + accessors + R"(], "meshes": [{"primitives": [)" + primitives + "]}]"), contents));
+    ASSERT_TRUE(scanModelBytes(".gltf", modelLimitsScanGltf(R"("accessors": [)" + accessors + R"(], "meshes": [{"primitives": [)" + primitives + "]}]"), contents));
     ASSERT_EQ(contents.limits.size(), 1u);
     EXPECT_EQ(contents.limits[0].kind, "vertex and index buffers");
     EXPECT_EQ(contents.limits[0].count, limit + 1);

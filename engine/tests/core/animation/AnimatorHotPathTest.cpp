@@ -25,10 +25,10 @@ using namespace animatortest;
 
 namespace {
 
-    constexpr float kDt = 1.0f / 60.0f;
+    constexpr float kHotPathDt = 1.0f / 60.0f;
 
     // a turn of `degrees` about x of `path` over 1 s, in steps of 0.1 s
-    ClipData turn(const std::string& path, float degrees){
+    ClipData animatorHotPathTurn(const std::string& path, float degrees){
         ClipData data;
         data.wrap = ClipWrapMode::Loop;
         ClipTrackData t;
@@ -62,10 +62,10 @@ namespace {
         // a base layer and an upper layer of `blending` with states A, B, C (each its own turn of
         // the spine); any state -> C when the parameter "Go" is set
         std::string layered(AnimatorLayerBlending blending = AnimatorLayerBlending::Override){
-            const std::string base = clip("base", turn("Hips", 30.0f));
-            const std::string a = clip("a", turn("Hips/Spine", 40.0f));
-            const std::string b = clip("b", turn("Hips/Spine", -50.0f));
-            const std::string c = clip("c", turn("Hips/Spine", 70.0f));
+            const std::string base = clip("base", animatorHotPathTurn("Hips", 30.0f));
+            const std::string a = clip("a", animatorHotPathTurn("Hips/Spine", 40.0f));
+            const std::string b = clip("b", animatorHotPathTurn("Hips/Spine", -50.0f));
+            const std::string c = clip("c", animatorHotPathTurn("Hips/Spine", 70.0f));
             ControllerDef def = controller({parameter("Go", AnimatorParameterType::Bool)}, {state("Base", base)});
             LayerDef upper;
             upper.name = "Upper";
@@ -103,7 +103,7 @@ namespace {
             ASSERT_TRUE(instance(root).bound);
             instance(twin).setLayerWeight(1, 1e-6f);
             for (Entity e : {root, twin}) instance(e).play("B", 1, 0.0f);
-            step(kDt, 17);
+            step(kHotPathDt, 17);
             EXPECT_TRUE(instance(root).layers[1].outputSkipped);
             EXPECT_FALSE(instance(twin).layers[1].outputSkipped);
         }
@@ -111,7 +111,7 @@ namespace {
         void expectSameAfterInterruption(){
             instance(twin).setLayerWeight(1, 1.0f);
             for (int frame = 0; frame < 12; frame++){
-                step(kDt);
+                step(kHotPathDt);
                 expectSamePose("after the interruption", frame);
             }
         }
@@ -131,9 +131,9 @@ namespace {
 // Animator whose option is off), and an update allocates nothing after the bind, the Torso
 // Direction recording on or off
 TEST_F(AnimatorHotPath, MeshSpaceRotationAllocatesNothingAfterTheBind){
-    const std::string base = clip("base", turn("Hips", 30.0f));
-    ClipData upperData = turn("Hips", -60.0f);
-    upperData.tracks.push_back(turn("Hips/Spine", 40.0f).tracks[0]);
+    const std::string base = clip("base", animatorHotPathTurn("Hips", 30.0f));
+    ClipData upperData = animatorHotPathTurn("Hips", -60.0f);
+    upperData.tracks.push_back(animatorHotPathTurn("Hips/Spine", 40.0f).tracks[0]);
     const std::string upper = clip("upper", upperData);
     AvatarMaskDef mask;
     mask.defaultWeight = 0.0f;
@@ -158,20 +158,20 @@ TEST_F(AnimatorHotPath, MeshSpaceRotationAllocatesNothingAfterTheBind){
     EXPECT_EQ(instance(root).meshSpaceScratchBytes(), 2 * instance(root).rig.bones.size() * sizeof(Quaternion));
     EXPECT_EQ(instance(twin).meshSpaceScratchBytes(), 0u) << "the option off: no scratch";
     EXPECT_EQ(instance(twin).layerBoundaryBones(1).size(), 1u) << "the boundary bones are listed all the same";
-    for (int i = 0; i < 120; i++) step(kDt);
+    for (int i = 0; i < 120; i++) step(kHotPathDt);
     // the recording's checks run on every build (sanitizers included); the counts where it can count
     const bool counts = testsupport::countsAllocations();
     if (counts){
         testsupport::AllocationCountScope scope;
-        for (int i = 0; i < 600; i++) step(kDt);
+        for (int i = 0; i < 600; i++) step(kHotPathDt);
         EXPECT_EQ(scope.count(), 0u);
     }
     instance(root).setMeshSpaceDebug(true);
     EXPECT_EQ(instance(root).layerMeshSpaceUnpassed(1), nullptr) << "nothing recorded before an update";
-    step(kDt);
+    step(kHotPathDt);
     if (counts){
         testsupport::AllocationCountScope scope;
-        for (int i = 0; i < 120; i++) step(kDt);
+        for (int i = 0; i < 120; i++) step(kHotPathDt);
         EXPECT_EQ(scope.count(), 0u) << "the recording allocates in its setter only";
     }
     ASSERT_NE(instance(root).layerMeshSpaceUnpassed(1), nullptr);
@@ -189,7 +189,7 @@ TEST_F(AnimatorHotPath, WeightZeroLayerIsNotSampled){
     step(0.0);
     ASSERT_TRUE(instance(root).bound);
     instance(twin).setLayerWeight(1, 1e-6f);
-    step(kDt, 30);
+    step(kHotPathDt, 30);
     EXPECT_TRUE(sampledSinceBind(instance(root).clips[slotOf(instance(root), "base.anim")])) << "the base layer samples";
     EXPECT_TRUE(sampledSinceBind(instance(twin).clips[slotOf(instance(twin), "a.anim")])) << "any weight samples";
     EXPECT_FALSE(sampledSinceBind(instance(root).clips[slotOf(instance(root), "a.anim")])) << "weight 0 does not";
@@ -197,16 +197,16 @@ TEST_F(AnimatorHotPath, WeightZeroLayerIsNotSampled){
     // the same frame's weight, set before the update
     instance(root).setLayerWeight(1, 1.0f);
     instance(twin).setLayerWeight(1, 1.0f);
-    step(kDt);
+    step(kHotPathDt);
     EXPECT_TRUE(sampledSinceBind(instance(root).clips[slotOf(instance(root), "a.anim")]));
     expectSamePose("the weight came up");
     // a fade: this update's step already counts
     instance(root).setLayerWeight(1, 0.0f);
-    step(kDt, 10);
+    step(kHotPathDt, 10);
     EXPECT_TRUE(instance(root).layers[1].outputSkipped);
     instance(root).setLayerWeight(1, 1.0f, 0.1f);
-    step(kDt);
-    EXPECT_NEAR(instance(root).getLayerWeight(1), kDt / 0.1f, 1e-5f);
+    step(kHotPathDt);
+    EXPECT_NEAR(instance(root).getLayerWeight(1), kHotPathDt / 0.1f, 1e-5f);
     EXPECT_FALSE(instance(root).layers[1].outputSkipped);
 }
 
@@ -214,11 +214,11 @@ TEST_F(AnimatorHotPath, WeightZeroLayerIsNotSampled){
 TEST_F(AnimatorHotPath, WeightZeroAdditiveLayerTakesNoReference){
     animator(layered(AnimatorLayerBlending::Additive));
     step(0.0);
-    step(kDt, 10);
+    step(kHotPathDt, 10);
     const AnimatorClipSlot& slot = instance().clips[slotOf(instance(), "a.anim")];
     EXPECT_FALSE(slot.hasReference);
     instance().setLayerWeight(1, 1.0f);
-    step(kDt);
+    step(kHotPathDt);
     EXPECT_TRUE(instance().clips[slotOf(instance(), "a.anim")].hasReference);
 }
 
@@ -251,7 +251,7 @@ TEST_F(AnimatorHotPath, SnapshotOfARunningTransition){
     startInterruption();
     // a transition runs for some frames at weight 0 (its pose is kept), then is interrupted
     for (Entity e : {root, twin}) ASSERT_TRUE(instance(e).crossFade("A", 0.4f, true, 1, 0.0f));
-    step(kDt, 6);
+    step(kHotPathDt, 6);
     for (Entity e : {root, twin}) ASSERT_TRUE(instance(e).crossFade("C", 0.3f, true, 1, 0.0f));
     instance(root).setLayerWeight(1, 1.0f);
     expectSameAfterInterruption();
@@ -271,7 +271,7 @@ TEST_F(AnimatorHotPath, SnapshotWithAWeightFadeInTheSameFrame){
 // R16: a preview shows its pose in the call, as without async loading (the editor's mode)
 TEST_F(AnimatorHotPath, PreviewLoadsAnAnimInTheCall){
     // large enough for the thread pool otherwise
-    animtest::writeAsset(prefix + "base.anim", anim::writeClip(turn("Hips", 30.0f)) + std::string(70000, ' '));
+    animtest::writeAsset(prefix + "base.anim", anim::writeClip(animatorHotPathTurn("Hips", 30.0f)) + std::string(70000, ' '));
     animator(controllerFile("preview", controller({}, {state("Base", prefix + "base.anim")})));
     const bool wasAsync = Engine::isAsyncLoading();
     Engine::setAsyncLoading(true);
@@ -286,8 +286,8 @@ TEST_F(AnimatorHotPath, PreviewLoadsAnAnimInTheCall){
 // AC7 (R16): a first use through the thread pool starts where one through the calling thread
 // does, even when one of its clips arrives later than another: time does not run without them
 TEST_F(AnimatorHotPath, ThreadPoolFirstUseMatchesTheCallingThread){
-    const std::string base = clip("base", turn("Hips", 30.0f));
-    ClipData late = turn("Hips/Spine", 40.0f);
+    const std::string base = clip("base", animatorHotPathTurn("Hips", 30.0f));
+    ClipData late = animatorHotPathTurn("Hips/Spine", 40.0f);
     late.events = {event(0.05f, "early")};
     // large enough to go through the thread pool
     animtest::writeAsset(prefix + "late.anim", anim::writeClip(late) + std::string(70000, ' '));
@@ -335,7 +335,7 @@ TEST_F(AnimatorHotPath, ThreadPoolFirstUseMatchesTheCallingThread){
     while (after < 10 && std::chrono::steady_clock::now() < until){
         // only the twin moves while it waits
         scene.getComponent<AnimatorComponent>(root).enabled = false;
-        step(kDt);
+        step(kHotPathDt);
         if (AnimationClipPool::get(base)) after++;
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
@@ -355,7 +355,7 @@ TEST_F(AnimatorHotPath, ThreadPoolFirstUseMatchesTheCallingThread){
 
     scene.getComponent<AnimatorComponent>(root).enabled = true;
     for (int frame = 0; frame < 30; frame++){
-        step(kDt);
+        step(kHotPathDt);
         expectSamePose("after the first use", frame);
         EXPECT_FLOAT_EQ(instance(twin).currentState(1).normalizedTime, instance(root).currentState(1).normalizedTime) << frame;
     }

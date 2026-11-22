@@ -15,19 +15,19 @@
 #include <gtest/gtest.h>
 
 namespace {
-    int sideEffects = 0;
+    int profilerCompileOutSideEffects = 0;
     [[maybe_unused]] const char* touch(){
-        sideEffects++;
+        profilerCompileOutSideEffects++;
         return "touched";
     }
     [[maybe_unused]] double touchValue(){
-        sideEffects++;
+        profilerCompileOutSideEffects++;
         return 1.0;
     }
 }
 
 TEST(ProfilerCompileOut, MacrosEvaluateNothing){
-    sideEffects = 0;
+    profilerCompileOutSideEffects = 0;
     JE_PROFILE_SCOPE(touch());
     JE_PROFILE_FUNCTION();
     JE_PROFILE_SCOPE_DYN(std::string(touch()));
@@ -35,5 +35,5 @@ TEST(ProfilerCompileOut, MacrosEvaluateNothing){
     JE_PROFILE_FRAME();
     JE_PROFILE_COUNTER(touch(), touchValue());
     JE_GPU_ALLOC_SCOPE(PostFX, touch());
-    EXPECT_EQ(sideEffects, 0);
+    EXPECT_EQ(profilerCompileOutSideEffects, 0);
 }

@@ -70,7 +70,7 @@ namespace {
         return map;
     }
 
-    TerrainBakeFrame frame(){
+    TerrainBakeFrame terrainSplineBakeFrame(){
         TerrainBakeFrame f;
         f.terrainSize = SIZE;
         f.maxHeight = MAX_HEIGHT;
@@ -123,7 +123,7 @@ TEST(TerrainSplineBakeTests, FlattenHoldsTheBandAndLeavesTheRest){
     Map16 map = flatMap(0.25f);           // 10 units
     const Map16 before = map;
     TerrainBakeMap view = map.view();
-    const TerrainMapRegion changed = TerrainSplineBake::bakeHeights(straightRoad(h, -150.0f, 150.0f), {}, roadSettings(), frame(), view);
+    const TerrainMapRegion changed = TerrainSplineBake::bakeHeights(straightRoad(h, -150.0f, 150.0f), {}, roadSettings(), terrainSplineBakeFrame(), view);
     ASSERT_FALSE(changed.empty());
     const float step = 1.0f / 65535.0f;
     int inBand = 0;
@@ -154,12 +154,12 @@ TEST(TerrainSplineBakeTests, CutOnlyNeverRaisesAndFillOnlyNeverLowers){
     Map16 map = flatMap(0.25f);
     const Map16 before = map;
     TerrainBakeMap view = map.view();
-    TerrainSplineBake::bakeHeights(straightRoad(20.0f, -100.0f, 100.0f), {}, settings, frame(), view);
+    TerrainSplineBake::bakeHeights(straightRoad(20.0f, -100.0f, 100.0f), {}, settings, terrainSplineBakeFrame(), view);
     for (size_t i = 0; i < map.pixels.size(); i++){
         ASSERT_EQ(map.pixels[i], before.pixels[i]);
     }
     // a road under the ground: CutOnly lowers, never raises anywhere
-    TerrainSplineBake::bakeHeights(straightRoad(4.0f, -100.0f, 100.0f), {}, settings, frame(), view);
+    TerrainSplineBake::bakeHeights(straightRoad(4.0f, -100.0f, 100.0f), {}, settings, terrainSplineBakeFrame(), view);
     bool lowered = false;
     for (int j = 0; j < MAP; j++){
         for (int i = 0; i < MAP; i++){
@@ -172,7 +172,7 @@ TEST(TerrainSplineBakeTests, CutOnlyNeverRaisesAndFillOnlyNeverLowers){
     settings.flattenMode = SplineFlattenMode::FillOnly;
     Map16 fill = flatMap(0.25f);
     TerrainBakeMap fillView = fill.view();
-    TerrainSplineBake::bakeHeights(straightRoad(4.0f, -100.0f, 100.0f), {}, settings, frame(), fillView);
+    TerrainSplineBake::bakeHeights(straightRoad(4.0f, -100.0f, 100.0f), {}, settings, terrainSplineBakeFrame(), fillView);
     for (size_t i = 0; i < fill.pixels.size(); i++){
         ASSERT_EQ(fill.pixels[i], before.pixels[i]);
     }
@@ -201,7 +201,7 @@ TEST(TerrainSplineBakeTests, AreaFillsTheInsideOfAClosedSpline){
     settings.region = SplineTerrainRegion::Area;
     Map16 map = flatMap(0.25f);
     TerrainBakeMap view = map.view();
-    TerrainSplineBake::bakeHeights(route, outline, settings, frame(), view);
+    TerrainSplineBake::bakeHeights(route, outline, settings, terrainSplineBakeFrame(), view);
     // the centre, far from the outline, is flattened to the spline's height
     EXPECT_NEAR(map.at(MAP / 2, MAP / 2) * MAX_HEIGHT, 6.0f, 2.0f / 65535.0f * MAX_HEIGHT);
     // well outside, untouched
@@ -222,7 +222,7 @@ TEST(TerrainSplineBakeTests, PaintAndClearFoliageFollowTheBand){
     SplineTerrainSettings settings = roadSettings();
     settings.paintStrength = 1.0f;
     settings.paintFalloff = 1.0f;
-    const TerrainMapRegion painted = TerrainSplineBake::bakeBlend(straightRoad(0.0f, -50.0f, 50.0f), {}, settings, frame(), 2, blendView);
+    const TerrainMapRegion painted = TerrainSplineBake::bakeBlend(straightRoad(0.0f, -50.0f, 50.0f), {}, settings, terrainSplineBakeFrame(), 2, blendView);
     ASSERT_FALSE(painted.empty());
     const size_t centre = (static_cast<size_t>(MAP / 2) * MAP + MAP / 2) * 4;
     EXPECT_EQ(blend[centre + 2], 255);
@@ -236,7 +236,7 @@ TEST(TerrainSplineBakeTests, PaintAndClearFoliageFollowTheBand){
     densityView.width = MAP;
     densityView.height = MAP;
     densityView.channels = 1;
-    TerrainSplineBake::bakeDensity(straightRoad(0.0f, -50.0f, 50.0f), {}, settings, frame(), densityView);
+    TerrainSplineBake::bakeDensity(straightRoad(0.0f, -50.0f, 50.0f), {}, settings, terrainSplineBakeFrame(), densityView);
     EXPECT_EQ(density[static_cast<size_t>(MAP / 2) * MAP + MAP / 2], 0);
     EXPECT_EQ(density[static_cast<size_t>(MAP / 2 + 20) * MAP + MAP / 2], 200);
 }

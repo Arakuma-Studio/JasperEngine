@@ -19,14 +19,14 @@ namespace {
 
     using Json = nlohmann::json;
 
-    constexpr double FLOOR_DB = -60.0;
+    constexpr double QA_FLOOR_DB = -60.0;
     constexpr int MAX_AT = qa::MAX_AT;
 
     double linear(double db) {
         return std::pow(10.0, db / 20.0);
     }
 
-    double round2(double value) {
+    double qaRound2(double value) {
         return std::round(value * 100.0) / 100.0;
     }
 
@@ -91,12 +91,12 @@ namespace {
         check["threshold"] = {{"target_lufs", targets.targetLufs}, {"tolerance_lu", targets.toleranceLu}};
         check["threshold_source"] = "audio.loudness_target_lufs, audio.loudness_tolerance_lu";
         if (!c.data.loudness.integrated || gated < qa.loudnessMinSeconds) {
-            check["measured"] = {{"gated_seconds", round2(gated)}};
+            check["measured"] = {{"gated_seconds", qaRound2(gated)}};
             check["method"] = std::string(check["method"]) + "; skipped under audio.qa.loudness_min_seconds of gated audio";
             return check;
         }
         const double lufs = *c.data.loudness.integrated;
-        check["measured"] = round2(lufs);
+        check["measured"] = qaRound2(lufs);
         const double off = lufs - targets.targetLufs;
         if (std::fabs(off) <= targets.toleranceLu) {
             check["status"] = "PASS";
@@ -113,12 +113,12 @@ namespace {
         check["method"] = "BS.1770 4x oversampled peak of master.wav";
         const double peak = c.data.loudness.truePeakDb;
         const double ceiling = c.request.targets.ceilingDbtp + 0.1;
-        check["measured"] = round2(peak);
-        check["threshold"] = round2(ceiling);
+        check["measured"] = qaRound2(peak);
+        check["threshold"] = qaRound2(ceiling);
         check["threshold_source"] = "audio.true_peak_ceiling_dbtp + 0.1 dB";
         check["status"] = peak <= ceiling ? "PASS" : "FAIL";
         if (peak > ceiling) {
-            check["limited_by"] = "The output passes the ceiling by " + std::to_string(round2(peak - ceiling)).substr(0, 4) + " dB.";
+            check["limited_by"] = "The output passes the ceiling by " + std::to_string(qaRound2(peak - ceiling)).substr(0, 4) + " dB.";
             check["fix_hint"] = "Lower the loudest group, or put a limiter on Master (audio_mixer).";
         }
         // S38's limiter lines, when the session has them
@@ -237,11 +237,11 @@ namespace {
                     } else {
                         missed++;
                         addAt(check, stampSeconds(c, marker));
-                        if (first.empty()) first = marker.value("label", on) + " at " + std::to_string(round2(stampSeconds(c, marker))).substr(0, 5) + " s";
+                        if (first.empty()) first = marker.value("label", on) + " at " + std::to_string(qaRound2(stampSeconds(c, marker))).substr(0, 5) + " s";
                     }
                 }
             }
-            check["measured"] = {{"markers", total}, {"missed", missed}, {"worst_ms", round2(worst)}};
+            check["measured"] = {{"markers", total}, {"missed", missed}, {"worst_ms", qaRound2(worst)}};
             check["status"] = missed ? "FAIL" : "PASS";
             if (missed) {
                 check["limited_by"] = std::to_string(missed) + " of " + std::to_string(total) + " expected moment(s) had no sound in time; first: " + first + ".";
@@ -319,7 +319,7 @@ namespace {
             }
         }
         if (measured == 0) return check;
-        check["measured"] = round2(std::max(worst, 0.0));
+        check["measured"] = qaRound2(std::max(worst, 0.0));
         check["status"] = late ? "FAIL" : "PASS";
         if (late) {
             check["limited_by"] = worstClip + " starts " + std::to_string((int)std::lround(worst)) + " ms after it was played.";
@@ -393,7 +393,7 @@ namespace {
                     }
                 }
             }
-            if (loudest <= FLOOR_DB) continue;
+            if (loudest <= QA_FLOOR_DB) continue;
             compared++;
             const double margin = level - loudest;
             if (margin < c.worstMargin) {
@@ -407,13 +407,13 @@ namespace {
                 if (limited.empty()) {
                     const double raise = qa.audibilityMarginDb - margin;
                     limited = start.value("clip", "") + " is masked by group " + maskedBy + " in the " + AudioMeter::bandLabel(dominant) + " band (margin " +
-                              std::to_string(round2(margin)).substr(0, 5) + " dB).";
+                              std::to_string(qaRound2(margin)).substr(0, 5) + " dB).";
                     fix = "Lower group " + maskedBy + " by " + std::to_string((int)std::ceil(raise)) + " dB, or raise the voice by as much.";
                 }
             }
         }
         if (compared == 0) return check;
-        check["measured"] = round2(c.worstMargin);
+        check["measured"] = qaRound2(c.worstMargin);
         check["status"] = masked ? "FAIL" : "PASS";
         if (masked) {
             check["limited_by"] = limited;
@@ -483,10 +483,10 @@ namespace {
                 if (!groups.contains(duck.group) || !groups.contains(duck.sidechain)) continue;
                 const double side = groups[duck.sidechain].value("rms_db", AudioMeter::SILENCE_DB);
                 const double level = groups[duck.group].value("rms_db", AudioMeter::SILENCE_DB);
-                if (side > FLOOR_DB) {
+                if (side > QA_FLOOR_DB) {
                     duckedOn.push_back(level);
                     sideOn.push_back(side);
-                } else if (level > FLOOR_DB) {
+                } else if (level > QA_FLOOR_DB) {
                     duckedOff.push_back(level);
                 }
             }
@@ -502,15 +502,15 @@ namespace {
             const double drop = offDb - onDb;
             const double required = std::max(0.0, -20.0 * std::log10(std::max(duck.level, 1e-6)) - 3.0);
             worstDrop = std::min(worstDrop, drop);
-            check["threshold"] = round2(required);
+            check["threshold"] = qaRound2(required);
             if (drop < required) {
-                limited = "Group " + duck.group + " drops only " + std::to_string(round2(drop)).substr(0, 5) + " dB while " + duck.sidechain + " plays.";
+                limited = "Group " + duck.group + " drops only " + std::to_string(qaRound2(drop)).substr(0, 5) + " dB while " + duck.sidechain + " plays.";
             } else if (sideDb - onDb < qa.voiceOverMusicDb) {
-                warned = "Group " + duck.sidechain + " stands only " + std::to_string(round2(sideDb - onDb)).substr(0, 5) + " dB over " + duck.group + ".";
+                warned = "Group " + duck.sidechain + " stands only " + std::to_string(qaRound2(sideDb - onDb)).substr(0, 5) + " dB over " + duck.group + ".";
             }
         }
         if (!any) return check;
-        check["measured"] = round2(worstDrop);
+        check["measured"] = qaRound2(worstDrop);
         check["threshold_source"] = "the duck effect's level - 3 dB";
         check["status"] = !limited.empty() ? "FAIL" : !warned.empty() ? "WARN" : "PASS";
         if (!limited.empty()) {
@@ -538,7 +538,7 @@ namespace {
             }
         }
         if (from < 0) return check;
-        const double floor = linear(FLOOR_DB);
+        const double floor = linear(QA_FLOOR_DB);
         double longest = 0.0, run = 0.0;
         double runStart = 0.0;
         const size_t first = (size_t)(from / c.frameOfMs);
@@ -553,10 +553,10 @@ namespace {
             }
         }
         if (run > qa.maxSilenceSeconds) addAt(check, runStart);
-        check["measured"] = round2(longest);
+        check["measured"] = qaRound2(longest);
         check["status"] = longest > qa.maxSilenceSeconds ? "FAIL" : "PASS";
         if (longest > qa.maxSilenceSeconds) {
-            check["limited_by"] = "The music stops for " + std::to_string(round2(longest)).substr(0, 4) + " s.";
+            check["limited_by"] = "The music stops for " + std::to_string(qaRound2(longest)).substr(0, 4) + " s.";
             check["fix_hint"] = "Loop the music, or queue the next track before this one ends.";
         }
         return check;
@@ -683,16 +683,16 @@ namespace {
                 for (size_t k = 0; k < a.size() && k < b.size(); k++) {
                     if (!a[k].is_number() || !b[k].is_number()) continue;
                     const double x = a[k].get<double>(), y = b[k].get<double>();
-                    if (x < FLOOR_DB && y < FLOOR_DB) continue;
+                    if (x < QA_FLOOR_DB && y < QA_FLOOR_DB) continue;
                     const double moved = std::fabs(x - y);
                     if (moved > worstBand) worstBand = moved;
                     if (moved > qa.regressionBandDb && limited.empty()) {
-                        limited = "Group " + it.key() + " moved " + std::to_string(round2(moved)).substr(0, 5) + " dB in the " + AudioMeter::bandLabel((int)k) + " band at " + key.substr(0, key.find('|')) + ".";
+                        limited = "Group " + it.key() + " moved " + std::to_string(qaRound2(moved)).substr(0, 5) + " dB in the " + AudioMeter::bandLabel((int)k) + " band at " + key.substr(0, key.find('|')) + ".";
                     }
                 }
             }
         }
-        check["measured"] = {{"timing_ms", round2(worstTiming)}, {"band_db", round2(worstBand)}};
+        check["measured"] = {{"timing_ms", qaRound2(worstTiming)}, {"band_db", qaRound2(worstBand)}};
         check["status"] = limited.empty() ? "PASS" : "FAIL";
         if (!limited.empty()) {
             check["limited_by"] = limited;
@@ -721,7 +721,7 @@ int64_t AudioQa::onsetFrame(const AudioSessionData& data, int64_t from, int64_t 
         return peak;
     };
     const double margin = linear(marginDb);
-    const double floor = linear(FLOOR_DB);
+    const double floor = linear(QA_FLOOR_DB);
     const int64_t end = std::min<int64_t>(from + searchFrames, (int64_t)audio.frames);
     for (int64_t at = from; at < end; at += ms) {
         const double before = loudest(at - 50 * ms, 50 * ms);

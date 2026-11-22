@@ -19,8 +19,8 @@ namespace r3d = jasperengine::editor::titledesigner::rotation3d;
 
 namespace {
 
-    constexpr double PI = 3.14159265358979323846;
-    constexpr double DEG = PI / 180.0;
+    constexpr double TITLE_GIZMO3D_PI = 3.14159265358979323846;
+    constexpr double TITLE_GIZMO3D_DEG = TITLE_GIZMO3D_PI / 180.0;
     const Vec3d RIGHT{1.0, 0.0, 0.0};
     const Vec3d UP{0.0, 1.0, 0.0};
 
@@ -38,7 +38,7 @@ namespace {
         return r;
     }
 
-    double dot(const Vec3d& a, const Vec3d& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+    double titleGizmo3DDot(const Vec3d& a, const Vec3d& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 
     // a mirrored (flip X), turned layer: the frame a letter's tilts turn in
     Mat3d mirrored() { return r3d::eulerZYX(0.7, -0.4, 0.3) * Mat3d::diagonal(-1.0, 1.0, 1.0); }
@@ -56,7 +56,7 @@ namespace {
         return v;
     }
 
-    const FieldEdit* find(const std::vector<FieldEdit>& edits, const std::string& path) {
+    const FieldEdit* titleGizmo3DFind(const std::vector<FieldEdit>& edits, const std::string& path) {
         for (const FieldEdit& e : edits) {
             if (e.path == path) return &e;
         }
@@ -112,7 +112,7 @@ TEST(TitleGizmo3DTest, ArcTurnsAboutItsCompAxis) {
                 expectClose(model.orient(model.fromOrient(w, rot)), w);
                 // the turn is about n: n stays where it is
                 const Mat3d q = w * w0.transposed();
-                EXPECT_NEAR(dot(q * n, n), 1.0, 1e-6) << name;
+                EXPECT_NEAR(titleGizmo3DDot(q * n, n), 1.0, 1e-6) << name;
             }
         }
     }
@@ -158,7 +158,7 @@ TEST(TitleGizmo3DTest, ArmTravelAtThePivotRate) {
 TEST(TitleGizmo3DTest, EachArcRunsCyclicallyPositiveAboutItsAxis) {
     for (int i = 0; i < 3; i++) {
         const Vec3d a = r3d::compAxis((i + 1) % 3), b = r3d::compAxis((i + 2) % 3);
-        EXPECT_NEAR(dot(r3d::turnAbout(Mat3d(), r3d::compAxis(i), 90.0) * a, b), 1.0, 1e-6);
+        EXPECT_NEAR(titleGizmo3DDot(r3d::turnAbout(Mat3d(), r3d::compAxis(i), 90.0) * a, b), 1.0, 1e-6);
     }
 }
 
@@ -292,11 +292,11 @@ TEST(TitleGizmo3DTest, ZArrowMovesAtTheXArrowsRate) {
     ASSERT_EQ(gizmo.hitTest(x), Gizmo3DHandle::MoveX);
     ASSERT_TRUE(gizmo.begin(Gizmo3DHandle::MoveX, x, {}));
     std::vector<FieldEdit> edits = gizmo.update(ImVec2(x.x + 30.0f, x.y + 9.0f), {});
-    const FieldEdit* p = find(edits, "transform.position");
+    const FieldEdit* p = titleGizmo3DFind(edits, "transform.position");
     ASSERT_NE(p, nullptr);
     EXPECT_NEAR(p->value[0].get<double>(), 10.0 + 15.0, 1e-4);
     EXPECT_NEAR(p->value[1].get<double>(), 20.0, 1e-4);
-    EXPECT_NEAR(find(edits, "transform.z")->value.get<double>(), 5.0, 1e-4);
+    EXPECT_NEAR(titleGizmo3DFind(edits, "transform.z")->value.get<double>(), 5.0, 1e-4);
     gizmo.end();
 
     const float d = 30.0f * (float)std::sqrt(0.5);
@@ -304,13 +304,13 @@ TEST(TitleGizmo3DTest, ZArrowMovesAtTheXArrowsRate) {
     ASSERT_EQ(gizmo.hitTest(z), Gizmo3DHandle::MoveZ);
     ASSERT_TRUE(gizmo.begin(Gizmo3DHandle::MoveZ, z, {}));
     edits = gizmo.update(ImVec2(z.x - d, z.y + d), {});
-    EXPECT_NEAR(find(edits, "transform.z")->value.get<double>(), 5.0 + 15.0, 1e-4);
-    EXPECT_NEAR(find(edits, "transform.position")->value[0].get<double>(), 10.0, 1e-4);
+    EXPECT_NEAR(titleGizmo3DFind(edits, "transform.z")->value.get<double>(), 5.0 + 15.0, 1e-4);
+    EXPECT_NEAR(titleGizmo3DFind(edits, "transform.position")->value[0].get<double>(), 10.0, 1e-4);
     // Shift: the target's move step
     GizmoModifiers shift;
     shift.shift = true;
     edits = gizmo.update(ImVec2(z.x - d * 0.9f, z.y + d * 0.9f), shift);
-    EXPECT_NEAR(find(edits, "transform.z")->value.get<double>(), 5.0 + 10.0, 1e-9);
+    EXPECT_NEAR(titleGizmo3DFind(edits, "transform.z")->value.get<double>(), 5.0 + 10.0, 1e-9);
     EXPECT_EQ(gizmo.actionName(), "Move Z");
 }
 
@@ -323,25 +323,25 @@ TEST(TitleGizmo3DTest, RingAndArcDrags) {
     ASSERT_EQ(gizmo.hitTest(ring), Gizmo3DHandle::FreeRotate);
     ASSERT_TRUE(gizmo.begin(Gizmo3DHandle::FreeRotate, ring, {}));
     std::vector<FieldEdit> edits = gizmo.update(ImVec2(ring.x + 50.0f, ring.y), {});
-    EXPECT_NEAR(find(edits, "transform.rotation_y")->value.get<double>(), 20.0, 1e-6);
-    EXPECT_NEAR(find(edits, "transform.rotation_x")->value.get<double>(), 0.0, 1e-6);
+    EXPECT_NEAR(titleGizmo3DFind(edits, "transform.rotation_y")->value.get<double>(), 20.0, 1e-6);
+    EXPECT_NEAR(titleGizmo3DFind(edits, "transform.rotation_x")->value.get<double>(), 0.0, 1e-6);
     GizmoModifiers shift;
     shift.shift = true;
     edits = gizmo.update(ImVec2(ring.x + 50.0f, ring.y), shift);
-    EXPECT_NEAR(find(edits, "transform.rotation_y")->value.get<double>(), 15.0, 1e-6);
+    EXPECT_NEAR(titleGizmo3DFind(edits, "transform.rotation_y")->value.get<double>(), 15.0, 1e-6);
     EXPECT_NE(gizmo.readout(Gizmo3DHandle::None).find("Y 15"), std::string::npos);
     gizmo.end();
 
     // along the Z arc (from X toward Y: counter-clockwise on screen), 30° with Shift:
     // clockwise-positive `rotation` = -30
     const auto onArc = [&](double degrees) {
-        const double a = degrees * DEG;
+        const double a = degrees * TITLE_GIZMO3D_DEG;
         return ImVec2((float)(c.x + 50.0 * std::cos(a)), (float)(c.y - 50.0 * std::sin(a)));
     };
     ASSERT_EQ(gizmo.hitTest(onArc(45.0)), Gizmo3DHandle::RotateZ);
     ASSERT_TRUE(gizmo.begin(Gizmo3DHandle::RotateZ, onArc(45.0), shift));
     for (int step = 1; step <= 10; step++) edits = gizmo.update(onArc(45.0 + 3.0 * step), shift);
-    EXPECT_NEAR(find(edits, "transform.rotation")->value.get<double>(), -30.0, 1e-6);
-    EXPECT_NEAR(find(edits, "transform.rotation_x")->value.get<double>(), 0.0, 1e-6);
-    EXPECT_NEAR(find(edits, "transform.rotation_y")->value.get<double>(), 0.0, 1e-6);
+    EXPECT_NEAR(titleGizmo3DFind(edits, "transform.rotation")->value.get<double>(), -30.0, 1e-6);
+    EXPECT_NEAR(titleGizmo3DFind(edits, "transform.rotation_x")->value.get<double>(), 0.0, 1e-6);
+    EXPECT_NEAR(titleGizmo3DFind(edits, "transform.rotation_y")->value.get<double>(), 0.0, 1e-6);
 }

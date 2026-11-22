@@ -57,15 +57,15 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    struct Headless {
+    struct AnimatorWindowHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
     };
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
+    AnimatorWindowHeadless& animatorWindowHeadless() {
+        static AnimatorWindowHeadless h = []() {
+            AnimatorWindowHeadless out;
             const fs::path root = fs::temp_directory_path() / ("jasper-animator-window-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
             fs::create_directories(root / "config");
@@ -88,30 +88,30 @@ namespace {
         return h;
     }
 
-    bool started = false;
-    Project* project() {
-        started = true;
-        return headless().project.get();
+    bool animatorWindowStarted = false;
+    Project* animatorWindowProject() {
+        animatorWindowStarted = true;
+        return animatorWindowHeadless().project.get();
     }
-    fs::path assets() { return project()->getAssetsPath(); }
-    CommandHistory* history() { return project()->getProjectCommandHistory(); }
+    fs::path animatorWindowAssets() { return animatorWindowProject()->getAssetsPath(); }
+    CommandHistory* animatorWindowHistory() { return animatorWindowProject()->getProjectCommandHistory(); }
 
-    struct Cleanup : public ::testing::Environment {
+    struct AnimatorWindowCleanup : public ::testing::Environment {
         void TearDown() override {
-            if (!started) return;
+            if (!animatorWindowStarted) return;
             std::error_code ec;
-            fs::remove_all(headless().dir.parent_path(), ec);
+            fs::remove_all(animatorWindowHeadless().dir.parent_path(), ec);
         }
     };
-    [[maybe_unused]] ::testing::Environment* const cleanup = ::testing::AddGlobalTestEnvironment(new Cleanup);
+    [[maybe_unused]] ::testing::Environment* const animatorWindowCleanup = ::testing::AddGlobalTestEnvironment(new AnimatorWindowCleanup);
 
-    void writeAll(const fs::path& path, const std::string& content) {
+    void animatorWindowWriteAll(const fs::path& path, const std::string& content) {
         fs::create_directories(path.parent_path());
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
         file << content;
     }
 
-    std::string readAll(const fs::path& path) {
+    std::string animatorWindowReadAll(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     }
@@ -131,9 +131,9 @@ namespace {
         b.value = {x, 0, 0};
         track.keys = {a, b};
         data.tracks = {track};
-        writeAll(assets() / ("animator/" + name + ".anim"), anim::writeClip(data));
+        animatorWindowWriteAll(animatorWindowAssets() / ("animator/" + name + ".anim"), anim::writeClip(data));
         // the database gives the new file its GUID (written into it)
-        project()->refreshAssetDatabase(true);
+        animatorWindowProject()->refreshAssetDatabase(true);
         return "animator/" + name + ".anim";
     }
 
@@ -154,11 +154,11 @@ namespace {
     // a fresh controller file (one Base Layer) and the window on it
     std::shared_ptr<AnimatorAssetDocument> freshController(AnimatorWindow& window, const std::string& name) {
         // (the window follows a selected GameObject's Animator: an earlier test's selection goes)
-        if (SceneProject* selected = project()->getSelectedScene()) project()->clearSelectedEntities(selected->id);
-        fs::remove(assets() / ("animator/" + name + ".controller"));
+        if (SceneProject* selected = animatorWindowProject()->getSelectedScene()) animatorWindowProject()->clearSelectedEntities(selected->id);
+        fs::remove(animatorWindowAssets() / ("animator/" + name + ".controller"));
         std::string error;
         std::shared_ptr<AnimatorAssetDocument> doc = AnimatorAssetDocument::create(
-            project(), "assets/animator/" + name + ".controller", AnimatorAssetDocument::Kind::Controller, "Create Animator Controller", &error);
+            animatorWindowProject(), "assets/animator/" + name + ".controller", AnimatorAssetDocument::Kind::Controller, "Create Animator Controller", &error);
         EXPECT_TRUE(doc) << error;
         window.openController("animator/" + name + ".controller", 0, NULL_ENTITY);
         EXPECT_EQ(window.getDocument(), doc);
@@ -181,7 +181,7 @@ namespace {
 
     AnimatorScene animatorScene(const std::string& controller) {
         AnimatorScene out;
-        Project* p = project();
+        Project* p = animatorWindowProject();
         if (SceneProject* current = p->getSelectedScene()){
             current->isModified = false;
             current->playState = ScenePlayState::STOPPED;      // (a failed test may have left it playing)
@@ -205,10 +205,10 @@ namespace {
     }
 
     // an ImGui frame loop of its own (the window's show(), an Inspector, another window)
-    struct Frames {
+    struct AnimatorWindowFrames {
         ImGuiContext* previous = nullptr;
         ImGuiContext* context = nullptr;
-        Frames() {
+        AnimatorWindowFrames() {
             previous = ImGui::GetCurrentContext();
             context = ImGui::CreateContext();
             ImGui::SetCurrentContext(context);
@@ -220,7 +220,7 @@ namespace {
             int width, height;
             io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
         }
-        ~Frames() {
+        ~AnimatorWindowFrames() {
             ImGui::DestroyContext(context);
             ImGui::SetCurrentContext(previous);
         }
@@ -269,8 +269,8 @@ namespace {
             track.keys = {a, b};
             data.tracks.push_back(track);
         }
-        writeAll(assets() / ("animator/" + name + ".anim"), anim::writeClip(data));
-        project()->refreshAssetDatabase(true);
+        animatorWindowWriteAll(animatorWindowAssets() / ("animator/" + name + ".anim"), anim::writeClip(data));
+        animatorWindowProject()->refreshAssetDatabase(true);
         return "animator/" + name + ".anim";
     }
 
@@ -283,8 +283,8 @@ namespace {
         anim::AvatarMaskDef mask;
         mask.defaultWeight = 0.0f;
         mask.paths.push_back({"Hips/Spine", 1.0f, true});
-        writeAll(assets() / "animator/torso.mask", anim::writeMask(mask));
-        project()->refreshAssetDatabase(true);
+        animatorWindowWriteAll(animatorWindowAssets() / "animator/torso.mask", anim::writeMask(mask));
+        animatorWindowProject()->refreshAssetDatabase(true);
         ASSERT_TRUE(window.addState("Run", ImVec2(300, 100), clipMotion(window, run)));
         ASSERT_TRUE(window.addLayer("Upper Body"));
         ASSERT_TRUE(window.addState("Attack", ImVec2(300, 100), clipMotion(window, attack)));
@@ -334,7 +334,7 @@ namespace {
 
     // The Inspector alone at a fixed place: its items found as find_ui_item finds them
     // (UiItemLocator), clicked with the mouse
-    struct InspectorProbe : Frames {
+    struct InspectorProbe : AnimatorWindowFrames {
         void at(AnimatorWindow& window, float x, float y, bool down = false) {
             ImGuiIO& io = ImGui::GetIO();
             io.AddMousePosEvent(x, y);
@@ -377,15 +377,15 @@ namespace {
 }
 
 TEST(AnimatorWindow, CreateStatesMakeATransitionSetAConditionUndoRedo) {
-    ASSERT_TRUE(headless().ready);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
     const std::string idle = writeClip("idle", 0.0f);
     const std::string run = writeClip("run", 4.0f);
-    AnimatorWindow window(project(), nullptr);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "flow");
     ASSERT_TRUE(doc);
-    const fs::path file = assets() / "animator/flow.controller";
-    const std::string empty = readAll(file);
-    const size_t start = history()->position();
+    const fs::path file = animatorWindowAssets() / "animator/flow.controller";
+    const std::string empty = animatorWindowReadAll(file);
+    const size_t start = animatorWindowHistory()->position();
 
     ASSERT_TRUE(window.addState("idle", ImVec2(300, 120), clipMotion(window, idle)));
     ASSERT_TRUE(window.addState("run", ImVec2(600, 120), clipMotion(window, run)));
@@ -408,7 +408,7 @@ TEST(AnimatorWindow, CreateStatesMakeATransitionSetAConditionUndoRedo) {
     t.duration = 0.15f;
     std::string error;
     ASSERT_TRUE(doc->commit(edited, "Edit Transition idle -> run", "", &error)) << error;
-    const std::string done = readAll(file);
+    const std::string done = animatorWindowReadAll(file);
     const anim::ControllerParseResult parsed = anim::parseController(done);
     ASSERT_TRUE(parsed.ok) << parsed.error.toString();
     ASSERT_EQ(parsed.data.layers[0].machine.states[0].transitions.size(), 1u);
@@ -418,20 +418,20 @@ TEST(AnimatorWindow, CreateStatesMakeATransitionSetAConditionUndoRedo) {
     EXPECT_TRUE(window.problems().empty()) << window.problems()[0].path << ": " << window.problems()[0].message;
 
     // every edit was one project step: five undos go back to the empty controller
-    ASSERT_EQ(history()->position(), start + 5);
-    ASSERT_TRUE(history()->undo());
+    ASSERT_EQ(animatorWindowHistory()->position(), start + 5);
+    ASSERT_TRUE(animatorWindowHistory()->undo());
     EXPECT_TRUE(machine(doc).states[0].transitions[0].conditions.empty());
-    for (int i = 0; i < 4; i++) ASSERT_TRUE(history()->undo()) << i;
-    EXPECT_EQ(readAll(file), empty);
+    for (int i = 0; i < 4; i++) ASSERT_TRUE(animatorWindowHistory()->undo()) << i;
+    EXPECT_EQ(animatorWindowReadAll(file), empty);
     EXPECT_TRUE(machine(doc).states.empty());
-    for (int i = 0; i < 5; i++) ASSERT_TRUE(history()->redo()) << i;
-    EXPECT_EQ(readAll(file), done);
+    for (int i = 0; i < 5; i++) ASSERT_TRUE(animatorWindowHistory()->redo()) << i;
+    EXPECT_EQ(animatorWindowReadAll(file), done);
 }
 
 TEST(AnimatorWindow, DeletesRenamesDragsCopyPasteAndLayers) {
-    ASSERT_TRUE(headless().ready);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
     const std::string idle = writeClip("idle", 0.0f);
-    AnimatorWindow window(project(), nullptr);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "edits");
     ASSERT_TRUE(doc);
     ASSERT_TRUE(window.addParameter("Blend", AnimatorParameterType::Float));
@@ -479,15 +479,15 @@ TEST(AnimatorWindow, DeletesRenamesDragsCopyPasteAndLayers) {
     ASSERT_EQ(machine(doc).anyState[0].conditions.size(), 1u) << "the conditions reading Jump go";
 
     // a drag is one undo step, however many moves it has
-    const size_t beforeDrag = history()->position();
+    const size_t beforeDrag = animatorWindowHistory()->position();
     const float x0 = machine(doc).states[0].position.x;
     ASSERT_TRUE(window.moveNodes({{"idle", ImVec2(x0 + 10.0f, 100.0f)}}));
     ASSERT_TRUE(window.moveNodes({{"idle", ImVec2(x0 + 50.0f, 105.0f)}, {"Any State", ImVec2(60, 50)}}));
     EXPECT_EQ(machine(doc).states[0].position.x, x0 + 50.0f);
-    EXPECT_EQ(history()->position(), beforeDrag + 1);
-    ASSERT_TRUE(history()->undo());
+    EXPECT_EQ(animatorWindowHistory()->position(), beforeDrag + 1);
+    ASSERT_TRUE(animatorWindowHistory()->undo());
     EXPECT_EQ(machine(doc).states[0].position.x, x0);
-    ASSERT_TRUE(history()->redo());
+    ASSERT_TRUE(animatorWindowHistory()->redo());
 
     // deleting a state removes its transitions and the ones into it
     window.selectState("New State");
@@ -532,8 +532,8 @@ TEST(AnimatorWindow, DeletesRenamesDragsCopyPasteAndLayers) {
 }
 
 TEST(AnimatorWindow, ProblemsSelectTheirItem) {
-    ASSERT_TRUE(headless().ready);
-    AnimatorWindow window(project(), nullptr);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "warned");
     ASSERT_TRUE(doc);
     anim::MotionDef missing;
@@ -583,14 +583,14 @@ TEST(AnimatorWindow, ProblemsSelectTheirItem) {
 }
 
 TEST(AnimatorWindow, PreviewsOnTheBoundAnimatorAndDrivesLiveParameters) {
-    ASSERT_TRUE(headless().ready);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
     const std::string run = writeClip("liverun", 4.0f);
-    AnimatorWindow window(project(), nullptr);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "live");
     ASSERT_TRUE(doc);
     ASSERT_TRUE(window.addState("run", ImVec2(300, 100), clipMotion(window, run)));
     ASSERT_TRUE(window.addParameter("Speed", AnimatorParameterType::Float));
-    const std::string text = readAll(assets() / "animator/live.controller");
+    const std::string text = animatorWindowReadAll(animatorWindowAssets() / "animator/live.controller");
 
     AnimatorScene s = animatorScene("animator/live.controller");
     window.openController("animator/live.controller", s.sceneProject->id, s.root);
@@ -617,16 +617,16 @@ TEST(AnimatorWindow, PreviewsOnTheBoundAnimatorAndDrivesLiveParameters) {
     EXPECT_FALSE(window.setLiveParameter("Nope", 1.0f));
     EXPECT_FALSE(window.startPreview()) << "no edit-mode preview while it plays";
     s.sceneProject->playState = ScenePlayState::STOPPED;
-    EXPECT_EQ(readAll(assets() / "animator/live.controller"), text);
+    EXPECT_EQ(animatorWindowReadAll(animatorWindowAssets() / "animator/live.controller"), text);
     s.scene()->getSystem<AnimatorSystem>()->restorePreview(s.root);
     EXPECT_FALSE(window.isLive());
 
     // following the selection: the selected GameObject's Animator
-    AnimatorWindow follower(project(), nullptr);
+    AnimatorWindow follower(animatorWindowProject(), nullptr);
     follower.setOpen(true);
-    project()->setSelectedEntity(s.sceneProject->id, s.root);
+    animatorWindowProject()->setSelectedEntity(s.sceneProject->id, s.root);
     {
-        Frames frames;
+        AnimatorWindowFrames frames;
         frames.frame(follower);
     }
     ASSERT_TRUE(follower.getDocument());
@@ -637,11 +637,11 @@ TEST(AnimatorWindow, PreviewsOnTheBoundAnimatorAndDrivesLiveParameters) {
 // a 1D threshold moved past its neighbour: the child keeps its clip and lands at its sorted
 // place; typed paths are checked and stored asset-relative with their GUID
 TEST(AnimatorWindow, ThresholdsReSortByChildAndTypedPathsAreChecked) {
-    ASSERT_TRUE(headless().ready);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
     const std::string a = writeClip("a", 1.0f);
     const std::string b = writeClip("b", 2.0f);
     const std::string c = writeClip("c", 3.0f);
-    AnimatorWindow window(project(), nullptr);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "thresholds");
     ASSERT_TRUE(doc);
     ASSERT_TRUE(window.addParameter("Speed", AnimatorParameterType::Float));
@@ -678,7 +678,7 @@ TEST(AnimatorWindow, ThresholdsReSortByChildAndTypedPathsAreChecked) {
     EXPECT_FALSE(window.resolveTypedAsset("../outside.anim", true, ref));
     EXPECT_NE(window.getStatus().find("outside the assets folder"), std::string::npos) << window.getStatus();
     anim::AvatarMaskDef maskData;
-    writeAll(assets() / "animator/arm.mask", anim::writeMask(maskData));
+    animatorWindowWriteAll(animatorWindowAssets() / "animator/arm.mask", anim::writeMask(maskData));
     ASSERT_TRUE(window.resolveTypedAsset("animator/arm.mask", false, ref)) << window.getStatus();
     EXPECT_EQ(ref.path, "animator/arm.mask");
     EXPECT_TRUE(window.resolveTypedAsset("", true, ref));
@@ -687,13 +687,13 @@ TEST(AnimatorWindow, ThresholdsReSortByChildAndTypedPathsAreChecked) {
 
 // Delete acts only when the Animator window has the focus (not when another window does)
 TEST(AnimatorWindow, ShortcutsNeedTheWindowFocused) {
-    ASSERT_TRUE(headless().ready);
-    AnimatorWindow window(project(), nullptr);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "keys");
     ASSERT_TRUE(doc);
     ASSERT_TRUE(window.addState("A", ImVec2(200, 100), anim::MotionDef()));
     ASSERT_TRUE(window.addState("B", ImVec2(400, 100), anim::MotionDef()));
-    Frames frames;
+    AnimatorWindowFrames frames;
     bool focusOther = false;
     auto other = [&](){
         if (focusOther) ImGui::SetNextWindowFocus();
@@ -724,7 +724,7 @@ TEST(AnimatorWindow, ShortcutsNeedTheWindowFocused) {
 namespace {
 
     struct Mouse {
-        Frames& frames;
+        AnimatorWindowFrames& frames;
         AnimatorWindow& window;
         void moveTo(const ImVec2& at) {
             ImGui::GetIO().AddMousePosEvent(at.x, at.y);
@@ -758,14 +758,14 @@ namespace {
 // BF23 F18: the canvas' box select reaches the window's selection, whose Delete and drag then
 // act on every state in it as one undo step
 TEST(AnimatorWindow, BoxSelectedStatesDragAndDeleteAsOneStep) {
-    ASSERT_TRUE(headless().ready);
-    AnimatorWindow window(project(), nullptr);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "boxselect");
     ASSERT_TRUE(doc);
     ASSERT_TRUE(window.addState("A", ImVec2(300, 300), anim::MotionDef()));
     ASSERT_TRUE(window.addState("B", ImVec2(600, 300), anim::MotionDef()));
     ASSERT_TRUE(window.addState("C", ImVec2(300, 500), anim::MotionDef()));
-    Frames frames;
+    AnimatorWindowFrames frames;
     window.setOpen(true);
     window.requestFocus();
     for (int i = 0; i < 3; i++) frames.frame(window);
@@ -778,43 +778,43 @@ TEST(AnimatorWindow, BoxSelectedStatesDragAndDeleteAsOneStep) {
     EXPECT_EQ(window.selectedNodes(), (std::vector<std::string>{"A", "B"}));
 
     // a drag of one of them moves both, as one step
-    const size_t beforeDrag = history()->position();
+    const size_t beforeDrag = animatorWindowHistory()->position();
     const Vector2 a0 = statePosition(doc, "A"), b0 = statePosition(doc, "B"), c0 = statePosition(doc, "C");
     mouse.drag(canvas.toScreen(ImVec2(a0.x + 90, a0.y + 23)), canvas.toScreen(ImVec2(a0.x + 90 + 40, a0.y + 23 + 60)));
     EXPECT_EQ(statePosition(doc, "A").x, a0.x + 40);
     EXPECT_EQ(statePosition(doc, "B").x, b0.x + 40) << "B is selected with A";
     EXPECT_EQ(statePosition(doc, "B").y, b0.y + 60);
     EXPECT_EQ(statePosition(doc, "C").x, c0.x) << "C is not";
-    ASSERT_EQ(history()->position(), beforeDrag + 1) << "a multi-drag is one step";
-    ASSERT_TRUE(history()->undo());
+    ASSERT_EQ(animatorWindowHistory()->position(), beforeDrag + 1) << "a multi-drag is one step";
+    ASSERT_TRUE(animatorWindowHistory()->undo());
     EXPECT_EQ(statePosition(doc, "A").x, a0.x);
     EXPECT_EQ(statePosition(doc, "B").x, b0.x);
-    ASSERT_TRUE(history()->redo());
+    ASSERT_TRUE(animatorWindowHistory()->redo());
     frames.frame(window);
 
     // Delete removes them all as one step
-    const size_t beforeDelete = history()->position();
+    const size_t beforeDelete = animatorWindowHistory()->position();
     ASSERT_TRUE(window.canDelete());
     ASSERT_TRUE(window.removeSelection());
     ASSERT_EQ(machine(doc).states.size(), 1u);
     EXPECT_EQ(machine(doc).states[0].name, "C");
     EXPECT_EQ(machine(doc).defaultState, "C") << "the default followed";
-    EXPECT_EQ(history()->position(), beforeDelete + 1) << "one step";
-    ASSERT_TRUE(history()->undo());
+    EXPECT_EQ(animatorWindowHistory()->position(), beforeDelete + 1) << "one step";
+    ASSERT_TRUE(animatorWindowHistory()->undo());
     EXPECT_EQ(machine(doc).states.size(), 3u);
 }
 
 // BF23 F18: the selection follows a rename, drops what is gone, and a plain click on one of its
 // states leaves that one
 TEST(AnimatorWindow, MultiSelectionFollowsTheDocument) {
-    ASSERT_TRUE(headless().ready);
-    AnimatorWindow window(project(), nullptr);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "multiselect");
     ASSERT_TRUE(doc);
     ASSERT_TRUE(window.addState("A", ImVec2(300, 300), anim::MotionDef()));
     ASSERT_TRUE(window.addState("B", ImVec2(600, 300), anim::MotionDef()));
     ASSERT_TRUE(window.addState("C", ImVec2(900, 300), anim::MotionDef()));
-    Frames frames;
+    AnimatorWindowFrames frames;
     window.setOpen(true);
     window.requestFocus();
     for (int i = 0; i < 3; i++) frames.frame(window);
@@ -845,14 +845,14 @@ TEST(AnimatorWindow, MultiSelectionFollowsTheDocument) {
 // the special nodes can be in a selection, but Delete has nothing of theirs to remove: a
 // transition to Exit is not a transition into a deleted node
 TEST(AnimatorWindow, DeletingASelectionWithExitKeepsTransitionsToExit) {
-    ASSERT_TRUE(headless().ready);
-    AnimatorWindow window(project(), nullptr);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "deleteexit");
     ASSERT_TRUE(doc);
     ASSERT_TRUE(window.addState("A", ImVec2(600, 120), anim::MotionDef()));
     ASSERT_TRUE(window.addState("B", ImVec2(300, 400), anim::MotionDef()));
     ASSERT_TRUE(window.addTransition("B", "Exit", false, false));
-    Frames frames;
+    AnimatorWindowFrames frames;
     window.setOpen(true);
     window.requestFocus();
     for (int i = 0; i < 3; i++) frames.frame(window);
@@ -872,13 +872,13 @@ TEST(AnimatorWindow, DeletingASelectionWithExitKeepsTransitionsToExit) {
 // Esc gives everything back: several moved nodes, the selection, and the Inspector, which a press
 // on a state took
 TEST(AnimatorWindow, EscPutsSeveralNodesAndTheInspectorBack) {
-    ASSERT_TRUE(headless().ready);
-    AnimatorWindow window(project(), nullptr);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "escmulti");
     ASSERT_TRUE(doc);
     ASSERT_TRUE(window.addState("A", ImVec2(300, 300), anim::MotionDef()));
     ASSERT_TRUE(window.addState("B", ImVec2(600, 300), anim::MotionDef()));
-    Frames frames;
+    AnimatorWindowFrames frames;
     window.setOpen(true);
     window.requestFocus();
     for (int i = 0; i < 3; i++) frames.frame(window);
@@ -896,7 +896,7 @@ TEST(AnimatorWindow, EscPutsSeveralNodesAndTheInspectorBack) {
     };
     // nothing claimed the Inspector: the states were made by calls, not by clicks in the window
     ASSERT_FALSE(inspectorShowsIt());
-    const size_t before = history()->position();
+    const size_t before = animatorWindowHistory()->position();
     const ImVec2 onA = canvas.toScreen(ImVec2(390, 323));
     mouse.moveTo(onA);
     mouse.button(true);
@@ -907,7 +907,7 @@ TEST(AnimatorWindow, EscPutsSeveralNodesAndTheInspectorBack) {
     frames.frame(window);
     mouse.button(false);
     frames.frame(window);
-    EXPECT_EQ(history()->position(), before);
+    EXPECT_EQ(animatorWindowHistory()->position(), before);
     EXPECT_EQ(statePosition(doc, "A").x, 300.0f);
     EXPECT_EQ(window.selectedNodes(), (std::vector<std::string>{"B"}));
     EXPECT_FALSE(inspectorShowsIt()) << "the press took the Inspector; Esc gives it back";
@@ -915,21 +915,21 @@ TEST(AnimatorWindow, EscPutsSeveralNodesAndTheInspectorBack) {
 
 // BF23 F19: Esc during a state's drag puts it back and adds no undo step
 TEST(AnimatorWindow, EscCancelsAStateDrag) {
-    ASSERT_TRUE(headless().ready);
-    AnimatorWindow window(project(), nullptr);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "dragesc");
     ASSERT_TRUE(doc);
     ASSERT_TRUE(window.addState("A", ImVec2(300, 300), anim::MotionDef()));
     ASSERT_TRUE(window.addState("B", ImVec2(600, 300), anim::MotionDef()));
-    Frames frames;
+    AnimatorWindowFrames frames;
     window.setOpen(true);
     window.requestFocus();
     for (int i = 0; i < 3; i++) frames.frame(window);
     Mouse mouse{frames, window};
     const GraphCanvas& canvas = window.getCanvas();
-    const size_t before = history()->position();
-    const fs::path file = assets() / "animator/dragesc.controller";
-    const std::string text = readAll(file);
+    const size_t before = animatorWindowHistory()->position();
+    const fs::path file = animatorWindowAssets() / "animator/dragesc.controller";
+    const std::string text = animatorWindowReadAll(file);
 
     mouse.moveTo(canvas.toScreen(ImVec2(390, 323)));
     mouse.button(true);
@@ -942,16 +942,16 @@ TEST(AnimatorWindow, EscCancelsAStateDrag) {
     mouse.button(false);
     frames.frame(window);
 
-    EXPECT_EQ(history()->position(), before) << "no undo step";
-    EXPECT_EQ(readAll(file), text) << "the file is untouched";
+    EXPECT_EQ(animatorWindowHistory()->position(), before) << "no undo step";
+    EXPECT_EQ(animatorWindowReadAll(file), text) << "the file is untouched";
     EXPECT_EQ(window.selectedNodes(), (std::vector<std::string>{"B"})) << "the selection as it was before the press on A";
 }
 
 // a layer list change (remove, move, their undo and redo) keeps the current layer by name and
 // drops a selection of the old indices: Delete never reaches another layer
 TEST(AnimatorWindow, LayerListChangesDropStaleSelections) {
-    ASSERT_TRUE(headless().ready);
-    AnimatorWindow window(project(), nullptr);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "layerlist");
     ASSERT_TRUE(doc);
     ASSERT_TRUE(window.addState("", ImVec2(200, 100), anim::MotionDef()));     // Base Layer: New State
@@ -968,19 +968,19 @@ TEST(AnimatorWindow, LayerListChangesDropStaleSelections) {
     EXPECT_EQ(window.getLayer(), 1) << "Upper, now index 1, stays current";
     EXPECT_EQ(window.describeSelection(), "") << "the old indices' selection goes";
     window.selectState("New State");
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(animatorWindowHistory()->undo());
     EXPECT_EQ(window.getLayer(), 2) << "after the undo Upper is index 2 again";
     EXPECT_EQ(window.describeSelection(), "");
     EXPECT_FALSE(window.removeSelection()) << "nothing selected: nothing deleted";
     for (const anim::LayerDef& layer : doc->controller().layers) EXPECT_EQ(layer.machine.states.size(), 1u) << layer.name;
-    ASSERT_TRUE(history()->redo());
+    ASSERT_TRUE(animatorWindowHistory()->redo());
     EXPECT_EQ(window.getLayer(), 1);
 
     // a move keeps the current layer by name
     ASSERT_TRUE(window.moveLayer(1, 0));
     EXPECT_EQ(doc->controller().layers[0].name, "Upper");
     EXPECT_EQ(window.getLayer(), 0);
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(animatorWindowHistory()->undo());
     EXPECT_EQ(window.getLayer(), 1);
 
     // an outside edit (MCP, a file) that drops the selected state: the selection goes
@@ -999,15 +999,15 @@ TEST(AnimatorWindow, LayerListChangesDropStaleSelections) {
 
 // the pinned Animator's controller field changes (the Inspector, MCP, an undo): the window follows it
 TEST(AnimatorWindow, FollowsThePinnedAnimatorsControllerField) {
-    ASSERT_TRUE(headless().ready);
-    AnimatorWindow window(project(), nullptr);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> first = freshController(window, "fieldA");
     std::shared_ptr<AnimatorAssetDocument> second = freshController(window, "fieldB");
     ASSERT_TRUE(first && second);
     AnimatorScene s = animatorScene("animator/fieldA.controller");
     window.openController("animator/fieldA.controller", s.sceneProject->id, s.root);
     window.setOpen(true);
-    Frames frames;
+    AnimatorWindowFrames frames;
     frames.frame(window);
     EXPECT_EQ(window.getDocument(), first);
     s.animator().controller = AssetRef("animator/fieldB.controller");
@@ -1025,8 +1025,8 @@ TEST(AnimatorWindow, FollowsThePinnedAnimatorsControllerField) {
 // parameter names: S21 keeps any name (scripts pass it as a string), numbered when taken; a name
 // that is not a Lua identifier is said (the rename's note and a validation warning), never dropped
 TEST(AnimatorWindow, ParameterNamesAreKeptAndNonLuaNamesWarned) {
-    ASSERT_TRUE(headless().ready);
-    AnimatorWindow window(project(), nullptr);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "names");
     ASSERT_TRUE(doc);
     ASSERT_TRUE(window.addParameter("NewFloat", AnimatorParameterType::Float));
@@ -1049,34 +1049,34 @@ TEST(AnimatorWindow, ParameterNamesAreKeptAndNonLuaNamesWarned) {
 // AC18 (R25, R26, R28): directly under Mask; a click is one project step "Edit Layer <name>" that
 // undo takes back to the same bytes; disabled (a click does nothing) on layer 0 and Additive layers
 TEST(AnimatorWindow, MeshSpaceRotationCheckboxUnderMaskIsOneUndoStep) {
-    ASSERT_TRUE(headless().ready);
-    AnimatorWindow window(project(), nullptr);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "meshspace");
     ASSERT_TRUE(doc);
     ASSERT_TRUE(window.addLayer("Upper Body"));
     window.setOpen(true);
     ASSERT_TRUE(window.inspect("layers[1]"));
-    const fs::path file = assets() / "animator/meshspace.controller";
-    const std::string before = readAll(file);
+    const fs::path file = animatorWindowAssets() / "animator/meshspace.controller";
+    const std::string before = animatorWindowReadAll(file);
 
     InspectorProbe probe;
     probe.at(window, 0.0f, 0.0f);
     UiItemLocator::Item box = probe.locate(window, "Mesh Space Rotation");
     probe.expectUnderMask(window, box);
     EXPECT_TRUE(box.enabled) << "an Override layer above 0";
-    const size_t start = history()->position();
+    const size_t start = animatorWindowHistory()->position();
     probe.click(window, box);
     ASSERT_TRUE(doc->controller().layers[1].meshSpaceRotation) << window.getStatus();
-    EXPECT_EQ(history()->position(), start + 1) << "one step";
-    ASSERT_TRUE(history()->top());
-    EXPECT_EQ(history()->top()->name(), "Edit Layer Upper Body");
-    const std::string after = readAll(file);
+    EXPECT_EQ(animatorWindowHistory()->position(), start + 1) << "one step";
+    ASSERT_TRUE(animatorWindowHistory()->top());
+    EXPECT_EQ(animatorWindowHistory()->top()->name(), "Edit Layer Upper Body");
+    const std::string after = animatorWindowReadAll(file);
     EXPECT_NE(after.find("\"mesh_space_rotation\": true"), std::string::npos) << after;
     EXPECT_EQ(window.meshSpaceAppliesText(1), "Applies where the mask starts or stops") << "no bound Animator";
-    ASSERT_TRUE(history()->undo());
-    EXPECT_EQ(readAll(file), before) << "undo restores the file bytes";
-    ASSERT_TRUE(history()->redo());
-    EXPECT_EQ(readAll(file), after);
+    ASSERT_TRUE(animatorWindowHistory()->undo());
+    EXPECT_EQ(animatorWindowReadAll(file), before) << "undo restores the file bytes";
+    ASSERT_TRUE(animatorWindowHistory()->redo());
+    EXPECT_EQ(animatorWindowReadAll(file), after);
 
     // Additive: disabled, the value kept
     anim::ControllerDef additive = doc->controller();
@@ -1086,9 +1086,9 @@ TEST(AnimatorWindow, MeshSpaceRotationCheckboxUnderMaskIsOneUndoStep) {
     box = probe.locate(window, "Mesh Space Rotation");
     probe.expectUnderMask(window, box);
     EXPECT_FALSE(box.enabled) << "an Additive layer";
-    const size_t additiveAt = history()->position();
+    const size_t additiveAt = animatorWindowHistory()->position();
     probe.click(window, box);
-    EXPECT_EQ(history()->position(), additiveAt) << "a disabled checkbox edits nothing";
+    EXPECT_EQ(animatorWindowHistory()->position(), additiveAt) << "a disabled checkbox edits nothing";
     EXPECT_TRUE(doc->controller().layers[1].meshSpaceRotation) << "kept, and ignored by the runtime";
 
     // the base layer: disabled
@@ -1103,8 +1103,8 @@ TEST(AnimatorWindow, MeshSpaceRotationCheckboxUnderMaskIsOneUndoStep) {
 // warning clears; the line under the checkbox names the boundary bone; no warning for an
 // Additive layer, or at weight 0
 TEST(AnimatorWindow, MeshSpaceRotationWarningAndItsFix) {
-    ASSERT_TRUE(headless().ready);
-    AnimatorWindow window(project(), nullptr);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "torsowarn");
     ASSERT_TRUE(doc);
     upperBodyController(window, doc);
@@ -1125,16 +1125,16 @@ TEST(AnimatorWindow, MeshSpaceRotationWarningAndItsFix) {
     EXPECT_EQ(window.getLayer(), 1);
     EXPECT_EQ(window.describeSelection(), "layer");
 
-    const fs::path file = assets() / "animator/torsowarn.controller";
-    const std::string before = readAll(file);
-    const size_t start = history()->position();
+    const fs::path file = animatorWindowAssets() / "animator/torsowarn.controller";
+    const std::string before = animatorWindowReadAll(file);
+    const size_t start = animatorWindowHistory()->position();
     ASSERT_TRUE(window.fixMeshSpaceProblem(warnings[0].layer)) << window.getStatus();
-    EXPECT_EQ(history()->position(), start + 1);
-    EXPECT_EQ(history()->top()->name(), "Edit Layer Upper Body");
+    EXPECT_EQ(animatorWindowHistory()->position(), start + 1);
+    EXPECT_EQ(animatorWindowHistory()->top()->name(), "Edit Layer Upper Body");
     EXPECT_TRUE(doc->controller().layers[1].meshSpaceRotation);
     EXPECT_TRUE(window.meshSpaceProblems().empty()) << "the option on clears it";
-    ASSERT_TRUE(history()->undo());
-    EXPECT_EQ(readAll(file), before);
+    ASSERT_TRUE(animatorWindowHistory()->undo());
+    EXPECT_EQ(animatorWindowReadAll(file), before);
     EXPECT_EQ(window.meshSpaceProblems().size(), 1u) << "undone: the warning is back";
 
     anim::ControllerDef changed = doc->controller();
@@ -1142,7 +1142,7 @@ TEST(AnimatorWindow, MeshSpaceRotationWarningAndItsFix) {
     std::string error;
     ASSERT_TRUE(doc->commit(changed, "Edit Layer Upper Body", "", &error)) << error;
     EXPECT_TRUE(window.meshSpaceProblems().empty()) << "never for an Additive layer";
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(animatorWindowHistory()->undo());
     anim::AnimatorInstance* runtime = s.animator().runtime.get();
     ASSERT_TRUE(runtime);
     runtime->setLayerWeight(1, 0.0f);
@@ -1154,8 +1154,8 @@ TEST(AnimatorWindow, MeshSpaceRotationWarningAndItsFix) {
 // get_animation {entity} during the window's Preview reads the previewed runtime (its boundary
 // bones) and leaves it running: binding and restoring would end the person's preview
 TEST(AnimatorWindow, GetAnimationLeavesTheWindowsPreviewRunning) {
-    ASSERT_TRUE(headless().ready);
-    AnimatorWindow window(project(), nullptr);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "torsoquery");
     ASSERT_TRUE(doc);
     upperBodyController(window, doc);
@@ -1167,7 +1167,7 @@ TEST(AnimatorWindow, GetAnimationLeavesTheWindowsPreviewRunning) {
     ASSERT_TRUE(runtime);
     const float time = runtime->layers[0].current.time;
 
-    const mcp::Json got = mcp::animator_tools::animatorLayers(project(), s.sceneProject, s.root);
+    const mcp::Json got = mcp::animator_tools::animatorLayers(animatorWindowProject(), s.sceneProject, s.root);
     ASSERT_TRUE(got.contains("mask_coverage")) << got.dump();
     EXPECT_EQ(got["mask_coverage"][0]["boundary_bones"], mcp::Json::array({"Hips/Spine"})) << got.dump();
     EXPECT_TRUE(window.isPreviewing());
@@ -1181,8 +1181,8 @@ TEST(AnimatorWindow, GetAnimationLeavesTheWindowsPreviewRunning) {
 // AC20 (R31): with the option on, Compare shows the pose without the pass while on; it is never
 // saved or a step, and it is off when Preview stops and starts again
 TEST(AnimatorWindow, CompareShowsThePoseWithoutMeshSpaceRotationUntilPreviewStops) {
-    ASSERT_TRUE(headless().ready);
-    AnimatorWindow window(project(), nullptr);
+    ASSERT_TRUE(animatorWindowHeadless().ready);
+    AnimatorWindow window(animatorWindowProject(), nullptr);
     std::shared_ptr<AnimatorAssetDocument> doc = freshController(window, "torsocompare");
     ASSERT_TRUE(doc);
     upperBodyController(window, doc);
@@ -1196,9 +1196,9 @@ TEST(AnimatorWindow, CompareShowsThePoseWithoutMeshSpaceRotationUntilPreviewStop
     EXPECT_FALSE(window.isComparing());
 
     const Quaternion layer = torsoTurn(-20, 0, 1, 0) * torsoTurn(40, 1, 0, 0);
-    const fs::path file = assets() / "animator/torsocompare.controller";
-    const std::string text = readAll(file);
-    const size_t start = history()->position();
+    const fs::path file = animatorWindowAssets() / "animator/torsocompare.controller";
+    const std::string text = animatorWindowReadAll(file);
+    const size_t start = animatorWindowHistory()->position();
     ASSERT_TRUE(window.startPreview()) << window.getStatus();
     ASSERT_TRUE(window.stepPreview(0.1f)) << window.getStatus();
     EXPECT_LT(torsoDegrees(s.spine(), layer), 0.05) << "the pass: the spine faces where the attack faces";
@@ -1217,6 +1217,6 @@ TEST(AnimatorWindow, CompareShowsThePoseWithoutMeshSpaceRotationUntilPreviewStop
     ASSERT_TRUE(window.stepPreview(0.1f)) << window.getStatus();
     EXPECT_LT(torsoDegrees(s.spine(), layer), 0.05) << "a new Preview runs the pass";
     window.stopPreview();
-    EXPECT_EQ(readAll(file), text) << "never saved";
-    EXPECT_EQ(history()->position(), start) << "no undo step";
+    EXPECT_EQ(animatorWindowReadAll(file), text) << "never saved";
+    EXPECT_EQ(animatorWindowHistory()->position(), start) << "no undo step";
 }

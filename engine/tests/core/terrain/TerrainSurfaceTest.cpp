@@ -30,8 +30,8 @@ using namespace jasperengine::terraincore;
 
 namespace {
 
-    constexpr float SIZE = 100.0f;
-    constexpr float MAX_HEIGHT = 20.0f;
+    constexpr float TERRAIN_SURFACE_SIZE = 100.0f;
+    constexpr float TERRAIN_SURFACE_MAX_HEIGHT = 20.0f;
 
     struct HeightMap {
         std::vector<uint8_t> pixels;
@@ -47,8 +47,8 @@ namespace {
             v.height = height;
             v.channels = channels;
             v.bytesPerChannel = bytesPerChannel;
-            v.size = SIZE;
-            v.maxHeight = MAX_HEIGHT;
+            v.size = TERRAIN_SURFACE_SIZE;
+            v.maxHeight = TERRAIN_SURFACE_MAX_HEIGHT;
             return v;
         }
 
@@ -131,8 +131,8 @@ namespace {
     }
 
     float todaysHeight(const HeightMap& map, float x, float z) {
-        float texelX = ((x + SIZE * 0.5f) / SIZE) * static_cast<float>(map.width) - 0.5f;
-        float texelY = ((z + SIZE * 0.5f) / SIZE) * static_cast<float>(map.height) - 0.5f;
+        float texelX = ((x + TERRAIN_SURFACE_SIZE * 0.5f) / TERRAIN_SURFACE_SIZE) * static_cast<float>(map.width) - 0.5f;
+        float texelY = ((z + TERRAIN_SURFACE_SIZE * 0.5f) / TERRAIN_SURFACE_SIZE) * static_cast<float>(map.height) - 0.5f;
         texelX = std::clamp(texelX, 0.0f, static_cast<float>(map.width - 1));
         texelY = std::clamp(texelY, 0.0f, static_cast<float>(map.height - 1));
         const int lowerX = std::clamp(static_cast<int>(std::floor(texelX)), 0, map.width - 1);
@@ -143,7 +143,7 @@ namespace {
         const float blendY = texelY - static_cast<float>(lowerY);
         const float lower = todaysTexel(map, lowerX, lowerY) + (todaysTexel(map, upperX, lowerY) - todaysTexel(map, lowerX, lowerY)) * blendX;
         const float upper = todaysTexel(map, lowerX, upperY) + (todaysTexel(map, upperX, upperY) - todaysTexel(map, lowerX, upperY)) * blendX;
-        return MAX_HEIGHT * (lower + (upper - lower) * blendY);
+        return TERRAIN_SURFACE_MAX_HEIGHT * (lower + (upper - lower) * blendY);
     }
 
     // Terrain over one map in the pool, under a test's own id
@@ -151,8 +151,8 @@ namespace {
         TerrainComponent terrain;
 
         TerrainScope(const HeightMap& map, const char* id) {
-            terrain.terrainSize = SIZE;
-            terrain.maxHeight = MAX_HEIGHT;
+            terrain.terrainSize = TERRAIN_SURFACE_SIZE;
+            terrain.maxHeight = TERRAIN_SURFACE_MAX_HEIGHT;
             const size_t bytes = map.pixels.size();
             unsigned char* raw = static_cast<unsigned char*>(std::malloc(bytes));
             std::memcpy(raw, map.pixels.data(), bytes);
@@ -172,9 +172,9 @@ TEST(TerrainSurface, MatchesShaderFetch) {
         const SurfaceView view = map.view();
         for (float z = -49.0f; z <= 49.0f; z += 3.7f) {
             for (float x = -49.0f; x <= 49.0f; x += 3.1f) {
-                const float expected = shaderFetch(map, (x + SIZE * 0.5f) / SIZE, (z + SIZE * 0.5f) / SIZE) * MAX_HEIGHT;
-                EXPECT_NEAR(sampleSurface(view, x, z).height, expected, 1e-4f * MAX_HEIGHT) << x << ", " << z;
-                EXPECT_NEAR(sampleHeight(view, x, z), expected, 1e-4f * MAX_HEIGHT) << x << ", " << z;
+                const float expected = shaderFetch(map, (x + TERRAIN_SURFACE_SIZE * 0.5f) / TERRAIN_SURFACE_SIZE, (z + TERRAIN_SURFACE_SIZE * 0.5f) / TERRAIN_SURFACE_SIZE) * TERRAIN_SURFACE_MAX_HEIGHT;
+                EXPECT_NEAR(sampleSurface(view, x, z).height, expected, 1e-4f * TERRAIN_SURFACE_MAX_HEIGHT) << x << ", " << z;
+                EXPECT_NEAR(sampleHeight(view, x, z), expected, 1e-4f * TERRAIN_SURFACE_MAX_HEIGHT) << x << ", " << z;
             }
         }
     }
@@ -184,7 +184,7 @@ TEST(TerrainSurface, NormalIsTodaysForwardDifference) {
     const HeightMap maps[] = {random16(), ramp8(), rgba8()};
     for (const HeightMap& map : maps) {
         const SurfaceView view = map.view();
-        const float delta = SIZE / static_cast<float>(map.width);
+        const float delta = TERRAIN_SURFACE_SIZE / static_cast<float>(map.width);
         for (float z = -60.0f; z <= 60.0f; z += 4.3f) {
             for (float x = -60.0f; x <= 60.0f; x += 3.9f) {
                 const float height = todaysHeight(map, x, z);
@@ -209,8 +209,8 @@ TEST(TerrainSurface, NeverNaN) {
         {-1000.0f, 0.0f}, {1000.0f, 1000.0f}, {huge, -huge}, {-huge, huge}, {inf, 0.0f}, {0.0f, -inf}, {nan, 0.0f}, {0.0f, nan}, {nan, nan}};
 
     SurfaceView noMap;
-    noMap.size = SIZE;
-    noMap.maxHeight = MAX_HEIGHT;
+    noMap.size = TERRAIN_SURFACE_SIZE;
+    noMap.maxHeight = TERRAIN_SURFACE_MAX_HEIGHT;
     SurfaceView zeroSize = map.view();
     zeroSize.size = 0.0f;
     const SurfaceView views[] = {map.view(), noMap, zeroSize};
@@ -229,7 +229,7 @@ TEST(TerrainSurface, NeverNaN) {
     // Outside clamps to the edge
     const SurfaceSample outside = sampleSurface(map.view(), 1000.0f, 1000.0f);
     EXPECT_FALSE(outside.inside);
-    EXPECT_NEAR(outside.height, map.texel(map.width - 1, map.height - 1) * MAX_HEIGHT, 1e-3f);
+    EXPECT_NEAR(outside.height, map.texel(map.width - 1, map.height - 1) * TERRAIN_SURFACE_MAX_HEIGHT, 1e-3f);
     EXPECT_TRUE(sampleSurface(map.view(), 0.0f, 0.0f).inside);
 
     // No map: height 0, up, present false
@@ -278,18 +278,18 @@ TEST(TerrainSurface, RaycastSkipsHolesOnRequest) {
     holes[1 * 4 + 1] = 0;   // x and z both in -25..0
     view.holes = HoleMapView{holes, 4, 4};
 
-    const float ground = 128.0f / 255.0f * MAX_HEIGHT;
+    const float ground = 128.0f / 255.0f * TERRAIN_SURFACE_MAX_HEIGHT;
     Vector3 point;
     float t = 0.0f;
     // Straight down into the hole texel
-    const Vector3 origin(-12.0f, MAX_HEIGHT + 10.0f, -12.0f);
-    const Vector3 down(0.0f, -(MAX_HEIGHT + 20.0f), 0.0f);
+    const Vector3 origin(-12.0f, TERRAIN_SURFACE_MAX_HEIGHT + 10.0f, -12.0f);
+    const Vector3 down(0.0f, -(TERRAIN_SURFACE_MAX_HEIGHT + 20.0f), 0.0f);
     ASSERT_TRUE(raycastSurface(view, origin, down, 1.0f, false, point, t)) << "a brush ray still lands, so a hole can be filled";
     EXPECT_NEAR(point.y, ground, 1e-3f);
     EXPECT_FALSE(raycastSurface(view, origin, down, 1.0f, true, point, t)) << "a ray down a hole misses this terrain";
 
     // Beside the hole both find the ground
-    const Vector3 beside(30.0f, MAX_HEIGHT + 10.0f, 30.0f);
+    const Vector3 beside(30.0f, TERRAIN_SURFACE_MAX_HEIGHT + 10.0f, 30.0f);
     ASSERT_TRUE(raycastSurface(view, beside, down, 1.0f, true, point, t));
     EXPECT_NEAR(point.y, ground, 1e-3f);
     ASSERT_TRUE(raycastSurface(view, beside, down, 1.0f, false, point, t));
@@ -325,8 +325,8 @@ TEST(TerrainSurface, QueryInterfaceAndViewAgree) {
 
     Pcg32 random(2026);
     for (int i = 0; i < 10000; i++) {
-        const float x = (random.nextFloat() - 0.5f) * SIZE * 1.1f;
-        const float z = (random.nextFloat() - 0.5f) * SIZE * 1.1f;
+        const float x = (random.nextFloat() - 0.5f) * TERRAIN_SURFACE_SIZE * 1.1f;
+        const float z = (random.nextFloat() - 0.5f) * TERRAIN_SURFACE_SIZE * 1.1f;
         const SurfaceSample expected = sampleSurface(view, x, z);
         for (const TerrainSurfaceQuery* query : queries) {
             const SurfaceSample sample = query->sample(x, z);
@@ -355,12 +355,12 @@ TEST(TerrainSurface, QueryInterfaceAndViewAgree) {
 TEST(TerrainSurface, ForwardersAreTheSameFunctions) {
     const HeightMap map = random16();
     for (float x : {-60.0f, -10.0f, 0.0f, 10.0f, 60.0f}) {
-        EXPECT_EQ(MeshSystem::terrainTexelCoord(x, SIZE, map.width), surfaceTexelCoord(x, SIZE, map.width));
-        const float tx = surfaceTexelCoord(x, SIZE, map.width);
+        EXPECT_EQ(MeshSystem::terrainTexelCoord(x, TERRAIN_SURFACE_SIZE, map.width), surfaceTexelCoord(x, TERRAIN_SURFACE_SIZE, map.width));
+        const float tx = surfaceTexelCoord(x, TERRAIN_SURFACE_SIZE, map.width);
         EXPECT_EQ(MeshSystem::sampleTerrainHeightTexels(map.pixels.data(), map.width, map.height, map.channels, map.bytesPerChannel, tx, tx),
                   sampleHeightTexels(map.pixels.data(), map.width, map.height, map.channels, map.bytesPerChannel, tx, tx));
-        EXPECT_EQ(MeshSystem::sampleTerrainHeight(map.pixels.data(), map.width, map.height, map.channels, map.bytesPerChannel, SIZE, x, x),
-                  sampleHeightLocal(map.pixels.data(), map.width, map.height, map.channels, map.bytesPerChannel, SIZE, x, x));
+        EXPECT_EQ(MeshSystem::sampleTerrainHeight(map.pixels.data(), map.width, map.height, map.channels, map.bytesPerChannel, TERRAIN_SURFACE_SIZE, x, x),
+                  sampleHeightLocal(map.pixels.data(), map.width, map.height, map.channels, map.bytesPerChannel, TERRAIN_SURFACE_SIZE, x, x));
     }
 }
 
@@ -375,7 +375,7 @@ TEST(TerrainSurface, RaycastForwarderMatchesTheView) {
     for (float z = -40.0f; z <= 40.0f; z += 17.0f) {
         for (float x = -40.0f; x <= 40.0f; x += 13.0f) {
             Vector3 world;
-            const Ray ray(Vector3(x, MAX_HEIGHT + 10.0f, z), Vector3(0.0f, -(MAX_HEIGHT + 20.0f), 0.0f));
+            const Ray ray(Vector3(x, TERRAIN_SURFACE_MAX_HEIGHT + 10.0f, z), Vector3(0.0f, -(TERRAIN_SURFACE_MAX_HEIGHT + 20.0f), 0.0f));
             ASSERT_TRUE(meshSystem->raycastTerrainSurface(ray, scope.terrain, transform, world));
             Vector3 local;
             float t = 0.0f;
