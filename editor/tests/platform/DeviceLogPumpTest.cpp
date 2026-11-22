@@ -120,3 +120,53 @@ TEST(DeviceLogPump, ItsThreadHandsLinesOnWithoutTicks) {
     ASSERT_EQ(got.size(), 2u);
     EXPECT_EQ(got[1].level, LogLevel::Error);
 }
+
+// The iOS Simulator gives a run's log twice: the unified log (`log stream --style compact`) and the
+// app's stdout and stderr, where the engine's console sink writes the same lines. Each reaches the
+// Console once, as the unified log has it: its level and its category (R12).
+TEST(DeviceLogPump, SimulatorLinesArriveOnceWithTheirLevelAndCategory) {
+    std::vector<std::string> got;
+    const auto name = [](LogLevel level) {
+        return level == LogLevel::Warn ? "W" : level == LogLevel::Error ? "E" : level == LogLevel::Debug ? "D" : level == LogLevel::Info ? "I" : "?";
+    };
+    SimulatorLogMerge merge("com.jasperengine.packaging", [&](LogLevel level, const std::string& text) { got.push_back(name(level) + std::string(" ") + text); });
+    const std::string at = "2026-11-22 01:13:11.116 ";
+    const std::string game = " UnifiedLighting[16994:656a6] ";
+    merge.unifiedLine("Filtering the log data using \"process == \"UnifiedLighting\"\"", 10.0);
+    merge.unifiedLine("Timestamp               Ty Process[PID:TID]", 10.0);
+    // the unified log first (the console file is read every 0.5 s)
+    merge.unifiedLine(at + "I " + game + "[com.jasperengine.packaging:engine] GPU quirks: none", 10.1);
+    merge.unifiedLine(at + "Df" + game + "[com.jasperengine.packaging:engine] Shader 'tinted' has the legacy shadow interface", 10.1);
+    merge.unifiedLine(at + "I " + game + "[com.jasperengine.packaging:lua] [UL] frame 100 (1.66 s): 63 fps", 10.2);
+    merge.unifiedLine(at + "Db" + game + "[com.jasperengine.packaging:lua] tick", 10.2);
+    merge.unifiedLine(at + "I " + game + "[com.jasperengine.packaging:lua] tick", 10.2);
+    merge.unifiedLine(at + "Df" + game + "[com.apple.UIKit:Application] Deactivation reason added: 10", 10.2);
+    merge.consoleLine("GPU quirks: none", false, 10.5);
+    merge.consoleLine("(WARN): Shader 'tinted' has the legacy shadow interface", true, 10.5);
+    merge.consoleLine("[UL] frame 100 (1.66 s): 63 fps", false, 10.5);
+    merge.consoleLine("(DEBUG): tick", false, 10.5);
+    merge.consoleLine("tick", false, 10.5);
+    // the console first: a category other than engine and lua is in its text
+    merge.consoleLine("[UL] frame 200 (3.33 s): 59 fps", false, 11.0);
+    merge.consoleLine("[render] 31 meshes", false, 11.0);
+    merge.unifiedLine(at + "I " + game + "[com.jasperengine.packaging:lua] [UL] frame 200 (3.33 s): 59 fps", 11.4);
+    merge.unifiedLine(at + "I " + game + "[com.jasperengine.packaging:render] 31 meshes", 11.4);
+    // only the console has it (a printf past the engine's log): passed on once its wait is over
+    merge.consoleLine("native printf", false, 12.0);
+    merge.flush(12.5);
+    EXPECT_EQ(std::count(got.begin(), got.end(), "I native printf"), 0) << "held while the unified log may still bring it";
+    merge.flush(30.0);
+    merge.flush(30.0, true);
+    const std::vector<std::string> want = {
+        "I [com.jasperengine.packaging:engine] GPU quirks: none",
+        "W [com.jasperengine.packaging:engine] Shader 'tinted' has the legacy shadow interface",
+        "I [com.jasperengine.packaging:lua] [UL] frame 100 (1.66 s): 63 fps",
+        "D [com.jasperengine.packaging:lua] tick",
+        "I [com.jasperengine.packaging:lua] tick",
+        "I [com.apple.UIKit:Application] Deactivation reason added: 10",
+        "I [com.jasperengine.packaging:lua] [UL] frame 200 (3.33 s): 59 fps",
+        "I [com.jasperengine.packaging:render] 31 meshes",
+        "I native printf",
+    };
+    EXPECT_EQ(got, want);
+}
