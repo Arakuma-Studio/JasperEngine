@@ -225,28 +225,31 @@ static int luaScreenSetExtraInsets(lua_State* L){
 // System.showVirtualKeyboard(text [, options]): options {keyboard, enterKey, autocapitalize,
 // autocorrect, secure, multiline, maxLength} with the HTML attribute values (text-entry R6);
 // without options the platform's plain keyboard, as before
+// The options and arguments are read and checked before the text becomes a std::wstring: Lua is
+// compiled as C, and luaL_error longjmps over this frame (no destructor runs; MSVC may end the
+// process)
 static int luaSystemShowVirtualKeyboard(lua_State* L){
     const char* utf8 = luaL_optstring(L, 1, "");
-    bool hadInvalid = false;
-    const std::wstring text = StringUtils::utf8ToWString(utf8, hadInvalid);
-    if (lua_isnoneornil(L, 2)){
-        System::instance().showVirtualKeyboard(text);
-        return 0;
-    }
-    if (!lua_istable(L, 2))
+    const bool withOptions = !lua_isnoneornil(L, 2);
+    if (withOptions && !lua_istable(L, 2))
         return luaL_error(L, "System.showVirtualKeyboard: options must be a table {keyboard=, enterKey=, autocapitalize=, autocorrect=, secure=, multiline=, maxLength=}");
 
     TextEntryTraits traits;
-    auto name = [L](const char* field, auto parse, const char* values) -> int {
+    // the field a value of which is not one of `values`, or null
+    const char* wrongField = nullptr;
+    const char* wrongValues = nullptr;
+    auto name = [L, &wrongField, &wrongValues](const char* field, auto parse, const char* values){
+        if (wrongField)
+            return;
         lua_getfield(L, 2, field);
-        int error = 0;
         if (!lua_isnil(L, -1)){
             const char* value = lua_type(L, -1) == LUA_TSTRING ? lua_tostring(L, -1) : nullptr;
-            if (!value || !parse(value))
-                error = luaL_error(L, "System.showVirtualKeyboard: %s must be one of %s", field, values);
+            if (!value || !parse(value)){
+                wrongField = field;
+                wrongValues = values;
+            }
         }
         lua_pop(L, 1);
-        return error;
     };
     auto flag = [L](const char* field, bool& out){
         lua_getfield(L, 2, field);
@@ -254,20 +257,29 @@ static int luaSystemShowVirtualKeyboard(lua_State* L){
             out = lua_toboolean(L, -1) != 0;
         lua_pop(L, 1);
     };
-    name("keyboard", [&](const char* v){ return keyboardTypeFromName(v, traits.keyboard); },
-         "\"text\", \"numeric\", \"decimal\", \"tel\", \"email\", \"url\", \"search\", \"none\"");
-    name("enterKey", [&](const char* v){ return enterKeyFromName(v, traits.enterKey); },
-         "\"enter\", \"done\", \"go\", \"next\", \"previous\", \"search\", \"send\"");
-    name("autocapitalize", [&](const char* v){ return autoCapitalizeFromName(v, traits.capitalize); },
-         "\"off\", \"sentences\", \"words\", \"characters\"");
-    flag("autocorrect", traits.autocorrect);
-    flag("secure", traits.secure);
-    flag("multiline", traits.multiline);
-    lua_getfield(L, 2, "maxLength");
-    if (lua_isnumber(L, -1))
-        traits.maxLength = std::max(-1, (int)lua_tointeger(L, -1));
-    lua_pop(L, 1);
-    System::instance().showVirtualKeyboard(text, traits);
+    if (withOptions){
+        name("keyboard", [&](const char* v){ return keyboardTypeFromName(v, traits.keyboard); },
+             "\"text\", \"numeric\", \"decimal\", \"tel\", \"email\", \"url\", \"search\", \"none\"");
+        name("enterKey", [&](const char* v){ return enterKeyFromName(v, traits.enterKey); },
+             "\"enter\", \"done\", \"go\", \"next\", \"previous\", \"search\", \"send\"");
+        name("autocapitalize", [&](const char* v){ return autoCapitalizeFromName(v, traits.capitalize); },
+             "\"off\", \"sentences\", \"words\", \"characters\"");
+        if (wrongField)
+            return luaL_error(L, "System.showVirtualKeyboard: %s must be one of %s", wrongField, wrongValues);
+        flag("autocorrect", traits.autocorrect);
+        flag("secure", traits.secure);
+        flag("multiline", traits.multiline);
+        lua_getfield(L, 2, "maxLength");
+        if (lua_isnumber(L, -1))
+            traits.maxLength = std::max(-1, (int)lua_tointeger(L, -1));
+        lua_pop(L, 1);
+    }
+    bool hadInvalid = false;
+    const std::wstring text = StringUtils::utf8ToWString(utf8, hadInvalid);
+    if (withOptions)
+        System::instance().showVirtualKeyboard(text, traits);
+    else
+        System::instance().showVirtualKeyboard(text);
     return 0;
 }
 
@@ -275,10 +287,13 @@ static int luaSystemShowVirtualKeyboard(lua_State* L){
 // code points (default: the end)
 static int luaSystemUpdateVirtualKeyboardText(lua_State* L){
     const char* utf8 = luaL_checkstring(L, 1);
+    // (checked before any std:: object lives here: see luaSystemShowVirtualKeyboard)
+    const bool caretGiven = !lua_isnoneornil(L, 2);
+    const lua_Integer caretArg = caretGiven ? luaL_checkinteger(L, 2) : 0;
     bool hadInvalid = false;
     const std::wstring text = StringUtils::utf8ToWString(utf8, hadInvalid);
     const int length = (int)StringUtils::decodeUtf8ToCodepoints(utf8, hadInvalid).size();
-    const int caret = lua_isnoneornil(L, 2) ? length : std::clamp((int)luaL_checkinteger(L, 2), 0, length);
+    const int caret = caretGiven ? std::clamp((int)caretArg, 0, length) : length;
     Engine::resetTextInputState(utf8, (size_t)caret);
     System::instance().updateVirtualKeyboardText(text, caret, caret);
     return 0;
@@ -1795,29 +1810,34 @@ namespace {
             SubscriptionOwnerIndex::add(ownerKeyOf(owner), debugCommandOwners(), ownerKeyOf(owner));
     }
 
-    // DebugOverlay.addCommand(name, description, fn [, owner]): fn(args) gets the words after the
-    // name; or DebugOverlay.addCommand{...} (typed arguments, aliases, cheat). The owner (a script
-    // table; by default the `self` of the calling method) takes the command with it when it is
-    // released. true, or false and the reason
-    int luaDebugOverlayAddCommand(lua_State* L){
+    // The work of DebugOverlay.addCommand, whose C++ objects all live here: the number of results,
+    // or ADD_COMMAND_RAISE with the message pushed. Lua is compiled as C, and a raise longjmps over
+    // the frames it crosses; on MSVC one from the frame that had made C++ objects ended the core
+    // tests (CI run 45006454127), so the lua_CFunction below holds none and raises once this returned.
+    constexpr int ADD_COMMAND_RAISE = -1;
+    // (never inlined into the lua_CFunction, which would then make the objects itself)
+#if defined(_MSC_VER)
+    #define CORE_LUA_OUT_OF_LINE __declspec(noinline)
+#else
+    #define CORE_LUA_OUT_OF_LINE __attribute__((noinline))
+#endif
+
+    CORE_LUA_OUT_OF_LINE int addCommandImpl(lua_State* L){
         if (lua_istable(L, 1)){
             bool added = false;
-            char problem[512] = {0};
-            char refusal[512] = {0};
-            {
-                std::string problemText, refusalText;
-                addCommandFromTable(L, problemText, added, refusalText);
-                std::snprintf(problem, sizeof(problem), "%s", problemText.c_str());
-                std::snprintf(refusal, sizeof(refusal), "%s", refusalText.c_str());
+            std::string problem, refusal;
+            addCommandFromTable(L, problem, added, refusal);
+            if (!problem.empty()){
+                lua_pushlstring(L, problem.data(), problem.size());
+                return ADD_COMMAND_RAISE;
             }
-            if (problem[0])
-                return luaL_error(L, "%s", problem);
             lua_pushboolean(L, added);
             if (added)
                 return 1;
-            lua_pushstring(L, refusal);
+            lua_pushlstring(L, refusal.data(), refusal.size());
             return 2;
         }
+        // (the checks raise before any C++ object exists)
         size_t nameLength = 0;
         const char* name = luaL_checklstring(L, 1, &nameLength);
         size_t descriptionLength = 0;
@@ -1832,30 +1852,36 @@ namespace {
         }
         lua_pushvalue(L, 3);
         const int ref = luaL_ref(L, LUA_REGISTRYINDEX);
-        bool added = false;
-        char refusal[512] = {0};
-        {
-            const std::string commandName(name, nameLength);
-            auto function = std::make_shared<LuaCommandFunction>();
-            function->L = L;
-            function->ref = ref;
-            console::CommandSpec spec;
-            spec.name = commandName;
-            spec.description = std::string(description, descriptionLength);
-            spec.run = [function, commandName](console::Call& call){ runLuaCommand(function, commandName, {}, call); };
-            // without an owner a Lua command still goes with the Lua state (Play stop, quit)
-            spec.ownerTag = owner ? "_" + std::to_string(reinterpret_cast<std::uintptr_t>(owner)) + "_" : std::string("lua");
-            std::string refusalText;
-            added = console::add(std::move(spec), &refusalText);
-            std::snprintf(refusal, sizeof(refusal), "%s", refusalText.c_str());
-            if (added && owner)
-                SubscriptionOwnerIndex::add(ownerKeyOf(owner), debugCommandOwners(), ownerKeyOf(owner));
-        }
+        const std::string commandName(name, nameLength);
+        auto function = std::make_shared<LuaCommandFunction>();
+        function->L = L;
+        function->ref = ref;
+        console::CommandSpec spec;
+        spec.name = commandName;
+        spec.description = std::string(description, descriptionLength);
+        spec.run = [function, commandName](console::Call& call){ runLuaCommand(function, commandName, {}, call); };
+        // without an owner a Lua command still goes with the Lua state (Play stop, quit)
+        spec.ownerTag = owner ? "_" + std::to_string(reinterpret_cast<std::uintptr_t>(owner)) + "_" : std::string("lua");
+        std::string refusal;
+        const bool added = console::add(std::move(spec), &refusal);
+        if (added && owner)
+            SubscriptionOwnerIndex::add(ownerKeyOf(owner), debugCommandOwners(), ownerKeyOf(owner));
         lua_pushboolean(L, added);
         if (added)
             return 1;
-        lua_pushstring(L, refusal);
+        lua_pushlstring(L, refusal.data(), refusal.size());
         return 2;
+    }
+
+    // DebugOverlay.addCommand(name, description, fn [, owner]): fn(args) gets the words after the
+    // name; or DebugOverlay.addCommand{...} (typed arguments, aliases, cheat). The owner (a script
+    // table; by default the `self` of the calling method) takes the command with it when it is
+    // released. true, or false and the reason
+    int luaDebugOverlayAddCommand(lua_State* L){
+        const int results = addCommandImpl(L);
+        if (results == ADD_COMMAND_RAISE)
+            return lua_error(L);
+        return results;
     }
 
     void pushConsoleResult(lua_State* L, const console::Result& result){
