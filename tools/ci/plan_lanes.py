@@ -902,16 +902,15 @@ def restrict_to_forced(result: dict, force: dict[str, str]) -> None:
 
 
 def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str, repo: str, attempt: int,
-          disabled: str = "", force: dict[str, str] | None = None, planner: str = "",
-          run_id: str = "", blacksmith: str = "") -> tuple[dict[str, str], list[str]]:
+          disabled: str = "", force: dict[str, str] | None = None, run_id: str = "",
+          blacksmith: str = "") -> tuple[dict[str, str], list[str]]:
     """runs_on of each planned job and why. A job goes to an overflow runner only when the run may use one
     (trusted), on its first attempt (a rerun, which the watchdog makes when a runner went away, stays
     hosted), when state (STATE_BRANCH's state.json: tools/ci/runner_dispatch.py, at most STATE_MAX_AGE old) says
     the hosted runners of its OS are saturated (the merge queue, the critical path: macOS as soon as a
     hosted macOS job waits) and the runner is online, idle and fit, and it is not in disabled
     (SELF_HOSTED_DISABLED: labels, or `all`); each runner takes TAKES jobs (default one). force (a dispatch's
-    self_hosted input, first attempt only) puts those jobs on those runners whatever the state says.
-    planner: the runner this plan runs on: busy with this job only, which ends before the planned ones start."""
+    self_hosted input, first attempt only) puts those jobs on those runners whatever the state says."""
     runs_on = {job: HOSTED[os_] for job, os_ in jobs.items()}
     why = trusted(trigger, head_repo, repo)
     if why:
@@ -953,7 +952,7 @@ def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str,
                          f"{hosted.get('queued', 0)} queued)")
         elif not runner.get("online"):
             notes.append(f"{label}: offline")
-        elif runner.get("busy") and label != planner:
+        elif runner.get("busy"):
             notes.append(f"{label}: busy")
         elif not runner.get("fit", True):
             notes.append(f"{label}: unfit ({runner.get('why', 'no reason given')})")
@@ -1110,7 +1109,6 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--head-repo", default="", help="a pull request's head repository (github.event.pull_request.head.repo.full_name)")
     ap.add_argument("--repo", default="", help="github.repository")
     ap.add_argument("--run-attempt", type=int, default=1, help="github.run_attempt (a rerun stays hosted)")
-    ap.add_argument("--planner", default="", help="the runner this job runs on (RUNNER_NAME)")
     ap.add_argument("--self-hosted", default="", help="a dispatch's self_hosted input: <job>=<label> ...: those jobs' lanes "
                     "only, forced onto those runners on the first attempt")
     args = ap.parse_args(argv)
@@ -1186,7 +1184,7 @@ def main(argv: list[str]) -> int:
                "checks": {"modules_off": plan["modules_off"] if plan else "", "navigation_off": bool(plan and plan["navigation_off"])}}
         doc["runs_on"], doc["routing"] = route(planned_jobs(doc), load_state(args.runner_state), time.time(), args.trigger,
                                                args.head_repo, args.repo, args.run_attempt, args.runner_disabled, force,
-                                               args.planner, str(args.run_id or ""), args.blacksmith)
+                                               run_id=str(args.run_id or ""), blacksmith=args.blacksmith)
         write_selection(doc, args.event, plan, result, ci, tests, args.inputs_manifest, out)
         doc["shadow"] = shadow_selection(shadow_plan, ci, left_out, nightly_out, definition(shadow_plan)) if shadow_plan else None
         doc["shadow_why"] = "" if shadow_plan else shadow_why
