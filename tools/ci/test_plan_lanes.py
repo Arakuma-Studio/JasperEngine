@@ -484,7 +484,7 @@ REPO = "Arakuma-Studio/JasperEngine"
 
 
 def state(age=30, saturated=("macos", "linux", "windows"), **runners):
-    """A SELF_HOSTED_STATE: every overflow runner online and idle unless given."""
+    """A runner state (state.json of plan_lanes.STATE_BRANCH): every overflow runner online and idle unless given."""
     r = {label: {"online": True, "busy": False, "fit": True} for label in pl.OVERFLOW}
     for label, entry in runners.items():
         r[label.replace("_", "-")].update(entry)
@@ -549,7 +549,7 @@ class Routing(unittest.TestCase):
         self.assertTrue(route(state(je_mac={"busy": True}))[0]["linux"] == "je-linux")
 
     def test_a_stale_or_missing_state_means_no_overflow_runner(self):
-        for st, why in ((None, "no SELF_HOSTED_STATE"), ({}, "no SELF_HOSTED_STATE"), ("garbage", "no SELF_HOSTED_STATE"),
+        for st, why in ((None, "no runner state"), ({}, "no runner state"), ("garbage", "no runner state"),
                         (state(age=301), "301 s old"), (state(age=-3600), "-3600 s old")):
             runs_on, notes = route(st)
             self.assertEqual(overflowed(runs_on), {}, why)
@@ -781,7 +781,7 @@ class Runs(unittest.TestCase):
         gh = self.tmp / "gh.txt"
         common = ("--base", self.base, "--head", head, "--out-dir", str(self.tmp / "out"), "--github-output", str(gh),
                   "--runner-state", str(st), "--repo", REPO, "--head-repo", REPO)
-        # SELF_HOSTED_STATE as ci.yml passes it, fresh: macOS saturated, je-mac idle
+        # the runner state as ci.yml fetches it, fresh: macOS saturated, je-mac idle
         st.write_text(json.dumps(dict(state(saturated=("macos",)), t=time.time() - 30)))
         code, doc, out = self.run_main("--event", "pull_request", "--trigger", "pull_request", *common)
         self.assertEqual(code, 0, out)

@@ -11,8 +11,8 @@ Each run:
   (the same probe: under the runner's min_free_gb it is unfit),
   and per OS the jobs on GitHub's runners, running and queued: saturated when a job waits while the OS's
   concurrency limit is used up (HOSTED_LIMITS, TOTAL_LIMIT) or has waited SATURATED_WAIT. Written to the
-  repository variable SELF_HOSTED_STATE, which the `changes` job reads (plan_lanes.route: older than its
-  STATE_MAX_AGE means no overflow runner);
+  data branch STATE_BRANCH (state.json, one parentless commit, force-pushed), which the `changes` job
+  fetches as it plans (plan_lanes.route: older than its STATE_MAX_AGE means no overflow runner);
 - watchdog: a run with a job the plan routed onto an overflow runner (a je-* label) whose job has waited
   QUEUED_LIMIT for a runner that is offline or gone, or runs on one offline for OFFLINE_LIMIT, or failed
   because its runner went away (LOST, also while the rest of the run goes on), is cancelled and, once
@@ -39,7 +39,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from plan_lanes import OVERFLOW, STATE_VARIABLE  # noqa: E402
+from plan_lanes import OVERFLOW, STATE_BRANCH  # noqa: E402
 
 REPO = "Arakuma-Studio/JasperEngine"
 # GitHub Team: 60 concurrent hosted jobs, 5 of them macOS
@@ -80,7 +80,7 @@ def os_of(labels: list[str]) -> tuple[str, str]:
 # ---------------------------------------------------------------------------------------- state
 
 def compute_state(runners: list[dict], jobs: list[dict], probes: dict, now: float) -> dict:
-    """SELF_HOSTED_STATE from the repository's runners, the jobs of its queued and running runs, and the
+    """The runner state from the repository's runners, the jobs of its queued and running runs, and the
     probes ({label: {"alive", "free_gb", "ok", "why"}}: online when GitHub or the probe says the runner
     is; a label without a probe is fit)."""
     hosted = {o: {"running": 0, "queued": 0, "waited": 0} for o in ("linux", "windows", "macos")}
@@ -276,7 +276,24 @@ class Gh:
         return subprocess.run(["gh", *args, "--repo", self.repo], capture_output=True, text=True, timeout=120).returncode == 0
 
     def set_state(self, body: str) -> bool:
-        return self._cli("variable", "set", STATE_VARIABLE, "--body", body)
+        """state.json as the only commit of STATE_BRANCH (its old commits go unreferenced)."""
+        base = f"repos/{self.repo}/git"
+        tree = self.post(f"{base}/trees", {"tree": [{"path": "state.json", "mode": "100644", "type": "blob", "content": body}]})
+        commit = self.post(f"{base}/commits", {"message": "overflow runner state (tools/ci/runner_dispatch.py)",
+                                               "tree": tree["sha"], "parents": []})
+        try:
+            self.post(f"{base}/refs/heads/{STATE_BRANCH}", {"sha": commit["sha"], "force": True}, "PATCH")
+        except RuntimeError:
+            self.post(f"{base}/refs", {"ref": f"refs/heads/{STATE_BRANCH}", "sha": commit["sha"]})
+        return True
+
+    def post(self, path: str, payload: dict, method: str = "POST"):
+        self.calls += 1
+        r = subprocess.run(["gh", "api", "-X", method, path, "--input", "-"], input=json.dumps(payload),
+                           capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            raise RuntimeError(f"gh api -X {method} {path}: {(r.stderr or r.stdout).strip()[:200]}")
+        return json.loads(r.stdout)
 
     def cancel(self, run_id) -> bool:
         return self._cli("run", "cancel", str(run_id))
@@ -349,9 +366,12 @@ def main(argv: list[str]) -> int:
     state = compute_state(runners, [j for js in jobs.values() for j in js], probes, now)
     body = json.dumps(state, separators=(",", ":"), sort_keys=True)
     if args.dry_run:
-        print(f"{STATE_VARIABLE}={body}")
-    elif not gh.set_state(body):
-        log(f"gh variable set {STATE_VARIABLE} failed")
+        print(f"{STATE_BRANCH}: {body}")
+    else:
+        try:
+            gh.set_state(body)
+        except RuntimeError as e:
+            log(f"the state was not published to {STATE_BRANCH}: {e}")
 
     # the watchdog
     offline_since = memory.get("offline_since", {})

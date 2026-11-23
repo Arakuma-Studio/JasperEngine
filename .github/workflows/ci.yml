@@ -154,9 +154,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           # the selection's rollback: a repository variable set to true runs every test of every lane
           FULL_SELECTION: ${{ vars.CI_FULL_SELECTION }}
-          # the overflow runners (docs/testing.md "Overflow runners"): their state, written every minute by
-          # tools/ci/runner_dispatch.py; the ones taken out; a fork's pull request never gets one
-          RUNNER_STATE: ${{ vars.SELF_HOSTED_STATE }}
+          # the overflow runners (docs/testing.md "Overflow runners"): the ones taken out; a fork's pull
+          # request never gets one. Their state is fetched below, as the plan starts
           RUNNER_DISABLED: ${{ vars.SELF_HOSTED_DISABLED }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           SELF_HOSTED: ${{ inputs.self_hosted }}
@@ -172,7 +171,6 @@ jobs:
                   [[ "$FULL" == true ]] && event=full
                   base="$(git merge-base origin/main HEAD)" head="$GITHUB_SHA" ;;
           esac
-          printf '%s' "$RUNNER_STATE" > "$RUNNER_TEMP/runner-state.json"
           args=(--event "$event" --base "$base" --head "$head" --out-dir build/ci-plan --github-output "$GITHUB_OUTPUT"
                 --advisory "$ADVISORY_LANES" --runner-state "$RUNNER_TEMP/runner-state.json"
                 --runner-disabled "$RUNNER_DISABLED" --trigger "$GITHUB_EVENT_NAME" --head-repo "$HEAD_REPO"
@@ -193,6 +191,10 @@ jobs:
                   --json databaseId,headSha,status,conclusion,createdAt,displayTitle > "$RUNNER_TEMP/runs.json" \
                   && args+=(--previous-runs "$RUNNER_TEMP/runs.json" --run-id "$GITHUB_RUN_ID")
           fi
+          # the runner state of this minute (tools/ci/runner_dispatch.py; none: every job hosted). Not `vars`: a
+          # run reads them as it is created, and this job can wait an hour for a runner
+          { git fetch -q --depth 1 origin ci-runner-state && git show FETCH_HEAD:state.json; } > "$RUNNER_TEMP/runner-state.json" \
+              || echo "no runner state: every job on GitHub's runners"
           tools/ci/logged.sh plan "python3 tools/ci/plan_lanes.py $(printf '%q ' "${args[@]}")"
 
       # what each test lane runs and why (owner, dependency, policy, smoke; a whole suite: full or fallback)

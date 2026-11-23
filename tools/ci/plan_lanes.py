@@ -788,7 +788,7 @@ def load_runs(path: Path):
 HOSTED = {"linux": "ubuntu-latest", "windows": "windows-latest", "macos": "macos-latest"}
 # the overflow runners, by label: their OS and the jobs each may take, best first (each runs one at a
 # time). je-win (8 cores, 7 GB) takes the engine legs; the editor's MSVC build does not fit
-STATE_MAX_AGE = 300         # SELF_HOSTED_STATE older than this (s) means no overflow runner
+STATE_MAX_AGE = 300         # a runner state older than this (s) means no overflow runner
 OVERFLOW = {
     "je-mac": ("macos", ("macos", "ios")),
     "je-linux": ("linux", ("linux", "asan-editor", "unit-editor-1", "unit-editor-2", "asan-core", "smoke", "htmlui",
@@ -798,7 +798,10 @@ OVERFLOW = {
 # the jobs of one plan a runner takes (it runs them one after the other): the Mac builds ios in 12 min
 # (run 45104498209), so the plan's macos and ios both beat a saturated hosted queue there
 TAKES = {"je-mac": 2}
-STATE_VARIABLE = "SELF_HOSTED_STATE"
+# where tools/ci/runner_dispatch.py publishes the state every minute: a data branch (one parentless commit
+# of state.json), which `changes` fetches as it plans. Not a repository variable: a run reads `vars` as it
+# is created, and its `changes` job can wait an hour for a hosted runner (run 45109730961 read one 891 s old)
+STATE_BRANCH = "ci-runner-state"
 DISABLED_VARIABLE = "SELF_HOSTED_DISABLED"
 WINDOWS_PARTS = ("editor", "engine-glcore", "engine-d3d11", "engine-vulkan")
 
@@ -868,7 +871,7 @@ def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str,
           disabled: str = "", force: dict[str, str] | None = None) -> tuple[dict[str, str], list[str]]:
     """runs_on of each planned job and why. A job goes to an overflow runner only when the run may use one
     (trusted), on its first attempt (a rerun, which the watchdog makes when a runner went away, stays
-    hosted), when state (SELF_HOSTED_STATE: tools/ci/runner_dispatch.py, at most STATE_MAX_AGE old) says
+    hosted), when state (STATE_BRANCH's state.json: tools/ci/runner_dispatch.py, at most STATE_MAX_AGE old) says
     the hosted runners of its OS are saturated (the merge queue, the critical path: macOS as soon as a
     hosted macOS job waits) and the runner is online, idle and fit, and it is not in disabled
     (SELF_HOSTED_DISABLED: labels, or `all`); each runner takes TAKES jobs (default one). force (a dispatch's
@@ -895,8 +898,8 @@ def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str,
         return runs_on, [f"hosted only: {DISABLED_VARIABLE} is all"]
     t = state.get("t") if isinstance(state, dict) else None
     if not isinstance(t, (int, float)) or not -60 <= now - t <= STATE_MAX_AGE:
-        return runs_on, ["hosted only: " + (f"no {STATE_VARIABLE}" if t is None else
-                                            f"{STATE_VARIABLE} is {now - t:.0f} s old (over {STATE_MAX_AGE})")]
+        return runs_on, ["hosted only: " + ("no runner state" if t is None else
+                                            f"the runner state is {now - t:.0f} s old (over {STATE_MAX_AGE})")]
     notes = []
     for label, (os_, order) in OVERFLOW.items():
         runner = (state.get("runners") or {}).get(label) or {}
@@ -1039,7 +1042,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--newest", help="push: main's head after the admission delay (a newer push supersedes this one)")
     ap.add_argument("--previous-runs", type=Path, help="push, advisory: `gh run list` JSON of the event's earlier runs on the branch")
     ap.add_argument("--run-id", type=int, help="this run's id, left out of --previous-runs")
-    ap.add_argument("--runner-state", type=Path, help=f"the repository variable {STATE_VARIABLE} (tools/ci/runner_dispatch.py)")
+    ap.add_argument("--runner-state", type=Path, help=f"state.json of the branch {STATE_BRANCH} (tools/ci/runner_dispatch.py)")
     ap.add_argument("--runner-disabled", default="", help=f"{DISABLED_VARIABLE}: overflow runner labels to leave alone, or all")
     ap.add_argument("--trigger", default="", help="github.event_name (an overflow runner takes no fork's pull request)")
     ap.add_argument("--head-repo", default="", help="a pull request's head repository (github.event.pull_request.head.repo.full_name)")

@@ -1415,7 +1415,9 @@ a service that starts with the machine (macOS: with the user's login) and reconn
   this one, never a fork's;
 - it is the run's first attempt: a rerun stays on GitHub's runners, so the watchdog's rerun (below)
   never waits for the same machine again;
-- the repository variable `SELF_HOSTED_STATE` is under 5 min old (`STATE_MAX_AGE`), and says the hosted
+- the runner state (`state.json` of the data branch `ci-runner-state`, fetched as the plan starts; not a
+  repository variable, which a run reads as it is created, up to an hour before `changes` gets a
+  runner) is under 5 min old (`STATE_MAX_AGE`), and says the hosted
   runners of the job's OS are saturated: a job of that OS waits while its limit is used up (macOS: 5
   running; any OS: 60 hosted jobs of the organization), or has waited 5 min. The merge queue, the
   critical path, takes the Mac as soon as any hosted macOS job waits;
@@ -1435,7 +1437,7 @@ The `changes` job's summary and `lanes.json` (`routing`) say where each job went
 always-on host whose `gh` is a repository admin, from a sparse clone of `main` refreshed hourly. It
 reads the runners (GitHub's status, and an ssh probe of each machine's listener and free disk, since
 GitHub reports a listener that takes jobs as offline at times) and the jobs of the queued and running
-runs, and writes `SELF_HOSTED_STATE`. Then, for runs that have a job on a `je-*` label only (it never
+runs, and force-pushes the state to `ci-runner-state` as one parentless commit. Then, for runs that have a job on a `je-*` label only (it never
 touches a run it did not route): a job queued 10 min for a runner that is offline or gone, or running
 on one offline for 3 min, or failed because its runner went away ("lost communication", "shutdown
 signal", read as soon as the job ends), gets its run cancelled and, once stopped, rerun whole (`gh run rerun`): the rerun plans on
