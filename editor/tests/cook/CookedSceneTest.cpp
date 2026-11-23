@@ -706,9 +706,10 @@ TEST(CookedScene, ReadsANewerMinorAndRefusesAnotherMajor) {
         out[7] = static_cast<uint8_t>(minor >> 8);
         return out;
     };
-    const std::string newerVersion = std::to_string(FORMAT_MAJOR) + "." + std::to_string(FORMAT_MINOR + 1);
+    // newer than any content this player reads (CONTENT_MINOR: the cooked files' layout and what game.json adds)
+    const std::string newerVersion = std::to_string(FORMAT_MAJOR) + "." + std::to_string(CONTENT_MINOR + 1);
     const std::string warning = "content " + newerVersion + " was made by a newer editor; features newer than " + contentFormatVersion() + " are skipped";
-    const std::vector<uint8_t> newer = withVersion(FORMAT_MAJOR, static_cast<uint16_t>(FORMAT_MINOR + 1));
+    const std::vector<uint8_t> newer = withVersion(FORMAT_MAJOR, static_cast<uint16_t>(CONTENT_MINOR + 1));
     std::string error;
     for (int i = 0; i < 2; i++) {
         DecodedScene loaded = emptyScene();
@@ -724,11 +725,10 @@ TEST(CookedScene, ReadsANewerMinorAndRefusesAnotherMajor) {
 }
 
 // What a 1.4 editor cooked loads: the file as its writer laid it out (1.5's without the Water Wakes
-// values that end the settings record, the record's length and the string table offset with them).
-// 1.6 added game.json's buildProfile and defines, no scene bytes: its scenes are laid out as 1.5's.
+// values that end the settings record, the record's length and the string table offset with them)
 TEST(CookedScene, ReadsAnOlderMinorsContent) {
     using namespace jasperengine::cook;
-    ASSERT_EQ(FORMAT_MINOR, 6) << "the 1.4 layout below is 1.6's without its Water Wakes values: cut the newer minor's values too";
+    ASSERT_EQ(FORMAT_MINOR, 5) << "the 1.4 layout below is 1.5's without its Water Wakes values: cut the newer minor's values too";
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
     scene->setPlanarReflectionFarClip(60.0f);

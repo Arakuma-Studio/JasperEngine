@@ -106,10 +106,15 @@ TEST(ContentManifest, ReadsContentFormat) {
     EXPECT_FALSE(cook::readsContentFormat("1.5", "2.0"));
     EXPECT_FALSE(cook::readsContentFormat("2.0", "1.5"));
     for (const char* bad : {"", "1", "1.", ".5", "1.x", "v1.5", "1.5.0", "-1.5"}) EXPECT_FALSE(cook::readsContentFormat("1.5", bad)) << bad;
-    // minor 6 (Build Profiles): game.json's buildProfile and defines; a runtime of minor 5 would
-    // ignore the defines and run a demo as the full game, so the editor does not use one
-    EXPECT_TRUE(cook::readsContentFormat(cook::contentFormatVersion(), "1.6"));
-    EXPECT_FALSE(cook::readsContentFormat("1.5", cook::contentFormatVersion()));
+    // Build Profiles: game.json's buildProfile and defines need a runtime of BUILD_PROFILE_MINOR (one
+    // of the cooked files' minor would ignore the defines and run a demo as the full game); a build
+    // without a profile needs only the cooked files' minor, so older runtimes still serve it
+    const std::string cooked = std::to_string(cook::FORMAT_MAJOR) + "." + std::to_string(cook::FORMAT_MINOR);
+    EXPECT_EQ(cook::buildContentFormatVersion(false), cooked);
+    EXPECT_EQ(cook::buildContentFormatVersion(true), std::to_string(cook::FORMAT_MAJOR) + "." + std::to_string(cook::BUILD_PROFILE_MINOR));
+    EXPECT_TRUE(cook::readsContentFormat(cook::contentFormatVersion(), cook::buildContentFormatVersion(true)));
+    EXPECT_TRUE(cook::readsContentFormat(cooked, cook::buildContentFormatVersion(false)));
+    EXPECT_FALSE(cook::readsContentFormat(cooked, cook::buildContentFormatVersion(true)));
 }
 
 // game.json's side of the same (R17): the profile and its defines, absent without a profile
@@ -149,7 +154,7 @@ TEST(ContentManifest, ReadsANewerMinorAndRefusesAnotherMajor) {
     present() = {"scenes/3.jscn", "scenes/4.jscn", "prefabs/2.jpfb", "assets/shaders/MESH_x_glsl410.sdat", "content.jpak"};
     const ContentAccess access{&exists, &noSha};
     ContentManifest m = sample();
-    const std::string newer = std::to_string(cook::FORMAT_MAJOR) + "." + std::to_string(cook::FORMAT_MINOR + 1);
+    const std::string newer = std::to_string(cook::FORMAT_MAJOR) + "." + std::to_string(cook::CONTENT_MINOR + 1);
     m.contentFormatVersion = newer;
     std::vector<std::string> problems;
     EXPECT_TRUE(checkContent(m, "linux-x64-glcore-release", access, false, problems)) << problems.front();

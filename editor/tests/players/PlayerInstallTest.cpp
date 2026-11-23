@@ -140,6 +140,8 @@ TEST(PlayerInstall, AnotherEditorVersionIsNotUsed) {
 // runtime of a newer minor is
 TEST(PlayerInstall, APlayerOfAnOlderContentMinorIsNotUsed) {
     static_assert(jasperengine::cook::FORMAT_MINOR > 0, "an older minor exists");
+    // what a build without a Build Profile writes: the cooked files' format
+    const std::string writes = jasperengine::cook::buildContentFormatVersion(false);
     TestTempDir dir("players");
     const std::vector<PlayerArchiveHash> none;
     std::string installed, error;
@@ -150,7 +152,7 @@ TEST(PlayerInstall, APlayerOfAnOlderContentMinorIsNotUsed) {
     old.contentFormatVersion = major + std::to_string(jasperengine::cook::FORMAT_MINOR - 1);
     ASSERT_TRUE(PlayerRuntimes::install(writeArchive(dir / "old.zip", BINARY, old), dir / "old", installed, warnings, error, &none)) << error;
     EXPECT_FALSE(PlayerRuntimes::find(ID, dir / "old", false, error).has_value());
-    EXPECT_NE(error.find("reads content format " + old.contentFormatVersion + ", older than the " + jasperengine::cook::contentFormatVersion() +
+    EXPECT_NE(error.find("reads content format " + old.contentFormatVersion + ", older than the " + writes +
                          " this editor writes: update the player runtime"), std::string::npos) << error;
     EXPECT_TRUE(PlayerRuntimes::find(ID, dir / "old", true, error).has_value()) << error;
 
@@ -174,9 +176,28 @@ TEST(PlayerInstall, APlayerOfTheContentBeforeBuildProfilesServesABuildWithoutOne
     std::string installed, error;
     std::vector<std::string> warnings;
     PlayerInfo before = info(sha256Hex(BINARY));
-    before.contentFormatVersion = "1.5";
+    before.contentFormatVersion = jasperengine::cook::buildContentFormatVersion(false);
+    ASSERT_EQ(before.contentFormatVersion, "1.5");
     ASSERT_TRUE(PlayerRuntimes::install(writeArchive(dir / "before.zip", BINARY, before), dir / "before", installed, warnings, error, &none)) << error;
     EXPECT_TRUE(PlayerRuntimes::find(ID, dir / "before", false, error).has_value()) << error;
+    EXPECT_EQ(PlayerRuntimes::findVariants(ID, dir / "before", false).size(), 1u);
+
+    // a build of a Build Profile needs game.json's profile and defines read: the same runtime is
+    // refused, --allow-player-mismatch too (it would run a demo as the full game), naming the fix
+    const std::string profile = jasperengine::cook::buildContentFormatVersion(true);
+    for (bool allowMismatch : {false, true}) {
+        EXPECT_FALSE(PlayerRuntimes::find(ID, dir / "before", allowMismatch, error, profile).has_value());
+        EXPECT_NE(error.find("reads content format 1.5, older than the " + profile +
+                             " a Build Profile's build needs (its game.json's profile and defines): update the player runtime"),
+                  std::string::npos)
+            << error;
+        EXPECT_TRUE(PlayerRuntimes::findVariants(ID, dir / "before", allowMismatch, profile).empty());
+    }
+    // and a runtime of this editor serves both
+    PlayerInfo current = info(sha256Hex(BINARY));
+    ASSERT_TRUE(PlayerRuntimes::install(writeArchive(dir / "current.zip", BINARY, current), dir / "current", installed, warnings, error, &none)) << error;
+    EXPECT_TRUE(PlayerRuntimes::find(ID, dir / "current", false, error, profile).has_value()) << error;
+    EXPECT_TRUE(PlayerRuntimes::find(ID, dir / "current", false, error).has_value()) << error;
 }
 
 // A nightly (nightly-YYYYMMDD, .github/workflows/build-release.yml) is a release like a stable
