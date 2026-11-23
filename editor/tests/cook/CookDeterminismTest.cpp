@@ -57,6 +57,13 @@ namespace {
         jasperengine::cook::writeComponent(w, table, storage.get(), ctx);
         std::vector<uint8_t> out = w.data();
         for (const std::string& text : strings.strings()) out.insert(out.end(), text.begin(), text.end());
+        // a Camera's framebuffer is the RenderSystem's to free when the component goes from a
+        // scene, not its destructor's: this one was never in a scene
+        if (desc.type == ComponentType::CameraComponent) {
+            CameraComponent* camera = static_cast<CameraComponent*>(static_cast<void*>(storage.get()));
+            delete camera->framebuffer;
+            camera->framebuffer = nullptr;
+        }
         desc.body.ops->destroy(storage.get());
         return out;
     }
