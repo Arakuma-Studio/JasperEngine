@@ -88,10 +88,6 @@ namespace luabridgeselftest {
         }
     };
 
-}
-
-using namespace luabridgeselftest;
-
 TEST(LuaBridgeSelf, NilSelfRaisesInMemberFunctions) {
     LuaState state;
     for (const char* code : {"return Point.length(nil)", "Point.scale(nil, 2)", "return Point.dot(nil, Point(1, 2))",
@@ -181,3 +177,4 @@ TEST(LuaBridgeSelf, EngineMembersRaiseOnNil) {
     }
 }
 
+}

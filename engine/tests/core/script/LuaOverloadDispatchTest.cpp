@@ -491,10 +491,6 @@ emit('deep args => ' .. show(pcall(function() return m:setU('a', 1.0, 2.0, 3.0, 
         return std::string(64, 'u');
     }
 
-}
-
-using namespace luaoverloaddispatch;
-
 TEST(LuaOverloadDispatch, CallsMatchStockLuaBridge) {
     LuaState state;
     ASSERT_EQ(state.run(kBehaviour), "");
@@ -590,4 +586,6 @@ TEST(LuaOverloadDispatch, NoLeakWhenABodyThrows) {
     EXPECT_EQ(TrackedText::live, 0);
     // a longjmp out of the catch block left the exception on the runtime's caught-exception stack
     EXPECT_EQ(std::current_exception(), nullptr);
+}
+
 }

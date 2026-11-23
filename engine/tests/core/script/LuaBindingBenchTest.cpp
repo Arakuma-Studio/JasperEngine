@@ -119,7 +119,7 @@ namespace {
         auto timed = [&](int iterations){
             const std::string code = setup + "\nfor i = 1, " + std::to_string(iterations) + " do\n" + body + "\nend\n";
             const auto start = std::chrono::steady_clock::now();
-            const std::string error = runLua(L, code);
+            const std::string error = luaBindingBenchRunLua(L, code);
             EXPECT_EQ(error, "") << body;
             return std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / iterations;
         };
@@ -255,5 +255,5 @@ TEST(LuaBindingBench, OverloadMisses){
     }
     lua_pushnil(L);
     lua_setglobal(L, "benchScene");
-    runLua(L, "collectgarbage()");
+    luaBindingBenchRunLua(L, "collectgarbage()");
 }
