@@ -42,7 +42,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from plan_lanes import OVERFLOW, STATE_BRANCH  # noqa: E402
+from plan_lanes import BLACKSMITH, OVERFLOW, STATE_BRANCH  # noqa: E402
 
 REPO = "Arakuma-Studio/JasperEngine"
 # GitHub Team: 60 concurrent hosted jobs, 5 of them macOS
@@ -73,6 +73,9 @@ def os_of(labels: list[str]) -> tuple[str, str]:
     for label in labels:
         if label in OVERFLOW:
             return OVERFLOW[label][0], label
+        for os_, paid in BLACKSMITH.items():
+            if label == paid:
+                return os_, label
     for label in labels:
         for prefix, name in (("ubuntu-", "linux"), ("windows-", "windows"), ("macos-", "macos")):
             if label.startswith(prefix):
@@ -122,6 +125,18 @@ def compute_state(runners: list[dict], jobs: list[dict], probes: dict, now: floa
     return {"t": int(now), "os": hosted, "runners": out}
 
 
+BLACKSMITH_PAUSE = 6 * 3600   # after a job waited there: the plans route nothing to Blacksmith this long
+
+
+def paused(memory: dict, now: float) -> dict:
+    """The state's blacksmith entry: ok, or paused (and why) for BLACKSMITH_PAUSE after a job waited there."""
+    until = memory.get("blacksmith_paused_until", 0)
+    if now < until:
+        return {"ok": False, "why": f"a job waited there at {memory.get('blacksmith_paused_why', '?')}; until "
+                                    f"{datetime.fromtimestamp(until, timezone.utc).strftime('%H:%M')} UTC"}
+    return {"ok": True}
+
+
 PLANNER_VARIABLE = "SELF_HOSTED_PLANNER"
 PLANNER = "je-linux"
 
@@ -168,6 +183,8 @@ def stuck(run: dict, jobs: list[dict], runners: dict, offline_since: dict, now: 
         status = job.get("status")
         if status in ("queued", "waiting", "pending", "requested") and not online:
             waited = now - (epoch(job.get("created_at")) or now)
+            if waited >= QUEUED_LIMIT and label in BLACKSMITH.values():
+                return f"{job.get('name')} queued {waited / 60:.0f} min for {label}: Blacksmith took no job (its spend limit?)"
             if waited >= QUEUED_LIMIT:
                 return f"{job.get('name')} queued {waited / 60:.0f} min for {label}, which is offline"
         if status == "in_progress" and not online and job.get("runner_name") == label:
@@ -463,6 +480,7 @@ def main(argv: list[str]) -> int:
     dog = Watchdog(gh, memory, now, log, args.dry_run)
     # the reruns of runs moved off a runner that went away plan on GitHub's runners (plan_lanes.route)
     state["hosted_only"] = dog.held()
+    state["blacksmith"] = paused(memory, now)
     body = json.dumps(state, separators=(",", ":"), sort_keys=True)
     if args.dry_run:
         print(f"{STATE_BRANCH}: {body}")
@@ -511,6 +529,10 @@ def main(argv: list[str]) -> int:
             continue
         if why:
             dog.handle(run, why, finished=False)
+            if "Blacksmith took no job" in why and now >= memory.get("blacksmith_paused_until", 0):
+                memory["blacksmith_paused_until"] = now + BLACKSMITH_PAUSE
+                memory["blacksmith_paused_why"] = stamp
+                log(f"Blacksmith paused for {BLACKSMITH_PAUSE // 3600} h: {why}")
     # a trusted run waiting for a hosted runner while an overflow runner of its OS is idle: rerun, so its
     # plan routes it there (the merge queue's first: it is the gate). One run per idle runner a minute
     taken: set[str] = set()

@@ -608,40 +608,52 @@ class Routing(unittest.TestCase):
                                              planner="GitHub Actions 1000007164")[0]), {})
         self.assertTrue(route(state(je_mac={"busy": True}))[0]["linux"] == "je-linux")
 
-    def test_the_paid_tier_takes_macos_only_when_github_and_je_mac_cannot(self):
-        mac = {"macos": "macos", "ios": "macos", "linux": "linux"}
-        # je-mac idle: it takes both, Blacksmith nothing
-        runs_on, notes = route(state(), trigger="merge_group", jobs=mac, blacksmith="")
-        self.assertEqual(overflowed(runs_on), {"macos": "je-mac", "ios": "je-mac", "linux": "je-linux"})
-        # je-mac busy, offline, unfit or off, hosted saturated with 3 waiting: Blacksmith
-        for st, disabled in ((state(je_mac={"busy": True}), ""), (state(je_mac={"online": False}), ""),
-                             (state(je_mac={"fit": False}), ""), (state(), "je-mac"), (state(), "all")):
-            runs_on, notes = route(st, trigger="merge_group", jobs=mac, disabled=disabled, blacksmith="")
-            self.assertEqual((runs_on["macos"], runs_on["ios"]), (pl.BLACKSMITH, pl.BLACKSMITH), (st["runners"]["je-mac"], disabled))
+    def test_the_paid_tier_takes_what_github_and_the_users_machines_cannot(self):
+        BM, BL = pl.BLACKSMITH["macos"], pl.BLACKSMITH["linux"]
+        jobs = {"macos": "macos", "ios": "macos", "linux": "linux", "web": "linux", "windows-editor": "windows"}
+
+        def deep(**runners):
+            st = state(**runners)
+            st["os"]["linux"]["queued"] = pl.BLACKSMITH_MIN_QUEUED["linux"]
+            return st
+        # the user's machines idle: they take theirs, Blacksmith the Linux job je-linux has no room for
+        runs_on, notes = route(deep(), trigger="merge_group", jobs=jobs, blacksmith="")
+        self.assertEqual(overflowed(runs_on), {"macos": "je-mac", "ios": "je-mac", "linux": "je-linux", "web": BL})
+        self.assertEqual(runs_on["windows-editor"], "windows-latest")      # no Windows tier
+        # je-mac busy, offline, unfit or off: macOS there too
+        for st, disabled in ((deep(je_mac={"busy": True}), ""), (deep(je_mac={"online": False}), ""),
+                             (deep(je_mac={"fit": False}), ""), (deep(), "je-mac"), (deep(), "all")):
+            runs_on, notes = route(st, trigger="merge_group", jobs=jobs, disabled=disabled, blacksmith="")
+            self.assertEqual((runs_on["macos"], runs_on["ios"]), (BM, BM), (st["runners"]["je-mac"], disabled))
             self.assertTrue(any("the paid tier" in n for n in notes), notes)
-        busy = state(je_mac={"busy": True})
-        # the backlog does not warrant it: fewer waiting, or hosted not saturated
-        thin = state(je_mac={"busy": True})
-        thin["os"]["macos"]["queued"] = pl.BLACKSMITH_MIN_QUEUED - 1
-        for st in (thin, state(saturated=(), je_mac={"busy": True})):
-            runs_on, notes = route(st, trigger="merge_group", jobs=mac, blacksmith="")
-            self.assertEqual(runs_on["macos"], "macos-latest")
+        busy = deep(je_mac={"busy": True}, je_linux={"busy": True})
+        self.assertEqual(overflowed(route(busy, trigger="push", jobs=jobs, blacksmith="")[0]),
+                         {"macos": BM, "ios": BM, "linux": BL, "web": BL})
+        # the backlog does not warrant it: fewer waiting than its OS's minimum, or hosted not saturated
+        thin = deep(je_mac={"busy": True}, je_linux={"busy": True})
+        thin["os"]["macos"]["queued"] = pl.BLACKSMITH_MIN_QUEUED["macos"] - 1
+        thin["os"]["linux"]["queued"] = pl.BLACKSMITH_MIN_QUEUED["linux"] - 1
+        for st in (thin, state(saturated=(), je_mac={"busy": True}, je_linux={"busy": True})):
+            runs_on, notes = route(st, trigger="merge_group", jobs=jobs, blacksmith="")
+            self.assertEqual(overflowed(runs_on), {})
             self.assertTrue(any("not needed" in n for n in notes), notes)
-        # the kill switch, a fork, a rerun, a stale state: never
-        for st, kw in ((busy, {"blacksmith": "off"}), (busy, {"blacksmith": "OFF"}),
-                       (busy, {"head": "someone/JasperEngine", "trigger": "pull_request"}),
-                       (dict(busy, hosted_only=["42"]), {"attempt": 2})):
-            args = {**dict(trigger="merge_group", jobs=mac, blacksmith=""), **kw}
-            self.assertNotIn(pl.BLACKSMITH, route(st, **args)[0].values(), kw)
-        self.assertNotIn(pl.BLACKSMITH, route(dict(busy, t=NOW - 3600), trigger="merge_group", jobs=mac, blacksmith="")[0].values())
-        # never a job of another OS
-        self.assertEqual(route(busy, trigger="merge_group", jobs={"linux": "linux", "windows-editor": "windows"}, blacksmith="")[0],
-                         {"linux": "je-linux", "windows-editor": "windows-latest"})
-        # a dispatch may force it, for a macOS job only
-        force, bad = pl.parse_force(f"macos={pl.BLACKSMITH} linux={pl.BLACKSMITH}")
+        # never: the kill switch, a pull request (its own repository's too) or a dispatch, a fork, a held
+        # rerun, a stale state, or while the dispatcher has it paused (a job waited there: the spend limit)
+        for st, kw in ((busy, {"blacksmith": "off"}), (busy, {"blacksmith": "OFF"}), (busy, {"trigger": "pull_request"}),
+                       (busy, {"trigger": "workflow_dispatch"}), (busy, {"head": "someone/JasperEngine", "trigger": "pull_request"}),
+                       (dict(busy, hosted_only=["42"]), {"attempt": 2}), (dict(busy, t=NOW - 3600), {}),
+                       (dict(busy, blacksmith={"ok": False, "why": "a job waited 10 min"}), {})):
+            args = {**dict(trigger="merge_group", jobs=jobs, blacksmith=""), **kw}
+            runs_on, notes = route(st, **args)
+            self.assertFalse(set(runs_on.values()) & set(pl.BLACKSMITH.values()), kw)
+        self.assertTrue(any("paused (a job waited 10 min)" in n for n in
+                            route(dict(busy, blacksmith={"ok": False, "why": "a job waited 10 min"}), trigger="merge_group",
+                                  jobs=jobs, blacksmith="")[1]))
+        # a dispatch may force it, a job of its OS only
+        force, bad = pl.parse_force(f"macos={BM} linux={BL} web={BM}")
         self.assertEqual(bad, [])
-        runs_on, notes = route(None, trigger="workflow_dispatch", jobs=mac, force=force)
-        self.assertEqual((runs_on["macos"], runs_on["linux"]), (pl.BLACKSMITH, "ubuntu-latest"))
+        runs_on, notes = route(None, trigger="workflow_dispatch", jobs=jobs, force=force)
+        self.assertEqual((runs_on["macos"], runs_on["linux"], runs_on["web"]), (BM, BL, "ubuntu-latest"))
 
     def test_a_stale_or_missing_state_means_no_overflow_runner(self):
         for st, why in ((None, "no runner state"), ({}, "no runner state"), ("garbage", "no runner state"),

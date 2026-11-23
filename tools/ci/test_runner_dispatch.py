@@ -115,6 +115,22 @@ class Stuck(unittest.TestCase):
         # gone (unregistered)
         self.assertIn("offline", rd.stuck({}, [job("je-win", ago=3600)], {}, {}, NOW))
 
+    def test_a_job_blacksmith_does_not_take_goes_hosted_and_pauses_it(self):
+        # (past the spend limit Blacksmith takes no job: it would wait forever)
+        label = rd.BLACKSMITH["linux"]
+        self.assertEqual(rd.os_of([label]), ("linux", label))
+        why = rd.stuck({}, [job(label, ago=rd.QUEUED_LIMIT, name="linux")], {}, {}, NOW)
+        self.assertIn("Blacksmith took no job", why)
+        self.assertEqual(rd.stuck({}, [job(label, ago=60, name="linux")], {}, {}, NOW), "")
+        # not a hosted job: it neither saturates nor counts
+        s = rd.compute_state(RUNNERS, [job(label, ago=600)], {}, NOW)
+        self.assertEqual(s["os"]["linux"]["queued"], 0)
+        self.assertEqual(rd.paused({}, NOW), {"ok": True})
+        p = rd.paused({"blacksmith_paused_until": NOW + 60, "blacksmith_paused_why": "12:00"}, NOW)
+        self.assertFalse(p["ok"])
+        self.assertIn("12:00", p["why"])
+        self.assertEqual(rd.paused({"blacksmith_paused_until": NOW - 1}, NOW), {"ok": True})
+
     def test_running_on_a_runner_that_went_away(self):
         j = job("je-mac", "in_progress", runner="je-mac")
         offline = {"je-mac": {"online": False}}

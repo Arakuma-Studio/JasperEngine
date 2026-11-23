@@ -813,15 +813,19 @@ OVERFLOW = {
                            "android", "web", "unit-core", "lint")),
     "je-win": ("windows", ("windows-engine-d3d11", "windows-engine-glcore")),
 }
-# the paid tier, last: Blacksmith's macOS (its GitHub App's org runner group "Blacksmith scale sets -
-# blacksmith-6vcpu-macos-26", open to public repositories; macOS 26 with Xcode 26 selected, $0.08 a minute).
-# A macOS job goes there only when the hosted runners are saturated with at least BLACKSMITH_MIN_QUEUED
-# macOS jobs waiting and je-mac cannot take it (busy, offline, unfit or off); BLACKSMITH_VARIABLE=off stops it
-BLACKSMITH = "blacksmith-6vcpu-macos-26"
-BLACKSMITH_MIN_QUEUED = 3
+# the paid tier, last: Blacksmith (its GitHub App is on the organization; its runner groups are open to
+# public repositories). Its jobs do not count toward GitHub's 60 concurrent jobs, so Linux there frees
+# hosted slots for the queue's macOS jobs. Linux: 4 vCPU as ubuntu-latest, $0.008 a minute; macOS: an M4,
+# macOS 26 with Xcode 26.6 (run 45229221354), $0.08 a minute. A job of the merge queue or a push to main
+# (the critical path; BLACKSMITH_EVENTS) goes there only when the hosted runners of its OS are saturated
+# with at least BLACKSMITH_MIN_QUEUED of its OS waiting, and no machine of the user's takes it; the state's
+# blacksmith.ok false (the dispatcher saw a job wait there: the spend limit) or BLACKSMITH_VARIABLE=off stop it
+BLACKSMITH = {"linux": "blacksmith-4vcpu-ubuntu-2404", "macos": "blacksmith-6vcpu-macos-26"}
+BLACKSMITH_MIN_QUEUED = {"linux": 10, "macos": 3}
+BLACKSMITH_EVENTS = ("merge_group", "push")
 BLACKSMITH_VARIABLE = "BLACKSMITH_OVERFLOW"
 # the labels a self_hosted dispatch may force, by OS
-FORCEABLE = {**{label: os_ for label, (os_, _order) in OVERFLOW.items()}, BLACKSMITH: "macos"}
+FORCEABLE = {**{label: os_ for label, (os_, _order) in OVERFLOW.items()}, **{label: os_ for os_, label in BLACKSMITH.items()}}
 # the jobs of one plan a runner takes (it runs them one after the other): the Mac builds ios in 12 min
 # (run 45104498209), so the plan's macos and ios both beat a saturated hosted queue there
 TAKES = {"je-mac": 2}
@@ -958,19 +962,27 @@ def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str,
                 runs_on[job] = label
                 notes.append(f"{job} on {label}: hosted {os_} {'saturated' if hosted.get('saturated') else 'has a job waiting'} "
                              f"({hosted.get('running', 0)} running, {hosted.get('queued', 0)} queued), {label} idle")
-    # the paid tier: the macOS jobs neither GitHub nor je-mac can take soon
-    left = [j for j in OVERFLOW["je-mac"][1] if j in jobs and runs_on[j] == HOSTED["macos"]]
-    hosted = (state.get("os") or {}).get("macos") or {}
-    if left and blacksmith.strip().lower() == "off":
-        notes.append(f"{BLACKSMITH}: off ({BLACKSMITH_VARIABLE})")
-    elif left and not (hosted.get("saturated") and hosted.get("queued", 0) >= BLACKSMITH_MIN_QUEUED):
-        notes.append(f"{BLACKSMITH}: not needed ({hosted.get('queued', 0)} hosted macOS jobs waiting, it takes from "
-                     f"{BLACKSMITH_MIN_QUEUED} with hosted saturated)")
-    elif left:
-        for job in left:
-            runs_on[job] = BLACKSMITH
-            notes.append(f"{job} on {BLACKSMITH}: hosted macOS saturated ({hosted.get('queued', 0)} waiting), je-mac "
-                         "cannot take it (the paid tier)")
+    # the paid tier: the jobs neither GitHub nor the user's machines take soon
+    paid = state.get("blacksmith") or {}
+    for os_, label in BLACKSMITH.items():
+        left = [j for j, o in jobs.items() if o == os_ and runs_on[j] == HOSTED[os_]]
+        hosted = (state.get("os") or {}).get(os_) or {}
+        if not left:
+            continue
+        if blacksmith.strip().lower() == "off":
+            notes.append(f"{label}: off ({BLACKSMITH_VARIABLE})")
+        elif trigger not in BLACKSMITH_EVENTS:
+            notes.append(f"{label}: the merge queue's and main's only (a {trigger} run)")
+        elif paid.get("ok") is False:
+            notes.append(f"{label}: paused ({paid.get('why', 'a job waited there')})")
+        elif not (hosted.get("saturated") and hosted.get("queued", 0) >= BLACKSMITH_MIN_QUEUED[os_]):
+            notes.append(f"{label}: not needed ({hosted.get('queued', 0)} hosted {os_} jobs waiting, it takes from "
+                         f"{BLACKSMITH_MIN_QUEUED[os_]} with hosted saturated)")
+        else:
+            for job in left:
+                runs_on[job] = label
+            notes.append(f"{', '.join(left)} on {label}: hosted {os_} saturated ({hosted.get('queued', 0)} waiting), "
+                         "no machine of the user's takes them (the paid tier)")
     return runs_on, notes
 
 
