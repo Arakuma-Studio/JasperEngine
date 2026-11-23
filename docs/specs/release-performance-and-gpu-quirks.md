@@ -135,8 +135,8 @@ be copied**; nothing here depends on blocks, worlds or game modes.
   R12) and stops with `setSampling(false[, reason])`. Off, the only cost is one branch in
   `FrameTimes::beginFrame`.
 - **R2 Frames.** While sampling, each completed `FrameTimes` sample adds `frameMs` and `cpuMs` to a
-  pending second (a fixed array of 512 entries; past 512 frames in a second they go straight to
-  the histogram). Editor frames with `FLAG_HOST_WORK` are skipped one by one.
+  pending second (fixed histograms of the R4 bins, so a second of any frame rate is committed or
+  discarded whole). Editor frames with `FLAG_HOST_WORK` are skipped one by one.
 - **R3 Seconds.** Once per wall second (measured from the `steady_clock` value `beginFrame` already
   read) the pending second is **committed** to the window or **discarded**. Discarded when any of:
   the app was paused or hidden during it; it lies within 2 s after a resume, a focus regain or the
@@ -517,3 +517,9 @@ NVIDIA lane, `tools/mcp/gpu_lane.json` class `gpu`). The web gate extends a gate
    20 ms of sleep) read 14.06 ms a frame on a CI runner (run 45035957551), not R5's +-0.3 ms.
    `ThreadCpuClock.ResolvesAFramesWork` holds the clock to a 3 ms spin, and AC5's limit is 6 ms on
    every platform.
+18. **Pending second (R2).** R2 held up to 512 frames of a second in a list and sent the rest
+   straight to the window, so past 512 frames a second (menus and loading screens with vsync off)
+   a second later discarded as paused, loading or excluded still added its frames, and `fpsAvg`
+   counted frames of seconds `seconds` left out. The pending second is now a pair of histograms of
+   the R4 bins (1.6 KB), committed or discarded whole at any rate
+   (`PerfSamplerTest.FastSecondsAreExcludedWhole`); the per-frame cost is two counter increments.
