@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <string>
@@ -429,8 +430,11 @@ TEST(RenderLayerCost, CacheMissesOnEveryScopeInput){
     LayerCacheOn on;
     RenderTestContext test(160, 90, 160, 90, 4);
     ASSERT_TRUE(test.isValid());
+    // RmlUi's contract: a compiled geometry's vertices stay valid until it is released (the
+    // renderer reads them until the frame's end), so the meshes outlive their handles
+    std::deque<Rml::Mesh> meshes;
     auto compileQuad = [&](Rml::ColourbPremultiplied colour){
-        Rml::Mesh mesh;
+        Rml::Mesh& mesh = meshes.emplace_back();
         Rml::MeshUtilities::GenerateQuad(mesh, Rml::Vector2f(0, 0), Rml::Vector2f(30, 20), colour);
         return test.renderer.CompileGeometry(mesh.vertices, mesh.indices);
     };
