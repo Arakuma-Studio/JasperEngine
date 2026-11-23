@@ -44,6 +44,13 @@ fetch that fails exits 10 naming the URL. From the editor, `run_build {input_scr
 headless: true}` runs the last desktop build once per size and returns the shots, which land in
 `Recordings/Input/<file stem>/player/<WxH>/`.
 
+Input scripts are an engine module (`inputscripts`): Development Builds and the full player always
+have them, and a release build has them when the project's scripts use `InputRecording` or
+`InputReplay` (an attract mode). A release build of a project that uses neither leaves the
+interpreter out: its `--input-script` logs `[input] failed` ("this build has no input scripts") and
+exits 10, and those two Lua names do nothing (one warning). For store screenshots or automation,
+run a Development Build.
+
 ## Record Input in the editor
 
 The red-ringed **Record Input** button sits on the main toolbar right of Play, Pause, Step and the

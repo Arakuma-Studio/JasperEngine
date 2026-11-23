@@ -56,7 +56,7 @@ namespace {
 
     // the modules a dynamic access or C++ code can reach: every one the detection decides
     const std::vector<std::string>& detectedModules() {
-        static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "noise", "voxel", "terrainworld", "terrainedit", "dialogue"};
+        static const std::vector<std::string> modules = {"htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "noise", "voxel", "terrainworld", "terrainedit", "dialogue", "inputscripts"};
         return modules;
     }
 

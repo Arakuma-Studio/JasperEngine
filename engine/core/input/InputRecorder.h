@@ -17,6 +17,7 @@
 
 #include "Export.h"
 #include "input/InputScript.h"
+#include "input/InputScriptSwitch.h"
 
 #include <atomic>
 #include <cstdint>
@@ -109,7 +110,12 @@ namespace jasperengine::input {
 
     class JASPERENGINE_API InputRecorder {
     public:
+#if JASPERENGINE_INPUT_SCRIPTS_ENABLED
         static bool isActive() { return active.load(std::memory_order_relaxed) != 0; }
+#else
+        // without the module nothing records or gates: the entry points' test folds away
+        static constexpr bool isActive() { return false; }
+#endif
 
         // starts recording from the next event; false + error while one runs
         static bool begin(const RecordOptions& options, std::string& error);
@@ -146,8 +152,10 @@ namespace jasperengine::input {
         static uint64_t addRealInputGate(bool block, std::function<void()> onRealPress);
         static void removeRealInputGate(uint64_t id);
 
+#if JASPERENGINE_INPUT_SCRIPTS_ENABLED
     private:
         static std::atomic<int> active;     // bit 1: recording, bit 2: a real-input gate
+#endif
     };
 
     // The checkpoint of the state now (R17): the hash of the running scenes and the values, the

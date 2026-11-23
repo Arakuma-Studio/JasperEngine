@@ -5126,6 +5126,9 @@
 		4A534E47C8038C88571DF3CC /* SaveValue.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473A1A1625794C3BA7 /* SaveValue.h */; };
 		4A534E47A738013D78827E06 /* CancellableEvent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4718BD5F7E76CC0509 /* CancellableEvent.h */; };
 		4A534E470B49733052D991A0 /* SceneConstructors.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47ED1050B5CDC423D4 /* SceneConstructors.h */; };
+		4A534E530BC81AFBAB65FEDC /* InputScriptsOff.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53BAC9D95819E5CAFD /* InputScriptsOff.cpp */; };
+		4A534E5391457B8F414DF180 /* InputScriptsOff.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53BAC9D95819E5CAFD /* InputScriptsOff.cpp */; };
+		4A534E47378DC06EC1736479 /* InputScriptSwitch.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4792E95617008D0465 /* InputScriptSwitch.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9831,6 +9834,8 @@
 		4A534E473A1A1625794C3BA7 /* SaveValue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SaveValue.h; sourceTree = "<group>"; };
 		4A534E4718BD5F7E76CC0509 /* CancellableEvent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CancellableEvent.h; sourceTree = "<group>"; };
 		4A534E47ED1050B5CDC423D4 /* SceneConstructors.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SceneConstructors.h; sourceTree = "<group>"; };
+		4A534E53BAC9D95819E5CAFD /* InputScriptsOff.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputScriptsOff.cpp; sourceTree = "<group>"; };
+		4A534E4792E95617008D0465 /* InputScriptSwitch.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputScriptSwitch.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -11600,6 +11605,8 @@
 				4A534E477A358BCDEE20A331 /* TextInputSync.cpp */,
 				4A534E471E3A49042EFB6FBC /* TextEntry.h */,
 				4A534E4765F22B9DE0076AEB /* TextInputSync.h */,
+				4A534E53BAC9D95819E5CAFD /* InputScriptsOff.cpp */,
+				4A534E4792E95617008D0465 /* InputScriptSwitch.h */,
 			);
 			path = input;
 			sourceTree = "<group>";
@@ -17395,6 +17402,7 @@
 				4A534E47C8038C88571DF3CC /* SaveValue.h in Headers */,
 				4A534E47A738013D78827E06 /* CancellableEvent.h in Headers */,
 				4A534E470B49733052D991A0 /* SceneConstructors.h in Headers */,
+				4A534E47378DC06EC1736479 /* InputScriptSwitch.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20146,6 +20154,7 @@
 				4A534E53507EFF084157E0B0 /* PhysicsQueryDebug.cpp in Sources */,
 				4A534E534000F52E30631F8D /* PhysicsQueryReference.cpp in Sources */,
 				4A534E53AB7BAEFA1B69AD21 /* PhysicsQueryLua.cpp in Sources */,
+				4A534E5391457B8F414DF180 /* InputScriptsOff.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -21188,6 +21197,7 @@
 				4A534E53787F595627F6B486 /* PhysicsQueryDebug.cpp in Sources */,
 				4A534E53C17A15D3FC2029C7 /* PhysicsQueryReference.cpp in Sources */,
 				4A534E53E523C8F90AE5EF1A /* PhysicsQueryLua.cpp in Sources */,
+				4A534E530BC81AFBAB65FEDC /* InputScriptsOff.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

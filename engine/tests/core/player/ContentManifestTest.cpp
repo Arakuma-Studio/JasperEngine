@@ -199,10 +199,10 @@ TEST(ContentManifest, RefusesContentNeedingAModuleThePlayerLacks) {
     ASSERT_TRUE(ContentManifest::fromJson(json, old, error)) << error;
     EXPECT_FALSE(old.hasModules);
     EXPECT_EQ(missingModules(old, allModules()), std::vector<std::string>{});
-    // T2 added noise, T6 voxel, T4 terrainworld, T1 runtime terrain edits, S81 titleart and dialogue-graphs.md
-    // dialogue, which this lite list leaves out (N11, T4 R55, S81 R51)
-    EXPECT_EQ(missingModules(old, lite),
-              (std::vector<std::string>{"htmlui", "video", "runtimeshaders", "noise", "voxel", "terrainworld", "terrainedit", "titleart", "dialogue"}));
+    // T2 added noise, T6 voxel, T4 terrainworld, T1 runtime terrain edits, S81 titleart, dialogue-graphs.md
+    // dialogue and input scripts, which this lite list leaves out (N11, T4 R55, S81 R51)
+    EXPECT_EQ(missingModules(old, lite), (std::vector<std::string>{"htmlui", "video", "runtimeshaders", "noise", "voxel", "terrainworld",
+                                                                    "terrainedit", "titleart", "dialogue", "inputscripts"}));
     // and a Compile build (no player id) is not asked
     problems.clear();
     EXPECT_TRUE(checkContent(m, "", access, false, problems, &lite));
@@ -241,14 +241,17 @@ TEST(ContentManifest, ContentNeedingTerrainWorldRefusesLite3D) {
 
 // the newest last: T6's Voxel Volumes, T4's Terrain World, then T1's runtime terrain edits
 TEST(PlayerModules, KnowsVoxelTerrainWorldAndTerrainEdits) {
-    // the terrain programme's three, then Title Art's (S81 R51) and dialogue's (dialogue-graphs.md R15), which merged after them
-    ASSERT_GE(allModules().size(), 5u);
-    EXPECT_EQ(allModules()[allModules().size() - 5], "voxel");
-    EXPECT_EQ(allModules()[allModules().size() - 4], "terrainworld");
-    EXPECT_EQ(allModules()[allModules().size() - 3], "terrainedit");
-    EXPECT_EQ(allModules()[allModules().size() - 2], "titleart");
-    EXPECT_EQ(allModules().back(), "dialogue");
+    // the terrain programme's three, then Title Art's (S81 R51), dialogue's (dialogue-graphs.md R15) and
+    // input scripts' (input-recorder-and-input-scripts.md Deviations), which merged after them
+    ASSERT_GE(allModules().size(), 6u);
+    EXPECT_EQ(allModules()[allModules().size() - 6], "voxel");
+    EXPECT_EQ(allModules()[allModules().size() - 5], "terrainworld");
+    EXPECT_EQ(allModules()[allModules().size() - 4], "terrainedit");
+    EXPECT_EQ(allModules()[allModules().size() - 3], "titleart");
+    EXPECT_EQ(allModules()[allModules().size() - 2], "dialogue");
+    EXPECT_EQ(allModules().back(), "inputscripts");
     EXPECT_EQ(moduleDisplayName("dialogue"), "dialogue graphs and the Dialogue Runner");
+    EXPECT_TRUE(isModuleBuilt("inputscripts")) << "the tests' engine has every module";
     EXPECT_EQ(moduleDisplayName("voxel"), "Voxel Volumes");
     EXPECT_EQ(moduleDisplayName("terrainworld"), "Terrain World");
     EXPECT_EQ(moduleDisplayName("terrainedit"), "runtime terrain edits");

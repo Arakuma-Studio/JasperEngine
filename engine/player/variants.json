@@ -9,9 +9,9 @@
         "variants with as many modules, the later one is the smaller (the measurements of the S34 spec, M8)."
     ],
     "schemaVersion": 1,
-    "modules": ["htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise", "voxel", "terrainworld", "terrainedit", "titleart", "dialogue"],
+    "modules": ["htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise", "voxel", "terrainworld", "terrainedit", "titleart", "dialogue", "inputscripts"],
     "variants": [
-        {"name": "full", "suffix": "", "modules": ["htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise", "voxel", "terrainworld", "terrainedit", "titleart", "dialogue"]},
+        {"name": "full", "suffix": "", "modules": ["htmlui", "video", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise", "voxel", "terrainworld", "terrainedit", "titleart", "dialogue", "inputscripts"]},
         {"name": "ui", "suffix": "ui", "modules": ["htmlui", "runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise", "voxel", "terrainworld", "terrainedit", "titleart", "dialogue"]},
         {"name": "core", "suffix": "core", "modules": ["runtimeshaders", "physics3d", "physics2d", "navigation", "soundlayer", "noise", "voxel", "terrainworld", "terrainedit", "titleart", "dialogue"]},
         {"name": "lite3d", "suffix": "lite3d", "modules": ["physics3d", "navigation", "soundlayer", "dialogue"]},
