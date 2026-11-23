@@ -5,7 +5,10 @@
 
 #include "System.h"
 #include "render/FrameReadback.h"
+#include "texture/TexturePrepare.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -163,6 +166,69 @@ static bool readVulkanImage(TextureRender& texture, int width, int height, int b
 }
 #endif
 
+#if defined(SOKOL_GLES3)
+// OpenGL ES and WebGL2 have no glGetTexImage: the texture as a framebuffer, read with the
+// glReadPixels pair ES allows for its kind (RGBA / UNSIGNED_BYTE for 8-bit normalized, RGBA /
+// UNSIGNED_SHORT for EXT_texture_norm16, RGBA / FLOAT for float with EXT_color_buffer_float),
+// then written in the layout asked for, as glGetTexImage converts on GL: `channels` components
+// of `type` a texel
+static bool readGlesTexture(GLuint handle, int width, int height, int channels, GLenum type, std::vector<uint8_t>& bytes){
+    GLint previousFramebuffer = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+    GLuint readFramebuffer = 0;
+    glGenFramebuffers(1, &readFramebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, readFramebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, handle, 0);
+    bool ok = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+    GLint componentType = GL_UNSIGNED_NORMALIZED;
+    GLint redBits = 8;
+    if (ok){
+        glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE, &componentType);
+        glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_FRAMEBUFFER_ATTACHMENT_RED_SIZE, &redBits);
+    }
+    const size_t texels = static_cast<size_t>(width) * height;
+    std::vector<float> rgba(texels * 4);
+    if (ok && componentType == GL_FLOAT){
+        glReadPixels(0, 0, width, height, GL_RGBA, GL_FLOAT, rgba.data());
+    }else if (ok && redBits > 8){
+        std::vector<uint16_t> read(texels * 4);
+        glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_SHORT, read.data());
+        for (size_t i = 0; i < read.size(); i++) rgba[i] = read[i] / 65535.0f;
+    }else if (ok){
+        std::vector<uint8_t> read(texels * 4);
+        glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, read.data());
+        for (size_t i = 0; i < read.size(); i++) rgba[i] = read[i] / 255.0f;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFramebuffer));
+    glDeleteFramebuffers(1, &readFramebuffer);
+    ok = ok && glGetError() == GL_NO_ERROR;
+    if (!ok)
+        return false;
+
+    auto unorm = [](float v, float scale){ return std::lround(std::min(1.0f, std::max(0.0f, v)) * scale); };
+    const size_t componentBytes = type == GL_FLOAT ? 4 : (type == GL_UNSIGNED_BYTE ? 1 : 2);
+    bytes.resize(texels * channels * componentBytes);
+    for (size_t t = 0; t < texels; t++){
+        for (int c = 0; c < channels; c++){
+            const float v = rgba[t * 4 + c];
+            uint8_t* out = bytes.data() + (t * channels + c) * componentBytes;
+            if (type == GL_FLOAT){
+                std::memcpy(out, &v, 4);
+            }else if (type == GL_HALF_FLOAT){
+                const uint16_t h = floatToHalf(v);
+                std::memcpy(out, &h, 2);
+            }else if (type == GL_UNSIGNED_SHORT){
+                const uint16_t u = static_cast<uint16_t>(unorm(v, 65535.0f));
+                std::memcpy(out, &u, 2);
+            }else{
+                *out = static_cast<uint8_t>(unorm(v, 255.0f));
+            }
+        }
+    }
+    return true;
+}
+#endif
+
 bool jasperengine::test::finishGpu(){
     return FrameReadback::finishGpu();
 }
@@ -201,6 +267,13 @@ bool jasperengine::test::readTextureRaw(TextureRender& texture, int width, int h
 
     while (glGetError() != GL_NO_ERROR) {}
     glFinish();
+#if defined(SOKOL_GLES3)
+    const int channels = glFormat == GL_RGBA ? 4 : (glFormat == GL_RG ? 2 : 1);
+    const bool ok = readGlesTexture(handle, width, height, channels, glType, bytes);
+    if (!ok) bytes.clear();
+    sg_reset_state_cache();
+    return ok;
+#else
     bytes.resize(static_cast<size_t>(width) * height * bytesPerTexel);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glBindTexture(GL_TEXTURE_2D, handle);
@@ -210,6 +283,7 @@ bool jasperengine::test::readTextureRaw(TextureRender& texture, int width, int h
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
     sg_reset_state_cache();
     return ok;
+#endif
 #endif
 }
 
@@ -244,6 +318,16 @@ bool jasperengine::test::readTextureFloat(TextureRender& texture, int width, int
     while (glGetError() != GL_NO_ERROR) {}
     // as readTexturePixels: everything drawn into it has finished
     glFinish();
+#if defined(SOKOL_GLES3)
+    std::vector<uint8_t> bytes;
+    const bool ok = readGlesTexture(handle, width, height, 4, GL_FLOAT, bytes);
+    sg_reset_state_cache();
+    if (!ok)
+        return false;
+    rgba.resize(count);
+    std::memcpy(rgba.data(), bytes.data(), bytes.size());
+    return true;
+#else
     rgba.resize(count);
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
     glBindTexture(GL_TEXTURE_2D, handle);
@@ -252,5 +336,6 @@ bool jasperengine::test::readTextureFloat(TextureRender& texture, int width, int
     const bool ok = glGetError() == GL_NO_ERROR;
     sg_reset_state_cache();
     return ok;
+#endif
 #endif
 }
