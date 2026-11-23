@@ -100,37 +100,58 @@ namespace {
     // values of a settings row's type that differ from `current`, for an override to try in turn
     std::vector<mcp::Json> otherValues(const SettingRow& row, const mcp::Json& current) {
         std::vector<mcp::Json> values;
+        auto changedNumber = [](const mcp::Json& value, bool integer, std::vector<mcp::Json>& out) {
+            const double base = value.is_number() ? value.get<double>() : 0.0;
+            // up and down: a tier's caps only lower
+            for (double candidate : {base + 1.0, base - 1.0, base * 2.0, base / 2.0, base + 0.5, base * 0.5, 1.0, 2.0, 0.0, 16.0, 64.0, 100.0,
+                                     256.0, 1024.0, 0.5, 0.25}) {
+                if (integer && candidate != static_cast<double>(static_cast<long long>(candidate))) continue;
+                const mcp::Json json = integer ? mcp::Json(static_cast<long long>(candidate)) : mcp::Json(candidate);
+                if (json != value) out.push_back(json);
+            }
+        };
         if (row.type == "bool") {
             values.push_back(current.is_boolean() ? mcp::Json(!current.get<bool>()) : mcp::Json(true));
         } else if (row.type == "enum") {
             for (const std::string& value : row.values)
                 if (current != mcp::Json(value)) values.push_back(value);
-        } else if (row.type == "int" || row.type == "number") {
-            const double base = current.is_number() ? current.get<double>() : 0.0;
-            for (double value : {base + 1.0, base - 1.0, base * 2.0, base / 2.0, 1.0, 2.0, 0.0, 100.0, 0.5}) {
-                if (row.type == "int" && value != static_cast<double>(static_cast<long long>(value))) continue;
-                const mcp::Json json = row.type == "int" ? mcp::Json(static_cast<long long>(value)) : mcp::Json(value);
-                if (json != current) values.push_back(json);
-            }
+        } else if (row.type == "int" || row.type == "number" || row.type == "float") {
+            changedNumber(current, row.type == "int", values);
         } else if (row.type == "string" || row.type == "path") {
-            for (const char* value : {"art/icon.png", "Profile Value", "1.2.3", "com.studio.profile", ""})
+            for (const char* value : {"art/icon.png", "Profile Value", "1.2.3", "com.studio.profile", "#ff0000", ""})
                 if (current != mcp::Json(value)) values.push_back(value);
             if (current.is_string()) values.push_back(current.get<std::string>() + "1");
         } else if (row.type == "list") {
             if (current.is_array() && !current.empty()) {
                 values.push_back(mcp::Json::array({current.front()}));
                 values.push_back(mcp::Json::array());
+                // a vector: its components turned (the Transparency Sort axis)
+                mcp::Json turned = mcp::Json::array();
+                for (size_t i = 0; i < current.size(); i++) turned.push_back(current[(i + 1) % current.size()]);
+                if (turned != current) values.push_back(turned);
             }
+            // one entry in each list format the settings take: names, URLs, lines, records
+            for (const mcp::Json& entry : {mcp::Json("GameKit"), mcp::Json("vibrate"), mcp::Json("com.example:lib:1.0"),
+                                           mcp::Json("https://repo.example.com/maven"), mcp::Json("org.gradle.jvmargs=-Xmx2g"),
+                                           mcp::Json("android.permission.VIBRATE"), mcp::Json("https://cdn.example.com/sdk.js"),
+                                           mcp::Json{{"name", "Firebase/Analytics"}},
+                                           mcp::Json{{"url", "https://github.com/example/pkg"}, {"version", "1.0.0"}, {"products", {"Pkg"}}},
+                                           mcp::Json{{"platform", "all"}, {"category", "total"}, {"limit_mb", 100}},
+                                           mcp::Json{{"name", "_ProfileTint"}, {"type", "float"}, {"default", 1.0}}})
+                values.push_back(mcp::Json::array({entry}));
         } else if (row.type == "object" && current.is_object()) {
             // each member changed in turn, through the member's own type
             for (const auto& [member, value] : current.items()) {
-                mcp::Json changed = current;
-                if (value.is_boolean()) changed[member] = !value.get<bool>();
-                else if (value.is_number_integer()) changed[member] = value.get<long long>() + 1;
-                else if (value.is_number()) changed[member] = value.get<double>() + 0.5;
-                else continue;
-                values.push_back(changed);
+                std::vector<mcp::Json> memberValues;
+                if (value.is_boolean()) memberValues.push_back(!value.get<bool>());
+                else if (value.is_number()) changedNumber(value, value.is_number_integer(), memberValues);
+                for (const mcp::Json& changed : memberValues) {
+                    mcp::Json object = current;
+                    object[member] = changed;
+                    values.push_back(object);
+                }
             }
+            if (current.empty()) values.push_back(mcp::Json{{"NSCameraUsageDescription", "The camera takes photos"}});
         }
         return values;
     }
@@ -489,9 +510,16 @@ TEST(BuildProfileResolve, EveryOverridableKeyLeavesTheProjectFilesAlone) {
     for (const std::string& key : notChanged) skipped += (skipped.empty() ? "" : ", ") + key;
     std::printf("[ audit ] %zu overridable keys, %zu applied with a changed value; not changed by any candidate: %s\n", overridable,
                 applied, skipped.empty() ? "none" : skipped.c_str());
-    // the audit means something only when nearly every key really changed in the snapshot
-    EXPECT_GE(overridable, 100u);
-    EXPECT_GE(applied * 10, overridable * 9) << "keys no candidate changed: " << skipped;
+    // the keys this fixture cannot give a changed value, each for its reason; any other key must
+    // change in the snapshot, so a new key is audited too (or named here)
+    static const std::map<std::string, const char*> unchangeable = {
+        {"player.loading_scene", "names a saved scene; the fixture has none"},
+        {"graphics.shipped_terrain_tiers", "follows from the terrain settings; it refuses a value"},
+        {"graphics.screen_transitions.ramp", "names a .palette ramp; the fixture has none"},
+    };
+    EXPECT_GE(overridable, 150u);
+    for (const std::string& key : notChanged)
+        EXPECT_TRUE(unchangeable.count(key)) << key << ": no candidate changed it in the snapshot (the override was refused or ignored)";
     editor::test::closeProject(project);
 }
 
