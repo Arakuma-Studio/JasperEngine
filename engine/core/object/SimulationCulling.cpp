@@ -121,6 +121,10 @@ void SimulationCulling::setDistanceScale(float scale){
     distanceScaleValue() = (std::isfinite(scale) && scale >= 0.0f) ? scale : 1.0f;
 }
 
+void SimulationCulling::resetSession(){
+    distanceScaleValue() = 1.0f;
+}
+
 float SimulationCulling::getDistanceScale(){
     return distanceScaleValue();
 }

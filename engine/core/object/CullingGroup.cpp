@@ -97,6 +97,9 @@ CullingGroup::CullingGroup(Scene* scene) {
     *this = create(scene);
 }
 
+CullingGroup::CullingGroup(Scene* scene, uint32_t slot, uint32_t generation)
+    : scene(scene), sceneLifetime(scene ? scene->getLifetime() : std::weak_ptr<char>()), slot(slot), generation(generation) {}
+
 CullingGroup CullingGroup::create(Scene* scene) {
     if (!scene) return CullingGroup();
     CullingGroup group = scene->getSystem<CullingSystem>()->createGroup();

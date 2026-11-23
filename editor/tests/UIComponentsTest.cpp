@@ -40,6 +40,7 @@ namespace jasperengine {
             return previous;
         }
         static void updateGamepadNavigation() { Engine::updateGamepadNavigation(); }
+        static bool cursorMove(float x, float y) { return Engine::dispatchCursorPointer(Engine::CURSOR_MOVE, x, y); }
     };
 }
 
@@ -645,6 +646,87 @@ TEST_F(UIComponentsTest, InputFieldKeyboardTypeAndLimit) {
     const YAML::Node again = editor::Stream::encodeComponents(loaded, &old, old.getSignature(loaded));
     EXPECT_FALSE(again["inputfield"]["keyboardType"]) << "the defaults are not written";
     EXPECT_FALSE(again["inputfield"]["characterLimit"]);
+}
+
+// a keyboard that keeps the text (Android) holds what was typed past Character Limit: the field
+// sends its own text back once, so a backspace erases what the player sees
+TEST_F(UIComponentsTest, InputFieldLimitResyncsAKeyboardThatKeepsText) {
+    const Entity field = element("Field", 0, 0, 200, 30);
+    const Entity text = element("Text", 0, 0, 200, 30, field);
+    scene->removeComponent<ImageComponent>(text);
+    scene->addComponent<TextComponent>(text, {});
+    scene->getComponent<RectTransformComponent>(text).ignoreEvents = true;
+    InputFieldComponent inputfield;
+    inputfield.text = text;
+    inputfield.characterLimit = 4;
+    scene->addComponent<InputFieldComponent>(field, inputfield);
+    system.keepsKeyboardText = true;
+    start();
+    ui().eventOnPointerDown(-1, D_MOUSE_BUTTON_LEFT, 10, 10, false);
+    ui().eventOnPointerUp(-1, D_MOUSE_BUTTON_LEFT, 10, 10, false);
+    ASSERT_TRUE(uic(field).focused);
+
+    for (char32_t c : std::u32string(U"abc"))
+        Engine::systemCharInput(c);
+    frame();
+    EXPECT_EQ(system.keyboardTextUpdates, 0) << "nothing refused: the keyboard already has the text";
+
+    for (char32_t c : std::u32string(U"def"))
+        Engine::systemCharInput(c);
+    EXPECT_EQ(scene->getComponent<TextComponent>(text).text, "abcd");
+    frame();
+    EXPECT_EQ(system.keyboardTextUpdates, 1);
+    EXPECT_EQ(system.keyboardText, L"abcd");
+    EXPECT_EQ(system.keyboardSelection[0], 4);
+    EXPECT_EQ(system.keyboardSelection[1], 4);
+    frame();
+    EXPECT_EQ(system.keyboardTextUpdates, 1) << "once";
+
+    // a keyboard that keeps no text (desktop, iOS, the web) is told nothing
+    system.keepsKeyboardText = false;
+    Engine::systemCharInput(U'g');
+    frame();
+    EXPECT_EQ(system.keyboardTextUpdates, 1);
+}
+
+// the gamepad cursor's move (Engine::dispatchCursorMove) reads the scenes into a reused buffer: a
+// handler that moves the cursor again (GamepadCursor.position) while a scene loads refills it under
+// the outer dispatch, which must still go to the scenes it started with
+TEST_F(UIComponentsTest, CursorMoveReentryKeepsItsOwnScenes) {
+    const Entity bottom = element("Bottom", 0, 0, 200, 200);
+    Scene* top = uiScene();
+    const Entity topElement = element("Top", 0, 0, 200, 200, NULL_ENTITY, top);
+    Scene* late = uiScene();
+    const Entity lateElement = element("Late", 0, 0, 200, 200, NULL_ENTITY, late);
+    Engine::addSceneLayer(top);
+    Engine::addSceneLayer(late);
+    start();
+    frame();
+    // the buffer has room for more scenes than this test uses: the nested call refills it in place
+    std::vector<Scene*> extra;
+    for (int i = 0; i < 8; i++){
+        extra.push_back(uiScene());
+        Engine::addSceneLayer(extra.back());
+    }
+    EngineTestAccess::cursorMove(950.0f, 950.0f);
+    for (Scene* gone : extra)
+        Engine::removeScene(gone);
+    Engine::removeScene(late);
+
+    int topEnters = 0, lateEnters = 0, bottomEnters = 0;
+    uic(topElement, top).onPointerEnter.add("reentry", [&](float, float){ topEnters++; });
+    uic(lateElement, late).onPointerEnter.add("reentry", [&](float, float){ lateEnters++; });
+    uic(bottom).onPointerEnter.add("reentry", [&](float, float){
+        if (bottomEnters++ > 0)
+            return;
+        // a scene loads and the cursor moves away, inside the bottom scene's handler
+        Engine::addSceneLayer(late);
+        EngineTestAccess::cursorMove(900.0f, 900.0f);
+    });
+    EngineTestAccess::cursorMove(10.0f, 10.0f);
+    EXPECT_EQ(bottomEnters, 1);
+    EXPECT_EQ(topEnters, 1) << "the outer move skipped a scene it started with";
+    EXPECT_EQ(lateEnters, 0) << "the outer move reached a scene added during it";
 }
 
 TEST_F(UIComponentsTest, InputActionsSuppressedWhileSelected) {

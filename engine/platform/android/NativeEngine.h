@@ -12,6 +12,7 @@
 #include <string>
 #include "util/FrameLimiter.h"
 #include "input/TextEntry.h"
+#include "AndroidTextInput.h"
 
 struct NativeEngineSavedState {
     bool mHasFocus;
@@ -165,6 +166,11 @@ private:
     bool isAnimating();
 
     void handleGameActivityInput();
+    // the text GameActivity flagged (textInputState): to the document or component field
+    void applyTextInputState();
+
+    // the EditorInfo this activity's IME has (a recreated activity starts from its defaults)
+    jasperengine::android::ImeEditorInfoCache mImeEditorInfo;
 
     void setupJNI();
     void setupPlatformJNI(JNIEnv* env);

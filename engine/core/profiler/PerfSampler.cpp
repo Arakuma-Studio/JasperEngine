@@ -50,10 +50,12 @@ namespace {
         int tierChanges;
     };
 
+    // the second being measured, held whole until its tick commits or discards it (at any frame
+    // rate: a histogram, not a frame list)
     struct PerfPending {
-        uint8_t frameBin[PerfSampler::PENDING_FRAMES];
-        uint8_t cpuBin[PerfSampler::PENDING_FRAMES];
-        int count;
+        uint32_t frameHist[PerfSampler::BINS];
+        uint32_t cpuHist[PerfSampler::BINS];
+        uint32_t count;
         double sumFrameMs;
         double sumCpuMs;
         float maxFrameMs;
@@ -139,11 +141,6 @@ namespace {
         s.currentReason = -1;
     }
 
-    void perfAddToWindow(PerfWindow& w, int frameBin, int cpuBin){
-        w.frameHist[frameBin]++;
-        w.cpuHist[cpuBin]++;
-    }
-
     // the p-th value of a histogram, interpolated linearly in its bin
     double perfPercentile(const uint32_t* hist, uint64_t total, double p, double maxMs){
         if (total == 0)
@@ -180,8 +177,12 @@ namespace {
     void perfCommit(PerfState& s, double seconds, double cpuDeltaMs){
         PerfWindow& w = s.window;
         const PerfPending& p = s.pending;
-        for (int i = 0; i < p.count; i++)
-            perfAddToWindow(w, p.frameBin[i], p.cpuBin[i]);
+        if (p.count > 0){
+            for (int b = 0; b < PerfSampler::BINS; b++){
+                w.frameHist[b] += p.frameHist[b];
+                w.cpuHist[b] += p.cpuHist[b];
+            }
+        }
         w.frames += (uint64_t)p.count;
         w.seconds += seconds;
         w.sumFrameMs += p.sumFrameMs;
@@ -426,6 +427,10 @@ namespace {
                 perfDiscard(s, cause, seconds);
         }
 
+        if (s.pending.count > 0){
+            std::memset(s.pending.frameHist, 0, sizeof(s.pending.frameHist));
+            std::memset(s.pending.cpuHist, 0, sizeof(s.pending.cpuHist));
+        }
         s.pending.count = 0;
         s.pending.sumFrameMs = s.pending.sumCpuMs = 0.0;
         s.pending.maxFrameMs = 0.0f;
@@ -465,22 +470,12 @@ void PerfSampler::onFrame(const FrameTimeSample& sample, std::chrono::steady_clo
         const float frameMs = sample.frameMs;
         const int frameBin = binOf(frameMs);
         const int cpuBin = binOf(sample.cpuMs);
-        if (p.count < PENDING_FRAMES){
-            p.frameBin[p.count] = (uint8_t)frameBin;
-            p.cpuBin[p.count] = (uint8_t)cpuBin;
-            p.count++;
-            p.sumFrameMs += frameMs;
-            p.sumCpuMs += sample.cpuMs;
-            p.maxFrameMs = std::max(p.maxFrameMs, frameMs);
-        }else{
-            // past 512 frames in a second they go straight to the window
-            PerfWindow& w = s.window;
-            perfAddToWindow(w, frameBin, cpuBin);
-            w.frames++;
-            w.sumFrameMs += frameMs;
-            w.sumCpuMs += sample.cpuMs;
-            w.maxFrameMs = std::max(w.maxFrameMs, frameMs);
-        }
+        p.frameHist[frameBin]++;
+        p.cpuHist[cpuBin]++;
+        p.count++;
+        p.sumFrameMs += frameMs;
+        p.sumCpuMs += sample.cpuMs;
+        p.maxFrameMs = std::max(p.maxFrameMs, frameMs);
         if (frameMs >= 1000.0f)
             p.stall = true;
         else if (frameMs >= 250.0f)

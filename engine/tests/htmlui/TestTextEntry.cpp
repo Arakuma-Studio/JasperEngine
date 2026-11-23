@@ -361,6 +361,23 @@ TEST_F(TextEntryTest, TraitsChangeWithoutHiding){
     EXPECT_EQ(system.virtualKeyboardHides, hides + 2);
 }
 
+// a form unloads its document (the field blurs as it leaves the context) and the game goes to a
+// scene without HTML UI before any update: no context flushes the hide the blur left pending, so the
+// field going away hides it at once
+TEST_F(TextEntryTest, KeyboardHidesWhenTheFocusedFieldsDocumentGoes){
+    TestSystem& system = TestSystem::get();
+    UIDocument& document = fixture->add<UIDocument>();
+    ASSERT_TRUE(document.load("text-entry/fields.html"));
+    updateDocuments(scene());
+    focus("email");
+    ASSERT_TRUE(RmlTextInputHandler::isKeyboardShown());
+    const int hides = system.virtualKeyboardHides;
+    scene().destroyEntity(document.getEntity());
+    fixture.reset();
+    EXPECT_EQ(system.virtualKeyboardHides, hides + 1) << "the soft keyboard stayed open";
+    EXPECT_FALSE(RmlTextInputHandler::isKeyboardShown());
+}
+
 TEST(TextEntryNames, RoundTripTheHtmlValues){
     for (int i = 0; i <= (int)KeyboardType::None; i++){
         KeyboardType parsed = KeyboardType::Text;

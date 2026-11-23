@@ -115,7 +115,7 @@ namespace {
             uint32_t index = 0;
             if (!group || !cullingLuaIndex(L, 2, *group, "setSphereTarget", index)) return false;
             Entity entity = NULL_ENTITY;
-            if (!cullingLuaEntity(L, 3, entity) || !group->getScene()->isEntityCreated(entity)) {
+            if (!cullingLuaEntity(L, 3, entity) || !group->getScene() || !group->getScene()->isEntityCreated(entity)) {
                 return cullingLuaFail("CullingGroup:setSphereTarget: argument 2 must be a GameObject (or its entity id) of the group's scene");
             }
             const double radius = luaL_optnumber(L, 4, 0.0);
@@ -222,7 +222,7 @@ namespace {
             Entity entity = NULL_ENTITY;
             if (cullingLuaVector(L, 2, point)) {
                 group->setDistanceReferencePoint(point);
-            } else if (cullingLuaEntity(L, 2, entity) && group->getScene()->isEntityCreated(entity)) {
+            } else if (cullingLuaEntity(L, 2, entity) && group->getScene() && group->getScene()->isEntityCreated(entity)) {
                 group->setDistanceReferencePoint(entity);
             } else {
                 return cullingLuaFail("CullingGroup:setDistanceReferencePoint: argument 1 must be a finite Vector3 or a GameObject (followed)");

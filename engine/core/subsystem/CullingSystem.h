@@ -210,7 +210,8 @@ namespace jasperengine{
         std::vector<ScriptFocus> scriptFocuses;
         int nextFocusId = 1;
         bool cameraIsFocus = true;
-        std::function<bool(const Vector3&, float)> groundCheck;
+        // held by a shared_ptr: a check that replaces or clears itself keeps running on its copy
+        std::shared_ptr<std::function<bool(const Vector3&, float)>> groundCheck;
         std::vector<Entity> pendingNew;
         // GameObjects whose component went while it held flags
         std::vector<Entity> removedComponents;

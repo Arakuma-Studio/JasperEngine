@@ -71,7 +71,6 @@ namespace jasperengine {
     public:
         // R4: 0.5 ms bins over [0, 50), 2 ms over [50, 250), one bin >= 250 ms
         static constexpr int BINS = 201;
-        static constexpr int PENDING_FRAMES = 512;
         static constexpr int MAX_REASONS = 8;
         static constexpr int DEFAULT_WINDOW_SECONDS = 300;
 
