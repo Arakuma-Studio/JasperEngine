@@ -165,6 +165,20 @@ TEST(PlayerInstall, APlayerOfAnOlderContentMinorIsNotUsed) {
     EXPECT_FALSE(PlayerRuntimes::find(ID, dir / "major", true, error).has_value());
 }
 
+// Content of a build without a Build Profile is laid out as before Build Profiles (1.5): game.json's
+// buildProfile and defines are the only thing content 1.6 adds. A player runtime of 1.5 (every one
+// released before Build Profiles) still serves such a build
+TEST(PlayerInstall, APlayerOfTheContentBeforeBuildProfilesServesABuildWithoutOne) {
+    TestTempDir dir("players");
+    const std::vector<PlayerArchiveHash> none;
+    std::string installed, error;
+    std::vector<std::string> warnings;
+    PlayerInfo before = info(sha256Hex(BINARY));
+    before.contentFormatVersion = "1.5";
+    ASSERT_TRUE(PlayerRuntimes::install(writeArchive(dir / "before.zip", BINARY, before), dir / "before", installed, warnings, error, &none)) << error;
+    EXPECT_TRUE(PlayerRuntimes::find(ID, dir / "before", false, error).has_value()) << error;
+}
+
 // A nightly (nightly-YYYYMMDD, .github/workflows/build-release.yml) is a release like a stable
 // v<major>.<minor>.<patch>: its editor downloads the players of its own tag, hash-checked; a
 // git describe stamp or a two-part tag is a development editor
