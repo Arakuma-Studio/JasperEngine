@@ -4352,6 +4352,8 @@ namespace {
                         }
                     }
                 }
+                // the decoded icon is copied: TextureData does not free what it decoded
+                icon.releaseImageData();
             }
             return TextureData(width, GIZMO_ICON_SIZE, (unsigned int)texels.size(), ColorFormat::RGBA, 4, texels.data());
         }();
