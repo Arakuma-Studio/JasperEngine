@@ -7621,6 +7621,15 @@ bool editor::Project::saveProjectFile(DegradedSavePolicy policy, SaveResult* out
     if (projectPath.empty()) {
         return false;
     }
+    // A build's settings snapshot keeps the project's path for its validators, and a settings
+    // command a Build Profile override runs saves from it: it lives only for that build, so
+    // nothing of it reaches the open project's files
+    if (settingsSnapshot) {
+        if (outcome) {
+            *outcome = SaveResult::Saved;
+        }
+        return true;
+    }
 
     // project.yaml read with values this editor could not keep (a newer format): not written
     // over unless the loss was accepted
@@ -7697,6 +7706,10 @@ bool editor::Project::saveWorkspaceFile() {
     if (projectPath.empty()) {
         return false;
     }
+    // a build's settings snapshot writes nothing (saveProjectFile)
+    if (settingsSnapshot) {
+        return true;
+    }
     // the editor's own per-user workspace file, .jasperengine/user/workspace.yaml (a hidden folder the
     // guard refuses to agents): the editor names that one file (util/SafeWrite.h); its folder is made
     // first when missing, under a token for that folder alone
@@ -7719,6 +7732,10 @@ bool editor::Project::saveWorkspaceFile() {
 bool editor::Project::writeVersionControlMetadata() {
     if (projectPath.empty()) {
         return false;
+    }
+    // a build's settings snapshot writes nothing (saveProjectFile)
+    if (settingsSnapshot) {
+        return true;
     }
 
     const std::pair<const char*, std::pair<vcsfiles::FileKind, std::string>> files[] = {
@@ -7812,6 +7829,10 @@ std::string editor::Project::saveAsRefusal(const fs::path& path) const {
 }
 
 bool editor::Project::saveProjectToPath(const std::filesystem::path& requestedPath) {
+    // a build's settings snapshot writes nothing (saveProjectFile)
+    if (settingsSnapshot) {
+        return true;
+    }
     const fs::path path = requestedPath.lexically_normal();
     const fs::path oldPath = projectPath;
     const bool saveAs = !oldPath.empty() && oldPath.lexically_normal() != path;
