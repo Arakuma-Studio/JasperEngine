@@ -126,6 +126,10 @@ namespace jasperengine{
             // (setDestroyedFramebufferFallback: RenderSystem's transparent black), else
             // fallBackTexture; with no fallBackTexture, its texture as it is
             TextureRender* getRender(TextureRender* fallBackTexture = NULL);
+            // What getRender gave last (a framebuffer's texture), without asking again: nothing
+            // loads, no framebuffer version is taken (a draw sort key reads it: the draw that binds
+            // must still see a framebuffer that changed)
+            const TextureRender* peekRender() const;
             // How many times getRender gave its fallback for a Texture that names an image (a
             // stand-in: no pixels to make its GPU texture of yet, nothing loading them) on the
             // calling thread. A renderer reads it around a material's binding: one that took a

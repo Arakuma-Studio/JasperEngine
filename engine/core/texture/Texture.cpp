@@ -629,6 +629,12 @@ TextureRender* Texture::getRender(TextureRender* fallBackTexture){
     return answer;
 }
 
+const TextureRender* Texture::peekRender() const{
+    if (framebuffer)
+        return &framebuffer->getRender().getColorTexture();
+    return render.get();
+}
+
 TextureRender* Texture::findRender(TextureRender* fallBackTexture){
     if (framebuffer){
         lastFramebufferVersion = framebuffer->getVersion();
