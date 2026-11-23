@@ -1093,7 +1093,7 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 | `changes`, `Check` | yes | yes | yes | yes | yes |
 | `lint` | unless every path is one nothing reads | same | no | no | yes |
 | `linux`, `web`, `android`, `windows`, `macos` | when anything that builds changed | yes | yes, to warm the caches (`windows`: the editor leg's build only) | `linux` when `mcp` or `smoke` runs (their editor install); `windows` for `windows-editor-tests` (the editor leg only) | yes |
-| `ios` | when anything that builds changed | yes | no (no cache) | no | yes |
+| `ios` | when an Apple-only input changed (below) | yes | no (no cache) | no | yes |
 | `unit`, `htmlui` | the suites the plan selects | all, unfiltered; not while advisory | build only (the caches, the deps dumps) | while advisory all, unfiltered | all |
 | `asan` | the unit lane's suites when a path the sanitizers see changed; every test when the lane's settings did; else no (below) | all, unfiltered; not while advisory | build only (each binary's cache) | while advisory all | all |
 | `mcp` | the planned CI-suite files | the planned files, over the group's diff against `main`; not while advisory | no | while advisory the planned files, over the diff since the last advisory run | the whole CI suite |
@@ -1117,6 +1117,18 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   selection sees them. Anything else, such as CI's other jobs and scripts, docs, MCP tests, shaders,
   assets and a test's data, skips it on the PR. The advisory run on `main` runs it after the merge, and
   shadow mode judges an ASan failure there against the PR's ASan selection.
+- **iOS on a PR** (a macOS runner for up to 2 h, out of 5 for the organization) builds the Xcode
+  project only when an Apple-only input changed (`tools/ci/plan_lanes.py` `IOS_INPUTS`): the Apple and
+  Mac platform code (`engine/platform/apple/`, `engine/platform/mac/`), the Xcode project
+  (`engine/workspaces/xcode/`) and the scripts that sync its source lists (`tools/xcode_sync_*`,
+  `tools/test_xcode_sync_sources.py`), the Metal shader stubs it compiles (`engine/shaders/msl21*`),
+  what the job runs (`tools/ci/macos.sh`, `platform-common.sh`, `retry.sh`, the report action), and
+  `ci.yml`'s `ios` job or `env` (found from the diff's lines, as for ASan). There are no iOS CMake
+  toolchain files: the lane builds the Xcode project, not CMake. Anything else, an engine or editor
+  source included, skips it on the PR: the `macos` lane compiles every one of them with the same Apple
+  Clang, so it catches most iOS compile errors, and lint checks that the Xcode project lists every
+  source. The merge queue and full runs build it for every change that builds, so an iOS-only break
+  still stops the merge.
 - **MCP in the merge queue** is planned from the coverage map, not the whole suite: a regression the
   map misses is the nightly's to find. A planned file outside the CI suite (it needs the fixture
   project, or is `CI_EXCLUDED`) is listed under "not run in CI"; `MCP_SUITE=all` locally covers it.
@@ -1386,6 +1398,76 @@ PR or in the queue, about 100 in the nightly).
   title golden ledger compares the merge commit with its base) and the nightly's and the release's
   build jobs (every commit and tag for `git describe`, `filter: blob:none`: the history without the
   old file contents).
+
+### Overflow runners
+
+Three machines of the project's owner take CI jobs when GitHub's runners of their OS are all taken:
+`je-mac` (Apple Silicon), `je-linux` (x86-64, Docker) and `je-win` (x86-64, 8 cores and 7 GB). Each is
+one repository runner (one job at a time), labelled `self-hosted`, its OS and arch, and its `je-*`
+label, running as the machine's normal user under its runner folder (`~/je-runner`, `C:\je-runner`) as
+a service that starts with the machine (macOS: with the user's login) and reconnects after sleep.
+`tools/ci/self-hosted/` installs it (`install-runner.sh`, `install-runner.ps1`, `windows-tools.ps1`).
+
+**Hosted first.** `changes` routes a job (`tools/ci/plan_lanes.py` `route`; `ci.yml` reads
+`runs_on.<job>`, the hosted label when it is missing) to an overflow runner only when all of these hold:
+
+- the run may use one: a push, the merge queue, a dispatch, or a pull request whose head repository is
+  this one, never a fork's;
+- it is the run's first attempt: a rerun stays on GitHub's runners, so the watchdog's rerun (below)
+  never waits for the same machine again;
+- the repository variable `SELF_HOSTED_STATE` is under 5 min old (`STATE_MAX_AGE`), and says the hosted
+  runners of the job's OS are saturated: a job of that OS waits while its limit is used up (macOS: 5
+  running; any OS: 60 hosted jobs of the organization), or has waited 5 min;
+- the runner is online, idle (no job running or queued for it) and fit (its disk has `min_free_gb`),
+  and `SELF_HOSTED_DISABLED` does not name it;
+- the job is on the runner's list (`OVERFLOW`, best first), and the runner has no other job of this
+  plan: `je-mac` takes `macos`, else `ios`; `je-linux` `linux` (the MCP and smoke lanes wait for it),
+  else the longest build; `je-win` the D3D11 or OpenGL engine leg. The Windows editor leg's MSVC build
+  does not fit in 7 GB in its time.
+
+The `changes` job's summary and `lanes.json` (`routing`) say where each job went and why.
+
+**The state and the watchdog** (`tools/ci/runner_dispatch.py`): a cron job runs it every minute on an
+always-on host whose `gh` is a repository admin, from a sparse clone of `main` refreshed hourly. It
+reads the runners (GitHub's status, and an ssh probe of each machine's listener and free disk, since
+GitHub reports a listener that takes jobs as offline at times) and the jobs of the queued and running
+runs, and writes `SELF_HOSTED_STATE`. Then, for runs that have a job on a `je-*` label only (it never
+touches a run it did not route): a job queued 10 min for a runner that is offline or gone, or running
+on one offline for 3 min, or failed because its runner went away ("lost communication", "shutdown
+signal"), gets its run cancelled and, once stopped, rerun whole (`gh run rerun`): the rerun plans on
+GitHub's runners only. A merge-queue run is cancelled and its pull request put back in the queue (the
+queue removed the group, so a rerun would build nothing); a pull request's run that a newer push
+superseded is not rerun. Each run is acted on once, at most 6 actions an hour, each logged to the
+host's `je-runner-dispatch.log`. With no state for 5 min (the host, `gh` or the cron is down) every
+job goes hosted, so an offline machine never holds a run.
+
+**Taking a machine out**: `gh variable set SELF_HOSTED_DISABLED --body je-win` (labels, or `all`);
+the next plan leaves it alone, and `gh variable delete SELF_HOSTED_DISABLED` brings it back. A job
+already on it finishes; stopping the runner service instead lets the watchdog reroute what waits.
+**Testing one**: `gh workflow run ci.yml --ref <branch> -f self_hosted='macos=je-mac windows-engine-d3d11=je-win'`
+runs only those jobs' lanes, those jobs on those runners whatever the state says (its rerun: hosted).
+
+**Safe on a person's machine.**
+
+- Each runner's job-started hook (`tools/ci/self-hosted/job-started.sh`, `.ps1`) fails any job that is
+  not this repository's push, merge queue, dispatch or same-repository pull request before its first
+  step: a pull request runs its own `ci.yml`, so the routing alone cannot keep a fork's code off the
+  machine. GitHub also asks a maintainer to approve the workflows of every outside contributor's pull
+  request (the repository's fork approval policy).
+- The jobs get their own `HOME` and git global config inside the runner folder, so nothing a job
+  writes there (Xcode's DerivedData, `brew`'s and `uv`'s caches, `git config --global`) reaches the
+  user's own. `free-disk` does nothing there; `brew` and `choco` install only what is missing.
+- The job-completed hook empties the job's workspace (only a folder under the runner's `_work`), so
+  build trees and the restored ccache never pile up; ccache comes from the Actions cache as on GitHub's
+  runners, under the same keys (the Mac's Xcode 26.6 is the hosted image's; the Windows box's MSVC
+  14.52 is not, so its editor leg would not share the hosted entry). On Linux it removes the Docker
+  images CI pulled (`.github/actions/image` notes them in the runner's tool cache) that no job used
+  for 3 days, or every one but the newest of each when under 100 GB is free, and cuts the CI image
+  builder's cache to 10 GB; on macOS it empties the runner's home's caches past 20 GB.
+- The Mac stays awake (`caffeinate`) while a job runs; a closed lid still sleeps it, and the watchdog
+  reroutes.
+- Jobs build with `JOBS` (and on Linux `CPUS`) from the runner's `.env`, under the machine's cores, so
+  the user's own work stays usable.
 
 ### Measured lane times
 

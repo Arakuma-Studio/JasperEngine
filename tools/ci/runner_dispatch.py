@@ -7,7 +7,8 @@ repository admin:
 Each run:
 
 - state: the overflow runners (OVERFLOW in plan_lanes.py: online, busy, or claimed by a job queued for
-  them), their free disk (--hosts: ssh, every PROBE_SECONDS; under the runner's min_free_gb it is unfit),
+  them; online when GitHub says so or --hosts' ssh probe finds its listener running), their free disk
+  (the same probe: under the runner's min_free_gb it is unfit),
   and per OS the jobs on GitHub's runners, running and queued: saturated when a job waits while the OS's
   concurrency limit is used up (HOSTED_LIMITS, TOTAL_LIMIT) or has waited SATURATED_WAIT. Written to the
   repository variable SELF_HOSTED_STATE, which the `changes` job reads (plan_lanes.route: older than its
@@ -32,6 +33,7 @@ import re
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -47,7 +49,6 @@ QUEUED_LIMIT = 600          # a job queued for an offline overflow runner this l
 OFFLINE_LIMIT = 180         # a running job's overflow runner offline this long (s): rerouted
 LOOKBACK = 6 * 3600         # finished runs looked at for a job its runner's loss failed
 MAX_ACTIONS = 6             # watchdog actions an hour
-PROBE_SECONDS = 300
 MIN_FREE_GB = 60
 # what GitHub says when a job's runner went away
 LOST = re.compile(r"lost communication with the server|received a shutdown signal", re.I)
@@ -79,7 +80,8 @@ def os_of(labels: list[str]) -> tuple[str, str]:
 
 def compute_state(runners: list[dict], jobs: list[dict], probes: dict, now: float) -> dict:
     """SELF_HOSTED_STATE from the repository's runners, the jobs of its queued and running runs, and the
-    disk probes ({label: {"free_gb", "ok", "why"}}; a label without one is fit)."""
+    probes ({label: {"alive", "free_gb", "ok", "why"}}: online when GitHub or the probe says the runner
+    is; a label without a probe is fit)."""
     hosted = {o: {"running": 0, "queued": 0, "waited": 0} for o in ("linux", "windows", "macos")}
     claimed: set[str] = set()
     for job in jobs:
@@ -106,8 +108,8 @@ def compute_state(runners: list[dict], jobs: list[dict], probes: dict, now: floa
     for label in OVERFLOW:
         r = next((r for r in runners if label in [x.get("name") for x in r.get("labels", [])]), None)
         probe = probes.get(label) or {}
-        entry = {"online": bool(r and r.get("status") == "online"), "busy": bool(r and r.get("busy")) or label in claimed,
-                 "fit": probe.get("ok", True)}
+        entry = {"online": bool(r and (r.get("status") == "online" or probe.get("alive"))),
+                 "busy": bool(r and r.get("busy")) or label in claimed, "fit": probe.get("ok", True)}
         if not entry["fit"]:
             entry["why"] = probe.get("why", "")
         if "free_gb" in probe:
@@ -117,19 +119,23 @@ def compute_state(runners: list[dict], jobs: list[dict], probes: dict, now: floa
 
 
 def probe(label: str, host: dict, run=subprocess.run) -> dict:
-    """Free disk of the machine's runner folder over ssh, and whether it is enough."""
+    """Over ssh: whether the machine's runner listener runs, and its runner folder's free disk, enough or
+    not. GitHub's runner status alone is not enough: it reads offline for runners that take jobs."""
     if host.get("shell") == "powershell":
-        command = "powershell -NoProfile -Command \"[math]::Floor((Get-PSDrive C).Free / 1GB)\""
+        command = ("powershell -NoProfile -Command \"if (Get-Process Runner.Listener -ErrorAction SilentlyContinue) "
+                   "{'alive'} else {'dead'}; [math]::Floor((Get-PSDrive C).Free / 1GB)\"")
     else:
-        command = "df -Pk ~/je-runner | awk 'NR == 2 {print int($4 / 1048576)}'"
+        command = ("(pgrep -f Runner.Listener > /dev/null && echo alive || echo dead); "
+                   "df -Pk ~/je-runner | awk 'NR == 2 {print int($4 / 1048576)}'")
     try:
         r = run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", host["ssh"], command],
                 capture_output=True, text=True, timeout=30)
-        free = int(r.stdout.strip().splitlines()[-1])
+        lines = r.stdout.split()
+        alive, free = lines[-2] == "alive", int(lines[-1])
     except (subprocess.SubprocessError, OSError, ValueError, IndexError, KeyError):
-        return {"ok": False, "why": "disk not probed (ssh failed)"}
+        return {"alive": False, "ok": False, "why": "not reachable over ssh"}
     need = int(host.get("min_free_gb", MIN_FREE_GB))
-    return {"free_gb": free, "ok": free >= need, **({} if free >= need else {"why": f"{free} GB free, under {need}"})}
+    return {"alive": alive, "free_gb": free, "ok": free >= need, **({} if free >= need else {"why": f"{free} GB free, under {need}"})}
 
 
 # ---------------------------------------------------------------------------------------- watchdog
@@ -325,7 +331,8 @@ def main(argv: list[str]) -> int:
         runners = gh.runners()
         active = {r["id"]: r for status in ("queued", "in_progress") for r in gh.runs(status)}
         cache = {k: v for k, v in memory.get("jobs", {}).items() if int(k) in active}
-        jobs = {rid: cached_jobs(gh, run, cache) for rid, run in active.items()}
+        with ThreadPoolExecutor(8) as pool:
+            jobs = dict(zip(active, pool.map(lambda run: cached_jobs(gh, run, cache), active.values())))
     except (RuntimeError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as e:
         log(f"no state: {e}")   # the variable ages past STATE_MAX_AGE: the plans route hosted only
         return 1
@@ -335,11 +342,10 @@ def main(argv: list[str]) -> int:
             hosts = json.loads(args.hosts.read_text())
         except (OSError, ValueError) as e:
             log(f"--hosts unreadable ({e}): disks not probed")
-    probes = memory.get("probes", {})
-    for label, host in hosts.items():
-        if label in OVERFLOW and now - probes.get(label, {}).get("t", 0) >= PROBE_SECONDS:
-            probes[label] = dict(probe(label, host), t=now)
-    state = compute_state(runners, [j for js in jobs.values() for j in js], {k: v for k, v in probes.items() if k in hosts}, now)
+    labels = [label for label in hosts if label in OVERFLOW]
+    with ThreadPoolExecutor(4) as pool:
+        probes = dict(zip(labels, pool.map(lambda label: probe(label, hosts[label]), labels)))
+    state = compute_state(runners, [j for js in jobs.values() for j in js], probes, now)
     body = json.dumps(state, separators=(",", ":"), sort_keys=True)
     if args.dry_run:
         print(f"{STATE_VARIABLE}={body}")
@@ -369,18 +375,20 @@ def main(argv: list[str]) -> int:
     # a finished run whose overflow runner went away mid-job (GitHub failed the job)
     finished = memory.get("finished", {})
     try:
-        for run in gh.runs("completed", per_page=30):
-            key = str(run["id"])
-            if key in finished or key in memory["acted"] or now - (epoch(run.get("updated_at")) or 0) > LOOKBACK:
-                continue
-            finished[key] = now
-            if run.get("conclusion") in ("failure", "cancelled"):
-                why = lost(cached_jobs(gh, run, {}), gh.annotations)
-                if why:
-                    dog.handle(run, why, finished=True)
+        fresh = [run for run in gh.runs("completed", per_page=30)
+                 if str(run["id"]) not in finished and str(run["id"]) not in memory["acted"]
+                 and now - (epoch(run.get("updated_at")) or 0) <= LOOKBACK]
+        failed = [run for run in fresh if run.get("conclusion") in ("failure", "cancelled")]
+        with ThreadPoolExecutor(8) as pool:
+            reasons = list(pool.map(lambda run: lost(cached_jobs(gh, run, {}), gh.annotations), failed))
+        for run in fresh:
+            finished[str(run["id"])] = now
+        for run, why in zip(failed, reasons):
+            if why:
+                dog.handle(run, why, finished=True)
     except (RuntimeError, ValueError, KeyError) as e:
         log(f"finished runs not read: {e}")
-    memory.update(jobs=cache, probes=probes, offline_since=offline_since,
+    memory.update(jobs=cache, offline_since=offline_since,
                   finished={k: t for k, t in finished.items() if now - t < LOOKBACK})
     if not args.dry_run:
         tmp = memory_path.with_suffix(".tmp")

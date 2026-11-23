@@ -37,13 +37,17 @@ if (-not (Test-Path "$dir\.runner")) {
 # the tools of windows-tools.ps1 first; Git's bin holds the bash ci.yml runs its steps with
 $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
 Set-Content -Encoding ascii "$dir\.path" "$dir\tools\bin;C:\Program Files\Git\bin;$machine"
+# (PSExecutionPolicyPreference: the runner's own processes may run its hooks; the machine's policy stays)
 Set-Content -Encoding ascii "$dir\.env" (@(
+    "PSExecutionPolicyPreference=Bypass",
     "HOME=$dir\home",
     "GIT_CONFIG_GLOBAL=$dir\gitconfig",
     "ACTIONS_RUNNER_HOOK_JOB_STARTED=$dir\hooks\job-started.ps1",
     "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=$dir\hooks\job-completed.ps1"
 ) + $JobEnv)
-$action = New-ScheduledTaskAction -Execute "$dir\run.cmd" -WorkingDirectory $dir
+# (run.cmd does not read .path, as the Unix service wrapper does: start.cmd sets PATH from it)
+Set-Content -Encoding ascii "$dir\start.cmd" "@echo off`r`nset /p PATH=<`"$dir\.path`"`r`ncd /d `"$dir`"`r`ncall run.cmd"
+$action = New-ScheduledTaskAction -Execute "$dir\start.cmd" -WorkingDirectory $dir
 $trigger = New-ScheduledTaskTrigger -AtStartup
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `

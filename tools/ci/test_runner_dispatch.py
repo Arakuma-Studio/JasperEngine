@@ -61,7 +61,7 @@ class State(unittest.TestCase):
         jobs = [job("je-linux", "queued", ago=5), job("je-mac", "in_progress", runner="je-mac"),
                 job("self-hosted", "in_progress")]                 # another runner's: not counted
         s = rd.compute_state([runner("je-mac", busy=True), runner("je-linux"), runner("je-win", "offline")], jobs,
-                             {"je-win": {"ok": False, "why": "12 GB free, under 60", "free_gb": 12}}, NOW)
+                             {"je-win": {"alive": False, "ok": False, "why": "12 GB free, under 60", "free_gb": 12}}, NOW)
         self.assertEqual(s["runners"]["je-mac"], {"online": True, "busy": True, "fit": True})
         # a job queued for it claims it: the next plan must not count it idle
         self.assertEqual(s["runners"]["je-linux"], {"online": True, "busy": True, "fit": True})
@@ -77,10 +77,20 @@ class State(unittest.TestCase):
             def __init__(self, out):
                 self.stdout = out
 
-        self.assertEqual(rd.probe("je-linux", {"ssh": "u@h", "min_free_gb": 100}, lambda *a, **k: R("14\n")),
-                         {"free_gb": 14, "ok": False, "why": "14 GB free, under 100"})
-        self.assertEqual(rd.probe("je-mac", {"ssh": "u@h"}, lambda *a, **k: R("458\n")), {"free_gb": 458, "ok": True})
-        self.assertFalse(rd.probe("je-mac", {"ssh": "u@h"}, lambda *a, **k: R(""))["ok"])
+        self.assertEqual(rd.probe("je-linux", {"ssh": "u@h", "min_free_gb": 100}, lambda *a, **k: R("alive\n14\n")),
+                         {"alive": True, "free_gb": 14, "ok": False, "why": "14 GB free, under 100"})
+        self.assertEqual(rd.probe("je-mac", {"ssh": "u@h"}, lambda *a, **k: R("dead\n458\n")),
+                         {"alive": False, "free_gb": 458, "ok": True})
+        self.assertEqual(rd.probe("je-mac", {"ssh": "u@h"}, lambda *a, **k: R("")),
+                         {"alive": False, "ok": False, "why": "not reachable over ssh"})
+
+    def test_online_when_github_or_the_probe_says_so(self):
+        # GitHub reads offline for a listener that takes jobs; a machine asleep fails both
+        for status, alive, online in (("online", False, True), ("offline", True, True), ("offline", False, False)):
+            s = rd.compute_state([runner("je-mac", status)], [], {"je-mac": {"alive": alive, "ok": True}}, NOW)
+            self.assertEqual(s["runners"]["je-mac"]["online"], online, (status, alive))
+        # (a registered runner only: a probe alone does not make one)
+        self.assertFalse(rd.compute_state([], [], {"je-mac": {"alive": True}}, NOW)["runners"]["je-mac"]["online"])
 
 
 class Stuck(unittest.TestCase):
