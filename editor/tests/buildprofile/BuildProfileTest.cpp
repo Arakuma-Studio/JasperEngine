@@ -11,6 +11,7 @@
 #include "buildprofile/BuildProfile.h"
 #include "command/type/EditBuildProfileCmd.h"
 #include "render/LightingTiers.h"
+#include "save/SaveGameStore.h"
 #include "render/shadow/ShadowTiers.h"
 #include "settings/SettingsRegistry.h"
 #include "support/EditorTestSupport.h"
@@ -443,6 +444,8 @@ TEST(BuildProfileResolve, EveryOverridableKeyLeavesTheProjectFilesAlone) {
     const std::map<std::string, std::string> filesBefore = folderContents(dir.path());
     const std::string before = encoded(project);
     const size_t historyBefore = project.getProjectCommandHistory()->position();
+    // what the editor's own engine runs with (Saved Data: the store the game view's Play writes)
+    const savegame::SaveSettings saveSettingsBefore = savegame::settings();
     static const std::set<std::string> owned = {"player.product_name", "player.start_scene", "player.target_platforms",
                                                 "player.development_build"};
 
@@ -480,6 +483,7 @@ TEST(BuildProfileResolve, EveryOverridableKeyLeavesTheProjectFilesAlone) {
         if (!changed) notChanged.push_back(row.key);
         EXPECT_EQ(encoded(project), before) << row.key << " changed the open project";
         EXPECT_EQ(project.getProjectCommandHistory()->position(), historyBefore) << row.key << " added an undo step to the open project";
+        EXPECT_TRUE(savegame::settings() == saveSettingsBefore) << row.key << " changed the editor engine's Saved Data settings";
     }
     std::string skipped;
     for (const std::string& key : notChanged) skipped += (skipped.empty() ? "" : ", ") + key;
