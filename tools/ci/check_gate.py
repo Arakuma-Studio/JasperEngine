@@ -12,7 +12,8 @@ skipped while lanes.json says that lane did not need to run. It fails when:
   - a full run (workflow_dispatch full=true) skipped any lane or test run, or a merge-queue run
     skipped one other than mcp (whose planned selection may be empty) while anything ran (a group
     only paths nothing reads touch runs nothing, D3), unless the lane or test run is --advisory and
-    lanes.json lists it under advisory_off (planned off for that: tools/ci/plan_lanes.py);
+    lanes.json lists it under advisory_off (planned off for that: tools/ci/plan_lanes.py), or lists it
+    under queue_off (ios without an Apple-only input: the nightly builds it);
   - a test lane (TEST_LANES) succeeded with zero tests in its report, with no report, or with a
     report that failed (a test step that continues on error) unless lanes.json lists it under
     build_only (a push to main building what the queue tested); each MCP
@@ -120,7 +121,8 @@ def gate(needs_path: Path, lanes_path: Path | None, reports_dir: Path | None, ad
                 row(job, result, "FAIL: skipped, but the plan needed it", True)
             elif event == "full":
                 row(job, result, "FAIL: a full run skips no lane", True)
-            elif event == "merge_group" and job != "mcp" and ran_any and not advisory_off(job):
+            elif event == "merge_group" and job != "mcp" and ran_any and not advisory_off(job) \
+                    and job not in plan["queue_off"]:
                 row(job, result, "FAIL: the merge queue skips no lane", True)
             else:
                 row(job, result, f"ok (not planned: {lane['why'] or 'no reason given'})", False)

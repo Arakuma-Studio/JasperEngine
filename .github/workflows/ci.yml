@@ -188,8 +188,7 @@ jobs:
           args=(--event "$event" --base "$base" --head "$head" --out-dir build/ci-plan --github-output "$GITHUB_OUTPUT"
                 --advisory "$ADVISORY_LANES" --runner-state "$RUNNER_TEMP/runner-state.json"
                 --runner-disabled "$RUNNER_DISABLED" --trigger "$GITHUB_EVENT_NAME" --head-repo "$HEAD_REPO"
-                --repo "$GITHUB_REPOSITORY" --run-attempt "$GITHUB_RUN_ATTEMPT" --self-hosted "$SELF_HOSTED"
-                --planner "$RUNNER_NAME")
+                --repo "$GITHUB_REPOSITORY" --run-attempt "$GITHUB_RUN_ATTEMPT" --self-hosted "$SELF_HOSTED")
           [[ -d build/ci-inputs/deps ]] && args+=(--deps-from build/ci-inputs/deps)
           [[ -f build/ci-inputs/coverage-map.json ]] && args+=(--coverage-map build/ci-inputs/coverage-map.json)
           [[ -f build/ci-inputs/mcp-test-seconds.json ]] && args+=(--test-seconds build/ci-inputs/mcp-test-seconds.json)

@@ -879,7 +879,7 @@ def load_lanes(path: Path | None) -> dict:
     """lanes.json (tools/ci/plan_lanes.py), reduced to what render and check_gate read."""
     data = load_json(path) if path else None
     out = {"ok": False, "event": "", "full": False, "base": "", "lanes": {}, "shards": [], "not_in_ci": [], "unit_jobs": [],
-           "asan_jobs": [], "advisory_off": [], "build_only": []}
+           "asan_jobs": [], "advisory_off": [], "build_only": [], "queue_off": []}
     if not isinstance(data, dict) or not isinstance(data.get("lanes"), dict):
         return out
     out["ok"] = True
@@ -902,8 +902,9 @@ def load_lanes(path: Path | None) -> dict:
     if isinstance(data.get("windows_parts"), list):
         out["windows_parts"] = [p for p in WINDOWS_PARTS if p in data["windows_parts"]]
     # the merge queue's advisory lanes and test runs planned off for being advisory; the lanes and test
-    # runs whose job runs without its tests
-    for key in ("advisory_off", "build_only"):
+    # runs whose job runs without its tests; the lanes the queue planned off by rule (ios without an
+    # Apple-only input)
+    for key in ("advisory_off", "build_only", "queue_off"):
         if isinstance(data.get(key), list):
             out[key] = [n for n in data[key][:40] if isinstance(n, str) and LANE_RE.match(n)]
     if out["event"] == "push" and not isinstance(data.get("build_only"), list):
