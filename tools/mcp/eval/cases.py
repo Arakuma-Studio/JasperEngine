@@ -1682,11 +1682,13 @@ CASES = [
         "groups_enabled": ["graphs"],  # the text at issue is run_dialogue's description, a graphs tool
         "what_happened": "Asked whether every ending of a conversation can be reached, agents read get_graph and reasoned over the "
                          "wires (missing conditions and loops); run_dialogue {explore: true} walks every path and reports the endings, "
-                         "no-exit loops and lines never shown.",
-        "text_at_issue": "run_dialogue's description ('explore: true walks every path ...'); jasper://docs/dialogue",
+                         "no-exit loops and lines never shown. Asked for lines nobody sees, an agent without that sentence reads the graph or "
+                         "runs validate_graph, whose issues are wiring, not reachability.",
+        "text_at_issue": "none: run_dialogue's explore sentence was cut, as agents asked for lines nobody sees passed "
+                         "explore: true without it (4/4, validate_graph and get_graph in reach); the parameter's name decides",
         "source": "docs/specs/dialogue-graphs.md R29",
         # "in the editor": with the file on disk an agent otherwise traces its JSON by hand and never sees the tools
-        "prompt": "Can the player reach every ending of assets/dialogue/guard.dialogue? Check it in the editor.",
+        "prompt": "Does assets/dialogue/guard.dialogue have lines the player can never see? Check it in the editor.",
         "files": {"assets/dialogue/guard.dialogue": GUARD_DIALOGUE},
         "mocks": [
             {"tool": "run_dialogue", "result": ok(
@@ -1696,6 +1698,7 @@ CASES = [
                  "endings": [{"result": "paid", "node": "n10", "choices": [1]}, {"result": "left", "node": "n9", "choices": [2]}],
                  "no_exit_loops": [], "lines_never_shown": ["n12"], "paths": 3})},
             {"tool": "get_graph", "result": ok("dialogue graph: 11 node(s), 9 edge(s).", {"graph": {}, "issue_count": 0})},
+            {"tool": "validate_graph", "result": ok("assets/dialogue/guard.dialogue: 0 issue(s).", {"issues": [], "issue_count": 0})},
         ],
         "checks": {"calls": [{"tool": "run_dialogue", "args": {"explore": True}}]},
         "max_turns": 10,
@@ -1703,11 +1706,14 @@ CASES = [
     {
         "id": "guard_l10n_assert_languages",
         "kind": "guard",
+        "groups_enabled": ["editor_ux"],  # configure_game_view language: the one-language-at-a-time sibling
         "what_happened": "Agents checked whether translated text fits by switching the Game view language and taking screenshots "
                          "one by one; assert_ui's languages runs text_fits per language in one call.",
-        "text_at_issue": "assert_ui's `languages` parameter (inspect_ui `l10n` beside it); jasper://docs/localization",
+        "text_at_issue": "assert_ui's `languages` parameter; 'languages' in its description was cut, as agents passed it "
+                         "without it (4/4, configure_game_view language and inspect_ui l10n in reach)",
         "source": "docs/specs/game-ui-localization.md R38",
-        "prompt": "Check that the main menu's buttons (UI Document GameObject 30) still fit their text in German.",
+        "prompt": "The German translation just came in. Do the main menu's buttons (UI Document GameObject 30) still fit "
+                  "their text, in English and in German?",
         "mocks": [
             {"tool": "assert_ui", "result": ok(
                 "assert_ui: 1/2 passed.\nFAIL text_fits \"button\" @1280x720 de: #play: the text needs 132 px, the box has 80 px",
@@ -5814,24 +5820,23 @@ CASES = [
         "id": "guard_physics_query_triggers",
         "playing": True,
         "kind": "guard",
-        "what_happened": "A pickup is a trigger collider: an overlap with triggers: ignore finds nothing there, and the result's "
-                         "next hint says to pass triggers: collide; the agent follows it instead of reporting that nothing is there.",
-        "text_at_issue": "query_physics next: 'no hits: only triggers are inside the shape and triggers are skipped; pass "
-                         "triggers: collide to report them.'",
+        "what_happened": "A pickup is a trigger collider: an overlap with triggers: ignore finds nothing there. Asked about a "
+                         "pickup, an agent passes triggers: collide instead of reporting that nothing is there.",
+        "text_at_issue": "none: query_physics's next for a trigger left out was cut, as agents pass triggers: collide for "
+                         "a pickup on their first query (4/4 without it); the parameter decides",
         "source": "docs/specs/spatial-queries.md R25 (next hints), R31",
-        "prompt": "The game is playing. Is the Coin pickup inside a 1 m sphere at (4, 0, 2)? Ignore triggers on your first try, "
-                  "then answer from what the tool tells you.",
+        "prompt": "The game is playing. Is the Coin pickup inside a 1 m sphere at (4, 0, 2)? Answer from a physics query.",
         "groups_enabled": ["physics"],
         "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nCoin [19] script rigidbody transform",
+                                                  {"entities": [{"id": 19, "path": "Coin"}]})},
             {"tool": "query_physics", "args": {"triggers": "collide"}, "result": ok(
                 "overlap (3d): 1 hit: Coin.",
                 {"op": "overlap", "world": "3d", "count": 1, "truncated": False,
-                 "hits": [{"entity": {"id": 12, "name": "Coin", "path": "Coin"}, "collider": 0, "trigger": True}]})},
+                 "hits": [{"entity": {"id": 19, "name": "Coin", "path": "Coin"}, "collider": 0, "trigger": True}]})},
             {"tool": "query_physics", "result": ok(
-                "overlap (3d): 0 hits. no hits: only triggers are inside the shape and triggers are skipped; pass triggers: collide "
-                "to report them.",
-                {"op": "overlap", "world": "3d", "count": 0, "truncated": False, "hits": [],
-                 "next": "no hits: only triggers are inside the shape and triggers are skipped; pass triggers: collide to report them."})},
+                "overlap (3d): 0 hits.",
+                {"op": "overlap", "world": "3d", "count": 0, "truncated": False, "hits": []})},
         ],
         "checks": {"calls": [{"tool": "query_physics", "args": {"triggers": "collide"}}], "reply_must": [r"Coin"]},
         "max_turns": 8,
@@ -5897,25 +5902,25 @@ CASES = [
         "id": "guard_input_scheme_read",
         "playing": True,
         "kind": "guard",
-        "groups_enabled": ["gameplay"],  # the text at issue is get_input_state's description, a gameplay tool
+        # gameplay: the tool at issue; editor_ux: configure_game_view, whose input_scheme is the forced one (auto here)
+        "groups_enabled": ["gameplay", "editor_ux"],
         "what_happened": "New text (input-device-awareness R27): which device the game treats as in use is in get_input_state "
-                         "(scheme), and send_input switches it as a player would; without it an agent writes a Lua probe or "
-                         "guesses from the screenshot.",
-        "text_at_issue": "get_input_state: '... and the input scheme (the device in use; send_input switches it)'",
+                         "(scheme), and send_input switches it as a player would; without it an agent reads the Game view's "
+                         "input_scheme (the scheme forced at Play start: auto), writes a Lua probe or guesses.",
+        "text_at_issue": "none: the description's sentence on the scheme was cut, as agents read get_input_state for it "
+                         "without it (4/4, the Game view's input_scheme in reach); the result's scheme field and the name decide",
         "source": "input-device-awareness R27 (new tool text); no failure on record",
-        "prompt": "The game is playing. Tap the screen once at (640, 360), then tell me which input scheme the game thinks the "
-                  "player is using now.",
+        "prompt": "The game is playing and a tester just played it on the touch screen. Which input scheme is the game using "
+                  "right now?",
         "mocks": [
-            {"tool": "send_input", "args": {"events": [{"type": "touch"}]}, "result": ok(
-                "Sent 1 event over 2 frames; playing.", {"frames": 2, "state": "playing"})},
             {"tool": "get_input_state", "result": ok(
                 "Input of game frame 212\nscheme Touch, 1 changes",
                 {"game_frame": 212, "touches": [], "scheme": {"current": "Touch", "pointer": "Touch", "gamepad": None,
                                                               "gamepad_family": "Generic", "override": None}, "changes": 1})},
-            {"tool": "eval_lua", "result": ok("Touch", {"result": "Touch"})},
+            {"tool": "configure_game_view", "args": {}, "result": {"recorded": "configure_game_view_read"}},
+            {"tool": "eval_lua", "args": {"code": "re:currentScheme"}, "result": ok("\"Touch\"", {"values": ["Touch"]})},
         ],
-        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "touch"}]}}, "get_input_state"],
-                   "reply_must": [r"(?i)touch"]},
+        "checks": {"calls": ["get_input_state"], "reply_must": [r"(?i)touch"], "must_not_call": ["send_input"]},
         "max_turns": 10,
     },
     # ---- culling-group-and-simulation-distance: Culling Groups and Simulation Culling
@@ -6283,7 +6288,7 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "get_build_report", "args": {"compare_to": "re:."}}],
                    "reply_must": [r"hero_sheet"], "must_not_call": ["build_project"]},
-        "max_turns": 10,
+        "max_turns": 14,  # the sandbox refuses the first shell probes; 10 turns ended a run before the comparison
     },
     {
         "id": "bad_texture_should_not_ship",
