@@ -31,14 +31,14 @@ EDITOR = {"create": True, "name": "Build Parity",
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
 
 MOVER = """local Mover = {}
-function Mover:init() self.gameObject.transform.position = Vector3(1.5, 0.5, 0) end
+function Mover:init() self.gameObject.position = Vector3(1.5, 0.5, 0) end
 return Mover
 """
 
 # what the game runs with, one log line: the settings the generated init() and create_<scene>() set
 PROBE = """local Probe = {}
 function Probe:init()
-  local scene = Engine.getMainScene()
+  local scene = self.scene
   print(string.format("PARITY canvas=%dx%d ppu=%d frameRate=%d vsync=%d foliage=%.3f subSteps=%d",
     Engine.canvasWidth, Engine.canvasHeight, Engine.getPixelsPerUnit(), Engine.targetFrameRate, Engine.vSyncCount,
     Engine.foliageDistanceScale, scene.physics2DSubSteps))
