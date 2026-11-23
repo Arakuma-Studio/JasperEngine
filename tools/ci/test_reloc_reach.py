@@ -52,7 +52,7 @@ class RelocReach(unittest.TestCase):
                 self.assertEqual(reloc_reach.main([str(path)]), 0)
             return out.getvalue()
 
-    def test_spans_rodata_to_bss_without_the_loaders_tables(self):
+    def test_the_farthest_section_from_the_code_without_the_loaders_tables(self):
         text = self.run_on(elf([
             (".rela.dyn", 4, ALLOC, 0x1000, 900 * MIB),
             (".dynsym", 11, ALLOC, 900 * MIB + 0x1000, 10 * MIB),
@@ -63,13 +63,17 @@ class RelocReach(unittest.TestCase):
             (".bss", 8, WRITE_ALLOC, 2024 * MIB, 20 * MIB),
             (".debug_info", 1, 0, 0, 5000 * MIB),
         ]))
-        # .rodata at 1024 MiB to the end of .bss at 2044 MiB: 1020 MiB of 2048
-        self.assertIn("code-referenced image 0.996 GiB of the 2 GiB relocation reach, 50.2 % headroom", text)
-        self.assertIn("(.data 500 MiB, .text 400 MiB, .rodata 100 MiB, .bss 20 MiB)", text)
+        # the start of .text at 1124 MiB to the end of .bss at 2044 MiB: 920 MiB of 2048 (.rodata is 500 MiB
+        # below the end of .text)
+        self.assertIn("its code reaches 0.898 GiB of the 2 GiB relocation reach, 55.1 % headroom", text)
+        self.assertIn("(in address order, MiB: .rodata 100, .text 400, .data 500, .bss 20)", text)
 
     def test_past_the_reach_the_headroom_is_negative(self):
-        text = self.run_on(elf([(".rodata", 1, ALLOC, 0, 1000 * MIB), (".data", 1, WRITE_ALLOC, 1000 * MIB, 1200 * MIB)]))
-        self.assertIn("2.148 GiB of the 2 GiB relocation reach, -7.4 % headroom", text)
+        text = self.run_on(elf([(".text", 1, 0x6, 0, 100 * MIB), (".data", 1, WRITE_ALLOC, 100 * MIB, 2200 * MIB)]))
+        self.assertIn("2.246 GiB of the 2 GiB relocation reach, -12.3 % headroom", text)
+
+    def test_a_file_without_code_is_said(self):
+        self.assertIn("no code section", self.run_on(elf([(".data", 1, WRITE_ALLOC, 0, MIB)])))
 
     def test_not_an_elf_file_is_said_and_passes(self):
         self.assertIn("not a little-endian ELF64 file", self.run_on(b"#!/bin/sh\n"))

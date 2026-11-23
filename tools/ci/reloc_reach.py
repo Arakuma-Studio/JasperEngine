@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Prints how much of x86-64's 2 GiB PC-relative reach an ELF64 binary's loaded image uses.
+"""Prints how much of x86-64's 2 GiB PC-relative reach an ELF64 binary's code needs.
 
     python3 tools/ci/reloc_reach.py <binary>
 
-The small code model reaches every symbol with a signed 32-bit offset from the code that uses it, so the
-link fails ("relocation truncated to fit", lld's "out of range") once the span from the first section code
-refers to (.rodata) to the end of the last (.bss) passes 2 GiB; the dynamic linker's tables (.rela.dyn,
+The small code model reaches every symbol with a signed 32-bit offset from the instruction that uses it,
+so the link fails ("relocation truncated to fit", lld's "out of range") once the farthest section code
+refers to lies 2 GiB or more from the far end of the code: the larger of (end of the code - start of the
+first such section) and (end of the last - start of the code). The dynamic linker's tables (.rela.dyn,
 .dynsym, ...) load too, but no code refers to them PC-relative. The asan (editor) lane prints this for its
 test binary, the largest we link. Always exits 0 (a measurement, not a gate), 2 on bad arguments.
 """
@@ -17,9 +18,10 @@ import sys
 from pathlib import Path
 
 SHF_ALLOC = 0x2
+SHF_EXECINSTR = 0x4
 SHF_TLS = 0x400
 # the loader's tables: string, symbol, hash, note, version and relocation sections
-LOADER_TYPES = {2, 3, 4, 5, 7, 9, 11, 0x6FFFFFF6, 0x6FFFFFFD, 0x6FFFFFFE, 0x6FFFFFFF}
+LOADER_TYPES = {2, 3, 4, 5, 7, 9, 11, 19, 0x6FFFFFF6, 0x6FFFFFFD, 0x6FFFFFFE, 0x6FFFFFFF}
 REACH = 2 ** 31
 
 
@@ -45,13 +47,14 @@ def report(path: Path) -> str:
         found = sections(f)
     loaded = [s for s in found
               if s[2] & SHF_ALLOC and not s[2] & SHF_TLS and s[4] and s[1] not in LOADER_TYPES]
-    start = min(s[3] for s in loaded)
-    end = max(s[3] + s[4] for s in loaded)
-    span = end - start
-    big = sorted(loaded, key=lambda s: -s[4])[:4]
-    sizes = ", ".join(f"{s[0]} {s[4] / 2**20:,.0f} MiB" for s in big)
-    return (f"{path.name}: code-referenced image {span / 2**30:.3f} GiB of the 2 GiB relocation reach, "
-            f"{100 * (REACH - span) / REACH:.1f} % headroom ({sizes})")
+    code = [s for s in loaded if s[2] & SHF_EXECINSTR]
+    if not code:
+        raise ValueError("no code section")
+    code_start, code_end = min(s[3] for s in code), max(s[3] + s[4] for s in code)
+    need = max(code_end - min(s[3] for s in loaded), max(s[3] + s[4] for s in loaded) - code_start)
+    layout = ", ".join(f"{s[0]} {s[4] / 2**20:,.0f}" for s in sorted(loaded, key=lambda s: s[3]) if s[4] >= 2**20)
+    return (f"{path.name}: its code reaches {need / 2**30:.3f} GiB of the 2 GiB relocation reach, "
+            f"{100 * (REACH - need) / REACH:.1f} % headroom (in address order, MiB: {layout})")
 
 
 def main(argv: list[str]) -> int:
