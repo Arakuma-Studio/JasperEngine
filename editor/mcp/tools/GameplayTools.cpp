@@ -540,7 +540,7 @@ void registerGameplayTools(McpRegistry& registry) {
             "What the game reads from Input at the last frame that ran: levels (held), the frame's edges "
             "(down/up: getKeyDown/getKeyUp), mouse delta and scroll delta, pointer lock, touches with "
             "phases, gamepads, and the Input Actions maps (priority, enabled, blocked) with each action's value, "
-            "phase and consumer, and the input scheme (the device in use; send_input switches it). auto_pause + "
+            "phase and consumer. auto_pause + "
             "send_input frames_after 0: the frame the input landed in.";
         tool.inputSchema = object({
             {"fields", array(stringEnum("", {"raw", "touches", "gamepads", "actions"}), "Default: all.")}

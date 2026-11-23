@@ -4081,7 +4081,7 @@ Spatial query of the running game's colliders (Play only) or of drawn bounds (wo
 
 Group: `core`. Hints: read-only, idempotent
 
-Assert a live HTML/CSS UI document's layout: passed + each failure (ref, numbers, rects), outlined in an image. Checks {type, selector}: exists, count and selected (count|min|max), visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), within_parent (container), within_viewport, contrast (min_ratio, background under a transparent UI), min_size (width, height), virtual_window (max rows), tooltip (text). viewports, languages: more layouts. 0 matches fail.
+Assert a live HTML/CSS UI document's layout: passed + each failure (ref, numbers, rects), outlined in an image. Checks {type, selector}: exists, count and selected (count|min|max), visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), within_parent (container), within_viewport, contrast (min_ratio, background under a transparent UI), min_size (width, height), virtual_window (max rows), tooltip (text). viewports: more layouts. 0 matches fail.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -4701,7 +4701,7 @@ A kind's node types, one signature line each: id(inputs; param=default[min..max]
 
 Group: `graphs` (listed once `tool_groups` enables it, callable either way)
 
-Play a .dialogue: path walks it headless (no Play; handler calls never run, unlisted conditions are false and reported), picking choices in order at each menu; explore: true walks every path and reports endings, no-exit loops and lines never shown. entity drives a Dialogue Runner in Play with the real handlers.
+Play a .dialogue: path walks it headless (no Play; handler calls never run, unlisted conditions are false and reported), picking choices in order at each menu. entity drives a Dialogue Runner in Play with the real handlers.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -4866,7 +4866,7 @@ An .inputactions asset (project-relative path): its maps, actions and bindings a
 
 Group: `gameplay` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
 
-What the game reads from Input at the last frame that ran: levels (held), the frame's edges (down/up: getKeyDown/getKeyUp), mouse delta and scroll delta, pointer lock, touches with phases, gamepads, and the Input Actions maps (priority, enabled, blocked) with each action's value, phase and consumer, and the input scheme (the device in use; send_input switches it). auto_pause + send_input frames_after 0: the frame the input landed in.
+What the game reads from Input at the last frame that ran: levels (held), the frame's edges (down/up: getKeyDown/getKeyUp), mouse delta and scroll delta, pointer lock, touches with phases, gamepads, and the Input Actions maps (priority, enabled, blocked) with each action's value, phase and consumer. auto_pause + send_input frames_after 0: the frame the input landed in.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

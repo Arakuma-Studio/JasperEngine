@@ -128,8 +128,8 @@
             "reason": "S31's grandfathered limit lowered by S50: 2070 chars when its ops moved to jasper://docs/tilemaps, +5%"
         },
         "assert_ui": {
-            "limit": 2031,
-            "reason": "grandfathered by S31: 2067 chars when the limits were set, +5% (tighter than its HTML UI cap 2400); 2031 measured after mcp-budget-trim cut wording (the craftsman merge took core over 99,000)"
+            "limit": 2020,
+            "reason": "grandfathered by S31: 2067 chars when the limits were set, +5% (tighter than its HTML UI cap 2400); 2031 measured after mcp-budget-trim cut wording (the craftsman merge took core over 99,000); 2020 once 'languages' left its description (no eval case needed it)"
         },
         "create_entity": {
             "limit": 2196,
