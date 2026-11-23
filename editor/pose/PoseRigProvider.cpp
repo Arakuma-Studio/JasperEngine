@@ -16,6 +16,11 @@
 #include "util/ProjectChecks.h"
 #include "util/ProjectFileWrites.h"
 
+#include <cctype>
+#include <cstdint>
+#include <cstring>
+#include <string_view>
+
 using namespace jasperengine;
 
 namespace fs = std::filesystem;
@@ -53,6 +58,36 @@ namespace {
 
     fs::path sidecarOf(const fs::path& model){
         return editor::FileUtils::pathFromUtf8(pose::humanoidSidecarPath(editor::FileUtils::pathToUtf8(model)));
+    }
+
+    // Whether a glTF (.gltf, or a .glb's JSON chunk) names a node that the current auto-detect
+    // naming rules read otherwise than the original ones ("B-hips", a proxy): read from the JSON
+    // alone, so a model the rules agree on is never loaded. True when the file cannot be read that
+    // way (the rig decides).
+    bool namesDependOnTheRules(const fs::path& model){
+        std::string bytes;
+        if (!editor::ProjectChecks::readFile(model, bytes)) return true;
+        std::string_view json = bytes;
+        if (bytes.size() >= 20 && bytes.compare(0, 4, "glTF") == 0){
+            uint32_t length = 0;
+            std::memcpy(&length, bytes.data() + 12, sizeof(length));
+            if (bytes.compare(16, 4, "JSON") != 0 || length > bytes.size() - 20) return true;
+            json = std::string_view(bytes.data() + 20, length);
+        }
+        const nlohmann::json root = nlohmann::json::parse(json, nullptr, false);
+        if (root.is_discarded() || !root.is_object()) return true;
+        const auto nodes = root.find("nodes");
+        if (nodes == root.end() || !nodes->is_array()) return false;
+        for (const nlohmann::json& node : *nodes){
+            const auto name = node.find("name");
+            if (name == node.end() || !name->is_string()) continue;
+            const std::string& text = name->get_ref<const std::string&>();
+            std::string lowered = text;
+            for (char& c : lowered) c = (char)std::tolower((unsigned char)c);
+            if (lowered.find("proxy") != std::string::npos ||
+                pose::humanoidNameTokens(text, pose::HUMANOID_NAME_RULES_ORIGINAL) != pose::humanoidNameTokens(text)) return true;
+        }
+        return false;
     }
 
     // The sidecar's overrides (a missing sidecar is all auto); false + error when it is unreadable
@@ -190,7 +225,10 @@ bool editor::PoseRigProvider::setAnimationType(Project* project, const fs::path&
 bool editor::PoseRigProvider::adoptNameRules(Project* project, const fs::path& model){
     const fs::path file = model.lexically_normal();
     // an FBX is read through its converted .glb
-    if (FbxImporter::isFbxFile(file) && !project->importFbxModel(file)) return false;
+    const bool fbx = FbxImporter::isFbxFile(file);
+    if (fbx && !project->importFbxModel(file)) return false;
+    // most models: no name the rules read otherwise, nothing to load
+    if (!namesDependOnTheRules(fbx ? project->getImportedModelPath(file) : file)) return false;
     const std::shared_ptr<const PoseRigInfo> info = forModelFile(project, file);
     if (!info->sidecarError.empty()){
         Out::warning("%s", unreadableSidecarRefusal(info->sidecarError).c_str());
