@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S92 R7, R8, AC2: the frame checks' parts. The z-fighting plane buckets (coplanar, same-facing
+// S99 R7, R8, AC2: the frame checks' parts. The z-fighting plane buckets (coplanar, same-facing
 // faces overlapping by more than 1 mm, wherever and however tilted the plane is, and nothing
 // else), the luminance thresholds, the projected bounds, and the bucket check's cost on two dense
 // meshes against its budget (perfSlack()).
@@ -50,7 +50,7 @@ namespace {
     }
 
     // a grid of cells x cells quads on y = height, `size` wide
-    std::vector<Triangle> grid(int cells, float size, float height){
+    std::vector<Triangle> frameChecksGrid(int cells, float size, float height){
         std::vector<Triangle> faces;
         const float step = size / (float)cells;
         for (int z = 0; z < cells; z++){
@@ -105,12 +105,12 @@ TEST(FrameChecksZFighting, TiltedPlanesFarFromTheOriginFight){
 TEST(FrameChecksZFighting, SmallFacesOnALargeFaceFight){
     // one big face and a dense grid on it (one face spanning every cell of the grid's buckets)
     const std::vector<Triangle> big = quad(Vector3::ZERO, 40.0f);
-    const std::vector<Triangle> dense = grid(32, 8.0f, 0.0f);
+    const std::vector<Triangle> dense = frameChecksGrid(32, 8.0f, 0.0f);
     EXPECT_TRUE(zFights(big, dense, Vector3::ZERO, 6.0f));
     EXPECT_TRUE(zFights(dense, big, Vector3::ZERO, 6.0f));
-    EXPECT_FALSE(zFights(dense, grid(32, 8.0f, 0.01f), Vector3::ZERO, 6.0f));
+    EXPECT_FALSE(zFights(dense, frameChecksGrid(32, 8.0f, 0.01f), Vector3::ZERO, 6.0f));
     // built with the dense faces, the big one spans too many cells: kept apart, still found
-    std::vector<Triangle> mixed = grid(32, 8.0f, 0.01f);
+    std::vector<Triangle> mixed = frameChecksGrid(32, 8.0f, 0.01f);
     mixed.insert(mixed.end(), big.begin(), big.end());
     EXPECT_TRUE(zFights(mixed, quad(Vector3(15.0f, 0.0f, 15.0f), 1.0f), Vector3::ZERO, 6.0f));
 }
@@ -118,8 +118,8 @@ TEST(FrameChecksZFighting, SmallFacesOnALargeFaceFight){
 TEST(FrameChecksZFighting, DenseMeshesStayInBudget){
     // the check's worst case: two dense parallel meshes 1 cm apart (every face has neighbours in
     // its buckets and none fights), 8192 faces each
-    const std::vector<Triangle> a = grid(64, 64.0f, 0.0f);
-    const std::vector<Triangle> b = grid(64, 64.0f, 0.01f);
+    const std::vector<Triangle> a = frameChecksGrid(64, 64.0f, 0.0f);
+    const std::vector<Triangle> b = frameChecksGrid(64, 64.0f, 0.01f);
     double best = 1e9;
     for (int run = 0; run < 5; run++){
         const auto start = std::chrono::steady_clock::now();

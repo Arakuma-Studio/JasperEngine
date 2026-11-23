@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S92 R13-R16 (docs/specs/S92-agent-feedback-area-lights.md AC4): the cost model of each job kind,
+// S99 R13-R16 (docs/specs/S99-agent-feedback-area-lights.md AC4): the cost model of each job kind,
 // the history's median and clamp, a corrupt or missing history file, and the estimate and report
 // a job carries.
 
@@ -21,14 +21,14 @@ using namespace jasperengine::editor::mcp;
 
 namespace {
 
-    std::string readText(const std::filesystem::path& file) {
+    std::string jobEstimateReadText(const std::filesystem::path& file) {
         std::ifstream in(file, std::ios::binary);
         std::stringstream text;
         text << in.rdbuf();
         return text.str();
     }
 
-    void writeText(const std::filesystem::path& file, const std::string& text) {
+    void jobEstimateWriteText(const std::filesystem::path& file, const std::string& text) {
         std::filesystem::create_directories(file.parent_path());
         std::ofstream(file, std::ios::binary) << text;
     }
@@ -199,13 +199,13 @@ TEST(JobHistory, MissingOrCorruptFileStartsEmptyAndIsReplaced) {
     ASSERT_TRUE(JobHistory::record(file, "record_game:png", 9.0, 6.0));
     ASSERT_EQ(JobHistory::load(file).samples("record_game:png").size(), 1u);
     // a corrupt file reads as empty, and the next completion writes a good one over it
-    writeText(file, "{\"kinds\": {\"record_game:png\": [{\"seconds\": 9, \"mod");
+    jobEstimateWriteText(file, "{\"kinds\": {\"record_game:png\": [{\"seconds\": 9, \"mod");
     EXPECT_TRUE(JobHistory::load(file).samples("record_game:png").empty());
     ASSERT_TRUE(JobHistory::record(file, "record_game:png", 3.0, 6.0));
     const JobHistory back = JobHistory::load(file);
     ASSERT_EQ(back.samples("record_game:png").size(), 1u);
     EXPECT_DOUBLE_EQ(back.samples("record_game:png")[0].seconds, 3.0);
-    EXPECT_FALSE(JobHistory::parse(readText(file)).samples("record_game:png").empty());
+    EXPECT_FALSE(JobHistory::parse(jobEstimateReadText(file)).samples("record_game:png").empty());
 }
 
 TEST(McpJob, EstimateAndRemainingTimeShowWhileItRuns) {
@@ -293,7 +293,7 @@ TEST(McpJob, SuccessAddsItsMeasureToTheHistory) {
 TEST(McpJob, CorruptHistoryFileNeverFailsAJob) {
     jasperengine::test::TempDir dir;
     const std::filesystem::path file = JobHistory::fileFor(dir.path());
-    writeText(file, "\x01\x02 garbage {");
+    jobEstimateWriteText(file, "\x01\x02 garbage {");
     McpJob job("job-8", "edit_terrain", "Bake impostors");
     job.estimateFor(dir.path(), "bake_impostors", 2.0, 0);
     JobEstimate estimate;

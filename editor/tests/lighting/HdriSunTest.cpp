@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The sun of an HDR sky (spec S92 AC7, R28, R29): found in synthetic equirects and cube faces
+// The sun of an HDR sky (spec S99 AC7, R28, R29): found in synthetic equirects and cube faces
 // within a degree, its light measured, a sky without a distinct sun refused, and Remove Sun Disc
 // clamping the disc alone, in the analysis and in the cook's decode.
 
@@ -28,17 +28,17 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    constexpr float kPi = 3.14159265358979323846f;
+    constexpr float kHdriSunTestPi = 3.14159265358979323846f;
 
     Vector3 fromAngles(float azimuthDegrees, float elevationDegrees){
-        const float a = azimuthDegrees * kPi / 180.0f;
-        const float e = elevationDegrees * kPi / 180.0f;
+        const float a = azimuthDegrees * kHdriSunTestPi / 180.0f;
+        const float e = elevationDegrees * kHdriSunTestPi / 180.0f;
         return Vector3(std::cos(e) * std::sin(a), std::sin(e), std::cos(e) * std::cos(a));
     }
 
-    float angleDegrees(const Vector3& a, const Vector3& b){
+    float hdriSunAngleDegrees(const Vector3& a, const Vector3& b){
         const float c = std::clamp(a.dotProduct(b) / (a.length() * b.length()), -1.0f, 1.0f);
-        return std::acos(c) * 180.0f / kPi;
+        return std::acos(c) * 180.0f / kHdriSunTestPi;
     }
 
     // a clear sky: a blue gradient over a darker ground, and a sun disc of `sunRadius` degrees
@@ -50,7 +50,7 @@ namespace {
 
         Vector3 radiance(const Vector3& d) const{
             Vector3 sky = d.y >= 0.0f ? Vector3(0.4f, 0.6f, 1.0f) * (0.6f + 0.4f * d.y) : Vector3(0.15f, 0.12f, 0.1f);
-            if (sunRadiance > 0.0f && angleDegrees(d, sun) <= sunRadius)
+            if (sunRadiance > 0.0f && hdriSunAngleDegrees(d, sun) <= sunRadius)
                 sky = Vector3(sunRadiance, sunRadiance * 0.95f, sunRadiance * 0.85f);
             return sky;
         }
@@ -62,8 +62,8 @@ namespace {
                 for (int x = 0; x < width; x++){
                     Vector3 sum;
                     for (int s = 0; s < 16; s++){
-                        const float lon = ((float)x + 0.125f + 0.25f * (float)(s & 3)) / (float)width * 2.0f * kPi - kPi;
-                        const float lat = 0.5f * kPi - ((float)y + 0.125f + 0.25f * (float)(s >> 2)) / (float)height * kPi;
+                        const float lon = ((float)x + 0.125f + 0.25f * (float)(s & 3)) / (float)width * 2.0f * kHdriSunTestPi - kHdriSunTestPi;
+                        const float lat = 0.5f * kHdriSunTestPi - ((float)y + 0.125f + 0.25f * (float)(s >> 2)) / (float)height * kHdriSunTestPi;
                         sum += radiance(Vector3(std::cos(lat) * std::sin(lon), std::sin(lat), std::cos(lat) * std::cos(lon)));
                     }
                     float* p = &rgba[((size_t)y * width + x) * 4];
@@ -112,7 +112,7 @@ namespace {
 
         // the sun's irradiance above the sky behind it: radiance x the disc's solid angle
         float discIrradiance() const{
-            return sunRadiance * 2.0f * kPi * (1.0f - std::cos(sunRadius * kPi / 180.0f));
+            return sunRadiance * 2.0f * kHdriSunTestPi * (1.0f - std::cos(sunRadius * kHdriSunTestPi / 180.0f));
         }
     };
 
@@ -143,7 +143,7 @@ TEST(HdriSun, FindsTheSunOfSyntheticEquirectsWithinADegree){
         SunResult sun;
         std::string error;
         ASSERT_TRUE(findSun({equirectView(rgba, 512, 256)}, sun, error)) << error;
-        EXPECT_LT(angleDegrees(sun.direction, direction), 1.0f);
+        EXPECT_LT(hdriSunAngleDegrees(sun.direction, direction), 1.0f);
         EXPECT_GE(sun.peakRatio, MIN_PEAK_RATIO);
         // the disc's light, its colour, and a disc no wider than the sun's and a texel
         EXPECT_NEAR(sun.irradiance.x, sky.discIrradiance(), sky.discIrradiance() * 0.15f);
@@ -171,7 +171,7 @@ TEST(HdriSun, FindsTheSunAcrossCubeFaces){
     SunResult sun;
     std::string error;
     ASSERT_TRUE(findSun(views, sun, error)) << error;
-    EXPECT_LT(angleDegrees(sun.direction, sky.sun), 1.0f);
+    EXPECT_LT(hdriSunAngleDegrees(sun.direction, sky.sun), 1.0f);
     EXPECT_NEAR(sun.irradiance.x, sky.discIrradiance(), sky.discIrradiance() * 0.15f);
 }
 
@@ -204,11 +204,11 @@ TEST(HdriSun, RemoveSunDiscClampsTheDiscAlone){
     size_t changedFar = 0;
     for (int y = 0; y < 256; y++){
         for (int x = 0; x < 512; x++){
-            const float lon = ((float)x + 0.5f) / 512.0f * 2.0f * kPi - kPi;
-            const float lat = 0.5f * kPi - ((float)y + 0.5f) / 256.0f * kPi;
+            const float lon = ((float)x + 0.5f) / 512.0f * 2.0f * kHdriSunTestPi - kHdriSunTestPi;
+            const float lat = 0.5f * kHdriSunTestPi - ((float)y + 0.5f) / 256.0f * kHdriSunTestPi;
             const Vector3 d(std::cos(lat) * std::sin(lon), std::sin(lat), std::cos(lat) * std::cos(lon));
             const size_t i = ((size_t)y * 512 + x) * 4;
-            if (angleDegrees(d, sky.sun) > MAX_DISC_DEGREES + 1.0f && rgba[i] != before[i])
+            if (hdriSunAngleDegrees(d, sky.sun) > MAX_DISC_DEGREES + 1.0f && rgba[i] != before[i])
                 changedFar++;
         }
     }
