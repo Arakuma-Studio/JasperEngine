@@ -8,6 +8,7 @@
 #include "pixelart/PixelArtInput.h"
 #include "pixelart/PixelArtMode.h"
 #include "pose/PoseRigProvider.h"
+#include "animation/ModelSubClips.h"
 #include "texture/TextureCookQueue.h"
 #include "tilemap/TilesetPool.h"
 #include "Project.h"
@@ -20,7 +21,6 @@
 #include "PrefabStage.h"
 #include "asset/AssetFileWrite.h"
 #include "util/EntityPath.h"
-#include "util/Util.h"
 
 #include <algorithm>
 
@@ -479,9 +479,8 @@ void editor::Project::onAssetFilesChanged(const std::vector<AssetDatabase::Chang
     // a model arriving is a new import: it takes the current humanoid naming rules where they map it
     // otherwise (a model imported before keeps its status until a reimport, pose/HumanoidMap.h)
     for (const AssetDatabase::Change& change : changes) {
-        // an OBJ has no skeleton
-        const std::string relative = change.path.generic_string();
-        if (change.type != AssetDatabase::Change::Type::Added || !Util::isModelFile(relative) || Util::fileExtension(relative) == ".obj") continue;
+        // glTF and FBX (an OBJ has no skeleton)
+        if (change.type != AssetDatabase::Change::Type::Added || !anim::isModelFilePath(change.path.generic_string())) continue;
         const fs::path absolute = getProjectPath() / change.path;
         if (isInsideAssetsPath(absolute)) PoseRigProvider::adoptNameRules(this, absolute);
     }
