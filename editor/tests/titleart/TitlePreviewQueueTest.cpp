@@ -223,3 +223,21 @@ TEST_F(TitlePreviewQueueTest, AWaitingJobIsPassedOver) {
     EXPECT_EQ(calls, 3);
     EXPECT_EQ(queue.stats().done, 2u);
 }
+
+TEST_F(TitlePreviewQueueTest, AStartedJobFinishesBeforeAnotherOfItsPriorityStarts) {
+    // a started preview holds the targets of what it rendered so far: one that waits, and that a
+    // newer visible request outranks, finishes before another of its priority starts (the title
+    // library gate's thumbnails filled the renderer's 512 MB pool with half-done jobs)
+    int calls = 0;
+    queue.request(TitlePreviewPriority::Thumbnails, "started", [&calls] { return std::make_unique<WaitingJob>(2, &calls); }, 0, false);
+    frame();
+    EXPECT_EQ(calls, 1);
+    submit(TitlePreviewPriority::Thumbnails, "newer", 1, 100);
+    frame();
+    EXPECT_EQ(calls, 2) << "the started job is asked again";
+    EXPECT_TRUE(log.empty()) << "the newer job did not start while the started one is unfinished";
+    frame();
+    EXPECT_EQ(calls, 3);
+    EXPECT_EQ(log, (std::vector<std::string>{"newer"})) << "it starts once the started one is done";
+    EXPECT_EQ(queue.stats().done, 2u);
+}
