@@ -466,6 +466,24 @@ class Rules(unittest.TestCase):
         self.assertIn("run: tools/ci/macos.sh xcode ios", job)
         self.assertNotIn("if:", job.split("steps:")[0])
 
+    def test_a_pr_runs_its_blocking_lanes_only_while_the_variable_is_off(self):
+        # PR_ADVISORY_LANES=off while GitHub's 60 concurrent jobs are the bottleneck: as the merge queue,
+        # the advisory test lanes are left to main's advisory run
+        p = plan(["engine/core/Foo.cpp", "engine/platform/apple/Renderer.mm"], unit="all", mcp=["test_a.py"])
+        on = decide("pull_request", p, advisory=ADVISORY)
+        self.assertTrue(all(on["lanes"][n]["run"] for n in ("unit", "asan", "htmlui", "mcp", "smoke")))
+        off = decide("pull_request", p, advisory=ADVISORY, pr_advisory=False)
+        self.assertEqual(runs(off), {"changes", "lint", *pl.PLATFORM_LANES})
+        self.assertEqual(off["advisory_off"], ["unit", "asan", "htmlui", "mcp", "smoke", "windows-editor-tests"])
+        self.assertEqual(off["build_only"], ["windows-editor-tests"])
+        self.assertIn(pl.PR_ADVISORY_VARIABLE, off["lanes"]["unit"]["why"])
+        self.assertEqual(off["mcp"]["mode"], "none")
+        # only a pull request: the queue, a push, the advisory run and full runs as before
+        for event in ("merge_group", "push", "advisory", "full"):
+            self.assertEqual(decide(event, p, advisory=ADVISORY, pr_advisory=False), decide(event, p, advisory=ADVISORY), event)
+        # a lane taken off ADVISORY_LANES blocks, so it runs
+        self.assertTrue(decide("pull_request", p, advisory=("mcp",), pr_advisory=False)["lanes"]["unit"]["run"])
+
     def test_the_queue_the_advisory_run_and_the_rollback_keep_asan(self):
         p = plan(["tools/ci/report.py"], unit="all")
         # the merge queue: unchanged, every unit test under ASan unless it is advisory
@@ -622,8 +640,8 @@ JOBS = {"lint": "linux", "linux": "linux", "unit-core": "linux", "unit-editor-1"
         "windows-engine-vulkan": "windows", "windows-compile": "windows", "macos": "macos", "ios": "macos"}
 
 
-def route(st, trigger="pull_request", head=REPO, attempt=1, disabled="", force=None, jobs=JOBS):
-    return pl.route(jobs, st, NOW, trigger, head, REPO, attempt, disabled, force)
+def route(st, trigger="pull_request", head=REPO, attempt=1, disabled="", force=None, jobs=JOBS, run_id="42"):
+    return pl.route(jobs, st, NOW, trigger, head, REPO, attempt, disabled, force, run_id=run_id)
 
 
 def overflowed(runs_on):
@@ -692,12 +710,17 @@ class Routing(unittest.TestCase):
         # a fork cannot force one either
         self.assertEqual(overflowed(route(state(), head="someone/JasperEngine", force={"macos": "je-mac"})[0]), {})
 
-    def test_a_rerun_stays_hosted(self):
-        # the watchdog reruns a run whose runner went away: the rerun must not wait for it again
-        for force in (None, {"macos": "je-mac"}):
-            runs_on, notes = route(state(), trigger="workflow_dispatch", attempt=2, force=force)
-            self.assertEqual(overflowed(runs_on), {})
+    def test_a_rerun_after_a_runner_went_away_stays_hosted(self):
+        # the watchdog reruns a run whose runner went away and lists it in the state's hosted_only: the
+        # rerun must not wait for it again; a forced dispatch's rerun, or a rerun of an unknown run, neither
+        held = dict(state(), hosted_only=["42", 7])
+        for st, force, run_id in ((held, None, "42"), (held, None, "7"), (state(), {"macos": "je-mac"}, "42"), (state(), None, "")):
+            runs_on, notes = route(st, trigger="workflow_dispatch", attempt=2, force=force, run_id=run_id)
+            self.assertEqual(overflowed(runs_on), {}, (force, run_id))
             self.assertIn("attempt 2", notes[0])
+        # its rerun to reach an idle runner (the watchdog's other reroute) routes as a first attempt does
+        runs_on, notes = route(held, trigger="workflow_dispatch", attempt=2, run_id="43")
+        self.assertEqual(overflowed(runs_on)["macos"], "je-mac")
 
     def test_a_dispatch_forces_a_runner_whatever_the_state(self):
         force, bad = pl.parse_force("macos=je-mac, lint=je-linux windows-engine-glcore=je-win ios=je-pi linux")
@@ -739,6 +762,10 @@ class Routing(unittest.TestCase):
                 self.assertEqual(jobs.get(job), os_, (label, job))
         # and ci.yml reads runs_on by these names, with the hosted label as its fallback
         text = (HERE.parent.parent / pl.WORKFLOW).read_text()
+        # the plan gets the PR switch and its run's id (the state's hosted_only)
+        self.assertIn('--pr-advisory "${PR_ADVISORY:-on}"', text)
+        self.assertIn("PR_ADVISORY: ${{ vars.PR_ADVISORY_LANES }}", text)
+        self.assertIn('--run-attempt "$GITHUB_RUN_ATTEMPT" --run-id "$GITHUB_RUN_ID"', text)
         # the planner: never a push, a fork's pull request or a rerun
         changes = text[text.index("\n  changes:"):text.index("\n  lint:")]
         for guard in ("github.event_name != 'push'", "github.run_attempt == 1",

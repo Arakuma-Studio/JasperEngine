@@ -13,7 +13,7 @@ $version = '2.338.2'
 $dir = 'C:\je-runner'
 $label = 'je-win'
 $task = 'je-runner'
-New-Item -ItemType Directory -Force "$dir\hooks", "$dir\home" | Out-Null
+New-Item -ItemType Directory -Force "$dir\hooks", "$dir\home\AppData\Local", "$dir\home\AppData\Roaming", "$dir\ccache" | Out-Null
 Set-Location $dir
 if (-not (Test-Path "$dir\run.cmd")) {
     $zip = "$dir\downloads\actions-runner-win-x64-$version.zip"
@@ -41,6 +41,12 @@ Set-Content -Encoding ascii "$dir\.path" "$dir\tools\bin;C:\Program Files\Git\bi
 Set-Content -Encoding ascii "$dir\.env" (@(
     "PSExecutionPolicyPreference=Bypass",
     "HOME=$dir\home",
+    # an S4U task has no LOCALAPPDATA or APPDATA, and ccache (on PATH, the compiler launcher of every leg)
+    # needs a directory: the legs without a ccache-restore step share this capped one
+    "LOCALAPPDATA=$dir\home\AppData\Local",
+    "APPDATA=$dir\home\AppData\Roaming",
+    "CCACHE_DIR=$dir\ccache",
+    "CCACHE_MAXSIZE=5G",
     "GIT_CONFIG_GLOBAL=$dir\gitconfig",
     "ACTIONS_RUNNER_HOOK_JOB_STARTED=$dir\hooks\job-started.ps1",
     "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=$dir\hooks\job-completed.ps1"
