@@ -1221,13 +1221,11 @@ def main(argv: list[str]) -> int:
         shadow_plan, shadow_why = plan_shadow(
             args.event, plan, error, None if head_error else args.shadow_base,
             lambda base: run_check_changed(root, base, out / "shadow-check-changed.json", deps_from, cmap))
-        def definition(p: dict | None) -> str:
-            return definition_change(root, p.get("base") or base, p.get("files") or []) if p else ""
+        def definition(p: dict | None, job: str = ASAN_JOB) -> str:
+            return definition_change(root, p.get("base") or base, p.get("files") or [], job) if p else ""
 
         result = decide(args.event, plan, error, ci, left_out, nightly_out, args.advisory.split(),
                         superseded_by=superseded, full_selection=args.full_selection, asan_definition=definition(plan))
-        windows_definition = definition_change(root, plan.get("base") or base, plan.get("files") or [], WINDOWS_JOB) \
-            if plan else ""
         force, bad_force = parse_force(args.self_hosted)
         notes += [f"self_hosted {b}" for b in bad_force]
         # (a rerun keeps the lanes, on GitHub's runners: route)
@@ -1258,7 +1256,7 @@ def main(argv: list[str]) -> int:
                "asan_jobs": asan_job_names(planned_asan_run(result["lanes"], result["asan_run"])),
                "htmlui_filter": result["htmlui_filter"],
                "windows_parts": windows_legs(args.event, plan, result, windows_inputs(
-                   root, plan["files"] if plan else [], windows_definition, (plan or {}).get("base") or base),
+                   root, plan["files"] if plan else [], definition(plan, WINDOWS_JOB), (plan or {}).get("base") or base),
                    args.full_selection, force if args.trigger == "workflow_dispatch" else ()),
                "mcp": dict(result["mcp"], shards=shards), "fallbacks": result["fallbacks"], "notes": notes,
                "advisory_off": result["advisory_off"], "build_only": result["build_only"],
