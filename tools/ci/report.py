@@ -1104,10 +1104,15 @@ def job_states(reports: dict[str, dict], lanes: dict, needs: dict) -> tuple[list
         if name in reports:
             states[name] = reports[name]["status"]
         else:
-            job = needs.get(name, needs.get(lane_base(name)))
-            result = job.get("result") if isinstance(job, dict) else None
+            result = needs_result(needs.get(name, needs.get(lane_base(name))))
             states[name] = result if result in STATUSES else "missing"
     return expected, states
+
+
+def needs_result(value) -> str | None:
+    """A job's result in --needs: ci.yml passes {"<job>": "<result>"} (toJSON(needs) holds the changes
+    job's outputs, too big for one environment string); {"<job>": {"result": ...}} is toJSON(needs)."""
+    return value.get("result") if isinstance(value, dict) else value if isinstance(value, str) else None
 
 
 def render(reports: dict[str, dict], lanes: dict, run_url: str, sha: str, advisory: list[str],
@@ -1384,7 +1389,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--sha", required=True)
     r.add_argument("--advisory", default="", help="space separated lanes whose failures do not count (rollout)")
     r.add_argument("--advisory-from", type=Path, help="read ADVISORY_LANES from this workflow file instead")
-    r.add_argument("--needs", type=Path, help="toJSON(needs): job results for lanes that left no report")
+    r.add_argument("--needs", type=Path, help="{job: result} of the needed jobs, for lanes that left no report")
     r.add_argument("--started-at", default="", help="the run's start (ISO 8601), for its duration")
     r.add_argument("--prefix", default="", help='text before the verdict ("Removed from the merge queue:")')
     r.add_argument("--out", type=Path, required=True)
