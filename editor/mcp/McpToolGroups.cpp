@@ -21,7 +21,8 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"diagnostics", "Jobs, memory, ECS, logging and crash/hang diagnostics."},
         {"editor_ux", "Undo history, command palette, layouts, search, bookmarks and Scene view tools."},
         {"profiling", "GPU/CPU timings, VRAM, frame passes and render statistics."},
-        {"device", "Device tiers: detected GPU tier and why, thermal and memory state, overrides in effect, Play simulation."},
+        {"device", "Device tiers: detected GPU tier and why, thermal and memory state, overrides in effect, Play simulation. "
+                   "A build on a phone or emulator: build_project run_device, run_build device (core)."},
         {"rendering_fx", "Shadow statistics and debug views, fog, clouds, post effects beyond the core set, material variants and light units."},
         {"meshes", "Model import and cook settings, detail levels (LOD) and their captures, render budgets."},
         {"splines", "Roads, walls, rivers, placement, terrain on splines (jasper://docs/splines)."},
@@ -33,10 +34,11 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"gameplay", "Character controller, buoyancy and input action maps."},
         {"physics", "Ragdolls, physics materials, spatial queries."},
         {"audio", "Audio Mixer, sound analysis, placeholders, sound search, Sound Events, Play capture and checks."},
-        {"editor_tools", "Colour picker, curve editor, project templates and movie recording."},
+        {"editor_tools", "Colour picker, curve editor, project templates, and the Recorder: movies, PNG sequences, screenshots from a "
+                         ".input.json at several sizes."},
         {"vcs", "Version control: status, locks, commits and scene diffs."},
         {"testing", "The project's tests (Tests/*.test.lua): run, list, import player results, accept goldens (jasper://docs/testing)."},
-        {"scripting", "Script hot reload and status, editor-script menus and numeric expressions."},
+        {"scripting", "Script hot reload and status, editor-script menus, numeric expressions, PlayerPrefs and save slots (user_settings)."},
         {"graphs", "Graph files (Procedural Materials and other node graphs): kinds, node catalog, read, validate, edit."},
         {"materials", "Procedural Materials: preview any material with checks, bake a graph to PNGs and a .material (jasper://docs/procedural-materials)."},
         {"html_ui", "HTML UI views in play: scroll, select, activate, expand, collapse and sort list/grid/tree/table views."},
