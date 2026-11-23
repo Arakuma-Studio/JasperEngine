@@ -28,6 +28,8 @@
 #include <memory>
 #include <string>
 
+namespace AreaLightGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -222,3 +224,5 @@ TEST_F(AreaLightGpu, SceneWithoutThemKeepsItsVariants){
     EXPECT_EQ(scene.getSystem<RenderSystem>()->getLightProfileBands(), 0);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace AreaLightGpuTest_cpp

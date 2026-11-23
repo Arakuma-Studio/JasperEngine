@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+namespace BuildReportTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -172,3 +174,5 @@ TEST(BuildReport, DownloadBudgetIsAnUndoableSettingInProjectYaml) {
     EXPECT_EQ(reloaded.getDownloadBudgetMB(ModelFamily::Mobile), 0.0);
     EXPECT_EQ(reloaded.getDownloadBudgetMB(ModelFamily::Desktop), 0.0);
 }
+
+}  // namespace BuildReportTest_cpp

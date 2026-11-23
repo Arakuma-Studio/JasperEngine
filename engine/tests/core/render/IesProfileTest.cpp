@@ -12,6 +12,8 @@
 #include <cmath>
 #include <string>
 
+namespace IesProfileTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -153,3 +155,5 @@ TEST(IesProfile, RefusesTiltAndOtherPhotometry){
     EXPECT_FALSE(IesProfile::parse("not a photometric file\n", profile, error));
     EXPECT_NE(error.find("TILT"), std::string::npos) << error;
 }
+
+}  // namespace IesProfileTest_cpp

@@ -16,6 +16,8 @@
 #include <string>
 #include <thread>
 
+namespace McpCallLogTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::mcp;
@@ -87,7 +89,7 @@ TEST(McpCallLog, FailedWriteTurnsItOffWithOneWarning) {
     log.append(record);
     log.close();
     int warnings = 0;
-    for (const LogEntry& entry : Out::getLogsSince(cursor)) {
+    for (const jasperengine::editor::LogEntry& entry : Out::getLogsSince(cursor)) {
         if (entry.type == LogType::Warning && entry.message.find("MCP call log") != std::string::npos) ++warnings;
     }
     EXPECT_EQ(warnings, 1) << "one warning for the session, none per later call";
@@ -142,3 +144,5 @@ TEST(McpToolCounts, MostCallsFirstWithErrorRates) {
     counts.clear();
     EXPECT_TRUE(counts.rows().empty());
 }
+
+}  // namespace McpCallLogTest_cpp

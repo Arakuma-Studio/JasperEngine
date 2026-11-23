@@ -16,6 +16,8 @@
 #include <utility>
 #include <vector>
 
+namespace AreaLightMathTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::AreaLightMath;
 
@@ -233,3 +235,5 @@ TEST(AreaLightMath, StaysFiniteAtContact){
         }
     }
 }
+
+}  // namespace AreaLightMathTest_cpp

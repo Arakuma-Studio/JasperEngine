@@ -16,8 +16,7 @@
 #include <fstream>
 #include <system_error>
 
-using namespace jasperengine::editor;
-using namespace jasperengine::editor::mcp;
+namespace jasperengine::editor::mcp {
 
 namespace {
 
@@ -229,3 +228,5 @@ std::vector<McpToolCounts::Row> McpToolCounts::rows() const {
     std::stable_sort(out.begin(), out.end(), [](const Row& a, const Row& b) { return a.calls > b.calls; });
     return out;
 }
+
+}  // namespace jasperengine::editor::mcp

@@ -16,6 +16,8 @@
 #include <sstream>
 #include <string>
 
+namespace JobEstimateTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::mcp;
 
@@ -304,3 +306,5 @@ TEST(McpJob, CorruptHistoryFileNeverFailsAJob) {
     EXPECT_EQ(job.status(), JobStatus::Succeeded);
     EXPECT_EQ(JobHistory::load(file).samples("bake_impostors").size(), 1u);
 }
+
+}  // namespace JobEstimateTest_cpp

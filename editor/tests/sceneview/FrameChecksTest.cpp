@@ -17,6 +17,8 @@
 #include <cstdio>
 #include <vector>
 
+namespace FrameChecksTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::framechecks;
@@ -195,3 +197,5 @@ TEST(FrameChecksProjection, OutsideShareAndCoverage){
     EXPECT_FALSE(around.inFront);
     EXPECT_GT(around.outsideShare, OUT_OF_FRAME_SHARE);
 }
+
+}  // namespace FrameChecksTest_cpp

@@ -21,6 +21,8 @@
 #include <filesystem>
 #include <vector>
 
+namespace HdriSunTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::hdrisun;
@@ -226,7 +228,7 @@ TEST(HdriSun, RemoveSunDiscClampsTheDiscAlone){
 // the cook's decode (TextureCooker::decodeSource with Remove Sun Disc): an .hdr's disc is clamped
 // before anything else reads it; an image without a sun is left as it is, with a note why
 TEST(HdriSun, CookDecodeRemovesTheDiscOfAnHdrSource){
-    test::ScratchDir scratch("hdri-sun-cook");
+    jasperengine::editor::test::ScratchDir scratch("hdri-sun-cook");
     auto writeHdr = [&](const std::string& name, const std::vector<float>& rgba, int width, int height){
         std::vector<float> rgb((size_t)width * height * 3);
         for (size_t i = 0; i < (size_t)width * height; i++)
@@ -259,3 +261,5 @@ TEST(HdriSun, CookDecodeRemovesTheDiscOfAnHdrSource){
     EXPECT_NE(note.find("no distinct sun"), std::string::npos) << note;
     faces[0].releaseImageData();
 }
+
+}  // namespace HdriSunTest_cpp
