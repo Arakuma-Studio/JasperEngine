@@ -1042,13 +1042,14 @@ on every change a game's build reads.
 
 **Advisory lanes during rollout.** `ci.yml`'s `ADVISORY_LANES` holds `unit asan htmlui mcp smoke`
 until `main` is green through CI, and `windows-editor-tests` (the Windows editor job's test run,
-reported apart from the job, until the suite passes on Windows): `Check` ignores their failures, and
-the report shows them first, marked advisory. Lint and the platform builds always block, the
+reported apart from the job, until the suite passes on Windows): `Check` ignores their failures and
+does not wait for them (its `needs` are `report`'s without them, which `tools/ci/test_check_gate.py`
+checks), and the report, which waits for every lane, shows them first, marked advisory. Lint and the platform builds always block, the
 Windows jobs' builds and the core tests' run included. Since an advisory lane cannot block a merge,
 the merge queue does not run it (`tools/ci/plan_lanes.py --advisory "$ADVISORY_LANES"`): of `unit`
 (every job of it), `asan`, `htmlui`, `mcp`, `smoke` and `windows-editor-tests` (the editor leg still
-builds), the ones the list names; taking a lane off the list puts it back in the queue with no other
-edit. Lint and the platform lanes run in the queue whatever the list says. The advisory run a push to
+builds), the ones the list names; taking a lane off the list puts it back in the queue, and the lane
+(a job) must join `check`'s `needs` too. Lint and the platform lanes run in the queue whatever the list says. The advisory run a push to
 `main` dispatches runs what the queue left out instead, as the queue would have (below), so every
 merged change still gets their results, in that run's report and the `advisory-red` issue.
 
