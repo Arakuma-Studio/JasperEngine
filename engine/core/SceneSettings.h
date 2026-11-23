@@ -464,11 +464,11 @@ namespace jasperengine{
         float globalIllumIntensity = 0.1f;
         // a scene file without the key keeps COLOR (as it was drawn); the gradient's colours are
         // used as they are, as Unity's (its Intensity Multiplier is the Skybox source's), stored
-        // linear, Unity's defaults
+        // linear (Color::sRGBToLinear, gamma 2.2, so the Inspector shows Unity's defaults)
         AmbientMode ambientMode = AmbientMode::COLOR;
-        Vector3 ambientSkyColor = Vector3(0.0368895f, 0.0423114f, 0.0544803f);       // sRGB (54, 58, 66)
-        Vector3 ambientEquatorColor = Vector3(0.0122865f, 0.0144438f, 0.0159963f);   // sRGB (29, 32, 34)
-        Vector3 ambientGroundColor = Vector3(0.0036765f, 0.0033465f, 0.0027317f);    // sRGB (12, 11, 9)
+        Vector3 ambientSkyColor = Vector3(0.0328759f, 0.0384727f, 0.0511221f);       // sRGB (54, 58, 66)
+        Vector3 ambientEquatorColor = Vector3(0.0083731f, 0.0103978f, 0.0118813f);   // sRGB (29, 32, 34)
+        Vector3 ambientGroundColor = Vector3(0.0012017f, 0.0009924f, 0.0006382f);    // sRGB (12, 11, 9)
 
         // lights evaluated per object (1..16); the rest of the lights reaching it are folded
         // into its spherical-harmonics ambient
