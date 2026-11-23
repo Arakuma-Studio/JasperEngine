@@ -241,6 +241,13 @@ namespace jasperengine::titleart::test {
         }
     }
 
+    // what a fixture's TearDown undoes: the registry outlives the test, and the catalogue tests that
+    // run after it (in whatever order the binary links them) check every registered definition
+    inline void removeTestEffects() {
+        TitleEffectRegistry& r = TitleEffectRegistry::get();
+        for (const char* type : {"test_blur", "test_shadow", "test_glow", "test_outline", "test_adjust"}) r.removeEffect(type);
+    }
+
     inline Json effect(const char* id, const char* type, Json params = Json::object()) {
         return Json{{"id", id}, {"type", type}, {"enabled", true}, {"params", params}};
     }

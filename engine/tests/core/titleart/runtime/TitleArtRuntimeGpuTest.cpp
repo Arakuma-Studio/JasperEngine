@@ -83,6 +83,7 @@ namespace {
             JASPER_REQUIRE_GPU();
             ensureTestEffects();
         }
+        void TearDown() override { removeTestEffects(); }
     };
 
 }

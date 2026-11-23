@@ -210,6 +210,7 @@ namespace {
             JASPER_REQUIRE_GPU();
             ensureTestEffects();
         }
+        void TearDown() override { removeTestEffects(); }
     };
 
     // over 5 min under ASan: the PR ASan lane leaves it to the nightly (docs/testing.md, Naming)
