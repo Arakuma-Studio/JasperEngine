@@ -2,7 +2,7 @@
 # ccache-save's work (action.yml): prints the run's ccache statistics, evicts every entry the run neither
 # used nor wrote (a hit refreshes an entry's mtime), so what remains is the lane's working set, and decides
 # whether to save it: on push to main or a schedule, when the run wrote something, after cutting it to the
-# lane's cap and zeroing the statistics (the next run's are then its own). The build itself runs without a
+# lane's cap, recompressing it smaller and zeroing the statistics (the next run's are then its own). The build itself runs without a
 # cap (ccache-restore): a cleanup in the middle of a build evicts the restored entries it has not reached
 # yet, and every miss after that evicts more.
 #
@@ -12,6 +12,8 @@
 set -euo pipefail
 
 DIR=build/.cache/ccache
+# the level a saved entry is recompressed to (below)
+RECOMPRESS_LEVEL=9
 out() { echo "save=$1" >> "${GITHUB_OUTPUT:-/dev/stdout}"; }
 
 if [[ -z "${JASPER_CCACHE_LANE:-}" ]]; then
@@ -81,6 +83,12 @@ if [[ "$save" == true ]]; then
         run_ccache --cleanup > /dev/null \
             || { echo "ccache-save: the cut to $JASPER_CCACHE_CAP failed; nothing saved"; out false; exit 0; }
     fi
+    # zstd level 9 instead of the level 1 a build writes: 14 % smaller (a linux entry's 296 MB: 255 MB,
+    # 23 s on 2 CPUs; level 19, 22 % in 277 s), what lets the 10 GB budget hold the Windows engine legs'
+    # entries (docs/testing.md "CI"). After the cut: ccache 4.5 gives each rewritten file a new mtime,
+    # which would lose the order the cut evicts by. A hit decompresses at the same speed
+    run_ccache --recompress "$RECOMPRESS_LEVEL" > /dev/null \
+        || { echo "ccache-save: recompressing failed; nothing saved"; out false; exit 0; }
     run_ccache --zero-stats > /dev/null \
         || { echo "ccache-save: zeroing the statistics failed; nothing saved"; out false; exit 0; }
     echo "ccache-save: saving"

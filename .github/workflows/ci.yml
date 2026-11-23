@@ -1009,22 +1009,25 @@ jobs:
       actions: write  # ccache-save deletes the lane's older entry as soon as it saved the new one (push)
     strategy:
       fail-fast: false
-      # ccache where it shortens the lane (the 10 GB repository budget, docs/testing.md "CI"): the editor
-      # (0.9 GB working set). The engine legs build cold: the lane ends with its slowest leg, and D3D11 and
-      # Vulkan cold (57-99 min) take about as long as OpenGL cold with the core tests (79-108)
+      # each leg its own ccache entry (the backend is a definition of every engine unit: the legs share
+      # no object), capped at its working set (docs/testing.md "CI"). The lane ends with its slowest
+      # leg: cold, each engine leg took 54-109 min (median 74-90, PRs and the queue, 2026-11-20..23)
       matrix:
         include:
           - part: editor
             ccache: 0.95G
           - part: engine-glcore
-            ccache: ''
+            ccache: 1.5G
           - part: engine-d3d11
-            ccache: ''
+            ccache: 0.8G
           - part: engine-vulkan
-            ccache: ''
+            ccache: 0.8G
     env:
       JASPER_CI_REPRO: tools/ci/windows.sh
       PART: ${{ matrix.part }}
+      # whether the leg compiles: every run's editor; an engine leg in all but the advisory run, which
+      # runs no engine leg's test (on push, for the leg's ccache entry)
+      COMPILES: ${{ matrix.part == 'editor' || inputs.advisory != true }}
     steps:
       - name: Start
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
@@ -1056,7 +1059,7 @@ jobs:
         with:
           arch: x64
       - uses: ./.github/actions/ccache-restore
-        if: matrix.ccache != ''
+        if: env.COMPILES == 'true'
         with:
           lane: windows-${{ matrix.part }}
           max-size: ${{ matrix.ccache }}
@@ -1097,20 +1100,18 @@ jobs:
       - name: Call CLI without an editor
         if: matrix.part == 'editor' && env.MAIN_STAGE != 'true'
         run: tools/ci/windows.sh check-cli
-      # windows-compile's editor
+      # windows-compile's editor (on push too: its build there saves the Compile build's entry)
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: matrix.part == 'editor' && env.MAIN_STAGE != 'true'
+        if: matrix.part == 'editor' && (github.event_name == 'push' || env.MAIN_STAGE != 'true')
         with:
           name: windows-editor-install
           path: instdir/
           retention-days: 1
           if-no-files-found: error
 
-      # (the OpenGL tree runs the core tests, whose crash and hang reports name frames: debug information).
-      # Not on main's stages: the engine legs keep no ccache entry, so a push's build warms nothing (the
-      # Vulkan SDK's cache above still saves), and the merge queue built them
+      # (the OpenGL tree runs the core tests, whose crash and hang reports name frames: debug information)
       - name: Engine
-        if: startsWith(matrix.part, 'engine-') && env.MAIN_STAGE != 'true'
+        if: startsWith(matrix.part, 'engine-') && env.COMPILES == 'true'
         env:
           ENGINE_DEBUG_INFO: ${{ matrix.part == 'engine-glcore' && '1' || '' }}
         run: tools/ci/windows.sh engine "${PART#engine-}"
@@ -1119,7 +1120,7 @@ jobs:
         run: TEST_SUITES=core tools/ci/windows.sh tests glcore
 
       - uses: ./.github/actions/ccache-save
-        if: always() && matrix.ccache != ''
+        if: always() && env.COMPILES == 'true'
         with:
           lane: windows-${{ matrix.part }}
           prune: 'true'
@@ -1129,16 +1130,22 @@ jobs:
           lane: windows-${{ matrix.part }}
           status: ${{ job.status }}
 
-  # Every leg above, then the Compile build with the editor job's install; on main's stages, nothing to do
-  # (a PR and the queue ran it), but the job runs so Check sees the lane whole
+  # Every leg above, then the Compile build with the editor job's install, through its own ccache entry;
+  # on push for that entry, in the advisory run nothing to do (the queue ran it), but the job runs so
+  # Check sees the lane whole
   windows-compile:
     name: windows (compile)
     needs: [changes, windows]
     if: ${{ !cancelled() && needs.changes.outputs.run_windows == 'true' }}
     runs-on: ${{ fromJSON(needs.changes.outputs.runs_on)['windows-compile'] || 'windows-latest' }}
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: write  # ccache-save deletes the lane's older entry as soon as it saved the new one (push)
     env:
       JASPER_CI_REPRO: tools/ci/windows.sh compile-smoke tools/fixtures/post-processing
+      # all but the advisory run (on push, for the entry)
+      BUILD: ${{ inputs.advisory != true }}
     steps:
       - name: Start
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
@@ -1149,13 +1156,23 @@ jobs:
         with:
           arch: x64
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        if: env.MAIN_STAGE != 'true'
+        if: env.BUILD == 'true'
         with:
           name: windows-editor-install
           path: instdir
+      - uses: ./.github/actions/ccache-restore
+        if: env.BUILD == 'true'
+        with:
+          lane: windows-compile
+          max-size: 1.0G
       - name: Compile build of post-processing
-        if: env.MAIN_STAGE != 'true'
+        if: env.BUILD == 'true'
         run: tools/ci/windows.sh compile-smoke tools/fixtures/post-processing
+      - uses: ./.github/actions/ccache-save
+        if: always() && env.BUILD == 'true'
+        with:
+          lane: windows-compile
+          prune: 'true'
       - uses: ./.github/actions/report
         if: always()
         with:
@@ -1206,8 +1223,10 @@ jobs:
       - name: Call CLI without an editor
         if: github.event_name != 'push'
         run: tools/ci/macos.sh check-cli
+      # on push too, so its objects are in the saved entry (0.81 GB with them): without, it missed all its
+      # 884 compiles in a run whose editor and engine hit 6,291 of 6,320 (PR run 45075106333)
       - name: Compile build of post-processing
-        if: ${{ !cancelled() && github.event_name != 'push' }}
+        if: ${{ !cancelled() }}
         run: tools/ci/macos.sh compile-smoke tools/fixtures/post-processing
 
       - uses: ./.github/actions/ccache-save
@@ -1324,7 +1343,7 @@ jobs:
   # a lane: Check skips it.
   caches:
     name: caches
-    needs: [linux, unit, asan, htmlui, smoke, web, android, windows, macos]
+    needs: [linux, unit, asan, htmlui, smoke, web, android, windows, windows-compile, macos]
     if: always() && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1336,8 +1355,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           for prefix in gradle- ccache-linux- ccache-web- ccache-android- ccache-windows-editor- \
-                        ccache-macos- ccache-unit-core- ccache-unit-editor- ccache-asan-core- ccache-asan-editor- \
-                        ccache-htmlui- ccache-smoke-; do
+                        ccache-windows-engine-glcore- ccache-windows-engine-d3d11- ccache-windows-engine-vulkan- \
+                        ccache-windows-compile- ccache-macos- ccache-unit-core- ccache-unit-editor- ccache-asan-core- \
+                        ccache-asan-editor- ccache-htmlui- ccache-smoke-; do
               gh cache list --repo "$GITHUB_REPOSITORY" --ref refs/heads/main --key "$prefix" --sort created_at \
                   --order desc --limit 100 --json id,key --jq '.[1:][] | "\(.id) \(.key)"' |
                   while read -r id key; do
@@ -1347,7 +1367,7 @@ jobs:
           done
           # a lane that gave its entry up (docs/testing.md "CI"): its last one would hold the budget 7 days;
           # the plan inputs moved to the ci-plan-inputs branch
-          for prefix in ccache-windows-engine-glcore- plan-inputs- coverage-map-; do
+          for prefix in plan-inputs- coverage-map-; do
               gh cache list --repo "$GITHUB_REPOSITORY" --key "$prefix" --limit 100 --json id,key --jq '.[] | "\(.id) \(.key)"' |
                   while read -r id key; do
                       echo "delete $key"
