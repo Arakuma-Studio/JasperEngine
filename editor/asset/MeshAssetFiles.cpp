@@ -7,9 +7,11 @@
 #include "Project.h"
 #include "Stream.h"
 #include "command/CommandHandle.h"
+#include "command/CommandGroup.h"
 #include "command/CommandHistory.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MeshChangeCmd.h"
+#include "command/type/PropertyCmd.h"
 #include "component/Transform.h"
 #include "component/MeshComponent.h"
 #include "io/watch/FileWatchService.h"
@@ -21,6 +23,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -186,6 +189,8 @@ void MeshAssetFiles::extractScene(Project& project, SceneProject& sceneProject, 
     const fs::path folder = extractionFolder(project, sceneFile);
     // the files this save wrote or found, by their bytes: GameObjects of the same geometry share one
     std::map<std::vector<uint8_t>, std::string> written;
+    std::vector<std::unique_ptr<Command>> steps;
+    std::vector<std::pair<Entity, std::string>> shown;
     for (Entity entity : sceneProject.entities) {
         MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
         if (!mesh || !mesh->meshAsset.empty() || project.isEntityInPrefab(sceneProject.id, entity)) continue;
@@ -213,8 +218,20 @@ void MeshAssetFiles::extractScene(Project& project, SceneProject& sceneProject, 
             continue;
         }
         written[bytes] = path;
-        mesh->meshAsset = ref;
-        // the geometry it holds is the file's already
-        mesh->loadedMeshAsset = path;
+        steps.push_back(std::make_unique<PropertyCmd<AssetRef>>(&project, sceneProject.id, entity, ComponentType::MeshComponent, "meshAsset", ref));
+        shown.emplace_back(entity, path);
+    }
+    if (steps.empty()) return;
+    // One undo step the editor takes by itself, which keeps the redo tail: undone, the GameObjects
+    // hold their geometry in the scene again (the files stay), so no earlier step is undone onto a
+    // mesh that still names a file
+    if (!CommandHandle::get(sceneProject.id)->insertCommand(new CommandGroup(std::move(steps), "Save Meshes As Assets", false))) {
+        Out::error("The meshes of scene '%s' stay in the scene: the step showing their .mesh files did not run", sceneProject.name.c_str());
+        return;
+    }
+    // the geometry each holds is its file's already: nothing reads it again
+    for (const auto& [entity, path] : shown) {
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        if (mesh && mesh->meshAsset.path == path) mesh->loadedMeshAsset = path;
     }
 }

@@ -67,6 +67,7 @@ namespace jasperengine::editor {
         // name>/<GameObject>.mesh" (a scene outside the assets root: "<assets>/Meshes/<scene name>/").
         // A file there with the same bytes is shown again; another one is never written over.
         // Prefab instances keep their prefab's mesh. A failure is reported and leaves the mesh inline.
+        // The meshes show their files through one undo step of the scene, "Save Meshes As Assets".
         void extractScene(Project& project, SceneProject& sceneProject, const std::filesystem::path& sceneFile);
 
     }

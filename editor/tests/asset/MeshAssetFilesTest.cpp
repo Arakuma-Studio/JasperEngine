@@ -3,8 +3,8 @@
 
 // .mesh assets in scenes (docs/specs/S98-editor-tooling-gaps.md F1, Deviations): a Mesh Renderer
 // showing one saves the reference, not the buffers; a scene save moves large geometry into one
-// (format 9); a format 8 scene with its buffers inline loads as before; Save Mesh As Asset is one
-// undo step.
+// (format 9), through an undo step of its own; a format 8 scene with its buffers inline loads as
+// before; Save Mesh As Asset is one undo step.
 
 #include "support/EditorTestSupport.h"
 #include "voxel/VoxelTestScene.h"
@@ -16,6 +16,7 @@
 #include "command/CommandHandle.h"
 #include "export/AssetStripping.h"
 #include "command/CommandHistory.h"
+#include "command/type/MeshChangeCmd.h"
 #include "component/MeshComponent.h"
 #include "component/Transform.h"
 #include "model/MeshAsset.h"
@@ -193,6 +194,42 @@ TEST_F(MeshAssetSaveTest, SceneSaveMovesLargeGeometryIntoMeshAssets) {
     ASSERT_TRUE(project->saveSceneToPath(sceneProject->id, "Main Scene.scene"));
     EXPECT_EQ(meshOf(twin).meshAsset.path, "Meshes/Main Scene/Ball 1.mesh");
     EXPECT_EQ(fileText(file), bytes);
+}
+
+// The save shows the files through one undo step, "Save Meshes As Assets": undone, the GameObject
+// holds the geometry it had in the scene again (the edit before the save included), and undoing the
+// edit then finds no file named; redone, it shows the file again
+TEST_F(MeshAssetSaveTest, TheSaveShowsTheFilesThroughAnUndoStep) {
+    const Entity ball = addPrimitive("Ball", true);
+    const MeshComponent first = meshOf(ball);
+    Scene other;
+    Primitive bigger(&other);
+    bigger.createSphere(2.0f, 24, 12);
+    MeshComponent edited = bigger.getComponent<MeshComponent>();
+    CommandHistory* history = CommandHandle::get(sceneProject->id);
+    ASSERT_TRUE(history->addCommandNoMerge(new MeshChangeCmd(project.get(), sceneProject->id, ball, edited)));
+    const size_t beforeSave = history->position();
+
+    ASSERT_TRUE(project->saveSceneToPath(sceneProject->id, "Main Scene.scene"));
+    EXPECT_EQ(meshOf(ball).meshAsset.path, "Meshes/Main Scene/Ball.mesh");
+    EXPECT_FALSE(sceneProject->isModified);
+    ASSERT_EQ(history->position(), beforeSave + 1) << "one step";
+    ASSERT_NE(history->top(), nullptr);
+    EXPECT_EQ(history->top()->name(), "Save Meshes As Assets");
+
+    ASSERT_TRUE(history->undo());
+    EXPECT_TRUE(meshOf(ball).meshAsset.empty());
+    EXPECT_TRUE(sameBytes(meshOf(ball).buffer, edited.buffer)) << "the geometry of the edit, in the scene";
+    EXPECT_TRUE(sceneProject->isModified) << "the file shows a .mesh, the scene holds its geometry";
+    ASSERT_TRUE(history->undo());
+    EXPECT_TRUE(meshOf(ball).meshAsset.empty());
+    EXPECT_TRUE(sameBytes(meshOf(ball).buffer, first.buffer));
+
+    ASSERT_TRUE(history->redo());
+    ASSERT_TRUE(history->redo());
+    EXPECT_EQ(meshOf(ball).meshAsset.path, "Meshes/Main Scene/Ball.mesh");
+    EXPECT_TRUE(sameBytes(meshOf(ball).buffer, edited.buffer));
+    EXPECT_TRUE(fs::exists(project->getAssetsPath() / "Meshes" / "Main Scene" / "Ball.mesh")) << "the file stays throughout";
 }
 
 TEST_F(MeshAssetSaveTest, AScenesMeshesGoBesideItInTheAssetsFolder) {
