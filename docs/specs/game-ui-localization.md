@@ -153,7 +153,9 @@ here is specific to its genre. Unity, Fluent and ICU are cited for names and syn
 - **R1 String Table.** `Name.stringtable` (JSON, §6.1) holds `namespace` (S87's rule, made from the
   file stem at creation and kept on rename), `source_language` (default: the project default),
   and ordered entries `{key, text, context, max_chars}`; `key` follows S87's `text_key` rule. The
-  global key is `<namespace>.<key>`. A namespace is unique in the project, and distinct from every
+  global key is `<namespace>.<key>`. A key whose first segment names no namespace of the project is
+  looked up in the **Default Table** (`localization.default_table`, a namespace; empty: the
+  project's only table when it has one, else none), so a small game can write `get("play")`. A namespace is unique in the project, and distinct from every
   Title Art `string_namespace` (editor error `l10n-namespace-taken` naming the owner).
 - **R2 Translations.** `Name.<lang>.translation` beside its owner holds `owner {guid, path}`,
   `language` and per key `{text, status, source_hash}`; `status` is `translated` or `needs_review`
@@ -171,7 +173,8 @@ here is specific to its genre. Unity, Fluent and ICU are cited for names and syn
   `other`). `#` formats like `{n, number}`.
 - **R5 Arguments.** Lua tables, C++ `LocalizationArgs` (name → string, int64 or double) and HTML
   `data-l10n-args` (a JSON object) supply arguments; a string argument that is itself `@key` is
-  replaced by that key's text first (one level), so `{item}` can be a translated noun. Missing
+  replaced by that key's text first (one level), so `{item}` can be a translated noun. A Lua list part (C++: arguments named `"0"`, `"1"`, ...) fills
+  `{0}`, `{1}`, ... (positional, Unity Smart Strings' habit). Missing
   arguments print `{name}` in editor/Development builds and an empty string in release.
 
 ### Functional: the game language
@@ -181,7 +184,7 @@ here is specific to its genre. Unity, Fluent and ICU are cited for names and syn
 - **R7 Resolution** (once at start and on every change): the first candidate that
   `TitleArtLanguage::match`es an available language: (1) `Localization.setLanguage` value
   (= `TitleArt.setLanguage`, one global, D2), (2) the remembered choice when
-  `localization.remember_choice` (UserSettings key `jasper.language`), (3) the device's
+  `localization.remember_language` (UserSettings key `jasper.language`), (3) the device's
   `getPreferredLocales()` in order (the Game view's simulated language in the editor), (4)
   `localization.default_language` effective value. `Localization.language` is the result.
 - **R8 Fallback per key**: the language → its truncations present in the available set
@@ -194,7 +197,7 @@ here is specific to its genre. Unity, Fluent and ICU are cited for names and syn
   with `TitleArtLanguage::isValid` (invalid: false and nothing changes), re-resolves, and when the
   result changes: loads the tables lazily (R13), re-translates every keyed HTML element, Text
   component and data model, notifies `onLanguageChanged(code)` once, and Title Art follows through
-  its existing listener. With `remember_choice`, a non-empty code is written to UserSettings.
+  its existing listener. With `remember_language`, a non-empty code is written to UserSettings.
 - **R10 OS locale changes.** Each platform calls `TitleArtLanguage::localesChanged()` when the OS
   language list changes: Android `onConfigurationChanged` (locale), iOS and macOS
   `NSCurrentLocaleDidChangeNotification`, Windows `WM_SETTINGCHANGE` with `"intl"`, the web
@@ -214,7 +217,7 @@ here is specific to its genre. Unity, Fluent and ICU are cited for names and syn
     (no recompile, no reload); rows a `list-view`/`grid-view`/`tree-view`/`table-view` instantiates
     from a `<template>`, and fragments inserted by `insertAdjacentHTML`/`innerHTML`/`outerHTML`,
     are translated as they are made;
-  - Lua `element:setL10n(key, args?)` writes both attributes and translates at once;
+  - Lua `element:setLocalized(key, args?)` writes both attributes and translates at once;
     `doc:translate()` re-collects after scripts edited attributes directly.
 - **R12 Root language and direction.** In such documents the root gets `lang` = the game language
   and, unless the author wrote `dir` on `<html>`, `dir` = `rtl` for right-to-left scripts (Arab,
@@ -223,6 +226,8 @@ here is specific to its genre. Unity, Fluent and ICU are cited for names and syn
   from capture (R20).
 - **R13 Loading.** A table's files for the language chain load on the first lookup of its namespace
   after a change (cooked, R27; JSON in the editor). Tables of other namespaces stay unloaded.
+  In the editor a table edit (window, MCP, file change) applies at once, in Edit mode as in Play:
+  keyed HTML and Text components show their messages in the Scene and Game views without Play.
 - **R14 Language fonts.** `localization.fonts` (`{lang: [font asset paths]}`) registers those faces
   as fallbacks for that language: an HTML text run whose inherited `-rmlui-language` matches (S87
   match) gets them before the generic fallback faces; the face-chain cache key gains the matched
@@ -230,11 +235,11 @@ here is specific to its genre. Unity, Fluent and ICU are cited for names and syn
 - **R15 Data models.** Every data model the engine creates gets the transform `l10n`:
   `{{ 'shop.coins' | l10n('count', coins) }}` (name/value pairs); a language change calls
   `DirtyAllVariables` on models that used it.
-- **R16 Text component.** New field `textKey` (Inspector **Localization Key**, with a key picker):
+- **R16 Text component.** New field `localizationKey` (Inspector **Localization Key**, with a key picker):
   when set and the key exists, `text` shows the message at start and after every change; Lua
-  `text:setLocalizedText(key, args?)` sets key and runtime arguments (arguments are not saved).
+  `text:setLocalized(key, args?)` sets key and runtime arguments (arguments are not saved).
 - **R17 Lua.** `Localization.get(key, args?, fallback?)`, `Localization.format(pattern, args?,
-  language?)`, `Localization.has(key)`, `Localization.language` (r), `Localization.languages` (r),
+  language?)`, `Localization.has(key)`, `Localization.language` (rw: assigning it is `setLanguage`), `Localization.languages` (r),
   `Localization.setLanguage(code)`, `Localization.getLanguageName(code)` (the endonym, shipped in
   the manifest), `Localization.isRightToLeft(code?)`, `Localization.onLanguageChanged`. Stubs in
   `engine/core/script/binding/stubs/Localization.lua`. Available whatever modules a game compiles.
@@ -258,9 +263,15 @@ here is specific to its genre. Unity, Fluent and ICU are cited for names and syn
     text a script set from `get()` counts as localised).
   Scanning in the default language is allowed (it finds hard-coded text before translation starts).
 - **R21 Export checks.** Exports warn `W-L10N-UNKNOWN-KEY` (a `data-l10n-id` or Text
-  `textKey` no table has), `W-L10N-UNTRANSLATED` (one line per shipped language with the count),
+  `localizationKey` no table has), `W-L10N-UNTRANSLATED` (one line per shipped language with the count),
   `W-L10N-STALE`, `W-L10N-LANGUAGE-DROPPED` (a translation of a language outside a non-empty
   `localization.languages`, left out), `W-L10N-BAD-MESSAGE`; none blocks the export.
+- **R21a Project check.** `jasperengine-editor check` (and `--files`, the pre-commit hook) runs tool
+  `strings` without the engine: a key twice in one table, a namespace two owners claim, a message
+  that does not parse, a Default Table that names no table, and unknown keys referenced by HTML
+  (`data-l10n-id`, `data-l10n-attr-*`), Text `localizationKey` and Lua string literals passed to
+  `Localization.get`, `Localization.has` and `setLocalized`. Errors for the first four, warnings for
+  unknown keys (the same codes as R21).
 
 ### Platform & backends
 
@@ -309,7 +320,8 @@ here is specific to its genre. Unity, Fluent and ICU are cited for names and syn
     translation files in one `CommandGroup`.
 - **R29 Create menu.** Project window Create > Localization > String Table (namespace from the name,
   source language from the project default); double-click opens the window on it.
-- **R30 Project Settings > Localization** gains **Remember Player Choice** (default on) and
+- **R30 Project Settings > Localization** gains **Remember Language Choice** (`localization.remember_language`, default on), **Default
+  Table** (`localization.default_table`, R1) and
   **Language Fonts** (per language, a font list), each one undo step; the existing rows keep their
   text but drop "Title Art" from Languages' help (it now governs every table).
 - **R31 Game view.** Device > Language gains **Pseudo (en-XA)** and **Pseudo RTL (ar-XB)**; the
@@ -352,9 +364,10 @@ here is specific to its genre. Unity, Fluent and ICU are cited for names and syn
 
 - **R39 New files** carry `format` and `version: 1`; readers keep unknown members (written back
   verbatim) and refuse a newer `version` with a message naming the editor version needed.
-- **R40 New fields with defaults, no version bump**: `TextComponent.textKey = ""`; project
-  settings `localization.remember_choice = true`, `localization.fonts = {}`. Reflection tables,
-  codecs, `ReflectParity` golden and `catalog_snapshot.json` gain `textKey`.
+- **R40 New fields with defaults, no version bump**: `TextComponent.localizationKey = ""`; project
+  settings `localization.remember_language = true`, `localization.default_table = ""`,
+  `localization.fonts = {}`. Reflection tables,
+  codecs, `ReflectParity` golden and `catalog_snapshot.json` gain `localizationKey`.
 - **R41 Asset types.** `AssetType::StringTable` (35 at the time of writing; covers `.stringtable`
   and `.translation`, GUID in-file) appended after `TitleArt = 34` with an explicit value; Lua
   name `stringtable`. Moving or renaming an owner moves its `<stem>.<lang>.translation` siblings
@@ -389,7 +402,7 @@ here is specific to its genre. Unity, Fluent and ICU are cited for names and syn
   through `AtomicFile`: header, key hashes (FNV-1a 64, sorted, binary search; collisions in one table
   are an export error naming both keys), offsets, one UTF-8 blob, each message pre-tokenised (a flag
   for "plain text": no parse at lookup). `l10n/manifest.json`: namespaces, languages with endonyms
-  (from `TitleLanguageNames`), source languages, default, `remember_choice`, fonts. Dialogue owners
+  (from `TitleLanguageNames`), source languages, default, `remember_language`, `default_table`, fonts. Dialogue owners
   are cooked the same way (`dialogue-graphs.md`). Editor Play reads the JSON files directly and
   rebuilds a table on hot reload.
 - **D6 Shared interchange code.** `TitleStrings.cpp`'s CSV/XLIFF parsers and writers move to
@@ -565,7 +578,7 @@ Unit tests follow docs/testing.md naming. "Red" says what fails without the chan
   its `[Localization] language de` log line; the web gate dispatches `languagechange` with a new
   `navigator.languages`. Windows, macOS and iOS events are a manual check recorded in the PR (change
   the OS language with the game open; the log shows the re-resolution).
-- **AC16 Compatibility.** `ReflectParity.*` with `textKey` added; the upgrade-from-main project loads
+- **AC16 Compatibility.** `ReflectParity.*` with `localizationKey` added; the upgrade-from-main project loads
   with no new load-report entry; `TitleLanguageShippingTest.*` unchanged.
 - **AC17 Docs and budget.** `gen_tool_docs.py --check`, `gen_html_ui_support.py` output committed,
   `tool_budget.py --check tools/mcp/budget.json` (core growth from `inspect_ui`/`assert_ui`
@@ -678,3 +691,30 @@ Unit tests follow docs/testing.md naming. "Red" says what fails without the chan
 - **D-14 assert_ui's description (R35).** "languages" left `assert_ui`'s description ("viewports:
   more layouts."); the `languages` parameter stays. `guard_l10n_assert_languages`, sharpened with
   `configure_game_view language` and `inspect_ui l10n` in reach, passed 4/4 without the word.
+- **D-15 One design with S95's String Tables (#11, `feature/s95-lua-runtime-gaps` WP-6).** S95 built
+  the same feature independently; the user chose one merged design, landing here, which S95 then
+  adopts. Kept from this spec: the files (a source `.stringtable` plus one `.translation` per
+  language with S87's `status` and `source_hash`, GUID in the file), ICU messages and every CLDR
+  language, namespaces and lazy per-namespace loading, `data-l10n-id` / `-args` / `-attr-*`,
+  pseudo-locales, capture, language fonts, OS locale hooks, the Localization Tables window,
+  `edit_string_table`'s schema and the zero-cost rule. Taken from S95:
+  - positional arguments `{0}`, `{1}` from a Lua list (R5);
+  - `Localization.language` writable (R17), as Unity's `SelectedLocale`;
+  - keys without a namespace through a **Default Table** (R1, R30), in place of S95's bare-key search
+    over every table, which would load every table and make a key's meaning depend on the others;
+  - the stored names `localizationKey` (Text) and `localization.remember_language` / **Remember
+    Language Choice** (R16, R30, R40), which match their Inspector labels, and one Lua method
+    `setLocalized(key, args?)` on Text and on HTML elements (R11, R16);
+  - table edits apply at once, and keyed text shows in Edit mode (R13);
+  - the `check` tool `strings` (R21a).
+  Dropped from S95, with the reason:
+  - its one-file format with every language's values inline: per-language files give review status,
+    stale detection, small diffs and lazy loading;
+  - plural values stored as `{form: text}` objects: ICU plurals cover them, Insert Plural writes the
+    skeleton, and CSV/XLIFF already exchanged plurals as ICU;
+  - `data-loc`: one HTML route (`data-l10n-id`), which also carries arguments and attributes;
+  - the `"Table:key"` address: `<namespace>.<key>` already names the table;
+  - a cross-table duplicate-key check: namespaces make keys unique by construction (a namespace
+    collision is still an error);
+  - its GUID in a `.meta` file: the GUID lives in the file, as Title Art's and dialogues' do.
+  Neither design had landed, so the renames need no migration.
