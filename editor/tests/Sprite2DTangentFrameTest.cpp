@@ -54,6 +54,7 @@
 #include <string>
 #include <vector>
 #include "reflect/Reflect.h"
+#include "support/EditorTestSupport.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -375,6 +376,7 @@ namespace {
             std::ofstream(dir / "project.yaml") << "name: light2dheight\nassetsDir: assets\n";
             AppSettings::initialize();
             out.project.reset(new Project());
+            editor::test::releaseAtExit(out.project.get());
             out.ready = out.project->loadProject(dir, false);
             return out;
         }();

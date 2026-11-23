@@ -47,8 +47,9 @@ namespace jasperengine::watch {
     JASPERENGINE_API void setFsEventsDeadStreamsForTesting(int count);
 #endif
     std::unique_ptr<FileWatcher> createPollingBackend(std::chrono::milliseconds interval);
-    // Tests: runs on a polling backend's thread before each timed pass (null: none); blocking
-    // in it delays that pass, as a slow scan or a preempted poll thread does
+    // Tests: runs before a polling backend's baseline (in start(), on the caller's thread) and on its
+    // thread before each timed pass (null: none); blocking in it delays that look at the tree, as a
+    // slow scan or a preempted poll thread does
     JASPERENGINE_API void setPollingScanHookForTesting(std::function<void()> hook);
     std::unique_ptr<FileWatcher> createNullBackend();
 

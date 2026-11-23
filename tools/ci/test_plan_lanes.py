@@ -150,7 +150,7 @@ class Rules(unittest.TestCase):
         r = decide("merge_group", p, advisory=("unit", "htmlui", "mcp", "smoke"))
         self.assertEqual(runs(r), set(pl.LANES) - {"unit", "htmlui", "mcp", "smoke"})
         self.assertEqual((r["advisory_off"], r["build_only"]), (["unit", "htmlui", "mcp", "smoke"], []))
-        self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["unit_run"])), ["core", "editor"])
+        self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["asan_run"])), ["core", "editor"])
         self.assertEqual(decide("merge_group", p, advisory=()), decide("merge_group", p))
         self.assertEqual(runs(decide("merge_group", p)), set(pl.LANES))
         # only the lanes the push to main runs instead: lint and the platform builds stay in the queue
@@ -175,12 +175,13 @@ class Rules(unittest.TestCase):
 
     def test_push_runs_the_builds_only(self):
         r = decide("push", plan(["engine/core/Foo.cpp"], mcp=["test_a.py"]))
-        self.assertEqual(runs(r), {"changes", "unit", "htmlui", *pl.PLATFORM_LANES} - {"ios"})
+        self.assertEqual(runs(r), {"changes", "unit", "asan", "htmlui", "smoke", *pl.PLATFORM_LANES} - {"ios"})
         self.assertIn("build only", r["lanes"]["unit"]["why"])
         self.assertEqual(r["mcp"]["mode"], "none")
-        # ASan keeps no ccache entry (the 10 GB budget): a build on push would warm nothing
-        self.assertIn("no ccache entry", r["lanes"]["asan"]["why"])
-        self.assertEqual(r["build_only"], ["unit", "htmlui", "windows-editor-tests"])
+        # ASan keeps a ccache entry per binary (line tables only fit them in the budget), which only main saves
+        self.assertIn("build only", r["lanes"]["asan"]["why"])
+        self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["asan_run"])), ["core", "editor"])
+        self.assertEqual(r["build_only"], ["unit", "asan", "htmlui", "windows-editor-tests"])
 
     def test_push_builds_and_leaves_the_advisory_tests_to_the_advisory_run(self):
         # the advisory tests take 4.5 h (ASan): in the push run, every push held about 14 Linux jobs that
@@ -189,8 +190,8 @@ class Rules(unittest.TestCase):
         p = plan(["editor/window/InspectorX.cpp"], unit={"core": ["Foo"], "editor": [], "htmlui": ["Css"]},
                  mcp=["test_a.py"])
         r = decide("push", p, advisory=ADVISORY)
-        self.assertEqual(runs(r), {"changes", "unit", "htmlui", *pl.PLATFORM_LANES} - {"ios"})
-        self.assertEqual((r["build_only"], r["advisory_off"]), (["unit", "htmlui", "windows-editor-tests"], []))
+        self.assertEqual(runs(r), {"changes", "unit", "asan", "htmlui", *pl.PLATFORM_LANES} - {"ios"})
+        self.assertEqual((r["build_only"], r["advisory_off"]), (["unit", "asan", "htmlui", "windows-editor-tests"], []))
         self.assertEqual(r["mcp"]["mode"], "none")
         self.assertIn("build only", r["lanes"]["unit"]["why"])
         self.assertTrue(r["dispatch_advisory"])
@@ -263,13 +264,20 @@ class Rules(unittest.TestCase):
             self.assertEqual(decide(event, p, superseded_by=("c" * 40, "a")), decide(event, p), event)
 
     def test_push_runs_no_lane_that_keeps_no_cache(self):
-        # a push run is for the caches PRs restore: smoke and ios keep no entry, so on push they would
-        # take a runner (ios a macOS one, of 5) for nothing; the merge queue ran them
+        # a push run is for the caches PRs restore: ios keeps no entry, so on push it would take a macOS
+        # runner (of 5) for nothing; the merge queue ran it
         for files in (["engine/core/Foo.cpp"], ["editor/window/InspectorX.cpp"]):
             r = decide("push", plan(files, mcp=["test_a.py"]))
-            for name in ("smoke", "ios"):
-                self.assertFalse(r["lanes"][name]["run"], (files, name))
-                self.assertIn("no cache", r["lanes"][name]["why"], name)
+            self.assertFalse(r["lanes"]["ios"]["run"], files)
+            self.assertIn("no cache", r["lanes"]["ios"]["why"])
+
+    def test_push_warms_the_smoke_cache_when_an_export_reads_the_change(self):
+        # only main saves caches, so a smoke lane that never runs on push never warms its ccache
+        r = decide("push", plan(["engine/core/Foo.cpp"], mcp=["test_a.py"]))
+        self.assertTrue(r["lanes"]["smoke"]["run"], r["lanes"]["smoke"])
+        self.assertIn("cache", r["lanes"]["smoke"]["why"])
+        r = decide("push", plan(["editor/window/InspectorX.cpp"], mcp=["test_a.py"]))
+        self.assertFalse(r["lanes"]["smoke"]["run"], r["lanes"]["smoke"])
 
     def test_full_and_nightly(self):
         r = decide("full", None)
@@ -290,19 +298,41 @@ class Rules(unittest.TestCase):
             self.assertTrue(any("no merge base" in f for f in r["fallbacks"]))
         r = decide("push", None, "exit 2")
         self.assertNotIn("mcp", runs(r))
+        # CI itself: every lane but ASan, which a workflow change outside its own job does not reach
         r = decide("pull_request", plan([".github/workflows/ci.yml"], builds=()))
-        self.assertEqual(runs(r), set(pl.LANES))
+        self.assertEqual(runs(r), set(pl.LANES) - {"asan"})
         self.assertEqual(r["mcp"]["mode"], "ci")
         self.assertTrue(any(".github/workflows/ci.yml" in f for f in r["fallbacks"]))
+
+    def test_the_rollback_variable_selects_every_test(self):
+        # CI_FULL_SELECTION=true (a repository variable): the selection is not trusted, every lane runs whole
+        p = plan(["engine/core/Foo.cpp"], builds=("linux", "unit-tests"), unit={"core": ["Foo"], "editor": [], "htmlui": []},
+                 mcp=["test_a.py"])
+        for event in ("pull_request", "merge_group"):
+            r = pl.decide(event, p, "", CI, LEFT_OUT, NIGHTLY_OUT, full_selection=True)
+            self.assertEqual(runs(r), set(pl.LANES), event)
+            self.assertEqual((r["unit_run"], r["unit_filter"], r["htmlui_filter"]),
+                             ({"core": True, "editor": True}, {"core": "", "editor": ""}, ""))
+            self.assertEqual((r["mcp"]["mode"], len(r["mcp"]["files"])), ("ci", 3))
+            self.assertTrue(any("CI_FULL_SELECTION" in f for f in r["fallbacks"]), r["fallbacks"])
+        # the advisory run: its lanes whole, the whole MCP CI suite
+        r = pl.decide("advisory", p, "", CI, LEFT_OUT, NIGHTLY_OUT, advisory=ADVISORY, full_selection=True)
+        self.assertEqual((r["unit_filter"], r["htmlui_filter"], r["mcp"]["mode"]), ({"core": "", "editor": ""}, "", "ci"))
+        # prose nothing reads still runs nothing; push stays the build lanes
+        r = pl.decide("pull_request", plan(["docs/specs/S1.md"], builds=()), "", CI, LEFT_OUT, NIGHTLY_OUT, full_selection=True)
+        self.assertEqual(runs(r), {"changes"})
+        r = pl.decide("push", p, "", CI, LEFT_OUT, NIGHTLY_OUT, full_selection=True)
+        self.assertEqual(r["mcp"]["mode"], "none")
 
     def test_github_output(self):
         r = decide("pull_request", plan(["engine/core/Foo.cpp"], unit={"core": ["Foo"], "editor": [], "htmlui": []}))
         doc = {"full": False, "lanes": r["lanes"], "unit_filter": r["unit_filter"], "htmlui_filter": r["htmlui_filter"],
-               "mcp": dict(r["mcp"], shards=["1", "2"])}
+               "asan_run": r["asan_run"], "asan_filter": r["asan_filter"], "mcp": dict(r["mcp"], shards=["1", "2"])}
         lines = pl.github_output(doc, r["unit_run"]).splitlines()
         keys = [line.split("=", 1)[0] for line in lines]
         self.assertEqual(keys, ["full", *[f"run_{n}" for n in pl.LANES], "unit_filter_core", "unit_filter_editor",
-                                "unit_run_core", "unit_run_editor", "unit_jobs", "asan_jobs", "htmlui_filter", "mcp_shards",
+                                "unit_run_core", "unit_run_editor", "unit_jobs", "asan_jobs", "asan_filter_core",
+                                "asan_filter_editor", "htmlui_filter", "mcp_shards",
                                 "build_only", "dispatch_advisory"])
         self.assertIn("dispatch_advisory=false", lines)
         self.assertIn("dispatch_advisory=true", pl.github_output(dict(doc, dispatch_advisory=True), r["unit_run"]).splitlines())
@@ -313,6 +343,7 @@ class Rules(unittest.TestCase):
         self.assertIn('unit_jobs=[{"job":"core","suite":"core","part":"","other":""}]', lines)
         # the asan lane's matrix: one job per planned test binary
         self.assertIn('asan_jobs=[{"job":"core","suite":"core"}]', lines)
+        self.assertIn("asan_filter_core=Foo.*:*/Foo.*:Foo/*.*", lines)
         doc["mcp"]["shards"] = []
         self.assertIn("mcp_shards=[]", pl.github_output(doc, r["unit_run"]).splitlines())
         # the jobs that build but skip a test run (fromJSON in ci.yml: a list even when empty)
@@ -324,11 +355,65 @@ class Rules(unittest.TestCase):
             {"job": "core", "suite": "core", "part": "", "other": ""},
             {"job": "editor-1", "suite": "editor", "part": "1/2", "other": "2"},
             {"job": "editor-2", "suite": "editor", "part": "2/2", "other": "1"}])
+        doc["asan_run"] = {"core": True, "editor": True}
         both = [line for line in pl.github_output(doc, {"core": True, "editor": True}).splitlines() if line.startswith("asan_jobs=")]
         self.assertEqual(json.loads(both[0].split("=", 1)[1]), [{"job": "core", "suite": "core"}, {"job": "editor", "suite": "editor"}])
-        # a lane that does not run has no jobs (push builds the unit trees, not ASan's)
-        doc["lanes"] = dict(doc["lanes"], asan={"run": False, "why": "push"})
+        # a lane that does not run has no jobs
+        doc["lanes"] = dict(doc["lanes"], asan={"run": False, "why": "no unit test sees the change"})
         self.assertIn("asan_jobs=[]", pl.github_output(doc, {"core": True, "editor": True}).splitlines())
+
+    def test_a_pr_runs_asan_only_for_what_the_sanitizers_see(self):
+        # the asan lane costs 2.5-5 runner-hours a run; the advisory run on main still runs it after the merge.
+        # The unit lane runs for these, ASan does not: CI's scripts, docs, MCP tests, a test's data, assets
+        for f in ("tools/ci/report.py", "tools/mcp/requirements.txt", "tools/mcp/tests/test_a.py", "docs/testing.md",
+                  "editor/tests/fixtures/titleart/fonts/Oswald-wght.woff2", "engine/shaderlib/lit.glsl",
+                  "editor/resources/icons/play.png", "engine/core/script/binding/stubs/Physics.lua"):
+            r = decide("pull_request", plan([f], unit="all", mcp=["test_a.py"]))
+            self.assertTrue(r["lanes"]["unit"]["run"], f)
+            self.assertFalse(r["lanes"]["asan"]["run"], f)
+            self.assertIn("advisory run", r["lanes"]["asan"]["why"])
+            self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["asan_run"])), [], f)
+        suites = {"core": ["Foo"], "editor": ["Bar"], "htmlui": []}
+        for f in ("engine/core/Foo.cpp", "editor/window/Inspector.h", "engine/core/serialization/RuntimeFields.gen.inc",
+                  "libs/woff2/src/woff2_common.cc", "engine/libs/sokol/sokol_gfx.h", "editor/libs/draco/README.md",
+                  "engine/CMakeLists.txt", "engine/cmake/JasperSanitizers.cmake", "CMakePresets.json",
+                  "docker/linux.Dockerfile", "tools/build.sh", "tools/ci/gtest-gate.py"):
+            for event in ("pull_request", "workflow_dispatch"):
+                r = decide(event, plan([f, "docs/testing.md"], unit=suites))
+                self.assertTrue(r["lanes"]["asan"]["run"], (f, event))
+                self.assertEqual((r["asan_run"], r["asan_filter"]), (r["unit_run"], r["unit_filter"]), f)
+        # a C++ change no unit test sees: neither
+        r = decide("pull_request", plan(["editor/App.cpp"]))
+        self.assertFalse(r["lanes"]["asan"]["run"])
+        self.assertEqual(r["lanes"]["asan"]["why"], r["lanes"]["unit"]["why"])
+
+    def test_the_asan_lanes_own_settings_run_every_test_under_it(self):
+        # no selection sees a suppression file or the lane's job: both binaries, every test
+        for p, definition in ((plan(["tools/sanitizers/ubsan.supp"], builds=()), ""),
+                              (plan(["tools/sanitizers/lsan.supp", "editor/App.cpp"], unit={"core": [], "editor": ["App"], "htmlui": []}), ""),
+                              (plan([".github/workflows/ci.yml"], builds=()), ".github/workflows/ci.yml (the asan job)")):
+            r = decide("pull_request", p, asan_definition=definition)
+            self.assertTrue(r["lanes"]["asan"]["run"], p["files"])
+            self.assertEqual((r["asan_run"], r["asan_filter"]), ({"core": True, "editor": True}, {"core": "", "editor": ""}))
+            self.assertIn("the lane's settings or definition", r["lanes"]["asan"]["why"])
+            self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["asan_run"])), ["core", "editor"])
+        self.assertFalse(decide("pull_request", plan(["tools/sanitizers/ubsan.supp"], builds=()))["lanes"]["unit"]["run"])
+
+    def test_the_queue_the_advisory_run_and_the_rollback_keep_asan(self):
+        p = plan(["tools/ci/report.py"], unit="all")
+        # the merge queue: unchanged, every unit test under ASan unless it is advisory
+        r = decide("merge_group", p)
+        self.assertTrue(r["lanes"]["asan"]["run"])
+        self.assertEqual(r["asan_run"], {"core": True, "editor": True})
+        self.assertIn("asan", decide("merge_group", p, advisory=ADVISORY)["advisory_off"])
+        # the advisory run covers what a PR left out
+        r = decide("advisory", p, advisory=ADVISORY)
+        self.assertTrue(r["lanes"]["asan"]["run"])
+        self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["asan_run"])), ["core", "editor"])
+        # the rollback switch and no plan: every lane
+        self.assertTrue(decide("pull_request", p, full_selection=True)["lanes"]["asan"]["run"])
+        self.assertTrue(decide("pull_request", None, "exit 2")["lanes"]["asan"]["run"])
+        self.assertTrue(decide("pull_request", plan([".github/workflows/ci.yml"], builds=()), full_selection=True)["lanes"]["asan"]["run"])
 
     def test_unit_jobs(self):
         # the editor tests' build is most of their lane (CI runs 43737549764: 110 of 123 min), so two
@@ -364,6 +449,79 @@ for _i in range(2):
 
 def sh(cwd: Path, *args: str) -> str:
     return subprocess.run(list(args), cwd=str(cwd), check=True, capture_output=True, text=True).stdout
+
+
+class Selection(unittest.TestCase):
+    """lanes.json's selection: what each test lane runs, and why (the job summary prints it)."""
+
+    def test_reasons_of_a_planned_change(self):
+        p = plan(["engine/core/Foo.cpp", "tools/mcp/tests/test_b.py"], builds=("linux", "unit-tests"),
+                 unit={"core": ["Foo", "FooGpu"], "editor": [], "htmlui": []}, mcp=["test_a.py", "test_b.py", "test_long.py"])
+        p["unit_reasons"] = {"core": {"Foo": ["dependency", "engine/tests/core/FooTest.cpp includes engine/core/Foo.h"],
+                                      "FooGpu": ["policy", "a shader changed: the suites that draw (*Gpu)"]},
+                             "editor": {}, "htmlui": {}}
+        p["mcp"] = [{"file": "test_a.py", "reason": "runs engine/core/Foo.cpp (the changed functions)", "kind": "dependency"},
+                    {"file": "test_b.py", "reason": "the test file changed", "kind": "owner"},
+                    {"file": "test_long.py", "reason": "runs engine/core/Foo.cpp", "kind": "dependency"}]
+        r = decide("pull_request", p)
+        sel = pl.selection("pull_request", p, r, CI)
+        self.assertEqual(sel["unit"]["core"]["mode"], "suites")
+        self.assertEqual(sel["unit"]["core"]["suites"], [
+            {"suite": "Foo", "kind": "dependency", "why": "engine/tests/core/FooTest.cpp includes engine/core/Foo.h"},
+            {"suite": "FooGpu", "kind": "policy", "why": "a shader changed: the suites that draw (*Gpu)"}])
+        self.assertEqual(sel["unit"]["editor"], {"mode": "none", "kind": "", "why": "no unit test sees the change", "suites": []})
+        # MCP: the CI suite's planned files only, each with its reason
+        self.assertEqual(sel["mcp"]["mode"], "planned")
+        self.assertEqual(sel["mcp"]["files"], [
+            {"file": "test_a.py", "kind": "dependency", "why": "runs engine/core/Foo.cpp (the changed functions)"},
+            {"file": "test_b.py", "kind": "owner", "why": "the test file changed"}])
+        self.assertEqual(sel["mcp"]["of"], 3)
+        md = pl.selection_markdown(sel, r["fallbacks"], {})
+        self.assertIn("| unit (core) | 2 suites |", md)
+        self.assertIn("1 dependency, 1 policy", md)
+        self.assertIn("`test_b.py` (owner): the test file changed", md)
+
+    def test_a_widening_says_it_is_a_fallback_and_why(self):
+        p = plan(["engine/CMakeLists.txt"], unit="all", mcp="ci", fallbacks=["no coverage map: the CI suite for the C++ change"])
+        r = decide("pull_request", p)
+        sel = pl.selection("pull_request", p, r, CI)
+        self.assertEqual((sel["unit"]["core"]["mode"], sel["unit"]["core"]["kind"]), ("all", "fallback"))
+        self.assertEqual((sel["mcp"]["mode"], sel["mcp"]["kind"]), ("ci", "fallback"))
+        self.assertIn("no coverage map", sel["mcp"]["why"])
+        md = pl.selection_markdown(sel, r["fallbacks"], {"coverage-map": {"commit": "abcdef1234567", "run": "9", "created": 0}})
+        self.assertIn("| MCP | all 3 files |", md)
+        self.assertIn("fallback: no coverage map", md)
+        self.assertIn("coverage map of abcdef123456 (run 9", md)
+        # the merge queue and a full run: the whole suites by rule, not by a fallback
+        r = decide("merge_group", plan(["engine/core/Foo.cpp"], unit={"core": ["Foo"], "editor": [], "htmlui": []}))
+        sel = pl.selection("merge_group", plan(["engine/core/Foo.cpp"]), r, CI)
+        self.assertEqual((sel["unit"]["editor"]["mode"], sel["unit"]["editor"]["kind"]), ("all", "full"))
+        sel = pl.selection("full", None, decide("full", None), CI)
+        self.assertEqual((sel["mcp"]["mode"], sel["mcp"]["kind"]), ("ci", "full"))
+
+
+class Shadow(unittest.TestCase):
+    """lanes.json's shadow: what a pull request's selection would run for a fuller run's diff."""
+
+    def test_the_pr_selection_of_a_plan(self):
+        p = plan(["engine/core/Foo.cpp"], builds=("linux", "unit-tests"), unit={"core": ["Foo"], "editor": [], "htmlui": ["Css"]},
+                 mcp=["test_a.py", "test_long.py"])
+        p["base"] = "b" * 40
+        self.assertEqual(pl.shadow_selection(p, CI, LEFT_OUT, NIGHTLY_OUT), {
+            "base": "b" * 40, "files": ["engine/core/Foo.cpp"], "fallbacks": [],
+            "unit": {"core": ["Foo"], "editor": [], "htmlui": ["Css"]}, "asan": {"core": ["Foo"], "editor": []},
+            "mcp": ["test_a.py"]})
+        # what a PR widens to, it widens to here too; the rollback switch does not apply (it measures the shortcut)
+        sh = pl.shadow_selection(plan(["engine/x.cpp"], unit="all", mcp="ci", fallbacks=["no coverage map"]), CI, LEFT_OUT, NIGHTLY_OUT)
+        self.assertEqual((sh["unit"], sh["mcp"]), ({"core": "all", "editor": "all", "htmlui": "all"}, "all"))
+        self.assertIn("no coverage map", sh["fallbacks"])
+        sh = pl.shadow_selection(plan([".github/workflows/ci.yml"], builds=()), CI, LEFT_OUT, NIGHTLY_OUT)
+        self.assertEqual((sh["mcp"], sh["asan"]), ("all", {"core": [], "editor": []}))
+        sh = pl.shadow_selection(plan([".github/workflows/ci.yml"], builds=()), CI, LEFT_OUT, NIGHTLY_OUT,
+                                 ".github/workflows/ci.yml (the asan job or the workflow's env)")
+        self.assertEqual(sh["asan"], {"core": "all", "editor": "all"})
+        sh = pl.shadow_selection(plan(["docs/specs/S1.md"], builds=()), CI, LEFT_OUT, NIGHTLY_OUT)
+        self.assertEqual((sh["unit"], sh["mcp"]), ({"core": [], "editor": [], "htmlui": []}, []))
 
 
 class Shards(unittest.TestCase):
@@ -467,6 +625,10 @@ class Runs(unittest.TestCase):
         self.assertEqual(sorted(t for c in shard["chunks"] for t in c["tests"]),
                          ["test_made_0", "test_made_1", "test_one", "test_two"])
         self.assertTrue(doc["lanes"]["linux"]["run"] and doc["lanes"]["windows"]["run"])
+        # the reasons, in lanes.json and as the job summary's Markdown
+        self.assertEqual(doc["selection"]["mcp"]["files"], [{"file": "test_a.py", "kind": "owner", "why": "the test file changed"}])
+        self.assertEqual(doc["selection"]["mcp"]["tests"], 4)
+        self.assertIn("`test_a.py` (owner): the test file changed", (self.tmp / "out/selection.md").read_text())
 
     def plan_with_timings(self, event, committed: str, cache: dict | None = None):
         head = self.commit("tools/mcp/ci-timings.json", committed)
@@ -521,6 +683,24 @@ class Runs(unittest.TestCase):
         self.assertEqual(doc["unit_jobs"], ["core", "editor-1", "editor-2"])
         self.assertEqual(doc["asan_jobs"], ["core", "editor"])
 
+    def test_fuller_runs_carry_the_pr_selection_as_their_shadow(self):
+        head = self.commit("tools/mcp/tests/test_a.py", TEST_FILE.format(extra="# changed"))
+        code, doc, out = self.run_main("--event", "merge_group", "--base", self.base, "--head", head,
+                                       "--out-dir", str(self.tmp / "out"))
+        self.assertEqual(code, 0, out)
+        self.assertEqual((doc["shadow"]["files"], doc["shadow"]["mcp"]), (["tools/mcp/tests/test_a.py"], ["test_a.py"]))
+        # the nightly has no diff of its own: the PR selection of the one since --shadow-base
+        code, doc, out = self.run_main("--event", "nightly", "--base", head, "--head", head, "--shadow-base", self.base,
+                                       "--out-dir", str(self.tmp / "out"))
+        self.assertEqual(code, 0, out)
+        self.assertEqual((doc["mcp"]["mode"], doc["shadow"]["mcp"], doc["shadow"]["base"]), ("nightly", ["test_a.py"], self.base))
+        code, doc, out = self.run_main("--event", "nightly", "--base", head, "--head", head, "--out-dir", str(self.tmp / "out"))
+        self.assertEqual(doc["shadow"], None)
+        self.assertIn("--shadow-base", doc["shadow_why"])
+        # a pull request runs its selection: nothing to shadow
+        code, doc, out = self.run_main("--event", "pull_request", "--base", self.base, "--head", head, "--out-dir", str(self.tmp / "out"))
+        self.assertEqual(doc["shadow"], None)
+
     def test_no_plan_fails_open_and_an_unlistable_suite_fails_the_lane(self):
         head = self.commit("engine/core/Foo.cpp", "int foo = 2;\n")
         (self.root / "tools/mcp/tests/test_b.py").write_text("CI = True\nraise ImportError('broken')\n")
@@ -533,6 +713,36 @@ class Runs(unittest.TestCase):
         self.assertEqual(doc["mcp"]["shards"], ["1"])
         self.assertFalse((self.tmp / "out/mcp-plan/plan-1.json").exists())
         self.assertTrue(any("could not be planned" in f for f in doc["fallbacks"]), doc["fallbacks"])
+
+    def test_a_workflow_change_runs_asan_only_in_its_own_job_or_env(self):
+        workflow = ("name: CI\nenv:\n  JASPERENGINE_PCH: \"OFF\"\n\njobs:\n  unit:\n    runs-on: ubuntu-latest\n"
+                    "    steps:\n      - run: echo unit\n\n  # one job per test binary\n  asan:\n    runs-on: ubuntu-latest\n"
+                    "    steps:\n      - uses: ./.github/actions/ccache-restore\n        with:\n          max-size: 1.7G\n\n"
+                    "  # the HTML UI lane\n  htmlui:\n    runs-on: ubuntu-latest\n")
+        base = self.commit(pl.WORKFLOW, workflow)
+        self.assertEqual(pl.asan_blocks(workflow), [(12, 17), (2, 3)])
+        for old, new, runs_asan in (("echo unit", "echo unit2", False), ("# the HTML UI lane", "# HTML UI", False),
+                                    ("# one job per test binary", "# a job per test binary", False),
+                                    ("max-size: 1.7G", "max-size: 2.2G", True), ('"OFF"', '"ON"', True)):
+            head = self.commit(pl.WORKFLOW, workflow.replace(old, new))
+            gh = self.tmp / "gh.txt"
+            gh.write_text("")
+            code, doc, out = self.run_main("--event", "pull_request", "--base", base, "--head", head,
+                                           "--out-dir", str(self.tmp / "out"), "--github-output", str(gh))
+            self.assertEqual(code, 0, out)
+            self.assertEqual(doc["lanes"]["asan"]["run"], runs_asan, (old, doc["lanes"]["asan"]["why"]))
+            self.assertTrue(doc["lanes"]["unit"]["run"], old)
+            lines = gh.read_text().splitlines()
+            self.assertIn('asan_jobs=[{"job":"core","suite":"core"},{"job":"editor","suite":"editor"}]' if runs_asan
+                          else "asan_jobs=[]", lines)
+            if runs_asan:
+                self.assertIn("asan_filter_editor=", lines)
+                self.assertIn("the asan job or the workflow's env", doc["lanes"]["asan"]["why"])
+            base = head
+        # a workflow without the job cannot be read for it: the lane runs (fail open)
+        head = self.commit(pl.WORKFLOW, "name: CI\njobs:\n  unit:\n    runs-on: ubuntu-latest\n")
+        self.assertIn("no asan job", pl.asan_definition_change(self.root, base, [pl.WORKFLOW]))
+        self.assertEqual(pl.asan_definition_change(self.root, base, ["engine/core/Foo.cpp"]), "")
 
     def test_the_queue_reads_the_advisory_lanes(self):
         head = self.commit("tools/mcp/tests/test_a.py", TEST_FILE.format(extra="# changed"))
@@ -620,6 +830,8 @@ class Runs(unittest.TestCase):
         self.assertEqual(doc["files"], ["tools/mcp/tests/test_a.py"])
         self.assertEqual((doc["mcp"]["files"], doc["mcp"]["shards"]), (["tools/mcp/tests/test_a.py"], ["1"]), out)
         self.assertTrue(any("run 17" in n for n in doc["notes"]), doc["notes"])
+        # it runs the advisory tests the queue left out, unfiltered: judged against a PR's selection of its diff
+        self.assertEqual((doc["shadow"]["files"], doc["shadow"]["mcp"]), (["tools/mcp/tests/test_a.py"], ["test_a.py"]))
         # main is still at the last tested head: nothing runs
         write((20, head, "in_progress", "", title + head), (17, head, "completed", "success", title + head))
         code, doc, out = run_advisory()

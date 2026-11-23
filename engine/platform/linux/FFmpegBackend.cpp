@@ -43,7 +43,7 @@ namespace {
         std::map<std::string, bool> decoders;
     };
 
-    // replaced (never freed: a backend may still use its libraries) by reloadForTesting
+    // for the process (not destroyed at exit); reloadForTesting replaces it
     Loaded*& loadedSlot(){
         static Loaded* value = new Loaded();
         return value;
@@ -188,7 +188,11 @@ bool FFmpegBackend::hasDecoder(const std::string& codec){
 }
 
 void FFmpegBackend::reloadForTesting(){
-    loadedSlot() = new Loaded();
+    // the replaced set's libraries stay open (nothing closes a loaded set's): the backends made
+    // from it resolved their functions from them
+    Loaded*& slot = loadedSlot();
+    delete slot;
+    slot = new Loaded();
 }
 
 // ---------------------------------------------------------------- the platform hooks

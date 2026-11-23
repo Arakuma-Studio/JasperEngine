@@ -27,6 +27,7 @@
 #include "ScriptDataTestSupport.h"
 
 #include "support/PosixCompat.h"
+#include "support/EditorTestSupport.h"
 
 #include <algorithm>
 #include <chrono>
@@ -63,6 +64,7 @@ namespace {
             std::ofstream(out.dir / "project.yaml") << "name: pixelartinput\n";
             AppSettings::initialize();
             out.project.reset(new Project());
+            editor::test::releaseAtExit(out.project.get());
             out.platform.reset(new editor::Platform(out.project.get()));
             headlesssystem::use(out.platform.get());
             Engine::pauseGameEvents(true);

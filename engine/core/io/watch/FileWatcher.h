@@ -136,8 +136,8 @@ namespace jasperengine {
     public:
         virtual ~FileWatcher() = default;
 
-        // Starts watching `root` (absolute) and reporting to `sink`. False when it cannot
-        // (`error` says why); then nothing runs.
+        // Starts watching `root` (absolute) and reporting to `sink`: once it returns true, every
+        // change from then on is reported. False when it cannot (`error` says why); then nothing runs.
         virtual bool start(const std::filesystem::path& root, watch::WatchSink& sink, std::string& error) = 0;
         // Joins the thread; no sink call after it returns. Never from a sink callback.
         virtual void stop() = 0;

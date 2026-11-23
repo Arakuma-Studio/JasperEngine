@@ -10,10 +10,11 @@ endif()
 project(jasperengine-editor)
 
 # Build options of our own targets (docs/testing.md), shared with the standalone engine tree:
-# sanitizers (before any target: they apply to the whole tree), warnings (on here; off in
-# engine/, which exported games build), warnings as errors, unity builds
+# sanitizers and the debug information level (before any target: they apply to the whole tree),
+# warnings (on here; off in engine/, which exported games build), warnings as errors, unity builds
 option(JASPERENGINE_WARNINGS "Warnings on the engine, editor and test targets" ON)
 include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperSanitizers.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperDebugInfo.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperUnityBuild.cmake)
 # precompiled headers and the linker of development and test builds (docs/testing.md "Build speed")
@@ -748,13 +749,6 @@ target_include_directories(woff2_decoder PRIVATE libs/brotli/c/include)
 target_include_directories(woff2_decoder SYSTEM PUBLIC libs/woff2/include)
 target_compile_options(woff2_decoder PRIVATE ${EXTERNAL_WARNING_FLAG})
 jasperengine_apply_cxx_standard(woff2_decoder)
-# UBSan: woff2 1.0.2 reads and writes a font's words as uint32_t and uint16_t in place
-# (ComputeULongSum, store_bytes.h), and a table need not start on 4 bytes (FontCatalogTest's .woff2
-# imports). The sanitized builds stop at the first report (-fno-sanitize-recover), which a
-# suppression cannot skip: this vendored target alone is built without the alignment check.
-if(JASPERENGINE_SANITIZE_UNDEFINED AND NOT MSVC)
-    target_compile_options(woff2_decoder PRIVATE -fno-sanitize=alignment)
-endif()
 
 # ImGui has no target of its own; only one of these backends builds per platform
 set_property(

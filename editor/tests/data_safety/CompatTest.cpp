@@ -147,7 +147,10 @@ namespace {
     // authored camera's clips, a plain Mesh's vertex counts and bounds, a UI's bounds and vertex
     // count, ranges set by hand) is compared.
     void removeComputedValues(YAML::Node components) {
-        const CameraComponent cameraDefaults{};
+        CameraComponent cameraDefaults{};
+        // outside a registry nothing deletes the framebuffer a camera's initialiser allocates
+        delete cameraDefaults.framebuffer;
+        cameraDefaults.framebuffer = nullptr;
         const TerrainComponent terrainDefaults{};
         YAML::Node camera = components["camera"];
         if (camera && camera.IsMap() && flagOr(camera, "autoResize", cameraDefaults.autoResize) &&

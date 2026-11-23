@@ -8,6 +8,7 @@
 #include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
+#include "pool/TextureDataPool.h"
 #include "terrain/TerrainOverlay.h"
 #include "texture/Texture.h"
 #include "texture/TextureData.h"
@@ -25,6 +26,13 @@ using namespace jasperengine::editor;
 namespace {
 
     constexpr int OVERLAY_MAP = 17;
+    constexpr const char* OVERLAY_RAMP = "t1-overlay-ramp";
+
+    // The ramp's pool entry, and with it its pixels, go when the test ends: the pool keeps the
+    // first pixels an id gets, so the next test's ramp would be dropped
+    struct OverlayRampScope {
+        ~OverlayRampScope() { TextureDataPool::remove(OVERLAY_RAMP); }
+    };
 
     // A ramp along X: the left edge at 0, the right edge at the top
     Entity overlayTerrain(Scene& scene) {
@@ -42,7 +50,7 @@ namespace {
         TextureData data(OVERLAY_MAP, OVERLAY_MAP, static_cast<unsigned int>(bytes), ColorFormat::RED16, 1, raw);
         data.setDataOwned(false);
         Texture& texture = scene.getComponent<TerrainComponent>(entity).heightMap;
-        texture.setData("t1-overlay-ramp", data);
+        texture.setData(OVERLAY_RAMP, data);
         texture.getData().setDataOwned(true);
         return entity;
     }
@@ -50,6 +58,7 @@ namespace {
 }
 
 TEST(TerrainOverlay, BuiltInSourcesBakeTheMaps) {
+    OverlayRampScope ramp;
     Scene scene;
     const Entity entity = overlayTerrain(scene);
     for (const char* name : {"height", "slope", "contours", "layer_weights"}) EXPECT_TRUE(TerrainOverlay::hasSource(name)) << name;
@@ -94,6 +103,7 @@ TEST(TerrainOverlay, RegisteredSourceBakesAndHasLegend) {
         [](const TerrainOverlayBake&) { return std::vector<TerrainOverlayLegendStop>{{"checked", Vector4(1, 1, 1, 1)}}; });
     EXPECT_TRUE(TerrainOverlay::hasSource("t1_test_checker"));
 
+    OverlayRampScope ramp;
     Scene scene;
     const Entity entity = overlayTerrain(scene);
     TerrainOverlaySettings settings;
@@ -126,6 +136,7 @@ TEST(TerrainOverlay, SettingsRoundTrip) {
 // AC39 (R53): with the overlay off there is no sheet: no entity and so no texture, from the start and
 // again after it was on
 TEST(TerrainOverlay, OffHasNoEntities) {
+    OverlayRampScope ramp;
     Scene scene;
     const Entity entity = overlayTerrain(scene);
     SceneProject sceneProject;

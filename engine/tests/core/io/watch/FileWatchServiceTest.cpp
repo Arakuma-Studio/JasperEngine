@@ -216,6 +216,19 @@ TEST_P(FileWatchServiceTests, SelfUnsubscribe) {
     EXPECT_EQ(calls.load(), 1);
 }
 
+// A callback owning its subscription that never ran is still registered when the service goes:
+// dropping it unsubscribes, and that must not reach a half-destroyed subscriber list
+TEST(FileWatchService, DestructionDropsACallbackThatOwnsItsSubscription) {
+    int dropped = 0;
+    {
+        FileWatchService owner;
+        auto holder = std::make_shared<FileWatchSubscription>();
+        std::shared_ptr<int> drop(&dropped, [](int* count) { ++*count; });
+        *holder = owner.subscribe({}, [holder, drop](std::span<const FileChange>) { holder->reset(); }, DeliverOn::Worker);
+    }
+    EXPECT_EQ(dropped, 1);
+}
+
 TEST_P(FileWatchServiceTests, FilterExtensionsGlobs) {
     startWatching();
     std::vector<FileChange> images, scripts, editorOnly;
