@@ -226,6 +226,9 @@ TEST(ProjectPrefabMaterials, AnOlderPrefabKeepsItsEmbeddedCopies) {
         ASSERT_NE(stage, nullptr) << when;
         EXPECT_EQ(meshColor(stage->sceneProject.scene, stage->sceneProject.entities), RED) << when << ": Prefab Mode";
         project.closePrefabStages(0, nullptr, 2);
+        // (closing the stage dropped the asset no scene uses: read again)
+        asset = project.loadPrefabAsset(PREFAB);
+        ASSERT_NE(asset, nullptr) << when;
         // a change of the .material reaches no copy of it
         project.reapplyLinkedMaterialFiles();
         EXPECT_EQ(meshColor(asset->registry.get(), asset->registryEntities), RED) << when << ": after the files are read again";

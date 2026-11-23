@@ -88,7 +88,7 @@ async def test_compile_and_prebuilt_match(ed: Editor):
     await ed.call("create_prefab", scene=sid, entity=crate, path="prefabs/Crate.prefab")
     probe = (await ed.call("create_entity", scene=sid, type="empty", name="Probe", select=False))["entity_id"]
     await ed.call("create_script", kind="lua", name="Probe", content=PROBE, entity=probe)
-    await ed.call("set_scene_settings", scene=sid, values={"physics_2d_sub_steps": 9,
+    await ed.call("set_scene_settings", scene=sid, settings={"physics_2d_sub_steps": 9,
                   "canvas_scaler": {"mode": "scale_with_screen_size", "reference": [1280, 720]}})
     await ed.call("save_scene", scene=sid)
     await ed.call("edit_build_scenes", action="add", scene=sid)
