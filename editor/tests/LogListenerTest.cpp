@@ -413,8 +413,8 @@ TEST_F(LogListenerTest, CrossRemovalDoesNotDeadlock) {
 
 // past 1,000 lines waiting for the main thread, worker lines are counted and reported once.
 // A thread an earlier test left running may log meanwhile (a sharded run: 101 dropped, not 100):
-// its lines take queue slots and join the count, so they are told apart by their text and
-// counted, and with none the checks are exact.
+// its lines take queue slots, join the count, and can find the room a dispatch frees (and carry
+// the report), so they are told apart by their text and counted; with none the checks are exact.
 TEST_F(LogListenerTest, PendingQueueOverflowIsReported) {
     const std::string report = "lines logged by other threads were not given to the log listeners";
     auto ours = [report](const std::string& message) {
@@ -439,40 +439,60 @@ TEST_F(LogListenerTest, PendingQueueOverflowIsReported) {
     }).join();
     EXPECT_EQ(Log::getPendingCount(), 1000u);
     Log::dispatchPending();
-    ASSERT_EQ(got.size(), 1000u);
-    // the flood's lines in order from its first, as many as the foreign ones left room for
-    size_t flooded = 0;
-    for (const std::string& message : got) {
-        if (message.rfind("flood ", 0) != 0) continue;
-        EXPECT_EQ(message, "flood " + std::to_string(flooded)) << "in order, none skipped";
-        flooded++;
-    }
-    ASSERT_GT(flooded, 0u);
-    // every queued line not the flood's is a foreign one
-    EXPECT_LE(1000u - flooded, foreign.load());
+    const size_t firstDispatch = got.size();
 
-    // the next worker line has room again: the report comes with it (or with a foreign line
-    // that found the room first)
-    got.clear();
+    // the next worker line has room again: the report comes with it
     std::thread([]() { Log::print("after the flood"); }).join();
     Log::dispatchPending();
-    EXPECT_NE(std::find(got.begin(), got.end(), "after the flood"), got.end());
-    size_t reports = 0, dropped = 0;
-    for (const std::string& message : got) {
-        const size_t at = message.find(report);
-        if (at == std::string::npos) continue;
-        reports++;
-        dropped = std::strtoul(message.c_str() + message.find(": ") + 2, nullptr, 10);
+    // a foreign line that found the room first logs the report on its own thread, maybe later:
+    // wait for it (the deadline is a hang guard)
+    auto reported = [&]() {
+        return std::any_of(got.begin(), got.end(), [&](const std::string& m) { return m.find(report) != std::string::npos; });
+    };
+    for (const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+         !reported() && std::chrono::steady_clock::now() < deadline;) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        Log::dispatchPending();
     }
+
+    size_t flooded = 0, after = 0, reports = 0, dropped = 0, others = 0;
+    for (const std::string& message : got) {
+        if (message.rfind("flood ", 0) == 0) {
+            // in order from the first, as many as the foreign lines left room for
+            EXPECT_EQ(message, "flood " + std::to_string(flooded)) << "in order, none skipped";
+            flooded++;
+        } else if (message == "after the flood") {
+            after++;
+        } else if (message.find(report) != std::string::npos) {
+            reports++;
+            dropped = std::strtoul(message.c_str() + message.find(": ") + 2, nullptr, 10);
+        } else {
+            others++;
+        }
+    }
+    const size_t foreignLines = foreign.load();
+    EXPECT_EQ(after, 1u);
     ASSERT_EQ(reports, 1u) << "reported once";
-    // the flood's 100 past the limit and the slots foreign lines took; a foreign line that came
-    // while the queue was full is dropped and counted too
+    EXPECT_LE(others, foreignLines) << "every other line delivered is another thread's";
+    EXPECT_LE(flooded, 1000u);
+    EXPECT_GE(flooded + foreignLines, 1000u) << "a flood line missing from the queue had a foreign line in its slot";
+    // the flood's lines past the queue, and a foreign line that came while it was full
     EXPECT_GE(dropped, 1100u - flooded);
-    EXPECT_LE(dropped, 1100u - flooded + foreign.load());
+    EXPECT_LE(dropped, 1100u - flooded + foreignLines);
     // every line is in the buffer and counted, dispatched or not
     const size_t info = Log::getCount(LogLevel::Info) - infoBefore;
     EXPECT_GE(info, 1101u);
     EXPECT_LE(info, 1101u + foreignInfo.load());
+    if (foreignLines == 0) {
+        // the quiet run: exact
+        EXPECT_EQ(firstDispatch, 1000u);
+        EXPECT_EQ(flooded, 1000u);
+        EXPECT_EQ(dropped, 100u);
+        ASSERT_EQ(got.size(), 1002u);
+        EXPECT_EQ(got[999], "flood 999");
+        EXPECT_EQ(got[1000], "after the flood");
+        EXPECT_NE(got[1001].find("100 " + report), std::string::npos) << got[1001];
+    }
 }
 
 // 5. Lua: RegisterEvent on Log.onMessageReceived, a traceback with warnings; the script released, no more calls
