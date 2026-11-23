@@ -1108,6 +1108,14 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   `tools/mcp/ci-timings.json` runs only `changes` and `Check`, on a PR and in the queue. The rest of `docs/` counts as building:
   the editor embeds the MCP guide, and tests read other docs.
 - **Ledgers** ride in the PR of the work they record, so they cost no run of their own.
+- **Blocking lanes only, while GitHub's runners are the bottleneck**: with the repository variable
+  `PR_ADVISORY_LANES` set to `off`, a pull request plans as the merge queue does: its advisory test
+  lanes and test runs (`ADVISORY_LANES`: unit, ASan, HTML UI, MCP, smoke, the Windows editor tests) are
+  planned off (`advisory_off`; the editor leg still builds), and its `Check` waits for lint and the
+  platform builds only. They run on `main` after the merge, in the advisory run a push dispatches, as
+  for the queue. The default (`on`, or no variable) runs them. Set it while the organization's 60
+  concurrent hosted jobs are saturated, delete it when the backlog clears:
+  `gh variable set PR_ADVISORY_LANES --body off`, `gh variable delete PR_ADVISORY_LANES`.
 - **Stricter than check-changed**: any building change runs every platform lane, Web and Android
   included; a `.github/` change runs everything (ASan as below); a plan error, a missing deps dump or a missing or
   stale coverage map widens that lane to everything, and the report says why.
@@ -1421,8 +1429,9 @@ a service that starts with the machine (macOS: with the user's login) and reconn
 
 - the run may use one: a push, the merge queue, a dispatch, or a pull request whose head repository is
   this one, never a fork's;
-- it is the run's first attempt: a rerun stays on GitHub's runners, so the watchdog's rerun (below)
-  never waits for the same machine again;
+- it is not the rerun of a run the watchdog moved off a runner that went away (the state's
+  `hosted_only`, below), nor of a forced dispatch: those stay on GitHub's runners, so they never wait
+  for the same machine again. A rerun for an idle runner (below) routes as a first attempt does;
 - the runner state (`state.json` of the data branch `ci-runner-state`, fetched as the plan starts; not a
   repository variable, which a run reads as it is created, up to an hour before `changes` gets a
   runner) is under 5 min old (`STATE_MAX_AGE`), and says the hosted
@@ -1435,9 +1444,9 @@ a service that starts with the machine (macOS: with the user's login) and reconn
   (`TAKES`, one by default): `je-mac` takes `macos` and `ios` (it builds `ios` in 12 min, run
   45104498209), one after the other; `je-linux` `linux` (the MCP and smoke lanes wait for it), else the
   longest build; `je-win` the D3D11 or OpenGL engine leg. The Windows editor leg's MSVC build does not
-  fit in 7 GB in its time. `je-win` is out (`SELF_HOSTED_DISABLED=je-win`) since the box reset itself
-  19 min into the D3D11 leg (run 45104498209; Kernel-Power 41, its sixth such reset in two days, five of
-  them before it ran CI).
+  fit in 7 GB in its time. The box reset itself 19 min into the D3D11 leg once (run 45104498209;
+  Kernel-Power 41, its sixth such reset in two days, five of them before it ran CI); the watchdog
+  reroutes a job it loses that way.
 
 The `changes` job's summary and `lanes.json` (`routing`) say where each job went and why.
 
@@ -1480,8 +1489,18 @@ on one offline for 3 min, or failed because its runner went away ("lost communic
 signal", read as soon as the job ends), gets its run cancelled and, once stopped, rerun whole (`gh run rerun`): the rerun plans on
 GitHub's runners only. A merge-queue run is cancelled and its pull request put back in the queue (the
 queue removed the group, so a rerun would build nothing); a pull request's run that a newer push
-superseded is not rerun. Each run is acted on once, at most 6 actions an hour, each logged to the
-host's `je-runner-dispatch.log`. With no state for 5 min (the host, `gh` or the cron is down) every
+superseded is not rerun.
+
+**Re-routing a waiting job.** A plan routes once, so a job queued on a hosted label stays there even
+when an overflow runner becomes idle. When a trusted run's job has waited 15 min
+(`IDLE_REROUTE_WAIT`) for a hosted runner while an overflow runner that would take it (`OVERFLOW`) is
+online, idle, fit and not disabled, the dispatcher cancels the run and reruns it, so its plan routes
+it there; the merge queue's runs first, one run per idle runner a minute. A merge-queue run's pull
+request goes back to the front of the queue (`enqueuePullRequest` with `jump: true`): it was building
+there. The runs moved off a runner that went away are listed in the state's `hosted_only` for a day,
+and their reruns plan hosted only. Each run gets at most one reroute of each kind, and none for an idle
+runner after one for a lost runner: never a loop. All of it shares the limit of 6 actions an hour, each
+logged to the host's `je-runner-dispatch.log`. With no state for 5 min (the host, `gh` or the cron is down) every
 job goes hosted, so an offline machine never holds a run.
 
 **Taking a machine out**: `gh variable set SELF_HOSTED_DISABLED --body je-win` (labels, or `all`);

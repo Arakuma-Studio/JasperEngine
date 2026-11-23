@@ -170,8 +170,10 @@ jobs:
           # the overflow runners (docs/testing.md "Overflow runners"): the ones taken out; a fork's pull
           # request never gets one. Their state is fetched below, as the plan starts
           RUNNER_DISABLED: ${{ vars.SELF_HOSTED_DISABLED }}
-          # the paid macOS tier (Blacksmith) after GitHub's runners and je-mac: off stops it
+          # the paid tier (Blacksmith) after GitHub's runners and the user's machines: off stops it
           BLACKSMITH: ${{ vars.BLACKSMITH_OVERFLOW }}
+          # off: a pull request runs its blocking lanes only, as the merge queue (docs/testing.md "What each event runs")
+          PR_ADVISORY: ${{ vars.PR_ADVISORY_LANES }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           SELF_HOSTED: ${{ inputs.self_hosted }}
         run: |
@@ -188,8 +190,8 @@ jobs:
           esac
           args=(--event "$event" --base "$base" --head "$head" --out-dir build/ci-plan --github-output "$GITHUB_OUTPUT"
                 --advisory "$ADVISORY_LANES" --runner-state "$RUNNER_TEMP/runner-state.json"
-                --runner-disabled "$RUNNER_DISABLED" --blacksmith "$BLACKSMITH" --trigger "$GITHUB_EVENT_NAME" --head-repo "$HEAD_REPO"
-                --repo "$GITHUB_REPOSITORY" --run-attempt "$GITHUB_RUN_ATTEMPT" --self-hosted "$SELF_HOSTED"
+                --runner-disabled "$RUNNER_DISABLED" --blacksmith "$BLACKSMITH" --pr-advisory "${PR_ADVISORY:-on}" --trigger "$GITHUB_EVENT_NAME" --head-repo "$HEAD_REPO"
+                --repo "$GITHUB_REPOSITORY" --run-attempt "$GITHUB_RUN_ATTEMPT" --run-id "$GITHUB_RUN_ID" --self-hosted "$SELF_HOSTED"
                 --planner "$RUNNER_NAME")
           [[ -d build/ci-inputs/deps ]] && args+=(--deps-from build/ci-inputs/deps)
           [[ -f build/ci-inputs/coverage-map.json ]] && args+=(--coverage-map build/ci-inputs/coverage-map.json)

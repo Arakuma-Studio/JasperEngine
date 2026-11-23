@@ -145,6 +145,9 @@ APPLE_INPUTS = ("engine/platform/apple/*", "engine/platform/mac/*", "engine/work
                 "tools/test_xcode_sync_sources.py", "engine/shaders/msl21*", "tools/ci/macos.sh",
                 "tools/ci/platform-common.sh", "tools/ci/retry.sh", ".github/actions/report/*")
 APPLE_LANES = ("macos", "ios")
+# the repository variable that runs a pull request's blocking lanes only (off), as the merge queue does, while
+# GitHub's 60 concurrent jobs are the bottleneck: its advisory test lanes run on main after the merge anyway
+PR_ADVISORY_VARIABLE = "PR_ADVISORY_LANES"
 # the repository variable that turns the selection off (ci.yml passes --full-selection when it is "true")
 FULL_SELECTION_VARIABLE = "CI_FULL_SELECTION"
 TEST_NAME = re.compile(r"^test_\w+\.py::\w+$")
@@ -304,12 +307,13 @@ def suite_choice(value) -> tuple[bool, str]:
 
 def decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_out: dict[str, str],
            nightly_out: dict[str, str], advisory=(), superseded_by: tuple[str, str] | None = None,
-           full_selection: bool = False, asan_definition: str = "") -> dict:
+           full_selection: bool = False, asan_definition: str = "", pr_advisory: bool = True) -> dict:
     """The lanes of an event, from check-changed's plan (None: there is none, plan_error says why),
     in LANES order; advisory: ADVISORY_LANES; superseded_by: a newer push to main, and a path it
     changed that builds (newer_push). full_selection (the rollback switch, FULL_SELECTION_VARIABLE):
     a pull request, the merge queue or the advisory run runs every lane whole for any change that builds.
-    asan_definition: the asan lane's definition changed, and where (definition_change)."""
+    asan_definition: the asan lane's definition changed, and where (definition_change). pr_advisory
+    (PR_ADVISORY_VARIABLE): False runs a pull request's blocking lanes only, as the merge queue does."""
     result = _decide("merge_group" if event == "advisory" else event, plan, plan_error, ci, left_out, nightly_out,
                      full_selection, asan_definition)
     result["advisory_off"] = []
@@ -319,6 +323,8 @@ def decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_o
         keep_advisory_only(result, set(advisory))
     elif event == "merge_group":
         leave_advisory_out(result, set(advisory))
+    elif event == "pull_request" and not pr_advisory:
+        leave_advisory_out(result, set(advisory), f"a pull request while {PR_ADVISORY_VARIABLE} is off")
     elif event == "push" and superseded_by:
         sha, path = superseded_by
         for name in LANES[1:]:
@@ -335,16 +341,16 @@ def decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_o
     return result
 
 
-def leave_advisory_out(result: dict, advisory: set[str]) -> None:
-    """The merge queue: the advisory test lanes and test runs planned off, so its Check waits only for
-    what can block the merge (they run in the advisory run a push to main dispatches). A group that
-    runs nothing keeps nothing."""
+def leave_advisory_out(result: dict, advisory: set[str], who: str = "the merge queue") -> None:
+    """The merge queue (or a pull request while PR_ADVISORY_VARIABLE is off): the advisory test lanes and
+    test runs planned off, so its Check waits only for what can block the merge (they run in the
+    advisory run a push to main dispatches). A plan that runs nothing keeps nothing."""
     lanes = result["lanes"]
     if not any(entry["run"] for name, entry in lanes.items() if name != "changes"):
         return
     for name in QUEUE_DEFERRABLE:
         if name in advisory and lanes[name]["run"]:
-            lanes[name] = {"run": False, "why": "the merge queue: advisory (ADVISORY_LANES), so it cannot block the "
+            lanes[name] = {"run": False, "why": f"{who}: advisory (ADVISORY_LANES), so it cannot block the "
                                                 "merge; it runs in the advisory run a push to main dispatches"}
             result["advisory_off"].append(name)
     if "mcp" in result["advisory_off"]:
@@ -893,7 +899,7 @@ def restrict_to_forced(result: dict, force: dict[str, str]) -> None:
 
 def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str, repo: str, attempt: int,
           disabled: str = "", force: dict[str, str] | None = None, planner: str = "",
-          blacksmith: str = "") -> tuple[dict[str, str], list[str]]:
+          run_id: str = "", blacksmith: str = "") -> tuple[dict[str, str], list[str]]:
     """runs_on of each planned job and why. A job goes to an overflow runner only when the run may use one
     (trusted), on its first attempt (a rerun, which the watchdog makes when a runner went away, stays
     hosted), when state (STATE_BRANCH's state.json: tools/ci/runner_dispatch.py, at most STATE_MAX_AGE old) says
@@ -906,8 +912,11 @@ def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str,
     why = trusted(trigger, head_repo, repo)
     if why:
         return runs_on, [f"hosted only: {why}"]
-    if attempt > 1:
-        return runs_on, [f"hosted only: attempt {attempt} (a rerun stays on GitHub's runners)"]
+    # a run the watchdog moved off a runner that went away (the state's hosted_only) stays on GitHub's
+    # runners, as does a forced dispatch's rerun; its rerun for an idle runner routes again
+    held = {str(r) for r in state.get("hosted_only") or []} if isinstance(state, dict) else set()
+    if attempt > 1 and (not run_id or str(run_id) in held or force):
+        return runs_on, [f"hosted only: attempt {attempt} (a rerun after a runner went away stays on GitHub's runners)"]
     if force:
         notes = []
         for job, label in sorted(force.items()):
@@ -1082,7 +1091,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--previous-runs", type=Path, help="push, advisory: `gh run list` JSON of the event's earlier runs on the branch")
     ap.add_argument("--run-id", type=int, help="this run's id, left out of --previous-runs")
     ap.add_argument("--runner-state", type=Path, help=f"state.json of the branch {STATE_BRANCH} (tools/ci/runner_dispatch.py)")
-    ap.add_argument("--blacksmith", default="", help=f"{BLACKSMITH_VARIABLE}: off stops the paid macOS tier")
+    ap.add_argument("--blacksmith", default="", help=f"{BLACKSMITH_VARIABLE}: off stops the paid tier")
+    ap.add_argument("--pr-advisory", default="on", help=f"{PR_ADVISORY_VARIABLE}: off runs a pull request's blocking lanes only")
     ap.add_argument("--runner-disabled", default="", help=f"{DISABLED_VARIABLE}: overflow runner labels to leave alone, or all")
     ap.add_argument("--trigger", default="", help="github.event_name (an overflow runner takes no fork's pull request)")
     ap.add_argument("--head-repo", default="", help="a pull request's head repository (github.event.pull_request.head.repo.full_name)")
@@ -1124,7 +1134,8 @@ def main(argv: list[str]) -> int:
             return definition_change(root, p.get("base") or base, p.get("files") or []) if p else ""
 
         result = decide(args.event, plan, error, ci, left_out, nightly_out, args.advisory.split(),
-                        superseded_by=superseded, full_selection=args.full_selection, asan_definition=definition(plan))
+                        superseded_by=superseded, full_selection=args.full_selection, asan_definition=definition(plan),
+                        pr_advisory=args.pr_advisory.strip().lower() != "off")
         force, bad_force = parse_force(args.self_hosted)
         notes += [f"self_hosted {b}" for b in bad_force]
         # (a rerun keeps the lanes, on GitHub's runners: route)
@@ -1163,7 +1174,7 @@ def main(argv: list[str]) -> int:
                "checks": {"modules_off": plan["modules_off"] if plan else "", "navigation_off": bool(plan and plan["navigation_off"])}}
         doc["runs_on"], doc["routing"] = route(planned_jobs(doc), load_state(args.runner_state), time.time(), args.trigger,
                                                args.head_repo, args.repo, args.run_attempt, args.runner_disabled, force,
-                                               args.planner, args.blacksmith)
+                                               args.planner, str(args.run_id or ""), args.blacksmith)
         write_selection(doc, args.event, plan, result, ci, tests, args.inputs_manifest, out)
         doc["shadow"] = shadow_selection(shadow_plan, ci, left_out, nightly_out, definition(shadow_plan)) if shadow_plan else None
         doc["shadow_why"] = "" if shadow_plan else shadow_why
