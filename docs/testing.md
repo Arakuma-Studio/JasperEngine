@@ -1015,7 +1015,7 @@ Jobs of `ci.yml`; a lane's command is also its repro.
 | `smoke` | `SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/post-processing`, the prebuilt `tools/fixtures/unified-lighting` and a project from each template |
 | `web` | `tools/build.sh web && tools/build.sh web-gate` |
 | `android` | `tools/build.sh android` (`ANDROID_ABIS=arm64-v8a` on a PR) |
-| `windows` (parallel jobs: `windows-editor`, `windows-engine-glcore`, `-d3d11`, `-vulkan`, `windows-compile`) | `tools/ci/windows.sh <step>` on `windows-latest` with MSVC: the editor with its CPU unit tests (`TEST_SUITES=editor`, reported as `windows-editor-tests`, stopped after `TEST_TIMEOUT`) and the call CLI; the engine on each backend, OpenGL's with the core tests (`TEST_SUITES=core`); then a Compile build of a fixture with the editor job's install |
+| `windows` (parallel jobs: `windows-editor`, `windows-engine-glcore`, `-d3d11`, `-vulkan`, `windows-compile`) | `tools/ci/windows.sh <step>` on `windows-latest` with MSVC: the editor with its CPU unit tests (`TEST_SUITES=editor`, reported as `windows-editor-tests`, stopped after `TEST_TIMEOUT`) and the call CLI; the engine on each backend, OpenGL's with the core tests (`TEST_SUITES=core`), the D3D11 and Vulkan legs on a PR and in the queue only for their inputs (below); then a Compile build of a fixture with the editor job's install |
 | `macos`, `ios` | `tools/ci/macos.sh <step>` on `macos-latest`: the editor (arm64), the engine, the CPU unit tests, a Compile build of a fixture; `xcode ios` for iOS |
 | `report` | writes the PR comment (below) |
 | `check` | the one required status, `Check` (`tools/ci/check_gate.py`): green only when every lane that had to run passed |
@@ -1095,6 +1095,7 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 | `changes`, `Check` | yes | yes | yes | yes | yes |
 | `lint` | unless every path is one nothing reads | same | no | no | yes |
 | `linux`, `web`, `android`, `windows` | when anything that builds changed | yes | yes, to warm the caches (`windows`: the editor leg's build only) | `linux` when `mcp` or `smoke` runs (their editor install); `windows` for `windows-editor-tests` (the editor leg only) | yes |
+| `windows (engine-d3d11)`, `windows (engine-vulkan)` | with `windows`, when one of their inputs changed (below) | the same; the nightly builds both every night | yes (no build; `engine-vulkan` saves the Vulkan SDK's cache) | the same as the queue | yes |
 | `macos` | when an Apple-only input changed (below) | yes | yes, to warm its cache | no | yes |
 | `ios` | when an Apple-only input changed (below) | yes | no (no cache) | no | yes |
 | `unit`, `htmlui` | the suites the plan selects | all, unfiltered; not while advisory | build only (the caches, the deps dumps) | while advisory all, unfiltered | all |
@@ -1134,6 +1135,25 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 - **MCP in the merge queue** is planned from the coverage map, not the whole suite: a regression the
   map misses is the nightly's to find. A planned file outside the CI suite (it needs the fixture
   project, or is `CI_EXCLUDED`) is listed under "not run in CI"; `MCP_SUITE=all` locally covers it.
+- **The Windows D3D11 and Vulkan legs** (56-97 min each in merge-queue runs 45115998605 to 45216542055,
+  and `windows-compile` waits for every leg, so they set the queue's floor) build on a PR, a dispatch,
+  in the merge queue and the advisory run only when one of their inputs changed (`tools/ci/plan_lanes.py`
+  `windows_legs`, `lanes.json` `windows_parts`, the `windows` matrix): the sokol renderer
+  (`engine/renders/`) and its vendored library (`engine/libs/sokol/`), the shaders (`engine/shaderlib/`,
+  their stubs in `engine/shaders/`), the shader compilers and translators (`engine/libs/shadercompiler/`:
+  glslang, SPIRV-Cross), the shader data, variants and pools (`engine/core/shader/`, `ShaderPool`,
+  `ShaderRender`), the Windows platform code (`engine/platform/win/`; `VulkanContext` for Vulkan), the
+  engine's presets and CMake modules, `tools/ci/windows.sh`, `platform-common.sh`, the report action, and
+  `ci.yml`'s `windows` job or the workflow's `env`. Also a changed C/C++ file the legs compile (the engine,
+  `editor/procmat/`) whose text has backend code: a `SOKOL_<backend>` guard, D3D11 or DXGI for D3D11,
+  Vulkan, SPIR-V or the `vk` API for Vulkan; and a changed CMake line that names a backend or Windows, or
+  sits in an `if()`, `function()` or `macro()` that does (a source list's line is every backend's). The
+  reason: the two legs compile the engine and its core tests as `engine-glcore` does, with the same MSVC,
+  for one more backend, and run no test (no GPU on the runner), so all they catch is code that compiles
+  for that backend alone. Generic engine code rarely breaks one backend alone; backend and shader paths
+  still trigger them; and `nightly.yml`'s `windows-engine` builds both every night, whatever changed, so
+  a break the rule missed shows within a day in the `nightly` issue. A push, full runs and the rollback
+  (`CI_FULL_SELECTION`) keep every leg. `windows (engine-glcore)` runs whenever the lane does.
 - **Push to `main`** builds what keeps a cache and nothing else (`tools/ci/plan_lanes.py` `build_only`
   lists what builds without its tests): it saves the caches (ccache per lane), and a PR restores what
   `main` saved, never what the queue did; and it publishes the deps dumps `changes` plans from (below,
@@ -1291,7 +1311,8 @@ it; the next run's `changes` reads it.
 - **Nightly** (`nightly.yml`, 03:17 UTC, or dispatched): the slow configurations (HTML UI on Vulkan
   and under ASan, TSan, texture formats on lavapipe, the unity builds of the editor, the engine and
   both unit-test trees, every fixture's smoke on OpenGL, GLES3 and Vulkan through
-  `tools/ci/nightly-smoke.sh`, the pthreads web gate, prebuilt player parity) and the whole MCP CI suite, which also refreshes the coverage map (below, "Plan
+  `tools/ci/nightly-smoke.sh`, the pthreads web gate, prebuilt player parity, the Windows engine and its core tests built on
+  D3D11 and Vulkan, `windows-engine`) and the whole MCP CI suite, which also refreshes the coverage map (below, "Plan
   inputs") and the nightly's own shard timings (the `mcp-timings` cache). A failure opens or updates the issue
   labelled `nightly`. When `main` moved, it publishes the prerelease `nightly-YYYYMMDD` (the newest 14
   are kept); the slow lanes do not hold it back.

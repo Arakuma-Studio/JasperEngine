@@ -673,6 +673,27 @@ class WindowsLegsTest(unittest.TestCase):
                            needs={"windows": {"result": "success"}, "windows-compile": {"result": "failure"}})
         self.assertIn("CI failed on", body)
 
+    def test_only_the_planned_windows_legs_are_expected(self):
+        # tools/ci/plan_lanes.py windows_parts: the backend legs a change does not reach are not built
+        names = ["changes", "lint", "linux", "unit", "asan", "htmlui", "smoke", "web", "android", "macos", "ios", "mcp-1", "mcp-2"]
+        legs = ["windows-editor", "windows-engine-glcore", "windows-compile", *report.TEST_REPORTS]
+        reports = [lane_report(n, ran=5 if n in ("unit", "asan", "htmlui", "mcp-1", "mcp-2", "windows-editor-tests") else 0)
+                   for n in names + legs]
+        planned = dict(lanes_json(), windows_parts=["editor", "engine-glcore"])
+        body = self.render(reports, planned)
+        self.assertIn(f"CI passed on `3f2c1ab`: {len(names) + len(legs)} jobs", body.splitlines()[1])
+        self.assertNotIn("engine-d3d11", body)
+        # a planned leg without a report is still missing; a plan without windows_parts expects every leg
+        for old in self.reports.glob("*.json"):
+            old.unlink()
+        body = self.render([r for r in reports if r["lane"] != "windows-engine-glcore"], planned)
+        self.assertIn("No report from: windows (engine-glcore)", body)
+        for old in self.reports.glob("*.json"):
+            old.unlink()
+        body = self.render(reports, lanes_json())
+        self.assertIn("No report from: windows (engine-d3d11) · windows (engine-vulkan)", body)
+        self.assertEqual(report.load_lanes(None).get("windows_parts"), None)
+
     def test_the_editor_tests_report_is_advisory_when_named(self):
         names = ["changes", "lint", "linux", "unit", "asan", "htmlui", "smoke", "web", "android", "macos", "ios", "mcp-1", "mcp-2"]
         legs = [f"windows-{p}" for p in report.WINDOWS_PARTS]

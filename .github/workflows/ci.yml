@@ -121,6 +121,7 @@ jobs:
       unit_run_editor: ${{ steps.plan.outputs.unit_run_editor }}
       unit_jobs: ${{ steps.plan.outputs.unit_jobs }}
       asan_jobs: ${{ steps.plan.outputs.asan_jobs }}
+      windows_parts: ${{ steps.plan.outputs.windows_parts }}
       asan_filter_core: ${{ steps.plan.outputs.asan_filter_core }}
       asan_filter_editor: ${{ steps.plan.outputs.asan_filter_editor }}
       unit_filter_core: ${{ steps.plan.outputs.unit_filter_core }}
@@ -990,7 +991,9 @@ jobs:
   # MSVC through tools/ci/windows.sh, as parallel jobs (the lane takes as long as its longest one): the
   # editor with its CPU unit tests and the call CLI; the engine on each Windows backend, the OpenGL one
   # with the core tests; windows-compile, a Compile build of a fixture with the editor job's install (G2).
-  # Each job has its own ccache entry and report (windows-<part>, tools/ci/report.py WINDOWS_PARTS).
+  # Each job has its own ccache entry and report (windows-<part>, tools/ci/report.py WINDOWS_PARTS). The
+  # legs are the plan's (windows_parts): a pull request and the merge queue build engine-d3d11 and
+  # engine-vulkan only for their own inputs (tools/ci/plan_lanes.py windows_legs), the nightly every night
   windows:
     name: windows (${{ matrix.part }})
     needs: changes
@@ -1008,15 +1011,7 @@ jobs:
       # (0.9 GB working set). The engine legs build cold: the lane ends with its slowest leg, and D3D11 and
       # Vulkan cold (57-99 min) take about as long as OpenGL cold with the core tests (79-108)
       matrix:
-        include:
-          - part: editor
-            ccache: 0.95G
-          - part: engine-glcore
-            ccache: ''
-          - part: engine-d3d11
-            ccache: ''
-          - part: engine-vulkan
-            ccache: ''
+        part: ${{ fromJSON(needs.changes.outputs.windows_parts) }}
     env:
       JASPER_CI_REPRO: tools/ci/windows.sh
       PART: ${{ matrix.part }}
@@ -1051,10 +1046,10 @@ jobs:
         with:
           arch: x64
       - uses: ./.github/actions/ccache-restore
-        if: matrix.ccache != ''
+        if: matrix.part == 'editor'
         with:
           lane: windows-${{ matrix.part }}
-          max-size: ${{ matrix.ccache }}
+          max-size: 0.95G
 
       - name: Editor
         if: matrix.part == 'editor'
@@ -1102,7 +1097,7 @@ jobs:
         run: TEST_SUITES=core tools/ci/windows.sh tests glcore
 
       - uses: ./.github/actions/ccache-save
-        if: always() && matrix.ccache != ''
+        if: always() && matrix.part == 'editor'
         with:
           lane: windows-${{ matrix.part }}
           prune: 'true'

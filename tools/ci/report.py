@@ -898,6 +898,9 @@ def load_lanes(path: Path | None) -> dict:
     # the asan matrix's jobs (asan-<job> reports); a plan without them had one asan job
     if isinstance(data.get("asan_jobs"), list):
         out["asan_jobs"] = [j for j in data["asan_jobs"][:20] if isinstance(j, str) and ASAN_JOB_RE.match(j)]
+    # the windows matrix's legs (windows-<part> reports); a plan without them had every leg
+    if isinstance(data.get("windows_parts"), list):
+        out["windows_parts"] = [p for p in WINDOWS_PARTS if p in data["windows_parts"]]
     # the merge queue's advisory lanes and test runs planned off for being advisory; the lanes and test
     # runs whose job runs without its tests
     for key in ("advisory_off", "build_only"):
@@ -986,10 +989,11 @@ def lane_base(lane: str) -> str:
 
 
 def lane_jobs(name: str, shards: list[str], unit_jobs: list[str] = (), asan_jobs: list[str] = (),
-              build_only: list[str] = ()) -> list[str]:
+              build_only: list[str] = (), windows_parts=None) -> list[str]:
     """The reports a planned lane makes: one per MCP shard, one per unit job (a test binary, or a part
-    of one), one per asan job (a test binary), one per Windows leg (and the editor leg's test run, but
-    where lanes.json lists it under build_only), else its own."""
+    of one), one per asan job (a test binary), one per Windows leg the plan builds (windows_parts; None:
+    every one) and windows-compile (and the editor leg's test run, but where lanes.json lists it under
+    build_only), else its own."""
     if name == "mcp" and shards:
         return [f"mcp-{s}" for s in shards]
     if name == "unit" and unit_jobs:
@@ -997,7 +1001,8 @@ def lane_jobs(name: str, shards: list[str], unit_jobs: list[str] = (), asan_jobs
     if name == "asan" and asan_jobs:
         return [f"asan-{j}" for j in asan_jobs]
     if name == "windows":
-        return [f"windows-{p}" for p in WINDOWS_PARTS] + [t for t in TEST_REPORTS if t not in build_only]
+        parts = [p for p in WINDOWS_PARTS if windows_parts is None or p in windows_parts or p == "compile"]
+        return [f"windows-{p}" for p in parts] + [t for t in TEST_REPORTS if t not in build_only]
     return [name]
 
 
@@ -1097,7 +1102,8 @@ def job_states(reports: dict[str, dict], lanes: dict, needs: dict) -> tuple[list
     for name, lane in lanes["lanes"].items():
         if name in ("report", "check") or not lane["run"]:
             continue
-        expected += lane_jobs(name, lanes["shards"], lanes["unit_jobs"], lanes["asan_jobs"], lanes["build_only"])
+        expected += lane_jobs(name, lanes["shards"], lanes["unit_jobs"], lanes["asan_jobs"], lanes["build_only"],
+                              lanes.get("windows_parts"))
     expected += [name for name in reports if name not in expected]
     states: dict[str, str] = {}
     for name in expected:
@@ -1160,7 +1166,7 @@ def render(reports: dict[str, dict], lanes: dict, run_url: str, sha: str, adviso
             if not lane["run"]:
                 passed.append(f"{name} (skipped: {md(lane['why']) or 'not needed'})")
                 continue
-            for n in lane_jobs(name, shards, unit_jobs, asan_jobs, lanes["build_only"]):
+            for n in lane_jobs(name, shards, unit_jobs, asan_jobs, lanes["build_only"], lanes.get("windows_parts")):
                 if states.get(n) == "success":
                     tests = reports[n]["tests"]["ran"] if n in reports else 0
                     label = lane_label(n, shards, unit_jobs)
@@ -1206,7 +1212,7 @@ def render(reports: dict[str, dict], lanes: dict, run_url: str, sha: str, adviso
             if not lane["run"]:
                 details.append(f"- {name}: skipped ({md(lane['why']) or 'not needed'})")
                 continue
-            for n in lane_jobs(name, shards, unit_jobs, asan_jobs, lanes["build_only"]):
+            for n in lane_jobs(name, shards, unit_jobs, asan_jobs, lanes["build_only"], lanes.get("windows_parts")):
                 state = {"success": "passed", "missing": "no report"}.get(states.get(n, "missing"), states.get(n, ""))
                 details.append(f"- {lane_label(n, shards, unit_jobs)}: {state}{count_note(reports[n]) if n in reports else ''}")
         for name in expected:

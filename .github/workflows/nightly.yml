@@ -237,6 +237,58 @@ jobs:
           lane: parity
           status: ${{ job.status }}
 
+  # The engine and its core tests on D3D11 and Vulkan, whatever changed: a pull request and the merge queue
+  # build these legs only for their own inputs (tools/ci/plan_lanes.py windows_legs), so a break the change's
+  # inputs did not show shows here within a day. As ci.yml's windows job's engine legs
+  windows-engine:
+    name: windows (engine-${{ matrix.backend }})
+    runs-on: windows-latest
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [d3d11, vulkan]
+    defaults:
+      run:
+        shell: bash
+    env:
+      JASPER_CI_REPRO: tools/ci/windows.sh engine ${{ matrix.backend }}
+    steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+      - name: LF checkout
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # a second try when the first fails (ci.yml's windows job)
+      - uses: jakoch/install-vulkan-sdk-action@7fe84289ddbf750f7eff9f8e4588e600e1dd06c8 # v1.8.1
+        id: vulkan-sdk
+        if: matrix.backend == 'vulkan'
+        continue-on-error: true
+        with:
+          vulkan_version: 1.3.296.0
+          install_runtime: false
+          cache: true
+          cache_save_if: false
+      - uses: jakoch/install-vulkan-sdk-action@7fe84289ddbf750f7eff9f8e4588e600e1dd06c8 # v1.8.1
+        if: steps.vulkan-sdk.outcome == 'failure'
+        with:
+          vulkan_version: 1.3.296.0
+          install_runtime: false
+          cache: true
+          cache_save_if: false
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+      - name: Engine
+        run: tools/ci/windows.sh engine "$BACKEND"
+        env:
+          BACKEND: ${{ matrix.backend }}
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: windows-engine-${{ matrix.backend }}
+          status: ${{ job.status }}
+
   # --------------------------------------------------------- the MCP suite ---
   plan:
     name: MCP shards (the whole suite CI can run)
@@ -756,7 +808,7 @@ jobs:
   # ----------------------------------------------------------------- report ---
   report:
     name: Report failures
-    needs: [slow, web-threads, parity, plan, mcp-editor, mcp, export-checks, mcp-timings, coverage-editor, coverage, coverage-map, decide, release, prune]
+    needs: [slow, web-threads, parity, windows-engine, plan, mcp-editor, mcp, export-checks, mcp-timings, coverage-editor, coverage, coverage-map, decide, release, prune]
     if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -780,7 +832,7 @@ jobs:
           # reusable ones, whose suites, shards and release jobs report under their own names
           jq . <<< "$NEEDS" > build/nightly-needs.json
           jq --arg sha "$GITHUB_SHA" '{event: "nightly", full: true, base: $sha, head: $sha,
-              lanes: (del(.slow, .mcp, .release) | with_entries(select(.value.result != "skipped"))
+              lanes: (del(.slow, .mcp, .release, ."windows-engine") | with_entries(select(.value.result != "skipped"))
                       | map_values({run: true, why: "nightly"}))}' \
             build/nightly-needs.json > build/nightly-lanes.json
           if ! python3 tools/ci/report.py render --reports build/ci-reports --lanes build/nightly-lanes.json \

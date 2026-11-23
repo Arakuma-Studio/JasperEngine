@@ -335,7 +335,7 @@ class Rules(unittest.TestCase):
         keys = [line.split("=", 1)[0] for line in lines]
         self.assertEqual(keys, ["full", *[f"run_{n}" for n in pl.LANES], "unit_filter_core", "unit_filter_editor",
                                 "unit_run_core", "unit_run_editor", "unit_jobs", "asan_jobs", "asan_filter_core",
-                                "asan_filter_editor", "htmlui_filter", "mcp_shards",
+                                "asan_filter_editor", "htmlui_filter", "mcp_shards", "windows_parts",
                                 "build_only", "dispatch_advisory", "runs_on"])
         self.assertIn("dispatch_advisory=false", lines)
         self.assertIn('runs_on={"macos":"je-mac"}', pl.github_output(dict(doc, runs_on={"macos": "je-mac"}), r["unit_run"]).splitlines())
@@ -350,6 +350,10 @@ class Rules(unittest.TestCase):
         self.assertIn("asan_filter_core=Foo.*:*/Foo.*:Foo/*.*", lines)
         doc["mcp"]["shards"] = []
         self.assertIn("mcp_shards=[]", pl.github_output(doc, r["unit_run"]).splitlines())
+        # the windows matrix (fromJSON in ci.yml: a list even when the lane does not run)
+        self.assertIn("windows_parts=[]", pl.github_output(doc, r["unit_run"]).splitlines())
+        self.assertIn('windows_parts=["editor","engine-glcore"]',
+                      pl.github_output(dict(doc, windows_parts=["editor", "engine-glcore"]), r["unit_run"]).splitlines())
         # the jobs that build but skip a test run (fromJSON in ci.yml: a list even when empty)
         self.assertIn("build_only=[]", pl.github_output(doc, r["unit_run"]).splitlines())
         self.assertIn('build_only=["windows-editor-tests"]',
@@ -447,6 +451,92 @@ class Rules(unittest.TestCase):
         self.assertTrue(decide("pull_request", p, full_selection=True)["lanes"]["asan"]["run"])
         self.assertTrue(decide("pull_request", None, "exit 2")["lanes"]["asan"]["run"])
         self.assertTrue(decide("pull_request", plan([".github/workflows/ci.yml"], builds=()), full_selection=True)["lanes"]["asan"]["run"])
+
+    def test_the_windows_backend_legs_build_only_for_their_inputs(self):
+        # engine-d3d11 and engine-vulkan (60-97 min each) set the merge queue's floor, and only catch code that
+        # compiles for their backend alone: a PR, a dispatch, the queue and the advisory run build them for
+        # their own inputs; the nightly builds both every night
+        both, glcore = list(pl.WINDOWS_PARTS), ["editor", "engine-glcore"]
+        tmp = Path(tempfile.mkdtemp(prefix="plan-lanes-windows-"))
+        self.addCleanup(shutil.rmtree, tmp, True)
+        texts = {"engine/core/Guarded.cpp": "#if defined(SOKOL_GLCORE)\nint a;\n#else\nint b;\n#endif\n",
+                 "engine/core/render/Readback.cpp": "ID3D11Texture2D* staging;\n",
+                 "engine/core/texture/Formats.h": "VkFormat format = VK_FORMAT_R8_UNORM;\n",
+                 "engine/tests/support/Context.cpp": "// the lavapipe Vulkan device\n",
+                 "editor/procmat/Device.cpp": "#ifdef SOKOL_D3D11\n#endif\n",
+                 "engine/core/Generic.cpp": "int generic; // sg_make_buffer\n",
+                 "engine/platform/mac/View.mm": "#if defined(SOKOL_METAL)\n#endif\n",
+                 "engine/platform/linux/Window.cpp": "#if defined(SOKOL_VULKAN)\n#endif\n",
+                 "editor/backend/BackendWin.cpp": "ID3D11Device* device;\n",
+                 "engine/core/Notes.md": "D3D11 and Vulkan\n",
+                 "engine/CMakeLists.txt": "if(WIN32)\n  add_definitions(-DSOKOL_D3D11)\nendif()\n",
+                 "engine/tests/core/CMakeLists.txt": "add_executable(core-tests a.cpp)\n"}
+        for rel, text in texts.items():
+            (tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+            (tmp / rel).write_text(text)
+
+        def legs(event, files, definition="", **extra):
+            p = plan(files, unit="all") if files is not None else None
+            # (the advisory run: for windows-editor-tests)
+            r = decide(event, p, "exit 2", advisory=ADVISORY)
+            return pl.windows_legs(event, p, r, pl.windows_inputs(tmp, files or [], definition), **extra), r
+
+        for event in pl.WINDOWS_SCOPED:
+            for files in (["editor/App.cpp"], ["engine/core/Generic.cpp", "engine/core/Gone.cpp"], ["engine/platform/mac/View.mm"],
+                          ["engine/platform/linux/Window.cpp"], ["editor/backend/BackendWin.cpp"], ["engine/core/Notes.md"],
+                          ["engine/core/render/LightingTiers.cpp", "engine/core/ecs/World.cpp", "tools/ci/macos.sh"],
+                          [".github/workflows/nightly.yml"], ["engine/tests/core/CMakeLists.txt"]):
+                parts, r = legs(event, files)
+                self.assertEqual(parts, glcore, (event, files))
+                self.assertIn("not engine-d3d11 or engine-vulkan", r["lanes"]["windows"]["why"])
+                self.assertIn("nightly", r["lanes"]["windows"]["why"])
+        # their inputs: every backend's, then each one's own
+        for files, expect in ((["engine/renders/sokol/SokolSystem.cpp"], both), (["engine/libs/sokol/sokol_gfx.h"], both),
+                              (["engine/libs/shadercompiler/libs/spirv-cross/spirv_hlsl.cpp"], both),
+                              (["engine/shaderlib/lit.frag"], both), (["engine/shaders/hlsl5.h"], both),
+                              (["engine/core/shader/ShaderVariantCompiler.cpp"], both), (["engine/core/pool/ShaderPool.cpp"], both),
+                              (["engine/platform/win/D3D11Context.cpp"], both), (["engine/CMakePresets.json"], both),
+                              # (a CMake file without a diff: every line of it)
+                              (["engine/CMakeLists.txt"], both),
+                              (["engine/cmake/JasperWarnings.cmake"], both), (["tools/ci/windows.sh"], both),
+                              (["tools/ci/platform-common.sh"], both), ([".github/actions/report/action.yml"], both),
+                              (["engine/platform/common/VulkanContext.cpp"], [*glcore, "engine-vulkan"]),
+                              # what a changed file's code says
+                              (["engine/core/Guarded.cpp"], both), (["editor/procmat/Device.cpp"], both),
+                              (["engine/core/render/Readback.cpp"], [*glcore, "engine-d3d11"]),
+                              (["engine/core/texture/Formats.h", "editor/App.cpp"], [*glcore, "engine-vulkan"]),
+                              (["engine/tests/support/Context.cpp"], [*glcore, "engine-vulkan"])):
+            for event in ("pull_request", "merge_group"):
+                parts, r = legs(event, files)
+                self.assertEqual(parts, expect, (event, files))
+                self.assertIn(files[0], r["lanes"]["windows"]["why"])
+        # the windows job or the workflow's env (definition_change)
+        parts, r = legs("merge_group", [pl.WORKFLOW], f"{pl.WORKFLOW} (the windows job or the workflow's env)")
+        self.assertEqual(parts, both)
+        # every leg: a push (the Vulkan SDK's cache), a full run, the nightly, no plan, the rollback
+        for event, files in (("push", ["editor/App.cpp"]), ("full", None), ("nightly", None), ("pull_request", None),
+                             ("merge_group", None)):
+            self.assertEqual(legs(event, files)[0], both, (event, files))
+        self.assertEqual(legs("merge_group", ["editor/App.cpp"], full_selection=True)[0], both)
+        # a dispatch that forces a leg onto a runner builds it
+        self.assertEqual(legs("workflow_dispatch", ["editor/App.cpp"], forced={"windows-engine-d3d11": "je-win"})[0],
+                         [*glcore, "engine-d3d11"])
+        # no lane, no legs
+        self.assertEqual(legs("pull_request", ["docs/specs/S1.md"])[0], [])
+
+    def test_the_backend_markers_find_the_real_backend_code(self):
+        # this tree's backend-specific files are found by their text, and a generic one is not
+        root = HERE.parent.parent
+        for f, legs in (("engine/core/Engine.cpp", ("engine-d3d11", "engine-vulkan")),
+                        ("engine/core/render/FrameReadback.cpp", ("engine-d3d11", "engine-vulkan")),
+                        ("engine/core/render/VulkanRobustness.h", ("engine-vulkan",)),
+                        ("engine/core/render/FramebufferRender.cpp", ("engine-d3d11",)),
+                        ("engine/tests/support/HeadlessContext.cpp", ("engine-d3d11", "engine-vulkan")),
+                        ("editor/procmat/ProceduralGpuEvaluator.cpp", ("engine-vulkan",)),
+                        ("engine/core/component/Transform.h", ())):
+            self.assertTrue((root / f).is_file(), f)
+            found = pl.windows_inputs(root, [f])
+            self.assertEqual(tuple(leg for leg in pl.WINDOWS_BACKEND_LEGS if found[leg]), legs, (f, found))
 
     def test_unit_jobs(self):
         # the editor tests' build is most of their lane (CI runs 43737549764: 110 of 123 min), so two
@@ -614,6 +704,10 @@ class Routing(unittest.TestCase):
                                      "unit-editor-2", "asan-core", "asan-editor", "mcp-1", "mcp-2", "windows-editor",
                                      "windows-engine-glcore", "windows-engine-d3d11", "windows-engine-vulkan",
                                      "windows-compile", "macos", "ios"})
+        # the windows legs the plan builds (windows_parts), and windows-compile
+        jobs_without = pl.planned_jobs(dict(doc, windows_parts=["editor", "engine-glcore"]))
+        self.assertEqual(set(jobs) - set(jobs_without), {"windows-engine-d3d11", "windows-engine-vulkan"})
+        self.assertIn("windows-compile", jobs_without)
         # every job an overflow runner may take is one of them, on its OS
         for label, (os_, order) in pl.OVERFLOW.items():
             for job in order:
@@ -628,6 +722,18 @@ class Routing(unittest.TestCase):
         for key in ("'linux'", "'macos'", "'ios'", "format('unit-{0}', matrix.job)", "format('asan-{0}', matrix.job)",
                     "format('mcp-{0}', matrix.shard)", "format('windows-{0}', matrix.part)", "'windows-compile'"):
             self.assertIn(f"fromJSON(needs.changes.outputs.runs_on)[{key}] ||", text, key)
+        # the windows matrix is the plan's legs
+        windows = text[text.index("\n  windows:"):text.index("\n  windows-compile:")]
+        self.assertIn("part: ${{ fromJSON(needs.changes.outputs.windows_parts) }}", windows)
+        self.assertIn("windows_parts: ${{ steps.plan.outputs.windows_parts }}", changes)
+        # and the nightly builds both backend legs every night, as the lane's command
+        nightly = (HERE.parent.parent / ".github/workflows/nightly.yml").read_text()
+        job = nightly[nightly.index("\n  windows-engine:\n"):]
+        job = job[:job.index("\n  # ---")]
+        self.assertIn("backend: [d3d11, vulkan]", job)
+        self.assertIn('run: tools/ci/windows.sh engine "$BACKEND"', job)
+        self.assertNotIn("\n    if:", job)
+        self.assertIn("windows-engine,", nightly[nightly.index("\n  report:"):])
 
 
 class Selection(unittest.TestCase):
@@ -971,6 +1077,53 @@ class Runs(unittest.TestCase):
         head = self.commit("tools/ci/macos.sh", "#!/bin/sh\n")
         code, doc, out = self.run_main("--event", "pull_request", "--base", base, "--head", head, "--out-dir", str(self.tmp / "out"))
         self.assertTrue(doc["lanes"]["macos"]["run"] and doc["lanes"]["ios"]["run"], out)
+
+    def test_the_windows_backend_legs_in_a_whole_run(self):
+        workflow = ("name: CI\nenv:\n  KEEP_GOING: 1\n\njobs:\n  linux:\n    runs-on: ubuntu-latest\n"
+                    "    steps:\n      - run: tools/build.sh linux\n\n  windows:\n    runs-on: windows-latest\n"
+                    "    steps:\n      - run: tools/ci/windows.sh engine\n\n  windows-compile:\n    runs-on: windows-latest\n"
+                    "    steps:\n      - run: tools/ci/windows.sh compile-smoke\n")
+        base = self.commit(pl.WORKFLOW, workflow)
+        gh = self.tmp / "gh.txt"
+        for rel, text, legs in (("engine/core/Foo.cpp", "int foo2;\n", ["editor", "engine-glcore"]),
+                                ("engine/core/Foo.cpp", "#ifdef SOKOL_VULKAN\nint foo3;\n#endif\n", list(pl.WINDOWS_PARTS)),
+                                (pl.WORKFLOW, workflow.replace("compile-smoke", "compile-smoke x"), ["editor", "engine-glcore"]),
+                                (pl.WORKFLOW, workflow.replace("windows.sh engine", "windows.sh engine d3d11"), list(pl.WINDOWS_PARTS)),
+                                (pl.WORKFLOW, workflow.replace("KEEP_GOING: 1", "KEEP_GOING: 0"), list(pl.WINDOWS_PARTS))):
+            head = self.commit(rel, text)
+            for event in ("pull_request", "merge_group"):
+                gh.write_text("")
+                code, doc, out = self.run_main("--event", event, "--base", base, "--head", head,
+                                               "--out-dir", str(self.tmp / "out"), "--github-output", str(gh))
+                self.assertEqual(code, 0, out)
+                self.assertEqual(doc["windows_parts"], legs, (rel, text, event, doc["lanes"]["windows"]["why"]))
+                self.assertIn(f"windows_parts={json.dumps(legs, separators=(',', ':'))}", gh.read_text().splitlines())
+            base = head
+
+    def test_a_cmake_change_reaches_the_backend_legs_only_in_backend_or_windows_code(self):
+        # engine/CMakeLists.txt's source lists change with most features, the same for every backend
+        cmake = ("set(CORE_SOURCES\n    core/A.cpp\n    core/B.cpp\n)\n"
+                 "if(GRAPHIC_BACKEND STREQUAL \"vulkan\")\n    list(APPEND PLATFORM_SOURCES\n        platform/common/Ctx.cpp\n"
+                 "    )\nelseif(GRAPHIC_BACKEND STREQUAL \"glcore\")\n    set(GL ON)\nelse()\n    set(OTHER ON)\nendif()\n"
+                 "if(WIN32)\n    set(WIN_LIBS ws2_32)\nendif()\n"
+                 "macro(find_sdk option)\n    find_package(SDK QUIET)\nendmacro()\n"
+                 "if(APPLE)\n    set(APPLE_LIBS x)\nendif()\n")
+        base = self.commit("engine/CMakeLists.txt", cmake)
+        both, glcore = list(pl.WINDOWS_PARTS), ["editor", "engine-glcore"]
+        for old, new, legs in (("    core/B.cpp\n", "    core/B.cpp\n    core/C.cpp\n", glcore),
+                               ("    core/A.cpp\n", "", glcore),
+                               ("set(APPLE_LIBS x)", "set(APPLE_LIBS y)", glcore),
+                               ("        platform/common/Ctx.cpp\n", "        platform/common/Ctx.cpp\n        platform/common/Ctx2.cpp\n", both),
+                               ("    set(OTHER ON)\n", "", both),
+                               ("ws2_32", "ws2_32 dbghelp", both),
+                               ("find_package(SDK QUIET)", "find_package(SDK REQUIRED)", both)):
+            head = self.commit("engine/CMakeLists.txt", cmake.replace(old, new))
+            code, doc, out = self.run_main("--event", "merge_group", "--base", base, "--head", head, "--out-dir", str(self.tmp / "out"))
+            self.assertEqual(code, 0, out)
+            self.assertEqual(doc["windows_parts"], legs, (old, new, doc["lanes"]["windows"]["why"]))
+            base = head
+        self.assertEqual(pl.cmake_scopes("if(A)\nx\nelse()\ny\nendif()\nz\n"), ["A) if(A)", "A) x", "A) ) else()", "A) ) y",
+                                                                                   "A) ) endif()", "z"])
 
     def test_the_queue_reads_the_advisory_lanes(self):
         head = self.commit("tools/mcp/tests/test_a.py", TEST_FILE.format(extra="# changed"))
