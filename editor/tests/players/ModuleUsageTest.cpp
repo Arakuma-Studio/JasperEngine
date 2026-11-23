@@ -247,6 +247,8 @@ TEST(ModuleUsage, DetectsInputScripts) {
     EXPECT_EQ(modules(replay), "inputscripts");
     EXPECT_NE(replay.firstEvidence("inputscripts").find("lua/test.lua:1"), std::string::npos) << replay.firstEvidence("inputscripts");
     EXPECT_TRUE(withLua("InputRecording.checkpoint('gold', 3)").needs("inputscripts"));
+    // a member or a string of that name is not the global
+    EXPECT_FALSE(withLua("local t = self.InputRecording\nprint('InputReplay')").needs("inputscripts"));
 }
 
 // T1 R54: runtime terrain edits are a module, needed by a terrain that allows them or a script that writes one
@@ -402,7 +404,7 @@ TEST(ModuleUsage, CppScriptsNeedEveryModule) {
     ModuleScan scan = empty();
     scan.cppScripts.push_back("scripts/Player.cpp");
     const ModuleUsage usage = ModuleUsageDetector::analyze(scan);
-    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit dialogue");
+    EXPECT_EQ(modules(usage), "htmlui video runtimeshaders physics3d physics2d noise voxel terrainworld terrainedit dialogue inputscripts");
     EXPECT_NE(usage.firstEvidence("htmlui").find("scripts/Player.cpp"), std::string::npos);
 }
 
