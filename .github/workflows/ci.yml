@@ -1281,6 +1281,14 @@ jobs:
           path: build/.cache/xcode-cas
           key: ${{ steps.cas.outputs.key }}
           restore-keys: ${{ steps.cas.outputs.prefix }}
+      # Xcode prunes nothing but by COMPILATION_CACHE_LIMIT_SIZE, which made it worse on the Mac (1600M:
+      # 2.3 GB and 92 % hits over two commits, against 1.23 GB and 100 % without), and each push adds
+      # what changed: a push that restores more than 2 GB starts the cache afresh (that run builds cold)
+      - name: Start an outgrown compilation cache afresh
+        if: github.event_name == 'push' && steps.cas.outputs.local != '1'
+        run: |
+          mb="$(du -sm "$XCODE_CAS" | cut -f1)"
+          if (( mb > 2000 )); then echo "compilation cache at $mb MB: starting afresh"; rm -rf "$XCODE_CAS" && mkdir -p "$XCODE_CAS"; fi
       - name: Xcode project (iOS)
         id: ios
         run: tools/ci/macos.sh xcode ios

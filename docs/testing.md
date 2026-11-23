@@ -1196,7 +1196,7 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   | Windows OpenGL | 1.4 (`/Z7`: its core tests' reports name frames) | | 1.5G | yes |
   | Windows D3D11, Vulkan | not measured on a hosted runner yet (Release, no debug information) | | 0.8G each | yes |
   | Windows Compile | not measured yet | | 1.0G | yes |
-  | iOS and macOS Xcode (`xcode-cas`, Xcode's compilation cache, no debug symbols) | 1.25 raw, 0.39 compressed (both SDKs, on the Mac) | iOS alone 0.89 compressed | | yes |
+  | iOS and macOS Xcode (`xcode-cas`, Xcode's compilation cache, no debug symbols) | 1.14-1.23 raw, 0.35-0.38 compressed (both SDKs, five builds of two commits 36 apart, on the Mac); it only grows, so a push that restores over 2 GB starts it afresh (`COMPILATION_CACHE_LIMIT_SIZE=1600M` held it at 1.78 GB with 92 % hits on a commit seen before, against 100 % without) | iOS alone 0.89 compressed | 2 GB raw | yes |
   | Android | 0.27 | 0.63 | 0.3G | yes |
   | web | 0.24 | 0.48 | 0.3G | yes |
   | smoke | 1.93 (the player runtime and two Compile builds, which share nothing: each its own directory) | 3.5 | 0.5G | yes, the last-used part: the second Compile build |
