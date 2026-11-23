@@ -407,7 +407,7 @@ std::vector<TerrainWorldColliderRect> TerrainWorldCollision::colliders() const {
 TerrainWorldCollision::TerrainWorldCollision(TerrainWorldRuntime& runtime): impl(std::make_unique<Impl>()), runtime(runtime) {}
 TerrainWorldCollision::~TerrainWorldCollision() = default;
 void TerrainWorldCollision::clear() {}
-bool TerrainWorldCollision::fineActive(TileCoord tile) const { return runtime.resident(tile) != nullptr; }
+bool TerrainWorldCollision::fineActive(terraincore::TileCoord tile) const { return runtime.resident(tile) != nullptr; }
 bool TerrainWorldCollision::ensureAt(float, float) { return false; }
 void TerrainWorldCollision::pump(float, int) {}
 

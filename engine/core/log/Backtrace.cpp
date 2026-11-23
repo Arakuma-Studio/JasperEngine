@@ -116,8 +116,8 @@ size_t Backtrace::capture(void** frames, size_t maxFrames, size_t skip) {
     (void)skip;
     return 0;
 #elif defined(__ANDROID__)
-    UnwindState state{frames, maxFrames, skip, 0};
-    _Unwind_Backtrace(unwindFrame, &state);
+    je_backtrace::UnwindState state{frames, maxFrames, skip, 0};
+    _Unwind_Backtrace(je_backtrace::unwindFrame, &state);
     return state.count;
 #elif defined(JASPERENGINE_BACKTRACE_EXECINFO)
     void* buffer[64 + 16];

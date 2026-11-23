@@ -681,15 +681,15 @@ void VoxelSystem::fixedUpdate(double dt){
 #else
 
 void VoxelSystem::fixedUpdate(double){}
-void VoxelSystem::startCollisionJob(VolumeState&, const Int3&, bool){}
+void VoxelSystem::startCollisionJob(VolumeState&, const voxel::Int3&, bool){}
 void VoxelSystem::onCollisionJobDone(VolumeState&, Job&){}
-void VoxelSystem::onCollisionEdited(VolumeState&, const IntBox&, uint64_t){}
+void VoxelSystem::onCollisionEdited(VolumeState&, const voxel::IntBox&, uint64_t){}
 void VoxelSystem::applyCollisionSwaps(VolumeState&){}
 void VoxelSystem::addNewBodies(VolumeState&){}
 void VoxelSystem::evictBodies(VolumeState&){}
 void VoxelSystem::updateCollisionWanted(VolumeState&, VoxelVolumeComponent&){}
 void VoxelSystem::rescueBodies(VolumeState&, VoxelVolumeComponent&, double){}
-void VoxelSystem::buildCollisionBlocking(VolumeState&, const VoxelVolumeComponent&, const IntBox&){}
+void VoxelSystem::buildCollisionBlocking(VolumeState&, const VoxelVolumeComponent&, const voxel::IntBox&){}
 void VoxelSystem::ensureCollision(Entity, const AABB&){}
 bool VoxelSystem::isCollisionReady(Entity, const AABB&) const{ return false; }
 void VoxelSystem::destroyCollision(VolumeState&){}
