@@ -146,6 +146,18 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     w.u8(static_cast<uint8_t>(scene.getWaterWakeResolution()));
     w.f32(scene.getWaterWakeArea());
     w.f32(scene.getWaterWakeFade());
+    // format 1.7 (S98 D1): the scene's own Canvas Scaler and Box2D sub-steps, which a Compile
+    // build's generated scene code set and its cooked scenes now carry
+    w.boolean(scene.isCanvasScalerUseProjectDefault());
+    const CanvasScalerSettings& scaler = scene.getCanvasScaler();
+    w.u8(static_cast<uint8_t>(scaler.mode));
+    w.f32(scaler.scaleFactor);
+    write(w, scaler.referenceResolution);
+    w.u8(static_cast<uint8_t>(scaler.screenMatchMode));
+    w.f32(scaler.matchWidthOrHeight);
+    w.u8(static_cast<uint8_t>(scaler.physicalUnit));
+    w.f32(scaler.fallbackScreenDPI);
+    w.svarint(scene.getPhysics2DSubSteps());
 }
 
 void cook::readSceneSettings(Reader& r, Scene& scene) {
@@ -254,4 +266,20 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
         scene.setWaterWakeResolution(static_cast<WaterWakeResolution>(wakeResolution));
     scene.setWaterWakeArea(r.f32());
     scene.setWaterWakeFade(r.f32());
+    // a 1.5 or 1.6 record ends here: the project's Canvas Scaler and 4 sub-steps (format 1.7)
+    if (r.atEnd()) return;
+    scene.setCanvasScalerUseProjectDefault(r.boolean());
+    CanvasScalerSettings scaler;
+    const uint8_t mode = r.u8();
+    if (mode <= static_cast<uint8_t>(UIScaleMode::ConstantPhysicalSize)) scaler.mode = static_cast<UIScaleMode>(mode);
+    scaler.scaleFactor = r.f32();
+    read(r, scaler.referenceResolution);
+    const uint8_t match = r.u8();
+    if (match <= static_cast<uint8_t>(ScreenMatchMode::Shrink)) scaler.screenMatchMode = static_cast<ScreenMatchMode>(match);
+    scaler.matchWidthOrHeight = r.f32();
+    const uint8_t unit = r.u8();
+    if (unit <= static_cast<uint8_t>(PhysicalUnit::Picas)) scaler.physicalUnit = static_cast<PhysicalUnit>(unit);
+    scaler.fallbackScreenDPI = r.f32();
+    if (scaler != CanvasScalerSettings()) scene.setCanvasScaler(scaler);
+    scene.setPhysics2DSubSteps(static_cast<int>(r.svarint()));
 }

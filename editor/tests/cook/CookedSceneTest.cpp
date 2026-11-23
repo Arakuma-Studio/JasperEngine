@@ -457,6 +457,23 @@ namespace {
         tail.f32(scene.getWaterWakeFade());
         return tail.data().size();
     }
+
+    // the bytes format 1.7 appends after them (the scene's Canvas Scaler and Physics 2D sub-steps)
+    size_t canvasScalerTailBytes(const Scene& scene) {
+        jasperengine::cook::StringTable none;
+        jasperengine::cook::Writer tail(none, [](Entity e) { return static_cast<uint32_t>(e); });
+        const CanvasScalerSettings& scaler = scene.getCanvasScaler();
+        tail.boolean(scene.isCanvasScalerUseProjectDefault());
+        tail.u8(static_cast<uint8_t>(scaler.mode));
+        tail.f32(scaler.scaleFactor);
+        jasperengine::cook::write(tail, scaler.referenceResolution);
+        tail.u8(static_cast<uint8_t>(scaler.screenMatchMode));
+        tail.f32(scaler.matchWidthOrHeight);
+        tail.u8(static_cast<uint8_t>(scaler.physicalUnit));
+        tail.f32(scaler.fallbackScreenDPI);
+        tail.svarint(scene.getPhysics2DSubSteps());
+        return tail.data().size();
+    }
 }
 
 // S57: the scene's capsule shadows survive a cook (format 1.1), and S54's LOD cross-fade after
@@ -499,8 +516,8 @@ TEST(CookedScene, SceneSettingsKeepCapsuleShadows) {
     // (1.3) the five default shaders' property values, none set here
     jasperengine::cook::Writer v13(none, [](Entity e) { return static_cast<uint32_t>(e); });
     for (int type = 0; type < 5; type++) jasperengine::cook::write(v13, ShaderUniformValues());
-    // (1.4) the planar reflections, and (1.5) the Water Wakes' map after them
-    const size_t v14 = planarReflectionTailBytes(*scene) + waterWakeTailBytes(*scene);
+    // (1.4) the planar reflections, (1.5) the Water Wakes' map after them, (1.7) the Canvas Scaler
+    const size_t v14 = planarReflectionTailBytes(*scene) + waterWakeTailBytes(*scene) + canvasScalerTailBytes(*scene);
     ASSERT_GT(bytes.size(), v11.data().size() + v12.data().size() + v13.data().size() + v14);
 
     // the 1.1 record: the same bytes without the cross-fade (and the 1.3 and 1.4 values)
@@ -634,7 +651,8 @@ TEST(CookedScene, SceneSettingsKeepPlanarReflections) {
 
     // the 1.3 record: the same bytes without the planar reflections (and the 1.5 values)
     DecodedScene older = emptyScene();
-    jasperengine::cook::Reader r13(std::span<const uint8_t>(bytes.data(), bytes.size() - planarReflectionTailBytes(*scene) - waterWakeTailBytes(*scene)),
+    jasperengine::cook::Reader r13(std::span<const uint8_t>(bytes.data(), bytes.size() - planarReflectionTailBytes(*scene) - waterWakeTailBytes(*scene) -
+                                                                                canvasScalerTailBytes(*scene)),
                                    strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r13, *older.scene->scene);
     ASSERT_FALSE(r13.failed()) << r13.error();
@@ -683,7 +701,7 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
 
     // the 1.4 record: the same bytes without the wake settings; the planar reflections still read
     DecodedScene older = emptyScene();
-    jasperengine::cook::Reader r14(std::span<const uint8_t>(bytes.data(), bytes.size() - waterWakeTailBytes(*scene)),
+    jasperengine::cook::Reader r14(std::span<const uint8_t>(bytes.data(), bytes.size() - waterWakeTailBytes(*scene) - canvasScalerTailBytes(*scene)),
                                    strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r14, *older.scene->scene);
     ASSERT_FALSE(r14.failed()) << r14.error();
@@ -693,6 +711,52 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
     EXPECT_EQ(old.getWaterWakeResolution(), defaults.waterWakeResolution);
     EXPECT_FLOAT_EQ(old.getWaterWakeArea(), defaults.waterWakeArea);
     EXPECT_FLOAT_EQ(old.getWaterWakeFade(), defaults.waterWakeFade);
+}
+
+// S98 D1: the scene's own Canvas Scaler and Box2D sub-steps survive a cook (format 1.7), as a
+// Compile build's generated scene code set them; a 1.5 record leaves the project's scaler and 4
+TEST(CookedScene, SceneSettingsKeepCanvasScalerAndSubSteps) {
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    CanvasScalerSettings scaler;
+    scaler.mode = UIScaleMode::ScaleWithScreenSize;
+    scaler.referenceResolution = Vector2(1280, 720);
+    scaler.screenMatchMode = ScreenMatchMode::Expand;
+    scaler.matchWidthOrHeight = 0.5f;
+    scaler.physicalUnit = PhysicalUnit::Millimeters;
+    scaler.fallbackScreenDPI = 160.0f;
+    scaler.scaleFactor = 2.0f;
+    scene->setCanvasScaler(scaler);
+    scene->setCanvasScalerUseProjectDefault(false);
+    scene->setPhysics2DSubSteps(9);
+    scene->setWaterWakeArea(32.0f);
+
+    jasperengine::cook::StringTable strings;
+    jasperengine::cook::Writer w(strings, [](Entity e) { return static_cast<uint32_t>(e); });
+    jasperengine::cook::writeSceneSettings(w, *scene);
+    const std::vector<uint8_t>& bytes = w.data();
+    auto entityOf = [](uint32_t id) { return static_cast<Entity>(id); };
+
+    // the Compile and prebuilt builds' path: the whole scene cooked and loaded by CookedSceneLoader
+    DecodedScene player;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {}, player, error)) << error;
+    const Scene& got = *player.scene->scene;
+    EXPECT_FALSE(got.isCanvasScalerUseProjectDefault());
+    EXPECT_EQ(got.getCanvasScaler(), scaler);
+    EXPECT_EQ(got.getPhysics2DSubSteps(), 9);
+
+    // the 1.5 record: the same bytes without them; the wakes still read
+    DecodedScene older = emptyScene();
+    jasperengine::cook::Reader r15(std::span<const uint8_t>(bytes.data(), bytes.size() - canvasScalerTailBytes(*scene)), strings.strings(), entityOf);
+    jasperengine::cook::readSceneSettings(r15, *older.scene->scene);
+    ASSERT_FALSE(r15.failed()) << r15.error();
+    const SceneSettings defaults;
+    const Scene& old = *older.scene->scene;
+    EXPECT_FLOAT_EQ(old.getWaterWakeArea(), 32.0f);
+    EXPECT_EQ(old.isCanvasScalerUseProjectDefault(), defaults.canvasScalerUseProjectDefault);
+    EXPECT_EQ(old.getCanvasScaler(), defaults.canvasScaler);
+    EXPECT_EQ(old.getPhysics2DSubSteps(), defaults.physics2DSubSteps);
 }
 
 // A newer minor adds only length-prefixed fields: a player reads its content without them and warns
@@ -775,22 +839,30 @@ namespace {
         for (int i = 0; i < 4; i++) at[i] = static_cast<uint8_t>(value >> (8 * i));
     }
 
+    // Cuts the last `cut` bytes of the record at `at`, with its length and the string table offset
+    void cutRecordTail(std::vector<uint8_t>& bytes, size_t at, uint32_t cut) {
+        const uint32_t length = readLe32(bytes.data() + at);
+        bytes.erase(bytes.begin() + static_cast<std::ptrdiff_t>(at + 4 + length - cut), bytes.begin() + static_cast<std::ptrdiff_t>(at + 4 + length));
+        writeLe32(bytes.data() + at, length - cut);
+        uint64_t stringsOffset = 0;
+        for (int i = 0; i < 8; i++) stringsOffset |= uint64_t(bytes[20 + i]) << (8 * i);
+        stringsOffset -= cut;
+        for (int i = 0; i < 8; i++) bytes[20 + i] = static_cast<uint8_t>(stringsOffset >> (8 * i));
+    }
+
     // A 1.7 scene cooked with no VATs, masks, controllers or bitmap fonts as a 1.6 editor laid it
-    // out: the resources record (the fourth) without those four empty lists that end it (the
-    // hierarchy record after it, which a 1.6 reader skips, stays)
-    std::vector<uint8_t> asMinor6(std::vector<uint8_t> bytes) {
+    // out: the settings record (the first) without its 1.7 values (settingsTail bytes:
+    // canvasScalerTailBytes), the resources record (the fourth) without those four empty lists
+    // that end it (the hierarchy record after it, which a 1.6 reader skips, stays)
+    std::vector<uint8_t> asMinor6(std::vector<uint8_t> bytes, size_t settingsTail) {
         using namespace jasperengine::cook;
+        cutRecordTail(bytes, HEADER_BYTES, static_cast<uint32_t>(settingsTail));
         size_t at = HEADER_BYTES;
         for (int record = 0; record < 3; record++) at += 4 + readLe32(bytes.data() + at);
         const uint32_t length = readLe32(bytes.data() + at);
         constexpr uint32_t tail = 4;   // four empty lists, a varint 0 each
         for (size_t i = at + 4 + length - tail; i < at + 4 + length; i++) EXPECT_EQ(bytes[i], 0u) << "the new lists are empty";
-        bytes.erase(bytes.begin() + static_cast<std::ptrdiff_t>(at + 4 + length - tail), bytes.begin() + static_cast<std::ptrdiff_t>(at + 4 + length));
-        writeLe32(bytes.data() + at, length - tail);
-        uint64_t stringsOffset = 0;
-        for (int i = 0; i < 8; i++) stringsOffset |= uint64_t(bytes[20 + i]) << (8 * i);
-        stringsOffset -= tail;
-        for (int i = 0; i < 8; i++) bytes[20 + i] = static_cast<uint8_t>(stringsOffset >> (8 * i));
+        cutRecordTail(bytes, at, tail);
         bytes[6] = 6;
         bytes[7] = 0;
         return bytes;
@@ -803,13 +875,13 @@ namespace {
 TEST(CookedScene, ReadsAnOlderMinorsContent) {
     using namespace jasperengine::cook;
     // 1.6 (a Mesh Renderer's .mesh asset) is a field of the mesh's table: the settings record is 1.5's
-    ASSERT_EQ(FORMAT_MINOR, 7) << "the 1.4 layout below is 1.7's without its Water Wakes values and new resource lists: cut the newer minor's values too";
+    ASSERT_EQ(FORMAT_MINOR, 7) << "the 1.4 layout below is 1.7's without its Water Wakes values and 1.7's additions (asMinor6): cut the newer minor's values too";
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
     scene->setPlanarReflectionFarClip(60.0f);
     scene->setWaterWakeResolution(WaterWakeResolution::HIGH);
     scene->setWaterWakeArea(32.0f);
-    const std::vector<uint8_t> bytes = asMinor6(editor::cook::SceneCooker::cookScene(scene, 4242, {}, NULL_ENTITY, SceneResources{}));
+    const std::vector<uint8_t> bytes = asMinor6(editor::cook::SceneCooker::cookScene(scene, 4242, {}, NULL_ENTITY, SceneResources{}), canvasScalerTailBytes(*scene));
     const size_t cut = waterWakeTailBytes(*scene);
     const uint32_t settingsLength = readLe32(bytes.data() + HEADER_BYTES);
     ASSERT_GT(settingsLength, cut);
@@ -863,7 +935,8 @@ TEST(CookedScene, SceneResourcesKeepEveryList) {
     older.masks.clear();
     older.controllers.clear();
     older.bitmapFonts.clear();
-    const std::vector<uint8_t> v16 = asMinor6(editor::cook::SceneCooker::cookScene(source.scene->scene, 4242, {}, NULL_ENTITY, older));
+    const std::vector<uint8_t> v16 = asMinor6(editor::cook::SceneCooker::cookScene(source.scene->scene, 4242, {}, NULL_ENTITY, older),
+                                             canvasScalerTailBytes(*source.scene->scene));
     const SceneResources readOlder = CookedSceneLoader::sceneResources(std::span<const uint8_t>(v16.data(), v16.size()));
     EXPECT_EQ(readOlder.models, resources.models);
     EXPECT_EQ(readOlder.clips, resources.clips);

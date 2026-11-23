@@ -41,7 +41,8 @@ namespace jasperengine {
         // 1: the scene settings' capsule shadows (S57); 2: the LOD cross-fade's (S54); 3: the default shaders'
         // property values; 4: the planar reflections (water-reflections); 5: the Water Wakes' map (water-boats);
         // 6: a Mesh Renderer's .mesh asset (S98 F1: its geometry is not in the scene); 7: the scene
-        // resources' VATs, masks, controllers and bitmap fonts (S98 REQ-52), the scene's hierarchy
+        // resources' VATs, masks, controllers and bitmap fonts (S98 REQ-52), the scene's hierarchy, its
+        // Canvas Scaler and Physics 2D sub-steps (S98 D1)
         constexpr uint16_t FORMAT_MINOR = 7;
         constexpr size_t HEADER_BYTES = 28;
 
