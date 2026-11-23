@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// jasperengine-spritenormals-tests: dark gaps ("Dark Gaps Are Edges") and the stones preset
+// Dark gaps ("Dark Gaps Are Edges") and the stones preset
 // (docs/specs/S78-sprite-normals-improvements.md R8-R12, AC6) on two procedural seamless stone
 // tiles made here: a 32 px pixel-art one (bricks between 1 px dark gaps) and a 512 px painted one
 // (Voronoi stones with soft dark grout and brush noise). Each stone must read as its own rounded
@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-using namespace jasperengine::editor::spritenormals;
+namespace jasperengine::editor::spritenormals {
 
 namespace {
 
@@ -519,3 +519,5 @@ TEST(SpriteNormalsGaps, UnmatchedOnAFlatImage) {
     // a stone tile: no warning
     EXPECT_FALSE(warns(run(t.color, presetSettings(Preset::Stones)), "gaps_unmatched"));
 }
+
+} // namespace jasperengine::editor::spritenormals

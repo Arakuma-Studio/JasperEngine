@@ -229,10 +229,6 @@ namespace light2d_steps_gpu_test {
         }
     };
 
-}
-
-using namespace light2d_steps_gpu_test;
-
 // R3: off draws the variants and the image of before (light2d_steps_off was captured before
 // Light Steps existed)
 TEST_F(Light2DStepsGpu, OffDrawsTheImageOfBefore){
@@ -339,3 +335,5 @@ TEST_F(Light2DStepsGpu, NeutralAmbientWithoutLightsDrawsTheImageOfBefore){
     EXPECT_GOLDEN("light2d_ambient_neutral");
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+} // namespace light2d_steps_gpu_test

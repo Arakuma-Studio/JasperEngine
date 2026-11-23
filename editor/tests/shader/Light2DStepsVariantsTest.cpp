@@ -42,21 +42,21 @@ namespace {
         }
     };
 
-    struct Keys {
+    struct Light2DStepsKeyCounts {
         size_t light2D = 0;      // MESH keys with 'L2d'
         size_t stepped = 0;      // ... and 'Lst'
         size_t steppedAlone = 0; // 'Lst' without 'L2d'
         std::string names;
     };
 
-    Keys collect(Scene& scene, bool scriptsSetLight2D = false){
+    Light2DStepsKeyCounts light2DStepsVariantsCollect(Scene& scene, bool scriptsSetLight2D = false){
         ShaderVariantContent content;
         content.registry = &scene;
         content.entities = scene.getEntityList();
         std::set<ShaderKey> keys;
         ShaderVariantCollector::collectScene(&scene, content, {}, keys, {}, false, false, {}, false, false, PbrTier::FULL,
                                              terraincore::TERRAIN_ALL_TIERS, scriptsSetLight2D);
-        Keys out;
+        Light2DStepsKeyCounts out;
         const uint64_t lst = ShaderPool::getLight2DStepsProperty();
         for (ShaderKey key : keys){
             if (ShaderPool::getShaderTypeFromKey(key) != ShaderType::MESH)
@@ -122,7 +122,7 @@ TEST_F(Light2DStepsVariantKeys, StepsOffShipNoLst){
     Sprite sprite(&scene);
     sprite.setSize(16, 16);
     Light2D light(&scene);
-    const Keys keys = collect(scene);
+    const Light2DStepsKeyCounts keys = light2DStepsVariantsCollect(scene);
     EXPECT_GT(keys.light2D, 0u) << keys.names;
     EXPECT_EQ(keys.stepped + keys.steppedAlone, 0u) << "'Lst' with the steps off:" << keys.names;
 }
@@ -133,13 +133,13 @@ TEST_F(Light2DStepsVariantKeys, StepsOnShipLstWithL2dOnly){
     Sprite sprite(&scene);
     sprite.setSize(16, 16);
     Light2D light(&scene);
-    const Keys keys = collect(scene);
+    const Light2DStepsKeyCounts keys = light2DStepsVariantsCollect(scene);
     EXPECT_GT(keys.light2D, 0u) << keys.names;
     EXPECT_EQ(keys.stepped, keys.light2D) << "every 2D-lit key is stepped:" << keys.names;
     EXPECT_EQ(keys.steppedAlone, 0u) << keys.names;
 
     // a script switching them: both states ship
-    const Keys scripted = collect(scene, true);
+    const Light2DStepsKeyCounts scripted = light2DStepsVariantsCollect(scene, true);
     EXPECT_GT(scripted.stepped, 0u) << scripted.names;
     EXPECT_LT(scripted.stepped, scripted.light2D) << "the smooth variants ship too:" << scripted.names;
 }
@@ -149,9 +149,9 @@ TEST_F(Light2DStepsVariantKeys, AmbientWithoutLightsShipsL2dOnlyWhileItTints){
         Scene neutral;
         Sprite sprite(&neutral);
         sprite.setSize(16, 16);
-        const Keys keys = collect(neutral);
+        const Light2DStepsKeyCounts keys = light2DStepsVariantsCollect(neutral);
         EXPECT_EQ(keys.light2D, 0u) << "a neutral ambient and no Light 2D:" << keys.names;
-        const Keys scripted = collect(neutral, true);
+        const Light2DStepsKeyCounts scripted = light2DStepsVariantsCollect(neutral, true);
         EXPECT_GT(scripted.light2D, 0u) << "a script may darken the ambient:" << scripted.names;
     }
     {
@@ -159,7 +159,7 @@ TEST_F(Light2DStepsVariantKeys, AmbientWithoutLightsShipsL2dOnlyWhileItTints){
         dark.setAmbientLight2D(1.0f, Vector3(0.3f, 0.3f, 0.4f));
         Sprite sprite(&dark);
         sprite.setSize(16, 16);
-        const Keys keys = collect(dark);
+        const Light2DStepsKeyCounts keys = light2DStepsVariantsCollect(dark);
         EXPECT_GT(keys.light2D, 0u) << "the dark ambient tints the sprite:" << keys.names;
     }
 }
