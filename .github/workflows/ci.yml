@@ -14,6 +14,8 @@ run-name: ${{ inputs.advisory && format('Advisory tests of {0} at {1}', github.r
 #   advisory lanes the queue left out, one advisory run at a time, the newest waiting, each over what
 #   changed since the last one; its failures keep the advisory-red issue open.
 #   workflow_dispatch with full: everything, the whole MCP CI suite included, on any branch.
+#   workflow_dispatch with status: Check also as a commit status, which a ruleset counts: a branch the workflow
+#   token pushed gets no pull_request run (mcp-timings-refit.yml), and no dispatched job's check counts.
 # - The test lanes in ADVISORY_LANES report but do not fail Check until main is green through CI (D2, §14.1
 #   phase 7); the merge queue does not run them (tools/ci/plan_lanes.py --advisory). Lint and every platform
 #   build lane block.
@@ -39,6 +41,10 @@ on:
         description: "Test the overflow runners: <job>=<je-mac|je-linux|je-win> ...: only those jobs' lanes, on those runners (a rerun: hosted)"
         type: string
         default: ''
+      status:
+        description: Also report Check as a commit status on the head (GitHub counts no dispatched job's check toward a required one)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -1415,6 +1421,9 @@ jobs:
     if: always()
     runs-on: ubuntu-slim
     timeout-minutes: 10
+    permissions:
+      contents: read
+      statuses: write  # workflow_dispatch with status: the verdict as a commit status
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1431,9 +1440,20 @@ jobs:
           name: plan
           path: plan
       - name: Gate
+        id: gate
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           printf '%s\n' "$NEEDS" > needs.json
           python3 tools/ci/check_gate.py --needs needs.json --lanes plan/lanes.json --reports reports \
               --advisory "$ADVISORY_LANES"
+      # a ruleset's required check counts a commit status of the GitHub Actions app, not this job's check
+      - name: Report Check as a commit status
+        if: always() && inputs.status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATE: ${{ steps.gate.outcome == 'success' && 'success' || 'failure' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state="$STATE" -f context=Check \
+              -f target_url="$RUN_URL" -f description="ci.yml dispatched on $GITHUB_REF_NAME: $STATE"
