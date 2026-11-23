@@ -767,8 +767,11 @@ bool editor::Project::readPrefabFile(const std::filesystem::path& filepath, Pref
         prefab.loadReport = std::move(loadReport);
         logLoadReport(prefab.loadReport);
         resolveRegistryPrefabRefs(prefab.registry.get());
-        // its linked .material files as they are now, not the copies the file embeds (S98 REQ-29)
-        applyLinkedMaterialFiles(prefab.registry.get());
+        // its linked .material files as they are now, not the copies the file embeds (S98 REQ-29),
+        // unless the file is older than that and keeps its copies
+        if (prefab.followMaterialFiles) {
+            applyLinkedMaterialFiles(prefab.registry.get());
+        }
         if (prefab.root == NULL_ENTITY) {
             Out::error("Prefab %s has no GameObject", filepath.string().c_str());
             return false;

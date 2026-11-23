@@ -23,6 +23,8 @@ version: 3
 guid: 9c1d0f3e5b7a42c8a1e06d2f4b8c7a19   # the asset's GUID, 32 lowercase hex digits
 nextEntity: 1008                          # the id the next new GameObject of the prefab takes
 root: 1001                                # the prefab's root GameObject (section 6)
+followMaterialFiles: false                # only in a file from before version 10 with a linked
+                                          # .material: it keeps the copies it embeds (S98 REQ-29)
 members:                                  # the root first; GameObjects without a Transform may follow
   - type: Entity
     entity: 1001                          # registry entity id = the GameObject's file id

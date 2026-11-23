@@ -4,7 +4,8 @@
 // A prefab's submesh linked to a .material file (Material::name, S04 deviation 1) takes the file's
 // current values everywhere the prefab is read, as a scene's do when it opens (S98 REQ-29, AC29):
 // Prefab Mode, an instance in a scene, the cooked prefab, Play's template. The prefab file keeps
-// its embedded copy until the prefab itself is saved.
+// its embedded copy until the prefab itself is saved. A prefab file from before (version 9) keeps
+// using the copies it embeds, as it did (StreamMigrations prefab 9 -> 10).
 
 #include <gtest/gtest.h>
 
@@ -14,6 +15,7 @@
 #include "PrefabStage.h"
 #include "Project.h"
 #include "Stream.h"
+#include "StreamMigrations.h"
 #include "TempDir.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreatePrefabCmd.h"
@@ -181,5 +183,79 @@ TEST(ProjectPrefabMaterials, LinkedMaterialWinsOverEmbeddedCopy) {
     ASSERT_TRUE(project->saveSceneNow(sceneId, {}, &error)) << error;
     EXPECT_EQ(readBytes(root / PREFAB), prefabBefore) << "the .prefab file is unchanged";
 
+    jasperengine::editor::test::closeProject(*project);
+}
+
+// A prefab saved before REQ-29 (version 9) whose submesh links a .material: the migration stamps
+// followMaterialFiles: false, and the asset, Prefab Mode and the cooked prefab keep the red copy
+// the file embeds while the .material is blue, before and after a save. A version 9 prefab without
+// a link gets no key.
+TEST(ProjectPrefabMaterials, AnOlderPrefabKeepsItsEmbeddedCopies) {
+    const fs::path fixturePath = jasperengine::editor::test::fixture("migrations/prefab-v9-linked-material.prefab");
+    YAML::Node migrated = YAML::Load(readBytes(fixturePath));
+    ASSERT_EQ(migrated["version"].as<int>(), 9);
+    const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, migrated);
+    EXPECT_EQ(migrated["version"].as<int>(), Prefab::FILE_VERSION);
+    ASSERT_TRUE(migrated["followMaterialFiles"]);
+    EXPECT_FALSE(migrated["followMaterialFiles"].as<bool>());
+    ASSERT_EQ(result.log.lines.size(), 1u);
+    EXPECT_NE(result.log.lines[0].find("keeps the material copies"), std::string::npos) << result.log.lines[0];
+    YAML::Node unlinked = YAML::Load(readBytes(fixturePath));
+    unlinked["members"][0]["components"]["mesh"]["submeshes"][0]["material"].remove("name");
+    StreamMigrations::migrate(DocumentKind::Prefab, unlinked);
+    EXPECT_FALSE(unlinked["followMaterialFiles"]) << "no link, nothing to keep";
+
+    jasperengine::editor::test::ensureEngine();
+    Engine::pauseGameEvents(true);
+    Engine::setAsyncLoading(false);
+    jasperengine::test::TempDir dir;
+    const fs::path root = dir.path() / "project";
+    fs::create_directories(root / ".jasperengine");
+    fs::create_directories(root / "prefabs");
+    std::ofstream(root / "project.yaml") << "name: prefabmaterials\n";
+    fs::copy_file(fixturePath, root / PREFAB);
+    writeMaterial(root, BLUE);
+
+    auto check = [&](Project& project, const char* when) {
+        const Prefab* asset = project.loadPrefabAsset(PREFAB);
+        ASSERT_NE(asset, nullptr) << when;
+        EXPECT_FALSE(asset->followMaterialFiles) << when;
+        EXPECT_EQ(meshColor(asset->registry.get(), asset->registryEntities), RED) << when << ": the prefab asset";
+        ASSERT_TRUE(project.openPrefabStage(PREFAB)) << when;
+        PrefabStage* stage = project.getActivePrefabStage();
+        ASSERT_NE(stage, nullptr) << when;
+        EXPECT_EQ(meshColor(stage->sceneProject.scene, stage->sceneProject.entities), RED) << when << ": Prefab Mode";
+        project.closePrefabStages(0, nullptr, 2);
+        // a change of the .material reaches no copy of it
+        project.reapplyLinkedMaterialFiles();
+        EXPECT_EQ(meshColor(asset->registry.get(), asset->registryEntities), RED) << when << ": after the files are read again";
+        const auto baked = project.bakePrefabsForExport();
+        const auto found = baked.find(fs::path(PREFAB));
+        ASSERT_NE(found, baked.end()) << when;
+        const std::vector<uint8_t> cooked = jasperengine::editor::cook::SceneCooker::cookPrefab(PREFAB, *found->second, project.getPrefabGuid(PREFAB), 1);
+        Scene player;
+        const Entity playerRoot = player.createEntity();
+        std::vector<Entity> members;
+        std::string error;
+        ASSERT_TRUE(CookedSceneLoader::instantiatePrefab(&player, playerRoot, std::span<const uint8_t>(cooked.data(), cooked.size()), &members, &error))
+            << error;
+        members.push_back(playerRoot);
+        EXPECT_EQ(meshColor(&player, members), RED) << when << ": the cooked prefab";
+    };
+
+    {
+        std::unique_ptr<Project> project = openProject(root);
+        check(*project, "migrated");
+        // a save writes the current version and keeps the key
+        ASSERT_EQ(project->savePrefabToDisk(PREFAB, DegradedSavePolicy::Refuse), SaveResult::Saved);
+        jasperengine::editor::test::closeProject(*project);
+    }
+    const YAML::Node saved = YAML::Load(readBytes(root / PREFAB));
+    EXPECT_EQ(saved["version"].as<int>(), Prefab::FILE_VERSION);
+    ASSERT_TRUE(saved["followMaterialFiles"]) << readBytes(root / PREFAB);
+    EXPECT_FALSE(saved["followMaterialFiles"].as<bool>());
+
+    std::unique_ptr<Project> project = openProject(root);
+    check(*project, "saved");
     jasperengine::editor::test::closeProject(*project);
 }

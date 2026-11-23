@@ -1172,10 +1172,11 @@ std::vector<std::string> editor::Project::getLinkedMaterialFiles() const {
     }
     // what the loaded prefab assets and their Prefab Mode stages name follows the files too (S98 REQ-29)
     for (const auto& [path, prefab] : prefabAssets) {
-        collectRegistryMaterialFiles(prefab.registry.get(), files);
+        if (prefab.followMaterialFiles) collectRegistryMaterialFiles(prefab.registry.get(), files);
     }
     for (const auto& stage : prefabStages) {
-        collectRegistryMaterialFiles(stage->sceneProject.scene, files);
+        const Prefab* asset = getPrefab(stage->assetPath);
+        if (!asset || asset->followMaterialFiles) collectRegistryMaterialFiles(stage->sceneProject.scene, files);
     }
     return std::vector<std::string>(files.begin(), files.end());
 }
@@ -1225,6 +1226,8 @@ void editor::Project::applyLinkedMaterialFile(const std::string& relativePath, c
     // are saved, and what the instances read from them now matches what the instances show. A
     // Prefab Mode stage of one shows the file too; one that matched its asset still does.
     for (auto& [prefabPath, prefab] : prefabAssets) {
+        // a file from before REQ-29 keeps its embedded copies, in its stages too
+        if (!prefab.followMaterialFiles) continue;
         std::vector<std::pair<PrefabStage*, bool>> stages;
         for (const auto& stage : prefabStages) {
             if (stage->assetPath.lexically_normal() == prefabPath.lexically_normal()) {
@@ -4781,7 +4784,7 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
             try {
                 fromFile.loadRegistry(DocumentFiles::read(getProjectPath() / info.prefabPath, DocumentKind::Prefab).root);
                 // the variants its linked .material files make, as the build reads it (S98 REQ-29)
-                applyLinkedMaterialFiles(fromFile.registry.get());
+                if (fromFile.followMaterialFiles) applyLinkedMaterialFiles(fromFile.registry.get());
             } catch (const std::exception& e) {
                 Out::error("Failed to read prefab %s for its shaders: %s", info.prefabPath.string().c_str(), e.what());
                 continue;

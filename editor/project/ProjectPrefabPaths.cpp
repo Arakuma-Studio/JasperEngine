@@ -862,6 +862,10 @@ YAML::Node editor::Project::encodePrefabNode(const std::filesystem::path& filepa
     prefabNode["guid"] = guid;
     prefabNode["nextEntity"] = prefab->getNextEntity();
     prefabNode["root"] = prefab->root;
+    // an older file keeps its embedded material copies across saves (S98 REQ-29, prefab 9 -> 10)
+    if (!prefab->followMaterialFiles) {
+        prefabNode["followMaterialFiles"] = false;
+    }
     std::vector<Entity> topLevel = getTopLevelEntities(prefab->registry.get(), prefab->registryEntities);
     auto rootIt = std::find(topLevel.begin(), topLevel.end(), prefab->root);
     if (rootIt != topLevel.end() && rootIt != topLevel.begin()) {

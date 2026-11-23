@@ -692,7 +692,7 @@ ModuleScan ModuleUsageDetector::collect(Project* project) {
             Prefab loaded;
             loaded.loadRegistry(DocumentFiles::read(project->getProjectPath() / info.prefabPath, DocumentKind::Prefab).root);
             // its linked .material files as the build reads them (S98 REQ-29)
-            project->applyLinkedMaterialFiles(loaded.registry.get());
+            if (loaded.followMaterialFiles) project->applyLinkedMaterialFiles(loaded.registry.get());
             std::shared_ptr<EntityRegistry> registry(std::move(loaded.registry));
             scan.contents.push_back({label, registry.get(), loaded.registryEntities});
             scan.owned.push_back(registry);

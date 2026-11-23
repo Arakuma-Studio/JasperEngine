@@ -138,9 +138,11 @@ Two more that origin/main has are fixed in this editor (also found by the upgrad
   with into the played scenes' files. They go to the shader warm-up list (`ShaderWarmup.json` next to
   `project.yaml`; commit it), written only when it gains a variant; builds read it whatever
   **Include in Builds** says. The keys older scenes hold stay and still ship.
-- **Prefabs follow their `.material` files.** A prefab's submesh linked to a `.material` takes the
-  file's values wherever the prefab is read (Prefab Mode, instances, Play, builds), as scenes did on
-  origin/main. The prefab file keeps its old copy until the prefab is next saved.
+- **Prefabs follow their `.material` files, new ones.** A prefab saved by this editor whose submesh
+  links a `.material` takes the file's values wherever the prefab is read (Prefab Mode, instances,
+  Play, builds), as scenes did on origin/main. A prefab from origin/main (file version 9) with a
+  linked material keeps using the copies it embeds, as before: its migration writes
+  `followMaterialFiles: false`, which its saves keep. One without a link follows the links it gets.
 
 ## Lua scripts
 

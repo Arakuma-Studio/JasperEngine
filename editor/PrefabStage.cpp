@@ -695,6 +695,10 @@ YAML::Node editor::Project::encodePrefabStage(PrefabStage& stage) {
     node["guid"] = guid;
     node["nextEntity"] = nextEntity;
     node["root"] = stage.root;
+    // an older file keeps its embedded material copies across saves (S98 REQ-29, prefab 9 -> 10)
+    if (prefab && !prefab->followMaterialFiles) {
+        node["followMaterialFiles"] = false;
+    }
     node["members"] = membersNode;
     // the asset's header keys this editor does not know go with it (docs/data-safety.md)
     if (prefab && prefab->registry) {
