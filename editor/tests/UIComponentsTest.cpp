@@ -40,6 +40,7 @@ namespace jasperengine {
             return previous;
         }
         static void updateGamepadNavigation() { Engine::updateGamepadNavigation(); }
+        static bool cursorMove(float x, float y) { return Engine::dispatchCursorPointer(Engine::CURSOR_MOVE, x, y); }
     };
 }
 
@@ -707,7 +708,7 @@ TEST_F(UIComponentsTest, CursorMoveReentryKeepsItsOwnScenes) {
         extra.push_back(uiScene());
         Engine::addSceneLayer(extra.back());
     }
-    Engine::dispatchCursorPointer(Engine::CURSOR_MOVE, 950.0f, 950.0f);
+    EngineTestAccess::cursorMove(950.0f, 950.0f);
     for (Scene* gone : extra)
         Engine::removeScene(gone);
     Engine::removeScene(late);
@@ -720,9 +721,9 @@ TEST_F(UIComponentsTest, CursorMoveReentryKeepsItsOwnScenes) {
             return;
         // a scene loads and the cursor moves away, inside the bottom scene's handler
         Engine::addSceneLayer(late);
-        Engine::dispatchCursorPointer(Engine::CURSOR_MOVE, 900.0f, 900.0f);
+        EngineTestAccess::cursorMove(900.0f, 900.0f);
     });
-    Engine::dispatchCursorPointer(Engine::CURSOR_MOVE, 10.0f, 10.0f);
+    EngineTestAccess::cursorMove(10.0f, 10.0f);
     EXPECT_EQ(bottomEnters, 1);
     EXPECT_EQ(topEnters, 1) << "the outer move skipped a scene it started with";
     EXPECT_EQ(lateEnters, 0) << "the outer move reached a scene added during it";
