@@ -412,7 +412,10 @@ through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md)
 | `AudioMixerSnapshot.TransitionTo`, `AudioMixer.TransitionToSnapshots`, `FindSnapshot` | `AudioMixer.transitionTo(name, seconds [, opts])`, `AudioMixer.transitionToSnapshots(names, weights, seconds)`, snapshots by name |
 | Audio Mixer update mode Normal / Unscaled Time | mixer `updateMode` "scaled" / "unscaled"; per call `{unscaled = true}` |
 | Lowpass / Highpass / Echo / SFX Reverb / ParamEQ / Distortion / Flange / Duck Volume effects | mixer effects `lowpass`, `highpass`, `bandpass`, `echo`, `reverb`, `equalizer`, `distortion`, `flanger`, `lofi`, `bassboost`, `duck`, `limiter` (up to 8 per group) |
+| Audio Low Pass Filter, Audio High Pass Filter, Audio Echo Filter, Audio Distortion Filter, Audio Reverb Filter (components) | effects of the Audio Source itself: `AudioSource.effects` (up to 4, `lowpass`, `highpass`, `echo`, `distortion`, `reverb` and the other mixer effects but `duck` and `limiter`); Add Component keeps Unity's names and adds the effect to the GameObject's Audio Source; Lua `sound:addEffect("lowpass")` -> `AudioSourceEffect` |
+| `AudioLowPassFilter.cutoffFrequency`, `lowpassResonanceQ`; `AudioHighPassFilter.cutoffFrequency`, `highpassResonanceQ` | the effect's `cutoff` and `resonance` (`effect:setParameter("cutoff", 500 [, seconds])`) |
 | `AudioSource.PlayOneShot(clip, volumeScale)` | `sound:playOneShot(path [, volumeScale])` (up to `maxVoices` overlapping voices) |
+| Several `AudioSource`s on one GameObject, `GetComponents<AudioSource>()` | Add Component > Audio Source again (MCP `add_component`: the further one's entity in `added[].audio_source`); Lua `AudioSource.getAll(gameObject)` / `add(gameObject)` / `remove(source)`; a further one is a hidden child entity |
 | `AudioSource.PlayClipAtPoint(clip, position, volume)` | `AudioSource.playClipAtPoint(scene, path, position [, volume [, group]])` |
 | AudioClip Load Type Decompress On Load / Compressed In Memory / Streaming | `AudioSource.loadType` (`AudioLoadType.DecompressOnLoad` / `CompressedInMemory` / `Streaming`, default `Auto`: streams files of 1 MiB and more): per source, not a clip import setting |
 | `AudioImporter` | `.meta` section `import.audioImporter` (Inspector's Import Settings, MCP `set_audio_import_settings`) |
@@ -420,6 +423,8 @@ through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md)
 | `AudioSource.pitch` | `pitch` (= `speed`) |
 | `AudioSource.priority`, Project Settings Real / Virtual Voices | `priority` (0..256, 128); Project Settings > Audio Max Real Voices (32) and Max Voices (256) |
 | `AudioSource.ignoreListenerPause`, `AudioListener.pause`, `AudioListener.volume` | the same names (`AudioListener.volume` = `AudioSystem.globalVolume`) |
+| `AudioSource.spatialBlend` (2D / 3D slider) | `spatialBlend` (Inspector Spatial Blend, 0 = 2D .. 1 = 3D); every new Audio Source is a GameObject, 2D at 0; `sound3D` sets 0 or 1 |
+| A looping `AudioSource` made for one sound (`loop = true`, then `Play`) | `Audio.play(path, {loop = true})` -> `SoundHandle` (`stop()` ends it), or an Audio Source with `looping` |
 | volume fades (tweens, `DOFade`) | `sound:fadeIn(seconds)`, `fadeOut(seconds [, {pause = true}])`, `fadeTo(volume, seconds)` |
 
 ## Terrain

@@ -1479,6 +1479,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/RemoveComponentCmd.cpp
     ${EDITOR_DIR}/command/type/RemovePreservedComponentCmd.cpp
     ${EDITOR_DIR}/command/type/CreateEntityCmd.cpp
+    ${EDITOR_DIR}/command/type/AudioSourceSlotCmd.cpp
     ${EDITOR_DIR}/command/type/CreateTrackKeyCmd.cpp
     ${EDITOR_DIR}/command/type/AddActionFrameCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteEntityCmd.cpp
@@ -1507,6 +1508,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/SoundEventDocument.cpp
     ${EDITOR_DIR}/audio/SoundEventRender.cpp
     ${EDITOR_DIR}/window/InspectorSoundEvent.cpp
+    ${EDITOR_DIR}/window/InspectorAudioEffects.cpp
+    ${EDITOR_DIR}/audio/SourceEffectEdit.cpp
     ${EDITOR_DIR}/window/AudioCapturesWindow.cpp
     ${EDITOR_DIR}/window/SoundBrowserWindow.cpp
     ${EDITOR_DIR}/audio/SoundDrop.cpp

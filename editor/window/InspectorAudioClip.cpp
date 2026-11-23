@@ -24,6 +24,7 @@
 #include "audio/SoundTypes.h"
 #include "command/CommandHistory.h"
 #include "command/type/SetAssetMetaCmd.h"
+#include "component/AudioSourceComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "io/Data.h"
 #include "audio/AudioFileCheck.h"
@@ -511,6 +512,13 @@ void editor::InspectorWindow::drawAudioClipAsset(const fs::path& asset) {
                 if (ImGui::Selectable(type.name, view.edited.type == type.name)) view.edited.type = type.name;
             }
             ImGui::EndCombo();
+        }
+        // how sources whose Load Type is Auto, free voices, events and music hold the clip (S97 REQ-16)
+        {
+            static const char* const loadTypeLabels[] = {"Auto", "Decompress On Load", "Compressed In Memory", "Streaming"};
+            int loadType = (int)view.edited.loadType;
+            if (ImGui::Combo("Load Type", &loadType, loadTypeLabels, IM_ARRAYSIZE(loadTypeLabels))) view.edited.loadType = (AudioLoadType)loadType;
+            ImGui::SetItemTooltip("Auto streams files of 1 MiB and more and decodes smaller ones. An Audio Source's own Load Type wins.");
         }
         auto dragField = [](const char* label, double& value, double low, double high, const char* format) {
             ImGui::DragScalar(label, ImGuiDataType_Double, &value, 0.25f, &low, &high, format, ImGuiSliderFlags_AlwaysClamp);

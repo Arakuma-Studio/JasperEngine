@@ -22,6 +22,7 @@
 #include "manager/ObjectManager.h"
 #include "manager/SceneManager.h"
 #include "registry/EntityCloner.h"
+#include "object/sound/AudioSourceSlots.h"
 #include "component/Transform.h"
 #include "component/ScriptComponent.h"
 #include "component/ActionComponent.h"
@@ -479,8 +480,10 @@ int LuaBinding::luaFind(lua_State* L) {
     }
     for (Scene* scene : findScenes()) {
         for (Entity entity : scene->getEntityList()) {
+            // a further Audio Source's slot entity is a component in Unity, not a GameObject to find
             if (scene->isEntityCreated(entity) && scene->getEntityNameRef(entity) == path.back() &&
-                    scene->isEntityActiveInHierarchy(entity) && matchesPath(scene, entity, path, fromRoot)) {
+                    scene->isEntityActiveInHierarchy(entity) && matchesPath(scene, entity, path, fromRoot) &&
+                    !AudioSourceSlots::isSlot(scene, entity)) {
                 pushGameObject(L, scene, entity);
                 return 1;
             }

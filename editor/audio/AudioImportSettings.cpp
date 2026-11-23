@@ -5,6 +5,8 @@
 
 #include "SoundTypes.h"
 #include "command/type/SetAssetMetaCmd.h"
+#include "component/AudioSourceComponent.h"
+#include "pool/SoundPool.h"
 
 #include <algorithm>
 #include <cmath>
@@ -94,6 +96,15 @@ std::string keyList() {
     return out;
 }
 
+const char* const LOAD_TYPES = "auto, decompress_on_load, compressed_in_memory or streaming";
+
+// load_type's value, by SoundPool's names (Unity's are accepted too)
+bool loadTypeOf(const std::string& name, AudioLoadType& out, std::string& error) {
+    if (SoundPool::loadTypeFromName(name, out)) return true;
+    error = "load_type \"" + name + "\" is not a load type: " + LOAD_TYPES;
+    return false;
+}
+
 int64_t importFrames(double ms, unsigned int rate) {
     return (int64_t)std::llround(ms * (double)rate / 1000.0);
 }
@@ -102,7 +113,7 @@ int64_t importFrames(double ms, unsigned int rate) {
 
 const std::vector<std::string>& AudioImportSettings::keyNames() {
     static const std::vector<std::string> names = {"type", "gain_db", "trim_head_ms", "trim_tail_ms", "fade_in_ms", "fade_out_ms",
-                                                   "loop_start_ms", "loop_end_ms", "music"};
+                                                   "loop_start_ms", "loop_end_ms", "music", "load_type"};
     return names;
 }
 
@@ -116,11 +127,13 @@ bool AudioImportSettings::sameSound(const AudioImportSettings& other) const {
 }
 
 bool AudioImportSettings::operator==(const AudioImportSettings& other) const {
-    return type == other.type && sameSound(other) && music == other.music && YAML::Dump(unknown) == YAML::Dump(other.unknown);
+    return type == other.type && sameSound(other) && music == other.music && loadType == other.loadType &&
+           YAML::Dump(unknown) == YAML::Dump(other.unknown);
 }
 
 bool AudioImportSettings::isDefault() const {
-    return type.empty() && sameSound(AudioImportSettings()) && music.isDefault() && (!unknown.IsMap() || unknown.size() == 0);
+    return type.empty() && sameSound(AudioImportSettings()) && music.isDefault() && loadType == AudioLoadType::Auto &&
+           (!unknown.IsMap() || unknown.size() == 0);
 }
 
 bool AudioImportSettings::validate(std::string& error) const {
@@ -198,6 +211,12 @@ bool AudioImportSettings::parse(const YAML::Node& section, AudioImportSettings& 
                 error = "music.bpm must be within " + numberText(BPM_MIN) + " .. " + numberText(BPM_MAX);
                 return false;
             }
+        } else if (key == "load_type") {
+            if (!value.IsScalar()) {
+                error = std::string("load_type must be one of ") + LOAD_TYPES;
+                return false;
+            }
+            ok = loadTypeOf(value.as<std::string>(""), out.loadType, error);
         } else {
             if (!out.unknown.IsMap()) out.unknown = YAML::Node(YAML::NodeType::Map);
             out.unknown[key] = YAML::Clone(value);
@@ -241,6 +260,7 @@ YAML::Node AudioImportSettings::toYaml() const {
         block["first_beat_ms"] = numberText(music.firstBeatMs);
         node["music"] = block;
     }
+    if (loadType != AudioLoadType::Auto) node["load_type"] = std::string(SoundPool::loadTypeName(loadType));
     if (unknown.IsMap()) {
         for (const auto& entry : unknown) node[entry.first.as<std::string>("")] = YAML::Clone(entry.second);
     }
@@ -263,6 +283,7 @@ AudioImportSettings::Json AudioImportSettings::toJson() const {
     if (loopStartMs != -1.0) out["loop_start_ms"] = loopStartMs;
     if (loopEndMs != -1.0) out["loop_end_ms"] = loopEndMs;
     if (!music.isDefault()) out["music"] = music.toJson();
+    if (loadType != AudioLoadType::Auto) out["load_type"] = SoundPool::loadTypeName(loadType);
     return out;
 }
 
@@ -347,6 +368,15 @@ bool AudioImportSettings::apply(const Json& keys, std::string& error) {
                 error = "music.bpm must be within " + numberText(BPM_MIN) + " .. " + numberText(BPM_MAX) + " (null removes the block)";
                 return false;
             }
+        } else if (key == "load_type") {
+            if (value.is_null()) {
+                next.loadType = AudioLoadType::Auto;
+            } else if (!value.is_string()) {
+                error = std::string("load_type must be one of ") + LOAD_TYPES + " (null resets it)";
+                return false;
+            } else {
+                ok = loadTypeOf(value.get<std::string>(), next.loadType, error);
+            }
         }
         if (!ok) return false;
     }
@@ -377,6 +407,7 @@ bool AudioImportSettings::resolve(uint64_t fileFrames, unsigned int sampleRate, 
     out.fadeOutFrames = (uint32_t)importFrames(fadeOutMs, sampleRate);
     out.loopStartFrame = loopStartMs < 0.0 ? -1 : importFrames(loopStartMs, sampleRate);
     out.loopEndFrame = loopEndMs < 0.0 ? -1 : importFrames(loopEndMs, sampleRate);
+    out.loadType = loadType;
     if (!music.isDefault()) {
         out.bpm = (float)music.bpm;
         out.beatsPerBar = music.beatsPerBar;
