@@ -22,7 +22,7 @@ using namespace jasperengine::editor::test;
 
 namespace {
 
-    YAML::Node componentOf(const YAML::Node& root, const std::string& entityName, const std::string& key) {
+    YAML::Node spriteSheetMigrationComponentOf(const YAML::Node& root, const std::string& entityName, const std::string& key) {
         for (const YAML::Node& entity : root["entities"]) {
             if (entity["name"] && entity["name"].as<std::string>() == entityName) return entity["components"][key];
         }
@@ -56,10 +56,10 @@ TEST(SpriteSheetMigration, SceneBeforeTheBumpKeepsItsSprites) {
     EXPECT_EQ(saved["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
     EXPECT_GT(StreamMigrations::currentVersion(DocumentKind::Scene), 7);
     std::string why;
-    EXPECT_TRUE(structurallyEqual(componentOf(saved, "Hero", "sprite"), componentOf(original, "Hero", "sprite"), &why)) << why;
-    EXPECT_TRUE(structurallyEqual(componentOf(saved, "Hero", "spriteanimation"), componentOf(original, "Hero", "spriteanimation"), &why)) << why;
+    EXPECT_TRUE(structurallyEqual(spriteSheetMigrationComponentOf(saved, "Hero", "sprite"), spriteSheetMigrationComponentOf(original, "Hero", "sprite"), &why)) << why;
+    EXPECT_TRUE(structurallyEqual(spriteSheetMigrationComponentOf(saved, "Hero", "spriteanimation"), spriteSheetMigrationComponentOf(original, "Hero", "spriteanimation"), &why)) << why;
     // the sprite's texture is still saved (a legacy sprite keeps its mesh texture)
-    EXPECT_TRUE(componentOf(saved, "Hero", "mesh")["submeshes"][0]["material"]["baseColorTexture"]);
+    EXPECT_TRUE(spriteSheetMigrationComponentOf(saved, "Hero", "mesh")["submeshes"][0]["material"]["baseColorTexture"]);
     // and a second save is byte for byte the first
     DecodedScene again = decodeSceneText(encodeSceneText(decoded));
     EXPECT_EQ(encodeSceneText(again), encodeSceneText(decoded));

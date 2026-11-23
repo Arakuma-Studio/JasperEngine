@@ -33,7 +33,7 @@ namespace {
         return text;
     }
 
-    double ms(std::chrono::steady_clock::time_point start) {
+    double dataSafetyBenchMs(std::chrono::steady_clock::time_point start) {
         return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     }
 
@@ -47,10 +47,10 @@ TEST(AutosaveEncodeBench, MediumSceneEncode) {
     for (int run = 0; run < 7; run++) {
         const auto start = std::chrono::steady_clock::now();
         const YAML::Node root = Stream::encodeSceneProject(nullptr, decoded.scene.get());
-        encode = std::min(encode, ms(start));
+        encode = std::min(encode, dataSafetyBenchMs(start));
         const auto dumpStart = std::chrono::steady_clock::now();
         const std::string text = DocumentFiles::text(root);
-        dump = std::min(dump, ms(dumpStart));
+        dump = std::min(dump, dataSafetyBenchMs(dumpStart));
         ASSERT_FALSE(text.empty());
     }
     std::printf("[ bench    ] autosave of 2000 entities: encode %.2f ms (main thread), text %.2f ms (worker)\n", encode, dump);
@@ -78,7 +78,7 @@ TEST(LoadReportOverheadBench, DecodeWithReport) {
             Stream::decodeSceneProject(&scene, root, true);
             Stream::decodeSceneProjectEntities(nullptr, &scene, root);
         }
-        const double elapsed = ms(start);
+        const double elapsed = dataSafetyBenchMs(start);
         delete scene.scene;
         return elapsed;
     };

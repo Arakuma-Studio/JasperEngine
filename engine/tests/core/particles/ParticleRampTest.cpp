@@ -24,7 +24,7 @@ namespace {
     const std::vector<Rgba8> kRamp = {{20, 10, 30, 255}, {70, 30, 40, 255}, {140, 40, 30, 255}, {200, 80, 30, 255},
                                       {240, 140, 40, 255}, {255, 200, 90, 255}, {255, 240, 170, 255}, {255, 255, 255, 255}};
 
-    MinMaxGradient ramp(){
+    MinMaxGradient particleRampRamp(){
         MinMaxGradient g;
         g.mode = GradientValueMode::Ramp;
         g.rampColors = kRamp;
@@ -36,7 +36,7 @@ namespace {
 }
 
 TEST(ParticleRamp, StepsBiasAndReverse){
-    MinMaxGradient g = ramp();
+    MinMaxGradient g = particleRampRamp();
     // pixelfx's at(): floor(t n), never blended
     EXPECT_EQ(g.rampStep(0.0f, 8), 0);
     EXPECT_EQ(g.rampStep(0.124f, 8), 0);
@@ -68,7 +68,7 @@ TEST(ParticleRamp, StartColorRandomStepIsUniform){
     ParticleEffectDocument d;
     d.maxParticles = 100000;
     d.main.startLifetime = MinMaxCurve(10.0f);
-    d.main.startColor = ramp();
+    d.main.startColor = particleRampRamp();
     d.emission.rateOverTime = MinMaxCurve(0.0f);
     Burst b;
     b.count = MinMaxCurve(100000.0f);
@@ -103,7 +103,7 @@ TEST(ParticleRamp, PackedColourIsTheStepsBytes){
     b.count = MinMaxCurve(1.0f);
     d.emission.bursts = {b};
     d.colorOverLifetime.present = true;
-    d.colorOverLifetime.color = ramp();
+    d.colorOverLifetime.color = particleRampRamp();
     d.pixelArt.present = true;
     d.renderer.renderMode = RenderMode::Pixel;
     d.interpolate = false;

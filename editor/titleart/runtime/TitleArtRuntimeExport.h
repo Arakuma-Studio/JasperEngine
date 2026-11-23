@@ -23,6 +23,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -71,14 +72,20 @@ namespace jasperengine::editor {
         std::vector<std::string> warnings;      // W-TITLEART-PREBAKE-COUNT
         size_t bytes = 0;
         size_t glyphCells = 0;                  // cells of the prebaked glyph atlases (R32)
+        // a render met a Title Art program still being built: call again on a later frame with this
+        // result, which renders only what is left (S80 Deviation 61)
+        bool notReady = false;
+        std::map<uint64_t, std::string> keys;   // state key -> file written (dedup by state, R11)
+        std::set<size_t> glyphsDone;            // instances whose glyph atlas was prebaked
+        std::set<size_t> instancesDone;
     };
     // renders and writes the prebaked initial states of the plan's Realtime and Glyph Atlas
     // instances into `assetsDst` (the build's assets root, mirroring the project's paths below
     // `assetsPrefix`), and the Glyph Atlas instances' atlases (R32). The keys come from the build's
     // copies of the documents (the player hashes those: run it after the fonts' relink). A 3D
     // title prebakes once per S86 tier it renders at on `platforms` (its state hash holds the tier)
-    TitleArtPrebakeResult writeTitleArtPrebakes(Project* project, const TitleArtExportPlan& plan, const std::filesystem::path& assetsDst,
-                                                const std::vector<std::string>& platforms);
+    void writeTitleArtPrebakes(Project* project, const TitleArtExportPlan& plan, const std::filesystem::path& assetsDst,
+                               const std::vector<std::string>& platforms, TitleArtPrebakeResult& result);
     // R32 for one Glyph Atlas instance: its initial text and each digit at every digit place in it
     // render in the editor (at most 1,024 cells); the atlas's pages, plates and manifest ship as
     // <title>.glyphs-<style>.json beside the title

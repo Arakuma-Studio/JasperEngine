@@ -35,7 +35,7 @@ namespace {
     }
 
     // A canvas, transparent ({0, 0, 0, 0}) but for `opaque`, whose pixels differ by position and seed
-    std::shared_ptr<const PixelImage> frame(int w, int h, IntRect opaque, int seed) {
+    std::shared_ptr<const PixelImage> spritePackerFrame(int w, int h, IntRect opaque, int seed) {
         auto image = std::make_shared<PixelImage>(w, h);
         for (int y = opaque.y; y < opaque.y + opaque.h; y++) {
             for (int x = opaque.x; x < opaque.x + opaque.w; x++) {
@@ -46,7 +46,7 @@ namespace {
         return image;
     }
 
-    std::shared_ptr<const PixelImage> opaqueFrame(int w, int h, int seed) { return frame(w, h, {0, 0, w, h}, seed); }
+    std::shared_ptr<const PixelImage> opaqueFrame(int w, int h, int seed) { return spritePackerFrame(w, h, {0, 0, w, h}, seed); }
 
     PackInputFrame input(std::string name, std::shared_ptr<const PixelImage> image, bool noTrim = false) {
         return {std::move(name), std::move(image), noTrim};
@@ -105,7 +105,7 @@ namespace {
                 const int w = pick(rng, 4, 40), h = pick(rng, 4, 40);
                 const int ow = pick(rng, 1, w), oh = pick(rng, 1, h);
                 const IntRect opaque{pick(rng, 0, w - ow), pick(rng, 0, h - oh), ow, oh};
-                member.frames.push_back(input(member.path + " " + std::to_string(f), frame(w, h, opaque, counter++)));
+                member.frames.push_back(input(member.path + " " + std::to_string(f), spritePackerFrame(w, h, opaque, counter++)));
             }
             members.push_back(std::move(member));
         }
@@ -293,7 +293,7 @@ TEST(SpritePackerTest, TrimOffsetsRestoreEachFrame) {
     std::vector<PackMember> members = randomMembers(11, 3, 30);
     // a fully transparent frame takes no space; a bordered one keeps its transparent edges
     members[0].frames.push_back(input("empty", std::make_shared<PixelImage>(12, 9)));
-    members[1].frames.push_back(input("bordered", frame(16, 16, {4, 4, 8, 8}, 999), true));
+    members[1].frames.push_back(input("bordered", spritePackerFrame(16, 16, {4, 4, 8, 8}, 999), true));
     const PackResult result = pack(members, settings);
     expectValidLayout(result, settings);
 
@@ -332,13 +332,13 @@ TEST(SpritePackerTest, TrimOffsetsRestoreEachFrame) {
 
 TEST(SpritePackerTest, DuplicatesShareOneRect) {
     const IntRect inner{0, 0, 6, 5};
-    const auto a = frame(6, 5, inner, 1);
+    const auto a = spritePackerFrame(6, 5, inner, 1);
     // the same pixels at another place of a larger canvas: identical once trimmed
     auto shifted = std::make_shared<PixelImage>(10, 9);
     shifted->blit(*a, 3, 2);
     std::vector<PackMember> members(2);
     members[0].path = "a.aseprite";
-    members[0].frames = {input("a", a), input("shifted", shifted), input("other", frame(6, 5, inner, 2))};
+    members[0].frames = {input("a", a), input("shifted", shifted), input("other", spritePackerFrame(6, 5, inner, 2))};
     members[1].path = "b.aseprite";
     members[1].frames = {input("again", a)};
     const PackResult result = pack(members, PackSettings{});
@@ -409,7 +409,7 @@ TEST(SpritePackerTest, GeneratedCorpusUsesMostOfThePages) {
         const int w = pick(rng, 8, 96), h = pick(rng, 8, 96);
         const int ow = pick(rng, w / 2, w), oh = pick(rng, h / 2, h);
         const IntRect opaque{pick(rng, 0, w - ow), pick(rng, 0, h - oh), ow, oh};
-        member.frames.push_back(input("f" + std::to_string(i), frame(w, h, opaque, i)));
+        member.frames.push_back(input("f" + std::to_string(i), spritePackerFrame(w, h, opaque, i)));
     }
     PackSettings settings;
     settings.padding = 0;

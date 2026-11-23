@@ -18,7 +18,7 @@ using namespace jasperengine::titleanim;
 
 namespace {
 
-    using Names = std::vector<std::string>;
+    using TitleAnimMarkersNames = std::vector<std::string>;
 
     // EventCrossing's clip: 1 s, markers at 0, 0.25, 0.5 and 1 (the end)
     CompiledTitleAnimation eventAnimation(AnimWrap wrap, double loopStart = 0.0){
@@ -37,10 +37,10 @@ namespace {
         return a;
     }
 
-    Names crossed(const CompiledTitleAnimation& a, double from, double to, bool start = false){
+    TitleAnimMarkersNames titleAnimMarkersCrossed(const CompiledTitleAnimation& a, double from, double to, bool start = false){
         std::vector<CrossedMarker> out;
         collectCrossedMarkers(a, from, to, start, out);
-        Names names;
+        TitleAnimMarkersNames names;
         for (const CrossedMarker& c : out) names.push_back(a.markers[c.index].name);
         return names;
     }
@@ -49,30 +49,30 @@ namespace {
 
 TEST(TitleAnimMarkersTest, CrossingCases){
     const CompiledTitleAnimation once = eventAnimation(AnimWrap::Once);
-    EXPECT_EQ(crossed(once, 0.0, 0.3), (Names{"at25"}));
-    EXPECT_EQ(crossed(once, 0.0, 0.3, true), (Names{"at0", "at25"}));
-    EXPECT_EQ(crossed(once, 0.25, 0.5), (Names{"at50"}));
-    EXPECT_EQ(crossed(once, 0.6, 5.0), (Names{"at100"}));
-    EXPECT_EQ(crossed(once, 0.3, 0.3), (Names{}));
-    EXPECT_EQ(crossed(once, 1.0, 0.2), (Names{"at50", "at25"}));
-    EXPECT_EQ(crossed(once, 1.0, 0.2, true), (Names{"at100", "at50", "at25"}));
-    EXPECT_EQ(crossed(once, 0.5, -1.0), (Names{"at25", "at0"}));
-    EXPECT_EQ(crossed(once, 1.0, 1.5), (Names{}));
+    EXPECT_EQ(titleAnimMarkersCrossed(once, 0.0, 0.3), (TitleAnimMarkersNames{"at25"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(once, 0.0, 0.3, true), (TitleAnimMarkersNames{"at0", "at25"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(once, 0.25, 0.5), (TitleAnimMarkersNames{"at50"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(once, 0.6, 5.0), (TitleAnimMarkersNames{"at100"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(once, 0.3, 0.3), (TitleAnimMarkersNames{}));
+    EXPECT_EQ(titleAnimMarkersCrossed(once, 1.0, 0.2), (TitleAnimMarkersNames{"at50", "at25"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(once, 1.0, 0.2, true), (TitleAnimMarkersNames{"at100", "at50", "at25"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(once, 0.5, -1.0), (TitleAnimMarkersNames{"at25", "at0"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(once, 1.0, 1.5), (TitleAnimMarkersNames{}));
 
     const CompiledTitleAnimation loop = eventAnimation(AnimWrap::Loop);
-    EXPECT_EQ(crossed(loop, 0.9, 1.3), (Names{"at100", "at0", "at25"}));
-    EXPECT_EQ(crossed(loop, 0.6, 1.0), (Names{"at100", "at0"}));
-    EXPECT_EQ(crossed(loop, 1.0, 1.2), (Names{}));
-    EXPECT_EQ(crossed(loop, 0.0, 0.1, true), (Names{"at0"}));
-    EXPECT_EQ(crossed(loop, 1.3, 0.9), (Names{"at25", "at0", "at100"}));
-    EXPECT_EQ(crossed(loop, 1.0, 0.9, true), (Names{"at100"}));
-    EXPECT_EQ(crossed(loop, 0.3, 3.6), (Names{"at50", "at100", "at0", "at25"}));
-    EXPECT_EQ(crossed(loop, 3.6, 0.3), (Names{"at50", "at25", "at0", "at100"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(loop, 0.9, 1.3), (TitleAnimMarkersNames{"at100", "at0", "at25"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(loop, 0.6, 1.0), (TitleAnimMarkersNames{"at100", "at0"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(loop, 1.0, 1.2), (TitleAnimMarkersNames{}));
+    EXPECT_EQ(titleAnimMarkersCrossed(loop, 0.0, 0.1, true), (TitleAnimMarkersNames{"at0"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(loop, 1.3, 0.9), (TitleAnimMarkersNames{"at25", "at0", "at100"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(loop, 1.0, 0.9, true), (TitleAnimMarkersNames{"at100"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(loop, 0.3, 3.6), (TitleAnimMarkersNames{"at50", "at100", "at0", "at25"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(loop, 3.6, 0.3), (TitleAnimMarkersNames{"at50", "at25", "at0", "at100"}));
 
     const CompiledTitleAnimation pingPong = eventAnimation(AnimWrap::PingPong);
-    EXPECT_EQ(crossed(pingPong, 0.9, 1.6), (Names{"at100", "at50"}));
-    EXPECT_EQ(crossed(pingPong, 1.6, 2.1), (Names{"at25", "at0"}));
-    EXPECT_EQ(crossed(pingPong, 0.1, 5.0), (Names{"at25", "at50", "at100", "at0"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(pingPong, 0.9, 1.6), (TitleAnimMarkersNames{"at100", "at50"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(pingPong, 1.6, 2.1), (TitleAnimMarkersNames{"at25", "at0"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(pingPong, 0.1, 5.0), (TitleAnimMarkersNames{"at25", "at50", "at100", "at0"}));
 
     // positions order markers on the time line
     std::vector<CrossedMarker> out;
@@ -88,7 +88,7 @@ TEST(TitleAnimMarkersTest, CrossingCases){
     cut.duration = 0.4;
     cut.markers = {cut.markers[0]};
     cut.markers[0].time = 0.5f;
-    EXPECT_EQ(crossed(cut, 0.0, 3.0, true), (Names{}));
+    EXPECT_EQ(titleAnimMarkersCrossed(cut, 0.0, 3.0, true), (TitleAnimMarkersNames{}));
 }
 
 TEST(TitleAnimMarkersTest, LoopSectionOncePerPass){
@@ -114,7 +114,7 @@ TEST(TitleAnimMarkersTest, LoopSectionOncePerPass){
         t += 0.25;
     }
     // first pass: onLoop at 0.5, onBeat at 1.5; each later pass (1.5 s): onLoop at its start, onBeat 1 s in
-    EXPECT_EQ(fired, (Names{"onLoop", "onBeat", "onLoop", "onBeat", "onLoop", "onBeat", "onLoop", "onBeat"}));
+    EXPECT_EQ(fired, (TitleAnimMarkersNames{"onLoop", "onBeat", "onLoop", "onBeat", "onLoop", "onBeat", "onLoop", "onBeat"}));
 
     // ping-pong over [0.5, 2]: the turning points once each
     a.wrap = AnimWrap::PingPong;
@@ -129,7 +129,7 @@ TEST(TitleAnimMarkersTest, LoopSectionOncePerPass){
         t += 0.25;
     }
     // 0.5 onLoop, 1.5 onBeat, back: 2.5 onBeat (local 1.5), 3.5 onLoop (local 0.5), forward: 4.5 onBeat
-    EXPECT_EQ(fired, (Names{"onLoop", "onBeat", "onBeat", "onLoop", "onBeat"}));
+    EXPECT_EQ(fired, (TitleAnimMarkersNames{"onLoop", "onBeat", "onBeat", "onLoop", "onBeat"}));
 }
 
 TEST(TitleAnimMarkersTest, PreLoopMarkerFirstPassOnly){
@@ -140,8 +140,8 @@ TEST(TitleAnimMarkersTest, PreLoopMarkerFirstPassOnly){
     punch.time = 0.2f;
     punch.name = "onPunch";
     a.markers.push_back(punch);
-    EXPECT_EQ(crossed(a, 0.0, 10.0, true), (Names{"onPunch"}));
-    EXPECT_EQ(crossed(a, 2.0, 10.0), (Names{})) << "loop passes never reach a time before loop_start";
+    EXPECT_EQ(titleAnimMarkersCrossed(a, 0.0, 10.0, true), (TitleAnimMarkersNames{"onPunch"}));
+    EXPECT_EQ(titleAnimMarkersCrossed(a, 2.0, 10.0), (TitleAnimMarkersNames{})) << "loop passes never reach a time before loop_start";
 }
 
 TEST(TitleAnimMarkersTest, SeekFiresNone){

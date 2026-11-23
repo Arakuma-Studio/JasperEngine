@@ -66,7 +66,7 @@ namespace {
         EXPECT_NEAR(p.y, y, 1e-9) << what;
     }
 
-    void expectRect(const TitleRect& r, double x, double y, double w, double h, const char* what) {
+    void titleTextEditExpectRect(const TitleRect& r, double x, double y, double w, double h, const char* what) {
         EXPECT_NEAR(r.x, x, 1e-9) << what;
         EXPECT_NEAR(r.y, y, 1e-9) << what;
         EXPECT_NEAR(r.width, w, 1e-9) << what;
@@ -202,11 +202,11 @@ TEST(TitleTextEditTest, SelectionCoversEachLineAndTheBreak) {
     const TextCaretGeometry g(layout, "AB\nCDE");
     std::vector<TitleRect> rects = g.selection(4, 1);
     ASSERT_EQ(rects.size(), 2u);
-    expectRect(rects[0], 10, -5, 15, 20, "B and a stub for the selected break");
-    expectRect(rects[1], 0, -30, 10, 20, "C");
+    titleTextEditExpectRect(rects[0], 10, -5, 15, 20, "B and a stub for the selected break");
+    titleTextEditExpectRect(rects[1], 0, -30, 10, 20, "C");
     rects = g.selection(2, 3);
     ASSERT_EQ(rects.size(), 1u) << "only the break";
-    expectRect(rects[0], 20, -5, 5, 20, "the stub");
+    titleTextEditExpectRect(rects[0], 20, -5, 5, 20, "the stub");
     EXPECT_TRUE(g.selection(2, 2).empty());
 }
 
@@ -228,7 +228,7 @@ TEST(TitleTextEditTest, VerticalCaretSelectionAndHitTestRunDownColumns) {
     EXPECT_EQ(g.hitTest({-12, -8}), 4);
     const std::vector<TitleRect> rects = g.selection(0, 2);
     ASSERT_EQ(rects.size(), 1u);
-    expectRect(rects[0], -5, -20, 10, 20, "both cells");
+    titleTextEditExpectRect(rects[0], -5, -20, 10, 20, "both cells");
     const std::vector<LayerSegment> lines = g.underline(0, 1);
     ASSERT_EQ(lines.size(), 1u);
     expectPoint(lines[0].a, 4.4, 0, "underline on the column's right side");

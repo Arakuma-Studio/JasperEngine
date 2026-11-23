@@ -11,14 +11,14 @@ using namespace jasperengine::titleart;
 
 namespace {
 
-    TitleArtDoc docOf(const Json& layers) {
+    TitleArtDoc drawTreeDocOf(const Json& layers) {
         Json root = Json{{"format", TITLE_ART_FORMAT}, {"version", 1}, {"layers", layers}};
         TitleArtParseResult parsed = parseTitleArtJson(root);
         EXPECT_TRUE(parsed.ok);
         return parsed.doc;
     }
 
-    Json layer(const char* id, const char* type, Json extra = Json::object()) {
+    Json drawTreeLayer(const char* id, const char* type, Json extra = Json::object()) {
         Json l = Json{{"id", id}, {"type", type}, {"name", id}};
         for (auto it = extra.begin(); it != extra.end(); ++it) l[it.key()] = it.value();
         return l;
@@ -40,15 +40,15 @@ namespace {
 }
 
 TEST_F(DrawTreeTest, TheVisibilityRule) {
-    const TitleArtDoc doc = docOf(Json::array({
-        layer("00000001", "text"),
-        layer("00000002", "text", {{"visible", false}}),
-        layer("00000003", "text", {{"opacity", 0}}),
-        layer("00000004", "text", {{"guide", true}}),
-        layer("00000005", "group", {{"visible", false}, {"children", Json::array({layer("00000006", "shape")})}}),
-        layer("00000007", "group", {{"children", Json::array({layer("00000008", "shape", {{"visible", false}})})}}),
-        layer("00000009", "adjustment"),
-        layer("0000000a", "hologram"),
+    const TitleArtDoc doc = drawTreeDocOf(Json::array({
+        drawTreeLayer("00000001", "text"),
+        drawTreeLayer("00000002", "text", {{"visible", false}}),
+        drawTreeLayer("00000003", "text", {{"opacity", 0}}),
+        drawTreeLayer("00000004", "text", {{"guide", true}}),
+        drawTreeLayer("00000005", "group", {{"visible", false}, {"children", Json::array({drawTreeLayer("00000006", "shape")})}}),
+        drawTreeLayer("00000007", "group", {{"children", Json::array({drawTreeLayer("00000008", "shape", {{"visible", false}})})}}),
+        drawTreeLayer("00000009", "adjustment"),
+        drawTreeLayer("0000000a", "hologram"),
     }));
     EXPECT_EQ(ids(buildDrawTree(doc, {})), "01 09") << "hidden, transparent, guide, hidden group, empty group and unknown type drop";
     DrawTreeOptions guides;
@@ -60,27 +60,27 @@ TEST_F(DrawTreeTest, TheVisibilityRule) {
 }
 
 TEST_F(DrawTreeTest, ClipGroups) {
-    const TitleArtDoc doc = docOf(Json::array({
-        layer("00000001", "text", {{"clip", true}}),                    // no base: draws unclipped
-        layer("00000002", "shape"),                                      // a base
-        layer("00000003", "image", {{"clip", true}}),
-        layer("00000004", "text", {{"clip", true}}),
-        layer("00000005", "text", {{"visible", false}}),                // a hidden base
-        layer("00000006", "text", {{"clip", true}}),                    // hides with it
-        layer("00000007", "adjustment"),                                 // an adjustment is no base
-        layer("00000008", "text", {{"clip", true}}),
-        layer("00000009", "group", {{"children", Json::array({layer("0000000a", "shape")})}}),
-        layer("0000000b", "shape", {{"clip", true}}),
+    const TitleArtDoc doc = drawTreeDocOf(Json::array({
+        drawTreeLayer("00000001", "text", {{"clip", true}}),                    // no base: draws unclipped
+        drawTreeLayer("00000002", "shape"),                                      // a base
+        drawTreeLayer("00000003", "image", {{"clip", true}}),
+        drawTreeLayer("00000004", "text", {{"clip", true}}),
+        drawTreeLayer("00000005", "text", {{"visible", false}}),                // a hidden base
+        drawTreeLayer("00000006", "text", {{"clip", true}}),                    // hides with it
+        drawTreeLayer("00000007", "adjustment"),                                 // an adjustment is no base
+        drawTreeLayer("00000008", "text", {{"clip", true}}),
+        drawTreeLayer("00000009", "group", {{"children", Json::array({drawTreeLayer("0000000a", "shape")})}}),
+        drawTreeLayer("0000000b", "shape", {{"clip", true}}),
     }));
     EXPECT_EQ(ids(buildDrawTree(doc, {})), "01 02[03 04] 07 08 09(0a)[0b]");
 }
 
 TEST_F(DrawTreeTest, IsolationKeepsThePathToTheLayer) {
-    const TitleArtDoc doc = docOf(Json::array({
-        layer("00000001", "text"),
-        layer("00000002", "group", {{"visible", false}, {"children", Json::array({
-            layer("00000003", "shape"), layer("00000004", "text", {{"visible", false}}),
-            layer("00000005", "group", {{"children", Json::array({layer("00000006", "shape"), layer("00000007", "shape")})}})})}}),
+    const TitleArtDoc doc = drawTreeDocOf(Json::array({
+        drawTreeLayer("00000001", "text"),
+        drawTreeLayer("00000002", "group", {{"visible", false}, {"children", Json::array({
+            drawTreeLayer("00000003", "shape"), drawTreeLayer("00000004", "text", {{"visible", false}}),
+            drawTreeLayer("00000005", "group", {{"children", Json::array({drawTreeLayer("00000006", "shape"), drawTreeLayer("00000007", "shape")})}})})}}),
     }));
     DrawTreeOptions alone;
     alone.isolateLayer = "00000004";
@@ -94,8 +94,8 @@ TEST_F(DrawTreeTest, IsolationKeepsThePathToTheLayer) {
 }
 
 TEST_F(DrawTreeTest, NodesKnowTheirDepth) {
-    const TitleArtDoc doc = docOf(Json::array({layer("00000001", "group", {{"children", Json::array({
-        layer("00000002", "group", {{"children", Json::array({layer("00000003", "text")})}})})}})}));
+    const TitleArtDoc doc = drawTreeDocOf(Json::array({drawTreeLayer("00000001", "group", {{"children", Json::array({
+        drawTreeLayer("00000002", "group", {{"children", Json::array({drawTreeLayer("00000003", "text")})}})})}})}));
     const std::vector<DrawNode> nodes = buildDrawTree(doc, {});
     ASSERT_EQ(nodes.size(), 1u);
     EXPECT_EQ(nodes[0].children[0].children[0].depth, 2);

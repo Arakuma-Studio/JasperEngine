@@ -9,6 +9,7 @@
 #include "util/UIUtils.h"
 #include "window/ProjectWindow.h"
 #include "external/IconsFontAwesome6.h"
+#include "util/StringUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -21,11 +22,6 @@ static constexpr float prefabsDialogButtonWidth = 120.0f;
 static constexpr ImGuiWindowFlags prefabsNoScrollFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
 static const ImVec4 MISSING_COLOR = ImVec4(0.96f, 0.36f, 0.36f, 1.0f);
-
-static std::string lowered(std::string text) {
-    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-    return text;
-}
 
 // "Level 1 (2), Level 2 (closed, 1 + 3 nested)"
 static std::string usageText(const PrefabUsage& usage, bool missing) {
@@ -165,7 +161,7 @@ void PrefabsWindow::drawPrefabs() {
                        "instances follow a prefab that is renamed or moved.");
     ImGui::Spacing();
     UIUtils::searchInput("##PrefabsFilter", "Search prefabs", m_filter, sizeof(m_filter), false, nullptr, Theme::dpi(260.0f));
-    const std::string filter = lowered(m_filter);
+    const std::string filter = StringUtils::toLowerAscii(m_filter);
     ImGui::Spacing();
 
     const float footerY = ImGui::GetWindowHeight() - style.WindowPadding.y - ImGui::GetFrameHeight();
@@ -182,8 +178,8 @@ void PrefabsWindow::drawPrefabs() {
             ImGui::TableHeadersRow();
 
             for (PrefabEntry& entry : m_entries) {
-                if (!filter.empty() && lowered(entry.path.generic_string()).find(filter) == std::string::npos &&
-                        lowered(entry.guid).find(filter) == std::string::npos) {
+                if (!filter.empty() && StringUtils::toLowerAscii(entry.path.generic_string()).find(filter) == std::string::npos &&
+                        StringUtils::toLowerAscii(entry.guid).find(filter) == std::string::npos) {
                     continue;
                 }
                 const bool locked = !entry.usedBy.empty();

@@ -18,7 +18,7 @@ using namespace jasperengine::particles;
 
 namespace {
 
-    const qa::Json& rowOf(const qa::Json& rows, const std::string& id){
+    const qa::Json& particlePixelChecksRowOf(const qa::Json& rows, const std::string& id){
         static const qa::Json none;
         for (const qa::Json& row : rows){
             if (row["id"] == id) return row;
@@ -33,20 +33,20 @@ TEST(ParticlePixelChecks, OffGridIsMeasuredOnThePixelView){
     ParticleMeasurements m;
     ParticleCheckRequest request;
     // not a pixel effect: nothing to measure
-    EXPECT_EQ(rowOf(ParticleEffectChecks::rows(m, request), "off_grid")["status"], "SKIP");
+    EXPECT_EQ(particlePixelChecksRowOf(ParticleEffectChecks::rows(m, request), "off_grid")["status"], "SKIP");
     // a pixel effect previewed in perspective: SKIP, naming the pixel view
     m.pixelEffect = true;
-    const qa::Json perspective = rowOf(ParticleEffectChecks::rows(m, request), "off_grid");
+    const qa::Json perspective = particlePixelChecksRowOf(ParticleEffectChecks::rows(m, request), "off_grid");
     EXPECT_EQ(perspective["status"], "SKIP");
     EXPECT_NE(perspective["limited_by"].get<std::string>().find("pixel"), std::string::npos);
     // drawn on the grid
     m.pixelGrid = true;
     m.pixelsDrawn = 400;
-    EXPECT_EQ(rowOf(ParticleEffectChecks::rows(m, request), "off_grid")["status"], "PASS");
+    EXPECT_EQ(particlePixelChecksRowOf(ParticleEffectChecks::rows(m, request), "off_grid")["status"], "PASS");
     // base pixels between grid lines
     m.offGrid = 37;
     m.offGridAt = {{0.25, {3, 4}}};
-    const qa::Json failed = rowOf(ParticleEffectChecks::rows(m, request), "off_grid");
+    const qa::Json failed = particlePixelChecksRowOf(ParticleEffectChecks::rows(m, request), "off_grid");
     EXPECT_EQ(failed["status"], "FAIL");
     EXPECT_EQ(failed["measured"]["off_grid"], 37);
     EXPECT_NE(failed["fix_hint"].get<std::string>().find("Snap to Pixel Grid"), std::string::npos);
@@ -59,7 +59,7 @@ TEST(ParticlePixelChecks, S48LintsRunOnThePixelCells){
     // no cells yet: SKIP, naming the pixel view
     qa::Json rows = ParticleEffectChecks::rows(m, ParticleCheckRequest());
     for (const char* id : {"off_palette", "partial_alpha", "spill", "one_shot_end", "loop_seam", "determinism"}){
-        const qa::Json& row = rowOf(rows, id);
+        const qa::Json& row = particlePixelChecksRowOf(rows, id);
         EXPECT_EQ(row["status"], "SKIP") << id;
         EXPECT_NE(row["limited_by"].get<std::string>().find("pixel view"), std::string::npos) << id;
     }
@@ -80,15 +80,15 @@ TEST(ParticlePixelChecks, S48LintsRunOnThePixelCells){
     m.pixelFrames[0].set(13, 12, {100, 60, 20, 128});
     m.pixelFrames[1].set(42, 12, {255, 255, 255, 255});
     rows = ParticleEffectChecks::rows(m, ParticleCheckRequest());
-    EXPECT_EQ(rowOf(rows, "partial_alpha")["status"], "FAIL");
-    EXPECT_EQ(rowOf(rows, "spill")["status"], "WARN");
-    EXPECT_EQ(rowOf(rows, "one_shot_end")["status"], "WARN");
-    EXPECT_EQ(rowOf(rows, "off_palette")["status"], "SKIP");
-    EXPECT_EQ(rowOf(rows, "loop_seam")["status"], "SKIP");
-    EXPECT_EQ(rowOf(rows, "determinism")["status"], "SKIP");
+    EXPECT_EQ(particlePixelChecksRowOf(rows, "partial_alpha")["status"], "FAIL");
+    EXPECT_EQ(particlePixelChecksRowOf(rows, "spill")["status"], "WARN");
+    EXPECT_EQ(particlePixelChecksRowOf(rows, "one_shot_end")["status"], "WARN");
+    EXPECT_EQ(particlePixelChecksRowOf(rows, "off_palette")["status"], "SKIP");
+    EXPECT_EQ(particlePixelChecksRowOf(rows, "loop_seam")["status"], "SKIP");
+    EXPECT_EQ(particlePixelChecksRowOf(rows, "determinism")["status"], "SKIP");
     for (const char* id : {"partial_alpha", "spill", "one_shot_end"}){
-        EXPECT_EQ(rowOf(rows, id)["kind"], "content") << id;
-        EXPECT_TRUE(rowOf(rows, id).contains("fix_hint")) << id;
+        EXPECT_EQ(particlePixelChecksRowOf(rows, id)["kind"], "content") << id;
+        EXPECT_TRUE(particlePixelChecksRowOf(rows, id).contains("fix_hint")) << id;
     }
 
     // their fixed twins pass
@@ -97,7 +97,7 @@ TEST(ParticlePixelChecks, S48LintsRunOnThePixelCells){
     m.pixelFrames[2].fill({0, 0, 0, 0});
     rows = ParticleEffectChecks::rows(m, ParticleCheckRequest());
     for (const char* id : {"partial_alpha", "spill", "one_shot_end"})
-        EXPECT_EQ(rowOf(rows, id)["status"], "PASS") << id;
+        EXPECT_EQ(particlePixelChecksRowOf(rows, id)["status"], "PASS") << id;
 }
 
 TEST(ParticlePixelChecks, AnAnalyticEffectsParticlesCount){
@@ -116,5 +116,5 @@ TEST(ParticlePixelChecks, AnAnalyticEffectsParticlesCount){
     std::string error;
     ASSERT_TRUE(ParticleEffectPreview::runCpu(request, report, error)) << error;
     EXPECT_GT(report["metrics"]["count"]["peak"].get<uint32_t>(), 10u) << "the twin's live particles";
-    EXPECT_EQ(rowOf(report["checks"], "off_grid")["status"], "SKIP") << "measured on the pixel view's cells only";
+    EXPECT_EQ(particlePixelChecksRowOf(report["checks"], "off_grid")["status"], "SKIP") << "measured on the pixel view's cells only";
 }

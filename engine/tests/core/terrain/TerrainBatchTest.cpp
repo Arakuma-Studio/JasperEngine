@@ -12,14 +12,14 @@
 using namespace terraintest;
 
 namespace {
-    constexpr int SIZE = 8;
-    constexpr float BYTE = 1.0f / 255.0f;
+    constexpr int TERRAIN_BATCH_SIZE = 8;
+    constexpr float TERRAIN_BATCH_BYTE = 1.0f / 255.0f;
 }
 
 TEST(TerrainBatch, AbsoluteWritesAndOneUndo) {
-    RawMapStore store(static_cast<float>(SIZE), 10.0f);
-    addFlatHeight(store, SIZE, 0.25f);
-    store.addMap(density(0), SIZE, SIZE, 1, 8);
+    RawMapStore store(static_cast<float>(TERRAIN_BATCH_SIZE), 10.0f);
+    addFlatHeight(store, TERRAIN_BATCH_SIZE, 0.25f);
+    store.addMap(density(0), TERRAIN_BATCH_SIZE, TERRAIN_BATCH_SIZE, 1, 8);
     const uint64_t heightBefore = mapHash(store, HEIGHT);
 
     const TexelRect rect{2, 2, 4, 4};
@@ -71,22 +71,22 @@ TEST(TerrainBatch, AbsoluteWritesAndOneUndo) {
     store.read(HEIGHT, TexelRect{0, 0, 1, 1}, value);
     EXPECT_NEAR(value[0], 0.25f, 1e-4f);
     store.read(density(0), TexelRect{3, 3, 1, 1}, value);
-    EXPECT_NEAR(value[0], 0.5f, BYTE);
+    EXPECT_NEAR(value[0], 0.5f, TERRAIN_BATCH_BYTE);
 }
 
 TEST(TerrainBatch, NoCommitChangesNothing) {
-    RawMapStore store(static_cast<float>(SIZE), 10.0f);
-    addFlatHeight(store, SIZE, 0.25f);
+    RawMapStore store(static_cast<float>(TERRAIN_BATCH_SIZE), 10.0f);
+    addFlatHeight(store, TERRAIN_BATCH_SIZE, 0.25f);
     const uint64_t before = mapHash(store, HEIGHT);
     const std::vector<float> heights(64, 0.75f);
     {
         Batch batch(store);
-        ASSERT_TRUE(batch.setHeights(TexelRect{0, 0, SIZE, SIZE}, heights));
+        ASSERT_TRUE(batch.setHeights(TexelRect{0, 0, TERRAIN_BATCH_SIZE, TERRAIN_BATCH_SIZE}, heights));
     }
     EXPECT_EQ(mapHash(store, HEIGHT), before);
 
     Batch discarded(store);
-    ASSERT_TRUE(discarded.setHeights(TexelRect{0, 0, SIZE, SIZE}, heights));
+    ASSERT_TRUE(discarded.setHeights(TexelRect{0, 0, TERRAIN_BATCH_SIZE, TERRAIN_BATCH_SIZE}, heights));
     discarded.discard();
     const TerrainOpResult result = discarded.commit();
     ASSERT_TRUE(result.ok);
@@ -95,13 +95,13 @@ TEST(TerrainBatch, NoCommitChangesNothing) {
 }
 
 TEST(TerrainBatch, AFailedCallFailsTheCommit) {
-    RawMapStore store(static_cast<float>(SIZE), 10.0f);
-    addFlatHeight(store, SIZE, 0.25f);
+    RawMapStore store(static_cast<float>(TERRAIN_BATCH_SIZE), 10.0f);
+    addFlatHeight(store, TERRAIN_BATCH_SIZE, 0.25f);
     const uint64_t before = mapHash(store, HEIGHT);
     Batch batch(store);
     const std::vector<float> heights(64, 0.75f);
-    ASSERT_TRUE(batch.setHeights(TexelRect{0, 0, SIZE, SIZE}, heights));
-    EXPECT_FALSE(batch.setHeights(TexelRect{4, 4, SIZE, SIZE}, heights)) << "past the map";
+    ASSERT_TRUE(batch.setHeights(TexelRect{0, 0, TERRAIN_BATCH_SIZE, TERRAIN_BATCH_SIZE}, heights));
+    EXPECT_FALSE(batch.setHeights(TexelRect{4, 4, TERRAIN_BATCH_SIZE, TERRAIN_BATCH_SIZE}, heights)) << "past the map";
     const TerrainOpResult result = batch.commit();
     EXPECT_FALSE(result.ok);
     EXPECT_FALSE(result.error.empty());
@@ -109,8 +109,8 @@ TEST(TerrainBatch, AFailedCallFailsTheCommit) {
 }
 
 TEST(TerrainBatch, ClippingIsCountedNotAnError) {
-    RawMapStore store(static_cast<float>(SIZE), 10.0f);
-    addFlatHeight(store, SIZE, 0.25f);
+    RawMapStore store(static_cast<float>(TERRAIN_BATCH_SIZE), 10.0f);
+    addFlatHeight(store, TERRAIN_BATCH_SIZE, 0.25f);
     Batch batch(store);
     const std::vector<float> values = {-0.5f, 0.5f, 1.5f, 2.0f};
     ASSERT_TRUE(batch.setHeights(TexelRect{0, 0, 2, 2}, values));
@@ -162,8 +162,8 @@ TEST(TerrainBatch, WeightEncoderRules) {
 }
 
 TEST(TerrainBatch, WritesWeightsAcrossBlendMaps) {
-    RawMapStore store(static_cast<float>(SIZE), 10.0f);
-    addFlatHeight(store, SIZE, 0.0f);
+    RawMapStore store(static_cast<float>(TERRAIN_BATCH_SIZE), 10.0f);
+    addFlatHeight(store, TERRAIN_BATCH_SIZE, 0.0f);
     const TexelRect rect{0, 0, 2, 1};
     const int layers[] = {4, 1};
     const float weights[] = {0.5f, 0.25f, 1.0f, 1.0f};
@@ -175,18 +175,18 @@ TEST(TerrainBatch, WritesWeightsAcrossBlendMaps) {
     store.read(blend(0), rect, first);
     store.read(blend(1), rect, second);
     // texel 0: layer 4 at 0.5, layer 1 at 0.25, layer 0 takes 0.25
-    EXPECT_NEAR(second[terrainLayerChannel(4).channel], 0.5f, BYTE);
-    EXPECT_NEAR(first[terrainLayerChannel(1).channel], 0.25f, BYTE);
-    EXPECT_NEAR(first[0], 0.25f, BYTE);
+    EXPECT_NEAR(second[terrainLayerChannel(4).channel], 0.5f, TERRAIN_BATCH_BYTE);
+    EXPECT_NEAR(first[terrainLayerChannel(1).channel], 0.25f, TERRAIN_BATCH_BYTE);
+    EXPECT_NEAR(first[0], 0.25f, TERRAIN_BATCH_BYTE);
     // texel 1: both 1, normalized to a half each, none left for layer 0
-    EXPECT_NEAR(second[4 + terrainLayerChannel(4).channel], 0.5f, BYTE);
-    EXPECT_NEAR(first[4 + terrainLayerChannel(1).channel], 0.5f, BYTE);
-    EXPECT_NEAR(first[4], 0.0f, BYTE);
+    EXPECT_NEAR(second[4 + terrainLayerChannel(4).channel], 0.5f, TERRAIN_BATCH_BYTE);
+    EXPECT_NEAR(first[4 + terrainLayerChannel(1).channel], 0.5f, TERRAIN_BATCH_BYTE);
+    EXPECT_NEAR(first[4], 0.0f, TERRAIN_BATCH_BYTE);
     EXPECT_EQ(first[3], 1.0f) << "alpha stays opaque";
 }
 
 TEST(TerrainBatch, ReportsAMissingMap) {
-    RawMapStore noHeight(static_cast<float>(SIZE), 10.0f);
+    RawMapStore noHeight(static_cast<float>(TERRAIN_BATCH_SIZE), 10.0f);
     Batch batch(noHeight);
     const float value = 0.5f;
     EXPECT_FALSE(batch.setHeights(TexelRect{0, 0, 1, 1}, std::span<const float>(&value, 1)));
@@ -196,8 +196,8 @@ TEST(TerrainBatch, ReportsAMissingMap) {
 TEST(TerrainBatch, PaintByRulesUsesTheSameEncoder) {
     // Two rules that together leave some for layer 0: the op and a Batch with the same numbers must
     // land on the same bytes, the rest for layer 0 included
-    RawMapStore byRules(static_cast<float>(SIZE), 10.0f);
-    addFlatHeight(byRules, SIZE, 0.5f);
+    RawMapStore byRules(static_cast<float>(TERRAIN_BATCH_SIZE), 10.0f);
+    addFlatHeight(byRules, TERRAIN_BATCH_SIZE, 0.5f);
     Op op;
     op.type = OpType::PaintByRules;
     PaintRule first;
@@ -209,23 +209,23 @@ TEST(TerrainBatch, PaintByRulesUsesTheSameEncoder) {
     op.rules = {first, second};
     ASSERT_TRUE(apply(byRules, op).ok);
 
-    RawMapStore byBatch(static_cast<float>(SIZE), 10.0f);
-    addFlatHeight(byBatch, SIZE, 0.5f);
+    RawMapStore byBatch(static_cast<float>(TERRAIN_BATCH_SIZE), 10.0f);
+    addFlatHeight(byBatch, TERRAIN_BATCH_SIZE, 0.5f);
     // later over earlier: 0.5 fades by the second rule's 0.25, which lands 0.25
     const float layer1 = 0.5f * (1.0f - 0.25f);
     const float layer2 = 0.25f;
     std::vector<float> weights;
-    for (int i = 0; i < SIZE * SIZE; i++) {
+    for (int i = 0; i < TERRAIN_BATCH_SIZE * TERRAIN_BATCH_SIZE; i++) {
         weights.push_back(layer1);
         weights.push_back(layer2);
     }
     const int layers[] = {1, 2};
     Batch batch(byBatch);
-    ASSERT_TRUE(batch.setLayerWeights(TexelRect{0, 0, SIZE, SIZE}, layers, weights));
+    ASSERT_TRUE(batch.setLayerWeights(TexelRect{0, 0, TERRAIN_BATCH_SIZE, TERRAIN_BATCH_SIZE}, layers, weights));
     ASSERT_TRUE(batch.commit().ok);
 
     EXPECT_EQ(mapHash(byRules, blend(0)), mapHash(byBatch, blend(0)));
     std::vector<float> texel(4);
     byRules.read(blend(0), TexelRect{1, 1, 1, 1}, texel);
-    EXPECT_NEAR(texel[0], 1.0f - layer1 - layer2, BYTE) << "layer 0 took the rest";
+    EXPECT_NEAR(texel[0], 1.0f - layer1 - layer2, TERRAIN_BATCH_BYTE) << "layer 0 took the rest";
 }

@@ -33,11 +33,11 @@ using namespace posetest;
 
 namespace {
 
-    double degreesBetween(const Quatd& a, const Quatd& b){
+    double humanoidRetargetDegreesBetween(const Quatd& a, const Quatd& b){
         return radToDeg(angleBetween(a.normalized(), b.normalized()));
     }
 
-    double degreesBetween(const Vec3d& a, const Vec3d& b){
+    double humanoidRetargetDegreesBetween(const Vec3d& a, const Vec3d& b){
         return radToDeg(angleBetween(a.normalized(), b.normalized()));
     }
 
@@ -140,7 +140,7 @@ namespace {
         live.footIK = footIK;
         anim::sampleHumanoidBinding(*genericClip, live, time, nullptr);
         for (int b = 0; b < HUMAN_BONE_COUNT; b++){
-            EXPECT_LT(degreesBetween(Quatd(live.pose.rotations[(size_t)b]), Quatd(binding.pose.rotations[(size_t)b])), footIK ? 0.1 : 1e-3)
+            EXPECT_LT(humanoidRetargetDegreesBetween(Quatd(live.pose.rotations[(size_t)b]), Quatd(binding.pose.rotations[(size_t)b])), footIK ? 0.1 : 1e-3)
                 << "play time and conversion agree: " << humanBoneName(boneAt(b));
         }
         EXPECT_LT((Vec3d(live.pose.hipsPosition) - Vec3d(binding.pose.hipsPosition)).length(), 1e-4);
@@ -158,7 +158,7 @@ namespace {
     }
 
     // G_b = W_b * N_b^-1: the neutral-relative canonical frame of every present slot
-    std::array<Quatd, HUMAN_BONE_COUNT> frames(const PoseRig& rig, const HumanPose& pose){
+    std::array<Quatd, HUMAN_BONE_COUNT> humanoidRetargetFrames(const PoseRig& rig, const HumanPose& pose){
         std::array<Quatd, HUMAN_BONE_COUNT> world;
         rig.slotWorldCanonical(pose, world);
         for (int s = 0; s < HUMAN_BONE_COUNT; s++){
@@ -192,7 +192,7 @@ TEST(HumanoidRetarget, CrossRigAnglesMatch){
     const HumanPose sourcePose = sourceRig->fromBodyPose(body, nullptr, true, 0.0f);
     const ClipData generic = clipOfPoses(*sourceRig, {{0.0f, sourcePose}});
     const anim::HumanoidSource source = sourceOf(sourceRig);
-    const std::array<Quatd, HUMAN_BONE_COUNT> sourceFrames = frames(*sourceRig, sourcePose);
+    const std::array<Quatd, HUMAN_BONE_COUNT> sourceFrames = humanoidRetargetFrames(*sourceRig, sourcePose);
 
     for (const TestRig* rig : {&aposeRig(), &backwardRig(), &skewedRig()}){
         SCOPED_TRACE(rig->label);
@@ -209,10 +209,10 @@ TEST(HumanoidRetarget, CrossRigAnglesMatch){
             for (int k = 0; k < 3; k++) EXPECT_NEAR(actual[k], expected[k], 0.05) << name << " dof " << k;
         }
         // the left forearm's direction in the canonical frame (G * neutral direction)
-        const std::array<Quatd, HUMAN_BONE_COUNT> targetFrames = frames(targetRig, pose);
+        const std::array<Quatd, HUMAN_BONE_COUNT> targetFrames = humanoidRetargetFrames(targetRig, pose);
         const Vec3d direction(boneDofInfo(HumanBone::LeftLowerArm).neutralDirection);
         const int forearm = boneIndex(HumanBone::LeftLowerArm);
-        EXPECT_LT(degreesBetween(targetFrames[(size_t)forearm] * direction, sourceFrames[(size_t)forearm] * direction), 0.1);
+        EXPECT_LT(humanoidRetargetDegreesBetween(targetFrames[(size_t)forearm] * direction, sourceFrames[(size_t)forearm] * direction), 0.1);
     }
 }
 
@@ -256,10 +256,10 @@ TEST(HumanoidRetarget, MissingSlotsFoldIntoTheNextPresentSlot){
     ASSERT_FALSE(minimal->has(HumanBone::Neck));
     anim::HumanoidBinding binding;
     const HumanPose result = retarget(generic, sourceOf(sourceRig), targetOf(minimal), 0.0f, false, false, &binding);
-    const std::array<Quatd, HUMAN_BONE_COUNT> source = frames(*sourceRig, pose);
-    const std::array<Quatd, HUMAN_BONE_COUNT> target = frames(*minimal, result);
+    const std::array<Quatd, HUMAN_BONE_COUNT> source = humanoidRetargetFrames(*sourceRig, pose);
+    const std::array<Quatd, HUMAN_BONE_COUNT> target = humanoidRetargetFrames(*minimal, result);
     for (HumanBone bone : {HumanBone::Head, HumanBone::LeftUpperArm, HumanBone::RightUpperArm, HumanBone::Spine}){
-        EXPECT_LT(degreesBetween(target[(size_t)boneIndex(bone)], source[(size_t)boneIndex(bone)]), 0.01) << humanBoneName(bone);
+        EXPECT_LT(humanoidRetargetDegreesBetween(target[(size_t)boneIndex(bone)], source[(size_t)boneIndex(bone)]), 0.01) << humanBoneName(bone);
     }
     bool reported = false;
     for (const std::string& line : binding.folded) reported = reported || line == "chest folded into head";
@@ -359,7 +359,7 @@ TEST(HumanoidRetarget, FootIKReachesTheGoalsOnLongerLegs){
                                   Vec3d(longLegs->skeleton().bones[(size_t)footBone].position).length()) * 0.999;
             if ((goal - Vec3d(posSolved[(size_t)hipBone])).length() > reach) continue;
             EXPECT_LT((Vec3d(posSolved[(size_t)footBone]) - goal).length(), 1e-3 * scale) << "t " << t << " side " << side;
-            EXPECT_LT(degreesBetween(Quatd(rotSolved[(size_t)footBone]), Quatd(rotPlain[(size_t)footBone])), 0.05);
+            EXPECT_LT(humanoidRetargetDegreesBetween(Quatd(rotSolved[(size_t)footBone]), Quatd(rotPlain[(size_t)footBone])), 0.05);
             checked++;
         }
     }
@@ -424,7 +424,7 @@ TEST(HumanoidRetarget, ExtraBonesCancelAxisConventions){
     const Vec3d expected = tip(*sourceRig, base.skeleton, index, child, curled);
     const Vec3d actual = tip(*targetRig, turned, index, child, targetLocal);
     const Vec3d hand = Vec3d(sourceRig->restPose().hipsPosition);   // any common point
-    EXPECT_LT(degreesBetween(actual - hand, expected - hand), 0.1);
+    EXPECT_LT(humanoidRetargetDegreesBetween(actual - hand, expected - hand), 0.1);
     EXPECT_LT((actual - expected).length(), 1e-4);
 }
 
@@ -439,7 +439,7 @@ TEST(HumanoidRetarget, TwistCorrectionTurnsTheNeutralPose){
     EXPECT_FLOAT_EQ(twisted->twist(HumanBone::LeftLowerArm), 90.0f);
     const Vec3d direction(boneDofInfo(HumanBone::LeftLowerArm).neutralDirection);
     const Quatd expected = axisAngleRad(direction, degToRad(90.0)) * plain->neutralWorldCanonical(HumanBone::LeftLowerArm);
-    EXPECT_LT(degreesBetween(twisted->neutralWorldCanonical(HumanBone::LeftLowerArm), expected), 1e-4);
+    EXPECT_LT(humanoidRetargetDegreesBetween(twisted->neutralWorldCanonical(HumanBone::LeftLowerArm), expected), 1e-4);
 
     // a humanoid clip with E = I shows it (the realised forearm is the twisted neutral)
     anim::HumanoidSample sample;
@@ -449,13 +449,13 @@ TEST(HumanoidRetarget, TwistCorrectionTurnsTheNeutralPose){
     anim::realiseHumanoid(*targetOf(twisted), sample, false, false, realised, extra);
     std::array<Quatd, HUMAN_BONE_COUNT> world;
     twisted->slotWorldCanonical(realised, world);
-    EXPECT_LT(degreesBetween(world[(size_t)boneIndex(HumanBone::LeftLowerArm)], expected), 1e-3);
+    EXPECT_LT(humanoidRetargetDegreesBetween(world[(size_t)boneIndex(HumanBone::LeftLowerArm)], expected), 1e-3);
     // and the pose system's neutral pose (what a .poseanim realises) too
     std::array<Quatd, HUMAN_BONE_COUNT> neutral;
     twisted->slotWorldCanonical(twisted->neutralPose(), neutral);
-    EXPECT_LT(degreesBetween(neutral[(size_t)boneIndex(HumanBone::LeftLowerArm)], expected), 1e-3);
+    EXPECT_LT(humanoidRetargetDegreesBetween(neutral[(size_t)boneIndex(HumanBone::LeftLowerArm)], expected), 1e-3);
     // the untouched slots are as before
-    EXPECT_LT(degreesBetween(twisted->neutralWorldCanonical(HumanBone::RightLowerArm), plain->neutralWorldCanonical(HumanBone::RightLowerArm)), 1e-6);
+    EXPECT_LT(humanoidRetargetDegreesBetween(twisted->neutralWorldCanonical(HumanBone::RightLowerArm), plain->neutralWorldCanonical(HumanBone::RightLowerArm)), 1e-6);
 }
 
 // ---- round trip on the source rig (spec H1), synthetic ----
@@ -485,7 +485,7 @@ TEST(HumanoidRetarget, SourceRigRoundTripIsExact){
             if (!rig->has(boneAt(s))) continue;
             const int track = genericClip->findTrack(rig->skeleton().bones[(size_t)rig->boneIndex(boneAt(s))].name, ClipChannel::Rotation);
             ASSERT_GE(track, 0);
-            EXPECT_LT(degreesBetween(Quatd(binding.pose.rotations[(size_t)s]), Quatd(samples[(size_t)track].rotation)), 1e-3)
+            EXPECT_LT(humanoidRetargetDegreesBetween(Quatd(binding.pose.rotations[(size_t)s]), Quatd(samples[(size_t)track].rotation)), 1e-3)
                 << humanBoneName(boneAt(s)) << " t " << t;
         }
         const int hips = genericClip->findTrack(rig->skeleton().bones[(size_t)rig->boneIndex(HumanBone::Hips)].name, ClipChannel::Position);
@@ -541,7 +541,7 @@ TEST(HumanoidClipIO, HumanoidTracksWriteVersionTwo){
     const float angles[3] = {80, 0, 10};
     const Quatd E = jointRotation(HumanBone::LeftUpperArm, angles);
     const std::vector<float>& value = data.tracks[2].keys[1].value;
-    EXPECT_LT(degreesBetween(Quatd(value[3], value[0], value[1], value[2]), E), 1e-3);
+    EXPECT_LT(humanoidRetargetDegreesBetween(Quatd(value[3], value[0], value[1], value[2]), E), 1e-3);
 
     const std::string written = anim::writeClip(data);
     EXPECT_NE(written.find("\"version\": 2,"), std::string::npos);

@@ -67,7 +67,7 @@ TEST_F(RenderGpu, UnlitColouredPlane){
 }
 
 namespace {
-    void litCube(Primitive& cube, Light& sun){
+    void renderLitCube(Primitive& cube, Light& sun){
         cube.createBox(1.5f, 1.5f, 1.5f);
         cube.setColor(0.2f, 0.6f, 0.9f);
         cube.setRotation(0.0f, 30.0f, 0.0f);
@@ -85,7 +85,7 @@ TEST_F(RenderGpu, LitCube){
     scene.setLitQuality(LitQuality::STANDARD);
     Primitive cube(&scene);
     Light sun(&scene);
-    litCube(cube, sun);
+    renderLitCube(cube, sun);
     ASSERT_TRUE(render()) << "the scene never finished loading";
     EXPECT_GOLDEN("render_lit_cube");
     EXPECT_NO_ENGINE_ERRORS();
@@ -97,7 +97,7 @@ TEST_F(RenderGpu, LitCubeHigh){
     ASSERT_EQ(scene.getLitQuality(), LitQuality::HIGH);
     Primitive cube(&scene);
     Light sun(&scene);
-    litCube(cube, sun);
+    renderLitCube(cube, sun);
     ASSERT_TRUE(render()) << "the scene never finished loading";
     EXPECT_GOLDEN("render_lit_cube_high");
     EXPECT_NO_ENGINE_ERRORS();

@@ -46,15 +46,15 @@ using GraphJson = graph::Json;
 
 namespace {
 
-    struct Headless {
+    struct GraphEditorWindowHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
     };
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
+    GraphEditorWindowHeadless& graphEditorWindowHeadless() {
+        static GraphEditorWindowHeadless h = []() {
+            GraphEditorWindowHeadless out;
             const fs::path root = fs::temp_directory_path() / ("jasper-graph-window-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
             fs::create_directories(root / "config");
@@ -75,30 +75,30 @@ namespace {
         return h;
     }
 
-    bool started = false;
-    Project* project() {
-        started = true;
-        return headless().project.get();
+    bool graphEditorWindowStarted = false;
+    Project* graphEditorWindowProject() {
+        graphEditorWindowStarted = true;
+        return graphEditorWindowHeadless().project.get();
     }
-    fs::path assets() { return project()->getAssetsPath(); }
-    CommandHistory* history() { return project()->getProjectCommandHistory(); }
+    fs::path graphEditorWindowAssets() { return graphEditorWindowProject()->getAssetsPath(); }
+    CommandHistory* graphEditorWindowHistory() { return graphEditorWindowProject()->getProjectCommandHistory(); }
 
-    struct Cleanup : public ::testing::Environment {
+    struct GraphEditorWindowCleanup : public ::testing::Environment {
         void TearDown() override {
-            if (!started) return;
+            if (!graphEditorWindowStarted) return;
             std::error_code ec;
-            fs::remove_all(headless().dir.parent_path(), ec);
+            fs::remove_all(graphEditorWindowHeadless().dir.parent_path(), ec);
         }
     };
-    [[maybe_unused]] ::testing::Environment* const cleanup = ::testing::AddGlobalTestEnvironment(new Cleanup);
+    [[maybe_unused]] ::testing::Environment* const graphEditorWindowCleanup = ::testing::AddGlobalTestEnvironment(new GraphEditorWindowCleanup);
 
-    void writeAll(const fs::path& path, const std::string& content) {
+    void graphEditorWindowWriteAll(const fs::path& path, const std::string& content) {
         fs::create_directories(path.parent_path());
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
         file << content;
     }
 
-    std::string readAll(const fs::path& path) {
+    std::string graphEditorWindowReadAll(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     }
@@ -167,7 +167,7 @@ namespace {
     class GraphEditorWindowTest : public ::testing::Test {
     protected:
         void SetUp() override {
-            ASSERT_TRUE(headless().ready);
+            ASSERT_TRUE(graphEditorWindowHeadless().ready);
             registerKind();
         }
         void TearDown() override {
@@ -179,17 +179,17 @@ namespace {
         static std::string writeGraph(const std::string& name, const std::string& nodes = std::string()) {
             const std::string body = nodes.empty() ? R"([{"id": "n1", "type": "speed", "position": [0, 0], "params": {"value": 1}},
                 {"id": "n2", "type": "blend", "position": [300, 0], "params": {"weight": 0.5, "mode": "linear"}}])" : nodes;
-            writeAll(assets() / "graphs" / (name + ".wtgraph"),
+            graphEditorWindowWriteAll(graphEditorWindowAssets() / "graphs" / (name + ".wtgraph"),
                      R"({"formatVersion": 1, "kind": "window_test", "kindVersion": 1, "nextId": 3, "nodes": )" + body + R"(, "edges": []})");
             return "assets/graphs/" + name + ".wtgraph";
         }
     };
 
     // an ImGui frame loop of its own (the window's show(), the Inspector)
-    struct Frames {
+    struct GraphEditorWindowFrames {
         ImGuiContext* previous = nullptr;
         ImGuiContext* context = nullptr;
-        Frames() {
+        GraphEditorWindowFrames() {
             previous = ImGui::GetCurrentContext();
             context = ImGui::CreateContext();
             ImGui::SetCurrentContext(context);
@@ -201,7 +201,7 @@ namespace {
             int width, height;
             io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
         }
-        ~Frames() {
+        ~GraphEditorWindowFrames() {
             ImGui::DestroyContext(context);
             ImGui::SetCurrentContext(previous);
         }
@@ -250,37 +250,37 @@ namespace {
 // BF23 F12: the window's steps, their undo and redo reach the document through GraphEditCmd's
 // change listener, so the canvas never shows a graph the file no longer holds
 TEST_F(GraphEditorWindowTest, AnEditIsOneUndoStepAndItsUndoReachesTheDocument) {
-    GraphEditorWindow window(project());
+    GraphEditorWindow window(graphEditorWindowProject());
     ASSERT_TRUE(window.openGraph(writeGraph("undo"))) << window.getStatus();
     std::shared_ptr<GraphDocument> doc = window.getDocument();
-    const std::string before = readAll(doc->absolutePath());
-    const size_t start = history()->position();
+    const std::string before = graphEditorWindowReadAll(doc->absolutePath());
+    const size_t start = graphEditorWindowHistory()->position();
 
     const std::string added = window.addNode("speed", ImVec2(0, 200));
     ASSERT_FALSE(added.empty()) << window.getStatus();
-    EXPECT_EQ(history()->position(), start + 1) << "one step";
+    EXPECT_EQ(graphEditorWindowHistory()->position(), start + 1) << "one step";
     EXPECT_NE(doc->graph().findNode(added), nullptr);
     EXPECT_EQ(window.selectedNodes(), std::vector<std::string>{added});
 
     ASSERT_TRUE(window.connect("n1", "value", "n2", "a"));
-    EXPECT_EQ(history()->position(), start + 2);
+    EXPECT_EQ(graphEditorWindowHistory()->position(), start + 2);
 
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(graphEditorWindowHistory()->undo());
     EXPECT_EQ(doc->graph().edges.size(), 0u) << "the undo reloaded the document";
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(graphEditorWindowHistory()->undo());
     EXPECT_EQ(doc->graph().findNode(added), nullptr);
-    EXPECT_EQ(readAll(doc->absolutePath()), before);
+    EXPECT_EQ(graphEditorWindowReadAll(doc->absolutePath()), before);
     EXPECT_TRUE(window.selectedNodes().empty()) << "a selection whose node is gone is dropped";
-    ASSERT_TRUE(history()->redo());
+    ASSERT_TRUE(graphEditorWindowHistory()->redo());
     EXPECT_NE(doc->graph().findNode(added), nullptr);
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(graphEditorWindowHistory()->undo());
 }
 
 TEST_F(GraphEditorWindowTest, OneDocumentPerPathAndOutsideChangesReload) {
     const std::string path = writeGraph("outside");
     std::string error;
-    std::shared_ptr<GraphDocument> a = GraphDocument::open(project(), path, &error);
-    std::shared_ptr<GraphDocument> b = GraphDocument::open(project(), "graphs/outside.wtgraph", &error);
+    std::shared_ptr<GraphDocument> a = GraphDocument::open(graphEditorWindowProject(), path, &error);
+    std::shared_ptr<GraphDocument> b = GraphDocument::open(graphEditorWindowProject(), "graphs/outside.wtgraph", &error);
     ASSERT_TRUE(a) << error;
     EXPECT_EQ(a, b) << "the project-relative and the asset-relative path are one document";
     int heard = 0;
@@ -293,7 +293,7 @@ TEST_F(GraphEditorWindowTest, OneDocumentPerPathAndOutsideChangesReload) {
     EXPECT_EQ(a->graph().nodes.size(), 1u);
 
     // a file that stops parsing keeps the last good graph, with the error
-    writeAll(a->absolutePath(), "{ not json");
+    graphEditorWindowWriteAll(a->absolutePath(), "{ not json");
     GraphDocument::filesChanged({a->absolutePath()});
     EXPECT_FALSE(a->loadError().empty());
     EXPECT_EQ(a->graph().nodes.size(), 1u);
@@ -301,14 +301,14 @@ TEST_F(GraphEditorWindowTest, OneDocumentPerPathAndOutsideChangesReload) {
 }
 
 TEST_F(GraphEditorWindowTest, AnEditOverAFileChangedOnDiskIsRefused) {
-    GraphEditorWindow window(project());
+    GraphEditorWindow window(graphEditorWindowProject());
     ASSERT_TRUE(window.openGraph(writeGraph("race")));
-    const size_t start = history()->position();
+    const size_t start = graphEditorWindowHistory()->position();
     // written behind the document's back, not reloaded yet
     writeGraph("race", R"([{"id": "n1", "type": "speed", "position": [50, 50], "params": {"value": 3}}])");
     EXPECT_FALSE(window.setParam("n1", "value", 9.0));
     EXPECT_NE(window.getStatus().find("changed on disk"), std::string::npos) << window.getStatus();
-    EXPECT_EQ(history()->position(), start) << "no step";
+    EXPECT_EQ(graphEditorWindowHistory()->position(), start) << "no step";
     EXPECT_EQ(window.getDocument()->graph().nodes.size(), 1u) << "and the document reloaded";
 }
 
@@ -316,33 +316,33 @@ TEST_F(GraphEditorWindowTest, AnEditOverAFileChangedOnDiskIsRefused) {
 TEST_F(GraphEditorWindowTest, NodesWithoutAPositionOpenLaidOutAndArrangeIsOneStep) {
     const std::string path = writeGraph("pile", R"([{"id": "n1", "type": "speed", "params": {}},
         {"id": "n2", "type": "speed", "params": {}}, {"id": "n3", "type": "blend", "params": {}}])");
-    const std::string text = readAll(project()->getProjectPath() / path);
-    GraphEditorWindow window(project());
+    const std::string text = graphEditorWindowReadAll(graphEditorWindowProject()->getProjectPath() / path);
+    GraphEditorWindow window(graphEditorWindowProject());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(path));
     std::shared_ptr<GraphDocument> doc = window.getDocument();
     const graph::Vec2 a = doc->displayPosition(*doc->graph().findNode("n1"));
     const graph::Vec2 b = doc->displayPosition(*doc->graph().findNode("n2"));
     EXPECT_FALSE(a == b) << "not a pile";
-    Frames frames;
+    GraphEditorWindowFrames frames;
     frames.frame(window);
-    EXPECT_EQ(readAll(doc->absolutePath()), text) << "opening and drawing write nothing";
+    EXPECT_EQ(graphEditorWindowReadAll(doc->absolutePath()), text) << "opening and drawing write nothing";
 
-    const size_t start = history()->position();
+    const size_t start = graphEditorWindowHistory()->position();
     ASSERT_TRUE(window.arrange());
-    EXPECT_EQ(history()->position(), start + 1);
+    EXPECT_EQ(graphEditorWindowHistory()->position(), start + 1);
     EXPECT_TRUE(graph::unplacedNodes(doc->graph()).empty());
-    ASSERT_NE(history()->top(), nullptr);
-    EXPECT_EQ(history()->top()->name(), "Arrange Nodes");
-    ASSERT_TRUE(history()->undo());
-    EXPECT_EQ(readAll(doc->absolutePath()), text);
+    ASSERT_NE(graphEditorWindowHistory()->top(), nullptr);
+    EXPECT_EQ(graphEditorWindowHistory()->top()->name(), "Arrange Nodes");
+    ASSERT_TRUE(graphEditorWindowHistory()->undo());
+    EXPECT_EQ(graphEditorWindowReadAll(doc->absolutePath()), text);
 }
 
 TEST_F(GraphEditorWindowTest, AWireDroppedOnTheCanvasSearchesWhatFitsAndPlacesItsPortUnderTheCursor) {
-    GraphEditorWindow window(project());
+    GraphEditorWindow window(graphEditorWindowProject());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeGraph("drop")));
-    Frames frames;
+    GraphEditorWindowFrames frames;
     frames.frame(window);
     // Speed's float output: only nodes with an input a float feeds (Blend, Mix Six; Tint by the implicit vector3)
     const GraphCanvas::PortRef source{1, "value", true};
@@ -358,7 +358,7 @@ TEST_F(GraphEditorWindowTest, AWireDroppedOnTheCanvasSearchesWhatFitsAndPlacesIt
     const ImVec2 drop(500, 120);
     window.openSearch(drop, source);
     ASSERT_TRUE(window.isSearchOpen());
-    const size_t start = history()->position();
+    const size_t start = graphEditorWindowHistory()->position();
     const auto entries = window.searchNodes("blend", &source);
     ASSERT_FALSE(entries.empty());
     ASSERT_EQ(entries[0].type, "blend");
@@ -366,7 +366,7 @@ TEST_F(GraphEditorWindowTest, AWireDroppedOnTheCanvasSearchesWhatFitsAndPlacesIt
     const std::string added = window.pickSearchEntry(entries[0]);
     ASSERT_FALSE(added.empty()) << window.getStatus();
     EXPECT_FALSE(window.isSearchOpen());
-    EXPECT_EQ(history()->position(), start + 1) << "the node and its wire: one step";
+    EXPECT_EQ(graphEditorWindowHistory()->position(), start + 1) << "the node and its wire: one step";
     const graph::Graph& g = window.getDocument()->graph();
     const graph::Edge* wire = edgeInto(g, added, "a");
     ASSERT_NE(wire, nullptr);
@@ -379,7 +379,7 @@ TEST_F(GraphEditorWindowTest, AWireDroppedOnTheCanvasSearchesWhatFitsAndPlacesIt
 }
 
 TEST_F(GraphEditorWindowTest, TheSearchRanksNamesAliasesAndEnumValues) {
-    GraphEditorWindow window(project());
+    GraphEditorWindow window(graphEditorWindowProject());
     ASSERT_TRUE(window.openGraph(writeGraph("search")));
     auto first = [&](const std::string& query) {
         const auto entries = window.searchNodes(query);
@@ -401,7 +401,7 @@ TEST_F(GraphEditorWindowTest, TheSearchRanksNamesAliasesAndEnumValues) {
 }
 
 TEST_F(GraphEditorWindowTest, AWireIntoAOneWireInputReplacesItsWireAndTypesAreChecked) {
-    GraphEditorWindow window(project());
+    GraphEditorWindow window(graphEditorWindowProject());
     ASSERT_TRUE(window.openGraph(writeGraph("wires")));
     const std::string other = window.addNode("speed", ImVec2(0, 200));
     const std::string vec = window.addNode("vec", ImVec2(0, 400));
@@ -420,7 +420,7 @@ TEST_F(GraphEditorWindowTest, AWireIntoAOneWireInputReplacesItsWireAndTypesAreCh
 }
 
 TEST_F(GraphEditorWindowTest, CopyAndPasteCarryNodesAndTheirWiresAsJsonText) {
-    GraphEditorWindow window(project());
+    GraphEditorWindow window(graphEditorWindowProject());
     ASSERT_TRUE(window.openGraph(writeGraph("clip")));
     ASSERT_TRUE(window.connect("n1", "value", "n2", "a"));
     window.selectNodes({"n1", "n2"});
@@ -430,9 +430,9 @@ TEST_F(GraphEditorWindowTest, CopyAndPasteCarryNodesAndTheirWiresAsJsonText) {
     EXPECT_EQ(clip["nodes"].size(), 2u);
     EXPECT_EQ(clip["edges"].size(), 1u);
 
-    const size_t start = history()->position();
+    const size_t start = graphEditorWindowHistory()->position();
     ASSERT_TRUE(window.pasteText(text, ImVec2(1000, 1000)));
-    EXPECT_EQ(history()->position(), start + 1);
+    EXPECT_EQ(graphEditorWindowHistory()->position(), start + 1);
     const graph::Graph& g = window.getDocument()->graph();
     ASSERT_EQ(g.nodes.size(), 4u);
     ASSERT_EQ(g.edges.size(), 2u);
@@ -454,11 +454,11 @@ TEST_F(GraphEditorWindowTest, CopyAndPasteCarryNodesAndTheirWiresAsJsonText) {
 
 TEST_F(GraphEditorWindowTest, AProblemSelectsItsNodeAndFixAppliesItsOneEdit) {
     // a wire to a node that is gone
-    writeAll(assets() / "graphs/dangling.wtgraph", R"({"formatVersion": 1, "kind": "window_test", "kindVersion": 1, "nextId": 5,
+    graphEditorWindowWriteAll(graphEditorWindowAssets() / "graphs/dangling.wtgraph", R"({"formatVersion": 1, "kind": "window_test", "kindVersion": 1, "nextId": 5,
         "nodes": [{"id": "n1", "type": "speed", "position": [0, 0], "params": {}},
                   {"id": "n2", "type": "blend", "position": [300, 0], "params": {}}],
         "edges": [{"id": "e4", "from": {"node": "n9", "port": "value"}, "to": {"node": "n2", "port": "a"}}]})");
-    GraphEditorWindow window(project());
+    GraphEditorWindow window(graphEditorWindowProject());
     ASSERT_TRUE(window.openGraph("assets/graphs/dangling.wtgraph"));
     std::vector<GraphEditorWindow::Problem> rows = window.problems();
     auto fixable = std::find_if(rows.begin(), rows.end(), [](const auto& p) { return !p.fix.empty(); });
@@ -474,12 +474,12 @@ TEST_F(GraphEditorWindowTest, AProblemSelectsItsNodeAndFixAppliesItsOneEdit) {
 
 // every panel drawn, the Inspector's rows for each parameter kind, an unknown kind read-only
 TEST_F(GraphEditorWindowTest, EveryPanelAndTheInspectorRowsDraw) {
-    GraphEditorWindow window(project());
+    GraphEditorWindow window(graphEditorWindowProject());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeGraph("panels")));
     const std::string tint = window.addNode("tint", ImVec2(0, 300));
     ASSERT_TRUE(window.connect("n1", "value", "n2", "a"));
-    Frames frames;
+    GraphEditorWindowFrames frames;
     frames.frame(window);
     window.selectNodes({tint});
     EXPECT_TRUE(frames.frame(window)) << "the Inspector shows the node";
@@ -493,7 +493,7 @@ TEST_F(GraphEditorWindowTest, EveryPanelAndTheInspectorRowsDraw) {
     EXPECT_GT(max.y - min.y, GraphCanvas::HEADER_HEIGHT) << "ports and their rows";
 
     // a graph of a kind this build does not know: shown, never written
-    writeAll(assets() / "graphs/foreign.wtgraph", R"({"formatVersion": 1, "kind": "window_test", "kindVersion": 1, "nextId": 2,
+    graphEditorWindowWriteAll(graphEditorWindowAssets() / "graphs/foreign.wtgraph", R"({"formatVersion": 1, "kind": "window_test", "kindVersion": 1, "nextId": 2,
         "nodes": [{"id": "n1", "type": "future_node", "position": [0, 0], "params": {"x": 1}}], "edges": []})");
     ASSERT_TRUE(window.openGraph("assets/graphs/foreign.wtgraph"));
     frames.frame(window);
@@ -546,22 +546,22 @@ TEST(GraphParamValues, ColoursGradientsAndCurvesRoundTripInTheirShape) {
 
 // review I1: the clipboard is anyone's text; none of it may throw or abort
 TEST_F(GraphEditorWindowTest, AHostileClipboardIsRefusedWithoutAThrow) {
-    GraphEditorWindow window(project());
+    GraphEditorWindow window(graphEditorWindowProject());
     ASSERT_TRUE(window.openGraph(writeGraph("hostile")));
-    const size_t start = history()->position();
+    const size_t start = graphEditorWindowHistory()->position();
     for (const char* text : {R"({"graph_clipboard": "window_test"})", R"({"graph_clipboard": 1, "nodes": [{}]})",
                              R"({"graph_clipboard": "window_test", "nodes": "n1"})", R"({"graph_clipboard": "window_test", "nodes": [5, null]})",
                              R"({"graph_clipboard": ["window_test"], "nodes": [{"type": "speed"}]})", "[1, 2]", ""}) {
         EXPECT_NO_THROW(EXPECT_FALSE(window.pasteText(text, ImVec2(0, 0))) << text) << text;
     }
-    EXPECT_EQ(history()->position(), start) << "nothing written";
+    EXPECT_EQ(graphEditorWindowHistory()->position(), start) << "nothing written";
 }
 
 // review I2: paste and value edits go through the checks edit_graph makes
 TEST_F(GraphEditorWindowTest, PasteAndValueEditsAreCheckedAsEditGraphChecksThem) {
-    GraphEditorWindow window(project());
+    GraphEditorWindow window(graphEditorWindowProject());
     ASSERT_TRUE(window.openGraph(writeGraph("checked")));
-    const size_t start = history()->position();
+    const size_t start = graphEditorWindowHistory()->position();
     // a type the kind does not have, with ports of its own invention
     EXPECT_FALSE(window.pasteText(R"({"graph_clipboard": "window_test", "nodes": [{"id": "a", "type": "bogus", "position": [0, 0],
         "ports": [{"id": "x", "direction": "out", "type": "float"}]}]})", ImVec2(0, 0)));
@@ -577,13 +577,13 @@ TEST_F(GraphEditorWindowTest, PasteAndValueEditsAreCheckedAsEditGraphChecksThem)
     EXPECT_FALSE(window.pasteValueText("n2", "weight", R"("abc")"));
     EXPECT_FALSE(window.setParam("n2", "mode", "cubic"));
     EXPECT_FALSE(window.setParam("n1", "value", GraphJson::array({1, 2})));
-    EXPECT_EQ(history()->position(), start + 1) << "only the good paste wrote";
+    EXPECT_EQ(graphEditorWindowHistory()->position(), start + 1) << "only the good paste wrote";
     // an op that adds an error (a wire to a port that does not exist) is refused by the document
     std::string error;
     EXPECT_FALSE(window.getDocument()->apply({{"connect", {{"from", {{"node", "n1"}, {"port", "value"}}}, {"to", {{"node", "n2"}, {"port", "nope"}}}}}},
                                              "", &error));
     EXPECT_NE(error.find("nothing was written"), std::string::npos) << error;
-    EXPECT_EQ(history()->position(), start + 1);
+    EXPECT_EQ(graphEditorWindowHistory()->position(), start + 1);
 }
 
 // review I3: a file holds anything; the Inspector draws it whatever its types
@@ -591,10 +591,10 @@ TEST_F(GraphEditorWindowTest, TheInspectorDrawsWronglyTypedValues) {
     writeGraph("typed", R"([{"id": "n1", "type": "tint", "position": [0, 0], "params": {
         "ramp": {"points": [{"pos": 0, "r": 0, "g": 0, "b": 0}, {"pos": 1, "r": 1, "g": 1, "b": 1}], "interpolation": "smooth"},
         "texture": {"path": 5}, "color": "red", "shape": {"points": 3}, "on": "yes", "label": 7}}])");
-    GraphEditorWindow window(project());
+    GraphEditorWindow window(graphEditorWindowProject());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph("assets/graphs/typed.wtgraph"));
-    Frames frames;
+    GraphEditorWindowFrames frames;
     frames.frame(window);
     window.selectNodes({"n1"});
     EXPECT_NO_THROW(EXPECT_TRUE(frames.frame(window)));
@@ -650,10 +650,10 @@ namespace {
 
 // review I7: the kind window's seam says when its graph goes and when the selection empties
 TEST_F(GraphEditorWindowTest, AKindWindowHearsItsGraphGo) {
-    ImageWindow window(project(), "Image Graph", "window_test");
+    ImageWindow window(graphEditorWindowProject(), "Image Graph", "window_test");
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeGraph("seam1")));
-    Frames frames;
+    GraphEditorWindowFrames frames;
     frames.frame(window);
     EXPECT_EQ(window.frames, 1);
     window.selectNodes({"n1"});
@@ -670,7 +670,7 @@ TEST_F(GraphEditorWindowTest, AKindWindowHearsItsGraphGo) {
 TEST_F(GraphEditorWindowTest, ArrangedNodesWithImagesDoNotOverlap) {
     writeGraph("tall", R"([{"id": "n1", "type": "mix6", "params": {}}, {"id": "n2", "type": "mix6", "params": {}},
         {"id": "n3", "type": "speed", "params": {}}, {"id": "n4", "type": "mix6", "params": {}}])");
-    ImageWindow window(project(), "Image Graph", "window_test");
+    ImageWindow window(graphEditorWindowProject(), "Image Graph", "window_test");
     ASSERT_TRUE(window.openGraph("assets/graphs/tall.wtgraph"));
     ASSERT_TRUE(window.arrange());
     const graph::Graph& g = window.getDocument()->graph();
@@ -694,11 +694,11 @@ TEST_F(GraphEditorWindowTest, ArrangedNodesWithImagesDoNotOverlap) {
 // review M1, M2: a click on empty canvas drops the wire selection; Esc during a wire drag keeps the
 // selection the press found
 TEST_F(GraphEditorWindowTest, CanvasClicksDropTheWireAndEscKeepsTheSelectionOfThePress) {
-    GraphEditorWindow window(project());
+    GraphEditorWindow window(graphEditorWindowProject());
     window.setOpen(true);
     ASSERT_TRUE(window.openGraph(writeGraph("clicks")));
     ASSERT_TRUE(window.connect("n1", "value", "n2", "a"));
-    Frames frames;
+    GraphEditorWindowFrames frames;
     frames.frame(window);
     frames.frame(window);
     ImVec2 out, in;
@@ -753,8 +753,8 @@ TEST(GraphParamValues, AFilesRampOverTheLimitEditsDownAndMissingBoundsAreNoBound
 
 // re-review I7: a project switch or close reaches every graph window, a kind's too
 TEST_F(GraphEditorWindowTest, AProjectSwitchReachesEveryGraphWindow) {
-    GraphEditorWindow generic(project());
-    ImageWindow kindWindow(project(), "Image Graph", "window_test");
+    GraphEditorWindow generic(graphEditorWindowProject());
+    ImageWindow kindWindow(graphEditorWindowProject(), "Image Graph", "window_test");
     ASSERT_TRUE(generic.openGraph(writeGraph("switch1")));
     ASSERT_TRUE(kindWindow.openGraph(writeGraph("switch2")));
     GraphEditorWindow::prepareAllForProjectSwitch();

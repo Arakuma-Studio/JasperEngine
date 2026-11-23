@@ -105,7 +105,7 @@ package() {
     if ! echo "$APPIMAGETOOL_SHA256  $tool" | sha256sum -c --status - 2>/dev/null; then
         mkdir -p "$(dirname "$tool")"
         rm -f "$tool"
-        wget -q -O "$tool.part" \
+        tools/ci/retry.sh wget -q -O "$tool.part" \
             "https://github.com/AppImage/appimagetool/releases/download/$APPIMAGETOOL_VERSION/appimagetool-x86_64.AppImage"
         echo "$APPIMAGETOOL_SHA256  $tool.part" | sha256sum -c -
         mv "$tool.part" "$tool"

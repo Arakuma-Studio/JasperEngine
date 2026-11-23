@@ -18,14 +18,14 @@ using namespace jasperengine::editor::pixelart::testing;
 
 namespace {
 
-    const std::pair<BlendMode, const char*> kModes[] = {
-        {BlendMode::Normal, "normal"},         {BlendMode::Multiply, "multiply"},     {BlendMode::Screen, "screen"},
-        {BlendMode::Overlay, "overlay"},       {BlendMode::Darken, "darken"},         {BlendMode::Lighten, "lighten"},
-        {BlendMode::ColorDodge, "colordodge"}, {BlendMode::ColorBurn, "colorburn"},   {BlendMode::HardLight, "hardlight"},
-        {BlendMode::SoftLight, "softlight"},   {BlendMode::Difference, "difference"}, {BlendMode::Exclusion, "exclusion"},
-        {BlendMode::Hue, "hue"},               {BlendMode::Saturation, "saturation"}, {BlendMode::Color, "color"},
-        {BlendMode::Luminosity, "luminosity"}, {BlendMode::Addition, "addition"},     {BlendMode::Subtract, "subtract"},
-        {BlendMode::Divide, "divide"},
+    const std::pair<aseprite::BlendMode, const char*> kModes[] = {
+        {aseprite::BlendMode::Normal, "normal"},         {aseprite::BlendMode::Multiply, "multiply"},     {aseprite::BlendMode::Screen, "screen"},
+        {aseprite::BlendMode::Overlay, "overlay"},       {aseprite::BlendMode::Darken, "darken"},         {aseprite::BlendMode::Lighten, "lighten"},
+        {aseprite::BlendMode::ColorDodge, "colordodge"}, {aseprite::BlendMode::ColorBurn, "colorburn"},   {aseprite::BlendMode::HardLight, "hardlight"},
+        {aseprite::BlendMode::SoftLight, "softlight"},   {aseprite::BlendMode::Difference, "difference"}, {aseprite::BlendMode::Exclusion, "exclusion"},
+        {aseprite::BlendMode::Hue, "hue"},               {aseprite::BlendMode::Saturation, "saturation"}, {aseprite::BlendMode::Color, "color"},
+        {aseprite::BlendMode::Luminosity, "luminosity"}, {aseprite::BlendMode::Addition, "addition"},     {aseprite::BlendMode::Subtract, "subtract"},
+        {aseprite::BlendMode::Divide, "divide"},
     };
 
     Document blendFixture() { return loadDocument(asepriteFixtures() / "asefile" / "blend_normal.aseprite"); }
@@ -35,9 +35,9 @@ namespace {
     }
 
     // the goldens were exported by Aseprite 1.3.12 or earlier: Hue and Saturation as those drew them
-    RenderOptions goldenOptions(BlendMode mode) {
+    RenderOptions goldenOptions(aseprite::BlendMode mode) {
         RenderOptions o;
-        o.legacyHsl = mode == BlendMode::Hue || mode == BlendMode::Saturation;
+        o.legacyHsl = mode == aseprite::BlendMode::Hue || mode == aseprite::BlendMode::Saturation;
         return o;
     }
 
@@ -54,14 +54,14 @@ TEST(AsepriteBlendTest, AllModes) {
     }
     // today's Aseprite (1.3.15.3+) fixed set_sat: the default differs from those goldens where
     // channels tie, and only there
-    for (BlendMode mode : {BlendMode::Hue, BlendMode::Saturation}) {
+    for (aseprite::BlendMode mode : {aseprite::BlendMode::Hue, aseprite::BlendMode::Saturation}) {
         doc.layers[1].blend = mode;
-        EXPECT_FALSE(samePicture(renderFrame(doc, 0), golden(mode == BlendMode::Hue ? "hue" : "saturation")));
+        EXPECT_FALSE(samePicture(renderFrame(doc, 0), golden(mode == aseprite::BlendMode::Hue ? "hue" : "saturation")));
     }
     // red control: a mode's golden is not another mode's picture
-    doc.layers[1].blend = BlendMode::Multiply;
+    doc.layers[1].blend = aseprite::BlendMode::Multiply;
     EXPECT_FALSE(samePicture(renderFrame(doc, 0), golden("screen")));
-    doc.layers[1].blend = BlendMode::Hue;
+    doc.layers[1].blend = aseprite::BlendMode::Hue;
     EXPECT_FALSE(samePicture(renderFrame(doc, 0), golden("saturation")));
 }
 

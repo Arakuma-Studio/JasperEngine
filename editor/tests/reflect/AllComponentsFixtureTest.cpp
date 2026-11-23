@@ -72,7 +72,7 @@ namespace all_components_fixture_test {
             case PropertyType::Ease: *static_cast<Ease*>(property.ref) = Ease(EaseType::CUBIC_IN_OUT); break;
             case PropertyType::Enum:
                 if (const mcp::McpValues::EnumOptions* options = mcp::McpValues::enumOptions(type, name)) {
-                    if (!options->empty()) *static_cast<int*>(property.ref) = options->back().value;
+                    if (!options->empty()) writePropertyInteger(property, property.ref, options->back().value);
                 }
                 break;
             default:

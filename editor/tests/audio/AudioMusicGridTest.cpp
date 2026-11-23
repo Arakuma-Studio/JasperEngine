@@ -24,21 +24,21 @@ namespace fs = std::filesystem;
 
 namespace {
 
-constexpr unsigned int RATE = 48000;
+constexpr unsigned int AUDIO_MUSIC_GRID_RATE = 48000;
 constexpr double PI_VALUE = 3.14159265358979323846;
 
 std::vector<float> clickTrack(double bpm, double firstBeatSeconds, int beatsPerBar, double seconds) {
-    std::vector<float> x((size_t)(seconds * RATE), 0.0f);
+    std::vector<float> x((size_t)(seconds * AUDIO_MUSIC_GRID_RATE), 0.0f);
     const double period = 60.0 / bpm;
-    const size_t click = (size_t)(0.002 * RATE);
-    const size_t thump = (size_t)(0.040 * RATE);
+    const size_t click = (size_t)(0.002 * AUDIO_MUSIC_GRID_RATE);
+    const size_t thump = (size_t)(0.040 * AUDIO_MUSIC_GRID_RATE);
     for (int k = 0;; k++) {
         const double t = firstBeatSeconds + k * period;
-        const size_t start = (size_t)std::llround(t * RATE);
+        const size_t start = (size_t)std::llround(t * AUDIO_MUSIC_GRID_RATE);
         if (start >= x.size()) break;
-        for (size_t i = 0; i < click && start + i < x.size(); i++) x[start + i] += (float)(0.5 * std::sin(2.0 * PI_VALUE * 3000.0 * (double)i / RATE));
+        for (size_t i = 0; i < click && start + i < x.size(); i++) x[start + i] += (float)(0.5 * std::sin(2.0 * PI_VALUE * 3000.0 * (double)i / AUDIO_MUSIC_GRID_RATE));
         if (k % beatsPerBar == 0) {
-            for (size_t i = 0; i < thump && start + i < x.size(); i++) x[start + i] += (float)(0.5 * std::sin(2.0 * PI_VALUE * 60.0 * (double)i / RATE));
+            for (size_t i = 0; i < thump && start + i < x.size(); i++) x[start + i] += (float)(0.5 * std::sin(2.0 * PI_VALUE * 60.0 * (double)i / AUDIO_MUSIC_GRID_RATE));
         }
     }
     return x;
@@ -47,7 +47,7 @@ std::vector<float> clickTrack(double bpm, double firstBeatSeconds, int beatsPerB
 AudioAnalysis::Signal signalOf(std::vector<float> mono) {
     AudioAnalysis::Signal signal;
     signal.channels = 1;
-    signal.sampleRate = RATE;
+    signal.sampleRate = AUDIO_MUSIC_GRID_RATE;
     signal.frames = mono.size();
     signal.samples = std::move(mono);
     return signal;
@@ -55,7 +55,7 @@ AudioAnalysis::Signal signalOf(std::vector<float> mono) {
 
 // white noise from a fixed LCG: the same on every platform
 std::vector<float> noise(double seconds) {
-    std::vector<float> x((size_t)(seconds * RATE));
+    std::vector<float> x((size_t)(seconds * AUDIO_MUSIC_GRID_RATE));
     uint32_t state = 12345u;
     for (float& v : x) {
         state = state * 1664525u + 1013904223u;
@@ -78,7 +78,7 @@ void expectGrid(double bpm, double firstBeatSeconds, int beatsPerBar) {
     EXPECT_EQ(grid.candidates[1].bpm, grid.bpmAlt);
 }
 
-std::string readText(const fs::path& file) {
+std::string audioMusicGridReadText(const fs::path& file) {
     std::ifstream in(file, std::ios::binary);
     return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
 }
@@ -128,7 +128,7 @@ TEST(AudioMusicGrid, CacheRoundTripIsTheSameGrid) {
     const fs::path cache = dir.path() / "cache";
     {
         std::ofstream out(file, std::ios::binary);
-        out << WavWriter::pcm16(clickTrack(120.0, 0.25, 4, 8.0), 1, RATE);
+        out << WavWriter::pcm16(clickTrack(120.0, 0.25, 4, 8.0), 1, AUDIO_MUSIC_GRID_RATE);
     }
     AudioMusicGrid::Grid first, second;
     std::string error;
@@ -137,10 +137,10 @@ TEST(AudioMusicGrid, CacheRoundTripIsTheSameGrid) {
     const fs::path cached = AudioMusicGrid::cacheFile(cache, first.sha1);
     EXPECT_EQ(cached.filename().string(), first.sha1 + "-grid-v1.json");
     ASSERT_TRUE(fs::exists(cached));
-    const std::string bytes = readText(cached);
+    const std::string bytes = audioMusicGridReadText(cached);
     ASSERT_TRUE(AudioMusicGrid::get(file, cache, second, error)) << error;
     EXPECT_EQ(second.toJson().dump(), first.toJson().dump());
-    EXPECT_EQ(readText(cached), bytes);
+    EXPECT_EQ(audioMusicGridReadText(cached), bytes);
     EXPECT_NEAR(first.bpm, 120.0, 0.1);
 
     // the second answer is the file's: an edited cache shows
@@ -164,8 +164,8 @@ TEST(AudioMusicGrid, CacheRoundTripIsTheSameGrid) {
 
 TEST(AudioMusicGrid, ItemReportsLoopBeatsAgreementAndFix) {
     AudioMusicGrid::Grid grid;
-    grid.sampleRate = RATE;
-    grid.frames = 8 * RATE;
+    grid.sampleRate = AUDIO_MUSIC_GRID_RATE;
+    grid.frames = 8 * AUDIO_MUSIC_GRID_RATE;
     grid.bpm = 120.0;
     grid.bpmAlt = 60.0;
     grid.firstBeatMs = 12.4;

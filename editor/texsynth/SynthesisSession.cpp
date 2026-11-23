@@ -232,7 +232,9 @@ namespace jasperengine::editor::texsynth {
         for (const auto& entry : fs::directory_iterator(example.parent_path(), ec)) {
             if (!entry.is_regular_file(ec)) continue;
             const fs::path path = entry.path();
-            if (path.filename() == example.filename() || !Util::isImageFile(FileUtils::pathToUtf8(path.filename()))) continue;
+            // the extension alone: Util's check makes a fs::path of the text, which throws on Windows
+            // for a name that is not UTF-8
+            if (path.filename() == example.filename() || !Util::isImageFile(FileUtils::pathToUtf8(path.extension()))) continue;
             if (lower(FileUtils::pathToUtf8(path.extension())) == ".svg") continue;
             siblings.push_back(path);
         }
@@ -249,8 +251,14 @@ namespace jasperengine::editor::texsynth {
             CompanionCandidate candidate;
             candidate.name = name;
             candidate.path = projectRelative(projectDir, path);
+            // a name that is not UTF-8 is left for the caller to report, unread: it can't be passed
+            // on as UTF-8 (on Windows, a name made of a Latin-1 recipe's bytes or a lone surrogate)
+            if (!isValidUtf8(candidate.path)) {
+                found.push_back(candidate);
+                continue;
+            }
             int c = 0;
-            if (!stbi_info(path.string().c_str(), &candidate.width, &candidate.height, &c)) continue;
+            if (!stbi_info(FileUtils::pathToUtf8(path).c_str(), &candidate.width, &candidate.height, &c)) continue;
             found.push_back(candidate);
         }
         return found;
@@ -276,7 +284,7 @@ namespace jasperengine::editor::texsynth {
             fs::path abs;
             std::string error;
             int w = 0, h = 0, c = 0;
-            if (resolveProjectFile(projectDir, ex.path, abs, error)) stbi_info(abs.string().c_str(), &w, &h, &c);
+            if (resolveProjectFile(projectDir, ex.path, abs, error)) stbi_info(FileUtils::pathToUtf8(abs).c_str(), &w, &h, &c);
             sizes.push_back({w, h});
         }
         for (const auto& [name, first] : perExample.front()) {
@@ -349,7 +357,7 @@ namespace jasperengine::editor::texsynth {
             }
             inputs.insert(FileUtils::pathToGenericUtf8(abs.lexically_normal()));
             int c = 0, iw = 0, ih = 0;
-            if (!stbi_info(abs.string().c_str(), &iw, &ih, &c)) {
+            if (!stbi_info(FileUtils::pathToUtf8(abs).c_str(), &iw, &ih, &c)) {
                 add(problems, field, rel + " is not an image the synthesis can read (PNG, JPEG, TGA, BMP, PSD, GIF)");
                 return;
             }

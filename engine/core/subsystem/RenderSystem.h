@@ -2816,7 +2816,7 @@ namespace jasperengine{
 
 		TerrainDetailArray* getTerrainDetailArray(Entity entity, TerrainComponent& terrain);
 		void destroyTerrainDetailArray(Entity entity);
-		void applyTerrainLayersUniform(ObjectRender& render, int slot, Entity entity, TerrainComponent& terrain, uint64_t litDefineBits, bool extendedBlock);
+		void applyTerrainLayersUniform(ObjectRender& render, int slot, Entity entity, TerrainComponent& terrain, ShaderData& shaderData);
 		// T3 D1 (RenderSystemTerrain.cpp)
 		void applyTerrainMacroVertexUniform(ObjectRender& render, int slot, const TerrainComponent& terrain);
 	public:

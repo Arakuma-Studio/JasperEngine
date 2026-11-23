@@ -1747,6 +1747,11 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "- Models ship cooked (settings in their `.meta`): `inspect_models` finds costly ones, `check_render_budgets` checks "
                      "`quality.render_budgets` (tool group `meshes`).\n";
     agentsContent += "- An editor key is rebound with `set_shortcut` (tool group `editor_ux`), not in the editor's source.\n\n";
+    agentsContent += "## Target platforms\n\n";
+    agentsContent += "This game ships on Project Settings > Player > Target Platforms (`player.target_platforms`; `get_build_info` "
+                     "lists them). Test, budget and export for those only; ask before adding one. Prove a change: `check --project .`, "
+                     "`play` it (`read_console`, `screenshot`), then `build_project` for each target this computer can build. Name any "
+                     "you could not (iOS needs a Mac).\n\n";
     agentsContent += "## HTML/CSS UI\n\n";
     agentsContent += "Standard HTML and CSS with Lua logic (no JavaScript), one UI Document per GameObject (`create_ui_document`), under "
                      "`assets/ui/`; `check --ui` reports what the engine drops or rewrites. Supported CSS: `jasper://docs/html-ui-support`; "
@@ -1779,8 +1784,8 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
                      "`GameObject.destroy`). A prefab loaded only by path (`PrefabAsset::load`) must be in `standalonePrefabs` "
                      "(Assets > Prefabs) or the build lacks it.\n\n";
     agentsContent += "## Physics backends\n\n";
-    agentsContent += "Project Settings > Build > 2D/3D Physics only changes the export, which drops a disabled backend: code that must "
-                     "build either way guards on `JASPERENGINE_PHYSICS_2D` / `JASPERENGINE_PHYSICS_3D`.\n";
+    agentsContent += "Project Settings > Physics > 3D Physics and Physics 2D > 2D Physics only change the export, which drops a disabled "
+                     "backend: code that must build either way guards on `JASPERENGINE_PHYSICS_2D` / `JASPERENGINE_PHYSICS_3D`.\n";
 
     FileUtils::writeIfChanged(agentsFile, agentsContent);
     writeClaudeFile(projectPath);

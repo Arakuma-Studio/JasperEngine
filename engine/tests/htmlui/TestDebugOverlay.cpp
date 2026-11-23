@@ -847,6 +847,10 @@ TEST_F(DebugOverlayTest, KeysIgnoredWhileTheGameTypes){
 // no finger stays held for the gestures across a focus loss, a pause or a cancel of all touches
 // (also fingers outside the canvas, which Input never had)
 TEST_F(DebugOverlayTest, GesturesResetOnFocusLossPauseAndCancel){
+    // focused, as an app is: a pause in an earlier test (InputTest) took the focus and a resume
+    // does not give it back, so the focus loss below would be no change
+    Engine::systemFocusChanged(true);
+    Engine::systemFocus(true);
     ASSERT_TRUE(fixture->waitUntilLoaded());
     enable();
     Engine::setFixedDeltatime(0.1);

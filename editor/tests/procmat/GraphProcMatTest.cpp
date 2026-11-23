@@ -17,7 +17,7 @@ using namespace jasperengine::editor::procmat;
 
 namespace {
 
-    std::shared_ptr<const NodeLibrary> repositoryLibrary() {
+    std::shared_ptr<const NodeLibrary> graphProcMatRepositoryLibrary() {
         std::string error;
         auto library = NodeLibrary::fromDirectory(std::filesystem::path(JASPER_TEST_REPO_DIR) / "editor/procmat/nodes", error);
         EXPECT_TRUE(library) << error;
@@ -83,7 +83,7 @@ namespace {
     class GraphProcMatTest : public ::testing::Test {
     protected:
         void SetUp() override {
-            library = repositoryLibrary();
+            library = graphProcMatRepositoryLibrary();
             ASSERT_TRUE(library);
             graph::GraphRegistry::get().registerKind(makeProceduralMaterialKind(library));
         }

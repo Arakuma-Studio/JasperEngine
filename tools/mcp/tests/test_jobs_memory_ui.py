@@ -1,11 +1,13 @@
 """S06 AC23, scripted: the Jobs & Memory panel and Project Settings > Player > Threading, driven
-with xdotool in the harness's Xvfb (1600x900, default layout), and a 200-texture load storm.
+with xdotool in the harness's Xvfb (1600x900, default layout), and a texture load storm.
 
 1. Reserved Frame Workers changed in Project Settings: the panel's gate max follows at once,
    and Ctrl+Z in the panel reverts it.
-2. 200 textures load at once: the Background lane runs at the gate's max (Heavy jobs, as
-   texture decodes are, take at most heavy_max = max - 2 of it, R9), and the editor's frames
-   keep their pace.
+2. Textures load at once: the Background lane runs at the gate's max (Heavy jobs, as texture
+   decodes are, take at most heavy_max = max - 2 of it, R9), and the editor's frames keep their
+   pace. The benchmark run (JASPER_TEST_PERF_SLACK) loads AC23's 200 and enforces the pace;
+   elsewhere four times the Heavy max (at least 16) saturate the gate as surely, in a fraction
+   of the time.
 
 The clicks are real (xdotool), aimed where find_ui_item says the control is drawn now (by its
 label, scrolling with the wheel until it is), so a layout change does not move them off target.
@@ -147,17 +149,21 @@ async def frame_ms(ed: Editor) -> float:
 
 async def test_texture_storm_saturates_the_gate_and_keeps_frames(ed: Editor):
     out = evidence(ed)
+    slack = float(os.environ.get("JASPER_TEST_PERF_SLACK") or 0)
+    # the frame pace needs AC23's 200 decodes; the gate's saturation only a backlog past its Heavy max
+    heavy_max = (await ed.call("get_job_system_stats", window_frames=1))["gate"]["heavy_max"]
+    textures = TEXTURES if slack > 0 else min(TEXTURES, max(16, 4 * heavy_max))
     folder = ed.project / "assets" / "storm"
     folder.mkdir(parents=True, exist_ok=True)
     paths = []
-    for k in range(TEXTURES):
+    for k in range(textures):
         (folder / f"noise{k:03d}.png").write_bytes(noise_png(SIZE))
         paths.append(f"assets/storm/noise{k:03d}.png")
     await ed.call("sync_files")
     made = await ed.call("create_scene", name="Storm", type="3D", path="scenes/Storm")
     scene = made["scene"]["id"]
     created = await ed.batch([("create_entity", {"scene": scene, "type": "box", "name": f"Box{k}",
-                                                  "position": [k % 20 * 1.5, 0, k // 20 * 1.5]}) for k in range(TEXTURES)])
+                                                  "position": [k % 20 * 1.5, 0, k // 20 * 1.5]}) for k in range(textures)])
     ids = [find_key(r, "entity_id", "id") for r in created["results"]]
     await ed.call("focus_window", window="jobs_memory")
 
@@ -170,14 +176,13 @@ async def test_texture_storm_saturates_the_gate_and_keeps_frames(ed: Editor):
         await asyncio.sleep(0.2)
     idle = [await frame_ms(ed) for _ in range(40)]
 
-    stats = await ed.call("get_job_system_stats", window_frames=1)
-    heavy_max = stats["gate"]["heavy_max"]
+    ed.check_eq((await ed.call("get_job_system_stats", window_frames=1))["gate"]["heavy_max"], heavy_max, "the gate as the storm was sized")
     probe = "return {Engine.framerate, Jobs.getRunningCount(JobLane.Background), Engine.getQueuedResourceCount()}"
     await ed.batch([("set_properties", {"scene": scene, "entity": eid,
                                         "values": {"mesh": {"submeshes[0].material.baseColorTexture": path}}})
                     for eid, path in zip(ids, paths)])
     storm, running = [], []
-    # (CI's 4 vCPUs leave the gate a Heavy max of 1: the 200 decodes then take about six minutes)
+    # (CI's 4 vCPUs leave the gate a Heavy max of 1: 200 decodes then take about six minutes)
     deadline = time.monotonic() + 720
     while time.monotonic() < deadline:
         rate, background, queued = (await ed.call("eval_lua", code=probe, allow_edit_mode=True))["values"][0]
@@ -190,7 +195,7 @@ async def test_texture_storm_saturates_the_gate_and_keeps_frames(ed: Editor):
     await ed.screenshot("editor", path=str(out / "ac23-6-after-storm.png"))
     idle_p95 = sorted(idle)[int(len(idle) * 0.95) - 1]
     storm_p95 = sorted(storm)[int(len(storm) * 0.95) - 1]
-    print(f"storm: {len(storm)} samples; Background running max {max(running)} sampled, gate peak {peaks['peak']} (Heavy {peaks['heavy_peak']} of {heavy_max}); "
+    print(f"storm of {textures} textures: {len(storm)} samples; Background running max {max(running)} sampled, gate peak {peaks['peak']} (Heavy {peaks['heavy_peak']} of {heavy_max}); "
           f"frame ms idle median {statistics.median(idle):.1f} p95 {idle_p95:.1f}, "
           f"storm median {statistics.median(storm):.1f} p95 {storm_p95:.1f}")
     ed.check_eq(peaks["heavy_peak"], heavy_max, "the decodes ran at the gate's Heavy max")
@@ -200,7 +205,6 @@ async def test_texture_storm_saturates_the_gate_and_keeps_frames(ed: Editor):
     budget = 33.0 if idle_p95 <= 22.0 else idle_p95 * 1.5
     # a wall-clock budget: enforced in the benchmark run (JASPER_TEST_PERF_SLACK, on the
     # benchmark-only server E, docs/testing.md); a shared builder's load alone misses it
-    slack = float(os.environ.get("JASPER_TEST_PERF_SLACK") or 0)
     if slack > 0:
         ed.check(storm_p95 <= budget * slack,
                  f"frames during the storm: p95 {storm_p95:.1f} ms (idle {idle_p95:.1f}, budget {budget * slack:.1f})")

@@ -15,16 +15,16 @@ using namespace jasperengine;
 
 namespace {
     // out of line, so the direct call is a real std::function call too
-    volatile int sink = 0;
+    volatile int signalBenchSink = 0;
 }
 
 TEST(SignalBench, InvokeOneSubscriberOverDirectCall) {
     constexpr int calls = 20000000;
-    std::function<void(int)> direct = [](int v) { sink = sink + v; };
+    std::function<void(int)> direct = [](int v) { signalBenchSink = signalBenchSink + v; };
     Signal<int> signal;
-    Subscription subscription = signal.subscribe([](int v) { sink = sink + v; });
+    Subscription subscription = signal.subscribe([](int v) { signalBenchSink = signalBenchSink + v; });
     FunctionSubscribe<void(int)> event;
-    event.add("one", [](int v) { sink = sink + v; });
+    event.add("one", [](int v) { signalBenchSink = signalBenchSink + v; });
 
     auto time = [](auto&& body) {
         const auto start = std::chrono::steady_clock::now();

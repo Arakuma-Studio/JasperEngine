@@ -26,7 +26,7 @@ using namespace posetest;
 
 namespace {
 
-    Entity node(Scene& scene, Entity parent, const std::string& name, const Vector3& position, const Quaternion& rotation){
+    Entity poseModelRigNode(Scene& scene, Entity parent, const std::string& name, const Vector3& position, const Quaternion& rotation){
         Entity entity = scene.createEntity();
         scene.addComponent<Transform>(entity, {});
         scene.setEntityName(entity, name);
@@ -39,7 +39,7 @@ namespace {
     }
 
     Entity bone(Scene& scene, Entity model, Entity parent, const std::string& name, const Vector3& position, const Quaternion& rotation){
-        Entity entity = node(scene, parent, name, position, rotation);
+        Entity entity = poseModelRigNode(scene, parent, name, position, rotation);
         BoneComponent component;
         component.model = model;
         component.index = 0;
@@ -61,12 +61,12 @@ namespace {
 
         Fixture(){
             Scene& s = *scene;
-            model = node(s, NULL_ENTITY, "Model", Vector3(5, 0, 0), Quaternion());
+            model = poseModelRigNode(s, NULL_ENTITY, "Model", Vector3(5, 0, 0), Quaternion());
             s.addComponent<ModelComponent>(model, {});
             // glTF scene root and an armature-like node between two bones: not bones
-            root = node(s, model, "SceneRoot", Vector3(0, 1, 0), aboutY(90));
+            root = poseModelRigNode(s, model, "SceneRoot", Vector3(0, 1, 0), aboutY(90));
             hips = bone(s, model, root, "Hips", Vector3(0, 0.5f, 0), Quaternion());
-            mid = node(s, hips, "Helper", Vector3(0, 0.1f, 0), aboutY(-30));
+            mid = poseModelRigNode(s, hips, "Helper", Vector3(0, 0.1f, 0), aboutY(-30));
             spine = bone(s, model, mid, "Spine", Vector3(0, 0.2f, 0), aboutY(10));
             ModelComponent& m = s.getComponent<ModelComponent>(model);
             m.bonesIdMapping[1] = hips;

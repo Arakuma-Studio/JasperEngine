@@ -44,9 +44,9 @@ using namespace jasperengine;
 
 namespace {
 
-    int kWorkers = 8;
+    int kPickingBenchWorkers = 8;
 
-    void settle(Scene& scene){
+    void pickingBenchSettle(Scene& scene){
         scene.getSystem<MeshSystem>()->update(0);
         scene.getSystem<RenderSystem>()->update(0);
     }
@@ -188,15 +188,15 @@ namespace {
 int main(int argc, char** argv){
     const int hardware = (int)std::thread::hardware_concurrency();
     if (hardware > 0){
-        kWorkers = std::max(1, std::min(8, hardware - 1));
+        kPickingBenchWorkers = std::max(1, std::min(8, hardware - 1));
     }
     for (int i = 1; i + 1 < argc; i++){
         if (std::string(argv[i]) == "--workers"){
-            kWorkers = std::max(1, std::atoi(argv[i + 1]));
+            kPickingBenchWorkers = std::max(1, std::atoi(argv[i + 1]));
         }
     }
     jobs::Config config;
-    config.workers = kWorkers;
+    config.workers = kPickingBenchWorkers;
     jobs::initialize(config);
     Engine::systemInit(argc, argv, new testsupport::JobsTestSystem());
     bench::Results results("je-bench-picking");
@@ -217,7 +217,7 @@ int main(int argc, char** argv){
             sphere->setScale(scale(rng));
             objects.push_back(std::move(sphere));
         }
-        settle(*scene);
+        pickingBenchSettle(*scene);
         waitForBuilds(*scene);
         auto meshes = scene->getComponentArray<MeshComponent>();
         for (size_t i = 0; i < meshes->size(); i++){
@@ -265,7 +265,7 @@ int main(int argc, char** argv){
             box->setPosition(position(rng), 0.5f, position(rng));
             boxes.push_back(std::move(box));
         }
-        settle(*scene);
+        pickingBenchSettle(*scene);
 
         MeshComponent& groundMesh = scene->getComponent<MeshComponent>(groundEntity);
         PickGeometry geometry;
@@ -383,7 +383,7 @@ int main(int argc, char** argv){
     {
         auto scene = std::make_unique<Scene>();
         const Entity character = makeGrid(*scene, 224, true, 0.1f, Vector3(0, 0, 0)); // 50,176 vertices
-        settle(*scene);
+        pickingBenchSettle(*scene);
         SceneBvh& bvh = scene->getPickBvh();
         const PickCache::EntryPtr entry = bvh.meshEntry(character, true);
         const MeshBvh* bindPose = entry ? PickCache::get().wait(entry) : nullptr;

@@ -56,20 +56,20 @@ using namespace jasperengine::test;
 
 namespace {
 
-    std::vector<uint8_t> readTarget(){
+    std::vector<uint8_t> readShadowPcssGlesTarget(){
         Framebuffer& target = GpuEnvironment::target();
         std::vector<uint8_t> rgba;
         readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba);
         return rgba;
     }
 
-    struct Difference {
+    struct ShadowPcssGlesDifference {
         int maxDiff = 0;
         size_t pixels = 0;   // pixels with a channel more than 8 apart
     };
 
-    Difference differenceOf(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
-        Difference out;
+    ShadowPcssGlesDifference shadowPcssGlesDifferenceOf(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
+        ShadowPcssGlesDifference out;
         if (a.size() != b.size()){
             out.maxDiff = 255;
             return out;
@@ -241,7 +241,7 @@ namespace {
             constexpr int frames = 10;
             const auto start = std::chrono::steady_clock::now();
             GpuEnvironment::drawFrames(frames);
-            readTarget();
+            readShadowPcssGlesTarget();
             return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / frames;
         }
 
@@ -257,12 +257,12 @@ TEST_F(ShadowPcssGlesGpu, GlesProgramsDrawTheDesktopContactHardening){
     build();
     scene.setShadowQuality(ShadowQuality::HIGH);
     settle();
-    const std::vector<uint8_t> high = readTarget();
+    const std::vector<uint8_t> high = readShadowPcssGlesTarget();
     const double highMs = frameMs();
 
     scene.setShadowQuality(ShadowQuality::ULTRA);
     settle();
-    const std::vector<uint8_t> desktop = readTarget();
+    const std::vector<uint8_t> desktop = readShadowPcssGlesTarget();
     const double desktopMs = frameMs();
     // the floor's program: a variant of the built-in Lit, whose "builtin:lit#..." reference (its
     // Lit Quality) is a custom shader id
@@ -271,7 +271,7 @@ TEST_F(ShadowPcssGlesGpu, GlesProgramsDrawTheDesktopContactHardening){
     const uint16_t customId = floorSubmesh.customShaderId;
     ASSERT_NE(variant & ShaderPool::getDirectionalOnlyProperty(), 0u) << "a sun-only scene draws the 'Dlo' Lit";
     ASSERT_NE(variant & ShaderPool::getShadowsHQProperty(), 0u);
-    const Difference pcss = differenceOf(high, desktop);
+    const ShadowPcssGlesDifference pcss = shadowPcssGlesDifferenceOf(high, desktop);
     std::printf("[pcss-gles] Ultra against High (PCSS against the Vogel disk): max %d, %zu pixels\n", pcss.maxDiff, pcss.pixels);
     EXPECT_GT(pcss.pixels, 200u) << "Ultra draws the High tier's shadow: no PCSS on desktop to compare with";
 
@@ -323,7 +323,7 @@ TEST_F(ShadowPcssGlesGpu, GlesProgramsDrawTheDesktopContactHardening){
     ASSERT_EQ(floorVariant(), variant);
     ASSERT_EQ(boxes.front()->getComponent<MeshComponent>().submeshes[0].shader.get(), glesProgram.get())
         << "the floor draws another program than the GLES3 one";
-    const std::vector<uint8_t> gles = readTarget();
+    const std::vector<uint8_t> gles = readShadowPcssGlesTarget();
     const double glesMs = frameMs();
     glesProgram.reset();
 
@@ -332,8 +332,8 @@ TEST_F(ShadowPcssGlesGpu, GlesProgramsDrawTheDesktopContactHardening){
     keep(gles, "shadow_pcss_gles_ultra_gles3");
     std::printf("[pcss-gles] llvmpipe %ux%u, sun-only Lit 'Dlo': High (Vogel) %.2f ms, Ultra (PCSS) %.2f ms, Ultra with the GLES3 programs %.2f ms a frame\n",
                 GpuEnvironment::target().getWidth(), GpuEnvironment::target().getHeight(), highMs, desktopMs, glesMs);
-    const Difference fromDesktop = differenceOf(desktop, gles);
-    const Difference fromHigh = differenceOf(high, gles);
+    const ShadowPcssGlesDifference fromDesktop = shadowPcssGlesDifferenceOf(desktop, gles);
+    const ShadowPcssGlesDifference fromHigh = shadowPcssGlesDifferenceOf(high, gles);
     std::printf("[pcss-gles] GLES3 programs against desktop: max %d, %zu pixels; against High: max %d, %zu pixels\n",
                 fromDesktop.maxDiff, fromDesktop.pixels, fromHigh.maxDiff, fromHigh.pixels);
     EXPECT_LE(fromDesktop.maxDiff, 2) << "the GLES3 programs draw another shadow than desktop's (" << fromDesktop.pixels << " pixels)";
@@ -347,10 +347,10 @@ TEST_F(ShadowPcssGlesGpu, PaintedTerrainTakesContactHardening){
     buildTerrain(dir);
     scene.setShadowQuality(ShadowQuality::HIGH);
     settle();
-    const std::vector<uint8_t> high = readTarget();
+    const std::vector<uint8_t> high = readShadowPcssGlesTarget();
     scene.setShadowQuality(ShadowQuality::ULTRA);
     settle();
-    const std::vector<uint8_t> ultra = readTarget();
+    const std::vector<uint8_t> ultra = readShadowPcssGlesTarget();
     const uint64_t properties = terrain->getComponent<MeshComponent>().submeshes[0].shaderProperties;
     ASSERT_NE(properties & shaderPropertyBit(27), 0u) << "the terrain does not draw its painted ('Tpb') variant";
     ASSERT_NE(properties & ShaderPool::getShadowsHQProperty(), 0u);
@@ -358,7 +358,7 @@ TEST_F(ShadowPcssGlesGpu, PaintedTerrainTakesContactHardening){
     EXPECT_TRUE(bindings.raw) << bindings.name << " has no PCSS";
     keep(high, "shadow_pcss_terrain_high");
     keep(ultra, "shadow_pcss_terrain_ultra");
-    const Difference pcss = differenceOf(high, ultra);
+    const ShadowPcssGlesDifference pcss = shadowPcssGlesDifferenceOf(high, ultra);
     std::printf("[pcss-gles] painted terrain, Ultra against High: max %d, %zu pixels\n", pcss.maxDiff, pcss.pixels);
     EXPECT_GT(pcss.pixels, 200u) << "the painted terrain draws the High tier's shadow at Ultra";
     EXPECT_NO_ENGINE_ERRORS();
@@ -403,7 +403,7 @@ TEST_F(ShadowPcssGlesGpu, HeaviestPaintedTerrainStaysWithinTheBindSlots){
     EXPECT_LE(bindings.fragmentTextures, 16u) << bindings.name << ": over 16 fragment texture units";
     EXPECT_TRUE(ShaderPool::get(ShaderType::MESH, properties, submesh.customShaderId)->isCreated()) << bindings.name << " was not created";
     // the terrain is drawn: the centre is its floor (grey, lit by the blue sky), not the sky (60 90 200)
-    const std::vector<uint8_t> image = readTarget();
+    const std::vector<uint8_t> image = readShadowPcssGlesTarget();
     keep(image, "shadow_pcss_terrain_heaviest");
     Framebuffer& target = GpuEnvironment::target();
     const uint8_t* centre = image.data() + ((size_t)(target.getHeight() / 2) * target.getWidth() + target.getWidth() / 2) * 4;

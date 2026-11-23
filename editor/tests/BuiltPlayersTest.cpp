@@ -53,7 +53,7 @@ namespace {
         }
     };
 
-    bool contains(const std::string& text, const std::string& part) {
+    bool builtPlayersContains(const std::string& text, const std::string& part) {
         return text.find(part) != std::string::npos;
     }
 
@@ -120,17 +120,17 @@ TEST(BuiltPlayers, RecordKeepsOtherModesAndRecordingAMissingFileFails) {
 TEST(BuiltPlayers, NoRecordOrNoEntryIsRefused) {
     BuiltDirs d("none");
     // no runbuild.yaml at all
-    EXPECT_TRUE(contains(bp::verify(d.internal, d.exe), "not built by this editor")) << bp::verify(d.internal, d.exe);
+    EXPECT_TRUE(builtPlayersContains(bp::verify(d.internal, d.exe), "not built by this editor")) << bp::verify(d.internal, d.exe);
     // a record that holds another file only
     const fs::path other = d.base / "project" / "build" / "desktop" / "other";
     BuiltDirs::writeExe(other, "#!/bin/sh\necho built\n");
     ASSERT_TRUE(bp::record(d.internal, other, "desktop"));
-    EXPECT_TRUE(contains(bp::verify(d.internal, d.exe), "not built by this editor")) << bp::verify(d.internal, d.exe);
+    EXPECT_TRUE(builtPlayersContains(bp::verify(d.internal, d.exe), "not built by this editor")) << bp::verify(d.internal, d.exe);
     // a file that can't be read at all
-    EXPECT_TRUE(contains(bp::verify(d.internal, d.base / "missing"), "can't be read"));
+    EXPECT_TRUE(builtPlayersContains(bp::verify(d.internal, d.base / "missing"), "can't be read"));
     // a damaged record file refuses, never crashes
     std::ofstream(bp::recordFile(d.internal), std::ios::binary | std::ios::trunc) << "desktop: [unclosed\n";
-    EXPECT_TRUE(contains(bp::verify(d.internal, other), "not built by this editor"));
+    EXPECT_TRUE(builtPlayersContains(bp::verify(d.internal, other), "not built by this editor"));
 }
 
 TEST(BuiltPlayers, ReplacedFileIsRefused) {
@@ -140,14 +140,14 @@ TEST(BuiltPlayers, ReplacedFileIsRefused) {
     const fs::path fresh = d.exe.parent_path() / "game.new";
     BuiltDirs::writeExe(fresh, "#!/bin/sh\necho built\n");
     fs::rename(fresh, d.exe);
-    EXPECT_TRUE(contains(bp::verify(d.internal, d.exe), "replaced since")) << bp::verify(d.internal, d.exe);
+    EXPECT_TRUE(builtPlayersContains(bp::verify(d.internal, d.exe), "replaced since")) << bp::verify(d.internal, d.exe);
 }
 
 TEST(BuiltPlayers, SizeChangeIsRefused) {
     BuiltDirs d("size");
     ASSERT_TRUE(bp::record(d.internal, d.exe, "desktop"));
     std::ofstream(d.exe, std::ios::binary | std::ios::app) << "echo more\n";
-    EXPECT_TRUE(contains(bp::verify(d.internal, d.exe), "contents changed")) << bp::verify(d.internal, d.exe);
+    EXPECT_TRUE(builtPlayersContains(bp::verify(d.internal, d.exe), "contents changed")) << bp::verify(d.internal, d.exe);
 }
 
 TEST(BuiltPlayers, SameSizeContentChangeIsRefused) {
@@ -161,14 +161,14 @@ TEST(BuiltPlayers, SameSizeContentChangeIsRefused) {
     }
     fs::last_write_time(d.exe, mtime);   // the time put back: only the bytes give it away
     EXPECT_EQ(fs::file_size(d.exe), static_cast<std::uintmax_t>(std::string("#!/bin/sh\necho built\n").size()));
-    EXPECT_TRUE(contains(bp::verify(d.internal, d.exe), "contents changed")) << bp::verify(d.internal, d.exe);
+    EXPECT_TRUE(builtPlayersContains(bp::verify(d.internal, d.exe), "contents changed")) << bp::verify(d.internal, d.exe);
 }
 
 TEST(BuiltPlayers, MtimeChangeIsRefused) {
     BuiltDirs d("mtime");
     ASSERT_TRUE(bp::record(d.internal, d.exe, "desktop"));
     fs::last_write_time(d.exe, fs::last_write_time(d.exe) - std::chrono::seconds(30));
-    EXPECT_TRUE(contains(bp::verify(d.internal, d.exe), "modified since")) << bp::verify(d.internal, d.exe);
+    EXPECT_TRUE(builtPlayersContains(bp::verify(d.internal, d.exe), "modified since")) << bp::verify(d.internal, d.exe);
 }
 
 TEST(BuiltPlayers, SymbolicLinkIsRefused) {
@@ -177,10 +177,10 @@ TEST(BuiltPlayers, SymbolicLinkIsRefused) {
     ASSERT_TRUE(bp::record(d.internal, d.exe, "desktop"));
     const fs::path link = d.exe.parent_path() / "game-link";
     fs::create_symlink(d.exe, link);
-    EXPECT_TRUE(contains(bp::verify(d.internal, link), "symbolic link")) << bp::verify(d.internal, link);
+    EXPECT_TRUE(builtPlayersContains(bp::verify(d.internal, link), "symbolic link")) << bp::verify(d.internal, link);
     // the recorded file itself still runs
     EXPECT_EQ(bp::verify(d.internal, d.exe), "");
     // a link recorded as the player is refused too (record resolves it; the link is never run)
     ASSERT_TRUE(bp::record(d.internal, link, "desktop"));
-    EXPECT_TRUE(contains(bp::verify(d.internal, link), "symbolic link"));
+    EXPECT_TRUE(builtPlayersContains(bp::verify(d.internal, link), "symbolic link"));
 }

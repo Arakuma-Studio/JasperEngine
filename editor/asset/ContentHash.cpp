@@ -3,8 +3,9 @@
 
 #include "ContentHash.h"
 
+#include "io/watch/SharedFileReader.h"
+
 #include <cstring>
-#include <fstream>
 #include <vector>
 
 using namespace jasperengine::editor;
@@ -136,18 +137,23 @@ bool ContentHash::ofFile(const std::filesystem::path& path, uint64_t& result, ui
     if (ec || size > maxSize) {
         return false;
     }
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
+    // shared for deletion on Windows (std::ifstream never is): the background hashing must not
+    // keep the user from deleting or replacing the file it reads
+    jasperengine::SharedFileReader file;
+    if (!file.open(path)) {
         return false;
     }
     ContentHash hash;
     std::vector<char> chunk(256 * 1024);
-    while (file) {
-        file.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
-        const std::streamsize got = file.gcount();
-        if (got > 0) {
-            hash.update(chunk.data(), static_cast<size_t>(got));
+    for (;;) {
+        const int64_t got = file.read(chunk.data(), chunk.size());
+        if (got < 0) {
+            return false;
         }
+        if (got == 0) {
+            break;
+        }
+        hash.update(chunk.data(), static_cast<size_t>(got));
     }
     result = hash.digest();
     return true;

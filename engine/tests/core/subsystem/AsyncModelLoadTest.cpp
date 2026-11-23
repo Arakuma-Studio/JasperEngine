@@ -26,7 +26,7 @@ using namespace jasperengine::test;
 
 namespace {
 
-    std::string readFile(const std::string& path){
+    std::string asyncModelLoadReadFile(const std::string& path){
         std::ifstream file(path, std::ios::binary);
         return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
     }
@@ -38,9 +38,9 @@ namespace {
         return false;
     }
 
-    struct AsyncLoadingScope{
-        explicit AsyncLoadingScope(bool enable): was(Engine::isAsyncLoading()){ Engine::setAsyncLoading(enable); }
-        ~AsyncLoadingScope(){ Engine::setAsyncLoading(was); }
+    struct AsyncModelLoadAsyncLoadingScope{
+        explicit AsyncModelLoadAsyncLoadingScope(bool enable): was(Engine::isAsyncLoading()){ Engine::setAsyncLoading(enable); }
+        ~AsyncModelLoadAsyncLoadingScope(){ Engine::setAsyncLoading(was); }
         bool was;
     };
 
@@ -48,7 +48,7 @@ namespace {
 
 TEST(AsyncModelLoad, ALoadNoGameObjectWaitsForIsCollectedAndItsBuildCloses){
     TempDir dir;
-    const std::string hero = readFile(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models/hero_tpose.gltf");
+    const std::string hero = asyncModelLoadReadFile(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models/hero_tpose.gltf");
     ASSERT_FALSE(hero.empty());
     const std::string first = dir.write("quad_model.gltf", hero).generic_string();
     const std::string moved = dir.write("walker_model.gltf", hero).generic_string();
@@ -61,7 +61,7 @@ TEST(AsyncModelLoad, ALoadNoGameObjectWaitsForIsCollectedAndItsBuildCloses){
     ModelComponent& component = scene.getComponent<ModelComponent>(entity);
     component.needUpdateModel = false;
 
-    AsyncLoadingScope async(true);
+    AsyncModelLoadAsyncLoadingScope async(true);
     // the Model names another file (a move): its load starts in the background
     component.filename = moved;
     component.needUpdateModel = true;
@@ -101,14 +101,14 @@ TEST(AsyncModelLoad, ALoadNoGameObjectWaitsForIsCollectedAndItsBuildCloses){
 // read takes: the collection never takes a result someone polls
 TEST(AsyncModelLoad, ALoadAGameObjectWaitsForIsNeverCollected){
     TempDir dir;
-    const std::string hero = readFile(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models/hero_tpose.gltf");
+    const std::string hero = asyncModelLoadReadFile(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models/hero_tpose.gltf");
     const std::string file = dir.write("waited_model.gltf", hero).generic_string();
 
     Scene scene;
     Model model(&scene);
     const Entity entity = model.getEntity();
     std::shared_ptr<MeshSystem> meshSystem = scene.getSystem<MeshSystem>();
-    AsyncLoadingScope async(true);
+    AsyncModelLoadAsyncLoadingScope async(true);
     ModelComponent& component = scene.getComponent<ModelComponent>(entity);
     component.filename = file;
     component.needUpdateModel = true;

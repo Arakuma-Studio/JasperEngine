@@ -4,6 +4,7 @@
 #include "EditorModal.h"
 
 #include "imgui_internal.h"
+#include "util/StringUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -181,11 +182,6 @@ namespace {
         return true;
     }
 
-    std::string lowered(std::string text) {
-        std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        return text;
-    }
-
     const char* kindName(EditorDialogValue::Kind kind) {
         switch (kind) {
             case EditorDialogValue::Kind::Text: return "a string";
@@ -270,7 +266,7 @@ bool EditorModal::button(const char* label, const char* choice, const ImVec2& si
 
 std::string EditorModal::choiceOf(const std::string& label) {
     std::string out;
-    for (const char c : lowered(titleOf(label.c_str()))) {
+    for (const char c : jasperengine::StringUtils::toLowerAscii(titleOf(label.c_str()))) {
         if (std::isalnum(static_cast<unsigned char>(c))) out += c;
         else if (!out.empty() && out.back() != '_') out += '_';
     }
@@ -485,7 +481,7 @@ bool EditorModal::topModal(EditorDialogInfo& out) {
         } else {
             out.choices.push_back(c.choice);
         }
-        if (lowered(c.label) != c.choice) renamed = true;
+        if (jasperengine::StringUtils::toLowerAscii(c.label) != c.choice) renamed = true;
     }
     // what each choice presses, when a label is not the choice's own word (as the three-button alerts say)
     if (renamed) {

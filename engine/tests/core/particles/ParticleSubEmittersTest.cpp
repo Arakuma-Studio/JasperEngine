@@ -65,10 +65,10 @@ namespace {
         return d;
     }
 
-    struct Family {
+    struct ParticleSubEmittersFamily {
         EmitterRuntime runtime;
         EmitterInput input;
-        explicit Family(const ParticleEffectDocument& d, float childLifetime = 10.0f){
+        explicit ParticleSubEmittersFamily(const ParticleEffectDocument& d, float childLifetime = 10.0f){
             runtime.bind(compileOrFail(d));
             const auto c = child(childLifetime);
             runtime.bindSubEmitters([&](const SubEmitterEntry&){ return c; });
@@ -94,7 +94,7 @@ namespace {
 }
 
 TEST(ParticleSubEmitters, BirthSpawnsWithTheParent){
-    Family f(parent(SubEmitterTrigger::Birth, 3));
+    ParticleSubEmittersFamily f(parent(SubEmitterTrigger::Birth, 3));
     f.ticks(1);
     EXPECT_EQ(f.runtime.count(), 10u);
     // the children's requests are consumed in the same tick, after the parent
@@ -103,7 +103,7 @@ TEST(ParticleSubEmitters, BirthSpawnsWithTheParent){
 }
 
 TEST(ParticleSubEmitters, DeathSpawnsWhereTheParentDied){
-    Family f(parent(SubEmitterTrigger::Death, 2));
+    ParticleSubEmittersFamily f(parent(SubEmitterTrigger::Death, 2));
     f.ticks(1);
     EXPECT_EQ(f.kid().count(), 0u);
     f.ticks(15);   // the parents live 0.5 s
@@ -122,7 +122,7 @@ TEST(ParticleSubEmitters, CollisionSpawnsAtTheContact){
     floor.point = Vector3(0.0f, -1.0f, 0.0f);
     d.collision.planes = {floor};
     d.collision.killOnCollide = true;
-    Family f(d);
+    ParticleSubEmittersFamily f(d);
     int t = 0;
     while (f.kid().count() == 0 && t++ < 30) f.ticks(1);
     // the tick they hit: the parents die, their children start where they stopped (the
@@ -135,7 +135,7 @@ TEST(ParticleSubEmitters, CollisionSpawnsAtTheContact){
 TEST(ParticleSubEmitters, TriggerSpawnsFromEveryParticle){
     ParticleEffectDocument d = parent(SubEmitterTrigger::Trigger, 4);
     d.main.startLifetime = MinMaxCurve(5.0f);
-    Family f(d);
+    ParticleSubEmittersFamily f(d);
     f.ticks(2);
     EXPECT_EQ(f.kid().count(), 0u);
     f.runtime.sendTrigger(nameHash("Other"));
@@ -151,7 +151,7 @@ TEST(ParticleSubEmitters, AFrameKeepsTheEventsOfAllItsTicks){
     // there when the frame is over (Lua reads them then); they once lasted one tick
     ParticleEffectDocument d = parent(SubEmitterTrigger::Trigger, 4);
     d.main.startLifetime = MinMaxCurve(5.0f);
-    Family f(d);
+    ParticleSubEmittersFamily f(d);
     f.ticks(2);
     f.runtime.sendTrigger(nameHash("Boom"));
     f.runtime.advance(f.input, 2.0 / 30.0);
@@ -166,7 +166,7 @@ TEST(ParticleSubEmitters, ProbabilityThinsTheSpawns){
     ParticleEffectDocument d = parent(SubEmitterTrigger::Birth, 1);
     d.emission.bursts[0].count = MinMaxCurve(1000.0f);
     d.subEmitters[0].probability = 0.3f;
-    Family f(d);
+    ParticleSubEmittersFamily f(d);
     f.ticks(1);
     EXPECT_NEAR((float)f.kid().count(), 300.0f, 3.0f * std::sqrt(1000.0f * 0.3f * 0.7f));
 }
@@ -178,7 +178,7 @@ TEST(ParticleSubEmitters, PooledChildrenAllocateNothingWhenWarm){
     d.looping = true;
     d.emission.bursts.clear();
     d.emission.rateOverTime = MinMaxCurve(200.0f);
-    Family f(d, 0.5f);
+    ParticleSubEmittersFamily f(d, 0.5f);
     // warm up: storage, the children's and the rings grow to their peak
     f.ticks(120);
     testsupport::ThreadAllocationCount allocations;
@@ -190,7 +190,7 @@ TEST(ParticleSubEmitters, PooledChildrenAllocateNothingWhenWarm){
 // BF23 F2: what the stats and the budget read counts the children
 
 TEST(ParticleSubEmitters, WorldStatsCountChildrenWhenOnlyTheyAreAlive){
-    Family f(parent(SubEmitterTrigger::Death, 3));
+    ParticleSubEmittersFamily f(parent(SubEmitterTrigger::Death, 3));
     ParticleWorld world;
     std::vector<EmitterTask> tasks(1);
     tasks[0].runtime = &f.runtime;
@@ -230,7 +230,7 @@ TEST(ParticleSubEmitters, SystemStatsCountChildrenWhenOnlyTheyAreAlive){
 TEST(ParticleSubEmitters, BudgetShareCountsChildren){
     // the first system's children hold 900 of a world budget of 1 000, and it comes first: with
     // what its tree still wants, it keeps the whole budget, and the second, which wants 500, waits
-    Family holder(parent(SubEmitterTrigger::Birth, 90));
+    ParticleSubEmittersFamily holder(parent(SubEmitterTrigger::Birth, 90));
     holder.ticks(1);
     ASSERT_EQ(holder.kid().count(), 900u);
 
@@ -262,7 +262,7 @@ TEST(ParticleSubEmitters, AChildIsNotCappedByItsParentsMaxParticles){
     // Max Particles is each emitter's own: a parent of 10 does not hold its children to 10
     ParticleEffectDocument d = parent(SubEmitterTrigger::Birth, 50);
     d.maxParticles = 10;
-    Family f(d);
+    ParticleSubEmittersFamily f(d);
     ParticleWorld world;
     std::vector<EmitterTask> tasks(1);
     tasks[0].runtime = &f.runtime;
@@ -277,7 +277,7 @@ TEST(ParticleSubEmitters, SiblingsShareTheBudget){
     // thinned for what their children will ask), it is not given to each
     ParticleEffectDocument d = parent(SubEmitterTrigger::Birth, 50);
     d.subEmitters.push_back(d.subEmitters[0]);
-    Family f(d);
+    ParticleSubEmittersFamily f(d);
     ParticleWorld world;
     world.setBudget(600);
     std::vector<EmitterTask> tasks(1);
@@ -294,7 +294,7 @@ TEST(ParticleSubEmitters, SiblingsShareTheBudget){
 
 TEST(ParticleSubEmitters, ChildrenRenderBetweenTheSameTicksAsTheirParent){
     // BF23 F1: the interpolation factor a frame leaves on its parent is the children's, this frame
-    Family f(parent(SubEmitterTrigger::Birth, 1));
+    ParticleSubEmittersFamily f(parent(SubEmitterTrigger::Birth, 1));
     f.ticks(1);
     f.runtime.advance(f.input, 1.5 / 30.0);
     EXPECT_GT(f.runtime.interpolation(), 0.0f);
@@ -303,7 +303,7 @@ TEST(ParticleSubEmitters, ChildrenRenderBetweenTheSameTicksAsTheirParent){
 }
 
 TEST(ParticleSubEmitters, TotalsWalkTheTree){
-    Family f(parent(SubEmitterTrigger::Birth, 3));
+    ParticleSubEmittersFamily f(parent(SubEmitterTrigger::Birth, 3));
     f.ticks(1);
     EXPECT_EQ(f.runtime.totalCount(), 40u);
     EXPECT_EQ(f.runtime.totalCapacity(), f.runtime.capacity() + f.kid().capacity());
@@ -333,7 +333,7 @@ namespace {
                         {"type": "subEmitters"}]})";
     }
 
-    std::string entry(const std::string& effect, const std::string& more = ""){
+    std::string particleSubEmittersEntry(const std::string& effect, const std::string& more = ""){
         return R"({"trigger": "birth", "effect": ")" + effect + R"(", "emitCount": 2)" + more + "}";
     }
 
@@ -345,7 +345,7 @@ TEST(ParticleSubEmitters, EditingTheListBindsTheChildrenItNames){
     Scene scene;
     ParticleSystem system(&scene);
     system.setPlayOnAwake(false);
-    ASSERT_TRUE(system.setInlineEffect(parentWith(entry("fx/list-a.particles"))));
+    ASSERT_TRUE(system.setInlineEffect(parentWith(particleSubEmittersEntry("fx/list-a.particles"))));
     ParticleSubsystem& subsystem = *scene.getSystem<ParticleSubsystem>();
     const particles::ParticleSystemState* state = subsystem.getState(system.getEntity());
     ASSERT_NE(state, nullptr);
@@ -353,19 +353,19 @@ TEST(ParticleSubEmitters, EditingTheListBindsTheChildrenItNames){
     EXPECT_EQ(state->runtime.child(0)->program()->maxParticles, 111u);
 
     // another effect in the entry
-    ASSERT_TRUE(system.setInlineEffect(parentWith(entry("fx/list-b.particles"))));
+    ASSERT_TRUE(system.setInlineEffect(parentWith(particleSubEmittersEntry("fx/list-b.particles"))));
     state = subsystem.getState(system.getEntity());
     ASSERT_EQ(state->runtime.childCount(), 1u);
     EXPECT_EQ(state->runtime.child(0)->program()->maxParticles, 222u);
 
     // one more entry
-    ASSERT_TRUE(system.setInlineEffect(parentWith(entry("fx/list-b.particles") + "," + entry("fx/list-a.particles"))));
+    ASSERT_TRUE(system.setInlineEffect(parentWith(particleSubEmittersEntry("fx/list-b.particles") + "," + particleSubEmittersEntry("fx/list-a.particles"))));
     state = subsystem.getState(system.getEntity());
     ASSERT_EQ(state->runtime.childCount(), 2u);
     EXPECT_EQ(state->runtime.child(1)->program()->maxParticles, 111u);
 
     // one entry fewer: the slots follow the list
-    ASSERT_TRUE(system.setInlineEffect(parentWith(entry("fx/list-a.particles"))));
+    ASSERT_TRUE(system.setInlineEffect(parentWith(particleSubEmittersEntry("fx/list-a.particles"))));
     state = subsystem.getState(system.getEntity());
     ASSERT_EQ(state->runtime.childCount(), 1u);
     EXPECT_EQ(state->runtime.child(0)->program()->maxParticles, 111u);
@@ -377,13 +377,13 @@ TEST(ParticleSubEmitters, EditingAnEntrysFiguresKeepsTheLiveParticles){
     Scene scene;
     ParticleSystem system(&scene);
     system.setPlayOnAwake(false);
-    ASSERT_TRUE(system.setInlineEffect(parentWith(entry("fx/keep.particles"))));
+    ASSERT_TRUE(system.setInlineEffect(parentWith(particleSubEmittersEntry("fx/keep.particles"))));
     system.play();
     system.step(2);
     ParticleSubsystem& subsystem = *scene.getSystem<ParticleSubsystem>();
     ASSERT_EQ(subsystem.getStats(system.getEntity()).live, 15u);
     // the probability is read when an entry fires: nothing to bind again
-    ASSERT_TRUE(system.setInlineEffect(parentWith(entry("fx/keep.particles", R"(, "probability": 0.5)"))));
+    ASSERT_TRUE(system.setInlineEffect(parentWith(particleSubEmittersEntry("fx/keep.particles", R"(, "probability": 0.5)"))));
     EXPECT_EQ(subsystem.getStats(system.getEntity()).live, 15u) << "a figure of the entry does not start it over";
     ParticleEffectLibrary::clear();
 }
@@ -393,7 +393,7 @@ TEST(ParticleSubEmitters, EditingAChildsFileReachesALiveParent){
     Scene scene;
     ParticleSystem system(&scene);
     system.setPlayOnAwake(false);
-    ASSERT_TRUE(system.setInlineEffect(parentWith(entry("fx/edit.particles"))));
+    ASSERT_TRUE(system.setInlineEffect(parentWith(particleSubEmittersEntry("fx/edit.particles"))));
     system.play();
     system.step(2);
     ParticleSubsystem& subsystem = *scene.getSystem<ParticleSubsystem>();
@@ -431,7 +431,7 @@ TEST(ParticleSubEmitters, EditingAGrandchildsFileReachesALiveParent){
     Scene scene;
     ParticleSystem system(&scene);
     system.setPlayOnAwake(false);
-    ASSERT_TRUE(system.setInlineEffect(parentWith(entry("fx/middle.particles"))));
+    ASSERT_TRUE(system.setInlineEffect(parentWith(particleSubEmittersEntry("fx/middle.particles"))));
     ParticleSubsystem& subsystem = *scene.getSystem<ParticleSubsystem>();
     const particles::ParticleSystemState* state = subsystem.getState(system.getEntity());
     ASSERT_NE(state, nullptr);
@@ -449,7 +449,7 @@ TEST(ParticleSubEmitters, ABudgetFullOfChildrenLeavesTheParentNoRoom){
     d.main.startLifetime = MinMaxCurve(100.0f);
     d.emission.bursts.clear();
     d.emission.rateOverTime = MinMaxCurve(300.0f);
-    Family f(d);
+    ParticleSubEmittersFamily f(d);
     f.input.budget = 100;
     f.ticks(30);
     EXPECT_LE(f.runtime.totalCount(), 100u);
@@ -465,7 +465,7 @@ TEST(ParticleSubEmitters, ALaterEntrysParticlesCountAgainstAnEarlierOne){
     d.main.startLifetime = MinMaxCurve(100.0f);
     d.emission.bursts.clear();
     d.emission.rateOverTime = MinMaxCurve(300.0f);
-    Family f(d);
+    ParticleSubEmittersFamily f(d);
     f.input.budget = 200;
     f.ticks(30);
     EXPECT_LE(f.runtime.totalCount(), 200u);

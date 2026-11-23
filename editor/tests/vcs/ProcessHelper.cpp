@@ -32,6 +32,7 @@
 #include <fcntl.h>
 #include <io.h>
 #include <windows.h>
+#include <shellapi.h>
 #else
 #include <unistd.h>
 #endif
@@ -69,7 +70,22 @@ int main(int argc, char* argv[]) {
     if (argc < 2) return 64;
     const std::string mode = argv[1];
     if (mode == "args") {
+#ifdef _WIN32
+        // the arguments as they arrived, from the UTF-16 command line: argv holds them in the system's
+        // code page (this program has no UTF-8 manifest), which can't hold every character
+        int count = 0;
+        LPWSTR* wide = CommandLineToArgvW(GetCommandLineW(), &count);
+        for (int i = 2; wide && i < count; i++) {
+            const int length = static_cast<int>(wcslen(wide[i]));
+            const int bytes = WideCharToMultiByte(CP_UTF8, 0, wide[i], length, nullptr, 0, nullptr, nullptr);
+            std::string utf8(static_cast<size_t>(bytes), '\0');
+            WideCharToMultiByte(CP_UTF8, 0, wide[i], length, utf8.data(), bytes, nullptr, nullptr);
+            writeAll(utf8.c_str(), utf8.size() + 1);
+        }
+        LocalFree(wide);
+#else
         for (int i = 2; i < argc; i++) writeAll(argv[i], std::strlen(argv[i]) + 1);
+#endif
         return 0;
     }
     if (mode == "env") {

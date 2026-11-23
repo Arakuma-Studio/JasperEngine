@@ -37,7 +37,7 @@ namespace {
     }
 
     // Base (a shape at the bottom), Title (text) above it
-    TitleArtDoc sample() {
+    TitleArtDoc titleFxGeneratorOpsSample() {
         const std::string text = R"({"format": "jasperengine.titleart", "version": 1,
           "layers": [
             {"id": "00000001", "type": "shape", "name": "Base"},
@@ -48,7 +48,7 @@ namespace {
         return parsed.doc;
     }
 
-    const TitleOpProblem* failure(const TitleOpsResult& r) {
+    const TitleOpProblem* titleFxGeneratorOpsFailure(const TitleOpsResult& r) {
         for (const TitleOpProblem& p : r.problems) {
             if (p.severity == "error") return &p;
         }
@@ -59,7 +59,7 @@ namespace {
     protected:
         void SetUp() override {
             ASSERT_TRUE(titleart::TitleEffectRegistry::get().add(testFollower()));
-            doc = sample();
+            doc = titleFxGeneratorOpsSample();
         }
         void TearDown() override { titleart::TitleEffectRegistry::get().removeGenerator("test_follower"); }
         TitleArtDoc doc;
@@ -111,8 +111,8 @@ TEST_F(TitleFxGeneratorOpsTest, AddGeneratorAppliesItsPreset) {
     // an unknown preset fails naming the nearest
     const TitleOpsResult bad = TitleArtOps::apply(doc, Json{{"op", "add_layer"}, {"type", "generator"}, {"generator", "shockwave"}, {"preset", "neom"}});
     ASSERT_FALSE(bad.ok);
-    ASSERT_TRUE(failure(bad));
-    EXPECT_EQ(failure(bad)->nearest, "neon");
+    ASSERT_TRUE(titleFxGeneratorOpsFailure(bad));
+    EXPECT_EQ(titleFxGeneratorOpsFailure(bad)->nearest, "neon");
 }
 
 TEST_F(TitleFxGeneratorOpsTest, FollowPlaceAndGroup) {

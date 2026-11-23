@@ -62,7 +62,7 @@ namespace {
     }
 
     template <typename Fn>
-    double medianMs(int runs, Fn&& fn) {
+    double titleMeshBenchMedianMs(int runs, Fn&& fn) {
         std::vector<double> samples;
         for (int i = 0; i < runs; i++) {
             const auto start = bench::Clock::now();
@@ -88,7 +88,7 @@ int main(int argc, char** argv) {
 
     const three_d::TitleMeshRequest big = requestFor("BIG BONUS", goldStyle(), assets);
     std::shared_ptr<const TitleMesh> mesh;
-    const double bigMs = medianMs(5, [&] {
+    const double bigMs = titleMeshBenchMedianMs(5, [&] {
         three_d::TitleMesher mesher;
         mesh = mesher.build(big);
     });
@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
     results.add("big_bonus_vertex_ratio", (double)mesh->stats.vertices / std::max<uint32_t>(1, mesh->stats.triangles), "");
 
     const three_d::TitleMeshRequest kanji = requestFor("激熱", goldStyle(), assets);
-    results.add("kanji_gold_ms", medianMs(3, [&] {
+    results.add("kanji_gold_ms", titleMeshBenchMedianMs(3, [&] {
                     three_d::TitleMesher mesher;
                     mesher.build(kanji);
                 }),
@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
     Json inflate = goldStyle("inflate");
     inflate["inflate"] = Json{{"height", 12}, {"detail", 4}};
     const three_d::TitleMeshRequest puffed = requestFor("激熱王", inflate, assets);
-    results.add("inflate_3_kanji_detail4_ms", medianMs(3, [&] {
+    results.add("inflate_3_kanji_detail4_ms", titleMeshBenchMedianMs(3, [&] {
                     three_d::TitleMesher mesher;
                     mesher.build(puffed);
                 }),
@@ -131,7 +131,7 @@ int main(int argc, char** argv) {
     three_d::TitleMesher warm;
     warm.build(big);
     const uint64_t before = warm.meshBuilds();
-    const double materialMs = medianMs(5, [&] { warm.build(material); });
+    const double materialMs = titleMeshBenchMedianMs(5, [&] { warm.build(material); });
     results.add("material_edit_mesh_builds", (double)(warm.meshBuilds() - before), "");
     results.add("material_edit_ms", materialMs, "ms");
 

@@ -49,10 +49,10 @@ namespace {
     //     Bone#1             (unaddressable)
     //       Tip
     //     a/b                (unaddressable)
-    struct Rig{
+    struct EntityPathClipRig{
         EntityRegistry registry;
         Entity level, hero, hips, spine, upLeg, arm0, hand0, leg, arm1, hand1, arm2, unicode, leftHand, take, boneIndex, tip, slash;
-        Rig(){
+        EntityPathClipRig(){
             level = add(registry, "Level");
             hero = add(registry, "Hero", level);
             hips = add(registry, "mixamorig:Hips", hero);
@@ -97,7 +97,7 @@ namespace {
 }
 
 TEST(EntityPathClip, RelativePathsAreTheClipGrammar){
-    Rig rig;
+    EntityPathClipRig rig;
     std::string path;
     ASSERT_TRUE(EntityPath::relative(&rig.registry, rig.hero, rig.hero, path));
     EXPECT_EQ(path, "");
@@ -131,7 +131,7 @@ TEST(EntityPathClip, RelativePathsAreTheClipGrammar){
 }
 
 TEST(EntityPathClip, ParityAfterTheChildOrderChanges){
-    Rig rig;
+    EntityPathClipRig rig;
     auto armPaths = [&](){
         std::vector<std::string> paths;
         for (Entity arm : {rig.arm0, rig.arm1, rig.arm2}){
@@ -161,7 +161,7 @@ TEST(EntityPathClip, ParityAfterTheChildOrderChanges){
 }
 
 TEST(EntityPathClip, UnaddressableNamesAreRejectedTheSameWay){
-    Rig rig;
+    EntityPathClipRig rig;
     std::string path;
     for (Entity entity : {rig.boneIndex, rig.tip, rig.slash}){
         EXPECT_FALSE(EntityPath::relative(&rig.registry, rig.hero, entity, path)) << rig.registry.getEntityName(entity);

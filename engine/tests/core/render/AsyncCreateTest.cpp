@@ -330,7 +330,7 @@ TEST(ShaderWarmup, SkipsMalformedEntriesAndUnknownVersions){
 
 namespace {
 
-    const char* FLAT = R"(#version 450
+    const char* ASYNC_CREATE_FLAT = R"(#version 450
 
 in vec2 v_texcoord;
 out vec4 frag_color;
@@ -377,7 +377,7 @@ void main(){
                 [&](const std::string& file, std::string& content){
                     if (file != path)
                         return false;
-                    content = FLAT;
+                    content = ASYNC_CREATE_FLAT;
                     return true;
                 }, ShaderType::POSTPROCESS);
             if (!sources.valid){
@@ -389,14 +389,14 @@ void main(){
                                                   &sources, data, &error, &log);
         }
 
-        std::vector<uint8_t> readTarget(){
+        std::vector<uint8_t> readAsyncCreateTarget(){
             Framebuffer& target = GpuEnvironment::target();
             std::vector<uint8_t> rgba;
             readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba);
             return rgba;
         }
 
-        static double meanDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
+        static double asyncMeanDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
             if (a.size() != b.size() || a.empty())
                 return 255.0;
             double sum = 0.0;
@@ -410,7 +410,7 @@ void main(){
         }
     };
 
-    void litCube(Primitive& cube, Light& sun){
+    void asyncCreateLitCube(Primitive& cube, Light& sun){
         cube.createBox(1.5f, 1.5f, 1.5f);
         cube.setColor(0.2f, 0.6f, 0.9f);
         cube.setRotation(0.0f, 30.0f, 0.0f);
@@ -713,7 +713,7 @@ TEST_F(AsyncCreateGpu, EveryGlModeDrawsTheLitCube){
         {
             Primitive cube(&scene);
             Light sun(&scene);
-            litCube(cube, sun);
+            asyncCreateLitCube(cube, sun);
             ASSERT_TRUE(render()) << "the scene never finished loading";
             EXPECT_GOLDEN("render_lit_cube");
             const GpuCreationStats after = SystemRender::getGpuCreationStats();
@@ -763,13 +763,13 @@ TEST_F(AsyncCreateGpu, AStandInDrawsWhileTheVariantIsPending){
     auto first = std::make_unique<Primitive>(&scene);
     auto second = std::make_unique<Primitive>(&scene);
     Light sun(&scene);
-    litCube(*first, sun);
+    asyncCreateLitCube(*first, sun);
     first->setPosition(-1.2f, 0.0f, 0.0f);
     second->createBox(1.0f, 1.0f, 1.0f);
     second->setColor(0.9f, 0.4f, 0.2f);
     second->setPosition(1.4f, 0.0f, 0.0f);
     ASSERT_TRUE(render());
-    const std::vector<uint8_t> unfogged = readTarget();
+    const std::vector<uint8_t> unfogged = readAsyncCreateTarget();
 
     // every creation from now takes 1.5 s on the worker; the second cube loads again into a fog
     second.reset();
@@ -792,14 +792,14 @@ TEST_F(AsyncCreateGpu, AStandInDrawsWhileTheVariantIsPending){
     const bool programsPending = ShaderPool::getPendingShaderCount() > 0;
     ASSERT_TRUE(programsPending || SystemRender::getGpuCreationStats().pendingPipelines > 0) << "the fogged variants are still pending";
     if (programsPending){
-        const std::vector<uint8_t> standIn = readTarget();
-        EXPECT_LT(meanDifference(standIn, unfogged), 1.0) << "both cubes draw their unfogged variants meanwhile";
+        const std::vector<uint8_t> standIn = readAsyncCreateTarget();
+        EXPECT_LT(asyncMeanDifference(standIn, unfogged), 1.0) << "both cubes draw their unfogged variants meanwhile";
     }
 
     Scene* current = &scene;
     ASSERT_TRUE(GpuEnvironment::runFrames([current](){ return current->getSystem<RenderSystem>()->isAllLoaded(); }, 3000));
-    const std::vector<uint8_t> fogged = readTarget();
-    EXPECT_GT(meanDifference(fogged, unfogged), 4.0) << "the exact (fogged) variants replaced the stand-ins";
+    const std::vector<uint8_t> fogged = readAsyncCreateTarget();
+    EXPECT_GT(asyncMeanDifference(fogged, unfogged), 4.0) << "the exact (fogged) variants replaced the stand-ins";
     EXPECT_GOLDEN("async_standin_fogged");
     EXPECT_NO_ENGINE_ERRORS();
 }
@@ -811,12 +811,12 @@ TEST_F(AsyncCreateGpu, AVariantSwitchLeavesNoFrameEmpty){
     JASPER_REQUIRE_GPU();
     scene.setLitQuality(LitQuality::STANDARD);
     ASSERT_TRUE(render());
-    const std::vector<uint8_t> background = readTarget();
+    const std::vector<uint8_t> background = readAsyncCreateTarget();
     Primitive cube(&scene);
     Light sun(&scene);
-    litCube(cube, sun);
+    asyncCreateLitCube(cube, sun);
     ASSERT_TRUE(render());
-    const std::vector<uint8_t> unfogged = readTarget();
+    const std::vector<uint8_t> unfogged = readAsyncCreateTarget();
     const auto covered = [&background](const std::vector<uint8_t>& frame){
         size_t count = 0;
         for (size_t i = 0; i + 3 < frame.size() && i + 3 < background.size(); i += 4){
@@ -847,7 +847,7 @@ TEST_F(AsyncCreateGpu, AVariantSwitchLeavesNoFrameEmpty){
     while (std::chrono::steady_clock::now() - start < std::chrono::seconds(60)){
         GpuEnvironment::drawFrames(1);
         frames++;
-        if (covered(readTarget()) < cubePixels / 2)
+        if (covered(readAsyncCreateTarget()) < cubePixels / 2)
             emptyFrames++;
         if (frames > 3 && system->isAllLoaded() && SystemRender::isGpuCreationIdle())
             break;
@@ -857,7 +857,7 @@ TEST_F(AsyncCreateGpu, AVariantSwitchLeavesNoFrameEmpty){
     // a lit cube's pipelines and the frame's passes, once: none made again frame after frame
     EXPECT_LT(SystemRender::getGpuCreationStats().createdPipelines - createdBefore, 64u);
     ASSERT_TRUE(render());
-    EXPECT_GT(meanDifference(readTarget(), unfogged), 4.0) << "the fogged variant draws in the end";
+    EXPECT_GT(asyncMeanDifference(readAsyncCreateTarget(), unfogged), 4.0) << "the fogged variant draws in the end";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -869,7 +869,7 @@ TEST_F(AsyncCreateGpu, ThePipelineCacheIsSavedAndValidated){
     {
         Primitive cube(&scene);
         Light sun(&scene);
-        litCube(cube, sun);
+        asyncCreateLitCube(cube, sun);
         ASSERT_TRUE(render());
     }
     SokolAsyncCreate::savePipelineCache();

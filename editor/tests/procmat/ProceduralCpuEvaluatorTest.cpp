@@ -68,7 +68,7 @@ namespace {
     }
 
     // Each node's first output into the next one's first input, the last into the height output
-    graph::Graph chainGraph(const std::shared_ptr<const NodeLibrary>& library, const std::vector<std::pair<std::string, std::string>>& nodes) {
+    graph::Graph proceduralCpuEvaluatorChainGraph(const std::shared_ptr<const NodeLibrary>& library, const std::vector<std::pair<std::string, std::string>>& nodes) {
         graph::Graph file;
         file.kind = PROCEDURAL_MATERIAL_KIND;
         int edge = 0;
@@ -204,7 +204,7 @@ TEST(ProceduralDevice, WithNoContextTheEditorIsOnTheCpuTier) {
     EXPECT_STREQ(evaluatorTierName(evaluator->tier()), "cpu");
 
     const auto library = cpuTierLibrary();
-    const PassPlan plan = libraryPlan(library, chainGraph(library, {{"n", "perlin"}}), 32);
+    const PassPlan plan = libraryPlan(library, proceduralCpuEvaluatorChainGraph(library, {{"n", "perlin"}}), 32);
     std::string error;
     ASSERT_TRUE(evaluator->prepare(plan, error)) << error;
     EvaluationResult result;
@@ -219,7 +219,7 @@ TEST(ProceduralCpuEvaluator, TheSameGraphGivesTheSameBytesOnEveryRun) {
     // AC6 on tier 3: a single pass, and a graph whose Buffer feeds the next pass, on job systems of 0 (every
     // step run by the slices themselves), 1 and 5 workers, at two slicings, and through the blocking entry
     const auto library = cpuTierLibrary();
-    for (const graph::Graph& file : {chainGraph(library, {{"n", "perlin"}}), chainGraph(library, {{"a", "voronoi2"}, {"b", "fast_blur"}})}) {
+    for (const graph::Graph& file : {proceduralCpuEvaluatorChainGraph(library, {{"n", "perlin"}}), proceduralCpuEvaluatorChainGraph(library, {{"a", "voronoi2"}, {"b", "fast_blur"}})}) {
         const PassPlan plan = libraryPlan(library, file, 64);
         ASSERT_FALSE(plan.passes.empty());
         std::vector<std::vector<uint8_t>> runs;
@@ -315,7 +315,7 @@ namespace {
 TEST(ProceduralCpuEvaluator, CancelStopsARunningStepAndAValueEditStartsAgain) {
     // R11: a cancel stops the step that is shading, at its next row, not at the end of the image
     const auto library = cpuTierLibrary();
-    const PassPlan plan = libraryPlan(library, chainGraph(library, {{"n", "perlin"}}), 1024);
+    const PassPlan plan = libraryPlan(library, proceduralCpuEvaluatorChainGraph(library, {{"n", "perlin"}}), 1024);
     ASSERT_EQ(plan.steps.size(), 1u);
     const int rows = plan.steps[0].size;
     ProceduralCpuEvaluator evaluator;
@@ -394,7 +394,7 @@ TEST(ProceduralCpuEvaluator, TheSessionNamesTheRefusedNodeOfAPassOfMany) {
     PlanOptions options;
     options.size = 8;
     ProceduralSession session(evaluator, library, options);
-    session.setGraph(chainGraph(library, {{"k1", "kill"}, {"k2", "eighth"}}), 0.0);
+    session.setGraph(proceduralCpuEvaluatorChainGraph(library, {{"k1", "kill"}, {"k2", "eighth"}}), 0.0);
     const auto start = std::chrono::steady_clock::now();
     session.update(0.0, 2.0);
     while (session.error().empty() && std::chrono::steady_clock::now() - start < std::chrono::seconds(60)) {
@@ -414,7 +414,7 @@ TEST(ProceduralTieredEvaluator, ADeviceFailureContinuesOnTheCpuWithAWarning) {
     auto* device = new FailingDevice();
     ProceduralTieredEvaluator evaluator{std::unique_ptr<ProceduralEvaluator>(device)};
     const auto library = cpuTierLibrary();
-    const PassPlan plan = libraryPlan(library, chainGraph(library, {{"n", "perlin"}}), 32);
+    const PassPlan plan = libraryPlan(library, proceduralCpuEvaluatorChainGraph(library, {{"n", "perlin"}}), 32);
     std::string error;
     EvaluationResult result;
     ASSERT_TRUE(evaluator.prepare(plan, error)) << error;
@@ -457,7 +457,7 @@ TEST(ProceduralTieredEvaluator, WhenTheCpuTierFailsTooTheSessionSaysWhatTheDevic
     PlanOptions options;
     options.size = 8;
     ProceduralSession session(evaluator, library, options);
-    session.setGraph(chainGraph(library, {{"k1", "kill"}}), 0.0);
+    session.setGraph(proceduralCpuEvaluatorChainGraph(library, {{"k1", "kill"}}), 0.0);
     const auto start = std::chrono::steady_clock::now();
     session.update(0.0, 2.0);
     while (session.error().empty() && std::chrono::steady_clock::now() - start < std::chrono::seconds(60)) {
