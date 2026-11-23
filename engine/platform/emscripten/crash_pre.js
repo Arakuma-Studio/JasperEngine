@@ -36,8 +36,8 @@
   function journalText() {
     var j = cfg.journal;
     if (!j || !j.ring || !j.capacity || typeof HEAPU8 == "undefined" || typeof HEAPU32 == "undefined") return "";
-    var cursor = HEAPU32[j.cursor >> 2] + HEAPU32[(j.cursor >> 2) + 1] * 4294967296;
-    var written = HEAPU32[j.written >> 2] + HEAPU32[(j.written >> 2) + 1] * 4294967296;
+    var cursor = HEAPU32[j.cursor >>> 2] + HEAPU32[(j.cursor >>> 2) + 1] * 4294967296;
+    var written = HEAPU32[j.written >>> 2] + HEAPU32[(j.written >>> 2) + 1] * 4294967296;
     if (!cursor) return "";
     var begin = cursor > j.capacity ? cursor - j.capacity : 0, bytes = [], i;
     for (i = begin; i < cursor; i++) bytes.push(HEAPU8[j.ring + (i % j.capacity)]);
