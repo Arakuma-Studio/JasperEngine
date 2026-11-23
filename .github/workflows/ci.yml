@@ -1179,8 +1179,11 @@ jobs:
         run: tools/ci/macos.sh editor
       - name: Engine and the core tests
         run: tools/ci/macos.sh engine
+      # 18 min cold on a hosted runner: a hung test fails here, not at the job's 300 min (a link-following
+      # cleanup hung for 3 h on je-mac, merge-queue run of #162)
       - name: Unit tests (CPU suites)
         if: github.event_name != 'push'
+        timeout-minutes: 60
         run: tools/ci/macos.sh tests
       - name: Call CLI without an editor
         if: github.event_name != 'push'

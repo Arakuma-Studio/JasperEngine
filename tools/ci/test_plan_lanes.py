@@ -67,8 +67,8 @@ class Rules(unittest.TestCase):
 
     def test_a_guide_doc_builds_every_platform(self):
         r = decide("pull_request", plan(["docs/mcp/guide/code.md"], mcp=["test_a.py"]))
-        # (ios: an Apple-only input, below)
-        self.assertEqual(runs(r), {"changes", "lint", "mcp", *pl.PLATFORM_LANES} - {"ios"})
+        # (macos and ios: an Apple-only input, below)
+        self.assertEqual(runs(r), {"changes", "lint", "mcp", *pl.PLATFORM_LANES} - {"macos", "ios"})
         self.assertEqual(r["mcp"], {"mode": "planned", "files": ["tools/mcp/tests/test_a.py"], "not_in_ci": []})
 
     def test_a_pr_filters_the_unit_tests(self):
@@ -300,9 +300,10 @@ class Rules(unittest.TestCase):
             self.assertTrue(any("no merge base" in f for f in r["fallbacks"]))
         r = decide("push", None, "exit 2")
         self.assertNotIn("mcp", runs(r))
-        # CI itself: every lane but ASan and iOS, which a workflow change outside their own jobs does not reach
+        # CI itself: every lane but ASan, which a workflow change outside its own job does not reach, and the
+        # Apple lanes, which a ci.yml change alone does not (the merge queue builds them)
         r = decide("pull_request", plan([".github/workflows/ci.yml"], builds=()))
-        self.assertEqual(runs(r), set(pl.LANES) - {"asan", "ios"})
+        self.assertEqual(runs(r), set(pl.LANES) - {"asan", "macos", "ios"})
         self.assertEqual(r["mcp"]["mode"], "ci")
         self.assertTrue(any(".github/workflows/ci.yml" in f for f in r["fallbacks"]))
 
@@ -402,30 +403,34 @@ class Rules(unittest.TestCase):
             self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["asan_run"])), ["core", "editor"])
         self.assertFalse(decide("pull_request", plan(["tools/sanitizers/ubsan.supp"], builds=()))["lanes"]["unit"]["run"])
 
-    def test_a_pr_builds_ios_only_for_an_apple_only_input(self):
-        # the macos lane builds every other source with the same Apple compiler
+    def test_a_pr_builds_macos_and_ios_only_for_an_apple_only_input(self):
+        # macOS runners are the scarce ones, and the merge queue builds both before anything reaches main
         for f in ("engine/core/Foo.cpp", "editor/App.cpp", "engine/platform/linux/Window.cpp", "engine/shaderlib/lit.glsl",
-                  "engine/CMakeLists.txt", "tools/ci/windows.sh", "docs/testing.md", ".github/actions/image/image.sh"):
+                  "engine/CMakeLists.txt", "tools/ci/windows.sh", "docs/testing.md", ".github/actions/image/image.sh",
+                  ".github/workflows/ci.yml"):
             for event in ("pull_request", "workflow_dispatch"):
                 r = decide(event, plan([f], unit="all"))
-                self.assertFalse(r["lanes"]["ios"]["run"], (f, event))
-                self.assertTrue(r["lanes"]["macos"]["run"], f)
-                self.assertIn("merge queue", r["lanes"]["ios"]["why"])
+                for name in pl.APPLE_LANES:
+                    self.assertFalse(r["lanes"][name]["run"], (f, event, name))
+                    self.assertIn("merge queue", r["lanes"][name]["why"])
+                self.assertTrue(r["lanes"]["linux"]["run"] and r["lanes"]["windows"]["run"], f)
         for f in ("engine/platform/apple/Renderer.mm", "engine/platform/apple/ios/Foo.mm", "engine/platform/mac/MacViewMetal.mm",
                   "engine/workspaces/xcode/JasperEngine.xcodeproj/project.pbxproj", "engine/workspaces/xcode/ios/Info.plist",
                   "tools/xcode_sync_sources.py", "tools/test_xcode_sync_sources.py", "engine/shaders/msl21ios.h",
                   "tools/ci/macos.sh", "tools/ci/platform-common.sh", ".github/actions/report/action.yml"):
             r = decide("pull_request", plan([f, "editor/App.cpp"]))
-            self.assertTrue(r["lanes"]["ios"]["run"], f)
-            self.assertIn(f, r["lanes"]["ios"]["why"])
-        # its job in ci.yml (definition_change)
-        r = decide("pull_request", plan([".github/workflows/ci.yml"], builds=()), ios_definition=".github/workflows/ci.yml (the ios job)")
-        self.assertTrue(r["lanes"]["ios"]["run"])
-        # the merge queue, a full run and the rollback build it for any change that builds
-        self.assertTrue(decide("merge_group", plan(["editor/App.cpp"]))["lanes"]["ios"]["run"])
-        self.assertTrue(decide("full", None)["lanes"]["ios"]["run"])
-        for files in (["editor/App.cpp"], [".github/workflows/ci.yml"]):
-            self.assertTrue(decide("pull_request", plan(files), full_selection=True)["lanes"]["ios"]["run"], files)
+            for name in pl.APPLE_LANES:
+                self.assertTrue(r["lanes"][name]["run"], (f, name))
+                self.assertIn(f, r["lanes"][name]["why"])
+        # the merge queue, a full run, the nightly and the rollback build them for any change that builds; a
+        # push builds macos (its cache)
+        for name in pl.APPLE_LANES:
+            self.assertTrue(decide("merge_group", plan(["editor/App.cpp"]))["lanes"][name]["run"], name)
+            self.assertTrue(decide("full", None)["lanes"][name]["run"], name)
+            self.assertTrue(decide("nightly", None)["lanes"][name]["run"], name)
+            for files in (["editor/App.cpp"], [".github/workflows/ci.yml"]):
+                self.assertTrue(decide("pull_request", plan(files), full_selection=True)["lanes"][name]["run"], (files, name))
+        self.assertTrue(decide("push", plan(["editor/App.cpp"]))["lanes"]["macos"]["run"])
 
     def test_the_queue_the_advisory_run_and_the_rollback_keep_asan(self):
         p = plan(["tools/ci/report.py"], unit="all")
@@ -590,6 +595,7 @@ class Routing(unittest.TestCase):
     def test_a_forced_dispatch_runs_only_the_forced_lanes(self):
         r = decide("workflow_dispatch", plan(["engine/core/Foo.cpp"], unit="all", mcp=["test_a.py"]))
         pl.restrict_to_forced(r, {"macos": "je-mac", "windows-engine-d3d11": "je-win"})
+        # (macos too, though no Apple input changed: the dispatch tests the runner)
         self.assertEqual(runs(r), {"changes", "macos", "windows"})
         self.assertEqual((r["mcp"]["mode"], r["unit_run"], r["asan_run"]["core"]), ("none", {"core": False, "editor": False}, False))
 
@@ -788,10 +794,10 @@ class Runs(unittest.TestCase):
                   "--runner-state", str(st), "--repo", REPO, "--head-repo", REPO)
         # the runner state as ci.yml fetches it, fresh: macOS saturated, je-mac idle
         st.write_text(json.dumps(dict(state(saturated=("macos",)), t=time.time() - 30)))
-        code, doc, out = self.run_main("--event", "pull_request", "--trigger", "pull_request", *common)
+        # (the merge queue: a PR without an Apple-only input runs neither macOS lane)
+        code, doc, out = self.run_main("--event", "merge_group", "--trigger", "merge_group", *common)
         self.assertEqual(code, 0, out)
-        # (no ios: no Apple-only input changed)
-        self.assertEqual(overflowed(doc["runs_on"]), {"macos": "je-mac"}, doc["routing"])
+        self.assertEqual(overflowed(doc["runs_on"]), {"macos": "je-mac", "ios": "je-mac"}, doc["routing"])
         self.assertEqual(doc["runs_on"]["mcp-1"], "ubuntu-latest")
         self.assertIn("runner: macos on je-mac", out)
         self.assertIn('"macos":"je-mac"', [l for l in gh.read_text().splitlines() if l.startswith("runs_on=")][-1])
@@ -940,20 +946,25 @@ class Runs(unittest.TestCase):
         self.assertIn("no asan job", pl.definition_change(self.root, base, [pl.WORKFLOW]))
         self.assertEqual(pl.definition_change(self.root, base, ["engine/core/Foo.cpp"]), "")
 
-    def test_a_workflow_change_builds_ios_only_in_its_own_job_or_env(self):
+    def test_a_workflow_change_alone_builds_no_apple_lane_on_a_pr(self):
+        # not even a change to their own jobs: the merge queue builds them before anything reaches main
         workflow = ("name: CI\nenv:\n  KEEP_GOING: 1\n\njobs:\n  macos:\n    runs-on: macos-latest\n"
                     "    steps:\n      - run: tools/ci/macos.sh editor\n\n  ios:\n    runs-on: macos-latest\n"
                     "    steps:\n      - run: tools/ci/macos.sh xcode ios\n\n  check:\n    runs-on: ubuntu-slim\n")
         base = self.commit(pl.WORKFLOW, workflow)
-        for old, new, runs_ios in (("macos.sh editor", "macos.sh engine", False), ("ubuntu-slim", "ubuntu-latest", False),
-                                   ("xcode ios", "xcode ios --x", True), ("KEEP_GOING: 1", "KEEP_GOING: 0", True)):
+        for old, new in (("macos.sh editor", "macos.sh engine"), ("xcode ios", "xcode ios --x"), ("KEEP_GOING: 1", "KEEP_GOING: 0")):
             head = self.commit(pl.WORKFLOW, workflow.replace(old, new))
             code, doc, out = self.run_main("--event", "pull_request", "--base", base, "--head", head,
                                            "--out-dir", str(self.tmp / "out"))
             self.assertEqual(code, 0, out)
-            self.assertEqual(doc["lanes"]["ios"]["run"], runs_ios, (old, doc["lanes"]["ios"]["why"]))
-            self.assertTrue(doc["lanes"]["macos"]["run"], old)
+            for name in pl.APPLE_LANES:
+                self.assertFalse(doc["lanes"][name]["run"], (old, name, doc["lanes"][name]["why"]))
+            self.assertTrue(doc["lanes"]["linux"]["run"], old)
             base = head
+        # the lanes' own script does
+        head = self.commit("tools/ci/macos.sh", "#!/bin/sh\n")
+        code, doc, out = self.run_main("--event", "pull_request", "--base", base, "--head", head, "--out-dir", str(self.tmp / "out"))
+        self.assertTrue(doc["lanes"]["macos"]["run"] and doc["lanes"]["ios"]["run"], out)
 
     def test_the_queue_reads_the_advisory_lanes(self):
         head = self.commit("tools/mcp/tests/test_a.py", TEST_FILE.format(extra="# changed"))

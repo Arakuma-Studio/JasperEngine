@@ -16,8 +16,8 @@ applies CI's stricter rules:
   (SANITIZER_INPUTS, a .github/ change included), every test of both binaries when its own settings
   or definition did (ASAN_SETTINGS, ci.yml's asan job or env), else nothing: the advisory run on main
   runs it after the merge;
-- ios, on a pull request: only when an Apple-only input (IOS_INPUTS) or ci.yml's ios job or env changed;
-  the macos lane builds everything else with the same compiler, and the merge queue runs ios;
+- macos and ios, on a pull request: only when an Apple-only input changed (APPLE_INPUTS); the merge
+  queue, a push, full runs and the nightly build them for every change that builds;
 - MCP runs the planned files that are in the CI suite (run_tests.ci_files()); the rest are listed
   under not_in_ci with their reason. A planned whole suite is the CI suite;
 - merge_group: every lane, unit and HTML UI unfiltered, MCP planned over the group's diff (D1), but
@@ -132,16 +132,17 @@ SANITIZER_INPUTS = (*(f"*{ext}" for ext in (*cc.CXX, ".inc", ".cmake")), "*CMake
 ASAN_SETTINGS = ("tools/sanitizers/*",)
 WORKFLOW = ".github/workflows/ci.yml"
 ASAN_JOB = "asan"
-# the ios lane on a pull request: what only an Apple build reads. The macos lane builds every engine and
-# editor source with the same Apple compiler, so it catches most iOS compile errors; lint checks the Xcode
-# project's source lists (tools/test_xcode_sync_sources.py). Its inputs: the Apple platform code, the Xcode
-# project and the scripts that sync it, the Metal shader stubs the project compiles, and what the job runs
-# (tools/ci/macos.sh, its common part and retry.sh, the report action; ci.yml's ios job and env,
-# ios_definition). The merge queue and full runs build it for every change that builds
-IOS_INPUTS = ("engine/platform/apple/*", "engine/platform/mac/*", "engine/workspaces/xcode/*", "tools/xcode_sync_*",
-              "tools/test_xcode_sync_sources.py", "engine/shaders/msl21*", "tools/ci/macos.sh",
-              "tools/ci/platform-common.sh", "tools/ci/retry.sh", ".github/actions/report/*")
-IOS_JOB = "ios"
+# the macos and ios lanes on a pull request: what only an Apple build reads. macOS runners are the scarce
+# ones (5 for the organization; jobs waited a median of 2 h, up to 10, on 2026-11-23), and the merge queue
+# is the gate: it, a push to main, full runs and the nightly build both for every change that builds, so
+# nothing reaches main without them. A PR runs them for the Apple platform code, the Xcode project and the
+# scripts that sync it (lint checks its source lists: tools/test_xcode_sync_sources.py), the Metal shader
+# stubs, and the lanes' own scripts (tools/ci/macos.sh, its common part, retry.sh, the report action); not
+# for a ci.yml change alone
+APPLE_INPUTS = ("engine/platform/apple/*", "engine/platform/mac/*", "engine/workspaces/xcode/*", "tools/xcode_sync_*",
+                "tools/test_xcode_sync_sources.py", "engine/shaders/msl21*", "tools/ci/macos.sh",
+                "tools/ci/platform-common.sh", "tools/ci/retry.sh", ".github/actions/report/*")
+APPLE_LANES = ("macos", "ios")
 # the repository variable that turns the selection off (ci.yml passes --full-selection when it is "true")
 FULL_SELECTION_VARIABLE = "CI_FULL_SELECTION"
 TEST_NAME = re.compile(r"^test_\w+\.py::\w+$")
@@ -301,14 +302,14 @@ def suite_choice(value) -> tuple[bool, str]:
 
 def decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_out: dict[str, str],
            nightly_out: dict[str, str], advisory=(), superseded_by: tuple[str, str] | None = None,
-           full_selection: bool = False, asan_definition: str = "", ios_definition: str = "") -> dict:
+           full_selection: bool = False, asan_definition: str = "") -> dict:
     """The lanes of an event, from check-changed's plan (None: there is none, plan_error says why),
     in LANES order; advisory: ADVISORY_LANES; superseded_by: a newer push to main, and a path it
     changed that builds (newer_push). full_selection (the rollback switch, FULL_SELECTION_VARIABLE):
     a pull request, the merge queue or the advisory run runs every lane whole for any change that builds.
-    asan_definition, ios_definition: that lane's definition changed, and where (definition_change)."""
+    asan_definition: the asan lane's definition changed, and where (definition_change)."""
     result = _decide("merge_group" if event == "advisory" else event, plan, plan_error, ci, left_out, nightly_out,
-                     full_selection, asan_definition, ios_definition)
+                     full_selection, asan_definition)
     result["advisory_off"] = []
     result["build_only"] = []
     result["dispatch_advisory"] = False
@@ -377,8 +378,7 @@ def keep_advisory_only(result: dict, advisory: set[str]) -> None:
 
 
 def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_out: dict[str, str],
-            nightly_out: dict[str, str], full_selection: bool = False, asan_definition: str = "",
-            ios_definition: str = "") -> dict:
+            nightly_out: dict[str, str], full_selection: bool = False, asan_definition: str = "") -> dict:
     lanes: dict[str, dict] = {}
     fallbacks: list[str] = []
     result = {"lanes": lanes, "unit_filter": {"core": "", "editor": ""}, "unit_run": {"core": False, "editor": False},
@@ -422,15 +422,15 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
         else:
             lane("asan", False, lanes["unit"]["why"])
 
-    def ios_scope() -> None:
-        """A pull request's ios lane: only when an Apple-only input changed (IOS_INPUTS) or its own
-        definition did; the macos lane builds the rest with the same compiler."""
-        apple = [f for f in files if cc.match(f, IOS_INPUTS)] + ([ios_definition] if ios_definition else [])
-        if apple:
-            lane("ios", True, f"{apple[0]} changed (what only an Apple build reads)")
-        else:
-            lane("ios", False, "no Apple-only input changed (IOS_INPUTS): the macos lane builds the change with the "
-                               "same Apple compiler; the merge queue builds the Xcode project")
+    def apple_scope() -> None:
+        """A pull request's macos and ios lanes: only when an Apple-only input changed (APPLE_INPUTS)."""
+        apple = [f for f in files if cc.match(f, APPLE_INPUTS)]
+        for name in APPLE_LANES:
+            if apple:
+                lane(name, True, f"{apple[0]} changed (what only an Apple build reads)")
+            else:
+                lane(name, False, "no Apple-only input changed (APPLE_INPUTS): macOS runners are the scarce ones, "
+                                  "and the merge queue builds it for every change before it reaches main")
 
     lane("changes", True, "plans the lanes")
     if event in ("full", "nightly"):
@@ -477,7 +477,7 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
         everything(f"{github[0]} changed (CI itself): every lane")
         if pr_like and not full_selection:
             asan_scope()
-            ios_scope()
+            apple_scope()
         return result
     if full_selection:
         fallbacks.append(f"the repository variable {FULL_SELECTION_VARIABLE} is true: every lane, every test (the selection's rollback)")
@@ -487,7 +487,7 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
         lane(name, True, f"{first} changed (anything outside CI_NOTHING_READS builds)")
     queue = event == "merge_group"
     if pr_like:
-        ios_scope()
+        apple_scope()
     # unit and ASan: the gtest suites that see the change (the merge queue: all)
     unit = plan.get("unit", {})
     if queue:
@@ -854,10 +854,13 @@ def parse_force(text: str) -> tuple[dict[str, str], list[str]]:
 
 
 def restrict_to_forced(result: dict, force: dict[str, str]) -> None:
-    """A dispatch that forces jobs onto overflow runners runs only their lanes (it tests the runners)."""
+    """A dispatch that forces jobs onto overflow runners runs only their lanes, and those whatever the
+    change (it tests the runners: a PR-like plan leaves macos and ios out without an Apple input)."""
     keep = {lane_of(job) for job in force}
     for name in LANES[1:]:
-        if name not in keep and result["lanes"][name]["run"]:
+        if name in keep and not result["lanes"][name]["run"] and name in (*PLATFORM_LANES, "lint"):
+            result["lanes"][name] = {"run": True, "why": "workflow_dispatch with self_hosted: a forced job's lane"}
+        elif name not in keep and result["lanes"][name]["run"]:
             result["lanes"][name] = {"run": False, "why": "workflow_dispatch with self_hosted: only the forced jobs' lanes run"}
     if "mcp" not in keep:
         result["mcp"] = {"mode": "none", "files": [], "not_in_ci": []}
@@ -1079,12 +1082,11 @@ def main(argv: list[str]) -> int:
         shadow_plan, shadow_why = plan_shadow(
             args.event, plan, error, None if head_error else args.shadow_base,
             lambda base: run_check_changed(root, base, out / "shadow-check-changed.json", deps_from, cmap))
-        def definition(p: dict | None, job: str = ASAN_JOB) -> str:
-            return definition_change(root, p.get("base") or base, p.get("files") or [], job) if p else ""
+        def definition(p: dict | None) -> str:
+            return definition_change(root, p.get("base") or base, p.get("files") or []) if p else ""
 
         result = decide(args.event, plan, error, ci, left_out, nightly_out, args.advisory.split(),
-                        superseded_by=superseded, full_selection=args.full_selection, asan_definition=definition(plan),
-                        ios_definition=definition(plan, IOS_JOB))
+                        superseded_by=superseded, full_selection=args.full_selection, asan_definition=definition(plan))
         force, bad_force = parse_force(args.self_hosted)
         notes += [f"self_hosted {b}" for b in bad_force]
         # (a rerun keeps the lanes, on GitHub's runners: route)
