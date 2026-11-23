@@ -88,6 +88,8 @@ namespace jasperengine {
 
         Rml::Context* context = nullptr;
         Rml::TextInputContext* inputContext = nullptr;
+        // the field this handler's last blur left a hide pending for (compared, never dereferenced)
+        Rml::TextInputContext* blurredContext = nullptr;
         std::function<Rect(const Rect&)> canvasMapper;
 
         void showKeyboard(Rml::Element* field);
