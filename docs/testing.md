@@ -1493,11 +1493,15 @@ all of these hold:
 **The planner overflows too.** `changes` cannot route itself, and on 2026-11-23 it waited up to an
 hour for a hosted Linux runner (79 Linux jobs queued, the oldest for 4 h), so no plan ran at all. The
 dispatcher sets the repository variable `SELF_HOSTED_PLANNER` to `je-linux` while hosted Linux is
-saturated and `je-linux` is online, fit and not disabled, and deletes it otherwise. A run reads
+saturated and `je-linux` is online, fit, idle (no job running or queued for it) and not disabled, and
+deletes it otherwise: runs created while it plans go hosted, so planners never queue behind each other
+or a build. A run reads
 `vars` as it is created, which is when its `changes` job is queued, so the value is current where it
 is used. `changes` runs there on a first attempt of a trusted event other than a push (a push waits
 `ADMISSION_SECONDS` first). While it plans, `je-linux` takes no lane (the state marks it unfit,
-"reserved for `changes`"): every run's `changes` would otherwise queue behind a build. If the runner goes away, the watchdog reroutes the run as below, and the rerun
+"reserved for `changes`"): every run's `changes` would otherwise queue behind a build. A non-queue run's `changes`
+queued 5 min for a busy runner anyway (`PLANNER_WAIT`) is rerouted as for a lost runner: cancelled and
+rerun on GitHub's runners. A merge-queue run's is not (a cancel fails its group). If the runner goes away, the watchdog reroutes the run as below, and the rerun
 plans on GitHub's runners.
 
 **The state and the watchdog** (`tools/ci/runner_dispatch.py`): a cron job runs it every minute on an

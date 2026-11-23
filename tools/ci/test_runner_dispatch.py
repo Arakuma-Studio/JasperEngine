@@ -99,6 +99,10 @@ class Planner(unittest.TestCase):
         s = rd.compute_state(RUNNERS, busy, {}, NOW)
         self.assertEqual(rd.planner(s, ""), "je-linux")
         self.assertEqual(rd.planner(s, "je-linux"), "")
+        # only while idle: a run created while it plans (or builds) plans hosted
+        self.assertEqual(rd.planner(rd.compute_state([runner("je-mac"), runner("je-linux", busy=True), runner("je-win")],
+                                                     busy, {}, NOW), ""), "")
+        self.assertEqual(rd.planner(rd.compute_state(RUNNERS, busy + [job("je-linux", ago=10, name="changes")], {}, NOW), ""), "")
         self.assertEqual(rd.planner(s, "all"), "")
         self.assertEqual(rd.planner(rd.compute_state(RUNNERS, busy[:10], {}, NOW), ""), "")
         self.assertEqual(rd.planner(rd.compute_state([runner("je-linux", "offline")], busy, {}, NOW), ""), "")
@@ -134,6 +138,16 @@ class Stuck(unittest.TestCase):
         self.assertFalse(p["ok"])
         self.assertIn("12:00", p["why"])
         self.assertEqual(rd.paused({"blacksmith_paused_until": NOW - 1}, NOW), {"ok": True})
+
+    def test_a_planner_behind_a_busy_runner_goes_hosted(self):
+        busy = {"je-linux": {"online": True, "busy": True}}
+        planner = job("je-linux", ago=rd.PLANNER_WAIT, name="changes")
+        self.assertIn("changes queued 5 min for je-linux, which is busy", rd.stuck({"event": "pull_request"}, [planner], busy, {}, NOW))
+        self.assertIn("busy", rd.stuck({"event": "push"}, [planner], busy, {}, NOW))
+        # not sooner, not a merge-queue run's (a cancel fails its group), not a lane job (it waits its turn)
+        self.assertEqual(rd.stuck({"event": "pull_request"}, [job("je-linux", ago=rd.PLANNER_WAIT - 30, name="changes")], busy, {}, NOW), "")
+        self.assertEqual(rd.stuck({"event": "merge_group"}, [planner], busy, {}, NOW), "")
+        self.assertEqual(rd.stuck({"event": "pull_request"}, [job("je-linux", ago=3600, name="linux")], busy, {}, NOW), "")
 
     def test_running_on_a_runner_that_went_away(self):
         j = job("je-mac", "in_progress", runner="je-mac")
