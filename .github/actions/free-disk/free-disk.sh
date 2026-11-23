@@ -10,6 +10,12 @@ set -euo pipefail
 
 avail_gb() { df -BG --output=avail / | tail -n 1 | tr -dc '0-9'; }
 
+# an overflow runner is a person's machine: what is installed there is theirs (action.yml skips it too)
+if [[ "${RUNNER_ENVIRONMENT:-}" == self-hosted ]]; then
+    echo "free-disk: a self-hosted runner: nothing removed"
+    exit 0
+fi
+
 need="${NEED:-}"
 if [[ -n "$need" && ! "$need" =~ ^[0-9]+$ ]]; then
     echo "free-disk: NEED='$need' is not a whole number of GB" >&2

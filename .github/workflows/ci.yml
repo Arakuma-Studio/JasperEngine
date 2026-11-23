@@ -37,6 +37,10 @@ on:
         description: Run only the advisory lanes' tests the merge queue leaves out (a push to main dispatches it)
         type: boolean
         default: false
+      self_hosted:
+        description: "Test the overflow runners: <job>=<je-mac|je-linux|je-win> ...: only those jobs' lanes, on those runners (a rerun: hosted)"
+        type: string
+        default: ''
       status:
         description: Also report Check as a commit status on the head (GitHub counts no dispatched job's check toward a required one)
         type: boolean
@@ -85,7 +89,14 @@ jobs:
   # ------------------------------------------------------------- Planning ---
   changes:
     name: changes
-    runs-on: ubuntu-latest
+    # the planner too can overflow (docs/testing.md "Overflow runners"): tools/ci/runner_dispatch.py names a
+    # Linux overflow runner in SELF_HOSTED_PLANNER while hosted Linux is saturated and it is online, and a run
+    # reads `vars` as it is created, as this job is queued. Not a push (it waits ADMISSION_SECONDS), a fork's
+    # pull request or a rerun (the watchdog's, when the runner went away)
+    runs-on: >-
+      ${{ github.event_name != 'push' && github.run_attempt == 1 && vars.SELF_HOSTED_PLANNER
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      && vars.SELF_HOSTED_PLANNER || 'ubuntu-latest' }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -118,6 +129,7 @@ jobs:
       mcp_shards: ${{ steps.plan.outputs.mcp_shards }}
       build_only: ${{ steps.plan.outputs.build_only }}
       dispatch_advisory: ${{ steps.plan.outputs.dispatch_advisory }}
+      runs_on: ${{ steps.plan.outputs.runs_on }}
     steps:
       - name: Start
         run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
@@ -155,6 +167,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           # the selection's rollback: a repository variable set to true runs every test of every lane
           FULL_SELECTION: ${{ vars.CI_FULL_SELECTION }}
+          # the overflow runners (docs/testing.md "Overflow runners"): the ones taken out; a fork's pull
+          # request never gets one. Their state is fetched below, as the plan starts
+          RUNNER_DISABLED: ${{ vars.SELF_HOSTED_DISABLED }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          SELF_HOSTED: ${{ inputs.self_hosted }}
         run: |
           case "$EVENT" in
               # the checked-out merge commit: base..HEAD is exactly the PR, and no scratch checkout is needed
@@ -168,7 +185,10 @@ jobs:
                   base="$(git merge-base origin/main HEAD)" head="$GITHUB_SHA" ;;
           esac
           args=(--event "$event" --base "$base" --head "$head" --out-dir build/ci-plan --github-output "$GITHUB_OUTPUT"
-                --advisory "$ADVISORY_LANES")
+                --advisory "$ADVISORY_LANES" --runner-state "$RUNNER_TEMP/runner-state.json"
+                --runner-disabled "$RUNNER_DISABLED" --trigger "$GITHUB_EVENT_NAME" --head-repo "$HEAD_REPO"
+                --repo "$GITHUB_REPOSITORY" --run-attempt "$GITHUB_RUN_ATTEMPT" --self-hosted "$SELF_HOSTED"
+                --planner "$RUNNER_NAME")
           [[ -d build/ci-inputs/deps ]] && args+=(--deps-from build/ci-inputs/deps)
           [[ -f build/ci-inputs/coverage-map.json ]] && args+=(--coverage-map build/ci-inputs/coverage-map.json)
           [[ -f build/ci-inputs/mcp-test-seconds.json ]] && args+=(--test-seconds build/ci-inputs/mcp-test-seconds.json)
@@ -185,6 +205,10 @@ jobs:
                   --json databaseId,headSha,status,conclusion,createdAt,displayTitle > "$RUNNER_TEMP/runs.json" \
                   && args+=(--previous-runs "$RUNNER_TEMP/runs.json" --run-id "$GITHUB_RUN_ID")
           fi
+          # the runner state of this minute (tools/ci/runner_dispatch.py; none: every job hosted). Not `vars`: a
+          # run reads them as it is created, and this job can wait an hour for a runner
+          { git fetch -q --depth 1 origin ci-runner-state && git show FETCH_HEAD:state.json; } > "$RUNNER_TEMP/runner-state.json" \
+              || echo "no runner state: every job on GitHub's runners"
           tools/ci/logged.sh plan "python3 tools/ci/plan_lanes.py $(printf '%q ' "${args[@]}")"
 
       # what each test lane runs and why (owner, dependency, policy, smoke; a whole suite: full or fallback)
@@ -226,7 +250,7 @@ jobs:
     name: lint
     needs: changes
     if: needs.changes.outputs.run_lint == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.changes.outputs.runs_on)['lint'] || 'ubuntu-latest' }}
     timeout-minutes: 20
     env:
       JASPER_CI_REPRO: tools/ci/lint.sh
@@ -263,7 +287,7 @@ jobs:
     name: linux
     needs: changes
     if: needs.changes.outputs.run_linux == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.changes.outputs.runs_on)['linux'] || 'ubuntu-latest' }}
     timeout-minutes: 300
     permissions:
       contents: read
@@ -353,7 +377,7 @@ jobs:
     name: unit (${{ matrix.job }})
     needs: changes
     if: needs.changes.outputs.run_unit == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.changes.outputs.runs_on)[format('unit-{0}', matrix.job)] || 'ubuntu-latest' }}
     timeout-minutes: 300
     permissions:
       contents: read
@@ -532,7 +556,7 @@ jobs:
     name: asan (${{ matrix.job }})
     needs: changes
     if: needs.changes.outputs.run_asan == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.changes.outputs.runs_on)[format('asan-{0}', matrix.job)] || 'ubuntu-latest' }}
     # the editor's cold build and its tests (50-95 min, estimated)
     timeout-minutes: 330
     permissions:
@@ -599,7 +623,7 @@ jobs:
     name: htmlui
     needs: changes
     if: needs.changes.outputs.run_htmlui == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.changes.outputs.runs_on)['htmlui'] || 'ubuntu-latest' }}
     # a cold build (an image change, a lost entry) and the tests ran past 240
     timeout-minutes: 330
     permissions:
@@ -677,7 +701,7 @@ jobs:
       needs.changes.outputs.run_mcp == 'true'
       && needs.changes.outputs.mcp_shards != ''
       && needs.changes.outputs.mcp_shards != '[]'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.changes.outputs.runs_on)[format('mcp-{0}', matrix.shard)] || 'ubuntu-latest' }}
     timeout-minutes: 180
     strategy:
       fail-fast: false
@@ -731,7 +755,7 @@ jobs:
     name: smoke
     needs: [changes, linux]
     if: needs.changes.outputs.run_smoke == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.changes.outputs.runs_on)['smoke'] || 'ubuntu-latest' }}
     timeout-minutes: 300
     permissions:
       contents: read
@@ -828,7 +852,7 @@ jobs:
     name: web
     needs: changes
     if: needs.changes.outputs.run_web == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.changes.outputs.runs_on)['web'] || 'ubuntu-latest' }}
     timeout-minutes: 180
     permissions:
       contents: read
@@ -907,7 +931,7 @@ jobs:
     name: android
     needs: changes
     if: needs.changes.outputs.run_android == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.changes.outputs.runs_on)['android'] || 'ubuntu-latest' }}
     timeout-minutes: 180
     permissions:
       contents: read
@@ -971,7 +995,7 @@ jobs:
     name: windows (${{ matrix.part }})
     needs: changes
     if: needs.changes.outputs.run_windows == 'true'
-    runs-on: windows-latest
+    runs-on: ${{ fromJSON(needs.changes.outputs.runs_on)[format('windows-{0}', matrix.part)] || 'windows-latest' }}
     # a cold editor build (about 230 min, as after a cache-key change) plus the advisory editor-test
     # step's own 75: past the job's limit GitHub cancels the job, and Check counts it red
     timeout-minutes: 330
@@ -1094,7 +1118,7 @@ jobs:
     name: windows (compile)
     needs: [changes, windows]
     if: ${{ !cancelled() && needs.changes.outputs.run_windows == 'true' }}
-    runs-on: windows-latest
+    runs-on: ${{ fromJSON(needs.changes.outputs.runs_on)['windows-compile'] || 'windows-latest' }}
     timeout-minutes: 120
     env:
       JASPER_CI_REPRO: tools/ci/windows.sh compile-smoke tools/fixtures/post-processing
@@ -1128,7 +1152,7 @@ jobs:
     name: macos
     needs: changes
     if: needs.changes.outputs.run_macos == 'true'
-    runs-on: macos-latest
+    runs-on: ${{ fromJSON(needs.changes.outputs.runs_on)['macos'] || 'macos-latest' }}
     # cold (no ccache yet): editor 81 min, engine and core tests 63, CPU tests 18, then compile-smoke
     timeout-minutes: 300
     permissions:
@@ -1156,8 +1180,11 @@ jobs:
         run: tools/ci/macos.sh editor
       - name: Engine and the core tests
         run: tools/ci/macos.sh engine
+      # 18 min cold on a hosted runner: a hung test fails here, not at the job's 300 min (a link-following
+      # cleanup hung for 3 h on je-mac, merge-queue run of #162)
       - name: Unit tests (CPU suites)
         if: github.event_name != 'push'
+        timeout-minutes: 60
         run: tools/ci/macos.sh tests
       - name: Call CLI without an editor
         if: github.event_name != 'push'
@@ -1181,7 +1208,7 @@ jobs:
     name: ios
     needs: changes
     if: needs.changes.outputs.run_ios == 'true'
-    runs-on: macos-latest
+    runs-on: ${{ fromJSON(needs.changes.outputs.runs_on)['ios'] || 'macos-latest' }}
     timeout-minutes: 120
     env:
       JASPER_CI_REPRO: tools/ci/macos.sh xcode ios
@@ -1331,7 +1358,10 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
-      NEEDS: ${{ toJSON(needs) }}
+      # each needed job's result only: toJSON(needs) carries the changes job's filters, over Linux's 128 KiB
+      # limit on one environment string (MAX_ARG_STRLEN) when a plan selects every unit test (run 45088926257).
+      # One entry per job of needs (tools/ci/test_check_gate.py WorkflowEnv)
+      NEEDS: ${{ format('{{"changes":"{0}","lint":"{1}","linux":"{2}","unit":"{3}","asan":"{4}","htmlui":"{5}","mcp":"{6}","smoke":"{7}","web":"{8}","android":"{9}","windows":"{10}","windows-compile":"{11}","macos":"{12}","ios":"{13}","check":"{14}"}}', needs.changes.result, needs.lint.result, needs.linux.result, needs.unit.result, needs.asan.result, needs.htmlui.result, needs.mcp.result, needs.smoke.result, needs.web.result, needs.android.result, needs.windows.result, needs.windows-compile.result, needs.macos.result, needs.ios.result, needs.check.result) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1418,7 +1448,8 @@ jobs:
       - name: Gate
         id: gate
         env:
-          NEEDS: ${{ toJSON(needs) }}
+          # each needed job's result only, as the report job's NEEDS
+          NEEDS: ${{ format('{{"changes":"{0}","lint":"{1}","linux":"{2}","unit":"{3}","asan":"{4}","htmlui":"{5}","mcp":"{6}","smoke":"{7}","web":"{8}","android":"{9}","windows":"{10}","windows-compile":"{11}","macos":"{12}","ios":"{13}"}}', needs.changes.result, needs.lint.result, needs.linux.result, needs.unit.result, needs.asan.result, needs.htmlui.result, needs.mcp.result, needs.smoke.result, needs.web.result, needs.android.result, needs.windows.result, needs.windows-compile.result, needs.macos.result, needs.ios.result) }}
         run: |
           printf '%s\n' "$NEEDS" > needs.json
           python3 tools/ci/check_gate.py --needs needs.json --lanes plan/lanes.json --reports reports \

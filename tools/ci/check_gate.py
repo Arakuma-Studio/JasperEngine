@@ -4,7 +4,7 @@
     python3 tools/ci/check_gate.py --needs needs.json --lanes build/ci-plan/lanes.json \\
         --reports <dir of ci-report-* artifacts> [--advisory "unit asan htmlui mcp smoke"]
 
---needs is `toJSON(needs)` of the Check job. Exit 0 only when every needed job succeeded, or was
+--needs is {job: result} of the Check job's needs (or `toJSON(needs)`). Exit 0 only when every needed job succeeded, or was
 skipped while lanes.json says that lane did not need to run. It fails when:
   - a job failed or was cancelled (a cancelled run is red);
   - a job was skipped that lanes.json planned, or that lanes.json does not know, or lanes.json is
@@ -49,7 +49,7 @@ def gate(needs_path: Path, lanes_path: Path | None, reports_dir: Path | None, ad
          test_lanes: tuple[str, ...] = TEST_LANES, out=sys.stdout) -> int:
     needs = report.load_json(needs_path)
     if not isinstance(needs, dict):
-        print(f"check_gate: {needs_path} is not toJSON(needs)", file=out)
+        print(f"check_gate: {needs_path} is not a JSON object of the needed jobs", file=out)
         return 2
     plan = report.load_lanes(lanes_path)
     reports = report.load_reports(reports_dir) if reports_dir else {}
@@ -97,7 +97,7 @@ def gate(needs_path: Path, lanes_path: Path | None, reports_dir: Path | None, ad
             row(job, result, f"FAIL: {problem}", True)
 
     for job, value in needs.items():
-        result = value.get("result") if isinstance(value, dict) else None
+        result = report.needs_result(value)
         result = result if result in report.STATUSES else "unknown"
         # (windows-compile is a job of the windows lane: planned with it)
         lane = plan["lanes"].get(job, plan["lanes"].get(report.lane_base(job)))
@@ -196,7 +196,7 @@ def gate(needs_path: Path, lanes_path: Path | None, reports_dir: Path | None, ad
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--needs", type=Path, required=True, help="toJSON(needs) of the Check job")
+    parser.add_argument("--needs", type=Path, required=True, help="{job: result} of the Check job's needs")
     parser.add_argument("--lanes", type=Path, help="lanes.json of tools/ci/plan_lanes.py")
     parser.add_argument("--reports", type=Path, help="the downloaded ci-report-* artifacts")
     parser.add_argument("--advisory", default="", help="space separated lanes whose failures do not fail (rollout)")
