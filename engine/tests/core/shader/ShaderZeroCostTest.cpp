@@ -6,8 +6,8 @@
 // program it was before them. The list of hashes was generated on the commit the work started
 // from (JASPER_ZERO_COST_UPDATE=1 rewrites it; only do so when a change of the built-in shader
 // is meant to change existing variants, and say so in its commit). The same holds for the
-// built-in depth programs without S92's Cavity normals ('Cvn'), whose list was generated on
-// the commit S92 started from (869e2f760).
+// built-in depth programs without S100's Cavity normals ('Cvn'), whose list was generated on
+// the commit S100 started from (869e2f760).
 
 #include "pool/ShaderPool.h"
 #include "shader/ShaderVariantCompiler.h"
@@ -65,7 +65,7 @@ namespace {
             // the built-in Lit requires neither, so its variants stay as they were)
             {[](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.waterExclusion = true; e.waterWake = true; }},
             {[](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.postColor = true; }},
-            // S92's Cavity changes the depth programs alone ('Cvn'), never a colour variant
+            // S100's Cavity changes the depth programs alone ('Cvn'), never a colour variant
             {[](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.cavityNormals = true; }},
             {[](SubmeshShaderInputs& i, MeshShaderEnvironment& e){ e.postColor = true; e.fog = true; i.baseColorTexture = true; i.normalTexture = true; }},
             {[](SubmeshShaderInputs& i, MeshShaderEnvironment& e){ i.textureRect = true; i.baseColorTexture = true; e.lights2D = true; e.shadows2D = true; }},

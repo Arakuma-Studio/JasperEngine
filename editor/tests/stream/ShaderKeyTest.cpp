@@ -442,7 +442,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::MESH, 0x401 | shaderPropertyBit(47), "mesh_UltVc4Sfr"},
         {ShaderType::MESH, 0x401 | shaderPropertyBit(45) | shaderPropertyBit(48), "mesh_UltVc4PxsSpv"},
         {ShaderType::DEPTH, shaderPropertyBit(19) | shaderPropertyBit(20), "depth_PxsSpv"},
-        // S92's Cavity: the depth programs' normals (DEPTH 26) and the fullscreen draw's terms
+        // S100's Cavity: the depth programs' normals (DEPTH 26) and the fullscreen draw's terms
         {ShaderType::DEPTH, shaderPropertyBit(26), "depth_Cvn"},
         {ShaderType::CAVITY, 0x3, "cavity_ScrWld"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling

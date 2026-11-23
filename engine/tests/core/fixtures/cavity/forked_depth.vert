@@ -1,6 +1,6 @@
 #version 450
 
-// S92 R2 (CavityGpu.ForkedDepthShaderGetsNoGarbage): a project's fork of the built-in depth.vert as
+// S100 R2 (CavityGpu.ForkedDepthShaderGetsNoGarbage): a project's fork of the built-in depth.vert as
 // it was before Cavity, so it writes no normals output; the engine library resolves its includes.
 
 #define DEPTH_SHADER

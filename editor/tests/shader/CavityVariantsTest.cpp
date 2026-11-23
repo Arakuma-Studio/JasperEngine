@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S92's Cavity shaders (docs/specs/S92-cavity.md): the fullscreen draw and the depth programs
+// S100's Cavity shaders (docs/specs/S100-cavity.md): the fullscreen draw and the depth programs
 // with normals ('Cvn') compile for every backend an export targets, a fork of depth.frag of any
 // age gets the normals output (the compiler wraps its main), from the vertex stage when that
 // stage writes one, else "none"; an export ships them only with Cavity.
@@ -18,6 +18,7 @@
 
 #include "support/EditorTestSupport.h"
 
+#include <cstdio>
 #include <set>
 
 #include <string>
@@ -90,6 +91,16 @@ namespace {
         "    frag_extra = vec4(1.0);\n"
         "}\n";
 
+    // a fork without a #version line (glslang then takes its default version)
+    const char* const NO_VERSION_FORK_FRAG =
+        "// my depth fork, no version line\n"
+        "out vec4 frag_color;\n"
+        "in vec2 v_projZW;\n"
+        "#include \"includes/depth_util.glsl\"\n"
+        "void main() {\n"
+        "    frag_color = encodeDepth(0.5 * v_projZW[0] / v_projZW[1] + 0.5);\n"
+        "}\n";
+
     CustomShaderSources forkSources(const std::string& shader){
         return ShaderVariantCompiler::resolveCustomShaderSources(shader, [](const std::string& path, std::string& content){
             if (path == "shaders/OldDepth.frag"){
@@ -102,6 +113,10 @@ namespace {
             }
             if (path == "shaders/CommentedDepth.frag"){
                 content = COMMENTED_FORK_FRAG;
+                return true;
+            }
+            if (path == "shaders/NoVersionDepth.frag"){
+                content = NO_VERSION_FORK_FRAG;
                 return true;
             }
             return false;
@@ -224,12 +239,12 @@ namespace {
         size_t depth = 0;
     };
 
-    CavityKeys cavityVariantsCollect(Scene& scene, bool scriptsSetPostProcessing){
+    CavityKeys cavityVariantsCollect(Scene& scene, bool scriptsSetPostProcessing, const std::vector<std::string>& scriptFields = {}){
         ShaderVariantContent content;
         content.registry = &scene;
         content.entities = scene.getEntityList();
         std::set<ShaderKey> keys;
-        ShaderVariantCollector::collectScene(&scene, content, {}, keys, {}, false, scriptsSetPostProcessing);
+        ShaderVariantCollector::collectScene(&scene, content, {}, keys, {}, false, scriptsSetPostProcessing, scriptFields);
         CavityKeys out;
         for (ShaderKey key : keys){
             const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
@@ -246,9 +261,10 @@ namespace {
 
 }
 
-// S92 AC4: an export with Cavity off everywhere and no script setting post-processing ships no
-// Cavity shader; with it on, its type's variant and every depth program with normals; a script
-// that may switch it ships every type and both depth forms
+// S100 AC4: an export with Cavity off everywhere and no script naming cavityEnabled ships no
+// Cavity shader, though a script sets other post-processing; with it on, its type's variant and
+// every depth program with normals; a script naming cavityEnabled ships both depth forms and the
+// scene's type, one naming cavityType too every type
 TEST_F(CavityVariantKeys, ExportShipsCavityOnlyWhenAScenesOrScriptsMayUseIt){
     Scene scene;
     Primitive cube(&scene);
@@ -269,9 +285,27 @@ TEST_F(CavityVariantKeys, ExportShipsCavityOnlyWhenAScenesOrScriptsMayUseIt){
 
     settings.cavityEnabled = false;
     scene.setPostProcessing(settings);
-    const CavityKeys scripted = cavityVariantsCollect(scene, true);
-    EXPECT_EQ(scripted.cavity.size(), 3u);
-    EXPECT_GT(scripted.depthWithNormals, 0u);
+    for (const std::vector<std::string>& fields : {std::vector<std::string>{}, std::vector<std::string>{"bloomEnabled"}}){
+        const CavityKeys other = cavityVariantsCollect(scene, true, fields);
+        EXPECT_TRUE(other.cavity.empty()) << "a script setting post-processing without naming Cavity";
+        EXPECT_EQ(other.depthWithNormals, 0u);
+        EXPECT_EQ(other.depth, off.depth);
+    }
+
+    const CavityKeys switched = cavityVariantsCollect(scene, true, {"cavityEnabled"});
+    EXPECT_EQ(switched.cavity, std::set<uint64_t>{ShaderPool::getCavityProperties(true, false)});
+    EXPECT_GT(switched.depthWithNormals, 0u);
+    EXPECT_EQ(switched.depth - switched.depthWithNormals, off.depth) << "both depth forms: Cavity may turn off again";
+
+    const CavityKeys typed = cavityVariantsCollect(scene, true, {"cavityEnabled", "cavityType"});
+    std::printf("[S100] depth programs %zu; a script naming cavityEnabled and cavityType adds %zu and %zu fullscreen\n",
+                off.depth, typed.depthWithNormals, typed.cavity.size());
+    EXPECT_EQ(typed.cavity.size(), 3u);
+    EXPECT_EQ(typed.depthWithNormals, switched.depthWithNormals);
+
+    // Cavity's names leave the uber variants as a script naming no switch has them
+    EXPECT_EQ(ShaderVariantCollector::plausibleUberFeatures(settings, true, {"cavityEnabled", "cavityType"}),
+              ShaderVariantCollector::plausibleUberFeatures(settings, true, {}));
 }
 
 TEST(CavityVariants, ForkWithCommentsBeforeVersionAndItsOwnLocation1Compiles){
@@ -285,4 +319,25 @@ TEST(CavityVariants, ForkWithCommentsBeforeVersionAndItsOwnLocation1Compiles){
     ASSERT_TRUE(ShaderVariantCompiler::preprocess(key, ShaderBackend::GLCore, &sources, vertex, fragment, &error)) << error;
     EXPECT_NE(fragment.find("frag_depthNormal"), std::string::npos);
     expectCompiles(key, &sources);
+}
+
+// a fork without #version builds with Cavity on exactly as with Cavity off: it fails there (glslang's
+// default version is ES 100, below SPIR-V's 310) and the mesh falls back to the built-in depth
+// program, so the error is the compiler's, not Cavity's
+TEST(CavityVariants, ForkWithoutVersionBuildsAsWithoutCavity){
+    ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
+    const uint64_t properties = cavityDepthProperties(meshInputs());
+    const uint64_t plain = properties & ~ShaderPool::getDepthNormalsProperty();
+    const std::string shader = "shaders/NoVersionDepth.frag";
+    const CustomShaderSources sources = forkSources(shader);
+    ASSERT_TRUE(sources.valid) << sources.error;
+    const uint16_t id = ShaderPool::registerCustomShader(shader);
+    for (ShaderBackend backend : ShaderPool::getShaderBackends()){
+        ShaderData without, with;
+        std::string withoutError, withError;
+        const bool off = ShaderVariantCompiler::compile(ShaderPool::getShaderKey(ShaderType::DEPTH, plain, id), backend, &sources, without, &withoutError);
+        const bool on = ShaderVariantCompiler::compile(ShaderPool::getShaderKey(ShaderType::DEPTH, properties, id), backend, &sources, with, &withError);
+        EXPECT_EQ(on, off) << ShaderPool::getShaderLangStr(backend);
+        EXPECT_EQ(withError, withoutError) << ShaderPool::getShaderLangStr(backend);
+    }
 }

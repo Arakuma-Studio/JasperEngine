@@ -46,7 +46,12 @@ void create_scene_Main_Scene_1(Scene* scene){
     camera.type = CameraType::CAMERA_PERSPECTIVE;
     camera.target = Vector3(0.000000f, 0.000000f, 0.000000f);
     camera.up = Vector3(0.000000f, 1.000000f, 0.000000f);
+    camera.leftClip = <view>;
+    camera.rightClip = <view>;
+    camera.bottomClip = <view>;
+    camera.topClip = <view>;
     camera.yfov = 1.047198f;
+    camera.aspect = <view>;
     camera.nearClip = 0.300000f;
     camera.farClip = 4000.000000f;
     camera.renderToTexture = false;

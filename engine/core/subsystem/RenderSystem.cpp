@@ -4422,7 +4422,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
             d_vertexColorVec4 = d_color && inputs.vertexColor4 && !inputs.terrain;
             d_uv1 = (require & ShaderRequire_UV1) && (inputs.texCoord1 || inputs.terrain);
         }
-        // Cavity's normals (S92 R2): the depth program reads the vertex normal (a terrain makes its
+        // Cavity's normals (S100 R2): the depth program reads the vertex normal (a terrain makes its
         // own from the heightmap, as its G-buffer program does)
         if (environment.cavityNormals)
             d_normals = d_normals || inputs.normal || inputs.terrain;
@@ -7469,7 +7469,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                             }
                             // (the colour: a lattice variant's mask reads it; the snap pivot: a pixel-snapped
                             // sprite's 'Pxs' program snaps about it, as its colour program does; the normal:
-                            // a 'Cvn' program writes it for Cavity, S92 R2)
+                            // a 'Cvn' program writes it for Cavity, S100 R2)
                             if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1 || attr.first == AttributeType::COLOR ||
                                     attr.first == AttributeType::VAT_INDEX || attr.first == AttributeType::SNAPPIVOT || attr.first == AttributeType::NORMAL){
                                 depthRender.addAttribute(depthShaderData.getAttrIndex(attr.first), buf.second->getRender(), attr.second.getElements(), attr.second.getDataType(), buf.second->getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
@@ -7554,7 +7554,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             depthState.depthBiasSlope = colorState.depthBiasSlope;
 
             depthPipelines = PIP_DEPTH | PIP_SHADOW_DEPTH;
-            // the depth pre-pass with Cavity's normals (S92 R2): only a 'Cvn' program has the pipeline
+            // the depth pre-pass with Cavity's normals (S100 R2): only a 'Cvn' program has the pipeline
             if (variant.depthProperties & ShaderPool::getDepthNormalsProperty())
                 depthPipelines |= PIP_DEPTH_NORMALS;
             if (shaderEnvironment.depthPrepass){
@@ -11206,7 +11206,7 @@ bool RenderSystem::usesShadowIndices(const MeshComponent& mesh, const Submesh& s
         return false;
     // no alpha clip, texture rect, instance fade or other input: the instance matrix of an
     // InstancedMesh ('Ist') and a batch's ('Aui') move positions alike. Cavity's normals ('Cvn'
-    // and the normal input it reads, S92) go to an attachment a shadow map does not have: the
+    // and the normal input it reads, S100) go to an attachment a shadow map does not have: the
     // shared position's first vertex draws the same depth
     const uint64_t positionsOnly = ShaderPool::getAutoInstancingProperty(ShaderType::DEPTH) | ShaderPool::getDepthNormalsProperty() |
                                    ShaderPool::getDepthMeshProperties(false, false, false, false, false, false, true, false, false, true);
@@ -11305,7 +11305,7 @@ void RenderSystem::destroySSAO(){
 
 void RenderSystem::createSSAODepthFramebuffer(unsigned int width, unsigned int height){
     // depth pre-pass target: packed depth in color, sampled point-exact; and Cavity's normals
-    // beside it while the pass asks for them (S92 R2)
+    // beside it while the pass asks for them (S100 R2)
     ColorFormat formats[2] = { ColorFormat::RGBA, ColorFormat::RGBA };
     rv().ssaoDepthFramebuffer.setColorAttachments(passPrepassNormals ? 2 : 1, formats);
     rv().ssaoDepthFramebuffer.setWidth(width);
@@ -11325,7 +11325,7 @@ bool RenderSystem::ensureSSAOFramebuffers(unsigned int width, unsigned int heigh
         return false;
 
     // the depth pre-pass target takes Cavity's normals attachment while the pass asks for it
-    // (S92 R2, renderOpaqueDepth): only it changes when that comes or goes
+    // (S100 R2, renderOpaqueDepth): only it changes when that comes or goes
     const int depthAttachments = passPrepassNormals ? 2 : 1;
     if (rv().ssaoFramebuffer.isCreated() && rv().ssaoBlurFramebuffer.isCreated() && rv().ssaoWidth == width && rv().ssaoHeight == height){
         if (rv().ssaoDepthFramebuffer.isCreated() && rv().ssaoDepthFramebuffer.getNumColorAttachments() == depthAttachments)
@@ -11457,7 +11457,7 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
         renderVP = flipXMatrix * renderVP;
     }
 
-    // a target with Cavity's normals attachment (S92 R2): the 'Cvn' programs write both, the
+    // a target with Cavity's normals attachment (S100 R2): the 'Cvn' programs write both, the
     // normals cleared to "none" (alpha 0: includes/depth_normals.glsl)
     const bool normals = target.getNumColorAttachments() > 1;
     const PipelineType depthPip = normals ? PIP_DEPTH_NORMALS : PIP_DEPTH;
@@ -11545,7 +11545,7 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
     }
 }
 
-//-----Cavity (docs/specs/S92-cavity.md)-----
+//-----Cavity (docs/specs/S100-cavity.md)-----
 
 void RenderSystem::updateCavity(){
     const PostProcessingSettings& settings = scene->getPostProcessing();
@@ -11560,11 +11560,14 @@ void RenderSystem::updateCavity(){
     if (cavityNormalsPending && cavityNormalProgramsReady())
         cavityNormalsPending = false;
 
-    // off: no program, no draw, no target (S92: costs nothing)
+    // off: no program, no draw, no target (S100: costs nothing), and after the frame that
+    // released them a single branch
     if (!enabled || !Engine::isViewLoaded()){
-        destroyCavity();
+        if (cavityHeld)
+            destroyCavity();
         return;
     }
+    cavityHeld = true;
     const uint64_t properties = ShaderPool::getCavityProperties(settings.cavityType != CavityType::WORLD, settings.cavityType != CavityType::SCREEN);
     if (cavityLoaded && properties == cavityProperties)
         return;
@@ -11618,6 +11621,7 @@ void RenderSystem::destroyCavity(){
         releaseCavityTargets(*entry.second);
 #endif
     cavityStatus = CavityStatus();
+    cavityHeld = false;
 }
 
 bool RenderSystem::cavityNormalProgramsReady(){
@@ -11650,7 +11654,7 @@ bool RenderSystem::drawCavity(const CameraComponent& camera, PipelineType colorP
     fs_cavity.view = camera.viewMatrix;
     // widths in pixels are at a 1080-pixel-high target: the same apparent width at any size
     const float heightScale = (float)height / 1080.0f;
-    // the margin of the one-surface test between taps (cavity.frag cavityOneSurface; S92 R3: no
+    // the margin of the one-surface test between taps (cavity.frag cavityOneSurface; S100 R3: no
     // object IDs), in tap widths over the facing
     fs_cavity.screen = Vector4(settings.cavityScreenRidge, settings.cavityScreenValley,
                                std::max(1.0f, settings.cavityScreenWidth * heightScale), 2.0f);
@@ -11658,7 +11662,7 @@ bool RenderSystem::drawCavity(const CameraComponent& camera, PipelineType colorP
     const int tierSamples = QualityResolver::cavityWorldSamples(settings.cavityWorldSamples);
     const int samples = tierSamples <= 4 ? 4 : (tierSamples <= 8 ? 8 : 16);
     fs_cavity.world = Vector4(std::max(settings.cavityWorldRadius, 1e-4f), settings.cavityWorldRidge, settings.cavityWorldValley, (float)samples);
-    // a fixed attenuation (S92: not a setting) and the gain that puts a right-angled crease at
+    // a fixed attenuation (S100: not a setting) and the gain that puts a right-angled crease at
     // about half the darkening at Valley 1
     fs_cavity.worldLimits = Vector4(std::max(0.0f, settings.cavityMaxPixelRadius) * heightScale, 1.0f, 2.0f, 0.0f);
     fs_cavity.texel = Vector4((float)width, (float)height, 1.0f / (float)width, 1.0f / (float)height);
@@ -11678,7 +11682,7 @@ bool RenderSystem::drawCavity(const CameraComponent& camera, PipelineType colorP
 
     // the multiply (out = dst x 2 src), RGB only; the debug view replaces the colour. The
     // LESS_EQUAL test against the pass's depth (the shader writes the pre-pass's) leaves out
-    // what the colour pass drew in front of what the pre-pass saw (S92 R6)
+    // what the colour pass drew in front of what the pre-pass saw (S100 R6)
     PipelineState state;
     state.target = targetFormatFor(colorPip, passMsaa);
     state.blend = settings.cavityDebug ? BlendMode::NONE : BlendMode::MULTIPLY_2X;
@@ -12063,7 +12067,7 @@ RenderSystem::SceneInputTarget* RenderSystem::ensureSceneInputTarget(bool color,
     target->lastUsed = drawCount;
     target->lastViewDraw = viewDraw;
     Framebuffer& framebuffer = target->framebuffer;
-    // Cavity's view-space normals beside the packed depth (S92 R2, PIP_DEPTH_NORMALS)
+    // Cavity's view-space normals beside the packed depth (S100 R2, PIP_DEPTH_NORMALS)
     if (normals){
         ColorFormat formats[2] = { ColorFormat::RGBA, ColorFormat::RGBA };
         framebuffer.setColorAttachments(2, formats);
@@ -17787,7 +17791,7 @@ void RenderSystem::update(double dt){
 
     // changed post-processing settings: LUT bakes and the variant bit the objects load with below
     applyPostProcessing();
-    // S92: Cavity's depth programs and its draw follow the scene's settings
+    // S100: Cavity's depth programs and its draw follow the scene's settings
     updateCavity();
 
     // the points, lines and sky of a colour bit switch reload once their new variants are built
@@ -19292,7 +19296,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         (gbufferDepthMismatch.empty() || !hasVisibleGBufferDepthMismatch(camera, isMainCamera ? 0 : -1));
     TextureRender* sharedSceneDepth = gbufferSceneDepth ? gbufferDepth : nullptr;
 
-    // Cavity (S92): the main camera's, as the other post settings, in a 3D pass with a depth
+    // Cavity (S100): the main camera's, as the other post settings, in a 3D pass with a depth
     // test. Its normals come from the pass whose depth it reads (R2): SSR's G-buffer where its
     // depth draws every visible opaque mesh as the colour pass does, else the depth pre-pass,
     // whose targets then take the normals attachment (renderOpaqueDepth; once every mesh has
@@ -19308,7 +19312,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     passPrepassNormals = useCavity && !cavityGBuffer;
     passNormalsDepth = nullptr;
     passNormalsTexture = nullptr;
-    if (isMainCamera && !passPrepassNormals)
+    if (cavityHeld && isMainCamera && !passPrepassNormals)
         releaseCavityTargets(rv());
 
     // User post-process chain: like SSR it needs the scene color offscreen, so it
@@ -19503,7 +19507,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     }
 
     // Cavity's depth and normals: the G-buffer's (the colour pass's size, ssrWidth), or those of
-    // a depth pre-pass above of the colour pass's size, else a pre-pass of its own (S92 D7), which
+    // a depth pre-pass above of the colour pass's size, else a pre-pass of its own (S100 D7), which
     // the scene depth's readers then share. (SSAO's pre-pass is the view's size, which the
     // colour pass is not at a render scale below 1 or with fixed resolution: its texels would not
     // be the pixels Cavity writes)
@@ -20044,7 +20048,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 passPostColorLut = nullptr;
             }
         }
-        // Cavity over the opaque scene (S92 R1): after SSR's composite, under the atmosphere's
+        // Cavity over the opaque scene (S100 R1): after SSR's composite, under the atmosphere's
         // composites, the transparents, the UI and the overlays
         if (useCavity)
             useCavity = drawCavity(camera, colorPip, passMsaa, cavityDepth, cavityNormals, cavityNormalsFine, cavityGBuffer,
@@ -20443,8 +20447,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     passNormalsDepth = nullptr;
     passNormalsTexture = nullptr;
 
-    // what the frame's own view drew of Cavity (get_post_processing_status)
-    if (isMainCamera && &rv() == &primaryView){
+    // what the frame's own view drew of Cavity (get_post_processing_status; destroyCavity left
+    // the default while it is off)
+    if (cavityHeld && isMainCamera && &rv() == &primaryView){
         cavityStatus = CavityStatus();
         if (useCavity){
             const PostProcessingSettings& settings = scene->getPostProcessing();

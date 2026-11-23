@@ -304,7 +304,7 @@ TEST_F(QualityResolverTest, SettingsJsonRoundTrip){
     EXPECT_EQ(back, DeviceSettings());
 }
 
-// S92: Cavity's World samples are as authored on High and Ultra, at most 8 on Medium and 4 on Low
+// S100: Cavity's World samples are as authored on High and Ultra, at most 8 on Medium and 4 on Low
 // (a cap: never raised, never off); a Critical thermal step takes the tier below's cap; the cell
 // is 4, 8 or 16, and a project saved before it gets the defaults
 TEST_F(QualityResolverTest, CavitySamplesCappedByTier){

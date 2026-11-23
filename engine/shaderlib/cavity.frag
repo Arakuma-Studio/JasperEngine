@@ -1,6 +1,6 @@
 #version 450
 
-// Cavity (docs/specs/S92-cavity.md): Blender-viewport-style ridge and valley shading of the
+// Cavity (docs/specs/S100-cavity.md): Blender-viewport-style ridge and valley shading of the
 // opaque 3D scene. One fullscreen triangle inside the colour pass, after the opaque queue and
 // the SSR composite, multiplying what is there (blend DST_COLOR, SRC_COLOR: out = dst x 2 src,
 // so 0.5 leaves a pixel as it is). It reads the scene's packed depth and the view-space normals
@@ -22,7 +22,7 @@
 // The fragment also writes its depth (the pre-pass's, nearer by the surface's own depth change
 // across a pixel) for a LESS_EQUAL test against the colour pass's depth: where the colour pass
 // drew something nearer than the pre-pass saw (a stencil-tested submesh, which no pre-pass
-// draws: S92 R6), the test fails and that pixel takes no foreign cavity. The margin keeps every
+// draws: S100 R6), the test fails and that pixel takes no foreign cavity. The margin keeps every
 // multisampled sample of the surface itself (each tested at its own depth, up to half a pixel
 // from the centre) passing on a sloped face.
 

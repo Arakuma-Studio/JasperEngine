@@ -1,6 +1,6 @@
 #version 450
 
-// S92 R2 (CavityGpu.ForkedDepthShaderGetsNoGarbage): a project's fork of the built-in depth.frag as
+// S100 R2 (CavityGpu.ForkedDepthShaderGetsNoGarbage): a project's fork of the built-in depth.frag as
 // it was before Cavity, so it writes no normals output; the engine library resolves its includes.
 
 // A fork may declare a u_fs_customParams block: its members are filled by name from the

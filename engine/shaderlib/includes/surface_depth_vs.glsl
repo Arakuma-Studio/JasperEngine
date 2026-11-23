@@ -24,7 +24,7 @@
 #if !defined(SURFACE_DISPLACE) && !defined(DEPTH_NORMALS)
     #undef HAS_NORMALS
 #endif
-// S92 R2 (DEPTH_NORMALS, includes/depth_normals.glsl): v_depthNormal, the world-space normal
+// S100 R2 (DEPTH_NORMALS, includes/depth_normals.glsl): v_depthNormal, the world-space normal
 // Cavity reads, from the vertex normal as moved here. A hook that moves vertices moves the
 // surface away from it, so a displacing shader writes none (Cavity rebuilds it from depth)
 // unless it defines SURFACE_DISPLACE_KEEPS_NORMAL (its hook leaves the position as it is)

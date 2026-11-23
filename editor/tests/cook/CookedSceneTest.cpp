@@ -692,7 +692,7 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
     EXPECT_FLOAT_EQ(old.getWaterWakeFade(), defaults.waterWakeFade);
 }
 
-// S92: Cavity's post-processing fields reach both kinds of export: the prebuilt player's cooked
+// S100: Cavity's post-processing fields reach both kinds of export: the prebuilt player's cooked
 // scene (the field table's records, keyed by name hash) and the compiled game's generated code
 // (an assignment per changed field, the type as its C++ enum)
 TEST(CookedScene, SceneSettingsKeepCavity) {

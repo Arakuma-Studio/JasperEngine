@@ -143,7 +143,7 @@ TEST(PostProcessingPresets, CostCountsHalationAndListsS13Effects) {
     EXPECT_TRUE(postProcessingPresetsContains(estimatePostProcessingCost(adaptive, {}, false).notes, "min^2 and max^2"));
 }
 
-// S92: Cavity is a draw inside the scene pass: its screen counts, no pass does, at the render
+// S100: Cavity is a draw inside the scene pass: its screen counts, no pass does, at the render
 // scale; the note names the pre-pass it may add; URP needs a renderer feature for it
 TEST(PostProcessingPresets, CostCountsCavity) {
     PostProcessingSettings settings;

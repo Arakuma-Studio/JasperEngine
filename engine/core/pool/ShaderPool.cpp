@@ -849,7 +849,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::TITLE_ENV: return 4;
         case ShaderType::TITLE_GLINT_SPRITE: return 0;
         case ShaderType::TITLE_GLINT: return 4;
-        // S92's terms: 'Scr' Screen, 'Wld' World (both: Both)
+        // S100's terms: 'Scr' Screen, 'Wld' World (both: Both)
         case ShaderType::CAVITY: return 2;
         default:                 return 0;
     }
@@ -980,7 +980,7 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 23: return shortName ? "Dth" : "Foliage Dither";
             case 24: return shortName ? "Thl" : "Terrain Holes"; // T3 R20
             case 25: return shortName ? "Twd" : "Terrain World"; // T4 R58
-            case 26: return shortName ? "Cvn" : "Cavity Normals"; // S92 R2
+            case 26: return shortName ? "Cvn" : "Cavity Normals"; // S100 R2
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {

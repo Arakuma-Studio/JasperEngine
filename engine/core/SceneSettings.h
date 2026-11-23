@@ -109,7 +109,7 @@ namespace jasperengine{
         FILMIC      // a 5x5 lattice of grain particles (desktop / high-end)
     };
 
-    // What Cavity computes (PostProcessingSettings::cavityType, S92): Screen is Blender's
+    // What Cavity computes (PostProcessingSettings::cavityType, S100): Screen is Blender's
     // "curvature" (thin lines from neighbouring normals), World its "cavity" (a soft bevel from
     // depth samples within a world radius), Both multiplies the two
     enum class CavityType : int {
@@ -235,7 +235,7 @@ namespace jasperengine{
         float edgeDetectIntensity = 1.0f;           // 0..1 mix of the edge colour
         Vector3 edgeDetectColor = Vector3(0.0f, 0.0f, 0.0f);
 
-        // Cavity (S92): lightens convex edges (ridges) and darkens creases (valleys) of the opaque
+        // Cavity (S100): lightens convex edges (ridges) and darkens creases (valleys) of the opaque
         // 3D scene, like Blender's viewport Cavity; one multiply draw in the colour pass after the
         // opaque queue, reading the scene depth and view-space normals (not a T0-T2 tier).
         // Widths in pixels are at a 1080-pixel-high target and scale with the target's height

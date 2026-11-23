@@ -485,7 +485,7 @@ PostProcessingCost estimatePostProcessingCost(const PostProcessingSettings& sett
         engine.passes.push_back({"halation down", 1, area / 64.0f, false});
     }
     if (tiers.uber) engine.passes.push_back({"uber", 1, 1.0f, true});
-    // Cavity (S92) multiplies inside the scene pass at its resolution: pixels shaded, no pass
+    // Cavity (S100) multiplies inside the scene pass at its resolution: pixels shaded, no pass
     const bool cavity = settings.cavityEnabled;
     if (cavity) engine.passes.push_back({"cavity (a draw in the scene pass)", 0, area, !scaled && !fixedResolution});
     total(engine);

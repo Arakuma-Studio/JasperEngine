@@ -33,6 +33,13 @@ scene:
   enableUIEvents: not_set
 sceneType: scene_3d
 mainCamera: 0
+maxValues:
+  maxSubmeshes: 0
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 0
+  maxSpriteFrames: 0
+  maxBones: 0
 shaderKeys:
   - type: blit
   - type: blit
@@ -80,12 +87,6 @@ shaderKeys:
     properties: 4
   - type: bloom
     properties: 12
-  - type: cavity
-    properties: 1
-  - type: cavity
-    properties: 2
-  - type: cavity
-    properties: 3
 entities:
   - type: Entity
     entity: 1001

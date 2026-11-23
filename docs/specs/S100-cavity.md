@@ -1,4 +1,4 @@
-# S92 — Cavity: Blender-viewport-style ridge and valley shading for games
+# S100 — Cavity: Blender-viewport-style ridge and valley shading for games
 
 ## 1. Goal
 
@@ -208,8 +208,10 @@ while writing it.
 - GL 4.1, GLES3/WebGL2, Metal, D3D11 and Vulkan. It needs no compute, SSBOs, float targets or
   integer textures. The extra pre-pass attachment is RGBA8 MRT.
 - Every export target. The shaders and normals depth variants go in the export variant list when a
-  scene enables Cavity, or when scripts set post-processing. That follows the existing
-  `scriptsSetPostProcessing` handling (`ShaderVariantCollector.cpp:322`, `:1356-1394`).
+  scene enables Cavity, or when a project script names `cavityEnabled` (then both depth forms and
+  the scene's type), and every type when one names `cavityType`. A script that sets other
+  post-processing ships none of them. That follows the existing named-field handling of
+  `scriptsSetPostProcessing` (`ShaderVariantCollector::plausibleUberFeatures`).
 
 ### Performance (budgets)
 
@@ -311,8 +313,8 @@ The tier never turns Cavity off, because it's art direction, not a quality extra
 4. **Disabled:**
    - pass and draw counts and pre-pass attachments are identical to `main`;
    - `ShaderZeroCostTest` covers the new variants;
-   - an export of a project where no scene enables Cavity and no script sets post-processing
-     contains no cavity shader.
+   - an export of a project where no scene enables Cavity and no script names `cavityEnabled`
+     contains no cavity shader, though a script sets other post-processing.
 5. **Default ridge and valley** on a unit cube: the edge pixels are brighter than the faces, and
    inner corners are darker.
 6. **Resolution:** the same scene at 720p and 2160p gives lines of the same apparent width, within
@@ -417,3 +419,13 @@ The tier never turns Cavity off, because it's art direction, not a quality extra
 - §8 fog: Cavity fades with the analytic distance fog (linear, exponential, squared) at the
   pixel's fog distance, so a fogged far object shows none. The height and volumetric fogs are
   drawn over it after, as D1 has it.
+- R2: a fork whose fragment stage has no `#version` line gets the wrapper at its top. It then
+  builds, or fails, as it does with Cavity off. glslang's default is ES 100, below SPIR-V's 310,
+  so such a fork fails with or without Cavity and its mesh draws the built-in depth program
+  (`CavityVariants.ForkWithoutVersionBuildsAsWithoutCavity`).
+- Number: the spec was S92; it is S100 because #10 keeps S92, S93 to S98 are other open specs and
+  #149 takes S99.
+- §5 Platform: an export ships Cavity's variants when a scene enables it or a script names
+  `cavityEnabled` (`cavityType`: every type), not whenever a script sets post-processing. The broad
+  rule doubled every depth program of a scene and added the three full-screen programs to any
+  game whose script touched post-processing (see the PR for the counts).

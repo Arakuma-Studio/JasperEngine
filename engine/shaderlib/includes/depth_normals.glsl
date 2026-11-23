@@ -1,4 +1,4 @@
-// The world-space normal a depth pre-pass writes beside its packed depth for Cavity (S92 R2;
+// The world-space normal a depth pre-pass writes beside its packed depth for Cavity (S100 R2;
 // DEPTH 'Cvn', DEPTH_NORMALS), in a second RGBA8 attachment: octahedral (includes/octahedral.glsl)
 // at 12 bits a component, rg their high 8 bits, b their low 4 bits (x high nibble, y low), a 1
 // where a program wrote a normal and 0 where none did: the clear (background) or a program

@@ -50,7 +50,7 @@ namespace jasperengine{
     //                           adding alpha)
     //   MAX_PREMULTIPLIED       MAX of source and destination, colour and alpha (all factors ONE)
     //   ERASE_PREMULTIPLIED     ZERO, ONE_MINUS_SRC_ALPHA (dst x (1 - src alpha): knockout)
-    // and S92's Cavity, dynamic path only:
+    // and S100's Cavity, dynamic path only:
     //   MULTIPLY_2X             DST_COLOR, SRC_COLOR (dst x 2 src: 0.5 leaves it as it is;
     //                           alpha ZERO, ONE, kept)
     enum class BlendMode : uint8_t {
@@ -209,7 +209,7 @@ namespace jasperengine{
         TITLE_ENV,
         TITLE_GLINT_SPRITE,
         TITLE_GLINT,
-        // S92's Cavity (cavity.frag): one fullscreen multiply inside the colour pass, after the
+        // S100's Cavity (cavity.frag): one fullscreen multiply inside the colour pass, after the
         // opaque queue; 'Scr' Screen, 'Wld' World
         CAVITY
     };
@@ -521,7 +521,7 @@ namespace jasperengine{
         // the reflection probe prefilter)
         PIP_RTT_COLORONLY = 1 << 15,
         // PIP_DEPTH with a second RGBA8 attachment: the depth pre-pass that also writes the
-        // view-space normals Cavity reads (S92 R2, DEPTH 'Cvn' programs only)
+        // view-space normals Cavity reads (S100 R2, DEPTH 'Cvn' programs only)
         PIP_DEPTH_NORMALS = 1 << 16
     };
 

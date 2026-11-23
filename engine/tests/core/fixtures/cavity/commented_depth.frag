@@ -1,4 +1,4 @@
-// S92 R2 (CavityGpu.ForkWithACommentBeforeVersionKeepsItsDepthProgram): a project's depth fork
+// S100 R2 (CavityGpu.ForkWithACommentBeforeVersionKeepsItsDepthProgram): a project's depth fork
 // that starts with a comment, as GLSL allows before #version, and cuts its mesh out of every
 // depth pass (no shadow, nothing in a depth pre-pass), whatever the colour pass draws.
 

@@ -1733,7 +1733,8 @@ namespace jasperengine::editor{
         bool scriptsSetShadowQuality() const;
         bool scriptsSetPostProcessing() const;
         // the PostProcessingSettings switches project scripts name (ShaderVariantCollector::
-        // getScriptableEffectFields), for the uber variants an export ships
+        // getScriptableEffectFields, getScriptableCavityFields), for the uber and Cavity variants
+        // an export ships
         std::vector<std::string> scriptsPostProcessingFields() const;
         // a project script contains text
         bool scriptsMention(const char* text) const;

@@ -100,7 +100,7 @@ namespace jasperengine {
         static int textureQuality(int projectQuality);
         static bool bloom(bool enabled);
         static bool ssao(bool enabled);
-        // Cavity's World samples (S92) after the tier's cap: the tier never turns Cavity off
+        // Cavity's World samples (S100) after the tier's cap: the tier never turns Cavity off
         static int cavityWorldSamples(int samples);
         static AtmosphereQuality volumetrics(AtmosphereQuality quality);
         // -1 (the platform's rate) or a frame rate, as Engine::setTargetFrameRate takes it

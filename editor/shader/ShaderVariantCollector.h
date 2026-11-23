@@ -119,8 +119,12 @@ namespace jasperengine::editor {
         // LUT), vignette and dither the uber pass takes from the shaders, and the render scale
         // (below 1 alone: the upscale variant)
         static const std::vector<std::string>& getScriptableEffectFields();
+        // S100's Cavity switch and type (in that order): a scene ships Cavity's variants when it
+        // enables it or a script names the switch, every type when a script names the type
+        static const std::vector<std::string>& getScriptableCavityFields();
         // The uber variants a scene may switch to at runtime (phase 4): its settings', and when
-        // scripts set post-processing the combinations of the switches they name (every
+        // scripts set post-processing the combinations of the switches they name (of
+        // getScriptableEffectFields) (every
         // combination when they name up to 4, else each flipped alone over the scene's), or each
         // switch flipped alone when they name none. Returns non-zero BLIT feature sets.
         static std::set<uint32_t> plausibleUberFeatures(const PostProcessingSettings& settings, bool scriptsSetPostProcessing,

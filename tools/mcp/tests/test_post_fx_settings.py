@@ -1,4 +1,4 @@
-"""S13 post FX through MCP (docs/specs/S13-post-fx.md AC16; S92 Cavity AC9): every new post_processing field
+"""S13 post FX through MCP (docs/specs/S13-post-fx.md AC16; S100 Cavity AC9): every new post_processing field
 round-trips through set_scene_settings / get_scene_settings and the scene file (enums by their
 lower-case names), the film / vhs / mobile_adaptive presets apply as one named undo step,
 inspect_color_lut reports the OpenEngine .cube fixtures and their errors, and a .cube is a colour LUT
@@ -31,7 +31,7 @@ S13_VALUES = {
     "film_gate_mask_feather": 10.0,
     "halation_enabled": True, "halation_intensity": 1.25, "halation_threshold": 0.5, "halation_radius": 0.75,
     "halation_tint": [1.0, 0.5, 0.25],
-    # S92 Cavity (AC9)
+    # S100 Cavity (AC9)
     "cavity_enabled": True, "cavity_type": "screen", "cavity_screen_ridge": 1.5, "cavity_screen_valley": 0.5,
     "cavity_screen_width": 2.0, "cavity_world_radius": 0.5, "cavity_world_ridge": 2.0, "cavity_world_valley": 0.25,
     "cavity_world_samples": 16, "cavity_max_pixel_radius": 32.0, "cavity_debug": True,
@@ -100,7 +100,7 @@ async def test_fields_round_trip(ed: Editor):
 
 
 async def test_cavity_lua(ed: Editor):
-    """S92 AC9, AC10: the Cavity fields are PostProcessingSettings properties in Lua (CavityType by name),
+    """S100 AC9, AC10: the Cavity fields are PostProcessingSettings properties in Lua (CavityType by name),
     what a script assigns reads back through MCP, and get_post_processing_status reports it."""
     ed.require_tools("create_scene", "eval_lua", "get_scene_settings", "get_post_processing_status")
     sid = (await ed.call("create_scene", name="CavityLua", type="3d"))["scene"]["id"]

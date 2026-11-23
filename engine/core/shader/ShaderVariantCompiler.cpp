@@ -468,7 +468,7 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, true, false)) defs.push_back({"USE_FOLIAGE_WIND", "1"});
     if (prop & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, false, true)) defs.push_back({"USE_FOLIAGE_DITHER", "1"});
     if (prop & ShaderPool::getSpriteBatchProperty(ShaderType::DEPTH, ShaderPool::SpriteBatchInput::SNAP_PIVOT)) defs.push_back({"HAS_SNAP_PIVOT", "1"}); // 'Spv' (S52)
-    if (prop & ShaderPool::getDepthNormalsProperty()) defs.push_back({"DEPTH_NORMALS", "1"});      // 'Cvn' (S92; its main is wrapped, prepareVariantArgs)
+    if (prop & ShaderPool::getDepthNormalsProperty()) defs.push_back({"DEPTH_NORMALS", "1"});      // 'Cvn' (S100; its main is wrapped, prepareVariantArgs)
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -1263,7 +1263,7 @@ bool isOverBindLimits(const ShaderData& data){
     return samplers > 16;
 }
 
-// Whether a vertex stage (its file and the includes it reaches among the sources) writes S92's
+// Whether a vertex stage (its file and the includes it reaches among the sources) writes S100's
 // v_depthNormal (includes/depth_normals.glsl): the engine's and the library's depth programs, a
 // fork made from them; not a fork made before them
 bool vertexWritesDepthNormal(const std::unordered_map<std::string, std::string>& files, const std::string& vertFile){
@@ -1445,7 +1445,7 @@ bool prepareVariantArgs(ShaderKey key, ShaderBackend backend, const CustomShader
         source->second = wrapped;
     }
 
-    // S92's normals of the depth pre-pass ('Cvn'): the program's own main runs, then
+    // S100's normals of the depth pre-pass ('Cvn'): the program's own main runs, then
     // includes/depth_normals.glsl writes the second attachment, so a fork of depth.frag of any
     // age writes it too. From the vertex stage's v_depthNormal when that stage writes one (the
     // engine's and the library's, a fork made from them), else "none" (Cavity rebuilds it)
@@ -1456,12 +1456,13 @@ bool prepareVariantArgs(ShaderKey key, ShaderBackend backend, const CustomShader
             return false;
         }
         std::string wrapped = source->second;
-        // (comments and blank lines may come before #version)
+        // (comments and blank lines may come before #version). Without one the wrapper goes
+        // first: the fork then builds, or fails with the compiler's own error, as with Cavity off
         int versionLine = 0;
-        const size_t versionEnd = depthNormalsVersionEnd(wrapped, versionLine);
+        size_t versionEnd = depthNormalsVersionEnd(wrapped, versionLine);
         if (versionEnd == std::string::npos){
-            error = "Cavity's depth normals need a fragment shader with a #version line (" + args.frag_file + ")";
-            return false;
+            versionEnd = 0;
+            versionLine = 0;
         }
         // the wrapper's output takes location 1: a fork's own output there moves to a free one
         // (a depth target has one attachment, so it was never drawn anywhere)

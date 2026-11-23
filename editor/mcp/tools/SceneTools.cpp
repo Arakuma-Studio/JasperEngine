@@ -1927,7 +1927,7 @@ void getPostProcessingStatusTool(const CallPtr& call) {
                 {"uber_features", features}, {"render_scale", McpValues::number(tiers.renderScale)},
                 {"render_scale_applied", McpValues::number(applied)}, {"passes", passes}, {"passes_estimate", true},
                 {"dynamic_resolution", dynamicResolutionToJson(status)}};
-    // Cavity (S92) as the main camera drew it last frame; until it draws, the type and samples the
+    // Cavity (S100) as the main camera drew it last frame; until it draws, the type and samples the
     // settings resolve to on this device tier
     static const char* const cavityTypes[] = {"screen", "world", "both"};
     const CavityStatus cavity = render ? render->getCavityStatus() : CavityStatus();

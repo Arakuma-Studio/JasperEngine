@@ -331,7 +331,7 @@ namespace jasperengine{
 		Vector4 noiseScale; // screenSize/noiseSize in .xy
 	} fs_ssao_t;
 
-	// u_fs_cavity of cavity.frag (S92 Cavity)
+	// u_fs_cavity of cavity.frag (S100 Cavity)
 	typedef struct fs_cavity_t {
 		Matrix4 projection;
 		Matrix4 invProjection;
@@ -536,7 +536,7 @@ namespace jasperengine{
 		// a camera of the scene draws through a Pixel Perfect Camera that snaps (S41): sprites,
 		// tilemaps (and their depth programs) take the 'Pxs' variants
 		bool pixelSnap = false;
-		// the scene has Cavity on (S92 R2): every opaque mesh has a depth program, and it writes the
+		// the scene has Cavity on (S100 R2): every opaque mesh has a depth program, and it writes the
 		// view-space normal too (DEPTH 'Cvn'), so the depth pre-pass gives Cavity normals that match
 		// its depth
 		bool cavityNormals = false;
@@ -615,7 +615,7 @@ namespace jasperengine{
 		float probeSeconds = 0.0f;     // frame law: seconds until it probes one rung up (0: none)
 	};
 
-	// Cavity (S92) as the main camera drew it last frame (RenderSystem::getCavityStatus, MCP
+	// Cavity (S100) as the main camera drew it last frame (RenderSystem::getCavityStatus, MCP
 	// get_post_processing_status): what the device tier resolved and where the normals came from
 	struct CavityStatus {
 		bool active = false;               // drawn last frame (enabled, a 3D main camera with depth)
@@ -1335,7 +1335,7 @@ namespace jasperengine{
 		struct SceneInputTarget{
 			Framebuffer framebuffer;
 			bool color = false;
-			bool normals = false;  // a depth target with Cavity's normals attachment (S92)
+			bool normals = false;  // a depth target with Cavity's normals attachment (S100)
 			unsigned int width = 0;
 			unsigned int height = 0;
 			uint64_t lastUsed = 0; // drawCount
@@ -2065,7 +2065,7 @@ namespace jasperengine{
 		int ssaoSlotParams;
 		int ssaoBlurSlotParams;
 
-		// Cavity (S92; RenderSystem.cpp, "Cavity"): one fullscreen multiply in the main camera's
+		// Cavity (S100; RenderSystem.cpp, "Cavity"): one fullscreen multiply in the main camera's
 		// colour pass, reading the depth and normals of one pass (SSR's G-buffer, or the depth
 		// pre-pass with the 'Cvn' programs' normals attachment)
 		bool cavityNormalPrograms = false;   // the meshes load 'Cvn' depth programs (MeshShaderEnvironment::cavityNormals)
@@ -2074,6 +2074,7 @@ namespace jasperengine{
 		uint64_t cavityProperties = 0;       // of cavityShader ('Scr', 'Wld')
 		ObjectRender cavityRender;
 		bool cavityLoaded = false;           // cavityRender holds cavityShader's draw
+		bool cavityHeld = false;             // since Cavity last ran: its program, draw, targets or status may exist
 		int cavitySlotParams = -1;
 		std::pair<int, int> cavityDepthSlot = {-1, -1};
 		std::pair<int, int> cavityNormalSlot = {-1, -1};
@@ -3466,7 +3467,7 @@ namespace jasperengine{
 		void renderOpaqueDepth(CameraComponent& camera, Framebuffer& target, unsigned int width, unsigned int height,
 		                       int instanceView, const LodView* lodView, Transform* perCameraTransform);
 
-		// Cavity (S92)
+		// Cavity (S100)
 		// per update: the 'Cvn' programs follow the scene's setting, the draw's variant its type
 		void updateCavity();
 		bool loadCavity();

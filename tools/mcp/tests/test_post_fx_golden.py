@@ -24,7 +24,7 @@ saturated objects, the HUD layer), played at a fixed 60 fps with the uber pass's
   test_pass_counts      halation with bloom adds no pass to bloom's, halation alone adds 2 (its
                         prefilter and one level down), VHS, film damage and the grain types add none
                         to the uber pass alone (JASPERENGINE_FRAME_STATS=all)
-  test_cavity           S92's Cavity (AC9) at its defaults (Both) with 16 World samples on the fixture's
+  test_cavity           S100's Cavity (AC9) at its defaults (Both) with 16 World samples on the fixture's
                         boxes, spheres, wall and poles: golden/post_fx/cavity.png, an image unlike the
                         effect off; the status reports it drawn in one draw, with pre-pass normals that
                         it added (SSR and SSAO are off), and a simulated Low tier caps its samples at 4

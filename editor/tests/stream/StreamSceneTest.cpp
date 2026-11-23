@@ -323,7 +323,7 @@ TEST(StreamScene, WaterWakeSettings){
     EXPECT_FLOAT_EQ(read.getWaterWakeFade(), 120.0f);
 }
 
-// Cavity's post-processing fields (S92): written only away from their defaults (older scenes
+// Cavity's post-processing fields (S100): written only away from their defaults (older scenes
 // re-save unchanged), read back, and a scene without them takes the defaults
 TEST(StreamScene, CavitySettings){
     Scene plain;

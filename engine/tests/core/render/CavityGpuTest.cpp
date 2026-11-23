@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S92 Cavity on the headless device (docs/specs/S92-cavity.md R1-R8, AC1-AC8): convex edges
+// S100 Cavity on the headless device (docs/specs/S100-cavity.md R1-R8, AC1-AC8): convex edges
 // get lighter, concave creases darker, by one multiply draw inside the colour pass. Most tests draw
 // the same frame with Cavity off and on and assert on the per-pixel difference (on minus off) at
 // points projected from the scene, so the property each criterion names is explicit and holds on
@@ -1454,7 +1454,7 @@ TEST_F(CavityGpu, DisabledCostsNothing){
 
     frameOff();
     const CavityFrameCost baseline = recordCost();
-    std::printf("[S92] the frame with default settings:\n%s", cavityDescribe(baseline).c_str());
+    std::printf("[S100] the frame with default settings:\n%s", cavityDescribe(baseline).c_str());
     ASSERT_FALSE(baseline.passes.empty()) << "no pass was recorded for the frame";
     ASSERT_GT(baseline.draws, 0u);
 
