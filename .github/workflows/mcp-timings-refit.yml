@@ -113,7 +113,11 @@ jobs:
               pr="$(gh pr create --base main --head "$BRANCH" --body-file build/pr-body.md \
                   --title "ci: refit the MCP shard timings from the newest CI runs")"
           fi
-          # the merge queue takes it once Check is green (on already: an earlier run turned it on)
-          if [[ "$(gh pr view "$pr" --json autoMergeRequest --jq '.autoMergeRequest != null')" != true ]]; then
-              gh pr merge "$pr" --merge --auto
+          # the merge queue takes it once Check is green; an auto-merge another actor turned on is
+          # turned on again as the App, since the workflow token's never enqueues
+          num="$(gh pr view "$pr" --json number --jq .number)"
+          enabled_by="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$num" --jq '.auto_merge.enabled_by.login // empty')"
+          if [[ "$enabled_by" != "${APP_SLUG}[bot]" ]]; then
+              [[ -z "$enabled_by" ]] || gh pr merge "$num" --disable-auto
+              gh pr merge "$num" --merge --auto
           fi
