@@ -591,6 +591,10 @@ class RenderTest(unittest.TestCase):
         body = self.render(path, needs=needs)
         self.assertIn("CI failed on", body)
         self.assertIn("macos", body.split("Passed:")[0])
+        # what ci.yml passes: {"<job>": "<result>"}
+        body = self.render(path, needs={"macos": "failure"})
+        self.assertIn("CI failed on", body)
+        self.assertIn("macos", body.split("Passed:")[0])
 
     def test_size_limit_and_forty_lines(self):
         # what collect can write at most: 200 failures of 40 clipped lines each (under MAX_JSON_BYTES)
