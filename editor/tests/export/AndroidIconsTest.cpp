@@ -32,7 +32,7 @@ using jasperengine::test::TestTempDir;
 
 namespace android_icons_test {
 
-    const fs::path repo = JASPER_TEST_REPO_DIR;
+    const fs::path androidIconsRepo = JASPER_TEST_REPO_DIR;
 
     // an opaque square of one colour
     void writeSquare(const fs::path& file, int size, unsigned char r, unsigned char g, unsigned char b, unsigned char a = 255) {
@@ -80,7 +80,7 @@ namespace android_icons_test {
         }
     }
 
-    std::unique_ptr<Project> projectIn(const fs::path& root) {
+    std::unique_ptr<Project> androidIconsProjectIn(const fs::path& root) {
         fs::create_directories(root / "assets");
         std::ofstream(root / "project.yaml") << "name: IconGame\nassetsDir: assets\nluaDir: assets\n";
         auto project = std::make_unique<Project>();
@@ -96,17 +96,17 @@ using namespace android_icons_test;
 // red before REQ-19: one res/drawable/ic_launcher.png, the template's own mipmaps beside it
 TEST(AndroidIcons, WritesEveryDensityAndRound) {
     TestTempDir dir("android-icons");
-    auto project = projectIn(dir / "game");
+    auto project = androidIconsProjectIn(dir / "game");
     writeSquare(dir / "game" / "icon.png", 1024, 200, 40, 40);
     project->getAndroidProjectSettings().launcherIcon = "icon.png";
 
     // the source export: the template's mipmap-*dpi/ic_launcher.png replaced, roundIcon declared
     const fs::path target = dir / "export";
     std::string error;
-    ASSERT_TRUE(exportfiles::mirrorTree(repo / "engine" / "workspaces" / "androidstudio", target / "workspaces" / "androidstudio", true, error)) << error;
+    ASSERT_TRUE(exportfiles::mirrorTree(androidIconsRepo / "engine" / "workspaces" / "androidstudio", target / "workspaces" / "androidstudio", true, error)) << error;
     const fs::path java = fs::path("platform") / "android" / "java" / "com" / "jaspergameengine" / "jasperengine" / "MainActivity.java";
     fs::create_directories((target / java).parent_path());
-    fs::copy_file(repo / "engine" / java, target / java);
+    fs::copy_file(androidIconsRepo / "engine" / java, target / java);
     Exporter exporter;
     ASSERT_TRUE(ExporterTestAccess::writeAndroidProjectSettings(exporter, project.get(), target, error)) << error;
     const fs::path res = target / "workspaces" / "androidstudio" / "app" / "src" / "main" / "res";
@@ -132,7 +132,7 @@ TEST(AndroidIcons, WritesEveryDensityAndRound) {
     platform::AndroidPackage package;
     package.settings = project->getAndroidProjectSettings();
     std::string packaged;
-    ASSERT_TRUE(platform::writeAndroidManifest(package, TestTempDir::read(repo / "engine" / "platform" / "android" / "player" / "AndroidManifest.template.xml"),
+    ASSERT_TRUE(platform::writeAndroidManifest(package, TestTempDir::read(androidIconsRepo / "engine" / "platform" / "android" / "player" / "AndroidManifest.template.xml"),
                                                packaged, error)) << error;
     EXPECT_NE(packaged.find("android:icon=\"@mipmap/ic_launcher_game\""), std::string::npos) << packaged;
     EXPECT_NE(packaged.find("android:roundIcon=\"@mipmap/ic_launcher_game_round\""), std::string::npos) << packaged;

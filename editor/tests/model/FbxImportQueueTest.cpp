@@ -57,7 +57,7 @@ namespace {
     };
 
     // lines of any level containing `text` (the editor's info lines)
-    size_t importLines(const test::LogCapture& log, const std::string& text) {
+    size_t importLines(const jasperengine::test::LogCapture& log, const std::string& text) {
         size_t count = 0;
         for (const auto& entry : log.entries()) {
             if (entry.message.find(text) != std::string::npos) count++;
@@ -68,7 +68,7 @@ namespace {
 }
 
 TEST(FbxImportQueue, AQueuedFileIsPendingUntilConverted) {
-    test::TempDir dir;
+    jasperengine::test::TempDir dir;
     const fs::path a = dir.write("a.fbx", "a");
     FakeImporter importer;
     FbxImportQueue queue(importer.hooks());
@@ -83,7 +83,7 @@ TEST(FbxImportQueue, AQueuedFileIsPendingUntilConverted) {
 }
 
 TEST(FbxImportQueue, RepeatedRequestsConvertOnce) {
-    test::TempDir dir;
+    jasperengine::test::TempDir dir;
     const fs::path a = dir.write("a.fbx", "a");
     FakeImporter importer;
     FbxImportQueue queue(importer.hooks());
@@ -99,7 +99,7 @@ TEST(FbxImportQueue, RepeatedRequestsConvertOnce) {
 }
 
 TEST(FbxImportQueue, ABatchCountsItsConversionsAndSaysSoOnce) {
-    test::TempDir dir;
+    jasperengine::test::TempDir dir;
     const fs::path a = dir.write("a.fbx", "a");
     const fs::path b = dir.write("b.fbx", "b");
     const fs::path c = dir.write("c.fbx", "c");
@@ -108,7 +108,7 @@ TEST(FbxImportQueue, ABatchCountsItsConversionsAndSaysSoOnce) {
     importer.needs[current] = FbxImportQueue::Need::None;
     importer.needs[c] = FbxImportQueue::Need::Update;
     FbxImportQueue queue(importer.hooks());
-    test::LogCapture log;
+    jasperengine::test::LogCapture log;
     for (const fs::path& fbx : {a, b, c, current}) queue.request(fbx);
     queue.drain();
     const FbxImportQueue::Progress progress = queue.progress();
@@ -131,7 +131,7 @@ TEST(FbxImportQueue, ABatchCountsItsConversionsAndSaysSoOnce) {
 }
 
 TEST(FbxImportQueue, AFailedFileWaitsForAChange) {
-    test::TempDir dir;
+    jasperengine::test::TempDir dir;
     const fs::path a = dir.write("a.fbx", "a");
     FakeImporter importer;
     importer.fails[a] = true;
@@ -158,7 +158,7 @@ TEST(FbxImportQueue, AFailedFileWaitsForAChange) {
 }
 
 TEST(FbxImportQueue, ConvertNowRunsTheFileOnTheCallingThread) {
-    test::TempDir dir;
+    jasperengine::test::TempDir dir;
     const fs::path a = dir.write("a.fbx", "a");
     const fs::path b = dir.write("b.fbx", "b");
     FakeImporter importer;
@@ -175,7 +175,7 @@ TEST(FbxImportQueue, ConvertNowRunsTheFileOnTheCallingThread) {
 }
 
 TEST(FbxImportQueue, TheJobConvertsTheQueue) {
-    test::TempDir dir;
+    jasperengine::test::TempDir dir;
     const fs::path a = dir.write("a.fbx", "a");
     const fs::path b = dir.write("b.fbx", "b");
     FakeImporter importer;

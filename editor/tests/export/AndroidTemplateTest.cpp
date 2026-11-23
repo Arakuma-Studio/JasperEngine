@@ -31,10 +31,10 @@ using jasperengine::test::TestTempDir;
 
 namespace android_template_test {
 
-    const fs::path repo = JASPER_TEST_REPO_DIR;
-    const fs::path workspace = repo / "engine" / "workspaces" / "androidstudio";
+    const fs::path androidTemplateRepo = JASPER_TEST_REPO_DIR;
+    const fs::path workspace = androidTemplateRepo / "engine" / "workspaces" / "androidstudio";
 
-    std::unique_ptr<Project> projectIn(const fs::path& root) {
+    std::unique_ptr<Project> androidTemplateProjectIn(const fs::path& root) {
         fs::create_directories(root / "assets");
         std::ofstream(root / "project.yaml") << "name: AndroidGame\nassetsDir: assets\nluaDir: assets\n";
         auto project = std::make_unique<Project>();
@@ -49,7 +49,7 @@ namespace android_template_test {
         if (!exportfiles::mirrorTree(workspace, target / "workspaces" / "androidstudio", true, error)) return {};
         const fs::path java = fs::path("platform") / "android" / "java" / "com" / "jaspergameengine" / "jasperengine" / "MainActivity.java";
         fs::create_directories((target / java).parent_path());
-        fs::copy_file(repo / "engine" / java, target / java);
+        fs::copy_file(androidTemplateRepo / "engine" / java, target / java);
         Exporter exporter;
         if (!ExporterTestAccess::writeAndroidProjectSettings(exporter, &project, target, error)) return {};
         return TestTempDir::read(target / "workspaces" / "androidstudio" / "app" / "build.gradle");
@@ -74,7 +74,7 @@ using namespace android_template_test;
 // red before REQ-13: no pattern, so AGP's default left out every folder starting with "_"
 TEST(AndroidTemplate, IgnoreAssetsPatternKeepsUnderscoreDirs) {
     TestTempDir dir("android-template-pattern");
-    auto project = projectIn(dir / "game");
+    auto project = androidTemplateProjectIn(dir / "game");
     std::string error;
     const std::string gradle = exportGradle(*project, dir / "export", error);
     ASSERT_FALSE(gradle.empty()) << error;
@@ -96,7 +96,7 @@ TEST(AndroidTemplate, IgnoreAssetsPatternKeepsUnderscoreDirs) {
 // red before REQ-14: the template had only a release build type, so AGP compiled debug at -O0
 TEST(AndroidTemplate, DebugTypeBuildsOptimisedNative) {
     TestTempDir dir("android-template-debug");
-    auto project = projectIn(dir / "game");
+    auto project = androidTemplateProjectIn(dir / "game");
     project->getAndroidProjectSettings().debugPackageSuffix = ".debug";
     std::string error;
     const std::string gradle = exportGradle(*project, dir / "export", error);
@@ -109,7 +109,7 @@ TEST(AndroidTemplate, DebugTypeBuildsOptimisedNative) {
 
     // no suffix: the same package
     TestTempDir other("android-template-debug-plain");
-    auto plain = projectIn(other / "game");
+    auto plain = androidTemplateProjectIn(other / "game");
     const std::string plainGradle = exportGradle(*plain, other / "export", error);
     EXPECT_EQ(plainGradle.find("applicationIdSuffix"), std::string::npos) << plainGradle;
 }
@@ -117,7 +117,7 @@ TEST(AndroidTemplate, DebugTypeBuildsOptimisedNative) {
 // red before REQ-15: the release build was never signed with the project's keystore
 TEST(AndroidTemplate, ReleaseSigningFromKeystore) {
     TestTempDir dir("android-template-signing");
-    auto project = projectIn(dir / "game");
+    auto project = androidTemplateProjectIn(dir / "game");
     TestTempDir::write(dir / "game" / "keys" / "upload.jks", "not a real keystore");
     AndroidProjectSettings& android = project->getAndroidProjectSettings();
     android.keystorePath = "keys/upload.jks";
@@ -138,7 +138,7 @@ TEST(AndroidTemplate, ReleaseSigningFromKeystore) {
 
     // no keystore: unsigned (Android Studio signs it)
     TestTempDir other("android-template-unsigned");
-    auto plain = projectIn(other / "game");
+    auto plain = androidTemplateProjectIn(other / "game");
     const std::string plainGradle = exportGradle(*plain, other / "export", error);
     EXPECT_EQ(plainGradle.find("signingConfig"), std::string::npos) << plainGradle;
 }
@@ -146,7 +146,7 @@ TEST(AndroidTemplate, ReleaseSigningFromKeystore) {
 // red before REQ-17: CMake was not pinned and the image installed no NDK or CMake
 TEST(AndroidTemplate, PinsTheImagesNdkAndCMake) {
     const std::string gradle = TestTempDir::read(workspace / "app" / "build.gradle");
-    const std::string docker = TestTempDir::read(repo / "docker" / "android.Dockerfile");
+    const std::string docker = TestTempDir::read(androidTemplateRepo / "docker" / "android.Dockerfile");
     std::smatch ndk, cmake;
     ASSERT_TRUE(std::regex_search(gradle, ndk, std::regex(R"re(ndkVersion = "([0-9.]+)")re"))) << gradle;
     ASSERT_TRUE(std::regex_search(gradle, cmake, std::regex(R"re(\n\s+version = "([0-9.]+)")re"))) << gradle;
@@ -177,7 +177,7 @@ TEST(AndroidTemplate, DebugPackageSuffixSetting) {
     EXPECT_FALSE(Stream::encodeProject(&old)["android"]) << "the default writes nothing";
 
     TestTempDir dir("android-suffix-setting");
-    auto project = projectIn(dir / "game");
+    auto project = androidTemplateProjectIn(dir / "game");
     SettingsContext ctx;
     ctx.projectPtr = project.get();
     const SettingRow* row = SettingsRegistry::get().find("android.debug_package_suffix");
