@@ -12,7 +12,9 @@
 #                                            preset engine-macos-tests)
 #   tools/ci/macos.sh tests                  the CPU unit tests (-*Gpu*) through tools/ci/gtest-gate.py; XML in
 #                                            build/test-results/{core,editor}-macos.xml
-#   tools/ci/macos.sh xcode <macos|ios>      xcodebuild of engine/workspaces/xcode (Debug; the iOS simulator SDK)
+#   tools/ci/macos.sh xcode <macos|ios>      xcodebuild of engine/workspaces/xcode (Debug; the iOS simulator SDK);
+#                                            XCODE_CAS=<dir>: through Xcode's compilation cache in that directory,
+#                                            without debug symbols (the ios job's cache entry)
 #   tools/ci/macos.sh compile-smoke <project-dir> [backend]  a Compile build of the project, as Build with
 #                                            Method Compile makes it (tools/ci/compile-smoke.sh)
 #   tools/ci/macos.sh package <version>      dist/JasperEngine-<version>-macos-universal.zip (the signed .app,
@@ -122,13 +124,23 @@ step_xcode() {
     # the workspace's project group (contents.xcworkspacedata: ../../../project), which the old CI
     # job created before building; nothing in it is built
     mkdir -p "$ROOT/project/assets"
-    local jobs=()
+    local jobs=() caching=()
     [[ -n "${XCODE_JOBS:-}" ]] && jobs=(-jobs "$XCODE_JOBS")
+    # Xcode 26's compilation cache, outside DerivedData so a fresh tree hits it (both SDKs share it). The
+    # checkout's path is mapped, so a cache made in another checkout hits too (only the SDK, toolchain and
+    # Xcode are by default). No debug symbols: on the Mac, iOS's cache was 888 MB compressed with them,
+    # both SDKs' 392 MB without, and every object still compiles and links (a warm iOS build 30 s, cold 4.5 min)
+    if [[ -n "${XCODE_CAS:-}" ]]; then
+        mkdir -p "$XCODE_CAS"
+        caching=(COMPILATION_CACHE_ENABLE_CACHING=YES "COMPILATION_CACHE_CAS_PATH=$XCODE_CAS" GCC_GENERATE_DEBUGGING_SYMBOLS=NO
+            CLANG_ENABLE_PREFIX_MAPPING=YES "CLANG_OTHER_PREFIX_MAPPINGS=$ROOT=/^src")
+    fi
     # (only "JasperEngine macOS" has a shared scheme; xcodebuild makes the iOS one from its target. No
     # signing: this checks that the project compiles and links, and a simulator build needs none)
     (cd engine/workspaces/xcode && /usr/bin/xcodebuild -list -project JasperEngine.xcodeproj | sed -n '/Schemes:/,$p')
     (cd engine/workspaces/xcode && /usr/bin/xcodebuild build -project JasperEngine.xcodeproj -scheme "$scheme" -sdk "$sdk" \
-        -configuration Debug -derivedDataPath "$ROOT/build/macos/xcode-$sdk" ${jobs[@]+"${jobs[@]}"} CODE_SIGNING_ALLOWED=NO)
+        -configuration Debug -derivedDataPath "$ROOT/build/macos/xcode-$sdk" ${jobs[@]+"${jobs[@]}"} CODE_SIGNING_ALLOWED=NO \
+        ${caching[@]+"${caching[@]}"})
 }
 
 step_package() {

@@ -1240,12 +1240,18 @@ jobs:
           lane: macos
           status: ${{ job.status }}
 
+  # Both builds go through Xcode's compilation cache (tools/ci/macos.sh XCODE_CAS), main's entry restored
+  # as ccache's are and saved on push (cold, the two took a median 39 and 19 min, PRs and the queue,
+  # 2026-11-20..23); an overflow Mac keeps its own in its tool cache instead
   ios:
     name: ios
     needs: changes
     if: needs.changes.outputs.run_ios == 'true'
     runs-on: ${{ fromJSON(needs.changes.outputs.runs_on)['ios'] || 'macos-latest' }}
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: write  # deletes the older cache entry as soon as it saved the new one (push)
     env:
       JASPER_CI_REPRO: tools/ci/macos.sh xcode ios
     steps:
@@ -1255,11 +1261,55 @@ jobs:
       # dav1d's x86-64 asm: the simulator build has an x86_64 slice
       - name: NASM
         run: command -v nasm > /dev/null || tools/ci/retry.sh brew install nasm
+      # the entry's key names the Xcode, whose update invalidates the cache
+      - name: Compilation cache key
+        id: cas
+        run: |
+          prefix="xcode-cas-$(xcodebuild -version | sed -n 1p | tr -cd 'A-Za-z0-9.')-"
+          dir="$PWD/build/.cache/xcode-cas"
+          if [[ "$RUNNER_ENVIRONMENT" == self-hosted ]]; then
+              dir="$RUNNER_TOOL_CACHE/xcode-cas"
+              echo "local=1" >> "$GITHUB_OUTPUT"
+          fi
+          mkdir -p "$dir"
+          echo "XCODE_CAS=$dir" >> "$GITHUB_ENV"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "key=$prefix$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.cas.outputs.local != '1'
+        with:
+          path: build/.cache/xcode-cas
+          key: ${{ steps.cas.outputs.key }}
+          restore-keys: ${{ steps.cas.outputs.prefix }}
       - name: Xcode project (iOS)
+        id: ios
         run: tools/ci/macos.sh xcode ios
       - name: Xcode project (macOS)
+        id: macos
         if: ${{ !cancelled() }}
         run: tools/ci/macos.sh xcode macos
+      - name: Compilation cache size
+        if: ${{ !cancelled() }}
+        run: du -sh "$XCODE_CAS"
+      # on push to main, after both builds: an entry of a failed build would miss what it never compiled
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: save
+        if: >-
+          steps.cas.outputs.local != '1' && steps.ios.outcome == 'success' && steps.macos.outcome == 'success'
+          && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          path: build/.cache/xcode-cas
+          key: ${{ steps.cas.outputs.key }}
+      - name: Delete the older entries
+        if: steps.save.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREFIX: ${{ steps.cas.outputs.prefix }}
+          KEY: ${{ steps.cas.outputs.key }}
+        run: |
+          gh cache list --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF" --key "$PREFIX" --limit 100 \
+              --json id,key --jq ".[] | select(.key != \"$KEY\") | .id" |
+              while read -r id; do gh cache delete --repo "$GITHUB_REPOSITORY" "$id"; done
       - uses: ./.github/actions/report
         if: always()
         with:
@@ -1343,7 +1393,7 @@ jobs:
   # a lane: Check skips it.
   caches:
     name: caches
-    needs: [linux, unit, asan, htmlui, smoke, web, android, windows, windows-compile, macos]
+    needs: [linux, unit, asan, htmlui, smoke, web, android, windows, windows-compile, macos, ios]
     if: always() && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1357,7 +1407,7 @@ jobs:
           for prefix in gradle- ccache-linux- ccache-web- ccache-android- ccache-windows-editor- \
                         ccache-windows-engine-glcore- ccache-windows-engine-d3d11- ccache-windows-engine-vulkan- \
                         ccache-windows-compile- ccache-macos- ccache-unit-core- ccache-unit-editor- ccache-asan-core- \
-                        ccache-asan-editor- ccache-htmlui- ccache-smoke-; do
+                        ccache-asan-editor- ccache-htmlui- ccache-smoke- xcode-cas-; do
               gh cache list --repo "$GITHUB_REPOSITORY" --ref refs/heads/main --key "$prefix" --sort created_at \
                   --order desc --limit 100 --json id,key --jq '.[1:][] | "\(.id) \(.key)"' |
                   while read -r id key; do
