@@ -5,7 +5,8 @@
 // once: each job decomposes on a worker while the main thread starts the others, and each lands as
 // its own undo step. The list of running decompositions is the main thread's; a job that read it
 // (to find itself) raced the next start's push_back, which ThreadSanitizer reports
-// (SANITIZE=thread, the nightly's TSan lane). Slow: six V-HACD runs, about 6 s on a CI runner.
+// (SANITIZE=thread, the nightly's TSan lane). Slow: three V-HACD runs at once (six took 6 s on a CI
+// runner, 31 s under ASan).
 
 #include "EditorHost.h"
 #include "Project.h"
@@ -152,7 +153,7 @@ namespace {
 
 TEST_F(DecomposeColliderSlow, DecompositionsStartedTogetherEachLandAsOneStep) {
     ASSERT_TRUE(ConvexDecompositionCache::available()) << "the editor test build has V-HACD";
-    constexpr int RINGS = 6;
+    constexpr int RINGS = 3;
     for (int n = 0; n < RINGS; n++) rings.push_back(addRing(n));
     CommandHistory* history = CommandHandle::get(scene->id);
     const size_t stepsBefore = history->appliedCount();
