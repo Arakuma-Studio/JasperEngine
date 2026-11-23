@@ -797,7 +797,9 @@ TEST_F(CanvasGroupTest, UnscaledFadeCompletesAtTimeScaleZero){
     cg.fadeOut(0.25f, options);
     CanvasGroup scaled(&scene, container(NULL_ENTITY));
     scaled.fadeOut(0.25f);
-    for (int i = 0; i < 5; i++){
+    // the unscaled step is the engine's last measured frame when a test before this one ran
+    // frames, else the fixed 0.1 s: step until the fade is done, not a count of steps
+    for (int i = 0; i < 200 && !completed; i++){
         scene.getSystem<ActionSystem>()->update(0.0);
         ui()->update(0);
     }
