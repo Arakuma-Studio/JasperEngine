@@ -4,6 +4,7 @@ description: >
   directory tools/build.sh and tools/smoke-test.sh mount at /ccache), installs ccache where the lane compiles
   on the runner (Windows: choco, macOS: brew), and sets CCACHE_DIR, and CCACHE_MAXSIZE to 0 (tools/build.sh
   forwards it into the image): the build runs without a cap, which ccache-save applies to what it saves.
+  An overflow runner on macOS or Windows uses its own capped cache in its tool cache instead of the entry.
   ccache-save writes the entry back on push to main only (docs/superpowers/specs/2026-11-12-ci-design.md
   §10.2).
 inputs:
@@ -51,11 +52,21 @@ runs:
         # absolute (a compiler runs in its build directory); D:/... on Windows
         dir="$(pwd -W 2> /dev/null || pwd)/build/.cache/ccache"
         mkdir -p build/.cache/ccache
+        maxsize=0
+        if [[ "$RUNNER_ENVIRONMENT" == self-hosted && "$RUNNER_OS" != Linux ]]; then
+            # an overflow runner keeps its own capped cache between jobs, outside the workspace its hook
+            # empties: the hosted entry's paths miss there (0 of 3,834 compiles, run 45104498209) and took
+            # 7.5 min to download. (Linux lanes mount build/.cache/ccache into the image: restored as here)
+            dir="$(cygpath -m "$RUNNER_TOOL_CACHE" 2> /dev/null || echo "$RUNNER_TOOL_CACHE")/ccache/$LANE"
+            mkdir -p "$dir"
+            maxsize=3G
+            echo "JASPER_CCACHE_LOCAL=1" >> "$GITHUB_ENV"
+        fi
         {
             echo "CCACHE_DIR=$dir"
             # no cap while building: a cleanup in the middle of a build evicts restored entries before the
             # build reaches them (ccache-save cuts the saved entry to the cap)
-            echo "CCACHE_MAXSIZE=0"
+            echo "CCACHE_MAXSIZE=$maxsize"
             echo "JASPER_CCACHE_CAP=$MAX_SIZE"
             echo "JASPER_CCACHE_LANE=$LANE"
             echo "JASPER_CCACHE_KEY=$prefix$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
@@ -65,6 +76,7 @@ runs:
         echo "key=$prefix$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
 
     - name: Restore
+      if: env.JASPER_CCACHE_LOCAL != '1'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: build/.cache/ccache
@@ -78,5 +90,5 @@ runs:
         touch "$JASPER_CCACHE_MARKER"
         {
             echo "JASPER_CCACHE_START=$(date +%s)"
-            echo "JASPER_CCACHE_RESTORED_SIZE=$(du -sh build/.cache/ccache | cut -f1)"
+            echo "JASPER_CCACHE_RESTORED_SIZE=$(du -sh "$CCACHE_DIR" | cut -f1)"
         } >> "$GITHUB_ENV"

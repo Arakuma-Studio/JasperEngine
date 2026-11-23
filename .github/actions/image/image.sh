@@ -5,7 +5,9 @@
 #   REGISTRY=ghcr.io/<owner> .github/actions/image/image.sh <target>
 #
 # Run from the repository root. Writes image= and tag= to $GITHUB_OUTPUT and JASPER_DOCKER_IMAGE,
-# JASPER_IMAGE_<TARGET> to $GITHUB_ENV when they are set (else prints them).
+# JASPER_IMAGE_<TARGET> to $GITHUB_ENV when they are set (else prints them). On an overflow runner it
+# also notes the image and when, in the runner's tool cache, for its job-completed hook to prune by
+# (tools/ci/self-hosted/job-completed.sh): only what CI pulled, never the machine's own images.
 set -euo pipefail
 
 TARGET="${1:?usage: image.sh <target>}"
@@ -63,6 +65,9 @@ ensure() {
 
 ensure "$TARGET"
 IMAGE="$ENSURED"
+if [[ "${RUNNER_ENVIRONMENT:-}" == self-hosted && -n "${RUNNER_TOOL_CACHE:-}" ]]; then
+    echo "$IMAGE $(date +%s)" >> "$RUNNER_TOOL_CACHE/je-ci-images.txt"
+fi
 TAG="${IMAGE##*:}"
 VAR="JASPER_IMAGE_$(tr '[:lower:]-' '[:upper:]_' <<< "$TARGET")"
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
