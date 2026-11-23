@@ -38,6 +38,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <optional>
 
 using namespace jasperengine;
 
@@ -749,7 +750,7 @@ void CullingSystem::setCameraIsFocus(bool value) {
 }
 
 void CullingSystem::setGroundCheck(std::function<bool(const Vector3&, float)> check) {
-    groundCheck = std::move(check);
+    groundCheck = check ? std::make_shared<std::function<bool(const Vector3&, float)>>(std::move(check)) : nullptr;
 }
 
 void CullingSystem::gatherFocuses() {
@@ -818,12 +819,18 @@ bool CullingSystem::groundLoaded(TerrainWorldSystem* worlds, const Vector3& posi
     // the game's own streaming: only within simulation distance (a far one is culled anyway)
     if (loaded && groundCheck && withinDistance && (all || scriptChecks < MAX_GROUND_CHECKS_PER_FRAME)) {
         scriptChecks++;
-        loaded = groundCheck(position, radius);
+        // its own copy: the check may set another one, or nil, while it runs
+        const std::shared_ptr<std::function<bool(const Vector3&, float)>> check = groundCheck;
+        loaded = (*check)(position, radius);
     }
     return loaded;
 }
 
 void CullingSystem::evaluateSimulation(bool all, const std::vector<Entity>* only) {
+    // a script's ground check runs inside the loop below, which holds a component of the array:
+    // what it destroys goes after the transitions (StructuralDeferScope), as for other Lua callbacks
+    std::optional<StructuralDeferScope> deferScope;
+    if (groundCheck) deferScope.emplace(*scene);
     auto components = scene->getComponentArray<SimulationCullingComponent>();
     const float scale = SimulationCulling::getDistanceScale() * QualityResolver::simulationDistanceScale();
     float tileSize = 0.0f;
@@ -950,6 +957,7 @@ void CullingSystem::evaluateSimulation(bool all, const std::vector<Entity>* only
         }
     }
     if (!only) stats.transitionsDeferred = deferred;
+    deferScope.reset();
 
     for (size_t i = 0; i < components->size(); i++) {
         const SimulationCullingComponent& c = components->getComponentFromIndex(i);
