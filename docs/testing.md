@@ -1447,8 +1447,8 @@ dispatcher sets the repository variable `SELF_HOSTED_PLANNER` to `je-linux` whil
 saturated and `je-linux` is online, fit and not disabled, and deletes it otherwise. A run reads
 `vars` as it is created, which is when its `changes` job is queued, so the value is current where it
 is used. `changes` runs there on a first attempt of a trusted event other than a push (a push waits
-`ADMISSION_SECONDS` first), and treats `je-linux` as free for the jobs it plans (`--planner`): only
-this job holds it. If the runner goes away, the watchdog reroutes the run as below, and the rerun
+`ADMISSION_SECONDS` first). While it plans, `je-linux` takes no lane (the state marks it unfit,
+"reserved for `changes`"): every run's `changes` would otherwise queue behind a build. If the runner goes away, the watchdog reroutes the run as below, and the rerun
 plans on GitHub's runners.
 
 **The state and the watchdog** (`tools/ci/runner_dispatch.py`): a cron job runs it every minute on an
