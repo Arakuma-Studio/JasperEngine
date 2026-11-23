@@ -1079,7 +1079,9 @@ first. The lane ends with its slowest shard, so the times have to be right:
   (`tools/mcp/ci-timings.json` is on `CI_NOTHING_READS`: its PR runs only `changes` and `Check`).
   GitHub Actions may not open pull requests here and its token's push starts no pull_request run:
   with the secret `MCP_TIMINGS_TOKEN` it does both, without it the job dispatches `ci.yml` on the branch
-  and fails until the PR exists.
+  with `status` and fails until the PR exists. A ruleset counts no check of a dispatched job, so that
+  run's `Check` job also sets the commit status `Check` on the head, which it counts. Then the job
+  turns on auto-merge and the merge queue lands the PR.
 - **The shard count**: the fewest shards that no larger count (up to 8 on a PR and in the queue) beats
   by more than the 4 min of setup each added shard costs (checkout, image, editor install: median
   236 s over 46 shards). Once the longest chunk sets the length, more shards save nothing.
