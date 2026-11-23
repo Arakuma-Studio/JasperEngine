@@ -33,6 +33,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -227,22 +228,32 @@ TEST(SavedDataWindow, PartlyFailedClearAllStaysUndoable) {
     EXPECT_EQ(savedFiles(env.saves()), original);
 }
 
-// Restore Backup whose write outlasts the flush limit still lands: the step stays in the history
-// and undo takes it back once it landed
-TEST(SavedDataWindowSlow, RestorePastTheFlushLimitStaysUndoable) {
+// A step that can't wait for the game's write on its way (it outlasts the flush limit) is refused
+// before it changes anything: the restore it would have queued never lands after the refusal
+TEST(SavedDataWindowSlow, RestoreWhileTheGameWritesIsRefused) {
     SavesOnTempDir env;
     writeSlot(env.store, "slot1", R"({"i":1})");
     writeSlot(env.store, "slot1", R"({"i":2})");
-    const auto original = savedFiles(env.saves());
     std::mutex mutex;
     std::condition_variable changed;
-    bool release = false;
+    bool entered = false, release = false;
     io::setAtomicFileFaultInjector([&](std::string_view step, const fs::path& path) -> std::error_code {
         if (step != "write" || path.filename().string().find("slot1.g3") == std::string::npos) return {};
         std::unique_lock<std::mutex> lock(mutex);
+        entered = true;
+        changed.notify_all();
         changed.wait_for(lock, std::chrono::seconds(30), [&] { return release; });
         return {};
     });
+    std::string payload;
+    savegame::SaveError encodeError;
+    ASSERT_TRUE(savegame::fromJson(nlohmann::json::parse(R"({"i":3})"), payload, encodeError));
+    ASSERT_TRUE(env.store.write("slot1", "main", payload, savegame::WriteOptions(), nullptr).ok());
+    {
+        // the game's write is on a worker, stopped inside its file write
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(changed.wait_for(lock, std::chrono::seconds(10), [&] { return entered; }));
+    }
     CommandHistory history;
     const bool added = history.addCommand(new SaveSlotCmd(SaveSlotCmd::Action::Restore, "slot1", 1));
     {
@@ -250,13 +261,11 @@ TEST(SavedDataWindowSlow, RestorePastTheFlushLimitStaysUndoable) {
         release = true;
     }
     changed.notify_all();
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-    while (!fs::exists(env.saves() / "slot1.g3.jsave") && std::chrono::steady_clock::now() < deadline) {
-        jobs::drainMainQueue();
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
+    ASSERT_TRUE(env.store.flush("slot1", std::chrono::seconds(10)).ok());
+    jobs::drainMainQueue();
     io::setAtomicFileFaultInjector(nullptr);
-    EXPECT_TRUE(added);
-    ASSERT_TRUE(history.undo());
-    EXPECT_EQ(savedFiles(env.saves()), original);
+    EXPECT_FALSE(added);
+    std::vector<std::string> names;
+    for (const auto& file : savedFiles(env.saves())) names.push_back(file.first);
+    EXPECT_EQ(names, (std::vector<std::string>{"slot1.g1.jsave", "slot1.g2.jsave", "slot1.g3.jsave"}));
 }
