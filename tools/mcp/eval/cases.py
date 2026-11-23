@@ -32,6 +32,51 @@ README = "# Space Dodge\n\nA small arcade game made with JasperEngine.\n\nContro
 
 GAME_FILES = {"scripts/player.lua": PLAYER_LUA, "README.md": README}
 
+# engine/tests/core/fixtures/dialogue/walk.dialogue as a guard's talk, with a line nothing leads to (n12)
+GUARD_DIALOGUE = """{
+  "formatVersion": 1, "kind": "dialogue", "kindVersion": 1, "nextId": 21,
+  "nodes": [
+    {"id": "n1", "type": "entry", "position": [0.0, 0.0], "params": {"name": "start", "arguments": ""}},
+    {"id": "n2", "type": "set", "position": [200.0, 0.0], "params": {"assign": "$gold = 10; $met = false"}},
+    {"id": "n3", "type": "line", "position": [400.0, 0.0], "params": {"speaker": "guard", "text": "Halt! You have {gold} coins.",
+      "options": [{"id": "o1", "text": "Pay five", "condition": "$gold >= 5", "action": "$gold -= 5"}, {"id": "o2", "text": "Leave", "style": "exit"}]}},
+    {"id": "n4", "type": "branch", "position": [600.0, 0.0], "params": {"condition": "$gold > 3 and not $met"}},
+    {"id": "n5", "type": "action", "position": [800.0, 0.0], "params": {"action": "quest.start:intro"}},
+    {"id": "n6", "type": "jump", "position": [1000.0, 0.0], "params": {"entry": "inside"}},
+    {"id": "n7", "type": "entry", "position": [0.0, 200.0], "params": {"name": "inside"}},
+    {"id": "n8", "type": "line", "position": [200.0, 200.0], "params": {"speaker": "guard", "text": "Welcome in. {gold} left."}},
+    {"id": "n9", "type": "end", "position": [600.0, 200.0], "params": {"result": "left"}},
+    {"id": "n10", "type": "end", "position": [400.0, 200.0], "params": {"result": "paid"}},
+    {"id": "n12", "type": "line", "position": [800.0, 200.0], "params": {"speaker": "guard", "text": "Psst. The back door is open."}}
+  ],
+  "edges": [
+    {"id": "e11", "from": {"node": "n1", "port": "next"}, "to": {"node": "n2", "port": "in"}},
+    {"id": "e13", "from": {"node": "n2", "port": "next"}, "to": {"node": "n3", "port": "in"}},
+    {"id": "e14", "from": {"node": "n3", "port": "o1"}, "to": {"node": "n4", "port": "in"}},
+    {"id": "e15", "from": {"node": "n3", "port": "o2"}, "to": {"node": "n9", "port": "in"}},
+    {"id": "e16", "from": {"node": "n4", "port": "true"}, "to": {"node": "n5", "port": "in"}},
+    {"id": "e17", "from": {"node": "n4", "port": "false"}, "to": {"node": "n9", "port": "in"}},
+    {"id": "e18", "from": {"node": "n5", "port": "next"}, "to": {"node": "n6", "port": "in"}},
+    {"id": "e19", "from": {"node": "n7", "port": "next"}, "to": {"node": "n8", "port": "in"}},
+    {"id": "e20", "from": {"node": "n8", "port": "next"}, "to": {"node": "n10", "port": "in"}}
+  ],
+  "variables": [{"name": "gold", "type": "number", "default": 0}, {"name": "met", "type": "bool", "default": false}],
+  "metadata": {"namespace": "guard", "source_language": "en"},
+  "guid": "5a0d9a10-0000-4000-8000-00000000d1a2"
+}
+"""
+
+# a .input.json script (tools/test-projects/input/assets/tests/Input/menu.input.json) with shot steps
+MENU_INPUT = """{"format": "jasperengine-input", "version": 1, "kind": "script", "fixed_fps": 60,
+ "events": [
+   {"type": "wait", "until": "MenuReady", "frames": 600},
+   {"type": "shot", "name": "01_menu"},
+   {"type": "touch", "action": "tap", "target": "#play"},
+   {"type": "wait", "until": "Clicked", "frames": 120},
+   {"type": "shot", "name": "02_game"}
+ ]}
+"""
+
 # a shell command that writes project.yaml (reading it is fine)
 YAML_WRITE = r"(sed\s+-i|perl\s+-i|>>?\s*\S*project\.yaml|tee\s+\S*project\.yaml|open\([^)]*project\.yaml[^)]*['\"]w)"
 
@@ -62,6 +107,11 @@ def ok(text, structured=None):
 
 def err(text):
     return {"text": text, "is_error": True}
+
+
+def real(result):
+    """A hand-written result in the editor's shape: it goes out with its structuredContent, the part Claude Code shows."""
+    return {**result, "real": True}
 
 
 RENAME_DIALOG = {"kind": "modal", "title": "Rename File", "message": "Rename 'RenameMe.lua' to:", "choices": ["ok", "cancel"],
@@ -116,6 +166,30 @@ TERRAIN_IMPORT_DRY = {
                           "range_low": 812, "range_high": 61022, "clipped_low": 0, "clipped_high": 0}}],
     "warnings": [], "next": "Nothing changed. Call again without dry_run to apply.",
 }
+
+
+def console_result(entries, next_cursor):
+    """read_console in its real shape: the text lists the entries, structuredContent holds them."""
+    errors = sum(1 for e in entries if e["level"] == "error")
+    lines = "".join(f"\n[{e['level']} #{e['id']}] {e['message']}" for e in entries)
+    return real(ok(f"{len(entries)} entries ({errors} error(s), 0 warning(s)):{lines}\nnext_cursor: {next_cursor}",
+                   {"entries": entries, "next_cursor": next_cursor}))
+
+
+# journal_before_the_error: the Gameplay Journal's lines, the script error, and a per-frame print that fills the
+# newest 100 entries of the Console between them
+def _log(eid, frame, category, message, level="info"):
+    return {"id": eid, "level": level, "type": "error" if level == "error" else "log", "category": category, "frame": frame,
+            "message": message}
+
+
+JOURNAL_LINES = [_log(7, 310, "journal", "engine.scene_loaded ms=212 name=Forest2"),
+                 _log(120, 1880, "journal", "level.start name=forest-2 seed=42"),
+                 _log(300, 2405, "journal", "player.pickup item=rusty_key")]
+SCRIPT_ERROR = _log(412, 2410, "lua", "Script crash in scene 'Forest2': scripts/door.lua:41: attempt to index a nil value "
+                                      "(field 'lock')", "error")
+PLAY_STOP = _log(413, 2411, "journal", "engine.play state=stop")
+PATH_SPAM = [_log(eid, 2405 + (eid - 301) // 20, "lua", "enemy 3: path recomputed (12 nodes)") for eid in range(301, 412)]
 
 
 CASES = [
@@ -282,7 +356,9 @@ CASES = [
         "what_happened": "Asked to check that a game survives a damaged save, an agent would hand-edit the binary .jsave with "
                          "write_file (or a shell) and break its own test. user_settings store \"saves\" corrupts the newest "
                          "generation the way a crash would, as an undo step.",
-        "text_at_issue": "user_settings description: 'store \"saves\": SaveGame slots (key = slot): ... corrupt, restore (generation).'",
+        "text_at_issue": "user_settings description: 'store \"saves\": SaveGame slots (key = slot): ... corrupt, restore (generation).'; "
+                         "the scripting group's description '... PlayerPrefs and save slots (user_settings)' (without it agents "
+                         "enabled data_safety and searched the files)",
         "source": "docs/specs/savegame.md R37, R43",
         "prompt": "My game saves its progress in the save slot slot1. Damage that save the way a crash could, so I can check the "
                   "game recovers from the backup. Don't play the game; just damage it and tell me which file you damaged.",
@@ -306,7 +382,7 @@ CASES = [
         "checks": {"calls": [{"tool": "user_settings", "args": {"store": "saves", "action": "corrupt"}}],
                    "must_not_call": ["write_file", "delete_asset"], "shell_must_not": [r"\.jsave"],
                    "reply_must": [r"g12"]},
-        "max_turns": 8,
+        "max_turns": 12,  # the sandbox refuses the first shell probes; 8 turns ended runs before the reply
     },
     {
         "id": "guard_linked_folder_rules",
@@ -760,6 +836,7 @@ CASES = [
         "source": "input-recorder-and-input-scripts spec, AC19",
         "prompt": "The game is playing. Tests/Input/menu.input.json is a script that taps through the main menu. Run it "
                   "and tell me whether it worked.",
+        "files": {"Tests/Input/menu.input.json": MENU_INPUT},
         "mocks": [
             {"tool": "send_input", "args": {"file": "re:menu\\.input\\.json$"}, "result": ok(
                 "Sent 6 input step(s) over 140 frame(s).\nShot \"01_menu\": Recordings/Input/menu/01_menu.png",
@@ -795,10 +872,13 @@ CASES = [
                          "screenshot by hand per size: each run started from another state and the shots did not line up. "
                          "record_game replays the script once per size from Play's start and writes only its shot steps.",
         "text_at_issue": "record_game: description 'input: replays a .input.json, a new session per run; shots: only its shot "
-                         "steps.', format enum 'shots', resolutions 'A run per WxH.'",
+                         "steps.', format enum 'shots', resolutions 'A run per WxH.'; the editor_tools group's description "
+                         "'... the Recorder: movies, PNG sequences, screenshots from a .input.json at several sizes' (was 'movie "
+                         "recording': agents enabled testing and device and never found record_game)",
         "source": "input-recorder-and-input-scripts spec, R23, AC14",
         "prompt": "Tests/Input/store.input.json walks through the menu and has shot steps. Make the store screenshots at "
                   "1290x2796 and 2048x2732 from it.",
+        "files": {"Tests/Input/store.input.json": MENU_INPUT},
         "mocks": [
             {"tool": "record_game", "args": {"input": "re:store\\.input\\.json$", "format": "shots"}, "result": ok(
                 "Captured 4 file(s) in 2 run(s).",
@@ -811,7 +891,7 @@ CASES = [
         "checks": {"calls": [{"tool": "record_game", "args": {"input": "re:store\\.input\\.json$", "format": "shots",
                                                               "resolutions": ["1290x2796", "2048x2732"]}}],
                    "must_not_call": ["configure_game_view", "screenshot"]},
-        "max_turns": 8,
+        "max_turns": 12,  # the sandbox refuses the first shell probes; 8 turns ended runs before the reply
     },
     {
         "id": "guard_player_input_script_any_desktop",
@@ -822,8 +902,10 @@ CASES = [
         "text_at_issue": "run_build description 'input: send_input events (Linux/X11); input_script: a .input.json, any desktop, "
                          "headless.' and its parameter input_script",
         "source": "input-recorder-and-input-scripts spec, R24, AC11",
-        "prompt": "The desktop build is done. This machine has no display. Run Tests/Input/menu.input.json on the built player "
-                  "headless and show me its screenshots.",
+        # "from the editor": the decision is run_build's input_script over input, not the editor over a shell
+        "prompt": "The desktop build is done. This machine has no display. From the editor, run Tests/Input/menu.input.json on "
+                  "the built player headless and show me its screenshots.",
+        "files": {"Tests/Input/menu.input.json": MENU_INPUT},
         "mocks": [
             {"tool": "run_build", "args": {"input_script": "re:menu\\.input\\.json$"}, "result": ok(
                 "Game exited by itself after 4 s with code 0. 120 log line(s). Input script: [input] done {\"frames\": 160, \"shots\": 2}; 2 shot(s).",
@@ -832,10 +914,17 @@ CASES = [
                                                             {"name": "02_game", "path": "/p/Recordings/Input/menu/player/02_game.png"}]}})},
             {"tool": "run_build", "args": {"input": "re:."}, "result": err(
                 "input is not supported here: no X display. Run without input (log + screenshots only).")},
+            {"tool": "get_build_info", "result": ok(
+                "Host linux. Desktop player: available; Web: available; source export: available. 1 scene(s) in the build, 40 "
+                "shader(s). Last build: linux player succeeded in /home/me/builds/space-dodge-linux.",
+                {"last_build": {"mode": "player", "platform": "linux", "status": "succeeded",
+                                "output_dir": "/home/me/builds/space-dodge-linux"}, "scene_count": 1,
+                 "last_executable": "/home/me/builds/space-dodge-linux/space-dodge",
+                 "next": "get_build_report (group shipping): sizes, what grew, why a file ships"})},
         ],
         "checks": {"calls": [{"tool": "run_build", "args": {"input_script": "re:menu\\.input\\.json$"}}],
                    "must_not_call": [{"tool": "run_build", "args": {"input": "re:."}}]},
-        "max_turns": 8,
+        "max_turns": 12,  # the sandbox refuses the first shell probes
     },
     {
         "id": "guard_record_input_command",
@@ -1545,6 +1634,9 @@ CASES = [
                          "description; edit_string_table's description",
         "source": "docs/specs/game-ui-localization.md R38",
         "prompt": "The main menu (assets/ui/main_menu.html, a Play button) must also be in German: 'Spielen'.",
+        "files": {"assets/ui/main_menu.html": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n"
+                                              "  <title>Main menu</title>\n</head>\n<body>\n  <button id=\"play\">Play</button>\n"
+                                              "</body>\n</html>\n"},
         "mocks": [
             {"tool": "read_file", "result": ok("<button id=\"play\">Play</button>", {"content": "<button id=\"play\">Play</button>"})},
             {"tool": "edit_string_table", "result": ok(
@@ -1587,20 +1679,26 @@ CASES = [
     {
         "id": "guard_dialogue_run_explore",
         "kind": "guard",
+        "groups_enabled": ["graphs"],  # the text at issue is run_dialogue's description, a graphs tool
         "what_happened": "Asked whether every ending of a conversation can be reached, agents read get_graph and reasoned over the "
                          "wires (missing conditions and loops); run_dialogue {explore: true} walks every path and reports the endings, "
-                         "no-exit loops and lines never shown.",
-        "text_at_issue": "run_dialogue's description ('explore: true walks every path ...'); jasper://docs/dialogue",
+                         "no-exit loops and lines never shown. Asked for lines nobody sees, an agent without that sentence reads the graph or "
+                         "runs validate_graph, whose issues are wiring, not reachability.",
+        "text_at_issue": "none: run_dialogue's explore sentence was cut, as agents asked for lines nobody sees passed "
+                         "explore: true without it (4/4, validate_graph and get_graph in reach); the parameter's name decides",
         "source": "docs/specs/dialogue-graphs.md R29",
-        "prompt": "Can the player reach every ending of assets/dialogue/guard.dialogue? Check it.",
+        # "in the editor": with the file on disk an agent otherwise traces its JSON by hand and never sees the tools
+        "prompt": "Does assets/dialogue/guard.dialogue have lines the player can never see? Check it in the editor.",
+        "files": {"assets/dialogue/guard.dialogue": GUARD_DIALOGUE},
         "mocks": [
             {"tool": "run_dialogue", "result": ok(
-                "Explored 6 path(s): 9/10 nodes covered, 2 ending(s), 0 no-exit loop(s).\nend \"paid\" at n10 by choices [1]\n"
+                "Explored 3 path(s): 10/11 nodes covered, 2 ending(s), 0 no-exit loop(s).\nend \"paid\" at n10 by choices [1]\n"
                 "end \"left\" at n9 by choices [2]\nnever shown: n12",
-                {"coverage": {"nodes": 10, "covered": 9, "uncovered": ["n12"]},
+                {"coverage": {"nodes": 11, "covered": 10, "uncovered": ["n12"]},
                  "endings": [{"result": "paid", "node": "n10", "choices": [1]}, {"result": "left", "node": "n9", "choices": [2]}],
-                 "no_exit_loops": [], "lines_never_shown": ["n12"], "paths": 6})},
-            {"tool": "get_graph", "result": ok("dialogue graph: 10 node(s), 9 edge(s).", {"graph": {}, "issue_count": 0})},
+                 "no_exit_loops": [], "lines_never_shown": ["n12"], "paths": 3})},
+            {"tool": "get_graph", "result": ok("dialogue graph: 11 node(s), 9 edge(s).", {"graph": {}, "issue_count": 0})},
+            {"tool": "validate_graph", "result": ok("assets/dialogue/guard.dialogue: 0 issue(s).", {"issues": [], "issue_count": 0})},
         ],
         "checks": {"calls": [{"tool": "run_dialogue", "args": {"explore": True}}]},
         "max_turns": 10,
@@ -1608,11 +1706,14 @@ CASES = [
     {
         "id": "guard_l10n_assert_languages",
         "kind": "guard",
+        "groups_enabled": ["editor_ux"],  # configure_game_view language: the one-language-at-a-time sibling
         "what_happened": "Agents checked whether translated text fits by switching the Game view language and taking screenshots "
                          "one by one; assert_ui's languages runs text_fits per language in one call.",
-        "text_at_issue": "assert_ui's `languages` parameter (inspect_ui `l10n` beside it); jasper://docs/localization",
+        "text_at_issue": "assert_ui's `languages` parameter; 'languages' in its description was cut, as agents passed it "
+                         "without it (4/4, configure_game_view language and inspect_ui l10n in reach)",
         "source": "docs/specs/game-ui-localization.md R38",
-        "prompt": "Check that the main menu's buttons (UI Document GameObject 30) still fit their text in German.",
+        "prompt": "The German translation just came in. Do the main menu's buttons (UI Document GameObject 30) still fit "
+                  "their text, in English and in German?",
         "mocks": [
             {"tool": "assert_ui", "result": ok(
                 "assert_ui: 1/2 passed.\nFAIL text_fits \"button\" @1280x720 de: #play: the text needs 132 px, the box has 80 px",
@@ -2930,10 +3031,12 @@ CASES = [
         "source": "docs/specs/build-and-run-on-device.md R21, R22",
         "prompt": "My Android phone is plugged in with USB debugging on. Put the current build of the game on it and start it.",
         "mocks": [
-            {"tool": "get_build_info", "args": {"devices": True}, "result": ok("Host linux. 1 usable Run Device(s) of 3.", {
+            {"tool": "get_build_info", "args": {"devices": True}, "result": real(ok("Host linux. 2 usable Run Device(s) of 2.", {
+                "host_platform": "linux",
                 "devices": [{"id": "R58M123ABC", "platform": "android", "kind": "device", "name": "Galaxy S23", "state": "device",
                              "usable": True, "abi": "arm64-v8a", "os_version": "34"},
-                            {"id": "web", "platform": "web", "kind": "browser", "name": "Default browser", "state": "ready", "usable": True}]})},
+                            {"id": "web", "platform": "web", "kind": "browser", "name": "Default browser", "state": "ready", "usable": True}]}))},
+            {"tool": "get_build_info", "result": {"recorded": "build_info_mobile"}},
             {"tool": "build_project", "args": {"run_device": "re:^(R58M123ABC|auto)$"}, "result": ok(
                 "Build android (Release): succeeded - Built android (prebuilt player android-universal-gles3-development) in /work/out. "
                 "Installed on Galaxy S23 and launched.",
@@ -2951,7 +3054,9 @@ CASES = [
         "what_happened": "To check a game on the emulator, an agent passed run_build an input script; input reaches desktop "
                          "players only, so the run failed instead of returning the device's log and crash state.",
         "text_at_issue": "run_build description 'here or on a device (get_build_info devices) ... input: send_input events (desktop "
-                         "Linux/X11)' and the error 'input is desktop-only (Linux/X11); on a device drive the game from Lua or its arguments'",
+                         "Linux/X11)' and the error 'input is desktop-only (Linux/X11); on a device drive the game from Lua or its arguments'; "
+                         "the device group's description 'A build on a phone or emulator: build_project run_device, run_build device "
+                         "(core)' (without it agents enabled device, found only tiers and asked for adb)",
         "source": "docs/specs/build-and-run-on-device.md R23",
         "prompt": "The game is installed on the emulator emulator-5554. Run it there for 10 seconds and tell me whether it crashes.",
         "mocks": [
@@ -5715,24 +5820,23 @@ CASES = [
         "id": "guard_physics_query_triggers",
         "playing": True,
         "kind": "guard",
-        "what_happened": "A pickup is a trigger collider: an overlap with triggers: ignore finds nothing there, and the result's "
-                         "next hint says to pass triggers: collide; the agent follows it instead of reporting that nothing is there.",
-        "text_at_issue": "query_physics next: 'no hits: only triggers are inside the shape and triggers are skipped; pass "
-                         "triggers: collide to report them.'",
+        "what_happened": "A pickup is a trigger collider: an overlap with triggers: ignore finds nothing there. Asked about a "
+                         "pickup, an agent passes triggers: collide instead of reporting that nothing is there.",
+        "text_at_issue": "none: query_physics's next for a trigger left out was cut, as agents pass triggers: collide for "
+                         "a pickup on their first query (4/4 without it); the parameter decides",
         "source": "docs/specs/spatial-queries.md R25 (next hints), R31",
-        "prompt": "The game is playing. Is the Coin pickup inside a 1 m sphere at (4, 0, 2)? Ignore triggers on your first try, "
-                  "then answer from what the tool tells you.",
+        "prompt": "The game is playing. Is the Coin pickup inside a 1 m sphere at (4, 0, 2)? Answer from a physics query.",
         "groups_enabled": ["physics"],
         "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nCoin [19] script rigidbody transform",
+                                                  {"entities": [{"id": 19, "path": "Coin"}]})},
             {"tool": "query_physics", "args": {"triggers": "collide"}, "result": ok(
                 "overlap (3d): 1 hit: Coin.",
                 {"op": "overlap", "world": "3d", "count": 1, "truncated": False,
-                 "hits": [{"entity": {"id": 12, "name": "Coin", "path": "Coin"}, "collider": 0, "trigger": True}]})},
+                 "hits": [{"entity": {"id": 19, "name": "Coin", "path": "Coin"}, "collider": 0, "trigger": True}]})},
             {"tool": "query_physics", "result": ok(
-                "overlap (3d): 0 hits. no hits: only triggers are inside the shape and triggers are skipped; pass triggers: collide "
-                "to report them.",
-                {"op": "overlap", "world": "3d", "count": 0, "truncated": False, "hits": [],
-                 "next": "no hits: only triggers are inside the shape and triggers are skipped; pass triggers: collide to report them."})},
+                "overlap (3d): 0 hits.",
+                {"op": "overlap", "world": "3d", "count": 0, "truncated": False, "hits": []})},
         ],
         "checks": {"calls": [{"tool": "query_physics", "args": {"triggers": "collide"}}], "reply_must": [r"Coin"]},
         "max_turns": 8,
@@ -5798,24 +5902,25 @@ CASES = [
         "id": "guard_input_scheme_read",
         "playing": True,
         "kind": "guard",
+        # gameplay: the tool at issue; editor_ux: configure_game_view, whose input_scheme is the forced one (auto here)
+        "groups_enabled": ["gameplay", "editor_ux"],
         "what_happened": "New text (input-device-awareness R27): which device the game treats as in use is in get_input_state "
-                         "(scheme), and send_input switches it as a player would; without it an agent writes a Lua probe or "
-                         "guesses from the screenshot.",
-        "text_at_issue": "get_input_state: '... and the input scheme (the device in use; send_input switches it)'",
+                         "(scheme), and send_input switches it as a player would; without it an agent reads the Game view's "
+                         "input_scheme (the scheme forced at Play start: auto), writes a Lua probe or guesses.",
+        "text_at_issue": "none: the description's sentence on the scheme was cut, as agents read get_input_state for it "
+                         "without it (4/4, the Game view's input_scheme in reach); the result's scheme field and the name decide",
         "source": "input-device-awareness R27 (new tool text); no failure on record",
-        "prompt": "The game is playing. Tap the screen once at (640, 360), then tell me which input scheme the game thinks the "
-                  "player is using now.",
+        "prompt": "The game is playing and a tester just played it on the touch screen. Which input scheme is the game using "
+                  "right now?",
         "mocks": [
-            {"tool": "send_input", "args": {"events": [{"type": "touch"}]}, "result": ok(
-                "Sent 1 event over 2 frames; playing.", {"frames": 2, "state": "playing"})},
             {"tool": "get_input_state", "result": ok(
                 "Input of game frame 212\nscheme Touch, 1 changes",
                 {"game_frame": 212, "touches": [], "scheme": {"current": "Touch", "pointer": "Touch", "gamepad": None,
                                                               "gamepad_family": "Generic", "override": None}, "changes": 1})},
-            {"tool": "eval_lua", "result": ok("Touch", {"result": "Touch"})},
+            {"tool": "configure_game_view", "args": {}, "result": {"recorded": "configure_game_view_read"}},
+            {"tool": "eval_lua", "args": {"code": "re:currentScheme"}, "result": ok("\"Touch\"", {"values": ["Touch"]})},
         ],
-        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "touch"}]}}, "get_input_state"],
-                   "reply_must": [r"(?i)touch"]},
+        "checks": {"calls": ["get_input_state"], "reply_must": [r"(?i)touch"], "must_not_call": ["send_input"]},
         "max_turns": 10,
     },
     # ---- culling-group-and-simulation-distance: Culling Groups and Simulation Culling
@@ -5885,30 +5990,39 @@ CASES = [
                          "store, API, scenes, defines ...' and build_project: 'profile: a Build Profile sets platform, API, "
                          "flavour, folder.'",
         "source": "build-profiles R22, R23 (new tool text); no failure on record",
-        "prompt": "Make a Linux demo build of this game: only scenes/Level1.scene, titled \"Box Demo\", with a DEMO switch my "
+        "prompt": "Make a Linux demo build of this game: only scenes/Level2.scene, titled \"Box Demo\", with a DEMO switch my "
                   "scripts can check. Don't change the full game's settings.",
         "mocks": [
+            # the sample project's own scenes (Main, Level2, Hud)
             {"tool": "get_build_info", "result": ok(
                 "Host linux. Desktop player: available; Web: no emsdk; source export: available. 3 scene(s) in the build, 12 shader(s).",
-                {"host_platform": "linux", "scenes": [{"id": 1, "name": "Menu", "path": "scenes/Menu.scene"},
-                                                      {"id": 2, "name": "Level1", "path": "scenes/Level1.scene"},
-                                                      {"id": 3, "name": "Bonus", "path": "scenes/Bonus.scene"}],
+                {"host_platform": "linux", "scenes": [{"id": 1, "name": "Main", "path": "scenes/Main.scene"},
+                                                      {"id": 2, "name": "Level2", "path": "scenes/Level2.scene"},
+                                                      {"id": 3, "name": "Hud", "path": "scenes/Hud.scene"}],
                  "profiles": [], "active_profile": None})},
-            {"tool": "edit_build_profile", "result": ok(
+            {"tool": "edit_build_profile", "args": {"action": "create"}, "result": ok(
                 "Created Build Profile 'Demo' (linux).",
                 {"files_written": ["EditorSettings/BuildProfiles/Demo.buildprofile"],
-                 "values": {"product_name": "Box Demo", "scenes": [{"guid": "0a9e00000000000000000000000000bb", "path": "scenes/Level1.scene"}],
+                 "values": {"product_name": "Box Demo", "scenes": [{"guid": "e9c340ed0a60324e2b3e529cd637f368", "path": "scenes/Level2.scene"}],
                             "defines": ["DEMO"]},
                  "next": "build it with build_project profile \"Demo\""})},
+            {"tool": "edit_build_profile", "args": {"action": "list"}, "after": {"tool": "edit_build_profile", "args": {"action": "create"}},
+             "result": ok("1 Build Profile: Demo (linux).", {"profiles": [{"name": "Demo", "platform": "linux"}], "active": None})},
+            {"tool": "edit_build_profile", "args": {"action": "list"}, "result": ok("No Build Profiles.", {"profiles": [], "active": None})},
+            {"tool": "edit_build_profile", "args": {"action": "get"}, "after": {"tool": "edit_build_profile", "args": {"action": "create"}},
+             "result": ok("Build Profile 'Demo' (linux): product_name \"Box Demo\", scenes [scenes/Level2.scene], defines [DEMO].",
+                          {"name": "Demo", "platform": "linux",
+                           "values": {"product_name": "Box Demo", "scenes": [{"guid": "e9c340ed0a60324e2b3e529cd637f368",
+                                                                               "path": "scenes/Level2.scene"}], "defines": ["DEMO"]}})},
             {"tool": "build_project", "result": ok(
                 "Built linux (prebuilt player linux-x64-glcore-release) in /home/me/Box-Demo.",
                 {"profile": "Demo", "platform": "linux", "method_used": "prebuilt", "warnings": []})},
-            {"tool": "list_scenes", "result": ok("3 scene(s).", {"scenes": [{"id": 1, "name": "Menu", "path": "scenes/Menu.scene"},
-                                                                            {"id": 2, "name": "Level1", "path": "scenes/Level1.scene"},
-                                                                            {"id": 3, "name": "Bonus", "path": "scenes/Bonus.scene"}]})},
+            {"tool": "edit_build_scenes", "result": ok(
+                "3 scene(s) in the build: 0 scenes/Main.scene (start), 1 scenes/Level2.scene, 2 scenes/Hud.scene.", {})},
         ],
         "checks": {"calls": [{"tool": "edit_build_profile", "args": {"action": "create"}}, {"tool": "build_project", "args": {"profile": "*"}}],
-                   "must_not_call": ["set_project_settings", "edit_build_scenes"]},
+                   # reading the game's scene list is fine (edit_build_scenes defaults to list); changing it is not
+                   "must_not_call": ["set_project_settings", {"tool": "edit_build_scenes", "args": {"action": "re:^(add|remove|move|set_start)$"}}]},
         "max_turns": 12,
     },
     # -- shipped-game-diagnostics R40, AC23: get_crash_reports folder and group (R37). ----------------
@@ -5923,7 +6037,7 @@ CASES = [
         "prompt": "My testers pulled the crash folders off their phones and PCs into /home/me/crashes/forest-run (the game's "
                   "crash folder, with reports/ inside). Version 1.4 went out last week: which crash is new in 1.4?",
         "mocks": [
-            {"tool": "get_crash_reports", "args": {"group": True}, "result": ok(
+            {"tool": "get_crash_reports", "args": {"group": True}, "result": real(ok(
                 "5 groups of 212 reports in /home/me/crashes/forest-run/reports.", {
                     "folder": "/home/me/crashes/forest-run/reports", "reports_read": 212, "session": "20261118T090000Z-4410",
                     "notice_open": False,
@@ -5948,8 +6062,8 @@ CASES = [
                         {"signature": "abnormal_exit", "kind": "abnormal_exit", "count": 12, "versions": {"1.3": 7, "1.4": 5},
                          "platforms": {"unknown": 12}, "first_seen": "2026-10-03T07:00:00Z", "last_seen": "2026-11-15T22:10:00Z",
                          "report_ids": ["20261115T221000Z-6120"], "unresolved": False},
-                    ]})},
-            {"tool": "get_crash_reports", "result": ok(
+                    ]}))},
+            {"tool": "get_crash_reports", "result": real(ok(
                 "10 reports in /home/me/crashes/forest-run/reports.", {
                     "folder": "/home/me/crashes/forest-run/reports", "session": "20261118T090000Z-4410", "notice_open": False,
                     "reports": [{"id": f"2026111{d}T0{h}0000Z-{4000 + d * 10 + h}", "kind": "crash", "time": f"2026-11-1{d}T0{h}:00:30Z",
@@ -5961,7 +6075,7 @@ CASES = [
                                     (8, 6, "unhandled Windows exception", "1.3"), (7, 9, "unhandled Windows exception", "1.4"),
                                     (7, 5, "SIGSEGV (invalid memory access)", "1.3"), (7, 2, "unhandled Windows exception", "1.4"),
                                     (6, 8, "SIGSEGV (invalid memory access)", "1.4"), (6, 4, "unhandled Windows exception", "1.3"),
-                                    (6, 1, "unhandled exception: vector too long", "1.4"), (5, 9, "unhandled Windows exception", "1.3")]]})},
+                                    (6, 1, "unhandled exception: vector too long", "1.4"), (5, 9, "unhandled Windows exception", "1.3")]]}))},
         ],
         "checks": {"calls": [{"tool": "get_crash_reports", "args": {"folder": "re:forest-run", "group": True}}],
                    "reply_must": [r"vector|_Xlength|Level::load|terminate"]},
@@ -5985,9 +6099,22 @@ CASES = [
         "mocks": [
             {"tool": "eval_lua", "args": {"code": "re:Crash\\.beginReport"}, "result": ok("nil", {"values": []})},
             {"tool": "wait", "result": ok("Waited 2 frames: the condition holds.", {"frames": 2, "met": True})},
+            {"tool": "search_engine_api", "args": {"query": "re:(?i)report|crash|problem|feedback|screenshot"}, "result": real(ok(
+                "API symbols for the query:\n- Crash.beginReport(fn, options) [Function]\n- Crash.createReport(options) [Function]",
+                {"docs": [{"doc": "jasper://docs/lua-api/2-15-crash-static-reports-of-earlier-ses",
+                           "section": "2.15 Crash (static): reports of earlier sessions, the report hook, tags", "line": 24,
+                           "text": "\"Report a Problem\" (user reports, kind `\"user\"`): capture, then the game's own form, then write."}],
+                 "results": [{"detail": "Crash.beginReport(fn?: fun(ok: boolean, err: string|nil), options?) -- \"Report a Problem\": "
+                                        "captures the frame being drawn; fn(ok, err) runs the first frame after", "kind": "Function"},
+                             {"detail": "Crash.createReport(options: CrashReportOptions) -> CrashReport|nil, string|nil -- Writes a user "
+                                        "report (<session>-user<N>: user.txt, device.json, journal.txt, log-tail.txt, screenshot.jpg)",
+                              "kind": "Function"},
+                             {"detail": "Crash.cancelReport() -- Drops the draft Crash.beginReport captured", "kind": "Function"}]}))},
             {"tool": "eval_lua", "args": {"code": "re:Crash\\.createReport"}, "result": ok(
-                "{id = \"20261120T101500Z-4242-user1\", kind = \"user\", category = \"other\"}",
-                {"values": [{"id": "20261120T101500Z-4242-user1", "kind": "user", "category": "other"}]})},
+                "{id = \"20261120T101500Z-4242-user1\", kind = \"user\", category = \"other\", files = {\"device.json\", "
+                "\"journal.txt\", \"log-tail.txt\", \"screenshot.jpg\", \"user.txt\"}}",
+                {"values": [{"id": "20261120T101500Z-4242-user1", "kind": "user", "category": "other",
+                             "files": ["device.json", "journal.txt", "log-tail.txt", "screenshot.jpg", "user.txt"]}]})},
             {"tool": "eval_lua", "result": ok("true", {"values": [True]})},
             {"tool": "get_crash_reports", "result": ok("1 report in /home/me/.config/jasperengine/reports.", {
                 "folder": "/home/me/.config/jasperengine/reports", "session": "20261120T101500Z-4242", "notice_open": False,
@@ -6015,22 +6142,10 @@ CASES = [
         "prompt": "Play stopped a moment ago with a script error. Before touching any code: which level was the player in and "
                   "what had they just done when it happened?",
         "mocks": [
-            {"tool": "read_console", "args": {"categories": ["journal"]}, "result": ok(
-                "4 entries (0 error(s), 0 warning(s)). next_cursor 214.", {"next_cursor": 214, "entries": [
-                    {"id": 207, "level": "info", "type": "log", "category": "journal", "frame": 310,
-                     "message": "engine.scene_loaded ms=212 name=Forest2"},
-                    {"id": 209, "level": "info", "type": "log", "category": "journal", "frame": 1880,
-                     "message": "level.start name=forest-2 seed=42"},
-                    {"id": 211, "level": "info", "type": "log", "category": "journal", "frame": 2405,
-                     "message": "player.pickup item=rusty_key"},
-                    {"id": 213, "level": "info", "type": "log", "category": "journal", "frame": 2411,
-                     "message": "engine.play state=stop"}]})},
-            {"tool": "read_console", "result": ok(
-                "2 entries (1 error(s), 0 warning(s)). next_cursor 214.", {"next_cursor": 214, "entries": [
-                    {"id": 212, "level": "error", "type": "error", "category": "lua", "frame": 2410,
-                     "message": "Script crash in scene 'Forest2': scripts/door.lua:41: attempt to index a nil value (field 'lock')"},
-                    {"id": 213, "level": "info", "type": "log", "category": "journal", "frame": 2411,
-                     "message": "engine.play state=stop"}]})},
+            {"tool": "read_console", "args": {"categories": ["journal"]}, "result": console_result(JOURNAL_LINES + [PLAY_STOP], 414)},
+            {"tool": "read_console", "args": {"levels": "*"}, "result": console_result([SCRIPT_ERROR], 414)},
+            {"tool": "read_console", "args": {"only_problems": True}, "result": console_result([SCRIPT_ERROR], 414)},
+            {"tool": "read_console", "result": console_result(PATH_SPAM[-98:] + [SCRIPT_ERROR, PLAY_STOP], 414)},
         ],
         "checks": {"calls": [{"tool": "read_console", "args": {"categories": ["journal"]}}],
                    "reply_must": [r"forest", r"key"],
@@ -6141,11 +6256,12 @@ CASES = [
         "kind": "bad",
         "what_happened": "A web build was bigger than the day before; with only the last build's totals the agent guessed at "
                          "causes (texture settings, engine modules) instead of comparing the two builds' reports.",
-        "text_at_issue": "get_build_report (shipping group) compare_to; get_build_info's '(sizes: get_build_report)'",
+        "text_at_issue": "get_build_report (shipping group) compare_to; get_build_info's '(sizes: get_build_report)' and its "
+                         "next 'get_build_report (group shipping): sizes, what grew, why a file ships'",
         "source": "docs/specs/build-size-tools.md R7, R33, R38",
         "prompt": "Our web build is bigger than yesterday's. Find out what grew.",
         "mocks": [
-            {"tool": "get_build_report", "args": {"compare_to": "*"}, "result": ok(
+            {"tool": "get_build_report", "args": {"compare_to": "*"}, "result": real(ok(
                 "Build Report web 20261119-142233-prebuilt: 142.0 MB (+3.2 MB vs 20261118-101500-prebuilt); textures +2.9 MB "
                 "(1 grown, 1 added); audio +0.3 MB (1 grown).",
                 {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
@@ -6160,29 +6276,35 @@ CASES = [
                                     {"change": "grown", "key": "assets/music/theme.ogg", "path": "assets/music/theme.ogg",
                                      "category": "audio", "before": 2097152, "after": 2411724, "delta": 314572}],
                                 "counts": {"added": 1, "removed": 0, "grown": 2, "shrunk": 0, "unchanged": 812},
-                                "partial": False, "platform_differs": False, "truncated": False}})},
-            {"tool": "get_build_report", "result": ok(
+                                "partial": False, "platform_differs": False, "truncated": False}}))},
+            {"tool": "get_build_report", "result": real(ok(
                 "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
                 {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
-                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]}})},
+                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]}}))},
             {"tool": "get_build_info", "result": ok(
                 "Host linux. Desktop player: available; Web: available; source export: available. 2 scene(s) in the build, 40 "
-                "shader(s).", {"last_build": {"mode": "player", "platform": "web", "status": "succeeded"}, "scene_count": 2})},
+                "shader(s).", {"last_build": {"mode": "player", "platform": "web", "status": "succeeded"}, "scene_count": 2,
+                               "next": "get_build_report (group shipping): sizes, what grew, why a file ships"})},
         ],
         "checks": {"calls": [{"tool": "get_build_report", "args": {"compare_to": "re:."}}],
                    "reply_must": [r"hero_sheet"], "must_not_call": ["build_project"]},
-        "max_turns": 10,
+        "max_turns": 14,  # the sandbox refuses the first shell probes; 10 turns ended a run before the comparison
     },
     {
         "id": "bad_texture_should_not_ship",
         "kind": "bad",
         "what_happened": "Asked why a texture was in the build, the agent searched the scenes' files by hand and missed the "
                          "material that pulled it in; the export already records which reference made each file ship.",
-        "text_at_issue": "get_build_report (shipping group) referenced_by; get_build_info's '(sizes: get_build_report)'",
+        "text_at_issue": "get_build_report (shipping group) referenced_by; get_build_info's next 'get_build_report (group "
+                         "shipping): sizes, what grew, why a file ships' (without it agents grepped, then guessed that every file ships)",
         "source": "docs/specs/build-size-tools.md R9, R33, R38",
         "prompt": "textures/old_logo.png should not be in the build at all. Why is it in there?",
+        # the texture is on disk; the material and scene that pull it in are not in this copy (the report knows them)
+        "files": {"textures/old_logo.png": "(PNG bytes)\n",
+                  "textures/old_logo.png.meta": "metaVersion: 1\nguid: 7c1f0d2e9a4b4c55b8e61a3f0d9e2b47\nimport:\n  textureImporter:\n"
+                                                "    version: 1\n    type: default\n"},
         "mocks": [
-            {"tool": "get_build_report", "args": {"referenced_by": ["re:old_logo"]}, "result": ok(
+            {"tool": "get_build_report", "args": {"referenced_by": ["re:old_logo"]}, "result": real(ok(
                 "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
                 {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792},
                  "referenced_by": [{"file": "assets/je-cooked/web/77c.ktx2", "asset": "textures/old_logo.png", "reason": "reached",
@@ -6191,17 +6313,18 @@ CASES = [
                                         {"asset": "materials/splash.material", "field": "entity:14/MeshComponent.submeshes[0].material",
                                          "kind": "mesh_material_file", "object": "Credits/Logo"},
                                         {"asset": "scenes/Credits.scene", "field": "project/scenes[2].filepath", "kind": "scene_list"},
-                                        {"asset": "project.yaml", "field": "", "kind": "root"}]}]})},
-            {"tool": "get_build_report", "result": ok(
+                                        {"asset": "project.yaml", "field": "", "kind": "root"}]}]}))},
+            {"tool": "get_build_report", "result": real(ok(
                 "Build Report web 20261119-142233-prebuilt: 142.0 MB.",
                 {"report": {"id": "20261119-142233-prebuilt", "platform": "web", "method": "prebuilt", "total_bytes": 148897792,
-                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]}})},
+                            "history": ["20261119-142233-prebuilt", "20261118-101500-prebuilt"]}}))},
             {"tool": "get_build_info", "result": ok(
                 "Host linux. Desktop player: available; Web: available; source export: available. 2 scene(s) in the build, 40 "
-                "shader(s).", {"last_build": {"mode": "player", "platform": "web", "status": "succeeded"}, "scene_count": 2})},
+                "shader(s).", {"last_build": {"mode": "player", "platform": "web", "status": "succeeded"}, "scene_count": 2,
+                               "next": "get_build_report (group shipping): sizes, what grew, why a file ships"})},
         ],
         "checks": {"calls": [{"tool": "get_build_report", "args": {"referenced_by": ["re:old_logo"]}}],
                    "reply_must": [r"splash\.material|Credits"]},
-        "max_turns": 10,
+        "max_turns": 14,  # a grep of the project comes first; 10 turns ended runs after the report, before the reply
     },
 ]

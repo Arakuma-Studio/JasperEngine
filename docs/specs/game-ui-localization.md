@@ -675,3 +675,6 @@ Unit tests follow docs/testing.md naming. "Red" says what fails without the chan
 - **D-13 The diagnostic's code (R11).** The child-elements warning is `HTMLUI-LOC-0001`, not
   `HTMLUI-L10N-0001`: an area is capital letters only, as the code checks and tools read a code
   (`HTMLUI-[A-Z]+-NNNN`).
+- **D-14 assert_ui's description (R35).** "languages" left `assert_ui`'s description ("viewports:
+  more layouts."); the `languages` parameter stays. `guard_l10n_assert_languages`, sharpened with
+  `configure_game_view language` and `inspect_ui l10n` in reach, passed 4/4 without the word.

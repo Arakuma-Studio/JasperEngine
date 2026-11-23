@@ -1758,6 +1758,9 @@ void getBuildInfoTool(const CallPtr& call) {
         data["last_build"] = manager().lastBuild;
         data["last_executable"] = manager().lastExecutable.empty() ? Json(nullptr) : Json(FileUtils::pathToGenericUtf8(manager().lastExecutable));
     }
+    // Asked why a file ships or what grew, agents grepped the project and guessed: the export's Build Report says (build-size-tools R33)
+    if (!BuildReportHistory::last(project->getProjectPath()).empty())
+        data["next"] = "get_build_report (group shipping): sizes, what grew, why a file ships";
 
     std::string text = std::string("Host ") + hostPlatformName() + ". Desktop player: " +
                        (missing.empty() ? "available" : "missing tools") + "; Web: " + (emsdk.found ? "available" : "no emsdk") +
