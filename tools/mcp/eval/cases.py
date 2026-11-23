@@ -1243,8 +1243,9 @@ CASES = [
         "what_happened": "S99 R30 adds Environment Lighting Source Gradient (ambient_mode and the sky, equator and ground "
                          "colours). Without it an agent tints the flat global_illumination_color, which lights every facing "
                          "the same.",
-        "text_at_issue": "set_scene_settings names (ambient_mode: 'Environment Lighting Source: color ..., gradient "
-                         "(sky/equator/ground colors by facing ...)'); jasper://docs/lighting",
+        "text_at_issue": "get_scene_settings detail (ambient_mode: 'Environment Lighting Source: color ..., gradient "
+                         "(sky/equator/ground colors by facing ...)'); "
+                         "jasper://docs/lighting",
         "source": "docs/specs/S99-agent-feedback-area-lights.md R30, R31",
         "prompt": "There is no sky image in this scene. Give it Unity-style trilight ambient: light blue from above, a "
                   "neutral grey at the horizon and a warm brown from the ground.",
@@ -1252,6 +1253,27 @@ CASES = [
             {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
                 "Scene 1 \"Main\" settings:\nambient_mode = gradient",
                 {"scene_id": 1, "settings": {"ambient_mode": "gradient"}})},
+            # detail: the schema rows of Environment Lighting, as SceneTools.cpp writes them
+            {"tool": "get_scene_settings", "args": {"detail": True}, "result": ok(
+                "Scene 1 \"Main\" settings:\nglobal_illumination_color = [1.0,1.0,1.0]\nglobal_illumination_intensity = 0.2\n"
+                "ambient_mode = \"color\"\nambient_sky_color = [0.21176471,0.22745098,0.25882353]\n"
+                "ambient_equator_color = [0.11372549,0.1254902,0.13333334]\nambient_ground_color = [0.04705882,0.04313726,0.03529412]",
+                {"scene_id": 1,
+                 "schema": {
+                     "global_illumination_color": {"default": [1.0, 1.0, 1.0], "help": "ambient light color [r,g,b] (sRGB)", "type": "vector3"},
+                     "global_illumination_intensity": {"default": 0.1, "help": "ambient light intensity", "type": "float"},
+                     "ambient_mode": {"default": "color", "help": "Environment Lighting Source: color (default: the ambient color; Lit under "
+                                      "a sky image takes the image), gradient (sky/equator/ground colors by facing; the sky still reflects)",
+                                      "options": ["color", "gradient"], "type": "enum"},
+                     "ambient_sky_color": {"default": [0.21176471, 0.22745098, 0.25882353],
+                                           "help": "gradient color facing up [r,g,b] (sRGB)", "type": "vector3"},
+                     "ambient_equator_color": {"default": [0.11372549, 0.1254902, 0.13333334],
+                                               "help": "gradient color at the horizon [r,g,b] (sRGB)", "type": "vector3"},
+                     "ambient_ground_color": {"default": [0.04705882, 0.04313726, 0.03529412],
+                                              "help": "gradient color facing down [r,g,b] (sRGB)", "type": "vector3"}},
+                 "settings": {"global_illumination_color": [1.0, 1.0, 1.0], "global_illumination_intensity": 0.2, "ambient_mode": "color",
+                              "ambient_sky_color": [0.21176471, 0.22745098, 0.25882353], "ambient_equator_color": [0.11372549, 0.1254902, 0.13333334],
+                              "ambient_ground_color": [0.04705882, 0.04313726, 0.03529412]}})},
             {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings"}},
             {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
                 "Set 4 scene setting(s) (one undo step).", {"scene_id": 1, "settings": {"ambient_mode": "gradient"}})},
