@@ -268,7 +268,7 @@ namespace je_crash_common {
 #if defined(__ANDROID__)
             // NativeActivity lives in the app's .so; app_process is only the OS launcher.
             // Its build ID cannot locate this game's symbols, so find the module owning us.
-            const uintptr_t owner = reinterpret_cast<uintptr_t>(&buildIdOfMainModule);
+            const uintptr_t owner = reinterpret_cast<uintptr_t>(&je_crash_common::buildIdOfMainModule);
             bool ownsCode = false;
             for (ElfW(Half) i = 0; i < info->dlpi_phnum; i++) {
                 const auto& phdr = info->dlpi_phdr[i];

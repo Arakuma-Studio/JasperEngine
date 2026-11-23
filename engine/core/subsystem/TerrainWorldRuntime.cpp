@@ -214,12 +214,12 @@ terraincore::TileCodec jasperengine::terrainWorldDecodeCodec() {
 terraincore::WorldPlatformBudget jasperengine::terrainWorldPlatformBudget() {
 #if defined(__EMSCRIPTEN__)
 #if defined(__EMSCRIPTEN_PTHREADS__)
-    return worldPlatformBudget(WorldPlatform::Web);
+    return terraincore::worldPlatformBudget(terraincore::WorldPlatform::Web);
 #else
-    return worldPlatformBudget(WorldPlatform::WebSingleThread);
+    return terraincore::worldPlatformBudget(terraincore::WorldPlatform::WebSingleThread);
 #endif
 #elif defined(__ANDROID__) || (defined(__APPLE__) && defined(JASPERENGINE_IOS))
-    return worldPlatformBudget(WorldPlatform::Mobile);
+    return terraincore::worldPlatformBudget(terraincore::WorldPlatform::Mobile);
 #else
     return terraincore::worldPlatformBudget(terraincore::WorldPlatform::Desktop);
 #endif

@@ -285,8 +285,8 @@ __attribute__((noinline)) void fatal(int sig, siginfo_t* info, void* context) {
     number(report, "sp: ", sp, true);
     number(report, "thread: ", static_cast<uint64_t>(threadId()));
 #if defined(__APPLE__)
-    n = appendText(text, sizeof(text), 0, "thread_name: ");
-    appendText(text, sizeof(text), n, preparedThreadName);
+    n = jasperengine::diag::crash::detail::appendText(text, sizeof(text), 0, "thread_name: ");
+    jasperengine::diag::crash::detail::appendText(text, sizeof(text), n, preparedThreadName);
     line(report, text);
 #else
     char threadName[16]{};
@@ -387,10 +387,10 @@ void addModule(uintptr_t begin, uintptr_t end, uintptr_t base, const char* name)
     for (const char* c = name; *c; c++) if (*c == '/') basename = c + 1;
     jasperengine::diag::crash::detail::appendText(module.name, sizeof(module.name), 0, basename);
 #if defined(__APPLE__)
-    moduleListBytes = appendHex(moduleList, sizeof(moduleList), moduleListBytes, base);
-    moduleListBytes = appendText(moduleList, sizeof(moduleList), moduleListBytes, " ");
-    moduleListBytes = appendText(moduleList, sizeof(moduleList), moduleListBytes, name);
-    moduleListBytes = appendText(moduleList, sizeof(moduleList), moduleListBytes, "\n");
+    moduleListBytes = jasperengine::diag::crash::detail::appendHex(moduleList, sizeof(moduleList), moduleListBytes, base);
+    moduleListBytes = jasperengine::diag::crash::detail::appendText(moduleList, sizeof(moduleList), moduleListBytes, " ");
+    moduleListBytes = jasperengine::diag::crash::detail::appendText(moduleList, sizeof(moduleList), moduleListBytes, name);
+    moduleListBytes = jasperengine::diag::crash::detail::appendText(moduleList, sizeof(moduleList), moduleListBytes, "\n");
 #endif
 }
 } // namespace je_crash_posix
@@ -429,7 +429,7 @@ void prepareThreadPlatform() {
 }
 bool installPlatform(const Config&) {
     using namespace je_crash_posix;
-    state().startMonotonicNs = monotonicNs();
+    jasperengine::diag::crash::detail::state().startMonotonicNs = monotonicNs();
     prepareThreadPlatform();
     void* warm[16];
     capture(warm, 16);
@@ -453,7 +453,7 @@ bool installPlatform(const Config&) {
             command += load->cmdsize;
         }
     }
-    appendText(state().coreHint, sizeof(state().coreHint), 0, "core: see the OS .ips report");
+    jasperengine::diag::crash::detail::appendText(jasperengine::diag::crash::detail::state().coreHint, sizeof(jasperengine::diag::crash::detail::state().coreHint), 0, "core: see the OS .ips report");
 #else
     char executable[512]{};
     const ssize_t bytes = readlink("/proc/self/exe", executable, sizeof(executable) - 1);
@@ -470,8 +470,8 @@ bool installPlatform(const Config&) {
     char pattern[256]{};
     const int file = open("/proc/sys/kernel/core_pattern", O_RDONLY);
     if (file >= 0) { const ssize_t n = read(file, pattern, sizeof(pattern) - 1); if (n > 0) pattern[n] = 0; close(file); }
-    size_t n = appendText(state().coreHint, sizeof(state().coreHint), 0, "core: ");
-    appendText(state().coreHint, sizeof(state().coreHint), n, pattern[0] == '|' ? "use coredumpctl info / coredumpctl debug" : pattern);
+    size_t n = jasperengine::diag::crash::detail::appendText(jasperengine::diag::crash::detail::state().coreHint, sizeof(jasperengine::diag::crash::detail::state().coreHint), 0, "core: ");
+    jasperengine::diag::crash::detail::appendText(jasperengine::diag::crash::detail::state().coreHint, sizeof(jasperengine::diag::crash::detail::state().coreHint), n, pattern[0] == '|' ? "use coredumpctl info / coredumpctl debug" : pattern);
 #endif
     if (const char* enabled = std::getenv("JASPERENGINE_CRASH_CORE"); enabled && enabled[0] == '1') {
         rlimit limit{};
