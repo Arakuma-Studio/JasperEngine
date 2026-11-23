@@ -57,9 +57,13 @@ def mcp_selected(selection, title: str) -> bool:
     return title.split("::", 1)[0] in (selection or [])
 
 
-def selected(shadow: dict, where: str, title: str) -> bool:
+def selected(shadow: dict, where: str, title: str, lane: str = "") -> bool:
     if where == "mcp":
         return mcp_selected(shadow.get("mcp"), title)
+    # an ASan job's failure: the PR's ASan selection, which skips what the sanitizers cannot see (a
+    # shadow from before it had one: the unit lane's)
+    if lane.startswith("asan-") and isinstance(shadow.get("asan"), dict):
+        return unit_selected(shadow["asan"].get(where), title)
     return unit_selected(shadow.get("unit", {}).get(where), title)
 
 
@@ -114,7 +118,7 @@ def judge(lanes: dict, reports: list[dict], history: list[dict], run_id: str = "
             title = str(failure.get("title", ""))[:300]
             entry = {"scope": where, "lane": lane, "test": title}
             record["failures"].append({"scope": where, "test": title})
-            if selected(shadow, where, title):
+            if selected(shadow, where, title, lane):
                 record["caught"] += 1
             elif not shadow.get("files"):
                 record["unattributed"].append(entry)

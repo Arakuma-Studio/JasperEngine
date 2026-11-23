@@ -397,6 +397,12 @@ editor::Project::~Project(){
     playStopTask.wait();
     sceneSaveTask.wait();
     shaderListWrite.wait();
+    // its scenes and their renders are its own: they go with it while the engine runs (the unit
+    // tests' Projects). One destroyed after Engine::systemShutdown, the editor's (a static App's,
+    // after the engine's own statics) or a CLI command's, leaves them to the process exit
+    if (jobs::hasSystem() && !jobs::system().isShuttingDown()){
+        deleteScenes();
+    }
     if (shaderForkReaderProject == this){
         shaderForkReaderProject = nullptr;
         ShaderManifests::setForkReader(nullptr);
@@ -6449,6 +6455,17 @@ void editor::Project::releaseScenes() {
     resetConfigs();
 }
 
+void editor::Project::deleteScenes() {
+    // Prefab Mode ends with the project (what it had unsaved was offered for saving before)
+    while (!prefabStages.empty()) {
+        popPrefabStage();
+    }
+    for (auto& sceneProject : scenes) {
+        deleteSceneProject(&sceneProject);
+    }
+    scenes.clear();
+}
+
 void editor::Project::resetConfigs() {
     // an old project has no terrain tiers: High everywhere (T3 R51), set again as it loads
     for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
@@ -6472,16 +6489,7 @@ void editor::Project::resetConfigs() {
     // and the offscreen renderers render_pose_animation keeps of its models
     PoseSheetRenderer::clearShared();
 
-    // Prefab Mode ends with the project (what it had unsaved was offered for saving before)
-    while (!prefabStages.empty()) {
-        popPrefabStage();
-    }
-
-    // Clear existing scenes
-    for (auto& sceneProject : scenes) {
-        deleteSceneProject(&sceneProject);
-    }
-    scenes.clear();
+    deleteScenes();
     unresolvedScenes.clear();
     unresolvedSceneStates.clear();
     prefabAssets.clear();

@@ -32,6 +32,7 @@
 #include <filesystem>
 #include <fstream>
 #include "support/PosixCompat.h"
+#include "support/EditorTestSupport.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -201,6 +202,7 @@ namespace {
             std::ofstream(out.dir / "project.yaml") << "name: camerashake\n";
             AppSettings::initialize();
             out.project.reset(new Project());
+            editor::test::releaseAtExit(out.project.get());
             out.platform.reset(new editor::Platform(out.project.get()));
             // the editor's Platform as System::instance() for this suite's tests (the binary's engine
             // is TestMain's: a second Engine::systemInit would restart its jobs and logger)

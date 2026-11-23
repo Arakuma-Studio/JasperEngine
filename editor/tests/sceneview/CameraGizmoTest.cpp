@@ -19,9 +19,18 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    CameraComponent gizmoOrthoCamera(float width, float height, float nearClip, float farClip){
+    // a camera outside a registry: none deletes the framebuffer its initialiser allocates, and the
+    // gizmo reads none
+    CameraComponent bareCamera(CameraType type){
         CameraComponent camera;
-        camera.type = CameraType::CAMERA_ORTHO;
+        delete camera.framebuffer;
+        camera.framebuffer = nullptr;
+        camera.type = type;
+        return camera;
+    }
+
+    CameraComponent gizmoOrthoCamera(float width, float height, float nearClip, float farClip){
+        CameraComponent camera = bareCamera(CameraType::CAMERA_ORTHO);
         camera.leftClip = -width / 2.0f;
         camera.rightClip = width / 2.0f;
         camera.bottomClip = -height / 2.0f;
@@ -51,8 +60,7 @@ TEST(CameraGizmo, OrthoCameraGizmoHasDepth){
 }
 
 TEST(CameraGizmo, SelectedCameraShowsTheFullFrustum){
-    CameraComponent perspective;
-    perspective.type = CameraType::CAMERA_PERSPECTIVE;
+    CameraComponent perspective = bareCamera(CameraType::CAMERA_PERSPECTIVE);
     perspective.yfov = 1.0f;
     perspective.aspect = 1.5f;
     perspective.nearClip = 0.5f;
@@ -75,8 +83,7 @@ TEST(CameraGizmo, ADegenerateViewDrawsNoNaN){
 }
 
 TEST(CameraGizmo, PerspectiveNearIsClamped){
-    CameraComponent camera;
-    camera.type = CameraType::CAMERA_PERSPECTIVE;
+    CameraComponent camera = bareCamera(CameraType::CAMERA_PERSPECTIVE);
     camera.nearClip = 0.0f;
     camera.farClip = 0.0f;
     const Vector2 nearFar = RenderSystem::getCameraNearFar(camera);

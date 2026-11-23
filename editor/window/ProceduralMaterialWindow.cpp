@@ -162,28 +162,33 @@ ProceduralMaterialWindow::Services ProceduralMaterialWindow::defaultServices(){
         // the project it was asked in: a bake ending after a switch writes nothing (the tool's rule)
         const uint64_t generation = texsynth::projectGeneration();
         const std::filesystem::path root = project->getProjectPath();
-        run->setOnStage([bake](const std::string& stage){ bake->state.message = stage; });
-        run->setOnFinished([bake, weak, project, prepared, generation, root]() mutable {
+        // the bake owns the run: its callbacks hold the bake weakly, or the two would keep each other
+        std::weak_ptr<Bake> owner = bake;
+        run->setOnStage([owner](const std::string& stage){
+            if (auto current = owner.lock()) current->state.message = stage;
+        });
+        run->setOnFinished([owner, weak, project, prepared, generation, root]() mutable {
+            auto current = owner.lock();
             auto finished = weak.lock();
-            if (!finished) return;
-            bake->state.running = false;
+            if (!current || !finished) return;
+            current->state.running = false;
             if (finished->isFailed()){
-                bake->state.message = "Nothing was written: " + finished->getError();
+                current->state.message = "Nothing was written: " + finished->getError();
                 return;
             }
             if (generation != texsynth::projectGeneration() || project->getProjectPath() != root){
-                bake->state.message = "Another project was opened while it baked; nothing was written.";
+                current->state.message = "Another project was opened while it baked; nothing was written.";
                 return;
             }
             procmat::BakeFiles files;
             std::string why;
             if (!procmat::writeGraphBake(project, prepared, finished->getOutputs(), finished->tier(), finished->deviceName(), files, why)){
-                bake->state.message = "Nothing was written: " + why;
+                current->state.message = "Nothing was written: " + why;
                 return;
             }
-            bake->state.message = "Baked " + files.material + " and " + std::to_string(files.images.size()) + " PNG(s) on " +
-                                  procmat::evaluatorTierName(finished->tier()) + " (" + finished->deviceName() + "), one undo step.";
-            for (const std::string& warning : finished->getWarnings()) bake->state.message += " " + warning;
+            current->state.message = "Baked " + files.material + " and " + std::to_string(files.images.size()) + " PNG(s) on " +
+                                     procmat::evaluatorTierName(finished->tier()) + " (" + finished->deviceName() + "), one undo step.";
+            for (const std::string& warning : finished->getWarnings()) current->state.message += " " + warning;
         });
         bake->run = run;
         bake->state = BakeState();

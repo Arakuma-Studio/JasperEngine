@@ -24,6 +24,7 @@
 #include <fstream>
 #include <memory>
 #include "support/PosixCompat.h"
+#include "support/EditorTestSupport.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -55,6 +56,7 @@ namespace {
   {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 600}]}]})";
             AppSettings::initialize();
             out.project.reset(new Project());
+            editor::test::releaseAtExit(out.project.get());
             out.platform.reset(new editor::Platform(out.project.get()));
             headlesssystem::use(out.platform.get());
             Engine::pauseGameEvents(true);

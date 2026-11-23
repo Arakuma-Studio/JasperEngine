@@ -150,7 +150,7 @@ class Rules(unittest.TestCase):
         r = decide("merge_group", p, advisory=("unit", "htmlui", "mcp", "smoke"))
         self.assertEqual(runs(r), set(pl.LANES) - {"unit", "htmlui", "mcp", "smoke"})
         self.assertEqual((r["advisory_off"], r["build_only"]), (["unit", "htmlui", "mcp", "smoke"], []))
-        self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["unit_run"])), ["core", "editor"])
+        self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["asan_run"])), ["core", "editor"])
         self.assertEqual(decide("merge_group", p, advisory=()), decide("merge_group", p))
         self.assertEqual(runs(decide("merge_group", p)), set(pl.LANES))
         # only the lanes the push to main runs instead: lint and the platform builds stay in the queue
@@ -180,7 +180,7 @@ class Rules(unittest.TestCase):
         self.assertEqual(r["mcp"]["mode"], "none")
         # ASan keeps a ccache entry per binary (line tables only fit them in the budget), which only main saves
         self.assertIn("build only", r["lanes"]["asan"]["why"])
-        self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["unit_run"])), ["core", "editor"])
+        self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["asan_run"])), ["core", "editor"])
         self.assertEqual(r["build_only"], ["unit", "asan", "htmlui", "windows-editor-tests"])
 
     def test_push_builds_and_leaves_the_advisory_tests_to_the_advisory_run(self):
@@ -298,8 +298,9 @@ class Rules(unittest.TestCase):
             self.assertTrue(any("no merge base" in f for f in r["fallbacks"]))
         r = decide("push", None, "exit 2")
         self.assertNotIn("mcp", runs(r))
+        # CI itself: every lane but ASan, which a workflow change outside its own job does not reach
         r = decide("pull_request", plan([".github/workflows/ci.yml"], builds=()))
-        self.assertEqual(runs(r), set(pl.LANES))
+        self.assertEqual(runs(r), set(pl.LANES) - {"asan"})
         self.assertEqual(r["mcp"]["mode"], "ci")
         self.assertTrue(any(".github/workflows/ci.yml" in f for f in r["fallbacks"]))
 
@@ -326,11 +327,12 @@ class Rules(unittest.TestCase):
     def test_github_output(self):
         r = decide("pull_request", plan(["engine/core/Foo.cpp"], unit={"core": ["Foo"], "editor": [], "htmlui": []}))
         doc = {"full": False, "lanes": r["lanes"], "unit_filter": r["unit_filter"], "htmlui_filter": r["htmlui_filter"],
-               "mcp": dict(r["mcp"], shards=["1", "2"])}
+               "asan_run": r["asan_run"], "asan_filter": r["asan_filter"], "mcp": dict(r["mcp"], shards=["1", "2"])}
         lines = pl.github_output(doc, r["unit_run"]).splitlines()
         keys = [line.split("=", 1)[0] for line in lines]
         self.assertEqual(keys, ["full", *[f"run_{n}" for n in pl.LANES], "unit_filter_core", "unit_filter_editor",
-                                "unit_run_core", "unit_run_editor", "unit_jobs", "asan_jobs", "htmlui_filter", "mcp_shards",
+                                "unit_run_core", "unit_run_editor", "unit_jobs", "asan_jobs", "asan_filter_core",
+                                "asan_filter_editor", "htmlui_filter", "mcp_shards",
                                 "build_only", "dispatch_advisory"])
         self.assertIn("dispatch_advisory=false", lines)
         self.assertIn("dispatch_advisory=true", pl.github_output(dict(doc, dispatch_advisory=True), r["unit_run"]).splitlines())
@@ -341,6 +343,7 @@ class Rules(unittest.TestCase):
         self.assertIn('unit_jobs=[{"job":"core","suite":"core","part":"","other":""}]', lines)
         # the asan lane's matrix: one job per planned test binary
         self.assertIn('asan_jobs=[{"job":"core","suite":"core"}]', lines)
+        self.assertIn("asan_filter_core=Foo.*:*/Foo.*:Foo/*.*", lines)
         doc["mcp"]["shards"] = []
         self.assertIn("mcp_shards=[]", pl.github_output(doc, r["unit_run"]).splitlines())
         # the jobs that build but skip a test run (fromJSON in ci.yml: a list even when empty)
@@ -352,11 +355,65 @@ class Rules(unittest.TestCase):
             {"job": "core", "suite": "core", "part": "", "other": ""},
             {"job": "editor-1", "suite": "editor", "part": "1/2", "other": "2"},
             {"job": "editor-2", "suite": "editor", "part": "2/2", "other": "1"}])
+        doc["asan_run"] = {"core": True, "editor": True}
         both = [line for line in pl.github_output(doc, {"core": True, "editor": True}).splitlines() if line.startswith("asan_jobs=")]
         self.assertEqual(json.loads(both[0].split("=", 1)[1]), [{"job": "core", "suite": "core"}, {"job": "editor", "suite": "editor"}])
         # a lane that does not run has no jobs
         doc["lanes"] = dict(doc["lanes"], asan={"run": False, "why": "no unit test sees the change"})
         self.assertIn("asan_jobs=[]", pl.github_output(doc, {"core": True, "editor": True}).splitlines())
+
+    def test_a_pr_runs_asan_only_for_what_the_sanitizers_see(self):
+        # the asan lane costs 2.5-5 runner-hours a run; the advisory run on main still runs it after the merge.
+        # The unit lane runs for these, ASan does not: CI's scripts, docs, MCP tests, a test's data, assets
+        for f in ("tools/ci/report.py", "tools/mcp/requirements.txt", "tools/mcp/tests/test_a.py", "docs/testing.md",
+                  "editor/tests/fixtures/titleart/fonts/Oswald-wght.woff2", "engine/shaderlib/lit.glsl",
+                  "editor/resources/icons/play.png", "engine/core/script/binding/stubs/Physics.lua"):
+            r = decide("pull_request", plan([f], unit="all", mcp=["test_a.py"]))
+            self.assertTrue(r["lanes"]["unit"]["run"], f)
+            self.assertFalse(r["lanes"]["asan"]["run"], f)
+            self.assertIn("advisory run", r["lanes"]["asan"]["why"])
+            self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["asan_run"])), [], f)
+        suites = {"core": ["Foo"], "editor": ["Bar"], "htmlui": []}
+        for f in ("engine/core/Foo.cpp", "editor/window/Inspector.h", "engine/core/serialization/RuntimeFields.gen.inc",
+                  "libs/woff2/src/woff2_common.cc", "engine/libs/sokol/sokol_gfx.h", "editor/libs/draco/README.md",
+                  "engine/CMakeLists.txt", "engine/cmake/JasperSanitizers.cmake", "CMakePresets.json",
+                  "docker/linux.Dockerfile", "tools/build.sh", "tools/ci/gtest-gate.py"):
+            for event in ("pull_request", "workflow_dispatch"):
+                r = decide(event, plan([f, "docs/testing.md"], unit=suites))
+                self.assertTrue(r["lanes"]["asan"]["run"], (f, event))
+                self.assertEqual((r["asan_run"], r["asan_filter"]), (r["unit_run"], r["unit_filter"]), f)
+        # a C++ change no unit test sees: neither
+        r = decide("pull_request", plan(["editor/App.cpp"]))
+        self.assertFalse(r["lanes"]["asan"]["run"])
+        self.assertEqual(r["lanes"]["asan"]["why"], r["lanes"]["unit"]["why"])
+
+    def test_the_asan_lanes_own_settings_run_every_test_under_it(self):
+        # no selection sees a suppression file or the lane's job: both binaries, every test
+        for p, definition in ((plan(["tools/sanitizers/ubsan.supp"], builds=()), ""),
+                              (plan(["tools/sanitizers/lsan.supp", "editor/App.cpp"], unit={"core": [], "editor": ["App"], "htmlui": []}), ""),
+                              (plan([".github/workflows/ci.yml"], builds=()), ".github/workflows/ci.yml (the asan job)")):
+            r = decide("pull_request", p, asan_definition=definition)
+            self.assertTrue(r["lanes"]["asan"]["run"], p["files"])
+            self.assertEqual((r["asan_run"], r["asan_filter"]), ({"core": True, "editor": True}, {"core": "", "editor": ""}))
+            self.assertIn("the lane's settings or definition", r["lanes"]["asan"]["why"])
+            self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["asan_run"])), ["core", "editor"])
+        self.assertFalse(decide("pull_request", plan(["tools/sanitizers/ubsan.supp"], builds=()))["lanes"]["unit"]["run"])
+
+    def test_the_queue_the_advisory_run_and_the_rollback_keep_asan(self):
+        p = plan(["tools/ci/report.py"], unit="all")
+        # the merge queue: unchanged, every unit test under ASan unless it is advisory
+        r = decide("merge_group", p)
+        self.assertTrue(r["lanes"]["asan"]["run"])
+        self.assertEqual(r["asan_run"], {"core": True, "editor": True})
+        self.assertIn("asan", decide("merge_group", p, advisory=ADVISORY)["advisory_off"])
+        # the advisory run covers what a PR left out
+        r = decide("advisory", p, advisory=ADVISORY)
+        self.assertTrue(r["lanes"]["asan"]["run"])
+        self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["asan_run"])), ["core", "editor"])
+        # the rollback switch and no plan: every lane
+        self.assertTrue(decide("pull_request", p, full_selection=True)["lanes"]["asan"]["run"])
+        self.assertTrue(decide("pull_request", None, "exit 2")["lanes"]["asan"]["run"])
+        self.assertTrue(decide("pull_request", plan([".github/workflows/ci.yml"], builds=()), full_selection=True)["lanes"]["asan"]["run"])
 
     def test_unit_jobs(self):
         # the editor tests' build is most of their lane (CI runs 43737549764: 110 of 123 min), so two
@@ -452,13 +509,17 @@ class Shadow(unittest.TestCase):
         p["base"] = "b" * 40
         self.assertEqual(pl.shadow_selection(p, CI, LEFT_OUT, NIGHTLY_OUT), {
             "base": "b" * 40, "files": ["engine/core/Foo.cpp"], "fallbacks": [],
-            "unit": {"core": ["Foo"], "editor": [], "htmlui": ["Css"]}, "mcp": ["test_a.py"]})
+            "unit": {"core": ["Foo"], "editor": [], "htmlui": ["Css"]}, "asan": {"core": ["Foo"], "editor": []},
+            "mcp": ["test_a.py"]})
         # what a PR widens to, it widens to here too; the rollback switch does not apply (it measures the shortcut)
         sh = pl.shadow_selection(plan(["engine/x.cpp"], unit="all", mcp="ci", fallbacks=["no coverage map"]), CI, LEFT_OUT, NIGHTLY_OUT)
         self.assertEqual((sh["unit"], sh["mcp"]), ({"core": "all", "editor": "all", "htmlui": "all"}, "all"))
         self.assertIn("no coverage map", sh["fallbacks"])
         sh = pl.shadow_selection(plan([".github/workflows/ci.yml"], builds=()), CI, LEFT_OUT, NIGHTLY_OUT)
-        self.assertEqual(sh["mcp"], "all")
+        self.assertEqual((sh["mcp"], sh["asan"]), ("all", {"core": [], "editor": []}))
+        sh = pl.shadow_selection(plan([".github/workflows/ci.yml"], builds=()), CI, LEFT_OUT, NIGHTLY_OUT,
+                                 ".github/workflows/ci.yml (the asan job or the workflow's env)")
+        self.assertEqual(sh["asan"], {"core": "all", "editor": "all"})
         sh = pl.shadow_selection(plan(["docs/specs/S1.md"], builds=()), CI, LEFT_OUT, NIGHTLY_OUT)
         self.assertEqual((sh["unit"], sh["mcp"]), ({"core": [], "editor": [], "htmlui": []}, []))
 
@@ -652,6 +713,36 @@ class Runs(unittest.TestCase):
         self.assertEqual(doc["mcp"]["shards"], ["1"])
         self.assertFalse((self.tmp / "out/mcp-plan/plan-1.json").exists())
         self.assertTrue(any("could not be planned" in f for f in doc["fallbacks"]), doc["fallbacks"])
+
+    def test_a_workflow_change_runs_asan_only_in_its_own_job_or_env(self):
+        workflow = ("name: CI\nenv:\n  JASPERENGINE_PCH: \"OFF\"\n\njobs:\n  unit:\n    runs-on: ubuntu-latest\n"
+                    "    steps:\n      - run: echo unit\n\n  # one job per test binary\n  asan:\n    runs-on: ubuntu-latest\n"
+                    "    steps:\n      - uses: ./.github/actions/ccache-restore\n        with:\n          max-size: 1.7G\n\n"
+                    "  # the HTML UI lane\n  htmlui:\n    runs-on: ubuntu-latest\n")
+        base = self.commit(pl.WORKFLOW, workflow)
+        self.assertEqual(pl.asan_blocks(workflow), [(12, 17), (2, 3)])
+        for old, new, runs_asan in (("echo unit", "echo unit2", False), ("# the HTML UI lane", "# HTML UI", False),
+                                    ("# one job per test binary", "# a job per test binary", False),
+                                    ("max-size: 1.7G", "max-size: 2.2G", True), ('"OFF"', '"ON"', True)):
+            head = self.commit(pl.WORKFLOW, workflow.replace(old, new))
+            gh = self.tmp / "gh.txt"
+            gh.write_text("")
+            code, doc, out = self.run_main("--event", "pull_request", "--base", base, "--head", head,
+                                           "--out-dir", str(self.tmp / "out"), "--github-output", str(gh))
+            self.assertEqual(code, 0, out)
+            self.assertEqual(doc["lanes"]["asan"]["run"], runs_asan, (old, doc["lanes"]["asan"]["why"]))
+            self.assertTrue(doc["lanes"]["unit"]["run"], old)
+            lines = gh.read_text().splitlines()
+            self.assertIn('asan_jobs=[{"job":"core","suite":"core"},{"job":"editor","suite":"editor"}]' if runs_asan
+                          else "asan_jobs=[]", lines)
+            if runs_asan:
+                self.assertIn("asan_filter_editor=", lines)
+                self.assertIn("the asan job or the workflow's env", doc["lanes"]["asan"]["why"])
+            base = head
+        # a workflow without the job cannot be read for it: the lane runs (fail open)
+        head = self.commit(pl.WORKFLOW, "name: CI\njobs:\n  unit:\n    runs-on: ubuntu-latest\n")
+        self.assertIn("no asan job", pl.asan_definition_change(self.root, base, [pl.WORKFLOW]))
+        self.assertEqual(pl.asan_definition_change(self.root, base, ["engine/core/Foo.cpp"]), "")
 
     def test_the_queue_reads_the_advisory_lanes(self):
         head = self.commit("tools/mcp/tests/test_a.py", TEST_FILE.format(extra="# changed"))

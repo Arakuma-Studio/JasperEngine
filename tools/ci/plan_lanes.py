@@ -12,6 +12,10 @@ applies CI's stricter rules:
 - every changed path on check-changed's CI_NOTHING_READS list (or no change): no lane runs (D3);
 - anything else builds: every platform lane and lint run;
 - smoke runs for what a game's export reads (SMOKE_PATHS);
+- asan, on a pull request: the unit lane's selection when a path the sanitizers see changed
+  (SANITIZER_INPUTS, a .github/ change included), every test of both binaries when its own settings
+  or definition did (ASAN_SETTINGS, ci.yml's asan job or env), else nothing: the advisory run on main
+  runs it after the merge;
 - MCP runs the planned files that are in the CI suite (run_tests.ci_files()); the rest are listed
   under not_in_ci with their reason. A planned whole suite is the CI suite;
 - merge_group: every lane, unit and HTML UI unfiltered, MCP planned over the group's diff (D1), but
@@ -114,6 +118,18 @@ NIGHTLY_LEFT_OUT = {
     "test_pixel_fx_export.py": "reads SMOKE_METHOD=compile smoke runs of tools/fixtures/pixel-fx-game made first on "
                                "the same machine (PFX_SMOKE_DIRS), which an MCP shard does not make",
 }
+# the asan lane on a pull request: what the sanitizers can see is compiled code (C/C++, and the .inc
+# files it includes) and what builds and runs it (CMake and its presets, the image, tools/build.sh, the
+# vendored libraries, the test runner and gate). CI's own scripts, docs, MCP tests, assets and test
+# data change no instrumented code: the advisory run on main runs ASan over them after the merge
+SANITIZER_INPUTS = (*(f"*{ext}" for ext in (*cc.CXX, ".inc", ".cmake")), "*CMakeLists.txt", "CMakePresets.json",
+                    "engine/cmake/*", "docker/*", "tools/build.sh", "tools/with-xvfb.sh", "tools/ci/gtest-gate.py",
+                    "libs/*", "engine/libs/*", "editor/libs/*")
+# the lane's own settings and definition (ci.yml's asan job and the workflow's env, asan_definition_change):
+# no selection sees what they change, so every test of both binaries runs under them
+ASAN_SETTINGS = ("tools/sanitizers/*",)
+WORKFLOW = ".github/workflows/ci.yml"
+ASAN_JOB = "asan"
 # the repository variable that turns the selection off (ci.yml passes --full-selection when it is "true")
 FULL_SELECTION_VARIABLE = "CI_FULL_SELECTION"
 TEST_NAME = re.compile(r"^test_\w+\.py::\w+$")
@@ -273,13 +289,14 @@ def suite_choice(value) -> tuple[bool, str]:
 
 def decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_out: dict[str, str],
            nightly_out: dict[str, str], advisory=(), superseded_by: tuple[str, str] | None = None,
-           full_selection: bool = False) -> dict:
+           full_selection: bool = False, asan_definition: str = "") -> dict:
     """The lanes of an event, from check-changed's plan (None: there is none, plan_error says why),
     in LANES order; advisory: ADVISORY_LANES; superseded_by: a newer push to main, and a path it
     changed that builds (newer_push). full_selection (the rollback switch, FULL_SELECTION_VARIABLE):
-    a pull request, the merge queue or the advisory run runs every lane whole for any change that builds."""
+    a pull request, the merge queue or the advisory run runs every lane whole for any change that builds.
+    asan_definition: the asan lane's definition changed, and where (asan_definition_change)."""
     result = _decide("merge_group" if event == "advisory" else event, plan, plan_error, ci, left_out, nightly_out,
-                     full_selection)
+                     full_selection, asan_definition)
     result["advisory_off"] = []
     result["build_only"] = []
     result["dispatch_advisory"] = False
@@ -348,10 +365,11 @@ def keep_advisory_only(result: dict, advisory: set[str]) -> None:
 
 
 def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_out: dict[str, str],
-            nightly_out: dict[str, str], full_selection: bool = False) -> dict:
+            nightly_out: dict[str, str], full_selection: bool = False, asan_definition: str = "") -> dict:
     lanes: dict[str, dict] = {}
     fallbacks: list[str] = []
     result = {"lanes": lanes, "unit_filter": {"core": "", "editor": ""}, "unit_run": {"core": False, "editor": False},
+              "asan_filter": {"core": "", "editor": ""}, "asan_run": {"core": False, "editor": False},
               "htmlui_filter": "", "mcp": {"mode": "none", "files": [], "not_in_ci": []}, "fallbacks": fallbacks}
 
     def lane(name: str, run: bool, why: str) -> None:
@@ -370,7 +388,26 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
         for name in LANES:
             lane(name, True, why if name != "changes" else "plans the lanes")
         result["unit_run"] = {"core": True, "editor": True}
+        result["asan_run"] = {"core": True, "editor": True}
         mcp_whole(nightly)
+
+    def asan_scope() -> None:
+        """A pull request's asan lane: the unit lane's selection when the sanitizers can see the change
+        (SANITIZER_INPUTS), every test when the lane's settings or definition changed, else nothing."""
+        own = [f for f in files if cc.match(f, ASAN_SETTINGS)] + ([asan_definition] if asan_definition else [])
+        seen = [f for f in files if cc.match(f, SANITIZER_INPUTS)]
+        if own:
+            result["asan_run"], result["asan_filter"] = {"core": True, "editor": True}, {"core": "", "editor": ""}
+            lane("asan", True, f"{own[0]} changed (the lane's settings or definition): every unit test under ASan and UBSan")
+        elif not seen:
+            result["asan_run"], result["asan_filter"] = {"core": False, "editor": False}, {"core": "", "editor": ""}
+            lane("asan", False, "no path the sanitizers see changed (C/C++, CMake, the image, tools/build.sh, vendored "
+                                "libraries): the advisory run on main runs ASan after the merge")
+        elif lanes["unit"]["run"]:
+            result["asan_run"], result["asan_filter"] = dict(result["unit_run"]), dict(result["unit_filter"])
+            lane("asan", True, f"the unit lane's tests under ASan and UBSan ({seen[0]} changed)")
+        else:
+            lane("asan", False, lanes["unit"]["why"])
 
     lane("changes", True, "plans the lanes")
     if event in ("full", "nightly"):
@@ -405,14 +442,18 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
              if smoke else "push to main: no path a game's export reads changed")
         lane("ios", False, "push to main: keeps no cache entry, so a build would warm nothing; the merge queue ran it")
         result["unit_run"] = {"core": True, "editor": True}
+        result["asan_run"] = {"core": True, "editor": True}
         return result
     github = [f for f in files if f.startswith(".github/")] if files is not None else []
     if files is None:
         everything("no plan: every lane (fail open)")
         return result
+    pr_like = event in ("pull_request", "workflow_dispatch")
     if github:
         fallbacks.append(f"{github[0]} changed: every lane, the whole MCP CI suite")
         everything(f"{github[0]} changed (CI itself): every lane")
+        if pr_like and not full_selection:
+            asan_scope()
         return result
     if full_selection:
         fallbacks.append(f"the repository variable {FULL_SELECTION_VARIABLE} is true: every lane, every test (the selection's rollback)")
@@ -439,7 +480,11 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
                 why.append(f"{name}: {'all' if not flt else str(len(unit[name])) + ' suite(s)'}")
         run = any(result["unit_run"].values())
         lane("unit", run, ("the change's unit tests (" + "; ".join(why) + ")") if run else "no unit test sees the change")
-    lane("asan", lanes["unit"]["run"], "the unit lane's tests under ASan and UBSan" if lanes["unit"]["run"] else lanes["unit"]["why"])
+    if queue:
+        result["asan_run"] = dict(result["unit_run"])
+        lane("asan", True, "the merge queue: every unit test under ASan and UBSan")
+    else:
+        asan_scope()
     # HTML UI
     everything_trigger = [f for f in files if cc.match(f, cc.ALL_TRIGGERS)]
     if queue or everything_trigger:
@@ -590,19 +635,26 @@ def selection_markdown(sel: dict, fallbacks: list[str], manifest: dict) -> str:
 SHADOW_EVENTS = ("merge_group", "advisory", "push", "full", "nightly")
 
 
-def shadow_selection(plan: dict, ci: list[str], left_out: dict[str, str], nightly_out: dict[str, str]) -> dict:
-    """What a pull request with plan's diff would run: per unit binary "all" or its suites, and the
-    MCP files ("all": the whole CI suite). Without the rollback switch: it measures the shortcut."""
-    r = decide("pull_request", plan, "", ci, left_out, nightly_out)
+def shadow_selection(plan: dict, ci: list[str], left_out: dict[str, str], nightly_out: dict[str, str],
+                     asan_definition: str = "") -> dict:
+    """What a pull request with plan's diff would run: per unit binary "all" or its suites, the same
+    under ASan, and the MCP files ("all": the whole CI suite). Without the rollback switch: it measures
+    the shortcut."""
+    r = decide("pull_request", plan, "", ci, left_out, nightly_out, asan_definition=asan_definition)
     named = plan.get("unit") if isinstance(plan.get("unit"), dict) else {}
+
+    def chosen(run: bool, flt: str, binary: str):
+        return [] if not run else "all" if not flt else sorted(named.get(binary, []))
+
     unit = {}
     for binary in ("core", "editor", "htmlui"):
         run = r["lanes"]["htmlui"]["run"] if binary == "htmlui" else r["unit_run"][binary]
-        flt = r["htmlui_filter"] if binary == "htmlui" else r["unit_filter"][binary]
-        unit[binary] = [] if not run else "all" if not flt else sorted(named.get(binary, []))
+        unit[binary] = chosen(run, r["htmlui_filter"] if binary == "htmlui" else r["unit_filter"][binary], binary)
+    asan = {b: chosen(r["lanes"]["asan"]["run"] and r["asan_run"][b], r["asan_filter"][b], b) for b in ("core", "editor")}
     mode = r["mcp"]["mode"]
     mcp = "all" if mode in ("ci", "nightly") else sorted(f.rsplit("/", 1)[-1] for f in r["mcp"]["files"])
-    return {"base": plan.get("base", ""), "files": plan.get("files") or [], "fallbacks": r["fallbacks"], "unit": unit, "mcp": mcp}
+    return {"base": plan.get("base", ""), "files": plan.get("files") or [], "fallbacks": r["fallbacks"], "unit": unit,
+            "asan": asan, "mcp": mcp}
 
 
 def plan_shadow(event: str, plan: dict | None, error: str, shadow_base: str | None, compute) -> tuple[dict | None, str]:
@@ -616,6 +668,54 @@ def plan_shadow(event: str, plan: dict | None, error: str, shadow_base: str | No
             return None, "no --shadow-base: no diff to plan a pull request's selection of"
         plan, error = compute(shadow_base)
     return (plan, "") if plan else (None, f"no PR-style plan ({error})")
+
+
+def asan_blocks(text: str) -> list[tuple[int, int]]:
+    """The 1-based line ranges of ci.yml that define the asan lane: its job and the workflow's env (the
+    builds' settings), without the comments and blank lines that close a block (the next one's). Empty
+    when the job is not found."""
+    lines = text.splitlines()
+    blocks = []
+    for start_re, end_re in ((rf"^  {ASAN_JOB}:\s*(#.*)?$", r"^(  [A-Za-z0-9_-]+:\s*(#.*)?|\S.*)$"),
+                             (r"^env:\s*(#.*)?$", r"^\S.*$")):
+        start = next((i for i, line in enumerate(lines) if re.match(start_re, line)), None)
+        if start is None:
+            if "env" not in start_re:
+                return []
+            continue
+        end = next((i for i in range(start + 1, len(lines)) if re.match(end_re, lines[i])), len(lines))
+        while end > start + 1 and (not lines[end - 1].strip() or lines[end - 1].lstrip().startswith("#")):
+            end -= 1
+        blocks.append((start + 1, end))
+    return blocks
+
+
+def asan_definition_change(root: Path, base: str, files: list[str]) -> str:
+    """Where the diff since base changes the asan lane's definition in ci.yml (asan_blocks), or "" when it
+    does not. A workflow it cannot read counts as changed (fail open)."""
+    if WORKFLOW not in files:
+        return ""
+    changed = f"{WORKFLOW} (the {ASAN_JOB} job or the workflow's env)"
+    old = git(root, "show", f"{base}:{WORKFLOW}")
+    diff = git(root, "diff", "-U0", "--no-renames", base, "HEAD", "--", WORKFLOW)
+    try:
+        new = (root / WORKFLOW).read_text()
+    except OSError:
+        return changed if diff.returncode == 0 else f"{WORKFLOW} (unreadable)"
+    if diff.returncode != 0:
+        return f"{WORKFLOW} (no diff: {diff.stderr.strip()[-120:]})"
+    old_blocks = asan_blocks(old.stdout) if old.returncode == 0 else []
+    new_blocks = asan_blocks(new)
+    if not new_blocks or (old.returncode == 0 and not old_blocks):
+        return f"{WORKFLOW} (no {ASAN_JOB} job found)"
+
+    def touches(first: int, count: int, blocks) -> bool:
+        return count > 0 and any(first <= end and first + count - 1 >= start for start, end in blocks)
+
+    for o_first, o_count, n_first, n_count in cc.parse_hunks(diff.stdout).get(WORKFLOW, []):
+        if touches(o_first, o_count, old_blocks) or touches(n_first, n_count, new_blocks):
+            return changed
+    return ""
 
 
 def newer_push(root: Path, head: str, newest: str | None) -> tuple[str, str] | None:
@@ -676,19 +776,20 @@ def unit_job_names(unit_run: dict) -> list[str]:
     return [j["job"] for j in unit_jobs(unit_run)]
 
 
-def asan_jobs(unit_run: dict) -> list[dict]:
+def asan_jobs(asan_run: dict) -> list[dict]:
     """The asan lane's matrix: a job per planned test binary (in one job the cold core build, its tests
     and the editor's build left the editor's tests no time: merge-queue runs 44582666848, 44487933891)."""
-    return [{"job": suite, "suite": suite} for suite in ("core", "editor") if unit_run.get(suite)]
+    return [{"job": suite, "suite": suite} for suite in ("core", "editor") if asan_run.get(suite)]
 
 
-def asan_job_names(unit_run: dict) -> list[str]:
-    return [j["job"] for j in asan_jobs(unit_run)]
+def asan_job_names(asan_run: dict) -> list[str]:
+    return [j["job"] for j in asan_jobs(asan_run)]
 
 
-def planned_asan_run(lanes: dict, unit_run: dict) -> dict:
-    """The binaries the asan lane runs: the unit lane's, when the asan lane runs at all."""
-    return unit_run if lanes.get("asan", {}).get("run") else {}
+def planned_asan_run(lanes: dict, asan_run: dict) -> dict:
+    """The binaries the asan lane runs (asan_run: the unit lane's, or both for its own settings), when it
+    runs at all."""
+    return asan_run if lanes.get("asan", {}).get("run") else {}
 
 
 def github_output(doc: dict, unit_run: dict) -> str:
@@ -700,7 +801,10 @@ def github_output(doc: dict, unit_run: dict) -> str:
               # the unit lane's matrix: one job per planned test binary, the editor's in parts, side by side
               f"unit_jobs={json.dumps(unit_jobs(unit_run), separators=(',', ':'))}",
               # the asan lane's matrix: one job per test binary it runs
-              f"asan_jobs={json.dumps(asan_jobs(planned_asan_run(doc['lanes'], unit_run)), separators=(',', ':'))}",
+              f"asan_jobs={json.dumps(asan_jobs(planned_asan_run(doc['lanes'], doc['asan_run'])), separators=(',', ':'))}",
+              # its filters: the unit lane's, or every test for the lane's own settings and definition
+              f"asan_filter_core={doc['asan_filter']['core']}",
+              f"asan_filter_editor={doc['asan_filter']['editor']}",
               f"htmlui_filter={doc['htmlui_filter']}", f"mcp_shards={json.dumps(doc['mcp']['shards'], separators=(',', ':'))}",
               # the jobs that run but skip a test run of theirs (lanes or report.TEST_REPORTS)
               f"build_only={json.dumps(doc.get('build_only', []), separators=(',', ':'))}",
@@ -786,8 +890,11 @@ def main(argv: list[str]) -> int:
         shadow_plan, shadow_why = plan_shadow(
             args.event, plan, error, None if head_error else args.shadow_base,
             lambda base: run_check_changed(root, base, out / "shadow-check-changed.json", deps_from, cmap))
+        def definition(p: dict | None) -> str:
+            return asan_definition_change(root, p.get("base") or base, p.get("files") or []) if p else ""
+
         result = decide(args.event, plan, error, ci, left_out, nightly_out, args.advisory.split(),
-                        superseded_by=superseded, full_selection=args.full_selection)
+                        superseded_by=superseded, full_selection=args.full_selection, asan_definition=definition(plan))
         shards: list[str] = []
         tests: list[str] | None = None
         if result["mcp"]["mode"] != "none":
@@ -809,7 +916,8 @@ def main(argv: list[str]) -> int:
                "base": None if args.event == "advisory" and not found else resolve(root, base) or base,
                "head": resolve(root, "HEAD") or args.head, "lanes": result["lanes"], "unit_filter": result["unit_filter"],
                "unit_run": result["unit_run"], "unit_jobs": unit_job_names(result["unit_run"]),
-               "asan_jobs": asan_job_names(planned_asan_run(result["lanes"], result["unit_run"])),
+               "asan_run": result["asan_run"], "asan_filter": result["asan_filter"],
+               "asan_jobs": asan_job_names(planned_asan_run(result["lanes"], result["asan_run"])),
                "htmlui_filter": result["htmlui_filter"],
                "mcp": dict(result["mcp"], shards=shards), "fallbacks": result["fallbacks"], "notes": notes,
                "advisory_off": result["advisory_off"], "build_only": result["build_only"],
@@ -819,7 +927,7 @@ def main(argv: list[str]) -> int:
                "self_tests": plan["self_tests"] if plan else [],
                "checks": {"modules_off": plan["modules_off"] if plan else "", "navigation_off": bool(plan and plan["navigation_off"])}}
         write_selection(doc, args.event, plan, result, ci, tests, args.inputs_manifest, out)
-        doc["shadow"] = shadow_selection(shadow_plan, ci, left_out, nightly_out) if shadow_plan else None
+        doc["shadow"] = shadow_selection(shadow_plan, ci, left_out, nightly_out, definition(shadow_plan)) if shadow_plan else None
         doc["shadow_why"] = "" if shadow_plan else shadow_why
         tmp = out / "lanes.json.tmp"
         tmp.write_text(json.dumps(doc, indent=1) + "\n")

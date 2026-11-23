@@ -1039,7 +1039,7 @@ Jobs of `ci.yml`; a lane's command is also its repro.
 | `lint` | the repository's and the workflows' lints |
 | `linux` | `WERROR=1 tools/build.sh linux`; its editor install feeds `mcp` and `smoke` |
 | `unit` (one job per test binary: `core`; `editor-1`, `editor-2`) | `UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>' WERROR=1 tools/build.sh unit-tests`, plus the scalar picking rerun (core); each editor part with `UNIT_SHARD=<k>/2`, after compiling half the objects (`UNIT_BUILD_PART=<k>/2`) and taking the other half from the other part (below) |
-| `asan` (one job per test binary: `core`, `editor`) | `SANITIZE=address,undefined UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>-*GpuSlow*' tools/build.sh unit-tests`, the unit lane's filter without the `*GpuSlow*` suites (the nightly runs them under ASan) |
+| `asan` (one job per test binary: `core`, `editor`) | `SANITIZE=address,undefined UNIT_SUITE=<suite> UNIT_TEST_ARGS='--gtest_filter=<f>-*GpuSlow*' tools/build.sh unit-tests`, the unit lane's filter (on a PR: below) without the `*GpuSlow*` suites (the nightly runs them under ASan) |
 | `htmlui` | `JASPER_HTMLUI_PERF_SLACK=3 tools/build.sh htmlui-tests` |
 | `mcp` (one job per shard) | `tools/ci/mcp_shard.sh <k> build/ci-plan`: the CI suite's planned files, `-j 2`, without the fixture project |
 | `smoke` | `SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/post-processing`, the prebuilt `tools/fixtures/unified-lighting` and a project from each template |
@@ -1104,7 +1104,9 @@ first. The lane ends with its slowest shard, so the times have to be right:
   (`tools/mcp/ci-timings.json` is on `CI_NOTHING_READS`: its PR runs only `changes` and `Check`).
   GitHub Actions may not open pull requests here and its token's push starts no pull_request run:
   with the secret `MCP_TIMINGS_TOKEN` it does both, without it the job dispatches `ci.yml` on the branch
-  and fails until the PR exists.
+  with `status` and fails until the PR exists. A ruleset counts no check of a dispatched job, so that
+  run's `Check` job also sets the commit status `Check` on the head, which it counts. Then the job
+  turns on auto-merge and the merge queue lands the PR.
 - **The shard count**: the fewest shards that no larger count (up to 8 on a PR and in the queue) beats
   by more than the 4 min of setup each added shard costs (checkout, image, editor install: median
   236 s over 46 shards). Once the longest chunk sets the length, more shards save nothing.
@@ -1125,7 +1127,7 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 | `linux`, `web`, `android`, `windows`, `macos` | when anything that builds changed | yes | yes, to warm the caches (`windows`: the editor leg's build only) | `linux` when `mcp` or `smoke` runs (their editor install); `windows` for `windows-editor-tests` (the editor leg only) | yes |
 | `ios` | when anything that builds changed | yes | no (no cache) | no | yes |
 | `unit`, `htmlui` | the suites the plan selects | all, unfiltered; not while advisory | build only (the caches, the deps dumps) | while advisory all, unfiltered | all |
-| `asan` | the unit lane's suites | all, unfiltered; not while advisory | build only (each binary's cache) | while advisory all | all |
+| `asan` | the unit lane's suites when a path the sanitizers see changed; every test when the lane's settings did; else no (below) | all, unfiltered; not while advisory | build only (each binary's cache) | while advisory all | all |
 | `mcp` | the planned CI-suite files | the planned files, over the group's diff against `main`; not while advisory | no | while advisory the planned files, over the diff since the last advisory run | the whole CI suite |
 | `smoke` | when a game-building path changed | yes; not while advisory | when a game-building path changed (its cache) | while advisory yes | yes |
 | `windows-editor-tests` | with the Windows editor leg | the same; not while advisory | no | while advisory yes | yes |
@@ -1136,8 +1138,17 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   the editor embeds the MCP guide, and tests read other docs.
 - **Ledgers** ride in the PR of the work they record, so they cost no run of their own.
 - **Stricter than check-changed**: any building change runs every platform lane, Web and Android
-  included; a `.github/` change runs everything; a plan error, a missing deps dump or a missing or
+  included; a `.github/` change runs everything (ASan as below); a plan error, a missing deps dump or a missing or
   stale coverage map widens that lane to everything, and the report says why.
+- **ASan on a PR** (2.5 to 5 runner-hours a run) runs the unit lane's selection only when a path the
+  sanitizers see changed (`tools/ci/plan_lanes.py` `SANITIZER_INPUTS`): C/C++ sources and headers
+  (`.inc` included), CMake files and presets, `docker/`, `tools/build.sh`, `tools/with-xvfb.sh`, the
+  gtest gate, and the vendored libraries (`libs/`, `engine/libs/`, `editor/libs/`). When the lane's
+  own settings or definition changed (`tools/sanitizers/`, `ci.yml`'s `asan` job or the workflow's
+  `env`, found from the diff's lines), it runs every test of both binaries (`asan_filter_*`), since no
+  selection sees them. Anything else, such as CI's other jobs and scripts, docs, MCP tests, shaders,
+  assets and a test's data, skips it on the PR. The advisory run on `main` runs it after the merge, and
+  shadow mode judges an ASan failure there against the PR's ASan selection.
 - **MCP in the merge queue** is planned from the coverage map, not the whole suite: a regression the
   map misses is the nightly's to find. A planned file outside the CI suite (it needs the fixture
   project, or is `CI_EXCLUDED`) is listed under "not run in CI"; `MCP_SUITE=all` locally covers it.
@@ -1191,7 +1202,7 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   | unit-core | 0.37 | 1.34 | 0.4G | yes |
   | unit-editor | 0.80 | 4.0 | 0.85G | yes |
   | asan-core | 0.74 | 2.1 | 0.8G | yes |
-  | asan-editor | 1.61 | 4.6 | 1.7G | yes |
+  | asan-editor | 1.58-1.62 (the whole build: 7,721 entries of 3,863 compiles; runs 44934269450, 44959473600, 44970821863 and a local build) | 4.6 | 2.2G | yes |
   | htmlui | 0.78 (2,176 compiles, Release) | 1.66 | 0.85G | yes |
   | macOS | 0.84 | 1.30-1.37 | 0.9G | yes |
   | Windows editor | 0.92 (MSVC: `/Z7` as before) | 0.91 | 0.95G | yes |
@@ -1201,11 +1212,18 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   | Gradle, Vulkan SDK, MCP timings, uv | 0.73, 0.21, under 0.01 each | | | yes |
   | Windows OpenGL | 1.4 | | | no: the lane ends with its slowest leg, and D3D11 and Vulkan cold (57-99 min) take about as long as OpenGL cold with the core tests (79-108) |
 
-  At most 8.5 GB of caps plus 0.96 GB of the rest, 9.46 GB (8.9 GB at these working sets, smoke
-  cut to its cap). Every lane but smoke has a cap about 5 % above its working set: a cut costs more
-  than the difference, since ccache empties each of its 16 subdirectories that is over its share
-  down to 80 % of it (`limit_multiple`): a cut entry holds about 92 % of its cap, and asan-editor,
-  restored from a 1.6G cut of its 1.61 GB, hit 88.9 % of its compiles against 96.4 % uncut. Smoke,
+  At most 9.0 GB of caps plus 0.96 GB of the rest, 9.96 GB in ccache's sizes; GitHub counts the saved
+  archives, about 0.96 of those (asan-editor: 1,526 MB for its 1.59 GB), and a cut entry holds about
+  92 % of its cap, so full caps would hold about 9.2 GB (8.9 GB at these working sets, smoke cut to
+  its cap). A cap a few percent above its working set still cuts it: ccache 4.5 (the image's) empties
+  each of its 16 subdirectories that is over a sixteenth of the cap down to 80 % of that
+  (`limit_multiple`), whatever the total, and the largest subdirectory runs about a quarter above the
+  mean. asan-editor's whole build (1.58 GB, the largest subdirectory 123 MB) lost 415 of its 7,721
+  entries to a 1.7G cut (1.8G: 214, 1.9G: 131, 2.0G: none; `ccache --cleanup` on a copy), and the
+  push run restored from it hit 93.8 % of its compiles; restored from a 1.6G cut of its 1.61 GB, it
+  hit 88.9 % against 96.4 % uncut. Hence its 2.2G: 16 times that subdirectory, and a tenth to grow.
+  The other lanes' caps, about 5 % above their working sets, lose a few percent of their entries the
+  same way. Smoke,
   last in line (the slowest cold lanes that run on every PR came first: unit-editor, then ASan),
   takes what is left and keeps its last-used part. A cache with no entry builds cold, its job still
   reusing what an earlier step of the same job compiled, as do Windows D3D11 and Vulkan. A lane that
@@ -1259,7 +1277,8 @@ runs more than a PR would (every unit test: the merge queue's, or the advisory r
 lane is advisory; a `full=true` run; the nightly: the whole MCP suite) carries in `lanes.json` a `shadow`: what a PR's selection of its diff would run
 (`plan_lanes.py shadow_selection`; the nightly's diff is the one since the coverage map's commit,
 `--shadow-base`, planned with the inputs a PR would have had). `tools/ci/shadow.py check` judges each
-failed test of a scope the run ran whole (unit core, editor, HTML UI, MCP) against it:
+failed test of a scope the run ran whole (unit core, editor, HTML UI, MCP) against it, an ASan job's
+against the PR's ASan selection (`shadow.asan`):
 
 - **caught**: the PR selection runs it; **miss**: it leaves it out; **pre-existing or flaky**: left
   out, but the history saw it fail within 7 days; **no change to blame**: the diff is empty.
@@ -1433,6 +1452,14 @@ the rest is estimated from the non-ASan times (GPU tests 1.9 times slower under 
 from the tests both measured): the core tests about 132 min, of which five GPU tests 37 min, now
 `*GpuSlow` (a full local ASan run, a loaded host: 74 of 222 min); `VoxelSoakSlow.IncrementalEqualsRebuild`
 (about 10 min, CPU) stays. The editor tests under ASan: 62 min for the 4,308 a local run reached.
+
+The editor's ASan build with line tables only (`JASPERENGINE_DEBUG_INFO=lines`), cold: 120 and 133 min
+for its 3,863 compiles (runs 44934269450, 44959473600), the editor's own sources at 17-19 a minute;
+warm, 15 min (run 44970821863). With full debug information a cold run reached 1,555 of them in its
+300 min (run 44923917704), the editor's at about 2 a minute. Memory is not what limits the line-tables
+build: its heaviest units peak at 3.2-3.7 GB (`WorldTools.cpp`, `InspectorWindow.cpp`, `Project.cpp`;
+4.3-5.6 GB with full debug information, the objects 2.3-2.6 times larger) and its compiles average
+about 0.7 GB, so Ninja's default 6 jobs fit the runner's 16 GB; the lane sets no `JOBS`.
 In one job (merge-queue runs 44416194181, 44487933891, 44582664923, 44582666848) the cold core build took
 79-116 min, the core tests 90 and the editor's build 168-175, so the 270-min step ended before the
 editor tests: hence a job per binary, cold about 3-3.5 h for core and 3.7-4.6 h for the editor (its
@@ -1538,10 +1565,10 @@ hulls over: its finalize loop stopped and cleared the map that owned the rest. T
 header now frees them (`engine/libs/vhacd/README.jasper.md`);
 `ConvexDecomposition.CancelWhileFinalizingFreesTheHulls` cancels at that point and measures the
 heap. With it the editor tree under ASan + UBSan ran 871 tests with no leak report. A loaded
-`Project` frees none of its scenes itself (the editor's lives as long as the process, the CLI's
-have no renderer): an editor test that loads one closes it with `editor::test::closeProject`
-(`editor/tests/support/EditorTestSupport.h`) before dropping it, or every scene and its render
-leaks (S08's reflection tests leaked about 84 MB that way).
+`Project` frees its scenes and their renders in its destructor only while the engine runs (the
+editor's is destroyed after `Engine::systemShutdown`): a test file's static Project registers with
+`editor::test::releaseAtExit` (`editor/tests/support/EditorTestSupport.h`), or every scene and its
+render leaks at exit, and `editor::test::closeProject` also drops a loaded project's scene histories.
 
 ### Unity build (R25)
 

@@ -65,6 +65,19 @@ class Judge(unittest.TestCase):
         self.assertIn("2 miss", md)
         self.assertIn("`Baz.Breaks`", md)
 
+    def test_an_asan_failure_is_judged_by_the_prs_asan_selection(self):
+        # a PR runs ASan only for what the sanitizers see (tools/ci/plan_lanes.py SANITIZER_INPUTS)
+        reports = [report("asan-core", [("test", "Foo.Adds")]), report("unit-core", [("test", "Foo.Adds")])]
+        shadow = dict(SHADOW, asan={"core": [], "editor": []})
+        rec = sh.judge({"event": "advisory", "head": "h", "shadow": shadow}, reports, [], now=1000.0)
+        self.assertEqual((rec["caught"], rec["misses"]), (1, [{"scope": "core", "lane": "asan-core", "test": "Foo.Adds"}]))
+        rec = sh.judge({"event": "advisory", "head": "h", "shadow": dict(SHADOW, asan={"core": ["Foo"], "editor": []})},
+                       reports, [], now=1000.0)
+        self.assertEqual((rec["caught"], rec["misses"]), (2, []))
+        # a shadow without an ASan selection (an older lanes.json): the unit lane's
+        rec = sh.judge({"event": "advisory", "head": "h", "shadow": SHADOW}, reports, [], now=1000.0)
+        self.assertEqual((rec["caught"], rec["misses"]), (2, []))
+
     def test_a_failure_the_history_saw_is_not_a_miss(self):
         history = [{"run": "5", "time": 900.0, "misses": [], "known": [],
                     "failures": [{"scope": "core", "test": "Baz.Breaks"}]}]
