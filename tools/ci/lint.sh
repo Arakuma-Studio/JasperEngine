@@ -53,6 +53,8 @@ check python3 tools/check_event_clears.py --self-test
 check python3 tools/check_event_clears.py
 check python3 tools/check_text_encoding.py --self-test
 check python3 tools/check_text_encoding.py
+check python3 tools/check_unity_scope.py --self-test
+check python3 tools/check_unity_scope.py
 check cmake -P tools/tests/check_toolchain_floor.cmake
 check cmake -P tools/tests/cxx-standard-check/run.cmake
 # data safety (docs/data-safety.md)
