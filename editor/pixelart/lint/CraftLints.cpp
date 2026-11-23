@@ -25,8 +25,6 @@ namespace jasperengine::editor::pixelart::lint {
         constexpr int CRAFT_LINE = 5;
         // craft.ts FAINT: colours closer than this (OKLab) to a background barely show on it
         constexpr double CRAFT_FAINT = 0.12;
-        // check.ts FAINT_SHARE: a backdrop warns when more than this share of the pixels are faint on it
-        constexpr double CRAFT_FAINT_SHARE = 0.5;
         // near_duplicates compares every pair of used colours: past this many the picture is not
         // pixel art yet (256 colours at most), and the pairs would grow with the square of a photo's
         constexpr size_t CRAFT_MAX_PAIRED = 1024;

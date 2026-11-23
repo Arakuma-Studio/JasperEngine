@@ -520,8 +520,8 @@ TitlePlacement TitlePlanner::placementOf(const Json& layer) const {
 
 TitleRectI TitlePlanner::alignToAnchor(const TitleRectI& bounds, int anchorX, int anchorY) const {
     if (bounds.empty()) return {};
-    const int align = TITLE_ROI_ALIGN;
-    auto floorTo = [align](int v) { return v >= 0 ? v / align * align : -((-v + align - 1) / align) * align; };
+    constexpr int align = TITLE_ROI_ALIGN;
+    auto floorTo = [](int v) { return v >= 0 ? v / align * align : -((-v + align - 1) / align) * align; };
     auto ceilTo = [&](int v) { return -floorTo(-v); };
     const int x0 = anchorX + floorTo(bounds.x - anchorX), y0 = anchorY + floorTo(bounds.y - anchorY);
     const int x1 = anchorX + ceilTo(bounds.x + bounds.width - anchorX), y1 = anchorY + ceilTo(bounds.y + bounds.height - anchorY);

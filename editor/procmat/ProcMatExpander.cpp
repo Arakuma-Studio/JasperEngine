@@ -479,7 +479,7 @@ ExpandedCode SwitchNode::generate(const std::string& uv, int port, ExpansionCont
 }
 
 ShaderNode::ShaderNode(Expander& expander, std::string name, const Json& body, const Json& parameters, double seed, int genericSize)
-    : Generator(expander, std::move(name)), genericSize(genericSize), seed(seed + expander.seedOffset) {
+    : Generator(expander, std::move(name)), seed(seed + expander.seedOffset) {
     for (const Json& function : listOf(body, "functions")) functions.push_back(function.get<std::string>());
     if (const Json* lines = member(body, "instance")) instance = joined(*lines);
     if (const Json* lines = member(body, "code")) code = joined(*lines);

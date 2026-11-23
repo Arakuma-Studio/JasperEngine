@@ -300,7 +300,7 @@ editor::App::App(){
     pixelArtCheckWindow = new PixelArtCheckWindow(&project, projectWindow);
     pixelArtCleanupWindow = new PixelArtCleanupWindow(&project);
     tilePaletteWindow = new tilemap::TilePaletteWindow(&project);
-    tilesetEditorWindow = new tilemap::TilesetEditorWindow(&project, projectWindow);
+    tilesetEditorWindow = new tilemap::TilesetEditorWindow(&project);
     // S42 R19, R25: the window checks again after imports; a Console summary opens it on its finding
     pixelart::PixelArtMode::get().setAssetsListener([this]() { pixelArtCheckWindow->assetsChanged(); });
     pixelart::PixelArtMode::get().setOpenAction([this](const std::string& key) { pixelArtCheckWindow->focusFinding(key); });

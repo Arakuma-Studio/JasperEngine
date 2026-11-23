@@ -294,7 +294,7 @@ namespace {
         out.mipmaps = r.mipmaps;
         const GpuFormatInfo& info = gpuFormatInfo(choice.format);
         int w = out.width, h = out.height;
-        for (int level = 0;; level++){
+        while (true){
             const size_t blocksX = (size_t)((w + info.blockDim - 1) / info.blockDim);
             const size_t blocksY = (size_t)((h + info.blockDim - 1) / info.blockDim);
             out.vramBytes += blocksX * blocksY * info.bytesPerBlock;
