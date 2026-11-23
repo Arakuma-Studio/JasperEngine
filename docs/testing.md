@@ -1072,11 +1072,10 @@ first. The lane ends with its slowest shard, so the times have to be right:
   nothing from a single sample, and a new value only outside 25 % (at least 15 s) of the committed one.
   When an entry moved, it force-pushes `ci/mcp-timings-refit` and opens or updates its pull request
   (`tools/mcp/ci-timings.json` is on `CI_NOTHING_READS`: its PR runs only `changes` and `Check`).
-  GitHub Actions may not open pull requests here and its token's push starts no pull_request run:
-  with the secret `MCP_TIMINGS_TOKEN` it does both, without it the job dispatches `ci.yml` on the branch
-  with `status` and fails until the PR exists. A ruleset counts no check of a dispatched job, so that
-  run's `Check` job also sets the commit status `Check` on the head, which it counts. Then the job
-  turns on auto-merge and the merge queue lands the PR.
+  The GitHub App `jasper-ci-bot` (secrets `CI_BOT_APP_ID`, `CI_BOT_APP_PRIVATE_KEY`) pushes, opens
+  the PR and turns on auto-merge: the workflow token may not open pull requests here, its push starts
+  no pull_request run (whose `Check` the ruleset requires) and its auto-merge does not enqueue. The
+  App's push runs CI as any PR's, and the merge queue lands the PR once `Check` is green.
 - **The shard count**: the fewest shards that no larger count (up to 8 on a PR and in the queue) beats
   by more than the 4 min of setup each added shard costs (checkout, image, editor install: median
   236 s over 46 shards). Once the longest chunk sets the length, more shards save nothing.
@@ -1456,8 +1455,8 @@ dispatcher sets the repository variable `SELF_HOSTED_PLANNER` to `je-linux` whil
 saturated and `je-linux` is online, fit and not disabled, and deletes it otherwise. A run reads
 `vars` as it is created, which is when its `changes` job is queued, so the value is current where it
 is used. `changes` runs there on a first attempt of a trusted event other than a push (a push waits
-`ADMISSION_SECONDS` first), and treats `je-linux` as free for the jobs it plans (`--planner`): only
-this job holds it. If the runner goes away, the watchdog reroutes the run as below, and the rerun
+`ADMISSION_SECONDS` first). While it plans, `je-linux` takes no lane (the state marks it unfit,
+"reserved for `changes`"): every run's `changes` would otherwise queue behind a build. If the runner goes away, the watchdog reroutes the run as below, and the rerun
 plans on GitHub's runners.
 
 **The state and the watchdog** (`tools/ci/runner_dispatch.py`): a cron job runs it every minute on an

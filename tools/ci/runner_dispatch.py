@@ -49,6 +49,7 @@ REPO = "Arakuma-Studio/JasperEngine"
 HOSTED_LIMITS = {"macos": 5}
 TOTAL_LIMIT = 60
 SATURATED_WAIT = 300        # a hosted job queued this long (s): its OS's runners are taken, whatever the count
+PLANNER_WAIT = 300          # a `changes` job queued this long (s) for a busy overflow runner is rerouted
 QUEUED_LIMIT = 600          # a job queued for an offline overflow runner this long (s) is rerouted
 OFFLINE_LIMIT = 180         # a running job's overflow runner offline this long (s): rerouted
 LOOKBACK = 6 * 3600         # finished runs looked at for a job its runner's loss failed
@@ -128,11 +129,19 @@ PLANNER = "je-linux"
 
 def planner(state: dict, disabled: str) -> str:
     """The runner `changes` runs on (ci.yml reads PLANNER_VARIABLE as a run is created): the Linux overflow
-    runner while hosted Linux is saturated and it is online and fit, else "" (hosted)."""
+    runner while hosted Linux is saturated and it is online, fit and idle (no job running or queued for it:
+    runs created while it plans go hosted, so planners never queue behind each other or a build), else ""."""
     off = set(disabled.replace(",", " ").split())
     r = state["runners"].get(PLANNER) or {}
-    ok = state["os"]["linux"]["saturated"] and r.get("online") and r.get("fit") and not off & {"all", PLANNER}
+    ok = (state["os"]["linux"]["saturated"] and r.get("online") and r.get("fit") and not r.get("busy")
+          and not off & {"all", PLANNER})
     return PLANNER if ok else ""
+
+
+def reserve(state: dict, want: str) -> None:
+    """The planner's runner takes no lane while it plans: every run's `changes` would queue behind them."""
+    if want:
+        state["runners"][want].update(fit=False, why="reserved for `changes` (SELF_HOSTED_PLANNER)")
 
 
 def probe(label: str, host: dict, run=subprocess.run) -> dict:
@@ -170,6 +179,13 @@ def stuck(run: dict, jobs: list[dict], runners: dict, offline_since: dict, now: 
             waited = now - (epoch(job.get("created_at")) or now)
             if waited >= QUEUED_LIMIT:
                 return f"{job.get('name')} queued {waited / 60:.0f} min for {label}, which is offline"
+        # the planner behind a busy runner: every lane of its run waits on it. Not a merge-queue run's (a
+        # cancel fails its group): the planner is named only while its runner is idle (planner)
+        if (status in ("queued", "waiting", "pending", "requested") and online and runner.get("busy")
+                and job.get("name") == "changes" and run.get("event") != "merge_group"):
+            waited = now - (epoch(job.get("created_at")) or now)
+            if waited >= PLANNER_WAIT:
+                return f"changes queued {waited / 60:.0f} min for {label}, which is busy"
         if status == "in_progress" and not online and job.get("runner_name") == label:
             gone = now - offline_since.get(label, now)
             if gone >= OFFLINE_LIMIT:
@@ -463,6 +479,14 @@ def main(argv: list[str]) -> int:
     dog = Watchdog(gh, memory, now, log, args.dry_run)
     # the reruns of runs moved off a runner that went away plan on GitHub's runners (plan_lanes.route)
     state["hosted_only"] = dog.held()
+    disabled = ""
+    try:
+        disabled = gh.variable("SELF_HOSTED_DISABLED")
+        want = planner(state, disabled)
+    except (RuntimeError, subprocess.SubprocessError) as e:
+        want = memory.get("planner", "")
+        log(f"{PLANNER_VARIABLE} not recomputed: {e}")
+    reserve(state, want)
     body = json.dumps(state, separators=(",", ":"), sort_keys=True)
     if args.dry_run:
         print(f"{STATE_BRANCH}: {body}")
@@ -473,10 +497,7 @@ def main(argv: list[str]) -> int:
             log(f"the state was not published to {STATE_BRANCH}: {e}")
 
     # the planner's runner: written only when it changes
-    disabled = ""
     try:
-        disabled = gh.variable("SELF_HOSTED_DISABLED")
-        want = planner(state, disabled)
         if want != memory.get("planner", "") or not memory.get("planner_set"):
             if args.dry_run:
                 print(f"{PLANNER_VARIABLE}={want}")

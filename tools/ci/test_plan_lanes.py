@@ -599,12 +599,6 @@ class Routing(unittest.TestCase):
             self.assertEqual(runs_on["macos"], "macos-latest", why)
             self.assertTrue(any(why in n for n in notes), (why, notes))
         self.assertEqual(overflowed(route(state(), disabled="all")[0]), {})
-        # busy with this very plan (changes on je-linux): free once it ends
-        jobs = {"linux": "linux"}
-        self.assertEqual(overflowed(pl.route(jobs, state(je_linux={"busy": True}), NOW, "pull_request", REPO, REPO, 1,
-                                             planner="je-linux")[0]), {"linux": "je-linux"})
-        self.assertEqual(overflowed(pl.route(jobs, state(je_linux={"busy": True}), NOW, "pull_request", REPO, REPO, 1,
-                                             planner="GitHub Actions 1000007164")[0]), {})
         self.assertTrue(route(state(je_mac={"busy": True}))[0]["linux"] == "je-linux")
 
     def test_a_stale_or_missing_state_means_no_overflow_runner(self):
