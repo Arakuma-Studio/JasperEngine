@@ -410,6 +410,11 @@ std::shared_ptr<editor::Project> editor::Project::makeSettingsSnapshot(Project& 
     // what the engine holds for the open project (no profile overrides these categories)
     snapshot->tags = source.tags;
     snapshot->layerNames = source.layerNames;
+    // the Sorting Layers as the engine resolved them, and the Transparency Sort a profile's
+    // graphics.transparency_sort_* may override
+    snapshot->snapshotSortingLayers = source.getSortingLayers();
+    snapshot->snapshotSortMode = source.getTransparencySortMode();
+    snapshot->snapshotSortAxis = source.getTransparencySortAxis();
     snapshot->physics3DWorld = source.physics3DWorld;
     return snapshot;
 }
@@ -2306,25 +2311,34 @@ void editor::Project::setTagsAndLayers(const std::vector<std::string>& tags, con
 }
 
 void editor::Project::setSortingLayers(const std::vector<SortingLayerInfo>& layers){
-    if (settingsSnapshot) return;
+    if (settingsSnapshot){
+        snapshotSortingLayers = layers;
+        return;
+    }
     SortingLayers::setLayers(layers);
 }
 
 const std::vector<SortingLayerInfo>& editor::Project::getSortingLayers() const{
-    return SortingLayers::getLayers();
+    return settingsSnapshot ? snapshotSortingLayers : SortingLayers::getLayers();
 }
 
 void editor::Project::setTransparencySort(TransparencySortMode mode, const Vector3& axis){
-    if (settingsSnapshot) return;
+    if (settingsSnapshot){
+        snapshotSortMode = mode;
+        snapshotSortAxis = axis;
+        return;
+    }
     SortingLayers::setTransparencySortMode(mode);
     SortingLayers::setTransparencySortAxis(axis);
 }
 
 TransparencySortMode editor::Project::getTransparencySortMode() const{
+    if (settingsSnapshot) return snapshotSortMode;
     return SortingLayers::getTransparencySortMode();
 }
 
 Vector3 editor::Project::getTransparencySortAxis() const{
+    if (settingsSnapshot) return snapshotSortAxis;
     return SortingLayers::getTransparencySortAxis();
 }
 
