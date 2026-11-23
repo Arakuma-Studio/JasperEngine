@@ -1015,8 +1015,8 @@ Jobs of `ci.yml`; a lane's command is also its repro.
 | `smoke` | `SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/post-processing`, the prebuilt `tools/fixtures/unified-lighting` and a project from each template |
 | `web` | `tools/build.sh web && tools/build.sh web-gate` |
 | `android` | `tools/build.sh android` (`ANDROID_ABIS=arm64-v8a` on a PR) |
-| `windows` (parallel jobs: `windows-editor`, `windows-engine-glcore`, `-d3d11`, `-vulkan`, `windows-compile`) | `tools/ci/windows.sh <step>` on `windows-latest` with MSVC: the editor with its CPU unit tests (`TEST_SUITES=editor`, reported as `windows-editor-tests`, stopped after `TEST_TIMEOUT`) and the call CLI; the engine on each backend, OpenGL's with the core tests (`TEST_SUITES=core`); then a Compile build of a fixture with the editor job's install |
-| `macos`, `ios` | `tools/ci/macos.sh <step>` on `macos-latest`: the editor (arm64), the engine, the CPU unit tests, a Compile build of a fixture; `xcode ios` for iOS |
+| `windows` (parallel jobs: `windows-editor`, `windows-engine-glcore`, `-d3d11`, `-vulkan`, `windows-compile`) | `tools/ci/windows.sh <step>` on `windows-latest` with MSVC: the editor with its CPU unit tests (`TEST_SUITES=editor`, reported as `windows-editor-tests`, stopped after `TEST_TIMEOUT`) and the call CLI; the engine on each backend, OpenGL's with the core tests (`TEST_SUITES=core`); then a Compile build of a fixture with the editor job's install. Each job keeps its own ccache entry |
+| `macos`, `ios` | `tools/ci/macos.sh <step>` on `macos-latest`: the editor (arm64), the engine, the CPU unit tests, a Compile build of a fixture; `XCODE_CAS=build/.cache/xcode-cas tools/ci/macos.sh xcode ios` (and `macos`) for the Xcode project, through Xcode's compilation cache |
 | `report` | writes the PR comment (below) |
 | `check` | the one required status, `Check` (`tools/ci/check_gate.py`): green only when every lane that had to run passed |
 
@@ -1137,10 +1137,11 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 - **Push to `main`** builds what keeps a cache and nothing else (`tools/ci/plan_lanes.py` `build_only`
   lists what builds without its tests): it saves the caches (ccache per lane), and a PR restores what
   `main` saved, never what the queue did; and it publishes the deps dumps `changes` plans from (below,
-  "Plan inputs"). The queue built and tested the same commit, so a push runs no check: not `ios` or
-  the Windows engine legs, which keep no cache entry, nor any step the queue ran (`MAIN_STAGE` in
-  `ci.yml`). ASan builds both binaries for their entries, and `smoke` runs when a game-building path
-  changed, for its entry.
+  "Plan inputs"). The queue built and tested the same commit, so a push runs no check, nor any step
+  the queue ran (`MAIN_STAGE` in `ci.yml`). ASan builds both binaries for their entries, the Windows
+  engine legs build without their tests, `windows (compile)` and macOS make their Compile builds and
+  `ios` its two Xcode builds, for theirs, and `smoke` runs when a game-building path changed, for its
+  entry.
 - **One push run at a time.** Merge-queue groups land one push each, some minutes apart (2026-11-15
   to 20: 21 pushes, gaps of 62 s, 3 and 4 min among 20). Push runs share one concurrency group without
   cancel-in-progress: one runs, the newest waits, and GitHub drops an older waiting run before it takes
@@ -1169,7 +1170,9 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   and prints the rest, the lane's working set, on every run; on `main` it cuts a working set over the
   lane's cap (`max-size` in `ci.yml`) to it, oldest-used first, and keeps one under it whole (ccache's
   cleanup evicts from each of its 16 subdirectories past a 16th of the cap, so under the cap it still
-  cost the next linux build 238 of 5,284 compiles), saves it and deletes the lane's older entry (`prune`;
+  cost the next linux build 238 of 5,284 compiles), recompresses it from the zstd level 1 a build
+  writes to level 9 (14 % smaller: a linux sample of 296 MB took 23 s on 2 CPUs; level 12 gave 15 %,
+  19 22 % in 277 s), saves it and deletes the lane's older entry (`prune`;
   the `caches` job, after every lane, deletes them again). Each lane's old and new entries would
   otherwise both live until the push's slowest lane ended, and past the 10 GB GitHub evicts the least
   recently used entries of any lane: during push run 44629653601 the repository held 11.7 GB, two
@@ -1188,13 +1191,16 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   | asan-core | 0.74 | 2.1 | 0.8G | yes |
   | asan-editor | 1.58-1.62 (the whole build: 7,721 entries of 3,863 compiles; runs 44934269450, 44959473600, 44970821863 and a local build) | 4.6 | 2.2G | yes |
   | htmlui | 0.78 (2,176 compiles, Release) | 1.66 | 0.85G | yes |
-  | macOS | 0.84 | 1.30-1.37 | 0.9G | yes |
+  | macOS | 0.81 with the Compile build, which a push makes for it (PR run 45075106333) | 1.30-1.37 | 0.9G | yes |
   | Windows editor | 0.92 (MSVC: `/Z7` as before) | 0.91 | 0.95G | yes |
+  | Windows OpenGL | 1.4 (`/Z7`: its core tests' reports name frames) | | 1.5G | yes |
+  | Windows D3D11, Vulkan | not measured on a hosted runner yet (Release, no debug information) | | 0.8G each | yes |
+  | Windows Compile | not measured yet | | 1.0G | yes |
+  | iOS and macOS Xcode (`xcode-cas`, Xcode's compilation cache, no debug symbols) | 1.25 raw, 0.39 compressed (both SDKs, on the Mac) | iOS alone 0.89 compressed | | yes |
   | Android | 0.27 | 0.63 | 0.3G | yes |
   | web | 0.24 | 0.48 | 0.3G | yes |
   | smoke | 1.93 (the player runtime and two Compile builds, which share nothing: each its own directory) | 3.5 | 0.5G | yes, the last-used part: the second Compile build |
   | Gradle, Vulkan SDK, MCP timings, uv | 0.73, 0.21, under 0.01 each | | | yes |
-  | Windows OpenGL | 1.4 | | | no: the lane ends with its slowest leg, and D3D11 and Vulkan cold (57-99 min) take about as long as OpenGL cold with the core tests (79-108) |
 
   At most 9.0 GB of caps plus 0.96 GB of the rest, 9.96 GB in ccache's sizes; GitHub counts the saved
   archives, about 0.96 of those (asan-editor: 1,526 MB for its 1.59 GB), and a cut entry holds about
@@ -1210,7 +1216,7 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   same way. Smoke,
   last in line (the slowest cold lanes that run on every PR came first: unit-editor, then ASan),
   takes what is left and keeps its last-used part. A cache with no entry builds cold, its job still
-  reusing what an earlier step of the same job compiled, as do Windows D3D11 and Vulkan. A lane that
+  reusing what an earlier step of the same job compiled. A lane that
   gives its entry up has its prefix in the `caches` job's second list, so its last entry goes at
   once instead of holding the budget for 7 days.
 - **Full run on any branch**: `gh workflow run ci.yml --ref <branch> -f full=true`.
