@@ -20,6 +20,7 @@
 #include "math/Vector3.h"
 #include "util/FunctionSubscribe.h"
 
+#include <memory>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -105,7 +106,8 @@ namespace jasperengine{
         // the first evaluation reports every sphere (previous band -1)
         FunctionSubscribe<void(CullingGroupEvent)>& onStateChanged();
 
-        Scene* getScene() const { return scene; }
+        // nullptr once the scene is gone (a handle a persistent scene's script kept)
+        Scene* getScene() const { return sceneLifetime.expired() ? nullptr : scene; }
         uint32_t getSlot() const { return slot; }
         uint32_t getGeneration() const { return generation; }
 
@@ -115,9 +117,11 @@ namespace jasperengine{
 
     private:
         friend class CullingSystem;
-        CullingGroup(Scene* scene, uint32_t slot, uint32_t generation): scene(scene), slot(slot), generation(generation) {}
+        CullingGroup(Scene* scene, uint32_t slot, uint32_t generation);
 
         Scene* scene = nullptr;
+        // the scene's lifetime (Scene::getLifetime), as EntityHandle watches it
+        std::weak_ptr<char> sceneLifetime;
         uint32_t slot = 0;
         uint32_t generation = 0;
     };
