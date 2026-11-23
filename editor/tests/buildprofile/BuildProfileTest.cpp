@@ -145,6 +145,8 @@ namespace {
                 std::vector<mcp::Json> memberValues;
                 if (value.is_boolean()) memberValues.push_back(!value.get<bool>());
                 else if (value.is_number()) changedNumber(value, value.is_number_integer(), memberValues);
+                // an inherited cell (a Device Tier's null): a value of its own
+                else if (value.is_null()) memberValues = {mcp::Json(0.5), mcp::Json(false), mcp::Json(1), mcp::Json("low")};
                 for (const mcp::Json& changed : memberValues) {
                     mcp::Json object = current;
                     object[member] = changed;
