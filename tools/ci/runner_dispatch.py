@@ -135,6 +135,12 @@ def planner(state: dict, disabled: str) -> str:
     return PLANNER if ok else ""
 
 
+def reserve(state: dict, want: str) -> None:
+    """The planner's runner takes no lane while it plans: every run's `changes` would queue behind them."""
+    if want:
+        state["runners"][want].update(fit=False, why="reserved for `changes` (SELF_HOSTED_PLANNER)")
+
+
 def probe(label: str, host: dict, run=subprocess.run) -> dict:
     """Over ssh: whether the machine's runner listener runs, and its runner folder's free disk, enough or
     not. GitHub's runner status alone is not enough: it reads offline for runners that take jobs."""
@@ -390,6 +396,12 @@ def main(argv: list[str]) -> int:
     with ThreadPoolExecutor(4) as pool:
         probes = dict(zip(labels, pool.map(lambda label: probe(label, hosts[label]), labels)))
     state = compute_state(runners, [j for js in jobs.values() for j in js], probes, now)
+    try:
+        want = planner(state, gh.variable("SELF_HOSTED_DISABLED"))
+    except (RuntimeError, subprocess.SubprocessError) as e:
+        want = memory.get("planner", "")
+        log(f"{PLANNER_VARIABLE} not recomputed: {e}")
+    reserve(state, want)
     body = json.dumps(state, separators=(",", ":"), sort_keys=True)
     if args.dry_run:
         print(f"{STATE_BRANCH}: {body}")
@@ -401,7 +413,6 @@ def main(argv: list[str]) -> int:
 
     # the planner's runner: written only when it changes
     try:
-        want = planner(state, gh.variable("SELF_HOSTED_DISABLED"))
         if want != memory.get("planner", "") or not memory.get("planner_set"):
             if args.dry_run:
                 print(f"{PLANNER_VARIABLE}={want}")

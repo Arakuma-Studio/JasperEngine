@@ -103,6 +103,10 @@ class Planner(unittest.TestCase):
         self.assertEqual(rd.planner(rd.compute_state(RUNNERS, busy[:10], {}, NOW), ""), "")
         self.assertEqual(rd.planner(rd.compute_state([runner("je-linux", "offline")], busy, {}, NOW), ""), "")
         self.assertEqual(rd.planner(rd.compute_state(RUNNERS, busy, {"je-linux": {"alive": True, "ok": False}}, NOW), ""), "")
+        # while it plans it takes no lane (plan_lanes.route: unfit)
+        rd.reserve(s, "je-linux")
+        self.assertEqual((s["runners"]["je-linux"]["fit"], s["runners"]["je-mac"]["fit"]), (False, True))
+        rd.reserve(s, "")
 
 
 class Stuck(unittest.TestCase):

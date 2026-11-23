@@ -256,7 +256,7 @@ jobs:
           key: mcp-timings-${{ github.run_id }}
           restore-keys: mcp-timings-
       # plan_lanes.py lists the suite with run_tests.py --list, which runs under uv
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
       # shadow mode: what a PR's selection would run for the diff since the last map (the last nightly),
       # planned with the inputs a PR plans with (tools/ci/plan_inputs.py); the shadow job judges it
       - name: Plan
@@ -378,6 +378,33 @@ jobs:
 
   # the two export comparisons that read a smoke run made first on the same machine
   # (tools/ci/plan_lanes.py NIGHTLY_LEFT_OUT: an MCP shard does not make one)
+  # The Xcode project for iOS and macOS, whatever changed: the merge queue builds it only for an Apple-only
+  # input (tools/ci/plan_lanes.py APPLE_INPUTS), so an iOS-only break the queue's macos lane did not catch
+  # shows here within a day. As ci.yml's ios job
+  ios:
+    name: ios
+    runs-on: macos-latest
+    timeout-minutes: 120
+    env:
+      JASPER_CI_REPRO: tools/ci/macos.sh xcode ios
+    steps:
+      - name: Start
+        run: echo "JASPER_CI_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # dav1d's x86-64 asm: the simulator build has an x86_64 slice
+      - name: NASM
+        run: command -v nasm > /dev/null || tools/ci/retry.sh brew install nasm
+      - name: Xcode project (iOS)
+        run: tools/ci/macos.sh xcode ios
+      - name: Xcode project (macOS)
+        if: ${{ !cancelled() }}
+        run: tools/ci/macos.sh xcode macos
+      - uses: ./.github/actions/report
+        if: always()
+        with:
+          lane: nightly-ios
+          status: ${{ job.status }}
+
   export-checks:
     name: Exported pixel fonts and Pixel FX against the Game view
     needs: mcp-editor
@@ -756,7 +783,7 @@ jobs:
   # ----------------------------------------------------------------- report ---
   report:
     name: Report failures
-    needs: [slow, web-threads, parity, plan, mcp-editor, mcp, export-checks, mcp-timings, coverage-editor, coverage, coverage-map, decide, release, prune]
+    needs: [slow, web-threads, parity, plan, mcp-editor, mcp, export-checks, ios, mcp-timings, coverage-editor, coverage, coverage-map, decide, release, prune]
     if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15

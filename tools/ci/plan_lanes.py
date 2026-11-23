@@ -16,8 +16,9 @@ applies CI's stricter rules:
   (SANITIZER_INPUTS, a .github/ change included), every test of both binaries when its own settings
   or definition did (ASAN_SETTINGS, ci.yml's asan job or env), else nothing: the advisory run on main
   runs it after the merge;
-- macos and ios, on a pull request: only when an Apple-only input changed (APPLE_INPUTS); the merge
-  queue, a push, full runs and the nightly build them for every change that builds;
+- macos and ios, on a pull request: only when an Apple-only input changed (APPLE_INPUTS); ios in the
+  merge queue too (the nightly builds it for every change); macos in the queue, a push, full runs and
+  the nightly for every change that builds;
 - MCP runs the planned files that are in the CI suite (run_tests.ci_files()); the rest are listed
   under not_in_ci with their reason. A planned whole suite is the CI suite;
 - merge_group: every lane, unit and HTML UI unfiltered, MCP planned over the group's diff (D1), but
@@ -138,7 +139,8 @@ ASAN_JOB = "asan"
 # nothing reaches main without them. A PR runs them for the Apple platform code, the Xcode project and the
 # scripts that sync it (lint checks its source lists: tools/test_xcode_sync_sources.py), the Metal shader
 # stubs, and the lanes' own scripts (tools/ci/macos.sh, its common part, retry.sh, the report action); not
-# for a ci.yml change alone
+# for a ci.yml change alone. The merge queue builds ios by the same rule: it is a compile check with the
+# Apple compiler the queue's macos lane runs on every change, and nightly.yml's ios job builds it every night
 APPLE_INPUTS = ("engine/platform/apple/*", "engine/platform/mac/*", "engine/workspaces/xcode/*", "tools/xcode_sync_*",
                 "tools/test_xcode_sync_sources.py", "engine/shaders/msl21*", "tools/ci/macos.sh",
                 "tools/ci/platform-common.sh", "tools/ci/retry.sh", ".github/actions/report/*")
@@ -383,7 +385,8 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
     fallbacks: list[str] = []
     result = {"lanes": lanes, "unit_filter": {"core": "", "editor": ""}, "unit_run": {"core": False, "editor": False},
               "asan_filter": {"core": "", "editor": ""}, "asan_run": {"core": False, "editor": False},
-              "htmlui_filter": "", "mcp": {"mode": "none", "files": [], "not_in_ci": []}, "fallbacks": fallbacks}
+              "htmlui_filter": "", "mcp": {"mode": "none", "files": [], "not_in_ci": []}, "fallbacks": fallbacks,
+              "queue_off": []}
 
     def lane(name: str, run: bool, why: str) -> None:
         lanes[name] = {"run": run, "why": why}
@@ -422,12 +425,17 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
         else:
             lane("asan", False, lanes["unit"]["why"])
 
-    def apple_scope() -> None:
-        """A pull request's macos and ios lanes: only when an Apple-only input changed (APPLE_INPUTS)."""
+    def apple_scope(names=APPLE_LANES) -> None:
+        """A pull request's macos and ios lanes, the merge queue's ios: only when an Apple-only input
+        changed (APPLE_INPUTS)."""
         apple = [f for f in files if cc.match(f, APPLE_INPUTS)]
-        for name in APPLE_LANES:
+        for name in names:
             if apple:
                 lane(name, True, f"{apple[0]} changed (what only an Apple build reads)")
+            elif event == "merge_group":
+                lane(name, False, "no Apple-only input changed (APPLE_INPUTS): the macos lane compiles the change with "
+                                  "the same Apple compiler, and the nightly builds the Xcode project for iOS")
+                result["queue_off"].append(name)
             else:
                 lane(name, False, "no Apple-only input changed (APPLE_INPUTS): macOS runners are the scarce ones, "
                                   "and the merge queue builds it for every change before it reaches main")
@@ -478,6 +486,8 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
         if pr_like and not full_selection:
             asan_scope()
             apple_scope()
+        elif event == "merge_group" and not full_selection:
+            apple_scope(("ios",))
         return result
     if full_selection:
         fallbacks.append(f"the repository variable {FULL_SELECTION_VARIABLE} is true: every lane, every test (the selection's rollback)")
@@ -488,6 +498,8 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
     queue = event == "merge_group"
     if pr_like:
         apple_scope()
+    elif queue:
+        apple_scope(("ios",))
     # unit and ASan: the gtest suites that see the change (the merge queue: all)
     unit = plan.get("unit", {})
     if queue:
@@ -871,15 +883,14 @@ def restrict_to_forced(result: dict, force: dict[str, str]) -> None:
 
 
 def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str, repo: str, attempt: int,
-          disabled: str = "", force: dict[str, str] | None = None, planner: str = "") -> tuple[dict[str, str], list[str]]:
+          disabled: str = "", force: dict[str, str] | None = None) -> tuple[dict[str, str], list[str]]:
     """runs_on of each planned job and why. A job goes to an overflow runner only when the run may use one
     (trusted), on its first attempt (a rerun, which the watchdog makes when a runner went away, stays
     hosted), when state (STATE_BRANCH's state.json: tools/ci/runner_dispatch.py, at most STATE_MAX_AGE old) says
     the hosted runners of its OS are saturated (the merge queue, the critical path: macOS as soon as a
     hosted macOS job waits) and the runner is online, idle and fit, and it is not in disabled
     (SELF_HOSTED_DISABLED: labels, or `all`); each runner takes TAKES jobs (default one). force (a dispatch's
-    self_hosted input, first attempt only) puts those jobs on those runners whatever the state says.
-    planner: the runner this plan runs on: busy with this job only, which ends before the planned ones start."""
+    self_hosted input, first attempt only) puts those jobs on those runners whatever the state says."""
     runs_on = {job: HOSTED[os_] for job, os_ in jobs.items()}
     why = trusted(trigger, head_repo, repo)
     if why:
@@ -918,7 +929,7 @@ def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str,
                          f"{hosted.get('queued', 0)} queued)")
         elif not runner.get("online"):
             notes.append(f"{label}: offline")
-        elif runner.get("busy") and label != planner:
+        elif runner.get("busy"):
             notes.append(f"{label}: busy")
         elif not runner.get("fit", True):
             notes.append(f"{label}: unfit ({runner.get('why', 'no reason given')})")
@@ -1052,7 +1063,6 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--head-repo", default="", help="a pull request's head repository (github.event.pull_request.head.repo.full_name)")
     ap.add_argument("--repo", default="", help="github.repository")
     ap.add_argument("--run-attempt", type=int, default=1, help="github.run_attempt (a rerun stays hosted)")
-    ap.add_argument("--planner", default="", help="the runner this job runs on (RUNNER_NAME)")
     ap.add_argument("--self-hosted", default="", help="a dispatch's self_hosted input: <job>=<label> ...: those jobs' lanes "
                     "only, forced onto those runners on the first attempt")
     args = ap.parse_args(argv)
@@ -1119,15 +1129,14 @@ def main(argv: list[str]) -> int:
                "asan_jobs": asan_job_names(planned_asan_run(result["lanes"], result["asan_run"])),
                "htmlui_filter": result["htmlui_filter"],
                "mcp": dict(result["mcp"], shards=shards), "fallbacks": result["fallbacks"], "notes": notes,
-               "advisory_off": result["advisory_off"], "build_only": result["build_only"],
+               "advisory_off": result["advisory_off"], "build_only": result["build_only"], "queue_off": result["queue_off"],
                "superseded_by": superseded[0] if superseded else None,
                "dispatch_advisory": result["dispatch_advisory"],
                "files": plan["files"] if plan else None,
                "self_tests": plan["self_tests"] if plan else [],
                "checks": {"modules_off": plan["modules_off"] if plan else "", "navigation_off": bool(plan and plan["navigation_off"])}}
         doc["runs_on"], doc["routing"] = route(planned_jobs(doc), load_state(args.runner_state), time.time(), args.trigger,
-                                               args.head_repo, args.repo, args.run_attempt, args.runner_disabled, force,
-                                               args.planner)
+                                               args.head_repo, args.repo, args.run_attempt, args.runner_disabled, force)
         write_selection(doc, args.event, plan, result, ci, tests, args.inputs_manifest, out)
         doc["shadow"] = shadow_selection(shadow_plan, ci, left_out, nightly_out, definition(shadow_plan)) if shadow_plan else None
         doc["shadow_why"] = "" if shadow_plan else shadow_why
