@@ -28,6 +28,8 @@
 #include <string>
 #include <vector>
 
+namespace EntityDestroyHolesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -184,3 +186,5 @@ TEST(EntityDestroyHoles, DeleteCommandLeavesNoHoles) {
     CommandHandle::get(sceneId)->redo();
     EXPECT_FALSE(scene->getComponentArray<Transform>()->hasHoles());
 }
+
+}  // namespace EntityDestroyHolesTest_cpp

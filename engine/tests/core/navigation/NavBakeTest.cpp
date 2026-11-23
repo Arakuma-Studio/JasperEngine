@@ -40,6 +40,8 @@
 #include <random>
 #include <sstream>
 
+namespace NavBakeTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::navtest;
 
@@ -649,3 +651,5 @@ TEST_F(NavBakeTest, SourcesDoNotChangeHashes){
     EXPECT_EQ(plain.excluded, recorded.excluded);
     EXPECT_EQ(plain.excluded, 1);
 }
+
+}  // namespace NavBakeTest_cpp

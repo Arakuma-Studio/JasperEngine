@@ -24,6 +24,8 @@
 #include <memory>
 #include <vector>
 
+namespace ClipSourceBudgetTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -100,3 +102,5 @@ TEST(ClipSourceBudget, DISABLED_AddsAtMostThreePercentToAVoice){
     std::printf("[budget] Wav %.3f ms, AudioClipSource %.3f ms over %d blocks: %+.1f %%\n", plain * 1000.0, wrapped * 1000.0, blocks, (wrapped / plain - 1.0) * 100.0);
     EXPECT_LE(wrapped, plain * 1.03);
 }
+
+}  // namespace ClipSourceBudgetTest_cpp

@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+namespace AudioCaptureBenchTest_cpp {
+
 using namespace jasperengine;
 namespace fs = std::filesystem;
 
@@ -148,3 +150,5 @@ TEST_F(AudioCaptureBench, PumpAndCaptureBudgets) {
         EXPECT_LE(capture, 0.4 * slack) << "R28";
     }
 }
+
+}  // namespace AudioCaptureBenchTest_cpp

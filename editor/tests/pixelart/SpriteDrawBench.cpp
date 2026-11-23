@@ -21,6 +21,8 @@
 #include <filesystem>
 #include <random>
 
+namespace SpriteDrawBench_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
@@ -152,3 +154,5 @@ TEST(SpriteDrawBench, StatOnEveryCall) {
     std::error_code ec;
     std::filesystem::remove(path, ec);
 }
+
+}  // namespace SpriteDrawBench_cpp

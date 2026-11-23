@@ -36,6 +36,8 @@
 #include <memory>
 #include <string>
 
+namespace ParticleEffectWindowTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::particles;
@@ -752,3 +754,5 @@ TEST(ParticleEffectWindow, RedoAfterUndoGivesTheEditBackToTheStage) {
     particleEffectWindowSettle(window);
     EXPECT_EQ(window.stageStats().stateHash, edited);
 }
+
+}  // namespace ParticleEffectWindowTest_cpp

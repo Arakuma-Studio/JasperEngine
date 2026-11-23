@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PlayerConfigNativeTest_cpp {
+
 using namespace jasperengine::player;
 
 TEST(PlayerConfigNative, PlatformOnlyPluginsRoundTrip) {
@@ -20,3 +22,5 @@ TEST(PlayerConfigNative, PlatformOnlyPluginsRoundTrip) {
     ASSERT_TRUE(PlayerConfig::fromJson(game.toJson(), back, error)) << error;
     EXPECT_EQ(back.nativePlatformOnly, game.nativePlatformOnly);
 }
+
+}  // namespace PlayerConfigNativeTest_cpp

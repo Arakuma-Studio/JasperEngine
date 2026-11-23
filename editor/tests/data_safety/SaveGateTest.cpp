@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+namespace SaveGateTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -56,3 +58,5 @@ TEST(SaveGate, ParseErrorNamesThePosition) {
         EXPECT_GT(e.mark.line, -1);
     }
 }
+
+}  // namespace SaveGateTest_cpp

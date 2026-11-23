@@ -28,6 +28,8 @@
 #include <cmath>
 #include <thread>
 
+namespace TerrainWorldSplinesTest_cpp {
+
 using namespace terrainworldtest;
 using namespace jasperengine;
 
@@ -159,3 +161,5 @@ TEST(TerrainWorldSplines, WaterFillAcrossBorderMatchesOneMap) {
     }
     EXPECT_GT(wet, 40);
 }
+
+}  // namespace TerrainWorldSplinesTest_cpp

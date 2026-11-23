@@ -12,6 +12,8 @@
 #include "titleart/fx/FxCost.h"
 #include "titleart/fx/FxGeneratorCost.h"
 
+namespace TitleFxGeneratorCostTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using titleart::Json;
@@ -82,3 +84,5 @@ TEST(TitleFxGeneratorCostTest, MobileReadsTheMobileEstimate) {
     EXPECT_EQ(mobile.rows[0].costClass, titleart::CostClass::C0);
     EXPECT_LT(mobile.rows[0].cost.fre, desktop.rows[0].cost.fre);
 }
+
+}  // namespace TitleFxGeneratorCostTest_cpp

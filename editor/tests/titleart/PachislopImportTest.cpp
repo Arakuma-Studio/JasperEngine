@@ -27,6 +27,8 @@
 #include <set>
 #include <sstream>
 
+namespace PachislopImportTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using titleart::Json;
@@ -294,3 +296,5 @@ TEST_F(PachislopImportTest, RefusesOldNewerAndOtherFiles) {
               0u);
     EXPECT_EQ(attempt("{\"format\": \"pslot\", broken").rfind("not_json", 0), 0u);
 }
+
+}  // namespace PachislopImportTest_cpp

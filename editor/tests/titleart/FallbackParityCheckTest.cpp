@@ -14,6 +14,8 @@
 #include "titleart/render/TitleArtCaps.h"
 #include "titleart/render/TitleArtRenderer.h"
 
+namespace FallbackParityCheckTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using TitleJson = titleart::Json;
@@ -109,3 +111,5 @@ TEST(FallbackParityCheckTest, EachCallRendersAtItsOwnOptions) {
     EXPECT_FLOAT_EQ(scales[0], 0.25f * scales[2] / 0.5f);
     EXPECT_NE(scales[0], scales[2]) << "the second call rendered at its own scale";
 }
+
+}  // namespace FallbackParityCheckTest_cpp

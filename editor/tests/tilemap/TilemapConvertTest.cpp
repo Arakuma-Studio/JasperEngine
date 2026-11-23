@@ -34,6 +34,8 @@
 #include <string>
 #include <vector>
 
+namespace TilemapConvertTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -446,3 +448,5 @@ TEST_F(TilemapConvertTest, CheckCacheRunsOnlyWhenTheInputsChange) {
     cache.get(tilemap(), textures);
     EXPECT_EQ(cache.checks(), 4u) << "a texture written again is checked again";
 }
+
+}  // namespace TilemapConvertTest_cpp

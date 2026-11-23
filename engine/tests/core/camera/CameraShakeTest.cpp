@@ -36,6 +36,8 @@
 #include <cmath>
 #include <vector>
 
+namespace CameraShakeTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::camera;
 
@@ -917,3 +919,5 @@ TEST_F(Shake, FourShakersWithEightInstancesStayWithinBudget){
     // idle shakers cost nothing (no runtime touched beyond the early-out)
     for (Entity cam : cams) EXPECT_EQ(shaker(cam).runtime->instances.size(), 8u);
 }
+
+}  // namespace CameraShakeTest_cpp

@@ -10,6 +10,8 @@
 
 #include <string>
 
+namespace AndroidTextInputTest_cpp {
+
 using namespace jasperengine::android;
 
 namespace {
@@ -88,3 +90,5 @@ TEST(AndroidTextInput, DecodesModifiedAndPlainUtf8) {
     EXPECT_EQ(unitToCodepoint, (std::vector<size_t>{0, 1, 2, 2, 3}));
     EXPECT_EQ(codepointsToUtf8(U"a\U0001F600", 0, 2), "a\xF0\x9F\x98\x80");
 }
+
+}  // namespace AndroidTextInputTest_cpp

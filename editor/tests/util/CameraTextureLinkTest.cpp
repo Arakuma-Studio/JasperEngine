@@ -32,6 +32,8 @@
 #include <string>
 #include <vector>
 
+namespace CameraTextureLinkTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -137,3 +139,5 @@ TEST(CameraTextureLink, AGameObjectWithASystemRangeIdIsBoundByAWholeSceneBindAnd
     EXPECT_EQ(screenTexture(scene, screen).getFramebuffer(), lensFramebuffer(scene, lens)) << "the apply's bind binds it";
     sceneProject->isModified = false;
 }
+
+}  // namespace CameraTextureLinkTest_cpp

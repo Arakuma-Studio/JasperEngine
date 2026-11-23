@@ -37,6 +37,8 @@
 #include <algorithm>
 #include <string>
 
+namespace MeshRaycastTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -582,3 +584,5 @@ TEST(MeshRaycast, TerrainHoleMisses){
         EXPECT_FALSE(querySurface(component, hit.point.x, hit.point.z).hole);
     }
 }
+
+}  // namespace MeshRaycastTest_cpp

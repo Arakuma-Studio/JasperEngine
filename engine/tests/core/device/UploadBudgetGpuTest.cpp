@@ -16,6 +16,8 @@
 
 #include <vector>
 
+namespace UploadBudgetGpuTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -82,3 +84,5 @@ TEST(UploadBudgetGpu, QueuedTexturesSpreadAndTheTokenCompletes){
     for (sg_image image : images)
         sg_destroy_image(image);
 }
+
+}  // namespace UploadBudgetGpuTest_cpp

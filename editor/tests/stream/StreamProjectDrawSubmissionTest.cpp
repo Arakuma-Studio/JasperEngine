@@ -20,6 +20,8 @@
 #include <fstream>
 #include <sstream>
 
+namespace StreamProjectDrawSubmissionTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -92,3 +94,5 @@ TEST(StreamProjectDrawSubmission, ExportCarriesItWhenOff) {
         EXPECT_EQ(text.str().find("Engine::setGpuInstancingEnabled(false);") != std::string::npos, off);
     }
 }
+
+}  // namespace StreamProjectDrawSubmissionTest_cpp

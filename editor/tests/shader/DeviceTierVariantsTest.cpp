@@ -22,6 +22,8 @@
 
 #include <set>
 
+namespace DeviceTierVariantsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -110,3 +112,5 @@ TEST_F(DeviceTierVariants, TheEditorsStateComesBack){
     EXPECT_EQ(QualityResolver::getThermalResponse(), ThermalState::Nominal);
     EXPECT_FLOAT_EQ(QualityResolver::renderScale(1.0f), 1.0f);
 }
+
+}  // namespace DeviceTierVariantsTest_cpp

@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+namespace ShaderGlobalsTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -753,3 +755,5 @@ TEST_F(ShaderGlobalBindingTest, AnUnknownGlobalReadsZeroAndTexturesCannotBeBound
     testing::internal::GetCapturedStderr();
     EXPECT_EQ(ShaderGlobals::getBinding(bindings, "tint"), "_NotSetYet");
 }
+
+}  // namespace ShaderGlobalsTest_cpp

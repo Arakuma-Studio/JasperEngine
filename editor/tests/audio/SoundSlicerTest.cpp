@@ -11,6 +11,8 @@
 #include <filesystem>
 #include <fstream>
 
+namespace SoundSlicerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -133,3 +135,5 @@ TEST(SoundSlicer, PlanWritesPickedSlicesWithTheirProvenance) {
     EXPECT_TRUE(files.empty()) << "nothing is made before a refusal";
     fs::remove_all(directory);
 }
+
+}  // namespace SoundSlicerTest_cpp

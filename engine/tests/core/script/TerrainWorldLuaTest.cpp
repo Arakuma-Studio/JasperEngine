@@ -24,6 +24,8 @@
 #include <memory>
 #include <string>
 
+namespace TerrainWorldLuaTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -293,5 +295,7 @@ TEST(TerrainWorldLua, StoppedWaitsOutliveTheirScene) {
     ScriptScheduler::clear();
     EXPECT_EQ(world.run("collectgarbage('collect')"), "");
 }
+
+}  // namespace TerrainWorldLuaTest_cpp
 
 #endif // JASPERENGINE_TERRAIN_WORLD

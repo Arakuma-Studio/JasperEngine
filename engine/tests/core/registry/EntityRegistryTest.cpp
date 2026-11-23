@@ -17,6 +17,8 @@
 #include <utility>
 #include <vector>
 
+namespace EntityRegistryTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -740,3 +742,5 @@ TEST_F(EntityRegistryTest, ComponentNamesAndOrders){
     EXPECT_EQ(registry.getComponentArray<Transform>()->getOrder(), ComponentOrder::Insertion);
     EXPECT_EQ(registry.getComponentArray<SpriteComponent>()->getOrder(), ComponentOrder::Insertion);
 }
+
+}  // namespace EntityRegistryTest_cpp

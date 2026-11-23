@@ -12,6 +12,8 @@
 
 #include <set>
 
+namespace ScenePickerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -165,3 +167,5 @@ TEST(ScenePicker, IconsComeFirstAndDoNotDrill){
     const ScenePickClick click = ScenePicker::decideClick(result, context({{10}, 10}, 300.0f, 300.0f));
     EXPECT_EQ(click.target.entity, 40u) << "the light icon drawn over the mesh";
 }
+
+}  // namespace ScenePickerTest_cpp

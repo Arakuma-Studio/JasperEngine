@@ -12,6 +12,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PostProcessingTiersTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -262,3 +264,5 @@ TEST(PostProcessingTiers, GlitchBit){
     EXPECT_FLOAT_EQ(c.glitchFps, 60.0f);
     EXPECT_FLOAT_EQ(c.glitchBurstLength, 0.05f);
 }
+
+}  // namespace PostProcessingTiersTest_cpp

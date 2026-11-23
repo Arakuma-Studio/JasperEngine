@@ -20,6 +20,8 @@
 #include <set>
 #include <sstream>
 
+namespace FoliageLuaTest_cpp {
+
 using namespace foliagetest;
 
 namespace {
@@ -183,3 +185,5 @@ TEST(FoliageLua, ApiMatchesTheDocs) {
         EXPECT_TRUE(found) << "docs/scripting/foliage.md names terrain." << name;
     }
 }
+
+}  // namespace FoliageLuaTest_cpp

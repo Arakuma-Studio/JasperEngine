@@ -30,6 +30,8 @@
 #include <string>
 #include <vector>
 
+namespace PhysicsContactsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::scripttest;
 
@@ -1026,3 +1028,5 @@ TEST_F(PhysicsContactsTest, ContactProcessingCostIsSmall) {
         }
     }
 }
+
+}  // namespace PhysicsContactsTest_cpp

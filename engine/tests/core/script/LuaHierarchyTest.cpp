@@ -19,6 +19,8 @@
 
 #include <string>
 
+namespace LuaHierarchyTest_cpp {
+
 using namespace jasperengine;
 using jasperengine::test::makeTransformEntity;
 
@@ -138,3 +140,5 @@ TEST(LuaHierarchy, SetParentRefusesCycleAndOtherScene){
     GameObject(&scene, child).setParent(&strangerObject);
     EXPECT_EQ(scene.getComponent<Transform>(child).parent, parent);  // another scene: refused
 }
+
+}  // namespace LuaHierarchyTest_cpp

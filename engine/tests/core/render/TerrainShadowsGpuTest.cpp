@@ -8,6 +8,8 @@
 
 #include "LogCapture.h"
 
+namespace TerrainShadowsGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -69,3 +71,5 @@ TEST_F(TerrainShadowsGpu, OffRestoresOldBehaviour){
     const int shadowed = groundBrightness();
     EXPECT_NEAR(shadowed, lit, 8) << "Off draws the view's cut: nothing behind the camera casts";
 }
+
+}  // namespace TerrainShadowsGpuTest_cpp

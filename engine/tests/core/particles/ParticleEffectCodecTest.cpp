@@ -16,6 +16,8 @@
 #include <utility>
 #include <vector>
 
+namespace ParticleEffectCodecTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::particles;
 using particletest::everyModule;
@@ -299,3 +301,5 @@ TEST(ParticleEffectCodec, GenerateLightingDataLoadsButIsNotShown){
     EXPECT_TRUE(document.trails.generateLightingData);
     EXPECT_NE(ParticleEffectCodec::write(document).find("generateLightingData"), std::string::npos);
 }
+
+}  // namespace ParticleEffectCodecTest_cpp

@@ -17,6 +17,8 @@
 
 #include <span>
 
+namespace VoxelTerrainGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 using namespace jasperengine::voxel;
@@ -242,3 +244,5 @@ TEST_F(VoxelTerrainGpu, SeamColourStepLow) {
     // Low reads near only (R51), as T3's Low terrain does (T3 R1)
     expectSeamMatches(VoxelQuality::Low, TerrainQualitySetting::LOW, "mem://gpu-seam-low");
 }
+
+}  // namespace VoxelTerrainGpuTest_cpp

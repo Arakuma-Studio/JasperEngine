@@ -14,6 +14,8 @@
 #include <random>
 #include <string>
 
+namespace AnimatorAssetIOTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::anim;
 
@@ -359,3 +361,5 @@ TEST(AnimatorAssetIO, FuzzNoCrash){
     }
     EXPECT_GT(loaded, 0u) << "some mutations still parse";
 }
+
+}  // namespace AnimatorAssetIOTest_cpp

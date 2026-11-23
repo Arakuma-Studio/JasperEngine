@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+namespace ecs_SchedulerTest_cpp {
+
 using namespace jasperengine;
 using jasperengine::test::disableSubSystems;
 using jasperengine::test::subSystemNames;
@@ -484,3 +486,5 @@ TEST(SchedulerTest, AccessCheckFires){
     }, "");
 }
 #endif
+
+}  // namespace ecs_SchedulerTest_cpp

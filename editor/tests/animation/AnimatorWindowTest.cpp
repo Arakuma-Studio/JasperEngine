@@ -44,6 +44,8 @@
 #include <memory>
 #include <string>
 
+namespace AnimatorWindowTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -902,3 +904,5 @@ TEST(AnimatorWindow, ParameterNamesAreKeptAndNonLuaNamesWarned) {
     ASSERT_TRUE(window.renameParameter("Move Speed", "move_speed"));
     EXPECT_TRUE(window.getStatus().empty()) << window.getStatus();
 }
+
+}  // namespace AnimatorWindowTest_cpp

@@ -35,6 +35,8 @@
 #include <string>
 #include <vector>
 
+namespace LegacyParticlePresetsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -164,3 +166,5 @@ TEST(LegacyParticlePresets, PresetsPlayAsTheOldModelDid){
         }
     }
 }
+
+}  // namespace LegacyParticlePresetsTest_cpp

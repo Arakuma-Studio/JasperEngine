@@ -18,6 +18,8 @@
 #include <cstdio>
 #include <string>
 
+namespace NumericExpressionTest_cpp {
+
 using namespace jasperengine::editor;
 
 namespace {
@@ -210,3 +212,5 @@ TEST(ImGuiNumericHook, DragFloatCtrlClick) {
     ImGui::DestroyContext(context);
     ImGui::SetCurrentContext(previous);
 }
+
+}  // namespace NumericExpressionTest_cpp

@@ -16,6 +16,8 @@
 #include <fstream>
 #include <iterator>
 
+namespace SpriteSheetBuilderTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::sprite;
 using namespace jasperengine::editor::sprite::test;
@@ -265,3 +267,5 @@ TEST(SpriteSheetBuilder, AsepriteTrimmedExportsAndSliceKeys) {
         EXPECT_EQ(trimmed->frames[i].rect.h, offsets[i][3]) << i;
     }
 }
+
+}  // namespace SpriteSheetBuilderTest_cpp

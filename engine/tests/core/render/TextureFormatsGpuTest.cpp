@@ -34,6 +34,8 @@
 #include <fstream>
 #include <map>
 
+namespace TextureFormatsGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 namespace fs = std::filesystem;
@@ -252,3 +254,5 @@ TEST_F(TextureFormatsGpu, CookedFixturesSampleLikeTheirCpuDecode){
     std::printf("[ formats ] %d native, %d through the fallback\n", native, fallback);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace TextureFormatsGpuTest_cpp

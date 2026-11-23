@@ -40,6 +40,8 @@
 #include <thread>
 #include <vector>
 
+namespace ShaderPoolThreadsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -530,3 +532,5 @@ TEST(ShaderPoolThreadsGpu, AVariantLetGoBeforeTheQueueThatMakesItRuns){
     }
     GpuEnvironment::drawFrames(2);
 }
+
+}  // namespace ShaderPoolThreadsTest_cpp

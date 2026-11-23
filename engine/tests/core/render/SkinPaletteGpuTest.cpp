@@ -27,6 +27,8 @@
 #include <fstream>
 #include <string>
 
+namespace SkinPaletteGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -184,3 +186,5 @@ TEST(SkinPaletteGpu, SkinOverTheDeviceTextureHeightFailsWithAnError){
         EXPECT_TRUE(log.errors().empty()) << log.describeErrors();
     }
 }
+
+}  // namespace SkinPaletteGpuTest_cpp

@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+namespace ShaderManifestTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -466,3 +468,5 @@ TEST(ShaderManifest, SpriteManifestHasPixelFx){
               (ShaderExpand{2, 2, 2, 2}));
     EXPECT_EQ(sprite->resolveExpand(sprite->resolveFeatures({"DROP_SHADOW"}), {}), (ShaderExpand{0, 1, 1, 0}));
 }
+
+}  // namespace ShaderManifestTest_cpp

@@ -30,6 +30,8 @@
 #include <string>
 #include <memory>
 
+namespace ProjectSaveTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -335,3 +337,5 @@ TEST(ChildSceneCycle, UndoOfARemovalThatWouldNowCycleIsRefused) {
     EXPECT_TRUE(historyA.undo());
     EXPECT_TRUE(project.hasChildScene(401, 402));
 }
+
+}  // namespace ProjectSaveTest_cpp

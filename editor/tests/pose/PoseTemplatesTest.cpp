@@ -31,6 +31,8 @@
 #include <optional>
 #include <set>
 
+namespace PoseTemplatesTest_cpp {
+
 using namespace posetest;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -545,3 +547,5 @@ TEST(PoseTemplates, ApplyReplacesOrAppends){
     EXPECT_EQ(fresh.previewModel, "models/hero.gltf");
     EXPECT_EQ(fresh.poses.size(), wave.poses.size());
 }
+
+}  // namespace PoseTemplatesTest_cpp

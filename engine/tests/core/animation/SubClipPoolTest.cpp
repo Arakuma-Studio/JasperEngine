@@ -35,6 +35,8 @@
 #include <thread>
 #include <vector>
 
+namespace SubClipPoolTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -439,3 +441,5 @@ TEST_F(SubClipPool, PollOrLoadBuildsSubClipsOffTheCallingThread){
     EXPECT_TRUE(AnimationClipPool::pollOrLoad(clip("Wave"), loading));
     EXPECT_FALSE(loading);
 }
+
+}  // namespace SubClipPoolTest_cpp

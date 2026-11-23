@@ -23,6 +23,8 @@
 #include <cctype>
 #include <set>
 
+namespace TitleFxPresetsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using titleart::Json;
@@ -176,3 +178,5 @@ TEST(TitleFxPresetsTest, ApplyRecipeIsOneNamedStep) {
     ASSERT_FALSE(bad.ok);
     EXPECT_EQ(titleFxPresetsFailure(bad)->nearest, "long_shadow");
 }
+
+}  // namespace TitleFxPresetsTest_cpp

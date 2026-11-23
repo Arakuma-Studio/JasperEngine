@@ -44,6 +44,8 @@
 #include <thread>
 #include <vector>
 
+namespace TextureSynthesisTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace ts = jasperengine::editor::texsynth;
@@ -490,3 +492,5 @@ TEST(TextureSynthesisWindowDeathTest, SaveNeedsNoMcpServer) {
     fs::remove_all(dir);
     fs::remove_all(config);
 }
+
+}  // namespace TextureSynthesisTest_cpp

@@ -30,6 +30,8 @@
 #include <fstream>
 #include <iterator>
 
+namespace TitleArtAssetsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -206,3 +208,5 @@ TEST_F(TitleArtAssetsTest, DocumentChecks) {
     // the ids S80 registers are all there, once
     for (const std::string& id : builtinTitleCheckIds()) EXPECT_TRUE(TitleArtChecks::find(id)) << id;
 }
+
+}  // namespace TitleArtAssetsTest_cpp

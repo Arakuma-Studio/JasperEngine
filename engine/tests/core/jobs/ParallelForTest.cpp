@@ -20,6 +20,8 @@
 #include <thread>
 #include <vector>
 
+namespace ParallelForTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::jobs;
 using testsupport::configFor;
@@ -290,3 +292,5 @@ TEST(JobsParallelForLanes, ANormalBodyNeverForksHigh){
     setProfilerHooks(ProfilerHooks());
     EXPECT_EQ(highHelpers.load(), 0);
 }
+
+}  // namespace ParallelForTest_cpp

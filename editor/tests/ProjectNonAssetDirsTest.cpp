@@ -16,6 +16,8 @@
 #include <fstream>
 #include <sstream>
 
+namespace ProjectNonAssetDirsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
@@ -55,3 +57,5 @@ TEST(Project, NonAssetTopLevelDirs) {
     for (SceneProject& scene : project.getScenes()) CommandHandle::remove(scene.id);
     project.releaseScenes();
 }
+
+}  // namespace ProjectNonAssetDirsTest_cpp

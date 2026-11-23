@@ -9,6 +9,8 @@
 
 #include <set>
 
+namespace TransformOpsTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
 using jasperengine::editor::pixelart::s47test::json;
@@ -152,3 +154,5 @@ TEST(TransformOps, SelectionLimitsWhatMoves) {
     EXPECT_EQ(rows[0], "..12");
     EXPECT_EQ(rows[1], "34..") << "unselected pixels stay";
 }
+
+}  // namespace TransformOpsTest_cpp

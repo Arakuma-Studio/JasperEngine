@@ -11,6 +11,8 @@
 
 #include <cmath>
 
+namespace SvgPathsTest_cpp {
+
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::geometry;
 
@@ -140,3 +142,5 @@ TEST(SvgPathsTest, NotAnSvg) {
     EXPECT_FALSE(parseSvgGeometry("not xml <").ok);
     EXPECT_FALSE(parseSvgGeometry("<html></html>").error.empty());
 }
+
+}  // namespace SvgPathsTest_cpp

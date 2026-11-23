@@ -21,6 +21,8 @@
 #include <random>
 #include <sstream>
 
+namespace TerrainWorldAssetTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::terraincore;
@@ -221,3 +223,5 @@ TEST(TerrainWorldCook, WebLimits) {
     // desktop takes it
     EXPECT_TRUE(TerrainWorldCooker::cook(folder, dir.path / "desktop" / "Big.terrainworld", false, report, error)) << error;
 }
+
+}  // namespace TerrainWorldAssetTest_cpp

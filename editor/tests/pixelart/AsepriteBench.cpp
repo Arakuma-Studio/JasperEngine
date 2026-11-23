@@ -17,6 +17,8 @@
 #include <cstdio>
 #include <memory>
 
+namespace AsepriteBench_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::aseprite;
@@ -159,3 +161,5 @@ TEST(AsepriteBench, Import) {
     EXPECT_EQ(import.sheet.frames.size(), 24u);
     EXPECT_EQ(import.clips.size(), 4u);
 }
+
+}  // namespace AsepriteBench_cpp

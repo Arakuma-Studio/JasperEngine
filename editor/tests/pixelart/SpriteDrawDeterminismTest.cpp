@@ -8,6 +8,8 @@
 
 #include "pixelart/draw/GridCodec.h"
 
+namespace SpriteDrawDeterminismTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
 using jasperengine::editor::pixelart::s47test::json;
@@ -82,3 +84,5 @@ TEST(SpriteDrawDeterminism, SameScriptSameBytesAndEcho) {
     EXPECT_EQ(first.bytes, second.bytes);
     EXPECT_EQ(first.text, second.text);
 }
+
+}  // namespace SpriteDrawDeterminismTest_cpp

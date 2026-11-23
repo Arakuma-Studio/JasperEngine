@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace TilesetEditTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::tilemap;
@@ -322,3 +324,5 @@ TEST(TilesetEdit, ScaleNearestRepeatsPixels) {
     EXPECT_EQ(scaled.width(), 3);
     EXPECT_EQ(scaled.at(2, 2), kSolid);
 }
+
+}  // namespace TilesetEditTest_cpp

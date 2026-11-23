@@ -16,6 +16,8 @@
 #include <thread>
 #include <vector>
 
+namespace QualityResolverTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -300,3 +302,5 @@ TEST_F(QualityResolverTest, SettingsJsonRoundTrip){
     ASSERT_TRUE(DeviceSettings::fromJson("{\"tiers\": {\"mobile\": {\"low\": {\"future_cell\": 1}}}}", back, error)) << error;
     EXPECT_EQ(back, DeviceSettings());
 }
+
+}  // namespace QualityResolverTest_cpp

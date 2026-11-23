@@ -10,6 +10,8 @@
 
 #include <string>
 
+namespace CMakeTextTest_cpp {
+
 using namespace jasperengine::editor;
 
 namespace {
@@ -66,3 +68,5 @@ TEST(CMakeText, PlainTitlesStayReadable) {
     EXPECT_EQ(cmaketext::cmakeQuoted("a\\b\"c$d"), "a\\\\b\\\"c\\$d");
     EXPECT_EQ(cmaketext::cStringDefinitionValue(";"), "\\\\073");
 }
+
+}  // namespace CMakeTextTest_cpp

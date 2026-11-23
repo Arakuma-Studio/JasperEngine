@@ -20,6 +20,8 @@
 
 #include <gtest/gtest.h>
 
+namespace VoxelLuaTest_cpp {
+
 using namespace jasperengine;
 using namespace voxeltest;
 
@@ -240,3 +242,5 @@ TEST(VoxelRuntime, NoOpAllocatesNothing) {
     }
     EXPECT_EQ(store.version(), version);
 }
+
+}  // namespace VoxelLuaTest_cpp

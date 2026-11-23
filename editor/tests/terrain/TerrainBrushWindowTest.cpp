@@ -10,6 +10,8 @@
 #include "window/HeightImportFields.h"
 #include "window/TerrainEditWindow.h"
 
+namespace TerrainBrushWindowTest_cpp {
+
 using namespace terrainprojecttest;
 
 namespace {
@@ -113,3 +115,5 @@ TEST_F(TerrainBrushWindowTest, PaintByRulesPreviewLeavesTheMaps) {
     TerrainOverlay::clearPreview(scene->scene, terrainEntity);
     EXPECT_EQ(bake(), before) << "cleared, the overlay shows the terrain again";
 }
+
+}  // namespace TerrainBrushWindowTest_cpp

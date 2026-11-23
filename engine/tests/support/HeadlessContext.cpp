@@ -19,7 +19,8 @@
 #include <string>
 
 using namespace jasperengine;
-using namespace jasperengine::test;
+
+namespace jasperengine::test {
 
 namespace {
 
@@ -253,3 +254,5 @@ const char* HeadlessContext::getBackendName(){
 const char* HeadlessContext::getRendererName(){
     return rendererName.c_str();
 }
+
+}  // namespace jasperengine::test

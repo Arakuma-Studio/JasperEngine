@@ -29,6 +29,8 @@
 #include <sstream>
 #include <string>
 
+namespace PixelPerfectStreamTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -268,3 +270,5 @@ TEST(PixelFxShaders, ShaderCacheVersionCoversPixelFx){
 TEST(TilemapShaders, ShaderCacheVersionCoversTheTileClamp){
     EXPECT_EQ(editor::App::getUserShaderCacheDir().filename().string(), "v65");
 }
+
+}  // namespace PixelPerfectStreamTest_cpp

@@ -22,6 +22,8 @@
 #include <thread>
 #include <vector>
 
+namespace AtmosphereNoiseTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -220,3 +222,5 @@ TEST(AtmosphereNoise, TimeSlicedBakeKeepsItsBudget){
     }
     EXPECT_TRUE(noise.getDetail() == baked().getDetail());
 }
+
+}  // namespace AtmosphereNoiseTest_cpp

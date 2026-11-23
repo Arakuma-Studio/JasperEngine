@@ -15,6 +15,8 @@
 
 #include <vector>
 
+namespace ShadowCacheTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -376,3 +378,5 @@ TEST(ShadowCache, CapsulesOnlyCharacterMovingKeepsTheStaticCacheValid){
         }
     }
 }
+
+}  // namespace ShadowCacheTest_cpp

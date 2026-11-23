@@ -33,6 +33,8 @@
 #include <cmath>
 #include <cstdio>
 
+namespace VoxelTerrainTest_cpp {
+
 using namespace jasperengine;
 using namespace voxeltest;
 
@@ -470,3 +472,5 @@ TEST_F(VoxelTerrain, RimHasNoStep) {
     EXPECT_LE(worstDrawn, 0.02f);
     EXPECT_LE(worstColliding, 0.02f);
 }
+
+}  // namespace VoxelTerrainTest_cpp

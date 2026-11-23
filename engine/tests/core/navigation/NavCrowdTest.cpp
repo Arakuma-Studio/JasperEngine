@@ -31,6 +31,8 @@
 #include <string>
 #include <vector>
 
+namespace NavCrowdTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::navtest;
 
@@ -962,3 +964,5 @@ TEST_F(NavDeterminismTest, GameplayReplay){
     EXPECT_FALSE(firstLog.empty());
     EXPECT_TRUE(firstLog == secondLog);
 }
+
+}  // namespace NavCrowdTest_cpp

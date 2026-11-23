@@ -18,6 +18,8 @@
 #include <stdexcept>
 #include <thread>
 
+namespace VcsStatusPollerTest_cpp {
+
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::vcs;
 
@@ -135,3 +137,5 @@ TEST(VcsStatusPoller, NonPositiveIntervalRestoresTheDefault) {
     poller.setIntervalSeconds(30);
     EXPECT_EQ(poller.getIntervalSeconds(), 30);
 }
+
+}  // namespace VcsStatusPollerTest_cpp

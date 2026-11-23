@@ -20,6 +20,8 @@
 
 #include <cmath>
 
+namespace CameraFollowTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -324,3 +326,5 @@ TEST_F(Follow, ATargetMovedToThePersistentSceneIsFollowedThere){
     EXPECT_EQ(position(cam), Vector3(7, 0, -3));
     SceneManager::destroyPersistentScene();
 }
+
+}  // namespace CameraFollowTest_cpp

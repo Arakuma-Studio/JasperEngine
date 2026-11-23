@@ -30,6 +30,8 @@
 #include <map>
 #include <set>
 
+namespace SpriteAtlasBuildTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::sprite;
 using namespace jasperengine::editor::sprite::test;
@@ -472,3 +474,5 @@ TEST(SpriteAtlasBuild, GpuFixtureIsTheBuildersOutput) {
         }
     }
 }
+
+}  // namespace SpriteAtlasBuildTest_cpp

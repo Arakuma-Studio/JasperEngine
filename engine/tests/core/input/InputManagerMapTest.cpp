@@ -22,6 +22,8 @@
 #include <string>
 #include <vector>
 
+namespace InputManagerMapTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -433,3 +435,5 @@ TEST_F(InputManagerMapTest, TouchesHaveUnityFieldsAndTaps){
     Engine::systemTouchEnd(3, 110, 101);
     frame();
 }
+
+}  // namespace InputManagerMapTest_cpp

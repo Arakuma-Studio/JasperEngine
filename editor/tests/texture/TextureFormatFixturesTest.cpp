@@ -23,6 +23,8 @@
 #include <cstring>
 #include <fstream>
 
+namespace TextureFormatFixturesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -166,3 +168,5 @@ TEST(TextureFormatFixtures, EveryFormatHasACookAndItsDecode){
         EXPECT_TRUE(decoded == fixtureRead(decodedPath)) << "the editor's decode of " << name << " changed";
     }
 }
+
+}  // namespace TextureFormatFixturesTest_cpp

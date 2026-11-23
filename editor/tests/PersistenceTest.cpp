@@ -44,6 +44,8 @@
 #include <fstream>
 #include <thread>
 
+namespace PersistenceTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::scripttest;
 
@@ -1107,3 +1109,5 @@ TEST_F(PersistenceTest, HttpRequestsFollowPersistentObjects) {
     Engine::removeAllScenes();
 }
 #endif
+
+}  // namespace PersistenceTest_cpp

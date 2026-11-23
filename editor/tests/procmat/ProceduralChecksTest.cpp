@@ -12,6 +12,8 @@
 #include <cmath>
 #include <functional>
 
+namespace ProceduralChecksTest_cpp {
+
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::procmat;
 
@@ -201,3 +203,5 @@ TEST(ProceduralChecks, AReferenceIsAdvisory) {
     EXPECT_GT(other["palette_delta_e"].get<double>(), 10.0);
     EXPECT_GT(other["spectrum"].get<double>(), same["spectrum"].get<double>());
 }
+
+}  // namespace ProceduralChecksTest_cpp

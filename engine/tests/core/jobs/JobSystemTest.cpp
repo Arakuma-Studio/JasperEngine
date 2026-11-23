@@ -28,6 +28,8 @@
     #include <time.h>
 #endif
 
+namespace JobSystemTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::jobs;
 using testsupport::configFor;
@@ -867,3 +869,5 @@ TEST(JobsWorkerPolicy, ConfiguredCountWins){
     EXPECT_EQ(thread::resolveWorkerCount(0), 0);
     EXPECT_EQ(thread::resolveWorkerCount(40), 15);
 }
+
+}  // namespace JobSystemTest_cpp

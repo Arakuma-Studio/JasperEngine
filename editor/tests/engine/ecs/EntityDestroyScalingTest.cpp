@@ -37,6 +37,8 @@
 #include <unordered_set>
 #include <vector>
 
+namespace EntityDestroyScalingTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -719,3 +721,5 @@ TEST(EntityDestroyEditor, LockedParentIndexAnswersAsTheScan) {
     EXPECT_EQ(index.get(headerRoot), NULL_ENTITY) << "a panel part at the top is not locked (as the scan)";
     EXPECT_GE(locked, 8u);
 }
+
+}  // namespace EntityDestroyScalingTest_cpp

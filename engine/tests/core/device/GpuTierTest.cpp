@@ -15,6 +15,8 @@
 #include <sstream>
 #include <string>
 
+namespace GpuTierTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -142,3 +144,5 @@ TEST(GpuTier, EmbeddedDatabaseIsTheCheckedInFile){
     EXPECT_EQ(GpuTierDatabase::embeddedJson(), text.str()) << "run tools/device/convert_forge_gpu_data.py --embed";
     EXPECT_GT(GpuTierDatabase::builtIn().getRuleCount(), 500u);
 }
+
+}  // namespace GpuTierTest_cpp

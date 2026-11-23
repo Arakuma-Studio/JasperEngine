@@ -15,6 +15,8 @@
 
 #include <cstdint>
 
+namespace SceneTimeGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -62,3 +64,5 @@ TEST_F(SceneTimeGpu, RunFrameAddsTheScaledDelta){
     EXPECT_DOUBLE_EQ(scene.getSceneTime(), held);
     scene.setSceneTimePaused(false);
 }
+
+}  // namespace SceneTimeGpuTest_cpp

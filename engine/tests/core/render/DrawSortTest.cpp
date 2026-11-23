@@ -14,6 +14,8 @@
 
 #include <vector>
 
+namespace DrawSortTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -66,3 +68,5 @@ TEST(DrawSort, MixKeyDependsOnEveryValue){
     EXPECT_NE(a, c);
     EXPECT_EQ(a, VisibleList::mixKey(VisibleList::mixKey(0, 1), 2));
 }
+
+}  // namespace DrawSortTest_cpp

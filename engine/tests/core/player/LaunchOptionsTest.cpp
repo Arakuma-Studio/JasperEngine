@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+namespace LaunchOptionsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::player;
 
@@ -175,3 +177,5 @@ TEST(LaunchOptions, DeviceTier) {
     EXPECT_NE(refused({"--device-tier=extreme"}).find("low, medium, high or ultra"), std::string::npos);
     EXPECT_NE(refused({"--device-tier"}).find("needs a value"), std::string::npos);
 }
+
+}  // namespace LaunchOptionsTest_cpp

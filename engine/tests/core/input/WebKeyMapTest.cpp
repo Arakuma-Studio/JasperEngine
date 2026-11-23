@@ -13,6 +13,8 @@
 #include <set>
 #include <string>
 
+namespace WebKeyMapTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -105,3 +107,5 @@ TEST(WebKeyMap, NoCodeNameTwice){
         EXPECT_TRUE(seen.emplace(std::string(entry.code), entry.key).second) << entry.code << " is listed twice";
     }
 }
+
+}  // namespace WebKeyMapTest_cpp

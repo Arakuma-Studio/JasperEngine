@@ -24,6 +24,8 @@
 #include <filesystem>
 #include <fstream>
 
+namespace TitleLocalisationBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using titleart::Json;
@@ -146,3 +148,5 @@ TEST(TitleLocalisationBench, PngEncoder) {
         }
     }
 }
+
+}  // namespace TitleLocalisationBenchTest_cpp

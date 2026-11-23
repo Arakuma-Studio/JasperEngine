@@ -16,6 +16,8 @@
 
 #include <string>
 
+namespace LuaTerrainMaterialsTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -80,3 +82,5 @@ TEST(LuaTerrainMaterials, EveryMemberReadsAndWrites){
     EXPECT_TRUE(component.macroNormal);
     terraincore::TerrainQualitySettings::reset();
 }
+
+}  // namespace LuaTerrainMaterialsTest_cpp

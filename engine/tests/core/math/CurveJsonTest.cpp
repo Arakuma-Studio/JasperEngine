@@ -10,6 +10,8 @@
 
 #include <cmath>
 
+namespace CurveJsonTest_cpp {
+
 using namespace jasperengine;
 using curvejson::Json;
 
@@ -117,3 +119,5 @@ TEST(CurveJson, ShortestFloats) {
     EXPECT_EQ((float)curvejson::jsonFloat(1.0f / 3.0f), 1.0f / 3.0f);
     EXPECT_EQ(curvejson::jsonFloat(INFINITY), 0.0);
 }
+
+}  // namespace CurveJsonTest_cpp

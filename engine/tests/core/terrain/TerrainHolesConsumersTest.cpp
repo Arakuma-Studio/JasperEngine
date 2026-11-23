@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+namespace TerrainHolesConsumersTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -176,3 +178,5 @@ TEST_F(TerrainHolesConsumers, CollisionSamplesOpenAndWarning){
     ASSERT_TRUE(out["ops"][0].contains("collision_samples_open")) << out.dump();
     EXPECT_EQ(out["ops"][0]["collision_samples_open"].get<int>(), second.ops[0].collisionSamplesOpen);
 }
+
+}  // namespace TerrainHolesConsumersTest_cpp

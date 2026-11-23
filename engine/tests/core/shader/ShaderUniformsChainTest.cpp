@@ -14,6 +14,8 @@
 
 #include <cstring>
 
+namespace ShaderUniformsChainTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -99,3 +101,5 @@ TEST(ShaderUniformsChain, WriteValuesPacksTheChain) {
     block.writeValues(own, nullptr, nullptr);
     EXPECT_EQ(written(block, 0), Vector4(0, 0, 0, 0));
 }
+
+}  // namespace ShaderUniformsChainTest_cpp

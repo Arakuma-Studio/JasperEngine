@@ -13,12 +13,13 @@
 
 #include <gtest/gtest.h>
 
+namespace export_output_folder_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
 namespace fs = std::filesystem;
 
-namespace export_output_folder_test {
 
     struct ScratchProject {
         TestTempDir dir{"export-output"};
@@ -36,6 +37,8 @@ namespace export_output_folder_test {
     };
 
 }
+
+namespace export_output_folder_test {
 
 using namespace export_output_folder_test;
 
@@ -85,3 +88,5 @@ TEST(ExportOutputFolder, SemicolonRefused) {
     EXPECT_NE(refusal.find("rename"), std::string::npos) << refusal;
     EXPECT_EQ(Exporter::outputFolderRefusal(nullptr, s.dir.path() / "a;b").empty(), false) << "with no project too (generate_shaders)";
 }
+
+}  // namespace export_output_folder_test

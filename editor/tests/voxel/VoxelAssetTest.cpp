@@ -30,11 +30,12 @@
     #include <unistd.h>
 #endif
 
+namespace voxel_asset_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::voxeltest;
 
-namespace voxel_asset_test {
 
     using jasperengine::test::TestTempDir;
 
@@ -74,6 +75,8 @@ namespace voxel_asset_test {
     }
 
 }
+
+namespace voxel_asset_test {
 
 using namespace voxel_asset_test;
 
@@ -355,3 +358,5 @@ TEST_F(VoxelSceneTest, ExportCooksSlotSlices) {
     ASSERT_TRUE(gatherTerrainSliceInputs(*project, inputs, dropped, error)) << error;
     EXPECT_EQ(inputs.count(terraincore::cookedSliceIndexKey("voxels/rock.png")), 1u) << inputs.size() << " slices";
 }
+
+}  // namespace voxel_asset_test

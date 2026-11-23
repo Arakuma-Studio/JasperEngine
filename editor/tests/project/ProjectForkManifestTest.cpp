@@ -17,6 +17,8 @@
 #include <fstream>
 #include <string>
 
+namespace ProjectForkManifestTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -38,3 +40,5 @@ TEST(ProjectForkManifest, AClosedProjectNoLongerReadsItsForks) {
     ShaderManifests::clearForks();
     EXPECT_EQ(ShaderManifests::get(fork), nullptr) << "a closed project's forks are still read through it";
 }
+
+}  // namespace ProjectForkManifestTest_cpp

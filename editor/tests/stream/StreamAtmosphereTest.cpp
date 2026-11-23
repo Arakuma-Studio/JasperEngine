@@ -24,6 +24,8 @@
 #include <set>
 #include <string>
 
+namespace StreamAtmosphereTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::test;
@@ -198,3 +200,5 @@ TEST(StreamAtmosphere, SchemaKnowsTheNewKeysAndNames){
     EXPECT_TRUE(StreamSchema::cloudsRendering().find("sky_map", rendering));
     EXPECT_TRUE(StreamSchema::isKnownRootKey(RootKind::Project, "atmosphereQuality"));
 }
+
+}  // namespace StreamAtmosphereTest_cpp

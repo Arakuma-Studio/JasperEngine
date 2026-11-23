@@ -18,7 +18,8 @@
 #include <memory>
 
 using namespace jasperengine;
-using namespace jasperengine::test;
+
+namespace jasperengine::test {
 
 TestSystem::TestSystem(){
     std::error_code error;
@@ -43,7 +44,12 @@ int TestSystem::getScreenHeight(){
     return screenHeight;
 }
 
+}  // namespace jasperengine::test
+
 #if defined(SOKOL_VULKAN) && defined(JASPER_TEST_HAS_GPU)
+
+namespace jasperengine::test {
+
 sg_environment TestSystem::getSokolEnvironment(){
     return VulkanContext::environment();
 }
@@ -51,13 +57,22 @@ sg_environment TestSystem::getSokolEnvironment(){
 sg_swapchain TestSystem::getSokolSwapchain(){
     return VulkanContext::swapchain();
 }
+
+}  // namespace jasperengine::test
 #elif defined(SOKOL_METAL) && defined(JASPER_TEST_HAS_GPU)
+
+namespace jasperengine::test {
+
 sg_environment TestSystem::getSokolEnvironment(){
     sg_environment env = System::getSokolEnvironment();
     env.metal.device = HeadlessContext::getMetalDevice();
     return env;
 }
+
+}  // namespace jasperengine::test
 #endif
+
+namespace jasperengine::test {
 
 std::string TestSystem::getAssetPath(){
     if (pathProvider.assets)
@@ -216,3 +231,5 @@ void TestSystem::setTextInputArea(float x, float y, float width, float height){
 void TestSystem::setMouseCursor(CursorType type){
     mouseCursor = type;
 }
+
+}  // namespace jasperengine::test

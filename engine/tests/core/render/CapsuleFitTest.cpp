@@ -10,6 +10,8 @@
 
 #include <map>
 
+namespace CapsuleFitTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -168,3 +170,5 @@ TEST(CapsuleFit, ReachCullsReceiversOutsideTheShadow){
     EXPECT_FALSE(CapsuleShadows::reaches(capsule, up, 0.25f, faraway));
     EXPECT_FALSE(CapsuleShadows::reaches(capsule, up, 0.25f, above));
 }
+
+}  // namespace CapsuleFitTest_cpp

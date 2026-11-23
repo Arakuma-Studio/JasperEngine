@@ -11,6 +11,8 @@
 #include "animation/ClipBinding.h"
 #include "registry/EntityRegistry.h"
 
+namespace ClipBindingTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -257,3 +259,5 @@ TEST(ClipBinding, HierarchyLogListsRenamesAndDestroys){
     r.takeHierarchyLog(renamed, destroyed, overflow);
     EXPECT_TRUE(overflow) << "clear: everything changed";
 }
+
+}  // namespace ClipBindingTest_cpp

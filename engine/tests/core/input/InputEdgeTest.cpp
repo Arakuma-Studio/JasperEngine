@@ -14,6 +14,8 @@
 
 #include <functional>
 
+namespace InputEdgeTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -460,3 +462,5 @@ TEST_F(InputEdgeTest, LatchAllocatesNothing){
     }
     EXPECT_EQ(allocations, 0u);
 }
+
+}  // namespace InputEdgeTest_cpp

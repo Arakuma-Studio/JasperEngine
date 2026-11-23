@@ -20,6 +20,8 @@
 #include <cstdio>
 #include <fstream>
 
+namespace SpriteSheetIOTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -251,3 +253,5 @@ TEST(SpriteSheetPoolTest, RegisteredSourcesComeFirst){
     EXPECT_EQ(sheet->frames[0].name, "only");
     SpriteSheetPool::clear();
 }
+
+}  // namespace SpriteSheetIOTest_cpp

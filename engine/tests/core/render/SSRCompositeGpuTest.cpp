@@ -50,6 +50,8 @@
 #include <string>
 #include <vector>
 
+namespace SSRCompositeGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -1384,3 +1386,5 @@ TEST_F(SSRCompositeGpu, ScaledSwapchainBuildsKeepTheirSSRTargets){
     EXPECT_EQ(remade, 0u) << "frames whose scene colour target was made again";
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace SSRCompositeGpuTest_cpp

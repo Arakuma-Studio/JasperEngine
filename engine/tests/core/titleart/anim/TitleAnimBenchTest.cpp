@@ -27,6 +27,8 @@
 #include <memory>
 #include <vector>
 
+namespace TitleAnimBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -211,3 +213,5 @@ TEST(TitleAnimBench, Scene30){
     std::printf("[title anim] Scene30: 30 titles, median %.1f us, p95 %.1f us a frame (R36: 500 us p95)\n", titleAnimBenchPercentile(samples, 0.5), p95);
     EXPECT_LT(p95, 5000.0);
 }
+
+}  // namespace TitleAnimBenchTest_cpp

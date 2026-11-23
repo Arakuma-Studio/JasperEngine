@@ -17,6 +17,8 @@
 #include "component/KeyframeTracksComponent.h"
 #include "component/TweenComponent.h"
 
+namespace ActionPreviewSnapshotTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -196,3 +198,5 @@ TEST(ActionPreviewSnapshotTest, KeyframePlayheadGoesBackAndKeysStay) {
     EXPECT_FLOAT_EQ(live.interpolation, 0.0f);
     EXPECT_EQ(live.times.size(), 3u) << "the key authored during the preview stays";
 }
+
+}  // namespace ActionPreviewSnapshotTest_cpp

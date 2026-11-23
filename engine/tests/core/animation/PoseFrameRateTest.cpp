@@ -17,6 +17,8 @@
 #include <set>
 #include <vector>
 
+namespace PoseFrameRateTest_cpp {
+
 using namespace jasperengine;
 using namespace animatortest;
 
@@ -120,3 +122,5 @@ TEST_F(AnimatorInstance, HitStopExemptAnimatorRuns){
     EXPECT_GT(position(spine).x, frozenStart + 1e-3f) << "exempt: it runs through the freeze";
     pixelart::HitStop::reset();
 }
+
+}  // namespace PoseFrameRateTest_cpp

@@ -23,6 +23,8 @@
 #include <cmath>
 #include <fstream>
 
+namespace GltfExtensionsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -318,3 +320,5 @@ TEST(GltfExtensionsTest, WebpInAGameNamesTheCook){
     EXPECT_EQ(log.count(D_LOG_ERROR, "EXT_texture_webp"), 1u) << log.describeErrors();
     EXPECT_EQ(log.count(D_LOG_ERROR, "the cook transcodes it"), 1u) << log.describeErrors();
 }
+
+}  // namespace GltfExtensionsTest_cpp

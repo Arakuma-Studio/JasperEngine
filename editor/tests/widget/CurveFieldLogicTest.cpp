@@ -23,6 +23,8 @@
 #include <cmath>
 #include <limits>
 
+namespace CurveFieldLogicTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::curveops;
@@ -629,3 +631,5 @@ TEST(GradientFieldLogicTest, APresetOverTheFieldsKeyLimitIsRefused){
     ImGui::DestroyContext(context);
     ImGui::SetCurrentContext(previous);
 }
+
+}  // namespace CurveFieldLogicTest_cpp

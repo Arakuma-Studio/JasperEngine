@@ -18,6 +18,8 @@
 #include <limits>
 #include <sstream>
 
+namespace TerrainHolesTest_cpp {
+
 using namespace terraintest;
 
 namespace {
@@ -485,3 +487,5 @@ TEST(TerrainLayers, FromMaterialKeepsSampling) {
     EXPECT_FLOAT_EQ(layer.hexRotation, 0.25f);
     EXPECT_EQ(layer.cliffProjection, TerrainCliffProjection::FLAT_ONLY);
 }
+
+}  // namespace TerrainHolesTest_cpp

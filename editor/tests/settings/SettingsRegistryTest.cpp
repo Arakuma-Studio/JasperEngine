@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace SettingsRegistryTest_cpp {
+
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
@@ -160,3 +162,5 @@ TEST(SettingsSearch, FiltersRows) {
     EXPECT_FALSE(registry.search("vsnyc").empty());
     EXPECT_TRUE(registry.search("qzx").empty());
 }
+
+}  // namespace SettingsRegistryTest_cpp

@@ -7,6 +7,8 @@
 
 #include <vector>
 
+namespace TitleTargetPoolTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
@@ -148,3 +150,5 @@ TEST_F(TitleTargetPoolTest, ClearInvalidatesLentRefs) {
     EXPECT_TRUE(moved);
     EXPECT_EQ(pool.stats().peakBytes, targetBytes(colour(64, 64)));
 }
+
+}  // namespace TitleTargetPoolTest_cpp

@@ -14,9 +14,13 @@
 #include <fstream>
 #include <iterator>
 
+namespace MacBundleTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
+
+}  // namespace MacBundleTest_cpp
 
 namespace mac_bundle_test {
 
@@ -26,6 +30,8 @@ namespace mac_bundle_test {
     }
 
 }
+
+namespace MacBundleTest_cpp {
 
 using namespace mac_bundle_test;
 
@@ -53,3 +59,5 @@ TEST(MacBundle, PrivacyManifestAndPlistEntries) {
     EXPECT_NE(plist.find("<key>NSGKFriendListUsageDescription</key>\n\t<string>Game Center friends</string>"), std::string::npos) << plist;
     EXPECT_NE(plist.find("<key>CFBundleIdentifier</key>"), std::string::npos);
 }
+
+}  // namespace MacBundleTest_cpp

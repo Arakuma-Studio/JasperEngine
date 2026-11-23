@@ -14,6 +14,8 @@
 #include <cmath>
 #include <regex>
 
+namespace PachislopMigrationTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::pachislop;
@@ -995,3 +997,5 @@ TEST(PachislopMigrationTest, TurnsAParticlesLayerAlphaEmitterIntoFollowing) {
     EXPECT_EQ(out["follow"], "L1");
     EXPECT_EQ(out["edgeWidth"], 6);
 }
+
+}  // namespace PachislopMigrationTest_cpp

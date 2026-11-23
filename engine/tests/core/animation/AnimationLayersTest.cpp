@@ -41,6 +41,8 @@
 #include <iterator>
 #include <string>
 
+namespace AnimationLayersTest_cpp {
+
 using namespace jasperengine;
 using namespace animatortest;
 
@@ -820,3 +822,5 @@ TEST_F(Layers, ALayerWithoutItsMaskContributesNothing){
     step(0.6, 2);
     EXPECT_NEAR(transform(hand).position.y, 1.0f, 1e-5f);
 }
+
+}  // namespace AnimationLayersTest_cpp

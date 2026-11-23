@@ -8,6 +8,8 @@
 #include <set>
 #include <string>
 
+namespace AssetTypeTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -38,3 +40,5 @@ TEST_F(AssetTypeTest, NamesRoundTripEveryValue) {
     EXPECT_EQ(static_cast<int>(AssetType::TitleArt), 34) << "the numbers are a file format: append only";
     EXPECT_EQ(assetTypeFromName("nothing"), AssetType::Unknown);
 }
+
+}  // namespace AssetTypeTest_cpp

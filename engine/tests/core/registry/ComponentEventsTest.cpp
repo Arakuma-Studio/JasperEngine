@@ -49,6 +49,8 @@
 #include <string>
 #include <vector>
 
+namespace ComponentEventsTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -297,3 +299,5 @@ TEST(TitleArtEventsTest, RemoveByTagReachesEveryEvent) {
     scene.removeSubscriptionsByTag("ScriptX_");
     expectNoTitleEvents(instance, "after the removal by tag");
 }
+
+}  // namespace ComponentEventsTest_cpp

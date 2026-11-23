@@ -41,6 +41,8 @@ namespace jasperengine {
     };
 }
 
+namespace UIComponentsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::scripttest;
 
@@ -826,3 +828,5 @@ TEST_F(UIComponentsTest, GamepadStaysWithTheMenuWhileTheHistoryGivesBack) {
     scene->setEntityActive(panel, false);   // no update yet
     EXPECT_TRUE(Engine::wantsGamepadNavigation());
 }
+
+}  // namespace UIComponentsTest_cpp

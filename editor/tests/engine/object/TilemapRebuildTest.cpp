@@ -13,6 +13,8 @@
 #include "math/Vector2.h"
 #include "object/Tilemap.h"
 
+namespace TilemapRebuildTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -115,3 +117,5 @@ TEST(TilemapRebuild, SetReserveTilesRebuilds) {
     EXPECT_EQ(fixture.rebuild(), 1u);
     EXPECT_EQ(fixture.tilemap.getReserveTiles(), 0u);
 }
+
+}  // namespace TilemapRebuildTest_cpp

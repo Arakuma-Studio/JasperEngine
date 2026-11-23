@@ -18,6 +18,8 @@
 #include <sstream>
 #include <set>
 
+namespace PassPlannerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::procmat;
 
@@ -483,3 +485,5 @@ TEST(PassPlanner, AnEditOfMoreThanValuesIsPlanned) {
     })) << "a ramp key moved past another";
     EXPECT_FALSE(planned([](graph::Graph& g) { g.findNode("b")->position = {500.0, 500.0}; })) << "a move is no edit of the plan";
 }
+
+}  // namespace PassPlannerTest_cpp

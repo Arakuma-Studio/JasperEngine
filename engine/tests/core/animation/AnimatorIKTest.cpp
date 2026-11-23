@@ -15,6 +15,8 @@
 #include <random>
 #include <vector>
 
+namespace AnimatorIKTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::anim;
 
@@ -824,3 +826,5 @@ TEST(AnimatorIK, FootAnkleHeightKeepsTheSoleOnTheSlope){
     EXPECT_GE(footAnkleHeight(h, normal(120.0f), 30.0f), 0.0f);
     EXPECT_NEAR(footAnkleHeight(h, Vector3(std::nanf(""), std::nanf(""), 0), 30.0f), h, 1e-6f);
 }
+
+}  // namespace AnimatorIKTest_cpp

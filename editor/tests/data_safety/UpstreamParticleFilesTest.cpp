@@ -25,6 +25,8 @@
 
 #include <cmath>
 
+namespace UpstreamParticleFilesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -307,3 +309,5 @@ TEST(UpstreamParticleFiles, TheSceneLoads){
     DecodedScene again = decodeSceneText(first, "Upstream.scene");
     EXPECT_EQ(encodeSceneText(again), first);
 }
+
+}  // namespace UpstreamParticleFilesTest_cpp

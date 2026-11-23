@@ -15,6 +15,8 @@
 #include <cmath>
 #include <set>
 
+namespace AnimatorBlendTreeTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::anim;
 using namespace animatortest;
@@ -213,3 +215,5 @@ TEST(AnimatorBlendTree, PhaseSyncedChildrenDoNotDrift){
     // the tree's length is the weighted average of its children's
     EXPECT_NEAR(f.instance().layers[0].current.length, 0.85f, 1e-5f);
 }
+
+}  // namespace AnimatorBlendTreeTest_cpp

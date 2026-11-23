@@ -32,6 +32,8 @@
 #include <string>
 #include <vector>
 
+namespace MeshPoseGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -178,3 +180,5 @@ TEST(MeshPose, MatchesGpuSkinning){
     EXPECT_NO_ENGINE_ERRORS();
     Engine::removeScene(&scene);
 }
+
+}  // namespace MeshPoseGpuTest_cpp

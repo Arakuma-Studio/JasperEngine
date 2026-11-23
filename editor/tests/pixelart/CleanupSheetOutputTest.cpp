@@ -15,8 +15,12 @@
 
 #include <gtest/gtest.h>
 
+namespace CleanupSheetOutputTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::cleanup;
+// the cleanup's own, not pixelart's namesakes: a batch that declares both would be ambiguous
+using jasperengine::editor::pixelart::cleanup::RgbaImage;
 using jasperengine::pixelart::Rgba8;
 using nlohmann::ordered_json;
 
@@ -169,3 +173,5 @@ TEST(CleanupSheetOutput, PngAndJsonRectsIndexThePictureExactly) {
     EXPECT_EQ(tags[0], ordered_json({{"name", "walk"}, {"from", 0}, {"to", 2}, {"direction", "forward"}}));
     EXPECT_EQ(tags[1], ordered_json({{"name", "hit"}, {"from", 3}, {"to", 4}, {"direction", "pingpong"}}));
 }
+
+}  // namespace CleanupSheetOutputTest_cpp

@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+namespace TerrainOpsDepsTest_cpp {
+
 namespace {
 
     namespace fs = std::filesystem;
@@ -129,3 +131,5 @@ TEST(TerrainOpsDeps, TheFolderBuildsWithoutContraction) {
         }
     }
 }
+
+}  // namespace TerrainOpsDepsTest_cpp

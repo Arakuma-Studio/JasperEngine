@@ -7,6 +7,8 @@
 
 #include <cmath>
 
+namespace TitleSnapTest_cpp {
+
 using namespace jasperengine::editor::titledesigner;
 
 namespace {
@@ -131,3 +133,5 @@ TEST(TitleSnapTest, CtrlIncrements) {
     EXPECT_DOUBLE_EQ(incrementAngle(30.0, s), 45.0);
     EXPECT_DOUBLE_EQ(incrementScale(1.4, s), 1.5);
 }
+
+}  // namespace TitleSnapTest_cpp

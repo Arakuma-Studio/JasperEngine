@@ -16,6 +16,8 @@
 #include <string>
 #include <vector>
 
+namespace McpProtocolTest_cpp {
+
 using namespace jasperengine::editor::mcp;
 
 namespace {
@@ -238,3 +240,5 @@ TEST(McpHttp, BearerToken) {
     EXPECT_FALSE(McpTransportHttp::constantTimeEquals("abc", "ab"));
     EXPECT_TRUE(McpTransportHttp::constantTimeEquals("", ""));
 }
+
+}  // namespace McpProtocolTest_cpp

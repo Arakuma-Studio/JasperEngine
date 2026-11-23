@@ -19,6 +19,8 @@
 
 #include <gtest/gtest.h>
 
+namespace MeshMissingBufferGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -59,3 +61,5 @@ TEST(MeshMissingBufferGpu, IsReportedNotDrawnAndNotTriedEveryFrame){
     // (what it reported on purpose is not this test's failure, nor a later one's)
     LogCapture::markTestStart();
 }
+
+}  // namespace MeshMissingBufferGpuTest_cpp

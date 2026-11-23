@@ -17,6 +17,8 @@
     #include <GL/gl.h>
 #endif
 
+namespace Readback_cpp {
+
 using namespace jasperengine;
 
 #if defined(SOKOL_VULKAN)
@@ -162,6 +164,8 @@ static bool readVulkanImage(TextureRender& texture, int width, int height, int b
     return true;
 }
 #endif
+
+}  // namespace Readback_cpp
 
 bool jasperengine::test::finishGpu(){
     return FrameReadback::finishGpu();

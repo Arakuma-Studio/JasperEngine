@@ -33,6 +33,8 @@
 #include <string>
 #include <vector>
 
+namespace WaterShadingGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -225,3 +227,5 @@ TEST_F(WaterShadingGpu, CausticsDarkInSurfaceShadow){
     EXPECT_LT(shadowRatio, 1.02) << "caustics brighten the bed under the shadowed surface";
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace WaterShadingGpuTest_cpp

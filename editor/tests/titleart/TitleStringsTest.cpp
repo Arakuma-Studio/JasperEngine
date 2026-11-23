@@ -18,6 +18,8 @@
 #include <filesystem>
 #include <fstream>
 
+namespace TitleStringsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using titleart::Json;
@@ -195,3 +197,5 @@ TEST_F(TitleStringsTest, MalformedFilesFailWithAMessage) {
     EXPECT_FALSE(parseTitleStringsXliff("<notxliff/>", out, error));
     EXPECT_FALSE(parseTitleStringsXliff("<xliff", out, error));
 }
+
+}  // namespace TitleStringsTest_cpp

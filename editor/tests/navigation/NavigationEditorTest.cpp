@@ -41,6 +41,8 @@
 #include <filesystem>
 #include <functional>
 
+namespace NavigationEditorTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::test;
@@ -428,3 +430,5 @@ TEST_F(NavigationEditorTest, OverlayDrawsAreaOverrides){
     }
     nav::setSettings(nav::NavigationSettings::defaults());
 }
+
+}  // namespace NavigationEditorTest_cpp

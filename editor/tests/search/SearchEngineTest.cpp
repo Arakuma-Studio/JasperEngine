@@ -14,6 +14,8 @@
 #include <chrono>
 #include <cstdio>
 
+namespace SearchEngineTest_cpp {
+
 using namespace jasperengine::editor;
 using jasperengine::editor::test::FakeAssetIndex;
 
@@ -145,3 +147,5 @@ TEST(SearchEngine, NewerKeystrokeCancels) {
     EXPECT_FALSE(SearchEngine::query(snapshot, "light", &latest, 2, &cancelled).empty());
     EXPECT_FALSE(cancelled);
 }
+
+}  // namespace SearchEngineTest_cpp

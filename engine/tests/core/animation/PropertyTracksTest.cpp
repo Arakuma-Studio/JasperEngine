@@ -53,6 +53,8 @@
 #include <functional>
 #include <thread>
 
+namespace PropertyTracksTest_cpp {
+
 using namespace jasperengine;
 using namespace animatortest;
 
@@ -1187,3 +1189,5 @@ TEST_F(Properties, PerformanceBudget){
     }
 }
 #endif
+
+}  // namespace PropertyTracksTest_cpp

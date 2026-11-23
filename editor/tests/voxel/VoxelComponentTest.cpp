@@ -19,9 +19,13 @@
 #include <algorithm>
 #include <string>
 
+namespace VoxelComponentTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
+
+}  // namespace VoxelComponentTest_cpp
 
 namespace voxel_component_test {
 
@@ -34,6 +38,8 @@ namespace voxel_component_test {
     }
 
 }
+
+namespace VoxelComponentTest_cpp {
 
 using namespace voxel_component_test;
 
@@ -164,3 +170,5 @@ TEST(AssetTypes, VoxelVolumeValueIs32) {
     EXPECT_EQ(info->identity, AssetIdentity::Sidecar);
     EXPECT_EQ(info->base, AssetPathBase::Assets);
 }
+
+}  // namespace VoxelComponentTest_cpp

@@ -13,6 +13,8 @@
 
 #include <algorithm>
 
+namespace SearchTermsTest_cpp {
+
 using namespace jasperengine::editor::titledesigner;
 namespace ta = jasperengine::titleart;
 
@@ -85,3 +87,5 @@ TEST(SearchTermsTest, ParsesVersionOneWithFoldedSymmetricGroups) {
     EXPECT_EQ(parsed.groups()[0], (std::vector<std::string>{"rim", "ふち"}));
     EXPECT_EQ(parsed.japaneseName("outline"), "境界線");
 }
+
+}  // namespace SearchTermsTest_cpp

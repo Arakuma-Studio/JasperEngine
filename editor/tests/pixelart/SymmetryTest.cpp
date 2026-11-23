@@ -5,6 +5,8 @@
 
 #include "SpriteDrawTestSupport.h"
 
+namespace SymmetryTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
 using jasperengine::editor::pixelart::s47test::json;
@@ -106,3 +108,5 @@ TEST(Copy, TakesTheSelectionWhenNoRectIsGiven) {
                                    {{"op", "copy"}, {"at", {3, 0}}}}));
     EXPECT_EQ(s47test::canvasRows(sprite)[0], "12.2") << "only the selected pixel, placed outside the selection";
 }
+
+}  // namespace SymmetryTest_cpp

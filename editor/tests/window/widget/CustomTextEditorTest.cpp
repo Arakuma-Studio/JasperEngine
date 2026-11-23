@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace CustomTextEditorTest_cpp {
+
 using namespace jasperengine::editor;
 
 namespace {
@@ -436,3 +438,5 @@ TEST(CustomTextEditorCompletion, CppHidesLuaOnlyMembers) {
     EXPECT_TRUE(suggests(SyntaxLanguage::Cpp, "jasperengine::Engine::getDelta", "getDeltatime"));
     EXPECT_TRUE(suggests(SyntaxLanguage::Lua, "Engine.delta", "deltatime"));
 }
+
+}  // namespace CustomTextEditorTest_cpp

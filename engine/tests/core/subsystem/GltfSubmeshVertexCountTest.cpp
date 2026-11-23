@@ -12,6 +12,8 @@
 
 #include <gtest/gtest.h>
 
+namespace GltfSubmeshVertexCountTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -45,3 +47,5 @@ TEST(GltfSubmeshVertexCount, ARestoredCountDoesNotSwapOnAReload){
     EXPECT_EQ(reloaded.submeshes[0].vertexCount, 6u);
     EXPECT_EQ(reloaded.submeshes[1].vertexCount, 3u);
 }
+
+}  // namespace GltfSubmeshVertexCountTest_cpp

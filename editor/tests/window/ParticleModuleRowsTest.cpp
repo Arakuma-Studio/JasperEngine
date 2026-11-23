@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ParticleModuleRowsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::particles;
@@ -145,3 +147,5 @@ TEST(ParticleModuleRows, OnlyEmitterTimeCurvesTakeThePlayhead) {
     EXPECT_FALSE(particlerows::curveOverEmitterTime("colorBySpeed.color", CurveDriver::Speed));
     EXPECT_TRUE(particlerows::curveOverEmitterTime("sizeOverLifetime.size", CurveDriver::EmitterTime));
 }
+
+}  // namespace ParticleModuleRowsTest_cpp

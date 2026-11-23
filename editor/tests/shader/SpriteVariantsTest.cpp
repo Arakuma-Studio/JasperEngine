@@ -26,9 +26,10 @@
 #include <string>
 #include <vector>
 
+namespace sprite_variants_test {
+
 using namespace jasperengine;
 
-namespace sprite_variants_test {
 
     constexpr const char* kForkBase = "shaders/PreS48Sprite";
 
@@ -142,6 +143,8 @@ namespace sprite_variants_test {
     }
 
 }
+
+namespace sprite_variants_test {
 
 using namespace sprite_variants_test;
 
@@ -301,3 +304,5 @@ TEST(SpriteVariants, TapBudget){
         EXPECT_LE(count - base, budget.extra) << name;
     }
 }
+
+}  // namespace sprite_variants_test

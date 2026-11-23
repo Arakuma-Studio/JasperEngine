@@ -13,6 +13,8 @@
 #include <set>
 #include <string>
 
+namespace TileGridLayoutTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -535,3 +537,5 @@ TEST(TileGridLayout, TileShiftOfAnchorsAndDualGrids){
         }
     }
 }
+
+}  // namespace TileGridLayoutTest_cpp

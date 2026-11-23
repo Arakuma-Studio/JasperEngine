@@ -31,6 +31,8 @@
     extern char** environ;
 #endif
 
+namespace CrashReportsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 namespace fs = std::filesystem;
@@ -266,3 +268,5 @@ TEST(CrashGuard, RecoveredCrashOnlyAddsBreadcrumb) {
     EXPECT_TRUE(fs::is_empty(dir.path() / "reports"));
 }
 #endif
+
+}  // namespace CrashReportsTest_cpp

@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 
+namespace GlitchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pixelart;
 
@@ -135,3 +137,5 @@ TEST(GlitchSchedule, ScriptedBurstOnUnscaledTime){
     EXPECT_EQ(Glitch::getBurstIntensity(), 0.0f);
     EXPECT_EQ(glitchFrame(s, 1.0, 120, Glitch::getBurstIntensity()).strength, 0.0f);
 }
+
+}  // namespace GlitchTest_cpp

@@ -47,6 +47,8 @@ namespace jasperengine {
     };
 }
 
+namespace ModelCpuDataGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -364,3 +366,5 @@ TEST_F(ModelCpuDataGpu, MediumCookDrawsWhatItsSourceDraws){
         EXPECT_GOLDEN("model_cook_medium");
     }
 }
+
+}  // namespace ModelCpuDataGpuTest_cpp

@@ -11,6 +11,8 @@
 
 #include <algorithm>
 
+namespace SplinePolygonFillTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 using namespace jasperengine::test;
@@ -255,3 +257,5 @@ TEST(SplinePolygonFillTests, OutlinesOfInvalidSplinesAreEmpty){
     sampleFillOutline(s, 100.0f, outline);
     EXPECT_EQ(outline.size(), 3u);
 }
+
+}  // namespace SplinePolygonFillTest_cpp

@@ -12,10 +12,12 @@
 #include <cstdio>
 #include <vector>
 
+uint64_t pixelColorHashUnoptimised();   // PixelColorO0.cpp
+
+namespace PixelColorTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pixelart;
-
-uint64_t pixelColorHashUnoptimised();   // PixelColorO0.cpp
 
 namespace {
 
@@ -386,3 +388,5 @@ TEST(PixelColorReduce, MedianCutIsDeterministicAndKeepsLockedColours) {
     EXPECT_EQ(medianCut(pixels, 1, keep), keep);
     EXPECT_TRUE(medianCut(pixels, 0, keep).empty());
 }
+
+}  // namespace PixelColorTest_cpp

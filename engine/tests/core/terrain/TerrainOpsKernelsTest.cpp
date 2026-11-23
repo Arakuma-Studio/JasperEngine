@@ -12,6 +12,8 @@
 
 #include <cmath>
 
+namespace TerrainOpsKernelsTest_cpp {
+
 using namespace terraintest;
 
 namespace {
@@ -712,3 +714,5 @@ TEST(TerrainOpsKernels, ShapeStrokeFollowsPressure) {
     EXPECT_NEAR(heightAt(smaller, 4, 4), 1.5f / 60.0f, QUANTUM);
     EXPECT_NEAR(heightAt(smaller, 6, 4), 0.0f, QUANTUM);
 }
+
+}  // namespace TerrainOpsKernelsTest_cpp

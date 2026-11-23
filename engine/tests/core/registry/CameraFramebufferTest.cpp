@@ -12,6 +12,8 @@
 
 #include <memory>
 
+namespace CameraFramebufferTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -72,3 +74,5 @@ TEST(CameraFramebuffer, ARegistryWithoutARendererDeletesThemToo){
     registry.reset();
     EXPECT_EQ(deletedFramebuffers, 3);
 }
+
+}  // namespace CameraFramebufferTest_cpp

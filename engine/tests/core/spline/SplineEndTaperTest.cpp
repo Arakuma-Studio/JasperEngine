@@ -15,6 +15,8 @@
 #include <span>
 #include <vector>
 
+namespace SplineEndTaperTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 using namespace jasperengine::spline::geometrytest;
@@ -271,3 +273,5 @@ TEST(SplineEndTaperTests, ATaperedRibbonSweepsToAPointWithoutDegenerateTriangles
     EXPECT_EQ(mesh.indices.size(), (static_cast<size_t>(mesh.ringCount - 1u) * 2u - 2u) * 3u);
     expectWellFormed(mesh, "tapered ribbon");
 }
+
+}  // namespace SplineEndTaperTest_cpp

@@ -15,6 +15,8 @@
 #include <chrono>
 #include <vector>
 
+namespace AtmosphereShaderBuildTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -62,3 +64,5 @@ TEST(AtmosphereShaderBuild, EveryProgramEveryBackend){
         }
     }
 }
+
+}  // namespace AtmosphereShaderBuildTest_cpp

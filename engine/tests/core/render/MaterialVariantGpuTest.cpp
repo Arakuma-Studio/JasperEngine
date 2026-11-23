@@ -31,6 +31,8 @@
 #include <functional>
 #include <string>
 
+namespace MaterialVariantGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -150,3 +152,5 @@ TEST_F(MaterialVariantGpu, DepthClipFollowsABaseColourGivenToAMaskMaterial){
     EXPECT_NE(submesh().depthShaderProperties & variantBit(0), 0u) << "the shadow and depth passes do not clip by the new base colour ('Tex')";
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace MaterialVariantGpuTest_cpp

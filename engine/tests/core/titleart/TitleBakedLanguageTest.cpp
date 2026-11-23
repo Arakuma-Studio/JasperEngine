@@ -27,6 +27,8 @@
 #include <filesystem>
 #include <fstream>
 
+namespace TitleBakedLanguageTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 namespace fs = std::filesystem;
@@ -155,3 +157,5 @@ TEST_F(TitleBakedLanguageGpu, SwitchShowsThePreviousLanguageUntilTheNewSetIsLoad
     GpuEnvironment::drawFrames(2);
     EXPECT_TRUE(sameColour(centre(), DE));
 }
+
+}  // namespace TitleBakedLanguageTest_cpp

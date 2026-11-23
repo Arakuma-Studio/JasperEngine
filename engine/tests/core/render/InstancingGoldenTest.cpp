@@ -39,6 +39,8 @@
 #include <memory>
 #include <vector>
 
+namespace InstancingGoldenTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -661,3 +663,5 @@ TEST_F(InstancingGoldenGpu, ShadowLodCoarserIsOneLevel){
     EXPECT_LE(coarser, 1.5f);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace InstancingGoldenTest_cpp

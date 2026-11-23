@@ -21,8 +21,12 @@
 #include <unordered_set>
 #include <vector>
 
+namespace ShaderKeyTest_cpp {
+
 using namespace jasperengine;
 using editor::Stream;
+
+}  // namespace ShaderKeyTest_cpp
 
 namespace jasperengine {
     // failures print the key as the tools do
@@ -30,6 +34,8 @@ namespace jasperengine {
         *os << ShaderPool::getShaderKeyText(key);
     }
 }
+
+namespace ShaderKeyTest_cpp {
 
 namespace {
 
@@ -552,3 +558,5 @@ TEST(ShaderKey, TerrainWorldBitIsPinned) {
         EXPECT_NE(candidate & shaderPropertyBit(25), 0u);
     }
 }
+
+}  // namespace ShaderKeyTest_cpp

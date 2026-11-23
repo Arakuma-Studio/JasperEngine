@@ -20,8 +20,12 @@
 #include <limits>
 #include <set>
 
+namespace CleanupSheetTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::cleanup;
+// the cleanup's own, not pixelart's namesakes: a batch that declares both would be ambiguous
+using jasperengine::editor::pixelart::cleanup::RgbaImage;
 using jasperengine::pixelart::Rgba8;
 using nlohmann::ordered_json;
 
@@ -398,3 +402,5 @@ TEST(CleanupSheet, EachAnimationFromANewRowWithNamedFrames) {
     EXPECT_EQ(json["meta"]["frameTags"][0], ordered_json({{"name", "fire"}, {"from", 0}, {"to", 4}, {"direction", "pingpong"}}));
     EXPECT_EQ(json["meta"]["frameTags"][1], ordered_json({{"name", "smoke"}, {"from", 5}, {"to", 6}, {"direction", "forward"}}));
 }
+
+}  // namespace CleanupSheetTest_cpp

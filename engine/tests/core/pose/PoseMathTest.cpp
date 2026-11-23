@@ -7,6 +7,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PoseMathTest_cpp {
+
 using namespace posetest;
 
 TEST(PoseMath, AxisAngleAndFromTo){
@@ -68,3 +70,5 @@ TEST(PoseMath, ScalarHelpers){
     EXPECT_DOUBLE_EQ(smootherstep(0.0, 1.0, 0.5), 0.5);
     EXPECT_NEAR(smootherstep(0.0, 1.0, 0.25), 0.103515625, 1e-12);
 }
+
+}  // namespace PoseMathTest_cpp

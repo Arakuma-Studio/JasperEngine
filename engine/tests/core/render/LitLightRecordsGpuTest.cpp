@@ -36,10 +36,11 @@
 #include <string>
 #include <vector>
 
+namespace lit_light_records_gpu_test {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
-namespace lit_light_records_gpu_test {
 
     // glcore against its own goldens: exact; another backend: the cross-backend bound
     CompareOptions litRecordsOptions(){
@@ -90,6 +91,8 @@ namespace lit_light_records_gpu_test {
     };
 
 }
+
+namespace lit_light_records_gpu_test {
 
 using namespace lit_light_records_gpu_test;
 
@@ -192,3 +195,5 @@ TEST_F(LitLightRecordsGpu, CapsulesContactAnd2DLightsDrawTheBlocksImage){
     EXPECT_GT(largest, 40);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace lit_light_records_gpu_test

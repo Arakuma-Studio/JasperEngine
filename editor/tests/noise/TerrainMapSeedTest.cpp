@@ -26,6 +26,8 @@
 #include <memory>
 #include <string>
 
+namespace TerrainMapSeedTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -104,3 +106,5 @@ TEST(TerrainMapSeed, ANewBlendMapExistsAtOnce) {
     EXPECT_TRUE(format.exists) << "the store asked before the file's load could run";
     EXPECT_EQ(format.bounds.w, 33);
 }
+
+}  // namespace TerrainMapSeedTest_cpp

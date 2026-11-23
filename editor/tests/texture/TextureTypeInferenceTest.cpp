@@ -9,6 +9,8 @@
 #include "component/TerrainComponent.h"
 #include "texture/TextureTypeInference.h"
 
+namespace TextureTypeInferenceTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -176,3 +178,5 @@ TEST(TextureTypeInference, HoleMapStaysReadable){
     EXPECT_TRUE(inferenceHas(hole, TextureSlot::CpuReadable));
     EXPECT_TRUE(inferenceHas(hole, TextureSlot::LinearData));
 }
+
+}  // namespace TextureTypeInferenceTest_cpp

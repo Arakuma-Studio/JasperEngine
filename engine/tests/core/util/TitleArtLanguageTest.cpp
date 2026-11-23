@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+namespace TitleArtLanguageTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -182,3 +184,5 @@ TEST_F(TitleArtLanguageTest, SidecarTable) {
     EXPECT_FALSE(table.present);
     EXPECT_FALSE(TitleArtLanguage::parseTable("not json", table));
 }
+
+}  // namespace TitleArtLanguageTest_cpp

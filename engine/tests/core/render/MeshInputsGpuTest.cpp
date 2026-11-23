@@ -37,6 +37,8 @@
 #include <string>
 #include <vector>
 
+namespace MeshInputsGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -296,3 +298,5 @@ TEST(MeshInputsGpuSingle, TwoUvSetsWithoutANormalMapSampleTheirSets){
     EXPECT_GT(center[1], center[0] + 20) << "the base colour did not sample UV set 2 (red is set 1's texel)";
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace MeshInputsGpuTest_cpp

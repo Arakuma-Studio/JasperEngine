@@ -25,6 +25,8 @@
 #include <string>
 #include <vector>
 
+namespace ModelPartsTest_cpp {
+
 using namespace jasperengine;
 namespace fs = std::filesystem;
 
@@ -157,3 +159,5 @@ TEST(ModelParts, SingleMeshModelUnchanged) {
     model.setMorphWeight(1, 0.5f);
     EXPECT_EQ(mesh.morphWeights[1], 0.5f);
 }
+
+}  // namespace ModelPartsTest_cpp

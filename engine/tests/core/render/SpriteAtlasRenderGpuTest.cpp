@@ -42,6 +42,8 @@
 #include <string>
 #include <vector>
 
+namespace SpriteAtlasRenderGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -317,3 +319,5 @@ TEST_F(SpriteAtlasRenderGpu, SlicedKeepsItsCorners) {
     provided.clear();
     SpriteSheetPool::invalidate(path);
 }
+
+}  // namespace SpriteAtlasRenderGpuTest_cpp

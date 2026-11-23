@@ -23,6 +23,8 @@
 #include <utility>
 #include <vector>
 
+namespace TerrainStrokeSessionTest_cpp {
+
 using namespace terrainprojecttest;
 
 namespace {
@@ -594,3 +596,5 @@ TEST(TerrainStrokeSession, PaintTextureAlternateAveragesTheBlend) {
     EXPECT_GT(right, 0) << "and the empty side took some";
     EXPECT_LT(right, 235);
 }
+
+}  // namespace TerrainStrokeSessionTest_cpp

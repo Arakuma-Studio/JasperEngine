@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+namespace UberBudgetTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -190,3 +192,5 @@ TEST(UberBudget, PaletteQuantizeCompilesNoDither){
     // (while the dither alone does change the program)
     EXPECT_NE(fragmentCode(UBER_DITHER, error), fragmentCode(UBER_UPSCALE, error));
 }
+
+}  // namespace UberBudgetTest_cpp

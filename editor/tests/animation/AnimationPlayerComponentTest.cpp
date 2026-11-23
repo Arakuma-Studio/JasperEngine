@@ -28,6 +28,8 @@
 #include <string>
 #include <vector>
 
+namespace AnimationPlayerComponentTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -608,3 +610,5 @@ TEST(AnimationPlayerComponent, SavedMorphWeightsAreKeptByTheModelLoad) {
     EXPECT_EQ(Factory::createComponent(0, &scene, entity, ComponentType::MeshComponent, "", "scene", "entity").find("morphWeightsSet"),
               std::string::npos);
 }
+
+}  // namespace AnimationPlayerComponentTest_cpp

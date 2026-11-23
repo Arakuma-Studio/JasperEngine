@@ -30,6 +30,8 @@
 #include <memory>
 #include <vector>
 
+namespace SplineSystemTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -359,3 +361,5 @@ TEST_F(SplineSystemTest, AnEdgeWithChain2DCarriesABall){
     EXPECT_NEAR(y, under.position.y + 10.0f, 1.5f) << "the ball fell to " << y;
 }
 #endif
+
+}  // namespace SplineSystemTest_cpp

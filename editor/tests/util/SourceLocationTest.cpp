@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace SourceLocationTest_cpp {
+
 using namespace jasperengine::editor;
 
 namespace {
@@ -180,3 +182,5 @@ TEST(SourceLocation, InsertTimeBudget) {
         EXPECT_LE(us, 2.0 * slack) << "R37 (2 us per line)";
     }
 }
+
+}  // namespace SourceLocationTest_cpp

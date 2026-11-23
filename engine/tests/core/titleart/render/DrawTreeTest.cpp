@@ -6,6 +6,8 @@
 #include "titleart/TitleArtIO.h"
 #include "titleart/render/DrawTree.h"
 
+namespace DrawTreeTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
@@ -102,3 +104,5 @@ TEST_F(DrawTreeTest, NodesKnowTheirDepth) {
     EXPECT_EQ(nodes[0].children[0].children[0].type, LayerType::Text);
     EXPECT_EQ((*nodes[0].children[0].children[0].layer)["text"], "Title");
 }
+
+}  // namespace DrawTreeTest_cpp

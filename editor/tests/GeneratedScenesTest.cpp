@@ -44,6 +44,8 @@
 #include <thread>
 #include <vector>
 
+namespace GeneratedScenesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -379,3 +381,5 @@ TEST(GeneratedScenes, CanvasGroupFactoryCodeCompiles){
     GTEST_SKIP() << "built without the engine flags";
 #endif
 }
+
+}  // namespace GeneratedScenesTest_cpp

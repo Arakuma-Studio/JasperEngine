@@ -43,6 +43,8 @@
 #include <string>
 #include <vector>
 
+namespace TerrainFoliageGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -317,3 +319,5 @@ TEST_F(TerrainFoliageGpu, AFailedCpuReadableCookStopsTheWaitWithOneError){
     EXPECT_EQ(log.count(D_LOG_ERROR, "draws nothing"), 1u) << log.describeErrors();
     CookedTextures::setCpuReadHandler(nullptr);
 }
+
+}  // namespace TerrainFoliageGpuTest_cpp

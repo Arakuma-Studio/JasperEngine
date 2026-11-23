@@ -40,6 +40,8 @@
 #include <windows.h>    // GetThreadTimes: the thread's CPU time (POSIX: CLOCK_THREAD_CPUTIME_ID)
 #endif
 
+namespace ClipAudioPlayersTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -290,3 +292,5 @@ TEST(ClipAudioBench, TwoHundredPlayersCrossingACueAFrame){
     }
 #endif
 }
+
+}  // namespace ClipAudioPlayersTest_cpp

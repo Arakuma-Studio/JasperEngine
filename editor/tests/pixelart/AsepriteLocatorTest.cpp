@@ -23,6 +23,8 @@
 #define ASEPRITE_TEST_GETPID getpid
 #endif
 
+namespace AsepriteLocatorTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::aseprite;
@@ -297,3 +299,5 @@ TEST_F(AsepriteLocatorTest, OpenRejectsRelativePathsBeforeLaunching) {
     EXPECT_EQ(problem.kind, "invalid_settings");
     EXPECT_EQ(problem.field, "files");
 }
+
+}  // namespace AsepriteLocatorTest_cpp

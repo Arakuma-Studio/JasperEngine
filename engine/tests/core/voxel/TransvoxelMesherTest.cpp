@@ -12,6 +12,8 @@
 #include <map>
 #include <set>
 
+namespace TransvoxelMesherTest_cpp {
+
 using namespace voxeltest;
 
 namespace {
@@ -180,3 +182,5 @@ TEST(VoxelMesher, IndexLimitFallback) {
     EXPECT_EQ(sizeof(MeshVertex), 32u);
     EXPECT_EQ(sortedTriangles(normal), sortedTriangles(fallback));
 }
+
+}  // namespace TransvoxelMesherTest_cpp

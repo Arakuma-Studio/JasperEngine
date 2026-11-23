@@ -20,6 +20,8 @@
 
 #include <cmath>
 
+namespace TerrainWorldPlacementTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::physicstest;
 
@@ -90,3 +92,5 @@ TEST(TerrainWorldPlacement, CratesRestOnTheSurfaceAcrossBorders) {
 }
 
 #endif
+
+}  // namespace TerrainWorldPlacementTest_cpp

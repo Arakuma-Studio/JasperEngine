@@ -14,6 +14,8 @@
 #include <limits>
 #include <vector>
 
+namespace SplineCenterlineTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 
@@ -164,3 +166,5 @@ TEST(SplineCenterlineTests, StationsBecomeMeasuredSamplesOnTheirOwnUp){
         EXPECT_TRUE(center[i].surfaceValid);
     }
 }
+
+}  // namespace SplineCenterlineTest_cpp

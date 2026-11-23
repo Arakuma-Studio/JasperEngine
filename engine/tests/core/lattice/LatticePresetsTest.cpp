@@ -10,6 +10,8 @@
 #include <cstdio>
 #include <sstream>
 
+namespace LatticePresetsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 using lattice::LatticeAxis;
@@ -539,3 +541,5 @@ TEST(LatticePresets, CopyAsLuaFormatting){
     }
     EXPECT_EQ(count, 8);
 }
+
+}  // namespace LatticePresetsTest_cpp

@@ -20,6 +20,8 @@
 #include <fstream>
 #include <string>
 
+namespace EmscriptenSdkTest_cpp {
+
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
@@ -229,3 +231,5 @@ TEST(EmscriptenSdk, AcceptsTheEmscripten6WindowsLayout) {
     std::error_code ec;
     fs::remove_all(base, ec);
 }
+
+}  // namespace EmscriptenSdkTest_cpp

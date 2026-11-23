@@ -17,22 +17,23 @@
 #include <sstream>
 
 using namespace jasperengine;
-using namespace jasperengine::test;
 
-std::string jasperengine::test::getGoldenDirectory(){
+namespace jasperengine::test {
+
+std::string getGoldenDirectory(){
     return testPaths().goldenDir;
 }
 
-std::string jasperengine::test::getOutputDirectory(){
+std::string getOutputDirectory(){
     return testPaths().outputDir;
 }
 
-bool jasperengine::test::isGoldenUpdateMode(){
+bool isGoldenUpdateMode(){
     // the HTML UI suite's name of the switch predates the shared harness
     return envFlag("JASPER_TEST_UPDATE_GOLDEN") || envFlag("JASPER_HTMLUI_UPDATE_GOLDEN");
 }
 
-bool jasperengine::test::readPng(const std::string& path, std::vector<uint8_t>& rgba, int& width, int& height){
+bool readPng(const std::string& path, std::vector<uint8_t>& rgba, int& width, int& height){
     int channels = 0;
     unsigned char* pixels = stbi_load(path.c_str(), &width, &height, &channels, 4);
     if (!pixels){
@@ -45,7 +46,7 @@ bool jasperengine::test::readPng(const std::string& path, std::vector<uint8_t>& 
     return true;
 }
 
-bool jasperengine::test::writePng(const std::string& path, const std::vector<uint8_t>& rgba, int width, int height){
+bool writePng(const std::string& path, const std::vector<uint8_t>& rgba, int width, int height){
     if (width <= 0 || height <= 0 || rgba.size() != static_cast<size_t>(width) * height * 4)
         return false;
     std::error_code error;
@@ -53,7 +54,7 @@ bool jasperengine::test::writePng(const std::string& path, const std::vector<uin
     return stbi_write_png(path.c_str(), width, height, 4, rgba.data(), width * 4) != 0;
 }
 
-CompareResult jasperengine::test::compareWithGoldenFile(const std::string& goldenPath, const std::string& outputDirectory,
+CompareResult compareWithGoldenFile(const std::string& goldenPath, const std::string& outputDirectory,
                                                         const std::string& name, const std::vector<uint8_t>& rgba, int width, int height,
                                                         const CompareOptions& options){
     CompareResult result;
@@ -255,12 +256,12 @@ CompareResult jasperengine::test::compareWithGoldenFile(const std::string& golde
     return result;
 }
 
-CompareResult jasperengine::test::compareWithGolden(const std::string& name, const std::vector<uint8_t>& rgba, int width, int height,
+CompareResult compareWithGolden(const std::string& name, const std::vector<uint8_t>& rgba, int width, int height,
                                                     const CompareOptions& options){
     return compareWithGoldenFile(getGoldenDirectory() + "/" + name + ".png", getOutputDirectory(), name, rgba, width, height, options);
 }
 
-CompareResult jasperengine::test::compareTargetWithGolden(const std::string& name, const CompareOptions& options){
+CompareResult compareTargetWithGolden(const std::string& name, const CompareOptions& options){
 #if defined(JASPER_TEST_HAS_GPU)
     if (!GpuEnvironment::isReady()){
         CompareResult result;
@@ -287,6 +288,8 @@ CompareResult jasperengine::test::compareTargetWithGolden(const std::string& nam
 #endif
 }
 
-CompareOptions jasperengine::test::hardwareTolerance(const CompareOptions& hardware, const CompareOptions& reference){
+CompareOptions hardwareTolerance(const CompareOptions& hardware, const CompareOptions& reference){
     return GpuEnvironment::isReferenceRenderer() ? reference : hardware;
 }
+
+}  // namespace jasperengine::test

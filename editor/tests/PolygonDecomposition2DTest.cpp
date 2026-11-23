@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace PolygonDecomposition2DTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -493,3 +495,5 @@ TEST(PolygonDecomposition2D, LargeOutlinesKeepTheirDetail) {
     const Decomposition2D half = decomposePolygon2D(arc, 0.005f, 8);
     expectFaithful(arc, half, 0.006, "arc");
 }
+
+}  // namespace PolygonDecomposition2DTest_cpp

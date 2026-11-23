@@ -22,6 +22,8 @@
 #include <set>
 #include <vector>
 
+namespace SceneBvhTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -352,3 +354,5 @@ TEST(SceneBvh, ZeroWhenUnused){
     MeshRaycast::raycast(&scene, Vector3(3, 0, 10), Vector3(0, 0, -1), 100.0f);
     EXPECT_NE(scene.findPickBvh(), nullptr);
 }
+
+}  // namespace SceneBvhTest_cpp

@@ -30,6 +30,8 @@
 
 #include <cmath>
 
+namespace CanvasScalerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -487,3 +489,5 @@ TEST(CanvasScalerSettingsIO, TheSceneSettingIsOneCatalogProperty) {
     EXPECT_FALSE(scene.isCanvasScalerUseProjectDefault());
     EXPECT_EQ(scene.getCanvasScaler().mode, UIScaleMode::ConstantPixelSize);
 }
+
+}  // namespace CanvasScalerTest_cpp

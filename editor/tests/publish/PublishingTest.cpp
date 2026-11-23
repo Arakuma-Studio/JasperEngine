@@ -24,13 +24,14 @@
 #include <cstdlib>
 #include <fstream>
 
+namespace publishing_test {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::publish;
 using jasperengine::test::TestTempDir;
 
-namespace publishing_test {
 
     // an ELF header: 64-bit little-endian, e_machine `machine`, no segments or sections
     std::string elf(uint16_t machine) {
@@ -93,6 +94,8 @@ namespace publishing_test {
     }
 
 }
+
+namespace publishing_test {
 
 using namespace publishing_test;
 
@@ -472,6 +475,8 @@ TEST(PublishSteam, VdfScriptsAndRefusals) {
     EXPECT_FALSE(error.empty());
 }
 
+}  // namespace publishing_test
+
 #ifndef _WIN32
 
 namespace publishing_test {
@@ -501,6 +506,8 @@ namespace publishing_test {
     };
 
 }
+
+namespace publishing_test {
 
 TEST(PublishSteam, UploadRunsSteamcmdAfterVerify) {
     TestTempDir dir("steam-upload");
@@ -588,7 +595,11 @@ TEST(PublishDeck, DeployRollbackSmoke) {
     ::unsetenv("FAKE_DECK_HOME");
 }
 
+}  // namespace publishing_test
+
 #endif
+
+namespace publishing_test {
 
 TEST(Notices, ALicenceMayNameItselfInItsExtension) {
     // FFmpeg's COPYING.LGPLv2.1, which the exporter stages as tools/ci/check-notices.py does
@@ -626,3 +637,5 @@ TEST(Notices, WhenListShipsWithAnyOfItsFeatures) {
     EXPECT_NE(std::find(titleArt.begin(), titleArt.end(), "thorvg"), titleArt.end());
     EXPECT_EQ(std::find(titleArt.begin(), titleArt.end(), "harfbuzz-subset"), titleArt.end());
 }
+
+}  // namespace publishing_test

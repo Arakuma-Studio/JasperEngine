@@ -10,6 +10,8 @@
 
 #include <map>
 
+namespace TileStreamerTest_cpp {
+
 using namespace terrainworldtest;
 
 namespace {
@@ -299,3 +301,5 @@ TEST(TileStreamer, FreezeStopsEverything) {
     EXPECT_EQ(stream.streamer.state(TileCoord(0, 0)), TileState::Resident) << "nothing is evicted";
     EXPECT_EQ(stream.streamer.stats().evictedPages, 0);
 }
+
+}  // namespace TileStreamerTest_cpp

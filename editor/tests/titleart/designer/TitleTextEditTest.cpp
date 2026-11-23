@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace TitleTextEditTest_cpp {
+
 using namespace jasperengine::editor::titledesigner;
 using jasperengine::editor::ImePreedit;
 namespace ta = jasperengine::titleart;
@@ -456,3 +458,5 @@ TEST(TitleTextEditTest, ClicksPlaceTheCaretSelectWordsAndPointTheIme) {
     EXPECT_NEAR(ime.InputLineHeight, 20.0f, 1e-3f);
     EXPECT_TRUE(ImePreedit::inlineWanted()) << "the backends suppress their composition window";
 }
+
+}  // namespace TitleTextEditTest_cpp

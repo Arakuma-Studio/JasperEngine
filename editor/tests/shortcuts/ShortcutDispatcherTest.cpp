@@ -12,6 +12,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ShortcutDispatcherTest_cpp {
+
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
@@ -237,3 +239,5 @@ TEST(ShortcutDispatcher, ADisabledCommandsChordReportsWhy) {
     dispatcher.process(FakeKeys::press(chordOf("Ctrl+S")), ShortcutState());
     EXPECT_EQ(reported.size(), 1u);
 }
+
+}  // namespace ShortcutDispatcherTest_cpp

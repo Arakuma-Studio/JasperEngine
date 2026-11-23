@@ -27,6 +27,8 @@
 #include <chrono>
 #include <cstdio>
 
+namespace TitleFxLiveGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -374,3 +376,5 @@ TEST(TitleFxLiveShaders, TheUiLiveLayersHaveAVertexStage) {
     EXPECT_EQ(vert, "library/title_fx.vert");
     EXPECT_TRUE(ShaderVariantCompiler::getLibraryShaderPaths("library:title_fx_sprite", ShaderType::MESH, vert, frag, &error)) << error;
 }
+
+}  // namespace TitleFxLiveGpuTest_cpp

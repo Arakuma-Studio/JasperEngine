@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+namespace LuaBindingBenchTest_cpp {
+
 using namespace jasperengine;
 using jasperengine::test::makeTransformEntity;
 
@@ -90,3 +92,5 @@ TEST(LuaBindingBench, CallsAndProperties){
     lua_setglobal(L, "benchScene");
     luaBindingBenchRunLua(L, "collectgarbage()");
 }
+
+}  // namespace LuaBindingBenchTest_cpp

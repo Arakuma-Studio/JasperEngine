@@ -11,6 +11,8 @@
 
 #include <algorithm>
 
+namespace TileBuildTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -195,3 +197,5 @@ TEST(TileBuild, PastTheViewCapTheNearestWin){
         EXPECT_EQ(builder.getViewLights()[(size_t)k], k);
     EXPECT_EQ(texels.size(), (size_t)TiledLights::TEXTURE_WIDTH * (size_t)TiledLights::textureRows(view.grid) * 4);
 }
+
+}  // namespace TileBuildTest_cpp

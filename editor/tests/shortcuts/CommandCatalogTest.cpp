@@ -18,6 +18,8 @@
 #include <set>
 #include <vector>
 
+namespace CommandCatalogTest_cpp {
+
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
@@ -290,3 +292,5 @@ TEST(CommandCatalogTest, TerrainBrushContextOutranksPanels) {
     ASSERT_TRUE(catalog.setBindings("terrain.alternate", {chordOf("G")}, &reason)) << reason;
     EXPECT_EQ(dispatcher.resolve(chordOf("G"), armed)->id, "terrain.alternate");
 }
+
+}  // namespace CommandCatalogTest_cpp

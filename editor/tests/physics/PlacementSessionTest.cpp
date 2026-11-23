@@ -38,6 +38,8 @@
 #include <string>
 #include <vector>
 
+namespace PlacementSessionTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -1962,3 +1964,5 @@ TEST(PhysicsPlacementSim, FinishNowCancelsWhenNoStepCouldRun) {
     EXPECT_EQ(CommandHandle::get(sceneId)->position(), position);
     placementSessionExpectNear(placementSessionTransformOf(sceneId, ring).position, Vector3(0.0f, 2.0f, 0.0f), 0.0f);
 }
+
+}  // namespace PlacementSessionTest_cpp

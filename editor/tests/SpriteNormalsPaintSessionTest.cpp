@@ -40,6 +40,8 @@
 #include <string>
 #include <vector>
 
+namespace SpriteNormalsPaintSessionTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace sn = jasperengine::editor::spritenormals;
@@ -501,3 +503,5 @@ TEST(SpriteNormalsPaintSessionDeathTest, UndoOfTheWriteRestoresThePreviousPaint)
     GTEST_FLAG_SET(death_test_style, "threadsafe"); EXPECT_EXIT(undoRestoresThePreviousPaint(dir), ::testing::ExitedWithCode(0), "");
     fs::remove_all(dir);
 }
+
+}  // namespace SpriteNormalsPaintSessionTest_cpp

@@ -21,9 +21,10 @@
 #include <string>
 #include <vector>
 
+namespace light_records_form_test {
+
 using namespace jasperengine;
 
-namespace light_records_form_test {
 
     struct FormCompiled {
         ShaderData data;
@@ -88,6 +89,8 @@ namespace light_records_form_test {
     }
 
 }
+
+namespace light_records_form_test {
 
 using namespace light_records_form_test;
 
@@ -195,3 +198,5 @@ TEST(LightRecordsForm, ForkReadingTheBlocksKeepsThem){
     EXPECT_FALSE(readsRecords(fork)) << fork.name;
     EXPECT_NE(fork.log.find("light-records-failed"), std::string::npos) << fork.name << ": " << fork.log;
 }
+
+}  // namespace light_records_form_test

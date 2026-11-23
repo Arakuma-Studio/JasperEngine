@@ -17,6 +17,8 @@
 #include <algorithm>
 #include <cstring>
 
+namespace ScriptLifecycleTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::scripttest;
 
@@ -957,3 +959,5 @@ TEST_F(ScriptLifecycleTest, CppOverridesLearnedWhenSent) {
     ScriptRuntime::unloadScenes({scene});
     scriptLifecycleDeleteCppScripts(scene);
 }
+
+}  // namespace ScriptLifecycleTest_cpp

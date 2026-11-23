@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <cmath>
 
+namespace Nav2DTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::navtest;
 using nav::GridCell;
@@ -127,3 +129,5 @@ TEST_F(Nav2DTest, GridAgentsOnTilemap){
     EXPECT_EQ(reached, 1);
     EXPECT_EQ(grid.worldToCell(position(walker)), (GridCell{13, 10}));
 }
+
+}  // namespace Nav2DTest_cpp

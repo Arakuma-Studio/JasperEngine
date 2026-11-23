@@ -21,6 +21,8 @@
 #include <utility>
 #include <vector>
 
+namespace TextureFallbackTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -271,3 +273,5 @@ TEST(TextureFallback, PackedFormatsTheDeviceCannotSampleWidenToRgba8){
         EXPECT_EQ(native.getGpuFormat(), format);
     }
 }
+
+}  // namespace TextureFallbackTest_cpp

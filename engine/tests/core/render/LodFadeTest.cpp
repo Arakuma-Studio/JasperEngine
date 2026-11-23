@@ -16,6 +16,8 @@
 #include <functional>
 #include <vector>
 
+namespace LodFadeTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -320,3 +322,5 @@ TEST(LodFadeBench, ThousandMeshesAFrame){
         EXPECT_EQ(allocations, 0u);
     }
 }
+
+}  // namespace LodFadeTest_cpp

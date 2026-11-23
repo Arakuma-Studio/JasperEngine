@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <cmath>
 
+namespace NavQueryTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::navtest;
 
@@ -227,3 +229,5 @@ TEST_F(NavQueryTest, MoveAlongSurfaceClampsAtWall){
     EXPECT_FALSE(move.hit);
     EXPECT_FLOAT_EQ(move.distance, 0.0f);
 }
+
+}  // namespace NavQueryTest_cpp

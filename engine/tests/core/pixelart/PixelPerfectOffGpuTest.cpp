@@ -39,6 +39,8 @@
 #include <string>
 #include <vector>
 
+namespace PixelPerfectOffGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -261,3 +263,5 @@ TEST_F(PixelPerfectOffGpu, ZeroCost){
 
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace PixelPerfectOffGpuTest_cpp

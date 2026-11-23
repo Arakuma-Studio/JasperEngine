@@ -24,6 +24,8 @@
 #include <map>
 #include <set>
 
+namespace TextureCookTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -613,3 +615,5 @@ TEST(TextureCook, NamesThatAreNotUtf8AreNotCooked){
     EXPECT_FALSE(isCookableTexture("textures/stal\xe9.png"));
     EXPECT_FALSE(isCookableTexture("textures/notes.txt"));
 }
+
+}  // namespace TextureCookTest_cpp

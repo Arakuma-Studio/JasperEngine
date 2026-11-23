@@ -17,6 +17,8 @@
 #include <cmath>
 #include <memory>
 
+namespace ParticleDeterminismTest_cpp {
+
 using namespace particletest;
 
 namespace {
@@ -170,3 +172,5 @@ TEST(ParticleDeterminism, InterpolationContinuity){
     EXPECT_GT(checked, 500);
     EXPECT_LE(worst, 1e-4f);
 }
+
+}  // namespace ParticleDeterminismTest_cpp

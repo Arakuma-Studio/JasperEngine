@@ -26,6 +26,8 @@
 #include "support/PosixCompat.h"
 #include "support/EditorTestSupport.h"
 
+namespace ParticleChecksPanelTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -186,3 +188,5 @@ TEST(ParticleSheetBake, SheetIsTheCellsRowByRowAndItsEffectPlaysIt){
     EXPECT_FALSE(ParticleSheetBake::validate(4, 4, 2048).empty());
     EXPECT_TRUE(ParticleSheetBake::validate(4, 4, 128).empty());
 }
+
+}  // namespace ParticleChecksPanelTest_cpp

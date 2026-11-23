@@ -22,6 +22,8 @@
 #include <cstdlib>
 #include <memory>
 
+namespace FontLicenceTest_cpp {
+
 using jasperengine::Engine;
 using jasperengine::editor::AppSettings;
 using jasperengine::editor::CommandHistory;
@@ -240,3 +242,5 @@ TEST_F(FontLicenceTest, WebFontConversionWritesTheSfntAsOneStep) {
     EXPECT_FALSE(refused.ok);
     EXPECT_NE(refused.error.find("truncated"), std::string::npos) << refused.error;
 }
+
+}  // namespace FontLicenceTest_cpp

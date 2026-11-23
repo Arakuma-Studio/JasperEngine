@@ -24,6 +24,8 @@
 #include <sstream>
 #include <string>
 
+namespace Physics2DJointsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::physics2dtest;
@@ -792,3 +794,5 @@ TEST(Physics2DJoints, ABodyRebuiltInPlayKeepsItsJointsAutoValues) {
     EXPECT_GT(std::fabs(world.jointComponent(car.frontJoint).anchorB.y - anchorB.y), 0.5f * translation) << "anchor B taken again";
     EXPECT_LT(world.j(car.frontJoint).getJointTranslation(), 0.5f * translation) << "the spring starts from the pose of now";
 }
+
+}  // namespace Physics2DJointsTest_cpp

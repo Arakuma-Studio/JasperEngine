@@ -18,6 +18,8 @@
 #include <cstdio>
 #include <fstream>
 
+namespace AudioMusicGridTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -231,3 +233,5 @@ TEST(AudioMusicGridBench, ThreeMinuteTrack) {
         EXPECT_LE(seconds, 1.5 * slack);
     }
 }
+
+}  // namespace AudioMusicGridTest_cpp

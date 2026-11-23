@@ -15,6 +15,8 @@
 #include <thread>
 #include <vector>
 
+namespace VoxelWorkQueueTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::voxel;
 
@@ -161,3 +163,5 @@ TEST(VoxelWorkQueue, FinishedJobNotifiesBeforeThePump) {
     }
     EXPECT_EQ(finished, std::vector<uint64_t>{1});
 }
+
+}  // namespace VoxelWorkQueueTest_cpp

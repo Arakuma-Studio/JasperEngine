@@ -25,6 +25,8 @@
 #include <limits>
 #include <vector>
 
+namespace TerrainSurfaceTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::terraincore;
 
@@ -387,3 +389,5 @@ TEST(TerrainSurface, RaycastForwarderMatchesTheView) {
         }
     }
 }
+
+}  // namespace TerrainSurfaceTest_cpp

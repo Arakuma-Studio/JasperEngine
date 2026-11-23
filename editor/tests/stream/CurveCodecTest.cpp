@@ -19,6 +19,8 @@
 
 #include <cmath>
 
+namespace CurveCodecTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::test;
@@ -126,3 +128,5 @@ TEST(CurveCodec, CppLiteral) {
     EXPECT_NE(wrapped.find("CurveWrapMode::PingPong"), std::string::npos) << wrapped;
     EXPECT_NE(wrapped.find("INFINITY"), std::string::npos) << wrapped;
 }
+
+}  // namespace CurveCodecTest_cpp

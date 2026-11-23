@@ -13,6 +13,8 @@
 
 #include <cmath>
 
+namespace ParticleModulesTest_cpp {
+
 using namespace particletest;
 
 TEST(ParticleModules, GravityParabola){
@@ -529,3 +531,5 @@ TEST(ParticleModules, SetOverAgeFramesStayInsideTheList){
         EXPECT_EQ(sim.ch(ChFrame), ease < 0.0f ? 0.0f : 5.0f) << "ease " << ease;
     }
 }
+
+}  // namespace ParticleModulesTest_cpp

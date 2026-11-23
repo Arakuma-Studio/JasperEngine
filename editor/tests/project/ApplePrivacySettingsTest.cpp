@@ -17,9 +17,10 @@
 
 #include <gtest/gtest.h>
 
+namespace apple_privacy_settings_test {
+
 using namespace jasperengine::editor;
 
-namespace apple_privacy_settings_test {
 
     ApplePrivacy::Manifest additions() {
         ApplePrivacy::Manifest m;
@@ -31,6 +32,8 @@ namespace apple_privacy_settings_test {
     }
 
 }
+
+namespace apple_privacy_settings_test {
 
 using namespace apple_privacy_settings_test;
 
@@ -106,3 +109,4 @@ TEST(ApplePrivacySettings, OneAgentCallIsOneUndoStep) {
     EXPECT_EQ(mac->get(ctx), jasperengine::editor::mcp::Json::array({"ads.example.com"}));
 }
 
+}  // namespace apple_privacy_settings_test

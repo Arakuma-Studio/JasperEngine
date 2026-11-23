@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace FunctionSubscribeCompatTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -389,3 +391,5 @@ TEST(FunctionSubscribeCompatTest, CharInputHandlersOfEitherTypeRegister) {
     Engine::onCharInput.call(U'b');
     EXPECT_EQ(current.got.size(), 2u) << "unsubscribed";
 }
+
+}  // namespace FunctionSubscribeCompatTest_cpp

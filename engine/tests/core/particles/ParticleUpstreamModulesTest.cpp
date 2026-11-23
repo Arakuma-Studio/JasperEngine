@@ -21,6 +21,8 @@
 #include <set>
 #include <vector>
 
+namespace ParticleUpstreamModulesTest_cpp {
+
 using namespace particletest;
 
 namespace {
@@ -519,3 +521,5 @@ TEST(ParticleUpstreamMinMax, ParticleRandomsAreStable){
     for (uint32_t particle = 0; particle < 10000; particle++) sum += random01(0x9abcu, particle);
     EXPECT_NEAR(sum / 10000.0, 0.5, 0.02);
 }
+
+}  // namespace ParticleUpstreamModulesTest_cpp

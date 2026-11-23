@@ -15,6 +15,8 @@
 #include "registry/PhysicsLayers.h"
 #include "subsystem/PhysicsSystem.h"
 
+namespace FoliagePhysicsTest_cpp {
+
 using namespace foliagetest;
 
 namespace {
@@ -148,5 +150,7 @@ TEST(FoliagePhysics, NoSubscriberNoWork) {
     fixture.frame();
     EXPECT_FALSE(fixture.scene->getSystem<PhysicsSystem>()->onContactAdded3D.hasSubscribers());
 }
+
+}  // namespace FoliagePhysicsTest_cpp
 
 #endif // JASPERENGINE_PHYSICS_3D

@@ -29,6 +29,8 @@
     #include <string>
 #endif
 
+namespace LoggerBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -187,3 +189,5 @@ TEST(LoggerBench, DrainCpuAt10kPerSecond) {
     expectWithin(100.0 * drain / wall, 2.0, "drain thread CPU at 10k records/s, %");
 }
 #endif
+
+}  // namespace LoggerBenchTest_cpp

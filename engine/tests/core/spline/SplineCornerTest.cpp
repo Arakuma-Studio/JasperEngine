@@ -14,6 +14,8 @@
 #include <cstring>
 #include <vector>
 
+namespace SplineCornerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 using namespace jasperengine::spline::geometrytest;
@@ -733,3 +735,5 @@ TEST(SplineCornerTests, TheTopOfARoundCorneredLoopMeetsItselfAtTheSeam){
     EXPECT_EQ(topSlots, 2u);
     expectWellFormed(mesh, "round cornered loop");
 }
+
+}  // namespace SplineCornerTest_cpp

@@ -49,6 +49,8 @@
 #include <string>
 #include <vector>
 
+namespace VertexAnimatorTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::vat;
@@ -1741,3 +1743,5 @@ TEST_F(VertexAnimatorSystemTest, LuaApiThroughTheBindings) {
     a.onInstanceEvent.clear();
     a.onInstanceFinish.clear();
 }
+
+}  // namespace VertexAnimatorTest_cpp

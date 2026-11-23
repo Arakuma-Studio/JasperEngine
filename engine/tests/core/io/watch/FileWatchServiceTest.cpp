@@ -15,6 +15,8 @@
 #include <set>
 #include <thread>
 
+namespace FileWatchServiceTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -444,3 +446,5 @@ TEST(FileWatchServiceOff, OffAttachesForTheEditorsWritesOnly) {
     ASSERT_EQ(got.size(), 1u);
     EXPECT_EQ(got[0].origin, ChangeOrigin::Editor);
 }
+
+}  // namespace FileWatchServiceTest_cpp

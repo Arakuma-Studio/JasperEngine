@@ -45,6 +45,8 @@
 #include <string>
 #include <vector>
 
+namespace SplineGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -416,3 +418,5 @@ TEST_F(SplineGpu, TwoDimensionalShapes){
     expectGolden("spline_2d_shapes");
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace SplineGpuTest_cpp

@@ -31,9 +31,10 @@
 #include <string>
 #include <vector>
 
+namespace s91test {
+
 using namespace particletest;
 
-namespace s91test {
 
     std::string readText(const std::filesystem::path& path){
         std::ifstream in(path, std::ios::binary);
@@ -120,6 +121,8 @@ namespace s91test {
     }
 
 }
+
+namespace s91test {
 
 using namespace s91test;
 
@@ -811,3 +814,5 @@ TEST(ParticleRing, ItsMeshCoversTheArcBetweenTheRadii){
     EXPECT_EQ((int)RenderMode::VelocityAligned, 9);
     EXPECT_EQ((int)RenderMode::Ring, 10);
 }
+
+}  // namespace s91test

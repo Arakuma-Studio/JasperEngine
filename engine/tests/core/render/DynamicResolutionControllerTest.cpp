@@ -22,6 +22,8 @@
 #include <cstdio>
 #include <vector>
 
+namespace DynamicResolutionControllerTest_cpp {
+
 using namespace jasperengine;
 
 namespace{
@@ -1005,3 +1007,5 @@ TEST(DynamicResolutionControllerBench, Tick){
     }
     EXPECT_GT(frameLaw.getStats().ticks + gpuLaw.getStats().ticks, 0u);
 }
+
+}  // namespace DynamicResolutionControllerTest_cpp

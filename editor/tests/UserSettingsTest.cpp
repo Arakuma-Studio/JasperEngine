@@ -20,6 +20,8 @@
 
 #include "support/PosixCompat.h"
 
+namespace tests_UserSettingsTest_cpp {
+
 using namespace jasperengine;
 using scriptdata::ScriptDataTest;
 namespace fs = std::filesystem;
@@ -384,3 +386,5 @@ TEST_F(UserSettingsTest, PlayerPrefsIsTheSameStore) {
 }
 
 }
+
+}  // namespace tests_UserSettingsTest_cpp

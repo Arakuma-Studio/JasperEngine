@@ -37,6 +37,8 @@
 #include <thread>
 #include <vector>
 
+namespace NativeBridgeTest_cpp {
+
 using namespace jasperengine;
 using jasperengine::editor::NativePlugins::CreateOptions;
 using namespace jasperengine::editor;
@@ -1040,3 +1042,5 @@ TEST_F(NativeBridgeTest, CppValuesAreCheckedForUtf8AndHugeTimeoutsAreClamped) {
     ASSERT_TRUE(waitFor([&] { return d->calls == 1; }));
     EXPECT_EQ(d->code, "");
 }
+
+}  // namespace NativeBridgeTest_cpp

@@ -16,6 +16,8 @@
 #include <filesystem>
 #include <fstream>
 
+namespace TextShaperDirectionTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -111,3 +113,5 @@ TEST(TextShaperDirectionTest, PerFaceFontOverride) {
     EXPECT_EQ(regularAdvance, shape(*oswald, "H", ShapeOptions{})[0].xAdvance) << "a null entry is the face's own font";
     hb_font_destroy(bold);
 }
+
+}  // namespace TextShaperDirectionTest_cpp

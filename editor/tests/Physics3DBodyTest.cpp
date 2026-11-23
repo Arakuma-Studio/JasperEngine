@@ -25,6 +25,8 @@
 #include <mutex>
 #include <random>
 
+namespace Physics3DBodyTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::physics3dtest;
@@ -606,3 +608,5 @@ TEST(Physics3DBody, DebugDrawLines2D) {
     physics->draw();
     EXPECT_EQ(physics->getDebugLineCount(), 0u);
 }
+
+}  // namespace Physics3DBodyTest_cpp

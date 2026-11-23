@@ -9,6 +9,8 @@
 
 #include <stdexcept>
 
+namespace ComponentManagerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -82,3 +84,5 @@ TEST(ComponentManager, TypeIndicesAreStableAcrossManagers){
     EXPECT_EQ(first.getComponentId<Health>(), 0);
     EXPECT_EQ(second.getComponentId<Health>(), 1);
 }
+
+}  // namespace ComponentManagerTest_cpp

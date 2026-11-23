@@ -10,6 +10,8 @@
 
 #include <vector>
 
+namespace TilemapFromAsepriteTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::tilemapimport;
 namespace aseprite = jasperengine::editor::pixelart::aseprite;
@@ -119,3 +121,5 @@ TEST(TilemapFromAsepriteTest, NoTilemapsFails) {
     ASSERT_EQ(problems.size(), 1u);
     EXPECT_EQ(problems[0].kind, "parse");
 }
+
+}  // namespace TilemapFromAsepriteTest_cpp

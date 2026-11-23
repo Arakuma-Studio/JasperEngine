@@ -23,6 +23,8 @@
     #include <GL/gl.h>
 #endif
 
+namespace SokolGlTextureLevelsTest_cpp {
+
 namespace {
 
 #if defined(SOKOL_GLCORE) && !defined(_WIN32)
@@ -95,3 +97,5 @@ TEST(SokolGlTextureLevels, OneLevelTexturesStateTheirMaxLevel){
     sg_destroy_image(chainImage);
 }
 #endif
+
+}  // namespace SokolGlTextureLevelsTest_cpp

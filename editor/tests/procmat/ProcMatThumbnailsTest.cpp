@@ -16,6 +16,8 @@
 #include <algorithm>
 #include <filesystem>
 
+namespace ProcMatThumbnailsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::procmat;
 using jasperengine::editor::procmat::test::ImageEvaluator;
@@ -220,3 +222,5 @@ TEST_F(ProcMatThumbnailsTest, AnImageWhoseNewPlanFailsIsOutOfDate) {
     EXPECT_TRUE(thumbs->isOutOfDate("n1"));
     EXPECT_FALSE(thumbs->update(8.0));
 }
+
+}  // namespace ProcMatThumbnailsTest_cpp

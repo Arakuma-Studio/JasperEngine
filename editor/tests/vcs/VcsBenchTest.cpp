@@ -15,6 +15,8 @@
 #include <chrono>
 #include <cstdio>
 
+namespace VcsBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -217,3 +219,5 @@ TEST(VcsBench, NoProcessOnTheMainThreadDuringACompletedSession) {
     EXPECT_EQ(spawnCount(true), mainBefore);
     EXPECT_GT(spawnCount(false), otherBefore);
 }
+
+}  // namespace VcsBenchTest_cpp

@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace SceneOrderTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -125,3 +127,5 @@ TEST(SceneOrder, TheSortKeepsGameObjectsWithoutATransformInTheirPlace) {
     ProjectUtils::keepUntransformedPlaces(&scene, before, entities);
     EXPECT_EQ(sceneOrderNames(scene, entities), (std::vector<std::string>{"Light", "A", "Skybox", "B", "C"}));
 }
+
+}  // namespace SceneOrderTest_cpp

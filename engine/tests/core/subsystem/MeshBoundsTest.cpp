@@ -20,6 +20,8 @@
 
 #include <gtest/gtest.h>
 
+namespace MeshBoundsTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -136,3 +138,5 @@ TEST(MeshBounds, PolygonLeftOfItsOriginMeasuresItsOwnExtent){
     EXPECT_EQ(meshComponent.height, 4u);
     expectBoundsVector(mesh.verticesAABB.getMaximum(), Vector3(-5, -2, 0), "mesh polygon maximum");
 }
+
+}  // namespace MeshBoundsTest_cpp

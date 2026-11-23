@@ -18,6 +18,8 @@
 #include <cmath>
 #include <random>
 
+namespace AffineMathTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -145,3 +147,5 @@ TEST(AffineMath, ProjectiveAABBKeepsTheCornerLoop){
     EXPECT_NEAR(box.getMaximum().x, near.x, 1e-5f);
     EXPECT_NEAR(box.getMaximum().y, near.y, 1e-5f);
 }
+
+}  // namespace AffineMathTest_cpp

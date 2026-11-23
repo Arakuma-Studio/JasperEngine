@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+namespace LineDiffTest_cpp {
+
 using namespace jasperengine::editor;
 
 namespace {
@@ -161,3 +163,5 @@ TEST(LineDiffBench, SingleEditTenThousandLines) {
         EXPECT_LE(best, 1.0 * slack);
     }
 }
+
+}  // namespace LineDiffTest_cpp

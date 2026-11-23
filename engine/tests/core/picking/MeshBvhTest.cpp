@@ -18,6 +18,8 @@
 #include <cstring>
 #include <vector>
 
+namespace MeshBvhTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -537,3 +539,5 @@ TEST(MeshBvh, CulledFacesAreSkipped){
     EXPECT_EQ(hit.submesh, 0u);
     EXPECT_FALSE(hit.frontFacing);
 }
+
+}  // namespace MeshBvhTest_cpp

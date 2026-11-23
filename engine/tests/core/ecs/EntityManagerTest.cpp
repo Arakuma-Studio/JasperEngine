@@ -13,6 +13,8 @@
 #include <random>
 #include <string>
 
+namespace EntityManagerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -382,3 +384,5 @@ TEST(EntityManagerTest, MetadataBytesPerEntity){
     // R27: at most 96 bytes per entity, names' heap buffers left out
     EXPECT_LE((double)manager.bytes() / 100000.0, 96.0);
 }
+
+}  // namespace EntityManagerTest_cpp

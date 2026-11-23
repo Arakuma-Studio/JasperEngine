@@ -7,6 +7,8 @@
 
 #include <cmath>
 
+namespace PathTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::geometry;
@@ -72,3 +74,5 @@ TEST_F(PathTest, TransformAndAppend) {
     EXPECT_NEAR(turned.x, 0, 1e-12);
     EXPECT_NEAR(turned.y, 1, 1e-12) << "counter-clockwise in a y-up space";
 }
+
+}  // namespace PathTest_cpp

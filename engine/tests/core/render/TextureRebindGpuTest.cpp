@@ -57,6 +57,8 @@
 #include <thread>
 #include <vector>
 
+namespace TextureRebindGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -618,3 +620,5 @@ TEST_F(TextureRebindGpu, TheRestOfAProgressiveLoadReachesTheMeshDrawingItsTail){
     Engine::setAsyncLoading(asyncLoading);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace TextureRebindGpuTest_cpp

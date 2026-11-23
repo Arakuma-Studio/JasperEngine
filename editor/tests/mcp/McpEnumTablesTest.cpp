@@ -15,6 +15,8 @@
 
 #include <string>
 
+namespace McpEnumTablesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::mcp;
 
@@ -47,3 +49,5 @@ TEST(McpEnumTables, WaterWakeResolutionNames) {
     EXPECT_EQ(McpValues::enumToJson((int)WaterWakeResolution::HIGH, *table), jasperengine::editor::mcp::Json("high"));
     EXPECT_EQ(table->size(), 4u);
 }
+
+}  // namespace McpEnumTablesTest_cpp

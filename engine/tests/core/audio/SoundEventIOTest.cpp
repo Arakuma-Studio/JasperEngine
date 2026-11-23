@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+namespace SoundEventIOTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -391,3 +393,5 @@ TEST(SoundEventLibraryRuntime, InvalidTextIsRefused) {
     EXPECT_EQ(error.rfind("priority:", 0), 0u);
     SoundEventLibrary::clear();
 }
+
+}  // namespace SoundEventIOTest_cpp

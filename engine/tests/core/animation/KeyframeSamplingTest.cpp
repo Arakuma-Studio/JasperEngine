@@ -25,6 +25,8 @@
 #include <random>
 #include <vector>
 
+namespace KeyframeSamplingTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -840,3 +842,5 @@ TEST(KeyframeSampling, StepFps){
     EXPECT_GE(heldChanges, 8);
     EXPECT_GE(smoothChanges, 40) << "the red control: without a Pose Frame Rate the pose moves every frame";
 }
+
+}  // namespace KeyframeSamplingTest_cpp

@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+namespace Base64Test_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -54,3 +56,5 @@ TEST(Base64, UsesThePlusAndSlashAlphabet){
 TEST(Base64, DecodingStopsAtTheFirstNonAlphabetCharacter){
     EXPECT_EQ(base64Decode("Zm9v!YmFy"), "foo");
 }
+
+}  // namespace Base64Test_cpp

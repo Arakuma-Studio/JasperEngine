@@ -16,6 +16,8 @@
 
 #include <memory>
 
+namespace LuaFunctionLifetimeTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -69,3 +71,5 @@ TEST(LuaFunctionLifetime, AFunctionOfAClosedStateIsNeverCalledNorReleased) {
     LuaFunction<int> returning(second, "lifetimeProbe");
     EXPECT_TRUE(returning.isLive());
 }
+
+}  // namespace LuaFunctionLifetimeTest_cpp

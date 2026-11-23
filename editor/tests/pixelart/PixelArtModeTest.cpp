@@ -22,6 +22,8 @@
 #include <fstream>
 #include <sstream>
 
+namespace PixelArtModeTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::pixelart;
@@ -196,3 +198,5 @@ TEST(PixelArtMode, OutlinePicksThePixelStyle){
     PixelArtMode::pickPixelOutline(otherShader, "library:lit", true);
     EXPECT_EQ(otherShader, (std::vector<std::string>{"OUTLINE"}));
 }
+
+}  // namespace PixelArtModeTest_cpp

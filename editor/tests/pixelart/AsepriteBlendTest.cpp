@@ -12,6 +12,8 @@
 
 #include <gtest/gtest.h>
 
+namespace AsepriteBlendTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::aseprite;
 using namespace jasperengine::editor::pixelart::testing;
@@ -165,3 +167,5 @@ TEST(AsepriteBlendTest, ClassicVariants) {
     // grayscale: multiply 200 * 100 / 255 = 78
     EXPECT_EQ(grayaBlender(Mode::Multiply, false)(graya(200, 255), graya(100, 255), 255), graya(78, 255));
 }
+
+}  // namespace AsepriteBlendTest_cpp

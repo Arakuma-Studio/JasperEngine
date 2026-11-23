@@ -28,6 +28,8 @@
 #include <string>
 #include <vector>
 
+namespace ScreenTransitionGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 using namespace jasperengine::pixelart;
@@ -182,3 +184,5 @@ TEST_F(ScreenTransitionGpu, ProgramMadeOnFirstUse){
     GpuEnvironment::drawFrames(2);
     EXPECT_TRUE(ScreenTransition::isProgramCreated());
 }
+
+}  // namespace ScreenTransitionGpuTest_cpp

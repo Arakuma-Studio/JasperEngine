@@ -24,6 +24,8 @@
 #include <chrono>
 #include <cstdio>
 
+namespace TitleArtRuntimeBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -135,3 +137,5 @@ TEST_F(TitleArtRuntimeBenchGpu, HostNumbers) {
                 s.ms, worstUs / 1000.0);
     EXPECT_GT(s.frames, 1) << "the render is sliced over frames";
 }
+
+}  // namespace TitleArtRuntimeBenchTest_cpp

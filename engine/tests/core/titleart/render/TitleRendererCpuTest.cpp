@@ -16,6 +16,8 @@
 #include <cmath>
 #include <vector>
 
+namespace TitleRendererCpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
@@ -143,3 +145,5 @@ TEST(TitleFieldsTest, UvMaps) {
     EXPECT_NEAR(0.5f * m[0] + m[2], 20.5f / 200.0f, 1e-6f);
     EXPECT_NEAR(0.5f * m[1] + m[3], 10.5f / 100.0f, 1e-6f);
 }
+
+}  // namespace TitleRendererCpuTest_cpp

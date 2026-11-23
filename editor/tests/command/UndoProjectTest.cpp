@@ -35,6 +35,8 @@
 #include <functional>
 #include <memory>
 
+namespace UndoProjectTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -489,3 +491,5 @@ TEST_F(UndoProjectTest, SetAssetMetaCmdIsAProjectStep) {
     ASSERT_TRUE(UndoTimeline::redo(sceneId));
     EXPECT_EQ(SetAssetMetaCmd::read(asset, "import.compression").as<std::string>(), "astc");
 }
+
+}  // namespace UndoProjectTest_cpp

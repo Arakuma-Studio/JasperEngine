@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+namespace GraphCanvasTest_cpp {
+
 using namespace jasperengine::editor;
 
 namespace {
@@ -849,3 +851,5 @@ TEST(GraphCanvasPins, AWireIsPickedAlongItsCurve) {
     EXPECT_EQ(pressed.clickedLink, 77u);
     EXPECT_TRUE(rig.links[0].selected);
 }
+
+}  // namespace GraphCanvasTest_cpp

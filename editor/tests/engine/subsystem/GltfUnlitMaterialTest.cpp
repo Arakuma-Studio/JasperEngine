@@ -31,6 +31,8 @@
 #include <string>
 #include <vector>
 
+namespace GltfUnlitMaterialTest_cpp {
+
 using namespace jasperengine;
 namespace fs = std::filesystem;
 
@@ -175,3 +177,5 @@ TEST_F(GltfUnlitMaterial, BuiltInLitListsNoneAfterItsModes) {
     EXPECT_FALSE(editor::Catalog::supportsLighting(MaterialLighting::NONE, toon.get())) << "toon lists pixel, mixed, vertex";
     EXPECT_EQ(RenderSystem::resolveLighting(MaterialLighting::NONE, toon.get()), MaterialLighting::PIXEL);
 }
+
+}  // namespace GltfUnlitMaterialTest_cpp

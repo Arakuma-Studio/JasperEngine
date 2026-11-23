@@ -43,6 +43,8 @@
 #include <string>
 #include <vector>
 
+namespace TilemapGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -753,3 +755,5 @@ TEST_F(TilemapGpu, ThousandRandomEditsWithinTheBudget) {
     }
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace TilemapGpuTest_cpp

@@ -22,6 +22,8 @@
 #include <limits>
 #include <string>
 
+namespace Physics3DJointsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::physics3dtest;
 
@@ -477,3 +479,5 @@ TEST(Physics3DJoints, LegacyJointsKeepTheirOldParameters) {
     EXPECT_EQ(fresh.anchorSpace, JointAnchorSpace::LOCAL);
     EXPECT_FALSE(fresh.enableCollision) << "Unity's default";
 }
+
+}  // namespace Physics3DJointsTest_cpp

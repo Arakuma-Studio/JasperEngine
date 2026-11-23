@@ -15,6 +15,8 @@
 #include <limits>
 #include <vector>
 
+namespace RenderQueueOrderTest_cpp {
+
 using namespace jasperengine;
 
 TEST(RenderQueueOrder, DistanceBandsDouble){
@@ -75,3 +77,5 @@ TEST(RenderQueueOrder, EqualKeysKeepSubmissionOrder){
     for (uint32_t i = 0; i < 20; i++)
         EXPECT_EQ(order[i], i);
 }
+
+}  // namespace RenderQueueOrderTest_cpp

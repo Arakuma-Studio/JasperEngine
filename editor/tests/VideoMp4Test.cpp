@@ -37,6 +37,8 @@
 #include <functional>
 #include <thread>
 
+namespace VideoMp4Test_cpp {
+
 using namespace jasperengine;
 using jaspertest::TestHttpServer;
 
@@ -776,3 +778,5 @@ TEST_F(MediaCacheTest, UrlErrors){
     EXPECT_EQ(missing->getError().code, MediaErrorCode::NETWORK);
     EXPECT_NE(missing->getError().message.find("404"), std::string::npos) << missing->getError().message;
 }
+
+}  // namespace VideoMp4Test_cpp

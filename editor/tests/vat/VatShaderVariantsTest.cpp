@@ -32,6 +32,8 @@
 #include <sstream>
 #include "support/PosixCompat.h"
 
+namespace VatShaderVariantsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -235,3 +237,5 @@ TEST_F(VatShaderVariants, NoAnimatorShipsNone){
     EXPECT_FALSE(keys.bones);
     EXPECT_FALSE(keys.skinning) << "the .vat.glb draws at rest without a skin";
 }
+
+}  // namespace VatShaderVariantsTest_cpp

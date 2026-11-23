@@ -36,6 +36,8 @@
 #include <cmath>
 #include <memory>
 
+namespace EnergyGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::test;
@@ -295,3 +297,5 @@ TEST_F(FireGpu, FollowsSilhouette) {
     EXPECT_GT(beside35, 0.2 * HEIGHT) << "at spread 35 the side flame reaches only " << beside35 << " px";
     kit->release(shape);
 }
+
+}  // namespace EnergyGpuTest_cpp

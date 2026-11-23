@@ -23,6 +23,8 @@
 #include <sstream>
 #include <string>
 
+namespace PaletteSwapCacheTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pixelart;
 
@@ -302,3 +304,5 @@ TEST(PaletteSwapCache, BuildTime) {
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / runs;
     std::printf("[bench] palette swap build, 64 colours, 15 targets, 1 cycling ramp: %.3f ms\n", ms);
 }
+
+}  // namespace PaletteSwapCacheTest_cpp

@@ -23,6 +23,8 @@
 #include <set>
 #include <sstream>
 
+namespace PachislopGeneratorMapTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using titleart::Json;
@@ -290,3 +292,5 @@ TEST(PachislopGeneratorMapTest, ConvertsTheRules) {
     EXPECT_EQ(convertPachislopGenerator("patternFill", Json::object(), &notes).type, "");
     EXPECT_EQ(notes.size(), 1u);
 }
+
+}  // namespace PachislopGeneratorMapTest_cpp

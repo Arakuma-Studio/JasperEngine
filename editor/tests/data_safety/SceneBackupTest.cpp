@@ -19,6 +19,8 @@
     #include <unistd.h>
 #endif
 
+namespace SceneBackupTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -154,3 +156,5 @@ TEST(SceneBackup, UntitledOfDeadSessionsAreOffered) {
     EXPECT_EQ(orphans[0].kind, BackupKind::Untitled);
     EXPECT_EQ(orphans[0].sceneId, 42u);
 }
+
+}  // namespace SceneBackupTest_cpp

@@ -18,6 +18,8 @@
 #include <optional>
 #include <string>
 
+namespace PaletteSwapRemapTest_cpp {
+
 using namespace jasperengine;
 namespace pxc = jasperengine::pixelart;
 namespace pxe = jasperengine::editor::pixelart;
@@ -104,3 +106,5 @@ TEST(PaletteSwapRemap, TheGpuFixtureIsTheRemap) {
     EXPECT_EQ(*input, image);
     EXPECT_EQ(*expected, remapped);
 }
+
+}  // namespace PaletteSwapRemapTest_cpp

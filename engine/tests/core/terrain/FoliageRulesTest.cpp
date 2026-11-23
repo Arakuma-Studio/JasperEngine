@@ -13,6 +13,8 @@
 #include <cmath>
 #include <memory>
 
+namespace FoliageRulesTest_cpp {
+
 using namespace terraintest;
 
 namespace {
@@ -518,3 +520,5 @@ TEST(FoliageRules, FailedListLeavesTheTreesAlone) {
     EXPECT_FALSE(result.ok);
     EXPECT_EQ(fixture.trees->contentHash(), before) << "the base is only written on commit";
 }
+
+}  // namespace FoliageRulesTest_cpp

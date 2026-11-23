@@ -19,6 +19,8 @@
 #include <cstring>
 #include <set>
 
+namespace ClipMemoryTest_cpp {
+
 using namespace animatortest;
 
 namespace {
@@ -489,3 +491,5 @@ TEST_F(ClipMemoryTest, SharedTimesSurviveAHotReload){
     EXPECT_EQ(AnimationClipPool::loadedBytes(), fresh->memoryBytes());
     EXPECT_EQ(fresh->memoryBytes(), oldBytes) << "the same shape";
 }
+
+}  // namespace ClipMemoryTest_cpp

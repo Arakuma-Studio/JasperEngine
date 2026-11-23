@@ -17,6 +17,8 @@
 
 #include "diag/HangWatchdog.h"
 
+namespace TitleFirstDrawGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -165,3 +167,5 @@ TEST_F(TitleFirstDrawGpu, NewProgramsDrawOneAFrame) {
     EXPECT_LE(d.mean, 0.5);
     EXPECT_LE(d.overFraction, 0.001);
 }
+
+}  // namespace TitleFirstDrawGpuTest_cpp

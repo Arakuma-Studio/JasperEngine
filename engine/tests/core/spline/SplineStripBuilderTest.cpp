@@ -21,6 +21,8 @@
 #include <span>
 #include <vector>
 
+namespace SplineStripBuilderTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 using namespace jasperengine::spline::geometrytest;
@@ -1168,3 +1170,5 @@ TEST(SplineStripBuilderTests, AOneKilometreCrownRoadBuildsWithinItsBudget){
         EXPECT_LE(ms, 3.0 * testsupport::perfSlack());
     }
 }
+
+}  // namespace SplineStripBuilderTest_cpp

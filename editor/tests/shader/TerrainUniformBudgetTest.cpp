@@ -21,10 +21,11 @@
 #include <string>
 #include <vector>
 
+namespace terrain_uniform_budget_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
-namespace terrain_uniform_budget_test {
 
     size_t terrainStageVectors(const ShaderData& data, ShaderStageType type, std::string& blocks){
         size_t vectors = 0;
@@ -40,6 +41,8 @@ namespace terrain_uniform_budget_test {
     }
 
 }
+
+namespace terrain_uniform_budget_test {
 
 using namespace terrain_uniform_budget_test;
 
@@ -313,3 +316,5 @@ TEST(TerrainUniformBudgetSlow, PackedLayersCrossCompileForEveryBackend){
         }
     }
 }
+
+}  // namespace terrain_uniform_budget_test

@@ -27,6 +27,8 @@
 #include <memory>
 #include <string>
 
+namespace HumanoidRetargetTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pose;
 using namespace posetest;
@@ -638,3 +640,5 @@ TEST(HumanExtraBones, MixamoFingersAutoDetect){
         EXPECT_FALSE(validateExtraBones(skeleton, map, wrong, &error));
     }
 }
+
+}  // namespace HumanoidRetargetTest_cpp

@@ -20,6 +20,8 @@
 
 #include <string>
 
+namespace LuaSortingTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -111,3 +113,5 @@ TEST(LuaSorting, SortingGroup){
     EXPECT_FALSE(group.enabled);
     lua_pushnil(L); lua_setglobal(L, "sortScene");
 }
+
+}  // namespace LuaSortingTest_cpp

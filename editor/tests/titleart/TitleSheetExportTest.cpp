@@ -18,6 +18,8 @@
 #include <sstream>
 #include "support/PosixCompat.h"
 
+namespace TitleSheetExportTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using titleart::Json;
@@ -247,3 +249,5 @@ TEST(TitleSheetFrameTimes, AtMost1024Frames) {
     EXPECT_NE(error.find("at most 1024"), std::string::npos) << error;
     EXPECT_FALSE(titleAnimFrameTimes(info, 30.0, Json(), times, error)) << "3,000 frames by default";
 }
+
+}  // namespace TitleSheetExportTest_cpp

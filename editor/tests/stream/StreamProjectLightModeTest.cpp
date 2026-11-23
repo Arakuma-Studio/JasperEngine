@@ -18,6 +18,8 @@
 #include <fstream>
 #include <sstream>
 
+namespace StreamProjectLightModeTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -76,3 +78,5 @@ TEST(StreamProjectLightMode, ExportCarriesIt) {
         EXPECT_EQ(written, mode == LightMode::TILED) << LightingTiers::getModeName(mode);
     }
 }
+
+}  // namespace StreamProjectLightModeTest_cpp

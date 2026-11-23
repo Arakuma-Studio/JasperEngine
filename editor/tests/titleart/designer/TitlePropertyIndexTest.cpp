@@ -15,6 +15,8 @@
 #include <cstdio>
 #include <set>
 
+namespace TitlePropertyIndexTest_cpp {
+
 using namespace jasperengine::editor::titledesigner;
 
 namespace {
@@ -206,3 +208,5 @@ TEST(TitlePropertyIndexTest, ThousandEntriesQueryUnderOneMillisecond) {
         EXPECT_LT(average, 1.0 * slack);
     }
 }
+
+}  // namespace TitlePropertyIndexTest_cpp

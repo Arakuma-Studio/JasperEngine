@@ -20,6 +20,8 @@
 #include <sys/qos.h>
 #endif
 
+namespace FileWatcherTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -522,3 +524,5 @@ TEST(FsEventsCallbacks, RunAtUserInitiatedQoS) {
     EXPECT_GE(sink.lowest.load(), static_cast<int>(QOS_CLASS_USER_INITIATED)) << "lowest callback QoS 0x" << std::hex << sink.lowest.load();
 }
 #endif
+
+}  // namespace FileWatcherTest_cpp

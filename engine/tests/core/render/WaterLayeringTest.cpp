@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+namespace WaterLayeringTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -160,3 +162,5 @@ TEST(WaterLayering, SlopedRiverIsNotLayered){
     // a gentle slope within 1% of its size plus 5 cm still counts as flat
     EXPECT_TRUE(isFlatWater(AABB(Vector3(-10.0f, 0.0f, -10.0f), Vector3(10.0f, 0.2f, 10.0f))));
 }
+
+}  // namespace WaterLayeringTest_cpp

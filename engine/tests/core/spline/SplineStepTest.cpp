@@ -15,6 +15,8 @@
 #include <limits>
 #include <vector>
 
+namespace SplineStepTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 using namespace jasperengine::spline::geometrytest;
@@ -247,3 +249,5 @@ TEST(SplineStepTests, AStepHeightRoundsEachRunsLevelUpToWholeCourses){
     EXPECT_NEAR(stepTopOf(gentle.mesh, 0u), 0.75f + STEP_WALL_HEIGHT, 1.0e-4f);
     EXPECT_NEAR(stepTopOf(gentle.mesh, gentle.mesh.ringCount - 1u), 0.75f + STEP_WALL_HEIGHT, 1.0e-4f);
 }
+
+}  // namespace SplineStepTest_cpp

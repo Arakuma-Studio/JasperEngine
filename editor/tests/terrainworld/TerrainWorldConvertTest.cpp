@@ -25,6 +25,8 @@
 #include <map>
 #include <sstream>
 
+namespace TerrainWorldConvertTest_cpp {
+
 using namespace terrainprojecttest;
 using namespace jasperengine::terraincore;
 
@@ -214,3 +216,5 @@ TEST_F(TerrainWorldConvertTest, RotatedOrScaledSourceIsRefused) {
     EXPECT_EQ(history()->position(), stepsBefore) << "nothing was changed";
     EXPECT_TRUE(scene->scene->isEntityActive(terrainEntity));
 }
+
+}  // namespace TerrainWorldConvertTest_cpp

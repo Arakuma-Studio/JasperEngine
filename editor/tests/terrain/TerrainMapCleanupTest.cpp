@@ -14,6 +14,8 @@
 
 #include <yaml-cpp/yaml.h>
 
+namespace TerrainMapCleanupTest_cpp {
+
 using namespace terrainprojecttest;
 
 namespace {
@@ -95,3 +97,5 @@ TEST_F(TerrainMapCleanupTest, CollectsAnOrphanWithItsSidecar) {
     EXPECT_TRUE(fs::exists(fileOf(HEIGHT_MAP)));
     EXPECT_TRUE(fs::exists(SetAssetMetaCmd::metaPathOf(fileOf(HEIGHT_MAP))));
 }
+
+}  // namespace TerrainMapCleanupTest_cpp

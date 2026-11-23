@@ -7,6 +7,8 @@
 
 #include <cmath>
 
+namespace TitleLetterGizmoTest_cpp {
+
 using namespace jasperengine::editor::titledesigner;
 
 namespace {
@@ -100,3 +102,5 @@ TEST(TitleLetterGizmoTest, MoveAndScaleInCharacterUnits) {
     EXPECT_NEAR(scaled["chars.1.scale"].get<double>(), 2.0, 1e-3);
     EXPECT_NEAR(scaled["chars.2.scale"].get<double>(), 3.0, 1e-3);
 }
+
+}  // namespace TitleLetterGizmoTest_cpp

@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+namespace ParticleMigrationTest_cpp {
+
 using namespace particletest;
 
 namespace {
@@ -220,3 +222,5 @@ TEST(ParticleMigration, EasesSampleToSixteenKeys){
     EXPECT_FLOAT_EQ(c.evaluate(0.99f), 0.0f);
     EXPECT_FLOAT_EQ(c.evaluate(1.0f), 1.0f);
 }
+
+}  // namespace ParticleMigrationTest_cpp

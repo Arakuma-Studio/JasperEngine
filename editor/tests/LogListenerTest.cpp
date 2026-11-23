@@ -40,6 +40,8 @@
 #include <thread>
 #include <vector>
 
+namespace LogListenerTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -798,3 +800,5 @@ TEST_F(LogListenerTest, GatedLinesAreNotBuffered) {
     EXPECT_EQ(Log::getEntries(1)[0].message, "let through");
     Logger::setCategoryLevel(logCategoryEngine(), previous);
 }
+
+}  // namespace LogListenerTest_cpp

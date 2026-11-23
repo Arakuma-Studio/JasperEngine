@@ -21,6 +21,8 @@
 #include <fstream>
 #include <sstream>
 
+namespace TitleLibraryTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::titlelibrary;
@@ -603,3 +605,5 @@ TEST_F(TitleLibraryFixture, TemplateCjkAppliesOnlyToJapaneseText) {
     EXPECT_DOUBLE_EQ(ja["rims"][0]["width"].get<double>(), 4.0);
     EXPECT_DOUBLE_EQ(ja["face"]["bevel"]["highlight_opacity"].get<double>(), 0.2);
 }
+
+}  // namespace TitleLibraryTest_cpp

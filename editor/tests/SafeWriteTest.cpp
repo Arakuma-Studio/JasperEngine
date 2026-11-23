@@ -43,6 +43,8 @@
 #include <string>
 #include <vector>
 
+namespace SafeWriteTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -1024,3 +1026,5 @@ TEST(SafeWrite, AStrictScopeNeverGrantsExecuteBits) {
     EXPECT_NE(st.st_mode & 0111, 0u) << "the GUI keeps a file's execute bits";
 }
 #endif
+
+}  // namespace SafeWriteTest_cpp

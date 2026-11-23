@@ -19,6 +19,8 @@
 
 #include <vector>
 
+namespace TrailSimulationTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -373,3 +375,5 @@ TEST(TrailSimulationTest, HandleAddsNothingAddToAdds){
     added.setEnabled(false);
     EXPECT_TRUE(scene.getComponent<TrailRendererComponent>(entity).points.empty());
 }
+
+}  // namespace TrailSimulationTest_cpp

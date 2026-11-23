@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PoseIKTest_cpp {
+
 using namespace posetest;
 using H = HumanBone;
 
@@ -192,3 +194,5 @@ TEST(PoseSkin, SampleStride){
     PoseSkin empty;
     EXPECT_TRUE(std::isinf(empty.lowest(std::vector<Matrix4>())));
 }
+
+}  // namespace PoseIKTest_cpp

@@ -25,6 +25,8 @@
 #include <sys/stat.h>
 #endif
 
+namespace ProcessExecTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::test;
 
@@ -355,3 +357,5 @@ TEST(ProcessExec, VersionAtLeast) {
     EXPECT_FALSE(versionAtLeast("1.9.7", "1.10"));
     EXPECT_FALSE(versionAtLeast("no version here", "1.0"));
 }
+
+}  // namespace ProcessExecTest_cpp

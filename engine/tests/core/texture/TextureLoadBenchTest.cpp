@@ -29,6 +29,8 @@
 #include <fstream>
 #include <random>
 
+namespace TextureLoadBenchTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -152,3 +154,5 @@ TEST(TextureLoadBenchGpu, Bc7Ktx2AgainstPng){
         EXPECT_GE(pngMs / (loaderMs + uploadMs), 3.0 / slack);
     }
 }
+
+}  // namespace TextureLoadBenchTest_cpp

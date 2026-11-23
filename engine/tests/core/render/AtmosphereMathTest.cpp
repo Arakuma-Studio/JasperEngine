@@ -17,6 +17,8 @@
 #include <random>
 #include <vector>
 
+namespace AtmosphereMathTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -246,3 +248,5 @@ TEST(Atmosphere, VolumeSelection){
     ASSERT_EQ(selected.size(), 2u);
     EXPECT_EQ(ties[selected[0]].entity, 3u);
 }
+
+}  // namespace AtmosphereMathTest_cpp

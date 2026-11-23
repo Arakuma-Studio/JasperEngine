@@ -34,6 +34,8 @@
 #include <map>
 #include <set>
 
+namespace TitleGenGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -431,3 +433,5 @@ TEST_F(QuadBatchGpu, SixtyFiveThousandInOneDraw) {
     }
     EXPECT_EQ(lit, 256 * 256);
 }
+
+}  // namespace TitleGenGpuTest_cpp

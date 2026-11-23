@@ -31,6 +31,8 @@
 #include <memory>
 #include <string>
 
+namespace TilemapSystemColliderTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -279,3 +281,5 @@ TEST_F(TilemapSystemColliders, FilterBitsClampToSixteenBits) {
     frame();
     EXPECT_EQ(log.count(D_LOG_WARN, clampWarning), 2u);
 }
+
+}  // namespace TilemapSystemColliderTest_cpp

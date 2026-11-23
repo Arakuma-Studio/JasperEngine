@@ -26,6 +26,8 @@
     #include <sys/stat.h>
 #endif
 
+namespace AtomicFileTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using jasperengine::test::TestTempDir;
@@ -537,3 +539,5 @@ TEST(AtomicFile, ProcessIds){
     EXPECT_FALSE(io::isProcessRunning(0));
     EXPECT_FALSE(io::isProcessRunning(-5));
 }
+
+}  // namespace AtomicFileTest_cpp

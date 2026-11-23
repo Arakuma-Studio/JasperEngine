@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace CopyFileCmdTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -227,3 +229,5 @@ TEST_F(CopyFileCmdTest, VertexAnimationPairMovesUnderPairedFreeNames) {
     EXPECT_FALSE(exists("assets/a/walk.vat.glb"));
     EXPECT_EQ(text("assets/b/walk.vat.glb"), "glb") << "nothing overwritten";
 }
+
+}  // namespace CopyFileCmdTest_cpp

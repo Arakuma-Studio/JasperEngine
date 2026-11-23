@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 
+namespace StreamMigrationsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -290,3 +292,5 @@ TEST(StreamMigrations, SceneV5ToV6AnimationPlayerControllersMoveToAnimators){
     EXPECT_EQ(prefab["members"][0]["components"]["animator"]["controller"].as<std::string>(), "anim/c.controller");
     EXPECT_FALSE(prefab["members"][0]["components"]["animator"]["enabled"].as<bool>()) << "a disabled player: a disabled Animator";
 }
+
+}  // namespace StreamMigrationsTest_cpp

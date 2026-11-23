@@ -19,6 +19,8 @@
 #include <iterator>
 #include "support/PosixCompat.h"
 
+namespace TitleArtRuntimeFontsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -141,3 +143,5 @@ TEST(TitleArtRuntimeFonts, BakedOnlyTitlesShipNoFont) {
     EXPECT_TRUE(result.credits.empty());
     EXPECT_NE(titleArtRuntimeFontsReadAll(build / DOC).find(FONT), std::string::npos) << "the document is left as it is";
 }
+
+}  // namespace TitleArtRuntimeFontsTest_cpp

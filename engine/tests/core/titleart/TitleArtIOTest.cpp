@@ -15,6 +15,8 @@
 #include <fstream>
 #include <iterator>
 
+namespace TitleArtIOTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 namespace fs = std::filesystem;
@@ -488,3 +490,5 @@ TEST_F(TitleArtIOTest, Budget) {
         EXPECT_LE(best, limit * slack);
     }
 }
+
+}  // namespace TitleArtIOTest_cpp

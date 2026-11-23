@@ -12,6 +12,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ParticleEffectEditTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::particles;
@@ -79,3 +81,5 @@ TEST(ParticleEffectEdit, ArraysAreReplacedWhole){
     ASSERT_TRUE(patch["modules"]["emission"]["bursts"].is_array()) << patch.dump();
     EXPECT_EQ(patch["modules"]["emission"]["bursts"].size(), 1u);
 }
+
+}  // namespace ParticleEffectEditTest_cpp

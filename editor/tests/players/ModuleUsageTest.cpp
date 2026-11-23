@@ -40,10 +40,11 @@
 #include <set>
 #include <string>
 
+namespace module_usage_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
-namespace module_usage_test {
 
     // the modules as one string, "htmlui runtimeshaders" ("" for none)
     std::string modules(const ModuleUsage& usage) {
@@ -81,6 +82,8 @@ namespace module_usage_test {
     };
 
 }
+
+namespace module_usage_test {
 
 using namespace module_usage_test;
 
@@ -716,3 +719,5 @@ TEST(ModuleUsageSoundLayer, EveryPrebuiltVariantHasIt) {
         EXPECT_NE(std::find(variant.modules.begin(), variant.modules.end(), "soundlayer"), variant.modules.end()) << variant.name;
     }
 }
+
+}  // namespace module_usage_test

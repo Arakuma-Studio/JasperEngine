@@ -11,6 +11,8 @@
 #include "titleart/TitleEffectRegistry.h"
 #include "titleart/fx/PachislopFxMap.h"
 
+namespace PachislopFxMapTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using titleart::Json;
@@ -61,3 +63,5 @@ TEST(PachislopFxMapTest, Converts) {
     EXPECT_FALSE(convertPachislopEffect("deepGlow", Json{{"bogus", 1}}).ok);
     EXPECT_FALSE(convertPachislopEffect("notAnEffect", Json::object()).ok);
 }
+
+}  // namespace PachislopFxMapTest_cpp

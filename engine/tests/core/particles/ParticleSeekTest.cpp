@@ -18,6 +18,8 @@
 #include <chrono>
 #include <vector>
 
+namespace ParticleSeekTest_cpp {
+
 using namespace particletest;
 
 namespace {
@@ -261,3 +263,5 @@ TEST(ParticleSeek, AutoRandomSeedsAreTheScenesOwnSequence){
     EXPECT_NE(first[0], first[1]) << "each play draws a new seed";
     EXPECT_EQ(second, first) << "a new scene starts its own sequence";
 }
+
+}  // namespace ParticleSeekTest_cpp

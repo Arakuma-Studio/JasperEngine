@@ -19,6 +19,8 @@
 #include <string>
 #include <thread>
 
+namespace GltfTexturePixelsTest_cpp {
+
 using namespace jasperengine;
 
 TEST(GltfTexturePixels, AnEmbeddedImageMakesItsPixelsAgainOnceReleased){
@@ -166,3 +168,5 @@ TEST(GltfTexturePixels, APreviewOfTheModelDoesNotReplaceTheScenesImage){
     EXPECT_NE(again.getData().getData(), nullptr);
     EXPECT_EQ(again.getData().getWidth(), (int)width) << "the scene's image is the preview's";
 }
+
+}  // namespace GltfTexturePixelsTest_cpp

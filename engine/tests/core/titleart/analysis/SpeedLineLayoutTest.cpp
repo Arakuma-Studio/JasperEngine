@@ -14,6 +14,8 @@
 #include <numbers>
 #include <vector>
 
+namespace SpeedLineLayoutTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::analysis;
@@ -266,3 +268,5 @@ TEST(SpeedLineLayoutTest, PxScalesAgreeInCanvasPx) {
         }
     }
 }
+
+}  // namespace SpeedLineLayoutTest_cpp

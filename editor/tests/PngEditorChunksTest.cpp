@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+namespace PngEditorChunksTest_cpp {
+
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 namespace ts = jasperengine::editor::texsynth;
@@ -135,3 +137,5 @@ TEST(PngEditorChunks, TheExporterCopiesPngsWithoutThem) {
     EXPECT_FALSE(Exporter::copyPngWithoutEditorChunks(dir / "notes.txt", dir / "out3.txt"));
     fs::remove_all(dir);
 }
+
+}  // namespace PngEditorChunksTest_cpp

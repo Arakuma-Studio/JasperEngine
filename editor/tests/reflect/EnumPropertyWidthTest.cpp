@@ -29,13 +29,14 @@
 #include <memory>
 #include <vector>
 
+namespace enum_property_width_test {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
 // (a named namespace, tests included: a unity build merges the test sources)
-namespace enum_property_width_test {
 
     constexpr ComponentType TITLE = ComponentType::TitleArtRendererComponent;
 
@@ -91,6 +92,8 @@ namespace enum_property_width_test {
     };
 
 }
+
+namespace enum_property_width_test {
 
 using namespace enum_property_width_test;
 
@@ -180,3 +183,5 @@ TEST(EnumPropertyWidth, EveryEnumPropertyWritesOnlyItsOwnBytes) {
     }
     EXPECT_GT(narrow, 0u) << "no Enum narrower than an int: the sweep proves nothing";
 }
+
+}  // namespace enum_property_width_test

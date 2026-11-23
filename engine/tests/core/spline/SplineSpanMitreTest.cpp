@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace SplineSpanMitreTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 
@@ -409,3 +411,5 @@ TEST(SplineSpanMitreTests, AFillAlreadyPastTheCapKeepsItsJoinsMitredAndUnreporte
     EXPECT_EQ(mitring, 0u);
     EXPECT_FALSE(result.validation.empty()) << "the fill past the cap still reports";
 }
+
+}  // namespace SplineSpanMitreTest_cpp

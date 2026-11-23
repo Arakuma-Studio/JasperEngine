@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+namespace ShaderZeroCostTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -172,3 +174,5 @@ TEST(ShaderZeroCost, DefaultVariantsUnchanged){
     }
     EXPECT_EQ(expected.size(), current.size()) << "the hash list has variants the matrix no longer reaches";
 }
+
+}  // namespace ShaderZeroCostTest_cpp

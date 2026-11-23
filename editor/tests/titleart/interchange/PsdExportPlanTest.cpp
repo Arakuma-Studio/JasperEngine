@@ -20,6 +20,8 @@
 #include <iterator>
 #include "support/PosixCompat.h"
 
+namespace PsdExportPlanTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::psd;
@@ -231,3 +233,5 @@ TEST(PsdExportPlan, AssemblerRefusesARenderItDoesNotExpect) {
     EXPECT_FALSE(assembler.complete(error)) << "no render has arrived";
     EXPECT_FALSE(assembler.add(99999, wrong, error));
 }
+
+}  // namespace PsdExportPlanTest_cpp

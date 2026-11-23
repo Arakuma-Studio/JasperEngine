@@ -39,6 +39,8 @@
 #include <thread>
 #include <vector>
 
+namespace HttpTest_cpp {
+
 using namespace jasperengine;
 using jaspertest::TestHttpServer;
 
@@ -1310,9 +1312,13 @@ TEST_F(HttpTest, LuaRequestsFromCoroutinesCallBackOnTheMainState) {
     EXPECT_EQ(LuaBinding::getOffThreadUseCount(), 0u);
 }
 
+}  // namespace HttpTest_cpp
+
 // ------------------------------------------------------------------------------------- export scan
 
 #include "util/ExportFeatureScan.h"
+
+namespace HttpTest_cpp {
 
 TEST(HttpExportScan, FindsHttpInLuaHtmlAndCpp) {
     namespace fs = std::filesystem;
@@ -1345,3 +1351,5 @@ TEST(HttpExportScan, FindsHttpInLuaHtmlAndCpp) {
     EXPECT_EQ(ExportFeatureScan::luaOfHtml("<SCRIPT type='text/lua'>a()</SCRIPT><script src=x.js></script>"), "a()\n");
     fs::remove_all(root);
 }
+
+}  // namespace HttpTest_cpp

@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PoseIKBendTest_cpp {
+
 using namespace posetest;
 using H = HumanBone;
 
@@ -276,3 +278,5 @@ TEST(PoseGrounding, LowestVertexOutsideTheHipsSubtree){
         }
     }
 }
+
+}  // namespace PoseIKBendTest_cpp

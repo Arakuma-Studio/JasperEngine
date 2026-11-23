@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+namespace TilemapCompositeTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::tilemap;
 using jasperengine::editor::pixelart::PixelRgba;
@@ -272,3 +274,5 @@ TEST(TilemapComposite, ImagePastThePixelLimitIsTyped) {
     params.region = CellRect::of(CellCoord{0, 0}, CellCoord{818, 818});
     EXPECT_TRUE(compositeLayer(params, fixture.pixels, out, error)) << error.message;
 }
+
+}  // namespace TilemapCompositeTest_cpp

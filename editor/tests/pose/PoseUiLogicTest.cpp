@@ -17,6 +17,8 @@
 #include <algorithm>
 #include <cmath>
 
+namespace PoseUiLogicTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pose;
 namespace poseui = jasperengine::editor::poseui;
@@ -594,3 +596,5 @@ TEST(PoseUiLogic, ApplyTemplateReplacesOrAppends){
     EXPECT_FALSE(nothing.changed);
     EXPECT_EQ(nothing.primary, 1);
 }
+
+}  // namespace PoseUiLogicTest_cpp

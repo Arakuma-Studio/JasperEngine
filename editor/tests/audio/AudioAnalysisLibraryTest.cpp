@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace AudioAnalysisLibraryTest_cpp {
+
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 using Json = nlohmann::json;
@@ -75,3 +77,5 @@ TEST(AudioAnalysisLibrary, ClipsReadAsTheCommittedAnalysis) {
         EXPECT_EQ(got.size(), want.size()) << ids[i] << ": the committed item's keys";
     }
 }
+
+}  // namespace AudioAnalysisLibraryTest_cpp

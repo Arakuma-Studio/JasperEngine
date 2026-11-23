@@ -12,6 +12,8 @@
 #include <algorithm>
 #include <cmath>
 
+namespace PoseMetricsTest_cpp {
+
 using namespace posetest;
 using H = HumanBone;
 
@@ -179,3 +181,5 @@ TEST(PoseMetrics, MirroredPoseMirrorsTheMetrics){
     EXPECT_EQ(a.balanced, b.balanced);
     EXPECT_NEAR(a.balanceMargin, b.balanceMargin, 1e-3f);
 }
+
+}  // namespace PoseMetricsTest_cpp

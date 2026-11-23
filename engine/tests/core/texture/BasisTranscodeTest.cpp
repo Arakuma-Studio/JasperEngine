@@ -13,6 +13,8 @@
 
 #include <cstring>
 
+namespace BasisTranscodeTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -59,3 +61,5 @@ TEST(TextureBasisTranscode, Etc1sToBc1TablesMatchUpstream){
         EXPECT_EQ(different, 0);
     }
 }
+
+}  // namespace BasisTranscodeTest_cpp

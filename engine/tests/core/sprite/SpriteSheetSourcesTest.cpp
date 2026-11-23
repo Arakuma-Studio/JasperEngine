@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+namespace SpriteSheetSourcesTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -270,3 +272,5 @@ TEST(SpriteSheetSources, InlineRectMapsIntoTheTrimmedPage) {
     EXPECT_FALSE(SpriteSheetSources::isPacked("legacy/other.png"));
     SpriteSheetPool::invalidate("legacy/sheet.png");
 }
+
+}  // namespace SpriteSheetSourcesTest_cpp

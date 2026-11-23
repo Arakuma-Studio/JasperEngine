@@ -58,6 +58,8 @@
 #include <string>
 #include <vector>
 
+namespace VatEditorTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -1344,3 +1346,5 @@ TEST(VatInspectorHelpers, EventArgsReadBackWhatTheyShow) {
     EXPECT_FALSE(inspectorvat::isLuaName("2step"));
     EXPECT_FALSE(inspectorvat::isLuaName("on step"));
 }
+
+}  // namespace VatEditorTest_cpp

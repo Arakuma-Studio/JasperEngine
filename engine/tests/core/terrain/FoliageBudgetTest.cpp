@@ -12,6 +12,8 @@
 
 #include <gtest/gtest.h>
 
+namespace FoliageBudgetTest_cpp {
+
 using namespace foliagebench;
 using namespace jasperengine::test;
 
@@ -71,3 +73,5 @@ TEST(FoliageBudgetGpu, BenchSceneWithinCountsLow) {
     JASPER_REQUIRE_GPU();
     foliageBudgetWalk(FoliageQuality::LOW, {30000, 8000, 60, 150});
 }
+
+}  // namespace FoliageBudgetTest_cpp

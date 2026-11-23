@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+namespace DeterministicDriverTest_cpp {
+
 using namespace jasperengine;
 namespace fs = std::filesystem;
 
@@ -378,3 +380,5 @@ TEST_F(DeterministicDriverTest, TapClientsRunInSubscriptionOrder) {
     EXPECT_EQ(order, "abb");
     AudioTap::unsubscribe(b);
 }
+
+}  // namespace DeterministicDriverTest_cpp

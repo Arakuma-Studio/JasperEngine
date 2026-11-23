@@ -23,6 +23,8 @@
 #include <memory>
 #include <string>
 
+namespace TitleArtDocumentTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -286,3 +288,5 @@ TEST_F(TitleArtDocumentTest, FilesAStepImportsAreInTheAssetDatabaseWhenItReturns
     EXPECT_FALSE(fs::exists(font));
     EXPECT_FALSE(titleArtDocumentProject()->getAssetDatabase().lookupPath(rel).found()) << "and its undo takes it out again";
 }
+
+}  // namespace TitleArtDocumentTest_cpp

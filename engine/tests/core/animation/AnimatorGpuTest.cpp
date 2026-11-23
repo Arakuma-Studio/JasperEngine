@@ -33,6 +33,8 @@
 #include <string>
 #include <vector>
 
+namespace AnimatorGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 using namespace animatortest;
@@ -165,3 +167,5 @@ TEST(AnimatorGpu, ThreeControllerPosesAndARetargetedWalk){
     models.clear();
     Engine::removeScene(&scene);
 }
+
+}  // namespace AnimatorGpuTest_cpp

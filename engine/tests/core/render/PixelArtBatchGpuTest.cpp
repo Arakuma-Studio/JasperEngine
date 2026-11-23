@@ -37,6 +37,8 @@
 #include <string>
 #include <vector>
 
+namespace PixelArtBatchGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -396,3 +398,5 @@ TEST_F(PixelArtBatchGpu, OutlineOverlayBatch){
     frame(true);
     EXPECT_EQ(scene.getSystem<RenderSystem>()->getBatchEligibility(polygon.getEntity()), BatchBreak::INELIGIBLE_FRAME_RECT);
 }
+
+}  // namespace PixelArtBatchGpuTest_cpp

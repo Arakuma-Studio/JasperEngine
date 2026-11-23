@@ -15,6 +15,8 @@
 #include "terrain/TerrainSizePresets.h"
 #include "window/dialog/CreateTerrainDialog.h"
 
+namespace TerrainCreateDialogTest_cpp {
+
 using namespace terrainprojecttest;
 
 namespace {
@@ -234,3 +236,5 @@ TEST_F(TerrainCreateDialogTest, BaseLayerCoversTheTerrainInTheSameStep) {
     ASSERT_TRUE(scene->scene->isEntityCreated(made));
     EXPECT_EQ(coverage(), 1.0) << "redo brings them back";
 }
+
+}  // namespace TerrainCreateDialogTest_cpp

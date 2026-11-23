@@ -32,6 +32,8 @@
 #include <memory>
 #include <string>
 
+namespace AnimatorEditorTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -338,3 +340,5 @@ TEST_F(AnimatorEditor, StatesFromAnAnimationPlayerKeepHumanoidPlayback) {
     EXPECT_TRUE(parsed.data.layers[0].machine.states[0].retarget && parsed.data.layers[0].machine.states[0].mirror);
     EXPECT_TRUE(parsed.data.layers[0].machine.states[1].footIK);
 }
+
+}  // namespace AnimatorEditorTest_cpp

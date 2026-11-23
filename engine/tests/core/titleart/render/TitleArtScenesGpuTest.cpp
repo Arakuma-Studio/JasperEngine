@@ -20,6 +20,8 @@
 
 #include <functional>
 
+namespace TitleArtScenesGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -313,3 +315,5 @@ TEST_F(TitleArtScenesGpuSlow, ElementVariantsDrawTheWholeProgram) {
         }
     }
 }
+
+}  // namespace TitleArtScenesGpuTest_cpp

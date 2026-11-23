@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+namespace ClipIOTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -832,3 +834,5 @@ TEST(ClipIO, PropertyTracksAreKeptAndFollowPathEdits){
     EXPECT_NE(text.find("\"future\":{\"x\":1}"), std::string::npos) << text;
     EXPECT_EQ(anim::writeClip(clipIOParseOk(text)), text);
 }
+
+}  // namespace ClipIOTest_cpp

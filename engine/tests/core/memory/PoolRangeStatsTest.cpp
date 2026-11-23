@@ -24,6 +24,8 @@
 #include <thread>
 #include <vector>
 
+namespace PoolRangeStatsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::memory;
 
@@ -490,3 +492,5 @@ TEST(MemoryStats, SnapshotConsistentUnderWriters){
     trackedWriter.join();
     EXPECT_GT(checked, 0);
 }
+
+}  // namespace PoolRangeStatsTest_cpp

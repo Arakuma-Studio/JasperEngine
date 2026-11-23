@@ -25,6 +25,8 @@
 #include <functional>
 #include <thread>
 
+namespace VoxelSystemTest_cpp {
+
 using namespace jasperengine;
 using namespace voxeltest;
 
@@ -306,3 +308,5 @@ TEST_F(VoxelSystemFixture, DestroyedChunksAreNotReused) {
     for (Entity chunk : system->getGeneratedEntities(owner)) alive += scene->isEntityCreated(chunk) ? 1 : 0;
     EXPECT_GT(alive, 0);
 }
+
+}  // namespace VoxelSystemTest_cpp

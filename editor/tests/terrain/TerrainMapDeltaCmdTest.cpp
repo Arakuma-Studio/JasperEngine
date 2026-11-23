@@ -15,6 +15,8 @@
 #include <random>
 #include <utility>
 
+namespace TerrainMapDeltaCmdTest_cpp {
+
 using namespace terrainprojecttest;
 
 namespace {
@@ -247,3 +249,5 @@ TEST_F(TerrainMapDeltaCmdTest, StructuralStepsCompressAndRestore) {
     EXPECT_EQ(bytesOf(HEIGHT_MAP), eightBit);
     EXPECT_NE(TerrainMapUtils::expectedFormat(TerrainMapTarget::HeightMap), terrain().heightMap.getData().getColorFormat());
 }
+
+}  // namespace TerrainMapDeltaCmdTest_cpp

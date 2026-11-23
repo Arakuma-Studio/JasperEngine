@@ -20,6 +20,8 @@
 #include "subsystem/GltfTriangleSoup.h"
 
 
+namespace GltfEditorDecodersTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -111,3 +113,5 @@ TEST(GltfExtensionsTest, WebpDecodesInTheEditor){
     EXPECT_TRUE(model.loadModel(s41Fixture("webp.glb")));
     EXPECT_TRUE(log.errors().empty()) << log.describeErrors();
 }
+
+}  // namespace GltfEditorDecodersTest_cpp

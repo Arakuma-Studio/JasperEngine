@@ -15,6 +15,8 @@
 #include <set>
 #include <tuple>
 
+namespace PixelArtPresetTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::pixelart;
@@ -147,3 +149,5 @@ TEST(PixelArtPreset, AFixedResolutionScenesNewCameraDrawsTheNewBase){
     }
     EXPECT_TRUE(found);
 }
+
+}  // namespace PixelArtPresetTest_cpp

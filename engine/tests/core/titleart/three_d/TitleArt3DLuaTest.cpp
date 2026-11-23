@@ -27,6 +27,8 @@
 
 #include <chrono>
 
+namespace TitleArt3DLuaTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -197,3 +199,5 @@ TEST_F(TitleArt3DLiveGpu, MeshStatsAndASpinWithoutAMesh) {
     runFrames(live, factory);
     EXPECT_GT(counters.meshUploads, uploads);
 }
+
+}  // namespace TitleArt3DLuaTest_cpp

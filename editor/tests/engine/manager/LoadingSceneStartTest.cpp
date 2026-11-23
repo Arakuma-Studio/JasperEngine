@@ -10,6 +10,8 @@
 
 #include <algorithm>
 
+namespace LoadingSceneStartTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::scripttest;
 
@@ -86,3 +88,5 @@ TEST_F(LoadingSceneStartTest, NoErrorsWhileCovering) {
     ASSERT_TRUE(runUntilStarted(60));
     EXPECT_FALSE(logged("rror")) << "frames without a main scene log nothing";
 }
+
+}  // namespace LoadingSceneStartTest_cpp

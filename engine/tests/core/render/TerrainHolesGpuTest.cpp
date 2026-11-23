@@ -18,6 +18,8 @@
 
 #include <span>
 
+namespace TerrainHolesGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -375,3 +377,5 @@ TEST_F(TerrainHolesGpu, WrongFormatWarnsOnceAndDrawsNoHoles){
     EXPECT_TRUE(sameColor(&frame[center], TerrainHolesPixelColor{26, 204, 51}, 16));
     EXPECT_EQ(log.count(D_LOG_WARN, "hole map"), 1u);
 }
+
+}  // namespace TerrainHolesGpuTest_cpp

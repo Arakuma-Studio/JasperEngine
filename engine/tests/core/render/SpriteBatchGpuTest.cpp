@@ -48,6 +48,8 @@
 #include <string>
 #include <vector>
 
+namespace SpriteBatchGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -931,3 +933,5 @@ TEST_F(SpriteBatchGpu, UnclippedElementsAfterAScissorResetJoinTheirRun){
     expectSameImage(0, 2);
     images.clear();
 }
+
+}  // namespace SpriteBatchGpuTest_cpp

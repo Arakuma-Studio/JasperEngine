@@ -17,8 +17,12 @@
 #include <regex>
 #include <set>
 
+namespace AppleTemplatesTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine::editor;
+
+}  // namespace AppleTemplatesTest_cpp
 
 namespace apple_templates_test {
 
@@ -63,6 +67,8 @@ namespace apple_templates_test {
     }
 
 }
+
+namespace AppleTemplatesTest_cpp {
 
 using namespace apple_templates_test;
 
@@ -166,3 +172,5 @@ TEST(AppleTemplates, EngineApiSyncSkipsSdkBundles) {
     EXPECT_FALSE(Project::isEngineApiSkippedDir("engine/core"));
     EXPECT_FALSE(Project::isEngineApiSkippedDir("engine/core/framework"));
 }
+
+}  // namespace AppleTemplatesTest_cpp

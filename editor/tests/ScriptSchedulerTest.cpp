@@ -38,6 +38,8 @@
 #include <vector>
 #include "log/Logger.h"
 
+namespace ScriptSchedulerTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -1490,3 +1492,5 @@ TEST_F(CoroutineTest, WaitForAGlobalTimerAndOwnedTimersEndWithTheScript) {
     EXPECT_EQ(log(), "");
     EXPECT_EQ(luaTimersPending(), 0u);
 }
+
+}  // namespace ScriptSchedulerTest_cpp

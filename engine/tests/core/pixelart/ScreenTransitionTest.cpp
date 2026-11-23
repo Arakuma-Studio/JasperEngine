@@ -16,6 +16,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ScreenTransitionTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pixelart;
 
@@ -274,3 +276,5 @@ TEST(ScreenTransitionController, ACompositeTransitionBakesOffscreenPipelines){
     Engine::removeScene(&scene);
     Engine::setFramebuffer(target);
 }
+
+}  // namespace ScreenTransitionTest_cpp

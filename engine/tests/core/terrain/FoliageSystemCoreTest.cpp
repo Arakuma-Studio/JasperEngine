@@ -15,6 +15,8 @@
 
 #include <cmath>
 
+namespace FoliageSystemCoreTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::terraincore;
 
@@ -488,3 +490,5 @@ TEST(FoliageTreesCore, TreesPlantedBeforeTheTerrainLoadsLandInTheirCells) {
     });
     EXPECT_EQ(cells, 2);
 }
+
+}  // namespace FoliageSystemCoreTest_cpp

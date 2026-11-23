@@ -17,6 +17,8 @@
 #include <random>
 #include <set>
 
+namespace UnityGameImportTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -101,3 +103,5 @@ TEST(UnityGameImportTest, DISABLED_TheGamesEighteenSystems) {
     EXPECT_TRUE(uiParticle) << "GameOverMenu's confetti is drawn by UIParticle";
     fs::remove_all(out, ec);
 }
+
+}  // namespace UnityGameImportTest_cpp

@@ -19,6 +19,8 @@
 #include <filesystem>
 #include <thread>
 
+namespace VatPoolTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::vat;
 
@@ -299,3 +301,5 @@ TEST_F(VatPool, ConcurrentLoadsShareOneAsset){
     EXPECT_EQ(VertexAnimationPool::get(vat), cached);
     EXPECT_EQ(VertexAnimationPool::size(), 1u);
 }
+
+}  // namespace VatPoolTest_cpp

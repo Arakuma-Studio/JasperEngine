@@ -53,6 +53,8 @@
 #include <string>
 #include <vector>
 
+namespace ClipRecordCurvesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -882,3 +884,5 @@ TEST(ClipWindowSettings, AnIniSavedWithoutTheWindowKeepsItsSettings) {
     ImGui::DestroyContext(context);
     ImGui::SetCurrentContext(previous);
 }
+
+}  // namespace ClipRecordCurvesTest_cpp

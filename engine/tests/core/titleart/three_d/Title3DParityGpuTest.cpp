@@ -35,6 +35,8 @@
 #include <map>
 #include <set>
 
+namespace Title3DParityGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -453,3 +455,5 @@ TEST_F(Title3DParityGpu, SoftboxLooksLightWithTheirHdri) {
     std::printf("[parity3d] f-3d-red: the HDRI against the studio stand-in, mean %.2f/255 over the title\n", mean);
     EXPECT_GT(mean, 6.0) << "the HDRI and the studio stand-in reflect differently";
 }
+
+}  // namespace Title3DParityGpuTest_cpp

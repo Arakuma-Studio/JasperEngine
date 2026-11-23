@@ -47,6 +47,8 @@ namespace jasperengine {
     };
 }
 
+namespace SafeAreaTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -825,3 +827,5 @@ TEST(SafeAreaDevices, RasterizedOverlay) {
     EXPECT_EQ(landscape[((size_t)holeY * lw + holeX) * 4], 0);
     EXPECT_EQ(landscape[((size_t)holeY * lw + (lw - holeX)) * 4], 255);
 }
+
+}  // namespace SafeAreaTest_cpp

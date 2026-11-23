@@ -16,6 +16,8 @@
 #include <memory>
 #include <string>
 
+namespace NavigationFindingsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -106,3 +108,5 @@ TEST(NavigationFindings, ProjectWrapper){
     project.getScenes().clear();
     nav::setSettings(nav::NavigationSettings::defaults());
 }
+
+}  // namespace NavigationFindingsTest_cpp

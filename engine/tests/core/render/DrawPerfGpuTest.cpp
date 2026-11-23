@@ -35,6 +35,8 @@
 #include <memory>
 #include <vector>
 
+namespace DrawPerfGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -365,3 +367,5 @@ TEST_F(DrawPerfGpu, StaticSceneUpdateCost){
     std::printf("[bench] 2,000 static unlit meshes, lights, LOD and terrain off: %.2f ms a frame (update and draw)\n", ms);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace DrawPerfGpuTest_cpp

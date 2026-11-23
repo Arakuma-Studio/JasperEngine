@@ -13,7 +13,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::test;
+
+namespace jasperengine::editor::test {
 
 GltfBuild::GltfBuild(){
     json = nlohmann::ordered_json::object();
@@ -79,7 +80,7 @@ std::vector<uint8_t> GltfBuild::glb() const{
     return GltfDocument::writeGlb(out, bin);
 }
 
-nlohmann::ordered_json jasperengine::editor::test::addGridPrimitive(GltfBuild& build, const GridOptions& options){
+nlohmann::ordered_json addGridPrimitive(GltfBuild& build, const GridOptions& options){
     const int n = options.quads;
     auto height = [&](float x, float z){ return options.bump * std::sin(x * 6.0f) * std::cos(z * 5.0f); };
     std::vector<float> positions, normals, uvs, colors;
@@ -133,7 +134,7 @@ nlohmann::ordered_json jasperengine::editor::test::addGridPrimitive(GltfBuild& b
     return primitive;
 }
 
-std::vector<uint8_t> jasperengine::editor::test::makeTestModel(int quads, bool welded){
+std::vector<uint8_t> makeTestModel(int quads, bool welded){
     GltfBuild build;
     auto& json = build.json;
     json["materials"] = nlohmann::ordered_json::array({{{"name", "Opaque"}}, {{"name", "Glass"}, {"alphaMode", "BLEND"}}});
@@ -190,3 +191,5 @@ std::vector<uint8_t> jasperengine::editor::test::makeTestModel(int quads, bool w
     json["extras"] = {{"kept", "by the cook"}};
     return build.glb();
 }
+
+}  // namespace jasperengine::editor::test

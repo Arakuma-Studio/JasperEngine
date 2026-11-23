@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+namespace TitlePreviewQueueTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -223,3 +225,5 @@ TEST_F(TitlePreviewQueueTest, AWaitingJobIsPassedOver) {
     EXPECT_EQ(calls, 3);
     EXPECT_EQ(queue.stats().done, 2u);
 }
+
+}  // namespace TitlePreviewQueueTest_cpp

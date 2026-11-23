@@ -14,6 +14,8 @@
 #include <utility>
 #include <vector>
 
+namespace CommandHistoryTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -525,3 +527,5 @@ TEST_F(CommandHistoryTest, ClearEndsThePlaySessionAndDeletesTheRedoTail){
     history->undo();
     EXPECT_FALSE(history->canUndo());
 }
+
+}  // namespace CommandHistoryTest_cpp

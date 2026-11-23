@@ -14,6 +14,8 @@
 #include <atomic>
 #include <vector>
 
+namespace BackgroundGateTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::jobs;
 
@@ -193,3 +195,5 @@ TEST(JobsGate, PeaksKeepTheHighWaterMarkUntilTaken){
     EXPECT_EQ(gate.peeks().heavy, 1);
     gate.release(GateClass::Heavy);
 }
+
+}  // namespace BackgroundGateTest_cpp

@@ -21,6 +21,8 @@
 #include <limits>
 #include <vector>
 
+namespace SplineTileLayoutTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 
@@ -1297,3 +1299,5 @@ TEST(SplineTileLayoutTests, TwoThousandPiecesAreCheapToPlace){
     EXPECT_LT(best, 20.0) << "2,000 pieces took " << best << " ms";
 #endif
 }
+
+}  // namespace SplineTileLayoutTest_cpp

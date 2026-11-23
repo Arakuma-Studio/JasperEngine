@@ -15,6 +15,8 @@
 #include <cmath>
 #include <cstring>
 
+namespace VatContactSheetTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::vat;
@@ -195,3 +197,5 @@ TEST(VatContactSheet, CellsDrawTheMeshAndTheSheetComposes) {
     EXPECT_EQ(sheet.getWidth(), 4 * 32 + 3);
     EXPECT_EQ(sheet.getHeight(), (14 + 1) + 2 * (32 + 14) + 1);
 }
+
+}  // namespace VatContactSheetTest_cpp

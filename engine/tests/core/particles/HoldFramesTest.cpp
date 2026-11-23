@@ -13,6 +13,8 @@
 #include <cstring>
 #include <vector>
 
+namespace HoldFramesTest_cpp {
+
 using namespace particletest;
 
 namespace {
@@ -82,3 +84,5 @@ TEST(HoldFrames, DrawnStateChangesOnlyAtSteps){
     for (size_t f = 1; f < every.hashes.size(); f++) everyChanges += every.hashes[f] != every.hashes[f - 1] ? 1 : 0;
     EXPECT_GT(everyChanges, 100) << "without Hold Frames the drawn state changes every frame";
 }
+
+}  // namespace HoldFramesTest_cpp

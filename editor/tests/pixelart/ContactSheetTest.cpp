@@ -7,6 +7,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ContactSheetTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::fx;
 
@@ -138,3 +140,5 @@ TEST(ContactSheet, SheetTimes) {
     EXPECT_EQ(sheetTimes(4, 1.0, true), (std::vector<double>{0, 0.25, 0.5, 0.75}));
     EXPECT_EQ(sheetTimes(1, 2.0, false), (std::vector<double>{0}));
 }
+
+}  // namespace ContactSheetTest_cpp

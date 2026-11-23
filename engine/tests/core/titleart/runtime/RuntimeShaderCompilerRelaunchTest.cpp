@@ -18,6 +18,8 @@
 #include <filesystem>
 #include <thread>
 
+namespace RuntimeShaderCompilerRelaunchTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -61,3 +63,5 @@ TEST(RuntimeShaderCompilerRelaunchGpu, AVariantFirstAskedAfterAnEngineRelaunchCo
     RuntimeShaderCompiler::setEnabled(enabled);
     RuntimeShaderCompiler::setAsync(async);
 }
+
+}  // namespace RuntimeShaderCompilerRelaunchTest_cpp

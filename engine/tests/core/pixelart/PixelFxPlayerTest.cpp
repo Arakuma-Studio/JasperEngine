@@ -27,6 +27,8 @@
 #include <set>
 #include <vector>
 
+namespace PixelFxPlayerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pixelart;
 
@@ -361,3 +363,5 @@ TEST_F(PixelFxPlayerScene, ReplaceStopAndSet){
     EXPECT_FALSE(PixelFxPlayer::play(&scene, plain, PixelFxEffect::FLASH, 0.1f, PixelFxOptions(), &error).isValid());
     EXPECT_NE(error.find("library:sprite"), std::string::npos) << error;
 }
+
+}  // namespace PixelFxPlayerTest_cpp

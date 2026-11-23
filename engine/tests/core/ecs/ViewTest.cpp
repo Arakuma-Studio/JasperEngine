@@ -13,6 +13,8 @@
 #include <set>
 #include <vector>
 
+namespace ViewTest_cpp {
+
 using namespace jasperengine;
 using jasperengine::test::makeTransformEntity;
 
@@ -129,3 +131,5 @@ TEST(ViewTest, ChangedAndAddedFilters){
     EXPECT_EQ(added, (std::set<Entity>{c}));
     (void)b;
 }
+
+}  // namespace ViewTest_cpp

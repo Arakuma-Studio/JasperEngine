@@ -14,6 +14,8 @@
 #include <limits>
 #include <vector>
 
+namespace TruePeakTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -202,3 +204,5 @@ TEST(TruePeak, EmptyInput) {
     // zero channels would make the interleaved stride 0
     EXPECT_EQ(TruePeak(0).getChannels(), 1u);
 }
+
+}  // namespace TruePeakTest_cpp

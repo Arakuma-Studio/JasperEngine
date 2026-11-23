@@ -17,7 +17,8 @@
 #include <cstring>
 
 using namespace jasperengine;
-using namespace jasperengine::test;
+
+namespace jasperengine::test {
 
 namespace {
     bool engineInitialised = false;
@@ -177,3 +178,5 @@ void GpuEnvironment::shutdown(){
 void GpuTestEnvironment::TearDown(){
     GpuEnvironment::shutdown();
 }
+
+}  // namespace jasperengine::test

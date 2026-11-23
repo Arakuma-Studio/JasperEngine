@@ -25,6 +25,8 @@
 #include <cmath>
 #include <cstdlib>
 
+namespace DerivedTransformTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -312,3 +314,5 @@ TEST(Stream, SubmeshVertexCountNotTheLastDraws) {
         EXPECT_EQ(Factory::createComponent(0, scene, meshes->getEntity(i), ComponentType::MeshComponent, fs::path(), "scene", "entity"), drawnCode[i])
             << "the generated code of entity " << meshes->getEntity(i) << " depends on whether it was drawn";
 }
+
+}  // namespace DerivedTransformTest_cpp

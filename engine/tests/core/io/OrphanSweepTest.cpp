@@ -13,6 +13,8 @@
     #include <unistd.h>
 #endif
 
+namespace OrphanSweepTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using jasperengine::test::TestTempDir;
@@ -94,3 +96,5 @@ TEST(OrphanSweep, PruneRemovesOldQuarantine){
     EXPECT_TRUE(fs::exists(quarantine / "Recent.scene.20261020-000000"));
     EXPECT_EQ(io::pruneQuarantine(dir / "missing"), 0u);
 }
+
+}  // namespace OrphanSweepTest_cpp

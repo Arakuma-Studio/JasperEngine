@@ -16,6 +16,8 @@
 #include <random>
 #include <vector>
 
+namespace VisibleListTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -159,3 +161,5 @@ TEST(VisibleList, DistanceAndUnboundedMeshes){
     candidate.worldBounds = AABB();
     EXPECT_EQ(VisibleList::cull(box3.frustum, candidate).submeshMask, 0u);
 }
+
+}  // namespace VisibleListTest_cpp

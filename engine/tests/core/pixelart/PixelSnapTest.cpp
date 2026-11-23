@@ -11,6 +11,8 @@
 
 #include <cmath>
 
+namespace PixelSnapTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pixelart;
 
@@ -185,3 +187,5 @@ TEST(PixelSnapTest, SnapWorld){
     // a non-positive PPU is the default 1
     EXPECT_FLOAT_EQ(snapWorld(2.6f, 0), 3.0f);
 }
+
+}  // namespace PixelSnapTest_cpp

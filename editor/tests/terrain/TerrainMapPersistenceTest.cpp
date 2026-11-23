@@ -17,6 +17,8 @@
 #include <sstream>
 #include <thread>
 
+namespace TerrainMapPersistenceTest_cpp {
+
 using namespace terrainprojecttest;
 
 namespace {
@@ -186,3 +188,5 @@ TEST(TerrainMapFileWriter, AFlushInAnIoWriteJobWritesTheQueueItself) {
     EXPECT_TRUE(flushed.load());
     EXPECT_TRUE(fs::is_regular_file(file));
 }
+
+}  // namespace TerrainMapPersistenceTest_cpp

@@ -17,6 +17,8 @@
 #include <cstdio>
 #include <vector>
 
+namespace TerrainDeltaBenchTest_cpp {
+
 using namespace terrainprojecttest;
 
 namespace {
@@ -132,3 +134,5 @@ TEST_F(TerrainDeltaBench, ADiagonalStrokeStoresAnEighthOfTodaysPatch) {
                 step.memoryBytes(), todaysPatch);
     EXPECT_LE(step.memoryBytes(), todaysPatch / 8);
 }
+
+}  // namespace TerrainDeltaBenchTest_cpp

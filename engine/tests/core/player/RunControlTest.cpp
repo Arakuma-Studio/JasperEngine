@@ -16,6 +16,8 @@
 #include <string>
 #include <vector>
 
+namespace RunControlTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::player;
 
@@ -266,3 +268,5 @@ TEST_F(RunControlFixture, FixedFpsAfterReadyHoldsGameEventsUntilReady) {
     EXPECT_FALSE(Engine::areGameEventsPaused());
     Engine::setFixedDeltatime(0.0);
 }
+
+}  // namespace RunControlTest_cpp

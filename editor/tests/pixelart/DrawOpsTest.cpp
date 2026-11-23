@@ -11,6 +11,8 @@
 
 #include <chrono>
 
+namespace DrawOpsTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
 using jasperengine::editor::pixelart::s47test::json;
@@ -193,3 +195,5 @@ TEST(DrawOps, MirroredShapeKeepsWhatLandsBackOnTheCanvas) {
     S47_APPLY(sprite, json::array({{{"op", "rect"}, {"rect", {-2, 0, 3, 1}}, {"color", 1}, {"fill", true}}}), json{{"x", 2.0}});
     EXPECT_EQ(s47test::canvasRows(sprite)[0], "1...111.") << "x -2..0 and their mirrors 6, 5, 4 about x = 2";
 }
+
+}  // namespace DrawOpsTest_cpp

@@ -21,6 +21,8 @@
 #include <map>
 #include <set>
 
+namespace AsepriteImportTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::aseprite;
@@ -488,3 +490,5 @@ TEST(AsepriteImportTest, ProviderAndExportAgree) {
     for (size_t p = 0; p < sheet.sheet->pages.size(); p++) EXPECT_EQ(sheet.sheet->pages[p].texture, base + "page" + std::to_string(p) + ".png");
     fs::remove_all(root);
 }
+
+}  // namespace AsepriteImportTest_cpp

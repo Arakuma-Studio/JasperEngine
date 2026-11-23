@@ -17,6 +17,8 @@
 #include <fstream>
 #include <set>
 
+namespace ClipReportTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -620,3 +622,5 @@ TEST(ClipReport, TransitionPopIsTheStepThroughTheCrossfade){
     EXPECT_NEAR(report.transition->maxStepMm, 300.0 / 30.0, 0.5) << "30 frames of 1/60 s";
     EXPECT_TRUE(report.transition->causes.empty());
 }
+
+}  // namespace ClipReportTest_cpp

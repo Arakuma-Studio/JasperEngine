@@ -34,6 +34,8 @@
 #include <string>
 #include <vector>
 
+namespace TitleLibraryTierBudgetTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::titlelibrary;
@@ -192,3 +194,5 @@ TEST_F(TitleLibraryTierBudget, TheLibrarysHeaviestItemsFitEveryTierWithTheirStac
     // the red control: these items are over at least one tier without the budget's coarsening
     EXPECT_GE(overWithoutBudget, 3);
 }
+
+}  // namespace TitleLibraryTierBudgetTest_cpp

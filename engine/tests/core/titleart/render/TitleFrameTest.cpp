@@ -6,6 +6,8 @@
 #include "titleart/render/TitleArtCaps.h"
 #include "titleart/render/TitleFrame.h"
 
+namespace TitleFrameTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
@@ -102,3 +104,5 @@ TEST_F(TitleFrameTest, TestFlagsForceTheFallbacks) {
     EXPECT_FALSE(web.floatPath);
     EXPECT_EQ(web.format(TitleBuffer::Seeds).format, ColorFormat::RGBA);
 }
+
+}  // namespace TitleFrameTest_cpp

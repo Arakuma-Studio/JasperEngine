@@ -39,6 +39,8 @@
 #include <string>
 #include <vector>
 
+namespace ScriptingEditorTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -412,3 +414,5 @@ TEST_F(ScriptingEditor, PartMeshSettingsSurviveRebuild) {
     ASSERT_NE(eyes(), NULL_ENTITY);
     EXPECT_FALSE(scene->getComponent<MeshComponent>(eyes()).castShadows);
 }
+
+}  // namespace ScriptingEditorTest_cpp

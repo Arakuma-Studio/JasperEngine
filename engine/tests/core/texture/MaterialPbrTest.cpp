@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+namespace MaterialPbrTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -445,3 +447,5 @@ TEST(MaterialPbr, CountLitVariantsSeesAll64Bits){
     const uint64_t lit = (1ull << 1) | (1ull << 3);
     EXPECT_EQ(MaterialPbr::countLitVariants({{1u, lit}, {1u, lit | (1ull << 40)}, {1u, lit}, {0u, lit}}), 2u);
 }
+
+}  // namespace MaterialPbrTest_cpp

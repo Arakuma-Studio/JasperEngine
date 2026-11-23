@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+namespace PostColorLutTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -346,3 +348,5 @@ TEST(PostColorLut, InvertGivesTheCodeOfADisplayColour){
     EXPECT_EQ(strip[i + 1], (uint8_t)std::lround(texel.y * 255.0f));
     EXPECT_EQ(strip[i + 2], (uint8_t)std::lround(texel.z * 255.0f));
 }
+
+}  // namespace PostColorLutTest_cpp

@@ -17,6 +17,8 @@
 #include <cstddef>
 #include <new>
 
+namespace ComponentDefaultsTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -64,3 +66,5 @@ TEST(ComponentDefaults, AlphaTweenStartsAtZeroAlphas) {
         EXPECT_FLOAT_EQ(tween.endAlpha, 0.0f);
     });
 }
+
+}  // namespace ComponentDefaultsTest_cpp

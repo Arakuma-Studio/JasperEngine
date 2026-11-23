@@ -49,6 +49,8 @@
 #include <string>
 #include <vector>
 
+namespace AudioMixerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -1174,6 +1176,8 @@ TEST(GeneratorAudioTest, InitConfiguresTheVoicesAndLoadsTheMixer) {
     fs::remove_all(project);
 }
 
+}  // namespace AudioMixerTest_cpp
+
 // ================================================================== BF14: audio and engine bug fixes
 // (found comparing the unmerged snd/sound-layer branch with this engine)
 
@@ -1185,6 +1189,8 @@ namespace jasperengine {
         }
     };
 }
+
+namespace AudioMixerTest_cpp {
 
 namespace {
     constexpr double kFrame60 = 1.0 / 60.0;
@@ -1931,3 +1937,5 @@ TEST_F(AudioMixerMathRuntimeTest, MusicSwitchInTheFrameOfASnapshotActionHolds) {
     EXPECT_FALSE(scene->getComponent<AudioSnapshotComponent>(withMusic).applied) << "the action ended";
     EXPECT_EQ(AudioMixer::getCurrentSnapshot(), "Combat") << "its revert leaves the music's snapshot";
 }
+
+}  // namespace AudioMixerTest_cpp

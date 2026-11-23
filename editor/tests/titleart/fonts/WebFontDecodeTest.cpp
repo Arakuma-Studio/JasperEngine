@@ -17,6 +17,8 @@
 
 #include <algorithm>
 
+namespace WebFontDecodeTest_cpp {
+
 using namespace jasperengine::editor::titlefonts;
 using namespace jasperengine::editor::titlefonts::test;
 
@@ -198,3 +200,5 @@ TEST(WebFontDecodeTest, ListsTheFacesOfACollection) {
     const std::vector<uint8_t> single = reference();
     EXPECT_EQ(listFontFaces(single.data(), single.size()).size(), 1u);
 }
+
+}  // namespace WebFontDecodeTest_cpp

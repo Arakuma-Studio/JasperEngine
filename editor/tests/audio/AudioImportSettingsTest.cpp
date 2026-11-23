@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+namespace AudioImportSettingsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -196,3 +198,5 @@ TEST(AudioProvenance, RoundTripAndApply) {
     EXPECT_FALSE(provenance.apply({{"builtin", "x"}}, error));
     EXPECT_NE(error.find("object"), std::string::npos);
 }
+
+}  // namespace AudioImportSettingsTest_cpp

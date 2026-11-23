@@ -9,6 +9,8 @@
 #include "pose/HumanoidMapIO.h"
 #include "PoseTestUtil.h"
 
+namespace HumanoidMapIOTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pose;
 using posetest::anyWarningContains;
@@ -162,3 +164,5 @@ TEST(HumanoidMapIO, BadFormatOrVersionFails){
 TEST(HumanoidMapIO, SidecarPath){
     EXPECT_EQ(humanoidSidecarPath("models/hero.gltf"), "models/hero.gltf.humanoid");
 }
+
+}  // namespace HumanoidMapIOTest_cpp

@@ -31,6 +31,8 @@
     #include <malloc.h>
 #endif
 
+namespace ConvexDecompositionTest_cpp {
+
 using namespace jasperengine;
 namespace fs = std::filesystem;
 
@@ -1045,3 +1047,5 @@ TEST(ConvexDecomposition, BuildsWithoutDecompositionStillCache) {
     EXPECT_EQ(other.entryCount(), 0u);
 }
 #endif
+
+}  // namespace ConvexDecompositionTest_cpp

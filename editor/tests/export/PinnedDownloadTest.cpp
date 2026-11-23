@@ -18,6 +18,8 @@
 #include <fstream>
 #include <iterator>
 
+namespace pinned_download_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::platform;
@@ -25,7 +27,6 @@ namespace fs = std::filesystem;
 using jasperengine::test::TestTempDir;
 using jaspertest::TestHttpServer;
 
-namespace pinned_download_test {
 
     std::string hashOf(const TestTempDir& dir, const std::string& bytes) {
         const fs::path file = dir / "hash-me";
@@ -55,6 +56,8 @@ namespace pinned_download_test {
     fs::path partOf(const PinnedDownload& download) { return download.target.string() + ".part"; }
 
 }
+
+namespace pinned_download_test {
 
 using namespace pinned_download_test;
 
@@ -259,5 +262,7 @@ TEST(PinnedDownload, BundletoolIsPinned) {
     EXPECT_NE(error.find("the downloaded bundletool 1.17.2 does not match its pinned SHA-256"), std::string::npos) << error;
     EXPECT_FALSE(fs::exists(download.target));
 }
+
+}  // namespace pinned_download_test
 
 #endif

@@ -37,6 +37,8 @@
 #include <string>
 #include <vector>
 
+namespace SpriteNormalsApplyTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace sn = jasperengine::editor::spritenormals;
@@ -460,3 +462,5 @@ TEST(SpriteNormalsApply, AnimatedRefusals) {
     EXPECT_EQ(result.error.kind, "not_a_sprite");
     EXPECT_TRUE(animationsOf(spriteNormalsApplySceneOf(sceneId), hero).empty());
 }
+
+}  // namespace SpriteNormalsApplyTest_cpp

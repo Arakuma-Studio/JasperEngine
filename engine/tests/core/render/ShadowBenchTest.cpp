@@ -21,6 +21,8 @@
 #include <cstdio>
 #include <vector>
 
+namespace ShadowBenchTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -139,3 +141,5 @@ TEST(ShadowBench, CasterRegistryTenThousandOnePercentMoving){
         EXPECT_LE(median, 0.2 * testsupport::perfSlack());
     }
 }
+
+}  // namespace ShadowBenchTest_cpp

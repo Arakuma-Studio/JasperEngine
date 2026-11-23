@@ -14,6 +14,8 @@
 
 #include <cmath>
 
+namespace CameraGizmoTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -101,3 +103,5 @@ TEST(CameraGizmo, PerspectiveNearIsClamped){
     EXPECT_FLOAT_EQ(ortho.x, -5.0f);
     EXPECT_FLOAT_EQ(ortho.y, 5.0f);
 }
+
+}  // namespace CameraGizmoTest_cpp

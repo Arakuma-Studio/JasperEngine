@@ -25,6 +25,8 @@
 #include <thread>
 #include <vector>
 
+namespace LogBufferSinkTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -301,3 +303,5 @@ TEST_F(LogBufferSinkTest, EditorCategoriesAreNotBuffered) {
     EXPECT_EQ(entries[0].message, "an engine line");
     EXPECT_EQ(Logger::sinkLevel(Log::getBufferSinkId(), &logCategoryEditor()), LogLevel::Off);
 }
+
+}  // namespace LogBufferSinkTest_cpp

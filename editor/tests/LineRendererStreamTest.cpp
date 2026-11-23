@@ -37,6 +37,8 @@
 #include <string>
 #include "support/PosixCompat.h"
 
+namespace LineRendererStreamTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -537,3 +539,5 @@ TEST(LineRendererStreamTest, UpstreamFilesReadLosslessly){
     EXPECT_FLOAT_EQ(constant.colorGradient.colorKeys[0].color.y, 1.0f);
     EXPECT_NEAR(constant.colorGradient.evaluateAlpha(0.0f), 128.0f / 255.0f, 1e-6f);
 }
+
+}  // namespace LineRendererStreamTest_cpp

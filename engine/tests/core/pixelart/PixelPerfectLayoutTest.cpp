@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PixelPerfectLayoutTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pixelart;
 
@@ -122,3 +124,5 @@ TEST(PixelPerfectLayoutTest, EmptyInputsGiveAnEmptyLayout){
     EXPECT_EQ(fitScale(1280, 720, 320, 180), 4);
     EXPECT_EQ(fitScale(100, 100, 320, 180), 1);
 }
+
+}  // namespace PixelPerfectLayoutTest_cpp

@@ -13,6 +13,8 @@
 #include <thread>
 #include <vector>
 
+namespace FastLaneTest_cpp {
+
 using namespace jasperengine::jobs::detail;
 
 namespace{
@@ -79,3 +81,5 @@ TEST(JobsFastLane, ProducersAndConsumersDeliverEachItemOnce){
         ASSERT_EQ(seen[i].load(), 1) << "item " << i;
     EXPECT_FALSE(lane->hasItems());
 }
+
+}  // namespace FastLaneTest_cpp

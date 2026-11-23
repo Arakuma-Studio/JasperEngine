@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+namespace GeneratorInputTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -153,3 +155,5 @@ TEST_F(GeneratorInputTest, ALongDefinitionIsOneAssetLine) {
     const std::string line = Generator::inputSettingsInitSource("big.inputactions", 0.15f);
     EXPECT_EQ(std::count(line.begin(), line.end(), '\n'), 1);
 }
+
+}  // namespace GeneratorInputTest_cpp

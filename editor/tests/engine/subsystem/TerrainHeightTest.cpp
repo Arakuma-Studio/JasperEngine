@@ -26,6 +26,8 @@
 #include <string>
 #include <vector>
 
+namespace TerrainHeightTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -249,3 +251,5 @@ TEST(TerrainHeight, FlatGroundNormalPointsUp) {
         }
     }
 }
+
+}  // namespace TerrainHeightTest_cpp

@@ -33,6 +33,8 @@
 #include <cmath>
 #include <vector>
 
+namespace InstancedFadeGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -239,3 +241,5 @@ TEST_F(InstancedFadeGpu, TheNearBandShrinksTheInstance){
     EXPECT_LT(band, whole / 2) << "the instance half way through the band is not shrunk";
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace InstancedFadeGpuTest_cpp

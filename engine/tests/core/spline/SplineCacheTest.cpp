@@ -10,6 +10,8 @@
 
 #include <thread>
 
+namespace SplineCacheTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 using namespace jasperengine::test;
@@ -162,3 +164,5 @@ TEST(SplineCacheTests, ConcurrentQueriesOnAStaleSplineAgree){
         EXPECT_EQ(r, expected);
     }
 }
+
+}  // namespace SplineCacheTest_cpp

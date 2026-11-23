@@ -21,6 +21,8 @@
 #include <utility>
 #include <vector>
 
+namespace TerrainGenerationTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using terraincore::MapId;
@@ -270,3 +272,5 @@ TEST(TerrainGeneration, FeatherBlendsFromAnAlphaLayersWeight) {
     EXPECT_LT(lowest, 0.5f) << "the feather starts from layer 10's weight";
     EXPECT_GE(lowest, 0.2f - 2.0f / 255.0f);
 }
+
+}  // namespace TerrainGenerationTest_cpp

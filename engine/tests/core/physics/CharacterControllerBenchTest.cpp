@@ -26,6 +26,8 @@
 #include <memory>
 #include <vector>
 
+namespace CharacterControllerBenchTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -207,3 +209,5 @@ TEST(CharacterControllerBench, TenControllersWithoutInnerBodies){
         EXPECT_LE(ms, 1.0 * 1.5 * testsupport::perfSlack());
     }
 }
+
+}  // namespace CharacterControllerBenchTest_cpp

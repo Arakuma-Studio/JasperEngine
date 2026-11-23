@@ -10,6 +10,8 @@
 #include <atomic>
 #include <thread>
 
+namespace VoxelStoreTest_cpp {
+
 using namespace voxeltest;
 
 TEST(VoxelBlock, EncodingAndClamp) {
@@ -241,3 +243,5 @@ TEST(VoxelStore, UnresolvedBlocksResolveOnTheJobAndPublish) {
     // R33: a coarse block needed no fine block
     EXPECT_EQ(store.slot(BlockKey{0, 2, 2, 2}).kind(), Slot::Base);
 }
+
+}  // namespace VoxelStoreTest_cpp

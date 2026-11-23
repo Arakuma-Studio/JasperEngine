@@ -18,6 +18,8 @@
 #include <limits>
 #include <string>
 
+namespace Physics3DSerializationTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::physics3dtest;
@@ -211,3 +213,5 @@ TEST(Physics3DSerialization, RagdollRoundTrips) {
     EXPECT_NE(code.find("ragdoll.simulated = true;"), std::string::npos);
     EXPECT_NE(code.find("ragdoll.totalMass = 70.000000f;"), std::string::npos);
 }
+
+}  // namespace Physics3DSerializationTest_cpp

@@ -21,6 +21,8 @@
 #include <regex>
 #include <sstream>
 
+namespace TerrainGoldenTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::terraincore;
 using namespace terraingolden;
@@ -181,3 +183,5 @@ TEST(TerrainGolden, DeterministicArithmetic) {
     EXPECT_EQ(random.next(), 0x7b47f409u);
     EXPECT_EQ(random.next(), 0xba1d3330u);
 }
+
+}  // namespace TerrainGoldenTest_cpp

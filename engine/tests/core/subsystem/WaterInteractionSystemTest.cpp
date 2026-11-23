@@ -24,9 +24,10 @@
 
 #include <memory>
 
+namespace water_interaction_system_test {
+
 using namespace jasperengine;
 
-namespace water_interaction_system_test {
 
     constexpr float STEP = 1.0f / 30.0f;
 
@@ -122,6 +123,8 @@ namespace water_interaction_system_test {
     };
 
 }
+
+namespace water_interaction_system_test {
 
 using namespace water_interaction_system_test;
 
@@ -431,3 +434,5 @@ TEST_F(WaterInteractionTest, PauseFreezesAndStopClears){
     EXPECT_FALSE(system->getWakeMap().isAllocated());
     EXPECT_FALSE(system->getEmitterInfo(boat).emitting);
 }
+
+}  // namespace water_interaction_system_test

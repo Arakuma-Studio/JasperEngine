@@ -15,6 +15,8 @@
 
 #include <filesystem>
 
+namespace NewProjectShadowLodBiasTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
@@ -39,3 +41,5 @@ TEST(NewProjectShadowLodBias, TemplatesAndOldProjectsReadOne) {
     Stream::decodeProject(&old, YAML::Load("name: Old\nvsync: true\n"), Workspace());
     EXPECT_FLOAT_EQ(old.getDeviceSettings().shadowLodBias, 1.0f);
 }
+
+}  // namespace NewProjectShadowLodBiasTest_cpp

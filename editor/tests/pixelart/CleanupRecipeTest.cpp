@@ -11,8 +11,12 @@
 
 #include <gtest/gtest.h>
 
+namespace CleanupRecipeTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::cleanup;
+// the cleanup's own, not pixelart's namesakes: a batch that declares both would be ambiguous
+using jasperengine::editor::pixelart::cleanup::Dither;
 using jasperengine::pixelart::Rgba8;
 using nlohmann::json;
 
@@ -265,3 +269,5 @@ TEST(CleanupRecipe, MovedLinesStayInTheSourceRange) {
     EXPECT_TRUE(decodeRecipe(nlohmann::json{{"moved", good}}, recipe, problems)) << (problems.empty() ? "" : problems.front().message);
     EXPECT_EQ(recipe.moved.size(), 3u);
 }
+
+}  // namespace CleanupRecipeTest_cpp

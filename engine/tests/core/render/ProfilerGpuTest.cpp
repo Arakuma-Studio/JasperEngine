@@ -23,6 +23,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ProfilerGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -275,3 +277,5 @@ TEST(VramTrackerGpu, QueuedCreationKeepsOwner){
     EXPECT_EQ(allocation->label, "test-queued-bloom");
     sg_destroy_image(image);
 }
+
+}  // namespace ProfilerGpuTest_cpp

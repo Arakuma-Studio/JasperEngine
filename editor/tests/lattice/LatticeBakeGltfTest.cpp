@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+namespace LatticeBakeGltfTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::test;
@@ -86,3 +88,5 @@ TEST(LatticeBakeGltf, NodesOfASharedMeshGetTheirOwnDataInNewAccessors){
         EXPECT_EQ(values, (std::vector<float>{0, 0, 0, scale, 0, 0, 0, scale, 0}));
     }
 }
+
+}  // namespace LatticeBakeGltfTest_cpp

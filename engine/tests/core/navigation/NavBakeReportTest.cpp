@@ -12,6 +12,8 @@
 #include <map>
 #include <utility>
 
+namespace NavBakeReportTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::navtest;
 using nav::NavBakeError;
@@ -149,3 +151,5 @@ TEST_F(NavBakeReportTest, TileReportsKept){
     for (const nav::NavTileReport& tile : nav->getTileReports(surface))
         EXPECT_EQ(tile.milliseconds, -1.0);
 }
+
+}  // namespace NavBakeReportTest_cpp

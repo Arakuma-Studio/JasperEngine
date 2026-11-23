@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace FrameReadbackGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -123,3 +125,5 @@ TEST_F(FrameReadbackGpu, RefusesOtherSizes) {
     EXPECT_EQ(error, "bad readback size");
     target.destroy();
 }
+
+}  // namespace FrameReadbackGpuTest_cpp

@@ -27,6 +27,8 @@
 #include <functional>
 #include <thread>
 
+namespace HotReloadServiceTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::test;
@@ -455,3 +457,4 @@ TEST_F(HotReloadServiceTests, NoAssetPollWithoutTheWatcher) {
     EXPECT_EQ(database.getPath(guid).generic_string(), "assets/hr/still_moved.png");
 }
 
+}  // namespace HotReloadServiceTest_cpp

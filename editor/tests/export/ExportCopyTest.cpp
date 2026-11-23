@@ -18,6 +18,8 @@
 #if !defined(_WIN32)
 #include <unistd.h>
 
+namespace ExportCopyTest_cpp {
+
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
@@ -70,4 +72,6 @@ TEST(ExportCopy, EnsureExecutableAddsTheExecuteBits) {
     EXPECT_FALSE(Exporter::ensureExecutable({dir.root / "missing" / "gradlew"}, error));
     EXPECT_NE(error.find("missing/gradlew"), std::string::npos) << error;
 }
+
+}  // namespace ExportCopyTest_cpp
 #endif

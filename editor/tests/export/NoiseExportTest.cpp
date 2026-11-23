@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+namespace NoiseExportTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -53,3 +55,5 @@ TEST(NoiseExport, ABakedProjectShipsNoGraphAndStaysLite) {
 TEST(NoiseExport, AnUnknownUsageKeepsEverything) {
     EXPECT_TRUE(Exporter::shipsForNoise("graphs/Plains.noisegraph", nullptr)) << "a source export: its user's code may load any";
 }
+
+}  // namespace NoiseExportTest_cpp

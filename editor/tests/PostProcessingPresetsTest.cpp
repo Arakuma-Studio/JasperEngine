@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+namespace PostProcessingPresetsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -216,3 +218,5 @@ TEST(PostProcessingPresets, S43PalettePresetsAndRows) {
     settings.paletteDither = PaletteDither::NONE;
     EXPECT_FALSE(getPostProcessingRowState(settings, "palette_dither_strength", false).shown);
 }
+
+}  // namespace PostProcessingPresetsTest_cpp

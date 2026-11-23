@@ -22,6 +22,8 @@
 #include <iterator>
 #include <set>
 
+namespace PsdImportTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -316,3 +318,5 @@ TEST_F(PsdImportTest, MalformedFilesFail) {
         EXPECT_NE(error.find("offset"), std::string::npos) << error;
     }
 }
+
+}  // namespace PsdImportTest_cpp

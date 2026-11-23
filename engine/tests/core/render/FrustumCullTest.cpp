@@ -15,6 +15,8 @@
 
 #include <random>
 
+namespace FrustumCullTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -100,3 +102,5 @@ TEST(FrustumCull, SerialMovesOnlyWithThePlanes){
     cull.set(planes, 2.0f);
     EXPECT_NE(cull.getSerial(), second);
 }
+
+}  // namespace FrustumCullTest_cpp

@@ -16,6 +16,8 @@
 #include <string>
 #include <thread>
 
+namespace RuntimeShaderCompilerTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -69,3 +71,5 @@ TEST(RuntimeShaderCompiler, AVariantAskedForAfterAJobSystemRestartCompiles){
     }
     EXPECT_EQ(state, ResourceLoadState::Finished) << RuntimeShaderCompiler::getError(key);
 }
+
+}  // namespace RuntimeShaderCompilerTest_cpp

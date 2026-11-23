@@ -26,6 +26,8 @@
 #include <filesystem>
 #include <fstream>
 
+namespace TitleArtBakeTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -399,3 +401,5 @@ TEST(TitleArtSettingsTest, Realtime3DQualityPerPlatform) {
     EXPECT_EQ(bad.realtime3DQuality.of("web"), "low");
     EXPECT_EQ(warnings.size(), 1u);
 }
+
+}  // namespace TitleArtBakeTest_cpp

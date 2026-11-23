@@ -50,6 +50,8 @@
 #include <vector>
 #include "reflect/Reflect.h"
 
+namespace CanvasGroupTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -1030,3 +1032,5 @@ TEST_F(CanvasGroupTest, PerformanceBudgets){
     report("subtree pass over 101 entities", fading, 15.0);
 }
 #endif
+
+}  // namespace CanvasGroupTest_cpp

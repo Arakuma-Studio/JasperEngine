@@ -27,6 +27,8 @@
 #include <thread>
 #include <vector>
 
+namespace FbxImportTest_cpp {
+
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
@@ -357,3 +359,5 @@ TEST(FbxImport, ReportsFilesItCannotConvert) {
     EXPECT_FALSE(fs::exists(project.glb));
     EXPECT_EQ(FbxImporter::getState(project.fbx, project.glb, project.assets), FbxImporter::State::Missing);
 }
+
+}  // namespace FbxImportTest_cpp

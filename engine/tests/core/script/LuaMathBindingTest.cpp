@@ -13,6 +13,8 @@
 
 #include <string>
 
+namespace LuaMathBindingTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -91,3 +93,5 @@ TEST(LuaMath, VectorMoveTowardsAndLerp){
         assert(u:lerpUnclamped(v, -1) == Vector4(-2, -2, -2, -2), "Vector4 lerpUnclamped")
     )"), "");
 }
+
+}  // namespace LuaMathBindingTest_cpp

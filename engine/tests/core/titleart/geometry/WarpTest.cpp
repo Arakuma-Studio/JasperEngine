@@ -19,6 +19,8 @@
 #include <fstream>
 #include <set>
 
+namespace WarpTest_cpp {
+
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::geometry;
 
@@ -183,3 +185,5 @@ TEST(DistortTest, MeshPatchAndItsLinearExtension) {
     EXPECT_NEAR(p2.x - p1.x, p3.x - p2.x, 1e-9);
     EXPECT_NEAR(p2.y - p1.y, p3.y - p2.y, 1e-9);
 }
+
+}  // namespace WarpTest_cpp

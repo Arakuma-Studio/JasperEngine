@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 
+namespace TerrainPlacementTest_cpp {
+
 using namespace terraintest;
 
 namespace {
@@ -186,3 +188,5 @@ TEST(TerrainStroke, HoldingStillDepositsAtTheFlowRateWithTheClamp) {
     moving.add(StrokeSample{1.0f / 60.0f, 2.0f, 0.0f, 1.0f}, moved);
     EXPECT_EQ(moved.size(), 3u);
 }
+
+}  // namespace TerrainPlacementTest_cpp

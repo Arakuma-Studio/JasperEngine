@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+namespace GraphEditCmdTest_cpp {
+
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
@@ -71,3 +73,5 @@ TEST(GraphEditCmd, AListenerRemovedDuringANotificationIsNotCalled) {
     EXPECT_EQ(secondCalls, 0);
     GraphEditCmd::removeChangeListener(first);
 }
+
+}  // namespace GraphEditCmdTest_cpp

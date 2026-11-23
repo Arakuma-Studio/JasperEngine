@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+namespace TitleFxShaderBuildTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
@@ -146,3 +148,5 @@ TEST(TitleFxShaderBuild, NoClock) {
         EXPECT_FALSE(std::regex_search(text, clock)) << name << " reads a clock";
     }
 }
+
+}  // namespace TitleFxShaderBuildTest_cpp

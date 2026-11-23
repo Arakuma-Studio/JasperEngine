@@ -27,6 +27,8 @@
 #include <memory>
 #include <vector>
 
+namespace ActionTimingTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -491,3 +493,5 @@ TEST(SpriteAnimationRange, OnlyFrameZero) {
     EXPECT_EQ(spriteanim.framesSize, 3u);
     EXPECT_EQ(spriteanim.frames[2], 4);
 }
+
+}  // namespace ActionTimingTest_cpp

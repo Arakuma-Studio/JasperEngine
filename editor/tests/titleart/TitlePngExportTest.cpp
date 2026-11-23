@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+namespace TitlePngExportTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -190,3 +192,5 @@ TEST(TitlePngExport, PremultipliedInTheEncodedDomain) {
     EXPECT_EQ(other.pixel(1, 0)[0], 0);
     EXPECT_EQ(other.pixel(0, 0)[0], 200);
 }
+
+}  // namespace TitlePngExportTest_cpp

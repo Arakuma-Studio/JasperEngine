@@ -58,6 +58,8 @@
 #include <functional>
 #include <memory>
 
+namespace TitleGenMobileGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -535,3 +537,5 @@ TEST_F(FireMobileGpu, BakedFieldAgrees) {
     EXPECT_FALSE(within(wrong, F1_LIMITS)) << "a field of another spread passed: " << wrong.text();
     kit->release(shape);
 }
+
+}  // namespace TitleGenMobileGpuTest_cpp

@@ -20,11 +20,12 @@
 #include <string>
 #include <vector>
 
+namespace title_art_denied_terms_scan_test {
+
 namespace fs = std::filesystem;
 using namespace jasperengine::editor::titlelibrary;
 
 // (a named namespace, tests included: a unity build merges the test sources)
-namespace title_art_denied_terms_scan_test {
 
     // a test line that feeds the matcher a denied term on purpose ends with this comment
     constexpr const char* FIXTURE_MARKER = "denied-term fixture";
@@ -107,6 +108,8 @@ namespace title_art_denied_terms_scan_test {
 
 }
 
+namespace title_art_denied_terms_scan_test {
+
 using namespace title_art_denied_terms_scan_test;
 
 TEST(TitleArtDeniedTermsScan, NoTitleArtPathHoldsADeniedTerm) {
@@ -150,3 +153,5 @@ TEST(TitleArtDeniedTermsScan, FindsATermAndHonoursTheFixtureMarker) {
     scan({"editor/titleart/x.cpp", false}, "EXPECT(\"" + term + "\");  // " + std::string(FIXTURE_MARKER) + "\n", hits);
     EXPECT_EQ(hits.size(), 1u) << "the marker counts in tests only";
 }
+
+}  // namespace title_art_denied_terms_scan_test

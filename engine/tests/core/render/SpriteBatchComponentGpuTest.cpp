@@ -42,6 +42,8 @@
 #include <string>
 #include <vector>
 
+namespace SpriteBatchComponentGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -657,3 +659,5 @@ TEST_F(SpriteBatchComponentGpu, AttachedBatchDrawsAsItsGameObject){
     EXPECT_EQ(batchStats().draws, 0u);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace SpriteBatchComponentGpuTest_cpp

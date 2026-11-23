@@ -7,6 +7,8 @@
 #include "SpriteDrawTestSupport.h"
 
 
+namespace StructureOpsTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::draw;
 using jasperengine::editor::pixelart::s47test::json;
@@ -424,3 +426,5 @@ TEST(StructureOps, GrowingAnOpaquePalettePngWrites) {
     std::vector<uint8_t> written;
     EXPECT_TRUE(draw::encodeSprite(sprite, written, problem)) << problem.message;
 }
+
+}  // namespace StructureOpsTest_cpp

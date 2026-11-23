@@ -24,6 +24,8 @@
 #include <memory>
 #include <vector>
 
+namespace SpriteFrameBenchTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -133,3 +135,5 @@ TEST(SpriteFrameBench, SheetSpritesShareTheirFrames) {
     // the S45 runtime state of a legacy sprite is one pointer in the component, its mapping outside
     static_assert(sizeof(SpriteInlineAtlasRef) == sizeof(void*), "the inline atlas handle is one pointer");
 }
+
+}  // namespace SpriteFrameBenchTest_cpp

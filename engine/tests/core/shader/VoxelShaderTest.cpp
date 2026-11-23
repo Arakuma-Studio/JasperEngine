@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace VoxelShaderTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -122,3 +124,5 @@ TEST(ShaderKey, VoxelBitIsPinned) {
     EXPECT_EQ(MaterialPbr::getDefineBit(MaterialPbr::VOXEL_TIER_MEDIUM_DEFINE), static_cast<uint64_t>(1) << 34);
     EXPECT_EQ(MaterialPbr::getDefineBit(MaterialPbr::VOXEL_TIER_LOW_DEFINE), static_cast<uint64_t>(1) << 35);
 }
+
+}  // namespace VoxelShaderTest_cpp

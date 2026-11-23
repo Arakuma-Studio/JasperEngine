@@ -17,6 +17,8 @@
 #include <chrono>
 #include <cmath>
 
+namespace TitleTextLayoutTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -410,3 +412,5 @@ TEST_F(TitleTextLayoutTest, Budget) {
 #endif
     EXPECT_LT(cachedMs, ms);
 }
+
+}  // namespace TitleTextLayoutTest_cpp

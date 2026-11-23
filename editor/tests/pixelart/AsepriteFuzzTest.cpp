@@ -16,6 +16,8 @@
 #include <random>
 #include <set>
 
+namespace AsepriteFuzzTest_cpp {
+
 using namespace jasperengine::editor::pixelart;
 using namespace jasperengine::editor::pixelart::aseprite;
 using namespace jasperengine::editor::pixelart::testing;
@@ -154,3 +156,5 @@ TEST(AsepriteFuzzTest, PaletteChangesAreBounded) {
     EXPECT_EQ(r.error.kind, "too_large") << r.error.message;
     EXPECT_LT(after.bytes - before.bytes, static_cast<unsigned long long>(kMaxPaletteBytes) * 2 + bytes.size() * 4);
 }
+
+}  // namespace AsepriteFuzzTest_cpp

@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+namespace PlatformVisibilityTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -50,3 +52,5 @@ TEST_F(PlatformVisibilityTest, VisibilityEventReachesLua) {
     ASSERT_EQ(run("return tostring(visibilityProbe.seen[1]), tostring(visibilityProbe.seen[2]), Engine.isVisible", &values), "");
     EXPECT_EQ(values, std::vector<std::string>({"false", "true", "true"}));
 }
+
+}  // namespace PlatformVisibilityTest_cpp

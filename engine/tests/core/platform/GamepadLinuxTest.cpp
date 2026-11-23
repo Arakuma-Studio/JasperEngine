@@ -25,6 +25,8 @@
 #include <fstream>
 #include <vector>
 
+namespace GamepadLinuxTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -130,5 +132,7 @@ TEST_F(GamepadLinuxTest, ReopenRefusesAnotherPad){
     EXPECT_TRUE(Input::isGamepadConnected(0));
     gamepads.shutdown();
 }
+
+}  // namespace GamepadLinuxTest_cpp
 
 #endif

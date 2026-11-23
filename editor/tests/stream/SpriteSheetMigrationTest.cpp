@@ -16,6 +16,8 @@
 
 #include <gtest/gtest.h>
 
+namespace SpriteSheetMigrationTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -123,3 +125,5 @@ TEST(SpriteSheetMigration, SheetSpriteRoundTrips) {
     EXPECT_FALSE(legacy["frame"]);
     EXPECT_FALSE(legacy["frameName"]);
 }
+
+}  // namespace SpriteSheetMigrationTest_cpp

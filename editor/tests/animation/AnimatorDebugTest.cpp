@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+namespace AnimatorDebugTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::anim;
 using Json = nlohmann::json;
@@ -375,3 +377,5 @@ TEST_F(AnimatorDebugTest, OverlayPassDoesNothingWhileOff){
     EXPECT_EQ(pass.snapshots(), 1u);
     EXPECT_EQ(pass.lines(), lines);
 }
+
+}  // namespace AnimatorDebugTest_cpp

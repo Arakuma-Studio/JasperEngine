@@ -20,6 +20,8 @@
 #include <string>
 #include <vector>
 
+namespace ShaderVariantCollectorTerrainTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -98,3 +100,5 @@ TEST(ShaderVariantCollectorTerrain, HoleMapShipsThl){
     component.holeMap.setPath("holes.png");
     EXPECT_TRUE(shaderVariantCollectorTerrainCollect(scene, terraincore::TERRAIN_ALL_TIERS).holes);
 }
+
+}  // namespace ShaderVariantCollectorTerrainTest_cpp

@@ -25,6 +25,8 @@
 #include <cmath>
 #include <functional>
 
+namespace Physics3DReviewTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::physics3dtest;
@@ -476,3 +478,5 @@ TEST(Physics3DReview, ColliderEditKeepsSettingsJointsAndContacts) {
     EXPECT_FALSE(world.rb(ball).isSleeping()) << "allowSleeping false still holds";
     EXPECT_FLOAT_EQ(world.rb(ball).getLinearDamping(), 0.3f);
 }
+
+}  // namespace Physics3DReviewTest_cpp

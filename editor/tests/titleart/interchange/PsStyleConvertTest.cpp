@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+namespace PsStyleConvertTest_cpp {
+
 using namespace jasperengine::editor::psd;
 
 namespace {
@@ -291,3 +293,5 @@ TEST(PsStyleConvert, TruncatedFilesFail) {
         }
     }
 }
+
+}  // namespace PsStyleConvertTest_cpp

@@ -20,6 +20,8 @@
 #include <cstdio>
 #include <string>
 
+namespace DebugSettingsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -227,3 +229,5 @@ TEST(DebugSettingsTest, ChangesApplyDuringPlay) {
     idle.setDebugSettings(changed);
     EXPECT_EQ(Log::getBufferSize(), 500u);
 }
+
+}  // namespace DebugSettingsTest_cpp

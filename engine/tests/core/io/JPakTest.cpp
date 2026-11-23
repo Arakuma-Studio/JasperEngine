@@ -13,6 +13,8 @@
 #include <utility>
 #include <vector>
 
+namespace JPakTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -165,3 +167,5 @@ TEST(JPak, MountedPackServesDataOpens) {
     // the next test's pack replaces it; an empty one cannot be mounted
     EXPECT_FALSE(ResourcePack::mountContentPack(std::span<const uint8_t>(), &error));
 }
+
+}  // namespace JPakTest_cpp

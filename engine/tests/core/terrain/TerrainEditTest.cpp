@@ -32,6 +32,8 @@
 #include <fstream>
 #include <sstream>
 
+namespace TerrainEditTest_cpp {
+
 using namespace terraintest;
 
 namespace {
@@ -588,3 +590,5 @@ TEST(TerrainEdit, ApplyLayerOrderMovesTheLayers) {
     EXPECT_FLOAT_EQ(terrain.surfaceLayers[1].normalStrength, 0.3f);
     EXPECT_TRUE(terrain.needUpdateTexture);
 }
+
+}  // namespace TerrainEditTest_cpp

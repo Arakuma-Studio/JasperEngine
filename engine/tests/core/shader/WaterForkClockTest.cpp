@@ -15,6 +15,8 @@
 #include <sstream>
 #include <string>
 
+namespace WaterForkClockTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -77,3 +79,5 @@ TEST(WaterForkClock, LibraryWaterRunsOnTheSceneClock){
     EXPECT_NE(vertex.find("customParams.sceneTime"), std::string::npos);
     EXPECT_NE(fragment.find("customParams.sceneTime"), std::string::npos);
 }
+
+}  // namespace WaterForkClockTest_cpp

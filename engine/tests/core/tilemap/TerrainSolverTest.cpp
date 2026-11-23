@@ -15,6 +15,8 @@
 #include <map>
 #include <set>
 
+namespace TerrainSolverTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -857,3 +859,5 @@ TEST(TileCellPatch, FollowsTheStoresNormalisationOfEmptyValues){
     patch.setValue(store, CellCoord{0, 0}, TILE_FLIP_X);
     EXPECT_TRUE(patch.changes().empty());
 }
+
+}  // namespace TerrainSolverTest_cpp

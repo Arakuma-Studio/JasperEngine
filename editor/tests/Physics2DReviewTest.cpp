@@ -28,6 +28,8 @@
 #include <string>
 #include <vector>
 
+namespace Physics2DReviewTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::physics2dtest;
@@ -485,3 +487,5 @@ TEST(Physics2DReview, AJointWhoseBodyGoesAwayLeavesTheWorld) {
     EXPECT_TRUE(h.world.jointComponent(h.joint).loadFailed) << "not made, reported once";
     EXPECT_LT(h.world.rb(h.weight).getPosition().y, 59.0f) << "the weight falls";
 }
+
+}  // namespace Physics2DReviewTest_cpp

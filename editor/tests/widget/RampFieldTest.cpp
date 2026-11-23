@@ -19,6 +19,8 @@
 #include <cmath>
 #include <vector>
 
+namespace RampFieldTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using ui::EditPhase;
@@ -422,3 +424,5 @@ TEST(RampFieldTest, MixedTargetsStripeTheBarAndAnEditSetsAll) {
     EXPECT_TRUE(ramp::sameGradient(first, second));
     EXPECT_EQ(second.stops.size(), 3u);
 }
+
+}  // namespace RampFieldTest_cpp

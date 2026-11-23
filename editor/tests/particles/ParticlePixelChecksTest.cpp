@@ -12,6 +12,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ParticlePixelChecksTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::particles;
@@ -118,3 +120,5 @@ TEST(ParticlePixelChecks, AnAnalyticEffectsParticlesCount){
     EXPECT_GT(report["metrics"]["count"]["peak"].get<uint32_t>(), 10u) << "the twin's live particles";
     EXPECT_EQ(particlePixelChecksRowOf(report["checks"], "off_grid")["status"], "SKIP") << "measured on the pixel view's cells only";
 }
+
+}  // namespace ParticlePixelChecksTest_cpp

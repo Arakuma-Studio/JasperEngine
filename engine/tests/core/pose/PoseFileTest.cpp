@@ -15,6 +15,8 @@
 #include <fstream>
 #include <sstream>
 
+namespace PoseFileTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pose;
 
@@ -248,3 +250,5 @@ TEST(PoseFile, CorruptSidecarFailsAndIsNotReportedAsMissing){
     EXPECT_FALSE(notFound);
     EXPECT_FALSE(error.empty());
 }
+
+}  // namespace PoseFileTest_cpp

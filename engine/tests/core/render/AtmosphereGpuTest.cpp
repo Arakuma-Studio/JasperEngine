@@ -37,6 +37,8 @@
 #include <memory>
 #include <vector>
 
+namespace AtmosphereGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -686,3 +688,5 @@ TEST_F(AtmosphereGpu, TransparentsTakeTheAnalyticFog){
     EXPECT_LT((int)after[1] - (int)after[0], (int)before[1] - (int)before[0] - 20);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace AtmosphereGpuTest_cpp

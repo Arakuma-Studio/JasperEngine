@@ -21,6 +21,8 @@
 #include <regex>
 #include <thread>
 
+namespace LoggerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -445,3 +447,5 @@ TEST(LoggerTest, LevelSpecs) {
     EXPECT_TRUE(Logger::applyLevelSpec("logger-test=info"));
     EXPECT_EQ(Logger::categoryLevel(logCategoryLoggerTest()), LogLevel::Info);
 }
+
+}  // namespace LoggerTest_cpp

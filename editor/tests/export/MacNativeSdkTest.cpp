@@ -23,11 +23,12 @@
 #include <iterator>
 #include <string>
 
+namespace mac_native_sdk_test {
+
 namespace fs = std::filesystem;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
 
-namespace mac_native_sdk_test {
 
     const char* const root = "${PROJECT_ROOT}/plugins/native";
 
@@ -109,6 +110,8 @@ namespace mac_native_sdk_test {
     }
 
 }
+
+namespace mac_native_sdk_test {
 
 using namespace mac_native_sdk_test;
 
@@ -231,5 +234,7 @@ TEST(MacNativeSdk, TheExportCarriesThemBesideTheExecutable) {
     ASSERT_TRUE(Exporter::copyMacosNativeSdks(project, out, error)) << error;
     EXPECT_FALSE(fs::exists(out / "Frameworks"));
 }
+
+}  // namespace mac_native_sdk_test
 
 #endif

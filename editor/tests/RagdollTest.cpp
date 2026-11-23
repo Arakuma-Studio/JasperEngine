@@ -27,6 +27,8 @@
 #include <map>
 #include <string>
 
+namespace RagdollTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::physics3dtest;
 
@@ -304,3 +306,5 @@ TEST(Ragdoll, OtherBoneDriversPauseAndResume) {
     EXPECT_TRUE(c.world.scene.getComponent<VertexAnimatorComponent>(c.bones["Hips"]).enabled);
     c.world.physics()->onRagdollBeforeAnimatedRestore3D.remove("count");
 }
+
+}  // namespace RagdollTest_cpp

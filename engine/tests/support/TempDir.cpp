@@ -20,7 +20,8 @@
 #endif
 
 using namespace jasperengine;
-using namespace jasperengine::test;
+
+namespace jasperengine::test {
 
 namespace {
     std::atomic<unsigned> tempDirCounter{0};
@@ -96,3 +97,5 @@ bool TempDir::exists(const std::string& relative) const{
     std::error_code error;
     return std::filesystem::exists(root / std::filesystem::path(relative), error);
 }
+
+}  // namespace jasperengine::test

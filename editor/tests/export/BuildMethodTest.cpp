@@ -24,12 +24,13 @@
 #include <fstream>
 #include <iterator>
 
+namespace build_method_test {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
 
-namespace build_method_test {
 
     bool hasReason(const BuildMethodChoice& choice, const std::string& part) {
         return std::any_of(choice.reasons.begin(), choice.reasons.end(),
@@ -75,6 +76,8 @@ namespace build_method_test {
     }
 
 }
+
+namespace build_method_test {
 
 using namespace build_method_test;
 
@@ -438,6 +441,8 @@ TEST(AndroidSigning, KeytoolsAnswersInWordsAUserCanActOn) {
     EXPECT_EQ(describe("keytool error: java.lang.OutOfMemoryError"), "");
 }
 
+}  // namespace build_method_test
+
 // A prebuilt package with stand-ins for the SDK's and the JDK's tools: what each is given, in a log
 // (the real tools: tools/ci/android_packaging.sh)
 #ifndef _WIN32
@@ -562,6 +567,8 @@ if [ "$key" != "$FAKE_KEY" ]; then echo "keytool error: java.security.Unrecovera
 
 }
 
+namespace build_method_test {
+
 TEST(AndroidSigning, TheDebugKeyByDefaultMadeWhenMissing) {
     FakeAndroid android;
     ScopedVariable store("FAKE_STORE", "android"), key("FAKE_KEY", "android"), alias("FAKE_ALIAS", "androiddebugkey");
@@ -578,6 +585,8 @@ TEST(AndroidSigning, TheDebugKeyByDefaultMadeWhenMissing) {
     EXPECT_EQ(android.tools().find("-genkeypair"), std::string::npos) << "the key is kept";
     EXPECT_TRUE(android.warnings.empty());
 }
+
+}  // namespace build_method_test
 
 namespace build_method_test {
 
@@ -605,6 +614,8 @@ namespace build_method_test {
     }
 
 }
+
+namespace build_method_test {
 
 TEST(AndroidSigning, AReleaseKeystoreSignsAnApk) {
     expectReleaseKeystoreSigns(AndroidFormat::Apk);
@@ -655,9 +666,13 @@ TEST(AndroidSigning, AWrongPasswordOrAliasFailsBeforeAnyWorkAndClearly) {
     EXPECT_FALSE(android.build());
     EXPECT_NE(android.error.find("does not exist"), std::string::npos) << android.error;
 }
+
+}  // namespace build_method_test
 #endif
 
 // ---------------------------------------------------------------- iOS (S47 R4)
+
+namespace build_method_test {
 
 TEST(IosBuild, ChoosesAFullXcodeAndLeavesTheMacsSettingAlone) {
     const std::string tools = "/Library/Developer/CommandLineTools";
@@ -768,3 +783,5 @@ TEST(IosBuild, WithoutAMacTheXcodeProjectIsTheResult) {
               "PRODUCT_BUNDLE_IDENTIFIER = com.example.game; DEVELOPMENT_TEAM = \"ABCDE12345\";");
 }
 #endif
+
+}  // namespace build_method_test

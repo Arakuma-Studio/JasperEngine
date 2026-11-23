@@ -54,6 +54,8 @@
 #include <unistd.h>
 #endif
 
+namespace TitleGlyphAtlasGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -560,3 +562,5 @@ TEST_F(TitleGlyphAtlasGpu, APrebakedAtlasServesTheFirstValue) {
     EXPECT_GT(bare.glyphAtlas()->stats().cellRenders, 0u);
     std::filesystem::remove_all(dir);
 }
+
+}  // namespace TitleGlyphAtlasGpuTest_cpp

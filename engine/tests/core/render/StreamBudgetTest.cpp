@@ -22,6 +22,8 @@
 
 #include <vector>
 
+namespace StreamBudgetTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -96,3 +98,5 @@ TEST_F(StreamBudgetGpu, OversizedInstanceViewLandsWithinTwoFrames){
     // an upload that waits for its frame is late, not lost: the warning says so, no error
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace StreamBudgetTest_cpp

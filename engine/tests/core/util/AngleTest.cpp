@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+namespace AngleTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -46,3 +48,5 @@ TEST_F(AngleTest, DefaultUnitInRadiansMode){
     EXPECT_FLOAT_EQ(Angle::defaultToRad(1.5f), 1.5f);
     EXPECT_NEAR(Angle::defaultToDeg(pi), 180.0f, 1e-4f);
 }
+
+}  // namespace AngleTest_cpp

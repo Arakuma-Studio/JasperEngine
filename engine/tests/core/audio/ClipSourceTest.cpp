@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+namespace ClipSourceTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -267,3 +269,5 @@ TEST(AudioImportTable, ParseSetAndKeyOfTheSample){
     EXPECT_TRUE(AudioImportTable::isEmpty());
     EXPECT_EQ(SoundPool::key("a.wav", AudioLoadType::DecompressOnLoad), "a.wav#decompress_on_load");
 }
+
+}  // namespace ClipSourceTest_cpp

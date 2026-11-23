@@ -25,9 +25,13 @@
 #include <memory>
 #include <string>
 
+namespace PlayStartupScenesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
+
+}  // namespace PlayStartupScenesTest_cpp
 
 namespace jasperengine::editor {
 
@@ -93,6 +97,8 @@ namespace jasperengine::editor {
     };
 
 }
+
+namespace PlayStartupScenesTest_cpp {
 
 namespace {
 
@@ -412,3 +418,5 @@ TEST(PersistentPlayScene, HierarchyRowAndSelectionFollowTheMove) {
         else Engine::addSceneLayer(previousScenes[i]);
     }
 }
+
+}  // namespace PlayStartupScenesTest_cpp

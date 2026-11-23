@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ShortcutOverridesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -105,3 +107,5 @@ TEST(ShortcutOverrides, UnreadableFileWarnsAndUsesDefaults) {
     ShortcutOverrides::load(dir.path() / "missing.yaml", recording.catalog);
     EXPECT_TRUE(quiet.warnings().empty());
 }
+
+}  // namespace ShortcutOverridesTest_cpp

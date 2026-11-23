@@ -14,9 +14,10 @@
 #include <random>
 #include <vector>
 
+namespace water_exclusion_test {
+
 using namespace jasperengine;
 
-namespace water_exclusion_test {
 
     // a turned, non-uniformly scaled frame: a point given in its local space goes out to world
     Matrix4 frame(){
@@ -47,6 +48,8 @@ namespace water_exclusion_test {
     }
 
 }
+
+namespace water_exclusion_test {
 
 using namespace water_exclusion_test;
 
@@ -165,3 +168,5 @@ TEST(WaterExclusion, FlatAndEmpty){
     EXPECT_TRUE(getWaterExcluderLocalBox(WaterExcluderShape::CONVEX_HULL, Vector3(), Vector3(1, 1, 1), &hull).isNull());
     EXPECT_STREQ(getWaterHullStatusName(WaterHullStatus::NO_PHYSICS), "no_physics");
 }
+
+}  // namespace water_exclusion_test

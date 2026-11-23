@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+namespace DirectionalOnlyVariantsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -188,3 +190,5 @@ TEST_F(DirectionalOnlyVariantKeys, TwinsCoverLightModeTiled){
     }
     LightingTiers::setLightMode(LightMode::AUTOMATIC);
 }
+
+}  // namespace DirectionalOnlyVariantsTest_cpp

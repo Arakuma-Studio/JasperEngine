@@ -19,6 +19,8 @@
 #include <random>
 #include <thread>
 
+namespace BvhDiskCacheTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -196,3 +198,5 @@ TEST(PickCache, DiskCacheEvictsLeastRecentlyUsed){
     EXPECT_FALSE(fs::exists(disk.pathFor(2)));
     EXPECT_TRUE(fs::exists(disk.pathFor(3)));
 }
+
+}  // namespace BvhDiskCacheTest_cpp

@@ -10,6 +10,8 @@
 #include <cstdio>
 #include <random>
 
+namespace TerrainTileFormatTest_cpp {
+
 using namespace terrainworldtest;
 
 namespace {
@@ -265,3 +267,5 @@ TEST(TerrainTileFormat, CompressedSizeBudget) {
     std::printf("[bench] terrain_tile_compressed_bytes N=256: %zu\n", bytes.size());
     EXPECT_LE(bytes.size(), 120u * 1024u);
 }
+
+}  // namespace TerrainTileFormatTest_cpp

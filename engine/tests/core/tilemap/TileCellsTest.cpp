@@ -13,6 +13,8 @@
 #include <random>
 #include <string>
 
+namespace TileCellsTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -405,3 +407,5 @@ TEST(TileCellsRef, AnUnsetRefEqualsAnEmptyStore){
     empty.edit().setTile(CellCoord{0, 0}, 1);
     EXPECT_NE(unset, empty);
 }
+
+}  // namespace TileCellsTest_cpp

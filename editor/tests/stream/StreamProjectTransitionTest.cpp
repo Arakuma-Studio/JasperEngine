@@ -21,6 +21,8 @@
 #include <fstream>
 #include <sstream>
 
+namespace StreamProjectTransitionTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::pixelart::ScreenTransition;
@@ -115,3 +117,5 @@ TEST(StreamProjectTransition, ExportsCarryThem) {
     ASSERT_TRUE(PlayerConfig::fromJson(config.toJson(), read, error)) << error;
     EXPECT_TRUE(read.transitions == changedDefaults());
 }
+
+}  // namespace StreamProjectTransitionTest_cpp

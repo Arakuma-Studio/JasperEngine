@@ -19,6 +19,8 @@
 #include <limits>
 #include <vector>
 
+namespace SplineJitterTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 
@@ -538,3 +540,5 @@ TEST(SplineJitterTests, NegativeKnobsAreTreatedAsZero){
         EXPECT_TRUE(jitterPoseBitsEqual(poses[i], clean[i])) << "pose " << i;
     }
 }
+
+}  // namespace SplineJitterTest_cpp

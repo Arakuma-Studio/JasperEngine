@@ -13,6 +13,8 @@
 
 #include <memory>
 
+namespace SSRSourceVariantTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -172,3 +174,5 @@ TEST(SSRSourceVariant, TerrainNeverTakesUv2) {
     // a terrain reads its material's occlusion on its tiled UV, as Lit
     EXPECT_NE(properties & gbufferOcc, 0u);
 }
+
+}  // namespace SSRSourceVariantTest_cpp

@@ -31,6 +31,8 @@
 #include "support/PosixCompat.h"
 #include <vector>
 
+namespace FloatImageTest_cpp {
+
 using namespace jasperengine;
 using editor::ExrWriteOptions;
 using editor::FloatImage;
@@ -655,3 +657,5 @@ TEST_F(FloatImageTest, Errors) {
     EXPECT_FALSE(editor::writeExr((dir / "no-such-dir" / "x.exr").string(), written, true, &error));
     EXPECT_NE(error.find("can't be written"), std::string::npos) << error;
 }
+
+}  // namespace FloatImageTest_cpp

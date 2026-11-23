@@ -34,6 +34,8 @@
 #include <memory>
 #include <vector>
 
+namespace TreeEditCmdTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::terraincore;
@@ -249,3 +251,5 @@ TEST(TreeEditCmdTests, OpRunnerLandsThroughTheMainThreadQueue) {
     EXPECT_TRUE(outcome.error.empty()) << outcome.error;
     EXPECT_EQ(outcome.treesAfter, 1);
 }
+
+}  // namespace TreeEditCmdTest_cpp

@@ -22,6 +22,8 @@
 #include <utility>
 #include <vector>
 
+namespace TextureKeyTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -138,3 +140,5 @@ TEST(CubeFaces, McpCubeReadsInTheOrderItWrites) {
     const editor::mcp::Json expected = {"pz.png", "nz.png", "nx.png", "px.png", "py.png", "ny.png"};
     EXPECT_EQ(json["cube"], expected) << json.dump();
 }
+
+}  // namespace TextureKeyTest_cpp

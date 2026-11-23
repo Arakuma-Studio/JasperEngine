@@ -10,6 +10,8 @@
 #include "io/AtomicFile.h"
 #include "vcs/VcsEditorOps.h"
 
+namespace VcsServiceTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::test;
 
@@ -133,3 +135,5 @@ TEST(VcsService, WakesAfterOperationsAndRefreshes) {
     EXPECT_GT(service.pollCount(), polls);
     EXPECT_GT(service.snapshotVersion(), 0u);
 }
+
+}  // namespace VcsServiceTest_cpp

@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PoseSamplerTest_cpp {
+
 using namespace posetest;
 using H = HumanBone;
 
@@ -323,3 +325,5 @@ TEST(PoseAutoTiming, ZeroMotionIsANoOp){
         EXPECT_EQ(data.poses[i].transition.duration, before.poses[i].transition.duration);
     }
 }
+
+}  // namespace PoseSamplerTest_cpp

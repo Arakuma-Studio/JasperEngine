@@ -28,6 +28,8 @@
 #include <thread>
 #include <vector>
 
+namespace SpritePpuTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -196,3 +198,5 @@ TEST(SpritePpuTest, SheetSpriteTakesItsOwnOverTheSheets){
     EXPECT_FLOAT_EQ(sliceWidth, 0.5f);
     SpriteSheetPool::invalidate(path);
 }
+
+}  // namespace SpritePpuTest_cpp

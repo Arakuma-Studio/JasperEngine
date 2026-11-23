@@ -17,6 +17,8 @@
 
 #include <string>
 
+namespace TilemapStreamTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -109,3 +111,5 @@ TEST(TilemapStream, AMissingTilesetWarnsAndKeepsTheCells) {
     DecodedScene none = decodeSceneText(tilemapSceneText("        chunks:\n          \"0,0\": \"" + chunk + "\"\n"));
     EXPECT_EQ(issueOn(none.report, "tileset"), nullptr);
 }
+
+}  // namespace TilemapStreamTest_cpp

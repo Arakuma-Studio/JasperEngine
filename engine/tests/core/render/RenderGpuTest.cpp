@@ -19,6 +19,8 @@
 
 #include <gtest/gtest.h>
 
+namespace RenderGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -102,3 +104,5 @@ TEST_F(RenderGpu, LitCubeHigh){
     EXPECT_GOLDEN("render_lit_cube_high");
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace RenderGpuTest_cpp

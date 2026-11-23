@@ -10,6 +10,8 @@
 #include "animation/AnimationClip.h"
 #include "animation/KeyframeSampling.h"
 
+namespace EventCrossingTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -124,3 +126,5 @@ TEST(EventCrossing, PositionsOrderEventsOnTheTimeLine){
     std::shared_ptr<const AnimationClip> cut = AnimationClip::build(data);
     EXPECT_EQ(eventCrossingCrossed(*cut, ClipWrapMode::Loop, 0.0f, 3.0f, true), (EventCrossingNames{}));
 }
+
+}  // namespace EventCrossingTest_cpp

@@ -24,6 +24,8 @@
 #include <set>
 #include <string>
 
+namespace SceneShaderKeysTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -94,3 +96,5 @@ TEST_F(SceneShaderKeys, TheFilesKeysStay) {
     EXPECT_EQ(saved.count(recorded), 1u) << sceneShaderKeysDescribe(saved);
     sceneProject.scene = nullptr;
 }
+
+}  // namespace SceneShaderKeysTest_cpp

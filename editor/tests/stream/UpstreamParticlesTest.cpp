@@ -22,6 +22,8 @@
 
 #include <cmath>
 
+namespace UpstreamParticlesTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::particles;
@@ -551,3 +553,5 @@ TEST(UpstreamParticles, PrefabInstanceOverridesConvert){
     for (const std::string& line : result.log.lines) logged = logged || line.find("Prefab instance override") != std::string::npos;
     EXPECT_TRUE(logged);
 }
+
+}  // namespace UpstreamParticlesTest_cpp

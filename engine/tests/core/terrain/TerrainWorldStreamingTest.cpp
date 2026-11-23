@@ -32,6 +32,8 @@
 #include <thread>
 #include <vector>
 
+namespace TerrainWorldStreamingTest_cpp {
+
 using namespace terrainworldtest;
 using jasperengine::Entity;
 using jasperengine::Scene;
@@ -382,3 +384,5 @@ TEST(TerrainWorldZeroCost, PlainTerrainCostsNothing) {
         EXPECT_LE(meanMicroseconds, 1.0 * testsupport::perfSlack());
     }
 }
+
+}  // namespace TerrainWorldStreamingTest_cpp

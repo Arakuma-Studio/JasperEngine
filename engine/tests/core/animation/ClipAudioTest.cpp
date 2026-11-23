@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+namespace ClipAudioTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -204,3 +206,5 @@ TEST(ClipAudio, CrossingMatchesEventsAtTheSameTimes){
     anim::collectCrossedCues(*none, ClipWrapMode::Loop, 0.0f, 3.0f, true, crossed);
     EXPECT_TRUE(crossed.empty());
 }
+
+}  // namespace ClipAudioTest_cpp

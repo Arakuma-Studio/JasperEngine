@@ -18,6 +18,8 @@
 #include <string>
 #include <thread>
 
+namespace StreamMaterialPbrTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -184,3 +186,5 @@ TEST(StreamMaterialPbr, ALobesMapThatFailedToLoadKeepsItsFile){
     const Material read = Stream::decodeMaterial(reread(Stream::encodeMaterial(material)));
     EXPECT_EQ(read.pbr.get().clearcoat.map.getPath(), missing);
 }
+
+}  // namespace StreamMaterialPbrTest_cpp

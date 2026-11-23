@@ -16,6 +16,8 @@
 #include <algorithm>
 #include <fstream>
 
+namespace VoxelPanelTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::voxeltest;
@@ -493,3 +495,5 @@ TEST_F(VoxelPanel, FramesTheWholeVolume) {
     EXPECT_NEAR(box.getMaximum().y, 64.0f, 1e-4f);
     EXPECT_NEAR(box.getMaximum().z, 64.0f, 1e-4f);
 }
+
+}  // namespace VoxelPanelTest_cpp

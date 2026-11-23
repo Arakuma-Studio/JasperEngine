@@ -21,6 +21,8 @@
 #include <algorithm>
 #include <memory>
 
+namespace TilePlacementTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -169,3 +171,5 @@ TEST(TilePlacement, ChunkBoundsFollowTheTileShift) {
     EXPECT_FLOAT_EQ(dual.getMinimum().x, -8.0f);
     EXPECT_FLOAT_EQ(dual.getMaximum().y, 120.0f);
 }
+
+}  // namespace TilePlacementTest_cpp

@@ -24,6 +24,8 @@
 #include <random>
 #include <set>
 
+namespace NavGridTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::navtest;
 using nav::GridCell;
@@ -535,3 +537,5 @@ TEST_F(NavGridTest, ReservedCellsReported){
     ASSERT_TRUE(nav->getGridReservedCells(gridEntity, cells));
     EXPECT_TRUE(cells.empty());
 }
+
+}  // namespace NavGridTest_cpp

@@ -15,6 +15,8 @@
 #include <fstream>
 #include <sstream>
 
+namespace ProceduralSessionTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::procmat;
 
@@ -399,3 +401,5 @@ TEST_F(ProceduralSessionTest, AnEnumEditOfTheFixtureIsPlannedAndRebuilt) {
     session.setGraph(wall, 2.05);
     EXPECT_EQ(session.planCount(), plans + 3);
 }
+
+}  // namespace ProceduralSessionTest_cpp

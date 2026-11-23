@@ -40,10 +40,11 @@
 #include <string>
 #include <vector>
 
+namespace water_boats_gpu_test {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
-namespace water_boats_gpu_test {
 
     constexpr double PINNED_TIME = 7.25;
 
@@ -142,6 +143,8 @@ namespace water_boats_gpu_test {
     };
 
 }
+
+namespace water_boats_gpu_test {
 
 using namespace water_boats_gpu_test;
 
@@ -280,3 +283,5 @@ TEST_F(WaterBoatsGpu, OpaqueTilesStayInstanced){
     Engine::setGpuInstancingEnabled(instancing);
     EXPECT_NO_ENGINE_ERRORS();
 }
+
+}  // namespace water_boats_gpu_test

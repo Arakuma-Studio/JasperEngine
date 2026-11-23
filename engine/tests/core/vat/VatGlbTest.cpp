@@ -14,6 +14,8 @@
 
 #include <functional>
 
+namespace VatGlbTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::vat;
 
@@ -186,3 +188,5 @@ TEST(VatGlb, BufferViewErrors){
     VatGlbGlb glb = sampleGlb();
     EXPECT_NE(readError(vattest::makeGlb(glb.json.dump(), {}, false)).find("no BIN chunk"), std::string::npos);
 }
+
+}  // namespace VatGlbTest_cpp

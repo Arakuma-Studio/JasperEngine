@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+namespace FileUtilsTest_cpp {
+
 using scriptdata::ScriptDataTest;
 namespace fs = std::filesystem;
 
@@ -237,3 +239,5 @@ TEST_F(FileUtilsTest, JsonReadFileAndWriteFile) {
 }
 
 }
+
+}  // namespace FileUtilsTest_cpp

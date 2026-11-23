@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+namespace ShaderFallbackTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -150,3 +152,5 @@ TEST(ShaderFallback, OtherTypesHaveNone) {
     EXPECT_TRUE(ShaderPool::getFallbackProperties(ShaderType::HTMLUI_POST, shaderFallbackBits({6})).empty());
     EXPECT_TRUE(ShaderPool::getFallbackProperties(ShaderType::SSR, 0).empty());
 }
+
+}  // namespace ShaderFallbackTest_cpp

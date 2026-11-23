@@ -20,6 +20,8 @@
 #include <string>
 #include <vector>
 
+namespace TiledImporterTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::tilemapimport;
 using namespace jasperengine::editor::tilemapimport::testing;
@@ -309,3 +311,5 @@ TEST(TiledImporterTest, CorruptFilesNeverCrash) {
     }
     EXPECT_GT(runs, 400);
 }
+
+}  // namespace TiledImporterTest_cpp

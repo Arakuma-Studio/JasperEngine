@@ -51,6 +51,8 @@
 #include <string>
 #include <vector>
 
+namespace AnimationClipAssetsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -1279,3 +1281,5 @@ TEST_F(AnimationClipAssets, AReadOnlyDatabaseWritesNoFile) {
     writable.close();
     fs::remove_all(dir);
 }
+
+}  // namespace AnimationClipAssetsTest_cpp

@@ -21,6 +21,8 @@
 #include <cstring>
 #include <set>
 
+namespace TitleAnimOpsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace tanim = jasperengine::titleanim;
@@ -395,3 +397,5 @@ TEST(TitleFlipbookTest, EstimateEqualsWritten){
     EXPECT_EQ(cost.pages, (int)p.pages.size());
     for (const char* f : TITLE_FLIPBOOK_FAMILIES) EXPECT_EQ(cost.bytes.of(f), p.bytes.of(f)) << f;
 }
+
+}  // namespace TitleAnimOpsTest_cpp

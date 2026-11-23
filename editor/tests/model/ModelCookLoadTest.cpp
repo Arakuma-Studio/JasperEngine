@@ -32,6 +32,8 @@
 #include <fstream>
 #include <iterator>
 
+namespace ModelCookLoadTest_cpp {
+
 namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -300,3 +302,5 @@ TEST(ModelCookLoad, TheEditorLoadsTheCookedFileThroughItsRedirect){
     }
     CookedModels::setProvider(nullptr);
 }
+
+}  // namespace ModelCookLoadTest_cpp

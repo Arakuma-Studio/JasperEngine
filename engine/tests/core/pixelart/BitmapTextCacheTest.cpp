@@ -16,6 +16,8 @@
 
 #include <map>
 
+namespace BitmapTextCacheTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::pixelart;
 
@@ -229,3 +231,5 @@ TEST(BitmapTextCache, ASmallerBudgetGivesIdlePagesBack){
     EXPECT_NE(cache.getGeneration(drawn), drawnGeneration) << "a Text on it builds again";
     EXPECT_EQ(cache.getTexture(drawn), nullptr);
 }
+
+}  // namespace BitmapTextCacheTest_cpp

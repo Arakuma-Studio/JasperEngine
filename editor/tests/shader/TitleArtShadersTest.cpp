@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+namespace shader_TitleArtShadersTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
@@ -124,3 +126,5 @@ TEST(TitleArtShadersTest, ElementVariantsCompileAllTargets) {
         }
     }
 }
+
+}  // namespace shader_TitleArtShadersTest_cpp

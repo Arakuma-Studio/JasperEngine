@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+namespace FunctionSubscribeReentrancyTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -411,3 +413,5 @@ TEST(FunctionSubscribe, CrashGuardAfterTheEventWasDestroyed) {
     EXPECT_EQ(crashes, (std::vector<std::string>{"destroyer"}));
 }
 #endif
+
+}  // namespace FunctionSubscribeReentrancyTest_cpp

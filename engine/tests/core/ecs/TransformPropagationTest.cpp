@@ -18,6 +18,8 @@
 #include <algorithm>
 #include <cmath>
 
+namespace TransformPropagationTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -94,3 +96,5 @@ TEST(TransformPropagation, WorldValuesMatchTheGeneralProducts){
     expectGeneral(registry, grandchild);
     EXPECT_LT(registry.getComponent<Transform>(child).modelMatrix.determinant3x3(), 0.0f) << "the mirrored child";
 }
+
+}  // namespace TransformPropagationTest_cpp

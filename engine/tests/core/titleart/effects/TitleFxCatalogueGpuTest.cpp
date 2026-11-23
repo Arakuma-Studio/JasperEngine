@@ -28,12 +28,9 @@
 
 #include <set>
 
-using namespace jasperengine;
-using namespace jasperengine::titleart;
-
-// the tests live in the rig's namespace: a using-directive would reach the next sources of a unity unit,
-// where TitleParity.h's helpers of the same names are
-namespace jasperengine::titleart::fxtest {
+// the tests live in the rig's namespace, in a namespace of this file's own: a using-directive would
+// reach the next sources of a unity unit, where TitleParity.h's helpers of the same names are
+namespace jasperengine::titleart::fxtest::TitleFxCatalogueGpuTest_cpp {
 
 namespace {
 
@@ -452,4 +449,4 @@ TEST_F(TitleFxCatalogueGpu, PachislopParity) {
     EXPECT_GE(passed, (int)(references.size() - exceptions.size()));
 }
 
-}  // namespace jasperengine::titleart::fxtest
+}  // namespace jasperengine::titleart::fxtest::TitleFxCatalogueGpuTest_cpp

@@ -13,10 +13,14 @@
 #include <string>
 #include <vector>
 
+namespace ExportTreeWalkTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
 namespace fs = std::filesystem;
+
+}  // namespace ExportTreeWalkTest_cpp
 
 namespace jasperengine::editor {
 
@@ -29,6 +33,8 @@ namespace jasperengine::editor {
     };
 
 }
+
+namespace ExportTreeWalkTest_cpp {
 
 TEST(ExportTreeWalk, ASubfolderItCannotListFailsTheWalk) {
     TestTempDir dir("export-tree-walk");
@@ -52,3 +58,5 @@ TEST(ExportTreeWalk, ASubfolderItCannotListFailsTheWalk) {
     ASSERT_FALSE(visited.empty());
     EXPECT_EQ(visited.back(), "a") << "nothing is visited after the folder it could not list";
 }
+
+}  // namespace ExportTreeWalkTest_cpp

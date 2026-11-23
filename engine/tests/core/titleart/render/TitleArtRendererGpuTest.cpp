@@ -20,6 +20,8 @@
 #include <chrono>
 #include <set>
 
+namespace TitleArtRendererGpuTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 using namespace jasperengine::titleart::test;
@@ -552,3 +554,5 @@ TEST_F(TitleArtRendererGpu, IsolationKeysTheGroupNode) {
         EXPECT_TRUE(identical(render(*renderer, whole), expectWhole)) << "the whole group after an isolated child draws that child alone";
     }
 }
+
+}  // namespace TitleArtRendererGpuTest_cpp

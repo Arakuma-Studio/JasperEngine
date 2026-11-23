@@ -18,6 +18,8 @@
 #include <limits>
 #include <set>
 
+namespace VatPlaybackTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::vat;
 
@@ -399,3 +401,5 @@ TEST(VatLayoutHash, StableAndSensitiveToGeneratedFieldsOnly){
     same([](VatData& d){ d.mesh = "other.vat.glb"; }, "mesh");
     same([](VatData& d){ d.layout.layoutHash = "ff"; }, "the hash itself");
 }
+
+}  // namespace VatPlaybackTest_cpp

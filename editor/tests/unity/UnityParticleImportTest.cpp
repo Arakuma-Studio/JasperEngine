@@ -33,6 +33,8 @@
 #include <random>
 #include <sstream>
 
+namespace UnityParticleImportTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::particles;
@@ -647,3 +649,5 @@ TEST(UnityParticleImportTest, NeverWritesIntoTheUnityProject) {
     EXPECT_FALSE(result.ok);
     EXPECT_NE(result.error.find("inside the Unity project"), std::string::npos) << result.error;
 }
+
+}  // namespace UnityParticleImportTest_cpp

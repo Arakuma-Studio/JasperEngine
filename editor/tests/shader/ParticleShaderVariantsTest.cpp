@@ -17,6 +17,8 @@
 
 #include <gtest/gtest.h>
 
+namespace ParticleShaderVariantsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -94,3 +96,5 @@ TEST(ParticleShaderVariants, ASoftChildGivesTheMeshesTheirDepthPrograms){
     EXPECT_GT(soft, plain);
     particles::ParticleEffectLibrary::clear();
 }
+
+}  // namespace ParticleShaderVariantsTest_cpp

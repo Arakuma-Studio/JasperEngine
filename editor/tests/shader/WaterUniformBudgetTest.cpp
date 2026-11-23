@@ -23,10 +23,11 @@
 #include <string>
 #include <vector>
 
+namespace water_uniform_budget_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
-namespace water_uniform_budget_test {
 
     constexpr size_t FRAGMENT_VECTORS = 224;
     constexpr size_t VERTEX_VECTORS = 256;
@@ -83,6 +84,8 @@ namespace water_uniform_budget_test {
     }
 
 }
+
+namespace water_uniform_budget_test {
 
 using namespace water_uniform_budget_test;
 
@@ -162,3 +165,5 @@ TEST(WaterUniformBudgetSlow, WorstScenesFitAtEveryLightCapacity){
     std::printf("[water] worst scenes; the most fragment uniform vectors: %zu of %zu, %s\n",
                 budget.worstFragment, FRAGMENT_VECTORS, budget.worstName.c_str());
 }
+
+}  // namespace water_uniform_budget_test

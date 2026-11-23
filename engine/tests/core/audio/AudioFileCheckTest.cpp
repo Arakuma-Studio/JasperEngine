@@ -29,6 +29,8 @@
 #include <sys/resource.h>
 #endif
 
+namespace AudioFileCheckTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -262,3 +264,5 @@ TEST(AudioFileCheck, AWavsSizesBecomeTheBytesItHolds) {
     EXPECT_EQ(bytes[40] | (bytes[41] << 8) | (bytes[42] << 16) | ((uint32_t)bytes[43] << 24), 2000u) << "the data chunk";
     EXPECT_EQ(bytes[4] | (bytes[5] << 8) | (bytes[6] << 16) | ((uint32_t)bytes[7] << 24), (uint32_t)bytes.size() - 8) << "the RIFF size";
 }
+
+}  // namespace AudioFileCheckTest_cpp

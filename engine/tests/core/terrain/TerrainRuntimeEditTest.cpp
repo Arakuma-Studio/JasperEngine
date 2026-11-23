@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+namespace TerrainRuntimeEditTest_cpp {
+
 using namespace terraintest;
 using nlohmann::json;
 
@@ -232,3 +234,5 @@ TEST(TerrainRuntimeEdit, HeightRowsConvertToFloats) {
     std::memcpy(&half, halves.data() + 5 * 2, 2);
     EXPECT_EQ(half, 0x3C00) << "1.0 as an IEEE half";
 }
+
+}  // namespace TerrainRuntimeEditTest_cpp

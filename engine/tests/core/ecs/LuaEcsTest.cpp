@@ -15,6 +15,8 @@
 
 #include <string>
 
+namespace LuaEcsTest_cpp {
+
 using namespace jasperengine;
 using jasperengine::test::makeTransformEntity;
 
@@ -84,3 +86,5 @@ TEST(LuaEcsTest, QueriesChangeTicksAndSignatures){
     lua_setglobal(L, "ecsScene");
     luaEcsRunLua(L, "collectgarbage()");
 }
+
+}  // namespace LuaEcsTest_cpp

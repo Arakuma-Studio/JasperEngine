@@ -10,6 +10,8 @@
 
 #include <map>
 
+namespace VoxelClipboxTest_cpp {
+
 using namespace voxeltest;
 
 namespace {
@@ -126,3 +128,5 @@ TEST(VoxelClipbox, DrawDistanceHidesOnlyCoarsest) {
     clipbox.visibleBlocks(all);
     EXPECT_GT(all.size(), visible.size());
 }
+
+}  // namespace VoxelClipboxTest_cpp

@@ -14,6 +14,8 @@
 
 #include <vector>
 
+namespace ClipTangentModesTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -190,3 +192,5 @@ TEST(ClipTangentModes, RotationNeighboursOnTheKeysHemisphere){
     anim::applyTangentModes(b);
     for (size_t i = 0; i < 4; i++) EXPECT_NEAR(a.keys[1].outTangent[i], b.keys[1].outTangent[i], 1e-6f) << i;
 }
+
+}  // namespace ClipTangentModesTest_cpp

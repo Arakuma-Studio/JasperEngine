@@ -8,6 +8,8 @@
 
 #include <utility>
 
+namespace TitleArtSchemaTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
@@ -309,3 +311,5 @@ TEST_F(TitleArtSchemaTest, PatternsListLeaves) {
         EXPECT_TRUE(TitleArtSchema::get().resolvePattern("rim", p)) << p << " resolves back";
     }
 }
+
+}  // namespace TitleArtSchemaTest_cpp

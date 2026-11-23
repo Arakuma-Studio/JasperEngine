@@ -25,6 +25,8 @@
 #include <climits>
 #include <cstdio>
 
+namespace UIMultiPointerTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::scripttest;
 
@@ -688,3 +690,5 @@ TEST(OnScreenControlsEditor, CatalogStreamAndExport) {
     EXPECT_NE(code.find("\"MoveX\""), std::string::npos);
     EXPECT_NE(code.find("OnScreenVisibility::TOUCH_DEVICES_ONLY"), std::string::npos);
 }
+
+}  // namespace UIMultiPointerTest_cpp

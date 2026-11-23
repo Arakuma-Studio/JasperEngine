@@ -29,6 +29,8 @@
 #include <unistd.h>
 #endif
 
+namespace TexSynthTest_cpp {
+
 using namespace jasperengine::editor::texsynth;
 namespace fs = std::filesystem;
 
@@ -868,3 +870,5 @@ TEST(TexSynthOutOfMemory, IsAFailedStatusNotATerminate) {
     EXPECT_EQ(WEXITSTATUS(status), 0) << "the synthesis did not report out of memory (its stderr says why)";
 }
 #endif
+
+}  // namespace TexSynthTest_cpp

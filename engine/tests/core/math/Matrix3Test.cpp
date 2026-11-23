@@ -5,6 +5,8 @@
 
 #include <gtest/gtest.h>
 
+namespace Matrix3Test_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -82,3 +84,5 @@ TEST(Matrix3, DecomposeQDUSplitsRotationAndScale){
     EXPECT_VEC_NEAR(d, Vector3(2, 3, 4), 1e-4f);
     EXPECT_VEC_NEAR(u, Vector3::ZERO, 1e-4f);
 }
+
+}  // namespace Matrix3Test_cpp

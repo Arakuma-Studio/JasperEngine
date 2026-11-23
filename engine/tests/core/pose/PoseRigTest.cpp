@@ -10,6 +10,8 @@
 
 #include <algorithm>
 
+namespace PoseRigTest_cpp {
+
 using namespace posetest;
 using H = HumanBone;
 
@@ -337,3 +339,5 @@ TEST(PoseRig, JointLimitsClampAndReport){
         EXPECT_EQ(high.angles[d], swingDof ? std::min(dofInfo(d).maxDegrees, MAX_SWING_DEGREES) : dofInfo(d).maxDegrees);
     }
 }
+
+}  // namespace PoseRigTest_cpp

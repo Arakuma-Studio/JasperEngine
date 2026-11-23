@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+namespace PoseRuntimeTest_cpp {
+
 using namespace posetest;
 using H = HumanBone;
 
@@ -383,3 +385,5 @@ TEST(PoseRuntime, RebuildKeepsTheGoToPoseTarget){
     EXPECT_EQ(fresh->pending.key, -1);
     EXPECT_FALSE(fresh->startPending());
 }
+
+}  // namespace PoseRuntimeTest_cpp

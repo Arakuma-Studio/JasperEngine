@@ -64,16 +64,20 @@
 #include <string>
 #include <vector>
 
+namespace VatBakerWindowTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::vat;
 namespace fs = std::filesystem;
 
+}  // namespace VatBakerWindowTest_cpp
+
 namespace jasperengine::editor {
 
     // the window's internals the tests read and drive
     struct VatBakerWindowTestAccess {
-        static VatBakeSession* run(VertexAnimationBakerWindow& w) { return w.run.get(); }
+        static vat::VatBakeSession* run(VertexAnimationBakerWindow& w) { return w.run.get(); }
         static VatPreviewView* sourceView(VertexAnimationBakerWindow& w) { return w.sourceView.get(); }
         static VatPreviewView* vatView(VertexAnimationBakerWindow& w) { return w.vatView.get(); }
         static const std::string& previewNote(VertexAnimationBakerWindow& w) { return w.previewNote; }
@@ -84,7 +88,7 @@ namespace jasperengine::editor {
         static const std::vector<std::string>& notes(VertexAnimationBakerWindow& w) { return w.sourceNotes; }
         static const std::string& rebakePath(VertexAnimationBakerWindow& w) { return w.rebakePath; }
         static const std::string& sourceLabel(VertexAnimationBakerWindow& w) { return w.sourceLabel; }
-        static const VatImportDetection& detection(VertexAnimationBakerWindow& w) { return w.detection; }
+        static const vat::VatImportDetection& detection(VertexAnimationBakerWindow& w) { return w.detection; }
         static bool noneChecked(VertexAnimationBakerWindow& w) { return w.noneChecked; }
         // the next tick checks the source now (watchSource runs a few times a second)
         static void checkSourceNow(VertexAnimationBakerWindow& w) { w.sourceCheckedAt = -1.0; }
@@ -105,6 +109,8 @@ namespace jasperengine::editor {
     };
 
 }
+
+namespace VatBakerWindowTest_cpp {
 
 namespace {
 
@@ -1199,3 +1205,5 @@ TEST_F(VatBakerWindow_, EverySectionDrawsInAFrame) {
     ImGui::DestroyContext(context);
     ImGui::SetCurrentContext(previous);
 }
+
+}  // namespace VatBakerWindowTest_cpp

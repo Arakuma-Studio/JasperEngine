@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+namespace AnimatorUpstreamFormatsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::anim;
 using namespace animatortest;
@@ -361,3 +363,5 @@ TEST_F(AnimatorUpstreamFiles, S21VersionOneMasksAndControllersAreReadAsS21s){
     EXPECT_NE(saved.find("Ghost"), std::string::npos) << "the member nobody reads is still in the file";
     EXPECT_NE(saved.find("\"version\": 2"), std::string::npos);
 }
+
+}  // namespace AnimatorUpstreamFormatsTest_cpp

@@ -21,6 +21,8 @@
 #include <map>
 #include <memory>
 
+namespace TitleCharactersTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -332,3 +334,5 @@ TEST(TitleCharacters, CharactersCheck) {
     EXPECT_EQ(TitleArtChecks::run({def}, bare).checks.at(0).status, TitleCheckStatus::Skip);
     setTitleLuaLiteralProvider(nullptr);
 }
+
+}  // namespace TitleCharactersTest_cpp

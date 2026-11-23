@@ -25,6 +25,8 @@
 
 #include <sstream>
 
+namespace RevertToBaselineTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
@@ -208,3 +210,5 @@ TEST_F(RevertToBaselineTest, PrefabMemberPropertyMatchesAManualRevert) {
     EXPECT_EQ(sceneOf()->getComponent<Transform>(body).position, positionViaBaseline);
     EXPECT_EQ(viaBaseline, overridesText(untouched));
 }
+
+}  // namespace RevertToBaselineTest_cpp

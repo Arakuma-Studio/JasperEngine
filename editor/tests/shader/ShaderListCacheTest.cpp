@@ -16,6 +16,8 @@
 #include <fstream>
 #include <string>
 
+namespace ShaderListCacheTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -110,3 +112,5 @@ TEST(ShaderListCache, AnUnusableFileIsAnEmptyCache) {
     EXPECT_FALSE(none.load(file.parent_path() / "missing.yaml"));
     fs::remove_all(file.parent_path().parent_path());
 }
+
+}  // namespace ShaderListCacheTest_cpp

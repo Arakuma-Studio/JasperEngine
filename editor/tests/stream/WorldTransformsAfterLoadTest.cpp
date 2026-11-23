@@ -17,11 +17,12 @@
 
 #include <gtest/gtest.h>
 
+namespace world_transforms_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
 
-namespace world_transforms_test {
 
     void expectNear(const Vector3& actual, const Vector3& expected, const std::string& what) {
         EXPECT_NEAR(actual.x, expected.x, 1e-5f) << what;
@@ -44,6 +45,8 @@ namespace world_transforms_test {
         "          transform:\n            position: [0, 1, 0]\n            rotation: [1, 0, 0, 0]\n            scale: [1, 1, 1]\n";
 
 }
+
+namespace world_transforms_test {
 
 using namespace world_transforms_test;
 
@@ -121,3 +124,5 @@ TEST(WorldTransforms, ProjectSceneAndInstantiatedPrefabHaveThem) {
     for (SceneProject& open : project->getScenes()) CommandHandle::remove(open.id);
     project->releaseScenes();
 }
+
+}  // namespace world_transforms_test

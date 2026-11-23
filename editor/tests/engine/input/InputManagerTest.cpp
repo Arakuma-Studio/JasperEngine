@@ -32,6 +32,8 @@
 #include <string>
 #include <vector>
 
+namespace InputManagerTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -1255,3 +1257,5 @@ TEST(InputControlNamesTest, PathSegmentsAndControlNamesAreOneTable) {
     EXPECT_EQ(InputControlNames::name({InputDevice::Key, 33}), "");
     EXPECT_EQ(InputControlNames::name({InputDevice::Key, D_KEY_LEFT_CONTROL}), "left_control");
 }
+
+}  // namespace InputManagerTest_cpp

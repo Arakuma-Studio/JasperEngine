@@ -23,6 +23,8 @@
 #include <filesystem>
 #include <thread>
 
+namespace GltfMaterialExtensionsTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::test;
 
@@ -321,3 +323,5 @@ TEST_F(SubmeshOverrideTest, PbrSurvivesReload){
     EXPECT_FALSE(file.pbr->sheen.enabled);
     EXPECT_FLOAT_EQ(file.emissiveStrength, 1.0f);
 }
+
+}  // namespace GltfMaterialExtensionsTest_cpp

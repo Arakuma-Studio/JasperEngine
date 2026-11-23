@@ -18,6 +18,8 @@
 #include <chrono>
 #include <thread>
 
+namespace VoxelGenerationTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::voxeltest;
@@ -134,3 +136,5 @@ TEST_F(VoxelGenerate, FinishedTaskWakesAnIdleEditor) {
     EXPECT_TRUE(result.ok) << result.error;
     setEditorHost(&previous);
 }
+
+}  // namespace VoxelGenerationTest_cpp

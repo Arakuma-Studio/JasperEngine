@@ -18,6 +18,8 @@
 #include <cstdio>
 #include <set>
 
+namespace SpriteAtlasLayoutTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::sprite;
 using namespace jasperengine::editor::sprite::test;
@@ -252,3 +254,5 @@ TEST(SpriteAtlasLayout, SpriteAtlasBench) {
     EXPECT_TRUE(again->cacheHit);
     EXPECT_EQ(again->frames.size(), 500u);
 }
+
+}  // namespace SpriteAtlasLayoutTest_cpp

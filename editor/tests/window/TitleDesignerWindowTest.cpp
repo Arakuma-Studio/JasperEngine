@@ -47,11 +47,15 @@
 #include <memory>
 #include <string>
 
+namespace TitleDesignerWindowTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::titledesigner;
 namespace fs = std::filesystem;
 namespace ta = jasperengine::titleart;
+
+}  // namespace TitleDesignerWindowTest_cpp
 
 namespace jasperengine::editor {
 
@@ -67,7 +71,7 @@ namespace jasperengine::editor {
         static bool hasCanvas(W& w) { return w.canvas != nullptr; }
         static bool hasThumbnails(W& w) { return w.thumbnails != nullptr; }
         static bool hasFontCatalog(W& w) { return w.fontCatalog != nullptr; }
-        static TitleTextEdit* textEdit(W& w) { return w.textEdit.get(); }
+        static titledesigner::TitleTextEdit* textEdit(W& w) { return w.textEdit.get(); }
         static void beginTextEdit(W& w, const std::string& layer, bool selectAll) { w.beginTextEdit(layer, selectAll); }
         static void endTextEdit(W& w, bool commit) { w.endTextEdit(commit); }
         static bool contentEmpty(W& w) { return w.contentEmpty(); }
@@ -76,27 +80,27 @@ namespace jasperengine::editor {
             w.setSearch(query);
             w.rebuildIndexIfNeeded();
             std::vector<std::string> out;
-            for (const SearchHit& hit : w.index.query(query, 30)) out.push_back(w.index.entry(hit.entry).fieldPath);
+            for (const titledesigner::SearchHit& hit : w.index.query(query, 30)) out.push_back(w.index.entry(hit.entry).fieldPath);
             return out;
         }
         static void jumpToHit(W& w, const std::string& query, size_t i) {
             w.setSearch(query);
             w.rebuildIndexIfNeeded();
-            const std::vector<SearchHit> hits = w.index.query(query, 30);
+            const std::vector<titledesigner::SearchHit> hits = w.index.query(query, 30);
             if (i < hits.size()) w.jumpToHit(hits[i].entry);
         }
         static const std::string& searchText(W& w) { return w.searchText; }
         static std::string flashRow(W& w) { return w.flashRow; }
-        static bool applyLibrary(W& w, LibraryTab tab, const LibraryItem& item, bool preview) { return w.applyLibraryItem(tab, item, preview); }
+        static bool applyLibrary(W& w, titledesigner::LibraryTab tab, const titledesigner::LibraryItem& item, bool preview) { return w.applyLibraryItem(tab, item, preview); }
         static void refreshLint(W& w) { w.refreshLint(false); }
-        static const std::vector<CheckFinding>& lintFindings(W& w) { return w.findings; }
+        static const std::vector<titledesigner::CheckFinding>& lintFindings(W& w) { return w.findings; }
         static size_t checksRun(W& w) { return w.checksRun; }
         static void setClock(W& w, std::function<double()> clock) { w.clockOverride = std::move(clock); }
-        static TitleDesignerSettings& settings(W& w) { return w.settings; }
-        static void exposeField(W& w, const FieldRef& target, const std::string& label) { w.exposeField(target, label); }
-        static TitleLibraryProvider* library(W& w) { return w.library(); }
-        static TitleLetterGizmo& letters(W& w) { return w.letterGizmo; }
-        static void commitLetters(W& w, const ta::Json& values, const std::string& name) { w.commitLetters(values, name); }
+        static titledesigner::TitleDesignerSettings& settings(W& w) { return w.settings; }
+        static void exposeField(W& w, const titledesigner::FieldRef& target, const std::string& label) { w.exposeField(target, label); }
+        static titledesigner::TitleLibraryProvider* library(W& w) { return w.library(); }
+        static titledesigner::TitleLetterGizmo& letters(W& w) { return w.letterGizmo; }
+        static void commitLetters(W& w, const titleart::Json& values, const std::string& name) { w.commitLetters(values, name); }
         static void requestFocus(W& w) { w.focusRequested = true; }
         static void setIndexUnitsPerFrame(W& w, int units) { w.indexUnitsPerFrame = units; }
         static size_t servedHits(W& w, const std::string& query) { return w.searchIndex().query(query, 0).size(); }
@@ -106,17 +110,19 @@ namespace jasperengine::editor {
             return out;
         }
         static void setSystemCjk(W& w, std::function<int()> found) { w.systemCjkOverride = std::move(found); }
-        static bool addEntry(W& w, const AddEntry& entry, std::string* error) { return w.addEntry(entry, error); }
-        static bool previewAddEntry(W& w, const AddEntry& entry) { return w.previewAddEntry(entry); }
-        static AddTarget addTarget(W& w) { return w.addTarget(); }
-        static bool effectCost(W& w, const std::string& layer, int index, CostBadge& out) { return w.effectCost(layer, std::string(), index, out); }
+        static bool addEntry(W& w, const titledesigner::AddEntry& entry, std::string* error) { return w.addEntry(entry, error); }
+        static bool previewAddEntry(W& w, const titledesigner::AddEntry& entry) { return w.previewAddEntry(entry); }
+        static titledesigner::AddTarget addTarget(W& w) { return w.addTarget(); }
+        static bool effectCost(W& w, const std::string& layer, int index, titledesigner::CostBadge& out) { return w.effectCost(layer, std::string(), index, out); }
         static const std::vector<std::string>& forceOpen(W& w) { return w.forceOpenSections; }
-        static std::vector<ta::FieldOverride> liveOverrides(W& w) { return w.liveOverrides(nullptr); }
+        static std::vector<titleart::FieldOverride> liveOverrides(W& w) { return w.liveOverrides(nullptr); }
         static TitleInContext* inContext(W& w) { return w.inContext ? &*w.inContext : nullptr; }
         static titleart::TitleRect stageRect(W& w) { return w.stageRect(); }
     };
 
 }
+
+namespace TitleDesignerWindowTest_cpp {
 
 namespace {
 
@@ -949,6 +955,8 @@ TEST(TitleDesignerWindowDeathTest, InContextPlacement) {
         ASSERT_NE(DesignerAccess::inContext(*window), nullptr);
     });
 }
+
+}  // namespace TitleDesignerWindowTest_cpp
 
 // not for the sources after this one in a unity build
 #undef IN_EDITOR

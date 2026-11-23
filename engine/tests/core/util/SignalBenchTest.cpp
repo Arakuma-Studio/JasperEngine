@@ -11,6 +11,8 @@
 #include <cstdio>
 #include <functional>
 
+namespace SignalBenchTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -41,3 +43,5 @@ TEST(SignalBench, InvokeOneSubscriberOverDirectCall) {
         EXPECT_LE(eventNs - directNs, 5.0 * testsupport::perfSlack());
     }
 }
+
+}  // namespace SignalBenchTest_cpp

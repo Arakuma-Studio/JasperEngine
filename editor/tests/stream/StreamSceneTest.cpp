@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+namespace stream_scene_snapshot_test {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::test;
@@ -132,7 +134,6 @@ TEST(StreamScene, DecodeSceneWithoutASceneMakesOne){
 }
 
 // A Play snapshot put back (Stream::decodeEntity's keepSameMeshes, docs/specs/S71-mesh-update-flags.md)
-namespace stream_scene_snapshot_test {
 
     struct Played {
         Scene scene;
@@ -159,6 +160,8 @@ namespace stream_scene_snapshot_test {
     };
 
 }
+
+namespace stream_scene_snapshot_test {
 
 TEST(StreamScene, SnapshotKeepsAMeshThatOnlyMoved){
     stream_scene_snapshot_test::Played played;
@@ -322,3 +325,5 @@ TEST(StreamScene, WaterWakeSettings){
     read.setWaterWakeFade(1000.0f);
     EXPECT_FLOAT_EQ(read.getWaterWakeFade(), 120.0f);
 }
+
+}  // namespace stream_scene_snapshot_test

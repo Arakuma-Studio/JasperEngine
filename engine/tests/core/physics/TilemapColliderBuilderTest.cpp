@@ -15,6 +15,8 @@
 #include <set>
 #include <vector>
 
+namespace TilemapColliderBuilderTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -599,3 +601,5 @@ TEST(TilemapColliderBuilder, AnEditChangesOnlyTheTouchedAndBorderSharingChunks) 
         EXPECT_EQ(after.at(coord) == chunk, !touched) << coord.first << ", " << coord.second;
     }
 }
+
+}  // namespace TilemapColliderBuilderTest_cpp

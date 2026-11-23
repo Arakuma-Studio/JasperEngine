@@ -20,6 +20,8 @@
 #include <set>
 #include <vector>
 
+namespace SplineFillMesherTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::spline;
 using namespace jasperengine::spline::geometrytest;
@@ -603,3 +605,5 @@ TEST(SplineFillMesherTests, ALakeInLatticeChunksIsTheWholeSurfaceWithBitIdentica
     EXPECT_EQ(triangles, whole.indices.size() / 3u);
     EXPECT_NEAR(area, mesherPlanArea(whole), 1.0e-6 * mesherPlanArea(whole));
 }
+
+}  // namespace SplineFillMesherTest_cpp

@@ -20,6 +20,8 @@
 #include <sstream>
 #include "support/PosixCompat.h"
 
+namespace TitleLanguageShippingTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -122,3 +124,5 @@ TEST(TitleLanguageShipping, AllListedShipsTheTableAsItIs) {
     EXPECT_TRUE(plan.droppedFiles.empty());
     EXPECT_TRUE(plan.sidecars.empty()) << "nothing to rewrite";
 }
+
+}  // namespace TitleLanguageShippingTest_cpp

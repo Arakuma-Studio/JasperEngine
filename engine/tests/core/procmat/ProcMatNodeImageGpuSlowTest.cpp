@@ -32,6 +32,8 @@
 #include <set>
 #include <sstream>
 
+namespace ProcMatNodeImageGpuSlowTest_cpp {
+
 using namespace jasperengine;
 using namespace jasperengine::editor::procmat;
 using namespace jasperengine::editor::procmat::test;
@@ -227,3 +229,5 @@ TEST(ProcMatNodeImageGpuSlow, TheOldFloatHashIsOverTheLimit) {
     }
     EXPECT_GT(over, 0) << "the float hash drew within AC8 on both tiers: the comparison cannot see a different pattern";
 }
+
+}  // namespace ProcMatNodeImageGpuSlowTest_cpp

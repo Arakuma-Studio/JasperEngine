@@ -20,6 +20,8 @@
 #include <string>
 #include <vector>
 
+namespace SpritePackerTest_cpp {
+
 using namespace jasperengine::editor::sprite;
 using jasperengine::editor::pixelart::IntPoint;
 using jasperengine::editor::pixelart::IntRect;
@@ -458,3 +460,5 @@ TEST(SpritePackerTest, SpritePackerBench) {
         EXPECT_LT(ms, 100.0 * jasperengine::editor::test::perfSlack());
     }
 }
+
+}  // namespace SpritePackerTest_cpp

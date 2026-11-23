@@ -33,6 +33,8 @@
 #define HEAP_TRIM_TEST_SUPPORTED 0
 #endif
 
+namespace HeapTrimTest_cpp {
+
 using namespace jasperengine;
 
 namespace {
@@ -133,3 +135,5 @@ TEST(HeapTrim, RequestsMerge) {
     EXPECT_EQ(memory::heapTrimCount(), before) << "no trim where the allocator cannot";
 #endif
 }
+
+}  // namespace HeapTrimTest_cpp
