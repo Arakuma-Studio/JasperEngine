@@ -128,6 +128,114 @@ TEST(RenderFrameReuse, SignatureFollowsWhatWasRecorded){
     test.renderer.ReleaseGeometry(quad.handle);
 }
 
+// What the replay reads beyond geometry, textures, translations, scissors and transforms (above):
+// a clip mask and where it is, a layer's region, a filter's parameters, a gradient's stops and
+// line, a box primitive's fill, corners and borders. Each one changed alone changes the signature,
+// or a kept frame would show the old pixels (S92 risk 1). Filters and shaders key by what they
+// draw, so one compiled again with the same parameters keeps it
+TEST(RenderFrameReuse, SignatureFollowsEveryDrawInput){
+    JASPER_REQUIRE_GPU();
+    RenderTestContext test(160, 90);
+    ASSERT_TRUE(test.isValid());
+    ReuseQuad quad(test.renderer, 0, 0, 20, 10, Rml::ColourbPremultiplied(255, 0, 0, 255));
+    ReuseQuad shape(test.renderer, 0, 0, 12, 12, Rml::ColourbPremultiplied(255, 255, 255, 255));
+    std::vector<Rml::CompiledFilterHandle> filters;
+    auto filter = [&](const Rml::String& name, const Rml::Dictionary& parameters){
+        filters.push_back(test.renderer.CompileFilter(name, parameters));
+        EXPECT_NE(filters.back(), 0u) << name;
+        return filters.back();
+    };
+    auto blur = [&](float sigma){ return filter("blur", Rml::Dictionary{{"sigma", Rml::Variant(sigma)}}); };
+    auto shadow = [&](Rml::Colourb colour, Rml::Vector2f offset){
+        return filter("drop-shadow", Rml::Dictionary{{"sigma", Rml::Variant(0.0f)}, {"color", Rml::Variant(colour)}, {"offset", Rml::Variant(offset)}});
+    };
+    auto opacity = [&](float value){ return filter("opacity", Rml::Dictionary{{"value", Rml::Variant(value)}}); };
+    std::vector<Rml::CompiledShaderHandle> shaders;
+    auto gradient = [&](Rml::ColourbPremultiplied end, Rml::Vector2f p1){
+        const Rml::ColorStopList stops = {Rml::ColorStop{Rml::ColourbPremultiplied(255, 255, 0, 255), Rml::NumericValue(0.0f, Rml::Unit::NUMBER)},
+                                          Rml::ColorStop{end, Rml::NumericValue(1.0f, Rml::Unit::NUMBER)}};
+        shaders.push_back(test.renderer.CompileShader("linear-gradient", Rml::Dictionary{{"p0", Rml::Variant(Rml::Vector2f(0, 0))},
+                                                                                         {"p1", Rml::Variant(p1)}, {"color_stop_list", Rml::Variant(stops)}}));
+        EXPECT_NE(shaders.back(), 0u);
+        return shaders.back();
+    };
+    Rml::BoxPrimitive box;
+    box.border_box = Rml::Rectanglef::FromPositionSize(Rml::Vector2f(0, 0), Rml::Vector2f(40, 24));
+    box.radii = {Rml::Vector2f(6, 6), Rml::Vector2f(6, 6), Rml::Vector2f(6, 6), Rml::Vector2f(6, 6)};
+    box.border_widths = Rml::Vector4f(2, 2, 2, 2);
+    box.fill = Rml::ColourbPremultiplied(30, 60, 90, 255);
+    box.border_colors = {Rml::ColourbPremultiplied(255, 255, 255, 255), Rml::ColourbPremultiplied(255, 255, 255, 255),
+                         Rml::ColourbPremultiplied(255, 255, 255, 255), Rml::ColourbPremultiplied(255, 255, 255, 255)};
+
+    auto clipped = [&](Rml::Vector2f at){
+        return [&, at]{
+            test.renderer.EnableClipMask(true);
+            test.renderer.RenderToClipMask(Rml::ClipMaskOperation::Set, shape.handle, at);
+            test.renderer.RenderGeometry(quad.handle, Rml::Vector2f(10, 10), 0);
+            test.renderer.EnableClipMask(false);
+        };
+    };
+    auto layered = [&](Rml::Rectanglei region, Rml::CompiledFilterHandle through){
+        return [&, region, through]{
+            Rml::Rectanglei covered = region;
+            const Rml::LayerHandle layer = test.renderer.PushLayerRegion(covered);
+            test.renderer.RenderGeometry(quad.handle, Rml::Vector2f(20, 20), 0);
+            test.renderer.CompositeLayers(layer, 0, Rml::BlendMode::Blend, Rml::Span<const Rml::CompiledFilterHandle>(&through, 1));
+            test.renderer.PopLayer();
+        };
+    };
+    auto shaded = [&](Rml::CompiledShaderHandle shader){
+        return [&, shader]{ test.renderer.RenderShader(shader, quad.handle, Rml::Vector2f(10, 10), 0); };
+    };
+    auto boxed = [&](const Rml::BoxPrimitive& primitive){
+        return [&, primitive]{ test.renderer.RenderPrimitives(Rml::Span<const Rml::BoxPrimitive>(&primitive, 1), Rml::Vector2f(8, 8)); };
+    };
+
+    const Rml::Rectanglei region = Rml::Rectanglei::FromCorners(Rml::Vector2i(10, 10), Rml::Vector2i(70, 50));
+    struct Case {
+        const char* what;
+        std::function<void()> base, changed;
+    };
+    Rml::BoxPrimitive refilled = box, rounded = box, bordered = box;
+    refilled.fill = Rml::ColourbPremultiplied(30, 60, 91, 255);
+    rounded.radii[2] = Rml::Vector2f(7, 6);
+    bordered.border_colors[1] = Rml::ColourbPremultiplied(255, 254, 255, 255);
+    const Case cases[] = {
+        {"a clip mask", [&]{ test.renderer.RenderGeometry(quad.handle, Rml::Vector2f(10, 10), 0); }, clipped(Rml::Vector2f(4, 4))},
+        {"a clip mask's translation", clipped(Rml::Vector2f(4, 4)), clipped(Rml::Vector2f(5, 4))},
+        {"a layer's region", layered(region, opacity(0.5f)), layered(Rml::Rectanglei::FromCorners(Rml::Vector2i(10, 10), Rml::Vector2i(74, 50)), opacity(0.5f))},
+        {"an opacity", layered(region, opacity(0.5f)), layered(region, opacity(0.51f))},
+        {"a blur's sigma", layered(region, blur(2.0f)), layered(region, blur(2.5f))},
+        {"a drop shadow's colour", layered(region, shadow(Rml::Colourb(0, 0, 0, 128), Rml::Vector2f(0, 3))),
+         layered(region, shadow(Rml::Colourb(0, 0, 200, 128), Rml::Vector2f(0, 3)))},
+        {"a drop shadow's offset", layered(region, shadow(Rml::Colourb(0, 0, 0, 128), Rml::Vector2f(0, 3))),
+         layered(region, shadow(Rml::Colourb(0, 0, 0, 128), Rml::Vector2f(1, 3)))},
+        {"a gradient's stop", shaded(gradient(Rml::ColourbPremultiplied(0, 255, 255, 255), Rml::Vector2f(40, 0))),
+         shaded(gradient(Rml::ColourbPremultiplied(0, 255, 254, 255), Rml::Vector2f(40, 0)))},
+        {"a gradient's line", shaded(gradient(Rml::ColourbPremultiplied(0, 255, 255, 255), Rml::Vector2f(40, 0))),
+         shaded(gradient(Rml::ColourbPremultiplied(0, 255, 255, 255), Rml::Vector2f(40, 1)))},
+        {"a box's fill", boxed(box), boxed(refilled)},
+        {"a box's corner", boxed(box), boxed(rounded)},
+        {"a box's border colour", boxed(box), boxed(bordered)},
+    };
+    for (const Case& c : cases){
+        const uint64_t base = recordedSignature(test, c.base);
+        EXPECT_EQ(recordedSignature(test, c.base), base) << c.what << ": the same calls, the same signature";
+        EXPECT_NE(recordedSignature(test, c.changed), base) << c.what;
+    }
+    // compiled again with the same parameters: what it draws is the same
+    EXPECT_EQ(recordedSignature(test, layered(region, blur(2.0f))), recordedSignature(test, layered(region, blur(2.0f))));
+    EXPECT_EQ(recordedSignature(test, shaded(gradient(Rml::ColourbPremultiplied(0, 255, 255, 255), Rml::Vector2f(40, 0)))),
+              recordedSignature(test, shaded(gradient(Rml::ColourbPremultiplied(0, 255, 255, 255), Rml::Vector2f(40, 0)))));
+
+    for (Rml::CompiledFilterHandle handle : filters)
+        test.renderer.ReleaseFilter(handle);
+    for (Rml::CompiledShaderHandle handle : shaders)
+        test.renderer.ReleaseShader(handle);
+    test.renderer.ReleaseGeometry(shape.handle);
+    test.renderer.ReleaseGeometry(quad.handle);
+}
+
 TEST(RenderFrameReuse, SignatureRelativeToAnOriginAndLiveSources){
     JASPER_REQUIRE_GPU();
     RenderTestContext test(160, 90);
@@ -359,6 +467,18 @@ TEST(RenderFrameReuse, EveryChangeRedraws){
     render.targetSize = Rml::Vector2i(render.target.getWidth(), render.target.getHeight());
     expectRedrawn(frames, "resize");
     EXPECT_TRUE(frames.settle()) << "resize: never settled";
+
+    // inputs outside what a frame records: the target made again at the same size and samples (a
+    // view loss; its texels are gone), and a redraw asked for between frames
+    // (HtmlUIContext::requestRedraw: a project setting, custom native content)
+    const int samples = render.sampleCount();
+    render.target.destroy();
+    ASSERT_TRUE(render.target.ensure(render.targetSize.x, render.targetSize.y, samples));
+    expectRedrawn(frames, "target made again");
+    EXPECT_TRUE(frames.settle()) << "target made again: never settled";
+    runner.renderer()->addLiveSource(RmlRenderer::LIVE_REQUESTED);
+    expectRedrawn(frames, "requested redraw");
+    EXPECT_TRUE(frames.settle()) << "requested redraw: never settled";
 }
 
 TEST(RenderFrameReuse, LiveSourcesDrawEveryFrame){

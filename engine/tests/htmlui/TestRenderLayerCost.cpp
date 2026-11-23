@@ -19,8 +19,10 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -415,6 +417,81 @@ TEST(RenderLayerCost, CacheSkipsLiveAndBackdropScopes){
     EXPECT_LT(images.size(), imagesWithCache);
 
     test.renderer.ReleaseTexture(live);
+    test.renderer.ReleaseFilter(shadow);
+    test.renderer.ReleaseGeometry(quad);
+}
+
+// What a kept scope's result depends on, changed alone, misses: its filter's parameters, the texels
+// of a texture drawn in it (uploaded again, not live), its geometry. The frame after the change has
+// the pixels of a renderer without the cache, then the new result is drawn from the cache
+TEST(RenderLayerCost, CacheMissesOnEveryScopeInput){
+    JASPER_REQUIRE_GPU();
+    LayerCacheOn on;
+    RenderTestContext test(160, 90, 160, 90, 4);
+    ASSERT_TRUE(test.isValid());
+    auto compileQuad = [&](Rml::ColourbPremultiplied colour){
+        Rml::Mesh mesh;
+        Rml::MeshUtilities::GenerateQuad(mesh, Rml::Vector2f(0, 0), Rml::Vector2f(30, 20), colour);
+        return test.renderer.CompileGeometry(mesh.vertices, mesh.indices);
+    };
+    auto compileShadow = [&](Rml::Colourb colour){
+        return test.renderer.CompileFilter("drop-shadow", Rml::Dictionary{{"sigma", Rml::Variant(0.0f)}, {"color", Rml::Variant(colour)},
+                                                                          {"offset", Rml::Variant(Rml::Vector2f(0.0f, 3.0f))}});
+    };
+    Rml::CompiledGeometryHandle quad = compileQuad(Rml::ColourbPremultiplied(255, 255, 255, 255));
+    Rml::CompiledFilterHandle shadow = compileShadow(Rml::Colourb(0, 0, 0, 128));
+    ASSERT_NE(shadow, 0u);
+    std::unique_ptr<HtmlUITexture> owned = HtmlUITexture::createDynamic("layer-cache-texels", 4, 4);
+    ASSERT_TRUE(owned);
+    HtmlUITexture* texels = owned.get();
+    const Rml::TextureHandle texture = reinterpret_cast<Rml::TextureHandle>(owned.release());
+    std::vector<uint8_t> rgba(4 * 4 * 4, 200);
+    ASSERT_TRUE(texels->update(rgba.data(), rgba.size()));
+    SystemRender::commit();
+
+    // the scope stored, then drawn from the cache
+    ASSERT_EQ(recordScope(test, quad, texture, shadow).stats.layerCacheMisses, 1u);
+    ASSERT_EQ(recordScope(test, quad, texture, shadow).stats.layerCacheHits, 1u);
+
+    struct Change {
+        const char* what;
+        std::function<void()> apply;
+    };
+    const Change changes[] = {
+        {"the filter's colour", [&]{
+            test.renderer.ReleaseFilter(shadow);
+            shadow = compileShadow(Rml::Colourb(200, 0, 0, 128));
+        }},
+        {"the texture's texels", [&]{
+            std::fill(rgba.begin(), rgba.end(), (uint8_t)90);
+            ASSERT_TRUE(texels->update(rgba.data(), rgba.size()));
+            SystemRender::commit();
+        }},
+        {"the geometry", [&]{
+            test.renderer.ReleaseGeometry(quad);
+            quad = compileQuad(Rml::ColourbPremultiplied(40, 200, 90, 255));
+        }},
+    };
+    for (const Change& change : changes){
+        change.apply();
+        const RecordedScope missed = recordScope(test, quad, texture, shadow);
+        ASSERT_TRUE(missed.drawn) << change.what;
+        EXPECT_EQ(missed.stats.layerCacheHits, 0u) << change.what << ": the old result was drawn";
+        EXPECT_EQ(missed.stats.layerCacheMisses, 1u) << change.what;
+        std::vector<uint8_t> cached, uncached;
+        ASSERT_TRUE(test.readLayer(cached));
+        {
+            LayerCacheOff off;
+            ASSERT_TRUE(recordScope(test, quad, texture, shadow).drawn);
+        }
+        ASSERT_TRUE(test.readLayer(uncached));
+        std::string where;
+        EXPECT_EQ(differingPixels(cached, uncached, 160, Rml::Rectanglei::FromSize(Rml::Vector2i(160, 90)), &where), 0u)
+            << change.what << ": differs from a frame without the cache at " << where;
+        EXPECT_EQ(recordScope(test, quad, texture, shadow).stats.layerCacheHits, 1u) << change.what << ": the new result is kept";
+    }
+
+    test.renderer.ReleaseTexture(texture);
     test.renderer.ReleaseFilter(shadow);
     test.renderer.ReleaseGeometry(quad);
 }
