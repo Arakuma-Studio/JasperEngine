@@ -510,14 +510,29 @@ class Routing(unittest.TestCase):
         runs_on, notes = route(state(saturated=()))
         self.assertEqual(runs_on, {job: pl.HOSTED[os_] for job, os_ in JOBS.items()})
         self.assertTrue(any("je-mac: hosted macos runners not saturated" in n for n in notes), notes)
-        # saturated: one job per runner, its best one
+        # saturated: each runner its best job (the Mac both macOS jobs: TAKES)
         runs_on, notes = route(state())
-        self.assertEqual(overflowed(runs_on), {"macos": "je-mac", "linux": "je-linux", "windows-engine-d3d11": "je-win"})
-        self.assertEqual((runs_on["ios"], runs_on["windows-editor"], runs_on["mcp-1"]), ("macos-latest", "windows-latest", "ubuntu-latest"))
+        self.assertEqual(overflowed(runs_on), {"macos": "je-mac", "ios": "je-mac", "linux": "je-linux",
+                                               "windows-engine-d3d11": "je-win"})
+        self.assertEqual((runs_on["windows-editor"], runs_on["mcp-1"]), ("windows-latest", "ubuntu-latest"))
         # only the saturated OS
-        self.assertEqual(overflowed(route(state(saturated=("macos",)))[0]), {"macos": "je-mac"})
+        self.assertEqual(overflowed(route(state(saturated=("macos",)))[0]), {"macos": "je-mac", "ios": "je-mac"})
         # the next job of its list when the best one is not planned
         self.assertEqual(overflowed(route(state(saturated=("macos",)), jobs={"ios": "macos", "linux": "linux"})[0]), {"ios": "je-mac"})
+        self.assertEqual(overflowed(route(state(saturated=("linux",)), jobs={"lint": "linux", "web": "linux"})[0]), {"web": "je-linux"})
+
+    def test_the_merge_queue_takes_the_mac_as_soon_as_a_hosted_macos_job_waits(self):
+        # the queue is the critical path: no need for all five hosted macOS runners busy
+        st = state(saturated=())
+        st["os"]["macos"].update(running=2, queued=1)
+        self.assertEqual(overflowed(route(st, trigger="merge_group")[0]), {"macos": "je-mac", "ios": "je-mac"})
+        # a pull request keeps the stricter rule; other OSes too
+        self.assertEqual(overflowed(route(st, trigger="pull_request")[0]), {})
+        st["os"]["linux"].update(running=2, queued=4)
+        self.assertNotIn("je-linux", overflowed(route(st, trigger="merge_group")[0]).values())
+        # nothing waits: hosted
+        st["os"]["macos"].update(queued=0)
+        self.assertEqual(overflowed(route(st, trigger="merge_group")[0]), {})
         # a runner never takes a job it cannot do: the Windows editor leg, an MCP shard
         self.assertEqual(overflowed(route(state(), jobs={"windows-editor": "windows", "mcp-1": "linux"})[0]), {})
 
@@ -770,6 +785,7 @@ class Runs(unittest.TestCase):
         st.write_text(json.dumps(dict(state(saturated=("macos",)), t=time.time() - 30)))
         code, doc, out = self.run_main("--event", "pull_request", "--trigger", "pull_request", *common)
         self.assertEqual(code, 0, out)
+        # (no ios: no Apple-only input changed)
         self.assertEqual(overflowed(doc["runs_on"]), {"macos": "je-mac"}, doc["routing"])
         self.assertEqual(doc["runs_on"]["mcp-1"], "ubuntu-latest")
         self.assertIn("runner: macos on je-mac", out)

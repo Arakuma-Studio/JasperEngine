@@ -15,7 +15,8 @@ Each run:
   STATE_MAX_AGE means no overflow runner);
 - watchdog: a run with a job the plan routed onto an overflow runner (a je-* label) whose job has waited
   QUEUED_LIMIT for a runner that is offline or gone, or runs on one offline for OFFLINE_LIMIT, or failed
-  because its runner went away (LOST), is cancelled and, once stopped, rerun whole: a rerun is planned on
+  because its runner went away (LOST, also while the rest of the run goes on), is cancelled and, once
+  stopped, rerun whole: a rerun is planned on
   GitHub's runners only. A merge-queue run is not rerun (the queue removed its group) but its pull
   request is put back in the queue. Each run at most once, at most MAX_ACTIONS an hour; runs it did not
   route are never touched; every action goes to --log.
@@ -360,8 +361,22 @@ def main(argv: list[str]) -> int:
         else:
             offline_since.setdefault(label, now)
     dog = Watchdog(gh, memory, now, log, args.dry_run)
+    # a finished job's annotations do not change: each is read once
+    notes = {k: v for k, v in memory.get("annotations", {}).items() if now - v["t"] < LOOKBACK}
+
+    def annotations(job_id) -> list[str]:
+        key = str(job_id)
+        if key not in notes:
+            notes[key] = {"t": now, "messages": gh.annotations(job_id)}
+        return notes[key]["messages"]
+
     for rid, run in active.items():
-        why = stuck(run, jobs[rid], state["runners"], offline_since, now)
+        # stuck, or a job its runner's loss failed while the rest of the run goes on
+        try:
+            why = stuck(run, jobs[rid], state["runners"], offline_since, now) or lost(jobs[rid], annotations)
+        except RuntimeError as e:
+            log(f"run {rid}: {e}")
+            continue
         if why:
             dog.handle(run, why, finished=False)
     for key in dog.pending():
@@ -380,7 +395,7 @@ def main(argv: list[str]) -> int:
                  and now - (epoch(run.get("updated_at")) or 0) <= LOOKBACK]
         failed = [run for run in fresh if run.get("conclusion") in ("failure", "cancelled")]
         with ThreadPoolExecutor(8) as pool:
-            reasons = list(pool.map(lambda run: lost(cached_jobs(gh, run, {}), gh.annotations), failed))
+            reasons = list(pool.map(lambda run: lost(cached_jobs(gh, run, {}), annotations), failed))
         for run in fresh:
             finished[str(run["id"])] = now
         for run, why in zip(failed, reasons):
@@ -388,7 +403,7 @@ def main(argv: list[str]) -> int:
                 dog.handle(run, why, finished=True)
     except (RuntimeError, ValueError, KeyError) as e:
         log(f"finished runs not read: {e}")
-    memory.update(jobs=cache, offline_since=offline_since,
+    memory.update(jobs=cache, offline_since=offline_since, annotations=notes,
                   finished={k: t for k, t in finished.items() if now - t < LOOKBACK})
     if not args.dry_run:
         tmp = memory_path.with_suffix(".tmp")

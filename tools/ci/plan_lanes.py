@@ -786,8 +786,8 @@ def load_runs(path: Path):
 # matrix job: unit-editor-1, asan-core, mcp-3, windows-engine-d3d11): GitHub's hosted runner of its OS,
 # unless an overflow runner takes it (docs/testing.md "Overflow runners")
 HOSTED = {"linux": "ubuntu-latest", "windows": "windows-latest", "macos": "macos-latest"}
-# the overflow runners, by label: their OS and the jobs each may take, best first (one at a time each).
-# je-win (8 cores, 7 GB) takes the engine legs it builds in their time; the editor's MSVC build does not fit
+# the overflow runners, by label: their OS and the jobs each may take, best first (each runs one at a
+# time). je-win (8 cores, 7 GB) takes the engine legs; the editor's MSVC build does not fit
 STATE_MAX_AGE = 300         # SELF_HOSTED_STATE older than this (s) means no overflow runner
 OVERFLOW = {
     "je-mac": ("macos", ("macos", "ios")),
@@ -795,6 +795,9 @@ OVERFLOW = {
                            "android", "web", "unit-core", "lint")),
     "je-win": ("windows", ("windows-engine-d3d11", "windows-engine-glcore")),
 }
+# the jobs of one plan a runner takes (it runs them one after the other): the Mac builds ios in 12 min
+# (run 45104498209), so the plan's macos and ios both beat a saturated hosted queue there
+TAKES = {"je-mac": 2}
 STATE_VARIABLE = "SELF_HOSTED_STATE"
 DISABLED_VARIABLE = "SELF_HOSTED_DISABLED"
 WINDOWS_PARTS = ("editor", "engine-glcore", "engine-d3d11", "engine-vulkan")
@@ -866,8 +869,9 @@ def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str,
     """runs_on of each planned job and why. A job goes to an overflow runner only when the run may use one
     (trusted), on its first attempt (a rerun, which the watchdog makes when a runner went away, stays
     hosted), when state (SELF_HOSTED_STATE: tools/ci/runner_dispatch.py, at most STATE_MAX_AGE old) says
-    the hosted runners of its OS are saturated and the runner is online, idle and fit, and it is not in
-    disabled (SELF_HOSTED_DISABLED: labels, or `all`); each runner takes one job. force (a dispatch's
+    the hosted runners of its OS are saturated (the merge queue, the critical path: macOS as soon as a
+    hosted macOS job waits) and the runner is online, idle and fit, and it is not in disabled
+    (SELF_HOSTED_DISABLED: labels, or `all`); each runner takes TAKES jobs (default one). force (a dispatch's
     self_hosted input, first attempt only) puts those jobs on those runners whatever the state says."""
     runs_on = {job: HOSTED[os_] for job, os_ in jobs.items()}
     why = trusted(trigger, head_repo, repo)
@@ -902,7 +906,7 @@ def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str,
             continue
         if label in off:
             notes.append(f"{label}: off ({DISABLED_VARIABLE})")
-        elif not hosted.get("saturated"):
+        elif not (hosted.get("saturated") or (trigger == "merge_group" and os_ == "macos" and hosted.get("queued", 0) > 0)):
             notes.append(f"{label}: hosted {os_} runners not saturated ({hosted.get('running', 0)} running, "
                          f"{hosted.get('queued', 0)} queued)")
         elif not runner.get("online"):
@@ -912,9 +916,10 @@ def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str,
         elif not runner.get("fit", True):
             notes.append(f"{label}: unfit ({runner.get('why', 'no reason given')})")
         else:
-            runs_on[candidates[0]] = label
-            notes.append(f"{candidates[0]} on {label}: hosted {os_} saturated ({hosted.get('running', 0)} running, "
-                         f"{hosted.get('queued', 0)} queued), {label} idle")
+            for job in candidates[:TAKES.get(label, 1)]:
+                runs_on[job] = label
+                notes.append(f"{job} on {label}: hosted {os_} {'saturated' if hosted.get('saturated') else 'has a job waiting'} "
+                             f"({hosted.get('running', 0)} running, {hosted.get('queued', 0)} queued), {label} idle")
     return runs_on, notes
 
 

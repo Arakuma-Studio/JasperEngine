@@ -1417,13 +1417,17 @@ a service that starts with the machine (macOS: with the user's login) and reconn
   never waits for the same machine again;
 - the repository variable `SELF_HOSTED_STATE` is under 5 min old (`STATE_MAX_AGE`), and says the hosted
   runners of the job's OS are saturated: a job of that OS waits while its limit is used up (macOS: 5
-  running; any OS: 60 hosted jobs of the organization), or has waited 5 min;
+  running; any OS: 60 hosted jobs of the organization), or has waited 5 min. The merge queue, the
+  critical path, takes the Mac as soon as any hosted macOS job waits;
 - the runner is online, idle (no job running or queued for it) and fit (its disk has `min_free_gb`),
   and `SELF_HOSTED_DISABLED` does not name it;
-- the job is on the runner's list (`OVERFLOW`, best first), and the runner has no other job of this
-  plan: `je-mac` takes `macos`, else `ios`; `je-linux` `linux` (the MCP and smoke lanes wait for it),
-  else the longest build; `je-win` the D3D11 or OpenGL engine leg. The Windows editor leg's MSVC build
-  does not fit in 7 GB in its time.
+- the job is on the runner's list (`OVERFLOW`, best first), within what the runner takes of one plan
+  (`TAKES`, one by default): `je-mac` takes `macos` and `ios` (it builds `ios` in 12 min, run
+  45104498209), one after the other; `je-linux` `linux` (the MCP and smoke lanes wait for it), else the
+  longest build; `je-win` the D3D11 or OpenGL engine leg. The Windows editor leg's MSVC build does not
+  fit in 7 GB in its time. `je-win` is out (`SELF_HOSTED_DISABLED=je-win`) since the box reset itself
+  19 min into the D3D11 leg (run 45104498209; Kernel-Power 41, its sixth such reset in two days, five of
+  them before it ran CI).
 
 The `changes` job's summary and `lanes.json` (`routing`) say where each job went and why.
 
@@ -1434,7 +1438,7 @@ GitHub reports a listener that takes jobs as offline at times) and the jobs of t
 runs, and writes `SELF_HOSTED_STATE`. Then, for runs that have a job on a `je-*` label only (it never
 touches a run it did not route): a job queued 10 min for a runner that is offline or gone, or running
 on one offline for 3 min, or failed because its runner went away ("lost communication", "shutdown
-signal"), gets its run cancelled and, once stopped, rerun whole (`gh run rerun`): the rerun plans on
+signal", read as soon as the job ends), gets its run cancelled and, once stopped, rerun whole (`gh run rerun`): the rerun plans on
 GitHub's runners only. A merge-queue run is cancelled and its pull request put back in the queue (the
 queue removed the group, so a rerun would build nothing); a pull request's run that a newer push
 superseded is not rerun. Each run is acted on once, at most 6 actions an hour, each logged to the
