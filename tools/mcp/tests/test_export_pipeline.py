@@ -468,7 +468,8 @@ async def test_build_report_compare(ed: Editor):
 
 
 async def test_build_report_history_survives_restart(ed: Editor):
-    """AC5: after a restart the Build Report window and get_build_info report: last open the newest export"""
+    """AC5: after a restart the Build Report window and get_build_info report: last open the newest export, and
+    get_build_info's next names get_build_report"""
     # a still copy: the running editor writes its caches meanwhile
     still = ed.scratch.root / "report-restart-project"
     shutil.copytree(ed.project, still, symlinks=True, ignore=shutil.ignore_patterns("*.je-tmp", ".git"))
@@ -476,6 +477,9 @@ async def test_build_report_history_survives_restart(ed: Editor):
         last = await again.call("get_build_report", report="last")
         again.check_eq(last["report"]["id"], S["second_report"])
         again.check_eq(last["report"]["history"][:2], [S["second_report"], S["first_report"]])
+        # agents asked why a file ships grepped the project: get_build_info points at the report (no build ran in this session)
+        info = await again.call("get_build_info")
+        again.check_eq(info.get("next"), "get_build_report (group shipping): sizes, what grew, why a file ships")
         await again.call("tool_groups", enable=["editor_ux"])
         await again.call("run_command", id="window.buildReport")
         for _ in range(240):
