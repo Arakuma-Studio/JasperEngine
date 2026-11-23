@@ -580,8 +580,11 @@ which are rounded rectangles.
 
 ### Data and compatibility
 
-- **R37** New fields are optional with defaults and no version bump:
-  - scene `htmlUiRenderMode` (default `overlay`) and `htmlUiMsaaSamples` (default 0);
+- **R37** New fields are optional with defaults:
+  - scene `htmlUiRenderMode` (default `overlay`) and `htmlUiMsaaSamples` (default 0). Absent used to
+    mean the camera pass, so the render mode bumps the scene format (8 -> 9): an older scene gets
+    `htmlUiRenderMode: camera` written in by its migration, and a cooked record older than 1.6 reads
+    as Camera (Deviations, Integration);
   - component `msaaSamples` (default 0);
   - the project's `htmlUiMsaaSamples` accepts 0 (a missing key decodes as 4).
   Lists to update:
@@ -604,11 +607,12 @@ which are rounded rectangles.
 - **D3 64-px tiles, runs, one draw.** The tile size matches the region granule. Runs keep the vertex
   count small (≤ 2 x rows of tiles). A dense document degenerates to one quad per row, not to
   thousands.
-- **D4 Overlay is the default for every scene, old ones too.**
+- **D4 Overlay is the default for new scenes; old ones keep Screen Space - Camera.**
   - This is Unity's default, and it is the owner's requested U34 behaviour.
-  - It is a deliberate rendering change for scenes with `render_scale` < 1 or uber effects: their UI
-    becomes crisp and unaffected. It changes no stored value's meaning, so there is no migration.
-  - A scene that wants its UI under CRT or VHS sets Screen Space - Camera.
+  - An absent key changes meaning, so older scenes are migrated to the mode they drew in
+    (Deviations, Integration: the lead's decision replaced "every scene, old ones too").
+  - A new scene's UI is crisp and unaffected by `render_scale` < 1 or uber effects; one that wants its
+    UI under CRT or VHS sets Screen Space - Camera, and an old one switches to Overlay by hand.
   - The tests pinning today's placement are updated in the same commit and say so.
 - **D5 R57 in game views only.** The Scene view's world-space canvas is a feature: it is how a UI
   scene is edited in place. Game views follow Unity's overlay canvas, which ignores the camera.
@@ -771,9 +775,9 @@ the R29 table (AC10) after A, B1 and B2 are all in.
    - R11 removes the stencil path for the port's case. R12 makes the rest auditable.
    - The Android emulator does not reproduce it. Without a real Mali or Adreno device, the real-device
      check stays "unverified" in the report.
-5. **Overlay by default changes the look of scenes whose UI went through post** (CRT, VHS,
-   `render_scale` < 1). This is deliberate (D4). Release notes and the guide name Screen Space -
-   Camera as the way back.
+5. **Overlay by default would change the look of scenes whose UI went through post** (CRT, VHS,
+   `render_scale` < 1). Old scenes are migrated to Screen Space - Camera (D4), so only new scenes get
+   Overlay; the guide names both modes.
 6. **R11's rounded scissor changes goldens with fractional clip edges under scale.** Every changed
    image is reviewed, and the commit says why (AGENTS.md "Rewrite goldens one suite at a time").
 7. **Gradient table precision.** A 16-bit position gives 1/65536 of the gradient line: under 0.01 px
@@ -1072,6 +1076,17 @@ the R29 table (AC10) after A, B1 and B2 are all in.
   (`swangle_indirect`) from a clean run: the first update run caught a 6.8 s first-launch stall with
   Android's ANR scrim over the app (the whole screen dimmed). A fresh run matches it (0.00 %), and the
   gate's other scenes pass against their goldens. On a real Mali or Adreno device: unverified (risk 4).
+- **Old scenes keep their render mode (lead's decision, replaces D4's "old ones too").** An absent
+  `htmlUiRenderMode` used to mean the camera pass and means Overlay now, which AGENTS.md counts as a
+  changed meaning. Scene format 8 -> 9 (`sceneV8ToV9` in `editor/StreamMigrations.cpp`) writes
+  `htmlUiRenderMode: camera` into an older scene's settings map, unless it names a mode; a scene with no
+  settings map is left alone, since adding one would change how its other absent keys decode. A cooked
+  record older than 1.6 reads as Camera (`SceneSettingsCodec.cpp`). New scenes, the templates and scenes
+  made at runtime get Overlay. Fixture `editor/tests/fixtures/migrations/scene-v8-html-ui.scene`; tests
+  `StreamMigrations.SceneV8ToV9KeepsTheCameraRenderMode`, `Migrations.SceneV8ToV9KeepsTheCameraRenderMode`,
+  `CookedScene.SceneSettingsKeepHtmlUi` and `CookedScene.ReadsAnOlderMinorsContent`. R15/R57 (screen
+  documents fill the viewport under any camera in game views) is not tied to the mode and applies to
+  old scenes too.
 - **Verification on the merged tree.** `WERROR=1 tools/build.sh linux` (no warning from S92's sources);
   `htmlui-tests` with S92's suites (frame reuse, layer cost, P1, primitives, clips, records, filters,
   batches, renderer, integration, particles, the scene composite, every `*Golden*` but the effect

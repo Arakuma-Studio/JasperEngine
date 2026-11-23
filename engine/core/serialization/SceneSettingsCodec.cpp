@@ -224,6 +224,9 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     PostProcessingSettings postProcessing;
     read(r, postProcessing);
     if (postProcessing != PostProcessingSettings()) scene.setPostProcessing(postProcessing);
+    // a record older than 1.6 drew its screen documents in the camera pass, before S92's Screen
+    // Space - Overlay default; a 1.6 record reads its own mode below
+    scene.setHtmlUiRenderMode(UIRenderMode::CAMERA);
     // a 1.0 record ends here: the capsule shadows keep their defaults
     if (r.atEnd()) return;
     scene.setCapsuleShadowsEnabled(r.boolean());
@@ -257,7 +260,8 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
         scene.setWaterWakeResolution(static_cast<WaterWakeResolution>(wakeResolution));
     scene.setWaterWakeArea(r.f32());
     scene.setWaterWakeFade(r.f32());
-    // a 1.5 record ends here: the screen documents keep their defaults (format 1.6)
+    // a 1.5 record ends here: the screen documents stay in the camera pass (above) and keep the
+    // default samples, the project's (format 1.6)
     if (r.atEnd()) return;
     const uint8_t uiRenderMode = r.u8();
     if (uiRenderMode <= static_cast<uint8_t>(UIRenderMode::CAMERA))

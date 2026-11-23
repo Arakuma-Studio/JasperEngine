@@ -703,7 +703,8 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
 }
 
 // S92: the screen HTML UI documents' render mode and MSAA samples survive a cook (format 1.6, after
-// the Water Wakes); a 1.5 record (without them) leaves them at their defaults
+// the Water Wakes); a 1.5 record (without them) keeps Screen Space - Camera, the mode it drew in,
+// and the default samples
 TEST(CookedScene, SceneSettingsKeepHtmlUi) {
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
@@ -739,7 +740,8 @@ TEST(CookedScene, SceneSettingsKeepHtmlUi) {
     ASSERT_FALSE(r15.failed()) << r15.error();
     const SceneSettings defaults;
     EXPECT_FLOAT_EQ(older.scene->scene->getWaterWakeArea(), 32.0f);
-    EXPECT_EQ(older.scene->scene->getHtmlUiRenderMode(), defaults.htmlUiRenderMode);
+    ASSERT_EQ(defaults.htmlUiRenderMode, UIRenderMode::OVERLAY) << "the 1.5 record must not just read the default";
+    EXPECT_EQ(older.scene->scene->getHtmlUiRenderMode(), UIRenderMode::CAMERA);
     EXPECT_EQ(older.scene->scene->getHtmlUiMsaaSamples(), defaults.htmlUiMsaaSamples);
 }
 
@@ -813,6 +815,7 @@ TEST(CookedScene, ReadsAnOlderMinorsContent) {
     EXPECT_FLOAT_EQ(loaded.scene->scene->getPlanarReflectionFarClip(), 60.0f);
     EXPECT_EQ(loaded.scene->scene->getWaterWakeResolution(), defaults.waterWakeResolution);
     EXPECT_FLOAT_EQ(loaded.scene->scene->getWaterWakeArea(), defaults.waterWakeArea);
+    EXPECT_EQ(loaded.scene->scene->getHtmlUiRenderMode(), UIRenderMode::CAMERA) << "a 1.4 scene drew its UI in the camera pass";
     EXPECT_EQ(jasperengine::test::LogCapture::sinceTestStart().count(D_LOG_WARN, "newer editor"), 0u);
 }
 

@@ -1,4 +1,4 @@
-formatVersion: 8
+formatVersion: 9
 guid: 6ae1376c14107d910f5730d8479f6f78
 id: 2026080800
 name: AllComponents
@@ -8,6 +8,7 @@ scene:
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
+  htmlUiRenderMode: camera
   lightState: auto
   globalIlluminationIntensity: 0.1
   globalIlluminationColor: [1, 1, 1]

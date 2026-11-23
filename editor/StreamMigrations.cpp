@@ -699,6 +699,18 @@ namespace {
     void sheetSpritesIdentity(YAML::Node&, MigrationLog&){
     }
 
+    // Scene 8 -> 9 (S92): an absent htmlUiRenderMode means Screen Space - Overlay now; before it
+    // the screen documents were composited in the camera pass, so an older scene keeps that.
+    // Every scene the editor saved has its settings map: one without it is left alone, since
+    // adding the map would change how its other absent settings decode.
+    void sceneV8ToV9(YAML::Node& root, MigrationLog& log){
+        YAML::Node settings = root["scene"];
+        if (!settings || !settings.IsMap() || settings["htmlUiRenderMode"])
+            return;
+        settings["htmlUiRenderMode"] = "camera";
+        log.info("HTML UI Render Mode: Screen Space - Camera, as the scene drew its UI before; Screen Space - Overlay is the new scenes' default");
+    }
+
 }
 
 const char* StreamMigrations::versionKey(DocumentKind kind){
@@ -707,7 +719,7 @@ const char* StreamMigrations::versionKey(DocumentKind kind){
 
 int StreamMigrations::currentVersion(DocumentKind kind){
     switch (kind){
-        case DocumentKind::Scene: return 8;
+        case DocumentKind::Scene: return 9;
         case DocumentKind::Project: return 1;
         case DocumentKind::Material: return 1;
         // Prefab::FILE_VERSION
@@ -752,6 +764,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {5, 6, "Animation Player controllers to Animators", sceneV5ToV6},
         {6, 7, "Line and Trail Renderer curves and gradients in the editor's curve form", sceneV6ToV7},
         {7, 8, "sprite sheets (identity: an older scene has none)", sheetSpritesIdentity},
+        {8, 9, "HTML UI render mode: older scenes keep Screen Space - Camera", sceneV8ToV9},
     };
     static const std::vector<Migration> project = {
         {0, 1, "stamp the project format version", projectV0ToV1},
