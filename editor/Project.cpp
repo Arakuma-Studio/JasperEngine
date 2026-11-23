@@ -4010,7 +4010,8 @@ const editor::SaveGameSettings& editor::Project::getSaveGameSettings() const{
 void editor::Project::setSaveGameSettings(const SaveGameSettings& settings){
     const bool changed = settings != saveGameSettings;
     saveGameSettings = settings;
-    savegame::configure(settings.engineSettings());
+    // a Build Profile's settings snapshot leaves the editor's store to the open project
+    if (!settingsSnapshot) savegame::configure(settings.engineSettings());
     if (changed && modelLoaded){
         markGeneratedSourcesDirty();
     }
