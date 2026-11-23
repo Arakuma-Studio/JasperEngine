@@ -75,17 +75,17 @@ namespace {
     std::atomic<size_t> fullReads{0};
 
     // setFileFaultInjector's (tests); read on the store's jobs too
-    std::mutex& faultMutex(){
+    std::mutex& saveFaultMutex(){
         static std::mutex mutex;
         return mutex;
     }
-    FileFaultInjector& faultInjector(){
+    FileFaultInjector& saveFaultInjector(){
         static FileFaultInjector injector;
         return injector;
     }
-    std::error_code injectedFault(std::string_view step, const fs::path& path){
-        std::lock_guard<std::mutex> lock(faultMutex());
-        return faultInjector() ? faultInjector()(step, path) : std::error_code();
+    std::error_code injectedSaveFault(std::string_view step, const fs::path& path){
+        std::lock_guard<std::mutex> lock(saveFaultMutex());
+        return saveFaultInjector() ? saveFaultInjector()(step, path) : std::error_code();
     }
 
     Migrator& registeredMigrator(){
@@ -95,24 +95,48 @@ namespace {
 
     // A file of the saves folder deleted (false with `ec` when it is still there)
     bool removeSaveFile(const fs::path& path, std::error_code& ec){
-        ec = injectedFault("remove", path);
+        ec = injectedSaveFault("remove", path);
         if (ec) return false;
         return fs::remove(path, ec) || !ec;
     }
 
+    // What reading a whole file gave: its bytes, nothing (it went since the folder was listed: a
+    // prune or a delete), an I/O failure (a sharing violation, permissions: not damage, the file is
+    // left alone), or a size above the cap (damage)
+    enum class ReadOutcome { Ok, Missing, Unreadable, TooLarge };
+
     // Whole file, refusing above `cap` before allocating
-    bool readFile(const fs::path& path, size_t cap, std::string& out, std::string& problem){
-        if (const std::error_code fault = injectedFault("read", path)){ problem = "cannot read (" + fault.message() + ")"; return false; }
-        fullReads.fetch_add(1);
+    ReadOutcome readSaveFile(const fs::path& path, size_t cap, std::string& out, std::string& problem){
+        if (const std::error_code fault = injectedSaveFault("read", path)){
+            problem = "cannot read (" + fault.message() + ")";
+            return ReadOutcome::Unreadable;
+        }
         std::error_code ec;
         const uintmax_t size = fs::file_size(path, ec);
-        if (ec){ problem = "cannot read (" + ec.message() + ")"; return false; }
-        if (size > cap){ problem = "file of " + std::to_string(size) + " bytes is above the 64 MiB cap"; return false; }
-        std::ifstream in(path, std::ios::binary);
-        if (!in){ problem = "cannot open"; return false; }
-        out.resize(static_cast<size_t>(size));
-        if (size > 0 && !in.read(out.data(), static_cast<std::streamsize>(size))){ problem = "cannot read"; return false; }
-        return true;
+        if (ec){
+            if (ec == std::errc::no_such_file_or_directory) return ReadOutcome::Missing;
+            problem = "cannot read (" + ec.message() + ")";
+            return ReadOutcome::Unreadable;
+        }
+        if (size > cap){ problem = "file of " + std::to_string(size) + " bytes is above the 64 MiB cap"; return ReadOutcome::TooLarge; }
+        {
+            std::ifstream in(path, std::ios::binary);
+            if (!in){
+                std::error_code existsError;
+                if (!fs::exists(path, existsError) && !existsError) return ReadOutcome::Missing;
+                problem = "cannot open";
+                return ReadOutcome::Unreadable;
+            }
+            out.resize(static_cast<size_t>(size));
+            if (size > 0 && !in.read(out.data(), static_cast<std::streamsize>(size))){ problem = "cannot read"; return ReadOutcome::Unreadable; }
+        }
+        // counted once the file is closed: a test may delete it as soon as it sees the count
+        fullReads.fetch_add(1);
+        return ReadOutcome::Ok;
+    }
+
+    bool readFile(const fs::path& path, size_t cap, std::string& out, std::string& problem){
+        return readSaveFile(path, cap, out, problem) == ReadOutcome::Ok;
     }
 
     bool readPrefix(const fs::path& path, size_t count, std::string& out){
@@ -220,6 +244,10 @@ namespace jasperengine::savegame {
         fs::path folder;
         bool folderSet = false;
         std::map<std::string, Slot, std::less<>> slots;
+        // per slot name: bumped by every change of its data or files from this store (an async
+        // read installs what it read only when nothing changed meanwhile)
+        std::map<std::string, uint64_t, std::less<>> edits;
+        fs::path swept;                 // the folder whose leftover temporary files were deleted
         std::unique_ptr<jobs::SerialQueue> queue;
         jobs::JobSystem* queueSystem = nullptr;     // the job system the queue was made on
         uint64_t epoch = 1;
@@ -244,7 +272,81 @@ namespace jasperengine::savegame {
                 folder = fs::path(base) / "saves";
                 folderSet = true;
             }
+            // the first use of a folder: no write of this store is on its way yet
+            if (swept != folder){
+                swept = folder;
+                sweepTemporaries(folder, {});
+            }
             return folder;
+        }
+
+        void edited(const std::string& name){ edits[name]++; }
+
+        // Temporary files of slot generations that a killed write left (a crash between the
+        // temporary and its rename): the generation was never published, so they go. Those of
+        // another running game stay. Called when no write of `only` (or of any slot) is on its way
+        void sweepTemporaries(const fs::path& dir, std::string_view only){
+            std::vector<fs::path> leftovers;
+            std::error_code ec;
+            for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)){
+                const std::string name = it->path().filename().string();
+                if (!io::isTemporarySiblingName(name)) continue;
+                std::string slot;
+                uint64_t generation = 0;
+                bool corrupt = false;
+                if (!parseSlotFileName(io::temporarySiblingTarget(it->path()).filename().string(), slot, generation, corrupt)) continue;
+                if (!only.empty() && slot != only) continue;
+                const int64_t writer = io::temporarySiblingWriter(name);
+                if (writer != io::currentProcessId() && io::isProcessRunning(writer)) continue;
+                leftovers.push_back(it->path());
+            }
+            for (const fs::path& path : leftovers){
+                std::error_code removeError;
+                if (!removeSaveFile(path, removeError))
+                    Log::warn("SaveGame: could not delete the leftover %s: %s", pathText(path).c_str(), removeError.message().c_str());
+            }
+        }
+
+        // The slot's namespaces brought to `version` before a write at that version keeps them
+        // (R9: a slot never mixes data of two versions). The game's migrations run through the
+        // registered migrator; without one the write is refused
+        SaveError migrateOthers(const std::string& name, Slot& slot, uint32_t version, const std::string& others){
+            const Migrator& migrator = registeredMigrator();
+            if (!migrator){
+                return makeError(SaveErrorCode::Migration, "slot \"" + name + "\" is version " + std::to_string(slot.version) +
+                    " and this write is version " + std::to_string(version) + ": its other namespaces (" + others +
+                    ") would be labelled version " + std::to_string(version) + " without their migrations. Read the slot in the "
+                    "game first (SaveGame.read runs SaveGame.addMigration's functions), or write every namespace (replaceAll).");
+            }
+            SlotData data;
+            data.info = infoOf(slot);
+            data.sections = slot.sections;
+            const SaveError error = migrator(name, data, version);
+            if (!error.ok()) return error;
+            // the Lua binding hands its result to markMigrated itself
+            if (slot.version != version){
+                std::sort(data.sections.begin(), data.sections.end(), [](const SaveSection& a, const SaveSection& b){ return a.name < b.name; });
+                slot.sections = std::move(data.sections);
+                slot.version = version;
+                edited(name);
+                changed();
+            }
+            return {};
+        }
+
+        // The SlotData of one parsed generation file
+        static void fillSlotData(const SaveFile& file, SlotData& out){
+            SaveMetadata metadata;
+            splitMetadata(file.metadata, metadata);
+            out.info = ReadInfo();
+            out.info.generation = file.generation;
+            out.info.version = file.dataVersion;
+            out.info.savedAtMs = file.savedAtMs;
+            out.info.meta = metadata.meta;
+            out.info.requirements = metadata.requirements;
+            out.sections = file.sections;
+            std::sort(out.sections.begin(), out.sections.end(), [](const SaveSection& a, const SaveSection& b){ return a.name < b.name; });
+            for (const SaveSection& section : out.sections) out.info.namespaces.push_back(section.name);
         }
 
         void changed(){ owner->changes.fetch_add(1); }
@@ -277,7 +379,14 @@ namespace jasperengine::savegame {
                 SaveFile file;
                 SaveError error;
                 const std::string fileName = it->second.filename().string();
-                if (!readFile(it->second, MAX_FILE_BYTES, bytes, problem)){
+                const ReadOutcome outcome = readSaveFile(it->second, MAX_FILE_BYTES, bytes, problem);
+                if (outcome == ReadOutcome::Missing) continue;
+                if (outcome == ReadOutcome::Unreadable){
+                    // not damage: nothing is set aside or started afresh over it
+                    return makeError(SaveErrorCode::Io, "Couldn't read slot \"" + name + "\": " + fileName + ": " + problem +
+                                     ". Its files are left as they are; try again.");
+                }
+                if (outcome == ReadOutcome::TooLarge){
                     problems.push_back(fileName + ": " + problem);
                     invalid.push_back(it->second);
                     continue;
@@ -407,6 +516,7 @@ namespace jasperengine::savegame {
             }
 
             // the image takes the write now: reads see it before it reaches the disk (R4)
+            edited(name);
             slot.sections = std::move(sections);
             slot.meta = std::move(metadata.meta);
             slot.requirements = std::move(metadata.requirements);
@@ -758,6 +868,16 @@ SaveError SaveGameStore::write(std::string_view slotName, std::string_view nameS
                          ": pass force = true to overwrite it (its newer data would be lost)");
     }
 
+    if (!options.replaceAll && !options.force && slot.loaded && slot.version < options.version){
+        std::string others;
+        for (const SaveSection& section : slot.sections)
+            if (section.name != nameSpace) others += (others.empty() ? "" : ", ") + section.name;
+        if (!others.empty()){
+            error = impl->migrateOthers(name, slot, options.version, others);
+            if (!error.ok()) return error;
+        }
+    }
+
     std::vector<SaveSection> sections;
     if (!options.replaceAll) sections = slot.sections;
     auto it = std::find_if(sections.begin(), sections.end(), [&](const SaveSection& s){ return s.name == nameSpace; });
@@ -814,18 +934,46 @@ SaveError SaveGameStore::readSlot(std::string_view slotName, SlotData& out, uint
             error.message = "generation " + std::to_string(generation) + " of \"" + name + "\" is corrupt (" + error.message + ")";
         return error;
     }
-    SaveMetadata metadata;
-    splitMetadata(file.metadata, metadata);
-    out.info = ReadInfo();
-    out.info.generation = file.generation;
-    out.info.version = file.dataVersion;
-    out.info.savedAtMs = file.savedAtMs;
-    out.info.meta = metadata.meta;
-    out.info.requirements = metadata.requirements;
-    out.sections = file.sections;
-    std::sort(out.sections.begin(), out.sections.end(), [](const SaveSection& a, const SaveSection& b){ return a.name < b.name; });
-    for (const SaveSection& section : out.sections) out.info.namespaces.push_back(section.name);
+    Impl::fillSlotData(file, out);
     return {};
+}
+
+SaveError SaveGameStore::peekSlot(std::string_view slotName, SlotData& out){
+    SaveError error = nameError(slotName, {});
+    if (!error.ok()) return error;
+    const std::string name(slotName);
+    auto it = impl->slots.find(name);
+    if (it != impl->slots.end() && it->second.loaded){
+        out.info = impl->infoOf(it->second);
+        out.sections = it->second.sections;
+        return {};
+    }
+    auto all = scanFolder(impl->resolveFolder(), name);
+    const SlotFiles& files = all[name];
+    if (files.generations.empty()) return makeError(SaveErrorCode::NotFound, impl->notFoundMessage(name));
+    std::vector<std::string> problems;
+    for (auto generation = files.generations.rbegin(); generation != files.generations.rend(); ++generation){
+        const std::string fileName = generation->second.filename().string();
+        std::string bytes, problem;
+        const ReadOutcome outcome = readSaveFile(generation->second, MAX_FILE_BYTES, bytes, problem);
+        if (outcome == ReadOutcome::Missing) continue;
+        if (outcome == ReadOutcome::Unreadable)
+            return makeError(SaveErrorCode::Io, "Couldn't read slot \"" + name + "\": " + fileName + ": " + problem + ".");
+        SaveFile file;
+        SaveError parseError;
+        if (outcome == ReadOutcome::Ok && parseSaveFile(bytes, file, parseError)){
+            Impl::fillSlotData(file, out);
+            out.info.recoveredFrom = problems.empty() ? 0 : generation->first;
+            out.info.problems = problems;
+            return {};
+        }
+        if (outcome == ReadOutcome::Ok && parseError.code == SaveErrorCode::NewerFormat)
+            return makeError(SaveErrorCode::NewerFormat, "slot \"" + name + "\" was " + parseError.message);
+        problems.push_back(fileName + ": " + (outcome == ReadOutcome::Ok ? parseError.message : problem));
+    }
+    std::string list;
+    for (const std::string& p : problems) list += (list.empty() ? "" : "; ") + p;
+    return makeError(SaveErrorCode::Corrupt, "slot \"" + name + "\" has no readable generation (" + list + ")");
 }
 
 void SaveGameStore::readSlotAsync(std::string_view slotName, std::function<void(const SaveError&, const SlotData&)> done){
@@ -844,9 +992,10 @@ void SaveGameStore::readSlotAsync(std::string_view slotName, std::function<void(
     auto loaded = std::make_shared<Loaded>();
     const fs::path dir = impl->resolveFolder();
     const uint64_t epoch = impl->epoch;
+    const uint64_t edit = impl->edits[name];
     Impl* self = impl.get();
     impl->ensureQueue();
-    impl->queue->push([self, name, dir, loaded, epoch, done = std::move(done)]() mutable {
+    impl->queue->push([self, name, dir, loaded, epoch, edit, done = std::move(done)]() mutable {
         auto all = scanFolder(dir, name);
         const auto& generations = all[name].generations;
         if (!generations.empty()){
@@ -856,10 +1005,11 @@ void SaveGameStore::readSlotAsync(std::string_view slotName, std::function<void(
                 loaded->ok = parseSaveFile(loaded->bytes, loaded->file, loaded->error);
             loaded->bytes.clear();
         }
-        jobs::postToMain([self, name, loaded, epoch, done = std::move(done)]{
+        jobs::postToMain([self, name, loaded, epoch, edit, done = std::move(done)]{
             if (epoch != self->epoch) return;
             Slot& slot = self->slotFor(name);
-            if (!slot.loaded && loaded->ok){
+            // a write, delete or corrupt since the job read the file: what it read is stale
+            if (!slot.loaded && loaded->ok && self->edits[name] == edit){
                 std::error_code ec;
                 self->install(slot, loaded->file, fs::file_size(loaded->path, ec));
                 slot.status = slot.version > dataVersion.load() ? "newer_version" : "ok";
@@ -882,6 +1032,7 @@ SaveError SaveGameStore::markMigrated(std::string_view slotName, uint32_t versio
     slot.sections = std::move(sections);
     slot.version = version;
     slot.status = slot.version > dataVersion.load() ? "newer_version" : "ok";
+    impl->edited(std::string(slotName));
     impl->changed();
     return {};
 }
@@ -923,7 +1074,13 @@ std::vector<SlotInfo> SaveGameStore::list(){
                 SaveError error;
                 if (!readPrefix(it->second, MAX_HEADER_BYTES, bytes)) continue;
                 if (!parseSaveHeader(bytes, file, error)){
-                    if (error.code == SaveErrorCode::NewerFormat){
+                    // a format field above this engine's: a newer engine's file only when its footer
+                    // checks (rare: read whole), else a damaged one, skipped as the read does
+                    std::string whole, problem;
+                    SaveFile full;
+                    SaveError fullError;
+                    if (error.code == SaveErrorCode::NewerFormat && readFile(it->second, MAX_FILE_BYTES, whole, problem)
+                        && !parseSaveFile(whole, full, fullError) && fullError.code == SaveErrorCode::NewerFormat){
                         info.status = "newer_format";
                         info.generation = it->first;
                         info.size = files.sizes[it->first];
@@ -998,19 +1155,31 @@ SaveError SaveGameStore::remove(std::string_view slotName, std::chrono::millisec
     const std::string name(slotName);
     auto it = impl->slots.find(name);
     if (it != impl->slots.end()){
-        if (it->second.waiting){
-            impl->deliver(std::move(it->second.waiting->callbacks),
-                          makeError(SaveErrorCode::Cancelled, "slot \"" + name + "\" was deleted before this write"));
-            it->second.waiting.reset();
-        }
+        // the write on its way lands first; the waiting one is dropped only once that happened
+        std::shared_ptr<WriteJob> waiting = std::move(it->second.waiting);
+        it->second.waiting.reset();
         SaveError ignored;
-        impl->flushSlot(name, std::chrono::steady_clock::now() + limit, ignored);
+        if (!impl->flushSlot(name, std::chrono::steady_clock::now() + limit, ignored)){
+            // deleting now would let that write publish its generation afterwards: nothing is deleted
+            auto again = impl->slots.find(name);
+            if (again != impl->slots.end()) again->second.waiting = std::move(waiting);
+            return makeError(SaveErrorCode::Io, "Couldn't delete slot \"" + name + "\": it is still being written (a write took longer than " +
+                             std::to_string(limit.count()) + " ms). Try again.");
+        }
+        if (waiting)
+            impl->deliver(std::move(waiting->callbacks), makeError(SaveErrorCode::Cancelled, "slot \"" + name + "\" was deleted before this write"));
     }
     std::error_code ec;
     for (const fs::path& path : slotFiles(name)){
-        if (!removeSaveFile(path, ec))
+        if (!removeSaveFile(path, ec)){
+            impl->edited(name);
+            impl->slots.erase(name);
+            impl->changed();
             return makeError(SaveErrorCode::Io, "Couldn't delete " + path.filename().string() + ": " + ec.message());
+        }
     }
+    impl->sweepTemporaries(impl->resolveFolder(), name);
+    impl->edited(name);
     impl->slots.erase(name);
     impl->changed();
     return {};
@@ -1099,6 +1268,7 @@ SaveError SaveGameStore::corrupt(std::string_view slotName, CorruptMode mode, st
     const io::WriteResult result = io::writeFileAtomic(path, bytes);
     if (!result.written()) return makeError(SaveErrorCode::Io, "Couldn't corrupt " + path.filename().string() + ": " + io::describeWriteError(result));
     file = path.filename().string();
+    impl->edited(name);
     auto it = impl->slots.find(name);
     if (it != impl->slots.end() && !it->second.pending()){
         impl->drop(it->second);
@@ -1153,6 +1323,8 @@ void SaveGameStore::reset(){
     impl->epoch++;
     impl->folderSet = false;
     impl->folder.clear();
+    impl->swept.clear();
+    impl->edits.clear();
     impl->syncWaiters.clear();
     impl->changed();
 }
@@ -1178,6 +1350,33 @@ uint64_t SaveGameStore::newestGeneration(std::string_view slotName){
     return generations.empty() ? 0 : generations.rbegin()->first;
 }
 
+uint64_t SaveGameStore::pendingGeneration(std::string_view slotName){
+    auto it = impl->slots.find(slotName);
+    if (it == impl->slots.end()) return 0;
+    const Slot& slot = it->second;
+    // a waiting write is given the next number when the one on its way lands
+    if (slot.waiting) return slot.highest + 1;
+    return slot.inFlight ? slot.inFlight->file.generation : 0;
+}
+
+uint64_t SaveGameStore::slotSignature(std::string_view slotName){
+    if (!isValidName(slotName, MAX_SLOT_NAME)) return 0;
+    uint64_t hash = 1469598103934665603ull;
+    auto mix = [&hash](uint64_t value){
+        for (int i = 0; i < 8; i++){
+            hash ^= (value >> (8 * i)) & 0xFF;
+            hash *= 1099511628211ull;
+        }
+    };
+    for (const fs::path& path : slotFiles(slotName)){
+        for (char c : path.filename().string()) mix(static_cast<unsigned char>(c));
+        std::error_code ec;
+        mix(static_cast<uint64_t>(fs::file_size(path, ec)));
+        mix(static_cast<uint64_t>(fs::last_write_time(path, ec).time_since_epoch().count()));
+    }
+    return hash;
+}
+
 StorageInfo SaveGameStore::storage(){
 #if defined(__EMSCRIPTEN__)
     return impl->webStorage;
@@ -1191,6 +1390,18 @@ StorageInfo SaveGameStore::storage(){
     int64_t used = 0;
     for (const auto& entry : scanFolder(dir)){
         for (const auto& size : entry.second.sizes) used += static_cast<int64_t>(size.second);
+    }
+    // temporary files of slot writes (one on its way, or one a kill left) take space too
+    for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)){
+        const std::string name = it->path().filename().string();
+        std::string slot;
+        uint64_t generation = 0;
+        bool corrupt = false;
+        if (!io::isTemporarySiblingName(name) ||
+            !parseSlotFileName(io::temporarySiblingTarget(it->path()).filename().string(), slot, generation, corrupt)) continue;
+        std::error_code sizeError;
+        const uintmax_t size = it->file_size(sizeError);
+        if (!sizeError) used += static_cast<int64_t>(size);
     }
     out.used = used;
     return out;
@@ -1226,13 +1437,17 @@ void SyncWaiters::landed(std::vector<WriteCallback> callbacks, const SaveError& 
 }
 
 void SyncWaiters::started(uint64_t sync){
-    (void)sync;
+    if (unsynced.empty()) return;
+    std::vector<Delivery>& covered = syncing[sync];
+    for (Delivery& delivery : unsynced) covered.push_back(std::move(delivery));
+    unsynced.clear();
 }
 
 std::vector<SyncWaiters::Delivery> SyncWaiters::finished(uint64_t sync, bool ok, std::string_view errorName, std::string_view message){
-    (void)sync;
-    std::vector<Delivery> out = std::move(unsynced);
-    unsynced.clear();
+    auto it = syncing.find(sync);
+    if (it == syncing.end()) return {};
+    std::vector<Delivery> out = std::move(it->second);
+    syncing.erase(it);
     if (!ok){
         SaveError error;
         if (errorName == "QuotaExceededError")
@@ -1262,8 +1477,8 @@ void savegame::setMigrator(Migrator migrator){
 }
 
 void savegame::setFileFaultInjector(FileFaultInjector injector){
-    std::lock_guard<std::mutex> lock(faultMutex());
-    faultInjector() = std::move(injector);
+    std::lock_guard<std::mutex> lock(saveFaultMutex());
+    saveFaultInjector() = std::move(injector);
 }
 
 void SaveGameStore::setHold(bool held){

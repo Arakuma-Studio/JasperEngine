@@ -137,10 +137,8 @@ bool savegame::parseSaveHeader(std::string_view bytes, SaveFile& out, SaveError&
 bool savegame::parseSaveFile(std::string_view bytes, SaveFile& out, SaveError& error){
     if (bytes.size() > MAX_FILE_BYTES)
         return fail(error, "file of " + std::to_string(bytes.size()) + " bytes is above the 64 MiB cap", 0);
-    if (bytes.size() >= 10 && std::memcmp(bytes.data(), MAGIC, sizeof(MAGIC)) == 0 && getLE(bytes, 8, 2) > FORMAT_VERSION){
-        size_t ignored = 0;
-        return parseHeader(bytes, bytes.size(), out, ignored, error);
-    }
+    // the footer first (R18), also for a format above this engine's: every format keeps it, so a
+    // format field damaged in a format-1 file reads as damage, not as a newer engine's file
     if (bytes.size() < HEADER_FIXED_BYTES + FOOTER_BYTES)
         return fail(error, "file of " + std::to_string(bytes.size()) + " bytes is too short", 0);
     if (std::memcmp(bytes.data(), MAGIC, sizeof(MAGIC)) != 0)

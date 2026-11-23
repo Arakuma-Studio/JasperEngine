@@ -10,7 +10,10 @@
 // writes it as a new generation file `<slot>.g<N>.jsave` (writeFileAtomic, Document) and prunes
 // the generations beyond Backups Kept + 1. Per slot at most one write is in flight and one waits
 // (a later write replaces the waiting snapshot). A read uses the newest generation that parses,
-// checks and decodes; an invalid newer one is renamed `.corrupt`.
+// checks and decodes; an invalid newer one is renamed `.corrupt`. A file that can't be read now
+// (not damage) fails the read and is left alone. A write at a newer data version migrates the
+// slot's other namespaces first (setMigrator). Opening a folder deletes the temporary files a
+// killed write left.
 //
 // Main thread only, but the jobs. Nothing exists before the first instance() call: the engine's
 // pause, shutdown and Play-stop hooks test existing().
@@ -172,6 +175,10 @@ namespace jasperengine::savegame {
         SaveError read(std::string_view slot, std::string_view nameSpace, std::string& payload, ReadInfo& info);
         // Every namespace; generation 0: the slot's current data, else that generation's file
         SaveError readSlot(std::string_view slot, SlotData& out, uint64_t generation = 0);
+        // Read only (the Saved Data window's view): the slot's image when loaded, else its newest
+        // valid generation on disk with the skipped ones in info.problems; nothing is installed,
+        // set aside or deleted
+        SaveError peekSlot(std::string_view slot, SlotData& out);
         // The file read and checksum on the queue, `done` on the main thread
         void readSlotAsync(std::string_view slot, std::function<void(const SaveError&, const SlotData&)> done);
         // The image takes migrated sections at `version`; the files change at the next write (R9)
@@ -204,6 +211,10 @@ namespace jasperengine::savegame {
         std::vector<std::filesystem::path> slotFiles(std::string_view slot);
         // The highest generation number on disk, 0 when none
         uint64_t newestGeneration(std::string_view slot);
+        // The generation the slot's queued writes will publish, 0 when none is queued
+        uint64_t pendingGeneration(std::string_view slot);
+        // Changes when a file of the slot does (names, sizes, times; no file is read)
+        uint64_t slotSignature(std::string_view slot);
         // Bumped by every change of what list() shows (the Saved Data window refreshes on it)
         uint64_t changeCount() const { return changes.load(); }
 

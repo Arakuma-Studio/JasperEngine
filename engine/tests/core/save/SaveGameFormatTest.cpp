@@ -176,7 +176,9 @@ TEST(SaveGameFormat, RejectsDamage){
 
 TEST(SaveGameFormat, NewerFormatIsReportedNotRead){
     std::string bytes = savegame::buildSaveFile(saveGoldenFile());
+    // a newer engine's file: its footer checks
     bytes[8] = 2;
+    resealSave(bytes);
     savegame::SaveFile out;
     savegame::SaveError error;
     EXPECT_FALSE(savegame::parseSaveFile(bytes, out, error));

@@ -6,6 +6,7 @@
 #include "Out.h"
 #include "io/AtomicFile.h"
 
+#include <algorithm>
 #include <fstream>
 
 using namespace jasperengine;
@@ -40,8 +41,13 @@ bool editor::SaveSlotCmd::snapshot(const std::vector<std::string>& names){
     savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
     slots.clear();
     for (const std::string& name : names){
-        // what is queued for the slot lands first: the bytes kept are what the game wrote
-        store.flush(name);
+        // what is queued for the slot lands first: the bytes kept are what the game wrote. A
+        // write still on its way past the limit would land after the step: refused, nothing changed
+        const savegame::SaveError flushed = store.flush(name);
+        if (!flushed.ok() && store.pendingGeneration(name) != 0){
+            error = "Couldn't change save slot \"" + name + "\": the game is still writing it. Try again.";
+            return false;
+        }
         SlotState& state = slots[name];
         for (const fs::path& path : store.slotFiles(name)){
             std::string bytes;
@@ -55,16 +61,35 @@ bool editor::SaveSlotCmd::snapshot(const std::vector<std::string>& names){
     return true;
 }
 
+bool editor::SaveSlotCmd::changedFiles(const std::vector<std::string>& names) const{
+    savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
+    for (const std::string& name : names){
+        auto it = slots.find(name);
+        if (it == slots.end()) continue;
+        if (store.pendingGeneration(name) != 0) return true;
+        std::vector<std::string> now;
+        for (const fs::path& path : store.slotFiles(name)) now.push_back(path.filename().string());
+        if (now.size() != it->second.files.size()) return true;
+        for (const std::string& file : now)
+            if (!it->second.files.count(file)) return true;
+    }
+    return false;
+}
+
 bool editor::SaveSlotCmd::execute(){
     savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
     error.clear();
+    partial.clear();
     std::vector<std::string> names;
     if (action == Action::ClearAll){
         for (const savegame::SlotInfo& info : store.list()) names.push_back(info.slot);
     } else {
         names.push_back(slot);
     }
-    if (!snapshot(names)) return false;
+    if (!snapshot(names)){
+        Out::error(error);
+        return false;
+    }
 
     savegame::SaveError result;
     if (action == Action::Delete || action == Action::ClearAll){
@@ -79,10 +104,16 @@ bool editor::SaveSlotCmd::execute(){
         std::string file;
         result = store.corrupt(slot, mode, file);
     }
-    for (const std::string& name : names) slots[name].newestAfter = store.newestGeneration(name);
+    // what undo checks: the newest generation on disk, or the one a write still on its way publishes
+    for (const std::string& name : names)
+        slots[name].newestAfter = std::max(store.newestGeneration(name), store.pendingGeneration(name));
     if (!result.ok()){
         error = result.message;
         Out::error(result.message);
+        if (changedFiles(names)){
+            partial = result.message;
+            return true;
+        }
         return false;
     }
     return true;
@@ -91,7 +122,8 @@ bool editor::SaveSlotCmd::execute(){
 std::string editor::SaveSlotCmd::undoRefusal() const{
     savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
     for (const auto& entry : slots){
-        if (store.newestGeneration(entry.first) != entry.second.newestAfter)
+        const uint64_t newest = std::max(store.newestGeneration(entry.first), store.pendingGeneration(entry.first));
+        if (newest != entry.second.newestAfter)
             return "Can't undo \"" + label() + "\": the game saved that slot since.";
     }
     return Command::undoRefusal();

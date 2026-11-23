@@ -54,6 +54,9 @@ namespace jasperengine::editor {
         uint64_t seenChanges = UINT64_MAX;
         double lastRefresh = -1.0;
         std::string selected;
+        // what the selected slot was read at: reread when the store or its files changed
+        uint64_t loadedChanges = UINT64_MAX;
+        uint64_t loadedSignature = 0;
         // the selected slot as read (refreshed with the list)
         nlohmann::json selectedJson;
         std::string selectedProblem;

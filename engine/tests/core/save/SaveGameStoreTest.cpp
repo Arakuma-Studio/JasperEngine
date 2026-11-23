@@ -10,6 +10,7 @@
 #include "io/AtomicFile.h"
 #include "jobs/JobSystem.h"
 #include "save/SaveGameStore.h"
+#include "util/ContentHash.h"
 
 #include "LogCapture.h"
 #include "TestSystem.h"
@@ -63,6 +64,13 @@ namespace {
         return true;
     }
 
+    // The footer checksum of patched save bytes made to match again (a newer engine's file)
+    void resealStoreBytes(std::string& bytes){
+        const size_t body = bytes.size() - savegame::FOOTER_BYTES;
+        const uint64_t hash = hashContent64(bytes.data(), body, 0);
+        for (int i = 0; i < 8; i++) bytes[body + i] = static_cast<char>((hash >> (8 * i)) & 0xFF);
+    }
+
     std::vector<std::string> storeFileNames(const fs::path& dir){
         std::vector<std::string> names;
         std::error_code ec;
@@ -78,6 +86,8 @@ namespace {
         savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
 
         void SetUp() override {
+            // a Lua test of the same process registered SaveGame's migrator
+            savegame::setMigrator(nullptr);
             savegame::configure(savegame::SaveSettings());
             savegame::setGameDataVersion(1);
             store.setFolder(dir.path() / "saves");
@@ -294,6 +304,7 @@ TEST_F(SaveGameStoreTest, NewerVersionIsNeverOverwritten){
         bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     }
     bytes[8] = 2;
+    resealStoreBytes(bytes);
     std::ofstream(dir.path() / "saves" / "slot1.g4.jsave", std::ios::binary).write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
     store.unload();
     EXPECT_EQ(readJson("slot1").rfind("error newer_format", 0), 0u);

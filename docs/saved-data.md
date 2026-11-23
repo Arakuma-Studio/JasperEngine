@@ -72,7 +72,10 @@ SaveGame.addMigration(2, function(ns) ns.quests = ns.quests or {}; return ns end
 Reading a slot of version 1 runs both on every namespace of the slot (`ns` maps names to values)
 and returns the result with `info.migratedFrom = 1`. The files keep version 1 until the next write
 of that slot, which writes every namespace at version 3. A missing step or a migration that raises
-or returns no table fails with code `migration` and leaves the files alone.
+or returns no table fails with code `migration` and leaves the files alone. A write at a newer
+version from elsewhere (a dialogue's save hooks, `user_settings` `set` in Play) runs the same
+migrations on the slot's other namespaces first; with no game running to run them it fails with
+code `migration` rather than label old data with the new version.
 
 A slot of a **newer** version than the game (a player who went back to an older build) reads as
 `newer_version`, and a file of a newer engine format as `newer_format`: neither is ever written
@@ -85,11 +88,17 @@ Every landed write is a new file `<slot>.g<N>.jsave`; then the generations beyon
 renamed: `docs/data-safety.md`), so a crash, a power cut or a full disk leaves every earlier
 generation whole and the new one complete or absent.
 
-A read uses the newest generation that is complete, checks (an XXH3 checksum) and decodes. When
+A read uses the newest generation that is complete, checks (an XXH3 checksum) and decodes. The
+checksum comes first: a damaged format field reads as damage, and only a file whose checksum holds
+reads as `newer_format`. When
 the newest one is damaged, the read returns the previous one with `info.recoveredFrom` (the
 generation used) and `info.problems` (*slot1.g41.jsave: checksum mismatch*), logs one warning per
 slot per session, and sets the damaged file aside as `<name>.corrupt` (only the newest set-aside
 file is kept). With no valid generation the read fails with code `corrupt` and every file stays.
+A file that can't be read right now (another program holds it, a permission) is not damage: the
+read fails with code `io`, nothing is set aside or deleted, and a write waits until it can be read.
+A temporary file a killed write left behind is deleted the next time the game opens the saves
+folder, and deleting a slot takes its temporary files too.
 
 `SaveGame.getBackups(slot)` lists every generation; `SaveGame.restoreBackup(slot, generation)`
 writes that generation's data as a new newest generation (the chosen file stays, so a restore can
@@ -165,7 +174,10 @@ most 4 refreshes a second; nothing while closed):
 - **PlayerPrefs**: every key and value, **Delete Key** and **Clear User Settings...**.
 
 Delete Slot, Restore Backup, Corrupt Newest Generation and Clear All Saves are undo steps (Edit >
-Undo puts the files back byte for byte); undo refuses when the game saved that slot since. Saved
+Undo puts the files back byte for byte); undo refuses when the game saved that slot since. A step
+that fails partway (a slot that can't be deleted, a restore still writing after two seconds) says
+so and stays one undo step for what it changed. Deleting a slot while one of its writes is still
+running is refused; try again once it lands. Viewing a slot reads it without repairing it. Saved
 data is not project content: these never mark a scene modified.
 
 **Project Settings > Player > Saved Data** holds **Backups Kept** (2, 0-9) and **Max Slot Size
