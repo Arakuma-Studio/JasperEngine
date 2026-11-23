@@ -1017,11 +1017,11 @@ jobs:
           - part: editor
             ccache: 0.95G
           - part: engine-glcore
-            ccache: 1.5G
+            ccache: 2.0G
           - part: engine-d3d11
-            ccache: 0.8G
+            ccache: 1.5G
           - part: engine-vulkan
-            ccache: 0.8G
+            ccache: 1.5G
     env:
       JASPER_CI_REPRO: tools/ci/windows.sh
       PART: ${{ matrix.part }}
@@ -1164,7 +1164,7 @@ jobs:
         if: env.BUILD == 'true'
         with:
           lane: windows-compile
-          max-size: 1.0G
+          max-size: 2.0G
       - name: Compile build of post-processing
         if: env.BUILD == 'true'
         run: tools/ci/windows.sh compile-smoke tools/fixtures/post-processing

@@ -44,6 +44,11 @@ run_ccache() {
 }
 
 save=false
+# TEMPORARY (reverted before merge): this PR's own runs save the new Windows entries, so a later run of
+# the PR restores what an earlier one wrote (the before/after measurement)
+if [[ "$EVENT" == pull_request && "${GITHUB_HEAD_REF:-}" == ci/windows-macos-ccache && "$LANE" =~ ^windows-(engine-|compile) ]]; then
+    EVENT=push REF=refs/heads/main
+fi
 if [[ "$EVENT" == schedule || ( "$EVENT" == push && "$REF" == refs/heads/main ) ]]; then
     # an object or manifest written since the restore (ccache rewrites its stats files on every hit)
     new="$(find "$DIR" -type f -newer "$JASPER_CCACHE_MARKER" ! -name stats ! -name '*.lock' \
