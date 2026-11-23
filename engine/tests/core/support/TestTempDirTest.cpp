@@ -5,6 +5,8 @@
 
 #include <gtest/gtest.h>
 
+namespace TestTempDirTest_cpp {
+
 namespace fs = std::filesystem;
 using jasperengine::test::TestTempDir;
 
@@ -56,3 +58,5 @@ TEST(TestTempDir, CleanupLeavesWhatItsSymlinksPointAtAlone){
     // (outside's own cleanup needs to enter it)
     fs::permissions(folder, fs::perms::owner_all, fs::perm_options::add);
 }
+
+}  // namespace TestTempDirTest_cpp
