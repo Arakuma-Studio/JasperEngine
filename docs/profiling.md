@@ -139,7 +139,8 @@ multiples of 0.5 ms; 2 ms to 250 ms; one above), so a percentile below 50 ms is 
 | Platform | Thread clock |
 |---|---|
 | Linux, Android, macOS, iOS | `CLOCK_THREAD_CPUTIME_ID`, exact over committed seconds |
-| Windows | `GetThreadTimes` (user + kernel), advanced at the scheduler tick (about 15.6 ms): ±0.3 ms per frame at 60 fps over a window of 60 s or more |
+| Windows on x64 | `QueryThreadCycleTime` over the time-stamp counter's rate (measured over 2 ms at the first read), exact over committed seconds |
+| Windows without an invariant time-stamp counter, Windows on ARM | `GetThreadTimes` (user + kernel), advanced at the scheduler tick (about 15.6 ms) |
 | the web | none: `mainThreadCpuMs` is nil, `mainThreadCpu = "unavailable"` |
 
 "Main thread" is the frame thread (the one that runs `Engine::runFrame`), which on Android and iOS is

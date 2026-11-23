@@ -6441,13 +6441,11 @@ inline int newindex_metamethod(lua_State* L)
     return 0;
 }
 
+// JasperEngine: Lua formats the message, as S34 D6's raise sites do: a std::stringstream alive when
+// the error's longjmp leaves the function was never destroyed (LeakSanitizer, ScriptEventTest.VetoIsSticky)
 inline int read_only_error(lua_State* L)
 {
-    std::stringstream ss;
-
-    ss << "'" << lua_tostring(L, lua_upvalueindex(1)) << "' is read-only";
-
-    raise_lua_error(L, "%s", ss.str().c_str());
+    raise_lua_error(L, "'%s' is read-only", lua_tostring(L, lua_upvalueindex(1)));
 
     return 0;
 }

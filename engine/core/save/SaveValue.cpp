@@ -243,50 +243,55 @@ namespace {
             lua_pop(L, 1);
 
             if (keyLists.size() <= static_cast<size_t>(depth)) keyLists.resize(static_cast<size_t>(depth) + 1);
-            std::vector<Key>& keys = keyLists[static_cast<size_t>(depth)];
-            keys.clear();
             // each pair stays on the stack (the key pushed again for lua_next), so the sorted pass
             // reads its value without pushing and looking up the key a second time
             const int base = lua_gettop(L);
-            bool onStack = true;
-            lua_pushnil(L);
-            while (lua_next(L, index) != 0){
-                const int type = lua_type(L, -2);
-                Key key{false, 0, {}, 0, 0};
-                if (type == LUA_TNUMBER && lua_isinteger(L, -2)){
-                    const lua_Integer k = lua_tointeger(L, -2);
-                    if (k >= 1 && k <= n){
-                        lua_pop(L, 1);
-                        continue;
+            size_t pairs = 0;
+            // scoped: the first nested table (the next depth) may grow keyLists and leave it dangling
+            {
+                std::vector<Key>& keys = keyLists[static_cast<size_t>(depth)];
+                keys.clear();
+                bool onStack = true;
+                lua_pushnil(L);
+                while (lua_next(L, index) != 0){
+                    const int type = lua_type(L, -2);
+                    Key key{false, 0, {}, 0, 0};
+                    if (type == LUA_TNUMBER && lua_isinteger(L, -2)){
+                        const lua_Integer k = lua_tointeger(L, -2);
+                        if (k >= 1 && k <= n){
+                            lua_pop(L, 1);
+                            continue;
+                        }
+                        key.isInteger = true;
+                        key.integer = k;
+                    } else if (type == LUA_TSTRING){
+                        size_t length = 0;
+                        // the key stays in the table, so its text outlives this loop
+                        const char* s = lua_tolstring(L, -2, &length);
+                        key.text = std::string_view(s, length);
+                        key.prefix = prefixOf(key.text);
+                    } else {
+                        const std::string what = type == LUA_TNUMBER ? "float" : luaL_typename(L, -2);
+                        lua_settop(L, base);
+                        return fail("cannot save a " + what + " key");
                     }
-                    key.isInteger = true;
-                    key.integer = k;
-                } else if (type == LUA_TSTRING){
-                    size_t length = 0;
-                    // the key stays in the table, so its text outlives this loop
-                    const char* s = lua_tolstring(L, -2, &length);
-                    key.text = std::string_view(s, length);
-                    key.prefix = prefixOf(key.text);
-                } else {
-                    const std::string what = type == LUA_TNUMBER ? "float" : luaL_typename(L, -2);
-                    lua_settop(L, base);
-                    return fail("cannot save a " + what + " key");
+                    if (onStack && !lua_checkstack(L, 3)) onStack = false;
+                    if (onStack){
+                        key.slot = lua_gettop(L);
+                        lua_pushvalue(L, -2);
+                    } else {
+                        lua_pop(L, 1);
+                    }
+                    keys.push_back(key);
                 }
-                if (onStack && !lua_checkstack(L, 3)) onStack = false;
-                if (onStack){
-                    key.slot = lua_gettop(L);
-                    lua_pushvalue(L, -2);
-                } else {
-                    lua_pop(L, 1);
-                }
-                keys.push_back(key);
+                std::sort(keys.begin(), keys.end(), [](const Key& a, const Key& b){
+                    if (a.isInteger != b.isInteger) return a.isInteger;
+                    if (a.isInteger) return a.integer < b.integer;
+                    if (a.prefix != b.prefix) return a.prefix < b.prefix;
+                    return a.text < b.text;
+                });
+                pairs = keys.size();
             }
-            std::sort(keys.begin(), keys.end(), [](const Key& a, const Key& b){
-                if (a.isInteger != b.isInteger) return a.isInteger;
-                if (a.isInteger) return a.integer < b.integer;
-                if (a.prefix != b.prefix) return a.prefix < b.prefix;
-                return a.text < b.text;
-            });
 
             open.push_back(self);
             out.push_back(static_cast<char>(TagTable));
@@ -300,7 +305,6 @@ namespace {
                 lua_pop(L, 1);
                 if (!ok) return false;
             }
-            const size_t pairs = keys.size();
             putVarint(out, pairs);
             // indexed again for each pair: the values' tables (the next depth) may grow keyLists
             for (size_t k = 0; k < pairs; k++){

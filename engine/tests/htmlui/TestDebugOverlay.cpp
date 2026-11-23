@@ -21,6 +21,7 @@
 #include "debug/DebugOverlay.h"
 #include "debug/DebugStats.h"
 #include "harness/Readback.h"
+#include "AllocationCounter.h"
 #include "Screen.h"
 #include "manager/SceneManager.h"
 #include "subsystem/RenderSystem.h"
@@ -713,8 +714,11 @@ TEST_F(DebugOverlayTest, RowWindowThrottleAndTheBuffer){
     DebugOverlay::update(0.0);
     const double addMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     printf("[debug overlay] rebuild of 500 rows with its layout: %.2f ms, a line added: %.2f ms\n", rebuildMs, addMs);
-    EXPECT_LT(rebuildMs, 5.0);
-    EXPECT_LT(addMs, 5.0);
+    // wall-clock budgets: enforced with JASPER_TEST_PERF_SLACK (the benchmark run), printed otherwise
+    if (testsupport::perfSlack() > 0.0){
+        EXPECT_LT(rebuildMs, 5.0 * testsupport::perfSlack());
+        EXPECT_LT(addMs, 5.0 * testsupport::perfSlack());
+    }
     click("filter-warn");
     click("collapse");
 
@@ -1170,7 +1174,9 @@ TEST_F(DebugOverlayTest, CollapsedFullBufferLineCost){
         total += ms;
     }
     printf("[debug overlay] collapsed, 100,000 rows: a line %.3f ms (worst %.3f ms) with its layout\n", total / lines, worst);
-    EXPECT_LT(total / lines, 0.5);
+    if (testsupport::perfSlack() > 0.0){
+        EXPECT_LT(total / lines, 0.5 * testsupport::perfSlack());
+    }
     EXPECT_EQ(rows(), 100000);
     EXPECT_NE(shownRowText(-1).find("more 49"), std::string::npos) << shownRowText(-1);
 }
