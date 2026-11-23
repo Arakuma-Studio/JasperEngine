@@ -522,3 +522,35 @@ TEST(FsEventsCallbacks, RunAtUserInitiatedQoS) {
     EXPECT_GE(sink.lowest.load(), static_cast<int>(QOS_CLASS_USER_INITIATED)) << "lowest callback QoS 0x" << std::hex << sink.lowest.load();
 }
 #endif
+
+// A native backend started from a thread that has ended still watches. ReadDirectoryChangesW cancels a
+// read when the thread that issued it exits and completes it in that thread's context: the first read,
+// issued by start()'s caller (the service's dispatcher), was then not seen by a flush on the backend's
+// thread (JournalCursorsAndPause/Native on Windows, the first change after start)
+TEST(FileWatcherBackends, AStartOnAThreadThatEndsStillWatches) {
+    if (!FileWatcher::hasNative()) GTEST_SKIP() << "no native backend here";
+    struct PathSink : watch::WatchSink {
+        std::mutex mutex;
+        std::vector<fs::path> paths;
+        void onRawEvents(std::vector<watch::RawEvent>&& batch) override {
+            std::lock_guard<std::mutex> lock(mutex);
+            for (const watch::RawEvent& e : batch) paths.push_back(e.path);
+        }
+        void onBackendFailed(const std::string&) override {}
+    };
+    WatchTempDir dir;
+    PathSink sink;
+    std::unique_ptr<FileWatcher> watcher = FileWatcher::createNative();
+    std::string error;
+    bool started = false;
+    std::thread([&]() { started = watcher->start(dir.path, sink, error); }).join();
+    ASSERT_TRUE(started) << error;
+    const fs::path file = dir.path / "after.txt";
+    writeText(file, "x");
+    EXPECT_TRUE(waitFor([&]() {
+        watcher->flush(timeLimit(fileWatcherMs(1000)));
+        std::lock_guard<std::mutex> lock(sink.mutex);
+        return std::find(sink.paths.begin(), sink.paths.end(), file) != sink.paths.end();
+    }, timeLimit(fileWatcherMs(3000)))) << watcher->name();
+    watcher->stop();
+}
