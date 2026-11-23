@@ -1094,7 +1094,8 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 |---|---|---|---|---|---|
 | `changes`, `Check` | yes | yes | yes | yes | yes |
 | `lint` | unless every path is one nothing reads | same | no | no | yes |
-| `linux`, `web`, `android`, `windows`, `macos` | when anything that builds changed | yes | yes, to warm the caches (`windows`: the editor leg's build only) | `linux` when `mcp` or `smoke` runs (their editor install); `windows` for `windows-editor-tests` (the editor leg only) | yes |
+| `linux`, `web`, `android`, `windows` | when anything that builds changed | yes | yes, to warm the caches (`windows`: the editor leg's build only) | `linux` when `mcp` or `smoke` runs (their editor install); `windows` for `windows-editor-tests` (the editor leg only) | yes |
+| `macos` | when an Apple-only input changed (below) | yes | yes, to warm its cache | no | yes |
 | `ios` | when an Apple-only input changed (below) | yes | no (no cache) | no | yes |
 | `unit`, `htmlui` | the suites the plan selects | all, unfiltered; not while advisory | build only (the caches, the deps dumps) | while advisory all, unfiltered | all |
 | `asan` | the unit lane's suites when a path the sanitizers see changed; every test when the lane's settings did; else no (below) | all, unfiltered; not while advisory | build only (each binary's cache) | while advisory all | all |
@@ -1119,18 +1120,17 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   selection sees them. Anything else, such as CI's other jobs and scripts, docs, MCP tests, shaders,
   assets and a test's data, skips it on the PR. The advisory run on `main` runs it after the merge, and
   shadow mode judges an ASan failure there against the PR's ASan selection.
-- **iOS on a PR** (a macOS runner for up to 2 h, out of 5 for the organization) builds the Xcode
-  project only when an Apple-only input changed (`tools/ci/plan_lanes.py` `IOS_INPUTS`): the Apple and
-  Mac platform code (`engine/platform/apple/`, `engine/platform/mac/`), the Xcode project
-  (`engine/workspaces/xcode/`) and the scripts that sync its source lists (`tools/xcode_sync_*`,
-  `tools/test_xcode_sync_sources.py`), the Metal shader stubs it compiles (`engine/shaders/msl21*`),
-  what the job runs (`tools/ci/macos.sh`, `platform-common.sh`, `retry.sh`, the report action), and
-  `ci.yml`'s `ios` job or `env` (found from the diff's lines, as for ASan). There are no iOS CMake
-  toolchain files: the lane builds the Xcode project, not CMake. Anything else, an engine or editor
-  source included, skips it on the PR: the `macos` lane compiles every one of them with the same Apple
-  Clang, so it catches most iOS compile errors, and lint checks that the Xcode project lists every
-  source. The merge queue and full runs build it for every change that builds, so an iOS-only break
-  still stops the merge.
+- **macOS and iOS on a PR** build only when an Apple-only input changed (`tools/ci/plan_lanes.py`
+  `APPLE_INPUTS`): the Apple and Mac platform code (`engine/platform/apple/`, `engine/platform/mac/`),
+  the Xcode project (`engine/workspaces/xcode/`) and the scripts that sync its source lists
+  (`tools/xcode_sync_*`, `tools/test_xcode_sync_sources.py`), the Metal shader stubs it compiles
+  (`engine/shaders/msl21*`), and what the lanes run (`tools/ci/macos.sh`, `platform-common.sh`,
+  `retry.sh`, the report action). A `ci.yml` change alone does not count, even one to their own jobs.
+  The reason is capacity: the organization has 5 macOS runners, and on 2026-11-23 macOS jobs waited a
+  median of 2 h (up to 10) while the merge queue stalled behind them. The queue is the gate: it, a push
+  to `main`, full runs and the nightly build both lanes for every change that builds, so an Apple-only
+  break still stops the merge, one queue run later than a PR would have shown it. There are no iOS
+  CMake toolchain files: `ios` builds the Xcode project, not CMake.
 - **MCP in the merge queue** is planned from the coverage map, not the whole suite: a regression the
   map misses is the nightly's to find. A planned file outside the CI suite (it needs the fixture
   project, or is `CI_EXCLUDED`) is listed under "not run in CI"; `MCP_SUITE=all` locally covers it.
