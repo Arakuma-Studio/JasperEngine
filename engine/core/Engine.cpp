@@ -83,6 +83,7 @@
 #include "dialogue/DialogueKind.h"
 #include "dialogue/DialogueVariables.h"
 #include "object/DialogueRunner.h"
+#include "object/SimulationCulling.h"
 #endif
 #include "device/QualityResolver.h"
 #include "pool/SoundPool.h"
@@ -3403,6 +3404,8 @@ void Engine::resetApplicationState(){
     Device::resetSession();
     // the Performance sampler off, its window and the game's reasons gone (R11)
     PerfSampler::resetSession();
+    // a Simulation Culling distance scale a script set (the per-scene state goes with the scenes)
+    SimulationCulling::resetSession();
     applyFramePacing();
     dynamicBatching = dynamicBatchingDefault;
     // no extra insets, and the next safe area is where the game starts (no event)
@@ -4899,8 +4902,18 @@ bool Engine::dispatchCursorPointer(CursorPhase phase, float x, float y){
 }
 
 bool Engine::dispatchCursorMove(float x, float y){
-    // the cursor's frame: the scenes into a reused buffer, no std::function (R26)
-    static std::vector<Scene*> topFirst;
+    // the cursor's frame: the scenes into a reused buffer, no std::function (R26). A handler that
+    // moves the cursor again (GamepadCursor.position) dispatches on a buffer of its own: refilling
+    // the reused one would change the scenes under the outer dispatch (or free them, growing)
+    static std::vector<Scene*> reused;
+    static int depth = 0;
+    std::vector<Scene*> nested;
+    std::vector<Scene*>& topFirst = depth == 0 ? reused : nested;
+    struct DepthGuard {
+        int& value;
+        explicit DepthGuard(int& value): value(value) { value++; }
+        ~DepthGuard() { value--; }
+    } depthGuard(depth);
     getInputScenesTopFirst(topFirst);
     bool consumed = false;
     // as the mouse: below the document it is over, documents lose their hover

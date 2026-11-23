@@ -72,6 +72,8 @@ namespace jasperengine{
         // multiplies every component's distances, on top of the Device Tier's Simulation Distance
         static void setDistanceScale(float scale);
         static float getDistanceScale();
+        // what a script set ends with the Play (Engine::resetApplicationState): the scale back to 1
+        static void resetSession();
 
         // for worlds a game streams itself: false = the ground under (position, radius) is not
         // loaded. Called for components within simulation distance, at most 256 a frame; empty removes it
