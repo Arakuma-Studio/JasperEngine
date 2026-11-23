@@ -20198,9 +20198,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     drawScreenFluids();
 
     //---------Draw HTML UI documents (in front of everything, including component UI)----------
-    // A game view fills the viewport under any camera (S92 R15); the editor's Scene view draws
-    // the canvas of UI and 2D cameras in world space and no document under a 3D camera
-    // (the documents draw over every run)
+    // A Screen Space - Overlay game view fills the viewport under any camera (S92 R15); the
+    // editor's Scene view, and every view of a Screen Space - Camera scene (an older scene's,
+    // as before S92), draw the canvas of UI and 2D cameras in world space; the Scene view draws
+    // no document under a 3D camera (the documents draw over every run)
     endBatchPass();
 
     bool drawDocuments = isMainCamera && !pass.renderToTexture;
@@ -20222,8 +20223,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         documentsCanvas(camera, overlayCanvasWidth, overlayCanvasHeight);
     if (drawDocuments && !overlayDocumentsPending){
         camera.render.applyScissor(colorPassViewport);
+        const bool throughCamera = documentsSceneView || scene->getHtmlUiRenderMode() == UIRenderMode::CAMERA;
         scene->getSystem<UIDocumentSystem>()->drawComposite(camera, cameraTransform, colorPip, isRenderingFlipped(camera), passMsaa,
-                                                            documentsSceneView, overlayCanvasWidth, overlayCanvasHeight);
+                                                            throughCamera, overlayCanvasWidth, overlayCanvasHeight);
     }
 
     camera.render.endRenderPass();

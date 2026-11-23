@@ -129,13 +129,14 @@ namespace jasperengine{
         // ---- phase 1. Declared by the wave-0 commit, defined by each package in its own .cpp ----
 
         // --- p1-render (UIDocumentSystemRender.cpp, §3.5) ---
-        // camera-aware composite: in the editor's Scene view (sceneView), UI and orthographic
-        // cameras draw the canvas rectangle in world space, so the document shows in place; a
-        // perspective camera, and every camera of a game view (S92 R15), fill the viewport like
+        // camera-aware composite: with throughCamera (the editor's Scene view, and every view of a
+        // Screen Space - Camera scene, as before S92), UI and orthographic cameras draw the canvas
+        // rectangle in world space, so the document shows in place; a perspective camera, and
+        // every camera of a Screen Space - Overlay game view (S92 R15), fill the viewport like
         // drawComposite(PipelineType, bool, int, float, float). msaaSamples: the camera pass's sample
         // count when colorPipeline is PIP_MSAA* (the post-processed camera's multisampled scene target)
         void drawComposite(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPipeline, bool flipY,
-                           int msaaSamples = 1, bool sceneView = false, float viewCanvasWidth = 0.0f, float viewCanvasHeight = 0.0f);
+                           int msaaSamples = 1, bool throughCamera = false, float viewCanvasWidth = 0.0f, float viewCanvasHeight = 0.0f);
         const HtmlUIRenderStats& getRenderStats() const;    // last frame, summed over the scene's contexts
         // the last frame of the context that draws the entity's document (its own in texture mode,
         // else the screen context; empty without one)

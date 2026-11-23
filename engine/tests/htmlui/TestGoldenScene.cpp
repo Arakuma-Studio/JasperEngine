@@ -27,6 +27,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -426,6 +427,40 @@ TEST_F(HtmlUIScene, UiCameraPannedFillsViewport){
     Screen screen;
     ASSERT_TRUE(capture(screen));
     expectOverlayDetail(screen);
+}
+
+// R15 is Screen Space - Overlay's: a Screen Space - Camera scene (an older scene, which its
+// migration gives that mode) keeps the placement it had before S92 in a game view, the canvas
+// through its UI camera, so a camera panned by (200, 120) moves the documents by (-200, -120)
+TEST_F(HtmlUIScene, CameraModeKeepsTheDocumentsInTheCanvasOfItsCamera){
+    // the bottom-right mark (#br, 20 x 20 px of pure green): its top-left corner, or (-1, -1)
+    auto greenMark = [](const Screen& screen){
+        for (int y = 0; y < screen.height; y++)
+            for (int x = 0; x < screen.width; x++)
+                if (screen.is(x, y, 0, 255, 0, 2))
+                    return std::pair<int, int>(x, y);
+        return std::pair<int, int>(-1, -1);
+    };
+    SceneFixture fixture;
+    fixture.getScene().setHtmlUiRenderMode(UIRenderMode::CAMERA);
+    fixture.addDocument("golden/overlay_detail.rml");
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    Screen still;
+    ASSERT_TRUE(capture(still));
+    const std::pair<int, int> before = greenMark(still);
+    ASSERT_EQ(before, std::make_pair(620, 340)) << "the canvas the unmoved camera shows is the view";
+
+    fixture.getCamera().setPosition(200.0f, 120.0f, fixture.getCamera().getPosition().z);
+    Screen panned;
+    ASSERT_TRUE(capture(panned, 2));
+    EXPECT_EQ(greenMark(panned), std::make_pair(420, 220)) << "the documents did not move with the camera";
+    EXPECT_FALSE(panned.is(0, 0, 255, 0, 0, 0)) << "the documents filled the viewport (R15, Overlay only)";
+
+    // the same camera in Screen Space - Overlay: the viewport (UiCameraPannedFillsViewport)
+    fixture.getScene().setHtmlUiRenderMode(UIRenderMode::OVERLAY);
+    Screen overlay;
+    ASSERT_TRUE(capture(overlay, 2));
+    EXPECT_EQ(greenMark(overlay), std::make_pair(620, 340));
 }
 
 // R17-R19: the scene's MSAA count drives its screen context; a texture-mode document's own

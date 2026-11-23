@@ -433,7 +433,8 @@ which are rounded rectangles.
   - Layer scenes draw after it, as today.
 - **R14 Screen Space - Camera.** A scene set to it composites in the camera pass before post, as
   today: the UI scales with `render_scale` and post applies to it.
-- **R15 Screen space under every camera.**
+- **R15 Screen space under every camera** (Screen Space - Overlay; a Camera scene keeps the placement
+  through its camera, Deviations, Integration).
   - In game views (exported games, Play, the Game view, Game-view screenshots), screen documents fill
     the camera's viewport for `CAMERA_PERSPECTIVE`, `CAMERA_ORTHO` and `CAMERA_UI` alike.
   - The editor's Scene view keeps today's world-space canvas for UI and 2D scenes
@@ -1084,9 +1085,14 @@ the R29 table (AC10) after A, B1 and B2 are all in.
   record older than 1.6 reads as Camera (`SceneSettingsCodec.cpp`). New scenes, the templates and scenes
   made at runtime get Overlay. Fixture `editor/tests/fixtures/migrations/scene-v8-html-ui.scene`; tests
   `StreamMigrations.SceneV8ToV9KeepsTheCameraRenderMode`, `Migrations.SceneV8ToV9KeepsTheCameraRenderMode`,
-  `CookedScene.SceneSettingsKeepHtmlUi` and `CookedScene.ReadsAnOlderMinorsContent`. R15/R57 (screen
-  documents fill the viewport under any camera in game views) is not tied to the mode and applies to
-  old scenes too.
+  `CookedScene.SceneSettingsKeepHtmlUi` and `CookedScene.ReadsAnOlderMinorsContent`.
+- **R15/R57 is Screen Space - Overlay's (lead's decision).** Before S92 a game view drew the screen
+  documents through a UI or orthographic camera (the canvas in world space), so an older scene whose
+  2D camera pans or zooms showed them moving with it; R15 fills the viewport instead, which would change
+  that scene's look. A Screen Space - Camera scene, which an older scene is after its migration, keeps the
+  placement through the camera in every view (`RenderSystem` passes `throughCamera` to
+  `UIDocumentSystem::drawComposite`); Overlay keeps R15. Test `HtmlUIScene.CameraModeKeepsTheDocumentsInTheCanvasOfItsCamera`
+  (a panned UI camera moves the documents in Camera mode, not in Overlay).
 - **Verification on the merged tree.** `WERROR=1 tools/build.sh linux` (no warning from S92's sources);
   `htmlui-tests` with S92's suites (frame reuse, layer cost, P1, primitives, clips, records, filters,
   batches, renderer, integration, particles, the scene composite, every `*Golden*` but the effect

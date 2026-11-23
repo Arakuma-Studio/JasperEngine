@@ -145,23 +145,25 @@ void UIDocumentSystem::drawComposite(PipelineType colorPipeline, bool flipY, int
 }
 
 void UIDocumentSystem::drawComposite(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPipeline, bool flipY,
-                                     int msaaSamples, bool sceneView, float viewCanvasWidth, float viewCanvasHeight){
+                                     int msaaSamples, bool throughCamera, float viewCanvasWidth, float viewCanvasHeight){
     (void)cameraTransform;
     HtmlUIContext* screen = getContext();
     if (!screen)
         return;
 
-    // a 3D camera has no canvas, and a game view shows the documents in screen space under any
-    // camera (Unity's overlay canvas ignores it, R57): the document fills the viewport (or its
-    // part of the view's canvas)
+    // a 3D camera has no canvas, and a Screen Space - Overlay game view shows the documents in
+    // screen space under any camera (Unity's overlay canvas ignores it, R57): the document fills
+    // the viewport (or its part of the view's canvas)
     float w = 0.0f, h = 0.0f;
     getFrameSize(w, h);
-    if (!sceneView || camera.type == CameraType::CAMERA_PERSPECTIVE){
+    if (!throughCamera || camera.type == CameraType::CAMERA_PERSPECTIVE){
         screen->composite(colorPipeline, screenQuadMatrix(flipY, w, h, viewCanvasWidth, viewCanvasHeight), msaaSamples);
         return;
     }
 
-    // the Scene view's UI and 2D cameras: the canvas rectangle (0,0)-(width,height) of the world
+    // the Scene view's UI and 2D cameras, and a Screen Space - Camera scene's in every view (an
+    // older scene keeps the placement it had before S92: its migration gives it that mode): the
+    // canvas rectangle (0,0)-(width,height) of the world
     // space where RectTransform UI lives, through the camera, so a panned or zoomed view shows
     // the document in place. The document's top edge is at y = 0 under a
     // UI camera (y down) and at y = height under an orthographic one (y up, UI flipped)

@@ -33,8 +33,9 @@ lists, forms or animation. Edit mode runs no Lua: a document's script logic runs
   VHS, pixelate and the other post effects leave them sharp; `camera` (Screen Space - Camera)
   composites them in the camera's pass, so render scale and post-processing apply to them, as
   to the component UI. Set `camera` for a HUD that should go through a CRT or VHS look.
-- In game views (the Game view, Play, exported games) screen documents fill the viewport
-  under every camera: perspective, orthographic of any size, UI.
+- In game views (the Game view, Play, exported games) Overlay documents fill the viewport
+  under every camera: perspective, orthographic of any size, UI. Under `camera`, UI and
+  orthographic cameras show the canvas in world space, moving with the camera.
 - **CSS `px` = canvas pixels.** The page is the project canvas (`canvasWidth` x
   `canvasHeight`): `100vw` x `100vh` is the canvas and media queries see its size. With a
   scaled canvas (letterbox, high-DPI screens) the document is drawn at screen resolution, so
