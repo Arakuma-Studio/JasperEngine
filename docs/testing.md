@@ -1495,6 +1495,55 @@ runs only those jobs' lanes, those jobs on those runners whatever the state says
 - Jobs build with `JOBS` (and on Linux `CPUS`) from the runner's `.env`, under the machine's cores, so
   the user's own work stays usable.
 
+### CircleCI: the advisory lanes of a pull request
+
+CircleCI runs the advisory lanes `unit`, `asan`, `htmlui`, `mcp` and `smoke` of a pull request from a
+branch of this repository, so its advisory results do not wait for GitHub's runners (the
+organization's 60 concurrent jobs). `windows-editor-tests` stays on GitHub: CircleCI's free Windows
+minutes are the 30,000 credits of private use. The jobs are named `advisory/<lane>` (`advisory/mcp-3`),
+report as checks on the commit, and never block: the `main` ruleset requires only `Check`.
+
+- **Pipeline**: the project's pipeline definition `advisory` reads `.circleci/config.yml`; its one
+  trigger, the GitHub App preset `only-build-prs`, starts it when a pull request is opened or pushed
+  to, and on pushes to `main` and tags. No merge-queue branch, and never a fork's pull request (the
+  GitHub App does not build them). No secret: the setup job continues the pipeline with the
+  continuation key CircleCI gives it, the images are public and the checkout is the App's.
+- **Plan**: the setup job (`advisory/plan`, `tools/ci/circleci.py plan`) makes the commit `ci.yml` tests,
+  the head merged into `main` (main first, as `refs/pull/<n>/merge`, the same bytes in every job: one
+  identity and the head's date), and runs `tools/ci/plan_lanes.py --event pull_request` over
+  `main..merge` with the plan inputs, as `changes` does. A change under `.circleci/` or to
+  `tools/ci/circleci.py` runs every lane whole (`--event full`), as a `.github/` change does on GitHub.
+  A push to `main` warms the caches instead (below); a tag runs nothing (`advisory/nothing-to-run`).
+- **Jobs**: each runs the command `ci.yml`'s lane runs, printed as `circleci: <command>` (its repro), in
+  the same GHCR image (`.github/actions/image/image.sh`), on a `large` Linux VM (4 vCPU, 15 GB, 150 GB of
+  disk; the free plan's largest). The free plan stops a job at 60 min, so `circleci.py budget` stops a
+  build 47 min into its job and a test run at 55, and the long binaries run in shards: whole, unit
+  core and ASan core in 4, HTML UI in 5, ASan editor in 2, unit editor in 1; a filtered run in its share
+  of them (`FULL_SHARDS`). A sharded binary has a build job (`advisory/unit-core-build`); its shards
+  restore the cache it saved, or get the objects it compiled through the workspace when it saved none
+  (`unit_split.py pack`). A shard is a run of consecutive suites of the binary's listing with its share of
+  their seconds in GitHub's runs (`circleci.py gtest-args`, `tools/ci/circleci-suite-seconds.json`; a suite
+  over 5 min goes test by test), not every n-th suite by test count as `UNIT_SHARD` does: by count every
+  `*GpuSlow` suite fell in one shard (49 min of unit core against 13-17 for the others), and interleaved
+  shards failed `WaterBoatsGpu` and `EffectPerfTest`, which pass after their neighbours in the whole run.
+  The MCP lane takes `plan_lanes.py`'s shards, more when
+  the longest is planned over 35 min (`tools/mcp/shard.py plan`); it and the three smoke jobs
+  (`smoke-players` with the prebuilt smoke tests, `smoke-post-processing`, `smoke-ecs-collision`) run the
+  editor install `advisory/editor` builds (`SKIP_ENGINE=1 WERROR=1 tools/build.sh linux`).
+- **ccache**: one cache per lane, keyed like the Actions entries,
+  `v1-ccache-<lane>-<checksum of the image tag>-<job>`, the newest of any branch restored. A job saves
+  its lane's cache when it compiled at least 50 objects or a build was stopped: its working set, cut to
+  `ci.yml`'s cap (`.github/actions/ccache-save/trim.sh`), or, when stopped, the whole cache, so a cold
+  cache finishes on a rerun of the workflow ("Rerun from failed") instead of starting over. Caches live
+  3 days; CircleCI bills storage beyond the free 2 GB-months at 14 credits per GB-day of retention, so a
+  saved cache costs its size times 42 credits. A push to `main` builds each tree once a day per image
+  (`advisory/warm-*`, the stamp `v1-warm-stamp-<day>-<image>`), saving under the same rule.
+- **Results**: every job stores JUnit (`store_test_results`): the googletest XML, the MCP shard's
+  `mcp.json` as JUnit, and one case per step; `build/test-results` and the smoke screenshots are its
+  artifacts.
+- **Credits**: the free plan gives open source 400,000 Linux credits a month, not shown in the web app;
+  a `large` VM costs 20 a minute.
+
 ### Measured lane times
 
 Warm-cache times are not measured yet: the first runs after CI lands on `main` fill this table, and

@@ -1,0 +1,51 @@
+# The advisory test lanes (unit, asan, htmlui, mcp, smoke) on CircleCI, for pull requests from this
+# repository's branches (docs/testing.md, "CircleCI"). Not a required check: the ruleset requires only
+# GitHub's Check. This setup job plans the lanes with tools/ci/plan_lanes.py, as ci.yml's `changes`
+# job does, and continues the pipeline with the jobs tools/ci/circleci.py writes from that plan.
+version: 2.1
+setup: true
+
+jobs:
+  plan:
+    docker:
+      - image: cimg/python:3.12
+    resource_class: medium
+    retention:
+      caches: 1d
+    environment:
+      PIPELINE_EVENT: << pipeline.event.name >>
+      PIPELINE_BRANCH: << pipeline.git.branch >>
+    steps:
+      - checkout
+      # main: the daily cache warm's stamp (one a day per build image)
+      - run:
+          name: The warm stamp's key
+          command: mkdir -p build/ci-circleci && python3 -I tools/ci/circleci.py warm-key > build/ci-circleci/warm-key
+      - restore_cache:
+          name: Today's warm stamp
+          keys:
+            - v1-warm-stamp-{{ checksum "build/ci-circleci/warm-key" }}
+      # plan_lanes.py lists the MCP suite through uv (docker/linux.Dockerfile's pin)
+      - run:
+          name: uv
+          command: pip install --quiet --user uv==0.13.5
+      - run:
+          name: Plan the advisory lanes
+          command: python3 -I tools/ci/circleci.py plan
+      - save_cache:
+          name: The plan, for the lanes
+          key: v1-plan-{{ .Environment.CIRCLE_PIPELINE_ID }}
+          paths:
+            - build/ci-plan
+      - store_artifacts:
+          path: build/ci-plan
+          destination: plan
+      - run:
+          name: Continue with the planned lanes
+          command: python3 -I tools/ci/circleci.py continue
+
+workflows:
+  setup:
+    jobs:
+      - plan:
+          name: advisory/plan
