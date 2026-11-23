@@ -65,10 +65,6 @@ RmlTextInputHandler::RmlTextInputHandler(){
 RmlTextInputHandler::~RmlTextInputHandler(){
     if (activeHandler == this)
         activeHandler = nullptr;
-    // its context goes with the field it blurred (a scene without HTML UI loads): no flush of its
-    // comes, so the hide it left pending happens now
-    if (blurredContext && hidePending && !activeHandler)
-        hideKeyboard();
 }
 
 void RmlTextInputHandler::setContext(Rml::Context* context){
@@ -98,7 +94,6 @@ void RmlTextInputHandler::OnActivate(Rml::TextInputContext* inputContext){
     }
 
     this->inputContext = inputContext;
-    blurredContext = nullptr;
     activeHandler = this;
     keyboardPending = true;
     // a field took the keyboard from the one that blurred: it stays open (R5)
@@ -196,18 +191,10 @@ void RmlTextInputHandler::OnDeactivate(Rml::TextInputContext* inputContext){
         activeHandler = nullptr;
         // hidden at the flush, unless another field takes the focus first
         hidePending = true;
-        blurredContext = inputContext;
     }
 }
 
 void RmlTextInputHandler::OnDestroy(Rml::TextInputContext* inputContext){
-    // the field that blurred is going away (its document unloads, which blurs it first): the hide
-    // it left pending happens now, as for a focused field that goes
-    if (inputContext == blurredContext){
-        blurredContext = nullptr;
-        if (hidePending && !activeHandler)
-            hideKeyboard();
-    }
     if (this->inputContext != inputContext)
         return;
 
