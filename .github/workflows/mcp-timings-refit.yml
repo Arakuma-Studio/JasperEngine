@@ -9,8 +9,9 @@ name: MCP timings refit
 # GitHub Actions may not open pull requests in this repository (Settings > Actions > General), and a
 # push with the workflow token starts no pull_request run: with the secret MCP_TIMINGS_TOKEN (a
 # fine-grained token, contents and pull requests read and write) it does both; without it the job
-# pushes the branch, dispatches ci.yml on it so Check reports on its head, and fails when it has no PR
-# yet, saying so.
+# pushes the branch, dispatches ci.yml on it with status (a ruleset counts no dispatched job's check,
+# but counts the commit status Check that run sets on the head), and fails when it has no PR yet, saying
+# so. Either way it turns on auto-merge, so the merge queue lands the PR once Check is green.
 on:
   schedule:
     - cron: '43 5 * * *'
@@ -96,15 +97,22 @@ jobs:
               echo "---"
               echo "By the mcp-timings-refit workflow."
           } > build/pr-body.md
-          pr="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
+          open_pr() { gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty'; }
+          pr="$(open_pr)"
           if [[ -n "$pr" ]]; then
               gh pr edit "$pr" --body-file build/pr-body.md
-          elif ! gh pr create --base main --head "$BRANCH" --body-file build/pr-body.md \
+          elif gh pr create --base main --head "$BRANCH" --body-file build/pr-body.md \
                   --title "ci: refit the MCP shard timings from the newest CI runs"; then
+              pr="$(open_pr)"
+          else
               echo "::error::no pull request opened: allow GitHub Actions to create pull requests (Settings > Actions > General), or add the secret MCP_TIMINGS_TOKEN; $BRANCH is pushed"
               exit 1
           fi
           # a push with the workflow token starts no pull_request run: Check reports on the head this way
           if [[ "$OWN_TOKEN" != true ]]; then
-              GH_TOKEN="$WORKFLOW_TOKEN" gh workflow run ci.yml --ref "$BRANCH"
+              GH_TOKEN="$WORKFLOW_TOKEN" gh workflow run ci.yml --ref "$BRANCH" -f status=true
+          fi
+          # the merge queue takes it once Check is green (on already: an earlier run turned it on)
+          if [[ "$(gh pr view "$pr" --json autoMergeRequest --jq '.autoMergeRequest != null')" != true ]]; then
+              gh pr merge "$pr" --merge --auto
           fi
