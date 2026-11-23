@@ -9,6 +9,7 @@
 #include "Project.h"
 #include "Stream.h"
 #include "buildprofile/BuildProfile.h"
+#include "command/type/EditBuildProfileCmd.h"
 #include "render/LightingTiers.h"
 #include "render/shadow/ShadowTiers.h"
 #include "settings/SettingsRegistry.h"
@@ -19,6 +20,9 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
+#include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -65,6 +69,69 @@ namespace {
 
     std::string encoded(Project& project) {
         return YAML::Dump(Stream::encodeProject(&project));
+    }
+
+    // every file under a folder and its bytes: what a build must leave as it found it
+    std::map<std::string, std::string> folderContents(const fs::path& root) {
+        std::map<std::string, std::string> files;
+        for (const auto& entry : fs::recursive_directory_iterator(root)) {
+            if (!entry.is_regular_file()) continue;
+            // the editor's lock is the open project's own, not a build's write
+            if (entry.path().filename() == "editor.lock") continue;
+            std::ifstream in(entry.path(), std::ios::binary);
+            files[fs::relative(entry.path(), root).generic_string()] =
+                std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        }
+        return files;
+    }
+
+    std::string changedFiles(const std::map<std::string, std::string>& before, const std::map<std::string, std::string>& after) {
+        std::string changed;
+        for (const auto& [path, bytes] : after) {
+            const auto old = before.find(path);
+            if (old == before.end() || old->second != bytes) changed += (changed.empty() ? "" : ", ") + path;
+        }
+        for (const auto& [path, bytes] : before)
+            if (!after.count(path)) changed += (changed.empty() ? "" : ", ") + path + " (removed)";
+        return changed;
+    }
+
+    // values of a settings row's type that differ from `current`, for an override to try in turn
+    std::vector<mcp::Json> otherValues(const SettingRow& row, const mcp::Json& current) {
+        std::vector<mcp::Json> values;
+        if (row.type == "bool") {
+            values.push_back(current.is_boolean() ? mcp::Json(!current.get<bool>()) : mcp::Json(true));
+        } else if (row.type == "enum") {
+            for (const std::string& value : row.values)
+                if (current != mcp::Json(value)) values.push_back(value);
+        } else if (row.type == "int" || row.type == "number") {
+            const double base = current.is_number() ? current.get<double>() : 0.0;
+            for (double value : {base + 1.0, base - 1.0, base * 2.0, base / 2.0, 1.0, 2.0, 0.0, 100.0, 0.5}) {
+                if (row.type == "int" && value != static_cast<double>(static_cast<long long>(value))) continue;
+                const mcp::Json json = row.type == "int" ? mcp::Json(static_cast<long long>(value)) : mcp::Json(value);
+                if (json != current) values.push_back(json);
+            }
+        } else if (row.type == "string" || row.type == "path") {
+            for (const char* value : {"art/icon.png", "Profile Value", "1.2.3", "com.studio.profile", ""})
+                if (current != mcp::Json(value)) values.push_back(value);
+            if (current.is_string()) values.push_back(current.get<std::string>() + "1");
+        } else if (row.type == "list") {
+            if (current.is_array() && !current.empty()) {
+                values.push_back(mcp::Json::array({current.front()}));
+                values.push_back(mcp::Json::array());
+            }
+        } else if (row.type == "object" && current.is_object()) {
+            // each member changed in turn, through the member's own type
+            for (const auto& [member, value] : current.items()) {
+                mcp::Json changed = current;
+                if (value.is_boolean()) changed[member] = !value.get<bool>();
+                else if (value.is_number_integer()) changed[member] = value.get<long long>() + 1;
+                else if (value.is_number()) changed[member] = value.get<double>() + 0.5;
+                else continue;
+                values.push_back(changed);
+            }
+        }
+        return values;
     }
 
 }
@@ -362,6 +429,97 @@ TEST(BuildProfileResolve, TheOpenProjectNeverChanges) {
     if (const double slack = editor::test::perfSlack(); slack > 0.0) {
         EXPECT_LT(ms, 50.0 * slack);
     }
+    editor::test::closeProject(project);
+}
+
+// Every key a Build Profile may override, one profile each: the build applies it to a snapshot, and
+// neither the open project's files, its undo history nor its settings move (a settings command's
+// execute() saved project.yaml through the snapshot, which keeps the project's path)
+TEST(BuildProfileResolve, EveryOverridableKeyLeavesTheProjectFilesAlone) {
+    jasperengine::test::TestTempDir dir("build-profile-every-key");
+    Project project;
+    openProjectWithIcon(dir, project);
+    ASSERT_TRUE(project.saveProjectFile());
+    const std::map<std::string, std::string> filesBefore = folderContents(dir.path());
+    const std::string before = encoded(project);
+    const size_t historyBefore = project.getProjectCommandHistory()->position();
+    static const std::set<std::string> owned = {"player.product_name", "player.start_scene", "player.target_platforms",
+                                                "player.development_build"};
+
+    size_t overridable = 0, applied = 0;
+    std::vector<std::string> notChanged;
+    for (const SettingRow& row : SettingsRegistry::get().rows()) {
+        if (!row.mcp || row.scope != SettingsScope::Project || !row.set || owned.count(row.key)) continue;
+        const std::string category = row.key.substr(0, row.key.find('.'));
+        BuildPlatform platform = BuildPlatform::Linux;
+        if (category != "player" && category != "graphics" && category != "quality" && !parseBuildPlatform(category, platform)) continue;
+        overridable++;
+        SettingsContext projectCtx;
+        projectCtx.projectPtr = &project;
+        const mcp::Json current = row.get ? row.get(projectCtx) : mcp::Json();
+        bool changed = false;
+        for (const mcp::Json& value : otherValues(row, current)) {
+            BuildProfile profile;
+            profile.name = "Every";
+            profile.platform = platform;
+            profile.overrides[row.key] = value;
+            std::vector<BuildWarning> warnings;
+            std::string error;
+            const std::shared_ptr<Project> snapshot = resolveBuildSettings(project, &profile, warnings, error);
+            // the files are checked after every attempt, a refused one too
+            const std::string moved = changedFiles(filesBefore, folderContents(dir.path()));
+            EXPECT_TRUE(moved.empty()) << row.key << " = " << value.dump() << " wrote " << moved;
+            if (!snapshot) continue;
+            SettingsContext snapshotCtx;
+            snapshotCtx.projectPtr = snapshot.get();
+            if (row.get && row.get(snapshotCtx) == current) continue;
+            changed = true;
+            applied++;
+            break;
+        }
+        if (!changed) notChanged.push_back(row.key);
+        EXPECT_EQ(encoded(project), before) << row.key << " changed the open project";
+        EXPECT_EQ(project.getProjectCommandHistory()->position(), historyBefore) << row.key << " added an undo step to the open project";
+    }
+    std::string skipped;
+    for (const std::string& key : notChanged) skipped += (skipped.empty() ? "" : ", ") + key;
+    std::printf("[ audit ] %zu overridable keys, %zu applied with a changed value; not changed by any candidate: %s\n", overridable,
+                applied, skipped.empty() ? "none" : skipped.c_str());
+    // the audit means something only when nearly every key really changed in the snapshot
+    EXPECT_GE(overridable, 100u);
+    EXPECT_GE(applied * 10, overridable * 9) << "keys no candidate changed: " << skipped;
+    editor::test::closeProject(project);
+}
+
+// A rename whose new name is the old one in other letter case ("demo" -> "Demo") names one file twice
+// on a case-insensitive filesystem (Windows, macOS). Here two spellings of one path stand in for them:
+// undo must put the file back, not write it and then remove it under its other name
+TEST(BuildProfileFile, UndoOfARenameToTheSameFileKeepsIt) {
+    jasperengine::test::TestTempDir dir("build-profile-case-rename");
+    Project project;
+    std::ofstream(dir.path() / "project.yaml") << "name: Box\n";
+    project.setSkipProjectLock(true);
+    ASSERT_TRUE(project.loadProject(dir.path(), false));
+    const fs::path folder = BuildProfileFile::directory(dir.path());
+    fs::create_directories(folder / "alias");
+    const fs::path oldName = folder / "demo.buildprofile";
+    const fs::path newName = folder / "alias" / ".." / "demo.buildprofile";   // the same file, spelled otherwise
+    const std::string text = "formatVersion: 1\nplatform: linux\n";
+    std::ofstream(oldName, std::ios::binary) << text;
+
+    // what the rename writes: the old name removed, the new one created
+    std::vector<EditBuildProfileCmd::FileChange> changes = {{oldName, text, std::nullopt}, {newName, std::nullopt, text}};
+    auto* command = new EditBuildProfileCmd("Rename Build Profile 'demo'", std::move(changes));
+    command->setNoMerge();
+    ASSERT_TRUE(project.getProjectCommandHistory()->addCommand(command));
+    ASSERT_TRUE(fs::is_regular_file(newName));
+    EXPECT_EQ(editor::test::readText(newName), text);
+
+    ASSERT_TRUE(project.getProjectCommandHistory()->undo());
+    ASSERT_TRUE(fs::is_regular_file(oldName)) << "undo removed the profile it put back";
+    EXPECT_EQ(editor::test::readText(oldName), text);
+    ASSERT_TRUE(project.getProjectCommandHistory()->redo());
+    ASSERT_TRUE(fs::is_regular_file(newName)) << "redo removed the profile it wrote";
     editor::test::closeProject(project);
 }
 

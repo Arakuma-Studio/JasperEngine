@@ -135,6 +135,15 @@ async def test_edit_build_profile(ed: Editor):
     ed.check_eq((await ed.call("get_build_info"))["active_profile"], "Demo")
     ed.check_eq([p["name"] for p in (await ed.call("get_build_info"))["profiles"] if p["active"]], ["Demo"])
     ed.check_eq(len((await ed.call("get_undo_history", scope="project"))["entries"]), len(history["entries"]), "activate is no undo step")
+    # renaming the active profile keeps it active, and undo and redo move the active name with the file
+    await profile(ed, "Demo", action="rename", new_name="Trial")
+    ed.check_eq((await ed.call("get_build_info"))["active_profile"], "Trial", "the active profile follows its rename")
+    await undo_once()
+    ed.check((folder / "Demo.buildprofile").is_file(), "undo renames it back")
+    ed.check_eq((await ed.call("get_build_info"))["active_profile"], "Demo", "undo of the rename makes Demo active again")
+    await ed.call("redo", scope="project")
+    ed.check_eq((await ed.call("get_build_info"))["active_profile"], "Trial", "redo makes Trial active again")
+    await undo_once()
     await ed.call("edit_build_profile", action="activate", name=None)
     ed.check_eq((await ed.call("get_build_info"))["active_profile"], None)
 
