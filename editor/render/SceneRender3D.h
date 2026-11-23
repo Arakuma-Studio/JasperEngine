@@ -32,6 +32,7 @@ namespace jasperengine{
     struct WaterVolumeComponent;
     struct WaterExcluderComponent;
     struct WaterWakeComponent;
+    struct WheelColliderComponent;
 }
 
 namespace jasperengine::anim{
@@ -71,6 +72,8 @@ namespace jasperengine::editor{
         GizmoLineBatch waterExcluderLines;
         GizmoLineBatch waterWakeLines;
         GizmoLineBatch buoyancyLines;
+        // S96: the Wheel Colliders' circles, travels and (in Play) contacts
+        GizmoLineBatch wheelLines;
         // a selected Particle System's emitter shape, bounds and collision planes; a Force
         // Field's shape (S20 R28: the Particle Effect panel's gizmo toggles)
         GizmoLineBatch particleLines;
@@ -106,6 +109,7 @@ namespace jasperengine::editor{
         void createOrUpdateWaterExcluderLines(Entity entity, const Transform& transform, const WaterExcluderComponent& excluder, bool visible, bool highlighted);
         void createOrUpdateWaterWakeLines(Entity entity, const Transform& transform, const WaterWakeComponent& wake, bool visible);
         void createOrUpdateBuoyancyLines(Entity entity, const Transform& transform, const BuoyancyComponent& buoyancy, bool visible, bool highlighted);
+        void createOrUpdateWheelLines(Entity entity, const Transform& transform, const WheelColliderComponent& wheel, bool visible, bool highlighted);
         void createOrUpdateControllerLines(Entity entity, const Transform& transform, const CharacterControllerComponent& controller, bool visible, bool highlighted);
         void createOrUpdateCapsuleShadowLines(Entity entity, const Transform& transform, const CapsuleShadowCasterComponent& caster, bool visible, bool selected);
         void createOrUpdateParticleLines(Entity entity, const Transform& transform, const ParticleSystemComponent& particles, bool visible);

@@ -24,6 +24,7 @@
 #include "util/ScriptStatus.h"
 
 #include "App.h"
+#include "Engine.h"
 #include "search/SearchPalette.h"
 #include "widget/ColorPickerWindow.h"
 #include "widget/CurveField.h"
@@ -808,6 +809,8 @@ void reportEditorStatus(const CallPtr& call) {
         {"status_message", StatusBar::getTransientMessage()},
         {"scripts", ScriptStatus::get().toJson()},
         {"frame_ms", app.takeFrameStats()},
+        // fixed steps the per-frame cap dropped in this Play (Time.maximumFixedStepsPerFrame, S96)
+        {"physics", {{"dropped_fixed_steps", Engine::getDroppedFixedSteps()}}},
         // false: minimized or hidden, nothing is drawn (screenshots fail; a playing game updates)
         {"window", {{"visible", app.isWindowVisible()}}},
         {"dialog", dialog},
@@ -834,6 +837,10 @@ void reportEditorStatus(const CallPtr& call) {
                 "); they appear when ready.";
     }
     if (!dialog.is_null()) text += " Open dialog: \"" + info.title + "\".";
+    if (Engine::getDroppedFixedSteps() > 0) {
+        text += " Dropped fixed steps: " + std::to_string(Engine::getDroppedFixedSteps()) +
+                " (frames needed more than the cap: Time.maximumDeltaTime's, or Time.maximumFixedStepsPerFrame when lower).";
+    }
     call->ok(text, data);
 }
 

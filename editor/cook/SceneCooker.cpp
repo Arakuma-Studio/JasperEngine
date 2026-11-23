@@ -273,20 +273,21 @@ std::vector<uint8_t> editor::cook::SceneCooker::cookScene(Scene* scene, uint32_t
         w.endLength(at);
     }
 
+    // format 1.6: the hierarchy, each child after its parent in Transform order (a Transform is
+    // cooked without its parent; a 1.5 player reads no hierarchy and ignores this record)
     {
-        // format minor 7: the hierarchy, each child appended to its parent in Transform order (a
-        // Transform's parent is no field of its record)
-        const std::unordered_set<Entity> cooked(ordered.begin(), ordered.end());
-        std::vector<Entity> children;
+        std::unordered_set<Entity> cooked(ordered.begin(), ordered.end());
+        if (systemCamera) cooked.insert(camera);
+        std::vector<std::pair<Entity, Entity>> links;
         for (Entity entity : ordered) {
             const Transform* transform = scene->findComponent<Transform>(entity);
-            if (transform && cooked.count(transform->parent)) children.push_back(entity);
+            if (transform && transform->parent != NULL_ENTITY && cooked.count(transform->parent)) links.emplace_back(entity, transform->parent);
         }
         const size_t at = w.beginLength();
-        w.varint(children.size());
-        for (Entity child : children) {
+        w.varint(links.size());
+        for (const auto& [child, parent] : links) {
             w.entity(child);
-            w.entity(scene->getComponent<Transform>(child).parent);
+            w.entity(parent);
         }
         w.endLength(at);
     }

@@ -7,6 +7,7 @@
 // them; Physics.ignoreCollision.
 
 #include "PhysicsSystem.h"
+#include "physics/AttachedColliders.h"
 #include "subsystem/AudioSystem.h"
 #include "audio/AudioMarkers.h"
 #include "component/CharacterControllerComponent.h"
@@ -235,6 +236,9 @@ void PhysicsSystem::refreshListenerMask2D(Entity entity, Rigidbody2DComponent& b
     for (const Collider2D& collider : body.colliders){
         if (collider.receiver != NULL_ENTITY) receivers.push_back(collider.receiver);
     }
+    for (const AttachedCollider2D& attached : body.attachedColliders){
+        receivers.push_back(attached.child);
+    }
     body.listenerMask = computeListenerMask(entity, receivers);
     if (!b2Body_IsValid(body.body) || steppingWorld2D){
         return;
@@ -263,6 +267,9 @@ void PhysicsSystem::refreshListenerMask2D(Entity entity, Rigidbody2DComponent& b
                 refreshFlags(collider);
             }
         }
+    }
+    for (const AttachedCollider2D& attached : body.attachedColliders){
+        refreshFlags(attached.collider);
     }
     // Box2D fixes a contact's flags when it is made: pair the shapes again
     if (changed){
@@ -752,10 +759,11 @@ namespace {
 
     Entity receiver3D(Scene* scene, const ColliderKey& key){
         const RigidbodyComponent* body = rigidbodyOf(scene, key.entity);
-        if (!body || key.collider < 0 || (size_t)key.collider >= body->colliders.size()){
+        if (!body || key.collider < 0 || (size_t)key.collider >= AttachedColliders::colliderCount(*body)){
             return NULL_ENTITY;
         }
-        const Entity receiver = body->colliders[(size_t)key.collider].receiver;
+        // an attached child's collider: the child (S96 REQ-18)
+        const Entity receiver = AttachedColliders::colliderAt(*body, (size_t)key.collider).receiver;
         if (receiver == NULL_ENTITY || receiver == key.entity || !scene->isEntityCreated(receiver)){
             return NULL_ENTITY;
         }
@@ -852,7 +860,8 @@ std::vector<ContactSummary> PhysicsSystem::getContactSummary3D(Entity entity){
 
 void PhysicsSystem::refreshListenerMask3D(Entity entity, RigidbodyComponent& body){
     std::vector<Entity> receivers;
-    for (const Collider3D& collider : body.colliders){
+    for (size_t i = 0; i < AttachedColliders::colliderCount(body); i++){
+        const Collider3D& collider = AttachedColliders::colliderAt(body, i);
         if (collider.receiver != NULL_ENTITY) receivers.push_back(collider.receiver);
     }
     const uint16_t mask = computeListenerMask(entity, receivers);
@@ -1032,7 +1041,7 @@ void PhysicsSystem::processContacts3D(){
             }
             const RigidbodyComponent* body = rigidbodyOf(scene, side.entity);
             if (!body || body->body.IsInvalid() || !bodyInterface.IsAdded(body->body) || bodyInterface.IsActive(body->body) ||
-                    side.collider < 0 || (size_t)side.collider >= body->colliders.size()){
+                    side.collider < 0 || (size_t)side.collider >= AttachedColliders::colliderCount(*body)){
                 keep = false;
                 break;
             }

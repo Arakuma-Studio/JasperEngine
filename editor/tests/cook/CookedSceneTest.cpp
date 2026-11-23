@@ -24,6 +24,7 @@
 #include "component/SkyboxComponent.h"
 #include "component/SplineComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/Transform.h"
 #include "component/TweenComponent.h"
 #include "cook/RuntimeFieldsEmitter.h"
 #include "cook/SceneCooker.h"
@@ -31,6 +32,7 @@
 #include "serialization/CookedScene.h"
 #include "serialization/SceneSettingsCodec.h"
 #include "serialization/codecs/CustomCodecs.h"
+#include "util/Angle.h"
 #include "util/ProjectUtils.h"
 
 #include <gtest/gtest.h>
@@ -367,6 +369,146 @@ entities:
     EXPECT_EQ(polygon.groupIndex, -2);
 }
 
+// A prebuilt player keeps the scene's hierarchy: a child stays under its parent with its local
+// pose (S96 AC-32: a Wheel Collider finds its car's Rigidbody through it)
+TEST(CookedScene, SceneKeepsItsHierarchy) {
+    const char* text = R"(formatVersion: 1
+id: 4242
+name: Hierarchy
+scene:
+  backgroundColor: [0, 0, 0, 1]
+sceneType: scene_3d
+mainCamera: 0
+entities:
+  - type: Entity
+    entity: 1001
+    name: Car
+    components:
+      transform:
+        position: [0, 1, 0]
+    children:
+      - type: Entity
+        entity: 1002
+        name: Axle
+        components:
+          transform:
+            position: [0, -0.25, 1.3]
+        children:
+          - type: Entity
+            entity: 1003
+            name: Wheel
+            components:
+              transform:
+                position: [-0.8, 0, 0]
+  - type: Entity
+    entity: 1004
+    name: Floor
+    components:
+      transform:
+        position: [0, -0.5, 0]
+)";
+    DecodedScene source = decodeSceneText(text, "Hierarchy.scene");
+    Scene* scene = source.scene->scene;
+    ASSERT_EQ(source.scene->entities.size(), 4u);
+    const Entity car = source.scene->entities[0], axle = source.scene->entities[1], wheel = source.scene->entities[2],
+                 floor = source.scene->entities[3];
+    ASSERT_EQ(scene->getComponent<Transform>(wheel).parent, axle);
+    DecodedScene loaded;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, source.scene->entities, loaded, error)) << error;
+    Scene* game = loaded.scene->scene;
+    EXPECT_EQ(game->getComponent<Transform>(car).parent, NULL_ENTITY);
+    EXPECT_EQ(game->getComponent<Transform>(axle).parent, car);
+    EXPECT_EQ(game->getComponent<Transform>(wheel).parent, axle);
+    EXPECT_EQ(game->getComponent<Transform>(floor).parent, NULL_ENTITY);
+    EXPECT_EQ(game->getComponent<Transform>(wheel).position, Vector3(-0.8f, 0.0f, 0.0f));
+    // parents before their children in the Transform array, as the runtime keeps them
+    auto transforms = game->getComponentArray<Transform>();
+    EXPECT_LT(transforms->getIndex(car), transforms->getIndex(axle));
+    EXPECT_LT(transforms->getIndex(axle), transforms->getIndex(wheel));
+}
+
+// The hierarchy record is read from a 1.6 file only (an older minor's records after the resources are
+// not it), and a link naming a GameObject the file did not make, or closing a loop, fails the load
+// as corrupt rather than reaching the registry, which checks neither. Red before the minor gate: the
+// 1.5 file got the link, and both corrupt files loaded
+TEST(CookedScene, HierarchyNeedsItsMinorAndTheScenesGameObjects) {
+    using namespace jasperengine::cook;
+    const char* text = R"(formatVersion: 1
+id: 4242
+name: Hierarchy
+scene:
+  backgroundColor: [0, 0, 0, 1]
+sceneType: scene_3d
+mainCamera: 0
+entities:
+  - type: Entity
+    entity: 1001
+    name: Car
+    components:
+      transform: {}
+    children:
+      - type: Entity
+        entity: 1002
+        name: Axle
+        components:
+          transform: {}
+        children:
+          - type: Entity
+            entity: 1003
+            name: Wheel
+            components:
+              transform: {}
+)";
+    DecodedScene source = decodeSceneText(text, "Hierarchy.scene");
+    ASSERT_EQ(source.scene->entities.size(), 3u);
+    const std::vector<uint8_t> bytes =
+        editor::cook::SceneCooker::cookScene(source.scene->scene, 4242, source.scene->entities, NULL_ENTITY, SceneResources{});
+    // the body ends with the hierarchy record: 2 links, (1002 under 1001) then (1003 under 1002), each
+    // GameObject a 2-byte varint
+    uint64_t stringsOffset = 0;
+    for (int i = 0; i < 8; i++) stringsOffset |= uint64_t(bytes[20 + i]) << (8 * i);
+    const size_t links = static_cast<size_t>(stringsOffset) - 9;
+    auto varintAt = [&](const std::vector<uint8_t>& in, size_t at) { return uint32_t(in[at] & 0x7F) | uint32_t(in[at + 1]) << 7; };
+    ASSERT_EQ(bytes[links], 2u);
+    ASSERT_EQ(varintAt(bytes, links + 1), 1002u);
+    ASSERT_EQ(varintAt(bytes, links + 3), 1001u);
+    ASSERT_EQ(varintAt(bytes, links + 7), 1002u);
+    auto withFirstParent = [&](uint32_t parent) {
+        std::vector<uint8_t> out = bytes;
+        out[links + 3] = static_cast<uint8_t>((parent & 0x7F) | 0x80);
+        out[links + 4] = static_cast<uint8_t>(parent >> 7);
+        return out;
+    };
+    // a scene of its own for each load (a DecodedScene assigned over keeps the old one's Scene)
+    auto load = [](const std::vector<uint8_t>& in, DecodedScene& to, std::string& error) {
+        return CookedSceneLoader::loadScene(to.scene->scene, std::span<const uint8_t>(in.data(), in.size()), &error);
+    };
+
+    std::vector<uint8_t> v15 = bytes;
+    v15[6] = 5;
+    v15[7] = 0;
+    DecodedScene older = emptyScene();
+    std::string error;
+    ASSERT_TRUE(load(v15, older, error)) << error;
+    EXPECT_EQ(older.scene->scene->getComponent<Transform>(1002).parent, NULL_ENTITY) << "a 1.5 file has no hierarchy record";
+    EXPECT_EQ(older.scene->scene->getComponent<Transform>(1003).parent, NULL_ENTITY);
+
+    DecodedScene unknown = emptyScene();
+    EXPECT_FALSE(load(withFirstParent(1009), unknown, error)) << "1009 is no GameObject of the file";
+    EXPECT_NE(error.find("corrupt scene hierarchy"), std::string::npos) << error;
+
+    DecodedScene loop = emptyScene();
+    error.clear();
+    EXPECT_FALSE(load(withFirstParent(1003), loop, error)) << "1002 under 1003 under 1002";
+    EXPECT_NE(error.find("makes a loop"), std::string::npos) << error;
+
+    DecodedScene loaded = emptyScene();
+    error.clear();
+    ASSERT_TRUE(load(bytes, loaded, error)) << error;
+    EXPECT_EQ(loaded.scene->scene->getComponent<Transform>(1003).parent, 1002u);
+}
+
 // S27: a Tween eased along its curve keeps the curve whole in a cooked scene (keys, tangent
 // modes, wraps), and a curve cooked before the modes (keys only) reads as clamp, free tangents
 TEST(CookedScene, TweenCurveKeepsModesAndWraps) {
@@ -458,7 +600,27 @@ namespace {
         return tail.data().size();
     }
 
-    // the bytes format 1.7 appends after them (the scene's Canvas Scaler and Physics 2D sub-steps)
+    // the bytes format 1.6 appends after them (the Box2D sub-steps and the physics world
+    // settings, a record per field and a 0 ending them)
+    size_t physicsWorldTailBytes(const Scene& scene) {
+        jasperengine::cook::StringTable none;
+        jasperengine::cook::Writer tail(none, [](Entity e) { return static_cast<uint32_t>(e); });
+        tail.svarint(scene.getPhysics2DSubSteps());
+        for (const PhysicsWorldSettingField& field : physicsWorldSettingFields()) {
+            tail.u32(1);
+            tail.u8(0);
+            const size_t at = tail.beginLength();
+            const double value = getPhysicsWorldSetting(field, scene.getPhysics2DWorldSettings(), scene.getPhysics3DWorldSettings());
+            if (field.type == PhysicsWorldSettingField::Type::Float) tail.f32(static_cast<float>(value));
+            else if (field.type == PhysicsWorldSettingField::Type::Int) tail.svarint(static_cast<int>(value));
+            else tail.boolean(value != 0.0);
+            tail.endLength(at);
+        }
+        tail.u32(0);
+        return tail.data().size();
+    }
+
+    // the bytes format 1.7 appends after them (the scene's Canvas Scaler)
     size_t canvasScalerTailBytes(const Scene& scene) {
         jasperengine::cook::StringTable none;
         jasperengine::cook::Writer tail(none, [](Entity e) { return static_cast<uint32_t>(e); });
@@ -471,7 +633,6 @@ namespace {
         tail.f32(scaler.matchWidthOrHeight);
         tail.u8(static_cast<uint8_t>(scaler.physicalUnit));
         tail.f32(scaler.fallbackScreenDPI);
-        tail.svarint(scene.getPhysics2DSubSteps());
         return tail.data().size();
     }
 }
@@ -516,8 +677,9 @@ TEST(CookedScene, SceneSettingsKeepCapsuleShadows) {
     // (1.3) the five default shaders' property values, none set here
     jasperengine::cook::Writer v13(none, [](Entity e) { return static_cast<uint32_t>(e); });
     for (int type = 0; type < 5; type++) jasperengine::cook::write(v13, ShaderUniformValues());
-    // (1.4) the planar reflections, (1.5) the Water Wakes' map after them, (1.7) the Canvas Scaler
-    const size_t v14 = planarReflectionTailBytes(*scene) + waterWakeTailBytes(*scene) + canvasScalerTailBytes(*scene);
+    // (1.4) the planar reflections, (1.5) the Water Wakes' map, (1.6) the physics world and (1.7) the
+    // Canvas Scaler after them
+    const size_t v14 = planarReflectionTailBytes(*scene) + waterWakeTailBytes(*scene) + physicsWorldTailBytes(*scene) + canvasScalerTailBytes(*scene);
     ASSERT_GT(bytes.size(), v11.data().size() + v12.data().size() + v13.data().size() + v14);
 
     // the 1.1 record: the same bytes without the cross-fade (and the 1.3 and 1.4 values)
@@ -652,7 +814,7 @@ TEST(CookedScene, SceneSettingsKeepPlanarReflections) {
     // the 1.3 record: the same bytes without the planar reflections (and the 1.5 values)
     DecodedScene older = emptyScene();
     jasperengine::cook::Reader r13(std::span<const uint8_t>(bytes.data(), bytes.size() - planarReflectionTailBytes(*scene) - waterWakeTailBytes(*scene) -
-                                                                                canvasScalerTailBytes(*scene)),
+                                                                                physicsWorldTailBytes(*scene) - canvasScalerTailBytes(*scene)),
                                    strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r13, *older.scene->scene);
     ASSERT_FALSE(r13.failed()) << r13.error();
@@ -701,7 +863,8 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
 
     // the 1.4 record: the same bytes without the wake settings; the planar reflections still read
     DecodedScene older = emptyScene();
-    jasperengine::cook::Reader r14(std::span<const uint8_t>(bytes.data(), bytes.size() - waterWakeTailBytes(*scene) - canvasScalerTailBytes(*scene)),
+    jasperengine::cook::Reader r14(std::span<const uint8_t>(bytes.data(), bytes.size() - waterWakeTailBytes(*scene) - physicsWorldTailBytes(*scene) -
+                                                                                canvasScalerTailBytes(*scene)),
                                    strings.strings(), entityOf);
     jasperengine::cook::readSceneSettings(r14, *older.scene->scene);
     ASSERT_FALSE(r14.failed()) << r14.error();
@@ -713,9 +876,49 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
     EXPECT_FLOAT_EQ(old.getWaterWakeFade(), defaults.waterWakeFade);
 }
 
-// S98 D1: the scene's own Canvas Scaler and Box2D sub-steps survive a cook (format 1.7), as a
-// Compile build's generated scene code set them; a 1.5 record leaves the project's scaler and 4
-TEST(CookedScene, SceneSettingsKeepCanvasScalerAndSubSteps) {
+// S96 (format 1.6): the Box2D sub-steps and the physics world settings reach a prebuilt player; a 1.5
+// record (without them) leaves them at their defaults
+TEST(CookedScene, SceneSettingsKeepPhysicsWorld) {
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    scene->setPhysics2DSubSteps(8);
+    scene->setPhysics2DPointsPerMeter(100.0f);
+    scene->setPhysics2DMaxRotation(Angle::degToDefault(360.0f));
+    scene->setPhysics2DBounceThreshold(5.0f);
+    scene->setPhysics2DWarmStarting(false);
+    scene->setPhysics3DVelocityIterations(4);
+    scene->setPhysics3DCollisionSteps(2);
+    scene->setPhysics3DSpeculativeDistance(0.05f);
+
+    DecodedScene player;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {}, player, error)) << error;
+    const Scene& loaded = *player.scene->scene;
+    EXPECT_EQ(loaded.getPhysics2DSubSteps(), 8);
+    EXPECT_TRUE(loaded.getPhysics2DWorldSettings() == scene->getPhysics2DWorldSettings());
+    EXPECT_TRUE(loaded.getPhysics3DWorldSettings() == scene->getPhysics3DWorldSettings());
+    EXPECT_FLOAT_EQ(loaded.getPhysics2DPointsPerMeter(), 100.0f);
+    EXPECT_EQ(loaded.getPhysics3DCollisionSteps(), 2);
+
+    // the 1.5 record: the same bytes without the physics world tail
+    jasperengine::cook::StringTable strings;
+    jasperengine::cook::Writer w(strings, [](Entity e) { return static_cast<uint32_t>(e); });
+    jasperengine::cook::writeSceneSettings(w, *scene);
+    const std::vector<uint8_t>& bytes = w.data();
+    DecodedScene older = emptyScene();
+    jasperengine::cook::Reader r15(std::span<const uint8_t>(bytes.data(), bytes.size() - physicsWorldTailBytes(*scene) - canvasScalerTailBytes(*scene)),
+                                   strings.strings(), [](uint32_t id) { return static_cast<Entity>(id); });
+    jasperengine::cook::readSceneSettings(r15, *older.scene->scene);
+    ASSERT_FALSE(r15.failed()) << r15.error();
+    const SceneSettings defaults;
+    EXPECT_EQ(older.scene->scene->getPhysics2DSubSteps(), defaults.physics2DSubSteps);
+    EXPECT_TRUE(older.scene->scene->getPhysics2DWorldSettings() == defaults.physics2DWorld);
+    EXPECT_TRUE(older.scene->scene->getPhysics3DWorldSettings() == defaults.physics3DWorld);
+}
+
+// S98 D1: the scene's own Canvas Scaler survives a cook (format 1.7, after S96's physics world), as
+// a Compile build's generated scene code set it; a 1.6 record leaves the project's
+TEST(CookedScene, SceneSettingsKeepCanvasScaler) {
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
     CanvasScalerSettings scaler;
@@ -729,13 +932,11 @@ TEST(CookedScene, SceneSettingsKeepCanvasScalerAndSubSteps) {
     scene->setCanvasScaler(scaler);
     scene->setCanvasScalerUseProjectDefault(false);
     scene->setPhysics2DSubSteps(9);
-    scene->setWaterWakeArea(32.0f);
 
     jasperengine::cook::StringTable strings;
     jasperengine::cook::Writer w(strings, [](Entity e) { return static_cast<uint32_t>(e); });
     jasperengine::cook::writeSceneSettings(w, *scene);
     const std::vector<uint8_t>& bytes = w.data();
-    auto entityOf = [](uint32_t id) { return static_cast<Entity>(id); };
 
     // the Compile and prebuilt builds' path: the whole scene cooked and loaded by CookedSceneLoader
     DecodedScene player;
@@ -746,22 +947,22 @@ TEST(CookedScene, SceneSettingsKeepCanvasScalerAndSubSteps) {
     EXPECT_EQ(got.getCanvasScaler(), scaler);
     EXPECT_EQ(got.getPhysics2DSubSteps(), 9);
 
-    // the 1.5 record: the same bytes without them; the wakes still read
+    // the 1.6 record: the same bytes without it; the physics world still reads
     DecodedScene older = emptyScene();
-    jasperengine::cook::Reader r15(std::span<const uint8_t>(bytes.data(), bytes.size() - canvasScalerTailBytes(*scene)), strings.strings(), entityOf);
-    jasperengine::cook::readSceneSettings(r15, *older.scene->scene);
-    ASSERT_FALSE(r15.failed()) << r15.error();
+    jasperengine::cook::Reader r16(std::span<const uint8_t>(bytes.data(), bytes.size() - canvasScalerTailBytes(*scene)), strings.strings(),
+                                   [](uint32_t id) { return static_cast<Entity>(id); });
+    jasperengine::cook::readSceneSettings(r16, *older.scene->scene);
+    ASSERT_FALSE(r16.failed()) << r16.error();
     const SceneSettings defaults;
     const Scene& old = *older.scene->scene;
-    EXPECT_FLOAT_EQ(old.getWaterWakeArea(), 32.0f);
+    EXPECT_EQ(old.getPhysics2DSubSteps(), 9);
     EXPECT_EQ(old.isCanvasScalerUseProjectDefault(), defaults.canvasScalerUseProjectDefault);
     EXPECT_EQ(old.getCanvasScaler(), defaults.canvasScaler);
-    EXPECT_EQ(old.getPhysics2DSubSteps(), defaults.physics2DSubSteps);
 }
 
 // A newer minor adds only length-prefixed fields: a player reads its content without them and warns
 // once; another major is refused, naming the fix
-// S98 F1 (format 1.6): a mesh showing a .mesh asset ships the reference, not the buffers, and the
+// S98 F1 (format 1.7): a mesh showing a .mesh asset ships the reference, not the buffers, and the
 // game's MeshSystem reads the shipped file; a mesh of its own still ships its buffers
 TEST(CookedScene, MeshAssetShipsTheReferenceNotTheBuffers) {
     const fs::path dir = fs::temp_directory_path() / ("je-cooked-mesh-" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()));
@@ -853,7 +1054,7 @@ namespace {
     // A 1.7 scene cooked with no VATs, masks, controllers or bitmap fonts as a 1.6 editor laid it
     // out: the settings record (the first) without its 1.7 values (settingsTail bytes:
     // canvasScalerTailBytes), the resources record (the fourth) without those four empty lists
-    // that end it (the hierarchy record after it, which a 1.6 reader skips, stays)
+    // that end it (the hierarchy record after it is 1.6's)
     std::vector<uint8_t> asMinor6(std::vector<uint8_t> bytes, size_t settingsTail) {
         using namespace jasperengine::cook;
         cutRecordTail(bytes, HEADER_BYTES, static_cast<uint32_t>(settingsTail));
@@ -870,19 +1071,20 @@ namespace {
 
 }
 
-// What a 1.4 editor cooked loads: the file as its writer laid it out (1.5's without the Water Wakes
-// values that end the settings record, the record's length and the string table offset with them)
+// What a 1.4 editor cooked loads: the file as its writer laid it out (1.6's without the Water Wakes
+// and physics world values that end the settings record, the record's length and the string table
+// offset with them)
 TEST(CookedScene, ReadsAnOlderMinorsContent) {
     using namespace jasperengine::cook;
-    // 1.6 (a Mesh Renderer's .mesh asset) is a field of the mesh's table: the settings record is 1.5's
-    ASSERT_EQ(FORMAT_MINOR, 7) << "the 1.4 layout below is 1.7's without its Water Wakes values and 1.7's additions (asMinor6): cut the newer minor's values too";
+    ASSERT_EQ(FORMAT_MINOR, 7) << "the 1.4 layout below is 1.7's without its Water Wakes and physics world values and 1.7's additions (asMinor6): "
+                                  "cut the newer minor's values too";
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
     scene->setPlanarReflectionFarClip(60.0f);
     scene->setWaterWakeResolution(WaterWakeResolution::HIGH);
     scene->setWaterWakeArea(32.0f);
     const std::vector<uint8_t> bytes = asMinor6(editor::cook::SceneCooker::cookScene(scene, 4242, {}, NULL_ENTITY, SceneResources{}), canvasScalerTailBytes(*scene));
-    const size_t cut = waterWakeTailBytes(*scene);
+    const size_t cut = waterWakeTailBytes(*scene) + physicsWorldTailBytes(*scene);
     const uint32_t settingsLength = readLe32(bytes.data() + HEADER_BYTES);
     ASSERT_GT(settingsLength, cut);
 
