@@ -69,8 +69,8 @@ class ImageAction(unittest.TestCase):
         self.tmp.cleanup()
 
     def run_script(self, target: str, registry: list[str], local: list[str] | None = None,
-                   flaky: bool = False) -> tuple[subprocess.CompletedProcess, list[str]]:
-        env = {
+                   flaky: bool = False, extra: dict[str, str] | None = None) -> tuple[subprocess.CompletedProcess, list[str]]:
+        env = {**(extra or {}),
             "PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}",
             "FAKE_LOG": str(self.log),
             "FAKE_REGISTRY": " ".join(registry),
@@ -97,6 +97,19 @@ class ImageAction(unittest.TestCase):
         self.assertIn(f"JASPER_DOCKER_IMAGE={ref('linux')}", self.env_file.read_text())
         self.assertIn(f"JASPER_IMAGE_LINUX={ref('linux')}", self.env_file.read_text())
         self.assertIn(f"tag={tag('linux')}", self.output_file.read_text())
+
+    def test_an_overflow_runner_notes_the_image_for_its_prune(self) -> None:
+        # (tools/ci/self-hosted/job-completed.sh prunes only what this ledger names)
+        ledger = self.log.parent / "tool" / "je-ci-images.txt"
+        ledger.parent.mkdir()
+        for environment, noted in (("github-hosted", False), ("self-hosted", True)):
+            result, _ = self.run_script("linux", registry=[ref("linux")],
+                                        extra={"RUNNER_ENVIRONMENT": environment, "RUNNER_TOOL_CACHE": str(ledger.parent)})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(ledger.exists(), noted, environment)
+        ref_, when = ledger.read_text().split()
+        self.assertEqual(ref_, ref("linux"))
+        self.assertTrue(when.isdigit())
 
     def test_a_loaded_image_is_neither_pulled_nor_built(self) -> None:
         result, calls = self.run_script("web", registry=[], local=[ref("web")])

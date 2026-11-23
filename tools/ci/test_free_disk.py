@@ -51,12 +51,14 @@ class FreeDisk(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def run_script(self, avail: int, need: str | None, after: int | None = None) -> tuple[subprocess.CompletedProcess, list[str]]:
+    def run_script(self, avail: int, need: str | None, after: int | None = None,
+                   environment: str = "github-hosted") -> tuple[subprocess.CompletedProcess, list[str]]:
         env = {
             "PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}",
             "FAKE_LOG": str(self.log),
             "FAKE_AVAIL_GB": str(avail),
             "RUNNER_OS": "Linux",
+            "RUNNER_ENVIRONMENT": environment,
         }
         if need is not None:
             env["NEED"] = need
@@ -88,6 +90,16 @@ class FreeDisk(unittest.TestCase):
         self.assertIn("sudo rm -rf /usr/share/dotnet", removed)
         self.assertIn("docker image prune --all --force", removed)
         self.assertNotIn("::warning::", result.stdout)
+
+    def test_a_self_hosted_runner_is_never_touched(self) -> None:
+        # an overflow runner is a person's machine (docs/testing.md "Overflow runners")
+        for need in ("60", None):
+            result, calls = self.run_script(avail=5, need=need, environment="self-hosted")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(self.removals(calls), [])
+            self.assertIn("self-hosted runner: nothing removed", result.stdout)
+        action = (SCRIPT.parent / "action.yml").read_text()
+        self.assertIn("runner.environment != 'self-hosted'", action)
 
     def test_still_short_after_removal_warns(self) -> None:
         result, _ = self.run_script(avail=20, need="100", after=80)
