@@ -2320,3 +2320,12 @@ rest of S82 lands in 6B.
     of stale outputs) are `TitleArtBakeJob`s stepped from the frames, as `export_title`'s and Auto
     Bake's were: on the main thread in one call they never saw a delayed program built (their red
     runs hung the editor; the glyph prebake's waited 60 s and shipped no atlas).
+62. **Implementation: the node cache gives way to a render's targets.** The cache's results are
+    targets lent from the renderer's pool, kept across renders up to its 128 MB, and the pool's
+    limit freed only idle targets before it failed. The title library gate's eighth part (104
+    template renders in one editor) so failed `metal_range` with `out_of_target_memory` for 1 to
+    4 MB while about 120 MB of earlier results stayed cached (an instrumented run: 516 MB lent at
+    the failure, 120 MB of it in the cache, a preview's render and the check's own render the rest).
+    Now an acquire the limit refuses has the pool's reclaim hook drop the cache's least recently
+    used entries (a target a job still holds stays the job's) before it fails. Test:
+    `TitleTargetPoolTest.TheNodeCacheGivesWayBeforeAnAcquireFails`.

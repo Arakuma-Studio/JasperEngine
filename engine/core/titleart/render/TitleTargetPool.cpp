@@ -157,7 +157,9 @@ TargetRef TitleTargetPool::acquire(const TargetKey& key, std::string* error) {
         counters.reuses++;
     } else {
         const size_t bytes = allocator.bytes(key);
-        const bool fits = bytes <= limit && evictIdleFor(bytes);
+        bool fits = bytes <= limit && evictIdleFor(bytes);
+        // what the holders can give back (results cached across renders) becomes idle, then goes
+        while (!fits && bytes <= limit && reclaim && reclaim()) fits = evictIdleFor(bytes);
         if (!fits) {
             counters.failures++;
             if (error) *error = "out_of_target_memory: " + std::to_string(key.width) + " x " + std::to_string(key.height) +
