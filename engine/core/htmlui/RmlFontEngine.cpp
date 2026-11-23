@@ -175,6 +175,9 @@ bool RmlFontEngine::registerLoaded(const std::shared_ptr<FontFace>& face, const 
     }
 
     FontRegistry::registerFace(face, family, weight, italic, fallback);
+    // the family's newest face wins, as a bitmap face registered after a vector one does: a bitmap
+    // registration of the name (an earlier document's) would otherwise lead the family's text
+    dropBitmapFamily(family.empty() ? face->getFamilyName() : family);
     retireHandles();
     return true;
 }
