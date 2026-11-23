@@ -577,4 +577,8 @@ handler checks; error names the fix).
   the SaveGame namespace `dialogue` (through `SaveGame.write`/`read`, so migrations, callbacks and
   errors are SaveGame's); C++ has `dialogue::SaveHooks::save/load`. `fromTable` now refuses a table
   with neither `variables` nor `visits`, so loading another namespace cannot empty the store.
-
+- **D-17 run_dialogue's explore sentence (R29).** `run_dialogue`'s description no longer says what
+  `explore: true` reports: `guard_dialogue_run_explore`, sharpened to ask for lines nobody sees with
+  `validate_graph` and `get_graph` in reach, passed 4/4 without the sentence (the parameter's name
+  decides), so R29's "fail with the new text removed" cannot hold and AGENTS.md cuts the text. The
+  case stays as a guard; `docs/dialogue.md` still documents `explore`.

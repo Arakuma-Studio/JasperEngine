@@ -2093,8 +2093,8 @@ void registerHtmlUiTools(McpRegistry& registry) {
             "outlined in an image. Checks {type, selector}: exists, count and selected "
             "(count|min|max), visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), "
             "within_parent (container), within_viewport, contrast (min_ratio, background under a "
-            "transparent UI), min_size (width, height), virtual_window (max rows), tooltip (text). viewports, "
-            "languages: more layouts. 0 matches fail.";
+            "transparent UI), min_size (width, height), virtual_window (max rows), tooltip (text). viewports: "
+            "more layouts. 0 matches fail.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("UI Document (default: the only one).")},

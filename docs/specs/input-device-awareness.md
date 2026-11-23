@@ -509,3 +509,7 @@ Each red control is recorded by running the test on the base commit first; the P
   prebuilt iOS player, `tools/ci/ios_packaging.sh`); the indirect-pointer tagging did not: the
   simulator turns the Mac's pointer into touches and `simctl` sends no trackpad pointer, so it still
   needs a device.
+- **R27 tool text.** `get_input_state`'s description no longer mentions the input scheme: its eval
+  case `guard_input_scheme_read`, sharpened so the Game view's forced `input_scheme` is in reach and
+  the prompt names no tool, passed 4/4 without the sentence (the tool's name and its `scheme` field
+  decide), and AGENTS.md cuts MCP text no case needs. The `scheme` field and `changes` stay.

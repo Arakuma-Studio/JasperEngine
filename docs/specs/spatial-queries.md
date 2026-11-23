@@ -627,3 +627,8 @@ core tests already build scenes with physics, `PhysicsRayThreadsTest.cpp:27-30`)
   0.0059-0.0066 ms; overlapBox 0.0064-0.0066, overlapSphere 0.0049-0.0057, every budget of the
   bench within its limit. Passing the query's sphere to the walk was measured and left out: its
   cube-against-sphere cull dropped one tree in eleven for a wider API.
+- **R25, AC19: no hint for a trigger left out.** The `next` for zero hits with only triggers inside
+  (`pass triggers: collide`) is cut: the eval case `guard_physics_query_triggers`, with a prompt that
+  no longer mentions triggers, passed 4/4 without it (agents pass `triggers: collide` for a pickup on
+  their first query), and AGENTS.md cuts MCP text no case needs. The layer-mask hint stays;
+  `test_query_physics_hints` now checks that the trigger case has no `next`.

@@ -353,14 +353,12 @@ void queryPhysicsTool(const CallPtr& call) {
         physics::queryOverlap(scene, shape, open, inside);
         std::set<Entity> masked;
         std::set<int> layers;
-        bool allTriggers = !inside.empty();
         for (const OverlapHit& hit : inside) {
             const int layer = scene->getEntityLayer(hit.body);
             if (!((options.layerMask >> (layer & 31)) & 1u)) {
                 masked.insert(hit.body);
                 layers.insert(layer);
             }
-            allTriggers = allTriggers && hit.trigger;
         }
         if (!masked.empty()) {
             std::string names;
@@ -369,8 +367,6 @@ void queryPhysicsTool(const CallPtr& call) {
                 names += (names.empty() ? "" : ", ") + (name.empty() ? std::to_string(layer) : name);
             }
             next = "no hits: layer_mask excludes " + std::to_string(masked.size()) + " bodies inside the shape (layers: " + names + ").";
-        } else if (allTriggers) {
-            next = "no hits: only triggers are inside the shape and triggers are skipped; pass triggers: collide to report them.";
         }
     }
     if (!next.empty()) result["next"] = next;

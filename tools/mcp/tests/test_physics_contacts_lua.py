@@ -164,7 +164,8 @@ async def test_query_physics_hints(ed: Editor):
         ed.check("layer_mask excludes 1 bodies" in masked.get("next", "") and "8" in masked.get("next", ""),
                  f"the next hint names the layer: {masked}")
         only_trigger = await ed.call("query_physics", shape={"type": "sphere", "radius": 0.5}, origin=[0, 0, 3], triggers="ignore")
-        ed.check(only_trigger["count"] == 0 and "triggers: collide" in only_trigger.get("next", ""), f"{only_trigger}")
+        # no hint for a trigger left out: agents pass triggers: collide for a pickup unasked (eval guard_physics_query_triggers)
+        ed.check(only_trigger["count"] == 0 and "next" not in only_trigger, f"{only_trigger}")
         found = await ed.call("query_physics", shape={"type": "sphere", "radius": 0.5}, origin=[0, 0, 3], triggers="collide")
         ed.check_eq(paths(found), ["Pickup"], f"{found}")
     finally:

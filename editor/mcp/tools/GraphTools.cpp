@@ -711,8 +711,7 @@ void registerGraphTools(McpRegistry& registry) {
         tool.group = "graphs";
         tool.description =
             "Play a .dialogue: path walks it headless (no Play; handler calls never run, unlisted conditions are false and reported), "
-            "picking choices in order at each menu; explore: true walks every path and reports endings, no-exit loops and lines never "
-            "shown. entity drives a Dialogue Runner in Play with the real handlers.";
+            "picking choices in order at each menu. entity drives a Dialogue Runner in Play with the real handlers.";
         tool.inputSchema = object({
             {"path", assetPath("A .dialogue.")},
             {"entity", entityRef()},
