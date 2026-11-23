@@ -673,8 +673,12 @@ TEST_F(DebugOverlayTest, RowWindowThrottleAndTheBuffer){
     DebugOverlay::update(0.0);
     const double addMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     printf("[debug overlay] rebuild of 500 rows with its layout: %.2f ms, a line added: %.2f ms\n", rebuildMs, addMs);
+    // (a sanitizer's build is a Debug build under its instrumentation: the budget says nothing
+    // there, docs/testing.md; every other build holds it)
+#if !defined(JASPERENGINE_SANITIZE_ADDRESS) && !defined(JASPERENGINE_SANITIZE_THREAD) && !defined(JASPERENGINE_SANITIZE_UNDEFINED)
     EXPECT_LT(rebuildMs, 5.0);
     EXPECT_LT(addMs, 5.0);
+#endif
     click("filter-warn");
     click("collapse");
 
@@ -1130,7 +1134,10 @@ TEST_F(DebugOverlayTest, CollapsedFullBufferLineCost){
         total += ms;
     }
     printf("[debug overlay] collapsed, 100,000 rows: a line %.3f ms (worst %.3f ms) with its layout\n", total / lines, worst);
+    // (under a sanitizer the budget says nothing, as above)
+#if !defined(JASPERENGINE_SANITIZE_ADDRESS) && !defined(JASPERENGINE_SANITIZE_THREAD) && !defined(JASPERENGINE_SANITIZE_UNDEFINED)
     EXPECT_LT(total / lines, 0.5);
+#endif
     EXPECT_EQ(rows(), 100000);
     EXPECT_NE(shownRowText(-1).find("more 49"), std::string::npos) << shownRowText(-1);
 }
