@@ -1662,10 +1662,12 @@ bool UISystem::handleInputFieldCharInput(InputFieldComponent& inputfield, TextCo
             : 0;
 
         if (text.maxTextSize > 0 && currentCount - selectionSize + insertCount > text.maxTextSize){
+            keyboardResyncPending = System::instance().keepsVirtualKeyboardText();
             return true;
         }
         // Character Limit: typing and pasting stop there (pasted text arrives a character at a time)
         if (inputfield.characterLimit > 0 && currentCount - selectionSize + insertCount > static_cast<size_t>(inputfield.characterLimit)){
+            keyboardResyncPending = System::instance().keepsVirtualKeyboardText();
             return true;
         }
 
@@ -2965,8 +2967,23 @@ void UISystem::calculateUIAABB(UIComponent& ui){
     ui.needUpdateAABB = true;
 }
 
+void UISystem::flushKeyboardResync(){
+    const Entity entity = keyboardResyncField;
+    keyboardResyncField = NULL_ENTITY;
+    const InputFieldComponent* inputfield = scene->findComponent<InputFieldComponent>(entity);
+    const UIComponent* ui = scene->findComponent<UIComponent>(entity);
+    const TextComponent* text = inputfield ? scene->findComponent<TextComponent>(inputfield->text) : nullptr;
+    if (!text || !ui || !ui->focused || !System::instance().keepsVirtualKeyboardText())
+        return;
+    bool hadInvalid = false;
+    const std::wstring wide = StringUtils::utf8ToWString(text->text, hadInvalid);
+    System::instance().updateVirtualKeyboardText(wide, inputfield->cursorIndex, inputfield->cursorIndex);
+}
+
 void UISystem::update(double dt){
     pendingImages = false;
+    if (keyboardResyncField != NULL_ENTITY)
+        flushKeyboardResync();
 
     syncCanvasGroups();
 
@@ -3662,6 +3679,10 @@ bool UISystem::eventOnCharInput(char32_t codepoint){
             if (ui.focused && isUIActive(entity, signature) && isInteractable(entity)){
                 TextComponent* text = scene->findComponent<TextComponent>(inputfield.text);
                 if (text && handleInputFieldCharInput(inputfield, *text, ui, codepoint)){
+                    if (keyboardResyncPending){
+                        keyboardResyncPending = false;
+                        keyboardResyncField = entity;
+                    }
                     return true;
                 }
             }

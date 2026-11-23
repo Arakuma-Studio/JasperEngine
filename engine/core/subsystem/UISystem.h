@@ -258,6 +258,11 @@ namespace jasperengine{
         void updateInputField(Entity entity, InputFieldComponent& inputfield, ImageComponent& img, UIComponent& ui, RectTransformComponent& layout);
         void blinkCursorInputField(double dt, InputFieldComponent& inputfield, UIComponent& ui);
         bool handleInputFieldCharInput(InputFieldComponent& inputfield, TextComponent& text, UIComponent& ui, char32_t codepoint);
+        // a focused InputField refused typed characters (Character Limit) a keyboard that keeps its
+        // text (Android) holds: the field's text goes back to it at the next update, once
+        Entity keyboardResyncField = NULL_ENTITY;
+        bool keyboardResyncPending = false;
+        void flushKeyboardResync();
         bool handleInputFieldKeyDown(InputFieldComponent& inputfield, TextComponent& text, UIComponent& ui, int key, bool repeat, int mods);
         void setInputFieldCursorFromLocalX(InputFieldComponent& inputfield, TextComponent& text, ImageComponent& img, float localX, bool extendSelection);
         bool inputFieldHasSelection(const InputFieldComponent& inputfield) const;
