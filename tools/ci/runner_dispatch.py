@@ -190,13 +190,25 @@ def lost(jobs: list[dict], annotations) -> str:
 
 class Watchdog:
     """The actions on routed runs: cancel, then rerun (or, a merge-queue run, put its pull request back
-    in the queue). memory: the state directory's record (acted runs, action times)."""
+    at the front of the queue). Two kinds: "lost" (its overflow runner went away: the rerun is in the
+    state's hosted_only, so it plans on GitHub's runners) and "idle" (it waits for a hosted runner while
+    an overflow runner of its OS is idle: the rerun plans again). Each kind at most once a run, and no
+    "idle" after a "lost": never a loop. memory: the state directory's record (acted runs, action times)."""
 
     def __init__(self, gh, memory: dict, now: float, log, dry_run: bool = False):
         self.gh, self.memory, self.now, self.log, self.dry_run = gh, memory, now, log, dry_run
         memory.setdefault("acted", {})
         memory["actions"] = [t for t in memory.get("actions", []) if now - t < 3600]
         memory["acted"] = {k: v for k, v in memory["acted"].items() if now - v.get("t", now) < 7 * 86400}
+
+    def kinds(self, key: str) -> list[str]:
+        seen = self.memory["acted"].get(key)
+        return list(seen.get("kinds", ["lost"])) if seen else []
+
+    def held(self) -> list[str]:
+        """The runs moved off a runner that went away in the last day: their reruns plan hosted only."""
+        return sorted(k for k, v in self.memory["acted"].items() if "lost" in v.get("kinds", ["lost"])
+                      and self.now - v.get("t", 0) < 86400)
 
     def allowed(self) -> bool:
         return len(self.memory["actions"]) < MAX_ACTIONS
@@ -211,45 +223,92 @@ class Watchdog:
         self.memory["actions"].append(self.now)
         return ok
 
-    def handle(self, run: dict, why: str, finished: bool) -> None:
-        """A run stuck on (or failed by) a runner that went away: cancel it, or rerun it once finished."""
+    def record(self, key: str, stage: str, why: str, kinds: list[str]) -> None:
+        self.memory["acted"][key] = {"t": self.now, "stage": stage, "why": why, "kinds": kinds}
+
+    def handle(self, run: dict, why: str, finished: bool, kind: str = "lost") -> bool:
+        """Cancel a run (kind: why), or rerun it once finished. True when it acted."""
         key = str(run["id"])
         seen = self.memory["acted"].get(key)
-        if seen and seen.get("stage") != "cancelled":
-            return  # one action per run, ever: never a loop
+        kinds = self.kinds(key)
+        if seen and seen.get("stage") == "cancelled":
+            return False  # stopping: finish() reruns it
+        if kind in kinds or (kind == "idle" and "lost" in kinds):
+            return False
         if not self.allowed():
             if not self.memory.get("limited") or self.now - self.memory["limited"] > 3600:
                 self.log(f"rate limit ({MAX_ACTIONS} actions an hour): run {run['id']} left: {why}")
                 self.memory["limited"] = self.now
-            return
+            return False
         if not finished:
-            if not seen and self.act("cancel", run, why, lambda: self.gh.cancel(run["id"])):
-                self.memory["acted"][key] = {"t": self.now, "stage": "cancelled", "why": why}
-            return
+            if self.act("cancel", run, why, lambda: self.gh.cancel(run["id"])):
+                self.record(key, "cancelled", why, kinds + [kind])
+                return True
+            return False
+        self.record(key, "finishing", why, kinds + [kind])
         self.finish(run, why)
+        return True
 
     def finish(self, run: dict, why: str) -> None:
         key = str(run["id"])
+        kinds = self.kinds(key)
         if run.get("event") == "merge_group":
             m = QUEUE_REF.match(run.get("head_branch") or "")
-            if m and self.act("re-enqueue the pull request of", run, f"#{m.group(1)} back in the merge queue: {why}",
+            if m and self.act("re-enqueue the pull request of", run, f"#{m.group(1)} back at the front of the merge queue: {why}",
                               lambda: self.gh.enqueue(int(m.group(1)))):
-                self.memory["acted"][key] = {"t": self.now, "stage": "requeued", "why": why}
+                self.record(key, "requeued", why, kinds)
             elif not m:
                 self.log(f"run {run['id']}: a merge-queue run without a pull request in {run.get('head_branch')}: left")
-                self.memory["acted"][key] = {"t": self.now, "stage": "left", "why": why}
+                self.record(key, "left", why, kinds)
             return
         # (a pull request's newer push has a run of its own: a rerun of this one would cancel it)
         newest = self.gh.newest_run(run) if run.get("event") == "pull_request" else run["id"]
         if newest != run["id"]:
             self.log(f"run {run['id']}: superseded by run {newest} of {run.get('head_branch')}: not rerun ({why})")
-            self.memory["acted"][key] = {"t": self.now, "stage": "left", "why": why}
+            self.record(key, "left", why, kinds)
         elif self.act("rerun", run, why, lambda: self.gh.rerun(run["id"])):
-            self.memory["acted"][key] = {"t": self.now, "stage": "rerun", "why": why}
+            self.record(key, "rerun", why, kinds)
 
     def pending(self) -> list[str]:
         """Runs it cancelled and has not rerun yet."""
         return [k for k, v in self.memory["acted"].items() if v.get("stage") == "cancelled"]
+
+
+IDLE_REROUTE_WAIT = 900     # a hosted-label job queued this long (s) while an overflow runner of its OS is idle
+
+
+def trusted_run(run: dict) -> bool:
+    """A run an overflow runner may take (as plan_lanes.trusted): never a fork's pull request."""
+    if run.get("event") in ("push", "merge_group", "workflow_dispatch"):
+        return True
+    head = (run.get("head_repository") or {}).get("full_name")
+    return run.get("event") == "pull_request" and bool(head) and head == (run.get("repository") or {}).get("full_name")
+
+
+def job_key(name: str) -> str:
+    """plan_lanes' name of a job ("windows (engine-d3d11)": windows-engine-d3d11)."""
+    m = re.fullmatch(r"([a-z0-9-]+) \(([^)]+)\)", name or "")
+    return f"{m.group(1)}-{m.group(2)}" if m else (name or "")
+
+
+def waiting_for_idle(run: dict, jobs: list[dict], runners: dict, disabled: str, now: float, taken: set[str]) -> tuple[str, str]:
+    """(why, label) when a trusted run's job has waited IDLE_REROUTE_WAIT for a hosted runner while an
+    overflow runner that would take it (OVERFLOW) is online, idle and fit; else ("", "")."""
+    if not trusted_run(run):
+        return "", ""
+    off = set(disabled.replace(",", " ").split())
+    for label, (os_, order) in OVERFLOW.items():
+        r = runners.get(label) or {}
+        if label in taken or label in off or "all" in off or not (r.get("online") and not r.get("busy") and r.get("fit", True)):
+            continue
+        for job in jobs:
+            job_os, overflow = os_of(job.get("labels") or [])
+            if overflow or job_os != os_ or job.get("status") != "queued" or job_key(job.get("name")) not in order:
+                continue
+            waited = now - (epoch(job.get("created_at")) or now)
+            if waited >= IDLE_REROUTE_WAIT:
+                return f"{job.get('name')} waited {waited / 60:.0f} min for a hosted {os_} runner while {label} is idle", label
+    return "", ""
 
 
 # ---------------------------------------------------------------------------------------- GitHub
@@ -328,7 +387,18 @@ class Gh:
         return self._cli("run", "rerun", str(run_id))
 
     def enqueue(self, pr: int) -> bool:
-        return self._cli("pr", "merge", str(pr), "--merge", "--auto")
+        """Back in the merge queue, at its front (it was building there when the watchdog stopped it)."""
+        self.calls += 2
+        owner, name = self.repo.split("/")
+        q = subprocess.run(["gh", "api", "graphql", "-f", "query=query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n)"
+                            "{pullRequest(number:$p){id}}}", "-F", f"o={owner}", "-F", f"n={name}", "-F", f"p={pr}",
+                            "--jq", ".data.repository.pullRequest.id"], capture_output=True, text=True, timeout=60)
+        if q.returncode != 0 or not q.stdout.strip():
+            return False
+        r = subprocess.run(["gh", "api", "graphql", "-f", "query=mutation($id:ID!){enqueuePullRequest(input:{pullRequestId:$id,"
+                            "jump:true}){mergeQueueEntry{position}}}", "-F", f"id={q.stdout.strip()}"],
+                           capture_output=True, text=True, timeout=60)
+        return r.returncode == 0
 
 
 def cached_jobs(gh, run: dict, cache: dict) -> list[dict]:
@@ -390,6 +460,9 @@ def main(argv: list[str]) -> int:
     with ThreadPoolExecutor(4) as pool:
         probes = dict(zip(labels, pool.map(lambda label: probe(label, hosts[label]), labels)))
     state = compute_state(runners, [j for js in jobs.values() for j in js], probes, now)
+    dog = Watchdog(gh, memory, now, log, args.dry_run)
+    # the reruns of runs moved off a runner that went away plan on GitHub's runners (plan_lanes.route)
+    state["hosted_only"] = dog.held()
     body = json.dumps(state, separators=(",", ":"), sort_keys=True)
     if args.dry_run:
         print(f"{STATE_BRANCH}: {body}")
@@ -400,8 +473,10 @@ def main(argv: list[str]) -> int:
             log(f"the state was not published to {STATE_BRANCH}: {e}")
 
     # the planner's runner: written only when it changes
+    disabled = ""
     try:
-        want = planner(state, gh.variable("SELF_HOSTED_DISABLED"))
+        disabled = gh.variable("SELF_HOSTED_DISABLED")
+        want = planner(state, disabled)
         if want != memory.get("planner", "") or not memory.get("planner_set"):
             if args.dry_run:
                 print(f"{PLANNER_VARIABLE}={want}")
@@ -418,7 +493,6 @@ def main(argv: list[str]) -> int:
             offline_since.pop(label, None)
         else:
             offline_since.setdefault(label, now)
-    dog = Watchdog(gh, memory, now, log, args.dry_run)
     # a finished job's annotations do not change: each is read once
     notes = {k: v for k, v in memory.get("annotations", {}).items() if now - v["t"] < LOOKBACK}
 
@@ -437,6 +511,13 @@ def main(argv: list[str]) -> int:
             continue
         if why:
             dog.handle(run, why, finished=False)
+    # a trusted run waiting for a hosted runner while an overflow runner of its OS is idle: rerun, so its
+    # plan routes it there (the merge queue's first: it is the gate). One run per idle runner a minute
+    taken: set[str] = set()
+    for rid, run in sorted(active.items(), key=lambda kv: (kv[1].get("event") != "merge_group", kv[1].get("created_at", ""))):
+        why, label = waiting_for_idle(run, jobs[rid], state["runners"], disabled, now, taken)
+        if why and dog.handle(run, why, finished=False, kind="idle"):
+            taken.add(label)
     for key in dog.pending():
         try:
             run = active.get(int(key)) or gh.run(key)
