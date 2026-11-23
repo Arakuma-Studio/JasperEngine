@@ -399,7 +399,8 @@ editor::Project::~Project(){
     shaderListWrite.wait();
     // its scenes and their renders are its own: they go with it while the engine runs (the unit
     // tests' Projects). One destroyed after Engine::systemShutdown, the editor's (a static App's,
-    // after the engine's own statics) or a CLI command's, leaves them to the process exit
+    // after the engine's own statics), leaves them to the process exit; a CLI command releases
+    // them before its engine guard shuts the engine down
     if (jobs::hasSystem() && !jobs::system().isShuttingDown()){
         deleteScenes();
     }

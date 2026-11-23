@@ -62,6 +62,9 @@ namespace {
 
 TEST(VcsBench, StatusPollOfATenThousandFileRepository) {
     VcsSandbox box;
+    // this test took 94 s on a Windows VM alone, and its `git add` of 10,000 files passed 60 s beside
+    // other suites: the setup is not what the bench measures
+    box.processTimeoutMs = 10 * 60 * 1000;
     const fs::path repo = box.path("big");
     fs::create_directories(repo);
     box.gitOk(repo, {"init", "-q"});
