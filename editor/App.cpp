@@ -1904,7 +1904,7 @@ void editor::App::showFooter(){
                  frameStats.drawCalls, (unsigned long long)frameStats.triangles);
         indicators.emplace_back(statText, textCol);
 
-        // S92 R16: the running MCP jobs that have an estimate (record_game, build_project...): their
+        // S99 R16: the running MCP jobs that have an estimate (record_game, build_project...): their
         // progress, or the share of the estimate elapsed, and the time left
         struct JobBar {
             float share = 0.0f;
@@ -6187,7 +6187,7 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      (BLIT 'Gli' 20) and the screen transition program.
     // v65: S50's tilemap tiles (after S48's v64): MESH 'Tcl' 54 (TILE_CLAMP_FRAME: includes/base_color_fs.glsl, the UV
     //      clamp inside the instance's frame; the vertex stages' v_tileFrame).
-    // v66: S92's Area Lights and IES Profiles: the built-in Lit's USE_AREA_LIGHTS ('Ar') and USE_IES
+    // v66: S99's Area Lights and IES Profiles: the built-in Lit's USE_AREA_LIGHTS ('Ar') and USE_IES
     //      ('Ie') defines (includes/area_lights.glsl, u_lightProfiles in includes/lights.glsl).
     return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v66";
 }

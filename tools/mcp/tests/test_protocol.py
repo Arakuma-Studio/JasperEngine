@@ -89,7 +89,7 @@ async def test_bad_argument_is_tool_error(ed: Editor):
     await ed.ping()
 
 
-# S92 R1-R5, AC1: each misspelled name gets the one nearest valid name, a name nothing is close to gets
+# S99 R1-R5, AC1: each misspelled name gets the one nearest valid name, a name nothing is close to gets
 # the valid ones or the call that lists them, and an internal fault gets advice and a fault id that
 # editor.log holds with the detail. (what, tool, arguments, the suggestion or None, what the text
 # must also name: the list or the call that lists it)
@@ -763,7 +763,7 @@ async def test_http_read_only_mode():
         await raw_cm.__aexit__(None, None, None)
 
 
-# -- call log (S92 R17, R18, AC5) ---------------------------------------------
+# -- call log (S99 R17, R18, AC5) ---------------------------------------------
 
 
 CALL_LOG_FIELDS = ["ts", "tool", "group", "ms", "ok", "error_kind", "result_bytes", "client"]

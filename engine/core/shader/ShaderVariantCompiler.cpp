@@ -1685,7 +1685,7 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
         taken.shadows2DOff = true;
         failure = build(taken);
     }
-    // last, without the light profiles (S92, LIGHT_PROFILES_OFF: the IES Profiles and the Area
+    // last, without the light profiles (S99, LIGHT_PROFILES_OFF: the IES Profiles and the Area
     // Lights' LTC tables): its IES lights light it with their cones, its Area Lights with the
     // representative point
     if (failure.empty() && isOverBindLimits(out) && out.getTextureIndexByName("u_lightProfiles").first >= 0) {

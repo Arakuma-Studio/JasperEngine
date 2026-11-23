@@ -102,7 +102,7 @@ namespace {
         // the water variants' 'Wex' and 'Wwk' (RenderSystem::update: the component counted, enabled or not)
         FACT_WATER_EXCLUDERS = 1u << 16,
         FACT_WATER_WAKES     = 1u << 17,
-        // S92: an Area Light, a spot or point light with an IES Profile (RenderSystem::checkLightsAndShadow)
+        // S99: an Area Light, a spot or point light with an IES Profile (RenderSystem::checkLightsAndShadow)
         FACT_AREA_LIGHTS     = 1u << 18,
         FACT_IES_PROFILES    = 1u << 19,
     };

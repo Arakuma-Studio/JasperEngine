@@ -293,7 +293,7 @@ namespace jasperengine{
 
         // the High Lit Quality's define (SceneSettings::litQuality)
         static const char* const LIT_QUALITY_DEFINE;   // USE_LIT_QUALITY
-        // S92: the scene has an Area Light / a light with an IES Profile (pixel-lit variants)
+        // S99: the scene has an Area Light / a light with an IES Profile (pixel-lit variants)
         static const char* const AREA_LIGHTS_DEFINE;   // USE_AREA_LIGHTS
         static const char* const IES_DEFINE;           // USE_IES
         // a Voxel Volume chunk (T6 R49) and its tier

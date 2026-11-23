@@ -35,7 +35,7 @@ namespace jasperengine::editor {
         int sizeMultiple = 1;           // R6: mip 0 rescaled to multiples of this
         bool uncompressed = false;
         // R6's uncompressed sprite / UI fallback: the label of the compressed choice it replaced
-        // ("" when none); a build's report lists it (S92 R14)
+        // ("" when none); a build's report lists it (S99 R14)
         std::string fallbackFrom;
         std::vector<std::string> warnings;
         // the warnings `--check` and `check` fail on (R6's uncompressed sprite / UI fallback, a

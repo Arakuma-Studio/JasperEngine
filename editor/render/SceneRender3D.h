@@ -52,7 +52,7 @@ namespace jasperengine::editor{
         float range = 0.0f;
         bool spotMaskReady = false;
         float spotMaskAspect = 1.0f;
-        // an Area Light's outline as drawn (S92 R38)
+        // an Area Light's outline as drawn (S99 R38)
         AreaLightShape areaShape{};  // (Rectangle)
         float areaHalfWidth = 0.0f;
         float areaHalfHeight = 0.0f;

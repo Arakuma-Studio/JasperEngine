@@ -76,7 +76,7 @@ void BuildReportWindow::show(){
         return;
     }
     ImGui::Text("Build Report (%s, %s): %s", report.platform.c_str(), report.method.c_str(), BuildReport::formatBytes(report.totalBytes).c_str());
-    // S92 R12: the size the Download Budget holds this build to, against the project's budget now
+    // S99 R12: the size the Download Budget holds this build to, against the project's budget now
     ModelFamily family;
     if (BuildReport::budgetFamilyOf(report.platform, family)){
         const uint64_t actual = report.budgetedBytes();

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The sun of an HDR sky (spec S92 R28, R29), found on the CPU: Extract Sun aligns the scene's main
+// The sun of an HDR sky (spec S99 R28, R29), found on the CPU: Extract Sun aligns the scene's main
 // Directional Light to it, and Remove Sun Disc (a texture import setting) clamps its disc in the
 // cook so image-based lighting does not count the sun twice. Editor-only.
 //

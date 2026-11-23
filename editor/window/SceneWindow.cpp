@@ -1697,7 +1697,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 }
             }
 
-            // Area Light size handles of a selected Area Light (S92 R38): Width, Height or Radius
+            // Area Light size handles of a selected Area Light (S99 R38): Width, Height or Radius
             if (gizmoSelected == GizmoSelected::TRANSLATE && !sceneProject->sceneRender->hasEditLayer()) {
                 std::vector<Entity> selEntities = project->getSelectedEntities(sceneId);
                 if (selEntities.size() == 1 && !io.KeyShift && sceneProject->sceneRender->areaHandleCount(selEntities[0]) > 0) {

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Spec S92 R10, R11 (build size for agents): the web download estimate counts what a browser
+// Spec S99 R10, R11 (build size for agents): the web download estimate counts what a browser
 // fetches, gzip -9 per file; the Download Budget's family per platform; W-BUILD-OVER-BUDGET's
 // message names the budget, the actual size and the three largest categories; the budget is a
 // Project Settings row stored in project.yaml (absent: off) and edited as one undo step.

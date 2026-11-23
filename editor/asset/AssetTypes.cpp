@@ -71,7 +71,7 @@ namespace {
             {{AssetType::TerrainWorld, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".terrainworld"}},
             // Title Art documents (S80) keep their GUID in their JSON; their baked PNGs are Textures
             {{AssetType::TitleArt, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".titleart"}},
-            // a light's IES Profile (S92): the file holds no GUID, its .meta does
+            // a light's IES Profile (S99): the file holds no GUID, its .meta does
             {{AssetType::IesProfile, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".ies"}},
         };
         return table;

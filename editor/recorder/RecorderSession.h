@@ -84,7 +84,7 @@ namespace jasperengine::editor::recorder {
         std::vector<std::filesystem::path> files;
         std::filesystem::path sidecar;
         double overriddenFixedFps = 0.0;  // MCP play's fixed_fps the recording replaced (0: none)
-        // S92 R14: what this recording took below what was asked: another H.264 encoder than
+        // S99 R14: what this recording took below what was asked: another H.264 encoder than
         // libx264, a size clamped (the GPU's limit, even sizes for 4:2:0), audio dropped, frames
         // recorded without waiting for what does not settle
         struct Downgrade {

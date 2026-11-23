@@ -59,7 +59,7 @@ namespace jasperengine {
         static constexpr const char* SPOT_MASKS_LEFT_OUT = "spot-masks-left-out";
         // what starts the log line of a variant built without the 2D lights' shadows (compile)
         static constexpr const char* SHADOWS_2D_LEFT_OUT = "shadows-2d-left-out";
-        // what starts the log line of a variant built without the light profiles (S92: IES Profiles
+        // what starts the log line of a variant built without the light profiles (S99: IES Profiles
         // and the Area Lights' LTC tables, compile)
         static constexpr const char* LIGHT_PROFILES_LEFT_OUT = "light-profiles-left-out";
 

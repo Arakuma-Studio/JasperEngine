@@ -150,7 +150,7 @@ namespace jasperengine::editor{
         // an end that fromWorld snaps to a bone axis does not drift the other end
         std::vector<CapsuleShadowShape> capsuleDragBase;
 
-        // Area Light size handle sub-selection (S92 R38): a Rectangle's width (0) and height (1)
+        // Area Light size handle sub-selection (S99 R38): a Rectangle's width (0) and height (1)
         // handles, a Disc's radius (0)
         Entity selectedAreaHandleEntity = 0;  // NULL_ENTITY
         int selectedAreaHandleIndex = -1;
@@ -758,7 +758,7 @@ namespace jasperengine::editor{
         bool capsulesWithHandleAt(Entity entity, int index, const Vector3& world, const std::vector<CapsuleShadowShape>& base,
                                   std::vector<CapsuleShadowShape>& capsules);
 
-        // Area Light size handles (the Move tool drags them, S92 R38): a Rectangle's right edge
+        // Area Light size handles (the Move tool drags them, S99 R38): a Rectangle's right edge
         // (Width) and top edge (Height), a Disc's edge (Radius), in the light's plane
         int getSelectedAreaHandleIndex() const { return selectedAreaHandleIndex; }
         Entity getSelectedAreaHandleEntity() const { return selectedAreaHandleEntity; }

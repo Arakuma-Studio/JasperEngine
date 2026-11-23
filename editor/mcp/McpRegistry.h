@@ -160,7 +160,7 @@ namespace jasperengine::editor::mcp {
         // wrapper refuses the call with it.
         static std::string argumentProblem(const std::string& tool, const Json& inputSchema, const Json& args);
         // A handler's error about a key of a closed object below the top level, or a string outside its
-        // enum, gets the nearest declared name after its mention of it ("did you mean 'x'?", S92 R1).
+        // enum, gets the nearest declared name after its mention of it ("did you mean 'x'?", S99 R1).
         // Not refused up front: schemas stay lean (a closed object may declare only some of the keys its
         // handler reads) and handlers take aliases their enums do not list (create_entity type "box").
         static void suggestNearestNames(const Json& inputSchema, const Json& args, std::string& errorText);

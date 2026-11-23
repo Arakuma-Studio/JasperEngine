@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // The Area Light shading (render/AreaLightMath.h, the CPU form of includes/area_lights.glsl)
-// against numeric integrals over the shape (spec S92 AC8): the Standard tier's form factor and the
+// against numeric integrals over the shape (spec S99 AC8): the Standard tier's form factor and the
 // High tier's LTC diffuse and GGX specular within 5 % (15 % where the receiver's horizon cuts the
 // light), the representative point's specular energy
 // in the point-light limit.

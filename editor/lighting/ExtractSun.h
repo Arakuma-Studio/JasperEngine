@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Extract Sun (spec S92 R28, R29): the sun of the scene's sky image (lighting/HdriSun.h), turned
+// Extract Sun (spec S99 R28, R29): the sun of the scene's sky image (lighting/HdriSun.h), turned
 // and tinted as the sky draws it, as the scene's main Directional Light: created when the scene
 // has none, else the brightest directional light aligned to it (direction, colour, intensity in
 // its unit: lux for a light in physical units). One undo step; with Remove Sun Disc, the sky

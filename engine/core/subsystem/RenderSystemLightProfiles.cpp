@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S92 (docs/specs/S92-agent-feedback-area-lights.md R33, R36): the texture of the Area Lights'
+// S99 (docs/specs/S99-agent-feedback-area-lights.md R33, R36): the texture of the Area Lights'
 // LTC tables and the lights' IES Profiles, which the USE_AREA_LIGHTS / USE_IES variants of the
 // built-in Lit sample (includes/lights.glsl, includes/area_lights.glsl).
 

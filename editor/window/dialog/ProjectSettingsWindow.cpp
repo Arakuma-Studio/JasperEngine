@@ -1917,7 +1917,7 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                                "compiler, 3D or 2D physics): a smaller player that behaves the same. Build Settings shows what is kept and "
                                "why. Turn it off for a script that builds engine names at runtime from pieces.");
             }
-            // what a build of each family may weigh (S92 R11): a web build's gzip estimate, else its bytes
+            // what a build of each family may weigh (S99 R11): a web build's gzip estimate, else its bytes
             for (size_t f = 0; f < kModelFamilyCount; f++) {
                 const ModelFamily family = (ModelFamily)f;
                 const std::string label = modelFamilyLabel(family);

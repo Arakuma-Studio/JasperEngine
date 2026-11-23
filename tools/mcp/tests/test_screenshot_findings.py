@@ -1,4 +1,4 @@
-"""S92 AC2: the screenshot's frame checks (R6-R8). Each finding kind on a scratch scene made to
+"""S99 AC2: the screenshot's frame checks (R6-R8). Each finding kind on a scratch scene made to
 trigger it (an over-bright light, a black scene, a camera facing away, a selected object off-screen,
 a tiny object, a material with a missing texture, two coplanar quads) and a clean scene with none;
 where the fix is a call, it is made and the finding goes. The checks' cost is reported against the

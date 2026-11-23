@@ -38,7 +38,7 @@ struct NameMiss {
     std::string nearest;
 };
 
-// The names in a call's arguments that its schema does not know but has a close match for (S92 R1):
+// The names in a call's arguments that its schema does not know but has a close match for (S99 R1):
 // a key of a closed object below the top level, and a string outside its enum (not even in another
 // case or with other underscores). anyOf branches are not entered: which one was meant is unknown.
 void collectNameMisses(const Json& schema, const Json& value, std::vector<NameMiss>& misses) {

@@ -56,7 +56,7 @@ float getSpotAttenuation(vec3 pointToLight, vec3 spotDirection, float outerConeC
     return 0.0;
 }
 
-// A light's IES Profile (S92, includes/lights.glsl LIGHTS_IES): its band of u_lightProfiles at the
+// A light's IES Profile (S99, includes/lights.glsl LIGHTS_IES): its band of u_lightProfiles at the
 // direction from the light, vertical angle from its forward axis (0 .. 180 degrees along a row),
 // horizontal angle round it (0 along its right, 90 along its up: down the band's rows). 1 without one.
 #ifdef LIGHTS_IES

@@ -156,7 +156,7 @@ TEST(TextureImportSettings, CanonicalFormChangesWithEveryField){
     edits[13].quality = TextureCookQuality::High;
     edits[14].effort = TextureEffort::Best;
     edits[15].streamable = false;
-    // S92 R29: Remove Sun Disc changes the key when on; off, the keys of every older texture stay
+    // S99 R29: Remove Sun Disc changes the key when on; off, the keys of every older texture stay
     edits.push_back(base);
     edits.back().removeSunDisc = true;
     EXPECT_EQ(reference.find("removeSunDisc"), std::string::npos);

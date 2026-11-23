@@ -98,7 +98,7 @@ namespace jasperengine::editor {
 
         // The source as the cook reads it: float for .hdr / .exr, a 4:3 or 3:4 cross split
         // into six faces when cube. Returns the face count. With removeSunDisc a float source's
-        // sun disc is clamped first (S92 R29); when it is not, sunDiscNote says why.
+        // sun disc is clamped first (S99 R29); when it is not, sunDiscNote says why.
         static int decodeSource(const std::filesystem::path& path, bool cube, std::array<TextureData, 6>& faces, std::string& error,
                                 bool removeSunDisc = false, std::string* sunDiscNote = nullptr);
         static void analyze(const std::array<TextureData, 6>& faces, int count, TextureSourceAnalysis& out);

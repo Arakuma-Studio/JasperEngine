@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// A selected .ies file (spec S92 R37): its photometric metadata and a polar plot of its vertical
+// A selected .ies file (spec S99 R37): its photometric metadata and a polar plot of its vertical
 // profile, as render/IesProfile.h reads it for the renderer.
 
 #include "InspectorWindow.h"

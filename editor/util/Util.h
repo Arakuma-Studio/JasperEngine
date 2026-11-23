@@ -177,7 +177,7 @@ namespace jasperengine::editor{
             return cssExtensions.find(ext) != cssExtensions.end();
         }
 
-        // a light's IES Profile (S92): an IESNA LM-63 photometric file
+        // a light's IES Profile (S99): an IESNA LM-63 photometric file
         inline static bool isIesFile(const std::string& path) {
             return fileExtension(path) == ".ies";
         }

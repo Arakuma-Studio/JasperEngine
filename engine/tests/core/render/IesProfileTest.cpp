@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The LM-63 reader of IES Profiles (render/IesProfile.h, spec S92 R36, AC8): both versions, each
+// The LM-63 reader of IES Profiles (render/IesProfile.h, spec S99 R36, AC8): both versions, each
 // symmetry of the horizontal angles, the grid's normalisation, and the files it refuses. Every
 // file here is synthetic, written for the test.
 

@@ -347,7 +347,7 @@ entities:
         l.get().needUpdateShadowCamera = false;
         EXPECT_TRUE(moveField(l.registry, l.entity, "spotMask"));
         EXPECT_TRUE(l.get().needUpdateShadowCamera);
-        // S92: a spot or point light's IES Profile, an .ies asset the renderer reads by path
+        // S99: a spot or point light's IES Profile, an .ies asset the renderer reads by path
         l.get().iesProfile = AssetRef("lights/beam.ies");
         EXPECT_TRUE(moveField(l.registry, l.entity, "iesProfile"));
         EXPECT_EQ(l.get().iesProfile.path, "moved/lights/beam.ies");

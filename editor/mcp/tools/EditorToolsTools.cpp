@@ -84,7 +84,7 @@ void recordGameTool(const CallPtr& call) {
         settings.customWidth = std::clamp(args.value("width", 1920), recorder::kMinSize, recorder::kMaxSize);
         settings.customHeight = std::clamp(args.value("height", 1080), recorder::kMinSize, recorder::kMaxSize);
     }
-    // S92 R14: the arguments the Recorder's limits changed (the session adds its own clamps)
+    // S99 R14: the arguments the Recorder's limits changed (the session adds its own clamps)
     std::vector<JobFallback> clamped;
     if (askedFps != settings.frameRate) {
         clamped.push_back({"frame_rate", std::to_string(askedFps), std::to_string(settings.frameRate),
@@ -124,7 +124,7 @@ void recordGameTool(const CallPtr& call) {
         return;
     }
     JobPtr job = ctx.jobs().create("record", "Record " + std::to_string(frames) + " frame(s) to " + format);
-    // S92 R13: frames x the output size, corrected by this project's last recordings of the format
+    // S99 R13: frames x the output size, corrected by this project's last recordings of the format
     const int outputWidth = session.outputWidth(), outputHeight = session.outputHeight();
     job->estimateFor(ctx.project()->getProjectPath(), "record_game:" + format,
                      jobmodel::recordSeconds(frames, outputWidth, outputHeight, settings.kind == recorder::Kind::Movie),

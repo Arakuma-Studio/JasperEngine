@@ -11,7 +11,7 @@
 
 namespace jasperengine {
 
-    // A light's IES Profile (spec S92 R36): an IESNA LM-63-1995 or -2002 photometric file
+    // A light's IES Profile (spec S99 R36): an IESNA LM-63-1995 or -2002 photometric file
     // (TILT=NONE, Type C photometry) resampled to a fixed grid by its symmetry and normalised
     // to a peak of 1, the light's Intensity staying its peak. Rows of the grid go round the axis
     // (horizontal angle 0..360 degrees, IES_GRID_ROWS rows, the last equal to the first), columns

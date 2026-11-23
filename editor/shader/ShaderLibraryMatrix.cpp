@@ -652,7 +652,7 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
         inputs.pbrTransmission = true;
         add(std::string("high quality, all lobes, ") + (lighting == MaterialLighting::PIXEL ? "pixel" : "mixed"), RenderSystem::getSubmeshShaderVariant(high, inputs));
     }
-    // S92: a scene's Area Lights and IES Profiles on the worst variants, Standard and High (the LTC
+    // S99: a scene's Area Lights and IES Profiles on the worst variants, Standard and High (the LTC
     // tables and the profiles share one texture and its sampler)
     for (bool litHigh : {false, true}){
         MeshShaderEnvironment profiles = worst;

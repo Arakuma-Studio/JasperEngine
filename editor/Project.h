@@ -1042,7 +1042,7 @@ namespace jasperengine::editor{
         // Project Settings > Player > Publishing Settings > Target Platforms: a bit per BuildPlatform
         // (export: targetPlatforms, written when not all six), never empty
         uint8_t targetPlatforms = allTargetPlatforms;
-        // Project Settings > Player > Publishing Settings > Download Budget (MB) (S92 R11), per
+        // Project Settings > Player > Publishing Settings > Download Budget (MB) (S99 R11), per
         // ModelFamily: a build over its family's warns W-BUILD-OVER-BUDGET; 0 is off
         // (export: downloadBudgetMB, only the families set)
         std::array<double, kModelFamilyCount> downloadBudgetMB = {};

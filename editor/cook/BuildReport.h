@@ -41,7 +41,7 @@ namespace jasperengine::editor {
         uint64_t totalBytes = 0;
         std::map<std::string, uint64_t> categories;
         std::vector<BuildReportFile> largest;
-        // a web build's download estimate (S92 R10: webDownloadGzipBytes); 0 for other builds
+        // a web build's download estimate (S99 R10: webDownloadGzipBytes); 0 for other builds
         uint64_t downloadBytesGzip = 0;
 
         // the categories in display order
@@ -70,7 +70,7 @@ namespace jasperengine::editor {
         std::string summary() const;
         static std::string formatBytes(uint64_t bytes);
 
-        // S92 R10: whether a browser fetches this file of a web build (a path relative to the
+        // S99 R10: whether a browser fetches this file of a web build (a path relative to the
         // build): not the notices, the manifests, this report, or the multithreaded player, which
         // only a cross-origin isolated page loads instead of the single-threaded one
         static bool isWebDownload(const std::string& path);
@@ -79,7 +79,7 @@ namespace jasperengine::editor {
         // server picks the level and the encoding
         static uint64_t webDownloadGzipBytes(const std::filesystem::path& root);
 
-        // S92 R11: the Download Budget family of a report's platform ("web", "android", "linux",
+        // S99 R11: the Download Budget family of a report's platform ("web", "android", "linux",
         // "desktop"...); false for a source export, which downloads nothing
         static bool budgetFamilyOf(const std::string& platform, ModelFamily& family);
         // what the Download Budget holds a build to: a web build's gzip estimate, else its bytes

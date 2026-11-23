@@ -316,7 +316,7 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
         if (!result.buildReport.empty()) {
             report["build_report"] = result.buildReport.string();
             report["build_bytes"] = result.buildBytes;
-            // S92 R10, R11: as build_project and build-report.json have them (every category)
+            // S99 R10, R11: as build_project and build-report.json have them (every category)
             ordered_json categories = ordered_json::object();
             for (const std::string& name : BuildReport::categoryNames())
                 categories[name] = result.buildCategories.count(name) ? result.buildCategories.at(name) : 0;

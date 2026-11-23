@@ -58,7 +58,7 @@ void titletools::exportTitleInterchange(const CallPtr& call, Project* project, c
             request.more.emplace_back(other, std::move(doc));
         }
     }
-    // S92 R13: layers x canvas, per format (a PSD's layers and a sheet's frames cost differently)
+    // S99 R13: layers x canvas, per format (a PSD's layers and a sheet's frames cost differently)
     const double modelSeconds = jobmodel::titleExportSeconds(titleart::countLayers(request.doc.root), request.doc.canvasWidth(),
                                                              request.doc.canvasHeight(), 1 + request.languages.size() + request.more.size());
     std::shared_ptr<TitleExportJob> job = startTitleExport(std::move(request), code, error);

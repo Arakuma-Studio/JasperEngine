@@ -1,4 +1,4 @@
-// Area Lights (spec S92 R33, USE_AREA_LIGHTS): a Rectangle or a Disc emitting from its front,
+// Area Lights (spec S99 R33, USE_AREA_LIGHTS): a Rectangle or a Disc emitting from its front,
 // in the built-in Lit's pixel-light loop. The CPU form of every function here is
 // render/AreaLightMath.cpp, whose unit tests hold them to numeric integrals.
 //

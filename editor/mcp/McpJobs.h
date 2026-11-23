@@ -69,7 +69,7 @@ namespace jasperengine::editor::mcp {
         bool cancelRequested() const;
         void setCancelHandler(std::function<void()> handler);
 
-        // S92 R13-R16: the estimate given at submit (toJson's `estimate` and `remaining_seconds`, the
+        // S99 R13-R16: the estimate given at submit (toJson's `estimate` and `remaining_seconds`, the
         // status bar). On completion the result gets `report` (measured against estimated, the
         // fallbacks taken) and a success adds its measure to `historyFile` under `historyKind`.
         void setEstimate(JobEstimate estimate, std::string historyKind = {}, std::filesystem::path historyFile = {});

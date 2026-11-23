@@ -51,7 +51,7 @@ namespace jasperengine {
         VoxelVolume = 32,           // a .voxelvolume (T6 R77, its GUID in a sidecar)
         NoiseGraph = 33,            // a .noisegraph Noise Graph (T2)
         TitleArt = 34,              // a .titleart Title Art document (S80; its GUID in its JSON)
-        IesProfile = 35             // an .ies photometric profile of a light (S92 R36; its GUID in its .meta)
+        IesProfile = 35             // an .ies photometric profile of a light (S99 R36; its GUID in its .meta)
     };
     // the highest value present (a sibling's reserved value below it may still be missing)
     inline constexpr uint8_t kLastAssetType = static_cast<uint8_t>(AssetType::IesProfile);

@@ -1115,7 +1115,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addVariable("AREA", LightType::AREA)
         .endNamespace();
 
-    // an Area Light's shape (S92)
+    // an Area Light's shape (S99)
     luabridge::getGlobalNamespace(L)
         .beginNamespace("AreaLightShape")
         .addVariable("RECTANGLE", AreaLightShape::RECTANGLE)
@@ -1875,7 +1875,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setInnerConeAngle", &Light::setInnerConeAngle)
         .addProperty("outerConeAngle", &Light::getOuterConeAngle, &Light::setOuterConeAngle)
         .addFunction("setOuterConeAngle", &Light::setOuterConeAngle)
-        // an Area Light's shape and size, a spot or point light's IES Profile (S92)
+        // an Area Light's shape and size, a spot or point light's IES Profile (S99)
         .addProperty("areaShape", &Light::getAreaShape, &Light::setAreaShape)
         .addProperty("areaWidth", &Light::getAreaWidth, &Light::setAreaWidth)
         .addProperty("areaHeight", &Light::getAreaHeight, &Light::setAreaHeight)

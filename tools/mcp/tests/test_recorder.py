@@ -12,7 +12,7 @@ points per game second. record_game:
 - throughput: 1080p30 PNG keeps >= 10 recorded frames per wall second (perf_slack applies) and the
   queue never holds more than 8 frames;
 - the editor_tools group is not listed until tool_groups enables it;
-- S92 AC4: an estimate at submit (a corrupt job history tolerated), a report on completion, the
+- S99 AC4: an estimate at submit (a corrupt job history tolerated), a report on completion, the
   next estimate from the history, the clamps it took as fallbacks.
 """
 
@@ -157,7 +157,7 @@ async def finished_job(ed: Editor, job_id: str) -> dict:
 
 
 async def test_estimate_and_report(ed: Editor):
-    """S92 R13-R16 (AC4): record_game estimates at submit and reports on completion. A corrupt
+    """S99 R13-R16 (AC4): record_game estimates at submit and reports on completion. A corrupt
     job history is tolerated (the cost model), the completion replaces it with a good one, and the
     next recording of the format is estimated from it; the clamps it took are its fallbacks."""
     await setup(ed)

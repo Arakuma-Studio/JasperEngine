@@ -1650,7 +1650,7 @@ void McpServer::runLocal(const std::string& tool, const Json& args, const std::s
 void McpServer::failFromException(const CallPtr& call, const std::string& tool, std::exception_ptr error) {
     // Handlers report what the agent got wrong with fail() or a runtime_error; the logic_error
     // family, a failed allocation, an empty std::function, a JSON lookup the handler did not check
-    // and anything that is not a std::exception are the editor's own bugs (S92 R3, R4)
+    // and anything that is not a std::exception are the editor's own bugs (S99 R3, R4)
     std::string fault;
     try {
         std::rethrow_exception(error);

@@ -3,7 +3,7 @@
 
 // S57's small pure parts (docs/specs/S57-forge-lighting.md): the tier defaults of Light Mode, the
 // tile grid, Bend's contact-shadow light coordinate and sample groups, and the Hair shading
-// model's block and variant; S92's Gradient ambient as SH (render/AmbientGradient.h).
+// model's block and variant; S99's Gradient ambient as SH (render/AmbientGradient.h).
 
 #include "render/AmbientGradient.h"
 #include "render/ContactShadows.h"
@@ -124,7 +124,7 @@ TEST(HairShadingModel, ItsBlockAndVariant){
     EXPECT_NE(MaterialPbr::findLuaField("hairSecondaryShift"), nullptr);
 }
 
-// S92 AC7: the Gradient ambient's SH is the gradient environment projected to bands 0 and 1 and
+// S99 AC7: the Gradient ambient's SH is the gradient environment projected to bands 0 and 1 and
 // convolved with the clamped cosine, divided by pi: checked against a numeric projection
 TEST(AmbientGradient, ProjectionMatchesANumericIntegral){
     const Vector3 sky(0.9f, 0.6f, 0.3f);

@@ -253,7 +253,7 @@ const float M_PI = 3.141592653589793;
         vec3 litEnergyCompensation;
     #endif
     #include "includes/pbr_ext.glsl"
-    // a scene's Area Lights (S92, builtin:lit#USE_AREA_LIGHTS)
+    // a scene's Area Lights (S99, builtin:lit#USE_AREA_LIGHTS)
     #if defined(USE_PUNCTUAL) && defined(USE_AREA_LIGHTS)
         #include "includes/area_lights.glsl"
     #endif

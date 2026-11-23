@@ -115,7 +115,7 @@ namespace {
         {"TERRAIN_RESAMPLE", "Rs"}, {"TERRAIN_CLIFF", "Cl"}, {"TERRAIN_HEIGHT_BLEND", "Hb"},
         {"TERRAIN_DEBUG_VIEW", "Dv"},
         {"HAS_VOXEL", "Vx"}, {"VOXEL_TIER_HIGH", "Vh"}, {"VOXEL_TIER_MEDIUM", "Vm"}, {"VOXEL_TIER_LOW", "Vl"},
-        // S92: a scene's Area Lights and IES Profiles
+        // S99: a scene's Area Lights and IES Profiles
         {"USE_AREA_LIGHTS", "Ar"}, {"USE_IES", "Ie"},
     };
     // T3 R54: a bit per entry of a 64-bit mask, so the table may grow past 32 and no further

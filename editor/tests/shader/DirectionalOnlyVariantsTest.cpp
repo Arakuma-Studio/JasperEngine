@@ -191,7 +191,7 @@ TEST_F(DirectionalOnlyVariantKeys, TwinsCoverLightModeTiled){
 
 namespace {
 
-    // S92 R42: the builtin:lit references of a scene's export MESH keys that name a define
+    // S99 R42: the builtin:lit references of a scene's export MESH keys that name a define
     size_t areaLightsVariantsWith(Scene& scene, const char* define){
         ShaderVariantContent content;
         content.registry = &scene;
@@ -210,7 +210,7 @@ namespace {
 
 }
 
-// S92 R41, R42: a scene with an Area Light ships the Lit's USE_AREA_LIGHTS variants, one with an IES
+// S99 R41, R42: a scene with an Area Light ships the Lit's USE_AREA_LIGHTS variants, one with an IES
 // Profile its USE_IES ones, and a scene of point and spot lights neither
 TEST_F(DirectionalOnlyVariantKeys, AreaLightsAndIesProfilesShipTheirVariants){
     {

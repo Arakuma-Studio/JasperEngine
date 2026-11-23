@@ -356,7 +356,7 @@ void captureScene(const CaptureJobPtr& job);
     return stbi_write_png_to_func(append, &png, outWidth, outHeight, 3, rgb.data(), outWidth * 3) != 0;
 }
 
-// S92 R6: the frame checks of the scene the job shot, as findings, the first one's fix in next
+// S99 R6: the frame checks of the scene the job shot, as findings, the first one's fix in next
 void addFindings(const CaptureJobPtr& job, Json& info, std::string& note) {
     Project* project = job->call->ctx().project();
     SceneProject* sp = project ? project->getScene(job->checkSceneId) : nullptr;

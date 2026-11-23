@@ -100,7 +100,7 @@ async def test_prebuilt_linux_build(ed: Editor):
     r = await ed.call("build_project", mode="player", platform="linux", output_dir=str(out), timeout_seconds=600)
     ed.check_eq(r["status"], "succeeded", f"{r}")
     result = r["result"]
-    # S92 R13, R14: an estimate at submit; the report's fallbacks are the downgrades the build took:
+    # S99 R13, R14: an estimate at submit; the report's fallbacks are the downgrades the build took:
     # here at most the bigger player variant, exactly when the build warned W-PLAYER-VARIANT
     ed.check(r.get("estimate", {}).get("seconds", 0) > 0, f"an estimate: {r.get('estimate')}")
     fallbacks = result.get("report", {}).get("fallbacks")
@@ -288,7 +288,7 @@ def web_fetched_gzip(out: Path) -> int:
 
 
 async def test_build_sizes_and_download_budget(ed: Editor):
-    """S92 R10, R11, AC3: build_project's result says what the build weighs (a web build also its
+    """S99 R10, R11, AC3: build_project's result says what the build weighs (a web build also its
     gzip download estimate); a build over its platform group's Download Budget still succeeds,
     with W-BUILD-OVER-BUDGET and a next naming the tools that inspect its largest category. The
     CLI's build --json has the same fields. (The Linux and web runtimes of the tests above are

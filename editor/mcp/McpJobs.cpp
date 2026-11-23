@@ -377,7 +377,7 @@ Json JobEstimate::toJson() const {
     return out;
 }
 
-// ---------------------------------------------------------------- S92: the cost models
+// ---------------------------------------------------------------- S99: the cost models
 
 double jasperengine::editor::mcp::jobmodel::recordSeconds(int64_t frames, int width, int height, bool movie) {
     const double pixels = static_cast<double>(std::max(width, 1)) * static_cast<double>(std::max(height, 1));
@@ -433,7 +433,7 @@ std::string jasperengine::editor::mcp::formatJobDuration(double seconds) {
     return text;
 }
 
-// ---------------------------------------------------------------- S92: the job history
+// ---------------------------------------------------------------- S99: the job history
 
 JobHistory JobHistory::parse(const std::string& text) {
     JobHistory history;

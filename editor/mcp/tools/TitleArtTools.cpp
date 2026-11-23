@@ -963,7 +963,7 @@ void exportTitleTool(const CallPtr& call) {
         call->fail("bad_value: " + error + ". Nothing was written.", Json{{"code", "bad_value"}});
         return;
     }
-    // S92 R13: layers x canvas per output baked (a PNG is about a third of its RGBA)
+    // S99 R13: layers x canvas per output baked (a PNG is about a third of its RGBA)
     const size_t outputCount = !options.outputs.empty() ? options.outputs.size()
                              : doc.root.contains("outputs") && doc.root["outputs"].is_array() ? std::max<size_t>(doc.root["outputs"].size(), 1) : 1;
     const double modelSeconds = jobmodel::titleExportSeconds(titleart::countLayers(doc.root), doc.canvasWidth(), doc.canvasHeight(), outputCount);

@@ -104,7 +104,7 @@ void bakeImpostorsFromOps(const CallPtr& call, const TerrainTarget& target, cons
     }
 
     std::shared_ptr<McpJob> job = call->ctx().jobs().create("edit_terrain", "Bake impostors");
-    // S92 R13: impostors x views at the resolution; two atlas PNGs each, about a third of RGBA
+    // S99 R13: impostors x views at the resolution; two atlas PNGs each, about a third of RGBA
     const int impostors = static_cast<int>(request.prototypes.size());
     job->estimateFor(target.project->getProjectPath(), "bake_impostors", jobmodel::impostorSeconds(impostors, request.views, request.resolution),
                      static_cast<uint64_t>(impostors) * 2u * static_cast<uint64_t>(atlasWidth) * static_cast<uint64_t>(atlasHeight) * 4u / 3u);

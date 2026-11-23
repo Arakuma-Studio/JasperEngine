@@ -1492,7 +1492,7 @@ std::vector<Setting> mcpSettingsTable() {
         add(boolSetting("player.strip_engine_code", "Builds leave out the engine modules nothing in the project reaches (HTML UI, video, the runtime "
                         "shader compiler, 3D or 2D physics): a smaller player that behaves the same. Off: every module the settings allow.",
                         [](Project& p) { return p.isStripEngineCode(); }, [](Project& p, bool v) { p.setStripEngineCode(v); }));
-        // S92 R11: what a build of each family may weigh
+        // S99 R11: what a build of each family may weigh
         for (size_t f = 0; f < kModelFamilyCount; f++) {
             const ModelFamily family = (ModelFamily)f;
             Setting s;

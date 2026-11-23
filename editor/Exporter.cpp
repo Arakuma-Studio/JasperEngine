@@ -3412,7 +3412,7 @@ bool editor::Exporter::cookTextures() {
         if (!line.empty()) Out::info("%s", line.c_str());
     }
     Out::info("Textures: %d cooked, %d from the cache", result.cooked, result.cacheHits);
-    // S92 R14: per family, the textures R6 left uncompressed (the build report's fallbacks)
+    // S99 R14: per family, the textures R6 left uncompressed (the build report's fallbacks)
     for (const TextureFamily family : families) {
         int count = 0;
         std::string first, from, to;
@@ -3566,7 +3566,7 @@ bool editor::Exporter::writeBuildReport(const fs::path& outputDir, const std::st
                          : config.mode == ExportMode::Web ? "web" : config.mode == ExportMode::Desktop ? "desktop" : "source";
     buildReport.method = method;
     if (buildReport.platform == "web") buildReport.downloadBytesGzip = BuildReport::webDownloadGzipBytes(outputDir);
-    // S92 R11: the family's Download Budget; a build over it succeeds with the warning
+    // S99 R11: the family's Download Budget; a build over it succeeds with the warning
     ModelFamily family;
     const uint64_t budget = BuildReport::budgetFamilyOf(buildReport.platform, family) ? BuildReport::budgetBytesOf(project->getDownloadBudgetMB(family)) : 0;
     const fs::path file = outputDir / BuildReport::kFileName;

@@ -539,7 +539,7 @@ TEST(MeshBvh, CulledFacesAreSkipped){
     EXPECT_FALSE(hit.frontFacing);
 }
 
-// S92 R7: the faces in a box (the z-fighting check's query) are the brute force's, with and
+// S99 R7: the faces in a box (the z-fighting check's query) are the brute force's, with and
 // without a tree, and the limit cuts the list and says so
 TEST(MeshBvh, OverlappingMatchesBruteForce){
     for (uint32_t triangles : {100u, 5000u}){

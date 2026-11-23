@@ -161,7 +161,7 @@ namespace jasperengine::editor::mcp {
         // The top-level calls per tool since the start or the last clearActivity (the MCP Server window)
         std::vector<McpToolCounts::Row> toolCounts() const;
 
-        // --- call log (S92 R17: one argument-free JSON line per tools/call) ---
+        // --- call log (S99 R17: one argument-free JSON line per tools/call) ---
         // The file it appends to (empty: off), and why a write turned it off (empty: none)
         std::filesystem::path callLogPath() const { return callLog.path(); }
         std::string callLogFailure() const { return callLog.failure(); }

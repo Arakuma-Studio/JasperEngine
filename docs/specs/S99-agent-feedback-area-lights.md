@@ -1,4 +1,4 @@
-# S92 — Agent feedback loop, contributor checks, area lights and IES profiles
+# S99 — Agent feedback loop, contributor checks, area lights and IES profiles
 
 **Depends on.** The MCP server (`editor/mcp/`), McpJobs (`editor/mcp/McpJobs.h`), `screenshot`, `build_project`
 (`editor/mcp/tools/BuildTools.cpp`), `tools/check_changed.py`, the Lit shading path (`engine/shaderlib/`,
@@ -178,7 +178,7 @@ PR-body checks. Nothing here touches the do-not-copy list in `README.md`.
 - R30. **Environment Lighting › Source** gains **Gradient**, with Sky Color, Equator Color and Ground Color (Unity names).
   Existing scenes and a missing key keep today's behaviour as the default source. The gradient is projected to SH and added to
   the per-object SH the shader already reads, so no shader, variant or uniform is added.
-- R31. Lua: `scene.ambientSource`, `scene.ambientSkyColor`, `scene.ambientEquatorColor`, `scene.ambientGroundColor`. MCP: the
+- R31. Lua: `scene.ambientMode`, `scene.ambientSkyColor`, `scene.ambientEquatorColor`, `scene.ambientGroundColor`. MCP: the
   existing scene-settings or lighting tool gains the fields and an `extract_sun` action. Its result has direction, colour,
   intensity, the peak/mean ratio and the light's entity id.
 
@@ -419,17 +419,20 @@ PR-body checks. Nothing here touches the do-not-copy list in `README.md`.
   Only successes are recorded. `estimate.bytes` is given where a model of the output exists
   (recordings, impostor atlases, baked title PNGs, a prebuilt build's player plus assets).
 - **export_title format glb is not a job** (it answers in one call), so it has no estimate.
-- **W7: the default Source is Skybox, and there is no Color source.** Today's shading (read in
-  `mesh.frag`): the built-in Lit with a sky image takes its diffuse ambient from the image (IBL) and
-  subtracts the flat Ambient Color out; everything else (no sky image, library shaders, vertex
-  lighting, particles) takes the flat Ambient Color. That is Unity's Skybox source with its Color
-  fallback, so `AmbientSource` is `SKYBOX` (default, value 0) and `GRADIENT` (1), stored append only.
-  A Color source that replaced a sky image's diffuse ambient would need the IBL variant without its
-  specular, a shader change R30 rules out; it can be appended later. The Inspector shows Ambient Color
-  and Intensity under Skybox (labelled for where they apply) and the three colours under Gradient.
-- **W7: the Gradient's colours are used as they are.** As Unity's Gradient (its Intensity Multiplier is
-  the Skybox source's), Intensity does not scale them; their defaults are about as bright as a new
-  scene's Ambient Color (sRGB 0.45 0.55 0.7, 0.4 0.4 0.42, 0.2 0.18 0.15), not Unity's darker ones.
+- **W7: Unity's names, `ambientMode` Color and Gradient (the lead's decision, shared with S94).** The
+  source is `SceneSettings::ambientMode` (`AmbientMode::COLOR` default, value 0, and `GRADIENT`, 1;
+  stored `ambientMode: color|gradient`, append only), with `ambientSkyColor`, `ambientEquatorColor` and
+  `ambientGroundColor`: the keys S94 (#19) uses, so whichever lands second keeps the first one's
+  instead of its own. Today's shading (read in `mesh.frag`) is the flat Ambient Color, which the
+  built-in Lit with a sky image swaps for the image's diffuse ambient (IBL); library shaders, vertex
+  lighting and particles always take the colour. That stays **Color**: no Skybox value is added, as a
+  Skybox source that dropped the colour where there is no sky image, or a Color source that dropped a
+  sky image's diffuse ambient, would need the IBL variant without its specular, a shader change R30
+  rules out; either can be appended later. The Inspector shows Ambient Color and Intensity under Color
+  (its tooltip says Lit takes a sky image instead) and the three colours under Gradient.
+- **W7: the Gradient's colours are used as they are, with Unity's defaults.** As Unity's Gradient (its
+  Intensity Multiplier is the Skybox source's), Intensity does not scale them, and they default to
+  Unity's sRGB (54, 58, 66), (29, 32, 34) and (12, 11, 9).
 - **W7: Gradient under a sky image.** The gradient replaces the sky's diffuse ambient: the meshes bind a
   black irradiance map while the scene has lights (with none, Lit takes no SH and keeps the sky's
   diffuse ambient), and the frame's flat ambient Lit subtracts is 0, so Lit adds the object's whole SH.
@@ -437,7 +440,7 @@ PR-body checks. Nothing here touches the do-not-copy list in `README.md`.
   lights then includes the gradient too, a small extra ambient specular. Particles and the clouds take
   the gradient's average.
 - **W7: cooked scenes.** The source and the gradient are appended to the scene settings record as format
-  1.6 (`CookedScene.h` `FORMAT_MINOR`); a 1.5 record reads as Skybox with the default gradient.
+  1.6 (`CookedScene.h` `FORMAT_MINOR`); a 1.5 record reads as Color with the default gradient.
 - **W7: Remove Sun Disc per image.** The cook sees one image at a time: a cross finds the disc across its
   six faces, but a six-file sky finds it in each face file on its own, so a disc split by a face edge
   is removed in each face where that face's part is distinct (20x its mean). An image without a

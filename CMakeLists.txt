@@ -1249,7 +1249,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/texture/TextureCli.cpp
     ${EDITOR_DIR}/texture/TextureCookReport.cpp
     ${EDITOR_DIR}/texture/TextureCooker.cpp
-    # S92 W7: the sun of an HDR sky (Remove Sun Disc in the cook, Extract Sun)
+    # S99 W7: the sun of an HDR sky (Remove Sun Disc in the cook, Extract Sun)
     ${EDITOR_DIR}/lighting/HdriSun.cpp
     ${EDITOR_DIR}/lighting/ExtractSun.cpp
     ${EDITOR_DIR}/texture/TextureEncoders.cpp

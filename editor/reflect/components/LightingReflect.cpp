@@ -40,7 +40,7 @@ namespace {
         return l->type != LightType::POINT && l->type != LightType::AREA && l->shadows;
     }
 
-    // S92: an Area Light's shape and size, a spot or point light's IES Profile
+    // S99: an Area Light's shape and size, a spot or point light's IES Profile
     bool lightArea(const void* light) { return static_cast<const LightComponent*>(light)->type == LightType::AREA; }
     bool lightAreaRectangle(const void* light) {
         const LightComponent* l = static_cast<const LightComponent*>(light);
@@ -133,7 +133,7 @@ namespace {
         JE_FIELD(LightComponent, useColorTemperature, .flags = OmitIfDefault | CodegenIfChanged, .label = "Use Temperature"),
         JE_FIELD(LightComponent, colorTemperature, .ops = &ops::Kelvin, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Kelvin,
                  .uiMin = 1000.0f, .uiMax = 20000.0f, .label = "Temperature"),
-        // S92 R32, R37: the Area Light's shape (sized here, not by the transform's scale) and the
+        // S99 R32, R37: the Area Light's shape (sized here, not by the transform's scale) and the
         // IES Profile of a spot or point light, written only away from their defaults
         JE_FIELD(LightComponent, areaShape, .enumDesc = &enums::kAreaLightShape, .flags = OmitIfDefault | CodegenIfChanged,
                  .updateFlags = kShadowCamera, .label = "Shape", .visibleIf = &lightArea),

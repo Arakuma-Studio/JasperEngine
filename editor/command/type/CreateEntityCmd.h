@@ -137,7 +137,7 @@ namespace jasperengine::editor{
         // Title Art Renderer (setTitleArt: its asset, at the bake's native size)
         TITLE_ART_UI,
         TITLE_ART_SPRITE,
-        // GameObject > Light > Area Light (S92 R38): a 1 m x 1 m Rectangle facing down
+        // GameObject > Light > Area Light (S99 R38): a 1 m x 1 m Rectangle facing down
         AREA_LIGHT
     };
 

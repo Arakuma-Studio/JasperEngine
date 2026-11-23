@@ -84,7 +84,7 @@ namespace jasperengine{
         void setOuterConeAngle(float outer);
         float getOuterConeAngle() const;
 
-        // An Area Light's shape and size (metres; not the transform's scale), S92 R32
+        // An Area Light's shape and size (metres; not the transform's scale), S99 R32
         void setAreaShape(AreaLightShape shape);
         AreaLightShape getAreaShape() const;
         void setAreaWidth(float width);
@@ -94,7 +94,7 @@ namespace jasperengine{
         void setAreaRadius(float radius);
         float getAreaRadius() const;
 
-        // A spot or point light's IES Profile (an .ies file's path; "" for none), S92 R37
+        // A spot or point light's IES Profile (an .ies file's path; "" for none), S99 R37
         void setIesProfile(const std::string& path);
         std::string getIesProfile() const;
 

@@ -31,7 +31,7 @@ namespace jasperengine{
         DIRECTIONAL,
         POINT,
         SPOT,
-        // a Rectangle or Disc emitting from its front along the forward axis (spec S92 R32)
+        // a Rectangle or Disc emitting from its front along the forward axis (spec S99 R32)
         AREA
     };
 
@@ -149,7 +149,7 @@ namespace jasperengine{
             return areaShape == AreaLightShape::DISC ? 3.14159265f * hw * hh : 4.0f * hw * hh;
         }
 
-        // IES Profile (spot and point lights, spec S92 R37): an .ies file's photometric shape,
+        // IES Profile (spot and point lights, spec S99 R37): an .ies file's photometric shape,
         // oriented by the light's rotation (vertical angle 0 along its forward axis). The
         // intensity stays the profile's peak.
         AssetRef iesProfile;

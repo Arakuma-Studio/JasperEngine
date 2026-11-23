@@ -237,7 +237,7 @@ TEST(TextureFormatSelector, BlockFormatsNeedMultiplesOfFour){
             EXPECT_FALSE(choice.uncompressed);
             ASSERT_EQ(choice.warnings.size(), 1u);
             EXPECT_NE(choice.warnings[0].find("132x68"), std::string::npos) << choice.warnings[0];
-            // a rescale is no reason for --check to fail, nor a format fallback (S92 R14)
+            // a rescale is no reason for --check to fail, nor a format fallback (S99 R14)
             EXPECT_TRUE(choice.problems.empty());
             EXPECT_TRUE(choice.fallbackFrom.empty());
         }
@@ -250,7 +250,7 @@ TEST(TextureFormatSelector, BlockFormatsNeedMultiplesOfFour){
         EXPECT_EQ(choice.format, F::RGBA8);
         EXPECT_EQ(choice.sizeMultiple, 1);
         EXPECT_EQ(choice.problems.size(), 1u);
-        // the block format it replaced, for a build's report of fallbacks (S92 R14)
+        // the block format it replaced, for a build's report of fallbacks (S99 R14)
         EXPECT_EQ(choice.fallbackFrom.rfind("BC", 0), 0u) << choice.fallbackFrom;
     }
     // ASTC takes any size

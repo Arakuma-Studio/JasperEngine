@@ -205,7 +205,7 @@ uniform u_fs_objectLights {
     uniform texture2D u_lightRecords;
 #endif
 
-// S92: Area Lights (USE_AREA_LIGHTS, includes/area_lights.glsl) and IES Profiles (USE_IES), the
+// S99: Area Lights (USE_AREA_LIGHTS, includes/area_lights.glsl) and IES Profiles (USE_IES), the
 // built-in Lit's pixel lights only. Their records keep the layout above: an Area Light's
 // direction_inner.w is 2 + its half width (over 1.5), spot_shadow.z minus its half height and
 // color_outer its colour * intensity * area with w 0, so a variant without USE_AREA_LIGHTS draws

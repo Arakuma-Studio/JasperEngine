@@ -1,7 +1,7 @@
 """Materials and lighting (docs/specs/S11-materials-lighting.md): the built-in Lit's extended
 lobes through the material `pbr` object and the Catalog paths (partial merges, range errors
 naming the field), get_material_variant (defines, maps, the 3-map budget), set_light_unit
-(the image stays the same), Area Lights and IES Profiles (S92), Lit Quality (new scenes High, saved; old scenes Standard,
+(the image stays the same), Area Lights and IES Profiles (S99), Lit Quality (new scenes High, saved; old scenes Standard,
 unchanged), the direct-light energy compensation and the specular anti-aliasing of High, hex
 tiling against repetition, Lua, the presets, and the Khronos sample models: each loads,
 draws, and draws differently with its lobes off; with a golden per model in
@@ -340,7 +340,7 @@ TILT=NONE
 
 
 async def test_area_light_and_ies_profile(ed: Editor):
-    """S92 AC8: an Area Light and an IES Profile through set_properties: the values read back, the
+    """S99 AC8: an Area Light and an IES Profile through set_properties: the values read back, the
     variant takes their defines, the image changes, and a profile with a tilt is refused naming it.
     Its own scene, so it runs alone too (-k)."""
     await new_scene(ed, "AreaLights")

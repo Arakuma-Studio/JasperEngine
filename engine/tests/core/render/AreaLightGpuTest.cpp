@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Area Lights and IES Profiles in the built-in Lit (spec S92 AC8, R41): a Rectangle and a Disc on
+// Area Lights and IES Profiles in the built-in Lit (spec S99 AC8, R41): a Rectangle and a Disc on
 // the Standard and High Lit Quality, per object and from screen tiles, a shadowed Area Light and a
 // spot shaped by a synthetic IES Profile (engine/tests/core/fixtures/ies/oval_beam.ies). A scene
 // without either keeps its variants and makes no profiles texture.

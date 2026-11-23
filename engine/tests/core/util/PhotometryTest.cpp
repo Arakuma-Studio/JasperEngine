@@ -107,7 +107,7 @@ TEST(Photometry, UnitChangePreservesBrightness){
     EXPECT_EQ(LightPhotometry::validUnit(LightUnit::LUX, LightType::SPOT), LightUnit::CANDELA);
 }
 
-// an Area Light's physical unit is the nit, its face's luminance (spec S92 R34): the same number
+// an Area Light's physical unit is the nit, its face's luminance (spec S99 R34): the same number
 // as a candela, per square metre of the face; the other lights never take it
 TEST(Photometry, AreaLightTakesNits){
     EXPECT_TRUE(LightPhotometry::isUnitValid(LightUnit::NITS, LightType::AREA));

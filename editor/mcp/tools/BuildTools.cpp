@@ -504,7 +504,7 @@ struct BuildRun {
     ExportResult result;                  // a player build's report (taken before the exporter goes)
     std::string next;                     // the success result's next: a platform the game does not target
     Json unreadableScenes = Json::array();  // generate_shaders: the scenes its list could not read (R4)
-    uint64_t workFiles = 0;               // S92: what the estimate's model counted (the Assets folder)
+    uint64_t workFiles = 0;               // S99: what the estimate's model counted (the Assets folder)
     uint64_t workBytes = 0;
 };
 
@@ -580,7 +580,7 @@ Json artifactsJson(const fs::path& dir) {
     return list;
 }
 
-// S92 R10, R11: what the build weighs, and the Download Budget it was held to. Returns the next
+// S99 R10, R11: what the build weighs, and the Download Budget it was held to. Returns the next
 // step when the build is over its budget: the tools that inspect its largest category.
 std::string addBuildSizes(const ExportResult& report, Json& result) {
     if (report.buildReport.empty()) return std::string();
@@ -619,7 +619,7 @@ std::string addBuildSizes(const ExportResult& report, Json& result) {
     return "Over the Download Budget: " + category + " is the largest category (" + BuildReport::formatBytes(largest.front().second) + "). " + inspect + ".";
 }
 
-// S92 R13: a build's history kind (platform and method: their times differ by minutes)
+// S99 R13: a build's history kind (platform and method: their times differ by minutes)
 std::string buildHistoryKind(ExportMode mode, BuildPlatform platform, jobmodel::BuildKind kind) {
     if (mode == ExportMode::SourceCode) return "build_project:source";
     if (mode != ExportMode::Player) return std::string("build_project:") + modeName(mode);
@@ -633,7 +633,7 @@ jobmodel::BuildKind buildModelKind(ExportMode mode, BuildPlatform platform, bool
                                                                                                     : jobmodel::BuildKind::CompiledDesktop;
 }
 
-// S92 R13: the estimate at submit: the files and bytes of the Assets folder, and the method the
+// S99 R13: the estimate at submit: the files and bytes of the Assets folder, and the method the
 // exporter will pick (chooseBuildMethod, as get_build_info shows it)
 void estimateBuildJob(BuildRun& run, Project* project) {
     std::error_code ec;
@@ -661,7 +661,7 @@ void estimateBuildJob(BuildRun& run, Project* project) {
                          jobmodel::buildSeconds(kind, run.workFiles, run.workBytes), bytes);
 }
 
-// S92 R14: the downgrades the build took; a build whose method was not the one estimated records
+// S99 R14: the downgrades the build took; a build whose method was not the one estimated records
 // its measure against the model of what ran
 void reportBuildJob(BuildRun& r) {
     for (const BuildFallback& f : r.result.fallbacks) r.job->addFallback({f.step, f.from, f.to, f.reason});

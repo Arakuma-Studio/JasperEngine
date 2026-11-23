@@ -143,7 +143,7 @@ namespace jasperengine::editor {
         int m_buildMethodIndex = 0;
         bool m_packContent = false;
         bool m_stripEngineCode = true;
-        // Download Budget (S92 R11) per ModelFamily, applied as one undo step
+        // Download Budget (S99 R11) per ModelFamily, applied as one undo step
         double m_downloadBudgetMB[kModelFamilyCount] = {};
         int m_androidPackageFormatIndex = 0;   // apk, aab
         fs::path m_androidKeystorePath;

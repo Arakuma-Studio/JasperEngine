@@ -3,7 +3,7 @@
 
 #pragma once
 
-// Frame checks (docs/specs/S92-agent-feedback-area-lights.md R6-R9): what is wrong with what a
+// Frame checks (docs/specs/S99-agent-feedback-area-lights.md R6-R9): what is wrong with what a
 // Scene or Game view shows, each with the call that fixes it. The screenshot tool returns them as
 // findings; the Scene view's Frame Checks overlay draws them. Editor-only CPU work on the main
 // thread: the image's luminance, the picking BVH's frustum query and bounds, the S04 missing-asset

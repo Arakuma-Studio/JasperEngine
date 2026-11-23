@@ -9,7 +9,7 @@
 
 namespace jasperengine {
 
-    // The CPU form of the Area Light shading of includes/area_lights.glsl (spec S92 R33), line for
+    // The CPU form of the Area Light shading of includes/area_lights.glsl (spec S99 R33), line for
     // line, so the unit tests measure what the shader draws. A light of luminance L lights a
     // receiver with irradiance pi * L * formFactor; the shader multiplies that by Lit's
     // BRDF_lambertian, and the specular terms by the BRDF they stand for.
