@@ -476,28 +476,30 @@ entities:
         out[links + 4] = static_cast<uint8_t>(parent >> 7);
         return out;
     };
+    // a scene of its own for each load (a DecodedScene assigned over keeps the old one's Scene)
     auto load = [](const std::vector<uint8_t>& in, DecodedScene& to, std::string& error) {
-        to = emptyScene();
         return CookedSceneLoader::loadScene(to.scene->scene, std::span<const uint8_t>(in.data(), in.size()), &error);
     };
 
     std::vector<uint8_t> v15 = bytes;
     v15[6] = 5;
     v15[7] = 0;
-    DecodedScene loaded;
+    DecodedScene older = emptyScene();
     std::string error;
-    ASSERT_TRUE(load(v15, loaded, error)) << error;
-    EXPECT_EQ(loaded.scene->scene->getComponent<Transform>(1002).parent, NULL_ENTITY) << "a 1.5 file has no hierarchy record";
-    EXPECT_EQ(loaded.scene->scene->getComponent<Transform>(1003).parent, NULL_ENTITY);
+    ASSERT_TRUE(load(v15, older, error)) << error;
+    EXPECT_EQ(older.scene->scene->getComponent<Transform>(1002).parent, NULL_ENTITY) << "a 1.5 file has no hierarchy record";
+    EXPECT_EQ(older.scene->scene->getComponent<Transform>(1003).parent, NULL_ENTITY);
 
-    error.clear();
-    EXPECT_FALSE(load(withFirstParent(1009), loaded, error)) << "1009 is no GameObject of the file";
+    DecodedScene unknown = emptyScene();
+    EXPECT_FALSE(load(withFirstParent(1009), unknown, error)) << "1009 is no GameObject of the file";
     EXPECT_NE(error.find("corrupt scene hierarchy"), std::string::npos) << error;
 
+    DecodedScene loop = emptyScene();
     error.clear();
-    EXPECT_FALSE(load(withFirstParent(1003), loaded, error)) << "1002 under 1003 under 1002";
+    EXPECT_FALSE(load(withFirstParent(1003), loop, error)) << "1002 under 1003 under 1002";
     EXPECT_NE(error.find("makes a loop"), std::string::npos) << error;
 
+    DecodedScene loaded = emptyScene();
     error.clear();
     ASSERT_TRUE(load(bytes, loaded, error)) << error;
     EXPECT_EQ(loaded.scene->scene->getComponent<Transform>(1003).parent, 1002u);
