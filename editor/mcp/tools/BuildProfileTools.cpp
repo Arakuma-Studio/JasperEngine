@@ -23,6 +23,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jasperengine::editor::mcp {
@@ -206,11 +207,12 @@ Json overridesJson(const BuildProfile& profile) {
 
 // one project undo step writing these files; files_written project-relative
 bool commit(Project* project, const std::string& stepName, std::vector<EditBuildProfileCmd::FileChange> changes, Json& filesWritten,
-            std::string& error) {
+            std::string& error, const std::optional<std::pair<std::string, std::string>>& activeNameChange = std::nullopt) {
     filesWritten = Json::array();
     for (const EditBuildProfileCmd::FileChange& change : changes) filesWritten.push_back(projectRelative(project, change.path));
     auto* command = new EditBuildProfileCmd(stepName, std::move(changes));
     command->setNoMerge();
+    if (activeNameChange) command->setActiveNameChange(project->getProjectPath(), activeNameChange->first, activeNameChange->second);
     auto failure = std::make_shared<std::string>();
     command->reportFailureTo(failure);
     if (!project->getProjectCommandHistory()->addCommand(command)) {
@@ -384,12 +386,13 @@ void editBuildProfileTool(const CallPtr& call) {
         }
         Json files;
         const std::string verb = action == "rename" ? "Rename" : "Duplicate";
-        if (!commit(project, verb + " Build Profile '" + entry->name + "'", std::move(changes), files, error)) {
+        // the user's active profile follows its rename, in the same undo step
+        const bool renamesActive = action == "rename" && buildprofiles::find({*entry}, activeName);
+        if (!commit(project, verb + " Build Profile '" + entry->name + "'", std::move(changes), files, error,
+                    renamesActive ? std::optional<std::pair<std::string, std::string>>({activeName, newName}) : std::nullopt)) {
             call->fail(error + ".");
             return;
         }
-        // the user's active profile follows its rename
-        if (action == "rename" && buildprofiles::find({*entry}, activeName)) buildprofiles::setActiveName(projectPath, newName, error);
         call->ok((action == "rename" ? "Renamed" : "Duplicated") + std::string(" Build Profile '") + entry->name + "' as '" + newName + "'.",
                  Json{{"files_written", files}});
         return;

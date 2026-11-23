@@ -19,32 +19,48 @@ editor::EditBuildProfileCmd::EditBuildProfileCmd(std::string stepName, std::vect
 
 bool editor::EditBuildProfileCmd::apply(bool forward){
     lastFailure.clear();
+    // Forward runs the changes in order and undo in reverse, so two changes naming one file (a
+    // rename that only changes the letter case, on a case-insensitive filesystem) leave it as
+    // the step meant: undo removes the new name first, then writes the old one
+    const size_t count = changes.size();
+    auto at = [&](size_t k) -> const FileChange& { return changes[forward ? k : count - 1 - k]; };
     // each file as the step leaves it; a failure puts the ones before it back
-    for (size_t i = 0; i < changes.size(); i++){
-        const std::optional<std::string>& wanted = forward ? changes[i].after : changes[i].before;
+    for (size_t i = 0; i < count; i++){
+        const std::optional<std::string>& wanted = forward ? at(i).after : at(i).before;
         std::string why;
         if (wanted){
-            const io::WriteResult written = io::writeFileAtomic(changes[i].path, *wanted);
+            const io::WriteResult written = io::writeFileAtomic(at(i).path, *wanted);
             if (!written.ok()) why = io::describeWriteError(written);
         } else {
             std::error_code ec;
-            fs::remove(changes[i].path, ec);
-            if (ec) why = "cannot remove " + FileUtils::pathToGenericUtf8(changes[i].path) + ": " + ec.message();
+            fs::remove(at(i).path, ec);
+            if (ec) why = "cannot remove " + FileUtils::pathToGenericUtf8(at(i).path) + ": " + ec.message();
         }
         if (why.empty()) continue;
         lastFailure = why;
         if (failureSink) *failureSink = why;
         for (size_t j = i; j-- > 0;){
-            const std::optional<std::string>& previous = forward ? changes[j].before : changes[j].after;
+            const std::optional<std::string>& previous = forward ? at(j).before : at(j).after;
             std::error_code ec;
-            if (previous) io::writeFileAtomic(changes[j].path, *previous);
-            else fs::remove(changes[j].path, ec);
+            if (previous) io::writeFileAtomic(at(j).path, *previous);
+            else fs::remove(at(j).path, ec);
         }
         buildprofiles::touch();
         return false;
     }
+    if (activeName){
+        std::string why;
+        if (!buildprofiles::setActiveName(activeName->projectPath, forward ? activeName->after : activeName->before, why)){
+            lastFailure = why;
+            if (failureSink) *failureSink = why;
+        }
+    }
     buildprofiles::touch();
     return true;
+}
+
+void editor::EditBuildProfileCmd::setActiveNameChange(std::filesystem::path projectPath, std::string before, std::string after){
+    activeName = ActiveNameChange{std::move(projectPath), std::move(before), std::move(after)};
 }
 
 bool editor::EditBuildProfileCmd::execute(){
@@ -67,6 +83,7 @@ bool editor::EditBuildProfileCmd::mergeWith(Command* previousCommand){
 }
 
 bool editor::EditBuildProfileCmd::isNoOp() const{
+    if (activeName && activeName->before != activeName->after) return false;
     for (const FileChange& change : changes)
         if (change.before != change.after) return false;
     return true;

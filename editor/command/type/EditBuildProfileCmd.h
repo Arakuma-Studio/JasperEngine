@@ -38,6 +38,9 @@ namespace jasperengine::editor{
         std::string failure() const override { return lastFailure; }
 
         void setMergeKey(const std::string& key) { mergeKey = key; }
+        // The user's active profile moves with the step (a rename of the active profile): set to
+        // `after` by execute and redo, back to `before` by undo. Only that key of build.yaml changes
+        void setActiveNameChange(std::filesystem::path projectPath, std::string before, std::string after);
         // where a failed execute writes why (the history frees a command that failed)
         void reportFailureTo(std::shared_ptr<std::string> sink) { failureSink = std::move(sink); }
 
@@ -50,6 +53,12 @@ namespace jasperengine::editor{
         std::string mergeKey;
         std::string lastFailure;
         std::shared_ptr<std::string> failureSink;
+        struct ActiveNameChange {
+            std::filesystem::path projectPath;
+            std::string before;
+            std::string after;
+        };
+        std::optional<ActiveNameChange> activeName;
 
         bool apply(bool forward);
     };
