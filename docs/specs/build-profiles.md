@@ -548,3 +548,22 @@ craftsman-end-motor (a port reconstructed from a retail binary). Profiles are ge
 - **AC2's fixture** (`expected-no-profile.json`) holds the key paths of `game.json` and
   `content-manifest.json` (values masked) recorded from this branch's build without a profile, not
   from main: no main editor was built here. The writers add the new keys only with a profile.
+- **R30, the content minor, per build.** The cooked files keep their 1.5 layout (`FORMAT_MINOR` 5):
+  `game.json`'s profile and defines are the only thing content 1.6 added, so the minor is stamped per
+  build (`cook::buildContentFormatVersion`). A build without a profile writes 1.5 and every 1.5 player
+  runtime still serves it; a profile's build writes 1.6 (`BUILD_PROFILE_MINOR`) and refuses an older
+  runtime even under `--allow-player-mismatch`, which would have run it with the defines ignored. A
+  runtime reads up to `CONTENT_MINOR` (its player-info, `tools/players/package_player.py`). Found in
+  the integration review: the single minor made the editor refuse every 1.5 runtime for every project.
+  Tests: `PlayerInstall.APlayerOfTheContentBeforeBuildProfilesServesABuildWithoutOne` (red before),
+  `ContentManifest.ReadsContentFormat`; `CookedScene.ReadsAnOlderMinorsContent` pins 5 again.
+- **A build's settings snapshot writes nothing.** Settings rows apply some overrides through their
+  undoable commands (Device Tiers, Screen Transitions, Saved Data, Draw Submission, ...), whose
+  `execute()` saved `project.yaml` (without its scene list) and `workspace.yaml` through the snapshot,
+  which keeps the project's path; Saved Data also reconfigured the editor's own store. The snapshot's
+  saves are no-ops and its engine calls are guarded.
+  `BuildProfileResolve.EveryOverridableKeyLeavesTheProjectFilesAlone` applies every overridable key and
+  checks the project folder byte for byte (red before).
+- **Undo of a rename.** Undo runs a step's files in reverse order (a rename to another letter case is
+  one file on Windows and macOS), and the active profile's rename is part of the step
+  (`EditBuildProfileCmd::setActiveNameChange`): undo makes the old name active again.

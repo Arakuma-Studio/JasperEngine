@@ -131,7 +131,9 @@ it was built with, and reads the cooked content format of that version (`content
 major.minor). A newer minor only adds what an older player skips: the editor does not use a
 runtime of an older minor than it cooks ("reads content format ..., older than the ... this
 editor writes: update the player runtime") unless the player-mismatch option asks for it (warning
-W-PLAYER-MISMATCH, and publish verify refuses the build). A player runs content of a newer minor
+W-PLAYER-MISMATCH, and publish verify refuses the build). A build's minor is what its content uses:
+a build without a Build Profile is 1.5, which every 1.5 runtime serves; a profile's build is 1.6,
+and an older runtime is refused for it even with the player-mismatch option. A player runs content of a newer minor
 without what is newer, with one warning ("content ... was made by a newer editor; features newer
 than ... are skipped"), and refuses another major at start (exit 5).
 
@@ -494,7 +496,8 @@ in `EditorSettings/BuildProfiles/<Name>.buildprofile` (committed, never shipped,
 A build resolves the profile once into a copy of the project's settings; the project and
 `project.yaml` never change. A build without a profile writes what it wrote before. `game.json`
 gains `buildProfile` and `defines`, `content-manifest.json` and `build-report.json` gain
-`buildProfile` (content format 1.6: an older runtime would ignore the defines).
+`buildProfile` (content format 1.6, for a profile's build only: an older runtime would ignore the
+defines, so the editor does not use one).
 
 Build Settings lists the profiles under the platforms: Add Build Profile, and on a row Duplicate,
 Rename, Delete and Switch Profile. Every edit is one undo step. The active profile (per user, in
