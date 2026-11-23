@@ -16,8 +16,9 @@ applies CI's stricter rules:
   (SANITIZER_INPUTS, a .github/ change included), every test of both binaries when its own settings
   or definition did (ASAN_SETTINGS, ci.yml's asan job or env), else nothing: the advisory run on main
   runs it after the merge;
-- macos and ios, on a pull request: only when an Apple-only input changed (APPLE_INPUTS); the merge
-  queue, a push, full runs and the nightly build them for every change that builds;
+- macos and ios, on a pull request: only when an Apple-only input changed (APPLE_INPUTS); ios in the
+  merge queue too (the nightly builds it for every change); macos in the queue, a push, full runs and
+  the nightly for every change that builds;
 - MCP runs the planned files that are in the CI suite (run_tests.ci_files()); the rest are listed
   under not_in_ci with their reason. A planned whole suite is the CI suite;
 - merge_group: every lane, unit and HTML UI unfiltered, MCP planned over the group's diff (D1), but
@@ -138,7 +139,8 @@ ASAN_JOB = "asan"
 # nothing reaches main without them. A PR runs them for the Apple platform code, the Xcode project and the
 # scripts that sync it (lint checks its source lists: tools/test_xcode_sync_sources.py), the Metal shader
 # stubs, and the lanes' own scripts (tools/ci/macos.sh, its common part, retry.sh, the report action); not
-# for a ci.yml change alone
+# for a ci.yml change alone. The merge queue builds ios by the same rule: it is a compile check with the
+# Apple compiler the queue's macos lane runs on every change, and nightly.yml's ios job builds it every night
 APPLE_INPUTS = ("engine/platform/apple/*", "engine/platform/mac/*", "engine/workspaces/xcode/*", "tools/xcode_sync_*",
                 "tools/test_xcode_sync_sources.py", "engine/shaders/msl21*", "tools/ci/macos.sh",
                 "tools/ci/platform-common.sh", "tools/ci/retry.sh", ".github/actions/report/*")
@@ -383,7 +385,8 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
     fallbacks: list[str] = []
     result = {"lanes": lanes, "unit_filter": {"core": "", "editor": ""}, "unit_run": {"core": False, "editor": False},
               "asan_filter": {"core": "", "editor": ""}, "asan_run": {"core": False, "editor": False},
-              "htmlui_filter": "", "mcp": {"mode": "none", "files": [], "not_in_ci": []}, "fallbacks": fallbacks}
+              "htmlui_filter": "", "mcp": {"mode": "none", "files": [], "not_in_ci": []}, "fallbacks": fallbacks,
+              "queue_off": []}
 
     def lane(name: str, run: bool, why: str) -> None:
         lanes[name] = {"run": run, "why": why}
@@ -422,12 +425,17 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
         else:
             lane("asan", False, lanes["unit"]["why"])
 
-    def apple_scope() -> None:
-        """A pull request's macos and ios lanes: only when an Apple-only input changed (APPLE_INPUTS)."""
+    def apple_scope(names=APPLE_LANES) -> None:
+        """A pull request's macos and ios lanes, the merge queue's ios: only when an Apple-only input
+        changed (APPLE_INPUTS)."""
         apple = [f for f in files if cc.match(f, APPLE_INPUTS)]
-        for name in APPLE_LANES:
+        for name in names:
             if apple:
                 lane(name, True, f"{apple[0]} changed (what only an Apple build reads)")
+            elif event == "merge_group":
+                lane(name, False, "no Apple-only input changed (APPLE_INPUTS): the macos lane compiles the change with "
+                                  "the same Apple compiler, and the nightly builds the Xcode project for iOS")
+                result["queue_off"].append(name)
             else:
                 lane(name, False, "no Apple-only input changed (APPLE_INPUTS): macOS runners are the scarce ones, "
                                   "and the merge queue builds it for every change before it reaches main")
@@ -478,6 +486,8 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
         if pr_like and not full_selection:
             asan_scope()
             apple_scope()
+        elif event == "merge_group" and not full_selection:
+            apple_scope(("ios",))
         return result
     if full_selection:
         fallbacks.append(f"the repository variable {FULL_SELECTION_VARIABLE} is true: every lane, every test (the selection's rollback)")
@@ -488,6 +498,8 @@ def _decide(event: str, plan: dict | None, plan_error: str, ci: list[str], left_
     queue = event == "merge_group"
     if pr_like:
         apple_scope()
+    elif queue:
+        apple_scope(("ios",))
     # unit and ASan: the gtest suites that see the change (the merge queue: all)
     unit = plan.get("unit", {})
     if queue:
@@ -1119,7 +1131,7 @@ def main(argv: list[str]) -> int:
                "asan_jobs": asan_job_names(planned_asan_run(result["lanes"], result["asan_run"])),
                "htmlui_filter": result["htmlui_filter"],
                "mcp": dict(result["mcp"], shards=shards), "fallbacks": result["fallbacks"], "notes": notes,
-               "advisory_off": result["advisory_off"], "build_only": result["build_only"],
+               "advisory_off": result["advisory_off"], "build_only": result["build_only"], "queue_off": result["queue_off"],
                "superseded_by": superseded[0] if superseded else None,
                "dispatch_advisory": result["dispatch_advisory"],
                "files": plan["files"] if plan else None,

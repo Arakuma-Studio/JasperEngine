@@ -1096,7 +1096,7 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 | `lint` | unless every path is one nothing reads | same | no | no | yes |
 | `linux`, `web`, `android`, `windows` | when anything that builds changed | yes | yes, to warm the caches (`windows`: the editor leg's build only) | `linux` when `mcp` or `smoke` runs (their editor install); `windows` for `windows-editor-tests` (the editor leg only) | yes |
 | `macos` | when an Apple-only input changed (below) | yes | yes, to warm its cache | no | yes |
-| `ios` | when an Apple-only input changed (below) | yes | no (no cache) | no | yes |
+| `ios` | when an Apple-only input changed (below) | the same; the nightly builds it every night | no (no cache) | no | yes |
 | `unit`, `htmlui` | the suites the plan selects | all, unfiltered; not while advisory | build only (the caches, the deps dumps) | while advisory all, unfiltered | all |
 | `asan` | the unit lane's suites when a path the sanitizers see changed; every test when the lane's settings did; else no (below) | all, unfiltered; not while advisory | build only (each binary's cache) | while advisory all | all |
 | `mcp` | the planned CI-suite files | the planned files, over the group's diff against `main`; not while advisory | no | while advisory the planned files, over the diff since the last advisory run | the whole CI suite |
@@ -1128,8 +1128,14 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   `retry.sh`, the report action). A `ci.yml` change alone does not count, even one to their own jobs.
   The reason is capacity: the organization has 5 macOS runners, and on 2026-11-23 macOS jobs waited a
   median of 2 h (up to 10) while the merge queue stalled behind them. The queue is the gate: it, a push
-  to `main`, full runs and the nightly build both lanes for every change that builds, so an Apple-only
-  break still stops the merge, one queue run later than a PR would have shown it. There are no iOS
+  to `main`, full runs and the nightly build `macos` for every change that builds, so a macOS break
+  still stops the merge, one queue run later than a PR would have shown it.
+- **iOS in the merge queue** follows the same rule (`lanes.json` `queue_off`, which `Check` accepts as
+  a planned skip). `ios` is a compile check of the Xcode project with the same Apple Clang the queue's
+  `macos` lane builds every change with, and macOS capacity is the bottleneck. `nightly.yml`'s `ios`
+  job builds the project for iOS and macOS every night, whatever changed, so an iOS-only break shows
+  there within a day; the nightly's report opens or updates its issue. Full runs build it, a push
+  does not (it keeps no cache). There are no iOS
   CMake toolchain files: `ios` builds the Xcode project, not CMake.
 - **MCP in the merge queue** is planned from the coverage map, not the whole suite: a regression the
   map misses is the nightly's to find. A planned file outside the CI suite (it needs the fixture
