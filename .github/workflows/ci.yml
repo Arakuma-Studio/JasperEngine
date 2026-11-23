@@ -577,6 +577,11 @@ jobs:
           [[ -n "$f" ]] || f="*"
           if [[ "$f" == *-* ]]; then f="$f:*GpuSlow*"; else f="$f-*GpuSlow*"; fi
           tools/ci/logged.sh "asan-$SUITE" "${BUILD_ONLY}SANITIZE=address,undefined UNIT_SUITE=$SUITE UNIT_TEST_ARGS=$(printf %q "--gtest_filter=$f") tools/build.sh unit-tests"
+      # the editor tests' binary is the largest we link: past 2 GiB from its first loaded section to its
+      # last, x86-64's 32-bit PC-relative relocations no longer reach and the link fails
+      - name: Relocation reach of the test binary
+        if: always() && matrix.suite == 'editor'
+        run: python3 tools/ci/reloc_reach.py build/linux/editor-tests-address-undefined/jasperengine-editor-tests | tee -a "$GITHUB_STEP_SUMMARY"
 
       - uses: ./.github/actions/ccache-save
         if: always()
