@@ -1152,8 +1152,10 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 - **ccache in CI**: a build runs with no size limit (a cleanup in the middle of a build evicts the
   restored entries it has not reached yet, and each miss then evicts more: a PR that changed one test
   file hit 5 of 5,279 compiles). `ccache-save` then evicts every entry the run neither used nor wrote
-  and prints the rest, the lane's working set, on every run; on `main` it cuts that to the lane's cap
-  (`max-size` in `ci.yml`), oldest-used first, saves it and deletes the lane's older entry (`prune`;
+  and prints the rest, the lane's working set, on every run; on `main` it cuts a working set over the
+  lane's cap (`max-size` in `ci.yml`) to it, oldest-used first, and keeps one under it whole (ccache's
+  cleanup evicts from each of its 16 subdirectories past a 16th of the cap, so under the cap it still
+  cost the next linux build 238 of 5,284 compiles), saves it and deletes the lane's older entry (`prune`;
   the `caches` job, after every lane, deletes them again). Each lane's old and new entries would
   otherwise both live until the push's slowest lane ended, and past the 10 GB GitHub evicts the least
   recently used entries of any lane: during push run 44629653601 the repository held 11.7 GB, two

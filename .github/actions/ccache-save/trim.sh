@@ -55,10 +55,27 @@ echo "ccache-save: the run's working set (entries used or written), cap $JASPER_
 du -sh "$DIR"
 
 if [[ "$save" == true ]]; then
+    # only a working set over the cap is cut: ccache's cleanup holds each of its 16 subdirectories to a
+    # 16th of the cap and cuts one over that to 80 % of it, so under the cap it still evicted the
+    # fullest subdirectories' entries, which the next run missed (linux, 0.85 GB under a 0.95G cap: 240
+    # of 5,312 objects went, and the next build of the same commit missed 238 of its 5,284 compiles)
+    used="$(run_ccache --print-stats | awk '$1 == "cache_size_kibibyte" { printf "%.0f\n", $2 * 1024 }')"
+    cap="$(awk -v s="$JASPER_CCACHE_CAP" 'BEGIN {
+        if (!match(s, /^[0-9.]+/)) exit
+        n = substr(s, 1, RLENGTH); u = substr(s, RLENGTH + 1)
+        m["k"] = 1e3; m["M"] = 1e6; m["G"] = 1e9; m["T"] = 1e12; m[""] = 1e9
+        m["Ki"] = 2^10; m["Mi"] = 2^20; m["Gi"] = 2^30; m["Ti"] = 2^40
+        if (u in m) printf "%.0f\n", n * m[u] }')"
     CAP="$JASPER_CCACHE_CAP"
-    # the oldest-used entries go first when the working set is over the cap
-    run_ccache --cleanup > /dev/null && run_ccache --zero-stats > /dev/null \
-        || { echo "ccache-save: the cut to $JASPER_CCACHE_CAP failed; nothing saved"; out false; exit 0; }
+    if [[ -n "$used" && -n "$cap" ]] && (( used <= cap )); then
+        echo "ccache-save: the working set is within the cap; nothing cut"
+    else
+        # the oldest-used entries go first
+        run_ccache --cleanup > /dev/null \
+            || { echo "ccache-save: the cut to $JASPER_CCACHE_CAP failed; nothing saved"; out false; exit 0; }
+    fi
+    run_ccache --zero-stats > /dev/null \
+        || { echo "ccache-save: zeroing the statistics failed; nothing saved"; out false; exit 0; }
     echo "ccache-save: saving"
     du -sh "$DIR"
 fi
