@@ -314,8 +314,9 @@ TEST(Compat, CorpusRoundTrip) {
                                 withoutComputedValues(withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(original))))));
             EXPECT_TRUE(difference.empty()) << "the save changed more than the version line, at " << difference;
             // an older scene keeps the camera pass its screen documents drew in
-            if (StreamMigrations::readVersion(DocumentKind::Scene, YAML::Load(original)) < 9 && original.find("htmlUiRenderMode:") == std::string::npos)
+            if (StreamMigrations::readVersion(DocumentKind::Scene, YAML::Load(original)) < 9 && original.find("htmlUiRenderMode:") == std::string::npos){
                 EXPECT_NE(first.find("\n  htmlUiRenderMode: camera\n"), std::string::npos) << "the render mode was not migrated";
+            }
             EXPECT_EQ(shaderKeySet(first), shaderKeySet(original)) << "the shader keys";
             EXPECT_EQ(first.rfind("formatVersion: " + std::to_string(StreamMigrations::currentVersion(DocumentKind::Scene)) + "\n", 0), 0u);
         }
