@@ -361,6 +361,19 @@ TEST_F(TextEntryTest, TraitsChangeWithoutHiding){
     EXPECT_EQ(system.virtualKeyboardHides, hides + 2);
 }
 
+// the focused field's scene goes (a form that loads a scene without HTML UI): the blur at unload
+// leaves the hide to a flush no context makes any more, so the field going away hides it at once
+TEST_F(TextEntryTest, KeyboardHidesWhenTheFocusedFieldsSceneGoes){
+    TestSystem& system = TestSystem::get();
+    load("text-entry/fields.html");
+    focus("email");
+    ASSERT_TRUE(RmlTextInputHandler::isKeyboardShown());
+    const int hides = system.virtualKeyboardHides;
+    fixture.reset();
+    EXPECT_EQ(system.virtualKeyboardHides, hides + 1) << "the soft keyboard stayed open";
+    EXPECT_FALSE(RmlTextInputHandler::isKeyboardShown());
+}
+
 TEST(TextEntryNames, RoundTripTheHtmlValues){
     for (int i = 0; i <= (int)KeyboardType::None; i++){
         KeyboardType parsed = KeyboardType::Text;

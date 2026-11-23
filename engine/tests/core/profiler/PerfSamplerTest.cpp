@@ -127,6 +127,28 @@ TEST_F(PerfSamplerTest, ExcludesPausedResumeLoadingAndStallSeconds){
     EXPECT_DOUBLE_EQ(PerfSampler::summary().excludedPaused, 4.0);
 }
 
+// a second's frames are held until its tick decides: past 512 frames a second (menus and loading
+// screens with vsync off) they must not reach the window before a paused second is discarded
+TEST_F(PerfSamplerTest, FastSecondsAreExcludedWhole){
+    PerfSampler::setSampling(true);
+    second();                                   // committed
+    PerfSampler::notePaused(true);
+    second(2000, 0.4f);                         // paused, 2000 frames drawn
+    PerfSampler::notePaused(false);
+    PerfSummary summary = PerfSampler::summary();
+    EXPECT_EQ(summary.frames, 60u) << "the paused second's frames past 512 reached the window";
+    EXPECT_DOUBLE_EQ(summary.seconds, 1.0);
+    EXPECT_DOUBLE_EQ(summary.excludedPaused, 1.0);
+    second();
+    second();                                   // the 2 s after the resume
+    second(1500, 0.6f);                         // a committed fast second, every frame counted
+    summary = PerfSampler::summary();
+    EXPECT_EQ(summary.frames, 1560u);
+    EXPECT_DOUBLE_EQ(summary.seconds, 2.0);
+    EXPECT_NEAR(summary.fpsAvg, 780.0, 1e-9);
+    EXPECT_LT(summary.frameMsP50, 1.0);
+}
+
 // AC3: the game's own exclusions, named; past 8 names they are "other"
 TEST_F(PerfSamplerTest, GameReasonsNameExcludedTime){
     PerfSampler::setSampling(true);

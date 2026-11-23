@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <vector>
 
 using namespace jasperengine::android;
 
@@ -144,4 +145,36 @@ TEST(AndroidTextInput, EditorInfoOfTraits) {
     }
     // the action of AC7's e-mail field
     EXPECT_EQ(editorInfoOf(make(KeyboardType::Email, EnterKey::Send)), (EditorInfo{0x21, 0x12000004}));
+}
+
+// Gboard finishes the composing word, then sends the action key: the field gets the word before
+// Send or Done acts on it (and before Next moves the focus away from it)
+TEST(AndroidTextInput, ActionKeyFollowsTheTextOfItsPass) {
+    std::vector<std::string> order;
+    bool textPending = true;
+    editorActionWithPendingText(textPending, [&] { order.push_back("text"); }, [&] { order.push_back("action"); });
+    ASSERT_EQ(order.size(), 2u) << "the pass's text did not reach the field before the action";
+    EXPECT_EQ(order[0], "text");
+    EXPECT_EQ(order[1], "action");
+    EXPECT_FALSE(textPending) << "the rest of the pass does not apply it again";
+
+    // nothing typed since: the action alone
+    order.clear();
+    editorActionWithPendingText(textPending, [&] { order.push_back("text"); }, [&] { order.push_back("action"); });
+    ASSERT_EQ(order.size(), 1u);
+    EXPECT_EQ(order[0], "action");
+}
+
+// the cache belongs to one activity: a recreated activity's IME starts from its defaults, so the
+// first field's EditorInfo (IME_FLAG_NO_FULLSCREEN with it) is set again even when it equals the
+// one the old activity had
+TEST(AndroidTextInput, EditorInfoCacheIsPerActivity) {
+    const EditorInfo text = editorInfoOf(jasperengine::TextEntryTraits());
+    {
+        ImeEditorInfoCache first;
+        EXPECT_TRUE(first.changes(text));
+        EXPECT_FALSE(first.changes(text)) << "the same kind of field keeps the keyboard";
+    }
+    ImeEditorInfoCache recreated;
+    EXPECT_TRUE(recreated.changes(text)) << "a recreated activity never got the field's EditorInfo";
 }

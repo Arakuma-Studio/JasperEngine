@@ -495,6 +495,22 @@ TEST_F(CullingGroupTest, NoAllocationsAndZeroCost){
     EXPECT_NEAR(bytes, 232000.0, 232000.0 * 0.05);
 }
 
+// a script in a persistent scene can keep a group of a scene that unloads: the handle reads the
+// scene's lifetime, never the freed scene
+TEST_F(CullingGroupTest, HandleOfAGoneSceneIsInvalid){
+    auto other = std::make_unique<Scene>();
+    test::disableSubSystems(*other);
+    CullingGroup group = CullingGroup::create(other.get());
+    ASSERT_TRUE(group.isValid());
+    group.setBoundingSphereCount(4);
+    other.reset();
+    ASSERT_EQ(group.getScene(), nullptr) << "the handle still names the freed scene";
+    EXPECT_FALSE(group.isValid());
+    EXPECT_EQ(group.getBoundingSphereCount(), 0u);
+    group.setBoundingSphereCount(8);
+    group.dispose();
+}
+
 // ------------------------------------------------------------------ Simulation Culling
 
 TEST_F(SimulationCullingTest, DistanceFreezesBodies){
@@ -744,4 +760,54 @@ TEST_F(SimulationCullingTest, SkipsCppUpdateCallbacks){
     EXPECT_EQ(script.fixedUpdates, 1);
     EXPECT_EQ(script.postUpdates, 1);
     Engine::pauseGameEvents(!enabled);
+}
+
+// the ground check runs inside the evaluation: a script's check that destroys a culled object or
+// replaces itself must not pull the component or the running check from under it
+TEST_F(SimulationCullingTest, GroundCheckMayReplaceItselfAndDestroyObjects){
+    camera(Vector3(0, 0, 0), true);
+    const Entity first = object(Vector3(0, 0, 5));
+    const Entity second = object(Vector3(0, 0, 6));
+    const Entity third = object(Vector3(0, 0, 7));
+    cull(first, 100.0f);
+    cull(second, 100.0f);
+    cull(third, 100.0f);
+    // destroyed while the check that holds it runs: the check's own storage went
+    struct Sentinel {
+        bool* running;
+        bool* destroyedWhileRunning;
+        ~Sentinel(){ if (*running) *destroyedWhileRunning = true; }
+    };
+    bool running = false;
+    bool destroyedWhileRunning = false;
+    bool victimAliveInCheck = false;
+    int calls = 0;
+    Scene* s = scene.get();
+    auto sentinel = std::make_shared<Sentinel>(Sentinel{&running, &destroyedWhileRunning});
+    SimulationCulling::setGroundCheck(s, [sentinel, s, second, &running, &calls, &victimAliveInCheck](const Vector3&, float){
+        running = true;
+        calls++;
+        s->destroyEntity(second);
+        victimAliveInCheck = s->isEntityCreated(second);
+        SimulationCulling::setGroundCheck(s, [&calls](const Vector3&, float){ calls++; return false; });
+        running = false;
+        return false;
+    });
+    sentinel.reset();
+    culling->evaluateNow();
+    EXPECT_FALSE(destroyedWhileRunning) << "the check was destroyed while it ran";
+    EXPECT_TRUE(victimAliveInCheck) << "a destroy inside the check waits for the evaluation's end";
+    EXPECT_FALSE(scene->isEntityCreated(second)) << "and happens then";
+    EXPECT_EQ(calls, 3);
+    EXPECT_EQ(scene->getComponent<SimulationCullingComponent>(first).reason, SimulationCullReason::GroundNotLoaded);
+    EXPECT_EQ(scene->getComponent<SimulationCullingComponent>(third).reason, SimulationCullReason::GroundNotLoaded);
+    SimulationCulling::setGroundCheck(s, nullptr);
+}
+
+// a scale a script set in one Play does not carry into the next (the editor's Stop resets the
+// application state)
+TEST_F(SimulationCullingTest, DistanceScaleEndsWithThePlay){
+    SimulationCulling::setDistanceScale(0.25f);
+    Engine::resetApplicationState();
+    EXPECT_FLOAT_EQ(SimulationCulling::getDistanceScale(), 1.0f);
 }

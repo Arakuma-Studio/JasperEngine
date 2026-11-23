@@ -215,6 +215,33 @@ inline EditorInfo editorInfoOf(const jasperengine::TextEntryTraits& traits) {
     return info;
 }
 
+// The EditorInfo the IME of one activity has: set again (and the input restarted) only when a field
+// asks for another, so moving between fields of one kind keeps the keyboard as it is
+class ImeEditorInfoCache {
+public:
+    // true when `info` must go to the IME (GameActivity_setImeEditorInfo)
+    bool changes(const EditorInfo& info) {
+        if (set && info == current)
+            return false;
+        current = info;
+        set = true;
+        return true;
+    }
+
+private:
+    static inline EditorInfo current;
+    static inline bool set = false;
+};
+
+// The soft keyboard's action key (APP_CMD_EDITOR_ACTION) reaches the looper as a command, which a
+// loop pass handles before the text GameActivity flagged in the same pass (textInputState)
+template<typename ApplyText, typename Action>
+void editorActionWithPendingText(bool& textPending, ApplyText&& applyText, Action&& action) {
+    (void)textPending;
+    (void)applyText;
+    action();
+}
+
 // The action key an IME reports (an EditorInfo action) as the field's enter key
 inline jasperengine::EnterKey enterKeyOfImeAction(int32_t action) {
     using jasperengine::EnterKey;
