@@ -207,9 +207,11 @@ class Idle(unittest.TestCase):
 
 
 class FakeGh:
-    def __init__(self, newest=None):
+    def __init__(self, newest=None, queued=None, enqueue_ok=True):
         self.calls = []
         self.newest = newest
+        self.queued = queued or {}
+        self.enqueue_ok = enqueue_ok
 
     def cancel(self, run_id):
         self.calls.append(("cancel", run_id))
@@ -221,7 +223,10 @@ class FakeGh:
 
     def enqueue(self, pr):
         self.calls.append(("enqueue", pr))
-        return True
+        return self.enqueue_ok
+
+    def queue_state(self, pr):
+        return self.queued.get(pr, "")
 
     def newest_run(self, run):
         return self.newest or run["id"]
@@ -284,6 +289,39 @@ class Watchdog(unittest.TestCase):
         self.memory["acted"]["12"] = {"t": NOW, "stage": "rerun", "why": "old"}
         self.assertIn("12", dog.held())
         self.assertFalse(dog.handle(run_(12), "idle", finished=False, kind="idle"))
+
+    def test_a_pull_request_already_queued_or_a_failed_enqueue_is_tried_once(self):
+        # (run 45269664917: #160 was back in the queue; the enqueue failed every minute, 121 times)
+        r = run_(13, "merge_group", "gh-readonly-queue/main/pr-160-7005c661391004d44c6dfe3d97110ec9726f5b12")
+        gh = FakeGh(queued={160: "in the merge queue"})
+        dog = self.dog(gh)
+        dog.handle(r, "why", finished=True)
+        self.assertEqual(gh.calls, [])
+        self.assertIn("#160 is in the merge queue already", self.lines[-1])
+        self.assertEqual(dog.pending(), [])
+        gh = FakeGh(enqueue_ok=False)
+        dog = self.dog(gh)
+        dog.handle(run_(14, "merge_group", "gh-readonly-queue/main/pr-161-dc432e199312b393e6170477ae0d2e849d9aa50e"), "why", finished=False)
+        for _ in range(3):
+            for key in dog.pending():
+                dog.finish(run_(int(key), "merge_group", "gh-readonly-queue/main/pr-161-dc432e199312b393e6170477ae0d2e849d9aa50e"), "why")
+        self.assertEqual(gh.calls, [("cancel", 14), ("enqueue", 161)])
+        self.assertTrue(any("FAILED to re-enqueue" in line for line in self.lines))
+
+    def test_finishing_respects_the_hourly_limit(self):
+        gh = FakeGh()
+        dog = self.dog(gh)
+        for i in range(rd.MAX_ACTIONS):
+            dog.handle(run_(300 + i), "why", finished=False)
+        self.assertEqual(len(dog.pending()), rd.MAX_ACTIONS)
+        for key in dog.pending():
+            dog.finish(run_(int(key)), "why")
+        self.assertEqual(len(gh.calls), rd.MAX_ACTIONS)          # the cancels: no rerun past the limit
+        self.assertEqual(len(dog.pending()), rd.MAX_ACTIONS)      # still pending, for the next hour
+        later = self.dog(gh, NOW + 3601)
+        for key in later.pending():
+            later.finish(run_(int(key)), "why")
+        self.assertEqual([c[0] for c in gh.calls].count("rerun"), rd.MAX_ACTIONS)
 
     def test_a_superseded_pull_request_run_is_not_rerun(self):
         # a rerun would cancel the newer push's run (cancel-in-progress)
