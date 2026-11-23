@@ -570,10 +570,14 @@ namespace {
                   const std::function<void(const std::string& key, int line)>& visit) {
         std::string text;
         if (!ProjectChecks::readFile(path, text)) return;
-        static const std::regex html(R"re(data-l10n-(?:id|attr-[a-z-]+)\s*=\s*["']([a-z0-9_]+\.[a-z0-9_.-]+)["'])re");
-        static const std::regex scene(R"re(textKey:\s*["']?([a-z0-9_]+\.[a-z0-9_.-]+))re");
+        // "ns.key", or a key alone for the Default Table (D-15)
+        static const std::regex html(R"re(data-l10n-(?:id|attr-[a-z-]+)\s*=\s*["']([a-z0-9_][a-z0-9_.-]*)["'])re");
+        static const std::regex scene(R"re(localizationKey:\s*["']?([a-z0-9_][a-z0-9_.-]*))re");
         static const std::regex script(R"re(["']([a-z0-9_]+\.[a-z0-9_.-]+)["'])re");
-        const std::regex& pattern = kind == "html" ? html : kind == "scene" ? scene : script;
+        // the Lua calls that take a key: Localization.get/has, setLocalized, localizationKey =
+        static const std::regex scriptCall(
+            R"re((?:Localization\s*\.\s*(?:get|has)\s*\(|:\s*setLocalized\s*\(|\.\s*localizationKey\s*=)\s*["']([a-z0-9_][a-z0-9_.-]*)["'])re");
+        const std::regex& pattern = kind == "html" ? html : kind == "scene" ? scene : kind == "script-call" ? scriptCall : script;
         int line = 1;
         size_t lineStart = 0;
         for (std::sregex_iterator it(text.begin(), text.end(), pattern), end; it != end; ++it) {
@@ -613,11 +617,12 @@ std::vector<KeyReference> editor::l10n::findReferences(const fs::path& projectPa
     return out;
 }
 
-std::map<std::string, KeyReference> editor::l10n::referencedKeys(const fs::path& projectPath) {
+std::map<std::string, KeyReference> editor::l10n::referencedKeys(const fs::path& projectPath, bool scriptCalls) {
     std::map<std::string, KeyReference> out;
     eachReferencingFile(projectPath, [&](const fs::path& path, const std::string& kind) {
-        if (kind == "script") return;   // quoted strings in Lua are not all keys
-        scanFile(projectPath, path, kind, [&](const std::string& found, int line) {
+        // quoted strings in Lua are not all keys: only those the key-taking calls are given
+        if (kind == "script" && !scriptCalls) return;
+        scanFile(projectPath, path, kind == "script" ? std::string("script-call") : kind, [&](const std::string& found, int line) {
             out.emplace(found, KeyReference{relativeTo(projectPath, path), line, kind});
         });
     });

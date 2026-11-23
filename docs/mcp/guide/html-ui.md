@@ -322,7 +322,7 @@ the first.
 game language; `data-l10n-args='{"count": 3}'` gives its arguments and `data-l10n-attr-<name>`
 (`placeholder`, `title`, `alt`, `aria-label`, `value`) sets an attribute. The element holds only
 text (child elements: `HTMLUI-LOC-0001`, left as written); `translate="no"` keeps a subtree out of
-the literal-text scan. Lua: `element:setL10n(key, args)`, `doc:translate()`. Tables and checks:
+the literal-text scan. Lua: `element:setLocalized(key, args)`, `doc:translate()`. Tables and checks:
 jasper://docs/localization.
 
 ### `.rml` documents: RmlUi's own dialect

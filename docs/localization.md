@@ -10,7 +10,9 @@ on rename), a source language (the project default when made) and ordered entrie
 context, max_chars}`. Each translation is `Name.<lang>.translation` beside it, with per key `{text,
 status, source_hash}`; `status` is `translated` or `needs_review`. A key is global as
 `<namespace>.<key>` (`ui.menu.play`). A namespace is unique in the project and never a Title Art
-document's `string_namespace` (error `l10n-namespace-taken`).
+document's `string_namespace` (error `l10n-namespace-taken`). A key whose first part names no
+namespace reads the **Default Table** (Project Settings > Localization; empty: the project's only
+String Table), so a small game can write `Localization.get("menu.play")`.
 
 Make one with Project window **Create > Localization > String Table** or
 `edit_string_table {path, create: {}}`. Editing a source text turns its translations
@@ -35,13 +37,14 @@ Texts are ICU MessageFormat, the subset games need:
 `plural` and `select` need `other` and nest up to 4 levels. Plural rules and number symbols come
 from CLDR 49 (`engine/core/localization/PluralRules.gen.inc`, `tools/l10n/gen_plural_rules.py`). A
 pattern that does not parse is an error in the editor and shows as written in a game. A string
-argument `"@ns.key"` is replaced by that key's text (a translated noun).
+argument `"@ns.key"` is replaced by that key's text (a translated noun). From Lua, a list fills
+`{0}`, `{1}`, ... (`Localization.get("ui.score", {12, "Ana"})` for `"{1} scored {0}"`).
 
 ## The game language
 
 Resolved at start and on every change: the first of `Localization.setLanguage`'s value (the same
 global as `TitleArt.setLanguage`), the remembered choice (Project Settings > Localization >
-**Remember Player Choice**), the device's languages (the Game view's Device > Language in the
+**Remember Language Choice**), the device's languages (the Game view's Device > Language in the
 editor), the default language, that matches a shipped language (`zh-HK` picks `zh-Hant`, `pt-PT`
 picks `pt-BR` when only that ships). The shipped languages are Project Settings > Localization >
 Languages, or every table's languages when that list is empty. The OS language changing while the
@@ -65,13 +68,14 @@ The message replaces the element's text (as text, never markup), so a keyed elem
 one with child elements is left as written (`HTMLUI-LOC-0001`). Rows of list, grid, tree and table
 views and markup scripts insert are translated as they are made; a language change translates the
 same elements again in place. The document's root gets the language and `rtl` for right-to-left
-languages. Lua: `element:setL10n(key, args)`, `doc:translate()` after editing `data-l10n-*`
+languages. Lua: `element:setLocalized(key, args)`, `doc:translate()` after editing `data-l10n-*`
 directly. Data models get the transform `{{ 'shop.coins' | l10n('count', coins) }}`.
 
 ## Text
 
-The Text component's **Localization Key** shows that key's message in Play and games; `text` stays
-the fallback and what the scene saves. Lua: `text.localizationKey`, `text:setLocalizedText(key,
+The Text component's **Localization Key** shows that key's message in Play and games, and in the
+Scene and Game views in Edit mode; `text` stays the fallback and what the scene saves. A table edit
+shows at once. Lua: `text.localizationKey`, `text:setLocalized(key,
 {count = 3})` (arguments are not saved).
 
 ## Fonts
@@ -87,7 +91,9 @@ documents loaded after the language is set.
 local label = Localization.get("ui.shop.coins", {count = 3})
 local custom = Localization.format("{n, plural, one {# life} other {# lives}}", {n = lives})
 if not Localization.has("ui.menu.extra") then return end
-Localization.setLanguage("de")             -- remembered with Remember Player Choice; "" = the device
+Localization.setLanguage("de")             -- remembered with Remember Language Choice; "" = the device
+Localization.language = "de"                -- the same; a bad tag raises
+local score = Localization.get("score", {12, "Ana"})   -- the Default Table's "{1} scored {0}"
 print(Localization.language, #Localization.languages, Localization.getLanguageName("de"))
 Localization.onLanguageChanged = function(code) print("now " .. code) end
 ```
@@ -119,6 +125,12 @@ An export writes `assets/l10n/<ns>.<lang>.strbin` per namespace and shipped lang
 `l10n/manifest.json`; a project without tables writes nothing and pays nothing. Warnings (none
 blocks): `W-L10N-UNKNOWN-KEY`, `W-L10N-UNTRANSLATED`, `W-L10N-STALE`, `W-L10N-LANGUAGE-DROPPED`,
 `W-L10N-BAD-MESSAGE`.
+
+`jasperengine-editor check` (with the Lua or UI checks, and in the pre-commit hook when a table,
+translation, script, document or scene changes) runs the tool **strings**: errors for a table that
+does not read, a key twice in a table, a namespace two owners claim, a message that does not parse
+and a Default Table that names no table; warnings for keys HTML, scenes and Lua literals
+(`Localization.get/has`, `setLocalized`, `localizationKey =`) name that no table has.
 
 ## Multiplayer
 

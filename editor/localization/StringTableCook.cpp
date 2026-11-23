@@ -73,10 +73,32 @@ std::vector<std::string> editor::l10n::shippedLanguages(const LocalizationSettin
     return out;
 }
 
+bool editor::l10n::keyResolves(const std::string& key, const std::set<std::string>& knownKeys, const std::set<std::string>& namespaces,
+                               const std::string& defaultTable) {
+    // as the runtime reads it (Localization's lookup): a first segment that names a namespace is
+    // that namespace's, anything else the Default Table's
+    const size_t dot = key.find('.');
+    if (dot != std::string::npos && dot != 0 && namespaces.count(key.substr(0, dot))) return knownKeys.count(key) > 0;
+    return !defaultTable.empty() && knownKeys.count(defaultTable + "." + key) > 0;
+}
+
+std::string editor::l10n::defaultTableOf(const LocalizationSettings& settings, const ProjectTables& tables) {
+    if (!settings.defaultTable.empty()) return settings.defaultTable;
+    // the project's only String Table, whatever dialogues it has (their texts are namespaces too)
+    std::string only;
+    for (const StringTableSet& set : tables.sets) {
+        if (set.dialogue) continue;
+        if (!only.empty()) return std::string();
+        only = set.table.ns;
+    }
+    return only;
+}
+
 LocalizationManifest editor::l10n::editorManifest(const LocalizationSettings& settings, const ProjectTables& tables) {
     LocalizationManifest manifest;
     manifest.defaultLanguage = settings.effectiveDefault();
-    manifest.rememberChoice = settings.rememberChoice;
+    manifest.rememberLanguage = settings.rememberLanguage;
+    manifest.defaultTable = defaultTableOf(settings, tables);
     manifest.languages = shippedLanguages(settings, tables);
     manifest.fonts = settings.fonts;
     addNames(manifest);
@@ -100,7 +122,8 @@ editor::l10n::CookResult editor::l10n::cookLocalization(const fs::path& projectP
 
     LocalizationManifest manifest;
     manifest.defaultLanguage = settings.effectiveDefault();
-    manifest.rememberChoice = settings.rememberChoice;
+    manifest.rememberLanguage = settings.rememberLanguage;
+    manifest.defaultTable = defaultTableOf(settings, tables);
     manifest.languages = shippedLanguages(settings, tables);
     addNames(manifest);
     // the fonts of shipped languages, as the game finds them (assets-relative)
@@ -181,10 +204,17 @@ editor::l10n::CookResult editor::l10n::cookLocalization(const fs::path& projectP
     for (const auto& [code, count] : stale) {
         if (count) result.warnings.push_back("W-L10N-STALE: " + code + ": " + std::to_string(count) + " translations need review (their source changed)");
     }
+    std::set<std::string> namespaces;
+    for (const StringTableSet& set : tables.sets) namespaces.insert(set.table.ns);
     for (const auto& [key, reference] : referencedKeys(projectPath)) {
-        if (knownKeys.count(key)) continue;
+        if (keyResolves(key, knownKeys, namespaces, manifest.defaultTable)) continue;
         // a title's key belongs to its document (S87), not to a String Table
         const std::string ns = key.substr(0, key.find('.'));
+        if (key.find('.') == std::string::npos && manifest.defaultTable.empty()) {
+            result.warnings.push_back("W-L10N-UNKNOWN-KEY: " + reference.file + ":" + std::to_string(reference.line) + " names \"" + key +
+                                      "\" without a namespace, and the project has no Default Table (Project Settings > Localization)");
+            continue;
+        }
         if (std::none_of(tables.sets.begin(), tables.sets.end(), [&](const StringTableSet& s) { return s.table.ns == ns; }) &&
                 !namespaceOwner(projectPath, ns).empty()) continue;
         result.warnings.push_back("W-L10N-UNKNOWN-KEY: " + reference.file + ":" + std::to_string(reference.line) + " names \"" + key +
@@ -208,4 +238,78 @@ void editor::l10n::refreshEditorLocalization(Project* project) {
     const ProjectTables tables = loadProjectTables(project->getProjectPath());
     if (tables.sets.empty() && !Localization::isActive()) return;
     Localization::setManifest(tables.sets.empty() ? LocalizationManifest() : editorManifest(project->getLocalizationSettings(), tables));
+}
+
+editor::l10n::StringsCheck editor::l10n::checkStrings(const fs::path& projectPath, const LocalizationSettings& settings) {
+    StringsCheck out;
+    auto add = [&](const std::string& severity, const std::string& path, int line, const std::string& code, const std::string& message,
+                   const std::string& suggestion) {
+        ProjectChecks::Finding finding;
+        finding.tool = "strings";
+        finding.path = path;
+        finding.line = line;
+        finding.severity = severity;
+        finding.code = code;
+        finding.message = message;
+        finding.suggestion = suggestion;
+        out.findings.push_back(std::move(finding));
+    };
+    const ProjectTables tables = loadProjectTables(projectPath);
+    for (const std::string& error : tables.errors)
+        add("error", "", 0, "L10N-BAD-TABLE", error, "fix the file's JSON, or open it in Window > Localization Tables");
+    std::set<std::string> knownKeys;
+    std::set<std::string> namespaces;
+    std::set<std::string> tableNamespaces;
+    for (const StringTableSet& set : tables.sets) {
+        if (!set.dialogue) out.tables++;
+        namespaces.insert(set.table.ns);
+        if (!set.dialogue) tableNamespaces.insert(set.table.ns);
+        const std::string owner = namespaceOwner(projectPath, set.table.ns, set.owner);
+        if (!owner.empty())
+            add("error", set.ownerRelative, 0, "L10N-NAMESPACE-TAKEN", "namespace \"" + set.table.ns + "\" is also " + owner + "'s",
+                "rename one namespace (edit_string_table, or the table's file)");
+        std::set<std::string> seen;
+        for (const TableEntry& entry : set.table.entries) {
+            knownKeys.insert(set.table.ns + "." + entry.key);
+            if (!seen.insert(entry.key).second)
+                add("error", set.ownerRelative, 0, "L10N-DUPLICATE-KEY", "key \"" + entry.key + "\" is in the table twice; the game reads the first",
+                    "remove or rename one of them");
+            rt::MessageError problem;
+            if (!rt::MessageFormat::validate(entry.text, &problem))
+                add("error", set.ownerRelative, 0, "L10N-BAD-MESSAGE",
+                    entry.key + " (" + set.table.sourceLanguage + "): " + problem.message + " at column " +
+                        std::to_string(rt::MessageFormat::column(entry.text, problem.offset)),
+                    "fix the ICU message; the game shows it as written");
+        }
+        for (const auto& [code, doc] : set.translations) {
+            for (const auto& [key, translation] : doc.entries) {
+                rt::MessageError problem;
+                if (!rt::MessageFormat::validate(translation.text, &problem))
+                    add("error", translationPathFor(set.owner, code).lexically_relative(projectPath).generic_string(), 0, "L10N-BAD-MESSAGE",
+                        key + " (" + code + "): " + problem.message + " at column " + std::to_string(rt::MessageFormat::column(translation.text, problem.offset)),
+                        "fix the ICU message; the game shows it as written");
+            }
+        }
+    }
+    if (!settings.defaultTable.empty() && !tableNamespaces.count(settings.defaultTable))
+        add("error", "project.yaml", 0, "L10N-DEFAULT-TABLE", "the Default Table \"" + settings.defaultTable + "\" is no String Table's namespace",
+            "pick a table in Project Settings > Localization > Default Table, or clear it");
+    // a project without String Tables pays no walk over its files (the pre-commit hook runs this)
+    if (tables.sets.empty() && tables.errors.empty()) return out;
+    const std::string defaultTable = defaultTableOf(settings, tables);
+    for (const auto& [key, reference] : referencedKeys(projectPath, true)) {
+        if (keyResolves(key, knownKeys, namespaces, defaultTable)) continue;
+        const size_t dot = key.find('.');
+        // a title's key belongs to its document (S87), not to a String Table
+        if (dot != std::string::npos && !namespaces.count(key.substr(0, dot)) && !namespaceOwner(projectPath, key.substr(0, dot)).empty()) continue;
+        if (dot == std::string::npos && defaultTable.empty()) {
+            add("warning", reference.file, reference.line, "W-L10N-UNKNOWN-KEY",
+                "\"" + key + "\" has no namespace, and the project has no Default Table",
+                "write \"<namespace>." + key + "\", or set Project Settings > Localization > Default Table");
+            continue;
+        }
+        add("warning", reference.file, reference.line, "W-L10N-UNKNOWN-KEY", "\"" + key + "\" is in no String Table",
+            "add it (edit_string_table set), or fix the key");
+    }
+    return out;
 }

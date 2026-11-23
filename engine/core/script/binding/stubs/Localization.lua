@@ -19,10 +19,11 @@
 ---@field literal LocalizationLiteral[]
 ---@field missing LocalizationMiss[]
 
----String Tables and the game language (docs/localization.md). Keys are "<namespace>.<key>"; texts
+---String Tables and the game language (docs/localization.md). Keys are "<namespace>.<key>", or a
+---key alone for the Default Table (Project Settings > Localization); texts
 ---are ICU messages: {name}, {n, number}, {n, plural, one {# coin} other {# coins}}, {g, select, ...}.
 ---@class Localization
----@field language string # read-only: the resolved game language, e.g. "pt-BR" ("" without String Tables)
+---@field language string # the resolved game language, e.g. "pt-BR" ("" without String Tables); assigning it is setLanguage, a bad tag raises
 ---@field languages string[] # read-only: the languages the game ships, the default first
 ---@field onLanguageChanged FunctionSubscribe_V_S # fun(code: string), once per change; assign a function or :add(tag, fn)
 Localization = {}
@@ -31,14 +32,14 @@ Localization = {}
 ---release build and "⟦key⟧" in the editor and Development Builds. A string argument "@ns.key" is
 ---replaced by that key's text.
 ---@param key string
----@param args? table<string, string|number|boolean>
+---@param args? table<string|integer, string|number|boolean> # names fill {name}; a list fills {0} {1} ...
 ---@param fallback? string
 ---@return string
 function Localization.get(key, args, fallback) end
 
 ---Formats an ICU message written in code (default: the game language's plural rules and numbers)
 ---@param pattern string
----@param args? table<string, string|number|boolean>
+---@param args? table<string|integer, string|number|boolean> # names fill {name}; a list fills {0} {1} ...
 ---@param language? string
 ---@return string
 function Localization.format(pattern, args, language) end
@@ -49,7 +50,7 @@ function Localization.format(pattern, args, language) end
 function Localization.has(key) end
 
 ---Sets the game language (the same value as TitleArt.setLanguage), remembered across runs with
----Remember Player Choice; "" forgets the choice and follows the device again. False for an invalid tag.
+---Remember Language Choice; "" forgets the choice and follows the device again. False for an invalid tag.
 ---@param code string
 ---@return boolean
 function Localization.setLanguage(code) end

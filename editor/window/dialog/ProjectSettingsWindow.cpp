@@ -5,6 +5,7 @@
 #include "component/TerrainComponent.h"
 #include "ProjectSettingsWindow.h"
 #include "buildprofile/BuildProfile.h"
+#include "localization/StringTableDocument.h"
 #include "window/ProjectWindow.h"
 #include "io/watch/LinkedFolders.h"
 #include "window/EditorModal.h"
@@ -3837,11 +3838,33 @@ void ProjectSettingsWindow::drawLocalizationSettings() {
                 endSettingsRow("The language shown when none of the device's languages matches a title's, before its source language. "
                                "TitleArt.setLanguage and the device's languages come first.");
             }
-            if (settingsui::beginRow("localization.remember_choice")) {
-                if (projectBeginSettingsRow("Remember Player Choice", !m_localization.rememberChoice)) m_localization.rememberChoice = true;
-                ImGui::Checkbox("##LocalizationRemember", &m_localization.rememberChoice);
+            if (settingsui::beginRow("localization.remember_language")) {
+                if (projectBeginSettingsRow("Remember Language Choice", !m_localization.rememberLanguage)) m_localization.rememberLanguage = true;
+                ImGui::Checkbox("##LocalizationRemember", &m_localization.rememberLanguage);
                 endSettingsRow("The language the game sets (Localization.setLanguage, a language menu) is remembered and comes before the "
                                "device's languages at the next start.");
+            }
+            if (settingsui::beginRow("localization.default_table")) {
+                // D-15: the String Table a key without a namespace reads
+                if (projectBeginSettingsRow("Default Table", !m_localization.defaultTable.empty())) m_localization.defaultTable.clear();
+                const std::string shown = m_localization.defaultTable.empty() ? std::string("Auto (the only String Table)") : m_localization.defaultTable;
+                if (ImGui::BeginCombo("##LocalizationDefaultTable", shown.c_str())) {
+                    if (ImGui::IsWindowAppearing()) {
+                        // the tables are read when the list opens, not every frame
+                        m_localizationTables.clear();
+                        for (const fs::path& owner : l10n::findTables(m_project->getProjectPath())) {
+                            l10n::StringTableSet set;
+                            std::string ignored;
+                            if (l10n::loadSet(m_project->getProjectPath(), owner, set, ignored)) m_localizationTables.push_back(set.table.ns);
+                        }
+                    }
+                    if (ImGui::Selectable("Auto (the only String Table)", m_localization.defaultTable.empty())) m_localization.defaultTable.clear();
+                    for (const std::string& ns : m_localizationTables) {
+                        if (ImGui::Selectable(ns.c_str(), ns == m_localization.defaultTable)) m_localization.defaultTable = ns;
+                    }
+                    ImGui::EndCombo();
+                }
+                endSettingsRow("The String Table a key without a namespace reads: Localization.get(\"play\") instead of \"ui.play\".");
             }
             if (settingsui::beginRow("localization.fonts")) {
                 if (projectBeginSettingsRow("Language Fonts", !m_localization.fonts.empty())) m_localization.fonts.clear();

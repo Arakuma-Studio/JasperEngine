@@ -8,12 +8,14 @@
 // through the table's metatable.
 
 #include "LuaBinding.h"
+#include "script/binding/LocalizationArgsLua.h"
 #include "lua.hpp"
 #include "LuaBridge.h"
 
 #include "localization/Localization.h"
 
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <string_view>
 
@@ -32,25 +34,7 @@ namespace {
 
     // a Lua table {name = value} (checkArgs first) -> arguments; numbers with no fraction become integers
     LocalizationArgs argsAt(lua_State* L, int index) {
-        LocalizationArgs args;
-        if (lua_isnoneornil(L, index)) return args;
-        lua_pushnil(L);
-        while (lua_next(L, index) != 0) {
-            if (lua_type(L, -2) == LUA_TSTRING) {
-                const std::string name = lua_tostring(L, -2);
-                if (lua_isinteger(L, -1)) {
-                    args.emplace_back(name, static_cast<int64_t>(lua_tointeger(L, -1)));
-                } else if (lua_type(L, -1) == LUA_TNUMBER) {
-                    args.emplace_back(name, static_cast<double>(lua_tonumber(L, -1)));
-                } else if (lua_type(L, -1) == LUA_TBOOLEAN) {
-                    args.emplace_back(name, std::string(lua_toboolean(L, -1) ? "true" : "false"));
-                } else if (const char* text = lua_tostring(L, -1)) {
-                    args.emplace_back(name, std::string(text));
-                }
-            }
-            lua_pop(L, 1);
-        }
-        return args;
+        return luaargs::localizationArgs(L, index);
     }
 
     void pushString(lua_State* L, const std::string& text) {
@@ -169,6 +153,20 @@ namespace {
             lua_pushvalue(L, 3);
             Localization::onLanguageChanged = L;
             lua_settop(L, 3);
+            return 0;
+        }
+        if (std::string_view(field) == "language") {
+            // D-15: as Unity's SelectedLocale, assigning is setLanguage; a bad tag raises
+            const char* code = luaL_checkstring(L, 3);
+            char message[256] = {};
+            {
+                // no C++ object may be alive when luaL_error leaves this frame
+                std::string error;
+                if (!Localization::setLanguage(code, &error))
+                    std::snprintf(message, sizeof(message), "%s", error.empty() ? "not a language tag" : error.c_str());
+            }
+            if (message[0])
+                return luaL_error(L, "Localization.language = '%s': %s; use a tag such as \"de\" or \"pt-BR\", or \"\" to follow the device", code, message);
             return 0;
         }
         return luaL_error(L, "Localization.%s is read-only", field);

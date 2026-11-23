@@ -48,7 +48,7 @@ namespace {
             });
             LocalizationManifest manifest;
             manifest.defaultLanguage = "en";
-            manifest.rememberChoice = false;
+            manifest.rememberLanguage = false;
             manifest.languages = {"en", "de"};
             manifest.names = {{"en", "English"}, {"de", "Deutsch"}};
             manifest.namespaces.push_back({"ui", "en", {{"en", "ui.en.mem"}, {"de", "ui.de.mem"}}});
@@ -97,8 +97,7 @@ TEST_F(LocalizationLua, ApiMatchesStubs) {
         "assert(Localization.isRightToLeft('he') and not Localization.isRightToLeft())\n"
         "assert(Localization.setLanguage('de') and Localization.get('ui.play') == 'Spielen')\n"
         "assert(Localization.setLanguage('bad tag!') == false and Localization.language == 'de')\n"
-        "assert(type(Localization.scan().literal) == 'table')\n"
-        "assert(not pcall(function() Localization.language = 'fr' end))\n"), "");
+        "assert(type(Localization.scan().literal) == 'table')\n"), "");
 }
 
 TEST_F(LocalizationLua, OnLanguageChangedFiresOnce) {
@@ -123,4 +122,21 @@ TEST_F(LocalizationLua, EventIsClearedAtStop) {
     EXPECT_FALSE(Localization::onLanguageChanged.hasSubscribers());
     ASSERT_TRUE(Localization::setLanguage("de"));
     EXPECT_EQ(runLua(L, "assert(#localizationEvents == 0)"), "");
+}
+
+// D-15 (from S95): Localization.language is writable as Unity's SelectedLocale, a bad tag raises
+// and changes nothing, a list part fills {0} {1}, and a key without a namespace reads the Default Table
+TEST_F(LocalizationLua, LanguageIsWritableListArgumentsArePositionalAndBareKeysUseTheDefaultTable) {
+    lua_State* L = LuaBinding::getLuaState();
+    EXPECT_EQ(runLua(L,
+        "Localization.language = 'de'\n"
+        "assert(Localization.language == 'de' and Localization.get('ui.play') == 'Spielen')\n"
+        "assert(not pcall(function() Localization.language = 'bad tag!' end))\n"
+        "assert(Localization.language == 'de')\n"
+        "assert(Localization.format('{0} of {1}', {3, 'Bob'}) == '3 of Bob')\n"
+        "assert(Localization.format('{0} {n}', {7, n = 'x'}) == '7 x')\n"
+        "Localization.language = 'en'\n"
+        "assert(Localization.get('play') == 'Play')\n"
+        "assert(Localization.get('coins', {n = 1}) == '1 coin')\n"
+        "assert(Localization.has('play') and not Localization.has('nope'))\n"), "");
 }

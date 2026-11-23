@@ -1906,7 +1906,15 @@ bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, RectTran
         if (!text.loaded){
             loadFontAtlas(text, ui, layout);
         }
-        createText(text, ui, layout);
+        if (!text.localizedPreview.empty()){
+            // Edit mode's message (D-15): drawn, while `text` keeps the authored value
+            std::string authored = std::move(text.text);
+            text.text = text.localizedPreview;
+            createText(text, ui, layout);
+            text.text = std::move(authored);
+        }else{
+            createText(text, ui, layout);
+        }
 
         text.needUpdateText = false;
     }
@@ -2777,16 +2785,36 @@ void UISystem::createOrUpdateUiComponent(RectTransformComponent& layout, Entity 
 
             // game-ui-localization.md R14, R16: the key's message and the language font, at start
             // and after each change of language or tables
-            if ((!text.textKey.empty() || text.font[0].empty()) && text.localizationGeneration != Localization::getGeneration()){
+            // (an Inspector or MCP edit of the key marks the text for update, so Edit mode follows it)
+            const bool languageChanged = (!text.localizationKey.empty() || text.font[0].empty()) &&
+                                         text.localizationGeneration != Localization::getGeneration();
+            const bool maybeKeyEdited = text.needUpdateText && (!text.localizationKey.empty() || !text.localizedPreview.empty());
+            // isSceneRunning locks: asked only when one of the cheap tests above holds
+            const bool running = (languageChanged || maybeKeyEdited || !text.localizedPreview.empty()) && Engine::isSceneRunning(scene);
+            if (languageChanged || (maybeKeyEdited && !running) || (running && !text.localizedPreview.empty())){
                 text.localizationGeneration = Localization::getGeneration();
                 std::string message;
-                // a running scene only: an edit-mode scene keeps the authored text it saves
-                if (!text.textKey.empty() && Engine::isSceneRunning(scene) && Localization::translate(text.textKey, text.textArgs, message, "Text " + std::to_string(entity)) &&
-                        message != text.text){
-                    text.text = message;
-                    text.needUpdateText = true;
+                const bool found = !text.localizationKey.empty() &&
+                                   Localization::translate(text.localizationKey, text.textArgs, message, "Text " + std::to_string(entity));
+                if (running){
+                    // a scene copied from Edit mode for Play draws `text` from now on
+                    if (!text.localizedPreview.empty()){
+                        text.localizedPreview.clear();
+                        text.needUpdateText = true;
+                    }
+                    if (found && message != text.text){
+                        text.text = message;
+                        text.needUpdateText = true;
+                    }
+                }else{
+                    // Edit mode draws the message without writing `text`, which a save keeps (D-15)
+                    if (!found) message.clear();
+                    if (message != text.localizedPreview){
+                        text.localizedPreview = std::move(message);
+                        text.needUpdateText = true;
+                    }
                 }
-                if (text.font[0].empty() && text.loaded)
+                if (languageChanged && text.font[0].empty() && text.loaded)
                     text.needReloadAtlas = true;
             }
 

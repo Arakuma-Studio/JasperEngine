@@ -8,7 +8,7 @@
 // docs/localization.md)
 // - The game language: the first of Localization.setLanguage's value (the same global as
 //   TitleArt.setLanguage: TitleArtLanguage::setGlobal), the remembered choice (UserSettings
-//   `jasper.language`, with remember_choice), the device's preferred locales, the project default,
+//   `jasper.language`, with remember_language), the device's preferred locales, the project default,
 //   that TitleArtLanguage::match()es an available language (R6). Resolved at setManifest and on
 //   every change of the global value or the device's locales (TitleArtLanguage::localesChanged).
 // - A key is `<namespace>.<key>`; its text comes from the first language of the chain that has it:
@@ -58,10 +58,12 @@ namespace jasperengine {
 
     struct LocalizationManifest {
         std::string defaultLanguage = "en";
-        bool rememberChoice = true;
+        bool rememberLanguage = true;
         std::vector<std::string> languages;                         // available (R6), default first
         std::map<std::string, std::string> names;                   // endonyms
         std::map<std::string, std::vector<std::string>> fonts;      // localization.fonts
+        // localization.default_table: the namespace a key without one reads ("": the only table, if one)
+        std::string defaultTable;
         std::vector<LocalizationNamespace> namespaces;
 
         JASPERENGINE_API static bool fromJson(std::string_view json, LocalizationManifest& out, std::string* error = nullptr);

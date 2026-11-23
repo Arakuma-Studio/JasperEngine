@@ -22,7 +22,7 @@ JASPERENGINE_INIT void init(){
 
     LocalizationManifest manifest;
     manifest.defaultLanguage = "en";
-    manifest.rememberChoice = false;
+    manifest.rememberLanguage = false;
     manifest.languages = {"en", "de", "ja"};
     manifest.names = {{"en", "English"}, {"de", "Deutsch"}, {"ja", "日本語"}};
     manifest.namespaces.push_back({"ui", "en", {{"en", "l10n/ui.stringtable"}, {"de", "l10n/ui.de.translation"},

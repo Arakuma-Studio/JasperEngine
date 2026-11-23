@@ -234,7 +234,7 @@ void HtmlL10n::translateDocument(Rml::ElementDocument* document) {
     applyRoot(document);
 }
 
-void HtmlL10n::setL10n(Rml::Element* element, const std::string& key, const std::string& argsJson) {
+void HtmlL10n::setLocalized(Rml::Element* element, const std::string& key, const std::string& argsJson) {
     if (!element) return;
     element->SetAttribute(kIdAttribute, key);
     if (argsJson.empty()) element->RemoveAttribute(kArgsAttribute);

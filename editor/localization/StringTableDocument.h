@@ -130,14 +130,15 @@ namespace jasperengine::editor::l10n {
     bool applyOps(StringTableSet& set, const Json& ops, std::string& error, std::vector<std::string>* notes = nullptr);
 
     // a reference to a key in the project's HTML (data-l10n-id, data-l10n-attr-*), scenes (Text
-    // textKey) and Lua scripts (a quoted "ns.key")
+    // localizationKey) and Lua scripts (a quoted "ns.key")
     struct KeyReference {
         std::string file;       // project-relative
         int line = 0;
         std::string kind;       // html, scene, script
     };
     std::vector<KeyReference> findReferences(const std::filesystem::path& projectPath, const std::string& key);
-    // every key the project's HTML and scenes name (for the unknown-key checks)
-    std::map<std::string, KeyReference> referencedKeys(const std::filesystem::path& projectPath);
+    // every key the project's HTML and scenes name (for the unknown-key checks); with `scriptCalls`
+    // also the literal keys Lua passes to Localization.get/has, setLocalized and localizationKey
+    std::map<std::string, KeyReference> referencedKeys(const std::filesystem::path& projectPath, bool scriptCalls = false);
 
 }

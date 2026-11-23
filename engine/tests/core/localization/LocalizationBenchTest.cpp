@@ -49,7 +49,7 @@ namespace {
             Engine::setDevelopmentBuild(false);
             LocalizationManifest manifest;
             manifest.defaultLanguage = "en";
-            manifest.rememberChoice = false;
+            manifest.rememberLanguage = false;
             manifest.languages = {"en", "de"};
             LocalizationNamespace ns{"ui", "en", {}};
             for (const char* language : {"en", "de"}) {

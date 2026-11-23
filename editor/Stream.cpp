@@ -3136,7 +3136,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
         if (!localization.defaultLanguage.empty()) localizationNode["defaultLanguage"] = localization.defaultLanguage;
         // game-ui-localization.md R40: new members with defaults, written when they differ
-        if (!localization.rememberChoice) localizationNode["rememberChoice"] = false;
+        if (!localization.rememberLanguage) localizationNode["rememberLanguage"] = false;
+        if (!localization.defaultTable.empty()) localizationNode["defaultTable"] = localization.defaultTable;
         if (!localization.fonts.empty()) {
             YAML::Node fonts(YAML::NodeType::Map);
             for (const auto& [code, list] : localization.fonts) {
@@ -4267,7 +4268,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             const std::string tag = TitleArtLanguage::canonicalize(localizationNode["defaultLanguage"].as<std::string>(""));
             if (TitleArtLanguage::isValid(tag)) localization.defaultLanguage = tag;
         }
-        if (localizationNode["rememberChoice"]) localization.rememberChoice = localizationNode["rememberChoice"].as<bool>(true);
+        if (localizationNode["rememberLanguage"]) localization.rememberLanguage = localizationNode["rememberLanguage"].as<bool>(true);
+        if (localizationNode["defaultTable"]) localization.defaultTable = localizationNode["defaultTable"].as<std::string>("");
         if (localizationNode["fonts"] && localizationNode["fonts"].IsMap()) {
             for (const auto& entry : localizationNode["fonts"]) {
                 const std::string tag = TitleArtLanguage::canonicalize(entry.first.as<std::string>(""));

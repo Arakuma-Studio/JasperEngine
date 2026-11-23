@@ -101,6 +101,7 @@ namespace jasperengine::editor {
         DialogueSettings m_dialogue;
         char m_localizationInput[64] = {0};
         char m_localizationFontLanguage[32] = {0};
+        std::vector<std::string> m_localizationTables;   // the Default Table list, read when it opens
         char m_localizationFontPath[260] = {0};
         AudioSettings m_audioSettings;
         char m_audioMixerBuffer[512] = {0};

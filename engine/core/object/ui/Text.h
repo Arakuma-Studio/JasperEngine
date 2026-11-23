@@ -42,7 +42,7 @@ namespace jasperengine{
 
         // Localization Key (game-ui-localization.md R16): the text follows the key's message in
         // the game language; the arguments are runtime only (not saved). "" keeps the text as is
-        void setLocalizedText(const std::string& key, const LocalizationArgs& args = {});
+        void setLocalized(const std::string& key, const LocalizationArgs& args = {});
         void setLocalizationKey(const std::string& key);
         std::string getLocalizationKey() const;
 

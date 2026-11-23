@@ -62,7 +62,7 @@ namespace {
             });
             LocalizationManifest manifest;
             manifest.defaultLanguage = "en";
-            manifest.rememberChoice = false;
+            manifest.rememberLanguage = false;
             manifest.languages = {"en", "de", "ar"};
             manifest.namespaces.push_back({"ui", "en", {{"en", "ui.en.mem"}, {"de", "ui.de.mem"}, {"ar", "ui.ar.mem"}}});
             Localization::setManifest(manifest);

@@ -394,7 +394,7 @@ TEST_F(DialogueRunnerTest, LinesUseTranslationsAndArguments) {
                     "n2.o1": {"text": "Zahlen", "status": "translated"}}})";
     LocalizationManifest manifest;
     manifest.defaultLanguage = "en";
-    manifest.rememberChoice = false;
+    manifest.rememberLanguage = false;
     manifest.languages = {"en", "de"};
     manifest.namespaces.push_back({"guard", "en", {{"en", dialoguePath}, {"de", translationPath}}});
     Localization::setManifest(manifest);

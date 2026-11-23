@@ -42,7 +42,7 @@ namespace {
     void ilCommit(Project* project, SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& key) {
         auto multi = new MultiPropertyCmd();
         for (Entity entity : entities)
-            multi->addPropertyCmd<std::string>(project, sceneProject->id, entity, ComponentType::TextComponent, "textKey", key);
+            multi->addPropertyCmd<std::string>(project, sceneProject->id, entity, ComponentType::TextComponent, "localizationKey", key);
         CommandHandle::get(sceneProject->id)->addCommand(multi);
         multi->setNoMerge();
     }
@@ -63,12 +63,12 @@ void editor::InspectorWindow::drawTextLocalizationRows(ComponentType cpType, Sce
     ImGui::TableSetColumnIndex(1);
 
     char buffer[128];
-    std::snprintf(buffer, sizeof(buffer), "%s", text.textKey.c_str());
+    std::snprintf(buffer, sizeof(buffer), "%s", text.localizationKey.c_str());
     const float pickWidth = ImGui::GetFrameHeight() * 1.6f;
     ImGui::SetNextItemWidth(-pickWidth - ImGui::GetStyle().ItemSpacing.x);
     ImGui::InputTextWithHint("##textLocalizationKey", "ui.menu.play", buffer, sizeof(buffer));
     UIProbe::item("text.localizationKey");
-    if (ImGui::IsItemDeactivatedAfterEdit() && text.textKey != buffer) ilCommit(project, sceneProject, entities, buffer);
+    if (ImGui::IsItemDeactivatedAfterEdit() && text.localizationKey != buffer) ilCommit(project, sceneProject, entities, buffer);
     ImGui::SameLine();
     if (ImGui::Button(ICON_FA_LANGUAGE "##textLocalizationPick")) {
         // the keys as they are now
@@ -91,13 +91,13 @@ void editor::InspectorWindow::drawTextLocalizationRows(ComponentType cpType, Sce
             if (!ilContains(key, localizationKeySearch) && !ilContains(source, localizationKeySearch)) continue;
             if (++shown > 500) break;
             const std::string label = key + "  " + source + "##" + key;
-            if (ImGui::Selectable(label.c_str(), key == text.textKey)) {
+            if (ImGui::Selectable(label.c_str(), key == text.localizationKey)) {
                 ilCommit(project, sceneProject, entities, key);
                 ImGui::CloseCurrentPopup();
             }
         }
         ImGui::EndChild();
-        if (!text.textKey.empty() && ImGui::Button("Clear Key")) {
+        if (!text.localizationKey.empty() && ImGui::Button("Clear Key")) {
             ilCommit(project, sceneProject, entities, "");
             ImGui::CloseCurrentPopup();
         }
@@ -106,7 +106,7 @@ void editor::InspectorWindow::drawTextLocalizationRows(ComponentType cpType, Sce
     endTable();
 
     // the badge: a key no table has keeps showing Text as written (the keys read again every 2 s)
-    if (!text.textKey.empty()) {
+    if (!text.localizationKey.empty()) {
         static double readAt = -10.0;
         if (ImGui::GetTime() - readAt > 2.0) {
             readAt = ImGui::GetTime();
@@ -115,9 +115,9 @@ void editor::InspectorWindow::drawTextLocalizationRows(ComponentType cpType, Sce
                 for (const l10n::TableEntry& entry : set.table.entries) localizationKeys.emplace_back(set.table.ns + "." + entry.key, entry.text);
             }
         }
-        const bool found = std::any_of(localizationKeys.begin(), localizationKeys.end(), [&](const auto& k) { return k.first == text.textKey; });
+        const bool found = std::any_of(localizationKeys.begin(), localizationKeys.end(), [&](const auto& k) { return k.first == text.localizationKey; });
         if (!found) {
-            ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.35f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " missing: no String Table has %s", text.textKey.c_str());
+            ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.35f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " missing: no String Table has %s", text.localizationKey.c_str());
         }
     }
 }

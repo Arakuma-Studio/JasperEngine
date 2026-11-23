@@ -53,9 +53,9 @@ bool Text::load(){
     return renderSystem->loadUI(entity, ui, renderSystem->getScenePipelines(), true);
 }
 
-void Text::setLocalizedText(const std::string& key, const LocalizationArgs& args){
+void Text::setLocalized(const std::string& key, const LocalizationArgs& args){
     TextComponent& textcomp = getComponent<TextComponent>();
-    textcomp.textKey = key;
+    textcomp.localizationKey = key;
     textcomp.textArgs = args;
     // taken again at the next update, now that key or arguments changed
     textcomp.localizationGeneration = Localization::getGeneration() + 1;
@@ -63,11 +63,11 @@ void Text::setLocalizedText(const std::string& key, const LocalizationArgs& args
 }
 
 void Text::setLocalizationKey(const std::string& key){
-    setLocalizedText(key, getComponent<TextComponent>().textArgs);
+    setLocalized(key, getComponent<TextComponent>().textArgs);
 }
 
 std::string Text::getLocalizationKey() const{
-    return getComponent<TextComponent>().textKey;
+    return getComponent<TextComponent>().localizationKey;
 }
 
 void Text::setFixedSize(bool fixedSize){

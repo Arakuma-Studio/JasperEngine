@@ -117,3 +117,64 @@ TEST(StringTableCook, ProjectWithoutTablesWritesNothing) {
     EXPECT_TRUE(result.written.empty());
     EXPECT_FALSE(fs::exists(dir.path() / "out" / "l10n"));
 }
+
+// D-15: the manifest's Default Table is the setting, else the project's only String Table (a
+// dialogue's texts are a namespace too, and do not count), else none
+TEST(StringTableCook, DefaultTableIsTheSettingElseTheOnlyStringTable) {
+    st::ProjectTables tables;
+    auto add = [&](const std::string& owner, const std::string& ns) {
+        st::StringTableSet set;
+        set.owner = fs::path("assets") / owner;
+        set.table.ns = ns;
+        set.table.sourceLanguage = "en";
+        set.dialogue = fs::path(owner).extension() == ".dialogue";
+        tables.sets.push_back(set);
+    };
+    LocalizationSettings settings;
+    add("ui.stringtable", "ui");
+    add("guard.dialogue", "guard");
+    EXPECT_EQ(st::defaultTableOf(settings, tables), "ui");
+    EXPECT_EQ(st::editorManifest(settings, tables).defaultTable, "ui");
+    add("hud.stringtable", "hud");
+    EXPECT_EQ(st::defaultTableOf(settings, tables), "");
+    settings.defaultTable = "hud";
+    EXPECT_EQ(st::editorManifest(settings, tables).defaultTable, "hud");
+}
+
+// R21a, D-15 (from S95): `check`'s tool strings finds what the export would warn about, plus the
+// errors a game cannot run right with (a key twice, a bad message, a Default Table naming nothing),
+// and keys Lua literals name; a bare key resolves through the Default Table as the game does
+TEST(StringTableCook, CheckStringsReportsTablesAndKeys) {
+    jasperengine::test::TempDir dir;
+    makeProject(dir);
+    dir.write("scripts/menu.lua", "local a = Localization.get(\"menu.play\")\nlocal b = Localization.has('ui.shop.nope')\n"
+                                  "label:setLocalized(\"menu.missing\")\nlocal c = Localization.get(\"ui.menu.quit\")\n");
+    auto codes = [](const st::StringsCheck& check, const std::string& code) {
+        std::vector<std::string> out;
+        for (const ProjectChecks::Finding& f : check.findings) if (f.code == code) out.push_back(f.message);
+        return out;
+    };
+    LocalizationSettings settings;
+    st::StringsCheck check = st::checkStrings(dir.path(), settings);
+    EXPECT_EQ(check.tables, 1u);
+    const std::vector<std::string> unknown = codes(check, "W-L10N-UNKNOWN-KEY");
+    // ui.menu.gone (HTML), ui.shop.nope and menu.missing (Lua); menu.play reads the only table
+    EXPECT_EQ(unknown.size(), 3u) << ::testing::PrintToString(unknown);
+    EXPECT_TRUE(codes(check, "L10N-DUPLICATE-KEY").empty());
+
+    settings.defaultTable = "nope";
+    check = st::checkStrings(dir.path(), settings);
+    EXPECT_EQ(codes(check, "L10N-DEFAULT-TABLE").size(), 1u);
+
+    // a key twice and a message that does not parse, written by hand
+    std::string text;
+    ASSERT_TRUE(ProjectChecks::readFile(dir.path() / "assets" / "l10n" / "ui.stringtable", text));
+    const size_t at = text.find("\"entries\": [");
+    ASSERT_NE(at, std::string::npos);
+    text.insert(at + 12, "{\"key\": \"menu.play\", \"text\": \"Again\"}, {\"key\": \"bad\", \"text\": \"{n, plural, one {x}\"}, ");
+    dir.write("assets/l10n/ui.stringtable", text);
+    check = st::checkStrings(dir.path(), LocalizationSettings());
+    EXPECT_EQ(codes(check, "L10N-DUPLICATE-KEY").size(), 1u);
+    EXPECT_EQ(codes(check, "L10N-BAD-MESSAGE").size(), 1u);
+    for (const ProjectChecks::Finding& f : check.findings) EXPECT_EQ(f.tool, "strings");
+}

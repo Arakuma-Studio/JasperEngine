@@ -9,6 +9,14 @@
 #include <gtest/gtest.h>
 
 #include "Engine.h"
+#include "Scene.h"
+#include "component/CameraComponent.h"
+#include "component/RectTransformComponent.h"
+#include "component/TextComponent.h"
+#include "component/Transform.h"
+#include "component/UIComponent.h"
+#include "pixelart/BitmapFont.h"
+#include "subsystem/UISystem.h"
 #include "io/UserSettings.h"
 #include "localization/Localization.h"
 #include "localization/StringTableRuntime.h"
@@ -377,4 +385,87 @@ TEST_F(LocalizationTest, PseudoLocalizeKeepsArgumentsAndSyntax) {
     EXPECT_EQ(Localization::pseudoLocalize("Play", "ar-XB"), "yalP");
     const std::string withArgument = Localization::pseudoLocalize("Hi {name}", "en-XA");
     EXPECT_NE(withArgument.find("{name}"), std::string::npos) << withArgument;
+}
+
+// D-15 (from S95): a key whose first segment names no namespace reads the Default Table, an
+// explicit one when two tables exist and none when it is empty; positional arguments are named "0", "1"
+TEST_F(LocalizationTest, BareKeysReadTheDefaultTable) {
+    install("en", "en", {{"en", {{"play", "Play"}, {"menu.quit", "Quit"}}}});
+    LocalizationManifest manifest = Localization::getManifest();
+    LocalizationNamespace hud;
+    hud.name = "hud";
+    hud.sourceLanguage = "en";
+    hud.files["en"] = "hud.en.mem";
+    memoryTables()["hud.en.mem"] = {{"play", "Hud play"}, {"lives", "{0} of {1}"}};
+    manifest.namespaces.push_back(hud);
+    // two tables, no Default Table: a bare key is unknown
+    Localization::setManifest(manifest);
+    EXPECT_EQ(Localization::get("ui.play"), "Play");
+    EXPECT_FALSE(Localization::has("play"));
+    // the Default Table names one; a key with dots that is not a namespace still reads it
+    manifest.defaultTable = "hud";
+    Localization::setManifest(manifest);
+    EXPECT_EQ(Localization::get("play"), "Hud play");
+    EXPECT_EQ(Localization::get("ui.play"), "Play");
+    EXPECT_EQ(Localization::get("lives", {{"0", int64_t(2)}, {"1", int64_t(3)}}), "2 of 3");
+    manifest.defaultTable = "ui";
+    Localization::setManifest(manifest);
+    EXPECT_EQ(Localization::get("menu.quit"), "Quit");
+    LocalizationManifest reread;
+    std::string error;
+    ASSERT_TRUE(LocalizationManifest::fromJson(manifest.toJson(), reread, &error)) << error;
+    EXPECT_EQ(reread.defaultTable, "ui");
+    // one table and no Default Table: that table
+    install("en", "en", {{"en", {{"play", "Play"}}}});
+    EXPECT_EQ(Localization::get("play"), "Play");
+}
+
+// R13, R16, D-15 (from S95): a keyed Text in a scene that is not running (the editor's Edit mode)
+// shows its message, follows a table edit at once, and keeps the authored text it saves
+TEST_F(LocalizationTest, KeyedTextShowsItsMessageInEditModeAndKeepsTheAuthoredText) {
+    install("en", "en", {{"en", {{"title", "Hello world"}}}});
+    Scene scene;
+    Entity camera = scene.createEntity();
+    scene.addComponent<Transform>(camera, Transform());
+    CameraComponent cameraComponent;
+    cameraComponent.type = CameraType::CAMERA_UI;
+    scene.addComponent<CameraComponent>(camera, cameraComponent);
+    scene.setCamera(camera);
+    Entity entity = scene.createEntity();
+    scene.addComponent<Transform>(entity, Transform());
+    scene.addComponent<RectTransformComponent>(entity, RectTransformComponent());
+    scene.addComponent<UIComponent>(entity, UIComponent());
+    TextComponent component;
+    component.font[0] = pixelart::kBuiltinPixelFont;
+    component.text = "X";
+    component.fontSize = 9;
+    scene.addComponent<TextComponent>(entity, component);
+    ASSERT_FALSE(Engine::isSceneRunning(&scene));
+    UISystem& ui = *scene.getSystem<UISystem>();
+    auto vertices = [&]() {
+        Attribute* attribute = scene.getComponent<UIComponent>(entity).buffer.getAttribute(AttributeType::POSITION);
+        return attribute ? attribute->getCount() : 0u;
+    };
+    ui.update(0.0);
+    const unsigned int authored = vertices();
+    ASSERT_GT(authored, 0u);
+
+    scene.getComponent<TextComponent>(entity).localizationKey = "ui.title";
+    scene.getComponent<TextComponent>(entity).needUpdateText = true;
+    ui.update(0.0);
+    const unsigned int shown = vertices();
+    EXPECT_GT(shown, authored * 5) << "the message's 10 glyphs, not the authored text's one";
+    EXPECT_EQ(scene.getComponent<TextComponent>(entity).text, "X") << "Edit mode keeps the text a save writes";
+
+    // a table edit reaches it at once
+    install("en", "en", {{"en", {{"title", "Hi"}}}});
+    ui.update(0.0);
+    EXPECT_LT(vertices(), shown);
+    EXPECT_GT(vertices(), authored);
+
+    // clearing the key shows the authored text again
+    scene.getComponent<TextComponent>(entity).localizationKey.clear();
+    scene.getComponent<TextComponent>(entity).needUpdateText = true;
+    ui.update(0.0);
+    EXPECT_EQ(vertices(), authored);
 }

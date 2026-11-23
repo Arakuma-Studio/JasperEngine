@@ -1709,7 +1709,7 @@ local scan = Localization.scan()                 -- {literal = {...}, missing = 
 ```
 
 - Keys are `ns.key`; texts are ICU (`{n, plural, one {...} other {...}}`). Prefer
-  `data-l10n-id` in HTML and a Text's `localizationKey` / `text:setLocalizedText(key, args)` over
+  `data-l10n-id` in HTML and a Text's `localizationKey` / `text:setLocalized(key, args)` over
   setting `text` from `Localization.get`: those follow language changes by themselves.
 - `language`, `languages` and `onLanguageChanged` are fields; `TitleArt.setLanguage` sets the
   same language. Tables: `edit_string_table`, jasper://docs/localization.

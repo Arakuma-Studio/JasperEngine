@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "LuaBinding.h"
+#include "script/binding/LocalizationArgsLua.h"
 #include "component/MeshComponent.h"
 #include "component/Transform.h"
 #include "object/spline/Spline.h"
@@ -3419,21 +3420,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("text", &Text::getText, &Text::setText)
         // game-ui-localization.md R16: the Inspector's Localization Key, and a key with runtime arguments
         .addProperty("localizationKey", &Text::getLocalizationKey, &Text::setLocalizationKey)
-        .addFunction("setLocalizedText", [](Text* self, const std::string& key, lua_State* L) {
-            LocalizationArgs args;
-            if (lua_istable(L, 3)) {
-                lua_pushnil(L);
-                while (lua_next(L, 3) != 0) {
-                    if (lua_type(L, -2) == LUA_TSTRING) {
-                        const std::string name = lua_tostring(L, -2);
-                        if (lua_isinteger(L, -1)) args.emplace_back(name, static_cast<int64_t>(lua_tointeger(L, -1)));
-                        else if (lua_type(L, -1) == LUA_TNUMBER) args.emplace_back(name, static_cast<double>(lua_tonumber(L, -1)));
-                        else if (const char* text = lua_tostring(L, -1)) args.emplace_back(name, std::string(text));
-                    }
-                    lua_pop(L, 1);
-                }
-            }
-            self->setLocalizedText(key, args);
+        .addFunction("setLocalized", [](Text* self, const std::string& key, lua_State* L) {
+            const LocalizationArgs args = luaargs::localizationArgs(L, 3);
+            self->setLocalized(key, args);
         })
         .addProperty("font", luabridge::constOverload<>(&Text::getFont), luabridge::overload<const std::string&>(&Text::setFont))
         .addFunction("setFont",

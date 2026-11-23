@@ -52,8 +52,8 @@ namespace jasperengine::htmlui {
         static void update();
         // collects the document's keyed elements again and translates them (doc:translate())
         static void translateDocument(Rml::ElementDocument* document);
-        // element:setL10n(key, args): writes both attributes and translates now
-        static void setL10n(Rml::Element* element, const std::string& key, const std::string& argsJson);
+        // element:setLocalized(key, args): writes both attributes and translates now
+        static void setLocalized(Rml::Element* element, const std::string& key, const std::string& argsJson);
         // the keyed elements, the literal text (not keyed, not under translate="no", not produced
         // by Localization) and the misses of one document (inspect_ui l10n, Localization.scan)
         static DocumentReport report(Rml::ElementDocument* document);

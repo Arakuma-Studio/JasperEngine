@@ -24,6 +24,7 @@
 #include "Out.h"
 #include "Platform.h"
 #include "Project.h"
+#include "localization/StringTableCook.h"
 #include "Stream.h"
 #include "Factory.h"
 #include "Catalog.h"
@@ -3618,6 +3619,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     std::vector<fs::path> particleFiles;
     std::vector<fs::path> materialFiles;    // .procmat files and PNGs (baked ones)
     bool cppFiles = false;
+    bool stringFiles = false;   // a String Table, a translation, or a file that names keys (R21a)
     std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
     if (fileMode) {
@@ -3654,6 +3656,12 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
                 if (textures) textureFiles.push_back(name);
             } else if (Util::isParticleEffectFile(name)) {
                 if (particles) particleFiles.push_back(path);
+            }
+            {
+                const std::string extension = rel.extension().string();
+                if (extension == ".stringtable" || extension == ".translation" || ((lua || ui) && (Util::isLuaFile(name) || ProjectChecks::isUiFile(name) ||
+                        extension == ".scene" || extension == ".prefab")))
+                    stringFiles = true;
             }
             // a synthesized PNG, or an image a synthesized texture was made from
             if (textures && Util::isImageFile(name)) synthesisFiles.push_back(path);
@@ -3737,6 +3745,21 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const ClipCheck clips = checkClipFiles(root, fileMode ? clipFiles : std::vector<fs::path>());
         run.findings.insert(run.findings.end(), clips.findings.begin(), clips.findings.end());
         run.checked.push_back({"anims", clips.clips});
+    }
+    if (fileMode ? stringFiles : (lua || ui)) {
+        // game-ui-localization.md R21a: the String Tables and the keys the project names (JSON and
+        // text, no engine); the Default Table is project.yaml's localization.defaultTable
+        LocalizationSettings localization;
+        try {
+            const YAML::Node project = YAML::LoadFile((root / "project.yaml").string());
+            if (project["localization"] && project["localization"]["defaultTable"])
+                localization.defaultTable = project["localization"]["defaultTable"].as<std::string>("");
+        } catch (const std::exception&) {
+            // no project file, or one the other tools report: no Default Table
+        }
+        const l10n::StringsCheck strings = l10n::checkStrings(root, localization);
+        run.findings.insert(run.findings.end(), strings.findings.begin(), strings.findings.end());
+        if (!fileMode || strings.tables) run.checked.push_back({"strings", strings.tables});
     }
     if (run.vatRan) {
         run.findings.insert(run.findings.end(), run.vat.findings.begin(), run.vat.findings.end());

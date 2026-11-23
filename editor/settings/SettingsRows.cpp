@@ -17,6 +17,7 @@
 #include "diag/CrashHandler.h"
 #include "Project.h"
 #include "util/TitleArtLanguage.h"
+#include "localization/StringTableDocument.h"
 #include "util/PlatformRules.h"
 #include "command/CommandHistory.h"
 #include "command/type/ShaderCreationSettingsCmd.h"
@@ -2642,11 +2643,42 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
-        // game-ui-localization.md R30: Remember Player Choice and Language Fonts
-        add(boolSetting("localization.remember_choice",
+        // game-ui-localization.md R30: Remember Language Choice and Language Fonts
+        add(boolSetting("localization.remember_language",
                         "Localization.setLanguage's choice is remembered (UserSettings jasper.language) and comes before the device's languages at the next start.",
-                        [](Project& p) { return p.getLocalizationSettings().rememberChoice; },
-                        [](Project& p, bool v) { p.getLocalizationSettings().rememberChoice = v; }));
+                        [](Project& p) { return p.getLocalizationSettings().rememberLanguage; },
+                        [](Project& p, bool v) { p.getLocalizationSettings().rememberLanguage = v; }));
+        {
+            // D-15: the String Table a key without a namespace reads
+            Setting s;
+            s.key = "localization.default_table";
+            s.type = "string";
+            s.description = "The String Table (its namespace) a key without one reads, so Localization.get(\"play\") works; \"\": the "
+                            "project's only String Table, if it has one.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getLocalizationSettings().defaultTable); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string()) {
+                    error = "must be a String Table's namespace or \"\"";
+                    return false;
+                }
+                const std::string ns = value.get<std::string>();
+                if (!ns.empty()) {
+                    bool found = false;
+                    for (const fs::path& owner : l10n::findTables(ctx.project()->getProjectPath())) {
+                        l10n::StringTableSet set;
+                        std::string ignored;
+                        if (l10n::loadSet(ctx.project()->getProjectPath(), owner, set, ignored) && set.table.ns == ns) found = true;
+                    }
+                    if (!found) {
+                        error = "no String Table has the namespace \"" + ns + "\" (edit_string_table lists them)";
+                        return false;
+                    }
+                }
+                if (apply) ctx.project()->getLocalizationSettings().defaultTable = ns;
+                return true;
+            };
+            add(s);
+        }
         {
             Setting s;
             s.key = "localization.fonts";

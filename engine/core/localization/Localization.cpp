@@ -54,6 +54,8 @@ namespace {
         std::mutex mutex;
         LocalizationManifest manifest;
         std::map<std::string, LoadedNamespace, std::less<>> namespaces;
+        // the Default Table: what a key without a namespace reads (D-15), null for none
+        LoadedNamespace* defaultNamespace = nullptr;
         std::string language;               // resolved
         std::vector<std::string> chain;     // the languages before the source text
         bool pseudo = false;
@@ -177,7 +179,7 @@ namespace {
         const std::vector<std::string> available = availableLanguages(manifest);
         std::vector<std::string> candidates;
         candidates.push_back(TitleArtLanguage::global());
-        if (manifest.rememberChoice && UserSettings::hasKey(kRememberKey)) candidates.push_back(UserSettings::getStringForKey(kRememberKey, ""));
+        if (manifest.rememberLanguage && UserSettings::hasKey(kRememberKey)) candidates.push_back(UserSettings::getStringForKey(kRememberKey, ""));
         for (const std::string& locale : System::instance().getPreferredLocales()) candidates.push_back(TitleArtLanguage::canonicalize(locale));
         candidates.push_back(manifest.defaultLanguage);
         for (const std::string& candidate : candidates) {
@@ -329,12 +331,15 @@ namespace {
 
     // the text of a global key along the chain, then the source; false for a key no table has
     bool lookup(State& s, std::string_view key, Found& found, std::string_view where) {
+        if (key.empty()) return false;
+        // "<namespace>.<key>"; a first segment that names no namespace makes the whole key the
+        // Default Table's (game-ui-localization.md R1, D-15)
         const size_t dot = key.find('.');
-        if (dot == std::string_view::npos || dot == 0 || dot + 1 == key.size()) return false;
-        const auto nsIt = s.namespaces.find(key.substr(0, dot));
-        if (nsIt == s.namespaces.end()) return false;
-        LoadedNamespace& ns = nsIt->second;
-        const std::string_view local = key.substr(dot + 1);
+        auto nsIt = s.namespaces.end();
+        if (dot != std::string_view::npos && dot != 0 && dot + 1 != key.size()) nsIt = s.namespaces.find(key.substr(0, dot));
+        if (nsIt == s.namespaces.end() && !s.defaultNamespace) return false;
+        LoadedNamespace& ns = nsIt != s.namespaces.end() ? nsIt->second : *s.defaultNamespace;
+        const std::string_view local = nsIt != s.namespaces.end() ? key.substr(dot + 1) : key;
         bool review = false;
         for (const std::string& language : s.chain) {
             if (language == ns.info.sourceLanguage) break;
@@ -419,7 +424,8 @@ bool LocalizationManifest::fromJson(std::string_view json, LocalizationManifest&
     }
     out = LocalizationManifest();
     out.defaultLanguage = doc.value("default_language", std::string("en"));
-    out.rememberChoice = doc.value("remember_choice", true);
+    out.rememberLanguage = doc.value("remember_language", true);
+    out.defaultTable = doc.value("default_table", std::string());
     if (doc.contains("languages") && doc["languages"].is_array()) {
         for (const auto& code : doc["languages"]) if (code.is_string()) out.languages.push_back(code.get<std::string>());
     }
@@ -452,7 +458,8 @@ std::string LocalizationManifest::toJson() const {
     doc["format"] = "jasperengine.l10n-manifest";
     doc["version"] = 1;
     doc["default_language"] = defaultLanguage;
-    doc["remember_choice"] = rememberChoice;
+    doc["remember_language"] = rememberLanguage;
+    if (!defaultTable.empty()) doc["default_table"] = defaultTable;
     doc["languages"] = languages;
     doc["names"] = nlohmann::ordered_json::object();
     for (const auto& [code, name] : names) doc["names"][code] = name;
@@ -563,7 +570,7 @@ bool Localization::setLanguage(const std::string& code, std::string* error) {
     if (!code.empty() && !TitleArtLanguage::isValid(code, error)) return false;
     // the remembered choice first: the global change below re-resolves with it; "" forgets it, so
     // the game follows the device again
-    if (active.load() && state().manifest.rememberChoice) {
+    if (active.load() && state().manifest.rememberLanguage) {
         if (code.empty()) UserSettings::removeKey(kRememberKey);
         else UserSettings::setStringForKey(kRememberKey, TitleArtLanguage::canonicalize(code));
     }
@@ -711,6 +718,14 @@ void Localization::setManifest(const LocalizationManifest& manifest) {
         s.manifest = manifest;
         s.namespaces.clear();
         for (const LocalizationNamespace& ns : manifest.namespaces) s.namespaces[ns.name].info = ns;
+        s.defaultNamespace = nullptr;
+        if (!manifest.defaultTable.empty()) {
+            const auto it = s.namespaces.find(manifest.defaultTable);
+            if (it != s.namespaces.end()) s.defaultNamespace = &it->second;
+            else Log::warn("[Localization] Default Table '%s' is no String Table's namespace", manifest.defaultTable.c_str());
+        } else if (s.namespaces.size() == 1) {
+            s.defaultNamespace = &s.namespaces.begin()->second;
+        }
         active.store(!manifest.namespaces.empty());
         if (!active.load()) {
             s.language.clear();
@@ -768,6 +783,7 @@ void Localization::resetForTesting() {
         std::lock_guard<std::mutex> lock(s.mutex);
         s.manifest = LocalizationManifest();
         s.namespaces.clear();
+        s.defaultNamespace = nullptr;
         s.language.clear();
         s.chain.clear();
         s.pseudo = false;

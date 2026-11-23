@@ -703,13 +703,16 @@ namespace jasperengine::editor{
     struct LocalizationSettings {
         std::vector<std::string> languages;     // BCP 47, canonical case
         std::string defaultLanguage;
-        bool rememberChoice = true;
+        bool rememberLanguage = true;
+        // the namespace a key without one reads (game-ui-localization.md R1, D-15); "": the only String Table
+        std::string defaultTable;
         std::map<std::string, std::vector<std::string>> fonts;     // language -> font asset paths
 
         // the default with its fallbacks applied ("" -> the first language, else "en")
         std::string effectiveDefault() const { return !defaultLanguage.empty() ? defaultLanguage : !languages.empty() ? languages.front() : "en"; }
         bool operator==(const LocalizationSettings& other) const {
-            return languages == other.languages && defaultLanguage == other.defaultLanguage && rememberChoice == other.rememberChoice && fonts == other.fonts;
+            return languages == other.languages && defaultLanguage == other.defaultLanguage && rememberLanguage == other.rememberLanguage &&
+                   defaultTable == other.defaultTable && fonts == other.fonts;
         }
         bool operator!=(const LocalizationSettings& other) const { return !(*this == other); }
     };
