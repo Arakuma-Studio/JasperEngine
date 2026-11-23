@@ -16,6 +16,7 @@
 #include "GpuEnvironment.h"
 #include "ImageCompare.h"
 #include "LogCapture.h"
+#include "TestSystem.h"
 
 #include <gtest/gtest.h>
 
@@ -100,5 +101,30 @@ TEST_F(RenderGpu, LitCubeHigh){
     renderLitCube(cube, sun);
     ASSERT_TRUE(render()) << "the scene never finished loading";
     EXPECT_GOLDEN("render_lit_cube_high");
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// A window with nothing to draw into (minimized; a Vulkan image not acquired) reports its swapchain
+// invalid with its size and formats still set (VulkanContext, D3D11Context): a frame drawn there
+// skips its swapchain passes without an error. A debug sokol failed their begin (the other fields
+// must be unset) and its sg_end_pass then ended a pass that never began, which aborted on Vulkan
+// (SSRCompositeGpu.ScaledSwapchainBuildsKeepTheirSSRTargets there, where the headless swapchain is
+// never valid)
+TEST_F(RenderGpu, AnInvalidSwapchainSkipsItsPasses){
+    JASPER_REQUIRE_GPU();
+    Primitive plane(&scene);
+    plane.createPlane(4.0f, 4.0f);
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    Framebuffer* target = Engine::getFramebuffer();
+    struct RestoreSwapchain {
+        Framebuffer* target;
+        ~RestoreSwapchain() {
+            TestSystem::get().swapchainInvalid = false;
+            Engine::setFramebuffer(target);
+        }
+    } restore{target};
+    TestSystem::get().swapchainInvalid = true;
+    Engine::setFramebuffer(nullptr);
+    GpuEnvironment::drawFrames(3);
     EXPECT_NO_ENGINE_ERRORS();
 }
