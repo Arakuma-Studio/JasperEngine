@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -128,20 +129,21 @@ class Rules(unittest.TestCase):
     def test_merge_group_runs_every_lane_unfiltered_and_plans_mcp(self):
         r = decide("merge_group", plan(["editor/App.cpp"], unit={"core": ["Foo"], "editor": [], "htmlui": []},
                                        mcp=["test_b.py"]))
-        self.assertEqual(runs(r), set(pl.LANES))
+        # (ios: only for an Apple-only input, test_the_queue_builds_ios_only_for_an_apple_only_input)
+        self.assertEqual(runs(r), set(pl.LANES) - {"ios"})
         self.assertEqual((r["unit_filter"], r["htmlui_filter"]), ({"core": "", "editor": ""}, ""))
         self.assertEqual(r["unit_run"], {"core": True, "editor": True})
         self.assertEqual(r["mcp"]["files"], ["tools/mcp/tests/test_b.py"])
         # no MCP file planned: the lane stays off, every other runs
         r = decide("merge_group", plan(["editor/App.cpp"]))
-        self.assertEqual(runs(r), set(pl.LANES) - {"mcp"})
+        self.assertEqual(runs(r), set(pl.LANES) - {"mcp", "ios"})
 
     def test_merge_group_leaves_the_advisory_lanes_out(self):
         # an advisory lane cannot block a merge, so the queue does not wait hours for it (queue runs
         # of #124-#126: 217-276 min, ASan the longest, the slowest blocking job 96-137)
         p = plan(["editor/App.cpp"], unit={"core": ["Foo"], "editor": [], "htmlui": []}, mcp=["test_b.py"])
         r = decide("merge_group", p, advisory=ADVISORY)
-        self.assertEqual(runs(r), {"changes", "lint", *pl.PLATFORM_LANES})
+        self.assertEqual(runs(r), {"changes", "lint", *pl.PLATFORM_LANES} - {"ios"})
         self.assertEqual(r["advisory_off"], ["unit", "asan", "htmlui", "mcp", "smoke", "windows-editor-tests"])
         # the windows editor leg still builds, without its advisory test run
         self.assertEqual(r["build_only"], ["windows-editor-tests"])
@@ -150,19 +152,19 @@ class Rules(unittest.TestCase):
         self.assertEqual(r["mcp"], {"mode": "none", "files": [], "not_in_ci": []})
         # it follows the list: a lane taken off it runs in the queue again
         r = decide("merge_group", p, advisory=("unit", "htmlui", "mcp", "smoke"))
-        self.assertEqual(runs(r), set(pl.LANES) - {"unit", "htmlui", "mcp", "smoke"})
+        self.assertEqual(runs(r), set(pl.LANES) - {"unit", "htmlui", "mcp", "smoke", "ios"})
         self.assertEqual((r["advisory_off"], r["build_only"]), (["unit", "htmlui", "mcp", "smoke"], []))
         self.assertEqual(pl.asan_job_names(pl.planned_asan_run(r["lanes"], r["asan_run"])), ["core", "editor"])
         self.assertEqual(decide("merge_group", p, advisory=()), decide("merge_group", p))
-        self.assertEqual(runs(decide("merge_group", p)), set(pl.LANES))
+        self.assertEqual(runs(decide("merge_group", p)), set(pl.LANES) - {"ios"})
         # only the lanes the push to main runs instead: lint and the platform builds stay in the queue
         r = decide("merge_group", p, advisory=("lint", "linux", "windows", "mcp"))
-        self.assertEqual(runs(r), set(pl.LANES) - {"mcp"})
+        self.assertEqual(runs(r), set(pl.LANES) - {"mcp", "ios"})
         self.assertEqual(r["advisory_off"], ["mcp"])
-        # however the queue widened: a .github change, no plan
-        for q in (plan([".github/workflows/ci.yml"], builds=()), None):
+        # however the queue widened: a .github change (no Apple-only input: no ios), no plan (fail open: ios too)
+        for q, ios in ((plan([".github/workflows/ci.yml"], builds=()), False), (None, True)):
             r = decide("merge_group", q, "exit 2", advisory=ADVISORY)
-            self.assertEqual(runs(r), {"changes", "lint", *pl.PLATFORM_LANES}, q)
+            self.assertEqual(runs(r), {"changes", "lint", *pl.PLATFORM_LANES} - ({"ios"} if not ios else set()), q)
         # a group nothing reads runs nothing, and leaves nothing out for being advisory
         r = decide("merge_group", plan(["README.md"], builds=()), advisory=ADVISORY)
         self.assertEqual((runs(r), r["advisory_off"], r["build_only"]), ({"changes"}, [], []))
@@ -422,15 +424,61 @@ class Rules(unittest.TestCase):
             for name in pl.APPLE_LANES:
                 self.assertTrue(r["lanes"][name]["run"], (f, name))
                 self.assertIn(f, r["lanes"][name]["why"])
-        # the merge queue, a full run, the nightly and the rollback build them for any change that builds; a
-        # push builds macos (its cache)
+        # the merge queue builds macos for any change that builds (ios: below); a full run, the nightly and
+        # the rollback both; a push macos (its cache)
+        self.assertTrue(decide("merge_group", plan(["editor/App.cpp"]))["lanes"]["macos"]["run"])
         for name in pl.APPLE_LANES:
-            self.assertTrue(decide("merge_group", plan(["editor/App.cpp"]))["lanes"][name]["run"], name)
             self.assertTrue(decide("full", None)["lanes"][name]["run"], name)
             self.assertTrue(decide("nightly", None)["lanes"][name]["run"], name)
             for files in (["editor/App.cpp"], [".github/workflows/ci.yml"]):
                 self.assertTrue(decide("pull_request", plan(files), full_selection=True)["lanes"][name]["run"], (files, name))
         self.assertTrue(decide("push", plan(["editor/App.cpp"]))["lanes"]["macos"]["run"])
+
+    def test_the_queue_builds_ios_only_for_an_apple_only_input(self):
+        # a compile check with the Apple compiler the queue's macos lane runs on every change; macOS runners
+        # are the bottleneck, and the nightly builds the Xcode project for iOS every night
+        for files in (["editor/App.cpp"], ["engine/core/Foo.cpp", "engine/shaderlib/lit.glsl"], [".github/workflows/ci.yml"]):
+            r = decide("merge_group", plan(files, unit="all"))
+            self.assertFalse(r["lanes"]["ios"]["run"], files)
+            self.assertIn("nightly", r["lanes"]["ios"]["why"])
+            self.assertEqual(r["queue_off"], ["ios"])
+            self.assertTrue(r["lanes"]["macos"]["run"], files)
+        for f in ("engine/platform/apple/Renderer.mm", "engine/workspaces/xcode/ios/Info.plist", "tools/ci/macos.sh"):
+            r = decide("merge_group", plan([f, "editor/App.cpp"]))
+            self.assertTrue(r["lanes"]["ios"]["run"] and r["lanes"]["macos"]["run"], f)
+            self.assertEqual(r["queue_off"], [])
+        # push keeps no ios (no cache); full and nightly build it; the rollback runs everything
+        self.assertFalse(decide("push", plan(["editor/App.cpp"]))["lanes"]["ios"]["run"])
+        for event in ("full", "nightly"):
+            self.assertTrue(decide(event, None)["lanes"]["ios"]["run"], event)
+        r = decide("merge_group", plan(["editor/App.cpp"]), full_selection=True)
+        self.assertTrue(r["lanes"]["ios"]["run"])
+        self.assertEqual(r["queue_off"], [])
+        # nightly.yml builds the Xcode project for iOS every night, whatever changed
+        nightly = (HERE.parent.parent / ".github/workflows/nightly.yml").read_text()
+        start = nightly.index("\n  ios:\n")
+        end = re.search(r"\n  [A-Za-z0-9_-]+:\n", nightly[start + 1:])
+        job = nightly[start:start + 1 + end.start()] if end else nightly[start:]
+        self.assertIn("run: tools/ci/macos.sh xcode ios", job)
+        self.assertNotIn("if:", job.split("steps:")[0])
+
+    def test_a_pr_runs_its_blocking_lanes_only_while_the_variable_is_off(self):
+        # PR_ADVISORY_LANES=off while GitHub's 60 concurrent jobs are the bottleneck: as the merge queue,
+        # the advisory test lanes are left to main's advisory run
+        p = plan(["engine/core/Foo.cpp", "engine/platform/apple/Renderer.mm"], unit="all", mcp=["test_a.py"])
+        on = decide("pull_request", p, advisory=ADVISORY)
+        self.assertTrue(all(on["lanes"][n]["run"] for n in ("unit", "asan", "htmlui", "mcp", "smoke")))
+        off = decide("pull_request", p, advisory=ADVISORY, pr_advisory=False)
+        self.assertEqual(runs(off), {"changes", "lint", *pl.PLATFORM_LANES})
+        self.assertEqual(off["advisory_off"], ["unit", "asan", "htmlui", "mcp", "smoke", "windows-editor-tests"])
+        self.assertEqual(off["build_only"], ["windows-editor-tests"])
+        self.assertIn(pl.PR_ADVISORY_VARIABLE, off["lanes"]["unit"]["why"])
+        self.assertEqual(off["mcp"]["mode"], "none")
+        # only a pull request: the queue, a push, the advisory run and full runs as before
+        for event in ("merge_group", "push", "advisory", "full"):
+            self.assertEqual(decide(event, p, advisory=ADVISORY, pr_advisory=False), decide(event, p, advisory=ADVISORY), event)
+        # a lane taken off ADVISORY_LANES blocks, so it runs
+        self.assertTrue(decide("pull_request", p, advisory=("mcp",), pr_advisory=False)["lanes"]["unit"]["run"])
 
     def test_the_queue_the_advisory_run_and_the_rollback_keep_asan(self):
         p = plan(["tools/ci/report.py"], unit="all")
@@ -502,8 +550,8 @@ JOBS = {"lint": "linux", "linux": "linux", "unit-core": "linux", "unit-editor-1"
         "windows-engine-vulkan": "windows", "windows-compile": "windows", "macos": "macos", "ios": "macos"}
 
 
-def route(st, trigger="pull_request", head=REPO, attempt=1, disabled="", force=None, jobs=JOBS):
-    return pl.route(jobs, st, NOW, trigger, head, REPO, attempt, disabled, force)
+def route(st, trigger="pull_request", head=REPO, attempt=1, disabled="", force=None, jobs=JOBS, run_id="42"):
+    return pl.route(jobs, st, NOW, trigger, head, REPO, attempt, disabled, force, run_id=run_id)
 
 
 def overflowed(runs_on):
@@ -572,12 +620,17 @@ class Routing(unittest.TestCase):
         # a fork cannot force one either
         self.assertEqual(overflowed(route(state(), head="someone/JasperEngine", force={"macos": "je-mac"})[0]), {})
 
-    def test_a_rerun_stays_hosted(self):
-        # the watchdog reruns a run whose runner went away: the rerun must not wait for it again
-        for force in (None, {"macos": "je-mac"}):
-            runs_on, notes = route(state(), trigger="workflow_dispatch", attempt=2, force=force)
-            self.assertEqual(overflowed(runs_on), {})
+    def test_a_rerun_after_a_runner_went_away_stays_hosted(self):
+        # the watchdog reruns a run whose runner went away and lists it in the state's hosted_only: the
+        # rerun must not wait for it again; a forced dispatch's rerun, or a rerun of an unknown run, neither
+        held = dict(state(), hosted_only=["42", 7])
+        for st, force, run_id in ((held, None, "42"), (held, None, "7"), (state(), {"macos": "je-mac"}, "42"), (state(), None, "")):
+            runs_on, notes = route(st, trigger="workflow_dispatch", attempt=2, force=force, run_id=run_id)
+            self.assertEqual(overflowed(runs_on), {}, (force, run_id))
             self.assertIn("attempt 2", notes[0])
+        # its rerun to reach an idle runner (the watchdog's other reroute) routes as a first attempt does
+        runs_on, notes = route(held, trigger="workflow_dispatch", attempt=2, run_id="43")
+        self.assertEqual(overflowed(runs_on)["macos"], "je-mac")
 
     def test_a_dispatch_forces_a_runner_whatever_the_state(self):
         force, bad = pl.parse_force("macos=je-mac, lint=je-linux windows-engine-glcore=je-win ios=je-pi linux")
@@ -600,7 +653,8 @@ class Routing(unittest.TestCase):
         self.assertEqual((r["mcp"]["mode"], r["unit_run"], r["asan_run"]["core"]), ("none", {"core": False, "editor": False}, False))
 
     def test_the_planned_jobs_are_ci_yml_s_jobs(self):
-        r = decide("merge_group", plan(["engine/core/Foo.cpp"], unit="all", mcp=["test_a.py"]))
+        r = decide("merge_group", plan(["engine/core/Foo.cpp", "engine/platform/apple/Renderer.mm"], unit="all",
+                                       mcp=["test_a.py"]))
         doc = dict(r, unit_jobs=pl.unit_job_names(r["unit_run"]), asan_jobs=pl.asan_job_names(r["asan_run"]),
                    mcp=dict(r["mcp"], shards=["1", "2"]))
         jobs = pl.planned_jobs(doc)
@@ -614,6 +668,10 @@ class Routing(unittest.TestCase):
                 self.assertEqual(jobs.get(job), os_, (label, job))
         # and ci.yml reads runs_on by these names, with the hosted label as its fallback
         text = (HERE.parent.parent / pl.WORKFLOW).read_text()
+        # the plan gets the PR switch and its run's id (the state's hosted_only)
+        self.assertIn('--pr-advisory "${PR_ADVISORY:-on}"', text)
+        self.assertIn("PR_ADVISORY: ${{ vars.PR_ADVISORY_LANES }}", text)
+        self.assertIn('--run-attempt "$GITHUB_RUN_ATTEMPT" --run-id "$GITHUB_RUN_ID"', text)
         # the planner: never a push, a fork's pull request or a rerun
         changes = text[text.index("\n  changes:"):text.index("\n  lint:")]
         for guard in ("github.event_name != 'push'", "github.run_attempt == 1",
@@ -794,10 +852,11 @@ class Runs(unittest.TestCase):
                   "--runner-state", str(st), "--repo", REPO, "--head-repo", REPO)
         # the runner state as ci.yml fetches it, fresh: macOS saturated, je-mac idle
         st.write_text(json.dumps(dict(state(saturated=("macos",)), t=time.time() - 30)))
-        # (the merge queue: a PR without an Apple-only input runs neither macOS lane)
+        # (the merge queue: a PR without an Apple-only input runs neither macOS lane; the queue macos only)
         code, doc, out = self.run_main("--event", "merge_group", "--trigger", "merge_group", *common)
         self.assertEqual(code, 0, out)
-        self.assertEqual(overflowed(doc["runs_on"]), {"macos": "je-mac", "ios": "je-mac"}, doc["routing"])
+        self.assertEqual(overflowed(doc["runs_on"]), {"macos": "je-mac"}, doc["routing"])
+        self.assertEqual(doc["queue_off"], ["ios"])
         self.assertEqual(doc["runs_on"]["mcp-1"], "ubuntu-latest")
         self.assertIn("runner: macos on je-mac", out)
         self.assertIn('"macos":"je-mac"', [l for l in gh.read_text().splitlines() if l.startswith("runs_on=")][-1])
