@@ -69,6 +69,15 @@ void TitleRenderCache::evict() {
     }
 }
 
+bool TitleRenderCache::evictOldest() {
+    if (order.empty()) return false;
+    std::shared_ptr<TitleCacheEntry> last = order.back();
+    total -= last->bytes;
+    entries.erase(last->key);
+    order.pop_back();
+    return true;
+}
+
 void TitleRenderCache::clear() {
     order.clear();
     entries.clear();
@@ -80,6 +89,8 @@ void TitleRenderCache::clear() {
 TitleRenderServices::TitleRenderServices(const RendererLimits& rendererLimits)
     : pool(allocator, rendererLimits.poolBytes), cache(rendererLimits.nodeCacheBytes), limits(rendererLimits) {
     content = makeDefaultTitleContentProvider();
+    // the results the node cache keeps across renders give way to a render's targets
+    pool.setReclaim([this]() { return cache.evictOldest(); });
 }
 
 TitleRenderServices::~TitleRenderServices() {

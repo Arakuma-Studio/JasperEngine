@@ -54,6 +54,9 @@ namespace jasperengine::titleart {
         // stores a finished entry (replacing one of the same key) and evicts past the limit
         void insert(const std::shared_ptr<TitleCacheEntry>& entry);
         void clear();
+        // drops the least recently used entry (its target returns to the pool once no job holds
+        // it); false when the cache is empty
+        bool evictOldest();
         size_t bytes() const { return total; }
         size_t size() const { return entries.size(); }
         void setLimit(size_t bytes) { limit = bytes; }
