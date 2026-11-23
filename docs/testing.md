@@ -72,7 +72,8 @@ The binaries also register with CTest (`ctest --preset linux-ci` in an IDE build
 
 Picking (S26): `JASPER_PICK_SIMD=scalar|avx2|neon` forces the mesh BVH's slab test path; `MeshPose.MatchesGpuSkinning` is a GPU suite (the
 CPU pose against the skinned shaders, glcore and Vulkan). `JASPER_PICK_BUILD_DELAY_MS=<ms>` holds
-every background mesh BVH build pending that long: the MCP tests use it to see the Scene view's
+every background mesh BVH build pending that long (the wait runs on a blocking thread, so it holds no
+Background gate slot other loads queue for): the MCP tests use it to see the Scene view's
 waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
 `JASPER_TEXTURE_LOAD_DELAY_MS=<ms>` holds every async texture decode that long: a screenshot must
 then wait for the texture, never show its stand-in (`tools/mcp/tests/test_screenshot_waits.py`).
