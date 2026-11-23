@@ -2701,8 +2701,8 @@ void Engine::runFrame(bool draw){
                 droppedFixedSteps += dropped;
                 if (!reportedDroppedFixedSteps) {
                     reportedDroppedFixedSteps = true;
-                    Log::warn("Dropped %llu fixed step(s): a frame needed more than %d (Time.maximumFixedStepsPerFrame, "
-                              "0 = automatic); a lower Time.maximumDeltaTime (%.3f s) shortens such frames. Logged once, "
+                    Log::warn("Dropped %llu fixed step(s): a frame needed more than %d, the cap that Time.maximumDeltaTime "
+                              "(%.3f s) gives at this fixed step, or Time.maximumFixedStepsPerFrame when lower. Logged once, "
                               "Time.droppedFixedSteps counts them",
                               (unsigned long long)dropped, maxFixedSteps, maxDeltatime);
                 }

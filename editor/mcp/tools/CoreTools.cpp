@@ -825,7 +825,7 @@ void reportEditorStatus(const CallPtr& call) {
     if (!dialog.is_null()) text += " Open dialog: \"" + info.title + "\".";
     if (Engine::getDroppedFixedSteps() > 0) {
         text += " Dropped fixed steps: " + std::to_string(Engine::getDroppedFixedSteps()) +
-                " (frames needed more than Time.maximumFixedStepsPerFrame).";
+                " (frames needed more than the cap: Time.maximumDeltaTime's, or Time.maximumFixedStepsPerFrame when lower).";
     }
     call->ok(text, data);
 }
