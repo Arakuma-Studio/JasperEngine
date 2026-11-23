@@ -1,8 +1,9 @@
 name: Free disk
 description: >
-  Linux runners: when / has less free than the job needs, removes the preinstalled Android SDK, .NET,
-  GHC, the CodeQL bundle and every Docker image (free-disk.sh). Without need it always removes them.
-  Does nothing on Windows and macOS.
+  GitHub's Linux runners: when / has less free than the job needs, removes the preinstalled Android SDK,
+  .NET, GHC, the CodeQL bundle and every Docker image (free-disk.sh). Without need it always removes them.
+  Does nothing on Windows and macOS, nor on an overflow runner (a person's machine: its hooks clean the
+  job's workspace and prune the images CI pulled, docs/testing.md "Overflow runners").
 inputs:
   need:
     description: >
@@ -14,7 +15,7 @@ runs:
   using: composite
   steps:
     - name: Free disk
-      if: runner.os == 'Linux'
+      if: runner.os == 'Linux' && runner.environment != 'self-hosted'
       shell: bash
       env:
         NEED: ${{ inputs.need }}
