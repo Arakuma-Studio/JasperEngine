@@ -665,7 +665,8 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
         }
         if (r.warningCount) message += " " + std::to_string(r.warningCount) + " compiler warning(s).";
         if (!r.result.warnings.empty()) message += " " + std::to_string(r.result.warnings.size()) + " build warning(s): see warnings.";
-        if (!r.next.empty()) result["next"] = r.next;
+        // both hints when both apply: the build's own (a non-target platform) and Asset Stripping's
+        if (!r.next.empty()) result["next"] = result.contains("next") ? r.next + "; " + result["next"].get<std::string>() : r.next;
         r.job->succeed(message, result);
     } else if (r.job->cancelRequested()) {
         r.job->markCancelled("Build cancelled.");

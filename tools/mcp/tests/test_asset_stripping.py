@@ -188,7 +188,8 @@ async def test_referenced_only_ships_what_the_build_references(ed: Editor):
     result = job["result"]
     ed.check_eq(result["stripped_count"], 3, f"{result}")
     ed.check_eq(result["stripped_bytes"], sum(sizes.values()), f"{result}")
-    ed.check_in("always_include", result.get("next", ""), "the result names the fix for a computed path")
+    # (structuredContent's own next, where a client shows it)
+    ed.check_in("always_include", job.get("next", ""), "the result names the fix for a computed path")
 
 
 async def test_ship_all_ships_all_but_the_excluded(ed: Editor):
