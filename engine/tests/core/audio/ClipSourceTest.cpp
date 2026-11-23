@@ -24,7 +24,7 @@ namespace {
 
 constexpr unsigned int RATE = 48000;
 
-void putU32(std::vector<unsigned char>& out, uint32_t value){
+void clipSourcePutU32(std::vector<unsigned char>& out, uint32_t value){
     for (int i = 0; i < 4; i++) out.push_back((unsigned char)(value >> (8 * i)));
 }
 
@@ -37,35 +37,35 @@ void putText(std::vector<unsigned char>& out, const char* text){
 }
 
 // a float32 WAV of planar channels
-std::vector<unsigned char> wavBytes(const std::vector<std::vector<float>>& channels){
+std::vector<unsigned char> clipSourceWavBytes(const std::vector<std::vector<float>>& channels){
     const uint32_t frames = (uint32_t)channels[0].size();
     const uint16_t count = (uint16_t)channels.size();
     const uint32_t dataBytes = frames * count * 4;
     std::vector<unsigned char> out;
     putText(out, "RIFF");
-    putU32(out, 36 + dataBytes);
+    clipSourcePutU32(out, 36 + dataBytes);
     putText(out, "WAVE");
     putText(out, "fmt ");
-    putU32(out, 16);
+    clipSourcePutU32(out, 16);
     putU16(out, 3);
     putU16(out, count);
-    putU32(out, RATE);
-    putU32(out, RATE * count * 4);
+    clipSourcePutU32(out, RATE);
+    clipSourcePutU32(out, RATE * count * 4);
     putU16(out, (uint16_t)(count * 4));
     putU16(out, 32);
     putText(out, "data");
-    putU32(out, dataBytes);
+    clipSourcePutU32(out, dataBytes);
     for (uint32_t i = 0; i < frames; i++){
         for (uint16_t c = 0; c < count; c++){
             uint32_t bits = 0;
             std::memcpy(&bits, &channels[c][i], 4);
-            putU32(out, bits);
+            clipSourcePutU32(out, bits);
         }
     }
     return out;
 }
 
-std::vector<float> ramp(uint32_t frames){
+std::vector<float> clipSourceRamp(uint32_t frames){
     std::vector<float> out(frames);
     for (uint32_t i = 0; i < frames; i++) out[i] = -0.5f + (float)i / (float)frames;
     return out;
@@ -122,8 +122,8 @@ struct Voice {
 }
 
 TEST(AudioClipSource, TrimsAndGainReadTheRegion){
-    const std::vector<float> file = ramp(4800);
-    const auto bytes = wavBytes({file});
+    const std::vector<float> file = clipSourceRamp(4800);
+    const auto bytes = clipSourceWavBytes({file});
     ClipImportSettings settings;
     settings.trimHeadFrames = 480;
     settings.trimTailFrames = 960;
@@ -145,7 +145,7 @@ TEST(AudioClipSource, FadesFollowTheirWeightsAndFrameZeroIsZero){
     ClipImportSettings settings;
     settings.fadeInFrames = 96;
     settings.fadeOutFrames = 480;
-    AudioClipSource clip(decoded(wavBytes({file})), settings);
+    AudioClipSource clip(decoded(clipSourceWavBytes({file})), settings);
     Voice voice(clip, false);
     const std::vector<float> out = voice.read(100000, 64);
     ASSERT_EQ(out.size(), 4800u);
@@ -164,7 +164,7 @@ TEST(AudioClipSource, LoopRegionWrapsSampleExactAndFadesNeverShapeAWrap){
     settings.loopEndFrame = 9600;
     settings.fadeInFrames = 480;
     settings.fadeOutFrames = 480;
-    AudioClipSource clip(decoded(wavBytes({file})), settings);
+    AudioClipSource clip(decoded(clipSourceWavBytes({file})), settings);
     EXPECT_DOUBLE_EQ(clip.getDefaultLoopPoint(), 0.1);
     Voice voice(clip, true, clip.getDefaultLoopPoint());
     const std::vector<float> out = voice.read(4800 + 4800 * 4);
@@ -181,7 +181,7 @@ TEST(AudioClipSource, LoopRegionWrapsSampleExactAndFadesNeverShapeAWrap){
 TEST(AudioClipSource, StreamedAndDecodedAgree){
     const std::vector<float> left = sine(24000, 440.0);
     const std::vector<float> right = sine(24000, 660.0);
-    const auto bytes = wavBytes({left, right});
+    const auto bytes = clipSourceWavBytes({left, right});
     ClipImportSettings settings;
     settings.trimHeadFrames = 100;
     settings.trimTailFrames = 200;
@@ -206,7 +206,7 @@ TEST(AudioClipSource, TrimsThatLeaveNothingEndAtOnce){
     ClipImportSettings settings;
     settings.trimHeadFrames = 4000;
     settings.trimTailFrames = 4000;
-    AudioClipSource clip(decoded(wavBytes({ramp(4800)})), settings);
+    AudioClipSource clip(decoded(clipSourceWavBytes({clipSourceRamp(4800)})), settings);
     Voice voice(clip, false);
     EXPECT_TRUE(voice.read(1000).empty());
     EXPECT_TRUE(voice.instance->hasEnded());

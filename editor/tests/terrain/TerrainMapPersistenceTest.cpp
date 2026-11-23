@@ -11,8 +11,11 @@
 #include "util/TerrainMapFileWriter.h"
 #include "window/TerrainEditWindow.h"
 
+#include <atomic>
+#include <chrono>
 #include <fstream>
 #include <sstream>
+#include <thread>
 
 using namespace terrainprojecttest;
 
@@ -160,4 +163,26 @@ TEST_F(TerrainMapPersistenceTest, FailedWriteKeepsSceneModifiedAndRaisesIssue) {
     EXPECT_TRUE(TerrainMapPersistence::get().flushAll());
     EXPECT_TRUE(TerrainMapPersistence::get().failedPaths().empty());
     EXPECT_EQ(decodedFile(), bytesOf(HEIGHT_MAP));
+}
+
+// A flush inside a job of the io-write channel (an async scene save cleans up terrain maps) writes
+// the queue itself: the drain job is queued behind it on that one-at-a-time channel, so waiting
+// for it never ended
+TEST(TerrainMapFileWriter, AFlushInAnIoWriteJobWritesTheQueueItself) {
+    jasperengine::test::TestTempDir dir("terrain-flush");
+    const fs::path file = dir / "maps/height.png";
+    fs::create_directories(file.parent_path());
+    std::atomic<bool> flushed{false};
+    jobs::SubmitOptions options;
+    options.name = "terrain-flush-test";
+    jobs::Task<void> task = jobs::system().ioWriteChannel().submit([&]{
+        std::vector<unsigned char> pixels(4 * 4 * 4, 120);
+        TerrainMapFileWriter::get().enqueue(file, 4, 4, 4, 1, pixels);
+        flushed = TerrainMapFileWriter::get().flushAll();
+    }, options);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (!task.isReady() && std::chrono::steady_clock::now() < deadline) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    ASSERT_TRUE(task.isReady()) << "the flush waited on its own channel";
+    EXPECT_TRUE(flushed.load());
+    EXPECT_TRUE(fs::is_regular_file(file));
 }

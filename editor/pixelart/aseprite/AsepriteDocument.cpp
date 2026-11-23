@@ -391,6 +391,10 @@ namespace jasperengine::editor::pixelart::aseprite::detail {
             error = "compressed data too large";
             return false;
         }
+        // an empty image takes nothing (miniz would copy its 0 bytes to a null out, which UBSan stops on)
+        if (expected == 0) {
+            return true;
+        }
         mz_stream stream;
         std::memset(&stream, 0, sizeof(stream));
         if (mz_inflateInit(&stream) != MZ_OK) {
@@ -516,7 +520,11 @@ namespace jasperengine::editor::pixelart::aseprite::detail {
         PixelImage image(w, h);
         std::span<uint8_t> px = image.editPixels();
         if (mode == ColorMode::Rgba) {
-            std::memcpy(px.data(), raw.data(), std::min(raw.size(), px.size()));
+            // (an empty image's span may be null, which memcpy may not take even for 0 bytes)
+            const size_t bytes = std::min(raw.size(), px.size());
+            if (bytes > 0) {
+                std::memcpy(px.data(), raw.data(), bytes);
+            }
         } else {
             const size_t have = std::min(n, raw.size() / 2);
             for (size_t i = 0; i < have; i++) {

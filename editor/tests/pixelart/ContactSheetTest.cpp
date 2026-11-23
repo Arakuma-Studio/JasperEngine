@@ -41,7 +41,7 @@ TEST(ContactSheet, ScaleIsTheLargestIntegerThatFits) {
     SheetSettings s;
     s.maxWidth = 1024;
     // 8 frames of 16 px: 8 * 16 * k + 7 <= 1024 -> k = 7
-    SheetLayout l = layoutSheet(16, 16, 8, s);
+    fx::SheetLayout l = layoutSheet(16, 16, 8, s);
     EXPECT_EQ(l.columns, 8);
     EXPECT_EQ(l.scale, 7);
     EXPECT_EQ(l.width, 8 * 16 * 7 + 7);
@@ -68,11 +68,11 @@ TEST(ContactSheet, BandsPerBackdropWithLabelsAndSeparators) {
     s.backdrops = {Backdrop::Dark, Backdrop::Light, Backdrop::Black};
     s.columns = 3;
     s.scale = 4;
-    SheetLayout l;
+    fx::SheetLayout l;
     const PixelImage sheet = composeSheet(view(frames), {0, 0.25, 0.5, 0.75, 1.0}, s, &l);
     EXPECT_EQ(l.bands, 3);
     EXPECT_EQ(l.rows, 2);
-    EXPECT_EQ(l.cellHeight, 10 * 4 + SheetLayout::kLabelHeight);
+    EXPECT_EQ(l.cellHeight, 10 * 4 + fx::SheetLayout::kLabelHeight);
     EXPECT_EQ(sheet.width(), 3 * 48 + 2);
     EXPECT_EQ(sheet.height(), 3 * l.bandHeight + 2);
     // each band's backdrop under an empty pixel: dark #15131d, light #ebe8f0, black
@@ -89,7 +89,7 @@ TEST(ContactSheet, BandsPerBackdropWithLabelsAndSeparators) {
     // the label strip under frame 1 has text pixels
     const IntPoint o1 = l.frameOrigin(0, 1);
     int text = 0;
-    for (int y = 0; y < SheetLayout::kLabelHeight; y++)
+    for (int y = 0; y < fx::SheetLayout::kLabelHeight; y++)
         for (int x = 0; x < l.cellWidth; x++) text += sheet.at(o1.x + x, o1.y + 40 + y) == PixelRgba{255, 255, 255, 255} ? 1 : 0;
     EXPECT_GT(text, 20);
     // deterministic
@@ -106,7 +106,7 @@ TEST(ContactSheet, PremultipliedFramesComposeOverTheBackdrop) {
     s.backdrops = {Backdrop::Black};
     s.scale = 1;
     s.labels = false;
-    SheetLayout l;
+    fx::SheetLayout l;
     const PixelImage sheet = composeSheet({&f}, {0}, s, &l);
     const IntPoint o = l.frameOrigin(0, 0);
     EXPECT_EQ(sheet.at(o.x, o.y), (PixelRgba{100, 0, 0, 255}));

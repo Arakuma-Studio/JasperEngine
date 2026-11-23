@@ -41,7 +41,7 @@ namespace {
         return debug;
     }
 
-    size_t count(const std::string& text, const std::string& part) {
+    size_t debugSettingsCount(const std::string& text, const std::string& part) {
         size_t n = 0;
         for (size_t at = text.find(part); at != std::string::npos; at = text.find(part, at + 1)) n++;
         return n;
@@ -141,7 +141,7 @@ TEST(DebugSettingsTest, GeneratedInit) {
     EXPECT_NE(custom.find("debugOverlay.openOnError = true;"), std::string::npos);
     EXPECT_NE(custom.find("debugOverlay.stats = DebugOverlaySettings::Stats::Full;"), std::string::npos);
     EXPECT_NE(custom.find("debugOverlay.statsCorner = DebugOverlaySettings::Corner::BottomRight;"), std::string::npos);
-    EXPECT_EQ(count(custom, "DebugOverlay::configure"), 1u);
+    EXPECT_EQ(debugSettingsCount(custom, "DebugOverlay::configure"), 1u);
 
     DebugSettings never;
     never.overlay = DebugSettings::Mode::Never;

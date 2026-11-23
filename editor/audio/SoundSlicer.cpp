@@ -28,7 +28,7 @@ double dbOf(double amplitude) {
     return amplitude > 0.0 ? 20.0 * std::log10(amplitude) : AudioMeter::SILENCE_DB;
 }
 
-size_t framesOf(double ms, double rate) {
+size_t sliceFrames(double ms, double rate) {
     return (size_t)std::llround(ms * rate / 1000.0);
 }
 
@@ -88,7 +88,7 @@ bool SoundSlicer::detect(const AudioAnalysis::Signal& signal, const Options& opt
 
     // the 1 ms envelope of the mono mix
     const std::vector<float> mono = signal.mono();
-    const size_t step = std::max<size_t>(1, framesOf(ENVELOPE_MS, rate));
+    const size_t step = std::max<size_t>(1, sliceFrames(ENVELOPE_MS, rate));
     std::vector<double> envelope(n / step + 1, 0.0);
     for (size_t i = 0; i < n; i += step) {
         double sum = 0.0;
@@ -105,7 +105,7 @@ bool SoundSlicer::detect(const AudioAnalysis::Signal& signal, const Options& opt
     const nlohmann::json measured = AudioAnalysis::measure(signal, AudioMeterMode::File);
     std::vector<double> accepted;
     for (const nlohmann::json& onsetMs : measured.value("onsets_ms", nlohmann::json::array())) {
-        const size_t frame = std::min(envelope.size() - 1, framesOf(onsetMs.get<double>(), rate) / step);
+        const size_t frame = std::min(envelope.size() - 1, sliceFrames(onsetMs.get<double>(), rate) / step);
         const size_t last = std::min(envelope.size(), frame + lookahead + 1);
         double largest = 0.0;
         for (size_t k = frame; k < last; k++) largest = std::max(largest, envelope[k]);
@@ -130,15 +130,15 @@ bool SoundSlicer::detect(const AudioAnalysis::Signal& signal, const Options& opt
         return false;
     }
 
-    const size_t tailWindow = std::max<size_t>(1, framesOf(TAIL_WINDOW_MS, rate));
+    const size_t tailWindow = std::max<size_t>(1, sliceFrames(TAIL_WINDOW_MS, rate));
     size_t previousEnd = 0;
     for (size_t s = 0; s < accepted.size(); s++) {
-        const size_t onset = framesOf(accepted[s], rate);
-        const size_t pre = framesOf(options.preMs, rate);
+        const size_t onset = sliceFrames(accepted[s], rate);
+        const size_t pre = sliceFrames(options.preMs, rate);
         const size_t start = std::max(previousEnd, onset > pre ? onset - pre : 0);
-        size_t limit = std::min(n, start + framesOf(options.maxMs, rate));
+        size_t limit = std::min(n, start + sliceFrames(options.maxMs, rate));
         if (s + 1 < accepted.size()) {
-            const size_t next = framesOf(accepted[s + 1], rate);
+            const size_t next = sliceFrames(accepted[s + 1], rate);
             limit = std::min(limit, next > pre ? next - pre : 0);
         }
         if (limit <= start) continue;

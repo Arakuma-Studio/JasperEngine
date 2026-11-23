@@ -2625,6 +2625,42 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "bad_build_check_on_the_host_not_the_targets",
+        "kind": "bad",
+        "what_happened": "In a game that ships on Android and iOS only, an agent proved a change by building for Linux, the "
+                         "machine it ran on: no setting, description or result said where the game ships, and build_project "
+                         "with no mode built this computer's player.",
+        "text_at_issue": "build_project mode (default desktop) 'desktop/web: this computer/web'; get_build_info without "
+                         "target_platforms/default_platform; the game AGENTS.md without a Target platforms section",
+        "source": "docs/superpowers/specs/2026-11-12-target-platforms-design.md 1, 5.5",
+        "files": GAME_FILES,
+        "prompt": "I raised the player's speed in scripts/player.lua. Make sure the game still builds after this change.",
+        "mocks": [
+            # recorded with player.target_platforms = [android, ios] (dump_surface.py RECORD_WORLD)
+            {"tool": "get_build_info", "result": {"recorded": "build_info_mobile"}},
+            {"tool": "get_project_settings", "args": {"keys": ["player.target_platforms"]}, "result": {"recorded": "targets_mobile_get"}},
+            {"tool": "get_project_settings", "result": {"recorded": "project_settings_mobile"}},
+            {"tool": "build_project", "args": {"platform": "re:^(android|ios)$"}, "result": ok(
+                "Build android (Release): succeeded - Built android (prebuilt player android-universal-gles3-release) in "
+                "/work/space-dodge-android.",
+                {"job_id": "job-3", "status": "succeeded", "result": {
+                    "mode": "player", "platform": "android", "method_used": "prebuilt", "output_dir": "/work/space-dodge-android",
+                    "artifacts": ["SpaceDodge.aab"], "errors": [], "warnings": [], "error_count": 0, "warning_count": 0}})},
+            {"tool": "build_project", "result": ok(
+                "Build Desktop player (Release): succeeded - Built the Desktop player /work/space-dodge-desktop/SpaceDodge. "
+                "Try it with run_build.",
+                {"job_id": "job-3", "status": "succeeded", "result": {
+                    "mode": "desktop", "output_dir": "/work/space-dodge-desktop", "executable": "/work/space-dodge-desktop/SpaceDodge",
+                    "errors": [], "warnings": [], "error_count": 0, "warning_count": 0}})},
+        ],
+        "shell": [{"match": r"jasperengine-editor\s+check", "output": "No problems found.\n"},
+                  {"match": r"git (diff|status|log)", "output": ""}],
+        "checks": {"calls": [{"tool": "build_project", "args": {"platform": "re:^(android|ios)$"}}],
+                   "must_not_call": [{"tool": "build_project", "args": {"mode": "re:^(desktop|web)$"}},
+                                     {"tool": "build_project", "args": {"platform": "re:^(windows|linux|macos|web)$"}}]},
+        "max_turns": 14,
+    },
+    {
         "id": "guard_build_output_inside_project",
         "kind": "guard",
         "what_happened": "An export into a folder inside the project is refused by every front end (the editor would import "
@@ -4915,10 +4951,13 @@ CASES = [
         "what_happened": "edit_tileset check: true returns the terrain coverage report (the masks without a tile) and "
                          "writes nothing; asked which masks a tileset lacks, agents should use it rather than read the "
                          ".tileset JSON and work the masks out themselves, or take a preview's contact sheet (S50 R77). "
-                         "The prompt names neither checking nor leaving the file alone: the description is what "
-                         "tells the agent the call exists and is safe.",
-        "text_at_issue": "edit_tileset description: 'check: true returns only the coverage report.'",
-        "source": "S50 R77; S50 review (the earlier prompt said 'Don't change anything', which the check parameter's name answers)",
+                         "The prompt names neither checking nor leaving the file alone. Agents read the file the prompt "
+                         "names before any call, so no result can say it: only the guide's Code line, inside the 4096 "
+                         "characters Claude Code keeps (0/2 without it; 2/4 as an Other areas pointer, past the cut).",
+        "text_at_issue": "Guide 'Code': 'but a .tileset's masks or coverage: edit_tileset check, not its JSON'; edit_tileset "
+                         "description: 'check: true returns only the coverage report.'",
+        "source": "S50 R77; S50 review (the earlier prompt said 'Don't change anything', which the check parameter's name answers); "
+                  "eval runs s50-1, s50-p4 and th-code-short",
         "prompt": "Which terrain masks of assets/Tilesets/overworld.tileset have no tile yet?",
         "files": {"assets/Tilesets/overworld.tileset": '{\n  "version": 1,\n  "name": "Overworld",\n  "tile_size": [16, 16],\n'
                   '  "sources": [{"id": 0, "kind": "texture", "texture": {"path": "Tilesets/overworld.png"}, "tile_size": [16, 16]}],\n'

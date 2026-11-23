@@ -17,7 +17,7 @@
 #include "io/AtomicFile.h"
 #include "util/FileUtils.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 #ifdef __linux__
 #include <csignal>
 #include <sys/resource.h>
@@ -205,7 +205,12 @@ TEST(WriteFileReplacing, KeepsPermissionsAndWritesThroughSymlinks) {
     EXPECT_EQ(entryCount(dir), 2u);
 
     // a read-only file (a locked one) stays, as a plain write leaves it; root may write anything
-    if (::geteuid() != 0) {
+#ifdef _WIN32
+    const bool root = false;   // the read-only attribute holds for administrators too
+#else
+    const bool root = ::geteuid() == 0;
+#endif
+    if (!root) {
         fs::permissions(real, fs::perms::owner_read, fs::perm_options::replace);
         EXPECT_FALSE(FileUtils::writeFileReplacing(real, "replaced\n"));
         EXPECT_EQ(readAll(real), "through the link\n");

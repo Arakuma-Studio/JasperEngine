@@ -18,6 +18,8 @@
 #include <limits>
 #include <string>
 
+#include "support/PosixCompat.h"
+
 using namespace jasperengine;
 using scriptdata::ScriptDataTest;
 namespace fs = std::filesystem;
@@ -251,7 +253,8 @@ TEST_F(UserSettingsTest, TypedGettersNeverThrow) {
     // an int that is a float, an int out of the 32-bit range
     UserSettings::setStringForKey("x", "3.5");
     EXPECT_EQ(UserSettings::getIntegerForKey("x", -1), -1);
-    UserSettings::setLongForKey("wide", 5000000000L);
+    // (stored as text: setLongForKey takes a long, 32 bits on Windows, where 5000000000 can't reach it)
+    UserSettings::setStringForKey("wide", "5000000000");
     EXPECT_EQ(UserSettings::getIntegerForKey("wide", -1), -1);
     // non-finite floats round-trip
     UserSettings::setFloatForKey("inf", std::numeric_limits<float>::infinity());

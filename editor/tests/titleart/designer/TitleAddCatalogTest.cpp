@@ -32,7 +32,7 @@ namespace {
         return target;
     }
 
-    const AddEntry* find(const std::vector<AddEntry>& entries, const std::string& id) {
+    const AddEntry* titleAddCatalogFind(const std::vector<AddEntry>& entries, const std::string& id) {
         for (const AddEntry& e : entries) {
             if (e.id == id) return &e;
         }
@@ -47,7 +47,7 @@ namespace {
         return out;
     }
 
-    size_t indexOf(const std::vector<AddEntry>& entries, const std::string& id) {
+    size_t titleAddCatalogIndexOf(const std::vector<AddEntry>& entries, const std::string& id) {
         for (size_t i = 0; i < entries.size(); i++) {
             if (entries[i].id == id) return i;
         }
@@ -70,13 +70,13 @@ TEST(TitleAddCatalogTest, EffectCategoriesInTheTablesOrder) {
     expected.push_back(FOLLOW_CATEGORY);
     EXPECT_EQ(sequence, expected);
     // inside categories: §6.10's rows
-    EXPECT_LT(indexOf(entries, "fx:outer_glow"), indexOf(entries, "fx:inner_glow"));
-    EXPECT_LT(indexOf(entries, "fx:inner_glow"), indexOf(entries, "fx:light_glow"));
-    EXPECT_LT(indexOf(entries, "fx:inner_shadow"), indexOf(entries, "recipe:long_shadow"));
-    EXPECT_LT(indexOf(entries, "recipe:long_shadow"), indexOf(entries, "fx:extrude"));
-    EXPECT_LT(indexOf(entries, "fx:gradient_overlay"), indexOf(entries, "recipe:shine"));
-    EXPECT_LT(indexOf(entries, "fx:distress"), indexOf(entries, "style:dry_brush"));
-    EXPECT_LT(indexOf(entries, "style:dry_brush"), indexOf(entries, "fx:drips"));
+    EXPECT_LT(titleAddCatalogIndexOf(entries, "fx:outer_glow"), titleAddCatalogIndexOf(entries, "fx:inner_glow"));
+    EXPECT_LT(titleAddCatalogIndexOf(entries, "fx:inner_glow"), titleAddCatalogIndexOf(entries, "fx:light_glow"));
+    EXPECT_LT(titleAddCatalogIndexOf(entries, "fx:inner_shadow"), titleAddCatalogIndexOf(entries, "recipe:long_shadow"));
+    EXPECT_LT(titleAddCatalogIndexOf(entries, "recipe:long_shadow"), titleAddCatalogIndexOf(entries, "fx:extrude"));
+    EXPECT_LT(titleAddCatalogIndexOf(entries, "fx:gradient_overlay"), titleAddCatalogIndexOf(entries, "recipe:shine"));
+    EXPECT_LT(titleAddCatalogIndexOf(entries, "fx:distress"), titleAddCatalogIndexOf(entries, "style:dry_brush"));
+    EXPECT_LT(titleAddCatalogIndexOf(entries, "style:dry_brush"), titleAddCatalogIndexOf(entries, "fx:drips"));
 }
 
 // R42: English and Japanese names, aliases and preset names
@@ -114,14 +114,14 @@ TEST(TitleAddCatalogTest, GeneratorsAreLayerRows) {
         EXPECT_FALSE(e.cost.empty()) << e.id << ": R41's class on the row";
     }
     EXPECT_GT(generators, 20u);
-    const AddEntry* follow = find(entries, "follow:fire:behind");
+    const AddEntry* follow = titleAddCatalogFind(entries, "follow:fire:behind");
     ASSERT_NE(follow, nullptr);
     EXPECT_EQ(follow->ops[0].value("follow", std::string()), "id:t1");
     EXPECT_FALSE(follow->ops[0].contains("after"));
     EXPECT_EQ(follow->ops[0].value("preset", std::string()), "behind");
     EXPECT_NE(follow->note.find("below"), std::string::npos) << "Flames Behind is placed below: " << follow->note;
     // a generator that follows nothing goes above the selection
-    const AddEntry* fill = find(entries, "gen:fill");
+    const AddEntry* fill = titleAddCatalogFind(entries, "gen:fill");
     ASSERT_NE(fill, nullptr);
     EXPECT_EQ(fill->ops[0].value("after", std::string()), "id:t1");
 }
@@ -130,16 +130,16 @@ TEST(TitleAddCatalogTest, GeneratorsAreLayerRows) {
 // Glint (3D highlights) only on a Dimension 3D layer, Dry Brush only on a 2D one.
 TEST(TitleAddCatalogTest, StyleSettingsSwitchTheirMember) {
     const std::vector<AddEntry> flat = buildAddEntries("effects", textTarget(false));
-    const AddEntry* dry = find(flat, "style:dry_brush");
+    const AddEntry* dry = titleAddCatalogFind(flat, "style:dry_brush");
     ASSERT_NE(dry, nullptr);
     ASSERT_EQ(dry->ops.size(), 1u);
     EXPECT_EQ(dry->ops[0].value("op", std::string()), "set");
     EXPECT_TRUE(dry->ops[0]["values"].value("style.erode.enabled", false));
     EXPECT_EQ(dry->openSections, (std::vector<std::string>{"Appearance", "Erode"}));
-    EXPECT_EQ(find(flat, "style:glint_3d"), nullptr);
+    EXPECT_EQ(titleAddCatalogFind(flat, "style:glint_3d"), nullptr);
     const std::vector<AddEntry> deep = buildAddEntries("effects", textTarget(true));
-    ASSERT_NE(find(deep, "style:glint_3d"), nullptr);
-    EXPECT_EQ(find(deep, "style:dry_brush"), nullptr);
+    ASSERT_NE(titleAddCatalogFind(deep, "style:glint_3d"), nullptr);
+    EXPECT_EQ(titleAddCatalogFind(deep, "style:dry_brush"), nullptr);
 }
 
 // R17: with parts selected the effects go to the parts; style settings and following generators
@@ -168,7 +168,7 @@ TEST(TitleAddCatalogTest, PartsTarget) {
     AddTarget target = textTarget();
     target.parts = {NodeRef{NodeKind::Part, "t1", "face", {}}};
     const std::vector<AddEntry> entries = buildAddEntries("effects", target);
-    const AddEntry* glow = find(entries, "fx:outer_glow");
+    const AddEntry* glow = titleAddCatalogFind(entries, "fx:outer_glow");
     ASSERT_NE(glow, nullptr);
     EXPECT_EQ(glow->ops[0].value("part", std::string()), "face");
     for (const AddEntry& e : entries) {
@@ -193,7 +193,7 @@ TEST(TitleAddCatalogTest, EntriesApply) {
     target.layers = {title};
     const std::vector<AddEntry> entries = buildAddEntries("", target);
     for (const char* id : {"recipe:long_shadow", "follow:fire:behind", "fx:light_glow", "style:dry_brush", "layer:shape:star"}) {
-        const AddEntry* e = find(entries, id);
+        const AddEntry* e = titleAddCatalogFind(entries, id);
         ASSERT_NE(e, nullptr) << id;
         TitleOpsResult result = TitleArtOps::apply(doc, e->ops);
         EXPECT_TRUE(result.ok) << id << ": " << result.error();

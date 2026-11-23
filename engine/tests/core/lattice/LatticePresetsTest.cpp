@@ -22,7 +22,7 @@ namespace{
         LatticePreset::BEND, LatticePreset::BULGE, LatticePreset::SHEAR, LatticePreset::NOISE
     };
 
-    lattice::PresetParams preset(LatticePreset type, LatticeAxis axis, float amount, LatticeAxis toward = LatticeAxis::X){
+    lattice::PresetParams latticePresetsPreset(LatticePreset type, LatticeAxis axis, float amount, LatticeAxis toward = LatticeAxis::X){
         lattice::PresetParams params;
         params.preset = type;
         params.axis = axis;
@@ -32,11 +32,11 @@ namespace{
     }
 
     // rest + offset of point (i, j, k)
-    Vector3 position(int rx, int ry, int rz, const std::vector<Vector3>& offsets, int i, int j, int k){
+    Vector3 latticePresetsPosition(int rx, int ry, int rz, const std::vector<Vector3>& offsets, int i, int j, int k){
         return lattice::restPosition(rx, ry, rz, i, j, k) + offsets[size_t(lattice::pointIndex(rx, ry, i, j, k))];
     }
 
-    bool sameBits(const std::vector<Vector3>& a, const std::vector<Vector3>& b){
+    bool latticePresetsSameBits(const std::vector<Vector3>& a, const std::vector<Vector3>& b){
         if (a.size() != b.size()) return false;
         for (size_t i = 0; i < a.size(); i++){
             if (!bitwiseEqual(a[i], b[i])) return false;
@@ -80,12 +80,12 @@ TEST(LatticePresets, AmountZeroIsANoOpForEveryPreset){
     for (LatticePreset type : allPresets){
         for (LatticeAxis axis : {LatticeAxis::X, LatticeAxis::Y, LatticeAxis::Z}){
             std::vector<Vector3> offsets = lattice.offsets;
-            lattice::applyPreset(4, 3, 5, offsets, preset(type, axis, 0.0f));
-            EXPECT_TRUE(sameBits(offsets, lattice.offsets)) << lattice::presetName(type);
+            lattice::applyPreset(4, 3, 5, offsets, latticePresetsPreset(type, axis, 0.0f));
+            EXPECT_TRUE(latticePresetsSameBits(offsets, lattice.offsets)) << lattice::presetName(type);
         }
         // replace with amount 0 puts the selected points at rest, and only those
         std::vector<Vector3> offsets = lattice.offsets;
-        lattice::PresetParams params = preset(type, LatticeAxis::Y, 0.0f);
+        lattice::PresetParams params = latticePresetsPreset(type, LatticeAxis::Y, 0.0f);
         params.replace = true;
         lattice::applyPreset(4, 3, 5, offsets, params, {1, 7});
         for (size_t i = 0; i < offsets.size(); i++){
@@ -103,10 +103,10 @@ TEST(LatticePresets, SquashAndStretchKeepTheVolume){
         for (float amount : {0.25f, 0.5f, 0.9f}){
             for (LatticeInterpolation interpolation : {LatticeInterpolation::SHARP, LatticeInterpolation::CUBIC}){
                 LatticeComponent lattice = makeLattice(3, 4, 3, interpolation);
-                lattice::applyPreset(3, 4, 3, lattice.offsets, preset(type, LatticeAxis::Y, amount));
+                lattice::applyPreset(3, 4, 3, lattice.offsets, latticePresetsPreset(type, LatticeAxis::Y, amount));
                 const float s = type == LatticePreset::SQUASH ? 1.0f - amount : 1.0f + amount;
                 // along the axis scaled by s, across by 1/sqrt(s)
-                const Vector3 top = position(3, 4, 3, lattice.offsets, 2, 3, 2);
+                const Vector3 top = latticePresetsPosition(3, 4, 3, lattice.offsets, 2, 3, 2);
                 EXPECT_NEAR(top.y, 0.5f * s, 1e-6f);
                 EXPECT_NEAR(top.x, 0.5f / std::sqrt(s), 1e-6f);
                 EXPECT_NEAR(top.z, 0.5f / std::sqrt(s), 1e-6f);
@@ -122,50 +122,50 @@ TEST(LatticePresets, SquashAndStretchKeepTheVolume){
         }
     }
     // squash is capped at 0.95 (the cage never flattens), stretch floored at -0.95
-    const std::vector<Vector3> capped = applied(3, 3, 3, preset(LatticePreset::SQUASH, LatticeAxis::Z, 3.0f));
-    EXPECT_NEAR(position(3, 3, 3, capped, 1, 1, 2).z, 0.5f * 0.05f, 1e-6f);
-    const std::vector<Vector3> floored = applied(3, 3, 3, preset(LatticePreset::STRETCH, LatticeAxis::Z, -3.0f));
-    EXPECT_NEAR(position(3, 3, 3, floored, 1, 1, 2).z, 0.5f * 0.05f, 1e-6f);
+    const std::vector<Vector3> capped = applied(3, 3, 3, latticePresetsPreset(LatticePreset::SQUASH, LatticeAxis::Z, 3.0f));
+    EXPECT_NEAR(latticePresetsPosition(3, 3, 3, capped, 1, 1, 2).z, 0.5f * 0.05f, 1e-6f);
+    const std::vector<Vector3> floored = applied(3, 3, 3, latticePresetsPreset(LatticePreset::STRETCH, LatticeAxis::Z, -3.0f));
+    EXPECT_NEAR(latticePresetsPosition(3, 3, 3, floored, 1, 1, 2).z, 0.5f * 0.05f, 1e-6f);
 }
 
 TEST(LatticePresets, Taper){
-    const std::vector<Vector3> offsets = applied(3, 3, 3, preset(LatticePreset::TAPER, LatticeAxis::Y, 0.6f));
+    const std::vector<Vector3> offsets = applied(3, 3, 3, latticePresetsPreset(LatticePreset::TAPER, LatticeAxis::Y, 0.6f));
     // no change at the -0.5 end, 1 - amount at +0.5, halfway between in the middle
     for (int k = 0; k < 3; k++){
         for (int i = 0; i < 3; i++){
             EXPECT_EQ(offsets[size_t(lattice::pointIndex(3, 3, i, 0, k))], Vector3(0, 0, 0));
             const Vector3 rest = lattice::restPosition(3, 3, 3, i, 2, k);
-            EXPECT_LT(maxAbsDifference(position(3, 3, 3, offsets, i, 2, k), Vector3(rest.x * 0.4f, 0.5f, rest.z * 0.4f)), 1e-6f);
+            EXPECT_LT(maxAbsDifference(latticePresetsPosition(3, 3, 3, offsets, i, 2, k), Vector3(rest.x * 0.4f, 0.5f, rest.z * 0.4f)), 1e-6f);
             const Vector3 middle = lattice::restPosition(3, 3, 3, i, 1, k);
-            EXPECT_LT(maxAbsDifference(position(3, 3, 3, offsets, i, 1, k), Vector3(middle.x * 0.7f, 0, middle.z * 0.7f)), 1e-6f);
+            EXPECT_LT(maxAbsDifference(latticePresetsPosition(3, 3, 3, offsets, i, 1, k), Vector3(middle.x * 0.7f, 0, middle.z * 0.7f)), 1e-6f);
         }
     }
 }
 
 TEST(LatticePresets, TwistTurnsCounterclockwiseSeenFromThePositiveAxis){
-    const std::vector<Vector3> offsets = applied(3, 3, 3, preset(LatticePreset::TWIST, LatticeAxis::Y, 90.0f));
+    const std::vector<Vector3> offsets = applied(3, 3, 3, latticePresetsPreset(LatticePreset::TWIST, LatticeAxis::Y, 90.0f));
     // the +0.5 end turns 90 degrees around +y (x goes to -z), the middle 45, the -0.5 end stays
-    EXPECT_LT(maxAbsDifference(position(3, 3, 3, offsets, 2, 2, 1), Vector3(0, 0.5f, -0.5f)), 1e-6f);
-    EXPECT_LT(maxAbsDifference(position(3, 3, 3, offsets, 1, 2, 2), Vector3(0.5f, 0.5f, 0)), 1e-6f);
+    EXPECT_LT(maxAbsDifference(latticePresetsPosition(3, 3, 3, offsets, 2, 2, 1), Vector3(0, 0.5f, -0.5f)), 1e-6f);
+    EXPECT_LT(maxAbsDifference(latticePresetsPosition(3, 3, 3, offsets, 1, 2, 2), Vector3(0.5f, 0.5f, 0)), 1e-6f);
     const float h = 0.5f * std::sqrt(0.5f);
-    EXPECT_LT(maxAbsDifference(position(3, 3, 3, offsets, 2, 1, 1), Vector3(h, 0, -h)), 1e-6f);
+    EXPECT_LT(maxAbsDifference(latticePresetsPosition(3, 3, 3, offsets, 2, 1, 1), Vector3(h, 0, -h)), 1e-6f);
     for (int k = 0; k < 3; k++){
         for (int i = 0; i < 3; i++){
             EXPECT_EQ(offsets[size_t(lattice::pointIndex(3, 3, i, 0, k))], Vector3(0, 0, 0));
         }
     }
     // around x: y goes to z; around z: x goes to y
-    const std::vector<Vector3> aroundX = applied(3, 3, 3, preset(LatticePreset::TWIST, LatticeAxis::X, 90.0f));
-    EXPECT_LT(maxAbsDifference(position(3, 3, 3, aroundX, 2, 2, 1), Vector3(0.5f, 0, 0.5f)), 1e-6f);
-    const std::vector<Vector3> aroundZ = applied(3, 3, 3, preset(LatticePreset::TWIST, LatticeAxis::Z, 90.0f));
-    EXPECT_LT(maxAbsDifference(position(3, 3, 3, aroundZ, 2, 1, 2), Vector3(0, 0.5f, 0.5f)), 1e-6f);
+    const std::vector<Vector3> aroundX = applied(3, 3, 3, latticePresetsPreset(LatticePreset::TWIST, LatticeAxis::X, 90.0f));
+    EXPECT_LT(maxAbsDifference(latticePresetsPosition(3, 3, 3, aroundX, 2, 2, 1), Vector3(0.5f, 0, 0.5f)), 1e-6f);
+    const std::vector<Vector3> aroundZ = applied(3, 3, 3, latticePresetsPreset(LatticePreset::TWIST, LatticeAxis::Z, 90.0f));
+    EXPECT_LT(maxAbsDifference(latticePresetsPosition(3, 3, 3, aroundZ, 2, 1, 2), Vector3(0, 0.5f, 0.5f)), 1e-6f);
 }
 
 TEST(LatticePresets, BendIsAnArcAroundTheNegativeEndCentre){
     const double theta = 90.0 * 3.14159265358979323846 / 180.0;
     const double radius = 1.0 / theta;
     const int ry = 9;
-    const std::vector<Vector3> offsets = applied(3, ry, 3, preset(LatticePreset::BEND, LatticeAxis::Y, 90.0f, LatticeAxis::X));
+    const std::vector<Vector3> offsets = applied(3, ry, 3, latticePresetsPreset(LatticePreset::BEND, LatticeAxis::Y, 90.0f, LatticeAxis::X));
     // the -0.5 end stays put
     for (int k = 0; k < 3; k++){
         for (int i = 0; i < 3; i++){
@@ -177,7 +177,7 @@ TEST(LatticePresets, BendIsAnArcAroundTheNegativeEndCentre){
     Vector3 previous(0, -0.5f, 0);
     for (int j = 0; j < ry; j++){
         const double s = double(j) / double(ry - 1);
-        const Vector3 p = position(3, ry, 3, offsets, 1, j, 1);
+        const Vector3 p = latticePresetsPosition(3, ry, 3, offsets, 1, j, 1);
         EXPECT_NEAR(p.x, radius - radius * std::cos(theta * s), 1e-6);
         EXPECT_NEAR(p.y, -0.5 + radius * std::sin(theta * s), 1e-6);
         EXPECT_EQ(p.z, 0.0f);
@@ -187,21 +187,21 @@ TEST(LatticePresets, BendIsAnArcAroundTheNegativeEndCentre){
     }
     // the +0.5 end has turned 90 degrees: the end face now faces +x, and a point at
     // toward-coordinate b sits b along the arc normal (here -y) from the end centre
-    const Vector3 endCentre = position(3, ry, 3, offsets, 1, ry - 1, 1);
-    const Vector3 endPlusX = position(3, ry, 3, offsets, 2, ry - 1, 1);
+    const Vector3 endCentre = latticePresetsPosition(3, ry, 3, offsets, 1, ry - 1, 1);
+    const Vector3 endPlusX = latticePresetsPosition(3, ry, 3, offsets, 2, ry - 1, 1);
     EXPECT_LT(maxAbsDifference(endCentre, Vector3(float(radius), float(-0.5 + radius), 0)), 1e-6f);
     EXPECT_LT(maxAbsDifference(endPlusX - endCentre, Vector3(0, -0.5f, 0)), 1e-6f);
 
     // a negative amount bends toward -x, the mirror image
-    const std::vector<Vector3> negative = applied(3, ry, 3, preset(LatticePreset::BEND, LatticeAxis::Y, -90.0f, LatticeAxis::X));
+    const std::vector<Vector3> negative = applied(3, ry, 3, latticePresetsPreset(LatticePreset::BEND, LatticeAxis::Y, -90.0f, LatticeAxis::X));
     for (int j = 0; j < ry; j++){
-        const Vector3 a = position(3, ry, 3, offsets, 2, j, 1);
-        const Vector3 b = position(3, ry, 3, negative, 0, j, 1);
+        const Vector3 a = latticePresetsPosition(3, ry, 3, offsets, 2, j, 1);
+        const Vector3 b = latticePresetsPosition(3, ry, 3, negative, 0, j, 1);
         EXPECT_LT(maxAbsDifference(a, Vector3(-b.x, b.y, b.z)), 1e-6f);
     }
 
     // a tiny bend is nearly nothing (no cancellation blow-up)
-    const std::vector<Vector3> tiny = applied(3, 3, 3, preset(LatticePreset::BEND, LatticeAxis::Y, 1e-4f, LatticeAxis::X));
+    const std::vector<Vector3> tiny = applied(3, 3, 3, latticePresetsPreset(LatticePreset::BEND, LatticeAxis::Y, 1e-4f, LatticeAxis::X));
     for (const Vector3& offset : tiny){
         EXPECT_LT(offset.length(), 1e-5f);
     }
@@ -213,36 +213,36 @@ TEST(LatticePresets, BendAndTwistUseTheCageProportions){
     const double theta = 60.0 * 3.14159265358979323846 / 180.0;
     const double radius = 4.0 / theta; // world units
     const int ry = 9;
-    lattice::PresetParams bend = preset(LatticePreset::BEND, LatticeAxis::Y, 60.0f, LatticeAxis::X);
+    lattice::PresetParams bend = latticePresetsPreset(LatticePreset::BEND, LatticeAxis::Y, 60.0f, LatticeAxis::X);
     bend.proportions = Vector3(1.0f, 4.0f, 1.0f);
     const std::vector<Vector3> offsets = applied(3, ry, 3, bend);
     auto world = [](const Vector3& local){ return Vector3(local.x * 1.0f, local.y * 4.0f, local.z * 1.0f); };
     for (int j = 0; j < ry; j++){
         const double s = double(j) / double(ry - 1);
-        const Vector3 p = world(position(3, ry, 3, offsets, 1, j, 1));
+        const Vector3 p = world(latticePresetsPosition(3, ry, 3, offsets, 1, j, 1));
         EXPECT_NEAR(p.x, radius - radius * std::cos(theta * s), 1e-5);
         EXPECT_NEAR(p.y, -2.0 + radius * std::sin(theta * s), 1e-5);
     }
     // the end face has turned 60 degrees: its +x half-width (0.5 world units) now points along
     // (cos 60, -sin 60)
-    const Vector3 endCentre = world(position(3, ry, 3, offsets, 1, ry - 1, 1));
-    const Vector3 endPlusX = world(position(3, ry, 3, offsets, 2, ry - 1, 1));
+    const Vector3 endCentre = world(latticePresetsPosition(3, ry, 3, offsets, 1, ry - 1, 1));
+    const Vector3 endPlusX = world(latticePresetsPosition(3, ry, 3, offsets, 2, ry - 1, 1));
     EXPECT_LT(maxAbsDifference(endPlusX - endCentre, Vector3(float(0.5 * std::cos(theta)), float(-0.5 * std::sin(theta)), 0)), 1e-5f);
 
     // twist around y of a cage 2 x 1 x 1: the +x corner of the top (1 world unit out) turns to
     // 1 world unit along -z, which is local z = -1 in a cage 1 unit deep
-    lattice::PresetParams twist = preset(LatticePreset::TWIST, LatticeAxis::Y, 90.0f);
+    lattice::PresetParams twist = latticePresetsPreset(LatticePreset::TWIST, LatticeAxis::Y, 90.0f);
     twist.proportions = Vector3(2.0f, 1.0f, 1.0f);
     const std::vector<Vector3> twisted = applied(3, 3, 3, twist);
-    EXPECT_LT(maxAbsDifference(position(3, 3, 3, twisted, 2, 2, 1), Vector3(0, 0.5f, -1.0f)), 1e-6f);
+    EXPECT_LT(maxAbsDifference(latticePresetsPosition(3, 3, 3, twisted, 2, 2, 1), Vector3(0, 0.5f, -1.0f)), 1e-6f);
     // and the -z corner (0.5 world units out) turns to +x: local x = 0.25 on a 2-unit-wide cage
-    EXPECT_LT(maxAbsDifference(position(3, 3, 3, twisted, 1, 2, 0), Vector3(-0.25f, 0.5f, 0)), 1e-6f);
+    EXPECT_LT(maxAbsDifference(latticePresetsPosition(3, 3, 3, twisted, 1, 2, 0), Vector3(-0.25f, 0.5f, 0)), 1e-6f);
 
     // unit proportions are the plain unit-cube presets; invalid components take the largest valid one
-    lattice::PresetParams unit = preset(LatticePreset::BEND, LatticeAxis::Y, 60.0f);
+    lattice::PresetParams unit = latticePresetsPreset(LatticePreset::BEND, LatticeAxis::Y, 60.0f);
     lattice::PresetParams invalid = unit;
     invalid.proportions = Vector3(0.0f, -1.0f, std::numeric_limits<float>::quiet_NaN());
-    EXPECT_TRUE(sameBits(applied(3, 3, 3, unit), applied(3, 3, 3, invalid)));
+    EXPECT_TRUE(latticePresetsSameBits(applied(3, 3, 3, unit), applied(3, 3, 3, invalid)));
 
     // presetProportions reads the axis lengths of a cage's world matrix (rotation ignored)
     Matrix4 model = Matrix4::translateMatrix(Vector3(5, 6, 7)) * Matrix4::rotateMatrix(30.0f, Vector3(0, 1, 0)) *
@@ -251,13 +251,13 @@ TEST(LatticePresets, BendAndTwistUseTheCageProportions){
 }
 
 TEST(LatticePresets, BulgeAndShear){
-    const std::vector<Vector3> bulge = applied(3, 3, 3, preset(LatticePreset::BULGE, LatticeAxis::Y, 0.5f));
+    const std::vector<Vector3> bulge = applied(3, 3, 3, latticePresetsPreset(LatticePreset::BULGE, LatticeAxis::Y, 0.5f));
     // max at the middle (scale 1.5), none at the ends
-    EXPECT_LT(maxAbsDifference(position(3, 3, 3, bulge, 2, 1, 0), Vector3(0.75f, 0, -0.75f)), 1e-6f);
+    EXPECT_LT(maxAbsDifference(latticePresetsPosition(3, 3, 3, bulge, 2, 1, 0), Vector3(0.75f, 0, -0.75f)), 1e-6f);
     EXPECT_EQ(bulge[size_t(lattice::pointIndex(3, 3, 2, 0, 0))], Vector3(0, 0, 0));
     EXPECT_EQ(bulge[size_t(lattice::pointIndex(3, 3, 2, 2, 0))], Vector3(0, 0, 0));
 
-    const std::vector<Vector3> shear = applied(3, 3, 3, preset(LatticePreset::SHEAR, LatticeAxis::Y, 0.4f, LatticeAxis::Z));
+    const std::vector<Vector3> shear = applied(3, 3, 3, latticePresetsPreset(LatticePreset::SHEAR, LatticeAxis::Y, 0.4f, LatticeAxis::Z));
     for (int k = 0; k < 3; k++){
         for (int j = 0; j < 3; j++){
             for (int i = 0; i < 3; i++){
@@ -266,11 +266,11 @@ TEST(LatticePresets, BulgeAndShear){
         }
     }
     // toward equal to the axis means the next axis (y -> z)
-    EXPECT_TRUE(sameBits(applied(3, 3, 3, preset(LatticePreset::SHEAR, LatticeAxis::Y, 0.4f, LatticeAxis::Y)), shear));
+    EXPECT_TRUE(latticePresetsSameBits(applied(3, 3, 3, latticePresetsPreset(LatticePreset::SHEAR, LatticeAxis::Y, 0.4f, LatticeAxis::Y)), shear));
 }
 
 TEST(LatticePresets, NoiseIsDeterministicAndUniformInABall){
-    lattice::PresetParams params = preset(LatticePreset::NOISE, LatticeAxis::Y, 0.5f);
+    lattice::PresetParams params = latticePresetsPreset(LatticePreset::NOISE, LatticeAxis::Y, 0.5f);
     params.seed = 1;
     const std::vector<Vector3> a = applied(3, 3, 3, params);
     // golden values, from an independent implementation of the same hash; exact floats
@@ -287,7 +287,7 @@ TEST(LatticePresets, NoiseIsDeterministicAndUniformInABall){
     // same seed, same result; the axis does not matter
     params.seed = 7;
     params.axis = LatticeAxis::X;
-    EXPECT_TRUE(sameBits(applied(3, 3, 3, params), b));
+    EXPECT_TRUE(latticePresetsSameBits(applied(3, 3, 3, params), b));
 
     // uniform in the ball: inside it, and a ball of half the radius holds about 1/8 of the points
     params.seed = 12345;
@@ -314,7 +314,7 @@ TEST(LatticePresets, NoiseIsDeterministicAndUniformInABall){
 TEST(LatticePresets, OnlySelectedPointsChange){
     const std::vector<int> selection = {0, 4, 26, 4, -3, 99}; // repeats and invalid indices
     for (LatticePreset type : allPresets){
-        const lattice::PresetParams params = preset(type, LatticeAxis::Y, type == LatticePreset::TWIST || type == LatticePreset::BEND ? 30.0f : 0.3f);
+        const lattice::PresetParams params = latticePresetsPreset(type, LatticeAxis::Y, type == LatticePreset::TWIST || type == LatticePreset::BEND ? 30.0f : 0.3f);
         const std::vector<Vector3> all = applied(3, 3, 3, params);
         const std::vector<Vector3> some = applied(3, 3, 3, params, selection);
         for (int i = 0; i < 27; i++){
@@ -327,7 +327,7 @@ TEST(LatticePresets, OnlySelectedPointsChange){
     }
     // a wrongly sized offsets vector is resized first
     std::vector<Vector3> offsets(3, Vector3(1, 0, 0));
-    lattice::applyPreset(3, 3, 3, offsets, preset(LatticePreset::SHEAR, LatticeAxis::Y, 0.2f));
+    lattice::applyPreset(3, 3, 3, offsets, latticePresetsPreset(LatticePreset::SHEAR, LatticeAxis::Y, 0.2f));
     ASSERT_EQ(offsets.size(), size_t(27));
     EXPECT_EQ(offsets[0], Vector3(1, 0, 0));
     EXPECT_EQ(offsets[26], Vector3(0.2f, 0, 0));
@@ -339,7 +339,7 @@ TEST(LatticePresets, ResampleIdentityAndCoincidentPoints){
     LatticeComponent lattice = makeLattice(3, 4, 5);
     randomOffsets(lattice, 8, 0.3f);
     // same resolution: the same bits
-    EXPECT_TRUE(sameBits(lattice::resample(3, 4, 5, lattice.offsets, 3, 4, 5), lattice.offsets));
+    EXPECT_TRUE(latticePresetsSameBits(lattice::resample(3, 4, 5, lattice.offsets, 3, 4, 5), lattice.offsets));
 
     // 3 -> 5 along x and 4 -> 7 along y: the old points sit at even x, at every other y; exact
     const std::vector<Vector3> finer = lattice::resample(3, 4, 5, lattice.offsets, 5, 7, 5);
@@ -358,7 +358,7 @@ TEST(LatticePresets, ResampleIdentityAndCoincidentPoints){
     EXPECT_LT(maxAbsDifference(finer[size_t(lattice::pointIndex(5, 7, 1, 0, 0))], mid), 1e-6f);
 
     // and back down: the round trip is exact
-    EXPECT_TRUE(sameBits(lattice::resample(5, 7, 5, finer, 3, 4, 5), lattice.offsets));
+    EXPECT_TRUE(latticePresetsSameBits(lattice::resample(5, 7, 5, finer, 3, 4, 5), lattice.offsets));
 
     // the deformation is kept: a resampled sharp lattice deforms like the old one at its points
     LatticeComponent sharp = makeLattice(3, 4, 5, LatticeInterpolation::SHARP);
@@ -420,8 +420,8 @@ TEST(LatticePresets, Mirror){
     // the mirrored cage is symmetric: positions mirror across x = 0
     for (int k = 0; k < 2; k++){
         for (int j = 0; j < 2; j++){
-            const Vector3 a = position(3, 2, 2, offsets, 0, j, k);
-            const Vector3 b = position(3, 2, 2, offsets, 2, j, k);
+            const Vector3 a = latticePresetsPosition(3, 2, 2, offsets, 0, j, k);
+            const Vector3 b = latticePresetsPosition(3, 2, 2, offsets, 2, j, k);
             EXPECT_EQ(a, Vector3(-b.x, b.y, b.z));
         }
     }
@@ -440,7 +440,7 @@ TEST(LatticePresets, Mirror){
     // mirroring twice changes nothing more
     std::vector<Vector3> twice = offsets;
     lattice::mirror(3, 2, 2, twice, LatticeAxis::Y, false);
-    EXPECT_TRUE(sameBits(twice, offsets));
+    EXPECT_TRUE(latticePresetsSameBits(twice, offsets));
 }
 
 // --- selection helpers ---

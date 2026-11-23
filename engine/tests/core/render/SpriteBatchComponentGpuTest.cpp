@@ -75,7 +75,7 @@ namespace {
         return data;
     }
 
-    void nearest(Mesh& mesh){
+    void spriteBatchComponentNearest(Mesh& mesh){
         Material material = mesh.getMaterial();
         material.baseColorTexture.setMinFilter(TextureFilter::NEAREST);
         material.baseColorTexture.setMagFilter(TextureFilter::NEAREST);
@@ -155,7 +155,7 @@ namespace {
             sprites.push_back(std::make_unique<Sprite>(&scene));
             Sprite& s = *sprites.back();
             s.setTexture("sprite-batch-component|frames", instanceFrames());
-            nearest(s);
+            spriteBatchComponentNearest(s);
             s.addFrame("a", 0.0f, 0.0f, 8.0f, 8.0f);
             s.addFrame("b", 8.0f, 0.0f, 8.0f, 8.0f);
             s.setFrame(0);
@@ -173,7 +173,7 @@ namespace {
             s.setPixelsPerUnit(0.5f);
             s.setPivotPreset(pivot);
             s.setFrame(frame);
-            nearest(s);
+            spriteBatchComponentNearest(s);
             return s;
         }
 

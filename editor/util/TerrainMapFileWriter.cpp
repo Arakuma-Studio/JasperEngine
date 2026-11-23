@@ -36,20 +36,16 @@ void TerrainMapFileWriter::enqueue(const fs::path& path, int width, int height, 
     condition.notify_all();
 }
 
+// A flush writes the queue itself rather than waiting for the drain job: that job runs on the
+// io-write channel, one job at a time, so a flush inside another of its jobs (an async scene save)
+// would wait on a job queued behind itself, and a flush once the job system has stopped (a Project
+// released at exit) on one that never runs. It waits only for a drain that is writing already,
+// then writes what that one left.
 void TerrainMapFileWriter::flushPath(const std::string& path){
     std::unique_lock<std::mutex> lock(mutex);
     retryFailedLocked(path);
-    drainInlineIfAlone(lock);
-    condition.wait(lock, [&]{ return jobs.find(path) == jobs.end() && writingPath != path; });
-}
-
-void TerrainMapFileWriter::drainInlineIfAlone(std::unique_lock<std::mutex>& lock){
-    // single-thread mode runs channel jobs from the frame's pump: write here instead
-    if (!jobs::system().isSingleThreaded() || jobs.empty())
-        return;
-    lock.unlock();
-    run();
-    lock.lock();
+    while (!drainLocked(lock))
+        condition.wait(lock, [&]{ return !draining; });
 }
 
 bool TerrainMapFileWriter::flushAll(){
@@ -60,12 +56,8 @@ bool TerrainMapFileWriter::flushAll(){
         }
     }
     failedJobs.clear();
-    if (!jobs.empty()){
-        startWorkerLocked();
-        condition.notify_all();
-    }
-    drainInlineIfAlone(lock);
-    condition.wait(lock, [&]{ return jobs.empty() && writingPath.empty(); });
+    while (!drainLocked(lock))
+        condition.wait(lock, [&]{ return !draining; });
     return failedJobs.empty();
 }
 
@@ -151,12 +143,12 @@ void TerrainMapFileWriter::retryFailedLocked(const std::string& path){
         jobs[path] = std::move(failed->second);
     }
     failedJobs.erase(failed);
-    startWorkerLocked();
-    condition.notify_all();
 }
 
-void TerrainMapFileWriter::run(){
-    std::unique_lock<std::mutex> lock(mutex);
+bool TerrainMapFileWriter::drainLocked(std::unique_lock<std::mutex>& lock){
+    if (draining)
+        return false;
+    draining = true;
     while (!jobs.empty()){
         auto it = jobs.begin();
         const std::string path = it->first;
@@ -178,6 +170,15 @@ void TerrainMapFileWriter::run(){
         writingPath.clear();
         condition.notify_all();
     }
+    draining = false;
+    condition.notify_all();
+    return true;
+}
+
+void TerrainMapFileWriter::run(){
+    std::unique_lock<std::mutex> lock(mutex);
+    // (nothing to do when a flush is writing the queue: it writes until none is left)
+    drainLocked(lock);
     workerRunning = false;
     condition.notify_all();
 }

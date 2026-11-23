@@ -66,6 +66,7 @@
 #include "component/ScriptComponent.h"
 #include "component/SkyboxComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/TitleArtRendererComponent.h"
 #include "component/UIComponent.h"
 #include "util/Color.h"
 #include "window/InspectorWindow.h"
@@ -78,7 +79,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 
-#include <unistd.h>
+#include "support/PosixCompat.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -291,7 +292,7 @@ namespace {
             fs::remove_all(headless().dir.parent_path(), ec);
         }
     };
-    [[maybe_unused]] ::testing::Environment* const tempProjectCleanup = ::testing::AddGlobalTestEnvironment(new TempProjectCleanup);
+    [[maybe_unused]] ::testing::Environment* const animationClipControllerTempProjectCleanup = ::testing::AddGlobalTestEnvironment(new TempProjectCleanup);
 
     void writeAll(const fs::path& path, const std::string& content) {
         fs::create_directories(path.parent_path());
@@ -2038,6 +2039,8 @@ TEST(PropertyRegistryCatalog, EveryRowIsACatalogPropertyOfACompatibleType){
     scene.addComponent<AudioSourceComponent>(e, {});
     scene.addComponent<FogComponent>(e, {});
     scene.addComponent<SkyboxComponent>(e, {});
+    // S81 R40's rows: the Title Art Renderer's live values
+    scene.addComponent<TitleArtRendererComponent>(e, {});
     size_t checked = 0;
     for (const anim::AnimatableProperty& row : anim::animatableProperties()){
         const std::string component = row.component;

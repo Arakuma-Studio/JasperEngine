@@ -191,6 +191,10 @@ again when a game loads it.
 
 ## Platforms
 
+Project Settings > Player > Target Platforms records where the game ships; Build Settings and
+`build_project` default to those platforms and dim or note the others, which still build
+([Target Platforms](editor/build-settings.md)).
+
 - **Android** needs the Android SDK's build-tools (35 or newer: aapt2, zipalign, apksigner), the
   target platform's `android.jar` and a JDK (keytool, jarsigner); an App Bundle also needs
   bundletool 1.17.2, which the first bundle build downloads from Google's GitHub releases into the

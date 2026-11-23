@@ -23,7 +23,7 @@ using namespace jasperengine;
 namespace {
 
     // a few float steps of the larger magnitude
-    void expectClose(const Matrix4& actual, const Matrix4& expected, const char* what){
+    void affineMathExpectClose(const Matrix4& actual, const Matrix4& expected, const char* what){
         for (int c = 0; c < 4; c++){
             for (int r = 0; r < 4; r++){
                 const float a = actual.get(c, r);
@@ -34,7 +34,7 @@ namespace {
         }
     }
 
-    struct Random {
+    struct AffineRandom {
         std::mt19937 engine{1234};
         float range(float low, float high){
             return std::uniform_real_distribution<float>(low, high)(engine);
@@ -58,29 +58,29 @@ namespace {
 }
 
 TEST(AffineMath, ComposeTRSIsTheProduct){
-    Random random;
+    AffineRandom random;
     for (int i = 0; i < 200; i++){
         const Vector3 t = random.vector(-100.0f, 100.0f);
         const Quaternion r = random.rotation();
         const Vector3 s = random.scale();
         const Matrix4 general = Matrix4::translateMatrix(t) * r.getRotationMatrix() * Matrix4::scaleMatrix(s);
         const Matrix4 composed = Matrix4::composeTRS(t, r, s);
-        expectClose(composed, general, "composeTRS");
+        affineMathExpectClose(composed, general, "composeTRS");
         EXPECT_TRUE(composed.isAffine());
     }
 }
 
 TEST(AffineMath, AffineMultiplyIsTheProduct){
-    Random random;
+    AffineRandom random;
     for (int i = 0; i < 200; i++){
         const Matrix4 a = Matrix4::composeTRS(random.vector(-50.0f, 50.0f), random.rotation(), random.scale());
         const Matrix4 b = Matrix4::composeTRS(random.vector(-50.0f, 50.0f), random.rotation(), random.scale());
-        expectClose(a.affineMultiply(b), a * b, "affineMultiply");
+        affineMathExpectClose(a.affineMultiply(b), a * b, "affineMultiply");
     }
 }
 
 TEST(AffineMath, TransformAffineIsTheProduct){
-    Random random;
+    AffineRandom random;
     for (int i = 0; i < 200; i++){
         const Matrix4 m = Matrix4::composeTRS(random.vector(-50.0f, 50.0f), random.rotation(), random.scale());
         const Vector3 v = random.vector(-20.0f, 20.0f);
@@ -89,10 +89,10 @@ TEST(AffineMath, TransformAffineIsTheProduct){
 }
 
 TEST(AffineMath, AffineInverseIsTheInverse){
-    Random random;
+    AffineRandom random;
     for (int i = 0; i < 200; i++){
         const Matrix4 m = Matrix4::composeTRS(random.vector(-50.0f, 50.0f), random.rotation(), random.scale());
-        expectClose(m.affineInverse(), m.inverse(), "affineInverse");
+        affineMathExpectClose(m.affineInverse(), m.inverse(), "affineInverse");
     }
     // a zero scale is singular: the general inverse's result, infinities and all
     const Matrix4 flat = Matrix4::composeTRS(Vector3(1, 2, 3), Quaternion(), Vector3(1, 0, 1));
@@ -108,7 +108,7 @@ TEST(AffineMath, AffineInverseIsTheInverse){
 }
 
 TEST(AffineMath, Determinant3x3HasTheSignOfTheDeterminant){
-    Random random;
+    AffineRandom random;
     for (int i = 0; i < 200; i++){
         const Matrix4 m = Matrix4::composeTRS(random.vector(-50.0f, 50.0f), random.rotation(), random.scale());
         EXPECT_EQ(m.determinant3x3() < 0.0f, m.determinant() < 0.0f);
@@ -118,7 +118,7 @@ TEST(AffineMath, Determinant3x3HasTheSignOfTheDeterminant){
 }
 
 TEST(AffineMath, AffineAABBHoldsEveryCorner){
-    Random random;
+    AffineRandom random;
     for (int i = 0; i < 200; i++){
         const Matrix4 m = Matrix4::composeTRS(random.vector(-50.0f, 50.0f), random.rotation(), random.scale());
         const Vector3 low = random.vector(-5.0f, 0.0f);

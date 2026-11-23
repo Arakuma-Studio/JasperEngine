@@ -18,10 +18,9 @@ namespace jasperengine::editor {
     class Project;
 
     // One edit_sprite call on the project history (docs/specs/S47-agent-sprite-drawing.md R32, R33,
-    // D7): dirty-rect patches, re-encoded through S44's writer and written atomically on every
-    // apply, in the pattern of TerrainMapPatchCmd but checking the file first. A step whose file
-    // no longer holds the revision it left behind (a person saved it from Aseprite) is refused
-    // instead of overwriting that save.
+    // D7): dirty-rect patches, re-encoded through S44's writer and written whole and atomically on
+    // every apply, after checking the file first. A step whose file no longer holds the revision
+    // it left behind (a person saved it from Aseprite) is refused instead of overwriting that save.
     class SpriteEditCmd : public Command {
     public:
         // The first execute writes `bytes` (decoded as `written`); undo and redo apply the patch

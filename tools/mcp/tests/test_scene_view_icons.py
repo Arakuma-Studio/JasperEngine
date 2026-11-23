@@ -6,6 +6,7 @@ hides it, active again shows it.
 
 from __future__ import annotations
 
+import pngdiff
 from harness import Editor, find_key
 from htmlui_pixels import image_difference
 
@@ -15,10 +16,13 @@ TIMEOUT = 600
 
 
 async def shot(ed: Editor) -> bytes:
+    """The middle of the Scene view, around the light: the camera distance gauge at its left edge
+    highlights after set_scene_camera and fades out over the next second of wall time"""
     # (the screenshot tool waits for a freshly rendered Scene view)
     result = await ed.call_raw("screenshot", {"view": "scene", "max_width": 480})
     ed.check(not result.is_error and result.images, f"no screenshot: {result.text[:300]}")
-    return result.images[0][0]
+    width, height, rgba = pngdiff.decode(result.images[0][0])
+    return pngdiff.encode(*pngdiff.crop((width, height, rgba), width // 4, height // 4, width // 2, height // 2))
 
 
 async def test_icons_of_inactive_game_objects_are_hidden(ed: Editor):

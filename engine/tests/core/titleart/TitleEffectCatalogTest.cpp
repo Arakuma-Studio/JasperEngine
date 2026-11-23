@@ -32,21 +32,21 @@ using namespace jasperengine::titleart;
 
 namespace {
 
-    const std::vector<std::string> CORE_EFFECTS = {"outer_glow", "inner_glow", "drop_shadow", "inner_shadow", "outline",
+    const std::vector<std::string> TITLE_EFFECT_CATALOG_CORE_EFFECTS = {"outer_glow", "inner_glow", "drop_shadow", "inner_shadow", "outline",
                                                    "color_overlay", "gradient_overlay", "adjust", "pattern_overlay", "gaussian_blur"};
 
     std::filesystem::path repoRoot() {
         return std::filesystem::path(test::testPaths().sourceDir) / ".." / ".." / "..";
     }
 
-    std::string readText(const std::filesystem::path& path) {
+    std::string titleEffectCatalogReadText(const std::filesystem::path& path) {
         std::ifstream in(path, std::ios::binary);
         std::stringstream s;
         s << in.rdbuf();
         return s.str();
     }
 
-    ParamValues defaultsOf(const std::vector<ParamDef>& params, Json& storage) {
+    ParamValues titleEffectCatalogDefaultsOf(const std::vector<ParamDef>& params, Json& storage) {
         storage = defaultParams(params);
         return ParamValues(storage);
     }
@@ -81,10 +81,10 @@ TEST(TitleEffectCatalogTest, EveryDefinitionIsComplete) {
     std::set<std::string> effects, generators;
     for (const EffectDef* d : registry.effects()) effects.insert(d->type);
     for (const GeneratorDef* d : registry.generators()) generators.insert(d->type);
-    for (const std::string& type : CORE_EFFECTS) EXPECT_TRUE(effects.count(type)) << type << " is not registered";
+    for (const std::string& type : TITLE_EFFECT_CATALOG_CORE_EFFECTS) EXPECT_TRUE(effects.count(type)) << type << " is not registered";
     EXPECT_TRUE(generators.count("fill"));
     EXPECT_TRUE(generators.count("pattern_fill"));
-    EXPECT_GE(effects.size(), CORE_EFFECTS.size()) << "S80's ten core effects (S83 adds its catalogue: TitleFxCatalogTest)";
+    EXPECT_GE(effects.size(), TITLE_EFFECT_CATALOG_CORE_EFFECTS.size()) << "S80's ten core effects (S83 adds its catalogue: TitleFxCatalogTest)";
 }
 
 TEST(TitleEffectCatalogTest, ChecksCatchBrokenDefinitions) {
@@ -132,7 +132,7 @@ TEST(TitleEffectCatalogTest, CatalogueMatchesTheSpec) {
     Json storage;
     const EffectDef* glow = findEffect("outer_glow");
     ASSERT_TRUE(glow);
-    ParamValues p = defaultsOf(glow->params, storage);
+    ParamValues p = titleEffectCatalogDefaultsOf(glow->params, storage);
     EXPECT_EQ(p.string("fill"), "solid");
     EXPECT_EQ(p.string("color"), "#ffb000");
     EXPECT_EQ(p.number("size"), 40);
@@ -152,7 +152,7 @@ TEST(TitleEffectCatalogTest, CatalogueMatchesTheSpec) {
     EXPECT_EQ(glow->fallback, FallbackClass::F1);
 
     const EffectDef* inner = findEffect("inner_glow");
-    p = defaultsOf(inner->params, storage);
+    p = titleEffectCatalogDefaultsOf(inner->params, storage);
     EXPECT_EQ(p.string("color"), "#fff4a0");
     EXPECT_EQ(p.number("size"), 18);
     EXPECT_EQ(p.string("mode"), "screen");
@@ -161,7 +161,7 @@ TEST(TitleEffectCatalogTest, CatalogueMatchesTheSpec) {
     EXPECT_EQ(inner->reach, nullptr) << "it stays inside the ink";
 
     const EffectDef* drop = findEffect("drop_shadow");
-    p = defaultsOf(drop->params, storage);
+    p = titleEffectCatalogDefaultsOf(drop->params, storage);
     EXPECT_EQ(p.number("angle"), 60);
     EXPECT_EQ(p.flag("use_global_light"), true);
     EXPECT_EQ(p.number("distance"), 10);
@@ -176,14 +176,14 @@ TEST(TitleEffectCatalogTest, CatalogueMatchesTheSpec) {
     EXPECT_NEAR(fromRight.number("angle"), 0.0, 1e-9) << "light from the left: the shadow falls right";
 
     const EffectDef* innerShadow = findEffect("inner_shadow");
-    p = defaultsOf(innerShadow->params, storage);
+    p = titleEffectCatalogDefaultsOf(innerShadow->params, storage);
     EXPECT_EQ(p.number("distance"), 6);
     EXPECT_EQ(p.number("size"), 8);
     EXPECT_DOUBLE_EQ(p.number("opacity"), 0.6);
     EXPECT_TRUE(innerShadow->globalLight.angleKey);
 
     const EffectDef* outline = findEffect("outline");
-    p = defaultsOf(outline->params, storage);
+    p = titleEffectCatalogDefaultsOf(outline->params, storage);
     EXPECT_DOUBLE_EQ(p.number("width"), 1.5);
     EXPECT_EQ(p.string("color"), "#0a0604");
     EXPECT_DOUBLE_EQ(p.number("threshold"), 0.5);
@@ -192,14 +192,14 @@ TEST(TitleEffectCatalogTest, CatalogueMatchesTheSpec) {
     EXPECT_FLOAT_EQ(outline->reach(p), 1.5f);
 
     const EffectDef* color = findEffect("color_overlay");
-    p = defaultsOf(color->params, storage);
+    p = titleEffectCatalogDefaultsOf(color->params, storage);
     EXPECT_EQ(p.string("color"), "#ff0000");
     EXPECT_EQ(findParam(color->params, "mode")->options.size(), 18u) << "the 18 blend modes";
     EXPECT_EQ(color->costClass, CostClass::C0);
     EXPECT_EQ(color->fallback, FallbackClass::F0);
 
     const EffectDef* gradient = findEffect("gradient_overlay");
-    p = defaultsOf(gradient->params, storage);
+    p = titleEffectCatalogDefaultsOf(gradient->params, storage);
     EXPECT_EQ(p.string("style"), "linear");
     EXPECT_EQ(p.number("angle"), 90);
     EXPECT_EQ(p.number("length"), 200);
@@ -207,29 +207,29 @@ TEST(TitleEffectCatalogTest, CatalogueMatchesTheSpec) {
     EXPECT_EQ(findParam(gradient->params, "mode")->options.size(), 20u) << "18 modes, light and shade";
 
     const EffectDef* pattern = findEffect("pattern_overlay");
-    p = defaultsOf(pattern->params, storage);
+    p = titleEffectCatalogDefaultsOf(pattern->params, storage);
     EXPECT_EQ(p.string("pattern"), "stripes");
     EXPECT_EQ(p.number("scale"), 40);
     EXPECT_EQ(p.string("align"), "layer");
 
     const EffectDef* blur = findEffect("gaussian_blur");
-    p = defaultsOf(blur->params, storage);
+    p = titleEffectCatalogDefaultsOf(blur->params, storage);
     EXPECT_EQ(p.number("radius"), 8);
     EXPECT_TRUE(p.flag("repeat_edges"));
     EXPECT_FLOAT_EQ(blur->reach(p), 24.0f) << "3 x radius x max scale";
 
     const EffectDef* adjust = findEffect("adjust");
-    p = defaultsOf(adjust->params, storage);
+    p = titleEffectCatalogDefaultsOf(adjust->params, storage);
     EXPECT_EQ(p.raw("adjustment")["type"], "hue_saturation");
     EXPECT_EQ(p.raw("adjustment")["saturation"], 25);
     EXPECT_EQ(adjust->gather(p), 0.0f);
 
     const GeneratorDef* fill = findGenerator("fill");
-    p = defaultsOf(fill->params, storage);
+    p = titleEffectCatalogDefaultsOf(fill->params, storage);
     EXPECT_EQ(p.string("kind"), "solid");
     EXPECT_EQ(p.string("color"), "#202020");
     const GeneratorDef* patternFill = findGenerator("pattern_fill");
-    p = defaultsOf(patternFill->params, storage);
+    p = titleEffectCatalogDefaultsOf(patternFill->params, storage);
     EXPECT_EQ(p.string("kind"), "zebra");
     EXPECT_EQ(p.number("scale"), 140);
 
@@ -239,7 +239,7 @@ TEST(TitleEffectCatalogTest, CatalogueMatchesTheSpec) {
                                                   {"outline", LiveKind::ScaleSplit}, {"color_overlay", LiveKind::Kernel},
                                                   {"gradient_overlay", LiveKind::Kernel}};
     for (const EffectDef* d : TitleEffectRegistry::get().effects()) {
-        if (std::find(CORE_EFFECTS.begin(), CORE_EFFECTS.end(), std::string(d->type)) == CORE_EFFECTS.end()) continue;
+        if (std::find(TITLE_EFFECT_CATALOG_CORE_EFFECTS.begin(), TITLE_EFFECT_CATALOG_CORE_EFFECTS.end(), std::string(d->type)) == TITLE_EFFECT_CATALOG_CORE_EFFECTS.end()) continue;
         const bool cheap = std::string(d->type) == "color_overlay" || std::string(d->type) == "gradient_overlay" ||
                            std::string(d->type) == "pattern_overlay" || std::string(d->type) == "adjust";
         EXPECT_EQ(d->costClass, cheap ? CostClass::C0 : CostClass::C1) << d->type;
@@ -326,7 +326,7 @@ TEST(TitleEffectCatalogTest, DocsPageIsUpToDate) {
     const std::filesystem::path path = repoRoot() / TITLE_EFFECT_DOCS_PATH;
     if (test::isGoldenUpdateMode()) std::ofstream(path, std::ios::binary) << generated;
     ASSERT_TRUE(std::filesystem::exists(path)) << path.string();
-    EXPECT_EQ(readText(path), generated) << TITLE_EFFECT_DOCS_PATH
+    EXPECT_EQ(titleEffectCatalogReadText(path), generated) << TITLE_EFFECT_DOCS_PATH
                                          << " is stale: rerun with JASPER_TEST_UPDATE_GOLDEN=1 (UNIT_TEST_ARGS=--gtest_filter=TitleEffectCatalogTest.*)";
     for (const EffectDef* d : TitleEffectRegistry::get().effects()) {
         EXPECT_NE(generated.find(std::string("(`") + d->type + "`)"), std::string::npos) << d->type;

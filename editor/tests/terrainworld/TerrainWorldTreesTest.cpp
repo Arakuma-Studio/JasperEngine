@@ -69,7 +69,7 @@ namespace {
             std::ifstream file(it->path(), std::ios::binary);
             std::ostringstream bytes;
             bytes << file.rdbuf();
-            out[FileUtils::pathToUtf8(it->path().lexically_relative(folder))] = bytes.str();
+            out[FileUtils::pathToGenericUtf8(it->path().lexically_relative(folder))] = bytes.str();
         }
         return out;
     }

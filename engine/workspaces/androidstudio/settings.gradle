@@ -1,3 +1,11 @@
+// The plugin portal hands Maven Central's artifacts on to Central, and a miss there failed a build
+// (main's run 44666002963: gson, a dependency of the foojay plugin); Central is the second place to look
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
 plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '0.10.0'
 }

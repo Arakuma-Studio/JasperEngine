@@ -54,7 +54,7 @@ namespace {
     struct CompB { double value = 2.0; };
     struct CompC { uint64_t value = 3; };
     struct CompD { uint64_t value = 0; };
-    struct Marker { int frame = 0; };
+    struct SchedulerMarker { int frame = 0; };
 
     class SyntheticScene : public Scene {
     public:
@@ -63,7 +63,7 @@ namespace {
             registerComponent<CompB>();
             registerComponent<CompC>();
             registerComponent<CompD>();
-            registerComponent<Marker>();
+            registerComponent<SchedulerMarker>();
         }
     };
 
@@ -87,7 +87,7 @@ namespace {
         const ComponentId b = scene.getComponentId<CompB>();
         const ComponentId c = scene.getComponentId<CompC>();
         const ComponentId d = scene.getComponentId<CompD>();
-        const ComponentId m = scene.getComponentId<Marker>();
+        const ComponentId m = scene.getComponentId<SchedulerMarker>();
 
         scene.addSystemFunction(descriptor("IntegrateA", {t}, {a}), [](SystemContext& ctx){
             ctx.scene.view<Read<Transform>, Write<CompA>>().each([&](Entity, const Transform& tr, CompA& ca){ ca.value = ca.value * 0.5 + tr.position.x + ctx.dt; });
@@ -110,13 +110,13 @@ namespace {
         });
         scene.addSystemFunction(descriptor("Spawn", {d}, {m}), [](SystemContext& ctx){
             // structural changes go through the command buffer
-            ctx.scene.view<Read<CompD>, Optional<Marker>>().each([&](Entity e, const CompD& cd, Marker* marker){
-                if (cd.value % 97 == 0 && !marker) ctx.cmd.add<Marker>(ctx.scene.makeRef(e), Marker{1});
-                else if (marker && cd.value % 5 == 0) ctx.cmd.remove<Marker>(ctx.scene.makeRef(e));
+            ctx.scene.view<Read<CompD>, Optional<SchedulerMarker>>().each([&](Entity e, const CompD& cd, SchedulerMarker* marker){
+                if (cd.value % 97 == 0 && !marker) ctx.cmd.add<SchedulerMarker>(ctx.scene.makeRef(e), SchedulerMarker{1});
+                else if (marker && cd.value % 5 == 0) ctx.cmd.remove<SchedulerMarker>(ctx.scene.makeRef(e));
             });
         });
         scene.addSystemFunction(descriptor("TouchC", {m}, {c}), [](SystemContext& ctx){
-            ctx.scene.view<Read<Marker>, Write<CompC>>().each([&](Entity e, const Marker&, CompC& cc){
+            ctx.scene.view<Read<SchedulerMarker>, Write<CompC>>().each([&](Entity e, const SchedulerMarker&, CompC& cc){
                 cc.value += 1;
                 ctx.scene.markChanged<CompC>(e);
             });
@@ -136,7 +136,7 @@ namespace {
             if (CompB* cb = scene.findComponent<CompB>(e)) mix((uint64_t)(cb->value * 1e6));
             if (CompC* cc = scene.findComponent<CompC>(e)) mix(cc->value);
             mix(scene.getComponent<CompD>(e).value);
-            mix(scene.findComponent<Marker>(e) ? 1 : 0);
+            mix(scene.findComponent<SchedulerMarker>(e) ? 1 : 0);
         }
         return hash;
     }

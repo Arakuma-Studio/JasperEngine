@@ -40,13 +40,13 @@ namespace {
                     {"size", 200}, {"dimension", "3d"}, {"style_3d", style}};
     }
 
-    double msSince(std::chrono::steady_clock::time_point start) {
+    double title3DBakeBenchMsSince(std::chrono::steady_clock::time_point start) {
         return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     }
 
 }
 
-TEST(Title3DBakeBench, GoldBigBonusAndAColdEnvironment) {
+TEST(Title3DBakeBenchGpu, GoldBigBonusAndAColdEnvironment) {
     JASPER_REQUIRE_GPU();
     static TestAssetResolver assets;
     auto doc = makeDoc({{"canvas", canvas(1920, 1080)}, {"layers", Json::array({goldBigBonus()})}, {"scene_3d", {{"supersample", 3}}}});
@@ -59,7 +59,7 @@ TEST(Title3DBakeBench, GoldBigBonusAndAColdEnvironment) {
     // the first render builds the environment (cold) and the programs
     auto start = std::chrono::steady_clock::now();
     const Pixels cold = render(renderer, r);
-    const double coldMs = msSince(start);
+    const double coldMs = title3DBakeBenchMsSince(start);
     ASSERT_GT(cold.width, 0);
     const std::shared_ptr<void> r3d = renderer.title3DRendererForTesting();
     ASSERT_TRUE(r3d);
@@ -72,7 +72,7 @@ TEST(Title3DBakeBench, GoldBigBonusAndAColdEnvironment) {
     r.doc = makeDoc({{"canvas", canvas(1920, 1080)}, {"layers", Json::array({layer})}, {"scene_3d", {{"supersample", 3}}}});
     start = std::chrono::steady_clock::now();
     const Pixels warm = render(renderer, r);
-    const double bakeMs = msSince(start);
+    const double bakeMs = title3DBakeBenchMsSince(start);
     ASSERT_EQ(warm.width, 1920);
     EXPECT_EQ(st.environmentBuilds, 1u) << "the warm bake reused the environment";
     // a cold procedural environment at 1024 alone: a new renderer's first build, the bake's time
@@ -86,7 +86,7 @@ TEST(Title3DBakeBench, GoldBigBonusAndAColdEnvironment) {
     }
 }
 
-TEST(Title3DBakeBench, RealtimeTiers) {
+TEST(Title3DBakeBenchGpu, RealtimeTiers) {
     // S86 R48, §6.7: one whole re-render of a Realtime title covering about 30 % of a 1080p frame
     // per tier (Gold 3D "BIG BONUS" at 280 px, a colour change: the mesh and the environment
     // cached, every pass run), the median of 5 with its readback, and the passes it took. Printed
@@ -124,7 +124,7 @@ TEST(Title3DBakeBench, RealtimeTiers) {
             const uint64_t before = st.mainPasses + st.postPasses + st.glintPasses + st.aoPasses;
             const auto start = std::chrono::steady_clock::now();
             const Pixels p = render(renderer, r);
-            ms.push_back(msSince(start));
+            ms.push_back(title3DBakeBenchMsSince(start));
             passes = st.mainPasses + st.postPasses + st.glintPasses + st.aoPasses - before;
             ASSERT_GT(p.width, 0);
         }

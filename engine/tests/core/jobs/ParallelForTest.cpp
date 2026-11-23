@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <functional>
 #include <numeric>
 #include <random>
 #include <stdexcept>
@@ -112,10 +113,23 @@ TEST_P(ParallelAlgorithms, ParallelForStopsOnFalse){
 TEST_P(ParallelAlgorithms, ParallelForStopPollEndsTheRun){
     JobSystem system(configFor(GetParam()));
     std::atomic<int> count{0};
-    const std::function<bool()> stop = [&]{ return count.load() >= 10; };
+    std::atomic<bool> stopSeen{false};
+    const std::function<bool()> stop = [&]{
+        if (count.load() < 10) return false;
+        stopSeen = true;
+        return true;
+    };
     ParallelForOptions options;
     options.stop = &stop;
-    EXPECT_FALSE(system.parallelFor(100000, [&](size_t){ count++; testsupport::spinFor(1.0); }, options));
+    // only the caller polls, before each of its claims: a helper's unit waits for that poll, or
+    // helpers left running while the caller is descheduled (more workers than cores) finish every
+    // unit before it polls again
+    const std::thread::id caller = std::this_thread::get_id();
+    EXPECT_FALSE(system.parallelFor(100000, [&](size_t){
+        count++;
+        testsupport::spinFor(1.0);
+        if (std::this_thread::get_id() != caller) testsupport::spinUntil([&]{ return stopSeen.load(); }, 10000.0);
+    }, options));
     EXPECT_LT(count.load(), 100000);
 }
 

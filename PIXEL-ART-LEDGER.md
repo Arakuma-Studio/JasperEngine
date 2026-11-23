@@ -256,8 +256,7 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
   - `test_mesh_update_flags`: a direct 1.85 ratio assert that should go through `harness.over_budget`.
 - MCP eval: still failing are `guard_contact_sheet_lint` (agents reason from the `.particles` file
   instead of measuring) and `guard_contact_sheet_transition_target` (borderline, 5/8). S50's
-  `guard_tileset_check_before_painting` gets an `edit_tilemap` result hint (the owner's choice); the
-  guide line is the fallback. Other tools with boolean-or-string `output` may get `"true"` too
+  `guard_tileset_check_before_painting` is fixed (see the log). Other tools with boolean-or-string `output` may get `"true"` too
   (`generate_sprite_normals`, `bake_vertex_animation`, `optimize_animation`). "Callable by name" is
   still in `navigation.md` and `profiling.md`. `capture_contact_sheet` (particles target) and
   `preview_particle_effect` (pixel view) are near-duplicate routes. 7 of 9 at-risk cases still pass
@@ -283,6 +282,16 @@ Every landing set also runs the shared-data suites: editor unit `RuntimeFields.*
 - Destroy the build boxes A–D when the program ends.
 
 ## Log
+
+- 2026-11-11: `eval/tileset-hint` merged. `guard_tileset_check_before_painting` went from 0/2 to 4/4
+  on the rebuilt editor. A result hint couldn't reach this decision: in every sample the agent read
+  the `.tileset` before any MCP call. The earlier guide pointer sat past Claude Code's 4,096-character
+  guide cut. The Code section now says "a .tileset's masks or coverage: edit_tileset check, not its
+  JSON". Two lines no case uses were trimmed to make room, both still in their area docs. The guide
+  is 6,651 of 8,192 bytes. The three wordings each passed 4/4 as patches; the confirm run passed 4/4
+  (16 samples, about $1.86; accounts returned). Checks: targeted MCP 82 passed, 0 failed, 1 skipped;
+  `tool_budget`, `gen_tool_docs`, `test_grade` 23/23. The CI-suite `check-changed` was stopped: guide
+  and eval text only.
 
 - 2026-11-11: `fix/main-after-pixel-art` merged (`d7359a6fe`) together with the MCP eval's fixes. The
   MCP CI suite on the eval branch failed 18 tests; triaged against current `main`:

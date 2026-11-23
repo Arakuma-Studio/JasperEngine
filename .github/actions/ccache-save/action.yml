@@ -1,0 +1,45 @@
+name: Save ccache
+description: >
+  Evicts what the run neither used nor wrote from build/.cache/ccache (trim.sh) and saves the rest, cut to
+  the lane's cap, as the lane's entry (the key ccache-restore set), on push to main or a schedule only, and
+  only when the run added objects. Prints the run's statistics and working set on every event. ci.yml's
+  caches job then deletes the lane's older entries, so each lane keeps one live copy
+  (docs/superpowers/specs/2026-11-12-ci-design.md §10.2); prune: true does that here instead, for a job that
+  has actions: write.
+inputs:
+  lane:
+    description: The lane ccache-restore was given
+    required: true
+  prune:
+    description: Delete the lane's older entries after the save (needs actions write on the job)
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Trim to the run's working set
+      id: check
+      shell: bash
+      env:
+        LANE: ${{ inputs.lane }}
+        EVENT: ${{ github.event_name }}
+        REF: ${{ github.ref }}
+      run: '"$GITHUB_ACTION_PATH/trim.sh"'
+
+    - name: Save
+      if: steps.check.outputs.save == 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: build/.cache/ccache
+        key: ${{ env.JASPER_CCACHE_KEY }}
+
+    - name: Delete the older entries
+      if: steps.check.outputs.save == 'true' && inputs.prune == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        LANE: ${{ inputs.lane }}
+      run: |
+        gh cache list --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF" --key "ccache-$LANE-" --limit 100 \
+            --json id,key --jq ".[] | select(.key != \"$JASPER_CCACHE_KEY\") | .id" |
+            while read -r id; do gh cache delete --repo "$GITHUB_REPOSITORY" "$id"; done

@@ -559,7 +559,15 @@ void AudioMeter::processRun(size_t frames, bool padding){
                 }
             }
             peak = largest;
-            truePeak = std::max(truePeak, std::max((double)largest, (double)truePeakFilter.processChannel(c, samples, frames, (float)truePeak)));
+            size_t primed = 0;
+            if (options.mode == AudioMeterMode::Joined && signalFrames < TruePeak::TAPS - 1) {
+                primed = std::min<size_t>(frames, TruePeak::TAPS - 1 - signalFrames);
+                for (size_t k = 0; k < primed; k++) {
+                    truePeakFilter.processSample(c, samples[k]);
+                }
+            }
+            truePeak = std::max(truePeak, std::max((double)largest,
+                (double)truePeakFilter.processChannel(c, samples + primed, frames - primed, (float)truePeak)));
         }
     }
 

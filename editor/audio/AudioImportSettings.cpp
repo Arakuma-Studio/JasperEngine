@@ -94,7 +94,7 @@ std::string keyList() {
     return out;
 }
 
-int64_t framesOf(double ms, unsigned int rate) {
+int64_t importFrames(double ms, unsigned int rate) {
     return (int64_t)std::llround(ms * (double)rate / 1000.0);
 }
 
@@ -364,8 +364,8 @@ bool AudioImportSettings::resolve(uint64_t fileFrames, unsigned int sampleRate, 
         return false;
     }
     const int64_t total = (int64_t)fileFrames;
-    const int64_t head = std::min(framesOf(trimHead.automatic ? headSilenceMs : trimHead.ms, sampleRate), total);
-    const int64_t tail = std::min(framesOf(trimTail.automatic ? tailSilenceMs : trimTail.ms, sampleRate), total);
+    const int64_t head = std::min(importFrames(trimHead.automatic ? headSilenceMs : trimHead.ms, sampleRate), total);
+    const int64_t tail = std::min(importFrames(trimTail.automatic ? tailSilenceMs : trimTail.ms, sampleRate), total);
     if (head + tail >= total && (head > 0 || tail > 0)) {
         error = "the trims leave nothing of the " + numberText(1000.0 * (double)total / sampleRate) + " ms file";
         return false;
@@ -373,14 +373,14 @@ bool AudioImportSettings::resolve(uint64_t fileFrames, unsigned int sampleRate, 
     out.gainDb = (float)gainDb;
     out.trimHeadFrames = (uint32_t)head;
     out.trimTailFrames = (uint32_t)tail;
-    out.fadeInFrames = (uint32_t)framesOf(fadeInMs, sampleRate);
-    out.fadeOutFrames = (uint32_t)framesOf(fadeOutMs, sampleRate);
-    out.loopStartFrame = loopStartMs < 0.0 ? -1 : framesOf(loopStartMs, sampleRate);
-    out.loopEndFrame = loopEndMs < 0.0 ? -1 : framesOf(loopEndMs, sampleRate);
+    out.fadeInFrames = (uint32_t)importFrames(fadeInMs, sampleRate);
+    out.fadeOutFrames = (uint32_t)importFrames(fadeOutMs, sampleRate);
+    out.loopStartFrame = loopStartMs < 0.0 ? -1 : importFrames(loopStartMs, sampleRate);
+    out.loopEndFrame = loopEndMs < 0.0 ? -1 : importFrames(loopEndMs, sampleRate);
     if (!music.isDefault()) {
         out.bpm = (float)music.bpm;
         out.beatsPerBar = music.beatsPerBar;
-        out.firstBeatFrame = framesOf(music.firstBeatMs, sampleRate);
+        out.firstBeatFrame = importFrames(music.firstBeatMs, sampleRate);
     }
     const int64_t regionEnd = total - tail;
     const int64_t loopFrom = out.loopStartFrame < 0 ? head : out.loopStartFrame;

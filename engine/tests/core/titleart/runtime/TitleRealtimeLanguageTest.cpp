@@ -25,15 +25,15 @@ using namespace jasperengine::titleart::test;
 
 namespace {
 
-    constexpr uint32_t UNLIMITED = 1000000000u;
-    constexpr double TOLERANCE_MEAN = 1.0;
-    constexpr double TOLERANCE_OVER = 0.01;
-    constexpr double SIZE = 96.0;
-    constexpr const char* TEXT_LAYER = "00000001";
+    constexpr uint32_t LANGUAGE_UNLIMITED = 1000000000u;
+    constexpr double LANGUAGE_TOLERANCE_MEAN = 1.0;
+    constexpr double LANGUAGE_TOLERANCE_OVER = 0.01;
+    constexpr double TITLE_REALTIME_LANGUAGE_SIZE = 96.0;
+    constexpr const char* LANGUAGE_TEXT_LAYER = "00000001";
 
-    std::shared_ptr<const TitleArtDoc> multilingual() {
-        Json text{{"id", TEXT_LAYER}, {"type", "text"}, {"name", "Title"}, {"text", "WIN"}, {"font", fontRef(SOURCE_SANS)},
-                  {"size", SIZE}, {"align", "start"}, {"kerning", false},
+    std::shared_ptr<const TitleArtDoc> titleRealtimeLanguageMultilingual() {
+        Json text{{"id", LANGUAGE_TEXT_LAYER}, {"type", "text"}, {"name", "Title"}, {"text", "WIN"}, {"font", fontRef(SOURCE_SANS)},
+                  {"size", TITLE_REALTIME_LANGUAGE_SIZE}, {"align", "start"}, {"kerning", false},
                   {"style", {{"face", solidFace("#ffd040")},
                              {"rims", Json::array({Json{{"id", "00000101"}, {"width", 6.0}, {"material", solidFace("#802000")}}})}}},
                   {"translations", Json{{"de", Json{{"text", "GEWINN"}}},
@@ -43,13 +43,13 @@ namespace {
         root["canvas"] = canvas(640, 200);
         root["layers"] = Json::array({text});
         // what makes a title Glyph Atlas capable (S81 R25)
-        root["exposed"] = Json::array({Json{{"name", "text"}, {"type", "text"}, {"targets", Json::array({Json{{"layer", TEXT_LAYER}, {"field", "text"}}})}}});
+        root["exposed"] = Json::array({Json{{"name", "text"}, {"type", "text"}, {"targets", Json::array({Json{{"layer", LANGUAGE_TEXT_LAYER}, {"field", "text"}}})}}});
         TitleArtParseResult parsed = parseTitleArtJson(std::move(root));
         EXPECT_TRUE(parsed.ok) << parsed.error.toString();
         return std::make_shared<const TitleArtDoc>(std::move(parsed.doc));
     }
 
-    Pixels frontPixels(const TitleArtLive& live) {
+    Pixels languageFrontPixels(const TitleArtLive& live) {
         const TitleDisplayImage& front = live.front();
         Pixels out;
         out.width = front.width;
@@ -65,7 +65,7 @@ namespace {
         return out;
     }
 
-    int runFrames(TitleArtLive& live, const TitleJobFactory& factory, uint32_t budgetUs = UNLIMITED, int maxFrames = std::numeric_limits<int>::max()) {
+    int languageRunFrames(TitleArtLive& live, const TitleJobFactory& factory, uint32_t budgetUs = LANGUAGE_UNLIMITED, int maxFrames = std::numeric_limits<int>::max()) {
         TitleLiveLimits limits;
         double clock = 0.0;
         const auto start = std::chrono::steady_clock::now();
@@ -83,13 +83,13 @@ namespace {
         return frames;
     }
 
-    TitleArtLiveState state() {
+    TitleArtLiveState languageState() {
         TitleArtLiveState s;
         s.label = "TitleArt/Language";
         return s;
     }
 
-    uint64_t hashOf(const std::string& code) { return fnv1a64(code) + 1; }
+    uint64_t titleRealtimeLanguageHashOf(const std::string& code) { return fnv1a64(code) + 1; }
 
     class TitleRealtimeLanguageGpu : public ::testing::Test {
     protected:
@@ -108,8 +108,8 @@ namespace {
 
         void expectWithin(const Pixels& a, const Pixels& b, const std::string& what) {
             const Difference d = compare(a, b);
-            EXPECT_LE(d.mean, TOLERANCE_MEAN) << what << ": mean " << d.mean << " max " << d.max << " over " << d.overFraction;
-            EXPECT_LE(d.overFraction, TOLERANCE_OVER) << what << ": mean " << d.mean << " max " << d.max << " over " << d.overFraction;
+            EXPECT_LE(d.mean, LANGUAGE_TOLERANCE_MEAN) << what << ": mean " << d.mean << " max " << d.max << " over " << d.overFraction;
+            EXPECT_LE(d.overFraction, LANGUAGE_TOLERANCE_OVER) << what << ": mean " << d.mean << " max " << d.max << " over " << d.overFraction;
             std::printf("[title language] %s: mean %.3f max %.1f over8 %.4f\n", what.c_str(), d.mean, d.max, d.overFraction);
         }
 
@@ -126,25 +126,25 @@ namespace {
 }
 
 TEST_F(TitleRealtimeLanguageGpu, RealtimeShowsEachLanguage) {
-    auto doc = multilingual();
+    auto doc = titleRealtimeLanguageMultilingual();
     TitleArtLive live("assets/language.titleart", TitleArtRenderMode::REALTIME, doc, 1);
-    live.setState(state(), hashOf(""), {});
-    runFrames(live, factory());
+    live.setState(languageState(), titleRealtimeLanguageHashOf(""), {});
+    languageRunFrames(live, factory());
     ASSERT_TRUE(live.front().valid()) << live.status().error;
-    const Pixels english = frontPixels(live);
+    const Pixels english = languageFrontPixels(live);
     expectWithin(english, oneShot(doc, ""), "Realtime en");
     Pixels previous = english;
     for (const char* code : {"de", "ja"}) {
         ASSERT_TRUE(live.setLanguage(code));
-        live.setState(state(), hashOf(code), {});
+        live.setState(languageState(), titleRealtimeLanguageHashOf(code), {});
         // the render is sliced: while it runs, the last language stays (R17)
-        runFrames(live, factory(), 200, 1);
+        languageRunFrames(live, factory(), 200, 1);
         if (live.hasWork()) {
-            EXPECT_TRUE(identical(frontPixels(live), previous)) << code << ": the previous language shows until the new image is complete";
+            EXPECT_TRUE(identical(languageFrontPixels(live), previous)) << code << ": the previous language shows until the new image is complete";
         }
-        runFrames(live, factory());
+        languageRunFrames(live, factory());
         ASSERT_TRUE(live.front().valid()) << live.status().error;
-        const Pixels shown = frontPixels(live);
+        const Pixels shown = languageFrontPixels(live);
         expectWithin(shown, oneShot(doc, code), std::string("Realtime ") + code);
         expectDifferent(shown, previous, std::string(code) + " against the language before");
         previous = shown;
@@ -152,14 +152,14 @@ TEST_F(TitleRealtimeLanguageGpu, RealtimeShowsEachLanguage) {
 }
 
 TEST_F(TitleRealtimeLanguageGpu, GlyphAtlasShowsEachLanguage) {
-    auto doc = multilingual();
+    auto doc = titleRealtimeLanguageMultilingual();
     TitleArtLive live("assets/language.titleart", TitleArtRenderMode::GLYPH_ATLAS, doc, 1);
     live.setGlyphPlan(planTitleGlyphAtlas(*doc));
-    live.setState(state(), hashOf(""), {});
-    runFrames(live, factory());
+    live.setState(languageState(), titleRealtimeLanguageHashOf(""), {});
+    languageRunFrames(live, factory());
     ASSERT_TRUE(live.front().valid()) << live.status().error;
     ASSERT_TRUE(live.glyphAtlas()) << "rendered per glyph: " << live.glyphAtlasPlan().fallback;
-    Pixels previous = frontPixels(live);
+    Pixels previous = languageFrontPixels(live);
     const struct {
         const char* code;
         int characters;
@@ -167,17 +167,17 @@ TEST_F(TitleRealtimeLanguageGpu, GlyphAtlasShowsEachLanguage) {
     for (const auto& language : languages) {
         ASSERT_TRUE(live.setLanguage(language.code));
         ASSERT_TRUE(live.glyphAtlasPlan().fallback.empty()) << live.glyphAtlasPlan().fallback;
-        live.setState(state(), hashOf(language.code), {});
-        runFrames(live, factory());
+        live.setState(languageState(), titleRealtimeLanguageHashOf(language.code), {});
+        languageRunFrames(live, factory());
         ASSERT_TRUE(live.front().valid()) << live.status().error;
         ASSERT_TRUE(live.glyphAtlas());
         const double snapX = live.glyphAtlas()->stats().snapX, snapY = live.glyphAtlas()->stats().snapY;
         // the reference sits where Glyph Atlas snapped the string (TitleGlyphAtlasGpuTest's rule)
         std::vector<FieldOverride> snapped;
         for (int i = 0; i < language.characters; i++) {
-            snapped.push_back(FieldOverride{TEXT_LAYER, "chars." + std::to_string(i) + ".offset", Json::array({snapX / SIZE * 100.0, -snapY / SIZE * 100.0})});
+            snapped.push_back(FieldOverride{LANGUAGE_TEXT_LAYER, "chars." + std::to_string(i) + ".offset", Json::array({snapX / TITLE_REALTIME_LANGUAGE_SIZE * 100.0, -snapY / TITLE_REALTIME_LANGUAGE_SIZE * 100.0})});
         }
-        const Pixels shown = frontPixels(live);
+        const Pixels shown = languageFrontPixels(live);
         expectWithin(shown, oneShot(doc, language.code, snapped), std::string("Glyph Atlas ") + language.code);
         expectDifferent(shown, previous, std::string(language.code) + " against the language before");
         previous = shown;

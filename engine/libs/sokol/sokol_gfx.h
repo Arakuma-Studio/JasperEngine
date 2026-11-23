@@ -5872,6 +5872,8 @@ inline int sg_append_buffer(sg_buffer buf_id, const sg_range& data) { return sg_
         #define GL_TEXTURE_MIN_FILTER 0x2801
         #define GL_LINEAR_MIPMAP_NEAREST 0x2701
         #define GL_EXTENSIONS 0x1F03
+        #define GL_VERSION 0x1F02 // JasperEngine: glGetString's names for the add-ons (PATCHES.md)
+        #define GL_RENDERER 0x1F01 // JasperEngine: (PATCHES.md)
         #define GL_NO_ERROR 0
         #define GL_REPLACE 0x1E01
         #define GL_KEEP 0x1E00
@@ -9296,6 +9298,9 @@ _SOKOL_PRIVATE void _sg_dummy_update_image(_sg_image_t* img, const sg_image_data
     _SG_XMACRO(glStencilMask,                     void, (GLuint mask)) \
     _SG_XMACRO(glAttachShader,                    void, (GLuint program, GLuint shader)) \
     _SG_XMACRO(glGetError,                        GLenum, (void)) \
+    /* JasperEngine: the GL 1.1 calls of sokol_gpu_timer_impl.h and sokol_async_impl.h (PATCHES.md) */ \
+    _SG_XMACRO(glFlush,                           void, (void)) \
+    _SG_XMACRO(glGetString,                       const GLubyte *, (GLenum name)) \
     _SG_XMACRO(glBlendColor,                      void, (GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha)) \
     _SG_XMACRO(glTexParameterf,                   void, (GLenum target, GLenum pname, GLfloat param)) \
     _SG_XMACRO(glTexParameterfv,                  void, (GLenum target, GLenum pname, const GLfloat* params)) \

@@ -1038,6 +1038,9 @@ namespace jasperengine::editor{
         // Project Settings > Player > Strip Engine Code (docs/specs/S34-player-size.md R7): builds leave
         // out the engine modules the project cannot reach (export: stripEngineCode, default on)
         bool stripEngineCode = true;
+        // Project Settings > Player > Publishing Settings > Target Platforms: a bit per BuildPlatform
+        // (export: targetPlatforms, written when not all six), never empty
+        uint8_t targetPlatforms = allTargetPlatforms;
         // S45 R18: "enabled" | "enabled_for_builds" | "disabled"
         std::string spriteAtlasMode = "enabled";
         ApplicationSettings applicationSettings;
@@ -1210,10 +1213,13 @@ namespace jasperengine::editor{
             std::atomic<bool> cancelled{false};
             std::atomic<bool> startupThreadDone{false};  // Set when connect thread exits
             std::atomic<bool> startupSucceeded{false};   // True only if finalizeStart was called
+            // Stop's main-thread CPU so far: its call and its teardown task (main thread only)
+            double stopCpuMs = 0.0;
         };
 
         mutable std::mutex playSessionMutex;
         std::shared_ptr<PlaySession> activePlaySession;
+        double lastStopCpuMs = 0.0;
         size_t closedSceneScriptReads = 0;
 
         // Single-frame advance while paused (see step())
@@ -1421,6 +1427,8 @@ namespace jasperengine::editor{
 
         void resetEngineConfigs(bool executeViewChanged);
         void resetConfigs();
+        // The Prefab Mode stages and the scenes, each with its Scene and SceneRender
+        void deleteScenes();
 
         void updateSceneCppScripts(SceneProject* sceneProject);
         void updateScenePrefabs(SceneProject* sceneProject);
@@ -2124,6 +2132,16 @@ namespace jasperengine::editor{
         void setPackContent(bool enabled) { packContent = enabled; }
         bool isStripEngineCode() const { return stripEngineCode; }
         void setStripEngineCode(bool enabled) { stripEngineCode = enabled; }
+        // Target Platforms: where the game ships. Build Settings, build_project and get_build_info default
+        // to them; any platform still builds. 0 sets all six (a game has a target)
+        static constexpr uint8_t allTargetPlatforms = 0x3F;
+        static uint8_t targetPlatformBit(BuildPlatform platform) { return static_cast<uint8_t>(1u << static_cast<unsigned>(platform)); }
+        uint8_t getTargetPlatforms() const { return targetPlatforms; }
+        bool isTargetPlatform(BuildPlatform platform) const { return (targetPlatforms & targetPlatformBit(platform)) != 0; }
+        void setTargetPlatforms(uint8_t platforms);
+        // what a build without a platform makes: this computer's platform if it is a target, else the
+        // first target in the Build Settings window's order (Windows, macOS, Linux, Android, iOS, Web)
+        BuildPlatform defaultBuildPlatform() const;
         // Project Settings > 2D > Sprite Atlas > Mode (S45 R18); a change re-resolves which atlases
         // the editor draws from
         const std::string& getSpriteAtlasMode() const { return spriteAtlasMode; }
@@ -2490,9 +2508,9 @@ namespace jasperengine::editor{
         uint32_t loadUntitledScene(const std::string& text, const std::string& displayName);
         void openScene(fs::path filepath, bool closePrevious = true);
         void closeScene(uint32_t sceneId, bool systemClose = false);
-        // Frees every scene, its render and the project state, as a project switch does. The
-        // editor's Project lives until exit and frees none; code that drops a Project while the
-        // engine runs (the CLI's tools, the unit tests) calls this first
+        // Frees every scene, its render and the project state, as a project switch does. ~Project
+        // frees the scenes only while the engine runs: a Project that outlives the engine's
+        // shutdown (a test file's static) calls this first
         void releaseScenes();
         // The open scene (or prefab stage) is read again from its file, its unsaved changes
         // dropped (the hot reload's Reload, S05 R11; not an undo step). False (and `error`)
@@ -3443,6 +3461,9 @@ namespace jasperengine::editor{
         void resume(uint32_t sceneId);
         void stop(uint32_t sceneId);
         void stopActivePlay();
+        // The last finished Stop's main-thread CPU in ms (its call and its teardown, not the frames
+        // drawn meanwhile): what it costs whatever the host's load (S71)
+        double getLastStopCpuMs() const;
 
         // Advances a paused game by exactly one frame (pausing it first if it plays).
         // The frame runs in the next draw of the scene, bracketed by the two calls below.

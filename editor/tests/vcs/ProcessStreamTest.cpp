@@ -17,7 +17,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    fs::path helper() {
+    fs::path processStreamHelper() {
         return fs::path(JASPER_TEST_VCS_PROCESS_HELPER);
     }
 
@@ -26,7 +26,7 @@ namespace {
 TEST(ProcessExec, StreamStdin) {
     ProcessStream process;
     ProcessSpec spec;
-    spec.exe = helper();
+    spec.exe = processStreamHelper();
     spec.args = {"stdin"};
     std::mutex mutex;
     std::vector<std::string> out;
@@ -54,7 +54,7 @@ TEST(ProcessExec, StreamStdin) {
 TEST(ProcessExec, StreamLines) {
     ProcessStream process;
     ProcessSpec spec;
-    spec.exe = helper();
+    spec.exe = processStreamHelper();
     spec.args = {"lines", "5"};
     std::mutex mutex;
     std::vector<std::string> out, err;
@@ -86,7 +86,7 @@ TEST(ProcessExec, StreamArgumentsAndKill) {
     {
         ProcessStream process;
         ProcessSpec spec;
-        spec.exe = helper();
+        spec.exe = processStreamHelper();
         spec.args = {"args", "a b", "$(echo no)", "-oProxyCommand=x", "\"q\""};
         std::string all;
         std::mutex mutex;
@@ -108,7 +108,7 @@ TEST(ProcessExec, StreamArgumentsAndKill) {
     // kill ends a child that would run for a minute
     ProcessStream process;
     ProcessSpec spec;
-    spec.exe = helper();
+    spec.exe = processStreamHelper();
     spec.args = {"sleep", "60000"};
     std::string error;
     ASSERT_TRUE(process.start(spec, {}, error)) << error;
@@ -123,6 +123,6 @@ TEST(ProcessExec, StreamArgumentsAndKill) {
     EXPECT_FALSE(process.writeStdin("x", 1));
     // and a relative executable never spawns
     ProcessStream relative;
-    spec.exe = fs::relative(helper(), fs::current_path());
+    spec.exe = fs::relative(processStreamHelper(), fs::current_path());
     EXPECT_FALSE(relative.start(spec, {}, error));
 }

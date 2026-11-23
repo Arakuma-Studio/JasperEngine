@@ -28,14 +28,14 @@ using namespace jasperengine::physics3dtest;
 namespace {
 
     // degrees of the rotation about axis (the twist part of q about it)
-    float degreesAbout(const Quaternion& q, const Vector3& axis) {
+    float angleAboutDegrees(const Quaternion& q, const Vector3& axis) {
         const Vector3 v(q.x, q.y, q.z);
         const float along = v.dotProduct(axis.normalized());
         return Angle::radToDeg(2.0f * std::atan2(along, q.w));
     }
 
     // the angle between two directions, degrees
-    float degreesBetween(const Vector3& a, const Vector3& b) {
+    float physics3DJointsDegreesBetween(const Vector3& a, const Vector3& b) {
         const float c = std::fmax(-1.0f, std::fmin(1.0f, a.normalized().dotProduct(b.normalized())));
         return Angle::radToDeg(std::acos(c));
     }
@@ -75,7 +75,7 @@ TEST(Physics3DJoints, HingeLimitsAreMeasuredFromTheStartPose) {
     EXPECT_GE(angle, 10.0f - 1.0f);
     EXPECT_LE(angle, 50.0f + 1.0f);
     // the read-out is the bodies' relative rotation about the axis
-    EXPECT_NEAR(degreesAbout(d.world.rb(d.door).getRotation(), Vector3(0, 1, 0)), angle, 0.5f);
+    EXPECT_NEAR(angleAboutDegrees(d.world.rb(d.door).getRotation(), Vector3(0, 1, 0)), angle, 0.5f);
 
     // pushed the other way it stops at 50
     d.world.rb(d.door).setAngularVelocity(Vector3(0, 10, 0));
@@ -217,13 +217,13 @@ TEST(Physics3DJoints, SwingTwistLimitsUseUnitysNames) {
     settings.swingType = JointSwingType::PYRAMID;
 
     const Quaternion aboutPlane = pushedArm(settings, Vector3(0, 20, 0));
-    EXPECT_NEAR(degreesBetween(aboutPlane * Vector3(1, 0, 0), Vector3(1, 0, 0)), 20.0f, 2.0f) << "swing 1";
+    EXPECT_NEAR(physics3DJointsDegreesBetween(aboutPlane * Vector3(1, 0, 0), Vector3(1, 0, 0)), 20.0f, 2.0f) << "swing 1";
     const Quaternion aboutNormal = pushedArm(settings, Vector3(0, 0, 20));
-    EXPECT_NEAR(degreesBetween(aboutNormal * Vector3(1, 0, 0), Vector3(1, 0, 0)), 40.0f, 2.0f) << "swing 2";
+    EXPECT_NEAR(physics3DJointsDegreesBetween(aboutNormal * Vector3(1, 0, 0), Vector3(1, 0, 0)), 40.0f, 2.0f) << "swing 2";
     const Quaternion twistUp = pushedArm(settings, Vector3(20, 0, 0));
-    EXPECT_NEAR(degreesAbout(twistUp, Vector3(1, 0, 0)), 30.0f, 2.0f) << "high twist";
+    EXPECT_NEAR(angleAboutDegrees(twistUp, Vector3(1, 0, 0)), 30.0f, 2.0f) << "high twist";
     const Quaternion twistDown = pushedArm(settings, Vector3(-20, 0, 0));
-    EXPECT_NEAR(degreesAbout(twistDown, Vector3(1, 0, 0)), -10.0f, 2.0f) << "low twist";
+    EXPECT_NEAR(angleAboutDegrees(twistDown, Vector3(1, 0, 0)), -10.0f, 2.0f) << "low twist";
 }
 
 TEST(Physics3DJoints, ConeSwingsToItsHalfAngle) {
@@ -231,7 +231,7 @@ TEST(Physics3DJoints, ConeSwingsToItsHalfAngle) {
     settings.twistAxis = Vector3(1, 0, 0);
     EXPECT_NEAR(Angle::defaultToDeg(settings.coneHalfAngle), 45.0f, 1e-4f);
     const Quaternion swung = pushedArm(settings, Vector3(0, 0, 20));
-    EXPECT_NEAR(degreesBetween(swung * Vector3(1, 0, 0), Vector3(1, 0, 0)), 45.0f, 1.0f)
+    EXPECT_NEAR(physics3DJointsDegreesBetween(swung * Vector3(1, 0, 0), Vector3(1, 0, 0)), 45.0f, 1.0f)
         << "45 degrees (it was 0 before the fix)";
 }
 
@@ -264,11 +264,11 @@ TEST(Physics3DJoints, SixDOFMotionsPerAxis) {
 
 namespace {
 
-    struct BreakCounter : public ScriptBase {
+    struct Physics3DJointsBreakCounter : public ScriptBase {
         int* calls;
         float* force;
         JointBreakAction* seenAction;
-        BreakCounter(Scene* scene, Entity entity, int* calls, float* force, JointBreakAction* seenAction)
+        Physics3DJointsBreakCounter(Scene* scene, Entity entity, int* calls, float* force, JointBreakAction* seenAction)
             : ScriptBase(scene, entity), calls(calls), force(force), seenAction(seenAction) {}
         void onJointBreak(float breakForce, Joint3D& joint) override {
             (*calls)++;
@@ -277,15 +277,15 @@ namespace {
         }
     };
 
-    void addCppListener(World3D& world, Entity entity, BreakCounter* script) {
+    void physics3DJointsAddCppListener(World3D& world, Entity entity, Physics3DJointsBreakCounter* script) {
         ScriptComponent scripts;
         ScriptEntry entry;
         entry.type = ScriptType::CPP;
         entry.enabled = true;
         entry.className = "BreakCounter";
         entry.instance = script;
-        entry.cppScript = ScriptMessages::cppScript<BreakCounter>(script);
-        entry.cppMessageMask = ScriptMessages::cppMask<BreakCounter>();
+        entry.cppScript = ScriptMessages::cppScript<Physics3DJointsBreakCounter>(script);
+        entry.cppMessageMask = ScriptMessages::cppMask<Physics3DJointsBreakCounter>();
         scripts.scripts.push_back(entry);
         world.scene.addComponent<ScriptComponent>(entity, scripts);
     }
@@ -312,8 +312,8 @@ TEST(Physics3DJoints, BreakingDestroyCallsBackOnceThenRemoves) {
     int calls = 0;
     float force = 0.0f;
     JointBreakAction seen = JointBreakAction::IGNORE;
-    BreakCounter listener(&h.world.scene, h.joint, &calls, &force, &seen);
-    addCppListener(h.world, h.joint, &listener);
+    Physics3DJointsBreakCounter listener(&h.world.scene, h.joint, &calls, &force, &seen);
+    physics3DJointsAddCppListener(h.world, h.joint, &listener);
     h.world.load();
     h.world.step();
     EXPECT_EQ(calls, 1);
@@ -332,8 +332,8 @@ TEST(Physics3DJoints, BreakingDisableIgnoreAndCallbackOnly) {
         int calls = 0;
         float force = 0.0f;
         JointBreakAction seen;
-        BreakCounter listener(&h.world.scene, h.joint, &calls, &force, &seen);
-        addCppListener(h.world, h.joint, &listener);
+        Physics3DJointsBreakCounter listener(&h.world.scene, h.joint, &calls, &force, &seen);
+        physics3DJointsAddCppListener(h.world, h.joint, &listener);
         h.world.load();
         h.world.step(2);
         EXPECT_EQ(calls, 1);
@@ -348,8 +348,8 @@ TEST(Physics3DJoints, BreakingDisableIgnoreAndCallbackOnly) {
         int calls = 0;
         float force = 0.0f;
         JointBreakAction seen;
-        BreakCounter listener(&h.world.scene, h.joint, &calls, &force, &seen);
-        addCppListener(h.world, h.joint, &listener);
+        Physics3DJointsBreakCounter listener(&h.world.scene, h.joint, &calls, &force, &seen);
+        physics3DJointsAddCppListener(h.world, h.joint, &listener);
         h.world.load();
         h.world.step(30);
         EXPECT_EQ(calls, 0);
@@ -362,8 +362,8 @@ TEST(Physics3DJoints, BreakingDisableIgnoreAndCallbackOnly) {
         int calls = 0;
         float force = 0.0f;
         JointBreakAction seen;
-        BreakCounter listener(&h.world.scene, h.joint, &calls, &force, &seen);
-        addCppListener(h.world, h.joint, &listener);
+        Physics3DJointsBreakCounter listener(&h.world.scene, h.joint, &calls, &force, &seen);
+        physics3DJointsAddCppListener(h.world, h.joint, &listener);
         h.world.load();
         h.world.step(30);
         EXPECT_EQ(calls, 1) << "once while the load stays over the threshold";

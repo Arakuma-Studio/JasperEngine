@@ -21,12 +21,12 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    uint32_t be32(const std::vector<uint8_t>& b, size_t at) {
+    uint32_t iccSrgbBe32(const std::vector<uint8_t>& b, size_t at) {
         return (uint32_t)b[at] << 24 | (uint32_t)b[at + 1] << 16 | (uint32_t)b[at + 2] << 8 | b[at + 3];
     }
 
     double s15(const std::vector<uint8_t>& b, size_t at) {
-        return (int32_t)be32(b, at) / 65536.0;
+        return (int32_t)iccSrgbBe32(b, at) / 65536.0;
     }
 
     std::string sig(const std::vector<uint8_t>& b, size_t at) {
@@ -38,9 +38,9 @@ namespace {
 TEST(IccSrgb, ProfileIsValid) {
     const std::vector<uint8_t>& icc = srgbIccProfile();
     ASSERT_GE(icc.size(), 132u);
-    EXPECT_EQ(be32(icc, 0), icc.size());
+    EXPECT_EQ(iccSrgbBe32(icc, 0), icc.size());
     EXPECT_LT(icc.size(), 3000u) << "about 2.6 KB";
-    EXPECT_EQ(be32(icc, 8), 0x02100000u) << "ICC v2.1";
+    EXPECT_EQ(iccSrgbBe32(icc, 8), 0x02100000u) << "ICC v2.1";
     EXPECT_EQ(sig(icc, 12), "mntr");
     EXPECT_EQ(sig(icc, 16), "RGB ");
     EXPECT_EQ(sig(icc, 20), "XYZ ");
@@ -48,11 +48,11 @@ TEST(IccSrgb, ProfileIsValid) {
     EXPECT_NEAR(s15(icc, 68), 0.9642, 1e-4);
     EXPECT_NEAR(s15(icc, 72), 1.0, 1e-4);
     EXPECT_NEAR(s15(icc, 76), 0.8249, 1e-4);
-    const uint32_t count = be32(icc, 128);
+    const uint32_t count = iccSrgbBe32(icc, 128);
     std::map<std::string, std::pair<uint32_t, uint32_t>> tags;
     for (uint32_t i = 0; i < count; i++) {
         const size_t at = 132 + 12 * i;
-        const uint32_t offset = be32(icc, at + 4), size = be32(icc, at + 8);
+        const uint32_t offset = iccSrgbBe32(icc, at + 4), size = iccSrgbBe32(icc, at + 8);
         EXPECT_LE(offset + size, icc.size());
         EXPECT_EQ(offset % 4, 0u) << "tag data is 4-byte aligned";
         tags[sig(icc, at)] = {offset, size};
@@ -76,7 +76,7 @@ TEST(IccSrgb, ProfileIsValid) {
     // the TRC: IEC 61966-2-1 within 1/65535
     const uint32_t curve = tags["rTRC"].first;
     EXPECT_EQ(sig(icc, curve), "curv");
-    const uint32_t entries = be32(icc, curve + 8);
+    const uint32_t entries = iccSrgbBe32(icc, curve + 8);
     ASSERT_EQ(entries, 1024u);
     for (uint32_t i = 0; i < entries; i++) {
         const double x = (double)i / (entries - 1);

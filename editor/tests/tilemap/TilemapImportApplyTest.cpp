@@ -155,9 +155,12 @@ TEST_F(TilemapImportApplyTest, PreviewWritesNothingAndApplyIsOneUndoStep) {
     EXPECT_EQ(cells->getTile(CellCoord{0, 0}), NO_TILE);
 
     ASSERT_TRUE(fs::exists(mapFile.parent_path() / "terrain.tileset"));
-    std::ifstream in(mapFile.parent_path() / "terrain.tileset");
     std::stringstream text;
-    text << in.rdbuf();
+    {
+        // closed before the undo: an open file can't be removed on Windows
+        std::ifstream in(mapFile.parent_path() / "terrain.tileset");
+        text << in.rdbuf();
+    }
     TilesetData tileset;
     std::vector<TilesetProblem> problems;
     ASSERT_TRUE(tileset::parse(text.str(), tileset, problems));

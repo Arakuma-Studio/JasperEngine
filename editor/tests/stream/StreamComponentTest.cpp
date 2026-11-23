@@ -102,7 +102,7 @@ namespace {
     }
 
     template<typename T>
-    void expectStable(T& component, std::function<YAML::Node(const T&)> encode, std::function<T(const YAML::Node&)> decode){
+    void streamComponentExpectStable(T& component, std::function<YAML::Node(const T&)> encode, std::function<T(const YAML::Node&)> decode){
         const YAML::Node first = encode(component);
         ASSERT_TRUE(first.IsDefined());
         T decoded = decode(YAML::Load(YAML::Dump(first)));
@@ -120,7 +120,7 @@ namespace {
     TEST(StreamComponent, Name##ReEncodesIdentically){ \
         Type component{}; \
         __VA_ARGS__; \
-        expectStable<Type>(component, [](const Type& c){ return reflect::encodeValue(ComponentType::Name, &c); }, \
+        streamComponentExpectStable<Type>(component, [](const Type& c){ return reflect::encodeValue(ComponentType::Name, &c); }, \
                            [](const YAML::Node& node){ return reflect::decodeValue<Type>(ComponentType::Name, node); }); \
         EXPECT_NO_ENGINE_ERRORS(); \
     }
@@ -227,7 +227,7 @@ STABLE(BuoyancyComponent, BuoyancyComponent, component.columns = BuoyancyColumns
 namespace {
 
     template<typename T>
-    T roundTrip(ComponentType type, const T& component){
+    T streamComponentRoundTrip(ComponentType type, const T& component){
         return reflect::decodeValue<T>(type, YAML::Load(YAML::Dump(reflect::encodeValue(type, &component))));
     }
 
@@ -238,7 +238,7 @@ TEST(StreamComponent, LightPhotometricFieldsRoundTrip){
     light.intensityUnit = LightUnit::CANDELA;
     light.useColorTemperature = true;
     light.colorTemperature = 2700.0f;
-    const LightComponent decoded = roundTrip(ComponentType::LightComponent, light);
+    const LightComponent decoded = streamComponentRoundTrip(ComponentType::LightComponent, light);
     EXPECT_EQ(decoded.intensityUnit, LightUnit::CANDELA);
     EXPECT_TRUE(decoded.useColorTemperature);
     EXPECT_FLOAT_EQ(decoded.colorTemperature, 2700.0f);
@@ -250,7 +250,7 @@ TEST(StreamComponent, RigidbodyWaterFieldsRoundTrip){
     body.buoyancy = 1.25f;
     body.waterDrag = 0.75f;
     body.waterAngularDrag = 0.2f;
-    const RigidbodyComponent decoded = roundTrip(ComponentType::RigidbodyComponent, body);
+    const RigidbodyComponent decoded = streamComponentRoundTrip(ComponentType::RigidbodyComponent, body);
     EXPECT_FLOAT_EQ(decoded.buoyancy, 1.25f);
     EXPECT_FLOAT_EQ(decoded.waterDrag, 0.75f);
     EXPECT_FLOAT_EQ(decoded.waterAngularDrag, 0.2f);
@@ -265,7 +265,7 @@ TEST(StreamComponent, TerrainLayerTilingFieldsRoundTrip){
     terrain.surfaceLayers[1].stochasticTiling = true;
     terrain.surfaceLayers[1].stochasticCellSize = 3.0f;
     terrain.surfaceLayers[1].stochasticContrast = 0.6f;
-    const TerrainComponent decoded = roundTrip(ComponentType::TerrainComponent, terrain);
+    const TerrainComponent decoded = streamComponentRoundTrip(ComponentType::TerrainComponent, terrain);
     ASSERT_GE(decoded.surfaceLayers.size(), 2u);
     EXPECT_FALSE(decoded.surfaceLayers[0].hexTiling);
     EXPECT_TRUE(decoded.surfaceLayers[1].hexTiling);
@@ -279,14 +279,14 @@ TEST(StreamComponent, TerrainLayerTilingFieldsRoundTrip){
 TEST(StreamComponent, TweenAndKeyframeSwitchesRoundTrip){
     TweenComponent tween{};
     tween.pingPong = true;
-    EXPECT_TRUE(roundTrip(ComponentType::TweenComponent, tween).pingPong);
+    EXPECT_TRUE(streamComponentRoundTrip(ComponentType::TweenComponent, tween).pingPong);
     RotationTweenComponent rotation{};
     rotation.spin = true;
-    EXPECT_TRUE(roundTrip(ComponentType::RotationTweenComponent, rotation).spin);
+    EXPECT_TRUE(streamComponentRoundTrip(ComponentType::RotationTweenComponent, rotation).spin);
     KeyframeTracksComponent tracks{};
     tracks.loop = true;
     tracks.relative = true;
-    const KeyframeTracksComponent decoded = roundTrip(ComponentType::KeyframeTracksComponent, tracks);
+    const KeyframeTracksComponent decoded = streamComponentRoundTrip(ComponentType::KeyframeTracksComponent, tracks);
     EXPECT_TRUE(decoded.loop);
     EXPECT_TRUE(decoded.relative);
     EXPECT_NO_ENGINE_ERRORS();
@@ -297,7 +297,7 @@ TEST(StreamComponent, SubmeshOverrideMaskKeepsItsHighBits){
     mesh.numSubmeshes = 1;
     mesh.submeshes[0].overrideFields = SubmeshOverride_EmissiveStrength | SubmeshOverride_StochasticTiling;
     mesh.submeshes[0].material.emissiveStrength = 4.0f;
-    const MeshComponent decoded = roundTrip(ComponentType::MeshComponent, mesh);
+    const MeshComponent decoded = streamComponentRoundTrip(ComponentType::MeshComponent, mesh);
     ASSERT_EQ(decoded.numSubmeshes, 1u);
     EXPECT_EQ(decoded.submeshes[0].overrideFields, (uint64_t)(SubmeshOverride_EmissiveStrength | SubmeshOverride_StochasticTiling))
         << "bit 32 and up survive the save";
@@ -309,7 +309,7 @@ TEST(StreamComponent, SubmeshOverrideMaskKeepsItsHighBits){
 TEST(StreamComponent, ParticleSystemComponentAssetReEncodesIdentically){
     ParticleSystemComponent component{};
     component.effect.set("fx/fire.particles", Guid(1, 2));
-    expectStable<ParticleSystemComponent>(component,
+    streamComponentExpectStable<ParticleSystemComponent>(component,
         [](const ParticleSystemComponent& c){ return reflect::encodeValue(ComponentType::ParticleSystemComponent, &c); },
         [](const YAML::Node& node){ return reflect::decodeValue<ParticleSystemComponent>(ComponentType::ParticleSystemComponent, node); });
     EXPECT_NO_ENGINE_ERRORS();
@@ -325,7 +325,7 @@ TEST(StreamComponent, ParticleSystemFieldsRoundTrip){
     inlineSystem.playbackSpeed = 1.5f;
     inlineSystem.exposedValues.push_back({"Intensity", Vector4(2.0f, 0.5f, 0.0f, 1.0f)});
     inlineSystem.collisionPlanes = {7, 9};
-    ParticleSystemComponent decoded = roundTrip(ComponentType::ParticleSystemComponent, inlineSystem);
+    ParticleSystemComponent decoded = streamComponentRoundTrip(ComponentType::ParticleSystemComponent, inlineSystem);
     EXPECT_TRUE(decoded.effect.empty());
     EXPECT_FLOAT_EQ(decoded.inlineEffect.duration, 4.5f);
     EXPECT_EQ(particles::ParticleEffectCodec::write(decoded.inlineEffect), particles::ParticleEffectCodec::write(inlineSystem.inlineEffect));
@@ -339,7 +339,7 @@ TEST(StreamComponent, ParticleSystemFieldsRoundTrip){
     ParticleSystemComponent assetSystem{};
     assetSystem.effect.set("fx/smoke.particles", Guid(3, 4));
     assetSystem.enabled = false;
-    decoded = roundTrip(ComponentType::ParticleSystemComponent, assetSystem);
+    decoded = streamComponentRoundTrip(ComponentType::ParticleSystemComponent, assetSystem);
     EXPECT_EQ(decoded.effect.path, "fx/smoke.particles");
     EXPECT_EQ(decoded.effect.guid, Guid(3, 4));
     EXPECT_FALSE(decoded.enabled);
@@ -358,7 +358,7 @@ TEST(StreamComponent, ParticleSystemUnscaledTimeOnlyWhenOn){
     const YAML::Node node = reflect::encodeValue(ComponentType::ParticleSystemComponent, &unscaled);
     ASSERT_TRUE(node["useUnscaledTime"]);
     EXPECT_TRUE(node["useUnscaledTime"].as<bool>());
-    EXPECT_TRUE(roundTrip(ComponentType::ParticleSystemComponent, unscaled).useUnscaledTime);
+    EXPECT_TRUE(streamComponentRoundTrip(ComponentType::ParticleSystemComponent, unscaled).useUnscaledTime);
 
     // the old component decoded over: an absent key is off again
     const ParticleSystemComponent over = Stream::decodeParticleSystemComponent(plainNode, &unscaled);
@@ -384,7 +384,7 @@ TEST(StreamComponent, ActionStartOffsetRoundTripsAndOmitsDefaults){
     EXPECT_FLOAT_EQ(node["startOffset"].as<float>(), 0.35f);
     EXPECT_TRUE(node["randomStart"].as<bool>());
     EXPECT_FALSE(node["phase"]) << "runtime state is not saved";
-    const ActionComponent decoded = roundTrip(ComponentType::ActionComponent, set);
+    const ActionComponent decoded = streamComponentRoundTrip(ComponentType::ActionComponent, set);
     EXPECT_FLOAT_EQ(decoded.startOffset, 0.35f);
     EXPECT_TRUE(decoded.randomStart);
     EXPECT_FLOAT_EQ(decoded.phase, 0.0f);
@@ -420,7 +420,7 @@ TEST(StreamComponent, ForceFieldFieldsRoundTrip){
     field.frequency = 2.0f;
     field.falloff = Curve::linear(1.0f, 0.0f);
     field.layers = 0x5u;
-    const ForceFieldComponent decoded = roundTrip(ComponentType::ForceFieldComponent, field);
+    const ForceFieldComponent decoded = streamComponentRoundTrip(ComponentType::ForceFieldComponent, field);
     EXPECT_FALSE(decoded.enabled);
     EXPECT_EQ(decoded.shape, ForceFieldShapeType::Cylinder);
     EXPECT_EQ(decoded.size, Vector3(2.0f, 3.0f, 4.0f));
@@ -456,7 +456,7 @@ TEST(StreamComponent, CharacterControllersRoundTrip){
     controller.enhancedEdgeRemoval = true;
     controller.categoryBits = 2;
     controller.maskBits = 0x00FF;
-    const CharacterControllerComponent decoded = roundTrip(ComponentType::CharacterControllerComponent, controller);
+    const CharacterControllerComponent decoded = streamComponentRoundTrip(ComponentType::CharacterControllerComponent, controller);
     EXPECT_FALSE(decoded.enabled);
     EXPECT_EQ(decoded.center, Vector3(0.0f, 1.0f, 0.0f));
     EXPECT_FLOAT_EQ(decoded.height, 1.8f);
@@ -489,7 +489,7 @@ TEST(StreamComponent, CharacterControllersRoundTrip){
     controller2d.movingPlatforms = false;
     controller2d.categoryBits = 8;
     controller2d.maskBits = 0x0F0F;
-    const CharacterController2DComponent decoded2d = roundTrip(ComponentType::CharacterController2DComponent, controller2d);
+    const CharacterController2DComponent decoded2d = streamComponentRoundTrip(ComponentType::CharacterController2DComponent, controller2d);
     EXPECT_EQ(decoded2d.center, Vector2(3.0f, -2.0f));
     EXPECT_FLOAT_EQ(decoded2d.height, 100.0f);
     EXPECT_FLOAT_EQ(decoded2d.radius, 20.0f);
@@ -516,7 +516,7 @@ TEST(StreamComponent, WaterVolumeAndBuoyancyRoundTrip){
     volume.linearDrag = 2.0f;
     volume.angularDrag = 0.25f;
     volume.waves = WaterVolumeWaves::NONE;
-    const WaterVolumeComponent decodedVolume = roundTrip(ComponentType::WaterVolumeComponent, volume);
+    const WaterVolumeComponent decodedVolume = streamComponentRoundTrip(ComponentType::WaterVolumeComponent, volume);
     EXPECT_FALSE(decodedVolume.enabled);
     EXPECT_EQ(decodedVolume.size, Vector3(20.0f, 3.0f, 8.0f));
     EXPECT_FLOAT_EQ(decodedVolume.surfaceOffset, 0.5f);
@@ -533,7 +533,7 @@ TEST(StreamComponent, WaterVolumeAndBuoyancyRoundTrip){
     buoyancy.customPoints = {Vector3(-0.5f, -0.5f, 0.0f), Vector3(0.5f, -0.5f, 0.0f), Vector3(0.0f, -0.5f, 1.0f)};
     buoyancy.volumeScale = 1.2f;
     buoyancy.dragScale = 0.5f;
-    const BuoyancyComponent decodedBuoyancy = roundTrip(ComponentType::BuoyancyComponent, buoyancy);
+    const BuoyancyComponent decodedBuoyancy = streamComponentRoundTrip(ComponentType::BuoyancyComponent, buoyancy);
     EXPECT_FALSE(decodedBuoyancy.enabled);
     EXPECT_EQ(decodedBuoyancy.columns, BuoyancyColumns::CUSTOM);
     EXPECT_EQ(decodedBuoyancy.customPoints, buoyancy.customPoints);
@@ -579,7 +579,7 @@ TEST(StreamComponent, TerrainMaterialsRoundTrip){
     terrain.heightBlendSharpness = 0.7f;
     terrain.macroNormal = true;
     terrain.holeMapHolds = 3;
-    const TerrainComponent decoded = roundTrip(ComponentType::TerrainComponent, terrain);
+    const TerrainComponent decoded = streamComponentRoundTrip(ComponentType::TerrainComponent, terrain);
     EXPECT_EQ(decoded.surfaceLayers[0].cliffProjection, TerrainCliffProjection::FLAT_ONLY);
     EXPECT_EQ(decoded.quality, TerrainQualitySetting::MEDIUM);
     EXPECT_TRUE(decoded.limitLayersPerPixel);

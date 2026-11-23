@@ -23,11 +23,14 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <memory>
 #include <thread>
+#include <vector>
 
 using namespace terrainworldtest;
 using jasperengine::Entity;
@@ -41,7 +44,7 @@ using jasperengine::Transform;
 
 namespace {
 
-    void writeFile(const std::filesystem::path& path, const std::vector<uint8_t>& bytes) {
+    void terrainWorldStreamingWriteFile(const std::filesystem::path& path, const std::vector<uint8_t>& bytes) {
         std::filesystem::create_directories(path.parent_path());
         std::ofstream file(path, std::ios::binary);
         file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
@@ -62,7 +65,7 @@ namespace {
                 buildOverviewColour(*tile, manifest.lattice, colours, 0);
                 std::vector<uint8_t> bytes;
                 ASSERT_TRUE(encodeTile(*tile, zstdCodec(), TileEncodeOptions{}, bytes));
-                writeFile(folder / ("tiles/" + std::to_string(x) + "_" + std::to_string(z) + ".jtile"), bytes);
+                terrainWorldStreamingWriteFile(folder / ("tiles/" + std::to_string(x) + "_" + std::to_string(z) + ".jtile"), bytes);
                 setOverviewPatch(overview, *tile);
                 const TileMinMax whole = tileNodeMinMax(*tile, manifest.lattice, manifest.lattice.tileLevel(), 0, 0);
                 manifest.tiles.push_back(WorldTileInfo{TileCoord(x, z), whole.min, whole.max});
@@ -70,9 +73,9 @@ namespace {
         }
         std::vector<uint8_t> bytes;
         ASSERT_TRUE(encodeOverview(overview, manifest.lattice, zstdCodec(), 3, bytes, nullptr));
-        writeFile(folder / "overview.jtile", bytes);
+        terrainWorldStreamingWriteFile(folder / "overview.jtile", bytes);
         encodeWorldBin(manifest, bytes);
-        writeFile(folder / "world.bin", bytes);
+        terrainWorldStreamingWriteFile(folder / "world.bin", bytes);
     }
 
     struct WorldScene {
@@ -313,6 +316,40 @@ TEST(TerrainWorldStreaming, ZeroWorkersStillLoad) {
     jasperengine::jobs::shutdown();
     jasperengine::jobs::initialize(jasperengine::jobs::Config{});
     jasperengine::AssetIOService::instance().start();
+}
+
+// D9 pumps every scene's worlds on the main thread, and scenes are made on others (a game's loader, the
+// editor's previews): their systems join the pump's list while it walks it, two threads' at once.
+// Unguarded, two appends left a destroyed system listed and the pump read it (ASan,
+// ShaderPoolThreadsGpu.TwoThreadsLoadScenesThatMakeTheSameNewVariant); SANITIZE=thread reports the race
+// on every run, ASan when a walk meets a reallocation.
+TEST(TerrainWorldStreaming, PumpsWhileOtherThreadsMakeScenes) {
+    constexpr int loaders = 2;
+    constexpr int scenesEach = 16;
+    std::vector<std::unique_ptr<Scene>> made[loaders];
+    std::atomic<bool> walking{false};
+    std::atomic<int> finished{0};
+    std::vector<std::thread> threads;
+    for (int t = 0; t < loaders; t++) {
+        threads.emplace_back([&, t] {
+            while (!walking.load()) std::this_thread::yield();
+            for (int i = 0; i < scenesEach; i++) made[t].push_back(std::make_unique<Scene>());
+            finished.fetch_add(1);
+        });
+    }
+    int runtimes = 0;
+    do {
+        TerrainWorldSystem::pumpAll();
+        TerrainWorldSystem::forEachRuntime([&](TerrainWorldRuntime&) { runtimes++; });
+        walking.store(true);
+    } while (finished.load() < loaders);
+    for (std::thread& thread : threads) thread.join();
+    EXPECT_EQ(runtimes, 0);
+    // the main thread lets them go, as the engine's scenes go; the pump then walks none of them
+    for (auto& scenes : made) scenes.clear();
+    TerrainWorldSystem::pumpAll();
+    TerrainWorldSystem::forEachRuntime([&](TerrainWorldRuntime&) { runtimes++; });
+    EXPECT_EQ(runtimes, 0);
 }
 
 TEST(TerrainWorldZeroCost, PlainTerrainCostsNothing) {

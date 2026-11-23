@@ -31,6 +31,7 @@
 #include "diag/HangWatchdog.h"
 #include "util/ProjectChecks.h"
 #include "util/EditorDiagnostics.h"
+#include "util/ThreadCpuTime.h"
 #include "util/ScriptReloadService.h"
 #include "util/ScriptStatus.h"
 #include "util/EditorScripts.h"
@@ -79,6 +80,7 @@
 #include "window/ImageViewerWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "terrain/TerrainMapPersistence.h"
+#include "util/TerrainMapFileWriter.h"
 
 #include <cctype>
 #include <cmath>
@@ -375,6 +377,11 @@ editor::Project::Project(): vcsService(std::make_unique<vcs::VcsService>()), sce
     VoxelAssets::setBaseResolver(&resolveVoxelBase);
     // a mesh job's result waits for the system's next update, which an idle editor would not run
     voxel::WorkQueue::setFinishedNotifier([]() { getEditorHost().enqueueMainThreadTask([]() {}); });
+    // ~Project flushes the terrain maps through these function-local statics: made here, they are
+    // destroyed after it. The editor's Project lives in a static App, destroyed at exit; made on
+    // first use, they would be gone by then (macOS aborts on the writer's destroyed mutex)
+    TerrainMapPersistence::get();
+    TerrainMapFileWriter::get();
 }
 
 editor::Project::~Project(){
@@ -390,6 +397,12 @@ editor::Project::~Project(){
     playStopTask.wait();
     sceneSaveTask.wait();
     shaderListWrite.wait();
+    // its scenes and their renders are its own: they go with it while the engine runs (the unit
+    // tests' Projects). One destroyed after Engine::systemShutdown, the editor's (a static App's,
+    // after the engine's own statics) or a CLI command's, leaves them to the process exit
+    if (jobs::hasSystem() && !jobs::system().isShuttingDown()){
+        deleteScenes();
+    }
     if (shaderForkReaderProject == this){
         shaderForkReaderProject = nullptr;
         ShaderManifests::setForkReader(nullptr);
@@ -3444,6 +3457,20 @@ const editor::SourceCodeExportSettings& editor::Project::getSourceCodeExportSett
     return sourceCodeExportSettings;
 }
 
+void editor::Project::setTargetPlatforms(uint8_t platforms){
+    platforms &= allTargetPlatforms;
+    targetPlatforms = platforms ? platforms : allTargetPlatforms;
+}
+
+editor::BuildPlatform editor::Project::defaultBuildPlatform() const{
+    if (isTargetPlatform(hostBuildPlatform())) return hostBuildPlatform();
+    for (BuildPlatform platform : {BuildPlatform::Windows, BuildPlatform::MacOS, BuildPlatform::Linux, BuildPlatform::Android,
+                                   BuildPlatform::IOS, BuildPlatform::Web}){
+        if (isTargetPlatform(platform)) return platform;
+    }
+    return hostBuildPlatform();
+}
+
 editor::DesktopExportSettings& editor::Project::getDesktopExportSettings(){
     return desktopExportSettings;
 }
@@ -6435,6 +6462,17 @@ void editor::Project::releaseScenes() {
     resetConfigs();
 }
 
+void editor::Project::deleteScenes() {
+    // Prefab Mode ends with the project (what it had unsaved was offered for saving before)
+    while (!prefabStages.empty()) {
+        popPrefabStage();
+    }
+    for (auto& sceneProject : scenes) {
+        deleteSceneProject(&sceneProject);
+    }
+    scenes.clear();
+}
+
 void editor::Project::resetConfigs() {
     // an old project has no terrain tiers: High everywhere (T3 R51), set again as it loads
     for (int platform = 0; platform < terraincore::TerrainQualitySettings::PLATFORM_COUNT; platform++) {
@@ -6458,16 +6496,7 @@ void editor::Project::resetConfigs() {
     // and the offscreen renderers render_pose_animation keeps of its models
     PoseSheetRenderer::clearShared();
 
-    // Prefab Mode ends with the project (what it had unsaved was offered for saving before)
-    while (!prefabStages.empty()) {
-        popPrefabStage();
-    }
-
-    // Clear existing scenes
-    for (auto& sceneProject : scenes) {
-        deleteSceneProject(&sceneProject);
-    }
-    scenes.clear();
+    deleteScenes();
     unresolvedScenes.clear();
     unresolvedSceneStates.clear();
     prefabAssets.clear();
@@ -6507,6 +6536,7 @@ void editor::Project::resetConfigs() {
     buildMethod = "auto";
     packContent = false;
     stripEngineCode = true;
+    targetPlatforms = allTargetPlatforms;
     spriteAtlasMode = "enabled";
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setPixelsPerUnit(defaultPixelsPerUnit);
@@ -11545,6 +11575,7 @@ void editor::Project::stop(uint32_t sceneId) {
         return;
     }
 
+    const double stopCpuStart = threadCpuMs();
     session->cancelled.store(true, std::memory_order_release);
     sceneProject->playState = ScenePlayState::CANCELLING;
 
@@ -11594,6 +11625,7 @@ void editor::Project::stop(uint32_t sceneId) {
         // All teardown happens on the main/GL thread so that script
         // destructors and engine resource cleanup run with a valid GL context.
         editor::getEditorHost().enqueueMainThreadTask([this, session, sceneId, startupSucceededAtStop]() {
+            const double teardownCpuStart = threadCpuMs();
             SceneProject* mainSceneProject = getScene(sceneId);
             const bool startupSucceeded = session->startupSucceeded.load(std::memory_order_acquire);
 
@@ -11727,12 +11759,19 @@ void editor::Project::stop(uint32_t sceneId) {
             Engine::resetApplicationState();
             editor::Platform::endPlaySimulation();
 
+            session->stopCpuMs += threadCpuMs() - teardownCpuStart;
+            lastStopCpuMs = session->stopCpuMs;
             {
                 std::scoped_lock lock(playSessionMutex);
                 if (activePlaySession == session) activePlaySession.reset();
             }
         });
     }, stopOptions);
+    session->stopCpuMs += threadCpuMs() - stopCpuStart;
+}
+
+double editor::Project::getLastStopCpuMs() const {
+    return lastStopCpuMs;
 }
 
 void editor::Project::stopActivePlay() {

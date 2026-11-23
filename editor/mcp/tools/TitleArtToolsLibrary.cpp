@@ -275,9 +275,14 @@ namespace {
                 r.pxScale = std::min((float)s.cellW / r.doc->canvasWidth(), (float)s.cellH / r.doc->canvasHeight());
                 r.assets = &assets;
                 TitleRenderedImage image;
+                const uint64_t waits = TitleArtRenderHost::editor().notReadyCount();
                 if (TitleArtRenderHost::editor().render(s.project, r, image, error)) {
                     s.ms += image.renderMs;
                     cell = fitCell(texsynth::toRgba8(image.image), s.cellW, s.cellH);
+                } else if (TitleArtRenderHost::editor().notReadyCount() != waits) {
+                    // the cell renders again on a later frame, once the frames built its program
+                    job.setProgress((double)s.next / s.items.size(), "cell " + std::to_string(s.next + 1) + ": waiting for title art programs to be built");
+                    return false;
                 } else {
                     s.numbered[s.next]["error"] = error;
                 }

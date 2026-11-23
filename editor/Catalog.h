@@ -299,7 +299,16 @@ namespace jasperengine::editor{
         uint64_t updateFlags;
         void* def;
         void* ref;
+        // the bytes of the value at def and ref, from its table (TypeOps::size): an Enum's
+        // underlying type may be one or two bytes. 0 (a property made by hand): the type's own
+        uint32_t size = 0;
     };
+
+    // An Int, UInt or Enum property's value at `value` (its ref or def) as the integer it holds,
+    // read and written at the property's own width: an int written over an enum class : uint8_t
+    // would overwrite the three bytes after it
+    int64_t readPropertyInteger(const PropertyData& property, const void* value);
+    void writePropertyInteger(const PropertyData& property, void* value, int64_t integer);
 
     class Catalog{
     public:

@@ -11,14 +11,14 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <numbers>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
 namespace {
 
-const double PI = 3.14159265358979323846;
-const double FLOOR_DB = -60.0;
+const double FIT_FLOOR_DB = -60.0;
 const double ENVELOPE_FRAME_SECONDS = 0.005;
 const double ENVELOPE_RMS_SECONDS = 0.001;
 const double BAND_EDGE = std::pow(10.0, 1.0 / 20.0);
@@ -136,7 +136,7 @@ std::array<double, SoundFit::BANDS> SoundFit::bandLevels(const Measure& measure,
     }
     for (int b = 0; b < BANDS; b++) {
         const bool held = bandCentre(b) * BAND_EDGE <= top;
-        levels[(size_t)b] = held && total > 0.0 ? std::max(FLOOR_DB, dbOfPower(measure.bandPower[(size_t)b] / total)) : FLOOR_DB;
+        levels[(size_t)b] = held && total > 0.0 ? std::max(FIT_FLOOR_DB, dbOfPower(measure.bandPower[(size_t)b] / total)) : FIT_FLOOR_DB;
     }
     return levels;
 }
@@ -149,7 +149,7 @@ SoundFit::Measure SoundFit::measure(const AudioAnalysis::Signal& signal) {
     for (float x : mono) peak = std::max(peak, std::fabs(x));
     if (peak <= 0.0f || signal.sampleRate == 0) return out;
 
-    const float threshold = peak * (float)std::pow(10.0, FLOOR_DB / 20.0);
+    const float threshold = peak * (float)std::pow(10.0, FIT_FLOOR_DB / 20.0);
     size_t head = 0;
     while (head < mono.size() && std::fabs(mono[head]) < threshold) head++;
     size_t tail = mono.size();
@@ -164,7 +164,7 @@ SoundFit::Measure SoundFit::measure(const AudioAnalysis::Signal& signal) {
     // -- band balance: Hann frames of the active region, zero-padded past its end
     static const std::vector<float> window = []() {
         std::vector<float> w(AudioAnalysis::FFT_SIZE);
-        for (int i = 0; i < AudioAnalysis::FFT_SIZE; i++) w[(size_t)i] = (float)(0.5 - 0.5 * std::cos(2.0 * PI * i / AudioAnalysis::FFT_SIZE));
+        for (int i = 0; i < AudioAnalysis::FFT_SIZE; i++) w[(size_t)i] = (float)(0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * i / AudioAnalysis::FFT_SIZE));
         return w;
     }();
     const int bins = AudioAnalysis::FFT_SIZE / 2;
@@ -205,7 +205,7 @@ SoundFit::Measure SoundFit::measure(const AudioAnalysis::Signal& signal) {
         loudest = std::max(loudest, power.back());
     }
     out.envelopeDb.reserve(power.size());
-    for (double p : power) out.envelopeDb.push_back(loudest > 0.0 ? std::max(FLOOR_DB, dbOfPower(p / loudest)) : FLOOR_DB);
+    for (double p : power) out.envelopeDb.push_back(loudest > 0.0 ? std::max(FIT_FLOOR_DB, dbOfPower(p / loudest)) : FIT_FLOOR_DB);
     return out;
 }
 
@@ -233,8 +233,8 @@ SoundFit::Quality SoundFit::compare(const Measure& reference, const Measure& can
     sum = 0.0;
     count = 0;
     for (size_t k = 0; k < frames; k++) {
-        const double er = k < reference.envelopeDb.size() ? reference.envelopeDb[k] : FLOOR_DB;
-        const double ec = k < candidate.envelopeDb.size() ? candidate.envelopeDb[k] : FLOOR_DB;
+        const double er = k < reference.envelopeDb.size() ? reference.envelopeDb[k] : FIT_FLOOR_DB;
+        const double ec = k < candidate.envelopeDb.size() ? candidate.envelopeDb[k] : FIT_FLOOR_DB;
         if (std::max(er, ec) >= SoundTypes::FIT_BAND_FLOOR_DB) {
             sum += (ec - er) * (ec - er);
             count++;

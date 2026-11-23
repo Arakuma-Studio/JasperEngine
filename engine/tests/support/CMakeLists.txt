@@ -6,7 +6,7 @@
 #
 # The headless device (HeadlessContext, Readback) exists in the standalone engine tree: on Linux
 # Xvfb + GLX or lavapipe, on macOS the default Metal device; elsewhere GpuEnvironment::ensure()
-# fails with a reason.
+# fails with a reason (HeadlessContextNone.cpp: the GPU suites link, and never get a device).
 
 set(JASPER_TEST_SUPPORT_SOURCES
     GpuEnvironment.cpp
@@ -39,6 +39,11 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND GRAPHIC_BACKEND STREQUAL "metal" 
         HeadlessContextMetal.mm
         ReadbackMetal.mm
     )
+endif()
+
+if(NOT JASPER_TEST_SUPPORT_GPU)
+    # the GPU suites still compile and link there; GpuEnvironment::ensure() turns them away
+    list(APPEND JASPER_TEST_SUPPORT_SOURCES HeadlessContextNone.cpp)
 endif()
 
 add_library(jasperengine-test-support STATIC ${JASPER_TEST_SUPPORT_SOURCES})

@@ -9,6 +9,7 @@
 
 #include "../render/TitleRenderTestSupport.h"
 
+#include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
 #include "pool/ShaderPool.h"
 #include "shader/RuntimeShaderCompiler.h"
@@ -21,7 +22,7 @@ using namespace jasperengine;
 
 namespace {
 
-    ResourceLoadState settle(ShaderKey key){
+    ResourceLoadState runtimeShaderCompilerRelaunchSettle(ShaderKey key){
         const auto start = std::chrono::steady_clock::now();
         ResourceLoadState state = ResourceLoadState::Loading;
         while (state == ResourceLoadState::Loading && std::chrono::steady_clock::now() - start < std::chrono::seconds(60)){
@@ -34,7 +35,7 @@ namespace {
 
 }
 
-TEST(RuntimeShaderCompilerRelaunch, AVariantFirstAskedAfterAnEngineRelaunchCompiles) {
+TEST(RuntimeShaderCompilerRelaunchGpu, AVariantFirstAskedAfterAnEngineRelaunchCompiles) {
     JASPER_REQUIRE_GPU();
     if (!RuntimeShaderCompiler::isSupported()) GTEST_SKIP() << "this build has no runtime compiler";
     const bool enabled = RuntimeShaderCompiler::isEnabled(), async = RuntimeShaderCompiler::isAsync();
@@ -43,14 +44,19 @@ TEST(RuntimeShaderCompilerRelaunch, AVariantFirstAskedAfterAnEngineRelaunchCompi
     const ShaderKey key = ShaderPool::getShaderKey(ShaderType::TITLE_ART, 36);
     std::error_code ec;
     std::filesystem::remove_all(RuntimeShaderCompiler::getCacheDirectory(), ec);
-    EXPECT_EQ(settle(key), ResourceLoadState::Finished) << "the first engine run compiles it";
+    EXPECT_EQ(runtimeShaderCompilerRelaunchSettle(key), ResourceLoadState::Finished) << "the first engine run compiles it";
     // what a recreated Android activity does: the runtime compiler and the job system shut down,
-    // a new job system starts; the variant is not on disk, so it must compile
+    // a new job system starts; the variant is not on disk, so it must compile. The asset readers
+    // stop and start with the jobs, as the engine's shutdown and init do: they take the process
+    // job system only at start(), so a later test's reads would go to the shut-down pool and end
+    // cancelled (NoiseTestSupport's WorkerScope)
     RuntimeShaderCompiler::shutdown();
     std::filesystem::remove_all(RuntimeShaderCompiler::getCacheDirectory(), ec);
+    AssetIOService::instance().stop();
     jobs::shutdown();
     jobs::initialize(jobs::Config{});
-    EXPECT_EQ(settle(key), ResourceLoadState::Finished) << "the relaunched engine compiles it too";
+    AssetIOService::instance().start();
+    EXPECT_EQ(runtimeShaderCompilerRelaunchSettle(key), ResourceLoadState::Finished) << "the relaunched engine compiles it too";
     RuntimeShaderCompiler::shutdown();
     RuntimeShaderCompiler::setEnabled(enabled);
     RuntimeShaderCompiler::setAsync(async);

@@ -19,7 +19,7 @@ namespace {
 
     constexpr uint32_t SCENE = 1;
 
-    ScenePickEntry entry(Entity entity, PickKind kind = PickKind::MESH){
+    ScenePickEntry scenePickerEntry(Entity entity, PickKind kind = PickKind::MESH){
         ScenePickEntry e;
         e.sceneId = SCENE;
         e.entity = entity;
@@ -32,8 +32,8 @@ namespace {
     // hits [11, 20], candidates [10 (root), 11, 20]
     ScenePickResult prefabOverWall(){
         ScenePickResult result;
-        result.hits = {entry(11), entry(20)};
-        result.candidates = {entry(10), entry(11), entry(20)};
+        result.hits = {scenePickerEntry(11), scenePickerEntry(20)};
+        result.candidates = {scenePickerEntry(10), scenePickerEntry(11), scenePickerEntry(20)};
         return result;
     }
 
@@ -47,7 +47,7 @@ namespace {
         c.x = x;
         c.y = y;
         if (selection.active != NULL_ENTITY){
-            c.primary = entry(selection.active);
+            c.primary = scenePickerEntry(selection.active);
         }
         c.isSelected = [selection](const ScenePickEntry& e){ return selection.selected.count(e.entity) > 0; };
         // 11 is inside 10
@@ -125,8 +125,8 @@ TEST(ScenePicker, WheelStepIsConfirmed){
 
 TEST(ScenePicker, ExactPickSelectsTheHit){
     ScenePickResult result;
-    result.hits = {entry(11), entry(20)};
-    result.candidates = {entry(11), entry(20)};   // no roots
+    result.hits = {scenePickerEntry(11), scenePickerEntry(20)};
+    result.candidates = {scenePickerEntry(11), scenePickerEntry(20)};   // no roots
     ScenePickContext c = context({});
     c.exactPick = true;
     const ScenePickClick click = ScenePicker::decideClick(result, c);
@@ -159,8 +159,8 @@ TEST(ScenePicker, MissClearsUnlessModified){
 
 TEST(ScenePicker, IconsComeFirstAndDoNotDrill){
     ScenePickResult result = prefabOverWall();
-    result.hits.insert(result.hits.begin(), entry(40, PickKind::ICON));
-    result.candidates.insert(result.candidates.begin(), entry(40, PickKind::ICON));
+    result.hits.insert(result.hits.begin(), scenePickerEntry(40, PickKind::ICON));
+    result.candidates.insert(result.candidates.begin(), scenePickerEntry(40, PickKind::ICON));
     result.iconCount = 1;
     const ScenePickClick click = ScenePicker::decideClick(result, context({{10}, 10}, 300.0f, 300.0f));
     EXPECT_EQ(click.target.entity, 40u) << "the light icon drawn over the mesh";

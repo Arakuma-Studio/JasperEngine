@@ -99,8 +99,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     project(${APP_NAME})
 
-    # before any target: sanitizers apply to the whole tree (empty by default, as in every export)
+    # before any target: sanitizers and the debug information level apply to the whole tree (empty
+    # and full by default, as in every export)
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/JasperSanitizers.cmake)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/JasperDebugInfo.cmake)
 
     set(JASPERENGINE_SHARED OFF)
 
@@ -1070,10 +1072,14 @@ option(JASPERENGINE_RELEASE_LTO "The release link of a GCC Linux game with link-
 option(JASPERENGINE_SPLIT_SYMBOLS "A shipped game's debug information, split off into the build tree's symbols/" ${jasperengineShippedGame})
 if(JASPERENGINE_SPLIT_SYMBOLS AND NOT ANDROID)
     if(MSVC)
-        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Zi>)
+        # /Z7: each object carries its own debug information, which the link gathers into the PDB as
+        # before; /Zi's shared compiler PDB made every object uncacheable (ccache: the player
+        # runtimes and Compile builds of CI)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Z7>)
         add_link_options(/DEBUG:FULL)
     else()
-        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-g>)
+        # -g, or line tables only with JASPERENGINE_DEBUG_INFO=lines (cmake/JasperDebugInfo.cmake)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:${JASPERENGINE_DEBUG_FLAG}>)
     endif()
 endif()
 if(JASPERENGINE_RELEASE_LINK)
@@ -1293,10 +1299,11 @@ if(JASPERENGINE_RUNTIME_SHADERS)
 endif()
 
 # Set again here because standalone builds skip the root CMakeLists
+# C and C++ only: an assembler handed /w takes it for a second input file (dav1d's NASM on MSVC)
 if(MSVC)
-    set(EXTERNAL_WARNING_FLAG /w)
+    set(EXTERNAL_WARNING_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:/w>)
 else()
-    set(EXTERNAL_WARNING_FLAG -w)
+    set(EXTERNAL_WARNING_FLAG $<$<COMPILE_LANGUAGE:C,CXX>:-w>)
 endif()
 
 set(JASPERENGINE_TEXTURE_LIBS zstd_decompress zstd basisu_transcoder)
@@ -2353,6 +2360,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     target_link_libraries(jasperengine PUBLIC "-framework CoreServices")
 endif()
 
+# M_PI and the other <cmath> constants, which the Windows CRT declares only with _USE_MATH_DEFINES
+# set before its first include: for every source of the engine and of the targets linking it
+if(WIN32)
+    target_compile_definitions(jasperengine PUBLIC _USE_MATH_DEFINES)
+endif()
+# Sources are UTF-8 whatever the code page, as the editor's, the tests' and a game's own: MSVC read
+# the engine's in the system code page (TitleFit's kinsoku sets of U"..." literals came out wrong)
+target_compile_options(jasperengine PRIVATE $<$<AND:$<CXX_COMPILER_ID:MSVC>,$<COMPILE_LANGUAGE:C,CXX>>:/utf-8>)
+
 # the logger's backtraces (core/log/Backtrace.cpp): DbgHelp symbols on Windows, dladdr elsewhere
 if(WIN32)
     target_link_libraries(jasperengine PRIVATE dbghelp)
@@ -2424,6 +2440,12 @@ set_source_files_properties(${JASPERENGINE_ANIMATOR_SRCS} PROPERTIES COMPILE_OPT
 set_source_files_properties(core/audio/AudioMeter.cpp PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS}")
 set_source_files_properties(libs/soloud/src/audiosource/wav/stb_vorbis.c libs/soloud/src/audiosource/wav/dr_impl.cpp
     libs/soloud/src/audiosource/wav/soloud_wav.cpp libs/soloud/src/core/soloud_fft.cpp DIRECTORY libs/soloud PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS}")
+# and the same pi: stb_vorbis falls back to a float M_PI where <math.h> has none (the Windows CRT
+# without _USE_MATH_DEFINES, which the jasperengine target sets but not soloud's), and every Ogg
+# Vorbis decode's twiddles and window then differed from the other platforms' in the last bit
+if(WIN32)
+    target_compile_definitions(soloud PRIVATE _USE_MATH_DEFINES)
+endif()
 if(EMSCRIPTEN)
     if(JASPERENGINE_WASM_SIMD)
         set_source_files_properties(core/animation/AnimatorPose.cpp PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS};-msimd128")
@@ -2456,6 +2478,11 @@ jasperengine_skip_unity_build(
 if(NOT MSVC)
     set_source_files_properties(core/texture/MipChain.cpp core/texture/TexturePrepare.cpp
         PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
+# the grid layouts (S50): the cell of a cell's own point is that cell only without fused
+# multiply-adds (arm64 Clang fuses them by default), so painting and picking agree on every CPU
+if(NOT MSVC)
+    set_source_files_properties(core/tilemap/TileGridLayout.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
 endif()
 # Every player links the limiter (S38 6.6), and most run it on one bus, with room to spare in its budget
 # (R17): it is built for size. Its result does not depend on it: no fast-math, no contraction here.
@@ -2656,7 +2683,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
             SOURCES ${JASPERENGINE_ROOT}/platform/linux/JasperEngineLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
                     ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp ${JASPERENGINE_ROOT}/platform/linux/X11Pen.cpp
-                    ${JASPERENGINE_ROOT}/platform/linux/LinuxInputRouter.cpp ${JASPERENGINE_ROOT}/platform/linux/SystemLinux.cpp)
+                    ${JASPERENGINE_ROOT}/platform/linux/LinuxInputRouter.cpp ${JASPERENGINE_ROOT}/platform/linux/SystemLinux.cpp
+                    ${JASPERENGINE_ROOT}/platform/linux/HostServicesLinux.cpp)
     endif()
     # the shipped binary stripped, its debug information in symbols/ (JASPERENGINE_SPLIT_SYMBOLS)
     get_target_property(jasperengineAppType ${APP_NAME} TYPE)

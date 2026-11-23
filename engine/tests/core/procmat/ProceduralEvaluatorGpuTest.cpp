@@ -34,7 +34,7 @@ using jasperengine::test::GpuEnvironment;
 
 namespace {
 
-    std::shared_ptr<const NodeLibrary> repositoryLibrary() {
+    std::shared_ptr<const NodeLibrary> evaluatorRepositoryLibrary() {
         std::string error;
         auto library = NodeLibrary::fromDirectory(std::filesystem::path(JASPER_TEST_REPO_DIR) / "editor/procmat/nodes", error);
         EXPECT_TRUE(library) << error;
@@ -211,7 +211,7 @@ TEST(ProceduralEvaluatorGpu, TheQuantizePassClampsAndAPassWritesNoNaN) {
 
 TEST(ProceduralEvaluatorGpu, AFloatEditChangesTheImageWithNoCompile) {
     JASPER_REQUIRE_GPU();
-    const auto library = repositoryLibrary();
+    const auto library = evaluatorRepositoryLibrary();
     graph::Graph file = singleNodeGraph("perlin", "output");
     ProceduralGpuEvaluator evaluator(EvaluatorTier::Software);
     ProceduralSession session(evaluator, library, optionsOf(64));
@@ -233,7 +233,7 @@ TEST(ProceduralEvaluatorGpu, AFloatEditChangesTheImageWithNoCompile) {
 
 TEST(ProceduralEvaluatorGpu, AnEnumEditRebuildsOnceAfterTheDebounceAndKeepsThePreviousImage) {
     JASPER_REQUIRE_GPU();
-    const auto library = repositoryLibrary();
+    const auto library = evaluatorRepositoryLibrary();
     graph::Graph file;
     file.kind = PROCEDURAL_MATERIAL_KIND;
     graph::Node a, b, blend, output;
@@ -282,7 +282,7 @@ TEST(ProceduralEvaluatorGpu, AnEnumEditRebuildsOnceAfterTheDebounceAndKeepsThePr
 
 TEST(ProceduralEvaluatorGpu, ARebuildKeepsThePassesThatDidNotChange) {
     JASPER_REQUIRE_GPU();
-    const auto library = repositoryLibrary();
+    const auto library = evaluatorRepositoryLibrary();
     graph::Graph file;
     file.kind = PROCEDURAL_MATERIAL_KIND;
     graph::Node noise, buffer, blend, output;
@@ -346,7 +346,7 @@ TEST(ProceduralEvaluatorGpu, APassThatDoesNotCompileIsNamedWithItsLog) {
 
 TEST(ProceduralEvaluatorGpu, ACancelledEvaluationDrawsNothingMore) {
     JASPER_REQUIRE_GPU();
-    const auto library = repositoryLibrary();
+    const auto library = evaluatorRepositoryLibrary();
     PassPlan plan;
     std::string error;
     ASSERT_TRUE(planGraph(singleNodeGraph("perlin", "output"), library, {}, optionsOf(16), plan, error)) << error;
@@ -388,7 +388,7 @@ TEST(ProceduralEvaluatorGpu, APlanThatDoesNotReadBackLeavesTheImageOnTheDevice) 
 TEST(ProceduralEvaluatorGpu, TheSameInputsGiveTheSameBytes) {
     JASPER_REQUIRE_GPU();
     // R13 on one device: the second evaluator reuses nothing of the first
-    const auto library = repositoryLibrary();
+    const auto library = evaluatorRepositoryLibrary();
     PassPlan plan;
     std::string error;
     ASSERT_TRUE(planGraph(singleNodeGraph("fbm4", "output"), library, {}, optionsOf(64), plan, error)) << error;
@@ -406,7 +406,7 @@ TEST(ProceduralEvaluatorGpu, TheSameInputsGiveTheSameBytes) {
 
 TEST(ProceduralEvaluatorGpu, APassMatchesTheInterpreter) {
     JASPER_REQUIRE_GPU();
-    const auto library = repositoryLibrary();
+    const auto library = evaluatorRepositoryLibrary();
     PassPlan plan;
     std::string error;
     ASSERT_TRUE(planGraph(singleNodeGraph("perlin", "output"), library, {}, optionsOf(128), plan, error)) << error;

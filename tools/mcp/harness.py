@@ -612,6 +612,11 @@ FRAME_CALL_TIMEOUT = 3600.0
 # The test the runner is running (run_tests.py sets it), for JASPER_MCP_CALL_LOG
 current_test = ""
 
+# What each stdio editor this process started cost besides its tests, in seconds (run_tests.py reports
+# it per file): "scratch" the scratch directory and project copy, "start" from there to the tool list,
+# "first_call" the first tool call (it waits for the project to load), "close" the shutdown and cleanup
+editor_timings: list[dict[str, Any]] = []
+
 
 def _log_call(label: str, tool: str, args: dict | None, seconds: float, error: bool) -> None:
     """One line of JASPER_MCP_CALL_LOG (a profile of where the tests' time goes)."""
@@ -692,6 +697,7 @@ class Editor:
         self._xvfb: Xvfb | None = None
         self._stderr_file = None
         self._console_cursor: Any = None
+        self.timing: dict[str, Any] | None = None
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -715,6 +721,7 @@ class Editor:
         await self.close()
 
     async def start(self) -> None:
+        started = time.monotonic()
         self._stack = contextlib.AsyncExitStack()
         if self.url:
             from mcp.client.streamable_http import create_mcp_http_client, streamable_http_client
@@ -724,6 +731,7 @@ class Editor:
         else:
             extra = {"prefix": self.scratch_prefix} if self.scratch_prefix else {}
             self.scratch = Scratch.make(self.project_src, create=self.create, settings=self.extra_settings, **extra)
+            scratch_seconds = time.monotonic() - started
             display = None
             inherit = self.xvfb_mode == "none"
             if self.xvfb_mode == "harness":
@@ -749,6 +757,11 @@ class Editor:
             raise HarnessError(f"initialize failed: {e!r}\n" + self._tail_block()) from e
         self.instructions = self.session.instructions or ""
         await self.tools()
+        if self.scratch:
+            self.timing = {"test": current_test, "scratch": round(scratch_seconds, 3),
+                           "start": round(time.monotonic() - started, 3), "first_call": None, "first_tool": None,
+                           "close": None}
+            editor_timings.append(self.timing)
         await self._check_device()
 
     async def _check_device(self) -> None:
@@ -770,6 +783,7 @@ class Editor:
                                "(JASPER_MCP_EXPECT_DEVICE)\n" + self._tail_block())
 
     async def close(self) -> None:
+        started = time.monotonic()
         if self._stack:
             stack, self._stack = self._stack, None
             with contextlib.suppress(Exception):
@@ -786,6 +800,8 @@ class Editor:
                 print(f"[harness] scratch kept: {self.scratch.root}", file=sys.stderr)
             else:
                 self.scratch.remove()
+        if self.timing is not None and self.timing["close"] is None:
+            self.timing["close"] = round(time.monotonic() - started, 3)
 
     # -- tools -------------------------------------------------------------
 
@@ -852,6 +868,8 @@ class Editor:
             self.in_flight -= 1
             self.last_activity = time.monotonic()
             _log_call(self.label, tool, args, self.last_activity - started, error)
+            if self.timing is not None and self.timing["first_call"] is None:
+                self.timing.update(first_call=round(self.last_activity - started, 3), first_tool=tool)
         return CallResult.from_mcp(tool, r)
 
     def idle_seconds(self) -> float:

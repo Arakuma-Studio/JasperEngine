@@ -1,0 +1,3 @@
+[   0.000] JasperEngine web: starting
+[   0.001] error: (ERROR): Missing precompiled shader 'lit_skinned' for backend gles3
+[   0.001] Engine ready: 1 scene(s) loaded

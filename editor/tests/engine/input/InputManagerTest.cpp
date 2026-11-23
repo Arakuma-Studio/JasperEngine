@@ -82,13 +82,13 @@ namespace {
         return text;
     }
 
-    size_t count(const std::string& text, const std::string& what) {
+    size_t inputManagerCount(const std::string& text, const std::string& what) {
         size_t n = 0;
         for (size_t at = text.find(what); at != std::string::npos; at = text.find(what, at + 1)) n++;
         return n;
     }
 
-    std::string utf8(const char32_t* text) {
+    std::string inputManagerUtf8(const char32_t* text) {
         std::string out;
         for (; *text; text++) {
             const char32_t c = *text;
@@ -108,7 +108,7 @@ namespace {
         return InputManagerAction();
     }
 
-    std::vector<std::string> names(const std::vector<InputControl>& controls) {
+    std::vector<std::string> inputManagerNames(const std::vector<InputControl>& controls) {
         std::vector<std::string> out;
         for (const InputControl& control : controls) out.push_back(InputControlNames::name(control));
         return out;
@@ -328,16 +328,16 @@ TEST_F(InputEdgesTest, InputStringIsUtf8WithAstralCharacters) {
     Input::addInputCharacter('\r');
     Input::addInputCharacter(0x1B);        // escape: not text
     begin();
-    EXPECT_EQ(Input::getInputString(), utf8(U"hé\U0001F600\b\n"));
+    EXPECT_EQ(Input::getInputString(), inputManagerUtf8(U"hé\U0001F600\b\n"));
     end();
     begin();
     EXPECT_EQ(Input::getInputString(), "");
     end();
 
     // through the engine: committed text and characters (surrogate pairs combined where wchar_t is 16 bits)
-    Engine::systemTextInput(utf8(U"ñ\U0001F680"));
+    Engine::systemTextInput(inputManagerUtf8(U"ñ\U0001F680"));
     begin();
-    EXPECT_EQ(Input::getInputString(), utf8(U"ñ\U0001F680"));
+    EXPECT_EQ(Input::getInputString(), inputManagerUtf8(U"ñ\U0001F680"));
     end();
 }
 
@@ -571,8 +571,8 @@ TEST_F(InputActionsTest, DefaultsAreUnitysInputManager) {
     ASSERT_EQ(horizontal.bindings.size(), 2u);
     const InputManagerBinding& keys = horizontal.bindings[0];
     EXPECT_EQ(keys.kind, InputManagerBindingKind::Buttons);
-    EXPECT_EQ(names(keys.negative), (std::vector<std::string>{"left", "a"}));
-    EXPECT_EQ(names(keys.positive), (std::vector<std::string>{"right", "d"}));
+    EXPECT_EQ(inputManagerNames(keys.negative), (std::vector<std::string>{"left", "a"}));
+    EXPECT_EQ(inputManagerNames(keys.positive), (std::vector<std::string>{"right", "d"}));
     EXPECT_FLOAT_EQ(keys.gravity, 3);
     EXPECT_FLOAT_EQ(keys.sensitivity, 3);
     EXPECT_FLOAT_EQ(keys.dead, 0.001f);
@@ -586,14 +586,14 @@ TEST_F(InputActionsTest, DefaultsAreUnitysInputManager) {
     EXPECT_FALSE(stick.invert);
 
     const InputManagerAction vertical = actionNamed("Vertical");
-    EXPECT_EQ(names(vertical.bindings[0].negative), (std::vector<std::string>{"down", "s"}));
-    EXPECT_EQ(names(vertical.bindings[0].positive), (std::vector<std::string>{"up", "w"}));
+    EXPECT_EQ(inputManagerNames(vertical.bindings[0].negative), (std::vector<std::string>{"down", "s"}));
+    EXPECT_EQ(inputManagerNames(vertical.bindings[0].positive), (std::vector<std::string>{"up", "w"}));
     EXPECT_EQ(vertical.bindings[1].axis, D_GAMEPAD_AXIS_LEFT_Y);
     EXPECT_TRUE(vertical.bindings[1].invert);
 
     auto buttonsOf = [](const std::string& name) {
         std::vector<std::vector<std::string>> out;
-        for (const InputManagerBinding& binding : actionNamed(name).bindings) out.push_back(names(binding.positive));
+        for (const InputManagerBinding& binding : actionNamed(name).bindings) out.push_back(inputManagerNames(binding.positive));
         return out;
     };
     using Lists = std::vector<std::vector<std::string>>;
@@ -992,7 +992,7 @@ TEST_F(InputActionsTest, UnknownNameLogsOnceAndReadsZero) {
     const std::string console = loggedSince(mark);
     // once, on each path it takes (the System of the moment may print it and give it to Out too)
     const char* line = "Input action \"Fire4\" does not exist (Project Settings > Input)";
-    EXPECT_EQ(std::max({count(err, line), count(out, line), count(console, line)}), 1u) << err << out << console;
+    EXPECT_EQ(std::max({inputManagerCount(err, line), inputManagerCount(out, line), inputManagerCount(console, line)}), 1u) << err << out << console;
     EXPECT_FALSE(InputActions::hasAction("Fire4"));
 }
 
@@ -1050,7 +1050,7 @@ TEST_F(InputActionsTest, JsonLoadsAndRejectsWithTheBindingNamed) {
         {"name": "Dash", "type": "button", "description": "a quick move",
          "bindings": [{"kind": "buttons", "positive": ["left shift", "Joystick Button 5"]}]}]})", &error)) << error;
     ASSERT_EQ(InputActions::getManagerActions().size(), 1u);
-    EXPECT_EQ(names(InputActions::getManagerActions()[0].bindings[0].positive),
+    EXPECT_EQ(inputManagerNames(InputActions::getManagerActions()[0].bindings[0].positive),
               (std::vector<std::string>{"left_shift", "gamepad_right_bumper"}));
     EXPECT_EQ(InputActions::getManagerActions()[0].description, "a quick move");
     // the bare list too
@@ -1129,7 +1129,7 @@ TEST_F(InputActionsTest, OverridesExportImportRoundTrip) {
 
     ASSERT_TRUE(InputActions::importOverrides(exported, &error)) << error;
     EXPECT_EQ(InputActions::exportOverrides(), exported);
-    EXPECT_EQ(names(InputActions::getBindings("Jump")[0].positive), (std::vector<std::string>{"j", "gamepad_left_bumper"}));
+    EXPECT_EQ(inputManagerNames(InputActions::getBindings("Jump")[0].positive), (std::vector<std::string>{"j", "gamepad_left_bumper"}));
 
     // an action the game no longer has is skipped; an invalid binding fails and changes nothing
     testing::internal::CaptureStderr();

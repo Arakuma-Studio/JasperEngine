@@ -49,6 +49,7 @@ namespace {
         data.updateFlags = field.updateFlags;
         data.def = (field.flags & NoDefault) ? nullptr : const_cast<void*>(def);
         data.ref = ref;
+        data.size = static_cast<uint32_t>(ops->size);
         return data;
     }
 
@@ -90,8 +91,8 @@ namespace {
 
     // Whether a property's value differs between two components (a Custom one always does: too
     // complex to compare). Not const: some of these types compare through non-const operators
-    bool propertyValueChanged(PropertyType type, void* oldRef, void* newRef) {
-        switch (type) {
+    bool propertyValueChanged(const PropertyData& property, void* oldRef, void* newRef) {
+        switch (property.type) {
             case PropertyType::Bool:
                 return *static_cast<bool*>(oldRef) != *static_cast<bool*>(newRef);
             case PropertyType::Float:
@@ -99,9 +100,9 @@ namespace {
             case PropertyType::Double:
                 return *static_cast<double*>(oldRef) != *static_cast<double*>(newRef);
             case PropertyType::Int:
-                return *static_cast<int*>(oldRef) != *static_cast<int*>(newRef);
             case PropertyType::UInt:
-                return *static_cast<unsigned int*>(oldRef) != *static_cast<unsigned int*>(newRef);
+            case PropertyType::Enum:
+                return readPropertyInteger(property, oldRef) != readPropertyInteger(property, newRef);
             case PropertyType::String:
                 return *static_cast<std::string*>(oldRef) != *static_cast<std::string*>(newRef);
             case PropertyType::Asset:
@@ -120,8 +121,6 @@ namespace {
                 return *static_cast<Vector4*>(oldRef) != *static_cast<Vector4*>(newRef);
             case PropertyType::Quat:
                 return *static_cast<Quaternion*>(oldRef) != *static_cast<Quaternion*>(newRef);
-            case PropertyType::Enum:
-                return *static_cast<int*>(oldRef) != *static_cast<int*>(newRef);
             case PropertyType::Ease:
                 return *static_cast<Ease*>(oldRef) != *static_cast<Ease*>(newRef);
             case PropertyType::Texture:
@@ -148,12 +147,12 @@ namespace {
 
     struct FlagField {
         const FieldDesc* field = nullptr;
-        // the field listed itself, by value: its type (no flags to add otherwise)
+        // the field listed itself, by value: its type and size (no flags to add otherwise)
         bool whole = false;
-        PropertyType wholeType = PropertyType::Custom;
-        // an array's elements in use, each listed: their type (an array of structs: ListEachElement)
+        PropertyData wholeType{PropertyType::Custom};
+        // an array's elements in use, each listed: their type and size (an array of structs: ListEachElement)
         bool elements = false;
-        PropertyType elementType = PropertyType::Custom;
+        PropertyData elementType{PropertyType::Custom};
         bool array = false;
         // the members of the struct, or of each element of an array of structs
         const FlagStruct* members = nullptr;
@@ -185,7 +184,7 @@ namespace {
                     flagStruct.always |= field.updateFlags;
                 } else {
                     flagField.whole = true;
-                    flagField.wholeType = field.ops->propertyType;
+                    flagField.wholeType = make(field, field.ops, nullptr, nullptr);
                 }
             }
             if (isStruct) {
@@ -196,7 +195,7 @@ namespace {
                 const bool structs = field.structDesc != nullptr;
                 if (structs) flagField.members = buildFlagStruct(*field.structDesc, built);
                 flagField.elements = field.updateFlags && (structs ? (field.flags & ListEachElement) != 0 : (field.flags & ListElements) != 0);
-                if (flagField.elements) flagField.elementType = field.elementOps->propertyType;
+                if (flagField.elements) flagField.elementType = make(field, field.elementOps, nullptr, nullptr);
                 flagField.array = structs || flagField.elements;
             }
             if (flagField.whole || flagField.elements) flagField.reach |= field.updateFlags;
@@ -342,7 +341,7 @@ uint64_t reflect::changedUpdateFlags(const ComponentDesc& desc, void* oldComp, v
         const auto it = oldExtras.find(name);
         if (it == oldExtras.end() || !it->second.ref || !newProp.ref) continue;
         // A script property can change type between the two, its value would read as the wrong type
-        if (it->second.type != newProp.type || propertyValueChanged(newProp.type, it->second.ref, newProp.ref)) {
+        if (it->second.type != newProp.type || propertyValueChanged(newProp, it->second.ref, newProp.ref)) {
             flags |= newProp.updateFlags;
         }
     }

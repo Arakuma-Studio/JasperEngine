@@ -29,7 +29,7 @@ namespace {
         return d;
     }
 
-    uint64_t hashOf(const PackResult& pack){
+    uint64_t holdFramesHashOf(const PackResult& pack){
         uint64_t h = 1469598103934665603ull;
         const unsigned char* bytes = reinterpret_cast<const unsigned char*>(pack.instances);
         for (size_t i = 0; i < pack.count * sizeof(ParticleInstance); i++) h = (h ^ bytes[i]) * 1099511628211ull;
@@ -42,7 +42,7 @@ namespace {
         uint64_t liveFrames = 0;   // frames with particles: an empty emitter is not packed
     };
 
-    HoldRun run(float holdRate){
+    HoldRun holdFramesRun(float holdRate){
         Sim sim(heldEffect(holdRate));
         HeldPack held;
         HoldRun out;
@@ -53,7 +53,7 @@ namespace {
             memory::Arena arena("HoldFramesTest");
             const PackResult pack = holdRate > 0.0f ? held.get(sim.runtime, RenderView(), arena, nullptr, holdRate)
                                                     : ParticleRenderPrep::pack(sim.runtime, RenderView(), arena);
-            out.hashes.push_back(hashOf(pack));
+            out.hashes.push_back(holdFramesHashOf(pack));
         }
         out.packs = ParticleRenderPrep::packCount() - before;
         return out;
@@ -62,7 +62,7 @@ namespace {
 }
 
 TEST(HoldFrames, DrawnStateChangesOnlyAtSteps){
-    const HoldRun held = run(12.0f);
+    const HoldRun held = holdFramesRun(12.0f);
     // after the first frames (the first particles), the state holds for 5 frames at a time
     int changes = 0;
     for (size_t f = 1; f < held.hashes.size(); f++){
@@ -74,7 +74,7 @@ TEST(HoldFrames, DrawnStateChangesOnlyAtSteps){
     }
     EXPECT_GE(changes, 20);
     // the packs: one per step (24 in two seconds), against one per frame without it
-    const HoldRun every = run(0.0f);
+    const HoldRun every = holdFramesRun(0.0f);
     EXPECT_GE(every.liveFrames, 115u);
     EXPECT_EQ(every.packs, every.liveFrames);
     EXPECT_LE((double)held.packs, 0.3 * (double)every.packs) << held.packs << " packs with Hold Frames";

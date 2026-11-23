@@ -35,7 +35,7 @@ namespace {
 
     const char* const WALK_GUID = "0123456789abcdef0123456789abcdef";
 
-    AnimationPlayerClip clipEntry(const std::string& clip, const std::string& guid = "", const std::string& name = "",
+    AnimationPlayerClip animationPlayerComponentClipEntry(const std::string& clip, const std::string& guid = "", const std::string& name = "",
                                   ClipWrapMode wrap = ClipWrapMode::Default) {
         AnimationPlayerClip entry;
         entry.clip = clip;
@@ -49,9 +49,9 @@ namespace {
     AnimationPlayerComponent authoredPlayer() {
         AnimationPlayerComponent player;
         player.enabled = false;
-        player.clips = {clipEntry("anim/walk.anim", WALK_GUID, "Walk", ClipWrapMode::Loop),
-                        clipEntry("models/hero.gltf#Idle"),
-                        clipEntry("anim/jump.anim", "", "", ClipWrapMode::ClampForever)};
+        player.clips = {animationPlayerComponentClipEntry("anim/walk.anim", WALK_GUID, "Walk", ClipWrapMode::Loop),
+                        animationPlayerComponentClipEntry("models/hero.gltf#Idle"),
+                        animationPlayerComponentClipEntry("anim/jump.anim", "", "", ClipWrapMode::ClampForever)};
         player.defaultClip = "Walk";
         player.playAutomatically = false;
         player.speed = 1.5f;
@@ -59,7 +59,7 @@ namespace {
         return player;
     }
 
-    void expectSameAuthored(const AnimationPlayerComponent& a, const AnimationPlayerComponent& b) {
+    void animationPlayerComponentExpectSameAuthored(const AnimationPlayerComponent& a, const AnimationPlayerComponent& b) {
         EXPECT_EQ(a.enabled, b.enabled);
         EXPECT_EQ(a.clips, b.clips);
         EXPECT_EQ(a.defaultClip, b.defaultClip);
@@ -68,7 +68,7 @@ namespace {
         EXPECT_FLOAT_EQ(a.defaultFadeTime, b.defaultFadeTime);
     }
 
-    Entity playerEntity(Scene& scene, const AnimationPlayerComponent& player) {
+    Entity animationPlayerComponentPlayerEntity(Scene& scene, const AnimationPlayerComponent& player) {
         Entity entity = scene.createUserEntity();
         scene.addComponent<Transform>(entity, {});
         scene.addComponent<AnimationPlayerComponent>(entity, player);
@@ -96,7 +96,7 @@ TEST(AnimationPlayerComponent, StreamRoundTripKeepsEveryAuthoredField) {
     EXPECT_EQ(node["clips"][2]["wrap"].as<std::string>(), "clamp_forever");
 
     const AnimationPlayerComponent decoded = Stream::decodeAnimationPlayerComponent(node);
-    expectSameAuthored(decoded, player);
+    animationPlayerComponentExpectSameAuthored(decoded, player);
     EXPECT_TRUE(decoded.needsLoad);
     EXPECT_FALSE(decoded.started);
     EXPECT_FALSE(decoded.runtime);
@@ -115,8 +115,8 @@ TEST(AnimationPlayerComponent, StreamDefaultsAndLenientEntries) {
     const AnimationPlayerComponent decoded = Stream::decodeAnimationPlayerComponent(node);
     const AnimationPlayerComponent defaults;
     ASSERT_EQ(decoded.clips.size(), 3u);
-    EXPECT_EQ(decoded.clips[0], clipEntry("anim/walk.anim"));
-    EXPECT_EQ(decoded.clips[1], clipEntry("anim/run.anim"));
+    EXPECT_EQ(decoded.clips[0], animationPlayerComponentClipEntry("anim/walk.anim"));
+    EXPECT_EQ(decoded.clips[1], animationPlayerComponentClipEntry("anim/run.anim"));
     EXPECT_EQ(decoded.clips[2].clip, "42.5");
     EXPECT_EQ(decoded.enabled, defaults.enabled);
     EXPECT_EQ(decoded.defaultClip, "");
@@ -142,7 +142,7 @@ TEST(AnimationPlayerComponent, StreamDefaultsAndLenientEntries) {
     EXPECT_EQ(shapes.playAutomatically, defaults.playAutomatically);
     EXPECT_EQ(shapes.defaultClip, "");
     ASSERT_EQ(shapes.clips.size(), 1u);
-    EXPECT_EQ(shapes.clips[0], clipEntry("anim/y.anim"));
+    EXPECT_EQ(shapes.clips[0], animationPlayerComponentClipEntry("anim/y.anim"));
     // yaml-cpp's other spellings of a bool still read
     EXPECT_FALSE(Stream::decodeAnimationPlayerComponent(YAML::Load("enabled: no\n")).enabled);
 
@@ -180,7 +180,7 @@ TEST(AnimationPlayerComponent, DecodingOverAPlayerKeepsItsRunAndClearsCallbacks)
 
 TEST(AnimationPlayerComponent, SceneComponentsEncodeAndDecode) {
     Scene scene;
-    const Entity entity = playerEntity(scene, authoredPlayer());
+    const Entity entity = animationPlayerComponentPlayerEntity(scene, authoredPlayer());
     const YAML::Node components = Stream::encodeComponents(entity, &scene, scene.getSignature(entity));
     ASSERT_TRUE(components["animationplayer"]);
 
@@ -188,7 +188,7 @@ TEST(AnimationPlayerComponent, SceneComponentsEncodeAndDecode) {
     const Entity copy = other.createUserEntity();
     Stream::decodeComponents(copy, NULL_ENTITY, &other, components);
     ASSERT_TRUE(other.findComponent<AnimationPlayerComponent>(copy));
-    expectSameAuthored(other.getComponent<AnimationPlayerComponent>(copy), authoredPlayer());
+    animationPlayerComponentExpectSameAuthored(other.getComponent<AnimationPlayerComponent>(copy), authoredPlayer());
     const std::vector<ComponentType> found = Catalog::findComponents(&other, copy);
     EXPECT_NE(std::find(found.begin(), found.end(), ComponentType::AnimationPlayerComponent), found.end());
 }
@@ -197,7 +197,7 @@ TEST(AnimationPlayerComponent, SceneComponentsEncodeAndDecode) {
 
 TEST(AnimationPlayerComponent, CatalogProperties) {
     Scene scene;
-    const Entity entity = playerEntity(scene, authoredPlayer());
+    const Entity entity = animationPlayerComponentPlayerEntity(scene, authoredPlayer());
     const ComponentType type = ComponentType::AnimationPlayerComponent;
     AnimationPlayerComponent& player = scene.getComponent<AnimationPlayerComponent>(entity);
 
@@ -249,8 +249,8 @@ TEST(AnimationPlayerComponent, CatalogProperties) {
 
 TEST(AnimationPlayerComponent, CatalogCopiesTheCustomProperties) {
     Scene scene;
-    const Entity source = playerEntity(scene, authoredPlayer());
-    const Entity target = playerEntity(scene, AnimationPlayerComponent());
+    const Entity source = animationPlayerComponentPlayerEntity(scene, authoredPlayer());
+    const Entity target = animationPlayerComponentPlayerEntity(scene, AnimationPlayerComponent());
     const ComponentType type = ComponentType::AnimationPlayerComponent;
 
     // (a prefab revert copies values this way: the player reloads, through the property's flag)
@@ -266,9 +266,9 @@ TEST(AnimationPlayerComponent, CatalogCopiesTheCustomProperties) {
     EXPECT_TRUE(scene.getComponent<AnimationPlayerComponent>(target).needsLoad);
 
     // the whole component (Paste Component Values): decoded over the target
-    const Entity third = playerEntity(scene, AnimationPlayerComponent());
+    const Entity third = animationPlayerComponentPlayerEntity(scene, AnimationPlayerComponent());
     Catalog::copyComponent(&scene, source, &scene, third, type);
-    expectSameAuthored(scene.getComponent<AnimationPlayerComponent>(third), scene.getComponent<AnimationPlayerComponent>(source));
+    animationPlayerComponentExpectSameAuthored(scene.getComponent<AnimationPlayerComponent>(third), scene.getComponent<AnimationPlayerComponent>(source));
 }
 
 // ---- prefab overrides ----------------------------------------------------------------------
@@ -277,21 +277,21 @@ TEST(AnimationPlayerComponent, PrefabOverrideOfTheClipList) {
     const ComponentType type = ComponentType::AnimationPlayerComponent;
     Scene asset;
     AnimationPlayerComponent assetPlayer;
-    assetPlayer.clips = {clipEntry("anim/walk.anim", WALK_GUID)};
-    const Entity assetRoot = playerEntity(asset, assetPlayer);
+    assetPlayer.clips = {animationPlayerComponentClipEntry("anim/walk.anim", WALK_GUID)};
+    const Entity assetRoot = animationPlayerComponentPlayerEntity(asset, assetPlayer);
 
     // a scalar is its own override; the list as it was is none
     Scene instance;
     AnimationPlayerComponent faster = assetPlayer;
     faster.speed = 2.0f;
-    const Entity fasterRoot = playerEntity(instance, faster);
+    const Entity fasterRoot = animationPlayerComponentPlayerEntity(instance, faster);
     EXPECT_EQ(prefabinternal::diffComponentProperties(&asset, assetRoot, &instance, fasterRoot, type),
               std::vector<std::string>{"speed"});
 
     // another list: the whole list is overridden
     AnimationPlayerComponent more = assetPlayer;
-    more.clips.push_back(clipEntry("models/hero.gltf#Run", "", "Run", ClipWrapMode::Loop));
-    const Entity moreRoot = playerEntity(instance, more);
+    more.clips.push_back(animationPlayerComponentClipEntry("models/hero.gltf#Run", "", "Run", ClipWrapMode::Loop));
+    const Entity moreRoot = animationPlayerComponentPlayerEntity(instance, more);
     // (and the new entry's own fields, which the prefab does not have)
     EXPECT_EQ(prefabinternal::diffComponentProperties(&asset, assetRoot, &instance, moreRoot, type),
               (std::vector<std::string>{"clips", "clips[1].clip", "clips[1].footIK", "clips[1].guid", "clips[1].layer", "clips[1].mirror",
@@ -300,7 +300,7 @@ TEST(AnimationPlayerComponent, PrefabOverrideOfTheClipList) {
     // one entry's wrap: the list and that field (the Overrides list shows both, as for other lists)
     AnimationPlayerComponent looping = assetPlayer;
     looping.clips[0].wrap = ClipWrapMode::Loop;
-    const Entity loopingRoot = playerEntity(instance, looping);
+    const Entity loopingRoot = animationPlayerComponentPlayerEntity(instance, looping);
     EXPECT_EQ(prefabinternal::diffComponentProperties(&asset, assetRoot, &instance, loopingRoot, type),
               (std::vector<std::string>{"clips", "clips[0].wrap"}));
 
@@ -308,7 +308,7 @@ TEST(AnimationPlayerComponent, PrefabOverrideOfTheClipList) {
     prefabinternal::ScratchEntity values;
     values.takeComponents(&instance, moreRoot, Catalog::componentTypeToSignature(&instance, type));
     Scene loaded;
-    const Entity loadedRoot = playerEntity(loaded, assetPlayer);
+    const Entity loadedRoot = animationPlayerComponentPlayerEntity(loaded, assetPlayer);
     std::set<std::string> names{"clips"};
     prefabinternal::copyProperties(values, &loaded, loadedRoot, type, names, "test");
     EXPECT_EQ(loaded.getComponent<AnimationPlayerComponent>(loadedRoot).clips, more.clips);
@@ -319,20 +319,20 @@ TEST(AnimationPlayerComponent, PrefabOverrideOfTheClipList) {
 
 TEST(AnimationPlayerComponent, CopyAndPasteComponentValues) {
     Scene scene;
-    const Entity source = playerEntity(scene, authoredPlayer());
+    const Entity source = animationPlayerComponentPlayerEntity(scene, authoredPlayer());
     AnimationPlayerComponent other;
-    other.clips = {clipEntry("anim/a.anim"), clipEntry("anim/b.anim"), clipEntry("anim/c.anim"), clipEntry("anim/d.anim")};
+    other.clips = {animationPlayerComponentClipEntry("anim/a.anim"), animationPlayerComponentClipEntry("anim/b.anim"), animationPlayerComponentClipEntry("anim/c.anim"), animationPlayerComponentClipEntry("anim/d.anim")};
     other.defaultClip = "c";
-    const Entity target = playerEntity(scene, other);
+    const Entity target = animationPlayerComponentPlayerEntity(scene, other);
 
     const YAML::Node copied = EntityClipboard::encodeComponent(&scene, source, ComponentType::AnimationPlayerComponent);
     EntityClipboard::applyComponentValue(&scene, target, ComponentType::AnimationPlayerComponent, copied);
-    expectSameAuthored(scene.getComponent<AnimationPlayerComponent>(target), authoredPlayer());
+    animationPlayerComponentExpectSameAuthored(scene.getComponent<AnimationPlayerComponent>(target), authoredPlayer());
 
     // Add Component gives the defaults
     const AnimationPlayerComponent added = Stream::decodeAnimationPlayerComponent(
         EntityClipboard::encodeDefaultComponent(ComponentType::AnimationPlayerComponent));
-    expectSameAuthored(added, AnimationPlayerComponent());
+    animationPlayerComponentExpectSameAuthored(added, AnimationPlayerComponent());
 }
 
 // ---- ProjectUtils --------------------------------------------------------------------------
@@ -347,7 +347,7 @@ TEST(AnimationPlayerComponent, ProjectUtilsAddsAndRemoves) {
 
     ProjectUtils::addEntityComponent(&scene, entity, type, entities);
     ASSERT_TRUE(scene.findComponent<AnimationPlayerComponent>(entity));
-    expectSameAuthored(scene.getComponent<AnimationPlayerComponent>(entity), AnimationPlayerComponent());
+    animationPlayerComponentExpectSameAuthored(scene.getComponent<AnimationPlayerComponent>(entity), AnimationPlayerComponent());
 
     const YAML::Node removed = ProjectUtils::removeEntityComponent(&scene, entity, type, entities, true);
     EXPECT_FALSE(scene.findComponent<AnimationPlayerComponent>(entity));
@@ -357,14 +357,14 @@ TEST(AnimationPlayerComponent, ProjectUtilsAddsAndRemoves) {
     // undo of a removal: added back from its encode
     ProjectUtils::addEntityComponent(&scene, entity, type, entities, Stream::encodeAnimationPlayerComponent(authoredPlayer()));
     ASSERT_TRUE(scene.findComponent<AnimationPlayerComponent>(entity));
-    expectSameAuthored(scene.getComponent<AnimationPlayerComponent>(entity), authoredPlayer());
+    animationPlayerComponentExpectSameAuthored(scene.getComponent<AnimationPlayerComponent>(entity), authoredPlayer());
 }
 
 // ---- GUID references -----------------------------------------------------------------------
 
 TEST(AnimationPlayerComponent, ClipReferencesNeedAProjectToResolve) {
     Scene scene;
-    const Entity entity = playerEntity(scene, authoredPlayer());
+    const Entity entity = animationPlayerComponentPlayerEntity(scene, authoredPlayer());
     // no project open (no AssetDatabase): nothing changes (Project::resolveRegistryClipRefs, the
     // one resolver; AnimationClipAssetsTest covers it with a project)
     Project project;
@@ -417,7 +417,7 @@ namespace {
 
 TEST(AnimationPlayerComponent, FactoryEmitsTheAuthoredFields) {
     Scene scene;
-    const Entity entity = playerEntity(scene, authoredPlayer());
+    const Entity entity = animationPlayerComponentPlayerEntity(scene, authoredPlayer());
     const std::string code = Factory::createComponent(0, &scene, entity, ComponentType::AnimationPlayerComponent, "", "scene", "entity");
     EXPECT_EQ(code, EMITTED_ANIMATION_PLAYER);
     // the editor's GUIDs stay out of the build
@@ -430,11 +430,11 @@ TEST(AnimationPlayerComponent, FactoryEmitsTheAuthoredFields) {
     emittedAnimationPlayer(&built, builtEntity);
     AnimationPlayerComponent expected = authoredPlayer();
     for (AnimationPlayerClip& entry : expected.clips) entry.guid.clear();
-    expectSameAuthored(built.getComponent<AnimationPlayerComponent>(builtEntity), expected);
+    animationPlayerComponentExpectSameAuthored(built.getComponent<AnimationPlayerComponent>(builtEntity), expected);
 
     // a default player: no list, the settings
     Scene plain;
-    const Entity plainEntity = playerEntity(plain, AnimationPlayerComponent());
+    const Entity plainEntity = animationPlayerComponentPlayerEntity(plain, AnimationPlayerComponent());
     EXPECT_EQ(Factory::createComponent(0, &plain, plainEntity, ComponentType::AnimationPlayerComponent, "", "scene", "entity"),
               "AnimationPlayerComponent animationplayer;\n"
               "animationplayer.playAutomatically = true;\n"

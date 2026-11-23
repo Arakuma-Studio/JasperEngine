@@ -32,7 +32,7 @@ using namespace jasperengine::editor::procmat;
 namespace {
 
 template <size_t N>
-std::unique_ptr<SpirvProgram> loadFixture(const uint32_t (&words)[N]){
+std::unique_ptr<SpirvProgram> spirvInterpreterLoadFixture(const uint32_t (&words)[N]){
     std::string error;
     std::unique_ptr<SpirvProgram> program = SpirvProgram::load(words, N, error);
     EXPECT_TRUE(program != nullptr) << error;
@@ -67,7 +67,7 @@ size_t findInstruction(const std::vector<uint32_t>& words, uint32_t op, int nth 
     return 5;
 }
 
-void expectRefused(const std::vector<uint32_t>& words, const char* what){
+void spirvInterpreterExpectRefused(const std::vector<uint32_t>& words, const char* what){
     std::string error;
     EXPECT_EQ(SpirvProgram::load(words.data(), words.size(), error), nullptr) << what;
     EXPECT_FALSE(error.empty()) << what;
@@ -117,7 +117,7 @@ void assembleHeader(Assembler& a){
 }
 
 TEST(SpirvInterpreter, ArithmeticMatchesGlslDefinitions){
-    const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_arithmetic);
+    const std::unique_ptr<SpirvProgram> program = spirvInterpreterLoadFixture(fixture_arithmetic);
     ASSERT_TRUE(program);
     SpirvMachine machine(*program);
     ASSERT_EQ(program->uniformWords(), 8u);
@@ -146,7 +146,7 @@ TEST(SpirvInterpreter, ArithmeticMatchesGlslDefinitions){
 }
 
 TEST(SpirvInterpreter, IntegersAreExactAndDivisionByZeroDoesNotTrap){
-    const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_integers);
+    const std::unique_ptr<SpirvProgram> program = spirvInterpreterLoadFixture(fixture_integers);
     ASSERT_TRUE(program);
     SpirvMachine machine(*program);
     for (const auto& point : samplePoints){
@@ -171,7 +171,7 @@ TEST(SpirvInterpreter, IntegersAreExactAndDivisionByZeroDoesNotTrap){
 }
 
 TEST(SpirvInterpreter, ControlFlowFunctionsArraysAndMatrices){
-    const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_control_flow);
+    const std::unique_ptr<SpirvProgram> program = spirvInterpreterLoadFixture(fixture_control_flow);
     ASSERT_TRUE(program);
     SpirvMachine machine(*program);
     const float table[4] = {0.125f, 0.25f, 0.5f, 1.0f};
@@ -208,7 +208,7 @@ TEST(SpirvInterpreter, ControlFlowFunctionsArraysAndMatrices){
 
 // The hash of R10, the same bits on every tier: this C++ is the third implementation of it
 TEST(SpirvInterpreter, IntegerHashGivesTheExactBits){
-    const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_rand);
+    const std::unique_ptr<SpirvProgram> program = spirvInterpreterLoadFixture(fixture_rand);
     ASSERT_TRUE(program);
     SpirvMachine machine(*program);
     const auto quantize = [](float x){ return (int32_t)std::floor(std::min(std::max(x, -32767.0f), 32767.0f) * 65536.0f + 0.5f); };
@@ -241,7 +241,7 @@ TEST(SpirvInterpreter, IntegerHashGivesTheExactBits){
 }
 
 TEST(SpirvInterpreter, SamplerIsBilinearRepeatWithBoxMips){
-    const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_sampler);
+    const std::unique_ptr<SpirvProgram> program = spirvInterpreterLoadFixture(fixture_sampler);
     ASSERT_TRUE(program);
     // 2x2, red: 0.25 0.5 / 0.75 1.0
     const SpirvImage image(2, 2, std::vector<float>{0.25f, 0, 0, 1, 0.5f, 0, 0, 1, 0.75f, 0, 0, 1, 1.0f, 0, 0, 1});
@@ -266,7 +266,7 @@ TEST(SpirvInterpreter, SamplerIsBilinearRepeatWithBoxMips){
 // A node's 0/0 must give what the GPU tiers give: a smooth minimum with k = 0 differed from llvmpipe
 // by 127/255 until min, max and clamp followed minNum and maxNum
 TEST(SpirvInterpreter, NaNLosesInMinMaxAndClamp){
-    const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_nan_rules);
+    const std::unique_ptr<SpirvProgram> program = spirvInterpreterLoadFixture(fixture_nan_rules);
     ASSERT_TRUE(program);
     SpirvMachine machine(*program);
     float out[4];
@@ -278,7 +278,7 @@ TEST(SpirvInterpreter, NaNLosesInMinMaxAndClamp){
 }
 
 TEST(SpirvInterpreter, AnEndlessLoopStopsThePixel){
-    const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_endless);
+    const std::unique_ptr<SpirvProgram> program = spirvInterpreterLoadFixture(fixture_endless);
     ASSERT_TRUE(program);
     SpirvMachine machine(*program);
     float out[4];
@@ -324,7 +324,7 @@ TEST(SpirvInterpreter, EveryTruncationIsRefused){
 TEST(SpirvInterpreter, AnEntryPointMustNameAFunction){
     std::vector<uint32_t> words = wordsOf(fixture_rand);
     words[findInstruction(words, opEntryPoint) + 2] = words[3] - 1;
-    expectRefused(words, "an entry point naming nothing");
+    spirvInterpreterExpectRefused(words, "an entry point naming nothing");
 }
 
 // R11: discard is refused by name, before any later stage reads operands it does not have
@@ -338,17 +338,17 @@ TEST(SpirvInterpreter, CorruptModulesAreRefusedAtLoad){
     {
         std::vector<uint32_t> words = wordsOf(fixture_rand);
         words[findInstruction(words, opLoad) + 3] = words[3] + 100;
-        expectRefused(words, "an id past the bound");
+        spirvInterpreterExpectRefused(words, "an id past the bound");
     }
     {
         std::vector<uint32_t> words = wordsOf(fixture_rand);
         words[findInstruction(words, opLoad)] = (3u << 16) | opLoad;
-        expectRefused(words, "an instruction too short");
+        spirvInterpreterExpectRefused(words, "an instruction too short");
     }
     {
         std::vector<uint32_t> words = wordsOf(fixture_rand);
         words[findInstruction(words, opTypeVector) + 3] = 1000;
-        expectRefused(words, "a vector of 1000");
+        spirvInterpreterExpectRefused(words, "a vector of 1000");
     }
     for (const uint32_t length : {0u, 0x40000000u}){
         std::vector<uint32_t> words = wordsOf(fixture_control_flow);
@@ -360,21 +360,21 @@ TEST(SpirvInterpreter, CorruptModulesAreRefusedAtLoad){
                 break;
             }
         }
-        expectRefused(words, "an array of a size that does not fit");
+        spirvInterpreterExpectRefused(words, "an array of a size that does not fit");
     }
     {
         // a load through a float: it would be an indirection driven by shader data
         std::vector<uint32_t> words = wordsOf(fixture_rand);
         const uint32_t floatConstant = words[findInstruction(words, opConstant) + 2];
         words[findInstruction(words, opLoad) + 3] = floatConstant;
-        expectRefused(words, "a load through a value");
+        spirvInterpreterExpectRefused(words, "a load through a value");
     }
     {
         std::vector<uint32_t> words = wordsOf(fixture_control_flow);
         const size_t call = findInstruction(words, opFunctionCall);
         words[call] += 1u << 16;
         words.insert(words.begin() + (long)call + (words[call] >> 16) - 1, words[call + 4]);
-        expectRefused(words, "a call with an extra argument");
+        spirvInterpreterExpectRefused(words, "a call with an extra argument");
     }
     {
         std::vector<uint32_t> words = wordsOf(fixture_rand);
@@ -391,12 +391,12 @@ TEST(SpirvInterpreter, CorruptModulesAreRefusedAtLoad){
             break;
         }
         words[last] = (1u << 16) | opNop;
-        expectRefused(words, "a block with no terminator");
+        spirvInterpreterExpectRefused(words, "a block with no terminator");
     }
     {
         std::vector<uint32_t> words = wordsOf(fixture_arithmetic);
         words[findInstruction(words, opCompositeExtract) + 4] = 0x7fffffffu;
-        expectRefused(words, "an index past its composite");
+        spirvInterpreterExpectRefused(words, "an index past its composite");
     }
     {
         Assembler a;
@@ -407,14 +407,14 @@ TEST(SpirvInterpreter, CorruptModulesAreRefusedAtLoad){
         a.add(opCopyObject, {idFloat, idB, idA});
         a.add(opReturn, {});
         a.add(opFunctionEnd, {});
-        expectRefused(a.words, "two renames of each other");
+        spirvInterpreterExpectRefused(a.words, "two renames of each other");
     }
 }
 
 // glslang's shape for `v.xy + f(v)`: the swizzle reads v before the call writes it, and renames its
 // registers. It once kept reading them after the call's copy-out.
 TEST(SpirvInterpreter, ASwizzleKeepsTheValueItWasTaken){
-    const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_swizzle_alias);
+    const std::unique_ptr<SpirvProgram> program = spirvInterpreterLoadFixture(fixture_swizzle_alias);
     ASSERT_TRUE(program);
     SpirvMachine machine(*program);
     float out[4];
@@ -427,7 +427,7 @@ TEST(SpirvInterpreter, ASwizzleKeepsTheValueItWasTaken){
 // AC6: a pixel's value must not depend on the rows this worker happened to shade before it
 TEST(SpirvInterpreter, GlobalsAndTheOutputStartEachPixelCleared){
     {
-        const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_private_uninitialized);
+        const std::unique_ptr<SpirvProgram> program = spirvInterpreterLoadFixture(fixture_private_uninitialized);
         ASSERT_TRUE(program);
         SpirvMachine machine(*program);
         float out[4];
@@ -437,7 +437,7 @@ TEST(SpirvInterpreter, GlobalsAndTheOutputStartEachPixelCleared){
         EXPECT_EQ(out[0], 0.0f);
     }
     {
-        const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_output_partly_written);
+        const std::unique_ptr<SpirvProgram> program = spirvInterpreterLoadFixture(fixture_output_partly_written);
         ASSERT_TRUE(program);
         SpirvMachine machine(*program);
         float out[4];
@@ -494,7 +494,7 @@ TEST(SpirvInterpreter, APhiReadingPartOfAnotherPhiGetsTheOldValue){
 }
 
 TEST(SpirvInterpreter, ASampleOfNaNIsDefinedAndABadImageIsATexel){
-    const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_sample_nan);
+    const std::unique_ptr<SpirvProgram> program = spirvInterpreterLoadFixture(fixture_sample_nan);
     ASSERT_TRUE(program);
     const SpirvImage image(2, 2, std::vector<float>{0.25f, 0, 0, 1, 0.5f, 0, 0, 1, 0.75f, 0, 0, 1, 1.0f, 0, 0, 1});
     SpirvMachine machine(*program);
@@ -516,7 +516,7 @@ TEST(SpirvInterpreter, ASampleOfNaNIsDefinedAndABadImageIsATexel){
 }
 
 TEST(SpirvInterpreter, RoundingKeepsTheSignOfZero){
-    const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_sign_of_zero);
+    const std::unique_ptr<SpirvProgram> program = spirvInterpreterLoadFixture(fixture_sign_of_zero);
     ASSERT_TRUE(program);
     SpirvMachine machine(*program);
     float out[4];
@@ -530,7 +530,7 @@ TEST(SpirvInterpreter, RoundingKeepsTheSignOfZero){
 
 // What the library uses and no other fixture reaches, so a regression shows without a GL sweep
 TEST(SpirvInterpreter, ComparisonsNegationsAndTheRestOfTheMath){
-    const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_coverage);
+    const std::unique_ptr<SpirvProgram> program = spirvInterpreterLoadFixture(fixture_coverage);
     ASSERT_TRUE(program);
     SpirvMachine machine(*program);
     for (const auto& point : samplePoints){
@@ -559,7 +559,7 @@ TEST(SpirvInterpreter, ComparisonsNegationsAndTheRestOfTheMath){
 
 // R13: one thread's results do not depend on what it shaded before
 TEST(SpirvInterpreter, APixelIsIndependentOfThePreviousOne){
-    const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_control_flow);
+    const std::unique_ptr<SpirvProgram> program = spirvInterpreterLoadFixture(fixture_control_flow);
     ASSERT_TRUE(program);
     SpirvMachine used(*program);
     float ignored[4];

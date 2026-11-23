@@ -14,7 +14,9 @@
 #include <system_error>
 #include <vector>
 
-using namespace jasperengine::editor::cli;
+// not `using namespace cli`: in a unity build it would reach the sources after this one
+using jasperengine::editor::cli::CallCommand;
+using jasperengine::editor::cli::ProceduralMaterialCommand;
 
 namespace fs = std::filesystem;
 
@@ -22,10 +24,10 @@ namespace {
 
     // `call`'s codes. Only "no editor could start" bakes in this process on the CPU tier, never a timeout, an
     // interrupt or a lost connection, after which the editor may have written the files
-    constexpr int EXIT_USAGE = 2;
-    constexpr int EXIT_CONNECTION = 3;
+    constexpr int BAKE_EXIT_USAGE = 2;
+    constexpr int BAKE_EXIT_CONNECTION = 3;
 
-    void printUsage(const std::string& exe) {
+    void printBakeUsage(const std::string& exe) {
         std::cout
             << "Usage:\n"
             << "  " << exe << " procedural-material bake <file.procmat> [options]\n\n"
@@ -72,20 +74,20 @@ int ProceduralMaterialCommand::run(int argc, char** argv, const char* executable
     const std::string exe = fs::path(executableName ? executableName : "jasperengine-editor").filename().string();
     std::vector<std::string> args(argv + 1, argv + argc);
     if (args.empty() || args[0] == "-h" || args[0] == "--help") {
-        printUsage(exe);
-        return args.empty() ? EXIT_USAGE : 0;
+        printBakeUsage(exe);
+        return args.empty() ? BAKE_EXIT_USAGE : 0;
     }
     if (args[0] != "bake") {
         std::cerr << exe << " procedural-material: unknown action '" << args[0] << "' (bake)\n";
-        return EXIT_USAGE;
+        return BAKE_EXIT_USAGE;
     }
     nlohmann::json tool = nlohmann::json::object();
     std::string file;
     double timeout = 600.0;
     const auto usage = [&](const std::string& message) {
         std::cerr << exe << " procedural-material bake: " << message << "\n\n";
-        printUsage(exe);
-        return EXIT_USAGE;
+        printBakeUsage(exe);
+        return BAKE_EXIT_USAGE;
     };
     for (size_t i = 1; i < args.size(); i++) {
         const std::string& arg = args[i];
@@ -97,7 +99,7 @@ int ProceduralMaterialCommand::run(int argc, char** argv, const char* executable
         std::string text;
         long long number = 0;
         if (arg == "-h" || arg == "--help") {
-            printUsage(exe);
+            printBakeUsage(exe);
             return 0;
         } else if (arg == "--output") {
             if (!value(text)) return usage("--output needs a folder");
@@ -151,6 +153,6 @@ int ProceduralMaterialCommand::run(int argc, char** argv, const char* executable
     callArgv.push_back(nullptr);
     const int code = CallCommand::run((int)call.size(), callArgv.data(), executableName);
     // R39: no editor at all (nothing ran in one): the same bake here, on tier 3, with no window
-    if (code == EXIT_CONNECTION && CallCommand::spawnFailed()) return jasperengine::editor::CommandLine::bakeProceduralMaterialOnCpu(argc, argv, project, tool, exe);
+    if (code == BAKE_EXIT_CONNECTION && CallCommand::spawnFailed()) return jasperengine::editor::CommandLine::bakeProceduralMaterialOnCpu(argc, argv, project, tool, exe);
     return code;
 }
