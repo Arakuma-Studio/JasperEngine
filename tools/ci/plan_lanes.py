@@ -807,6 +807,15 @@ OVERFLOW = {
                            "android", "web", "unit-core", "lint")),
     "je-win": ("windows", ("windows-engine-d3d11", "windows-engine-glcore")),
 }
+# the paid tier, last: Blacksmith's macOS (its GitHub App's org runner group "Blacksmith scale sets -
+# blacksmith-6vcpu-macos-26", open to public repositories; macOS 26 with Xcode 26 selected, $0.08 a minute).
+# A macOS job goes there only when the hosted runners are saturated with at least BLACKSMITH_MIN_QUEUED
+# macOS jobs waiting and je-mac cannot take it (busy, offline, unfit or off); BLACKSMITH_VARIABLE=off stops it
+BLACKSMITH = "blacksmith-6vcpu-macos-26"
+BLACKSMITH_MIN_QUEUED = 3
+BLACKSMITH_VARIABLE = "BLACKSMITH_OVERFLOW"
+# the labels a self_hosted dispatch may force, by OS
+FORCEABLE = {**{label: os_ for label, (os_, _order) in OVERFLOW.items()}, BLACKSMITH: "macos"}
 # the jobs of one plan a runner takes (it runs them one after the other): the Mac builds ios in 12 min
 # (run 45104498209), so the plan's macos and ios both beat a saturated hosted queue there
 TAKES = {"je-mac": 2}
@@ -858,10 +867,10 @@ def parse_force(text: str) -> tuple[dict[str, str], list[str]]:
     force, bad = {}, []
     for item in text.replace(",", " ").split():
         job, _, label = item.partition("=")
-        if label in OVERFLOW:
+        if label in FORCEABLE:
             force[job] = label
         else:
-            bad.append(f"{item}: not <job>=<{'|'.join(OVERFLOW)}>")
+            bad.append(f"{item}: not <job>=<{'|'.join(FORCEABLE)}>")
     return force, bad
 
 
@@ -883,7 +892,8 @@ def restrict_to_forced(result: dict, force: dict[str, str]) -> None:
 
 
 def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str, repo: str, attempt: int,
-          disabled: str = "", force: dict[str, str] | None = None, planner: str = "") -> tuple[dict[str, str], list[str]]:
+          disabled: str = "", force: dict[str, str] | None = None, planner: str = "",
+          blacksmith: str = "") -> tuple[dict[str, str], list[str]]:
     """runs_on of each planned job and why. A job goes to an overflow runner only when the run may use one
     (trusted), on its first attempt (a rerun, which the watchdog makes when a runner went away, stays
     hosted), when state (STATE_BRANCH's state.json: tools/ci/runner_dispatch.py, at most STATE_MAX_AGE old) says
@@ -903,15 +913,15 @@ def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str,
         for job, label in sorted(force.items()):
             if trigger != "workflow_dispatch":
                 notes.append(f"{job}={label} ignored: only a workflow_dispatch forces a runner")
-            elif job not in jobs or jobs[job] != OVERFLOW[label][0]:
-                notes.append(f"{job}={label} ignored: no {OVERFLOW[label][0]} job {job} in this plan")
+            elif job not in jobs or jobs[job] != FORCEABLE[label]:
+                notes.append(f"{job}={label} ignored: no {FORCEABLE[label]} job {job} in this plan")
             else:
                 runs_on[job] = label
                 notes.append(f"{job} on {label}: forced (self_hosted)")
         return runs_on, notes
     off = set(disabled.replace(",", " ").split())
     if "all" in off:
-        return runs_on, [f"hosted only: {DISABLED_VARIABLE} is all"]
+        off |= set(OVERFLOW)
     t = state.get("t") if isinstance(state, dict) else None
     if not isinstance(t, (int, float)) or not -60 <= now - t <= STATE_MAX_AGE:
         return runs_on, ["hosted only: " + ("no runner state" if t is None else
@@ -939,6 +949,19 @@ def route(jobs: dict[str, str], state, now: float, trigger: str, head_repo: str,
                 runs_on[job] = label
                 notes.append(f"{job} on {label}: hosted {os_} {'saturated' if hosted.get('saturated') else 'has a job waiting'} "
                              f"({hosted.get('running', 0)} running, {hosted.get('queued', 0)} queued), {label} idle")
+    # the paid tier: the macOS jobs neither GitHub nor je-mac can take soon
+    left = [j for j in OVERFLOW["je-mac"][1] if j in jobs and runs_on[j] == HOSTED["macos"]]
+    hosted = (state.get("os") or {}).get("macos") or {}
+    if left and blacksmith.strip().lower() == "off":
+        notes.append(f"{BLACKSMITH}: off ({BLACKSMITH_VARIABLE})")
+    elif left and not (hosted.get("saturated") and hosted.get("queued", 0) >= BLACKSMITH_MIN_QUEUED):
+        notes.append(f"{BLACKSMITH}: not needed ({hosted.get('queued', 0)} hosted macOS jobs waiting, it takes from "
+                     f"{BLACKSMITH_MIN_QUEUED} with hosted saturated)")
+    elif left:
+        for job in left:
+            runs_on[job] = BLACKSMITH
+            notes.append(f"{job} on {BLACKSMITH}: hosted macOS saturated ({hosted.get('queued', 0)} waiting), je-mac "
+                         "cannot take it (the paid tier)")
     return runs_on, notes
 
 
@@ -1059,6 +1082,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--previous-runs", type=Path, help="push, advisory: `gh run list` JSON of the event's earlier runs on the branch")
     ap.add_argument("--run-id", type=int, help="this run's id, left out of --previous-runs")
     ap.add_argument("--runner-state", type=Path, help=f"state.json of the branch {STATE_BRANCH} (tools/ci/runner_dispatch.py)")
+    ap.add_argument("--blacksmith", default="", help=f"{BLACKSMITH_VARIABLE}: off stops the paid macOS tier")
     ap.add_argument("--runner-disabled", default="", help=f"{DISABLED_VARIABLE}: overflow runner labels to leave alone, or all")
     ap.add_argument("--trigger", default="", help="github.event_name (an overflow runner takes no fork's pull request)")
     ap.add_argument("--head-repo", default="", help="a pull request's head repository (github.event.pull_request.head.repo.full_name)")
@@ -1139,7 +1163,7 @@ def main(argv: list[str]) -> int:
                "checks": {"modules_off": plan["modules_off"] if plan else "", "navigation_off": bool(plan and plan["navigation_off"])}}
         doc["runs_on"], doc["routing"] = route(planned_jobs(doc), load_state(args.runner_state), time.time(), args.trigger,
                                                args.head_repo, args.repo, args.run_attempt, args.runner_disabled, force,
-                                               args.planner)
+                                               args.planner, args.blacksmith)
         write_selection(doc, args.event, plan, result, ci, tests, args.inputs_manifest, out)
         doc["shadow"] = shadow_selection(shadow_plan, ci, left_out, nightly_out, definition(shadow_plan)) if shadow_plan else None
         doc["shadow_why"] = "" if shadow_plan else shadow_why

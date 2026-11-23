@@ -1441,6 +1441,25 @@ a service that starts with the machine (macOS: with the user's login) and reconn
 
 The `changes` job's summary and `lanes.json` (`routing`) say where each job went and why.
 
+**The paid tier: Blacksmith macOS.** After GitHub's runners and `je-mac`, a macOS job may go to
+Blacksmith (`blacksmith-6vcpu-macos-26`: an M4 VM, macOS 26 with Xcode 26 selected, $0.08 a minute;
+its GitHub App's org runner group "Blacksmith scale sets - blacksmith-6vcpu-macos-26" already allows
+public repositories). The plan routes `macos` and `ios` there only when all of these hold: the event
+is trusted and it is the first attempt (as above); the runner state is fresh and says hosted macOS is
+saturated with at least 3 macOS jobs waiting (`BLACKSMITH_MIN_QUEUED`); and `je-mac` cannot take them
+(busy, offline, unfit or disabled). Since a pull request builds the macOS lanes only for an Apple-only
+input, this is in practice the merge queue and `main`.
+
+- **Kill switch**: `gh variable set BLACKSMITH_OVERFLOW --body off` stops it from the next run on;
+  `gh variable delete BLACKSMITH_OVERFLOW` lets it run again. The monthly spend limit is set in the
+  Blacksmith dashboard: past it Blacksmith takes no job, and a routed job waits (it is not rerouted).
+- **Safety**: the same routing rules as the self-hosted tier (never a fork's pull request, the state
+  from `ci-runner-state`), and `free-disk` does nothing on macOS. A Blacksmith VM runs none of the
+  machines' hooks, so what keeps a fork's own `ci.yml` from asking for the label is GitHub's approval
+  of every outside contributor's workflow run, and the spend limit. ccache restores the Actions cache
+  entry there as on GitHub's runners (only a `je-*` machine keeps a cache of its own).
+- **Testing it**: `gh workflow run ci.yml --ref <branch> -f self_hosted='macos=blacksmith-6vcpu-macos-26'`.
+
 **The planner overflows too.** `changes` cannot route itself, and on 2026-11-23 it waited up to an
 hour for a hosted Linux runner (79 Linux jobs queued, the oldest for 4 h), so no plan ran at all. The
 dispatcher sets the repository variable `SELF_HOSTED_PLANNER` to `je-linux` while hosted Linux is
