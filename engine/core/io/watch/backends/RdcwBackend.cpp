@@ -118,7 +118,7 @@ namespace jasperengine::watch {
 
 }
 
-using namespace jasperengine::watch;
+namespace jasperengine::watch {
 
 bool RdcwBackend::start(const fs::path& rootIn, WatchSink& sinkIn, std::string& error) {
     stop();
@@ -355,8 +355,10 @@ void RdcwBackend::injectOverflowForTesting() {
     sink->onRawEvents(std::move(events));
 }
 
-std::unique_ptr<FileWatcher> jasperengine::watch::createRdcwBackend() {
+std::unique_ptr<FileWatcher> createRdcwBackend() {
     return std::make_unique<RdcwBackend>();
 }
+
+}  // namespace jasperengine::watch
 
 #endif

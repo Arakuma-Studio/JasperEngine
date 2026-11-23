@@ -13,7 +13,8 @@
 #include <cstdlib>
 
 using namespace jasperengine;
-using namespace jasperengine::camera;
+
+namespace jasperengine::camera {
 
 namespace{
 
@@ -208,7 +209,7 @@ std::string ShakeParseResult::errorText() const{
     return error;
 }
 
-ShakeParseResult camera::parseShakePreset(const std::string& text){
+ShakeParseResult parseShakePreset(const std::string& text){
     // problems are results; anything thrown below is a bug, never a reason to take a game down
     try{
         return parseText(text);
@@ -223,7 +224,7 @@ ShakeParseResult camera::parseShakePreset(const std::string& text){
     }
 }
 
-std::string camera::writeShakePreset(const ShakePresetFile& file){
+std::string writeShakePreset(const ShakePresetFile& file){
     ShakePreset preset = file.preset;
     sanitizeShakePreset(preset);
 
@@ -258,22 +259,22 @@ std::string camera::writeShakePreset(const ShakePresetFile& file){
     return text;
 }
 
-std::string camera::writeShakePreset(const ShakePreset& preset){
+std::string writeShakePreset(const ShakePreset& preset){
     ShakePresetFile file;
     file.preset = preset;
     return writeShakePreset(file);
 }
 
-const char* camera::shakeTypeName(ShakeType type){
+const char* shakeTypeName(ShakeType type){
     if (type == ShakeType::Kick) return "kick";
     return type == ShakeType::Sustained ? "sustained" : "one_shot";
 }
 
-const char* camera::shakeUnitsName(ShakeUnits units){
+const char* shakeUnitsName(ShakeUnits units){
     return units == ShakeUnits::Pixels ? "pixels" : "view";
 }
 
-bool camera::shakeUnitsFromName(const std::string& name, ShakeUnits& out){
+bool shakeUnitsFromName(const std::string& name, ShakeUnits& out){
     if (name == "view"){
         out = ShakeUnits::View;
         return true;
@@ -285,7 +286,7 @@ bool camera::shakeUnitsFromName(const std::string& name, ShakeUnits& out){
     return false;
 }
 
-ShakePreset camera::makeKickPreset(float amplitudePx, float seconds){
+ShakePreset makeKickPreset(float amplitudePx, float seconds){
     ShakePreset preset;
     preset.type = ShakeType::Kick;
     preset.units = ShakeUnits::Pixels;
@@ -296,7 +297,7 @@ ShakePreset camera::makeKickPreset(float amplitudePx, float seconds){
     return preset;
 }
 
-bool camera::shakeTypeFromName(const std::string& name, ShakeType& out){
+bool shakeTypeFromName(const std::string& name, ShakeType& out){
     if (name == "one_shot"){
         out = ShakeType::OneShot;
         return true;
@@ -312,7 +313,7 @@ bool camera::shakeTypeFromName(const std::string& name, ShakeType& out){
     return false;
 }
 
-void camera::sanitizeShakePreset(ShakePreset& preset, std::vector<std::string>* warnings){
+void sanitizeShakePreset(ShakePreset& preset, std::vector<std::string>* warnings){
     const ShakePreset defaults;
     auto clampField = [&](const char* key, float& value, float fallback){
         if (!std::isfinite(value)){
@@ -338,9 +339,11 @@ void camera::sanitizeShakePreset(ShakePreset& preset, std::vector<std::string>* 
     finiteVector("rotation_influence", preset.rotationInfluence, defaults.rotationInfluence);
 }
 
-float camera::shakePreviewDuration(const ShakePreset& preset){
+float shakePreviewDuration(const ShakePreset& preset){
     // a kick is over at fade_out (plus a beat of rest for the graph)
     if (preset.type == ShakeType::Kick) return std::max(0.05f, preset.fadeOut) + 0.25f;
     if (preset.fadeIn <= 0.0f && preset.fadeOut <= 0.0f) return 3.0f;
     return preset.fadeIn + 1.0f + preset.fadeOut;
 }
+
+}  // namespace jasperengine::camera

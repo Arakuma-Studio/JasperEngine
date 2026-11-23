@@ -13,7 +13,8 @@
 #include <string>
 
 using namespace jasperengine;
-using namespace jasperengine::memory;
+
+namespace jasperengine::memory {
 
 namespace{
     // outermost closes per retention window
@@ -126,3 +127,5 @@ void* ScratchScope::allocateAside(size_t bytes, size_t alignment){
 uint64_t ScratchScope::outOfOrderCount(){
     return scratchGone ? 0 : scratchThread.outOfOrder;
 }
+
+}  // namespace jasperengine::memory

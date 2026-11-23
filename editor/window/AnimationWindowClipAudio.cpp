@@ -33,7 +33,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::clipui;
 
 namespace {
 
@@ -342,22 +341,22 @@ std::vector<ClipCueKind> AnimationWindowClip::audioLaneKinds(const ClipData& dat
 }
 
 float AnimationWindowClip::audioLaneHeight(const ClipData& data) const{
-    const SheetMetrics m = sheetMetrics();
+    const clipui::SheetMetrics m = clipui::sheetMetrics();
     return (float)audioLaneKinds(data).size() * (m.eventsHeight + 8.0f * m.s);
 }
 
 void AnimationWindowClip::drawAudioLaneLabels(ImDrawList* drawList, ImVec2 origin, float width){
     std::shared_ptr<AnimationClipDocument> doc = document();
     if (!doc) return;
-    const SheetMetrics m = sheetMetrics();
+    const clipui::SheetMetrics m = clipui::sheetMetrics();
     const float rowHeight = m.eventsHeight + 8.0f * m.s;
     const std::vector<ClipCueKind> kinds = audioLaneKinds(doc->data());
     for (size_t r = 0; r < kinds.size(); r++){
         const float y = origin.y + (float)r * rowHeight;
-        drawList->AddRectFilled(ImVec2(origin.x, y), ImVec2(origin.x + width, y + rowHeight), color(Theme::Colors::ToolbarBackground));
+        drawList->AddRectFilled(ImVec2(origin.x, y), ImVec2(origin.x + width, y + rowHeight), clipui::color(Theme::Colors::ToolbarBackground));
         const ImVec4 tint = kinds[r] == ClipCueKind::Snapshot ? Theme::Colors::AnimationSnapshot : Theme::Colors::AnimationAudio;
-        drawList->AddRectFilled(ImVec2(origin.x + 4.0f * m.s, y + 4.0f * m.s), ImVec2(origin.x + 7.0f * m.s, y + rowHeight - 4.0f * m.s), color(tint));
-        drawList->AddText(ImVec2(origin.x + 12.0f * m.s, y + (rowHeight - ImGui::GetTextLineHeight()) * 0.5f), color(Theme::Colors::SubtleText),
+        drawList->AddRectFilled(ImVec2(origin.x + 4.0f * m.s, y + 4.0f * m.s), ImVec2(origin.x + 7.0f * m.s, y + rowHeight - 4.0f * m.s), clipui::color(tint));
+        drawList->AddText(ImVec2(origin.x + 12.0f * m.s, y + (rowHeight - ImGui::GetTextLineHeight()) * 0.5f), clipui::color(Theme::Colors::SubtleText),
                           (std::string(ICON_FA_VOLUME_HIGH " ") + cueRowLabel(kinds[r])).c_str());
     }
 }
@@ -367,7 +366,7 @@ void AnimationWindowClip::drawAudioLane(ImDrawList* drawList, ImVec2 origin, flo
     if (!doc || height <= 0.0f) return;
     resolveSelectedCue();
     ImGuiIO& io = ImGui::GetIO();
-    const SheetMetrics m = sheetMetrics();
+    const clipui::SheetMetrics m = clipui::sheetMetrics();
     const float rowHeight = m.eventsHeight + 8.0f * m.s;
     const ClipData& data = doc->data();
     const std::vector<ClipCueKind> kinds = audioLaneKinds(data);
@@ -380,12 +379,12 @@ void AnimationWindowClip::drawAudioLane(ImDrawList* drawList, ImVec2 origin, flo
         return -1;
     };
 
-    drawList->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + height), color(ImVec4(0.17f, 0.17f, 0.17f, 1.0f)));
+    drawList->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + height), clipui::color(ImVec4(0.17f, 0.17f, 0.17f, 1.0f)));
     for (size_t r = 1; r < kinds.size(); r++){
         const float y = origin.y + (float)r * rowHeight;
-        drawList->AddLine(ImVec2(origin.x, y), ImVec2(origin.x + width, y), color(Theme::Colors::ToolbarBorder));
+        drawList->AddLine(ImVec2(origin.x, y), ImVec2(origin.x + width, y), clipui::color(Theme::Colors::ToolbarBorder));
     }
-    drawList->AddLine(ImVec2(origin.x, origin.y + height - 1.0f), ImVec2(origin.x + width, origin.y + height - 1.0f), color(Theme::Colors::ToolbarBorder));
+    drawList->AddLine(ImVec2(origin.x, origin.y + height - 1.0f), ImVec2(origin.x + width, origin.y + height - 1.0f), clipui::color(Theme::Colors::ToolbarBorder));
     ImGui::SetCursorScreenPos(origin);
     ImGui::InvisibleButton("##clip_audio", ImVec2(width, height), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
     const bool laneHovered = ImGui::IsItemHovered();
@@ -404,7 +403,7 @@ void AnimationWindowClip::drawAudioLane(ImDrawList* drawList, ImVec2 origin, flo
         float right = x + m.eventWidth;
         if (cue.kind == ClipCueKind::Snapshot){
             // a flag with its name
-            const ImU32 fill = color(isSelected ? selectedKeyColor() : Theme::Colors::AnimationSnapshot);
+            const ImU32 fill = clipui::color(isSelected ? clipui::selectedKeyColor() : Theme::Colors::AnimationSnapshot);
             drawList->AddRectFilled(ImVec2(x - 1.0f * m.s, top), ImVec2(x + 1.0f * m.s, bottom), fill);
             const std::string label = anim::cueLabel(cue);
             const float textWidth = ImGui::CalcTextSize(label.c_str()).x;
@@ -422,7 +421,7 @@ void AnimationWindowClip::drawAudioLane(ImDrawList* drawList, ImVec2 origin, flo
             std::string label = anim::cueLabel(cue);
             if (sound.empty()) label += " (no sound)";
             else if (!info.error.empty() && !info.pending) label += " (missing)";
-            const ImU32 fill = color(sound.empty() || (!info.error.empty() && !info.pending) ? Theme::Colors::WarningText : Theme::Colors::AnimationAudio);
+            const ImU32 fill = clipui::color(sound.empty() || (!info.error.empty() && !info.pending) ? Theme::Colors::WarningText : Theme::Colors::AnimationAudio);
             TimelineSounds::drawBlock(drawList, project, shown, ImVec2(x, top), ImVec2(std::max(right, x + 4.0f * m.s), bottom),
                                       speed / (double)pixelsPerSecond, fill, isSelected, label);
         }
@@ -474,7 +473,7 @@ void AnimationWindowClip::drawAudioLane(ImDrawList* drawList, ImVec2 origin, flo
     }
     if (hovered >= 0 && drag == Drag::None){
         const ClipAudioCue& cue = data.audio[(size_t)hovered];
-        ImGui::SetTooltip("%s: %s at %s", cueNoun(cue.kind), anim::cueLabel(cue).c_str(), formatBoth(cue.time, frameRate(), showFrames).c_str());
+        ImGui::SetTooltip("%s: %s at %s", cueNoun(cue.kind), anim::cueLabel(cue).c_str(), clipui::formatBoth(cue.time, frameRate(), showFrames).c_str());
     }
     if (ImGui::BeginPopup("##clip_audio_menu")){
         if (ImGui::MenuItem("Add Cue...", nullptr, false, !doc->isReadOnly())){
@@ -511,7 +510,7 @@ void AnimationWindowClip::drawAudioLane(ImDrawList* drawList, ImVec2 origin, flo
         if (payload && SoundDrop::accepts(payload)){
             const float dropTime = io.KeyAlt ? timeAt(io.MousePos.x) : snapToFrame(timeAt(io.MousePos.x));
             const float dropX = xAt(dropTime);
-            drawList->AddLine(ImVec2(dropX, origin.y), ImVec2(dropX, origin.y + height), color(Theme::Colors::AnimationAudio), 2.0f);
+            drawList->AddLine(ImVec2(dropX, origin.y), ImVec2(dropX, origin.y + height), clipui::color(Theme::Colors::AnimationAudio), 2.0f);
             if (const ImGuiPayload* accepted = ImGui::AcceptDragDropPayload(payload->DataType)){
                 std::vector<std::string> paths;
                 std::string error;
@@ -562,9 +561,9 @@ void AnimationWindowClip::drawCueEditor(){
     ImGui::SetNextItemWidth(Theme::dpi(80.0f));
     if (showFrames){
         int frame = (int)std::lround(cue.time * fps);
-        if (ImGui::DragInt("##time", &frame, 0.2f, 0, (int)(kMaxTime * fps))) cue.time = (float)std::max(0, frame) / fps;
+        if (ImGui::DragInt("##time", &frame, 0.2f, 0, (int)(clipui::kMaxTime * fps))) cue.time = (float)std::max(0, frame) / fps;
     }else{
-        ImGui::DragFloat("##time", &cue.time, 1.0f / fps, 0.0f, kMaxTime, "%.3fs");
+        ImGui::DragFloat("##time", &cue.time, 1.0f / fps, 0.0f, clipui::kMaxTime, "%.3fs");
     }
     dragKey();
 

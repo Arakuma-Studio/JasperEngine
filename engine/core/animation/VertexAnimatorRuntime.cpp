@@ -14,7 +14,8 @@
 #include <memory>
 
 using namespace jasperengine;
-using namespace jasperengine::vat;
+
+namespace jasperengine::vat {
 
 namespace {
 
@@ -65,14 +66,14 @@ namespace {
 
 }
 
-VertexAnimatorRuntime& vat::animatorRuntime(VertexAnimatorComponent& animator){
+VertexAnimatorRuntime& animatorRuntime(VertexAnimatorComponent& animator){
     if (!animator.runtime){
         animator.runtime = std::make_shared<VertexAnimatorRuntime>();
     }
     return *animator.runtime;
 }
 
-void vat::eraseInstanceState(VertexAnimatorComponent& animator, size_t index){
+void eraseInstanceState(VertexAnimatorComponent& animator, size_t index){
     if (index < animator.instanceStates.size()){
         animator.instanceStates.erase(animator.instanceStates.begin() + (std::ptrdiff_t)index);
     }
@@ -101,7 +102,7 @@ void vat::eraseInstanceState(VertexAnimatorComponent& animator, size_t index){
     }
 }
 
-void vat::clearInstanceStates(VertexAnimatorComponent& animator){
+void clearInstanceStates(VertexAnimatorComponent& animator){
     animator.instanceStates.clear();
     if (animator.runtime){
         VertexAnimatorRuntime& runtime = *animator.runtime;
@@ -118,22 +119,22 @@ void vat::clearInstanceStates(VertexAnimatorComponent& animator){
     }
 }
 
-double vat::vatTrackTau(const VatTrack& track, const VatTrackHold& hold, double now){
+double vatTrackTau(const VatTrack& track, const VatTrackHold& hold, double now){
     if (hold.held) return hold.tau;
     if (track.speed == 0.0f) return (double)track.start;
     return (now - (double)track.start) * (double)track.speed;
 }
 
-double vat::vatClipPeriod(const VatClip& clip){
+double vatClipPeriod(const VatClip& clip){
     const double length = clip.length();
     return clip.wrap == ClipWrapMode::PingPong ? 2.0 * length : length;
 }
 
-double vat::vatRandomUnit(uint64_t seed, int64_t index){
+double vatRandomUnit(uint64_t seed, int64_t index){
     return hashUnit(seed, index);
 }
 
-void vat::vatCrossedEvents(const VatClip& clip, double from, double to, bool includeStart, std::vector<VatCrossedEvent>& out){
+void vatCrossedEvents(const VatClip& clip, double from, double to, bool includeStart, std::vector<VatCrossedEvent>& out){
     if (clip.events.empty() || !std::isfinite(from) || !std::isfinite(to)) return;
     if (from == to && !includeStart) return;
 
@@ -191,3 +192,5 @@ void vat::vatCrossedEvents(const VatClip& clip, double from, double to, bool inc
         return forward ? a.position < b.position : a.position > b.position;
     });
 }
+
+}  // namespace jasperengine::vat

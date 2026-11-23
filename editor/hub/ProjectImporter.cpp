@@ -24,7 +24,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::hub;
+
+namespace jasperengine::editor::hub {
 
 namespace fs = std::filesystem;
 
@@ -473,3 +474,5 @@ void ProjectImporter::reset() {
     failure.clear();
     result.clear();
 }
+
+}  // namespace jasperengine::editor::hub

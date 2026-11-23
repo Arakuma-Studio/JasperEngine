@@ -7,7 +7,8 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::titleanim;
+
+namespace jasperengine::titleanim {
 
 namespace {
 
@@ -401,7 +402,7 @@ int TitleAnimPlayer::flipbookFrame(int* nextFrame, float* blend) const{
 
 // ==================================================================== the companion's draw
 
-void titleanim::companionUniforms(const TitlePoseSummary& s, const TitleFrameGeometry& still, TrackPivot pivot, const CompiledFlipbook* flipbook,
+void companionUniforms(const TitlePoseSummary& s, const TitleFrameGeometry& still, TrackPivot pivot, const CompiledFlipbook* flipbook,
                                   int frame, int next, float blend, CompanionAnimUniforms& out){
     out = CompanionAnimUniforms();
     FrameAffine motion = titleFrameAffine(s, still, pivot);
@@ -438,3 +439,5 @@ void titleanim::companionUniforms(const TitlePoseSummary& s, const TitleFrameGeo
         }
     }
 }
+
+}  // namespace jasperengine::titleanim

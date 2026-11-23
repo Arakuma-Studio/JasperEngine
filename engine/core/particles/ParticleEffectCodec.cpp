@@ -19,7 +19,8 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
+
+namespace jasperengine::particles {
 
 using Json = nlohmann::ordered_json;
 
@@ -930,7 +931,7 @@ bool ParticleEffectCodec::fromJson(const Json& json, ParticleEffectDocument& doc
     return ok;
 }
 
-bool jasperengine::particles::readEffectText(const std::string& text, ParticleEffectDocument& document){
+bool readEffectText(const std::string& text, ParticleEffectDocument& document){
     std::vector<Diagnostic> diagnostics;
     return ParticleEffectCodec::read(text, document, diagnostics);
 }
@@ -1201,3 +1202,5 @@ bool ParticleEffectCodec::hasErrors(const std::vector<Diagnostic>& diagnostics){
     }
     return false;
 }
+
+}  // namespace jasperengine::particles

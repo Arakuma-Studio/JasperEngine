@@ -29,7 +29,6 @@
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
-using namespace jasperengine::vat;
 using jasperengine::editor::FileUtils;
 using jasperengine::editor::FloatImage;
 using Json = nlohmann::json;
@@ -632,8 +631,8 @@ namespace{
         return true;
     }
 
-    VatClip makeClip(const std::string& name, int frames, double fps, bool interpolate, bool restNone){
-        VatClip clip;
+    jasperengine::vat::VatClip makeClip(const std::string& name, int frames, double fps, bool interpolate, bool restNone){
+        jasperengine::vat::VatClip clip;
         clip.name = name;
         clip.start = 0;
         clip.frames = frames;
@@ -693,7 +692,7 @@ namespace{
         const bool normals = spec.normals && (d.rot.loaded || compressed);
         const bool colors = spec.colors && d.useColor;
         Assembled in;
-        in.payload.mode = VatMode::Vertices;
+        in.payload.mode = jasperengine::vat::VatMode::Vertices;
         in.payload.layout.width = limits.width;
         in.payload.layout.samples = d.frames;
         in.payload.layout.vertices = elements;
@@ -703,7 +702,7 @@ namespace{
         if (colors) fixes.push_back("leave out the colours (colors: false)");
         if (normals) fixes.push_back("leave out the normals (normals: false)");
         fixes.push_back("export fewer frames");
-        if (!checkPayloadSize(VatMode::Vertices, d.frames, elements, in.payload.layout.texelsPerSample(VatMode::Vertices), limits,
+        if (!checkPayloadSize(jasperengine::vat::VatMode::Vertices, d.frames, elements, in.payload.layout.texelsPerSample(jasperengine::vat::VatMode::Vertices), limits,
                               "the soft body's " + std::to_string(elements) + " points", fixes, result)){
             return;
         }
@@ -847,14 +846,14 @@ namespace{
         }
 
         // mode
-        bool bones = pieces <= VAT_MAX_BONES;
+        bool bones = pieces <= jasperengine::vat::VAT_MAX_BONES;
         std::string modeReason;
         if (spec.mode == "vertices"){
             bones = false;
             modeReason = "Houdini rigid-body export, Vertices requested: per-vertex positions of " + std::to_string(pieces) + " pieces";
         }else if (spec.mode == "bones"){
-            if (pieces > VAT_MAX_BONES){
-                addError(result, "bone_limit", std::to_string(pieces) + " rigid pieces, Bones mode holds at most " + std::to_string(VAT_MAX_BONES),
+            if (pieces > jasperengine::vat::VAT_MAX_BONES){
+                addError(result, "bone_limit", std::to_string(pieces) + " rigid pieces, Bones mode holds at most " + std::to_string(jasperengine::vat::VAT_MAX_BONES),
                          "import as Vertices (mode: vertices or auto)");
                 return;
             }
@@ -862,9 +861,9 @@ namespace{
         }else if (bones){
             modeReason = "Houdini rigid-body export: one bone per piece (" + std::to_string(pieces) + " pieces)";
         }else{
-            modeReason = "Houdini rigid-body export with " + std::to_string(pieces) + " pieces, over the " + std::to_string(VAT_MAX_BONES) +
+            modeReason = "Houdini rigid-body export with " + std::to_string(pieces) + " pieces, over the " + std::to_string(jasperengine::vat::VAT_MAX_BONES) +
                          " bones of Bones mode: per-vertex positions";
-            addWarning(result, "bone_limit", std::to_string(pieces) + " rigid pieces exceed Bones mode's " + std::to_string(VAT_MAX_BONES) +
+            addWarning(result, "bone_limit", std::to_string(pieces) + " rigid pieces exceed Bones mode's " + std::to_string(jasperengine::vat::VAT_MAX_BONES) +
                        " bones: imported as Vertices (a texel or two per vertex per frame instead of two per piece)",
                        "nothing to do; fewer pieces (merge small debris in Houdini) would allow Bones");
         }
@@ -937,7 +936,7 @@ namespace{
         for (size_t v = 0; v < vertices; v++) vertexPiece[v] = (int)mesh.vatIndex[v];
 
         // tolerance (mm) from the motion's extent
-        VatBounds extent;
+        jasperengine::vat::VatBounds extent;
         for (const PieceTrack& track : tracks){
             for (const D3& p : track.position){
                 extent.extend(Vector3((float)(p.x - track.radius), (float)(p.y - track.radius), (float)(p.z - track.radius)));
@@ -1012,13 +1011,13 @@ namespace{
         if (spec.upsample > 1) fixes.push_back("lower the upsampling (upsample)");
         if (!bones) fixes.push_back("leave out the normals (normals: false)");
         fixes.push_back("export fewer frames");
-        if (!checkPayloadSize(bones ? VatMode::Bones : VatMode::Vertices, samples, elements, perSample, limits,
+        if (!checkPayloadSize(bones ? jasperengine::vat::VatMode::Bones : jasperengine::vat::VatMode::Vertices, samples, elements, perSample, limits,
                               "the rigid body's " + std::to_string(pieces) + " pieces", fixes, result)){
             return;
         }
 
         Assembled in;
-        in.payload.mode = bones ? VatMode::Bones : VatMode::Vertices;
+        in.payload.mode = bones ? jasperengine::vat::VatMode::Bones : jasperengine::vat::VatMode::Vertices;
         in.payload.layout.width = limits.width;
         in.payload.layout.samples = samples;
         if (bones){
@@ -1187,7 +1186,7 @@ namespace{
         const bool normals = spec.normals && (d.rot.loaded || compressed);
         const bool colors = spec.colors && d.useColor;
         Assembled in;
-        in.payload.mode = VatMode::Vertices;
+        in.payload.mode = jasperengine::vat::VatMode::Vertices;
         in.payload.layout.width = limits.width;
         in.payload.layout.samples = d.frames;
         in.payload.layout.vertices = elements;
@@ -1197,7 +1196,7 @@ namespace{
         if (colors) fixes.push_back("leave out the colours (colors: false)");
         if (normals) fixes.push_back("leave out the normals (normals: false)");
         fixes.push_back("export fewer frames or a coarser surface");
-        if (!checkPayloadSize(VatMode::Vertices, d.frames, elements, in.payload.layout.texelsPerSample(VatMode::Vertices), limits,
+        if (!checkPayloadSize(jasperengine::vat::VatMode::Vertices, d.frames, elements, in.payload.layout.texelsPerSample(jasperengine::vat::VatMode::Vertices), limits,
                               "the fluid's " + std::to_string(elements) + " corners", fixes, result)){
             return;
         }

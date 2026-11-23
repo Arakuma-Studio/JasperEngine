@@ -17,10 +17,11 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::tilemap;
 
 // file-local, in a namespace of its own: unity builds merge the editor's sources
 namespace jasperengine::editor::tilepagetextures {
+
+using namespace jasperengine::editor::tilemap;
 
     // the stamp of the file a page reads (an imported "<file>#<key>" reads its imported file); 0
     // when there is none
@@ -34,7 +35,8 @@ namespace jasperengine::editor::tilepagetextures {
 
 }
 
-using namespace jasperengine::editor::tilepagetextures;
+
+namespace jasperengine::editor::tilemap {
 
 TilePageTextures& TilePageTextures::get() {
     static TilePageTextures instance;
@@ -60,7 +62,7 @@ ImTextureID TilePageTextures::page(const std::string& pagePath, const TilesetRun
     if (!retry && entry.failed && entry.checkedFrame != frame) {
         // once a frame at most: the file's stamp, not its pixels
         entry.checkedFrame = frame;
-        retry = pageFileStamp(pagePath) != entry.failedStamp;
+        retry = tilepagetextures::pageFileStamp(pagePath) != entry.failedStamp;
     }
     if (retry) {
         if (!entry.texture.empty()) {
@@ -90,7 +92,7 @@ ImTextureID TilePageTextures::page(const std::string& pagePath, const TilesetRun
         }
         if (!entry.loaded) {
             entry.failed = true;
-            entry.failedStamp = pageFileStamp(pagePath);
+            entry.failedStamp = tilepagetextures::pageFileStamp(pagePath);
             entry.checkedFrame = frame;
         }
     }
@@ -98,7 +100,7 @@ ImTextureID TilePageTextures::page(const std::string& pagePath, const TilesetRun
     return Backend::getImGuiTexture(entry.texture.getRender());
 }
 
-void jasperengine::editor::tilemap::drawTileImage(ImDrawList* list, ImVec2 min, float pixelZoom, const TilesetRuntime& tileset, int32_t tile, uint32_t flags, ImU32 tint) {
+void drawTileImage(ImDrawList* list, ImVec2 min, float pixelZoom, const TilesetRuntime& tileset, int32_t tile, uint32_t flags, ImU32 tint) {
     const TileRenderInfo* info = tileset.tile(tile);
     if (!info || !list) return;
     ImTextureID texture = TilePageTextures::get().page(tileset.pages[info->page], tileset);
@@ -118,7 +120,7 @@ void jasperengine::editor::tilemap::drawTileImage(ImDrawList* list, ImVec2 min, 
     list->AddImageQuad(texture, min, ImVec2(max.x, min.y), max, ImVec2(min.x, max.y), uv[0], uv[1], uv[2], uv[3], tint);
 }
 
-void jasperengine::editor::tilemap::tileSourceGrid(const TilesetRuntime& tileset, int sourceId, std::vector<TileGridCell>& out, int& columns, int& rows) {
+void tileSourceGrid(const TilesetRuntime& tileset, int sourceId, std::vector<TileGridCell>& out, int& columns, int& rows) {
     out.clear();
     columns = 0;
     rows = 0;
@@ -146,7 +148,7 @@ void jasperengine::editor::tilemap::tileSourceGrid(const TilesetRuntime& tileset
     }
 }
 
-void jasperengine::editor::tilemap::showTileTooltip(const TilesetRuntime& tileset, int32_t tile, int zoom) {
+void showTileTooltip(const TilesetRuntime& tileset, int32_t tile, int zoom) {
     const TilesetData* data = tileset.data.get();
     const TileDef* def = data ? data->findTile(tile) : nullptr;
     ImGui::BeginTooltip();
@@ -169,3 +171,5 @@ void jasperengine::editor::tilemap::showTileTooltip(const TilesetRuntime& tilese
     }
     ImGui::EndTooltip();
 }
+
+}  // namespace jasperengine::editor::tilemap

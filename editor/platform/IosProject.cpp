@@ -18,7 +18,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::platform;
+
+namespace jasperengine::editor::platform {
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -44,7 +46,7 @@ namespace {
 
 }
 
-XcodeChoice platform::chooseXcode(const std::string& developerDirVariable, const std::string& activeDeveloperDir,
+XcodeChoice chooseXcode(const std::string& developerDirVariable, const std::string& activeDeveloperDir,
                                   const std::vector<fs::path>& applications) {
     XcodeChoice choice;
     if (!developerDirVariable.empty()) {
@@ -72,7 +74,7 @@ XcodeChoice platform::chooseXcode(const std::string& developerDirVariable, const
     return choice;
 }
 
-XcodeChoice platform::findXcode() {
+XcodeChoice findXcode() {
 #ifdef __APPLE__
     const char* variable = std::getenv("DEVELOPER_DIR");
     std::vector<fs::path> applications;
@@ -91,7 +93,7 @@ XcodeChoice platform::findXcode() {
 #endif
 }
 
-std::string platform::describeXcodeFailure(const std::string& log, const std::string& teamId) {
+std::string describeXcodeFailure(const std::string& log, const std::string& teamId) {
     const auto says = [&log](const char* text) { return log.find(text) != std::string::npos; };
     if (says("requires a development team"))
         return "signing needs a team: set Project Settings > iOS > Team ID (or build for the simulator, which needs none)";
@@ -110,7 +112,7 @@ std::string platform::describeXcodeFailure(const std::string& log, const std::st
     return "";
 }
 
-std::string platform::fillIosTemplate(std::string text, const IosProjectSettings& s) {
+std::string fillIosTemplate(std::string text, const IosProjectSettings& s) {
     replaceAll(text, "{{PRODUCT_NAME}}", s.appName);
     replaceAll(text, "{{DISPLAY_NAME}}", Exporter::escapeXml(s.displayName));
     replaceAll(text, "{{BUNDLE_ID}}", s.bundleIdentifier);
@@ -121,7 +123,7 @@ std::string platform::fillIosTemplate(std::string text, const IosProjectSettings
     return text;
 }
 
-bool platform::stageIosProject(const IosProjectSettings& settings, std::string& error) {
+bool stageIosProject(const IosProjectSettings& settings, std::string& error) {
     std::error_code ec;
     const fs::path templateDir = settings.runtimeDir / "template";
     if (!fs::is_directory(templateDir, ec) || !fs::exists(settings.runtimeDir / "JasperEnginePlayer.xcframework", ec)) {
@@ -163,7 +165,7 @@ bool platform::stageIosProject(const IosProjectSettings& settings, std::string& 
     return true;
 }
 
-bool platform::buildIosProject(const IosProjectSettings& settings, CommandRunner& runner, const std::function<bool()>& cancelled,
+bool buildIosProject(const IosProjectSettings& settings, CommandRunner& runner, const std::function<bool()>& cancelled,
                                std::vector<fs::path>& artifacts, std::vector<std::string>& notes, std::vector<BuildWarning>& warnings,
                                std::string& error) {
     const fs::path project = settings.projectDir / "JasperEnginePlayer.xcodeproj";
@@ -236,3 +238,5 @@ bool platform::buildIosProject(const IosProjectSettings& settings, CommandRunner
     artifacts.insert(artifacts.begin(), exportDir / (settings.appName + ".ipa"));
     return true;
 }
+
+}  // namespace jasperengine::editor::platform

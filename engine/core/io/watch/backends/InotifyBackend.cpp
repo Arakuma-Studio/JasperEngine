@@ -80,7 +80,7 @@ namespace jasperengine::watch {
 
 }
 
-using namespace jasperengine::watch;
+namespace jasperengine::watch {
 
 bool InotifyBackend::start(const fs::path& rootIn, WatchSink& sinkIn, std::string& error) {
     stop();
@@ -349,8 +349,10 @@ void InotifyBackend::injectOverflowForTesting() {
     sink->onRawEvents(std::move(events));
 }
 
-std::unique_ptr<FileWatcher> jasperengine::watch::createInotifyBackend() {
+std::unique_ptr<FileWatcher> createInotifyBackend() {
     return std::make_unique<InotifyBackend>();
 }
+
+}  // namespace jasperengine::watch
 
 #endif

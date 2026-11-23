@@ -107,7 +107,7 @@ namespace jasperengine::watch {
 
 }
 
-using namespace jasperengine::watch;
+namespace jasperengine::watch {
 
 bool FsEventsBackend::start(const fs::path& rootIn, WatchSink& sinkIn, std::string& error) {
     stop();
@@ -362,12 +362,14 @@ void FsEventsBackend::injectOverflowForTesting() {
     sink->onRawEvents(std::move(events));
 }
 
-std::unique_ptr<FileWatcher> jasperengine::watch::createFsEventsBackend() {
+std::unique_ptr<FileWatcher> createFsEventsBackend() {
     return std::make_unique<FsEventsBackend>();
 }
 
-void jasperengine::watch::setFsEventsDeadStreamsForTesting(int count) {
+void setFsEventsDeadStreamsForTesting(int count) {
     deadStreamsForTesting = count;
 }
+
+}  // namespace jasperengine::watch
 
 #endif

@@ -10,7 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-using namespace jasperengine::editor::mcp;
+namespace jasperengine::editor::mcp {
 
 void McpRegistry::addTool(ToolDef def) {
 #ifndef NDEBUG
@@ -194,3 +194,5 @@ size_t McpRegistry::toolChars(const ToolDef& def) {
     }
     return count;
 }
+
+}  // namespace jasperengine::editor::mcp

@@ -5,12 +5,12 @@
 #include "jobs/detail/Scheduler.h"
 
 using namespace jasperengine;
-using namespace jasperengine::jobs;
-using namespace jasperengine::jobs::detail;
 
 // ---- strands
 
-StrandState* jobs::detail::createStrand(JobSystem* system, const char* name, Lane lane, GateClass gate){
+namespace jasperengine::jobs {
+
+jobs::detail::StrandState* jobs::detail::createStrand(JobSystem* system, const char* name, Lane lane, GateClass gate){
     auto* strand = new StrandState();
     strand->scheduler = schedulerOf(system);
     strand->name = name ? name : "serial";
@@ -52,7 +52,7 @@ GateClass jobs::detail::strandGate(const StrandState* strand){
 }
 
 SerialQueue::SerialQueue(const char* name, Lane lane, GateClass gate, JobSystem* system):
-    queueName(name ? name : "serial"), strand(createStrand(system, queueName, lane, gate)){
+    queueName(name ? name : "serial"), strand(jobs::detail::createStrand(system, queueName, lane, gate)){
 }
 
 SerialQueue::~SerialQueue(){
@@ -73,7 +73,7 @@ size_t SerialQueue::pendingCount() const{
 
 // ---- channels
 
-ChannelState* jobs::detail::createChannel(JobSystem* system, const char* name, uint32_t maxRunning){
+jobs::detail::ChannelState* jobs::detail::createChannel(JobSystem* system, const char* name, uint32_t maxRunning){
     auto* channel = new ChannelState();
     channel->scheduler = schedulerOf(system);
     channel->name = name ? name : "channel";
@@ -110,9 +110,11 @@ uint32_t jobs::detail::channelRunning(const ChannelState* channel){
 }
 
 JobChannel::JobChannel(const char* name, uint32_t maxRunning, JobSystem* system):
-    channel(createChannel(system, name, maxRunning)){
+    channel(jobs::detail::createChannel(system, name, maxRunning)){
 }
 
 JobChannel::~JobChannel(){
     destroyChannel(channel);
 }
+
+}  // namespace jasperengine::jobs

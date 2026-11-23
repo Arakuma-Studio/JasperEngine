@@ -28,7 +28,6 @@
 #include <vector>
 
 using namespace jasperengine;
-using namespace jasperengine::curlapi;
 
 void jasperengineHttpResetBackend();
 
@@ -62,11 +61,11 @@ namespace {
 
     struct Job {
         std::shared_ptr<HttpTransfer> transfer;
-        CURL* easy = nullptr;
-        curl_slist* headers = nullptr;
+        curlapi::CURL* easy = nullptr;
+        curlapi::curl_slist* headers = nullptr;
         // the hop's request body, which curl reads while the transfer's may change (a redirect)
         std::vector<uint8_t> body;
-        char errorBuffer[CURL_ERROR_SIZE] = {0};
+        char errorBuffer[curlapi::CURL_ERROR_SIZE] = {0};
         std::string rawHeaders;      // of the current hop
         bool headDone = false;       // begin() or redirect() decided for this hop
         bool following = false;      // the current hop is a redirect we follow
@@ -127,7 +126,7 @@ namespace {
                 api.multi_wakeup = nullptr;
             }
             // not thread-safe in old versions: here, on the main thread, before any other call
-            if (api.global_init(CURL_GLOBAL_ALL) != CURLE_OK){
+            if (api.global_init(curlapi::CURL_GLOBAL_ALL) != curlapi::CURLE_OK){
                 whyNot = "curl_global_init failed (" + libraryName + ")";
                 return;
             }
@@ -182,7 +181,7 @@ namespace {
         std::string libraryName;
         std::string whyNot;
         bool usable = false;
-        Api api;
+        curlapi::Api api;
 
         std::mutex mutex;
         std::condition_variable condition;
@@ -190,7 +189,7 @@ namespace {
         std::vector<uint64_t> cancels;
         bool stopping = false;
         std::thread worker;
-        CURLM* multi = nullptr;   // the worker's
+        curlapi::CURLM* multi = nullptr;   // the worker's
 
         void wake(){
             std::lock_guard<std::mutex> lock(mutex);
@@ -216,12 +215,12 @@ namespace {
             Job* job = static_cast<Job*>(user);
             CurlBackend* self = job->transfer ? currentBackend : nullptr;
             const size_t n = size * count;
-            if (!self) return CURL_WRITEFUNC_ERROR;
-            if (!job->headDone && !self->decideHead(*job)) return CURL_WRITEFUNC_ERROR;
+            if (!self) return curlapi::CURL_WRITEFUNC_ERROR;
+            if (!job->headDone && !self->decideHead(*job)) return curlapi::CURL_WRITEFUNC_ERROR;
             if (job->following) return n;   // a redirect's body: dropped
             if (!job->transfer->write(data, n)){
                 job->failed = !job->transfer->isCancelled();
-                return CURL_WRITEFUNC_ERROR;
+                return curlapi::CURL_WRITEFUNC_ERROR;
             }
             return n;
         }
@@ -234,7 +233,7 @@ namespace {
         bool decideHead(Job& job){
             job.headDone = true;
             long status = 0;
-            api.easy_getinfo(job.easy, CURLINFO_RESPONSE_CODE, &status);
+            api.easy_getinfo(job.easy, curlapi::CURLINFO_RESPONSE_CODE, &status);
             int parsedStatus = 0;
             HttpHeaders headers = HttpUtil::parseHeaderBlock(job.rawHeaders, &parsedStatus);
             if (status == 0) status = parsedStatus;
@@ -245,7 +244,7 @@ namespace {
                 }
                 if (!location.empty()){
                     char* redirectUrl = nullptr;
-                    if (api.easy_getinfo(job.easy, CURLINFO_REDIRECT_URL, &redirectUrl) == CURLE_OK && redirectUrl && *redirectUrl){
+                    if (api.easy_getinfo(job.easy, curlapi::CURLINFO_REDIRECT_URL, &redirectUrl) == curlapi::CURLE_OK && redirectUrl && *redirectUrl){
                         location = redirectUrl;
                     }
                     switch (job.transfer->redirect((int)status, location)){
@@ -261,7 +260,7 @@ namespace {
                 }
             }
             char* effective = nullptr;
-            api.easy_getinfo(job.easy, CURLINFO_EFFECTIVE_URL, &effective);
+            api.easy_getinfo(job.easy, curlapi::CURLINFO_EFFECTIVE_URL, &effective);
             if (!job.transfer->begin((int)status, std::move(headers), effective ? std::string(effective) : std::string())){
                 job.failed = !job.transfer->isCancelled();
                 return false;
@@ -299,32 +298,32 @@ namespace {
                 t.finish("network", "curl_easy_init failed");
                 return false;
             }
-            CURL* e = job.easy;
-            api.easy_setopt(e, CURLOPT_URL, t.url.c_str());
-            api.easy_setopt(e, CURLOPT_PRIVATE, &job);
-            api.easy_setopt(e, CURLOPT_NOSIGNAL, 1L);
-            api.easy_setopt(e, CURLOPT_ERRORBUFFER, job.errorBuffer);
-            api.easy_setopt(e, CURLOPT_FOLLOWLOCATION, 0L);
+            curlapi::CURL* e = job.easy;
+            api.easy_setopt(e, curlapi::CURLOPT_URL, t.url.c_str());
+            api.easy_setopt(e, curlapi::CURLOPT_PRIVATE, &job);
+            api.easy_setopt(e, curlapi::CURLOPT_NOSIGNAL, 1L);
+            api.easy_setopt(e, curlapi::CURLOPT_ERRORBUFFER, job.errorBuffer);
+            api.easy_setopt(e, curlapi::CURLOPT_FOLLOWLOCATION, 0L);
             // every encoding curl decodes, unless the transfer asks for one (identity, resuming)
             bool namedEncoding = false;
             for (const auto& header : t.headers){
                 if (HttpUtil::lower(header.first) == "accept-encoding") namedEncoding = true;
             }
-            if (!namedEncoding) api.easy_setopt(e, CURLOPT_ACCEPT_ENCODING, "");
-            api.easy_setopt(e, CURLOPT_NOPROGRESS, 1L);
-            api.easy_setopt(e, CURLOPT_HEADERFUNCTION, &CurlBackend::onHeader);
-            api.easy_setopt(e, CURLOPT_HEADERDATA, &job);
-            api.easy_setopt(e, CURLOPT_WRITEFUNCTION, &CurlBackend::onWrite);
-            api.easy_setopt(e, CURLOPT_WRITEDATA, &job);
+            if (!namedEncoding) api.easy_setopt(e, curlapi::CURLOPT_ACCEPT_ENCODING, "");
+            api.easy_setopt(e, curlapi::CURLOPT_NOPROGRESS, 1L);
+            api.easy_setopt(e, curlapi::CURLOPT_HEADERFUNCTION, &CurlBackend::onHeader);
+            api.easy_setopt(e, curlapi::CURLOPT_HEADERDATA, &job);
+            api.easy_setopt(e, curlapi::CURLOPT_WRITEFUNCTION, &CurlBackend::onWrite);
+            api.easy_setopt(e, curlapi::CURLOPT_WRITEDATA, &job);
             if (t.totalTimeout() > 0.0){
-                api.easy_setopt(e, CURLOPT_TIMEOUT_MS, (long)std::max(1.0, remaining * 1000.0));
+                api.easy_setopt(e, curlapi::CURLOPT_TIMEOUT_MS, (long)std::max(1.0, remaining * 1000.0));
             }
             if (t.connectTimeout > 0.0){
-                api.easy_setopt(e, CURLOPT_CONNECTTIMEOUT_MS, (long)std::max(1.0, t.connectTimeout * 1000.0));
+                api.easy_setopt(e, curlapi::CURLOPT_CONNECTTIMEOUT_MS, (long)std::max(1.0, t.connectTimeout * 1000.0));
             }
             if (!t.verifyTls){
-                api.easy_setopt(e, CURLOPT_SSL_VERIFYPEER, 0L);
-                api.easy_setopt(e, CURLOPT_SSL_VERIFYHOST, 0L);
+                api.easy_setopt(e, curlapi::CURLOPT_SSL_VERIFYPEER, 0L);
+                api.easy_setopt(e, curlapi::CURLOPT_SSL_VERIFYHOST, 0L);
             }
 
             bool hasContentType = false;
@@ -342,23 +341,23 @@ namespace {
                 if (!hasContentType) job.headers = api.slist_append(job.headers, "Content-Type:");
                 job.headers = api.slist_append(job.headers, "Expect:");
             }
-            if (job.headers) api.easy_setopt(e, CURLOPT_HTTPHEADER, job.headers);
+            if (job.headers) api.easy_setopt(e, curlapi::CURLOPT_HTTPHEADER, job.headers);
 
             if (m == "GET"){
-                api.easy_setopt(e, CURLOPT_HTTPGET, 1L);
+                api.easy_setopt(e, curlapi::CURLOPT_HTTPGET, 1L);
             } else if (m == "HEAD"){
-                api.easy_setopt(e, CURLOPT_NOBODY, 1L);
+                api.easy_setopt(e, curlapi::CURLOPT_NOBODY, 1L);
             } else if (m == "POST"){
-                api.easy_setopt(e, CURLOPT_POST, 1L);
+                api.easy_setopt(e, curlapi::CURLOPT_POST, 1L);
             } else {
-                api.easy_setopt(e, CURLOPT_CUSTOMREQUEST, m.c_str());
+                api.easy_setopt(e, curlapi::CURLOPT_CUSTOMREQUEST, m.c_str());
             }
             if (sendsBody && m != "GET" && m != "HEAD"){
                 job.body = t.body;
-                api.easy_setopt(e, CURLOPT_POSTFIELDSIZE_LARGE, (curl_off_t)job.body.size());
-                api.easy_setopt(e, CURLOPT_POSTFIELDS, job.body.empty() ? "" : reinterpret_cast<const char*>(job.body.data()));
+                api.easy_setopt(e, curlapi::CURLOPT_POSTFIELDSIZE_LARGE, (curlapi::curl_off_t)job.body.size());
+                api.easy_setopt(e, curlapi::CURLOPT_POSTFIELDS, job.body.empty() ? "" : reinterpret_cast<const char*>(job.body.data()));
             }
-            if (api.multi_add_handle(multi, e) != CURLM_OK){
+            if (api.multi_add_handle(multi, e) != curlapi::CURLM_OK){
                 freeEasy(job);
                 t.finish("network", "curl_multi_add_handle failed");
                 return false;
@@ -366,34 +365,34 @@ namespace {
             return true;
         }
 
-        static std::string mapError(CURLcode code){
+        static std::string mapError(curlapi::CURLcode code){
             switch (code){
-                case CURLE_OPERATION_TIMEDOUT: return "timeout";
-                case CURLE_COULDNT_RESOLVE_HOST:
-                case CURLE_COULDNT_RESOLVE_PROXY: return "dns";
-                case CURLE_COULDNT_CONNECT: return "connect";
-                case CURLE_PEER_FAILED_VERIFICATION:
-                case CURLE_SSL_CONNECT_ERROR:
-                case CURLE_SSL_ENGINE_NOTFOUND:
-                case CURLE_SSL_ENGINE_SETFAILED:
-                case CURLE_SSL_CERTPROBLEM:
-                case CURLE_SSL_CIPHER:
-                case CURLE_SSL_ENGINE_INITFAILED:
-                case CURLE_SSL_CACERT_BADFILE:
-                case CURLE_SSL_SHUTDOWN_FAILED:
-                case CURLE_SSL_CRL_BADFILE:
-                case CURLE_SSL_ISSUER_ERROR:
-                case CURLE_SSL_PINNEDPUBKEYNOTMATCH:
-                case CURLE_SSL_INVALIDCERTSTATUS:
-                case CURLE_SSL_CLIENTCERT: return "tls";
-                case CURLE_TOO_MANY_REDIRECTS: return "too_many_redirects";
-                case CURLE_URL_MALFORMAT:
-                case CURLE_UNSUPPORTED_PROTOCOL: return "invalid_url";
+                case curlapi::CURLE_OPERATION_TIMEDOUT: return "timeout";
+                case curlapi::CURLE_COULDNT_RESOLVE_HOST:
+                case curlapi::CURLE_COULDNT_RESOLVE_PROXY: return "dns";
+                case curlapi::CURLE_COULDNT_CONNECT: return "connect";
+                case curlapi::CURLE_PEER_FAILED_VERIFICATION:
+                case curlapi::CURLE_SSL_CONNECT_ERROR:
+                case curlapi::CURLE_SSL_ENGINE_NOTFOUND:
+                case curlapi::CURLE_SSL_ENGINE_SETFAILED:
+                case curlapi::CURLE_SSL_CERTPROBLEM:
+                case curlapi::CURLE_SSL_CIPHER:
+                case curlapi::CURLE_SSL_ENGINE_INITFAILED:
+                case curlapi::CURLE_SSL_CACERT_BADFILE:
+                case curlapi::CURLE_SSL_SHUTDOWN_FAILED:
+                case curlapi::CURLE_SSL_CRL_BADFILE:
+                case curlapi::CURLE_SSL_ISSUER_ERROR:
+                case curlapi::CURLE_SSL_PINNEDPUBKEYNOTMATCH:
+                case curlapi::CURLE_SSL_INVALIDCERTSTATUS:
+                case curlapi::CURLE_SSL_CLIENTCERT: return "tls";
+                case curlapi::CURLE_TOO_MANY_REDIRECTS: return "too_many_redirects";
+                case curlapi::CURLE_URL_MALFORMAT:
+                case curlapi::CURLE_UNSUPPORTED_PROTOCOL: return "invalid_url";
                 default: return "network";
             }
         }
 
-        void complete(Job& job, CURLcode result){
+        void complete(Job& job, curlapi::CURLcode result){
             HttpTransfer& t = *job.transfer;
             if (job.cancelled || t.isCancelled()){
                 t.finish("cancelled");
@@ -403,7 +402,7 @@ namespace {
                 t.finish("network");
                 return;
             }
-            if (result != CURLE_OK){
+            if (result != curlapi::CURLE_OK){
                 std::string detail = job.errorBuffer[0] ? job.errorBuffer : api.easy_strerror(result);
                 std::string code = mapError(result);
                 if ((code == "dns" || code == "connect") && !hasNetwork()) code = "offline";
@@ -424,7 +423,7 @@ namespace {
 
         void run(){
             currentBackend = this;
-            CURLM* m = api.multi_init();
+            curlapi::CURLM* m = api.multi_init();
             {
                 std::lock_guard<std::mutex> lock(mutex);
                 multi = m;
@@ -475,12 +474,12 @@ namespace {
                 int stillRunning = 0;
                 api.multi_perform(m, &stillRunning);
                 int queued = 0;
-                while (CURLMsg* msg = api.multi_info_read(m, &queued)){
-                    if (msg->msg != CURLMSG_DONE) continue;
+                while (curlapi::CURLMsg* msg = api.multi_info_read(m, &queued)){
+                    if (msg->msg != curlapi::CURLMSG_DONE) continue;
                     Job* job = nullptr;
-                    api.easy_getinfo(msg->easy_handle, CURLINFO_PRIVATE, &job);
+                    api.easy_getinfo(msg->easy_handle, curlapi::CURLINFO_PRIVATE, &job);
                     if (!job) continue;
-                    const CURLcode result = msg->data.result;
+                    const curlapi::CURLcode result = msg->data.result;
                     const uint64_t id = job->transfer->id;
                     complete(*job, result);
                     // finished, or the next hop is on its way

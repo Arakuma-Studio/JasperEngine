@@ -20,7 +20,8 @@
 #include <variant>
 
 using namespace jasperengine;
-using namespace jasperengine::anim;
+
+namespace jasperengine::anim {
 
 namespace{
 
@@ -942,26 +943,26 @@ namespace{
 
 // ---------------------------------------------------------------- public: names
 
-const char* anim::parameterTypeName(AnimatorParameterType type){ return nameOf(kParameterTypes, type); }
-bool anim::parameterTypeFromName(const std::string& name, AnimatorParameterType& out){ return valueOf(kParameterTypes, name, out); }
-const char* anim::conditionModeName(AnimatorConditionMode mode){ return nameOf(kConditionModes, mode); }
-bool anim::conditionModeFromName(const std::string& name, AnimatorConditionMode& out){ return valueOf(kConditionModes, name, out); }
-const char* anim::layerBlendingName(AnimatorLayerBlending blending){ return nameOf(kBlendings, blending); }
-bool anim::layerBlendingFromName(const std::string& name, AnimatorLayerBlending& out){ return valueOf(kBlendings, name, out); }
-const char* anim::blendTreeTypeName(BlendTreeType type){ return nameOf(kTreeTypes, type); }
-bool anim::blendTreeTypeFromName(const std::string& name, BlendTreeType& out){ return valueOf(kTreeTypes, name, out); }
-const char* anim::interruptionSourceName(TransitionInterruptionSource source){ return nameOf(kSources, source); }
-bool anim::interruptionSourceFromName(const std::string& name, TransitionInterruptionSource& out){ return valueOf(kSources, name, out); }
-const char* anim::stateLoopName(AnimatorStateLoop loop){ return nameOf(kLoops, loop); }
-bool anim::stateLoopFromName(const std::string& name, AnimatorStateLoop& out){ return valueOf(kLoops, name, out); }
-const char* anim::additiveReferenceName(AdditiveReference reference){ return nameOf(kReferences, reference); }
-bool anim::additiveReferenceFromName(const std::string& name, AdditiveReference& out){ return valueOf(kReferences, name, out); }
-const char* anim::bodyPartName(AvatarBodyPart part){ return nameOf(kBodyParts, part); }
-bool anim::bodyPartFromName(const std::string& name, AvatarBodyPart& out){ return valueOf(kBodyParts, name, out); }
-const char* anim::ikTypeName(AnimatorIKType type){ return nameOf(kIKTypes, type); }
-bool anim::ikTypeFromName(const std::string& name, AnimatorIKType& out){ return valueOf(kIKTypes, name, out); }
+const char* parameterTypeName(AnimatorParameterType type){ return nameOf(kParameterTypes, type); }
+bool parameterTypeFromName(const std::string& name, AnimatorParameterType& out){ return valueOf(kParameterTypes, name, out); }
+const char* conditionModeName(AnimatorConditionMode mode){ return nameOf(kConditionModes, mode); }
+bool conditionModeFromName(const std::string& name, AnimatorConditionMode& out){ return valueOf(kConditionModes, name, out); }
+const char* layerBlendingName(AnimatorLayerBlending blending){ return nameOf(kBlendings, blending); }
+bool layerBlendingFromName(const std::string& name, AnimatorLayerBlending& out){ return valueOf(kBlendings, name, out); }
+const char* blendTreeTypeName(BlendTreeType type){ return nameOf(kTreeTypes, type); }
+bool blendTreeTypeFromName(const std::string& name, BlendTreeType& out){ return valueOf(kTreeTypes, name, out); }
+const char* interruptionSourceName(TransitionInterruptionSource source){ return nameOf(kSources, source); }
+bool interruptionSourceFromName(const std::string& name, TransitionInterruptionSource& out){ return valueOf(kSources, name, out); }
+const char* stateLoopName(AnimatorStateLoop loop){ return nameOf(kLoops, loop); }
+bool stateLoopFromName(const std::string& name, AnimatorStateLoop& out){ return valueOf(kLoops, name, out); }
+const char* additiveReferenceName(AdditiveReference reference){ return nameOf(kReferences, reference); }
+bool additiveReferenceFromName(const std::string& name, AdditiveReference& out){ return valueOf(kReferences, name, out); }
+const char* bodyPartName(AvatarBodyPart part){ return nameOf(kBodyParts, part); }
+bool bodyPartFromName(const std::string& name, AvatarBodyPart& out){ return valueOf(kBodyParts, name, out); }
+const char* ikTypeName(AnimatorIKType type){ return nameOf(kIKTypes, type); }
+bool ikTypeFromName(const std::string& name, AnimatorIKType& out){ return valueOf(kIKTypes, name, out); }
 
-bool anim::isClipExtensionKey(const std::string& key){
+bool isClipExtensionKey(const std::string& key){
     return key == "root_motion" || key == "editor" || key == "optimize";
 }
 
@@ -1046,11 +1047,11 @@ namespace{
 
 }
 
-void anim::removeParameterReferences(ControllerDef& data, const std::string& name){
+void removeParameterReferences(ControllerDef& data, const std::string& name){
     for (LayerDef& layer : data.layers) removeParameterInMachine(layer.machine, name);
 }
 
-void anim::visitControllerRefs(ControllerDef& data, const std::function<void(AnimatorAssetRef& ref, const std::string& field)>& visit){
+void visitControllerRefs(ControllerDef& data, const std::function<void(AnimatorAssetRef& ref, const std::string& field)>& visit){
     for (size_t l = 0; l < data.layers.size(); l++){
         const std::string path = "layers[" + std::to_string(l) + "]";
         if (!data.layers[l].mask.empty()) visit(data.layers[l].mask, path + ".mask");
@@ -1058,7 +1059,7 @@ void anim::visitControllerRefs(ControllerDef& data, const std::function<void(Ani
     }
 }
 
-std::string anim::animatorAssetKind(const std::string& text){
+std::string animatorAssetKind(const std::string& text){
     const std::string format = topLevelString(text, "format");
     if (format == CONTROLLER_FORMAT) return "controller";
     if (format == MASK_FORMAT) return "mask";
@@ -1066,7 +1067,7 @@ std::string anim::animatorAssetKind(const std::string& text){
     return std::string();
 }
 
-std::string anim::readAnimatorAssetGuid(const std::string& text){
+std::string readAnimatorAssetGuid(const std::string& text){
     const std::string guid = topLevelString(text, "guid");
     return isClipGuid(guid) ? guid : std::string();
 }
@@ -1203,7 +1204,7 @@ namespace{
 
 }
 
-const char* anim::animatorFileDialectName(AnimatorFileDialect dialect){
+const char* animatorFileDialectName(AnimatorFileDialect dialect){
     switch (dialect){
         case AnimatorFileDialect::Current: return "current";
         case AnimatorFileDialect::S21Version1: return "s21_v1";
@@ -1212,26 +1213,26 @@ const char* anim::animatorFileDialectName(AnimatorFileDialect dialect){
     return "current";
 }
 
-bool anim::isUnityYamlController(const std::string& text){
+bool isUnityYamlController(const std::string& text){
     return json::isUnityYaml(text, "AnimatorController:");
 }
 
-const char* anim::unityYamlControllerRefusal(){
+const char* unityYamlControllerRefusal(){
     return "This is a Unity .controller (YAML). Create a JasperEngine Animator Controller (Assets > Create > Animator Controller, "
            "or MCP edit_animator_controller {path, create: true}).";
 }
 
-bool anim::isUnityYamlMask(const std::string& text){
+bool isUnityYamlMask(const std::string& text){
     return json::isUnityYaml(text, "AvatarMask:");
 }
 
-const char* anim::unityYamlMaskRefusal(){
+const char* unityYamlMaskRefusal(){
     return "This is a Unity .mask (YAML). Create a JasperEngine Avatar Mask (Assets > Create > Avatar Mask, or MCP edit_avatar_mask {path, create: true}).";
 }
 
 // ---------------------------------------------------------------- public: controller
 
-anim::ControllerParseResult anim::parseController(const std::string& text){
+anim::ControllerParseResult parseController(const std::string& text){
     ControllerParseResult result;
     if (isUnityYamlController(text)){
         result.error.message = unityYamlControllerRefusal();
@@ -1316,7 +1317,7 @@ anim::ControllerParseResult anim::parseController(const std::string& text){
     return result;
 }
 
-void anim::normalizeController(ControllerDef& data, std::vector<ClipWarning>* warnings){
+void normalizeController(ControllerDef& data, std::vector<ClipWarning>* warnings){
     if (!data.guid.empty() && !isClipGuid(data.guid)) data.guid.clear();
     std::set<std::string> parameterNames;
     for (size_t i = 0; i < data.parameters.size(); i++){
@@ -1353,7 +1354,7 @@ void anim::normalizeController(ControllerDef& data, std::vector<ClipWarning>* wa
     dedupeUnknown(data.unknownKeys, kControllerMembers, "", warnings);
 }
 
-std::string anim::writeController(const ControllerDef& data){
+std::string writeController(const ControllerDef& data){
     Writer out;
     out.open('{');
     writeHeader(out, CONTROLLER_FORMAT, CONTROLLER_VERSION, data.guid);
@@ -1391,7 +1392,7 @@ std::string anim::writeController(const ControllerDef& data){
 
 // ---------------------------------------------------------------- public: mask
 
-anim::MaskParseResult anim::parseMask(const std::string& text){
+anim::MaskParseResult parseMask(const std::string& text){
     MaskParseResult result;
     if (isUnityYamlMask(text)){
         result.error.message = unityYamlMaskRefusal();
@@ -1554,7 +1555,7 @@ anim::MaskParseResult anim::parseMask(const std::string& text){
     return result;
 }
 
-void anim::normalizeMask(AvatarMaskDef& data, std::vector<ClipWarning>* warnings){
+void normalizeMask(AvatarMaskDef& data, std::vector<ClipWarning>* warnings){
     if (!data.guid.empty() && !isClipGuid(data.guid)) data.guid.clear();
     auto clamped = [&](float value, const std::string& path){
         const float result = std::isfinite(value) ? clamp01(value) : 1.0f;
@@ -1579,7 +1580,7 @@ void anim::normalizeMask(AvatarMaskDef& data, std::vector<ClipWarning>* warnings
     dedupeUnknown(data.unknownKeys, kMaskMembers, "", warnings);
 }
 
-std::string anim::writeMask(const AvatarMaskDef& data){
+std::string writeMask(const AvatarMaskDef& data){
     Writer out;
     out.open('{');
     writeHeader(out, MASK_FORMAT, MASK_VERSION, data.guid);
@@ -1615,7 +1616,7 @@ std::string anim::writeMask(const AvatarMaskDef& data){
 
 // ---------------------------------------------------------------- public: montage
 
-anim::MontageParseResult anim::parseMontage(const std::string& text){
+anim::MontageParseResult parseMontage(const std::string& text){
     MontageParseResult result;
     try{
         OJson root;
@@ -1710,7 +1711,7 @@ anim::MontageParseResult anim::parseMontage(const std::string& text){
     return result;
 }
 
-void anim::normalizeMontage(MontageDef& data, std::vector<ClipWarning>* warnings){
+void normalizeMontage(MontageDef& data, std::vector<ClipWarning>* warnings){
     if (!data.guid.empty() && !isClipGuid(data.guid)) data.guid.clear();
     if (data.slot.empty()) data.slot = "Default";
     if (!std::isfinite(data.rate) || data.rate == 0.0f){
@@ -1764,7 +1765,7 @@ void anim::normalizeMontage(MontageDef& data, std::vector<ClipWarning>* warnings
     });
 }
 
-std::string anim::writeMontage(const MontageDef& data){
+std::string writeMontage(const MontageDef& data){
     Writer out;
     out.open('{');
     writeHeader(out, MONTAGE_FORMAT, MONTAGE_VERSION, data.guid);
@@ -1801,7 +1802,7 @@ std::string anim::writeMontage(const MontageDef& data){
 
 // ---------------------------------------------------------------- public: clip root motion
 
-anim::ClipRootMotion anim::readClipRootMotion(const std::vector<std::pair<std::string, std::string>>& unknownKeys,
+anim::ClipRootMotion readClipRootMotion(const std::vector<std::pair<std::string, std::string>>& unknownKeys,
                                               std::vector<ClipWarning>* warnings){
     ClipRootMotion out;
     for (const auto& entry : unknownKeys){
@@ -1823,7 +1824,7 @@ anim::ClipRootMotion anim::readClipRootMotion(const std::vector<std::pair<std::s
     return out;
 }
 
-std::string anim::writeClipRootMotion(const ClipRootMotion& rootMotion){
+std::string writeClipRootMotion(const ClipRootMotion& rootMotion){
     return "{\"bone\": " + quote(rootMotion.bone) + ", \"bake_rotation\": " + (rootMotion.bakeRotation ? "true" : "false") +
            ", \"bake_position_y\": " + (rootMotion.bakePositionY ? "true" : "false") +
            ", \"bake_position_xz\": " + (rootMotion.bakePositionXZ ? "true" : "false") + "}";
@@ -1831,7 +1832,7 @@ std::string anim::writeClipRootMotion(const ClipRootMotion& rootMotion){
 
 // ---------------------------------------------------------------- public: validation
 
-bool anim::conditionModeFits(AnimatorConditionMode mode, AnimatorParameterType type){
+bool conditionModeFits(AnimatorConditionMode mode, AnimatorParameterType type){
     switch (mode){
         case AnimatorConditionMode::Greater:
         case AnimatorConditionMode::Less:
@@ -1959,7 +1960,7 @@ namespace{
 
 }
 
-std::vector<ClipWarning> anim::validateController(const ControllerDef& data, const ControllerClipResolver& resolve){
+std::vector<ClipWarning> validateController(const ControllerDef& data, const ControllerClipResolver& resolve){
     std::vector<ClipWarning> out;
     // the compiler's: unknown parameters, parameters of the wrong kind, unknown targets, unreachable states
     std::shared_ptr<const CompiledController> compiled = compileController(data);
@@ -1989,3 +1990,5 @@ std::vector<ClipWarning> anim::validateController(const ControllerDef& data, con
     }
     return unique;
 }
+
+}  // namespace jasperengine::anim

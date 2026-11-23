@@ -14,7 +14,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::platform;
+
+namespace jasperengine::editor::platform {
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -41,7 +43,7 @@ namespace {
 
 }
 
-bool platform::pinnedFileIsCached(const PinnedDownload& download, std::string& error) {
+bool pinnedFileIsCached(const PinnedDownload& download, std::string& error) {
     std::error_code ec;
     if (!fs::is_regular_file(download.target, ec)) return false;
     std::string hex;
@@ -50,7 +52,7 @@ bool platform::pinnedFileIsCached(const PinnedDownload& download, std::string& e
     return false;
 }
 
-bool platform::fetchPinned(const PinnedDownload& download, const std::function<bool()>& cancelled, std::string& error) {
+bool fetchPinned(const PinnedDownload& download, const std::function<bool()>& cancelled, std::string& error) {
     std::error_code ec;
     fs::create_directories(download.target.parent_path(), ec);
     if (ec) {
@@ -135,3 +137,5 @@ bool platform::fetchPinned(const PinnedDownload& download, const std::function<b
             "yourself and put it at " + download.target.string() + " (its SHA-256 must be " + download.sha256 + ")";
     return false;
 }
+
+}  // namespace jasperengine::editor::platform

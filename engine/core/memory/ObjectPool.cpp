@@ -19,8 +19,8 @@
 #include <new>
 
 using namespace jasperengine;
-using namespace jasperengine::memory;
-using namespace jasperengine::memory::detail;
+
+namespace jasperengine::memory {
 
 namespace{
     constexpr size_t kFirstBlockMinimumSlots = 16;
@@ -53,7 +53,7 @@ namespace{
     }
 }
 
-ObjectPoolStorage::ObjectPoolStorage(std::string_view statsName, size_t objectBytes, size_t objectAlignment, bool assertNoLeaks):
+memory::detail::ObjectPoolStorage::ObjectPoolStorage(std::string_view statsName, size_t objectBytes, size_t objectAlignment, bool assertNoLeaks):
     slotBytes(roundUp(std::max(objectBytes, sizeof(void*)), std::max(objectAlignment, alignof(void*)))),
     blockAlignment(std::max(objectAlignment, kCacheLine)),
     assertNoLeaks(assertNoLeaks),
@@ -61,7 +61,7 @@ ObjectPoolStorage::ObjectPoolStorage(std::string_view statsName, size_t objectBy
     assert(!statsName.empty() && "an ObjectPool needs a stats name; name it after its owner, as 'Area.What'");
 }
 
-ObjectPoolStorage::~ObjectPoolStorage(){
+memory::detail::ObjectPoolStorage::~ObjectPoolStorage(){
     unregisterRecord(record);
     for (const BlockDescriptor& block : blocks){
         const size_t blockBytes = block.slotCount * slotBytes + bitmapBytes(block.slotCount);
@@ -71,7 +71,7 @@ ObjectPoolStorage::~ObjectPoolStorage(){
     }
 }
 
-void* ObjectPoolStorage::takeFromNewBlock(){
+void* memory::detail::ObjectPoolStorage::takeFromNewBlock(){
     const size_t capSlots = std::max<size_t>(1, kArenaMaxBlockBytes / slotBytes);
     const size_t growthSlots = blocks.empty()
         ? std::max(kFirstBlockMinimumSlots, kFirstBlockSlotBytes / slotBytes)
@@ -106,13 +106,13 @@ void* ObjectPoolStorage::takeFromNewBlock(){
     return begin;
 }
 
-size_t ObjectPoolStorage::usedSlots(const BlockDescriptor& block) const{
+size_t memory::detail::ObjectPoolStorage::usedSlots(const BlockDescriptor& block) const{
     if (block.begin != newestBegin)
         return block.slotCount;
     return (size_t)(cursor - block.begin) / slotBytes;
 }
 
-ObjectPoolStorage::SlotLocation ObjectPoolStorage::locate(const void* slot) const{
+memory::detail::ObjectPoolStorage::SlotLocation memory::detail::ObjectPoolStorage::locate(const void* slot) const{
     const auto* address = static_cast<const unsigned char*>(slot);
     const auto after = std::upper_bound(blocks.begin(), blocks.end(), address,
         [](const unsigned char* value, const BlockDescriptor& block){ return value < block.begin; });
@@ -131,12 +131,12 @@ ObjectPoolStorage::SlotLocation ObjectPoolStorage::locate(const void* slot) cons
     return {(size_t)(after - 1 - blocks.begin()), offset / slotBytes};
 }
 
-void ObjectPoolStorage::markLive(void* slot){
+void memory::detail::ObjectPoolStorage::markLive(void* slot){
     const SlotLocation location = locate(slot);
     setBit(blocks[location.block].bitmap, location.slot);
 }
 
-void ObjectPoolStorage::checkLiveAndMarkFree(void* slot){
+void memory::detail::ObjectPoolStorage::checkLiveAndMarkFree(void* slot){
 #if JE_MEMORY_CHECKS
     SerialUseScope use(serialUse, "ObjectPool");
     const SlotLocation location = locate(slot);
@@ -151,8 +151,8 @@ void ObjectPoolStorage::checkLiveAndMarkFree(void* slot){
 #endif
 }
 
-bool ObjectPoolStorage::claimWhileDestroying(void* slot){
-    SerialUseScope use(serialUse, "ObjectPool");
+bool memory::detail::ObjectPoolStorage::claimWhileDestroying(void* slot){
+    memory::detail::SerialUseScope use(serialUse, "ObjectPool");
     const SlotLocation location = locate(slot);
     uint64_t* bitmap = blocks[location.block].bitmap;
     if (!testBit(bitmap, location.slot))
@@ -162,7 +162,7 @@ bool ObjectPoolStorage::claimWhileDestroying(void* slot){
     return true;
 }
 
-void ObjectPoolStorage::retireWhileDestroying(void* slot){
+void memory::detail::ObjectPoolStorage::retireWhileDestroying(void* slot){
 #if JE_MEMORY_CHECKS
     std::memset(slot, 0xDD, slotBytes);
 #endif
@@ -170,7 +170,7 @@ void ObjectPoolStorage::retireWhileDestroying(void* slot){
     (void)slot;
 }
 
-void ObjectPoolStorage::deriveLiveSet(){
+void memory::detail::ObjectPoolStorage::deriveLiveSet(){
     size_t used = 0;
     for (const BlockDescriptor& block : blocks){
         const size_t usedInBlock = usedSlots(block);
@@ -196,7 +196,7 @@ void ObjectPoolStorage::deriveLiveSet(){
     }
 }
 
-void ObjectPoolStorage::destroyLiveObjects(void (*destroy)(void*)) noexcept{
+void memory::detail::ObjectPoolStorage::destroyLiveObjects(void (*destroy)(void*)) noexcept{
 #if JE_MEMORY_CHECKS
     if (liveCount != 0 && assertNoLeaks){
         std::fprintf(stderr, "ObjectPool: %zu object(s) still alive when the pool is destroyed (leak)\n", liveCount);
@@ -222,6 +222,8 @@ void ObjectPoolStorage::destroyLiveObjects(void (*destroy)(void*)) noexcept{
     }
 }
 
-void ObjectPoolStorage::publishStats(){
-    publish(record, (uint64_t)liveCount * slotBytes, (uint64_t)peakLive * slotBytes, reservedBytes, liveCount);
+void memory::detail::ObjectPoolStorage::publishStats(){
+    memory::detail::publish(record, (uint64_t)liveCount * slotBytes, (uint64_t)peakLive * slotBytes, reservedBytes, liveCount);
 }
+
+}  // namespace jasperengine::memory

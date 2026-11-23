@@ -30,7 +30,6 @@
 #include <string>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
 
 namespace {
 
@@ -51,7 +50,7 @@ namespace {
         std::string path;    // "colorOverLifetime.color"
     };
 
-    bool gradientOf(const ParticleSystemGradient& view, MinMaxGradient& out);
+    bool gradientOf(const ParticleSystemGradient& view, particles::MinMaxGradient& out);
 
     ParticleSystem systemOf(const ParticleSystemModule& m){
         return ParticleSystem(m.scene, m.entity);
@@ -97,29 +96,29 @@ namespace {
         return name;
     }
 
-    luabridge::LuaRef toLua(lua_State* L, const FieldDesc& f, const void* v){
-        const bool degrees = (f.flags & FieldFlag_Degrees) != 0;
+    luabridge::LuaRef toLua(lua_State* L, const particles::FieldDesc& f, const void* v){
+        const bool degrees = (f.flags & particles::FieldFlag_Degrees) != 0;
         switch (f.type){
-            case FieldType::Bool: return luabridge::LuaRef(L, *(const bool*)v);
-            case FieldType::Int: return luabridge::LuaRef(L, *(const int*)v);
-            case FieldType::UInt:
-            case FieldType::Mask: return luabridge::LuaRef(L, *(const uint32_t*)v);
-            case FieldType::Float: return luabridge::LuaRef(L, degrees ? *(const float*)v / kRadToDeg : *(const float*)v);
-            case FieldType::Enum: {
-                const EnumOption* option = f.findOption(*(const uint8_t*)v);
+            case particles::FieldType::Bool: return luabridge::LuaRef(L, *(const bool*)v);
+            case particles::FieldType::Int: return luabridge::LuaRef(L, *(const int*)v);
+            case particles::FieldType::UInt:
+            case particles::FieldType::Mask: return luabridge::LuaRef(L, *(const uint32_t*)v);
+            case particles::FieldType::Float: return luabridge::LuaRef(L, degrees ? *(const float*)v / kRadToDeg : *(const float*)v);
+            case particles::FieldType::Enum: {
+                const particles::EnumOption* option = f.findOption(*(const uint8_t*)v);
                 return option ? luabridge::LuaRef(L, std::string(option->json)) : luabridge::LuaRef(L);
             }
-            case FieldType::Vector2: return luabridge::LuaRef(L, *(const Vector2*)v);
-            case FieldType::Vector3: {
+            case particles::FieldType::Vector2: return luabridge::LuaRef(L, *(const Vector2*)v);
+            case particles::FieldType::Vector3: {
                 Vector3 value = *(const Vector3*)v;
                 if (degrees) value = value / kRadToDeg;
                 return luabridge::LuaRef(L, value);
             }
-            case FieldType::Vector4:
-            case FieldType::Color: return luabridge::LuaRef(L, *(const Vector4*)v);
-            case FieldType::String: return luabridge::LuaRef(L, *(const std::string*)v);
-            case FieldType::MinMaxCurve: {
-                MinMaxCurve value = *(const MinMaxCurve*)v;
+            case particles::FieldType::Vector4:
+            case particles::FieldType::Color: return luabridge::LuaRef(L, *(const Vector4*)v);
+            case particles::FieldType::String: return luabridge::LuaRef(L, *(const std::string*)v);
+            case particles::FieldType::MinMaxCurve: {
+                particles::MinMaxCurve value = *(const particles::MinMaxCurve*)v;
                 if (degrees){
                     value.constant /= kRadToDeg;
                     value.constantMax /= kRadToDeg;
@@ -127,52 +126,52 @@ namespace {
                 }
                 return luabridge::LuaRef(L, value);
             }
-            case FieldType::MinMaxGradient: return luabridge::LuaRef(L, *(const MinMaxGradient*)v);
-            case FieldType::Curve: return luabridge::LuaRef(L, *(const Curve*)v);
-            case FieldType::Gradient: return luabridge::LuaRef(L, *(const Gradient*)v);
-            case FieldType::IntArray: {
+            case particles::FieldType::MinMaxGradient: return luabridge::LuaRef(L, *(const particles::MinMaxGradient*)v);
+            case particles::FieldType::Curve: return luabridge::LuaRef(L, *(const Curve*)v);
+            case particles::FieldType::Gradient: return luabridge::LuaRef(L, *(const Gradient*)v);
+            case particles::FieldType::IntArray: {
                 luabridge::LuaRef table = luabridge::newTable(L);
                 const std::vector<int>& list = *(const std::vector<int>*)v;
                 for (size_t i = 0; i < list.size(); i++) table[(int)i + 1] = list[i];
                 return table;
             }
-            case FieldType::StringArray: {
+            case particles::FieldType::StringArray: {
                 luabridge::LuaRef table = luabridge::newTable(L);
                 const std::vector<std::string>& list = *(const std::vector<std::string>*)v;
                 for (size_t i = 0; i < list.size(); i++) table[(int)i + 1] = list[i];
                 return table;
             }
-            case FieldType::Struct:
-            case FieldType::Array:
+            case particles::FieldType::Struct:
+            case particles::FieldType::Array:
                 break;
         }
         return luabridge::LuaRef(L);
     }
 
     // false (with why) for a value the field does not take
-    bool fromLua(const FieldDesc& f, const luabridge::LuaRef& value, void* v, std::string& why){
-        const bool degrees = (f.flags & FieldFlag_Degrees) != 0;
+    bool fromLua(const particles::FieldDesc& f, const luabridge::LuaRef& value, void* v, std::string& why){
+        const bool degrees = (f.flags & particles::FieldFlag_Degrees) != 0;
         switch (f.type){
-            case FieldType::Bool:
+            case particles::FieldType::Bool:
                 if (!value.isBool()){ why = "true or false"; return false; }
                 *(bool*)v = value.unsafe_cast<bool>();
                 return true;
-            case FieldType::Int:
+            case particles::FieldType::Int:
                 if (!value.isNumber()){ why = "a whole number"; return false; }
                 *(int*)v = (int)std::lround(std::clamp(value.unsafe_cast<double>(), (double)f.minValue, (double)f.maxValue));
                 return true;
-            case FieldType::UInt:
-            case FieldType::Mask:
+            case particles::FieldType::UInt:
+            case particles::FieldType::Mask:
                 if (!value.isNumber() || value.unsafe_cast<double>() < 0.0){ why = "a whole number from 0"; return false; }
-                *(uint32_t*)v = (uint32_t)std::llround(f.type == FieldType::UInt ? std::clamp(value.unsafe_cast<double>(), (double)f.minValue, (double)f.maxValue)
+                *(uint32_t*)v = (uint32_t)std::llround(f.type == particles::FieldType::UInt ? std::clamp(value.unsafe_cast<double>(), (double)f.minValue, (double)f.maxValue)
                                                                                    : value.unsafe_cast<double>());
                 return true;
-            case FieldType::Float:
+            case particles::FieldType::Float:
                 if (!value.isNumber() || !std::isfinite(value.unsafe_cast<float>())){ why = "a number"; return false; }
                 *(float*)v = std::clamp(degrees ? value.unsafe_cast<float>() * kRadToDeg : value.unsafe_cast<float>(), f.minValue, f.maxValue);
                 return true;
-            case FieldType::Enum: {
-                const EnumOption* option = nullptr;
+            case particles::FieldType::Enum: {
+                const particles::EnumOption* option = nullptr;
                 if (value.isString()) option = f.findOption(value.unsafe_cast<std::string>());
                 else if (value.isNumber()) option = f.findOption((uint8_t)value.unsafe_cast<int>());
                 if (!option){
@@ -183,31 +182,31 @@ namespace {
                 *(uint8_t*)v = option->value;
                 return true;
             }
-            case FieldType::Vector2:
+            case particles::FieldType::Vector2:
                 if (!value.isInstance<Vector2>()){ why = "a Vector2"; return false; }
                 *(Vector2*)v = value.unsafe_cast<Vector2>();
                 return true;
-            case FieldType::Vector3:
+            case particles::FieldType::Vector3:
                 if (!value.isInstance<Vector3>()){ why = "a Vector3"; return false; }
                 *(Vector3*)v = degrees ? value.unsafe_cast<Vector3>() * kRadToDeg : value.unsafe_cast<Vector3>();
                 return true;
-            case FieldType::Vector4:
-            case FieldType::Color:
+            case particles::FieldType::Vector4:
+            case particles::FieldType::Color:
                 if (!value.isInstance<Vector4>()){ why = "a Vector4"; return false; }
                 *(Vector4*)v = value.unsafe_cast<Vector4>();
                 return true;
-            case FieldType::String:
+            case particles::FieldType::String:
                 if (!value.isString()){ why = "a string"; return false; }
                 *(std::string*)v = value.unsafe_cast<std::string>();
                 return true;
-            case FieldType::MinMaxCurve: {
-                MinMaxCurve c;
+            case particles::FieldType::MinMaxCurve: {
+                particles::MinMaxCurve c;
                 if (value.isNumber()){
-                    c = MinMaxCurve(value.unsafe_cast<float>());
-                }else if (value.isInstance<MinMaxCurve>()){
-                    c = value.unsafe_cast<MinMaxCurve>();
+                    c = particles::MinMaxCurve(value.unsafe_cast<float>());
+                }else if (value.isInstance<particles::MinMaxCurve>()){
+                    c = value.unsafe_cast<particles::MinMaxCurve>();
                 }else if (value.isInstance<Curve>()){
-                    c = MinMaxCurve::fromCurve(value.unsafe_cast<Curve>(), 1.0f);
+                    c = particles::MinMaxCurve::fromCurve(value.unsafe_cast<Curve>(), 1.0f);
                 }else{
                     why = "a number, a MinMaxCurve or an AnimationCurve";
                     return false;
@@ -217,42 +216,42 @@ namespace {
                     c.constantMax *= kRadToDeg;
                     c.multiplier *= kRadToDeg;
                 }
-                *(MinMaxCurve*)v = c;
+                *(particles::MinMaxCurve*)v = c;
                 return true;
             }
-            case FieldType::MinMaxGradient:
+            case particles::FieldType::MinMaxGradient:
                 if (value.isInstance<ParticleSystemGradient>()){
-                    MinMaxGradient g;
+                    particles::MinMaxGradient g;
                     if (!gradientOf(value.unsafe_cast<ParticleSystemGradient>(), g)){ why = "the colour's Particle System is gone"; return false; }
-                    *(MinMaxGradient*)v = g;
+                    *(particles::MinMaxGradient*)v = g;
                     return true;
                 }
-                if (value.isInstance<MinMaxGradient>()){
-                    *(MinMaxGradient*)v = value.unsafe_cast<MinMaxGradient>();
+                if (value.isInstance<particles::MinMaxGradient>()){
+                    *(particles::MinMaxGradient*)v = value.unsafe_cast<particles::MinMaxGradient>();
                     return true;
                 }
                 if (value.isInstance<Vector4>()){
-                    *(MinMaxGradient*)v = MinMaxGradient(value.unsafe_cast<Vector4>());
+                    *(particles::MinMaxGradient*)v = particles::MinMaxGradient(value.unsafe_cast<Vector4>());
                     return true;
                 }
                 if (value.isInstance<Gradient>()){
-                    MinMaxGradient g;
-                    g.mode = GradientValueMode::Gradient;
+                    particles::MinMaxGradient g;
+                    g.mode = particles::GradientValueMode::Gradient;
                     g.gradient = value.unsafe_cast<Gradient>();
-                    *(MinMaxGradient*)v = g;
+                    *(particles::MinMaxGradient*)v = g;
                     return true;
                 }
                 why = "a MinMaxGradient, a Gradient or a Vector4 colour (sRGB)";
                 return false;
-            case FieldType::Curve:
+            case particles::FieldType::Curve:
                 if (!value.isInstance<Curve>()){ why = "an AnimationCurve"; return false; }
                 *(Curve*)v = value.unsafe_cast<Curve>();
                 return true;
-            case FieldType::Gradient:
+            case particles::FieldType::Gradient:
                 if (!value.isInstance<Gradient>()){ why = "a Gradient"; return false; }
                 *(Gradient*)v = value.unsafe_cast<Gradient>();
                 return true;
-            case FieldType::IntArray: {
+            case particles::FieldType::IntArray: {
                 if (!value.isTable()){ why = "a table of whole numbers"; return false; }
                 std::vector<int> list;
                 for (int i = 1; i <= value.length(); i++){
@@ -263,7 +262,7 @@ namespace {
                 *(std::vector<int>*)v = std::move(list);
                 return true;
             }
-            case FieldType::StringArray: {
+            case particles::FieldType::StringArray: {
                 if (!value.isTable()){ why = "a table of strings"; return false; }
                 std::vector<std::string> list;
                 for (int i = 1; i <= value.length(); i++){
@@ -274,8 +273,8 @@ namespace {
                 *(std::vector<std::string>*)v = std::move(list);
                 return true;
             }
-            case FieldType::Struct:
-            case FieldType::Array:
+            case particles::FieldType::Struct:
+            case particles::FieldType::Array:
                 break;
         }
         why = "set with setInlineEffect (a list of structures)";
@@ -283,7 +282,7 @@ namespace {
     }
 
     // a burst as Unity's ParticleSystem.Burst fields: {time, count (a number or MinMaxCurve), cycles, interval, probability}
-    luabridge::LuaRef burstToTable(lua_State* L, const Burst& b){
+    luabridge::LuaRef burstToTable(lua_State* L, const particles::Burst& b){
         luabridge::LuaRef t = luabridge::newTable(L);
         t["time"] = b.time;
         t["count"] = b.count;
@@ -293,13 +292,13 @@ namespace {
         return t;
     }
 
-    bool tableToBurst(const luabridge::LuaRef& t, Burst& b, std::string& why){
+    bool tableToBurst(const luabridge::LuaRef& t, particles::Burst& b, std::string& why){
         if (!t.isTable()){ why = "a burst is {time, count, cycles, interval, probability}"; return false; }
         const luabridge::LuaRef time = t["time"], count = t["count"], cycles = t["cycles"], interval = t["interval"], probability = t["probability"];
         if (!time.isNil()){ if (!time.isNumber()){ why = "time is a number"; return false; } b.time = std::max(0.0f, time.unsafe_cast<float>()); }
         if (!count.isNil()){
-            if (count.isNumber()) b.count = MinMaxCurve(count.unsafe_cast<float>());
-            else if (count.isInstance<MinMaxCurve>()) b.count = count.unsafe_cast<MinMaxCurve>();
+            if (count.isNumber()) b.count = particles::MinMaxCurve(count.unsafe_cast<float>());
+            else if (count.isInstance<particles::MinMaxCurve>()) b.count = count.unsafe_cast<particles::MinMaxCurve>();
             else { why = "count is a number or a MinMaxCurve"; return false; }
         }
         if (!cycles.isNil()){ if (!cycles.isNumber()){ why = "cycles is a number"; return false; } b.cycles = std::max(0, cycles.unsafe_cast<int>()); }
@@ -318,8 +317,8 @@ namespace {
         // nil for the methods (LuaBridge finds them) and the metamethods
         if (isMethod(name) || name.rfind("__", 0) == 0) return luabridge::LuaRef(L);
         if (!alive(self)) return luabridge::LuaRef(L);
-        ParticleEffectDocument document = systemOf(self).getEffectDocument();
-        const ModuleDesc* m = ParticleModules::find(self.module);
+        particles::ParticleEffectDocument document = systemOf(self).getEffectDocument();
+        const particles::ModuleDesc* m = particles::ParticleModules::find(self.module);
         if (name == "enabled" && self.module == "inheritVelocity")
             return luabridge::LuaRef(L, !document.main.inheritVelocity.isZero());
         if (name == "enabled" && m)
@@ -330,52 +329,52 @@ namespace {
         // "<curve>Multiplier": the curve's multiplier (its constant in Constant mode)
         const std::string suffix = "Multiplier";
         if (name.size() > suffix.size() && name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0){
-            const ParticleModules::Resolved r = ParticleModules::resolve(document, pathOf(self.module, name.substr(0, name.size() - suffix.size())));
-            if (r.field && r.field->type == FieldType::MinMaxCurve){
-                const MinMaxCurve& c = *(const MinMaxCurve*)r.storage;
-                const float scale = (r.field->flags & FieldFlag_Degrees) ? 1.0f / kRadToDeg : 1.0f;
+            const particles::ParticleModules::Resolved r = particles::ParticleModules::resolve(document, pathOf(self.module, name.substr(0, name.size() - suffix.size())));
+            if (r.field && r.field->type == particles::FieldType::MinMaxCurve){
+                const particles::MinMaxCurve& c = *(const particles::MinMaxCurve*)r.storage;
+                const float scale = (r.field->flags & particles::FieldFlag_Degrees) ? 1.0f / kRadToDeg : 1.0f;
                 return luabridge::LuaRef(L, (c.usesCurve() ? c.multiplier : c.constant) * scale);
             }
         }
-        const ParticleModules::Resolved r = ParticleModules::resolve(document, path);
+        const particles::ParticleModules::Resolved r = particles::ParticleModules::resolve(document, path);
         if (!r.field || !r.member.empty()){
             Log::error("ParticleSystem.%s has no field '%s' (docs/mcp/guide/particles.md lists them)", self.module.c_str(), name.c_str());
             return luabridge::LuaRef(L);
         }
-        if (r.field->type == FieldType::MinMaxGradient)
+        if (r.field->type == particles::FieldType::MinMaxGradient)
             return luabridge::LuaRef(L, ParticleSystemGradient{self.scene, self.entity, path});
         return toLua(L, *r.field, r.storage);
     }
 
     // the colour a gradient view names, now
-    bool gradientOf(const ParticleSystemGradient& view, MinMaxGradient& out){
+    bool gradientOf(const ParticleSystemGradient& view, particles::MinMaxGradient& out){
         if (!view.scene || !view.scene->isEntityCreated(view.entity) || !view.scene->findComponent<ParticleSystemComponent>(view.entity))
             return false;
-        ParticleEffectDocument document = ParticleSystem(view.scene, view.entity).getEffectDocument();
-        const ParticleModules::Resolved r = ParticleModules::resolve(document, view.path);
-        if (!r.field || r.field->type != FieldType::MinMaxGradient)
+        particles::ParticleEffectDocument document = ParticleSystem(view.scene, view.entity).getEffectDocument();
+        const particles::ParticleModules::Resolved r = particles::ParticleModules::resolve(document, view.path);
+        if (!r.field || r.field->type != particles::FieldType::MinMaxGradient)
             return false;
-        out = *(const MinMaxGradient*)r.storage;
+        out = *(const particles::MinMaxGradient*)r.storage;
         return true;
     }
 
-    bool setGradientOf(const ParticleSystemGradient& view, const MinMaxGradient& value){
+    bool setGradientOf(const ParticleSystemGradient& view, const particles::MinMaxGradient& value){
         if (!view.scene || !view.scene->isEntityCreated(view.entity) || !view.scene->findComponent<ParticleSystemComponent>(view.entity))
             return false;
         ParticleSystem system(view.scene, view.entity);
-        ParticleEffectDocument document = system.getEffectDocument();
-        const ParticleModules::Resolved r = ParticleModules::resolve(document, view.path);
-        if (!r.field || r.field->type != FieldType::MinMaxGradient)
+        particles::ParticleEffectDocument document = system.getEffectDocument();
+        const particles::ParticleModules::Resolved r = particles::ParticleModules::resolve(document, view.path);
+        if (!r.field || r.field->type != particles::FieldType::MinMaxGradient)
             return false;
-        *(MinMaxGradient*)r.storage = value;
+        *(particles::MinMaxGradient*)r.storage = value;
         if (r.module) r.module->setPresent(document, true);
         system.setEffectDocument(document);
         return true;
     }
 
     // MinMaxGradient:setRamp(palette, ramp[, steps]): a Palette Ramp of "<palette>#ramp:<ramp>"
-    void applyRamp(MinMaxGradient& g, const std::string& palette, const std::string& ramp, int steps){
-        g.mode = GradientValueMode::Ramp;
+    void applyRamp(particles::MinMaxGradient& g, const std::string& palette, const std::string& ramp, int steps){
+        g.mode = particles::GradientValueMode::Ramp;
         g.ramp = palette + "#ramp:" + ramp;
         g.rampColors.clear();
         g.rampSteps = steps;
@@ -385,7 +384,7 @@ namespace {
         if (!key.isString()) return luabridge::LuaRef(L);
         const std::string name = key.unsafe_cast<std::string>();
         if (name == "setRamp" || name == "evaluate" || name == "value" || name.rfind("__", 0) == 0) return luabridge::LuaRef(L);
-        MinMaxGradient g;
+        particles::MinMaxGradient g;
         if (!gradientOf(self, g)) return luabridge::LuaRef(L);
         luabridge::LuaRef value(L, g);
         return value[name];
@@ -393,11 +392,11 @@ namespace {
 
     luabridge::LuaRef gradientNewIndex(ParticleSystemGradient& self, const luabridge::LuaRef& key, const luabridge::LuaRef& v, lua_State* L){
         if (!key.isString()) return luabridge::LuaRef(L);
-        MinMaxGradient g;
+        particles::MinMaxGradient g;
         if (!gradientOf(self, g)) return luabridge::LuaRef(L);
         luabridge::LuaRef value(L, g);
         value[key.unsafe_cast<std::string>()] = v;
-        setGradientOf(self, value.unsafe_cast<MinMaxGradient>());
+        setGradientOf(self, value.unsafe_cast<particles::MinMaxGradient>());
         return luabridge::LuaRef(L);
     }
 
@@ -405,11 +404,11 @@ namespace {
         if (!key.isString() || !alive(self)) return luabridge::LuaRef(L);
         const std::string name = key.unsafe_cast<std::string>();
         ParticleSystem system = systemOf(self);
-        ParticleEffectDocument document = system.getEffectDocument();
-        const ModuleDesc* m = ParticleModules::find(self.module);
+        particles::ParticleEffectDocument document = system.getEffectDocument();
+        const particles::ModuleDesc* m = particles::ParticleModules::find(self.module);
         if (name == "enabled" && self.module == "inheritVelocity"){
             if (!value.isBool()){ Log::error("ParticleSystem.inheritVelocity.enabled: true or false"); return luabridge::LuaRef(L); }
-            if (!value.unsafe_cast<bool>()) document.main.inheritVelocity = MinMaxCurve(0.0f);
+            if (!value.unsafe_cast<bool>()) document.main.inheritVelocity = particles::MinMaxCurve(0.0f);
             system.setEffectDocument(document);
             return luabridge::LuaRef(L);
         }
@@ -423,16 +422,16 @@ namespace {
         }
         const std::string suffix = "Multiplier";
         if (name.size() > suffix.size() && name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0){
-            const ParticleModules::Resolved r = ParticleModules::resolve(document, pathOf(self.module, name.substr(0, name.size() - suffix.size())));
-            if (r.field && r.field->type == FieldType::MinMaxCurve){
+            const particles::ParticleModules::Resolved r = particles::ParticleModules::resolve(document, pathOf(self.module, name.substr(0, name.size() - suffix.size())));
+            if (r.field && r.field->type == particles::FieldType::MinMaxCurve){
                 if (!value.isNumber()){ Log::error("ParticleSystem.%s.%s: a number", self.module.c_str(), name.c_str()); return luabridge::LuaRef(L); }
-                MinMaxCurve& c = *(MinMaxCurve*)r.storage;
-                const float v = value.unsafe_cast<float>() * ((r.field->flags & FieldFlag_Degrees) ? kRadToDeg : 1.0f);
+                particles::MinMaxCurve& c = *(particles::MinMaxCurve*)r.storage;
+                const float v = value.unsafe_cast<float>() * ((r.field->flags & particles::FieldFlag_Degrees) ? kRadToDeg : 1.0f);
                 if (c.usesCurve()){
                     c.multiplier = v;
                 }else{
                     // a constant's multiplier is the constant (Unity); a range scales both ends
-                    if (c.mode == CurveMode::TwoConstants && c.constant != 0.0f){
+                    if (c.mode == particles::CurveMode::TwoConstants && c.constant != 0.0f){
                         c.constantMax *= v / c.constant;
                     }else{
                         c.constantMax = v;
@@ -444,7 +443,7 @@ namespace {
                 return luabridge::LuaRef(L);
             }
         }
-        const ParticleModules::Resolved r = ParticleModules::resolve(document, pathOf(self.module, name));
+        const particles::ParticleModules::Resolved r = particles::ParticleModules::resolve(document, pathOf(self.module, name));
         if (!r.field || !r.member.empty()){
             Log::error("ParticleSystem.%s has no field '%s' (docs/mcp/guide/particles.md lists them)", self.module.c_str(), name.c_str());
             return luabridge::LuaRef(L);
@@ -486,7 +485,7 @@ void LuaBinding::registerParticleClasses(lua_State* L){
         // burstCount appends
         .addFunction("getBurst", +[](ParticleSystemModule* self, int index, lua_State* L) -> luabridge::LuaRef {
             if (!alive(*self)) return luabridge::LuaRef(L);
-            const ParticleEffectDocument document = systemOf(*self).getEffectDocument();
+            const particles::ParticleEffectDocument document = systemOf(*self).getEffectDocument();
             if (index < 0 || (size_t)index >= document.emission.bursts.size()){
                 Log::error("ParticleSystem.emission:getBurst(%d): the index is 0..burstCount-1 (burstCount %d)", index, (int)document.emission.bursts.size());
                 return luabridge::LuaRef(L);
@@ -496,13 +495,13 @@ void LuaBinding::registerParticleClasses(lua_State* L){
         .addFunction("setBurst", +[](ParticleSystemModule* self, int index, const luabridge::LuaRef& burst) -> bool {
             if (!alive(*self)) return false;
             ParticleSystem system = systemOf(*self);
-            ParticleEffectDocument document = system.getEffectDocument();
-            std::vector<Burst>& bursts = document.emission.bursts;
-            if (index < 0 || (size_t)index > bursts.size() || (size_t)index >= kMaxBursts){
-                Log::error("ParticleSystem.emission:setBurst(%d): the index is 0..burstCount (burstCount %d, at most %d)", index, (int)bursts.size(), (int)kMaxBursts);
+            particles::ParticleEffectDocument document = system.getEffectDocument();
+            std::vector<particles::Burst>& bursts = document.emission.bursts;
+            if (index < 0 || (size_t)index > bursts.size() || (size_t)index >= particles::kMaxBursts){
+                Log::error("ParticleSystem.emission:setBurst(%d): the index is 0..burstCount (burstCount %d, at most %d)", index, (int)bursts.size(), (int)particles::kMaxBursts);
                 return false;
             }
-            Burst value = (size_t)index < bursts.size() ? bursts[(size_t)index] : Burst();
+            particles::Burst value = (size_t)index < bursts.size() ? bursts[(size_t)index] : particles::Burst();
             std::string why;
             if (!tableToBurst(burst, value, why)){
                 Log::error("ParticleSystem.emission:setBurst: %s", why.c_str());
@@ -516,15 +515,15 @@ void LuaBinding::registerParticleClasses(lua_State* L){
         })
         .addFunction("setBursts", +[](ParticleSystemModule* self, const luabridge::LuaRef& list) -> bool {
             if (!alive(*self)) return false;
-            if (!list.isTable() || (size_t)list.length() > kMaxBursts){
-                Log::error("ParticleSystem.emission:setBursts: a table of at most %d bursts", (int)kMaxBursts);
+            if (!list.isTable() || (size_t)list.length() > particles::kMaxBursts){
+                Log::error("ParticleSystem.emission:setBursts: a table of at most %d bursts", (int)particles::kMaxBursts);
                 return false;
             }
             ParticleSystem system = systemOf(*self);
-            ParticleEffectDocument document = system.getEffectDocument();
-            std::vector<Burst> bursts;
+            particles::ParticleEffectDocument document = system.getEffectDocument();
+            std::vector<particles::Burst> bursts;
             for (int i = 1; i <= list.length(); i++){
-                Burst b;
+                particles::Burst b;
                 std::string why;
                 if (!tableToBurst(list[i], b, why)){
                     Log::error("ParticleSystem.emission:setBursts: burst %d: %s", i, why.c_str());
@@ -545,10 +544,10 @@ void LuaBinding::registerParticleClasses(lua_State* L){
     luabridge::getGlobalNamespace(L)
         .beginClass<ParticleSystemGradient>("ParticleSystemGradient")
         .addFunction("setRamp", +[](ParticleSystemGradient* self, const std::string& palette, const std::string& ramp, std::optional<int> steps) -> bool {
-            MinMaxGradient g;
+            particles::MinMaxGradient g;
             if (!gradientOf(*self, g)) return false;
             const int n = steps.value_or(0);
-            if (n != 0 && (n < 2 || n > kMaxRampColors)){
+            if (n != 0 && (n < 2 || n > particles::kMaxRampColors)){
                 Log::error("ParticleSystemGradient:setRamp: steps is 0 (the ramp as it is) or 2 to 32");
                 return false;
             }
@@ -556,12 +555,12 @@ void LuaBinding::registerParticleClasses(lua_State* L){
             return setGradientOf(*self, g);
         })
         .addFunction("evaluate", +[](ParticleSystemGradient* self, float time, std::optional<float> random) -> Vector4 {
-            MinMaxGradient g;
+            particles::MinMaxGradient g;
             return gradientOf(*self, g) ? g.evaluate(time, random.value_or(0.0f)) : Vector4(1.0f, 1.0f, 1.0f, 1.0f);
         })
         // a copy, detached from the system
-        .addFunction("value", +[](ParticleSystemGradient* self) -> MinMaxGradient {
-            MinMaxGradient g;
+        .addFunction("value", +[](ParticleSystemGradient* self) -> particles::MinMaxGradient {
+            particles::MinMaxGradient g;
             gradientOf(*self, g);
             return g;
         })
@@ -596,15 +595,15 @@ void LuaBinding::registerParticleClasses(lua_State* L){
         .addProperty("pixelArt", +[](const ParticleSystem* self) { return moduleOf(self, "pixelArt"); })
         .addProperty("simulationMode",
             +[](const ParticleSystem* self) -> std::string {
-                return self->getEffectDocument().simulationMode == SimulationMode::Analytic ? "analytic" : "simulated";
+                return self->getEffectDocument().simulationMode == particles::SimulationMode::Analytic ? "analytic" : "simulated";
             },
             +[](ParticleSystem* self, const std::string& mode) {
                 if (mode != "simulated" && mode != "analytic"){
                     Log::error("ParticleSystem.simulationMode: ParticleSimulationMode.Simulated or .Analytic");
                     return;
                 }
-                ParticleEffectDocument document = self->getEffectDocument();
-                document.simulationMode = mode == "analytic" ? SimulationMode::Analytic : SimulationMode::Simulated;
+                particles::ParticleEffectDocument document = self->getEffectDocument();
+                document.simulationMode = mode == "analytic" ? particles::SimulationMode::Analytic : particles::SimulationMode::Simulated;
                 self->setEffectDocument(document);
                 // the other mode starts over (R40)
                 self->restart();
@@ -612,10 +611,10 @@ void LuaBinding::registerParticleClasses(lua_State* L){
         // the CPU twin of an Analytic particle (slot, emitter time); nil for a Simulated system
         .addFunction("getAnalyticParticle", +[](ParticleSystem* self, int slot, double time, lua_State* L) -> luabridge::LuaRef {
             const ParticleSystemComponent* particles = self->getScene()->findComponent<ParticleSystemComponent>(self->getEntity());
-            const ParticleSystemState* state = particles ? particles->state.get() : nullptr;
+            const particles::ParticleSystemState* state = particles ? particles->state.get() : nullptr;
             if (!state || !state->runtime.isAnalytic() || slot < 0)
                 return luabridge::LuaRef(L);
-            const AnalyticParticle p = AnalyticParticles::evaluateAt(*state->runtime.analytic(), (uint32_t)slot, time);
+            const particles::AnalyticParticle p = particles::AnalyticParticles::evaluateAt(*state->runtime.analytic(), (uint32_t)slot, time);
             luabridge::LuaRef t = luabridge::newTable(L);
             t["alive"] = p.alive;
             t["index"] = (double)p.index;

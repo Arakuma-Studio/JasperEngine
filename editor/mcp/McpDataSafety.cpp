@@ -12,7 +12,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::mcp;
+
+namespace jasperengine::editor::mcp {
 
 namespace {
 
@@ -26,7 +27,7 @@ namespace {
 
 }
 
-Json mcp::loadIssueJson(const LoadIssue& issue, bool outstanding) {
+Json loadIssueJson(const LoadIssue& issue, bool outstanding) {
     Json item = {
         {"kind", loadIssueKindName(issue.kind)},
         {"fate", loadIssueFateName(issue.fate)},
@@ -48,13 +49,13 @@ Json mcp::loadIssueJson(const LoadIssue& issue, bool outstanding) {
     return item;
 }
 
-Json mcp::loadReportSummary(const LoadReport& report, const PreservedStore* store) {
+Json loadReportSummary(const LoadReport& report, const PreservedStore* store) {
     const size_t preserved = report.outstandingPreserved(store);
     const size_t dropped = report.dropped();
     return {{"skipped", preserved + dropped}, {"preserved", preserved}, {"dropped", dropped}, {"newer_format", report.newerFormat()}};
 }
 
-Json mcp::loadReportJson(const LoadReport& report, const PreservedStore* store) {
+Json loadReportJson(const LoadReport& report, const PreservedStore* store) {
     const std::vector<const LoadIssue*> outstanding = report.outstanding(store);
     Json issues = Json::array();
     for (const LoadIssue& issue : report.issues) {
@@ -69,15 +70,15 @@ Json mcp::loadReportJson(const LoadReport& report, const PreservedStore* store) 
     return result;
 }
 
-Json mcp::degradedJson(const LoadReport& report, const PreservedStore* store) {
+Json degradedJson(const LoadReport& report, const PreservedStore* store) {
     return {{"preserved", report.outstandingPreserved(store)}, {"dropped", report.dropped()}};
 }
 
-Json mcp::degradedJson(const SceneProject& scene) {
+Json degradedJson(const SceneProject& scene) {
     return degradedJson(scene.loadReport, findPreservedStore(scene.scene));
 }
 
-Json mcp::degradedDocumentError(const std::string& document, const LoadReport& report) {
+Json degradedDocumentError(const std::string& document, const LoadReport& report) {
     Json dropped = Json::array();
     for (const LoadIssue& issue : report.issues) {
         if (issue.fate == LoadIssueFate::Dropped && dropped.size() < kMaxListedIssues)
@@ -92,13 +93,13 @@ Json mcp::degradedDocumentError(const std::string& document, const LoadReport& r
     };
 }
 
-void mcp::failDegraded(McpCall& call, const std::string& document, const LoadReport& report) {
+void failDegraded(McpCall& call, const std::string& document, const LoadReport& report) {
     call.fail("\"" + document + "\" did not load completely: saving it would permanently remove " + std::to_string(report.dropped()) +
               " value(s) this editor could not read. Pass allow_data_loss=true to write anyway, or path=<new file> to Save As.",
               degradedDocumentError(document, report));
 }
 
-const char* mcp::backupStatusName(BackupStatus status) {
+const char* backupStatusName(BackupStatus status) {
     switch (status) {
         case BackupStatus::Usable: return "usable";
         case BackupStatus::Stale: return "stale";
@@ -107,7 +108,7 @@ const char* mcp::backupStatusName(BackupStatus status) {
     return "none";
 }
 
-Json mcp::backupJson(const Project* project, const SceneBackupInfo& backup) {
+Json backupJson(const Project* project, const SceneBackupInfo& backup) {
     const char* kind = backup.kind == BackupKind::Untitled ? "untitled" : backup.kind == BackupKind::Prefab ? "prefab" : "scene";
     Json item = {
         {"kind", kind},
@@ -119,3 +120,5 @@ Json mcp::backupJson(const Project* project, const SceneBackupInfo& backup) {
     if (backup.kind == BackupKind::Untitled) item["scene_id"] = backup.sceneId;
     return item;
 }
+
+}  // namespace jasperengine::editor::mcp

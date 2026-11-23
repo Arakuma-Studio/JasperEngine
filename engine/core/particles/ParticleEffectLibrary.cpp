@@ -10,7 +10,8 @@
 #include <map>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
+
+namespace jasperengine::particles {
 
 namespace {
 
@@ -81,3 +82,5 @@ uint64_t ParticleEffectLibrary::version(const std::string& path){
     auto it = lib.assets.find(path);
     return it != lib.assets.end() ? it->second.version : 0;
 }
+
+}  // namespace jasperengine::particles

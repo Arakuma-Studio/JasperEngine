@@ -27,7 +27,6 @@
 #include <cstdlib>
 
 using namespace jasperengine;
-using namespace jasperengine::jobs;
 
 namespace jasperengine { namespace detail {
 
@@ -68,7 +67,7 @@ namespace jasperengine { namespace detail {
 
         bool isDead() const{
             return cancelled.load(std::memory_order_acquire) || request.cancel.isCancelled()
-                || (task && jobs::detail::statusOf(task) != TaskStatus::Pending);
+                || (task && jobs::detail::statusOf(task) != jobs::TaskStatus::Pending);
         }
     };
 
@@ -260,7 +259,7 @@ void jasperengine::detail::ioPublish(AssetIOService* service, IoRequest* io, job
 
 // ---- the service
 
-AssetIOService::AssetIOService(JobSystem* jobSystem): system(jobSystem), followsProcessSystem(jobSystem == nullptr){
+AssetIOService::AssetIOService(jobs::JobSystem* jobSystem): system(jobSystem), followsProcessSystem(jobSystem == nullptr){
 }
 
 AssetIOService::~AssetIOService(){
@@ -388,7 +387,7 @@ void AssetIOService::readerMain(int index){
     std::snprintf(name, sizeof(name), "je-io-%d", index);
     thread::setCurrentName(name);
     thread::setCurrentPriority(thread::Priority::BelowNormal);
-    jobs::detail::currentSlotIndex(ThreadKind::IO, name);
+    jobs::detail::currentSlotIndex(jobs::ThreadKind::IO, name);
 
     for (;;){
         IoRequest* io = nullptr;
@@ -491,7 +490,7 @@ void AssetIOService::fail(IoRequest* io, const std::string& error, bool cancelle
     jobs::detail::releaseGate(io);   // the queue's reference
 }
 
-size_t AssetIOService::cancel(const std::string& path, const CancelToken& flag){
+size_t AssetIOService::cancel(const std::string& path, const jobs::CancelToken& flag){
     std::vector<IoRequest*> removed;
     {
         std::lock_guard<std::mutex> lock(mutex);

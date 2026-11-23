@@ -12,7 +12,6 @@
 #include <unordered_map>
 
 using namespace jasperengine;
-using namespace jasperengine::vat;
 
 namespace jasperengine::editor::vat{
 
@@ -355,11 +354,11 @@ namespace{
         normalize3(out);
     }
 
-    void floatBounds(VatBounds& bounds, const double p[3]){
+    void floatBounds(jasperengine::vat::VatBounds& bounds, const double p[3]){
         bounds.extend(Vector3((float)p[0], (float)p[1], (float)p[2]));
     }
 
-    double boundsDiagonal(const VatBounds& bounds){
+    double boundsDiagonal(const jasperengine::vat::VatBounds& bounds){
         if (!bounds.valid) return 0.0;
         const double dx = (double)bounds.max.x - bounds.min.x;
         const double dy = (double)bounds.max.y - bounds.min.y;
@@ -461,8 +460,8 @@ namespace{
         std::vector<float> staging;                // Vertices: samples x V x S x 4 exact
         std::vector<BonePose> candidatePoses;      // samples x candidates (decomposed, continuous)
         std::vector<Affine> candidateMatrices;     // samples x candidates
-        std::vector<VatBounds> clipBounds;
-        VatBounds totalBounds;
+        std::vector<jasperengine::vat::VatBounds> clipBounds;
+        jasperengine::vat::VatBounds totalBounds;
         std::vector<float> socketData;
         double rawMax = 0.0, rawSum = 0.0;
         double decompMax = 0.0, decompSum = 0.0;
@@ -596,11 +595,11 @@ namespace{
                     const uint32_t key = limited[r] ? index : source.canonical[index];
                     int& slotIndex = mergedOf[r][key];
                     if (slotIndex < 0){
-                        if (merged.size() >= (size_t)VAT_MAX_VERTICES){
+                        if (merged.size() >= (size_t)jasperengine::vat::VAT_MAX_VERTICES){
                             VatIssue issue;
                             issue.kind = "vertex_limit";
                             issue.error = true;
-                            issue.message = "the merged mesh has more than " + std::to_string(VAT_MAX_VERTICES) + " vertices";
+                            issue.message = "the merged mesh has more than " + std::to_string(jasperengine::vat::VAT_MAX_VERTICES) + " vertices";
                             issue.fix = "bake fewer or simpler meshes (a LOD of the model)";
                             out.report.warnings.push_back(issue);
                             error = issue.message;
@@ -824,7 +823,7 @@ namespace{
         const size_t at = (((size_t)globalFrame * merged.size() + vertex) * (size_t)texelsPerSample()) * 4;
         for (int i = 0; i < 3; i++){
             const float value = staging[at + (size_t)i];
-            offset[i] = out.data.layout.precision == VatPrecision::Half ? (double)halfToFloat(floatToHalf(value)) : (double)value;
+            offset[i] = out.data.layout.precision == jasperengine::vat::VatPrecision::Half ? (double)halfToFloat(floatToHalf(value)) : (double)value;
         }
     }
 
@@ -842,7 +841,7 @@ namespace{
             candidatePoses.assign((size_t)samples * candidates.size(), BonePose());
             candidateMatrices.assign((size_t)samples * candidates.size(), Affine());
         }
-        clipBounds.assign(in.clips.size(), VatBounds());
+        clipBounds.assign(in.clips.size(), jasperengine::vat::VatBounds());
         clipFrameErrorHalf.assign(in.clips.size(), 0.0);
         clipFrameErrorBones.assign(in.clips.size(), 0.0);
         vertexErrorHalf.assign(doVertices ? vertexCount : 0, 0.0f);
@@ -1057,30 +1056,30 @@ namespace{
         if (doBones) mergeCandidates();
         const int bones = (int)representative.size();
 
-        VatMode mode = VatMode::Vertices;
+        jasperengine::vat::VatMode mode = jasperengine::vat::VatMode::Vertices;
         std::string reason;
         if (in.mode == VatModeChoice::Vertices){
             reason = "Vertices mode was chosen";
         }else if (in.mode == VatModeChoice::Bones){
-            if (bones > VAT_MAX_BONES){
+            if (bones > jasperengine::vat::VAT_MAX_BONES){
                 VatIssue issue;
                 issue.kind = "bone_limit";
                 issue.error = true;
-                issue.message = std::to_string(bones) + " bones, a Bones bake holds at most " + std::to_string(VAT_MAX_BONES);
+                issue.message = std::to_string(bones) + " bones, a Bones bake holds at most " + std::to_string(jasperengine::vat::VAT_MAX_BONES);
                 issue.fix = "bake in Vertices mode";
                 issue.fixes.push_back({"Bake in Vertices mode", "mode", "\"vertices\""});
                 out.report.warnings.push_back(issue);
                 error = issue.message;
                 return false;
             }
-            mode = VatMode::Bones;
+            mode = jasperengine::vat::VatMode::Bones;
             reason = "Bones mode was chosen";
         }else{
             const bool vertexFits = doVertices;
-            if (bones > VAT_MAX_BONES){
-                reason = std::to_string(bones) + " bones are over the " + std::to_string(VAT_MAX_BONES) + " a Bones bake holds";
+            if (bones > jasperengine::vat::VAT_MAX_BONES){
+                reason = std::to_string(bones) + " bones are over the " + std::to_string(jasperengine::vat::VAT_MAX_BONES) + " a Bones bake holds";
             }else if (decompMax <= tolerance){
-                mode = VatMode::Bones;
+                mode = jasperengine::vat::VatMode::Bones;
                 reason = std::string(rigidOnly ? "rigid parts only" : "skin and rigid parts only") + ": " + std::to_string(bones) +
                          (bones == 1 ? " bone reproduces" : " bones reproduce") + " every vertex within " + mm(decompMax) +
                          " mm (tolerance " + mm(tolerance) + " mm)";
@@ -1095,9 +1094,9 @@ namespace{
                 reason = cause + " move" + (cause == "the deformation" ? "s" : "") + " vertices up to " + mm(rawMax) +
                          " mm beyond what the bones explain (tolerance " + mm(tolerance) + " mm)";
             }
-            if (mode == VatMode::Vertices && !vertexFits){
+            if (mode == jasperengine::vat::VatMode::Vertices && !vertexFits){
                 VatSizeInputs size;
-                size.mode = VatMode::Vertices;
+                size.mode = jasperengine::vat::VatMode::Vertices;
                 size.vertices = (int)merged.size();
                 size.bones = bones;
                 size.normals = in.normals;
@@ -1122,17 +1121,17 @@ namespace{
         out.data.mode = mode;
         out.report.mode = mode;
         out.report.modeReason = reason;
-        out.data.layout.bones = mode == VatMode::Bones ? bones : 0;
+        out.data.layout.bones = mode == jasperengine::vat::VatMode::Bones ? bones : 0;
 
         // precision
-        if (mode == VatMode::Bones){
-            out.data.layout.precision = VatPrecision::Float;
+        if (mode == jasperengine::vat::VatMode::Bones){
+            out.data.layout.precision = jasperengine::vat::VatPrecision::Float;
         }else if (in.precision == VatPrecisionChoice::Float){
-            out.data.layout.precision = VatPrecision::Float;
+            out.data.layout.precision = jasperengine::vat::VatPrecision::Float;
         }else if (in.precision == VatPrecisionChoice::Half){
-            out.data.layout.precision = VatPrecision::Half;
+            out.data.layout.precision = jasperengine::vat::VatPrecision::Half;
         }else if (halfMax > tolerance){
-            out.data.layout.precision = VatPrecision::Float;
+            out.data.layout.precision = jasperengine::vat::VatPrecision::Float;
             VatIssue issue;
             issue.kind = "precision_switched";
             issue.message = "half precision would move vertices up to " + mm(halfMax) + " mm (tolerance " + mm(tolerance) +
@@ -1141,32 +1140,32 @@ namespace{
             issue.fixes.push_back({"Keep half precision", "precision", "\"half\""});
             out.report.warnings.push_back(issue);
         }else{
-            out.data.layout.precision = VatPrecision::Half;
+            out.data.layout.precision = jasperengine::vat::VatPrecision::Half;
         }
         out.report.precision = out.data.layout.precision;
-        if (mixedRest && mode == VatMode::Vertices){
+        if (mixedRest && mode == jasperengine::vat::VatMode::Vertices){
             VatIssue issue;
             issue.kind = "mixed_rest";
             issue.message = "the source has no usable bind pose: the rest mesh is the first frame of '" + in.clips[0].name + "'";
             issue.fix = "give the model a bind pose to rest in its own shape (only the rest mesh, drawn without the animation, changes)";
             out.report.warnings.push_back(issue);
         }
-        out.report.quantizationErrorMm = mode == VatMode::Vertices && out.data.layout.precision == VatPrecision::Half ? (float)halfMax : 0.0f;
+        out.report.quantizationErrorMm = mode == jasperengine::vat::VatMode::Vertices && out.data.layout.precision == jasperengine::vat::VatPrecision::Half ? (float)halfMax : 0.0f;
         return true;
     }
 
     bool Baker::midsPass(std::string& error){
         const size_t vertexCount = merged.size();
-        const bool bones = out.data.mode == VatMode::Bones;
+        const bool bones = out.data.mode == jasperengine::vat::VatMode::Bones;
         double maxError = bones ? decompMax : out.report.quantizationErrorMm;
-        double sumError = bones ? decompSum : (out.data.layout.precision == VatPrecision::Half ? halfSum : 0.0);
+        double sumError = bones ? decompSum : (out.data.layout.precision == jasperengine::vat::VatPrecision::Half ? halfSum : 0.0);
         uint64_t measured = frameSamplesMeasured;
         // per vertex: the frames' error of the chosen mode and precision, then the mid-frames'
         std::vector<float>& perVertex = out.vertexErrorMm;
         if (bones) perVertex = vertexErrorBones;
-        else if (out.data.layout.precision == VatPrecision::Half) perVertex = vertexErrorHalf;
+        else if (out.data.layout.precision == jasperengine::vat::VatPrecision::Half) perVertex = vertexErrorHalf;
         perVertex.resize(vertexCount, 0.0f);
-        if (!bones && out.data.layout.precision != VatPrecision::Half) std::fill(perVertex.begin(), perVertex.end(), 0.0f);
+        if (!bones && out.data.layout.precision != jasperengine::vat::VatPrecision::Half) std::fill(perVertex.begin(), perVertex.end(), 0.0f);
         std::vector<float>().swap(vertexErrorHalf);
         std::vector<float>().swap(vertexErrorBones);
 
@@ -1177,7 +1176,7 @@ namespace{
             report.frames = clip.frames;
             report.fps = clip.fps;
             report.maxErrorMm = (float)(bones ? clipFrameErrorBones[c]
-                                              : (out.data.layout.precision == VatPrecision::Half ? clipFrameErrorHalf[c] : 0.0));
+                                              : (out.data.layout.precision == jasperengine::vat::VatPrecision::Half ? clipFrameErrorHalf[c] : 0.0));
             double clipInterpolation = 0.0;
             // a loop's seam (last frame to frame 0) apart: no sample rate helps a clip that doesn't
             // end where it starts
@@ -1283,8 +1282,8 @@ namespace{
 
     bool Baker::build(std::string& error){
         const size_t vertexCount = merged.size();
-        const bool bones = out.data.mode == VatMode::Bones;
-        VatLayout& layout = out.data.layout;
+        const bool bones = out.data.mode == jasperengine::vat::VatMode::Bones;
+        jasperengine::vat::VatLayout& layout = out.data.layout;
         const VatPresetLimits limits = presetLimits(in.preset);
         layout.width = limits.width;
         layout.samples = samples;
@@ -1329,12 +1328,12 @@ namespace{
         layout.height = payloadHeight(texels, limits.width);
 
         // the payload
-        VatPayload& payload = out.payload;
+        jasperengine::vat::VatPayload& payload = out.payload;
         payload.precision = layout.precision;
         payload.width = layout.width;
         payload.height = layout.height;
         const size_t texelCount = (size_t)layout.width * (size_t)layout.height;
-        if (layout.precision == VatPrecision::Half){
+        if (layout.precision == jasperengine::vat::VatPrecision::Half){
             payload.bytes.assign(texelCount * 8, 0);
             uint16_t* target = reinterpret_cast<uint16_t*>(payload.bytes.data());
             for (size_t i = 0; i < staging.size(); i++){
@@ -1352,7 +1351,7 @@ namespace{
                     const BonePose& pose = candidatePoses[(size_t)s * candidates.size() + (size_t)representative[b]];
                     float texel[8] = {(float)pose.q[0], (float)pose.q[1], (float)pose.q[2], (float)pose.q[3],
                                       (float)pose.t[0], (float)pose.t[1], (float)pose.t[2], (float)pose.s};
-                    const uint64_t at = vatTexelIndex(VatMode::Bones, layout, s, (int)b, 0);
+                    const uint64_t at = jasperengine::vat::vatTexelIndex(jasperengine::vat::VatMode::Bones, layout, s, (int)b, 0);
                     std::memcpy(target + at * 4, texel, sizeof(texel));
                 }
             }
@@ -1438,7 +1437,7 @@ namespace{
         out.data.clips.clear();
         for (size_t c = 0; c < in.clips.size(); c++){
             const VatBakeClipInput& source = in.clips[c];
-            VatClip clip;
+            jasperengine::vat::VatClip clip;
             clip.name = source.name;
             clip.start = clipStart[c];
             clip.frames = (int)source.samples.size();
@@ -1470,7 +1469,7 @@ namespace{
             report.frames = clip.frames;
             report.fps = clip.fps;
             report.bytes = payloadTexels(out.data.mode, clip.frames, elements, in.normals) *
-                           (layout.precision == VatPrecision::Float ? 16u : 8u);
+                           (layout.precision == jasperengine::vat::VatPrecision::Float ? 16u : 8u);
         }
         out.data.bounds = totalBounds;
 
@@ -1480,7 +1479,7 @@ namespace{
         out.data.sockets.clear();
         std::vector<std::string> used;
         for (const std::string& path : in.socketPaths){
-            VatSocket socket;
+            jasperengine::vat::VatSocket socket;
             socket.path = path;
             const size_t slash = path.find_last_of('/');
             std::string base = slash == std::string::npos ? path : path.substr(slash + 1);
@@ -1525,11 +1524,11 @@ namespace{
             error = issue.message;
             return false;
         }
-        if (in.clips.size() > (size_t)VAT_MAX_CLIPS){
+        if (in.clips.size() > (size_t)jasperengine::vat::VAT_MAX_CLIPS){
             VatIssue issue;
             issue.kind = "clip_limit";
             issue.error = true;
-            issue.message = std::to_string(in.clips.size()) + " clips, a Vertex Animation holds at most " + std::to_string(VAT_MAX_CLIPS);
+            issue.message = std::to_string(in.clips.size()) + " clips, a Vertex Animation holds at most " + std::to_string(jasperengine::vat::VAT_MAX_CLIPS);
             issue.fix = "bake the clips in two assets";
             out.report.warnings.push_back(issue);
             error = issue.message;
@@ -1560,7 +1559,7 @@ namespace{
             bool useFirstFrame = in.restFromFirstFrame;
             if (!useFirstFrame){
                 if (!deformSample(in.clips[0].samples[0], "the first frame", error)) return false;
-                VatBounds restBounds, firstBounds;
+                jasperengine::vat::VatBounds restBounds, firstBounds;
                 for (size_t v = 0; v < merged.size(); v++){
                     floatBounds(restBounds, &bindPositions[v * 3]);
                     floatBounds(firstBounds, &exactPositions[v * 3]);
@@ -1578,14 +1577,14 @@ namespace{
         const VatPresetLimits limits = presetLimits(in.preset);
         int sampleCount = 0;
         for (const VatBakeClipInput& clip : in.clips) sampleCount += (int)clip.samples.size();
-        const uint64_t vertexTexels = payloadTexels(VatMode::Vertices, sampleCount, (int)merged.size(), in.normals);
+        const uint64_t vertexTexels = payloadTexels(jasperengine::vat::VatMode::Vertices, sampleCount, (int)merged.size(), in.normals);
         doVertices = in.mode != VatModeChoice::Bones &&
                      (in.mode == VatModeChoice::Vertices || vertexTexels <= limits.maxTexels);
         doBones = in.mode != VatModeChoice::Vertices;
         if (in.mode == VatModeChoice::Vertices && (vertexTexels > limits.maxTexels ||
                                                    payloadHeight(vertexTexels, limits.width) > limits.maxHeight)){
             VatSizeInputs size;
-            size.mode = VatMode::Vertices;
+            size.mode = jasperengine::vat::VatMode::Vertices;
             size.vertices = (int)merged.size();
             size.bones = (int)candidates.size();
             size.normals = in.normals;

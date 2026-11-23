@@ -25,7 +25,6 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::voxel;
 
 namespace {
 
@@ -42,7 +41,7 @@ namespace {
 
     // T1's query over copied texels, so a mesh job may read it while the map changes (S53 R93).
     // readFiles: a map not in memory is read from its file
-    class SnapshotTerrainSource final : public TerrainSource {
+    class SnapshotTerrainSource final : public voxel::TerrainSource {
     public:
         SnapshotTerrainSource(TerrainComponent& terrain, const Vector3& volumeToTerrain, std::vector<int> layerSlots, bool readFiles = false): offset(volumeToTerrain), slots(std::move(layerSlots)) {
             snapshotTerrainSurface(terrain, snapshot);
@@ -79,8 +78,8 @@ namespace {
             dhdz = -sample.normal.z / ny;
         }
 
-        TerrainLayerSample layers(float x, float z) const override {
-            TerrainLayerSample out;
+        voxel::TerrainLayerSample layers(float x, float z) const override {
+            voxel::TerrainLayerSample out;
             int best = -1, second = -1;
             float bestWeight = 0.0f, secondWeight = 0.0f;
             const float u = (x + offset.x + size * 0.5f) / size;
@@ -173,7 +172,7 @@ namespace {
 
 }
 
-std::shared_ptr<const BaseSource> jasperengine::makeAttachedTerrainBase(EntityRegistry* registry, Entity owner, Entity terrainEntity, double voxelSize, bool readFiles){
+std::shared_ptr<const voxel::BaseSource> jasperengine::makeAttachedTerrainBase(EntityRegistry* registry, Entity owner, Entity terrainEntity, double voxelSize, bool readFiles){
     if (!registry || owner == NULL_ENTITY || !registry->isEntityCreated(owner)) return nullptr;
     VoxelVolumeComponent* component = registry->findComponent<VoxelVolumeComponent>(owner);
     TerrainComponent* terrain = terrainEntity != NULL_ENTITY && registry->isEntityCreated(terrainEntity) ? registry->findComponent<TerrainComponent>(terrainEntity) : nullptr;
@@ -185,12 +184,12 @@ std::shared_ptr<const BaseSource> jasperengine::makeAttachedTerrainBase(EntityRe
         const int layer = component->materialSlots[i].linkedTerrainLayer;
         if (layer >= 0 && static_cast<size_t>(layer) < slots.size()) slots[static_cast<size_t>(layer)] = static_cast<int>(i);
     }
-    TerrainBaseOptions options;
+    voxel::TerrainBaseOptions options;
     options.voxelSize = voxelSize;
     options.overlapDepth = resolvedOverlap(*component, static_cast<float>(voxelSize));
     auto source = std::make_shared<SnapshotTerrainSource>(*terrain, volumeToTerrain(*volumeTransform, *terrainTransform), std::move(slots), readFiles);
     if (readFiles && !source->hasHeights()) return nullptr;
-    return makeTerrainBase(std::move(source), options);
+    return voxel::makeTerrainBase(std::move(source), options);
 }
 
 std::vector<TerrainSurfaceLayer> jasperengine::voxelSlotLayers(EntityRegistry* registry, const VoxelVolumeComponent& volume){
@@ -205,7 +204,7 @@ std::vector<TerrainSurfaceLayer> jasperengine::voxelSlotLayers(EntityRegistry* r
     return layers;
 }
 
-std::shared_ptr<const BaseSource> VoxelSystem::makeTerrainBaseFor(Entity owner, Entity terrainEntity){
+std::shared_ptr<const voxel::BaseSource> VoxelSystem::makeTerrainBaseFor(Entity owner, Entity terrainEntity){
     const VolumeState* state = stateOf(owner);
     if (!state || !state->store) return nullptr;
     return makeAttachedTerrainBase(scene, owner, terrainEntity, state->store->desc().voxelSize, false);
@@ -244,9 +243,9 @@ void VoxelSystem::attachTerrain(VolumeState& state, VoxelVolumeComponent& compon
             state.cutWidth = state.asset->terrainCut.width;
             state.cutHeight = state.asset->terrainCut.height;
         }
-        IntBox all;
-        all.include(Int3{0, 0, 0});
-        all.include(Int3{state.store->desc().dimensions.x - 1, state.store->desc().dimensions.y - 1, state.store->desc().dimensions.z - 1});
+        voxel::IntBox all;
+        all.include(voxel::Int3{0, 0, 0});
+        all.include(voxel::Int3{state.store->desc().dimensions.x - 1, state.store->desc().dimensions.y - 1, state.store->desc().dimensions.z - 1});
         updateTerrainCut(state, component, all);
     }
     if (wanted == NULL_ENTITY) return;
@@ -265,26 +264,26 @@ void VoxelSystem::attachTerrain(VolumeState& state, VoxelVolumeComponent& compon
             TerrainComponentStore holes(scene, wanted, terrain);
             const Vector3 offset = volumeToTerrain(*volumeTransform, *terrainTransform);
             const float voxelSize = state.store->desc().voxelSize;
-            const Int3 dim = state.store->desc().dimensions;
-            IntBox box;
+            const voxel::Int3 dim = state.store->desc().dimensions;
+            voxel::IntBox box;
             for (const terraincore::TexelRect& rect : rects){
                 const Vector2 low = holes.worldOfTexel(HEIGHT_MAP, rect.x, rect.y);
                 const Vector2 high = holes.worldOfTexel(HEIGHT_MAP, rect.right(), rect.bottom());
-                box.include(Int3{static_cast<int>(std::floor((low.x - offset.x) / voxelSize)) - 1, 0, static_cast<int>(std::floor((low.y - offset.z) / voxelSize)) - 1});
-                box.include(Int3{static_cast<int>(std::ceil((high.x - offset.x) / voxelSize)) + 1, dim.y - 1, static_cast<int>(std::ceil((high.y - offset.z) / voxelSize)) + 1});
+                box.include(voxel::Int3{static_cast<int>(std::floor((low.x - offset.x) / voxelSize)) - 1, 0, static_cast<int>(std::floor((low.y - offset.z) / voxelSize)) - 1});
+                box.include(voxel::Int3{static_cast<int>(std::ceil((high.x - offset.x) / voxelSize)) + 1, dim.y - 1, static_cast<int>(std::ceil((high.y - offset.z) / voxelSize)) + 1});
             }
-            box.min = Int3{std::max(box.min.x, 0), 0, std::max(box.min.z, 0)};
-            box.max = Int3{std::min(box.max.x, dim.x - 1), dim.y - 1, std::min(box.max.z, dim.z - 1)};
+            box.min = voxel::Int3{std::max(box.min.x, 0), 0, std::max(box.min.z, 0)};
+            box.max = voxel::Int3{std::min(box.max.x, dim.x - 1), dim.y - 1, std::min(box.max.z, dim.z - 1)};
             if (!box.empty()){
                 // The base reads a copy of the terrain, taken again for the new heights
                 if (state.asset && state.asset->generator.kind == "terrain"){
                     state.store->replaceBase(makeTerrainBaseFor(state.owner, wanted));
                     for (int level = 0; level < state.store->levels(); level++){
-                        const int span = BLOCK_SIZE << level;
+                        const int span = voxel::BLOCK_SIZE << level;
                         for (int z = box.min.z / span; z <= box.max.z / span; z++){
                             for (int y = 0; y < state.store->blockCount(level).y; y++){
                                 for (int x = box.min.x / span; x <= box.max.x / span; x++){
-                                    state.store->resetBlockToBase(BlockKey{level, x, y, z});
+                                    state.store->resetBlockToBase(voxel::BlockKey{level, x, y, z});
                                 }
                             }
                         }
@@ -314,23 +313,23 @@ void VoxelSystem::attachTerrain(VolumeState& state, VoxelVolumeComponent& compon
     }
 }
 
-void VoxelSystem::updateTerrainCut(VolumeState& state, VoxelVolumeComponent& component, const IntBox& changed){
+void VoxelSystem::updateTerrainCut(VolumeState& state, VoxelVolumeComponent& component, const voxel::IntBox& changed){
     state.lastHolesCut = 0;
     state.lastHolesFilled = 0;
     state.lastEntranceNarrow = false;
     const Entity owner = state.attachedTerrain;
-    if (owner == NULL_ENTITY || !state.store || state.store->desc().bounds != BoundsMode::Open) return;
+    if (owner == NULL_ENTITY || !state.store || state.store->desc().bounds != voxel::BoundsMode::Open) return;
     TerrainComponent& terrain = scene->getComponent<TerrainComponent>(owner);
     const Transform* terrainTransform = scene->findComponent<Transform>(owner);
     const Transform* volumeTransform = scene->findComponent<Transform>(state.owner);
     if (!terrainTransform || !volumeTransform) return;
 
-    Store& store = *state.store;
+    voxel::Store& store = *state.store;
     const float voxelSize = store.desc().voxelSize;
     const Vector3 offset = volumeToTerrain(*volumeTransform, *terrainTransform);
     const float overlap = resolvedOverlap(component, voxelSize);
     const float tolerance = resolvedTolerance(component, voxelSize);
-    const Int3 dim = store.desc().dimensions;
+    const voxel::Int3 dim = store.desc().dimensions;
 
     // R39 at a position in the volume's frame: how far the volume's surface leaves the seed's, which
     // lies overlap under the terrain. Positive: the voxel ground is lower, and the terrain would stand
@@ -338,9 +337,9 @@ void VoxelSystem::updateTerrainCut(VolumeState& state, VoxelVolumeComponent& com
     const auto departureAt = [&](float vx, float vz){
         const terraincore::SurfaceSample sample = querySurface(terrain, vx + offset.x, vz + offset.z);
         const float h = sample.height - offset.y;
-        const double d = valueAt(store, Vec3d{vx, h, vz});
+        const double d = voxel::valueAt(store, voxel::Vec3d{vx, h, vz});
         const float ny = sample.normal.y > 0.001f ? sample.normal.y : 0.001f;
-        const double c = slopeFactor(-sample.normal.x / ny, -sample.normal.z / ny);
+        const double c = voxel::slopeFactor(-sample.normal.x / ny, -sample.normal.z / ny);
         return d - overlap * c;
     };
     // R44's rim: what the seed may differ by and still meet the terrain within 2 cm (with overlap)
@@ -358,7 +357,7 @@ void VoxelSystem::updateTerrainCut(VolumeState& state, VoxelVolumeComponent& com
             state.columnFlush[static_cast<size_t>(x) + static_cast<size_t>(dim.x) * z] = flushAt((static_cast<float>(x) + 0.5f) * voxelSize, (static_cast<float>(z) + 0.5f) * voxelSize) ? 1 : 0;
         }
     }
-    auto coverage = std::make_shared<Coverage>();
+    auto coverage = std::make_shared<voxel::Coverage>();
     coverage->sizeX = dim.x;
     coverage->sizeZ = dim.z;
     coverage->seedHeight.resize(static_cast<size_t>(dim.x) * dim.z);
@@ -523,7 +522,7 @@ void VoxelSystem::updateTerrainCut(VolumeState& state, VoxelVolumeComponent& com
     // ---- which columns the mesher may drop: seeded, and more than the ring from any cut (R41)
     const float holeTexelVoxels = latticeFormat.exists ? terrain.terrainSize / static_cast<float>(latticeFormat.bounds.w) / voxelSize : 1.0f;
     const int ringWidth = std::max(2, static_cast<int>(std::ceil(holeTexelVoxels * static_cast<float>(rimTexels + 1))));
-    buildCoverageMask(*coverage, state.columnFlush, ringWidth);
+    voxel::buildCoverageMask(*coverage, state.columnFlush, ringWidth);
     state.coverage = coverage;
     state.coverageRing = ringWidth;
 }
@@ -542,9 +541,9 @@ void VoxelSystem::detachTerrain(VolumeState& state, VoxelVolumeComponent&){
     // R40: fills exactly the texels this volume cut, and holes a person painted stay
     if (!state.cutMask.empty() && state.cutWidth > 0){
         TerrainComponentStore holes(scene, owner, *terrain);
-        const TerrainCutRuns runs = TerrainCutRuns::fromMask(state.cutMask.data(), state.cutWidth, state.cutHeight);
+        const voxel::TerrainCutRuns runs = voxel::TerrainCutRuns::fromMask(state.cutMask.data(), state.cutWidth, state.cutHeight);
         const float halfTexel = terrain->terrainSize / static_cast<float>(state.cutWidth) * 0.25f;
-        for (const TerrainCutRuns::Run& run : runs.runs){
+        for (const voxel::TerrainCutRuns::Run& run : runs.runs){
             terraincore::Shape shape;
             shape.type = terraincore::ShapeType::Rect;
             const Vector2 first = holes.worldOfTexel(HOLE_MAP, run.start, run.row);

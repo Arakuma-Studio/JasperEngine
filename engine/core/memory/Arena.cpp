@@ -15,7 +15,8 @@
 #include <string>
 
 using namespace jasperengine;
-using namespace jasperengine::memory;
+
+namespace jasperengine::memory {
 
 namespace{
     // Blocks are cache-line aligned, so every alignment up to it costs no padding at a
@@ -254,7 +255,9 @@ void FrameArena::beginFrame(){
     arenas[index]->reset();
 }
 
-FrameArena& memory::frameArena(){
+FrameArena& frameArena(){
     static FrameArena* arena = new FrameArena("Engine.FrameArena");
     return *arena;
 }
+
+}  // namespace jasperengine::memory

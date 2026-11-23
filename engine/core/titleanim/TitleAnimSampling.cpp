@@ -11,7 +11,8 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::titleanim;
+
+namespace jasperengine::titleanim {
 
 namespace {
 
@@ -107,7 +108,7 @@ namespace {
 
 // ==================================================================== wrap
 
-double titleanim::wrapAnimationTime(double time, double duration, double loopStart, AnimWrap wrap){
+double wrapAnimationTime(double time, double duration, double loopStart, AnimWrap wrap){
     if (!(time > 0.0) || !(duration > 0.0)) return 0.0;
     if (time <= duration || wrap == AnimWrap::Once) return std::min(time, duration);
     const double l = clampTo(loopStart, 0.0, duration);
@@ -120,13 +121,13 @@ double titleanim::wrapAnimationTime(double time, double duration, double loopSta
     return std::fmod(k, 2.0) == 0.0 ? duration - r : l + r;
 }
 
-double titleanim::wrapAnimationTime(double time, const CompiledTitleAnimation& animation){
+double wrapAnimationTime(double time, const CompiledTitleAnimation& animation){
     return wrapAnimationTime(time, animation.duration, animation.loopStart, animation.wrap);
 }
 
 // ==================================================================== compiling
 
-size_t titleanim::compileNumericKeys(const std::vector<ClipKey>& keys, size_t width, CompiledTitleTrack& out){
+size_t compileNumericKeys(const std::vector<ClipKey>& keys, size_t width, CompiledTitleTrack& out){
     // D2: the keys go through the .anim normalize as one track of `width` floats, so times are
     // quantized, computed tangent modes get their tangents, keys without tangents in a track that
     // has some get linear ones and tangents win over eases exactly as a clip's
@@ -177,7 +178,7 @@ size_t titleanim::compileNumericKeys(const std::vector<ClipKey>& keys, size_t wi
     return dropped;
 }
 
-void titleanim::compileSteppedKeys(const std::vector<TitleKey>& keys, CompiledTitleTrack& out){
+void compileSteppedKeys(const std::vector<TitleKey>& keys, CompiledTitleTrack& out){
     const size_t n = keys.size();
     out.value = TrackValue::Stepped;
     out.width = 1;
@@ -207,12 +208,12 @@ double SplitMix64::unit(){
     return (double)(next() >> 11) * (1.0 / 9007199254740992.0);
 }
 
-uint64_t titleanim::mixSeeds(uint64_t a, uint64_t b){
+uint64_t mixSeeds(uint64_t a, uint64_t b){
     SplitMix64 r(a ^ (b * 0xD1B54A32D192ED03ull + 0x8CB92BA72F3D8DD7ull));
     return r.next();
 }
 
-void titleanim::staggerRanks(StaggerOrder order, size_t n, uint64_t documentSeed, uint32_t staggerSeed, std::vector<uint32_t>& ranks){
+void staggerRanks(StaggerOrder order, size_t n, uint64_t documentSeed, uint32_t staggerSeed, std::vector<uint32_t>& ranks){
     ranks.assign(n, 0);
     if (n == 0) return;
     switch (order){
@@ -249,7 +250,7 @@ void titleanim::staggerRanks(StaggerOrder order, size_t n, uint64_t documentSeed
     }
 }
 
-void titleanim::staggerDelays(const TitleStagger& stagger, size_t n, uint64_t documentSeed, std::vector<float>& delays){
+void staggerDelays(const TitleStagger& stagger, size_t n, uint64_t documentSeed, std::vector<float>& delays){
     std::vector<uint32_t> ranks;
     staggerRanks(stagger.order, n, documentSeed, stagger.seed, ranks);
     delays.assign(n, 0.0f);
@@ -268,7 +269,7 @@ void titleanim::staggerDelays(const TitleStagger& stagger, size_t n, uint64_t do
 
 // ==================================================================== sampling
 
-void titleanim::sampleTrackValue(const CompiledTitleTrack& track, double time, double spanStart, double spanLength, double* out,
+void sampleTrackValue(const CompiledTitleTrack& track, double time, double spanStart, double spanLength, double* out,
                                  anim::KeyCursor* cursor){
     const size_t width = std::max<size_t>(1, track.width);
     switch (track.source){
@@ -332,7 +333,7 @@ void titleanim::sampleTrackValue(const CompiledTitleTrack& track, double time, d
     }
 }
 
-void titleanim::combineWithRest(TrackCombine combine, const double* sample, const float* rest, size_t width, double* out){
+void combineWithRest(TrackCombine combine, const double* sample, const float* rest, size_t width, double* out){
     for (size_t i = 0; i < width; i++){
         const double r = rest ? (double)rest[i] : 0.0;
         switch (combine){
@@ -343,7 +344,7 @@ void titleanim::combineWithRest(TrackCombine combine, const double* sample, cons
     }
 }
 
-void titleanim::sampleAnimation(const CompiledTitleAnimation& animation, double time, TitleAnimPose& out){
+void sampleAnimation(const CompiledTitleAnimation& animation, double time, TitleAnimPose& out){
     out.time = time;
     if (out.values.size() < animation.poseSize) return;
     const double spanStart = animation.spanStart();
@@ -368,16 +369,16 @@ void titleanim::sampleAnimation(const CompiledTitleAnimation& animation, double 
 
 // ==================================================================== markers
 
-void titleanim::setMarkerPassSplitDisabledForTesting(bool disabled){
+void setMarkerPassSplitDisabledForTesting(bool disabled){
     passSplitDisabled = disabled;
 }
 
-void titleanim::collectCrossedMarkers(const CompiledTitleAnimation& animation, double from, double to, bool includeStart,
+void collectCrossedMarkers(const CompiledTitleAnimation& animation, double from, double to, bool includeStart,
                                       std::vector<CrossedMarker>& out){
     collectCrossedMarkers(animation, animation.wrap, from, to, includeStart, out);
 }
 
-void titleanim::collectCrossedMarkers(const CompiledTitleAnimation& animation, AnimWrap wrap, double from, double to, bool includeStart,
+void collectCrossedMarkers(const CompiledTitleAnimation& animation, AnimWrap wrap, double from, double to, bool includeStart,
                                       std::vector<CrossedMarker>& out){
     if (animation.markers.empty() || !(animation.duration > 0.0) || std::isnan(from) || std::isnan(to)) return;
     if (from == to && !includeStart) return;
@@ -443,7 +444,7 @@ void titleanim::collectCrossedMarkers(const CompiledTitleAnimation& animation, A
 
 // ==================================================================== the title's draw values
 
-void titleanim::accumulateTitlePose(const CompiledTitleAnimation& animation, const TitleAnimPose& pose, bool forceRelative,
+void accumulateTitlePose(const CompiledTitleAnimation& animation, const TitleAnimPose& pose, bool forceRelative,
                                     const double* liveRest, TitlePoseSummary& s){
     if (pose.values.size() < animation.poseSize) return;
     for (const CompiledTitleTrack& track : animation.tracks){
@@ -496,7 +497,7 @@ void titleanim::accumulateTitlePose(const CompiledTitleAnimation& animation, con
     }
 }
 
-TrackPivot titleanim::titlePivotOf(const CompiledTitleAnimation& animation){
+TrackPivot titlePivotOf(const CompiledTitleAnimation& animation){
     for (const CompiledTitleTrack& t : animation.tracks){
         if (t.target != TrackTarget::Title || t.mute || t.orphan) continue;
         if ((t.titleField == TitleField::Scale || t.titleField == TitleField::Stretch || t.titleField == TitleField::Rotation) &&
@@ -544,7 +545,7 @@ bool FrameAffine::identity() const{
     return a == 1.0 && b == 0.0 && c == 0.0 && d == 0.0 && e == 1.0 && f == 0.0;
 }
 
-FrameAffine titleanim::titleFrameAffine(const TitlePoseSummary& s, const TitleFrameGeometry& g, TrackPivot pivot){
+FrameAffine titleFrameAffine(const TitlePoseSummary& s, const TitleFrameGeometry& g, TrackPivot pivot){
     const double w = std::max(1e-6, g.frameWidth), h = std::max(1e-6, g.frameHeight);
     // the pivot in frame pixels (y down)
     const double inkL = g.inkX - g.frameX, inkT = g.inkY - g.frameY;
@@ -577,7 +578,7 @@ FrameAffine titleanim::titleFrameAffine(const TitlePoseSummary& s, const TitleFr
     return r;
 }
 
-FrameAffine titleanim::flipbookFrameAffine(const TitleFrameGeometry& still, double x, double y, double width, double height){
+FrameAffine flipbookFrameAffine(const TitleFrameGeometry& still, double x, double y, double width, double height){
     const double w = std::max(1e-6, still.frameWidth), h = std::max(1e-6, still.frameHeight);
     FrameAffine r;
     r.a = width / w;
@@ -588,3 +589,5 @@ FrameAffine titleanim::flipbookFrameAffine(const TitleFrameGeometry& still, doub
     r.f = (y - still.frameY) / h;
     return r;
 }
+
+}  // namespace jasperengine::titleanim

@@ -7,7 +7,8 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
+
+namespace jasperengine::particles {
 
 namespace {
 
@@ -101,3 +102,5 @@ void ParticlePreview::keepCheckpoint(EmitterRuntime& runtime){
     bytes += s.bytes;
     checkpoints.push_back(std::move(s));
 }
+
+}  // namespace jasperengine::particles

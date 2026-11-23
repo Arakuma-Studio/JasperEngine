@@ -6,7 +6,8 @@
 #include <atomic>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
+
+namespace jasperengine::particles {
 
 namespace {
 
@@ -23,24 +24,26 @@ namespace {
 
 }
 
-const KernelTable& particles::nativeKernels(){
+const KernelTable& nativeKernels(){
     static const KernelTable table = makeTable<simd::Native>();
     return table;
 }
 
-const KernelTable& particles::scalarKernels(){
+const KernelTable& scalarKernels(){
     static const KernelTable table = makeTable<simd::Scalar>();
     return table;
 }
 
-const KernelTable& particles::activeKernels(){
+const KernelTable& activeKernels(){
     return forcedScalar.load(std::memory_order_relaxed) ? scalarKernels() : nativeKernels();
 }
 
-void particles::setForceScalarKernels(bool forceScalar){
+void setForceScalarKernels(bool forceScalar){
     forcedScalar.store(forceScalar, std::memory_order_relaxed);
 }
 
-bool particles::forceScalarKernels(){
+bool forceScalarKernels(){
     return forcedScalar.load(std::memory_order_relaxed);
 }
+
+}  // namespace jasperengine::particles

@@ -29,7 +29,6 @@
 #include <unordered_set>
 
 using namespace jasperengine;
-using namespace jasperengine::editor::prefabinternal;
 
 namespace {
 
@@ -219,13 +218,13 @@ std::vector<std::filesystem::path> editor::Project::getInstanceRootLevels(uint32
 }
 
 bool editor::Project::buildRootSource(SceneProject* sceneProject, Entity localRoot, const std::filesystem::path& path, ComponentType type,
-        ScratchEntity& out, size_t depth) {
+        jasperengine::editor::prefabinternal::ScratchEntity& out, size_t depth) {
     Prefab* prefab = getPrefab(path);
     if (!prefab || !prefab->registry || prefab->root == NULL_ENTITY || depth > 64) {
         return false;
     }
     EntityRegistry* registry = prefab->registry.get();
-    if (!hasComponent(registry, prefab->root, type)) {
+    if (!jasperengine::editor::prefabinternal::hasComponent(registry, prefab->root, type)) {
         return false;
     }
     const std::unordered_map<Entity, Entity> map = getPrefabReferenceMap(sceneProject->id, localRoot, path);
@@ -244,7 +243,7 @@ bool editor::Project::buildRootSource(SceneProject* sceneProject, Entity localRo
             }
         }
         if (!held.addedComponents.count(type) && buildRootSource(sceneProject, localRoot, basePath, type, out, depth + 1)) {
-            ScratchEntity own;
+            jasperengine::editor::prefabinternal::ScratchEntity own;
             own.takeComponents(registry, prefab->root, Catalog::componentTypeToSignature(registry, type));
             remapEntityPropertiesInComponent(own.registry.get(), own.entity, type, {}, map);
             std::set<std::string> names;
@@ -253,7 +252,7 @@ bool editor::Project::buildRootSource(SceneProject* sceneProject, Entity localRo
                 names = overridden->second;
             }
             if (!names.empty()) {
-                copyProperties(own, out.registry.get(), out.entity, type, names, path.string());
+                jasperengine::editor::prefabinternal::copyProperties(own, out.registry.get(), out.entity, type, names, path.string());
             }
             if (held.state & PrefabObjectOverrides::StateActive) out.registry->setEntityActive(out.entity, registry->isEntityActive(prefab->root));
             if (held.state & PrefabObjectOverrides::StateTag) out.registry->setEntityTag(out.entity, registry->getEntityTag(prefab->root));
@@ -271,14 +270,14 @@ editor::PrefabInstanceData* editor::Project::nestedAssetLayerFor(Prefab& prefab,
     return nestedAssetLayer(prefab, prefabPath, registryRoot, NULL_ENTITY, nullptr);
 }
 
-bool editor::Project::buildPrefabSource(uint32_t sceneId, Entity entity, ComponentType type, ScratchEntity& scratch, PrefabObjectRef* refOut) {
+bool editor::Project::buildPrefabSource(uint32_t sceneId, Entity entity, ComponentType type, jasperengine::editor::prefabinternal::ScratchEntity& scratch, PrefabObjectRef* refOut) {
     SceneProject* sceneProject = getScene(sceneId);
     PrefabObjectRef ref;
     if (!sceneProject || !sceneProject->scene || !findPrefabObject(sceneId, entity, ref) || !ref.prefab->registry) {
         return false;
     }
     EntityRegistry* registry = ref.prefab->registry.get();
-    if (!hasComponent(registry, ref.registryEntity, type)) {
+    if (!jasperengine::editor::prefabinternal::hasComponent(registry, ref.registryEntity, type)) {
         return false;
     }
     // References in prefab ids (stripped objects included) become this instance's
@@ -303,12 +302,12 @@ bool editor::Project::buildPrefabSource(uint32_t sceneId, Entity entity, Compone
             held = entry->second.overrides;
         }
     }
-    ScratchEntity nestedSource;
+    jasperengine::editor::prefabinternal::ScratchEntity nestedSource;
     if (nested && nested->registry && !held.addedComponents.count(type) &&
             buildRootSource(sceneProject, ref.localEntity, nestedPath, type, nestedSource)) {
         scratch.takeComponents(nestedSource.registry.get(), nestedSource.entity, Catalog::componentTypeToSignature(nestedSource.registry.get(), type));
         scratch.takeState(nestedSource.registry.get(), nestedSource.entity);
-        ScratchEntity own;
+        jasperengine::editor::prefabinternal::ScratchEntity own;
         own.takeComponents(registry, ref.registryEntity, Catalog::componentTypeToSignature(registry, type));
         remapEntityPropertiesInComponent(own.registry.get(), own.entity, type, {}, registryToLocal);
         std::set<std::string> names;
@@ -324,7 +323,7 @@ bool editor::Project::buildPrefabSource(uint32_t sceneId, Entity entity, Compone
             }
         }
         if (!names.empty()) {
-            copyProperties(own, scratch.registry.get(), scratch.entity, type, names, ref.path.string());
+            jasperengine::editor::prefabinternal::copyProperties(own, scratch.registry.get(), scratch.entity, type, names, ref.path.string());
         }
         scratch.registry->setEntityName(scratch.entity, registry->getEntityName(ref.registryEntity));
         if (held.state & PrefabObjectOverrides::StateActive) scratch.registry->setEntityActive(scratch.entity, registry->isEntityActive(ref.registryEntity));
@@ -347,18 +346,18 @@ bool editor::Project::buildPrefabSource(uint32_t sceneId, Entity entity, Compone
             continue;
         }
         auto names = entry->second.overrides.properties.find(type);
-        const YAML::Node value = entry->second.values["components"] ? entry->second.values["components"][componentKey(type)] : YAML::Node(YAML::NodeType::Undefined);
+        const YAML::Node value = entry->second.values["components"] ? entry->second.values["components"][jasperengine::editor::prefabinternal::componentKey(type)] : YAML::Node(YAML::NodeType::Undefined);
         if (names == entry->second.overrides.properties.end() || !value) {
             continue;
         }
-        ScratchEntity layerValue;
-        layerValue.decode(singleComponent(type, value));
+        jasperengine::editor::prefabinternal::ScratchEntity layerValue;
+        layerValue.decode(jasperengine::editor::prefabinternal::singleComponent(type, value));
         if (layerValue.has(type)) {
             remapEntityPropertiesInComponent(layerValue.registry.get(), layerValue.entity, type, {},
                 getPrefabReferenceMap(sceneId, holderRoots[l].first, holderRoots[l].second));
         }
         std::set<std::string> copied = names->second;
-        copyProperties(layerValue, scratch.registry.get(), scratch.entity, type, copied, ref.path.string());
+        jasperengine::editor::prefabinternal::copyProperties(layerValue, scratch.registry.get(), scratch.entity, type, copied, ref.path.string());
     }
     if (refOut) {
         *refOut = ref;
@@ -368,11 +367,11 @@ bool editor::Project::buildPrefabSource(uint32_t sceneId, Entity entity, Compone
 
 bool editor::Project::getPrefabSourceValue(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property, PrefabSourceValue& value) {
     value = PrefabSourceValue();
-    ScratchEntity scratch;
+    jasperengine::editor::prefabinternal::ScratchEntity scratch;
     if (!buildPrefabSource(sceneId, entity, type, scratch)) {
         return false;
     }
-    value.component = encodeComponent(scratch.registry.get(), scratch.entity, type);
+    value.component = jasperengine::editor::prefabinternal::encodeComponent(scratch.registry.get(), scratch.entity, type);
     value.entity = scratch.entity;
     if (!property.empty() && property != PrefabObjectOverrides::WHOLE_COMPONENT) {
         value.property = Catalog::findProperty(scratch.registry.get(), scratch.entity, type, property);
@@ -382,11 +381,11 @@ bool editor::Project::getPrefabSourceValue(uint32_t sceneId, Entity entity, Comp
 }
 
 YAML::Node editor::Project::getPrefabSourceComponent(uint32_t sceneId, Entity entity, ComponentType type) {
-    ScratchEntity scratch;
+    jasperengine::editor::prefabinternal::ScratchEntity scratch;
     if (!buildPrefabSource(sceneId, entity, type, scratch)) {
         return YAML::Node();
     }
-    return encodeComponent(scratch.registry.get(), scratch.entity, type);
+    return jasperengine::editor::prefabinternal::encodeComponent(scratch.registry.get(), scratch.entity, type);
 }
 
 std::vector<std::filesystem::path> editor::Project::getPrefabApplyTargets(uint32_t sceneId, Entity entity) const {
@@ -466,12 +465,12 @@ bool editor::Project::recordPropertyOverride(uint32_t sceneId, Entity entity, Co
     SceneProject* sceneProject = getScene(sceneId);
     PrefabObjectRef ref;
     if (!sceneProject || !sceneProject->scene || !findPrefabObject(sceneId, entity, ref) ||
-        type == ComponentType::PrefabComponent || !hasComponent(sceneProject->scene, entity, type)) {
+        type == ComponentType::PrefabComponent || !jasperengine::editor::prefabinternal::hasComponent(sceneProject->scene, entity, type)) {
         return false;
     }
     Prefab::ObjectOverrides& overrides = ref.instance->overrides[entity];
     // a component the instance added is its own already
-    if (overrides.addedComponents.count(type) || !hasComponent(ref.prefab->registry.get(), ref.registryEntity, type)) {
+    if (overrides.addedComponents.count(type) || !jasperengine::editor::prefabinternal::hasComponent(ref.prefab->registry.get(), ref.registryEntity, type)) {
         eraseEmpty(*ref.instance, entity);
         return false;
     }
@@ -533,10 +532,10 @@ bool editor::Project::clearPropertyOverride(uint32_t sceneId, Entity entity, Com
 
 bool editor::Project::revertPropertyOverride(uint32_t sceneId, Entity entity, ComponentType type, const std::vector<std::string>& properties) {
     SceneProject* sceneProject = getScene(sceneId);
-    ScratchEntity source;
+    jasperengine::editor::prefabinternal::ScratchEntity source;
     PrefabObjectRef ref;
     if (!sceneProject || !sceneProject->scene || !buildPrefabSource(sceneId, entity, type, source, &ref) ||
-        !hasComponent(sceneProject->scene, entity, type)) {
+        !jasperengine::editor::prefabinternal::hasComponent(sceneProject->scene, entity, type)) {
         return false;
     }
     Scene* scene = sceneProject->scene;
@@ -545,12 +544,12 @@ bool editor::Project::revertPropertyOverride(uint32_t sceneId, Entity entity, Co
         std::find(properties.begin(), properties.end(), PrefabObjectOverrides::WHOLE_COMPONENT) != properties.end();
     if (whole) {
         // a root keeps its default overrides
-        ScratchEntity kept;
+        jasperengine::editor::prefabinternal::ScratchEntity kept;
         if (ref.isRoot) {
             kept.takeComponents(scene, entity, Catalog::componentTypeToSignature(scene, type));
         }
         names.insert(PrefabObjectOverrides::WHOLE_COMPONENT);
-        copyProperties(source, scene, entity, type, names, ref.path.string());
+        jasperengine::editor::prefabinternal::copyProperties(source, scene, entity, type, names, ref.path.string());
         if (ref.isRoot) {
             std::set<std::string> defaults;
             for (auto& [name, data] : Catalog::findEntityProperties(kept.registry.get(), kept.entity, type)) {
@@ -558,13 +557,13 @@ bool editor::Project::revertPropertyOverride(uint32_t sceneId, Entity entity, Co
                     defaults.insert(name);
                 }
             }
-            copyProperties(kept, scene, entity, type, defaults, ref.path.string());
+            jasperengine::editor::prefabinternal::copyProperties(kept, scene, entity, type, defaults, ref.path.string());
         }
     } else {
         for (const std::string& property : withoutDefaults(properties, type, ref.isRoot)) {
             names.insert(property);
         }
-        copyProperties(source, scene, entity, type, names, ref.path.string());
+        jasperengine::editor::prefabinternal::copyProperties(source, scene, entity, type, names, ref.path.string());
     }
     Catalog::updateEntity(scene, entity, Catalog::getComponentStructuralUpdateFlags(type));
     // a reverted clip list or pose animation loads again, as a decode does (the whole-component
@@ -608,7 +607,7 @@ void editor::Project::recordNestedRootAssetOverride(Prefab& prefab, const std::f
     }
     PrefabInstanceData* layer = nestedAssetLayer(prefab, prefabPath, registryEntity, NULL_ENTITY, nullptr);
     PrefabObjectOverrides& overrides = layer->objects[nested->root].overrides;
-    if (!hasComponent(nested->registry.get(), nested->root, type)) {
+    if (!jasperengine::editor::prefabinternal::hasComponent(nested->registry.get(), nested->root, type)) {
         overrides.addedComponents.insert(type);
         return;
     }
@@ -657,12 +656,12 @@ bool editor::Project::buildRootHas(const std::filesystem::path& path, ComponentT
         return false;
     }
     if (!prefab->isVariant()) {
-        return hasComponent(prefab->registry.get(), prefab->root, type);
+        return jasperengine::editor::prefabinternal::hasComponent(prefab->registry.get(), prefab->root, type);
     }
     const std::filesystem::path basePath = instancePathAt(*prefab, prefab->root);
     const Prefab* base = loadPrefabAsset(basePath);
     if (!base || base->root == NULL_ENTITY) {
-        return hasComponent(prefab->registry.get(), prefab->root, type);
+        return jasperengine::editor::prefabinternal::hasComponent(prefab->registry.get(), prefab->root, type);
     }
     const PrefabObjectOverrides& held = nestedAssetLayer(*prefab, path, prefab->root, NULL_ENTITY, nullptr)->objects[base->root].overrides;
     if (held.addedComponents.count(type)) {
@@ -679,7 +678,7 @@ bool editor::Project::applyPropertyOverride(uint32_t sceneId, Entity entity, Com
     SceneProject* sceneProject = getScene(sceneId);
     PrefabObjectRef ref;
     if (!sceneProject || !sceneProject->scene || !findPrefabObject(sceneId, entity, ref) ||
-        !hasComponent(sceneProject->scene, entity, type) || type == ComponentType::PrefabComponent) {
+        !jasperengine::editor::prefabinternal::hasComponent(sceneProject->scene, entity, type) || type == ComponentType::PrefabComponent) {
         return false;
     }
     if (!canApplyPrefabOverrides()) {
@@ -702,7 +701,7 @@ bool editor::Project::applyPropertyOverride(uint32_t sceneId, Entity entity, Com
         // in that prefab's ids (stripped objects for the instances nested in it)
         Prefab* nested = getPrefab(target);
         Prefab::Instance* inner = findInstanceAt(sceneProject, entity, target);
-        if (!inner || !nested->registry || !hasComponent(nested->registry.get(), nested->root, type)) {
+        if (!inner || !nested->registry || !jasperengine::editor::prefabinternal::hasComponent(nested->registry.get(), nested->root, type)) {
             return false;
         }
         if (componentReferencesOutside(sceneId, entity, entity, type, target)) {
@@ -710,7 +709,7 @@ bool editor::Project::applyPropertyOverride(uint32_t sceneId, Entity entity, Com
         }
         EntityRegistry* registry = nested->registry.get();
         if (whole) {
-            ScratchEntity kept;
+            jasperengine::editor::prefabinternal::ScratchEntity kept;
             kept.takeComponents(registry, nested->root, Catalog::componentTypeToSignature(registry, type));
             Catalog::copyComponent(scene, entity, registry, nested->root, type);
             std::set<std::string> defaults;
@@ -719,7 +718,7 @@ bool editor::Project::applyPropertyOverride(uint32_t sceneId, Entity entity, Com
                     defaults.insert(name);
                 }
             }
-            copyProperties(kept, registry, nested->root, type, defaults, target.string());
+            jasperengine::editor::prefabinternal::copyProperties(kept, registry, nested->root, type, defaults, target.string());
         } else {
             for (const std::string& property : properties) {
                 Catalog::copyPropertyValue(scene, entity, registry, nested->root, type, property);
@@ -740,12 +739,12 @@ bool editor::Project::applyPropertyOverride(uint32_t sceneId, Entity entity, Com
         Prefab& prefab = *ref.prefab;
         EntityRegistry* registry = prefab.registry.get();
         // references into the instances nested in it are the prefab's (stripped objects)
-        if (!hasComponent(registry, ref.registryEntity, type) ||
+        if (!jasperengine::editor::prefabinternal::hasComponent(registry, ref.registryEntity, type) ||
             componentReferencesOutside(sceneId, instanceRoot, entity, type, ref.path)) {
             return false; // a reference outside the instance cannot go into the shared Prefab
         }
         if (whole) {
-            ScratchEntity kept;
+            jasperengine::editor::prefabinternal::ScratchEntity kept;
             if (ref.isRoot) {
                 kept.takeComponents(registry, ref.registryEntity, Catalog::componentTypeToSignature(registry, type));
             }
@@ -758,7 +757,7 @@ bool editor::Project::applyPropertyOverride(uint32_t sceneId, Entity entity, Com
                         defaults.insert(name);
                     }
                 }
-                copyProperties(kept, registry, ref.registryEntity, type, defaults, ref.path.string());
+                jasperengine::editor::prefabinternal::copyProperties(kept, registry, ref.registryEntity, type, defaults, ref.path.string());
             }
         } else {
             for (const std::string& property : properties) {
@@ -793,7 +792,7 @@ bool editor::Project::applyPropertyOverride(uint32_t sceneId, Entity entity, Com
                 object.overrides.addProperty(type, property);
             }
         }
-        object.values["components"][componentKey(type)] = value;
+        object.values["components"][jasperengine::editor::prefabinternal::componentKey(type)] = value;
         clearPropertyOverride(sceneId, entity, type, properties);
         clearIntermediateOverrides(sceneId, ref, target, type, properties, 0);
         targetPrefab->isModified = true;
@@ -1071,7 +1070,7 @@ bool editor::Project::recordAddedComponent(uint32_t sceneId, Entity entity, Comp
     SceneProject* sceneProject = getScene(sceneId);
     PrefabObjectRef ref;
     if (!sceneProject || !sceneProject->scene || !findPrefabObject(sceneId, entity, ref) || type == ComponentType::PrefabComponent ||
-        !hasComponent(sceneProject->scene, entity, type) || hasComponent(ref.prefab->registry.get(), ref.registryEntity, type)) {
+        !jasperengine::editor::prefabinternal::hasComponent(sceneProject->scene, entity, type) || jasperengine::editor::prefabinternal::hasComponent(ref.prefab->registry.get(), ref.registryEntity, type)) {
         return false;
     }
     Prefab::ObjectOverrides& overrides = ref.instance->overrides[entity];
@@ -1093,7 +1092,7 @@ bool editor::Project::revertAddedComponent(uint32_t sceneId, Entity entity, Comp
         return false;
     }
     eraseEmpty(*ref.instance, entity);
-    if (hasComponent(sceneProject->scene, entity, type)) {
+    if (jasperengine::editor::prefabinternal::hasComponent(sceneProject->scene, entity, type)) {
         ProjectUtils::removeEntityComponent(sceneProject->scene, entity, type, sceneProject->entities);
         ProjectUtils::reconcileTrackedEntities(sceneProject->scene, sceneProject->entities, this, sceneId);
     }
@@ -1112,7 +1111,7 @@ bool editor::Project::applyAddedComponent(uint32_t sceneId, Entity entity, Compo
         return false;
     }
     auto it = ref.instance->overrides.find(entity);
-    if (it == ref.instance->overrides.end() || !it->second.addedComponents.count(type) || !hasComponent(sceneProject->scene, entity, type)) {
+    if (it == ref.instance->overrides.end() || !it->second.addedComponents.count(type) || !jasperengine::editor::prefabinternal::hasComponent(sceneProject->scene, entity, type)) {
         return false;
     }
     if (!canApplyPrefabOverrides()) {
@@ -1122,7 +1121,7 @@ bool editor::Project::applyAddedComponent(uint32_t sceneId, Entity entity, Compo
     if (isNestedRootApplyTarget(sceneId, ref, target)) {
         Prefab* nested = getPrefab(target);
         Prefab::Instance* inner = findInstanceAt(sceneProject, entity, target);
-        if (!inner || !nested->registry || hasComponent(nested->registry.get(), nested->root, type)) {
+        if (!inner || !nested->registry || jasperengine::editor::prefabinternal::hasComponent(nested->registry.get(), nested->root, type)) {
             return false;
         }
         bool outside = false;
@@ -1158,7 +1157,7 @@ bool editor::Project::applyAddedComponent(uint32_t sceneId, Entity entity, Compo
         }
         PrefabInstanceData::Object& object = layerObject(layer, ref.registryEntity);
         object.overrides.addedComponents.insert(type);
-        object.values["components"][componentKey(type)] = value;
+        object.values["components"][jasperengine::editor::prefabinternal::componentKey(type)] = value;
         targetPrefab->isModified = true;
     }
     it = ref.instance->overrides.find(entity);
@@ -1175,8 +1174,8 @@ bool editor::Project::recordRemovedComponent(uint32_t sceneId, Entity entity, Co
     SceneProject* sceneProject = getScene(sceneId);
     PrefabObjectRef ref;
     if (!sceneProject || !sceneProject->scene || !findPrefabObject(sceneId, entity, ref) || type == ComponentType::PrefabComponent ||
-        type == ComponentType::Transform || hasComponent(sceneProject->scene, entity, type) ||
-        !hasComponent(ref.prefab->registry.get(), ref.registryEntity, type)) {
+        type == ComponentType::Transform || jasperengine::editor::prefabinternal::hasComponent(sceneProject->scene, entity, type) ||
+        !jasperengine::editor::prefabinternal::hasComponent(ref.prefab->registry.get(), ref.registryEntity, type)) {
         return false;
     }
     Prefab::ObjectOverrides& overrides = ref.instance->overrides[entity];
@@ -1201,7 +1200,7 @@ bool editor::Project::revertRemovedComponent(uint32_t sceneId, Entity entity, Co
     it = ref.instance->overrides.find(entity);
     it->second.removedComponents.erase(type);
     eraseEmpty(*ref.instance, entity);
-    if (source && !hasComponent(sceneProject->scene, entity, type)) {
+    if (source && !jasperengine::editor::prefabinternal::hasComponent(sceneProject->scene, entity, type)) {
         ProjectUtils::addEntityComponent(sceneProject->scene, entity, type, sceneProject->entities, YAML::Clone(source));
     }
     if (CameraTextureLink::isLinkSourceType(type)) {
@@ -1224,7 +1223,7 @@ bool editor::Project::applyRemovedComponent(uint32_t sceneId, Entity entity, Com
     }
     if (isNestedRootApplyTarget(sceneId, ref, target)) {
         Prefab* nested = getPrefab(target);
-        if (!nested || !nested->registry || !hasComponent(nested->registry.get(), nested->root, type)) {
+        if (!nested || !nested->registry || !jasperengine::editor::prefabinternal::hasComponent(nested->registry.get(), nested->root, type)) {
             return false;
         }
         ProjectUtils::removeEntityComponent(nested->registry.get(), nested->root, type, nested->registryEntities);
@@ -1340,14 +1339,14 @@ bool editor::Project::reimportPrefabInstance(SceneProject* sceneProject, Entity 
         if (type == ComponentType::PrefabComponent || type == ComponentType::Transform) {
             continue;
         }
-        if (!components || !components[componentKey(type)]) {
+        if (!components || !components[jasperengine::editor::prefabinternal::componentKey(type)]) {
             ProjectUtils::removeEntityComponent(scene, root, type, sceneProject->entities);
         }
     }
     if (components && components.IsMap()) {
         YAML::Node own = YAML::Clone(components);
-        own.remove(componentKey(ComponentType::PrefabComponent));
-        Stream::decodeComponents(root, transformParent(scene, root), scene, own);
+        own.remove(jasperengine::editor::prefabinternal::componentKey(ComponentType::PrefabComponent));
+        Stream::decodeComponents(root, jasperengine::editor::prefabinternal::transformParent(scene, root), scene, own);
     }
 
     const PrefabInstanceData data = Stream::decodePrefabInstanceData(rootNode);

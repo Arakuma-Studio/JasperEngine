@@ -12,7 +12,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::terraincore;
 
 namespace {
 
@@ -73,17 +72,17 @@ const char* jasperengine::editor::terrainWorldOverlayLabel(const std::string& so
     return "";
 }
 
-Vector4 jasperengine::editor::terrainWorldStateColour(TileState state, bool pinned) {
-    if (pinned && state != TileState::Absent) return Vector4(0.9f, 0.7f, 0.24f, 1.0f);
+Vector4 jasperengine::editor::terrainWorldStateColour(terraincore::TileState state, bool pinned) {
+    if (pinned && state != terraincore::TileState::Absent) return Vector4(0.9f, 0.7f, 0.24f, 1.0f);
     switch (state) {
-        case TileState::Absent: return Vector4(0.16f, 0.16f, 0.16f, 1.0f);
-        case TileState::Cold: return Vector4(0.27f, 0.35f, 0.47f, 1.0f);
-        case TileState::Queued:
-        case TileState::Loading: return Vector4(0.47f, 0.47f, 0.78f, 1.0f);
-        case TileState::CpuReady:
-        case TileState::Uploading: return Vector4(0.35f, 0.63f, 0.78f, 1.0f);
-        case TileState::Resident: return Vector4(0.31f, 0.75f, 0.43f, 1.0f);
-        case TileState::Error: return Vector4(0.82f, 0.27f, 0.27f, 1.0f);
+        case terraincore::TileState::Absent: return Vector4(0.16f, 0.16f, 0.16f, 1.0f);
+        case terraincore::TileState::Cold: return Vector4(0.27f, 0.35f, 0.47f, 1.0f);
+        case terraincore::TileState::Queued:
+        case terraincore::TileState::Loading: return Vector4(0.47f, 0.47f, 0.78f, 1.0f);
+        case terraincore::TileState::CpuReady:
+        case terraincore::TileState::Uploading: return Vector4(0.35f, 0.63f, 0.78f, 1.0f);
+        case terraincore::TileState::Resident: return Vector4(0.31f, 0.75f, 0.43f, 1.0f);
+        case terraincore::TileState::Error: return Vector4(0.82f, 0.27f, 0.27f, 1.0f);
     }
     return Vector4(0.16f, 0.16f, 0.16f, 1.0f);
 }
@@ -92,7 +91,7 @@ TerrainWorldOverlayState jasperengine::editor::captureTerrainWorldOverlay(const 
     TerrainWorldOverlayState state;
     state.mode = mode;
     if (!runtime.started()) return state;
-    TileCoord low, high;
+    terraincore::TileCoord low, high;
     if (!runtime.occupancy().bounds(low, high)) return state;
     // the box of the tiles: a sheet past them would stand over nothing, in front of the Scene view's grid
     state.low = low;
@@ -100,10 +99,10 @@ TerrainWorldOverlayState jasperengine::editor::captureTerrainWorldOverlay(const 
     state.tileSize = runtime.lattice().tileSize();
     for (int z = state.low.z; z <= state.high.z; z++) {
         for (int x = state.low.x; x <= state.high.x; x++) {
-            const TileCoord tile(x, z);
-            const TileState tileState = runtime.tileState(tile);
+            const terraincore::TileCoord tile(x, z);
+            const terraincore::TileState tileState = runtime.tileState(tile);
             state.states.push_back(static_cast<uint8_t>(tileState));
-            state.pinned.push_back(tileState != TileState::Absent && runtime.tiles().pinned(tile) ? 1 : 0);
+            state.pinned.push_back(tileState != terraincore::TileState::Absent && runtime.tiles().pinned(tile) ? 1 : 0);
         }
     }
     if (mode == TerrainWorldOverlayMode::LodLevel) {
@@ -155,14 +154,14 @@ void jasperengine::editor::bakeTerrainWorldOverlay(const TerrainWorldOverlayStat
     rgba.assign(static_cast<size_t>(width) * static_cast<size_t>(height) * 4, 0);
     if (!state.valid) return;
     const int columns = state.columns();
-    auto stateAt = [&](int column, int row) { return static_cast<TileState>(state.states[static_cast<size_t>(row) * static_cast<size_t>(columns) + static_cast<size_t>(column)]); };
+    auto stateAt = [&](int column, int row) { return static_cast<terraincore::TileState>(state.states[static_cast<size_t>(row) * static_cast<size_t>(columns) + static_cast<size_t>(column)]); };
 
     if (state.mode == TerrainWorldOverlayMode::TileBorders || state.mode == TerrainWorldOverlayMode::TileState) {
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 const int column = x / k, row = y / k;
-                const TileState tileState = stateAt(column, row);
-                if (tileState == TileState::Absent) continue;
+                const terraincore::TileState tileState = stateAt(column, row);
+                if (tileState == terraincore::TileState::Absent) continue;
                 const bool edge = x % k == 0 || x % k == k - 1 || y % k == 0 || y % k == k - 1;
                 if (state.mode == TerrainWorldOverlayMode::TileBorders) {
                     if (edge) worldOverlayPut(rgba, width, x, y, WORLD_BORDER_COLOUR);
@@ -201,10 +200,10 @@ std::vector<TerrainOverlayLegendStop> jasperengine::editor::terrainWorldOverlayL
             stops.push_back({"tile border", WORLD_BORDER_COLOUR});
             break;
         case TerrainWorldOverlayMode::TileState:
-            for (TileState tileState : {TileState::Cold, TileState::Loading, TileState::CpuReady, TileState::Resident, TileState::Error}) {
-                stops.push_back({tileStateName(tileState), terrainWorldStateColour(tileState, false)});
+            for (terraincore::TileState tileState : {terraincore::TileState::Cold, terraincore::TileState::Loading, terraincore::TileState::CpuReady, terraincore::TileState::Resident, terraincore::TileState::Error}) {
+                stops.push_back({terraincore::tileStateName(tileState), terrainWorldStateColour(tileState, false)});
             }
-            stops.push_back({"pinned", terrainWorldStateColour(TileState::Resident, true)});
+            stops.push_back({"pinned", terrainWorldStateColour(terraincore::TileState::Resident, true)});
             break;
         case TerrainWorldOverlayMode::LodLevel: {
             std::set<int> levels;

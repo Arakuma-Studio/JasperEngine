@@ -11,28 +11,28 @@ using namespace jasperengine;
 
 namespace {
 
-    struct Point {
+    struct DecompositionPoint {
         double x;
         double y;
     };
 
     // Twice the signed area of (a, b, c): > 0 when c is left of a->b.
-    inline double orient(const Point& a, const Point& b, const Point& c) {
+    inline double orient(const DecompositionPoint& a, const DecompositionPoint& b, const DecompositionPoint& c) {
         return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
     }
 
-    inline double distance2(const Point& a, const Point& b) {
+    inline double distance2(const DecompositionPoint& a, const DecompositionPoint& b) {
         const double dx = b.x - a.x;
         const double dy = b.y - a.y;
         return dx * dx + dy * dy;
     }
 
-    inline bool samePoint(const Point& a, const Point& b) {
+    inline bool samePoint(const DecompositionPoint& a, const DecompositionPoint& b) {
         return a.x == b.x && a.y == b.y;
     }
 
     // Twice the signed area of the polygon, relative to its first point.
-    double area2(const std::vector<Point>& p, const std::vector<int>& ring) {
+    double area2(const std::vector<DecompositionPoint>& p, const std::vector<int>& ring) {
         double sum = 0.0;
         for (size_t i = 1; i + 1 < ring.size(); i++) {
             sum += orient(p[ring[0]], p[ring[i]], p[ring[i + 1]]);
@@ -42,7 +42,7 @@ namespace {
 
     // Drops points closer than the weld distance to the previous kept one (exact duplicates
     // always), then the closing duplicates.
-    void weldRing(const std::vector<Point>& p, std::vector<int>& ring, double weld2, std::vector<int>& scratch) {
+    void weldRing(const std::vector<DecompositionPoint>& p, std::vector<int>& ring, double weld2, std::vector<int>& scratch) {
         auto tooClose = [&](int a, int b) {
             const double d2 = distance2(p[a], p[b]);
             return d2 == 0.0 || d2 < weld2;
@@ -63,7 +63,7 @@ namespace {
     // when it, and every point removed next to it, is closer than `tolerance` (a distance, like
     // b2ComputeHull's linear slop) to the line between the kept points around them. Local and
     // absolute, so a long outline keeps its small detail (hills on a 3 km terrain, comb teeth).
-    void removeCollinear(const std::vector<Point>& p, std::vector<int>& ring, double tolerance, std::vector<int>& scratch) {
+    void removeCollinear(const std::vector<DecompositionPoint>& p, std::vector<int>& ring, double tolerance, std::vector<int>& scratch) {
         const size_t n = ring.size();
         if (n < 3) {
             return;
@@ -71,8 +71,8 @@ namespace {
         // start at the lowest point (then leftmost): a hull vertex, kept
         size_t first = 0;
         for (size_t i = 1; i < n; i++) {
-            const Point& a = p[ring[i]];
-            const Point& b = p[ring[first]];
+            const DecompositionPoint& a = p[ring[i]];
+            const DecompositionPoint& b = p[ring[first]];
             if (a.y < b.y || (a.y == b.y && a.x < b.x)) {
                 first = i;
             }
@@ -82,8 +82,8 @@ namespace {
         };
         // the points between positions a and c (exclusive) all lie within tolerance of a-c
         auto straight = [&](size_t a, size_t c) {
-            const Point& pa = p[at(a)];
-            const Point& pc = p[at(c)];
+            const DecompositionPoint& pa = p[at(a)];
+            const DecompositionPoint& pc = p[at(c)];
             const double length = std::sqrt(distance2(pa, pc));
             for (size_t b = a + 1; b < c; b++) {
                 if (std::fabs(orient(pa, p[at(b)], pc)) > tolerance * length) {
@@ -111,7 +111,7 @@ namespace {
     }
 
     // Closed segments a-b and c-d cross or touch.
-    bool segmentsTouch(const Point& a, const Point& b, const Point& c, const Point& d) {
+    bool segmentsTouch(const DecompositionPoint& a, const DecompositionPoint& b, const DecompositionPoint& c, const DecompositionPoint& d) {
         const double d1 = orient(c, d, a);
         const double d2 = orient(c, d, b);
         const double d3 = orient(a, b, c);
@@ -121,7 +121,7 @@ namespace {
             return true;
         }
         // the caller checked that the bounding boxes overlap
-        auto onSegment = [](const Point& s, const Point& e, const Point& q) {
+        auto onSegment = [](const DecompositionPoint& s, const DecompositionPoint& e, const DecompositionPoint& q) {
             return q.x >= std::min(s.x, e.x) && q.x <= std::max(s.x, e.x) &&
                    q.y >= std::min(s.y, e.y) && q.y <= std::max(s.y, e.y);
         };
@@ -130,11 +130,11 @@ namespace {
     }
 
     // No two non-adjacent edges cross or touch.
-    bool isSimple(const std::vector<Point>& q) {
+    bool isSimple(const std::vector<DecompositionPoint>& q) {
         const size_t n = q.size();
         for (size_t i = 0; i < n; i++) {
-            const Point& a = q[i];
-            const Point& b = q[(i + 1) % n];
+            const DecompositionPoint& a = q[i];
+            const DecompositionPoint& b = q[(i + 1) % n];
             const double minX = std::min(a.x, b.x);
             const double maxX = std::max(a.x, b.x);
             const double minY = std::min(a.y, b.y);
@@ -143,8 +143,8 @@ namespace {
                 if (i == 0 && j == n - 1) {
                     continue;
                 }
-                const Point& c = q[j];
-                const Point& d = q[(j + 1) % n];
+                const DecompositionPoint& c = q[j];
+                const DecompositionPoint& d = q[(j + 1) % n];
                 if (std::max(c.x, d.x) < minX || std::min(c.x, d.x) > maxX ||
                     std::max(c.y, d.y) < minY || std::min(c.y, d.y) > maxY) {
                     continue;
@@ -159,7 +159,7 @@ namespace {
 
     // Andrew's monotone chain, counter-clockwise from the lowest x (then lowest y), collinear
     // points left out. Returns indices into q.
-    std::vector<int> convexHull(const std::vector<Point>& q) {
+    std::vector<int> convexHull(const std::vector<DecompositionPoint>& q) {
         std::vector<int> order(q.size());
         for (size_t i = 0; i < q.size(); i++) {
             order[i] = (int)i;
@@ -204,7 +204,7 @@ namespace {
 
     class EarClipper {
     public:
-        EarClipper(const std::vector<Point>& points): p(points) {}
+        EarClipper(const std::vector<DecompositionPoint>& points): p(points) {}
 
         // Triangulates the simple counter-clockwise polygon p. Returns the triangles that could
         // not be built (degenerate leftovers).
@@ -282,7 +282,7 @@ namespace {
         std::vector<Diagonal> diagonals;
 
     private:
-        const std::vector<Point>& p;
+        const std::vector<DecompositionPoint>& p;
         std::vector<int> prev;
         std::vector<int> next;
         std::vector<int> edgeDiagonal;   // the diagonal on the edge v -> next[v], -1 if none
@@ -328,9 +328,9 @@ namespace {
         // b is strictly convex; no other vertex lies in or on the triangle a, b, c. Only vertices
         // that are not strictly convex can be there.
         bool isEar(int a, int b, int c) const {
-            const Point& pa = p[a];
-            const Point& pb = p[b];
-            const Point& pc = p[c];
+            const DecompositionPoint& pa = p[a];
+            const DecompositionPoint& pb = p[b];
+            const DecompositionPoint& pc = p[c];
             const double minX = std::min(pa.x, std::min(pb.x, pc.x));
             const double maxX = std::max(pa.x, std::max(pb.x, pc.x));
             const double minY = std::min(pa.y, std::min(pb.y, pc.y));
@@ -339,7 +339,7 @@ namespace {
                 if (r == a || r == b || r == c) {
                     continue;
                 }
-                const Point& q = p[r];
+                const DecompositionPoint& q = p[r];
                 if (q.x < minX || q.x > maxX || q.y < minY || q.y > maxY) {
                     continue;
                 }
@@ -392,7 +392,7 @@ namespace {
     // Hertel-Mehlhorn: removes diagonals in creation order while both ends stay convex and the
     // merged piece has at most maxVertices vertices. Returns the pieces (vertex indices, CCW)
     // ordered by their first triangle.
-    std::vector<std::vector<int>> mergeTriangles(const std::vector<Point>& p, const std::vector<Triangle>& triangles,
+    std::vector<std::vector<int>> mergeTriangles(const std::vector<DecompositionPoint>& p, const std::vector<Triangle>& triangles,
                                                  const std::vector<Diagonal>& diagonals, int maxVertices) {
         const int count = (int)triangles.size();
         std::vector<std::vector<int>> pieces(count);
@@ -481,7 +481,7 @@ Decomposition2D jasperengine::decomposePolygon2D(const std::vector<Vector2>& poi
         maxVertices = 3;
     }
 
-    std::vector<Point> input(points.size());
+    std::vector<DecompositionPoint> input(points.size());
     double minX = 0.0, maxX = 0.0, minY = 0.0, maxY = 0.0;
     for (size_t i = 0; i < points.size(); i++) {
         if (!std::isfinite(points[i].x) || !std::isfinite(points[i].y)) {
@@ -533,7 +533,7 @@ Decomposition2D jasperengine::decomposePolygon2D(const std::vector<Vector2>& poi
         std::reverse(ring.begin(), ring.end());
     }
     const int n = (int)ring.size();
-    std::vector<Point> p(n);
+    std::vector<DecompositionPoint> p(n);
     for (int i = 0; i < n; i++) {
         p[i] = input[ring[i]];
     }
@@ -558,7 +558,7 @@ Decomposition2D jasperengine::decomposePolygon2D(const std::vector<Vector2>& poi
         for (size_t i = 0; i < hull.size(); i++) {
             hullRing[i] = (int)i;
         }
-        std::vector<Point> hullPoints(hull.size());
+        std::vector<DecompositionPoint> hullPoints(hull.size());
         for (size_t i = 0; i < hull.size(); i++) {
             hullPoints[i] = p[hull[i]];
         }
@@ -600,8 +600,8 @@ Decomposition2D jasperengine::decomposePolygon2D(const std::vector<Vector2>& poi
         double longest2 = 0.0;
         const size_t count = piece.size();
         for (size_t i = 0; i < count; i++) {
-            const Point& a = p[piece[i]];
-            const Point& b = p[piece[(i + 1) % count]];
+            const DecompositionPoint& a = p[piece[i]];
+            const DecompositionPoint& b = p[piece[(i + 1) % count]];
             longest2 = std::max(longest2, distance2(a, b));
             if (i >= 1 && i + 1 < count) {
                 area += orient(p[piece[0]], a, b);

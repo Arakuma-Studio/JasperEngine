@@ -13,7 +13,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-using namespace jasperengine::graph;
+namespace jasperengine::graph {
 
 namespace {
 
@@ -217,7 +217,7 @@ namespace {
 
 // ------------------------------------------------------------------ model
 
-bool jasperengine::graph::idLess(std::string_view a, std::string_view b){
+bool idLess(std::string_view a, std::string_view b){
     const IdParts pa = splitId(a);
     const IdParts pb = splitId(b);
     if (pa.prefix != pb.prefix) return pa.prefix < pb.prefix;
@@ -255,7 +255,7 @@ std::string Graph::allocateId(const char* prefix){
     return std::string(prefix) + std::to_string(nextId++);
 }
 
-std::vector<Port> jasperengine::graph::portsOf(const Graph& graph, const Node& node){
+std::vector<Port> portsOf(const Graph& graph, const Node& node){
     if (node.dynamicPorts) return *node.dynamicPorts;
     auto kind = GraphRegistry::get().kind(graph.kind);
     if (!kind) return {};
@@ -267,7 +267,7 @@ std::vector<Port> jasperengine::graph::portsOf(const Graph& graph, const Node& n
 
 // ------------------------------------------------------------------ JSON
 
-Json jasperengine::graph::toJson(const Node& node){
+Json toJson(const Node& node){
     Json out = Json::object();
     out["id"] = node.id;
     out["type"] = node.type;
@@ -283,7 +283,7 @@ Json jasperengine::graph::toJson(const Node& node){
     return out;
 }
 
-Node jasperengine::graph::nodeFromJson(const Json& json){
+Node nodeFromJson(const Json& json){
     Node node;
     if (!json.is_object()) return node;
     node.id = stringOf(json, "id");
@@ -301,7 +301,7 @@ Node jasperengine::graph::nodeFromJson(const Json& json){
     return node;
 }
 
-Json jasperengine::graph::toJson(const Edge& edge){
+Json toJson(const Edge& edge){
     Json out = Json::object();
     out["id"] = edge.id;
     out["from"] = portRefJson(edge.from);
@@ -310,7 +310,7 @@ Json jasperengine::graph::toJson(const Edge& edge){
     return out;
 }
 
-Edge jasperengine::graph::edgeFromJson(const Json& json){
+Edge edgeFromJson(const Json& json){
     Edge edge;
     if (!json.is_object()) return edge;
     edge.id = stringOf(json, "id");
@@ -320,7 +320,7 @@ Edge jasperengine::graph::edgeFromJson(const Json& json){
     return edge;
 }
 
-Json jasperengine::graph::toJson(const Variable& variable){
+Json toJson(const Variable& variable){
     Json out = Json::object();
     out["name"] = variable.name;
     out["type"] = variable.type;
@@ -331,7 +331,7 @@ Json jasperengine::graph::toJson(const Variable& variable){
     return out;
 }
 
-Variable jasperengine::graph::variableFromJson(const Json& json){
+Variable variableFromJson(const Json& json){
     Variable variable;
     if (!json.is_object()) return variable;
     variable.name = stringOf(json, "name");
@@ -343,7 +343,7 @@ Variable jasperengine::graph::variableFromJson(const Json& json){
     return variable;
 }
 
-Json jasperengine::graph::toJson(const Group& group){
+Json toJson(const Group& group){
     Json out = Json::object();
     out["id"] = group.id;
     out["title"] = group.title;
@@ -353,7 +353,7 @@ Json jasperengine::graph::toJson(const Group& group){
     return out;
 }
 
-Group jasperengine::graph::groupFromJson(const Json& json){
+Group groupFromJson(const Json& json){
     Group group;
     if (!json.is_object()) return group;
     group.id = stringOf(json, "id");
@@ -370,7 +370,7 @@ Group jasperengine::graph::groupFromJson(const Json& json){
     return group;
 }
 
-Json jasperengine::graph::toJson(const Graph& graph){
+Json toJson(const Graph& graph){
     Json out = Json::object();
     out["formatVersion"] = graph.formatVersion;
     out["kind"] = graph.kind;
@@ -398,7 +398,7 @@ Json jasperengine::graph::toJson(const Graph& graph){
     return out;
 }
 
-Graph jasperengine::graph::fromJson(const Json& input, LoadReport& report){
+Graph fromJson(const Json& input, LoadReport& report){
     report = LoadReport();
     Graph graph;
     if (!input.is_object()) {
@@ -493,7 +493,7 @@ Graph jasperengine::graph::fromJson(const Json& input, LoadReport& report){
     return graph;
 }
 
-Graph jasperengine::graph::load(std::string_view text, LoadReport& report){
+Graph load(std::string_view text, LoadReport& report){
     Json json = Json::parse(text.begin(), text.end(), nullptr, false);
     if (json.is_discarded()) {
         report = LoadReport();
@@ -504,7 +504,7 @@ Graph jasperengine::graph::load(std::string_view text, LoadReport& report){
     return fromJson(json, report);
 }
 
-std::string jasperengine::graph::fileProblem(std::string_view path, const Graph& graph, const LoadReport& report){
+std::string fileProblem(std::string_view path, const Graph& graph, const LoadReport& report){
     if (!report.ok) return report.error;
     if (!report.malformed.empty()) return report.malformed.front();
     const std::shared_ptr<const GraphKindDesc> owner = GraphRegistry::get().kindForFile(path);
@@ -513,12 +513,12 @@ std::string jasperengine::graph::fileProblem(std::string_view path, const Graph&
     return graph.kind.empty() ? "it names no kind: " + expected : "its kind is '" + graph.kind + "': " + expected;
 }
 
-std::vector<std::string> jasperengine::graph::fileWarnings(const LoadReport& report){
+std::vector<std::string> fileWarnings(const LoadReport& report){
     // (fromJson adds those about unknown node types last, one each)
     return {report.warnings.begin(), report.warnings.end() - static_cast<std::ptrdiff_t>(report.unknownNodeTypes.size())};
 }
 
-std::string jasperengine::graph::save(const Graph& graph){
+std::string save(const Graph& graph){
     std::string text = toJson(graph).dump(2, ' ', false, Json::error_handler_t::replace);
     text += '\n';
     return text;
@@ -526,7 +526,7 @@ std::string jasperengine::graph::save(const Graph& graph){
 
 // ------------------------------------------------------------------ validation
 
-const char* jasperengine::graph::severityName(Severity severity){
+const char* severityName(Severity severity){
     switch (severity) {
         case Severity::Info: return "info";
         case Severity::Warning: return "warning";
@@ -534,7 +534,7 @@ const char* jasperengine::graph::severityName(Severity severity){
     }
 }
 
-Json jasperengine::graph::toJson(const Issue& issue){
+Json toJson(const Issue& issue){
     Json out = {{"severity", severityName(issue.severity)}, {"code", issue.code}, {"message", issue.message}};
     if (!issue.nodeId.empty()) out["node"] = issue.nodeId;
     if (!issue.portId.empty()) out["port"] = issue.portId;
@@ -543,7 +543,7 @@ Json jasperengine::graph::toJson(const Issue& issue){
     return out;
 }
 
-std::vector<Issue> jasperengine::graph::validate(const Graph& graph){
+std::vector<Issue> validate(const Graph& graph){
     std::vector<Issue> issues;
     auto add = [&](Severity severity, const char* code, std::string message, std::string node = {}, std::string port = {}, std::string edge = {},
                    std::string suggestion = {}) {
@@ -711,7 +711,7 @@ std::vector<Issue> jasperengine::graph::validate(const Graph& graph){
 
 // ------------------------------------------------------------------ edit operations
 
-GraphOp jasperengine::graph::opFromJson(const Json& json){
+GraphOp opFromJson(const Json& json){
     GraphOp op;
     if (!json.is_object()) throw GraphOpError("an op is an object {op, ...args}");
     op.op = stringOf(json, "op");
@@ -728,7 +728,7 @@ GraphOp jasperengine::graph::opFromJson(const Json& json){
     return op;
 }
 
-Json jasperengine::graph::toJson(const GraphOp& op){
+Json toJson(const GraphOp& op){
     Json out = {{"op", op.op}};
     for (auto it = op.args.begin(); it != op.args.end(); ++it) out[it.key()] = it.value();
     return out;
@@ -749,7 +749,7 @@ namespace {
 
 }
 
-std::vector<std::string> jasperengine::graph::unplacedNodes(const Graph& graph){
+std::vector<std::string> unplacedNodes(const Graph& graph){
     std::vector<std::string> ids;
     for (const Node& node : graph.nodes) {
         if (!node.placed) ids.push_back(node.id);
@@ -757,7 +757,7 @@ std::vector<std::string> jasperengine::graph::unplacedNodes(const Graph& graph){
     return ids;
 }
 
-std::vector<std::pair<std::string, Vec2>> jasperengine::graph::layoutPositions(const Graph& graph, const std::vector<std::string>& ids){
+std::vector<std::pair<std::string, Vec2>> layoutPositions(const Graph& graph, const std::vector<std::string>& ids){
     std::vector<std::string> order = ids;
     std::sort(order.begin(), order.end(), [](const std::string& a, const std::string& b) { return idLess(a, b); });
     order.erase(std::unique(order.begin(), order.end()), order.end());
@@ -839,7 +839,7 @@ std::vector<std::pair<std::string, Vec2>> jasperengine::graph::layoutPositions(c
     return out;
 }
 
-GraphOp jasperengine::graph::apply(Graph& graph, const GraphOp& op){
+GraphOp apply(Graph& graph, const GraphOp& op){
     const uint64_t nextIdBefore = graph.nextId;
 
     if (op.op == "addNode") {
@@ -1143,7 +1143,7 @@ GraphOp jasperengine::graph::apply(Graph& graph, const GraphOp& op){
                        "removeVariable, renameVariable, setVariable, group, ungroup, setMetadata)");
 }
 
-std::string jasperengine::graph::describe(const Graph& graph, const GraphOp& op){
+std::string describe(const Graph& graph, const GraphOp& op){
     if (op.op == "addNode") {
         const Json& node = op.args.contains("node") ? op.args["node"] : Json::object();
         std::string label = node.value("type", std::string("Node"));
@@ -1181,3 +1181,5 @@ std::string jasperengine::graph::describe(const Graph& graph, const GraphOp& op)
     if (op.op == "setMetadata") return "Set " + op.args.value("key", std::string("Metadata"));
     return "Edit Graph";
 }
+
+}  // namespace jasperengine::graph

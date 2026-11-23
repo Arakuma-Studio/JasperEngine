@@ -17,7 +17,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::platform;
+
+namespace jasperengine::editor::platform {
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -165,7 +167,7 @@ namespace {
 
 }
 
-std::string platform::describeKeystoreFailure(const std::string& output, const fs::path& keystore, const std::string& alias) {
+std::string describeKeystoreFailure(const std::string& output, const fs::path& keystore, const std::string& alias) {
     const auto says = [&output](const char* text) { return output.find(text) != std::string::npos; };
     if (says("keystore password was incorrect") || says("password was incorrect"))
         return "the password of the keystore " + keystore.string() + " is wrong: enter the right one in Build Settings, or set JASPER_ANDROID_KS_PASS";
@@ -178,7 +180,7 @@ std::string platform::describeKeystoreFailure(const std::string& output, const f
     return "";
 }
 
-bool platform::writeAndroidManifest(const AndroidPackage& package, const std::string& templateText, std::string& manifest, std::string& error) {
+bool writeAndroidManifest(const AndroidPackage& package, const std::string& templateText, std::string& manifest, std::string& error) {
     manifest = templateText;
     for (const char* marker : {"{{VERSION_CODE}}", "{{VERSION_NAME}}", "{{MIN_SDK}}", "{{TARGET_SDK}}", "{{LABEL}}", "{{PERMISSIONS}}",
                                "{{ALLOW_BACKUP}}", "{{ICON}}", "{{THEME}}", "{{ORIENTATION}}", "{{FULLSCREEN}}", "{{KEEP_SCREEN_ON}}",
@@ -255,7 +257,7 @@ bool platform::writeAndroidManifest(const AndroidPackage& package, const std::st
     return true;
 }
 
-bool platform::compressesNativeLibraries(const AndroidPackage& package) {
+bool compressesNativeLibraries(const AndroidPackage& package) {
     // as the Android Gradle plugin packages them: an APK for devices before Android 6 (API 23,
     // which first loads libraries from the APK) compresses them, about a third of their size in
     // the file; from minSdk 23, and in a bundle (bundletool makes each device's APK), they stay
@@ -263,7 +265,7 @@ bool platform::compressesNativeLibraries(const AndroidPackage& package) {
     return package.format != AndroidFormat::Aab && package.settings.minSdk < 23;
 }
 
-std::vector<std::string> platform::selectedAndroidAbis(const AndroidProjectSettings& settings) {
+std::vector<std::string> selectedAndroidAbis(const AndroidProjectSettings& settings) {
     std::vector<std::string> abis;
     if (settings.abiArm64V8a) abis.push_back("arm64-v8a");
     if (settings.abiArmeabiV7a) abis.push_back("armeabi-v7a");
@@ -272,7 +274,7 @@ std::vector<std::string> platform::selectedAndroidAbis(const AndroidProjectSetti
     return abis;
 }
 
-std::vector<std::pair<std::string, uint64_t>> platform::androidLibrarySizes(const fs::path& runtimeAndroidDir,
+std::vector<std::pair<std::string, uint64_t>> androidLibrarySizes(const fs::path& runtimeAndroidDir,
                                                                             const std::vector<std::string>& abis) {
     std::vector<std::pair<std::string, uint64_t>> sizes;
     std::error_code ec;
@@ -288,7 +290,7 @@ std::vector<std::pair<std::string, uint64_t>> platform::androidLibrarySizes(cons
     return sizes;
 }
 
-bool platform::buildAndroidPackage(const AndroidPackage& package, CommandRunner& runner, const std::function<bool()>& cancelled,
+bool buildAndroidPackage(const AndroidPackage& package, CommandRunner& runner, const std::function<bool()>& cancelled,
                                    std::vector<BuildWarning>& warnings, std::string& error) {
     const bool bundle = package.format == AndroidFormat::Aab;
     const AndroidToolchain tools = AndroidTools::discover(package.settings.targetSdk);
@@ -478,3 +480,5 @@ bool platform::buildAndroidPackage(const AndroidPackage& package, CommandRunner&
     if (!run(runner, {tools.apksigner.path.string(), "verify", "--verbose", package.output.string()}, package.workDir, error)) return false;
     return true;
 }
+
+}  // namespace jasperengine::editor::platform

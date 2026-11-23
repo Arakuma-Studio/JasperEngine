@@ -29,7 +29,8 @@
 #include <cstring>
 
 using namespace jasperengine;
-using namespace jasperengine::profiler;
+
+namespace jasperengine::profiler {
 
 namespace {
 
@@ -242,7 +243,7 @@ namespace {
 
 }
 
-CommandLineOptions profiler::parseCommandLine(const std::vector<std::string>& args){
+CommandLineOptions parseCommandLine(const std::vector<std::string>& args){
     CommandLineOptions options;
     for (size_t i = 0; i < args.size(); i++){
         const std::string& arg = args[i];
@@ -279,7 +280,7 @@ CommandLineOptions profiler::parseCommandLine(const std::vector<std::string>& ar
     return options;
 }
 
-void profiler::engineInit(const std::vector<std::string>& args){
+void engineInit(const std::vector<std::string>& args){
     jobs::ProfilerHooks hooks;
     hooks.onThreadStart = onThreadStart;
     hooks.onJobBegin = onJobBegin;
@@ -299,7 +300,7 @@ void profiler::engineInit(const std::vector<std::string>& args){
         setEnabled(true);
 }
 
-void profiler::engineFrameEnd(bool scenesLoaded){
+void engineFrameEnd(bool scenesLoaded){
     publishMonitors();
     if (commandLine.capturePath.empty() || cliCaptureDone)
         return;
@@ -326,15 +327,17 @@ void profiler::engineFrameEnd(bool scenesLoaded){
         Log::error("Profiler capture not written: %s", error.c_str());
 }
 
-void profiler::engineShutdown(){
+void engineShutdown(){
     jobs::setProfilerHooks(jobs::ProfilerHooks());
 }
 
 // one reader of the process's memory for the monitors and the debug overlay's stats
 // (debug/ProcessMemory.cpp: Linux/Android resident pages, Windows the working set, Apple the
 // physical footprint, Web the WebAssembly heap), a System's override included
-uint64_t profiler::processResidentBytes(){
+uint64_t processResidentBytes(){
     return System::hasInstance() ? System::instance().getProcessMemoryBytes() : 0;
 }
+
+}  // namespace jasperengine::profiler
 
 #endif

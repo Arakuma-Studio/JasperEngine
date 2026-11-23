@@ -19,7 +19,6 @@
 #include <unordered_set>
 
 using namespace jasperengine;
-using namespace jasperengine::editor::prefabinternal;
 
 namespace jasperengine::editor::prefabinternal {
 
@@ -95,9 +94,9 @@ bool editor::Project::recordPrefabComponentEdit(uint32_t sceneId, Entity entity,
     if (!findPrefabObject(sceneId, entity, ref)) {
         return false;
     }
-    ScratchEntity old;
+    prefabinternal::ScratchEntity old;
     old.decode(before);
-    std::vector<std::string> changed = diffComponentProperties(old.registry.get(), old.entity, sceneProject->scene, entity, type);
+    std::vector<std::string> changed = prefabinternal::diffComponentProperties(old.registry.get(), old.entity, sceneProject->scene, entity, type);
     if (changed.empty()) {
         return false;
     }
@@ -116,10 +115,10 @@ bool editor::Project::recordPrefabComponentAdded(uint32_t sceneId, Entity entity
     SceneProject* sceneProject = getScene(sceneId);
     PrefabObjectRef ref;
     if (!sceneProject || !sceneProject->scene || type == ComponentType::PrefabComponent || isEditingPrefabAsset(sceneId, entity) ||
-        !findPrefabObject(sceneId, entity, ref) || !hasComponent(sceneProject->scene, entity, type)) {
+        !findPrefabObject(sceneId, entity, ref) || !prefabinternal::hasComponent(sceneProject->scene, entity, type)) {
         return false;
     }
-    if (hasComponent(ref.prefab->registry.get(), ref.registryEntity, type)) {
+    if (prefabinternal::hasComponent(ref.prefab->registry.get(), ref.registryEntity, type)) {
         // The prefab GameObject has one, which this instance had removed: it is back, with
         // values of its own
         Prefab::ObjectOverrides& overrides = ref.instance->overrides[entity];
@@ -135,7 +134,7 @@ bool editor::Project::recordPrefabComponentRemoved(uint32_t sceneId, Entity enti
     SceneProject* sceneProject = getScene(sceneId);
     PrefabObjectRef ref;
     if (!sceneProject || !sceneProject->scene || type == ComponentType::PrefabComponent || isEditingPrefabAsset(sceneId, entity) ||
-        !findPrefabObject(sceneId, entity, ref) || hasComponent(sceneProject->scene, entity, type)) {
+        !findPrefabObject(sceneId, entity, ref) || prefabinternal::hasComponent(sceneProject->scene, entity, type)) {
         return false;
     }
     auto it = ref.instance->overrides.find(entity);
@@ -213,7 +212,7 @@ bool editor::Project::canApplyPrefabOverride(uint32_t sceneId, Entity entity, Co
     if (!target.empty() && std::find(targets.begin(), targets.end(), target) == targets.end()) {
         return fail("Not a Prefab this override can go to");
     }
-    if (type == ComponentType::PrefabComponent || !hasComponent(sceneProject->scene, entity, type)) {
+    if (type == ComponentType::PrefabComponent || !prefabinternal::hasComponent(sceneProject->scene, entity, type)) {
         return true; // state, removed components: nothing to check
     }
     // A value referencing a GameObject outside the Prefab cannot go into the Prefab: the
@@ -224,7 +223,7 @@ bool editor::Project::canApplyPrefabOverride(uint32_t sceneId, Entity entity, Co
     const Entity holderRoot = isNestedRootApplyTarget(sceneId, ref, resolved) ? entity :
         self->findHolderInstanceRoot(sceneId, ref.instance->rootEntity, resolved, ref.path);
     const std::unordered_set<Entity> members = self->collectInstanceTreeObjects(sceneId, holderRoot, resolved);
-    if (componentHasExternalEntityRef(sceneProject->scene, entity, type, members)) {
+    if (prefabinternal::componentHasExternalEntityRef(sceneProject->scene, entity, type, members)) {
         return fail("It references a GameObject outside the Prefab, which the Prefab cannot hold");
     }
     (void)properties;

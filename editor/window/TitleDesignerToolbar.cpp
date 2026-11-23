@@ -30,7 +30,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::titledesigner;
 namespace ta = jasperengine::titleart;
 namespace fs = std::filesystem;
 
@@ -124,15 +123,15 @@ void TitleDesignerWindow::drawToolbar() {
 
     // tools (Unity's Q W E R T) and Pivot/Center (Z)
     nextItem(220.0f);
-    if (toolButton(ICON_FA_HAND, "toolHand", currentTool == Tool::Hand, "Hand Tool (Q): drag to pan")) setTool(Tool::Hand);
+    if (toolButton(ICON_FA_HAND, "toolHand", currentTool == titledesigner::Tool::Hand, "Hand Tool (Q): drag to pan")) setTool(titledesigner::Tool::Hand);
     ImGui::SameLine(0, 2);
-    if (toolButton(ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT, "toolMove", currentTool == Tool::Move, "Move Tool (W)")) setTool(Tool::Move);
+    if (toolButton(ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT, "toolMove", currentTool == titledesigner::Tool::Move, "Move Tool (W)")) setTool(titledesigner::Tool::Move);
     ImGui::SameLine(0, 2);
-    if (toolButton(ICON_FA_ROTATE, "toolRotate", currentTool == Tool::Rotate, "Rotate Tool (E)")) setTool(Tool::Rotate);
+    if (toolButton(ICON_FA_ROTATE, "toolRotate", currentTool == titledesigner::Tool::Rotate, "Rotate Tool (E)")) setTool(titledesigner::Tool::Rotate);
     ImGui::SameLine(0, 2);
-    if (toolButton(ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER, "toolScale", currentTool == Tool::Scale, "Scale Tool (R)")) setTool(Tool::Scale);
+    if (toolButton(ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER, "toolScale", currentTool == titledesigner::Tool::Scale, "Scale Tool (R)")) setTool(titledesigner::Tool::Scale);
     ImGui::SameLine(0, 2);
-    if (toolButton(ICON_FA_VECTOR_SQUARE, "toolRect", currentTool == Tool::Rect, "Rect Tool (T)")) setTool(Tool::Rect);
+    if (toolButton(ICON_FA_VECTOR_SQUARE, "toolRect", currentTool == titledesigner::Tool::Rect, "Rect Tool (T)")) setTool(titledesigner::Tool::Rect);
     ImGui::SameLine();
     if (ImGui::Button(pivotMode ? "Pivot###pivot" : "Center###pivot")) pivotMode = !pivotMode;
     tooltip("Toggle Pivot/Center (Z): rotate and scale about the layer's position or its centre");
@@ -145,12 +144,12 @@ void TitleDesignerWindow::drawToolbar() {
     tooltip(editable ? "Add a layer, generator or effect (Ctrl+Shift+N)" : doc.readOnlyReason().c_str());
 
     if (!open || newerVersion()) return;
-    DocumentView& v = view();
+    titledesigner::DocumentView& v = view();
 
     // Preview As (S81's Render Modes; S86 adds its tiers through the hooks)
     nextItem(170.0f);
     std::string previewLabel = v.previewAs == "baked" ? "Baked" : "Realtime";
-    for (const PreviewModeDef& mode : previewModes()) {
+    for (const titledesigner::PreviewModeDef& mode : titledesigner::previewModes()) {
         if (mode.id == v.previewAs) previewLabel = mode.label;
     }
     ImGui::SetNextItemWidth(130.0f);
@@ -159,7 +158,7 @@ void TitleDesignerWindow::drawToolbar() {
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("The renderer on the working document (what a Realtime title shows)");
         if (ImGui::Selectable("Baked", v.previewAs == "baked")) setPreviewAs("baked");
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("The baked PNG the game ships (stale when the recipe differs)");
-        for (const PreviewModeDef& mode : previewModes()) {
+        for (const titledesigner::PreviewModeDef& mode : titledesigner::previewModes()) {
             if (ImGui::Selectable(mode.label.c_str(), v.previewAs == mode.id)) setPreviewAs(mode.id);
             if (ImGui::IsItemHovered() && !mode.note.empty()) ImGui::SetTooltip("%s", mode.note.c_str());
         }
@@ -171,7 +170,7 @@ void TitleDesignerWindow::drawToolbar() {
     const char* qualities[] = {"Auto", "Draft", "Full"};
     int q = (int)settings.quality;
     if (ImGui::Combo("##quality", &q, qualities, 3)) {
-        settings.quality = (Quality)q;
+        settings.quality = (titledesigner::Quality)q;
         settings.qualitySet = true;
         settings.save();
     }
@@ -197,7 +196,7 @@ void TitleDesignerWindow::drawToolbar() {
                 continue;
             }
             if (ImGui::Selectable(k[1], v.backdrop.kind == k[0])) {
-                BackdropChoice b = v.backdrop;
+                titledesigner::BackdropChoice b = v.backdrop;
                 b.kind = k[0];
                 if (b.kind == "game_scene" && b.scene.empty() && project) {
                     if (const SceneProject* scene = project->getSelectedScene()) b.scene = scene->filepath.generic_string();
@@ -225,7 +224,7 @@ void TitleDesignerWindow::drawToolbar() {
     ImGui::SetNextItemWidth(120.0f);
     if (ImGui::BeginCombo("##device", ("Device: " + deviceLabel).c_str())) {
         if (ImGui::Selectable("None", v.device.profile.empty())) {
-            DeviceChoice d = v.device;
+            titledesigner::DeviceChoice d = v.device;
             d.profile.clear();
             setDevice(d);
         }
@@ -233,7 +232,7 @@ void TitleDesignerWindow::drawToolbar() {
         for (const GameResolution& r : builtInGameResolutions()) {
             const std::string id = "res:" + r.name;
             if (ImGui::Selectable(gameResolutionLabel(r).c_str(), v.device.profile == id)) {
-                DeviceChoice d = v.device;
+                titledesigner::DeviceChoice d = v.device;
                 d.profile = id;
                 setDevice(d);
             }
@@ -243,7 +242,7 @@ void TitleDesignerWindow::drawToolbar() {
             for (const char* orientation : {"portrait", "landscape_left"}) {
                 const std::string label = std::string(p.name) + (std::string(orientation) == "portrait" ? " (Portrait)" : " (Landscape)");
                 if (ImGui::Selectable(label.c_str(), v.device.profile == p.id && v.device.orientation == orientation)) {
-                    DeviceChoice d = v.device;
+                    titledesigner::DeviceChoice d = v.device;
                     d.profile = p.id;
                     d.orientation = orientation;
                     setDevice(d);
@@ -351,7 +350,7 @@ void TitleDesignerWindow::drawToolbar() {
     if (ImGui::Checkbox("Stats###stats", &settings.stats)) settings.save();
     tooltip("Per-pass GPU times and preview budget use (acquires GPU timing while on)");
 
-    for (const ToolbarItemDef& item : toolbarItems()) {
+    for (const titledesigner::ToolbarItemDef& item : titledesigner::toolbarItems()) {
         if (item.overflowOnly || !item.draw) continue;
         nextItem(80.0f);
         item.draw(doc);
@@ -377,14 +376,14 @@ void TitleDesignerWindow::drawStatusBar() {
     }
     const std::vector<std::string> layers = doc.selectedLayers();
     if (!layers.empty()) {
-        TitleRect box = layerBounds(layers.back());
+        titledesigner::TitleRect box = layerBounds(layers.back());
         ImGui::SameLine();
         ImGui::TextDisabled("%s %.0f \xC3\x97 %.0f", layers.size() > 1 ? (std::to_string(layers.size()) + " layers").c_str() : "selection", box.width, box.height);
     }
     ImGui::SameLine();
     ImGui::TextDisabled("%.0f%%", xform.zoom * 100.0f);
     if (canvas) {
-        const CanvasRenderInfo& info = canvas->info();
+        const titledesigner::CanvasRenderInfo& info = canvas->info();
         ImGui::SameLine();
         if (info.busy && info.runningMs > 250.0) {
             ImGui::Text("Rendering %u/%u passes", info.passesDone, info.passesTotal);
@@ -434,7 +433,7 @@ void TitleDesignerWindow::drawStatusBar() {
         ImGui::Text("Rename title to %s?", renamePromptNew.c_str());
         ImGui::SameLine();
         if (ImGui::SmallButton("Rename###renametitle")) {
-            commitNamed(editsToOps({{std::string(), "name", renamePromptNew}}), "Rename Title");
+            commitNamed(titledesigner::editsToOps({{std::string(), "name", renamePromptNew}}), "Rename Title");
             renamePromptOld.clear();
         }
         ImGui::SameLine();
@@ -451,7 +450,7 @@ void TitleDesignerWindow::drawStats() {
     ImGui::TableSetupColumn("ms");
     ImGui::TableHeadersRow();
     for (const ta::NodeCost& cost : canvas->info().nodeCosts) {
-        const ta::Json* layer = layerById(doc.shown(), cost.layerId);
+        const ta::Json* layer = titledesigner::layerById(doc.shown(), cost.layerId);
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         ImGui::TextUnformatted(layer ? layer->value("name", std::string("?")).c_str() : cost.layerId.empty() ? "Document" : cost.layerId.c_str());

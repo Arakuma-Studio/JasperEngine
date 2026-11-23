@@ -10,7 +10,6 @@
 #include <mutex>
 
 using namespace jasperengine;
-using namespace jasperengine::pixelart;
 
 // file-local, inside the namespace: a unity build's other sources never see these names
 namespace jasperengine::pixelart {
@@ -69,7 +68,9 @@ namespace {
 }
 }
 
-bool pixelart::hasErrors(const std::vector<Diagnostic>& diagnostics) {
+namespace jasperengine::pixelart {
+
+bool hasErrors(const std::vector<Diagnostic>& diagnostics) {
     for (const Diagnostic& diagnostic : diagnostics) {
         if (diagnostic.severity == Diagnostic::Severity::Error) return true;
     }
@@ -274,3 +275,5 @@ uint32_t PaletteLibrary::generation() {
     std::lock_guard<std::mutex> lock(lib.mutex);
     return lib.generation;
 }
+
+}  // namespace jasperengine::pixelart

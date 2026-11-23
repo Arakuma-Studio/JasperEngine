@@ -19,7 +19,7 @@
 #include <unistd.h>
 #endif
 
-using namespace jasperengine::editor::mcp;
+namespace jasperengine::editor::mcp {
 
 namespace {
 
@@ -191,3 +191,5 @@ void McpTransportStdio::handleLine(const std::string& line) {
         std::fprintf(stderr, "[mcp] stdio message failed: %s\n", e.what());
     }
 }
+
+}  // namespace jasperengine::editor::mcp

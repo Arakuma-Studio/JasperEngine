@@ -32,11 +32,16 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::tilemap;
+
+namespace jasperengine::editor::tilemap {
 
 namespace fs = std::filesystem;
 
+}  // namespace jasperengine::editor::tilemap
+
 namespace jasperengine::editor::tilepalette {
+
+using namespace jasperengine::editor::tilemap;
 
     struct ToolButton {
         TileTool tool;
@@ -75,7 +80,8 @@ namespace jasperengine::editor::tilepalette {
 
 }
 
-using namespace jasperengine::editor::tilepalette;
+
+namespace jasperengine::editor::tilemap {
 
 TilePaletteWindow::TilePaletteWindow(Project* project): project(project) {
     TilemapTools::get().setProject(project);
@@ -111,7 +117,7 @@ void TilePaletteWindow::bindCommands(CommandCatalog& catalog) {
         catalog.add(std::move(def));
     };
     const auto always = []() { return true; };
-    for (const ToolButton& button : kToolButtons) {
+    for (const tilepalette::ToolButton& button : tilepalette::kToolButtons) {
         const TileTool tool = button.tool;
         bind(button.command, [tool]() { TilemapTools::get().activate(tool); }, always);
     }
@@ -191,7 +197,7 @@ void TilePaletteWindow::createLayer(SceneProject* sceneProject, Entity grid) {
     const Entity entity = create->getEntity();
     auto* properties = new MultiPropertyCmd();
     bool any = false;
-    const int order = nextOrderInLayer(scene, layers);
+    const int order = tilepalette::nextOrderInLayer(scene, layers);
     if (order != 0) {
         properties->addPropertyCmd<int>(project, sceneProject->id, entity, ComponentType::MeshComponent, "sortingOrder", order);
         any = true;
@@ -247,7 +253,7 @@ void TilePaletteWindow::drawToolbar() {
     TilemapTools& tools = TilemapTools::get();
     const CommandCatalog& catalog = CommandCatalog::editor();
     bool activeInView = tools.isToolActive();
-    for (const ToolButton& button : kToolButtons) {
+    for (const tilepalette::ToolButton& button : tilepalette::kToolButtons) {
         ImGui::PushID(button.name);
         const bool selected = activeInView && tools.currentTool() == button.tool;
         if (selected) ImGui::PushStyleColor(ImGuiCol_Button, Theme::Colors::ButtonActivated);
@@ -432,7 +438,7 @@ void TilePaletteWindow::drawTerrains(const std::shared_ptr<const TilesetRuntime>
                 brush.randomOn = false;
                 if (!tools.isToolActive() || tools.currentTool() == TileTool::Select || tools.currentTool() == TileTool::Picker) tools.activate(TileTool::Paint);
             }
-            ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(pos.x + style.ItemInnerSpacing.x, pos.y + 1.0f), ImVec2(pos.x + chip, pos.y + chip - 1.0f), colorFromHex(set.terrains[local].color));
+            ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(pos.x + style.ItemInnerSpacing.x, pos.y + 1.0f), ImVec2(pos.x + chip, pos.y + chip - 1.0f), tilepalette::colorFromHex(set.terrains[local].color));
             ImGui::PopID();
         }
     }
@@ -599,3 +605,5 @@ void TilePaletteWindow::show() {
     ImGui::End();
     if (!keepOpen) windowOpen = false;
 }
+
+}  // namespace jasperengine::editor::tilemap

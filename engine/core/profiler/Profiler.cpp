@@ -52,9 +52,10 @@
 #endif
 
 using namespace jasperengine;
-using namespace jasperengine::profiler;
 
-std::atomic<bool> profiler::enabledFlag{false};
+namespace jasperengine::profiler {
+
+std::atomic<bool> enabledFlag{false};
 
 namespace {
 
@@ -581,7 +582,7 @@ namespace {
 
 // ---- public
 
-const char* profiler::categoryName(Category category){
+const char* categoryName(Category category){
     static const char* const table[CATEGORY_COUNT] = {
         "Rendering", "Scripts", "Physics", "Animation", "UI", "Loading", "Jobs", "Wait", "Other"
     };
@@ -589,7 +590,7 @@ const char* profiler::categoryName(Category category){
     return index < CATEGORY_COUNT ? table[index] : "Other";
 }
 
-void profiler::setEnabled(bool enabled){
+void setEnabled(bool enabled){
     const bool was = enabledFlag.exchange(enabled, std::memory_order_relaxed);
     if (enabled && !was){
         State& s = state();
@@ -612,13 +613,13 @@ void profiler::setEnabled(bool enabled){
     }
 }
 
-uint32_t profiler::registerSite(ScopeSite& site){
+uint32_t registerSite(ScopeSite& site){
     const uint32_t id = internName(site.name ? site.name : "?");
     site.id.store(id, std::memory_order_relaxed);
     return id;
 }
 
-uint32_t profiler::internName(std::string_view name){
+uint32_t internName(std::string_view name){
     // most lookups hit the calling thread's cache, which points into the stable name storage
     thread_local std::unordered_map<std::string_view, uint32_t> cache;
     auto cached = cache.find(name);
@@ -631,20 +632,20 @@ uint32_t profiler::internName(std::string_view name){
     return id;
 }
 
-std::string profiler::nameOf(uint32_t nameId){
+std::string nameOf(uint32_t nameId){
     Names& n = names();
     std::lock_guard<std::mutex> lock(n.mutex);
     return nameId < n.strings.size() ? n.strings[nameId] : std::string("?");
 }
 
-void profiler::setNameCategory(uint32_t nameId, Category category){
+void setNameCategory(uint32_t nameId, Category category){
     Names& n = names();
     std::lock_guard<std::mutex> lock(n.mutex);
     if (nameId < n.categories.size())
         n.categories[nameId] = (uint8_t)category;
 }
 
-bool profiler::beginScope(uint32_t nameId){
+bool beginScope(uint32_t nameId){
     ThreadBuffer* buffer = threadLocal.buffer ? threadLocal.buffer : createBuffer();
     const uint64_t head = buffer->head.load(std::memory_order_relaxed);
     const uint64_t tail = buffer->tail.load(std::memory_order_acquire);
@@ -659,7 +660,7 @@ bool profiler::beginScope(uint32_t nameId){
     return true;
 }
 
-void profiler::endScope(){
+void endScope(){
     ThreadBuffer* buffer = threadLocal.buffer;
     if (!buffer || buffer->openDepth == 0)
         return;
@@ -669,7 +670,7 @@ void profiler::endScope(){
     buffer->openDepth--;
 }
 
-void profiler::setThreadName(const char* name){
+void setThreadName(const char* name){
     if (!name)
         return;
     threadLocal.pendingName = name;
@@ -684,20 +685,20 @@ void profiler::setThreadName(const char* name){
     }
 }
 
-void profiler::setRingBytes(size_t bytes){
+void setRingBytes(size_t bytes){
     ThreadTable& t = threadTable();
     std::lock_guard<std::mutex> lock(t.mutex);
     t.ringBytes = std::clamp<size_t>(bytes, 256 * 1024, 8 * 1024 * 1024);
 }
 
-void profiler::setDetailLimits(size_t frames, size_t bytes){
+void setDetailLimits(size_t frames, size_t bytes){
     State& s = state();
     s.detailFrames = std::min<size_t>(frames, 300);
     s.detailBytes = bytes;
     evictDetail(s);
 }
 
-void profiler::frameMark(){
+void frameMark(){
     State& s = state();
     tickClock().refine();
     const uint64_t now = nowNs();
@@ -833,7 +834,7 @@ void profiler::frameMark(){
     s.lastMarkNs = now;
 }
 
-void profiler::recordGpuFrame(uint64_t frameIndex, uint32_t viewTag, uint64_t commit, const GpuPassSample* passes, size_t count,
+void recordGpuFrame(uint64_t frameIndex, uint32_t viewTag, uint64_t commit, const GpuPassSample* passes, size_t count,
                               double frameGpuMs, bool frameValid, bool gameFrame){
     State& s = state();
     PendingGpu gpu;
@@ -883,7 +884,7 @@ void profiler::recordGpuFrame(uint64_t frameIndex, uint32_t viewTag, uint64_t co
     }
 }
 
-void profiler::setGpuSemantics(const std::string& semantics){
+void setGpuSemantics(const std::string& semantics){
     State& s = state();
     for (auto& capture : s.captures){
         if (!capture->info.loaded && !capture->info.complete)
@@ -891,21 +892,21 @@ void profiler::setGpuSemantics(const std::string& semantics){
     }
 }
 
-void profiler::setDeviceInfo(const std::string& backend, const std::string& device){
+void setDeviceInfo(const std::string& backend, const std::string& device){
     State& s = state();
     s.backend = backend;
     s.device = device;
 }
 
-void profiler::setDeepLua(bool deep){
+void setDeepLua(bool deep){
     deepLuaFlag.store(deep, std::memory_order_relaxed);
 }
 
-std::atomic<bool> profiler::deepLuaFlag{false};
+std::atomic<bool> deepLuaFlag{false};
 
 // ---- monitors
 
-const char* profiler::monitorUnitName(MonitorUnit unit){
+const char* monitorUnitName(MonitorUnit unit){
     switch (unit){
         case MonitorUnit::Quantity: return "quantity";
         case MonitorUnit::Memory: return "bytes";
@@ -915,7 +916,7 @@ const char* profiler::monitorUnitName(MonitorUnit unit){
     return "quantity";
 }
 
-void profiler::counter(const char* name, double value){
+void counter(const char* name, double value){
     if (!name)
         return;
     Monitor* monitor = findMonitor(name, MonitorUnit::Quantity, false);
@@ -925,11 +926,11 @@ void profiler::counter(const char* name, double value){
     monitor->pending.store(true, std::memory_order_release);
 }
 
-profiler::MonitorHandle profiler::monitorHandle(const char* name, MonitorUnit unit){
+profiler::MonitorHandle monitorHandle(const char* name, MonitorUnit unit){
     return name ? findMonitor(name, unit, true) : nullptr;
 }
 
-void profiler::counter(MonitorHandle handle, double value){
+void counter(MonitorHandle handle, double value){
     Monitor* monitor = static_cast<Monitor*>(handle);
     if (!monitor)
         return;
@@ -939,7 +940,7 @@ void profiler::counter(MonitorHandle handle, double value){
     monitor->pending.store(true, std::memory_order_release);
 }
 
-void profiler::counter(const char* name, double value, MonitorUnit unit){
+void counter(const char* name, double value, MonitorUnit unit){
     if (!name)
         return;
     Monitor* monitor = findMonitor(name, unit, true);
@@ -972,7 +973,7 @@ namespace {
     }
 }
 
-std::vector<MonitorInfo> profiler::monitors(){
+std::vector<MonitorInfo> monitors(){
     Monitors& m = monitorTable();
     std::lock_guard<std::mutex> lock(m.mutex);
     std::vector<MonitorInfo> out;
@@ -981,7 +982,7 @@ std::vector<MonitorInfo> profiler::monitors(){
     return out;
 }
 
-bool profiler::monitorInfo(const std::string& name, MonitorInfo& out){
+bool monitorInfo(const std::string& name, MonitorInfo& out){
     Monitors& m = monitorTable();
     std::lock_guard<std::mutex> lock(m.mutex);
     auto it = m.index.find(name);
@@ -991,7 +992,7 @@ bool profiler::monitorInfo(const std::string& name, MonitorInfo& out){
     return true;
 }
 
-std::vector<std::string> profiler::monitorNames(){
+std::vector<std::string> monitorNames(){
     Monitors& m = monitorTable();
     std::lock_guard<std::mutex> lock(m.mutex);
     std::vector<std::string> out;
@@ -1001,7 +1002,7 @@ std::vector<std::string> profiler::monitorNames(){
     return out;
 }
 
-std::vector<double> profiler::monitorSeries(const std::string& name, size_t count){
+std::vector<double> monitorSeries(const std::string& name, size_t count){
     Monitors& m = monitorTable();
     std::lock_guard<std::mutex> lock(m.mutex);
     auto it = m.index.find(name);
@@ -1017,16 +1018,16 @@ std::vector<double> profiler::monitorSeries(const std::string& name, size_t coun
 
 // ---- frames
 
-size_t profiler::frameCount(){
+size_t frameCount(){
     return state().history.size();
 }
 
-const Frame* profiler::frameAt(size_t index){
+const Frame* frameAt(size_t index){
     State& s = state();
     return index < s.history.size() ? &s.history[index] : nullptr;
 }
 
-const Frame* profiler::findFrame(uint64_t frameIndex){
+const Frame* findFrame(uint64_t frameIndex){
     State& s = state();
     for (auto it = s.history.rbegin(); it != s.history.rend(); ++it){
         if (it->index == frameIndex)
@@ -1035,32 +1036,32 @@ const Frame* profiler::findFrame(uint64_t frameIndex){
     return nullptr;
 }
 
-std::vector<ThreadInfo> profiler::threads(){
+std::vector<ThreadInfo> threads(){
     ThreadTable& t = threadTable();
     std::lock_guard<std::mutex> lock(t.mutex);
     return t.infos;
 }
 
-uint32_t profiler::mainThreadId(){
+uint32_t mainThreadId(){
     ThreadTable& t = threadTable();
     std::lock_guard<std::mutex> lock(t.mutex);
     return t.mainId;
 }
 
-void profiler::clearHistory(){
+void clearHistory(){
     State& s = state();
     s.history.clear();
     s.pendingGpu.clear();
     s.partialNext = true;
 }
 
-double profiler::scopePairCostNs(){
+double scopePairCostNs(){
     return state().pairCostNs;
 }
 
 // ---- views
 
-std::vector<TreeRow> profiler::buildTree(const Frame& frame, uint32_t thread, const NameLookup& lookup){
+std::vector<TreeRow> buildTree(const Frame& frame, uint32_t thread, const NameLookup& lookup){
     std::vector<TreeRow> rows;
     const ThreadTimeline* timeline = nullptr;
     for (const ThreadTimeline& candidate : frame.threads){
@@ -1130,7 +1131,7 @@ std::vector<TreeRow> profiler::buildTree(const Frame& frame, uint32_t thread, co
     return ordered;
 }
 
-std::vector<FlatRow> profiler::buildFlat(const Frame& frame, const NameLookup& lookup){
+std::vector<FlatRow> buildFlat(const Frame& frame, const NameLookup& lookup){
     std::unordered_map<uint32_t, FlatRow> rows;
     for (const ThreadTimeline& timeline : frame.threads){
         struct Open { const Interval* interval; uint64_t childNs; };
@@ -1179,7 +1180,7 @@ std::vector<FlatRow> profiler::buildFlat(const Frame& frame, const NameLookup& l
     return out;
 }
 
-std::vector<ThreadBusy> profiler::buildThreadBusy(const Frame& frame){
+std::vector<ThreadBusy> buildThreadBusy(const Frame& frame){
     std::vector<ThreadBusy> out;
     const double frameMs = frame.frameMs();
     for (const ThreadTimeline& timeline : frame.threads){
@@ -1199,7 +1200,7 @@ std::vector<ThreadBusy> profiler::buildThreadBusy(const Frame& frame){
 
 // ---- captures
 
-CaptureId profiler::startCapture(uint32_t frames){
+CaptureId startCapture(uint32_t frames){
     State& s = state();
     if (s.active || frames == 0)
         return 0;
@@ -1219,7 +1220,7 @@ CaptureId profiler::startCapture(uint32_t frames){
     return s.active;
 }
 
-bool profiler::captureInfo(CaptureId id, CaptureInfo& out){
+bool captureInfo(CaptureId id, CaptureInfo& out){
     Capture* capture = findCapture(id);
     if (!capture)
         return false;
@@ -1227,18 +1228,18 @@ bool profiler::captureInfo(CaptureId id, CaptureInfo& out){
     return true;
 }
 
-std::vector<CaptureInfo> profiler::captures(){
+std::vector<CaptureInfo> captures(){
     std::vector<CaptureInfo> out;
     for (const auto& capture : state().captures)
         out.push_back(capture->info);
     return out;
 }
 
-CaptureId profiler::activeCapture(){
+CaptureId activeCapture(){
     return state().active;
 }
 
-void profiler::cancelCapture(){
+void cancelCapture(){
     State& s = state();
     Capture* capture = findCapture(s.active);
     if (capture)
@@ -1246,12 +1247,12 @@ void profiler::cancelCapture(){
     s.active = 0;
 }
 
-const std::vector<Frame>* profiler::captureFrames(CaptureId id){
+const std::vector<Frame>* captureFrames(CaptureId id){
     Capture* capture = findCapture(id);
     return capture ? &capture->frames : nullptr;
 }
 
-std::vector<ThreadInfo> profiler::captureThreads(CaptureId id){
+std::vector<ThreadInfo> captureThreads(CaptureId id){
     Capture* capture = findCapture(id);
     if (!capture)
         return {};
@@ -1260,7 +1261,7 @@ std::vector<ThreadInfo> profiler::captureThreads(CaptureId id){
     return capture->threads;
 }
 
-std::vector<std::string> profiler::captureMonitorNames(CaptureId id){
+std::vector<std::string> captureMonitorNames(CaptureId id){
     Capture* capture = findCapture(id);
     if (!capture)
         return {};
@@ -1269,7 +1270,7 @@ std::vector<std::string> profiler::captureMonitorNames(CaptureId id){
     return capture->monitorNames;
 }
 
-CaptureId profiler::captureFromHistory(){
+CaptureId captureFromHistory(){
     State& s = state();
     auto capture = std::make_unique<Capture>();
     capture->info.id = s.nextCapture++;
@@ -1293,14 +1294,14 @@ CaptureId profiler::captureFromHistory(){
     return id;
 }
 
-std::string profiler::captureNameOf(CaptureId id, uint32_t nameId){
+std::string captureNameOf(CaptureId id, uint32_t nameId){
     Capture* capture = findCapture(id);
     if (capture && (capture->info.complete || capture->info.loaded) && nameId < capture->names.size())
         return capture->names[nameId];
     return nameOf(nameId);
 }
 
-std::string profiler::captureJson(CaptureId id){
+std::string captureJson(CaptureId id){
     Capture* capture = findCapture(id);
     if (!capture)
         return std::string();
@@ -1416,7 +1417,7 @@ std::string profiler::captureJson(CaptureId id){
     return out;
 }
 
-bool profiler::saveCapture(CaptureId id, const std::string& path, std::string* error){
+bool saveCapture(CaptureId id, const std::string& path, std::string* error){
     Capture* capture = findCapture(id);
     if (!capture){
         if (error) *error = "no capture " + std::to_string(id);
@@ -1434,7 +1435,7 @@ bool profiler::saveCapture(CaptureId id, const std::string& path, std::string* e
     return true;
 }
 
-CaptureId profiler::loadCapture(const std::string& path, std::string& error){
+CaptureId loadCapture(const std::string& path, std::string& error){
     std::ifstream file(path, std::ios::binary);
     if (!file){
         error = "cannot read " + path;
@@ -1602,7 +1603,7 @@ CaptureId profiler::loadCapture(const std::string& path, std::string& error){
     return id;
 }
 
-void profiler::dropCapture(CaptureId id){
+void dropCapture(CaptureId id){
     State& s = state();
     if (s.active == id)
         cancelCapture();
@@ -1610,5 +1611,7 @@ void profiler::dropCapture(CaptureId id){
         return c->info.id == id;
     }), s.captures.end());
 }
+
+}  // namespace jasperengine::profiler
 
 #endif

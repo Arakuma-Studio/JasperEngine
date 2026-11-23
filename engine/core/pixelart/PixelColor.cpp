@@ -15,7 +15,6 @@
 #include <limits>
 
 using namespace jasperengine;
-using namespace jasperengine::pixelart;
 
 // file-local, inside the namespace: a unity build's other sources never see these names
 namespace jasperengine::pixelart {
@@ -210,7 +209,9 @@ namespace {
 }
 }
 
-const char* pixelart::colorMetricName(ColorMetric metric) {
+namespace jasperengine::pixelart {
+
+const char* colorMetricName(ColorMetric metric) {
     switch (metric) {
         case ColorMetric::OkLab: return "oklab";
         case ColorMetric::Ciede2000: return "ciede2000";
@@ -219,7 +220,7 @@ const char* pixelart::colorMetricName(ColorMetric metric) {
     return "oklab";
 }
 
-bool pixelart::parseColorMetric(std::string_view name, ColorMetric& out) {
+bool parseColorMetric(std::string_view name, ColorMetric& out) {
     for (ColorMetric metric : {ColorMetric::OkLab, ColorMetric::Ciede2000, ColorMetric::Rgb}) {
         if (name == colorMetricName(metric)) {
             out = metric;
@@ -229,7 +230,7 @@ bool pixelart::parseColorMetric(std::string_view name, ColorMetric& out) {
     return false;
 }
 
-std::string pixelart::toHex(Rgba8 color, bool alpha) {
+std::string toHex(Rgba8 color, bool alpha) {
     char text[16];
     if (alpha) {
         std::snprintf(text, sizeof(text), "#%02x%02x%02x%02x", color.r, color.g, color.b, color.a);
@@ -239,11 +240,11 @@ std::string pixelart::toHex(Rgba8 color, bool alpha) {
     return text;
 }
 
-std::string pixelart::toHex(Rgba8 color) {
+std::string toHex(Rgba8 color) {
     return toHex(color, color.a != 255);
 }
 
-bool pixelart::parseHex(std::string_view text, Rgba8& out, bool* hasAlpha) {
+bool parseHex(std::string_view text, Rgba8& out, bool* hasAlpha) {
     while (!text.empty() && (text.front() == ' ' || text.front() == '\t')) text.remove_prefix(1);
     while (!text.empty() && (text.back() == ' ' || text.back() == '\t' || text.back() == '\r')) text.remove_suffix(1);
     if (!text.empty() && text.front() == '#') text.remove_prefix(1);
@@ -260,7 +261,7 @@ bool pixelart::parseHex(std::string_view text, Rgba8& out, bool* hasAlpha) {
     return true;
 }
 
-double pixelart::rootFixed(double x, int n) {
+double rootFixed(double x, int n) {
     if (!(x > 0.0) || n < 2) return 0.0;
     if (std::isinf(x)) return x;
     // x = m 2^e with m in [0.5, 1); x = (m 2^r) 2^(q n) with r in [0, n)
@@ -283,69 +284,69 @@ double pixelart::rootFixed(double x, int n) {
     return std::ldexp(y, q);
 }
 
-float pixelart::srgbToLinear(uint8_t c) {
+float srgbToLinear(uint8_t c) {
     return srgbTables().toLinear[c];
 }
 
-uint8_t pixelart::linearToSrgb(float linear) {
+uint8_t linearToSrgb(float linear) {
     if (!(linear > 0.0f)) return 0;
     const SrgbTables& tables = srgbTables();
     return (uint8_t)(std::upper_bound(tables.thresholds, tables.thresholds + 255, linear) - tables.thresholds);
 }
 
-float pixelart::srgbToLinearf(float c) {
+float srgbToLinearf(float c) {
     return c > 0.0f ? (float)decodePiecewise(c) : 0.0f;
 }
 
-float pixelart::linearToSrgbf(float linear) {
+float linearToSrgbf(float linear) {
     return linear > 0.0f ? (float)encodePiecewise(linear) : 0.0f;
 }
 
-float pixelart::engineSrgbToLinear(float c) {
+float engineSrgbToLinear(float c) {
     // c^2.2 = c^2 c^(1/5)
     if (!(c > 0.0f)) return 0.0f;
     const double v = c;
     return (float)(v * v * rootFixed(v, 5));
 }
 
-float pixelart::engineLinearToSrgb(float linear) {
+float engineLinearToSrgb(float linear) {
     // x^(1/2.2) = (x^5)^(1/11)
     if (!(linear > 0.0f)) return 0.0f;
     return (float)rootFixed(powInt(linear, 5), 11);
 }
 
-Vector4 pixelart::toEngineLinear(Rgba8 color) {
+Vector4 toEngineLinear(Rgba8 color) {
     return Vector4(engineSrgbToLinear(color.r / 255.0f), engineSrgbToLinear(color.g / 255.0f),
                    engineSrgbToLinear(color.b / 255.0f), color.a / 255.0f);
 }
 
-Rgba8 pixelart::fromEngineLinear(const Vector4& linear) {
+Rgba8 fromEngineLinear(const Vector4& linear) {
     return Rgba8{roundByte(engineLinearToSrgb(linear.x)), roundByte(engineLinearToSrgb(linear.y)),
                  roundByte(engineLinearToSrgb(linear.z)), roundByte(linear.w)};
 }
 
-Lab pixelart::toOklab(Rgba8 color) {
+Lab toOklab(Rgba8 color) {
     const SrgbTables& tables = srgbTables();
     return oklabOfLinear(tables.toLinear[color.r], tables.toLinear[color.g], tables.toLinear[color.b]);
 }
 
-Lab pixelart::linearToOklab(float r, float g, float b) {
+Lab linearToOklab(float r, float g, float b) {
     return oklabOfLinear(r, g, b);
 }
 
-void pixelart::oklabToLinear(const Lab& lab, float rgb[3]) {
+void oklabToLinear(const Lab& lab, float rgb[3]) {
     double linear[3];
     linearOfOklab(lab, linear);
     for (int i = 0; i < 3; i++) rgb[i] = (float)linear[i];
 }
 
-Rgba8 pixelart::fromOklab(const Lab& lab, uint8_t alpha) {
+Rgba8 fromOklab(const Lab& lab, uint8_t alpha) {
     double linear[3];
     linearOfOklab(lab, linear);
     return Rgba8{linearToSrgb((float)linear[0]), linearToSrgb((float)linear[1]), linearToSrgb((float)linear[2]), alpha};
 }
 
-LCh pixelart::toOklch(const Lab& lab) {
+LCh toOklch(const Lab& lab) {
     const double c = std::sqrt((double)lab.a * lab.a + (double)lab.b * lab.b);
     double h = 0.0;
     if (c > 0.0) {
@@ -356,10 +357,12 @@ LCh pixelart::toOklch(const Lab& lab) {
     return LCh{lab.l, (float)c, (float)h};
 }
 
-Lab pixelart::fromOklch(const LCh& lch) {
+Lab fromOklch(const LCh& lch) {
     const double h = radians(lch.h);
     return Lab{lch.l, (float)(lch.c * std::cos(h)), (float)(lch.c * std::sin(h))};
 }
+
+}  // namespace jasperengine::pixelart
 
 namespace jasperengine::pixelart {
 namespace {
@@ -375,12 +378,14 @@ namespace {
 }
 }
 
-Lab pixelart::toCielab(Rgba8 color) {
+namespace jasperengine::pixelart {
+
+Lab toCielab(Rgba8 color) {
     const SrgbTables& tables = srgbTables();
     return cielabOfLinear(tables.toLinear[color.r], tables.toLinear[color.g], tables.toLinear[color.b]);
 }
 
-float pixelart::ciede2000(const Lab& first, const Lab& second) {
+float ciede2000(const Lab& first, const Lab& second) {
     const double POW25_7 = pow7(25.0);
     const double l1 = first.l, a1 = first.a, b1 = first.b;
     const double l2 = second.l, a2 = second.a, b2 = second.b;
@@ -437,7 +442,7 @@ float pixelart::ciede2000(const Lab& first, const Lab& second) {
     return (float)std::sqrt(lTerm * lTerm + cTerm * cTerm + hTerm * hTerm + rt * cTerm * hTerm);
 }
 
-Hsv pixelart::toHsv(float r, float g, float b) {
+Hsv toHsv(float r, float g, float b) {
     const float maxC = std::max({r, g, b});
     const float minC = std::min({r, g, b});
     const float delta = maxC - minC;
@@ -453,7 +458,7 @@ Hsv pixelart::toHsv(float r, float g, float b) {
     return Hsv{h, s, maxC};
 }
 
-void pixelart::fromHsv(const Hsv& hsv, float rgb[3]) {
+void fromHsv(const Hsv& hsv, float rgb[3]) {
     const float h = hsv.h - std::floor(hsv.h);
     const float s = std::isfinite(hsv.s) ? std::clamp(hsv.s, 0.0f, 1.0f) : 0.0f;
     const float v = hsv.v;
@@ -473,17 +478,17 @@ void pixelart::fromHsv(const Hsv& hsv, float rgb[3]) {
     rgb[2] = b + m;
 }
 
-Hsv pixelart::toHsv(Rgba8 color) {
+Hsv toHsv(Rgba8 color) {
     return toHsv(color.r / 255.0f, color.g / 255.0f, color.b / 255.0f);
 }
 
-Rgba8 pixelart::fromHsv(const Hsv& hsv, uint8_t alpha) {
+Rgba8 fromHsv(const Hsv& hsv, uint8_t alpha) {
     float rgb[3];
     fromHsv(hsv, rgb);
     return Rgba8{roundByte(rgb[0]), roundByte(rgb[1]), roundByte(rgb[2]), alpha};
 }
 
-float pixelart::distance(Rgba8 x, Rgba8 y, ColorMetric metric) {
+float distance(Rgba8 x, Rgba8 y, ColorMetric metric) {
     switch (metric) {
         case ColorMetric::OkLab:
             return std::sqrt(squaredDistance(toOklab(x), toOklab(y)));
@@ -688,7 +693,7 @@ PaletteMatcher::Mix PaletteMatcher::ditherPair(Rgba8 color, float strength, int 
     return mix;
 }
 
-std::vector<Rgba8> pixelart::medianCut(std::span<const Rgba8> pixels, int count, std::span<const Rgba8> keep) {
+std::vector<Rgba8> medianCut(std::span<const Rgba8> pixels, int count, std::span<const Rgba8> keep) {
     std::vector<Rgba8> result;
     for (const Rgba8& color : keep) appendUnique(result, Rgba8{color.r, color.g, color.b, 255});
     if (count <= 0) return {};
@@ -759,7 +764,7 @@ std::vector<Rgba8> pixelart::medianCut(std::span<const Rgba8> pixels, int count,
     return result;
 }
 
-std::vector<Rgba8> pixelart::kMeansRefine(std::span<const Rgba8> pixels, std::vector<Rgba8> centres, int fixed, int iterations) {
+std::vector<Rgba8> kMeansRefine(std::span<const Rgba8> pixels, std::vector<Rgba8> centres, int fixed, int iterations) {
     fixed = std::clamp(fixed, 0, (int)centres.size());
     if (centres.empty()) return centres;
     const std::vector<ColorCount> colors = countColors(pixels);
@@ -798,7 +803,7 @@ std::vector<Rgba8> pixelart::kMeansRefine(std::span<const Rgba8> pixels, std::ve
     return result;
 }
 
-float pixelart::bayerThreshold(int size, int x, int y) {
+float bayerThreshold(int size, int x, int y) {
     // M(2n) = [4M + 0, 4M + 2; 4M + 3, 4M + 1], built bit by bit from the coordinates
     const int n = size >= 8 ? 8 : (size >= 4 ? 4 : 2);
     const int bits = n == 8 ? 3 : (n == 4 ? 2 : 1);
@@ -815,7 +820,7 @@ float pixelart::bayerThreshold(int size, int x, int y) {
     return ((float)m + 0.5f) / (float)(n * n);
 }
 
-std::vector<Rgba8> pixelart::fitRamp(std::span<const Rgba8> ramp, int steps) {
+std::vector<Rgba8> fitRamp(std::span<const Rgba8> ramp, int steps) {
     if (ramp.empty() || steps <= 0) return {};
     if ((int)ramp.size() == steps) return std::vector<Rgba8>(ramp.begin(), ramp.end());
     std::vector<Rgba8> fitted;
@@ -830,9 +835,11 @@ std::vector<Rgba8> pixelart::fitRamp(std::span<const Rgba8> ramp, int steps) {
     return fitted;
 }
 
-Rgba8 pixelart::rampAt(std::span<const Rgba8> ramp, float t) {
+Rgba8 rampAt(std::span<const Rgba8> ramp, float t) {
     if (ramp.empty()) return Rgba8{0, 0, 0, 0};
     const double position = std::floor((double)(std::isfinite(t) ? t : 0.0f) * (double)ramp.size());
     const double last = (double)(ramp.size() - 1);
     return ramp[(size_t)std::clamp(position, 0.0, last)];
 }
+
+}  // namespace jasperengine::pixelart

@@ -12,7 +12,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::publish;
+
+namespace jasperengine::editor::publish {
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -24,7 +26,7 @@ namespace {
 
 }
 
-TreeManifestResult publish::treeManifest(const fs::path& root, TargetOs os) {
+TreeManifestResult treeManifest(const fs::path& root, TargetOs os) {
     TreeManifestResult out;
     std::map<std::string, std::string> folded;
     std::error_code ec;
@@ -72,3 +74,5 @@ TreeManifestResult publish::treeManifest(const fs::path& root, TargetOs os) {
     if (ec) out.problems.push_back("cannot list " + root.string() + ": " + ec.message());
     return out;
 }
+
+}  // namespace jasperengine::editor::publish

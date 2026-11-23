@@ -19,7 +19,8 @@
 #include <unordered_set>
 
 using namespace jasperengine;
-using namespace jasperengine::anim;
+
+namespace jasperengine::anim {
 
 namespace{
 
@@ -427,7 +428,7 @@ void anim::RigClipCursors::resize(size_t groups){
     locations.assign(groups, Location());
 }
 
-void anim::sampleClip(const RigClipBinding& binding, const AnimatorRig& rig, float clipTime, RigClipCursors& cursors, Pose& out,
+void sampleClip(const RigClipBinding& binding, const AnimatorRig& rig, float clipTime, RigClipCursors& cursors, Pose& out,
                       float stepFps, int smoothBone){
     if (!binding.clip) return;
     const std::vector<AnimationClip::Track>& tracks = binding.clip->getTracks();
@@ -554,3 +555,5 @@ void anim::sampleClip(const RigClipBinding& binding, const AnimatorRig& rig, flo
         }
     }
 }
+
+}  // namespace jasperengine::anim

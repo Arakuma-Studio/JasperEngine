@@ -10,7 +10,8 @@
 #include <random>
 
 using namespace jasperengine;
-using namespace jasperengine::camera;
+
+namespace jasperengine::camera {
 
 namespace{
 
@@ -26,11 +27,11 @@ namespace{
 
 }
 
-float camera::shakeNoise(float x, float y){
+float shakeNoise(float x, float y){
     return (perlinNoise(x, y) - 0.5f) * 2.0f;
 }
 
-ShakeOffset camera::evaluateShake(const ShakePreset& preset, int baseSeed, float noiseTime, float strength){
+ShakeOffset evaluateShake(const ShakePreset& preset, int baseSeed, float noiseTime, float strength){
     const float b = (float)baseSeed;
     const float s1 = b / 2.0f;
     const float s2 = b / 3.0f;
@@ -49,13 +50,13 @@ ShakeOffset camera::evaluateShake(const ShakePreset& preset, int baseSeed, float
     return offset;
 }
 
-int camera::randomShakeSeed(){
+int randomShakeSeed(){
     static thread_local std::mt19937 generator(std::random_device{}());
     std::uniform_int_distribution<int> distribution(-10000, 10000);
     return distribution(generator);
 }
 
-Quaternion camera::shakeEulerToQuaternion(const Vector3& degrees){
+Quaternion shakeEulerToQuaternion(const Vector3& degrees){
     const Quaternion qx = axisAngleDegrees(degrees.x, Vector3(1, 0, 0));
     const Quaternion qy = axisAngleDegrees(degrees.y, Vector3(0, 1, 0));
     const Quaternion qz = axisAngleDegrees(degrees.z, Vector3(0, 0, 1));
@@ -94,7 +95,7 @@ void ShakeInstance::setFadeTimes(float fadeIn, float fadeOut){
 
 // Ported from pixelfx src/core/act.js (`get shake()`): MIT License, Copyright (c) 2026 Patch;
 // the shake is how Hollow Crown plays its skills, MIT License, Copyright (c) 2026 rehan-remade.
-Vector3 camera::kickOffset(float strength, float remaining, float length, float tick, bool round){
+Vector3 kickOffset(float strength, float remaining, float length, float tick, bool round){
     if (!(length > 0.0f) || !(remaining > 0.0f)) return Vector3(0, 0, 0);
     const float k = strength * (std::min(remaining, length) / length);
     const float f = std::floor(remaining * (tick > 0.0f ? tick : 60.0f));
@@ -234,7 +235,7 @@ ShakeOffset TraumaState::getOffset(float power, const Vector3& maxOffset, const 
     return offset;
 }
 
-std::vector<ShakeOffset> camera::sampleShakePreset(const ShakePreset& preset, float duration, float hz, int seed){
+std::vector<ShakeOffset> sampleShakePreset(const ShakePreset& preset, float duration, float hz, int seed){
     std::vector<ShakeOffset> samples;
     if (!(duration > 0.0f) || !(hz > 0.0f)) return samples;
     const float dt = 1.0f / hz;
@@ -253,7 +254,7 @@ std::vector<ShakeOffset> camera::sampleShakePreset(const ShakePreset& preset, fl
     return samples;
 }
 
-ShakeOffset camera::shakeOffsetPeaks(const std::vector<ShakeOffset>& samples){
+ShakeOffset shakeOffsetPeaks(const std::vector<ShakeOffset>& samples){
     ShakeOffset peaks;
     for (const ShakeOffset& sample : samples){
         peaks.position = Vector3(std::max(peaks.position.x, std::fabs(sample.position.x)),
@@ -269,3 +270,5 @@ ShakeOffset camera::shakeOffsetPeaks(const std::vector<ShakeOffset>& samples){
     }
     return peaks;
 }
+
+}  // namespace jasperengine::camera

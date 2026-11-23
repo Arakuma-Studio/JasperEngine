@@ -9,7 +9,8 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::anim;
+
+namespace jasperengine::anim {
 
 namespace{
 
@@ -164,7 +165,7 @@ namespace{
 
 }
 
-void anim::blendTreeWeights(const CompiledController& controller, const CompiledTree& tree, const float* parameters, float* weights){
+void blendTreeWeights(const CompiledController& controller, const CompiledTree& tree, const float* parameters, float* weights){
     const uint32_t n = tree.childCount;
     const CompiledTreeChild* children = controller.children.data() + tree.childBegin;
     if (n == 0) return;
@@ -186,7 +187,7 @@ void anim::blendTreeWeights(const CompiledController& controller, const Compiled
     normalizeWeights(weights, n);
 }
 
-size_t anim::motionLeaves(const CompiledController& controller, const CompiledMotion& motion, const float* parameters,
+size_t motionLeaves(const CompiledController& controller, const CompiledMotion& motion, const float* parameters,
                           float weight, MotionLeaf* out, size_t count, size_t capacity){
     if (!(weight > 0.0f)) return count;
     if (motion.kind == CompiledMotion::Kind::Clip){
@@ -209,3 +210,5 @@ size_t anim::motionLeaves(const CompiledController& controller, const CompiledMo
     }
     return count;
 }
+
+}  // namespace jasperengine::anim

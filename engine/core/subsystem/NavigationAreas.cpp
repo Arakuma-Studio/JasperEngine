@@ -20,7 +20,6 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::nav;
 
 namespace {
 
@@ -34,7 +33,7 @@ namespace {
     uint64_t handleOrder(uint32_t handle) { return (1ull << 32) | handle; }
 
     uint8_t runtimeArea(int area) {
-        return (uint8_t)std::clamp(area, 0, AREA_COUNT - 1);
+        return (uint8_t)std::clamp(area, 0, nav::AREA_COUNT - 1);
     }
 
     bool vectorMoved(const Vector3& a, const Vector3& b) {
@@ -75,7 +74,7 @@ void NavigationSystem::onAreaMeshReplaced(Entity surface) {
 }
 
 uint32_t NavigationSystem::setAreaInVolume(const Vector3& center, const Vector3& size, const Quaternion& rotation, uint8_t area, int agentType) {
-    if (area >= AREA_COUNT) {
+    if (area >= nav::AREA_COUNT) {
         Log::warn("Navigation: setAreaInVolume: area %d is not one of the 16 areas", (int)area);
         return 0;
     }
@@ -94,7 +93,7 @@ uint32_t NavigationSystem::setAreaInVolume(const Vector3& center, const Vector3&
 }
 
 bool NavigationSystem::updateAreaOverride(uint32_t handle, const Vector3& center, const Vector3& size, const Quaternion& rotation, uint8_t area) {
-    if (!areas || area >= AREA_COUNT)
+    if (!areas || area >= nav::AREA_COUNT)
         return false;
     auto found = areas->handles.find(handle);
     if (found == areas->handles.end())
@@ -109,9 +108,9 @@ bool NavigationSystem::updateAreaOverride(uint32_t handle, const Vector3& center
     entry.rotation = rotation;
     entry.area = area;
     for (auto& id : entry.ids) {
-        NavMesh* mesh = editableNavMesh(id.first);
-        NavConvexVolume volume;
-        if (mesh && NavBakeCollector::boxVolume(NavBakeCollector::frameOf(scene, id.first), boxMatrix(center, rotation), Vector3(), size, volume))
+        nav::NavMesh* mesh = editableNavMesh(id.first);
+        nav::NavConvexVolume volume;
+        if (mesh && nav::NavBakeCollector::boxVolume(nav::NavBakeCollector::frameOf(scene, id.first), boxMatrix(center, rotation), Vector3(), size, volume))
             mesh->updateAreaOverride(id.second, volume, area);
     }
     syncAreaOverrides();
@@ -125,7 +124,7 @@ bool NavigationSystem::removeAreaOverride(uint32_t handle) {
     if (found == areas->handles.end())
         return false;
     for (auto& id : found->second.ids) {
-        if (NavMesh* mesh = editableNavMesh(id.first))
+        if (nav::NavMesh* mesh = editableNavMesh(id.first))
             mesh->removeAreaOverride(id.second);
     }
     areas->handles.erase(found);
@@ -186,7 +185,7 @@ bool NavigationSystem::syncAreaOverrides() {
     auto surfaceArray = scene->getComponentArray<NavMeshSurfaceComponent>();
     for (size_t i = 0; i < surfaceArray->size(); i++) {
         const Entity entity = surfaceArray->getEntity(i);
-        NavMesh* mesh = editableNavMesh(entity);
+        nav::NavMesh* mesh = editableNavMesh(entity);
         auto known = state.surfaces.find(entity);
         if (known != state.surfaces.end() && known->second.mesh != mesh) {
             state.forgetSurface(entity);
@@ -204,7 +203,7 @@ bool NavigationSystem::syncAreaOverrides() {
             continue;
         }
         for (auto& id : it->second.ids) {
-            if (NavMesh* mesh = editableNavMesh(id.first))
+            if (nav::NavMesh* mesh = editableNavMesh(id.first))
                 mesh->removeAreaOverride(id.second);
         }
         it = state.modifiers.erase(it);
@@ -237,7 +236,7 @@ bool NavigationSystem::syncAreaOverrides() {
         }
         modifier.active = active;
         for (auto& surface : state.surfaces) {
-            NavMesh* mesh = surface.second.mesh ? editableNavMesh(surface.first) : nullptr;
+            nav::NavMesh* mesh = surface.second.mesh ? editableNavMesh(surface.first) : nullptr;
             if (!mesh)
                 continue;
             auto id = modifier.ids.find(surface.first);
@@ -250,8 +249,8 @@ bool NavigationSystem::syncAreaOverrides() {
             }
             if (id != modifier.ids.end() && !moved)
                 continue;
-            NavConvexVolume volume;
-            if (!NavBakeCollector::boxVolume(NavBakeCollector::frameOf(scene, surface.first), transform->modelMatrix, component.volumeCenter,
+            nav::NavConvexVolume volume;
+            if (!nav::NavBakeCollector::boxVolume(nav::NavBakeCollector::frameOf(scene, surface.first), transform->modelMatrix, component.volumeCenter,
                                              component.volumeSize, volume))
                 continue;
             if (id != modifier.ids.end())
@@ -270,11 +269,11 @@ bool NavigationSystem::syncAreaOverrides() {
             if (handle.ids.count(surface.first))
                 continue;
             const NavMeshSurfaceComponent* component = scene->findComponent<NavMeshSurfaceComponent>(surface.first);
-            NavMesh* mesh = editableNavMesh(surface.first);
+            nav::NavMesh* mesh = editableNavMesh(surface.first);
             if (!component || !mesh || (handle.agentType >= 0 && component->agentType != handle.agentType))
                 continue;
-            NavConvexVolume volume;
-            if (NavBakeCollector::boxVolume(NavBakeCollector::frameOf(scene, surface.first), boxMatrix(handle.center, handle.rotation),
+            nav::NavConvexVolume volume;
+            if (nav::NavBakeCollector::boxVolume(nav::NavBakeCollector::frameOf(scene, surface.first), boxMatrix(handle.center, handle.rotation),
                                             Vector3(), handle.size, volume))
                 handle.ids[surface.first] = mesh->addAreaOverride(volume, handle.area, handleOrder(entry.first));
         }
@@ -282,7 +281,7 @@ bool NavigationSystem::syncAreaOverrides() {
 
     // ---- links (R16): a deactivated link's connections pass nothing, in edit mode too
     for (auto& surface : state.surfaces) {
-        NavMesh* mesh = editableNavMesh(surface.first);
+        nav::NavMesh* mesh = editableNavMesh(surface.first);
         if (!mesh)
             continue;
         std::set<Entity>& inactive = surface.second.inactiveLinks;
@@ -305,7 +304,7 @@ bool NavigationSystem::syncAreaOverrides() {
     // ---- what changed, for the crowds (step 1b): only surfaces with agents keep it
     bool changedAny = false;
     for (auto& surface : state.surfaces) {
-        NavMesh* mesh = editableNavMesh(surface.first);
+        nav::NavMesh* mesh = editableNavMesh(surface.first);
         if (!mesh)
             continue;
         mesh->takeChangedPolys(state.scratch);
@@ -337,7 +336,7 @@ std::vector<NavigationSystem::AreaOverrideStatus> NavigationSystem::getAreaOverr
         int polygons = 0;
         applied = false;
         for (const auto& id : ids) {
-            NavMesh* mesh = editableNavMesh(id.first);
+            nav::NavMesh* mesh = editableNavMesh(id.first);
             const int count = mesh ? mesh->getAreaOverridePolyCount(id.second) : -1;
             if (count >= 0 && mesh->isValid()) {
                 applied = true;
@@ -391,7 +390,7 @@ int NavigationSystem::getModifierAppliedPolygons(Entity modifier) {
         return 0;
     int polygons = 0;
     for (const auto& id : found->second.ids) {
-        const NavMesh* mesh = editableNavMesh(id.first);
+        const nav::NavMesh* mesh = editableNavMesh(id.first);
         const int count = mesh && mesh->isValid() ? mesh->getAreaOverridePolyCount(id.second) : -1;
         polygons += std::max(count, 0);
     }
@@ -406,7 +405,7 @@ int NavigationSystem::getAreaOverridePolygons(uint32_t handle) {
         return 0;
     int polygons = 0;
     for (const auto& id : found->second.ids) {
-        const NavMesh* mesh = editableNavMesh(id.first);
+        const nav::NavMesh* mesh = editableNavMesh(id.first);
         const int count = mesh && mesh->isValid() ? mesh->getAreaOverridePolyCount(id.second) : -1;
         polygons += std::max(count, 0);
     }

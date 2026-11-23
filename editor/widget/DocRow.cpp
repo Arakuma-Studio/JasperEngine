@@ -18,7 +18,8 @@
 #include <map>
 
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::ui;
+
+namespace jasperengine::editor::ui {
 
 namespace {
 
@@ -218,11 +219,11 @@ namespace {
 
 }
 
-void jasperengine::editor::ui::setDocRowClockForTesting(std::function<double()> clock) {
+void setDocRowClockForTesting(std::function<double()> clock) {
     clockOverride() = std::move(clock);
 }
 
-double jasperengine::editor::ui::docRowStep(const DocRowOptions& options) {
+double docRowStep(const DocRowOptions& options) {
     if (options.step > 0.0) return options.step;
     if (options.integer) return 1.0;
     if (std::isfinite(options.uiMin) && std::isfinite(options.uiMax) && options.uiMax > options.uiMin) {
@@ -235,7 +236,7 @@ double jasperengine::editor::ui::docRowStep(const DocRowOptions& options) {
     return 0.1;
 }
 
-std::string jasperengine::editor::ui::formatDocNumber(double value, const DocRowOptions& options) {
+std::string formatDocNumber(double value, const DocRowOptions& options) {
     std::string text = withThousands(value, decimalsOf(options));
     // trim trailing zeros of fractions ("2.50" -> "2.5")
     if (text.find('.') != std::string::npos) {
@@ -249,7 +250,7 @@ std::string jasperengine::editor::ui::formatDocNumber(double value, const DocRow
     return text;
 }
 
-double jasperengine::editor::ui::sliderToValue(double t, const DocRowOptions& options) {
+double sliderToValue(double t, const DocRowOptions& options) {
     t = std::clamp(t, 0.0, 1.0);
     const double lo = options.uiMin, hi = options.uiMax;
     if (!std::isfinite(lo) || !std::isfinite(hi) || hi <= lo) return lo;
@@ -265,7 +266,7 @@ double jasperengine::editor::ui::sliderToValue(double t, const DocRowOptions& op
     return std::clamp(v, lo, hi);
 }
 
-double jasperengine::editor::ui::valueToSlider(double value, const DocRowOptions& options) {
+double valueToSlider(double value, const DocRowOptions& options) {
     const double lo = options.uiMin, hi = options.uiMax;
     if (!std::isfinite(lo) || !std::isfinite(hi) || hi <= lo) return 0.0;
     const double v = std::clamp(value, lo, hi);
@@ -273,7 +274,7 @@ double jasperengine::editor::ui::valueToSlider(double value, const DocRowOptions
     return (v - lo) / (hi - lo);
 }
 
-double jasperengine::editor::ui::scrubDelta(float pixels, const DocRowOptions& options, bool shift, bool alt) {
+double scrubDelta(float pixels, const DocRowOptions& options, bool shift, bool alt) {
     double step = docRowStep(options);
     if (shift) step *= 10.0;
     if (alt) step *= 0.1;
@@ -283,19 +284,19 @@ double jasperengine::editor::ui::scrubDelta(float pixels, const DocRowOptions& o
     return delta;
 }
 
-double jasperengine::editor::ui::clampTyped(double value, const DocRowOptions& options, bool& clamped) {
+double clampTyped(double value, const DocRowOptions& options, bool& clamped) {
     const double v = std::clamp(value, options.hardMin, options.hardMax);
     clamped = v != value;
     return options.integer ? std::round(v) : v;
 }
 
-std::string jasperengine::editor::ui::clampMessage(double value, const DocRowOptions& options) {
+std::string clampMessage(double value, const DocRowOptions& options) {
     const bool high = value >= options.hardMax;
     const double limit = high ? options.hardMax : options.hardMin;
     return "Clamped to " + formatDocNumber(limit, options) + (high ? " (the maximum)" : " (the minimum)");
 }
 
-DocRowResult jasperengine::editor::ui::docRowNumber(const char* id, double value, const DocRowOptions& options) {
+DocRowResult docRowNumber(const char* id, double value, const DocRowOptions& options) {
     DocRowResult result;
     ImGui::PushID(id);
     const ImGuiID rowId = ImGui::GetID("##row");
@@ -548,7 +549,7 @@ DocRowResult jasperengine::editor::ui::docRowNumber(const char* id, double value
     return result;
 }
 
-DocRowResult jasperengine::editor::ui::docRowBool(const char* id, bool value, const DocRowOptions& options) {
+DocRowResult docRowBool(const char* id, bool value, const DocRowOptions& options) {
     DocRowResult result;
     ImGui::PushID(id);
     DocRowFrame frame = beginFrame(id, options, false);
@@ -575,7 +576,7 @@ DocRowResult jasperengine::editor::ui::docRowBool(const char* id, bool value, co
     return result;
 }
 
-DocRowResult jasperengine::editor::ui::docRowEnum(const char* id, int index, const std::vector<std::string>& labels, const DocRowOptions& options) {
+DocRowResult docRowEnum(const char* id, int index, const std::vector<std::string>& labels, const DocRowOptions& options) {
     DocRowResult result;
     ImGui::PushID(id);
     DocRowFrame frame = beginFrame(id, options, false);
@@ -612,7 +613,7 @@ DocRowResult jasperengine::editor::ui::docRowEnum(const char* id, int index, con
     return result;
 }
 
-DocRowResult jasperengine::editor::ui::docRowText(const char* id, const std::string& value, const DocRowOptions& options, bool multiLine, float height) {
+DocRowResult docRowText(const char* id, const std::string& value, const DocRowOptions& options, bool multiLine, float height) {
     DocRowResult result;
     ImGui::PushID(id);
     const ImGuiID rowId = ImGui::GetID("##row");
@@ -665,7 +666,7 @@ DocRowResult jasperengine::editor::ui::docRowText(const char* id, const std::str
     return result;
 }
 
-DocRowResult jasperengine::editor::ui::docRowCustom(const char* id, const DocRowOptions& options, const std::function<DocRowResult(float width)>& drawValue) {
+DocRowResult docRowCustom(const char* id, const DocRowOptions& options, const std::function<DocRowResult(float width)>& drawValue) {
     ImGui::PushID(id);
     DocRowFrame frame = beginFrame(id, options, false);
     if (options.readOnly) ImGui::BeginDisabled();
@@ -677,7 +678,7 @@ DocRowResult jasperengine::editor::ui::docRowCustom(const char* id, const DocRow
     return result;
 }
 
-bool jasperengine::editor::ui::docRowLink(const char* id, const DocRowOptions& options, const char* buttonText) {
+bool docRowLink(const char* id, const DocRowOptions& options, const char* buttonText) {
     ImGui::PushID(id);
     DocRowFrame frame = beginFrame(id, options, false);
     const bool clicked = ImGui::Button(buttonText, ImVec2(frame.valueWidth, 0.0f));
@@ -686,8 +687,10 @@ bool jasperengine::editor::ui::docRowLink(const char* id, const DocRowOptions& o
     return clicked;
 }
 
-void jasperengine::editor::ui::docRowSourceLegend(const char* sourceName) {
+void docRowSourceLegend(const char* sourceName) {
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
     ImGui::Text("\xE2\x97\x8F set here   \xE2\x97\x8B from %s", sourceName);
     ImGui::PopStyleColor();
 }
+
+}  // namespace jasperengine::editor::ui

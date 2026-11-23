@@ -37,12 +37,10 @@
 #include <unordered_set>
 
 using namespace jasperengine;
-using namespace jasperengine::htmlui;
-using namespace jasperengine::htmlui::compat;
 
 namespace {
 
-    constexpr const char* kLoc = DocumentLoader::kLocationAttribute;
+    constexpr const char* kLoc = htmlui::compat::DocumentLoader::kLocationAttribute;
 
     int locOf(const Rml::Element* element){
         const Rml::Variant* value = element->GetAttribute(kLoc);
@@ -55,11 +53,11 @@ namespace {
 
     class Patcher {
     public:
-        explicit Patcher(const ReconcilePlan& plan): plan(plan) {}
+        explicit Patcher(const htmlui::compat::ReconcilePlan& plan): plan(plan) {}
 
         // the authored element of every old loc (the first, for a duplicated one)
         void index(Rml::Element* element){
-            if (WidgetsRuntime::isAuthored(element)){
+            if (htmlui::WidgetsRuntime::isAuthored(element)){
                 const int loc = locOf(element);
                 if (loc >= 0)
                     live.emplace(loc, element);
@@ -81,7 +79,7 @@ namespace {
                 renumber(element->GetChild(i));
         }
 
-        void apply(const ReconcilePlan::Element& step, Rml::Element* element){
+        void apply(const htmlui::compat::ReconcilePlan::Element& step, Rml::Element* element){
             if (step.replace){
                 replaceElement(element, step.node->rml);
                 return;
@@ -109,14 +107,14 @@ namespace {
             std::vector<Rml::Element*> texts;
             for (int i = 0; i < element->GetNumChildren(); i++){
                 Rml::Element* child = element->GetChild(i);
-                if (isText(child) && WidgetsRuntime::isAuthored(child))
+                if (isText(child) && htmlui::WidgetsRuntime::isAuthored(child))
                     texts.push_back(child);
             }
             countRuntime(element);
 
             // what goes first: the removed children (before inserts shift anything)
             std::vector<Rml::Element*> removals;
-            for (const ReconcilePlan::Removed& removed : step.removedChildren){
+            for (const htmlui::compat::ReconcilePlan::Removed& removed : step.removedChildren){
                 if (removed.text){
                     if (removed.textIndex >= 0 && removed.textIndex < (int)texts.size())
                         removals.push_back(texts[(size_t)removed.textIndex]);
@@ -128,12 +126,12 @@ namespace {
                 removeElement(child);
 
             Rml::Element* cursor = nullptr;   // the last authored child placed
-            for (const ReconcilePlan::Child& child : step.children){
+            for (const htmlui::compat::ReconcilePlan::Child& child : step.children){
                 switch (child.kind){
-                    case ReconcilePlan::Child::Kind::Insert:
+                    case htmlui::compat::ReconcilePlan::Child::Kind::Insert:
                         cursor = insertAfter(element, cursor, child.node->rml);
                         break;
-                    case ReconcilePlan::Child::Kind::Text:{
+                    case htmlui::compat::ReconcilePlan::Child::Kind::Text:{
                         Rml::Element* text = (child.textIndex >= 0 && child.textIndex < (int)texts.size()) ? texts[(size_t)child.textIndex] : nullptr;
                         if (!text || text->GetParentNode() != element){
                             // a script took it out (textContent): it comes back only when the author changed it
@@ -147,8 +145,8 @@ namespace {
                         cursor = text;
                         break;
                     }
-                    case ReconcilePlan::Child::Kind::Element:{
-                        const ReconcilePlan::Element& sub = child.element.front();
+                    case htmlui::compat::ReconcilePlan::Child::Kind::Element:{
+                        const htmlui::compat::ReconcilePlan::Element& sub = child.element.front();
                         Rml::Element* match = liveOf(sub.oldLoc, element);
                         if (!match){
                             // a script took it out: the author's element comes back when the author changed it
@@ -173,12 +171,12 @@ namespace {
 
     private:
         // the author changed something in the element or below it
-        static bool touched(const ReconcilePlan::Element& step){
+        static bool touched(const htmlui::compat::ReconcilePlan::Element& step){
             if (step.changed() || !step.removedChildren.empty())
                 return true;
-            for (const ReconcilePlan::Child& child : step.children){
-                if (child.kind == ReconcilePlan::Child::Kind::Insert || (child.kind == ReconcilePlan::Child::Kind::Text && child.textChanged) ||
-                    (child.kind == ReconcilePlan::Child::Kind::Element && touched(child.element.front())))
+            for (const htmlui::compat::ReconcilePlan::Child& child : step.children){
+                if (child.kind == htmlui::compat::ReconcilePlan::Child::Kind::Insert || (child.kind == htmlui::compat::ReconcilePlan::Child::Kind::Text && child.textChanged) ||
+                    (child.kind == htmlui::compat::ReconcilePlan::Child::Kind::Element && touched(child.element.front())))
                     return true;
             }
             return false;
@@ -194,7 +192,7 @@ namespace {
         void countRuntime(Rml::Element* element){
             for (int i = 0; i < element->GetNumChildren(); i++){
                 Rml::Element* child = element->GetChild(i);
-                if (WidgetsRuntime::isAuthored(child) || isText(child) || child->HasAttribute(kLoc))
+                if (htmlui::WidgetsRuntime::isAuthored(child) || isText(child) || child->HasAttribute(kLoc))
                     continue;
                 const Rml::String classes = child->GetAttribute<Rml::String>("class", "");
                 if (classes.rfind("htmlui-", 0) == 0 || classes.find(" htmlui-") != Rml::String::npos)
@@ -208,7 +206,7 @@ namespace {
         // (a data-for's copies before their template)
         Rml::Element* insertionPoint(Rml::Element* parent, Rml::Element* cursor) const{
             Rml::Element* next = cursor ? cursor->GetNextSibling() : (parent->GetNumChildren() > 0 ? parent->GetChild(0) : nullptr);
-            while (next && !WidgetsRuntime::isAuthored(next))
+            while (next && !htmlui::WidgetsRuntime::isAuthored(next))
                 next = next->GetNextSibling();
             return next;
         }
@@ -243,7 +241,7 @@ namespace {
             while (holder->GetNumChildren() > 0){
                 Rml::ElementPtr child = holder->RemoveChild(holder->GetChild(0));
                 last = parent->InsertBefore(std::move(child), holder);
-                WidgetsRuntime::markAuthored(last);
+                htmlui::WidgetsRuntime::markAuthored(last);
             }
             parent->RemoveChild(holder);
             return last;
@@ -261,7 +259,7 @@ namespace {
                 return copies;
             const int loc = locOf(element);
             for (Rml::Element* each = element->GetPreviousSibling(); each; each = each->GetPreviousSibling()){
-                if (WidgetsRuntime::isAuthored(each) || each->GetTagName() != element->GetTagName() || locOf(each) != loc)
+                if (htmlui::WidgetsRuntime::isAuthored(each) || each->GetTagName() != element->GetTagName() || locOf(each) != loc)
                     break;
                 copies.push_back(each);
             }
@@ -290,16 +288,16 @@ namespace {
 
         void markChildren(Rml::Element* element){
             for (int i = 0; i < element->GetNumChildren(); i++)
-                WidgetsRuntime::markAuthored(element->GetChild(i));
+                htmlui::WidgetsRuntime::markAuthored(element->GetChild(i));
         }
 
-        const ReconcilePlan& plan;
+        const htmlui::compat::ReconcilePlan& plan;
         std::unordered_map<int, Rml::Element*> live;
     };
 
     // the virtual views read their templates again (the content of a changed one makes their rows anew)
-    void refreshViews(Rml::Element* element, const ReconcilePlan& plan){
-        if (auto* view = rmlui_dynamic_cast<ItemsViewElement*>(element)){
+    void refreshViews(Rml::Element* element, const htmlui::compat::ReconcilePlan& plan){
+        if (auto* view = rmlui_dynamic_cast<htmlui::ItemsViewElement*>(element)){
             view->onDocumentPatched(plan.changedTemplates);
             return;
         }
@@ -309,13 +307,13 @@ namespace {
 
     // the two compiles give the document the same style sheets (an edit of the markup only): the
     // live document keeps its sheets and its computed styles
-    bool sameSheets(const CompatDocument& a, const CompatDocument& b){
+    bool sameSheets(const htmlui::compat::CompatDocument& a, const htmlui::compat::CompatDocument& b){
         if (a.userAgentPath != b.userAgentPath || a.hints.rcss != b.hints.rcss || a.important.rcss != b.important.rcss ||
             a.stylesheets.size() != b.stylesheets.size())
             return false;
         for (size_t i = 0; i < a.stylesheets.size(); i++){
-            const StylesheetOutput& x = a.stylesheets[i];
-            const StylesheetOutput& y = b.stylesheets[i];
+            const htmlui::compat::StylesheetOutput& x = a.stylesheets[i];
+            const htmlui::compat::StylesheetOutput& y = b.stylesheets[i];
             // (a file's virtual path names its compile: the same file, the same RCSS)
             if (x.kind != y.kind || x.sourcePath != y.sourcePath || x.rcss != y.rcss)
                 return false;
@@ -339,9 +337,9 @@ namespace {
         }
     };
 
-    bool parseTemplates(const CompatDocument& compiled, std::vector<std::vector<RmlNode>>& out, std::string& error){
+    bool parseTemplates(const htmlui::compat::CompatDocument& compiled, std::vector<std::vector<htmlui::compat::RmlNode>>& out, std::string& error){
         out.clear();
-        for (const HtmlTemplate& entry : compiled.templates){
+        for (const htmlui::compat::HtmlTemplate& entry : compiled.templates){
             out.emplace_back();
             if (!parseRmlFragment(entry.rml, out.back(), &error))
                 return false;
@@ -353,24 +351,24 @@ namespace {
 
 bool UIDocumentSystem::patchDocument(Entity entity, UIReloadReport& report){
     Rml::ElementDocument* document = getDocument(entity);
-    std::shared_ptr<const CompatDocument> compiled = DocumentLoader::compiledOf(document);
+    std::shared_ptr<const htmlui::compat::CompatDocument> compiled = htmlui::compat::DocumentLoader::compiledOf(document);
     if (!document || !compiled){
         report.fallbackReason = "not an HTML document";
         return false;
     }
-    std::shared_ptr<const CompatDocument> fresh = DocumentLoader::compile(compiled->sourcePath, compiled->options);
+    std::shared_ptr<const htmlui::compat::CompatDocument> fresh = htmlui::compat::DocumentLoader::compile(compiled->sourcePath, compiled->options);
     if (!fresh->compiled){
         // a missing file unloads the document, as before (the rebuild)
         report.fallbackReason = "the file could not be read";
         return false;
     }
-    logDiagnostics(fresh->sourcePath, fresh->diagnostics, fresh->options.verboseDiagnostics);
+    htmlui::compat::logDiagnostics(fresh->sourcePath, fresh->diagnostics, fresh->options.verboseDiagnostics);
 
     // the trees (parsed back from the RML both compiles wrote)
-    RmlNode oldRoot, newRoot;
-    std::vector<std::vector<RmlNode>> oldTemplates, newTemplates;
+    htmlui::compat::RmlNode oldRoot, newRoot;
+    std::vector<std::vector<htmlui::compat::RmlNode>> oldTemplates, newTemplates;
     std::string error;
-    if (!parseRmlElement(compiled->rml, "body", oldRoot, &error) || !parseRmlElement(fresh->rml, "body", newRoot, &error) ||
+    if (!htmlui::compat::parseRmlElement(compiled->rml, "body", oldRoot, &error) || !parseRmlElement(fresh->rml, "body", newRoot, &error) ||
         !parseTemplates(*compiled, oldTemplates, error) || !parseTemplates(*fresh, newTemplates, error)){
         report.fallbackReason = "the compiled RML could not be read: " + error;
         return false;
@@ -378,7 +376,7 @@ bool UIDocumentSystem::patchDocument(Entity entity, UIReloadReport& report){
 
     const auto start = std::chrono::steady_clock::now();
     PatchProfile profile;
-    ReconcilePlan plan = reconcileTrees(oldRoot, newRoot, oldTemplates, newTemplates);
+    htmlui::compat::ReconcilePlan plan = reconcileTrees(oldRoot, newRoot, oldTemplates, newTemplates);
     profile.step("reconcile");
     if (plan.root.replace){
         report.fallbackReason = "the document root changed (" + plan.root.reason + ")";
@@ -398,7 +396,7 @@ bool UIDocumentSystem::patchDocument(Entity entity, UIReloadReport& report){
         // bound to the new compile, its sheets (the inline-style rules are by the new numbers);
         // the same sheets stay
         const bool sheets = !sameSheets(*compiled, *fresh);
-        DocumentLoader::rebind(document, fresh, fresh->options, sheets);
+        htmlui::compat::DocumentLoader::rebind(document, fresh, fresh->options, sheets);
         profile.step(sheets ? "restyle" : "rebind");
         refreshViews(document, plan);
         profile.step("views");

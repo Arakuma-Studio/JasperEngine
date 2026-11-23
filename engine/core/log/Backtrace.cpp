@@ -34,7 +34,6 @@
 using namespace jasperengine;
 
 namespace je_backtrace {}
-using namespace je_backtrace;
 
 namespace je_backtrace {
 
@@ -202,7 +201,7 @@ void Backtrace::describe(const void* address, std::string& out) {
     // a return address points past the call: one byte back is inside the calling instruction
     const uintptr_t pc = reinterpret_cast<uintptr_t>(address);
     const unsigned long long moduleOffset = static_cast<unsigned long long>(pc - reinterpret_cast<uintptr_t>(info.dli_fbase));
-    appendFormatted(out, "%s(+0x%llx)", moduleBase, moduleOffset);
+    je_backtrace::appendFormatted(out, "%s(+0x%llx)", moduleBase, moduleOffset);
     if (info.dli_sname) {
         int status = 0;
         char* demangled = abi::__cxa_demangle(info.dli_sname, nullptr, nullptr, &status);

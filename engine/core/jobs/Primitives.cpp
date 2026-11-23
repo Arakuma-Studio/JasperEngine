@@ -5,7 +5,8 @@
 #include "jobs/detail/TimedWait.h"
 
 using namespace jasperengine;
-using namespace jasperengine::jobs;
+
+namespace jasperengine::jobs {
 
 static std::chrono::nanoseconds toDuration(double milliseconds){
     return std::chrono::nanoseconds((int64_t)(milliseconds * 1.0e6));
@@ -124,3 +125,5 @@ void CancelToken::cancel(){
 bool CancelToken::isCancelled() const{
     return state && state->cancelled.load(std::memory_order_acquire);
 }
+
+}  // namespace jasperengine::jobs

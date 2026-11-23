@@ -20,7 +20,6 @@ using namespace jasperengine::editor;
 ConsoleWindow* Out::consoleWindow = nullptr;
 
 namespace je_out {}
-using namespace je_out;
 
 namespace je_out {
 
@@ -77,116 +76,116 @@ void logBuildLine(const std::string& message) {
 
 void Out::startLogging() {
     Logger::Config config;
-    config.queueBytes = kEditorQueueBytes;
+    config.queueBytes = je_out::kEditorQueueBytes;
     config.backtraceOnError = true;
     Logger::init(config);
     Logger::setThreadName("main");
-    std::lock_guard<std::mutex> lock(sinkMutex);
-    if (!memorySink) {
-        auto sink = std::make_unique<MemorySink>(kMaxLogBufferBytes, MAX_LOG_ENTRIES);
-        memoryStore = sink.get();
-        memorySink = Logger::addSink(std::move(sink));
+    std::lock_guard<std::mutex> lock(je_out::sinkMutex);
+    if (!je_out::memorySink) {
+        auto sink = std::make_unique<MemorySink>(je_out::kMaxLogBufferBytes, MAX_LOG_ENTRIES);
+        je_out::memoryStore = sink.get();
+        je_out::memorySink = Logger::addSink(std::move(sink));
     }
-    if (!consoleSink && !consoleWindow) {
-        consoleSink = Logger::addSink(std::make_unique<ConsoleSink>(ConsoleSink::Style::Editor));
+    if (!je_out::consoleSink && !consoleWindow) {
+        je_out::consoleSink = Logger::addSink(std::make_unique<ConsoleSink>(ConsoleSink::Style::Editor));
     }
 }
 
 void Out::stopLogging() {
     {
-        std::lock_guard<std::mutex> lock(sinkMutex);
-        memoryStore = nullptr;
-        fileStore = nullptr;
-        memorySink = consoleSink = fileSink = 0;
-        logFilePath.clear();
+        std::lock_guard<std::mutex> lock(je_out::sinkMutex);
+        je_out::memoryStore = nullptr;
+        je_out::fileStore = nullptr;
+        je_out::memorySink = je_out::consoleSink = je_out::fileSink = 0;
+        je_out::logFilePath.clear();
     }
     Logger::shutdown();
 }
 
 bool Out::setLevelOverride(const std::string& spec, std::string* error) {
     if (!Logger::applyLevelSpec(spec, error)) return false;
-    levelSpec = spec;
+    je_out::levelSpec = spec;
     return true;
 }
 
 void Out::applyLevelOverride() {
-    if (!levelSpec.empty()) Logger::applyLevelSpec(levelSpec);
+    if (!je_out::levelSpec.empty()) Logger::applyLevelSpec(je_out::levelSpec);
 }
 
 const std::string& Out::levelOverride() {
-    return levelSpec;
+    return je_out::levelSpec;
 }
 
 void Out::setLogFile(const std::filesystem::path& path) {
-    std::lock_guard<std::mutex> lock(sinkMutex);
+    std::lock_guard<std::mutex> lock(je_out::sinkMutex);
 
     // Startup settles the config directory twice, the banner is worth writing once.
-    if (fileSink && logFilePath == path) {
+    if (je_out::fileSink && je_out::logFilePath == path) {
         return;
     }
-    if (fileSink) {
-        Logger::removeSink(fileSink);
-        fileSink = 0;
-        fileStore = nullptr;
+    if (je_out::fileSink) {
+        Logger::removeSink(je_out::fileSink);
+        je_out::fileSink = 0;
+        je_out::fileStore = nullptr;
     }
 
     char stamp[20];
     logFormatTimestamp(std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count(), stamp);
     RotatingFileSink::Options options;
     options.path = FileUtils::pathToUtf8(path);
-    options.maxBytes = kMaxLogFileSize;
-    options.maxFiles = kLogFiles;
-    options.showSource = fileShowsSource;
+    options.maxBytes = je_out::kMaxLogFileSize;
+    options.maxFiles = je_out::kLogFiles;
+    options.showSource = je_out::fileShowsSource;
     options.banner = std::string("\n=== JasperEngine Editor ") + JASPERENGINE_EDITOR_VERSION + " started at " + stamp + " ===\n";
     auto sink = std::make_unique<RotatingFileSink>(std::move(options));
     if (!sink->isOpen()) {
-        logFilePath.clear();
+        je_out::logFilePath.clear();
         std::cerr << "[WARNING] Could not open log file: " << path.string() << std::endl;
         return;
     }
     // Info and above by default, as before (Preferences > Logging)
-    sink->minLevel.store(fileLevel, std::memory_order_relaxed);
-    fileStore = sink.get();
-    fileSink = Logger::addSink(std::move(sink));
-    logFilePath = path;
+    sink->minLevel.store(je_out::fileLevel, std::memory_order_relaxed);
+    je_out::fileStore = sink.get();
+    je_out::fileSink = Logger::addSink(std::move(sink));
+    je_out::logFilePath = path;
 }
 
 Logger::SinkId Out::fileSinkId() {
-    std::lock_guard<std::mutex> lock(sinkMutex);
-    return fileSink;
+    std::lock_guard<std::mutex> lock(je_out::sinkMutex);
+    return je_out::fileSink;
 }
 
 Logger::SinkId Out::memorySinkId() {
-    std::lock_guard<std::mutex> lock(sinkMutex);
-    return memorySink;
+    std::lock_guard<std::mutex> lock(je_out::sinkMutex);
+    return je_out::memorySink;
 }
 
 Logger::SinkId Out::consoleSinkId() {
-    std::lock_guard<std::mutex> lock(sinkMutex);
-    return consoleSink;
+    std::lock_guard<std::mutex> lock(je_out::sinkMutex);
+    return je_out::consoleSink;
 }
 
 void Out::setFileShowsSource(bool show) {
-    std::lock_guard<std::mutex> lock(sinkMutex);
-    fileShowsSource = show;
-    if (fileStore) fileStore->setShowSource(show);
+    std::lock_guard<std::mutex> lock(je_out::sinkMutex);
+    je_out::fileShowsSource = show;
+    if (je_out::fileStore) je_out::fileStore->setShowSource(show);
 }
 
 void Out::setFileLevel(LogLevel level) {
-    std::lock_guard<std::mutex> lock(sinkMutex);
-    fileLevel = level;
-    if (fileSink) Logger::setSinkLevel(fileSink, level);
+    std::lock_guard<std::mutex> lock(je_out::sinkMutex);
+    je_out::fileLevel = level;
+    if (je_out::fileSink) Logger::setSinkLevel(je_out::fileSink, level);
 }
 
 void Out::setConsoleWindow(ConsoleWindow* consoleWindow) {
     Out::consoleWindow = consoleWindow;
     // with a Console window the terminal stays quiet, as before; without one it gets everything
-    std::lock_guard<std::mutex> lock(sinkMutex);
-    if (consoleWindow && consoleSink) {
-        Logger::removeSink(consoleSink);
-        consoleSink = 0;
-    } else if (!consoleWindow && !consoleSink && Logger::isInitialized()) {
-        consoleSink = Logger::addSink(std::make_unique<ConsoleSink>(ConsoleSink::Style::Editor));
+    std::lock_guard<std::mutex> lock(je_out::sinkMutex);
+    if (consoleWindow && je_out::consoleSink) {
+        Logger::removeSink(je_out::consoleSink);
+        je_out::consoleSink = 0;
+    } else if (!consoleWindow && !je_out::consoleSink && Logger::isInitialized()) {
+        je_out::consoleSink = Logger::addSink(std::make_unique<ConsoleSink>(ConsoleSink::Style::Editor));
     }
 }
 
@@ -209,15 +208,15 @@ LogLevel Out::buildLineLevel(const std::string& line) {
 
 std::vector<LogEntry> Out::getLogsSince(uint64_t afterId, size_t max, bool onlyProblems) {
     std::vector<LogEntry> result;
-    std::lock_guard<std::mutex> lock(sinkMutex);
-    if (!memoryStore) return result;
+    std::lock_guard<std::mutex> lock(je_out::sinkMutex);
+    if (!je_out::memoryStore) return result;
     std::function<bool(const MemorySink::View&)> filter;
     if (onlyProblems) {
         filter = [](const MemorySink::View& view) {
-            return outIsProblem(typeOf(view.level, view.flags, *view.category));
+            return je_out::outIsProblem(typeOf(view.level, view.flags, *view.category));
         };
     }
-    for (MemorySink::Entry& stored : memoryStore->since(afterId, max, filter)) {
+    for (MemorySink::Entry& stored : je_out::memoryStore->since(afterId, max, filter)) {
         LogEntry entry;
         entry.id = stored.id;
         entry.level = stored.level;
@@ -241,8 +240,8 @@ uint64_t Out::lastLogId() {
 
 void Out::clearConsole() {
     {
-        std::lock_guard<std::mutex> lock(sinkMutex);
-        if (memoryStore) memoryStore->clear();
+        std::lock_guard<std::mutex> lock(je_out::sinkMutex);
+        if (je_out::memoryStore) je_out::memoryStore->clear();
     }
     // The window is only touched on the main thread
     EditorHost& host = getEditorHost();
@@ -266,67 +265,67 @@ const char* Out::logTypeName(LogType type) {
 }
 
 void Out::info(const std::string& message) {
-    logEditor(LogLevel::Info, message);
+    je_out::logEditor(LogLevel::Info, message);
 }
 
 void Out::success(const std::string& message) {
-    logEditor(LogLevel::Info, message, LogFlagSuccess);
+    je_out::logEditor(LogLevel::Info, message, LogFlagSuccess);
 }
 
 void Out::warning(const std::string& message) {
-    logEditor(LogLevel::Warn, message);
+    je_out::logEditor(LogLevel::Warn, message);
 }
 
 void Out::error(const std::string& message) {
-    logEditor(LogLevel::Error, message);
+    je_out::logEditor(LogLevel::Error, message);
 }
 
 void Out::build(const std::string& message) {
-    logBuildLine(message);
+    je_out::logBuildLine(message);
 }
 
 void Out::info(const char* fmt, ...) {
     if (!Logger::shouldLog(LogLevel::Info, logCategoryEditor())) return;
     va_list args;
     va_start(args, fmt);
-    const std::string message = outFormat(fmt, args);
+    const std::string message = je_out::outFormat(fmt, args);
     va_end(args);
-    logEditor(LogLevel::Info, message, 0, fmt);
+    je_out::logEditor(LogLevel::Info, message, 0, fmt);
 }
 
 void Out::success(const char* fmt, ...) {
     if (!Logger::shouldLog(LogLevel::Info, logCategoryEditor())) return;
     va_list args;
     va_start(args, fmt);
-    const std::string message = outFormat(fmt, args);
+    const std::string message = je_out::outFormat(fmt, args);
     va_end(args);
-    logEditor(LogLevel::Info, message, LogFlagSuccess, fmt);
+    je_out::logEditor(LogLevel::Info, message, LogFlagSuccess, fmt);
 }
 
 void Out::warning(const char* fmt, ...) {
     if (!Logger::shouldLog(LogLevel::Warn, logCategoryEditor())) return;
     va_list args;
     va_start(args, fmt);
-    const std::string message = outFormat(fmt, args);
+    const std::string message = je_out::outFormat(fmt, args);
     va_end(args);
-    logEditor(LogLevel::Warn, message, 0, fmt);
+    je_out::logEditor(LogLevel::Warn, message, 0, fmt);
 }
 
 void Out::error(const char* fmt, ...) {
     if (!Logger::shouldLog(LogLevel::Error, logCategoryEditor())) return;
     va_list args;
     va_start(args, fmt);
-    const std::string message = outFormat(fmt, args);
+    const std::string message = je_out::outFormat(fmt, args);
     va_end(args);
-    logEditor(LogLevel::Error, message, 0, fmt);
+    je_out::logEditor(LogLevel::Error, message, 0, fmt);
 }
 
 void Out::build(const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    const std::string message = outFormat(fmt, args);
+    const std::string message = je_out::outFormat(fmt, args);
     va_end(args);
-    logBuildLine(message);
+    je_out::logBuildLine(message);
 }
 
 namespace {

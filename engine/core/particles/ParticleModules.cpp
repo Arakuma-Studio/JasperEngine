@@ -10,10 +10,11 @@
 #include <cstring>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
 
 #define JE_ACC(T, member) [](void* o) -> void* { return &static_cast<T*>(o)->member; }
 #define JE_IF(T, expr) [](const void* o) -> bool { const T& m = *static_cast<const T*>(o); (void)m; return (expr); }
+
+namespace jasperengine::particles {
 
 namespace {
 
@@ -1261,3 +1262,5 @@ void ParticleModules::visitAssets(ParticleEffectDocument& document, const AssetV
     for (size_t i = 0; i < document.triggers.size(); i++)
         visitStruct(triggerFields(), &document.triggers[i], "triggers[" + std::to_string(i) + "]", visit);
 }
+
+}  // namespace jasperengine::particles

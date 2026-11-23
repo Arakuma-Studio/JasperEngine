@@ -11,7 +11,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::pixelart;
+
+namespace jasperengine::editor::pixelart {
 
 namespace {
 
@@ -26,7 +27,7 @@ namespace {
 
 }
 
-std::vector<FixChange> jasperengine::editor::pixelart::planPixelArtPreset(const PixelArtCheckInput& input, const PixelArtPresetOptions& options){
+std::vector<FixChange> planPixelArtPreset(const PixelArtCheckInput& input, const PixelArtPresetOptions& options){
     const Scaling scaling = options.integerExpand ? Scaling::INTEGER_EXPAND : Scaling::INTEGER;
     std::vector<FixChange> out = rules::projectPresetChanges(input.project, options.baseWidth, options.baseHeight, scaling,
                                                               std::clamp(options.pixelsPerUnit, 1, 256), std::clamp(options.windowScale, 2, 8));
@@ -67,7 +68,7 @@ std::vector<FixChange> jasperengine::editor::pixelart::planPixelArtPreset(const 
     return out;
 }
 
-std::vector<FixChange> jasperengine::editor::pixelart::planPixelArtPreset(Project& project, const PixelArtPresetOptions& options){
+std::vector<FixChange> planPixelArtPreset(Project& project, const PixelArtPresetOptions& options){
     Scope scope;
     scope.assumeModeOn = true;
     std::vector<PixelProblem> errors;
@@ -75,7 +76,7 @@ std::vector<FixChange> jasperengine::editor::pixelart::planPixelArtPreset(Projec
     return planPixelArtPreset(input, options);
 }
 
-PresetCounts jasperengine::editor::pixelart::countPresetChanges(const std::vector<FixChange>& plan){
+PresetCounts countPresetChanges(const std::vector<FixChange>& plan){
     PresetCounts counts;
     std::set<std::string> scenes, textures, references;
     for (const FixChange& change : plan){
@@ -91,10 +92,12 @@ PresetCounts jasperengine::editor::pixelart::countPresetChanges(const std::vecto
     return counts;
 }
 
-bool jasperengine::editor::pixelart::applyPixelArtPreset(Project& project, const std::vector<FixChange>& plan, FixApplyReport& report,
+bool applyPixelArtPreset(Project& project, const std::vector<FixChange>& plan, FixApplyReport& report,
                                                          std::string& error){
     // planned on the whole project as Pixel Art Mode sees it (planPixelArtPreset)
     Scope scope;
     scope.assumeModeOn = true;
     return applyChanges(project, plan, "Apply Pixel Art Preset", report, error, &scope);
 }
+
+}  // namespace jasperengine::editor::pixelart

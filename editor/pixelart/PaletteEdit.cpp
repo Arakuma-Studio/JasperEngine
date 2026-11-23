@@ -11,10 +11,13 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::pixelart;
+
+namespace jasperengine::editor::pixelart {
 
 namespace pxc = jasperengine::pixelart;
 using Json = nlohmann::json;
+
+}  // namespace jasperengine::editor::pixelart
 
 // file-local, in a namespace of its own: a unity build merges this directory's sources
 namespace jasperengine::editor::pixelart::paletteedit {
@@ -462,9 +465,10 @@ namespace {
 }
 }
 
-using namespace jasperengine::editor::pixelart::paletteedit;
 
-const char* jasperengine::editor::pixelart::paletteSortName(PaletteSort sort) {
+namespace jasperengine::editor::pixelart {
+
+const char* paletteSortName(PaletteSort sort) {
     switch (sort) {
         case PaletteSort::Hue: return "hue";
         case PaletteSort::Saturation: return "saturation";
@@ -475,7 +479,7 @@ const char* jasperengine::editor::pixelart::paletteSortName(PaletteSort sort) {
     return "hue";
 }
 
-bool jasperengine::editor::pixelart::parsePaletteSort(const std::string& name, PaletteSort& out) {
+bool parsePaletteSort(const std::string& name, PaletteSort& out) {
     for (PaletteSort sort : {PaletteSort::Hue, PaletteSort::Saturation, PaletteSort::Luma, PaletteSort::Value, PaletteSort::Reverse}) {
         if (name == paletteSortName(sort)) {
             out = sort;
@@ -485,7 +489,7 @@ bool jasperengine::editor::pixelart::parsePaletteSort(const std::string& name, P
     return false;
 }
 
-std::vector<int> jasperengine::editor::pixelart::paletteSortOrder(const pxc::Palette& palette, PaletteSort sort) {
+std::vector<int> paletteSortOrder(const pxc::Palette& palette, PaletteSort sort) {
     std::vector<int> order(palette.count());
     std::iota(order.begin(), order.end(), 0);
     if (sort == PaletteSort::Reverse) {
@@ -508,7 +512,7 @@ std::vector<int> jasperengine::editor::pixelart::paletteSortOrder(const pxc::Pal
     return order;
 }
 
-PaletteEditResult jasperengine::editor::pixelart::addGeneratedRamp(pxc::Palette& palette, const std::vector<pxc::Rgba8>& colors, const std::string& rampName,
+PaletteEditResult addGeneratedRamp(pxc::Palette& palette, const std::vector<pxc::Rgba8>& colors, const std::string& rampName,
                                              const std::string& replace) {
     PaletteEditResult result;
     std::vector<uint16_t> indices;
@@ -541,7 +545,7 @@ PaletteEditResult jasperengine::editor::pixelart::addGeneratedRamp(pxc::Palette&
     return result;
 }
 
-PaletteEditResult jasperengine::editor::pixelart::applyPaletteOps(pxc::Palette& palette, const Json& ops) {
+PaletteEditResult applyPaletteOps(pxc::Palette& palette, const Json& ops) {
     PaletteEditResult result;
     if (palette.readOnly) {
         result.ok = false;
@@ -555,10 +559,10 @@ PaletteEditResult jasperengine::editor::pixelart::applyPaletteOps(pxc::Palette& 
         return result;
     }
     pxc::Palette edited = palette;
-    std::vector<OpError> errors;
+    std::vector<jasperengine::editor::pixelart::paletteedit::OpError> errors;
     for (size_t i = 0; i < ops.size() && errors.empty(); i++) {
-        const OpContext ctx{ops[i], i, errors};
-        if (!applyOne(edited, ctx, result.warnings) && errors.empty()) ctx.fail("", "the op could not be applied", "check its fields");
+        const jasperengine::editor::pixelart::paletteedit::OpContext ctx{ops[i], i, errors};
+        if (!jasperengine::editor::pixelart::paletteedit::applyOne(edited, ctx, result.warnings) && errors.empty()) ctx.fail("", "the op could not be applied", "check its fields");
     }
     if (errors.empty()) {
         std::vector<pxc::Diagnostic> diagnostics;
@@ -572,7 +576,7 @@ PaletteEditResult jasperengine::editor::pixelart::applyPaletteOps(pxc::Palette& 
     }
     if (!errors.empty()) {
         result.ok = false;
-        for (const OpError& error : errors) result.errors.push_back({error.kind, error.field, error.message, error.fix});
+        for (const jasperengine::editor::pixelart::paletteedit::OpError& error : errors) result.errors.push_back({error.kind, error.field, error.message, error.fix});
         return result;
     }
     for (int i = 0; i < edited.count(); i++) {
@@ -581,3 +585,5 @@ PaletteEditResult jasperengine::editor::pixelart::applyPaletteOps(pxc::Palette& 
     palette = std::move(edited);
     return result;
 }
+
+}  // namespace jasperengine::editor::pixelart

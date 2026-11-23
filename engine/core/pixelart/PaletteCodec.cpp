@@ -12,7 +12,6 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::pixelart;
 
 // file-local, inside the namespace: a unity build's other sources never see these names
 namespace jasperengine::pixelart {
@@ -280,6 +279,8 @@ namespace {
 
 }
 }
+
+namespace jasperengine::pixelart {
 
 bool PaletteCodec::read(std::string_view json, Palette& out, std::vector<Diagnostic>& diagnostics) {
     out = Palette();
@@ -585,3 +586,5 @@ std::string PaletteCodec::write(const Palette& palette) {
     }
     return text + "}\n";
 }
+
+}  // namespace jasperengine::pixelart

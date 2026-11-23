@@ -12,7 +12,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::reflect;
 
 namespace {
 
@@ -33,32 +32,32 @@ namespace {
     }
 
 
-    const char* kindToken(Kind kind) {
+    const char* kindToken(reflect::Kind kind) {
         switch (kind) {
-            case Kind::Bool: return "Bool";
-            case Kind::Int: return "Int";
-            case Kind::UInt: return "UInt";
-            case Kind::Float: return "Float";
-            case Kind::Double: return "Double";
-            case Kind::Vector2: return "Vector2";
-            case Kind::Vector3: return "Vector3";
-            case Kind::Vector4: return "Vector4";
-            case Kind::Quat: return "Quat";
-            case Kind::Matrix4: return "Matrix4";
-            case Kind::Rect: return "Rect";
-            case Kind::String: return "String";
-            case Kind::Enum: return "Enum";
-            case Kind::LayerMask: return "LayerMask";
-            case Kind::Ease: return "Ease";
-            case Kind::Entity: return "Entity";
-            case Kind::EntityReference: return "EntityReference";
-            case Kind::Texture: return "Texture";
-            case Kind::Font: return "Font";
-            case Kind::Material: return "Material";
-            case Kind::AssetPath: return "AssetPath";
-            case Kind::Struct: return "Struct";
-            case Kind::Array: return "Array";
-            case Kind::Custom: return "Custom";
+            case reflect::Kind::Bool: return "Bool";
+            case reflect::Kind::Int: return "Int";
+            case reflect::Kind::UInt: return "UInt";
+            case reflect::Kind::Float: return "Float";
+            case reflect::Kind::Double: return "Double";
+            case reflect::Kind::Vector2: return "Vector2";
+            case reflect::Kind::Vector3: return "Vector3";
+            case reflect::Kind::Vector4: return "Vector4";
+            case reflect::Kind::Quat: return "Quat";
+            case reflect::Kind::Matrix4: return "Matrix4";
+            case reflect::Kind::Rect: return "Rect";
+            case reflect::Kind::String: return "String";
+            case reflect::Kind::Enum: return "Enum";
+            case reflect::Kind::LayerMask: return "LayerMask";
+            case reflect::Kind::Ease: return "Ease";
+            case reflect::Kind::Entity: return "Entity";
+            case reflect::Kind::EntityReference: return "EntityReference";
+            case reflect::Kind::Texture: return "Texture";
+            case reflect::Kind::Font: return "Font";
+            case reflect::Kind::Material: return "Material";
+            case reflect::Kind::AssetPath: return "AssetPath";
+            case reflect::Kind::Struct: return "Struct";
+            case reflect::Kind::Array: return "Array";
+            case reflect::Kind::Custom: return "Custom";
         }
         return "Custom";
     }
@@ -80,22 +79,22 @@ namespace {
         std::vector<std::string>& errors;
         // struct tables in dependency order (a nested struct before its users), and the
         // physics guard of each (empty: none; "*" mixed users, so none)
-        std::vector<const StructDesc*> order;
+        std::vector<const reflect::StructDesc*> order;
         std::map<std::string, std::string> guards;
         std::set<std::string> visiting;
-        std::map<std::string, const StructDesc*> byType;
+        std::map<std::string, const reflect::StructDesc*> byType;
         // accessor functions of the table being emitted (JE_RF_ACCESSOR), written ahead of it
         std::string accessors;
 
         // the type a field's elements are when it holds structs
-        const StructDesc* nestedStruct(const FieldDesc& field) {
-            if (field.structDesc && (field.kind == Kind::Struct || field.kind == Kind::Material || field.kind == Kind::Array ||
-                                     field.kind == Kind::Rect || field.kind == Kind::Custom))
+        const reflect::StructDesc* nestedStruct(const reflect::FieldDesc& field) {
+            if (field.structDesc && (field.kind == reflect::Kind::Struct || field.kind == reflect::Kind::Material || field.kind == reflect::Kind::Array ||
+                                     field.kind == reflect::Kind::Rect || field.kind == reflect::Kind::Custom))
                 return field.structDesc;
             return nullptr;
         }
 
-        void visit(const StructDesc& desc, const std::string& guard) {
+        void visit(const reflect::StructDesc& desc, const std::string& guard) {
             // values with a codec of their own (engine/core/serialization/CookCodecs.h)
             static const std::set<std::string> handWritten = {"Rect", "PostProcessingSettings"};
             if (desc.cppType && handWritten.count(desc.cppType)) return;
@@ -110,9 +109,9 @@ namespace {
                 return;
             }
             if (!visiting.insert(type).second) return;
-            for (const FieldDesc& field : desc.fields) {
+            for (const reflect::FieldDesc& field : desc.fields) {
                 if (!cooked(field)) continue;
-                if (const StructDesc* nested = nestedStruct(field)) visit(*nested, guard);
+                if (const reflect::StructDesc* nested = nestedStruct(field)) visit(*nested, guard);
             }
             visiting.erase(type);
             guards[type] = guard;
@@ -120,13 +119,13 @@ namespace {
             order.push_back(&desc);
         }
 
-        std::string fieldLine(const std::string& ownerName, const std::string& ownerType, const FieldDesc& field) {
+        std::string fieldLine(const std::string& ownerName, const std::string& ownerType, const reflect::FieldDesc& field) {
             const std::string member = field.cppPath ? field.cppPath : field.name;
             const uint32_t id = cook::runtimeFieldId(ownerName, field.yamlKey ? field.yamlKey : field.name);
             // a path through members and accessors (spline.editableKnots()): read and written through
             // an accessor function of the table (accessors, emitted ahead of the tables)
             if (member.find_first_of(".[(-") != std::string::npos) {
-                if (member.find_first_of("[-") != std::string::npos || field.kind == Kind::Entity) {
+                if (member.find_first_of("[-") != std::string::npos || field.kind == reflect::Kind::Entity) {
                     errors.push_back(ownerType + "." + field.name + ": member path \"" + member + "\" has no runtime accessor form");
                     return "";
                 }
@@ -138,15 +137,15 @@ namespace {
                 return "    JE_RF_PATH(" + ownerType + ", " + field.name + ", " + hex32(id) + ", " + kindToken(field.kind) + "),\n";
             }
             std::string macro = "JE_RF";
-            if (field.kind == Kind::Entity) macro = "JE_RF_ENTITY";
-            else if (field.kind == Kind::Array && field.elementOps && field.elementOps->kind == Kind::Entity) macro = "JE_RF_ENTITIES";
+            if (field.kind == reflect::Kind::Entity) macro = "JE_RF_ENTITY";
+            else if (field.kind == reflect::Kind::Array && field.elementOps && field.elementOps->kind == reflect::Kind::Entity) macro = "JE_RF_ENTITIES";
             return "    " + macro + "(" + ownerType + ", " + member + ", " + hex32(id) + ", " + kindToken(field.kind) + "),\n";
         }
 
-        std::string tableOf(const std::string& ownerName, const std::string& ownerType, std::span<const FieldDesc> fields,
+        std::string tableOf(const std::string& ownerName, const std::string& ownerType, std::span<const reflect::FieldDesc> fields,
                             const std::string& tableName) {
             std::string lines;
-            for (const FieldDesc& field : fields) {
+            for (const reflect::FieldDesc& field : fields) {
                 if (!cooked(field)) continue;
                 lines += fieldLine(ownerName, ownerType, field);
             }
@@ -178,11 +177,11 @@ uint32_t editor::cook::runtimeFieldId(const std::string& owner, const std::strin
 
 std::string editor::cook::emitRuntimeFields(std::vector<std::string>& errors) {
     Emitter emitter{errors, {}, {}, {}, {}, {}};
-    for (const ComponentDesc* desc : reflect::all()) {
+    for (const reflect::ComponentDesc* desc : reflect::all()) {
         const std::string guard = desc->codegenGuard ? desc->codegenGuard : "";
-        for (const FieldDesc& field : desc->body.fields) {
+        for (const reflect::FieldDesc& field : desc->body.fields) {
             if (!cooked(field)) continue;
-            if (const StructDesc* nested = emitter.nestedStruct(field)) emitter.visit(*nested, guard);
+            if (const reflect::StructDesc* nested = emitter.nestedStruct(field)) emitter.visit(*nested, guard);
         }
     }
 
@@ -193,7 +192,7 @@ std::string editor::cook::emitRuntimeFields(std::vector<std::string>& errors) {
 
     out += "#if defined(JE_RUNTIME_FIELDS_DECLARE)\n\n";
     out += "namespace jasperengine::cook {\n\n";
-    for (const StructDesc* desc : emitter.order) {
+    for (const reflect::StructDesc* desc : emitter.order) {
         const std::string type = engineTypeName(desc->cppType);
         out += guardOpen(emitter.guards[type]);
         out += "template<> struct Codec<" + type + "> {\n";
@@ -209,7 +208,7 @@ std::string editor::cook::emitRuntimeFields(std::vector<std::string>& errors) {
 
     out += "#if defined(JE_RUNTIME_FIELDS_DEFINE)\n\n";
     out += "namespace jasperengine::cook {\n\n";
-    for (const StructDesc* desc : emitter.order) {
+    for (const reflect::StructDesc* desc : emitter.order) {
         const std::string type = engineTypeName(desc->cppType);
         const std::string table = "kStruct_" + identifierOf(type);
         out += guardOpen(emitter.guards[type]);
@@ -220,7 +219,7 @@ std::string editor::cook::emitRuntimeFields(std::vector<std::string>& errors) {
         out += guardClose(emitter.guards[type]);
         out += "\n";
     }
-    for (const ComponentDesc* desc : reflect::all()) {
+    for (const reflect::ComponentDesc* desc : reflect::all()) {
         const std::string guard = desc->codegenGuard ? desc->codegenGuard : "";
         out += guardOpen(guard);
         out += emitter.tableOf(desc->key, desc->cppName, desc->body.fields, std::string("kBody_") + desc->cppName);
@@ -228,7 +227,7 @@ std::string editor::cook::emitRuntimeFields(std::vector<std::string>& errors) {
         out += "\n";
     }
     out += "const ComponentTable kComponentTables[] = {\n";
-    for (const ComponentDesc* desc : reflect::all()) {
+    for (const reflect::ComponentDesc* desc : reflect::all()) {
         const std::string guard = desc->codegenGuard ? desc->codegenGuard : "";
         out += guardOpen(guard);
         out += std::string("    JE_RF_COMPONENT(") + desc->cppName + ", \"" + desc->key + "\", " + hex32(fnv1a32(desc->key)) + "),\n";

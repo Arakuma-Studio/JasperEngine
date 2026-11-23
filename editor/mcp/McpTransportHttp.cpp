@@ -43,7 +43,7 @@
 #include <unistd.h>
 #endif
 
-using namespace jasperengine::editor::mcp;
+namespace jasperengine::editor::mcp {
 
 namespace {
 
@@ -791,3 +791,5 @@ void McpTransportHttp::serveConnection(intptr_t clientFd) {
         return;
     }
 }
+
+}  // namespace jasperengine::editor::mcp

@@ -16,7 +16,6 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::pose;
 
 namespace editor = jasperengine::editor;
 namespace poseui = jasperengine::editor::poseui;
@@ -60,7 +59,7 @@ namespace {
         return indices;
     }
 
-    poseui::Edit unchanged(const PoseAnimationData& data, const std::vector<int>& selected, int primary){
+    poseui::Edit unchanged(const pose::PoseAnimationData& data, const std::vector<int>& selected, int primary){
         poseui::Edit edit;
         edit.data = data;
         edit.selection = selected;
@@ -68,7 +67,7 @@ namespace {
         return edit;
     }
 
-    bool sameKey(const PoseKey& a, const PoseKey& b){
+    bool sameKey(const pose::PoseKey& a, const pose::PoseKey& b){
         return a.name == b.name && a.hold == b.hold && a.customTransition == b.customTransition && a.grounded == b.grounded &&
                a.lift == b.lift && a.body.angles == b.body.angles && a.body.offset == b.body.offset &&
                a.transition.curve == b.transition.curve && a.transition.duration == b.transition.duration &&
@@ -76,8 +75,8 @@ namespace {
     }
 
     // An edit applied to every selected pose (the selection stays); unchanged when no pose changed
-    poseui::Edit eachSelected(const PoseAnimationData& data, const std::vector<int>& selected, int primary,
-                              const std::function<void(PoseKey&)>& change){
+    poseui::Edit eachSelected(const pose::PoseAnimationData& data, const std::vector<int>& selected, int primary,
+                              const std::function<void(pose::PoseKey&)>& change){
         poseui::Edit edit = unchanged(data, selected, primary);
         for (int index : sortedUnique(selected, (int)data.poses.size())){
             change(edit.data.poses[index]);
@@ -121,9 +120,9 @@ std::string poseui::mirrorPoseName(const std::string& name){
     return out;
 }
 
-std::string poseui::newPoseName(const std::vector<PoseKey>& poses){
+std::string poseui::newPoseName(const std::vector<pose::PoseKey>& poses){
     std::set<std::string> used;
-    for (const PoseKey& key : poses) used.insert(key.name);
+    for (const pose::PoseKey& key : poses) used.insert(key.name);
     for (size_t n = poses.size() + 1;; n++){
         std::string candidate = "Pose " + std::to_string(n);
         if (!used.count(candidate)) return candidate;
@@ -151,18 +150,18 @@ std::string poseui::transitionChipLabel(float duration, bool loopBack){
     return std::string(loopBack ? "\xE2\x86\xBA " : "\xE2\x86\x92 ") + fixed2(duration) + "s";
 }
 
-poseui::RigStatus poseui::rigStatus(const std::array<std::string, HUMAN_BONE_COUNT>& bones){
+poseui::RigStatus poseui::rigStatus(const std::array<std::string, pose::HUMAN_BONE_COUNT>& bones){
     RigStatus status;
     std::vector<std::string> requiredMissing;
     std::vector<std::string> optionalMissing;
     int mapped = 0;
-    for (int b = 0; b < HUMAN_BONE_COUNT; b++){
+    for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++){
         if (!bones[b].empty()){
             mapped++;
-        }else if (humanBoneInfo(boneAt(b)).required){
-            requiredMissing.push_back(humanBoneName(boneAt(b)));
+        }else if (pose::humanBoneInfo(pose::boneAt(b)).required){
+            requiredMissing.push_back(pose::humanBoneName(pose::boneAt(b)));
         }else{
-            optionalMissing.push_back(humanBoneName(boneAt(b)));
+            optionalMissing.push_back(pose::humanBoneName(pose::boneAt(b)));
         }
     }
     auto join = [](const std::vector<std::string>& names){
@@ -180,7 +179,7 @@ poseui::RigStatus poseui::rigStatus(const std::array<std::string, HUMAN_BONE_COU
         if (!optionalMissing.empty()) status.tooltip += "\nOptional, not mapped: " + join(optionalMissing);
         return status;
     }
-    status.text = "Humanoid " + std::to_string(mapped) + "/" + std::to_string(HUMAN_BONE_COUNT);
+    status.text = "Humanoid " + std::to_string(mapped) + "/" + std::to_string(pose::HUMAN_BONE_COUNT);
     status.tooltip = optionalMissing.empty() ? std::string("Every humanoid bone is mapped.")
                                              : "Optional, not mapped (their parents carry them): " + join(optionalMissing);
     return status;
@@ -290,9 +289,9 @@ int poseui::newPosition(const std::vector<int>& order, int oldIndex){
     return order.empty() ? oldIndex : -1;
 }
 
-void poseui::applyOrder(std::vector<PoseKey>& poses, const std::vector<int>& order){
+void poseui::applyOrder(std::vector<pose::PoseKey>& poses, const std::vector<int>& order){
     if (order.size() != poses.size()) return;
-    std::vector<PoseKey> reordered;
+    std::vector<pose::PoseKey> reordered;
     reordered.reserve(poses.size());
     for (int old : order) reordered.push_back(poses[old]);
     poses = std::move(reordered);
@@ -313,21 +312,21 @@ bool poseui::dragStarted(float dx, float dy, float threshold){
 
 // ---- pose edits ----
 
-PoseKey poseui::neutralPose(const std::vector<PoseKey>& poses){
-    PoseKey key;
+pose::PoseKey poseui::neutralPose(const std::vector<pose::PoseKey>& poses){
+    pose::PoseKey key;
     key.name = newPoseName(poses);
     return key;
 }
 
-poseui::Edit poseui::duplicatePoses(const PoseAnimationData& data, const std::vector<int>& selected, bool atEnd, bool mirrored){
+poseui::Edit poseui::duplicatePoses(const pose::PoseAnimationData& data, const std::vector<int>& selected, bool atEnd, bool mirrored){
     const std::vector<int> sel = sortedUnique(selected, (int)data.poses.size());
     Edit edit = unchanged(data, selected, sel.empty() ? -1 : sel.back());
     if (sel.empty()) return edit;
-    std::vector<PoseKey> copies;
+    std::vector<pose::PoseKey> copies;
     for (int index : sel){
-        PoseKey copy = data.poses[index];
+        pose::PoseKey copy = data.poses[index];
         if (mirrored){
-            copy.body = mirrorBodyPose(copy.body);
+            copy.body = pose::mirrorBodyPose(copy.body);
             copy.name = mirrorPoseName(copy.name);
         }
         copies.push_back(std::move(copy));
@@ -341,7 +340,7 @@ poseui::Edit poseui::duplicatePoses(const PoseAnimationData& data, const std::ve
     return edit;
 }
 
-poseui::Edit poseui::addPose(const PoseAnimationData& data, int primary){
+poseui::Edit poseui::addPose(const pose::PoseAnimationData& data, int primary){
     if (data.poses.empty()){
         Edit edit = unchanged(data, {}, -1);
         edit.data.poses.push_back(neutralPose(data.poses));
@@ -354,7 +353,7 @@ poseui::Edit poseui::addPose(const PoseAnimationData& data, int primary){
     return duplicatePoses(data, {primary}, false, false);
 }
 
-poseui::Edit poseui::deletePoses(const PoseAnimationData& data, const std::vector<int>& selected, int primary){
+poseui::Edit poseui::deletePoses(const pose::PoseAnimationData& data, const std::vector<int>& selected, int primary){
     const std::vector<int> sel = sortedUnique(selected, (int)data.poses.size());
     Edit edit = unchanged(data, selected, primary);
     if (sel.empty()) return edit;
@@ -374,19 +373,19 @@ poseui::Edit poseui::deletePoses(const PoseAnimationData& data, const std::vecto
     return edit;
 }
 
-poseui::Edit poseui::mirrorPoses(const PoseAnimationData& data, const std::vector<int>& selected, int primary){
-    return eachSelected(data, selected, primary, [](PoseKey& key){ key.body = mirrorBodyPose(key.body); });
+poseui::Edit poseui::mirrorPoses(const pose::PoseAnimationData& data, const std::vector<int>& selected, int primary){
+    return eachSelected(data, selected, primary, [](pose::PoseKey& key){ key.body = pose::mirrorBodyPose(key.body); });
 }
 
-poseui::Edit poseui::pastePose(const PoseAnimationData& data, const std::vector<int>& selected, int primary, const PoseKey& source){
-    return eachSelected(data, selected, primary, [&source](PoseKey& key){
+poseui::Edit poseui::pastePose(const pose::PoseAnimationData& data, const std::vector<int>& selected, int primary, const pose::PoseKey& source){
+    return eachSelected(data, selected, primary, [&source](pose::PoseKey& key){
         key.body = source.body;
         key.grounded = source.grounded;
         key.lift = source.lift;
     });
 }
 
-poseui::Edit poseui::movePoses(const PoseAnimationData& data, const std::vector<int>& selected, int primary, const std::vector<int>& order){
+poseui::Edit poseui::movePoses(const pose::PoseAnimationData& data, const std::vector<int>& selected, int primary, const std::vector<int>& order){
     Edit edit = unchanged(data, selected, primary);
     if (order.size() != data.poses.size()) return edit;
     applyOrder(edit.data.poses, order);
@@ -396,33 +395,33 @@ poseui::Edit poseui::movePoses(const PoseAnimationData& data, const std::vector<
     return edit;
 }
 
-poseui::Edit poseui::resetToNeutral(const PoseAnimationData& data, const std::vector<int>& selected, int primary){
-    return eachSelected(data, selected, primary, [](PoseKey& key){ key.body = BodyPose(); });
+poseui::Edit poseui::resetToNeutral(const pose::PoseAnimationData& data, const std::vector<int>& selected, int primary){
+    return eachSelected(data, selected, primary, [](pose::PoseKey& key){ key.body = pose::BodyPose(); });
 }
 
-poseui::Edit poseui::groundPoses(const PoseAnimationData& data, const std::vector<int>& selected, int primary){
-    return eachSelected(data, selected, primary, [](PoseKey& key){
+poseui::Edit poseui::groundPoses(const pose::PoseAnimationData& data, const std::vector<int>& selected, int primary){
+    return eachSelected(data, selected, primary, [](pose::PoseKey& key){
         key.grounded = true;
         key.lift = 0.0f;
     });
 }
 
-poseui::Edit poseui::centerPoses(const PoseAnimationData& data, const std::vector<int>& selected, int primary){
-    return eachSelected(data, selected, primary, [](PoseKey& key){ key.body.offset = Vector3(0, 0, 0); });
+poseui::Edit poseui::centerPoses(const pose::PoseAnimationData& data, const std::vector<int>& selected, int primary){
+    return eachSelected(data, selected, primary, [](pose::PoseKey& key){ key.body.offset = Vector3(0, 0, 0); });
 }
 
-poseui::Edit poseui::resetCustomTransitions(const PoseAnimationData& data, const std::vector<int>& selected, int primary){
+poseui::Edit poseui::resetCustomTransitions(const pose::PoseAnimationData& data, const std::vector<int>& selected, int primary){
     std::vector<int> all;
     for (int i = 0; i < (int)data.poses.size(); i++) all.push_back(i);
-    Edit edit = eachSelected(data, all, primary, [](PoseKey& key){ key.customTransition = false; });
+    Edit edit = eachSelected(data, all, primary, [](pose::PoseKey& key){ key.customTransition = false; });
     edit.selection = selected;
     return edit;
 }
 
 // ---- multi-selection values ----
 
-poseui::MixedValue poseui::mixedValue(const PoseAnimationData& data, const std::vector<int>& selected,
-                                      const std::function<float(const PoseKey&)>& get, float epsilon){
+poseui::MixedValue poseui::mixedValue(const pose::PoseAnimationData& data, const std::vector<int>& selected,
+                                      const std::function<float(const pose::PoseKey&)>& get, float epsilon){
     MixedValue result;
     for (int index : sortedUnique(selected, (int)data.poses.size())){
         const float value = get(data.poses[index]);
@@ -436,37 +435,37 @@ poseui::MixedValue poseui::mixedValue(const PoseAnimationData& data, const std::
     return result;
 }
 
-bool poseui::setOnSelection(PoseAnimationData& data, const std::vector<int>& selected, const std::function<void(PoseKey&)>& set){
+bool poseui::setOnSelection(pose::PoseAnimationData& data, const std::vector<int>& selected, const std::function<void(pose::PoseKey&)>& set){
     if (!set) return false;
     bool changed = false;
     for (int index : sortedUnique(selected, (int)data.poses.size())){
-        const PoseKey before = data.poses[index];
+        const pose::PoseKey before = data.poses[index];
         set(data.poses[index]);
         if (!sameKey(before, data.poses[index])) changed = true;
     }
     return changed;
 }
 
-poseui::MixedValue poseui::mixedAngle(const PoseAnimationData& data, const std::vector<int>& selected, int dof){
-    if (dof < 0 || dof >= DOF_COUNT) return MixedValue();
-    return mixedValue(data, selected, [dof](const PoseKey& key){ return key.body.angles[dof]; }, 1e-4f);
+poseui::MixedValue poseui::mixedAngle(const pose::PoseAnimationData& data, const std::vector<int>& selected, int dof){
+    if (dof < 0 || dof >= pose::DOF_COUNT) return MixedValue();
+    return mixedValue(data, selected, [dof](const pose::PoseKey& key){ return key.body.angles[dof]; }, 1e-4f);
 }
 
-bool poseui::setAngle(PoseAnimationData& data, const std::vector<int>& selected, int dof, float degrees){
-    if (dof < 0 || dof >= DOF_COUNT) return false;
-    const float wrapped = wrapAngle(degrees);
-    return setOnSelection(data, selected, [dof, wrapped](PoseKey& key){ key.body.angles[dof] = wrapped; });
+bool poseui::setAngle(pose::PoseAnimationData& data, const std::vector<int>& selected, int dof, float degrees){
+    if (dof < 0 || dof >= pose::DOF_COUNT) return false;
+    const float wrapped = pose::wrapAngle(degrees);
+    return setOnSelection(data, selected, [dof, wrapped](pose::PoseKey& key){ key.body.angles[dof] = wrapped; });
 }
 
 const std::vector<poseui::DofGroup>& poseui::dofGroups(){
     static const std::vector<DofGroup> groups = {
-        {"Body", {HumanBone::Hips}},
-        {"Spine", {HumanBone::Spine, HumanBone::Chest, HumanBone::UpperChest}},
-        {"Head", {HumanBone::Neck, HumanBone::Head}},
-        {"Left arm", {HumanBone::LeftShoulder, HumanBone::LeftUpperArm, HumanBone::LeftLowerArm, HumanBone::LeftHand}},
-        {"Right arm", {HumanBone::RightShoulder, HumanBone::RightUpperArm, HumanBone::RightLowerArm, HumanBone::RightHand}},
-        {"Left leg", {HumanBone::LeftUpperLeg, HumanBone::LeftLowerLeg, HumanBone::LeftFoot, HumanBone::LeftToes}},
-        {"Right leg", {HumanBone::RightUpperLeg, HumanBone::RightLowerLeg, HumanBone::RightFoot, HumanBone::RightToes}},
+        {"Body", {pose::HumanBone::Hips}},
+        {"Spine", {pose::HumanBone::Spine, pose::HumanBone::Chest, pose::HumanBone::UpperChest}},
+        {"Head", {pose::HumanBone::Neck, pose::HumanBone::Head}},
+        {"Left arm", {pose::HumanBone::LeftShoulder, pose::HumanBone::LeftUpperArm, pose::HumanBone::LeftLowerArm, pose::HumanBone::LeftHand}},
+        {"Right arm", {pose::HumanBone::RightShoulder, pose::HumanBone::RightUpperArm, pose::HumanBone::RightLowerArm, pose::HumanBone::RightHand}},
+        {"Left leg", {pose::HumanBone::LeftUpperLeg, pose::HumanBone::LeftLowerLeg, pose::HumanBone::LeftFoot, pose::HumanBone::LeftToes}},
+        {"Right leg", {pose::HumanBone::RightUpperLeg, pose::HumanBone::RightLowerLeg, pose::HumanBone::RightFoot, pose::HumanBone::RightToes}},
     };
     return groups;
 }
@@ -476,27 +475,27 @@ bool poseui::keepsGlobalEdit(size_t posesBefore, size_t posesAfter, bool reorder
 }
 
 bool poseui::outsideLimits(int dof, float degrees){
-    if (dof < 0 || dof >= DOF_COUNT) return false;
-    const DofInfo& info = dofInfo(dof);
+    if (dof < 0 || dof >= pose::DOF_COUNT) return false;
+    const pose::DofInfo& info = pose::dofInfo(dof);
     return degrees < info.minDegrees - 1e-3f || degrees > info.maxDegrees + 1e-3f;
 }
 
 // ---- feel ----
 
-int poseui::matchingPresetIndex(const PoseAnimationSettings& settings){
-    const std::vector<FeelPreset>& presets = feelPresets();
+int poseui::matchingPresetIndex(const pose::PoseAnimationSettings& settings){
+    const std::vector<pose::FeelPreset>& presets = pose::feelPresets();
     for (size_t i = 0; i < presets.size(); i++){
-        if (feelPresetMatches(presets[i], settings)) return (int)i;
+        if (pose::feelPresetMatches(presets[i], settings)) return (int)i;
     }
     return -1;
 }
 
 // ---- timing bar ----
 
-poseui::TimingLayout poseui::timingLayout(const PoseAnimationData& data){
+poseui::TimingLayout poseui::timingLayout(const pose::PoseAnimationData& data){
     TimingLayout layout;
     if (data.poses.empty()) return layout;
-    const PoseTimeline timeline = buildTimeline(data);
+    const pose::PoseTimeline timeline = buildTimeline(data);
     layout.length = timeline.length;
     const int count = (int)data.poses.size();
     // pose i's key time: 0 for pose 0, else the end of the segment that arrives at it
@@ -579,7 +578,7 @@ int poseui::poseAtTime(const TimingLayout& layout, double time){
     return -1;
 }
 
-float poseui::timingSnapStep(const PoseAnimationSettings& settings){
+float poseui::timingSnapStep(const pose::PoseAnimationSettings& settings){
     if (settings.stepRate > 0.0f) return 1.0f / settings.stepRate;
     return 1.0f / static_cast<float>(std::max(1, settings.frameRate));
 }
@@ -595,25 +594,25 @@ float poseui::snapTimingValue(float value, float step, bool snapping, float min,
     return std::clamp(value, min, max);
 }
 
-float poseui::timingEdgeValue(const PoseAnimationData& data, const TimingHit& hit){
+float poseui::timingEdgeValue(const pose::PoseAnimationData& data, const TimingHit& hit){
     if (hit.pose < 0 || hit.pose >= (int)data.poses.size()) return 0.0f;
     if (hit.kind == TimingHitKind::HoldEdge) return data.poses[hit.pose].hold;
-    if (hit.kind == TimingHitKind::TransitionEdge) return transitionOut(data, hit.pose).duration;
+    if (hit.kind == TimingHitKind::TransitionEdge) return pose::transitionOut(data, hit.pose).duration;
     return 0.0f;
 }
 
-bool poseui::applyTimingDrag(PoseAnimationData& data, const TimingHit& hit, float startValue, float deltaSeconds, bool snapping){
+bool poseui::applyTimingDrag(pose::PoseAnimationData& data, const TimingHit& hit, float startValue, float deltaSeconds, bool snapping){
     if (hit.pose < 0 || hit.pose >= (int)data.poses.size()) return false;
     const float step = timingSnapStep(data.settings);
-    PoseKey& key = data.poses[hit.pose];
+    pose::PoseKey& key = data.poses[hit.pose];
     if (hit.kind == TimingHitKind::HoldEdge){
-        const float value = snapTimingValue(startValue + deltaSeconds, step, snapping, ranges::HOLD_MIN, ranges::HOLD_MAX);
+        const float value = snapTimingValue(startValue + deltaSeconds, step, snapping, pose::ranges::HOLD_MIN, pose::ranges::HOLD_MAX);
         if (value == key.hold) return false;
         key.hold = value;
         return true;
     }
     if (hit.kind == TimingHitKind::TransitionEdge){
-        const float value = snapTimingValue(startValue + deltaSeconds, step, snapping, ranges::DURATION_MIN, ranges::DURATION_MAX);
+        const float value = snapTimingValue(startValue + deltaSeconds, step, snapping, pose::ranges::DURATION_MIN, pose::ranges::DURATION_MAX);
         if (key.customTransition && value == key.transition.duration) return false;
         if (!key.customTransition){
             key.transition = data.settings.transition;
@@ -625,11 +624,11 @@ bool poseui::applyTimingDrag(PoseAnimationData& data, const TimingHit& hit, floa
     return false;
 }
 
-std::vector<float> poseui::easeSamples(const Transition& transition, int count, float xMax){
+std::vector<float> poseui::easeSamples(const pose::Transition& transition, int count, float xMax){
     std::vector<float> values;
     if (count < 2) count = 2;
     for (int i = 0; i < count; i++){
-        values.push_back(ease(xMax * static_cast<float>(i) / static_cast<float>(count - 1), transition));
+        values.push_back(pose::ease(xMax * static_cast<float>(i) / static_cast<float>(count - 1), transition));
     }
     return values;
 }
@@ -642,20 +641,20 @@ double poseui::frameTickStep(double pixelsPerSecond, int frameRate, double minPi
 
 // ---- Global Edit ----
 
-int poseui::applyGlobalEditDelta(const BodyPose& base, const BodyPose& current, BodyPose& target,
+int poseui::applyGlobalEditDelta(const pose::BodyPose& base, const pose::BodyPose& current, pose::BodyPose& target,
                                  std::vector<int>* changedSlots, float thresholdDegrees){
     int changed = 0;
     if (changedSlots) changedSlots->clear();
-    for (int b = 0; b < HUMAN_BONE_COUNT; b++){
-        const HumanBone bone = boneAt(b);
-        const float* baseAngles = &base.angles[b * DOFS_PER_BONE];
-        const float* currentAngles = &current.angles[b * DOFS_PER_BONE];
-        const Quatd eBase = jointRotation(bone, baseAngles);
-        const Quatd eCurrent = jointRotation(bone, currentAngles);
-        const Quatd delta = (eCurrent * eBase.inverse()).normalized();
-        if (radToDeg(angleBetween(Quatd(), delta)) <= thresholdDegrees) continue;
-        const Quatd eTarget = jointRotation(bone, &target.angles[b * DOFS_PER_BONE]);
-        jointAngles(bone, (delta * eTarget).normalized(), &target.angles[b * DOFS_PER_BONE]);
+    for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++){
+        const pose::HumanBone bone = pose::boneAt(b);
+        const float* baseAngles = &base.angles[b * pose::DOFS_PER_BONE];
+        const float* currentAngles = &current.angles[b * pose::DOFS_PER_BONE];
+        const pose::Quatd eBase = jointRotation(bone, baseAngles);
+        const pose::Quatd eCurrent = jointRotation(bone, currentAngles);
+        const pose::Quatd delta = (eCurrent * eBase.inverse()).normalized();
+        if (pose::radToDeg(pose::angleBetween(pose::Quatd(), delta)) <= thresholdDegrees) continue;
+        const pose::Quatd eTarget = jointRotation(bone, &target.angles[b * pose::DOFS_PER_BONE]);
+        pose::jointAngles(bone, (delta * eTarget).normalized(), &target.angles[b * pose::DOFS_PER_BONE]);
         changed++;
         if (changedSlots) changedSlots->push_back(b);
     }
@@ -711,7 +710,7 @@ std::string poseui::templateAnimationPath(const std::string& directory, const st
     return path;
 }
 
-poseui::Edit poseui::applyTemplate(const PoseAnimationData& data, const PoseAnimationData& templateData,
+poseui::Edit poseui::applyTemplate(const pose::PoseAnimationData& data, const pose::PoseAnimationData& templateData,
                                    editor::PoseTemplateApply mode, const std::vector<int>& selected, int primary){
     Edit edit;
     edit.data = data;

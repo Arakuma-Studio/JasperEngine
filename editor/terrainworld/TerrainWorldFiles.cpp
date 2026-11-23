@@ -20,7 +20,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::terraincore;
 
 namespace fs = std::filesystem;
 
@@ -56,11 +55,11 @@ namespace {
         return text;
     }
 
-    bool parseTileName(const std::string& name, TileCoord& out) {
+    bool parseTileName(const std::string& name, terraincore::TileCoord& out) {
         int x = 0, z = 0;
         char tail[8] = {};
         if (std::sscanf(name.c_str(), "%d_%d.jtil%1s", &x, &z, tail) != 3 || std::string(tail) != "e") return false;
-        const TileCoord coord(x, z);
+        const terraincore::TileCoord coord(x, z);
         if (!coord.addressable() || terrainWorldTileName(coord) != "tiles/" + name) return false;
         out = coord;
         return true;
@@ -83,8 +82,8 @@ namespace {
 
 }
 
-TileCodec jasperengine::editor::terrainWorldEditorCodec() {
-    TileCodec codec = terrainWorldDecodeCodec();
+terraincore::TileCodec jasperengine::editor::terrainWorldEditorCodec() {
+    terraincore::TileCodec codec = terrainWorldDecodeCodec();
     codec.compress = [](std::span<const uint8_t> in, int level, std::vector<uint8_t>& out) {
         out.resize(ZSTD_compressBound(in.size()));
         const size_t written = ZSTD_compress(out.data(), out.size(), in.data(), in.size(), level);
@@ -95,42 +94,42 @@ TileCodec jasperengine::editor::terrainWorldEditorCodec() {
     return codec;
 }
 
-std::vector<TileCoord> jasperengine::editor::scanWorldTiles(const fs::path& folder) {
-    std::vector<TileCoord> tiles;
+std::vector<terraincore::TileCoord> jasperengine::editor::scanWorldTiles(const fs::path& folder) {
+    std::vector<terraincore::TileCoord> tiles;
     std::error_code ec;
     for (fs::directory_iterator it(folder / "tiles", fs::directory_options::skip_permission_denied, ec), end; !ec && it != end; it.increment(ec)) {
         if (!it->is_regular_file(ec)) continue;
-        TileCoord coord;
+        terraincore::TileCoord coord;
         if (parseTileName(it->path().filename().string(), coord)) tiles.push_back(coord);
     }
-    std::sort(tiles.begin(), tiles.end(), [](TileCoord a, TileCoord b) { return a.key() < b.key(); });
+    std::sort(tiles.begin(), tiles.end(), [](terraincore::TileCoord a, terraincore::TileCoord b) { return a.key() < b.key(); });
     return tiles;
 }
 
-bool jasperengine::editor::readWorldManifest(const fs::path& folder, WorldManifest& out, std::string& error) {
+bool jasperengine::editor::readWorldManifest(const fs::path& folder, terraincore::WorldManifest& out, std::string& error) {
     std::string text;
     if (!readWorldFile(folder / "manifest.yaml", text)) {
         error = "the world has no manifest.yaml: " + folder.string();
         return false;
     }
-    WorldManifest manifest;
+    terraincore::WorldManifest manifest;
     try {
         const YAML::Node root = YAML::Load(text);
         manifest.formatVersion = root["formatVersion"].as<uint32_t>(1);
-        if (manifest.formatVersion > WORLD_FORMAT_VERSION) {
+        if (manifest.formatVersion > terraincore::WORLD_FORMAT_VERSION) {
             // S03 R23: a newer world is not opened, so nothing overwrites what this build cannot read
             error = "manifest.yaml was made by a newer version of the editor (format " + std::to_string(manifest.formatVersion) + ")";
             return false;
         }
         manifest.guid = root["guid"].as<std::string>("");
-        WorldLattice& lattice = manifest.lattice;
+        terraincore::WorldLattice& lattice = manifest.lattice;
         lattice.tileQuads = root["tileQuads"].as<int>(512);
         lattice.spacing = root["spacing"].as<float>(1.0f);
         lattice.overviewStride = root["overviewStride"].as<int>(16);
         lattice.blendQuads = root["blendQuads"].as<int>(0);
         lattice.holeTexels = root["holeTexels"].as<int>(0);
         lattice.densityTexels = root["densityTexels"].as<int>(0);
-        WorldMaps& maps = manifest.maps;
+        terraincore::WorldMaps& maps = manifest.maps;
         maps.maxHeight = root["maxHeight"].as<float>(100.0f);
         maps.baseHeight = static_cast<uint16_t>(std::clamp(root["baseHeight"].as<int>(0), 0, 65535));
         maps.blendMaps = std::clamp(root["blendMaps"].as<int>(0), 0, 3);
@@ -147,22 +146,22 @@ bool jasperengine::editor::readWorldManifest(const fs::path& folder, WorldManife
         return false;
     }
     std::string why;
-    if (!validateLattice(manifest.lattice, &why)) {
+    if (!terraincore::validateLattice(manifest.lattice, &why)) {
         error = "manifest.yaml: " + why;
         return false;
     }
     // R48: the tiles are the files present; their min and max from each one's own pyramid
-    const uint32_t only[] = {TILE_SECTION_MINMAX, TILE_SECTION_EDGE};
-    const TileCodec codec = terrainWorldDecodeCodec();
-    for (const TileCoord& tile : scanWorldTiles(folder)) {
-        WorldTileInfo info;
+    const uint32_t only[] = {terraincore::TILE_SECTION_MINMAX, terraincore::TILE_SECTION_EDGE};
+    const terraincore::TileCodec codec = terrainWorldDecodeCodec();
+    for (const terraincore::TileCoord& tile : scanWorldTiles(folder)) {
+        terraincore::WorldTileInfo info;
         info.coord = tile;
         std::string bytes;
-        WorldTile data;
+        terraincore::WorldTile data;
         if (readWorldFile(folder / terrainWorldTileName(tile), bytes) &&
-            decodeTile(std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()), codec, data, only) == TileError::None &&
+            decodeTile(std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()), codec, data, only) == terraincore::TileError::None &&
             !data.minMax.empty()) {
-            const TileMinMax whole = tileNodeMinMax(data, manifest.lattice, manifest.lattice.tileLevel(), 0, 0);
+            const terraincore::TileMinMax whole = tileNodeMinMax(data, manifest.lattice, manifest.lattice.tileLevel(), 0, 0);
             info.minHeight = whole.min;
             info.maxHeight = whole.max;
             manifest.skirtDepth = std::max(manifest.skirtDepth, data.skirtDepth);
@@ -175,7 +174,7 @@ bool jasperengine::editor::readWorldManifest(const fs::path& folder, WorldManife
     return true;
 }
 
-bool jasperengine::editor::writeWorldManifest(const fs::path& folder, const WorldManifest& manifest, std::string& error) {
+bool jasperengine::editor::writeWorldManifest(const fs::path& folder, const terraincore::WorldManifest& manifest, std::string& error) {
     YAML::Emitter out;
     out << YAML::BeginMap;
     out << YAML::Key << "formatVersion" << YAML::Value << manifest.formatVersion;
@@ -207,23 +206,23 @@ bool jasperengine::editor::writeWorldManifest(const fs::path& folder, const Worl
     return writeAtomic(folder / "manifest.yaml", text, io::Durability::Document, error);
 }
 
-bool jasperengine::editor::writeTileFile(const fs::path& folder, const WorldTile& tile, std::string& error) {
+bool jasperengine::editor::writeTileFile(const fs::path& folder, const terraincore::WorldTile& tile, std::string& error) {
     std::vector<uint8_t> bytes;
-    TileEncodeOptions options;
+    terraincore::TileEncodeOptions options;
     options.level = 9;
     if (!encodeTile(tile, terrainWorldEditorCodec(), options, bytes, &error)) return false;
     return writeAtomic(folder / terrainWorldTileName(tile.coord), std::string(bytes.begin(), bytes.end()), io::Durability::Document, error);
 }
 
-bool jasperengine::editor::writeTileBytes(const fs::path& folder, TileCoord tile, const std::string& bytes, std::string& error) {
+bool jasperengine::editor::writeTileBytes(const fs::path& folder, terraincore::TileCoord tile, const std::string& bytes, std::string& error) {
     return writeAtomic(folder / terrainWorldTileName(tile), bytes, io::Durability::Document, error);
 }
 
-bool jasperengine::editor::writeTreeBytes(const fs::path& folder, TileCoord tile, const std::string& bytes, std::string& error) {
+bool jasperengine::editor::writeTreeBytes(const fs::path& folder, terraincore::TileCoord tile, const std::string& bytes, std::string& error) {
     return writeAtomic(folder / terrainWorldTreeName(tile), bytes, io::Durability::Document, error);
 }
 
-bool jasperengine::editor::removeTreeFile(const fs::path& folder, TileCoord tile, std::string& error) {
+bool jasperengine::editor::removeTreeFile(const fs::path& folder, terraincore::TileCoord tile, std::string& error) {
     const fs::path path = folder / terrainWorldTreeName(tile);
     ScopedExpectedWrite expected(path);
     std::error_code ec;
@@ -236,7 +235,7 @@ bool jasperengine::editor::removeTreeFile(const fs::path& folder, TileCoord tile
     return true;
 }
 
-bool jasperengine::editor::removeTileFile(const fs::path& folder, TileCoord tile, std::string& error) {
+bool jasperengine::editor::removeTileFile(const fs::path& folder, terraincore::TileCoord tile, std::string& error) {
     const fs::path path = folder / terrainWorldTileName(tile);
     ScopedExpectedWrite expected(path);
     std::error_code ec;
@@ -249,7 +248,7 @@ bool jasperengine::editor::removeTileFile(const fs::path& folder, TileCoord tile
     return true;
 }
 
-bool jasperengine::editor::createWorldFolder(const fs::path& folder, WorldManifest& manifest, const std::vector<TileCoord>& tiles, std::string& error,
+bool jasperengine::editor::createWorldFolder(const fs::path& folder, terraincore::WorldManifest& manifest, const std::vector<terraincore::TileCoord>& tiles, std::string& error,
                                              const std::vector<float>& layerColours, int layerCount) {
     std::error_code ec;
     if (fs::exists(folder, ec)) {
@@ -259,17 +258,17 @@ bool jasperengine::editor::createWorldFolder(const fs::path& folder, WorldManife
     if (manifest.guid.empty()) manifest.guid = AssetDatabase::generateGuid();
     manifest.tiles.clear();
     // the tiles first and the manifest last: a folder without a manifest is not yet a world
-    for (const TileCoord& coord : tiles) {
-        WorldTile tile;
+    for (const terraincore::TileCoord& coord : tiles) {
+        terraincore::WorldTile tile;
         initTile(tile, manifest.lattice, coord, manifest.maps.baseHeight);
         if (!layerColours.empty()) buildOverviewColour(tile, manifest.lattice, layerColours, layerCount);
         if (!writeTileFile(folder, tile, error)) return false;
-        manifest.tiles.push_back(WorldTileInfo{coord, manifest.maps.baseHeight, manifest.maps.baseHeight});
+        manifest.tiles.push_back(terraincore::WorldTileInfo{coord, manifest.maps.baseHeight, manifest.maps.baseHeight});
     }
     return writeWorldManifest(folder, manifest, error);
 }
 
-bool jasperengine::editor::writeWorldFolder(const fs::path& folder, WorldManifest& manifest, const std::vector<std::shared_ptr<WorldTile>>& tiles,
+bool jasperengine::editor::writeWorldFolder(const fs::path& folder, terraincore::WorldManifest& manifest, const std::vector<std::shared_ptr<terraincore::WorldTile>>& tiles,
                                             const std::map<uint32_t, std::vector<uint8_t>>& trees, std::string& error) {
     std::error_code ec;
     if (fs::exists(folder, ec)) {
@@ -279,11 +278,11 @@ bool jasperengine::editor::writeWorldFolder(const fs::path& folder, WorldManifes
     if (manifest.guid.empty()) manifest.guid = AssetDatabase::generateGuid();
     manifest.tiles.clear();
     // the tiles first and the manifest last: a folder without a manifest is not yet a world
-    for (const std::shared_ptr<WorldTile>& tile : tiles) {
+    for (const std::shared_ptr<terraincore::WorldTile>& tile : tiles) {
         if (!writeTileFile(folder, *tile, error)) return false;
-        WorldTileInfo info;
+        terraincore::WorldTileInfo info;
         info.coord = tile->coord;
-        const TileMinMax whole = tileNodeMinMax(*tile, manifest.lattice, manifest.lattice.tileLevel(), 0, 0);
+        const terraincore::TileMinMax whole = tileNodeMinMax(*tile, manifest.lattice, manifest.lattice.tileLevel(), 0, 0);
         info.minHeight = whole.min;
         info.maxHeight = whole.max;
         const auto treeFile = trees.find(tile->coord.key());
@@ -306,7 +305,7 @@ fs::path jasperengine::editor::worldOverviewCachePath(const fs::path& projectInt
 std::string jasperengine::editor::worldTileFingerprint(const fs::path& folder) {
     std::string text;
     std::error_code ec;
-    for (const TileCoord& tile : scanWorldTiles(folder)) {
+    for (const terraincore::TileCoord& tile : scanWorldTiles(folder)) {
         const fs::path path = folder / terrainWorldTileName(tile);
         const auto size = fs::file_size(path, ec);
         const auto time = fs::last_write_time(path, ec).time_since_epoch().count();
@@ -317,17 +316,17 @@ std::string jasperengine::editor::worldTileFingerprint(const fs::path& folder) {
 
 EditorWorldSource::EditorWorldSource(fs::path folder, fs::path projectInternal): worldFolder(std::move(folder)), internal(std::move(projectInternal)) {}
 
-bool EditorWorldSource::manifest(WorldManifest& out, std::string& error) {
+bool EditorWorldSource::manifest(terraincore::WorldManifest& out, std::string& error) {
     if (!readWorldManifest(worldFolder, out, error)) return false;
     guid = out.guid;
     return true;
 }
 
-std::string EditorWorldSource::tilePath(TileCoord tile) const {
+std::string EditorWorldSource::tilePath(terraincore::TileCoord tile) const {
     return (worldFolder / terrainWorldTileName(tile)).string();
 }
 
-std::string EditorWorldSource::treePath(TileCoord tile) const {
+std::string EditorWorldSource::treePath(terraincore::TileCoord tile) const {
     return (worldFolder / terrainWorldTreeName(tile)).string();
 }
 
@@ -351,15 +350,15 @@ bool TerrainWorldFiles::flushWorld(TerrainWorldRuntime& runtime, std::string* er
     runtime.settleEdits();
     bool ok = true;
     std::string why;
-    for (const TileCoord& tile : runtime.takeRemovedFiles()) {
+    for (const terraincore::TileCoord& tile : runtime.takeRemovedFiles()) {
         if (!removeTileFile(source->folder(), tile, why)) {
             ok = false;
             Out::error("Terrain World: %s", why.c_str());
         }
     }
     bool wroteTiles = false;
-    for (const TileCoord& tile : runtime.takeDirtyFiles()) {
-        std::shared_ptr<const WorldTile> data = runtime.resident(tile);
+    for (const terraincore::TileCoord& tile : runtime.takeDirtyFiles()) {
+        std::shared_ptr<const terraincore::WorldTile> data = runtime.resident(tile);
         if (!data) continue;
         if (writeTileFile(source->folder(), *data, why)) {
             runtime.releaseFlushed(tile);

@@ -51,11 +51,9 @@
 #endif
 
 using namespace jasperengine;
-using namespace jasperengine::diag;
 namespace fs = std::filesystem;
 
 namespace je_crash_common {}
-using namespace je_crash_common;
 
 namespace jasperengine::diag::crash::detail {
 
@@ -70,6 +68,7 @@ namespace jasperengine::diag::crash::detail {
 
 namespace je_crash_common {
 
+    using namespace jasperengine::diag;
     using crash::ReportInfo;
     using crash::detail::CrashState;
 
@@ -435,7 +434,7 @@ namespace je_crash_common {
         for (fs::directory_iterator it(c.sessionsDir, ec), end; !ec && it != end; it.increment(ec)) {
             const fs::path file = it->path();
             if (file.extension() != ".json") continue;
-            nlohmann::json marker = nlohmann::json::parse(readFile(file, 64 << 10), nullptr, false);
+            nlohmann::json marker = nlohmann::json::parse(je_crash_common::readFile(file, 64 << 10), nullptr, false);
             if (!marker.is_object()) {
                 std::error_code removeError;
                 fs::remove(file, removeError);
@@ -449,7 +448,7 @@ namespace je_crash_common {
                 const fs::path folder = c.reportsDir / session;
                 std::error_code folderError;
                 fs::create_directories(folder, folderError);
-                if (classify(folder) == "abnormal_exit") {
+                if (je_crash_common::classify(folder) == "abnormal_exit") {
                     io::AtomicWriteOptions options;
                     options.durability = io::Durability::Cache;
                     io::writeFileAtomic(folder / "session.json", marker.dump(2) + "\n", options);
@@ -603,9 +602,9 @@ namespace jasperengine::diag::crash {
     }
 
     bool install(const Config& input) {
-        Common& c = common();
+        je_crash_common::Common& c = je_crash_common::common();
         std::unique_lock<std::mutex> lock(c.mutex);
-        CrashState& s = detail::state();
+        je_crash_common::CrashState& s = detail::state();
         if (c.installed) return false;
         c.installed = true;
 
@@ -623,15 +622,15 @@ namespace jasperengine::diag::crash {
         }
 
         const std::time_t started = std::time(nullptr);
-        c.session = compactUtc(started) + "-" + std::to_string(io::currentProcessId());
+        c.session = je_crash_common::compactUtc(started) + "-" + std::to_string(io::currentProcessId());
         c.product = config.product ? config.product : "JasperEngine";
         c.version = config.version;
-        c.buildId = buildIdOfMainModule();
+        c.buildId = je_crash_common::buildIdOfMainModule();
         s.startMonotonicNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count());
         s.includeLogTail = config.includeLogTail;
         s.dumpKind = config.dumpKind;
-        copyText(s.sessionName, sizeof(s.sessionName), c.session);
+        je_crash_common::copyText(s.sessionName, sizeof(s.sessionName), c.session);
 
         if (!config.root.empty()) {
             std::error_code ec;
@@ -641,14 +640,14 @@ namespace jasperengine::diag::crash {
             fs::create_directories(c.reportsDir, ec);
             fs::create_directories(c.sessionsDir, ec);
             const fs::path session = c.reportsDir / c.session;
-            copyPath(s.reportsDir, sizeof(s.reportsDir), c.reportsDir);
-            copyPath(s.sessionDir, sizeof(s.sessionDir), session);
-            copyPath(s.crashFile, sizeof(s.crashFile), session / "crash.txt");
-            copyPath(s.dumpFile, sizeof(s.dumpFile), session / "crash.dmp");
-            copyPath(s.tailFile, sizeof(s.tailFile), session / "log-tail.txt");
+            je_crash_common::copyPath(s.reportsDir, sizeof(s.reportsDir), c.reportsDir);
+            je_crash_common::copyPath(s.sessionDir, sizeof(s.sessionDir), session);
+            je_crash_common::copyPath(s.crashFile, sizeof(s.crashFile), session / "crash.txt");
+            je_crash_common::copyPath(s.dumpFile, sizeof(s.dumpFile), session / "crash.dmp");
+            je_crash_common::copyPath(s.tailFile, sizeof(s.tailFile), session / "log-tail.txt");
         }
         if (!config.logFile.empty()) {
-            copyPath(s.logFile, sizeof(s.logFile), config.logFile);
+            je_crash_common::copyPath(s.logFile, sizeof(s.logFile), config.logFile);
         }
 
         std::string header = "JasperEngine crash report v1\n";
@@ -658,9 +657,9 @@ namespace jasperengine::diag::crash {
         header += std::string("platform: ") + platformName() + "\n";
         header += "backend: " + (config.backend.empty() ? std::string("none") : config.backend) + "\n";
         header += "session: " + c.session + "\n";
-        copyText(s.header, sizeof(s.header), header);
+        je_crash_common::copyText(s.header, sizeof(s.header), header);
         s.headerLength = detail::textLength(s.header);
-        copyText(s.banner, sizeof(s.banner), c.product + (c.version.empty() ? std::string() : " " + c.version));
+        je_crash_common::copyText(s.banner, sizeof(s.banner), c.product + (c.version.empty() ? std::string() : " " + c.version));
 
         if (config.ringBytes > 0) {
             // never freed: the handler reads it until the process is gone
@@ -670,26 +669,26 @@ namespace jasperengine::diag::crash {
         }
 
         if (!c.root.empty()) {
-            c.previousSession = sweepSessions(c);
+            c.previousSession = je_crash_common::sweepSessions(c);
             c.abnormalPrevious = !c.previousSession.empty();
             pruneReports(c.reportsDir, config.keepReports, config.keepBytes, config.keepUnhandledDays);
             c.markerFile = c.sessionsDir / (std::to_string(io::currentProcessId()) + ".json");
             io::AtomicWriteOptions options;
             options.durability = io::Durability::Cache;
-            io::writeFileAtomic(c.markerFile, markerText(c, started), options);
+            io::writeFileAtomic(c.markerFile, je_crash_common::markerText(c, started), options);
         }
 
         const bool armed = detail::installPlatform(config);
         // only with a backend to report the abort that follows; otherwise the process's own
         // terminate handler stays (chained to by onTerminate when there is one)
-        if (armed) previousTerminate = std::set_terminate(onTerminate);
+        if (armed) je_crash_common::previousTerminate = std::set_terminate(je_crash_common::onTerminate);
         s.installed.store(true, std::memory_order_release);
 
         if (!c.ringSinkAdded && s.ring) {
-            c.ringSinkAdded = Logger::addSink(std::make_unique<CrashRingSink>()) != 0;
+            c.ringSinkAdded = Logger::addSink(std::make_unique<je_crash_common::CrashRingSink>()) != 0;
         }
         lock.unlock();
-        deliverPending(c);
+        je_crash_common::deliverPending(c);
         return armed;
     }
 
@@ -698,7 +697,7 @@ namespace jasperengine::diag::crash {
     }
 
     void shutdown() {
-        Common& c = common();
+        je_crash_common::Common& c = je_crash_common::common();
         std::lock_guard<std::mutex> lock(c.mutex);
         if (c.markerFile.empty()) return;
         std::error_code ec;
@@ -714,15 +713,15 @@ namespace jasperengine::diag::crash {
     void ringWrite(std::string_view line) {
         if (line.empty()) return;
         if (line.back() == '\n') {
-            ringWriteParts(&line, 1);
+            je_crash_common::ringWriteParts(&line, 1);
             return;
         }
         const std::string_view parts[] = {line, std::string_view("\n", 1)};
-        ringWriteParts(parts, 2);
+        je_crash_common::ringWriteParts(parts, 2);
     }
 
     std::string ringContents() {
-        const CrashState& s = detail::state();
+        const je_crash_common::CrashState& s = detail::state();
         if (!s.ring || s.ringCapacity == 0) return {};
         const uint64_t cursor = s.ringCursor.load(std::memory_order_acquire);
         if (cursor <= s.ringCapacity) return std::string(s.ring, static_cast<size_t>(cursor));
@@ -736,7 +735,7 @@ namespace jasperengine::diag::crash {
 
     void setTag(std::string_view key, std::string_view value) {
         if (key.empty()) return;
-        CrashState& s = detail::state();
+        je_crash_common::CrashState& s = detail::state();
         detail::Tag* slot = nullptr;
         for (detail::Tag& tag : s.tags) {
             if (tag.key[0] != '\0' && key == std::string_view(tag.key)) {
@@ -763,8 +762,8 @@ namespace jasperengine::diag::crash {
             // one line each: a newline would forge a key of crash.txt
             char cleanKey[detail::kTagKeyBytes] = {0};
             char cleanValue[detail::kTagValueBytes] = {0};
-            copyText(cleanKey, sizeof(cleanKey), key);
-            copyText(cleanValue, sizeof(cleanValue), value);
+            je_crash_common::copyText(cleanKey, sizeof(cleanKey), key);
+            je_crash_common::copyText(cleanValue, sizeof(cleanValue), value);
             for (char& ch : cleanKey) {
                 if (ch == '\n' || ch == '\r' || ch == ':' || ch == ' ') ch = '_';
             }
@@ -778,19 +777,19 @@ namespace jasperengine::diag::crash {
     }
 
     fs::path reportsDirectory() {
-        Common& c = common();
+        je_crash_common::Common& c = je_crash_common::common();
         std::lock_guard<std::mutex> lock(c.mutex);
         return c.reportsDir;
     }
 
     fs::path sessionFolder() {
-        Common& c = common();
+        je_crash_common::Common& c = je_crash_common::common();
         std::lock_guard<std::mutex> lock(c.mutex);
         return c.reportsDir.empty() ? fs::path() : c.reportsDir / c.session;
     }
 
     const std::string& sessionId() {
-        return common().session;
+        return je_crash_common::common().session;
     }
 
     std::optional<ReportInfo> readReport(const fs::path& folder) {
@@ -799,7 +798,7 @@ namespace jasperengine::diag::crash {
         ReportInfo info;
         info.id = folder.filename().string();
         info.folder = folder;
-        info.kind = classify(folder);
+        info.kind = je_crash_common::classify(folder);
         info.handled = fs::exists(folder / "handled", ec);
         for (fs::directory_iterator it(folder, ec), end; !ec && it != end; it.increment(ec)) {
             std::error_code fileError;
@@ -808,36 +807,36 @@ namespace jasperengine::diag::crash {
         std::sort(info.files.begin(), info.files.end());
         std::time_t when = 0;
         if (info.kind == "crash") {
-            const std::string text = readFile(folder / "crash.txt", 64 << 10);
-            info.reason = reportValue(text, "reason");
-            info.product = reportValue(text, "product");
-            info.version = reportValue(text, "version");
-            when = fileTime(folder / "crash.txt");
+            const std::string text = je_crash_common::readFile(folder / "crash.txt", 64 << 10);
+            info.reason = je_crash_common::reportValue(text, "reason");
+            info.product = je_crash_common::reportValue(text, "product");
+            info.version = je_crash_common::reportValue(text, "version");
+            when = je_crash_common::fileTime(folder / "crash.txt");
         } else if (info.kind == "hang") {
             fs::path last;
             for (const fs::path& file : info.files) {
                 const std::string name = file.filename().string();
                 if (name.rfind("hang-", 0) == 0 && file.extension() == ".txt") last = file;
             }
-            const std::string text = readFile(last, 64 << 10);
-            const std::string phase = reportValue(text, "phase");
-            const std::string scopes = reportValue(text, "busy_scopes");
+            const std::string text = je_crash_common::readFile(last, 64 << 10);
+            const std::string phase = je_crash_common::reportValue(text, "phase");
+            const std::string scopes = je_crash_common::reportValue(text, "busy_scopes");
             info.reason = "not responding (" + (scopes.empty() || scopes == "none" ? phase : scopes) + ")";
-            info.product = reportValue(text, "product");
-            info.version = reportValue(text, "version");
-            when = fileTime(last);
+            info.product = je_crash_common::reportValue(text, "product");
+            info.version = je_crash_common::reportValue(text, "version");
+            when = je_crash_common::fileTime(last);
         } else {
-            nlohmann::json marker = nlohmann::json::parse(readFile(folder / "session.json", 64 << 10), nullptr, false);
+            nlohmann::json marker = nlohmann::json::parse(je_crash_common::readFile(folder / "session.json", 64 << 10), nullptr, false);
             if (marker.is_object()) {
                 info.product = marker.value("product", std::string());
                 info.version = marker.value("version", std::string());
             }
             info.reason = "ended without a report (killed, out of memory or power loss)";
-            when = sessionTime(info.id);
+            when = je_crash_common::sessionTime(info.id);
         }
-        if (when == 0) when = sessionTime(info.id);
+        if (when == 0) when = je_crash_common::sessionTime(info.id);
         info.timeUnix = static_cast<int64_t>(when);
-        info.time = isoUtc(when);
+        info.time = je_crash_common::isoUtc(when);
         return info;
     }
 
@@ -847,7 +846,7 @@ namespace jasperengine::diag::crash {
         std::error_code ec;
         for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
             std::error_code typeError;
-            if (it->is_directory(typeError) && sessionTime(it->path().filename().string()) != 0) {
+            if (it->is_directory(typeError) && je_crash_common::sessionTime(it->path().filename().string()) != 0) {
                 names.push_back(it->path().filename().string());
             }
         }
@@ -886,7 +885,7 @@ namespace jasperengine::diag::crash {
     }
 
     bool lastSessionEndedAbnormally() {
-        Common& c = common();
+        je_crash_common::Common& c = je_crash_common::common();
         std::lock_guard<std::mutex> lock(c.mutex);
         return c.abnormalPrevious;
     }
@@ -894,7 +893,7 @@ namespace jasperengine::diag::crash {
     std::optional<ReportInfo> lastSessionReport() {
         std::string session;
         {
-            Common& c = common();
+            je_crash_common::Common& c = je_crash_common::common();
             std::lock_guard<std::mutex> lock(c.mutex);
             session = c.previousSession;
         }
@@ -905,14 +904,14 @@ namespace jasperengine::diag::crash {
     }
 
     void setReportHook(ReportHook hook) {
-        Common& c = common();
+        je_crash_common::Common& c = je_crash_common::common();
         bool installed = false;
         {
             std::lock_guard<std::mutex> lock(c.mutex);
             c.hook = std::move(hook);
             installed = c.installed;
         }
-        if (installed) deliverPending(c);
+        if (installed) je_crash_common::deliverPending(c);
     }
 
     bool isDebugCrashMode(std::string_view mode) {
@@ -935,7 +934,7 @@ namespace jasperengine::diag::crash {
         }
         if (detail::platformDebugCrash(mode)) return true;
         if (mode == "segv") {
-            debugSegv();
+            je_crash_common::debugSegv();
         } else if (mode == "abort") {
             std::abort();
         } else if (mode == "terminate") {
@@ -945,15 +944,15 @@ namespace jasperengine::diag::crash {
                 std::terminate();
             }
         } else if (mode == "stack_overflow") {
-            debugRecurse(0);
+            je_crash_common::debugRecurse(0);
         } else if (mode == "worker_segv") {
-            std::thread worker = thread::spawnNamed("je-debug-crash", []() { debugSegv(); });
+            std::thread worker = thread::spawnNamed("je-debug-crash", []() { je_crash_common::debugSegv(); });
             worker.join();
         } else if (mode == "fpe") {
-            debugFpe();
+            je_crash_common::debugFpe();
         } else if (mode == "pure_call") {
             // the pure virtual's handler terminates the process from the base's destructor
-            PureBase* object = new PureDerived();
+            je_crash_common::PureBase* object = new je_crash_common::PureDerived();
             delete object;
         }
         // not reached unless the platform ignored the fault
@@ -997,7 +996,7 @@ namespace jasperengine::diag::crash {
     }
 
     const std::string& buildId() {
-        return common().buildId;
+        return je_crash_common::common().buildId;
     }
 
     const char* platformName() {
@@ -1019,7 +1018,7 @@ namespace jasperengine::diag::crash {
 #else
             const char* os = "unknown";
 #endif
-            return std::string(os) + "-" + architectureName();
+            return std::string(os) + "-" + je_crash_common::architectureName();
         }();
         return name.c_str();
     }
@@ -1034,13 +1033,13 @@ namespace jasperengine::diag::crash {
         };
         std::vector<Folder> folders;
         std::error_code ec;
-        const std::string current = common().session;
+        const std::string current = je_crash_common::common().session;
         for (fs::directory_iterator it(reportsDir, ec), end; !ec && it != end; it.increment(ec)) {
             std::error_code typeError;
             const std::string name = it->path().filename().string();
-            if (!it->is_directory(typeError) || sessionTime(name) == 0) continue;
+            if (!it->is_directory(typeError) || je_crash_common::sessionTime(name) == 0) continue;
             std::error_code existsError;
-            folders.push_back({it->path(), name, folderBytes(it->path()), fs::exists(it->path() / "handled", existsError), sessionTime(name)});
+            folders.push_back({it->path(), name, je_crash_common::folderBytes(it->path()), fs::exists(it->path() / "handled", existsError), je_crash_common::sessionTime(name)});
         }
         // newest first: the names start with their UTC time
         std::sort(folders.begin(), folders.end(), [](const Folder& a, const Folder& b) { return a.name > b.name; });

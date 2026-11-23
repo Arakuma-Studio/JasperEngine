@@ -21,7 +21,6 @@
 #endif
 
 using namespace jasperengine;
-using namespace jasperengine::noise;
 
 #ifdef JE_CURL_AVX2
 namespace {

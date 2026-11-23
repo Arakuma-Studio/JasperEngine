@@ -40,7 +40,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::pixelart;
+
+namespace jasperengine::editor::pixelart {
+
 namespace fs = std::filesystem;
 using Json = nlohmann::json;
 
@@ -366,11 +368,11 @@ namespace {
 
 }
 
-std::string jasperengine::editor::pixelart::fixStepName(const FixPlan& plan){
+std::string fixStepName(const FixPlan& plan){
     return "Fix Pixel Art (" + std::to_string(plan.fixes.size()) + ")";
 }
 
-std::vector<std::string> jasperengine::editor::pixelart::staleChanges(Project& project, const Scope& scope, const std::vector<FixChange>& changes){
+std::vector<std::string> staleChanges(Project& project, const Scope& scope, const std::vector<FixChange>& changes){
     Scope fresh = scope;
     fresh.assumeModeOn = true;
     std::vector<PixelProblem> errors;
@@ -411,7 +413,7 @@ std::vector<std::string> jasperengine::editor::pixelart::staleChanges(Project& p
     return stale;
 }
 
-bool jasperengine::editor::pixelart::applyChanges(Project& project, const std::vector<FixChange>& requested, const std::string& stepName,
+bool applyChanges(Project& project, const std::vector<FixChange>& requested, const std::string& stepName,
                                                   FixApplyReport& report, std::string& error, const Scope* verify){
     report = FixApplyReport();
     // two findings may plan one change (integer_scale's and particles_grid's camera): it is made once
@@ -476,10 +478,12 @@ bool jasperengine::editor::pixelart::applyChanges(Project& project, const std::v
     return true;
 }
 
-bool jasperengine::editor::pixelart::applyFixPlan(Project& project, const FixPlan& plan, const std::string& stepName, FixApplyReport& report,
+bool applyFixPlan(Project& project, const FixPlan& plan, const std::string& stepName, FixApplyReport& report,
                                                   std::string& error, const Scope* verify){
     std::vector<FixChange> changes;
     for (const auto& [key, option] : plan.fixes)
         changes.insert(changes.end(), option.changes.begin(), option.changes.end());
     return applyChanges(project, changes, stepName, report, error, verify);
 }
+
+}  // namespace jasperengine::editor::pixelart

@@ -31,7 +31,6 @@ using namespace jasperengine;
 #include <cstring>
 #include <map>
 
-using namespace jasperengine::terraincore;
 
 struct TerrainWorldRender::Impl {
     struct Page {
@@ -45,7 +44,7 @@ struct TerrainWorldRender::Impl {
 
     struct Item {
         bool overview = false;
-        TileCoord tile;
+        terraincore::TileCoord tile;
         uint32_t first[2] = {0, 0};
         uint32_t count[2] = {0, 0};
     };
@@ -87,11 +86,11 @@ bool jasperengine::terrainWorldHasHoles(const TerrainComponent& terrain) {
 namespace {
 
     // D3: big-endian 16-bit samples in RG8 rows, from a map of little-endian ones (gutter included)
-    void heightsToRG8(const TileMap& height, std::vector<uint8_t>& out) {
+    void heightsToRG8(const terraincore::TileMap& height, std::vector<uint8_t>& out) {
         out.resize(static_cast<size_t>(height.width) * height.height * 2);
         for (size_t i = 0; i < static_cast<size_t>(height.width) * height.height; i++) {
             const uint16_t value = static_cast<uint16_t>(height.bytes[i * 2] | (height.bytes[i * 2 + 1] << 8));
-            encodeHeightRG8(value, out.data() + i * 2);
+            terraincore::encodeHeightRG8(value, out.data() + i * 2);
         }
     }
 
@@ -124,14 +123,14 @@ void RenderSystem::updateTerrainWorldPages(Entity entity, TerrainComponent& terr
     bool changed = false;
 
     // the overview, made again whole when it changes (R52: sg_update_image cannot patch part of it)
-    const WorldOverview& overview = runtime->getOverview();
+    const terraincore::WorldOverview& overview = runtime->getOverview();
     if (state.overviewRev != runtime->overviewRevision()){
         state.overviewRev = runtime->overviewRevision();
         state.overviewMade = false;
         if (!overview.empty()){
             std::vector<uint8_t> rg(overview.heights.size() * 2);
             for (size_t i = 0; i < overview.heights.size(); i++)
-                encodeHeightRG8(overview.heights[i], rg.data() + i * 2);
+                terraincore::encodeHeightRG8(overview.heights[i], rg.data() + i * 2);
             JE_GPU_ALLOC_SCOPE(Terrain, "Terrain World overview");
             state.overviewMade = makeTexture(state.overviewHeight, "terrain-world-overview", GpuTextureFormat::RG8, overview.width(), overview.height(),
                                              rg.data(), rg.size(), TextureFilter::NEAREST) &&
@@ -142,10 +141,10 @@ void RenderSystem::updateTerrainWorldPages(Entity entity, TerrainComponent& terr
     }
 
     // pages of tiles that lost theirs (evicted, removed) go
-    TileStreamer& streamer = runtime->tiles();
+    terraincore::TileStreamer& streamer = runtime->tiles();
     for (auto it = state.pages.begin(); it != state.pages.end();){
-        const TileState tileState = streamer.state(TileCoord::fromKey(it->first));
-        if (tileState != TileState::Resident && tileState != TileState::Uploading){
+        const terraincore::TileState tileState = streamer.state(terraincore::TileCoord::fromKey(it->first));
+        if (tileState != terraincore::TileState::Resident && tileState != terraincore::TileState::Uploading){
             TerrainWorldRender::Impl::destroyPage(*it->second);
             it = state.pages.erase(it);
             changed = true;
@@ -156,9 +155,9 @@ void RenderSystem::updateTerrainWorldPages(Entity entity, TerrainComponent& terr
 
     // R13: this frame's uploads within the byte budget, at least one; a tile draws once all its
     // images are up (spec Deviations: immutable images on every backend)
-    const WorldLattice& lattice = runtime->lattice();
-    for (const TileCoord& tile : streamer.planUploads()){
-        std::shared_ptr<const WorldTile> data = streamer.data(tile);
+    const terraincore::WorldLattice& lattice = runtime->lattice();
+    for (const terraincore::TileCoord& tile : streamer.planUploads()){
+        std::shared_ptr<const terraincore::WorldTile> data = streamer.data(tile);
         if (!data || data->height.empty()){
             streamer.uploadRefused(tile);
             continue;
@@ -172,7 +171,7 @@ void RenderSystem::updateTerrainWorldPages(Entity entity, TerrainComponent& terr
                               TextureFilter::NEAREST);
         page->bytes = rg.size();
         for (int m = 0; m < MAX_TERRAIN_BLENDMAPS && m < static_cast<int>(data->blend.size()) && ok; m++){
-            const TileMap& blend = data->blend[m];
+            const terraincore::TileMap& blend = data->blend[m];
             if (blend.empty())
                 continue;
             ok = makeTexture(page->blend[m], "terrain-world-blend", GpuTextureFormat::RGBA8, blend.width, blend.height, blend.bytes.data(), blend.bytes.size(),
@@ -228,7 +227,7 @@ void RenderSystem::selectTerrainWorld(TerrainComponent& terrain, const Transform
     JE_PROFILE_SCOPE(TerrainWorldSystem::PROFILE_SCOPE);
 
     const Vector3 origin = transform.worldPosition;
-    WorldSelectParams params;
+    terraincore::WorldSelectParams params;
     params.lattice = runtime->lattice();
     params.maxHeight = runtime->maxHeight();
     params.lodDistance = runtime->tiles().budgets().lodDistance;
@@ -249,13 +248,13 @@ void RenderSystem::selectTerrainWorld(TerrainComponent& terrain, const Transform
     }
     params.maxNearTiles = terrainWorldPlatformBudget().nearTiles;
     params.maxNodesPerGrid = static_cast<int>(TERRAIN_WORLD_MAX_NODES);
-    params.page = [&](TileCoord tile) -> const WorldTile* {
+    params.page = [&](terraincore::TileCoord tile) -> const terraincore::WorldTile* {
         const auto page = state.pages.find(tile.key());
-        if (page == state.pages.end() || runtime->tiles().state(tile) != TileState::Resident)
+        if (page == state.pages.end() || runtime->tiles().state(tile) != terraincore::TileState::Resident)
             return nullptr;
         return runtime->resident(tile).get();
     };
-    WorldSelection selection;
+    terraincore::WorldSelection selection;
     selectWorld(params, runtime->occupancy(), selection);
 
     TerrainWorldStats& stats = runtime->mutableStats();
@@ -266,32 +265,32 @@ void RenderSystem::selectTerrainWorld(TerrainComponent& terrain, const Transform
     // kept only while the overlay asks for it (R37)
     if (runtime->recordingDrawnNodes() && &camera == scene->findComponent<CameraComponent>(scene->getCamera())){
         std::vector<TerrainWorldDrawnNode> drawn;
-        auto keep = [&](const WorldSelectNode& node, bool overview){
+        auto keep = [&](const terraincore::WorldSelectNode& node, bool overview){
             drawn.push_back(TerrainWorldDrawnNode{node.x, node.z, node.size, node.level, overview});
         };
-        for (const WorldTileDraws& draws : selection.near){
-            for (const WorldSelectNode& node : draws.full) keep(node, false);
-            for (const WorldSelectNode& node : draws.half) keep(node, false);
+        for (const terraincore::WorldTileDraws& draws : selection.near){
+            for (const terraincore::WorldSelectNode& node : draws.full) keep(node, false);
+            for (const terraincore::WorldSelectNode& node : draws.half) keep(node, false);
         }
-        for (const WorldSelectNode& node : selection.overviewFull) keep(node, true);
-        for (const WorldSelectNode& node : selection.overviewHalf) keep(node, true);
+        for (const terraincore::WorldSelectNode& node : selection.overviewFull) keep(node, true);
+        for (const terraincore::WorldSelectNode& node : selection.overviewHalf) keep(node, true);
         runtime->setDrawnNodes(std::move(drawn));
     }
 
     // one buffer per grid for the whole view, each item a slice of it bound by byte offset (R39)
-    auto append = [&](int grid, const WorldSelectNode& node){
+    auto append = [&](int grid, const terraincore::WorldSelectNode& node){
         view.nodesbuffer[grid].addVector2(AttributeType::TERRAINNODEPOSITION, Vector2(node.x, node.z));
         view.nodesbuffer[grid].addFloat(AttributeType::TERRAINNODESIZE, node.size);
         view.nodesbuffer[grid].addFloat(AttributeType::TERRAINNODERANGE, node.range);
         view.nodesbuffer[grid].addFloat(AttributeType::TERRAINNODERESOLUTION, node.resolution);
     };
-    for (const WorldTileDraws& draws : selection.near){
+    for (const terraincore::WorldTileDraws& draws : selection.near){
         TerrainWorldRender::Impl::Item item;
         item.tile = draws.tile;
         item.first[0] = view.nodesbuffer[0].getCount();
         item.first[1] = view.nodesbuffer[1].getCount();
-        for (const WorldSelectNode& node : draws.full) append(0, node);
-        for (const WorldSelectNode& node : draws.half) append(1, node);
+        for (const terraincore::WorldSelectNode& node : draws.full) append(0, node);
+        for (const terraincore::WorldSelectNode& node : draws.half) append(1, node);
         item.count[0] = static_cast<uint32_t>(draws.full.size());
         item.count[1] = static_cast<uint32_t>(draws.half.size());
         viewState.items.push_back(item);
@@ -301,8 +300,8 @@ void RenderSystem::selectTerrainWorld(TerrainComponent& terrain, const Transform
         item.overview = true;
         item.first[0] = view.nodesbuffer[0].getCount();
         item.first[1] = view.nodesbuffer[1].getCount();
-        for (const WorldSelectNode& node : selection.overviewFull) append(0, node);
-        for (const WorldSelectNode& node : selection.overviewHalf) append(1, node);
+        for (const terraincore::WorldSelectNode& node : selection.overviewFull) append(0, node);
+        for (const terraincore::WorldSelectNode& node : selection.overviewHalf) append(1, node);
         item.count[0] = static_cast<uint32_t>(selection.overviewFull.size());
         item.count[1] = static_cast<uint32_t>(selection.overviewHalf.size());
         viewState.items.push_back(item);
@@ -331,7 +330,7 @@ bool RenderSystem::drawTerrainWorldItems(ObjectRender& render, MeshComponent& me
     for (int m = 0; m < MAX_TERRAIN_BLENDMAPS; m++)
         blendSlots[m] = shaderData.getTextureIndex(static_cast<TextureShaderType>(static_cast<int>(TextureShaderType::BLENDMAP) + m));
 
-    const WorldLattice& lattice = runtime->lattice();
+    const terraincore::WorldLattice& lattice = runtime->lattice();
     const float tileSize = lattice.tileSize();
     const TerrainWorldComponent* worldComponent = scene->findComponent<TerrainWorldComponent>(runtime->getEntity());
     // R9: the overview casts no shadow unless asked; a near tile does
@@ -347,7 +346,7 @@ bool RenderSystem::drawTerrainWorldItems(ObjectRender& render, MeshComponent& me
     // heights decode over the world's range (R2), not the Terrain's unused one
     block.eyeAndTerrain[4] = runtime->maxHeight();
     const float skirt = std::max(1.0f, runtime->manifest().skirtDepth * runtime->maxHeight());
-    const WorldOverview& overview = runtime->getOverview();
+    const terraincore::WorldOverview& overview = runtime->getOverview();
 
     int draws = 0;
     for (const TerrainWorldRender::Impl::Item& item : viewIt->second.items){

@@ -21,7 +21,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::ui;
+
+namespace jasperengine::editor::ui {
 
 namespace {
 
@@ -137,7 +138,7 @@ namespace {
 
 }
 
-void ui::drawCurveThumbnail(ImGuiID cacheId, ImDrawList* drawList, ImVec2 min, ImVec2 max, const Curve& curve, const Curve* second,
+void drawCurveThumbnail(ImGuiID cacheId, ImDrawList* drawList, ImVec2 min, ImVec2 max, const Curve& curve, const Curve* second,
                             const curveops::CurveRange& range, ImU32 color) {
     Thumbnail& thumb = thumbnails()[cacheId];
     const bool stale = thumb.points.empty() || thumb.curve != curve || thumb.hasSecond != (second != nullptr) ||
@@ -185,7 +186,7 @@ void ui::drawCurveThumbnail(ImGuiID cacheId, ImDrawList* drawList, ImVec2 min, I
     }
 }
 
-EditPhase ui::curveField(const char* id, Curve& curve, const CurveFieldOptions& options) {
+EditPhase curveField(const char* id, Curve& curve, const CurveFieldOptions& options) {
     ImGui::PushID(id);
     const ImGuiID fieldId = ImGui::GetID("##curveField");
     ImGuiContext& g = *GImGui;
@@ -217,7 +218,7 @@ EditPhase ui::curveField(const char* id, Curve& curve, const CurveFieldOptions& 
     return phase;
 }
 
-EditPhase ui::minMaxCurveField(const char* id, particles::MinMaxCurve& value, const CurveFieldOptions& options) {
+EditPhase minMaxCurveField(const char* id, particles::MinMaxCurve& value, const CurveFieldOptions& options) {
     using particles::CurveMode;
     ImGui::PushID(id);
     EditPhase phase = EditPhase::None;
@@ -626,3 +627,5 @@ void CurveWindow::show() {
         else close();
     }
 }
+
+}  // namespace jasperengine::editor::ui

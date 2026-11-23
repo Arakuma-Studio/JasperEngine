@@ -23,7 +23,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::publish;
+
+namespace jasperengine::editor::publish {
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -235,7 +237,7 @@ namespace {
 
 }
 
-TargetOs publish::targetOs(BuildPlatform platform) {
+TargetOs targetOs(BuildPlatform platform) {
     switch (platform) {
         case BuildPlatform::Windows: return TargetOs::Windows;
         case BuildPlatform::Linux: return TargetOs::Linux;
@@ -247,7 +249,7 @@ TargetOs publish::targetOs(BuildPlatform platform) {
     return TargetOs::Linux;
 }
 
-std::string publish::windowsNameProblem(const std::string& relativePath) {
+std::string windowsNameProblem(const std::string& relativePath) {
     static const std::set<std::string> reserved = {"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
                                                    "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"};
     size_t start = 0;
@@ -266,7 +268,7 @@ std::string publish::windowsNameProblem(const std::string& relativePath) {
     return "";
 }
 
-bool publish::validatePayload(const fs::path& root, const ValidationTarget& target, std::vector<std::string>& findings) {
+bool validatePayload(const fs::path& root, const ValidationTarget& target, std::vector<std::string>& findings) {
     const size_t before = findings.size();
     std::error_code ec;
     if (!fs::is_directory(root, ec)) {
@@ -369,3 +371,5 @@ bool publish::validatePayload(const fs::path& root, const ValidationTarget& targ
     }
     return findings.size() == before;
 }
+
+}  // namespace jasperengine::editor::publish

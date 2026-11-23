@@ -25,10 +25,11 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::tilemap;
 
 // file-local, in a namespace of its own: unity builds merge the editor's sources
 namespace jasperengine::editor::tilemapscenetools {
+
+using namespace jasperengine::editor::tilemap;
 
     const char* commandIdOf(TileTool tool) {
         switch (tool) {
@@ -148,9 +149,10 @@ namespace jasperengine::editor::tilemapscenetools {
 
 }
 
-using namespace jasperengine::editor::tilemapscenetools;
 
 // ---- TilemapTools
+
+namespace jasperengine::editor::tilemap {
 
 TilemapTools& TilemapTools::get() {
     static TilemapTools instance;
@@ -268,7 +270,7 @@ void TilemapTools::rotateBrush(int direction) {
         return;
     }
     int width = 0, height = 0;
-    stampSize(brush.stamp, width, height);
+    tilemapscenetools::stampSize(brush.stamp, width, height);
     for (BrushCell& cell : brush.stamp.cells) {
         const int x = cell.x, y = cell.y;
         // the cell offsets are y up: a quarter turn clockwise maps (x, y) to (y, w - 1 - x)
@@ -279,7 +281,7 @@ void TilemapTools::rotateBrush(int direction) {
             cell.x = height - 1 - y;
             cell.y = x;
         }
-        cell.flags = rotateFlags(cell.flags, direction);
+        cell.flags = tilemapscenetools::rotateFlags(cell.flags, direction);
     }
     std::swap(brush.stamp.width, brush.stamp.height);
 }
@@ -288,7 +290,7 @@ void TilemapTools::flipBrush(bool vertical) {
     TileBrushState& brush = brushState;
     if (brush.stamp.empty()) return;
     int width = 0, height = 0;
-    stampSize(brush.stamp, width, height);
+    tilemapscenetools::stampSize(brush.stamp, width, height);
     for (BrushCell& cell : brush.stamp.cells) {
         if (vertical) {
             cell.y = height - 1 - cell.y;
@@ -363,7 +365,7 @@ void TilemapTools::cancelStroke() {
 
 TilemapSceneTool::TilemapSceneTool(uint32_t sceneId, TileTool mode): sceneId(sceneId), mode(mode) {
     TilemapTools::get().activeTool = this;
-    labelText = CommandCatalog::editor().tooltip(commandIdOf(mode), toolName(mode));
+    labelText = CommandCatalog::editor().tooltip(tilemapscenetools::commandIdOf(mode), tilemapscenetools::toolName(mode));
 }
 
 TilemapSceneTool::~TilemapSceneTool() {
@@ -371,7 +373,7 @@ TilemapSceneTool::~TilemapSceneTool() {
 }
 
 const char* TilemapSceneTool::id() const {
-    return idOf(mode);
+    return tilemapscenetools::idOf(mode);
 }
 
 const char* TilemapSceneTool::label() const {
@@ -407,7 +409,7 @@ bool TilemapSceneTool::targetFor(TileLayerContext& context, bool refuseLinked) {
 
 bool TilemapSceneTool::cellsAt(const SceneToolEvent& event, const TileLayerContext& context, CellCoord& logical, CellCoord& display) const {
     TilePoint point;
-    if (!rayToPlane(event.ray, context, point)) return false;
+    if (!tilemapscenetools::rayToPlane(event.ray, context, point)) return false;
     logical = tilegrid::localToCell(context.spec, point);
     display = logical;
     // a dual-grid tile sits half a cell down-left of its logical corner (R27)
@@ -589,7 +591,7 @@ SceneToolPress TilemapSceneTool::press(const SceneToolEvent& event) {
         pickAt(context, logical, display);
         // the picker hands over to Paint in place: this tool is still the view's while its press runs
         mode = TileTool::Paint;
-        labelText = CommandCatalog::editor().tooltip(commandIdOf(mode), toolName(mode));
+        labelText = CommandCatalog::editor().tooltip(tilemapscenetools::commandIdOf(mode), tilemapscenetools::toolName(mode));
         tools.toolMode = TileTool::Paint;
         return SceneToolPress::Captured;
     }
@@ -660,7 +662,7 @@ void TilemapSceneTool::drag(const SceneToolEvent& event) {
     if (stroke == StrokeShape::None) return;
     TileLayerContext context;
     TilemapTools& tools = TilemapTools::get();
-    if (!targetFor(context, false) || !sameLayer(context, strokeLayer)) {
+    if (!targetFor(context, false) || !tilemapscenetools::sameLayer(context, strokeLayer)) {
         cancel();
         return;
     }
@@ -754,7 +756,7 @@ void TilemapSceneTool::drawCellOutline(const TileLayerContext& context, SceneRen
     const TilePoint shift = display && context.layer->dualGrid ? tilegrid::dualGridShift(context.spec) : TilePoint{0.0, 0.0};
     ImVec2 points[6];
     for (int i = 0; i < polygon.count; i++) {
-        const Vector3 world = cellLocalToWorld(context, TilePoint{polygon.points[i].x + shift.x, polygon.points[i].y + shift.y});
+        const Vector3 world = tilemapscenetools::cellLocalToWorld(context, TilePoint{polygon.points[i].x + shift.x, polygon.points[i].y + shift.y});
         if (!SceneTools::worldToScreen(sceneId, render, world, points[i])) return;
     }
     list.AddPolyline(points, polygon.count, color, ImDrawFlags_Closed, thickness);
@@ -770,7 +772,7 @@ void TilemapSceneTool::drawGrid(const TileLayerContext& context, SceneRender& re
     bool any = false;
     for (int i = 0; i < 4; i++) {
         TilePoint point;
-        if (!rayToPlane(render.screenToRay(cornerXs[i], cornerYs[i]), context, point)) continue;
+        if (!tilemapscenetools::rayToPlane(render.screenToRay(cornerXs[i], cornerYs[i]), context, point)) continue;
         rect.merge(tilegrid::localToCell(context.spec, point));
         any = true;
     }
@@ -789,8 +791,8 @@ void TilemapSceneTool::drawGrid(const TileLayerContext& context, SceneRender& re
         rect.maxY = (int32_t)std::min<int64_t>(rect.maxY, rect.minY + maxLines);
         const auto segment = [&](TilePoint a, TilePoint b) {
             ImVec2 p0, p1;
-            if (SceneTools::worldToScreen(sceneId, render, cellLocalToWorld(context, a), p0) &&
-                SceneTools::worldToScreen(sceneId, render, cellLocalToWorld(context, b), p1)) {
+            if (SceneTools::worldToScreen(sceneId, render, tilemapscenetools::cellLocalToWorld(context, a), p0) &&
+                SceneTools::worldToScreen(sceneId, render, tilemapscenetools::cellLocalToWorld(context, b), p1)) {
                 list.AddLine(p0, p1, lineColor);
             }
         };
@@ -816,7 +818,7 @@ void TilemapSceneTool::drawGrid(const TileLayerContext& context, SceneRender& re
         CellCoord around = hoverCell;
         if (!hoverValid) {
             TilePoint point;
-            if (rayToPlane(render.screenToRay((float)viewWidth * 0.5f, (float)viewHeight * 0.5f), context, point)) around = tilegrid::localToCell(context.spec, point);
+            if (tilemapscenetools::rayToPlane(render.screenToRay((float)viewWidth * 0.5f, (float)viewHeight * 0.5f), context, point)) around = tilegrid::localToCell(context.spec, point);
             else around = CellCoord{(int32_t)((rect.minX + rect.maxX) / 2), (int32_t)((rect.minY + rect.maxY) / 2)};
         }
         rect.minX = around.x - 40; rect.maxX = around.x + 40;
@@ -856,7 +858,7 @@ void TilemapSceneTool::drawTileGhost(const TileLayerContext& context, SceneRende
     const TilePoint quad[4] = {{x0, y1}, {x1, y1}, {x1, y0}, {x0, y0}};
     ImVec2 screen[4];
     for (int i = 0; i < 4; i++) {
-        if (!SceneTools::worldToScreen(sceneId, render, cellLocalToWorld(context, quad[i]), screen[i])) return;
+        if (!SceneTools::worldToScreen(sceneId, render, tilemapscenetools::cellLocalToWorld(context, quad[i]), screen[i])) return;
     }
     ImVec2 uv[4] = {ImVec2(info->u0, info->v0), ImVec2(info->u1, info->v0), ImVec2(info->u1, info->v1), ImVec2(info->u0, info->v1)};
     if (flags & TILE_TRANSPOSE) std::swap(uv[1], uv[3]);
@@ -885,7 +887,7 @@ void TilemapSceneTool::drawGhost(const TileLayerContext& context, SceneRender& r
             ImVec2 points[6];
             bool visible = true;
             for (int i = 0; i < polygon.count && visible; i++) {
-                visible = SceneTools::worldToScreen(sceneId, render, cellLocalToWorld(context, polygon.points[i]), points[i]);
+                visible = SceneTools::worldToScreen(sceneId, render, tilemapscenetools::cellLocalToWorld(context, polygon.points[i]), points[i]);
             }
             if (visible) {
                 list.AddConvexPolyFilled(points, polygon.count, IM_COL32(r, g, b, 128));
@@ -955,3 +957,5 @@ void TilemapSceneTool::drawOverlay(SceneRender& render, ImDrawList& list) {
         drawCellOutline(context, render, list, display ? hoverDisplay : hoverCell, accent, 2.0f, display);
     }
 }
+
+}  // namespace jasperengine::editor::tilemap

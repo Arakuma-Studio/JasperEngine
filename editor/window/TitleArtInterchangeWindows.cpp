@@ -43,7 +43,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::titledesigner;
 namespace ta = jasperengine::titleart;
 namespace fs = std::filesystem;
 
@@ -171,12 +170,12 @@ namespace {
                         // a note opens its layer in the Title Designer
                         InspectorWindowTitleArt::openInDesigner(s.document);
                         if (TitleDesignerWindow* designer = Backend::getApp().getTitleDesignerWindow()) {
-                            TitleDesignerState& state = designer->designer();
+                            titledesigner::TitleDesignerState& state = designer->designer();
                             ta::TitleArtDoc copy = state.committed();
                             ta::TitleIdGenerator ids;
                             TitleOpsResult unused;
                             TitleOpContext context(copy, ids, unused);
-                            if (const ta::Json* found = context.resolveLayer(layer, "layer")) state.selectOne(NodeRef{NodeKind::Layer, found->value("id", std::string()), "", ""});
+                            if (const ta::Json* found = context.resolveLayer(layer, "layer")) state.selectOne(titledesigner::NodeRef{titledesigner::NodeKind::Layer, found->value("id", std::string()), "", ""});
                         }
                     }
                     ImGui::TableNextColumn();
@@ -421,7 +420,7 @@ namespace {
         ImGui::End();
     }
 
-    void openExport(TitleDesignerState& state) {
+    void openExport(titledesigner::TitleDesignerState& state) {
         ExportState& s = exportState();
         if (!state.document() || !state.project()) return;
         s.open = true;
@@ -436,7 +435,7 @@ namespace {
 
     // ---- Photoshop styles (R57) ----
 
-    void importStyle(TitleDesignerState& state, bool asLooks) {
+    void importStyle(titledesigner::TitleDesignerState& state, bool asLooks) {
         const std::string file = FileDialogs::openFileDialogFiltered("", "Photoshop styles", "asl,psd");
         if (file.empty()) return;
         std::string error;
@@ -447,7 +446,7 @@ namespace {
         if (!state.commit(op, asLooks ? "Import Photoshop Styles" : "Apply Photoshop Style", &error)) exportState().message = error;
     }
 
-    void drawDesignerMenu(TitleDesignerState& state) {
+    void drawDesignerMenu(titledesigner::TitleDesignerState& state) {
         if (!state.isOpen()) return;
         if (ImGui::Button(ICON_FA_FILE_EXPORT " Export...")) openExport(state);
         ImGui::SameLine();
@@ -497,9 +496,9 @@ void editor::drawTitleArtInterchangeWindows(Project* project) {
 }
 
 void editor::registerTitleArtInterchangeUi() {
-    ToolbarItemDef menu;
+    titledesigner::ToolbarItemDef menu;
     menu.id = "s87.interchange";
     menu.draw = drawDesignerMenu;
-    addToolbarItem(std::move(menu));
+    titledesigner::addToolbarItem(std::move(menu));
     InspectorWindowTitleArt::addSummarySection("s87.languages", drawInspector);
 }

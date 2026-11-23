@@ -20,7 +20,8 @@
 #include <map>
 
 using namespace jasperengine;
-using namespace jasperengine::cpuskin;
+
+namespace jasperengine::cpuskin {
 
 namespace{
 
@@ -363,7 +364,7 @@ const CpuSkinSubmesh& CpuSkinSource::submeshOf(uint32_t vertex) const{
     return none;
 }
 
-bool cpuskin::buildSource(const MeshComponent& mesh, CpuSkinSource& out, std::string* error){
+bool buildSource(const MeshComponent& mesh, CpuSkinSource& out, std::string* error){
     ModelCpuData::ensure(mesh, "CPU skinning");
     out = CpuSkinSource();
     if (mesh.numSubmeshes == 0)
@@ -619,7 +620,7 @@ bool cpuskin::buildSource(const MeshComponent& mesh, CpuSkinSource& out, std::st
     return true;
 }
 
-bool cpuskin::buildSource(Scene* scene, Entity meshEntity, CpuSkinSource& out, std::string* error){
+bool buildSource(Scene* scene, Entity meshEntity, CpuSkinSource& out, std::string* error){
     out = CpuSkinSource();
     if (!scene || !scene->isEntityCreated(meshEntity))
         return fail(error, "no such entity");
@@ -636,7 +637,7 @@ bool cpuskin::buildSource(Scene* scene, Entity meshEntity, CpuSkinSource& out, s
     return buildSource(*mesh, out, error);
 }
 
-void cpuskin::updateTransforms(Scene* scene){
+void updateTransforms(Scene* scene){
     if (!scene)
         return;
     std::shared_ptr<RenderSystem> render = scene->getSystem<RenderSystem>();
@@ -648,7 +649,7 @@ void cpuskin::updateTransforms(Scene* scene){
         render->updateTransform(transforms->getComponentFromIndex(i), transforms->getEntity(i));
 }
 
-bool cpuskin::computeSkinMatrices(Scene* scene, Entity meshEntity, std::vector<Matrix4>& out, std::string* error){
+bool computeSkinMatrices(Scene* scene, Entity meshEntity, std::vector<Matrix4>& out, std::string* error){
     out.clear();
     if (!scene || !scene->isEntityCreated(meshEntity))
         return fail(error, "no such entity");
@@ -717,7 +718,7 @@ bool cpuskin::computeSkinMatrices(Scene* scene, Entity meshEntity, std::vector<M
     return true;
 }
 
-bool cpuskin::latticeInputs(const MeshComponent& mesh, CpuSkinLattice& out, std::string* error){
+bool latticeInputs(const MeshComponent& mesh, CpuSkinLattice& out, std::string* error){
     out.bindings.clear();
     const LatticeMeshState& state = mesh.lattice;
     const int count = std::min(state.count, LATTICE_MAX_PER_MESH);
@@ -777,7 +778,7 @@ bool cpuskin::latticeInputs(const MeshComponent& mesh, CpuSkinLattice& out, std:
     return true;
 }
 
-bool cpuskin::cpuDeform(const CpuSkinSource& source, const std::vector<Matrix4>& skinMatrices, const float* morphWeights,
+bool cpuDeform(const CpuSkinSource& source, const std::vector<Matrix4>& skinMatrices, const float* morphWeights,
                         const CpuSkinLattice* lattice, CpuSkinResult& out, std::string* error){
     const size_t count = source.vertexCount();
     out.positions.assign(count, Vector3(0.0f, 0.0f, 0.0f));
@@ -885,7 +886,7 @@ bool cpuskin::cpuDeform(const CpuSkinSource& source, const std::vector<Matrix4>&
     return true;
 }
 
-bool cpuskin::deformEntity(Scene* scene, Entity meshEntity, CpuSkinResult& out, std::string* error, CpuSkinSource* source){
+bool deformEntity(Scene* scene, Entity meshEntity, CpuSkinResult& out, std::string* error, CpuSkinSource* source){
     CpuSkinSource own;
     CpuSkinSource& built = source ? *source : own;
     if (!buildSource(scene, meshEntity, built, error))
@@ -899,3 +900,5 @@ bool cpuskin::deformEntity(Scene* scene, Entity meshEntity, CpuSkinResult& out, 
         return false;
     return cpuDeform(built, skin, mesh.morphWeights, &lattice, out, error);
 }
+
+}  // namespace jasperengine::cpuskin

@@ -17,7 +17,6 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::pixelart;
 
 // file-local, inside the namespace: a unity build's other sources never see these names
 namespace jasperengine::pixelart {
@@ -39,7 +38,9 @@ namespace {
 }
 }
 
-bool pixelart::parsePaletteRampPath(std::string_view path, std::string* palette, std::string* ramp) {
+namespace jasperengine::pixelart {
+
+bool parsePaletteRampPath(std::string_view path, std::string* palette, std::string* ramp) {
     const size_t at = path.find(kRampKey);
     if (at == std::string_view::npos || at < 8 || path.substr(at - 8, 8) != ".palette") return false;
     const std::string_view name = path.substr(at + kRampKey.size());
@@ -49,7 +50,7 @@ bool pixelart::parsePaletteRampPath(std::string_view path, std::string* palette,
     return true;
 }
 
-TextureData pixelart::makePaletteRampTextureData(const std::string& palette, const std::string& ramp, bool* missing) {
+TextureData makePaletteRampTextureData(const std::string& palette, const std::string& ramp, bool* missing) {
     std::shared_ptr<const Palette> source = PaletteLibrary::get(palette);
     std::vector<Rgba8> colors;
     if (source) colors = source->rampColors(ramp);
@@ -71,7 +72,7 @@ TextureData pixelart::makePaletteRampTextureData(const std::string& palette, con
     return TextureData((int)colors.size(), 1, size, ColorFormat::RGBA, 4, pixels);
 }
 
-void pixelart::registerPaletteRampTexture(const std::string& id, const std::string& path) {
+void registerPaletteRampTexture(const std::string& id, const std::string& path) {
     std::string palette, ramp;
     if (!parsePaletteRampPath(path, &palette, &ramp)) return;
     {
@@ -83,7 +84,7 @@ void pixelart::registerPaletteRampTexture(const std::string& id, const std::stri
     TextureDataPool::setGenerator(id, [palette, ramp]() { return makePaletteRampTextureData(palette, ramp); });
 }
 
-std::vector<std::string> pixelart::paletteRampTextureIds(const std::string& palette) {
+std::vector<std::string> paletteRampTextureIds(const std::string& palette) {
     RampRegistry& registry = rampRegistry();
     std::lock_guard<std::mutex> lock(registry.mutex);
     auto it = registry.idsByPalette.find(palette);
@@ -91,7 +92,7 @@ std::vector<std::string> pixelart::paletteRampTextureIds(const std::string& pale
     return std::vector<std::string>(it->second.begin(), it->second.end());
 }
 
-void pixelart::reloadPaletteRampTextures(const std::string& palette) {
+void reloadPaletteRampTextures(const std::string& palette) {
     for (const std::string& id : paletteRampTextureIds(palette)) {
         std::string path;
         {
@@ -109,3 +110,5 @@ void pixelart::reloadPaletteRampTextures(const std::string& palette) {
         TexturePool::invalidate(id);
     }
 }
+
+}  // namespace jasperengine::pixelart

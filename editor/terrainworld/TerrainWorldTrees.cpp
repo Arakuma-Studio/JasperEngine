@@ -23,7 +23,6 @@
 #include <sstream>
 
 using namespace jasperengine;
-using namespace jasperengine::terraincore;
 namespace fs = std::filesystem;
 
 namespace {
@@ -35,7 +34,7 @@ namespace {
         return !ZSTD_isError(written) && written == outputBytes;
     }
 
-    std::string worldTreeTileText(TileCoord tile) {
+    std::string worldTreeTileText(terraincore::TileCoord tile) {
         return "(" + std::to_string(tile.x) + ", " + std::to_string(tile.z) + ")";
     }
 
@@ -51,8 +50,8 @@ namespace {
     }
 
     // What a tile's file holds as a store: empty when there is none
-    std::shared_ptr<TreeStore> worldTreeStoreOf(const std::optional<std::string>& bytes) {
-        auto store = std::make_shared<TreeStore>();
+    std::shared_ptr<terraincore::TreeStore> worldTreeStoreOf(const std::optional<std::string>& bytes) {
+        auto store = std::make_shared<terraincore::TreeStore>();
         if (bytes) {
             std::string error;
             if (!store->decode(std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(bytes->data()), bytes->size()), &error, editorWorldTreeDecompress)) {
@@ -85,13 +84,13 @@ namespace {
     }
 
     // One side of a tile's file: written or removed, the manifest told (a region made later loads it)
-    bool putWorldTreeFile(TerrainWorldRuntime& runtime, const fs::path& folder, TileCoord tile, const std::optional<std::string>& bytes, std::string& error) {
+    bool putWorldTreeFile(TerrainWorldRuntime& runtime, const fs::path& folder, terraincore::TileCoord tile, const std::optional<std::string>& bytes, std::string& error) {
         const bool ok = bytes ? editor::writeTreeBytes(folder, tile, *bytes, error) : editor::removeTreeFile(folder, tile, error);
         if (!ok) return false;
-        std::vector<WorldTileInfo>& infos = runtime.manifest().tiles;
-        auto info = std::find_if(infos.begin(), infos.end(), [&](const WorldTileInfo& entry) { return entry.coord == tile; });
+        std::vector<terraincore::WorldTileInfo>& infos = runtime.manifest().tiles;
+        auto info = std::find_if(infos.begin(), infos.end(), [&](const terraincore::WorldTileInfo& entry) { return entry.coord == tile; });
         if (info == infos.end()) {
-            WorldTileInfo added;
+            terraincore::WorldTileInfo added;
             added.coord = tile;
             infos.push_back(added);
             info = infos.end() - 1;
@@ -101,7 +100,7 @@ namespace {
     }
 
     // A resident tile's region draws what the file now holds
-    void handWorldTreesToRegion(Scene* scene, Entity entity, TileCoord tile, std::shared_ptr<TreeStore> store) {
+    void handWorldTreesToRegion(Scene* scene, Entity entity, terraincore::TileCoord tile, std::shared_ptr<terraincore::TreeStore> store) {
         FoliageSystem* foliage = scene ? scene->findSystem<FoliageSystem>().get() : nullptr;
         if (foliage && foliage->hasRegion(entity, tile.key())) foliage->treeStoreReplaced(entity, tile.key(), std::move(store));
     }
@@ -113,15 +112,15 @@ namespace {
 
 }
 
-uint64_t jasperengine::editor::terrainWorldTreeId(TileCoord tile, uint32_t record) {
-    const uint64_t cell = static_cast<uint64_t>(tile.x - WORLD_TILE_MIN) * WORLD_TILES_PER_SIDE + static_cast<uint64_t>(tile.z - WORLD_TILE_MIN);
+uint64_t jasperengine::editor::terrainWorldTreeId(terraincore::TileCoord tile, uint32_t record) {
+    const uint64_t cell = static_cast<uint64_t>(tile.x - terraincore::WORLD_TILE_MIN) * terraincore::WORLD_TILES_PER_SIDE + static_cast<uint64_t>(tile.z - terraincore::WORLD_TILE_MIN);
     return cell * WORLD_TREE_RECORD_SPAN + (record % WORLD_TREE_RECORD_SPAN);
 }
 
-bool jasperengine::editor::splitTerrainWorldTreeId(uint64_t id, TileCoord& tile, uint32_t& record) {
+bool jasperengine::editor::splitTerrainWorldTreeId(uint64_t id, terraincore::TileCoord& tile, uint32_t& record) {
     const uint64_t cell = id / WORLD_TREE_RECORD_SPAN;
-    if (cell >= static_cast<uint64_t>(WORLD_TILES_PER_SIDE) * WORLD_TILES_PER_SIDE) return false;
-    tile = TileCoord(static_cast<int>(cell / WORLD_TILES_PER_SIDE) + WORLD_TILE_MIN, static_cast<int>(cell % WORLD_TILES_PER_SIDE) + WORLD_TILE_MIN);
+    if (cell >= static_cast<uint64_t>(terraincore::WORLD_TILES_PER_SIDE) * terraincore::WORLD_TILES_PER_SIDE) return false;
+    tile = terraincore::TileCoord(static_cast<int>(cell / terraincore::WORLD_TILES_PER_SIDE) + terraincore::WORLD_TILE_MIN, static_cast<int>(cell % terraincore::WORLD_TILES_PER_SIDE) + terraincore::WORLD_TILE_MIN);
     record = static_cast<uint32_t>(id % WORLD_TREE_RECORD_SPAN);
     return record != 0;
 }
@@ -141,46 +140,46 @@ float editor::TerrainWorldTreeEdit::maxHeight() const {
     return world ? world->maxHeight() : 0.0f;
 }
 
-TileCoord editor::TerrainWorldTreeEdit::tileAt(float localX, float localZ) const {
+terraincore::TileCoord editor::TerrainWorldTreeEdit::tileAt(float localX, float localZ) const {
     const float size = std::max(tileSize(), 1.0f);
-    return TileCoord(tileOfLocal(localX, size), tileOfLocal(localZ, size));
+    return terraincore::TileCoord(terraincore::tileOfLocal(localX, size), terraincore::tileOfLocal(localZ, size));
 }
 
-bool editor::TerrainWorldTreeEdit::present(TileCoord tile) const {
+bool editor::TerrainWorldTreeEdit::present(terraincore::TileCoord tile) const {
     return world && tile.addressable() && world->present(tile);
 }
 
-Vector2 editor::TerrainWorldTreeEdit::centre(TileCoord tile) const {
+Vector2 editor::TerrainWorldTreeEdit::centre(terraincore::TileCoord tile) const {
     const float size = tileSize();
     return Vector2((static_cast<float>(tile.x) + 0.5f) * size, (static_cast<float>(tile.z) + 0.5f) * size);
 }
 
-std::vector<TileCoord> editor::TerrainWorldTreeEdit::tilesIn(float minX, float minZ, float maxX, float maxZ) const {
-    std::vector<TileCoord> found;
+std::vector<terraincore::TileCoord> editor::TerrainWorldTreeEdit::tilesIn(float minX, float minZ, float maxX, float maxZ) const {
+    std::vector<terraincore::TileCoord> found;
     if (!world) return found;
-    const TileCoord low = tileAt(minX, minZ);
-    const TileCoord high = tileAt(maxX, maxZ);
-    for (int z = std::max(static_cast<int>(low.z), WORLD_TILE_MIN); z <= std::min(static_cast<int>(high.z), WORLD_TILE_MAX); z++) {
-        for (int x = std::max(static_cast<int>(low.x), WORLD_TILE_MIN); x <= std::min(static_cast<int>(high.x), WORLD_TILE_MAX); x++) {
-            if (present(TileCoord(x, z))) found.push_back(TileCoord(x, z));
+    const terraincore::TileCoord low = tileAt(minX, minZ);
+    const terraincore::TileCoord high = tileAt(maxX, maxZ);
+    for (int z = std::max(static_cast<int>(low.z), terraincore::WORLD_TILE_MIN); z <= std::min(static_cast<int>(high.z), terraincore::WORLD_TILE_MAX); z++) {
+        for (int x = std::max(static_cast<int>(low.x), terraincore::WORLD_TILE_MIN); x <= std::min(static_cast<int>(high.x), terraincore::WORLD_TILE_MAX); x++) {
+            if (present(terraincore::TileCoord(x, z))) found.push_back(terraincore::TileCoord(x, z));
         }
     }
     return found;
 }
 
-std::vector<TileCoord> editor::TerrainWorldTreeEdit::presentTiles() const {
-    std::vector<TileCoord> found;
-    TileCoord low, high;
+std::vector<terraincore::TileCoord> editor::TerrainWorldTreeEdit::presentTiles() const {
+    std::vector<terraincore::TileCoord> found;
+    terraincore::TileCoord low, high;
     if (!world || !world->bounds(low, high)) return found;
     for (int z = low.z; z <= high.z; z++) {
         for (int x = low.x; x <= high.x; x++) {
-            if (present(TileCoord(x, z))) found.push_back(TileCoord(x, z));
+            if (present(terraincore::TileCoord(x, z))) found.push_back(terraincore::TileCoord(x, z));
         }
     }
     return found;
 }
 
-editor::TerrainWorldTreeEdit::Tile* editor::TerrainWorldTreeEdit::tile(TileCoord coord, std::string* why) {
+editor::TerrainWorldTreeEdit::Tile* editor::TerrainWorldTreeEdit::tile(terraincore::TileCoord coord, std::string* why) {
     if (!world) {
         if (why) *why = problem;
         return nullptr;
@@ -202,7 +201,7 @@ editor::TerrainWorldTreeEdit::Tile* editor::TerrainWorldTreeEdit::tile(TileCoord
     entry.coord = coord;
     std::string bytes;
     if (readWorldTreeFile(folder / terrainWorldTreeName(coord), bytes)) entry.before = std::move(bytes);
-    auto fromFile = std::make_shared<TreeStore>();
+    auto fromFile = std::make_shared<terraincore::TreeStore>();
     if (entry.before) {
         std::string error;
         if (!fromFile->decode(std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(entry.before->data()), entry.before->size()), &error,
@@ -225,15 +224,15 @@ editor::TerrainWorldTreeEdit::Tile* editor::TerrainWorldTreeEdit::tile(TileCoord
     return &(tiles[coord.key()] = std::move(entry));
 }
 
-const TreeStore* editor::TerrainWorldTreeEdit::trees(TileCoord coord, std::string* why) {
+const terraincore::TreeStore* editor::TerrainWorldTreeEdit::trees(terraincore::TileCoord coord, std::string* why) {
     Tile* entry = tile(coord, why);
     return entry ? entry->store.get() : nullptr;
 }
 
-bool editor::TerrainWorldTreeEdit::apply(TileCoord coord, std::span<const uint32_t> removed, std::span<const TreeRecord> added, TreeDelta* delta) {
+bool editor::TerrainWorldTreeEdit::apply(terraincore::TileCoord coord, std::span<const uint32_t> removed, std::span<const terraincore::TreeRecord> added, terraincore::TreeDelta* delta) {
     Tile* entry = tile(coord, nullptr);
     if (!entry) return false;
-    TreeDelta local;
+    terraincore::TreeDelta local;
     entry->store->apply(removed, added, {}, &local);
     entry->changed = entry->changed || !local.empty();
     if (entry->region) {
@@ -243,7 +242,7 @@ bool editor::TerrainWorldTreeEdit::apply(TileCoord coord, std::span<const uint32
     return true;
 }
 
-bool editor::TerrainWorldTreeEdit::applyDelta(TileCoord coord, const TreeDelta& delta) {
+bool editor::TerrainWorldTreeEdit::applyDelta(terraincore::TileCoord coord, const terraincore::TreeDelta& delta) {
     Tile* entry = tile(coord, nullptr);
     if (!entry) return false;
     entry->store->applyDelta(delta, false);
@@ -302,7 +301,7 @@ bool editor::TerrainWorldTreeEdit::commit(const std::string& name, std::string* 
         for (const TerrainWorldTreesCmd::TileFiles& file : files) {
             const Tile& entry = tiles[file.tile.key()];
             if (foliage->hasRegion(entity, file.tile.key()) && foliage->getRegionTreeStore(entity, file.tile.key()) != entry.store) {
-                foliage->treeStoreReplaced(entity, file.tile.key(), std::make_shared<TreeStore>(*entry.store));
+                foliage->treeStoreReplaced(entity, file.tile.key(), std::make_shared<terraincore::TreeStore>(*entry.store));
             }
         }
     }

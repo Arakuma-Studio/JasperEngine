@@ -13,7 +13,9 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::platform;
+
+namespace jasperengine::editor::platform {
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -152,3 +154,5 @@ bool AndroidTools::verifyApk(const fs::path& apk, std::string& output, std::stri
                    [&output](const std::string& line) { output += line + "\n"; }, &code);
     return code == 0;
 }
+
+}  // namespace jasperengine::editor::platform

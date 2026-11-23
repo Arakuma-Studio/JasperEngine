@@ -6,7 +6,6 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::vat;
 using Json = nlohmann::json;
 
 namespace jasperengine::editor::vat{
@@ -39,8 +38,8 @@ std::string issuesText(const std::vector<VatIssue>& issues, bool errorsOnly){
     return text;
 }
 
-const char* textureFormatName(VatPrecision precision){
-    return precision == VatPrecision::Float ? "rgba32f" : "rgba16f";
+const char* textureFormatName(jasperengine::vat::VatPrecision precision){
+    return precision == jasperengine::vat::VatPrecision::Float ? "rgba32f" : "rgba16f";
 }
 
 Json issueJson(const VatIssue& issue){

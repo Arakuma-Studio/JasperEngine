@@ -12,7 +12,8 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::anim;
+
+namespace jasperengine::anim {
 
 namespace{
 
@@ -477,7 +478,7 @@ namespace{
 
 }
 
-uint32_t anim::animatorNameHash(const std::string& text){
+uint32_t animatorNameHash(const std::string& text){
     uint32_t hash = 2166136261u;
     for (unsigned char c : text){
         hash ^= c;
@@ -516,9 +517,11 @@ int anim::CompiledController::findState(const std::string& nameOrPath, int layer
     return -1;
 }
 
-std::shared_ptr<const CompiledController> anim::compileController(const ControllerDef& def){
+std::shared_ptr<const CompiledController> compileController(const ControllerDef& def){
     auto compiled = std::make_shared<CompiledController>();
     Compiler compiler(def, *compiled);
     compiler.run();
     return compiled;
 }
+
+}  // namespace jasperengine::anim

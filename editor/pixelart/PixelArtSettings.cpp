@@ -6,7 +6,8 @@
 #include <cctype>
 
 using namespace jasperengine;
-using namespace jasperengine::editor::pixelart;
+
+namespace jasperengine::editor::pixelart {
 
 std::vector<std::string> PixelArtSettings::defaultCheckScreens(){
     return {"1280x720", "1366x768", "1920x1080", "2560x1440", "3840x2160", "2400x1080", "1280x800"};
@@ -26,12 +27,12 @@ std::vector<PixelArtScreen> PixelArtSettings::screens() const{
     return out;
 }
 
-const std::vector<PixelArtScreen>& jasperengine::editor::pixelart::presetBaseResolutions(){
+const std::vector<PixelArtScreen>& presetBaseResolutions(){
     static const std::vector<PixelArtScreen> sizes = {{256, 144}, {320, 180}, {384, 216}, {480, 270}, {640, 360}};
     return sizes;
 }
 
-bool jasperengine::editor::pixelart::parsePixelArtScreen(const std::string& text, PixelArtScreen& out){
+bool parsePixelArtScreen(const std::string& text, PixelArtScreen& out){
     const size_t x = text.find('x');
     if (x == std::string::npos || x == 0 || x + 1 >= text.size())
         return false;
@@ -53,7 +54,7 @@ bool jasperengine::editor::pixelart::parsePixelArtScreen(const std::string& text
     return true;
 }
 
-bool jasperengine::editor::pixelart::isPixelArtBackdrop(const std::string& text){
+bool isPixelArtBackdrop(const std::string& text){
     if (text.size() != 7 || text[0] != '#')
         return false;
     for (size_t i = 1; i < text.size(); i++)
@@ -62,7 +63,7 @@ bool jasperengine::editor::pixelart::isPixelArtBackdrop(const std::string& text)
     return true;
 }
 
-const char* jasperengine::editor::pixelart::pixelUpscaleModeName(PixelUpscaleMode mode){
+const char* pixelUpscaleModeName(PixelUpscaleMode mode){
     switch (mode){
         case PixelUpscaleMode::INTEGER_EXPAND: return "integer_expand";
         case PixelUpscaleMode::STRETCH_FILL: return "stretch_fill";
@@ -70,7 +71,7 @@ const char* jasperengine::editor::pixelart::pixelUpscaleModeName(PixelUpscaleMod
     }
 }
 
-bool jasperengine::editor::pixelart::pixelUpscaleModeFromName(const std::string& name, PixelUpscaleMode& mode){
+bool pixelUpscaleModeFromName(const std::string& name, PixelUpscaleMode& mode){
     for (PixelUpscaleMode m : {PixelUpscaleMode::INTEGER, PixelUpscaleMode::INTEGER_EXPAND, PixelUpscaleMode::STRETCH_FILL}){
         if (name == pixelUpscaleModeName(m)){
             mode = m;
@@ -80,7 +81,7 @@ bool jasperengine::editor::pixelart::pixelUpscaleModeFromName(const std::string&
     return false;
 }
 
-YAML::Node jasperengine::editor::pixelart::encodePixelArtSettings(const PixelArtSettings& settings){
+YAML::Node encodePixelArtSettings(const PixelArtSettings& settings){
     const PixelArtSettings defaults;
     YAML::Node node(YAML::NodeType::Map);
     if (settings.enabled != defaults.enabled)
@@ -106,7 +107,7 @@ YAML::Node jasperengine::editor::pixelart::encodePixelArtSettings(const PixelArt
     return node;
 }
 
-void jasperengine::editor::pixelart::decodePixelArtSettings(const YAML::Node& node, PixelArtSettings& settings){
+void decodePixelArtSettings(const YAML::Node& node, PixelArtSettings& settings){
     settings = PixelArtSettings();
     if (!node || !node.IsMap())
         return;
@@ -139,3 +140,5 @@ void jasperengine::editor::pixelart::decodePixelArtSettings(const YAML::Node& no
             settings.upscaleMode = mode;
     }
 }
+
+}  // namespace jasperengine::editor::pixelart

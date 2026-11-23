@@ -5,7 +5,7 @@
 
 #include "McpServer.h"
 
-using namespace jasperengine::editor::mcp;
+namespace jasperengine::editor::mcp {
 
 ToolResult ToolResult::success(std::string text, Json structured) {
     ToolResult result;
@@ -140,3 +140,5 @@ bool McpCall::notifyClient(const Json& notification) {
 double McpCall::elapsedMs() const {
     return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - startTime).count();
 }
+
+}  // namespace jasperengine::editor::mcp

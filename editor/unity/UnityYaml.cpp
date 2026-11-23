@@ -9,7 +9,8 @@
 #include <sstream>
 
 using namespace jasperengine;
-using namespace jasperengine::editor::unity;
+
+namespace jasperengine::editor::unity {
 
 namespace {
 
@@ -102,7 +103,7 @@ Document* YamlFile::find(int64_t fileId){
     return it == index.end() ? nullptr : &documents[it->second];
 }
 
-bool jasperengine::editor::unity::scalarFloat(const YAML::Node& node, float& out){
+bool scalarFloat(const YAML::Node& node, float& out){
     if (!node || !node.IsScalar()) return false;
     const std::string text = node.Scalar();
     if (text.empty()) return false;
@@ -112,13 +113,13 @@ bool jasperengine::editor::unity::scalarFloat(const YAML::Node& node, float& out
     return end != text.c_str();
 }
 
-float jasperengine::editor::unity::readFloat(const YAML::Node& node, const char* key, float fallback){
+float readFloat(const YAML::Node& node, const char* key, float fallback){
     float v;
     if (node && node.IsMap() && scalarFloat(node[key], v)) return v;
     return fallback;
 }
 
-int jasperengine::editor::unity::readInt(const YAML::Node& node, const char* key, int fallback){
+int readInt(const YAML::Node& node, const char* key, int fallback){
     if (!node || !node.IsMap() || !node[key] || !node[key].IsScalar()) return fallback;
     const std::string text = node[key].Scalar();
     char* end = nullptr;
@@ -126,34 +127,34 @@ int jasperengine::editor::unity::readInt(const YAML::Node& node, const char* key
     return end == text.c_str() ? fallback : (int)v;
 }
 
-bool jasperengine::editor::unity::readBool(const YAML::Node& node, const char* key, bool fallback){
+bool readBool(const YAML::Node& node, const char* key, bool fallback){
     return readInt(node, key, fallback ? 1 : 0) != 0;
 }
 
-std::string jasperengine::editor::unity::readString(const YAML::Node& node, const char* key, const std::string& fallback){
+std::string readString(const YAML::Node& node, const char* key, const std::string& fallback){
     if (!node || !node.IsMap() || !node[key] || !node[key].IsScalar()) return fallback;
     return node[key].Scalar();
 }
 
-Vector3 jasperengine::editor::unity::readVector3(const YAML::Node& node, const char* key, const Vector3& fallback){
+Vector3 readVector3(const YAML::Node& node, const char* key, const Vector3& fallback){
     if (!node || !node.IsMap() || !node[key] || !node[key].IsMap()) return fallback;
     const YAML::Node v = node[key];
     return Vector3(readFloat(v, "x", fallback.x), readFloat(v, "y", fallback.y), readFloat(v, "z", fallback.z));
 }
 
-Quaternion jasperengine::editor::unity::readQuaternion(const YAML::Node& node, const char* key){
+Quaternion readQuaternion(const YAML::Node& node, const char* key){
     if (!node || !node.IsMap() || !node[key] || !node[key].IsMap()) return Quaternion();
     const YAML::Node v = node[key];
     return Quaternion(readFloat(v, "w", 1.0f), readFloat(v, "x", 0.0f), readFloat(v, "y", 0.0f), readFloat(v, "z", 0.0f));
 }
 
-Vector4 jasperengine::editor::unity::readColor(const YAML::Node& node, const char* key, const Vector4& fallback){
+Vector4 readColor(const YAML::Node& node, const char* key, const Vector4& fallback){
     if (!node || !node.IsMap() || !node[key] || !node[key].IsMap()) return fallback;
     const YAML::Node v = node[key];
     return Vector4(readFloat(v, "r", fallback.x), readFloat(v, "g", fallback.y), readFloat(v, "b", fallback.z), readFloat(v, "a", fallback.w));
 }
 
-Ref jasperengine::editor::unity::toRef(const YAML::Node& node){
+Ref toRef(const YAML::Node& node){
     Ref ref;
     if (!node || !node.IsMap()) return ref;
     if (node["fileID"] && node["fileID"].IsScalar()) ref.fileID = std::strtoll(node["fileID"].Scalar().c_str(), nullptr, 10);
@@ -162,7 +163,9 @@ Ref jasperengine::editor::unity::toRef(const YAML::Node& node){
     return ref;
 }
 
-Ref jasperengine::editor::unity::readRef(const YAML::Node& node, const char* key){
+Ref readRef(const YAML::Node& node, const char* key){
     if (!node || !node.IsMap()) return Ref();
     return toRef(node[key]);
 }
+
+}  // namespace jasperengine::editor::unity

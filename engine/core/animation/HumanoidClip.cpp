@@ -20,7 +20,6 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::pose;
 
 namespace{
 
@@ -34,11 +33,11 @@ namespace{
     // a fixed map q -> a * q * b on quaternion values (a linear map of the four components, so
     // it commutes with slerp, Hermite curves and normalization)
     struct QuatMap{
-        Quatd a, b;
-        Quatd apply(const Quatd& q) const { return a * q * b; }
+        pose::Quatd a, b;
+        pose::Quatd apply(const pose::Quatd& q) const { return a * q * b; }
     };
 
-    void toXYZW(const Quatd& q, std::vector<float>& out){
+    void toXYZW(const pose::Quatd& q, std::vector<float>& out){
         out.resize(4);
         out[0] = (float)q.x;
         out[1] = (float)q.y;
@@ -46,8 +45,8 @@ namespace{
         out[3] = (float)q.w;
     }
 
-    Quatd fromXYZW(const std::vector<float>& v){
-        return Quatd(v[3], v[0], v[1], v[2]);
+    pose::Quatd fromXYZW(const std::vector<float>& v){
+        return pose::Quatd(v[3], v[0], v[1], v[2]);
     }
 
     // every key of a position / rotation / scale track at `rest` (an offset of zero, the identity
@@ -61,15 +60,15 @@ namespace{
             }
             if (track.channel == ClipChannel::Rotation){
                 if (key.value.size() < 4) return false;
-                const Quatd rest = track.relative ? Quatd() : Quatd(restRotation);
+                const pose::Quatd rest = track.relative ? pose::Quatd() : pose::Quatd(restRotation);
                 if (std::fabs(fromXYZW(key.value).normalized().dot(rest.normalized())) < 1.0 - 1e-9) return false;
                 continue;
             }
             if (key.value.size() < 3) return false;
-            const Vec3d value(key.value[0], key.value[1], key.value[2]);
+            const pose::Vec3d value(key.value[0], key.value[1], key.value[2]);
             const bool position = track.channel == ClipChannel::Position;
-            const Vec3d rest = position ? (track.relative ? Vec3d(0, 0, 0) : Vec3d(restPosition))
-                                        : (track.relative ? Vec3d(1, 1, 1) : Vec3d(restScale));
+            const pose::Vec3d rest = position ? (track.relative ? pose::Vec3d(0, 0, 0) : pose::Vec3d(restPosition))
+                                        : (track.relative ? pose::Vec3d(1, 1, 1) : pose::Vec3d(restScale));
             if ((value - rest).length() > (position ? positionTolerance : 1e-6)) return false;
         }
         return true;
@@ -131,15 +130,15 @@ bool anim::convertToHumanoid(const ClipData& generic, const HumanoidSource& sour
         out = data;
         return true;
     }
-    const PoseRig& rig = *source.rig;
+    const pose::PoseRig& rig = *source.rig;
     HumanoidConversionReport localReport;
     HumanoidConversionReport& rep = report ? *report : localReport;
     rep = HumanoidConversionReport();
 
     // the tracks per bone, by the one path's rule (RetargetSource::roleOf: what play-time
     // retargeting reads, what it leaves to the path binding, what it drops)
-    std::vector<int> slotTrack(HUMAN_BONE_COUNT, -1);
-    std::vector<int> extraTrack(HUMAN_EXTRA_BONE_COUNT, -1);
+    std::vector<int> slotTrack(pose::HUMAN_BONE_COUNT, -1);
+    std::vector<int> extraTrack(pose::HUMAN_EXTRA_BONE_COUNT, -1);
     int hipsTrack = -1;
     std::vector<size_t> copied;
     std::set<std::string> dropped;
@@ -154,7 +153,7 @@ bool anim::convertToHumanoid(const ClipData& generic, const HumanoidSource& sour
                 slotTrack[(size_t)rig.slotOfBone(bone)] = (int)i;
                 break;
             case RetargetTrackRole::Extra:
-                for (int x = 0; x < HUMAN_EXTRA_BONE_COUNT; x++){
+                for (int x = 0; x < pose::HUMAN_EXTRA_BONE_COUNT; x++){
                     if (source.extraBones[(size_t)x] == bone) extraTrack[(size_t)x] = (int)i;
                 }
                 break;
@@ -200,7 +199,7 @@ bool anim::convertToHumanoid(const ClipData& generic, const HumanoidSource& sour
         track.humanBone = humanBone;
         track.loop = from.loop;
         if (from.relative && bone >= 0 && (size_t)bone < source.restRotation.size()){
-            map.a = map.a * Quatd(source.restRotation[(size_t)bone]);
+            map.a = map.a * pose::Quatd(source.restRotation[(size_t)bone]);
         }
         for (const ClipKey& key : from.keys){
             ClipKey mapped = key;
@@ -215,13 +214,13 @@ bool anim::convertToHumanoid(const ClipData& generic, const HumanoidSource& sour
     };
 
     // slots: E = slotA * q * slotB; a slot without a track holds its rest E
-    for (int s = 0; s < HUMAN_BONE_COUNT; s++){
-        const HumanBone slot = boneAt(s);
+    for (int s = 0; s < pose::HUMAN_BONE_COUNT; s++){
+        const pose::HumanBone slot = pose::boneAt(s);
         if (!rig.has(slot)){
-            rep.unmappedSlots.push_back(humanBoneName(slot));
+            rep.unmappedSlots.push_back(pose::humanBoneName(slot));
             continue;
         }
-        rep.mappedSlots.push_back(humanBoneName(slot));
+        rep.mappedSlots.push_back(pose::humanBoneName(slot));
         const int bone = rig.boneIndex(slot);
         if (slotTrack[(size_t)s] >= 0){
             out.tracks.push_back(mapRotationTrack(data.tracks[(size_t)slotTrack[(size_t)s]],
@@ -231,28 +230,28 @@ bool anim::convertToHumanoid(const ClipData& generic, const HumanoidSource& sour
             track.channel = ClipChannel::Humanoid;
             track.humanBone = s;
             ClipKey key;
-            toXYZW(Quatd(source.restE[(size_t)s]), key.value);
+            toXYZW(pose::Quatd(source.restE[(size_t)s]), key.value);
             track.keys.push_back(key);
             out.tracks.push_back(track);
         }
     }
 
     // extra bones with a rotation track: d = extraA * q * extraB
-    for (int x = 0; x < HUMAN_EXTRA_BONE_COUNT; x++){
+    for (int x = 0; x < pose::HUMAN_EXTRA_BONE_COUNT; x++){
         const int bone = source.extraBones[(size_t)x];
         if (bone < 0 || extraTrack[(size_t)x] < 0) continue;
-        rep.mappedExtra.push_back(humanExtraBoneName(extraAt(x)));
+        rep.mappedExtra.push_back(pose::humanExtraBoneName(pose::extraAt(x)));
         out.tracks.push_back(mapRotationTrack(data.tracks[(size_t)extraTrack[(size_t)x]],
-                                              QuatMap{source.extraA[(size_t)x], source.extraB[(size_t)x]}, bone, HUMAN_BONE_COUNT + x));
+                                              QuatMap{source.extraA[(size_t)x], source.extraB[(size_t)x]}, bone, pose::HUMAN_BONE_COUNT + x));
     }
 
     // the body offset: source.bodyOffset (affine in the hips' Transform-local position)
-    const int hipsBone = rig.boneIndex(HumanBone::Hips);
+    const int hipsBone = rig.boneIndex(pose::HumanBone::Hips);
     {
         ClipTrackData track;
         track.channel = ClipChannel::HumanoidPosition;
         track.humanBone = HUMANOID_POSITION_HIPS;
-        auto store = [](const Vec3d& v, std::vector<float>& row){ row = {(float)v.x, (float)v.y, (float)v.z}; };
+        auto store = [](const pose::Vec3d& v, std::vector<float>& row){ row = {(float)v.x, (float)v.y, (float)v.z}; };
         auto linear = [&](const std::vector<float>& t){
             return source.hipsLinear[0] * t[0] + source.hipsLinear[1] * t[1] + source.hipsLinear[2] * t[2];
         };
@@ -274,20 +273,20 @@ bool anim::convertToHumanoid(const ClipData& generic, const HumanoidSource& sour
             }
         }else{
             ClipKey key;
-            store(Vec3d(source.restHips), key.value);
+            store(pose::Vec3d(source.restHips), key.value);
             track.keys.push_back(key);
         }
         out.tracks.push_back(track);
     }
 
     // the foot goals: forward kinematics of the legs, sampled
-    if (rig.has(HumanBone::LeftFoot) || rig.has(HumanBone::RightFoot)){
+    if (rig.has(pose::HumanBone::LeftFoot) || rig.has(pose::HumanBone::RightFoot)){
         std::shared_ptr<const AnimationClip> clip = AnimationClip::build(data);
         std::set<float> times;
-        const HumanBone legSlots[] = {HumanBone::Hips, HumanBone::LeftUpperLeg, HumanBone::LeftLowerLeg, HumanBone::LeftFoot,
-                                      HumanBone::RightUpperLeg, HumanBone::RightLowerLeg, HumanBone::RightFoot};
+        const pose::HumanBone legSlots[] = {pose::HumanBone::Hips, pose::HumanBone::LeftUpperLeg, pose::HumanBone::LeftLowerLeg, pose::HumanBone::LeftFoot,
+                                      pose::HumanBone::RightUpperLeg, pose::HumanBone::RightLowerLeg, pose::HumanBone::RightFoot};
         std::vector<int> legTracks;
-        for (HumanBone slot : legSlots){
+        for (pose::HumanBone slot : legSlots){
             if (slotTrack[(size_t)boneIndex(slot)] >= 0) legTracks.push_back(slotTrack[(size_t)boneIndex(slot)]);
         }
         if (hipsTrack >= 0) legTracks.push_back(hipsTrack);
@@ -313,15 +312,15 @@ bool anim::convertToHumanoid(const ClipData& generic, const HumanoidSource& sour
         for (float t : times){
             if (t > length + 1e-6f) continue;
             // the source's skeleton pose at t, its foot goals (the one path's sourceFootGoals)
-            HumanPose pose = rig.restPose();
-            for (int s = 0; s < HUMAN_BONE_COUNT; s++){
+            pose::HumanPose pose = rig.restPose();
+            for (int s = 0; s < pose::HUMAN_BONE_COUNT; s++){
                 const int i = slotTrack[(size_t)s];
-                if (i < 0 || !rig.has(boneAt(s))) continue;
+                if (i < 0 || !rig.has(pose::boneAt(s))) continue;
                 if (!sampleTrack(tracks[(size_t)i], t, sample)) continue;
-                const int bone = rig.boneIndex(boneAt(s));
-                Quatd q(sample.rotation);
-                if (data.tracks[(size_t)i].relative && (size_t)bone < source.restRotation.size()) q = Quatd(source.restRotation[(size_t)bone]) * q;
-                pose.rotations[(size_t)s] = (Quatd(source.slotBridge[(size_t)s]) * q).normalized().toQuaternion();
+                const int bone = rig.boneIndex(pose::boneAt(s));
+                pose::Quatd q(sample.rotation);
+                if (data.tracks[(size_t)i].relative && (size_t)bone < source.restRotation.size()) q = pose::Quatd(source.restRotation[(size_t)bone]) * q;
+                pose.rotations[(size_t)s] = (pose::Quatd(source.slotBridge[(size_t)s]) * q).normalized().toQuaternion();
             }
             if (hipsTrack >= 0 && sampleTrack(tracks[(size_t)hipsTrack], t, sample)){
                 Vector3 value = sample.vector;
@@ -361,27 +360,27 @@ bool anim::convertToHumanoid(const ClipData& generic, const HumanoidSource& sour
 
 // ---- realisation ----
 
-bool anim::buildHumanoidTarget(const ModelRigInfo& info, const std::vector<Entity>& boneEntities, const std::vector<Matrix4>& bridges,
+bool anim::buildHumanoidTarget(const pose::ModelRigInfo& info, const std::vector<Entity>& boneEntities, const std::vector<Matrix4>& bridges,
                                Entity model, const std::string& modelPath, HumanoidTarget& out){
     out = HumanoidTarget();
     if (!info.rig || !info.rig->valid()) return false;
     // the rig side (extra frames, fold chains): the one path's RetargetRig
     out.RetargetRig::build(info.rig, info.extra);
-    const PoseRig& rig = *info.rig;
+    const pose::PoseRig& rig = *info.rig;
     out.model = model;
     out.modelPath = modelPath;
-    for (int s = 0; s < HUMAN_BONE_COUNT; s++){
-        const HumanBone slot = boneAt(s);
+    for (int s = 0; s < pose::HUMAN_BONE_COUNT; s++){
+        const pose::HumanBone slot = pose::boneAt(s);
         const int bone = rig.boneIndex(slot);
         out.bridgeRotationInverse[(size_t)s] = Quaternion();
         if (bone < 0) continue;
         out.slotEntities[(size_t)s] = (size_t)bone < boneEntities.size() ? boneEntities[(size_t)bone] : NULL_ENTITY;
         if ((size_t)bone < bridges.size()){
             out.bridgeRotationInverse[(size_t)s] = bridgeRotation(bridges[(size_t)bone]).inverse();
-            if (slot == HumanBone::Hips) out.hipsBridgeInverse = bridges[(size_t)bone].inverse();
+            if (slot == pose::HumanBone::Hips) out.hipsBridgeInverse = bridges[(size_t)bone].inverse();
         }
     }
-    for (int x = 0; x < HUMAN_EXTRA_BONE_COUNT; x++){
+    for (int x = 0; x < pose::HUMAN_EXTRA_BONE_COUNT; x++){
         out.extraBridgeRotationInverse[(size_t)x] = Quaternion();
         const int bone = out.extraBones[(size_t)x];
         if (bone < 0) continue;
@@ -405,17 +404,17 @@ std::shared_ptr<const AnimationClip> anim::humanoidClipOf(const std::shared_ptr<
 
 // ---- the target's current pose ----
 
-bool anim::currentHumanoidPose(EntityRegistry* registry, const HumanoidTarget& target, HumanPose& out){
+bool anim::currentHumanoidPose(EntityRegistry* registry, const HumanoidTarget& target, pose::HumanPose& out){
     if (!registry || !target.rig || !target.rig->valid()) return false;
-    const PoseRig& rig = *target.rig;
+    const pose::PoseRig& rig = *target.rig;
     out = rig.restPose();
-    for (int b = 0; b < HUMAN_BONE_COUNT; b++){
+    for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++){
         const Entity entity = target.slotEntities[(size_t)b];
-        if (entity == NULL_ENTITY || !rig.has(boneAt(b))) continue;
+        if (entity == NULL_ENTITY || !rig.has(pose::boneAt(b))) continue;
         const Transform* transform = registry->findComponent<Transform>(entity);
         if (!transform) return false;
         out.rotations[(size_t)b] = (target.bridgeRotationInverse[(size_t)b].inverse() * transform->rotation).normalized();
-        if (b == boneIndex(HumanBone::Hips)) out.hipsPosition = target.hipsBridgeInverse.inverse() * transform->position;
+        if (b == pose::boneIndex(pose::HumanBone::Hips)) out.hipsPosition = target.hipsBridgeInverse.inverse() * transform->position;
     }
     return true;
 }
@@ -424,42 +423,42 @@ bool anim::readHumanoidValue(EntityRegistry* registry, const HumanoidTarget& tar
                              std::vector<float>& out){
     out.clear();
     if (!registry || !target.rig || !target.rig->valid()) return false;
-    const PoseRig& rig = *target.rig;
-    if (channel == ClipChannel::Humanoid && humanBone >= 0 && humanBone < HUMAN_BONE_COUNT){
+    const pose::PoseRig& rig = *target.rig;
+    if (channel == ClipChannel::Humanoid && humanBone >= 0 && humanBone < pose::HUMAN_BONE_COUNT){
         const Entity entity = target.slotEntities[(size_t)humanBone];
         const Transform* transform = entity != NULL_ENTITY ? registry->findComponent<Transform>(entity) : nullptr;
         if (!transform) return false;
-        const Quatd local = Quatd(target.bridgeRotationInverse[(size_t)humanBone].inverse() * transform->rotation).normalized();
-        toXYZW(rig.jointRotationFromLocal(boneAt(humanBone), local), out);
+        const pose::Quatd local = pose::Quatd(target.bridgeRotationInverse[(size_t)humanBone].inverse() * transform->rotation).normalized();
+        toXYZW(rig.jointRotationFromLocal(pose::boneAt(humanBone), local), out);
         return true;
     }
-    if (channel == ClipChannel::Humanoid && humanBone >= HUMAN_BONE_COUNT && humanBone < HUMANOID_TRACK_BONE_COUNT){
-        const int x = humanBone - HUMAN_BONE_COUNT;
+    if (channel == ClipChannel::Humanoid && humanBone >= pose::HUMAN_BONE_COUNT && humanBone < HUMANOID_TRACK_BONE_COUNT){
+        const int x = humanBone - pose::HUMAN_BONE_COUNT;
         const Entity entity = target.extraEntities[(size_t)x];
         const Transform* transform = entity != NULL_ENTITY ? registry->findComponent<Transform>(entity) : nullptr;
         if (!transform) return false;
-        const Quatd local(target.extraBridgeRotationInverse[(size_t)x].inverse() * transform->rotation);
-        const Quatd frame(target.extraFrame[(size_t)x]);
-        toXYZW((frame * Quatd(target.extraRest[(size_t)x]).inverse() * local * frame.inverse()).normalized(), out);
+        const pose::Quatd local(target.extraBridgeRotationInverse[(size_t)x].inverse() * transform->rotation);
+        const pose::Quatd frame(target.extraFrame[(size_t)x]);
+        toXYZW((frame * pose::Quatd(target.extraRest[(size_t)x]).inverse() * local * frame.inverse()).normalized(), out);
         return true;
     }
     if (channel != ClipChannel::HumanoidPosition || humanBone < 0 || humanBone >= HUMANOID_POSITION_COUNT) return false;
-    HumanPose pose;
+    pose::HumanPose pose;
     if (!currentHumanoidPose(registry, target, pose)) return false;
-    const Quatd characterInv = Quatd(rig.characterRotation()).inverse();
-    const Vec3d neutralHips(rig.neutralHipsWorldPosition());
-    Vec3d model;
+    const pose::Quatd characterInv = pose::Quatd(rig.characterRotation()).inverse();
+    const pose::Vec3d neutralHips(rig.neutralHipsWorldPosition());
+    pose::Vec3d model;
     if (humanBone == HUMANOID_POSITION_HIPS){
-        model = Vec3d(rig.hipsWorldPosition(pose));
+        model = pose::Vec3d(rig.hipsWorldPosition(pose));
     }else{
-        const int foot = rig.boneIndex(humanBone == HUMANOID_POSITION_LEFT_FOOT ? HumanBone::LeftFoot : HumanBone::RightFoot);
+        const int foot = rig.boneIndex(humanBone == HUMANOID_POSITION_LEFT_FOOT ? pose::HumanBone::LeftFoot : pose::HumanBone::RightFoot);
         if (foot < 0) return false;
-        std::vector<Quatd> rot;
-        std::vector<Affine3d> world;
+        std::vector<pose::Quatd> rot;
+        std::vector<pose::Affine3d> world;
         rig.computeWorldPrecise(pose, rot, world);
         model = world[(size_t)foot].t;
     }
-    const Vec3d value = characterInv * (model - neutralHips) / rig.humanScale();
+    const pose::Vec3d value = characterInv * (model - neutralHips) / rig.humanScale();
     out = {(float)value.x, (float)value.y, (float)value.z};
     return true;
 }
@@ -475,16 +474,16 @@ bool anim::bindHumanoidClip(const AnimationClip& clip, const std::shared_ptr<con
         out = HumanoidBinding();
         return false;
     }
-    const PoseRig& rig = *target->rig;
+    const pose::PoseRig& rig = *target->rig;
     out.target = target;
     const RetargetBinding& reader = out.reader;
-    for (int b = 0; b < HUMAN_BONE_COUNT; b++){
-        if (reader.slots[(size_t)b] && !rig.has(boneAt(b))) out.missingOnTarget.push_back(humanBoneName(boneAt(b)));
+    for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++){
+        if (reader.slots[(size_t)b] && !rig.has(pose::boneAt(b))) out.missingOnTarget.push_back(pose::humanBoneName(pose::boneAt(b)));
     }
     if (reader.slots.any()){
-        for (int b = 0; b < HUMAN_BONE_COUNT; b++){
+        for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++){
             const Entity entity = target->slotEntities[(size_t)b];
-            if (!rig.has(boneAt(b)) || entity == NULL_ENTITY) continue;
+            if (!rig.has(pose::boneAt(b)) || entity == NULL_ENTITY) continue;
             HumanoidOutput output;
             output.entity = entity;
             output.channel = ClipChannel::Rotation;
@@ -494,14 +493,14 @@ bool anim::bindHumanoidClip(const AnimationClip& clip, const std::shared_ptr<con
             const std::vector<uint8_t>& chain = target->chains[(size_t)b];
             for (size_t c = 0; c + 1 < chain.size(); c++){
                 if (reader.slots[chain[c]]){
-                    out.folded.push_back(std::string(humanBoneName(boneAt(chain[c]))) + " folded into " + humanBoneName(boneAt(b)));
+                    out.folded.push_back(std::string(pose::humanBoneName(pose::boneAt(chain[c]))) + " folded into " + pose::humanBoneName(pose::boneAt(b)));
                 }
             }
         }
     }
-    if (reader.hips && target->slotEntities[(size_t)boneIndex(HumanBone::Hips)] != NULL_ENTITY){
+    if (reader.hips && target->slotEntities[(size_t)pose::boneIndex(pose::HumanBone::Hips)] != NULL_ENTITY){
         HumanoidOutput output;
-        output.entity = target->slotEntities[(size_t)boneIndex(HumanBone::Hips)];
+        output.entity = target->slotEntities[(size_t)boneIndex(pose::HumanBone::Hips)];
         output.channel = ClipChannel::Position;
         output.kind = HumanoidOutput::Kind::Hips;
         out.outputs.push_back(output);
@@ -510,16 +509,16 @@ bool anim::bindHumanoidClip(const AnimationClip& clip, const std::shared_ptr<con
     // live only while the (mirrored) sample has a value for it: a right-hand-only curl leaves the
     // left hand to the other layers and clips, mirrored it drives the left hand and leaves the
     // right one alone
-    std::bitset<HUMAN_EXTRA_BONE_COUNT> driven;
-    for (int x = 0; x < HUMAN_EXTRA_BONE_COUNT; x++){
+    std::bitset<pose::HUMAN_EXTRA_BONE_COUNT> driven;
+    for (int x = 0; x < pose::HUMAN_EXTRA_BONE_COUNT; x++){
         if (!reader.extras[(size_t)x]) continue;
         driven[(size_t)x] = true;
-        driven[(size_t)extraIndex(humanExtraBoneInfo(extraAt(x)).mirror)] = true;
+        driven[(size_t)pose::extraIndex(pose::humanExtraBoneInfo(pose::extraAt(x)).mirror)] = true;
     }
-    for (int x = 0; x < HUMAN_EXTRA_BONE_COUNT; x++){
+    for (int x = 0; x < pose::HUMAN_EXTRA_BONE_COUNT; x++){
         if (!driven[(size_t)x]) continue;
         if (target->extraEntities[(size_t)x] == NULL_ENTITY){
-            if (reader.extras[(size_t)x]) out.missingOnTarget.push_back(humanExtraBoneName(extraAt(x)));
+            if (reader.extras[(size_t)x]) out.missingOnTarget.push_back(pose::humanExtraBoneName(pose::extraAt(x)));
             continue;
         }
         HumanoidOutput output;
@@ -528,7 +527,7 @@ bool anim::bindHumanoidClip(const AnimationClip& clip, const std::shared_ptr<con
         output.kind = HumanoidOutput::Kind::Extra;
         output.index = (uint8_t)x;
         output.liveUnmirrored = reader.extras[(size_t)x];
-        output.liveMirrored = reader.extras[(size_t)extraIndex(humanExtraBoneInfo(extraAt(x)).mirror)];
+        output.liveMirrored = reader.extras[(size_t)pose::extraIndex(pose::humanExtraBoneInfo(pose::extraAt(x)).mirror)];
         out.outputs.push_back(output);
     }
     out.pose = rig.neutralPose();

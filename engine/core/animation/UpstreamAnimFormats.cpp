@@ -16,7 +16,8 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::anim::upstream;
+
+namespace jasperengine::anim::upstream {
 
 namespace{
 
@@ -93,7 +94,6 @@ namespace{
     void normalizeController(ControllerData& data, std::vector<ClipWarning>* warnings);
     void normalizeAvatarMask(AvatarMaskData& data, std::vector<ClipWarning>* warnings);
 
-    using namespace jasperengine::anim::json;
 
     const char* const layerKeys[] = {"name", "weight", "blend", "mask", "mask_guid", "default_state", "any_state", "states", "transitions"};
     const char* const stateKeys[] = {"name", "clip", "clip_guid", "blend_tree", "speed", "speed_parameter", "wrap", "cycle_offset",
@@ -113,50 +113,50 @@ namespace{
 
     // the unknown members of an object, kept as compact JSON
     template<size_t N>
-    void keepUnknown(const OJson& object, const char* const (&keys)[N], KeptKeys& out){
+    void keepUnknown(const anim::json::OJson& object, const char* const (&keys)[N], KeptKeys& out){
         for (auto it = object.begin(); it != object.end(); ++it){
-            if (!known(keys, it.key())) out.push_back({it.key(), compact(*it)});
+            if (!known(keys, it.key())) out.push_back({it.key(), anim::json::compact(*it)});
         }
     }
 
-    bool readString(const OJson& object, const char* key, std::string& out, const std::string& path, std::vector<ClipWarning>& warnings){
+    bool readString(const anim::json::OJson& object, const char* key, std::string& out, const std::string& path, std::vector<ClipWarning>& warnings){
         auto it = object.find(key);
         if (it == object.end()) return false;
         if (!it->is_string()){
-            warn(&warnings, member(path, key), "expected a string: ignored");
+            anim::json::warn(&warnings, anim::json::member(path, key), "expected a string: ignored");
             return false;
         }
         out = it->get<std::string>();
         return true;
     }
 
-    void readFloat(const OJson& object, const char* key, float& out, const std::string& path, std::vector<ClipWarning>& warnings){
+    void readFloat(const anim::json::OJson& object, const char* key, float& out, const std::string& path, std::vector<ClipWarning>& warnings){
         auto it = object.find(key);
         if (it == object.end()) return;
         float value = out;
-        if (!toFloat(*it, value)){
-            warn(&warnings, member(path, key), "expected a number: using " + shortNumber(out));
+        if (!anim::json::toFloat(*it, value)){
+            anim::json::warn(&warnings, anim::json::member(path, key), "expected a number: using " + anim::json::shortNumber(out));
             return;
         }
         out = value;
     }
 
-    void readBool(const OJson& object, const char* key, bool& out, const std::string& path, std::vector<ClipWarning>& warnings){
+    void readBool(const anim::json::OJson& object, const char* key, bool& out, const std::string& path, std::vector<ClipWarning>& warnings){
         auto it = object.find(key);
         if (it == object.end()) return;
         if (!it->is_boolean()){
-            warn(&warnings, member(path, key), std::string("expected true or false: using ") + (out ? "true" : "false"));
+            anim::json::warn(&warnings, anim::json::member(path, key), std::string("expected true or false: using ") + (out ? "true" : "false"));
             return;
         }
         out = it->get<bool>();
     }
 
-    bool readPosition(const OJson& object, const char* key, float* out, const std::string& path, std::vector<ClipWarning>& warnings){
+    bool readPosition(const anim::json::OJson& object, const char* key, float* out, const std::string& path, std::vector<ClipWarning>& warnings){
         auto it = object.find(key);
         if (it == object.end()) return false;
         float x = 0.0f, y = 0.0f;
-        if (!it->is_array() || it->size() != 2 || !toFloat((*it)[0], x) || !toFloat((*it)[1], y)){
-            warn(&warnings, member(path, key), "expected [x, y]: ignored");
+        if (!it->is_array() || it->size() != 2 || !anim::json::toFloat((*it)[0], x) || !anim::json::toFloat((*it)[1], y)){
+            anim::json::warn(&warnings, anim::json::member(path, key), "expected [x, y]: ignored");
             return false;
         }
         out[0] = x;
@@ -164,41 +164,41 @@ namespace{
         return true;
     }
 
-    void readCondition(const OJson& value, const std::string& path, std::vector<ControllerCondition>& out, std::vector<ClipWarning>& warnings){
+    void readCondition(const anim::json::OJson& value, const std::string& path, std::vector<ControllerCondition>& out, std::vector<ClipWarning>& warnings){
         if (!value.is_object()){
-            warn(&warnings, path, "expected {\"parameter\", \"mode\", \"threshold\"}: dropped");
+            anim::json::warn(&warnings, path, "expected {\"parameter\", \"mode\", \"threshold\"}: dropped");
             return;
         }
         ControllerCondition condition;
         if (!readString(value, "parameter", condition.parameter, path, warnings) || condition.parameter.empty()){
-            warn(&warnings, member(path, "parameter"), "expected a parameter name: condition dropped");
+            anim::json::warn(&warnings, anim::json::member(path, "parameter"), "expected a parameter name: condition dropped");
             return;
         }
         std::string mode;
         if (!readString(value, "mode", mode, path, warnings) || !conditionModeFromName(mode, condition.mode)){
-            warn(&warnings, member(path, "mode"), "expected greater, less, equals, not_equal, if or if_not: condition dropped");
+            anim::json::warn(&warnings, anim::json::member(path, "mode"), "expected greater, less, equals, not_equal, if or if_not: condition dropped");
             return;
         }
         readFloat(value, "threshold", condition.threshold, path, warnings);
         for (auto it = value.begin(); it != value.end(); ++it){
-            if (it.key() != "parameter" && it.key() != "mode" && it.key() != "threshold") warn(&warnings, member(path, it.key()), "unknown key ignored");
+            if (it.key() != "parameter" && it.key() != "mode" && it.key() != "threshold") anim::json::warn(&warnings, anim::json::member(path, it.key()), "unknown key ignored");
         }
         out.push_back(condition);
     }
 
-    void readTree(const OJson& value, const std::string& path, BlendTree1D& tree, std::vector<ClipWarning>& warnings){
+    void readTree(const anim::json::OJson& value, const std::string& path, BlendTree1D& tree, std::vector<ClipWarning>& warnings){
         readString(value, "parameter", tree.parameter, path, warnings);
         readBool(value, "automate_thresholds", tree.automateThresholds, path, warnings);
         auto children = value.find("children");
         if (children != value.end()){
             if (!children->is_array()){
-                warn(&warnings, member(path, "children"), "expected an array of {\"clip\", \"threshold\"}: ignored");
+                anim::json::warn(&warnings, anim::json::member(path, "children"), "expected an array of {\"clip\", \"threshold\"}: ignored");
             }else{
                 for (size_t i = 0; i < children->size(); i++){
-                    const OJson& entry = (*children)[i];
-                    const std::string childPath = indexed(path, "children", i);
+                    const anim::json::OJson& entry = (*children)[i];
+                    const std::string childPath = anim::json::indexed(path, "children", i);
                     if (!entry.is_object()){
-                        warn(&warnings, childPath, "expected {\"clip\", \"threshold\"}: dropped");
+                        anim::json::warn(&warnings, childPath, "expected {\"clip\", \"threshold\"}: dropped");
                         continue;
                     }
                     BlendTreeChild child;
@@ -215,14 +215,14 @@ namespace{
         keepUnknown(value, treeKeys, tree.unknownKeys);
     }
 
-    void readState(const OJson& value, const std::string& path, ControllerLayer& layer, std::vector<ClipWarning>& warnings){
+    void readState(const anim::json::OJson& value, const std::string& path, ControllerLayer& layer, std::vector<ClipWarning>& warnings){
         if (!value.is_object()){
-            warn(&warnings, path, "expected a state object: dropped");
+            anim::json::warn(&warnings, path, "expected a state object: dropped");
             return;
         }
         ControllerState state;
         if (!readString(value, "name", state.name, path, warnings) || state.name.empty()){
-            warn(&warnings, member(path, "name"), "expected a state name: state dropped");
+            anim::json::warn(&warnings, anim::json::member(path, "name"), "expected a state name: state dropped");
             return;
         }
         readString(value, "clip", state.clip, path, warnings);
@@ -230,19 +230,19 @@ namespace{
         auto tree = value.find("blend_tree");
         if (tree != value.end()){
             if (!tree->is_object()){
-                warn(&warnings, member(path, "blend_tree"), "expected {\"parameter\", \"children\"}: ignored");
+                anim::json::warn(&warnings, anim::json::member(path, "blend_tree"), "expected {\"parameter\", \"children\"}: ignored");
             }else if (!state.clip.empty()){
-                warn(&warnings, member(path, "blend_tree"), "the state has a clip: its blend tree is ignored");
+                anim::json::warn(&warnings, anim::json::member(path, "blend_tree"), "the state has a clip: its blend tree is ignored");
             }else{
                 state.hasBlendTree = true;
-                readTree(*tree, member(path, "blend_tree"), state.blendTree, warnings);
+                readTree(*tree, anim::json::member(path, "blend_tree"), state.blendTree, warnings);
             }
         }
         readFloat(value, "speed", state.speed, path, warnings);
         readString(value, "speed_parameter", state.speedParameter, path, warnings);
         std::string wrap;
         if (readString(value, "wrap", wrap, path, warnings) && !anim::wrapFromName(wrap, state.wrap)){
-            warn(&warnings, member(path, "wrap"), "expected default, once, loop, ping_pong or clamp_forever: using default");
+            anim::json::warn(&warnings, anim::json::member(path, "wrap"), "expected default, once, loop, ping_pong or clamp_forever: using default");
             state.wrap = ClipWrapMode::Default;
         }
         readFloat(value, "cycle_offset", state.cycleOffset, path, warnings);
@@ -254,27 +254,27 @@ namespace{
         layer.states.push_back(std::move(state));
     }
 
-    void readTransition(const OJson& value, const std::string& path, ControllerLayer& layer, std::vector<ClipWarning>& warnings){
+    void readTransition(const anim::json::OJson& value, const std::string& path, ControllerLayer& layer, std::vector<ClipWarning>& warnings){
         if (!value.is_object()){
-            warn(&warnings, path, "expected a transition object: dropped");
+            anim::json::warn(&warnings, path, "expected a transition object: dropped");
             return;
         }
         ControllerTransition transition;
         if (!readString(value, "from", transition.from, path, warnings) || transition.from.empty()){
-            warn(&warnings, member(path, "from"), "expected a state name or \"any\": transition dropped");
+            anim::json::warn(&warnings, anim::json::member(path, "from"), "expected a state name or \"any\": transition dropped");
             return;
         }
         if (!readString(value, "to", transition.to, path, warnings) || transition.to.empty()){
-            warn(&warnings, member(path, "to"), "expected a state name: transition dropped");
+            anim::json::warn(&warnings, anim::json::member(path, "to"), "expected a state name: transition dropped");
             return;
         }
         auto conditions = value.find("conditions");
         if (conditions != value.end()){
             if (!conditions->is_array()){
-                warn(&warnings, member(path, "conditions"), "expected an array of conditions: ignored");
+                anim::json::warn(&warnings, anim::json::member(path, "conditions"), "expected an array of conditions: ignored");
             }else{
                 for (size_t i = 0; i < conditions->size(); i++){
-                    readCondition((*conditions)[i], indexed(path, "conditions", i), transition.conditions, warnings);
+                    readCondition((*conditions)[i], anim::json::indexed(path, "conditions", i), transition.conditions, warnings);
                 }
             }
         }
@@ -286,7 +286,7 @@ namespace{
         std::string interruption;
         if (readString(value, "interruption", interruption, path, warnings) &&
             !interruptionFromName(interruption, transition.interruption)){
-            warn(&warnings, member(path, "interruption"), "expected none, current_state or next_state: using none");
+            anim::json::warn(&warnings, anim::json::member(path, "interruption"), "expected none, current_state or next_state: using none");
             transition.interruption = TransitionInterruption::None;
         }
         readBool(value, "can_transition_to_self", transition.canTransitionToSelf, path, warnings);
@@ -294,38 +294,38 @@ namespace{
         layer.transitions.push_back(std::move(transition));
     }
 
-    void readLayer(const OJson& value, const std::string& path, ControllerData& data, std::vector<ClipWarning>& warnings){
+    void readLayer(const anim::json::OJson& value, const std::string& path, ControllerData& data, std::vector<ClipWarning>& warnings){
         if (!value.is_object()){
-            warn(&warnings, path, "expected a layer object: dropped");
+            anim::json::warn(&warnings, path, "expected a layer object: dropped");
             return;
         }
         ControllerLayer layer;
         if (!readString(value, "name", layer.name, path, warnings) || layer.name.empty()){
-            warn(&warnings, member(path, "name"), "expected a layer name: layer dropped");
+            anim::json::warn(&warnings, anim::json::member(path, "name"), "expected a layer name: layer dropped");
             return;
         }
         readFloat(value, "weight", layer.weight, path, warnings);
         std::string blend;
         if (readString(value, "blend", blend, path, warnings) && !anim::layerBlendFromName(blend, layer.blend)){
-            warn(&warnings, member(path, "blend"), "expected override or additive: using override");
+            anim::json::warn(&warnings, anim::json::member(path, "blend"), "expected override or additive: using override");
         }
         readString(value, "mask", layer.mask, path, warnings);
         readString(value, "mask_guid", layer.maskGuid, path, warnings);
         readString(value, "default_state", layer.defaultState, path, warnings);
         auto any = value.find("any_state");
         if (any != value.end()){
-            if (!any->is_object()) warn(&warnings, member(path, "any_state"), "expected {\"position\": [x, y]}: ignored");
-            else layer.hasAnyStatePosition = readPosition(*any, "position", layer.anyStatePosition, member(path, "any_state"), warnings);
+            if (!any->is_object()) anim::json::warn(&warnings, anim::json::member(path, "any_state"), "expected {\"position\": [x, y]}: ignored");
+            else layer.hasAnyStatePosition = readPosition(*any, "position", layer.anyStatePosition, anim::json::member(path, "any_state"), warnings);
         }
         auto states = value.find("states");
         if (states != value.end()){
-            if (!states->is_array()) warn(&warnings, member(path, "states"), "expected an array of states: ignored");
-            else for (size_t i = 0; i < states->size(); i++) readState((*states)[i], indexed(path, "states", i), layer, warnings);
+            if (!states->is_array()) anim::json::warn(&warnings, anim::json::member(path, "states"), "expected an array of states: ignored");
+            else for (size_t i = 0; i < states->size(); i++) readState((*states)[i], anim::json::indexed(path, "states", i), layer, warnings);
         }
         auto transitions = value.find("transitions");
         if (transitions != value.end()){
-            if (!transitions->is_array()) warn(&warnings, member(path, "transitions"), "expected an array of transitions: ignored");
-            else for (size_t i = 0; i < transitions->size(); i++) readTransition((*transitions)[i], indexed(path, "transitions", i), layer, warnings);
+            if (!transitions->is_array()) anim::json::warn(&warnings, anim::json::member(path, "transitions"), "expected an array of transitions: ignored");
+            else for (size_t i = 0; i < transitions->size(); i++) readTransition((*transitions)[i], anim::json::indexed(path, "transitions", i), layer, warnings);
         }
         keepUnknown(value, layerKeys, layer.unknownKeys);
         data.layers.push_back(std::move(layer));
@@ -333,9 +333,9 @@ namespace{
 
     ControllerFileParseResult parseControllerText(const std::string& text){
         ControllerFileParseResult result;
-        OJson root;
-        if (!parseDocument(text, root, result.error)) return result;
-        if (!checkHeader(root, anim::CONTROLLER_FORMAT, 1, "an Animator Controller", "Animator Controller", result.error)){
+        anim::json::OJson root;
+        if (!anim::json::parseDocument(text, root, result.error)) return result;
+        if (!anim::json::checkHeader(root, anim::CONTROLLER_FORMAT, 1, "an Animator Controller", "Animator Controller", result.error)){
             return result;
         }
         std::vector<ClipWarning>& warnings = result.warnings;
@@ -343,63 +343,63 @@ namespace{
         std::string unknownNames;
         for (auto it = root.begin(); it != root.end(); ++it){
             const std::string& name = it.key();
-            const OJson& value = *it;
+            const anim::json::OJson& value = *it;
             if (name == "format" || name == "version") continue;
             if (name == "guid"){
                 if (!value.is_string() || !anim::isClipGuid(value.get<std::string>())){
-                    warn(&warnings, "guid", "expected 32 lowercase hex digits: dropped (a new one is given on save)");
+                    anim::json::warn(&warnings, "guid", "expected 32 lowercase hex digits: dropped (a new one is given on save)");
                 }else{
                     data.guid = value.get<std::string>();
                 }
             }else if (name == "parameters"){
                 if (!value.is_array()){
-                    warn(&warnings, "parameters", "expected an array of {\"name\", \"type\", \"default\"}: ignored");
+                    anim::json::warn(&warnings, "parameters", "expected an array of {\"name\", \"type\", \"default\"}: ignored");
                     continue;
                 }
                 for (size_t i = 0; i < value.size(); i++){
-                    const OJson& entry = value[i];
-                    const std::string path = indexed("", "parameters", i);
+                    const anim::json::OJson& entry = value[i];
+                    const std::string path = anim::json::indexed("", "parameters", i);
                     if (!entry.is_object()){
-                        warn(&warnings, path, "expected {\"name\", \"type\", \"default\"}: dropped");
+                        anim::json::warn(&warnings, path, "expected {\"name\", \"type\", \"default\"}: dropped");
                         continue;
                     }
                     ControllerParameter parameter;
                     std::string type;
                     if (!readString(entry, "name", parameter.name, path, warnings) || parameter.name.empty()){
-                        warn(&warnings, member(path, "name"), "expected a parameter name: dropped");
+                        anim::json::warn(&warnings, anim::json::member(path, "name"), "expected a parameter name: dropped");
                         continue;
                     }
                     if (!readString(entry, "type", type, path, warnings) || !parameterTypeFromName(type, parameter.type)){
-                        warn(&warnings, member(path, "type"), "expected float, int, bool or trigger: parameter dropped");
+                        anim::json::warn(&warnings, anim::json::member(path, "type"), "expected float, int, bool or trigger: parameter dropped");
                         continue;
                     }
                     auto def = entry.find("default");
                     if (def != entry.end()){
                         float number = 0.0f;
                         if (def->is_boolean()) parameter.defaultValue = def->get<bool>() ? 1.0f : 0.0f;
-                        else if (toFloat(*def, number)) parameter.defaultValue = number;
-                        else warn(&warnings, member(path, "default"), "expected a number or true/false: using 0");
+                        else if (anim::json::toFloat(*def, number)) parameter.defaultValue = number;
+                        else anim::json::warn(&warnings, anim::json::member(path, "default"), "expected a number or true/false: using 0");
                     }
                     for (auto field = entry.begin(); field != entry.end(); ++field){
                         if (field.key() != "name" && field.key() != "type" && field.key() != "default"){
-                            warn(&warnings, member(path, field.key()), "unknown key ignored");
+                            anim::json::warn(&warnings, anim::json::member(path, field.key()), "unknown key ignored");
                         }
                     }
                     data.parameters.push_back(parameter);
                 }
             }else if (name == "layers"){
                 if (!value.is_array()){
-                    warn(&warnings, "layers", "expected an array of layers: ignored");
+                    anim::json::warn(&warnings, "layers", "expected an array of layers: ignored");
                     continue;
                 }
-                for (size_t i = 0; i < value.size(); i++) readLayer(value[i], indexed("", "layers", i), data, warnings);
+                for (size_t i = 0; i < value.size(); i++) readLayer(value[i], anim::json::indexed("", "layers", i), data, warnings);
             }else{
-                data.unknownKeys.push_back({name, compact(value)});
+                data.unknownKeys.push_back({name, anim::json::compact(value)});
                 unknownNames += (unknownNames.empty() ? "" : ", ") + name;
             }
         }
         if (!unknownNames.empty()){
-            warn(&warnings, "", "unknown keys kept as they are (written back on save): " + unknownNames);
+            anim::json::warn(&warnings, "", "unknown keys kept as they are (written back on save): " + unknownNames);
         }
         normalizeController(data, &warnings);
         result.data = std::move(data);
@@ -412,120 +412,120 @@ namespace{
 
     AvatarMaskParseResult parseMaskText(const std::string& text){
         AvatarMaskParseResult result;
-        OJson root;
-        if (!parseDocument(text, root, result.error)) return result;
-        if (!checkHeader(root, anim::MASK_FORMAT, 1, "an Avatar Mask", "Avatar Mask", result.error)) return result;
+        anim::json::OJson root;
+        if (!anim::json::parseDocument(text, root, result.error)) return result;
+        if (!anim::json::checkHeader(root, anim::MASK_FORMAT, 1, "an Avatar Mask", "Avatar Mask", result.error)) return result;
 
         std::vector<ClipWarning>& warnings = result.warnings;
         AvatarMaskData data;
         std::string unknownNames;
         for (auto it = root.begin(); it != root.end(); ++it){
             const std::string& name = it.key();
-            const OJson& value = *it;
+            const anim::json::OJson& value = *it;
             if (name == "format" || name == "version") continue;
             if (name == "guid"){
                 if (!value.is_string() || !anim::isClipGuid(value.get<std::string>())){
-                    warn(&warnings, "guid", "expected 32 lowercase hex digits: dropped (a new one is given on save)");
+                    anim::json::warn(&warnings, "guid", "expected 32 lowercase hex digits: dropped (a new one is given on save)");
                 }else{
                     data.guid = value.get<std::string>();
                 }
             }else if (name == "default"){
                 float weight = 1.0f;
-                if (!toWeight(value, weight)){
-                    warn(&warnings, "default", "expected a weight from 0 to 1: using 1");
+                if (!anim::json::toWeight(value, weight)){
+                    anim::json::warn(&warnings, "default", "expected a weight from 0 to 1: using 1");
                     weight = 1.0f;
                 }
                 data.defaultWeight = weight;
             }else if (name == "humanoid"){
                 if (!value.is_object()){
-                    warn(&warnings, "humanoid", "expected {\"<body part>\": weight, ...}: ignored");
+                    anim::json::warn(&warnings, "humanoid", "expected {\"<body part>\": weight, ...}: ignored");
                     continue;
                 }
                 data.hasHumanoid = true;
                 for (auto part = value.begin(); part != value.end(); ++part){
-                    const std::string path = member("humanoid", part.key());
+                    const std::string path = anim::json::member("humanoid", part.key());
                     AvatarMaskPart which;
                     if (!avatarMaskPartFromName(part.key(), which)){
                         bool ik = false;
                         for (const char* ikName : ikPartNames){
                             if (part.key() == ikName) ik = true;
                         }
-                        warn(&warnings, path, ik ? "IK goals are not masked (there is no IK pass): ignored"
+                        anim::json::warn(&warnings, path, ik ? "IK goals are not masked (there is no IK pass): ignored"
                                                  : "unknown body part (root, body, head, left_leg, right_leg, left_arm, right_arm, "
                                                    "left_fingers, right_fingers): ignored");
                         continue;
                     }
                     float weight = 0.0f;
-                    if (!toWeight(*part, weight)){
-                        warn(&warnings, path, "expected a weight from 0 to 1 (or true/false): ignored");
+                    if (!anim::json::toWeight(*part, weight)){
+                        anim::json::warn(&warnings, path, "expected a weight from 0 to 1 (or true/false): ignored");
                         continue;
                     }
                     data.parts[(size_t)which] = weight;
                 }
             }else if (name == "transforms"){
                 if (!value.is_array()){
-                    warn(&warnings, "transforms", "expected an array of {\"path\", \"weight\", \"children\"}: ignored");
+                    anim::json::warn(&warnings, "transforms", "expected an array of {\"path\", \"weight\", \"children\"}: ignored");
                     continue;
                 }
                 for (size_t i = 0; i < value.size(); i++){
-                    const OJson& entry = value[i];
-                    const std::string path = indexed("", "transforms", i);
+                    const anim::json::OJson& entry = value[i];
+                    const std::string path = anim::json::indexed("", "transforms", i);
                     if (!entry.is_object()){
-                        warn(&warnings, path, "expected {\"path\", \"weight\", \"children\"}: dropped");
+                        anim::json::warn(&warnings, path, "expected {\"path\", \"weight\", \"children\"}: dropped");
                         continue;
                     }
                     AvatarMaskTransform transform;
                     auto pathIt = entry.find("path");
                     std::vector<anim::PathSegment> segments;
                     if (pathIt == entry.end() || !pathIt->is_string()){
-                        warn(&warnings, member(path, "path"), "expected a path relative to the player root: entry dropped");
+                        anim::json::warn(&warnings, anim::json::member(path, "path"), "expected a path relative to the player root: entry dropped");
                         continue;
                     }
                     transform.path = pathIt->get<std::string>();
                     if (!transform.path.empty() && !anim::parsePath(transform.path, segments)){
-                        warn(&warnings, member(path, "path"), "\"" + transform.path + "\" is not a valid path: entry dropped");
+                        anim::json::warn(&warnings, anim::json::member(path, "path"), "\"" + transform.path + "\" is not a valid path: entry dropped");
                         continue;
                     }
                     for (auto field = entry.begin(); field != entry.end(); ++field){
                         if (field.key() == "path") continue;
                         if (field.key() == "weight"){
-                            if (!toWeight(*field, transform.weight)){
-                                warn(&warnings, member(path, "weight"), "expected a weight from 0 to 1: using 1");
+                            if (!anim::json::toWeight(*field, transform.weight)){
+                                anim::json::warn(&warnings, anim::json::member(path, "weight"), "expected a weight from 0 to 1: using 1");
                                 transform.weight = 1.0f;
                             }
                         }else if (field.key() == "children"){
                             if (!field->is_boolean()){
-                                warn(&warnings, member(path, "children"), "expected true or false: using true");
+                                anim::json::warn(&warnings, anim::json::member(path, "children"), "expected true or false: using true");
                             }else{
                                 transform.children = field->get<bool>();
                             }
                         }else{
-                            warn(&warnings, member(path, field.key()), "unknown key ignored");
+                            anim::json::warn(&warnings, anim::json::member(path, field.key()), "unknown key ignored");
                         }
                     }
                     data.transforms.push_back(std::move(transform));
                 }
             }else if (name == "preview"){
                 if (!value.is_object()){
-                    warn(&warnings, "preview", "expected {\"model\": \"<model or prefab path>\"}: ignored");
+                    anim::json::warn(&warnings, "preview", "expected {\"model\": \"<model or prefab path>\"}: ignored");
                     continue;
                 }
                 for (auto entry = value.begin(); entry != value.end(); ++entry){
                     if (entry.key() == "model" && entry->is_string()){
                         data.previewModel = entry->get<std::string>();
                     }else if (entry.key() == "model"){
-                        warn(&warnings, "preview.model", "expected a model or prefab path: ignored");
+                        anim::json::warn(&warnings, "preview.model", "expected a model or prefab path: ignored");
                     }else{
-                        warn(&warnings, "preview." + entry.key(), "unknown key ignored");
+                        anim::json::warn(&warnings, "preview." + entry.key(), "unknown key ignored");
                     }
                 }
             }else{
-                data.unknownKeys.push_back({name, compact(value)});
+                data.unknownKeys.push_back({name, anim::json::compact(value)});
                 unknownNames += (unknownNames.empty() ? "" : ", ") + name;
             }
         }
         if (!unknownNames.empty()){
-            warn(&warnings, "", "unknown keys kept as they are (written back on save): " + unknownNames);
+            anim::json::warn(&warnings, "", "unknown keys kept as they are (written back on save): " + unknownNames);
         }
         normalizeAvatarMask(data, &warnings);
         result.data = std::move(data);
@@ -534,28 +534,28 @@ namespace{
 
     void normalizeController(ControllerData& data, std::vector<ClipWarning>* warnings){
         if (!data.guid.empty() && !anim::isClipGuid(data.guid)){
-            warn(warnings, "guid", "not 32 lowercase hex digits: dropped");
+            anim::json::warn(warnings, "guid", "not 32 lowercase hex digits: dropped");
             data.guid.clear();
         }
         // parameters: unique names, defaults of their type
         std::vector<ControllerParameter> parameters;
         for (size_t i = 0; i < data.parameters.size(); i++){
             ControllerParameter parameter = data.parameters[i];
-            const std::string path = indexed("", "parameters", i);
+            const std::string path = anim::json::indexed("", "parameters", i);
             if (parameter.name.empty()){
-                warn(warnings, path, "a parameter without a name: dropped");
+                anim::json::warn(warnings, path, "a parameter without a name: dropped");
                 continue;
             }
             // Lua-safe (spec 11.1): scripts name them as strings and the editor as identifiers
             if (!anim::isLuaIdentifier(parameter.name)){
-                warn(warnings, path, "\"" + parameter.name + "\" is not a Lua-safe name (letters, digits and _, not starting with a digit, "
+                anim::json::warn(warnings, path, "\"" + parameter.name + "\" is not a Lua-safe name (letters, digits and _, not starting with a digit, "
                                      "not a Lua keyword): dropped");
                 continue;
             }
             bool taken = false;
             for (const ControllerParameter& kept : parameters) taken |= kept.name == parameter.name;
             if (taken){
-                warn(warnings, path, "\"" + parameter.name + "\" is already a parameter: dropped");
+                anim::json::warn(warnings, path, "\"" + parameter.name + "\" is already a parameter: dropped");
                 continue;
             }
             float value = finite(parameter.defaultValue, 0.0f);
@@ -578,26 +578,26 @@ namespace{
         std::vector<ControllerLayer> layers;
         for (size_t l = 0; l < data.layers.size(); l++){
             ControllerLayer layer = data.layers[l];
-            const std::string path = indexed("", "layers", l);
+            const std::string path = anim::json::indexed("", "layers", l);
             bool taken = false;
             for (const ControllerLayer& kept : layers) taken |= kept.name == layer.name;
             if (layer.name.empty() || taken){
-                warn(warnings, path, layer.name.empty() ? "a layer without a name: dropped" : "\"" + layer.name + "\" is already a layer: dropped");
+                anim::json::warn(warnings, path, layer.name.empty() ? "a layer without a name: dropped" : "\"" + layer.name + "\" is already a layer: dropped");
                 continue;
             }
             const float weight = finite(layer.weight, 1.0f);
             layer.weight = std::min(std::max(weight, 0.0f), 1.0f);
-            if (layer.weight != weight) warn(warnings, member(path, "weight"), "outside 0..1: using " + shortNumber(layer.weight));
+            if (layer.weight != weight) anim::json::warn(warnings, anim::json::member(path, "weight"), "outside 0..1: using " + anim::json::shortNumber(layer.weight));
     
             // states: unique names, not the reserved "any"
             std::vector<ControllerState> states;
             for (size_t s = 0; s < layer.states.size(); s++){
                 ControllerState state = layer.states[s];
-                const std::string statePath = indexed(path, "states", s);
+                const std::string statePath = anim::json::indexed(path, "states", s);
                 bool duplicate = false;
                 for (const ControllerState& kept : states) duplicate |= kept.name == state.name;
                 if (state.name.empty() || state.name == anim::upstream::ANY_STATE || duplicate){
-                    warn(warnings, statePath, state.name.empty() ? "a state without a name: dropped" :
+                    anim::json::warn(warnings, statePath, state.name.empty() ? "a state without a name: dropped" :
                                               state.name == anim::upstream::ANY_STATE ? "\"any\" names the Any State: state dropped" :
                                               "\"" + state.name + "\" is already a state of the layer: dropped");
                     continue;
@@ -605,7 +605,7 @@ namespace{
                 state.speed = finite(state.speed, 1.0f);
                 const float offset = finite(state.cycleOffset, 0.0f);
                 state.cycleOffset = std::min(std::max(offset, 0.0f), 1.0f);
-                if (state.cycleOffset != offset) warn(warnings, member(statePath, "cycle_offset"), "outside 0..1: using " + shortNumber(state.cycleOffset));
+                if (state.cycleOffset != offset) anim::json::warn(warnings, anim::json::member(statePath, "cycle_offset"), "outside 0..1: using " + anim::json::shortNumber(state.cycleOffset));
                 if (!state.clip.empty() && state.hasBlendTree){
                     state.hasBlendTree = false;
                     state.blendTree = BlendTree1D();
@@ -627,8 +627,8 @@ namespace{
                         });
                         for (size_t c = 1; c < tree.children.size(); c++){
                             if (tree.children[c].threshold == tree.children[c - 1].threshold){
-                                warn(warnings, indexed(member(statePath, "blend_tree"), "children", c),
-                                     "the same threshold as the child before it (" + shortNumber(tree.children[c].threshold) + "): it never plays alone");
+                                anim::json::warn(warnings, anim::json::indexed(anim::json::member(statePath, "blend_tree"), "children", c),
+                                     "the same threshold as the child before it (" + anim::json::shortNumber(tree.children[c].threshold) + "): it never plays alone");
                             }
                         }
                     }
@@ -637,7 +637,7 @@ namespace{
             }
             layer.states = std::move(states);
             if (!layer.defaultState.empty() && layer.findState(layer.defaultState) < 0){
-                warn(warnings, member(path, "default_state"), "\"" + layer.defaultState + "\" is not a state of the layer: the first state is the default");
+                anim::json::warn(warnings, anim::json::member(path, "default_state"), "\"" + layer.defaultState + "\" is not a state of the layer: the first state is the default");
                 layer.defaultState.clear();
             }
     
@@ -645,13 +645,13 @@ namespace{
             std::vector<ControllerTransition> transitions;
             for (size_t t = 0; t < layer.transitions.size(); t++){
                 ControllerTransition transition = layer.transitions[t];
-                const std::string transitionPath = indexed(path, "transitions", t);
+                const std::string transitionPath = anim::json::indexed(path, "transitions", t);
                 if (transition.from != anim::upstream::ANY_STATE && layer.findState(transition.from) < 0){
-                    warn(warnings, member(transitionPath, "from"), "\"" + transition.from + "\" is not a state of the layer (or \"any\"): transition dropped");
+                    anim::json::warn(warnings, anim::json::member(transitionPath, "from"), "\"" + transition.from + "\" is not a state of the layer (or \"any\"): transition dropped");
                     continue;
                 }
                 if (layer.findState(transition.to) < 0){
-                    warn(warnings, member(transitionPath, "to"), "\"" + transition.to + "\" is not a state of the layer: transition dropped");
+                    anim::json::warn(warnings, anim::json::member(transitionPath, "to"), "\"" + transition.to + "\" is not a state of the layer: transition dropped");
                     continue;
                 }
                 transition.exitTime = std::max(0.0f, finite(transition.exitTime, 0.75f));
@@ -675,26 +675,26 @@ namespace{
     void normalizeAvatarMask(AvatarMaskData& data, std::vector<ClipWarning>* warnings){
         auto clamped = [&](float value, const std::string& path){
             const float result = clampWeight(value);
-            if (result != value) warn(warnings, path, shortNumber(value) + " is outside 0..1, using " + shortNumber(result));
+            if (result != value) anim::json::warn(warnings, path, anim::json::shortNumber(value) + " is outside 0..1, using " + anim::json::shortNumber(result));
             return result;
         };
         data.defaultWeight = clamped(data.defaultWeight, "default");
         for (int i = 0; i < AVATAR_MASK_PART_COUNT; i++){
-            if (data.parts[(size_t)i]) data.parts[(size_t)i] = clamped(*data.parts[(size_t)i], member("humanoid", partNames[i]));
+            if (data.parts[(size_t)i]) data.parts[(size_t)i] = clamped(*data.parts[(size_t)i], anim::json::member("humanoid", partNames[i]));
             if (data.parts[(size_t)i]) data.hasHumanoid = true;
         }
         if (!data.guid.empty() && !anim::isClipGuid(data.guid)){
-            warn(warnings, "guid", "not 32 lowercase hex digits: dropped");
+            anim::json::warn(warnings, "guid", "not 32 lowercase hex digits: dropped");
             data.guid.clear();
         }
         // sorted by path (byte order), one entry per path: the later one wins
         std::vector<AvatarMaskTransform> transforms;
         for (size_t i = 0; i < data.transforms.size(); i++){
             AvatarMaskTransform entry = data.transforms[i];
-            entry.weight = clamped(entry.weight, indexed("", "transforms", i) + ".weight");
+            entry.weight = clamped(entry.weight, anim::json::indexed("", "transforms", i) + ".weight");
             auto existing = std::find_if(transforms.begin(), transforms.end(), [&](const AvatarMaskTransform& t){ return t.path == entry.path; });
             if (existing != transforms.end()){
-                warn(warnings, indexed("", "transforms", i), "\"" + entry.path + "\" is listed twice: the later entry is used");
+                anim::json::warn(warnings, anim::json::indexed("", "transforms", i), "\"" + entry.path + "\" is listed twice: the later entry is used");
                 *existing = entry;
             }else{
                 transforms.push_back(entry);
@@ -715,12 +715,12 @@ int anim::upstream::Layer::findState(const std::string& name) const{
     return -1;
 }
 
-const char* anim::upstream::maskPartName(MaskPart part){
+const char* maskPartName(MaskPart part){
     const size_t index = (size_t)part;
     return index < (size_t)MASK_PART_COUNT ? partNames[index] : "";
 }
 
-anim::upstream::ParseResult<anim::upstream::Controller> anim::upstream::parseController(const std::string& text){
+ParseResult<anim::upstream::Controller> parseController(const std::string& text){
     try{
         return parseControllerText(text);
     }catch (const std::exception& e){
@@ -730,7 +730,7 @@ anim::upstream::ParseResult<anim::upstream::Controller> anim::upstream::parseCon
     }
 }
 
-anim::upstream::ParseResult<anim::upstream::Mask> anim::upstream::parseMask(const std::string& text){
+ParseResult<anim::upstream::Mask> parseMask(const std::string& text){
     try{
         return parseMaskText(text);
     }catch (const std::exception& e){
@@ -814,7 +814,7 @@ namespace{
 
 }
 
-anim::ControllerDef anim::upstream::toControllerDef(const Controller& data, std::vector<ClipWarning>* warnings){
+anim::ControllerDef toControllerDef(const Controller& data, std::vector<ClipWarning>* warnings){
     ControllerDef def;
     def.guid = data.guid;
     for (const Parameter& p : data.parameters){
@@ -896,7 +896,7 @@ anim::ControllerDef anim::upstream::toControllerDef(const Controller& data, std:
     return def;
 }
 
-anim::AvatarMaskDef anim::upstream::toMaskDef(const Mask& data){
+anim::AvatarMaskDef toMaskDef(const Mask& data){
     AvatarMaskDef def;
     def.guid = data.guid;
     def.defaultWeight = data.defaultWeight;
@@ -927,3 +927,5 @@ anim::AvatarMaskDef anim::upstream::toMaskDef(const Mask& data){
     def.unknownKeys = data.unknownKeys;
     return def;
 }
+
+}  // namespace jasperengine::anim::upstream

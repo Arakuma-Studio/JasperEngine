@@ -30,7 +30,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::terraincore;
 
 namespace fs = std::filesystem;
 
@@ -43,7 +42,7 @@ namespace {
         return extension;
     }
 
-    std::string importTileName(TileCoord tile) {
+    std::string importTileName(terraincore::TileCoord tile) {
         return "(" + std::to_string(tile.x) + ", " + std::to_string(tile.z) + ")";
     }
 
@@ -114,14 +113,14 @@ namespace {
     // What the job carries: copies, never the runtime
     struct ImportWork {
         TerrainWorldImportPlan plan;
-        WorldLattice lattice;
+        terraincore::WorldLattice lattice;
         fs::path folder;
         fs::path stash;
         std::set<uint32_t> present;
         uint16_t baseHeight = 0;
         std::vector<float> layerColours;
         int layerCount = 0;
-        TileCodec codec;
+        terraincore::TileCodec codec;
         std::shared_ptr<TerrainWorldImportTask> task;
         TerrainWorldImportResult result;
     };
@@ -131,29 +130,29 @@ namespace {
         const TerrainWorldImportPlan& plan = work.plan;
         const std::string path = FileUtils::pathToUtf8(plan.file);
         auto cancelled = [&task]() { return task.cancelRequested(); };
-        HeightmapImport slicing;
+        terraincore::HeightmapImport slicing;
         slicing.lattice = work.lattice;
         slicing.origin = plan.origin;
-        HeightmapRows rows;
+        terraincore::HeightmapRows rows;
         std::shared_ptr<HeightImport> whole;
         std::string error;
         if (plan.banded) {
             // T1's Auto range and byte order, found in a pass a row at a time
             task.report(0.0, "Reading the file's range");
-            RawHeightmapScan scan;
-            if (!scanRawHeightmap(path, plan.width, plan.height, cancelled, scan, error)) {
+            terraincore::RawHeightmapScan scan;
+            if (!terraincore::scanRawHeightmap(path, plan.width, plan.height, cancelled, scan, error)) {
                 work.result.cancelled = error == "cancelled";
                 work.result.error = error;
                 return;
             }
-            RawHeightmapFile raw;
+            terraincore::RawHeightmapFile raw;
             raw.path = path;
             raw.width = plan.width;
             raw.height = plan.height;
             raw.bigEndian = scan.bigEndian();
             raw.low = raw.bigEndian ? scan.minBig : scan.minLittle;
             raw.high = raw.bigEndian ? scan.maxBig : scan.maxLittle;
-            rows = rawHeightmapRows(raw);
+            rows = terraincore::rawHeightmapRows(raw);
             slicing.flipZ = plan.flipVertically;
         } else {
             task.report(-1.0, "Decoding the file");
@@ -187,18 +186,18 @@ namespace {
             return;
         }
 
-        ImportTarget target;
-        target.present = [&work](TileCoord tile) { return work.present.count(tile.key()) > 0; };
-        target.read = [&work](TileCoord tile) -> std::shared_ptr<WorldTile> {
+        terraincore::ImportTarget target;
+        target.present = [&work](terraincore::TileCoord tile) { return work.present.count(tile.key()) > 0; };
+        target.read = [&work](terraincore::TileCoord tile) -> std::shared_ptr<terraincore::WorldTile> {
             std::ifstream file(work.folder / FileUtils::pathFromUtf8(terrainWorldTileName(tile)), std::ios::binary);
             const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-            auto data = std::make_shared<WorldTile>();
-            if (bytes.empty() || decodeTile(bytes, work.codec, *data) != TileError::None || data->coord != tile || data->height.empty()) return nullptr;
+            auto data = std::make_shared<terraincore::WorldTile>();
+            if (bytes.empty() || decodeTile(bytes, work.codec, *data) != terraincore::TileError::None || data->coord != tile || data->height.empty()) return nullptr;
             return data;
         };
-        target.write = [&work, &error](const WorldTile& tile) {
+        target.write = [&work, &error](const terraincore::WorldTile& tile) {
             std::vector<uint8_t> bytes;
-            TileEncodeOptions options;
+            terraincore::TileEncodeOptions options;
             options.level = 9;
             if (!encodeTile(tile, work.codec, options, bytes, &error)) return false;
             io::AtomicWriteOptions write;
@@ -212,7 +211,7 @@ namespace {
         target.layerColours = work.layerColours;
         target.layerCount = work.layerCount;
         task.report(0.0, "Writing tiles");
-        const bool ok = importHeightmap(rows, slicing, target, cancelled, [&task](int done, int total) {
+        const bool ok = terraincore::importHeightmap(rows, slicing, target, cancelled, [&task](int done, int total) {
             task.report(total > 0 ? static_cast<double>(done) / static_cast<double>(total) : 1.0, "Writing tiles " + std::to_string(done) + " of " + std::to_string(total));
         }, error);
         work.result.cancelled = !ok && error == "cancelled";
@@ -285,19 +284,19 @@ bool jasperengine::editor::planTerrainWorldImport(Project* project, TerrainWorld
                 std::to_string(TERRAIN_WORLD_IMPORT_WHOLE_SIDE) + " a side a decoded file may have: save it as a 16-bit .r16 or .raw, which is read in bands";
         return false;
     }
-    HeightmapImport slicing;
+    terraincore::HeightmapImport slicing;
     slicing.lattice = runtime.lattice();
     slicing.origin = plan.origin;
-    plan.covered = importCoveredTiles(slicing, plan.width, plan.height);
-    TileCoord low, high;
+    plan.covered = terraincore::importCoveredTiles(slicing, plan.width, plan.height);
+    terraincore::TileCoord low, high;
     bool box = runtime.bounds(low, high);
-    for (const TileCoord& tile : plan.covered) {
+    for (const terraincore::TileCoord& tile : plan.covered) {
         std::string why;
         if (!tile.addressable() || !tileWithinLimit(runtime.lattice(), tile)) why = "is past the world's limit of +-16384 m";
         if (why.empty() && !runtime.present(tile)) {
             plan.made++;
-            low = box ? TileCoord(std::min<int>(low.x, tile.x), std::min<int>(low.z, tile.z)) : tile;
-            high = box ? TileCoord(std::max<int>(high.x, tile.x), std::max<int>(high.z, tile.z)) : tile;
+            low = box ? terraincore::TileCoord(std::min<int>(low.x, tile.x), std::min<int>(low.z, tile.z)) : tile;
+            high = box ? terraincore::TileCoord(std::max<int>(high.x, tile.x), std::max<int>(high.z, tile.z)) : tile;
             box = true;
             const int most = runtime.store().options().maxBoxTiles;
             if (high.x - low.x + 1 > most || high.z - low.z + 1 > most) why = "would make the world span more than " + std::to_string(most) + " tiles a side";
@@ -308,7 +307,7 @@ bool jasperengine::editor::planTerrainWorldImport(Project* project, TerrainWorld
             return false;
         }
     }
-    plan.changed = importChangedTiles(slicing, plan.width, plan.height, [&runtime](TileCoord tile) { return runtime.present(tile); });
+    plan.changed = terraincore::importChangedTiles(slicing, plan.width, plan.height, [&runtime](terraincore::TileCoord tile) { return runtime.present(tile); });
     return true;
 }
 
@@ -343,15 +342,15 @@ std::shared_ptr<TerrainWorldImportTask> jasperengine::editor::startTerrainWorldI
     work->task = task;
     auto stamps = std::make_shared<std::vector<TerrainWorldImportCmd::Stamp>>();
     // a changed tile's gutter may hold a sample of the tile beyond it: two rings round what it covers
-    for (const TileCoord& tile : plan.covered) {
+    for (const terraincore::TileCoord& tile : plan.covered) {
         for (int dz = -2; dz <= 2; dz++) {
             for (int dx = -2; dx <= 2; dx++) {
-                const TileCoord near(tile.x + dx, tile.z + dz);
+                const terraincore::TileCoord near(tile.x + dx, tile.z + dz);
                 if (near.addressable() && runtime->present(near)) work->present.insert(near.key());
             }
         }
     }
-    for (const TileCoord& tile : plan.changed) stamps->push_back(TerrainWorldImportCmd::stampOf(work->folder / FileUtils::pathFromUtf8(terrainWorldTileName(tile))));
+    for (const terraincore::TileCoord& tile : plan.changed) stamps->push_back(TerrainWorldImportCmd::stampOf(work->folder / FileUtils::pathFromUtf8(terrainWorldTileName(tile))));
     auto finish = [project, sceneId, world, work, stamps, done]() {
         TerrainWorldImportResult result = work->result;
         result.tiles = static_cast<int>(work->plan.covered.size());

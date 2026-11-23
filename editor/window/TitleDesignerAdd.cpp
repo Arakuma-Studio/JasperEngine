@@ -22,7 +22,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::titledesigner;
 namespace ta = jasperengine::titleart;
 
 namespace {
@@ -34,19 +33,19 @@ namespace {
 
 }
 
-AddTarget TitleDesignerWindow::addTarget() const {
-    AddTarget target;
+titledesigner::AddTarget TitleDesignerWindow::addTarget() const {
+    titledesigner::AddTarget target;
     const ta::TitleArtDoc& shown = doc.shown();
     target.layers = doc.selectedLayers();
-    const ta::Json* layer = target.layers.empty() ? nullptr : layerById(shown, target.layers.back());
+    const ta::Json* layer = target.layers.empty() ? nullptr : titledesigner::layerById(shown, target.layers.back());
     if (layer) {
         target.name = str(*layer, "name");
         target.hasStyle = ta::layerTypeHasStyle(ta::layerTypeOf(*layer));
         target.is3D = layer->value("dimension", std::string("2d")) == "3d";
     }
-    if (doc.primary().kind == NodeKind::Part && addToParts) {
-        for (const NodeRef& node : doc.selection()) {
-            if (node.kind == NodeKind::Part) target.parts.push_back(node);
+    if (doc.primary().kind == titledesigner::NodeKind::Part && addToParts) {
+        for (const titledesigner::NodeRef& node : doc.selection()) {
+            if (node.kind == titledesigner::NodeKind::Part) target.parts.push_back(node);
         }
     }
     return target;
@@ -64,7 +63,7 @@ void TitleDesignerWindow::drawAddPalette() {
         if (addOpen) {
             // Esc / a click outside closes and restores
             addOpen = false;
-            if (doc.previewActive() && doc.preview() && doc.preview()->kind != PreviewItem::Kind::Font) doc.clearPreview();
+            if (doc.previewActive() && doc.preview() && doc.preview()->kind != titledesigner::PreviewItem::Kind::Font) doc.clearPreview();
             addHovered.clear();
         }
         return;
@@ -75,9 +74,9 @@ void TitleDesignerWindow::drawAddPalette() {
         ImGui::EndPopup();
         return;
     }
-    const NodeRef primary = doc.primary();
-    const bool partsSelected = primary.kind == NodeKind::Part;
-    const AddTarget target = addTarget();
+    const titledesigner::NodeRef primary = doc.primary();
+    const bool partsSelected = primary.kind == titledesigner::NodeKind::Part;
+    const titledesigner::AddTarget target = addTarget();
 
     // the header names the target, and offers parts or the whole layer
     if (!target.layers.empty()) {
@@ -92,7 +91,7 @@ void TitleDesignerWindow::drawAddPalette() {
         ImGui::TextDisabled("Effects need a selected layer");
     }
 
-    const std::vector<AddEntry> entries = buildAddEntries(addFilter, target);
+    const std::vector<titledesigner::AddEntry> entries = titledesigner::buildAddEntries(addFilter, target);
 
     // search (English and Japanese) and the category rail with match counts, in §6.10's order
     char buffer[128];
@@ -103,11 +102,11 @@ void TitleDesignerWindow::drawAddPalette() {
         addQuery = buffer;
         addHighlight = 0;
     }
-    std::vector<const AddEntry*> visible;
+    std::vector<const titledesigner::AddEntry*> visible;
     std::map<std::string, int> counts;
     std::vector<std::string> categoryOrder;
     int matched = 0;
-    for (const AddEntry& e : entries) {
+    for (const titledesigner::AddEntry& e : entries) {
         if (!addEntryMatches(e, addQuery)) continue;
         matched++;
         const std::string cat = std::string(addSectionName(e.section)) + " \xE2\x80\xBA " + e.category;
@@ -118,7 +117,7 @@ void TitleDesignerWindow::drawAddPalette() {
     addRail.clear();
     for (const std::string& cat : categoryOrder) addRail.push_back({cat, counts[cat]});
     addVisible.clear();
-    for (const AddEntry* e : visible) addVisible.push_back(e->id);
+    for (const titledesigner::AddEntry* e : visible) addVisible.push_back(e->id);
     // fixed sizes: a popup sizes itself to its contents, so a child cannot fill it
     const float scale = ImGui::GetFontSize() / 16.0f;
     const float listHeight = 340.0f * scale;
@@ -134,11 +133,11 @@ void TitleDesignerWindow::drawAddPalette() {
     if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) addHighlight = std::max(0, addHighlight - 1);
     const bool arrowed = ImGui::IsKeyPressed(ImGuiKey_DownArrow) || ImGui::IsKeyPressed(ImGuiKey_UpArrow);
     std::string heading;
-    const AddEntry* hoveredEntry = nullptr;
-    const AddEntry* chosen = nullptr;
+    const titledesigner::AddEntry* hoveredEntry = nullptr;
+    const titledesigner::AddEntry* chosen = nullptr;
     for (size_t i = 0; i < visible.size(); i++) {
-        const AddEntry& e = *visible[i];
-        const std::string h = std::string(addSectionName(e.section)) + (e.category == FOLLOW_CATEGORY ? std::string(" \xC2\xB7 ") + FOLLOW_CATEGORY : std::string());
+        const titledesigner::AddEntry& e = *visible[i];
+        const std::string h = std::string(titledesigner::addSectionName(e.section)) + (e.category == titledesigner::FOLLOW_CATEGORY ? std::string(" \xC2\xB7 ") + titledesigner::FOLLOW_CATEGORY : std::string());
         if (h != heading) {
             heading = h;
             ImGui::SeparatorText(heading.c_str());
@@ -158,20 +157,20 @@ void TitleDesignerWindow::drawAddPalette() {
         const float sideX = rowStart.x + (210.0f - (e.depth > 0 ? 14.0f : 0.0f)) * scale;
         const float badgeX = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize("C0").x - 6.0f * scale;
         // the side text stops short of the badge, whether or not this row has one (the column lines up)
-        const std::string side = fitAddEntryText(!e.note.empty() ? e.note : e.description, badgeX - 8.0f * scale - sideX,
+        const std::string side = titledesigner::fitAddEntryText(!e.note.empty() ? e.note : e.description, badgeX - 8.0f * scale - sideX,
                                                  [](const std::string& text) { return ImGui::CalcTextSize(text.c_str()).x; });
         dl->AddText(ImVec2(sideX, y), ImGui::GetColorU32(ImGuiCol_TextDisabled), side.c_str());
         if (!e.cost.empty()) {
-            CostBadge badge;
+            titledesigner::CostBadge badge;
             badge.cls = e.cost;
-            dl->AddText(ImVec2(badgeX, y), ImGui::ColorConvertFloat4ToU32(costBadgeColor(badge)), e.cost.c_str());
+            dl->AddText(ImVec2(badgeX, y), ImGui::ColorConvertFloat4ToU32(titledesigner::costBadgeColor(badge)), e.cost.c_str());
         }
         if (e.depth > 0) ImGui::Unindent(14.0f);
         ImGui::PopID();
     }
     if (visible.empty()) ImGui::TextDisabled("Nothing matches \"%s\"", addQuery.c_str());
     ImGui::EndChild();
-    const AddEntry* highlighted = addHighlight >= 0 && addHighlight < (int)visible.size() ? visible[(size_t)addHighlight] : nullptr;
+    const titledesigner::AddEntry* highlighted = addHighlight >= 0 && addHighlight < (int)visible.size() ? visible[(size_t)addHighlight] : nullptr;
     if (highlighted) {
         std::string footerText = highlighted->description;
         if (!highlighted->cost.empty()) footerText += "  (cost " + highlighted->cost + ")";
@@ -182,7 +181,7 @@ void TitleDesignerWindow::drawAddPalette() {
     if (ImGui::IsKeyPressed(ImGuiKey_Enter) && highlighted) chosen = highlighted;
 
     // hovering with intent (150 ms after real movement, R42) or arrowing previews it on the canvas
-    const AddEntry* previewing = arrowed ? highlighted : hoveredEntry;
+    const titledesigner::AddEntry* previewing = arrowed ? highlighted : hoveredEntry;
     const ImVec2 mouse = ImGui::GetMousePos();
     if (previewing && !previewing->ops.empty()) {
         if (addHovered != previewing->id) {
@@ -216,8 +215,8 @@ void TitleDesignerWindow::drawAddPalette() {
     ImGui::EndPopup();
 }
 
-bool TitleDesignerWindow::previewAddEntry(const AddEntry& entry) {
-    PreviewItem item;
+bool TitleDesignerWindow::previewAddEntry(const titledesigner::AddEntry& entry) {
+    titledesigner::PreviewItem item;
     item.kind = entry.kind;
     item.id = entry.id;
     item.label = entry.label;
@@ -227,9 +226,9 @@ bool TitleDesignerWindow::previewAddEntry(const AddEntry& entry) {
     return doc.setPreview(item, &error);
 }
 
-bool TitleDesignerWindow::addEntry(const AddEntry& entry, std::string* error) {
+bool TitleDesignerWindow::addEntry(const titledesigner::AddEntry& entry, std::string* error) {
     const std::vector<std::string> layers = doc.selectedLayers();
-    const NodeRef primary = doc.primary();
+    const titledesigner::NodeRef primary = doc.primary();
     // the previewed entry commits with the preview's id seed: the result is the document the
     // canvas showed (R44)
     const bool previewed = doc.preview() && doc.preview()->id == entry.id && doc.preview()->ops == entry.ops;
@@ -244,17 +243,17 @@ bool TitleDesignerWindow::addEntry(const AddEntry& entry, std::string* error) {
     if (entry.addsLayer) {
         const std::vector<std::string> added = doc.newIds("layer");
         if (!added.empty()) {
-            doc.selectOne({NodeKind::Layer, added.back(), {}, {}});
+            doc.selectOne({titledesigner::NodeKind::Layer, added.back(), {}, {}});
             if (entry.startsTextEdit) beginTextEdit(added.back(), true);
         }
     } else if (!entry.openSections.empty()) {
-        if (!layers.empty()) doc.selectOne({NodeKind::Layer, layers.back(), {}, {}});
+        if (!layers.empty()) doc.selectOne({titledesigner::NodeKind::Layer, layers.back(), {}, {}});
         forceOpenSections = entry.openSections;
-    } else if (entry.section == AddEntry::Section::Effects) {
+    } else if (entry.section == titledesigner::AddEntry::Section::Effects) {
         const std::string effectId = doc.newId(0, "effect");
         if (!effectId.empty() && !layers.empty()) {
-            const bool toParts = primary.kind == NodeKind::Part && addToParts;
-            doc.selectOne({NodeKind::Effect, toParts ? primary.layer : layers.back(), toParts ? primary.part : std::string(), effectId});
+            const bool toParts = primary.kind == titledesigner::NodeKind::Part && addToParts;
+            doc.selectOne({titledesigner::NodeKind::Effect, toParts ? primary.layer : layers.back(), toParts ? primary.part : std::string(), effectId});
         }
     }
     return true;

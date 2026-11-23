@@ -15,13 +15,12 @@
 #include <sstream>
 
 using namespace jasperengine;
-using namespace jasperengine::terraincore;
 
 namespace fs = std::filesystem;
 
 namespace {
 
-    std::string importTileText(TileCoord tile) {
+    std::string importTileText(terraincore::TileCoord tile) {
         return "(" + std::to_string(tile.x) + ", " + std::to_string(tile.z) + ")";
     }
 
@@ -46,7 +45,7 @@ editor::TerrainWorldImportCmd::Stamp editor::TerrainWorldImportCmd::stampOf(cons
     return stamp;
 }
 
-editor::TerrainWorldImportCmd::TerrainWorldImportCmd(Project* project, uint32_t sceneId, Entity entity, fs::path stash, std::vector<TileCoord> tiles,
+editor::TerrainWorldImportCmd::TerrainWorldImportCmd(Project* project, uint32_t sceneId, Entity entity, fs::path stash, std::vector<terraincore::TileCoord> tiles,
                                                      std::vector<Stamp> stamps, std::shared_ptr<std::string> reason)
     : project(project), sceneId(sceneId), entity(entity), stash(std::move(stash)), tiles(std::move(tiles)), stamps(std::move(stamps)),
       reason(std::move(reason)) {
@@ -82,7 +81,7 @@ TerrainWorldRuntime* editor::TerrainWorldImportCmd::runtime(std::string& error) 
 
 bool editor::TerrainWorldImportCmd::put(TerrainWorldRuntime& world, bool after, std::string& error) {
     auto write = [&](size_t i, bool side, std::string& why) {
-        const TileCoord tile = tiles[i];
+        const terraincore::TileCoord tile = tiles[i];
         if (!side && !existed[i]) {
             if (!removeTileFile(folder, tile, why)) return false;
             world.fileChanged(tile, false);
@@ -179,7 +178,7 @@ void editor::TerrainWorldImportCmd::undo() {
 std::vector<editor::Command::Touched> editor::TerrainWorldImportCmd::touchedPaths(bool) const {
     std::vector<Touched> touched;
     if (folder.empty()) return touched;
-    for (const TileCoord& tile : tiles) touched.push_back(Touched{folder / FileUtils::pathFromUtf8(terrainWorldTileName(tile)), true});
+    for (const terraincore::TileCoord& tile : tiles) touched.push_back(Touched{folder / FileUtils::pathFromUtf8(terrainWorldTileName(tile)), true});
     return touched;
 }
 

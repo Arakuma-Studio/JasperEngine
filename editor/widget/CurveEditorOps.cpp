@@ -9,7 +9,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::curveops;
+
+namespace jasperengine::editor::curveops {
 
 namespace {
 
@@ -29,7 +30,7 @@ namespace {
 
 }
 
-void curveops::handlePosition(const CurveKey& key, Side side, const View& view, float length, float& x, float& y) {
+void handlePosition(const CurveKey& key, Side side, const View& view, float length, float& x, float& y) {
     const float slope = side == Side::In ? key.inTangent : key.outTangent;
     float dx = view.scaleX();
     float dy = std::isfinite(slope) ? -slope * view.scaleY() : 0.0f;
@@ -43,7 +44,7 @@ void curveops::handlePosition(const CurveKey& key, Side side, const View& view, 
     y = view.toY(key.value) + sign * dy;
 }
 
-Hit curveops::hitTest(const std::vector<const Curve*>& curves, const std::vector<bool>& editable, const View& view, float x, float y,
+Hit hitTest(const std::vector<const Curve*>& curves, const std::vector<bool>& editable, const View& view, float x, float y,
                       float radius, float handleLength, const std::vector<KeyRef>& selection) {
     Hit hit;
     // the handles of the selected keys
@@ -97,11 +98,11 @@ Hit curveops::hitTest(const std::vector<const Curve*>& curves, const std::vector
     return hit;
 }
 
-int curveops::addKeyOnCurve(Curve& curve, float time, const CurveRange* range) {
+int addKeyOnCurve(Curve& curve, float time, const CurveRange* range) {
     return addKeyAt(curve, time, curve.evaluate(time), range);
 }
 
-int curveops::addKeyAt(Curve& curve, float time, float value, const CurveRange* range) {
+int addKeyAt(Curve& curve, float time, float value, const CurveRange* range) {
     CurveKey key;
     key.time = time;
     key.value = value;
@@ -110,7 +111,7 @@ int curveops::addKeyAt(Curve& curve, float time, float value, const CurveRange* 
     return curve.addKey(key);
 }
 
-void curveops::deleteKeys(std::vector<Curve*>& curves, std::vector<KeyRef>& selection) {
+void deleteKeys(std::vector<Curve*>& curves, std::vector<KeyRef>& selection) {
     std::vector<KeyRef> sorted = selection;
     // from the last index down, so the indices of the keys still to delete hold
     std::sort(sorted.begin(), sorted.end(), [](const KeyRef& a, const KeyRef& b) { return a.curve != b.curve ? a.curve < b.curve : a.key > b.key; });
@@ -123,7 +124,7 @@ void curveops::deleteKeys(std::vector<Curve*>& curves, std::vector<KeyRef>& sele
     selection.clear();
 }
 
-void curveops::moveKeys(std::vector<Curve*>& curves, const std::vector<Curve>& original, std::vector<KeyRef>& selection, float dt, float dv,
+void moveKeys(std::vector<Curve*>& curves, const std::vector<Curve>& original, std::vector<KeyRef>& selection, float dt, float dv,
                         const CurveRange* range) {
     std::vector<KeyRef> moved;
     for (size_t c = 0; c < curves.size() && c < original.size(); c++) {
@@ -168,7 +169,7 @@ void curveops::moveKeys(std::vector<Curve*>& curves, const std::vector<Curve>& o
     selection = moved;
 }
 
-void curveops::setTangentMode(Curve& curve, size_t key, Side side, CurveTangentMode mode) {
+void setTangentMode(Curve& curve, size_t key, Side side, CurveTangentMode mode) {
     if (key >= curve.keys.size()) return;
     CurveKey& k = curve.keys[key];
     if (side == Side::Both) {
@@ -184,19 +185,19 @@ void curveops::setTangentMode(Curve& curve, size_t key, Side side, CurveTangentM
     curve.updateTangents(key);
 }
 
-void curveops::setClampedAuto(Curve& curve, size_t key) {
+void setClampedAuto(Curve& curve, size_t key) {
     if (key >= curve.keys.size()) return;
     curve.keys[key].setBothModes(CurveTangentMode::ClampedAuto);
     curve.updateTangents(key);
 }
 
-void curveops::setAuto(Curve& curve, size_t key) {
+void setAuto(Curve& curve, size_t key) {
     if (key >= curve.keys.size()) return;
     curve.keys[key].setBothModes(CurveTangentMode::Auto);
     curve.updateTangents(key);
 }
 
-void curveops::setFreeSmooth(Curve& curve, size_t key) {
+void setFreeSmooth(Curve& curve, size_t key) {
     if (key >= curve.keys.size()) return;
     CurveKey& k = curve.keys[key];
     // the sides joined at their mean slope (a step side counts as flat)
@@ -209,7 +210,7 @@ void curveops::setFreeSmooth(Curve& curve, size_t key) {
     curve.updateTangents(key);
 }
 
-void curveops::setFlat(Curve& curve, size_t key) {
+void setFlat(Curve& curve, size_t key) {
     if (key >= curve.keys.size()) return;
     CurveKey& k = curve.keys[key];
     k.setBothModes(CurveTangentMode::Free);
@@ -218,7 +219,7 @@ void curveops::setFlat(Curve& curve, size_t key) {
     curve.updateTangents(key);
 }
 
-void curveops::setBroken(Curve& curve, size_t key, bool broken) {
+void setBroken(Curve& curve, size_t key, bool broken) {
     if (key >= curve.keys.size()) return;
     CurveKey& k = curve.keys[key];
     if (broken) {
@@ -233,7 +234,7 @@ void curveops::setBroken(Curve& curve, size_t key, bool broken) {
     curve.updateTangents(key);
 }
 
-void curveops::dragTangent(Curve& curve, size_t key, Side side, float slope) {
+void dragTangent(Curve& curve, size_t key, Side side, float slope) {
     if (key >= curve.keys.size() || !std::isfinite(slope)) return;
     CurveKey& k = curve.keys[key];
     if (k.broken()) {
@@ -251,7 +252,7 @@ void curveops::dragTangent(Curve& curve, size_t key, Side side, float slope) {
     }
 }
 
-float curveops::slopeTowards(const CurveKey& key, Side side, const View& view, float x, float y) {
+float slopeTowards(const CurveKey& key, Side side, const View& view, float x, float y) {
     float dx = view.toTime(x) - key.time;
     const float dv = view.toValue(y) - key.value;
     // a handle cannot cross to the other side of its key
@@ -260,7 +261,7 @@ float curveops::slopeTowards(const CurveKey& key, Side side, const View& view, f
     return dv / dx;
 }
 
-void curveops::clampToRange(Curve& curve, const CurveRange& range) {
+void clampToRange(Curve& curve, const CurveRange& range) {
     if (!range.clamp) return;
     for (CurveKey& key : curve.keys) clampKey(key, &range);
     curve.sortKeys();
@@ -272,7 +273,7 @@ void curveops::clampToRange(Curve& curve, const CurveRange& range) {
     curve.updateAllTangents();
 }
 
-Curve curveops::remap(const Curve& normalised, const CurveRange& range) {
+Curve remap(const Curve& normalised, const CurveRange& range) {
     Curve out = normalised;
     const float ts = range.t1 - range.t0;
     const float vs = range.v1 - range.v0;
@@ -286,7 +287,7 @@ Curve curveops::remap(const Curve& normalised, const CurveRange& range) {
     return out;
 }
 
-Curve curveops::normalise(const Curve& curve, const CurveRange& range) {
+Curve normalise(const Curve& curve, const CurveRange& range) {
     Curve out = curve;
     const float ts = range.t1 - range.t0;
     const float vs = range.v1 - range.v0;
@@ -300,7 +301,7 @@ Curve curveops::normalise(const Curve& curve, const CurveRange& range) {
     return out;
 }
 
-void curveops::alignKeys(std::vector<Curve*>& curves, const std::vector<KeyRef>& selection) {
+void alignKeys(std::vector<Curve*>& curves, const std::vector<KeyRef>& selection) {
     float sum = 0.0f;
     int count = 0;
     for (const KeyRef& ref : selection) {
@@ -321,7 +322,7 @@ void curveops::alignKeys(std::vector<Curve*>& curves, const std::vector<KeyRef>&
     }
 }
 
-void curveops::smoothKeys(std::vector<Curve*>& curves, const std::vector<KeyRef>& selection) {
+void smoothKeys(std::vector<Curve*>& curves, const std::vector<KeyRef>& selection) {
     for (const KeyRef& ref : selection) {
         if (ref.curve < 0 || (size_t)ref.curve >= curves.size() || ref.key < 0 || (size_t)ref.key >= curves[(size_t)ref.curve]->keys.size()) continue;
         Curve& curve = *curves[(size_t)ref.curve];
@@ -332,14 +333,14 @@ void curveops::smoothKeys(std::vector<Curve*>& curves, const std::vector<KeyRef>
     }
 }
 
-void curveops::sharpenKeys(std::vector<Curve*>& curves, const std::vector<KeyRef>& selection) {
+void sharpenKeys(std::vector<Curve*>& curves, const std::vector<KeyRef>& selection) {
     for (const KeyRef& ref : selection) {
         if (ref.curve < 0 || (size_t)ref.curve >= curves.size() || ref.key < 0 || (size_t)ref.key >= curves[(size_t)ref.curve]->keys.size()) continue;
         setTangentMode(*curves[(size_t)ref.curve], (size_t)ref.key, Side::Both, CurveTangentMode::Linear);
     }
 }
 
-std::vector<CurveKey> curveops::copyKeys(const Curve& curve, const std::vector<KeyRef>& selection, int curveIndex) {
+std::vector<CurveKey> copyKeys(const Curve& curve, const std::vector<KeyRef>& selection, int curveIndex) {
     std::vector<CurveKey> keys;
     for (size_t k = 0; k < curve.keys.size(); k++) {
         if (selected(selection, curveIndex, (int)k)) keys.push_back(curve.keys[k]);
@@ -350,7 +351,7 @@ std::vector<CurveKey> curveops::copyKeys(const Curve& curve, const std::vector<K
     return keys;
 }
 
-std::vector<int> curveops::pasteKeys(Curve& curve, const std::vector<CurveKey>& keys, float time, const CurveRange* range) {
+std::vector<int> pasteKeys(Curve& curve, const std::vector<CurveKey>& keys, float time, const CurveRange* range) {
     std::vector<float> times;
     for (CurveKey key : keys) {
         key.time += time;
@@ -379,7 +380,7 @@ std::vector<int> curveops::pasteKeys(Curve& curve, const std::vector<CurveKey>& 
     return indices;
 }
 
-View curveops::zoom(const View& view, float x, float y, float timeFactor, float valueFactor) {
+View zoom(const View& view, float x, float y, float timeFactor, float valueFactor) {
     View out = view;
     const float t = view.toTime(x), v = view.toValue(y);
     out.t0 = t + (view.t0 - t) * timeFactor;
@@ -389,7 +390,7 @@ View curveops::zoom(const View& view, float x, float y, float timeFactor, float 
     return out;
 }
 
-View curveops::pan(const View& view, float dx, float dy) {
+View pan(const View& view, float dx, float dy) {
     View out = view;
     const float dt = dx / view.scaleX(), dv = -dy / view.scaleY();
     out.t0 -= dt;
@@ -399,7 +400,7 @@ View curveops::pan(const View& view, float dx, float dy) {
     return out;
 }
 
-View curveops::frame(const std::vector<const Curve*>& curves, const std::vector<KeyRef>& selection, const View& pixels, float margin,
+View frame(const std::vector<const Curve*>& curves, const std::vector<KeyRef>& selection, const View& pixels, float margin,
                      float minSpan) {
     float t0 = std::numeric_limits<float>::infinity(), t1 = -t0, v0 = t0, v1 = -t0;
     auto include = [&](float t, float v) {
@@ -449,3 +450,5 @@ View curveops::frame(const std::vector<const Curve*>& curves, const std::vector<
     view.v1 = v1 + mv;
     return view;
 }
+
+}  // namespace jasperengine::editor::curveops

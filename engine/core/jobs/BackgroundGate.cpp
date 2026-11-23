@@ -10,7 +10,8 @@
 #include <cassert>
 
 using namespace jasperengine;
-using namespace jasperengine::jobs;
+
+namespace jasperengine::jobs {
 
 namespace{
     // Gate slots Heavy work never takes: the decodes the frame waits on run there.
@@ -122,3 +123,5 @@ void BackgroundGate::release(GateClass gateClass){
     if (onRelease)
         onRelease();
 }
+
+}  // namespace jasperengine::jobs

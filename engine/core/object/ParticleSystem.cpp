@@ -17,7 +17,6 @@
 #include <functional>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
 
 namespace {
 
@@ -64,16 +63,16 @@ public:
     explicit LegacyEdit(ParticleSystem& owner): owner(owner){
         ParticleSystemComponent& particles = owner.system();
         if (!particles.effect.empty()){
-            if (const ParticleEffectDocument* asset = ParticleSubsystem::getDocument(particles))
+            if (const particles::ParticleEffectDocument* asset = ParticleSubsystem::getDocument(particles))
                 particles.inlineEffect = *asset;
             Log::warn("[Particles] a deprecated setter edits the effect of '%s': the GameObject's own copy now", particles.effect.path.c_str());
             particles.effect.clear();
         }
-        legacy = LegacyParticleConverter::extract(particles.inlineEffect);
+        legacy = particles::LegacyParticleConverter::extract(particles.inlineEffect);
     }
     ~LegacyEdit(){
         ParticleSystemComponent& particles = owner.system();
-        LegacyParticleConverter::apply(legacy, particles.inlineEffect);
+        particles::LegacyParticleConverter::apply(legacy, particles.inlineEffect);
         particles.needReload = true;
     }
     LegacyEdit(const LegacyEdit&) = delete;
@@ -105,8 +104,8 @@ ParticleSystemComponent& ParticleSystem::system() const{
 }
 
 LegacyParticleSystem ParticleSystem::legacyView() const{
-    const ParticleEffectDocument* document = ParticleSubsystem::getDocument(system());
-    return document ? LegacyParticleConverter::extract(*document) : LegacyParticleSystem();
+    const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(system());
+    return document ? particles::LegacyParticleConverter::extract(*document) : LegacyParticleSystem();
 }
 
 void ParticleSystem::setEnabled(bool enabled){
@@ -139,7 +138,7 @@ void ParticleSystem::emit(unsigned int count){
     scene->getSystem<ParticleSubsystem>()->emit(entity, count);
 }
 
-void ParticleSystem::emit(unsigned int count, const EmitOverrides& overrides){
+void ParticleSystem::emit(unsigned int count, const particles::EmitOverrides& overrides){
     scene->getSystem<ParticleSubsystem>()->emit(entity, count, &overrides);
 }
 
@@ -219,10 +218,10 @@ std::string ParticleSystem::getEffect() const{
 }
 
 bool ParticleSystem::setInlineEffect(const std::string& json){
-    ParticleEffectDocument document;
-    std::vector<Diagnostic> diagnostics;
-    if (!ParticleEffectCodec::read(json, document, diagnostics)){
-        Log::error("[Particles] setInlineEffect: %s", ParticleEffectCodec::format(diagnostics).c_str());
+    particles::ParticleEffectDocument document;
+    std::vector<particles::Diagnostic> diagnostics;
+    if (!particles::ParticleEffectCodec::read(json, document, diagnostics)){
+        Log::error("[Particles] setInlineEffect: %s", particles::ParticleEffectCodec::format(diagnostics).c_str());
         return false;
     }
     ParticleSystemComponent& particles = system();
@@ -233,15 +232,15 @@ bool ParticleSystem::setInlineEffect(const std::string& json){
 }
 
 std::string ParticleSystem::getInlineEffect() const{
-    return ParticleEffectCodec::write(system().inlineEffect);
+    return particles::ParticleEffectCodec::write(system().inlineEffect);
 }
 
-ParticleEffectDocument ParticleSystem::getEffectDocument() const{
-    const ParticleEffectDocument* document = ParticleSubsystem::getDocument(system());
+particles::ParticleEffectDocument ParticleSystem::getEffectDocument() const{
+    const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(system());
     return document ? *document : system().inlineEffect;
 }
 
-void ParticleSystem::setEffectDocument(const ParticleEffectDocument& document){
+void ParticleSystem::setEffectDocument(const particles::ParticleEffectDocument& document){
     ParticleSystemComponent& particles = system();
     if (!particles.effect.empty()){
         Log::verbose("[Particles] %s: a module edit makes the effect of %s its own (the asset is not changed)",
@@ -303,9 +302,9 @@ void ParticleSystem::clear(bool withChildren){
 namespace {
 
     bool setExposedValue(ParticleSystemComponent& particles, const std::string& name, const Vector4& value){
-        const ParticleEffectDocument* document = ParticleSubsystem::getDocument(particles);
+        const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(particles);
         Vector4 current;
-        if (!document || !ParticleModules::getExposed(*document, name, current)){
+        if (!document || !particles::ParticleModules::getExposed(*document, name, current)){
             Log::warn("[Particles] the effect has no exposed parameter '%s'", name.c_str());
             return false;
         }
@@ -329,8 +328,8 @@ namespace {
                 return v.value;
         }
         Vector4 value(0.0f, 0.0f, 0.0f, 0.0f);
-        if (const ParticleEffectDocument* document = ParticleSubsystem::getDocument(particles))
-            ParticleModules::getExposed(*document, name, value);
+        if (const particles::ParticleEffectDocument* document = ParticleSubsystem::getDocument(particles))
+            particles::ParticleModules::getExposed(*document, name, value);
         return value;
     }
 

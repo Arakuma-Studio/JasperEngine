@@ -37,7 +37,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::titledesigner;
 namespace ta = jasperengine::titleart;
 
 namespace {
@@ -57,12 +56,12 @@ namespace {
 
     // the states of the open document, measured again when it changes (overflow is geometry)
     struct StatesCache {
-        const TitleDesignerState* state = nullptr;
+        const titledesigner::TitleDesignerState* state = nullptr;
         uint64_t change = ~uint64_t(0);
         std::vector<TitleLanguageState> states;
     };
 
-    const std::vector<TitleLanguageState>& statesOf(TitleDesignerState& state) {
+    const std::vector<TitleLanguageState>& statesOf(titledesigner::TitleDesignerState& state) {
         static StatesCache cache;
         if (cache.state != &state || cache.change != state.changeCount()) {
             cache.state = &state;
@@ -74,7 +73,7 @@ namespace {
         return cache.states;
     }
 
-    bool commit(TitleDesignerState& state, const ta::Json& ops, const std::string& name) {
+    bool commit(titledesigner::TitleDesignerState& state, const ta::Json& ops, const std::string& name) {
         std::string error;
         if (!state.commit(ops, name, &error)) {
             lastError() = error;
@@ -102,7 +101,7 @@ namespace {
         char tag[64] = {0};
         std::string removeCode;
         bool swapSource = true;
-        std::unique_ptr<TitleLayerThumbnails> thumbnails;
+        std::unique_ptr<titledesigner::TitleLayerThumbnails> thumbnails;
     };
 
     Dialogs& dialogs() {
@@ -112,7 +111,7 @@ namespace {
 
     // ---- the switcher (R51) ----
 
-    void drawSwitcher(TitleDesignerState& state) {
+    void drawSwitcher(titledesigner::TitleDesignerState& state) {
         if (!state.isOpen()) return;
         const ta::TitleArtDoc& doc = state.committed();
         if (!ta::titleIsMultilingual(doc.root)) {
@@ -143,7 +142,7 @@ namespace {
 
     // ---- Edit Languages (R53) ----
 
-    void drawEditLanguages(TitleDesignerState& state) {
+    void drawEditLanguages(titledesigner::TitleDesignerState& state) {
         Dialogs& d = dialogs();
         if (d.editOpen && !ImGui::IsPopupOpen("Edit Languages###titleEditLanguages")) ImGui::OpenPopup("Edit Languages###titleEditLanguages");
         ImGui::SetNextWindowSize(ImVec2(620.0f, 520.0f), ImGuiCond_Appearing);
@@ -316,7 +315,7 @@ namespace {
 
     // ---- Compare Languages (R55) ----
 
-    void drawCompare(TitleDesignerState& state) {
+    void drawCompare(titledesigner::TitleDesignerState& state) {
         Dialogs& d = dialogs();
         if (!d.compareOpen) {
             if (d.thumbnails) {
@@ -325,7 +324,7 @@ namespace {
             }
             return;
         }
-        if (!d.thumbnails) d.thumbnails = std::make_unique<TitleLayerThumbnails>(state.project(), COMPARE_OWNER);
+        if (!d.thumbnails) d.thumbnails = std::make_unique<titledesigner::TitleLayerThumbnails>(state.project(), COMPARE_OWNER);
         d.thumbnails->process();
         ImGui::SetNextWindowSize(ImVec2(760.0f, 480.0f), ImGuiCond_FirstUseEver);
         if (!ImGui::Begin("Compare Languages###titleCompareLanguages", &d.compareOpen)) {
@@ -367,9 +366,9 @@ namespace {
 
     // ---- the Language section of a text layer (R52) ----
 
-    void drawLanguageSection(RowContext& ctx, const std::vector<std::string>& layers, const std::vector<std::string>&) {
+    void drawLanguageSection(titledesigner::RowContext& ctx, const std::vector<std::string>& layers, const std::vector<std::string>&) {
         if (ctx.collecting() || !ctx.state || layers.size() != 1) return;
-        TitleDesignerState& state = *ctx.state;
+        titledesigner::TitleDesignerState& state = *ctx.state;
         const ta::TitleArtDoc& doc = state.committed();
         const ta::Json* layer = ta::findLayer(doc.root, layers.front());
         if (!layer) return;
@@ -453,7 +452,7 @@ namespace {
         }
     }
 
-    void drawOverlay(TitleDesignerState& state, ImDrawList* dl, ImVec2 canvasMin, ImVec2 canvasMax, const CanvasXform& xform) {
+    void drawOverlay(titledesigner::TitleDesignerState& state, ImDrawList* dl, ImVec2 canvasMin, ImVec2 canvasMax, const titledesigner::CanvasXform& xform) {
         if (!state.isOpen() || !ta::titleIsMultilingual(state.committed().root)) return;
         const std::string code = state.language();
         const ta::TitleArtDoc resolved = ta::resolveTitleLanguage(state.shown(), code);
@@ -502,27 +501,27 @@ namespace {
 }
 
 void editor::registerTitleDesignerLanguages() {
-    ToolbarItemDef switcher;
+    titledesigner::ToolbarItemDef switcher;
     switcher.id = "s87.language";
-    switcher.draw = [](TitleDesignerState& state) {
+    switcher.draw = [](titledesigner::TitleDesignerState& state) {
         drawSwitcher(state);
         drawEditLanguages(state);
         drawCompare(state);
     };
-    addToolbarItem(std::move(switcher));
-    CanvasOverlayDef overlay;
+    titledesigner::addToolbarItem(std::move(switcher));
+    titledesigner::CanvasOverlayDef overlay;
     overlay.id = "s87.language";
     overlay.draw = drawOverlay;
-    addCanvasOverlay(std::move(overlay));
-    SectionDef section;
-    section.page = SectionDef::Page::Layer;
+    titledesigner::addCanvasOverlay(std::move(overlay));
+    titledesigner::SectionDef section;
+    section.page = titledesigner::SectionDef::Page::Layer;
     section.id = "s87.language";
     section.title = "Language";
     section.draw = drawLanguageSection;
-    section.applies = [](const TitleDesignerState& state) { return state.isOpen() && ta::titleIsMultilingual(state.committed().root); };
-    section.summary = [](const TitleDesignerState& state) {
+    section.applies = [](const titledesigner::TitleDesignerState& state) { return state.isOpen() && ta::titleIsMultilingual(state.committed().root); };
+    section.summary = [](const titledesigner::TitleDesignerState& state) {
         return state.language().empty() ? std::string("source") : state.language();
     };
-    addSection(std::move(section));
+    titledesigner::addSection(std::move(section));
     registerTitleDesignerTranslations();
 }

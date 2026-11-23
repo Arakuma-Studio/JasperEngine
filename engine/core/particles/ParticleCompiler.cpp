@@ -23,7 +23,8 @@
 #include <functional>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
+
+namespace jasperengine::particles {
 
 namespace {
 
@@ -1803,7 +1804,7 @@ size_t ParticleProgram::bytesPerParticle() const{
     return n;
 }
 
-const char* particles::channelName(Channel channel){
+const char* channelName(Channel channel){
     static const char* names[ChCount] = {
         "posX", "posY", "posZ", "prevX", "prevY", "prevZ", "velX", "velY", "velZ", "age", "invLife", "spawnIndex", "startSize",
         "startColor", "rotation", "prevRotation", "startRotation", "sizeX", "sizeY", "sizeZ", "prevSizeX", "startSizeY",
@@ -1813,3 +1814,5 @@ const char* particles::channelName(Channel channel){
         "followSize", "settled"};
     return channel < ChCount ? names[channel] : "?";
 }
+
+}  // namespace jasperengine::particles

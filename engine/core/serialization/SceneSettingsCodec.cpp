@@ -8,7 +8,6 @@
 #include "util/Fnv.h"
 
 using namespace jasperengine;
-using namespace jasperengine::cook;
 
 namespace jasperengine::cook {
 
@@ -82,11 +81,13 @@ namespace jasperengine::cook {
 
 }
 
+namespace jasperengine::cook {
+
 namespace {
     const ShaderType kDefaultShaderTypes[] = {ShaderType::MESH, ShaderType::UI, ShaderType::SKYBOX, ShaderType::POINTS, ShaderType::LINES};
 }
 
-void cook::writeSceneSettings(Writer& w, const Scene& scene) {
+void writeSceneSettings(Writer& w, const Scene& scene) {
     write(w, scene.getBackgroundColor());
     write(w, scene.getShadowQuality());
     w.f32(scene.getShadowDistance());
@@ -148,7 +149,7 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     w.f32(scene.getWaterWakeFade());
 }
 
-void cook::readSceneSettings(Reader& r, Scene& scene) {
+void readSceneSettings(Reader& r, Scene& scene) {
     Vector4 backgroundColor;
     read(r, backgroundColor);
     scene.setBackgroundColor(backgroundColor);
@@ -255,3 +256,5 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     scene.setWaterWakeArea(r.f32());
     scene.setWaterWakeFade(r.f32());
 }
+
+}  // namespace jasperengine::cook

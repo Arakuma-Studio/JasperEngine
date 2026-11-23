@@ -47,7 +47,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::recorder;
+
+namespace jasperengine::editor::recorder {
 
 namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
@@ -1088,3 +1089,5 @@ void RecorderSession::finish() {
         }
     });
 }
+
+}  // namespace jasperengine::editor::recorder

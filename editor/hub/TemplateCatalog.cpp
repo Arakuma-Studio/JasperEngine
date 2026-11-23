@@ -21,7 +21,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::hub;
+
+namespace jasperengine::editor::hub {
 
 namespace fs = std::filesystem;
 
@@ -316,3 +317,5 @@ bool templates::saveProjectAsTemplate(const fs::path& project, const fs::path& u
     fs::remove(stagingRoot, ec);   // when nothing else is in it
     return true;
 }
+
+}  // namespace jasperengine::editor::hub

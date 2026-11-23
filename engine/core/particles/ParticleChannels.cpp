@@ -8,7 +8,8 @@
 #include <new>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
+
+namespace jasperengine::particles {
 
 namespace {
 
@@ -238,3 +239,5 @@ void ParticleChannels::restore(const Snapshot& in){
         cursor += count;
     }
 }
+
+}  // namespace jasperengine::particles

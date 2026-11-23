@@ -22,7 +22,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::clipui;
 
 namespace {
 
@@ -197,10 +196,10 @@ bool AnimationWindowClip::moveEvent(int index, float time, const std::string& me
 void AnimationWindowClip::drawEventsLane(ImDrawList* drawList, ImVec2 origin, float width, float height, float timeOriginX){
     std::shared_ptr<AnimationClipDocument> doc = document();
     ImGuiIO& io = ImGui::GetIO();
-    const SheetMetrics m = sheetMetrics();
-    drawList->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + height), color(Theme::Colors::FoldoutHeader));
+    const clipui::SheetMetrics m = clipui::sheetMetrics();
+    drawList->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + height), clipui::color(Theme::Colors::FoldoutHeader));
     drawList->AddLine(ImVec2(origin.x, origin.y + height - 1.0f), ImVec2(origin.x + width, origin.y + height - 1.0f),
-                      color(Theme::Colors::ToolbarBorder));
+                      clipui::color(Theme::Colors::ToolbarBorder));
     ImGui::SetCursorScreenPos(origin);
     ImGui::InvisibleButton("##clip_events", ImVec2(width, height), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
     if (!doc) return;
@@ -217,19 +216,19 @@ void AnimationWindowClip::drawEventsLane(ImDrawList* drawList, ImVec2 origin, fl
     };
 
     int hovered = -1;
-    const ImVec4 selected = selectedKeyColor();
+    const ImVec4 selected = clipui::selectedKeyColor();
     drawList->PushClipRect(origin, ImVec2(origin.x + width, origin.y + height), true);
     for (size_t i = 0; i < data.events.size(); i++){
         const float x = xAt(data.events[i].time);
         if (x < origin.x - m.eventWidth || x > origin.x + width + m.eventWidth) continue;
         const bool isSelected = (int)i == selectedEvent;
-        ImVec4 fill = isSelected ? selected : keyColor();
+        ImVec4 fill = isSelected ? selected : clipui::keyColor();
         if (!isSelected && handlerMissing(i)) fill = Theme::Colors::WarningText;
         // a flag: a pole and an 8 x 12 px marker (Unity's event marker)
         const float w = m.eventWidth;
         const float top = origin.y + 2.0f * m.s;
-        drawList->AddRectFilled(ImVec2(x - 1.0f * m.s, top), ImVec2(x + 1.0f * m.s, origin.y + height - 2.0f * m.s), color(fill));
-        drawList->AddRectFilled(ImVec2(x, top), ImVec2(x + w, std::min(top + 12.0f * m.s, origin.y + height - 2.0f * m.s)), color(fill));
+        drawList->AddRectFilled(ImVec2(x - 1.0f * m.s, top), ImVec2(x + 1.0f * m.s, origin.y + height - 2.0f * m.s), clipui::color(fill));
+        drawList->AddRectFilled(ImVec2(x, top), ImVec2(x + w, std::min(top + 12.0f * m.s, origin.y + height - 2.0f * m.s)), clipui::color(fill));
         if (ImGui::IsItemHovered() && io.MousePos.x >= x - 3.0f * m.s && io.MousePos.x <= x + w + 2.0f * m.s) hovered = (int)i;
     }
     drawList->PopClipRect();
@@ -273,7 +272,7 @@ void AnimationWindowClip::drawEventsLane(ImDrawList* drawList, ImVec2 origin, fl
     if (hovered >= 0 && drag == Drag::None){
         const ClipEventData& event = data.events[(size_t)hovered];
         ImGui::SetTooltip("%s()%s at %s", event.function.c_str(), handlerMissing((size_t)hovered) ? " (no script defines it)" : "",
-                          formatBoth(event.time, frameRate(), showFrames).c_str());
+                          clipui::formatBoth(event.time, frameRate(), showFrames).c_str());
     }
     if (ImGui::BeginPopup("##clip_lane_menu")){
         if (ImGui::MenuItem("Add Event", nullptr, false, !doc->isReadOnly())){
@@ -324,16 +323,16 @@ void AnimationWindowClip::drawEventEditor(SceneProject* sceneProject){
     bool timeChanged = false;
     if (showFrames){
         int frame = (int)std::lround(event.time * fps);
-        timeChanged = ImGui::DragInt("##time", &frame, 0.2f, 0, (int)(kMaxTime * fps));
+        timeChanged = ImGui::DragInt("##time", &frame, 0.2f, 0, (int)(clipui::kMaxTime * fps));
         if (timeChanged) event.time = (float)std::max(0, frame) / fps;
     }else{
         float time = event.time;
-        timeChanged = ImGui::DragFloat("##time", &time, 1.0f / fps, 0.0f, kMaxTime, "%.3fs");
+        timeChanged = ImGui::DragFloat("##time", &time, 1.0f / fps, 0.0f, clipui::kMaxTime, "%.3fs");
         if (timeChanged) event.time = snapToFrame(std::max(0.0f, time));
     }
     if (ImGui::IsItemActivated()) eventMergeKey = "clipevent#" + std::to_string(++eventDragSerial);
     if (timeChanged && !editEvent(selectedEvent, event, eventMergeKey, &error)) setNotice(error, true);
-    ImGui::SetItemTooltip("%s", formatBoth(event.time, fps, showFrames).c_str());
+    ImGui::SetItemTooltip("%s", clipui::formatBoth(event.time, fps, showFrames).c_str());
     if (event.time > doc->data().effectiveLength() + kEventEpsilon){
         ImGui::SameLine();
         ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " after the end of the clip (never fires)");

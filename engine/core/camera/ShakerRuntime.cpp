@@ -6,7 +6,8 @@
 #include <atomic>
 
 using namespace jasperengine;
-using namespace jasperengine::camera;
+
+namespace jasperengine::camera {
 
 ShakerRuntime::ShakerRuntime(){
     // the trauma noise of each shaker starts somewhere else
@@ -31,3 +32,5 @@ const ShakerInstanceEntry* ShakerRuntime::findInstance(uint64_t id) const{
     }
     return nullptr;
 }
+
+}  // namespace jasperengine::camera

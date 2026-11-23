@@ -7,7 +7,8 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::anim;
+
+namespace jasperengine::anim {
 
 namespace{
 
@@ -171,7 +172,7 @@ namespace{
 
 }
 
-Quaternion anim::shortestArc(const Vector3& from, const Vector3& to){
+Quaternion shortestArc(const Vector3& from, const Vector3& to){
     const float lf = from.length();
     const float lt = to.length();
     if (lf < kEpsilon || lt < kEpsilon) return Quaternion();
@@ -189,19 +190,19 @@ Quaternion anim::shortestArc(const Vector3& from, const Vector3& to){
     return normalizedOr(Quaternion(1.0f + d, c.x, c.y, c.z), Quaternion());
 }
 
-void anim::refreshRigSpace(IKContext& context, int bone){
+void refreshRigSpace(IKContext& context, int bone){
     // the bone and its descendants: the others did not move
     if (bone <= 0) poseToRigSpaceFrom(*context.local, context.parents, 0, context.space);
     else poseToRigSpaceSubtree(*context.local, context.parents, (size_t)bone, context.space);
 }
 
-void anim::rotateBoneInRigSpace(IKContext& context, int bone, const Quaternion& rotation){
+void rotateBoneInRigSpace(IKContext& context, int bone, const Quaternion& rotation){
     if (bone < 0) return;
     setRigRotation(context, bone, rotation * context.space.rotation[bone]);
     refreshRigSpace(context, bone);
 }
 
-void anim::aimBoneInRigSpace(IKContext& context, int bone, const Vector3& point, const Vector3& target){
+void aimBoneInRigSpace(IKContext& context, int bone, const Vector3& point, const Vector3& target){
     if (bone < 0) return;
     const Vector3 origin = context.space.position[bone];
     const int parent = context.parents[bone];
@@ -217,7 +218,7 @@ void anim::aimBoneInRigSpace(IKContext& context, int bone, const Vector3& point,
     refreshRigSpace(context, bone);
 }
 
-void anim::translateBoneInRigSpace(IKContext& context, int bone, const Vector3& delta){
+void translateBoneInRigSpace(IKContext& context, int bone, const Vector3& delta){
     if (bone < 0) return;
     const int parent = context.parents[bone];
     Vector3 local = delta;
@@ -230,7 +231,7 @@ void anim::translateBoneInRigSpace(IKContext& context, int bone, const Vector3& 
     refreshRigSpace(context, bone);
 }
 
-IKResult anim::solveTwoBone(IKContext& context, int upper, int mid, int end, const Vector3& target,
+IKResult solveTwoBone(IKContext& context, int upper, int mid, int end, const Vector3& target,
                             const Vector3* pole, const Quaternion* endRotation, float weight, const TwoBoneOptions& options){
     if (!(weight > 0.0f) || upper < 0 || mid < 0 || end < 0) return {};
     Saved saved;
@@ -320,7 +321,7 @@ IKResult anim::solveTwoBone(IKContext& context, int upper, int mid, int end, con
     return reachOf(context, context.space.position[end], target);
 }
 
-IKResult anim::solveFabrik(IKContext& context, const int* chain, int count, const Vector3& target, int iterations, float tolerance, float weight){
+IKResult solveFabrik(IKContext& context, const int* chain, int count, const Vector3& target, int iterations, float tolerance, float weight){
     if (!(weight > 0.0f) || count < 2) return {};
     count = std::min(count, kMaxChain);
     Saved saved;
@@ -367,7 +368,7 @@ IKResult anim::solveFabrik(IKContext& context, const int* chain, int count, cons
     return reachOf(context, context.space.position[chain[count - 1]], target);
 }
 
-IKResult anim::solveLookAt(IKContext& context, const int* bones, const float* boneWeights, int count, const Vector3& forward,
+IKResult solveLookAt(IKContext& context, const int* bones, const float* boneWeights, int count, const Vector3& forward,
                            const Vector3& target, float clampDegrees, float weight, const Vector3& aimOffset){
     if (!(weight > 0.0f) || count <= 0) return {};
     count = std::min(count, 4);
@@ -431,7 +432,7 @@ IKResult anim::solveLookAt(IKContext& context, const int* bones, const float* bo
     return result;
 }
 
-float anim::footAnkleHeight(float footHeight, const Vector3& normal, float maxAngleDegrees){
+float footAnkleHeight(float footHeight, const Vector3& normal, float maxAngleDegrees){
     const float c = normal.y;
     if (!std::isfinite(c)) return footHeight;
     const float clampRadians = std::min(std::max(maxAngleDegrees, 0.0f), 90.0f) * 0.017453292519943295f;
@@ -445,7 +446,7 @@ float anim::footAnkleHeight(float footHeight, const Vector3& normal, float maxAn
     return footHeight * std::max(0.0f, facing) / std::max(c, lowest);
 }
 
-float anim::springDamp(float current, float target, float& velocity, float halfLife, float dt){
+float springDamp(float current, float target, float& velocity, float halfLife, float dt){
     if (!(dt > 0.0f)) return current;
     if (!(halfLife > 0.0f)){
         velocity = 0.0f;
@@ -460,3 +461,5 @@ float anim::springDamp(float current, float target, float& velocity, float halfL
     velocity = (velocity - omega * c2 * dt) * e;
     return target + y;
 }
+
+}  // namespace jasperengine::anim

@@ -30,13 +30,13 @@ namespace {
 
 }
 
-bool cook::isVoxelVolumeFile(const fs::path& path) {
+bool editor::cook::isVoxelVolumeFile(const fs::path& path) {
     std::string ext = path.extension().string();
     for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return ext == ".voxelvolume";
 }
 
-bool cook::cookVoxelVolume(std::span<const uint8_t> source, const std::string& name, const VoxelCookOptions& options,
+bool editor::cook::cookVoxelVolume(std::span<const uint8_t> source, const std::string& name, const VoxelCookOptions& options,
                            std::vector<uint8_t>& out, std::string& error) {
     // no budget here: what binds a file's size is the target's, at its own load
     const voxel::VolumeFileResult info = voxel::readVolumeFileInfo(source);
@@ -91,7 +91,7 @@ bool cook::cookVoxelVolume(std::span<const uint8_t> source, const std::string& n
     return true;
 }
 
-bool cook::cookVoxelVolumeFile(const fs::path& source, const fs::path& destination, const std::string& name,
+bool editor::cook::cookVoxelVolumeFile(const fs::path& source, const fs::path& destination, const std::string& name,
                                const VoxelCookOptions& options, std::string& error) {
     std::string text;
     if (!DocumentFiles::readBytes(source, text)) {
@@ -112,7 +112,7 @@ bool cook::cookVoxelVolumeFile(const fs::path& source, const fs::path& destinati
     return true;
 }
 
-std::set<std::string> cook::voxelVolumesGeneratedAtRuntime(const ModuleScan& scan) {
+std::set<std::string> editor::cook::voxelVolumesGeneratedAtRuntime(const ModuleScan& scan) {
     std::set<std::string> volumes;
     for (const ModuleContent& content : scan.contents) {
         if (!content.registry) continue;
@@ -125,7 +125,7 @@ std::set<std::string> cook::voxelVolumesGeneratedAtRuntime(const ModuleScan& sca
     return volumes;
 }
 
-std::map<std::string, std::shared_ptr<const voxel::BaseSource>> cook::voxelTerrainBases(const ModuleScan& scan, const fs::path& assetsDir,
+std::map<std::string, std::shared_ptr<const voxel::BaseSource>> editor::cook::voxelTerrainBases(const ModuleScan& scan, const fs::path& assetsDir,
                                                                                          std::vector<std::string>& problems) {
     std::map<std::string, std::shared_ptr<const voxel::BaseSource>> bases;
     std::map<std::string, std::string> attachedIn;      // the volume, where it was first attached

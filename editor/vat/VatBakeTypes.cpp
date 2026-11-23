@@ -9,7 +9,6 @@
 #include <set>
 
 using namespace jasperengine;
-using namespace jasperengine::vat;
 using Json = nlohmann::json;
 
 namespace jasperengine::editor::vat{
@@ -127,8 +126,8 @@ float clipSampleTime(float length, ClipWrapMode wrap, int frames, float sampleFp
     return (float)((double)index * (double)length / (double)steps);
 }
 
-uint64_t payloadTexels(VatMode mode, int samples, int elements, bool normals){
-    const uint64_t perSample = mode == VatMode::Bones ? 2 : (normals ? 2 : 1);
+uint64_t payloadTexels(jasperengine::vat::VatMode mode, int samples, int elements, bool normals){
+    const uint64_t perSample = mode == jasperengine::vat::VatMode::Bones ? 2 : (normals ? 2 : 1);
     return (uint64_t)std::max(samples, 0) * (uint64_t)std::max(elements, 0) * perSample;
 }
 
@@ -137,12 +136,12 @@ int payloadHeight(uint64_t texels, int width){
     return (int)std::max<uint64_t>(1, (texels + (uint64_t)width - 1) / (uint64_t)width);
 }
 
-uint64_t payloadBytes(int width, int height, VatPrecision precision){
-    return (uint64_t)std::max(width, 0) * (uint64_t)std::max(height, 0) * (precision == VatPrecision::Float ? 16u : 8u);
+uint64_t payloadBytes(int width, int height, jasperengine::vat::VatPrecision precision){
+    return (uint64_t)std::max(width, 0) * (uint64_t)std::max(height, 0) * (precision == jasperengine::vat::VatPrecision::Float ? 16u : 8u);
 }
 
-int fetchesPerVertex(VatMode mode, bool normals, bool rigidOnly){
-    if (mode == VatMode::Bones) return rigidOnly ? 4 : 16;
+int fetchesPerVertex(jasperengine::vat::VatMode mode, bool normals, bool rigidOnly){
+    if (mode == jasperengine::vat::VatMode::Bones) return rigidOnly ? 4 : 16;
     return normals ? 4 : 2;
 }
 
@@ -169,7 +168,7 @@ uint64_t sizeTexels(const VatSizeInputs& inputs){
         clipFrames(clip.length, clip.wrap, requested, frames, fps);
         samples += frames;
     }
-    const int elements = inputs.mode == VatMode::Bones ? inputs.bones : inputs.vertices;
+    const int elements = inputs.mode == jasperengine::vat::VatMode::Bones ? inputs.bones : inputs.vertices;
     return payloadTexels(inputs.mode, samples, elements, inputs.normals);
 }
 
@@ -208,14 +207,14 @@ VatIssue tooLargeIssue(const VatSizeInputs& inputs){
             }
         }
     }
-    if (inputs.mode == VatMode::Vertices && inputs.normals){
+    if (inputs.mode == jasperengine::vat::VatMode::Vertices && inputs.normals){
         VatSizeInputs without = inputs;
         without.normals = false;
         candidates.push_back({{"Drop normals (no tangent frames)", "normals", "false"}, share(sizeTexels(without), limits.maxTexels)});
     }
-    if (inputs.mode == VatMode::Vertices && inputs.bonesPossible && inputs.bones > 0 && inputs.bones <= VAT_MAX_BONES){
+    if (inputs.mode == jasperengine::vat::VatMode::Vertices && inputs.bonesPossible && inputs.bones > 0 && inputs.bones <= jasperengine::vat::VAT_MAX_BONES){
         VatSizeInputs bones = inputs;
-        bones.mode = VatMode::Bones;
+        bones.mode = jasperengine::vat::VatMode::Bones;
         candidates.push_back({{"Bake in Bones mode", "mode", "\"bones\""}, share(sizeTexels(bones), limits.maxTexels)});
     }
     if (inputs.clips.size() > 1){
@@ -289,9 +288,9 @@ Json estimateJson(const VatEstimate& estimate){
 
 // ---- recipe ----
 
-VatRecipe recipeFromSpec(const VatBakeSpec& spec){
-    VatRecipe recipe;
-    VatRecipeSource source;
+jasperengine::vat::VatRecipe recipeFromSpec(const VatBakeSpec& spec){
+    jasperengine::vat::VatRecipe recipe;
+    jasperengine::vat::VatRecipeSource source;
     source.kind = sourceKindName(spec.source.kind);
     source.path = spec.source.path;
     source.scene = spec.source.scene;
@@ -315,13 +314,13 @@ VatRecipe recipeFromSpec(const VatBakeSpec& spec){
     return recipe;
 }
 
-bool specFromRecipe(const VatRecipe& recipe, VatBakeSpec& spec, std::string& error){
+bool specFromRecipe(const jasperengine::vat::VatRecipe& recipe, VatBakeSpec& spec, std::string& error){
     spec = VatBakeSpec();
     if (recipe.sources.size() != 1){
         error = "the recipe has " + std::to_string(recipe.sources.size()) + " sources: the baker reads one";
         return false;
     }
-    const VatRecipeSource& source = recipe.sources[0];
+    const jasperengine::vat::VatRecipeSource& source = recipe.sources[0];
     if (source.kind == "houdini_vat3" || source.kind == "openvat"){
         error = "baked by the " + source.kind + " importer: re-import it (Import as Vertex Animation)";
         return false;
@@ -347,7 +346,7 @@ bool specFromRecipe(const VatRecipe& recipe, VatBakeSpec& spec, std::string& err
     return true;
 }
 
-bool sameRecipeSource(const VatRecipeSource& a, const VatRecipeSource& b){
+bool sameRecipeSource(const jasperengine::vat::VatRecipeSource& a, const jasperengine::vat::VatRecipeSource& b){
     if (a.kind != b.kind || a.path != b.path || a.scene != b.scene) return false;
     std::set<std::string> left(a.clips.begin(), a.clips.end());
     std::set<std::string> right(b.clips.begin(), b.clips.end());

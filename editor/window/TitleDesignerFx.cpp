@@ -23,7 +23,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::titledesigner;
 namespace ta = jasperengine::titleart;
 namespace fs = std::filesystem;
 
@@ -112,10 +111,10 @@ bool TitleDesignerWindow::documentRealtime() {
     return false;
 }
 
-bool TitleDesignerWindow::effectCost(const std::string& layerId, const std::string& part, int index, CostBadge& out) {
+bool TitleDesignerWindow::effectCost(const std::string& layerId, const std::string& part, int index, titledesigner::CostBadge& out) {
     if (!doc.isOpen()) return false;
     const ta::TitleArtDoc& shown = doc.shown();
-    const ta::Json* layer = layerById(shown, layerId);
+    const ta::Json* layer = titledesigner::layerById(shown, layerId);
     if (!layer) return false;
     const CostCache& cache = costs();
     auto found = cache.layers.find(layerId);
@@ -191,16 +190,16 @@ std::vector<ta::FieldOverride> TitleDesignerWindow::liveOverrides(double* phaseK
     if (phaseKey) *phaseKey = t;
     const double wave = 0.5 + 0.5 * std::cos(t * 3.14159265358979 / 1.0);
     for (auto it = livePreviews.begin(); it != livePreviews.end();) {
-        const ta::Json* layer = layerById(shown, it->first);
-        const NodeRef node{NodeKind::Effect, it->first, {}, it->second};
-        const ta::Json* effect = layer ? effectOf(*layer, node) : nullptr;
+        const ta::Json* layer = titledesigner::layerById(shown, it->first);
+        const titledesigner::NodeRef node{titledesigner::NodeKind::Effect, it->first, {}, it->second};
+        const ta::Json* effect = layer ? titledesigner::effectOf(*layer, node) : nullptr;
         const ta::EffectDef* def = effect ? ta::findEffect(str(*effect, "type")) : nullptr;
         if (!def || def->live.kind == ta::LiveKind::None) {
             // the effect went away: its toggle with it
             it = livePreviews.erase(it);
             continue;
         }
-        const std::string base = effectPathOf(*layer, node) + ".params.";
+        const std::string base = titledesigner::effectPathOf(*layer, node) + ".params.";
         const ta::Json params = effect->value("params", ta::Json::object());
         for (const char* key : def->live.params) {
             const ta::ParamDef* param = nullptr;
@@ -242,7 +241,7 @@ ImTextureID TitleDesignerWindow::previewTile(const std::string& slot, const std:
 }
 
 std::string TitleDesignerWindow::previewMode() const {
-    const DocumentView* v = viewOrNull();
+    const titledesigner::DocumentView* v = viewOrNull();
     return v ? v->previewAs : std::string("realtime");
 }
 

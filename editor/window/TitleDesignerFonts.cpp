@@ -26,8 +26,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::titledesigner;
-using namespace jasperengine::editor::titlefonts;
 namespace ta = jasperengine::titleart;
 namespace fs = std::filesystem;
 
@@ -64,10 +62,10 @@ void TitleDesignerWindow::openFontPicker(const std::vector<std::string>& layers)
     fontPickerOpen = true;
     fontQuery.clear();
     const std::vector<std::string> texts = fontTextOfSelection();
-    fontCoversText = !texts.empty() && coversMyTextByDefault(texts[0]);
+    fontCoversText = !texts.empty() && titlefonts::coversMyTextByDefault(texts[0]);
     if (!fontCatalog) {
-        fontCatalog = std::make_unique<FontCatalog>(FontCatalog::editorServices(project));
-        fontStrips = std::make_unique<FontPreviewRaster>();
+        fontCatalog = std::make_unique<titlefonts::FontCatalog>(titlefonts::FontCatalog::editorServices(project));
+        fontStrips = std::make_unique<titlefonts::FontPreviewRaster>();
     }
     // listed on background jobs when the picker first opens (R58), cached for the session
     fontCatalog->open();
@@ -76,14 +74,14 @@ void TitleDesignerWindow::openFontPicker(const std::vector<std::string>& layers)
 void TitleDesignerWindow::drawFontRow(const std::vector<std::string>& layers, bool readOnly) {
     if (layers.empty()) return;
     const ta::TitleArtDoc& shown = doc.shown();
-    const ta::Json* layer = layerById(shown, layers[0]);
+    const ta::Json* layer = titledesigner::layerById(shown, layers[0]);
     if (!layer) return;
     const ta::TitleAssetRef font = ta::decodeAssetRef(layer->value("font", ta::Json()));
     const ta::AssetResolver* resolver = &transient;
     const ta::ResolvedTitleAsset resolved = font.empty() ? ta::ResolvedTitleAsset{} : resolver->resolve(font, ta::TitleAssetKind::Font);
     const std::string name = font.empty() ? std::string("Built-in") : fs::path(font.path).stem().string();
-    if (!fontStrips) fontStrips = std::make_unique<FontPreviewRaster>();
-    if (!fontCatalog) fontCatalog = std::make_unique<FontCatalog>(FontCatalog::editorServices(project));
+    if (!fontStrips) fontStrips = std::make_unique<titlefonts::FontPreviewRaster>();
+    if (!fontCatalog) fontCatalog = std::make_unique<titlefonts::FontCatalog>(titlefonts::FontCatalog::editorServices(project));
     fontStrips->beginFrame();
     // the current font's name drawn as a preview strip in that font, a missing-glyph badge
     const float width = ImGui::GetContentRegionAvail().x;
@@ -96,26 +94,26 @@ void TitleDesignerWindow::drawFontRow(const std::vector<std::string>& layers, bo
     size_t missingCount = 0;
     std::vector<uint32_t> missing;
     if (resolved.found) {
-        StripRequest request;
+        titlefonts::StripRequest request;
         request.font = {resolved.path, layer->value("face_index", 0)};
         request.text = name;
         request.pixelSize = ImGui::GetFontSize() * 1.1f;
         request.color = 0xEEEEEEFFu;
-        if (const FontPreviewRaster::Strip* strip = fontStrips->request(request); strip && strip->texture) {
+        if (const titlefonts::FontPreviewRaster::Strip* strip = fontStrips->request(request); strip && strip->texture) {
             ImGui::GetWindowDrawList()->AddImage(strip->texture, ImVec2(p.x + 6.0f, p.y + 2.0f), ImVec2(p.x + 6.0f + strip->width, p.y + 2.0f + strip->height));
         } else {
             ImGui::GetWindowDrawList()->AddText(ImVec2(p.x + 6.0f, p.y + 4.0f), ImGui::GetColorU32(ImGuiCol_Text), name.c_str());
         }
         // the text's code points the font and the Fallback Fonts cannot map (R55)
-        FontEntry entry;
+        titlefonts::FontEntry entry;
         entry.path = resolved.path;
         entry.faceIndex = layer->value("face_index", 0);
-        std::vector<FontFileRef> fallbacks;
+        std::vector<titlefonts::FontFileRef> fallbacks;
         for (const ta::Json& ref : layer->value("fallback_fonts", ta::Json::array())) {
             const ta::ResolvedTitleAsset f = resolver->resolve(ta::decodeAssetRef(ref), ta::TitleAssetKind::Font);
             if (f.found) fallbacks.push_back({f.path, 0});
         }
-        fontCatalog->missingCodepoints(entry, decodeUtf8(str(*layer, "text")), fallbacks, missing);
+        fontCatalog->missingCodepoints(entry, titledesigner::decodeUtf8(str(*layer, "text")), fallbacks, missing);
         missingCount = missing.size();
     } else {
         ImGui::GetWindowDrawList()->AddText(ImVec2(p.x + 6.0f, p.y + 4.0f), ImGui::GetColorU32(ImGuiCol_Text), name.c_str());
@@ -132,9 +130,9 @@ void TitleDesignerWindow::drawFontRow(const std::vector<std::string>& layers, bo
             // the project fonts that have all of them first
             fontCatalog->open();
             fontCatalog->poll();
-            std::vector<std::pair<int, const FontEntry*>> ranked;
-            for (const FontEntry& e : fontCatalog->entries()) {
-                if (e.section != FontSection::Project || e.webFont) continue;
+            std::vector<std::pair<int, const titlefonts::FontEntry*>> ranked;
+            for (const titlefonts::FontEntry& e : fontCatalog->entries()) {
+                if (e.section != titlefonts::FontSection::Project || e.webFont) continue;
                 std::vector<uint32_t> still;
                 fontCatalog->missingCodepoints(e, missing, {}, still);
                 ranked.push_back({(int)still.size(), &e});
@@ -146,39 +144,39 @@ void TitleDesignerWindow::drawFontRow(const std::vector<std::string>& layers, bo
                 if (ImGui::MenuItem(label.c_str())) {
                     ta::Json list = layer->value("fallback_fonts", ta::Json::array());
                     list.push_back(ta::Json{{"path", e->assetPath}, {"guid", e->guid}});
-                    std::vector<FieldEdit> edits;
+                    std::vector<titledesigner::FieldEdit> edits;
                     for (const std::string& id : layers) edits.push_back({id, "fallback_fonts", list});
-                    commitNamed(editsToOps(edits), "Add Fallback Font " + e->family);
+                    commitNamed(titledesigner::editsToOps(edits), "Add Fallback Font " + e->family);
                 }
             }
             ImGui::EndPopup();
         }
     }
     // R58: a system font copied into the project carries a note
-    if (!font.empty() && font.path.rfind(SYSTEM_FONTS_FOLDER, 0) == 0) {
+    if (!font.empty() && font.path.rfind(titlefonts::SYSTEM_FONTS_FOLDER, 0) == 0) {
         ImGui::TextDisabled("System font: check its licence before you ship a game with it");
     }
     // R24: when the editor font lacks characters of the text, the text drawn in the layer's own font
     const std::string text = str(*layer, "text");
     bool editorHasAll = true;
-    for (uint32_t c : decodeUtf8(text)) {
+    for (uint32_t c : titledesigner::decodeUtf8(text)) {
         if (c > 0x7F && c != '\n' && !ImGui::GetFont()->IsGlyphInFont((ImWchar)c)) editorHasAll = false;
     }
     if (!editorHasAll && resolved.found) {
-        StripRequest request;
+        titlefonts::StripRequest request;
         request.font = {resolved.path, layer->value("face_index", 0)};
         request.text = text;
         request.pixelSize = ImGui::GetFontSize() * 1.4f;
-        if (const FontPreviewRaster::Strip* strip = fontStrips->request(request); strip && strip->texture) {
+        if (const titlefonts::FontPreviewRaster::Strip* strip = fontStrips->request(request); strip && strip->texture) {
             ImGui::Image(strip->texture, ImVec2((float)strip->width, (float)strip->height));
         }
     }
     // variable axes and named instances (R60)
     if (resolved.found) {
-        if (const FontDetails* details = fontCatalog->details(FontFileRef{resolved.path, layer->value("face_index", 0)})) {
+        if (const titlefonts::FontDetails* details = fontCatalog->details(titlefonts::FontFileRef{resolved.path, layer->value("face_index", 0)})) {
             if (!details->instances.empty()) {
                 std::vector<std::string> names;
-                for (const FontInstanceInfo& instance : details->instances) names.push_back(instance.name);
+                for (const titlefonts::FontInstanceInfo& instance : details->instances) names.push_back(instance.name);
                 ui::DocRowOptions options;
                 options.label = "Style";
                 options.canReset = false;
@@ -186,15 +184,15 @@ void TitleDesignerWindow::drawFontRow(const std::vector<std::string>& layers, bo
                 const ui::DocRowResult r = ui::docRowEnum("##fontstyle", -1, names, options);
                 if (r.kind == ui::DocRowResult::Kind::Set && r.value >= 0 && (size_t)r.value < details->instances.size()) {
                     ta::Json variations = ta::Json::object();
-                    const FontInstanceInfo& instance = details->instances[(size_t)r.value];
+                    const titlefonts::FontInstanceInfo& instance = details->instances[(size_t)r.value];
                     for (size_t a = 0; a < details->axes.size() && a < instance.coordinates.size(); a++) variations[details->axes[a].tag] = instance.coordinates[a];
-                    std::vector<FieldEdit> edits;
+                    std::vector<titledesigner::FieldEdit> edits;
                     for (const std::string& id : layers) edits.push_back({id, "variations", variations});
-                    commitNamed(editsToOps(edits), "Change Font Style to " + instance.name);
+                    commitNamed(titledesigner::editsToOps(edits), "Change Font Style to " + instance.name);
                 }
             }
             const ta::Json variations = layer->value("variations", ta::Json::object());
-            for (const FontAxisInfo& axis : details->axes) {
+            for (const titlefonts::FontAxisInfo& axis : details->axes) {
                 if (axis.hidden) continue;
                 ui::DocRowOptions options;
                 options.label = axis.name.c_str();
@@ -209,7 +207,7 @@ void TitleDesignerWindow::drawFontRow(const std::vector<std::string>& layers, bo
                 const ui::DocRowResult r = ui::docRowNumber(("##axis" + axis.tag).c_str(), value, options);
                 const std::string step = "Change Font " + axis.name;
                 auto edits = [&](double v) {
-                    std::vector<FieldEdit> out;
+                    std::vector<titledesigner::FieldEdit> out;
                     for (const std::string& id : layers) out.push_back({id, "variations." + axis.tag, v});
                     return out;
                 };
@@ -217,7 +215,7 @@ void TitleDesignerWindow::drawFontRow(const std::vector<std::string>& layers, bo
                 std::string error;
                 switch (r.phase) {
                     case ui::EditPhase::Begin: doc.beginGesture(step); break;
-                    case ui::EditPhase::Changing: doc.stage(editsToOps(edits(v)), &error); break;
+                    case ui::EditPhase::Changing: doc.stage(titledesigner::editsToOps(edits(v)), &error); break;
                     case ui::EditPhase::Committed:
                         doc.stage(editsToOps(edits(v)), &error);
                         doc.endGesture(&error);
@@ -226,7 +224,7 @@ void TitleDesignerWindow::drawFontRow(const std::vector<std::string>& layers, bo
                     case ui::EditPhase::Applied: commitNamed(editsToOps(edits(v)), step); break;
                     default: break;
                 }
-                if (r.reset) commitNamed(editsToOps(edits(axis.defaultValue)), "Reset Font " + axis.name);
+                if (r.reset) commitNamed(titledesigner::editsToOps(edits(axis.defaultValue)), "Reset Font " + axis.name);
                 if (!error.empty()) reportError(error);
             }
         }
@@ -255,9 +253,9 @@ void TitleDesignerWindow::drawFontPicker() {
     fontCatalog->poll();
     fontStrips->beginFrame();
     const ta::TitleArtDoc& shown = doc.shown();
-    const ta::Json* layer = fontPickerLayers.empty() ? nullptr : layerById(shown, fontPickerLayers[0]);
+    const ta::Json* layer = fontPickerLayers.empty() ? nullptr : titledesigner::layerById(shown, fontPickerLayers[0]);
     const std::string layerText = layer ? str(*layer, "text") : std::string();
-    const std::string sample = previewTextFor(layerText);
+    const std::string sample = titlefonts::previewTextFor(layerText);
     char buffer[128];
     std::snprintf(buffer, sizeof(buffer), "%s", fontQuery.c_str());
     ImGui::SetNextItemWidth(-1.0f);
@@ -265,18 +263,18 @@ void TitleDesignerWindow::drawFontPicker() {
     if (ImGui::InputTextWithHint("##fontsearch", ICON_FA_MAGNIFYING_GLASS " Search family, style or file", buffer, sizeof(buffer))) fontQuery = buffer;
     ImGui::Checkbox("Covers My Text", &fontCoversText);
     ImGui::SameLine();
-    static const FontCategory categories[] = {FontCategory::Any, FontCategory::Sans, FontCategory::Serif, FontCategory::Display, FontCategory::Handwriting,
-                                              FontCategory::Monospace};
-    for (FontCategory c : categories) {
+    static const titlefonts::FontCategory categories[] = {titlefonts::FontCategory::Any, titlefonts::FontCategory::Sans, titlefonts::FontCategory::Serif, titlefonts::FontCategory::Display, titlefonts::FontCategory::Handwriting,
+                                              titlefonts::FontCategory::Monospace};
+    for (titlefonts::FontCategory c : categories) {
         ImGui::SameLine();
-        const bool on = fontCategory == fontCategoryLabel(c) || (fontCategory.empty() && c == FontCategory::Any);
-        if (ImGui::RadioButton(fontCategoryLabel(c), on)) fontCategory = c == FontCategory::Any ? std::string() : fontCategoryLabel(c);
+        const bool on = fontCategory == fontCategoryLabel(c) || (fontCategory.empty() && c == titlefonts::FontCategory::Any);
+        if (ImGui::RadioButton(fontCategoryLabel(c), on)) fontCategory = c == titlefonts::FontCategory::Any ? std::string() : fontCategoryLabel(c);
     }
-    FontCatalog::Query query;
+    titlefonts::FontCatalog::Query query;
     query.search = fontQuery;
     query.coversText = fontCoversText;
-    query.text = decodeUtf8(layerText);
-    for (FontCategory c : categories) {
+    query.text = titledesigner::decodeUtf8(layerText);
+    for (titlefonts::FontCategory c : categories) {
         if (fontCategory == fontCategoryLabel(c)) query.category = c;
     }
     if (layer) {
@@ -285,21 +283,21 @@ void TitleDesignerWindow::drawFontPicker() {
             if (f.found) query.fallbacks.push_back({f.path, 0});
         }
     }
-    const std::vector<const FontEntry*> entries = fontCatalog->filter(query);
+    const std::vector<const titlefonts::FontEntry*> entries = fontCatalog->filter(query);
     ImGui::BeginChild("##fontlist", ImVec2(0, -ImGui::GetFrameHeightWithSpacing() * 1.4f), true);
-    FontSection section = (FontSection)255;
+    titlefonts::FontSection section = (titlefonts::FontSection)255;
     std::string hoveredNow;
     ImGuiListClipper clipper;
     const float rowHeight = ImGui::GetFontSize() * 2.6f;
     clipper.Begin((int)entries.size(), rowHeight);
     while (clipper.Step()) {
         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
-            const FontEntry& e = *entries[(size_t)i];
+            const titlefonts::FontEntry& e = *entries[(size_t)i];
             if (e.section != section) {
                 section = e.section;
-                ImGui::SeparatorText(fontSectionLabel(section));
-                if (section == FontSection::Google && fontCatalog->googleState() == FontCatalog::GoogleState::Offline) {
-                    ImGui::TextDisabled("%s", GOOGLE_OFFLINE_MESSAGE);
+                ImGui::SeparatorText(titlefonts::fontSectionLabel(section));
+                if (section == titlefonts::FontSection::Google && fontCatalog->googleState() == titlefonts::FontCatalog::GoogleState::Offline) {
+                    ImGui::TextDisabled("%s", titlefonts::GOOGLE_OFFLINE_MESSAGE);
                 }
             }
             ImGui::PushID(e.key.c_str());
@@ -312,12 +310,12 @@ void TitleDesignerWindow::drawFontPicker() {
                                 (e.webFont ? "  [Convert]" : std::string());
             dl->AddText(ImVec2(p.x + 4.0f, p.y + 2.0f), ImGui::GetColorU32(ImGuiCol_TextDisabled), label.c_str());
             if (!e.path.empty()) {
-                StripRequest request;
+                titlefonts::StripRequest request;
                 request.font = e.file();
                 request.text = sample;
                 request.pixelSize = ImGui::GetFontSize() * 1.2f;
                 request.fallbacks = query.fallbacks;
-                if (const FontPreviewRaster::Strip* strip = fontStrips->request(request); strip && strip->texture) {
+                if (const titlefonts::FontPreviewRaster::Strip* strip = fontStrips->request(request); strip && strip->texture) {
                     dl->AddImage(strip->texture, ImVec2(p.x + 4.0f, p.y + ImGui::GetFontSize() + 4.0f),
                                  ImVec2(p.x + 4.0f + strip->width, p.y + ImGui::GetFontSize() + 4.0f + strip->height));
                     if (!strip->missing.empty()) {
@@ -326,10 +324,10 @@ void TitleDesignerWindow::drawFontPicker() {
                         dl->AddText(ImVec2(p.x + ImGui::GetContentRegionAvail().x - size.x - 4.0f, p.y + 2.0f), IM_COL32(240, 110, 90, 255), count.c_str());
                     }
                 }
-            } else if (e.section == FontSection::Google) {
+            } else if (e.section == titlefonts::FontSection::Google) {
                 const auto state = fontCatalog->googleDownloadState(e.key);
                 dl->AddText(ImVec2(p.x + 4.0f, p.y + ImGui::GetFontSize() + 4.0f), ImGui::GetColorU32(ImGuiCol_TextDisabled),
-                            state == FontCatalog::DownloadState::Failed ? fontCatalog->googleDownloadError(e.key).c_str() : "Point at it to preview");
+                            state == titlefonts::FontCatalog::DownloadState::Failed ? fontCatalog->googleDownloadError(e.key).c_str() : "Point at it to preview");
             }
             if (hovered) hoveredNow = e.key;
             if (chosen) {
@@ -339,12 +337,12 @@ void TitleDesignerWindow::drawFontPicker() {
                 int faceIndex = e.faceIndex;
                 std::string family = e.family;
                 bool ok = true;
-                if (e.section != FontSection::Project || e.webFont) {
-                    FontImportPlan plan;
+                if (e.section != titlefonts::FontSection::Project || e.webFont) {
+                    titlefonts::FontImportPlan plan;
                     if (e.webFont) {
-                        plan = planWebFontConversion({e.path, project->getAssetsPath(), FONTS_FOLDER});
-                    } else if (e.section == FontSection::Google) {
-                        GoogleFontImportRequest request;
+                        plan = titlefonts::planWebFontConversion({e.path, project->getAssetsPath(), titlefonts::FONTS_FOLDER});
+                    } else if (e.section == titlefonts::FontSection::Google) {
+                        titlefonts::GoogleFontImportRequest request;
                         request.family = e.family;
                         if (e.googleVariable) {
                             request.rangeMin = 100;
@@ -352,16 +350,16 @@ void TitleDesignerWindow::drawFontPicker() {
                         }
                         request.projectRoot = project->getProjectPath();
                         request.assetsDir = project->getAssetsPath();
-                        plan = planGoogleFontImport(request);
+                        plan = titlefonts::planGoogleFontImport(request);
                     } else {
-                        FontCopyRequest request;
+                        titlefonts::FontCopyRequest request;
                         request.source = e.path;
                         request.faceIndex = e.faceIndex;
                         request.assetsDir = project->getAssetsPath();
-                        request.folder = e.section == FontSection::Library ? LIBRARY_FONTS_FOLDER : SYSTEM_FONTS_FOLDER;
-                        request.from = e.section == FontSection::Library ? FontImportSource::Library : FontImportSource::System;
+                        request.folder = e.section == titlefonts::FontSection::Library ? titlefonts::LIBRARY_FONTS_FOLDER : titlefonts::SYSTEM_FONTS_FOLDER;
+                        request.from = e.section == titlefonts::FontSection::Library ? titlefonts::FontImportSource::Library : titlefonts::FontImportSource::System;
                         request.licenceConfirmed = fontPending == e.key;
-                        plan = planFontCopy(request);
+                        plan = titlefonts::planFontCopy(request);
                     }
                     if (!plan.ok) {
                         ok = false;
@@ -371,7 +369,7 @@ void TitleDesignerWindow::drawFontPicker() {
                         fontPending = e.key;
                         fontPendingLayer = fontPickerLayers.empty() ? std::string() : fontPickerLayers[0];
                         ok = false;
-                    } else if (!plan.alreadyPresent && !commitFontImport(project, plan, error)) {
+                    } else if (!plan.alreadyPresent && !titlefonts::commitFontImport(project, plan, error)) {
                         ok = false;
                     } else {
                         assetPath = plan.assetPath;
@@ -386,19 +384,19 @@ void TitleDesignerWindow::drawFontPicker() {
                 if (ok && !assetPath.empty()) {
                     doc.clearPreview();
                     // keep the axes the new font has, drop the others in the same step (R60)
-                    std::vector<FontAxisInfo> axes;
-                    if (const FontDetails* details = fontCatalog->details(e)) axes = details->axes;
-                    std::vector<FieldEdit> edits;
+                    std::vector<titlefonts::FontAxisInfo> axes;
+                    if (const titlefonts::FontDetails* details = fontCatalog->details(e)) axes = details->axes;
+                    std::vector<titledesigner::FieldEdit> edits;
                     bool reset = false;
                     for (const std::string& id : fontPickerLayers) {
-                        const ta::Json* target = layerById(doc.committed(), id);
-                        const AxesAfterFontChange kept = keepAxesOfNewFont(target ? target->value("variations", ta::Json::object()) : ta::Json::object(), axes);
+                        const ta::Json* target = titledesigner::layerById(doc.committed(), id);
+                        const titlefonts::AxesAfterFontChange kept = keepAxesOfNewFont(target ? target->value("variations", ta::Json::object()) : ta::Json::object(), axes);
                         reset = reset || kept.reset();
                         edits.push_back({id, "font", ta::Json{{"path", assetPath}, {"guid", ""}}});
                         edits.push_back({id, "face_index", faceIndex});
                         edits.push_back({id, "variations", kept.variations});
                     }
-                    commitNamed(editsToOps(edits), changeFontUndoName(family, reset));
+                    commitNamed(titledesigner::editsToOps(edits), titlefonts::changeFontUndoName(family, reset));
                     fontPending.clear();
                     ImGui::CloseCurrentPopup();
                 }
@@ -416,26 +414,26 @@ void TitleDesignerWindow::drawFontPicker() {
         fontHoverSince = now();
         if (hoveredNow.empty()) doc.clearPreview();
     } else if (!fontHovered.empty() && now() - fontHoverSince >= 0.15 && !fontPickerLayers.empty()) {
-        const FontEntry* e = fontCatalog->find(fontHovered);
-        if (e && e->section == FontSection::Google && e->path.empty()) fontCatalog->requestGoogleDownload(e->key);
+        const titlefonts::FontEntry* e = fontCatalog->find(fontHovered);
+        if (e && e->section == titlefonts::FontSection::Google && e->path.empty()) fontCatalog->requestGoogleDownload(e->key);
         if (e && !e->path.empty()) {
             std::string assetPath = e->assetPath;
             if (assetPath.empty() || e->webFont) {
-                assetPath = std::string(e->section == FontSection::Google ? GOOGLE_FONTS_FOLDER : e->section == FontSection::Library ? LIBRARY_FONTS_FOLDER
-                                                                                                                                       : SYSTEM_FONTS_FOLDER) +
+                assetPath = std::string(e->section == titlefonts::FontSection::Google ? titlefonts::GOOGLE_FONTS_FOLDER : e->section == titlefonts::FontSection::Library ? titlefonts::LIBRARY_FONTS_FOLDER
+                                                                                                                                       : titlefonts::SYSTEM_FONTS_FOLDER) +
                             "/" + fs::path(e->path).filename().generic_string();
                 transient.add(assetPath, e->path);
             }
-            PreviewItem item;
-            item.kind = PreviewItem::Kind::Font;
+            titledesigner::PreviewItem item;
+            item.kind = titledesigner::PreviewItem::Kind::Font;
             item.id = e->key;
             item.label = e->family;
-            std::vector<FieldEdit> edits;
+            std::vector<titledesigner::FieldEdit> edits;
             for (const std::string& id : fontPickerLayers) {
                 edits.push_back({id, "font", ta::Json{{"path", assetPath}, {"guid", ""}}});
                 edits.push_back({id, "face_index", e->faceIndex});
             }
-            item.ops = editsToOps(edits);
+            item.ops = titledesigner::editsToOps(edits);
             item.stepName = "Change Font to " + e->family;
             std::string error;
             doc.setPreview(item, &error);
@@ -450,11 +448,11 @@ void TitleDesignerWindow::drawFontPicker() {
         const std::string file = FileDialogs::openFileDialogFiltered("", "Fonts", "ttf,otf,ttc,woff,woff2");
         if (!file.empty()) {
             const std::string ext = fs::path(file).extension().string();
-            FontImportPlan plan = (ext == ".woff" || ext == ".woff2") ? planWebFontConversion({file, project->getAssetsPath(), FONTS_FOLDER})
-                                                                     : planFontCopy({file, 0, project->getAssetsPath(), FONTS_FOLDER, FontImportSource::File, true, {}});
+            titlefonts::FontImportPlan plan = (ext == ".woff" || ext == ".woff2") ? titlefonts::planWebFontConversion({file, project->getAssetsPath(), titlefonts::FONTS_FOLDER})
+                                                                     : titlefonts::planFontCopy({file, 0, project->getAssetsPath(), titlefonts::FONTS_FOLDER, titlefonts::FontImportSource::File, true, {}});
             std::string error;
             if (!plan.ok) reportError(plan.error);
-            else if (!plan.alreadyPresent && !commitFontImport(project, plan, error)) reportError(error);
+            else if (!plan.alreadyPresent && !titlefonts::commitFontImport(project, plan, error)) reportError(error);
             else fontCatalog->refreshProject();
         }
     }

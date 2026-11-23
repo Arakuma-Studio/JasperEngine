@@ -10,7 +10,6 @@
 #include <map>
 
 using namespace jasperengine;
-using namespace jasperengine::pixelart;
 
 // file-local, inside the namespace: a unity build's other sources never see these names
 namespace jasperengine::pixelart {
@@ -122,6 +121,8 @@ namespace {
 }
 }
 
+namespace jasperengine::pixelart {
+
 PaletteSwapTextures::~PaletteSwapTextures() {
     cells.destroyTexture();
     rows.destroyTexture();
@@ -162,7 +163,7 @@ Rgba8 PaletteSwapData::swap(Rgba8 texel, int row, float time, float cycleSpeed, 
     return Rgba8{rows[target], rows[target + 1], rows[target + 2], (uint8_t)((alpha + 127u) / 255u)};
 }
 
-void pixelart::identityPaletteSwapData(PaletteSwapData& out) {
+void identityPaletteSwapData(PaletteSwapData& out) {
     out.cells.assign((size_t)kSwapCellsWidth * kSwapCellsHeight * 4, 0);
     out.rowsHeight = kSwapTargetRows + 1;
     out.rows.assign((size_t)kSwapRowsWidth * out.rowsHeight * 4, 0);
@@ -171,7 +172,7 @@ void pixelart::identityPaletteSwapData(PaletteSwapData& out) {
     out.hash = 0;
 }
 
-bool pixelart::buildPaletteSwapData(const Palette& source, const std::vector<PaletteSwapRow>& targets, PaletteSwapData& out,
+bool buildPaletteSwapData(const Palette& source, const std::vector<PaletteSwapRow>& targets, PaletteSwapData& out,
                                     std::vector<Diagnostic>& diagnostics) {
     identityPaletteSwapData(out);
     const int count = source.count();
@@ -282,7 +283,7 @@ bool pixelart::buildPaletteSwapData(const Palette& source, const std::vector<Pal
     return true;
 }
 
-std::vector<PaletteSwapRow> pixelart::resolvePaletteRows(const Palette& source, const PaletteBinding& binding, std::vector<Diagnostic>& diagnostics,
+std::vector<PaletteSwapRow> resolvePaletteRows(const Palette& source, const PaletteBinding& binding, std::vector<Diagnostic>& diagnostics,
                                                          std::vector<std::shared_ptr<const Palette>>* keepAlive) {
     std::vector<PaletteSwapRow> rows;
     if (binding.useVariants) {
@@ -418,3 +419,5 @@ size_t PaletteSwapCache::size() {
     SwapCache& cache = swapCache();
     return cache.entries.size() + (cache.identity ? 1 : 0);
 }
+
+}  // namespace jasperengine::pixelart

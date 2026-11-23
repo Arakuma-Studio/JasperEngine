@@ -70,7 +70,6 @@
 #include <string>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
 
 namespace {
 
@@ -90,7 +89,7 @@ namespace {
         // S49: the document drawn (the Renderer's rows that depend on the Pixel Art module), the
         // grid a pixel particle uses here, the modules Analytic does not compute, a project step
         // written with this edit (the palette copy of a preset: linked to the edit's step)
-        const ParticleEffectDocument* document = nullptr;
+        const particles::ParticleEffectDocument* document = nullptr;
         std::string gridStatus;
         std::set<std::string> analyticBlocked;
         bool wroteProjectStep = false;
@@ -104,8 +103,8 @@ namespace {
         // the curve field that opened the Curve window this frame
         bool curveOpened = false;
         std::string curveField;
-        CurveDriver curveDriver = CurveDriver::NormalizedAge;
-        void curveBegan(editor::ui::EditPhase phase, const std::string& path, CurveDriver driver) {
+        particles::CurveDriver curveDriver = particles::CurveDriver::NormalizedAge;
+        void curveBegan(editor::ui::EditPhase phase, const std::string& path, particles::CurveDriver driver) {
             if (phase != editor::ui::EditPhase::Begin) return;
             curveOpened = true;
             curveField = path;
@@ -158,7 +157,7 @@ namespace {
 
     // A field's label cell: marked when the value is not its default (Unity's override bar), with
     // Reset on a right-click
-    void effectFieldLabel(FieldUi& ui, const FieldDesc& f, const std::string& path, int indent) {
+    void effectFieldLabel(FieldUi& ui, const particles::FieldDesc& f, const std::string& path, int indent) {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         if (indent > 0) ImGui::Indent(indentWidth() * indent);
@@ -186,20 +185,20 @@ namespace {
         ImGui::SetNextItemWidth(-FLT_MIN);
     }
 
-    bool ranged(const FieldDesc& f) {
+    bool ranged(const particles::FieldDesc& f) {
         return f.minValue > -1.0e37f || f.maxValue < 1.0e37f;
     }
 
-    float dragSpeed(const FieldDesc& f) {
+    float dragSpeed(const particles::FieldDesc& f) {
         if (ranged(f) && f.maxValue - f.minValue <= 10.0f) return 0.005f;
         return 0.05f;
     }
 
-    const char* floatFormat(const FieldDesc& f) {
-        return (f.flags & FieldFlag_Degrees) ? "%.2f\xc2\xb0" : "%.3f";
+    const char* floatFormat(const particles::FieldDesc& f) {
+        return (f.flags & particles::FieldFlag_Degrees) ? "%.2f\xc2\xb0" : "%.3f";
     }
 
-    bool dragFloat(const char* id, float* value, const FieldDesc& f) {
+    bool dragFloat(const char* id, float* value, const particles::FieldDesc& f) {
         const bool clamp = ranged(f);
         const bool edited = ImGui::DragFloat(id, value, dragSpeed(f), clamp ? f.minValue : 0.0f, clamp ? f.maxValue : 0.0f, floatFormat(f),
                                              clamp ? ImGuiSliderFlags_AlwaysClamp : ImGuiSliderFlags_None);
@@ -207,7 +206,7 @@ namespace {
         return edited;
     }
 
-    bool enumCombo(const char* id, const EnumOption* options, uint8_t count, uint8_t& value) {
+    bool enumCombo(const char* id, const particles::EnumOption* options, uint8_t count, uint8_t& value) {
         const char* preview = "";
         for (uint8_t i = 0; i < count; i++) {
             if (options[i].value == value) preview = options[i].label;
@@ -229,16 +228,16 @@ namespace {
 
     // a 16x16 icon of a shape, drawn by the CPU reference of its rule (ParticlePixel: the same
     // code as the tests' golden), so the icon is the truth
-    void pixelShapeIcon(ImDrawList* drawList, ImVec2 at, float side, const RendererModule& renderer, PixelShape shape) {
-        PixelShapeSpec spec = PixelShapeSpec::fromRenderer(renderer);
+    void pixelShapeIcon(ImDrawList* drawList, ImVec2 at, float side, const particles::RendererModule& renderer, particles::PixelShape shape) {
+        particles::PixelShapeSpec spec = particles::PixelShapeSpec::fromRenderer(renderer);
         spec.shape = (int)shape;
-        const float n = shape == PixelShape::Puff ? 8.0f : (shape == PixelShape::Chunk ? 10.0f : (shape == PixelShape::Streak ? 1.0f : 11.0f));
-        const PixelLayout layout = ParticlePixel::layout(spec, Vector2(8.0f, 8.0f), Vector2(n, n), Vector2(300.0f, 300.0f), 0.6f, true);
-        std::vector<PixelCell> cells;
-        ParticlePixel::rasterize(spec, layout, 0.2f, 0, cells);
+        const float n = shape == particles::PixelShape::Puff ? 8.0f : (shape == particles::PixelShape::Chunk ? 10.0f : (shape == particles::PixelShape::Streak ? 1.0f : 11.0f));
+        const particles::PixelLayout layout = particles::ParticlePixel::layout(spec, Vector2(8.0f, 8.0f), Vector2(n, n), Vector2(300.0f, 300.0f), 0.6f, true);
+        std::vector<particles::PixelCell> cells;
+        particles::ParticlePixel::rasterize(spec, layout, 0.2f, 0, cells);
         const float px = side / 16.0f;
         drawList->AddRectFilled(at, ImVec2(at.x + side, at.y + side), IM_COL32(24, 24, 28, 255));
-        for (const PixelCell& c : cells) {
+        for (const particles::PixelCell& c : cells) {
             if (c.x < 0 || c.y < 0 || c.x >= 16 || c.y >= 16) continue;
             const ImU32 colour = c.tone == 1 ? IM_COL32(255, 138, 42, 255) : IM_COL32(255, 243, 166, (int)(255.0f * std::clamp(c.cover, 0.25f, 1.0f)));
             const ImVec2 min(at.x + (float)c.x * px, at.y + (float)(15 - c.y) * px);
@@ -246,10 +245,10 @@ namespace {
         }
     }
 
-    bool pixelShapeCombo(const char* id, const RendererModule& renderer, uint8_t& value) {
-        const EnumOption* options = nullptr;
+    bool pixelShapeCombo(const char* id, const particles::RendererModule& renderer, uint8_t& value) {
+        const particles::EnumOption* options = nullptr;
         uint8_t count = 0;
-        if (const FieldDesc* field = ParticleModules::get(ModuleId::Renderer).fields.find("pixelShape")) {
+        if (const particles::FieldDesc* field = particles::ParticleModules::get(particles::ModuleId::Renderer).fields.find("pixelShape")) {
             options = field->options;
             count = field->optionCount;
         }
@@ -267,7 +266,7 @@ namespace {
                     picked = options[i].value != value;
                     value = options[i].value;
                 }
-                pixelShapeIcon(ImGui::GetWindowDrawList(), at, side, renderer, (PixelShape)options[i].value);
+                pixelShapeIcon(ImGui::GetWindowDrawList(), at, side, renderer, (particles::PixelShape)options[i].value);
                 ImGui::GetWindowDrawList()->AddText(ImVec2(at.x + side + editor::Theme::dpi(6.0f), at.y), ImGui::GetColorU32(ImGuiCol_Text), options[i].label);
                 ImGui::PopID();
             }
@@ -289,16 +288,16 @@ namespace {
         ImGui::PopTextWrapPos();
     }
 
-    bool pixelActive(const ParticleEffectDocument& d) {
-        return d.renderer.renderMode == RenderMode::Pixel || (d.pixelArt.present && d.pixelArt.enabled);
+    bool pixelActive(const particles::ParticleEffectDocument& d) {
+        return d.renderer.renderMode == particles::RenderMode::Pixel || (d.pixelArt.present && d.pixelArt.enabled);
     }
 
     // R30: the grid in use, the Ramp Offset fallback, Rescale to Pixels Per Unit (R20)
-    void drawPixelArtNotes(FieldUi& ui, ParticleEffectDocument& edited) {
+    void drawPixelArtNotes(FieldUi& ui, particles::ParticleEffectDocument& edited) {
         if (!ui.gridStatus.empty()) noteRow("Grid: " + ui.gridStatus, false);
-        const bool ramp = edited.main.startColor.mode == GradientValueMode::Ramp ||
-                          (edited.colorOverLifetime.present && edited.colorOverLifetime.enabled && edited.colorOverLifetime.color.mode == GradientValueMode::Ramp);
-        if (edited.pixelArt.secondary == SecondaryColorMode::RampOffset && !ramp)
+        const bool ramp = edited.main.startColor.mode == particles::GradientValueMode::Ramp ||
+                          (edited.colorOverLifetime.present && edited.colorOverLifetime.enabled && edited.colorOverLifetime.color.mode == particles::GradientValueMode::Ramp);
+        if (edited.pixelArt.secondary == particles::SecondaryColorMode::RampOffset && !ramp)
             noteRow("Ramp Offset: neither Start Color nor Color over Lifetime is a Palette Ramp, so the Secondary colour is drawn", false);
         const int ppu = ui.project ? std::max(ui.project->getPixelsPerUnit(), 1) : 1;
         if (edited.designPixelsPerUnit > 0.0f && (int)edited.designPixelsPerUnit != ppu) {
@@ -315,7 +314,7 @@ namespace {
     }
 
     // R9, R13: what pixel art ignores, and a texture that cannot keep its colours exact
-    void drawRendererPixelNotes(FieldUi& ui, ParticleEffectDocument& edited) {
+    void drawRendererPixelNotes(FieldUi& ui, particles::ParticleEffectDocument& edited) {
         if (ui.entity != NULL_ENTITY) {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(1);
@@ -328,7 +327,7 @@ namespace {
             if (feature == "EROSION" || feature == "SOFT")
                 noteRow(feature + " does nothing for pixel art: its pixels are whole and fade by dither", false);
         }
-        if (edited.renderer.renderMode == RenderMode::Pixel || edited.renderer.texture.empty() || !ui.project) return;
+        if (edited.renderer.renderMode == particles::RenderMode::Pixel || edited.renderer.texture.empty() || !ui.project) return;
         editor::pixelart::PaletteSwapTextureCheck check = editor::pixelart::checkLosslessTexture(*ui.project, edited.renderer.texture);
         check.subject = "Pixel particles";
         if (!check.lossy()) return;
@@ -352,13 +351,13 @@ namespace {
     }
 
     // R33: Analytic's unsupported modules and the loop's rate
-    void drawAnalyticBanner(FieldUi& ui, ParticleEffectDocument& edited) {
+    void drawAnalyticBanner(FieldUi& ui, particles::ParticleEffectDocument& edited) {
         ui.analyticBlocked.clear();
-        if (edited.simulationMode != SimulationMode::Analytic) return;
-        std::vector<Diagnostic> diagnostics;
-        AnalyticParticles::validate(edited, diagnostics);
+        if (edited.simulationMode != particles::SimulationMode::Analytic) return;
+        std::vector<particles::Diagnostic> diagnostics;
+        particles::AnalyticParticles::validate(edited, diagnostics);
         std::vector<std::string> others;
-        for (const Diagnostic& d : diagnostics) {
+        for (const particles::Diagnostic& d : diagnostics) {
             if (d.path.rfind("modules.", 0) == 0) {
                 const std::string rest = d.path.substr(8);
                 ui.analyticBlocked.insert(rest.substr(0, rest.find_first_of(".[")));
@@ -372,13 +371,13 @@ namespace {
             for (const std::string& line : others) ImGui::BulletText("%s", line.c_str());
             bool any = false;
             for (const std::string& key : ui.analyticBlocked) {
-                const ModuleDesc* m = ParticleModules::find(key);
+                const particles::ModuleDesc* m = particles::ParticleModules::find(key);
                 any = any || (m && m->hasEnable && m->isEnabled(edited) && key != "renderer");
             }
             ImGui::BeginDisabled(!any);
             if (ImGui::Button("Disable unsupported modules")) {
                 for (const std::string& key : ui.analyticBlocked) {
-                    const ModuleDesc* m = ParticleModules::find(key);
+                    const particles::ModuleDesc* m = particles::ParticleModules::find(key);
                     if (m && m->hasEnable && key != "renderer") m->setEnabled(edited, false);
                 }
                 ui.track(true, true);
@@ -388,13 +387,13 @@ namespace {
         }
         if (edited.looping && edited.emission.present && edited.emission.enabled && edited.emission.rateOverTime.isConstant()) {
             const float rate = edited.emission.rateOverTime.constant;
-            const float exact = AnalyticParticles::loopRate(rate, edited.duration);
+            const float exact = particles::AnalyticParticles::loopRate(rate, edited.duration);
             if (rate > 0.0f) ImGui::TextDisabled("Rate %g -> %.1f/s for a seamless loop of %g s", (double)rate, (double)exact, (double)edited.duration);
         }
     }
 
     // R20: Replace with Preset and Match Project Palette
-    void drawPresetRow(FieldUi& ui, ParticleEffectDocument& edited) {
+    void drawPresetRow(FieldUi& ui, particles::ParticleEffectDocument& edited) {
         if (!ui.project) return;
         ImGui::SetNextItemWidth(editor::Theme::dpi(170.0f));
         if (ImGui::BeginCombo("##replace_preset", "Replace with Preset")) {
@@ -446,12 +445,12 @@ namespace {
     void drawDriver(FieldUi& ui, V& value, int indent) {
         labelCell("Driven By", "what the curve's time axis follows", indent);
         uint8_t driver = (uint8_t)value.driver;
-        const std::vector<EnumOption>& drivers = ParticleModules::curveDrivers();
+        const std::vector<particles::EnumOption>& drivers = particles::ParticleModules::curveDrivers();
         if (enumCombo("##driver", drivers.data(), (uint8_t)drivers.size(), driver)) {
-            value.driver = (CurveDriver)driver;
+            value.driver = (particles::CurveDriver)driver;
             ui.track(true, true);
         }
-        if (value.driver == CurveDriver::NormalizedAge || value.driver == CurveDriver::Random) return;
+        if (value.driver == particles::CurveDriver::NormalizedAge || value.driver == particles::CurveDriver::Random) return;
         labelCell("Driver Range", "the driver values at the curve's 0 and 1", indent);
         float range[2] = {value.driverMin, value.driverMax};
         const bool edited = ImGui::DragFloat2("##range", range, 0.05f);
@@ -462,9 +461,9 @@ namespace {
         }
         labelCell("Wrap", nullptr, indent);
         uint8_t wrap = (uint8_t)value.wrap;
-        const std::vector<EnumOption>& wraps = ParticleModules::curveWraps();
+        const std::vector<particles::EnumOption>& wraps = particles::ParticleModules::curveWraps();
         if (enumCombo("##wrap", wraps.data(), (uint8_t)wraps.size(), wrap)) {
-            value.wrap = (CurveWrap)wrap;
+            value.wrap = (particles::CurveWrap)wrap;
             ui.track(true, true);
         }
     }
@@ -487,10 +486,10 @@ namespace {
         return editor::curveops::CurveRange{0.0f, lo, 1.0f, hi, false};
     }
 
-    void drawMinMaxCurve(FieldUi& ui, const FieldDesc& f, MinMaxCurve& value, const std::string& id, int indent) {
+    void drawMinMaxCurve(FieldUi& ui, const particles::FieldDesc& f, particles::MinMaxCurve& value, const std::string& id, int indent) {
         effectFieldLabel(ui, f, id, indent);
         editor::ui::CurveFieldOptions options;
-        options.range = particleRange(value.curve, value.mode == CurveMode::TwoCurves ? &value.curveMax : nullptr);
+        options.range = particleRange(value.curve, value.mode == particles::CurveMode::TwoCurves ? &value.curveMax : nullptr);
         options.label = f.label;
         const editor::ui::EditPhase phase = editor::ui::minMaxCurveField(id.c_str(), value, options);
         ui.phase(phase, f.label);
@@ -507,7 +506,7 @@ namespace {
         ui.phase(editor::ui::colorField(id, color, options), label);
     }
 
-    void drawMinMaxGradient(FieldUi& ui, const FieldDesc& f, MinMaxGradient& value, const std::string& id, int indent) {
+    void drawMinMaxGradient(FieldUi& ui, const particles::FieldDesc& f, particles::MinMaxGradient& value, const std::string& id, int indent) {
         effectFieldLabel(ui, f, id, indent);
         editor::ui::GradientFieldOptions options;
         options.label = f.label;
@@ -598,12 +597,12 @@ namespace {
     // which fields of a struct a pass draws
     enum class Pass { Basic, Advanced, All };
 
-    void drawStruct(FieldUi& ui, const StructDesc& desc, void* owner, const std::string& path, int indent, Pass pass);
+    void drawStruct(FieldUi& ui, const particles::StructDesc& desc, void* owner, const std::string& path, int indent, Pass pass);
 
-    void drawField(FieldUi& ui, const FieldDesc& f, void* p, const std::string& id, int indent, std::string* guid) {
+    void drawField(FieldUi& ui, const particles::FieldDesc& f, void* p, const std::string& id, int indent, std::string* guid) {
         ImGui::PushID(id.c_str());
         switch (f.type) {
-            case FieldType::Bool: {
+            case particles::FieldType::Bool: {
                 effectFieldLabel(ui, f, id, indent);
                 bool v = *static_cast<bool*>(p);
                 if (ImGui::Checkbox("##v", &v)) {
@@ -612,7 +611,7 @@ namespace {
                 }
                 break;
             }
-            case FieldType::Int: {
+            case particles::FieldType::Int: {
                 effectFieldLabel(ui, f, id, indent);
                 int& v = *static_cast<int*>(p);
                 const bool clamp = ranged(f);
@@ -621,7 +620,7 @@ namespace {
                 ui.track(edited);
                 break;
             }
-            case FieldType::UInt: {
+            case particles::FieldType::UInt: {
                 effectFieldLabel(ui, f, id, indent);
                 uint32_t& v = *static_cast<uint32_t*>(p);
                 const uint32_t lo = f.minValue > 0.0f ? (uint32_t)f.minValue : 0u;
@@ -630,12 +629,12 @@ namespace {
                 ui.track(edited);
                 break;
             }
-            case FieldType::Float: {
+            case particles::FieldType::Float: {
                 effectFieldLabel(ui, f, id, indent);
                 ui.track(dragFloat("##v", static_cast<float*>(p), f));
                 break;
             }
-            case FieldType::Enum: {
+            case particles::FieldType::Enum: {
                 effectFieldLabel(ui, f, id, indent);
                 uint8_t& v = *static_cast<uint8_t*>(p);
                 // its path as its id ("##effect.simulationMode"): what find_ui_item and the UI tests name
@@ -647,35 +646,35 @@ namespace {
                 if (enumCombo(comboId.c_str(), f.options, f.optionCount, v)) ui.track(true, true);
                 break;
             }
-            case FieldType::Mask: {
+            case particles::FieldType::Mask: {
                 effectFieldLabel(ui, f, id, indent);
                 drawMask(ui, *static_cast<uint32_t*>(p));
                 break;
             }
-            case FieldType::Vector2: {
+            case particles::FieldType::Vector2: {
                 effectFieldLabel(ui, f, id, indent);
                 ui.track(ImGui::DragFloat2("##v", &static_cast<Vector2*>(p)->x, dragSpeed(f), 0.0f, 0.0f, floatFormat(f)));
                 break;
             }
-            case FieldType::Vector3: {
+            case particles::FieldType::Vector3: {
                 effectFieldLabel(ui, f, id, indent);
                 ui.track(ImGui::DragFloat3("##v", &static_cast<Vector3*>(p)->x, dragSpeed(f), 0.0f, 0.0f, floatFormat(f)));
                 break;
             }
-            case FieldType::Vector4: {
+            case particles::FieldType::Vector4: {
                 effectFieldLabel(ui, f, id, indent);
                 ui.track(ImGui::DragFloat4("##v", &static_cast<Vector4*>(p)->x, dragSpeed(f), 0.0f, 0.0f, floatFormat(f)));
                 break;
             }
-            case FieldType::Color: {
+            case particles::FieldType::Color: {
                 effectFieldLabel(ui, f, id, indent);
                 colorRow(ui, "##v", *static_cast<Vector4*>(p), f.label);
                 break;
             }
-            case FieldType::String: {
+            case particles::FieldType::String: {
                 effectFieldLabel(ui, f, id, indent);
                 std::string& v = *static_cast<std::string*>(p);
-                if (f.flags & FieldFlag_AssetPath) {
+                if (f.flags & particles::FieldFlag_AssetPath) {
                     drawAssetPath(ui, v, guid);
                 } else {
                     char buffer[512];
@@ -686,13 +685,13 @@ namespace {
                 }
                 break;
             }
-            case FieldType::MinMaxCurve:
-                drawMinMaxCurve(ui, f, *static_cast<MinMaxCurve*>(p), id, indent);
+            case particles::FieldType::MinMaxCurve:
+                drawMinMaxCurve(ui, f, *static_cast<particles::MinMaxCurve*>(p), id, indent);
                 break;
-            case FieldType::MinMaxGradient:
-                drawMinMaxGradient(ui, f, *static_cast<MinMaxGradient*>(p), id, indent);
+            case particles::FieldType::MinMaxGradient:
+                drawMinMaxGradient(ui, f, *static_cast<particles::MinMaxGradient*>(p), id, indent);
                 break;
-            case FieldType::Curve: {
+            case particles::FieldType::Curve: {
                 effectFieldLabel(ui, f, id, indent);
                 Curve& curve = *static_cast<Curve*>(p);
                 editor::ui::CurveFieldOptions options;
@@ -700,10 +699,10 @@ namespace {
                 options.label = f.label;
                 const editor::ui::EditPhase phase = editor::ui::curveField(id.c_str(), curve, options);
                 ui.phase(phase, f.label);
-                ui.curveBegan(phase, id, CurveDriver::NormalizedAge);
+                ui.curveBegan(phase, id, particles::CurveDriver::NormalizedAge);
                 break;
             }
-            case FieldType::Gradient: {
+            case particles::FieldType::Gradient: {
                 effectFieldLabel(ui, f, id, indent);
                 Gradient& gradient = *static_cast<Gradient*>(p);
                 editor::ui::GradientFieldOptions options;
@@ -711,12 +710,12 @@ namespace {
                 ui.phase(editor::ui::gradientField(id.c_str(), gradient, options), f.label);
                 break;
             }
-            case FieldType::Struct: {
+            case particles::FieldType::Struct: {
                 effectFieldLabel(ui, f, id, indent);
                 if (f.element) drawStruct(ui, *f.element, p, id, indent + 1, Pass::All);
                 break;
             }
-            case FieldType::Array: {
+            case particles::FieldType::Array: {
                 effectFieldLabel(ui, f, id, indent);
                 const size_t count = f.array.size(p);
                 ImGui::Text("%zu", count);
@@ -745,7 +744,7 @@ namespace {
                 }
                 break;
             }
-            case FieldType::IntArray: {
+            case particles::FieldType::IntArray: {
                 effectFieldLabel(ui, f, id, indent);
                 std::vector<int>& v = *static_cast<std::vector<int>*>(p);
                 ImGui::Text("%zu", v.size());
@@ -773,7 +772,7 @@ namespace {
                 }
                 break;
             }
-            case FieldType::StringArray: {
+            case particles::FieldType::StringArray: {
                 effectFieldLabel(ui, f, id, indent);
                 std::vector<std::string>& v = *static_cast<std::vector<std::string>*>(p);
                 ImGui::Text("%zu", v.size());
@@ -810,37 +809,37 @@ namespace {
         ImGui::PopID();
     }
 
-    bool shown(const FieldDesc& f, const void* owner, Pass pass) {
-        if (f.flags & (FieldFlag_Hidden | FieldFlag_Guid)) return false;
-        if (pass == Pass::Basic && (f.flags & FieldFlag_Advanced)) return false;
-        if (pass == Pass::Advanced && !(f.flags & FieldFlag_Advanced)) return false;
+    bool shown(const particles::FieldDesc& f, const void* owner, Pass pass) {
+        if (f.flags & (particles::FieldFlag_Hidden | particles::FieldFlag_Guid)) return false;
+        if (pass == Pass::Basic && (f.flags & particles::FieldFlag_Advanced)) return false;
+        if (pass == Pass::Advanced && !(f.flags & particles::FieldFlag_Advanced)) return false;
         return !f.visible || f.visible(owner);
     }
 
-    void drawStruct(FieldUi& ui, const StructDesc& desc, void* owner, const std::string& path, int indent, Pass pass) {
+    void drawStruct(FieldUi& ui, const particles::StructDesc& desc, void* owner, const std::string& path, int indent, Pass pass) {
         // Sizes in Pixels ignores Min and Max Particle Size (S49 R3)
         const bool pixelSized = ui.document && ui.document->pixelArt.present && ui.document->pixelArt.enabled && ui.document->pixelArt.pixelSizes;
         for (size_t i = 0; i < desc.fields.size(); i++) {
-            const FieldDesc& f = desc.fields[i];
+            const particles::FieldDesc& f = desc.fields[i];
             if (!shown(f, owner, pass)) continue;
             if (pixelSized && (std::strcmp(f.key, "minScreenSize") == 0 || std::strcmp(f.key, "maxScreenSize") == 0)) continue;
             std::string* guid = nullptr;
-            if ((f.flags & FieldFlag_AssetPath) && i + 1 < desc.fields.size() && (desc.fields[i + 1].flags & FieldFlag_Guid)) {
+            if ((f.flags & particles::FieldFlag_AssetPath) && i + 1 < desc.fields.size() && (desc.fields[i + 1].flags & particles::FieldFlag_Guid)) {
                 guid = static_cast<std::string*>(desc.fields[i + 1].field(owner));
             }
             drawField(ui, f, f.field(owner), path + "." + f.key, indent, guid);
         }
     }
 
-    bool hasAdvanced(const StructDesc& desc, const void* owner) {
-        for (const FieldDesc& f : desc.fields) {
+    bool hasAdvanced(const particles::StructDesc& desc, const void* owner) {
+        for (const particles::FieldDesc& f : desc.fields) {
             if (shown(f, owner, Pass::Advanced)) return true;
         }
         return false;
     }
 
     // A struct's basic rows, then its advanced ones under a foldout row
-    void drawFieldsWithAdvanced(FieldUi& ui, const StructDesc& desc, void* owner, const std::string& path) {
+    void drawFieldsWithAdvanced(FieldUi& ui, const particles::StructDesc& desc, void* owner, const std::string& path) {
         drawStruct(ui, desc, owner, path, 0, Pass::Basic);
         if (!hasAdvanced(desc, owner)) return;
         const std::string id = path + ".advanced";
@@ -857,7 +856,7 @@ namespace {
     // An array of structs outside the module tables (the effect's sub-emitter list, its exposed
     // parameters): element rows with their fields, add and remove
     template<class T>
-    void drawStructList(FieldUi& ui, const char* label, const StructDesc& element, std::vector<T>& list, size_t maxCount, const std::string& path) {
+    void drawStructList(FieldUi& ui, const char* label, const particles::StructDesc& element, std::vector<T>& list, size_t maxCount, const std::string& path) {
         labelCell(label, nullptr, 0);
         ImGui::Text("%zu", list.size());
         ImGui::SameLine();
@@ -885,9 +884,9 @@ namespace {
         }
     }
 
-    void drawDiagnostics(const std::vector<Diagnostic>& diagnostics) {
-        for (const Diagnostic& d : diagnostics) {
-            const bool error = d.severity == Diagnostic::Severity::Error;
+    void drawDiagnostics(const std::vector<particles::Diagnostic>& diagnostics) {
+        for (const particles::Diagnostic& d : diagnostics) {
+            const bool error = d.severity == particles::Diagnostic::Severity::Error;
             ImGui::PushStyleColor(ImGuiCol_Text, error ? ImVec4(0.95f, 0.35f, 0.35f, 1.0f) : ImVec4(0.95f, 0.75f, 0.30f, 1.0f));
             ImGui::TextWrapped("%s %s: %s", error ? ICON_FA_CIRCLE_XMARK : ICON_FA_TRIANGLE_EXCLAMATION, d.path.c_str(), d.message.c_str());
             ImGui::PopStyleColor();
@@ -909,7 +908,7 @@ namespace {
     }
 
     // the module's section of the docs, in the browser
-    void helpButton(const ModuleDesc& module) {
+    void helpButton(const particles::ModuleDesc& module) {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
         const bool clicked = ImGui::Button(ICON_FA_CIRCLE_QUESTION "##module_help");
@@ -926,7 +925,7 @@ namespace {
 
     // A module header's right-click menu: Reset, Copy Module, Paste Module, Paste Values (and Remove
     // Module, which the caller does: true when it was picked)
-    bool moduleMenu(FieldUi& ui, ParticleEffectDocument& edited, const ModuleDesc& module, const char* id) {
+    bool moduleMenu(FieldUi& ui, particles::ParticleEffectDocument& edited, const particles::ModuleDesc& module, const char* id) {
         bool remove = false;
         if (!ImGui::BeginPopupContextItem(id)) return false;
         if (ImGui::MenuItem("Reset") && editor::particlerows::resetModule(edited, module.id)) ui.track(true, true);
@@ -934,7 +933,7 @@ namespace {
         if (ImGui::MenuItem("Copy Module")) ImGui::SetClipboardText(editor::particlerows::copyModule(edited, module.id).c_str());
         const char* clipboard = ImGui::GetClipboardText();
         const std::string text = clipboard ? clipboard : "";
-        const ModuleDesc* copied = editor::particlerows::clipboardModule(text);
+        const particles::ModuleDesc* copied = editor::particlerows::clipboardModule(text);
         std::string error;
         if (ImGui::MenuItem(copied ? (std::string("Paste Module (") + copied->label + ")").c_str() : "Paste Module", nullptr, false, copied != nullptr)) {
             if (editor::particlerows::pasteModule(edited, text, false, &error)) ui.track(true, true);
@@ -953,9 +952,9 @@ namespace {
 
     // The whole effect: Main always open, a foldout per present module with its checkbox,
     // Add Module, the exposed parameters. Edits go into `edited`; `ui` says what happened.
-    void drawEffectDocument(FieldUi& ui, ParticleEffectDocument& edited, const std::string& prefix) {
+    void drawEffectDocument(FieldUi& ui, particles::ParticleEffectDocument& edited, const std::string& prefix) {
         const float labelSize = ImGui::CalcTextSize("Simulation Speed X").x + ImGui::GetStyle().ItemSpacing.x * 2.0f;
-        const ModuleDesc& mainModule = ParticleModules::get(ModuleId::Main);
+        const particles::ModuleDesc& mainModule = particles::ParticleModules::get(particles::ModuleId::Main);
         ui.document = &edited;
         drawPresetRow(ui, edited);
 
@@ -963,9 +962,9 @@ namespace {
         ImGui::SeparatorText(mainModule.label);
         moduleMenu(ui, edited, mainModule, "##main_menu");
         beginRows(prefix + "_main", labelSize);
-        drawStruct(ui, ParticleModules::documentFields(), &edited, "effect", 0, Pass::Basic);
+        drawStruct(ui, particles::ParticleModules::documentFields(), &edited, "effect", 0, Pass::Basic);
         drawStruct(ui, mainModule.fields, mainModule.module(edited), mainModule.key, 0, Pass::Basic);
-        if (hasAdvanced(ParticleModules::documentFields(), &edited) || hasAdvanced(mainModule.fields, mainModule.module(edited))) {
+        if (hasAdvanced(particles::ParticleModules::documentFields(), &edited) || hasAdvanced(mainModule.fields, mainModule.module(edited))) {
             const std::string id = "main.advanced";
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
@@ -975,21 +974,21 @@ namespace {
             }
             ImGui::TableNextColumn();
             if (open) {
-                drawStruct(ui, ParticleModules::documentFields(), &edited, "effect", 1, Pass::Advanced);
+                drawStruct(ui, particles::ParticleModules::documentFields(), &edited, "effect", 1, Pass::Advanced);
                 drawStruct(ui, mainModule.fields, mainModule.module(edited), mainModule.key, 1, Pass::Advanced);
             }
         }
         endRows();
         drawAnalyticBanner(ui, edited);
 
-        for (const ModuleDesc& module : ParticleModules::all()) {
-            if (module.id == ModuleId::Main || !module.isPresent(edited)) continue;
+        for (const particles::ModuleDesc& module : particles::ParticleModules::all()) {
+            if (module.id == particles::ModuleId::Main || !module.isPresent(edited)) continue;
             ImGui::PushID(module.key);
             const bool blocked = ui.analyticBlocked.count(module.key) > 0;
 
             ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_AllowOverlap | ImGuiTreeNodeFlags_SpanAvailWidth |
                                        ImGuiTreeNodeFlags_NoTreePushOnOpen;
-            if (module.id == ModuleId::Emission || module.id == ModuleId::Shape || module.id == ModuleId::Renderer) {
+            if (module.id == particles::ModuleId::Emission || module.id == particles::ModuleId::Shape || module.id == particles::ModuleId::Renderer) {
                 flags |= ImGuiTreeNodeFlags_DefaultOpen;
             }
             const float rightEdge = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
@@ -1031,13 +1030,13 @@ namespace {
             }
 
             if (open) {
-                ImGui::BeginDisabled((module.hasEnable && !module.isEnabled(edited)) || (blocked && module.id != ModuleId::Renderer));
+                ImGui::BeginDisabled((module.hasEnable && !module.isEnabled(edited)) || (blocked && module.id != particles::ModuleId::Renderer));
                 beginRows(prefix + "_module_" + module.key, labelSize);
                 drawFieldsWithAdvanced(ui, module.fields, module.module(edited), module.key);
-                if (module.id == ModuleId::PixelArt) drawPixelArtNotes(ui, edited);
-                if (module.id == ModuleId::Renderer) drawRendererPixelNotes(ui, edited);
-                if (module.id == ModuleId::SubEmitters) {
-                    drawStructList(ui, "Sub Emitters", ParticleModules::subEmitterFields(), edited.subEmitters, (size_t)kMaxSubEmitters, "subEmitters");
+                if (module.id == particles::ModuleId::PixelArt) drawPixelArtNotes(ui, edited);
+                if (module.id == particles::ModuleId::Renderer) drawRendererPixelNotes(ui, edited);
+                if (module.id == particles::ModuleId::SubEmitters) {
+                    drawStructList(ui, "Sub Emitters", particles::ParticleModules::subEmitterFields(), edited.subEmitters, (size_t)particles::kMaxSubEmitters, "subEmitters");
                 }
                 endRows();
                 ImGui::EndDisabled();
@@ -1049,7 +1048,7 @@ namespace {
         if (ImGui::Button(ICON_FA_PLUS " Add Module", ImVec2(-FLT_MIN, 0))) ImGui::OpenPopup(("##add_module_" + prefix).c_str());
         if (ImGui::BeginPopup(("##add_module_" + prefix).c_str())) {
             bool any = false;
-            for (const ModuleDesc& module : ParticleModules::all()) {
+            for (const particles::ModuleDesc& module : particles::ParticleModules::all()) {
                 if (module.alwaysPresent || module.isPresent(edited)) continue;
                 any = true;
                 if (ImGui::MenuItem(module.label)) {
@@ -1063,7 +1062,7 @@ namespace {
             // a copied module the effect lacks comes in as it was
             const char* clipboard = ImGui::GetClipboardText();
             const std::string text = clipboard ? clipboard : "";
-            const ModuleDesc* copied = editor::particlerows::clipboardModule(text);
+            const particles::ModuleDesc* copied = editor::particlerows::clipboardModule(text);
             if (copied && !copied->isPresent(edited)) {
                 ImGui::Separator();
                 if (ImGui::MenuItem((std::string("Paste Module (") + copied->label + ")").c_str()) &&
@@ -1077,7 +1076,7 @@ namespace {
         // the parameters scripts and the component set by name (setFloat("Intensity", 2))
         if (ImGui::TreeNodeEx(("Exposed Parameters##" + prefix).c_str(), ImGuiTreeNodeFlags_SpanAvailWidth)) {
             beginRows(prefix + "_exposed", labelSize);
-            drawStructList(ui, "Parameters", ParticleModules::exposedFields(), edited.exposed, 0, "exposed");
+            drawStructList(ui, "Parameters", particles::ParticleModules::exposedFields(), edited.exposed, 0, "exposed");
             endRows();
             ImGui::TreePop();
         }
@@ -1085,7 +1084,7 @@ namespace {
         // what sendTrigger("name") does besides firing the Trigger sub-emitters of that name
         if (ImGui::TreeNodeEx(("Triggers##" + prefix).c_str(), ImGuiTreeNodeFlags_SpanAvailWidth)) {
             beginRows(prefix + "_triggers", labelSize);
-            drawStructList(ui, "Triggers", ParticleModules::triggerFields(), edited.triggers, (size_t)kMaxTriggers, "triggers");
+            drawStructList(ui, "Triggers", particles::ParticleModules::triggerFields(), edited.triggers, (size_t)particles::kMaxTriggers, "triggers");
             endRows();
             ImGui::TreePop();
         }
@@ -1106,7 +1105,7 @@ static std::string particleGridStatus(editor::Project* project, Scene* scene) {
     return "Orthographic, PPU " + std::to_string(ppu);
 }
 
-void editor::particlerows::drawEffect(EffectRows& rows, ParticleEffectDocument& edited) {
+void editor::particlerows::drawEffect(EffectRows& rows, particles::ParticleEffectDocument& edited) {
     FieldUi ui;
     ui.project = rows.project;
     ui.history = rows.history;
@@ -1131,7 +1130,7 @@ void editor::particlerows::drawEffect(EffectRows& rows, ParticleEffectDocument& 
     }
 }
 
-void editor::particlerows::drawDiagnostics(const std::vector<Diagnostic>& diagnostics) {
+void editor::particlerows::drawDiagnostics(const std::vector<particles::Diagnostic>& diagnostics) {
     ::drawDiagnostics(diagnostics);
 }
 
@@ -1223,15 +1222,15 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("This GameObject's Particle Systems, and those below it, as one effect: outline, timing, preview");
     }
 
-    ParticleEffectDocument document;
-    std::vector<Diagnostic> diagnostics;
+    particles::ParticleEffectDocument document;
+    std::vector<particles::Diagnostic> diagnostics;
     if (!ParticleEffectEdit::read(*first, document, &diagnostics)) {
         drawDiagnostics(diagnostics);
         return;
     }
     drawDiagnostics(diagnostics);
 
-    ParticleEffectDocument edited = document;
+    particles::ParticleEffectDocument edited = document;
     particlerows::EffectRows ui;
     ui.project = project;
     ui.history = CommandHandle::get(sceneProject->id);
@@ -1245,16 +1244,16 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
     particlerows::drawEffect(ui, edited);
 
     if (ui.changed) {
-        const nlohmann::ordered_json patch = ParticleEffectEdit::diff(ParticleEffectCodec::toKeyedJson(document), ParticleEffectCodec::toKeyedJson(edited));
-        const std::string beforeText = ParticleEffectCodec::write(document);
-        Command* command = ParticleEffectEdit::build(project, sceneProject->id, entities, [&](ParticleEffectDocument& target) {
+        const nlohmann::ordered_json patch = ParticleEffectEdit::diff(particles::ParticleEffectCodec::toKeyedJson(document), particles::ParticleEffectCodec::toKeyedJson(edited));
+        const std::string beforeText = particles::ParticleEffectCodec::write(document);
+        Command* command = ParticleEffectEdit::build(project, sceneProject->id, entities, [&](particles::ParticleEffectDocument& target) {
             // the effect shown takes the edit as it is; the other selected effects the same change
-            if (ParticleEffectCodec::write(target) == beforeText) {
+            if (particles::ParticleEffectCodec::write(target) == beforeText) {
                 target = edited;
                 return true;
             }
-            std::vector<Diagnostic> patchDiagnostics;
-            return ParticleEffectCodec::applyMergePatch(target, patch, patchDiagnostics);
+            std::vector<particles::Diagnostic> patchDiagnostics;
+            return particles::ParticleEffectCodec::applyMergePatch(target, patch, patchDiagnostics);
         });
         pushParticleCommand(CommandHandle::get(sceneProject->id), command, ui.commit);
         // a preset's palette copy (project) and the edit using it (scene): one undo step
@@ -1264,14 +1263,14 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
     }
 
     drawParticleExposedValues(cpType, sceneProject, entities, edited);
-    if (edited.collision.present && edited.collision.enabled && edited.collision.type == CollisionType::Planes) {
+    if (edited.collision.present && edited.collision.enabled && edited.collision.type == particles::CollisionType::Planes) {
         drawParticleCollisionPlanes(cpType, sceneProject, entities);
     }
 }
 
 // The component's own values of the effect's exposed parameters (over the effect's)
 void editor::InspectorWindow::drawParticleExposedValues(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
-                                                        const ParticleEffectDocument& document) {
+                                                        const particles::ParticleEffectDocument& document) {
     if (document.exposed.empty()) return;
     Scene* scene = sceneProject->scene;
     ParticleSystemComponent& first = scene->getComponent<ParticleSystemComponent>(entities[0]);
@@ -1283,14 +1282,14 @@ void editor::InspectorWindow::drawParticleExposedValues(ComponentType cpType, Sc
     std::string changedName;
     bool overridden = false;
     Vector4 newValue;
-    for (const ExposedParameter& parameter : document.exposed) {
+    for (const particles::ExposedParameter& parameter : document.exposed) {
         ImGui::PushID(parameter.name.c_str());
         labelCell(parameter.name, parameter.path.c_str(), 0);
         auto it = std::find_if(first.exposedValues.begin(), first.exposedValues.end(), [&](const ParticleExposedValue& v) { return v.name == parameter.name; });
         bool has = it != first.exposedValues.end();
         Vector4 value;
         if (has) value = it->value;
-        else ParticleModules::getExposed(document, parameter.name, value);
+        else particles::ParticleModules::getExposed(document, parameter.name, value);
         if (ImGui::Checkbox("##override", &has)) {
             changed = commit = true;
             changedName = parameter.name;
@@ -1303,9 +1302,9 @@ void editor::InspectorWindow::drawParticleExposedValues(ComponentType cpType, Sc
         ImGui::SetNextItemWidth(-FLT_MIN);
         bool edited = false;
         switch (parameter.type) {
-            case ExposedType::Float: edited = ImGui::DragFloat("##value", &value.x, 0.01f); break;
-            case ExposedType::Vector3: edited = ImGui::DragFloat3("##value", &value.x, 0.01f); break;
-            case ExposedType::Color: {
+            case particles::ExposedType::Float: edited = ImGui::DragFloat("##value", &value.x, 0.01f); break;
+            case particles::ExposedType::Vector3: edited = ImGui::DragFloat3("##value", &value.x, 0.01f); break;
+            case particles::ExposedType::Color: {
                 editor::ui::ColorFieldOptions options;
                 options.linearStorage = false;
                 options.label = parameter.name.c_str();
@@ -1508,13 +1507,13 @@ void editor::InspectorWindow::drawParticleAssetInspector() {
     ImGui::TextDisabled("%u particles", particleAssetPreview.getParticleCount());
     ImGui::Separator();
 
-    ParticleEffectDocument document;
-    std::vector<Diagnostic> diagnostics;
+    particles::ParticleEffectDocument document;
+    std::vector<particles::Diagnostic> diagnostics;
     const bool readable = ParticleEffectEdit::readAsset(path, document, &diagnostics);
     drawDiagnostics(diagnostics);
     if (!readable) return;
 
-    ParticleEffectDocument edited = document;
+    particles::ParticleEffectDocument edited = document;
     particlerows::EffectRows ui;
     ui.project = project;
     ui.history = project->getProjectCommandHistory();
@@ -1524,7 +1523,7 @@ void editor::InspectorWindow::drawParticleAssetInspector() {
 
     CommandHistory* history = project->getProjectCommandHistory();
     if (ui.changed) {
-        Command* command = ParticleEffectEdit::buildAsset(project, path, [&](ParticleEffectDocument& target) {
+        Command* command = ParticleEffectEdit::buildAsset(project, path, [&](particles::ParticleEffectDocument& target) {
             target = edited;
             return true;
         });

@@ -13,7 +13,6 @@
 using namespace jasperengine;
 
 namespace je_scheduler {}
-using namespace je_scheduler;
 
 namespace je_scheduler {
 
@@ -53,7 +52,7 @@ namespace je_scheduler {
 }
 
 struct Scheduler::Slot {
-    std::atomic<uint64_t> state{1ull << kGenerationShift};
+    std::atomic<uint64_t> state{1ull << je_scheduler::kGenerationShift};
     Task task;
     double due = 0.0;
     double period = 0.0;
@@ -138,14 +137,14 @@ size_t TimerGroup::size() const {
 
 Scheduler::Scheduler(const char* name): schedulerName(name), ownerThread(std::this_thread::get_id()) {
     for (auto& chunk : chunks) chunk.store(nullptr, std::memory_order_relaxed);
-    SchedulerRegistry& r = schedulerRegistry();
+    je_scheduler::SchedulerRegistry& r = je_scheduler::schedulerRegistry();
     std::lock_guard<std::mutex> lock(r.mutex);
     r.schedulers.push_back(this);
 }
 
 Scheduler::~Scheduler() {
     {
-        SchedulerRegistry& r = schedulerRegistry();
+        je_scheduler::SchedulerRegistry& r = je_scheduler::schedulerRegistry();
         std::lock_guard<std::mutex> lock(r.mutex);
         r.schedulers.erase(std::remove(r.schedulers.begin(), r.schedulers.end(), this), r.schedulers.end());
     }
@@ -162,7 +161,7 @@ Scheduler& Scheduler::game() {
 size_t Scheduler::cancelOwnerEverywhere(uint64_t ownerKey) {
     std::vector<Scheduler*> schedulers;
     {
-        SchedulerRegistry& r = schedulerRegistry();
+        je_scheduler::SchedulerRegistry& r = je_scheduler::schedulerRegistry();
         std::lock_guard<std::mutex> lock(r.mutex);
         schedulers = r.schedulers;
     }
@@ -212,7 +211,7 @@ void Scheduler::freeSlot(uint32_t index, Slot& slot) {
     // heap entries of its last push are stale from now on, even once the slot is reused
     slot.seq = 0;
     const uint64_t state = slot.state.load(std::memory_order_acquire);
-    slot.state.store((generationOf(state) + 1) << kGenerationShift, std::memory_order_release);
+    slot.state.store((je_scheduler::generationOf(state) + 1) << je_scheduler::kGenerationShift, std::memory_order_release);
     slot.task.reset();
     // back to the free list in batches (returnFreed): no lock per task
     ownerFreed.push_back(index);
@@ -248,7 +247,7 @@ TimerHandle Scheduler::schedule(TimeDomain domain, double dueOrDelay, bool absol
     slot.debugName = opts.debugName;
     slot.inUse = true;
     slot.queued = true;
-    const uint64_t generation = generationOf(slot.state.load(std::memory_order_acquire));
+    const uint64_t generation = je_scheduler::generationOf(slot.state.load(std::memory_order_acquire));
     if (owner && !absolute) {
         lock.unlock();
         slot.due = time[static_cast<size_t>(domain)] + dueOrDelay;
@@ -263,14 +262,14 @@ TimerHandle Scheduler::schedule(TimeDomain domain, double dueOrDelay, bool absol
         inbox.push_back(InboxEntry{index, generation, false, absolute ? -1.0 : dueOrDelay});
         inboxSize.store(inbox.size(), std::memory_order_release);
     }
-    return TimerHandle{this, handleId(index, generation)};
+    return TimerHandle{this, je_scheduler::handleId(index, generation)};
 }
 
 void Scheduler::push(TimeDomain domain, uint32_t index, Slot& slot) {
     slot.seq = nextSeq++;
     std::vector<HeapEntry>& heap = heaps[static_cast<size_t>(domain)];
     heap.push_back(HeapEntry{slot.due, slot.seq, index});
-    std::push_heap(heap.begin(), heap.end(), [](const HeapEntry& a, const HeapEntry& b) { return greaterEntry(a, b); });
+    std::push_heap(heap.begin(), heap.end(), [](const HeapEntry& a, const HeapEntry& b) { return je_scheduler::greaterEntry(a, b); });
 }
 
 TimerHandle Scheduler::post(Task task, TimerOpts opts) {
@@ -289,10 +288,10 @@ TimerHandle Scheduler::post(Task task, TimerOpts opts) {
     slot.debugName = opts.debugName ? opts.debugName : "main-thread task";
     slot.inUse = true;
     slot.queued = true;
-    const uint64_t generation = generationOf(slot.state.load(std::memory_order_acquire));
+    const uint64_t generation = je_scheduler::generationOf(slot.state.load(std::memory_order_acquire));
     inbox.push_back(InboxEntry{index, generation, true, 0.0});
     inboxSize.store(inbox.size(), std::memory_order_release);
-    return TimerHandle{this, handleId(index, generation)};
+    return TimerHandle{this, je_scheduler::handleId(index, generation)};
 }
 
 TimerHandle Scheduler::after(double delay, Task task, TimeDomain domain, TimerOpts opts) {
@@ -322,19 +321,19 @@ TimerHandle Scheduler::at(TimeDomain domain, double timeValue, Task task, TimerO
 
 bool Scheduler::cancel(TimerHandle handle) noexcept {
     if (handle.scheduler != this || handle.id == 0) return false;
-    const uint64_t index = handle.id & kSlotMask;
+    const uint64_t index = handle.id & je_scheduler::kSlotMask;
     if (index >= chunkCount.load(std::memory_order_acquire) * CHUNK_SLOTS) return false;
     Slot& slot = slotAt(static_cast<uint32_t>(index));
-    const uint64_t wanted = handle.id >> kSlotBits;
+    const uint64_t wanted = handle.id >> je_scheduler::kSlotBits;
     uint64_t state = slot.state.load(std::memory_order_acquire);
     while (true) {
-        if ((generationOf(state) & kHandleGenerationMask) != wanted || (state & kCancelled)) return false;
-        if (slot.state.compare_exchange_weak(state, state | kCancelled, std::memory_order_acq_rel)) break;
+        if ((je_scheduler::generationOf(state) & je_scheduler::kHandleGenerationMask) != wanted || (state & je_scheduler::kCancelled)) return false;
+        if (slot.state.compare_exchange_weak(state, state | je_scheduler::kCancelled, std::memory_order_acq_rel)) break;
     }
     cancelledCount.fetch_add(1, std::memory_order_relaxed);
     if (isOwnerThread()) {
         // freed right away (unless it is the task running now: after its run)
-        if (!(state & kRunning)) {
+        if (!(state & je_scheduler::kRunning)) {
             freeSlot(static_cast<uint32_t>(index), slot);
         }
     } else {
@@ -345,15 +344,15 @@ bool Scheduler::cancel(TimerHandle handle) noexcept {
 
 bool Scheduler::isActive(TimerHandle handle) const noexcept {
     if (handle.scheduler != this || handle.id == 0) return false;
-    const uint64_t index = handle.id & kSlotMask;
+    const uint64_t index = handle.id & je_scheduler::kSlotMask;
     if (index >= chunkCount.load(std::memory_order_acquire) * CHUNK_SLOTS) return false;
     const uint64_t state = slotAt(static_cast<uint32_t>(index)).state.load(std::memory_order_acquire);
-    return (generationOf(state) & kHandleGenerationMask) == (handle.id >> kSlotBits) && !(state & kCancelled);
+    return (je_scheduler::generationOf(state) & je_scheduler::kHandleGenerationMask) == (handle.id >> je_scheduler::kSlotBits) && !(state & je_scheduler::kCancelled);
 }
 
 bool Scheduler::info(TimerHandle handle, TimerInfo& out) const {
     if (!isActive(handle)) return false;
-    const Slot& slot = slotAt(static_cast<uint32_t>(handle.id & kSlotMask));
+    const Slot& slot = slotAt(static_cast<uint32_t>(handle.id & je_scheduler::kSlotMask));
     if (!slot.inUse) return false;
     out.id = handle.id;
     out.domain = slot.domain;
@@ -376,7 +375,7 @@ size_t Scheduler::cancelOwner(uint64_t ownerKey) {
         for (size_t i = 0; i < slots; i++) {
             const Slot& slot = slotAt(static_cast<uint32_t>(i));
             if (!slot.inUse || slot.ownerKey != ownerKey) continue;
-            owned.push_back(TimerHandle{this, handleId(static_cast<uint32_t>(i), generationOf(slot.state.load(std::memory_order_acquire)))});
+            owned.push_back(TimerHandle{this, je_scheduler::handleId(static_cast<uint32_t>(i), je_scheduler::generationOf(slot.state.load(std::memory_order_acquire)))});
         }
     }
     size_t cancelled = 0;
@@ -399,15 +398,15 @@ bool Scheduler::runSlot(uint32_t index, Slot& slot, bool guarded) {
     uint64_t state = slot.state.load(std::memory_order_acquire);
     // started unless cancelled first: after this a cancel only stops repeats
     while (true) {
-        if (state & kCancelled) {
+        if (state & je_scheduler::kCancelled) {
             freeSlot(index, slot);
             return false;
         }
-        if (slot.state.compare_exchange_weak(state, state | kRunning, std::memory_order_acq_rel)) break;
+        if (slot.state.compare_exchange_weak(state, state | je_scheduler::kRunning, std::memory_order_acq_rel)) break;
     }
     slot.queued = false;
     const TimerHandle previous = running;
-    running = TimerHandle{this, handleId(index, generationOf(state))};
+    running = TimerHandle{this, je_scheduler::handleId(index, je_scheduler::generationOf(state))};
 
     const char* name = slot.debugName ? slot.debugName : "timer";
     auto run = [&slot, name]() {
@@ -423,7 +422,7 @@ bool Scheduler::runSlot(uint32_t index, Slot& slot, bool guarded) {
         std::string errorInfo;
         const bool ok = CrashHook::runGuarded([](void* data) { (*static_cast<decltype(run)*>(data))(); }, &run, errorInfo);
         if (!ok) {
-            slot.state.fetch_or(kCancelled, std::memory_order_acq_rel);
+            slot.state.fetch_or(je_scheduler::kCancelled, std::memory_order_acq_rel);
             CrashHook::report(name, errorInfo);
         }
     } else {
@@ -431,14 +430,14 @@ bool Scheduler::runSlot(uint32_t index, Slot& slot, bool guarded) {
     }
     running = previous;
     ran++;
-    state = slot.state.fetch_and(~kRunning, std::memory_order_acq_rel) & ~kRunning;
-    return !(state & kCancelled);
+    state = slot.state.fetch_and(~je_scheduler::kRunning, std::memory_order_acq_rel) & ~je_scheduler::kRunning;
+    return !(state & je_scheduler::kCancelled);
 }
 
 size_t Scheduler::process(TimeDomain domain) {
     std::vector<HeapEntry>& heap = heaps[static_cast<size_t>(domain)];
     if (heap.empty()) return 0;
-    const auto compare = [](const HeapEntry& a, const HeapEntry& b) { return greaterEntry(a, b); };
+    const auto compare = [](const HeapEntry& a, const HeapEntry& b) { return je_scheduler::greaterEntry(a, b); };
     // a little slack: 30 frames of 1/60 s add up to 0.5 give or take the last bit
     const double nowTime = time[static_cast<size_t>(domain)] + 1e-9 * std::max(1.0, std::abs(time[static_cast<size_t>(domain)]));
     // only what was scheduled before this call, and due now
@@ -460,7 +459,7 @@ size_t Scheduler::process(TimeDomain domain) {
         if (slot.repeating) {
             missed = static_cast<uint64_t>(std::floor((nowTime - slot.due) / slot.period)) + 1;
         }
-        int runs = slot.catchUp ? static_cast<int>(std::min<uint64_t>(missed, kMaxCatchUp)) : 1;
+        int runs = slot.catchUp ? static_cast<int>(std::min<uint64_t>(missed, je_scheduler::kMaxCatchUp)) : 1;
         bool keep = true;
         while (runs-- > 0 && keep) {
             keep = runSlot(entry.slot, slot, guarded);
@@ -499,7 +498,7 @@ size_t Scheduler::processPosted() {
     const bool guarded = CrashHook::active();
     for (const InboxEntry& entry : inboxWork) {
         Slot& slot = slotAt(entry.slot);
-        if (!slot.inUse || generationOf(slot.state.load(std::memory_order_acquire)) != entry.generation) continue;
+        if (!slot.inUse || je_scheduler::generationOf(slot.state.load(std::memory_order_acquire)) != entry.generation) continue;
         if (entry.posted) {
             runSlot(entry.slot, slot, guarded);
             count++;
@@ -527,7 +526,7 @@ void Scheduler::sweepCancelled() {
             const Slot& slot = slotAt(static_cast<uint32_t>(i));
             if (!slot.inUse) continue;
             const uint64_t state = slot.state.load(std::memory_order_acquire);
-            if ((state & kCancelled) && !(state & kRunning)) cancelled.push_back(static_cast<uint32_t>(i));
+            if ((state & je_scheduler::kCancelled) && !(state & je_scheduler::kRunning)) cancelled.push_back(static_cast<uint32_t>(i));
         }
     }
     for (uint32_t index : cancelled) freeSlot(index, slotAt(index));
@@ -544,9 +543,9 @@ void Scheduler::clear() {
         for (size_t i = 0; i < slots; i++) {
             Slot& slot = slotAt(static_cast<uint32_t>(i));
             if (!slot.inUse) continue;
-            const uint64_t state = slot.state.fetch_or(kCancelled, std::memory_order_acq_rel);
+            const uint64_t state = slot.state.fetch_or(je_scheduler::kCancelled, std::memory_order_acq_rel);
             // the task running now (clear() called from it) is freed after its run
-            if (!(state & kRunning)) live.push_back(static_cast<uint32_t>(i));
+            if (!(state & je_scheduler::kRunning)) live.push_back(static_cast<uint32_t>(i));
         }
     }
     for (auto& heap : heaps) heap.clear();
@@ -572,7 +571,7 @@ SchedulerStats Scheduler::stats() const {
         for (const HeapEntry& entry : heaps[d]) {
             const Slot& slot = slotAt(entry.slot);
             const uint64_t state = slot.state.load(std::memory_order_acquire);
-            if (slot.inUse && entry.seq == slot.seq && !(state & kCancelled)) {
+            if (slot.inUse && entry.seq == slot.seq && !(state & je_scheduler::kCancelled)) {
                 result.pending[d]++;
             }
         }
@@ -590,9 +589,9 @@ std::vector<TimerInfo> Scheduler::pending(const TimeDomain* domain, size_t max) 
         for (const HeapEntry& entry : heaps[d]) {
             const Slot& slot = slotAt(entry.slot);
             const uint64_t state = slot.state.load(std::memory_order_acquire);
-            if (!slot.inUse || entry.seq != slot.seq || (state & kCancelled)) continue;
+            if (!slot.inUse || entry.seq != slot.seq || (state & je_scheduler::kCancelled)) continue;
             TimerInfo info;
-            info.id = handleId(entry.slot, generationOf(state));
+            info.id = je_scheduler::handleId(entry.slot, je_scheduler::generationOf(state));
             info.domain = static_cast<TimeDomain>(d);
             info.due = slot.due;
             info.remaining = slot.due - time[d];

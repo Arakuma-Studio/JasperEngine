@@ -12,7 +12,9 @@
 #include <cstdio>
 
 using namespace jasperengine;
-using namespace jasperengine::player;
+
+namespace jasperengine::player {
+
 using nlohmann::json;
 
 namespace {
@@ -382,7 +384,7 @@ bool PlayerConfig::parse(const std::string& text, PlayerConfig& out, std::string
     return fromJson(parsed, out, error);
 }
 
-void jasperengine::player::applyAudio(const PlayerConfig& game) {
+void applyAudio(const PlayerConfig& game) {
     const AudioConfig defaults;
     const AudioOutputStage stage = AudioSystem::outputStageFromName(game.audioOutputStage);
     const IosAudioSession session = AudioSystem::iosSessionFromName(game.audioIosSession);
@@ -414,3 +416,5 @@ const GameScene* PlayerConfig::findScene(const std::string& nameOrId) const {
     }
     return nullptr;
 }
+
+}  // namespace jasperengine::player

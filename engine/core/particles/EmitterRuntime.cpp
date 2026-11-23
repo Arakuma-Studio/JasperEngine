@@ -15,7 +15,8 @@
 #include <cstring>
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
+
+namespace jasperengine::particles {
 
 namespace {
 
@@ -2107,7 +2108,7 @@ void EmitterRuntime::restoreCheckpoint(const Checkpoint& in){
     }
 }
 
-uint32_t particles::nameHash(std::string_view name){
+uint32_t nameHash(std::string_view name){
     uint32_t h = 2166136261u;
     for (char c : name){
         h ^= (uint8_t)c;
@@ -2115,3 +2116,5 @@ uint32_t particles::nameHash(std::string_view name){
     }
     return h;
 }
+
+}  // namespace jasperengine::particles

@@ -19,7 +19,8 @@
 #endif
 
 using namespace jasperengine;
-using namespace jasperengine::particles;
+
+namespace jasperengine::particles {
 
 namespace {
 
@@ -1135,3 +1136,5 @@ TrailPack ParticleRenderPrep::packTrails(const EmitterRuntime& emitter, memory::
     }
     return pack;
 }
+
+}  // namespace jasperengine::particles

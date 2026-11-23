@@ -48,16 +48,16 @@
 #endif
 
 using namespace jasperengine;
-using namespace jasperengine::jobs;
-using namespace jasperengine::jobs::detail;
 
 namespace jasperengine { namespace jobs { namespace detail {
     uint64_t heapEnvelopesAllocated();
 }}}
 
+namespace jasperengine::jobs {
+
 namespace{
 
-    DepLink* const kSealed = reinterpret_cast<DepLink*>(uintptr_t(1));
+    jobs::detail::DepLink* const kSealed = reinterpret_cast<jobs::detail::DepLink*>(uintptr_t(1));
 
     // An idle worker spins this long once it runs out of work (R2)
     constexpr uint64_t kSpinNs = 50000;
@@ -94,8 +94,8 @@ namespace{
 
     // ---- thread slots
 
-    ThreadSlot* threadSlots(){
-        static ThreadSlot* slots = new ThreadSlot[kMaxThreadSlots];
+    jobs::detail::ThreadSlot* threadSlots(){
+        static jobs::detail::ThreadSlot* slots = new jobs::detail::ThreadSlot[jobs::detail::kMaxThreadSlots];
         return slots;
     }
 
@@ -104,11 +104,11 @@ namespace{
         jobs::detail::Scheduler* workerOf = nullptr;
         int workerIndex = -1;
         bool isMain = false;
-        BodyContext body;
+        jobs::detail::BodyContext body;
 
         ~ThreadState(){
             if (slot >= 0){
-                ThreadSlot& s = threadSlots()[slot];
+                jobs::detail::ThreadSlot& s = threadSlots()[slot];
                 s.runningJob.store(nullptr, std::memory_order_relaxed);
                 s.runningScheduler.store(nullptr, std::memory_order_relaxed);
                 s.used.store(0, std::memory_order_release);
@@ -179,11 +179,11 @@ uint64_t jobs::detail::nowNs(){
         std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
-ThreadSlot* jobs::detail::slotAt(int index){
+jobs::detail::ThreadSlot* jobs::detail::slotAt(int index){
     return (index >= 0 && index < (int)kMaxThreadSlots) ? &threadSlots()[index] : nullptr;
 }
 
-BodyContext& jobs::detail::currentBody(){
+jobs::detail::BodyContext& jobs::detail::currentBody(){
     return threadState.body;
 }
 
@@ -259,7 +259,7 @@ void jobs::detail::releaseGate(ExternalGate* gate){
 
 // ---- BodyScope
 
-BodyScope::BodyScope(jobs::detail::Scheduler* scheduler, const Runnable* item, CancelState* cancel, ChannelState* channel){
+jobs::detail::BodyScope::BodyScope(jobs::detail::Scheduler* scheduler, const Runnable* item, CancelState* cancel, ChannelState* channel){
     ThreadState& state = threadState;
     saved = state.body;
     state.body.scheduler = scheduler;
@@ -302,7 +302,7 @@ BodyScope::BodyScope(jobs::detail::Scheduler* scheduler, const Runnable* item, C
     }
 }
 
-BodyScope::~BodyScope(){
+jobs::detail::BodyScope::~BodyScope(){
     if (hooked){
         if (const ProfilerHooks* h = hooks()){
             if (h->onJobEnd)
@@ -324,7 +324,7 @@ namespace{
     struct WaitHookScope {
         bool hooked = false;
         explicit WaitHookScope(WaitKind kind){
-            if (const ProfilerHooks* h = hooks()){
+            if (const ProfilerHooks* h = jobs::detail::hooks()){
                 if (h->onWaitBegin){
                     h->onWaitBegin(kind);
                     hooked = true;
@@ -333,7 +333,7 @@ namespace{
         }
         ~WaitHookScope(){
             if (hooked){
-                if (const ProfilerHooks* h = hooks()){
+                if (const ProfilerHooks* h = jobs::detail::hooks()){
                     if (h->onWaitEnd)
                         h->onWaitEnd();
                 }
@@ -344,50 +344,50 @@ namespace{
 
 // ---- queues
 
-bool LocalDeque::pushBack(Runnable* item){
+bool jobs::detail::LocalDeque::pushBack(jobs::detail::Runnable* item){
     std::lock_guard<std::mutex> lock(mutex);
-    if (tail - head == kLocalCapacity)
+    if (tail - head == jobs::detail::kLocalCapacity)
         return false;
-    items[tail % kLocalCapacity] = item;
+    items[tail % jobs::detail::kLocalCapacity] = item;
     tail++;
     size.store((uint32_t)(tail - head), std::memory_order_relaxed);
     return true;
 }
 
-void LocalDeque::pushBackBatch(Runnable* const* batch, size_t count){
+void jobs::detail::LocalDeque::pushBackBatch(jobs::detail::Runnable* const* batch, size_t count){
     std::lock_guard<std::mutex> lock(mutex);
     for (size_t i = 0; i < count; i++){
-        items[tail % kLocalCapacity] = batch[i];
+        items[tail % jobs::detail::kLocalCapacity] = batch[i];
         tail++;
     }
     size.store((uint32_t)(tail - head), std::memory_order_relaxed);
 }
 
-Runnable* LocalDeque::popBack(){
+jobs::detail::Runnable* jobs::detail::LocalDeque::popBack(){
     if (size.load(std::memory_order_relaxed) == 0)
         return nullptr;
     std::lock_guard<std::mutex> lock(mutex);
     if (tail == head)
         return nullptr;
     tail--;
-    Runnable* item = items[tail % kLocalCapacity];
+    jobs::detail::Runnable* item = items[tail % jobs::detail::kLocalCapacity];
     size.store((uint32_t)(tail - head), std::memory_order_relaxed);
     return item;
 }
 
-Runnable* LocalDeque::popFront(){
+jobs::detail::Runnable* jobs::detail::LocalDeque::popFront(){
     if (size.load(std::memory_order_relaxed) == 0)
         return nullptr;
     std::lock_guard<std::mutex> lock(mutex);
     if (tail == head)
         return nullptr;
-    Runnable* item = items[head % kLocalCapacity];
+    jobs::detail::Runnable* item = items[head % jobs::detail::kLocalCapacity];
     head++;
     size.store((uint32_t)(tail - head), std::memory_order_relaxed);
     return item;
 }
 
-void LaneQueue::pushLocked(Runnable* item){
+void jobs::detail::LaneQueue::pushLocked(jobs::detail::Runnable* item){
     item->next = nullptr;
     if (spillHead || size == ring.size()){
         // keeps FIFO: once spilled, everything newer spills until the spill drains
@@ -402,7 +402,7 @@ void LaneQueue::pushLocked(Runnable* item){
     }
 }
 
-void LaneQueue::push(Runnable* item){
+void jobs::detail::LaneQueue::push(jobs::detail::Runnable* item){
     {
         std::lock_guard<std::mutex> lock(mutex);
         pushLocked(item);
@@ -410,7 +410,7 @@ void LaneQueue::push(Runnable* item){
     queued.fetch_add(1, std::memory_order_seq_cst);
 }
 
-void LaneQueue::pushBatch(Runnable* const* items, size_t count){
+void jobs::detail::LaneQueue::pushBatch(jobs::detail::Runnable* const* items, size_t count){
     if (count == 0)
         return;
     {
@@ -421,10 +421,10 @@ void LaneQueue::pushBatch(Runnable* const* items, size_t count){
     queued.fetch_add((uint32_t)count, std::memory_order_seq_cst);
 }
 
-Runnable* LaneQueue::pop(){
+jobs::detail::Runnable* jobs::detail::LaneQueue::pop(){
     if (queued.load(std::memory_order_relaxed) == 0)
         return nullptr;
-    Runnable* item = nullptr;
+    jobs::detail::Runnable* item = nullptr;
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (size > 0){
@@ -445,14 +445,14 @@ Runnable* LaneQueue::pop(){
     return item;
 }
 
-size_t LaneQueue::popBatch(Runnable** out, size_t max){
+size_t jobs::detail::LaneQueue::popBatch(jobs::detail::Runnable** out, size_t max){
     if (max == 0 || queued.load(std::memory_order_relaxed) == 0)
         return 0;
     size_t count = 0;
     {
         std::lock_guard<std::mutex> lock(mutex);
         while (count < max){
-            Runnable* item = nullptr;
+            jobs::detail::Runnable* item = nullptr;
             if (size > 0){
                 item = ring[head];
                 head = (head + 1) % ring.size();
@@ -482,17 +482,17 @@ namespace{
     }
 }
 
-FastLane::FastLane(): slots(new Slot[kCapacity]){
+jobs::detail::FastLane::FastLane(): slots(new Slot[kCapacity]){
     for (size_t i = 0; i < kCapacity; i++)
         slots[i].sequence.store(i, std::memory_order_relaxed);
     queueBytes().add(kCapacity * sizeof(Slot));
 }
 
-FastLane::~FastLane(){
+jobs::detail::FastLane::~FastLane(){
     queueBytes().subtract(kCapacity * sizeof(Slot));
 }
 
-bool FastLane::tryPush(Runnable* item){
+bool jobs::detail::FastLane::tryPush(jobs::detail::Runnable* item){
     uint64_t position = enqueuePosition.load(std::memory_order_relaxed);
     for (;;){
         Slot& slot = slots[position & kMask];
@@ -512,23 +512,23 @@ bool FastLane::tryPush(Runnable* item){
     }
 }
 
-void FastLane::push(Runnable* item){
+void jobs::detail::FastLane::push(jobs::detail::Runnable* item){
     if (overflow.count() == 0 && tryPush(item))
         return;
     overflow.push(item);
 }
 
-void FastLane::pushBatch(Runnable* const* items, size_t count){
+void jobs::detail::FastLane::pushBatch(jobs::detail::Runnable* const* items, size_t count){
     for (size_t i = 0; i < count; i++)
         push(items[i]);
 }
 
-Runnable* FastLane::pop(){
-    Runnable* item = nullptr;
+jobs::detail::Runnable* jobs::detail::FastLane::pop(){
+    jobs::detail::Runnable* item = nullptr;
     return popBatch(&item, 1) ? item : nullptr;
 }
 
-size_t FastLane::popBatch(Runnable** out, size_t max){
+size_t jobs::detail::FastLane::popBatch(jobs::detail::Runnable** out, size_t max){
     if (max == 0)
         return 0;
     uint64_t position = dequeuePosition.load(std::memory_order_relaxed);
@@ -555,12 +555,12 @@ size_t FastLane::popBatch(Runnable** out, size_t max){
     return overflow.count() ? overflow.popBatch(out, max) : 0;
 }
 
-bool FastLane::hasItems() const{
+bool jobs::detail::FastLane::hasItems() const{
     const uint64_t position = dequeuePosition.load(std::memory_order_relaxed);
     return slots[position & kMask].sequence.load(std::memory_order_acquire) == position + 1 || overflow.count() > 0;
 }
 
-uint32_t FastLane::count() const{
+uint32_t jobs::detail::FastLane::count() const{
     const uint64_t pushed = enqueuePosition.load(std::memory_order_relaxed);
     const uint64_t taken = dequeuePosition.load(std::memory_order_relaxed);
     return (uint32_t)(pushed > taken ? pushed - taken : 0) + overflow.count();
@@ -632,7 +632,7 @@ void jobs::detail::throwTaskOutcome(TaskState* task){
 TaskCancelled::TaskCancelled(): std::runtime_error("job cancelled"){
 }
 
-const char* jobs::laneName(Lane lane){
+const char* laneName(Lane lane){
     switch (lane){
         case Lane::High: return "High";
         case Lane::Normal: return "Normal";
@@ -1013,7 +1013,7 @@ bool jobs::detail::Scheduler::hasWork() const{
     return false;
 }
 
-Runnable* jobs::detail::Scheduler::popBackground(Worker& worker, int& slotClass){
+jobs::detail::Runnable* jobs::detail::Scheduler::popBackground(Worker& worker, int& slotClass){
     slotClass = -1;
     if (Runnable* item = backgroundAdmitted.pop())
         return item;
@@ -1035,7 +1035,7 @@ Runnable* jobs::detail::Scheduler::popBackground(Worker& worker, int& slotClass)
     return nullptr;
 }
 
-Runnable* jobs::detail::Scheduler::steal(Worker& worker){
+jobs::detail::Runnable* jobs::detail::Scheduler::steal(Worker& worker){
     const int count = workerCount;
     for (int k = 1; k < count; k++){
         Worker& victim = *workers[(size_t)((worker.index + k) % count)];
@@ -1049,7 +1049,7 @@ Runnable* jobs::detail::Scheduler::steal(Worker& worker){
     return nullptr;
 }
 
-Runnable* jobs::detail::Scheduler::takeNormal(Worker& worker){
+jobs::detail::Runnable* jobs::detail::Scheduler::takeNormal(Worker& worker){
     if (!normal.hasItems())
         return nullptr;
     // a run of the backlog (up to a batch) moves to this worker's deque in one take, and the
@@ -1072,7 +1072,7 @@ Runnable* jobs::detail::Scheduler::takeNormal(Worker& worker){
     return batch[0];
 }
 
-Runnable* jobs::detail::Scheduler::findWork(Worker& worker, int& slotClass){
+jobs::detail::Runnable* jobs::detail::Scheduler::findWork(Worker& worker, int& slotClass){
     slotClass = -1;
     if (Runnable* item = high.pop())
         return item;
@@ -1178,7 +1178,7 @@ void jobs::detail::Scheduler::workerMain(Worker& worker){
 
 // ---- waiting
 
-TaskState* jobs::detail::Scheduler::helpTarget(TaskState* task){
+jobs::detail::TaskState* jobs::detail::Scheduler::helpTarget(TaskState* task){
     // descends to the first unfinished dependency that is not itself blocked on others:
     // every task on the path stays alive (each holds its dependencies through its links)
     TaskState* current = task;
@@ -1482,7 +1482,7 @@ void jobs::detail::Scheduler::strandRunItem(StrandState* strand, TaskState* task
 }
 
 namespace{
-    void releaseStrand(StrandState* strand){
+    void releaseStrand(jobs::detail::StrandState* strand){
         if (strand->refs.fetch_sub(1, std::memory_order_acq_rel) == 1)
             delete strand;
     }
@@ -1785,7 +1785,7 @@ void jobs::detail::Scheduler::publishCounterJob(CounterQueue* queue, Job* job, L
     publishJob(visit);
 }
 
-CounterQueue* jobs::detail::createCounterQueue(){
+jobs::detail::CounterQueue* jobs::detail::createCounterQueue(){
     return ::new (acquireSlab(SlabClass::Job)) CounterQueue();
 }
 
@@ -2014,18 +2014,18 @@ std::vector<float> JobSystem::workerHistory(int worker) const{
 
 // ---- the process instance
 
-JobSystem& jobs::system(){
+JobSystem& system(){
     JobSystem* instance = processInstance.load(std::memory_order_acquire);
     if (instance)
         return *instance;
     return initialize(Config());
 }
 
-bool jobs::hasSystem(){
+bool hasSystem(){
     return processInstance.load(std::memory_order_acquire) != nullptr;
 }
 
-JobSystem& jobs::initialize(const Config& config){
+JobSystem& initialize(const Config& config){
     std::lock_guard<std::mutex> lock(instanceMutex());
     JobSystem* instance = processInstance.load(std::memory_order_acquire);
     if (instance && instance->isShuttingDown()){
@@ -2051,7 +2051,7 @@ JobSystem& jobs::initialize(const Config& config){
     return *instance;
 }
 
-void jobs::shutdown(){
+void shutdown(){
     std::lock_guard<std::mutex> lock(instanceMutex());
     JobSystem* instance = processInstance.load(std::memory_order_acquire);
     if (!instance)
@@ -2061,23 +2061,23 @@ void jobs::shutdown(){
     instance->shutdown();
 }
 
-void jobs::pump(double budgetMs){
+void pump(double budgetMs){
     if (JobSystem* instance = processInstance.load(std::memory_order_acquire))
         instance->pump(budgetMs);
 }
 
-Stats jobs::stats(int windowFrames){
+Stats stats(int windowFrames){
     return system().stats(windowFrames);
 }
 
-void jobs::postToMain(std::function<void()> fn){
+void postToMain(std::function<void()> fn){
     if (!fn)
         return;
     std::lock_guard<std::mutex> lock(mainQueueMutex());
     mainQueue().push_back(std::move(fn));
 }
 
-size_t jobs::drainMainQueue(){
+size_t drainMainQueue(){
     std::vector<std::function<void()>> pending;
     {
         std::lock_guard<std::mutex> lock(mainQueueMutex());
@@ -2095,34 +2095,34 @@ size_t jobs::drainMainQueue(){
     return pending.size();
 }
 
-bool jobs::cancelRequested(){
-    const CancelState* cancel = threadState.body.cancel;
+bool cancelRequested(){
+    const jobs::detail::CancelState* cancel = threadState.body.cancel;
     return cancel && cancel->cancelled.load(std::memory_order_acquire);
 }
 
-bool jobs::isMainThread(){
+bool isMainThread(){
     return threadState.isMain;
 }
 
-void jobs::markMainThread(){
+void markMainThread(){
     // before the thread's first job, so its slot is claimed as je-main
     threadState.isMain = true;
     thread::setCurrentName("je-main");
 }
 
-bool jobs::isWorker(){
+bool isWorker(){
     return threadState.workerOf != nullptr;
 }
 
-bool jobs::isExecutingJob(){
+bool isExecutingJob(){
     return threadState.body.inBody;
 }
 
-bool jobs::isInChannelJob(){
+bool isInChannelJob(){
     return threadState.body.channel != nullptr;
 }
 
-void jobs::setProfilerHooks(const ProfilerHooks& value){
+void setProfilerHooks(const ProfilerHooks& value){
     const bool empty = !value.onThreadStart && !value.onJobBegin && !value.onJobEnd && !value.onWaitBegin
         && !value.onWaitEnd && !value.onIdleBegin && !value.onIdleEnd;
     // hooks are installed a handful of times per run; the copies are kept for the threads
@@ -2140,12 +2140,12 @@ void jobs::setProfilerHooks(const ProfilerHooks& value){
     installedHooks.store(copy, std::memory_order_release);
 }
 
-size_t jobs::snapshotOccupancy(ThreadOccupancy* out, size_t capacity){
+size_t snapshotOccupancy(ThreadOccupancy* out, size_t capacity){
     size_t count = 0;
-    const uint64_t now = nowNs();
-    ThreadSlot* slots = threadSlots();
-    for (uint32_t i = 0; i < kMaxThreadSlots && count < capacity; i++){
-        ThreadSlot& slot = slots[i];
+    const uint64_t now = jobs::detail::nowNs();
+    jobs::detail::ThreadSlot* slots = threadSlots();
+    for (uint32_t i = 0; i < jobs::detail::kMaxThreadSlots && count < capacity; i++){
+        jobs::detail::ThreadSlot& slot = slots[i];
         if (slot.used.load(std::memory_order_acquire) != 2)
             continue;
         ThreadOccupancy& entry = out[count++];
@@ -2161,3 +2161,5 @@ size_t jobs::snapshotOccupancy(ThreadOccupancy* out, size_t capacity){
     }
     return count;
 }
+
+}  // namespace jasperengine::jobs

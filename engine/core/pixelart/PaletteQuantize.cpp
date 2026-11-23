@@ -11,7 +11,6 @@
 #include <map>
 
 using namespace jasperengine;
-using namespace jasperengine::pixelart;
 
 // file-local, inside the namespace: a unity build's other sources never see these names
 namespace jasperengine::pixelart {
@@ -39,6 +38,8 @@ namespace {
 
 }
 }
+
+namespace jasperengine::pixelart {
 
 Rgba8 QuantizeLut::pick(Rgba8 display, int ditherSize, int x, int y) const {
     if (cells.empty() || row.size() < 256 * 4) return display;
@@ -140,12 +141,12 @@ float QuantizeLutJob::progress() const {
     return total > 0 ? (float)next / (float)total : 1.0f;
 }
 
-std::unique_ptr<QuantizeLutJob> pixelart::startQuantizeBake(const Palette& palette, ColorMetric metric, int ditherSize, float strength,
+std::unique_ptr<QuantizeLutJob> startQuantizeBake(const Palette& palette, ColorMetric metric, int ditherSize, float strength,
                                                             int cellsPerAxis) {
     return std::make_unique<QuantizeLutJob>(palette, metric, ditherSize, strength, cellsPerAxis);
 }
 
-QuantizeLut pixelart::bakeQuantizeLut(const Palette& palette, ColorMetric metric, int ditherSize, float strength, int cellsPerAxis) {
+QuantizeLut bakeQuantizeLut(const Palette& palette, ColorMetric metric, int ditherSize, float strength, int cellsPerAxis) {
     QuantizeLutJob job(palette, metric, ditherSize, strength, cellsPerAxis);
     job.step(0.0);
     return job.result();
@@ -228,3 +229,5 @@ void PaletteQuantizer::update(const Request& request) {
         bake.reset();
     }
 }
+
+}  // namespace jasperengine::pixelart

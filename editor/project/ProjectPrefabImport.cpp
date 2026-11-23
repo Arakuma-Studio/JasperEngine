@@ -221,7 +221,6 @@ namespace jasperengine::editor::prefabinternal {
 
 }
 
-using namespace jasperengine::editor::prefabinternal;
 
 namespace {
 
@@ -268,12 +267,12 @@ namespace {
             return value;
         }
         Scratch scratch;
-        scratch.decode(singleComponent(type, value));
+        scratch.decode(jasperengine::editor::prefabinternal::singleComponent(type, value));
         if (!scratch.has(type)) {
             return value;
         }
         editor::Project::remapEntityPropertiesInComponent(scratch.registry.get(), scratch.entity, type, {}, *remap);
-        return encodeComponent(scratch.registry.get(), scratch.entity, type);
+        return jasperengine::editor::prefabinternal::encodeComponent(scratch.registry.get(), scratch.entity, type);
     }
 
     // Applies one GameObject's entry of a layer (its values in the entry's YAML) to its local
@@ -289,29 +288,29 @@ namespace {
         const YAML::Node components = values.IsMap() ? values["components"] : YAML::Node(YAML::NodeType::Undefined);
 
         for (auto it = overrides.removedComponents.begin(); it != overrides.removedComponents.end();) {
-            if (!hasComponent(prefabRegistry, registryEntity, *it)) {
+            if (!jasperengine::editor::prefabinternal::hasComponent(prefabRegistry, registryEntity, *it)) {
                 editor::Out::warning("Removed component override %s on '%s' (%s): the prefab GameObject has no such component, dropped",
-                    componentKey(*it).c_str(), scene->getEntityName(local).c_str(), context.c_str());
+                    jasperengine::editor::prefabinternal::componentKey(*it).c_str(), scene->getEntityName(local).c_str(), context.c_str());
                 it = overrides.removedComponents.erase(it);
                 continue;
             }
-            if (hasComponent(scene, local, *it) && *it != editor::ComponentType::Transform) {
+            if (jasperengine::editor::prefabinternal::hasComponent(scene, local, *it) && *it != editor::ComponentType::Transform) {
                 editor::ProjectUtils::removeEntityComponent(scene, local, *it, sceneProject->entities);
             }
             ++it;
         }
 
         for (auto it = overrides.addedComponents.begin(); it != overrides.addedComponents.end();) {
-            const YAML::Node value = components ? localValue(*it, components[componentKey(*it)], remap) : YAML::Node(YAML::NodeType::Undefined);
+            const YAML::Node value = components ? localValue(*it, components[jasperengine::editor::prefabinternal::componentKey(*it)], remap) : YAML::Node(YAML::NodeType::Undefined);
             if (!value) {
                 editor::Out::warning("Added component override %s on '%s' (%s) has no value, dropped",
-                    componentKey(*it).c_str(), scene->getEntityName(local).c_str(), context.c_str());
+                    jasperengine::editor::prefabinternal::componentKey(*it).c_str(), scene->getEntityName(local).c_str(), context.c_str());
                 it = overrides.addedComponents.erase(it);
                 continue;
             }
-            if (hasComponent(scene, local, *it)) {
+            if (jasperengine::editor::prefabinternal::hasComponent(scene, local, *it)) {
                 // the prefab has it now: the instance's values stay, as an override of all of it
-                editor::Stream::decodeComponents(local, transformParent(scene, local), scene, singleComponent(*it, value));
+                editor::Stream::decodeComponents(local, jasperengine::editor::prefabinternal::transformParent(scene, local), scene, jasperengine::editor::prefabinternal::singleComponent(*it, value));
                 overrides.addWholeComponent(*it);
                 it = overrides.addedComponents.erase(it);
                 continue;
@@ -322,9 +321,9 @@ namespace {
 
         for (auto it = overrides.properties.begin(); it != overrides.properties.end();) {
             const editor::ComponentType type = it->first;
-            const YAML::Node value = components ? components[componentKey(type)] : YAML::Node(YAML::NodeType::Undefined);
-            if (!hasComponent(scene, local, type) || !value) {
-                editor::Out::warning("Override of %s on '%s' (%s): %s, dropped", componentKey(type).c_str(),
+            const YAML::Node value = components ? components[jasperengine::editor::prefabinternal::componentKey(type)] : YAML::Node(YAML::NodeType::Undefined);
+            if (!jasperengine::editor::prefabinternal::hasComponent(scene, local, type) || !value) {
+                editor::Out::warning("Override of %s on '%s' (%s): %s, dropped", jasperengine::editor::prefabinternal::componentKey(type).c_str(),
                     scene->getEntityName(local).c_str(), context.c_str(),
                     value ? "the GameObject has no such component" : "no value was saved");
                 it = overrides.properties.erase(it);
@@ -332,10 +331,10 @@ namespace {
             }
             if (it->second.count(PrefabObjectOverrides::WHOLE_COMPONENT)) {
                 // as files before property overrides had it: the saved component decoded over it
-                editor::Stream::decodeComponents(local, transformParent(scene, local), scene, singleComponent(type, localValue(type, value, remap)));
+                editor::Stream::decodeComponents(local, jasperengine::editor::prefabinternal::transformParent(scene, local), scene, jasperengine::editor::prefabinternal::singleComponent(type, localValue(type, value, remap)));
             } else {
                 Scratch scratch;
-                scratch.decode(singleComponent(type, value));
+                scratch.decode(jasperengine::editor::prefabinternal::singleComponent(type, value));
                 if (remap && scratch.has(type)) {
                     std::vector<std::string> names(it->second.begin(), it->second.end());
                     editor::Project::remapEntityPropertiesInComponent(scratch.registry.get(), scratch.entity, type, names, *remap);
@@ -545,7 +544,7 @@ void editor::Project::applyHolderData(SceneProject* sceneProject, Entity nestedR
             overrides = entry->second.overrides;
         }
         for (ComponentType type : Catalog::findComponents(values.registry.get(), values.entity)) {
-            if (!hasComponent(scene, nestedRoot, type)) {
+            if (!prefabinternal::hasComponent(scene, nestedRoot, type)) {
                 continue;
             }
             std::set<std::string> names;
@@ -819,7 +818,7 @@ editor::PrefabInstanceData* editor::Project::nestedAssetLayer(Prefab& prefab, co
     const PrefabComponent* component = prefab.registry->findComponent<PrefabComponent>(registryRoot);
     Prefab* nested = component ? loadPrefabAsset(component->path) : nullptr;
     if (nested && nested->registry && nested->root != NULL_ENTITY && nested != &prefab) {
-        PrefabObjectOverrides diff = diffAgainstRoot(prefab.registry.get(), registryRoot, nested->registry.get(), nested->root);
+        PrefabObjectOverrides diff = prefabinternal::diffAgainstRoot(prefab.registry.get(), registryRoot, nested->registry.get(), nested->root);
         if (!diff.empty()) {
             data.objects[nested->root].overrides.merge(diff);
         }
@@ -967,7 +966,7 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
 
     const bool topLevel = assetLayers.empty();
     const PrefabInstanceData* rootLayer = topLevel ? instanceData : assetLayers.front();
-    Entity rootParent = transformParent(scene, rootEntity);
+    Entity rootParent = prefabinternal::transformParent(scene, rootEntity);
 
     // What the root has of its own: its values for the default overrides and for its
     // overrides, which come from its own node (a scene's), or for a nested root imported
@@ -989,7 +988,7 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
     PrefabObjectOverrides rootOverrides;
     if (rootLayer && rootLayer->legacy) {
         if (!rootHad.empty()) {
-            rootOverrides = diffAgainstRoot(own.registry.get(), own.entity, registry, registryRoot);
+            rootOverrides = prefabinternal::diffAgainstRoot(own.registry.get(), own.entity, registry, registryRoot);
         }
     } else if (rootLayer) {
         auto rootEntry = rootLayer->objects.find(registryRoot);
@@ -1035,24 +1034,24 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
             continue;
         }
         if (rootOverrides.removedComponents.count(type) || keptAbove.removed.count(type)) {
-            if (hasComponent(scene, rootEntity, type) && type != ComponentType::Transform) {
+            if (prefabinternal::hasComponent(scene, rootEntity, type) && type != ComponentType::Transform) {
                 ProjectUtils::removeEntityComponent(scene, rootEntity, type, sceneProject->entities);
             }
             continue;
         }
-        const YAML::Node value = rootComponents ? rootComponents[componentKey(type)] : YAML::Node(YAML::NodeType::Undefined);
+        const YAML::Node value = rootComponents ? rootComponents[prefabinternal::componentKey(type)] : YAML::Node(YAML::NodeType::Undefined);
         if (!value) {
             continue;
         }
-        Stream::decodeComponents(rootEntity, rootParent, scene, singleComponent(type, value));
+        Stream::decodeComponents(rootEntity, rootParent, scene, prefabinternal::singleComponent(type, value));
         rootFromPrefab.push_back(type);
     }
     for (auto it = rootOverrides.removedComponents.begin(); it != rootOverrides.removedComponents.end();) {
-        it = hasComponent(registry, registryRoot, *it) ? std::next(it) : rootOverrides.removedComponents.erase(it);
+        it = prefabinternal::hasComponent(registry, registryRoot, *it) ? std::next(it) : rootOverrides.removedComponents.erase(it);
     }
     // What the root has that the prefab's root has not: kept when added by the instance
     for (ComponentType type : rootHad) {
-        if (hasComponent(registry, registryRoot, type) || rootOverrides.addedComponents.count(type) || keptAbove.added.count(type)) {
+        if (prefabinternal::hasComponent(registry, registryRoot, type) || rootOverrides.addedComponents.count(type) || keptAbove.added.count(type)) {
             continue;
         }
         if (type == ComponentType::Transform) {
@@ -1061,7 +1060,7 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
         ProjectUtils::removeEntityComponent(scene, rootEntity, type, sceneProject->entities);
     }
     for (auto it = rootOverrides.addedComponents.begin(); it != rootOverrides.addedComponents.end();) {
-        it = (rootHad.count(*it) && !hasComponent(registry, registryRoot, *it)) ? std::next(it) : rootOverrides.addedComponents.erase(it);
+        it = (rootHad.count(*it) && !prefabinternal::hasComponent(registry, registryRoot, *it)) ? std::next(it) : rootOverrides.addedComponents.erase(it);
     }
     if (!((rootOverrides.state | keptAbove.state) & PrefabObjectOverrides::StateActive)) {
         scene->setEntityActive(rootEntity, registry->isEntityActive(registryRoot));
@@ -1367,7 +1366,7 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
         if (!own.has(type)) {
             if (rootOverrides.properties.erase(type)) {
                 Out::warning("Override of %s on prefab root '%s' (%s): it had no such component, dropped",
-                    componentKey(type).c_str(), scene->getEntityName(rootEntity).c_str(), context.c_str());
+                    prefabinternal::componentKey(type).c_str(), scene->getEntityName(rootEntity).c_str(), context.c_str());
             }
             continue;
         }
@@ -1404,7 +1403,7 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
     // Added components a nested root imported on its own keeps have their current values
     if (standaloneNested) {
         for (ComponentType type : rootOverrides.addedComponents) {
-            if (own.has(type) && hasComponent(scene, rootEntity, type)) {
+            if (own.has(type) && prefabinternal::hasComponent(scene, rootEntity, type)) {
                 std::set<std::string> whole{PrefabObjectOverrides::WHOLE_COMPONENT};
                 copyProperties(own, scene, rootEntity, type, whole, context);
             }
@@ -1414,7 +1413,7 @@ std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, st
     for (auto it = rootOverrides.properties.begin(); it != rootOverrides.properties.end();) {
         if (std::find(rootFromPrefab.begin(), rootFromPrefab.end(), it->first) == rootFromPrefab.end()) {
             Out::warning("Override of %s on prefab root '%s' (%s): no such component, dropped",
-                componentKey(it->first).c_str(), scene->getEntityName(rootEntity).c_str(), context.c_str());
+                prefabinternal::componentKey(it->first).c_str(), scene->getEntityName(rootEntity).c_str(), context.c_str());
             it = rootOverrides.properties.erase(it);
         } else {
             ++it;

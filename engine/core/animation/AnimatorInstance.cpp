@@ -18,7 +18,8 @@
 #include <cmath>
 
 using namespace jasperengine;
-using namespace jasperengine::anim;
+
+namespace jasperengine::anim {
 
 namespace{
 
@@ -1967,3 +1968,5 @@ size_t anim::AnimatorInstance::runtimeStateBytes() const{
     bytes += output.montages.capacity() * sizeof(AnimatorMontageNote);
     return bytes;
 }
+
+}  // namespace jasperengine::anim

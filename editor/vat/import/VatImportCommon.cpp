@@ -23,7 +23,6 @@
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
-using namespace jasperengine::vat;
 using jasperengine::editor::FileUtils;
 
 namespace jasperengine::editor::vat::importer{
@@ -164,7 +163,7 @@ bool presetLimits(const std::string& name, PresetLimits& out){
 // ---- payload ----
 
 uint64_t PayloadBuilder::texelCount() const{
-    return payloadTexels(mode, layout.samples, mode == VatMode::Bones ? layout.bones : layout.vertices, layout.texelsPerSample(mode));
+    return payloadTexels(mode, layout.samples, mode == jasperengine::vat::VatMode::Bones ? layout.bones : layout.vertices, layout.texelsPerSample(mode));
 }
 
 bool PayloadBuilder::allocate(){
@@ -180,12 +179,12 @@ bool PayloadBuilder::allocate(){
     return true;
 }
 
-uint64_t payloadTexels(VatMode mode, int samples, int elements, int perSample){
+uint64_t payloadTexels(jasperengine::vat::VatMode mode, int samples, int elements, int perSample){
     (void)mode;
     return (uint64_t)std::max(samples, 0) * (uint64_t)std::max(elements, 0) * (uint64_t)std::max(perSample, 0);
 }
 
-bool checkPayloadSize(VatMode mode, int samples, int elements, int perSample, const PresetLimits& limits,
+bool checkPayloadSize(jasperengine::vat::VatMode mode, int samples, int elements, int perSample, const PresetLimits& limits,
                       const std::string& what, const std::vector<std::string>& fixes, VatImportResult& result){
     const uint64_t texels = payloadTexels(mode, samples, elements, perSample);
     if (texels <= limits.maxTexels) return true;
@@ -196,7 +195,7 @@ bool checkPayloadSize(VatMode mode, int samples, int elements, int perSample, co
     }
     addError(result, "too_large",
              what + " need " + std::to_string(texels) + " texels (" + std::to_string(samples) + " frames x " +
-             std::to_string(elements) + (mode == VatMode::Bones ? " bones x " : " vertices x ") + std::to_string(perSample) +
+             std::to_string(elements) + (mode == jasperengine::vat::VatMode::Bones ? " bones x " : " vertices x ") + std::to_string(perSample) +
              " texels), over the preset's " + std::to_string(limits.maxTexels),
              fix.empty() ? "use the desktop preset (preset: desktop)" : fix);
     return false;
@@ -205,7 +204,7 @@ bool checkPayloadSize(VatMode mode, int samples, int elements, int perSample, co
 namespace{
 
     // the clip each global frame belongs to (-1 between clips: none expected)
-    std::vector<int> frameClips(const std::vector<VatClip>& clips, int samples){
+    std::vector<int> frameClips(const std::vector<jasperengine::vat::VatClip>& clips, int samples){
         std::vector<int> out((size_t)std::max(samples, 0), -1);
         for (size_t c = 0; c < clips.size(); c++){
             for (int f = clips[c].start; f < clips[c].start + clips[c].frames && f < samples; f++){
@@ -219,9 +218,9 @@ namespace{
         const MeshXform& m = in.xform;
         if (m.identity) return;
         PayloadBuilder& p = in.payload;
-        const VatLayout& layout = p.layout;
+        const jasperengine::vat::VatLayout& layout = p.layout;
         const std::vector<int> owner = frameClips(in.clips, layout.samples);
-        if (p.mode == VatMode::Vertices){
+        if (p.mode == jasperengine::vat::VatMode::Vertices){
             for (int f = 0; f < layout.samples; f++){
                 const bool absolute = owner[(size_t)f] >= 0 && in.clips[(size_t)owner[(size_t)f]].restNone;
                 for (int e = 0; e < layout.vertices; e++){
@@ -272,10 +271,10 @@ namespace{
     // the first bad value's frame, element and texel, never written to an asset
     bool checkFinite(const Assembled& in, VatImportResult& result){
         const PayloadBuilder& p = in.payload;
-        const VatLayout& layout = p.layout;
-        const int elements = p.mode == VatMode::Bones ? layout.bones : layout.vertices;
+        const jasperengine::vat::VatLayout& layout = p.layout;
+        const int elements = p.mode == jasperengine::vat::VatMode::Bones ? layout.bones : layout.vertices;
         const int perSample = layout.texelsPerSample(p.mode);
-        const char* what = p.mode == VatMode::Bones ? "bone " : "vertex ";
+        const char* what = p.mode == jasperengine::vat::VatMode::Bones ? "bone " : "vertex ";
         for (int f = 0; f < layout.samples; f++){
             for (int e = 0; e < elements; e++){
                 for (int k = 0; k < perSample; k++){
@@ -305,10 +304,10 @@ namespace{
     }
 
     void enforceContinuity(PayloadBuilder& p){
-        const VatLayout& layout = p.layout;
+        const jasperengine::vat::VatLayout& layout = p.layout;
         int k = -1;
         int elements = 0;
-        if (p.mode == VatMode::Vertices){
+        if (p.mode == jasperengine::vat::VatMode::Vertices){
             if (!layout.normals) return;
             k = 1;
             elements = layout.vertices;
@@ -334,11 +333,11 @@ bool finishImport(Assembled& in, const VatImportSpec& spec, VatImportResult& res
     PresetLimits limits;
     presetLimits(spec.preset, limits);
     PayloadBuilder& p = in.payload;
-    VatLayout& layout = p.layout;
+    jasperengine::vat::VatLayout& layout = p.layout;
 
-    if (in.mesh.vertexCount() > (size_t)VAT_MAX_VERTICES){
+    if (in.mesh.vertexCount() > (size_t)jasperengine::vat::VAT_MAX_VERTICES){
         addError(result, "vertex_limit", "the mesh has " + std::to_string(in.mesh.vertexCount()) + " vertices, at most " +
-                 std::to_string(VAT_MAX_VERTICES), "simplify the mesh before exporting");
+                 std::to_string(jasperengine::vat::VAT_MAX_VERTICES), "simplify the mesh before exporting");
         return false;
     }
     if (!in.xform.identity){
@@ -352,11 +351,11 @@ bool finishImport(Assembled& in, const VatImportSpec& spec, VatImportResult& res
 
     // bounds of every clip over all of its frames (exact values, before any half rounding);
     // clips may overlap (OpenVAT animations sharing frames): each one covers every frame it plays
-    for (VatClip& clip : in.clips){
-        clip.bounds = VatBounds();
+    for (jasperengine::vat::VatClip& clip : in.clips){
+        clip.bounds = jasperengine::vat::VatBounds();
         const int first = std::max(clip.start, 0);
         const int end = std::min(clip.start + clip.frames, layout.samples);
-        if (p.mode == VatMode::Vertices){
+        if (p.mode == jasperengine::vat::VatMode::Vertices){
             for (int f = first; f < end; f++){
                 for (int e = 0; e < layout.vertices; e++){
                     const float* t = p.at(f, e, 0);
@@ -380,8 +379,8 @@ bool finishImport(Assembled& in, const VatImportSpec& spec, VatImportResult& res
             }
         }
     }
-    VatBounds total;
-    for (const VatClip& clip : in.clips) total.extend(clip.bounds);
+    jasperengine::vat::VatBounds total;
+    for (const jasperengine::vat::VatClip& clip : in.clips) total.extend(clip.bounds);
     if (!total.valid) total.extend(Vector3(0, 0, 0));
     const Vector3 diagonal = total.max - total.min;
     const double diagonalMm = std::sqrt((double)diagonal.x * diagonal.x + (double)diagonal.y * diagonal.y + (double)diagonal.z * diagonal.z) * 1000.0;
@@ -390,7 +389,7 @@ bool finishImport(Assembled& in, const VatImportSpec& spec, VatImportResult& res
     // precision
     double maxError = 0.0, sumError = 0.0;
     uint64_t counted = 0;
-    if (p.mode == VatMode::Vertices){
+    if (p.mode == jasperengine::vat::VatMode::Vertices){
         for (int f = 0; f < layout.samples; f++){
             for (int e = 0; e < layout.vertices; e++){
                 const float* t = p.at(f, e, 0);
@@ -407,16 +406,16 @@ bool finishImport(Assembled& in, const VatImportSpec& spec, VatImportResult& res
         }
     }
     const double meanError = counted ? sumError / (double)counted : 0.0;
-    VatPrecision precision = VatPrecision::Float;
-    if (p.mode == VatMode::Vertices){
+    jasperengine::vat::VatPrecision precision = jasperengine::vat::VatPrecision::Float;
+    if (p.mode == jasperengine::vat::VatMode::Vertices){
         if (spec.precision == "half"){
-            precision = VatPrecision::Half;
+            precision = jasperengine::vat::VatPrecision::Half;
         }else if (spec.precision == "float"){
-            precision = VatPrecision::Float;
+            precision = jasperengine::vat::VatPrecision::Float;
         }else if (maxError <= tolerance){
-            precision = VatPrecision::Half;
+            precision = jasperengine::vat::VatPrecision::Half;
         }else{
-            precision = VatPrecision::Float;
+            precision = jasperengine::vat::VatPrecision::Float;
             addWarning(result, "precision_switched",
                        "half precision would move vertices up to " + num(maxError) + " mm (tolerance " + num(tolerance) +
                        " mm): the payload is float (twice the memory)",
@@ -426,13 +425,13 @@ bool finishImport(Assembled& in, const VatImportSpec& spec, VatImportResult& res
     layout.precision = precision;
 
     // the payload bytes
-    VatPayload& payload = result.payload;
+    jasperengine::vat::VatPayload& payload = result.payload;
     payload.precision = precision;
     payload.width = layout.width;
     payload.height = layout.height;
     const size_t values = p.texels.size();
     try{
-        if (precision == VatPrecision::Float){
+        if (precision == jasperengine::vat::VatPrecision::Float){
             payload.bytes.resize(values * 4);
             for (size_t i = 0; i < values; i++){
                 uint32_t bits;
@@ -457,13 +456,13 @@ bool finishImport(Assembled& in, const VatImportSpec& spec, VatImportResult& res
     }
     std::vector<float>().swap(p.texels);
 
-    VatData& data = result.data;
+    jasperengine::vat::VatData& data = result.data;
     data.mode = p.mode;
     data.layout = layout;
     data.clips = in.clips;
     data.bounds = total;
     data.stats.bytes = payload.bytes.size();
-    if (precision == VatPrecision::Half){
+    if (precision == jasperengine::vat::VatPrecision::Half){
         data.stats.maxErrorMm = (float)maxError;
         data.stats.meanErrorMm = (float)meanError;
     }
@@ -472,9 +471,9 @@ bool finishImport(Assembled& in, const VatImportSpec& spec, VatImportResult& res
     VatImportReport& report = result.report;
     report.mode = p.mode;
     report.modeReason = in.modeReason;
-    report.vertices = p.mode == VatMode::Vertices ? layout.vertices : (int)result.mesh.vertexCount();
+    report.vertices = p.mode == jasperengine::vat::VatMode::Vertices ? layout.vertices : (int)result.mesh.vertexCount();
     report.meshVertices = (int)result.mesh.vertexCount();
-    report.bones = p.mode == VatMode::Bones ? layout.bones : 0;
+    report.bones = p.mode == jasperengine::vat::VatMode::Bones ? layout.bones : 0;
     report.sourceFrames = in.sourceFrames;
     report.frames = layout.samples;
     report.upsample = in.upsample;
@@ -483,17 +482,17 @@ bool finishImport(Assembled& in, const VatImportSpec& spec, VatImportResult& res
     report.height = layout.height;
     report.precision = precision;
     report.bytes = payload.bytes.size();
-    report.maxErrorMm = precision == VatPrecision::Half ? (float)maxError : 0.0f;
-    report.meanErrorMm = precision == VatPrecision::Half ? (float)meanError : 0.0f;
+    report.maxErrorMm = precision == jasperengine::vat::VatPrecision::Half ? (float)maxError : 0.0f;
+    report.meanErrorMm = precision == jasperengine::vat::VatPrecision::Half ? (float)meanError : 0.0f;
     report.quantizationErrorMm = report.maxErrorMm;
     report.toleranceMm = (float)tolerance;
     report.interpolationErrorMm = in.interpolationErrorMm;
-    report.fetchesPerVertex = p.mode == VatMode::Bones ? 4 : 2 * layout.texelsPerSample(VatMode::Vertices);
-    const uint64_t texelBytes = precision == VatPrecision::Float ? 16 : 8;
-    const uint64_t perFrame = (uint64_t)(p.mode == VatMode::Bones ? layout.bones : layout.vertices) *
+    report.fetchesPerVertex = p.mode == jasperengine::vat::VatMode::Bones ? 4 : 2 * layout.texelsPerSample(jasperengine::vat::VatMode::Vertices);
+    const uint64_t texelBytes = precision == jasperengine::vat::VatPrecision::Float ? 16 : 8;
+    const uint64_t perFrame = (uint64_t)(p.mode == jasperengine::vat::VatMode::Bones ? layout.bones : layout.vertices) *
                               (uint64_t)layout.texelsPerSample(p.mode) * texelBytes;
     report.clips.clear();
-    for (const VatClip& clip : in.clips){
+    for (const jasperengine::vat::VatClip& clip : in.clips){
         VatImportClipReport row;
         row.name = clip.name;
         row.frames = clip.frames;
@@ -505,7 +504,7 @@ bool finishImport(Assembled& in, const VatImportSpec& spec, VatImportResult& res
         addWarning(result, "memory_high",
                    "the payload takes " + num((double)report.bytes / (1024.0 * 1024.0)) + " MB of GPU memory (over the preset's " +
                    num((double)limits.memoryWarningBytes / (1024.0 * 1024.0)) + " MB guideline)",
-                   p.mode == VatMode::Vertices ? "turn off normals or colours, or export fewer frames"
+                   p.mode == jasperengine::vat::VatMode::Vertices ? "turn off normals or colours, or export fewer frames"
                                                : "export fewer frames, or lower the upsampling (upsample)");
     }
     return true;

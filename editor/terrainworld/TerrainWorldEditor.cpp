@@ -27,7 +27,6 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using namespace jasperengine::terraincore;
 
 namespace fs = std::filesystem;
 
@@ -107,11 +106,11 @@ std::vector<float> jasperengine::editor::terrainWorldLayerColours(const TerrainC
 }
 
 bool jasperengine::editor::validateTerrainWorldSettings(const TerrainWorldSettings& s, std::string& error) {
-    WorldLattice lattice;
+    terraincore::WorldLattice lattice;
     lattice.tileQuads = s.tileQuads;
     lattice.spacing = s.spacing;
-    if (!validateLattice(lattice, &error)) return false;
-    const WorldPlatformBudget budget = terrainWorldPlatformBudget();
+    if (!terraincore::validateLattice(lattice, &error)) return false;
+    const terraincore::WorldPlatformBudget budget = terrainWorldPlatformBudget();
     if (s.tileQuads > budget.maxTileQuads) {
         error = "tile_quads is at most " + std::to_string(budget.maxTileQuads) + " on this platform";
         return false;
@@ -126,7 +125,7 @@ bool jasperengine::editor::validateTerrainWorldSettings(const TerrainWorldSettin
     }
     for (int z = s.originZ; z < s.originZ + s.gridLength; z += std::max(1, s.gridLength - 1)) {
         for (int x = s.originX; x < s.originX + s.gridWidth; x += std::max(1, s.gridWidth - 1)) {
-            if (!tileWithinLimit(lattice, TileCoord(x, z))) {
+            if (!terraincore::tileWithinLimit(lattice, terraincore::TileCoord(x, z))) {
                 error = "tile (" + std::to_string(x) + ", " + std::to_string(z) + ") is past the world's limit of +-16384 m";
                 return false;
             }
@@ -136,7 +135,7 @@ bool jasperengine::editor::validateTerrainWorldSettings(const TerrainWorldSettin
 }
 
 uint64_t jasperengine::editor::predictTerrainWorldBytes(const TerrainWorldSettings& s) {
-    WorldLattice lattice;
+    terraincore::WorldLattice lattice;
     lattice.tileQuads = s.tileQuads;
     lattice.spacing = s.spacing;
     const uint64_t perTile = static_cast<uint64_t>(lattice.heightSide()) * lattice.heightSide() * 2;
@@ -156,12 +155,12 @@ Entity jasperengine::editor::createTerrainWorld(Project* project, uint32_t scene
     if (!AssetTypes::isFolderAsset(fs::path(assetPath).filename().string())) assetPath += ".terrainworld";
     const fs::path folder = project->resolveAssetPath(FileUtils::pathFromUtf8(assetPath));
 
-    WorldManifest manifest;
+    terraincore::WorldManifest manifest;
     manifest.lattice.tileQuads = s.tileQuads;
     manifest.lattice.spacing = s.spacing;
     manifest.maps.maxHeight = s.maxHeight;
     manifest.maps.baseHeight = static_cast<uint16_t>(std::lround(std::clamp(s.baseHeight / s.maxHeight, 0.0f, 1.0f) * 65535.0f));
-    std::vector<TileCoord> tiles;
+    std::vector<terraincore::TileCoord> tiles;
     for (int z = s.originZ; z < s.originZ + s.gridLength; z++) {
         for (int x = s.originX; x < s.originX + s.gridWidth; x++) tiles.emplace_back(x, z);
     }

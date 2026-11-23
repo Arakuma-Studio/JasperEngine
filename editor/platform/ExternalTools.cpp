@@ -8,7 +8,9 @@
 #include <cstdlib>
 
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::platform;
+
+namespace jasperengine::editor::platform {
+
 namespace fs = std::filesystem;
 
 namespace {
@@ -124,3 +126,5 @@ ToolLocation ExternalTools::ssh() {
 ToolLocation ExternalTools::scp() {
     return find("scp", "scp", {}, "", "OpenSSH");
 }
+
+}  // namespace jasperengine::editor::platform

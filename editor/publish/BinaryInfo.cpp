@@ -11,7 +11,8 @@
 #include <fstream>
 
 using namespace jasperengine::editor;
-using namespace jasperengine::editor::publish;
+
+namespace jasperengine::editor::publish {
 
 namespace {
 
@@ -156,7 +157,7 @@ namespace {
 
 }
 
-const char* publish::formatName(BinaryInfo::Format format) {
+const char* formatName(BinaryInfo::Format format) {
     switch (format) {
         case BinaryInfo::Elf: return "ELF";
         case BinaryInfo::Pe: return "PE";
@@ -168,7 +169,7 @@ const char* publish::formatName(BinaryInfo::Format format) {
     return "unknown";
 }
 
-bool publish::glibcNewer(const std::string& a, const std::string& b) {
+bool glibcNewer(const std::string& a, const std::string& b) {
     size_t i = 0, j = 0;
     while (i < a.size() || j < b.size()) {
         unsigned long x = 0, y = 0;
@@ -181,7 +182,7 @@ bool publish::glibcNewer(const std::string& a, const std::string& b) {
     return false;
 }
 
-std::optional<BinaryInfo> publish::inspectBinary(std::span<const uint8_t> data, std::string* error) {
+std::optional<BinaryInfo> inspectBinary(std::span<const uint8_t> data, std::string* error) {
     BinaryInfo info;
     Bytes b{data, true};
     if (data.size() >= 4 && std::memcmp(data.data(), "\0asm", 4) == 0) {
@@ -245,7 +246,7 @@ std::optional<BinaryInfo> publish::inspectBinary(std::span<const uint8_t> data, 
     return info;
 }
 
-std::optional<BinaryInfo> publish::inspectBinary(const std::filesystem::path& path, std::string* error) {
+std::optional<BinaryInfo> inspectBinary(const std::filesystem::path& path, std::string* error) {
     std::ifstream in(path, std::ios::binary);
     if (!in) {
         if (error) *error = "cannot read " + path.string();
@@ -254,3 +255,5 @@ std::optional<BinaryInfo> publish::inspectBinary(const std::filesystem::path& pa
     const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     return inspectBinary(bytes, error);
 }
+
+}  // namespace jasperengine::editor::publish

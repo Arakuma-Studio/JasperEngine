@@ -5,9 +5,9 @@
 
 #include <algorithm>
 
-using namespace jasperengine::editor::mcp;
+namespace jasperengine::editor::mcp {
 
-const char* jasperengine::editor::mcp::jobStatusName(JobStatus status) {
+const char* jobStatusName(JobStatus status) {
     switch (status) {
         case JobStatus::Running: return "running";
         case JobStatus::Succeeded: return "succeeded";
@@ -17,7 +17,7 @@ const char* jasperengine::editor::mcp::jobStatusName(JobStatus status) {
     return "unknown";
 }
 
-const char* jasperengine::editor::mcp::jobBusyName(JobBusy busy) {
+const char* jobBusyName(JobBusy busy) {
     switch (busy) {
         case JobBusy::None: return "none";
         case JobBusy::Export: return "export";
@@ -204,7 +204,7 @@ size_t McpJobs::runningCount() const {
     return count;
 }
 
-void jasperengine::editor::mcp::replyWhenJobDone(const CallPtr& call, const JobPtr& job, bool wait, double timeoutSeconds,
+void replyWhenJobDone(const CallPtr& call, const JobPtr& job, bool wait, double timeoutSeconds,
                                                  std::function<ToolResult(const McpJob&)> onFinished) {
     auto finish = [call, job, onFinished]() {
         if (onFinished) {
@@ -257,3 +257,5 @@ void jasperengine::editor::mcp::replyWhenJobDone(const CallPtr& call, const JobP
         else finish();
     });
 }
+
+}  // namespace jasperengine::editor::mcp

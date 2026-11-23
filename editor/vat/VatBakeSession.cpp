@@ -32,7 +32,6 @@
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
-using namespace jasperengine::vat;
 
 namespace jasperengine::editor::vat{
 
@@ -79,13 +78,13 @@ namespace{
     }
 
     // a .vat file's data, nullopt when it can't be read
-    bool readVatFile(const fs::path& file, VatData& out, std::string* error){
+    bool readVatFile(const fs::path& file, jasperengine::vat::VatData& out, std::string* error){
         std::string text;
         if (!clipui::readWholeFile(file, text)){
             if (error) *error = "can't read " + FileUtils::pathToGenericUtf8(file);
             return false;
         }
-        VatParseResult parsed = parseVat(text);
+        jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(text);
         if (!parsed.ok()){
             if (error) *error = parsed.error;
             return false;
@@ -98,14 +97,14 @@ namespace{
 
 }
 
-const VatPayload& VatBakeResult::payload() const{
-    static const VatPayload empty;
+const jasperengine::vat::VatPayload& VatBakeResult::payload() const{
+    static const jasperengine::vat::VatPayload empty;
     return preview ? preview->getPayload() : empty;
 }
 
 // ---- clip matching ----
 
-std::vector<int> matchClips(const std::vector<VatClip>& oldClips, const std::vector<std::string>& newNames,
+std::vector<int> matchClips(const std::vector<jasperengine::vat::VatClip>& oldClips, const std::vector<std::string>& newNames,
                             const std::vector<float>& newLengths, bool positional){
     std::vector<int> result(newNames.size(), -1);
     std::vector<bool> oldUsed(oldClips.size(), false);
@@ -188,7 +187,7 @@ void VatBakeSession::setSpec(const VatBakeSpec& spec){
     bakeSpec = spec;
     rebakePath.clear();
     rebakeLoaded = false;
-    rebakeOld = VatData();
+    rebakeOld = jasperengine::vat::VatData();
     rebakeClipMap.clear();
 }
 
@@ -199,7 +198,7 @@ bool VatBakeSession::loadRebake(const std::string& vatPath, std::string& error){
     }
     fs::path given = FileUtils::pathFromUtf8(vatPath);
     const fs::path absolute = (given.is_absolute() ? given : project->getProjectPath() / given).lexically_normal();
-    VatData old;
+    jasperengine::vat::VatData old;
     if (!readVatFile(absolute, old, &error)) return false;
     VatBakeSpec spec;
     if (!specFromRecipe(old.recipe, spec, error)) return false;
@@ -232,7 +231,7 @@ bool VatBakeSession::loadRebake(const std::string& vatPath, std::string& error){
     bakeSpec.clips.clear();
     bakeSpec.clipOverrides.clear();
     for (const auto& entry : order){
-        const VatClip& clip = old.clips[(size_t)entry.first];
+        const jasperengine::vat::VatClip& clip = old.clips[(size_t)entry.first];
         const std::string& name = names[entry.second];
         bakeSpec.clips.push_back(name);
         VatClipOverride override;
@@ -371,9 +370,9 @@ const std::vector<VatIssue>& VatBakeSession::check(){
             }
         }
     }
-    if (selected.size() > (size_t)VAT_MAX_CLIPS){
+    if (selected.size() > (size_t)jasperengine::vat::VAT_MAX_CLIPS){
         checkIssues.push_back(makeIssue("clip_limit", true, std::to_string(selected.size()) + " clips, a Vertex Animation holds at most " +
-                                        std::to_string(VAT_MAX_CLIPS), "bake the clips in two assets"));
+                                        std::to_string(jasperengine::vat::VAT_MAX_CLIPS), "bake the clips in two assets"));
     }
     bool anyBound = false;
     for (int index : selected){
@@ -441,26 +440,26 @@ VatEstimate VatBakeSession::estimate(){
     for (const VatBakeRenderer& renderer : poser->renderers){
         for (const cpuskin::CpuSkinLatticeBinding& binding : renderer.restLattice.bindings) latticeAtRest = latticeAtRest || binding.moving;
     }
-    const bool bonesPossible = !shapes && !latticeAtRest && out.bones <= VAT_MAX_BONES;
+    const bool bonesPossible = !shapes && !latticeAtRest && out.bones <= jasperengine::vat::VAT_MAX_BONES;
     if (spec.mode == VatModeChoice::Vertices){
-        out.mode = VatMode::Vertices;
+        out.mode = jasperengine::vat::VatMode::Vertices;
         out.modeReason = "Vertices mode was chosen";
     }else if (spec.mode == VatModeChoice::Bones){
-        out.mode = VatMode::Bones;
+        out.mode = jasperengine::vat::VatMode::Bones;
         out.modeReason = "Bones mode was chosen";
-    }else if (out.bones > VAT_MAX_BONES){
-        out.mode = VatMode::Vertices;
-        out.modeReason = "likely Vertices: about " + std::to_string(out.bones) + " bones, over the " + std::to_string(VAT_MAX_BONES) +
+    }else if (out.bones > jasperengine::vat::VAT_MAX_BONES){
+        out.mode = jasperengine::vat::VatMode::Vertices;
+        out.modeReason = "likely Vertices: about " + std::to_string(out.bones) + " bones, over the " + std::to_string(jasperengine::vat::VAT_MAX_BONES) +
                          " a Bones bake holds";
     }else if (shapes || latticeAtRest){
-        out.mode = VatMode::Vertices;
+        out.mode = jasperengine::vat::VatMode::Vertices;
         out.modeReason = shapes ? "likely Vertices: the clips animate morph targets or lattices"
                                 : "likely Vertices: a lattice deforms the mesh";
     }else{
-        out.mode = VatMode::Bones;
+        out.mode = jasperengine::vat::VatMode::Bones;
         out.modeReason = "likely Bones: skin and rigid parts only (the bake measures it)";
     }
-    out.precision = out.mode == VatMode::Bones || spec.precision == VatPrecisionChoice::Float ? VatPrecision::Float : VatPrecision::Half;
+    out.precision = out.mode == jasperengine::vat::VatMode::Bones || spec.precision == VatPrecisionChoice::Float ? jasperengine::vat::VatPrecision::Float : jasperengine::vat::VatPrecision::Half;
 
     VatSizeInputs size;
     size.mode = out.mode;
@@ -470,7 +469,7 @@ VatEstimate VatBakeSession::estimate(){
     size.bonesPossible = bonesPossible;
     size.preset = spec.preset;
     size.fps = spec.fps;
-    const int elements = out.mode == VatMode::Bones ? out.bones : out.vertices;
+    const int elements = out.mode == jasperengine::vat::VatMode::Bones ? out.bones : out.vertices;
     for (int index : selected){
         const VatSourceClip& source = target->clips[(size_t)index];
         VatClipEstimate clip;
@@ -479,7 +478,7 @@ VatEstimate VatBakeSession::estimate(){
         clip.wrap = effectiveWrap(spec, source);
         clip.requestedFps = effectiveFps(spec, source);
         clipFrames(clip.length, clip.wrap, clip.requestedFps, clip.frames, clip.fps);
-        clip.bytes = payloadTexels(out.mode, clip.frames, elements, spec.normals) * (out.precision == VatPrecision::Float ? 16u : 8u);
+        clip.bytes = payloadTexels(out.mode, clip.frames, elements, spec.normals) * (out.precision == jasperengine::vat::VatPrecision::Float ? 16u : 8u);
         out.samples += clip.frames;
         out.clips.push_back(clip);
         size.clips.push_back(clip);
@@ -495,13 +494,13 @@ VatEstimate VatBakeSession::estimate(){
     }
     out.fetchesPerVertex = fetchesPerVertex(out.mode, spec.normals, rigidOnly);
 
-    if (out.vertices > VAT_MAX_VERTICES){
+    if (out.vertices > jasperengine::vat::VAT_MAX_VERTICES){
         out.issues.push_back(makeIssue("vertex_limit", true, std::to_string(out.vertices) + " vertices, a Vertex Animation holds at most " +
-                                       std::to_string(VAT_MAX_VERTICES), "bake a simpler mesh (a LOD of the model)"));
+                                       std::to_string(jasperengine::vat::VAT_MAX_VERTICES), "bake a simpler mesh (a LOD of the model)"));
     }
-    if (spec.mode == VatModeChoice::Bones && out.bones > VAT_MAX_BONES){
+    if (spec.mode == VatModeChoice::Bones && out.bones > jasperengine::vat::VAT_MAX_BONES){
         VatIssue issue = makeIssue("bone_limit", true, std::to_string(out.bones) + " bones, a Bones bake holds at most " +
-                                   std::to_string(VAT_MAX_BONES), "bake in Vertices mode");
+                                   std::to_string(jasperengine::vat::VAT_MAX_BONES), "bake in Vertices mode");
         issue.fixes.push_back({"Bake in Vertices mode", "mode", "\"vertices\""});
         out.issues.push_back(issue);
     }else if (spec.mode == VatModeChoice::Bones && (shapes || latticeAtRest)){
@@ -532,7 +531,7 @@ bool VatBakeSession::start(){
         const VatBakeSpec spec = bakeSpec;
         const std::string rebake = rebakePath;
         const bool loaded = rebakeLoaded;
-        const VatData old = rebakeOld;
+        const jasperengine::vat::VatData old = rebakeOld;
         const auto map = rebakeClipMap;
         setSpec(spec);
         rebakePath = rebake;
@@ -785,7 +784,7 @@ void VatBakeSession::finalize(){
     VatBakeResult& result = bakeResult;
     result.data = output.data;
     result.data.recipe = recipeFromSpec(bakeSpec);
-    VatRecipeSource& source = result.data.recipe.sources[0];
+    jasperengine::vat::VatRecipeSource& source = result.data.recipe.sources[0];
     source.clips.clear();
     for (int index : selected){
         const VatSourceClip& clip = target->clips[(size_t)index];
@@ -810,11 +809,11 @@ void VatBakeSession::finalize(){
     }
     for (const VatIssue& issue : output.report.warnings) warnings.push_back(issue);
     result.report.warnings = warnings;
-    result.data.mesh = fileSafe(target->stem) + VAT_MESH_SUFFIX;
+    result.data.mesh = fileSafe(target->stem) + jasperengine::vat::VAT_MESH_SUFFIX;
     result.data.layout.layoutHash = computeLayoutHash(result.data);
 
     std::string error;
-    result.preview = VertexAnimation::create(result.data, std::move(output.payload), result.sockets, &error);
+    result.preview = jasperengine::vat::VertexAnimation::create(result.data, std::move(output.payload), result.sockets, &error);
     if (!result.preview){
         bakeState = VatBakeState::Failed;
         errorText = "the baked asset is inconsistent: " + error;
@@ -822,7 +821,7 @@ void VatBakeSession::finalize(){
     }
     previewId = ++previewCounter;
     result.previewKey = FileUtils::pathToUtf8((project->getProjectPath() / ".jasperengine" / "cache" / "vat-preview" /
-                                               std::to_string(previewId) / FileUtils::pathFromUtf8(fileSafe(target->stem) + VAT_EXTENSION))
+                                               std::to_string(previewId) / FileUtils::pathFromUtf8(fileSafe(target->stem) + jasperengine::vat::VAT_EXTENSION))
                                                   .lexically_normal());
     VertexAnimationPool::put(result.previewKey, result.preview);
     output = VatBakeOutput();
@@ -842,7 +841,7 @@ bool VatBakeSession::writePreviewFiles(std::string& vatPath, std::string& meshPa
     FileUtils::createDirectories(dir, ec);
     VatMeshData mesh = bakeResult.mesh;
     mesh.images = bakeResult.embeddedImages;
-    VatData data = bakeResult.data;
+    jasperengine::vat::VatData data = bakeResult.data;
     data.guid = AssetDatabase::generateGuid();
     VatEncodedFiles encoded;
     if (!encodeVatFiles(FileUtils::pathToUtf8(vatFile), data, mesh, bakeResult.payload(), bakeResult.sockets, encoded, &error)) return false;
@@ -893,7 +892,7 @@ bool VatBakeSession::writeHeatmapPreviewFiles(std::string& vatPath, std::string&
     white.doubleSided = true;
     mesh.materials = {white};
     for (VatSubmesh& submesh : mesh.submeshes) submesh.material = 0;
-    VatData data = bakeResult.data;
+    jasperengine::vat::VatData data = bakeResult.data;
     data.guid = AssetDatabase::generateGuid();
     VatEncodedFiles encoded;
     if (!encodeVatFiles(FileUtils::pathToUtf8(vatFile), data, mesh, bakeResult.payload(), bakeResult.sockets, encoded, &error)) return false;
@@ -914,7 +913,7 @@ bool VatBakeSession::plannedOutput(std::string& vatPath, bool& rewrite, std::str
     rewrite = false;
     // after a bake its recipe; before one (the window's Output field) the spec's, once the
     // source is resolved
-    VatRecipeSource ours;
+    jasperengine::vat::VatRecipeSource ours;
     if (bakeState == VatBakeState::Done){
         ours = bakeResult.data.recipe.sources[0];
     }else{
@@ -953,7 +952,7 @@ bool VatBakeSession::plannedOutput(std::string& vatPath, bool& rewrite, std::str
     const std::string stem = fileSafe(target->stem);
     const std::string dir = target->directory;
     auto candidate = [&](int n){
-        return (dir.empty() ? std::string() : dir + "/") + stem + (n > 1 ? " " + std::to_string(n) : std::string()) + VAT_EXTENSION;
+        return (dir.empty() ? std::string() : dir + "/") + stem + (n > 1 ? " " + std::to_string(n) : std::string()) + jasperengine::vat::VAT_EXTENSION;
     };
     for (int n = 1;; n++){
         const std::string relative = candidate(n);
@@ -964,7 +963,7 @@ bool VatBakeSession::plannedOutput(std::string& vatPath, bool& rewrite, std::str
             vatPath = relative;
             return true;
         }
-        VatData old;
+        jasperengine::vat::VatData old;
         if (vatThere && readVatFile(absolute, old, nullptr) && old.recipe.sources.size() == 1 && sameRecipeSource(old.recipe.sources[0], ours)){
             vatPath = relative;
             rewrite = true;
@@ -999,8 +998,8 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error, VatIssue* is
     }
     const fs::path absolute = (project->getProjectPath() / FileUtils::pathFromUtf8(relative)).lexically_normal();
 
-    VatData data = bakeResult.data;
-    VatData old;
+    jasperengine::vat::VatData data = bakeResult.data;
+    jasperengine::vat::VatData old;
     const bool hasOld = rewrite && readVatFile(absolute, old, nullptr);
     data.guid = hasOld && !old.guid.empty() ? old.guid : AssetDatabase::generateGuid();
     const bool sameSource = hasOld && old.recipe.sources.size() == 1 && sameRecipeSource(old.recipe.sources[0], data.recipe.sources[0]);
@@ -1019,7 +1018,7 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error, VatIssue* is
             // Rebake's, which matches them in order)
             std::vector<std::string> names;
             std::vector<float> lengths;
-            for (const VatClip& clip : data.clips){
+            for (const jasperengine::vat::VatClip& clip : data.clips){
                 names.push_back(clip.name);
                 lengths.push_back(clip.length());
             }
@@ -1027,12 +1026,12 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error, VatIssue* is
         }
         std::set<std::string> used;
         for (size_t i = 0; i < data.clips.size(); i++){
-            VatClip& clip = data.clips[i];
+            jasperengine::vat::VatClip& clip = data.clips[i];
             if (match[i] < 0 || (size_t)match[i] >= old.clips.size()){
                 used.insert(clip.name);
                 continue;
             }
-            const VatClip& previous = old.clips[(size_t)match[i]];
+            const jasperengine::vat::VatClip& previous = old.clips[(size_t)match[i]];
             if (!used.count(previous.name)) clip.name = previous.name;
             clip.events = previous.events;
             clip.speed = previous.speed;
@@ -1044,8 +1043,8 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error, VatIssue* is
             if ((previous.wrap == ClipWrapMode::Loop) == (clip.wrap == ClipWrapMode::Loop)) clip.wrap = previous.wrap;
             used.insert(clip.name);
         }
-        for (VatSocket& socket : data.sockets){
-            for (const VatSocket& previous : old.sockets){
+        for (jasperengine::vat::VatSocket& socket : data.sockets){
+            for (const jasperengine::vat::VatSocket& previous : old.sockets){
                 if (previous.path == socket.path) socket.name = previous.name;
             }
         }
@@ -1222,13 +1221,13 @@ std::vector<VatIssue> checkVatStaleness(Project* project, const std::string& vat
     const fs::path absolute = (given.is_absolute() ? given : project->getProjectPath() / given).lexically_normal();
     const std::string relative = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(absolute));
     const std::string rebake = "Rebake (Inspector > Rebake, or bake_vertex_animation {rebake: \"" + relative + "\"})";
-    VatData data;
+    jasperengine::vat::VatData data;
     std::string error;
     if (!readVatFile(absolute, data, &error)){
         out.push_back(makeIssue("vat-layout-mismatch", true, "'" + relative + "' can't be read: " + error, rebake));
         return out;
     }
-    for (const VatRecipeSource& source : data.recipe.sources){
+    for (const jasperengine::vat::VatRecipeSource& source : data.recipe.sources){
         for (const auto& hash : source.hashes){
             const fs::path file = (project->getProjectPath() / FileUtils::pathFromUtf8(hash.first)).lexically_normal();
             if (!fileExists(file)){
@@ -1247,9 +1246,9 @@ std::vector<VatIssue> checkVatStaleness(Project* project, const std::string& vat
         out.push_back(makeIssue("vat-mesh-mismatch", true, "the mesh '" + data.mesh + "' of '" + relative + "' is missing", rebake));
         return out;
     }
-    VatGlbContents contents;
+    jasperengine::vat::VatGlbContents contents;
     const std::vector<uint8_t> glb(bytes.begin(), bytes.end());
-    if (!readVatGlb(glb, contents, &error)){
+    if (!jasperengine::vat::readVatGlb(glb, contents, &error)){
         out.push_back(makeIssue("vat-mesh-mismatch", true, "the mesh '" + data.mesh + "' doesn't hold a payload: " + error, rebake));
         return out;
     }
@@ -1260,7 +1259,7 @@ std::vector<VatIssue> checkVatStaleness(Project* project, const std::string& vat
                                 "' describe different layouts (a generated field changed, or the files come from two bakes)", rebake));
         return out;
     }
-    if (!VertexAnimation::create(data, contents.payload, contents.sockets, &error)){
+    if (!jasperengine::vat::VertexAnimation::create(data, contents.payload, contents.sockets, &error)){
         out.push_back(makeIssue("vat-mesh-mismatch", true, "the payload of '" + data.mesh + "' doesn't match '" + relative + "': " + error, rebake));
     }
     return out;
