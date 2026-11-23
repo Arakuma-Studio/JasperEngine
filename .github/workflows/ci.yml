@@ -1296,7 +1296,7 @@ jobs:
         id: save
         if: >-
           steps.cas.outputs.local != '1' && steps.ios.outcome == 'success' && steps.macos.outcome == 'success'
-          && github.event_name == 'push' && github.ref == 'refs/heads/main'
+          && (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.head_ref == 'ci/windows-macos-ccache')
         with:
           path: build/.cache/xcode-cas
           key: ${{ steps.cas.outputs.key }}
