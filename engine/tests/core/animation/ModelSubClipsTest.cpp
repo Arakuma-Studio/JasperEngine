@@ -49,11 +49,11 @@ namespace {
 
     const std::vector<std::string> heroClips = {"Walk", "Idle", "Animation 2", "Wave", "Wave 2"};
 
-    std::string fixturePath(const std::string& name){
+    std::string modelSubClipsFixturePath(const std::string& name){
         return std::string(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") + "/" + name;
     }
 
-    std::string readFile(const std::string& path){
+    std::string modelSubClipsReadFile(const std::string& path){
         std::ifstream file(path, std::ios::binary);
         return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
     }
@@ -62,7 +62,7 @@ namespace {
     std::string copyFixture(const std::string& name){
         static int copies = 0;
         std::string relative = "models/subclips" + std::to_string(copies++) + "/" + name;
-        animtest::writeAsset(relative, readFile(fixturePath(name)));
+        animtest::writeAsset(relative, modelSubClipsReadFile(modelSubClipsFixturePath(name)));
         return relative;
     }
 
@@ -189,14 +189,14 @@ namespace {
         }
     };
 
-    bool hasWarning(const std::vector<ClipWarning>& warnings, const std::string& path, const std::string& text){
+    bool subClipHasWarning(const std::vector<ClipWarning>& warnings, const std::string& path, const std::string& text){
         for (const ClipWarning& warning : warnings){
             if (warning.path == path && warning.message.find(text) != std::string::npos) return true;
         }
         return false;
     }
 
-    std::string describe(const std::vector<ClipWarning>& warnings){
+    std::string modelSubClipsDescribe(const std::vector<ClipWarning>& warnings){
         std::string out;
         for (const ClipWarning& warning : warnings) out += warning.path + ": " + warning.message + "\n";
         return out;
@@ -217,7 +217,7 @@ TEST(ModelSubClips, NamesFollowTheLoaderAndNumberDuplicates){
 TEST(ModelSubClips, ListsTheFixtureAnimations){
     std::vector<anim::ModelClipInfo> clips;
     std::string error;
-    ASSERT_TRUE(anim::listModelFileClips(fixturePath("hero_animated.gltf"), clips, &error)) << error;
+    ASSERT_TRUE(anim::listModelFileClips(modelSubClipsFixturePath("hero_animated.gltf"), clips, &error)) << error;
     ASSERT_EQ(clips.size(), heroClips.size());
     const float durations[] = {1.0f, 2.0f, 1.5f, 0.9f, 0.8f};
     const size_t channels[] = {8, 3, 2, 1, 1};
@@ -229,9 +229,9 @@ TEST(ModelSubClips, ListsTheFixtureAnimations){
     }
 
     // a model without animations lists none; a missing or non-model file fails
-    ASSERT_TRUE(anim::listModelFileClips(fixturePath("hero_tpose.gltf"), clips, &error)) << error;
+    ASSERT_TRUE(anim::listModelFileClips(modelSubClipsFixturePath("hero_tpose.gltf"), clips, &error)) << error;
     EXPECT_TRUE(clips.empty());
-    EXPECT_FALSE(anim::listModelFileClips(fixturePath("nope.gltf"), clips, &error));
+    EXPECT_FALSE(anim::listModelFileClips(modelSubClipsFixturePath("nope.gltf"), clips, &error));
     EXPECT_NE(error.find("nope.gltf"), std::string::npos) << error;
     EXPECT_FALSE(anim::listModelFileClips("anim/walk.anim", clips, &error));
 }
@@ -289,7 +289,7 @@ TEST(ModelSubClips, NodePathsMirrorTheNodeHierarchy){
 // Every track of every sub-clip binds on the hierarchy loadGLTF builds, to the entity of its
 // glTF node, and carries the same keys as the loader's own animation entities
 TEST(ModelSubClips, AnimatedHeroClipsBindEveryTrackAndMatchTheLoader){
-    const std::string path = fixturePath("hero_animated.gltf");
+    const std::string path = modelSubClipsFixturePath("hero_animated.gltf");
     Scene scene;
     Model model(&scene);
     const Entity root = model.getEntity();
@@ -312,7 +312,7 @@ TEST(ModelSubClips, AnimatedHeroClipsBindEveryTrackAndMatchTheLoader){
     for (size_t i = 0; i < heroClips.size(); i++){
         std::vector<ClipWarning> warnings;
         ClipData clip = buildClip(path + "#" + heroClips[i], &warnings);
-        EXPECT_TRUE(warnings.empty()) << heroClips[i] << "\n" << describe(warnings);
+        EXPECT_TRUE(warnings.empty()) << heroClips[i] << "\n" << modelSubClipsDescribe(warnings);
         EXPECT_EQ(clip.frameRate, 30.0f);
         EXPECT_EQ(clip.wrap, ClipWrapMode::Once);
         EXPECT_FALSE(clip.hasExplicitLength());
@@ -396,7 +396,7 @@ TEST(ModelSubClips, AnimatedHeroClipsBindEveryTrackAndMatchTheLoader){
 }
 
 TEST(ModelSubClips, BuilderKeepsInterpolationsAndLayouts){
-    const std::string path = fixturePath("hero_animated.gltf");
+    const std::string path = modelSubClipsFixturePath("hero_animated.gltf");
     ClipData walk = buildClip(path + "#Walk");
     int hips = walk.findTrack("Hero/mixamorig:Hips", ClipChannel::Position);
     ASSERT_GE(hips, 0);
@@ -446,7 +446,7 @@ TEST(ModelSubClips, BuilderKeepsInterpolationsAndLayouts){
     // the built data is already normalized (the loader invariants): a write/parse round trip is clean
     anim::ClipParseResult parsed = anim::parseClip(anim::writeClip(idle));
     ASSERT_TRUE(parsed.ok());
-    EXPECT_TRUE(parsed.warnings.empty()) << describe(parsed.warnings);
+    EXPECT_TRUE(parsed.warnings.empty()) << modelSubClipsDescribe(parsed.warnings);
     EXPECT_EQ(anim::writeClip(*parsed.data), anim::writeClip(idle));
 
     ClipData none;
@@ -492,7 +492,7 @@ TEST(ModelSubClips, ReadsStridedNormalizedAndMorphAccessors){
     std::vector<ClipWarning> warnings;
     std::string error;
     ASSERT_TRUE(anim::buildSubClip(gltf.model, animation, clip, warnings, &error)) << error;
-    EXPECT_TRUE(warnings.empty()) << describe(warnings);
+    EXPECT_TRUE(warnings.empty()) << modelSubClipsDescribe(warnings);
 
     int position = clip.findTrack("Body", ClipChannel::Position);
     ASSERT_GE(position, 0);
@@ -559,16 +559,16 @@ TEST(ModelSubClips, RejectsBadChannelsWithWarnings){
     ASSERT_EQ(clip.tracks.size(), 1u) << "the two good translation channels merge into one track";
     EXPECT_EQ(clip.tracks[0].path, "Root");
     const std::string c = "animations[0].channels[";
-    EXPECT_TRUE(hasWarning(warnings, c + "1]", "sparse")) << describe(warnings);
-    EXPECT_TRUE(hasWarning(warnings, c + "2]", "past the end")) << describe(warnings);
-    EXPECT_TRUE(hasWarning(warnings, c + "3]", "expected VEC4")) << describe(warnings);
-    EXPECT_TRUE(hasWarning(warnings, c + "4]", "not animatable")) << describe(warnings);
-    EXPECT_TRUE(hasWarning(warnings, c + "5]", "no node")) << describe(warnings);
-    EXPECT_TRUE(hasWarning(warnings, c + "6]", "can't address")) << describe(warnings);
-    EXPECT_TRUE(hasWarning(warnings, c + "7]", "float expected")) << describe(warnings);
-    EXPECT_TRUE(hasWarning(warnings, c + "8]", "expected 6")) << describe(warnings);
-    EXPECT_TRUE(hasWarning(warnings, c + "9]", "sampler 42")) << describe(warnings);
-    EXPECT_TRUE(hasWarning(warnings, c + "10]", "QUADRATIC")) << describe(warnings);
+    EXPECT_TRUE(subClipHasWarning(warnings, c + "1]", "sparse")) << modelSubClipsDescribe(warnings);
+    EXPECT_TRUE(subClipHasWarning(warnings, c + "2]", "past the end")) << modelSubClipsDescribe(warnings);
+    EXPECT_TRUE(subClipHasWarning(warnings, c + "3]", "expected VEC4")) << modelSubClipsDescribe(warnings);
+    EXPECT_TRUE(subClipHasWarning(warnings, c + "4]", "not animatable")) << modelSubClipsDescribe(warnings);
+    EXPECT_TRUE(subClipHasWarning(warnings, c + "5]", "no node")) << modelSubClipsDescribe(warnings);
+    EXPECT_TRUE(subClipHasWarning(warnings, c + "6]", "can't address")) << modelSubClipsDescribe(warnings);
+    EXPECT_TRUE(subClipHasWarning(warnings, c + "7]", "float expected")) << modelSubClipsDescribe(warnings);
+    EXPECT_TRUE(subClipHasWarning(warnings, c + "8]", "expected 6")) << modelSubClipsDescribe(warnings);
+    EXPECT_TRUE(subClipHasWarning(warnings, c + "9]", "sampler 42")) << modelSubClipsDescribe(warnings);
+    EXPECT_TRUE(subClipHasWarning(warnings, c + "10]", "QUADRATIC")) << modelSubClipsDescribe(warnings);
 
     // nothing readable: an error, not an empty clip
     GltfBuilder empty;
@@ -578,7 +578,7 @@ TEST(ModelSubClips, RejectsBadChannelsWithWarnings){
     warnings.clear();
     EXPECT_FALSE(anim::buildSubClip(empty.model, only, clip, warnings, &error));
     EXPECT_NE(error.find("Animation 0"), std::string::npos) << error;
-    EXPECT_TRUE(hasWarning(warnings, "animations[0].channels[0]", "does not exist")) << describe(warnings);
+    EXPECT_TRUE(subClipHasWarning(warnings, "animations[0].channels[0]", "does not exist")) << modelSubClipsDescribe(warnings);
     EXPECT_FALSE(anim::buildSubClip(empty.model, 1, clip, warnings, &error));
     EXPECT_FALSE(anim::buildSubClip(empty.model, -1, clip, warnings, &error));
 }
@@ -598,19 +598,19 @@ TEST(ModelSubClips, UnaddressableNamesFollowClipBinding){
     std::vector<ClipWarning> warnings;
     std::string error;
     ASSERT_TRUE(anim::buildSubClip(gltf.model, animation, clip, warnings, &error)) << error;
-    ASSERT_EQ(clip.tracks.size(), 1u) << describe(warnings);
+    ASSERT_EQ(clip.tracks.size(), 1u) << modelSubClipsDescribe(warnings);
     EXPECT_EQ(clip.tracks[0].path, "Take #b");
     for (int i = 0; i < 3; i++){
-        EXPECT_TRUE(hasWarning(warnings, "animations[0].channels[" + std::to_string(i) + "]", "can't address"))
-            << names[i] << "\n" << describe(warnings);
+        EXPECT_TRUE(subClipHasWarning(warnings, "animations[0].channels[" + std::to_string(i) + "]", "can't address"))
+            << names[i] << "\n" << modelSubClipsDescribe(warnings);
     }
 }
 
 // The T-pose hero has no animation: alone it loads in the legacy layout (unchanged), on or under an
 // Animation Player in the node-hierarchy layout, where the animated hero's clips bind 100%
 TEST(ModelSubClips, PlayerForcesTheNodeHierarchyForCrossFileClips){
-    const std::string tpose = fixturePath("hero_tpose.gltf");
-    const std::string animated = fixturePath("hero_animated.gltf");
+    const std::string tpose = modelSubClipsFixturePath("hero_tpose.gltf");
+    const std::string animated = modelSubClipsFixturePath("hero_animated.gltf");
 
     {
         Scene scene;
@@ -660,7 +660,7 @@ TEST(ModelSubClips, PlayerForcesTheNodeHierarchyForCrossFileClips){
 }
 
 TEST(ModelSubClips, AnimationEntitiesFlagSkipsTheLoaderAnimations){
-    const std::string path = fixturePath("hero_animated.gltf");
+    const std::string path = modelSubClipsFixturePath("hero_animated.gltf");
     Scene scene;
     Model model(&scene);
     const Entity root = model.getEntity();
@@ -686,7 +686,7 @@ TEST(ModelSubClips, AnimationEntitiesFlagSkipsTheLoaderAnimations){
 TEST(ModelSubClips, ModelFindsDuplicateAnimationNamesByTheirSubClipNames){
     Scene scene;
     Model model(&scene);
-    ASSERT_TRUE(model.loadModel(fixturePath("hero_animated.gltf")));
+    ASSERT_TRUE(model.loadModel(modelSubClipsFixturePath("hero_animated.gltf")));
     const ModelComponent& component = scene.getComponent<ModelComponent>(model.getEntity());
     ASSERT_EQ(component.animations.size(), 5u);
     ASSERT_EQ(scene.getEntityName(component.animations[3]), "Wave");
@@ -733,9 +733,9 @@ TEST(ModelSubClips, ModelFindsDuplicateAnimationNamesByTheirSubClipNames){
 TEST(ModelSubClips, FindAnimationDoesNotWaitForAnotherModelsLoad){
     Scene scene;
     Model model(&scene);
-    ASSERT_TRUE(model.loadModel(fixturePath("hero_animated.gltf")));
+    ASSERT_TRUE(model.loadModel(modelSubClipsFixturePath("hero_animated.gltf")));
     const ModelComponent& component = scene.getComponent<ModelComponent>(model.getEntity());
-    ASSERT_TRUE(ModelPool::getGLTF(MeshSystem::getModelFilenameKey(fixturePath("hero_animated.gltf"))) == component.gltfModel)
+    ASSERT_TRUE(ModelPool::getGLTF(MeshSystem::getModelFilenameKey(modelSubClipsFixturePath("hero_animated.gltf"))) == component.gltfModel)
         << "the pooled parse, the one loads lock";
     EXPECT_EQ(component.animationClipNames, (std::vector<std::string>{"Walk", "Idle", "Animation 2", "Wave", "Wave 2"}));
     const std::vector<Entity> animations = component.animations;
@@ -770,7 +770,7 @@ TEST(ModelSubClips, FindAnimationDoesNotWaitForAnotherModelsLoad){
 // gets its file's default weights; weights it holds after that (edited, all zero on purpose) or
 // read from a saved scene survive a reload of the same file; another model file takes its own
 TEST(ModelSubClips, MorphWeightsKeepTheSavedStateOverTheFileDefaults){
-    nlohmann::json gltf = nlohmann::json::parse(readFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures") + "/runtime-shaders/assets/skinned_morph.gltf"));
+    nlohmann::json gltf = nlohmann::json::parse(modelSubClipsReadFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures") + "/runtime-shaders/assets/skinned_morph.gltf"));
     ASSERT_EQ(gltf["meshes"].size(), 1u);
     gltf["meshes"][0]["weights"] = {0.75};
     const std::string withDefaults = animtest::writeAsset("models/morphs/defaults.gltf", gltf.dump());
@@ -844,7 +844,7 @@ TEST(ModelSubClips, MorphWeightsKeepTheSavedStateOverTheFileDefaults){
 // targets are named differently ("Bend" on Strip, "Smile" and "Blink" on Face) keeps each mesh's
 // own names; the model's name table still finds every name
 TEST(ModelSubClips, MorphTargetNamesArePerMesh){
-    nlohmann::json gltf = nlohmann::json::parse(readFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures") + "/runtime-shaders/assets/skinned_morph.gltf"));
+    nlohmann::json gltf = nlohmann::json::parse(modelSubClipsReadFile(std::string(JASPER_TEST_REPO_DIR "/tools/fixtures") + "/runtime-shaders/assets/skinned_morph.gltf"));
     nlohmann::json face = gltf["meshes"][0];
     face["name"] = "Face";
     face["primitives"][0]["targets"].push_back(face["primitives"][0]["targets"][0]);
@@ -967,7 +967,7 @@ TEST(ModelSubClips, ConcurrentBuildsAgree){
 // (the last one wins), a root named like the first one, a node only in a second glTF scene, and a
 // non-joint node named like a bone next to it
 TEST(ModelSubClips, NodePathsMatchTheLoaderOnAnUnorderedHierarchy){
-    nlohmann::json g = nlohmann::json::parse(readFile(fixturePath("hero_animated.gltf")));
+    nlohmann::json g = nlohmann::json::parse(modelSubClipsReadFile(modelSubClipsFixturePath("hero_animated.gltf")));
     nlohmann::json& nodes = g["nodes"];
     const int base = (int)nodes.size();
     const int hips = 1;
@@ -1042,7 +1042,7 @@ TEST(ModelSubClips, NodePathsMatchTheLoaderOnAnUnorderedHierarchy){
 
     std::vector<ClipWarning> warnings;
     ClipData clip = buildClip(model + "#Cases", &warnings);
-    EXPECT_TRUE(warnings.empty()) << describe(warnings);
+    EXPECT_TRUE(warnings.empty()) << modelSubClipsDescribe(warnings);
     ASSERT_EQ(clip.tracks.size(), targets.size());
     for (int target : targets){
         int track = clip.findTrack(paths[target], ClipChannel::Position);
@@ -1072,7 +1072,7 @@ TEST(ModelSubClips, RenormalizedRotationKeysScaleTheirTangents){
     std::vector<ClipWarning> warnings;
     std::string error;
     ASSERT_TRUE(anim::buildSubClip(gltf.model, animation, clip, warnings, &error)) << error;
-    EXPECT_TRUE(warnings.empty()) << describe(warnings);
+    EXPECT_TRUE(warnings.empty()) << modelSubClipsDescribe(warnings);
     ASSERT_EQ(clip.tracks.size(), 1u);
     const ClipKey& first = clip.tracks[0].keys[0];
     EXPECT_NEAR(first.value[3], 1.0f, 1e-6f);
@@ -1089,7 +1089,7 @@ TEST(ModelSubClips, MergedFlagOnASingleMeshModelStillSwitches){
     Model model(&scene);
     const Entity root = model.getEntity();
     scene.getComponent<ModelComponent>(root).mergeStaticMeshes = true;
-    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(root, fixturePath("hero_tpose.gltf"), false, false, false));
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(root, modelSubClipsFixturePath("hero_tpose.gltf"), false, false, false));
     EXPECT_TRUE(scene.getComponent<ModelComponent>(root).nodesIdMapping.empty());
     EXPECT_FALSE(scene.getSystem<MeshSystem>()->needsNodeHierarchyReload(root));
     scene.addComponent<AnimationPlayerComponent>(root, {});

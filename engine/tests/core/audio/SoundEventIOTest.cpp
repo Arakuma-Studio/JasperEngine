@@ -46,14 +46,14 @@ namespace {
   "type": "footstep"
 })";
 
-    SoundEventDef parseOk(const std::string& text) {
+    SoundEventDef soundEventIOParseOk(const std::string& text) {
         SoundEventDef def;
         std::string error;
         EXPECT_TRUE(SoundEventIO::parse(text, def, &error)) << error;
         return def;
     }
 
-    std::string parseError(const std::string& text) {
+    std::string soundEventIOParseError(const std::string& text) {
         SoundEventDef def;
         std::string error;
         EXPECT_FALSE(SoundEventIO::parse(text, def, &error));
@@ -71,7 +71,7 @@ namespace {
         return def;
     }
 
-    bool hasProblem(const SoundEventDef& def, const std::string& prefix) {
+    bool soundEventIOHasProblem(const SoundEventDef& def, const std::string& prefix) {
         for (const std::string& problem : SoundEventIO::validate(def)) {
             if (problem.rfind(prefix, 0) == 0) return true;
         }
@@ -88,7 +88,7 @@ namespace {
 }
 
 TEST(SoundEventIO, ExampleReads) {
-    const SoundEventDef def = parseOk(exampleEvent);
+    const SoundEventDef def = soundEventIOParseOk(exampleEvent);
     EXPECT_EQ(def.mode, SoundEventMode::Shuffle);
     ASSERT_EQ(def.clips.size(), 2u);
     EXPECT_EQ(def.clips[0].clip.path, "sounds/step_1.wav");
@@ -112,15 +112,15 @@ TEST(SoundEventIO, ExampleReads) {
 }
 
 TEST(SoundEventIO, RoundTripInKeyOrderDefaultsOmitted) {
-    const SoundEventDef def = parseOk(exampleEvent);
+    const SoundEventDef def = soundEventIOParseOk(exampleEvent);
     const std::string written = SoundEventIO::write(def);
     // avoid_repeat, steal, priority and loop are at their defaults
     const std::vector<std::string> expected = {"format", "version", "mode", "clips", "pitch_semitones", "volume_db", "delay_ms",
                                                "output", "max_instances", "cooldown_ms", "spatial", "type"};
     EXPECT_EQ(topKeys(written), expected);
-    EXPECT_EQ(parseOk(written), def);
+    EXPECT_EQ(soundEventIOParseOk(written), def);
     // writing again changes nothing
-    EXPECT_EQ(SoundEventIO::write(parseOk(written)), written);
+    EXPECT_EQ(SoundEventIO::write(soundEventIOParseOk(written)), written);
     // the clip's defaults are left out too, LF and two spaces
     const nlohmann::json root = nlohmann::json::parse(written);
     EXPECT_FALSE(root["clips"][0].contains("pitch_semitones"));
@@ -158,7 +158,7 @@ TEST(SoundEventIO, ShortestFloatsWritten) {
 }
 
 TEST(SoundEventIO, UnknownKeysKept) {
-    const std::string written = SoundEventIO::write(parseOk(R"({
+    const std::string written = SoundEventIO::write(soundEventIOParseOk(R"({
         "format": "jasperengine.soundevent", "version": 1, "mode": "sequence", "future": {"a": [1, 2]},
         "clips": [{"clip": {"path": "a.wav"}, "loops": 3}], "other": "x"})"));
     const nlohmann::json root = nlohmann::json::parse(written);
@@ -171,37 +171,37 @@ TEST(SoundEventIO, UnknownKeysKept) {
 }
 
 TEST(SoundEventIO, ParseErrorsNameTheirPath) {
-    EXPECT_NE(parseError("{").find("not valid JSON"), std::string::npos);
-    EXPECT_EQ(parseError("[]").rfind("$:", 0), 0u);
-    EXPECT_EQ(parseError(R"({"format": "x"})").rfind("format:", 0), 0u);
+    EXPECT_NE(soundEventIOParseError("{").find("not valid JSON"), std::string::npos);
+    EXPECT_EQ(soundEventIOParseError("[]").rfind("$:", 0), 0u);
+    EXPECT_EQ(soundEventIOParseError(R"({"format": "x"})").rfind("format:", 0), 0u);
     const std::string head = R"("format": "jasperengine.soundevent", "version": 1)";
-    EXPECT_EQ(parseError("{" + head + R"(, "mode": "loud", "clips": []})").rfind("mode:", 0), 0u);
-    EXPECT_EQ(parseError("{" + head + R"(, "mode": "random"})").rfind("clips:", 0), 0u);
-    EXPECT_EQ(parseError("{" + head + R"(, "mode": "random", "clips": [{"clip": {"path": "a"}}, {}]})").rfind("clips[1].clip:", 0), 0u);
-    EXPECT_EQ(parseError("{" + head + R"(, "mode": "random", "clips": [{"clip": {"path": "a", "guid": "zz"}}]})").rfind("clips[0].clip.guid:", 0), 0u);
-    EXPECT_EQ(parseError("{" + head + R"(, "mode": "random", "clips": [{"clip": {"path": "a"}, "weight": "x"}]})").rfind("clips[0].weight:", 0), 0u);
-    EXPECT_EQ(parseError("{" + head + R"(, "mode": "random", "clips": [], "pitch_semitones": [1]})").rfind("pitch_semitones:", 0), 0u);
-    EXPECT_EQ(parseError("{" + head + R"(, "mode": "random", "clips": [], "output": 1})").rfind("output:", 0), 0u);
-    EXPECT_EQ(parseError("{" + head + R"(, "mode": "random", "clips": [], "steal": "all"})").rfind("steal:", 0), 0u);
-    EXPECT_EQ(parseError("{" + head + R"(, "mode": "random", "clips": [], "spatial": {"attenuation": "x"}})").rfind("spatial.attenuation:", 0), 0u);
+    EXPECT_EQ(soundEventIOParseError("{" + head + R"(, "mode": "loud", "clips": []})").rfind("mode:", 0), 0u);
+    EXPECT_EQ(soundEventIOParseError("{" + head + R"(, "mode": "random"})").rfind("clips:", 0), 0u);
+    EXPECT_EQ(soundEventIOParseError("{" + head + R"(, "mode": "random", "clips": [{"clip": {"path": "a"}}, {}]})").rfind("clips[1].clip:", 0), 0u);
+    EXPECT_EQ(soundEventIOParseError("{" + head + R"(, "mode": "random", "clips": [{"clip": {"path": "a", "guid": "zz"}}]})").rfind("clips[0].clip.guid:", 0), 0u);
+    EXPECT_EQ(soundEventIOParseError("{" + head + R"(, "mode": "random", "clips": [{"clip": {"path": "a"}, "weight": "x"}]})").rfind("clips[0].weight:", 0), 0u);
+    EXPECT_EQ(soundEventIOParseError("{" + head + R"(, "mode": "random", "clips": [], "pitch_semitones": [1]})").rfind("pitch_semitones:", 0), 0u);
+    EXPECT_EQ(soundEventIOParseError("{" + head + R"(, "mode": "random", "clips": [], "output": 1})").rfind("output:", 0), 0u);
+    EXPECT_EQ(soundEventIOParseError("{" + head + R"(, "mode": "random", "clips": [], "steal": "all"})").rfind("steal:", 0), 0u);
+    EXPECT_EQ(soundEventIOParseError("{" + head + R"(, "mode": "random", "clips": [], "spatial": {"attenuation": "x"}})").rfind("spatial.attenuation:", 0), 0u);
 }
 
 TEST(SoundEventIO, NewerVersionRefused) {
-    const std::string error = parseError(R"({"format": "jasperengine.soundevent", "version": 2, "mode": "random", "clips": []})");
+    const std::string error = soundEventIOParseError(R"({"format": "jasperengine.soundevent", "version": 2, "mode": "random", "clips": []})");
     EXPECT_EQ(error.rfind("version:", 0), 0u);
     EXPECT_NE(error.find("(1)"), std::string::npos) << "names the version it reads: " << error;
 }
 
 TEST(SoundEventIO, ValidationNamesEveryPath) {
     EXPECT_TRUE(SoundEventIO::validate(clips(1)).empty());
-    EXPECT_TRUE(hasProblem(clips(0), "clips:"));
-    EXPECT_TRUE(hasProblem(clips(65), "clips:"));
+    EXPECT_TRUE(soundEventIOHasProblem(clips(0), "clips:"));
+    EXPECT_TRUE(soundEventIOHasProblem(clips(65), "clips:"));
     EXPECT_TRUE(SoundEventIO::validate(clips(64)).empty());
 
     auto clipProblem = [](auto set, const std::string& path) {
         SoundEventDef def = clips(2);
         set(def.clips[1]);
-        return hasProblem(def, path);
+        return soundEventIOHasProblem(def, path);
     };
     EXPECT_TRUE(clipProblem([](SoundEventClip& c) { c.weight = -1; }, "clips[1].weight"));
     EXPECT_TRUE(clipProblem([](SoundEventClip& c) { c.weight = 1001; }, "clips[1].weight"));
@@ -214,14 +214,14 @@ TEST(SoundEventIO, ValidationNamesEveryPath) {
     SoundEventDef weightless = clips(2);
     weightless.clips[0].weight = 0;
     weightless.clips[1].weight = 0;
-    EXPECT_TRUE(hasProblem(weightless, "clips:"));
+    EXPECT_TRUE(soundEventIOHasProblem(weightless, "clips:"));
     weightless.mode = SoundEventMode::Sequence;
     EXPECT_TRUE(SoundEventIO::validate(weightless).empty()) << "weights are random mode's";
 
     auto problem = [](auto set, const std::string& path) {
         SoundEventDef def = clips(1);
         set(def);
-        return hasProblem(def, path);
+        return soundEventIOHasProblem(def, path);
     };
     EXPECT_TRUE(problem([](SoundEventDef& d) { d.pitchMin = -25; }, "pitch_semitones"));
     EXPECT_TRUE(problem([](SoundEventDef& d) { d.pitchMin = 2; d.pitchMax = 1; }, "pitch_semitones"));
@@ -237,7 +237,7 @@ TEST(SoundEventIO, ValidationNamesEveryPath) {
         SoundEventDef def = clips(1);
         def.spatial = SoundEventSpatial();
         set(*def.spatial);
-        return hasProblem(def, path);
+        return soundEventIOHasProblem(def, path);
     };
     EXPECT_TRUE(spatial([](SoundEventSpatial& s) { s.minDistance = 0; }, "spatial.min_distance"));
     EXPECT_TRUE(spatial([](SoundEventSpatial& s) { s.minDistance = 5; s.maxDistance = 4; }, "spatial.max_distance"));

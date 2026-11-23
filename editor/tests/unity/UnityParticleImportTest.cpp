@@ -37,30 +37,30 @@ using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::particles;
 namespace fs = std::filesystem;
-using Json = nlohmann::json;
+using ImportJson = nlohmann::json;
 
 namespace {
 
     const fs::path UNITY = fs::path(JASPER_TEST_FIXTURES_DIR) / "unity-particles" / "Project";
-    constexpr float DEG = 57.29577951308232f;   // a Unity radian in S20's degrees
+    constexpr float UNITY_PARTICLE_IMPORT_DEG = 57.29577951308232f;   // a Unity radian in S20's degrees
 
     // an empty engine project folder, removed at the end
-    struct TempProject {
+    struct UnityParticleImportTempProject {
         fs::path root;
-        TempProject() {
+        UnityParticleImportTempProject() {
             static std::atomic<int> counter{0};
             std::random_device rd;
             root = fs::temp_directory_path() / ("jasper-unity-import-" + std::to_string(rd()) + "-" + std::to_string(counter++));
             fs::create_directories(root);
             std::ofstream(root / "project.yaml") << "name: test\n";
         }
-        ~TempProject() {
+        ~UnityParticleImportTempProject() {
             std::error_code ec;
             fs::remove_all(root, ec);
         }
     };
 
-    unity::ImportResult importFile(const TempProject& project, const fs::path& file, const std::string& object = "", bool dryRun = false) {
+    unity::ImportResult importFile(const UnityParticleImportTempProject& project, const fs::path& file, const std::string& object = "", bool dryRun = false) {
         unity::ImportOptions options;
         options.file = UNITY / file;
         options.engineProject = project.root;
@@ -93,24 +93,24 @@ namespace {
         return member["components"][Catalog::getComponentName(type, true)];
     }
 
-    ParticleSystemComponent componentOf(const YAML::Node& member) {
+    ParticleSystemComponent unityParticleImportComponentOf(const YAML::Node& member) {
         return Stream::decodeParticleSystemComponent(component(member, ComponentType::ParticleSystemComponent));
     }
 
     // the system's inline effect (the importer writes no .particles asset)
-    ParticleEffectDocument systemOf(const YAML::Node& member) {
-        return componentOf(member).inlineEffect;
+    ParticleEffectDocument unityParticleImportSystemOf(const YAML::Node& member) {
+        return unityParticleImportComponentOf(member).inlineEffect;
     }
 
-    const Json* systemReport(const Json& report, const std::string& path) {
-        for (const Json& system : report["systems"]) {
+    const ImportJson* systemReport(const ImportJson& report, const std::string& path) {
+        for (const ImportJson& system : report["systems"]) {
             if (system["path"] == path) return &system;
         }
         return nullptr;
     }
 
-    bool hasNote(const Json& system, const std::string& code) {
-        for (const Json& note : system["notes"]) {
+    bool hasNote(const ImportJson& system, const std::string& code) {
+        for (const ImportJson& note : system["notes"]) {
             if (note["code"] == code) return true;
         }
         return false;
@@ -164,7 +164,7 @@ namespace {
 }
 
 TEST(UnityParticleImportTest, PrefabSystemValues) {
-    TempProject project;
+    UnityParticleImportTempProject project;
     const unity::ImportResult result = importFile(project, "Assets/Fx/Flame.prefab");
     ASSERT_TRUE(result.ok) << result.error;
     ASSERT_EQ(result.prefabs.size(), 1u);
@@ -183,7 +183,7 @@ TEST(UnityParticleImportTest, PrefabSystemValues) {
     EXPECT_NEAR(transform.rotation.w, 0.70710677f, 1e-5f);
     EXPECT_NEAR(transform.rotation.y, -0.70710677f, 1e-5f);
 
-    const ParticleSystemComponent flameSystem = componentOf(flame);
+    const ParticleSystemComponent flameSystem = unityParticleImportComponentOf(flame);
     const ParticleEffectDocument ps = flameSystem.inlineEffect;
     EXPECT_TRUE(flameSystem.effect.path.empty()) << "an inline effect";
     EXPECT_FLOAT_EQ(ps.duration, 2.0f);
@@ -207,8 +207,8 @@ TEST(UnityParticleImportTest, PrefabSystemValues) {
     EXPECT_FLOAT_EQ(ps.main.startSize.multiplier, 2.0f);
     EXPECT_NEAR(ps.main.startSize.curve.evaluate(0.0f), 0.5f, 1e-5f);
     // radians to degrees; the roll's sign changes (left handed view)
-    EXPECT_NEAR(ps.main.startRotation.constant, 1.0f * DEG, 1e-3f);
-    EXPECT_NEAR(ps.main.startRotation.constantMax, -1.0f * DEG, 1e-3f);
+    EXPECT_NEAR(ps.main.startRotation.constant, 1.0f * UNITY_PARTICLE_IMPORT_DEG, 1e-3f);
+    EXPECT_NEAR(ps.main.startRotation.constantMax, -1.0f * UNITY_PARTICLE_IMPORT_DEG, 1e-3f);
     EXPECT_FLOAT_EQ(ps.main.flipRotation, 0.5f);
     EXPECT_FLOAT_EQ(ps.main.gravityModifier.constant, 0.2f);
 
@@ -248,7 +248,7 @@ TEST(UnityParticleImportTest, PrefabSystemValues) {
     ASSERT_TRUE(ps.velocityOverLifetime.present && ps.velocityOverLifetime.enabled);
     EXPECT_FLOAT_EQ(ps.velocityOverLifetime.x.constant, -1.0f);
     EXPECT_FLOAT_EQ(ps.velocityOverLifetime.x.constantMax, -2.0f);
-    EXPECT_NEAR(ps.velocityOverLifetime.orbitalY.constant, -0.5f * DEG, 1e-3f);
+    EXPECT_NEAR(ps.velocityOverLifetime.orbitalY.constant, -0.5f * UNITY_PARTICLE_IMPORT_DEG, 1e-3f);
     EXPECT_EQ(ps.velocityOverLifetime.space, ValueSpace::Local);
     ASSERT_TRUE(ps.forceOverLifetime.enabled);
     EXPECT_FLOAT_EQ(ps.forceOverLifetime.y.constant, -5.0f);
@@ -284,8 +284,8 @@ TEST(UnityParticleImportTest, PrefabSystemValues) {
     EXPECT_EQ(prefab["version"].as<int>(), Prefab::FILE_VERSION);
 
     // the report
-    const Json& report = result.report;
-    const Json* root = systemReport(report, "Flame");
+    const ImportJson& report = result.report;
+    const ImportJson* root = systemReport(report, "Flame");
     ASSERT_NE(root, nullptr) << report.dump(2);
     EXPECT_EQ((*root)["engine_entity"], "assets/fx/Flame.prefab:Flame");
     EXPECT_EQ((*root)["modules"]["InitialModule"], "imported");
@@ -305,32 +305,32 @@ TEST(UnityParticleImportTest, PrefabSystemValues) {
 // compare as Unity's 32 bits: the renderer's -1110369953 is TagManager's uniqueID 3184597343
 TEST(UnityParticleImportTest, SortingLayerByName) {
     SortingLayers::setLayers({{DEFAULT_SORTING_LAYER_ID, "Default"}, {5, "FX"}});
-    TempProject project;
+    UnityParticleImportTempProject project;
     const unity::ImportResult result = importFile(project, "Assets/Fx/Flame.prefab");
     SortingLayers::reset();
     ASSERT_TRUE(result.ok) << result.error;
     const YAML::Node prefab = YAML::LoadFile((project.root / result.prefabs[0]).string());
-    const ParticleSystemComponent flame = componentOf(findMember(prefab["members"], "Flame"));
+    const ParticleSystemComponent flame = unityParticleImportComponentOf(findMember(prefab["members"], "Flame"));
     EXPECT_EQ(flame.sortingLayer, 5);
     EXPECT_EQ(flame.sortingOrder, 2);
-    const ParticleSystemComponent smoke = componentOf(findMember(prefab["members"], "Smoke"));
+    const ParticleSystemComponent smoke = unityParticleImportComponentOf(findMember(prefab["members"], "Smoke"));
     EXPECT_EQ(smoke.sortingLayer, 0);
-    const Json* smokeReport = systemReport(result.report, "Flame/Smoke");
+    const ImportJson* smokeReport = systemReport(result.report, "Flame/Smoke");
     ASSERT_NE(smokeReport, nullptr) << result.report.dump(2);
     EXPECT_TRUE(hasNote(*smokeReport, "sorting-layer-missing")) << smokeReport->dump(2);
-    const Json* flameReport = systemReport(result.report, "Flame");
+    const ImportJson* flameReport = systemReport(result.report, "Flame");
     ASSERT_NE(flameReport, nullptr);
     EXPECT_FALSE(hasNote(*flameReport, "sorting-layer-missing"));
 }
 
 TEST(UnityParticleImportTest, ChildSystemMeshAndUnsupportedModules) {
-    TempProject project;
+    UnityParticleImportTempProject project;
     const unity::ImportResult result = importFile(project, "Assets/Fx/Flame.prefab");
     ASSERT_TRUE(result.ok) << result.error;
     const YAML::Node prefab = YAML::LoadFile((project.root / result.prefabs[0]).string());
     const YAML::Node smoke = findMember(prefab["members"], "Smoke");
     ASSERT_TRUE(smoke.IsMap());
-    const ParticleEffectDocument ps = systemOf(smoke);
+    const ParticleEffectDocument ps = unityParticleImportSystemOf(smoke);
     EXPECT_EQ(ps.simulationSpace, SimulationSpace::Local);
     EXPECT_EQ(ps.shape.shape, ShapeType::Sphere);
     EXPECT_EQ(ps.renderer.renderMode, RenderMode::Mesh);
@@ -345,7 +345,7 @@ TEST(UnityParticleImportTest, ChildSystemMeshAndUnsupportedModules) {
     const Transform transform = Stream::decodeTransform(component(smoke, ComponentType::Transform));
     EXPECT_FLOAT_EQ(transform.position.y, 1.0f);
 
-    const Json* system = systemReport(result.report, "Flame/Smoke");
+    const ImportJson* system = systemReport(result.report, "Flame/Smoke");
     ASSERT_NE(system, nullptr) << result.report.dump(2);
     EXPECT_EQ((*system)["modules"]["SubModule"], "unsupported");
     EXPECT_EQ((*system)["modules"]["CollisionModule"], "disabled");
@@ -354,14 +354,14 @@ TEST(UnityParticleImportTest, ChildSystemMeshAndUnsupportedModules) {
 }
 
 TEST(UnityParticleImportTest, MaterialsAndTextures) {
-    TempProject project;
+    UnityParticleImportTempProject project;
     const unity::ImportResult result = importFile(project, "Assets/Fx/Flame.prefab");
     ASSERT_TRUE(result.ok) << result.error;
     const YAML::Node prefab = YAML::LoadFile((project.root / result.prefabs[0]).string());
 
     // the custom shader "Custom/Fire Additive (Soft)" (Blend SrcAlpha One): additive, soft, its
     // texture, in the flame's Renderer module (no .material file)
-    const RendererModule fire = systemOf(findMember(prefab["members"], "Flame")).renderer;
+    const RendererModule fire = unityParticleImportSystemOf(findMember(prefab["members"], "Flame")).renderer;
     EXPECT_EQ(fire.shader, "library:particles");
     EXPECT_EQ(fire.blend, ParticleBlend::Additive);
     EXPECT_NE(std::find(fire.shaderFeatures.begin(), fire.shaderFeatures.end(), "SOFT"), fire.shaderFeatures.end());
@@ -382,18 +382,18 @@ TEST(UnityParticleImportTest, MaterialsAndTextures) {
     stbi_image_free(pixels);
 
     // the smoke: Mobile/Particles/Alpha Blended with the default particle texture (S20's soft disc)
-    const RendererModule smoke = systemOf(findMember(prefab["members"], "Smoke")).renderer;
+    const RendererModule smoke = unityParticleImportSystemOf(findMember(prefab["members"], "Smoke")).renderer;
     EXPECT_EQ(smoke.blend, ParticleBlend::Alpha);
     EXPECT_TRUE(smoke.texture.empty());
     EXPECT_EQ(smoke.untexturedShape, UntexturedShape::Disc);
 
     bool alpha8 = false;
-    for (const Json& texture : result.report["textures"]) alpha8 = alpha8 || texture.value("alpha8", false);
+    for (const ImportJson& texture : result.report["textures"]) alpha8 = alpha8 || texture.value("alpha8", false);
     EXPECT_TRUE(alpha8);
 }
 
 TEST(UnityParticleImportTest, ShapeAxes) {
-    TempProject project;
+    UnityParticleImportTempProject project;
     const unity::ImportResult result = importFile(project, "Assets/Fx/Shapes.prefab");
     ASSERT_TRUE(result.ok) << result.error;
     const YAML::Node members = YAML::LoadFile((project.root / result.prefabs[0]).string())["members"];
@@ -401,39 +401,39 @@ TEST(UnityParticleImportTest, ShapeAxes) {
               std::vector<std::string>({"Up", "NoShape", "Box", "MeshShape", "Donut", "Hemi", "EdgeUp"}));
 
     // a cone along Unity's +Z rotated (-90, 0, 0) emits up: the engine's +Y
-    const Vector3 up = meanDirection(systemOf(findMember(members, "Up")));
+    const Vector3 up = meanDirection(unityParticleImportSystemOf(findMember(members, "Up")));
     EXPECT_NEAR(up.y, 1.0f, 1e-3f) << up.x << " " << up.y << " " << up.z;
     // no shape: Unity's +Z, the engine's +Z (S mirrors x only)
-    const ParticleEffectDocument none = systemOf(findMember(members, "NoShape"));
+    const ParticleEffectDocument none = unityParticleImportSystemOf(findMember(members, "NoShape"));
     EXPECT_TRUE(none.shape.enabled);
     const Vector3 forward = meanDirection(none);
     EXPECT_NEAR(forward.z, 1.0f, 1e-3f) << forward.x << " " << forward.y << " " << forward.z;
     // a hemisphere faces Unity's +Z
-    EXPECT_GT(meanDirection(systemOf(findMember(members, "Hemi")), 2000).z, 0.3f);
+    EXPECT_GT(meanDirection(unityParticleImportSystemOf(findMember(members, "Hemi")), 2000).z, 0.3f);
     // an edge emits along its +Y in both
-    const Vector3 edge = meanDirection(systemOf(findMember(members, "EdgeUp")));
+    const Vector3 edge = meanDirection(unityParticleImportSystemOf(findMember(members, "EdgeUp")));
     EXPECT_NEAR(edge.y, 1.0f, 1e-3f) << edge.x << " " << edge.y << " " << edge.z;
 
     // box: scale and thickness (x, z, y)
-    const ParticleEffectDocument box = systemOf(findMember(members, "Box"));
+    const ParticleEffectDocument box = unityParticleImportSystemOf(findMember(members, "Box"));
     EXPECT_EQ(box.shape.shape, ShapeType::Box);
     EXPECT_EQ(box.shape.emitFrom, ShapeEmitFrom::Volume);
     EXPECT_FLOAT_EQ(box.shape.scale.y, 3.0f);
     EXPECT_FLOAT_EQ(box.shape.scale.z, 2.0f);
     EXPECT_FLOAT_EQ(box.shape.boxThickness.y, 0.3f);
     // donut: radius mode Loop and its spread
-    const ParticleEffectDocument donut = systemOf(findMember(members, "Donut"));
+    const ParticleEffectDocument donut = unityParticleImportSystemOf(findMember(members, "Donut"));
     EXPECT_EQ(donut.shape.shape, ShapeType::Donut);
     EXPECT_FLOAT_EQ(donut.shape.donutRadius, 0.3f);
     EXPECT_EQ(donut.shape.radiusMode, ShapeMultiMode::Loop);
     EXPECT_FLOAT_EQ(donut.shape.radiusSpread, 0.25f);
     // hemisphere: shell (thickness 0), arc ping-pong, aligned to direction
-    const ParticleEffectDocument hemi = systemOf(findMember(members, "Hemi"));
+    const ParticleEffectDocument hemi = unityParticleImportSystemOf(findMember(members, "Hemi"));
     EXPECT_FLOAT_EQ(hemi.shape.radiusThickness, 0.0f);
     EXPECT_EQ(hemi.shape.arcMode, ShapeMultiMode::PingPong);
     EXPECT_TRUE(hemi.shape.alignToDirection);
 
-    const Json* mesh = systemReport(result.report, "Shapes/MeshShape");
+    const ImportJson* mesh = systemReport(result.report, "Shapes/MeshShape");
     ASSERT_NE(mesh, nullptr);
     EXPECT_TRUE(hasNote(*mesh, "shape-unsupported"));
     EXPECT_EQ((*systemReport(result.report, "Shapes/NoShape"))["modules"]["ShapeModule"], "disabled");
@@ -463,7 +463,7 @@ TEST(UnityParticleImportTest, ConvertShapeRotation) {
 }
 
 TEST(UnityParticleImportTest, SceneInstanceWithModifications) {
-    TempProject project;
+    UnityParticleImportTempProject project;
     const unity::ImportResult result = importFile(project, "Assets/Scenes/Level.unity");
     ASSERT_TRUE(result.ok) << result.error;
     // the topmost GameObjects with a system: the (renamed) instance and the canvas' confetti
@@ -480,7 +480,7 @@ TEST(UnityParticleImportTest, SceneInstanceWithModifications) {
     EXPECT_FALSE(findMember(members, "Smoke").IsMap());
     // m_Materials.Array.data[0] overridden by an object reference: the Smoke material (alpha
     // blended, the default particle texture) instead of the additive flame
-    const ParticleEffectDocument ps = systemOf(flame);
+    const ParticleEffectDocument ps = unityParticleImportSystemOf(flame);
     EXPECT_EQ(ps.renderer.blend, ParticleBlend::Alpha);
     EXPECT_TRUE(ps.renderer.texture.empty());
     EXPECT_FLOAT_EQ(ps.main.startSize.multiplier, 4.0f);
@@ -491,24 +491,24 @@ TEST(UnityParticleImportTest, SceneInstanceWithModifications) {
     // the auto destruct script was removed in the scene
     EXPECT_EQ(ps.stopAction, StopAction::None);
 
-    const ParticleEffectDocument attached = systemOf(findMember(members, "Attached"));
+    const ParticleEffectDocument attached = unityParticleImportSystemOf(findMember(members, "Attached"));
     EXPECT_EQ(attached.shape.shape, ShapeType::Edge);
     EXPECT_EQ(attached.renderer.renderMode, RenderMode::StretchedBillboard);
     EXPECT_FLOAT_EQ(attached.renderer.lengthScale, 3.0f);
 
     bool unknown = false;
-    for (const Json& warning : result.report["warnings"]) {
+    for (const ImportJson& warning : result.report["warnings"]) {
         unknown = unknown || warning.get<std::string>().find("NotAModule.value") != std::string::npos;
         EXPECT_EQ(warning.get<std::string>().find("m_LocalEulerAnglesHint"), std::string::npos);
     }
     EXPECT_TRUE(unknown) << result.report.dump(2);
 
     // the confetti: a UI particle, its PSD texture reported
-    const Json* confetti = systemReport(result.report, "Canvas/Confetti");
+    const ImportJson* confetti = systemReport(result.report, "Canvas/Confetti");
     ASSERT_NE(confetti, nullptr);
     EXPECT_TRUE(hasNote(*confetti, "ui-particle"));
     EXPECT_TRUE(hasNote(*confetti, "texture-format"));
-    const ParticleSystemComponent confettiPs = componentOf(findMember(YAML::LoadFile((project.root / result.prefabs[1]).string())["members"], "Confetti"));
+    const ParticleSystemComponent confettiPs = unityParticleImportComponentOf(findMember(YAML::LoadFile((project.root / result.prefabs[1]).string())["members"], "Confetti"));
     EXPECT_FALSE(confettiPs.playOnAwake);
     EXPECT_FALSE(confettiPs.inlineEffect.looping);
     ASSERT_EQ(confettiPs.inlineEffect.emission.bursts.size(), 1u);
@@ -516,7 +516,7 @@ TEST(UnityParticleImportTest, SceneInstanceWithModifications) {
 }
 
 TEST(UnityParticleImportTest, SelectObjectNumberedNamesAndDryRun) {
-    TempProject project;
+    UnityParticleImportTempProject project;
     // dry run: the report, no file
     const unity::ImportResult dry = importFile(project, "Assets/Fx/Shapes.prefab", "Shapes/Up", true);
     ASSERT_TRUE(dry.ok) << dry.error;
@@ -546,13 +546,13 @@ namespace {
 
     RendererModule rendererOf(const YAML::Node& members, const std::string& name) {
         const YAML::Node member = findMember(members, name);
-        return member.IsMap() ? systemOf(member).renderer : RendererModule();
+        return member.IsMap() ? unityParticleImportSystemOf(member).renderer : RendererModule();
     }
 
 }
 
 TEST(UnityParticleImportTest, ShaderBlendsAndSharedAssets) {
-    TempProject project;
+    UnityParticleImportTempProject project;
     unity::ImportOptions options;
     options.file = UNITY / "Assets/Fx/Materials.prefab";
     options.engineProject = project.root;
@@ -590,13 +590,13 @@ TEST(UnityParticleImportTest, ShaderBlendsAndSharedAssets) {
     bool hiddenTwin = false;
     for (const YAML::Node& child : findMember(members, "Materials")["children"]) {
         if (child["name"].as<std::string>() != "Twin") continue;
-        hiddenTwin = hiddenTwin || !systemOf(child).renderer.enabled;
+        hiddenTwin = hiddenTwin || !unityParticleImportSystemOf(child).renderer.enabled;
     }
     EXPECT_TRUE(hiddenTwin);
 }
 
 TEST(UnityParticleImportTest, ObjectPickingByPathThenUniqueName) {
-    TempProject project;
+    UnityParticleImportTempProject project;
     // an exact path wins
     const unity::ImportResult byPath = importFile(project, "Assets/Fx/Flame.prefab", "Flame/Smoke", true);
     ASSERT_TRUE(byPath.ok) << byPath.error;
@@ -609,21 +609,21 @@ TEST(UnityParticleImportTest, ObjectPickingByPathThenUniqueName) {
 }
 
 TEST(UnityParticleImportTest, NestedPrefabInstances) {
-    TempProject project;
+    UnityParticleImportTempProject project;
     const unity::ImportResult result = importFile(project, "Assets/Scenes/Nested.unity");
     ASSERT_TRUE(result.ok) << result.error;
     ASSERT_EQ(result.prefabs.size(), 1u) << result.report.dump(2);
     // Rig (no system) holds the Flame instance: that is the topmost system, renamed by Rig
     EXPECT_EQ(result.prefabs[0], "assets/fx/NestedFlame.prefab");
     const YAML::Node members = YAML::LoadFile((project.root / result.prefabs[0]).string())["members"];
-    const ParticleEffectDocument ps = systemOf(findMember(members, "NestedFlame"));
+    const ParticleEffectDocument ps = unityParticleImportSystemOf(findMember(members, "NestedFlame"));
     EXPECT_FLOAT_EQ(ps.main.startSpeed.constant, 9.0f) << "Rig's modification of its nested instance";
     EXPECT_FLOAT_EQ(ps.emission.rateOverTime.constant, 33.0f) << "the scene's modification of the nested object";
     EXPECT_EQ(childNames(findMember(members, "NestedFlame")), std::vector<std::string>({"Smoke"}));
 }
 
 TEST(UnityParticleImportTest, MalformedFileFailsCleanly) {
-    TempProject project;
+    UnityParticleImportTempProject project;
     const unity::ImportResult result = importFile(project, "Assets/Fx/Broken.prefab");
     EXPECT_FALSE(result.ok);
     EXPECT_FALSE(result.error.empty());

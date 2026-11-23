@@ -23,7 +23,7 @@ namespace {
         return fs::path(__FILE__).parent_path().parent_path().parent_path().parent_path().parent_path();
     }
 
-    std::string readFile(const fs::path& path) {
+    std::string terrainOpsDepsReadFile(const fs::path& path) {
         std::ifstream file(path);
         std::stringstream text;
         text << file.rdbuf();
@@ -50,7 +50,7 @@ TEST(TerrainOpsDeps, NoEcsOrRenderIncludes) {
     for (const auto& entry : fs::recursive_directory_iterator(folder)) {
         if (!entry.is_regular_file() || !isSource(entry.path())) continue;
         files++;
-        const std::string text = readFile(entry.path());
+        const std::string text = terrainOpsDepsReadFile(entry.path());
         for (auto it = std::sregex_iterator(text.begin(), text.end(), include); it != std::sregex_iterator(); ++it) {
             const std::string name = (*it)[1].str();
             bool allowed = allowedFiles.count(name) > 0;
@@ -75,7 +75,7 @@ TEST(TerrainOpsDeps, OneQuery) {
             const std::string generic = entry.path().generic_string();
             if (generic.find("engine/core/terrain/") != std::string::npos) continue;
             scanned++;
-            const std::string text = readFile(entry.path());
+            const std::string text = terrainOpsDepsReadFile(entry.path());
             for (const std::string& name : gone) {
                 EXPECT_EQ(text.find(name), std::string::npos) << generic << " still has " << name;
             }
@@ -93,7 +93,7 @@ TEST(TerrainOpsDeps, OldWritersAreGone) {
     for (const auto& entry : fs::recursive_directory_iterator(root)) {
         if (!entry.is_regular_file() || !isSource(entry.path())) continue;
         scanned++;
-        const std::string text = readFile(entry.path());
+        const std::string text = terrainOpsDepsReadFile(entry.path());
         for (const std::string& name : gone) {
             EXPECT_EQ(text.find(name), std::string::npos) << entry.path().generic_string() << " still has " << name;
         }
@@ -109,7 +109,7 @@ TEST(TerrainOpsDeps, NoNondeterminismInTheFolder) {
         "std::sin(", "std::cos(", "std::tan(", "std::pow(", "std::exp(", "std::log(", "std::acos(", "std::atan"};
     for (const auto& entry : fs::recursive_directory_iterator(folder)) {
         if (!entry.is_regular_file() || !isSource(entry.path())) continue;
-        const std::string text = readFile(entry.path());
+        const std::string text = terrainOpsDepsReadFile(entry.path());
         for (const std::string& name : banned) {
             EXPECT_EQ(text.find(name), std::string::npos) << entry.path().filename() << " uses " << name;
         }
@@ -117,12 +117,12 @@ TEST(TerrainOpsDeps, NoNondeterminismInTheFolder) {
 }
 
 TEST(TerrainOpsDeps, TheFolderBuildsWithoutContraction) {
-    const std::string cmake = readFile(repositoryRoot() / "engine" / "CMakeLists.txt");
+    const std::string cmake = terrainOpsDepsReadFile(repositoryRoot() / "engine" / "CMakeLists.txt");
     EXPECT_NE(cmake.find("include(core/terrain/TerrainSources.cmake)"), std::string::npos);
     EXPECT_NE(cmake.find("JASPERENGINE_TERRAIN_SRCS} PROPERTIES COMPILE_OPTIONS \"-ffp-contract=off\""), std::string::npos);
 
     // Every source of the folder is in the list that gets the flag
-    const std::string sources = readFile(repositoryRoot() / "engine" / "core" / "terrain" / "TerrainSources.cmake");
+    const std::string sources = terrainOpsDepsReadFile(repositoryRoot() / "engine" / "core" / "terrain" / "TerrainSources.cmake");
     for (const auto& entry : fs::directory_iterator(repositoryRoot() / "engine" / "core" / "terrain")) {
         if (entry.path().extension() == ".cpp") {
             EXPECT_NE(sources.find(entry.path().filename().string()), std::string::npos) << entry.path().filename();

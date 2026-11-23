@@ -35,13 +35,13 @@ using jasperengine::test::GpuEnvironment;
 
 namespace {
 
-    using Clock = std::chrono::steady_clock;
+    using ProcMatBudgetsClock = std::chrono::steady_clock;
 
-    double msSince(Clock::time_point start) {
-        return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+    double procMatBudgetsMsSince(ProcMatBudgetsClock::time_point start) {
+        return std::chrono::duration<double, std::milli>(ProcMatBudgetsClock::now() - start).count();
     }
 
-    double percentile(std::vector<double> values, double share) {
+    double procMatBudgetsPercentile(std::vector<double> values, double share) {
         if (values.empty()) return 0.0;
         std::sort(values.begin(), values.end());
         return values[std::min(values.size() - 1, (size_t)((double)values.size() * share))];
@@ -65,7 +65,7 @@ namespace {
         return graph;
     }
 
-    PlanOptions sized(int size) {
+    PlanOptions procMatBudgetsSized(int size) {
         PlanOptions options;
         options.size = size;
         options.maxBufferSize = size;
@@ -112,21 +112,21 @@ namespace {
         thumbs.setGraph(graph);
         const std::vector<ProcMatThumbnails::Request> requests = everyNode(graph);
         run.images = requests.size();
-        const auto start = Clock::now();
+        const auto start = ProcMatBudgetsClock::now();
         uint64_t finished = 0;
         bool waiting = true;
-        while (waiting && std::chrono::duration<double>(Clock::now() - start).count() < 600.0) {
+        while (waiting && std::chrono::duration<double>(ProcMatBudgetsClock::now() - start).count() < 600.0) {
             thumbs.setRequests(requests);
-            const auto call = Clock::now();
+            const auto call = ProcMatBudgetsClock::now();
             // the window's share of its 4 ms frame budget (ProceduralMaterialWindow::update)
             waiting = thumbs.update(1.0);
-            run.updateMs.push_back(msSince(call));
+            run.updateMs.push_back(procMatBudgetsMsSince(call));
             run.mostInOneFrame = std::max(run.mostInOneFrame, (int)(thumbs.finishedCount() - finished));
             finished = thumbs.finishedCount();
             GpuEnvironment::drawFrames(1);
             run.frames++;
         }
-        run.wallMs = msSince(start);
+        run.wallMs = procMatBudgetsMsSince(start);
         for (const ProcMatThumbnails::Request& request : requests) {
             const ProcMatThumbnails::Image* image = thumbs.image(request.id);
             EXPECT_TRUE(image && image->error.empty()) << request.id << ": " << (image ? image->error : "no image");
@@ -138,8 +138,8 @@ namespace {
     void printThumbnails(const char* tier, const ThumbnailRun& run) {
         std::printf("[bench] ProcMat thumbnails %s: %zu images of 128² in %.1f s (%d update calls); per image median %.1f ms, p90 %.1f ms, worst %.1f ms; "
                     "update() per frame median %.2f ms, p99 %.2f ms, worst %.2f ms; at most %d finished in a frame\n",
-                    tier, run.images, run.wallMs / 1000.0, run.frames, percentile(run.imageMs, 0.5), percentile(run.imageMs, 0.9), percentile(run.imageMs, 1.0),
-                    percentile(run.updateMs, 0.5), percentile(run.updateMs, 0.99), percentile(run.updateMs, 1.0), run.mostInOneFrame);
+                    tier, run.images, run.wallMs / 1000.0, run.frames, procMatBudgetsPercentile(run.imageMs, 0.5), procMatBudgetsPercentile(run.imageMs, 0.9), procMatBudgetsPercentile(run.imageMs, 1.0),
+                    procMatBudgetsPercentile(run.updateMs, 0.5), procMatBudgetsPercentile(run.updateMs, 0.99), procMatBudgetsPercentile(run.updateMs, 1.0), run.mostInOneFrame);
     }
 
 }
@@ -152,12 +152,12 @@ TEST(ProcMatBudgetsGpuSlow, SliderDragOnTheDevice) {
     const auto library = budgetsLibrary();
     graph::Graph file = brickWall();
     ProceduralGpuEvaluator evaluator(EvaluatorTier::Software);
-    ProceduralSession session(evaluator, library, sized(256));
+    ProceduralSession session(evaluator, library, procMatBudgetsSized(256));
     session.setRoots(materialBakeRoots(file), 0.0);
     session.setGraph(file, 0.0);
     double now = 0.0;
-    const auto first = Clock::now();
-    while ((session.isStale() || session.isRebuildPending()) && session.error().empty() && msSince(first) < 120000.0) {
+    const auto first = ProcMatBudgetsClock::now();
+    while ((session.isStale() || session.isRebuildPending()) && session.error().empty() && procMatBudgetsMsSince(first) < 120000.0) {
         now += 1.0 / 60.0;
         session.update(now, 2.0);
         GpuEnvironment::drawFrames(1);
@@ -169,24 +169,24 @@ TEST(ProcMatBudgetsGpuSlow, SliderDragOnTheDevice) {
     std::vector<double> frames;
     for (int i = 0; i < 40; i++) {
         file.findNode("b")->params["mortar"] = 0.04 + 0.001 * i;
-        const auto edit = Clock::now();
+        const auto edit = ProcMatBudgetsClock::now();
         int count = 0;
         double work = 0.0;
         session.setGraph(file, now);
-        setGraphMs.push_back(msSince(edit));
+        setGraphMs.push_back(procMatBudgetsMsSince(edit));
         work += setGraphMs.back();
-        while (session.isStale() && session.error().empty() && msSince(edit) < 10000.0) {
-            const auto frame = Clock::now();
+        while (session.isStale() && session.error().empty() && procMatBudgetsMsSince(edit) < 10000.0) {
+            const auto frame = ProcMatBudgetsClock::now();
             now += 1.0 / 60.0;
-            const auto call = Clock::now();
+            const auto call = ProcMatBudgetsClock::now();
             session.update(now, 2.0);
-            work += msSince(call);
+            work += procMatBudgetsMsSince(call);
             GpuEnvironment::drawFrames(1);
-            frameMs.push_back(msSince(frame));
+            frameMs.push_back(procMatBudgetsMsSince(frame));
             count++;
         }
         ASSERT_FALSE(session.isStale()) << session.error();
-        editMs.push_back(msSince(edit));
+        editMs.push_back(procMatBudgetsMsSince(edit));
         workMs.push_back(work);
         frames.push_back((double)count);
     }
@@ -194,9 +194,9 @@ TEST(ProcMatBudgetsGpuSlow, SliderDragOnTheDevice) {
     std::printf("[bench] ProcMat slider drag (256², 30 nodes, %s): edit to image median %.1f ms, p95 %.1f ms; frames per edit median %.0f, "
                 "worst %.0f; a frame median %.1f ms, p95 %.1f ms; the session's own CPU work per edit median %.1f ms, of which setGraph median %.1f ms, "
                 "p95 %.1f ms\n",
-                evaluator.deviceName().c_str(), percentile(editMs, 0.5), percentile(editMs, 0.95), percentile(frames, 0.5),
-                percentile(frames, 1.0), percentile(frameMs, 0.5), percentile(frameMs, 0.95), percentile(workMs, 0.5),
-                percentile(setGraphMs, 0.5), percentile(setGraphMs, 0.95));
+                evaluator.deviceName().c_str(), procMatBudgetsPercentile(editMs, 0.5), procMatBudgetsPercentile(editMs, 0.95), procMatBudgetsPercentile(frames, 0.5),
+                procMatBudgetsPercentile(frames, 1.0), procMatBudgetsPercentile(frameMs, 0.5), procMatBudgetsPercentile(frameMs, 0.95), procMatBudgetsPercentile(workMs, 0.5),
+                procMatBudgetsPercentile(setGraphMs, 0.5), procMatBudgetsPercentile(setGraphMs, 0.95));
 }
 
 // R24 on the device: at most one image finished per frame, and what each costs
@@ -229,26 +229,26 @@ TEST(ProcMatBudgetsGpuSlow, ABakeOf1024OnTheDeviceAndOnTheCpu) {
     const graph::Graph file = brickWall();
     PassPlan plan;
     std::string error;
-    ASSERT_TRUE(planGraph(file, library, materialBakeRoots(file), sized(1024), plan, error)) << error;
+    ASSERT_TRUE(planGraph(file, library, materialBakeRoots(file), procMatBudgetsSized(1024), plan, error)) << error;
     ASSERT_EQ(plan.outputs.size(), 4u) << "base_color, normal, orm and height";
 
     const auto onDevice = [&](ProceduralGpuEvaluator& evaluator) {
-        const auto start = Clock::now();
+        const auto start = ProcMatBudgetsClock::now();
         std::string failure;
         EXPECT_TRUE(evaluator.prepare(plan, failure)) << failure;
         EvaluationResult result;
-        while (!evaluator.advance(8.0, result) && msSince(start) < 120000.0) GpuEnvironment::drawFrames(1);
+        while (!evaluator.advance(8.0, result) && procMatBudgetsMsSince(start) < 120000.0) GpuEnvironment::drawFrames(1);
         EXPECT_TRUE(result.ok) << result.error;
-        return msSince(start);
+        return procMatBudgetsMsSince(start);
     };
     ProceduralGpuEvaluator evaluator(EvaluatorTier::Software);
     const double cold = onDevice(evaluator);
     const double warm = onDevice(evaluator);
 
-    const auto start = Clock::now();
+    const auto start = ProcMatBudgetsClock::now();
     EvaluationResult result;
     ASSERT_TRUE(evaluateOnCpu(plan, result)) << result.error;
-    const double cpu = msSince(start);
+    const double cpu = procMatBudgetsMsSince(start);
     std::printf("[bench] ProcMat bake 1024² (30 nodes, %zu passes, 4 outputs): %s %.0f ms (%.0f ms compiled), cpu %.1f s on %d workers\n",
                 plan.passes.size(), evaluator.deviceName().c_str(), cold, warm, cpu / 1000.0, jobs::system().getWorkerCount());
     const double slack = testsupport::perfSlack();

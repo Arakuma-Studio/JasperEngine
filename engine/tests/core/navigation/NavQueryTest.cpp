@@ -15,12 +15,12 @@ using namespace jasperengine::navtest;
 namespace {
 
     // one cell of the 0.2 m bakes, plus the erosion's rounding up to whole cells
-    constexpr float CELL = 0.2f;
+    constexpr float QUERY_CELL = 0.2f;
 
     class NavQueryTest : public NavSceneTest {};
 
     // the points every `step` metres along a path's corners
-    std::vector<Vector3> samples(const nav::NavPath& path, float step = 0.05f) {
+    std::vector<Vector3> navQuerySamples(const nav::NavPath& path, float step = 0.05f) {
         std::vector<Vector3> points;
         for (size_t i = 0; i + 1 < path.corners.size(); i++) {
             const Vector3 a = path.corners[i], b = path.corners[i + 1];
@@ -53,7 +53,7 @@ TEST_F(NavQueryTest, AreaCosts){
     float maxZ = -1e9f;
     for (const Vector3& corner : path.corners)
         maxZ = std::max(maxZ, corner.z);
-    EXPECT_GT(maxZ, 3.0f - CELL);
+    EXPECT_GT(maxZ, 3.0f - QUERY_CELL);
 
     // with the strip's area masked out it never enters it
     nav::QueryFilter filter;
@@ -61,7 +61,7 @@ TEST_F(NavQueryTest, AreaCosts){
     const nav::NavPath masked = nav->calculatePath(from, to, filter);
     ASSERT_EQ(masked.status, nav::PathStatus::Complete);
     EXPECT_EQ(masked.failure, nav::PathFailure::None);
-    for (const Vector3& point : samples(masked)) {
+    for (const Vector3& point : navQuerySamples(masked)) {
         nav::NavHit hit;
         ASSERT_TRUE(nav->samplePosition(point, 0.3f, hit, filter));
         EXPECT_NE(hit.area, 3) << point.toString();
@@ -70,7 +70,7 @@ TEST_F(NavQueryTest, AreaCosts){
     // Not Walkable has no polygon: the nearest point to its middle is outside it
     nav::NavHit blocked;
     ASSERT_TRUE(nav->samplePosition(Vector3(-12.0f, 0.0f, -3.0f), 5.0f, blocked));
-    const bool insideBlock = std::fabs(blocked.position.x + 12.0f) < 2.0f - CELL && std::fabs(blocked.position.z + 3.0f) < 1.5f - CELL;
+    const bool insideBlock = std::fabs(blocked.position.x + 12.0f) < 2.0f - QUERY_CELL && std::fabs(blocked.position.z + 3.0f) < 1.5f - QUERY_CELL;
     EXPECT_FALSE(insideBlock) << blocked.position.toString();
 }
 
@@ -85,7 +85,7 @@ TEST_F(NavQueryTest, AreaMaskBlocksAcross){
     EXPECT_EQ(path.status, nav::PathStatus::Partial);
     EXPECT_EQ(path.failure, nav::PathFailure::BlockedByArea);
     ASSERT_FALSE(path.corners.empty());
-    EXPECT_LT(path.corners.back().x, -1.0f + CELL);
+    EXPECT_LT(path.corners.back().x, -1.0f + QUERY_CELL);
     EXPECT_FALSE(nav->isReachable(Vector3(-10.0f, 0.0f, 0.0f), Vector3(10.0f, 0.0f, 0.0f), filter));
     EXPECT_TRUE(nav->isReachable(Vector3(-10.0f, 0.0f, 0.0f), Vector3(10.0f, 0.0f, 0.0f)));
 }
@@ -95,17 +95,17 @@ TEST_F(NavQueryTest, SamplePosition){
     bake(surface);
     nav::NavHit hit;
     ASSERT_TRUE(nav->samplePosition(Vector3(1.0f, 1.0f, 2.0f), 2.0f, hit));
-    EXPECT_NEAR(hit.position.x, 1.0f, CELL);
-    EXPECT_NEAR(hit.position.y, 0.0f, CELL);
-    EXPECT_NEAR(hit.position.z, 2.0f, CELL);
-    EXPECT_NEAR(hit.distance, 1.0f, CELL);
+    EXPECT_NEAR(hit.position.x, 1.0f, QUERY_CELL);
+    EXPECT_NEAR(hit.position.y, 0.0f, QUERY_CELL);
+    EXPECT_NEAR(hit.position.z, 2.0f, QUERY_CELL);
+    EXPECT_NEAR(hit.distance, 1.0f, QUERY_CELL);
     EXPECT_EQ(hit.area, nav::AREA_WALKABLE);
     EXPECT_NEAR(hit.normal.y, 1.0f, 1e-3f);
 
     // off the mesh's edge: the edge (9.5) within reach, nothing beyond it
     ASSERT_TRUE(nav->samplePosition(Vector3(12.0f, 0.0f, 0.0f), 3.0f, hit));
-    EXPECT_NEAR(hit.position.x, 9.5f, CELL);
-    EXPECT_NEAR(hit.distance, 2.5f, CELL);
+    EXPECT_NEAR(hit.position.x, 9.5f, QUERY_CELL);
+    EXPECT_NEAR(hit.distance, 2.5f, QUERY_CELL);
     EXPECT_FALSE(nav->samplePosition(Vector3(12.0f, 0.0f, 0.0f), 1.0f, hit));
     EXPECT_FALSE(hit.hit);
 }
@@ -116,13 +116,13 @@ TEST_F(NavQueryTest, Raycast){
     nav::NavHit hit;
     // inside the mesh: not blocked
     EXPECT_FALSE(nav->raycast(Vector3(0.0f, 0.0f, 0.0f), Vector3(5.0f, 0.0f, 3.0f), hit));
-    EXPECT_NEAR(hit.position.x, 5.0f, CELL);
-    EXPECT_NEAR(hit.position.z, 3.0f, CELL);
+    EXPECT_NEAR(hit.position.x, 5.0f, QUERY_CELL);
+    EXPECT_NEAR(hit.position.z, 3.0f, QUERY_CELL);
     // past the edge: blocked at the boundary, the normal facing back
     EXPECT_TRUE(nav->raycast(Vector3(0.0f, 0.0f, 0.0f), Vector3(15.0f, 0.0f, 0.0f), hit));
-    EXPECT_NEAR(hit.position.x, 9.5f, CELL);
+    EXPECT_NEAR(hit.position.x, 9.5f, QUERY_CELL);
     EXPECT_NEAR(hit.normal.x, -1.0f, 0.05f);
-    EXPECT_NEAR(hit.distance, 9.5f, CELL);
+    EXPECT_NEAR(hit.distance, 9.5f, QUERY_CELL);
 }
 
 TEST_F(NavQueryTest, ClosestEdge){
@@ -130,9 +130,9 @@ TEST_F(NavQueryTest, ClosestEdge){
     bake(surface);
     nav::NavHit hit;
     ASSERT_TRUE(nav->findClosestEdge(Vector3(8.0f, 0.0f, 1.0f), hit));
-    EXPECT_NEAR(hit.distance, 1.5f, CELL);
-    EXPECT_NEAR(hit.position.x, 9.5f, CELL);
-    EXPECT_NEAR(hit.position.z, 1.0f, CELL);
+    EXPECT_NEAR(hit.distance, 1.5f, QUERY_CELL);
+    EXPECT_NEAR(hit.position.x, 9.5f, QUERY_CELL);
+    EXPECT_NEAR(hit.position.z, 1.0f, QUERY_CELL);
     EXPECT_NEAR(hit.normal.x, -1.0f, 0.05f);
 }
 
@@ -167,7 +167,7 @@ TEST_F(NavQueryTest, MovedSurfaceMovesItsNavmesh){
     resolveTransforms(*scene);
     EXPECT_FALSE(nav->samplePosition(Vector3(0.0f, 0.0f, 0.0f), 0.5f, hit));
     ASSERT_TRUE(nav->samplePosition(Vector3(100.0f, 0.0f, 0.0f), 0.5f, hit));
-    EXPECT_NEAR(hit.position.x, 100.0f, CELL);
+    EXPECT_NEAR(hit.position.x, 100.0f, QUERY_CELL);
 }
 
 // ---- S76 queries (docs/specs/S76-navigation-gameplay-api.md R3, R4)
@@ -183,8 +183,8 @@ TEST_F(NavQueryTest, ClosestEdgeMaxDistance){
     EXPECT_FLOAT_EQ(hit.distance, 2.0f);
     ASSERT_TRUE(nav->findClosestEdge(point, hit, {}, 5.0f));
     EXPECT_TRUE(hit.hit);
-    EXPECT_NEAR(hit.distance, 3.0f, CELL);
-    EXPECT_NEAR(hit.position.x, 9.5f, CELL);
+    EXPECT_NEAR(hit.distance, 3.0f, QUERY_CELL);
+    EXPECT_NEAR(hit.position.x, 9.5f, QUERY_CELL);
     // the normal points from the wall towards the point
     EXPECT_NEAR(hit.normal.x, -1.0f, 0.05f);
     EXPECT_EQ(hit.area, nav::AREA_WALKABLE);
@@ -193,7 +193,7 @@ TEST_F(NavQueryTest, ClosestEdgeMaxDistance){
     EXPECT_FLOAT_EQ(hit.distance, 2.0f);
     // no limit: S19's reach
     ASSERT_TRUE(nav->findClosestEdge(point, hit));
-    EXPECT_NEAR(hit.distance, 3.0f, CELL);
+    EXPECT_NEAR(hit.distance, 3.0f, QUERY_CELL);
     // off the mesh: nothing, no distance
     EXPECT_FALSE(nav->findClosestEdge(Vector3(40.0f, 0.0f, 0.0f), hit, {}, 5.0f));
     EXPECT_FLOAT_EQ(hit.distance, 0.0f);
@@ -208,14 +208,14 @@ TEST_F(NavQueryTest, MoveAlongSurfaceClampsAtWall){
     // through the edge at 9.5, from a point above the floor: the height is the polygon's
     ASSERT_TRUE(nav->moveAlongSurface(Vector3(8.0f, 0.4f, 0.0f), Vector3(12.0f, 0.4f, 0.0f), move));
     EXPECT_TRUE(move.hit);
-    EXPECT_NEAR(move.position.x, 9.5f, CELL);
+    EXPECT_NEAR(move.position.x, 9.5f, QUERY_CELL);
     EXPECT_NEAR(move.position.y, 0.0f, 0.15f);
-    EXPECT_NEAR(move.distance, 1.5f, CELL);
+    EXPECT_NEAR(move.distance, 1.5f, QUERY_CELL);
     EXPECT_EQ(move.area, nav::AREA_WALKABLE);
     // into the box's footprint (eroded to 1.5 m around its centre): stopped at its side
     ASSERT_TRUE(nav->moveAlongSurface(Vector3(0.0f, 0.0f, 1.0f), Vector3(0.0f, 0.0f, 5.0f), move));
     EXPECT_TRUE(move.hit);
-    EXPECT_NEAR(move.position.z, 3.5f, CELL);
+    EXPECT_NEAR(move.position.z, 3.5f, QUERY_CELL);
     // an open move reaches `to`
     ASSERT_TRUE(nav->moveAlongSurface(Vector3(0.0f, 0.0f, 0.0f), Vector3(1.0f, 0.0f, -1.0f), move));
     EXPECT_FALSE(move.hit);

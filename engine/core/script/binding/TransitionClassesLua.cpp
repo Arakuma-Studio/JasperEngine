@@ -45,14 +45,14 @@ namespace jasperengine::pixelart {
 namespace jasperengine::pixelart {
 namespace {
 
-    using ErrorText = char[512];
+    using TransitionErrorText = char[512];
 
-    bool fail(ErrorText& error, const char* function, const std::string& text){
-        std::snprintf(error, sizeof(ErrorText), "%s: %s", function, text.c_str());
+    bool fail(TransitionErrorText& error, const char* function, const std::string& text){
+        std::snprintf(error, sizeof(TransitionErrorText), "%s: %s", function, text.c_str());
         return false;
     }
 
-    bool kindArg(lua_State* L, int index, TransitionKind& kind, const char* function, ErrorText& error){
+    bool kindArg(lua_State* L, int index, TransitionKind& kind, const char* function, TransitionErrorText& error){
         if (lua_isnoneornil(L, index)){
             kind = ScreenTransition::getDefaults().kind;
             return true;
@@ -69,7 +69,7 @@ namespace {
         return fail(error, function, "kind must be iris, blinds, slash, pixel_dissolve, crt_off, burn_away or fade (or a TransitionKind)");
     }
 
-    bool durationArg(lua_State* L, int index, float& seconds, const char* function, ErrorText& error){
+    bool durationArg(lua_State* L, int index, float& seconds, const char* function, TransitionErrorText& error){
         if (lua_isnoneornil(L, index)){
             seconds = ScreenTransition::getDefaults().duration;
             return true;
@@ -89,7 +89,7 @@ namespace {
         }
     }
 
-    bool numberField(lua_State* L, int index, const char* camel, const char* snake, float& out, const char* function, ErrorText& error){
+    bool numberField(lua_State* L, int index, const char* camel, const char* snake, float& out, const char* function, TransitionErrorText& error){
         getField(L, index, camel, snake);
         bool ok = true;
         if (lua_type(L, -1) == LUA_TNUMBER) out = (float)lua_tonumber(L, -1);
@@ -98,14 +98,14 @@ namespace {
         return ok;
     }
 
-    bool intField(lua_State* L, int index, const char* camel, const char* snake, int& out, const char* function, ErrorText& error){
+    bool intField(lua_State* L, int index, const char* camel, const char* snake, int& out, const char* function, TransitionErrorText& error){
         float value = (float)out;
         if (!numberField(L, index, camel, snake, value, function, error)) return false;
         out = (int)value;
         return true;
     }
 
-    bool boolField(lua_State* L, int index, const char* camel, const char* snake, bool& out, const char* function, ErrorText& error){
+    bool boolField(lua_State* L, int index, const char* camel, const char* snake, bool& out, const char* function, TransitionErrorText& error){
         getField(L, index, camel, snake);
         bool ok = true;
         if (lua_isboolean(L, -1)) out = lua_toboolean(L, -1) != 0;
@@ -114,7 +114,7 @@ namespace {
         return ok;
     }
 
-    bool stringField(lua_State* L, int index, const char* camel, const char* snake, std::string& out, const char* function, ErrorText& error){
+    bool stringField(lua_State* L, int index, const char* camel, const char* snake, std::string& out, const char* function, TransitionErrorText& error){
         getField(L, index, camel, snake);
         bool ok = true;
         if (lua_type(L, -1) == LUA_TSTRING) out = lua_tostring(L, -1);
@@ -124,7 +124,7 @@ namespace {
     }
 
     // opts: nil or a table (TransitionOptions in stubs/Transition.lua); onCovered optional
-    bool optionsArg(lua_State* L, int index, TransitionOptions& options, std::function<void()>* onCovered, const char* function, ErrorText& error){
+    bool optionsArg(lua_State* L, int index, TransitionOptions& options, std::function<void()>* onCovered, const char* function, TransitionErrorText& error){
         options = TransitionOptions::fromDefaults();
         index = lua_absindex(L, index);
         if (lua_isnoneornil(L, index)) return true;
@@ -231,7 +231,7 @@ namespace {
 
     // play / cover / reveal(kind?, duration?, opts?)
     int luaTransitionCall(lua_State* L, Call call, const char* function){
-        ErrorText error;
+        TransitionErrorText error;
         bool ok;
         {
             TransitionKind kind;
@@ -267,7 +267,7 @@ namespace {
     // loadScene(scene, kind?, duration?, opts?)
     int luaTransitionLoadScene(lua_State* L){
         const char* function = "Transition.loadScene";
-        ErrorText error;
+        TransitionErrorText error;
         bool ok;
         {
             TransitionKind kind;

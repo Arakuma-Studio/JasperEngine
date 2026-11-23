@@ -37,7 +37,7 @@ using namespace jasperengine::voxel;
 namespace {
 
     template<typename Fn>
-    double medianMs(int runs, Fn&& fn) {
+    double voxelBenchMedianMs(int runs, Fn&& fn) {
         std::vector<double> samples;
         for (int r = 0; r < runs; r++) {
             const auto start = bench::Clock::now();
@@ -149,7 +149,7 @@ int main(int argc, char** argv) {
     MeshOut mesh;
     MeshRequest regular;
     regular.key = surfaceKey;
-    const double meshMs = medianMs(101, [&] { meshBlock(*surfaceView, regular, mesh); });
+    const double meshMs = voxelBenchMedianMs(101, [&] { meshBlock(*surfaceView, regular, mesh); });
     results.add("mesh_block_regular_ms", meshMs, "ms");
     results.add("mesh_block_regular_triangles", mesh.triangleCount, "");
 
@@ -157,12 +157,12 @@ int main(int argc, char** argv) {
     MeshRequest masked = regular;
     masked.sideMask = 1u << SIDE_NEG_X;
     MeshOut maskedMesh;
-    results.add("mesh_block_masked_side_ms", medianMs(101, [&] { meshBlock(*maskedView, masked, maskedMesh); }) - meshMs, "ms");
+    results.add("mesh_block_masked_side_ms", voxelBenchMedianMs(101, [&] { meshBlock(*maskedView, masked, maskedMesh); }) - meshMs, "ms");
 
     MeshRequest collisionOnly = regular;
     collisionOnly.mode = MeshMode::CollisionOnly;
     MeshOut collisionMesh;
-    const double collisionMs = medianMs(101, [&] { meshBlock(*surfaceView, collisionOnly, collisionMesh); });
+    const double collisionMs = voxelBenchMedianMs(101, [&] { meshBlock(*surfaceView, collisionOnly, collisionMesh); });
     results.add("mesh_block_collision_ratio", meshMs > 0.0 ? collisionMs / meshMs : 0.0, "");
 
     Store noisy(descOf(32));
@@ -171,14 +171,14 @@ int main(int argc, char** argv) {
     MeshRequest worst;
     worst.key = BlockKey{0, 0, 0, 0};
     MeshOut worstMesh;
-    results.add("mesh_block_worst_ms", medianMs(31, [&] { meshBlock(*noisyView, worst, worstMesh); }), "ms");
+    results.add("mesh_block_worst_ms", voxelBenchMedianMs(31, [&] { meshBlock(*noisyView, worst, worstMesh); }), "ms");
 
     {
         std::vector<Vector3> vertices;
         for (const MeshVertex& v : collisionMesh.vertices) vertices.emplace_back(fixedToLocal(v.position[0], 1.0f), fixedToLocal(v.position[1], 1.0f), fixedToLocal(v.position[2], 1.0f));
         const std::vector<uint32_t> indices(collisionMesh.indices.begin(), collisionMesh.indices.end());
         std::string error;
-        results.add("mesh_shape_typical_ms", medianMs(51, [&] { JoltShapeBuilder::buildMeshShape(vertices, indices, &error, nullptr); }), "ms");
+        results.add("mesh_shape_typical_ms", voxelBenchMedianMs(51, [&] { JoltShapeBuilder::buildMeshShape(vertices, indices, &error, nullptr); }), "ms");
     }
 
     const auto digAt = [&](double radius) {
@@ -190,7 +190,7 @@ int main(int argc, char** argv) {
         op.shape.radius = radius;
         EditOptions dry;
         dry.dryRun = true;
-        return medianMs(21, [&] { applyEdit(store, std::span<const EditOp>(&op, 1), dry); });
+        return voxelBenchMedianMs(21, [&] { applyEdit(store, std::span<const EditOp>(&op, 1), dry); });
     };
     results.add("dig_sphere_4_ms", digAt(4.0), "ms");
     results.add("dig_sphere_16_ms", digAt(16.0), "ms");
@@ -201,11 +201,11 @@ int main(int argc, char** argv) {
         std::vector<uint8_t> bytes;
         drle16Encode(reinterpret_cast<const uint16_t*>(content.data->sdf()), BLOCK_SAMPLES, bytes);
         uint16_t out[BLOCK_SAMPLES];
-        results.add("decode_block_ms", medianMs(201, [&] { drle16Decode(bytes.data(), bytes.size(), out, BLOCK_SAMPLES); }), "ms");
+        results.add("decode_block_ms", voxelBenchMedianMs(201, [&] { drle16Decode(bytes.data(), bytes.size(), out, BLOCK_SAMPLES); }), "ms");
         const std::shared_ptr<const BaseSource> flat = makeSolidGroundBase(24.0, 1.0, 0);
         int16_t sdf[BLOCK_SAMPLES];
         uint16_t material[BLOCK_SAMPLES];
-        results.add("evaluate_base_flat_ms", medianMs(201, [&] { flat->evaluate(Int3{0, 16, 0}, 1, sdf, material); }), "ms");
+        results.add("evaluate_base_flat_ms", voxelBenchMedianMs(201, [&] { flat->evaluate(Int3{0, 16, 0}, 1, sdf, material); }), "ms");
     }
 
     // The idle system
@@ -221,7 +221,7 @@ int main(int argc, char** argv) {
         const std::shared_ptr<VoxelSystem> system = scene.getSystem<VoxelSystem>();
         scene.update(1.0 / 60.0);
         system->finishPendingWork();
-        results.add("system_update_idle_ms", medianMs(501, [&] { system->update(1.0 / 60.0); }), "ms");
+        results.add("system_update_idle_ms", voxelBenchMedianMs(501, [&] { system->update(1.0 / 60.0); }), "ms");
     }
 
     results.add("dig_to_collision_frames", latencyFrames(), "frames");

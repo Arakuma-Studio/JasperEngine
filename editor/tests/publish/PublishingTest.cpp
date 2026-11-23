@@ -493,9 +493,9 @@ namespace publishing_test {
                     "src=\"$1\"; dst=\"${2#*:}\"\nexec cp -R \"$src\" \"$FAKE_DECK_HOME/$dst\"\n");
     }
 
-    struct SettingsScope {
-        explicit SettingsScope(const fs::path& file) { AppSettings::initializeWithFile(file); }
-        ~SettingsScope() {
+    struct PublishingSettingsScope {
+        explicit PublishingSettingsScope(const fs::path& file) { AppSettings::initializeWithFile(file); }
+        ~PublishingSettingsScope() {
             for (const char* tool : {"ssh", "scp", "steamcmd"}) AppSettings::setExternalToolPath(tool, "");
         }
     };
@@ -533,7 +533,7 @@ TEST(PublishDeck, DeployRollbackSmoke) {
     const fs::path project = dir / "Game";
     const fs::path deckHome = dir / "deck-home";
     fs::create_directories(deckHome);
-    SettingsScope settings(dir / "settings.yaml");
+    PublishingSettingsScope settings(dir / "settings.yaml");
     installDeckStubs(dir / "bin");
     AppSettings::setExternalToolPath("ssh", (dir / "bin/ssh").string());
     AppSettings::setExternalToolPath("scp", (dir / "bin/scp").string());

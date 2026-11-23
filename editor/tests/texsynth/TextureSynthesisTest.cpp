@@ -67,7 +67,7 @@ namespace {
         return image;
     }
 
-    void writeBytes(const fs::path& path, const std::vector<uint8_t>& bytes) {
+    void textureSynthesisWriteBytes(const fs::path& path, const std::vector<uint8_t>& bytes) {
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
         file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     }
@@ -78,7 +78,7 @@ namespace {
         ASSERT_TRUE(ts::encodePng(smallImage(8, 1), png));
         std::string error;
         ASSERT_TRUE(ts::insertRecipeChunk(png, recipeText, out, error)) << error;
-        writeBytes(path, out);
+        textureSynthesisWriteBytes(path, out);
     }
 
     std::vector<ProjectChecks::Finding> findingsWithCode(const std::vector<ProjectChecks::Finding>& findings, const std::string& code) {
@@ -110,8 +110,8 @@ TEST(TextureSynthesisSession, CheckSpecRefusesNonUtf8Paths) {
     const fs::path root = tempProject("utf8");
     std::vector<uint8_t> png;
     ASSERT_TRUE(ts::encodePng(smallImage(16, 2), png));
-    writeBytes(root / "assets" / FileUtils::pathFromUtf8("caf\xE9.png"), png);
-    writeBytes(root / "assets" / "rock.png", png);
+    textureSynthesisWriteBytes(root / "assets" / FileUtils::pathFromUtf8("caf\xE9.png"), png);
+    textureSynthesisWriteBytes(root / "assets" / "rock.png", png);
 
     ts::SynthesisSpec spec;
     spec.mode = ts::Mode::Tileable;
@@ -136,7 +136,7 @@ TEST(TextureSynthesisSession, CheckSpecRefusesNonUtf8Paths) {
 
     // a companion found next to the example whose name is not UTF-8: left out with a warning.
     // APFS (macOS) refuses such a name (EILSEQ): there the file cannot exist to be found
-    writeBytes(root / "assets" / FileUtils::pathFromUtf8("rock_normal_\xE9.png"), png);
+    textureSynthesisWriteBytes(root / "assets" / FileUtils::pathFromUtf8("rock_normal_\xE9.png"), png);
     std::vector<std::string> warnings;
     ts::autoCompanions(root, spec, warnings);
     EXPECT_TRUE(spec.companions.empty());
@@ -220,7 +220,7 @@ TEST(TextureSynthesisChecks, Latin1NamesAndGarbledRecipesAreReportedNotFatal) {
     // a plain PNG with a Latin-1 name (the check used to abort writing its cache key)
     std::vector<uint8_t> png;
     ASSERT_TRUE(ts::encodePng(smallImage(8, 4), png));
-    writeBytes(assets / FileUtils::pathFromUtf8("caf\xE9.png"), png);
+    textureSynthesisWriteBytes(assets / FileUtils::pathFromUtf8("caf\xE9.png"), png);
     // a recipe with a valid CRC but wrong types
     writePngWithText(assets / "garbled.png", R"({"format":1,"mode":"tileable","role":"primary","pathBase":"project","examples":[{"path":5}]})");
     writePngWithText(assets / "role.png", R"({"format":1,"mode":"tileable","role":7,"examples":[{"path":"assets/x.png","sha1":"s"}]})");
@@ -232,7 +232,7 @@ TEST(TextureSynthesisChecks, Latin1NamesAndGarbledRecipesAreReportedNotFatal) {
         std::string error;
         ASSERT_TRUE(ts::insertRecipeChunk(png, R"({"format":1,"mode":"tileable"})", out, error));
         out[60] ^= 0x01;
-        writeBytes(assets / "crc.png", out);
+        textureSynthesisWriteBytes(assets / "crc.png", out);
     }
     for (int pass = 0; pass < 2; pass++) {   // the second pass runs on the cache
         ProjectChecks::SynthesisCheck check;
@@ -340,7 +340,7 @@ namespace {
 
     // In a child process (shutdown is for good): runs being prepared are cancelled and waited
     // for, and no callback runs once the editor shuts down
-    void shutdownWhileRunning() {
+    void textureSynthesisShutdownWhileRunning() {
         std::atomic<int> finished{0};
         std::vector<std::shared_ptr<ts::SynthesisRun>> runs;
         for (int i = 0; i < 3; i++) {
@@ -386,7 +386,7 @@ TEST(TextureSynthesisRun, FinishesCallsBackAndCancels) {
 }
 
 TEST(TextureSynthesisRunDeathTest, ShutdownCancelsWaitsAndCallsNothingBack) {
-    EXPECT_EXIT(shutdownWhileRunning(), ::testing::ExitedWithCode(0), "");
+    EXPECT_EXIT(textureSynthesisShutdownWhileRunning(), ::testing::ExitedWithCode(0), "");
 }
 
 // ---- the window's Save without the MCP server
@@ -423,7 +423,7 @@ namespace {
         if (mcp::McpServer::get().isStarted()) endChild(3);
         std::vector<uint8_t> png;
         if (!ts::encodePng(smallImage(32, 3), png)) endChild(4);
-        writeBytes(dir / "assets" / "rock.png", png);
+        textureSynthesisWriteBytes(dir / "assets" / "rock.png", png);
 
         // a Sprite drawing the output (as a scene would once it is assigned)
         p->createNewScene("Synth", SceneType::SCENE_2D);

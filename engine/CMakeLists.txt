@@ -99,8 +99,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     project(${APP_NAME})
 
-    # before any target: sanitizers apply to the whole tree (empty by default, as in every export)
+    # before any target: sanitizers and the debug information level apply to the whole tree (empty
+    # and full by default, as in every export)
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/JasperSanitizers.cmake)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/JasperDebugInfo.cmake)
 
     set(JASPERENGINE_SHARED OFF)
 
@@ -1076,7 +1078,8 @@ if(JASPERENGINE_SPLIT_SYMBOLS AND NOT ANDROID)
         add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Z7>)
         add_link_options(/DEBUG:FULL)
     else()
-        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-g>)
+        # -g, or line tables only with JASPERENGINE_DEBUG_INFO=lines (cmake/JasperDebugInfo.cmake)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:${JASPERENGINE_DEBUG_FLAG}>)
     endif()
 endif()
 if(JASPERENGINE_RELEASE_LINK)
@@ -2680,7 +2683,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
             SOURCES ${JASPERENGINE_ROOT}/platform/linux/JasperEngineLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
                     ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp ${JASPERENGINE_ROOT}/platform/linux/X11Pen.cpp
-                    ${JASPERENGINE_ROOT}/platform/linux/LinuxInputRouter.cpp ${JASPERENGINE_ROOT}/platform/linux/SystemLinux.cpp)
+                    ${JASPERENGINE_ROOT}/platform/linux/LinuxInputRouter.cpp ${JASPERENGINE_ROOT}/platform/linux/SystemLinux.cpp
+                    ${JASPERENGINE_ROOT}/platform/linux/HostServicesLinux.cpp)
     endif()
     # the shipped binary stripped, its debug information in symbols/ (JASPERENGINE_SPLIT_SYMBOLS)
     get_target_property(jasperengineAppType ${APP_NAME} TYPE)

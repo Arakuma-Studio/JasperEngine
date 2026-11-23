@@ -33,7 +33,7 @@ TEST(RenderQueueOrder, DistanceBandsDouble){
 
 namespace {
 
-    RenderSystem::OpaqueRenderData entry(int priority, float squaredDistance, uint64_t state, uint32_t order, bool fading = false){
+    RenderSystem::OpaqueRenderData renderQueueOrderEntry(int priority, float squaredDistance, uint64_t state, uint32_t order, bool fading = false){
         RenderSystem::OpaqueRenderData data = {};
         data.sortPriority = priority;
         data.distanceToCamera = squaredDistance;
@@ -56,12 +56,12 @@ namespace {
 
 TEST(RenderQueueOrder, PriorityThenBandThenStateThenDistance){
     const std::vector<uint32_t> order = sortedOrder({
-        entry(0, 300.0f, 7, 0),         // band 4, state 7
-        entry(0, 260.0f, 3, 1),         // band 4, state 3: before 7 in the band
-        entry(0, 280.0f, 7, 2),         // band 4, state 7, nearer than 0
-        entry(0, 20.0f, 9, 3),          // band 2: first of priority 0
-        entry(-1, 900.0f, 9, 4),        // priority -1: first of all
-        entry(0, 20.0f, 9, 5, true),    // fading: after the others of its priority
+        renderQueueOrderEntry(0, 300.0f, 7, 0),         // band 4, state 7
+        renderQueueOrderEntry(0, 260.0f, 3, 1),         // band 4, state 3: before 7 in the band
+        renderQueueOrderEntry(0, 280.0f, 7, 2),         // band 4, state 7, nearer than 0
+        renderQueueOrderEntry(0, 20.0f, 9, 3),          // band 2: first of priority 0
+        renderQueueOrderEntry(-1, 900.0f, 9, 4),        // priority -1: first of all
+        renderQueueOrderEntry(0, 20.0f, 9, 5, true),    // fading: after the others of its priority
     });
     EXPECT_EQ(order, (std::vector<uint32_t>{4, 3, 1, 2, 0, 5}));
 }
@@ -69,7 +69,7 @@ TEST(RenderQueueOrder, PriorityThenBandThenStateThenDistance){
 TEST(RenderQueueOrder, EqualKeysKeepSubmissionOrder){
     std::vector<RenderSystem::OpaqueRenderData> queue;
     for (uint32_t i = 0; i < 20; i++)
-        queue.push_back(entry(0, 100.0f, 5, 19 - i));
+        queue.push_back(renderQueueOrderEntry(0, 100.0f, 5, 19 - i));
     const std::vector<uint32_t> order = sortedOrder(queue);
     ASSERT_EQ(order.size(), 20u);
     for (uint32_t i = 0; i < 20; i++)

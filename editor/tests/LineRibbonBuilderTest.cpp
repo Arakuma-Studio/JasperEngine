@@ -22,7 +22,7 @@ using namespace jasperengine;
 
 namespace {
 
-    const float PI = 3.14159265358979f;
+    const float LINE_RIBBON_BUILDER_PI = 3.14159265358979f;
 
     struct Built {
         std::vector<LineRibbonVertex> vertices;
@@ -246,7 +246,7 @@ TEST(LineRibbonBuilderTest, MiterBevelAndRoundJoints){
     // a round joint: the legs and a quarter disc at the corner
     settings.numCornerVertices = 32;
     Built round = build(corner, settings);
-    const float expected = 3.75f + PI * 0.25f / 4.0f;
+    const float expected = 3.75f + LINE_RIBBON_BUILDER_PI * 0.25f / 4.0f;
     EXPECT_NEAR(area(round), expected, 2e-3f);
     // the outer side's round vertices are half a width from the corner, the inner side's all
     // on the inner miter point
@@ -277,7 +277,7 @@ TEST(LineRibbonBuilderTest, RoundCaps){
     settings.numCapVertices = 64;
     Built built = build({Vector3(0, 0, 0), Vector3(2, 0, 0)}, settings);
     // the body and two half discs of radius 0.5
-    EXPECT_NEAR(area(built), 2.0f + PI * 0.25f, 2e-3f);
+    EXPECT_NEAR(area(built), 2.0f + LINE_RIBBON_BUILDER_PI * 0.25f, 2e-3f);
     // the caps reach past the ends, butt caps do not
     float minX = 0.0f, maxX = 0.0f;
     for (const LineRibbonVertex& vertex : built.vertices){

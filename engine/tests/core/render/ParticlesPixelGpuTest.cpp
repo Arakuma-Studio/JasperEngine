@@ -57,7 +57,7 @@ namespace {
         bool operator<(const Rgb& o) const { return r != o.r ? r < o.r : (g != o.g ? g < o.g : b < o.b); }
     };
 
-    struct Shot {
+    struct ParticlesPixelShot {
         int width = 0, height = 0;
         std::vector<uint8_t> rgba;
         // (x, y) from the bottom-left, as the grid counts
@@ -68,8 +68,8 @@ namespace {
         }
     };
 
-    Shot readImage(){
-        Shot image;
+    ParticlesPixelShot particlesPixelReadImage(){
+        ParticlesPixelShot image;
         Framebuffer& target = GpuEnvironment::target();
         image.width = (int)target.getWidth();
         image.height = (int)target.getHeight();
@@ -96,9 +96,9 @@ namespace {
         }
     };
 
-    constexpr Rgb kBlack{0, 0, 0};
-    constexpr Rgb kWhite{255, 255, 255};
-    constexpr Rgb kRed{255, 0, 0};
+    constexpr Rgb kParticlesPixelBlack{0, 0, 0};
+    constexpr Rgb kParticlesPixelWhite{255, 255, 255};
+    constexpr Rgb kParticlesPixelRed{255, 0, 0};
 
     class ParticlesPixelGpu : public ::testing::Test {
     protected:
@@ -149,7 +149,7 @@ namespace {
     };
 
     // one particle that stays where it is born (a burst of one, no motion)
-    ParticleEffectDocument still(float size, float rotationDegrees){
+    ParticleEffectDocument particlesPixelStill(float size, float rotationDegrees){
         ParticleEffectDocument d;
         d.looping = false;
         d.duration = 1.0f;
@@ -190,7 +190,7 @@ TEST_F(ParticlesPixelGpu, PixelShapes){
                 // cells of 21 pixels, 12 to a row; the centre a quarter and three fifths of a pixel off
                 const Vector2 centre(10.0f + 21.0f * (float)(cell % 12) + 0.25f, 10.0f + 21.0f * (float)(cell / 12) + 0.6f);
                 cases.push_back({(PixelShape)s, (float)size, rotation, centre});
-                ParticleEffectDocument d = still((float)size, rotation);
+                ParticleEffectDocument d = particlesPixelStill((float)size, rotation);
                 d.renderer.pixelShape = (PixelShape)s;
                 if ((PixelShape)s == PixelShape::Streak){
                     // its length from the speed (L = 1 + speed x scale), its direction the rotation's
@@ -209,13 +209,13 @@ TEST_F(ParticlesPixelGpu, PixelShapes){
     }
     ASSERT_TRUE(render(0.05));
     GpuEnvironment::drawFrames(2);
-    const Shot image = readImage();
+    const ParticlesPixelShot image = particlesPixelReadImage();
 
     size_t mismatches = 0, lit = 0;
     std::string first;
     for (size_t i = 0; i < cases.size(); i++){
         const Case& c = cases[i];
-        RendererModule renderer = still(c.size, c.rotation).renderer;
+        RendererModule renderer = particlesPixelStill(c.size, c.rotation).renderer;
         renderer.pixelShape = c.shape;
         PixelShapeSpec spec = PixelShapeSpec::fromRenderer(renderer);
         Vector2 velocity(0.0f, 0.0f);
@@ -233,18 +233,18 @@ TEST_F(ParticlesPixelGpu, PixelShapes){
         const int x0 = (int)std::floor(c.centre.x) - 10, y0 = (int)std::floor(c.centre.y) - 10;
         for (int y = y0; y < y0 + 21; y++){
             for (int x = x0; x < x0 + 21; x++){
-                Rgb expected = kBlack;
+                Rgb expected = kParticlesPixelBlack;
                 // the box's local pixel holding this pixel's centre
                 const float fx = (float)x + 0.5f - layout.cornerX, fy = (float)y + 0.5f - layout.cornerY;
                 if (fx >= 0.0f && fy >= 0.0f && fx < layout.boxW && fy < layout.boxH){
                     const PixelSample sample = ParticlePixel::sample(spec, layout, (int)std::floor(fx), (int)std::floor(fy), 0.0f, 0);
                     if (sample.drawn){
-                        if (sample.cover >= 0.5f) expected = sample.tone == 1 ? kRed : kWhite;
-                        else if (sample.tone2 >= 0 && sample.cover2 >= 0.5f) expected = sample.tone2 == 1 ? kRed : kWhite;
+                        if (sample.cover >= 0.5f) expected = sample.tone == 1 ? kParticlesPixelRed : kParticlesPixelWhite;
+                        else if (sample.tone2 >= 0 && sample.cover2 >= 0.5f) expected = sample.tone2 == 1 ? kParticlesPixelRed : kParticlesPixelWhite;
                     }
                 }
                 const Rgb actual = image.at(x, y);
-                if (expected != kBlack) lit++;
+                if (expected != kParticlesPixelBlack) lit++;
                 if (actual != expected){
                     mismatches++;
                     if (first.empty()){
@@ -274,7 +274,7 @@ TEST_F(ParticlesPixelGpu, DitherFade){
     JASPER_REQUIRE_GPU();
     GpuEnvironment::setView(128, 128, 128, 128, Scaling::LETTERBOX);
     auto dot = [&](float alpha, int ditherSize, DitherSpace space){
-        ParticleEffectDocument d = still(16.0f, 0.0f);
+        ParticleEffectDocument d = particlesPixelStill(16.0f, 0.0f);
         d.pixelArt.fade = PixelFade::Dither;
         d.pixelArt.ditherSize = ditherSize;
         d.pixelArt.ditherSpace = space;
@@ -294,7 +294,7 @@ TEST_F(ParticlesPixelGpu, DitherFade){
         add(Vector3(8.0f + 32.0f * (float)j, 104.0f, 0.0f), dot((float)(4 * (j + 1)) / 16.0f, 2, DitherSpace::Screen));
     ASSERT_TRUE(render(0.05));
     GpuEnvironment::drawFrames(2);
-    const Shot image = readImage();
+    const ParticlesPixelShot image = particlesPixelReadImage();
     for (int k = 1; k <= 3; k++){
         for (int j = 0; j < 3; j++){
             const int index = k * 4 + j;
@@ -305,10 +305,10 @@ TEST_F(ParticlesPixelGpu, DitherFade){
                     for (int y = 0; y < 4; y++){
                         for (int x = 0; x < 4; x++){
                             const Rgb c = image.at(bx + cx * 4 + x, by + cy * 4 + y);
-                            EXPECT_TRUE(c == kWhite || c == kBlack) << "a blended pixel under Dither";
-                            count += c == kWhite ? 1 : 0;
+                            EXPECT_TRUE(c == kParticlesPixelWhite || c == kParticlesPixelBlack) << "a blended pixel under Dither";
+                            count += c == kParticlesPixelWhite ? 1 : 0;
                             // the cell is the table's: drawn where the threshold is below k/16
-                            EXPECT_EQ(c == kWhite, (float)index / 16.0f > pixelart::bayerThreshold(4, bx + cx * 4 + x, by + cy * 4 + y));
+                            EXPECT_EQ(c == kParticlesPixelWhite, (float)index / 16.0f > pixelart::bayerThreshold(4, bx + cx * 4 + x, by + cy * 4 + y));
                         }
                     }
                     EXPECT_EQ(count, index) << "a 4x4 cell at alpha " << index << "/16";
@@ -321,7 +321,7 @@ TEST_F(ParticlesPixelGpu, DitherFade){
             for (int cx = 0; cx < 8; cx++){
                 int count = 0;
                 for (int y = 0; y < 2; y++)
-                    for (int x = 0; x < 2; x++) count += image.at(32 * j + cx * 2 + x, 96 + cy * 2 + y) == kWhite ? 1 : 0;
+                    for (int x = 0; x < 2; x++) count += image.at(32 * j + cx * 2 + x, 96 + cy * 2 + y) == kParticlesPixelWhite ? 1 : 0;
                 EXPECT_EQ(count, j + 1) << "a 2x2 cell at alpha " << 4 * (j + 1) << "/16";
             }
         }
@@ -333,12 +333,12 @@ TEST_F(ParticlesPixelGpu, DitherFade){
     ParticleSystem& particle = add(Vector3(80.0f, 40.0f, 0.0f), dot(0.5f, 4, DitherSpace::Particle));
     ASSERT_TRUE(render(0.05));
     GpuEnvironment::drawFrames(2);
-    const Shot before = readImage();
+    const ParticlesPixelShot before = particlesPixelReadImage();
     screen.setPosition(41.0f, 40.0f, 0.0f);
     particle.setPosition(81.0f, 40.0f, 0.0f);
     ASSERT_TRUE(render(0.05));
     GpuEnvironment::drawFrames(2);
-    const Shot after = readImage();
+    const ParticlesPixelShot after = particlesPixelReadImage();
     size_t screenSame = 0, particleShifted = 0, particleSame = 0;
     for (int y = 33; y < 47; y++){
         for (int x = 34; x < 47; x++){
@@ -360,7 +360,7 @@ TEST_F(ParticlesPixelGpu, ExactColors){
     JASPER_REQUIRE_GPU();
     GpuEnvironment::setView(128, 128, 128, 128, Scaling::LETTERBOX);
     for (int v = 0; v < 256; v++){
-        ParticleEffectDocument d = still(4.0f, 0.0f);
+        ParticleEffectDocument d = particlesPixelStill(4.0f, 0.0f);
         d.renderer.pixelShape = PixelShape::Dot;
         d.main.startColor.mode = GradientValueMode::Ramp;
         // grey, and the other channels apart (all 256 values on each)
@@ -369,7 +369,7 @@ TEST_F(ParticlesPixelGpu, ExactColors){
     }
     ASSERT_TRUE(render(0.05));
     GpuEnvironment::drawFrames(2);
-    const Shot image = readImage();
+    const ParticlesPixelShot image = particlesPixelReadImage();
     int wrong = 0;
     for (int v = 0; v < 256; v++){
         const Rgb expected{(uint8_t)v, (uint8_t)(255 - v), (uint8_t)((v * 7) & 255)};
@@ -408,14 +408,14 @@ TEST_F(ParticlesPixelGpu, ExactColors){
     add(Vector3(64.0f, 64.0f, 0.0f), fire, 3);
     ASSERT_TRUE(render(1.3));
     GpuEnvironment::drawFrames(2);
-    const Shot fireImage = readImage();
-    std::set<Rgb> allowed = {kBlack};
+    const ParticlesPixelShot fireImage = particlesPixelReadImage();
+    std::set<Rgb> allowed = {kParticlesPixelBlack};
     for (const pixelart::Rgba8& c : ramp) allowed.insert(Rgb{c.r, c.g, c.b});
     size_t drawn = 0, off = 0;
     for (int y = 0; y < fireImage.height; y++){
         for (int x = 0; x < fireImage.width; x++){
             const Rgb c = fireImage.at(x, y);
-            if (c == kBlack) continue;
+            if (c == kParticlesPixelBlack) continue;
             drawn++;
             if (!allowed.count(c)) off++;
         }
@@ -469,7 +469,7 @@ TEST_F(ParticlesPixelGpu, AnalyticMatchesCpu){
             const double t = 0.37 + 1.13 * i;
             ASSERT_TRUE(render(t));
             GpuEnvironment::drawFrames(2);
-            const Shot image = readImage();
+            const ParticlesPixelShot image = particlesPixelReadImage();
             const int w = image.width, h = image.height;
             std::vector<uint8_t> expected((size_t)w * h, 0), drawn((size_t)w * h, 0);
             const AnalyticProgram& program = *state->runtime.analytic();
@@ -484,7 +484,7 @@ TEST_F(ParticlesPixelGpu, AnalyticMatchesCpu){
             }
             for (int y = 0; y < h; y++)
                 for (int x = 0; x < w; x++)
-                    drawn[(size_t)y * w + x] = image.at(x, y) != kBlack ? 1 : 0;
+                    drawn[(size_t)y * w + x] = image.at(x, y) != kParticlesPixelBlack ? 1 : 0;
             auto near = [&](const std::vector<uint8_t>& set, int x, int y){
                 for (int dy = -1; dy <= 1; dy++)
                     for (int dx = -1; dx <= 1; dx++){
@@ -545,17 +545,17 @@ namespace {
         // a project gets a copy of builtin:pixelfx-effects (the editor's): here the ramps are inline
         const std::string json = std::regex_replace(text.str(), std::regex("\"ramp\": \"builtin:pixelfx-effects#ramp:[a-z_]+\""),
                                                     "\"rampColors\": [\"#fff3a6\", \"#ffb03b\", \"#c8481c\", \"#5a1e12\"]");
-        std::vector<Diagnostic> diagnostics;
+        std::vector<jasperengine::particles::Diagnostic> diagnostics;
         EXPECT_TRUE(ParticleEffectCodec::read(json, d, diagnostics)) << name << ": " << ParticleEffectCodec::format(diagnostics);
         return d;
     }
 
     // the drawn pixels in columns [x0, x1)
-    size_t litBetween(const Shot& image, int x0, int x1){
+    size_t litBetween(const ParticlesPixelShot& image, int x0, int x1){
         size_t n = 0;
         for (int y = 0; y < image.height; y++)
             for (int x = x0; x < x1; x++)
-                n += image.at(x, y) != kBlack ? 1 : 0;
+                n += image.at(x, y) != kParticlesPixelBlack ? 1 : 0;
         return n;
     }
 
@@ -572,7 +572,7 @@ namespace {
 TEST_F(ParticlesPixelGpu, SubEmittersDraw){
     JASPER_REQUIRE_GPU();
     GpuEnvironment::setView(256, 256, 256, 256, Scaling::LETTERBOX);
-    ParticleEffectDocument child = still(3.0f, 0.0f);
+    ParticleEffectDocument child = particlesPixelStill(3.0f, 0.0f);
     child.emission.bursts.clear();
     child.main.startSpeed = MinMaxCurve::twoConstants(10.0f, 30.0f);
     child.shape.enabled = true;
@@ -600,7 +600,7 @@ TEST_F(ParticlesPixelGpu, SubEmittersDraw){
     add(Vector3(64.0f, 128.0f, 0.0f), parent, 3);
     add(Vector3(192.0f, 128.0f, 0.0f), withoutSubEmitters(parent), 3);
     ASSERT_TRUE(render(0.5));
-    const Shot image = readImage();
+    const ParticlesPixelShot image = particlesPixelReadImage();
     EXPECT_GT(litBetween(image, 0, 128), 20u) << "the sub-emitter's dots draw";
     EXPECT_EQ(litBetween(image, 128, 256), 0u) << "without it nothing draws";
     EXPECT_NO_ENGINE_ERRORS();
@@ -618,7 +618,7 @@ TEST_F(ParticlesPixelGpu, PresetSubEmittersDraw){
     add(Vector3(64.0f, 128.0f, 0.0f), presetDocument("pixel_debris"), 5);
     add(Vector3(192.0f, 128.0f, 0.0f), withoutSubEmitters(presetDocument("pixel_debris")), 5);
     ASSERT_TRUE(render(0.08));
-    Shot image = readImage();
+    ParticlesPixelShot image = particlesPixelReadImage();
     EXPECT_GT(litBetween(image, 0, 128), 10u) << "Debris's shards and chunks draw";
     EXPECT_EQ(litBetween(image, 128, 256), 0u) << "Debris without its pieces draws nothing";
 
@@ -627,7 +627,7 @@ TEST_F(ParticlesPixelGpu, PresetSubEmittersDraw){
     add(Vector3(64.0f, 60.0f, 0.0f), presetDocument("pixel_fire"), 7);
     add(Vector3(192.0f, 60.0f, 0.0f), withoutSubEmitters(presetDocument("pixel_fire")), 7);
     ASSERT_TRUE(render(2.0));
-    image = readImage();
+    image = particlesPixelReadImage();
     const size_t withSmoke = litBetween(image, 0, 128), flames = litBetween(image, 128, 256);
     EXPECT_GT(flames, 0u);
     EXPECT_GT(withSmoke, flames + 10) << "the smoke draws: " << withSmoke << " pixels against the flames' " << flames;

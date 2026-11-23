@@ -185,6 +185,10 @@ namespace jasperengine{
 		// destroyed first, releasing while the world they belong to is still alive.
 		std::vector<JPH::BodyID> pendingBodyDestroy3D;
 		std::vector<JPH::Ref<JPH::TwoBodyConstraint>> pendingJointDestroy3D;
+		// createStaticBodyForShape's bodies until finalizeBodies (GetIndexAndSequenceNumber): their batch
+		// adds them, so the step does not. Added here too, a body would sit in the broad phase twice
+		// (the second add ignores the first), and the update after its removal walks a stale leaf
+		std::unordered_set<uint32_t> batchAdding3D;
 
 		// the CharacterControllers (S22 P2): Jolt CharacterVirtuals in world3D, so after it
 		// (destroyed first, while the world their inner bodies are in still exists)

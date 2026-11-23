@@ -62,15 +62,15 @@ using namespace jasperengine::test;
 
 namespace {
 
-    struct Rgba { uint8_t r, g, b, a; };
-    constexpr Rgba RED{230, 40, 30, 255};
-    constexpr Rgba BLUE{30, 60, 230, 255};
-    constexpr Rgba GREY_BRIGHT{240, 240, 240, 255};
-    constexpr Rgba GREY_DARK{40, 40, 40, 255};
-    constexpr Rgba WHITE{255, 255, 255, 255};
-    constexpr Rgba BLACK{0, 0, 0, 255};
+    struct TextureRebindRgba { uint8_t r, g, b, a; };
+    constexpr TextureRebindRgba RED{230, 40, 30, 255};
+    constexpr TextureRebindRgba BLUE{30, 60, 230, 255};
+    constexpr TextureRebindRgba GREY_BRIGHT{240, 240, 240, 255};
+    constexpr TextureRebindRgba GREY_DARK{40, 40, 40, 255};
+    constexpr TextureRebindRgba WHITE{255, 255, 255, 255};
+    constexpr TextureRebindRgba BLACK{0, 0, 0, 255};
 
-    std::vector<uint8_t> readTarget(){
+    std::vector<uint8_t> readTextureRebindTarget(){
         Framebuffer& target = GpuEnvironment::target();
         std::vector<uint8_t> rgba;
         readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba);
@@ -78,7 +78,7 @@ namespace {
     }
 
     // mean over the pixels of the largest channel difference (0..255)
-    double meanDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
+    double rebindMeanDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
         if (a.size() != b.size() || a.empty())
             return 255.0;
         double sum = 0.0;
@@ -92,7 +92,7 @@ namespace {
         return sum / (double)pixels;
     }
 
-    void writePng(const std::string& path, Rgba color){
+    void writeColorPng(const std::string& path, TextureRebindRgba color){
         std::vector<uint8_t> pixels(16 * 16 * 4);
         for (size_t i = 0; i < pixels.size(); i += 4){
             pixels[i] = color.r;
@@ -105,8 +105,8 @@ namespace {
 
     // the file's new pixels as the hot reload takes them (reload::reloadTextures): decoded, in the
     // pool, the GPU texture stale; false when nothing loaded reads the file
-    bool reloadFile(const std::string& path, Rgba color){
-        writePng(path, color);
+    bool reloadFile(const std::string& path, TextureRebindRgba color){
+        writeColorPng(path, color);
         bool found = false;
         for (const std::string& id : TextureDataPool::findIdsUsingFile(FileData::getSystemPath(path))){
             TextureSource source;
@@ -147,9 +147,9 @@ namespace {
         TempDir dir;
         Scene* scene = nullptr;
 
-        std::string png(const std::string& name, Rgba color){
+        std::string png(const std::string& name, TextureRebindRgba color){
             const std::string path = dir.file(name + ".png").generic_string();
-            writePng(path, color);
+            writeColorPng(path, color);
             return path;
         }
 
@@ -164,7 +164,7 @@ namespace {
 
         // the reference with the final pixels from the start; then the holder of a file of other
         // pixels, its file reloaded after it was drawn
-        void expectRebinds(const char* what, Rgba first, Rgba final, const std::function<void(Stage&, const std::string& path, Rgba color, Keep& keep)>& make,
+        void expectRebinds(const char* what, TextureRebindRgba first, TextureRebindRgba final, const std::function<void(Stage&, const std::string& path, TextureRebindRgba color, Keep& keep)>& make,
                            const std::function<void(Scene&)>& atTheEnd = nullptr){
             std::vector<uint8_t> reference;
             {
@@ -174,7 +174,7 @@ namespace {
                 make(stage, dir.file(std::string(what) + "-final.png").generic_string(), final, keep);
                 ASSERT_FALSE(HasFatalFailure());
                 ASSERT_TRUE(settled()) << what << ": the reference never finished loading";
-                reference = readTarget();
+                reference = readTextureRebindTarget();
             }
 
             Stage stage;
@@ -184,14 +184,14 @@ namespace {
             make(stage, path, first, keep);
             ASSERT_FALSE(HasFatalFailure());
             ASSERT_TRUE(settled()) << what << ": the first image never finished loading";
-            const std::vector<uint8_t> before = readTarget();
-            ASSERT_GT(meanDifference(before, reference), 1.0) << what << ": the two images draw alike (the case shows nothing)";
+            const std::vector<uint8_t> before = readTextureRebindTarget();
+            ASSERT_GT(rebindMeanDifference(before, reference), 1.0) << what << ": the two images draw alike (the case shows nothing)";
 
             ASSERT_TRUE(reloadFile(path, final)) << what << ": nothing loaded reads " << path;
             ASSERT_TRUE(settled()) << what << ": the new image never finished loading";
-            const std::vector<uint8_t> after = readTarget();
-            EXPECT_LT(meanDifference(after, reference), 1.0) << what << ": it still draws the old image (mean difference to the old one "
-                                                             << meanDifference(after, before) << ")";
+            const std::vector<uint8_t> after = readTextureRebindTarget();
+            EXPECT_LT(rebindMeanDifference(after, reference), 1.0) << what << ": it still draws the old image (mean difference to the old one "
+                                                             << rebindMeanDifference(after, before) << ")";
             if (atTheEnd)
                 atTheEnd(stage.scene);
             EXPECT_NO_ENGINE_ERRORS();
@@ -202,8 +202,8 @@ namespace {
 
 TEST_F(TextureRebindGpu, AUiImageBindsANewImage){
     JASPER_REQUIRE_GPU();
-    expectRebinds("ui", RED, BLUE, [](Stage& stage, const std::string& path, Rgba color, Keep& keep){
-        writePng(path, color);
+    expectRebinds("ui", RED, BLUE, [](Stage& stage, const std::string& path, TextureRebindRgba color, Keep& keep){
+        writeColorPng(path, color);
         stage.camera.setType(CameraType::CAMERA_UI);
         stage.camera.setPosition(0.0f, 0.0f, 1.0f);
         auto image = std::make_shared<Image>(&stage.scene);
@@ -216,8 +216,8 @@ TEST_F(TextureRebindGpu, AUiImageBindsANewImage){
 
 TEST_F(TextureRebindGpu, PointsBindANewImage){
     JASPER_REQUIRE_GPU();
-    expectRebinds("points", RED, BLUE, [](Stage& stage, const std::string& path, Rgba color, Keep& keep){
-        writePng(path, color);
+    expectRebinds("points", RED, BLUE, [](Stage& stage, const std::string& path, TextureRebindRgba color, Keep& keep){
+        writeColorPng(path, color);
         auto points = std::make_shared<Points>(&stage.scene);
         points->setTexture(path);
         points->addPoint(Vector3(0.0f, 0.0f, 0.0f), Vector4(1.0f, 1.0f, 1.0f, 1.0f), 200.0f);
@@ -227,8 +227,8 @@ TEST_F(TextureRebindGpu, PointsBindANewImage){
 
 TEST_F(TextureRebindGpu, ASkyBindsANewImage){
     JASPER_REQUIRE_GPU();
-    expectRebinds("sky", RED, BLUE, [](Stage& stage, const std::string& path, Rgba color, Keep& keep){
-        writePng(path, color);
+    expectRebinds("sky", RED, BLUE, [](Stage& stage, const std::string& path, TextureRebindRgba color, Keep& keep){
+        writeColorPng(path, color);
         auto sky = std::make_shared<Skybox>(&stage.scene);
         sky->setTextures(path, path, path, path, path, path);
         keep.push_back(sky);
@@ -239,8 +239,8 @@ TEST_F(TextureRebindGpu, ASkyBindsANewImage){
 TEST_F(TextureRebindGpu, ASkysLightingTakesANewImage){
     JASPER_REQUIRE_GPU();
     Entity surface = NULL_ENTITY;
-    expectRebinds("sky-lighting", GREY_DARK, GREY_BRIGHT, [&surface](Stage& stage, const std::string& path, Rgba color, Keep& keep){
-        writePng(path, color);
+    expectRebinds("sky-lighting", GREY_DARK, GREY_BRIGHT, [&surface](Stage& stage, const std::string& path, TextureRebindRgba color, Keep& keep){
+        writeColorPng(path, color);
         auto sky = std::make_shared<Skybox>(&stage.scene);
         sky->setTextures(path, path, path, path, path, path);
         keep.push_back(sky);
@@ -265,7 +265,7 @@ TEST_F(TextureRebindGpu, ASkysLightingTakesANewImage){
 TEST_F(TextureRebindGpu, ASkysLightingStaysWhenACookComesInThatTheCpuCannotRead){
     JASPER_REQUIRE_GPU();
     const std::string path = dir.file("sky-cook.png").generic_string();
-    writePng(path, GREY_BRIGHT);
+    writeColorPng(path, GREY_BRIGHT);
     Stage stage;
     scene = &stage.scene;
     Skybox sky(&stage.scene);
@@ -279,7 +279,7 @@ TEST_F(TextureRebindGpu, ASkysLightingStaysWhenACookComesInThatTheCpuCannotRead)
     plane.setMaterial(material);
     stage.scene.getComponent<MeshComponent>(plane.getEntity()).receiveIBL = true;
     ASSERT_TRUE(settled());
-    const std::vector<uint8_t> before = readTarget();
+    const std::vector<uint8_t> before = readTextureRebindTarget();
 
     // the same pixels as a cook's: BC1 blocks of the one colour, nothing plain to read
     if (!SystemRender::getTextureFormatSupport()(GpuTextureFormat::BC1))
@@ -299,7 +299,7 @@ TEST_F(TextureRebindGpu, ASkysLightingStaysWhenACookComesInThatTheCpuCannotRead)
     TexturePool::invalidate(ids[0]);
     ASSERT_TRUE(settled());
     // (the sky's own pixels are BC1's rounding of the colour: the surface's are what is compared, its middle)
-    const std::vector<uint8_t> after = readTarget();
+    const std::vector<uint8_t> after = readTextureRebindTarget();
     const int width = (int)GpuEnvironment::target().getWidth();
     const int height = (int)GpuEnvironment::target().getHeight();
     double surface = 0.0;
@@ -337,7 +337,7 @@ namespace {
     }
 
     // the same image as a cook's (TextureCookQueue::collectSwaps): BC1 blocks of the one colour, nothing plain to read
-    void swapInACookOf(const std::string& path, Rgba color){
+    void swapInACookOf(const std::string& path, TextureRebindRgba color){
         std::vector<std::string> ids = TextureDataPool::findIdsUsingFile(FileData::getSystemPath(path));
         ASSERT_FALSE(ids.empty());
         const uint16_t color565 = (uint16_t)(((color.r >> 3) << 11) | ((color.g >> 2) << 5) | (color.b >> 3));
@@ -359,8 +359,8 @@ namespace {
 TEST_F(TextureRebindGpu, AReflectionProbesLightingTakesANewImage){
     JASPER_REQUIRE_GPU();
     Entity surface = NULL_ENTITY;
-    expectRebinds("probe-lighting", GREY_DARK, GREY_BRIGHT, [&surface](Stage& stage, const std::string& path, Rgba color, Keep& keep){
-        writePng(path, color);
+    expectRebinds("probe-lighting", GREY_DARK, GREY_BRIGHT, [&surface](Stage& stage, const std::string& path, TextureRebindRgba color, Keep& keep){
+        writeColorPng(path, color);
         keep.push_back(makeProbe(stage, path));
         keep.push_back(makeProbeSurface(stage, &surface));
     }, [&surface](Scene& scene){
@@ -372,8 +372,8 @@ TEST_F(TextureRebindGpu, AReflectionProbesLightingTakesANewImage){
 // Two probes of one image: the maps of the old pixels go with their last holder, the new ones are shared
 TEST_F(TextureRebindGpu, TwoReflectionProbesOfAnImageBothTakeItsNewPixels){
     JASPER_REQUIRE_GPU();
-    expectRebinds("probe-shared", GREY_DARK, GREY_BRIGHT, [](Stage& stage, const std::string& path, Rgba color, Keep& keep){
-        writePng(path, color);
+    expectRebinds("probe-shared", GREY_DARK, GREY_BRIGHT, [](Stage& stage, const std::string& path, TextureRebindRgba color, Keep& keep){
+        writeColorPng(path, color);
         // (the one the surface takes, the nearer of the two, is made after the other)
         auto far = makeProbe(stage, path);
         far->setPosition(0.0f, 0.0f, 3.0f);
@@ -423,19 +423,19 @@ TEST_F(TextureRebindGpu, AReflectionProbesLightingStaysWhenACookComesInThatTheCp
     Entity surface = NULL_ENTITY;
     auto plane = makeProbeSurface(stage, &surface);
     ASSERT_TRUE(settled());
-    const std::vector<uint8_t> before = readTarget();
+    const std::vector<uint8_t> before = readTextureRebindTarget();
 
     swapInACookOf(path, GREY_BRIGHT);
     ASSERT_FALSE(HasFatalFailure());
     ASSERT_TRUE(settled());
-    EXPECT_LT(meanDifference(readTarget(), before), 1.0) << "the surface lost its lighting with the cook";
+    EXPECT_LT(rebindMeanDifference(readTextureRebindTarget(), before), 1.0) << "the surface lost its lighting with the cook";
     EXPECT_NE(stage.scene.getComponent<MeshComponent>(surface).submeshes[0].shaderProperties & (1u << 19), 0u) << "the probe does not light the surface anymore";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
 namespace {
     // a terrain under the camera: its first layer red, its second blue, weighted by its blend map
-    std::shared_ptr<Terrain> makeTerrain(Stage& stage, const std::string& heightMap, const std::string& blendMap, const std::string& red, const std::string& blue){
+    std::shared_ptr<Terrain> textureRebindMakeTerrain(Stage& stage, const std::string& heightMap, const std::string& blendMap, const std::string& red, const std::string& blue){
         auto terrain = std::make_shared<Terrain>(&stage.scene);
         terrain->setSize(4.0f);
         terrain->setMaxHeight(1.5f);
@@ -449,12 +449,12 @@ namespace {
 
 TEST_F(TextureRebindGpu, ATerrainsHeightMapBindsANewImage){
     JASPER_REQUIRE_GPU();
-    const std::string blendMap = png("terrain-height-blend", Rgba{255, 0, 0, 255});
+    const std::string blendMap = png("terrain-height-blend", TextureRebindRgba{255, 0, 0, 255});
     const std::string red = png("terrain-height-red", RED);
     const std::string blue = png("terrain-height-blue", BLUE);
-    expectRebinds("terrain-height", BLACK, WHITE, [&](Stage& stage, const std::string& path, Rgba color, Keep& keep){
-        writePng(path, color);
-        keep.push_back(makeTerrain(stage, path, blendMap, red, blue));
+    expectRebinds("terrain-height", BLACK, WHITE, [&](Stage& stage, const std::string& path, TextureRebindRgba color, Keep& keep){
+        writeColorPng(path, color);
+        keep.push_back(textureRebindMakeTerrain(stage, path, blendMap, red, blue));
     });
 }
 
@@ -463,9 +463,9 @@ TEST_F(TextureRebindGpu, ATerrainsBlendMapBindsANewImage){
     const std::string heightMap = png("terrain-blend-height", BLACK);
     const std::string red = png("terrain-blend-red", RED);
     const std::string blue = png("terrain-blend-blue", BLUE);
-    expectRebinds("terrain-blend", Rgba{255, 0, 0, 255}, Rgba{0, 255, 0, 255}, [&](Stage& stage, const std::string& path, Rgba color, Keep& keep){
-        writePng(path, color);
-        keep.push_back(makeTerrain(stage, heightMap, path, red, blue));
+    expectRebinds("terrain-blend", TextureRebindRgba{255, 0, 0, 255}, TextureRebindRgba{0, 255, 0, 255}, [&](Stage& stage, const std::string& path, TextureRebindRgba color, Keep& keep){
+        writeColorPng(path, color);
+        keep.push_back(textureRebindMakeTerrain(stage, heightMap, path, red, blue));
     });
 }
 
@@ -474,18 +474,18 @@ TEST_F(TextureRebindGpu, ATerrainsBlendMapBindsANewImage){
 TEST_F(TextureRebindGpu, ATerrainsLayerImageBindsANewImage){
     JASPER_REQUIRE_GPU();
     const std::string heightMap = png("terrain-layer-height", BLACK);
-    const std::string blendMap = png("terrain-layer-blend", Rgba{255, 0, 0, 255});
+    const std::string blendMap = png("terrain-layer-blend", TextureRebindRgba{255, 0, 0, 255});
     const std::string blue = png("terrain-layer-blue", BLUE);
     const auto draw = [&](const std::string& layer, const std::function<void(Scene&, Entity)>& then){
         Stage stage;
         scene = &stage.scene;
-        auto terrain = makeTerrain(stage, heightMap, blendMap, layer, blue);
+        auto terrain = textureRebindMakeTerrain(stage, heightMap, blendMap, layer, blue);
         EXPECT_TRUE(settled());
         if (then){
             then(stage.scene, terrain->getEntity());
             EXPECT_TRUE(settled());
         }
-        return readTarget();
+        return readTextureRebindTarget();
     };
     const std::string finalImage = png("terrain-layer-final", BLUE);
     const std::vector<uint8_t> reference = draw(finalImage, nullptr);
@@ -493,22 +493,22 @@ TEST_F(TextureRebindGpu, ATerrainsLayerImageBindsANewImage){
     const std::string layer = png("terrain-layer-first", RED);
     std::vector<uint8_t> before;
     const std::vector<uint8_t> after = draw(layer, [&](Scene& stageScene, Entity entity){
-        before = readTarget();
-        ASSERT_GT(meanDifference(before, reference), 1.0) << "the two images draw alike (the case shows nothing)";
-        writePng(layer, BLUE);
+        before = readTextureRebindTarget();
+        ASSERT_GT(rebindMeanDifference(before, reference), 1.0) << "the two images draw alike (the case shows nothing)";
+        writeColorPng(layer, BLUE);
         stageScene.getSystem<RenderSystem>()->invalidateTerrainDetailArray(entity);
     });
-    EXPECT_LT(meanDifference(after, reference), 1.0) << "it still draws the old image (mean difference to the old one " << meanDifference(after, before) << ")";
+    EXPECT_LT(rebindMeanDifference(after, reference), 1.0) << "it still draws the old image (mean difference to the old one " << rebindMeanDifference(after, before) << ")";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
 namespace {
     // a cook of `size` px and its whole chain, as the raw writer stores it: the levels of at most
     // 64 px (the tail a progressive load reads first) one colour, the rest another
-    std::vector<uint8_t> progressiveKtx2(int size, Rgba top, Rgba tail, uint64_t& tailBytes){
+    std::vector<uint8_t> progressiveKtx2(int size, TextureRebindRgba top, TextureRebindRgba tail, uint64_t& tailBytes){
         std::vector<std::vector<uint8_t>> levels;
         for (int s = size; ; s /= 2){
-            const Rgba color = s <= 64 ? tail : top;
+            const TextureRebindRgba color = s <= 64 ? tail : top;
             std::vector<uint8_t> level((size_t)s * s * 4);
             for (size_t i = 0; i < level.size(); i += 4){
                 level[i] = color.r;
@@ -596,7 +596,7 @@ TEST_F(TextureRebindGpu, TheRestOfAProgressiveLoadReachesTheMeshDrawingItsTail){
         plane.createPlane(3.0f, 3.0f);
         plane.setMaterial(materialOfFile("bf17/whole.png"));
         ASSERT_TRUE(settled());
-        reference = readTarget();
+        reference = readTextureRebindTarget();
     }
 
     Stage stage;
@@ -607,12 +607,12 @@ TEST_F(TextureRebindGpu, TheRestOfAProgressiveLoadReachesTheMeshDrawingItsTail){
     // the mesh bound the tail (the frame it was uploaded), the rest came after it: the one GPU
     // texture was made again in place (TexturePool::get)
     ASSERT_TRUE(settled());
-    const std::vector<uint8_t> after = readTarget();
+    const std::vector<uint8_t> after = readTextureRebindTarget();
     std::shared_ptr<TextureRender> render = TexturePool::get("bf17/progressive.png");
     ASSERT_NE(render, nullptr) << "the mesh never made the GPU texture of its image";
     EXPECT_GE(render->getRevision(), 1u) << "the load was not progressive: the case shows nothing";
     EXPECT_EQ(render->getLevelCount(), 11);
-    EXPECT_LT(meanDifference(after, reference), 1.0) << "the mesh still draws the tail";
+    EXPECT_LT(rebindMeanDifference(after, reference), 1.0) << "the mesh still draws the tail";
 
     CookedTextures::setProvider(nullptr, "");
     Engine::setAsyncLoading(asyncLoading);

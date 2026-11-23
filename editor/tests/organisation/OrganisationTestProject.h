@@ -40,7 +40,7 @@ namespace jasperengine::editor::test {
             project->getAssetLabels().update();
         }
         void TearDown() override {
-            // closes the scenes as a project switch does: a Project frees none itself
+            // closes the scenes and their histories as a project switch does
             if (project) closeProject(*project);
             project.reset();
         }

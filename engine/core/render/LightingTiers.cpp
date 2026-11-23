@@ -17,7 +17,7 @@ namespace {
     LightMode currentMode = LightMode::AUTOMATIC;
 
     const char* const modeNames[] = {"automatic", "per_object", "tiled"};
-    const char* const tierNames[] = {"low", "medium", "high", "ultra"};
+    const char* const lightingTierNames[] = {"low", "medium", "high", "ultra"};
 }
 
 LightingTier LightingTiers::defaultTier(int platform){
@@ -110,14 +110,14 @@ bool LightingTiers::modeFromName(const char* name, LightMode& mode){
 
 const char* LightingTiers::getTierName(LightingTier tier){
     const int index = static_cast<int>(tier);
-    return (index >= 0 && index <= 3) ? tierNames[index] : tierNames[2];
+    return (index >= 0 && index <= 3) ? lightingTierNames[index] : lightingTierNames[2];
 }
 
 bool LightingTiers::tierFromName(const char* name, LightingTier& tier){
     if (!name)
         return false;
     for (int i = 0; i < 4; i++){
-        if (std::strcmp(name, tierNames[i]) == 0){
+        if (std::strcmp(name, lightingTierNames[i]) == 0){
             tier = static_cast<LightingTier>(i);
             return true;
         }

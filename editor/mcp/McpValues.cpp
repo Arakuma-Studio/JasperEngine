@@ -2664,7 +2664,7 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
             }
             return *static_cast<int*>(ref);
         case PropertyType::Enum: {
-            const int value = *static_cast<int*>(ref);
+            const int value = (int)readPropertyInteger(property, ref);
             const EnumOptions* options = enumOptions(ctx.component, name);
             return options ? enumToJson(value, *options) : Json(value);
         }

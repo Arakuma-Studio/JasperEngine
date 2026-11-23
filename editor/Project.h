@@ -1427,6 +1427,8 @@ namespace jasperengine::editor{
 
         void resetEngineConfigs(bool executeViewChanged);
         void resetConfigs();
+        // The Prefab Mode stages and the scenes, each with its Scene and SceneRender
+        void deleteScenes();
 
         void updateSceneCppScripts(SceneProject* sceneProject);
         void updateScenePrefabs(SceneProject* sceneProject);
@@ -2504,9 +2506,9 @@ namespace jasperengine::editor{
         uint32_t loadUntitledScene(const std::string& text, const std::string& displayName);
         void openScene(fs::path filepath, bool closePrevious = true);
         void closeScene(uint32_t sceneId, bool systemClose = false);
-        // Frees every scene, its render and the project state, as a project switch does. The
-        // editor's Project lives until exit and frees none; code that drops a Project while the
-        // engine runs (the CLI's tools, the unit tests) calls this first
+        // Frees every scene, its render and the project state, as a project switch does. ~Project
+        // frees the scenes only while the engine runs: a Project that outlives the engine's
+        // shutdown (a test file's static) calls this first
         void releaseScenes();
         // The open scene (or prefab stage) is read again from its file, its unsaved changes
         // dropped (the hot reload's Reload, S05 R11; not an undo step). False (and `error`)

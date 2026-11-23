@@ -48,7 +48,7 @@ namespace {
         }
     };
 
-    float angleBetween(const Vector3& a, const Vector3& b){
+    float animatorIKAngleBetween(const Vector3& a, const Vector3& b){
         const float d = a.normalized().dotProduct(b.normalized());
         return std::acos(std::min(1.0f, std::max(-1.0f, d))) * 57.29577951f;
     }
@@ -70,7 +70,7 @@ namespace {
 
     // the bend of the joint: 0 on a straight chain
     float bendOf(const Chain& chain){
-        return angleBetween(chain.positions[1] - chain.positions[0], chain.positions[2] - chain.positions[1]);
+        return animatorIKAngleBetween(chain.positions[1] - chain.positions[0], chain.positions[2] - chain.positions[1]);
     }
 
     // the part of `v` across the line along `axis`
@@ -109,7 +109,7 @@ namespace {
     // the angle between the aim ray of the chain's last bone and the way to the target
     float aimError(const Chain& chain, int last, const Vector3& forward, const Vector3& offset, const Vector3& target){
         const Vector3 eye = chain.positions[(size_t)last] + chain.rotations[(size_t)last] * offset;
-        return angleBetween(chain.rotations[(size_t)last] * forward, target - eye);
+        return animatorIKAngleBetween(chain.rotations[(size_t)last] * forward, target - eye);
     }
 
     // a chain leaning forward (+z, the way it faces), its bones `lengths` apart
@@ -154,8 +154,8 @@ TEST(AnimatorIK, TwoBoneUnreachableTargetStraightensTheChain){
     const Vector3 target(5, 0, 0);
     solveTwoBone(chain.context, 0, 1, 2, target, nullptr, nullptr, 1.0f);
     const Vector3 direction = (target - chain.positions[0]).normalized();
-    EXPECT_LE(angleBetween(chain.positions[2] - chain.positions[0], direction), 0.1f);
-    EXPECT_LE(angleBetween(chain.positions[1] - chain.positions[0], direction), 5.0f) << "almost straight (0.999 of the reach)";
+    EXPECT_LE(animatorIKAngleBetween(chain.positions[2] - chain.positions[0], direction), 0.1f);
+    EXPECT_LE(animatorIKAngleBetween(chain.positions[1] - chain.positions[0], direction), 5.0f) << "almost straight (0.999 of the reach)";
     EXPECT_NEAR((chain.positions[2] - chain.positions[0]).length(), 1.998f, 1e-3f);
 }
 
@@ -205,9 +205,9 @@ TEST(AnimatorIK, LookAtNeverExceedsItsClamp){
         const Vector3 before = c.rotations[2] * forward;
         solveLookAt(c.context, bones, weights, 3, forward, target, 45.0f, 1.0f);
         const Vector3 after = c.rotations[2] * forward;
-        EXPECT_LE(angleBetween(before, after), 45.0f + 0.05f) << "target at " << i * 10 << " degrees";
+        EXPECT_LE(animatorIKAngleBetween(before, after), 45.0f + 0.05f) << "target at " << i * 10 << " degrees";
         if (i == 0){
-            EXPECT_LE(angleBetween(after, target - c.positions[2]), 0.5f) << "an in-range target is reached";
+            EXPECT_LE(animatorIKAngleBetween(after, target - c.positions[2]), 0.5f) << "an in-range target is reached";
         }
     }
 }
@@ -432,7 +432,7 @@ TEST(AnimatorIK, TwoBoneHingeAxisWithPoleAndDegenerateAxis){
     const Vector3 pole(0.2f, 0.7f, 2.0f);
     EXPECT_TRUE(solveTwoBone(chain.context, 0, 1, 2, target, &pole, nullptr, 1.0f, options).reached);
     const Vector3 axis = (target - chain.positions[0]).normalized();
-    EXPECT_LE(angleBetween(across(chain.positions[1], axis), across(pole, axis)), 0.5f);
+    EXPECT_LE(animatorIKAngleBetween(across(chain.positions[1], axis), across(pole, axis)), 0.5f);
     // an axis along a bone defines no plane: as auto
     Chain along(3, 1.0f);
     along.local.setRotation(1, about(Vector3(1, 0, 0), 10.0f));
@@ -675,7 +675,7 @@ TEST(AnimatorIK, LookAtClampHoldsOnALeaningChain){
             const Vector3 before = chain.rotations[2] * forward;
             const Vector3 target = targetOff(chain, 2, forward, yaw, 20.0f, 1.0f);
             const IKResult r = solveLookAt(chain.context, kLookBones, weights, 3, forward, target, clamp, 1.0f, offset);
-            const float turned = angleBetween(before, chain.rotations[2] * forward);
+            const float turned = animatorIKAngleBetween(before, chain.rotations[2] * forward);
             EXPECT_LE(turned, clamp + 0.05f) << "clamp " << clamp << ", yaw " << yaw;
             EXPECT_GE(turned, clamp - 0.05f) << "the whole clamp is used";
             EXPECT_FALSE(r.reached) << "a clamped aim misses";
@@ -758,7 +758,7 @@ TEST(AnimatorIK, LookAtEdgeCases){
         const Vector3 target(1, 1, 1);
         solveLookAt(unit.context, kLookBones, weights, 2, forward, target, 180.0f, 1.0f);
         solveLookAt(longer.context, kLookBones, weights, 2, forward * 2.0f, target, 180.0f, 1.0f);
-        EXPECT_NEAR(angleBetween(unit.rotations[1] * forward, longer.rotations[1] * forward), 0.0f, 0.05f);
+        EXPECT_NEAR(animatorIKAngleBetween(unit.rotations[1] * forward, longer.rotations[1] * forward), 0.0f, 0.05f);
         Chain none(2, 0.3f);
         EXPECT_FALSE(solveLookAt(none.context, kLookBones, weights, 2, Vector3(0, 0, 0), target, 180.0f, 1.0f).reached);
         EXPECT_EQ(none.local.rotation(1), Quaternion());

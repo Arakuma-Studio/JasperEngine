@@ -38,7 +38,7 @@ using namespace voxeltest;
 
 namespace {
 
-    constexpr float DT = 1.0f / 60.0f;
+    constexpr float VOXEL_TERRAIN_DT = 1.0f / 60.0f;
 
     class VoxelTerrain : public ::testing::Test {
     protected:
@@ -89,8 +89,8 @@ namespace {
         // The terrain gets its heightfield collider, as a scene with physics has it (T1 R79)
         void enablePhysics() {
             updateTime = Engine::getUpdateTime();
-            Engine::setUpdateTime(DT);
-            Engine::setFixedDeltatime(DT);
+            Engine::setUpdateTime(VOXEL_TERRAIN_DT);
+            Engine::setFixedDeltatime(VOXEL_TERRAIN_DT);
             scene->getScheduler().setEnabled("PhysicsSystem", true);
             physics = scene->getSystem<PhysicsSystem>().get();
             physics->setGravity3D(0.0f, -9.81f, 0.0f);
@@ -107,8 +107,8 @@ namespace {
 
         void steps(int count) {
             for (int i = 0; i < count; i++) {
-                scene->fixedUpdate(DT);
-                scene->update(DT);
+                scene->fixedUpdate(VOXEL_TERRAIN_DT);
+                scene->update(VOXEL_TERRAIN_DT);
             }
         }
 

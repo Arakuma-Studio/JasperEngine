@@ -55,7 +55,7 @@ namespace {
         return renderer;
     }
 
-    RenderRequest requestOf(std::shared_ptr<const TitleArtDoc> doc, uint32_t flags = 0) {
+    RenderRequest title3DRendererRequestOf(std::shared_ptr<const TitleArtDoc> doc, uint32_t flags = 0) {
         RenderRequest r;
         r.doc = std::move(doc);
         r.pxScale = 1.0f;
@@ -70,7 +70,7 @@ namespace {
     }
 
     // the linear luminance of an sRGB-encoded pixel (AO multiplies linear light)
-    double luminance(const float* p) {
+    double title3DRendererLuminance(const float* p) {
         return 0.2126 * srgbToLinear(p[0]) + 0.7152 * srgbToLinear(p[1]) + 0.0722 * srgbToLinear(p[2]);
     }
 
@@ -116,7 +116,7 @@ namespace {
 
     RenderRequest fallbackRequest(std::shared_ptr<const TitleArtDoc> doc, int tier, uint32_t flags) {
         static TestAssetResolver assets;
-        RenderRequest r = requestOf(std::move(doc), flags);
+        RenderRequest r = title3DRendererRequestOf(std::move(doc), flags);
         r.tier = tier;
         r.assets = &assets;
         return r;
@@ -138,7 +138,7 @@ namespace {
 TEST_F(Title3DRendererGpu, AGold3DPlateDrawsLitPixels) {
     auto renderer = geometryRenderer();
     std::unique_ptr<TitleRenderJob> job;
-    const Pixels p = render(*renderer, requestOf(doc3D(plate3D())), &job);
+    const Pixels p = render(*renderer, title3DRendererRequestOf(doc3D(plate3D())), &job);
     ASSERT_EQ(p.width, 512);
     ASSERT_EQ(p.height, 256);
     for (const TitleProblem& problem : job->problems()) ADD_FAILURE() << problem.code << ": " << problem.message;
@@ -152,8 +152,8 @@ TEST_F(Title3DRendererGpu, AGold3DPlateDrawsLitPixels) {
 
 TEST_F(Title3DRendererGpu, TheBendChangesTheRampRedControl) {
     auto renderer = geometryRenderer();
-    const Pixels bent = render(*renderer, requestOf(doc3D(plate3D(0.6))));
-    const Pixels flat = render(*renderer, requestOf(doc3D(plate3D(0.0))));
+    const Pixels bent = render(*renderer, title3DRendererRequestOf(doc3D(plate3D(0.6))));
+    const Pixels flat = render(*renderer, title3DRendererRequestOf(doc3D(plate3D(0.0))));
     // among the plate's pixels, the bevel's share changes by more than 8 / 255
     ASSERT_EQ(bent.rgba.size(), flat.rgba.size());
     size_t covered = 0, changed = 0;
@@ -171,8 +171,8 @@ TEST_F(Title3DRendererGpu, TheBendChangesTheRampRedControl) {
 TEST_F(Title3DRendererGpu, CompressedLightAgreesWithFloat) {
     if (!SystemRender::getFeatures().renderRGBA16F || !SystemRender::getFeatures().msaaRGBA16F) GTEST_SKIP() << "no float MSAA here";
     auto renderer = geometryRenderer();
-    const Pixels floats = render(*renderer, requestOf(doc3D(plate3D())));
-    const Pixels compressed = render(*renderer, requestOf(doc3D(plate3D()), TITLE_ART_TEST_NO_FLOAT_TARGETS));
+    const Pixels floats = render(*renderer, title3DRendererRequestOf(doc3D(plate3D())));
+    const Pixels compressed = render(*renderer, title3DRendererRequestOf(doc3D(plate3D()), TITLE_ART_TEST_NO_FLOAT_TARGETS));
     const Difference d = compare(floats, compressed, 24.0);
     EXPECT_LE(d.mean, 3.0);
     EXPECT_LE(d.overFraction, 0.02);
@@ -257,7 +257,7 @@ TEST_F(Title3DRendererGpu, The3DRegionIsTheProjectedMesh) {
     Json layer = plate3D();
     layer["size"] = 40;
     layer["transform"] = {{"position", Json::array({-150, 60})}};
-    const Pixels p = render(*renderer, requestOf(doc3D(layer)));
+    const Pixels p = render(*renderer, title3DRendererRequestOf(doc3D(layer)));
     // the layer sits left of centre and above it: the right half stays empty
     double rightAlpha = 0;
     for (int y = 0; y < p.height; y++) {
@@ -271,17 +271,17 @@ TEST_F(Title3DRendererGpu, DebugViewsShowNormalsAndTheEnvironment) {
     // render_title options.debug_view: the face's normal is +z, so the normals view is blue with
     // equal red and green where the gold render is red over blue
     auto renderer = geometryRenderer();
-    RenderRequest normals = requestOf(doc3D(plate3D()));
+    RenderRequest normals = title3DRendererRequestOf(doc3D(plate3D()));
     normals.debugView3D = 1;
     const Pixels n = render(*renderer, normals);
     const float* centre = n.at(256, 128);
     EXPECT_GT(centre[3], 0.99f);
     EXPECT_GT(centre[2], centre[0] + 0.1f);
     EXPECT_NEAR(centre[0], centre[1], 0.02f);
-    RenderRequest environment = requestOf(doc3D(plate3D()));
+    RenderRequest environment = title3DRendererRequestOf(doc3D(plate3D()));
     environment.debugView3D = 2;
     const Pixels e = render(*renderer, environment);
-    const Pixels lit = render(*renderer, requestOf(doc3D(plate3D())));
+    const Pixels lit = render(*renderer, title3DRendererRequestOf(doc3D(plate3D())));
     EXPECT_GT(e.at(256, 128)[3], 0.99f);
     EXPECT_GT(compare(e, lit, 8.0).overFraction, 0.05) << "the environment view is not the render";
 }
@@ -304,15 +304,15 @@ TEST_F(Title3DRendererGpu, AODarkensTheCrevicesAndKeepsOpenFaces) {
         layer["style_3d"]["ao"] = Json{{"enabled", true}, {"radius", 8}, {"intensity", intensity}};
         return doc3D(layer);
     };
-    const Pixels off = render(*renderer, requestOf(doc3D(litPlate())));
-    const Pixels on = render(*renderer, requestOf(withAO(2)));
-    const Pixels zero = render(*renderer, requestOf(withAO(0)));
+    const Pixels off = render(*renderer, title3DRendererRequestOf(doc3D(litPlate())));
+    const Pixels on = render(*renderer, title3DRendererRequestOf(withAO(2)));
+    const Pixels zero = render(*renderer, title3DRendererRequestOf(withAO(0)));
     ASSERT_EQ(off.rgba.size(), on.rgba.size());
     size_t covered = 0, darkened = 0;
     for (size_t i = 0; i + 3 < off.rgba.size(); i += 4) {
         if (off.rgba[i + 3] < 0.99f) continue;
         covered++;
-        const double a = luminance(&off.rgba[i]), b = luminance(&on.rgba[i]);
+        const double a = title3DRendererLuminance(&off.rgba[i]), b = title3DRendererLuminance(&on.rgba[i]);
         if (a > 0.05 && b < a * 0.95) darkened++;
     }
     ASSERT_GT(covered, 0u);
@@ -320,7 +320,7 @@ TEST_F(Title3DRendererGpu, AODarkensTheCrevicesAndKeepsOpenFaces) {
     EXPECT_GT(darkened, covered / 200) << darkened << " of " << covered << " pixels darkened by 5 %";
     const float* c0 = off.at(256, 128);
     const float* c1 = on.at(256, 128);
-    EXPECT_NEAR(luminance(c1), luminance(c0), 0.01 * std::max(0.05, luminance(c0))) << "the open face keeps its value";
+    EXPECT_NEAR(title3DRendererLuminance(c1), title3DRendererLuminance(c0), 0.01 * std::max(0.05, title3DRendererLuminance(c0))) << "the open face keeps its value";
     EXPECT_LE(compare(off, zero, 1.0).overFraction, 0.0) << "intensity 0 is no AO";
     const Title3DStats* st = stats3D(*renderer);
     ASSERT_TRUE(st);
@@ -331,8 +331,8 @@ TEST_F(Title3DRendererGpu, GemsRefractTheLayersOwnOpaqueParts) {
     // AC11: a sapphire face over its dark band: with the behind copy the face shows the band
     // refracted, without it (red control) the environment only
     auto renderer = geometryRenderer();
-    const Pixels seen = render(*renderer, requestOf(doc3D(plate3D(0.0, "sapphire"))));
-    const Pixels envOnly = render(*renderer, requestOf(doc3D(plate3D(0.0, "sapphire")), TITLE_ART_TEST_NO_BEHIND));
+    const Pixels seen = render(*renderer, title3DRendererRequestOf(doc3D(plate3D(0.0, "sapphire"))));
+    const Pixels envOnly = render(*renderer, title3DRendererRequestOf(doc3D(plate3D(0.0, "sapphire")), TITLE_ART_TEST_NO_BEHIND));
     ASSERT_EQ(seen.rgba.size(), envOnly.rgba.size());
     size_t covered = 0, changed = 0;
     for (size_t i = 0; i + 3 < seen.rgba.size(); i += 4) {
@@ -357,8 +357,8 @@ TEST_F(Title3DRendererGpu, APartsOwnEnvironmentLightsThatPartOnly) {
     base["style_3d"]["bands"][0]["grow"] = 20;
     Json tinted = base;
     tinted["style_3d"]["face"]["environment"] = Json{{"tint", "#ff2020"}};
-    const Pixels plain = render(*renderer, requestOf(doc3D(base)));
-    const Pixels red = render(*renderer, requestOf(doc3D(tinted)));
+    const Pixels plain = render(*renderer, title3DRendererRequestOf(doc3D(base)));
+    const Pixels red = render(*renderer, title3DRendererRequestOf(doc3D(tinted)));
     const float* a = plain.at(256, 128);
     const float* b = red.at(256, 128);
     EXPECT_GT(b[0] - b[2], a[0] - a[2] + 0.05f) << "the face lights with its own tinted environment";
@@ -388,7 +388,7 @@ TEST_F(Title3DRendererGpu, MoreEnvironmentsThanTheCacheKeepsBuildOnce) {
         bands.push_back(Json{{"grow", 3 + 4 * i}, {"material", material}});
     }
     layer["style_3d"]["bands"] = bands;
-    const Pixels image = render(*renderer, requestOf(doc3D(layer)));
+    const Pixels image = render(*renderer, title3DRendererRequestOf(doc3D(layer)));
     ASSERT_GT(image.width, 0);
     const Title3DStats* stats = stats3D(*renderer);
     ASSERT_NE(stats, nullptr);
@@ -401,7 +401,7 @@ TEST_F(Title3DRendererGpu, DebugViewsAoInkAndWireframe) {
     Json layer = plate3D();
     layer["style_3d"]["bands"][0]["grow"] = 20;
     layer["style_3d"]["ao"] = Json{{"enabled", true}, {"radius", 8}, {"intensity", 2}};
-    RenderRequest ao = requestOf(doc3D(layer));
+    RenderRequest ao = title3DRendererRequestOf(doc3D(layer));
     ao.debugView3D = (int)Title3DDebugView::AO;
     const Pixels aoView = render(*renderer, ao);
     EXPECT_GT(aoView.at(256, 128)[0], 0.95f) << "the open face is unoccluded";
@@ -412,14 +412,14 @@ TEST_F(Title3DRendererGpu, DebugViewsAoInkAndWireframe) {
     }
     EXPECT_LT(darkest, 0.85f) << "the crevices show";
     // ink: the render without glint (no glint here: the render itself)
-    RenderRequest ink = requestOf(doc3D(plate3D()));
+    RenderRequest ink = title3DRendererRequestOf(doc3D(plate3D()));
     ink.debugView3D = (int)Title3DDebugView::Ink;
-    EXPECT_LE(compare(render(*renderer, ink), render(*renderer, requestOf(doc3D(plate3D()))), 2.0).overFraction, 0.001);
+    EXPECT_LE(compare(render(*renderer, ink), render(*renderer, title3DRendererRequestOf(doc3D(plate3D()))), 2.0).overFraction, 0.001);
     // wireframe: lines over nothing, fewer covered pixels than the solid render
-    RenderRequest wire = requestOf(doc3D(plate3D()));
+    RenderRequest wire = title3DRendererRequestOf(doc3D(plate3D()));
     wire.debugView3D = (int)Title3DDebugView::Wireframe;
     const Pixels w = render(*renderer, wire);
-    const Pixels solid = render(*renderer, requestOf(doc3D(plate3D())));
+    const Pixels solid = render(*renderer, title3DRendererRequestOf(doc3D(plate3D())));
     size_t wireCovered = 0, solidCovered = 0;
     for (size_t i = 0; i + 3 < w.rgba.size(); i += 4) {
         wireCovered += w.rgba[i + 3] > 0.5f;
@@ -441,11 +441,11 @@ TEST_F(Title3DRendererGpu, TheGlintAddsLightPastTheLetters) {
     };
     for (int tier : {0, 2, 3}) {
         auto renderer = geometryRenderer();
-        RenderRequest plainRequest = requestOf(doc3D(plate3D(0.6, "chrome")));
+        RenderRequest plainRequest = title3DRendererRequestOf(doc3D(plate3D(0.6, "chrome")));
         plainRequest.tier = tier;
-        RenderRequest glintRequest = requestOf(withGlint(0.5));
+        RenderRequest glintRequest = title3DRendererRequestOf(withGlint(0.5));
         glintRequest.tier = tier;
-        RenderRequest darkRequest = requestOf(withGlint(1000));
+        RenderRequest darkRequest = title3DRendererRequestOf(withGlint(1000));
         darkRequest.tier = tier;
         const Pixels plain = render(*renderer, plainRequest);
         const Pixels glint = render(*renderer, glintRequest);
@@ -465,7 +465,7 @@ TEST_F(Title3DRendererGpu, TheGlintAddsLightPastTheLetters) {
     }
     // the debug view shows the glint alone
     auto renderer = geometryRenderer();
-    RenderRequest view = requestOf(withGlint(0.5));
+    RenderRequest view = title3DRendererRequestOf(withGlint(0.5));
     view.debugView3D = (int)Title3DDebugView::Glint;
     const Pixels g = render(*renderer, view);
     double light = 0;
@@ -483,9 +483,9 @@ TEST_F(Title3DRendererGpu, PatternsPrintAndRaiseTheFace) {
                                                     {"scale", 20}, {"shade", 0.5}, {"relief", relief}};
         return doc3D(layer);
     };
-    const Pixels plain = render(*renderer, requestOf(doc3D(plate3D(0.0, "chrome"))));
-    const Pixels printed = render(*renderer, requestOf(withPattern(1, 0)));
-    const Pixels raised = render(*renderer, requestOf(withPattern(0, 1)));
+    const Pixels plain = render(*renderer, title3DRendererRequestOf(doc3D(plate3D(0.0, "chrome"))));
+    const Pixels printed = render(*renderer, title3DRendererRequestOf(withPattern(1, 0)));
+    const Pixels raised = render(*renderer, title3DRendererRequestOf(withPattern(0, 1)));
     auto changedShare = [&](const Pixels& a, const Pixels& b) {
         size_t covered = 0, changed = 0;
         for (size_t i = 0; i + 3 < a.rgba.size(); i += 4) {
@@ -517,7 +517,7 @@ TEST_F(Title3DRendererGpu, ACookedMeshDrawsWithoutTheMesher) {
     auto renderer = geometryRenderer();
     const Json layer = plate3D();
     const std::shared_ptr<const TitleArtDoc> doc = doc3D(layer);
-    const Pixels meshed = render(*renderer, requestOf(doc));
+    const Pixels meshed = render(*renderer, title3DRendererRequestOf(doc));
     three_d::TitleMeshRequest r;
     auto content = makeGeometryTitleContentProvider();
     r.source = three_d::collectTitleSource(doc->layers()[0], *doc, *content, nullptr, nullptr);
@@ -530,7 +530,7 @@ TEST_F(Title3DRendererGpu, ACookedMeshDrawsWithoutTheMesher) {
     std::string error;
     std::shared_ptr<TitleMesh> cooked = readTitleMesh(file, &error);
     ASSERT_TRUE(cooked) << error;
-    RenderRequest playerRequest = requestOf(doc, TITLE_ART_TEST_NO_MESHER);
+    RenderRequest playerRequest = title3DRendererRequestOf(doc, TITLE_ART_TEST_NO_MESHER);
     playerRequest.cookedMeshes3D[doc->layers()[0].value("id", std::string())] = cooked;
     const Pixels fromFile = render(*renderer, playerRequest);
     const Difference d = compare(meshed, fromFile, 2.0);
@@ -538,7 +538,7 @@ TEST_F(Title3DRendererGpu, ACookedMeshDrawsWithoutTheMesher) {
     EXPECT_LE(d.overFraction, 0.0);
     // red control: no cooked mesh, no mesher
     std::unique_ptr<TitleRenderJob> job;
-    const Pixels nothing = render(*renderer, requestOf(doc, TITLE_ART_TEST_NO_MESHER), &job);
+    const Pixels nothing = render(*renderer, title3DRendererRequestOf(doc, TITLE_ART_TEST_NO_MESHER), &job);
     bool reported = false;
     for (const TitleProblem& p : job->problems()) reported = reported || p.code == "mesher_unavailable";
     EXPECT_TRUE(reported);
@@ -549,7 +549,7 @@ TEST_F(Title3DRendererGpu, ACookedEnvironmentLightsLikeTheBuiltOne) {
     // R26, AC13: the builder's CPU twin written as a KTX2 cube and handed to the render
     // (RenderRequest::cookedEnvironments3D, a player's path) lights the plate as the GPU build does
     auto renderer = geometryRenderer();
-    RenderRequest built = requestOf(doc3D(plate3D(0.6, "chrome")));
+    RenderRequest built = title3DRendererRequestOf(doc3D(plate3D(0.6, "chrome")));
     built.tier = 3;
     const Pixels gpu = render(*renderer, built);
     const int face = titleEnvironmentFace(Environment3D{}, 1.0, TitleTier::Low);
@@ -558,7 +558,7 @@ TEST_F(Title3DRendererGpu, ACookedEnvironmentLightsLikeTheBuiltOne) {
     std::string error;
     ASSERT_TRUE(writeTitleEnvironmentKtx2(twin, {{"JE.titleart.environment", "studio"}}, file, error)) << error;
     auto cookedRenderer = geometryRenderer();
-    RenderRequest cooked = requestOf(doc3D(plate3D(0.6, "chrome")));
+    RenderRequest cooked = title3DRendererRequestOf(doc3D(plate3D(0.6, "chrome")));
     cooked.tier = 3;
     cooked.cookedEnvironments3D["studio"] = std::make_shared<const std::vector<uint8_t>>(file);
     const Pixels fromFile = render(*cookedRenderer, cooked);
@@ -597,9 +597,9 @@ TEST_F(Title3DRendererGpu, AnImageLayerProjectsItsPicture) {
         return makeDoc({{"canvas", canvas(512, 256)}, {"layers", Json::array({layer})}, {"scene_3d", {{"supersample", 1}}}});
     };
     auto renderer = geometryRenderer();
-    RenderRequest withPicture = requestOf(docWith(1));
+    RenderRequest withPicture = title3DRendererRequestOf(docWith(1));
     withPicture.assets = &assets;
-    RenderRequest without = requestOf(docWith(0));
+    RenderRequest without = title3DRendererRequestOf(docWith(0));
     without.assets = &assets;
     const Pixels p = render(*renderer, withPicture);
     const Pixels plain = render(*renderer, without);
@@ -616,7 +616,7 @@ TEST_F(Title3DRendererGpu, AnEnvironmentBuildIsSpreadOverFrames) {
     // call; red control: TITLE_ART_TEST_ENV_ONE_SHOT builds it in one
     auto runOnce = [](uint32_t flags, uint64_t& steps, uint64_t& maxUnits) {
         auto renderer = geometryRenderer();
-        RenderRequest r = requestOf(doc3D(plate3D(0.6, "chrome")), flags);
+        RenderRequest r = title3DRendererRequestOf(doc3D(plate3D(0.6, "chrome")), flags);
         r.tier = 3;
         const Pixels p = render(*renderer, r);
         EXPECT_GT(p.at(256, 128)[3], 0.99f);
@@ -647,7 +647,7 @@ TEST_F(Title3DRendererGpu, NewProgramsDrawOneAFrame) {
     auto run = [&](bool unbounded, uint64_t& deferredRenders) {
         TitleFirstDraws::resetForTesting(unbounded);
         auto renderer = geometryRenderer();
-        RenderRequest r = requestOf(doc3D(layer));
+        RenderRequest r = title3DRendererRequestOf(doc3D(layer));
         r.tier = 0;
         const Pixels p = render(*renderer, r);
         const Title3DStats* st = stats3D(*renderer);

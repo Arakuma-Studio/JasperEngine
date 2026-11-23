@@ -3,5 +3,7 @@
 # the host's kernel driver), and the build image stays the CI one.
 FROM ubuntu:22.04
 ARG DEBIAN_FRONTEND=noninteractive
+# apt retries a one-off network failure (apt-retries.conf)
+COPY apt-retries.conf /etc/apt/apt.conf.d/80-retries
 RUN apt-get update && apt-get install -y --no-install-recommends xserver-xorg-core x11-xserver-utils \
     && rm -rf /var/lib/apt/lists/*

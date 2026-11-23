@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <numbers>
 #include <vector>
 
 using namespace jasperengine;
@@ -20,12 +21,10 @@ using namespace jasperengine::titleart::analysis;
 
 namespace {
 
-    constexpr double PI = 3.14159265358979323846;
-
-    using Image = std::function<void(double x, double y, double& alpha, double& lum)>;
+    using SampledImage = std::function<void(double x, double y, double& alpha, double& lum)>;
 
     // a w x h grid of 4 canvas px cells centred on the canvas centre, each cell the image at its centre
-    Grid sampledGrid(int w, int h, const Image& image) {
+    Grid sampledGrid(int w, int h, const SampledImage& image) {
         Grid g;
         g.w = w;
         g.h = h;
@@ -49,7 +48,7 @@ namespace {
     // As the Grid program reads a render at px_scale k: taps on a lattice inside each cell (one a
     // target px, at most 16 a side), each the image at that pixel, then the 8-bit alpha and the
     // 16-bit luminance of the packed readback
-    Grid renderedGrid(int w, int h, double k, const Image& image) {
+    Grid renderedGrid(int w, int h, double k, const SampledImage& image) {
         Grid g;
         g.w = w;
         g.h = h;
@@ -93,7 +92,7 @@ namespace {
 
     // letter-like discs (radius 40) of base luminance 0.3 with one highlight (sigma 8 px) at
     // their centres, the luminance times gain(centre y)
-    Image discs(std::vector<TitleVec2> centres, double highlight, std::function<double(double)> gain = [](double) { return 1.0; }) {
+    SampledImage discs(std::vector<TitleVec2> centres, double highlight, std::function<double(double)> gain = [](double) { return 1.0; }) {
         return [centres, highlight, gain](double x, double y, double& a, double& l) {
             a = 0.0;
             l = 0.0;
@@ -126,14 +125,14 @@ namespace {
         std::vector<TitleVec2> spots;
         for (int k = 0; k < 6; k++) spots.push_back({-480.0 + 180.0 * k, 80.0});
         for (int k = 0; k < 6; k++) spots.push_back({-390.0 + 180.0 * k, 192.0});
-        const Image disc = discs(spots, 0.25);
+        const SampledImage disc = discs(spots, 0.25);
         return sampledGrid(288, 128, [disc](double x, double y, double& a, double& l) {
             disc(x, y, a, l);
             const double dx = std::max(std::abs(x) - 520.0, 0.0), dy = std::max(std::abs(y + 184.0) - 40.0, 0.0);
             const double d = dx > 0.0 || dy > 0.0 ? std::hypot(dx, dy) : -std::min(520.0 - std::abs(x), 40.0 - std::abs(y + 184.0));
             const double e = edge(d);
             if (e <= 0.0) return;
-            const double ridge = 0.7 * std::exp(-((y + 184.0) / 4.0) * ((y + 184.0) / 4.0) / 2.0) * (1.0 + 0.03 * std::sin(2.0 * PI * x / 32.0));
+            const double ridge = 0.7 * std::exp(-((y + 184.0) / 4.0) * ((y + 184.0) / 4.0) / 2.0) * (1.0 + 0.03 * std::sin(2.0 * std::numbers::pi * x / 32.0));
             a = std::max(a, e);
             l = std::max(l, e * (0.05 + ridge));
         });
@@ -212,7 +211,7 @@ TEST(HighlightFinderTest, AnchorsAgreeAcrossPxScale) {
         double x, y, hx, hy;
     };
     const Spot spots[] = {{-110.0, 10.0, 6.0, -8.0}, {0.0, -15.0, -10.0, 5.0}, {115.0, 20.0, 4.0, 12.0}};
-    const Image image = [&spots](double x, double y, double& a, double& l) {
+    const SampledImage image = [&spots](double x, double y, double& a, double& l) {
         a = 0.0;
         l = 0.0;
         for (const Spot& s : spots) {

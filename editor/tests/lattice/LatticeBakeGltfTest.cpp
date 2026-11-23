@@ -19,7 +19,7 @@ using namespace jasperengine::test;
 
 namespace {
 
-    std::string base64(const std::vector<unsigned char>& bytes){
+    std::string latticeBakeGltfBase64(const std::vector<unsigned char>& bytes){
         static const char* table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
         std::string out;
         size_t i = 0;
@@ -43,7 +43,7 @@ namespace {
         std::vector<unsigned char> bytes(sizeof(positions));
         std::memcpy(bytes.data(), positions, sizeof(positions));
         return std::string(R"({"asset": {"version": "2.0"},
-            "buffers": [{"byteLength": 36, "uri": "data:application/octet-stream;base64,)") + base64(bytes) + R"("}],
+            "buffers": [{"byteLength": 36, "uri": "data:application/octet-stream;base64,)") + latticeBakeGltfBase64(bytes) + R"("}],
             "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 36, "target": 34962}],
             "accessors": [{"name": "pos", "bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3",
                            "min": [0, 0, 0], "max": [1, 1, 0]}],

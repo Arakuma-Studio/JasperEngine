@@ -50,7 +50,7 @@ namespace {
         return parsed.doc;
     }
 
-    const TitleOpProblem* failure(const TitleOpsResult& r) {
+    const TitleOpProblem* titleFxPresetsFailure(const TitleOpsResult& r) {
         for (const TitleOpProblem& p : r.problems) {
             if (p.severity == "error") return &p;
         }
@@ -151,11 +151,11 @@ TEST(TitleFxPresetsTest, AddEffectAppliesAPreset) {
     EXPECT_EQ(params["intensity"], 2) << "the op's params win over the preset";
     const TitleOpsResult bad = TitleArtOps::apply(doc, Json{{"op", "add_effect"}, {"layer", "Title"}, {"type", "light_glow"}, {"preset", "soft_blom"}});
     ASSERT_FALSE(bad.ok);
-    ASSERT_NE(failure(bad), nullptr);
-    EXPECT_EQ(failure(bad)->nearest, "soft_bloom");
+    ASSERT_NE(titleFxPresetsFailure(bad), nullptr);
+    EXPECT_EQ(titleFxPresetsFailure(bad)->nearest, "soft_bloom");
     const TitleOpsResult typo = TitleArtOps::apply(doc, Json{{"op", "add_effect"}, {"layer", "Title"}, {"type", "lite_glow"}});
     ASSERT_FALSE(typo.ok);
-    EXPECT_EQ(failure(typo)->nearest, "light_glow");
+    EXPECT_EQ(titleFxPresetsFailure(typo)->nearest, "light_glow");
 }
 
 TEST(TitleFxPresetsTest, ApplyRecipeIsOneNamedStep) {
@@ -174,5 +174,5 @@ TEST(TitleFxPresetsTest, ApplyRecipeIsOneNamedStep) {
     EXPECT_EQ(shine.doc.layers()[0]["effects"][0]["params"]["mode"], "light");
     const TitleOpsResult bad = TitleArtOps::apply(doc, Json{{"op", "apply_recipe"}, {"layer", "Title"}, {"recipe", "long_shadw"}});
     ASSERT_FALSE(bad.ok);
-    EXPECT_EQ(failure(bad)->nearest, "long_shadow");
+    EXPECT_EQ(titleFxPresetsFailure(bad)->nearest, "long_shadow");
 }

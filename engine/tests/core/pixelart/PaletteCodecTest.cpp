@@ -15,7 +15,7 @@ using namespace jasperengine::pixelart;
 namespace {
 
     // the spec's §6.2 example, as the writer lays it out
-    const char* const kExample = R"({
+    const char* const kPaletteCodecExample = R"({
   "format": "jasperengine.palette",
   "version": 1,
   "name": "Hero",
@@ -66,7 +66,7 @@ namespace {
 TEST(PaletteCodec, ExampleReadsAndWritesByteIdentically) {
     Palette palette;
     std::vector<Diagnostic> diagnostics;
-    ASSERT_TRUE(PaletteCodec::read(kExample, palette, diagnostics));
+    ASSERT_TRUE(PaletteCodec::read(kPaletteCodecExample, palette, diagnostics));
     EXPECT_FALSE(hasErrors(diagnostics));
     EXPECT_EQ(palette.name, "Hero");
     EXPECT_EQ(palette.source.kind, "lospec");
@@ -83,7 +83,7 @@ TEST(PaletteCodec, ExampleReadsAndWritesByteIdentically) {
     EXPECT_EQ(palette.variantColor(0, 0), palette.colors[0]);
     EXPECT_EQ(palette.variantColor(0, 2), (Rgba8{0x29, 0x36, 0x6f, 255}));
     EXPECT_EQ(palette.variantColor(0, 7), palette.colors[7]);   // past a shorter list: the base
-    EXPECT_EQ(PaletteCodec::write(palette), std::string(kExample));
+    EXPECT_EQ(PaletteCodec::write(palette), std::string(kPaletteCodecExample));
 }
 
 TEST(PaletteCodec, LongColourListsWrapAtColumns) {
@@ -176,7 +176,7 @@ TEST(PaletteCodec, NewerVersionLoadsReadOnlyWithAWarning) {
 TEST(PaletteCodec, RampHelpersAndRemap) {
     Palette palette;
     std::vector<Diagnostic> diagnostics;
-    ASSERT_TRUE(PaletteCodec::read(kExample, palette, diagnostics));
+    ASSERT_TRUE(PaletteCodec::read(kPaletteCodecExample, palette, diagnostics));
     const std::vector<Rgba8> cape = palette.rampColors("cape");
     ASSERT_EQ(cape.size(), 4u);
     EXPECT_EQ(cape[0], palette.colors[2]);

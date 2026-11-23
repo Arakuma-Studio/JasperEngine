@@ -23,7 +23,7 @@ using namespace jasperengine::navtest;
 namespace {
 
     // one cell of the 0.2 m bakes
-    constexpr float CELL = 0.2f;
+    constexpr float NAV_AGENT_API_CELL = 0.2f;
     constexpr uint8_t MUD = 3;
 
     class NavAgentApiTest : public NavSceneTest {
@@ -167,7 +167,7 @@ TEST_F(NavAgentApiTest, CorridorPathAndStale){
     // mud across the corridor near its end
     areaVolume(Vector3(14.0f, 0.0f, 0.0f), Vector3(2.0f, 4.0f, 8.0f), MUD);
     const Entity surface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Surface");
-    addSurface(*scene, surface, CELL, 8);
+    addSurface(*scene, surface, NAV_AGENT_API_CELL, 8);
     bake(surface);
     const Entity walker = agent(*scene, Vector3(-18.0f, 0.0f, 1.5f));
     step();
@@ -228,7 +228,7 @@ TEST_F(NavAgentApiTest, RootMotion){
         EXPECT_EQ(position(walker), transformStart) << "tick " << tick;
     }
     // the plane's edge, less the agent's radius
-    EXPECT_NEAR(handle.getNextPosition().x, 9.5f, CELL + 0.05f) << "set/after each tick:" << trace;
+    EXPECT_NEAR(handle.getNextPosition().x, 9.5f, NAV_AGENT_API_CELL + 0.05f) << "set/after each tick:" << trace;
     EXPECT_NEAR(handle.getNextPosition().z, 0.5f, 1e-3f);
 
     // a velocity for one tick on a path
@@ -280,7 +280,7 @@ TEST_F(NavAgentApiTest, AgentQueries){
     link.bidirectional = false;
     scene->addComponent<NavMeshLinkComponent>(bridge, link);
     const Entity surface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Surface");
-    addSurface(*scene, surface, CELL, 32);
+    addSurface(*scene, surface, NAV_AGENT_API_CELL, 32);
     bake(surface);
 
     const Entity walker = agent(*scene, Vector3(-16.0f, 0.0f, 0.0f));
@@ -292,7 +292,7 @@ TEST_F(NavAgentApiTest, AgentQueries){
 
     nav::NavHit hit;
     EXPECT_TRUE(handle.samplePathPosition((int)nav::AreaMask::Walkable, 20.0f, hit));
-    EXPECT_NEAR(hit.position.x, -1.0f, CELL + 0.05f);
+    EXPECT_NEAR(hit.position.x, -1.0f, NAV_AGENT_API_CELL + 0.05f);
     EXPECT_EQ(hit.area, MUD);
     EXPECT_NEAR(hit.distance, hit.position.x - handle.getNextPosition().x, 0.05f);
     const int walkableAndMud = (int)nav::AreaMask::Walkable | (1 << MUD);
@@ -425,7 +425,7 @@ TEST_F(NavAgentApiTest, PathFailedReason){
     plane(*scene, Vector3(-6.0f, 0.0f, 0.0f), 8.0f, 6.0f);
     plane(*scene, Vector3(6.0f, 0.0f, 0.0f), 8.0f, 6.0f);
     const Entity surface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Surface");
-    addSurface(*scene, surface, CELL, 32);
+    addSurface(*scene, surface, NAV_AGENT_API_CELL, 32);
     const Entity walker = agent(*scene, Vector3(-8.0f, 0.0f, 0.0f));
     listen(walker);
     step();
@@ -468,7 +468,7 @@ TEST_F(NavAgentApiTest, PathFailedReason){
     box(*scene, Vector3(0.0f, 1.0f, -2.75f), Vector3(1.0f, 2.0f, 2.5f));
     box(*scene, Vector3(0.0f, 1.0f, 2.75f), Vector3(1.0f, 2.0f, 2.5f));
     const Entity doorSurface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Surface");
-    addSurface(*scene, doorSurface, CELL, 32);
+    addSurface(*scene, doorSurface, NAV_AGENT_API_CELL, 32);
     bake(doorSurface);
     const Entity runner = agent(*scene, Vector3(-8.0f, 0.0f, 0.0f));
     scene->getComponent<NavMeshAgentComponent>(runner).autoRepath = false;
@@ -501,7 +501,7 @@ TEST_F(NavAgentApiTest, PathFailedReason){
     link.endPoint = Vector3(2.5f, 0.0f, 0.0f);
     scene->addComponent<NavMeshLinkComponent>(bridge, link);
     const Entity bridgeSurface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Surface");
-    addSurface(*scene, bridgeSurface, CELL, 32);
+    addSurface(*scene, bridgeSurface, NAV_AGENT_API_CELL, 32);
     bake(bridgeSurface);
     const Entity crosser = agent(*scene, Vector3(-8.0f, 0.0f, 0.0f));
     scene->getComponent<NavMeshAgentComponent>(crosser).autoRepath = false;

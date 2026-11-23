@@ -273,7 +273,9 @@ TEST(SvnProvider, AddedMovedAndCopiedFiles) {
     // Revert of the add: unscheduled, the file kept
     ASSERT_TRUE(offMain([&]() { return alice.revert(std::vector<RepoPath>{"New.scene"}); }).ok);
     EXPECT_EQ(readFile(wc / "New.scene"), "new\n");
-    const VcsChange* unscheduled = statusOf(alice).find("New.scene");
+    // (the snapshot outlives the pointer find gives into it)
+    const VcsSnapshot after = statusOf(alice);
+    const VcsChange* unscheduled = after.find("New.scene");
     ASSERT_NE(unscheduled, nullptr);
     EXPECT_EQ(unscheduled->worktree, FileState::Untracked);
 }

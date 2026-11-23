@@ -2989,6 +2989,7 @@ JPH::BodyID PhysicsSystem::createStaticBodyForShape(Entity entity, const JPH::Sh
     body->previousRotation = transform->worldRotation;
     body->needReloadBody = false;
     body->needUpdateColliders = false;
+    batchAdding3D.insert(body->body.GetIndexAndSequenceNumber());
     return body->body;
 }
 
@@ -2998,6 +2999,7 @@ JPH::BodyInterface::AddState PhysicsSystem::prepareBodies(std::span<JPH::BodyID>
 
 void PhysicsSystem::finalizeBodies(std::span<JPH::BodyID> ids, JPH::BodyInterface::AddState state){
     getBodyInterface3D().AddBodiesFinalize(ids.data(), static_cast<int>(ids.size()), state, JPH::EActivation::DontActivate);
+    for (const JPH::BodyID& id : ids) batchAdding3D.erase(id.GetIndexAndSequenceNumber());
 }
 
 JPH::PhysicsSystem* PhysicsSystem::getWorld3D(){
@@ -3331,6 +3333,7 @@ void PhysicsSystem::destroyRigidbody(RigidbodyComponent& body){
     if (body.body.IsInvalid()){
         return;
     }
+    batchAdding3D.erase(body.body.GetIndexAndSequenceNumber());
 
     // Refusing would strand the body with user data pointing at an entity the caller is
     // about to drop, so park it for the flush. Shapes are refcounts, released either way.
@@ -4354,7 +4357,9 @@ void PhysicsSystem::fixedUpdate(double dt){
             applyRigidbodyParameters(entity, body);
         }
 
-        if (!body.body.IsInvalid()){
+        // a body whose batch is being added (createStaticBodyForShape) joins the world at its
+        // finalizeBodies, not here: its prepare may still be reading it on a job thread
+        if (!body.body.IsInvalid() && !batchAdding3D.count(body.body.GetIndexAndSequenceNumber())){
             // a disabled Rigidbody or inactive GameObject is taken out of the world
             // (the Jolt body and its state are kept) until it is enabled again
             const bool simulate = body.enabled && scene->isEntityActiveInHierarchy(entity);

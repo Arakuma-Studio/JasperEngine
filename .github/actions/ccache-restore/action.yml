@@ -2,15 +2,16 @@ name: Restore ccache
 description: >
   Restores the newest ccache-<lane>-<toolchain>- entry of the Actions cache into build/.cache/ccache (the
   directory tools/build.sh and tools/smoke-test.sh mount at /ccache), installs ccache where the lane compiles
-  on the runner (Windows: choco, macOS: brew), and sets CCACHE_DIR and CCACHE_MAXSIZE (tools/build.sh forwards
-  CCACHE_MAXSIZE into the image). ccache-save writes the entry back on push to main only
-  (docs/superpowers/specs/2026-11-12-ci-design.md §10.2).
+  on the runner (Windows: choco, macOS: brew), and sets CCACHE_DIR, and CCACHE_MAXSIZE to 0 (tools/build.sh
+  forwards it into the image): the build runs without a cap, which ccache-save applies to what it saves.
+  ccache-save writes the entry back on push to main only (docs/superpowers/specs/2026-11-12-ci-design.md
+  §10.2).
 inputs:
   lane:
-    description: The cache's lane (linux, unit, asan, htmlui, web, android, windows, macos)
+    description: The cache's lane (linux, unit-core, unit-editor, asan-core, asan-editor, htmlui, smoke, web, android, windows-editor, macos)
     required: true
   max-size:
-    description: CCACHE_MAXSIZE, the lane's cap (§10.2)
+    description: The lane's cap (§10.2), what ccache-save cuts the saved entry to
     required: true
   toolchain:
     description: >
@@ -26,7 +27,11 @@ runs:
       shell: bash
       run: |
         if ! command -v ccache > /dev/null; then
-            if [[ "$RUNNER_OS" == Windows ]]; then choco install ccache --no-progress -y; else brew install ccache; fi
+            if [[ "$RUNNER_OS" == Windows ]]; then
+                tools/ci/retry.sh choco install ccache --no-progress -y
+            else
+                tools/ci/retry.sh brew install ccache
+            fi
         fi
         ccache --version | sed -n 1p
 
@@ -48,7 +53,10 @@ runs:
         mkdir -p build/.cache/ccache
         {
             echo "CCACHE_DIR=$dir"
-            echo "CCACHE_MAXSIZE=$MAX_SIZE"
+            # no cap while building: a cleanup in the middle of a build evicts restored entries before the
+            # build reaches them (ccache-save cuts the saved entry to the cap)
+            echo "CCACHE_MAXSIZE=0"
+            echo "JASPER_CCACHE_CAP=$MAX_SIZE"
             echo "JASPER_CCACHE_LANE=$LANE"
             echo "JASPER_CCACHE_KEY=$prefix$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
             echo "JASPER_CCACHE_MARKER=$RUNNER_TEMP/ccache-$LANE.marker"
@@ -63,7 +71,12 @@ runs:
         key: ${{ steps.key.outputs.key }}
         restore-keys: ${{ steps.key.outputs.prefix }}
 
-    # what ccache-save compares against: an entry written after this is new
+    # what ccache-save compares against: an entry written after this is new, one older than it unused
     - name: Mark the restored state
       shell: bash
-      run: touch "$JASPER_CCACHE_MARKER"
+      run: |
+        touch "$JASPER_CCACHE_MARKER"
+        {
+            echo "JASPER_CCACHE_START=$(date +%s)"
+            echo "JASPER_CCACHE_RESTORED_SIZE=$(du -sh build/.cache/ccache | cut -f1)"
+        } >> "$GITHUB_ENV"

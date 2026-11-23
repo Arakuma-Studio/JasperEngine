@@ -20,7 +20,7 @@
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
-using Json = nlohmann::json;
+using ImportJson = nlohmann::json;
 
 namespace {
 
@@ -81,16 +81,16 @@ TEST(UnityGameImportTest, DISABLED_TheGamesEighteenSystems) {
         const unity::ImportResult result = unity::importParticles(options);
         ASSERT_TRUE(result.ok) << file.path << ": " << result.error;
         EXPECT_FALSE(result.prefabs.empty()) << file.path;
-        const Json& systems = result.report["systems"];
+        const ImportJson& systems = result.report["systems"];
         std::string paths;
-        for (const Json& system : systems) paths += "\n  " + system["path"].get<std::string>();
+        for (const ImportJson& system : systems) paths += "\n  " + system["path"].get<std::string>();
         EXPECT_EQ(systems.size(), file.systems) << file.path << ":" << paths;
         total += systems.size();
-        for (const Json& system : systems) {
+        for (const ImportJson& system : systems) {
             for (const auto& module : system["modules"].items()) {
                 EXPECT_NE(module.value(), "unsupported") << file.path << " " << system["path"] << " " << module.key();
             }
-            for (const Json& note : system["notes"]) {
+            for (const ImportJson& note : system["notes"]) {
                 const std::string code = note["code"];
                 EXPECT_TRUE(EXPECTED_NOTES.count(code)) << file.path << " " << system["path"] << ": " << code << ": " << note["message"];
                 uiParticle = uiParticle || code == "ui-particle";

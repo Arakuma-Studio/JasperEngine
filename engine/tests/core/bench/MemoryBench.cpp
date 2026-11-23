@@ -30,7 +30,7 @@ using namespace jasperengine;
 namespace{
 
     // keeps results observable so the loops are not optimised away
-    volatile uintptr_t sink = 0;
+    volatile uintptr_t memoryBenchSink = 0;
 
     double arenaAllocateNs(){
         memory::Arena arena("Bench.Arena", 1 << 20);
@@ -44,7 +44,7 @@ namespace{
             const auto start = bench::Clock::now();
             for (int frame = 0; frame < kFrames; frame++){
                 for (int i = 0; i < kPerFrame; i++)
-                    sink = sink + (uintptr_t)arena.allocate(64);
+                    memoryBenchSink = memoryBenchSink + (uintptr_t)arena.allocate(64);
                 arena.reset();
             }
             best = std::min(best, bench::secondsSince(start) * 1e9 / ((double)kPerFrame * kFrames));

@@ -51,8 +51,8 @@ using namespace jasperengine::terraincore;
 
 namespace {
 
-    constexpr MapId HEIGHT{MapKind::Height, 0};
-    constexpr float MAX_HEIGHT = 100.0f;
+    constexpr MapId TERRAIN_BENCH_HEIGHT{MapKind::Height, 0};
+    constexpr float TERRAIN_BENCH_MAX_HEIGHT = 100.0f;
 
     // Rolling hills in 16 bits: every op and query has slopes and both directions to work with
     std::vector<uint8_t> hills(int size) {
@@ -71,8 +71,8 @@ namespace {
 
     // A map the size of the terrain in units: one texel per unit, so radii in texels read as units
     std::unique_ptr<RawMapStore> hillStore(int size) {
-        auto store = std::make_unique<RawMapStore>(static_cast<float>(size), MAX_HEIGHT);
-        store->addMap(HEIGHT, size, size, 1, 16, hills(size));
+        auto store = std::make_unique<RawMapStore>(static_cast<float>(size), TERRAIN_BENCH_MAX_HEIGHT);
+        store->addMap(TERRAIN_BENCH_HEIGHT, size, size, 1, 16, hills(size));
         return store;
     }
 
@@ -87,7 +87,7 @@ namespace {
         op.shape.type = ShapeType::Circle;
         op.shape.radius = radius;
         op.shape.nearestTexel = true;
-        if (type == OpType::Raise) op.delta = MAX_HEIGHT;
+        if (type == OpType::Raise) op.delta = TERRAIN_BENCH_MAX_HEIGHT;
         op.strength = 0.3f * 1.5f / 60.0f;
         return op;
     }
@@ -128,7 +128,7 @@ namespace {
         for (int run = 0; run < 3; run++) {
             Op op;
             op.type = OpType::SetHeight;
-            op.height = MAX_HEIGHT * (run % 2 == 0 ? 0.25f : 0.75f);
+            op.height = TERRAIN_BENCH_MAX_HEIGHT * (run % 2 == 0 ? 0.25f : 0.75f);
             const auto begin = bench::Clock::now();
             const TerrainOpResult result = applyOps(*store, std::span<const Op>(&op, 1));
             samples.push_back(msOf(begin));
@@ -151,7 +151,7 @@ namespace {
             cliffs.slope = FilterRange{25.0f, 90.0f};
             PaintRule peaks;
             peaks.layer = 3;
-            peaks.height = FilterRange{MAX_HEIGHT * 0.6f, MAX_HEIGHT};
+            peaks.height = FilterRange{TERRAIN_BENCH_MAX_HEIGHT * 0.6f, TERRAIN_BENCH_MAX_HEIGHT};
             peaks.noise = 0.3f;
             peaks.opacity = run % 2 == 0 ? 1.0f : 0.8f;
             op.rules = {ground, cliffs, peaks};
@@ -175,7 +175,7 @@ namespace {
         for (int run = 0; run < 20; run++) {
             OverlayMapStore overlay(*store);
             std::fill(values.begin(), values.end(), run % 2 == 0 ? 0.3f : 0.6f);
-            overlay.write(HEIGHT, TexelRect{128, 128, SIDE, SIDE}, values);
+            overlay.write(TERRAIN_BENCH_HEIGHT, TexelRect{128, 128, SIDE, SIDE}, values);
             if (overlay.tileCount() != 64) return -1.0;
             const auto begin = bench::Clock::now();
             if (!overlay.commit().ok) return -1.0;
@@ -336,7 +336,7 @@ namespace {
         return {bestA, bestB};
     }
 
-    volatile float sink = 0.0f;
+    volatile float terrainBenchSink = 0.0f;
 
     // ---------------------------------------------------------------- R51, R52: a terrain in a scene
 
@@ -366,7 +366,7 @@ namespace {
             component.rootGridSize = 2;
             component.levels = 6;
             component.terrainSize = static_cast<float>(size);
-            component.maxHeight = MAX_HEIGHT;
+            component.maxHeight = TERRAIN_BENCH_MAX_HEIGHT;
             scene.addComponent<TerrainComponent>(entity, component);
             scene.addComponent<MeshComponent>(entity, {});
             giveHeightMap(terrain().heightMap, id, size);
@@ -409,7 +409,7 @@ int main(int argc, char** argv) {
         view.channels = 1;
         view.bytesPerChannel = 2;
         view.size = static_cast<float>(SIZE);
-        view.maxHeight = MAX_HEIGHT;
+        view.maxHeight = TERRAIN_BENCH_MAX_HEIGHT;
         constexpr int POINTS = 1 << 20;
         const std::vector<Vector2> points = queryPoints(view.size, POINTS);
 
@@ -419,7 +419,7 @@ int main(int argc, char** argv) {
                 const auto begin = bench::Clock::now();
                 for (const Vector2& p : points) sum += sampleHeight(view, p.x, p.y);
                 const double ns = bench::secondsSince(begin) * 1.0e9 / POINTS;
-                sink = sink + sum;
+                terrainBenchSink = terrainBenchSink + sum;
                 return ns;
             },
             [&]() {
@@ -427,7 +427,7 @@ int main(int argc, char** argv) {
                 const auto begin = bench::Clock::now();
                 for (const Vector2& p : points) sum += today::todayHeight(view, p.x, p.y);
                 const double ns = bench::secondsSince(begin) * 1.0e9 / POINTS;
-                sink = sink + sum;
+                terrainBenchSink = terrainBenchSink + sum;
                 return ns;
             });
         results.add("sample_height_ns", heightNs, "ns");
@@ -443,7 +443,7 @@ int main(int argc, char** argv) {
                     sum += s.height + s.normal.x;
                 }
                 const double ns = bench::secondsSince(begin) * 1.0e9 / POINTS;
-                sink = sink + sum;
+                terrainBenchSink = terrainBenchSink + sum;
                 return ns;
             },
             [&]() {
@@ -456,7 +456,7 @@ int main(int argc, char** argv) {
                     sum += height + normal.x;
                 }
                 const double ns = bench::secondsSince(begin) * 1.0e9 / POINTS;
-                sink = sink + sum;
+                terrainBenchSink = terrainBenchSink + sum;
                 return ns;
             });
         results.add("sample_height_normal_ns", surfaceNs, "ns");
@@ -472,7 +472,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < RAYS; i++) {
             const float angle = static_cast<float>(i) * 2.399963f;
             const Vector3 direction = Vector3(std::cos(angle), -0.12f, std::sin(angle)).normalized();
-            origins.push_back(Vector3(starts[static_cast<size_t>(i)].x, MAX_HEIGHT * 0.95f, starts[static_cast<size_t>(i)].y));
+            origins.push_back(Vector3(starts[static_cast<size_t>(i)].x, TERRAIN_BENCH_MAX_HEIGHT * 0.95f, starts[static_cast<size_t>(i)].y));
             directions.push_back(direction);
         }
         int hitsNew = 0, hitsToday = 0;
@@ -538,7 +538,7 @@ int main(int argc, char** argv) {
         std::vector<float> heights(64 * 64);
         samples.clear();
         for (int i = 0; i < 100; i++) {
-            std::fill(heights.begin(), heights.end(), MAX_HEIGHT * (i % 2 == 0 ? 0.4f : 0.45f));
+            std::fill(heights.begin(), heights.end(), TERRAIN_BENCH_MAX_HEIGHT * (i % 2 == 0 ? 0.4f : 0.45f));
             const TexelRect rect{(i * 97) % (SIZE - 64), (i * 53) % (SIZE - 64), 64, 64};
             const auto begin = bench::Clock::now();
             const TerrainOpResult result = setHeights(store, rect, heights);
@@ -579,7 +579,7 @@ int main(int argc, char** argv) {
         scene.addComponent<Transform>(entity, {});
         TerrainComponent component;
         component.terrainSize = static_cast<float>(SAMPLES - 1);
-        component.maxHeight = MAX_HEIGHT;
+        component.maxHeight = TERRAIN_BENCH_MAX_HEIGHT;
         component.allowRuntimeEdits = true;
         component.needUpdateTerrain = false;
         component.heightMapLoaded = true;

@@ -20,7 +20,7 @@ using jasperengine::editor::test::FakeAssetIndex;
 
 namespace {
 
-    FakeAssetIndex sampleIndex() {
+    FakeAssetIndex assetQuerySampleIndex() {
         FakeAssetIndex index;
         index.add("textures", "folder");
         index.add("textures/hero.png", "texture", {"Hero"});
@@ -36,7 +36,7 @@ namespace {
         return index;
     }
 
-    std::vector<std::string> run(const FakeAssetIndex& index, const std::string& query, const std::string& folder = {}) {
+    std::vector<std::string> assetQueryRun(const FakeAssetIndex& index, const std::string& query, const std::string& folder = {}) {
         std::vector<std::string> paths = index.paths(AssetQuery::parse(query).evaluate(index, folder));
         std::sort(paths.begin(), paths.end());
         return paths;
@@ -47,7 +47,7 @@ namespace {
 }
 
 TEST(AssetQuery, Grammar) {
-    const FakeAssetIndex index = sampleIndex();
+    const FakeAssetIndex index = assetQuerySampleIndex();
     struct Case {
         const char* query;
         Paths expected;
@@ -83,12 +83,12 @@ TEST(AssetQuery, Grammar) {
         {"enemy", {"prefabs/Enemy.prefab"}},
     };
     for (const Case& c : cases) {
-        EXPECT_EQ(run(index, c.query), c.expected) << c.query;
+        EXPECT_EQ(assetQueryRun(index, c.query), c.expected) << c.query;
     }
 
     // a folder scope: what is below it, not the folder itself
-    EXPECT_EQ(run(index, "", "textures").size(), 4u);
-    EXPECT_EQ(run(index, "hero", "models"), (Paths{"models/hero.gltf"}));
+    EXPECT_EQ(assetQueryRun(index, "", "textures").size(), 4u);
+    EXPECT_EQ(assetQueryRun(index, "hero", "models"), (Paths{"models/hero.gltf"}));
 
     // a bad re: matches nothing and says why
     const AssetQuery bad = AssetQuery::parse("re:([unclosed");
@@ -103,13 +103,13 @@ TEST(AssetQuery, Grammar) {
 }
 
 TEST(AssetQuery, RefAndMissingAskTheIndex) {
-    FakeAssetIndex index = sampleIndex();
+    FakeAssetIndex index = assetQuerySampleIndex();
     index.referrers["textures/hero.png"] = {"guid-materials/Hero.material", "guid-prefabs/Enemy.prefab"};
     index.missing = {"guid-scenes/Main.scene"};
-    EXPECT_EQ(run(index, "ref:textures/hero.png"), (Paths{"materials/Hero.material", "prefabs/Enemy.prefab"}));
+    EXPECT_EQ(assetQueryRun(index, "ref:textures/hero.png"), (Paths{"materials/Hero.material", "prefabs/Enemy.prefab"}));
     EXPECT_EQ(index.referrerCalls, 1);   // once per evaluation, not per asset
-    EXPECT_EQ(run(index, "ref:textures/hero.png t:prefab"), (Paths{"prefabs/Enemy.prefab"}));
-    EXPECT_EQ(run(index, "missing:"), (Paths{"scenes/Main.scene"}));
+    EXPECT_EQ(assetQueryRun(index, "ref:textures/hero.png t:prefab"), (Paths{"prefabs/Enemy.prefab"}));
+    EXPECT_EQ(assetQueryRun(index, "missing:"), (Paths{"scenes/Main.scene"}));
     EXPECT_EQ(index.missingCalls, 1);
 }
 
@@ -119,8 +119,8 @@ TEST(AssetQuery, RegisteredTokenWorks) {
         return value == "modified" && record.path.starts_with("models/");
     }, "test token");
     EXPECT_TRUE(AssetQuery::isToken("testvcs"));
-    const FakeAssetIndex index = sampleIndex();
-    EXPECT_EQ(run(index, "testvcs:modified hero"), (Paths{"models/hero.gltf"}));
+    const FakeAssetIndex index = assetQuerySampleIndex();
+    EXPECT_EQ(assetQueryRun(index, "testvcs:modified hero"), (Paths{"models/hero.gltf"}));
     const auto tokens = AssetQuery::tokens();
     EXPECT_TRUE(std::any_of(tokens.begin(), tokens.end(), [](const auto& token) { return token.first == "testvcs"; }));
 }
@@ -143,7 +143,7 @@ TEST(AssetSearchSlow, FiftyThousandUnder30ms) {
     for (const char* text : queries) {
         double best = 1e9;
         size_t matches = 0;
-        for (int run = 0; run < 3; run++) {
+        for (int assetQueryRun = 0; assetQueryRun < 3; assetQueryRun++) {
             const auto start = Clock::now();
             const AssetQuery query = AssetQuery::parse(text);
             matches = query.evaluate(index).size();

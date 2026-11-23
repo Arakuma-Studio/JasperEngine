@@ -24,7 +24,7 @@ using jasperengine::test::makeTransformEntity;
 
 namespace {
 
-    std::string runLua(lua_State* L, const std::string& code){
+    std::string runHierarchyLua(lua_State* L, const std::string& code){
         if (luaL_loadstring(L, code.c_str()) != LUA_OK || lua_pcall(L, 0, 0, 0) != LUA_OK){
             std::string error = lua_tostring(L, -1) ? lua_tostring(L, -1) : "(error)";
             lua_pop(L, 1);
@@ -78,7 +78,7 @@ TEST(LuaHierarchy, ParentChildrenFind){
     lua_pushinteger(L, arm); lua_setglobal(L, "ARM");
     lua_pushinteger(L, leg); lua_setglobal(L, "LEG");
     lua_pushinteger(L, hand); lua_setglobal(L, "HAND");
-    EXPECT_EQ(runLua(L, R"(
+    EXPECT_EQ(runHierarchyLua(L, R"(
         local root = hierRoot
         assert(root.parent == nil, "a root has no parent")
         assert(root.childCount == 2, "two children, got " .. tostring(root.childCount))
@@ -106,7 +106,7 @@ TEST(LuaHierarchy, SetParentKeepsWorldOrLocal){
 
     luabridge::setGlobal(L, GameObject(&scene, holder), "holder");
     luabridge::setGlobal(L, GameObject(&scene, item), "item");
-    EXPECT_EQ(runLua(L, R"(
+    EXPECT_EQ(runHierarchyLua(L, R"(
         -- moved this frame: the world matrix catches up only at the transform update
         holder.position = Vector3(20, 0, 0)
         item:setParent(holder)

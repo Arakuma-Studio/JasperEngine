@@ -21,14 +21,14 @@ using namespace jasperengine;
 
 namespace {
 
-    struct Family {
+    struct HiddenChildVisibilityFamily {
         Entity parent;
         Entity child;
         Entity grandchild;
     };
 
     // one frame's transform pass, then the flags RenderSystem clears after it
-    void settle(Scene& scene) {
+    void hiddenChildVisibilitySettle(Scene& scene) {
         propagateTransforms(scene, [](Transform&, Entity) {});
         auto transforms = scene.getComponentArray<Transform>();
         for (size_t i = 0; i < transforms->size(); i++) {
@@ -45,8 +45,8 @@ namespace {
     }
 
     // parent > child > grandchild, the visibility pass already run (the scene as loaded)
-    Family family(Scene& scene, bool parentVisible, bool childVisible) {
-        Family f;
+    HiddenChildVisibilityFamily family(Scene& scene, bool parentVisible, bool childVisible) {
+        HiddenChildVisibilityFamily f;
         f.parent = transformEntity(scene, "Parent");
         f.child = transformEntity(scene, "Child");
         f.grandchild = transformEntity(scene, "Grandchild");
@@ -54,7 +54,7 @@ namespace {
         scene.addEntityChild(f.child, f.grandchild, false);
         scene.getComponent<Transform>(f.parent).visible = parentVisible;
         scene.getComponent<Transform>(f.child).visible = childVisible;
-        settle(scene);
+        hiddenChildVisibilitySettle(scene);
         return f;
     }
 
@@ -74,11 +74,11 @@ namespace {
 
 TEST(HiddenChildVisibilityTest, CloneKeepsAChildHiddenOnItsOwn) {
     Scene scene;
-    const Family source = family(scene, true, false);
+    const HiddenChildVisibilityFamily source = family(scene, true, false);
 
     const Entity copy = ObjectManager::instantiate(&scene, source.parent);
     ASSERT_NE(copy, NULL_ENTITY);
-    settle(scene);
+    hiddenChildVisibilitySettle(scene);
     const Entity copiedChild = childOf(scene, copy);
     ASSERT_NE(copiedChild, NULL_ENTITY);
     EXPECT_TRUE(visible(scene, copy));
@@ -90,11 +90,11 @@ TEST(HiddenChildVisibilityTest, CloneKeepsAChildHiddenOnItsOwn) {
 TEST(HiddenChildVisibilityTest, CloneOfAHiddenParentKeepsItsVisibleChild) {
     Scene scene;
     // a parent saved hidden with visible children (the editor stores each flag on its own)
-    const Family source = family(scene, false, true);
+    const HiddenChildVisibilityFamily source = family(scene, false, true);
 
     const Entity copy = ObjectManager::instantiate(&scene, source.parent);
     ASSERT_NE(copy, NULL_ENTITY);
-    settle(scene);
+    hiddenChildVisibilitySettle(scene);
     EXPECT_FALSE(visible(scene, copy));
     EXPECT_TRUE(visible(scene, childOf(scene, copy))) << "the copy looks like its source";
 }
@@ -102,11 +102,11 @@ TEST(HiddenChildVisibilityTest, CloneOfAHiddenParentKeepsItsVisibleChild) {
 TEST(HiddenChildVisibilityTest, MoveToSceneKeepsChildFlags) {
     Scene from;
     Scene to;
-    const Family source = family(from, true, false);
+    const HiddenChildVisibilityFamily source = family(from, true, false);
 
     const std::vector<Entity> moved = ObjectManager::moveToScene(&from, source.parent, &to);
     ASSERT_EQ(moved.size(), 3u);
-    settle(to);
+    hiddenChildVisibilitySettle(to);
     EXPECT_TRUE(visible(to, moved[0]));
     EXPECT_FALSE(visible(to, moved[1])) << "a child hidden on its own stays hidden after DontDestroyOnLoad";
     EXPECT_TRUE(visible(to, moved[2]));
@@ -114,15 +114,15 @@ TEST(HiddenChildVisibilityTest, MoveToSceneKeepsChildFlags) {
 
 TEST(HiddenChildVisibilityTest, RemovingAMiddleTransformKeepsGrandchildFlags) {
     Scene scene;
-    const Family f = family(scene, true, true);
+    const HiddenChildVisibilityFamily f = family(scene, true, true);
     const Entity greatGrandchild = transformEntity(scene, "GreatGrandchild");
     scene.addEntityChild(f.grandchild, greatGrandchild, false);
     scene.getComponent<Transform>(greatGrandchild).visible = false;
-    settle(scene);
+    hiddenChildVisibilitySettle(scene);
 
     // the child's Transform goes: the grandchild becomes the parent's child
     scene.removeComponent<Transform>(f.child);
-    settle(scene);
+    hiddenChildVisibilitySettle(scene);
     EXPECT_EQ(scene.getComponent<Transform>(f.grandchild).parent, f.parent);
     EXPECT_TRUE(visible(scene, f.grandchild));
     EXPECT_FALSE(visible(scene, greatGrandchild)) << "the reparenting is no visibility change";
@@ -130,16 +130,16 @@ TEST(HiddenChildVisibilityTest, RemovingAMiddleTransformKeepsGrandchildFlags) {
 
 TEST(HiddenChildVisibilityTest, SetVisibleStillCascades) {
     Scene scene;
-    const Family f = family(scene, true, false);
+    const HiddenChildVisibilityFamily f = family(scene, true, false);
 
     GameObject parent(&scene, f.parent);
     parent.setVisible(false);
-    settle(scene);
+    hiddenChildVisibilitySettle(scene);
     EXPECT_FALSE(visible(scene, f.child));
     EXPECT_FALSE(visible(scene, f.grandchild));
 
     parent.setVisible(true);
-    settle(scene);
+    hiddenChildVisibilitySettle(scene);
     EXPECT_TRUE(visible(scene, f.child)) << "showing a hidden parent shows its children (the documented cascade)";
     EXPECT_TRUE(visible(scene, f.grandchild));
 }

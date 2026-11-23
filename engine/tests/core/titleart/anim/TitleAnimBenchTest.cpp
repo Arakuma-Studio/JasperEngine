@@ -85,7 +85,7 @@ namespace {
         return std::make_shared<const TitleArtDoc>(std::move(parsed.doc));
     }
 
-    double percentile(std::vector<double> us, double p){
+    double titleAnimBenchPercentile(std::vector<double> us, double p){
         std::sort(us.begin(), us.end());
         return us[std::min(us.size() - 1, (size_t)(us.size() * p))];
     }
@@ -130,9 +130,9 @@ TEST(TitleAnimBench, Sample64){
         }
         allocations = scope.count();
     }
-    const double median = percentile(samples, 0.5);
+    const double median = titleAnimBenchPercentile(samples, 0.5);
     std::printf("[title anim] Sample64: 40 tracks, 64 glyphs: median %.2f us, p95 %.2f us, %llu allocations over 600 frames (R35: 25 us median, 0)\n", median,
-                percentile(samples, 0.95), (unsigned long long)allocations);
+                titleAnimBenchPercentile(samples, 0.95), (unsigned long long)allocations);
     EXPECT_LT(median, 250.0);
     if (testsupport::countsAllocations()) {
         EXPECT_EQ(allocations, 0u) << "sampling allocates nothing in steady state";
@@ -148,7 +148,7 @@ TEST(TitleAnimBench, Sample64){
         playerPose(*doc, player, true, nullptr, pose);
         poses.push_back(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count());
     }
-    std::printf("[title anim] Sample64 pose: median %.2f us over 120 frames\n", percentile(poses, 0.5));
+    std::printf("[title anim] Sample64 pose: median %.2f us over 120 frames\n", titleAnimBenchPercentile(poses, 0.5));
 }
 
 TEST(TitleAnimBench, Scene30){
@@ -207,7 +207,7 @@ TEST(TitleAnimBench, Scene30){
         }
         samples.push_back(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count());
     }
-    const double p95 = percentile(samples, 0.95);
-    std::printf("[title anim] Scene30: 30 titles, median %.1f us, p95 %.1f us a frame (R36: 500 us p95)\n", percentile(samples, 0.5), p95);
+    const double p95 = titleAnimBenchPercentile(samples, 0.95);
+    std::printf("[title anim] Scene30: 30 titles, median %.1f us, p95 %.1f us a frame (R36: 500 us p95)\n", titleAnimBenchPercentile(samples, 0.5), p95);
     EXPECT_LT(p95, 5000.0);
 }

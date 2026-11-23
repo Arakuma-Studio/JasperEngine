@@ -202,7 +202,7 @@ void editor::InspectorWindow::applyFluidPreset(SceneProject* sceneProject, const
                     break;
                 case PropertyType::Int:
                 case PropertyType::Enum:
-                    multi->addPropertyCmd<int>(project, sceneProject->id, entity, FLUID_TYPE, field, *static_cast<int*>(ref));
+                    multi->addPropertyCmd<int>(project, sceneProject->id, entity, FLUID_TYPE, field, (int)readPropertyInteger(it->second, ref));
                     break;
                 case PropertyType::Vector3:
                     multi->addPropertyCmd<Vector3>(project, sceneProject->id, entity, FLUID_TYPE, field, *static_cast<Vector3*>(ref));

@@ -45,15 +45,15 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    struct Headless {
+    struct ScriptingHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
     };
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
+    ScriptingHeadless& scriptingHeadless() {
+        static ScriptingHeadless h = []() {
+            ScriptingHeadless out;
             const fs::path root = fs::temp_directory_path() / ("jasper-scripting-editor-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
             fs::create_directories(root / "config");
@@ -76,22 +76,22 @@ namespace {
         return h;
     }
 
-    bool headlessStarted = false;
-    Project* project() {
-        headlessStarted = true;
-        return headless().project.get();
+    bool scriptingHeadlessStarted = false;
+    Project* scriptingProject() {
+        scriptingHeadlessStarted = true;
+        return scriptingHeadless().project.get();
     }
 
-    struct Cleanup : public ::testing::Environment {
+    struct ScriptingCleanup : public ::testing::Environment {
         void TearDown() override {
-            if (!headlessStarted) return;
+            if (!scriptingHeadlessStarted) return;
             std::error_code ec;
-            fs::remove_all(headless().dir.parent_path(), ec);
+            fs::remove_all(scriptingHeadless().dir.parent_path(), ec);
         }
     };
-    [[maybe_unused]] ::testing::Environment* const cleanup = ::testing::AddGlobalTestEnvironment(new Cleanup);
+    [[maybe_unused]] ::testing::Environment* const scriptingCleanup = ::testing::AddGlobalTestEnvironment(new ScriptingCleanup);
 
-    void writeFile(const fs::path& path, const std::string& text) {
+    void scriptingWriteFile(const fs::path& path, const std::string& text) {
         fs::create_directories(path.parent_path());
         std::ofstream(path, std::ios::binary | std::ios::trunc) << text;
     }
@@ -100,7 +100,7 @@ namespace {
     const char* kSpeedJumpScript =
         "return { properties = { { name = 'speed', type = 'float', default = 1 }, { name = 'jump', type = 'float', default = 2 } } }\n";
 
-    std::vector<std::string> names(const std::vector<ScriptProperty>& properties) {
+    std::vector<std::string> scriptingNames(const std::vector<ScriptProperty>& properties) {
         std::vector<std::string> out;
         for (const ScriptProperty& property : properties) out.push_back(property.name);
         return out;
@@ -116,8 +116,8 @@ namespace {
     }
 
     // a new scene with one GameObject (Transform) per name
-    SceneProject* newScene(const std::string& name, std::vector<Entity>& entities, size_t count) {
-        Project* p = project();
+    SceneProject* scriptingNewScene(const std::string& name, std::vector<Entity>& entities, size_t count) {
+        Project* p = scriptingProject();
         if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
         p->createNewScene(name, SceneType::SCENE_3D);
         SceneProject* sceneProject = p->getScene(p->getSelectedSceneId());
@@ -135,33 +135,33 @@ namespace {
     protected:
         EditorHost host;
         void SetUp() override {
-            ASSERT_TRUE(headless().ready);
+            ASSERT_TRUE(scriptingHeadless().ready);
             setEditorHost(&host);
         }
         void TearDown() override {
             setEditorHost(nullptr);
         }
-        fs::path lua(const std::string& name) { return project()->getProjectPath() / "lua" / name; }
+        fs::path lua(const std::string& name) { return scriptingProject()->getProjectPath() / "lua" / name; }
     };
 
 }
 
 TEST_F(ScriptingEditor, SavedFileWithoutTableClears) {
-    writeFile(lua("clears.lua"), kSpeedScript);
+    scriptingWriteFile(lua("clears.lua"), kSpeedScript);
     std::vector<Entity> entities;
-    SceneProject* scene = newScene("Clears", entities, 1);
+    SceneProject* scene = scriptingNewScene("Clears", entities, 1);
     std::vector<ScriptEntry> scripts = {luaEntry("clears.lua")};
-    project()->updateScriptProperties(scene, entities[0], scripts);
-    ASSERT_EQ(names(scripts[0].properties), std::vector<std::string>{"speed"});
+    scriptingProject()->updateScriptProperties(scene, entities[0], scripts);
+    ASSERT_EQ(scriptingNames(scripts[0].properties), std::vector<std::string>{"speed"});
 
-    writeFile(lua("clears.lua"), "return { update = function() end }\n");
-    EXPECT_TRUE(project()->updateScriptProperties(scene, entities[0], scripts));
+    scriptingWriteFile(lua("clears.lua"), "return { update = function() end }\n");
+    EXPECT_TRUE(scriptingProject()->updateScriptProperties(scene, entities[0], scripts));
     EXPECT_TRUE(scripts[0].properties.empty());
 }
 
 TEST_F(ScriptingEditor, MissingCppHeaderKeepsFields) {
     std::vector<Entity> entities;
-    SceneProject* scene = newScene("MissingHeader", entities, 1);
+    SceneProject* scene = scriptingNewScene("MissingHeader", entities, 1);
     ScriptEntry entry;
     entry.type = ScriptType::CPP;
     entry.enabled = true;
@@ -175,101 +175,101 @@ TEST_F(ScriptingEditor, MissingCppHeaderKeepsFields) {
     std::vector<ScriptEntry> scripts = {entry};
 
     // a header that is not there says nothing about the fields: a refresh keeps them, cached or not
-    EXPECT_FALSE(project()->updateScriptProperties(scene, entities[0], scripts));
-    EXPECT_EQ(names(scripts[0].properties), std::vector<std::string>{"speed"});
+    EXPECT_FALSE(scriptingProject()->updateScriptProperties(scene, entities[0], scripts));
+    EXPECT_EQ(scriptingNames(scripts[0].properties), std::vector<std::string>{"speed"});
     ScriptPropertyCache cache;
-    EXPECT_FALSE(project()->updateScriptProperties(scene, entities[0], scripts, "", "", &cache));
-    EXPECT_EQ(names(scripts[0].properties), std::vector<std::string>{"speed"});
+    EXPECT_FALSE(scriptingProject()->updateScriptProperties(scene, entities[0], scripts, "", "", &cache));
+    EXPECT_EQ(scriptingNames(scripts[0].properties), std::vector<std::string>{"speed"});
 }
 
 TEST_F(ScriptingEditor, NonTablePropertiesKeepFieldsCachedOrNot) {
-    writeFile(lua("odd.lua"), kSpeedScript);
+    scriptingWriteFile(lua("odd.lua"), kSpeedScript);
     std::vector<Entity> entities;
-    SceneProject* scene = newScene("Odd", entities, 1);
+    SceneProject* scene = scriptingNewScene("Odd", entities, 1);
     std::vector<ScriptEntry> scripts = {luaEntry("odd.lua")};
-    project()->updateScriptProperties(scene, entities[0], scripts);
-    writeFile(lua("odd.lua"), "return { properties = 5 }\n");
-    EXPECT_FALSE(project()->updateScriptProperties(scene, entities[0], scripts));
-    EXPECT_EQ(names(scripts[0].properties), std::vector<std::string>{"speed"});
+    scriptingProject()->updateScriptProperties(scene, entities[0], scripts);
+    scriptingWriteFile(lua("odd.lua"), "return { properties = 5 }\n");
+    EXPECT_FALSE(scriptingProject()->updateScriptProperties(scene, entities[0], scripts));
+    EXPECT_EQ(scriptingNames(scripts[0].properties), std::vector<std::string>{"speed"});
     ScriptPropertyCache cache;
-    EXPECT_FALSE(project()->updateScriptProperties(scene, entities[0], scripts, "", "", &cache));
-    EXPECT_EQ(names(scripts[0].properties), std::vector<std::string>{"speed"});
+    EXPECT_FALSE(scriptingProject()->updateScriptProperties(scene, entities[0], scripts, "", "", &cache));
+    EXPECT_EQ(scriptingNames(scripts[0].properties), std::vector<std::string>{"speed"});
 }
 
 TEST_F(ScriptingEditor, LiveBufferWithoutTableKeeps) {
-    writeFile(lua("live.lua"), kSpeedScript);
+    scriptingWriteFile(lua("live.lua"), kSpeedScript);
     std::vector<Entity> entities;
-    SceneProject* scene = newScene("Live", entities, 1);
+    SceneProject* scene = scriptingNewScene("Live", entities, 1);
     std::vector<ScriptEntry> scripts = {luaEntry("live.lua")};
-    project()->updateScriptProperties(scene, entities[0], scripts);
+    scriptingProject()->updateScriptProperties(scene, entities[0], scripts);
 
     // the table cut from the buffer (to paste it back): kept until the file is saved
-    EXPECT_FALSE(project()->updateScriptProperties(scene, entities[0], scripts, "return {}\n", lua("live.lua").string()));
-    EXPECT_EQ(names(scripts[0].properties), std::vector<std::string>{"speed"});
+    EXPECT_FALSE(scriptingProject()->updateScriptProperties(scene, entities[0], scripts, "return {}\n", lua("live.lua").string()));
+    EXPECT_EQ(scriptingNames(scripts[0].properties), std::vector<std::string>{"speed"});
     // an empty table is a script without properties, edited or saved
-    EXPECT_TRUE(project()->updateScriptProperties(scene, entities[0], scripts, "return { properties = {} }\n", lua("live.lua").string()));
+    EXPECT_TRUE(scriptingProject()->updateScriptProperties(scene, entities[0], scripts, "return { properties = {} }\n", lua("live.lua").string()));
     EXPECT_TRUE(scripts[0].properties.empty());
 }
 
 TEST_F(ScriptingEditor, ErrorsKeepLastProperties) {
-    writeFile(lua("errors.lua"), kSpeedScript);
+    scriptingWriteFile(lua("errors.lua"), kSpeedScript);
     std::vector<Entity> entities;
-    SceneProject* scene = newScene("Errors", entities, 1);
+    SceneProject* scene = scriptingNewScene("Errors", entities, 1);
     std::vector<ScriptEntry> scripts = {luaEntry("errors.lua")};
-    project()->updateScriptProperties(scene, entities[0], scripts);
+    scriptingProject()->updateScriptProperties(scene, entities[0], scripts);
     for (const char* broken : {"return {\n", "error('at load')\n", "return 5\n"}) {
-        writeFile(lua("errors.lua"), broken);
-        EXPECT_FALSE(project()->updateScriptProperties(scene, entities[0], scripts)) << broken;
-        EXPECT_EQ(names(scripts[0].properties), std::vector<std::string>{"speed"}) << broken;
+        scriptingWriteFile(lua("errors.lua"), broken);
+        EXPECT_FALSE(scriptingProject()->updateScriptProperties(scene, entities[0], scripts)) << broken;
+        EXPECT_EQ(scriptingNames(scripts[0].properties), std::vector<std::string>{"speed"}) << broken;
     }
 }
 
 TEST_F(ScriptingEditor, CustomLuaRootMatchesLiveEdit) {
-    writeFile(lua("enemy.lua"), kSpeedScript);
+    scriptingWriteFile(lua("enemy.lua"), kSpeedScript);
     std::vector<Entity> entities;
-    SceneProject* scene = newScene("Enemy", entities, 1);
+    SceneProject* scene = scriptingNewScene("Enemy", entities, 1);
     ScriptComponent component;
     component.scripts = {luaEntry("enemy.lua")};
     scene->scene->addComponent<ScriptComponent>(entities[0], component);
-    project()->updateScriptProperties(scene, entities[0], scene->scene->getComponent<ScriptComponent>(entities[0]).scripts);
+    scriptingProject()->updateScriptProperties(scene, entities[0], scene->scene->getComponent<ScriptComponent>(entities[0]).scripts);
 
     const ScriptEntry& entry = scene->scene->getComponent<ScriptComponent>(entities[0]).scripts[0];
-    EXPECT_TRUE(project()->scriptEntryUsesFile(entry, lua("enemy.lua")));
-    EXPECT_EQ(project()->scriptPropertyFile(entry), lua("enemy.lua").lexically_normal());
+    EXPECT_TRUE(scriptingProject()->scriptEntryUsesFile(entry, lua("enemy.lua")));
+    EXPECT_EQ(scriptingProject()->scriptPropertyFile(entry), lua("enemy.lua").lexically_normal());
 
     // the code editor's live refresh: its path is project-relative, the entry's Lua-root-relative
-    CodeEditor codeEditor(project());
+    CodeEditor codeEditor(scriptingProject());
     codeEditor.updateScriptPropertiesForPath("lua/enemy.lua", kSpeedJumpScript);
-    EXPECT_EQ(names(scene->scene->getComponent<ScriptComponent>(entities[0]).scripts[0].properties),
+    EXPECT_EQ(scriptingNames(scene->scene->getComponent<ScriptComponent>(entities[0]).scripts[0].properties),
               (std::vector<std::string>{"speed", "jump"}));
 }
 
 TEST_F(ScriptingEditor, SceneOpenRefreshes) {
-    writeFile(lua("opened.lua"), kSpeedScript);
+    scriptingWriteFile(lua("opened.lua"), kSpeedScript);
     std::vector<Entity> entities;
-    SceneProject* scene = newScene("Opened", entities, 1);
+    SceneProject* scene = scriptingNewScene("Opened", entities, 1);
     ScriptComponent component;
     component.scripts = {luaEntry("opened.lua")};
     scene->scene->addComponent<ScriptComponent>(entities[0], component);
-    project()->updateScriptProperties(scene, entities[0], scene->scene->getComponent<ScriptComponent>(entities[0]).scripts);
-    const fs::path path = project()->getProjectPath() / "Opened.scene";
+    scriptingProject()->updateScriptProperties(scene, entities[0], scene->scene->getComponent<ScriptComponent>(entities[0]).scripts);
+    const fs::path path = scriptingProject()->getProjectPath() / "Opened.scene";
     const uint32_t openedId = scene->id;
-    ASSERT_TRUE(project()->saveSceneToPath(openedId, path));
+    ASSERT_TRUE(scriptingProject()->saveSceneToPath(openedId, path));
     std::vector<Entity> none;
-    newScene("AfterOpened", none, 0);  // the last open scene can't close
+    scriptingNewScene("AfterOpened", none, 0);  // the last open scene can't close
     std::string error;
-    ASSERT_TRUE(project()->closeSceneNow(openedId, UnsavedChoice::Discard, &error)) << error;
+    ASSERT_TRUE(scriptingProject()->closeSceneNow(openedId, UnsavedChoice::Discard, &error)) << error;
 
     // changed while the scene was closed
-    writeFile(lua("opened.lua"), kSpeedJumpScript);
-    const uint32_t id = project()->openSceneNow(path, false, UnsavedChoice::Discard, &error);
+    scriptingWriteFile(lua("opened.lua"), kSpeedJumpScript);
+    const uint32_t id = scriptingProject()->openSceneNow(path, false, UnsavedChoice::Discard, &error);
     ASSERT_NE(id, NULL_PROJECT_SCENE) << error;
-    SceneProject* opened = project()->getScene(id);
+    SceneProject* opened = scriptingProject()->getScene(id);
     bool found = false;
     for (Entity entity : opened->entities) {
         if (const ScriptComponent* scripts = opened->scene->findComponent<ScriptComponent>(entity)) {
             ASSERT_EQ(scripts->scripts.size(), 1u);
-            EXPECT_EQ(names(scripts->scripts[0].properties), (std::vector<std::string>{"speed", "jump"}));
+            EXPECT_EQ(scriptingNames(scripts->scripts[0].properties), (std::vector<std::string>{"speed", "jump"}));
             found = true;
         }
     }
@@ -278,49 +278,49 @@ TEST_F(ScriptingEditor, SceneOpenRefreshes) {
 }
 
 TEST_F(ScriptingEditor, CacheRunsEachFileOnce) {
-    writeFile(lua("shared.lua"), kSpeedScript);
+    scriptingWriteFile(lua("shared.lua"), kSpeedScript);
     std::vector<Entity> entities;
-    SceneProject* scene = newScene("Shared", entities, 50);
+    SceneProject* scene = scriptingNewScene("Shared", entities, 50);
     for (Entity entity : entities) {
         ScriptComponent component;
         component.scripts = {luaEntry("shared.lua")};
         scene->scene->addComponent<ScriptComponent>(entity, component);
     }
     const int before = ScriptPropertyCache::runsForTest();
-    project()->updateAllScriptsProperties(scene->id);
+    scriptingProject()->updateAllScriptsProperties(scene->id);
     EXPECT_EQ(ScriptPropertyCache::runsForTest() - before, 1);
     for (Entity entity : entities) {
-        EXPECT_EQ(names(scene->scene->getComponent<ScriptComponent>(entity).scripts[0].properties), std::vector<std::string>{"speed"});
+        EXPECT_EQ(scriptingNames(scene->scene->getComponent<ScriptComponent>(entity).scripts[0].properties), std::vector<std::string>{"speed"});
     }
 }
 
 TEST_F(ScriptingEditor, ScriptAttachMakesEntries) {
-    writeFile(lua("ai/patrol.lua"), kSpeedScript);
-    writeFile(project()->getProjectPath() / "outside.lua", kSpeedScript);
-    writeFile(project()->getProjectPath() / "scripts" / "Mover.h",
+    scriptingWriteFile(lua("ai/patrol.lua"), kSpeedScript);
+    scriptingWriteFile(scriptingProject()->getProjectPath() / "outside.lua", kSpeedScript);
+    scriptingWriteFile(scriptingProject()->getProjectPath() / "scripts" / "Mover.h",
               "#pragma once\n#include \"ScriptBase.h\"\nclass Mover : public jasperengine::ScriptBase {\npublic:\n    void update();\n};\n");
-    writeFile(project()->getProjectPath() / "scripts" / "Mover.cpp", "#include \"Mover.h\"\nvoid Mover::update() {}\n");
-    writeFile(project()->getProjectPath() / "scripts" / "Spinner.h",
+    scriptingWriteFile(scriptingProject()->getProjectPath() / "scripts" / "Mover.cpp", "#include \"Mover.h\"\nvoid Mover::update() {}\n");
+    scriptingWriteFile(scriptingProject()->getProjectPath() / "scripts" / "Spinner.h",
               "#pragma once\n#include \"Mesh.h\"\nclass Spinner : public jasperengine::Mesh {\npublic:\n    void update();\n};\n");
-    writeFile(project()->getProjectPath() / "scripts" / "Spinner.cpp", "#include \"Spinner.h\"\nvoid Spinner::update() {}\n");
+    scriptingWriteFile(scriptingProject()->getProjectPath() / "scripts" / "Spinner.cpp", "#include \"Spinner.h\"\nvoid Spinner::update() {}\n");
 
     ScriptEntry entry;
     std::vector<std::string> warnings;
     std::string error;
-    ASSERT_TRUE(ScriptAttach::makeEntry(project(), lua("ai/patrol.lua"), "", entry, warnings, error)) << error;
+    ASSERT_TRUE(ScriptAttach::makeEntry(scriptingProject(), lua("ai/patrol.lua"), "", entry, warnings, error)) << error;
     EXPECT_EQ(entry.type, ScriptType::LUA);
     EXPECT_EQ(entry.path.str(), "ai/patrol.lua");
     EXPECT_EQ(entry.className, "patrol");
 
-    EXPECT_FALSE(ScriptAttach::makeEntry(project(), project()->getProjectPath() / "outside.lua", "", entry, warnings, error));
+    EXPECT_FALSE(ScriptAttach::makeEntry(scriptingProject(), scriptingProject()->getProjectPath() / "outside.lua", "", entry, warnings, error));
     EXPECT_NE(error.find("Lua directory"), std::string::npos) << error;
 
-    ASSERT_TRUE(ScriptAttach::makeEntry(project(), project()->getProjectPath() / "scripts" / "Mover.cpp", "", entry, warnings, error)) << error;
+    ASSERT_TRUE(ScriptAttach::makeEntry(scriptingProject(), scriptingProject()->getProjectPath() / "scripts" / "Mover.cpp", "", entry, warnings, error)) << error;
     EXPECT_EQ(entry.type, ScriptType::CPP);
     EXPECT_EQ(entry.className, "Mover");
     EXPECT_EQ(entry.headerPath.str(), "scripts/Mover.h");
 
-    const std::vector<ScriptCandidate> scripts = ScriptAttach::findProjectScripts(project());
+    const std::vector<ScriptCandidate> scripts = ScriptAttach::findProjectScripts(scriptingProject());
     auto find = [&](const std::string& name) {
         return std::find_if(scripts.begin(), scripts.end(), [&](const ScriptCandidate& c) { return c.name == name; });
     };
@@ -335,26 +335,26 @@ TEST_F(ScriptingEditor, ScriptAttachMakesEntries) {
 }
 
 TEST_F(ScriptingEditor, ScriptAttachIsOneUndoStepAndSkipsDuplicates) {
-    writeFile(lua("guard.lua"), kSpeedScript);
+    scriptingWriteFile(lua("guard.lua"), kSpeedScript);
     std::vector<Entity> entities;
-    SceneProject* scene = newScene("Guards", entities, 2);
+    SceneProject* scene = scriptingNewScene("Guards", entities, 2);
     ScriptEntry entry;
     std::vector<std::string> warnings;
     std::string error;
-    ASSERT_TRUE(ScriptAttach::makeEntry(project(), lua("guard.lua"), "", entry, warnings, error)) << error;
+    ASSERT_TRUE(ScriptAttach::makeEntry(scriptingProject(), lua("guard.lua"), "", entry, warnings, error)) << error;
 
     std::vector<Entity> skipped;
-    ASSERT_TRUE(ScriptAttach::attach(project(), scene, entities, entry, -1, skipped, error)) << error;
+    ASSERT_TRUE(ScriptAttach::attach(scriptingProject(), scene, entities, entry, -1, skipped, error)) << error;
     EXPECT_TRUE(skipped.empty());
     for (Entity entity : entities) {
         const ScriptComponent* component = scene->scene->findComponent<ScriptComponent>(entity);
         ASSERT_NE(component, nullptr);
         ASSERT_EQ(component->scripts.size(), 1u);
-        EXPECT_EQ(names(component->scripts[0].properties), std::vector<std::string>{"speed"});
+        EXPECT_EQ(scriptingNames(component->scripts[0].properties), std::vector<std::string>{"speed"});
     }
 
     // attached again: both skipped, nothing done
-    EXPECT_FALSE(ScriptAttach::attach(project(), scene, entities, entry, -1, skipped, error));
+    EXPECT_FALSE(ScriptAttach::attach(scriptingProject(), scene, entities, entry, -1, skipped, error));
     EXPECT_EQ(skipped.size(), 2u);
 
     // one undo step takes it off both
@@ -365,11 +365,11 @@ TEST_F(ScriptingEditor, ScriptAttachIsOneUndoStepAndSkipsDuplicates) {
 }
 
 TEST_F(ScriptingEditor, PartMeshSettingsSurviveRebuild) {
-    const fs::path assets = project()->getAssetsPath();
+    const fs::path assets = scriptingProject()->getAssetsPath();
     editor::test::writeTwoPartGltf(assets / "models", "parts");
     const std::string file = "models/parts.gltf";
 
-    Project* p = project();
+    Project* p = scriptingProject();
     if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
     p->createNewScene("Parts", SceneType::SCENE_3D);
     const uint32_t id = p->getSelectedSceneId();
