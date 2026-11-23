@@ -5,7 +5,7 @@
 // once: each job decomposes on a worker while the main thread starts the others, and each lands as
 // its own undo step. The list of running decompositions is the main thread's; a job that read it
 // (to find itself) raced the next start's push_back, which ThreadSanitizer reports
-// (SANITIZE=thread, the nightly's TSan lane).
+// (SANITIZE=thread, the nightly's TSan lane). Slow: six V-HACD runs, about 6 s on a CI runner.
 
 #include "EditorHost.h"
 #include "Project.h"
@@ -74,7 +74,7 @@ namespace {
         }
     }
 
-    class DecomposeColliderCmdTest : public ::testing::Test {
+    class DecomposeColliderSlow : public ::testing::Test {
     protected:
         jasperengine::test::TestTempDir dir{"decompose-collider"};
         DecomposeLoopHost host;
@@ -150,7 +150,7 @@ namespace {
 
 }
 
-TEST_F(DecomposeColliderCmdTest, DecompositionsStartedTogetherEachLandAsOneStep) {
+TEST_F(DecomposeColliderSlow, DecompositionsStartedTogetherEachLandAsOneStep) {
     ASSERT_TRUE(ConvexDecompositionCache::available()) << "the editor test build has V-HACD";
     constexpr int RINGS = 6;
     for (int n = 0; n < RINGS; n++) rings.push_back(addRing(n));
