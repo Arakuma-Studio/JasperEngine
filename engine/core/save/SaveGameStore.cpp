@@ -72,8 +72,38 @@ namespace {
         return path.generic_string();
     }
 
+    std::atomic<size_t> fullReads{0};
+
+    // setFileFaultInjector's (tests); read on the store's jobs too
+    std::mutex& faultMutex(){
+        static std::mutex mutex;
+        return mutex;
+    }
+    FileFaultInjector& faultInjector(){
+        static FileFaultInjector injector;
+        return injector;
+    }
+    std::error_code injectedFault(std::string_view step, const fs::path& path){
+        std::lock_guard<std::mutex> lock(faultMutex());
+        return faultInjector() ? faultInjector()(step, path) : std::error_code();
+    }
+
+    Migrator& registeredMigrator(){
+        static Migrator migrator;
+        return migrator;
+    }
+
+    // A file of the saves folder deleted (false with `ec` when it is still there)
+    bool removeSaveFile(const fs::path& path, std::error_code& ec){
+        ec = injectedFault("remove", path);
+        if (ec) return false;
+        return fs::remove(path, ec) || !ec;
+    }
+
     // Whole file, refusing above `cap` before allocating
     bool readFile(const fs::path& path, size_t cap, std::string& out, std::string& problem){
+        if (const std::error_code fault = injectedFault("read", path)){ problem = "cannot read (" + fault.message() + ")"; return false; }
+        fullReads.fetch_add(1);
         std::error_code ec;
         const uintmax_t size = fs::file_size(path, ec);
         if (ec){ problem = "cannot read (" + ec.message() + ")"; return false; }
@@ -200,7 +230,7 @@ namespace jasperengine::savegame {
         bool held = false;
 
         // the web: callbacks of landed writes waiting for the IndexedDB sync
-        std::vector<std::pair<std::vector<WriteCallback>, SaveError>> awaitingSync;
+        SyncWaiters syncWaiters;
         bool persistRequested = false;
         StorageInfo webStorage;
 
@@ -547,7 +577,7 @@ namespace jasperengine::savegame {
                     persistRequested = true;
                     jasper_web_storage_persist();
                 }
-                awaitingSync.emplace_back(std::move(callbacks), error);
+                syncWaiters.landed(std::move(callbacks), error);
                 if (System::hasInstance()) System::instance().flushFileSystem();
                 return;
             }
@@ -962,7 +992,7 @@ bool SaveGameStore::exists(std::string_view slotName){
     return files != all.end() && !files->second.generations.empty();
 }
 
-SaveError SaveGameStore::remove(std::string_view slotName){
+SaveError SaveGameStore::remove(std::string_view slotName, std::chrono::milliseconds limit){
     SaveError error = nameError(slotName, {});
     if (!error.ok()) return error;
     const std::string name(slotName);
@@ -974,11 +1004,11 @@ SaveError SaveGameStore::remove(std::string_view slotName){
             it->second.waiting.reset();
         }
         SaveError ignored;
-        impl->flushSlot(name, std::chrono::steady_clock::now() + std::chrono::seconds(2), ignored);
+        impl->flushSlot(name, std::chrono::steady_clock::now() + limit, ignored);
     }
     std::error_code ec;
     for (const fs::path& path : slotFiles(name)){
-        if (!fs::remove(path, ec) && ec)
+        if (!removeSaveFile(path, ec))
             return makeError(SaveErrorCode::Io, "Couldn't delete " + path.filename().string() + ": " + ec.message());
     }
     impl->slots.erase(name);
@@ -1123,7 +1153,7 @@ void SaveGameStore::reset(){
     impl->epoch++;
     impl->folderSet = false;
     impl->folder.clear();
-    impl->awaitingSync.clear();
+    impl->syncWaiters.clear();
     impl->changed();
 }
 
@@ -1173,20 +1203,67 @@ void SaveGameStore::setStorageEstimate(int64_t used, int64_t quota){
     impl->webStorage.free = used >= 0 && quota >= 0 ? quota - used : -1;
 }
 
-void SaveGameStore::fileSystemSynced(bool ok, std::string_view errorName, std::string_view message){
-    auto waiting = std::move(impl->awaitingSync);
-    impl->awaitingSync.clear();
-    SaveError error;
+void SaveGameStore::fileSystemSyncStarted(uint64_t sync){
+    impl->syncWaiters.started(sync);
+}
+
+void SaveGameStore::fileSystemSynced(uint64_t sync, bool ok, std::string_view errorName, std::string_view message){
+    for (SyncWaiters::Delivery& delivery : impl->syncWaiters.finished(sync, ok, errorName, message))
+        impl->deliver(std::move(delivery.callbacks), delivery.error);
+#if defined(__EMSCRIPTEN__)
+    jasper_web_storage_estimate();
+#endif
+}
+
+size_t SaveGameStore::fileReads(){
+    return fullReads.load();
+}
+
+// ================================================================ web syncs
+
+void SyncWaiters::landed(std::vector<WriteCallback> callbacks, const SaveError& result){
+    unsynced.push_back({std::move(callbacks), result});
+}
+
+void SyncWaiters::started(uint64_t sync){
+    (void)sync;
+}
+
+std::vector<SyncWaiters::Delivery> SyncWaiters::finished(uint64_t sync, bool ok, std::string_view errorName, std::string_view message){
+    (void)sync;
+    std::vector<Delivery> out = std::move(unsynced);
+    unsynced.clear();
     if (!ok){
+        SaveError error;
         if (errorName == "QuotaExceededError")
             error = makeError(SaveErrorCode::Quota, std::string(message) + "; free space in the browser's site data or save less");
         else
             error = makeError(SaveErrorCode::Io, "the browser could not store the save (" + std::string(errorName) + ": " + std::string(message) + ")");
+        for (Delivery& delivery : out) delivery.error = error;
     }
-    for (auto& entry : waiting) impl->deliver(std::move(entry.first), error.ok() ? entry.second : error);
-#if defined(__EMSCRIPTEN__)
-    jasper_web_storage_estimate();
-#endif
+    return out;
+}
+
+void SyncWaiters::clear(){
+    unsynced.clear();
+    syncing.clear();
+}
+
+size_t SyncWaiters::waiting() const{
+    size_t total = unsynced.size();
+    for (const auto& entry : syncing) total += entry.second.size();
+    return total;
+}
+
+// ================================================================ test seams and hooks
+
+void savegame::setMigrator(Migrator migrator){
+    registeredMigrator() = std::move(migrator);
+}
+
+void savegame::setFileFaultInjector(FileFaultInjector injector){
+    std::lock_guard<std::mutex> lock(faultMutex());
+    faultInjector() = std::move(injector);
 }
 
 void SaveGameStore::setHold(bool held){

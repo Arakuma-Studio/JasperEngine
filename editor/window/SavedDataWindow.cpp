@@ -165,6 +165,11 @@ bool SavedDataWindow::run(SaveSlotCmd::Action action, const std::string& slot, u
     return true;
 }
 
+void SavedDataWindow::select(const std::string& slot) {
+    selected = slot;
+    loadSelected();
+}
+
 void SavedDataWindow::refresh(bool force) {
     savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
     const double now = nowSeconds();
@@ -268,8 +273,7 @@ void SavedDataWindow::drawSlots() {
             // a dot: written in this Play session
             const std::string label = (info.writtenThisSession ? "\xE2\x97\x8F " : "") + info.slot;
             if (ImGui::Selectable(label.c_str(), selected == info.slot, ImGuiSelectableFlags_SpanAllColumns)) {
-                selected = info.slot;
-                loadSelected();
+                select(info.slot);
             }
             ImGui::TableSetColumnIndex(1);
             ImGui::Text("%u", info.version);

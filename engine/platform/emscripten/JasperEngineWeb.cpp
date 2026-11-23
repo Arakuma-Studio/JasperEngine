@@ -125,16 +125,17 @@ extern "C" {
         }
     }
 
-    // errName / err: the DOMException's name ("QuotaExceededError") and message, "" on success.
-    // SaveGame completes the writes that waited for this sync with its result (quota reaches the game)
+    // sync: the number syncFileSystemNow gave the sync; errName / err: the DOMException's name
+    // ("QuotaExceededError") and message, "" on success. SaveGame completes the writes this sync
+    // covered with its result (quota reaches the game)
     EMSCRIPTEN_KEEPALIVE
-    void syncfs_callback(const char* errName, const char* err) {
+    void syncfs_callback(int sync, const char* errName, const char* err) {
         const bool failed = err && err[0];
 	    if (failed) {
 		    jasperengine::Log::error("Failed to save in iDB file system: %s", err);
 	    }
         if (jasperengine::savegame::SaveGameStore* saves = jasperengine::savegame::SaveGameStore::existing())
-            saves->fileSystemSynced(!failed, errName ? errName : "", err ? err : "");
+            saves->fileSystemSynced(static_cast<uint64_t>(static_cast<uint32_t>(sync)), !failed, errName ? errName : "", err ? err : "");
     }
 
     // ---- SaveGame (engine/core/save/SaveGameStore.cpp)
@@ -857,12 +858,19 @@ bool JasperEngineWeb::flushFileSystem(){
 void JasperEngineWeb::syncFileSystemNow(){
     syncWaitTime = 0;
 
-    EM_ASM(
+    // each sync numbered: SaveGame confirms a write only by a sync that started after it landed
+    static uint32_t syncCount = 0;
+    const uint32_t sync = ++syncCount;
+    if (jasperengine::savegame::SaveGameStore* saves = jasperengine::savegame::SaveGameStore::existing())
+        saves->fileSystemSyncStarted(sync);
+
+    EM_ASM({
+        var sync = $0;
         FS.syncfs(function(err) {
-            ccall('syncfs_callback', null, ['string', 'string'],
-                  [err ? (err.name || "Error") : "", err ? (err.message || err.name || String(err)) : ""]);
+            ccall('syncfs_callback', null, ['number', 'string', 'string'],
+                  [sync, err ? (err.name || "Error") : "", err ? (err.message || err.name || String(err)) : ""]);
         });
-    );
+    }, static_cast<int>(sync));
 }
 
 EM_JS_DEPS(jasper_device, "$stringToNewUTF8,$GL");

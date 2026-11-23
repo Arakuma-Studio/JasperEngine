@@ -28,6 +28,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 namespace jasperengine::jobs { class SerialQueue; }
@@ -117,6 +118,38 @@ namespace jasperengine::savegame {
 
     using WriteCallback = std::function<void(const SaveError&)>;
 
+    // The web's IndexedDB syncs (FS.syncfs) and the writes waiting for one: a landed write is
+    // confirmed by the result of a sync that started after it landed (each sync takes the files
+    // as they are when it starts), so a later sync's QuotaExceededError reaches its own writes
+    struct JASPERENGINE_API SyncWaiters {
+        struct Delivery {
+            std::vector<WriteCallback> callbacks;
+            SaveError error;
+        };
+        // A write reached the in-memory file system with `result` (ok)
+        void landed(std::vector<WriteCallback> callbacks, const SaveError& result);
+        // A sync started: it covers every write landed until now
+        void started(uint64_t sync);
+        // That sync ended: the callbacks it covered, with its result
+        std::vector<Delivery> finished(uint64_t sync, bool ok, std::string_view errorName, std::string_view message);
+        void clear();
+        size_t waiting() const;
+
+    private:
+        std::vector<Delivery> unsynced;
+        std::map<uint64_t, std::vector<Delivery>> syncing;
+    };
+
+    // Runs the game's migrations on a slot's namespaces (data.info.version) up to `version`,
+    // leaving the migrated sections in data.sections (the Lua binding registers SaveGame.addMigration's)
+    using Migrator = std::function<SaveError(const std::string& slot, SlotData& data, uint32_t version)>;
+    JASPERENGINE_API void setMigrator(Migrator migrator);
+
+    // Test seam: called before the store reads ("read") or deletes ("remove") a file of the saves
+    // folder; a non-empty error code makes that step fail with it. Empty function: no-op
+    using FileFaultInjector = std::function<std::error_code(std::string_view step, const std::filesystem::path& path)>;
+    JASPERENGINE_API void setFileFaultInjector(FileFaultInjector injector);
+
     class JASPERENGINE_API SaveGameStore {
     public:
         static constexpr size_t MEMORY_LIMIT = 32u * 1024u * 1024u;
@@ -148,8 +181,8 @@ namespace jasperengine::savegame {
         std::vector<SlotInfo> list();
         SaveError info(std::string_view slot, SlotInfo& out);
         bool exists(std::string_view slot);
-        // Every generation and set-aside file of the slot
-        SaveError remove(std::string_view slot);
+        // Every generation and set-aside file of the slot, after its queued writes landed (`limit`)
+        SaveError remove(std::string_view slot, std::chrono::milliseconds limit = std::chrono::seconds(2));
         SaveError backups(std::string_view slot, std::vector<BackupInfo>& out);
         // That generation's sections, metadata and version written as a new newest generation
         SaveError restore(std::string_view slot, uint64_t generation, WriteCallback onComplete);
@@ -177,13 +210,16 @@ namespace jasperengine::savegame {
         StorageInfo storage();
         // The web layer: navigator.storage.estimate()
         void setStorageEstimate(int64_t used, int64_t quota);
-        // The web layer: the IndexedDB sync that followed queued writes ended
-        void fileSystemSynced(bool ok, std::string_view errorName, std::string_view message);
+        // The web layer: an IndexedDB sync started, and that sync ended
+        void fileSystemSyncStarted(uint64_t sync);
+        void fileSystemSynced(uint64_t sync, bool ok, std::string_view errorName, std::string_view message);
 
         // Tests: while held, queued writes wait before they start (flush still writes them)
         void setHold(bool held);
         // Generation files written by this store
         size_t fileWrites() const { return writes.load(); }
+        // Whole save files read (any store; header reads are not counted)
+        static size_t fileReads();
         // Bytes of the images in memory
         size_t memoryBytes() const;
 

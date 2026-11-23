@@ -39,6 +39,12 @@ namespace jasperengine::editor {
         bool run(SaveSlotCmd::Action action, const std::string& slot, uint64_t generation = 0,
                  savegame::CorruptMode mode = savegame::CorruptMode::Flip, std::string* error = nullptr);
 
+        // Shows that slot (a click in the list): its namespaces, metadata and backups
+        void select(const std::string& slot);
+        // The list again, and the selected slot when its files or the store changed (at most 4
+        // times a second unless forced)
+        void refresh(bool force);
+
     private:
         Project* project;
         bool windowOpen = false;
@@ -53,7 +59,6 @@ namespace jasperengine::editor {
         std::string selectedProblem;
         std::vector<savegame::BackupInfo> backups;
 
-        void refresh(bool force);
         void loadSelected();
         void drawSlots();
         void drawSelected();

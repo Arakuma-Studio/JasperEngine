@@ -117,6 +117,11 @@ async def test_restore_and_newer_version(ed: Editor):
     await ed.check_error("user_settings", {"store": "saves", "action": "set", "key": "slot2", "value": {"a": 4}, "version": 4},
                          contains='slot "slot2" is version 5 and this game writes 4: pass version 5 to overwrite it, or read it with get.')
 
+    # a data version is 1..2147483647: 0 or a negative one is refused, never cast into a huge one
+    for bad in (0, -3, 4294967296):
+        await ed.check_error("user_settings", {"store": "saves", "action": "set", "key": "slot2", "value": {"a": 6}, "version": bad},
+                             contains=f"set: version must be an integer from 1 to 2147483647 (got {bad})")
+
     await ed.call("user_settings", store="saves", action="corrupt", key="slot2", mode="truncate")
     await ed.check_error("user_settings", {"store": "saves", "action": "restore", "key": "slot2", "generation": 4},
                          contains='Couldn\'t restore "slot2" generation 4: the file is corrupt')
