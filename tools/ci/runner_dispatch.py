@@ -13,6 +13,9 @@ Each run:
   concurrency limit is used up (HOSTED_LIMITS, TOTAL_LIMIT) or has waited SATURATED_WAIT. Written to the
   data branch STATE_BRANCH (state.json, one parentless commit, force-pushed), which the `changes` job
   fetches as it plans (plan_lanes.route: older than its STATE_MAX_AGE means no overflow runner);
+- planner: SELF_HOSTED_PLANNER, the runner ci.yml's `changes` runs on: the Linux overflow runner while
+  hosted Linux is saturated and it is online and fit (a run reads `vars` as it is created, as `changes`
+  is queued, so this one is current where it is read);
 - watchdog: a run with a job the plan routed onto an overflow runner (a je-* label) whose job has waited
   QUEUED_LIMIT for a runner that is offline or gone, or runs on one offline for OFFLINE_LIMIT, or failed
   because its runner went away (LOST, also while the rest of the run goes on), is cancelled and, once
@@ -117,6 +120,19 @@ def compute_state(runners: list[dict], jobs: list[dict], probes: dict, now: floa
             entry["free_gb"] = probe["free_gb"]
         out[label] = entry
     return {"t": int(now), "os": hosted, "runners": out}
+
+
+PLANNER_VARIABLE = "SELF_HOSTED_PLANNER"
+PLANNER = "je-linux"
+
+
+def planner(state: dict, disabled: str) -> str:
+    """The runner `changes` runs on (ci.yml reads PLANNER_VARIABLE as a run is created): the Linux overflow
+    runner while hosted Linux is saturated and it is online and fit, else "" (hosted)."""
+    off = set(disabled.replace(",", " ").split())
+    r = state["runners"].get(PLANNER) or {}
+    ok = state["os"]["linux"]["saturated"] and r.get("online") and r.get("fit") and not off & {"all", PLANNER}
+    return PLANNER if ok else ""
 
 
 def probe(label: str, host: dict, run=subprocess.run) -> dict:
@@ -287,6 +303,16 @@ class Gh:
             self.post(f"{base}/refs", {"ref": f"refs/heads/{STATE_BRANCH}", "sha": commit["sha"]})
         return True
 
+    def variable(self, name: str) -> str:
+        self.calls += 1
+        r = subprocess.run(["gh", "variable", "get", name, "--repo", self.repo], capture_output=True, text=True, timeout=60)
+        return r.stdout.strip() if r.returncode == 0 else ""
+
+    def set_variable(self, name: str, value: str) -> bool:
+        if value:
+            return self._cli("variable", "set", name, "--body", value)
+        return self._cli("variable", "delete", name)
+
     def post(self, path: str, payload: dict, method: str = "POST"):
         self.calls += 1
         r = subprocess.run(["gh", "api", "-X", method, path, "--input", "-"], input=json.dumps(payload),
@@ -372,6 +398,18 @@ def main(argv: list[str]) -> int:
             gh.set_state(body)
         except RuntimeError as e:
             log(f"the state was not published to {STATE_BRANCH}: {e}")
+
+    # the planner's runner: written only when it changes
+    try:
+        want = planner(state, gh.variable("SELF_HOSTED_DISABLED"))
+        if want != memory.get("planner", "") or not memory.get("planner_set"):
+            if args.dry_run:
+                print(f"{PLANNER_VARIABLE}={want}")
+            elif gh.set_variable(PLANNER_VARIABLE, want) or not want:
+                log(f"{PLANNER_VARIABLE}={want or '(none: hosted)'}")
+                memory.update(planner=want, planner_set=True)
+    except (RuntimeError, subprocess.SubprocessError) as e:
+        log(f"{PLANNER_VARIABLE} not updated: {e}")
 
     # the watchdog
     offline_since = memory.get("offline_since", {})

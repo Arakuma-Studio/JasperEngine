@@ -83,7 +83,14 @@ jobs:
   # ------------------------------------------------------------- Planning ---
   changes:
     name: changes
-    runs-on: ubuntu-latest
+    # the planner too can overflow (docs/testing.md "Overflow runners"): tools/ci/runner_dispatch.py names a
+    # Linux overflow runner in SELF_HOSTED_PLANNER while hosted Linux is saturated and it is online, and a run
+    # reads `vars` as it is created, as this job is queued. Not a push (it waits ADMISSION_SECONDS), a fork's
+    # pull request or a rerun (the watchdog's, when the runner went away)
+    runs-on: >-
+      ${{ github.event_name != 'push' && github.run_attempt == 1 && vars.SELF_HOSTED_PLANNER
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      && vars.SELF_HOSTED_PLANNER || 'ubuntu-latest' }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -174,7 +181,8 @@ jobs:
           args=(--event "$event" --base "$base" --head "$head" --out-dir build/ci-plan --github-output "$GITHUB_OUTPUT"
                 --advisory "$ADVISORY_LANES" --runner-state "$RUNNER_TEMP/runner-state.json"
                 --runner-disabled "$RUNNER_DISABLED" --trigger "$GITHUB_EVENT_NAME" --head-repo "$HEAD_REPO"
-                --repo "$GITHUB_REPOSITORY" --run-attempt "$GITHUB_RUN_ATTEMPT" --self-hosted "$SELF_HOSTED")
+                --repo "$GITHUB_REPOSITORY" --run-attempt "$GITHUB_RUN_ATTEMPT" --self-hosted "$SELF_HOSTED"
+                --planner "$RUNNER_NAME")
           [[ -d build/ci-inputs/deps ]] && args+=(--deps-from build/ci-inputs/deps)
           [[ -f build/ci-inputs/coverage-map.json ]] && args+=(--coverage-map build/ci-inputs/coverage-map.json)
           [[ -f build/ci-inputs/mcp-test-seconds.json ]] && args+=(--test-seconds build/ci-inputs/mcp-test-seconds.json)

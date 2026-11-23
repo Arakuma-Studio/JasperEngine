@@ -93,6 +93,18 @@ class State(unittest.TestCase):
         self.assertFalse(rd.compute_state([], [], {"je-mac": {"alive": True}}, NOW)["runners"]["je-mac"]["online"])
 
 
+class Planner(unittest.TestCase):
+    def test_the_planner_overflows_only_while_hosted_linux_is_saturated(self):
+        busy = [job("ubuntu-latest", "in_progress", id_=i) for i in range(60)] + [job("ubuntu-latest", ago=30)]
+        s = rd.compute_state(RUNNERS, busy, {}, NOW)
+        self.assertEqual(rd.planner(s, ""), "je-linux")
+        self.assertEqual(rd.planner(s, "je-linux"), "")
+        self.assertEqual(rd.planner(s, "all"), "")
+        self.assertEqual(rd.planner(rd.compute_state(RUNNERS, busy[:10], {}, NOW), ""), "")
+        self.assertEqual(rd.planner(rd.compute_state([runner("je-linux", "offline")], busy, {}, NOW), ""), "")
+        self.assertEqual(rd.planner(rd.compute_state(RUNNERS, busy, {"je-linux": {"alive": True, "ok": False}}, NOW), ""), "")
+
+
 class Stuck(unittest.TestCase):
     def test_queued_for_an_offline_runner(self):
         offline = {"je-mac": {"online": False}}

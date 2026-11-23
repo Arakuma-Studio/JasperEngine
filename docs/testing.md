@@ -1433,6 +1433,16 @@ a service that starts with the machine (macOS: with the user's login) and reconn
 
 The `changes` job's summary and `lanes.json` (`routing`) say where each job went and why.
 
+**The planner overflows too.** `changes` cannot route itself, and on 2026-11-23 it waited up to an
+hour for a hosted Linux runner (79 Linux jobs queued, the oldest for 4 h), so no plan ran at all. The
+dispatcher sets the repository variable `SELF_HOSTED_PLANNER` to `je-linux` while hosted Linux is
+saturated and `je-linux` is online, fit and not disabled, and deletes it otherwise. A run reads
+`vars` as it is created, which is when its `changes` job is queued, so the value is current where it
+is used. `changes` runs there on a first attempt of a trusted event other than a push (a push waits
+`ADMISSION_SECONDS` first), and treats `je-linux` as free for the jobs it plans (`--planner`): only
+this job holds it. If the runner goes away, the watchdog reroutes the run as below, and the rerun
+plans on GitHub's runners.
+
 **The state and the watchdog** (`tools/ci/runner_dispatch.py`): a cron job runs it every minute on an
 always-on host whose `gh` is a repository admin, from a sparse clone of `main` refreshed hourly. It
 reads the runners (GitHub's status, and an ssh probe of each machine's listener and free disk, since

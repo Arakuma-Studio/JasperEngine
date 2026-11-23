@@ -546,6 +546,12 @@ class Routing(unittest.TestCase):
             self.assertEqual(runs_on["macos"], "macos-latest", why)
             self.assertTrue(any(why in n for n in notes), (why, notes))
         self.assertEqual(overflowed(route(state(), disabled="all")[0]), {})
+        # busy with this very plan (changes on je-linux): free once it ends
+        jobs = {"linux": "linux"}
+        self.assertEqual(overflowed(pl.route(jobs, state(je_linux={"busy": True}), NOW, "pull_request", REPO, REPO, 1,
+                                             planner="je-linux")[0]), {"linux": "je-linux"})
+        self.assertEqual(overflowed(pl.route(jobs, state(je_linux={"busy": True}), NOW, "pull_request", REPO, REPO, 1,
+                                             planner="GitHub Actions 1000007164")[0]), {})
         self.assertTrue(route(state(je_mac={"busy": True}))[0]["linux"] == "je-linux")
 
     def test_a_stale_or_missing_state_means_no_overflow_runner(self):
@@ -608,6 +614,11 @@ class Routing(unittest.TestCase):
                 self.assertEqual(jobs.get(job), os_, (label, job))
         # and ci.yml reads runs_on by these names, with the hosted label as its fallback
         text = (HERE.parent.parent / pl.WORKFLOW).read_text()
+        # the planner: never a push, a fork's pull request or a rerun
+        changes = text[text.index("\n  changes:"):text.index("\n  lint:")]
+        for guard in ("github.event_name != 'push'", "github.run_attempt == 1",
+                      "github.event.pull_request.head.repo.full_name == github.repository", "|| 'ubuntu-latest'"):
+            self.assertIn(guard, changes)
         for key in ("'linux'", "'macos'", "'ios'", "format('unit-{0}', matrix.job)", "format('asan-{0}', matrix.job)",
                     "format('mcp-{0}', matrix.shard)", "format('windows-{0}', matrix.part)", "'windows-compile'"):
             self.assertIn(f"fromJSON(needs.changes.outputs.runs_on)[{key}] ||", text, key)
