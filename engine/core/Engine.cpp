@@ -1255,10 +1255,12 @@ int Engine::getFixedStepCap(){
     }
     // the spiral-of-death guard, Unity's Maximum Allowed Timestep: the steps of the longest frame
     // runFrame lets through (the fixed frame delta when set, else maxDeltatime), +1 for the part of
-    // a step the last frame left. Neither the time scale nor a script raises it: every step past it
-    // would make the next frame longer still
+    // a step the last frame left, and the whole steps it left (only right after the fixed step was
+    // made shorter: a frame leaves less than one step). Neither the time scale nor a script raises
+    // it: every step past it would make the next frame longer still
     const double frameSeconds = fixedDeltatime > 0.0 ? fixedDeltatime : maxDeltatime;
-    const int bound = (int)std::clamp(std::ceil(frameSeconds / updateTime) + 1.0, 1.0, (double)std::numeric_limits<int>::max());
+    const double steps = std::ceil(frameSeconds / updateTime) + 1.0 + std::floor(updateTimeCount / updateTime);
+    const int bound = (int)std::clamp(steps, 1.0, (double)std::numeric_limits<int>::max());
     return maxFixedStepsPerFrame > 0 ? std::min(maxFixedStepsPerFrame, bound) : bound;
 }
 

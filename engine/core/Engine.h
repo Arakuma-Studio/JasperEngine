@@ -788,8 +788,8 @@ namespace jasperengine {
         static void setMaxFixedStepsPerFrame(int steps);
         static int getMaxFixedStepsPerFrame();
         // The cap of the next frame, a hard bound: ceil(the longest frame (the fixed frame delta
-        // when set, else maxDeltatime) / updateTime) + 1, whatever the time scale, or
-        // maxFixedStepsPerFrame when that is lower
+        // when set, else maxDeltatime) / updateTime) + 1, plus the whole steps the last frame left
+        // (a fixed step made shorter), whatever the time scale, or maxFixedStepsPerFrame when lower
         static int getFixedStepCap();
         // Fixed steps the cap dropped since the Play (editor) or the run started; the first drop
         // logs one warning naming both settings

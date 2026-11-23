@@ -688,10 +688,11 @@ WP-B (queries):
 
 - **WP-E, REQ-36 cap.** The cap is a hard bound, `ceil(F / fixedDeltaTime) + 1` where `F` is
   `Time.captureDeltaTime` when set (it replaces the measured delta and is not capped by
-  `maximumDeltaTime`), else `Time.maximumDeltaTime`; `maximumFixedStepsPerFrame` only lowers it (a
-  higher value is held at the bound). A time scale does not raise it, as Unity's Maximum Allowed
+  `maximumDeltaTime`), else `Time.maximumDeltaTime`, plus the whole steps the last frame left (only
+  in the frame after `fixedDeltaTime` was made shorter: a frame leaves less than one step, so this
+  feeds no spiral); `maximumFixedStepsPerFrame` only lowers it (a higher value is held at the bound). A time scale does not raise it, as Unity's Maximum Allowed
   Timestep bounds a frame's scaled time (the lead's decision when this PR landed: a spiral-of-death
-  guard; a first version scaled it with a time scale above 1 and the backlog, which let a 0.25 s
+  guard; a first version also scaled it with a time scale above 1, which let a 0.25 s
   frame at time scale 20 run 2002 steps at 400 Hz). So a long frame at a time scale above 1 drops
   the steps past the bound, as it did past the old cap of 100. The warning fires only when a whole
   step is dropped (the old code also warned when exactly 100 steps ran and nothing was left).
