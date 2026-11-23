@@ -229,16 +229,21 @@ public:
     }
 
 private:
-    static inline EditorInfo current;
-    static inline bool set = false;
+    // per activity (a NativeEngine member): a recreated activity's IME starts from its defaults
+    EditorInfo current;
+    bool set = false;
 };
 
 // The soft keyboard's action key (APP_CMD_EDITOR_ACTION) reaches the looper as a command, which a
-// loop pass handles before the text GameActivity flagged in the same pass (textInputState)
+// loop pass handles before the text GameActivity flagged in the same pass (textInputState). The
+// IME sent that text first (Gboard finishes the composing word, then the action), so it goes to
+// the field first and is not applied again later in the pass
 template<typename ApplyText, typename Action>
 void editorActionWithPendingText(bool& textPending, ApplyText&& applyText, Action&& action) {
-    (void)textPending;
-    (void)applyText;
+    if (textPending) {
+        textPending = false;
+        applyText();
+    }
     action();
 }
 

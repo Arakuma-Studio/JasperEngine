@@ -347,16 +347,12 @@ Java_com_jaspergameengine_jasperengine_MainActivity_onBackPressedNative(JNIEnv* 
     backPressed = true;
 }
 
-// The EditorInfo the IME has: set again (and the input restarted) only when a field asks for
-// another, so moving between fields of one kind keeps the keyboard as it is
-static jasperengine::android::EditorInfo imeEditorInfo;
-static bool imeEditorInfoSet = false;
-
-static bool applyImeEditorInfo(GameActivity* activity, const jasperengine::android::EditorInfo& info) {
-    if (imeEditorInfoSet && info == imeEditorInfo)
+// The field's EditorInfo to the IME when it differs from what this activity's IME has (the
+// cache), so moving between fields of one kind keeps the keyboard as it is
+static bool applyImeEditorInfo(GameActivity* activity, jasperengine::android::ImeEditorInfoCache& cache,
+                               const jasperengine::android::EditorInfo& info) {
+    if (!cache.changes(info))
         return false;
-    imeEditorInfo = info;
-    imeEditorInfoSet = true;
     GameActivity_setImeEditorInfo(activity, (GameTextInputType)info.inputType,
                                   (GameTextInputActionType)(info.imeOptions & jasperengine::android::IME_MASK_ACTION),
                                   (GameTextInputImeOptions)info.imeOptions);
@@ -643,7 +639,7 @@ void NativeEngine::showSoftInput(const std::wstring& text, const jasperengine::T
     std::u32string codepoints = wideToCodepoints(text);
     componentTextInput.reset(codepoints);
     // a field of another kind: the IME restarts with its EditorInfo, without closing (R5)
-    const bool restart = applyImeEditorInfo(mApp->activity, jasperengine::android::editorInfoOf(traits));
+    const bool restart = applyImeEditorInfo(mApp->activity, mImeEditorInfo, jasperengine::android::editorInfoOf(traits));
 
     // the field's text, caret at the end; the document diff starts from it too
     setImeText(mApp->activity, codepoints, codepoints.size(), codepoints.size());
@@ -710,44 +706,48 @@ void NativeEngine::gameLoop() {
         handleGameActivityInput();
 
         if (mApp->textInputState) {
-            GameActivity_getTextInputState(mApp->activity, [](void *context, const GameTextInputState *state) {
-                if (!context || !state) return;
-
-                std::u16string units = decodeModifiedUtf8(state->text_UTF8, state->text_length);
-                std::u32string text;
-                std::vector<size_t> unitToCodepoint;
-                utf16ToCodepoints(units, text, unitToCodepoint);
-
-                if (jasperengine::Engine::wantsTextComposition()) {
-                    jasperengine::Engine::systemTextInputState(units, state->selection.start, state->selection.end,
-                                                               state->composingRegion.start, state->composingRegion.end);
-                    // the component InputField diff stays in step
-                    componentTextInput.reset(text);
-                    return;
-                }
-
-                // component InputField: '\b' per removed character, then each typed one
-                const jasperengine::android::TextEdit edit = componentTextInput.update(units);
-                for (size_t i = 0; i < edit.backspaces; i++){
-                    jasperengine::Engine::systemCharInput('\b');
-                }
-                for (char32_t typed : edit.typed){
-                    jasperengine::Engine::systemCharInput(typed);
-                }
-
-                // the document diff stays in step, for a document field focused later
-                int32_t selectionEnd = std::min(state->selection.end, (int32_t)units.size());
-                jasperengine::Engine::resetTextInputState(codepointsToUtf8(text, 0, text.size()),
-                                                          (selectionEnd >= 0) ? unitToCodepoint[selectionEnd] : text.size());
-
-            }, this);
             mApp->textInputState = 0;
+            applyTextInputState();
         }
 
         if (isAnimating()) {
             doFrame();
         }
     }
+}
+
+void NativeEngine::applyTextInputState(){
+    GameActivity_getTextInputState(mApp->activity, [](void *context, const GameTextInputState *state) {
+        if (!context || !state) return;
+
+        std::u16string units = decodeModifiedUtf8(state->text_UTF8, state->text_length);
+        std::u32string text;
+        std::vector<size_t> unitToCodepoint;
+        utf16ToCodepoints(units, text, unitToCodepoint);
+
+        if (jasperengine::Engine::wantsTextComposition()) {
+            jasperengine::Engine::systemTextInputState(units, state->selection.start, state->selection.end,
+                                                       state->composingRegion.start, state->composingRegion.end);
+            // the component InputField diff stays in step
+            componentTextInput.reset(text);
+            return;
+        }
+
+        // component InputField: '\b' per removed character, then each typed one
+        const jasperengine::android::TextEdit edit = componentTextInput.update(units);
+        for (size_t i = 0; i < edit.backspaces; i++){
+            jasperengine::Engine::systemCharInput('\b');
+        }
+        for (char32_t typed : edit.typed){
+            jasperengine::Engine::systemCharInput(typed);
+        }
+
+        // the document diff stays in step, for a document field focused later
+        int32_t selectionEnd = std::min(state->selection.end, (int32_t)units.size());
+        jasperengine::Engine::resetTextInputState(codepointsToUtf8(text, 0, text.size()),
+                                                  (selectionEnd >= 0) ? unitToCodepoint[selectionEnd] : text.size());
+
+    }, this);
 }
 
 void NativeEngine::setupJNI(){
@@ -1600,10 +1600,17 @@ void NativeEngine::handleCommand(int32_t cmd) {
             // language list re-resolves the game language (game-ui-localization.md R10)
             jasperengine::System::instance().notifyLocalesMayHaveChanged();
             break;
-        case APP_CMD_EDITOR_ACTION:
-            // the soft keyboard's action key (Send, Next, Done ...): Enter on the field with its hint
-            jasperengine::Engine::systemEditorAction(jasperengine::android::enterKeyOfImeAction(mApp->editorAction));
+        case APP_CMD_EDITOR_ACTION: {
+            // the soft keyboard's action key (Send, Next, Done ...): Enter on the field with its hint,
+            // after the text the IME sent before it (flagged in this pass, read after the commands)
+            bool textPending = mApp->textInputState != 0;
+            if (textPending)
+                mApp->textInputState = 0;
+            jasperengine::android::editorActionWithPendingText(textPending, [this] { applyTextInputState(); }, [this] {
+                jasperengine::Engine::systemEditorAction(jasperengine::android::enterKeyOfImeAction(mApp->editorAction));
+            });
             break;
+        }
         case APP_CMD_LOW_MEMORY:
             jasperengine::Engine::systemLowMemory();
             // system told us we have low memory. So if we are not visible, let's
