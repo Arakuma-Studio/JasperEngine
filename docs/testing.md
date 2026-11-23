@@ -1462,9 +1462,11 @@ runs only those jobs' lanes, those jobs on those runners whatever the state says
   writes there (Xcode's DerivedData, `brew`'s and `uv`'s caches, `git config --global`) reaches the
   user's own. `free-disk` does nothing there; `brew` and `choco` install only what is missing.
 - The job-completed hook empties the job's workspace (only a folder under the runner's `_work`), so
-  build trees and the restored ccache never pile up; ccache comes from the Actions cache as on GitHub's
-  runners, under the same keys (the Mac's Xcode 26.6 is the hosted image's; the Windows box's MSVC
-  14.52 is not, so its editor leg would not share the hosted entry). On Linux it removes the Docker
+  build trees never pile up. Linux lanes restore ccache from the Actions cache as on GitHub's runners
+  (their image mounts the workspace's); on macOS and Windows a runner keeps its own ccache per lane in
+  its tool cache, capped at 3 GB (`ccache-restore`; `ccache-save` saves none of it): the hosted entry
+  hit 0 of 3,834 compiles on the Mac (other paths, though the same Xcode 26.6) and took 7.5 min to
+  download (run 45104498209), where the Mac built the editor cold in 11 min. On Linux it removes the Docker
   images CI pulled (`.github/actions/image` notes them in the runner's tool cache) that no job used
   for 3 days, or every one but the newest of each when under 100 GB is free, and cuts the CI image
   builder's cache to 10 GB; on macOS it empties the runner's home's caches past 20 GB.
