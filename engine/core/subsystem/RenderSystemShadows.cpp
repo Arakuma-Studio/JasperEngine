@@ -161,7 +161,7 @@ float RenderSystem::shadowPCFRadius() const{
 unsigned int RenderSystem::lightShadowCascades(const LightComponent& light, const CameraComponent& camera) const{
     if (light.type == LightType::POINT)
         return SHADOW_CUBE_FACES;
-    // (an Area Light draws one perspective map along its forward axis, as a spot: S92 R35)
+    // (an Area Light draws one perspective map along its forward axis, as a spot: S99 R35)
     if (light.type == LightType::SPOT || light.type == LightType::AREA)
         return 1;
     if (camera.type != CameraType::CAMERA_PERSPECTIVE)
@@ -965,7 +965,7 @@ void RenderSystem::processLights(CameraShadows& view, int numLights, const Camer
     view.fs_lighting.eyePos = Vector4(cameraTransform.worldPosition.x, cameraTransform.worldPosition.y, cameraTransform.worldPosition.z, 0.0);
     view.fs_lighting.cameraDir = Vector4(camera.worldDirection.x, camera.worldDirection.y, camera.worldDirection.z, shadowPCFRadius());
     // (a Gradient ambient as its average over every facing, at intensity 1)
-    if (scene->getAmbientSource() == AmbientSource::GRADIENT){
+    if (scene->getAmbientMode() == AmbientMode::GRADIENT){
         Vector4 ambientSH[3];
         Vector3 flatAmbient;
         Vector3 litFlatAmbient;

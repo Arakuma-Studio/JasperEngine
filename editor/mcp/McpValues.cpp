@@ -624,10 +624,10 @@ const EnumOptions& litQualityOptions() {
     return options;
 }
 
-const EnumOptions& ambientSourceOptions() {
+const EnumOptions& ambientModeOptions() {
     static const EnumOptions options = {
-        {(int)AmbientSource::SKYBOX, "skybox", "Skybox"},
-        {(int)AmbientSource::GRADIENT, "gradient", "Gradient"}
+        {(int)AmbientMode::COLOR, "color", "Color"},
+        {(int)AmbientMode::GRADIENT, "gradient", "Gradient"}
     };
     return options;
 }
@@ -847,7 +847,7 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"planar_reflection_resolution", &planarReflectionResolutionOptions()},
         {"water_wake_resolution", &waterWakeResolutionOptions()},
         {"lit_quality", &litQualityOptions()},
-        {"ambient_source", &ambientSourceOptions()},
+        {"ambient_mode", &ambientModeOptions()},
         {"light_unit", &tableOptions(reflect::enums::kLightUnit)},
         {"texture_filter", &tableOptions(reflect::enums::kTextureFilter)},
         // framebuffers have no mipmaps
@@ -3057,7 +3057,7 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                 }
             }
             if (isAssetPathProperty(component, propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
-            // a light's IES Profile (S92 R36): an .ies file the renderer reads (TILT=NONE, Type C)
+            // a light's IES Profile (S99 R36): an .ies file the renderer reads (TILT=NONE, Type C)
             if (component == ComponentType::LightComponent && propertyName == "iesProfile" && !text.empty()) {
                 std::string contents;
                 IesProfile profile;

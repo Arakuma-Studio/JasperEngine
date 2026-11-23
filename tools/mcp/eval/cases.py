@@ -1198,13 +1198,13 @@ CASES = [
     {
         "id": "guard_extract_sun",
         "kind": "guard",
-        "what_happened": "S92 R28 adds extract_sun to set_scene_settings: an HDRI sky lights the scene only through IBL, so "
+        "what_happened": "S99 R28 adds extract_sun to set_scene_settings: an HDRI sky lights the scene only through IBL, so "
                          "its sun casts no shadow. Without the parameter an agent guesses a Directional Light's angle by eye "
                          "and leaves the sun in the sky's lighting twice.",
         "text_at_issue": "set_scene_settings description: 'extract_sun: a Directional Light from the skybox HDR's sun'; "
                          "its next: 'set_scene_settings extract_sun {\"remove_sun_disc\": true} "
                          "clamps the sky's disc'; jasper://docs/lighting",
-        "source": "docs/specs/S92-agent-feedback-area-lights.md R28, R29, R31",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R28, R29, R31",
         "prompt": "Our Skybox uses the HDR image assets/sky/desert.hdr. Make its sun cast shadows: a sun light pointing "
                   "exactly from the sun in the image, as bright and as coloured, and don't let the sky light the scene "
                   "with the sun a second time.",
@@ -1240,25 +1240,25 @@ CASES = [
     {
         "id": "guard_gradient_ambient",
         "kind": "guard",
-        "what_happened": "S92 R30 adds Environment Lighting Source Gradient (ambient_source and the sky, equator and ground "
+        "what_happened": "S99 R30 adds Environment Lighting Source Gradient (ambient_mode and the sky, equator and ground "
                          "colours). Without it an agent tints the flat global_illumination_color, which lights every facing "
                          "the same.",
-        "text_at_issue": "set_scene_settings names (ambient_source: 'Environment Lighting Source: skybox ..., gradient "
+        "text_at_issue": "set_scene_settings names (ambient_mode: 'Environment Lighting Source: color ..., gradient "
                          "(sky/equator/ground colors by facing ...)'); jasper://docs/lighting",
-        "source": "docs/specs/S92-agent-feedback-area-lights.md R30, R31",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R30, R31",
         "prompt": "There is no sky image in this scene. Give it Unity-style trilight ambient: light blue from above, a "
                   "neutral grey at the horizon and a warm brown from the ground.",
         "mocks": [
             {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
-                "Scene 1 \"Main\" settings:\nambient_source = gradient",
-                {"scene_id": 1, "settings": {"ambient_source": "gradient"}})},
+                "Scene 1 \"Main\" settings:\nambient_mode = gradient",
+                {"scene_id": 1, "settings": {"ambient_mode": "gradient"}})},
             {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings"}},
             {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
-                "Set 4 scene setting(s) (one undo step).", {"scene_id": 1, "settings": {"ambient_source": "gradient"}})},
+                "Set 4 scene setting(s) (one undo step).", {"scene_id": 1, "settings": {"ambient_mode": "gradient"}})},
             {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
         ],
         # the source and its colours may go in one call or several
-        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ambient_source": "gradient"}}},
+        "checks": {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"ambient_mode": "gradient"}}},
                              {"tool": "set_scene_settings", "args": {"settings": {"ambient_sky_color": "*"}}},
                              {"tool": "set_scene_settings", "args": {"settings": {"ambient_ground_color": "*"}}}],
                    "must_not_call": [{"tool": "set_scene_settings", "args": {"settings": {"global_illumination_color": "*"}}}]},
@@ -1291,13 +1291,13 @@ CASES = [
     {
         "id": "guard_area_light",
         "kind": "guard",
-        "what_happened": "S92 adds Area Lights (Light Type Area: a Rectangle or Disc emitting from its face) and the nits unit. "
+        "what_happened": "S99 adds Area Lights (Light Type Area: a Rectangle or Disc emitting from its face) and the nits unit. "
                          "Without them an agent fakes a soft panel with a row of point lights or an emissive quad, and sizes "
                          "the panel with the transform's scale, which does not size it.",
         "text_at_issue": "jasper://docs/lighting 'Area Light ... type: \"area\" ... areaWidth, areaHeight ... in metres: the "
                          "transform's scale does not size it ... intensityUnit: \"nits\" (or set_light_unit nits)'; "
                          "set_light_unit 'nits (area)'",
-        "source": "docs/specs/S92-agent-feedback-area-lights.md R32, R34, R39",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R32, R34, R39",
         "prompt": "Hang a soft 1.2 m by 0.4 m rectangular panel light 2 m above the Desk, facing down, at 500 nits.",
         "mocks": [
             # the world has no Desk: id 19 is free in it (15 is the Crate)
@@ -1560,8 +1560,8 @@ CASES = [
         "kind": "bad",
         "what_happened": "A movie came out of another H.264 encoder than libx264 (a bitrate instead of CRF quality); the "
                          "result named only the encoder used, so the agent could not tell the user it was a downgrade.",
-        "text_at_issue": "record_game's result: report.fallbacks [{step, from, to, reason}] (S92 R14)",
-        "source": "docs/specs/S92-agent-feedback-area-lights.md R14",
+        "text_at_issue": "record_game's result: report.fallbacks [{step, from, to, reason}] (S99 R14)",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R14",
         "groups_enabled": ["editor_tools"],
         "prompt": "Record 3 seconds of the game as an MP4 to captures/clip.mp4 and tell me if anything came out worse than asked.",
         "mocks": [
@@ -1586,8 +1586,8 @@ CASES = [
         "id": "bad_build_estimate_unknown",
         "kind": "bad",
         "what_happened": "Asked how long a build would take, an agent could only guess: no job said what it expected to cost.",
-        "text_at_issue": "a job's estimate {seconds, basis, confidence} and remaining_seconds (S92 R13, R16)",
-        "source": "docs/specs/S92-agent-feedback-area-lights.md R13, R16",
+        "text_at_issue": "a job's estimate {seconds, basis, confidence} and remaining_seconds (S99 R13, R16)",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R13, R16",
         "prompt": "Start a Linux build of the game, don't wait for it to finish, and tell me about how long it should take.",
         "mocks": [
             {"tool": "build_project", "result": {
@@ -2798,7 +2798,7 @@ CASES = [
                          "and its next ('Over the Download Budget: textures is the largest category (5.1 MB). get_texture_cook_report "
                          "{\"platforms\": [\"web\"]} (tool_groups: assets_pipeline) names the source texture of each cooked "
                          "file...'); jasper://docs/shipping Size",
-        "source": "docs/specs/S92-agent-feedback-area-lights.md R10, R11 (Crucible's build-size feedback); no transcript",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R10, R11 (Crucible's build-size feedback); no transcript",
         "files": GAME_FILES,
         "prompt": "The web portal only takes games under 5 MB, and the project's web Download Budget is set to that. Build the web "
                   "version and find out which files make it too big. Don't change anything yet.",
@@ -5521,16 +5521,16 @@ CASES = [
                    "must_not_call": ["fork_shader"], "edits_must_not": [r"\.(frag|vert|glsl)$"]},
         "max_turns": 12,
     },
-    # -- S92 W2: screenshot findings (R6, R7); an image the agent cannot judge without them ----------
+    # -- S99 W2: screenshot findings (R6, R7); an image the agent cannot judge without them ----------
     {
         "id": "bad_screenshot_clipped_light",
         "kind": "bad",
         "what_happened": "Asked whether a scene looked right, agents described a screenshot they could not judge (a stub or "
                          "a small image) and changed nothing; the result's findings and next now name the over-bright light "
-                         "and the call that lowers it (S92 R6, R7).",
+                         "and the call that lowers it (S99 R6, R7).",
         "text_at_issue": "screenshot result: findings [{kind: exposure_clipped, ...}] and next 'exposure_clipped: ... Fix: "
                          "set_properties {entity: 16, values: {light: {intensity: 0.75}}} halves it.'",
-        "source": "S92 spec, Crucible's frame-checks idea (paraphrased); no failure on record",
+        "source": "S99 spec, Crucible's frame-checks idea (paraphrased); no failure on record",
         "prompt": "Take a Game view screenshot of the Main scene and fix anything that looks wrong with the lighting.",
         "mocks": [
             {"tool": "screenshot", "after": "set_properties", "result": ok(
@@ -5563,10 +5563,10 @@ CASES = [
         "id": "bad_screenshot_selection_out_of_frame",
         "kind": "bad",
         "what_happened": "Agents reported on a Scene view screenshot of the selected object when the object was off-screen; "
-                         "the findings say it is out of frame and next gives frame_entity (S92 R6, R7).",
+                         "the findings say it is out of frame and next gives frame_entity (S99 R6, R7).",
         "text_at_issue": "screenshot result: findings [{kind: subject_out_of_frame}] and next 'subject_out_of_frame: Crate (#15) "
                          "(the selection) is 88 % outside the frame. Fix: frame_entity {entity: 15}.'",
-        "source": "S92 spec (paraphrased); no failure on record",
+        "source": "S99 spec (paraphrased); no failure on record",
         "prompt": "I lined the Scene view up on the selected Crate. Take a Scene view screenshot and tell me how the Crate "
                   "looks.",
         "mocks": [
@@ -5601,7 +5601,7 @@ CASES = [
                          "vector::_M_range_check ...'); it read that as a bad argument and kept changing a correct call.",
         "text_at_issue": "McpServer.cpp failFromException: 'Internal error in <tool> (not caused by your arguments); details in "
                          "editor.log as fault <id>. Check the state with <read tool>, retry once, and report it if it repeats.'",
-        "source": "S92 section 3 (raw what() of logic_error reached agents); S92 R3",
+        "source": "S99 section 3 (raw what() of logic_error reached agents); S99 R3",
         "prompt": "Add a cube named Crate2 at position (2, 0, 0).",
         "mocks": [
             {"tool": "create_entity", "once": True, "result": err(
@@ -5633,7 +5633,7 @@ CASES = [
                          "meant, and the agent resends with that name instead of dropping the argument.",
         "text_at_issue": "McpRegistry.cpp argumentProblem: 'Unknown argument \"withComponents\" for find_entities (did you "
                          "mean 'with_components'?). Arguments: ...'",
-        "source": "S92 R1 (camelCase for snake_case)",
+        "source": "S99 R1 (camelCase for snake_case)",
         "history": [
             {"user": "List the GameObjects named Crate with their components."},
             {"assistant": "Looking them up.", "calls": [{"tool": "find_entities", "args": {"name": "Crate", "withComponents": True},
@@ -5650,15 +5650,15 @@ CASES = [
                    "max_calls": {"find_entities": 2}},
         "max_turns": 6,
     },
-    # ---- S92 W5: the MCP call log (docs/mcp/guide/profiling.md "The MCP call log")
+    # ---- S99 W5: the MCP call log (docs/mcp/guide/profiling.md "The MCP call log")
     {
         "id": "guard_mcp_call_log",
         "kind": "guard",
-        "what_happened": "New text (S92 R17, R19): asked which of its own tool calls are slow or fail over many sessions, an "
+        "what_happened": "New text (S99 R17, R19): asked which of its own tool calls are slow or fail over many sessions, an "
                          "agent points at the opt-in call log (JASPER_MCP_LOG or Log Calls To File) and call_profile.py, "
                          "instead of timing calls by hand or reading editor.log.",
         "text_at_issue": "docs/mcp/guide/profiling.md 'The MCP call log'",
-        "source": "docs/specs/S92-agent-feedback-area-lights.md R17-R19; no failure on record",
+        "source": "docs/specs/S99-agent-feedback-area-lights.md R17-R19; no failure on record",
         "prompt": "Over the next week I want to see which of your editor tool calls are slow or fail most, across all our "
                   "sessions. What should I turn on in the editor and how do I read the result afterwards? Answer in a few "
                   "lines from the editor's docs; change nothing.",

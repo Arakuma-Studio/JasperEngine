@@ -9,7 +9,7 @@
 
 namespace jasperengine{
 
-    // Environment Lighting > Source: Gradient (SceneSettings::AmbientSource) as the L1 SH ambient
+    // Environment Lighting > Source: Gradient (SceneSettings::AmbientMode) as the L1 SH ambient
     // every lit shader already reads (includes/lights.glsl ambientLight: rgb_c(n) = dot(sh_c.xyz,
     // n) + sh_c.w), so the gradient needs no shader, variant or uniform of its own.
     //

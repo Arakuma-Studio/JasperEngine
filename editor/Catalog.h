@@ -551,7 +551,7 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, WaterWakeResolution>) return WaterWakeResolution::AUTO;
                 if constexpr (std::is_same_v<T, uint32_t>) return 0xFFFFFFFFu;
                 if constexpr (std::is_same_v<T, LitQuality>) return LitQuality::HIGH;
-                if constexpr (std::is_same_v<T, AmbientSource>) return AmbientSource::SKYBOX;
+                if constexpr (std::is_same_v<T, AmbientMode>) return AmbientMode::COLOR;
                 if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
                 if constexpr (std::is_same_v<T, std::string>) return std::string();
                 if constexpr (std::is_same_v<T, PostProcessingSettings>) return PostProcessingSettings();
@@ -625,9 +625,9 @@ namespace jasperengine::editor{
                     return scene->getGlobalIlluminationIntensity();
                 }
             }
-            else if (propertyName == "ambient_source") {
-                if constexpr (std::is_same_v<T, AmbientSource>) {
-                    return scene->getAmbientSource();
+            else if (propertyName == "ambient_mode") {
+                if constexpr (std::is_same_v<T, AmbientMode>) {
+                    return scene->getAmbientMode();
                 }
             }
             else if (propertyName == "ambient_sky_color") {
@@ -889,7 +889,7 @@ namespace jasperengine::editor{
             if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
             if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
             if constexpr (std::is_same_v<T, LitQuality>) return LitQuality::HIGH;
-            if constexpr (std::is_same_v<T, AmbientSource>) return AmbientSource::SKYBOX;
+            if constexpr (std::is_same_v<T, AmbientMode>) return AmbientMode::COLOR;
             if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
             if constexpr (std::is_same_v<T, std::string>) return std::string();
             if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) return std::vector<PostProcessPass>();
@@ -956,8 +956,8 @@ namespace jasperengine::editor{
             else if (propertyName == "global_illumination_intensity") {
                 if constexpr (std::is_same_v<T, float>) return d.globalIllumIntensity;
             }
-            else if (propertyName == "ambient_source") {
-                if constexpr (std::is_same_v<T, AmbientSource>) return d.ambientSource;
+            else if (propertyName == "ambient_mode") {
+                if constexpr (std::is_same_v<T, AmbientMode>) return d.ambientMode;
             }
             else if (propertyName == "ambient_sky_color") {
                 if constexpr (std::is_same_v<T, Vector3>) return Color::linearTosRGB(d.ambientSkyColor);
@@ -1198,9 +1198,9 @@ namespace jasperengine::editor{
                     scene->setGlobalIllumination(value);
                 }
             }
-            else if (propertyName == "ambient_source") {
-                if constexpr (std::is_same_v<T, AmbientSource>) {
-                    scene->setAmbientSource(value);
+            else if (propertyName == "ambient_mode") {
+                if constexpr (std::is_same_v<T, AmbientMode>) {
+                    scene->setAmbientMode(value);
                 }
             }
             else if (propertyName == "ambient_sky_color") {

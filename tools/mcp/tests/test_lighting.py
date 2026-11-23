@@ -179,7 +179,7 @@ async def test_lighting_render_stats(ed: Editor):
     await ed.call("set_project_settings", values={"graphics.light_mode": "automatic"})
 
 
-# ---- S92 W7: Extract Sun and the Gradient ambient (AC7)
+# ---- S99 W7: Extract Sun and the Gradient ambient (AC7)
 
 def _face_direction(face: int, u: float, v: float) -> tuple[float, float, float]:
     """the engine's cube face convention (IBLEnvironment): 0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z"""
@@ -286,29 +286,29 @@ async def test_gradient_ambient_fields_and_lua(ed: Editor):
     """Environment Lighting Source Gradient through set_scene_settings: saved only away from the
     defaults, read back, readable and settable from Lua, one undo step."""
     scene = await make_scene(ed, "GradientAmbient")
-    initial = await ed.call("get_scene_settings", scene=scene, names=["ambient_source"])
-    ed.check_eq(harness.find_key(initial, "ambient_source"), "skybox", "the default source is Skybox")
+    initial = await ed.call("get_scene_settings", scene=scene, names=["ambient_mode"])
+    ed.check_eq(harness.find_key(initial, "ambient_mode"), "color", "the default source is Color")
     await ed.call("set_scene_settings", scene=scene, settings={
-        "ambient_source": "gradient", "ambient_sky_color": [0.2, 0.4, 0.9], "ambient_ground_color": "#804020"})
-    got = await ed.call("get_scene_settings", scene=scene, names=["ambient_source", "ambient_sky_color", "ambient_ground_color"])
-    ed.check_eq(harness.find_key(got, "ambient_source"), "gradient")
+        "ambient_mode": "gradient", "ambient_sky_color": [0.2, 0.4, 0.9], "ambient_ground_color": "#804020"})
+    got = await ed.call("get_scene_settings", scene=scene, names=["ambient_mode", "ambient_sky_color", "ambient_ground_color"])
+    ed.check_eq(harness.find_key(got, "ambient_mode"), "gradient")
     sky = harness.find_key(got, "ambient_sky_color")
     ed.check(abs(sky[2] - 0.9) < 1e-3, f"sky color read back: {sky}")
     await ed.call("save_scene", scene=scene, path="scenes/GradientAmbient.scene")
     text = (ed.project / "scenes/GradientAmbient.scene").read_text()
-    ed.check("ambientSource: gradient" in text and "ambientSkyColor" in text, "the scene file has the gradient")
+    ed.check("ambientMode: gradient" in text and "ambientSkyColor" in text, "the scene file has the gradient")
     ed.check("ambientEquatorColor" not in text, "a default colour is not written")
-    await ed.check_error("set_scene_settings", scene=scene, settings={"ambient_source": "colour"}, contains="gradient")
+    await ed.check_error("set_scene_settings", scene=scene, settings={"ambient_mode": "colour"}, contains="gradient")
 
-    # Lua reads and writes them (scene.ambientSource, scene.ambient*Color, sRGB)
-    code = ("local out = {source = scene.ambientSource == AmbientSource.GRADIENT, sky = scene.ambientSkyColor.z} "
-            "scene.ambientEquatorColor = Vector3(0.5, 0.25, 0.125) scene.ambientSource = AmbientSource.SKYBOX "
-            "out.equator = scene.ambientEquatorColor.y out.after = scene.ambientSource == AmbientSource.SKYBOX return out")
+    # Lua reads and writes them (scene.ambientMode, scene.ambient*Color, sRGB)
+    code = ("local out = {source = scene.ambientMode == AmbientMode.GRADIENT, sky = scene.ambientSkyColor.z} "
+            "scene.ambientEquatorColor = Vector3(0.5, 0.25, 0.125) scene.ambientMode = AmbientMode.COLOR "
+            "out.equator = scene.ambientEquatorColor.y out.after = scene.ambientMode == AmbientMode.COLOR return out")
     v = (await ed.call("eval_lua", scene=scene, allow_edit_mode=True, code=code))["values"][0]
     ed.check(v["source"] is True and abs(v["sky"] - 0.9) < 1e-3, f"Lua reads the gradient: {v}")
     ed.check(abs(v["equator"] - 0.25) < 1e-3 and v["after"] is True, f"Lua sets the gradient: {v}")
-    await ed.call("set_scene_settings", scene=scene, settings={"ambient_source": "gradient"})
+    await ed.call("set_scene_settings", scene=scene, settings={"ambient_mode": "gradient"})
 
     await ed.call("undo", scene=scene)
-    ed.check_eq(harness.find_key(await ed.call("get_scene_settings", scene=scene, names=["ambient_source"]), "ambient_source"),
-                "skybox", "one undo step reverts the source")
+    ed.check_eq(harness.find_key(await ed.call("get_scene_settings", scene=scene, names=["ambient_mode"]), "ambient_mode"),
+                "color", "one undo step reverts the source")

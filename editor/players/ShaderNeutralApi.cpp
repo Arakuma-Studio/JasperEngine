@@ -180,7 +180,7 @@ const std::map<std::string, std::set<std::string>>& ShaderNeutralApi::mixedClass
             "gravity2D", "gravity3D", "physicsInterpolation", "enableUIEvents", "maxLightsPerObject",
             "shadowQuality", "litQuality", "effectiveShadowTier",
             // (Environment Lighting's source and gradient bind other textures and SH, never another variant)
-            "ambientSource", "ambientSkyColor", "ambientEquatorColor", "ambientGroundColor"}},
+            "ambientMode", "ambientSkyColor", "ambientEquatorColor", "ambientGroundColor"}},
         // the hierarchy, the transform, visibility, destruction, and the components above that draw
         // nothing (not instantiate: a clone can land in a scene of other lighting; not
         // billboarding)

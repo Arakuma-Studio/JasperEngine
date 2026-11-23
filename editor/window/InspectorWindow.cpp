@@ -534,12 +534,12 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                     }
                 }
             }
-            if constexpr (std::is_same_v<T, AmbientSource>) {
-                const char* sourceNames[] = { "Skybox", "Gradient" };
+            if constexpr (std::is_same_v<T, AmbientMode>) {
+                const char* sourceNames[] = { "Color", "Gradient" };
                 int currentItem = std::clamp(static_cast<int>(value), 0, 1);
                 changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, sourceNames, IM_ARRAYSIZE(sourceNames));
                 if (changed) {
-                    value = static_cast<AmbientSource>(currentItem);
+                    value = static_cast<AmbientMode>(currentItem);
                 }
             }
             if constexpr (std::is_same_v<T, LitQuality>) {
@@ -11187,7 +11187,7 @@ void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProj
         propertyRow(RowPropertyType::Direction, cpType, "direction", "Direction", sceneProject, entities);
     }
     if (light.type == LightType::AREA){
-        // S92 R32: the shape emits from its front along Direction, sized here, not by the scale
+        // S99 R32: the shape emits from its front along Direction, sized here, not by the scale
         RowSettings settingsShape;
         settingsShape.enumEntries = &entriesAreaLightShape;
         settingsShape.help = "Rectangle (Width x Height) or Disc (Radius), emitting from its front along Direction. Its Intensity is "
@@ -11201,7 +11201,7 @@ void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProj
         }
     }
     if (light.type == LightType::SPOT || light.type == LightType::POINT){
-        // S92 R37: an .ies file shaping the light, turned with it; Intensity stays its peak
+        // S99 R37: an .ies file shaping the light, turned with it; Intensity stays its peak
         RowSettings settingsIes;
         settingsIes.help = "An .ies photometric file (IESNA LM-63) shaping the light, turned with it: vertical angle 0 along its "
                            "forward axis. Intensity stays the profile's peak. Empty: the light's own shape.";
@@ -13279,7 +13279,7 @@ void editor::InspectorWindow::drawSkyboxComponent(ComponentType cpType, ScenePro
 
     endTable();
 
-    // S92 R28: the sun of the sky's HDR image as the scene's main Directional Light
+    // S99 R28: the sun of the sky's HDR image as the scene's main Directional Light
     separatorText("Sun");
     beginTable(cpType, getLabelSize("Remove Sun Disc"), "sky_sun");
     ImGui::TableNextRow();
@@ -13950,13 +13950,13 @@ void editor::InspectorWindow::show(){
                     ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Equator Color"));
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
-                    drawScenePropertyRow<AmbientSource>(sceneProject, "ambient_source", "Source", ScenePropertyInputType::Combo, 7 * ImGui::GetFontSize(), 0.0f, 1.0f,
+                    drawScenePropertyRow<AmbientMode>(sceneProject, "ambient_mode", "Source", ScenePropertyInputType::Combo, 7 * ImGui::GetFontSize(), 0.0f, 1.0f,
                         "Where lit surfaces take their ambient light from:\n"
-                        "- Skybox: the sky's image on Lit materials (image-based lighting); the Ambient Color where the scene has no "
-                        "sky image, and on shaders and particles that take no image-based lighting\n"
+                        "- Color: the Ambient Color times Intensity; Lit materials under a sky with an image take the image instead "
+                        "(image-based lighting)\n"
                         "- Gradient: Sky, Equator and Ground colours by the way a surface faces, on every lit shader. The sky's image "
-                        "still gives Lit its reflections. Costs nothing over Skybox.");
-                    if (jasperengine::editor::Catalog::getSceneProperty<AmbientSource>(sceneProject->scene, "ambient_source") == AmbientSource::GRADIENT) {
+                        "still gives Lit its reflections. Costs nothing over Color.");
+                    if (jasperengine::editor::Catalog::getSceneProperty<AmbientMode>(sceneProject->scene, "ambient_mode") == AmbientMode::GRADIENT) {
                         drawScenePropertyRow<Vector3>(sceneProject, "ambient_sky_color", "Sky Color", ScenePropertyInputType::ColorRGB);
                         drawScenePropertyRow<Vector3>(sceneProject, "ambient_equator_color", "Equator Color", ScenePropertyInputType::ColorRGB);
                         drawScenePropertyRow<Vector3>(sceneProject, "ambient_ground_color", "Ground Color", ScenePropertyInputType::ColorRGB);

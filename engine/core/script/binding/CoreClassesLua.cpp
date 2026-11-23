@@ -1980,11 +1980,11 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("HIGH", LitQuality::HIGH)
         .endNamespace();
 
-    // Environment Lighting > Source (Scene.ambientSource)
+    // Environment Lighting > Source (Scene.ambientMode)
     luabridge::getGlobalNamespace(L)
-        .beginNamespace("AmbientSource")
-        .addVariable("SKYBOX", AmbientSource::SKYBOX)
-        .addVariable("GRADIENT", AmbientSource::GRADIENT)
+        .beginNamespace("AmbientMode")
+        .addVariable("COLOR", AmbientMode::COLOR)
+        .addVariable("GRADIENT", AmbientMode::GRADIENT)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -3410,9 +3410,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("globalIlluminationIntensity", &Scene::getGlobalIlluminationIntensity, (void (Scene::*)(float))&Scene::setGlobalIllumination)
         .addFunction("getGlobalIlluminationColorLinear", &Scene::getGlobalIlluminationColorLinear)
         .addFunction("setGlobalIllumination", (void (Scene::*)(float, Vector3))&Scene::setGlobalIllumination)
-        // Environment Lighting: the source (AmbientSource.SKYBOX, GRADIENT) and the Gradient's
+        // Environment Lighting: the source (AmbientMode.COLOR, GRADIENT) and the Gradient's
         // colours (sRGB, used as they are)
-        .addProperty("ambientSource", &Scene::getAmbientSource, &Scene::setAmbientSource)
+        .addProperty("ambientMode", &Scene::getAmbientMode, &Scene::setAmbientMode)
         .addProperty("ambientSkyColor", &Scene::getAmbientSkyColor, &Scene::setAmbientSkyColor)
         .addProperty("ambientEquatorColor", &Scene::getAmbientEquatorColor, &Scene::setAmbientEquatorColor)
         .addProperty("ambientGroundColor", &Scene::getAmbientGroundColor, &Scene::setAmbientGroundColor)

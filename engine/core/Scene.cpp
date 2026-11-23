@@ -603,12 +603,12 @@ Vector3 Scene::getGlobalIlluminationColorLinear() const{
     return settings.globalIllumColor;
 }
 
-void Scene::setAmbientSource(AmbientSource source){
-    settings.ambientSource = source;
+void Scene::setAmbientMode(AmbientMode source){
+    settings.ambientMode = source;
 }
 
-AmbientSource Scene::getAmbientSource() const{
-    return settings.ambientSource;
+AmbientMode Scene::getAmbientMode() const{
+    return settings.ambientMode;
 }
 
 void Scene::setAmbientSkyColor(Vector3 color){

@@ -40,9 +40,9 @@ For agents: what to set and how to check it. The full reference is `docs/renderi
   Refused when the sky has no distinct sun (its brightest spot under 20x its mean): place the light
   by hand.
 - Ambient light by facing (sky above, ground below) instead of the sky image: `set_scene_settings`
-  `ambient_source: "gradient"` with `ambient_sky_color`, `ambient_equator_color`,
-  `ambient_ground_color` (sRGB). The default `skybox` lights Lit with the sky image, and with
-  `global_illumination_color` / `_intensity` where there is none.
+  `ambient_mode: "gradient"` with `ambient_sky_color`, `ambient_equator_color`,
+  `ambient_ground_color` (sRGB). The default `color` lights with `global_illumination_color` /
+  `_intensity`, and Lit under a sky image with the image.
 
 ## Checking
 

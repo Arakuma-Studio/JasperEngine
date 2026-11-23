@@ -113,7 +113,7 @@ albedo). The strands run along the mesh's tangent turned by **Strand Rotation**,
 Map**'s direction (RG in tangent space). Use it with alpha clip, or alpha blending and an Order
 Independent camera, for hair cards.
 
-## Area Lights and IES Profiles (S92)
+## Area Lights and IES Profiles (S99)
 
 **Type: Area** (GameObject > Light > Area Light) is a **Rectangle** (Width x Height) or a **Disc**
 (Radius) in metres, emitting from its front along the light's Direction; the transform's scale does
@@ -137,15 +137,17 @@ stays the peak), and the scene's profiles share one texture with the LTC tables 
 variants). Selecting the file shows its polar plot, peak candela and lumens. A tilted profile is
 refused where it is set.
 
-## Environment Lighting and the HDRI sun (S92)
+## Environment Lighting and the HDRI sun (S99)
 
 **Environment Lighting > Source** (the scene's Inspector) is where lit surfaces take their ambient
 light from:
 
-- **Skybox** (the default; scenes saved before it load with it): the built-in Lit takes the sky's
-  image (image-based lighting) where the scene has a sky with an image, and the **Ambient Color**
-  times **Intensity** everywhere else: no sky image, shaders without image-based lighting, particles.
-- **Gradient**: **Sky Color**, **Equator Color** and **Ground Color** (used as they are) by the way a
+- **Color** (the default; scenes saved before it load with it): the **Ambient Color** times
+  **Intensity**, which the built-in Lit swaps for the sky's image (image-based lighting) where the
+  scene has a sky with an image. Shaders without image-based lighting and particles always take the
+  colour.
+- **Gradient**: **Sky Color**, **Equator Color** and **Ground Color** (used as they are, as in Unity,
+  whose Intensity Multiplier is the Skybox source's; Unity's defaults) by the way a
   surface faces. The gradient is an environment brightening linearly from the horizon to the sky
   above and to the ground below, projected to the L1 spherical harmonics every object already carries
   (`render/AmbientGradient.h`): `E(n) / pi = equator / 2 + (sky + ground) / 4 + n.y (sky - ground) / 3`.
@@ -175,7 +177,7 @@ A disc across two face files of a six-file sky is removed where each face finds 
 | Material > Shading Model and the hair values | `material.shadingModel` (`ShadingModel.STANDARD`, `HAIR`), `hairPrimaryColor` ... `hairRotation`, `hairFlowTexture` | the material's `pbr.hair` |
 | Capsule Shadow Caster | `CapsuleShadowCaster`: `castShadows`, `addCapsule`, `fitToSkeleton`, ... | `capsuleshadowcaster`: `castShadows`, `capsules` |
 | Scene > Capsule Shadows | `scene.capsuleShadowsEnabled`, `capsuleShadowIntensity`, `capsuleShadowSoftness` | `capsule_shadows_enabled`, `capsule_shadow_intensity`, `capsule_shadow_softness` |
-| Scene > Environment Lighting > Source, Sky/Equator/Ground Color | `scene.ambientSource` (`AmbientSource.SKYBOX`, `GRADIENT`), `ambientSkyColor`, `ambientEquatorColor`, `ambientGroundColor` | `ambient_source`, `ambient_sky_color`, `ambient_equator_color`, `ambient_ground_color` |
+| Scene > Environment Lighting > Source, Sky/Equator/Ground Color | `scene.ambientMode` (`AmbientMode.COLOR`, `GRADIENT`), `ambientSkyColor`, `ambientEquatorColor`, `ambientGroundColor` | `ambient_mode`, `ambient_sky_color`, `ambient_equator_color`, `ambient_ground_color` |
 | Skybox > Extract Sun; texture importer Remove Sun Disc | (editor only) | `set_scene_settings` `extract_sun: {remove_sun_disc}`; `set_texture_import_settings` `remove_sun_disc` |
 | Project Settings > Graphics > Light Mode | (project setting) | `graphics.light_mode`: automatic, per_object, tiled |
 | Light > Type Area, Shape, Width, Height, Radius | `light.type` (`LightType.AREA`), `areaShape` (`AreaLightShape.RECTANGLE`, `DISC`), `areaWidth`, `areaHeight`, `areaRadius` | `light`: `type: "area"`, `areaShape`, `areaWidth`, `areaHeight`, `areaRadius` |

@@ -515,7 +515,7 @@ namespace jasperengine{
 		// every Light component of the scene is Directional (enabled or not, so a flashlight
 		// switched on keeps the variant): the built-in Lit's 'Dlo' variant
 		bool directionalLightsOnly = false;
-		// S92: the scene has an Area Light / a light with an IES Profile (enabled or not): the
+		// S99: the scene has an Area Light / a light with an IES Profile (enabled or not): the
 		// built-in Lit's pixel-lit variants take USE_AREA_LIGHTS / USE_IES (in their builtin:lit
 		// reference); without them every variant stays the one it was
 		bool areaLights = false;
@@ -1089,7 +1089,7 @@ namespace jasperengine{
 		std::vector<unsigned char> spotMaskAtlasPixels;
 		bool spotMaskAtlasCreated;
 
-		// S92: the Area Lights' LTC tables and the IES Profiles, one RGBA16F texture of
+		// S99: the Area Lights' LTC tables and the IES Profiles, one RGBA16F texture of
 		// LIGHT_PROFILE_WIDTH texels: rows 0-63 the two 64x64 LTC tables side by side, then a band
 		// of IesProfile::GRID_ROWS rows per profile (LightComponent::iesProfileBand), in the order
 		// the scene's lights first name them. Made only while the scene has an Area Light or a
@@ -1964,7 +1964,7 @@ namespace jasperengine{
 			Vector4 packed[4];
 			uint32_t cullingMask = LAYER_MASK_EVERYTHING;
 			int spotMaskTile = -1;
-			// spot_shadow.w's S92 bits: 14 an Area Light's Disc, 15-21 its IES Profile's band + 1
+			// spot_shadow.w's S99 bits: 14 an Area Light's Disc, 15-21 its IES Profile's band + 1
 			int profileBits = 0;
 			LightShading shading = LightShading::BOTH;
 			bool active = false;      // enabled, on an active entity, giving light
@@ -1993,7 +1993,7 @@ namespace jasperengine{
 		// a point or spot Light was in the scene since load(): the general Lit stays until the
 		// next load, so lights that come and go never reload every mesh again
 		bool nonDirectionalLightSeen = false;
-		// S92: an Area Light / a light with an IES Profile was in the scene since load() (the
+		// S99: an Area Light / a light with an IES Profile was in the scene since load() (the
 		// variants with them stay until the next load), and as the meshes loaded
 		bool areaLightSeen = false;
 		bool iesProfileSeen = false;
@@ -2505,7 +2505,7 @@ namespace jasperengine{
 		// the camera part of the lighting (frame block, legacy block) and the shadow uniforms of target for camera
 		void processLights(CameraShadows& target, int numLights, const CameraComponent& camera, const Transform& cameraTransform);
 		void updateSpotMaskAtlas(int numLights);
-		// S92: the profiles' bands of the lights (iesProfileBand) and the texture holding them
+		// S99: the profiles' bands of the lights (iesProfileBand) and the texture holding them
 		void updateLightProfiles();
 	public:
 		// the light profiles' texture (tests): whether it is made, its bands after the LTC tables
@@ -2521,7 +2521,7 @@ namespace jasperengine{
 		void orderObjectLights(const MeshComponent& mesh, uint64_t properties, int order[MAX_LIGHTS_PER_OBJECT], int& pixelCount, int& vertexCount) const;
 		// the per-object lights block of a submesh variant for the camera pass being drawn
 		void buildObjectLights(const MeshComponent& mesh, uint64_t properties, object_lights_t& block) const;
-		// the scene's ambient as the lit shaders take it (SceneSettings::AmbientSource): the SH every
+		// the scene's ambient as the lit shaders take it (SceneSettings::AmbientMode): the SH every
 		// object starts from, its average over every facing (flat consumers: particles, clouds), and
 		// the part Lit treats as uniform (litFrame ambient; the rest of the SH it adds as overflow)
 		void sceneAmbient(Vector4 sh[3], Vector3& flat, Vector3& litFlat) const;

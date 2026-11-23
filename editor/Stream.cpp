@@ -3042,7 +3042,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (project->getBuildMethod() != "auto") exportNode["method"] = project->getBuildMethod();
         if (project->isPackContent()) exportNode["pack"] = true;
         if (!project->isStripEngineCode()) exportNode["stripEngineCode"] = false;
-        // Download Budget (S92 R11): only the families that have one, so an old project.yaml stays as it was
+        // Download Budget (S99 R11): only the families that have one, so an old project.yaml stays as it was
         {
             YAML::Node budgetNode;
             for (size_t f = 0; f < kModelFamilyCount; f++) {
@@ -5123,15 +5123,15 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["lightState"] = lightStateToString(scene->getLightState());
     sceneNode["globalIlluminationIntensity"] = scene->getGlobalIlluminationIntensity();
     sceneNode["globalIlluminationColor"] = encodeVector3(scene->getGlobalIlluminationColor());
-    // Environment Lighting (S92 R30): written only away from its defaults (no key: Skybox)
+    // Environment Lighting (S99 R30): written only away from its defaults (no key: Color)
     {
         const SceneSettings defaults;
         // (a default decoded through sRGB may differ from it in the last bits)
         auto away = [](const Vector3& a, const Vector3& b) {
             return std::fabs(a.x - b.x) > 1e-5f || std::fabs(a.y - b.y) > 1e-5f || std::fabs(a.z - b.z) > 1e-5f;
         };
-        if (scene->getAmbientSource() != defaults.ambientSource)
-            sceneNode["ambientSource"] = StreamSchema::ambientSource().toString(scene->getAmbientSource());
+        if (scene->getAmbientMode() != defaults.ambientMode)
+            sceneNode["ambientMode"] = StreamSchema::ambientMode().toString(scene->getAmbientMode());
         if (away(scene->getAmbientSkyColorLinear(), defaults.ambientSkyColor))
             sceneNode["ambientSkyColor"] = encodeVector3(scene->getAmbientSkyColor());
         if (away(scene->getAmbientEquatorColorLinear(), defaults.ambientEquatorColor))
@@ -5310,7 +5310,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     // Environment Lighting: absent keys restore the defaults (a reused scene decodes exactly)
     {
         const SceneSettings defaults;
-        scene->setAmbientSource(node["ambientSource"] ? decodeEnum(node, "ambientSource", StreamSchema::ambientSource()) : defaults.ambientSource);
+        scene->setAmbientMode(node["ambientMode"] ? decodeEnum(node, "ambientMode", StreamSchema::ambientMode()) : defaults.ambientMode);
         // (an absent key on a scene already at the default leaves it untouched: exact, no sRGB round trip)
         if (node["ambientSkyColor"]) scene->setAmbientSkyColor(decodeVector3(node["ambientSkyColor"]));
         else if (scene->getAmbientSkyColorLinear() != defaults.ambientSkyColor) scene->setAmbientSkyColor(Color::linearTosRGB(defaults.ambientSkyColor));

@@ -803,7 +803,7 @@ void setMainCameraTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ scene settings
 
-enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, LitQuality, AmbientSource, Filter, PostProcess,
+enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, LitQuality, AmbientMode, Filter, PostProcess,
                          PostProcessing, PostProcessingField, ShadowDebugView, CanvasScaler, PlanarReflectionResolution, LayerMask, ShaderUniforms,
                          WaterWakeResolution };
 
@@ -828,8 +828,8 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"light_state", SettingKind::LightState, "scene lighting: off, on, auto (on when a light exists)"},
         {"global_illumination_color", SettingKind::Vector3, "ambient light color [r,g,b] (sRGB)"},
         {"global_illumination_intensity", SettingKind::Float, "ambient light intensity"},
-        {"ambient_source", SettingKind::AmbientSource,
-         "Environment Lighting Source: skybox (default: the sky image on Lit, the ambient color elsewhere), gradient (sky/equator/ground colors by facing; the sky still reflects)"},
+        {"ambient_mode", SettingKind::AmbientMode,
+         "Environment Lighting Source: color (default: the ambient color; Lit under a sky image takes the image), gradient (sky/equator/ground colors by facing; the sky still reflects)"},
         {"ambient_sky_color", SettingKind::Vector3, "gradient color facing up [r,g,b] (sRGB)"},
         {"ambient_equator_color", SettingKind::Vector3, "gradient color at the horizon [r,g,b] (sRGB)"},
         {"ambient_ground_color", SettingKind::Vector3, "gradient color facing down [r,g,b] (sRGB)"},
@@ -1088,7 +1088,7 @@ const char* kindName(SettingKind kind) {
         case SettingKind::SceneColorScale:
         case SettingKind::LightState:
         case SettingKind::LitQuality:
-        case SettingKind::AmbientSource:
+        case SettingKind::AmbientMode:
         case SettingKind::ShadowDebugView:
         case SettingKind::PlanarReflectionResolution:
         case SettingKind::WaterWakeResolution:
@@ -1112,7 +1112,7 @@ const McpValues::EnumOptions* settingOptions(SettingKind kind) {
         case SettingKind::WaterWakeResolution: return McpValues::enumTable("water_wake_resolution");
         case SettingKind::LightState: return McpValues::enumTable("light_state");
         case SettingKind::LitQuality: return McpValues::enumTable("lit_quality");
-        case SettingKind::AmbientSource: return McpValues::enumTable("ambient_source");
+        case SettingKind::AmbientMode: return McpValues::enumTable("ambient_mode");
         case SettingKind::Filter: return McpValues::enumTable("framebuffer_filter");
         default: return nullptr;
     }
@@ -1249,9 +1249,9 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<LitQuality>(setting.name)
                                                         : Catalog::getSceneProperty<LitQuality>(scene, setting.name)),
                                          *settingOptions(setting.kind));
-        case SettingKind::AmbientSource:
-            return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<AmbientSource>(setting.name)
-                                                        : Catalog::getSceneProperty<AmbientSource>(scene, setting.name)),
+        case SettingKind::AmbientMode:
+            return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<AmbientMode>(setting.name)
+                                                        : Catalog::getSceneProperty<AmbientMode>(scene, setting.name)),
                                          *settingOptions(setting.kind));
         case SettingKind::Filter:
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<TextureFilter>(setting.name)
@@ -1385,7 +1385,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
         case SettingKind::SceneColorScale:
         case SettingKind::LightState:
         case SettingKind::LitQuality:
-        case SettingKind::AmbientSource:
+        case SettingKind::AmbientMode:
         case SettingKind::Filter: {
             int parsed = 0;
             std::string why;
@@ -1401,7 +1401,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
                 return new ScenePropertyCmd<WaterWakeResolution>(project, id, name, (WaterWakeResolution)parsed);
             if (setting.kind == SettingKind::LightState) return new ScenePropertyCmd<LightState>(project, id, name, (LightState)parsed);
             if (setting.kind == SettingKind::LitQuality) return new ScenePropertyCmd<LitQuality>(project, id, name, (LitQuality)parsed);
-            if (setting.kind == SettingKind::AmbientSource) return new ScenePropertyCmd<AmbientSource>(project, id, name, (AmbientSource)parsed);
+            if (setting.kind == SettingKind::AmbientMode) return new ScenePropertyCmd<AmbientMode>(project, id, name, (AmbientMode)parsed);
             return new ScenePropertyCmd<TextureFilter>(project, id, name, (TextureFilter)parsed);
         }
         case SettingKind::PostProcessing:
@@ -1625,7 +1625,7 @@ void setSceneSettingsTool(const CallPtr& call) {
         call->fail(McpRefs::notOpenError(call->ctx().project(), *scene));
         return;
     }
-    // S92 R28: extract_sun {remove_sun_disc} with or without settings
+    // S99 R28: extract_sun {remove_sun_disc} with or without settings
     const bool extractSun = args.contains("extract_sun") && !args["extract_sun"].is_null();
     if (extractSun) {
         const Json& sun = args["extract_sun"];

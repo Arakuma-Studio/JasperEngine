@@ -458,7 +458,7 @@ namespace {
     size_t ambientTailBytes(const Scene& scene) {
         jasperengine::cook::StringTable none;
         jasperengine::cook::Writer tail(none, [](Entity e) { return static_cast<uint32_t>(e); });
-        tail.u8(static_cast<uint8_t>(scene.getAmbientSource()));
+        tail.u8(static_cast<uint8_t>(scene.getAmbientMode()));
         jasperengine::cook::write(tail, scene.getAmbientSkyColor());
         jasperengine::cook::write(tail, scene.getAmbientEquatorColor());
         jasperengine::cook::write(tail, scene.getAmbientGroundColor());
@@ -703,13 +703,13 @@ TEST(CookedScene, SceneSettingsKeepWaterWakes) {
     EXPECT_FLOAT_EQ(old.getWaterWakeFade(), defaults.waterWakeFade);
 }
 
-// S92 R30: Environment Lighting's source and the Gradient's colours survive a cook (format 1.6,
-// after the Water Wakes); a 1.5 record (without them) keeps the Skybox source and the default gradient
+// S99 R30: Environment Lighting's source and the Gradient's colours survive a cook (format 1.6,
+// after the Water Wakes); a 1.5 record (without them) keeps the Color source and the default gradient
 TEST(CookedScene, SceneSettingsKeepAmbientGradient) {
     DecodedScene source = emptyScene();
     Scene* scene = source.scene->scene;
     scene->setWaterWakeArea(32.0f);
-    scene->setAmbientSource(AmbientSource::GRADIENT);
+    scene->setAmbientMode(AmbientMode::GRADIENT);
     scene->setAmbientSkyColor(Vector3(0.2f, 0.4f, 0.9f));
     scene->setAmbientEquatorColor(Vector3(0.5f, 0.5f, 0.5f));
     scene->setAmbientGroundColor(Vector3(0.3f, 0.2f, 0.1f));
@@ -730,7 +730,7 @@ TEST(CookedScene, SceneSettingsKeepAmbientGradient) {
     jasperengine::cook::readSceneSettings(r, *loaded.scene->scene);
     ASSERT_FALSE(r.failed()) << r.error();
     EXPECT_TRUE(r.atEnd());
-    EXPECT_EQ(loaded.scene->scene->getAmbientSource(), AmbientSource::GRADIENT);
+    EXPECT_EQ(loaded.scene->scene->getAmbientMode(), AmbientMode::GRADIENT);
     expectNear(loaded.scene->scene->getAmbientSkyColor(), Vector3(0.2f, 0.4f, 0.9f));
     expectNear(loaded.scene->scene->getAmbientEquatorColor(), Vector3(0.5f, 0.5f, 0.5f));
     expectNear(loaded.scene->scene->getAmbientGroundColor(), Vector3(0.3f, 0.2f, 0.1f));
@@ -739,7 +739,7 @@ TEST(CookedScene, SceneSettingsKeepAmbientGradient) {
     DecodedScene player;
     std::string error;
     ASSERT_TRUE(roundTrip(scene, {}, player, error)) << error;
-    EXPECT_EQ(player.scene->scene->getAmbientSource(), AmbientSource::GRADIENT);
+    EXPECT_EQ(player.scene->scene->getAmbientMode(), AmbientMode::GRADIENT);
     expectNear(player.scene->scene->getAmbientGroundColor(), Vector3(0.3f, 0.2f, 0.1f));
 
     // the 1.5 record: the same bytes without them; the Water Wakes still read
@@ -750,7 +750,7 @@ TEST(CookedScene, SceneSettingsKeepAmbientGradient) {
     const SceneSettings defaults;
     const Scene& old = *older.scene->scene;
     EXPECT_FLOAT_EQ(old.getWaterWakeArea(), 32.0f);
-    EXPECT_EQ(old.getAmbientSource(), AmbientSource::SKYBOX);
+    EXPECT_EQ(old.getAmbientMode(), AmbientMode::COLOR);
     expectNear(old.getAmbientSkyColorLinear(), defaults.ambientSkyColor);
 }
 
@@ -796,7 +796,7 @@ TEST(CookedScene, ReadsAnOlderMinorsContent) {
     scene->setPlanarReflectionFarClip(60.0f);
     scene->setWaterWakeResolution(WaterWakeResolution::HIGH);
     scene->setWaterWakeArea(32.0f);
-    scene->setAmbientSource(AmbientSource::GRADIENT);
+    scene->setAmbientMode(AmbientMode::GRADIENT);
     const std::vector<uint8_t> bytes = editor::cook::SceneCooker::cookScene(scene, 4242, {}, NULL_ENTITY, SceneResources{});
     auto le32 = [](const uint8_t* at) { return uint32_t(at[0]) | uint32_t(at[1]) << 8 | uint32_t(at[2]) << 16 | uint32_t(at[3]) << 24; };
     const size_t cut = ambientTailBytes(*scene);
@@ -824,7 +824,7 @@ TEST(CookedScene, ReadsAnOlderMinorsContent) {
     EXPECT_FLOAT_EQ(loaded.scene->scene->getPlanarReflectionFarClip(), 60.0f);
     EXPECT_EQ(loaded.scene->scene->getWaterWakeResolution(), WaterWakeResolution::HIGH);
     EXPECT_FLOAT_EQ(loaded.scene->scene->getWaterWakeArea(), 32.0f);
-    EXPECT_EQ(loaded.scene->scene->getAmbientSource(), defaults.ambientSource);
+    EXPECT_EQ(loaded.scene->scene->getAmbientMode(), defaults.ambientMode);
     EXPECT_EQ(jasperengine::test::LogCapture::sinceTestStart().count(D_LOG_WARN, "newer editor"), 0u);
 }
 

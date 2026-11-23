@@ -24,13 +24,12 @@ namespace jasperengine{
         AUTO
     };
 
-    // Environment Lighting > Source: where lit surfaces take their ambient light from. Stored as
-    // ints: append only.
-    enum class AmbientSource {
-        // as scenes always drew: the built-in Lit takes the sky's image (IBL) where the scene has a
-        // sky with an image, and the Ambient Color (globalIllum*) everywhere else (no sky image,
-        // shaders without IBL, particles)
-        SKYBOX,
+    // Environment Lighting > Source (Unity's names: ambientMode, Color and Gradient): where lit
+    // surfaces take their ambient light from. Stored as ints: append only.
+    enum class AmbientMode {
+        // as scenes always drew: the Ambient Color (globalIllum*), which the built-in Lit swaps for
+        // the sky's image (IBL) where the scene has a sky with an image
+        COLOR,
         // Unity's trilight: sky, equator and ground colours by the surface's facing, projected to
         // the per-object spherical harmonics (render/AmbientGradient.h); the sky's image still
         // gives reflections, no longer the diffuse ambient
@@ -463,13 +462,13 @@ namespace jasperengine{
         LightState lightState = LightState::AUTO;
         Vector3 globalIllumColor = Vector3(1.0, 1.0, 1.0);    // stored linear
         float globalIllumIntensity = 0.1f;
-        // a scene file without the key keeps SKYBOX (as it was drawn); the gradient's colours
-        // are used as they are (no intensity), stored linear (sRGB 0.45 0.55 0.7, 0.4 0.4 0.42,
-        // 0.2 0.18 0.15: about as bright as a new scene's Ambient Color)
-        AmbientSource ambientSource = AmbientSource::SKYBOX;
-        Vector3 ambientSkyColor = Vector3(0.170645f, 0.263273f, 0.447988f);
-        Vector3 ambientEquatorColor = Vector3(0.132868f, 0.132868f, 0.147319f);
-        Vector3 ambientGroundColor = Vector3(0.033105f, 0.027212f, 0.019607f);
+        // a scene file without the key keeps COLOR (as it was drawn); the gradient's colours are
+        // used as they are, as Unity's (its Intensity Multiplier is the Skybox source's), stored
+        // linear, Unity's defaults
+        AmbientMode ambientMode = AmbientMode::COLOR;
+        Vector3 ambientSkyColor = Vector3(0.0368895f, 0.0423114f, 0.0544803f);       // sRGB (54, 58, 66)
+        Vector3 ambientEquatorColor = Vector3(0.0122865f, 0.0144438f, 0.0159963f);   // sRGB (29, 32, 34)
+        Vector3 ambientGroundColor = Vector3(0.0036765f, 0.0033465f, 0.0027317f);    // sRGB (12, 11, 9)
 
         // lights evaluated per object (1..16); the rest of the lights reaching it are folded
         // into its spherical-harmonics ambient

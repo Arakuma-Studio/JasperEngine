@@ -1475,7 +1475,7 @@ int RenderSystem::checkLightsAndShadow(){
         if (light.type != LightType::DIRECTIONAL){
             nonDirectionalLightSeen = true;
         }
-        // (S92: sticky as the general Lit is, so a light turned into an Area Light or given a
+        // (S99: sticky as the general Lit is, so a light turned into an Area Light or given a
         // profile and back reloads the variants once)
         if (light.type == LightType::AREA){
             areaLightSeen = true;
@@ -1741,7 +1741,7 @@ void RenderSystem::loadSpotMaskTexture(ShaderData& shaderData, ObjectRender& ren
         shaderData.getTextureIndex(TextureShaderType::SPOTMASKATLAS),
         ShaderStageType::FRAGMENT,
         spotMaskAtlasCreated ? &spotMaskAtlas : &emptyWhite);
-    // S92: the light profiles (LTC tables, IES bands) of the variants with Area Lights or IES
+    // S99: the light profiles (LTC tables, IES bands) of the variants with Area Lights or IES
     // Profiles; a scene without either looks nothing up
     if (areaLightSeen || iesProfileSeen){
         const std::pair<int, int> slot = shaderData.getTextureIndexByName("u_lightProfiles");
@@ -1817,7 +1817,7 @@ void RenderSystem::fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, cons
     const float fogParam = (fogColorType.w == 0.0f) ? fogDensityStartEnd.z : fogDensityStartEnd.x;
     litFrame.cameraPosition_fogEnd = Vector4(frame.cameraPosition.x, frame.cameraPosition.y, frame.cameraPosition.z, fogDensityStartEnd.w);
     // (Gradient: none of the ambient is uniform for Lit, it takes the object's SH whole)
-    const bool gradientAmbient = scene->getAmbientSource() == AmbientSource::GRADIENT;
+    const bool gradientAmbient = scene->getAmbientMode() == AmbientMode::GRADIENT;
     litFrame.ambient_fogType = gradientAmbient ? Vector4(0.0f, 0.0f, 0.0f, fogColorType.w)
                                                : Vector4(frame.ambient.x, frame.ambient.y, frame.ambient.z, fogColorType.w);
     litFrame.fogColor_param = Vector4(fogColorType.x, fogColorType.y, fogColorType.z, fogParam);
@@ -1830,7 +1830,7 @@ void RenderSystem::fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, cons
 
 // spot_shadow.w of the lights block packs (shadow map index + 1) in 6 bits, the cascades
 // in 3 and the spot mask tile in 3 (7 = none), the occlusions in 2, an Area Light's Disc in 1 and
-// the IES Profile's band + 1 in 7 (S92): 22 bits, exact in a float
+// the IES Profile's band + 1 in 7 (S99): 22 bits, exact in a float
 static_assert(SPOT_MASK_ATLAS_TILES <= 7, "spot mask tiles must fit 3 bits, 7 meaning none");
 static_assert(MAX_SHADOW_ATLAS_SLOTS < 63 && MAX_POINT_SHADOW_ATLAS_SLOTS < 63, "shadow map indices must fit 6 bits");
 static_assert(MAX_SHADOWCASCADES <= 7, "shadow cascades must fit 3 bits");
@@ -2036,7 +2036,7 @@ void RenderSystem::updateSceneLights(){
         const Vector2 up = octahedralEncode(light.worldUp);
         sceneLight.packed[3] = Vector4(up.x, up.y, spotMask ? light.spotMaskAspect : 0.0f, 0.0f);
         if (area){
-            // S92 (includes/lights.glsl getAreaLight): direction_inner.w 2 + the half width (over 1.5:
+            // S99 (includes/lights.glsl getAreaLight): direction_inner.w 2 + the half width (over 1.5:
             // an Area Light), spot_shadow.z minus the half height, colour times the area. A variant
             // without USE_AREA_LIGHTS reads a spot of cone cos 0 .. 2 + w: its front hemisphere
             sceneLight.packed[1].w = 2.0f + light.getAreaHalfWidth();
@@ -2078,7 +2078,7 @@ void RenderSystem::updateSceneLights(){
 }
 
 void RenderSystem::sceneAmbient(Vector4 sh[3], Vector3& flat, Vector3& litFlat) const{
-    if (scene->getAmbientSource() == AmbientSource::GRADIENT){
+    if (scene->getAmbientMode() == AmbientMode::GRADIENT){
         const Vector3 sky = scene->getAmbientSkyColorLinear();
         const Vector3 equator = scene->getAmbientEquatorColorLinear();
         const Vector3 ground = scene->getAmbientGroundColorLinear();
@@ -2409,7 +2409,7 @@ float RenderSystem::packObjectLightShadow(int sceneLight, bool perPixel) const{
     const int cascades = perPixel ? passLightCascades(light) : 0;
     // (bits 12-13: the capsule and contact shadows a shadowed pixel light takes, S57)
     const int occlusion = perPixel ? lightOcclusionBits(sceneLight) : 0;
-    // (bits 14-21: the Area Light's shape and the IES Profile's band, S92; the pixel lights' only)
+    // (bits 14-21: the Area Light's shape and the IES Profile's band, S99; the pixel lights' only)
     const int profile = perPixel ? light.profileBits : 0;
     return (float)((std::max(shadowSlot + 1, 0) & 63) | ((cascades & 7) << 6) | ((tile & 7) << 9) | (occlusion << 12) | profile);
 }
@@ -4478,7 +4478,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         }
         if (environment.litQualityHigh && !p_unlit)
             variant.litDefines.push_back(MaterialPbr::LIT_QUALITY_DEFINE);
-        // S92: the pixel lights' Area Light and IES Profile paths, only where the scene has them
+        // S99: the pixel lights' Area Light and IES Profile paths, only where the scene has them
         if (environment.areaLights && p_punctual && !p_unlit)
             variant.litDefines.push_back(MaterialPbr::AREA_LIGHTS_DEFINE);
         if (environment.iesProfiles && p_punctual && !p_unlit)
@@ -18084,7 +18084,7 @@ void RenderSystem::update(double dt){
         needReloadMeshes();
     }
     // the meshes bind the sky's irradiance map or not by the ambient source
-    const bool ambientGradient = scene->getAmbientSource() == AmbientSource::GRADIENT;
+    const bool ambientGradient = scene->getAmbientMode() == AmbientMode::GRADIENT;
     if (ambientGradient != loadedAmbientGradient){
         loadedAmbientGradient = ambientGradient;
         if (hasIBL || hasReflectionProbes)

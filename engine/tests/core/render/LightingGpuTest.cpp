@@ -553,9 +553,9 @@ TEST_F(LightingGpu, HairShadingModelSphere){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// S92 AC7: Environment Lighting Source Gradient, through the per-object SH alone: a white sphere
+// S99 AC7: Environment Lighting Source Gradient, through the per-object SH alone: a white sphere
 // on a white plane under a blue sky, grey equator and orange ground, a dim sun so the objects
-// are lit (the Skybox source draws the same scene with its flat Ambient Color)
+// are lit (the Color source draws the same scene with its flat Ambient Color)
 TEST_F(LightingGpu, GradientAmbientSphere){
     JASPER_REQUIRE_GPU();
     camera.setPosition(0.0f, 1.2f, 4.0f);
@@ -577,7 +577,7 @@ TEST_F(LightingGpu, GradientAmbientSphere){
     ASSERT_TRUE(render());
     const std::vector<uint8_t> flat = readLightingTarget();
 
-    scene.setAmbientSource(AmbientSource::GRADIENT);
+    scene.setAmbientMode(AmbientMode::GRADIENT);
     scene.setAmbientSkyColor(Vector3(0.35f, 0.55f, 1.0f));
     scene.setAmbientEquatorColor(Vector3(0.5f, 0.5f, 0.5f));
     scene.setAmbientGroundColor(Vector3(0.8f, 0.4f, 0.1f));
@@ -593,8 +593,8 @@ TEST_F(LightingGpu, GradientAmbientSphere){
         bluer += ((long)gradient[i + 2] - (long)gradient[i]) - ((long)flat[i + 2] - (long)flat[i]);
     EXPECT_GT(bluer, 0) << "the upward faces are not lit by the Sky Color";
 
-    // back to Skybox: the flat Ambient Color again
-    scene.setAmbientSource(AmbientSource::SKYBOX);
+    // back to Color: the flat Ambient Color again
+    scene.setAmbientMode(AmbientMode::COLOR);
     ASSERT_TRUE(render());
     EXPECT_LE(lightingDifferenceOf(flat, readLightingTarget()).maxDiff, 2);
     EXPECT_NO_ENGINE_ERRORS();

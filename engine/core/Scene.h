@@ -358,8 +358,8 @@ namespace jasperengine{
 
         // Environment Lighting > Source and the Gradient's colours (sRGB; the Linear getters as
         // stored)
-        void setAmbientSource(AmbientSource source);
-        AmbientSource getAmbientSource() const;
+        void setAmbientMode(AmbientMode source);
+        AmbientMode getAmbientMode() const;
         void setAmbientSkyColor(Vector3 color);
         Vector3 getAmbientSkyColor() const;
         Vector3 getAmbientSkyColorLinear() const;
