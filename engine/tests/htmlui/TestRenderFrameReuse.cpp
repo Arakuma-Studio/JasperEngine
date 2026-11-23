@@ -129,7 +129,7 @@ TEST(RenderFrameReuse, SignatureFollowsWhatWasRecorded){
 }
 
 // What the replay reads beyond geometry, textures, translations, scissors and transforms (above):
-// a clip mask and where it is, a layer's region, a filter's parameters, a gradient's stops and
+// a clip mask and where it is, a layer's frame, a filter's parameters, a gradient's stops and
 // line, a box primitive's fill, corners and borders. Each one changed alone changes the signature,
 // or a kept frame would show the old pixels (S92 risk 1). Filters and shaders key by what they
 // draw, so one compiled again with the same parameters keeps it
@@ -203,7 +203,8 @@ TEST(RenderFrameReuse, SignatureFollowsEveryDrawInput){
     const Case cases[] = {
         {"a clip mask", [&]{ test.renderer.RenderGeometry(quad.handle, Rml::Vector2f(10, 10), 0); }, clipped(Rml::Vector2f(4, 4))},
         {"a clip mask's translation", clipped(Rml::Vector2f(4, 4)), clipped(Rml::Vector2f(5, 4))},
-        {"a layer's region", layered(region, opacity(0.5f)), layered(Rml::Rectanglei::FromCorners(Rml::Vector2i(10, 10), Rml::Vector2i(74, 50)), opacity(0.5f))},
+        {"a layer's frame (its 64-px granules)", layered(region, opacity(0.5f)),
+         layered(Rml::Rectanglei::FromCorners(Rml::Vector2i(10, 10), Rml::Vector2i(140, 50)), opacity(0.5f))},
         {"an opacity", layered(region, opacity(0.5f)), layered(region, opacity(0.51f))},
         {"a blur's sigma", layered(region, blur(2.0f)), layered(region, blur(2.5f))},
         {"a drop shadow's colour", layered(region, shadow(Rml::Colourb(0, 0, 0, 128), Rml::Vector2f(0, 3))),
@@ -223,6 +224,9 @@ TEST(RenderFrameReuse, SignatureFollowsEveryDrawInput){
         EXPECT_EQ(recordedSignature(test, c.base), base) << c.what << ": the same calls, the same signature";
         EXPECT_NE(recordedSignature(test, c.changed), base) << c.what;
     }
+    // a region within the same granules is the same layer frame: the same pixels
+    EXPECT_EQ(recordedSignature(test, layered(region, opacity(0.5f))),
+              recordedSignature(test, layered(Rml::Rectanglei::FromCorners(Rml::Vector2i(10, 10), Rml::Vector2i(74, 50)), opacity(0.5f))));
     // compiled again with the same parameters: what it draws is the same
     EXPECT_EQ(recordedSignature(test, layered(region, blur(2.0f))), recordedSignature(test, layered(region, blur(2.0f))));
     EXPECT_EQ(recordedSignature(test, shaded(gradient(Rml::ColourbPremultiplied(0, 255, 255, 255), Rml::Vector2f(40, 0)))),
