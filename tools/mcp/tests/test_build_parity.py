@@ -5,6 +5,11 @@ the same Lua-only scene (lit meshes, a sprite, a prefab instance, a Lua script t
 built with the run's prebuilt glcore runtime and compiled from source, gives the same frame
 (pngdiff --tolerance 8 --max-fraction 0.002, as S30 AC5). Both builds are real: set
 JASPER_SLOW_BUILD=1 (it compiles the engine, through ccache: harness.compile_env).
+
+The settings a Compile build's generated startup code once applied come from game.json and the cooked
+scene now: a Lua probe prints what both games run with (project settings changed from their defaults,
+and the scene's Physics 2D sub-steps and Canvas Scaler, which the cooked scene gained in format 1.7),
+and both print the values the editor set.
 """
 
 from __future__ import annotations
@@ -12,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from pathlib import Path
 
 import build_cache
 import harness
@@ -28,6 +34,18 @@ MOVER = """local Mover = {}
 function Mover:init() self.gameObject.transform.position = Vector3(1.5, 0.5, 0) end
 return Mover
 """
+
+# what the game runs with, one log line: the settings the generated init() and create_<scene>() set
+PROBE = """local Probe = {}
+function Probe:init()
+  local scene = Engine.getMainScene()
+  print(string.format("PARITY canvas=%dx%d ppu=%d frameRate=%d vsync=%d foliage=%.3f subSteps=%d",
+    Engine.canvasWidth, Engine.canvasHeight, Engine.getPixelsPerUnit(), Engine.targetFrameRate, Engine.vSyncCount,
+    Engine.foliageDistanceScale, scene.physics2DSubSteps))
+end
+return Probe
+"""
+EXPECTED_PROBE = "PARITY canvas=800x450 ppu=32 frameRate=50 vsync=0 foliage=0.500 subSteps=9"
 
 
 async def wait_job(ed: Editor, job: dict) -> dict:
@@ -46,7 +64,14 @@ async def frame(ed: Editor, label: str) -> tuple:
     ed.check(not raw.value["crashed"], f"{label}: the player crashed: {raw.value}")
     png = raw.images[0][0]
     (ed.scratch.root / f"parity-{label}.png").write_bytes(png)
-    return pngdiff.decode(png)
+    log_file = Path(raw.value["log_file"]) if raw.value.get("log_file") else None
+    if log_file and log_file.is_file():
+        log = log_file.read_text(errors="replace")
+    else:
+        log = "\n".join(raw.value["log"]) if isinstance(raw.value.get("log"), list) else str(raw.value.get("log", ""))
+    probe = [line[line.index("PARITY "):].strip() for line in log.splitlines() if "PARITY " in line]
+    ed.check(probe, f"{label}: the probe printed nothing: {log[-1500:]}")
+    return pngdiff.decode(png), probe[0]
 
 
 async def test_compile_and_prebuilt_match(ed: Editor):
@@ -61,24 +86,33 @@ async def test_compile_and_prebuilt_match(ed: Editor):
     await ed.call("create_script", kind="lua", name="Mover", content=MOVER, entity=mover)
     crate = (await ed.call("create_entity", scene=sid, type="cylinder", name="Crate", position=[0, -1, 0], select=False))["entity_id"]
     await ed.call("create_prefab", scene=sid, entity=crate, path="prefabs/Crate.prefab")
+    probe = (await ed.call("create_entity", scene=sid, type="empty", name="Probe", select=False))["entity_id"]
+    await ed.call("create_script", kind="lua", name="Probe", content=PROBE, entity=probe)
+    await ed.call("set_scene_settings", scene=sid, values={"physics_2d_sub_steps": 9,
+                  "canvas_scaler": {"mode": "scale_with_screen_size", "reference": [1280, 720]}})
     await ed.call("save_scene", scene=sid)
     await ed.call("edit_build_scenes", action="add", scene=sid)
     await ed.call("edit_build_scenes", action="set_start", scene=sid)
-    await ed.call("set_project_settings", values={"player.window_width": 640, "player.window_height": 360, "graphics.runtime_shaders": False})
+    await ed.call("set_project_settings", values={"player.window_width": 640, "player.window_height": 360, "graphics.runtime_shaders": False,
+                                                  "graphics.canvas_width": 800, "graphics.canvas_height": 450, "graphics.pixels_per_unit": 32,
+                                                  "player.target_frame_rate": 50, "quality.vsync": False,
+                                                  "quality.foliage_distance_desktop": 0.5})
 
     runtime = await build_cache.player_runtime(ed, "glcore", "release")
     out = ed.scratch.root / "parity-prebuilt"
     job = await wait_job(ed, await ed.call("build_project", mode="desktop", output_dir=str(out), method="prebuilt", timeout_seconds=30))
     ed.check_eq(job["status"], "succeeded", f"{job}")
     ed.check_eq((job["result"]["method_used"], job["result"]["player_id"]), ("prebuilt", runtime.name), f"{job}")
-    prebuilt = await frame(ed, "prebuilt")
+    prebuilt, prebuilt_probe = await frame(ed, "prebuilt")
 
     out = ed.scratch.root / "parity-compile"
     job = await wait_job(ed, await ed.call("build_project", mode="desktop", output_dir=str(out), method="compile", build_jobs=build_jobs(),
                                            timeout_seconds=30))
     ed.check_eq(job["status"], "succeeded", f"{job}")
     ed.check_eq(job["result"]["method_used"], "compile", f"{job}")
-    compiled = await frame(ed, "compile")
+    compiled, compiled_probe = await frame(ed, "compile")
+    ed.check_eq(prebuilt_probe, EXPECTED_PROBE, "the prebuilt game runs with the project's and the scene's settings")
+    ed.check_eq(compiled_probe, prebuilt_probe, "the compiled game runs with the settings the prebuilt one does")
 
     diff = pngdiff.stats(prebuilt, compiled, premultiplied=True, tolerance=8)
     print(f"[test] prebuilt vs compile: {diff}")

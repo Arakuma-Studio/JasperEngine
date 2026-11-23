@@ -9,20 +9,39 @@ C++ source project (no compiler run) or plays, and checks what landed:
 - Ship All Assets ships everything but the excluded folder;
 - Play start imports only the FBX files the build would ship (Ship All: every one);
 - a custom shader source ships once, at its project-relative path.
+
+A Development Build names the setting at a stripped asset's load (REQ-10, AC9's player part): a
+Referenced Only project whose script loads a texture by a path it builds at runtime leaves the
+texture out, and the player log says "was stripped from the build (Asset Stripping: Referenced
+Only): add it to Always Include" (a real prebuilt player: JASPER_SLOW_BUILD=1).
+
+A new project's layout (S98 REQ-36, AC32): its assets and its Lua scripts live in folders of their
+own (assetsDir: assets, luaDir: scripts), and a project.yaml without the keys still means ".". The
+harness keeps created projects flat for the other files (JASPER_TEST_FLAT_NEW_PROJECT=1,
+docs/testing.md); this one creates them as a user gets them.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
+import shutil
 import struct
+import tempfile
+import time
 import zlib
 from pathlib import Path
 
+import build_cache
 import harness
-from harness import Editor
+from harness import Editor, skip
 
 CI = True
-TIMEOUT = 1800
+SLOW_BUILD = os.environ.get("JASPER_SLOW_BUILD", "") not in ("", "0")
+TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200")) if SLOW_BUILD else 1800
+# test_development_build_names_a_stripped_asset's player
+PREBUILT_PLAYERS = ["glcore-development"]
 # a new project's real defaults (the harness keeps created projects as they were before S98 otherwise)
 EDITOR = {"create": True, "name": "Stripping Game", "env": {"JASPER_TEST_FLAT_NEW_PROJECT": "0"}}
 
@@ -193,3 +212,111 @@ async def test_shader_shipped_once(ed: Editor):
     assets = job["out"] / "project" / "assets"
     copies = sorted(p.relative_to(assets).as_posix() for p in assets.rglob("Plain.frag"))
     ed.check_eq(copies, ["assets/shaders/Plain.frag"], "one copy of the shader source")
+
+
+# ---- a Development Build names a stripped asset (REQ-10) ----
+
+COMPUTED = """local Computed = {}
+function Computed:init()
+  -- a path built at runtime: no literal names the file, so Referenced Only leaves it out
+  local name = "textures/" .. "hidden" .. ".png"
+  self.texture = Texture(name)
+  self.texture:load()
+end
+return Computed
+"""
+
+
+def hidden_png() -> bytes:
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+    header = struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(b"\x00\xff\x80\x00\xff")) + chunk(b"IEND", b"")
+
+
+async def wait_job(ed: Editor, job_id: str, timeout: float, poll: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout
+    while True:
+        job = await ed.call("get_job", job_id=job_id, log_lines=10)
+        if job["status"] != "running":
+            return job
+        if time.monotonic() > deadline:
+            ed.fail(f"job {job_id} still running after {timeout}s: {job}")
+        await asyncio.sleep(poll)
+
+
+async def test_development_build_names_a_stripped_asset():
+    if not SLOW_BUILD:
+        skip("set JASPER_SLOW_BUILD=1 to build and run a real Development Build player (the run builds its prebuilt runtime once)")
+    async with Editor(create=True, name="Stripped Build Test", env=build_cache.player_env("glcore", "development")) as ed:
+        runtime = await build_cache.player_runtime(ed, "glcore", "development")
+        (ed.project / "textures").mkdir(parents=True, exist_ok=True)
+        (ed.project / "textures" / "hidden.png").write_bytes(hidden_png())
+        await ed.call("sync_files")
+        made = await ed.call("create_entity", name="Loader", type="box")
+        await ed.call("create_script", kind="lua", name="Computed", directory="scripts", content=COMPUTED, entity=made["entity_id"])
+        s = await ed.call("save_project", untitled_scene_dir="scenes")
+        await ed.call("edit_build_scenes", action="set_start", scene=s["scenes_in_build"][0]["id"])
+        await ed.call("set_project_settings", values={
+            "graphics.runtime_shaders": False,
+            "player.development_build": True,
+            "player.asset_stripping": "referenced_only",
+        })
+        out = ed.scratch.root / "export-stripped-dev"
+        r = await ed.call("build_project", mode="desktop", output_dir=str(out), method="prebuilt", timeout_seconds=600)
+        job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300)
+        ed.check_eq(job["status"], "succeeded", f"{job}")
+        ed.check_eq((job["result"]["method_used"], job["result"]["player_id"]), ("prebuilt", runtime.name), f"{job}")
+        ed.check(job["result"]["stripped_count"] >= 1, f"the texture was left out: {job['result']}")
+        raw = await ed.call_raw("run_build", {"after_ready": True, "fixed_fps": 60, "quit_after": 30, "screenshot": False})
+        ed.check(not raw.is_error, raw.text)
+        log_text = "\n".join(raw.value["log"]) if isinstance(raw.value["log"], list) else str(raw.value["log"])
+        ed.check_in("textures/hidden.png was stripped from the build (Asset Stripping: Referenced Only): add it to Always Include",
+                    log_text, "the Development Build names the setting")
+
+
+# ---- a new project's layout (REQ-36) ----
+
+
+async def layout_roots(ed: Editor) -> tuple[str, str]:
+    got = (await ed.call("get_project_settings", keys=["editor.assets_dir", "scripting.lua_dir"]))["settings"]
+    return got["editor.assets_dir"], got["scripting.lua_dir"]
+
+
+async def test_new_project_layout(ed: Editor):
+    ed.check_eq(await layout_roots(ed), ("assets", "scripts"), "the project uses them")
+    text = (ed.project / "project.yaml").read_text()
+    ed.check("assetsDir: assets" in text and "luaDir: scripts" in text, f"project.yaml names both folders:\n{text}")
+    ed.check((ed.project / "assets").is_dir() and (ed.project / "scripts").is_dir(), "both folders exist")
+    ed.check((ed.project / "assets" / "audio" / "Main.mixer").is_file(), "the new project's mixer is an asset under assets/")
+
+    # an FBX under assets imports into the cache by its path under assets
+    models = ed.project / "assets" / "models"
+    models.mkdir(parents=True, exist_ok=True)
+    shutil.copy(harness.REPO / "editor" / "tests" / "fixtures" / "rigged_cube.fbx", models / "cube.fbx")
+    await ed.call("sync_files", paths=["assets/models/cube.fbx"])
+    await ed.call("reimport_models", paths=["assets/models/cube.fbx"], timeout=600)
+    imported = ed.project / ".jasperengine" / "imported" / "models" / "cube.fbx.glb"
+    ed.check(imported.is_file(), f"the import lands at {imported.relative_to(ed.project)}: "
+             f"{sorted(str(p.relative_to(ed.project)) for p in (ed.project / '.jasperengine').rglob('*.glb'))}")
+
+    # a script made through MCP goes to the Lua folder
+    await ed.call("create_script", kind="lua", name="Mover", directory="scripts")
+    ed.check((ed.project / "scripts" / "Mover.lua").is_file(), "create_script writes under scripts/")
+
+
+async def test_old_project_without_keys_stays_flat(ed: Editor):
+    root = Path(tempfile.mkdtemp(prefix="jasper-old-layout-"))
+    try:
+        project = root / "project"
+        shutil.copytree(harness.REPO / "tools" / "fixtures" / "tween-curve", project)
+        yaml = project / "project.yaml"
+        yaml.write_text("".join(line for line in yaml.read_text().splitlines(True)
+                                if not line.startswith(("assetsDir:", "luaDir:"))))
+        before = yaml.read_text()
+        async with Editor(project=project, label="old-layout") as old:
+            ed.check_eq(await layout_roots(old), (".", "."), "a project.yaml without the keys keeps the project root")
+            ed.check(old.project and (old.project / "TweenCurveCheck.lua").is_file(), "its files are where they were")
+            ed.check_eq((old.project / "project.yaml").read_text(), before, "opening it writes no new key")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
