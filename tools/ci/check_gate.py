@@ -14,7 +14,7 @@ skipped while lanes.json says that lane did not need to run. It fails when:
     only paths nothing reads touch runs nothing, D3), unless the lane or test run is --advisory and
     lanes.json lists it under advisory_off (planned off for that: tools/ci/plan_lanes.py);
   - a test lane (TEST_LANES) succeeded with zero tests in its report, with no report, or with a
-    report that failed (a push's test steps continue on error) unless lanes.json lists it under
+    report that failed (a test step that continues on error) unless lanes.json lists it under
     build_only (a push to main building what the queue tested); each MCP
     shard of lanes.json counts on its own (report mcp-<shard>), as does each unit job (unit-<job>:
     core, editor-1, editor-2) and each asan job (asan-<job>: core, editor).
@@ -64,7 +64,7 @@ def gate(needs_path: Path, lanes_path: Path | None, reports_dir: Path | None, ad
     ran_any = any(lane["run"] for name, lane in plan["lanes"].items() if name != "changes")
 
     def advisory_off(name: str) -> bool:
-        """The merge queue left it to the push to main for being advisory, and Check holds it advisory."""
+        """The merge queue left it to the advisory run for being advisory, and Check holds it advisory."""
         return name in advisory_set and name in plan["advisory_off"]
 
     def row(job: str, result: str, verdict: str, fails: bool, is_advisory: bool = False) -> None:
@@ -84,7 +84,7 @@ def gate(needs_path: Path, lanes_path: Path | None, reports_dir: Path | None, ad
         if r is None:
             problem = "no report, so no proof tests ran"
         elif r["status"] == "failure":
-            # (the push's test steps continue on error: its job's result is its build's)
+            # (a test step that continues on error leaves its job green)
             problem = "failing"
         elif r["tests"]["ran"] == 0:
             problem = "0 tests ran"

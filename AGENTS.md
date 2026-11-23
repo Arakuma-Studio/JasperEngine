@@ -171,6 +171,8 @@ Writing tests (the rest is in `docs/testing.md`; read it before adding one):
 - Test at the lowest layer that fails without the change; don't repeat the case in a wrapper.
 - Extend an existing test file or table before adding one: every MCP file costs shard time on every
   merge.
+- A test over its time budget (`tools/ci/time-budget.json`, docs/testing.md "Test time budget") gets
+  cheaper, or its budget raised in the same PR with a reason.
 - A deliberate behaviour change updates the tests pinning it in the same commit, and says so.
 - Rewrite goldens one suite at a time, look at every changed image, and say why in the commit.
 - Sanitizer suppressions cover third-party code only: fix engine and editor reports.

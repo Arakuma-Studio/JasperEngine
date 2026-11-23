@@ -9,7 +9,7 @@ name: Nightly
 # - the whole MCP suite CI can run (tools/ci/plan_lanes.py --event nightly), sharded, with the slow
 #   opt-ins, and the two export comparisons that need a smoke run first; its per-test seconds become the `mcp-timings` cache PRs plan shards with;
 # - the coverage map, recorded by a coverage-instrumented editor over the same shards and merged,
-#   saved as the `coverage-map` cache tools/check-changed selects MCP tests with;
+#   published on the ci-plan-inputs data branch, where CI's changes job fetches it to select MCP tests;
 # - a nightly release (build-release.yml) when main moved since the newest nightly-*; 14 are kept.
 # Every other cache is only restored. A failure opens (or comments on) the issue labelled "nightly".
 on:
@@ -245,7 +245,11 @@ jobs:
     outputs:
       mcp_shards: ${{ steps.plan.outputs.mcp_shards }}
     steps:
+      # the history (no blobs until read): the shadow plan diffs against the coverage map's commit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: blob:none
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/ci-inputs/mcp-test-seconds.json
@@ -253,13 +257,22 @@ jobs:
           restore-keys: mcp-timings-
       # plan_lanes.py lists the suite with run_tests.py --list, which runs under uv
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      # shadow mode: what a PR's selection would run for the diff since the last map (the last nightly),
+      # planned with the inputs a PR plans with (tools/ci/plan_inputs.py); the shadow job judges it
       - name: Plan
         id: plan
         run: |
-          timings=()
-          [[ -f build/ci-inputs/mcp-test-seconds.json ]] && timings=(--test-seconds build/ci-inputs/mcp-test-seconds.json)
+          python3 tools/ci/plan_inputs.py fetch --out build/ci-inputs
+          extra=()
+          [[ -f build/ci-inputs/mcp-test-seconds.json ]] && extra+=(--test-seconds build/ci-inputs/mcp-test-seconds.json)
+          [[ -d build/ci-inputs/deps ]] && extra+=(--deps-from build/ci-inputs/deps)
+          if [[ -f build/ci-inputs/coverage-map.json ]]; then
+              extra+=(--coverage-map build/ci-inputs/coverage-map.json)
+              base="$(jq -r '."coverage-map".commit // empty' build/ci-inputs/manifest.json)"
+              [[ -n "$base" ]] && git cat-file -e "$base^{commit}" 2>/dev/null && extra+=(--shadow-base "$base")
+          fi
           python3 tools/ci/plan_lanes.py --event nightly --base "$GITHUB_SHA" --head "$GITHUB_SHA" --out-dir build/ci-plan \
-            ${timings[@]+"${timings[@]}"} --github-output "$GITHUB_OUTPUT"
+            ${extra[@]+"${extra[@]}"} --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nightly-plan
@@ -481,6 +494,69 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # ------------------------------------------------------------ shadow mode ---
+  # The whole MCP suite ran: each failed test a PR's selection of the diff since the last map would have
+  # left out is a miss (tools/ci/shadow.py). With the merge queue's and full runs' records (ci.yml's
+  # `shadow` artifacts since the newest record), appended to the tracked report: shadow.jsonl on the
+  # ci-plan-inputs branch (main only), summed up in this job's summary.
+  shadow:
+    name: Shadow selection
+    needs: [plan, mcp]
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write  # the ci-plan-inputs data branch (tools/ci/plan_inputs.py publish), main only
+      actions: read    # the shadow artifacts of CI's runs
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nightly-plan
+          path: build/ci-plan
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          pattern: ci-report-mcp-*
+          path: build/reports
+          merge-multiple: true
+      - name: Judge this run, gather CI's records
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 tools/ci/plan_inputs.py fetch --out build/ci-inputs
+          mkdir -p build/reports build/shadow/runs
+          python3 tools/ci/shadow.py check --lanes build/ci-plan/lanes.json --reports build/reports \
+              --history build/ci-inputs/shadow.jsonl --run-id "$GITHUB_RUN_ID" --run-url "$RUN_URL" \
+              --out build/shadow/nightly.json --summary "$GITHUB_STEP_SUMMARY"
+          since="$(python3 tools/ci/shadow.py since --history build/ci-inputs/shadow.jsonl)"
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --created ">=$since" --limit 300 \
+              --json databaseId,event,status --jq '.[] | select(.status == "completed" and .event != "pull_request") | .databaseId' |
+              while read -r id; do
+                  gh run download "$id" --repo "$GITHUB_REPOSITORY" -n shadow -D "build/shadow/runs/$id" 2>/dev/null || true
+              done
+          shopt -s nullglob
+          python3 tools/ci/shadow.py merge --history build/ci-inputs/shadow.jsonl --out build/shadow/new.jsonl \
+              build/shadow/nightly.json build/shadow/runs/*/shadow.json
+          touch build/ci-inputs/shadow.jsonl
+          cat build/ci-inputs/shadow.jsonl build/shadow/new.jsonl > build/shadow/shadow.jsonl
+          python3 tools/ci/shadow.py report --history build/shadow/shadow.jsonl >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish the records
+        if: github.ref == 'refs/heads/main'
+        run: |
+          if [[ -s build/shadow/new.jsonl ]]; then
+              python3 tools/ci/plan_inputs.py publish --commit "$GITHUB_SHA" --run "$GITHUB_RUN_ID" --append shadow=build/shadow/new.jsonl
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: nightly-shadow
+          path: build/shadow/
+          if-no-files-found: ignore
+          retention-days: 30
+
   # ------------------------------------------------------- the coverage map ---
   # docs/testing.md "The coverage map": a coverage-instrumented editor over the whole suite. One run
   # takes longer than a runner job may (6 h), so it runs the nightly's shards and each collects its
@@ -588,8 +664,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: read
-      actions: write
+      contents: write  # the ci-plan-inputs data branch (tools/ci/plan_inputs.py publish), main only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -606,19 +681,10 @@ jobs:
           [[ ${#maps[@]} -eq $(jq length <<< "$SHARDS") ]] \
             || { echo "::error::${#maps[@]} shard maps for $(jq length <<< "$SHARDS") shards"; exit 1; }
           python3 tools/mcp/coverage_map.py merge "${maps[@]}" --out build/coverage/coverage-map.json
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # where no cache eviction reaches it (a cache entry of it was evicted for days at a time)
+      - name: Publish the map
         if: github.ref == 'refs/heads/main'
-        with:
-          path: build/coverage/coverage-map.json
-          key: coverage-map-${{ github.run_id }}
-      - name: Delete the older coverage-map entries
-        if: github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          KEY: coverage-map-${{ github.run_id }}
-        run: |
-          gh cache list --repo "$GITHUB_REPOSITORY" --key coverage-map- --limit 100 --json id,key \
-            --jq ".[] | select(.key != \"$KEY\") | .id" | xargs -r -n1 gh cache delete --repo "$GITHUB_REPOSITORY"
+        run: python3 tools/ci/plan_inputs.py publish --commit "$GITHUB_SHA" --run "$GITHUB_RUN_ID" --set coverage-map=build/coverage/coverage-map.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nightly-coverage-map

@@ -140,7 +140,24 @@ bool PollingBackend::start(const fs::path& rootIn, WatchSink& sinkIn, std::strin
         std::lock_guard<std::mutex> lock(wakeMutex);
         stopRequested = false;
     }
-    built = false;
+    // The first look at the tree is the baseline, taken before start() returns as a native backend
+    // is armed when it returns: the service walks its index after start(). Taken on the poll thread,
+    // it came after that walk now and then, and an edit made in between was in it, never reported
+    // (FsEventsStart.WithNoStreamServedTheServicePolls on macOS, a preempted poll thread).
+    runPollingScanHook();
+    {
+        std::lock_guard<std::mutex> lock(scanMutex);
+        index.reset(root);
+        index.build();
+        PathStat rootStat;
+        rootMtime = statPath(root, rootStat, false) ? rootStat.mtimeNs : 0;
+        rootRacy = isRacyStamp(rootMtime);
+        racyFolders.clear();
+        for (const auto& [key, entry] : index.all()) {
+            if (entry.directory) noteFolderStamp(key, entry.mtimeNs);
+        }
+        built = true;
+    }
     running = true;
     thread = std::thread([this]() { run(); });
     return true;
@@ -165,20 +182,6 @@ void PollingBackend::stop() {
 }
 
 void PollingBackend::run() {
-    {
-        // the first look at the tree is the baseline, on this thread (not the caller's)
-        std::lock_guard<std::mutex> lock(scanMutex);
-        index.reset(root);
-        index.build();
-        PathStat rootStat;
-        rootMtime = statPath(root, rootStat, false) ? rootStat.mtimeNs : 0;
-        rootRacy = isRacyStamp(rootMtime);
-        racyFolders.clear();
-        for (const auto& [key, entry] : index.all()) {
-            if (entry.directory) noteFolderStamp(key, entry.mtimeNs);
-        }
-        built = true;
-    }
     while (true) {
         {
             std::unique_lock<std::mutex> lock(wakeMutex);

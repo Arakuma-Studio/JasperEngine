@@ -7,15 +7,15 @@ test_content: 195 looks with §6.6's per-family counts, 33 color schemes, 73 tem
 3D looks per family, ids ending in -3d exactly for 3D looks.
 
 test_gate: every available item on its sample texts (looks: HERO, 大当り, 1234; schemes on the
-preview look; templates in en and ja) renders twice at 0.25 x the canvas with identical bytes,
-is not flat, and passes every default check_title check (its check_allow excepted) and the style
-lint (its lint_allow excepted). Allowlists carry reasons and at most 10 % of a kind carries any.
+preview look; templates in en and ja) renders at 0.25 x the canvas, is not flat, and passes every
+default check_title check (its check_allow excepted), `deterministic` (two renders, identical bytes)
+among them, and the style lint (its lint_allow excepted). Allowlists carry reasons and at most 10 %
+of a kind carries any.
 Unavailable items are counted by reason, never skipped silently. The items in GATE_PARTS consecutive
 parts, test_gate_<k>_of_<n> (TESTS_INDEPENDENT): the whole gate in one test took 52 to 103 min in CI,
 longer than any MCP shard should, and one test is a piece no shard plan splits."""
 
 import asyncio
-import hashlib
 import fnmatch
 import os
 import time
@@ -99,7 +99,7 @@ async def checked(ed: Editor, path: str, **args) -> dict:
     return report
 
 
-async def render_once(ed: Editor, path: str) -> bytes:
+async def render_once(ed: Editor, path: str) -> None:
     args = {"path": path, "max_width": 480, "backgrounds": ["transparent"]}
     r = await ed.call_raw("render_title", args)
     job = (r.structured or {}).get("job_id") if not r.is_error else None
@@ -112,7 +112,6 @@ async def render_once(ed: Editor, path: str) -> bytes:
     ed.check(not r.is_error and r.images, f"{path}: renders: {r.text[:300]}")
     metrics = (r.structured or {}).get("metrics") or (r.structured or {}).get("cells", [{}])[0].get("metrics") or {}
     ed.check(not metrics.get("flat", False), f"{path}: the render is not flat")
-    return r.images[0][0] if r.images else b""
 
 
 async def gate(ed: Editor, part: int, parts: int):
@@ -150,14 +149,16 @@ async def gate(ed: Editor, part: int, parts: int):
             await ed.call("edit_title", path=path, ops=[{"op": "apply_color_scheme", "color_scheme": ref}])
         # the owner's rule: every item passes every check; no item carries an exception
         ed.check(not detail.get("check_allow") and not detail.get("lint_allow"), f"{ref}: no exception lists: {detail.get('check_allow')} {detail.get('lint_allow')}")
-        # render first, then check: the checks' renders then meet the node cache the renders filled
+        # render first, then check: the checks' renders then meet the node cache the render filled
         # (two generators once shared an entry: test_fallback_parity_after_a_render)
-        a = await render_once(ed, path)
-        b = await render_once(ed, path)
-        ed.check_eq(hashlib.sha256(a).hexdigest(), hashlib.sha256(b).hexdigest(), f"{ref} ({text or language}): two renders are identical")
+        await render_once(ed, path)
         # legibility is judged on the background the item is made for (no `background`: any)
         backgrounds = {"dark": ["black", "checker"], "light": ["white", "checker"]}.get(detail.get("background"), ["black", "white", "checker"])
         report = await checked(ed, path, backgrounds=backgrounds, render_scale=0.25)
+        # identical bytes from two renders is check_title's `deterministic`, which runs by default
+        determinism = [c["status"] for c in report["checks"] if c["id"] == "deterministic"]
+        if determinism != ["PASS"]:
+            failures.append(f"{ref} ({text or language}): deterministic {determinism or 'did not run'}")
         for check in report["checks"]:
             cid = check["id"]
             if cid.endswith(".bands_dropped"):
@@ -166,6 +167,7 @@ async def gate(ed: Editor, part: int, parts: int):
                 continue
             failures.append(f"{ref} ({text or language}): {cid} {check['status']}: {check.get('message', '')} measured {check.get('measured')}")
         counts[kind][0] += 1
+    ed.check(n > 0 or os.environ.get("JASPER_TITLE_LIBRARY_ONLY"), f"part {part + 1} of {parts} checked no item")
     print(f"[gate] part {part + 1} of {parts}: checked/unavailable per kind: {counts}; unavailable by reason: {reasons}; "
           f"tier band drops reported: {dropped}")
     # every failure at once, so one run is the whole gate's answer

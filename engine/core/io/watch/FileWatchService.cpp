@@ -307,6 +307,15 @@ FileWatchService::FileWatchService() {
 
 FileWatchService::~FileWatchService() {
     stop();
+    if (!shared) return;
+    // a callback can own its subscription: dropping it unsubscribes, so it is dropped here,
+    // outside the list and the lock, while Shared is whole (not by ~Shared amid the list's
+    // destruction, where unsubscribe would find and release the subscriber a second time)
+    std::vector<std::shared_ptr<Subscriber>> subscribers;
+    {
+        std::lock_guard<std::mutex> lock(shared->subscribersMutex);
+        subscribers.swap(shared->subscribers);
+    }
 }
 
 const char* FileWatchService::stateName(State state) {

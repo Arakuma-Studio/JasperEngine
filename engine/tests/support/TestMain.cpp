@@ -16,6 +16,9 @@
 #include <gtest/gtest.h>
 
 #include <cstdlib>
+#if defined(__linux__) && defined(__SANITIZE_ADDRESS__)
+#include <dlfcn.h>
+#endif
 
 #if !defined(JASPER_TEST_SOURCE_DIR) || !defined(JASPER_TEST_BINARY_DIR) || !defined(JASPER_TEST_ASSET_DIR) || !defined(JASPER_TEST_OUTPUT_DIR)
 #error "TestMain.cpp is compiled by jasperengine_add_test_target, which defines the JASPER_TEST_* directories"
@@ -43,6 +46,13 @@ namespace {
 }
 
 int main(int argc, char** argv){
+#if defined(__linux__) && defined(__SANITIZE_ADDRESS__)
+    // LeakSanitizer: miniaudio's device probe (SoLoud's backend) unloads libjack when no JACK
+    // server runs, and the globals holding what libjack's static initialiser allocated go with it.
+    // LeakSanitizer then reports those allocations from "<unknown module>", which no lsan.supp entry
+    // can match. Kept loaded, the globals stay reachable. Test-only: players still unload it
+    dlopen("libjack.so.0", RTLD_LAZY | RTLD_NODELETE);
+#endif
     ::testing::InitGoogleTest(&argc, argv);
 
     jasperengine::test::TestPaths paths;

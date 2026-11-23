@@ -336,7 +336,7 @@ namespace {
 // a listener removing itself while another thread is inside it too: no wait, no hang; no new
 // call starts
 TEST_F(LogListenerTest, SelfRemovalWithAnotherCallRunning) {
-    // shared with threads a hang would leave behind: never freed
+    // shared with threads a hang would leave behind: freed only once the scenario ended
     struct Shared {
         std::atomic<int> inside{0};
         std::atomic<int> calls{0};
@@ -365,10 +365,14 @@ TEST_F(LogListenerTest, SelfRemovalWithAnotherCallRunning) {
     std::thread([]() { Log::print("after the removal"); }).join();
     EXPECT_EQ(shared->calls.load(), 2) << "no call after the removal";
     Log::dispatchPending();
+    // (a no-op unless a failed check above left it listening)
+    Log::removeListener(shared->id.load());
+    delete shared;
 }
 
 // two listeners removing each other from inside their calls on two threads: no deadlock
 TEST_F(LogListenerTest, CrossRemovalDoesNotDeadlock) {
+    // as above: freed only once the scenario ended
     struct Shared {
         std::atomic<bool> inA{false}, inB{false};
         std::atomic<LogListenerId> a{0}, b{0};
@@ -400,6 +404,9 @@ TEST_F(LogListenerTest, CrossRemovalDoesNotDeadlock) {
     std::thread([]() { Log::print("a"); Log::print("b"); }).join();
     EXPECT_EQ(shared->calls.load(), 2) << "both removed";
     Log::dispatchPending();
+    Log::removeListener(shared->a.load());
+    Log::removeListener(shared->b.load());
+    delete shared;
 }
 
 // past 1,000 lines waiting for the main thread, worker lines are counted and reported once
