@@ -44,10 +44,12 @@ namespace {
     constexpr std::chrono::milliseconds kKillGracePeriod{100};
 
 #ifndef _WIN32
-    // the child has exited and waits to be reaped (not reaped here: WNOWAIT)
+    // the child has exited: it waits to be reaped (not reaped here: WNOWAIT), or the run loop on
+    // its own thread has reaped it since the signal failed (ECHILD)
     bool commandChildExited(pid_t pid) {
         siginfo_t info{};
-        return ::waitid(P_PID, static_cast<id_t>(pid), &info, WEXITED | WNOHANG | WNOWAIT) == 0 && info.si_pid == pid;
+        if (::waitid(P_PID, static_cast<id_t>(pid), &info, WEXITED | WNOHANG | WNOWAIT) == 0) return info.si_pid == pid;
+        return errno == ECHILD;
     }
 #endif
 
@@ -569,9 +571,18 @@ void editor::CommandRunner::terminateCurrentProcess() {
             // (cmake, ninja/make, compilers).
             if (kill(-pidSnapshot, SIGTERM) != 0) {
                 // cancel() and the run loop both stop the child: the second call can find it
-                // exited and not reaped yet, a group macOS refuses to signal (EPERM, where Linux
-                // signals the zombie). Nothing is left to stop then
-                if (errno == ESRCH || (errno == EPERM && commandChildExited(pidSnapshot))) return;
+                // exiting or exited and not reaped yet, a group macOS refuses to signal (EPERM,
+                // where Linux signals the zombie). Nothing is left to stop then; a child still in
+                // its exit becomes waitable within the grace period (a loaded runner, CI)
+                if (errno == ESRCH) return;
+                if (errno == EPERM) {
+                    const auto until = std::chrono::steady_clock::now() + kKillGracePeriod;
+                    do {
+                        if (commandChildExited(pidSnapshot)) return;
+                        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                    } while (std::chrono::steady_clock::now() < until);
+                    errno = EPERM;
+                }
                 Out::warning("Failed to send SIGTERM to process group %d: %s", pidSnapshot, strerror(errno));
             }
 
