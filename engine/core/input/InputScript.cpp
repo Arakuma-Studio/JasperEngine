@@ -707,7 +707,7 @@ namespace {
         return false;
     }
 
-    double round4(double v){
+    double scriptRound4(double v){
         return std::round(v * 10000.0) / 10000.0;
     }
 
@@ -1153,8 +1153,8 @@ namespace {
                 event["document"] = target.document;
             return;
         }
-        event["x"] = round4(point.x);
-        event["y"] = round4(point.y);
+        event["x"] = scriptRound4(point.x);
+        event["y"] = scriptRound4(point.y);
         if (point.space != script.header.space)
             event["space"] = spaceName(point.space);
     }
@@ -1332,7 +1332,7 @@ bool writeScript(const ParsedScript& script, std::string& out, std::string& erro
             line["hash"] = hash;
             nlohmann::ordered_json probes = nlohmann::ordered_json::array();
             for (const Vector3& p : c.probes)
-                probes.push_back({round4(p.x), round4(p.y), round4(p.z)});
+                probes.push_back({scriptRound4(p.x), scriptRound4(p.y), scriptRound4(p.z)});
             line["probes"] = probes;
             line["values"] = c.values;
             text += (i == 0 ? "\n    " : ",\n    ") + dumpLine(line);

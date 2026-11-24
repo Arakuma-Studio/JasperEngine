@@ -19,7 +19,7 @@ namespace {
 
     constexpr size_t MAX_STRINGS_BYTES = 64u << 20;
 
-    std::string lower(std::string s) {
+    std::string stringFilesLower(std::string s) {
         for (char& c : s) c = (char)std::tolower((unsigned char)c);
         return s;
     }
@@ -36,21 +36,21 @@ namespace {
         std::vector<std::string> out;
         for (const StringsExportDoc& d : docs) {
             for (const std::string& code : d.languages) {
-                if (code.empty() || lower(code) == lower(d.sourceLanguage)) continue;
-                if (!asked.empty() && std::none_of(asked.begin(), asked.end(), [&](const std::string& a) { return lower(a) == lower(code); })) continue;
-                if (std::none_of(out.begin(), out.end(), [&](const std::string& o) { return lower(o) == lower(code); })) out.push_back(code);
+                if (code.empty() || stringFilesLower(code) == stringFilesLower(d.sourceLanguage)) continue;
+                if (!asked.empty() && std::none_of(asked.begin(), asked.end(), [&](const std::string& a) { return stringFilesLower(a) == stringFilesLower(code); })) continue;
+                if (std::none_of(out.begin(), out.end(), [&](const std::string& o) { return stringFilesLower(o) == stringFilesLower(code); })) out.push_back(code);
             }
         }
         return out;
     }
 
     bool hasLanguage(const StringsExportDoc& doc, const std::string& code) {
-        return std::any_of(doc.languages.begin(), doc.languages.end(), [&](const std::string& l) { return lower(l) == lower(code); });
+        return std::any_of(doc.languages.begin(), doc.languages.end(), [&](const std::string& l) { return stringFilesLower(l) == stringFilesLower(code); });
     }
 
     const StringsExportUnit::Target* targetOf(const StringsExportUnit& unit, const std::string& code) {
         for (const auto& [language, target] : unit.targets) {
-            if (lower(language) == lower(code)) return &target;
+            if (stringFilesLower(language) == stringFilesLower(code)) return &target;
         }
         return nullptr;
     }
@@ -263,7 +263,7 @@ bool editor::parseStringsCsv(const std::string& source, StringsFile& out, std::s
     int fileColumn = -1, keyColumn = -1, contextColumn = -1, maxColumn = -1, sourceColumn = -1, sourceLanguageColumn = -1;
     std::vector<std::pair<int, std::string>> languageColumns;
     for (size_t c = 0; c < header.size(); c++) {
-        const std::string h = lower(trim(header[c]));
+        const std::string h = stringFilesLower(trim(header[c]));
         if (h == "file") fileColumn = (int)c;
         else if (h == "key" || h == "id") keyColumn = (int)c;
         else if (h == "context" || h == "comment" || h == "note") contextColumn = (int)c;

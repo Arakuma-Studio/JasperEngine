@@ -26,7 +26,7 @@ using namespace jasperengine::editor::gametests;
 
 namespace {
 
-    double nowSeconds() {
+    double testRunNow() {
         return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     }
 
@@ -61,7 +61,7 @@ namespace {
         }
     }
 
-    bool readText(const fs::path& path, std::string& out) {
+    bool testRunReadText(const fs::path& path, std::string& out) {
         std::ifstream in(path, std::ios::binary);
         if (!in) return false;
         std::ostringstream text;
@@ -163,7 +163,7 @@ bool TestRun::start(const std::shared_ptr<mcp::McpCall>& call, App& a, Project* 
     target = editorTarget(selection.settings);
     runId = gametest::newRunId();
     started = gametest::isoTimeUtc();
-    startedSeconds = nowSeconds();
+    startedSeconds = testRunNow();
     editResults.clear();
     cancelRequested = false;
     active = true;
@@ -240,7 +240,7 @@ void TestRun::finish(bool cancelledRun) {
     result.run.editorVersion = JASPERENGINE_EDITOR_VERSION;
     result.run.engineVersion = JASPERENGINE_EDITOR_VERSION;
     result.run.started = started;
-    result.run.wallSeconds = nowSeconds() - startedSeconds;
+    result.run.wallSeconds = testRunNow() - startedSeconds;
     result.run.filter = request.filter;
     result.run.mode = request.mode;
     record(project, selection.root, selection.settings, *outcome);
@@ -267,7 +267,7 @@ bool gametests::importResults(Project* project, const fs::path& file, RunOutcome
     gametest::Settings settings;
     if (!loadSettings(root, settings, error)) return false;
     std::string text;
-    if (!readText(file, text)) {
+    if (!testRunReadText(file, text)) {
         error = "cannot read " + FileUtils::pathToUtf8(file);
         return false;
     }
@@ -353,7 +353,7 @@ bool gametests::acceptCaptures(Project* project, const std::vector<std::string>&
             if (all ? (status != "new" && status != "failed") : !wanted.count(key)) continue;
             const fs::path actual = captureActualPath(projectDir, r.spec.id, name);
             std::string bytes;
-            if (!readText(actual, bytes)) {
+            if (!testRunReadText(actual, bytes)) {
                 if (!all) {
                     error = "No actual image for " + key + " (" + FileUtils::pathToUtf8(actual) + "): run the case again.";
                     return false;

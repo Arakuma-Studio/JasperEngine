@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Stream.h"
+#include "export/SizeBudget.h"
 #include "pixelart/PixelColor.h"
 #include "pixelart/ScreenTransition.h"
 #include "util/TitleArtLanguage.h"

@@ -95,6 +95,17 @@ add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_help
 jasperengine_skip_unity_build(
     REASON "replaces the global operator new and delete: in a batch GCC inlines them into their callers and reports a mismatched new and free"
     SOURCES ${CMAKE_CURRENT_LIST_DIR}/support/AllocationProbe.cpp)
+jasperengine_skip_unity_build(
+    REASON "uses the namespace recordinput, whose Settings the Recorder's tests' namespace recorder also declares"
+    SOURCES ${CMAKE_CURRENT_LIST_DIR}/recorder/RecordInputTest.cpp)
+file(GLOB JASPERENGINE_PIXELART_NAMESPACE_TESTS ${CMAKE_CURRENT_LIST_DIR}/pixelart/Aseprite*Test.cpp ${CMAKE_CURRENT_LIST_DIR}/pixelart/Cleanup*Test.cpp)
+jasperengine_skip_unity_build(
+    REASON "the Aseprite and pixel cleanup tests use the namespaces aseprite and cleanup, which declare RgbaImage, Dither, BlendMode and PropertyType as pixelart, the engine and the editor do"
+    SOURCES ${JASPERENGINE_PIXELART_NAMESPACE_TESTS})
+jasperengine_skip_unity_build(
+    REASON "using titleart::Json beside using namespace jasperengine::editor, whose Json some editor headers declare (mcp::Json: BuildReport.h, ModelAudit.h)"
+    SOURCES ${CMAKE_CURRENT_LIST_DIR}/titleart/LibraryChecksTest.cpp ${CMAKE_CURRENT_LIST_DIR}/titleart/PachislopFxMapTest.cpp
+            ${CMAKE_CURRENT_LIST_DIR}/titleart/PachislopGeneratorMapTest.cpp ${CMAKE_CURRENT_LIST_DIR}/titleart/PachislopImportTest.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_compile_definitions(jasperengine-editor-tests PRIVATE JE_TEST_COUNTS_ALLOCATIONS)
     # the counter compiles in the tests' object library (jasperengine_add_test EDITOR), whose

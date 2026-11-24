@@ -33,7 +33,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    double nowSeconds() {
+    double runnerWindowNow() {
         return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     }
 
@@ -71,7 +71,7 @@ TestRunnerWindow& TestRunnerWindow::get() {
 }
 
 void TestRunnerWindow::refresh(Project* project, bool force) {
-    const double now = nowSeconds();
+    const double now = runnerWindowNow();
     const bool runChanged = gametests::TestRun::get().revision() != seenRun;
     // a finished run shows its first failure in the detail pane, unless a case is selected
     if (runChanged && selected.empty()) {

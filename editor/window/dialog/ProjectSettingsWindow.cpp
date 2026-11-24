@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "window/TerrainQualityPanel.h"
+#include "export/SizeBudget.h"
 #include "component/TerrainComponent.h"
 #include "ProjectSettingsWindow.h"
 #include "buildprofile/BuildProfile.h"

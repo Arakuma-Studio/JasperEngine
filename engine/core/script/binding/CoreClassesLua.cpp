@@ -1655,14 +1655,14 @@ namespace {
     }
 
     // a field of the table at `index` (raw: no metamethods), pushed
-    int rawField(lua_State* L, int index, const char* key){
+    int coreRawField(lua_State* L, int index, const char* key){
         lua_pushstring(L, key);
         return lua_rawget(L, index);
     }
 
     std::string fieldText(lua_State* L, int index, const char* key, bool& wrongType){
         std::string out;
-        const int type = rawField(L, index, key);
+        const int type = coreRawField(L, index, key);
         if (type == LUA_TSTRING || type == LUA_TNUMBER){
             size_t length = 0;
             const char* text = lua_tolstring(L, -1, &length);
@@ -1678,7 +1678,7 @@ namespace {
 
     // a list of strings at `key` (absent: none); false when it is something else
     bool fieldStrings(lua_State* L, int index, const char* key, std::vector<std::string>& out){
-        const int type = rawField(L, index, key);
+        const int type = coreRawField(L, index, key);
         bool ok = type == LUA_TNIL;
         if (type == LUA_TTABLE){
             ok = true;
@@ -1714,11 +1714,11 @@ namespace {
             problem = "DebugOverlay.addCommand: aliases is a list of strings";
             return;
         }
-        if (rawField(L, 1, "cheat") != LUA_TNIL)
+        if (coreRawField(L, 1, "cheat") != LUA_TNIL)
             spec.cheat = lua_toboolean(L, -1) != 0;
         lua_pop(L, 1);
         for (const char* key : {"minArgs", "maxArgs"}){
-            const int type = rawField(L, 1, key);
+            const int type = coreRawField(L, 1, key);
             if (type == LUA_TNUMBER)
                 (std::strcmp(key, "minArgs") == 0 ? spec.minArgs : spec.maxArgs) = static_cast<int>(lua_tointeger(L, -1));
             else if (type != LUA_TNIL)
@@ -1729,7 +1729,7 @@ namespace {
             problem = "DebugOverlay.addCommand: minArgs and maxArgs are whole numbers";
             return;
         }
-        if (rawField(L, 1, "args") == LUA_TTABLE){
+        if (coreRawField(L, 1, "args") == LUA_TTABLE){
             const lua_Integer length = static_cast<lua_Integer>(lua_rawlen(L, -1));
             for (lua_Integer i = 1; i <= length && problem.empty(); i++){
                 if (lua_rawgeti(L, -1, i) != LUA_TTABLE){
@@ -1743,12 +1743,12 @@ namespace {
                     if (!type.empty() && !console::parseType(type, arg.type))
                         problem = "DebugOverlay.addCommand: args[" + std::to_string(i) + "].type '" + type +
                                   "' is not string, int, float, bool, enum, vector3, gameobject or rest";
-                    if (rawField(L, at, "optional") != LUA_TNIL)
+                    if (coreRawField(L, at, "optional") != LUA_TNIL)
                         arg.optional = lua_toboolean(L, -1) != 0;
                     lua_pop(L, 1);
-                    if (rawField(L, at, "min") == LUA_TNUMBER) arg.min = lua_tonumber(L, -1);
+                    if (coreRawField(L, at, "min") == LUA_TNUMBER) arg.min = lua_tonumber(L, -1);
                     lua_pop(L, 1);
-                    if (rawField(L, at, "max") == LUA_TNUMBER) arg.max = lua_tonumber(L, -1);
+                    if (coreRawField(L, at, "max") == LUA_TNUMBER) arg.max = lua_tonumber(L, -1);
                     lua_pop(L, 1);
                     if (!fieldStrings(L, at, "choices", arg.choices) || wrong)
                         problem = "DebugOverlay.addCommand: args[" + std::to_string(i) + "] has a field of the wrong type";
@@ -1763,7 +1763,7 @@ namespace {
         if (!problem.empty())
             return;
 
-        if (rawField(L, 1, "run") != LUA_TFUNCTION){
+        if (coreRawField(L, 1, "run") != LUA_TFUNCTION){
             lua_pop(L, 1);
             problem = "DebugOverlay.addCommand: run must be a function(args, call)";
             return;
@@ -1771,7 +1771,7 @@ namespace {
         auto function = std::make_shared<LuaCommandFunction>();
         function->L = L;
         function->ref = luaL_ref(L, LUA_REGISTRYINDEX);
-        const int completeType = rawField(L, 1, "complete");
+        const int completeType = coreRawField(L, 1, "complete");
         if (completeType == LUA_TFUNCTION){
             function->completeRef = luaL_ref(L, LUA_REGISTRYINDEX);
         }else{
@@ -1782,7 +1782,7 @@ namespace {
             }
         }
         const void* owner = nullptr;
-        const int ownerType = rawField(L, 1, "owner");
+        const int ownerType = coreRawField(L, 1, "owner");
         if (ownerType == LUA_TTABLE)
             owner = lua_topointer(L, -1);
         lua_pop(L, 1);

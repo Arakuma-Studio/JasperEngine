@@ -14,7 +14,7 @@ using namespace jasperengine::editor;
 
 namespace {
 
-constexpr double kPi = 3.14159265358979323846;
+constexpr double importSettingsPi = 3.14159265358979323846;
 
 AudioImportSettings parsed(const std::string& text) {
     AudioImportSettings settings;
@@ -228,8 +228,8 @@ AudioAnalysis::Signal stereoSignal(double sideDb, bool invertRight = false, floa
     const double side = std::pow(10.0, sideDb / 20.0);
     for (size_t i = 0; i < signal.frames; i++) {
         const double t = (double)i / 48000.0;
-        const double m = 0.4 * std::sin(2.0 * kPi * 440.0 * t);
-        const double s = 0.4 * side * std::sin(2.0 * kPi * 1000.0 * t);
+        const double m = 0.4 * std::sin(2.0 * importSettingsPi * 440.0 * t);
+        const double s = 0.4 * side * std::sin(2.0 * importSettingsPi * 1000.0 * t);
         signal.samples[i] = dc + (float)(m + s);
         signal.samples[signal.frames + i] = invertRight ? dc - (float)(m + s) : (float)(m - s) + dc;
     }
@@ -274,7 +274,7 @@ TEST(AudioImportSettings, AutoResolvesFromWidth) {
     offset.frames = 48000;
     offset.samples.resize(offset.frames * 2);
     for (size_t i = 0; i < offset.frames; i++) {
-        const float x = 0.02f * (float)std::sin(2.0 * kPi * 440.0 * (double)i / 48000.0);
+        const float x = 0.02f * (float)std::sin(2.0 * importSettingsPi * 440.0 * (double)i / 48000.0);
         offset.samples[i] = 0.5f + x;
         offset.samples[offset.frames + i] = 0.5f - x;
     }

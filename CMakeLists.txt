@@ -1705,6 +1705,10 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "its own static copy of ImGui's stb_truetype, which another unit's stb_truetype.h would clash with"
     SOURCES ${EDITOR_DIR}/util/SystemFonts.cpp)
+jasperengine_skip_unity_build(
+    REASON "Record Input (input-recorder-and-input-scripts.md): its sources use the namespace recordinput, whose Settings and Json the Recorder's sources (namespace recorder) also declare"
+    SOURCES ${EDITOR_DIR}/recorder/RecordInput.cpp ${EDITOR_DIR}/recorder/InputCapture.cpp
+            ${EDITOR_DIR}/recorder/CaptureScreenshotsDialog.cpp ${EDITOR_DIR}/recorder/InputRecordingInspector.cpp)
 
 # Unity build: these sources keep file-local helpers or types (Registry, fail, lower, TempDir, ...)
 # whose names another editor or editor test source defines too (docs/specs/S33-build-speed.md M8)

@@ -122,7 +122,7 @@ namespace {
         }
     }
 
-    double round4(double v){
+    double recorderRound4(double v){
         return std::round(v * 10000.0) / 10000.0;
     }
 
@@ -169,8 +169,8 @@ std::shared_ptr<ParsedScript> RecordedInput::toScript() const{
         ScriptPoint p;
         p.given = true;
         p.space = Space::Normalized;
-        p.x = round4(e.x);
-        p.y = round4(e.y);
+        p.x = recorderRound4(e.x);
+        p.y = recorderRound4(e.y);
         return p;
     };
     uint32_t event = 0;
@@ -535,9 +535,9 @@ bool compareCheckpoint(const Checkpoint& recorded, const Checkpoint& replayed, c
         const double distance = std::sqrt(double(a.x - b.x) * (a.x - b.x) + double(a.y - b.y) * (a.y - b.y) + double(a.z - b.z) * (a.z - b.z));
         if (distance > 1.0 / 1024.0) {
             differences.push_back({{"probe", i < probePaths.size() ? probePaths[i] : std::to_string(i)},
-                                   {"recorded", {round4(a.x), round4(a.y), round4(a.z)}},
-                                   {"replayed", {round4(b.x), round4(b.y), round4(b.z)}},
-                                   {"distance", round4(distance)}});
+                                   {"recorded", {recorderRound4(a.x), recorderRound4(a.y), recorderRound4(a.z)}},
+                                   {"replayed", {recorderRound4(b.x), recorderRound4(b.y), recorderRound4(b.z)}},
+                                   {"distance", recorderRound4(distance)}});
         }
     }
     for (auto it = recorded.values.begin(); it != recorded.values.end(); ++it) {

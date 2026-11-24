@@ -32,7 +32,7 @@ namespace {
     constexpr size_t KEPT_RUNS = 20;
     constexpr const char* LEDGER_FORMAT = "jasperengine-test-ledger";
 
-    bool readText(const fs::path& path, std::string& out) {
+    bool gameTestsReadText(const fs::path& path, std::string& out) {
         std::ifstream in(path, std::ios::binary);
         if (!in) return false;
         std::ostringstream text;
@@ -66,7 +66,7 @@ bool gametests::isTestRoot(const fs::path& projectDir, const fs::path& dir) {
 bool gametests::loadSettings(const fs::path& root, gametest::Settings& out, std::string& error) {
     out = gametest::Settings();
     std::string text;
-    if (!readText(root / MARKER, text)) return true;
+    if (!gameTestsReadText(root / MARKER, text)) return true;
     Json json;
     try {
         const YAML::Node node = YAML::Load(text);
@@ -404,7 +404,7 @@ bool gametests::readLedger(const fs::path& projectDir, Ledger& out, std::string&
     out = Ledger();
     const fs::path file = resultsDir(projectDir) / "ledger.json";
     std::string text;
-    if (!readText(file, text)) return true;
+    if (!gameTestsReadText(file, text)) return true;
     const Json json = Json::parse(text, nullptr, false);
     if (!json.is_object()) {
         note = "the ledger was unreadable and starts again";
@@ -501,10 +501,10 @@ bool gametests::writeRunDocument(const fs::path& projectDir, const gametest::Run
 
 bool gametests::readLastRun(const fs::path& projectDir, gametest::RunResult& out) {
     std::string id;
-    if (!readText(resultsDir(projectDir) / "last-run.txt", id)) return false;
+    if (!gameTestsReadText(resultsDir(projectDir) / "last-run.txt", id)) return false;
     while (!id.empty() && (id.back() == '\n' || id.back() == '\r' || id.back() == ' ')) id.pop_back();
     std::string text;
-    if (id.empty() || !readText(resultsDir(projectDir) / "runs" / (id + ".json"), text)) return false;
+    if (id.empty() || !gameTestsReadText(resultsDir(projectDir) / "runs" / (id + ".json"), text)) return false;
     const Json json = Json::parse(text, nullptr, false);
     std::string error;
     return gametest::resultsFromJson(json, out, error);

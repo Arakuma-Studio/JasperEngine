@@ -70,7 +70,7 @@ namespace {
         return *registryStorage;
     }
 
-    std::string lower(std::string text){
+    std::string consoleLower(std::string text){
         std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
         return text;
     }
@@ -409,7 +409,7 @@ namespace {
     }
 
     bool parseBool(const std::string& text, bool& out){
-        const std::string word = lower(text);
+        const std::string word = consoleLower(text);
         if (word == "true" || word == "on" || word == "yes" || word == "1"){
             out = true;
             return true;
@@ -423,10 +423,10 @@ namespace {
 
     // a choice, case-insensitive, or a prefix of exactly one
     bool parseEnum(const std::string& text, const std::vector<std::string>& choices, std::string& out){
-        const std::string word = lower(text);
+        const std::string word = consoleLower(text);
         const std::string* match = nullptr;
         for (const std::string& choice : choices){
-            if (lower(choice) == word){
+            if (consoleLower(choice) == word){
                 out = choice;
                 return true;
             }
@@ -640,7 +640,7 @@ namespace {
             call.setValue(all);
             return;
         }
-        const std::string word = lower(topic.text);
+        const std::string word = consoleLower(topic.text);
         if (!word.empty() && word.back() == '*'){
             const std::string prefix = word.substr(0, word.size() - 1);
             nlohmann::json all = nlohmann::json::array();
@@ -882,14 +882,14 @@ Result Executor::run(const std::string& line, Source source){
     }
     if (r.depth >= maxDepth){
         result.status = Status::Failed;
-        result.command = lower(tokens[0].text);
+        result.command = consoleLower(tokens[0].text);
         result.error = "nested too deep (commands run commands at most " + std::to_string(maxDepth) + " levels deep)";
         Log::error("%s: %s", result.command.c_str(), result.error.c_str());
         return result;
     }
     Log::print("> %s", line.c_str());
 
-    const std::string typed = lower(tokens[0].text);
+    const std::string typed = consoleLower(tokens[0].text);
     const CommandSpec* spec = findAny(r, typed);
     if (!spec){
         result.status = Status::Unknown;
@@ -1089,7 +1089,7 @@ void console::removeOwned(){
 }
 
 const CommandSpec* console::find(const std::string& nameOrAlias){
-    return findAny(registry(), lower(nameOrAlias));
+    return findAny(registry(), consoleLower(nameOrAlias));
 }
 
 std::vector<const CommandSpec*> console::list(){
@@ -1276,7 +1276,7 @@ const char* console::typeName(ArgType type){
 bool console::parseType(const std::string& name, ArgType& out){
     static const ArgType types[] = {ArgType::String, ArgType::Int, ArgType::Float, ArgType::Bool, ArgType::Enum,
                                     ArgType::Vector3, ArgType::GameObject, ArgType::Rest};
-    const std::string word = lower(name);
+    const std::string word = consoleLower(name);
     for (ArgType type : types){
         if (word == typeName(type)){
             out = type;

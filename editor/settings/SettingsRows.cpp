@@ -16,6 +16,7 @@
 #include "SceneBackup.h"
 #include "diag/CrashHandler.h"
 #include "Project.h"
+#include "export/SizeBudget.h"
 #include "util/TitleArtLanguage.h"
 #include "localization/StringTableDocument.h"
 #include "util/PlatformRules.h"

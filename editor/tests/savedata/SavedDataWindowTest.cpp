@@ -61,7 +61,7 @@ namespace {
     }
 
     struct SavesOnTempDir {
-        test::TempDir dir;
+        jasperengine::test::TempDir dir;
         savegame::SaveGameStore& store = savegame::SaveGameStore::instance();
         SavesOnTempDir() { store.setFolder(dir.path() / "saves"); }
         ~SavesOnTempDir() {

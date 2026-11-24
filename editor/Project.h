@@ -45,7 +45,7 @@
 #include "texture/TextureImportSettings.h"
 #include "titleart/TitleArtSettings.h"
 #include "pixelart/PixelArtSettings.h"
-#include "export/SizeBudget.h"
+#include "export/SizeBudgetRow.h"
 #include "model/ModelImportSettings.h"
 #include "SaveGameSettings.h"
 #include "vcs/VcsTypes.h"

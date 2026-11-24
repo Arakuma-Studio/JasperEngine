@@ -229,7 +229,7 @@ TEST(CommandRunner, CancelStopsTheProgramWithoutAWarning) {
         runner.cancel();
         running.join();
         EXPECT_EQ(runner.processId(), 0);
-        for (const LogEntry& entry : Out::getLogsSince(before))
+        for (const auto& entry : Out::getLogsSince(before))
             EXPECT_EQ(entry.message.find("Failed to send SIGTERM"), std::string::npos) << "round " << round << ": " << entry.message;
     }
 }

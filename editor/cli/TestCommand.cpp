@@ -16,16 +16,14 @@
 #include <string>
 #include <vector>
 
-using namespace jasperengine::editor::cli;
-
 namespace fs = std::filesystem;
 
 namespace {
 
-    constexpr int EXIT_PASSED = 0;
-    constexpr int EXIT_FAILED = 1;
-    constexpr int EXIT_CANNOT_RUN = 2;
-    constexpr int EXIT_NO_MATCH = 3;
+    constexpr int TEST_EXIT_PASSED = 0;
+    constexpr int TEST_EXIT_FAILED = 1;
+    constexpr int TEST_EXIT_CANNOT_RUN = 2;
+    constexpr int TEST_EXIT_NO_MATCH = 3;
 
     void printUsage(const std::string& exe) {
         std::cout
@@ -48,7 +46,7 @@ namespace {
 
     int usage(const std::string& message) {
         std::cerr << "test: " << message << " (run test --help)\n";
-        return EXIT_CANNOT_RUN;
+        return TEST_EXIT_CANNOT_RUN;
     }
 
     std::string absolutePath(const std::string& given) {
@@ -58,7 +56,7 @@ namespace {
 
 }
 
-int TestCommand::run(int argc, char** argv, const char* executableName) {
+int jasperengine::editor::cli::TestCommand::run(int argc, char** argv, const char* executableName) {
     const std::string exe = fs::path(executableName ? executableName : "jasperengine-editor").filename().string();
     std::string project, junit, jsonOut, importFile;
     bool list = false;
@@ -73,7 +71,7 @@ int TestCommand::run(int argc, char** argv, const char* executableName) {
         std::string text;
         if (arg == "-h" || arg == "--help") {
             printUsage(exe);
-            return EXIT_PASSED;
+            return TEST_EXIT_PASSED;
         } else if (arg == "--project") {
             if (!value(project)) return usage("--project needs a directory");
         } else if (arg == "--filter") {
@@ -122,14 +120,14 @@ int TestCommand::run(int argc, char** argv, const char* executableName) {
     const CallResult result = results.empty() ? CallResult() : results.front();
     if (code != 0) {
         std::cerr << result.text << "\n";
-        if (result.text.rfind("No test matched", 0) == 0) return EXIT_NO_MATCH;
+        if (result.text.rfind("No test matched", 0) == 0) return TEST_EXIT_NO_MATCH;
         // a run that could not start: no root, Play running, a run in progress, a connection or editor problem
-        return EXIT_CANNOT_RUN;
+        return TEST_EXIT_CANNOT_RUN;
     }
     if (list) {
         if (jsonOut == "-") std::cout << result.structured.dump(2) << "\n";
         else std::cout << result.text << "\n";
-        return EXIT_PASSED;
+        return TEST_EXIT_PASSED;
     }
     std::cout << result.text << "\n";
     const nlohmann::json counts = result.structured.value("counts", nlohmann::json::object());
@@ -140,16 +138,16 @@ int TestCommand::run(int argc, char** argv, const char* executableName) {
         bytes << in.rdbuf();
         if (file.empty() || bytes.str().empty()) {
             std::cerr << "test: the run wrote no results document to copy to " << jsonOut << "\n";
-            return EXIT_CANNOT_RUN;
+            return TEST_EXIT_CANNOT_RUN;
         }
         const jasperengine::io::WriteResult written = jasperengine::io::writeFileAtomic(absolutePath(jsonOut), bytes.str());
         if (!written.ok()) {
             std::cerr << "test: --json: " << written.message << "\n";
-            return EXIT_CANNOT_RUN;
+            return TEST_EXIT_CANNOT_RUN;
         }
     }
     if (result.structured.contains("junit_error")) std::cerr << "test: --junit: " << result.structured.value("junit_error", "") << "\n";
-    if (result.structured.value("cancelled", false)) return EXIT_FAILED;
+    if (result.structured.value("cancelled", false)) return TEST_EXIT_FAILED;
     const int bad = counts.value("failed", 0) + counts.value("error", 0) + counts.value("hung", 0);
-    return bad > 0 ? EXIT_FAILED : EXIT_PASSED;
+    return bad > 0 ? TEST_EXIT_FAILED : TEST_EXIT_PASSED;
 }

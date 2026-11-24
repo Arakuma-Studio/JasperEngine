@@ -147,7 +147,7 @@ namespace {
         return 0;
     }
 
-    bool readText(const fs::path& path, std::string& out) {
+    bool editModeReadText(const fs::path& path, std::string& out) {
         std::ifstream in(path, std::ios::binary);
         if (!in) return false;
         std::ostringstream text;
@@ -200,10 +200,10 @@ std::vector<gametest::CaseResult> gametests::runEditModeCases(const std::shared_
         lua_setglobal(L, "print");
         {
             gametest::TestChunk chunk(L, gametest::Mode::Edit, settings, target, [&root](const std::string& path, std::string& code) {
-                return readText(root / FileUtils::pathFromUtf8(path), code);
+                return editModeReadText(root / FileUtils::pathFromUtf8(path), code);
             });
             std::string code, error;
-            if (!readText(root / FileUtils::pathFromUtf8(file), code)) error = "cannot read " + file;
+            if (!editModeReadText(root / FileUtils::pathFromUtf8(file), code)) error = "cannot read " + file;
             else chunk.load(code, file, error);
             for (const gametest::CaseSpec* spec : byFile[file]) {
                 const auto started = std::chrono::steady_clock::now();
