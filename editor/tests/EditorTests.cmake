@@ -98,6 +98,17 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "uses the namespace recordinput, whose Settings the Recorder's tests' namespace recorder also declares"
     SOURCES ${CMAKE_CURRENT_LIST_DIR}/recorder/RecordInputTest.cpp)
+# Every later batch of 16 moves by one source per test file added before it, and several editor
+# tests (pixelart, titleart, reflect) keep file-scope using-directives whose Json, Kind, RgbaImage
+# or detail meet another test's in a moved batch: S97's tests stay out of the batches
+jasperengine_skip_unity_build(
+    REASON "S97's tests: compiled alone so the batches of the editor tests after them do not move"
+    SOURCES
+        ${CMAKE_CURRENT_LIST_DIR}/audio/SoundDropTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/engine/object/AudioSourceSlotsTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/engine/pool/SoundPoolLifetimeTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/engine/subsystem/AudioSourceEffectsTest.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/engine/subsystem/AudioSpatialBlendTest.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_compile_definitions(jasperengine-editor-tests PRIVATE JE_TEST_COUNTS_ALLOCATIONS)
     # the counter compiles in the tests' object library (jasperengine_add_test EDITOR), whose

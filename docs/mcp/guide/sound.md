@@ -47,6 +47,7 @@ fresh analysis. A null key resets it; a default key is not written.
 | `loop_end_ms` | after the start, or -1: the trimmed end | -1 |
 | `force_to_mono` | `off`, `on`, `auto` (mono when `stereo.side_mid_db` <= -18) | `off` |
 | `music` | `{bpm: 20-400, beats_per_bar: 1-16, first_beat_ms: >= 0}`, beat 1 from the file's start | none |
+| `load_type` | `auto` (1 MiB and more streams), `decompress_on_load`, `compressed_in_memory`, `streaming`; an Audio Source's own Load Type other than Auto wins | `auto` |
 
 The engine plays these in Play and in every export: a looping voice wraps at the loop region, and fades
 never shape a wrap. Settings that do not fit the file are refused, naming the frames. A clip without

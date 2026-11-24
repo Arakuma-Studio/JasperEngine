@@ -3127,8 +3127,8 @@ void ProjectSettingsWindow::drawPhysicsSettings() {
                     m_physicsQueries.hitTriggers3D = true;
                 }
                 ImGui::Checkbox("##QueriesHitTriggers3D", &m_physicsQueries.hitTriggers3D);
-                endSettingsRow("Whether raycasts, overlaps and shape casts report trigger colliders when their QueryTriggerInteraction is UseGlobal "
-                               "(Physics.queriesHitTriggers). A query passing Ignore or Collide decides for itself. Applies to Physics.raycast too.");
+                endSettingsRow("Whether raycasts, overlaps and shape casts report trigger colliders when their QueryTriggerInteraction is USE_GLOBAL "
+                               "(Physics.queriesHitTriggers). A query passing IGNORE or COLLIDE decides for itself. Applies to Physics.raycast too.");
             }
             ImGui::EndTable();
         }
@@ -3269,6 +3269,18 @@ void ProjectSettingsWindow::drawAudioSettings() {
                 audio.maxVoices = std::clamp(audio.maxVoices, 1, 1000);
                 endSettingsRow("Voices playing at all. Past it the least important (the highest Audio Source Priority, the oldest first) "
                                "is stopped, or the new one does not start when it is the least important.");
+            }
+
+            if (settingsui::beginRow("audio.unused_clip_cache")) {
+                if (projectBeginSettingsRow("Unused Clip Cache (MiB)", audio.unusedClipCacheMb != defaults.unusedClipCacheMb)) {
+                    audio.unusedClipCacheMb = defaults.unusedClipCacheMb;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::DragInt("##AudioUnusedClipCache", &audio.unusedClipCacheMb, 1.0f, 0, 4096);
+                audio.unusedClipCacheMb = std::clamp(audio.unusedClipCacheMb, 0, 4096);
+                endSettingsRow("Clips no source or voice plays stay loaded up to this many MiB, so switching back to one decodes "
+                               "nothing; the least recently used go first. Streamed clips count nothing. 0 drops a clip when "
+                               "its last source or voice lets it go. AudioSource.destroySound and AudioSystem.unload free one at once.");
             }
 
             if (settingsui::beginRow("audio.seed")) {
@@ -3428,8 +3440,8 @@ void ProjectSettingsWindow::drawPhysics2DSettings() {
                     m_physicsQueries.hitTriggers2D = true;
                 }
                 ImGui::Checkbox("##QueriesHitTriggers2D", &m_physicsQueries.hitTriggers2D);
-                endSettingsRow("Whether 2D raycasts, overlaps and shape casts report trigger colliders when their QueryTriggerInteraction is UseGlobal "
-                               "(Physics2D.queriesHitTriggers). A query passing Ignore or Collide decides for itself. Applies to Physics2D.raycast too.");
+                endSettingsRow("Whether 2D raycasts, overlaps and shape casts report trigger colliders when their QueryTriggerInteraction is USE_GLOBAL "
+                               "(Physics2D.queriesHitTriggers). A query passing IGNORE or COLLIDE decides for itself. Applies to Physics2D.raycast too.");
             }
             ImGui::EndTable();
         }

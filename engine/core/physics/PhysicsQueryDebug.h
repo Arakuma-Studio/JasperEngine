@@ -1,13 +1,15 @@
 // (c) JasperDev and contributors
 // SPDX-License-Identifier: MIT
 
-// Contract (spatial-queries R15, D8)
+// Contract (spatial-queries R15, R27, D8)
 // - The spatial queries a scene's main thread ran lately, for Physics.debugDrawQueries: a ring of
 //   the newest CAPACITY entries (shape, cast sweep, hit points), each alive for its lifetime in
 //   unscaled seconds. PhysicsSystem owns one per scene, made by the first recorded query, and
 //   draws the live entries through its physics debug lines.
-// - physics::recordQuery is what the queries call: with debug draw off it costs one relaxed
-//   atomic load; queries off the main thread are never recorded.
+// - physics::noteOverlap / noteCast are what S96's queries (PhysicsQueries3D, PhysicsQueries2D)
+//   and the raycasts call: they count the query for the "Physics queries" monitors and, with
+//   debug draw on, record it; off, that costs one relaxed atomic add and load. Queries off the
+//   main thread are counted, never recorded.
 // - Main thread only.
 
 #ifndef PHYSICS_QUERY_DEBUG_H
@@ -15,9 +17,12 @@
 
 #include "Export.h"
 #include "physics/PhysicsQueryReference.h"
+#include "registry/PhysicsLayers.h"
+#include "math/Ray.h"
 #include "math/Vector3.h"
 #include "math/Vector4.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -31,8 +36,6 @@ namespace jasperengine{
         static constexpr size_t CAPACITY = 256;
         static constexpr size_t MAX_HIT_POINTS = 4;
         static constexpr float LIFETIME = 1.0f;
-        // query_physics {draw}
-        static constexpr float FORCED_LIFETIME = 2.0f;
         // a ring unused this long with debug draw off is freed
         static constexpr double RELEASE_AFTER = 10.0;
 
@@ -68,13 +71,34 @@ namespace jasperengine{
 
     namespace physics{
 
-        // Records a query for the scene's debug draw when Physics.debugDrawQueries is on (or
-        // force, query_physics {draw}) and the caller is the main thread. hits / hitCount:
-        // overlap hits (their bodies' positions are marked); castHits: cast hit points.
+        // Records a query for the scene's debug draw when Physics.debugDrawQueries is on and the
+        // caller is the main thread. hitPoints: where to mark hits (cast hit points, overlapped
+        // GameObjects).
         JASPERENGINE_API void recordQuery(Scene* scene, const QueryShape& shape, const Vector3& direction, float distance, bool cast,
-                                          const Vector3* hitPoints, size_t hitCount, bool hit, bool force = false);
+                                          const Vector3* hitPoints, size_t hitCount, bool hit);
         // true when a query should be recorded now (debug draw on, main thread)
         JASPERENGINE_API bool recordingQueries();
+        // recordQuery for an overlap or a check, its hits marked at these GameObjects' positions
+        JASPERENGINE_API void recordOverlap(Scene* scene, const QueryShape& shape, bool hit, const Entity* entities, size_t entityCount);
+
+        // An overlap or check ran: `hits` colliders found (a check: 0 or 1), `colliders` the first
+        // of them (ColliderRef / ColliderRef2D), or null
+        template<typename Ref>
+        void noteOverlap(Scene* scene, const QueryShape& shape, size_t hits, const Ref* colliders, size_t colliderCount){
+            Physics::countQuery(hits);
+            if (!recordingQueries()){
+                return;
+            }
+            Entity entities[PhysicsQueryDebug::MAX_HIT_POINTS];
+            const size_t count = colliders ? std::min(colliderCount, PhysicsQueryDebug::MAX_HIT_POINTS) : 0;
+            for (size_t i = 0; i < count; i++){
+                entities[i] = colliders[i].entity;
+            }
+            recordOverlap(scene, shape, hits > 0, entities, count);
+        }
+        // A cast ran along `direction` for `distance`: its hits, nearest first
+        JASPERENGINE_API void noteCast(Scene* scene, const QueryShape& shape, const Vector3& direction, float distance,
+                                       const RayReturn* hits, size_t hitCount);
 
     }
 

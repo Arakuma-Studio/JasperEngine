@@ -5015,6 +5015,7 @@
     "attenuationModel",
     "attenuationRolloffFactor",
     "dopplerFactor",
+    "effects",
     "enableClocked",
     "enabled",
     "event",
@@ -5037,6 +5038,8 @@
     "playOn",
     "priority",
     "protectVoice",
+    "slot",
+    "spatialBlend",
     "speed",
     "state",
     "volume",
@@ -5056,6 +5059,11 @@
     ],
     "dopplerFactor": [
      2,
+     134217728,
+     true
+    ],
+    "effects": [
+     15,
      134217728,
      true
     ],
@@ -5171,6 +5179,16 @@
     ],
     "protectVoice": [
      0,
+     134217728,
+     true
+    ],
+    "slot": [
+     8,
+     134217728,
+     true
+    ],
+    "spatialBlend": [
+     2,
      134217728,
      true
     ],
@@ -5211,6 +5229,31 @@
      134217728,
      true
     ],
+    "effects": [
+     15,
+     134217728,
+     true
+    ],
+    "effects[].bypass": [
+     0,
+     134217728,
+     true
+    ],
+    "effects[].params": [
+     15,
+     134217728,
+     true
+    ],
+    "effects[].type": [
+     1,
+     134217728,
+     true
+    ],
+    "effects[].wet": [
+     2,
+     134217728,
+     true
+    ],
     "enableClocked": [
      0,
      134217728,
@@ -5323,6 +5366,16 @@
     ],
     "protectVoice": [
      0,
+     134217728,
+     true
+    ],
+    "slot": [
+     8,
+     134217728,
+     true
+    ],
+    "spatialBlend": [
+     2,
      134217728,
      true
     ],
@@ -5406,7 +5459,9 @@
    "icon": "ef8491",
    "key": "rigidbody2d",
    "known_keys": [
+    "allowFastRotation",
     "angularDamping",
+    "attachToParentBody",
     "autoCenterOfMass",
     "autoInertia",
     "centerOfMass",
@@ -5426,9 +5481,19 @@
    ],
    "name": "Rigidbody2DComponent",
    "properties_of_default": {
+    "allowFastRotation": [
+     0,
+     281474976710656,
+     true
+    ],
     "angularDamping": [
      2,
      281474976710656,
+     true
+    ],
+    "attachToParentBody": [
+     0,
+     131072,
      true
     ],
     "autoCenterOfMass": [
@@ -5508,9 +5573,19 @@
     ]
    },
    "properties_without_component": {
+    "allowFastRotation": [
+     0,
+     281474976710656,
+     true
+    ],
     "angularDamping": [
      2,
      281474976710656,
+     true
+    ],
+    "attachToParentBody": [
+     0,
+     131072,
      true
     ],
     "autoCenterOfMass": [
@@ -5746,6 +5821,7 @@
     "allowSleeping",
     "allowedDOFs",
     "angularDamping",
+    "attachToParentBody",
     "automaticCenterOfMass",
     "automaticInertiaTensor",
     "automaticMass",
@@ -5785,6 +5861,11 @@
     "angularDamping": [
      2,
      4503599627370496,
+     true
+    ],
+    "attachToParentBody": [
+     0,
+     262144,
      true
     ],
     "automaticCenterOfMass": [
@@ -5932,6 +6013,11 @@
     "angularDamping": [
      2,
      4503599627370496,
+     true
+    ],
+    "attachToParentBody": [
+     0,
+     262144,
      true
     ],
     "automaticCenterOfMass": [
@@ -10682,7 +10768,6 @@
     "font",
     "fontGuid",
     "fontSize",
-    "localizationKey",
     "maxTextSize",
     "multiline",
     "outlineColor",
@@ -10718,11 +10803,6 @@
     "fontSize": [
      9,
      65536,
-     true
-    ],
-    "localizationKey": [
-     1,
-     32768,
      true
     ],
     "maxTextSize": [
@@ -10815,11 +10895,6 @@
     "fontSize": [
      9,
      65536,
-     true
-    ],
-    "localizationKey": [
-     1,
-     32768,
      true
     ],
     "maxTextSize": [
@@ -10900,57 +10975,17 @@
   },
   {
    "display_name": "Input Field",
-   "enum_options": {
-    "keyboardType": [
-     [
-      0,
-      "default",
-      "Default"
-     ],
-     [
-      1,
-      "number_pad",
-      "Number Pad"
-     ],
-     [
-      2,
-      "decimal_pad",
-      "Decimal Pad"
-     ],
-     [
-      3,
-      "phone_pad",
-      "Phone Pad"
-     ],
-     [
-      4,
-      "email_address",
-      "Email Address"
-     ],
-     [
-      5,
-      "url",
-      "URL"
-     ],
-     [
-      6,
-      "search",
-      "Search"
-     ]
-    ]
-   },
+   "enum_options": {},
    "has_enabled": false,
    "icon": "ef849c",
    "key": "inputfield",
    "known_keys": [
-    "characterLimit",
     "cursor",
     "cursorBlink",
     "cursorColor",
     "cursorIndex",
     "cursorWidth",
     "disabled",
-    "keyboardType",
     "password",
     "passwordChar",
     "placeholder",
@@ -10962,11 +10997,6 @@
    ],
    "name": "InputFieldComponent",
    "properties_of_default": {
-    "characterLimit": [
-     8,
-     0,
-     true
-    ],
     "cursor": [
      16,
      0,
@@ -10994,11 +11024,6 @@
     ],
     "disabled": [
      0,
-     0,
-     true
-    ],
-    "keyboardType": [
-     13,
      0,
      true
     ],
@@ -11039,11 +11064,6 @@
     ]
    },
    "properties_without_component": {
-    "characterLimit": [
-     8,
-     0,
-     true
-    ],
     "cursor": [
      16,
      0,
@@ -11071,11 +11091,6 @@
     ],
     "disabled": [
      0,
-     0,
-     true
-    ],
-    "keyboardType": [
-     13,
      0,
      true
     ],
@@ -12791,10 +12806,8 @@
    "known_keys": [
     "enabled",
     "filename",
-    "gamepadCursor",
     "inputSurface",
     "interactive",
-    "isMenu",
     "pixelRatio",
     "renderMode",
     "sortOrder",
@@ -12813,22 +12826,12 @@
      274877906944,
      true
     ],
-    "gamepadCursor": [
-     0,
-     0,
-     true
-    ],
     "inputSurface": [
      16,
      0,
      true
     ],
     "interactive": [
-     0,
-     0,
-     true
-    ],
-    "isMenu": [
      0,
      0,
      true
@@ -12870,22 +12873,12 @@
      274877906944,
      true
     ],
-    "gamepadCursor": [
-     0,
-     0,
-     true
-    ],
     "inputSurface": [
      16,
      0,
      true
     ],
     "interactive": [
-     0,
-     0,
-     true
-    ],
-    "isMenu": [
      0,
      0,
      true
@@ -19646,11 +19639,6 @@
       1,
       "touch_devices_only",
       "Touch Devices Only"
-     ],
-     [
-      2,
-      "touch_scheme",
-      "Touch Scheme"
      ]
     ]
    },
@@ -19847,11 +19835,6 @@
       1,
       "touch_devices_only",
       "Touch Devices Only"
-     ],
-     [
-      2,
-      "touch_scheme",
-      "Touch Scheme"
      ]
     ]
    },
@@ -19949,11 +19932,6 @@
       1,
       "touch_devices_only",
       "Touch Devices Only"
-     ],
-     [
-      2,
-      "touch_scheme",
-      "Touch Scheme"
      ]
     ]
    },
@@ -24321,77 +24299,40 @@
    "type_of_name": 103
   },
   {
-   "display_name": "Simulation Culling",
-   "enum_options": {
-    "reason": [
-     [
-      0,
-      "none",
-      "None"
-     ],
-     [
-      1,
-      "distance",
-      "Distance"
-     ],
-     [
-      2,
-      "ground_not_loaded",
-      "Ground Not Loaded"
-     ]
-    ],
-    "state": [
-     [
-      0,
-      "full",
-      "Full"
-     ],
-     [
-      1,
-      "reduced",
-      "Reduced"
-     ],
-     [
-      2,
-      "culled",
-      "Culled"
-     ]
-    ]
-   },
+   "display_name": "Wheel Collider",
+   "enum_options": {},
    "has_enabled": true,
-   "icon": "ef81b0",
-   "key": "simulationculling",
+   "icon": "ef878e",
+   "key": "wheelcollider",
    "known_keys": [
-    "boundsRadius",
-    "cullAnimator",
-    "cullPhysics",
-    "cullScripts",
+    "center",
+    "driveTransform",
     "enabled",
-    "freezeWhenGroundNotLoaded",
-    "hysteresis",
-    "reducedRateDistance",
-    "reducedUpdateInterval",
-    "simulateWhenVisible",
-    "simulationDistance"
+    "forceAppPointDistance",
+    "forwardFriction",
+    "mass",
+    "maxBrakeTorque",
+    "maxHandBrakeTorque",
+    "maxSteerAngle",
+    "radius",
+    "sidewaysFriction",
+    "suspensionDistance",
+    "suspensionSpring",
+    "wheelDampingRate"
    ],
-   "name": "SimulationCullingComponent",
+   "name": "WheelColliderComponent",
    "properties_of_default": {
-    "boundsRadius": [
+    "brakeTorque": [
      2,
      0,
      true
     ],
-    "cullAnimator": [
-     0,
-     0,
-     true
-    ],
-    "cullPhysics": [
-     0,
+    "center": [
+     5,
      0,
      true
     ],
-    "cullScripts": [
+    "driveTransform": [
      0,
      0,
      true
@@ -24401,69 +24342,159 @@
      0,
      true
     ],
-    "focusDistance": [
+    "forceAppPointDistance": [
      2,
      0,
      true
     ],
-    "freezeWhenGroundNotLoaded": [
-     0,
-     0,
-     true
-    ],
-    "hysteresis": [
+    "forwardFriction.asymptoteSlip": [
      2,
      0,
      true
     ],
-    "reason": [
-     13,
-     0,
-     true
-    ],
-    "reducedRateDistance": [
+    "forwardFriction.asymptoteValue": [
      2,
      0,
      true
     ],
-    "reducedUpdateInterval": [
-     8,
-     0,
-     true
-    ],
-    "simulateWhenVisible": [
-     0,
-     0,
-     true
-    ],
-    "simulationDistance": [
+    "forwardFriction.extremumSlip": [
      2,
      0,
      true
     ],
-    "state": [
-     13,
+    "forwardFriction.extremumValue": [
+     2,
+     0,
+     true
+    ],
+    "forwardFriction.stiffness": [
+     2,
+     0,
+     true
+    ],
+    "isGrounded": [
+     0,
+     0,
+     false
+    ],
+    "mass": [
+     2,
+     0,
+     true
+    ],
+    "maxBrakeTorque": [
+     2,
+     0,
+     true
+    ],
+    "maxHandBrakeTorque": [
+     2,
+     0,
+     true
+    ],
+    "maxSteerAngle": [
+     2,
+     0,
+     true
+    ],
+    "motorTorque": [
+     2,
+     0,
+     true
+    ],
+    "radius": [
+     2,
+     0,
+     true
+    ],
+    "rpm": [
+     2,
+     0,
+     false
+    ],
+    "sidewaysFriction.asymptoteSlip": [
+     2,
+     0,
+     true
+    ],
+    "sidewaysFriction.asymptoteValue": [
+     2,
+     0,
+     true
+    ],
+    "sidewaysFriction.extremumSlip": [
+     2,
+     0,
+     true
+    ],
+    "sidewaysFriction.extremumValue": [
+     2,
+     0,
+     true
+    ],
+    "sidewaysFriction.stiffness": [
+     2,
+     0,
+     true
+    ],
+    "sprungMass": [
+     2,
+     0,
+     false
+    ],
+    "steerAngle": [
+     2,
+     0,
+     true
+    ],
+    "suspensionCompression": [
+     2,
+     0,
+     false
+    ],
+    "suspensionDistance": [
+     2,
+     0,
+     true
+    ],
+    "suspensionSpring.damper": [
+     2,
+     0,
+     true
+    ],
+    "suspensionSpring.spring": [
+     2,
+     0,
+     true
+    ],
+    "suspensionSpring.targetPosition": [
+     2,
+     0,
+     true
+    ],
+    "vehicleBody": [
+     16,
+     0,
+     false
+    ],
+    "wheelDampingRate": [
+     2,
      0,
      true
     ]
    },
    "properties_without_component": {
-    "boundsRadius": [
+    "brakeTorque": [
      2,
      0,
      true
     ],
-    "cullAnimator": [
-     0,
-     0,
-     true
-    ],
-    "cullPhysics": [
-     0,
+    "center": [
+     5,
      0,
      true
     ],
-    "cullScripts": [
+    "driveTransform": [
      0,
      0,
      true
@@ -24473,48 +24504,143 @@
      0,
      true
     ],
-    "focusDistance": [
+    "forceAppPointDistance": [
      2,
      0,
      true
     ],
-    "freezeWhenGroundNotLoaded": [
-     0,
-     0,
-     true
-    ],
-    "hysteresis": [
+    "forwardFriction.asymptoteSlip": [
      2,
      0,
      true
     ],
-    "reason": [
-     13,
-     0,
-     true
-    ],
-    "reducedRateDistance": [
+    "forwardFriction.asymptoteValue": [
      2,
      0,
      true
     ],
-    "reducedUpdateInterval": [
-     8,
-     0,
-     true
-    ],
-    "simulateWhenVisible": [
-     0,
-     0,
-     true
-    ],
-    "simulationDistance": [
+    "forwardFriction.extremumSlip": [
      2,
      0,
      true
     ],
-    "state": [
-     13,
+    "forwardFriction.extremumValue": [
+     2,
+     0,
+     true
+    ],
+    "forwardFriction.stiffness": [
+     2,
+     0,
+     true
+    ],
+    "isGrounded": [
+     0,
+     0,
+     false
+    ],
+    "mass": [
+     2,
+     0,
+     true
+    ],
+    "maxBrakeTorque": [
+     2,
+     0,
+     true
+    ],
+    "maxHandBrakeTorque": [
+     2,
+     0,
+     true
+    ],
+    "maxSteerAngle": [
+     2,
+     0,
+     true
+    ],
+    "motorTorque": [
+     2,
+     0,
+     true
+    ],
+    "radius": [
+     2,
+     0,
+     true
+    ],
+    "rpm": [
+     2,
+     0,
+     false
+    ],
+    "sidewaysFriction.asymptoteSlip": [
+     2,
+     0,
+     true
+    ],
+    "sidewaysFriction.asymptoteValue": [
+     2,
+     0,
+     true
+    ],
+    "sidewaysFriction.extremumSlip": [
+     2,
+     0,
+     true
+    ],
+    "sidewaysFriction.extremumValue": [
+     2,
+     0,
+     true
+    ],
+    "sidewaysFriction.stiffness": [
+     2,
+     0,
+     true
+    ],
+    "sprungMass": [
+     2,
+     0,
+     false
+    ],
+    "steerAngle": [
+     2,
+     0,
+     true
+    ],
+    "suspensionCompression": [
+     2,
+     0,
+     false
+    ],
+    "suspensionDistance": [
+     2,
+     0,
+     true
+    ],
+    "suspensionSpring.damper": [
+     2,
+     0,
+     true
+    ],
+    "suspensionSpring.spring": [
+     2,
+     0,
+     true
+    ],
+    "suspensionSpring.targetPosition": [
+     2,
+     0,
+     true
+    ],
+    "vehicleBody": [
+     16,
+     0,
+     false
+    ],
+    "wheelDampingRate": [
+     2,
      0,
      true
     ]
@@ -24525,99 +24651,362 @@
    "type_of_name": 104
   },
   {
-   "display_name": "Dialogue Runner",
-   "enum_options": {},
-   "has_enabled": false,
-   "icon": "ef8286",
-   "key": "dialoguerunner",
+   "display_name": "Vehicle Drivetrain",
+   "enum_options": {
+    "transmission": [
+     [
+      0,
+      "auto",
+      "Automatic"
+     ],
+     [
+      1,
+      "manual",
+      "Manual"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef8285",
+   "key": "vehicledrivetrain",
    "known_keys": [
-    "autoStart",
-    "dialogue",
-    "seed",
-    "startEntry",
-    "view"
+    "antiRollBars",
+    "clutchReleaseTime",
+    "clutchStrength",
+    "differentialLimitedSlipRatio",
+    "differentials",
+    "enabled",
+    "engineDamping",
+    "engineInertia",
+    "gearRatios",
+    "maxPitchRollAngle",
+    "maxRPM",
+    "maxTorque",
+    "minRPM",
+    "reverseGearRatios",
+    "shiftDownRPM",
+    "shiftUpRPM",
+    "switchLatency",
+    "switchTime",
+    "torqueCurve",
+    "transmission"
    ],
-   "name": "DialogueRunnerComponent",
+   "name": "VehicleDrivetrainComponent",
    "properties_of_default": {
-    "autoStart": [
+    "antiRollBars": [
+     15,
+     0,
+     true
+    ],
+    "brake": [
+     2,
+     0,
+     true
+    ],
+    "clutchReleaseTime": [
+     2,
+     0,
+     true
+    ],
+    "clutchStrength": [
+     2,
+     0,
+     true
+    ],
+    "differentialLimitedSlipRatio": [
+     2,
+     0,
+     true
+    ],
+    "differentials": [
+     15,
+     0,
+     true
+    ],
+    "enabled": [
      0,
      0,
      true
     ],
-    "currentNode": [
-     1,
+    "engineDamping": [
+     2,
      0,
      true
     ],
-    "dialogue": [
-     18,
+    "engineInertia": [
+     2,
      0,
      true
     ],
-    "isRunning": [
-     0,
-     0,
-     true
-    ],
-    "seed": [
+    "gear": [
      8,
      0,
-     true
+     false
     ],
-    "startEntry": [
-     1,
+    "gearRatios": [
+     15,
      0,
      true
     ],
-    "state": [
-     1,
+    "handBrake": [
+     2,
      0,
      true
     ],
-    "view": [
-     16,
+    "maxPitchRollAngle": [
+     2,
+     0,
+     true
+    ],
+    "maxRPM": [
+     2,
+     0,
+     true
+    ],
+    "maxTorque": [
+     2,
+     0,
+     true
+    ],
+    "minRPM": [
+     2,
+     0,
+     true
+    ],
+    "reverseGearRatios": [
+     15,
+     0,
+     true
+    ],
+    "rpm": [
+     2,
+     0,
+     false
+    ],
+    "shiftDownRPM": [
+     2,
+     0,
+     true
+    ],
+    "shiftUpRPM": [
+     2,
+     0,
+     true
+    ],
+    "speed": [
+     2,
+     0,
+     false
+    ],
+    "steer": [
+     2,
+     0,
+     true
+    ],
+    "switchLatency": [
+     2,
+     0,
+     true
+    ],
+    "switchTime": [
+     2,
+     0,
+     true
+    ],
+    "throttle": [
+     2,
+     0,
+     true
+    ],
+    "torqueCurve": [
+     20,
+     0,
+     true
+    ],
+    "transmission": [
+     13,
      0,
      true
     ]
    },
    "properties_without_component": {
-    "autoStart": [
+    "antiRollBars": [
+     15,
+     0,
+     true
+    ],
+    "antiRollBars[].leftWheel": [
+     16,
+     0,
+     true
+    ],
+    "antiRollBars[].rightWheel": [
+     16,
+     0,
+     true
+    ],
+    "antiRollBars[].stiffness": [
+     2,
+     0,
+     true
+    ],
+    "brake": [
+     2,
+     0,
+     true
+    ],
+    "clutchReleaseTime": [
+     2,
+     0,
+     true
+    ],
+    "clutchStrength": [
+     2,
+     0,
+     true
+    ],
+    "differentialLimitedSlipRatio": [
+     2,
+     0,
+     true
+    ],
+    "differentials": [
+     15,
+     0,
+     true
+    ],
+    "differentials[].engineTorqueRatio": [
+     2,
+     0,
+     true
+    ],
+    "differentials[].leftRightSplit": [
+     2,
+     0,
+     true
+    ],
+    "differentials[].leftWheel": [
+     16,
+     0,
+     true
+    ],
+    "differentials[].limitedSlipRatio": [
+     2,
+     0,
+     true
+    ],
+    "differentials[].ratio": [
+     2,
+     0,
+     true
+    ],
+    "differentials[].rightWheel": [
+     16,
+     0,
+     true
+    ],
+    "enabled": [
      0,
      0,
      true
     ],
-    "currentNode": [
-     1,
+    "engineDamping": [
+     2,
      0,
      true
     ],
-    "dialogue": [
-     18,
+    "engineInertia": [
+     2,
      0,
      true
     ],
-    "isRunning": [
-     0,
-     0,
-     true
-    ],
-    "seed": [
+    "gear": [
      8,
      0,
-     true
+     false
     ],
-    "startEntry": [
-     1,
+    "gearRatios": [
+     15,
      0,
      true
     ],
-    "state": [
-     1,
+    "handBrake": [
+     2,
      0,
      true
     ],
-    "view": [
-     16,
+    "maxPitchRollAngle": [
+     2,
+     0,
+     true
+    ],
+    "maxRPM": [
+     2,
+     0,
+     true
+    ],
+    "maxTorque": [
+     2,
+     0,
+     true
+    ],
+    "minRPM": [
+     2,
+     0,
+     true
+    ],
+    "reverseGearRatios": [
+     15,
+     0,
+     true
+    ],
+    "rpm": [
+     2,
+     0,
+     false
+    ],
+    "shiftDownRPM": [
+     2,
+     0,
+     true
+    ],
+    "shiftUpRPM": [
+     2,
+     0,
+     true
+    ],
+    "speed": [
+     2,
+     0,
+     false
+    ],
+    "steer": [
+     2,
+     0,
+     true
+    ],
+    "switchLatency": [
+     2,
+     0,
+     true
+    ],
+    "switchTime": [
+     2,
+     0,
+     true
+    ],
+    "throttle": [
+     2,
+     0,
+     true
+    ],
+    "torqueCurve": [
+     20,
+     0,
+     true
+    ],
+    "transmission": [
+     13,
      0,
      true
     ]
@@ -25239,6 +25628,11 @@
     134217728,
     true
    ],
+   "effects": [
+    15,
+    134217728,
+    true
+   ],
    "enableClocked": [
     0,
     134217728,
@@ -25351,6 +25745,16 @@
    ],
    "protectVoice": [
     0,
+    134217728,
+    true
+   ],
+   "slot": [
+    8,
+    134217728,
+    true
+   ],
+   "spatialBlend": [
+    2,
     134217728,
     true
    ],
@@ -26042,48 +26446,6 @@
     true
    ]
   },
-  "DialogueRunnerComponent": {
-   "autoStart": [
-    0,
-    0,
-    true
-   ],
-   "currentNode": [
-    1,
-    0,
-    true
-   ],
-   "dialogue": [
-    18,
-    0,
-    true
-   ],
-   "isRunning": [
-    0,
-    0,
-    true
-   ],
-   "seed": [
-    8,
-    0,
-    true
-   ],
-   "startEntry": [
-    1,
-    0,
-    true
-   ],
-   "state": [
-    1,
-    0,
-    true
-   ],
-   "view": [
-    16,
-    0,
-    true
-   ]
-  },
   "FluidSimulationComponent": {
    "aspectRatio": [
     2,
@@ -26522,11 +26884,6 @@
    ]
   },
   "InputFieldComponent": {
-   "characterLimit": [
-    8,
-    0,
-    true
-   ],
    "cursor": [
     16,
     0,
@@ -26554,11 +26911,6 @@
    ],
    "disabled": [
     0,
-    0,
-    true
-   ],
-   "keyboardType": [
-    13,
     0,
     true
    ],
@@ -30340,9 +30692,19 @@
    ]
   },
   "Rigidbody2DComponent": {
+   "allowFastRotation": [
+    0,
+    281474976710656,
+    true
+   ],
    "angularDamping": [
     2,
     281474976710656,
+    true
+   ],
+   "attachToParentBody": [
+    0,
+    131072,
     true
    ],
    "autoCenterOfMass": [
@@ -30430,6 +30792,11 @@
    "angularDamping": [
     2,
     4503599627370496,
+    true
+   ],
+   "attachToParentBody": [
+    0,
+    262144,
     true
    ],
    "automaticCenterOfMass": [
@@ -30794,78 +31161,6 @@
     false
    ],
    "shape": [
-    13,
-    0,
-    true
-   ]
-  },
-  "SimulationCullingComponent": {
-   "boundsRadius": [
-    2,
-    0,
-    true
-   ],
-   "cullAnimator": [
-    0,
-    0,
-    true
-   ],
-   "cullPhysics": [
-    0,
-    0,
-    true
-   ],
-   "cullScripts": [
-    0,
-    0,
-    true
-   ],
-   "enabled": [
-    0,
-    0,
-    true
-   ],
-   "focusDistance": [
-    2,
-    0,
-    true
-   ],
-   "freezeWhenGroundNotLoaded": [
-    0,
-    0,
-    true
-   ],
-   "hysteresis": [
-    2,
-    0,
-    true
-   ],
-   "reason": [
-    13,
-    0,
-    true
-   ],
-   "reducedRateDistance": [
-    2,
-    0,
-    true
-   ],
-   "reducedUpdateInterval": [
-    8,
-    0,
-    true
-   ],
-   "simulateWhenVisible": [
-    0,
-    0,
-    true
-   ],
-   "simulationDistance": [
-    2,
-    0,
-    true
-   ],
-   "state": [
     13,
     0,
     true
@@ -32059,11 +32354,6 @@
     65536,
     true
    ],
-   "localizationKey": [
-    1,
-    32768,
-    true
-   ],
    "maxTextSize": [
     9,
     32768,
@@ -33083,22 +33373,12 @@
     274877906944,
     true
    ],
-   "gamepadCursor": [
-    0,
-    0,
-    true
-   ],
    "inputSurface": [
     16,
     0,
     true
    ],
    "interactive": [
-    0,
-    0,
-    true
-   ],
-   "isMenu": [
     0,
     0,
     true
@@ -33126,6 +33406,143 @@
    "textureWidth": [
     8,
     274877906944,
+    true
+   ]
+  },
+  "VehicleDrivetrainComponent": {
+   "antiRollBars": [
+    15,
+    0,
+    true
+   ],
+   "brake": [
+    2,
+    0,
+    true
+   ],
+   "clutchReleaseTime": [
+    2,
+    0,
+    true
+   ],
+   "clutchStrength": [
+    2,
+    0,
+    true
+   ],
+   "differentialLimitedSlipRatio": [
+    2,
+    0,
+    true
+   ],
+   "differentials": [
+    15,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "engineDamping": [
+    2,
+    0,
+    true
+   ],
+   "engineInertia": [
+    2,
+    0,
+    true
+   ],
+   "gear": [
+    8,
+    0,
+    false
+   ],
+   "gearRatios": [
+    15,
+    0,
+    true
+   ],
+   "handBrake": [
+    2,
+    0,
+    true
+   ],
+   "maxPitchRollAngle": [
+    2,
+    0,
+    true
+   ],
+   "maxRPM": [
+    2,
+    0,
+    true
+   ],
+   "maxTorque": [
+    2,
+    0,
+    true
+   ],
+   "minRPM": [
+    2,
+    0,
+    true
+   ],
+   "reverseGearRatios": [
+    15,
+    0,
+    true
+   ],
+   "rpm": [
+    2,
+    0,
+    false
+   ],
+   "shiftDownRPM": [
+    2,
+    0,
+    true
+   ],
+   "shiftUpRPM": [
+    2,
+    0,
+    true
+   ],
+   "speed": [
+    2,
+    0,
+    false
+   ],
+   "steer": [
+    2,
+    0,
+    true
+   ],
+   "switchLatency": [
+    2,
+    0,
+    true
+   ],
+   "switchTime": [
+    2,
+    0,
+    true
+   ],
+   "throttle": [
+    2,
+    0,
+    true
+   ],
+   "torqueCurve": [
+    20,
+    0,
+    true
+   ],
+   "transmission": [
+    13,
+    0,
     true
    ]
   },
@@ -33588,6 +34005,168 @@
     true
    ],
    "width": [
+    2,
+    0,
+    true
+   ]
+  },
+  "WheelColliderComponent": {
+   "brakeTorque": [
+    2,
+    0,
+    true
+   ],
+   "center": [
+    5,
+    0,
+    true
+   ],
+   "driveTransform": [
+    0,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "forceAppPointDistance": [
+    2,
+    0,
+    true
+   ],
+   "forwardFriction.asymptoteSlip": [
+    2,
+    0,
+    true
+   ],
+   "forwardFriction.asymptoteValue": [
+    2,
+    0,
+    true
+   ],
+   "forwardFriction.extremumSlip": [
+    2,
+    0,
+    true
+   ],
+   "forwardFriction.extremumValue": [
+    2,
+    0,
+    true
+   ],
+   "forwardFriction.stiffness": [
+    2,
+    0,
+    true
+   ],
+   "isGrounded": [
+    0,
+    0,
+    false
+   ],
+   "mass": [
+    2,
+    0,
+    true
+   ],
+   "maxBrakeTorque": [
+    2,
+    0,
+    true
+   ],
+   "maxHandBrakeTorque": [
+    2,
+    0,
+    true
+   ],
+   "maxSteerAngle": [
+    2,
+    0,
+    true
+   ],
+   "motorTorque": [
+    2,
+    0,
+    true
+   ],
+   "radius": [
+    2,
+    0,
+    true
+   ],
+   "rpm": [
+    2,
+    0,
+    false
+   ],
+   "sidewaysFriction.asymptoteSlip": [
+    2,
+    0,
+    true
+   ],
+   "sidewaysFriction.asymptoteValue": [
+    2,
+    0,
+    true
+   ],
+   "sidewaysFriction.extremumSlip": [
+    2,
+    0,
+    true
+   ],
+   "sidewaysFriction.extremumValue": [
+    2,
+    0,
+    true
+   ],
+   "sidewaysFriction.stiffness": [
+    2,
+    0,
+    true
+   ],
+   "sprungMass": [
+    2,
+    0,
+    false
+   ],
+   "steerAngle": [
+    2,
+    0,
+    true
+   ],
+   "suspensionCompression": [
+    2,
+    0,
+    false
+   ],
+   "suspensionDistance": [
+    2,
+    0,
+    true
+   ],
+   "suspensionSpring.damper": [
+    2,
+    0,
+    true
+   ],
+   "suspensionSpring.spring": [
+    2,
+    0,
+    true
+   ],
+   "suspensionSpring.targetPosition": [
+    2,
+    0,
+    true
+   ],
+   "vehicleBody": [
+    16,
+    0,
+    false
+   ],
+   "wheelDampingRate": [
     2,
     0,
     true

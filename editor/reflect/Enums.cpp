@@ -46,6 +46,7 @@
 #include "component/CapsuleShadowCasterComponent.h"
 #include "component/SimulationCullingComponent.h"
 #include "component/OnScreenControlComponents.h"
+#include "component/VehicleDrivetrainComponent.h"
 #include "render/LineRibbonBuilder.h"
 #include "render/OrderIndependentTransparency.h"
 
@@ -462,6 +463,11 @@ namespace {
         {v(SimulationCullReason::GroundNotLoaded), "ground_not_loaded", "Ground Not Loaded", "SimulationCullReason::GroundNotLoaded"},
     };
 
+    constexpr EnumItem kVehicleTransmissionModeItems[] = {
+        {v(VehicleTransmissionMode::AUTO), "auto", "Automatic", "VehicleTransmissionMode::AUTO"},
+        {v(VehicleTransmissionMode::MANUAL), "manual", "Manual", "VehicleTransmissionMode::MANUAL"},
+    };
+
     constexpr EnumItem kBuoyancyColumnsItems[] = {
         {v(BuoyancyColumns::AUTO_2x2), "auto_2x2", "Auto 2x2", "BuoyancyColumns::AUTO_2x2"},
         {v(BuoyancyColumns::AUTO_3x3), "auto_3x3", "Auto 3x3", "BuoyancyColumns::AUTO_3x3"},
@@ -840,6 +846,7 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kForceFieldKind{"ForceFieldKind", kForceFieldKindItems, v(ForceFieldKind::Directional)};
     const EnumDesc kWaterVolumeWaves{"WaterVolumeWaves", kWaterVolumeWavesItems, v(WaterVolumeWaves::FROM_MATERIAL)};
     const EnumDesc kBuoyancyColumns{"BuoyancyColumns", kBuoyancyColumnsItems, v(BuoyancyColumns::AUTO_2x2)};
+    const EnumDesc kVehicleTransmissionMode{"VehicleTransmissionMode", kVehicleTransmissionModeItems, v(VehicleTransmissionMode::AUTO)};
     const EnumDesc kWaterExcluderShape{"WaterExcluderShape", kWaterExcluderShapeItems, v(WaterExcluderShape::CONVEX_HULL)};
     const EnumDesc kSimulationState{"SimulationState", kSimulationStateItems, v(SimulationState::Full)};
     const EnumDesc kSimulationCullReason{"SimulationCullReason", kSimulationCullReasonItems, v(SimulationCullReason::None)};

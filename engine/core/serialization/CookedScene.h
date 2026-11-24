@@ -40,16 +40,17 @@ namespace jasperengine {
         constexpr uint16_t FORMAT_MAJOR = 1;
         // The cooked files' layout. 1: the scene settings' capsule shadows (S57); 2: the LOD cross-fade's (S54);
         // 3: the default shaders' property values; 4: the planar reflections (water-reflections); 5: the Water
-        // Wakes' map (water-boats)
-        constexpr uint16_t FORMAT_MINOR = 5;
+        // Wakes' map (water-boats); 6: the Box2D sub-steps and the physics world settings, and the scene
+        // hierarchy (S96)
+        constexpr uint16_t FORMAT_MINOR = 6;
         // Content minors past the cooked files' layout: what a build's game.json uses. A build stamps one
         // only when it uses it, so a build that does not stays playable by every runtime of FORMAT_MINOR.
-        // 6: game.json's buildProfile and defines (build-profiles: a runtime of 5 ignores them and would
+        // 7: game.json's buildProfile and defines (build-profiles: a runtime of 6 ignores them and would
         // run a demo as the full game)
-        constexpr uint16_t BUILD_PROFILE_MINOR = 6;
+        constexpr uint16_t BUILD_PROFILE_MINOR = 7;
         // The newest content minor this runtime reads: its player-info's contentFormatVersion
         // (tools/players/package_player.py reads this line)
-        constexpr uint16_t CONTENT_MINOR = 6;
+        constexpr uint16_t CONTENT_MINOR = 7;
         static_assert(CONTENT_MINOR >= FORMAT_MINOR && CONTENT_MINOR >= BUILD_PROFILE_MINOR, "CONTENT_MINOR is the newest minor");
         constexpr size_t HEADER_BYTES = 28;
 

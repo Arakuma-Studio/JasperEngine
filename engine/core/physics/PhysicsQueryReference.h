@@ -1,22 +1,25 @@
 // (c) JasperDev and contributors
 // SPDX-License-Identifier: MIT
 
-// Contract (spatial-queries R6, R16)
-// - The order every overlap and cast returns (sortOverlapHits, sortCastHits): the same world and
-//   query give the same output whatever the broad phase's insertion history.
+// Contract (spatial-queries R16; the queries are S96's PhysicsQueries3D / PhysicsQueries2D)
+// - QueryShape: one overlap's or cast's shape, as the debug draw ring keeps it and the reference
+//   takes it.
 // - referenceOverlap answers an overlap by testing every body of the world, one by one, with the
-//   same filters as the runtime query and in the same order; compare lists what differs. Used by
-//   MCP query_physics {verify} and the tests, never by the runtime queries (it allocates).
+//   filters of S96's overlaps (layer mask, triggers, ignore list, back faces), resolving each hit
+//   to its collider as they do, in their order (GameObject, then collider index); compare lists
+//   what differs. Used by MCP query_physics {mode: verify} and the tests, never by the runtime
+//   queries (it allocates).
 // - Main thread, outside the physics step.
 
 #ifndef PHYSICS_QUERY_REFERENCE_H
 #define PHYSICS_QUERY_REFERENCE_H
 
 #include "Export.h"
-#include "registry/PhysicsLayers.h"
+#include "Entity.h"
 #include "math/Quaternion.h"
 #include "math/Vector2.h"
 #include "math/Vector3.h"
+#include "physics/PhysicsQueryOptions.h"
 
 #include <cstdint>
 #include <span>
@@ -28,12 +31,12 @@ namespace jasperengine{
 
     namespace physics{
 
-        // A query shape as the overlaps take it. 3D: Sphere (a, radius), Box (a, halfExtents,
-        // rotation), Capsule (a, b, radius). 2D in scene units: Point2D (a), Circle2D (a,
-        // radius), Box2D (a, halfExtents xy, angle in degrees), Capsule2D (a, halfExtents xy =
-        // half the size, direction2D, angle), Area2D (corners a and b).
+        // A query shape. 3D: Sphere (a, radius), Box (a, halfExtents, rotation), Capsule (a, b,
+        // radius), Point (a). 2D in scene units: Point2D (a), Circle2D (a, radius), Box2D (a,
+        // halfExtents xy = half the size, angle in degrees), Capsule2D (a, halfExtents xy,
+        // direction2D, angle), Area2D (corners a and b).
         struct QueryShape{
-            enum class Type : uint8_t { Sphere, Box, Capsule, Point2D, Circle2D, Box2D, Capsule2D, Area2D };
+            enum class Type : uint8_t { Sphere, Box, Capsule, Point, Point2D, Circle2D, Box2D, Capsule2D, Area2D };
             Type type = Type::Sphere;
             Vector3 a;
             Vector3 b;
@@ -41,43 +44,49 @@ namespace jasperengine{
             Quaternion rotation;
             float radius = 0.0f;
             float angle = 0.0f;
-            CapsuleDirection2D direction2D = CapsuleDirection2D::Vertical;
+            CapsuleDirection2D direction2D = CapsuleDirection2D::VERTICAL;
 
             bool is2D() const { return type >= Type::Point2D; }
+
+            static QueryShape sphere(const Vector3& center, float radius);
+            static QueryShape box(const Vector3& center, const Vector3& halfExtents, const Quaternion& rotation);
+            static QueryShape capsule(const Vector3& point1, const Vector3& point2, float radius);
+            static QueryShape point(const Vector3& point);
+            // 2D, as PhysicsQueries2D takes them: sizes whole, angles in the engine's angle unit
+            static QueryShape point2D(const Vector2& point);
+            static QueryShape circle2D(const Vector2& center, float radius);
+            static QueryShape box2D(const Vector2& center, const Vector2& size, float angle);
+            static QueryShape capsule2D(const Vector2& center, const Vector2& size, CapsuleDirection2D direction, float angle);
+            static QueryShape area2D(const Vector2& pointA, const Vector2& pointB);
+        };
+
+        // One collider an overlap found: its GameObject and its index there (a ColliderRef's or a
+        // ColliderRef2D's entity and index)
+        struct QueryCollider{
+            Entity entity = NULL_ENTITY;
+            int index = -1;
+
+            bool operator==(const QueryCollider& other) const { return entity == other.entity && index == other.index; }
         };
 
         struct ReferenceDiff{
-            std::vector<OverlapHit> missing;   // in the reference, not in the query
-            std::vector<OverlapHit> extra;     // in the query, not in the reference
+            std::vector<QueryCollider> missing;   // in the reference, not in the query
+            std::vector<QueryCollider> extra;     // in the query, not in the reference
             size_t referenceCount = 0;
             bool ok() const { return missing.empty() && extra.empty(); }
         };
 
-        // R6's orders, in place and without allocating: overlaps by (body, colliderIndex) with
-        // duplicates dropped; casts by distance then (body, colliderIndex), one hit per collider
-        // (its nearest). Return the new count.
-        JASPERENGINE_API size_t sortOverlapHits(OverlapHit* hits, size_t count);
-        JASPERENGINE_API size_t sortCastHits(RayReturn* hits, size_t count);
-
-        // A 2D capsule given as Unity's bounding size, direction and angle: the centres of its
-        // round ends and its radius (scene units)
+        // A 2D capsule given as Unity's bounding size, direction and angle (degrees): the centres
+        // of its round ends and its radius (scene units)
         JASPERENGINE_API void capsule2DSegment(const Vector2& center, const Vector2& size, CapsuleDirection2D direction, float angleDegrees,
                                                Vector2& point1, Vector2& point2, float& radius);
 
-        // Every collider of the scene's 3D (is2D false) or 2D world touching the shape, tested body
-        // by body with the query's filters, in R6's order
-        JASPERENGINE_API void referenceOverlap(Scene* scene, bool is2D, const QueryShape& shape, const PhysicsQueryOptions& options, std::vector<OverlapHit>& out);
-        // The runtime query of the shape (Physics / Physics2D ...All forms), for callers holding a QueryShape
-        JASPERENGINE_API size_t queryOverlap(Scene* scene, const QueryShape& shape, const PhysicsQueryOptions& options, std::vector<OverlapHit>& out);
-        JASPERENGINE_API ReferenceDiff compare(std::span<const OverlapHit> query, std::span<const OverlapHit> reference);
-
-        // the halves of referenceOverlap, beside each world's queries (PhysicsQueries*.cpp)
-#ifdef JASPERENGINE_PHYSICS_3D
-        void referenceOverlap3D(Scene* scene, const QueryShape& shape, const PhysicsQueryOptions& options, std::vector<OverlapHit>& out);
-#endif
-#ifdef JASPERENGINE_PHYSICS_2D
-        void referenceOverlap2D(Scene* scene, const QueryShape& shape, const PhysicsQueryOptions& options, std::vector<OverlapHit>& out);
-#endif
+        // Every collider of the scene's 3D or 2D world (the shape's) touching the shape, tested
+        // body by body with the overlaps' filters, in their order
+        JASPERENGINE_API void referenceOverlap(Scene* scene, const QueryShape& shape, const QueryOptions& options, std::vector<QueryCollider>& out);
+        // The runtime overlap of the shape (PhysicsQueries3D::overlap*, PhysicsQueries2D::overlap*All)
+        JASPERENGINE_API size_t queryOverlap(Scene* scene, const QueryShape& shape, const QueryOptions& options, std::vector<QueryCollider>& out);
+        JASPERENGINE_API ReferenceDiff compare(std::span<const QueryCollider> query, std::span<const QueryCollider> reference);
 
     }
 

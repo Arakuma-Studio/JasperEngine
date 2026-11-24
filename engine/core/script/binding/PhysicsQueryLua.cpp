@@ -1,12 +1,12 @@
 // (c) JasperDev and contributors
 // SPDX-License-Identifier: MIT
 //
-// The spatial queries in Lua (docs/specs/spatial-queries.md R28, D9): Physics and Physics2D
-// overlaps, checks and shape casts, MeshRaycast's bounds overlaps, QueryTriggerInteraction,
-// CapsuleDirection2D, OverlapHit and MeshOverlapHit. Reopens the Physics, Physics2D and
-// MeshRaycast classes CoreClassesLua.cpp registers.
+// The spatial queries' Lua beside S96's (docs/specs/spatial-queries.md R28; S96's casts, overlaps,
+// enums and options are PhysicsQueriesLua.cpp): the Physics and Physics2D ...NonAlloc overlaps,
+// Physics.debugDrawQueries, MeshRaycast's bounds overlaps, MeshRaycast.TREE / DETAIL and
+// MeshOverlapHit. Reopens the Physics, Physics2D and MeshRaycast classes registered before it.
 //
-// The ...NonAlloc forms write entity ids (integers: no userdata, no garbage) into the caller's
+// The ...NonAlloc forms write GameObject ids (integers: no userdata, no garbage) into the caller's
 // table and clear its entries past the count, so #results is the count. The results go through
 // one main-thread buffer: a query with a table that has room allocates nothing.
 //
@@ -23,97 +23,108 @@
 #include "Scene.h"
 #include "object/EntityHandle.h"
 #include "picking/MeshRaycast.h"
-#include "physics/PhysicsQueryReference.h"
 #include "registry/PhysicsLayers.h"
+#include "script/binding/PhysicsQueriesLua.h"
 
+#ifdef JASPERENGINE_PHYSICS_3D
+#include "object/physics/Collision.h"
+#include "physics/PhysicsQueries3D.h"
+#endif
+#ifdef JASPERENGINE_PHYSICS_2D
+#include "object/physics/Collision2D.h"
+#include "physics/PhysicsQueries2D.h"
+#endif
+
+#include <cmath>
 #include <vector>
 
 using namespace jasperengine;
 
 #ifndef DISABLE_LUA_BINDINGS
-// the enums as integers (only this file passes them to Lua)
-namespace luabridge{
-    template<> struct Stack<jasperengine::QueryTriggerInteraction> : EnumWrapper<jasperengine::QueryTriggerInteraction>{};
-    template<> struct Stack<jasperengine::CapsuleDirection2D> : EnumWrapper<jasperengine::CapsuleDirection2D>{};
-}
-
 namespace {
 
-    // the main thread's buffers (the Lua state belongs to it); [[maybe_unused]]: a game with both physics modules off uses none of the cast and overlap helpers
-    [[maybe_unused]] std::vector<OverlapHit>& pqOverlapBuffer(){
-        static std::vector<OverlapHit> hits;
-        return hits;
-    }
-
-    [[maybe_unused]] std::vector<RayReturn>& pqCastBuffer(){
-        static std::vector<RayReturn> hits;
-        return hits;
-    }
-
-    std::vector<MeshOverlapHit>& pqMeshBuffer(){
+    std::vector<MeshOverlapHit>& sqMeshBuffer(){
         static std::vector<MeshOverlapHit> hits;
         return hits;
     }
 
-    std::vector<Entity>& pqIgnoreBuffer(){
+    std::vector<Entity>& sqIgnoreBuffer(){
         static std::vector<Entity> entities;
         return entities;
     }
 
-    Scene* pqScene(lua_State* L, const char* function){
+    Scene* sqScene(lua_State* L, const char* function){
         if (luabridge::isInstance<Scene*>(L, 1)){
             auto result = luabridge::get<Scene*>(L, 1);
             if (result && result.value()){
                 return result.value();
             }
         }
-        luaL_error(L, "%s: argument 1 must be a Scene", function);
+        luaL_error(L, "%s: argument 1 (scene) must be a Scene", function);
         return nullptr;
     }
 
-    Vector3 pqVector3(lua_State* L, int index, const char* function, const char* name){
-        if (luabridge::isInstance<Vector3>(L, index)){
-            auto result = luabridge::get<Vector3>(L, index);
+    template<typename T>
+    T sqValue(lua_State* L, int index, const char* function, const char* name, const char* type){
+        if (luabridge::isInstance<T>(L, index)){
+            auto result = luabridge::get<T>(L, index);
             if (result){
                 return result.value();
             }
         }
-        luaL_error(L, "%s: %s (argument %d) must be a Vector3", function, name, index);
-        return Vector3::ZERO;
+        luaL_error(L, "%s: argument %d (%s) must be a %s", function, index, name, type);
+        return T();
     }
 
-    Quaternion pqOptRotation(lua_State* L, int index, const char* function){
+    Vector3 sqVector3(lua_State* L, int index, const char* function, const char* name){
+        return sqValue<Vector3>(L, index, function, name, "Vector3");
+    }
+
+    // nil is Quaternion.IDENTITY (Unity's default orientation)
+    Quaternion sqOptRotation(lua_State* L, int index, const char* function){
         if (lua_isnoneornil(L, index)){
             return Quaternion::IDENTITY;
         }
-        if (luabridge::isInstance<Quaternion>(L, index)){
-            auto result = luabridge::get<Quaternion>(L, index);
-            if (result){
-                return result.value();
-            }
-        }
-        luaL_error(L, "%s: rotation (argument %d) must be a Quaternion", function, index);
-        return Quaternion::IDENTITY;
+        return sqValue<Quaternion>(L, index, function, "orientation", "Quaternion");
     }
 
-    uint32_t pqOptMask(lua_State* L, int index){
+    [[maybe_unused]] float sqNumber(lua_State* L, int index, const char* function, const char* name){
+        if (!lua_isnumber(L, index)){
+            luaL_error(L, "%s: argument %d (%s) must be a number", function, index, name);
+        }
+        return (float)lua_tonumber(L, index);
+    }
+
+    [[maybe_unused]] void sqCheck(lua_State* L, const char* function, const char* argument, const char* why){
+        if (why){
+            luaL_error(L, "%s: %s (%s)", function, why, argument);
+        }
+    }
+
+    // the results table at `index` (required) and the colliders table (optional)
+    int sqTable(lua_State* L, int index, const char* function, const char* name, bool optional){
+        if (optional && lua_isnoneornil(L, index)){
+            return 0;
+        }
+        if (!lua_istable(L, index)){
+            luaL_error(L, "%s: argument %d (%s) must be a table", function, index, name);
+        }
+        return lua_absindex(L, index);
+    }
+
+    uint32_t sqOptMask(lua_State* L, int index, const char* function){
         // Unity's int mask: -1 is every layer
-        return lua_isnoneornil(L, index) ? Physics::DEFAULT_RAYCAST_LAYERS : (uint32_t)luaL_checkinteger(L, index);
-    }
-
-    [[maybe_unused]] QueryTriggerInteraction pqOptTriggers(lua_State* L, int index, const char* function){
         if (lua_isnoneornil(L, index)){
-            return QueryTriggerInteraction::UseGlobal;
+            return Physics::DEFAULT_RAYCAST_LAYERS;
         }
-        const lua_Integer value = luaL_checkinteger(L, index);
-        if (value < 0 || value > 2){
-            luaL_error(L, "%s: argument %d must be a QueryTriggerInteraction (UseGlobal, Ignore or Collide)", function, index);
+        if (!lua_isinteger(L, index)){
+            luaL_error(L, "%s: argument %d (layerMask) must be an integer", function, index);
         }
-        return (QueryTriggerInteraction)value;
+        return (uint32_t)lua_tointeger(L, index);
     }
 
     // an entity number or a GameObject (any EntityHandle)
-    bool pqEntity(lua_State* L, int index, Entity& entity){
+    bool sqEntity(lua_State* L, int index, Entity& entity){
         if (lua_isinteger(L, index)){
             entity = (Entity)lua_tointeger(L, index);
             return true;
@@ -128,38 +139,26 @@ namespace {
         return false;
     }
 
-    // the optional table of entities the query passes through, into the shared buffer
-    std::span<const Entity> pqOptIgnore(lua_State* L, int index, const char* function){
-        std::vector<Entity>& ignore = pqIgnoreBuffer();
+    // the table of entities at `index` into the shared buffer
+    void sqIgnore(lua_State* L, int index, const char* function){
+        std::vector<Entity>& ignore = sqIgnoreBuffer();
         ignore.clear();
-        if (lua_isnoneornil(L, index)){
-            return {};
-        }
         luaL_checktype(L, index, LUA_TTABLE);
         const lua_Integer count = (lua_Integer)lua_rawlen(L, index);
         for (lua_Integer i = 1; i <= count; i++){
             lua_rawgeti(L, index, i);
             Entity entity = NULL_ENTITY;
-            if (!pqEntity(L, -1, entity)){
+            if (!sqEntity(L, -1, entity)){
                 luaL_error(L, "%s: ignore[%d] is not an entity", function, (int)i);
             }
             lua_pop(L, 1);
             ignore.push_back(entity);
         }
-        return std::span<const Entity>(ignore.data(), ignore.size());
-    }
-
-    [[maybe_unused]] int pqOptTable(lua_State* L, int index){
-        if (lua_isnoneornil(L, index)){
-            return 0;
-        }
-        luaL_checktype(L, index, LUA_TTABLE);
-        return index;
     }
 
     // t[1..count] = values, t[count + 1..old length] = nil
     template<typename Value>
-    void pqFillTable(lua_State* L, int table, size_t count, Value value){
+    void sqFillTable(lua_State* L, int table, size_t count, Value value){
         const lua_Integer old = (lua_Integer)lua_rawlen(L, table);
         for (size_t i = 0; i < count; i++){
             lua_pushinteger(L, value(i));
@@ -171,315 +170,148 @@ namespace {
         }
     }
 
-    template<typename T>
-    void pqPushArray(lua_State* L, const std::vector<T>& values){
-        lua_createtable(L, (int)values.size(), 0);
-        for (size_t i = 0; i < values.size(); i++){
-            if (!luabridge::push(L, values[i])){
-                lua_pushnil(L);
-            }
-            lua_rawseti(L, -2, (lua_Integer)(i + 1));
+    // A NonAlloc overlap's answer: the colliders' GameObjects into results, their indices into
+    // colliders (when given), the count pushed
+    template<typename Ref>
+    [[maybe_unused]] int sqReturnColliders(lua_State* L, const std::vector<Ref>& found, int results, int colliders){
+        sqFillTable(L, results, found.size(), [&](size_t i){ return (lua_Integer)found[i].entity; });
+        if (colliders){
+            sqFillTable(L, colliders, found.size(), [&](size_t i){ return (lua_Integer)found[i].index; });
         }
-    }
-
-    [[maybe_unused]] void pqPushRayReturn(lua_State* L, const RayReturn& hit){
-        if (!luabridge::push(L, hit)){
-            lua_pushnil(L);
-        }
-    }
-
-    enum class PqForm { First, All, NonAlloc, Check };
-    using Shape = physics::QueryShape::Type;
-
-    // The results of an overlap form, pushed; results / colliders: the NonAlloc tables
-    [[maybe_unused]] int pqReturnOverlap(lua_State* L, PqForm form, const std::vector<OverlapHit>& hits, int results, int colliders){
-        if (form == PqForm::NonAlloc){
-            pqFillTable(L, results, hits.size(), [&](size_t i){ return (lua_Integer)hits[i].body; });
-            if (colliders){
-                pqFillTable(L, colliders, hits.size(), [&](size_t i){ return (lua_Integer)hits[i].colliderIndex; });
-            }
-            lua_pushinteger(L, (lua_Integer)hits.size());
-        }else if (form == PqForm::First){
-            if (hits.empty()){
-                lua_pushnil(L);
-            }else if (!luabridge::push(L, hits.front())){
-                lua_pushnil(L);
-            }
-        }else{
-            pqPushArray(L, hits);
-        }
+        lua_pushinteger(L, (lua_Integer)found.size());
         return 1;
     }
 
 #ifdef JASPERENGINE_PHYSICS_3D
-    const char* pqName3D(Shape shape, PqForm form){
-        static const char* names[3][4] = {
-            {"Physics.overlapSphere", "Physics.overlapSphere", "Physics.overlapSphereNonAlloc", "Physics.checkSphere"},
-            {"Physics.overlapBox", "Physics.overlapBox", "Physics.overlapBoxNonAlloc", "Physics.checkBox"},
-            {"Physics.overlapCapsule", "Physics.overlapCapsule", "Physics.overlapCapsuleNonAlloc", "Physics.checkCapsule"}};
-        return names[(int)shape][(int)form];
+    std::vector<ColliderRef>& sqColliderBuffer(){
+        static std::vector<ColliderRef> colliders;
+        return colliders;
     }
 
-    // Physics.overlapX(scene, shape... [, layerMask [, qti [, ignore]]]) -> {OverlapHit}
-    // Physics.overlapXNonAlloc(scene, shape..., results [, layerMask [, qti [, colliders [, ignore]]]]) -> count
-    // Physics.checkX(scene, shape... [, layerMask [, qti [, ignore]]]) -> boolean
-    // A box's rotation follows its half extents (after results in the NonAlloc form, as Unity).
-    template<Shape S, PqForm F>
-    int pqOverlap3D(lua_State* L){
-        const char* function = pqName3D(S, F);
-        Scene* scene = pqScene(L, function);
-        physics::QueryShape shape;
-        shape.type = S;
-        int index = 2;
-        if constexpr (S == Shape::Capsule){
-            shape.a = pqVector3(L, index++, function, "point0");
-            shape.b = pqVector3(L, index++, function, "point1");
-            shape.radius = (float)luaL_checknumber(L, index++);
-        }else{
-            shape.a = pqVector3(L, index++, function, "center");
-            if constexpr (S == Shape::Box){
-                shape.halfExtents = pqVector3(L, index++, function, "halfExtents");
-            }else{
-                shape.radius = (float)luaL_checknumber(L, index++);
-            }
-        }
-        int results = 0;
-        if constexpr (F == PqForm::NonAlloc){
-            luaL_checktype(L, index, LUA_TTABLE);
-            results = index++;
-        }
-        if constexpr (S == Shape::Box){
-            shape.rotation = pqOptRotation(L, index++, function);
-        }
-        PhysicsQueryOptions options;
-        options.layerMask = pqOptMask(L, index++);
-        options.triggers = pqOptTriggers(L, index++, function);
-        int colliders = 0;
-        if constexpr (F == PqForm::NonAlloc){
-            colliders = pqOptTable(L, index++);
-        }
-        options.ignore = pqOptIgnore(L, index, function);
+    enum class SqShape3D { SPHERE, BOX, CAPSULE };
 
-        if constexpr (F == PqForm::Check){
-            bool found = false;
-            if constexpr (S == Shape::Sphere) found = Physics::checkSphere(scene, shape.a, shape.radius, options);
-            else if constexpr (S == Shape::Box) found = Physics::checkBox(scene, shape.a, shape.halfExtents, shape.rotation, options);
-            else found = Physics::checkCapsule(scene, shape.a, shape.b, shape.radius, options);
-            lua_pushboolean(L, found ? 1 : 0);
-            return 1;
-        }else{
-            std::vector<OverlapHit>& hits = pqOverlapBuffer();
-            physics::queryOverlap(scene, shape, options, hits);
-            return pqReturnOverlap(L, F, hits, results, colliders);
-        }
-    }
-
-    // Physics.sphereCast(scene, origin, radius, direction, maxDistance [, layerMask [, qti [, ignore]]])
-    // Physics.boxCast(scene, center, halfExtents, direction, maxDistance [, rotation [, layerMask [, qti [, ignore]]]])
-    // Physics.capsuleCast(scene, point0, point1, radius, direction, maxDistance [, layerMask [, qti [, ignore]]])
-    // -> RayReturn (hit false on a miss); the ...All forms -> {RayReturn}, nearest first
-    template<Shape S, bool all>
-    int pqCast3D(lua_State* L){
-        static const char* names[3][2] = {{"Physics.sphereCast", "Physics.sphereCastAll"}, {"Physics.boxCast", "Physics.boxCastAll"},
-                                          {"Physics.capsuleCast", "Physics.capsuleCastAll"}};
-        const char* function = names[(int)S][all ? 1 : 0];
-        Scene* scene = pqScene(L, function);
-        Vector3 a, b, halfExtents;
+    // Physics.overlapSphereNonAlloc(scene, center, radius, results [, layerMask [, options [, colliders]]])
+    // Physics.overlapBoxNonAlloc(scene, center, halfExtents, results [, orientation [, layerMask [, options [, colliders]]]])
+    // Physics.overlapCapsuleNonAlloc(scene, point1, point2, radius, results [, layerMask [, options [, colliders]]])
+    // -> count. Unity's argument order (results after the shape, a box's orientation after results).
+    template<SqShape3D S>
+    int sqOverlapNonAlloc3D(lua_State* L){
+        static const char* names[3] = {"Physics.overlapSphereNonAlloc", "Physics.overlapBoxNonAlloc", "Physics.overlapCapsuleNonAlloc"};
+        const char* function = names[(int)S];
+        Scene* scene = sqScene(L, function);
+        Vector3 a, b;
         float radius = 0.0f;
+        Quaternion orientation = Quaternion::IDENTITY;
         int index = 2;
-        if constexpr (S == Shape::Capsule){
-            a = pqVector3(L, index++, function, "point0");
-            b = pqVector3(L, index++, function, "point1");
-            radius = (float)luaL_checknumber(L, index++);
+        if constexpr (S == SqShape3D::CAPSULE){
+            a = sqVector3(L, index++, function, "point1");
+            b = sqVector3(L, index++, function, "point2");
+            radius = sqNumber(L, index++, function, "radius");
+            sqCheck(L, function, "point1", PhysicsQueries3D::invalidPoint(a));
+            sqCheck(L, function, "point2", PhysicsQueries3D::invalidPoint(b));
+            sqCheck(L, function, "radius", PhysicsQueries3D::invalidRadius(radius));
         }else{
-            a = pqVector3(L, index++, function, S == Shape::Box ? "center" : "origin");
-            if constexpr (S == Shape::Box){
-                halfExtents = pqVector3(L, index++, function, "halfExtents");
+            a = sqVector3(L, index++, function, "center");
+            sqCheck(L, function, "center", PhysicsQueries3D::invalidPoint(a));
+            if constexpr (S == SqShape3D::BOX){
+                b = sqVector3(L, index++, function, "halfExtents");
+                sqCheck(L, function, "halfExtents", PhysicsQueries3D::invalidHalfExtents(b));
             }else{
-                radius = (float)luaL_checknumber(L, index++);
+                radius = sqNumber(L, index++, function, "radius");
+                sqCheck(L, function, "radius", PhysicsQueries3D::invalidRadius(radius));
             }
         }
-        const Vector3 direction = pqVector3(L, index++, function, "direction");
-        const float maxDistance = (float)luaL_checknumber(L, index++);
-        Quaternion rotation = Quaternion::IDENTITY;
-        if constexpr (S == Shape::Box){
-            rotation = pqOptRotation(L, index++, function);
+        const int results = sqTable(L, index++, function, "results", false);
+        if constexpr (S == SqShape3D::BOX){
+            orientation = sqOptRotation(L, index++, function);
         }
-        PhysicsQueryOptions options;
-        options.layerMask = pqOptMask(L, index++);
-        options.triggers = pqOptTriggers(L, index++, function);
-        options.ignore = pqOptIgnore(L, index, function);
+        const uint32_t layerMask = sqOptMask(L, index++, function);
+        const int optionsIndex = index++;
+        const int colliders = sqTable(L, index, function, "colliders", true);
 
-        std::vector<RayReturn>& hits = pqCastBuffer();
-        if constexpr (S == Shape::Sphere){
-            if (all) Physics::sphereCastAll(scene, a, radius, direction, maxDistance, hits, options);
-            else pqPushRayReturn(L, Physics::sphereCast(scene, a, radius, direction, maxDistance, options));
-        }else if constexpr (S == Shape::Box){
-            if (all) Physics::boxCastAll(scene, a, halfExtents, direction, maxDistance, rotation, hits, options);
-            else pqPushRayReturn(L, Physics::boxCast(scene, a, halfExtents, direction, maxDistance, rotation, options));
-        }else{
-            if (all) Physics::capsuleCastAll(scene, a, b, radius, direction, maxDistance, hits, options);
-            else pqPushRayReturn(L, Physics::capsuleCast(scene, a, b, radius, direction, maxDistance, options));
-        }
-        if (all){
-            pqPushArray(L, hits);
-        }
-        return 1;
+        QueryOptions options;
+        std::vector<Entity> ignore;
+        luaphysics::readQueryOptions(L, optionsIndex, function, false, options, ignore);
+        options.layerMask = layerMask;
+        std::vector<ColliderRef>& found = sqColliderBuffer();
+        if constexpr (S == SqShape3D::SPHERE) PhysicsQueries3D::overlapSphere(scene, a, radius, found, options);
+        else if constexpr (S == SqShape3D::BOX) PhysicsQueries3D::overlapBox(scene, a, b, orientation, found, options);
+        else PhysicsQueries3D::overlapCapsule(scene, a, b, radius, found, options);
+        return sqReturnColliders(L, found, results, colliders);
     }
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
-    Vector2 pqVector2(lua_State* L, int index, const char* function, const char* name){
-        if (luabridge::isInstance<Vector2>(L, index)){
-            auto result = luabridge::get<Vector2>(L, index);
-            if (result){
-                return result.value();
-            }
-        }
-        luaL_error(L, "%s: %s (argument %d) must be a Vector2", function, name, index);
-        return Vector2(0.0f, 0.0f);
+    std::vector<ColliderRef2D>& sqColliderBuffer2D(){
+        static std::vector<ColliderRef2D> colliders;
+        return colliders;
     }
 
-    CapsuleDirection2D pqCapsuleDirection(lua_State* L, int index, const char* function){
-        const lua_Integer value = luaL_checkinteger(L, index);
-        if (value < 0 || value > 1){
-            luaL_error(L, "%s: argument %d must be a CapsuleDirection2D (Vertical or Horizontal)", function, index);
-        }
-        return (CapsuleDirection2D)value;
+    enum class SqShape2D { POINT, CIRCLE, BOX, CAPSULE, AREA };
+
+    Vector2 sqVector2(lua_State* L, int index, const char* function, const char* name){
+        return sqValue<Vector2>(L, index, function, name, "Vector2");
     }
 
-    const char* pqName2D(Shape shape, PqForm form){
-        static const char* names[5][3] = {
-            {"Physics2D.overlapPoint", "Physics2D.overlapPointAll", "Physics2D.overlapPointNonAlloc"},
-            {"Physics2D.overlapCircle", "Physics2D.overlapCircleAll", "Physics2D.overlapCircleNonAlloc"},
-            {"Physics2D.overlapBox", "Physics2D.overlapBoxAll", "Physics2D.overlapBoxNonAlloc"},
-            {"Physics2D.overlapCapsule", "Physics2D.overlapCapsuleAll", "Physics2D.overlapCapsuleNonAlloc"},
-            {"Physics2D.overlapArea", "Physics2D.overlapAreaAll", "Physics2D.overlapAreaNonAlloc"}};
-        return names[(int)shape - (int)Shape::Point2D][(int)form];
-    }
-
-    // the 2D shape's arguments from index 2 (scene units, degrees); returns the next index
-    int pqShape2D(lua_State* L, Shape type, const char* function, physics::QueryShape& shape){
-        shape.type = type;
+    // Physics2D.overlapPointNonAlloc(scene, point, results ...), overlapCircleNonAlloc(scene,
+    // point, radius, results ...), overlapBoxNonAlloc(scene, point, size, angle, results ...),
+    // overlapCapsuleNonAlloc(scene, point, size, capsuleDirection, angle, results ...),
+    // overlapAreaNonAlloc(scene, pointA, pointB, results ...), each then
+    // [, layerMask [, options [, colliders]]] -> count: overlap*All's colliders
+    template<SqShape2D S>
+    int sqOverlapNonAlloc2D(lua_State* L){
+        static const char* names[5] = {"Physics2D.overlapPointNonAlloc", "Physics2D.overlapCircleNonAlloc", "Physics2D.overlapBoxNonAlloc",
+                                       "Physics2D.overlapCapsuleNonAlloc", "Physics2D.overlapAreaNonAlloc"};
+        const char* function = names[(int)S];
+        Scene* scene = sqScene(L, function);
         int index = 2;
-        auto put = [&](physics::QueryShape& target, const Vector2& value, bool second){
-            (second ? target.b : target.a) = Vector3(value.x, value.y, 0.0f);
-        };
-        switch (type){
-            case Shape::Point2D:
-                put(shape, pqVector2(L, index++, function, "point"), false);
-                break;
-            case Shape::Circle2D:
-                put(shape, pqVector2(L, index++, function, "center"), false);
-                shape.radius = (float)luaL_checknumber(L, index++);
-                break;
-            case Shape::Box2D: {
-                put(shape, pqVector2(L, index++, function, "center"), false);
-                const Vector2 size = pqVector2(L, index++, function, "size");
-                shape.halfExtents = Vector3(size.x * 0.5f, size.y * 0.5f, 0.0f);
-                shape.angle = (float)luaL_optnumber(L, index++, 0.0);
-                break;
+        const Vector2 point = sqVector2(L, index++, function, S == SqShape2D::AREA ? "pointA" : "point");
+        sqCheck(L, function, S == SqShape2D::AREA ? "pointA" : "point", PhysicsQueries2D::invalidPoint(point));
+        Vector2 size, pointB;
+        float radius = 0.0f;
+        float angle = 0.0f;
+        CapsuleDirection2D capsuleDirection = CapsuleDirection2D::VERTICAL;
+        if constexpr (S == SqShape2D::CIRCLE){
+            radius = sqNumber(L, index++, function, "radius");
+            sqCheck(L, function, "radius", PhysicsQueries2D::invalidRadius(radius));
+        }else if constexpr (S == SqShape2D::BOX || S == SqShape2D::CAPSULE){
+            size = sqVector2(L, index++, function, "size");
+            sqCheck(L, function, "size", PhysicsQueries2D::invalidSize(size));
+            if constexpr (S == SqShape2D::CAPSULE){
+                const lua_Integer value = lua_isinteger(L, index) ? lua_tointeger(L, index) : -1;
+                if (value != (lua_Integer)CapsuleDirection2D::VERTICAL && value != (lua_Integer)CapsuleDirection2D::HORIZONTAL){
+                    return luaL_error(L, "%s: argument %d (capsuleDirection) must be CapsuleDirection2D.VERTICAL or HORIZONTAL", function, index);
+                }
+                capsuleDirection = (CapsuleDirection2D)value;
+                index++;
             }
-            case Shape::Capsule2D: {
-                put(shape, pqVector2(L, index++, function, "center"), false);
-                const Vector2 size = pqVector2(L, index++, function, "size");
-                shape.halfExtents = Vector3(size.x * 0.5f, size.y * 0.5f, 0.0f);
-                shape.direction2D = pqCapsuleDirection(L, index++, function);
-                shape.angle = (float)luaL_optnumber(L, index++, 0.0);
-                break;
-            }
-            default:
-                put(shape, pqVector2(L, index++, function, "pointA"), false);
-                put(shape, pqVector2(L, index++, function, "pointB"), true);
-                break;
+            angle = sqNumber(L, index++, function, "angle");
+        }else if constexpr (S == SqShape2D::AREA){
+            pointB = sqVector2(L, index++, function, "pointB");
+            sqCheck(L, function, "pointB", PhysicsQueries2D::invalidPoint(pointB));
+            sqCheck(L, function, "pointA, pointB", PhysicsQueries2D::invalidSize(Vector2(std::fabs(pointB.x - point.x), std::fabs(pointB.y - point.y))));
         }
-        return index;
-    }
+        const int results = sqTable(L, index++, function, "results", false);
+        const uint32_t layerMask = sqOptMask(L, index++, function);
+        const int optionsIndex = index++;
+        const int colliders = sqTable(L, index, function, "colliders", true);
 
-    // Physics2D.overlapX(scene, shape... [, layerMask [, qti [, ignore]]]) -> OverlapHit or nil
-    // Physics2D.overlapXAll(...) -> {OverlapHit}
-    // Physics2D.overlapXNonAlloc(scene, shape..., results [, layerMask [, qti [, colliders [, ignore]]]]) -> count
-    template<Shape S, PqForm F>
-    int pqOverlap2D(lua_State* L){
-        const char* function = pqName2D(S, F);
-        Scene* scene = pqScene(L, function);
-        physics::QueryShape shape;
-        int index = pqShape2D(L, S, function, shape);
-        int results = 0;
-        if constexpr (F == PqForm::NonAlloc){
-            luaL_checktype(L, index, LUA_TTABLE);
-            results = index++;
-        }
-        PhysicsQueryOptions options;
-        options.layerMask = pqOptMask(L, index++);
-        options.triggers = pqOptTriggers(L, index++, function);
-        int colliders = 0;
-        if constexpr (F == PqForm::NonAlloc){
-            colliders = pqOptTable(L, index++);
-        }
-        options.ignore = pqOptIgnore(L, index, function);
-
-        std::vector<OverlapHit>& hits = pqOverlapBuffer();
-        hits.clear();
-        if constexpr (F == PqForm::First){
-            // the C++ first form: no buffer, the first in (body, collider) order
-            const Vector2 a(shape.a.x, shape.a.y);
-            const Vector2 size(shape.halfExtents.x * 2.0f, shape.halfExtents.y * 2.0f);
-            OverlapHit first;
-            if constexpr (S == Shape::Point2D) first = Physics2D::overlapPoint(scene, a, options);
-            else if constexpr (S == Shape::Circle2D) first = Physics2D::overlapCircle(scene, a, shape.radius, options);
-            else if constexpr (S == Shape::Box2D) first = Physics2D::overlapBox(scene, a, size, shape.angle, options);
-            else if constexpr (S == Shape::Capsule2D) first = Physics2D::overlapCapsule(scene, a, size, shape.direction2D, shape.angle, options);
-            else first = Physics2D::overlapArea(scene, a, Vector2(shape.b.x, shape.b.y), options);
-            if (first.hit){
-                hits.push_back(first);
-            }
-        }else{
-            physics::queryOverlap(scene, shape, options, hits);
-        }
-        return pqReturnOverlap(L, F, hits, results, colliders);
-    }
-
-    // Physics2D.circleCast(scene, origin, radius, direction, distance [, layerMask [, qti [, ignore]]])
-    // Physics2D.boxCast(scene, origin, size, angle, direction, distance [, ...])
-    // Physics2D.capsuleCast(scene, origin, size, capsuleDirection, angle, direction, distance [, ...])
-    template<Shape S, bool all>
-    int pqCast2D(lua_State* L){
-        static const char* names[3][2] = {{"Physics2D.circleCast", "Physics2D.circleCastAll"}, {"Physics2D.boxCast", "Physics2D.boxCastAll"},
-                                          {"Physics2D.capsuleCast", "Physics2D.capsuleCastAll"}};
-        const char* function = names[(int)S - (int)Shape::Circle2D][all ? 1 : 0];
-        Scene* scene = pqScene(L, function);
-        physics::QueryShape shape;
-        int index = pqShape2D(L, S, function, shape);
-        const Vector2 direction = pqVector2(L, index++, function, "direction");
-        const float distance = (float)luaL_checknumber(L, index++);
-        PhysicsQueryOptions options;
-        options.layerMask = pqOptMask(L, index++);
-        options.triggers = pqOptTriggers(L, index++, function);
-        options.ignore = pqOptIgnore(L, index, function);
-
-        const Vector2 origin(shape.a.x, shape.a.y);
-        const Vector2 size(shape.halfExtents.x * 2.0f, shape.halfExtents.y * 2.0f);
-        std::vector<RayReturn>& hits = pqCastBuffer();
-        if constexpr (S == Shape::Circle2D){
-            if (all) Physics2D::circleCastAll(scene, origin, shape.radius, direction, distance, hits, options);
-            else pqPushRayReturn(L, Physics2D::circleCast(scene, origin, shape.radius, direction, distance, options));
-        }else if constexpr (S == Shape::Box2D){
-            if (all) Physics2D::boxCastAll(scene, origin, size, shape.angle, direction, distance, hits, options);
-            else pqPushRayReturn(L, Physics2D::boxCast(scene, origin, size, shape.angle, direction, distance, options));
-        }else{
-            if (all) Physics2D::capsuleCastAll(scene, origin, size, shape.direction2D, shape.angle, direction, distance, hits, options);
-            else pqPushRayReturn(L, Physics2D::capsuleCast(scene, origin, size, shape.direction2D, shape.angle, direction, distance, options));
-        }
-        if (all){
-            pqPushArray(L, hits);
-        }
-        return 1;
+        QueryOptions options;
+        std::vector<Entity> ignore;
+        luaphysics::readQueryOptions(L, optionsIndex, function, true, options, ignore);
+        options.layerMask = layerMask;
+        std::vector<ColliderRef2D>& found = sqColliderBuffer2D();
+        if constexpr (S == SqShape2D::POINT) PhysicsQueries2D::overlapPointAll(scene, point, found, options);
+        else if constexpr (S == SqShape2D::CIRCLE) PhysicsQueries2D::overlapCircleAll(scene, point, radius, found, options);
+        else if constexpr (S == SqShape2D::BOX) PhysicsQueries2D::overlapBoxAll(scene, point, size, angle, found, options);
+        else if constexpr (S == SqShape2D::CAPSULE) PhysicsQueries2D::overlapCapsuleAll(scene, point, size, capsuleDirection, angle, found, options);
+        else PhysicsQueries2D::overlapAreaAll(scene, point, pointB, found, options);
+        return sqReturnColliders(L, found, results, colliders);
     }
 #endif
 
     // { kinds = MeshRaycast.MESH | ..., includeInactive = false, ignore = {e1, e2}, current = false }
-    MeshRaycastOptions& pqMeshOptions(lua_State* L, int index, const char* function){
+    MeshRaycastOptions& sqMeshOptions(lua_State* L, int index, const char* function){
         static MeshRaycastOptions options;
         options = MeshRaycast::overlapOptions();
         options.ignore.clear();
@@ -500,8 +332,8 @@ namespace {
         lua_getfield(L, index, "ignore");
         const int ignore = lua_gettop(L);
         if (!lua_isnil(L, ignore)){
-            pqOptIgnore(L, ignore, function);
-            options.ignore.assign(pqIgnoreBuffer().begin(), pqIgnoreBuffer().end());
+            sqIgnore(L, ignore, function);
+            options.ignore.assign(sqIgnoreBuffer().begin(), sqIgnoreBuffer().end());
         }
         lua_pop(L, 1);
         return options;
@@ -512,162 +344,112 @@ namespace {
     // MeshRaycast.overlapBox(scene, center, halfExtents [, rotation [, layerMask [, options]]]) -> {MeshOverlapHit}
     // MeshRaycast.overlapBoxNonAlloc(scene, center, halfExtents, rotation, results [, layerMask [, options]]) -> count
     template<bool box, bool nonAlloc>
-    int pqMeshOverlap(lua_State* L){
+    int sqMeshOverlap(lua_State* L){
         static const char* names[2][2] = {{"MeshRaycast.overlapSphere", "MeshRaycast.overlapSphereNonAlloc"},
                                           {"MeshRaycast.overlapBox", "MeshRaycast.overlapBoxNonAlloc"}};
         const char* function = names[box ? 1 : 0][nonAlloc ? 1 : 0];
-        Scene* scene = pqScene(L, function);
+        Scene* scene = sqScene(L, function);
         int index = 2;
-        const Vector3 center = pqVector3(L, index++, function, "center");
+        const Vector3 center = sqVector3(L, index++, function, "center");
         Vector3 halfExtents;
         float radius = 0.0f;
         Quaternion rotation = Quaternion::IDENTITY;
         if constexpr (box){
-            halfExtents = pqVector3(L, index++, function, "halfExtents");
+            halfExtents = sqVector3(L, index++, function, "halfExtents");
             if (nonAlloc){
                 if (!luabridge::isInstance<Quaternion>(L, index)){
                     return luaL_error(L, "%s: rotation (argument %d) must be a Quaternion", function, index);
                 }
             }
-            rotation = pqOptRotation(L, index++, function);
+            rotation = sqOptRotation(L, index++, function);
         }else{
             radius = (float)luaL_checknumber(L, index++);
         }
         int results = 0;
         if constexpr (nonAlloc){
-            luaL_checktype(L, index, LUA_TTABLE);
-            results = index++;
+            results = sqTable(L, index++, function, "results", false);
         }
-        const uint32_t layerMask = pqOptMask(L, index++);
-        const MeshRaycastOptions& options = pqMeshOptions(L, index, function);
+        const uint32_t layerMask = sqOptMask(L, index++, function);
+        const MeshRaycastOptions& options = sqMeshOptions(L, index, function);
 
-        std::vector<MeshOverlapHit>& hits = pqMeshBuffer();
+        std::vector<MeshOverlapHit>& hits = sqMeshBuffer();
         if constexpr (box){
             MeshRaycast::overlapBox(scene, center, halfExtents, rotation, hits, layerMask, options);
         }else{
             MeshRaycast::overlapSphere(scene, center, radius, hits, layerMask, options);
         }
         if constexpr (nonAlloc){
-            pqFillTable(L, results, hits.size(), [&](size_t i){ return (lua_Integer)hits[i].entity; });
+            sqFillTable(L, results, hits.size(), [&](size_t i){ return (lua_Integer)hits[i].entity; });
             lua_pushinteger(L, (lua_Integer)hits.size());
         }else{
-            pqPushArray(L, hits);
+            lua_createtable(L, (int)hits.size(), 0);
+            for (size_t i = 0; i < hits.size(); i++){
+                if (!luabridge::push(L, hits[i])){
+                    lua_pushnil(L);
+                }
+                lua_rawseti(L, -2, (lua_Integer)(i + 1));
+            }
         }
         return 1;
     }
 
-    lua_Integer pqOverlapHitBody(const OverlapHit* hit){ return (lua_Integer)hit->body; }
-    lua_Integer pqOverlapHitCollider(const OverlapHit* hit){ return (lua_Integer)hit->colliderIndex; }
-    bool pqOverlapHitTrigger(const OverlapHit* hit){ return hit->trigger; }
-    lua_Integer pqMeshOverlapEntity(const MeshOverlapHit* hit){ return (lua_Integer)hit->entity; }
-    lua_Integer pqMeshOverlapKind(const MeshOverlapHit* hit){ return (lua_Integer)(1u << (uint32_t)hit->kind); }
-    lua_Integer pqMeshOverlapInstance(const MeshOverlapHit* hit){ return (lua_Integer)hit->instance; }
-    lua_Integer pqMeshRaycastTree(){ return MeshRaycast::TREE; }
-    lua_Integer pqMeshRaycastDetail(){ return MeshRaycast::DETAIL; }
-    lua_Integer pqMeshOverlapFoliageId(const MeshOverlapHit* hit){ return (lua_Integer)hit->foliageId; }
-    lua_Integer pqMeshOverlapPrototype(const MeshOverlapHit* hit){ return (lua_Integer)hit->prototype; }
+    lua_Integer sqMeshOverlapEntity(const MeshOverlapHit* hit){ return (lua_Integer)hit->entity; }
+    lua_Integer sqMeshOverlapKind(const MeshOverlapHit* hit){ return (lua_Integer)(1u << (uint32_t)hit->kind); }
+    lua_Integer sqMeshOverlapInstance(const MeshOverlapHit* hit){ return (lua_Integer)hit->instance; }
+    lua_Integer sqMeshRaycastTree(){ return MeshRaycast::TREE; }
+    lua_Integer sqMeshRaycastDetail(){ return MeshRaycast::DETAIL; }
+    lua_Integer sqMeshOverlapFoliageId(const MeshOverlapHit* hit){ return (lua_Integer)hit->foliageId; }
+    lua_Integer sqMeshOverlapPrototype(const MeshOverlapHit* hit){ return (lua_Integer)hit->prototype; }
 
 }
 #endif
 
-void LuaBinding::registerPhysicsQueryClasses(lua_State* L){
+void LuaBinding::registerSpatialQueryClasses(lua_State* L){
 #ifndef DISABLE_LUA_BINDINGS
-    // Unity's QueryTriggerInteraction (whether a query reports triggers)
-    luabridge::getGlobalNamespace(L)
-        .beginNamespace("QueryTriggerInteraction")
-        .addVariable("UseGlobal", QueryTriggerInteraction::UseGlobal)
-        .addVariable("Ignore", QueryTriggerInteraction::Ignore)
-        .addVariable("Collide", QueryTriggerInteraction::Collide)
-        .endNamespace();
-
-    // Unity's CapsuleDirection2D (the axis of a 2D capsule's round ends)
-    luabridge::getGlobalNamespace(L)
-        .beginNamespace("CapsuleDirection2D")
-        .addVariable("Vertical", CapsuleDirection2D::Vertical)
-        .addVariable("Horizontal", CapsuleDirection2D::Horizontal)
-        .endNamespace();
-
-    luabridge::getGlobalNamespace(L)
-        .beginClass<OverlapHit>("OverlapHit")
-        .addProperty("body", &pqOverlapHitBody)
-        .addProperty("colliderIndex", &pqOverlapHitCollider)
-        .addProperty("isTrigger", &pqOverlapHitTrigger)
-        .endClass();
-
+    // what MeshRaycast's overlaps return (its fields: docs/scripting/spatial-queries.md)
     luabridge::getGlobalNamespace(L)
         .beginClass<MeshOverlapHit>("MeshOverlapHit")
-        .addProperty("entity", &pqMeshOverlapEntity)
-        .addProperty("kind", &pqMeshOverlapKind)
-        .addProperty("instance", &pqMeshOverlapInstance)
-        // a TREE hit's tree id (Terrain:removeTreeInstance takes it), 0 otherwise
-        .addProperty("foliageId", &pqMeshOverlapFoliageId)
-        // a TREE hit's prototype, a DETAIL hit's layer, -1 otherwise
-        .addProperty("prototype", &pqMeshOverlapPrototype)
+        .addProperty("entity", &sqMeshOverlapEntity)
+        .addProperty("kind", &sqMeshOverlapKind)
+        .addProperty("instance", &sqMeshOverlapInstance)
+        // TREE: the tree's id on its Terrain (Terrain:removeTreeInstance takes it); 0 otherwise
+        .addProperty("foliageId", &sqMeshOverlapFoliageId)
+        // TREE: the tree prototype's index; DETAIL: the detail layer's; -1 otherwise
+        .addProperty("prototype", &sqMeshOverlapPrototype)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
         .beginClass<Physics>("Physics")
-        // what QueryTriggerInteraction.UseGlobal means for every 3D query, raycast included
-        .addStaticProperty("queriesHitTriggers", &Physics::getQueriesHitTriggers, &Physics::setQueriesHitTriggers)
-        // the main thread's recent queries, drawn for 1 s in both views (not saved)
+        // draws the main thread's queries for 1 s through the physics debug lines (not saved)
         .addStaticProperty("debugDrawQueries", &Physics::isDebugDrawQueries, &Physics::setDebugDrawQueries)
 #ifdef JASPERENGINE_PHYSICS_3D
-        .addStaticFunction("overlapSphere", &pqOverlap3D<Shape::Sphere, PqForm::All>)
-        .addStaticFunction("overlapBox", &pqOverlap3D<Shape::Box, PqForm::All>)
-        .addStaticFunction("overlapCapsule", &pqOverlap3D<Shape::Capsule, PqForm::All>)
-        .addStaticFunction("overlapSphereNonAlloc", &pqOverlap3D<Shape::Sphere, PqForm::NonAlloc>)
-        .addStaticFunction("overlapBoxNonAlloc", &pqOverlap3D<Shape::Box, PqForm::NonAlloc>)
-        .addStaticFunction("overlapCapsuleNonAlloc", &pqOverlap3D<Shape::Capsule, PqForm::NonAlloc>)
-        .addStaticFunction("checkSphere", &pqOverlap3D<Shape::Sphere, PqForm::Check>)
-        .addStaticFunction("checkBox", &pqOverlap3D<Shape::Box, PqForm::Check>)
-        .addStaticFunction("checkCapsule", &pqOverlap3D<Shape::Capsule, PqForm::Check>)
-        .addStaticFunction("sphereCast", &pqCast3D<Shape::Sphere, false>)
-        .addStaticFunction("boxCast", &pqCast3D<Shape::Box, false>)
-        .addStaticFunction("capsuleCast", &pqCast3D<Shape::Capsule, false>)
-        .addStaticFunction("sphereCastAll", &pqCast3D<Shape::Sphere, true>)
-        .addStaticFunction("boxCastAll", &pqCast3D<Shape::Box, true>)
-        .addStaticFunction("capsuleCastAll", &pqCast3D<Shape::Capsule, true>)
+        .addStaticFunction("overlapSphereNonAlloc", &sqOverlapNonAlloc3D<SqShape3D::SPHERE>)
+        .addStaticFunction("overlapBoxNonAlloc", &sqOverlapNonAlloc3D<SqShape3D::BOX>)
+        .addStaticFunction("overlapCapsuleNonAlloc", &sqOverlapNonAlloc3D<SqShape3D::CAPSULE>)
 #endif
         .endClass();
 
+#ifdef JASPERENGINE_PHYSICS_2D
     luabridge::getGlobalNamespace(L)
         .beginClass<Physics2D>("Physics2D")
-        .addStaticProperty("queriesHitTriggers", &Physics2D::getQueriesHitTriggers, &Physics2D::setQueriesHitTriggers)
-#ifdef JASPERENGINE_PHYSICS_2D
-        .addStaticFunction("overlapPoint", &pqOverlap2D<Shape::Point2D, PqForm::First>)
-        .addStaticFunction("overlapPointAll", &pqOverlap2D<Shape::Point2D, PqForm::All>)
-        .addStaticFunction("overlapPointNonAlloc", &pqOverlap2D<Shape::Point2D, PqForm::NonAlloc>)
-        .addStaticFunction("overlapCircle", &pqOverlap2D<Shape::Circle2D, PqForm::First>)
-        .addStaticFunction("overlapCircleAll", &pqOverlap2D<Shape::Circle2D, PqForm::All>)
-        .addStaticFunction("overlapCircleNonAlloc", &pqOverlap2D<Shape::Circle2D, PqForm::NonAlloc>)
-        .addStaticFunction("overlapBox", &pqOverlap2D<Shape::Box2D, PqForm::First>)
-        .addStaticFunction("overlapBoxAll", &pqOverlap2D<Shape::Box2D, PqForm::All>)
-        .addStaticFunction("overlapBoxNonAlloc", &pqOverlap2D<Shape::Box2D, PqForm::NonAlloc>)
-        .addStaticFunction("overlapCapsule", &pqOverlap2D<Shape::Capsule2D, PqForm::First>)
-        .addStaticFunction("overlapCapsuleAll", &pqOverlap2D<Shape::Capsule2D, PqForm::All>)
-        .addStaticFunction("overlapCapsuleNonAlloc", &pqOverlap2D<Shape::Capsule2D, PqForm::NonAlloc>)
-        .addStaticFunction("overlapArea", &pqOverlap2D<Shape::Area2D, PqForm::First>)
-        .addStaticFunction("overlapAreaAll", &pqOverlap2D<Shape::Area2D, PqForm::All>)
-        .addStaticFunction("overlapAreaNonAlloc", &pqOverlap2D<Shape::Area2D, PqForm::NonAlloc>)
-        .addStaticFunction("circleCast", &pqCast2D<Shape::Circle2D, false>)
-        .addStaticFunction("boxCast", &pqCast2D<Shape::Box2D, false>)
-        .addStaticFunction("capsuleCast", &pqCast2D<Shape::Capsule2D, false>)
-        .addStaticFunction("circleCastAll", &pqCast2D<Shape::Circle2D, true>)
-        .addStaticFunction("boxCastAll", &pqCast2D<Shape::Box2D, true>)
-        .addStaticFunction("capsuleCastAll", &pqCast2D<Shape::Capsule2D, true>)
-#endif
+        .addStaticFunction("overlapPointNonAlloc", &sqOverlapNonAlloc2D<SqShape2D::POINT>)
+        .addStaticFunction("overlapCircleNonAlloc", &sqOverlapNonAlloc2D<SqShape2D::CIRCLE>)
+        .addStaticFunction("overlapBoxNonAlloc", &sqOverlapNonAlloc2D<SqShape2D::BOX>)
+        .addStaticFunction("overlapCapsuleNonAlloc", &sqOverlapNonAlloc2D<SqShape2D::CAPSULE>)
+        .addStaticFunction("overlapAreaNonAlloc", &sqOverlapNonAlloc2D<SqShape2D::AREA>)
         .endClass();
+#endif
 
     luabridge::getGlobalNamespace(L)
         .beginClass<MeshRaycast>("MeshRaycast")
         // a Terrain's trees: a default kind of rays and overlaps
-        .addStaticProperty("TREE", &pqMeshRaycastTree)
+        .addStaticProperty("TREE", &sqMeshRaycastTree)
         // a Terrain's details (grass): only when kinds asks
-        .addStaticProperty("DETAIL", &pqMeshRaycastDetail)
-        .addStaticFunction("overlapSphere", &pqMeshOverlap<false, false>)
-        .addStaticFunction("overlapSphereNonAlloc", &pqMeshOverlap<false, true>)
-        .addStaticFunction("overlapBox", &pqMeshOverlap<true, false>)
-        .addStaticFunction("overlapBoxNonAlloc", &pqMeshOverlap<true, true>)
+        .addStaticProperty("DETAIL", &sqMeshRaycastDetail)
+        .addStaticFunction("overlapSphere", &sqMeshOverlap<false, false>)
+        .addStaticFunction("overlapSphereNonAlloc", &sqMeshOverlap<false, true>)
+        .addStaticFunction("overlapBox", &sqMeshOverlap<true, false>)
+        .addStaticFunction("overlapBoxNonAlloc", &sqMeshOverlap<true, true>)
         .endClass();
 #else
     (void)L;

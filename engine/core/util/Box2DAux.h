@@ -81,8 +81,8 @@ namespace jasperengine{
         const std::vector<Entity>* ignoreEntities = nullptr;
         // query mask tested against the collider category bits
         uint16_t maskBits = 0xFFFF;
-        // false skips sensor shapes (QueryTriggerInteraction)
-        bool hitTriggers = true;
+        // S96 queries: sensor shapes (Unity triggers) are not hits
+        bool skipSensors = false;
     };
 
 
@@ -155,7 +155,7 @@ namespace jasperengine{
                 return -1.0f;
             }
 
-            if (!ctx->hitTriggers && b2Shape_IsSensor(shapeId)){
+            if (ctx->skipSensors && b2Shape_IsSensor(shapeId)){
                 return -1.0f;
             }
 

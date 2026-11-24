@@ -89,4 +89,4 @@ meshes, instances, skinned and morphed meshes as posed, terrains, UI rects; poin
 particles by their bounds). The default layer mask is every layer but Ignore Raycast.
 `MeshRaycast.overlapSphere(scene, center, radius [, mask [, options]])` / `overlapBox(scene, center,
 halfExtents [, rotation, ...])` (+ `NonAlloc`) list what is drawn by its bounds, no colliders
-needed (frame snapshot unless `options.current`); `query_physics {world: drawn}` from MCP.
+needed (frame snapshot unless `options.current`); `query_physics {dimension: "drawn"}` from MCP.

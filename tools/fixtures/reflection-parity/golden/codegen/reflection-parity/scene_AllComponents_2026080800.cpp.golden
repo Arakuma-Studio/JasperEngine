@@ -1516,7 +1516,6 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         TextComponent text;
         text.font[0] = "fonts/Parity.ttf";
         text.text = "text: [1, 2]";
-        text.localizationKey = "";
         text.fontSize = 20;
         text.multiline = false;
         text.maxTextSize = 100;
@@ -3521,8 +3520,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     }
 
     {
-        // Entity 1105 (SimulationCullingComponent)
-        scene->setEntityName(1105, "SimulationCullingComponent");
+        // Entity 1105 (WheelColliderComponent)
+        scene->setEntityName(1105, "WheelColliderComponent");
 
         // Entity components initialization
         Transform transform;
@@ -3537,24 +3536,29 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         transform.parent = NULL_ENTITY;
         scene->addComponent<Transform>(1105, transform);
 
-        SimulationCullingComponent simulationCulling;
-        simulationCulling.enabled = false;
-        simulationCulling.simulationDistance = 8.500000f;
-        simulationCulling.reducedRateDistance = 6.400000f;
-        simulationCulling.reducedUpdateInterval = 3;
-        simulationCulling.hysteresis = 4.300000f;
-        simulationCulling.boundsRadius = 3.800000f;
-        simulationCulling.simulateWhenVisible = false;
-        simulationCulling.freezeWhenGroundNotLoaded = false;
-        simulationCulling.cullScripts = false;
-        simulationCulling.cullAnimator = false;
-        simulationCulling.cullPhysics = false;
-        scene->addComponent<SimulationCullingComponent>(1105, simulationCulling);
+#ifdef JASPERENGINE_PHYSICS_3D
+        WheelColliderComponent wheelCollider;
+        wheelCollider.enabled = false;
+        wheelCollider.mass = 25.000000f;
+        wheelCollider.radius = 0.350000f;
+        wheelCollider.wheelDampingRate = 0.500000f;
+        wheelCollider.suspensionDistance = 0.400000f;
+        wheelCollider.forceAppPointDistance = 0.100000f;
+        wheelCollider.center = Vector3(0.000000f, 0.100000f, 0.000000f);
+        wheelCollider.maxSteerAngle = 35.000000f;
+        wheelCollider.maxBrakeTorque = 2000.000000f;
+        wheelCollider.maxHandBrakeTorque = 3000.000000f;
+        wheelCollider.driveTransform = false;
+        wheelCollider.suspensionSpring = JointSpring3D{50000.000000f, 4000.000000f, 0.400000f};
+        wheelCollider.forwardFriction = WheelFrictionCurve{0.300000f, 1.200000f, 0.900000f, 0.600000f, 1.100000f};
+        wheelCollider.sidewaysFriction = WheelFrictionCurve{0.250000f, 1.100000f, 0.600000f, 0.700000f, 1.300000f};
+        scene->addComponent<WheelColliderComponent>(1105, wheelCollider);
+#endif // JASPERENGINE_PHYSICS_3D
     }
 
     {
-        // Entity 1106 (DialogueRunnerComponent)
-        scene->setEntityName(1106, "DialogueRunnerComponent");
+        // Entity 1106 (VehicleDrivetrainComponent)
+        scene->setEntityName(1106, "VehicleDrivetrainComponent");
 
         // Entity components initialization
         Transform transform;
@@ -3569,12 +3573,32 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         transform.parent = NULL_ENTITY;
         scene->addComponent<Transform>(1106, transform);
 
-        DialogueRunnerComponent dialogueRunner;
-        dialogueRunner.dialogue = "";
-        dialogueRunner.startEntry = "Reflection parity";
-        dialogueRunner.autoStart = true;
-        dialogueRunner.seed = 0;
-        scene->addComponent<DialogueRunnerComponent>(1106, dialogueRunner);
+#ifdef JASPERENGINE_PHYSICS_3D
+        VehicleDrivetrainComponent vehicleDrivetrain;
+        vehicleDrivetrain.enabled = false;
+        vehicleDrivetrain.maxTorque = 300.000000f;
+        vehicleDrivetrain.minRPM = 900.000000f;
+        vehicleDrivetrain.maxRPM = 6500.000000f;
+        vehicleDrivetrain.torqueCurve = Curve({CurveKey{0.0f, 0.8f, 0.30303028f, 0.30303028f, 0}, CurveKey{0.66f, 1.0f, 0.30303028f, -0.5882353f, 0}, CurveKey{1.0f, 0.8f, -0.5882353f, -0.5882353f, 0}});
+        vehicleDrivetrain.engineInertia = 0.500000f;
+        vehicleDrivetrain.engineDamping = 0.200000f;
+        vehicleDrivetrain.transmission = VehicleTransmissionMode::MANUAL;
+        vehicleDrivetrain.gearRatios.clear();
+        vehicleDrivetrain.gearRatios.push_back(3.000000f);
+        vehicleDrivetrain.gearRatios.push_back(2.000000f);
+        vehicleDrivetrain.gearRatios.push_back(1.400000f);
+        vehicleDrivetrain.reverseGearRatios.clear();
+        vehicleDrivetrain.reverseGearRatios.push_back(-2.500000f);
+        vehicleDrivetrain.switchTime = 0.500000f;
+        vehicleDrivetrain.clutchReleaseTime = 0.300000f;
+        vehicleDrivetrain.switchLatency = 0.500000f;
+        vehicleDrivetrain.shiftUpRPM = 5000.000000f;
+        vehicleDrivetrain.shiftDownRPM = 2500.000000f;
+        vehicleDrivetrain.clutchStrength = 8.000000f;
+        vehicleDrivetrain.differentialLimitedSlipRatio = 1.400000f;
+        vehicleDrivetrain.maxPitchRollAngle = 60.000000f;
+        scene->addComponent<VehicleDrivetrainComponent>(1106, vehicleDrivetrain);
+#endif // JASPERENGINE_PHYSICS_3D
     }
 
     // Default Camera 1

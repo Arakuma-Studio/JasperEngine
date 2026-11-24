@@ -127,6 +127,8 @@ typedef struct b2World
 	float hitEventThreshold;
 	float restitutionThreshold;
 	float maxLinearSpeed;
+	// JASPER PATCH: max rotation
+	float maxRotation;
 	float contactPushSpeed;
 	float contactHertz;
 	float contactDampingRatio;

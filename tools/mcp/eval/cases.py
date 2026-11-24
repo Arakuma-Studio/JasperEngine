@@ -1573,6 +1573,91 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_physics_overlap_query",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "S96 REQ-17/REQ-47 added query_physics (physics group): an agent asked what is near a GameObject "
+                         "in the running game overlaps the colliders once instead of casting a fan of rays from eval_lua.",
+        "text_at_issue": "query_physics description ('ray/sphere/box/capsule/point cast, cast_all, overlap or check'); the "
+                         "physics group's line ('physics queries in Play'); docs/mcp/guide/physics.md 'Shape casts and overlaps'",
+        "source": "docs/specs/S96-physics-gaps.md REQ-47 (new tool; the port's scripts cast ray fans for proximity)",
+        "prompt": "The game is playing. Is anything within 2 m of the Player right now? Check the physics colliders and "
+                  "name what you find.",
+        "mocks": [
+            {"tool": "query_physics", "args": {"mode": "overlap", "shape": "sphere"}, "result": ok(
+                "2 collider(s) overlap.",
+                {"dimension": "3d", "shape": "sphere", "mode": "overlap",
+                 "hits": [{"entity": 12, "name": "Player", "collider": 0}, {"entity": 15, "name": "Crate", "collider": 0}]})},
+            {"tool": "query_physics", "result": ok(
+                "1 hit(s), nearest Crate at 1.4.",
+                {"dimension": "3d", "shape": "ray", "mode": "cast", "hits": [{"entity": 15, "name": "Crate", "collider": 0,
+                 "point": [1.4, 0.5, 0], "normal": [-1, 0, 0], "distance": 1.4}]})},
+            {"tool": "get_runtime_entity", "result": ok(
+                "GameObject 12 \"Player\" (playing): transform position [0, 0.5, 0], rigidbody dynamic.",
+                {"id": 12, "components": {"transform": {"position": [0, 0.5, 0]}}})},
+            {"tool": "list_runtime_entities", "result": ok(
+                "5 GameObjects: 10 Camera, 11 Ground, 12 Player, 14 Enemy, 15 Crate.",
+                {"entities": [{"id": 12, "name": "Player", "path": "Player"}, {"id": 15, "name": "Crate", "path": "Crate"}]})},
+        ],
+        "checks": {"any_of": [
+                       {"calls": [{"tool": "query_physics", "args": {"mode": "overlap", "shape": "sphere", "radius": 2}}]},
+                       {"calls": [{"tool": "query_physics", "args": {"mode": "overlap"}}]},
+                       {"calls": [{"tool": "eval_lua", "args": {"code": "re:overlapSphere|checkSphere"}}]}],
+                   "must_not_call": [{"tool": "eval_lua", "args": {"code": "re:raycast"}}],
+                   "reply_must": [r"Crate"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_decompose_mesh_collider",
+        "kind": "guard",
+        "what_happened": "S96 REQ-20/REQ-47: Jolt moves no mesh collider. Told a dynamic body with a Mesh collider will not "
+                         "move, an agent asked to keep its shape decomposes the mesh into convex hulls (edit_colliders "
+                         "decompose) instead of one convex hull or a box that changes the shape.",
+        "text_at_issue": "edit_colliders 'Add/update/remove/decompose' and its `decompose` parameter ('mesh to hulls'); "
+                         "the static-only error naming Decompose Into Convex Hulls; docs/mcp/guide/physics.md '3D bodies'",
+        "source": "docs/specs/S96-physics-gaps.md REQ-20, REQ-47 (the port converted concave meshes to static bodies)",
+        "prompt": "The Rock in scene 1 should fall and tumble, but Play logs: Rigidbody 'Rock' cannot be dynamic: its "
+                  "collider 0 (Mesh) is static-only. Fix its collider so it can be dynamic, keeping its concave shape "
+                  "as close as you can.",
+        "mocks": [
+            {"tool": "edit_colliders", "args": {"decompose": {}}, "result": ok(
+                "Decomposed into 7 convex hull collider(s) (undo: Decompose Collider (Rock)).",
+                {"job_id": "3", "status": "succeeded", "hulls": 7, "undo_name": "Decompose Collider (Rock)",
+                 "colliders": [{"shape": "convex_hull", "center": [0, 0, 0], "rotation": [0, 0, 0, 1], "density": 1000, "vertices": 48}]})},
+            {"tool": "edit_colliders", "result": ok(
+                "\"Rock\" has 1 collider(s).",
+                {"entity": {"id": 9, "name": "Rock", "path": "Rock"}, "dimension": "3d", "body_type": "dynamic",
+                 "colliders": [{"shape": "mesh", "center": [0, 0, 0], "rotation": [0, 0, 0, 1], "density": 1000,
+                                "source": {"id": 9, "name": "Rock", "path": "Rock"}}]})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "edit_colliders", "args": {"decompose": {"index": 0}}}]}],
+                   "must_not_call": [{"tool": "edit_colliders", "args": {"update": [{"shape": "convex_hull"}]}},
+                                     {"tool": "edit_colliders", "args": {"add": [{"shape": "box"}]}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_query_physics_needs_play",
+        "kind": "guard",
+        "groups_enabled": ["physics"],
+        "what_happened": "S96 REQ-17: query_physics reads the bodies the running game built (none exist at edit time); its "
+                         "error names play, so the agent starts Play and asks again instead of giving up or guessing from "
+                         "the Transforms.",
+        "text_at_issue": "query_physics error: 'query_physics reads the running physics world: start Play first (play).'",
+        "source": "docs/specs/S96-physics-gaps.md REQ-17, AC-16 (new tool; no failure on record)",
+        "prompt": "Using the physics colliders, tell me which GameObject a ray straight down from (0, 10, 0) hits first.",
+        "mocks": [
+            {"tool": "query_physics", "after": "play", "result": ok(
+                "1 hit(s), nearest Ground at 10.",
+                {"dimension": "3d", "shape": "ray", "mode": "cast", "hits": [{"entity": 11, "name": "Ground", "collider": 0,
+                 "point": [0, 0, 0], "normal": [0, 1, 0], "distance": 10.0}]})},
+            {"tool": "query_physics", "result": err("query_physics reads the running physics world: start Play first (play).")},
+            {"tool": "play", "result": ok("Playing scene 1 \"Main\".", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+        ],
+        "checks": {"order": [[{"tool": "play", "args": {"action": "start"}}, {"tool": "query_physics", "args": {"shape": "ray"}}]],
+                   "reply_must": [r"Ground"]},
+        "max_turns": 12,
+    },
+    {
         "id": "guard_shader_library_first",
         "kind": "guard",
         "what_happened": "A forked shader was edited without reading it and lost its samplers (git cf12fd6cc); the guide says "
@@ -2812,6 +2897,44 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "bad_muffle_one_source_with_a_group",
+        "kind": "bad",
+        "what_happened": "S97: muffling one sound (a radio, a voice behind a door) took a new mixer group with a low-pass and "
+                         "a reroute, since sources had no effects; that group's filter then catches every other source sent "
+                         "to it. A source now holds its own effects (Unity's Audio Low Pass Filter).",
+        "text_at_issue": "docs/mcp/guide/audio.md 7: 'Effects on one source' (to muffle one source, its own effects)",
+        "source": "S97 REQ-43 (a), spec-first",
+        "groups_enabled": ["audio"],
+        "prompt": "The Radio GameObject plays a song through its Audio Source, on the Music group with the level's music. "
+                  "Make the radio sound muffled, as if it were in the next room. The level's music must stay clear.",
+        "mocks": [
+            {"tool": "get_entity", "result": ok(
+                "Radio (entity 7): Transform, AudioSource {filename: music/radio.ogg, outputGroup: Music, looping: true}",
+                {"entity": 7, "name": "Radio", "components": {"transform": {}, "audiosource": {
+                    "filename": "music/radio.ogg", "outputGroup": "Music", "looping": True, "volume": 1}}})},
+            {"tool": "audio_mixer", "args": {"action": "get"}, "result": ok(
+                "audio/Main.mixer (the project's mixer). Groups: Master, Music, SFX. Exposed: none. Snapshots: none.",
+                {"mixer": "audio/Main.mixer", "groups": [{"name": "Master", "effects": [{"type": "limiter"}]},
+                                                         {"name": "Music", "effects": []}, {"name": "SFX", "effects": []}]})},
+            {"tool": "set_properties", "result": ok(
+                "Set 1 property on 1 GameObject(s) (one undo step).", {"entities": [{"entity": 7, "name": "Radio"}]})},
+            {"tool": "add_component", "result": ok(
+                "Added 1 component(s) (one undo step).",
+                {"added": [{"entity": 7, "component": "audiosource", "effect": "lowpass"}], "skipped": []})},
+        ],
+        # the source's own effects, by any spelling of the component (set_properties' values or changes), or
+        # Unity's filter by name; never a group edit
+        "checks": {"any_of": [
+            *[{"calls": [{"tool": "set_properties", "args": {"values": {key: {"effects": "*"}}}}],
+               "must_not_call": [{"tool": "audio_mixer", "args": {"action": "edit"}}]}
+              for key in ("audiosource", "AudioSource", "AudioSourceComponent", "audio_source", "Audio Source")],
+            {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "re:^effects"}]}}],
+             "must_not_call": [{"tool": "audio_mixer", "args": {"action": "edit"}}]},
+            {"calls": [{"tool": "add_component", "args": {"component": "re:(?i)low ?pass"}}],
+             "must_not_call": [{"tool": "audio_mixer", "args": {"action": "edit"}}]}]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_sound_too_quiet_no_measure",
         "groups_enabled": ["audio"],
         "files": {"assets/sfx/jump.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
@@ -2865,6 +2988,62 @@ CASES = [
         "checks": {"calls": [{"tool": "set_audio_import_settings", "args": {"settings": {"music": "*"}}}],
                    "must_not_call": ["write_file"]},
         "max_turns": 8,
+    },
+    {
+        "id": "bad_small_loop_streams_by_clip_load_type",
+        "groups_enabled": ["audio"],
+        "files": {"assets/ambience/rain.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "bad",
+        "what_happened": "S97 AU2: a clip's Load Type was per Audio Source only, so agents asked to stream a sub-1-MiB loop set "
+                         "loadType on one source (others kept decoding it) or wrote the .meta by hand; the clip's own Load Type is "
+                         "the load_type import settings key.",
+        "text_at_issue": "set_audio_import_settings' description and settings key list (load_type); jasper://docs/sound's import settings table",
+        "source": "S97 REQ-16, REQ-43 (b) (spec-first)",
+        "prompt": "assets/ambience/rain.wav is a 700 KB loop several sources and Audio.play use. Make it stream from disk "
+                  "everywhere instead of being decoded into memory.",
+        "mocks": [
+            {"tool": "set_audio_import_settings", "result": ok(
+                "Set the import settings of 1 clip(s); undo with scope project.\n1. assets/ambience/rain.wav: -24.0 LUFS, 4.000 s",
+                {"items": [{"n": 1, "path": "assets/ambience/rain.wav", "settings": {"load_type": "streaming"},
+                            "resolved": {"sample_rate": 44100, "frames": 176400}}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_audio_import_settings", "args": {"settings": {"load_type": "streaming"}}}],
+                   "must_not_call": ["write_file", "set_properties"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_second_audio_source_by_slot_id",
+        "kind": "bad",
+        "what_happened": "S97 AU4: a GameObject held one Audio Source, add_component skipped a second, so agents asked for an engine "
+                         "and a horn on one car made a child GameObject for the horn or overwrote the engine's clip; a second "
+                         "add_component AudioSource now adds a slot and returns its entity to set its values on.",
+        "text_at_issue": "add_component's description (AudioSource adds another); its result's added[].audio_source and next",
+        "source": "S97 REQ-28, REQ-43 (c) (spec-first)",
+        "prompt": "The Car GameObject (id 12) in the open scene needs two sounds playing from it: an engine loop "
+                  "(sounds/engine.wav, looping) and a horn (sounds/horn.wav, not looping). Set both up.",
+        "mocks": [
+            {"tool": "get_entity", "result": ok("Car [12] components: Transform Mesh",
+                                                {"id": 12, "name": "Car", "components": {"Transform": {}, "Mesh": {}}})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\n12 Car",
+                                                   {"count": 1, "entities": [{"id": 12, "name": "Car", "path": "Car"}]})},
+            {"tool": "add_component", "once": True, "result": ok(
+                "Added 1 component(s) (one undo step).",
+                {"scene_id": 1, "added": [{"entity": 12, "component": "AudioSource"}], "skipped": []})},
+            {"tool": "add_component", "after": "add_component", "result": ok(
+                "Added 1 component(s) (one undo step). Each further Audio Source is its own entity (31), hidden in the scene tree: "
+                "pass that id as entity to set_properties, get_entity and remove_component.",
+                {"scene_id": 1, "added": [{"entity": 12, "component": "AudioSource", "audio_source": 31, "slot": 1}], "skipped": [],
+                 "next": "Each further Audio Source is its own entity (31), hidden in the scene tree: pass that id as entity to "
+                         "set_properties, get_entity and remove_component."})},
+            {"tool": "set_properties", "result": ok("Set 2 propertie(s) (one undo step).", {"scene_id": 1, "values": {}})},
+            {"tool": "create_entity", "result": ok("Created GameObject \"Horn\" [40] under Car.", {"entity_id": 40})},
+        ],
+        "checks": {"min_calls": {"add_component": 2},
+                   "any_of": [{"calls": [{"tool": "set_properties", "args": {"entity": "re:^31$"}}]},
+                              {"calls": [{"tool": "add_component", "args": {"values": "*"}}],
+                               "must_not_call": [{"tool": "set_properties", "args": {"entity": "re:^12$"}}]}],
+                   "must_not_call": ["create_entity"]},
+        "max_turns": 10,
     },
     {
         "id": "guard_placeholder_coin_finds_the_group",
@@ -5791,82 +5970,55 @@ CASES = [
     },
     # -- spatial queries (docs/specs/spatial-queries.md R25, R31) --------------------------------
     {
-        "id": "guard_physics_overlap_tool",
-        "playing": True,
-        "kind": "guard",
-        "what_happened": "Asked what is near an object in Play, agents wrote eval_lua loops over every GameObject's position; "
-                         "query_physics overlap answers it on the physics broad phase, sorted, with entity paths.",
-        "text_at_issue": "query_physics description: 'Use it instead of looping over objects in eval_lua.'; the physics "
-                         "group's description names spatial queries",
-        "source": "docs/specs/spatial-queries.md R25, R31",
-        "prompt": "The game is playing. List the enemies within 6 m of the player (Player is at the origin, enemies are on the "
-                  "Enemy layer, layer 8).",
-        "groups_enabled": ["physics"],
-        "mocks": [
-            {"tool": "query_physics", "result": ok(
-                "overlap (3d): 2 hits: Enemies/Grunt#2, Enemies/Archer.",
-                {"op": "overlap", "world": "3d", "count": 2, "truncated": False,
-                 "hits": [{"entity": {"id": 41, "name": "Grunt#2", "path": "Enemies/Grunt#2"}, "collider": 0, "trigger": False},
-                          {"entity": {"id": 57, "name": "Archer", "path": "Enemies/Archer"}, "collider": 1, "trigger": False}]})},
-            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\"). Session: 12 s, 0 error(s) logged.",
-                                                   {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
-        ],
-        "checks": {"calls": ["query_physics"],
-                   "must_not_call": [{"tool": "eval_lua", "args": {"code": "re:(?s)\\bfor\\b"}}],
-                   "reply_must": [r"Grunt", r"Archer"]},
-        "max_turns": 8,
-    },
-    {
-        "id": "guard_physics_query_triggers",
-        "playing": True,
-        "kind": "guard",
-        "what_happened": "A pickup is a trigger collider: an overlap with triggers: ignore finds nothing there. Asked about a "
-                         "pickup, an agent passes triggers: collide instead of reporting that nothing is there.",
-        "text_at_issue": "none: query_physics's next for a trigger left out was cut, as agents pass triggers: collide for "
-                         "a pickup on their first query (4/4 without it); the parameter decides",
-        "source": "docs/specs/spatial-queries.md R25 (next hints), R31",
-        "prompt": "The game is playing. Is the Coin pickup inside a 1 m sphere at (4, 0, 2)? Answer from a physics query.",
-        "groups_enabled": ["physics"],
-        "mocks": [
-            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nCoin [19] script rigidbody transform",
-                                                  {"entities": [{"id": 19, "path": "Coin"}]})},
-            {"tool": "query_physics", "args": {"triggers": "collide"}, "result": ok(
-                "overlap (3d): 1 hit: Coin.",
-                {"op": "overlap", "world": "3d", "count": 1, "truncated": False,
-                 "hits": [{"entity": {"id": 19, "name": "Coin", "path": "Coin"}, "collider": 0, "trigger": True}]})},
-            {"tool": "query_physics", "result": ok(
-                "overlap (3d): 0 hits.",
-                {"op": "overlap", "world": "3d", "count": 0, "truncated": False, "hits": []})},
-        ],
-        "checks": {"calls": [{"tool": "query_physics", "args": {"triggers": "collide"}}], "reply_must": [r"Coin"]},
-        "max_turns": 8,
-    },
-    {
         "id": "guard_physics_query_verify",
         "playing": True,
         "kind": "guard",
-        "what_happened": "Asked to check that a pickup radius query is right, agents re-ran the same query; verify compares it with "
-                         "a brute-force sweep of every body.",
-        "text_at_issue": "query_physics description: 'verify compares an overlap with a brute-force sweep'",
+        "what_happened": "Asked to check that a pickup radius query is right, agents re-ran the same query; mode verify compares "
+                         "it with a brute-force sweep of every body.",
+        "text_at_issue": "query_physics description: 'verify compares an overlap with a brute-force sweep'; its mode enum's verify",
         "source": "docs/specs/spatial-queries.md R16, R25, R31",
         "prompt": "The game is playing. Check that the physics overlap for the pickup radius (a 3 m sphere at the player, at "
                   "(0, 1, 0)) is right: that it finds exactly the colliders really inside it.",
         "groups_enabled": ["physics"],
         "mocks": [
-            {"tool": "query_physics", "args": {"verify": True}, "result": ok(
-                "overlap (3d): 2 hits: Coin, Gem.",
-                {"op": "overlap", "world": "3d", "count": 2, "truncated": False,
-                 "hits": [{"entity": {"id": 12, "name": "Coin", "path": "Coin"}, "collider": 0, "trigger": True},
-                          {"entity": {"id": 13, "name": "Gem", "path": "Gem"}, "collider": 0, "trigger": True}],
+            {"tool": "query_physics", "args": {"mode": "verify"}, "result": ok(
+                "2 collider(s) overlap. The brute-force sweep agrees.",
+                {"dimension": "3d", "shape": "sphere", "mode": "verify",
+                 "hits": [{"entity": 12, "name": "Coin", "collider": 0}, {"entity": 13, "name": "Gem", "collider": 0}],
                  "verify": {"reference_count": 2, "missing": [], "extra": [], "ok": True}})},
             {"tool": "query_physics", "result": ok(
-                "overlap (3d): 2 hits: Coin, Gem.",
-                {"op": "overlap", "world": "3d", "count": 2, "truncated": False,
-                 "hits": [{"entity": {"id": 12, "name": "Coin", "path": "Coin"}, "collider": 0, "trigger": True},
-                          {"entity": {"id": 13, "name": "Gem", "path": "Gem"}, "collider": 0, "trigger": True}]})},
+                "2 collider(s) overlap.",
+                {"dimension": "3d", "shape": "sphere", "mode": "overlap",
+                 "hits": [{"entity": 12, "name": "Coin", "collider": 0}, {"entity": 13, "name": "Gem", "collider": 0}]})},
         ],
-        "checks": {"calls": [{"tool": "query_physics", "args": {"verify": True}}]},
+        "checks": {"calls": [{"tool": "query_physics", "args": {"mode": "verify"}}]},
         "max_turns": 8,
+    },
+    {
+        "id": "guard_query_physics_drawn_trees",
+        "kind": "guard",
+        "groups_enabled": ["physics"],
+        "what_happened": "New text (spatial-queries R12, R25): Terrain trees have no colliders unless their prototype asks, and "
+                         "the scene is not playing; query_physics dimension drawn overlaps what is drawn (trees included) in "
+                         "edit mode, so the agent asks it instead of starting Play or reading every tree's position.",
+        "text_at_issue": "query_physics description: 'drawn: mesh/tree bounds, edit mode too.'; its dimension enum's drawn",
+        "source": "docs/specs/spatial-queries.md R12, R25 (new tool text; no failure on record)",
+        "prompt": "Without starting the game: which of the Terrain's trees stand within 3 m of the point (10, 2, 5)? Name "
+                  "their tree ids.",
+        "mocks": [
+            {"tool": "query_physics", "args": {"dimension": "drawn"}, "result": ok(
+                "2 drawn object(s) overlap.",
+                {"dimension": "drawn", "shape": "sphere", "mode": "overlap",
+                 "hits": [{"entity": 4, "name": "Terrain", "kind": "tree", "prototype": 0, "tree_id": 17},
+                          {"entity": 4, "name": "Terrain", "kind": "tree", "prototype": 1, "tree_id": 23}]})},
+            {"tool": "query_physics", "result": err("query_physics reads the running physics world: start Play first (play).")},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nTerrain [4] terrain transform",
+                                                  {"entities": [{"id": 4, "path": "Terrain"}]})},
+        ],
+        "checks": {"calls": [{"tool": "query_physics", "args": {"dimension": "drawn", "mode": "overlap"}}],
+                   "must_not_call": ["play"],
+                   "reply_must": [r"17", r"23"]},
+        "max_turns": 10,
     },
     # -- input-device-awareness: the input scheme (configure_game_view input_scheme, get_input_state's scheme) --------------
     {
@@ -6326,5 +6478,41 @@ CASES = [
         "checks": {"calls": [{"tool": "get_build_report", "args": {"referenced_by": ["re:old_logo"]}}],
                    "reply_must": [r"splash\.material|Credits"]},
         "max_turns": 14,  # a grep of the project comes first; 10 turns ended runs after the report, before the reply
+    },
+    {
+        "id": "guard_drivable_car_wheel_colliders",
+        "kind": "guard",
+        "what_happened": "A drivable car is a dynamic body with a Wheel Collider on a child at each wheel (suspension and "
+                         "tire friction on Jolt's vehicle constraint), not four wheel bodies on hinge joints, which bounce and "
+                         "slide sideways.",
+        "text_at_issue": "component Wheel Collider 'A car wheel with suspension and tire friction, below a dynamic Rigidbody'; "
+                         "physics guide 'Vehicles (Wheel Collider)': 'A drivable car is a dynamic Rigidbody ... with a Wheel "
+                         "Collider ... on a child GameObject at each wheel: not four bodies on hinge joints'",
+        "source": "S96 REQ-47 (WP-A); no failure on record",
+        "prompt": "The Kart in the current scene is just a box mesh. Make it a drivable car with four wheels.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject: 21 Kart (mesh)", {"entities": [{"id": 21, "path": "Kart"}]})},
+            {"tool": "get_entity", "result": ok("GameObject 21 \"Kart\": transform, mesh (cube, scale 2 1 4).", {"id": 21})},
+            {"tool": "list_component_types", "result": ok(
+                "... Rigidbody (rigidbody): Rigidbody with colliders, simulated by Jolt; Joint 3D (joint3d): Connects two "
+                "Rigidbodies; Character Controller (charactercontroller): A capsule moved by script that climbs steps and "
+                "slopes; Wheel Collider (wheelcollider): A car wheel with suspension and tire friction, below a dynamic "
+                "Rigidbody; Vehicle Drivetrain (vehicledrivetrain): An engine, gear box and differentials driving the body's "
+                "Wheel Colliders ...",
+                {"components": [{"key": "rigidbody", "name": "Rigidbody"}, {"key": "joint3d", "name": "Joint 3D"},
+                                {"key": "wheelcollider", "name": "Wheel Collider"},
+                                {"key": "vehicledrivetrain", "name": "Vehicle Drivetrain"}]})},
+            {"tool": "edit_colliders", "result": ok("Kart: dynamic body, 1 collider (box 2 x 1 x 4).", {"entity": {"id": 21}})},
+            {"tool": "create_entity", "result": ok("Created GameObject 30 \"Wheel\" under 21 \"Kart\".",
+                                                   {"entity_id": 30, "entity": {"id": 30}})},
+            {"tool": "add_component", "args": {"component": "re:(?i)wheel.?collider"}, "result": ok(
+                "Added Wheel Collider to GameObject 30 \"Wheel\".", {"entity": {"id": 30}})},
+            {"tool": "run_command", "result": ok("Ran GameObject > 3D Object > Vehicle...", {"ran": "gameobject.create.3DObject.vehicle"})},
+            {"tool": "set_properties", "result": ok("Set 1 property.", {"entity": {"id": 21}})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "add_component", "args": {"component": "re:(?i)wheel.?collider"}}]},
+                              {"calls": [{"tool": "run_command", "args": {"id": "gameobject.create.3DObject.vehicle"}}]}],
+                   "must_not_call": [{"tool": "add_component", "args": {"component": "re:(?i)joint"}}, "set_joint"]},
+        "max_turns": 16,
     },
 ]

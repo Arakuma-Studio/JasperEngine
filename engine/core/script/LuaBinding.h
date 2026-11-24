@@ -84,8 +84,6 @@ namespace jasperengine {
         static void registerParticleClasses(lua_State *L);
         static void registerFoliageClasses(lua_State *L);
         static void registerCoreClasses(lua_State *L);
-        // spatial queries: Physics / Physics2D overlaps and casts, MeshRaycast overlaps (PhysicsQueryLua.cpp)
-        static void registerPhysicsQueryClasses(lua_State *L);
         static void registerECSClasses(lua_State *L);
         static void registerAudioClasses(lua_State *L);
         static void registerIOClasses(lua_State *L);
@@ -97,6 +95,11 @@ namespace jasperengine {
         static void registerThreadClasses(lua_State *L);
         static void registerProfilerClasses(lua_State *L);
         static void registerGameplayClasses(lua_State *L);
+        // S96: Physics / Physics2D shape queries, RaycastHit fields (PhysicsQueriesLua.cpp)
+        static void registerPhysicsQueryClasses(lua_State *L);
+        // spatial queries beside S96's: the NonAlloc overlaps, Physics.debugDrawQueries, MeshRaycast
+        // overlaps (PhysicsQueryLua.cpp)
+        static void registerSpatialQueryClasses(lua_State *L);
         static void registerNavigationClasses(lua_State *L);
         // S76: NavMeshObstacle, NavMeshLink, NavMeshModifier, NavAreaOverride (NavigationComponentsLua.cpp)
         static void registerNavigationComponentClasses(lua_State *L);
@@ -130,6 +133,10 @@ namespace jasperengine {
         // dialogue-graphs.md R27: Dialogue and DialogueRunner (DialogueClassesLua.cpp); without the
         // module, the stubs below
         static void registerDialogueClasses(lua_State *L);
+#ifdef JASPERENGINE_PHYSICS_3D
+        // S96: WheelCollider, VehicleDrivetrain and their value types (VehicleClassesLua.cpp)
+        static void registerVehicleClasses(lua_State *L);
+#endif
 #if JASPERENGINE_HTMLUI
         static void registerHtmlUIClasses(lua_State *L);
         static void registerHtmlUIAnimeClasses(lua_State *L);

@@ -183,7 +183,7 @@ namespace jasperengine::editor{
     };
 
     // Project Settings > Physics / Physics 2D > Queries Hit Triggers (project.yaml physicsQueries,
-    // written only when one is off): what QueryTriggerInteraction.UseGlobal means in each world
+    // written only when one is off): what QueryTriggerInteraction.USE_GLOBAL means in each world
     struct PhysicsQuerySettings {
         bool hitTriggers3D = true;
         bool hitTriggers2D = true;

@@ -3,8 +3,8 @@
 
 // A clip's import settings (spec S36 R7): the `import.audioImporter` section of its S04 meta
 // sidecar, Unity's AudioImporter in our names. What the bytes cannot say about how a clip plays:
-// its type, gain, trims, click-safe fades, loop region, Force To Mono (build-size-tools R15) and music
-// tempo (S39 R3). Keys are written
+// its type, gain, trims, click-safe fades, loop region, Force To Mono (build-size-tools R15), music
+// tempo (S39 R3) and how it is held in memory (its Load Type, S97 REQ-16). Keys are written
 // only when they differ from their default, in this order; unknown keys survive a round trip after
 // them.
 //
@@ -21,6 +21,7 @@
 //         bpm: 120
 //         beats_per_bar: 4
 //         first_beat_ms: 12.4
+//       load_type: streaming
 
 #pragma once
 
@@ -111,13 +112,15 @@ namespace jasperengine::editor {
         double loopEndMs = -1.0;    // -1: the trimmed end
         ForceToMono forceToMono = ForceToMono::Off;
         Music music;
+        // auto (the value-initialised one) or a SoundPool::loadTypeName; never changes the samples
+        AudioLoadType loadType{};
         // the keys this version does not read (a later version's), in file order
         YAML::Node unknown;
 
         // no key but `version` would be written
         bool isDefault() const;
         bool operator==(const AudioImportSettings& other) const;
-        // the section differs in how the clip sounds (not its type, its tempo or an unknown key)
+        // the section differs in how the clip sounds (not its type, its tempo, its load type or an unknown key)
         bool sameSound(const AudioImportSettings& other) const;
 
         // The one validation of the values (Inspector, MCP, export); false with the reason

@@ -1,7 +1,7 @@
 // (c) JasperDev and contributors
 // SPDX-License-Identifier: MIT
 
-// spatial-queries' "query_city" (PhysicsQueryTest, PhysicsQueryBench): bodies of every kind on a
+// spatial-queries' "query_city" (PhysicsQueryTest, PhysicsQueryBench, LuaPhysicsQueryTest): bodies of every kind on a
 // grid over a 200 m x 200 m static mesh ground; a quarter of them triggers, half the rest asleep.
 // 2D: the same layout in Box2D, in points. Seeded, so every run builds the same world.
 
@@ -67,8 +67,8 @@ namespace jasperengine::test {
     }
 
     // libstdc++'s uniform_real_distribution<float> and uniform_int_distribution<int> over mt19937,
-    // spelled out: the standard leaves both to the library, and ray_city_hits.txt was written with
-    // libstdc++ (libc++ draws other numbers from the same engine, and macOS failed the fixture)
+    // spelled out: the standard leaves both to the library (libc++ draws other numbers from the same
+    // engine), so every platform builds the same city
     inline float cityUniform(std::mt19937& rng, float a, float b){
         float canonical = (float)rng() / 4294967296.0f;
         if (canonical >= 1.0f)

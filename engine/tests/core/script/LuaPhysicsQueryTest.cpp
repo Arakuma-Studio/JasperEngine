@@ -1,9 +1,9 @@
 // (c) JasperDev and contributors
 // SPDX-License-Identifier: MIT
 
-// The spatial queries in Lua (docs/specs/spatial-queries.md AC12, R28): NonAlloc forms write
-// entity ids and clear the rest of the table, make no garbage once it has grown; the enums and
-// OverlapHit's fields read; a 2D first form is nil on a miss.
+// The spatial queries' Lua beside S96's (docs/specs/spatial-queries.md AC12, R28): the NonAlloc
+// forms write GameObject ids and collider indices, clear the rest of the tables and make no
+// garbage once they have grown; MeshRaycast's overlaps read trees.
 
 #include "Scene.h"
 #include "registry/PhysicsLayers.h"
@@ -59,46 +59,43 @@ TEST(LuaPhysicsQuery, NonAllocFillsAndClears){
 
     EXPECT_EQ(runPhysicsQueryLua(L, R"(
         local scene = queryScene
-        assert(QueryTriggerInteraction.UseGlobal == 0 and QueryTriggerInteraction.Ignore == 1 and QueryTriggerInteraction.Collide == 2)
-        assert(CapsuleDirection2D.Vertical == 0 and CapsuleDirection2D.Horizontal == 1)
         local t, colliders = {}, {}
-        local n = Physics.overlapSphereNonAlloc(scene, Vector3(5, 0, 0), 20, t, -1, QueryTriggerInteraction.Collide, colliders)
+        local n = Physics.overlapSphereNonAlloc(scene, Vector3(5, 0, 0), 20, t, -1, {triggers = QueryTriggerInteraction.COLLIDE}, colliders)
         assert(n == 6, "six bodies, got " .. n)
         assert(#t == 6 and #colliders == 6)
-        assert(t[1] == FIRST and math.type(t[1]) == "integer", "ids in (body, collider) order")
+        assert(t[1] == FIRST and math.type(t[1]) == "integer", "GameObject ids in (GameObject, collider) order")
         assert(colliders[1] == 0)
+        local array = Physics.overlapSphere(scene, Vector3(5, 0, 0), 20, -1, {triggers = QueryTriggerInteraction.COLLIDE})
+        for i = 1, n do
+            assert(array[i].gameObject.entity == t[i] and array[i].index == colliders[i], "the array form's colliders, in order: " .. i)
+        end
         n = Physics.overlapSphereNonAlloc(scene, Vector3(0, 0, 0), 1, t)
         assert(n == 1 and #t == 1 and t[1] == FIRST and t[2] == nil, "#t == n after fewer hits: " .. #t)
-        n = Physics.overlapSphereNonAlloc(scene, Vector3(10, 0, 0), 0.6, t, -1, QueryTriggerInteraction.Ignore)
-        assert(n == 0 and #t == 0, "the trigger is skipped with Ignore")
-        local hits = Physics.overlapSphere(scene, Vector3(10, 0, 0), 0.6, -1, QueryTriggerInteraction.Collide)
-        assert(#hits == 1 and hits[1].body == TRIGGER and hits[1].colliderIndex == 0 and hits[1].isTrigger == true)
-        assert(Physics.checkBox(scene, Vector3(0, 0, 0), Vector3(1, 1, 1), Quaternion.IDENTITY) == true)
-        assert(Physics.checkSphere(scene, Vector3(0, 5, 0), 1) == false)
-        local hit = Physics.sphereCast(scene, Vector3(-5, 0, 0), 0.25, Vector3(1, 0, 0), 20)
-        assert(hit.hit and hit.body == FIRST and math.abs(hit.distance - 4.25) < 1e-3, "cast: " .. tostring(hit.distance))
-        assert(#Physics.capsuleCastAll(scene, Vector3(-5, -0.2, 0), Vector3(-5, 0.2, 0), 0.25, Vector3(1, 0, 0), 20, -1, QueryTriggerInteraction.Collide) == 6)
-        assert(Physics.raycast(scene, Vector3(10, 5, 0), Vector3(0, -1, 0), 10, -1, QueryTriggerInteraction.Ignore).hit == false)
-        assert(Physics.raycast(scene, Vector3(10, 5, 0), Vector3(0, -1, 0), 10).hit == true)
-        assert(#Physics.overlapSphere(scene, Vector3(5, 0, 0), 20, -1, QueryTriggerInteraction.Collide, {FIRST}) == 5, "the ignore list")
-        Physics.queriesHitTriggers = false
-        assert(#Physics.overlapSphere(scene, Vector3(10, 0, 0), 0.6) == 0)
-        Physics.queriesHitTriggers = true
-        local ok = pcall(Physics.overlapSphere, scene, Vector3(0, 0, 0), 1, -1, 7)
-        assert(not ok, "a bad interaction is an error")
+        n = Physics.overlapSphereNonAlloc(scene, Vector3(10, 0, 0), 0.6, t, -1, {triggers = QueryTriggerInteraction.IGNORE})
+        assert(n == 0 and #t == 0, "the trigger is skipped with IGNORE")
+        assert(Physics.overlapSphereNonAlloc(scene, Vector3(10, 0, 0), 0.6, t) == 1 and t[1] == TRIGGER, "USE_GLOBAL: the trigger")
+        assert(Physics.overlapSphereNonAlloc(scene, Vector3(5, 0, 0), 20, t, -1, {ignore = {FIRST}}) == 5, "the ignore list")
+        assert(Physics.overlapBoxNonAlloc(scene, Vector3(0, 0, 0), Vector3(1, 1, 1), t) == 1 and t[1] == FIRST, "orientation nil")
+        assert(Physics.overlapBoxNonAlloc(scene, Vector3(0, 0, 0), Vector3(1, 1, 1), t, Quaternion.IDENTITY, 0) == 0, "layer mask 0")
+        assert(Physics.overlapCapsuleNonAlloc(scene, Vector3(0, -1, 0), Vector3(2, 1, 0), 0.25, t) == 2)
+        local ok, err = pcall(Physics.overlapSphereNonAlloc, scene, Vector3(0, 0, 0), 1)
+        assert(not ok and tostring(err):find("results"), "a missing results table names it: " .. tostring(err))
+        ok, err = pcall(Physics.overlapSphereNonAlloc, scene, Vector3(0, 0, 0), 0, t)
+        assert(not ok and tostring(err):find("radius"), "a bad radius names it: " .. tostring(err))
+        assert(Physics.debugDrawQueries == false)
     )"), "");
 
-    // no garbage over 1,000 calls once the table has grown
+    // no garbage over 1,000 calls once the tables have grown
     EXPECT_EQ(runPhysicsQueryLua(L, R"(
         local scene = queryScene
-        local t = {}
+        local t, colliders = {}, {}
         local center = Vector3(5, 0, 0)
-        Physics.overlapSphereNonAlloc(scene, center, 20, t)
+        Physics.overlapSphereNonAlloc(scene, center, 20, t, -1, nil, colliders)
         collectgarbage("collect")
         collectgarbage("stop")
         local before = collectgarbage("count")
         for i = 1, 1000 do
-            Physics.overlapSphereNonAlloc(scene, center, 20, t)
+            Physics.overlapSphereNonAlloc(scene, center, 20, t, -1, nil, colliders)
         end
         local after = collectgarbage("count")
         collectgarbage("restart")
@@ -147,34 +144,40 @@ TEST(LuaPhysicsQuery, MeshOverlapReadsTrees){
 }
 
 #ifdef JASPERENGINE_PHYSICS_2D
-TEST(LuaPhysicsQuery, FirstForm2DIsNilOnAMiss){
+TEST(LuaPhysicsQuery, NonAlloc2DFillsAndClears){
     lua_State* L = LuaBinding::getLuaState();
     std::unique_ptr<Scene> owner;
     Scene& scene = *test::newPhysicsScene(owner);
     scene.getSystem<PhysicsSystem>()->setPointsToMeterScale2D(64.0f);
-    const Entity entity = test::placedEntity(scene, Vector3(0, 0, 0));
-    Rigidbody2DComponent body;
-    body.type = BodyType::STATIC;
-    body.colliders.resize(1);
-    body.colliders[0].type = Collider2DType::CIRCLE;
-    body.colliders[0].radius = 32.0f;
-    scene.addComponent<Rigidbody2DComponent>(entity, body);
+    std::vector<Entity> bodies;
+    for (int i = 0; i < 3; i++){
+        const Entity entity = test::placedEntity(scene, Vector3((float)i * 100.0f, 0, 0));
+        Rigidbody2DComponent body;
+        body.type = BodyType::STATIC;
+        body.colliders.resize(1);
+        body.colliders[0].type = Collider2DType::CIRCLE;
+        body.colliders[0].radius = 32.0f;
+        body.colliders[0].sensor = i == 2;
+        scene.addComponent<Rigidbody2DComponent>(entity, body);
+        bodies.push_back(entity);
+    }
     test::stepScene(scene, 1);
     luabridge::setGlobal(L, &scene, "queryScene");
-    lua_pushinteger(L, (lua_Integer)entity);
+    lua_pushinteger(L, (lua_Integer)bodies[0]);
     lua_setglobal(L, "BODY");
     EXPECT_EQ(runPhysicsQueryLua(L, R"(
         local scene = queryScene
-        assert(Physics2D.overlapCircle(scene, Vector2(500, 0), 10) == nil)
-        local first = Physics2D.overlapCircle(scene, Vector2(40, 0), 10)
-        assert(first ~= nil and first.body == BODY and first.isTrigger == false)
-        assert(#Physics2D.overlapBoxAll(scene, Vector2(0, 0), Vector2(64, 32), 15) == 1)
-        local t = {1, 2, 3}
-        assert(Physics2D.overlapCapsuleNonAlloc(scene, Vector2(0, 0), Vector2(20, 60), CapsuleDirection2D.Vertical, 0, t) == 1 and #t == 1)
-        assert(Physics2D.overlapPoint(scene, Vector2(0, 0)).body == BODY)
-        assert(#Physics2D.overlapAreaAll(scene, Vector2(-100, -100), Vector2(100, 100)) == 1)
-        local hit = Physics2D.circleCast(scene, Vector2(-200, 0), 8, Vector2(1, 0), 400)
-        assert(hit.hit and hit.body == BODY and math.abs(hit.distance - 160) < 0.5, tostring(hit.distance))
+        local t, colliders = {1, 2, 3, 4}, {}
+        assert(Physics2D.overlapCircleNonAlloc(scene, Vector2(100, 0), 150, t, -1, nil, colliders) == 3 and #t == 3 and #colliders == 3)
+        assert(t[1] == BODY and colliders[1] == 0)
+        assert(Physics2D.overlapCircleNonAlloc(scene, Vector2(100, 0), 150, t, -1, {triggers = QueryTriggerInteraction.IGNORE}) == 2 and #t == 2)
+        assert(Physics2D.overlapPointNonAlloc(scene, Vector2(0, 0), t) == 1 and t[1] == BODY and #t == 1)
+        assert(Physics2D.overlapBoxNonAlloc(scene, Vector2(0, 0), Vector2(64, 32), 15, t) == 1)
+        assert(Physics2D.overlapCapsuleNonAlloc(scene, Vector2(0, 0), Vector2(20, 60), CapsuleDirection2D.VERTICAL, 0, t) == 1)
+        assert(Physics2D.overlapAreaNonAlloc(scene, Vector2(150, 100), Vector2(-100, -100), t) == 2, "corners in any order")
+        assert(Physics2D.overlapCircleNonAlloc(scene, Vector2(500, 500), 10, t) == 0 and #t == 0)
+        local ok, err = pcall(Physics2D.overlapCapsuleNonAlloc, scene, Vector2(0, 0), Vector2(20, 60), 7, 0, t)
+        assert(not ok and tostring(err):find("capsuleDirection"), tostring(err))
     )"), "");
     lua_pushnil(L);
     lua_setglobal(L, "queryScene");

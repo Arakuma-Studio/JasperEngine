@@ -6,6 +6,7 @@
 #include "subsystem/PhysicsSystem.h"
 #include "jobs/JobSystem.h"
 #include "Engine.h"
+#include "component/Transform.h"
 #include "Scene.h"
 #include "Log.h"
 
@@ -110,6 +111,7 @@ namespace {
             case Type::Sphere: querySphere(a, shape.radius, emit); break;
             case Type::Box: queryBox(a, shape.halfExtents, shape.rotation, emit); break;
             case Type::Capsule: queryCapsule(a, shape.b + offset, shape.radius, emit); break;
+            case Type::Point:
             case Type::Point2D: PhysicsDebugLines::crossMark(a, 0.1f, emit); break;
             case Type::Circle2D:
                 if (shape.radius > 0.0f) queryCircle(a, Vector3(1, 0, 0), Vector3(0, 1, 0), shape.radius, emit);
@@ -212,8 +214,8 @@ bool physics::recordingQueries(){
 }
 
 void physics::recordQuery(Scene* scene, const QueryShape& shape, const Vector3& direction, float distance, bool cast,
-                          const Vector3* hitPoints, size_t hitCount, bool hit, bool force){
-    if (!scene || !(force ? (Log::isMainThread() && !jobs::isExecutingJob()) : recordingQueries())){
+                          const Vector3* hitPoints, size_t hitCount, bool hit){
+    if (!scene || !recordingQueries()){
         return;
     }
     PhysicsQueryDebug::Entry entry;
@@ -226,6 +228,35 @@ void physics::recordQuery(Scene* scene, const QueryShape& shape, const Vector3& 
     for (uint8_t i = 0; i < entry.hitPoints; i++){
         entry.points[i] = hitPoints[i];
     }
-    scene->getSystem<PhysicsSystem>()->getQueryDebug().record(entry, Engine::getUnscaledTime(),
-        force ? PhysicsQueryDebug::FORCED_LIFETIME : PhysicsQueryDebug::LIFETIME);
+    scene->getSystem<PhysicsSystem>()->getQueryDebug().record(entry, Engine::getUnscaledTime(), PhysicsQueryDebug::LIFETIME);
+}
+
+void physics::recordOverlap(Scene* scene, const QueryShape& shape, bool hit, const Entity* entities, size_t entityCount){
+    if (!scene){
+        return;
+    }
+    Vector3 points[PhysicsQueryDebug::MAX_HIT_POINTS];
+    size_t pointCount = 0;
+    for (size_t i = 0; i < entityCount && pointCount < PhysicsQueryDebug::MAX_HIT_POINTS; i++){
+        if (const Transform* transform = scene->findComponent<Transform>(entities[i])){
+            points[pointCount++] = transform->worldPosition;
+        }
+    }
+    recordQuery(scene, shape, Vector3::ZERO, 0.0f, false, points, pointCount, hit);
+}
+
+void physics::noteCast(Scene* scene, const QueryShape& shape, const Vector3& direction, float distance, const RayReturn* hits, size_t hitCount){
+    Physics::countQuery(hitCount);
+    if (!recordingQueries()){
+        return;
+    }
+    Vector3 points[PhysicsQueryDebug::MAX_HIT_POINTS];
+    size_t pointCount = 0;
+    for (size_t i = 0; i < hitCount && pointCount < PhysicsQueryDebug::MAX_HIT_POINTS; i++){
+        points[pointCount++] = hits[i].point;
+    }
+    // the sweep ends at the farthest hit drawn, or goes the whole way
+    const float reach = hitCount > 0 ? hits[hitCount - 1].distance : distance;
+    const float length = direction.length();
+    recordQuery(scene, shape, length > 0.0f ? direction / length : direction, reach, true, points, pointCount, hitCount > 0);
 }

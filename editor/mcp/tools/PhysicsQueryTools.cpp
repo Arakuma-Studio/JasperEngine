@@ -1,12 +1,14 @@
 // (c) JasperDev and contributors
 // SPDX-License-Identifier: MIT
 
-// query_physics (docs/specs/spatial-queries.md R25): the spatial queries of Physics, Physics2D
-// and MeshRaycast for agents. Physics worlds answer only while playing (their bodies exist then);
-// world "drawn" (SceneBvh bounds) answers in edit mode too. verify compares an overlap with
-// PhysicsQueryReference's brute-force sweep; draw shows the query for 2 s in both views.
-
+// query_physics (docs/specs/S96-physics-gaps.md REQ-17): the running game's physics world asked
+// what Lua's Physics / Physics2D queries ask (ray, sphere, box, capsule and point casts,
+// overlaps and checks) with the same options, and the shapes and hits drawn for a few seconds
+// in the Game view's physics debug lines. docs/specs/spatial-queries.md R25 adds mode verify (an
+// overlap compared with PhysicsQueryReference's body-by-body sweep) and dimension drawn
+// (MeshRaycast's bounds overlaps: what is drawn, trees included, in edit mode too).
 #include "McpTools.h"
+#include "PlayViewCommon.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -14,415 +16,635 @@
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
-#include "mcp/tools/PlayViewCommon.h"
 
+#include "Configs.h"
 #include "Project.h"
 #include "Scene.h"
 #include "component/TerrainWorldComponent.h"
 #include "picking/MeshRaycast.h"
-#include "physics/PhysicsQueryDebug.h"
+#include "physics/PhysicsDebugLines.h"
+#include "physics/PhysicsQueries2D.h"
+#include "physics/PhysicsQueries3D.h"
 #include "physics/PhysicsQueryReference.h"
-#include "registry/PhysicsLayers.h"
-#include "registry/TagManager.h"
 #include "terrain/FoliageTypes.h"
 #include "terrainworld/TerrainWorldTrees.h"
+#include "registry/PhysicsLayers.h"
+#include "registry/TagManager.h"
+#include "subsystem/PhysicsSystem.h"
+#include "util/Angle.h"
 
 #include <algorithm>
-#include <set>
+#include <cmath>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jasperengine::editor::mcp {
 
 namespace {
 
-using Shape = physics::QueryShape::Type;
+// how long draw: true shows a query (wall time)
+constexpr float QUERY_DRAW_SECONDS = 3.0f;
+const Vector4 QUERY_SHAPE_COLOR(0.2f, 0.85f, 1.0f, 1.0f);
+const Vector4 QUERY_HIT_COLOR(1.0f, 0.35f, 0.1f, 1.0f);
 
-Json vectorJson(const Vector3& v) {
-    return Json::array({v.x, v.y, v.z});
+using QueryLines = std::vector<std::pair<Vector3, Vector3>>;
+
+struct QueryArgs {
+    bool is2D = false;
+    std::string shape;
+    std::string mode;
+    Vector3 origin;
+    Vector3 direction;
+    float maxDistance = 0.0f;
+    float radius = 0.0f;
+    Vector3 halfExtents;
+    Vector2 size;
+    float angle = 0.0f;
+    Quaternion rotation = Quaternion::IDENTITY;
+    Vector3 pointA, pointB;
+    bool hasPoints = false;
+};
+
+// [x, y] or [x, y, z] (2D takes the first two)
+bool readQueryVector(const Json& args, const char* key, bool is2D, Vector3& out, std::string& error) {
+    if (!args.contains(key)) {
+        error = std::string(key) + " is required for this shape and mode.";
+        return false;
+    }
+    const Json& value = args[key];
+    const size_t want = is2D ? 2 : 3;
+    if (!value.is_array() || value.size() < want || value.size() > 3) {
+        error = std::string(key) + (is2D ? " must be [x, y] (points)." : " must be [x, y, z].");
+        return false;
+    }
+    float v[3] = {0.0f, 0.0f, 0.0f};
+    for (size_t i = 0; i < want; i++) {
+        if (!value[i].is_number()) {
+            error = std::string(key) + " must hold numbers.";
+            return false;
+        }
+        v[i] = value[i].get<float>();
+    }
+    out = Vector3(v[0], v[1], v[2]);
+    return true;
 }
 
-// the shape argument as a QueryShape at origin; false with the error naming the field
-bool readQueryShape(const Json& args, const std::string& world, physics::QueryShape& shape, std::string& error) {
-    if (args.contains("shape") && !args["shape"].is_object()) {
-        error = "shape must be an object {type, radius, half_extents, size, point1, angle, rotation, direction2d}.";
+bool readQueryNumber(const Json& args, const char* key, float& out, std::string& error) {
+    if (!args.contains(key) || !args[key].is_number()) {
+        error = std::string(key) + " is required for this shape and mode (a number).";
         return false;
     }
-    const Json spec = args.contains("shape") ? args["shape"] : Json::object();
-    static const std::set<std::string> keys = {"type", "radius", "half_extents", "size", "point1", "angle", "rotation", "direction2d"};
-    for (auto it = spec.begin(); it != spec.end(); ++it) {
-        if (!keys.count(it.key())) {
-            error = "shape." + it.key() + " is not a shape field: type, radius, half_extents, size, point1, angle, rotation, direction2d.";
-            return false;
-        }
-    }
-    if (spec.contains("type") && !spec["type"].is_string()) {
-        error = "shape.type must be sphere, box, capsule, circle, point or area.";
-        return false;
-    }
-    if (spec.contains("direction2d") && spec["direction2d"] != "vertical" && spec["direction2d"] != "horizontal") {
-        error = "shape.direction2d must be vertical or horizontal.";
-        return false;
-    }
-    const bool is2D = world == "2d";
-    const std::string type = spec.value("type", is2D ? "circle" : "sphere");
-    Vector3 origin;
-    if (!args.contains("origin") || !McpValues::parseVector3(args["origin"], origin)) {
-        if (args.contains("origin") && is2D) {
-            Vector2 flat;
-            if (McpValues::parseVector2(args["origin"], flat)) origin = Vector3(flat.x, flat.y, 0.0f);
-            else { error = "origin must be [x, y] or [x, y, z]."; return false; }
-        } else {
-            error = args.contains("origin") ? "origin must be [x, y, z]." : "origin is required: the shape's centre (or a capsule's first end, an area's first corner).";
-            return false;
-        }
-    }
-    shape.a = origin;
-    auto radius = [&]() {
-        if (!spec.contains("radius") || !spec["radius"].is_number()) {
-            error = "shape.radius is required for a " + type + ".";
-            return false;
-        }
-        shape.radius = spec["radius"].get<float>();
+    out = args[key].get<float>();
+    return true;
+}
+
+// a layer mask: a number, "everything" / "nothing", or layer names and numbers
+bool readQueryLayerMask(const Json& value, uint32_t& mask, std::string& error) {
+    if (value.is_number_integer()) {
+        mask = (uint32_t)value.get<long long>();
         return true;
-    };
-    auto point1 = [&]() {
-        if (!spec.contains("point1")) {
-            error = std::string("shape.point1 is required for a ") + type + (type == "area" ? " (its second corner)." : " (its second end).");
-            return false;
-        }
-        Vector2 flat;
-        if (McpValues::parseVector3(spec["point1"], shape.b)) return true;
-        if (McpValues::parseVector2(spec["point1"], flat)) {
-            shape.b = Vector3(flat.x, flat.y, 0.0f);
-            return true;
-        }
-        error = "shape.point1 must be [x, y, z] (or [x, y] in 2D).";
-        return false;
-    };
-    auto size = [&]() {
-        Vector2 value;
-        if (!spec.contains("size") || !McpValues::parseVector2(spec["size"], value)) {
-            error = "shape.size [width, height] is required for a 2D " + type + ".";
-            return false;
-        }
-        shape.halfExtents = Vector3(value.x * 0.5f, value.y * 0.5f, 0.0f);
-        return true;
-    };
-    shape.angle = spec.contains("angle") && spec["angle"].is_number() ? spec["angle"].get<float>() : 0.0f;
-    if (world == "drawn" || world == "3d") {
-        if (type == "sphere") {
-            shape.type = Shape::Sphere;
-            return radius();
-        }
-        if (type == "box") {
-            shape.type = Shape::Box;
-            if (!spec.contains("half_extents") || !McpValues::parseVector3(spec["half_extents"], shape.halfExtents)) {
-                error = "shape.half_extents [x, y, z] is required for a box.";
+    }
+    if (value.is_string()) {
+        const std::string text = value.get<std::string>();
+        if (text == "everything") { mask = LAYER_MASK_EVERYTHING; return true; }
+        if (text == "nothing") { mask = LAYER_MASK_NOTHING; return true; }
+    }
+    if (value.is_array()) {
+        mask = 0;
+        for (const Json& item : value) {
+            int layer = -1;
+            if (item.is_number_integer()) layer = item.get<int>();
+            else if (item.is_string()) layer = TagManager::nameToLayer(item.get<std::string>());
+            if (layer < 0 || layer >= MAX_LAYERS) {
+                error = "layer_mask: unknown layer " + item.dump() + " (Project Settings > Tags and Layers).";
                 return false;
             }
-            if (spec.contains("rotation") && !McpValues::parseQuaternion(spec["rotation"], shape.rotation, &error)) {
-                error = "shape.rotation: " + error;
-                return false;
-            }
-            return true;
+            mask |= 1u << layer;
         }
-        if (type == "capsule" && world == "3d") {
-            shape.type = Shape::Capsule;
-            return radius() && point1();
-        }
-        error = "shape.type " + type + (world == "drawn" ? " is not a drawn-world shape: sphere or box." : " is not a 3D shape: sphere, box or capsule.");
-        return false;
-    }
-    if (type == "point") {
-        shape.type = Shape::Point2D;
         return true;
     }
-    if (type == "circle") {
-        shape.type = Shape::Circle2D;
-        return radius();
-    }
-    if (type == "box") {
-        shape.type = Shape::Box2D;
-        return size();
-    }
-    if (type == "capsule") {
-        shape.type = Shape::Capsule2D;
-        shape.direction2D = spec.value("direction2d", "vertical") == "horizontal" ? CapsuleDirection2D::Horizontal : CapsuleDirection2D::Vertical;
-        return size();
-    }
-    if (type == "area") {
-        shape.type = Shape::Area2D;
-        return point1();
-    }
-    error = "shape.type " + type + " is not a 2D shape: point, circle, box, capsule or area.";
+    error = "layer_mask: a number, \"everything\", \"nothing\" or a list of layer names or numbers.";
     return false;
 }
 
-// the cast of the shape (All: nearest first)
-void castShape(Scene* scene, const physics::QueryShape& shape, const Vector3& direction, float distance,
-               const PhysicsQueryOptions& options, std::vector<RayReturn>& out) {
-    const Vector2 origin(shape.a.x, shape.a.y);
-    const Vector2 flat(direction.x, direction.y);
-    const Vector2 size(shape.halfExtents.x * 2.0f, shape.halfExtents.y * 2.0f);
-    switch (shape.type) {
-#ifdef JASPERENGINE_PHYSICS_3D
-        case Shape::Sphere: Physics::sphereCastAll(scene, shape.a, shape.radius, direction, distance, out, options); break;
-        case Shape::Box: Physics::boxCastAll(scene, shape.a, shape.halfExtents, direction, distance, shape.rotation, out, options); break;
-        case Shape::Capsule: Physics::capsuleCastAll(scene, shape.a, shape.b, shape.radius, direction, distance, out, options); break;
-#endif
-#ifdef JASPERENGINE_PHYSICS_2D
-        case Shape::Circle2D: Physics2D::circleCastAll(scene, origin, shape.radius, flat, distance, out, options); break;
-        case Shape::Box2D: Physics2D::boxCastAll(scene, origin, size, shape.angle, flat, distance, out, options); break;
-        case Shape::Capsule2D: Physics2D::capsuleCastAll(scene, origin, size, shape.direction2D, shape.angle, flat, distance, out, options); break;
-#endif
-        default: (void)origin; (void)flat; (void)size; out.clear(); break;
+// ---- the drawn shapes (world space; 2D in points at z 0)
+
+void queryCircleLines(QueryLines& lines, const Vector3& center, const Vector3& axisA, const Vector3& axisB, float radius) {
+    constexpr int SEGMENTS = 24;
+    constexpr float TURN = 6.28318530717958647692f;
+    for (int i = 0; i < SEGMENTS; i++) {
+        const float a0 = TURN * (float)i / SEGMENTS;
+        const float a1 = TURN * (float)(i + 1) / SEGMENTS;
+        lines.push_back({center + (axisA * std::cos(a0) + axisB * std::sin(a0)) * radius,
+                         center + (axisA * std::cos(a1) + axisB * std::sin(a1)) * radius});
     }
+}
+
+void querySphereLines(QueryLines& lines, const Vector3& center, float radius, bool is2D) {
+    queryCircleLines(lines, center, Vector3(1, 0, 0), Vector3(0, 1, 0), radius);
+    if (!is2D) {
+        queryCircleLines(lines, center, Vector3(1, 0, 0), Vector3(0, 0, 1), radius);
+        queryCircleLines(lines, center, Vector3(0, 1, 0), Vector3(0, 0, 1), radius);
+    }
+}
+
+void queryBoxLines(QueryLines& lines, const Vector3& center, const Vector3& halfExtents, const Quaternion& rotation, bool is2D) {
+    Vector3 corners[8];
+    for (int i = 0; i < 8; i++) {
+        const Vector3 local((i & 1) ? halfExtents.x : -halfExtents.x, (i & 2) ? halfExtents.y : -halfExtents.y,
+                            (i & 4) ? halfExtents.z : -halfExtents.z);
+        corners[i] = center + rotation * local;
+    }
+    const int edges3D[12][2] = {{0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3}, {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+    const int edges2D[4][2] = {{0, 1}, {2, 3}, {0, 2}, {1, 3}};
+    if (is2D) {
+        for (const auto& edge : edges2D) lines.push_back({corners[edge[0]], corners[edge[1]]});
+    } else {
+        for (const auto& edge : edges3D) lines.push_back({corners[edge[0]], corners[edge[1]]});
+    }
+}
+
+void queryCapsuleLines(QueryLines& lines, const Vector3& a, const Vector3& b, float radius, bool is2D) {
+    querySphereLines(lines, a, radius, is2D);
+    querySphereLines(lines, b, radius, is2D);
+    Vector3 axis = b - a;
+    if (axis.length() <= 0.0f) return;
+    axis = axis.normalized();
+    Vector3 side = is2D ? Vector3(-axis.y, axis.x, 0.0f) : axis.crossProduct(std::fabs(axis.y) < 0.9f ? Vector3(0, 1, 0) : Vector3(1, 0, 0)).normalized();
+    lines.push_back({a + side * radius, b + side * radius});
+    lines.push_back({a - side * radius, b - side * radius});
+    if (!is2D) {
+        const Vector3 other = axis.crossProduct(side).normalized();
+        lines.push_back({a + other * radius, b + other * radius});
+        lines.push_back({a - other * radius, b - other * radius});
+    }
+}
+
+// the query's shape placed at `offset` from its start
+void shapeLines(QueryLines& lines, const QueryArgs& q, const Vector3& offset, float pointsToMeter) {
+    if (q.shape == "sphere") {
+        querySphereLines(lines, q.origin + offset, q.radius, q.is2D);
+    } else if (q.shape == "box") {
+        if (q.is2D) {
+            const Vector3 half = q.hasPoints ? Vector3(std::fabs(q.pointB.x - q.pointA.x) * 0.5f, std::fabs(q.pointB.y - q.pointA.y) * 0.5f, 0.0f)
+                                             : Vector3(q.size.x * 0.5f, q.size.y * 0.5f, 0.0f);
+            const Vector3 center = q.hasPoints ? (q.pointA + q.pointB) * 0.5f : q.origin;
+            queryBoxLines(lines, center + offset, half, Quaternion(0.0f, 0.0f, q.angle), true);
+        } else {
+            queryBoxLines(lines, q.origin + offset, q.halfExtents, q.rotation, false);
+        }
+    } else if (q.shape == "capsule") {
+        if (q.is2D) {
+            const bool vertical = q.size.y >= q.size.x;
+            const float radius = 0.5f * (vertical ? q.size.x : q.size.y);
+            const float half = std::max(0.0f, 0.5f * (vertical ? q.size.y : q.size.x) - radius);
+            const Quaternion turn(0.0f, 0.0f, q.angle);
+            const Vector3 axis = turn * (vertical ? Vector3(0, half, 0) : Vector3(half, 0, 0));
+            queryCapsuleLines(lines, q.origin + offset - axis, q.origin + offset + axis, radius, true);
+        } else {
+            queryCapsuleLines(lines, q.pointA + offset, q.pointB + offset, q.radius, false);
+        }
+    } else {
+        PhysicsDebugLines::crossMark(q.origin + offset, 0.1f * pointsToMeter, [&](const Vector3& a, const Vector3& b) { lines.push_back({a, b}); });
+    }
+}
+
+// dimension drawn: MeshRaycast's bounds overlap of what is drawn (no colliders, edit mode too)
+void queryDrawnTool(const CallPtr& call, Project* project) {
+    const Json& args = call->args();
+    const std::string shape = args.value("shape", std::string("ray"));
+    if (args.value("mode", std::string("cast")) != "overlap" || (shape != "sphere" && shape != "box")) {
+        call->fail("dimension drawn answers mode overlap with shape sphere or box (bounds); for a ray against what is drawn use raycast_meshes.");
+        return;
+    }
+    std::string error;
+    const bool playing = project->getPlaySessionSceneId() != NULL_PROJECT_SCENE;
+    const Json sceneArg = args.contains("scene") ? args["scene"] : Json();
+    SceneProject* sp = playing ? w3::resolveRuntimeScene(project, sceneArg, error) : McpRefs::resolveScene(project, sceneArg, error);
+    if (!sp) {
+        call->fail(error);
+        return;
+    }
+    if (!sp->scene) {
+        call->fail(McpRefs::notOpenError(project, *sp));
+        return;
+    }
+    Scene* scene = sp->scene;
+    Vector3 origin, halfExtents;
+    float radius = 0.0f;
+    Quaternion rotation = Quaternion::IDENTITY;
+    if (!readQueryVector(args, "origin", false, origin, error) ||
+        (shape == "sphere" && !readQueryNumber(args, "radius", radius, error)) ||
+        (shape == "box" && !readQueryVector(args, "half_extents", false, halfExtents, error))) {
+        call->fail(error);
+        return;
+    }
+    if (shape == "box" && args.contains("rotation") && !McpValues::parseQuaternion(args["rotation"], rotation, &error)) {
+        call->fail("rotation: " + error);
+        return;
+    }
+    MeshRaycastOptions options = MeshRaycast::overlapOptions();
+    options.current = true;
+    uint32_t layerMask = LAYER_MASK_DEFAULT_RAYCAST;
+    if (args.contains("layer_mask") && !readQueryLayerMask(args["layer_mask"], layerMask, error)) {
+        call->fail(error);
+        return;
+    }
+    if (args.contains("ignore")) {
+        for (const Json& ref : args["ignore"]) {
+            const Entity entity = playing ? w3::resolveLiveEntity(project, sp, ref, error) : McpRefs::resolveEntity(sp, ref, error);
+            if (entity == NULL_ENTITY) {
+                call->fail("ignore: " + error);
+                return;
+            }
+            options.ignore.push_back(entity);
+        }
+    }
+    std::vector<MeshOverlapHit> drawn;
+    if (shape == "box") MeshRaycast::overlapBox(scene, origin, halfExtents, rotation, drawn, layerMask, options);
+    else MeshRaycast::overlapSphere(scene, origin, radius, drawn, layerMask, options);
+    Json list = Json::array();
+    for (const MeshOverlapHit& hit : drawn) {
+        Json item = {{"entity", hit.entity}, {"name", McpRefs::entityPath(sp, hit.entity)}, {"kind", pickKindName(hit.kind)}};
+        if (hit.instance >= 0) item["instance"] = hit.instance;
+        if (hit.kind == PickKind::TREE || hit.kind == PickKind::DETAIL) {
+            // the entity is the Terrain; a tree as raycast_meshes and edit_terrain name it
+            item["prototype"] = hit.prototype;
+            if (hit.kind == PickKind::TREE) {
+                item["tree_id"] = scene->findComponent<TerrainWorldComponent>(hit.entity)
+                    ? terrainWorldTreeId(terraincore::TileCoord::fromKey(terraincore::treeIdRegion(hit.foliageId)), terraincore::treeIdRecord(hit.foliageId))
+                    : hit.foliageId;
+            }
+        }
+        list.push_back(item);
+    }
+    Json data = {{"dimension", "drawn"}, {"shape", shape}, {"mode", "overlap"}, {"hits", list}};
+    call->ok(list.empty() ? std::string("Nothing drawn overlaps.") : std::to_string(list.size()) + " drawn object(s) overlap.", data);
 }
 
 void queryPhysicsTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
-    std::string error;
-    const std::string op = args.value("op", "overlap");
-    const bool playing = project->getPlaySessionSceneId() != NULL_PROJECT_SCENE;
-
-    // the scene: the running game's in Play, the selected one in edit mode (drawn only)
-    std::string world = args.value("world", "");
-    SceneProject* sceneProject = nullptr;
-    if (playing) {
-        sceneProject = w3::resolveRuntimeScene(project, args.contains("scene") ? args["scene"] : Json(), error);
-    } else {
-        sceneProject = McpRefs::resolveScene(project, args.contains("scene") ? args["scene"] : Json(), error);
+    if (project && args.value("dimension", std::string()) == "drawn") {
+        queryDrawnTool(call, project);
+        return;
     }
-    if (!sceneProject) {
+    if (!project || project->getPlaySessionSceneId() == NULL_PROJECT_SCENE) {
+        call->fail("query_physics reads the running physics world: start Play first (play).");
+        return;
+    }
+    std::string error;
+    SceneProject* sp = w3::resolveRuntimeScene(project, args.contains("scene") ? args["scene"] : Json(), error);
+    if (!sp || !sp->scene) {
+        call->fail(error.empty() ? "query_physics reads the running physics world: start Play first (play)." : error);
+        return;
+    }
+    Scene* scene = sp->scene;
+    std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+
+    QueryArgs q;
+    q.is2D = args.contains("dimension") ? args["dimension"].get<std::string>() == "2d" : sp->sceneType != SceneType::SCENE_3D;
+    q.shape = args.value("shape", std::string("ray"));
+    q.mode = args.value("mode", std::string("cast"));
+    const bool cast = q.mode == "cast" || q.mode == "cast_all";
+    // verify: the overlap, and PhysicsQueryReference's sweep of every body compared with it
+    const bool verify = q.mode == "verify";
+    if (q.shape == "ray" && !cast) {
+        call->fail("A ray only casts: mode cast or cast_all (an overlap needs sphere, box, capsule or point).");
+        return;
+    }
+    if (q.shape == "point" && cast) {
+        call->fail("A point does not move: mode overlap or check (cast a ray or a sphere instead).");
+        return;
+    }
+#ifndef JASPERENGINE_PHYSICS_2D
+    if (q.is2D) { call->fail("This editor is built without 2D physics."); return; }
+#endif
+#ifndef JASPERENGINE_PHYSICS_3D
+    if (!q.is2D) { call->fail("This editor is built without 3D physics."); return; }
+#endif
+
+    QueryOptions options;
+    std::vector<Entity> ignore;
+    if (args.contains("layer_mask") && !readQueryLayerMask(args["layer_mask"], options.layerMask, error)) {
         call->fail(error);
         return;
     }
-    if (!sceneProject->scene) {
-        call->fail(McpRefs::notOpenError(project, *sceneProject));
-        return;
-    }
-    if (world.empty()) world = sceneProject->sceneType == SceneType::SCENE_2D ? "2d" : "3d";
-    if (world == "drawn" && op != "overlap") {
-        call->fail("world: drawn answers op: overlap only (bounds); for rays against what is drawn use raycast_meshes.");
-        return;
-    }
-    if (world != "drawn" && !playing) {
-        call->fail("physics queries need Play: call play first (bodies exist only while the scene runs); world: drawn works in edit mode.");
-        return;
-    }
-    Scene* scene = sceneProject->scene;
-
-    physics::QueryShape shape;
-    if (op == "raycast") {
-        if (!args.contains("origin") || !McpValues::parseVector3(args["origin"], shape.a)) {
-            Vector2 flat;
-            if (!(args.contains("origin") && McpValues::parseVector2(args["origin"], flat))) {
-                call->fail("origin [x, y, z] is required: where the ray starts.");
+    if (args.contains("ignore")) {
+        for (const Json& ref : args["ignore"]) {
+            const Entity entity = w3::resolveLiveEntity(project, sp, ref, error);
+            if (entity == NULL_ENTITY) {
+                call->fail("ignore: " + error);
                 return;
             }
-            shape.a = Vector3(flat.x, flat.y, 0.0f);
+            ignore.push_back(entity);
         }
-        shape.type = world == "2d" ? Shape::Circle2D : Shape::Sphere;
-    } else if (!readQueryShape(args, world, shape, error)) {
+        options.ignore = ignore.empty() ? nullptr : &ignore;
+    }
+    const std::string triggers = args.value("triggers", std::string("use_global"));
+    options.triggers = triggers == "ignore" ? QueryTriggerInteraction::IGNORE
+                     : triggers == "collide" ? QueryTriggerInteraction::COLLIDE : QueryTriggerInteraction::USE_GLOBAL;
+    if (args.value("hit_from_inside", false)) {
+        options.hitFromInside = true;
+        options.startInColliders = true;
+    }
+
+    // the shape's arguments
+    const bool needsOrigin = !(q.shape == "capsule" && !q.is2D) && !(q.shape == "box" && q.is2D && args.contains("point_a"));
+    if (needsOrigin && !readQueryVector(args, "origin", q.is2D, q.origin, error)) {
         call->fail(error);
         return;
     }
-    Vector3 direction;
-    float distance = 0.0f;
-    if (op == "cast" || op == "raycast") {
-        Vector2 flat;
-        if (args.contains("direction") && McpValues::parseVector3(args["direction"], direction)) {
-        } else if (args.contains("direction") && McpValues::parseVector2(args["direction"], flat)) {
-            direction = Vector3(flat.x, flat.y, 0.0f);
+    if (cast) {
+        if (!readQueryVector(args, "direction", q.is2D, q.direction, error) || !readQueryNumber(args, "max_distance", q.maxDistance, error)) {
+            call->fail(error);
+            return;
+        }
+    }
+    if (q.shape == "sphere" || (q.shape == "capsule" && !q.is2D)) {
+        if (!readQueryNumber(args, "radius", q.radius, error)) {
+            call->fail(error);
+            return;
+        }
+    }
+    if (q.shape == "box" && !q.is2D) {
+        if (!readQueryVector(args, "half_extents", false, q.halfExtents, error)) {
+            call->fail(error);
+            return;
+        }
+        if (args.contains("rotation") && !McpValues::parseQuaternion(args["rotation"], q.rotation, &error)) {
+            call->fail("rotation: " + error);
+            return;
+        }
+    }
+    if ((q.shape == "box" || q.shape == "capsule") && q.is2D) {
+        if (q.shape == "box" && args.contains("point_a")) {
+            if (cast) {
+                call->fail("point_a and point_b make an overlap area: mode overlap or check (a cast takes origin and size).");
+                return;
+            }
+            if (!readQueryVector(args, "point_a", true, q.pointA, error) || !readQueryVector(args, "point_b", true, q.pointB, error)) {
+                call->fail(error);
+                return;
+            }
+            q.hasPoints = true;
         } else {
-            call->fail("direction [x, y, z] is required for op: " + op + ".");
+            Vector3 size;
+            if (!readQueryVector(args, "size", true, size, error)) {
+                call->fail(error);
+                return;
+            }
+            q.size = Vector2(size.x, size.y);
+        }
+        q.angle = args.value("angle", 0.0f);
+    }
+    if (q.shape == "capsule" && !q.is2D) {
+        if (!readQueryVector(args, "point_a", false, q.pointA, error) || !readQueryVector(args, "point_b", false, q.pointB, error)) {
+            call->fail(error);
             return;
         }
-        if (!args.contains("max_distance") || !args["max_distance"].is_number() || !(args["max_distance"].get<float>() > 0.0f)) {
-            call->fail("max_distance (a positive number, world units; 2D scene units) is required for op: " + op + ".");
-            return;
-        }
-        distance = args["max_distance"].get<float>();
+        q.origin = (q.pointA + q.pointB) * 0.5f;
     }
 
-    PhysicsQueryOptions options;
-    if (args.contains("layer_mask") && args["layer_mask"].is_number_integer()) {
-        options.layerMask = (uint32_t)args["layer_mask"].get<long long>();
+    // the arguments the queries refuse, named as the tool's
+    const char* why = nullptr;
+    if (q.is2D) {
+#ifdef JASPERENGINE_PHYSICS_2D
+        if (cast) why = PhysicsQueries2D::invalidDirection(Vector2(q.direction.x, q.direction.y), q.maxDistance);
+        if (!why && q.shape == "sphere") why = PhysicsQueries2D::invalidRadius(q.radius);
+        if (!why && (q.shape == "box" || q.shape == "capsule") && !q.hasPoints) why = PhysicsQueries2D::invalidSize(q.size);
+        if (!why && q.hasPoints) why = PhysicsQueries2D::invalidSize(Vector2(std::fabs(q.pointB.x - q.pointA.x), std::fabs(q.pointB.y - q.pointA.y)));
+#endif
+    } else {
+#ifdef JASPERENGINE_PHYSICS_3D
+        if (cast) why = PhysicsQueries3D::invalidDirection(q.direction, q.maxDistance);
+        if (!why && (q.shape == "sphere" || q.shape == "capsule")) why = PhysicsQueries3D::invalidRadius(q.radius);
+        if (!why && q.shape == "box") why = PhysicsQueries3D::invalidHalfExtents(q.halfExtents);
+#endif
     }
-    const std::string triggers = args.value("triggers", "use_global");
-    options.triggers = triggers == "ignore" ? QueryTriggerInteraction::Ignore
-                     : triggers == "collide" ? QueryTriggerInteraction::Collide : QueryTriggerInteraction::UseGlobal;
-    std::vector<Entity> ignore;
-    if (args.contains("ignore") && !McpRefs::resolveEntities(sceneProject, args["ignore"], ignore, error)) {
-        call->fail("ignore: " + error);
-        return;
-    }
-    options.ignore = ignore;
-    const size_t maxHits = (size_t)std::clamp<long long>(args.value("max_hits", 64LL), 1, 1024);
-    const bool verify = args.value("verify", false);
-    if (verify && (op != "overlap" || world == "drawn")) {
-        call->fail("verify compares a physics overlap (op: overlap, world 3d or 2d) with a brute-force sweep.");
+    if (why) {
+        // "direction must be ...", "maxDistance must be ..." in the tool's words
+        std::string text = why;
+        for (const auto& [from, to] : std::vector<std::pair<std::string, std::string>>{
+                 {"maxDistance", "max_distance"}, {"distance must", "max_distance must"}, {"halfExtents", "half_extents"}}) {
+            const size_t at = text.find(from);
+            if (at != std::string::npos) text.replace(at, from.size(), to);
+        }
+        call->fail(text + ".");
         return;
     }
 
     // run it
-    const bool is2D = world == "2d";
-    Json hits = Json::array();
-    size_t count = 0;
-    std::vector<Vector3> points;
-    std::vector<OverlapHit> overlaps;
-    if (world == "drawn") {
-        std::vector<MeshOverlapHit> drawn;
-        MeshRaycastOptions drawnOptions = MeshRaycast::overlapOptions();
-        drawnOptions.current = true;
-        drawnOptions.ignore = ignore;
-        if (shape.type == Shape::Box) MeshRaycast::overlapBox(scene, shape.a, shape.halfExtents, shape.rotation, drawn, options.layerMask, drawnOptions);
-        else MeshRaycast::overlapSphere(scene, shape.a, shape.radius, drawn, options.layerMask, drawnOptions);
-        count = drawn.size();
-        for (size_t i = 0; i < drawn.size() && i < maxHits; i++) {
-            Json item = {{"entity", McpRefs::entityJson(sceneProject, drawn[i].entity)}, {"kind", pickKindName(drawn[i].kind)}};
-            if (drawn[i].instance >= 0) item["instance"] = drawn[i].instance;
-            if (drawn[i].kind == PickKind::TREE || drawn[i].kind == PickKind::DETAIL) {
-                // the entity is the Terrain; a tree as raycast_meshes and edit_terrain name it
-                item["prototype"] = drawn[i].prototype;
-                if (drawn[i].kind == PickKind::TREE) {
-                    item["tree_id"] = scene->findComponent<TerrainWorldComponent>(drawn[i].entity)
-                        ? terrainWorldTreeId(terraincore::TileCoord::fromKey(terraincore::treeIdRegion(drawn[i].foliageId)), terraincore::treeIdRecord(drawn[i].foliageId))
-                        : drawn[i].foliageId;
-                }
-            }
-            hits.push_back(item);
-        }
-    } else if (op == "cast" || op == "raycast") {
-        std::vector<RayReturn> casts;
-        if (op == "raycast") {
-#ifdef JASPERENGINE_PHYSICS_3D
-            if (!is2D) casts = Physics::raycastAll(scene, shape.a, direction, distance, options.layerMask, options.triggers);
-#endif
+    std::vector<RayReturn> hits;
+    std::vector<std::pair<Entity, int>> colliders;
+    bool any = false;
+    [[maybe_unused]] const Vector2 origin2(q.origin.x, q.origin.y), direction2(q.direction.x, q.direction.y);
+    [[maybe_unused]] const Vector2 size2 = q.size;
+    [[maybe_unused]] const CapsuleDirection2D capsuleDirection = q.size.y >= q.size.x ? CapsuleDirection2D::VERTICAL : CapsuleDirection2D::HORIZONTAL;
+    if (cast) {
+        const bool all = q.mode == "cast_all";
+        if (q.is2D) {
 #ifdef JASPERENGINE_PHYSICS_2D
-            if (is2D) casts = Physics2D::raycastAll(scene, Vector2(shape.a.x, shape.a.y), Vector2(direction.x, direction.y), distance, options.layerMask, options.triggers);
+            if (q.shape == "ray") {
+                if (all) hits = Physics2D::raycastAll(scene, origin2, direction2, q.maxDistance, options);
+                else hits.push_back(Physics2D::raycast(scene, origin2, direction2, q.maxDistance, options));
+            } else if (q.shape == "sphere") {
+                if (all) PhysicsQueries2D::circleCastAll(scene, origin2, q.radius, direction2, q.maxDistance, hits, options);
+                else hits.push_back(PhysicsQueries2D::circleCast(scene, origin2, q.radius, direction2, q.maxDistance, options));
+            } else if (q.shape == "box") {
+                if (all) PhysicsQueries2D::boxCastAll(scene, origin2, size2, q.angle, direction2, q.maxDistance, hits, options);
+                else hits.push_back(PhysicsQueries2D::boxCast(scene, origin2, size2, q.angle, direction2, q.maxDistance, options));
+            } else {
+                if (all) PhysicsQueries2D::capsuleCastAll(scene, origin2, size2, capsuleDirection, q.angle, direction2, q.maxDistance, hits, options);
+                else hits.push_back(PhysicsQueries2D::capsuleCast(scene, origin2, size2, capsuleDirection, q.angle, direction2, q.maxDistance, options));
+            }
 #endif
-            // the ray takes no ignore list: drop those bodies here
-            casts.erase(std::remove_if(casts.begin(), casts.end(), [&](const RayReturn& hit) {
-                return std::find(ignore.begin(), ignore.end(), hit.body) != ignore.end();
-            }), casts.end());
         } else {
-            castShape(scene, shape, direction, distance, options, casts);
+#ifdef JASPERENGINE_PHYSICS_3D
+            if (q.shape == "ray") {
+                if (all) hits = Physics::raycastAll(scene, q.origin, q.direction, q.maxDistance, options);
+                else hits.push_back(Physics::raycast(scene, q.origin, q.direction, q.maxDistance, options));
+            } else if (q.shape == "sphere") {
+                if (all) PhysicsQueries3D::sphereCastAll(scene, q.origin, q.radius, q.direction, q.maxDistance, hits, options);
+                else hits.push_back(PhysicsQueries3D::sphereCast(scene, q.origin, q.radius, q.direction, q.maxDistance, options));
+            } else if (q.shape == "box") {
+                if (all) PhysicsQueries3D::boxCastAll(scene, q.origin, q.halfExtents, q.direction, q.rotation, q.maxDistance, hits, options);
+                else hits.push_back(PhysicsQueries3D::boxCast(scene, q.origin, q.halfExtents, q.direction, q.rotation, q.maxDistance, options));
+            } else {
+                if (all) PhysicsQueries3D::capsuleCastAll(scene, q.pointA, q.pointB, q.radius, q.direction, q.maxDistance, hits, options);
+                else hits.push_back(PhysicsQueries3D::capsuleCast(scene, q.pointA, q.pointB, q.radius, q.direction, q.maxDistance, options));
+            }
+#endif
         }
-        count = casts.size();
-        for (size_t i = 0; i < casts.size() && i < maxHits; i++) {
-            hits.push_back({{"entity", McpRefs::entityJson(sceneProject, casts[i].body)}, {"collider", casts[i].colliderIndex},
-                            {"point", vectorJson(casts[i].point)}, {"normal", vectorJson(casts[i].normal)}, {"distance", casts[i].distance}});
-            points.push_back(casts[i].point);
-        }
+        hits.erase(std::remove_if(hits.begin(), hits.end(), [](const RayReturn& hit) { return !hit.hit; }), hits.end());
+        any = !hits.empty();
     } else {
-        physics::queryOverlap(scene, shape, options, overlaps);
-        if (op == "check" && overlaps.size() > 1) overlaps.resize(1);
-        count = overlaps.size();
-        for (size_t i = 0; i < overlaps.size() && i < maxHits; i++) {
-            hits.push_back({{"entity", McpRefs::entityJson(sceneProject, overlaps[i].body)}, {"collider", overlaps[i].colliderIndex},
-                            {"trigger", overlaps[i].trigger}});
+        // overlap and check share the overlap: a check is whether it found any
+        if (q.is2D) {
+#ifdef JASPERENGINE_PHYSICS_2D
+            std::vector<ColliderRef2D> found;
+            if (q.shape == "sphere") PhysicsQueries2D::overlapCircleAll(scene, origin2, q.radius, found, options);
+            else if (q.shape == "box" && q.hasPoints) PhysicsQueries2D::overlapAreaAll(scene, Vector2(q.pointA.x, q.pointA.y), Vector2(q.pointB.x, q.pointB.y), found, options);
+            else if (q.shape == "box") PhysicsQueries2D::overlapBoxAll(scene, origin2, size2, q.angle, found, options);
+            else if (q.shape == "capsule") PhysicsQueries2D::overlapCapsuleAll(scene, origin2, size2, capsuleDirection, q.angle, found, options);
+            else PhysicsQueries2D::overlapPointAll(scene, origin2, found, options);
+            for (const ColliderRef2D& collider : found) colliders.push_back({collider.entity, collider.index});
+#endif
+        } else {
+#ifdef JASPERENGINE_PHYSICS_3D
+            std::vector<ColliderRef> found;
+            if (q.shape == "sphere") PhysicsQueries3D::overlapSphere(scene, q.origin, q.radius, found, options);
+            else if (q.shape == "box") PhysicsQueries3D::overlapBox(scene, q.origin, q.halfExtents, q.rotation, found, options);
+            else if (q.shape == "capsule") PhysicsQueries3D::overlapCapsule(scene, q.pointA, q.pointB, q.radius, found, options);
+            else PhysicsQueries3D::overlapPoint(scene, q.origin, found, options);
+            for (const ColliderRef& collider : found) colliders.push_back({collider.entity, collider.index});
+#endif
         }
+        any = !colliders.empty();
     }
 
-    Json result = {{"op", op}, {"world", world}, {"count", count}, {"truncated", count > maxHits}, {"hits", hits}};
-    if (op == "check") result["hit"] = count > 0;
-    std::string next;
-
+    Json verified;
     if (verify) {
-        std::vector<OverlapHit> reference;
-        physics::referenceOverlap(scene, is2D, shape, options, reference);
-        const physics::ReferenceDiff diff = physics::compare(overlaps, reference);
-        auto list = [&](const std::vector<OverlapHit>& items) {
+        physics::QueryShape shape;
+        if (q.is2D) {
+            if (q.shape == "sphere") shape = physics::QueryShape::circle2D(origin2, q.radius);
+            else if (q.shape == "box" && q.hasPoints) shape = physics::QueryShape::area2D(Vector2(q.pointA.x, q.pointA.y), Vector2(q.pointB.x, q.pointB.y));
+            else if (q.shape == "box") shape = physics::QueryShape::box2D(origin2, size2, q.angle);
+            else if (q.shape == "capsule") shape = physics::QueryShape::capsule2D(origin2, size2, capsuleDirection, q.angle);
+            else shape = physics::QueryShape::point2D(origin2);
+        } else {
+            if (q.shape == "sphere") shape = physics::QueryShape::sphere(q.origin, q.radius);
+            else if (q.shape == "box") shape = physics::QueryShape::box(q.origin, q.halfExtents, q.rotation);
+            else if (q.shape == "capsule") shape = physics::QueryShape::capsule(q.pointA, q.pointB, q.radius);
+            else shape = physics::QueryShape::point(q.origin);
+        }
+        std::vector<physics::QueryCollider> found, reference;
+        for (const auto& [entity, index] : colliders) found.push_back({entity, index});
+        physics::referenceOverlap(scene, shape, options, reference);
+        const physics::ReferenceDiff diff = physics::compare(found, reference);
+        auto named = [&](const std::vector<physics::QueryCollider>& items) {
             Json out = Json::array();
-            for (const OverlapHit& item : items) out.push_back({{"entity", McpRefs::entityJson(sceneProject, item.body)}, {"collider", item.colliderIndex}});
+            for (const physics::QueryCollider& item : items) {
+                out.push_back({{"entity", item.entity}, {"name", McpRefs::entityPath(sp, item.entity)}, {"collider", item.index}});
+            }
             return out;
         };
-        result["verify"] = {{"reference_count", diff.referenceCount}, {"missing", list(diff.missing)}, {"extra", list(diff.extra)}, {"ok", diff.ok()}};
-        if (!diff.ok()) next = "report: the query and the sweep differ (verify.missing / verify.extra).";
+        verified = {{"reference_count", diff.referenceCount}, {"missing", named(diff.missing)}, {"extra", named(diff.extra)}, {"ok", diff.ok()}};
     }
 
-    // zero hits: say what the filters left out
-    if (count == 0 && world != "drawn" && (op == "overlap" || op == "check")) {
-        PhysicsQueryOptions open = options;
-        open.layerMask = Physics::ALL_LAYERS;
-        open.triggers = QueryTriggerInteraction::Collide;
-        std::vector<OverlapHit> inside;
-        physics::queryOverlap(scene, shape, open, inside);
-        std::set<Entity> masked;
-        std::set<int> layers;
-        for (const OverlapHit& hit : inside) {
-            const int layer = scene->getEntityLayer(hit.body);
-            if (!((options.layerMask >> (layer & 31)) & 1u)) {
-                masked.insert(hit.body);
-                layers.insert(layer);
+    // draw: the shape at its start (and, cast, at its end or first hit), the hits
+    size_t drawn = 0;
+    if (args.value("draw", false) && physics) {
+        const float pointsToMeter = q.is2D ? physics->getPointsToMeterScale2D() : 1.0f;
+        QueryLines shapeLinesOut, hitLines;
+        if (q.shape != "ray") shapeLines(shapeLinesOut, q, Vector3::ZERO, pointsToMeter);
+        if (cast) {
+            const Vector3 direction = q.direction.normalized();
+            const float reach = any ? hits.front().distance : q.maxDistance;
+            shapeLinesOut.push_back({q.origin, q.origin + direction * reach});
+            if (q.shape != "ray") shapeLines(shapeLinesOut, q, direction * reach, pointsToMeter);
+            for (const RayReturn& hit : hits) {
+                PhysicsDebugLines::crossMark(hit.point, 0.1f * pointsToMeter, [&](const Vector3& a, const Vector3& b) { hitLines.push_back({a, b}); });
+                hitLines.push_back({hit.point, hit.point + hit.normal * (0.5f * pointsToMeter)});
             }
         }
-        if (!masked.empty()) {
-            std::string names;
-            for (int layer : layers) {
-                const std::string name = TagManager::layerToName(layer);
-                names += (names.empty() ? "" : ", ") + (name.empty() ? std::to_string(layer) : name);
+        physics->addTimedDebugLines(shapeLinesOut, QUERY_SHAPE_COLOR, QUERY_DRAW_SECONDS);
+        physics->addTimedDebugLines(hitLines, QUERY_HIT_COLOR, QUERY_DRAW_SECONDS);
+        drawn = shapeLinesOut.size() + hitLines.size();
+    }
+
+    Json data = {{"dimension", q.is2D ? "2d" : "3d"}, {"shape", q.shape}, {"mode", q.mode}};
+    std::string text;
+    if (q.mode == "check") {
+        data["hit"] = any;
+        text = any ? "Something is there." : "Nothing is there.";
+    } else if (cast) {
+        Json list = Json::array();
+        for (const RayReturn& hit : hits) {
+            // a collider attached from a child GameObject names the child (S96 REQ-18), its body the ancestor
+            Entity owner = hit.body;
+            int index = (int)hit.colliderIndex;
+#ifdef JASPERENGINE_PHYSICS_2D
+            if (q.is2D) {
+                const ColliderRef2D ref(scene, hit.body, index);
+                owner = ref.entity;
+                index = ref.index;
             }
-            next = "no hits: layer_mask excludes " + std::to_string(masked.size()) + " bodies inside the shape (layers: " + names + ").";
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+            if (!q.is2D) {
+                const ColliderRef ref(scene, hit.body, index);
+                owner = ref.entity;
+                index = ref.index;
+            }
+#endif
+            Json entry = {{"entity", owner}, {"name", McpRefs::entityPath(sp, owner)}, {"collider", index},
+                          {"point", McpValues::toJson(hit.point)}, {"normal", McpValues::toJson(hit.normal)},
+                          {"distance", McpValues::number(hit.distance)}};
+            if (owner != hit.body) entry["body"] = McpRefs::entityPath(sp, hit.body);
+            list.push_back(entry);
         }
+        data["hits"] = list;
+        text = list.empty() ? std::string("No hit.")
+                            : std::to_string(list.size()) + " hit(s), nearest " + list[0]["name"].get<std::string>() + " at " +
+                                  std::to_string(hits.front().distance) + ".";
+    } else {
+        Json list = Json::array();
+        for (const auto& [entity, index] : colliders) {
+            list.push_back({{"entity", entity}, {"name", McpRefs::entityPath(sp, entity)}, {"collider", index}});
+        }
+        data["hits"] = list;
+        text = list.empty() ? std::string("Nothing overlaps.") : std::to_string(list.size()) + " collider(s) overlap.";
     }
-    if (!next.empty()) result["next"] = next;
-
-    if (args.value("draw", false)) {
-        Vector3 marks[PhysicsQueryDebug::MAX_HIT_POINTS];
-        size_t markCount = 0;
-        for (size_t i = 0; i < points.size() && markCount < PhysicsQueryDebug::MAX_HIT_POINTS; i++) marks[markCount++] = points[i];
-        const bool cast = op == "cast" || op == "raycast";
-        const float reach = cast ? (points.empty() ? distance : (points.back() - shape.a).length()) : 0.0f;
-        physics::recordQuery(scene, shape, cast ? direction.normalized() : Vector3::ZERO, reach, cast, marks, markCount, count > 0, true);
+    if (verify) {
+        data["verify"] = verified;
+        text += verified["ok"].get<bool>() ? " The brute-force sweep agrees."
+                                           : " The brute-force sweep differs: " + std::to_string(verified["missing"].size()) + " missing, " +
+                                                 std::to_string(verified["extra"].size()) + " extra.";
     }
-
-    std::string text = op + " (" + world + "): " + std::to_string(count) + " hit" + (count == 1 ? "" : "s");
-    for (size_t i = 0; i < hits.size() && i < 8; i++) {
-        text += (i == 0 ? ": " : ", ") + hits[i]["entity"].value("path", std::string());
-    }
-    if (count > 8) text += ", ...";
-    text += ".";
-    if (!next.empty()) text += " " + next;
-    call->ok(text, result);
+    if (drawn > 0) data["drawn_lines"] = drawn;
+    call->ok(text, data);
 }
 
 } // namespace
 
 void registerPhysicsQueryTools(McpRegistry& registry) {
     using namespace schema;
+    // [x, y] in 2D, [x, y, z] in 3D (the handler checks the length)
+    const Json vector = array(Json{{"type", "number"}}, "");
     ToolDef tool;
     tool.name = "query_physics";
-    tool.group = "physics";
     tool.title = "Query Physics";
     tool.description =
-        "Spatial query of the running game's colliders (Play only) or of drawn bounds (world drawn, overlap, edit mode too): "
-        "overlap lists colliders touching a shape, check says if any, cast sweeps a shape (nearest first), raycast. Use it "
-        "instead of looping over objects in eval_lua. verify compares an overlap with a brute-force sweep; draw shows it 2 s.";
+        "The running game's colliders (Play only): ray/sphere/box/capsule/point cast, cast_all, overlap or check; verify "
+        "compares an overlap with a brute-force sweep. 2D in points. drawn: mesh/tree bounds, edit mode too.";
     tool.inputSchema = object({
-        {"op", withDefault(stringEnum("", {"overlap", "check", "cast", "raycast"}), "overlap")},
-        {"world", stringEnum("Default: the scene's type.", {"3d", "2d", "drawn"})},
-        {"shape", anyObject("{type: sphere|box|capsule|circle|point|area, radius, half_extents, size (2D), point1 (capsule end, "
-                            "area corner), angle (2D degrees), rotation, direction2d: vertical|horizontal}.")},
-        {"origin", vec3("Shape centre or start; 2D in scene units.")},
-        {"direction", vec3("")},
+        {"scene", sceneRef()},
+        {"dimension", stringEnum("", {"2d", "3d", "drawn"})},
+        {"shape", stringEnum("", {"ray", "sphere", "box", "capsule", "point"})},
+        {"mode", withDefault(stringEnum("", {"cast", "cast_all", "overlap", "check", "verify"}), "cast")},
+        {"origin", vector},
+        {"direction", vector},
         {"max_distance", number("")},
-        {"layer_mask", integer("")},
-        {"triggers", stringEnum("", {"use_global", "ignore", "collide"})},
+        {"radius", number("")},
+        {"half_extents", vec3("")},
+        {"size", vec2("")},
+        {"angle", number("")},
+        {"rotation", quat()},
+        {"point_a", vector},
+        {"point_b", vector},
+        {"layer_mask", any("")},
         {"ignore", entities()},
-        {"max_hits", withDefault(integer("", 1, 1024), 64)},
-        {"verify", boolean("")},
-        {"draw", boolean("")},
-        {"scene", sceneRef()}
-    });
+        {"triggers", stringEnum("", {"use_global", "ignore", "collide"})},
+        {"hit_from_inside", boolean("")},
+        {"draw", boolean("")}
+    }, {"shape"});
+    tool.group = "physics";
     tool.annotations.readOnly = true;
     tool.annotations.idempotent = true;
-    tool.allowedWhilePlaying = true;
     tool.handler = queryPhysicsTool;
     registry.addTool(std::move(tool));
 }
 
-} // namespace jasperengine::editor::mcp
+}

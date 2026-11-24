@@ -1,10 +1,12 @@
 // (c) JasperDev and contributors
 // SPDX-License-Identifier: MIT
 
-// je-bench-physics-query: the spatial query budgets (docs/specs/spatial-queries.md R19, AC14) on
-// query_city (2,000 bodies over a 200 m mesh ground; the same layout in Box2D), 10,000 drawn
-// leaves and T5's foliage scene (50,000 trees, which have no leaves: the overlap walks their cells).
-// Each sample times 100 queries; the keys are the p95 of 200 samples, per query.
+// je-bench-physics-query: the spatial query budgets (docs/specs/spatial-queries.md R19, AC14) of
+// what spatial-queries adds to S96's queries (whose own costs PhysicsQueriesBenchTest measures):
+// Lua's Physics.overlapSphereNonAlloc on query_city (2,000 bodies over a 200 m mesh ground),
+// MeshRaycast overlaps among 10,000 drawn leaves and in T5's foliage scene (50,000 trees, which
+// have no leaves: the overlap walks their cells). Each sample times 100 queries; the keys are the
+// p95 of 200 samples, per query.
 //
 //   je-bench-physics-query [--json out.json]
 
@@ -65,23 +67,6 @@ int main(int argc, char** argv){
         std::uniform_real_distribution<float> along(-city.extent * 0.9f, city.extent * 0.9f);
         std::vector<Vector3> centers;
         for (int i = 0; i < SAMPLES * BATCH + BATCH; i++) centers.push_back(Vector3(along(rng), 1.5f, along(rng)));
-        std::vector<OverlapHit> hits;
-        hits.reserve(1024);
-        size_t found = 0;
-        const Quaternion turned(0.9238795f, 0.0f, 0.3826834f, 0.0f);
-        results.add("overlap_sphere_p95_ms", p95PerQuery([&](int i){ found += Physics::overlapSphere(scene, centers[i], 5.0f, hits); }), "ms");
-        std::printf("overlapSphere r 5: %.1f hits per query\n", (double)found / (double)(SAMPLES * BATCH + BATCH));
-        results.add("overlap_box_p95_ms", p95PerQuery([&](int i){ Physics::overlapBox(scene, centers[i], Vector3(5, 5, 5), turned, hits); }), "ms");
-        // information: the same boxes passing through the mesh ground (what the box pairs with the ground's triangles cost)
-        const std::vector<Entity> ground = {city.ground};
-        PhysicsQueryOptions noGround;
-        noGround.ignore = ground;
-        results.add("overlap_box_no_ground_p95_ms", p95PerQuery([&](int i){ Physics::overlapBox(scene, centers[i], Vector3(5, 5, 5), turned, hits, noGround); }), "ms");
-        results.add("check_sphere_p95_ms", p95PerQuery([&](int i){ Physics::checkSphere(scene, centers[i], 5.0f); }), "ms");
-        results.add("sphere_cast_p95_ms", p95PerQuery([&](int i){
-            Physics::sphereCast(scene, centers[i], 0.5f, Vector3(1, 0, (float)(i % 3) - 1.0f), 30.0f);
-        }), "ms");
-
         lua_State* L = LuaBinding::getLuaState();
         luabridge::setGlobal(L, scene, "benchScene");
         luaL_dostring(L, "benchResults = {} benchCenter = Vector3(0, 1.5, 0) "
@@ -99,20 +84,6 @@ int main(int argc, char** argv){
         luaL_unref(L, LUA_REGISTRYINDEX, function);
         lua_pushnil(L);
         lua_setglobal(L, "benchScene");
-    }
-#endif
-
-#ifdef JASPERENGINE_PHYSICS_2D
-    {
-        test::QueryCity city = test::buildQueryCity2D(2000);
-        Scene* scene = city.scene.get();
-        std::uniform_real_distribution<float> along(-city.extent * 0.9f, city.extent * 0.9f);
-        std::vector<Vector2> centers;
-        for (int i = 0; i < SAMPLES * BATCH + BATCH; i++) centers.push_back(Vector2(along(rng), along(rng)));
-        std::vector<OverlapHit> hits;
-        hits.reserve(1024);
-        // r = 100 points (64 points a metre)
-        results.add("overlap_circle_2d_p95_ms", p95PerQuery([&](int i){ Physics2D::overlapCircleAll(scene, centers[i], 100.0f, hits); }), "ms");
     }
 #endif
 

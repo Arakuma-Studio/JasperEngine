@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest 234c1332fb1af82a
+digest babfb6035bbadd76
 --- 0
 enabled: true
 state: playing
@@ -27,6 +27,15 @@ event: textures/a.png
 minImpactSpeed: 0.605338
 fullVolumeImpactSpeed: -27
 pitchRandomSemitones: -0.85393506
+effects:
+  - type: a
+    wet: 7886.067
+  - type: 123
+    wet: -0.83569723
+  - type: "multi\nline"
+    wet: -0
+spatialBlend: -27
+slot: 4
 --- 1
 enabled: false
 state: paused
@@ -52,6 +61,18 @@ ignoreListenerPause: true
 playOn: [ui_hover, collision_3d, sensor_3d]
 pitchRandomSemitones: 5619.7856
 volumeRandomDb: 45
+effects:
+  - type: a
+    bypass: true
+    wet: 0.115699194
+  - type: "Hello, YAML: [1, 2]"
+    wet: 0.42699292
+  - type: "#hash"
+    wet: -0.8095195
+  - type: true
+    bypass: true
+    wet: 3e+38
+spatialBlend: -0.20990406
 --- 2
 enabled: true
 state: playing
@@ -80,6 +101,8 @@ playOn: [ui_press, ui_hover, collision_2d, sensor_3d]
 minImpactSpeed: 0.88441986
 fullVolumeImpactSpeed: 121
 volumeRandomDb: 5894.787
+spatialBlend: -67.42857
+slot: 4
 --- 3
 enabled: false
 state: playing
@@ -105,6 +128,14 @@ playOn: [ui_hover, collision_3d]
 minImpactSpeed: -34.714287
 fullVolumeImpactSpeed: 0.5714286
 volumeRandomDb: 7408.1084
+effects:
+  - type: a
+    wet: 4.857143
+  - type: textures/a.png
+    wet: 0.09393257
+  - type: a
+    wet: -85.57143
+slot: 1
 --- 4
 enabled: false
 state: playing
@@ -130,6 +161,13 @@ event: fonts/Main.ttf
 playOn: [ui_hover, collision_2d, sensor_2d, sensor_3d]
 pitchRandomSemitones: -10.428572
 volumeRandomDb: 4470.4014
+effects:
+  - type: "~"
+    wet: -0.8673016
+  - type: "Hello, YAML: [1, 2]"
+    wet: 82.14286
+spatialBlend: -77
+slot: 3
 --- 5
 enabled: false
 state: stopped
@@ -151,6 +189,13 @@ dopplerFactor: -112
 maxVoices: 1
 ignoreListenerPause: true
 volumeRandomDb: 87
+effects:
+  - type: ""
+    bypass: true
+    wet: 1e-45
+  - type: "~"
+spatialBlend: -100.57143
+slot: 10
 --- 6
 enabled: true
 state: stopped
@@ -180,6 +225,14 @@ minImpactSpeed: 106.14286
 fullVolumeImpactSpeed: 124.14286
 pitchRandomSemitones: 79.42857
 volumeRandomDb: 51
+effects:
+  - type: textures/a.png
+    wet: -0
+  - type: true
+    bypass: true
+    wet: -95.28571
+spatialBlend: -0.5950478
+slot: -3
 --- 7
 enabled: false
 state: paused
@@ -203,3 +256,15 @@ playOn: [ui_click, collision_2d, collision_3d]
 fullVolumeImpactSpeed: 21
 pitchRandomSemitones: 139.42857
 volumeRandomDb: 80.57143
+effects:
+  - type: with "quotes"
+    bypass: true
+    wet: 0.88829494
+  - type: "#hash"
+    wet: 2335.1777
+  - type: "multi\nline"
+    bypass: true
+    wet: 8258.997
+  - type: a
+    bypass: true
+    wet: -0.24953018

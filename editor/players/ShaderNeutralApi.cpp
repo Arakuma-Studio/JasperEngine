@@ -21,7 +21,7 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"Plane", 0xdc3127fcu},
         {"AABB", 0xd4223d35u},
         {"OBB", 0xbf5e79a2u},
-        {"RayReturn", 0x6da341d2u},
+        {"RayReturn", 0xa1f1ddc8u},
         {"Ray", 0x3727652du},
         {"Angle", 0x213e3b03u},
         {"Base64", 0x811c9dc5u},
@@ -54,13 +54,15 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"OverallBuildProgress", 0x2336bf6fu},
         {"PhysicsMaterial", 0xbfd7eb57u},
         {"ControllerStateInfo", 0x4c569349u},
-        {"Physics2D", 0x8f05e207u},
-        {"OverlapHit", 0x474c0ab9u},
+        // (spatial-queries' overlap*NonAlloc reviewed: GameObject ids into a table, nothing drawn)
+        {"Physics2D", 0x58f1655du},
         {"PhysicsSystem", 0x20f6cb78u},
-        {"Rigidbody", 0x1e9ac738u},
-        {"Rigidbody2D", 0x6b62a5d7u},
-        {"Joint2D", 0x752b4ab5u},
-        {"Joint3D", 0x9e244509u},
+        // S96: movePosition / moveRotation, attachToParentBody / attachedRigidbody, a joint's
+        // gameObject and destroy (bodies and joints draw nothing)
+        {"Rigidbody", 0x0fc8e85bu},
+        {"Rigidbody2D", 0x5cac3c70u},
+        {"Joint2D", 0x85abe0c4u},
+        {"Joint3D", 0x8c95c8b0u},
         {"Contact2D", 0x9896e5eau},
         {"Contact3D", 0x1ed07a59u},
         {"Manifold2D", 0x44d54ffau},
@@ -68,6 +70,9 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"CharacterController", 0x0d4ce962u},
         {"CharacterController2D", 0x1552b032u},
         {"ControllerColliderHit", 0x8de113a0u},
+        // S96: what the queries return (a collider's GameObject, body, index, tag and trigger flag)
+        {"Collider", 0x0940b3f2u},
+        {"Collider2D", 0x0940b3f2u},
         {"Buoyancy", 0x4d7d14b5u},
         {"WaterVolume", 0x1399452eu},
         {"Water", 0x91f19d94u},
@@ -77,9 +82,14 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"MeshRaycastHit", 0x79d628f8u},
         {"Audio", 0xff36e463u},
         {"SoundHandle", 0x3606cf71u},
-        {"AudioSource", 0xa9e1d8b0u},
-        {"AudioSystem", 0xa2f97588u},
-        {"AudioSourceComponent", 0xff06d789u},
+        // (S97's effects, Audio Source slots, load state and Load Type, Spatial Blend, AudioSystem.unload
+        // reviewed: what a voice plays and how it is held; a slot is a child with a Transform and an
+        // Audio Source only)
+        // (and AudioSource.channels reviewed: the clip's channel count, nothing drawn)
+        {"AudioSource", 0x85c30be0u},
+        {"AudioSourceEffect", 0xf5f832f0u},
+        {"AudioSystem", 0x821d0b1au},
+        {"AudioSourceComponent", 0x5f38e3ddu},
         {"NavMeshQueryFilter", 0xda689962u},
         {"GridCell", 0xa297eb80u},
         {"NavigationSystem", 0x0b2f5764u},
@@ -146,10 +156,11 @@ const std::map<std::string, std::set<std::string>>& ShaderNeutralApi::mixedClass
             "getIgnoreLayerCollision", "getLayerCollisionMask", "ignoreCollision",
             "ignoreLayerCollision", "raycast", "raycastAll", "resetLayerCollisionMatrix",
             "setLayerCollisionMask",
-            // spatial queries (not debugDrawQueries, which draws lines)
-            "boxCast", "boxCastAll", "capsuleCast", "capsuleCastAll", "checkBox", "checkCapsule", "checkSphere",
-            "overlapBox", "overlapBoxNonAlloc", "overlapCapsule", "overlapCapsuleNonAlloc", "overlapSphere",
-            "overlapSphereNonAlloc", "queriesHitTriggers", "sphereCast", "sphereCastAll"
+            // S96 shape queries, spatial-queries' NonAlloc forms (not debugDrawQueries, which draws lines)
+            "boxCast", "boxCastAll", "capsuleCast", "capsuleCastAll", "checkBox", "checkCapsule",
+            "checkSphere", "closestPoint", "overlapBox", "overlapBoxNonAlloc", "overlapCapsule",
+            "overlapCapsuleNonAlloc", "overlapSphere", "overlapSphereNonAlloc", "queriesHitBackfaces",
+            "queriesHitTriggers", "sphereCast", "sphereCastAll"
         }},
         // scene layers and loading, the canvas and input routing, time, threads, events (not the
         // texture or atmosphere quality setters, nor rendering into a framebuffer; the foliage distance only

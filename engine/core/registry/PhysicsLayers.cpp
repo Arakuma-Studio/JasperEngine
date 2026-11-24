@@ -255,52 +255,120 @@ namespace{
 }
 #endif
 
+namespace {
+    std::atomic<bool> queriesHitTriggers3D{true};
+    std::atomic<bool> queriesHitBackfaces3D{false};
+    std::atomic<bool> queriesHitTriggers2D{true};
+    std::atomic<bool> queriesStartInColliders2D{false};
+
+#if defined(JASPERENGINE_PHYSICS_2D) || defined(JASPERENGINE_PHYSICS_3D)
+    QueryOptions layerMaskOptions(uint32_t layerMask){
+        QueryOptions options;
+        options.layerMask = layerMask;
+        return options;
+    }
+#endif
+}
+
+void Physics::setQueriesHitTriggers(bool hitTriggers){
+    queriesHitTriggers3D.store(hitTriggers, std::memory_order_relaxed);
+}
+
+bool Physics::getQueriesHitTriggers(){
+    return queriesHitTriggers3D.load(std::memory_order_relaxed);
+}
+
+void Physics::setQueriesHitBackfaces(bool hitBackfaces){
+    queriesHitBackfaces3D.store(hitBackfaces, std::memory_order_relaxed);
+}
+
+bool Physics::getQueriesHitBackfaces(){
+    return queriesHitBackfaces3D.load(std::memory_order_relaxed);
+}
+
+bool Physics::hitsTriggers(const QueryOptions& options){
+    return options.triggers == QueryTriggerInteraction::COLLIDE ||
+           (options.triggers == QueryTriggerInteraction::USE_GLOBAL && getQueriesHitTriggers());
+}
+
+bool Physics::hitsBackfaces(const QueryOptions& options){
+    return options.hitBackfaces.value_or(getQueriesHitBackfaces());
+}
+
+void Physics2D::setQueriesHitTriggers(bool hitTriggers){
+    queriesHitTriggers2D.store(hitTriggers, std::memory_order_relaxed);
+}
+
+bool Physics2D::getQueriesHitTriggers(){
+    return queriesHitTriggers2D.load(std::memory_order_relaxed);
+}
+
+void Physics2D::setQueriesStartInColliders(bool startInColliders){
+    queriesStartInColliders2D.store(startInColliders, std::memory_order_relaxed);
+}
+
+bool Physics2D::getQueriesStartInColliders(){
+    return queriesStartInColliders2D.load(std::memory_order_relaxed);
+}
+
+bool Physics2D::hitsTriggers(const QueryOptions& options){
+    return options.triggers == QueryTriggerInteraction::COLLIDE ||
+           (options.triggers == QueryTriggerInteraction::USE_GLOBAL && getQueriesHitTriggers());
+}
+
+bool Physics2D::startsInColliders(const QueryOptions& options){
+    return options.startInColliders.value_or(getQueriesStartInColliders());
+}
+
 #ifdef JASPERENGINE_PHYSICS_3D
 RayReturn Physics::raycast(Scene* scene, const Ray& ray, uint32_t layerMask){
-    return raycast(scene, ray, layerMask, QueryTriggerInteraction::UseGlobal);
+    return raycast(scene, ray, layerMaskOptions(layerMask));
 }
 
 RayReturn Physics::raycast(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, uint32_t layerMask){
-    return raycast(scene, origin, direction, maxDistance, layerMask, QueryTriggerInteraction::UseGlobal);
+    return raycast(scene, origin, direction, maxDistance, layerMaskOptions(layerMask));
 }
 
-std::vector<RayReturn> Physics::raycastAll(Scene* scene, const Ray& ray, uint32_t layerMask){
-    return raycastAll(scene, ray, layerMask, QueryTriggerInteraction::UseGlobal);
-}
-
-std::vector<RayReturn> Physics::raycastAll(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, uint32_t layerMask){
-    return raycastAll(scene, origin, direction, maxDistance, layerMask, QueryTriggerInteraction::UseGlobal);
-}
-
-RayReturn Physics::raycast(Scene* scene, const Ray& ray, uint32_t layerMask, QueryTriggerInteraction triggers){
-    const RayReturn hit = ray.cast(scene, RayFilter::BODY_3D, -1, false, (uint16_t)~0u, (uint16_t)~0u, nullptr, layerMask, nullptr, hitsTriggers(triggers));
+RayReturn Physics::raycast(Scene* scene, const Ray& ray, const QueryOptions& options){
+    const RayReturn hit = ray.cast(scene, RayFilter::BODY_3D, -1, false, (uint16_t)~0u, (uint16_t)~0u, options.ignore, options.layerMask, nullptr, &options);
     noteRay(scene, ray, &hit, hit.hit ? 1 : 0, false);
     return hit;
 }
 
-RayReturn Physics::raycast(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, uint32_t layerMask, QueryTriggerInteraction triggers){
+RayReturn Physics::raycast(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, const QueryOptions& options){
     Ray ray;
     if (!makeDistanceRay("Physics.raycast", origin, direction, maxDistance, ray)){
         return Ray::NO_HIT;
     }
-    RayReturn hit = raycast(scene, ray, layerMask, triggers);
+    RayReturn hit = raycast(scene, ray, options);
     toDistance(hit, maxDistance);
     return hit;
 }
 
-std::vector<RayReturn> Physics::raycastAll(Scene* scene, const Ray& ray, uint32_t layerMask, QueryTriggerInteraction triggers){
+std::vector<RayReturn> Physics::raycastAll(Scene* scene, const Ray& ray, uint32_t layerMask){
+    return raycastAll(scene, ray, layerMaskOptions(layerMask));
+}
+
+std::vector<RayReturn> Physics::raycastAll(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, uint32_t layerMask){
+    return raycastAll(scene, origin, direction, maxDistance, layerMaskOptions(layerMask));
+}
+
+std::vector<RayReturn> Physics::raycastAll(Scene* scene, const Ray& ray, const QueryOptions& options){
     std::vector<RayReturn> hits;
-    ray.cast(scene, RayFilter::BODY_3D, -1, false, (uint16_t)~0u, (uint16_t)~0u, nullptr, layerMask, &hits, hitsTriggers(triggers));
+    ray.cast(scene, RayFilter::BODY_3D, -1, false, (uint16_t)~0u, (uint16_t)~0u, options.ignore, options.layerMask, &hits, &options);
+    if (hits.size() > options.maxHits){
+        hits.resize(options.maxHits);
+    }
     noteRay(scene, ray, hits.data(), hits.size(), false);
     return hits;
 }
 
-std::vector<RayReturn> Physics::raycastAll(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, uint32_t layerMask, QueryTriggerInteraction triggers){
+std::vector<RayReturn> Physics::raycastAll(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, const QueryOptions& options){
     Ray ray;
     if (!makeDistanceRay("Physics.raycastAll", origin, direction, maxDistance, ray)){
         return {};
     }
-    std::vector<RayReturn> hits = raycastAll(scene, ray, layerMask, triggers);
+    std::vector<RayReturn> hits = raycastAll(scene, ray, options);
     for (RayReturn& hit : hits){
         toDistance(hit, maxDistance);
     }
@@ -310,50 +378,53 @@ std::vector<RayReturn> Physics::raycastAll(Scene* scene, Vector3 origin, Vector3
 
 #ifdef JASPERENGINE_PHYSICS_2D
 RayReturn Physics2D::raycast(Scene* scene, const Ray& ray, uint32_t layerMask){
-    return raycast(scene, ray, layerMask, QueryTriggerInteraction::UseGlobal);
+    return raycast(scene, ray, layerMaskOptions(layerMask));
 }
 
 RayReturn Physics2D::raycast(Scene* scene, Vector2 origin, Vector2 direction, float distance, uint32_t layerMask){
-    return raycast(scene, origin, direction, distance, layerMask, QueryTriggerInteraction::UseGlobal);
+    return raycast(scene, origin, direction, distance, layerMaskOptions(layerMask));
 }
 
-std::vector<RayReturn> Physics2D::raycastAll(Scene* scene, const Ray& ray, uint32_t layerMask){
-    return raycastAll(scene, ray, layerMask, QueryTriggerInteraction::UseGlobal);
-}
-
-std::vector<RayReturn> Physics2D::raycastAll(Scene* scene, Vector2 origin, Vector2 direction, float distance, uint32_t layerMask){
-    return raycastAll(scene, origin, direction, distance, layerMask, QueryTriggerInteraction::UseGlobal);
-}
-
-RayReturn Physics2D::raycast(Scene* scene, const Ray& ray, uint32_t layerMask, QueryTriggerInteraction triggers){
-    const RayReturn hit = ray.cast(scene, RayFilter::BODY_2D, -1, false, (uint16_t)~0u, (uint16_t)~0u, nullptr, layerMask, nullptr, hitsTriggers(triggers));
+RayReturn Physics2D::raycast(Scene* scene, const Ray& ray, const QueryOptions& options){
+    const RayReturn hit = ray.cast(scene, RayFilter::BODY_2D, -1, false, (uint16_t)~0u, (uint16_t)~0u, options.ignore, options.layerMask, nullptr, &options);
     noteRay(scene, ray, &hit, hit.hit ? 1 : 0, true);
     return hit;
 }
 
-RayReturn Physics2D::raycast(Scene* scene, Vector2 origin, Vector2 direction, float distance, uint32_t layerMask, QueryTriggerInteraction triggers){
+RayReturn Physics2D::raycast(Scene* scene, Vector2 origin, Vector2 direction, float distance, const QueryOptions& options){
     Ray ray;
     if (!makeDistanceRay("Physics2D.raycast", Vector3(origin.x, origin.y, 0), Vector3(direction.x, direction.y, 0), distance, ray)){
         return Ray::NO_HIT;
     }
-    RayReturn hit = raycast(scene, ray, layerMask, triggers);
+    RayReturn hit = raycast(scene, ray, options);
     toDistance(hit, distance);
     return hit;
 }
 
-std::vector<RayReturn> Physics2D::raycastAll(Scene* scene, const Ray& ray, uint32_t layerMask, QueryTriggerInteraction triggers){
+std::vector<RayReturn> Physics2D::raycastAll(Scene* scene, const Ray& ray, uint32_t layerMask){
+    return raycastAll(scene, ray, layerMaskOptions(layerMask));
+}
+
+std::vector<RayReturn> Physics2D::raycastAll(Scene* scene, Vector2 origin, Vector2 direction, float distance, uint32_t layerMask){
+    return raycastAll(scene, origin, direction, distance, layerMaskOptions(layerMask));
+}
+
+std::vector<RayReturn> Physics2D::raycastAll(Scene* scene, const Ray& ray, const QueryOptions& options){
     std::vector<RayReturn> hits;
-    ray.cast(scene, RayFilter::BODY_2D, -1, false, (uint16_t)~0u, (uint16_t)~0u, nullptr, layerMask, &hits, hitsTriggers(triggers));
+    ray.cast(scene, RayFilter::BODY_2D, -1, false, (uint16_t)~0u, (uint16_t)~0u, options.ignore, options.layerMask, &hits, &options);
+    if (hits.size() > options.maxHits){
+        hits.resize(options.maxHits);
+    }
     noteRay(scene, ray, hits.data(), hits.size(), true);
     return hits;
 }
 
-std::vector<RayReturn> Physics2D::raycastAll(Scene* scene, Vector2 origin, Vector2 direction, float distance, uint32_t layerMask, QueryTriggerInteraction triggers){
+std::vector<RayReturn> Physics2D::raycastAll(Scene* scene, Vector2 origin, Vector2 direction, float distance, const QueryOptions& options){
     Ray ray;
     if (!makeDistanceRay("Physics2D.raycastAll", Vector3(origin.x, origin.y, 0), Vector3(direction.x, direction.y, 0), distance, ray)){
         return {};
     }
-    std::vector<RayReturn> hits = raycastAll(scene, ray, layerMask, triggers);
+    std::vector<RayReturn> hits = raycastAll(scene, ray, options);
     for (RayReturn& hit : hits){
         toDistance(hit, distance);
     }
@@ -365,9 +436,6 @@ namespace {
     std::atomic<bool> physicsDebugDraw{false};
     std::atomic<bool> physicsDebugDrawContacts{false};
     std::atomic<bool> physicsDebugDrawQueries{false};
-    // Unity's queriesHitTriggers of each world, read by every query from any thread
-    std::atomic<bool> queriesHitTriggers3D{true};
-    std::atomic<bool> queriesHitTriggers2D{true};
     std::atomic<uint64_t> physicsQueryCount{0};
     std::atomic<uint64_t> physicsQueryHitCount{0};
 }
@@ -378,32 +446,6 @@ void Physics::setDebugDrawQueries(bool debugDrawQueries){
 
 bool Physics::isDebugDrawQueries(){
     return physicsDebugDrawQueries.load(std::memory_order_relaxed);
-}
-
-void Physics::setQueriesHitTriggers(bool hitTriggers){
-    queriesHitTriggers3D.store(hitTriggers, std::memory_order_relaxed);
-}
-
-bool Physics::getQueriesHitTriggers(){
-    return queriesHitTriggers3D.load(std::memory_order_relaxed);
-}
-
-bool Physics::hitsTriggers(QueryTriggerInteraction triggers){
-    return triggers == QueryTriggerInteraction::Collide
-        || (triggers == QueryTriggerInteraction::UseGlobal && getQueriesHitTriggers());
-}
-
-void Physics2D::setQueriesHitTriggers(bool hitTriggers){
-    queriesHitTriggers2D.store(hitTriggers, std::memory_order_relaxed);
-}
-
-bool Physics2D::getQueriesHitTriggers(){
-    return queriesHitTriggers2D.load(std::memory_order_relaxed);
-}
-
-bool Physics2D::hitsTriggers(QueryTriggerInteraction triggers){
-    return triggers == QueryTriggerInteraction::Collide
-        || (triggers == QueryTriggerInteraction::UseGlobal && getQueriesHitTriggers());
 }
 
 uint64_t Physics::getQueryCount(){

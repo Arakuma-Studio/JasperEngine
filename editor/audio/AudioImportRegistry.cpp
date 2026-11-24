@@ -10,6 +10,8 @@
 #include "asset/AssetTypes.h"
 #include "audio/AudioFileCheck.h"
 #include "command/type/SetAssetMetaCmd.h"
+#include "component/AudioSourceComponent.h"
+#include "pool/SoundPool.h"
 #include "util/FileUtils.h"
 
 #include "json.hpp"
@@ -156,6 +158,8 @@ std::string AudioImportRegistry::exportText(const std::map<std::string, ClipImpo
         if (s.beatsPerBar != defaults.beatsPerBar) entry["beats_per_bar"] = s.beatsPerBar;
         if (s.firstBeatFrame != 0) entry["first_beat_frame"] = s.firstBeatFrame;
         if (s.forceMono) entry["force_mono"] = true;
+        // an optional key (S97 REQ-17): an older player plays the clip as Auto
+        if (s.loadType != AudioLoadType::Auto) entry["load_type"] = SoundPool::loadTypeName(s.loadType);
         entries[clip] = std::move(entry);
     }
     return nlohmann::json{{"format", AudioImportTable::FORMAT}, {"version", AudioImportTable::VERSION}, {"clips", std::move(entries)}}.dump(1) + "\n";

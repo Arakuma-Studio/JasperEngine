@@ -14,7 +14,11 @@
 #include "physics/PhysicsDebugLines.h"
 #include "physics/PhysicsQueryDebug.h"
 #include "registry/PhysicsLayers.h"
+#include "subsystem/VehicleSystem.h"
 #include "Engine.h"
+
+#include <algorithm>
+#include <chrono>
 
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "util/JoltPhysicsAux.h"
@@ -154,9 +158,34 @@ PhysicsQueryDebug& PhysicsSystem::getQueryDebug(){
     return *queryDebug;
 }
 
+namespace {
+    double debugLinesClock(){
+        return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+}
+
+void PhysicsSystem::addTimedDebugLines(const std::vector<std::pair<Vector3, Vector3>>& lines, const Vector4& color, float seconds){
+    const double until = debugLinesClock() + (double)seconds;
+    for (const auto& line : lines){
+        timedDebugLines.push_back({line.first, line.second, color, until});
+    }
+}
+
+bool PhysicsSystem::pruneTimedDebugLines(){
+    if (timedDebugLines.empty()){
+        return false;
+    }
+    const double now = debugLinesClock();
+    timedDebugLines.erase(std::remove_if(timedDebugLines.begin(), timedDebugLines.end(),
+                                         [now](const TimedDebugLine& line){ return line.until <= now; }),
+                          timedDebugLines.end());
+    return !timedDebugLines.empty();
+}
+
 void PhysicsSystem::updateDebugLines(){
     const bool on = Physics::isDebugDraw();
-    // the recorded queries (Physics.debugDrawQueries, query_physics {draw}) draw on their own
+    const bool timed = pruneTimedDebugLines();
+    // the queries Physics.debugDrawQueries recorded draw on their own
     bool queries = false;
     double now = 0.0;
     if (queryDebug){
@@ -164,7 +193,7 @@ void PhysicsSystem::updateDebugLines(){
         queryDebug->releaseIfIdle(now, Physics::isDebugDrawQueries());
         queries = queryDebug->liveCount(now) > 0;
     }
-    if (!on && !queries){
+    if (!on && !timed && !queries){
         if (debugLinesShown && debugLinesEntity != NULL_ENTITY && scene->isEntityCreated(debugLinesEntity)){
             LineRenderer lines(scene, debugLinesEntity);
             lines.clearLines();
@@ -196,36 +225,50 @@ void PhysicsSystem::updateDebugLines(){
             PhysicsQueryDebug::emitLines(entry, [&](const Vector3& a, const Vector3& b, const Vector4& color){ lines.addLine(a, b, color); });
         });
     }
-    if (!on){
-        return;
+    for (const TimedDebugLine& line : timedDebugLines){
+        lines.addLine(line.from, line.to, line.color);
     }
 
 #ifdef JASPERENGINE_PHYSICS_3D
-    if (world3DReady){
+    if (on && world3DReady){
         JPH::BodyInterface& bodyInterface = getBodyInterface3D();
         auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
         for (size_t i = 0; i < bodies3d->size(); i++){
             RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
             const Entity entity = bodies3d->getEntity(i);
             Transform* transform = scene->findComponent<Transform>(entity);
-            if (body.body.IsInvalid() || !transform || !bodyInterface.IsAdded(body.body)){
+            if (!transform){
                 continue;
             }
-            JPH::RVec3 position;
-            JPH::Quat rotation;
-            bodyInterface.GetPositionAndRotation(body.body, position, rotation);
+            // S96 WP-C: an attached child's colliders where its GameObject is drawn, in the
+            // colour of the body they joined
+            const RigidbodyComponent* owner = &body;
+            if (body.body.IsInvalid() && body.attachedTo != NULL_ENTITY && scene->isEntityCreated(body.attachedTo)){
+                owner = scene->findComponent<RigidbodyComponent>(body.attachedTo);
+            }
+            if (!owner || owner->body.IsInvalid() || !bodyInterface.IsAdded(owner->body)){
+                continue;
+            }
             PhysicsDebugLines::Pose pose;
-            pose.position = Vector3(position.GetX(), position.GetY(), position.GetZ());
-            pose.rotation = Quaternion(rotation.GetW(), rotation.GetX(), rotation.GetY(), rotation.GetZ());
+            if (owner == &body){
+                JPH::RVec3 position;
+                JPH::Quat rotation;
+                bodyInterface.GetPositionAndRotation(body.body, position, rotation);
+                pose.position = Vector3(position.GetX(), position.GetY(), position.GetZ());
+                pose.rotation = Quaternion(rotation.GetW(), rotation.GetX(), rotation.GetY(), rotation.GetZ());
+            }else{
+                pose.position = transform->worldPosition;
+                pose.rotation = transform->worldRotation;
+            }
             pose.scale = transform->worldScale;
 
             Vector4 color = colorStatic;
-            if (body.type == BodyType::KINEMATIC){
+            if (owner->type == BodyType::KINEMATIC){
                 color = colorKinematic;
-            }else if (body.type == BodyType::DYNAMIC){
-                color = bodyInterface.IsActive(body.body) ? colorDynamic : colorSleeping;
+            }else if (owner->type == BodyType::DYNAMIC){
+                color = bodyInterface.IsActive(owner->body) ? colorDynamic : colorSleeping;
             }
-            const Vector4 bodyColor = body.sensor ? colorTrigger : color;
+            const Vector4 bodyColor = owner->sensor ? colorTrigger : color;
             PhysicsDebugLines::bodyEdges(scene, entity, *transform, body, pose, debugEdgeCaches3D[entity],
                 [&](const Vector3& a, const Vector3& b, size_t collider){
                     lines.addLine(a, b, (collider < body.colliders.size() && body.colliders[collider].isTrigger) ? colorTrigger : bodyColor);
@@ -257,6 +300,9 @@ void PhysicsSystem::updateDebugLines(){
             });
         }
 
+        // S96 WP-A: the WheelColliders' circles and travels
+        vehicles3D->debugLines([&](const Vector3& a, const Vector3& b){ lines.addLine(a, b, colorJoint); });
+
         if (Physics::isDebugDrawContacts()){
             std::lock_guard<std::mutex> lock(debugContactsMutex3D);
             for (const auto& contact : debugContacts3D){
@@ -277,7 +323,7 @@ void PhysicsSystem::updateDebugLines(){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
-    if (b2World_IsValid(world2D)){
+    if (on && b2World_IsValid(world2D)){
         Draw2DContext context{&lines, pointsToMeterScale2D};
         b2DebugDraw draw = b2DefaultDebugDraw();
         draw.DrawPolygon = drawPolygon2D;

@@ -32,7 +32,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"particles", "Particle processors, forces, trails, sub-emitters and render modes."},
         {"animation", "Blend spaces, state machines, layers, IK, retargeting and curves."},
         {"gameplay", "Character controller, buoyancy and input action maps."},
-        {"physics", "Ragdolls, physics materials, spatial queries."},
+        {"physics", "Ragdolls, physics materials and physics queries in Play."},
         {"audio", "Audio Mixer, sound analysis, placeholders, sound search, Sound Events, Play capture and checks."},
         {"editor_tools", "Colour picker, curve editor, project templates, and the Recorder: movies, PNG sequences, screenshots from a "
                          ".input.json at several sizes."},

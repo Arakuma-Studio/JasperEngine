@@ -136,6 +136,9 @@ TEST(LinkedFolders, FollowerEntersLinksOutOfTheRootOnce) {
     EXPECT_FALSE(std::any_of(seen.begin(), seen.end(), [](const std::string& path) { return path.rfind("up/", 0) == 0; }));
 }
 
+// AC6: each flush hands over the write before it. Its 250 ms is a wall-clock figure (R29's budget): a
+// loaded macOS runner once took longer (FSEvents delivers at the stream's 50 ms latency), so the
+// benchmark run enforces it; here a flush that passes the timeout never saw its marker
 TEST_P(FileWatchServiceTests, FlushBarrier) {
     startWatching();
     std::vector<FileChange> got;
@@ -144,15 +147,23 @@ TEST_P(FileWatchServiceTests, FlushBarrier) {
         got.insert(got.end(), batch.begin(), batch.end());
     });
     int misses = 0;
+    double longest = 0.0;
     for (int i = 0; i < 1000; i++) {
         const fs::path file = dir.path / ("f" + std::to_string(i) + ".txt");
         writeText(file, std::to_string(i));
         got.clear();
-        ASSERT_TRUE(service.flush(timeLimit(fileWatchServiceMs(250))));
+        const auto start = std::chrono::steady_clock::now();
+        ASSERT_TRUE(service.flush(timeLimit(fileWatchServiceMs(5000)))) << "flush " << i;
+        longest = std::max(longest, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
         const bool found = std::any_of(got.begin(), got.end(), [&](const FileChange& c) { return c.path == file; });
         if (!found) misses++;
     }
     EXPECT_EQ(misses, 0);
+    std::printf("[bench] FileWatchService flush barrier: longest of 1,000 flushes %.1f ms (budget 250)\n", longest);
+    const double slack = testsupport::perfSlack();
+    if (slack > 0.0) {
+        EXPECT_LE(longest, 250.0 * slack);
+    }
 }
 
 TEST_P(FileWatchServiceTests, FlushJournalLeavesDeliveryToThePump) {
@@ -227,6 +238,38 @@ TEST(FileWatchService, DestructionDropsACallbackThatOwnsItsSubscription) {
         *holder = owner.subscribe({}, [holder, drop](std::span<const FileChange>) { holder->reset(); }, DeliverOn::Worker);
     }
     EXPECT_EQ(dropped, 1);
+}
+
+// A callback can own another subscription: unsubscribing drops the callback's last reference, and the
+// subscription it owned unsubscribes in turn, which must not wait for a lock the first one still holds
+TEST(FileWatchService, UnsubscribingDropsACallbackThatOwnsAnotherSubscription) {
+    WatchTempDir dir;
+    // left alone on a hang: the stuck thread holds its lock for good
+    auto* owner = new FileWatchService();
+    owner->setWarningHandler([](const std::string&) {});
+    owner->start(dir.path, WatchBackendKind::Off);
+    WatchFilter filter;
+    filter.deliverEditorWrites = true;
+    auto innerCalls = std::make_shared<std::atomic<int>>(0);
+    auto inner = std::make_shared<FileWatchSubscription>(owner->subscribe(filter, [innerCalls](std::span<const FileChange>) { (*innerCalls)++; }));
+    auto outer = std::make_shared<FileWatchSubscription>(owner->subscribe(filter, [inner](std::span<const FileChange>) {}));
+    inner.reset();
+    auto done = std::make_shared<std::atomic<bool>>(false);
+    std::thread unsubscribing([outer, done]() {
+        outer->reset();
+        done->store(true);
+    });
+    if (!waitFor([&]() { return done->load(); }, timeLimit(fileWatchServiceMs(5000)))) {
+        unsubscribing.detach();
+        FAIL() << "unsubscribe deadlocked dropping a callback that owns another subscription";
+    }
+    unsubscribing.join();
+    // and that one is gone too
+    writeText(dir.path / "a.material", "x");
+    owner->reportEditorWrite(dir.path / "a.material", false);
+    owner->pump(5.0);
+    EXPECT_EQ(innerCalls->load(), 0);
+    delete owner;
 }
 
 TEST_P(FileWatchServiceTests, FilterExtensionsGlobs) {

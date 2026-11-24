@@ -996,8 +996,9 @@ void LuaBinding::registerClasses(lua_State *L){
     registerAudioClasses(L);
     registerIOClasses(L);
     registerMathClasses(L);
-    // after the core classes: reopens Physics, Physics2D and MeshRaycast
     registerPhysicsQueryClasses(L);
+    // after the core classes and S96's queries: reopens Physics, Physics2D and MeshRaycast
+    registerSpatialQueryClasses(L);
     // after the GameObject and math classes: the module proxies on ParticleSystem (MinMaxCurve values)
     registerParticleClasses(L);
     registerNetClasses(L);
@@ -1037,6 +1038,10 @@ void LuaBinding::registerClasses(lua_State *L){
     registerLocalizationClasses(L);
     registerSaveGameClasses(L);
     registerDialogueClasses(L);
+#ifdef JASPERENGINE_PHYSICS_3D
+    // after the GameObject classes, which it reopens for getWheelCollider
+    registerVehicleClasses(L);
+#endif
 #if JASPERENGINE_HTMLUI
     registerHtmlUIClasses(L);
     registerHtmlUIAnimeClasses(L);

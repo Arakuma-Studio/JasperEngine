@@ -12,6 +12,9 @@
 
 namespace jasperengine{
 
+    // component/AudioSourceComponent.h
+    enum class AudioLoadType;
+
     // A clip's import settings (the `.meta` section import.audioImporter, resolved to frames at the
     // file's own rate from the file's first frame). A default-constructed value is the whole file at
     // its own level, unfaded: it plays bit for bit, unwrapped.
@@ -39,13 +42,17 @@ namespace jasperengine{
         // Force To Mono: a file of several channels plays as one, the mean of its channels per
         // frame (AudioClipSource); a mono file ignores it. Only a true value changes hash().
         bool forceMono = false;
+        // how the clip is held when a source does not choose (its Load Type Auto), and for free
+        // voices, one-shots, events and music (S97 REQ-16); the value-initialised Auto sizes it.
+        // It never changes the samples: not in hash()
+        AudioLoadType loadType{};
 
         bool operator==(const ClipImportSettings& other) const;
         bool operator!=(const ClipImportSettings& other) const { return !(*this == other); }
 
         // no key differs from its default
         bool isDefault() const;
-        // the clip's samples are the file's (the tempo may be set): it is not wrapped
+        // the clip's samples are the file's (the tempo and the load type may be set): it is not wrapped
         bool playsAsFile() const;
         // FNV-1a of what changes the samples or the beat grid: names the wrapped sample and the
         // analysis' cache file. Stable across runs, platforms and builds.

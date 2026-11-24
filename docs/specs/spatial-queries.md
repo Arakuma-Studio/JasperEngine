@@ -632,3 +632,33 @@ core tests already build scenes with physics, `PhysicsRayThreadsTest.cpp:27-30`)
   no longer mentions triggers, passed 4/4 without it (agents pass `triggers: collide` for a pickup on
   their first query), and AGENTS.md cuts MCP text no case needs. The layer-mask hint stays;
   `test_query_physics_hints` now checks that the trigger case has no `next`.
+- **Rebuilt on S96 (#8) when it merged.** S96 (docs/specs/S96-physics-gaps.md) shipped the same 3D
+  and 2D overlaps, checks and shape casts, `QueryTriggerInteraction` and `CapsuleDirection2D`
+  (spelled `USE_GLOBAL` / `IGNORE` / `COLLIDE`, `VERTICAL` / `HORIZONTAL`), `Physics.queriesHitTriggers`
+  / `Physics2D.queriesHitTriggers`, their Lua forms (an options table `{ignore, triggers, ...}` last,
+  `Collider` / `Collider2D` results) and a `query_physics` tool first. Those are now S96's
+  (`PhysicsQueries3D`, `PhysicsQueries2D`, `QueryOptions`, `PhysicsQueriesLua.cpp`) and this spec
+  keeps only what S96 lacks, built on them: the Lua `...NonAlloc` overlaps (Unity's argument order,
+  S96's options table, GameObject ids and collider indices, no garbage once the tables have grown);
+  `MeshRaycast`'s bounds and tree overlaps; `Physics.debugDrawQueries` and the Game view's Queries
+  toggle, fed by S96's queries and raycasts (`physics::noteOverlap` / `noteCast`, which also count
+  the `Physics queries` monitors); `PhysicsQueryReference` (now S96's filters, back-face rule and
+  collider resolution, `QueryCollider` results); Project Settings > Physics / Physics 2D > Queries
+  Hit Triggers (S96 has the globals but no project route) applied to S96's globals; and
+  `query_physics` keeps S96's schema plus `mode: verify` and `dimension: drawn` (1,500 characters
+  with a description shortened to fit). Dropped, as duplicates of S96: this spec's own query core
+  (`PhysicsQueries.cpp` and its `PhysicsQueries2D.cpp`, `OverlapHit`, `PhysicsQueryOptions`, R1-R11's
+  C++ signatures and R6's `(body, colliderIndex)` order: S96 orders by GameObject then collider
+  index and resolves an attached child's collider to the child), the trailing `qti` / ignore Lua
+  arguments, `OverlapHit` in Lua, `Ray::cast`'s `hitTriggers` argument, R18's "inside the step a
+  query finds nothing" (S96 queries inside a step through the no-lock query) and R8's "a sphere
+  inside a closed mesh does not overlap it" (S96 counts its back faces); `query_physics`'s
+  `op` / `world` / `shape` object / `max_hits` / `truncated`, its 2 s `draw` through the debug ring
+  (S96's `draw` keeps its 3 s timed lines) and the layer-mask `next` hint (no eval case needs it);
+  the C++ rows of `je-bench-physics-query` (`overlap_sphere`, `overlap_box`, `check_sphere`,
+  `sphere_cast`, `overlap_circle_2d`: S96's code, which `PhysicsQueriesBenchTest` measures) and the
+  tests of the dropped core (`TriggersFollowInteraction`, `RaycastUnchangedByDefault` with its
+  `ray_city_hits.txt` fixture, `LayerAndIgnore`, `CastsHitNearestAndSkipStartInside`,
+  `NoAllocations`, `BadArgumentsLogOnce`, `OverlapsFromJobs`, the 2D casts); the eval cases
+  `guard_physics_overlap_tool` (S96's `guard_physics_overlap_query` asks the same) and
+  `guard_physics_query_triggers` (the parameter is S96's).

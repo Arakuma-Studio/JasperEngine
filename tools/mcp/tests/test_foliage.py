@@ -214,7 +214,7 @@ async def test_query_physics_drawn_reports_tree(ed: Editor):
     y = surface["samples"][0]["height"]
     trees: list = []
     for _ in range(60):
-        got = await ed.call("query_physics", scene=sid, world="drawn", shape={"type": "sphere", "radius": 1},
+        got = await ed.call("query_physics", scene=sid, dimension="drawn", mode="overlap", shape="sphere", radius=1,
                             origin=[0, y + 3, 0])
         trees = [hit for hit in got["hits"] if hit["kind"] == "tree"]
         if trees:
@@ -223,8 +223,8 @@ async def test_query_physics_drawn_reports_tree(ed: Editor):
     ed.check(trees, f"the tree is found once its cells and mesh are loaded: {got}")
     ed.check_eq(trees[0]["tree_id"], placed["ops"][0]["ids"][0], f"{trees[0]}")
     ed.check_eq(trees[0]["prototype"], 0, f"{trees[0]}")
-    ed.check_eq(trees[0]["entity"]["id"], terrain, "the GameObject is the Terrain")
-    beside = await ed.call("query_physics", scene=sid, world="drawn", shape={"type": "sphere", "radius": 1},
+    ed.check_eq(trees[0]["entity"], terrain, "the GameObject is the Terrain")
+    beside = await ed.call("query_physics", scene=sid, dimension="drawn", mode="overlap", shape="sphere", radius=1,
                            origin=[6, y + 3, 0])
     ed.check(not [hit for hit in beside["hits"] if hit["kind"] == "tree"], f"past its bounds, no tree: {beside}")
 

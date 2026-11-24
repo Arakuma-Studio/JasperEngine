@@ -122,6 +122,8 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kWheelColliderDesc,
+        &kVehicleDrivetrainDesc,
         &kSimulationCullingDesc,
         &kDialogueRunnerDesc,
     };
@@ -234,6 +236,8 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kWheelColliderDesc,
+        &kVehicleDrivetrainDesc,
         &kSimulationCullingDesc,
         &kDialogueRunnerDesc,
     };
@@ -344,6 +348,8 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kWheelColliderDesc,
+        &kVehicleDrivetrainDesc,
         &kSimulationCullingDesc,
         &kDialogueRunnerDesc,
     };
@@ -380,6 +386,8 @@ namespace {
         &enums::kPixelUpscaleMode, &enums::kPixelRotation,
         // 2D sorting and Sprite Batch (S52)
         &enums::kSpriteSortPoint, &enums::kSpriteBatchMode, &enums::kSpriteBatchSpace,
+        // S96 vehicles
+        &enums::kVehicleTransmissionMode,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {

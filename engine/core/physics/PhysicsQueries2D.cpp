@@ -1,566 +1,683 @@
 // (c) JasperDev and contributors
 // SPDX-License-Identifier: MIT
 
-// The 2D spatial queries of Physics2D (spatial-queries R9-R11): Box2D's world overlaps and shape
-// casts, in scene units (points) at the API and metres inside. The callbacks write into the
-// caller's vector, or keep only the first hit, so nothing is allocated per query (D2).
-
-#include "registry/PhysicsLayers.h"
+#include "PhysicsQueries2D.h"
 
 #ifdef JASPERENGINE_PHYSICS_2D
 
-#include "physics/PhysicsQueryReference.h"
-#include "physics/PhysicsQueryDebug.h"
-#include "subsystem/PhysicsSystem.h"
-#include "util/Box2DAux.h"
-#include "Scene.h"
 #include "Log.h"
+#include "Scene.h"
+#include "component/Rigidbody2DComponent.h"
+#include "physics/PhysicsQueryDebug.h"
+#include "registry/PhysicsLayers.h"
+#include "subsystem/PhysicsSystem.h"
+#include "util/Angle.h"
+#include "util/Box2DAux.h"
 
-#include <cfloat>
+#include <algorithm>
 #include <cmath>
+#include <memory>
 
 using namespace jasperengine;
 
-namespace {
+namespace jasperengine::physicsqueries2d {
 
-    // The scene's world when it can be queried now (D6, R18)
-    struct QueryWorld2D{
-        PhysicsSystem* system = nullptr;
-        b2WorldId world = b2_nullWorldId;
-        float pointsToMeter = 1.0f;
-    };
+    enum class Kind{ CIRCLE, POLYGON, CAPSULE };
 
-    bool queryWorld2D(Scene* scene, std::atomic<bool>& insideStepLogged, const char* function, QueryWorld2D& out){
-        if (!scene){
-            return false;
-        }
-        PhysicsSystem* system = scene->getSystem<PhysicsSystem>().get();
-        const b2WorldId world = system->getWorld2D();
-        if (!b2World_IsValid(world)){
-            return false;
-        }
-        if (system->isSteppingWorld2D()){
-            if (!insideStepLogged.exchange(true, std::memory_order_relaxed)){
-                Log::error("%s: called inside the physics step (a contact callback); queries run outside the physics step: queue the query for onUpdate", function);
-            }
-            return false;
-        }
-        out.system = system;
-        out.world = world;
-        out.pointsToMeter = system->getPointsToMeterScale2D();
-        return true;
-    }
-
-    // R11 after Box2D's own layer and mask tests: the collider's category, triggers, ignore list
-    struct ShapeFilter2D{
-        std::span<const Entity> ignore;
-        bool hitTriggers = true;
-
-        bool passes(b2ShapeId shapeId, Entity& entity) const{
-            if ((b2Shape_GetFilter(shapeId).categoryBits & Box2DLayers::USER_BITS) == 0){
-                return false;
-            }
-            if (!hitTriggers && b2Shape_IsSensor(shapeId)){
-                return false;
-            }
-            entity = static_cast<Entity>(reinterpret_cast<uintptr_t>(b2Body_GetUserData(b2Shape_GetBody(shapeId))));
-            for (Entity ignored : ignore){
-                if (ignored != NULL_ENTITY && ignored == entity){
-                    return false;
-                }
-            }
-            return true;
-        }
-    };
-
-    OverlapHit overlapHitOf2D(b2ShapeId shapeId, Entity entity){
-        OverlapHit hit;
-        hit.body = entity;
-        hit.colliderIndex = (uint32_t)reinterpret_cast<uintptr_t>(b2Shape_GetUserData(shapeId));
-        hit.trigger = b2Shape_IsSensor(shapeId);
-        hit.hit = true;
-        return hit;
-    }
-
-    bool overlapFirstLess(const OverlapHit& a, const OverlapHit& b){
-        return a.body != b.body ? a.body < b.body : a.colliderIndex < b.colliderIndex;
-    }
-
-    // every hit into out, or (out null) the first in R6's order
-    struct OverlapContext2D{
-        ShapeFilter2D filter;
-        std::vector<OverlapHit>* out = nullptr;
-        OverlapHit first;
-        size_t count = 0;
-        Vector3* points = nullptr;
-        size_t pointCount = 0;
-        float pointsToMeter = 1.0f;
-    };
-
-    bool overlapCallback2D(b2ShapeId shapeId, void* context){
-        OverlapContext2D* ctx = static_cast<OverlapContext2D*>(context);
-        Entity entity = NULL_ENTITY;
-        if (!ctx->filter.passes(shapeId, entity)){
-            return true;
-        }
-        const OverlapHit hit = overlapHitOf2D(shapeId, entity);
-        ctx->count++;
-        if (ctx->out){
-            ctx->out->push_back(hit);
-        }else if (!ctx->first.hit || overlapFirstLess(hit, ctx->first)){
-            ctx->first = hit;
-        }
-        if (ctx->points && ctx->pointCount < PhysicsQueryDebug::MAX_HIT_POINTS){
-            const b2Vec2 p = b2Body_GetPosition(b2Shape_GetBody(shapeId));
-            ctx->points[ctx->pointCount++] = Vector3(p.x * ctx->pointsToMeter, p.y * ctx->pointsToMeter, 0.0f);
-        }
-        return true;
-    }
-
-    struct CastContext2D{
-        ShapeFilter2D filter;
-        std::vector<RayReturn>* out = nullptr;
-        RayReturn closest = Ray::NO_HIT;
-        float closestFraction = 1.0f;
-        float distance = 0.0f;
-        float pointsToMeter = 1.0f;
-    };
-
-    float castCallback2D(b2ShapeId shapeId, b2Vec2 point, b2Vec2 normal, float fraction, void* context){
-        CastContext2D* ctx = static_cast<CastContext2D*>(context);
-        // never -1 (Box2D carries a callback's value into its next tree as the max fraction)
-        // nor 0 (it stops the cast): a skipped shape keeps the current clip
-        const float keep = ctx->out ? 1.0f : ctx->closestFraction;
-        Entity entity = NULL_ENTITY;
-        // shapes the cast starts in are not reported (R3)
-        if (!(fraction > 0.0f) || !ctx->filter.passes(shapeId, entity)){
-            return keep;
-        }
-        RayReturn hit;
-        hit.hit = true;
-        hit.distance = fraction * ctx->distance;
-        hit.point = Vector3(point.x * ctx->pointsToMeter, point.y * ctx->pointsToMeter, 0.0f);
-        hit.normal = Vector3(normal.x, normal.y, 0.0f);
-        hit.body = entity;
-        hit.colliderIndex = (size_t)reinterpret_cast<uintptr_t>(b2Shape_GetUserData(shapeId));
-        if (ctx->out){
-            ctx->out->push_back(hit);
-            return 1.0f;
-        }
-        if (!ctx->closest.hit || fraction < ctx->closestFraction){
-            ctx->closest = hit;
-            ctx->closestFraction = fraction;
-        }
-        return ctx->closestFraction;
-    }
-
-    // A query shape in metres: a proxy-able circle, capsule or polygon
+    // A query shape in metres, posed by `transform` (Box2D's own types: no allocation)
     struct Shape2D{
-        enum Kind { CIRCLE, CAPSULE, POLYGON } kind = CIRCLE;
-        b2Circle circle{};
-        b2Capsule capsule{};
-        b2Polygon polygon{};
+        Kind kind = Kind::CIRCLE;
+        b2Circle circle = {{0.0f, 0.0f}, 0.0f};
+        b2Polygon polygon = {};
+        b2Capsule capsule = {{0.0f, 0.0f}, {0.0f, 0.0f}, 0.0f};
         b2Transform transform = b2Transform_identity;
     };
 
-    bool checkPositive2D(const char* function, const char* name, float value){
-        if (!(value > 0.0f) || !std::isfinite(value)){
-            Log::error("%s: %s must be a positive finite number (got %g)", function, name, value);
-            return false;
-        }
-        return true;
-    }
-
-    bool checkPoint2D(const char* function, const char* name, const Vector3& point){
-        if (!std::isfinite(point.x) || !std::isfinite(point.y)){
-            Log::error("%s: %s must be a finite vector", function, name);
-            return false;
-        }
-        return true;
-    }
-
-    // the QueryShape (scene units) as a Box2D shape (metres); false and one error when invalid (R7)
-    bool makeShape2D(const char* function, const physics::QueryShape& shape, float pointsToMeter, Shape2D& out){
-        const float scale = 1.0f / pointsToMeter;
-        const b2Vec2 center = {shape.a.x * scale, shape.a.y * scale};
-        switch (shape.type){
-            case physics::QueryShape::Type::Point2D:
-                if (!checkPoint2D(function, "point", shape.a)) return false;
-                out.kind = Shape2D::CIRCLE;
-                out.circle = {center, 0.0f};
-                return true;
-            case physics::QueryShape::Type::Circle2D:
-                if (!checkPoint2D(function, "center", shape.a) || !checkPositive2D(function, "radius", shape.radius)) return false;
-                out.kind = Shape2D::CIRCLE;
-                out.circle = {center, shape.radius * scale};
-                return true;
-            case physics::QueryShape::Type::Box2D:
-            case physics::QueryShape::Type::Area2D: {
-                Vector3 middle = shape.a;
-                Vector3 half = shape.halfExtents;
-                float angle = shape.angle;
-                if (shape.type == physics::QueryShape::Type::Area2D){
-                    if (!checkPoint2D(function, "pointA", shape.a) || !checkPoint2D(function, "pointB", shape.b)) return false;
-                    middle = (shape.a + shape.b) * 0.5f;
-                    half = Vector3(std::fabs(shape.b.x - shape.a.x) * 0.5f, std::fabs(shape.b.y - shape.a.y) * 0.5f, 0.0f);
-                    angle = 0.0f;
-                }else if (!checkPoint2D(function, "center", shape.a)){
-                    return false;
-                }
-                if (!std::isfinite(angle)){
-                    Log::error("%s: angle must be a finite number", function);
-                    return false;
-                }
-                if (!checkPositive2D(function, "size.x", half.x * 2.0f) || !checkPositive2D(function, "size.y", half.y * 2.0f)) return false;
-                out.kind = Shape2D::POLYGON;
-                out.polygon = b2MakeBox(half.x * scale, half.y * scale);
-                out.transform = {{middle.x * scale, middle.y * scale}, b2MakeRot(angle * (float)M_PI / 180.0f)};
-                return true;
-            }
-            case physics::QueryShape::Type::Capsule2D: {
-                if (!checkPoint2D(function, "center", shape.a) || !std::isfinite(shape.angle)) return false;
-                if (!checkPositive2D(function, "size.x", shape.halfExtents.x * 2.0f) || !checkPositive2D(function, "size.y", shape.halfExtents.y * 2.0f)) return false;
-                Vector2 p1, p2;
-                float radius;
-                physics::capsule2DSegment(Vector2(shape.a.x, shape.a.y), Vector2(shape.halfExtents.x * 2.0f, shape.halfExtents.y * 2.0f),
-                                          shape.direction2D, shape.angle, p1, p2, radius);
-                out.kind = Shape2D::CAPSULE;
-                out.capsule = {{p1.x * scale, p1.y * scale}, {p2.x * scale, p2.y * scale}, radius * scale};
-                return true;
-            }
-            default:
-                Log::error("%s: not a 2D shape", function);
-                return false;
-        }
-    }
-
-    b2ShapeProxy proxyOf2D(const Shape2D& shape){
-        switch (shape.kind){
-            case Shape2D::CAPSULE: return b2MakeProxy(&shape.capsule.center1, 2, shape.capsule.radius);
-            case Shape2D::POLYGON: return b2MakeProxy(shape.polygon.vertices, shape.polygon.count, shape.polygon.radius);
-            default: return b2MakeProxy(&shape.circle.center, 1, shape.circle.radius);
-        }
-    }
-
-    void recordQuery2D(Scene* scene, const physics::QueryShape& shape, const Vector3& direction, float distance, bool cast,
-                       const Vector3* points, size_t pointCount, bool hit){
-        physics::recordQuery(scene, shape, direction, distance, cast, points, pointCount, hit);
-    }
-
-    // All (out) or first (out null)
-    OverlapHit overlap2D(const char* function, std::atomic<bool>& logged, Scene* scene, const physics::QueryShape& shape,
-                         std::vector<OverlapHit>* out, const PhysicsQueryOptions& options){
-        if (out){
-            out->clear();
-        }
-        QueryWorld2D world;
-        const bool queryable = queryWorld2D(scene, logged, function, world);
-        Shape2D query;
-        // the arguments are checked with or without a world, so a bad call always says so
-        if (!makeShape2D(function, shape, queryable ? world.pointsToMeter : 1.0f, query)){
-            return OverlapHit();
-        }
-        OverlapContext2D context;
-        context.filter.ignore = options.ignore;
-        context.filter.hitTriggers = Physics2D::hitsTriggers(options.triggers);
-        context.out = out;
-        Vector3 points[PhysicsQueryDebug::MAX_HIT_POINTS];
-        const bool recording = physics::recordingQueries();
-        if (queryable && options.layerMask != LAYER_MASK_NOTHING){
-            context.points = recording ? points : nullptr;
-            context.pointsToMeter = world.pointsToMeter;
-            const b2QueryFilter filter = Box2DLayers::makeQueryFilter((uint16_t)~0u, options.layerMask);
-            switch (query.kind){
-                case Shape2D::CIRCLE: b2World_OverlapCircle(world.world, &query.circle, query.transform, filter, overlapCallback2D, &context); break;
-                case Shape2D::CAPSULE: b2World_OverlapCapsule(world.world, &query.capsule, query.transform, filter, overlapCallback2D, &context); break;
-                case Shape2D::POLYGON: b2World_OverlapPolygon(world.world, &query.polygon, query.transform, filter, overlapCallback2D, &context); break;
-            }
-        }
-        size_t hits = context.first.hit ? 1 : 0;
-        if (out){
-            out->resize(physics::sortOverlapHits(out->data(), out->size()));
-            hits = out->size();
-            if (!out->empty()){
-                context.first = out->front();
-            }
-        }
-        Physics::countQuery(hits);
-        if (recording){
-            recordQuery2D(scene, shape, Vector3::ZERO, 0.0f, false, points, context.pointCount, hits > 0);
-        }
-        return context.first;
-    }
-
-    RayReturn cast2D(const char* function, std::atomic<bool>& logged, Scene* scene, const physics::QueryShape& shape,
-                     const Vector2& direction, float distance, std::vector<RayReturn>* out, const PhysicsQueryOptions& options){
-        if (out){
-            out->clear();
-        }
-        const float length = direction.length();
-        if (!(length > 0.0f) || !std::isfinite(length)){
-            Log::error("%s: direction must be a non-zero vector", function);
-            return Ray::NO_HIT;
-        }
-        if (!(distance > 0.0f) || !std::isfinite(distance)){
-            Log::error("%s: distance must be a positive finite number", function);
-            return Ray::NO_HIT;
-        }
-        QueryWorld2D world;
-        const bool queryable = queryWorld2D(scene, logged, function, world);
-        Shape2D query;
-        if (!makeShape2D(function, shape, queryable ? world.pointsToMeter : 1.0f, query)){
-            return Ray::NO_HIT;
-        }
-        const Vector2 unit(direction.x / length, direction.y / length);
-        CastContext2D context;
-        context.filter.ignore = options.ignore;
-        context.filter.hitTriggers = Physics2D::hitsTriggers(options.triggers);
-        context.out = out;
-        context.distance = distance;
-        if (queryable && options.layerMask != LAYER_MASK_NOTHING){
-            context.pointsToMeter = world.pointsToMeter;
-            const float meters = distance / world.pointsToMeter;
-            const b2Vec2 translation = {unit.x * meters, unit.y * meters};
-            const b2QueryFilter filter = Box2DLayers::makeQueryFilter((uint16_t)~0u, options.layerMask);
-            switch (query.kind){
-                case Shape2D::CIRCLE: b2World_CastCircle(world.world, &query.circle, query.transform, translation, filter, castCallback2D, &context); break;
-                case Shape2D::CAPSULE: b2World_CastCapsule(world.world, &query.capsule, query.transform, translation, filter, castCallback2D, &context); break;
-                case Shape2D::POLYGON: b2World_CastPolygon(world.world, &query.polygon, query.transform, translation, filter, castCallback2D, &context); break;
-            }
-        }
-        RayReturn result = context.closest;
-        size_t hits = result.hit ? 1 : 0;
-        if (out){
-            out->resize(physics::sortCastHits(out->data(), out->size()));
-            result = out->empty() ? Ray::NO_HIT : out->front();
-            hits = out->size();
-        }
-        Physics::countQuery(hits);
-        if (physics::recordingQueries()){
-            Vector3 points[PhysicsQueryDebug::MAX_HIT_POINTS];
-            size_t pointCount = 0;
-            if (out){
-                for (size_t i = 0; i < out->size() && pointCount < PhysicsQueryDebug::MAX_HIT_POINTS; i++){
-                    points[pointCount++] = (*out)[i].point;
-                }
-            }else if (result.hit){
-                points[pointCount++] = result.point;
-            }
-            const float reach = out ? (out->empty() ? distance : out->back().distance) : (result.hit ? result.distance : distance);
-            recordQuery2D(scene, shape, Vector3(unit.x, unit.y, 0.0f), reach, true, points, pointCount, hits > 0);
-        }
-        return result;
-    }
-
-    physics::QueryShape shape2D(physics::QueryShape::Type type, const Vector2& a){
-        physics::QueryShape shape;
-        shape.type = type;
-        shape.a = Vector3(a.x, a.y, 0.0f);
-        return shape;
-    }
-
-    physics::QueryShape circleShape2D(const Vector2& center, float radius){
-        physics::QueryShape shape = shape2D(physics::QueryShape::Type::Circle2D, center);
-        shape.radius = radius;
-        return shape;
-    }
-
-    physics::QueryShape boxShape2D(const Vector2& center, const Vector2& size, float angle){
-        physics::QueryShape shape = shape2D(physics::QueryShape::Type::Box2D, center);
-        shape.halfExtents = Vector3(size.x * 0.5f, size.y * 0.5f, 0.0f);
-        shape.angle = angle;
-        return shape;
-    }
-
-    physics::QueryShape capsuleShape2D(const Vector2& center, const Vector2& size, CapsuleDirection2D direction, float angle){
-        physics::QueryShape shape = shape2D(physics::QueryShape::Type::Capsule2D, center);
-        shape.halfExtents = Vector3(size.x * 0.5f, size.y * 0.5f, 0.0f);
-        shape.direction2D = direction;
-        shape.angle = angle;
-        return shape;
-    }
-
-    physics::QueryShape areaShape2D(const Vector2& pointA, const Vector2& pointB){
-        physics::QueryShape shape = shape2D(physics::QueryShape::Type::Area2D, pointA);
-        shape.b = Vector3(pointB.x, pointB.y, 0.0f);
-        return shape;
-    }
-
-    std::atomic<bool> stepLoggedOverlapPoint2D{false}, stepLoggedOverlapCircle2D{false}, stepLoggedOverlapBox2D{false};
-    std::atomic<bool> stepLoggedOverlapCapsule2D{false}, stepLoggedOverlapArea2D{false};
-    std::atomic<bool> stepLoggedCircleCast2D{false}, stepLoggedBoxCast2D{false}, stepLoggedCapsuleCast2D{false};
-
-    // Box2D's distance proxy of a live shape (as its world overlap builds it)
-    b2ShapeProxy shapeProxy2D(b2ShapeId shapeId, b2Vec2* scratch){
-        switch (b2Shape_GetType(shapeId)){
-            case b2_circleShape: {
-                const b2Circle circle = b2Shape_GetCircle(shapeId);
-                scratch[0] = circle.center;
-                return b2MakeProxy(scratch, 1, circle.radius);
-            }
-            case b2_capsuleShape: {
-                const b2Capsule capsule = b2Shape_GetCapsule(shapeId);
-                scratch[0] = capsule.center1;
-                scratch[1] = capsule.center2;
-                return b2MakeProxy(scratch, 2, capsule.radius);
-            }
-            case b2_segmentShape: {
-                const b2Segment segment = b2Shape_GetSegment(shapeId);
-                scratch[0] = segment.point1;
-                scratch[1] = segment.point2;
-                return b2MakeProxy(scratch, 2, 0.0f);
-            }
-            case b2_chainSegmentShape: {
-                const b2ChainSegment segment = b2Shape_GetChainSegment(shapeId);
-                scratch[0] = segment.segment.point1;
-                scratch[1] = segment.segment.point2;
-                return b2MakeProxy(scratch, 2, 0.0f);
-            }
-            default: {
-                const b2Polygon polygon = b2Shape_GetPolygon(shapeId);
-                for (int i = 0; i < polygon.count; i++){
-                    scratch[i] = polygon.vertices[i];
-                }
-                return b2MakeProxy(scratch, polygon.count, polygon.radius);
-            }
-        }
-    }
-
-    struct ShapeList2D{
-        std::vector<b2ShapeId> shapes;
+    struct World2D{
+        std::shared_ptr<PhysicsSystem> physics;
+        b2WorldId world = b2_nullWorldId;
+        float ptm = 1.0f;
     };
 
-    bool collectShape2D(b2ShapeId shapeId, void* context){
-        static_cast<ShapeList2D*>(context)->shapes.push_back(shapeId);
+    // The scene's Box2D world, when one was made (it is created with the first 2D body)
+    bool worldOf(Scene* scene, World2D& out){
+        if (!scene){
+            return false;
+        }
+        out.physics = scene->getSystem<PhysicsSystem>();
+        if (!out.physics){
+            return false;
+        }
+        out.world = out.physics->getWorld2D();
+        out.ptm = out.physics->getPointsToMeterScale2D();
+        return b2World_IsValid(out.world) && out.ptm > 0.0f;
+    }
+
+    bool finiteVector(const Vector2& v){
+        return std::isfinite(v.x) && std::isfinite(v.y);
+    }
+
+    b2Vec2 metres(const Vector2& v, float ptm){
+        return b2Vec2{v.x / ptm, v.y / ptm};
+    }
+
+    b2Transform poseAt(const Vector2& point, float angle, float ptm){
+        return b2Transform{metres(point, ptm), b2MakeRot(Angle::defaultToRad(angle))};
+    }
+
+    Shape2D circleShape(const Vector2& point, float radius, float ptm){
+        Shape2D shape;
+        shape.kind = Kind::CIRCLE;
+        shape.circle = b2Circle{{0.0f, 0.0f}, radius / ptm};
+        shape.transform = poseAt(point, 0.0f, ptm);
+        return shape;
+    }
+
+    Shape2D boxShape(const Vector2& point, const Vector2& size, float angle, float ptm){
+        Shape2D shape;
+        shape.kind = Kind::POLYGON;
+        shape.polygon = b2MakeBox(0.5f * size.x / ptm, 0.5f * size.y / ptm);
+        shape.transform = poseAt(point, angle, ptm);
+        return shape;
+    }
+
+    // CapsuleCollider2D's shape: the round ends on the direction's axis, a circle when the
+    // other side is not shorter
+    Shape2D capsuleShape(const Vector2& point, const Vector2& size, CapsuleDirection2D direction, float angle, float ptm){
+        const bool vertical = direction == CapsuleDirection2D::VERTICAL;
+        const float radius = 0.5f * (vertical ? size.x : size.y);
+        const float half = 0.5f * (vertical ? size.y : size.x) - radius;
+        Shape2D shape;
+        shape.transform = poseAt(point, angle, ptm);
+        if (half <= 0.0f){
+            shape.kind = Kind::CIRCLE;
+            shape.circle = b2Circle{{0.0f, 0.0f}, radius / ptm};
+            return shape;
+        }
+        shape.kind = Kind::CAPSULE;
+        const b2Vec2 axis = vertical ? b2Vec2{0.0f, half / ptm} : b2Vec2{half / ptm, 0.0f};
+        shape.capsule = b2Capsule{b2Neg(axis), axis, radius / ptm};
+        return shape;
+    }
+
+    // The query filters of Physics2D.raycast (Box2DAux::CastCallback): the collider category
+    // bits, the ignore list, the body a cast starts from, sensors (Unity triggers)
+    struct Filter2D{
+        const std::vector<Entity>* ignore = nullptr;
+        Entity self = NULL_ENTITY;
+        bool skipSensors = false;
+
+        void set(const QueryOptions& options, Entity selfEntity){
+            ignore = options.ignore;
+            self = selfEntity;
+            skipSensors = !Physics2D::hitsTriggers(options);
+        }
+
+        bool accepts(b2ShapeId shapeId, Entity& entity) const{
+            if ((b2Shape_GetFilter(shapeId).categoryBits & Box2DLayers::USER_BITS) == 0){
+                return false;
+            }
+            if (skipSensors && b2Shape_IsSensor(shapeId)){
+                return false;
+            }
+            entity = static_cast<Entity>(reinterpret_cast<uintptr_t>(b2Body_GetUserData(b2Shape_GetBody(shapeId))));
+            if (self != NULL_ENTITY && entity == self){
+                return false;
+            }
+            if (ignore){
+                for (Entity ignored : *ignore){
+                    if (ignored != NULL_ENTITY && ignored == entity){
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+    };
+
+    bool nearer2D(const RayReturn& a, const RayReturn& b){
+        if (a.distance != b.distance) return a.distance < b.distance;
+        if (a.body != b.body) return a.body < b.body;
+        return a.colliderIndex < b.colliderIndex;
+    }
+
+    void keepHit2D(std::vector<RayReturn>& hits, const RayReturn& hit, size_t maxHits){
+        for (RayReturn& kept : hits){
+            if (kept.body == hit.body && kept.colliderIndex == hit.colliderIndex){
+                if (nearer2D(hit, kept)){
+                    kept = hit;
+                }
+                return;
+            }
+        }
+        if (hits.size() < maxHits){
+            hits.push_back(hit);
+            return;
+        }
+        auto farthest = std::max_element(hits.begin(), hits.end(), nearer2D);
+        if (farthest != hits.end() && nearer2D(hit, *farthest)){
+            *farthest = hit;
+        }
+    }
+
+    struct CastContext{
+        Scene* scene = nullptr;
+        float ptm = 1.0f;
+        Vector2 origin;
+        Vector2 direction;
+        float distance = 0.0f;
+        Filter2D filter;
+        std::vector<RayReturn>* all = nullptr;
+        size_t maxHits = 0;
+        RayReturn closest = Ray::NO_HIT;
+        float best = 1.0f;
+
+        RayReturn makeHit(b2ShapeId shapeId, Entity entity, float fraction, Vector3 point, Vector3 normal) const{
+            RayReturn hit = {true, fraction * distance, point, normal, entity, reinterpret_cast<size_t>(b2Shape_GetUserData(shapeId))};
+            hit.scene = scene;
+            hit.body2D = true;
+            return hit;
+        }
+
+        void add(const RayReturn& hit, float fraction){
+            if (all){
+                keepHit2D(*all, hit, maxHits);
+                return;
+            }
+            if (!closest.hit || nearer2D(hit, closest)){
+                closest = hit;
+                best = fraction;
+            }
+        }
+    };
+
+    // Box2D 3.1's shape cast stores whatever the callback returns as the next tree's clip
+    // fraction, -1 included: a skipped shape returns the current clip instead of -1
+    float castCallback(b2ShapeId shapeId, b2Vec2 point, b2Vec2 normal, float fraction, void* data){
+        CastContext* context = static_cast<CastContext*>(data);
+        Entity entity = NULL_ENTITY;
+        if (!context->filter.accepts(shapeId, entity)){
+            return context->all ? 1.0f : context->best;
+        }
+        context->add(context->makeHit(shapeId, entity, fraction, Vector3(point.x * context->ptm, point.y * context->ptm, 0.0f),
+                                      Vector3(normal.x, normal.y, 0.0f)), fraction);
+        return context->all ? 1.0f : context->best;
+    }
+
+    struct OverlapContext{
+        Scene* scene = nullptr;
+        Filter2D filter;
+        // every collider, or (null) the first in GameObject / index order, or only whether any
+        std::vector<ColliderRef2D>* out = nullptr;
+        bool keepFirst = false;
+        size_t maxHits = 0;
+        bool any = false;
+        ColliderRef2D first;
+    };
+
+    bool overlapCallback(b2ShapeId shapeId, void* data){
+        OverlapContext* context = static_cast<OverlapContext*>(data);
+        Entity entity = NULL_ENTITY;
+        if (!context->filter.accepts(shapeId, entity)){
+            return true;
+        }
+        const int index = (int)reinterpret_cast<size_t>(b2Shape_GetUserData(shapeId));
+        context->any = true;
+        if (context->out){
+            // an attached child's collider resolves to the child's (S96 REQ-18)
+            const ColliderRef2D collider(context->scene, entity, index);
+            for (const ColliderRef2D& kept : *context->out){
+                if (kept == collider){
+                    return true;
+                }
+            }
+            if (context->out->size() >= context->maxHits){
+                return false;
+            }
+            context->out->push_back(collider);
+            return true;
+        }
+        if (context->keepFirst){
+            if (context->first.entity == NULL_ENTITY || entity < context->first.entity ||
+                    (entity == context->first.entity && index < context->first.index)){
+                context->first = ColliderRef2D(context->scene, entity, index);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    void runOverlap(const World2D& world, const Shape2D& shape, b2QueryFilter filter, OverlapContext& context){
+        switch (shape.kind){
+            case Kind::CIRCLE:
+                b2World_OverlapCircle(world.world, &shape.circle, shape.transform, filter, overlapCallback, &context);
+                break;
+            case Kind::POLYGON:
+                b2World_OverlapPolygon(world.world, &shape.polygon, shape.transform, filter, overlapCallback, &context);
+                break;
+            case Kind::CAPSULE:
+                b2World_OverlapCapsule(world.world, &shape.capsule, shape.transform, filter, overlapCallback, &context);
+                break;
+        }
+    }
+
+    void runCast(const World2D& world, const Shape2D& shape, b2Vec2 translation, b2QueryFilter filter, CastContext& context){
+        switch (shape.kind){
+            case Kind::CIRCLE:
+                b2World_CastCircle(world.world, &shape.circle, shape.transform, translation, filter, castCallback, &context);
+                break;
+            case Kind::POLYGON:
+                b2World_CastPolygon(world.world, &shape.polygon, shape.transform, translation, filter, castCallback, &context);
+                break;
+            case Kind::CAPSULE:
+                b2World_CastCapsule(world.world, &shape.capsule, shape.transform, translation, filter, castCallback, &context);
+                break;
+        }
+    }
+
+    // `out` gets every collider; else `first` the first, else only whether any
+    size_t overlap(Scene* scene, const World2D& world, const Shape2D& shape, const QueryOptions& options,
+                   std::vector<ColliderRef2D>* out, ColliderRef2D* first){
+        if (options.layerMask == LAYER_MASK_NOTHING || (out && options.maxHits == 0)){
+            return 0;
+        }
+        OverlapContext context;
+        context.scene = scene;
+        context.filter.set(options, NULL_ENTITY);
+        context.out = out;
+        context.keepFirst = first != nullptr;
+        context.maxHits = options.maxHits;
+        runOverlap(world, shape, Box2DLayers::makeQueryFilter((uint16_t)~0u, options.layerMask), context);
+        if (out){
+            std::sort(out->begin(), out->end(), [](const ColliderRef2D& a, const ColliderRef2D& b){
+                return a.entity != b.entity ? a.entity < b.entity : a.index < b.index;
+            });
+            return out->size();
+        }
+        if (first){
+            *first = context.first;
+        }
+        return context.any ? 1 : 0;
+    }
+
+    // One query shape cast from where it is, for the world queries and each shape of a body;
+    // the hits gather in `context`
+    void castShape(Scene* scene, const World2D& world, const Shape2D& shape, const QueryOptions& options, CastContext& context){
+        const b2Vec2 translation = metres(context.direction * context.distance, world.ptm);
+        const b2QueryFilter filter = Box2DLayers::makeQueryFilter((uint16_t)~0u, options.layerMask);
+        // Unity queriesStartInColliders: what the shape starts in is a hit at 0 (Box2D's cast
+        // reports none there)
+        if (Physics2D::startsInColliders(options)){
+            struct StartContext{
+                CastContext* cast;
+                Vector3 point;
+                Vector3 normal;
+            } start{&context, Vector3(context.origin.x, context.origin.y, 0.0f), Vector3(-context.direction.x, -context.direction.y, 0.0f)};
+            // every shape at the start, each kept as a hit by the callback below
+            auto collect = [](b2ShapeId shapeId, void* data) -> bool {
+                StartContext* start = static_cast<StartContext*>(data);
+                Entity entity = NULL_ENTITY;
+                if (start->cast->filter.accepts(shapeId, entity)){
+                    start->cast->add(start->cast->makeHit(shapeId, entity, 0.0f, start->point, start->normal), 0.0f);
+                }
+                return true;
+            };
+            switch (shape.kind){
+                case Kind::CIRCLE: b2World_OverlapCircle(world.world, &shape.circle, shape.transform, filter, collect, &start); break;
+                case Kind::POLYGON: b2World_OverlapPolygon(world.world, &shape.polygon, shape.transform, filter, collect, &start); break;
+                case Kind::CAPSULE: b2World_OverlapCapsule(world.world, &shape.capsule, shape.transform, filter, collect, &start); break;
+            }
+            if (!context.all && context.closest.hit){
+                return;
+            }
+        }
+        runCast(world, shape, translation, filter, context);
+    }
+
+    bool validCast(const char* function, const Vector2& origin, const Vector2& direction, float distance){
+        const char* why = PhysicsQueries2D::invalidPoint(origin);
+        if (!why) why = PhysicsQueries2D::invalidDirection(direction, distance);
+        if (why){
+            Log::error("%s: %s", function, why);
+            return false;
+        }
         return true;
     }
 
-}
-
-OverlapHit Physics2D::overlapPoint(Scene* scene, const Vector2& point, const PhysicsQueryOptions& options){
-    return overlap2D("Physics2D.overlapPoint", stepLoggedOverlapPoint2D, scene, shape2D(physics::QueryShape::Type::Point2D, point), nullptr, options);
-}
-
-size_t Physics2D::overlapPointAll(Scene* scene, const Vector2& point, std::vector<OverlapHit>& out, const PhysicsQueryOptions& options){
-    overlap2D("Physics2D.overlapPointAll", stepLoggedOverlapPoint2D, scene, shape2D(physics::QueryShape::Type::Point2D, point), &out, options);
-    return out.size();
-}
-
-OverlapHit Physics2D::overlapCircle(Scene* scene, const Vector2& center, float radius, const PhysicsQueryOptions& options){
-    return overlap2D("Physics2D.overlapCircle", stepLoggedOverlapCircle2D, scene, circleShape2D(center, radius), nullptr, options);
-}
-
-size_t Physics2D::overlapCircleAll(Scene* scene, const Vector2& center, float radius, std::vector<OverlapHit>& out, const PhysicsQueryOptions& options){
-    overlap2D("Physics2D.overlapCircleAll", stepLoggedOverlapCircle2D, scene, circleShape2D(center, radius), &out, options);
-    return out.size();
-}
-
-OverlapHit Physics2D::overlapBox(Scene* scene, const Vector2& center, const Vector2& size, float angleDegrees, const PhysicsQueryOptions& options){
-    return overlap2D("Physics2D.overlapBox", stepLoggedOverlapBox2D, scene, boxShape2D(center, size, angleDegrees), nullptr, options);
-}
-
-size_t Physics2D::overlapBoxAll(Scene* scene, const Vector2& center, const Vector2& size, float angleDegrees, std::vector<OverlapHit>& out, const PhysicsQueryOptions& options){
-    overlap2D("Physics2D.overlapBoxAll", stepLoggedOverlapBox2D, scene, boxShape2D(center, size, angleDegrees), &out, options);
-    return out.size();
-}
-
-OverlapHit Physics2D::overlapCapsule(Scene* scene, const Vector2& center, const Vector2& size, CapsuleDirection2D direction, float angleDegrees, const PhysicsQueryOptions& options){
-    return overlap2D("Physics2D.overlapCapsule", stepLoggedOverlapCapsule2D, scene, capsuleShape2D(center, size, direction, angleDegrees), nullptr, options);
-}
-
-size_t Physics2D::overlapCapsuleAll(Scene* scene, const Vector2& center, const Vector2& size, CapsuleDirection2D direction, float angleDegrees, std::vector<OverlapHit>& out, const PhysicsQueryOptions& options){
-    overlap2D("Physics2D.overlapCapsuleAll", stepLoggedOverlapCapsule2D, scene, capsuleShape2D(center, size, direction, angleDegrees), &out, options);
-    return out.size();
-}
-
-OverlapHit Physics2D::overlapArea(Scene* scene, const Vector2& pointA, const Vector2& pointB, const PhysicsQueryOptions& options){
-    return overlap2D("Physics2D.overlapArea", stepLoggedOverlapArea2D, scene, areaShape2D(pointA, pointB), nullptr, options);
-}
-
-size_t Physics2D::overlapAreaAll(Scene* scene, const Vector2& pointA, const Vector2& pointB, std::vector<OverlapHit>& out, const PhysicsQueryOptions& options){
-    overlap2D("Physics2D.overlapAreaAll", stepLoggedOverlapArea2D, scene, areaShape2D(pointA, pointB), &out, options);
-    return out.size();
-}
-
-RayReturn Physics2D::circleCast(Scene* scene, const Vector2& origin, float radius, const Vector2& direction, float distance, const PhysicsQueryOptions& options){
-    return cast2D("Physics2D.circleCast", stepLoggedCircleCast2D, scene, circleShape2D(origin, radius), direction, distance, nullptr, options);
-}
-
-RayReturn Physics2D::boxCast(Scene* scene, const Vector2& origin, const Vector2& size, float angleDegrees, const Vector2& direction, float distance, const PhysicsQueryOptions& options){
-    return cast2D("Physics2D.boxCast", stepLoggedBoxCast2D, scene, boxShape2D(origin, size, angleDegrees), direction, distance, nullptr, options);
-}
-
-RayReturn Physics2D::capsuleCast(Scene* scene, const Vector2& origin, const Vector2& size, CapsuleDirection2D capsuleDirection, float angleDegrees, const Vector2& direction, float distance, const PhysicsQueryOptions& options){
-    return cast2D("Physics2D.capsuleCast", stepLoggedCapsuleCast2D, scene, capsuleShape2D(origin, size, capsuleDirection, angleDegrees), direction, distance, nullptr, options);
-}
-
-size_t Physics2D::circleCastAll(Scene* scene, const Vector2& origin, float radius, const Vector2& direction, float distance, std::vector<RayReturn>& out, const PhysicsQueryOptions& options){
-    cast2D("Physics2D.circleCastAll", stepLoggedCircleCast2D, scene, circleShape2D(origin, radius), direction, distance, &out, options);
-    return out.size();
-}
-
-size_t Physics2D::boxCastAll(Scene* scene, const Vector2& origin, const Vector2& size, float angleDegrees, const Vector2& direction, float distance, std::vector<RayReturn>& out, const PhysicsQueryOptions& options){
-    cast2D("Physics2D.boxCastAll", stepLoggedBoxCast2D, scene, boxShape2D(origin, size, angleDegrees), direction, distance, &out, options);
-    return out.size();
-}
-
-size_t Physics2D::capsuleCastAll(Scene* scene, const Vector2& origin, const Vector2& size, CapsuleDirection2D capsuleDirection, float angleDegrees, const Vector2& direction, float distance, std::vector<RayReturn>& out, const PhysicsQueryOptions& options){
-    cast2D("Physics2D.capsuleCastAll", stepLoggedCapsuleCast2D, scene, capsuleShape2D(origin, size, capsuleDirection, angleDegrees), direction, distance, &out, options);
-    return out.size();
-}
-
-// The reference sweep (R16): every shape of the world, each tested with Box2D's shape distance
-void physics::referenceOverlap2D(Scene* scene, const QueryShape& shape, const PhysicsQueryOptions& options, std::vector<OverlapHit>& out){
-    out.clear();
-    if (!scene){
-        return;
-    }
-    std::shared_ptr<PhysicsSystem> system = scene->getSystem<PhysicsSystem>();
-    const b2WorldId world = system->getWorld2D();
-    if (!b2World_IsValid(world) || system->isSteppingWorld2D() || options.layerMask == LAYER_MASK_NOTHING){
-        return;
-    }
-    Shape2D query;
-    if (!makeShape2D("referenceOverlap", shape, system->getPointsToMeterScale2D(), query)){
-        return;
-    }
-    // every shape (the tree walk of an all-covering box) and our own tests on each
-    ShapeList2D list;
-    b2QueryFilter everything;
-    everything.categoryBits = ~0ull;
-    everything.maskBits = ~0ull;
-    const b2AABB all = {{-FLT_MAX * 0.25f, -FLT_MAX * 0.25f}, {FLT_MAX * 0.25f, FLT_MAX * 0.25f}};
-    b2World_OverlapAABB(world, all, everything, collectShape2D, &list);
-
-    const b2QueryFilter filter = Box2DLayers::makeQueryFilter((uint16_t)~0u, options.layerMask);
-    ShapeFilter2D shapeFilter;
-    shapeFilter.ignore = options.ignore;
-    shapeFilter.hitTriggers = Physics2D::hitsTriggers(options.triggers);
-    const b2ShapeProxy queryProxy = proxyOf2D(query);
-    for (b2ShapeId shapeId : list.shapes){
-        const b2Filter shapeFilterBits = b2Shape_GetFilter(shapeId);
-        if ((shapeFilterBits.categoryBits & filter.maskBits) == 0 || (shapeFilterBits.maskBits & filter.categoryBits) == 0){
-            continue;
+    bool validRadius(const char* function, float radius){
+        if (const char* why = PhysicsQueries2D::invalidRadius(radius)){
+            Log::error("%s: %s", function, why);
+            return false;
         }
-        Entity entity = NULL_ENTITY;
-        if (!shapeFilter.passes(shapeId, entity)){
-            continue;
-        }
-        b2Vec2 scratch[B2_MAX_POLYGON_VERTICES];
-        b2DistanceInput input;
-        input.proxyA = queryProxy;
-        input.proxyB = shapeProxy2D(shapeId, scratch);
-        input.transformA = query.transform;
-        input.transformB = b2Body_GetTransform(b2Shape_GetBody(shapeId));
-        input.useRadii = true;
-        b2SimplexCache cache = {};
-        const b2DistanceOutput output = b2ShapeDistance(&cache, &input, nullptr, 0);
-        if (output.distance > 0.0f){
-            continue;
-        }
-        out.push_back(overlapHitOf2D(shapeId, entity));
+        return true;
     }
-    out.resize(sortOverlapHits(out.data(), out.size()));
+
+    bool validSize(const char* function, const Vector2& size){
+        if (const char* why = PhysicsQueries2D::invalidSize(size)){
+            Log::error("%s: %s", function, why);
+            return false;
+        }
+        return true;
+    }
+
+    bool validPoint(const char* function, const Vector2& point){
+        if (const char* why = PhysicsQueries2D::invalidPoint(point)){
+            Log::error("%s: %s", function, why);
+            return false;
+        }
+        return true;
+    }
+
+    // A world query cast: the nearest hit, or every one into `all`
+    RayReturn worldCast(Scene* scene, const World2D& world, const Shape2D& shape, Vector2 origin, Vector2 direction, float distance,
+                        const QueryOptions& options, std::vector<RayReturn>* all){
+        if (options.layerMask == LAYER_MASK_NOTHING || (all && options.maxHits == 0)){
+            return Ray::NO_HIT;
+        }
+        CastContext context;
+        context.scene = scene;
+        context.ptm = world.ptm;
+        context.origin = origin;
+        context.direction = direction.normalized();
+        context.distance = distance;
+        context.filter.set(options, NULL_ENTITY);
+        context.all = all;
+        context.maxHits = options.maxHits;
+        castShape(scene, world, shape, options, context);
+        if (all){
+            std::sort(all->begin(), all->end(), nearer2D);
+            return all->empty() ? Ray::NO_HIT : all->front();
+        }
+        return context.closest;
+    }
+
+    // Rigidbody2D.Cast: each of the body's Box2D shapes as a query shape where it is now
+    RayReturn bodyCast(Scene* scene, const char* function, Entity body, Vector2 direction, float distance, const QueryOptions& options, std::vector<RayReturn>* all){
+        if (all){
+            all->clear();
+        }
+        if (const char* why = PhysicsQueries2D::invalidDirection(direction, distance)){
+            Log::error("%s: %s", function, why);
+            return Ray::NO_HIT;
+        }
+        World2D world;
+        const Rigidbody2DComponent* component = scene ? scene->findComponent<Rigidbody2DComponent>(body) : nullptr;
+        if (!worldOf(scene, world) || !component || !b2Body_IsValid(component->body) || options.layerMask == LAYER_MASK_NOTHING){
+            return Ray::NO_HIT;
+        }
+        const b2Transform pose = b2Body_GetTransform(component->body);
+        const int count = b2Body_GetShapeCount(component->body);
+        std::vector<b2ShapeId> shapes((size_t)std::max(count, 0));
+        const int found = count > 0 ? b2Body_GetShapes(component->body, shapes.data(), count) : 0;
+
+        CastContext context;
+        context.scene = scene;
+        context.ptm = world.ptm;
+        context.origin = Vector2(pose.p.x * world.ptm, pose.p.y * world.ptm);
+        context.direction = direction.normalized();
+        context.distance = distance;
+        context.filter.set(options, body);
+        context.all = all;
+        context.maxHits = options.maxHits;
+        for (int i = 0; i < found; i++){
+            if (b2Shape_IsSensor(shapes[(size_t)i])){
+                continue;
+            }
+            Shape2D shape;
+            shape.transform = pose;
+            switch (b2Shape_GetType(shapes[(size_t)i])){
+                case b2_circleShape:
+                    shape.kind = Kind::CIRCLE;
+                    shape.circle = b2Shape_GetCircle(shapes[(size_t)i]);
+                    break;
+                case b2_polygonShape:
+                    shape.kind = Kind::POLYGON;
+                    shape.polygon = b2Shape_GetPolygon(shapes[(size_t)i]);
+                    break;
+                case b2_capsuleShape:
+                    shape.kind = Kind::CAPSULE;
+                    shape.capsule = b2Shape_GetCapsule(shapes[(size_t)i]);
+                    break;
+                case b2_segmentShape:{
+                    const b2Segment segment = b2Shape_GetSegment(shapes[(size_t)i]);
+                    shape.kind = Kind::CAPSULE;
+                    shape.capsule = b2Capsule{segment.point1, segment.point2, 0.0f};
+                    break;
+                }
+                case b2_chainSegmentShape:{
+                    const b2Segment segment = b2Shape_GetChainSegment(shapes[(size_t)i]).segment;
+                    shape.kind = Kind::CAPSULE;
+                    shape.capsule = b2Capsule{segment.point1, segment.point2, 0.0f};
+                    break;
+                }
+                default:
+                    continue;
+            }
+            castShape(scene, world, shape, options, context);
+        }
+        if (all){
+            std::sort(all->begin(), all->end(), nearer2D);
+            return all->empty() ? Ray::NO_HIT : all->front();
+        }
+        return context.closest;
+    }
+
 }
 
-#endif
+using namespace jasperengine::physicsqueries2d;
+
+const char* PhysicsQueries2D::invalidDirection(const Vector2& direction, float distance){
+    const float length = direction.length();
+    if (!(length > 0.0f) || !std::isfinite(length)){
+        return "direction must be a non-zero finite vector";
+    }
+    if (!(distance > 0.0f) || !std::isfinite(distance)){
+        return "distance must be a positive finite number";
+    }
+    return nullptr;
+}
+
+const char* PhysicsQueries2D::invalidRadius(float radius){
+    return (radius > 0.0f && std::isfinite(radius)) ? nullptr : "radius must be a positive finite number";
+}
+
+const char* PhysicsQueries2D::invalidSize(const Vector2& size){
+    return (finiteVector(size) && size.x > 0.0f && size.y > 0.0f) ? nullptr : "size must be positive and finite on both axes";
+}
+
+const char* PhysicsQueries2D::invalidPoint(const Vector2& point){
+    return finiteVector(point) ? nullptr : "the position must be finite";
+}
+
+RayReturn PhysicsQueries2D::circleCast(Scene* scene, Vector2 origin, float radius, Vector2 direction, float distance, const QueryOptions& options){
+    World2D world;
+    if (!validCast("Physics2D.circleCast", origin, direction, distance) || !validRadius("Physics2D.circleCast", radius) || !worldOf(scene, world)){
+        return Ray::NO_HIT;
+    }
+    const RayReturn hit = worldCast(scene, world, circleShape(origin, radius, world.ptm), origin, direction, distance, options, nullptr);
+    physics::noteCast(scene, physics::QueryShape::circle2D(origin, radius), Vector3(direction.x, direction.y, 0.0f), distance, &hit, hit.hit ? 1 : 0);
+    return hit;
+}
+
+RayReturn PhysicsQueries2D::boxCast(Scene* scene, Vector2 origin, Vector2 size, float angle, Vector2 direction, float distance, const QueryOptions& options){
+    World2D world;
+    if (!validCast("Physics2D.boxCast", origin, direction, distance) || !validSize("Physics2D.boxCast", size) || !worldOf(scene, world)){
+        return Ray::NO_HIT;
+    }
+    const RayReturn hit = worldCast(scene, world, boxShape(origin, size, angle, world.ptm), origin, direction, distance, options, nullptr);
+    physics::noteCast(scene, physics::QueryShape::box2D(origin, size, angle), Vector3(direction.x, direction.y, 0.0f), distance, &hit, hit.hit ? 1 : 0);
+    return hit;
+}
+
+RayReturn PhysicsQueries2D::capsuleCast(Scene* scene, Vector2 origin, Vector2 size, CapsuleDirection2D capsuleDirection, float angle, Vector2 direction, float distance, const QueryOptions& options){
+    World2D world;
+    if (!validCast("Physics2D.capsuleCast", origin, direction, distance) || !validSize("Physics2D.capsuleCast", size) || !worldOf(scene, world)){
+        return Ray::NO_HIT;
+    }
+    const RayReturn hit = worldCast(scene, world, capsuleShape(origin, size, capsuleDirection, angle, world.ptm), origin, direction, distance, options, nullptr);
+    physics::noteCast(scene, physics::QueryShape::capsule2D(origin, size, capsuleDirection, angle), Vector3(direction.x, direction.y, 0.0f), distance, &hit, hit.hit ? 1 : 0);
+    return hit;
+}
+
+size_t PhysicsQueries2D::circleCastAll(Scene* scene, Vector2 origin, float radius, Vector2 direction, float distance, std::vector<RayReturn>& hits, const QueryOptions& options){
+    hits.clear();
+    World2D world;
+    if (!validCast("Physics2D.circleCastAll", origin, direction, distance) || !validRadius("Physics2D.circleCastAll", radius) || !worldOf(scene, world)){
+        return 0;
+    }
+    worldCast(scene, world, circleShape(origin, radius, world.ptm), origin, direction, distance, options, &hits);
+    physics::noteCast(scene, physics::QueryShape::circle2D(origin, radius), Vector3(direction.x, direction.y, 0.0f), distance, hits.data(), hits.size());
+    return hits.size();
+}
+
+size_t PhysicsQueries2D::boxCastAll(Scene* scene, Vector2 origin, Vector2 size, float angle, Vector2 direction, float distance, std::vector<RayReturn>& hits, const QueryOptions& options){
+    hits.clear();
+    World2D world;
+    if (!validCast("Physics2D.boxCastAll", origin, direction, distance) || !validSize("Physics2D.boxCastAll", size) || !worldOf(scene, world)){
+        return 0;
+    }
+    worldCast(scene, world, boxShape(origin, size, angle, world.ptm), origin, direction, distance, options, &hits);
+    physics::noteCast(scene, physics::QueryShape::box2D(origin, size, angle), Vector3(direction.x, direction.y, 0.0f), distance, hits.data(), hits.size());
+    return hits.size();
+}
+
+size_t PhysicsQueries2D::capsuleCastAll(Scene* scene, Vector2 origin, Vector2 size, CapsuleDirection2D capsuleDirection, float angle, Vector2 direction, float distance, std::vector<RayReturn>& hits, const QueryOptions& options){
+    hits.clear();
+    World2D world;
+    if (!validCast("Physics2D.capsuleCastAll", origin, direction, distance) || !validSize("Physics2D.capsuleCastAll", size) || !worldOf(scene, world)){
+        return 0;
+    }
+    worldCast(scene, world, capsuleShape(origin, size, capsuleDirection, angle, world.ptm), origin, direction, distance, options, &hits);
+    physics::noteCast(scene, physics::QueryShape::capsule2D(origin, size, capsuleDirection, angle), Vector3(direction.x, direction.y, 0.0f), distance, hits.data(), hits.size());
+    return hits.size();
+}
+
+size_t PhysicsQueries2D::overlapCircleAll(Scene* scene, Vector2 point, float radius, std::vector<ColliderRef2D>& colliders, const QueryOptions& options){
+    colliders.clear();
+    World2D world;
+    if (!validPoint("Physics2D.overlapCircleAll", point) || !validRadius("Physics2D.overlapCircleAll", radius) || !worldOf(scene, world)){
+        return 0;
+    }
+    const size_t count = overlap(scene, world, circleShape(point, radius, world.ptm), options, &colliders, nullptr);
+    physics::noteOverlap(scene, physics::QueryShape::circle2D(point, radius), count, colliders.data(), colliders.size());
+    return count;
+}
+
+size_t PhysicsQueries2D::overlapBoxAll(Scene* scene, Vector2 point, Vector2 size, float angle, std::vector<ColliderRef2D>& colliders, const QueryOptions& options){
+    colliders.clear();
+    World2D world;
+    if (!validPoint("Physics2D.overlapBoxAll", point) || !validSize("Physics2D.overlapBoxAll", size) || !worldOf(scene, world)){
+        return 0;
+    }
+    const size_t count = overlap(scene, world, boxShape(point, size, angle, world.ptm), options, &colliders, nullptr);
+    physics::noteOverlap(scene, physics::QueryShape::box2D(point, size, angle), count, colliders.data(), colliders.size());
+    return count;
+}
+
+size_t PhysicsQueries2D::overlapCapsuleAll(Scene* scene, Vector2 point, Vector2 size, CapsuleDirection2D capsuleDirection, float angle, std::vector<ColliderRef2D>& colliders, const QueryOptions& options){
+    colliders.clear();
+    World2D world;
+    if (!validPoint("Physics2D.overlapCapsuleAll", point) || !validSize("Physics2D.overlapCapsuleAll", size) || !worldOf(scene, world)){
+        return 0;
+    }
+    const size_t count = overlap(scene, world, capsuleShape(point, size, capsuleDirection, angle, world.ptm), options, &colliders, nullptr);
+    physics::noteOverlap(scene, physics::QueryShape::capsule2D(point, size, capsuleDirection, angle), count, colliders.data(), colliders.size());
+    return count;
+}
+
+size_t PhysicsQueries2D::overlapPointAll(Scene* scene, Vector2 point, std::vector<ColliderRef2D>& colliders, const QueryOptions& options){
+    colliders.clear();
+    World2D world;
+    if (!validPoint("Physics2D.overlapPointAll", point) || !worldOf(scene, world)){
+        return 0;
+    }
+    // a circle of radius 0 is Box2D's own point overlap (b2World_OverlapPoint)
+    const size_t count = overlap(scene, world, circleShape(point, 0.0f, world.ptm), options, &colliders, nullptr);
+    physics::noteOverlap(scene, physics::QueryShape::point2D(point), count, colliders.data(), colliders.size());
+    return count;
+}
+
+size_t PhysicsQueries2D::overlapAreaAll(Scene* scene, Vector2 pointA, Vector2 pointB, std::vector<ColliderRef2D>& colliders, const QueryOptions& options){
+    colliders.clear();
+    World2D world;
+    if (!validPoint("Physics2D.overlapAreaAll", pointA) || !validPoint("Physics2D.overlapAreaAll", pointB) || !worldOf(scene, world)){
+        return 0;
+    }
+    const Vector2 size(std::fabs(pointB.x - pointA.x), std::fabs(pointB.y - pointA.y));
+    if (!validSize("Physics2D.overlapAreaAll", size)){
+        return 0;
+    }
+    const size_t count = overlap(scene, world, boxShape((pointA + pointB) * 0.5f, size, 0.0f, world.ptm), options, &colliders, nullptr);
+    physics::noteOverlap(scene, physics::QueryShape::area2D(pointA, pointB), count, colliders.data(), colliders.size());
+    return count;
+}
+
+bool PhysicsQueries2D::overlapCircle(Scene* scene, Vector2 point, float radius, ColliderRef2D& collider, const QueryOptions& options){
+    collider = ColliderRef2D();
+    World2D world;
+    if (!validPoint("Physics2D.overlapCircle", point) || !validRadius("Physics2D.overlapCircle", radius) || !worldOf(scene, world)){
+        return false;
+    }
+    const bool found = overlap(scene, world, circleShape(point, radius, world.ptm), options, nullptr, &collider) > 0;
+    physics::noteOverlap(scene, physics::QueryShape::circle2D(point, radius), found ? 1 : 0, &collider, found ? 1 : 0);
+    return found;
+}
+
+bool PhysicsQueries2D::overlapBox(Scene* scene, Vector2 point, Vector2 size, float angle, ColliderRef2D& collider, const QueryOptions& options){
+    collider = ColliderRef2D();
+    World2D world;
+    if (!validPoint("Physics2D.overlapBox", point) || !validSize("Physics2D.overlapBox", size) || !worldOf(scene, world)){
+        return false;
+    }
+    const bool found = overlap(scene, world, boxShape(point, size, angle, world.ptm), options, nullptr, &collider) > 0;
+    physics::noteOverlap(scene, physics::QueryShape::box2D(point, size, angle), found ? 1 : 0, &collider, found ? 1 : 0);
+    return found;
+}
+
+bool PhysicsQueries2D::overlapCapsule(Scene* scene, Vector2 point, Vector2 size, CapsuleDirection2D capsuleDirection, float angle, ColliderRef2D& collider, const QueryOptions& options){
+    collider = ColliderRef2D();
+    World2D world;
+    if (!validPoint("Physics2D.overlapCapsule", point) || !validSize("Physics2D.overlapCapsule", size) || !worldOf(scene, world)){
+        return false;
+    }
+    const bool found = overlap(scene, world, capsuleShape(point, size, capsuleDirection, angle, world.ptm), options, nullptr, &collider) > 0;
+    physics::noteOverlap(scene, physics::QueryShape::capsule2D(point, size, capsuleDirection, angle), found ? 1 : 0, &collider, found ? 1 : 0);
+    return found;
+}
+
+bool PhysicsQueries2D::overlapPoint(Scene* scene, Vector2 point, ColliderRef2D& collider, const QueryOptions& options){
+    collider = ColliderRef2D();
+    World2D world;
+    if (!validPoint("Physics2D.overlapPoint", point) || !worldOf(scene, world)){
+        return false;
+    }
+    const bool found = overlap(scene, world, circleShape(point, 0.0f, world.ptm), options, nullptr, &collider) > 0;
+    physics::noteOverlap(scene, physics::QueryShape::point2D(point), found ? 1 : 0, &collider, found ? 1 : 0);
+    return found;
+}
+
+bool PhysicsQueries2D::overlapArea(Scene* scene, Vector2 pointA, Vector2 pointB, ColliderRef2D& collider, const QueryOptions& options){
+    collider = ColliderRef2D();
+    World2D world;
+    if (!validPoint("Physics2D.overlapArea", pointA) || !validPoint("Physics2D.overlapArea", pointB) || !worldOf(scene, world)){
+        return false;
+    }
+    const Vector2 size(std::fabs(pointB.x - pointA.x), std::fabs(pointB.y - pointA.y));
+    if (!validSize("Physics2D.overlapArea", size)){
+        return false;
+    }
+    const bool found = overlap(scene, world, boxShape((pointA + pointB) * 0.5f, size, 0.0f, world.ptm), options, nullptr, &collider) > 0;
+    physics::noteOverlap(scene, physics::QueryShape::area2D(pointA, pointB), found ? 1 : 0, &collider, found ? 1 : 0);
+    return found;
+}
+
+RayReturn PhysicsQueries2D::cast(Scene* scene, Entity body, Vector2 direction, float distance, const QueryOptions& options){
+    return bodyCast(scene, "Rigidbody2D.cast", body, direction, distance, options, nullptr);
+}
+
+size_t PhysicsQueries2D::castAll(Scene* scene, Entity body, Vector2 direction, float distance, std::vector<RayReturn>& hits, const QueryOptions& options){
+    bodyCast(scene, "Rigidbody2D.castAll", body, direction, distance, options, &hits);
+    return hits.size();
+}
+
+#endif // JASPERENGINE_PHYSICS_2D

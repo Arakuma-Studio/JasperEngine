@@ -6,14 +6,13 @@
 
 #include "Export.h"
 #include "TagManager.h"
-#include "math/Quaternion.h"
 #include "math/Ray.h"
 #include "math/Vector2.h"
 #include "math/Vector3.h"
+#include "physics/PhysicsQueryOptions.h"
 
 #include <atomic>
 #include <cstdint>
-#include <span>
 #include <vector>
 
 namespace jasperengine{
@@ -70,36 +69,7 @@ namespace jasperengine{
         void getRows(uint32_t outRows[MAX_LAYERS]) const;
     };
 
-    // Unity's QueryTriggerInteraction (same values): whether a query reports trigger colliders.
-    // UseGlobal follows Physics.queriesHitTriggers (Physics2D's for 2D queries).
-    enum class QueryTriggerInteraction : uint8_t { UseGlobal = 0, Ignore = 1, Collide = 2 };
-    // Unity's CapsuleDirection2D: the axis of a 2D capsule's round ends
-    enum class CapsuleDirection2D : uint8_t { Vertical = 0, Horizontal = 1 };
-
-    // One collider an overlap found (docs/scripting/spatial-queries.md). hit is false for a 2D
-    // first-form query that found nothing.
-    struct OverlapHit{
-        Entity body = NULL_ENTITY;
-        uint32_t colliderIndex = 0;
-        bool trigger = false;
-        bool hit = false;
-    };
-
-    // The trailing arguments of every spatial query, for C++ callers
-    struct PhysicsQueryOptions{
-        uint32_t layerMask = LAYER_MASK_DEFAULT_RAYCAST;
-        QueryTriggerInteraction triggers = QueryTriggerInteraction::UseGlobal;
-        // bodies the query passes through
-        std::span<const Entity> ignore;
-    };
-
     // Unity's Physics: layer collision matrix and layer-masked queries of the 3D world
-    //
-    // Spatial queries (overlap, check, cast) run on the physics engine's broad phase and see the
-    // world of the last step. Overlap results are sorted by (body, colliderIndex), cast All results
-    // by distance then (body, colliderIndex): the same world gives the same output. The forms
-    // with a caller vector allocate nothing once it has room and are safe from jobs outside the
-    // step; inside a step (contact callbacks) every query logs one error and finds nothing.
     class JASPERENGINE_API Physics{
     public:
         // Unity's Physics.IgnoreRaycastLayer, DefaultRaycastLayers and AllLayers: masks
@@ -132,54 +102,36 @@ namespace jasperengine{
         static void setDebugDrawQueries(bool debugDrawQueries);
         static bool isDebugDrawQueries();
 
-        // Unity's Physics.queriesHitTriggers: what QueryTriggerInteraction::UseGlobal means for
-        // every 3D query, raycast included. Process-wide, default true.
-        static void setQueriesHitTriggers(bool hitTriggers);
-        static bool getQueriesHitTriggers();
-        // whether a query with this interaction reports triggers
-        static bool hitsTriggers(QueryTriggerInteraction triggers);
-
         // Every spatial query and the hits it returned since start, both worlds (the
         // "Physics queries" monitors take per-frame differences)
         static uint64_t getQueryCount();
         static uint64_t getQueryHitCount();
         static void countQuery(size_t hits);
 
+        // Unity Physics.queriesHitTriggers (true) and queriesHitBackfaces (false): the defaults of
+        // the queries' triggers (USE_GLOBAL) and hitBackfaces options, process-wide
+        static void setQueriesHitTriggers(bool hitTriggers);
+        static bool getQueriesHitTriggers();
+        static void setQueriesHitBackfaces(bool hitBackfaces);
+        static bool getQueriesHitBackfaces();
+        // an options' rules with those defaults applied
+        static bool hitsTriggers(const QueryOptions& options);
+        static bool hitsBackfaces(const QueryOptions& options);
+
 #ifdef JASPERENGINE_PHYSICS_3D
         // Closest hit of the 3D bodies on a layer in layerMask. With a Ray, distance is
         // the fraction of ray.direction (as Ray::intersects); with origin, direction and
-        // maxDistance it is in world units along the normalized direction (Unity).
+        // maxDistance it is in world units along the normalized direction (Unity). A collider
+        // containing the origin is not hit (Unity) unless options.hitFromInside.
         static RayReturn raycast(Scene* scene, const Ray& ray, uint32_t layerMask = DEFAULT_RAYCAST_LAYERS);
         static RayReturn raycast(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, uint32_t layerMask = DEFAULT_RAYCAST_LAYERS);
+        static RayReturn raycast(Scene* scene, const Ray& ray, const QueryOptions& options);
+        static RayReturn raycast(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, const QueryOptions& options);
         // Every collider hit, nearest first, one hit per collider
         static std::vector<RayReturn> raycastAll(Scene* scene, const Ray& ray, uint32_t layerMask = DEFAULT_RAYCAST_LAYERS);
         static std::vector<RayReturn> raycastAll(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, uint32_t layerMask = DEFAULT_RAYCAST_LAYERS);
-        // the same with trigger filtering (the overloads above are UseGlobal)
-        static RayReturn raycast(Scene* scene, const Ray& ray, uint32_t layerMask, QueryTriggerInteraction triggers);
-        static RayReturn raycast(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, uint32_t layerMask, QueryTriggerInteraction triggers);
-        static std::vector<RayReturn> raycastAll(Scene* scene, const Ray& ray, uint32_t layerMask, QueryTriggerInteraction triggers);
-        static std::vector<RayReturn> raycastAll(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, uint32_t layerMask, QueryTriggerInteraction triggers);
-
-        // Every collider whose shape touches the query shape (separation <= 0), one hit per
-        // collider, into out (cleared first). Returns the count. Mesh colliders are surfaces:
-        // a shape wholly inside a closed mesh does not overlap it.
-        static size_t overlapSphere(Scene* scene, const Vector3& center, float radius, std::vector<OverlapHit>& out, const PhysicsQueryOptions& options = {});
-        static size_t overlapBox(Scene* scene, const Vector3& center, const Vector3& halfExtents, const Quaternion& rotation, std::vector<OverlapHit>& out, const PhysicsQueryOptions& options = {});
-        // a capsule between two points (they may coincide: a sphere)
-        static size_t overlapCapsule(Scene* scene, const Vector3& point0, const Vector3& point1, float radius, std::vector<OverlapHit>& out, const PhysicsQueryOptions& options = {});
-        // true when the overlap would find a collider; stops at the first
-        static bool checkSphere(Scene* scene, const Vector3& center, float radius, const PhysicsQueryOptions& options = {});
-        static bool checkBox(Scene* scene, const Vector3& center, const Vector3& halfExtents, const Quaternion& rotation, const PhysicsQueryOptions& options = {});
-        static bool checkCapsule(Scene* scene, const Vector3& point0, const Vector3& point1, float radius, const PhysicsQueryOptions& options = {});
-        // The closest collider the shape meets moving along direction for maxDistance (world
-        // units). Colliders it overlaps at the start are not reported (Unity).
-        static RayReturn sphereCast(Scene* scene, const Vector3& origin, float radius, const Vector3& direction, float maxDistance, const PhysicsQueryOptions& options = {});
-        static RayReturn boxCast(Scene* scene, const Vector3& center, const Vector3& halfExtents, const Vector3& direction, float maxDistance, const Quaternion& rotation, const PhysicsQueryOptions& options = {});
-        static RayReturn capsuleCast(Scene* scene, const Vector3& point0, const Vector3& point1, float radius, const Vector3& direction, float maxDistance, const PhysicsQueryOptions& options = {});
-        // every collider met, nearest first, one hit per collider, into out (cleared first)
-        static size_t sphereCastAll(Scene* scene, const Vector3& origin, float radius, const Vector3& direction, float maxDistance, std::vector<RayReturn>& out, const PhysicsQueryOptions& options = {});
-        static size_t boxCastAll(Scene* scene, const Vector3& center, const Vector3& halfExtents, const Vector3& direction, float maxDistance, const Quaternion& rotation, std::vector<RayReturn>& out, const PhysicsQueryOptions& options = {});
-        static size_t capsuleCastAll(Scene* scene, const Vector3& point0, const Vector3& point1, float radius, const Vector3& direction, float maxDistance, std::vector<RayReturn>& out, const PhysicsQueryOptions& options = {});
+        static std::vector<RayReturn> raycastAll(Scene* scene, const Ray& ray, const QueryOptions& options);
+        static std::vector<RayReturn> raycastAll(Scene* scene, Vector3 origin, Vector3 direction, float maxDistance, const QueryOptions& options);
 #endif
     };
 
@@ -198,44 +150,25 @@ namespace jasperengine{
         static void setLayerCollisionMask(int layer, uint32_t layerMask);
         static void resetLayerCollisionMatrix();
 
-        // Unity's Physics2D.queriesHitTriggers: what UseGlobal means for every 2D query
+        // Unity Physics2D.queriesHitTriggers (true) and queriesStartInColliders (false here,
+        // true in Unity: S96 D5), the defaults of the triggers and startInColliders options
         static void setQueriesHitTriggers(bool hitTriggers);
         static bool getQueriesHitTriggers();
-        static bool hitsTriggers(QueryTriggerInteraction triggers);
+        static void setQueriesStartInColliders(bool startInColliders);
+        static bool getQueriesStartInColliders();
+        static bool hitsTriggers(const QueryOptions& options);
+        static bool startsInColliders(const QueryOptions& options);
 
 #ifdef JASPERENGINE_PHYSICS_2D
+        // A collider containing the origin is hit (at distance 0) only with startInColliders
         static RayReturn raycast(Scene* scene, const Ray& ray, uint32_t layerMask = DEFAULT_RAYCAST_LAYERS);
         static RayReturn raycast(Scene* scene, Vector2 origin, Vector2 direction, float distance, uint32_t layerMask = DEFAULT_RAYCAST_LAYERS);
+        static RayReturn raycast(Scene* scene, const Ray& ray, const QueryOptions& options);
+        static RayReturn raycast(Scene* scene, Vector2 origin, Vector2 direction, float distance, const QueryOptions& options);
         static std::vector<RayReturn> raycastAll(Scene* scene, const Ray& ray, uint32_t layerMask = DEFAULT_RAYCAST_LAYERS);
         static std::vector<RayReturn> raycastAll(Scene* scene, Vector2 origin, Vector2 direction, float distance, uint32_t layerMask = DEFAULT_RAYCAST_LAYERS);
-        static RayReturn raycast(Scene* scene, const Ray& ray, uint32_t layerMask, QueryTriggerInteraction triggers);
-        static RayReturn raycast(Scene* scene, Vector2 origin, Vector2 direction, float distance, uint32_t layerMask, QueryTriggerInteraction triggers);
-        static std::vector<RayReturn> raycastAll(Scene* scene, const Ray& ray, uint32_t layerMask, QueryTriggerInteraction triggers);
-        static std::vector<RayReturn> raycastAll(Scene* scene, Vector2 origin, Vector2 direction, float distance, uint32_t layerMask, QueryTriggerInteraction triggers);
-
-        // Overlaps in three forms (Unity): the first collider in (body, colliderIndex) order
-        // (hit false when none), All into out (cleared first, returns the count). Positions and
-        // sizes in scene units (points); angles in degrees.
-        static OverlapHit overlapPoint(Scene* scene, const Vector2& point, const PhysicsQueryOptions& options = {});
-        static size_t overlapPointAll(Scene* scene, const Vector2& point, std::vector<OverlapHit>& out, const PhysicsQueryOptions& options = {});
-        static OverlapHit overlapCircle(Scene* scene, const Vector2& center, float radius, const PhysicsQueryOptions& options = {});
-        static size_t overlapCircleAll(Scene* scene, const Vector2& center, float radius, std::vector<OverlapHit>& out, const PhysicsQueryOptions& options = {});
-        static OverlapHit overlapBox(Scene* scene, const Vector2& center, const Vector2& size, float angleDegrees, const PhysicsQueryOptions& options = {});
-        static size_t overlapBoxAll(Scene* scene, const Vector2& center, const Vector2& size, float angleDegrees, std::vector<OverlapHit>& out, const PhysicsQueryOptions& options = {});
-        // size is the capsule's bounding box; the round ends lie along direction (Unity)
-        static OverlapHit overlapCapsule(Scene* scene, const Vector2& center, const Vector2& size, CapsuleDirection2D direction, float angleDegrees, const PhysicsQueryOptions& options = {});
-        static size_t overlapCapsuleAll(Scene* scene, const Vector2& center, const Vector2& size, CapsuleDirection2D direction, float angleDegrees, std::vector<OverlapHit>& out, const PhysicsQueryOptions& options = {});
-        // the axis-aligned rectangle between two corners (any order)
-        static OverlapHit overlapArea(Scene* scene, const Vector2& pointA, const Vector2& pointB, const PhysicsQueryOptions& options = {});
-        static size_t overlapAreaAll(Scene* scene, const Vector2& pointA, const Vector2& pointB, std::vector<OverlapHit>& out, const PhysicsQueryOptions& options = {});
-        // Casts: the closest collider met (distance in scene units, z = 0); shapes overlapped at
-        // the start are not reported
-        static RayReturn circleCast(Scene* scene, const Vector2& origin, float radius, const Vector2& direction, float distance, const PhysicsQueryOptions& options = {});
-        static RayReturn boxCast(Scene* scene, const Vector2& origin, const Vector2& size, float angleDegrees, const Vector2& direction, float distance, const PhysicsQueryOptions& options = {});
-        static RayReturn capsuleCast(Scene* scene, const Vector2& origin, const Vector2& size, CapsuleDirection2D capsuleDirection, float angleDegrees, const Vector2& direction, float distance, const PhysicsQueryOptions& options = {});
-        static size_t circleCastAll(Scene* scene, const Vector2& origin, float radius, const Vector2& direction, float distance, std::vector<RayReturn>& out, const PhysicsQueryOptions& options = {});
-        static size_t boxCastAll(Scene* scene, const Vector2& origin, const Vector2& size, float angleDegrees, const Vector2& direction, float distance, std::vector<RayReturn>& out, const PhysicsQueryOptions& options = {});
-        static size_t capsuleCastAll(Scene* scene, const Vector2& origin, const Vector2& size, CapsuleDirection2D capsuleDirection, float angleDegrees, const Vector2& direction, float distance, std::vector<RayReturn>& out, const PhysicsQueryOptions& options = {});
+        static std::vector<RayReturn> raycastAll(Scene* scene, const Ray& ray, const QueryOptions& options);
+        static std::vector<RayReturn> raycastAll(Scene* scene, Vector2 origin, Vector2 direction, float distance, const QueryOptions& options);
 #endif
     };
 

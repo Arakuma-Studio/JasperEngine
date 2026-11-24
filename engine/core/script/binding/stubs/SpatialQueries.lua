@@ -3,13 +3,14 @@
 -- appended to the generated stubs. Rules: docs/scripting/spatial-queries.md.
 
 ---The results table of Physics.overlapXNonAlloc, Physics2D.overlapXNonAlloc and
----MeshRaycast.overlapXNonAlloc: entity ids (integers, no garbage), 1..count; the entries past the
----count are cleared, so #results is the count. Turn an id into an object with GameObject(scene, id).
----A tree or detail found by MeshRaycast gives its Terrain's id (the array form tells which tree).
+---MeshRaycast.overlapXNonAlloc: GameObject ids (integers, no garbage), 1..count; the entries past
+---the count are cleared, so #results is the count. Turn an id into an object with
+---GameObject(scene, id). A tree or detail found by MeshRaycast gives its Terrain's id (the array
+---form tells which tree).
 ---@alias SpatialQueryResults integer[]
 
----The colliders table of a Physics / Physics2D NonAlloc overlap: colliders[i] is the collider index of
----results[i] (the body's own collider list, as RayReturn.colliderIndex).
+---The colliders table of a Physics / Physics2D NonAlloc overlap: colliders[i] is the index of
+---results[i]'s collider on that GameObject (Collider.index of the array form's hit).
 ---@alias SpatialQueryColliders integer[]
 
 ---The options of MeshRaycast.overlapSphere / overlapBox (and their NonAlloc forms).
