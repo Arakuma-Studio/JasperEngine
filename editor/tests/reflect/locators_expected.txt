@@ -35,4 +35,4 @@
 1101 grid/importSource any
 1102 tilemaplayer/tileset tileset
 1104 titleart/title title_art
-1106 dialoguerunner/dialogue dialogue
+1108 dialoguerunner/dialogue dialogue
