@@ -28,6 +28,8 @@ export:
       properties: 3
       customShader: shaders/no_shadow#BLEND_NONE
 startSceneId: 1
+mesh:
+  fbxSubmeshOrder: used_materials
 scenes:
   - filepath: Main Scene.scene
     filepathGuid: 2385f1a5e2877b94bc16d5309fb19aca

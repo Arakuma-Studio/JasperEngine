@@ -2269,6 +2269,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         animationplayer.playAutomatically = false;
         animationplayer.speed = 2.500000f;
         animationplayer.defaultFadeTime = 0.500000f;
+        animationplayer.legacyRootDrift = true;
         scene->addComponent<AnimationPlayerComponent>(1067, animationplayer);
 
         Transform transform;

@@ -18,6 +18,8 @@ versionControl:
   lfs: true
 transparencySortMode: perspective
 startSceneId: 3575974884
+mesh:
+  fbxSubmeshOrder: used_materials
 scenes:
   - filepath: TweenCurve.scene
     filepathGuid: 82542eaa9438c61a4644909803eb59fb

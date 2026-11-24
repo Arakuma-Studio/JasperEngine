@@ -17,6 +17,8 @@ assetsDir: assets
 luaDir: scripts
 transparencySortMode: perspective
 startSceneId: 1
+mesh:
+  fbxSubmeshOrder: used_materials
 scenes:
   - filepath: Variant Scene.scene
     filepathGuid: 7cea9db2d25f9068013f62594a555399

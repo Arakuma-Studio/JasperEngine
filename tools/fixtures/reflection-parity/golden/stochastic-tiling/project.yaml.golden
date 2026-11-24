@@ -16,6 +16,8 @@ windowResizable: true
 luaDir: .
 transparencySortMode: perspective
 startSceneId: 1102162980
+mesh:
+  fbxSubmeshOrder: used_materials
 scenes:
   - filepath: Main Scene.scene
     filepathGuid: 2385f1a5e2877b94bc16d5309fb19aca

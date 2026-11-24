@@ -18,6 +18,8 @@ versionControl:
   lfs: true
 transparencySortMode: perspective
 startSceneId: 1868004712
+mesh:
+  fbxSubmeshOrder: used_materials
 audio:
   mixer: audio/Main.mixer
   outputStage: linear

@@ -1971,6 +1971,7 @@ entities:
         playAutomatically: false
         speed: 2.5
         defaultFadeTime: 0.5
+        legacyRootDrift: true
   - type: Entity
     entity: 1068
     name: NavMeshSurfaceComponent

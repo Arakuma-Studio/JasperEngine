@@ -33,6 +33,7 @@ transparencySortMode: perspective
 startSceneId: 2734926655
 mesh:
   animationEntities: auto
+  fbxSubmeshOrder: used_materials
 audio:
   mixer: audio/Main.mixer
   outputStage: linear
