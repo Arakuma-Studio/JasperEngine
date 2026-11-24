@@ -128,7 +128,7 @@ TEST(BitmapText, AutoSizeFitsWholeScales){
         text.fontSizeMax = c.max;
         t.update();
         ASSERT_TRUE(text.bitmapText) << c.text;
-        const pixelart::BitmapFont& font = *text.bitmapText->getFont();
+        const ::jasperengine::pixelart::BitmapFont& font = *text.bitmapText->getFont();
         const unsigned int native = (unsigned int)font.getNativeSize();
 
         const unsigned int maxScale = std::max(c.max / native, 1u);
@@ -136,7 +136,7 @@ TEST(BitmapText, AutoSizeFitsWholeScales){
         unsigned int expected = minScale;
         for (unsigned int k = minScale; k <= maxScale; k++){
             int width = 0, height = 0;
-            pixelart::BitmapText::measure(font, c.text, c.multiline, (int)(c.width / k), width, height);
+            ::jasperengine::pixelart::BitmapText::measure(font, c.text, c.multiline, (int)(c.width / k), width, height);
             if ((unsigned int)width * k <= c.width && (unsigned int)height * k <= c.height)
                 expected = k;
         }
