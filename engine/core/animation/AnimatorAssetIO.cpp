@@ -1101,7 +1101,7 @@ namespace{
 
     // the S21 controller members of each kind of object (an unknown key of the same name, from a
     // converted file, would be written twice: it is renamed "upstream_<key>")
-    const std::set<std::string> kLayerMembers = {"name", "weight", "blending", "mask", "slot", "state_machine"};
+    const std::set<std::string> kLayerMembers = {"name", "weight", "blending", "mask", "slot", "mesh_space_rotation", "state_machine"};
     const std::set<std::string> kMachineMembers = {"name", "position", "default_state", "entry", "any_state", "states", "sub_state_machines",
                                                    "exit_transitions", "entry_position", "any_state_position", "exit_position"};
     const std::set<std::string> kStateMembers = {"name", "position", "motion", "speed", "speed_parameter", "cycle_offset", "cycle_offset_parameter",
@@ -1295,6 +1295,7 @@ anim::ControllerParseResult anim::parseController(const std::string& text){
                 reader.enumeration(l, at, "blending", kBlendings, layer.blending);
                 reader.assetRef(l, at, "mask", layer.mask);
                 reader.string(l, at, "slot", layer.slot);
+                reader.boolean(l, at, "mesh_space_rotation", layer.meshSpaceRotation);
                 auto machine = l.find("state_machine");
                 if (machine != l.end() && machine->is_object()){
                     readMachine(reader, *machine, Reader::member(at, "state_machine"), layer.machine, 0);
@@ -1302,7 +1303,7 @@ anim::ControllerParseResult anim::parseController(const std::string& text){
                     reader.warn(Reader::member(at, "state_machine"), "expected an object");
                 }
                 layer.machine.name.clear();
-                reader.keep(l, at, {"name", "weight", "blending", "mask", "slot", "state_machine"}, layer.unknownKeys);
+                reader.keep(l, at, {"name", "weight", "blending", "mask", "slot", "mesh_space_rotation", "state_machine"}, layer.unknownKeys);
                 data.layers.push_back(std::move(layer));
             }
         }
@@ -1377,6 +1378,10 @@ std::string anim::writeController(const ControllerDef& data){
         out.key("blending"); out.str(layerBlendingName(layer.blending));
         out.key("mask"); writeRef(out, layer.mask);
         out.key("slot"); out.str(layer.slot);
+        // written only when on: a controller without it re-saves byte for byte (no version bump)
+        if (layer.meshSpaceRotation){
+            out.key("mesh_space_rotation"); out.boolean(true);
+        }
         out.key("state_machine");
         writeMachine(out, layer.machine, true);
         writeUnknown(out, layer.unknownKeys);

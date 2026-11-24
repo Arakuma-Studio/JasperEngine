@@ -65,6 +65,7 @@ are in the `animation` group (`tool_groups {enable: ["animation"]}`) and run as 
 | Do the feet slide? | `check_animation {clips: [clip], checks: ["foot_sliding"], feet: [...]}` | `foot_sliding.max_slide_mm`, `matching_ground_speed_mps`, `contact_source` |
 | Why does it pop? | `check_animation {entity, transition: {from, to}}` | `transition.max_step_mm`, `worst_joint`, `causes` |
 | Do they slide in the game? | `play`, then `check_animation {entity, record_seconds: 3}` | `foot_sliding` of the Animator's Foot IK and Foot Lock legs |
+| Does an upper-body layer turn the torso off its clip? | `check_animation {entity, layer_blend: {layer}}` | `layer_blend`, the finding's `next` (`jasper://docs/animator`) |
 
 `ok: false` is a successful call that has findings (the `ProjectChecks` shape: `docs/mcp/checks.md`). Every
 mm is measured: both clips sampled with the runtime sampler at each key time and halfway between them, then

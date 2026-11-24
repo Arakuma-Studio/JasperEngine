@@ -7,7 +7,9 @@
 // (AnimatorAssetDocument): the Avatar Mask figure (a click on the right arm writes right_arm,
 // undo puts it back), the layer edits and the clip Layer combo with undo, Create Mask from
 // Selection and Create Animator Controller from Clips (one scene step each, with the new file;
-// the controller plays on an Animator the player hands over to), the mask coverage line, the
+// the controller plays on an Animator the player hands over to), the Layers table's Mesh Space
+// Rotation row (docs/specs/mesh-space-rotation.md R32: disabled states, one scene step, the row
+// summary and the "Applies at" line), the mask coverage line, the
 // preview hierarchy of a model (humanoid detection for the "Not humanoid" note), and the
 // Animation window's Preview over (the arm from the layer through its mask, the leg from the
 // base) and its masked-out rows.
@@ -41,6 +43,7 @@
 #include <fstream>
 #include <iterator>
 #include <memory>
+#include <set>
 #include <string>
 
 using namespace jasperengine;
@@ -301,6 +304,90 @@ TEST_F(AnimationLayersUi, LayerEditsAndTheClipLayerComboAreSceneSteps) {
     EXPECT_EQ(s.player().clips[1].layer, 0);
     ASSERT_TRUE(history->undo());
     EXPECT_TRUE(s.player().layers.empty());
+}
+
+TEST_F(AnimationLayersUi, MeshSpaceRotationRowIsOneSceneStep) {
+    LayerScene s = layerScene();
+    // disabled on the base layer and on additive layers, with the reason as its tooltip (R26)
+    const char* base = animlayersui::meshSpaceRotationDisabledReason(0, AnimationLayerBlend::Override);
+    ASSERT_NE(base, nullptr);
+    EXPECT_NE(std::string(base).find("base layer"), std::string::npos) << base;
+    const char* additive = animlayersui::meshSpaceRotationDisabledReason(1, AnimationLayerBlend::Additive);
+    ASSERT_NE(additive, nullptr);
+    EXPECT_NE(std::string(additive).find("Additive"), std::string::npos) << additive;
+    EXPECT_EQ(animlayersui::meshSpaceRotationDisabledReason(1, AnimationLayerBlend::Override), nullptr);
+    EXPECT_STREQ(animlayersui::MESH_SPACE_ROTATION_TOOLTIP,
+                 "Bones where the mask starts or stops keep this layer's direction relative to the character, instead of following their "
+                 "parent. Use it for upper-body layers over locomotion, so the torso faces where this layer's clip faces. Unreal: Mesh Space "
+                 "Rotation Blend.");
+
+    // the click: one scene step that undo takes back whole
+    EXPECT_EQ(animlayersui::layerSummary(s.player().layers[1]), "override, mask arm.mask");
+    CommandHistory* history = CommandHandle::get(s.id);
+    ASSERT_FALSE(history->canUndo());
+    Command* cmd = animlayersui::layerFieldCommand(animationLayersUiProject(), s.id, s.hero, s.player(), 1, "meshSpaceRotation", true,
+                                                   &AnimationPlayerLayer::meshSpaceRotation);
+    ASSERT_NE(cmd, nullptr);
+    history->addCommandNoMerge(cmd);
+    EXPECT_TRUE(s.player().layers[1].meshSpaceRotation);
+    EXPECT_TRUE(s.sceneProject->isModified);
+    EXPECT_EQ(animlayersui::layerSummary(s.player().layers[1]), "override, mask arm.mask, mesh space");
+    ASSERT_TRUE(history->undo());
+    EXPECT_FALSE(s.player().layers[1].meshSpaceRotation);
+    EXPECT_FALSE(history->canUndo()) << "one step";
+    ASSERT_TRUE(history->redo());
+    EXPECT_TRUE(s.player().layers[1].meshSpaceRotation);
+    EXPECT_EQ(animlayersui::layerFieldCommand(animationLayersUiProject(), s.id, s.hero, s.player(), 5, "meshSpaceRotation", true,
+                                              &AnimationPlayerLayer::meshSpaceRotation), nullptr) << "no such layer";
+
+    // a player with the default layering: its whole list (one Base Layer) holds the field
+    LayerScene plain = layerScene(false);
+    plain.scene->getComponent<AnimationPlayerComponent>(plain.hero).layers.clear();
+    cmd = animlayersui::layerFieldCommand(animationLayersUiProject(), plain.id, plain.hero, plain.player(), 0, "meshSpaceRotation", true,
+                                          &AnimationPlayerLayer::meshSpaceRotation);
+    ASSERT_NE(cmd, nullptr);
+    CommandHandle::get(plain.id)->addCommandNoMerge(cmd);
+    ASSERT_EQ(plain.player().layers.size(), 1u);
+    EXPECT_TRUE(plain.player().layers[0].meshSpaceRotation);
+    ASSERT_TRUE(CommandHandle::get(plain.id)->undo());
+    EXPECT_TRUE(plain.player().layers.empty());
+}
+
+TEST_F(AnimationLayersUi, MeshSpaceRotationSaysWhereItApplies) {
+    LayerScene s = layerScene();
+    // Hero > Arm > Hand, Leg, with Hand animated too: a mask from the hand starts at the hand
+    const std::vector<Entity> animated = {s.arm, s.hand, s.leg};
+    anim::AvatarMaskDef hand;
+    hand.defaultWeight = 0.0f;
+    hand.paths.push_back({"Arm/Hand", 1.0f, true});
+    EXPECT_EQ(animlayersui::meshSpaceBoundary(s.scene, s.hero, hand, animated), std::vector<Entity>{s.hand});
+    EXPECT_EQ(animlayersui::meshSpaceBoundaryLine(s.scene, s.hero, &hand, animated), "Applies at: Hand");
+    // a mask that leaves the hand out of the arm: the mask starts at the arm, right under the root,
+    // and stops right under it, at the hand
+    anim::AvatarMaskDef arm;
+    arm.defaultWeight = 0.0f;
+    arm.paths.push_back({"Arm", 1.0f, true});
+    arm.paths.push_back({"Arm/Hand", 0.0f, true});
+    EXPECT_EQ(animlayersui::meshSpaceBoundaryLine(s.scene, s.hero, &arm, animated), "Applies at: Hand");
+    // the root's children keep the root's space: an arm mask has no edge below the root
+    arm.paths.pop_back();
+    EXPECT_TRUE(animlayersui::meshSpaceBoundary(s.scene, s.hero, arm, animated).empty());
+    EXPECT_EQ(animlayersui::meshSpaceBoundaryLine(s.scene, s.hero, &arm, animated),
+              "Applies at: no bone (the mask does not start or stop where the clips animate)");
+    const anim::AvatarMaskDef unmasked{};
+    EXPECT_TRUE(animlayersui::meshSpaceBoundary(s.scene, s.hero, unmasked, animated).empty()) << "no mask, no edge";
+    // no mask data, or nothing animated below the GameObject: the rule in words
+    EXPECT_EQ(animlayersui::meshSpaceBoundaryLine(s.scene, s.hero, nullptr, animated), "Applies where the mask starts or stops");
+    EXPECT_EQ(animlayersui::meshSpaceBoundaryLine(s.scene, s.hand, &hand, animated), "Applies where the mask starts or stops");
+
+    // R16: the Player's rig is what its clips animate (walk and hold move Arm and Leg) and their
+    // ancestors, as the runtime's: the hand no clip animates is not a bone, so a mask from it
+    // applies nowhere, as at runtime
+    const std::vector<Entity> played = animlayersui::playerAnimatedTargets(animationLayersUiProject(), s.scene, s.hero, s.player());
+    EXPECT_EQ(std::set<Entity>(played.begin(), played.end()), (std::set<Entity>{s.arm, s.leg}));
+    EXPECT_TRUE(animlayersui::meshSpaceBoundary(s.scene, s.hero, hand, played).empty()) << "an unanimated GameObject under a masked bone";
+    EXPECT_EQ(animlayersui::meshSpaceBoundaryLine(s.scene, s.hero, &hand, played),
+              "Applies at: no bone (the mask does not start or stop where the clips animate)");
 }
 
 TEST_F(AnimationLayersUi, CreateMaskFromSelectionIsOneStepWithItsFile) {

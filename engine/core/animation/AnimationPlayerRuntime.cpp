@@ -247,6 +247,14 @@ void anim::setLayerBlend(AnimationPlayerComponent& player, int layer, AnimationL
     runtime.layers[(size_t)layer].blend = blend;
 }
 
+void anim::setLayerMeshSpaceRotation(AnimationPlayerComponent& player, int layer, bool enabled){
+    std::vector<AnimationPlayerLayer> layers = playerLayers(player);
+    if (layer < 0 || (size_t)layer >= layers.size() || layers[(size_t)layer].meshSpaceRotation == enabled) return;
+    layers[(size_t)layer].meshSpaceRotation = enabled;
+    player.layers = layers;
+    player.needsLoad = true;
+}
+
 void anim::stopLayer(AnimationPlayerComponent& player, int layer, float fade){
     AnimationPlayerRuntime& runtime = playerRuntime(player);
     if (layer < 0 || (size_t)layer >= runtime.layers.size()) return;
@@ -457,6 +465,7 @@ namespace {
             layer.authoredWeight = weight;
             layer.authoredBlend = blend;
             layer.authoredMask = source.mask;
+            layer.meshSpaceRotation = source.meshSpaceRotation;
         }
         runtime.layers = std::move(layers);
     }
