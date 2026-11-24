@@ -5469,6 +5469,8 @@ void editor::App::shutdownBackgroundWork() {
     layouts.saveWorkingLayoutNow();
     // the Project Hub's picture of the project (S27 R21)
     writeHubThumbnail();
+    // vertex colors' queued writes land before the job system's shutdown cancels their drain (V1 R8)
+    flushVertexColorFiles();
     // a clean quit: this session's crash backups and the project lock go
     project.endProjectSession();
     loadingPump = nullptr;

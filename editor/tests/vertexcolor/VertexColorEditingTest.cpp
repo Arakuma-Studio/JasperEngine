@@ -13,9 +13,13 @@
 #include "texture/Material.h"
 #include "vertexcolor/VertexColorEditorInternal.h"
 #include "vertexcolor/VertexColorFile.h"
+#include "jobs/JobSystem.h"
 
+#include <atomic>
+#include <chrono>
 #include <fstream>
 #include <iterator>
+#include <thread>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -322,6 +326,34 @@ TEST_F(VertexColorEditing, SceneSaveWritesTheFileWithItsSnapshot) {
     vce::detail::flushWrites();
     ASSERT_TRUE(vc::readFile(project->getAssetsPath() / path, onDisk, error)) << error;
     EXPECT_EQ(vc::hashTarget(onDisk.targets[0]), hashOf(box)) << "the debounced write landed";
+}
+
+// The editor's quit flushes the queue on the main thread: the drain waits on the one-at-a-time
+// io-write channel, and the job system's shutdown cancels a drain still pending there (V1 R8)
+TEST_F(VertexColorEditing, QuitFlushWritesWhatWaitsBehindABusyWriteChannel) {
+    const Entity box = addBox();
+    ASSERT_TRUE(edit(box, {fillAll(kRed)}).ok);
+    const std::string path = colorsOf(box)->data.path;
+    ASSERT_TRUE(project->saveSceneNow(sceneId));
+
+    std::atomic<bool> release{false};
+    jobs::SubmitOptions options;
+    options.name = "vertex-colors-busy-channel";
+    jobs::Task<void> busy = jobs::system().ioWriteChannel().submit([&release]() {
+        while (!release.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }, options);
+    ASSERT_TRUE(edit(box, {fillAll(kBlue)}).ok);
+    const bool flushed = flushVertexColorFiles();
+    vc::Data onDisk;
+    std::string error;
+    const bool read = vc::readFile(project->getAssetsPath() / path, onDisk, error);
+    release = true;
+    busy.wait();
+
+    EXPECT_TRUE(flushed);
+    ASSERT_TRUE(read) << error;
+    ASSERT_EQ(onDisk.targets.size(), 1u);
+    EXPECT_EQ(vc::hashTarget(onDisk.targets[0]), hashOf(box)) << "the blue fill reached the file while the channel was busy";
 }
 
 TEST_F(VertexColorEditing, ChangedMeshIsTransferredAndTheFileWaitsForTheSave) {

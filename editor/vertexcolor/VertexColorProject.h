@@ -25,6 +25,9 @@ namespace jasperengine::editor {
     bool vertexColorFileDirty(Project& project, const std::string& assetPath);
     // a project closing: queued writes are written, the live values forgotten
     void releaseVertexColorFiles();
+    // the editor quitting: queued writes are written on this thread (the job system cancels a
+    // pending drain at its shutdown). False when one could not be written
+    bool flushVertexColorFiles();
     // values no component shows and the disk holds already go
     void forgetUnusedVertexColorFiles(Project& project);
 

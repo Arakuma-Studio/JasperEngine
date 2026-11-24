@@ -419,6 +419,10 @@ bool editor::vertexColorFileDirty(Project& project, const std::string& assetPath
     return vcd::isDirty(project, assetPath);
 }
 
+bool editor::flushVertexColorFiles() {
+    return vcd::flushWrites();
+}
+
 void editor::releaseVertexColorFiles() {
     vcd::resetFiles();
     vcd::resetRemap();
