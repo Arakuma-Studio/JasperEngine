@@ -54,7 +54,7 @@ namespace {
         return sum;
     }
 
-    float percentile(std::vector<float> values, float p) {
+    float heightfieldErosionPercentile(std::vector<float> values, float p) {
         std::sort(values.begin(), values.end());
         return values[static_cast<size_t>(p * static_cast<float>(values.size() - 1))];
     }
@@ -151,8 +151,8 @@ TEST(HeightfieldErosion, CarvesChannels) {
     HydraulicParams params;
     params.seed = 2u;       // everything else as a person gets it
     ASSERT_TRUE(HeightfieldErosion::hydraulic(params, regionOf(size), h.data(), nullptr, flow.data(), nullptr));
-    const float median = percentile(flow, 0.5f);
-    const float p99 = percentile(flow, 0.99f);
+    const float median = heightfieldErosionPercentile(flow, 0.5f);
+    const float p99 = heightfieldErosionPercentile(flow, 0.99f);
     EXPECT_GT(p99, median * 5.0f) << "water gathers: p99 " << p99 << " median " << median;
     for (float value : flow) {
         ASSERT_GE(value, 0.0f);

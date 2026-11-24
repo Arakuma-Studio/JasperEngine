@@ -31,7 +31,7 @@ using jasperengine::test::makeTransformEntity;
 
 namespace {
 
-    std::string runLua(lua_State* L, const std::string& code){
+    std::string luaBindingBenchRunLua(lua_State* L, const std::string& code){
         if (luaL_loadstring(L, code.c_str()) != LUA_OK || lua_pcall(L, 0, 0, 0) != LUA_OK){
             std::string error = lua_tostring(L, -1) ? lua_tostring(L, -1) : "(error)";
             lua_pop(L, 1);
@@ -76,11 +76,11 @@ TEST(LuaBindingBench, CallsAndProperties){
         const std::string code = std::string("local go = GameObject(benchScene, benchEntity)\n"
                                              "local v = Vector3(1, 2, 3)\nlocal s = 0\n"
                                              "for i = 1, ") + std::to_string(iterations) + " do\n" + c.body + "\nend\n";
-        ASSERT_EQ(runLua(L, code), "") << c.name;   // warm-up, and the body must run
+        ASSERT_EQ(luaBindingBenchRunLua(L, code), "") << c.name;   // warm-up, and the body must run
         std::vector<double> samples;
         for (int run = 0; run < runs; run++){
             const auto start = std::chrono::steady_clock::now();
-            runLua(L, code);
+            luaBindingBenchRunLua(L, code);
             const double ns = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count();
             samples.push_back(ns / ((double)iterations * c.calls));
         }
@@ -90,7 +90,7 @@ TEST(LuaBindingBench, CallsAndProperties){
 
     lua_pushnil(L);
     lua_setglobal(L, "benchScene");
-    runLua(L, "collectgarbage()");
+    luaBindingBenchRunLua(L, "collectgarbage()");
 }
 
 // S95 REQ-34: 1 000 scripts' onUpdate (RegisterEngineEvent), one Engine.onUpdate dispatch; the

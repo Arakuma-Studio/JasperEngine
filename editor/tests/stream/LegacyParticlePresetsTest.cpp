@@ -42,7 +42,7 @@ using Json = nlohmann::json;
 
 namespace {
 
-    fs::path fixtureDir(){
+    fs::path legacyParticlePresetsFixtureDir(){
         return fs::path(JASPER_TEST_FIXTURES_DIR) / "particles-legacy";
     }
 
@@ -52,7 +52,7 @@ namespace {
     };
 
     // the legacy system on its target, migrated: the S20 component the target ends with
-    ParticleSystemComponent migrated(const YAML::Node& preset, bool meshTarget){
+    ParticleSystemComponent legacyParticlePresetsMigrated(const YAML::Node& preset, bool meshTarget){
         YAML::Node root = YAML::Load("{entities: []}");
         YAML::Node target;
         target["type"] = "Entity";
@@ -77,7 +77,7 @@ namespace {
         return Stream::decodeParticleSystemComponent(root["entities"][0]["components"]["particlesystem"]);
     }
 
-    std::vector<Frame> play(const ParticleSystemComponent& component){
+    std::vector<Frame> legacyParticlePresetsPlay(const ParticleSystemComponent& component){
         Scene scene;
         ParticleSystem system(&scene);
         Transform& transform = scene.getComponent<Transform>(system.getEntity());
@@ -136,8 +136,8 @@ namespace {
 }
 
 TEST(LegacyParticlePresets, PresetsPlayAsTheOldModelDid){
-    const YAML::Node presets = YAML::LoadFile((fixtureDir() / "presets.yaml").string());
-    std::ifstream in(fixtureDir() / "capture.json");
+    const YAML::Node presets = YAML::LoadFile((legacyParticlePresetsFixtureDir() / "presets.yaml").string());
+    std::ifstream in(legacyParticlePresetsFixtureDir() / "capture.json");
     ASSERT_TRUE(in.good());
     const Json capture = Json::parse(in);
     struct Case { const char* name; const char* preset; bool mesh; };
@@ -147,7 +147,7 @@ TEST(LegacyParticlePresets, PresetsPlayAsTheOldModelDid){
     for (const Case& c : cases){
         SCOPED_TRACE(c.name);
         ASSERT_TRUE(capture.contains(c.name));
-        const std::vector<Frame> got = play(migrated(presets[c.preset], c.mesh));
+        const std::vector<Frame> got = legacyParticlePresetsPlay(legacyParticlePresetsMigrated(presets[c.preset], c.mesh));
         ASSERT_EQ(got.size(), 3u);
         const char* frameNames[] = {"30", "60", "120"};
         for (size_t k = 0; k < 3; k++){

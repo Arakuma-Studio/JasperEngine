@@ -100,6 +100,8 @@
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterVolumeComponent.h"
 #include "component/WaterWakeComponent.h"
+#include "component/WheelColliderComponent.h"
+#include "component/VehicleDrivetrainComponent.h"
 #include "script/AsyncOwner.h"
 
 #include <algorithm>
@@ -238,6 +240,11 @@ EntityRegistry::EntityRegistry() {
     registerComponent<TilemapCollider2DComponent>(ComponentOrder::Insertion, "TilemapCollider2DComponent");
     // S81 R58: after the last one, so no ComponentType moves
     registerComponent<TitleArtRendererComponent>(ComponentOrder::Insertion, "TitleArtRendererComponent");
+#ifdef JASPERENGINE_PHYSICS_3D
+    // S96 WP-A: vehicles
+    registerComponent<WheelColliderComponent>(ComponentOrder::Insertion, "WheelColliderComponent");
+    registerComponent<VehicleDrivetrainComponent>(ComponentOrder::Insertion, "VehicleDrivetrainComponent");
+#endif
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
     liveRegistries().push_back(this);

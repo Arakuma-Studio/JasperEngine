@@ -11,6 +11,10 @@
 //   RGBA16F, with FrameReadback's 8-byte float path and kept 16-bit; a premultiplied linear
 //   image (an intermediate the renderer handed back) is unpremultiplied and sRGB-encoded first.
 //   Rows top first, the frame space of the renderer (memory rows on every backend).
+// - Programs: a render never waits for a program still being built (S80 Deviation 61): runToEnd and
+//   render stop with a `not_ready:` error (asking for every program the job binds) and the caller tries again
+//   on a later frame, as the frames that build it go on; a program that cannot be built fails the
+//   render.
 // - Thread-safety: main thread. The resolver is safe from job threads (a mutex).
 
 #pragma once
@@ -19,6 +23,7 @@
 #include "titleart/TitleArtAssets.h"
 #include "titleart/render/TitleArtRenderer.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -85,10 +90,16 @@ namespace jasperengine::editor {
         // with `error` when the request has no document or the renderer refuses it
         std::unique_ptr<titleart::TitleRenderJob> begin(Project* project, titleart::RenderRequest request, std::string& error);
         // runs `request`'s job to its end (or its failure: check failed()); null with `error` when it
-        // cannot start or waits too long for a program (S85 reads the job's glyph cells)
+        // cannot start, or `not_ready:` when a program it binds is still being built (S85 reads the
+        // job's glyph cells)
         std::unique_ptr<titleart::TitleRenderJob> runToEnd(Project* project, titleart::RenderRequest request, std::string& error);
-        // runs `request` to the end and reads it back (`request.outputBitDepth` chooses 8 or 16 bits)
+        // runs `request` to the end and reads it back (`request.outputBitDepth` chooses 8 or 16 bits);
+        // false with `not_ready:` as runToEnd
         bool render(Project* project, titleart::RenderRequest request, TitleRenderedImage& out, std::string& error);
+        // the renders so far that stopped at a program still being built: a caller compares it before
+        // and after its work to tell "try again on a later frame" from a failure, however the error
+        // was passed on
+        uint64_t notReadyCount() const { return notReadyRenders; }
 
         // the pixels of a finished job: RGBA 8-bit (bitDepth 8) or 16-bit (bitDepth 16, needs an
         // RGBA16F image); false with `error`
@@ -113,6 +124,7 @@ namespace jasperengine::editor {
         std::unique_ptr<EditorTitleAssetResolver> projectResolver;
         Project* resolverProject = nullptr;
         std::filesystem::path resolverPath;
+        uint64_t notReadyRenders = 0;
 
         titleart::TitleArtRenderer& rendererInstance();
     };

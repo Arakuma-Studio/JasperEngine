@@ -3042,18 +3042,39 @@ bool editor::Exporter::writeResolvedDataAsset(const fs::path& source, const fs::
 
 bool editor::Exporter::prepareTitleArt() {
     TitleArtExport::Prepared prepared;
-    std::promise<void> done;
-    auto doneFuture = done.get_future();
-    editor::getEditorHost().enqueueMainThreadTask([this, &prepared, &done]() {
-        prepared = TitleArtExport::prepare(project, project->getTitleArtSettings().staleBakesOnExport);
-        // S81 R52: the documents a shipped Realtime or Glyph Atlas title reads ship
-        const TitleArtExportPlan plan = planTitleArtExport(project);
-        TitleArtExport::setRuntimeTitles(project, std::vector<std::string>(plan.runtimeTitles.begin(), plan.runtimeTitles.end()));
-        // S87 R25: the languages localization.languages leaves out (after any rebake above)
-        titleLanguages = planTitleLanguageShipping(project);
-        done.set_value();
-    });
-    doneFuture.get();
+    // a slice of the stale outputs' rebakes per main-thread task, so the frames go on and build
+    // the programs a bake waits for (S80 Deviation 61); the last task plans what ships after them
+    for (bool first = true;; first = false) {
+        std::promise<bool> done;
+        auto doneFuture = done.get_future();
+        editor::getEditorHost().enqueueMainThreadTask([this, &prepared, &done, first]() {
+            if (first) prepared = TitleArtExport::prepare(project, project->getTitleArtSettings().staleBakesOnExport);
+            if (!TitleArtExport::stepRebakes(prepared, 25.0)) {
+                done.set_value(false);
+                return;
+            }
+            // S81 R52: the documents a shipped Realtime or Glyph Atlas title reads ship
+            const TitleArtExportPlan plan = planTitleArtExport(project);
+            TitleArtExport::setRuntimeTitles(project, std::vector<std::string>(plan.runtimeTitles.begin(), plan.runtimeTitles.end()));
+            // S87 R25: the languages localization.languages leaves out (after any rebake above)
+            titleLanguages = planTitleLanguageShipping(project);
+            done.set_value(true);
+        });
+        if (doneFuture.get()) break;
+        if (isCancelled()) {
+            // the bakes hold the renderer's targets: they go on the main thread
+            std::promise<void> dropped;
+            auto droppedFuture = dropped.get_future();
+            editor::getEditorHost().enqueueMainThreadTask([&prepared, &dropped]() {
+                prepared.rebakes.clear();
+                dropped.set_value();
+            });
+            droppedFuture.get();
+            setError("Build cancelled");
+            return false;
+        }
+        setDetail("Title Art: rebaking stale outputs");
+    }
     for (const std::string& line : titleLanguages.warnings) Out::warning("%s", line.c_str());
     for (const std::string& line : prepared.rebaked) Out::info("Rebaked Title Art %s", line.c_str());
     for (const std::string& line : prepared.warnings) Out::warning("%s", line.c_str());
@@ -3080,23 +3101,53 @@ bool editor::Exporter::writeTitleArtRuntime() {
     Title3DCookPending cook3D;
     std::string settingsError;
     bool settingsFailed = false;
-    std::promise<void> done;
-    auto doneFuture = done.get_future();
     const fs::path assetsDst = getExportProjectRoot() / "assets";
     const std::vector<std::string> platforms = exportPlatformNames();
     const std::vector<TextureFamily> families = TextureCookQueue::familiesForExport(platforms, project->getTextureSettings().androidEtc2Fallback);
-    editor::getEditorHost().enqueueMainThreadTask([this, &prebaked, &fonts, &cooked3D, &cook3D, &settingsError, &settingsFailed, &done, assetsDst, &platforms, &families]() {
-        const TitleArtExportPlan plan = planTitleArtExport(project);
-        // the fonts first: the prebakes are keyed by the documents the player reads (relinked to the subsets)
-        fonts = shipTitleArtFonts(project, plan, assetsDst);
-        if (fonts.ok) prebaked = writeTitleArtPrebakes(project, plan, assetsDst, platforms);
-        // S86 R26, R38: the Realtime 3D titles' cooked meshes and environment cubes
-        if (fonts.ok && prebaked.ok) cook3D = beginTitleArt3DCook(project, plan, assetsDst, platforms, families, cooked3D);
-        // after the cook, which clears je-titleart/: the project's settings for the game (S81 R58)
-        if (fonts.ok && prebaked.ok && !writeTitleArtRuntimeSettings(project, plan, assetsDst, settingsError)) settingsFailed = true;
-        done.set_value();
-    });
-    doneFuture.get();
+    TitleArtExportPlan plan;
+    // on the main thread, asked again on later frames while a prebake meets a program the frames
+    // are still building (S80 Deviation 61); the deadline only guards against a hang
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(10);
+    for (bool first = true;; first = false) {
+        std::promise<void> done;
+        auto doneFuture = done.get_future();
+        editor::getEditorHost().enqueueMainThreadTask([this, &plan, &prebaked, &fonts, &cooked3D, &cook3D, &settingsError, &settingsFailed, &done, first, assetsDst, &platforms, &families]() {
+            if (first) {
+                plan = planTitleArtExport(project);
+                // the fonts first: the prebakes are keyed by the documents the player reads (relinked to the subsets)
+                fonts = shipTitleArtFonts(project, plan, assetsDst);
+            }
+            if (fonts.ok) writeTitleArtPrebakes(project, plan, assetsDst, platforms, prebaked);
+            // a failed export keeps no prebake in progress (it holds the renderer's targets)
+            if (!prebaked.ok) prebaked.glyphWork.clear();
+            const bool prebakedAll = fonts.ok && prebaked.ok && !prebaked.notReady;
+            // S86 R26, R38: the Realtime 3D titles' cooked meshes and environment cubes
+            if (prebakedAll) cook3D = beginTitleArt3DCook(project, plan, assetsDst, platforms, families, cooked3D);
+            // after the cook, which clears je-titleart/: the project's settings for the game (S81 R58)
+            if (prebakedAll && !writeTitleArtRuntimeSettings(project, plan, assetsDst, settingsError)) settingsFailed = true;
+            done.set_value();
+        });
+        doneFuture.get();
+        if (!fonts.ok || !prebaked.ok || !prebaked.notReady) break;
+        // a glyph atlas being prebaked works on every call (its strings have their own 60 s guard)
+        const bool glyphs = !prebaked.glyphWork.empty();
+        if (glyphs) deadline = std::chrono::steady_clock::now() + std::chrono::minutes(10);
+        const bool cancelled = isCancelled();
+        if (cancelled || std::chrono::steady_clock::now() > deadline) {
+            // the prebakes in progress hold the renderer's targets: they go on the main thread
+            std::promise<void> dropped;
+            auto droppedFuture = dropped.get_future();
+            editor::getEditorHost().enqueueMainThreadTask([&prebaked, &dropped]() {
+                prebaked.glyphWork.clear();
+                dropped.set_value();
+            });
+            droppedFuture.get();
+            setError(cancelled ? "Build cancelled" : "Cannot export: the Title Art prebakes still wait for their shader programs to be built");
+            return false;
+        }
+        setDetail(glyphs ? "Title Art: prebaking glyph atlases" : "Title Art: waiting for its shader programs to be built");
+        if (!glyphs) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
     // the cubes on this worker: seconds of CPU a face size of 1024 takes
     finishTitleArt3DCook(cook3D, cooked3D);
     for (const std::string& line : fonts.shipped) Out::info("Title Art font %s", line.c_str());

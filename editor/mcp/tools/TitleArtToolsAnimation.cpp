@@ -361,7 +361,10 @@ void mcp::titletools::renderTitleAnimation(const CallPtr& call, RenderSpec spec)
             request.region = s->region;
             TitleAnimFrame frame;
             std::string error;
+            const uint64_t waits = TitleArtRenderHost::editor().notReadyCount();
             if (!s->renderers[v]->render(request, frame, error)){
+                // a program still being built: the frame renders again on a later editor frame
+                if (TitleArtRenderHost::editor().notReadyCount() != waits) return false;
                 job.fail("The render at " + std::to_string(request.time) + " s failed: " + error);
                 return true;
             }
@@ -444,6 +447,7 @@ void mcp::titletools::renderTitleAnimation(const CallPtr& call, RenderSpec spec)
             result["saved_to"] = s->project->normalizeToProjectRelative(file).generic_string();
         }
         t->text = "Rendered " + std::to_string(s->frames.size()) + " frame(s) of '" + s->name + "' (" + titleAnimRenderAsName(s->as) + ") of " + s->relative + ".";
+        job.setImages(t->images);
         job.succeed(t->text, result);
         return true;
     };

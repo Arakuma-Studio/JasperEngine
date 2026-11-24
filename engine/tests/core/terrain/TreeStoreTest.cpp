@@ -18,7 +18,7 @@ using namespace jasperengine::terraincore;
 
 namespace {
 
-    TreeRecord makeRecord(float u, float v, uint16_t prototype = 0) {
+    TreeRecord treeStoreMakeRecord(float u, float v, uint16_t prototype = 0) {
         TreeRecord record{};
         record.u = u;
         record.v = v;
@@ -35,12 +35,12 @@ namespace {
     TreeStore makeStore(int count) {
         TreeStore store;
         for (int i = 0; i < count; i++) {
-            store.add(makeRecord(static_cast<float>(i) * 1e-4f, 0.5f, static_cast<uint16_t>(i % 3)));
+            store.add(treeStoreMakeRecord(static_cast<float>(i) * 1e-4f, 0.5f, static_cast<uint16_t>(i % 3)));
         }
         return store;
     }
 
-    bool zstdCompress(const void* input, size_t inputBytes, std::vector<uint8_t>& output) {
+    bool treeStoreZstdCompress(const void* input, size_t inputBytes, std::vector<uint8_t>& output) {
         output.resize(ZSTD_compressBound(inputBytes));
         const size_t written = ZSTD_compress(output.data(), output.size(), input, inputBytes, 3);
         if (ZSTD_isError(written)) return false;
@@ -76,7 +76,7 @@ TEST(TreeStore, RoundTripIsByteIdentical) {
 TEST(TreeStore, LargeFilesCompressAndReturn) {
     const TreeStore store = makeStore(5000);
     std::vector<uint8_t> packed;
-    store.encode(packed, zstdCompress);
+    store.encode(packed, treeStoreZstdCompress);
     EXPECT_LT(packed.size(), TREE_FILE_HEADER_BYTES + 5000 * sizeof(TreeRecord));
     uint32_t flags;
     std::memcpy(&flags, packed.data() + 20, 4);
@@ -90,7 +90,7 @@ TEST(TreeStore, LargeFilesCompressAndReturn) {
 
     // small files stay plain, compressor or not
     std::vector<uint8_t> small;
-    makeStore(10).encode(small, zstdCompress);
+    makeStore(10).encode(small, treeStoreZstdCompress);
     std::memcpy(&flags, small.data() + 20, 4);
     EXPECT_EQ(flags, 0u);
 }
@@ -172,7 +172,7 @@ TEST(TreeStore, IdsAreNeverReused) {
     TreeStore store = makeStore(3);
     const uint32_t last = store.records().back().id;
     EXPECT_TRUE(store.remove(last));
-    const uint32_t next = store.add(makeRecord(0.1f, 0.1f));
+    const uint32_t next = store.add(treeStoreMakeRecord(0.1f, 0.1f));
     EXPECT_GT(next, last);
 
     // across a save and a load, too
@@ -182,7 +182,7 @@ TEST(TreeStore, IdsAreNeverReused) {
     TreeStore loaded;
     std::string error;
     ASSERT_TRUE(loaded.decode(bytes, &error)) << error;
-    EXPECT_GT(loaded.add(makeRecord(0.2f, 0.2f)), next);
+    EXPECT_GT(loaded.add(treeStoreMakeRecord(0.2f, 0.2f)), next);
 }
 
 TEST(TreeStore, CorruptFileIsNotOverwritten) {
@@ -209,7 +209,7 @@ TEST(TreeStore, DeltaUndoRestoresTheBytes) {
     TreeRecord changed = store.records()[4];
     changed.scale = 9.0f;
     const uint32_t removeIds[] = {store.records()[1].id, store.records()[7].id};
-    const TreeRecord added[] = {makeRecord(0.9f, 0.9f), makeRecord(0.8f, 0.8f)};
+    const TreeRecord added[] = {treeStoreMakeRecord(0.9f, 0.9f), treeStoreMakeRecord(0.8f, 0.8f)};
     TreeDelta delta;
     store.apply(removeIds, added, std::span<const TreeRecord>(&changed, 1), &delta);
     EXPECT_EQ(store.size(), 10u);

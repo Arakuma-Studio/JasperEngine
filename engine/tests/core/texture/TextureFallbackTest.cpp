@@ -63,7 +63,7 @@ namespace {
         return out;
     }
 
-    std::vector<uint8_t> writeFile(GpuTextureFormat format, int width, int height, std::vector<std::vector<uint8_t>> levels,
+    std::vector<uint8_t> textureFallbackWriteFile(GpuTextureFormat format, int width, int height, std::vector<std::vector<uint8_t>> levels,
                                    std::map<std::string, std::string> keyValues = {}){
         Ktx2::WriteDesc desc;
         desc.format = format;
@@ -87,7 +87,7 @@ namespace {
         return support;
     }
 
-    TextureFormatSupport only(std::initializer_list<GpuTextureFormat> present){
+    TextureFormatSupport textureFallbackOnly(std::initializer_list<GpuTextureFormat> present){
         TextureFormatSupport support;
         for (GpuTextureFormat format : present)
             support.set(format, true);
@@ -108,7 +108,7 @@ TEST(TextureFallback, NoBptcLoadsBc7AsRgba8AndLogsOnce){
     TextureFallback::resetLogOnce();
     const Block level0 = bc7Solid(200, 100, 50, 254);
     const Block level1 = bc7Solid(10, 20, 30, 40);
-    const std::vector<uint8_t> file = writeFile(GpuTextureFormat::BC7, 8, 8,
+    const std::vector<uint8_t> file = textureFallbackWriteFile(GpuTextureFormat::BC7, 8, 8,
                                                 {repeat(level0.data(), 16, 4), repeat(level1.data(), 16, 1)},
                                                 {{"JE.flags", "alpha"}, {"JE.logical", "8,8"}});
     const TextureFormatSupport noBptc = everythingBut({GpuTextureFormat::BC6H, GpuTextureFormat::BC7});
@@ -141,7 +141,7 @@ TEST(TextureFallback, NoBptcLoadsBc7AsRgba8AndLogsOnce){
 
 TEST(TextureFallback, DesktopDecodesSingleAndTwoChannelFormats){
     const auto bc4 = bc4Solid(77);
-    const std::vector<uint8_t> file = writeFile(GpuTextureFormat::BC4, 4, 4, {repeat(bc4.data(), 8, 1)}, {{"JE.type", "single_channel"}});
+    const std::vector<uint8_t> file = textureFallbackWriteFile(GpuTextureFormat::BC4, 4, 4, {repeat(bc4.data(), 8, 1)}, {{"JE.type", "single_channel"}});
     const TextureFormatSupport noRgtc = everythingBut({GpuTextureFormat::BC4, GpuTextureFormat::BC5});
     TextureData data;
     std::string error;
@@ -154,7 +154,7 @@ TEST(TextureFallback, DesktopDecodesSingleAndTwoChannelFormats){
 }
 
 TEST(TextureFallback, WebWithOnlyS3tcPicksBc1AndBc3){
-    const TextureFormatSupport s3tc = only({GpuTextureFormat::BC1, GpuTextureFormat::BC3, GpuTextureFormat::RGBA8,
+    const TextureFormatSupport s3tc = textureFallbackOnly({GpuTextureFormat::BC1, GpuTextureFormat::BC3, GpuTextureFormat::RGBA8,
                                             GpuTextureFormat::R8, GpuTextureFormat::RG8});
     EXPECT_EQ(TextureFallback::plan(basisInfo(Ktx2Codec::ETC1S, ""), s3tc, false).upload, GpuTextureFormat::BC1);
     EXPECT_EQ(TextureFallback::plan(basisInfo(Ktx2Codec::ETC1S, "alpha"), s3tc, false).upload, GpuTextureFormat::BC3);
@@ -188,10 +188,10 @@ TEST(TextureFallback, TranscodeListsFollowD5){
 
     // ETC1S has no ASTC 4x4 or BC7 entry (deviation 26): a device with neither ETC2 nor S3TC
     // takes the last resort, whatever else it samples
-    const TextureFormatSupport astcBc7 = only({F::ASTC_4x4, F::BC7, F::BC5, F::BC4, F::RGBA8, F::R8, F::RG8});
+    const TextureFormatSupport astcBc7 = textureFallbackOnly({F::ASTC_4x4, F::BC7, F::BC5, F::BC4, F::RGBA8, F::R8, F::RG8});
     EXPECT_EQ(TextureFallback::plan(basisInfo(Ktx2Codec::ETC1S, ""), astcBc7, false).upload, F::RGBA8);
     EXPECT_EQ(TextureFallback::plan(basisInfo(Ktx2Codec::ETC1S, "alpha"), astcBc7, false).upload, F::RGBA8);
-    EXPECT_EQ(TextureFallback::plan(basisInfo(Ktx2Codec::ETC1S, "", "single_channel"), only({F::ASTC_4x4, F::R8}), false).upload, F::R8);
+    EXPECT_EQ(TextureFallback::plan(basisInfo(Ktx2Codec::ETC1S, "", "single_channel"), textureFallbackOnly({F::ASTC_4x4, F::R8}), false).upload, F::R8);
     EXPECT_EQ(TextureFallback::plan(basisInfo(Ktx2Codec::UASTC, ""), astcBc7, false).upload, F::ASTC_4x4);
     for (TextureContent content : {TextureContent::ColorOpaque, TextureContent::ColorAlpha, TextureContent::Normal, TextureContent::Single}){
         for (F format : TextureFallback::transcodeCandidates(Ktx2Codec::ETC1S, content, true)){
@@ -203,7 +203,7 @@ TEST(TextureFallback, TranscodeListsFollowD5){
 
 TEST(TextureFallback, NothingAvailableWithLowMemoryPicksRgb565AndRgba4){
     using F = GpuTextureFormat;
-    const TextureFormatSupport bare = only({F::R8, F::RG8, F::RGBA8, F::RGB565, F::RGBA4, F::RGBA16F});
+    const TextureFormatSupport bare = textureFallbackOnly({F::R8, F::RG8, F::RGBA8, F::RGB565, F::RGBA4, F::RGBA16F});
     EXPECT_EQ(TextureFallback::plan(basisInfo(Ktx2Codec::ETC1S, ""), bare, true).upload, F::RGB565);
     EXPECT_EQ(TextureFallback::plan(basisInfo(Ktx2Codec::UASTC, "alpha"), bare, true).upload, F::RGBA4);
     EXPECT_EQ(TextureFallback::plan(basisInfo(Ktx2Codec::ETC1S, ""), bare, false).upload, F::RGBA8);
@@ -213,7 +213,7 @@ TEST(TextureFallback, NothingAvailableWithLowMemoryPicksRgb565AndRgba4){
     // a raw BC7 file on such a device: decoded, then packed into RGBA4
     TextureFallback::resetLogOnce();
     const Block solid = bc7Solid(255, 0, 0, 128);
-    const std::vector<uint8_t> file = writeFile(F::BC7, 4, 4, {repeat(solid.data(), 16, 1)}, {{"JE.flags", "alpha"}});
+    const std::vector<uint8_t> file = textureFallbackWriteFile(F::BC7, 4, 4, {repeat(solid.data(), 16, 1)}, {{"JE.flags", "alpha"}});
     TextureData data;
     std::string error;
     ASSERT_TRUE(data.loadKtx2(file.data(), (unsigned int)file.size(), 0, &bare, true, &error)) << error;
@@ -230,7 +230,7 @@ TEST(TextureFallback, NothingAvailableWithLowMemoryPicksRgb565AndRgba4){
 
 TEST(TextureFallback, UnavailableFormatsFailWithTheReason){
     TextureFormatSupport none;
-    const std::vector<uint8_t> file = writeFile(GpuTextureFormat::ASTC_4x4, 4, 4, {std::vector<uint8_t>(16, 0)});
+    const std::vector<uint8_t> file = textureFallbackWriteFile(GpuTextureFormat::ASTC_4x4, 4, 4, {std::vector<uint8_t>(16, 0)});
     TextureData data;
     std::string error;
     // the engine has no ASTC decoder (the editor registers one)
@@ -252,7 +252,7 @@ TEST(TextureFallback, PackedFormatsTheDeviceCannotSampleWidenToRgba8){
         std::vector<uint8_t> level(4 * 4 * 2);
         for (size_t i = 0; i < 16; i++)
             std::memcpy(level.data() + i * 2, &packed, 2);
-        const std::vector<uint8_t> file = writeFile(format, 4, 4, {level});
+        const std::vector<uint8_t> file = textureFallbackWriteFile(format, 4, 4, {level});
         TextureData data;
         std::string error;
         ASSERT_TRUE(data.loadKtx2(file.data(), (unsigned int)file.size(), 0, &noPacked, false, &error)) << error;

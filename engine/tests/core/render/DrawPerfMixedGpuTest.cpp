@@ -34,7 +34,7 @@ using namespace jasperengine::test;
 
 namespace {
 
-    std::vector<uint8_t> readTarget(){
+    std::vector<uint8_t> readDrawPerfMixedTarget(){
         Framebuffer& target = GpuEnvironment::target();
         std::vector<uint8_t> rgba;
         readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba);
@@ -150,11 +150,11 @@ TEST_F(DrawPerfMixedGpu, MatchesWithoutSkippingRepeatedState){
         models.back()->setScale(0.5f);
     }
     settle();
-    const std::vector<uint8_t> skipped = readTarget();
+    const std::vector<uint8_t> skipped = readDrawPerfMixedTarget();
     const RenderStats stats = frameStats();
     SystemRender::setRepeatedStateSkipped(false);
     GpuEnvironment::drawFrames(3);
-    const std::vector<uint8_t> applied = readTarget();
+    const std::vector<uint8_t> applied = readDrawPerfMixedTarget();
     const RenderStats appliedStats = frameStats();
     SystemRender::setRepeatedStateSkipped(true);
     std::printf("[draw-perf] mixed pass: %u draws; skipping %u pipelines / %u bindings, applying all %u / %u\n", stats.draws,

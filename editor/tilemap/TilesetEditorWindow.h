@@ -24,7 +24,6 @@
 
 namespace jasperengine::editor {
     class Project;
-    class ProjectWindow;
 }
 
 namespace jasperengine::editor::tilemap {
@@ -33,7 +32,7 @@ namespace jasperengine::editor::tilemap {
     public:
         static constexpr const char* WINDOW_NAME = "Tileset Editor";
 
-        TilesetEditorWindow(Project* project, ProjectWindow* projectWindow);
+        explicit TilesetEditorWindow(Project* project);
 
         void show();
         void setOpen(bool open);
@@ -48,7 +47,6 @@ namespace jasperengine::editor::tilemap {
 
     private:
         Project* project;
-        ProjectWindow* projectWindow;
         bool windowOpen = false;
         bool focusRequested = false;
 

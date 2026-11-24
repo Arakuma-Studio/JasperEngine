@@ -61,15 +61,15 @@ namespace {
         }
     };
 
-    struct Headless {
+    struct AnimationLayersUiHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
     };
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
+    AnimationLayersUiHeadless& animationLayersUiHeadless() {
+        static AnimationLayersUiHeadless h = []() {
+            AnimationLayersUiHeadless out;
             const fs::path root = fs::temp_directory_path() / ("jasper-layers-ui-test-" + std::to_string(::getpid()));
             fs::remove_all(root);
             fs::create_directories(root / "config");
@@ -92,41 +92,41 @@ namespace {
         return h;
     }
 
-    bool started = false;
-    Project* project() {
-        started = true;
-        return headless().project.get();
+    bool animationLayersUiStarted = false;
+    Project* animationLayersUiProject() {
+        animationLayersUiStarted = true;
+        return animationLayersUiHeadless().project.get();
     }
-    fs::path assets() { return project()->getAssetsPath(); }
+    fs::path animationLayersUiAssets() { return animationLayersUiProject()->getAssetsPath(); }
 
-    struct Cleanup : public ::testing::Environment {
+    struct AnimationLayersUiCleanup : public ::testing::Environment {
         void TearDown() override {
-            if (!started) return;
+            if (!animationLayersUiStarted) return;
             std::error_code ec;
-            fs::remove_all(headless().dir.parent_path(), ec);
+            fs::remove_all(animationLayersUiHeadless().dir.parent_path(), ec);
         }
     };
-    [[maybe_unused]] ::testing::Environment* const cleanup = ::testing::AddGlobalTestEnvironment(new Cleanup);
+    [[maybe_unused]] ::testing::Environment* const animationLayersUiCleanup = ::testing::AddGlobalTestEnvironment(new AnimationLayersUiCleanup);
 
-    void writeAll(const fs::path& path, const std::string& content) {
+    void animationLayersUiWriteAll(const fs::path& path, const std::string& content) {
         fs::create_directories(path.parent_path());
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
         file << content;
     }
 
-    std::string readAll(const fs::path& path) {
+    std::string animationLayersUiReadAll(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     }
 
-    ClipKey key(float time, std::vector<float> value) {
+    ClipKey animationLayersUiKey(float time, std::vector<float> value) {
         ClipKey out;
         out.time = time;
         out.value = std::move(value);
         return out;
     }
 
-    ClipTrackData track(const std::string& path, ClipChannel channel, std::vector<ClipKey> keys) {
+    ClipTrackData animationLayersUiTrack(const std::string& path, ClipChannel channel, std::vector<ClipKey> keys) {
         ClipTrackData out;
         out.path = path;
         out.channel = channel;
@@ -138,19 +138,19 @@ namespace {
     void writeClips() {
         ClipData walk;
         walk.wrap = ClipWrapMode::Loop;
-        walk.tracks = {track("Arm", ClipChannel::Position, {key(0, {5, 0, 0}), key(1, {5, 4, 0})}),
-                       track("Leg", ClipChannel::Position, {key(0, {0, 0, 0}), key(1, {2, 0, 0})})};
+        walk.tracks = {animationLayersUiTrack("Arm", ClipChannel::Position, {animationLayersUiKey(0, {5, 0, 0}), animationLayersUiKey(1, {5, 4, 0})}),
+                       animationLayersUiTrack("Leg", ClipChannel::Position, {animationLayersUiKey(0, {0, 0, 0}), animationLayersUiKey(1, {2, 0, 0})})};
         ClipData hold;
         hold.wrap = ClipWrapMode::Loop;
-        hold.tracks = {track("Arm", ClipChannel::Position, {key(0, {5, 3, 0}), key(1, {5, 3, 0})}),
-                       track("Leg", ClipChannel::Position, {key(0, {9, 0, 0}), key(1, {9, 0, 0})})};
-        writeAll(assets() / "layers/walk.anim", AnimationClipDocument::fileText(walk));
-        writeAll(assets() / "layers/hold.anim", AnimationClipDocument::fileText(hold));
+        hold.tracks = {animationLayersUiTrack("Arm", ClipChannel::Position, {animationLayersUiKey(0, {5, 3, 0}), animationLayersUiKey(1, {5, 3, 0})}),
+                       animationLayersUiTrack("Leg", ClipChannel::Position, {animationLayersUiKey(0, {9, 0, 0}), animationLayersUiKey(1, {9, 0, 0})})};
+        animationLayersUiWriteAll(animationLayersUiAssets() / "layers/walk.anim", AnimationClipDocument::fileText(walk));
+        animationLayersUiWriteAll(animationLayersUiAssets() / "layers/hold.anim", AnimationClipDocument::fileText(hold));
         anim::AvatarMaskDef arm;
         arm.defaultWeight = 0.0f;
         arm.paths.push_back({"Arm", 1.0f, true});
-        writeAll(assets() / "layers/arm.mask", anim::writeMask(arm));
-        AnimationClipDocument::checkDiskChanges(project());
+        animationLayersUiWriteAll(animationLayersUiAssets() / "layers/arm.mask", anim::writeMask(arm));
+        AnimationClipDocument::checkDiskChanges(animationLayersUiProject());
     }
 
     // Hero (walk on the base, hold on Holding with the arm mask) > Arm > Hand, Leg
@@ -163,7 +163,7 @@ namespace {
         Transform& transform(Entity entity) const { return scene->getComponent<Transform>(entity); }
     };
 
-    Entity addObject(LayerScene& s, const std::string& name, Entity parent, const Vector3& position) {
+    Entity animationLayersUiAddObject(LayerScene& s, const std::string& name, Entity parent, const Vector3& position) {
         const Entity entity = s.scene->createUserEntity();
         s.scene->setEntityName(entity, name);
         Transform transform;
@@ -176,16 +176,16 @@ namespace {
 
     LayerScene layerScene(bool withHoldingLayer = true) {
         LayerScene s;
-        Project* p = project();
+        Project* p = animationLayersUiProject();
         if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
         p->createNewScene("Layers", SceneType::SCENE_3D);
         s.id = p->getSelectedSceneId();
         s.sceneProject = p->getScene(s.id);
         s.scene = s.sceneProject->scene;
-        s.hero = addObject(s, "Hero", NULL_ENTITY, Vector3(0, 0, 0));
-        s.arm = addObject(s, "Arm", s.hero, Vector3(5, 0, 0));
-        s.hand = addObject(s, "Hand", s.arm, Vector3(0, 7, 0));
-        s.leg = addObject(s, "Leg", s.hero, Vector3(0, -3, 0));
+        s.hero = animationLayersUiAddObject(s, "Hero", NULL_ENTITY, Vector3(0, 0, 0));
+        s.arm = animationLayersUiAddObject(s, "Arm", s.hero, Vector3(5, 0, 0));
+        s.hand = animationLayersUiAddObject(s, "Hand", s.arm, Vector3(0, 7, 0));
+        s.leg = animationLayersUiAddObject(s, "Leg", s.hero, Vector3(0, -3, 0));
         AnimationPlayerComponent player;
         AnimationPlayerClip walk;
         walk.clip = "layers/walk.anim";
@@ -214,13 +214,13 @@ namespace {
     protected:
         LayersHost host;
         void SetUp() override {
-            ASSERT_TRUE(headless().ready);
+            ASSERT_TRUE(animationLayersUiHeadless().ready);
             setEditorHost(&host);
-            fs::remove_all(assets() / "layers");
+            fs::remove_all(animationLayersUiAssets() / "layers");
             writeClips();
         }
         void TearDown() override {
-            AnimationClipController::release(project());
+            AnimationClipController::release(animationLayersUiProject());
             setEditorHost(nullptr);
         }
     };
@@ -241,7 +241,7 @@ TEST(AnimationLayersFigure, EveryPartIsClickableAtItsCentre) {
 TEST_F(AnimationLayersUi, AFigureClickWritesThePartAndUndoPutsItBack) {
     std::string error;
     std::shared_ptr<AnimatorAssetDocument> document =
-        AnimatorAssetDocument::create(project(), "assets/layers/figure.mask", AnimatorAssetDocument::Kind::Mask, "Create Avatar Mask", &error);
+        AnimatorAssetDocument::create(animationLayersUiProject(), "assets/layers/figure.mask", AnimatorAssetDocument::Kind::Mask, "Create Avatar Mask", &error);
     ASSERT_TRUE(document) << error;
     anim::AvatarMaskDef initial = document->mask();
     for (auto& part : initial.bodyParts) part = 1.0f;
@@ -255,11 +255,11 @@ TEST_F(AnimationLayersUi, AFigureClickWritesThePartAndUndoPutsItBack) {
     EXPECT_EQ(document->mask().partWeight(AvatarBodyPart::RightArm), 0.0f);
     EXPECT_EQ(document->mask().partWeight(AvatarBodyPart::RightHand), 1.0f) << "the hand is a part of its own";
     EXPECT_EQ(document->mask().partWeight(AvatarBodyPart::LeftArm), 1.0f);
-    const anim::MaskParseResult written = anim::parseMask(readAll(assets() / "layers/figure.mask"));
+    const anim::MaskParseResult written = anim::parseMask(animationLayersUiReadAll(animationLayersUiAssets() / "layers/figure.mask"));
     ASSERT_TRUE(written.ok) << written.error.toString();
     ASSERT_TRUE(written.data.hasPart(AvatarBodyPart::RightArm));
     EXPECT_EQ(written.data.partWeight(AvatarBodyPart::RightArm), 0.0f);
-    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
+    ASSERT_TRUE(animationLayersUiProject()->getProjectCommandHistory()->undo());
     EXPECT_EQ(document->mask().partWeight(AvatarBodyPart::RightArm), 1.0f);
     // a fraction toggles to 1, a part that is not set (the default) toggles from what it weighs
     anim::AvatarMaskDef half = document->mask();
@@ -286,13 +286,13 @@ TEST_F(AnimationLayersUi, LayerEditsAndTheClipLayerComboAreSceneSteps) {
     AnimationPlayerLayer added;
     added.name = "Upper";
     int index = -1;
-    ASSERT_TRUE(PlayerLayerActions::addLayer(project(), s.id, s.hero, added, &error, &index)) << error;
+    ASSERT_TRUE(PlayerLayerActions::addLayer(animationLayersUiProject(), s.id, s.hero, added, &error, &index)) << error;
     EXPECT_EQ(index, 1);
     ASSERT_EQ(s.player().layers.size(), 2u);
     // the clip row's Layer combo
-    CommandHandle::get(s.id)->addCommandNoMerge(new PropertyCmd<int>(project(), s.id, s.hero, ComponentType::AnimationPlayerComponent, "clips[1].layer", 1));
+    CommandHandle::get(s.id)->addCommandNoMerge(new PropertyCmd<int>(animationLayersUiProject(), s.id, s.hero, ComponentType::AnimationPlayerComponent, "clips[1].layer", 1));
     EXPECT_EQ(s.player().clips[1].layer, 1);
-    ASSERT_TRUE(PlayerLayerActions::renameLayer(project(), s.id, s.hero, 1, "Holding", &error)) << error;
+    ASSERT_TRUE(PlayerLayerActions::renameLayer(animationLayersUiProject(), s.id, s.hero, 1, "Holding", &error)) << error;
     EXPECT_EQ(s.player().layers[1].name, "Holding");
     CommandHistory* history = CommandHandle::get(s.id);
     ASSERT_TRUE(history->undo());
@@ -306,12 +306,12 @@ TEST_F(AnimationLayersUi, LayerEditsAndTheClipLayerComboAreSceneSteps) {
 TEST_F(AnimationLayersUi, CreateMaskFromSelectionIsOneStepWithItsFile) {
     LayerScene s = layerScene();
     std::string error;
-    ASSERT_FALSE(animlayersui::createMaskFromSelection(project(), s.id, s.hero, 1, "assets/layers/upper.mask", {}, error));
+    ASSERT_FALSE(animlayersui::createMaskFromSelection(animationLayersUiProject(), s.id, s.hero, 1, "assets/layers/upper.mask", {}, error));
     EXPECT_NE(error.find("Select"), std::string::npos) << error;
-    ASSERT_TRUE(animlayersui::createMaskFromSelection(project(), s.id, s.hero, 1, "assets/layers/upper.mask", {s.arm, s.leg}, error)) << error;
-    const fs::path file = assets() / "layers/upper.mask";
+    ASSERT_TRUE(animlayersui::createMaskFromSelection(animationLayersUiProject(), s.id, s.hero, 1, "assets/layers/upper.mask", {s.arm, s.leg}, error)) << error;
+    const fs::path file = animationLayersUiAssets() / "layers/upper.mask";
     ASSERT_TRUE(fs::exists(file));
-    anim::MaskParseResult parsed = anim::parseMask(readAll(file));
+    anim::MaskParseResult parsed = anim::parseMask(animationLayersUiReadAll(file));
     ASSERT_TRUE(parsed.ok) << parsed.error.toString();
     EXPECT_EQ(parsed.dialect, anim::AnimatorFileDialect::Current);
     ASSERT_EQ(parsed.data.paths.size(), 2u);
@@ -321,7 +321,7 @@ TEST_F(AnimationLayersUi, CreateMaskFromSelectionIsOneStepWithItsFile) {
     EXPECT_EQ(parsed.data.defaultWeight, 0.0f);
     EXPECT_EQ(s.player().layers[1].mask, "layers/upper.mask");
     EXPECT_EQ(s.player().layers[1].maskGuid, parsed.data.guid);
-    EXPECT_EQ(project()->getAssetDatabase().getGuid(file), parsed.data.guid) << "the asset database knows the new file";
+    EXPECT_EQ(animationLayersUiProject()->getAssetDatabase().getGuid(file), parsed.data.guid) << "the asset database knows the new file";
     ASSERT_TRUE(CommandHandle::get(s.id)->undo());
     EXPECT_EQ(s.player().layers[1].mask, "layers/arm.mask");
     EXPECT_FALSE(fs::exists(file)) << "one step: the file goes with the undo";
@@ -331,7 +331,7 @@ TEST_F(AnimationLayersUi, CreateMaskFromSelectionIsOneStepWithItsFile) {
 
     // on a player without layers: its whole list (one Base Layer) gets the mask
     LayerScene plain = layerScene(false);
-    ASSERT_TRUE(animlayersui::createMaskFromSelection(project(), plain.id, plain.hero, 0, "assets/layers/base.mask", {plain.arm}, error)) << error;
+    ASSERT_TRUE(animlayersui::createMaskFromSelection(animationLayersUiProject(), plain.id, plain.hero, 0, "assets/layers/base.mask", {plain.arm}, error)) << error;
     ASSERT_EQ(plain.player().layers.size(), 1u);
     EXPECT_EQ(plain.player().layers[0].mask, "layers/base.mask");
 }
@@ -342,13 +342,13 @@ TEST_F(AnimationLayersUi, CreatedMasksAndControllersStayInTheAssetsFolder) {
     const std::pair<const char*, const char*> refused[] = {{"../outside.mask", "outside the project"}, {"loose.mask", "outside the assets folder"},
                                                            {"assets/layers/upper.anim", "not a .mask path"}};
     for (const auto& [path, why] : refused){
-        EXPECT_FALSE(animlayersui::createMaskFromSelection(project(), s.id, s.hero, 1, path, {s.arm}, error)) << path;
+        EXPECT_FALSE(animlayersui::createMaskFromSelection(animationLayersUiProject(), s.id, s.hero, 1, path, {s.arm}, error)) << path;
         EXPECT_NE(error.find(why), std::string::npos) << path << ": " << error;
     }
-    EXPECT_FALSE(fs::exists(project()->getProjectPath() / "loose.mask"));
-    EXPECT_FALSE(animlayersui::createControllerFromClips(project(), s.id, s.hero, "../outside.controller", error));
+    EXPECT_FALSE(fs::exists(animationLayersUiProject()->getProjectPath() / "loose.mask"));
+    EXPECT_FALSE(animlayersui::createControllerFromClips(animationLayersUiProject(), s.id, s.hero, "../outside.controller", error));
     EXPECT_NE(error.find("outside the project"), std::string::npos) << error;
-    EXPECT_FALSE(animlayersui::createControllerFromClips(project(), s.id, s.hero, "loose.controller", error));
+    EXPECT_FALSE(animlayersui::createControllerFromClips(animationLayersUiProject(), s.id, s.hero, "loose.controller", error));
     EXPECT_NE(error.find("outside the assets folder"), std::string::npos) << error;
     EXPECT_EQ(s.player().layers[1].mask, "layers/arm.mask") << "nothing changed";
     EXPECT_FALSE(s.scene->findComponent<AnimatorComponent>(s.hero));
@@ -358,9 +358,9 @@ TEST_F(AnimationLayersUi, CreatedMasksAndControllersStayInTheAssetsFolder) {
 TEST_F(AnimationLayersUi, CreateControllerFromClips) {
     LayerScene s = layerScene();
     std::string error;
-    ASSERT_TRUE(animlayersui::createControllerFromClips(project(), s.id, s.hero, "assets/layers/hero.controller", error)) << error;
-    const fs::path file = assets() / "layers/hero.controller";
-    anim::ControllerParseResult parsed = anim::parseController(readAll(file));
+    ASSERT_TRUE(animlayersui::createControllerFromClips(animationLayersUiProject(), s.id, s.hero, "assets/layers/hero.controller", error)) << error;
+    const fs::path file = animationLayersUiAssets() / "layers/hero.controller";
+    anim::ControllerParseResult parsed = anim::parseController(animationLayersUiReadAll(file));
     ASSERT_TRUE(parsed.ok) << parsed.error.toString();
     EXPECT_EQ(parsed.dialect, anim::AnimatorFileDialect::Current);
     const anim::ControllerDef& data = parsed.data;
@@ -420,10 +420,10 @@ TEST_F(AnimationLayersUi, ThePreviewHierarchyOfAModelKnowsItsHumanoidRig) {
     const fs::path fixture = fs::path(JASPER_EDITOR_TEST_FIXTURES).parent_path().parent_path().parent_path() /
                              "tools/fixtures/pose-animation/assets/models/hero_tpose.gltf";
     ASSERT_TRUE(fs::exists(fixture)) << fixture;
-    fs::create_directories(assets() / "layers");
-    fs::copy_file(fixture, assets() / "layers/hero.gltf", fs::copy_options::overwrite_existing);
+    fs::create_directories(animationLayersUiAssets() / "layers");
+    fs::copy_file(fixture, animationLayersUiAssets() / "layers/hero.gltf", fs::copy_options::overwrite_existing);
     animlayersui::PreviewHierarchy preview;
-    ASSERT_TRUE(animlayersui::previewHierarchyFromModel(project(), "layers/hero.gltf", preview)) << preview.error;
+    ASSERT_TRUE(animlayersui::previewHierarchyFromModel(animationLayersUiProject(), "layers/hero.gltf", preview)) << preview.error;
     EXPECT_FALSE(preview.paths.empty());
     EXPECT_TRUE(preview.humanoid.valid) << preview.humanoid.error;
     // a right arm and hand mask covers the right hand, not the left; the arm part alone stops at
@@ -452,7 +452,7 @@ TEST_F(AnimationLayersUi, ThePreviewHierarchyOfAModelKnowsItsHumanoidRig) {
 
 TEST_F(AnimationLayersUi, PreviewOverComposesTheLayerOverABaseState) {
     LayerScene s = layerScene();
-    AnimationClipController& c = AnimationClipController::shared(project());
+    AnimationClipController& c = AnimationClipController::shared(animationLayersUiProject());
     std::string error;
     ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
     ASSERT_TRUE(c.openState("hold", &error)) << error;

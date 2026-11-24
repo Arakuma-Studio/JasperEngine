@@ -418,21 +418,46 @@ public:
     }
 
     // path's UTF-8 conversions in C++20: u8string() returns std::u8string and u8path() is
-    // deprecated. These keep the call sites on std::string.
+    // deprecated. These keep the call sites on std::string. They never throw: on POSIX a name's
+    // bytes pass as they are, valid UTF-8 or not; on Windows (UTF-16 names) see wideFromUtf8.
     static std::filesystem::path pathFromUtf8(std::string_view text) {
+#ifdef _WIN32
+        return std::filesystem::path(wideFromUtf8(text));
+#else
         return std::filesystem::path(std::u8string(text.begin(), text.end()));
+#endif
     }
 
     static std::string pathToUtf8(const std::filesystem::path& path) {
+#ifdef _WIN32
+        return utf8FromWide(path.native());
+#else
         const std::u8string utf8 = path.u8string();
         return std::string(utf8.begin(), utf8.end());
+#endif
     }
 
     // generic_string() in UTF-8: '/' separators on every platform
     static std::string pathToGenericUtf8(const std::filesystem::path& path) {
+#ifdef _WIN32
+        return utf8FromWide(path.generic_wstring());
+#else
         const std::u8string utf8 = path.generic_u8string();
         return std::string(utf8.begin(), utf8.end());
+#endif
     }
+
+#ifdef _WIN32
+    // UTF-8 to UTF-16 as the standard conversion does, except that it never throws: a byte that is
+    // not part of valid UTF-8 (a Latin-1 name from a recipe or an archive) travels as the lone
+    // surrogate U+DC80 + byte, and utf8FromWide gives the byte back (Python's surrogateescape), so
+    // such a name round-trips and still reads as not UTF-8 where it is checked, as on POSIX. A lone
+    // surrogate's three-byte form (WTF-8, what utf8FromWide makes of one) decodes to it.
+    static std::wstring wideFromUtf8(std::string_view text);
+    // UTF-16 to UTF-8, never throwing: a lone surrogate (NTFS allows them) of U+DC80 to U+DCFF is
+    // the byte it stands for (wideFromUtf8), any other its three-byte form
+    static std::string utf8FromWide(std::wstring_view text);
+#endif
 
     // A project-relative path as project files store it: '/' between names on every platform,
     // a backslash read as a separator (Unity's rule). A sub-asset's key, as in

@@ -68,20 +68,20 @@ namespace {
 
     // ---- one headless project for this file
 
-    struct Headless {
+    struct VatHeadless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
     };
 
-    Headless& headless() {
-        static Headless h = []() {
-            Headless out;
-            const fs::path root = fs::temp_directory_path() / ("jasper-vat-editor-test-" + std::to_string(::getpid()));
-            fs::remove_all(root);
-            fs::create_directories(root / "config");
-            setenv("XDG_CONFIG_HOME", (root / "config").c_str(), 1);
-            out.dir = root / "project";
+    VatHeadless& vatHeadless() {
+        static VatHeadless h = []() {
+            VatHeadless out;
+            const fs::path vatRoot = fs::temp_directory_path() / ("jasper-vat-editor-test-" + std::to_string(::getpid()));
+            fs::remove_all(vatRoot);
+            fs::create_directories(vatRoot / "config");
+            setenv("XDG_CONFIG_HOME", (vatRoot / "config").c_str(), 1);
+            out.dir = vatRoot / "project";
             fs::create_directories(out.dir / ".jasperengine");
             std::ofstream(out.dir / "project.yaml") << "name: vateditor\n";
             AppSettings::initialize();
@@ -100,16 +100,16 @@ namespace {
         return h;
     }
 
-    Project* project() { return headless().project.get(); }
-    const fs::path& root() { return headless().dir; }
-    CommandHistory* history() { return project()->getProjectCommandHistory(); }
+    Project* vatProject() { return vatHeadless().project.get(); }
+    const fs::path& vatRoot() { return vatHeadless().dir; }
+    CommandHistory* vatHistory() { return vatProject()->getProjectCommandHistory(); }
 
-    std::string readAll(const fs::path& path) {
+    std::string vatReadAll(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     }
 
-    void writeAll(const fs::path& path, const std::string& content) {
+    void vatWriteAll(const fs::path& path, const std::string& content) {
         fs::create_directories(path.parent_path());
         std::error_code ec;
         const bool existed = fs::exists(path, ec);
@@ -124,15 +124,15 @@ namespace {
         }
     }
 
-    void writeBytes(const fs::path& path, const std::vector<uint8_t>& bytes) {
+    void vatWriteBytes(const fs::path& path, const std::vector<uint8_t>& bytes) {
         fs::create_directories(path.parent_path());
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
         file.write(reinterpret_cast<const char*>(bytes.data()), (std::streamsize)bytes.size());
     }
 
-    std::string folder(const std::string& name) {
-        fs::remove_all(root() / name);
-        fs::create_directories(root() / name);
+    std::string vatFolder(const std::string& name) {
+        fs::remove_all(vatRoot() / name);
+        fs::create_directories(vatRoot() / name);
         return name;
     }
 
@@ -191,18 +191,18 @@ namespace {
     // the files of the quad bake at `vatPath` (with a material whose base colour is `texture`, an
     // absolute path, when given)
     ev::VatEncodedFiles encodeQuad(const fs::path& vatPath, const std::string& guid, const QuadTweak& tweak = nullptr,
-                                   const fs::path& texture = fs::path()) {
+                                   const fs::path& vatTexture = fs::path()) {
         jv::VatData data = quadData(guid);
         ev::VatMeshData mesh;
         mesh.positions = {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0};
         mesh.normals = {0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1};
         mesh.uv0 = {0, 0, 1, 0, 1, 1, 0, 1};
         mesh.vatIndex = {0, 1, 2, 3};
-        mesh.submeshes.push_back({{0, 1, 2, 0, 2, 3}, texture.empty() ? -1 : 0});
-        if (!texture.empty()) {
+        mesh.submeshes.push_back({{0, 1, 2, 0, 2, 3}, vatTexture.empty() ? -1 : 0});
+        if (!vatTexture.empty()) {
             ev::VatMaterialData material;
             material.name = "Skin";
-            material.baseColorTexture = texture.generic_string();
+            material.baseColorTexture = vatTexture.generic_string();
             mesh.materials.push_back(material);
         }
         jv::VatPayload payload;
@@ -225,17 +225,17 @@ namespace {
     }
 
     Pair writePair(const std::string& dir, const std::string& stem, const std::string& guid = "", const QuadTweak& tweak = nullptr,
-                   const fs::path& texture = fs::path()) {
+                   const fs::path& vatTexture = fs::path()) {
         Pair pair;
-        pair.vat = (root() / dir / (stem + ".vat")).lexically_normal();
-        pair.mesh = (root() / dir / (stem + ".vat.glb")).lexically_normal();
+        pair.vat = (vatRoot() / dir / (stem + ".vat")).lexically_normal();
+        pair.mesh = (vatRoot() / dir / (stem + ".vat.glb")).lexically_normal();
         pair.relative = dir + "/" + stem + ".vat";
         pair.meshRelative = dir + "/" + stem + ".vat.glb";
         pair.guid = guid.empty() ? AssetDatabase::generateGuid() : guid;
-        const ev::VatEncodedFiles files = encodeQuad(pair.vat, pair.guid, tweak, texture);
-        writeAll(pair.vat, files.vatText);
-        writeBytes(pair.mesh, files.glbBytes);
-        project()->importPrefabFiles(pair.vat);
+        const ev::VatEncodedFiles files = encodeQuad(pair.vat, pair.guid, tweak, vatTexture);
+        vatWriteAll(pair.vat, files.vatText);
+        vatWriteBytes(pair.mesh, files.glbBytes);
+        vatProject()->importPrefabFiles(pair.vat);
         return pair;
     }
 
@@ -250,7 +250,7 @@ namespace {
 
     VatScene vatScene(const Pair& pair, const std::string& name = "Vat") {
         VatScene out;
-        Project* p = project();
+        Project* p = vatProject();
         if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
         p->createNewScene(name, SceneType::SCENE_3D);
         out.sceneProject = p->getScene(p->getSelectedSceneId());
@@ -273,7 +273,7 @@ namespace {
 
     std::shared_ptr<VatDocument> openDocument(const std::string& path) {
         std::string error;
-        std::shared_ptr<VatDocument> document = VatDocument::open(project(), path, &error);
+        std::shared_ptr<VatDocument> document = VatDocument::open(vatProject(), path, &error);
         EXPECT_TRUE(document) << error;
         return document;
     }
@@ -281,7 +281,7 @@ namespace {
     class VatEditor : public ::testing::Test {
     protected:
         void SetUp() override {
-            ASSERT_TRUE(headless().ready) << "the headless project did not open";
+            ASSERT_TRUE(vatHeadless().ready) << "the headless project did not open";
         }
     };
 
@@ -293,17 +293,17 @@ TEST(VatEditorFixture, TheCommittedQuadIsWhatTheWriterMakes) {
     const fs::path fixture = fs::path(JASPER_TEST_FIXTURES_DIR) / "vat";
     const ev::VatEncodedFiles files = encodeQuad(fixture / "quad.vat", "5a7c0de0b1a5e5c0ffee00112233aabb");
     if (const char* out = std::getenv("JASPER_WRITE_VAT_FIXTURE")) {
-        writeAll(fs::path(out) / "quad.vat", files.vatText);
-        writeBytes(fs::path(out) / "quad.vat.glb", files.glbBytes);
+        vatWriteAll(fs::path(out) / "quad.vat", files.vatText);
+        vatWriteBytes(fs::path(out) / "quad.vat.glb", files.glbBytes);
     }
-    EXPECT_EQ(readAll(fixture / "quad.vat"), files.vatText);
-    EXPECT_EQ(readAll(fixture / "quad.vat.glb"), std::string(files.glbBytes.begin(), files.glbBytes.end()));
+    EXPECT_EQ(vatReadAll(fixture / "quad.vat"), files.vatText);
+    EXPECT_EQ(vatReadAll(fixture / "quad.vat.glb"), std::string(files.glbBytes.begin(), files.glbBytes.end()));
 }
 
 // ---- the document -------------------------------------------------------------------------
 
 TEST_F(VatEditor, DocumentCommitUndoRedoAndThePool) {
-    const std::string dir = folder("doc");
+    const std::string dir = vatFolder("doc");
     const Pair pair = writePair(dir, "hero");
     std::shared_ptr<VatDocument> document = openDocument(pair.relative);
     ASSERT_TRUE(document);
@@ -312,14 +312,14 @@ TEST_F(VatEditor, DocumentCommitUndoRedoAndThePool) {
     EXPECT_EQ(document->assetPath(), pair.relative);
     // shared per path, in every form, and the mesh names its .vat
     std::string error;
-    EXPECT_EQ(VatDocument::open(project(), pair.vat.string(), &error), document) << error;
-    EXPECT_EQ(VatDocument::open(project(), pair.meshRelative, &error), document) << error;
-    EXPECT_FALSE(VatDocument::open(project(), "../outside.vat", &error));
-    EXPECT_FALSE(VatDocument::open(project(), dir + "/hero.anim", &error));
+    EXPECT_EQ(VatDocument::open(vatProject(), pair.vat.string(), &error), document) << error;
+    EXPECT_EQ(VatDocument::open(vatProject(), pair.meshRelative, &error), document) << error;
+    EXPECT_FALSE(VatDocument::open(vatProject(), "../outside.vat", &error));
+    EXPECT_FALSE(VatDocument::open(vatProject(), dir + "/hero.anim", &error));
 
     std::vector<VatDocument::Change> changes;
     const int listener = document->addListener([&](VatDocument&, VatDocument::Change change) { changes.push_back(change); });
-    const std::string original = readAll(pair.vat);
+    const std::string original = vatReadAll(pair.vat);
     const uint64_t generation = VertexAnimationPool::getGeneration(pair.vat.generic_string());
     ASSERT_TRUE(VertexAnimationPool::getOrLoad(pair.vat.generic_string(), &error)) << error;
     const uint64_t loaded = VertexAnimationPool::getGeneration(pair.vat.generic_string());
@@ -332,13 +332,13 @@ TEST_F(VatEditor, DocumentCommitUndoRedoAndThePool) {
     edited.clips[1].interpolate = false;
     edited.sockets[0].name = "Hand";
     edited.guid = AssetDatabase::generateGuid();
-    const size_t steps = history()->position();
+    const size_t steps = vatHistory()->position();
     ASSERT_TRUE(document->commit(edited, "Edit", "", &error)) << error;
-    EXPECT_EQ(history()->position(), steps + 1);
+    EXPECT_EQ(vatHistory()->position(), steps + 1);
     EXPECT_EQ(document->data().clips[0].name, "Stroll");
     EXPECT_EQ(document->data().guid, pair.guid) << "the file keeps its GUID";
-    EXPECT_EQ(readAll(pair.vat), jv::writeVat(document->data()));
-    EXPECT_EQ(anim::readClipGuid(readAll(pair.vat)), pair.guid);
+    EXPECT_EQ(vatReadAll(pair.vat), jv::writeVat(document->data()));
+    EXPECT_EQ(anim::readClipGuid(vatReadAll(pair.vat)), pair.guid);
     ASSERT_FALSE(changes.empty());
     EXPECT_EQ(changes.back(), VatDocument::Change::Edited);
     EXPECT_FALSE(VertexAnimationPool::get(pair.vat.generic_string())) << "playing animators reload the edit";
@@ -349,47 +349,47 @@ TEST_F(VatEditor, DocumentCommitUndoRedoAndThePool) {
 
     // nothing changed: nothing written
     ASSERT_TRUE(document->commit(document->data(), "Nothing", "", &error)) << error;
-    EXPECT_EQ(history()->position(), steps + 1);
+    EXPECT_EQ(vatHistory()->position(), steps + 1);
 
     // undo, redo reload it
-    ASSERT_TRUE(history()->undo());
-    EXPECT_EQ(readAll(pair.vat), original);
+    ASSERT_TRUE(vatHistory()->undo());
+    EXPECT_EQ(vatReadAll(pair.vat), original);
     EXPECT_EQ(document->data().clips[0].name, "Walk");
     EXPECT_EQ(changes.back(), VatDocument::Change::Reloaded);
-    ASSERT_TRUE(history()->redo());
+    ASSERT_TRUE(vatHistory()->redo());
     EXPECT_EQ(document->data().clips[0].name, "Stroll");
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(vatHistory()->undo());
     document->removeListener(listener);
 }
 
 TEST_F(VatEditor, DocumentMergeKeysMakeOneStepPerDrag) {
-    const std::string dir = folder("merge");
+    const std::string dir = vatFolder("merge");
     const Pair pair = writePair(dir, "hero");
     std::shared_ptr<VatDocument> document = openDocument(pair.relative);
     ASSERT_TRUE(document);
-    const size_t steps = history()->position();
+    const size_t steps = vatHistory()->position();
     std::string error;
     jv::VatData data = document->data();
     for (float speed : {1.1f, 1.2f, 1.3f}) {
         data.clips[0].speed = speed;
         ASSERT_TRUE(document->commit(data, "Clip Speed", "speed#0#1", &error)) << error;
     }
-    EXPECT_EQ(history()->position(), steps + 1) << "one drag, one step";
+    EXPECT_EQ(vatHistory()->position(), steps + 1) << "one drag, one step";
     data.clips[0].speed = 2.0f;
     ASSERT_TRUE(document->commit(data, "Clip Speed", "speed#0#2", &error)) << error;
-    EXPECT_EQ(history()->position(), steps + 2) << "a new drag, a new step";
-    ASSERT_TRUE(history()->undo());
+    EXPECT_EQ(vatHistory()->position(), steps + 2) << "a new drag, a new step";
+    ASSERT_TRUE(vatHistory()->undo());
     EXPECT_FLOAT_EQ(document->data().clips[0].speed, 1.3f);
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(vatHistory()->undo());
     EXPECT_FLOAT_EQ(document->data().clips[0].speed, 1.0f) << "the first drag undone at once";
 }
 
 TEST_F(VatEditor, DocumentRefusesGeneratedFieldsAndBadNames) {
-    const std::string dir = folder("refuse");
+    const std::string dir = vatFolder("refuse");
     const Pair pair = writePair(dir, "hero");
     std::shared_ptr<VatDocument> document = openDocument(pair.relative);
     ASSERT_TRUE(document);
-    const size_t steps = history()->position();
+    const size_t steps = vatHistory()->position();
     std::string error;
     auto refused = [&](const std::function<void(jv::VatData&)>& edit, const std::string& message) {
         jv::VatData data = document->data();
@@ -411,7 +411,7 @@ TEST_F(VatEditor, DocumentRefusesGeneratedFieldsAndBadNames) {
     refused([](jv::VatData& d) { d.clips[0].name = ""; }, "a clip needs a name");
     refused([](jv::VatData& d) { d.sockets[0].name = ""; }, "a socket needs a name");
     refused([](jv::VatData& d) { d.clips[0].events[0].function = ""; }, "an event calls a function");
-    EXPECT_EQ(history()->position(), steps) << "nothing written";
+    EXPECT_EQ(vatHistory()->position(), steps) << "nothing written";
 
     // removing a whole clip is an edit: its rows stay until a rebake (and it still loads)
     jv::VatData data = document->data();
@@ -433,14 +433,14 @@ TEST_F(VatEditor, DocumentRefusesGeneratedFieldsAndBadNames) {
     ASSERT_TRUE(document->commit(data, "Events", "", &error)) << error;
     ASSERT_EQ(document->data().clips[0].events.size(), 2u);
     EXPECT_EQ(document->data().clips[0].events[0].function, "onEarly");
-    ASSERT_TRUE(history()->undo());
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(vatHistory()->undo());
+    ASSERT_TRUE(vatHistory()->undo());
 }
 
 // A loop clip's rows have no duplicate end frame, the other wraps' do: loop <-> another wrap is a
 // rebake, once / clamp forever / ping-pong are edits (review 13)
 TEST_F(VatEditor, DocumentWrapsChangeOnlyAmongTheNonLoopOnes) {
-    const std::string dir = folder("wraps");
+    const std::string dir = vatFolder("wraps");
     // Idle baked as a once clip (its end frame included)
     const Pair pair = writePair(dir, "hero", "", [](jv::VatData& data, jv::VatSocketTracks&) {
         data.clips[1].wrap = ClipWrapMode::Once;
@@ -454,7 +454,7 @@ TEST_F(VatEditor, DocumentWrapsChangeOnlyAmongTheNonLoopOnes) {
         EXPECT_TRUE(document->commit(data, "Wrap", "", &error)) << error;
         EXPECT_EQ(document->data().clips[1].wrap, wrap);
     }
-    const size_t steps = history()->position();
+    const size_t steps = vatHistory()->position();
     jv::VatData data = document->data();
     data.clips[1].wrap = ClipWrapMode::Loop;
     EXPECT_FALSE(document->commit(data, "Wrap", "", &error));
@@ -463,18 +463,18 @@ TEST_F(VatEditor, DocumentWrapsChangeOnlyAmongTheNonLoopOnes) {
     data.clips[0].wrap = ClipWrapMode::PingPong;
     EXPECT_FALSE(document->commit(data, "Wrap", "", &error));
     EXPECT_NE(error.find("change the wrap in the baker and rebake"), std::string::npos) << error;
-    EXPECT_EQ(history()->position(), steps) << "nothing written";
+    EXPECT_EQ(vatHistory()->position(), steps) << "nothing written";
     // the same rule for a file written by other means (MCP write_file)
     data = document->data();
     data.clips[0].wrap = ClipWrapMode::Once;
     EXPECT_NE(VatDocument::generatedChange(document->data(), data).find("clips[0].wrap"), std::string::npos);
-    for (int i = 0; i < 3; i++) ASSERT_TRUE(history()->undo());
+    for (int i = 0; i < 3; i++) ASSERT_TRUE(vatHistory()->undo());
 }
 
 // Sockets find their column by path: a reorder is an edit, a path change or a new path is not
 // (review 14)
 TEST_F(VatEditor, DocumentSocketsReorderButKeepTheirPaths) {
-    const std::string dir = folder("sockets");
+    const std::string dir = vatFolder("sockets");
     // two sockets: Tip (track 0 at x = frame) and Base (track 1 at y = 10 + frame)
     const Pair pair = writePair(dir, "hero", "", [](jv::VatData& data, jv::VatSocketTracks& sockets) {
         data.sockets.push_back({"Base", "Quad/Base"});
@@ -509,7 +509,7 @@ TEST_F(VatEditor, DocumentSocketsReorderButKeepTheirPaths) {
     ASSERT_TRUE(asset->sampleSocket(asset->getData().findSocket("Tip"), tracks, 0.0f, position, rotation));
     EXPECT_NEAR(position.y, 0.0f, 1e-5f);
     // a path changed, a path twice: refused
-    const size_t steps = history()->position();
+    const size_t steps = vatHistory()->position();
     data = document->data();
     data.sockets[0].path = "Quad/Elsewhere";
     EXPECT_FALSE(document->commit(data, "Socket", "", &error));
@@ -519,12 +519,12 @@ TEST_F(VatEditor, DocumentSocketsReorderButKeepTheirPaths) {
     data.sockets[1].name = "Other";
     EXPECT_FALSE(document->commit(data, "Socket", "", &error));
     EXPECT_NE(error.find("sockets[1].path"), std::string::npos) << error;
-    EXPECT_EQ(history()->position(), steps);
-    ASSERT_TRUE(history()->undo());
+    EXPECT_EQ(vatHistory()->position(), steps);
+    ASSERT_TRUE(vatHistory()->undo());
 }
 
 TEST_F(VatEditor, DocumentReloadsOutsideChangesAndKeepsTheLastValidOne) {
-    const std::string dir = folder("outside");
+    const std::string dir = vatFolder("outside");
     const Pair pair = writePair(dir, "hero");
     std::shared_ptr<VatDocument> document = openDocument(pair.relative);
     ASSERT_TRUE(document);
@@ -534,8 +534,8 @@ TEST_F(VatEditor, DocumentReloadsOutsideChangesAndKeepsTheLastValidOne) {
     // edited outside the editor: the poll reloads it and drops the pool's copy
     jv::VatData data = document->data();
     data.clips[1].name = "Rest";
-    writeAll(pair.vat, jv::writeVat(data));
-    VatDocument::checkDiskChanges(project());
+    vatWriteAll(pair.vat, jv::writeVat(data));
+    VatDocument::checkDiskChanges(vatProject());
     EXPECT_EQ(document->data().clips[1].name, "Rest");
     EXPECT_FALSE(VertexAnimationPool::get(pair.vat.generic_string()));
 
@@ -543,7 +543,7 @@ TEST_F(VatEditor, DocumentReloadsOutsideChangesAndKeepsTheLastValidOne) {
     ASSERT_TRUE(VertexAnimationPool::getOrLoad(pair.vat.generic_string(), &error)) << error;
     jv::VatData stale = document->data();
     data.clips[1].name = "Sleep";
-    writeAll(pair.vat, jv::writeVat(data) + "\n");
+    vatWriteAll(pair.vat, jv::writeVat(data) + "\n");
     stale.clips[0].speed = 3.0f;
     EXPECT_FALSE(document->commit(stale, "Edit", "", &error));
     EXPECT_NE(error.find("changed on disk"), std::string::npos) << error;
@@ -551,8 +551,8 @@ TEST_F(VatEditor, DocumentReloadsOutsideChangesAndKeepsTheLastValidOne) {
 
     // broken JSON: the last valid content stays (and the pool keeps the asset), with a warning
     ASSERT_TRUE(VertexAnimationPool::getOrLoad(pair.vat.generic_string(), &error)) << error;
-    writeAll(pair.vat, "{ \"format\": \"jasperengine.vat\", ");
-    VatDocument::filesChanged({pair.vat}, project());
+    vatWriteAll(pair.vat, "{ \"format\": \"jasperengine.vat\", ");
+    VatDocument::filesChanged({pair.vat}, vatProject());
     EXPECT_EQ(document->data().clips[1].name, "Sleep");
     ASSERT_FALSE(document->loadWarnings().empty());
     EXPECT_NE(document->loadWarnings()[0].message.find("not a valid Vertex Animation"), std::string::npos);
@@ -561,29 +561,29 @@ TEST_F(VatEditor, DocumentReloadsOutsideChangesAndKeepsTheLastValidOne) {
     // a .vat no document has open: the pool hears of it all the same (a new mesh too)
     const Pair other = writePair(dir, "other");
     ASSERT_TRUE(VertexAnimationPool::getOrLoad(other.vat.generic_string(), &error)) << error;
-    VatDocument::filesChanged({other.mesh}, project());
+    VatDocument::filesChanged({other.mesh}, vatProject());
     EXPECT_FALSE(VertexAnimationPool::get(other.vat.generic_string()));
 
     // deleted: Removed
     fs::remove(pair.vat);
-    VatDocument::filesChanged({pair.vat}, project());
+    VatDocument::filesChanged({pair.vat}, vatProject());
     EXPECT_FALSE(document->exists());
     EXPECT_FALSE(document->commit(document->data(), "Edit", "", &error));
 }
 
 TEST_F(VatEditor, ThePollWatchesTheAnimatorsFiles) {
-    const std::string dir = folder("poll");
+    const std::string dir = vatFolder("poll");
     const Pair pair = writePair(dir, "hero");
     VatScene scene = vatScene(pair);
     std::string error;
-    VatDocument::checkDiskChanges(project());     // first look: stamps taken
+    VatDocument::checkDiskChanges(vatProject());     // first look: stamps taken
     ASSERT_TRUE(VertexAnimationPool::getOrLoad(pair.vat.generic_string(), &error)) << error;
     scene.animator().needsLoad = false;
     // a rebake rewrites the mesh: the asset reloads
-    const std::string glb = readAll(pair.mesh);
-    writeAll(pair.mesh, glb + std::string(4, '\0'));
+    const std::string glb = vatReadAll(pair.mesh);
+    vatWriteAll(pair.mesh, glb + std::string(4, '\0'));
     fs::last_write_time(pair.mesh, fs::last_write_time(pair.mesh) + std::chrono::seconds(2));
-    VatDocument::checkDiskChanges(project());
+    VatDocument::checkDiskChanges(vatProject());
     EXPECT_FALSE(VertexAnimationPool::get(pair.vat.generic_string()));
     EXPECT_TRUE(scene.animator().needsLoad);
 }
@@ -591,60 +591,60 @@ TEST_F(VatEditor, ThePollWatchesTheAnimatorsFiles) {
 // ---- AssetDatabase ----------------------------------------------------------------------
 
 TEST_F(VatEditor, AssetDatabaseTracksVatGuidsInTheJson) {
-    const std::string dir = folder("guids");
+    const std::string dir = vatFolder("guids");
     // (S04: every asset type is tracked; a .vat keeps its GUID in its JSON, the .vat.glb in a meta)
-    EXPECT_TRUE(project()->getAssetDatabase().isTrackedFile(project()->getAssetsPath() / "a/hero.vat"));
-    EXPECT_EQ(project()->getAssetDatabase().typeOf(project()->getAssetsPath() / "a/hero.vat"), AssetType::VertexAnimation);
-    EXPECT_EQ(project()->getAssetDatabase().typeOf(project()->getAssetsPath() / "a/hero.vat.glb"), AssetType::Model);
+    EXPECT_TRUE(vatProject()->getAssetDatabase().isTrackedFile(vatProject()->getAssetsPath() / "a/hero.vat"));
+    EXPECT_EQ(vatProject()->getAssetDatabase().typeOf(vatProject()->getAssetsPath() / "a/hero.vat"), AssetType::VertexAnimation);
+    EXPECT_EQ(vatProject()->getAssetDatabase().typeOf(vatProject()->getAssetsPath() / "a/hero.vat.glb"), AssetType::Model);
     const Pair pair = writePair(dir, "hero");
-    AssetDatabase& database = project()->getAssetDatabase();
+    AssetDatabase& database = vatProject()->getAssetDatabase();
     EXPECT_EQ(database.getGuid(pair.vat), pair.guid);
     EXPECT_EQ(database.getPath(pair.guid), fs::path(pair.relative));
     EXPECT_EQ(AssetDatabase::readGuid(pair.vat), pair.guid);
 
     // written without a GUID (by hand): the database gives it one, in the JSON
-    jv::VatData data = jv::parseVat(readAll(pair.vat)).data.value();
+    jv::VatData data = jv::parseVat(vatReadAll(pair.vat)).data.value();
     const std::string without = dir + "/bare.vat";
     std::string text = jv::writeVat(data);
     const size_t at = text.find("\"guid\"");
     ASSERT_NE(at, std::string::npos);
     text.erase(at, text.find('\n', at) - at + 1);
-    writeAll(root() / without, text);
-    project()->refreshAssetDatabase(true);
-    const std::string given = database.getGuid(root() / without);
+    vatWriteAll(vatRoot() / without, text);
+    vatProject()->refreshAssetDatabase(true);
+    const std::string given = database.getGuid(vatRoot() / without);
     EXPECT_TRUE(AssetDatabase::isGuid(given));
     EXPECT_NE(given, pair.guid);
-    EXPECT_EQ(AssetDatabase::readGuid(root() / without), given) << "written into the file";
-    EXPECT_TRUE(jv::parseVat(readAll(root() / without)).ok()) << "still a valid .vat";
+    EXPECT_EQ(AssetDatabase::readGuid(vatRoot() / without), given) << "written into the file";
+    EXPECT_TRUE(jv::parseVat(vatReadAll(vatRoot() / without)).ok()) << "still a valid .vat";
 
     // a broken .vat is left alone (its error keeps its line)
-    writeAll(root() / dir / "broken.vat", "{ not json");
-    project()->refreshAssetDatabase(true);
-    EXPECT_EQ(readAll(root() / dir / "broken.vat"), "{ not json");
+    vatWriteAll(vatRoot() / dir / "broken.vat", "{ not json");
+    vatProject()->refreshAssetDatabase(true);
+    EXPECT_EQ(vatReadAll(vatRoot() / dir / "broken.vat"), "{ not json");
 }
 
 // ---- the pair through rename, move, copy, delete -------------------------------------------
 
 TEST_F(VatEditor, RenameTakesThePairAndRewritesTheMeshField) {
-    const std::string dir = folder("rename");
+    const std::string dir = vatFolder("rename");
     const Pair pair = writePair(dir, "hero");
     VatScene scene = vatScene(pair);
     std::shared_ptr<VatDocument> document = openDocument(pair.relative);
     ASSERT_TRUE(document);
-    project()->setInspectedAsset(pair.vat);
+    vatProject()->setInspectedAsset(pair.vat);
 
-    ASSERT_TRUE(history()->addCommand(new RenameFileCmd(project(), "hero.vat", "crowd.vat", (root() / dir).string())));
-    const fs::path vat = root() / dir / "crowd.vat";
-    const fs::path mesh = root() / dir / "crowd.vat.glb";
+    ASSERT_TRUE(vatHistory()->addCommand(new RenameFileCmd(vatProject(), "hero.vat", "crowd.vat", (vatRoot() / dir).string())));
+    const fs::path vat = vatRoot() / dir / "crowd.vat";
+    const fs::path mesh = vatRoot() / dir / "crowd.vat.glb";
     EXPECT_TRUE(fs::exists(vat));
     EXPECT_TRUE(fs::exists(mesh)) << "the mesh went with it";
     EXPECT_FALSE(fs::exists(pair.vat));
     EXPECT_FALSE(fs::exists(pair.mesh));
-    const jv::VatParseResult parsed = jv::parseVat(readAll(vat));
+    const jv::VatParseResult parsed = jv::parseVat(vatReadAll(vat));
     ASSERT_TRUE(parsed.ok());
     EXPECT_EQ(parsed.data->mesh, "crowd.vat.glb");
     EXPECT_EQ(parsed.data->guid, pair.guid);
-    EXPECT_EQ(project()->getAssetDatabase().getPath(pair.guid), fs::path(dir + "/crowd.vat"));
+    EXPECT_EQ(vatProject()->getAssetDatabase().getPath(pair.guid), fs::path(dir + "/crowd.vat"));
     // the open scene follows: the animator by GUID, the Model by path
     EXPECT_EQ(scene.animator().animation, dir + "/crowd.vat");
     EXPECT_EQ(scene.animator().guid, pair.guid);
@@ -653,33 +653,33 @@ TEST_F(VatEditor, RenameTakesThePairAndRewritesTheMeshField) {
     // the document and the Inspector follow
     EXPECT_EQ(document->path(), dir + "/crowd.vat");
     EXPECT_EQ(document->data().mesh, "crowd.vat.glb");
-    EXPECT_EQ(project()->getInspectedAsset(), vat.lexically_normal());
+    EXPECT_EQ(vatProject()->getInspectedAsset(), vat.lexically_normal());
     std::string error;
     EXPECT_TRUE(VertexAnimationPool::getOrLoad(vat.generic_string(), &error)) << error;
 
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(vatHistory()->undo());
     EXPECT_TRUE(fs::exists(pair.vat));
     EXPECT_TRUE(fs::exists(pair.mesh));
     EXPECT_FALSE(fs::exists(vat));
     EXPECT_FALSE(fs::exists(mesh));
-    EXPECT_EQ(jv::parseVat(readAll(pair.vat)).data->mesh, "hero.vat.glb");
+    EXPECT_EQ(jv::parseVat(vatReadAll(pair.vat)).data->mesh, "hero.vat.glb");
     EXPECT_EQ(scene.animator().animation, pair.relative);
     EXPECT_EQ(scene.model().filename, pair.meshRelative);
     EXPECT_EQ(document->path(), pair.relative);
 
     // renaming the generated mesh renames the pair too
-    ASSERT_TRUE(history()->addCommand(new RenameFileCmd(project(), "hero.vat.glb", "walker.vat.glb", (root() / dir).string())));
-    EXPECT_TRUE(fs::exists(root() / dir / "walker.vat"));
-    EXPECT_TRUE(fs::exists(root() / dir / "walker.vat.glb"));
-    EXPECT_EQ(jv::parseVat(readAll(root() / dir / "walker.vat")).data->mesh, "walker.vat.glb");
+    ASSERT_TRUE(vatHistory()->addCommand(new RenameFileCmd(vatProject(), "hero.vat.glb", "walker.vat.glb", (vatRoot() / dir).string())));
+    EXPECT_TRUE(fs::exists(vatRoot() / dir / "walker.vat"));
+    EXPECT_TRUE(fs::exists(vatRoot() / dir / "walker.vat.glb"));
+    EXPECT_EQ(jv::parseVat(vatReadAll(vatRoot() / dir / "walker.vat")).data->mesh, "walker.vat.glb");
     EXPECT_EQ(scene.animator().animation, dir + "/walker.vat");
     EXPECT_EQ(scene.model().filename, dir + "/walker.vat.glb");
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(vatHistory()->undo());
 
     // a rename onto an existing pair file is refused, nothing moves
     writePair(dir, "taken");
-    fs::remove(root() / dir / "taken.vat");
-    EXPECT_FALSE(history()->addCommand(new RenameFileCmd(project(), "hero.vat", "taken.vat", (root() / dir).string())));
+    fs::remove(vatRoot() / dir / "taken.vat");
+    EXPECT_FALSE(vatHistory()->addCommand(new RenameFileCmd(vatProject(), "hero.vat", "taken.vat", (vatRoot() / dir).string())));
     EXPECT_TRUE(fs::exists(pair.vat));
     EXPECT_TRUE(fs::exists(pair.mesh));
 }
@@ -687,7 +687,7 @@ TEST_F(VatEditor, RenameTakesThePairAndRewritesTheMeshField) {
 TEST_F(VatEditor, AnimationFieldSetsPathAndGuidOnEverySelectedGameObject) {
     // the multi-selection's Animation row used to edit `animation` alone: the stale GUID won on the
     // next load (and a non-.vat was taken)
-    const std::string dir = folder("multi");
+    const std::string dir = vatFolder("multi");
     const Pair first = writePair(dir, "first");
     const Pair second = writePair(dir, "second");
     VatScene a = vatScene(first, "MultiA");
@@ -702,7 +702,7 @@ TEST_F(VatEditor, AnimationFieldSetsPathAndGuidOnEverySelectedGameObject) {
     const std::vector<Entity> both = {a.entity, other};
 
     std::string error;
-    MultiPropertyCmd* command = inspectorvat::vertexAnimatorFileCmd(project(), a.sceneProject->id, both, second.vat.string(), error);
+    MultiPropertyCmd* command = inspectorvat::vertexAnimatorFileCmd(vatProject(), a.sceneProject->id, both, second.vat.string(), error);
     ASSERT_TRUE(command) << error;
     CommandHandle::get(a.sceneProject->id)->addCommand(command);
     for (Entity entity : both) {
@@ -716,14 +716,14 @@ TEST_F(VatEditor, AnimationFieldSetsPathAndGuidOnEverySelectedGameObject) {
         EXPECT_EQ(scene->getComponent<VertexAnimatorComponent>(entity).guid, first.guid);
     }
     // the .vat.glb stands for its .vat; a file of another kind is refused; "" clears both
-    command = inspectorvat::vertexAnimatorFileCmd(project(), a.sceneProject->id, both, second.mesh.string(), error);
+    command = inspectorvat::vertexAnimatorFileCmd(vatProject(), a.sceneProject->id, both, second.mesh.string(), error);
     ASSERT_TRUE(command) << error;
     CommandHandle::get(a.sceneProject->id)->addCommand(command);
     EXPECT_EQ(scene->getComponent<VertexAnimatorComponent>(other).guid, second.guid);
-    writeAll(root() / dir / "notes.txt", "hello");
-    EXPECT_EQ(inspectorvat::vertexAnimatorFileCmd(project(), a.sceneProject->id, both, (root() / dir / "notes.txt").string(), error), nullptr);
+    vatWriteAll(vatRoot() / dir / "notes.txt", "hello");
+    EXPECT_EQ(inspectorvat::vertexAnimatorFileCmd(vatProject(), a.sceneProject->id, both, (vatRoot() / dir / "notes.txt").string(), error), nullptr);
     EXPECT_NE(error.find("Not a Vertex Animation"), std::string::npos) << error;
-    command = inspectorvat::vertexAnimatorFileCmd(project(), a.sceneProject->id, both, "", error);
+    command = inspectorvat::vertexAnimatorFileCmd(vatProject(), a.sceneProject->id, both, "", error);
     ASSERT_TRUE(command) << error;
     CommandHandle::get(a.sceneProject->id)->addCommand(command);
     for (Entity entity : both) {
@@ -733,7 +733,7 @@ TEST_F(VatEditor, AnimationFieldSetsPathAndGuidOnEverySelectedGameObject) {
 }
 
 TEST_F(VatEditor, AClosedSceneAndAPrefabFollowByGuid) {
-    const std::string dir = folder("closed");
+    const std::string dir = vatFolder("closed");
     const Pair pair = writePair(dir, "hero");
     // what a closed scene's file holds: the old paths and the GUID
     Scene closed;
@@ -748,76 +748,76 @@ TEST_F(VatEditor, AClosedSceneAndAPrefabFollowByGuid) {
     animator.guid = pair.guid;
     closed.addComponent<VertexAnimatorComponent>(entity, animator);
 
-    ASSERT_TRUE(history()->addCommand(new RenameFileCmd(project(), "hero.vat", "knight.vat", (root() / dir).string())));
+    ASSERT_TRUE(vatHistory()->addCommand(new RenameFileCmd(vatProject(), "hero.vat", "knight.vat", (vatRoot() / dir).string())));
     EXPECT_EQ(closed.getComponent<VertexAnimatorComponent>(entity).animation, pair.relative) << "a closed scene is not rewritten";
     // opened: the reference resolves by GUID and the Model follows its .vat
     closed.getComponent<ModelComponent>(entity).needUpdateModel = false;
-    EXPECT_TRUE(project()->resolveRegistryClipRefs(&closed));
+    EXPECT_TRUE(vatProject()->resolveRegistryClipRefs(&closed));
     EXPECT_EQ(closed.getComponent<VertexAnimatorComponent>(entity).animation, dir + "/knight.vat");
     EXPECT_EQ(closed.getComponent<ModelComponent>(entity).filename, dir + "/knight.vat.glb");
     EXPECT_TRUE(closed.getComponent<ModelComponent>(entity).needUpdateModel);
-    EXPECT_FALSE(project()->resolveRegistryClipRefs(&closed)) << "resolved: nothing changes the second time";
+    EXPECT_FALSE(vatProject()->resolveRegistryClipRefs(&closed)) << "resolved: nothing changes the second time";
 
     // a Model that plays another mesh is not touched
     closed.getComponent<VertexAnimatorComponent>(entity).animation = pair.relative;
     closed.getComponent<ModelComponent>(entity).filename = "models/other.glb";
-    EXPECT_TRUE(project()->resolveRegistryClipRefs(&closed));
+    EXPECT_TRUE(vatProject()->resolveRegistryClipRefs(&closed));
     EXPECT_EQ(closed.getComponent<ModelComponent>(entity).filename, "models/other.glb");
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(vatHistory()->undo());
 }
 
 TEST_F(VatEditor, MoveAndCopyTakeThePair) {
-    const std::string dir = folder("move");
+    const std::string dir = vatFolder("move");
     const Pair pair = writePair(dir, "hero");
     VatScene scene = vatScene(pair);
-    fs::create_directories(root() / dir / "sub");
+    fs::create_directories(vatRoot() / dir / "sub");
 
     // moving the .vat alone moves both
-    ASSERT_TRUE(history()->addCommand(new CopyFileCmd(project(), {pair.vat.string()}, (root() / dir / "sub").string(), false)));
-    EXPECT_TRUE(fs::exists(root() / dir / "sub" / "hero.vat"));
-    EXPECT_TRUE(fs::exists(root() / dir / "sub" / "hero.vat.glb"));
+    ASSERT_TRUE(vatHistory()->addCommand(new CopyFileCmd(vatProject(), {pair.vat.string()}, (vatRoot() / dir / "sub").string(), false)));
+    EXPECT_TRUE(fs::exists(vatRoot() / dir / "sub" / "hero.vat"));
+    EXPECT_TRUE(fs::exists(vatRoot() / dir / "sub" / "hero.vat.glb"));
     EXPECT_FALSE(fs::exists(pair.mesh));
     EXPECT_EQ(scene.animator().animation, dir + "/sub/hero.vat");
     EXPECT_EQ(scene.model().filename, dir + "/sub/hero.vat.glb");
-    EXPECT_EQ(project()->getAssetDatabase().getPath(pair.guid), fs::path(dir + "/sub/hero.vat"));
-    ASSERT_TRUE(history()->undo());
+    EXPECT_EQ(vatProject()->getAssetDatabase().getPath(pair.guid), fs::path(dir + "/sub/hero.vat"));
+    ASSERT_TRUE(vatHistory()->undo());
     EXPECT_TRUE(fs::exists(pair.vat));
     EXPECT_TRUE(fs::exists(pair.mesh));
     EXPECT_EQ(scene.animator().animation, pair.relative);
     EXPECT_EQ(scene.model().filename, pair.meshRelative);
 
     // a copy (of the mesh alone) copies both; the copy is a new asset with its own GUID
-    ASSERT_TRUE(history()->addCommand(new CopyFileCmd(project(), {pair.mesh.string()}, (root() / dir / "sub").string(), true)));
-    const fs::path copied = root() / dir / "sub" / "hero.vat";
+    ASSERT_TRUE(vatHistory()->addCommand(new CopyFileCmd(vatProject(), {pair.mesh.string()}, (vatRoot() / dir / "sub").string(), true)));
+    const fs::path copied = vatRoot() / dir / "sub" / "hero.vat";
     EXPECT_TRUE(fs::exists(copied));
-    EXPECT_TRUE(fs::exists(root() / dir / "sub" / "hero.vat.glb"));
-    const std::string copyGuid = project()->getAssetDatabase().getGuid(copied);
+    EXPECT_TRUE(fs::exists(vatRoot() / dir / "sub" / "hero.vat.glb"));
+    const std::string copyGuid = vatProject()->getAssetDatabase().getGuid(copied);
     EXPECT_TRUE(AssetDatabase::isGuid(copyGuid));
     EXPECT_NE(copyGuid, pair.guid);
     EXPECT_EQ(AssetDatabase::readGuid(copied), copyGuid);
     EXPECT_EQ(scene.animator().animation, pair.relative) << "the users keep the original";
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(vatHistory()->undo());
     EXPECT_FALSE(fs::exists(copied));
-    EXPECT_FALSE(fs::exists(root() / dir / "sub" / "hero.vat.glb"));
+    EXPECT_FALSE(fs::exists(vatRoot() / dir / "sub" / "hero.vat.glb"));
 }
 
 TEST_F(VatEditor, DeleteTakesThePairAndUndoRelinks) {
-    const std::string dir = folder("delete");
+    const std::string dir = vatFolder("delete");
     const Pair pair = writePair(dir, "hero");
     VatScene scene = vatScene(pair);
     EXPECT_EQ(ev::withPairs({pair.vat}), (std::vector<fs::path>{pair.vat, pair.mesh}));
     EXPECT_EQ(ev::withPairs({pair.mesh, pair.vat}), (std::vector<fs::path>{pair.mesh, pair.vat}));
 
-    ASSERT_TRUE(history()->addCommand(new DeleteFileCmd(project(), {pair.vat}, project()->getProjectPath())));
+    ASSERT_TRUE(vatHistory()->addCommand(new DeleteFileCmd(vatProject(), {pair.vat}, vatProject()->getProjectPath())));
     EXPECT_FALSE(fs::exists(pair.vat));
     EXPECT_FALSE(fs::exists(pair.mesh)) << "one delete for both";
     EXPECT_EQ(scene.animator().guid, pair.guid) << "the reference keeps its GUID (Missing)";
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(vatHistory()->undo());
     EXPECT_TRUE(fs::exists(pair.vat));
     EXPECT_TRUE(fs::exists(pair.mesh));
     EXPECT_EQ(scene.animator().animation, pair.relative) << "relinked by GUID";
     EXPECT_EQ(scene.model().filename, pair.meshRelative) << "and the Model plays its mesh again";
-    EXPECT_EQ(project()->getAssetDatabase().getPath(pair.guid), fs::path(pair.relative));
+    EXPECT_EQ(vatProject()->getAssetDatabase().getPath(pair.guid), fs::path(pair.relative));
 }
 
 // ---- the pair's texture URIs through move, copy, delete; refused and failed renames ----------
@@ -845,7 +845,7 @@ namespace {
 
     // the bytes after the JSON chunk (the BIN chunk)
     std::string binChunk(const fs::path& glb) {
-        const std::string bytes = readAll(glb);
+        const std::string bytes = vatReadAll(glb);
         if (bytes.size() < 20) return "";
         const uint32_t json = (uint8_t)bytes[12] | ((uint8_t)bytes[13] << 8) | ((uint8_t)bytes[14] << 16) | ((uint32_t)(uint8_t)bytes[15] << 24);
         return bytes.substr(20 + json);
@@ -866,7 +866,7 @@ namespace {
         ASSERT_EQ(model.images.size(), 1u);
         EXPECT_EQ(model.images[0].width, 2) << glb << ": the texture didn't resolve (" << err << warn << ")";
         EXPECT_EQ(model.images[0].height, 2);
-        const std::string bytes = readAll(glb);
+        const std::string bytes = vatReadAll(glb);
         EXPECT_EQ(bytes.size() % 4, 0u) << "GLB alignment";
         EXPECT_EQ((uint8_t)bytes[8] | ((uint8_t)bytes[9] << 8) | ((uint8_t)bytes[10] << 16) | ((uint32_t)(uint8_t)bytes[11] << 24), bytes.size())
             << "GLB length";
@@ -875,71 +875,71 @@ namespace {
 }
 
 TEST_F(VatEditor, MoveAndCopyKeepTheTextures) {
-    const std::string dir = folder("textured");
-    const fs::path texture = root() / dir / "Textures" / "hero skin.png";
-    writeTexture(texture);
-    const Pair pair = writePair(dir, "hero", "", nullptr, texture);
+    const std::string dir = vatFolder("textured");
+    const fs::path vatTexture = vatRoot() / dir / "Textures" / "hero skin.png";
+    writeTexture(vatTexture);
+    const Pair pair = writePair(dir, "hero", "", nullptr, vatTexture);
     ASSERT_EQ(imageUri(pair.mesh), "Textures/hero%20skin.png");
-    expectTextureLoads(pair.mesh, texture);
-    const std::string original = readAll(pair.mesh);
+    expectTextureLoads(pair.mesh, vatTexture);
+    const std::string original = vatReadAll(pair.mesh);
     const std::string bin = binChunk(pair.mesh);
-    fs::create_directories(root() / dir / "sub");
-    const fs::path moved = root() / dir / "sub" / "hero.vat.glb";
+    fs::create_directories(vatRoot() / dir / "sub");
+    const fs::path moved = vatRoot() / dir / "sub" / "hero.vat.glb";
 
     // moved to a subfolder: the URI climbs out of it, the BIN chunk is the same bytes
-    ASSERT_TRUE(history()->addCommand(new CopyFileCmd(project(), {pair.vat.string()}, (root() / dir / "sub").string(), false)));
+    ASSERT_TRUE(vatHistory()->addCommand(new CopyFileCmd(vatProject(), {pair.vat.string()}, (vatRoot() / dir / "sub").string(), false)));
     EXPECT_EQ(imageUri(moved), "../Textures/hero%20skin.png");
     EXPECT_EQ(binChunk(moved), bin);
-    expectTextureLoads(moved, texture);
+    expectTextureLoads(moved, vatTexture);
     std::string error;
-    EXPECT_TRUE(VertexAnimationPool::getOrLoad((root() / dir / "sub" / "hero.vat").generic_string(), &error)) << error;
+    EXPECT_TRUE(VertexAnimationPool::getOrLoad((vatRoot() / dir / "sub" / "hero.vat").generic_string(), &error)) << error;
 
     // and back: the URI it had
-    ASSERT_TRUE(history()->addCommand(new CopyFileCmd(project(), {moved.string()}, (root() / dir).string(), false)));
+    ASSERT_TRUE(vatHistory()->addCommand(new CopyFileCmd(vatProject(), {moved.string()}, (vatRoot() / dir).string(), false)));
     EXPECT_EQ(imageUri(pair.mesh), "Textures/hero%20skin.png");
-    expectTextureLoads(pair.mesh, texture);
+    expectTextureLoads(pair.mesh, vatTexture);
 
     // undo / redo of both moves
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(vatHistory()->undo());
     EXPECT_EQ(imageUri(moved), "../Textures/hero%20skin.png");
-    expectTextureLoads(moved, texture);
-    ASSERT_TRUE(history()->undo());
-    EXPECT_EQ(readAll(pair.mesh), original) << "the undo puts the very bytes back";
-    ASSERT_TRUE(history()->redo());
+    expectTextureLoads(moved, vatTexture);
+    ASSERT_TRUE(vatHistory()->undo());
+    EXPECT_EQ(vatReadAll(pair.mesh), original) << "the undo puts the very bytes back";
+    ASSERT_TRUE(vatHistory()->redo());
     EXPECT_EQ(imageUri(moved), "../Textures/hero%20skin.png");
-    expectTextureLoads(moved, texture);
-    ASSERT_TRUE(history()->undo());
-    EXPECT_EQ(readAll(pair.mesh), original);
+    expectTextureLoads(moved, vatTexture);
+    ASSERT_TRUE(vatHistory()->undo());
+    EXPECT_EQ(vatReadAll(pair.mesh), original);
 
     // a copy names the same texture; the original is untouched; undo removes the copy
-    ASSERT_TRUE(history()->addCommand(new CopyFileCmd(project(), {pair.mesh.string()}, (root() / dir / "sub").string(), true)));
+    ASSERT_TRUE(vatHistory()->addCommand(new CopyFileCmd(vatProject(), {pair.mesh.string()}, (vatRoot() / dir / "sub").string(), true)));
     EXPECT_EQ(imageUri(moved), "../Textures/hero%20skin.png");
-    expectTextureLoads(moved, texture);
-    EXPECT_EQ(readAll(pair.mesh), original);
-    ASSERT_TRUE(history()->undo());
+    expectTextureLoads(moved, vatTexture);
+    EXPECT_EQ(vatReadAll(pair.mesh), original);
+    ASSERT_TRUE(vatHistory()->undo());
     EXPECT_FALSE(fs::exists(moved));
-    ASSERT_TRUE(history()->redo());
-    expectTextureLoads(moved, texture);
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(vatHistory()->redo());
+    expectTextureLoads(moved, vatTexture);
+    ASSERT_TRUE(vatHistory()->undo());
 
     // a folder holding the pair and its own texture: the copy names the copied texture (the
     // URI stays), a moved folder whose mesh names a texture outside it climbs out further
     const std::string pack = dir + "/pack";
-    const fs::path packTexture = root() / pack / "skin.png";
+    const fs::path packTexture = vatRoot() / pack / "skin.png";
     writeTexture(packTexture);
     const Pair packed = writePair(pack, "crate", "", nullptr, packTexture);
-    fs::create_directories(root() / dir / "copies");
-    ASSERT_TRUE(history()->addCommand(new CopyFileCmd(project(), {(root() / pack).string()}, (root() / dir / "copies").string(), true)));
-    EXPECT_EQ(imageUri(root() / dir / "copies" / "pack" / "crate.vat.glb"), "skin.png");
-    expectTextureLoads(root() / dir / "copies" / "pack" / "crate.vat.glb", root() / dir / "copies" / "pack" / "skin.png");
-    ASSERT_TRUE(history()->undo());
-    const Pair outside = writePair(pack, "barrel", "", nullptr, texture);
+    fs::create_directories(vatRoot() / dir / "copies");
+    ASSERT_TRUE(vatHistory()->addCommand(new CopyFileCmd(vatProject(), {(vatRoot() / pack).string()}, (vatRoot() / dir / "copies").string(), true)));
+    EXPECT_EQ(imageUri(vatRoot() / dir / "copies" / "pack" / "crate.vat.glb"), "skin.png");
+    expectTextureLoads(vatRoot() / dir / "copies" / "pack" / "crate.vat.glb", vatRoot() / dir / "copies" / "pack" / "skin.png");
+    ASSERT_TRUE(vatHistory()->undo());
+    const Pair outside = writePair(pack, "barrel", "", nullptr, vatTexture);
     ASSERT_EQ(imageUri(outside.mesh), "../Textures/hero%20skin.png");
-    ASSERT_TRUE(history()->addCommand(new CopyFileCmd(project(), {(root() / pack).string()}, (root() / dir / "sub").string(), false)));
-    EXPECT_EQ(imageUri(root() / dir / "sub" / "pack" / "barrel.vat.glb"), "../../Textures/hero%20skin.png");
-    expectTextureLoads(root() / dir / "sub" / "pack" / "barrel.vat.glb", texture);
-    EXPECT_EQ(imageUri(root() / dir / "sub" / "pack" / "crate.vat.glb"), "skin.png") << "moved with its texture";
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(vatHistory()->addCommand(new CopyFileCmd(vatProject(), {(vatRoot() / pack).string()}, (vatRoot() / dir / "sub").string(), false)));
+    EXPECT_EQ(imageUri(vatRoot() / dir / "sub" / "pack" / "barrel.vat.glb"), "../../Textures/hero%20skin.png");
+    expectTextureLoads(vatRoot() / dir / "sub" / "pack" / "barrel.vat.glb", vatTexture);
+    EXPECT_EQ(imageUri(vatRoot() / dir / "sub" / "pack" / "crate.vat.glb"), "skin.png") << "moved with its texture";
+    ASSERT_TRUE(vatHistory()->undo());
     EXPECT_EQ(imageUri(outside.mesh), "../Textures/hero%20skin.png");
     EXPECT_EQ(imageUri(packed.mesh), "skin.png");
 
@@ -947,66 +947,66 @@ TEST_F(VatEditor, MoveAndCopyKeepTheTextures) {
     nlohmann::json json = glbJson(outside.mesh);
     json["images"][0]["uri"] = "data:image/png;base64,iVBORw0KGgo=";
     ASSERT_TRUE(ev::writeGlbJson(outside.mesh, json.dump()));
-    ASSERT_TRUE(history()->addCommand(new CopyFileCmd(project(), {outside.vat.string()}, (root() / dir / "sub").string(), false)));
-    EXPECT_EQ(imageUri(root() / dir / "sub" / "barrel.vat.glb"), "data:image/png;base64,iVBORw0KGgo=");
-    ASSERT_TRUE(history()->undo());
+    ASSERT_TRUE(vatHistory()->addCommand(new CopyFileCmd(vatProject(), {outside.vat.string()}, (vatRoot() / dir / "sub").string(), false)));
+    EXPECT_EQ(imageUri(vatRoot() / dir / "sub" / "barrel.vat.glb"), "data:image/png;base64,iVBORw0KGgo=");
+    ASSERT_TRUE(vatHistory()->undo());
 }
 
 TEST_F(VatEditor, DeleteKeepsTheTextures) {
-    const std::string dir = folder("textured-delete");
-    const fs::path texture = root() / dir / "skin.png";
-    writeTexture(texture);
-    const Pair first = writePair(dir, "hero", "", nullptr, texture);
-    const Pair second = writePair(dir, "knight", "", nullptr, texture);
-    const std::string bytes = readAll(texture);
-    ASSERT_TRUE(history()->addCommand(new DeleteFileCmd(project(), {first.vat, first.mesh}, project()->getProjectPath())));
+    const std::string dir = vatFolder("textured-delete");
+    const fs::path vatTexture = vatRoot() / dir / "skin.png";
+    writeTexture(vatTexture);
+    const Pair first = writePair(dir, "hero", "", nullptr, vatTexture);
+    const Pair second = writePair(dir, "knight", "", nullptr, vatTexture);
+    const std::string bytes = vatReadAll(vatTexture);
+    ASSERT_TRUE(vatHistory()->addCommand(new DeleteFileCmd(vatProject(), {first.vat, first.mesh}, vatProject()->getProjectPath())));
     EXPECT_FALSE(fs::exists(first.vat));
     EXPECT_FALSE(fs::exists(first.mesh));
-    EXPECT_TRUE(fs::exists(texture)) << "a texture is never deleted with the pair";
-    EXPECT_EQ(readAll(texture), bytes);
-    expectTextureLoads(second.mesh, texture);
-    ASSERT_TRUE(history()->undo());
-    expectTextureLoads(first.mesh, texture);
+    EXPECT_TRUE(fs::exists(vatTexture)) << "a texture is never deleted with the pair";
+    EXPECT_EQ(vatReadAll(vatTexture), bytes);
+    expectTextureLoads(second.mesh, vatTexture);
+    ASSERT_TRUE(vatHistory()->undo());
+    expectTextureLoads(first.mesh, vatTexture);
 }
 
 TEST_F(VatEditor, RenameToAnotherExtensionIsRefused) {
-    const std::string dir = folder("rename-ext");
+    const std::string dir = vatFolder("rename-ext");
     const Pair pair = writePair(dir, "hero");
-    const std::string vatRefusal = ev::pairRenameRefusal(pair.vat, root() / dir / "hero.json", "hero.vat");
+    const std::string vatRefusal = ev::pairRenameRefusal(pair.vat, vatRoot() / dir / "hero.json", "hero.vat");
     EXPECT_EQ(vatRefusal, "hero.vat is a Vertex Animation: its new name must end in .vat (its mesh follows as <name>.vat.glb).");
-    EXPECT_EQ(ev::pairRenameRefusal(pair.mesh, root() / dir / "hero.glb", "hero.vat.glb"),
+    EXPECT_EQ(ev::pairRenameRefusal(pair.mesh, vatRoot() / dir / "hero.glb", "hero.vat.glb"),
               "hero.vat.glb is the mesh of a Vertex Animation: its new name must end in .vat.glb (its .vat follows).");
-    EXPECT_TRUE(ev::pairRenameRefusal(pair.vat, root() / dir / "knight.vat", "hero.vat").empty());
-    EXPECT_TRUE(ev::pairRenameRefusal(root() / dir / "lonely.vat", root() / dir / "lonely.json", "lonely.vat").empty()) << "no pair";
+    EXPECT_TRUE(ev::pairRenameRefusal(pair.vat, vatRoot() / dir / "knight.vat", "hero.vat").empty());
+    EXPECT_TRUE(ev::pairRenameRefusal(vatRoot() / dir / "lonely.vat", vatRoot() / dir / "lonely.json", "lonely.vat").empty()) << "no pair";
 
-    const size_t steps = history()->position();
-    EXPECT_FALSE(history()->addCommand(new RenameFileCmd(project(), "hero.vat", "hero.json", (root() / dir).string())));
-    EXPECT_FALSE(history()->addCommand(new RenameFileCmd(project(), "hero.vat.glb", "hero.glb", (root() / dir).string())));
-    EXPECT_EQ(history()->position(), steps) << "no undo step";
+    const size_t steps = vatHistory()->position();
+    EXPECT_FALSE(vatHistory()->addCommand(new RenameFileCmd(vatProject(), "hero.vat", "hero.json", (vatRoot() / dir).string())));
+    EXPECT_FALSE(vatHistory()->addCommand(new RenameFileCmd(vatProject(), "hero.vat.glb", "hero.glb", (vatRoot() / dir).string())));
+    EXPECT_EQ(vatHistory()->position(), steps) << "no undo step";
     EXPECT_TRUE(fs::exists(pair.vat));
     EXPECT_TRUE(fs::exists(pair.mesh));
-    EXPECT_FALSE(fs::exists(root() / dir / "hero.json"));
-    EXPECT_FALSE(fs::exists(root() / dir / "hero.glb"));
+    EXPECT_FALSE(fs::exists(vatRoot() / dir / "hero.json"));
+    EXPECT_FALSE(fs::exists(vatRoot() / dir / "hero.glb"));
 }
 
 TEST_F(VatEditor, PairRenameIsAllOrNothing) {
-    const std::string dir = folder("rename-fail");
+    const std::string dir = vatFolder("rename-fail");
     const Pair pair = writePair(dir, "hero");
     // the new .vat name fits the file system's 255 bytes, its mesh's (4 more) doesn't: the
     // partner's rename fails after the first one succeeded
     const std::string longName = std::string(251, 'a') + ".vat";
-    const size_t steps = history()->position();
-    EXPECT_FALSE(history()->addCommand(new RenameFileCmd(project(), "hero.vat", longName, (root() / dir).string())));
-    EXPECT_EQ(history()->position(), steps) << "no undo step";
+    const size_t steps = vatHistory()->position();
+    EXPECT_FALSE(vatHistory()->addCommand(new RenameFileCmd(vatProject(), "hero.vat", longName, (vatRoot() / dir).string())));
+    EXPECT_EQ(vatHistory()->position(), steps) << "no undo step";
     EXPECT_TRUE(fs::exists(pair.vat)) << "the first rename was put back";
     EXPECT_TRUE(fs::exists(pair.mesh));
-    EXPECT_FALSE(fs::exists(root() / dir / longName));
-    EXPECT_EQ(project()->getAssetDatabase().getPath(pair.guid), fs::path(pair.relative)) << "the GUID kept its path";
-    EXPECT_EQ(jv::parseVat(readAll(pair.vat)).data->mesh, "hero.vat.glb");
+    EXPECT_FALSE(fs::exists(vatRoot() / dir / longName));
+    EXPECT_EQ(vatProject()->getAssetDatabase().getPath(pair.guid), fs::path(pair.relative)) << "the GUID kept its path";
+    EXPECT_EQ(jv::parseVat(vatReadAll(pair.vat)).data->mesh, "hero.vat.glb");
 }
 
 TEST_F(VatEditor, ProjectWindowFileHelpers) {
-    const std::string dir = folder("helpers");
+    const std::string dir = vatFolder("helpers");
     const Pair pair = writePair(dir, "hero");
     EXPECT_TRUE(ev::isVatMeshFile("a/hero.vat.glb"));
     EXPECT_FALSE(ev::isVatMeshFile("a/.vat.glb"));
@@ -1015,12 +1015,12 @@ TEST_F(VatEditor, ProjectWindowFileHelpers) {
     EXPECT_EQ(ev::pairPathOf("a/hero.vat.glb"), fs::path("a/hero.vat"));
     EXPECT_TRUE(ev::pairPathOf("a/hero.glb").empty());
     EXPECT_EQ(ev::existingPairOf(pair.vat), pair.mesh);
-    EXPECT_TRUE(ev::existingPairOf(root() / dir / "lonely.vat").empty());
+    EXPECT_TRUE(ev::existingPairOf(vatRoot() / dir / "lonely.vat").empty());
     fs::path from, to;
-    EXPECT_TRUE(ev::renamedPair(pair.vat, root() / dir / "x.vat", from, to));
+    EXPECT_TRUE(ev::renamedPair(pair.vat, vatRoot() / dir / "x.vat", from, to));
     EXPECT_EQ(from, pair.mesh);
-    EXPECT_EQ(to, root() / dir / "x.vat.glb");
-    EXPECT_FALSE(ev::renamedPair(pair.vat, root() / dir / "x.json", from, to)) << "leaving the type: alone";
+    EXPECT_EQ(to, vatRoot() / dir / "x.vat.glb");
+    EXPECT_FALSE(ev::renamedPair(pair.vat, vatRoot() / dir / "x.json", from, to)) << "leaving the type: alone";
 
     // what the context menu offers
     EXPECT_TRUE(ev::isVatBakeSource("m/hero.gltf"));
@@ -1031,13 +1031,13 @@ TEST_F(VatEditor, ProjectWindowFileHelpers) {
     EXPECT_TRUE(ev::isVatImportSource("x/cloth-remap_info.json"));
     EXPECT_TRUE(ev::isVatImportSource("x/explosion_data.json"));
     EXPECT_FALSE(ev::isVatImportSource("x/settings.json"));
-    const fs::path houdini = root() / dir / "houdini";
-    writeAll(houdini / "geo" / "rock_mesh.fbx", "fbx");
-    writeAll(houdini / "tex" / "rock_pos.exr", "exr");
-    writeAll(houdini / "unity" / "rock_mat.mat", "mat");
-    writeAll(houdini / "plain" / "box.fbx", "fbx");
-    writeAll(houdini / "open" / "flag.glb", "glb");
-    writeAll(houdini / "open" / "flag_vat.exr", "exr");
+    const fs::path houdini = vatRoot() / dir / "houdini";
+    vatWriteAll(houdini / "geo" / "rock_mesh.fbx", "fbx");
+    vatWriteAll(houdini / "tex" / "rock_pos.exr", "exr");
+    vatWriteAll(houdini / "unity" / "rock_mat.mat", "mat");
+    vatWriteAll(houdini / "plain" / "box.fbx", "fbx");
+    vatWriteAll(houdini / "open" / "flag.glb", "glb");
+    vatWriteAll(houdini / "open" / "flag_vat.exr", "exr");
     EXPECT_TRUE(ev::isVatImportSource(houdini / "geo" / "rock_mesh.fbx"));
     EXPECT_TRUE(ev::isVatImportSource(houdini / "unity" / "rock_mat.mat"));
     EXPECT_TRUE(ev::isVatImportSource(houdini / "open" / "flag.glb"));
@@ -1047,9 +1047,9 @@ TEST_F(VatEditor, ProjectWindowFileHelpers) {
 // ---- GameObjects: a dropped .vat, Create Crowd --------------------------------------------
 
 TEST_F(VatEditor, ADroppedVatMakesOneGameObjectInOneStep) {
-    const std::string dir = folder("drop");
+    const std::string dir = vatFolder("drop");
     const Pair pair = writePair(dir, "hero");
-    Project* p = project();
+    Project* p = vatProject();
     p->createNewScene("Drop", SceneType::SCENE_3D);
     SceneProject* sceneProject = p->getScene(p->getSelectedSceneId());
     CommandHistory* sceneHistory = CommandHandle::get(sceneProject->id);
@@ -1079,8 +1079,8 @@ TEST_F(VatEditor, ADroppedVatMakesOneGameObjectInOneStep) {
     EXPECT_EQ(scene->getComponent<ModelComponent>(entity).filename, pair.meshRelative);
 
     // refused: not a .vat, a missing mesh, outside the assets
-    EXPECT_EQ(createVatObject(p, sceneProject->id, (root() / dir / "hero.vat.glb").string(), Vector3(), NULL_ENTITY, &error), NULL_ENTITY);
-    fs::remove(root() / dir / "lone.vat");
+    EXPECT_EQ(createVatObject(p, sceneProject->id, (vatRoot() / dir / "hero.vat.glb").string(), Vector3(), NULL_ENTITY, &error), NULL_ENTITY);
+    fs::remove(vatRoot() / dir / "lone.vat");
     const Pair lone = writePair(dir, "lone");
     fs::remove(lone.mesh);
     EXPECT_EQ(createVatObject(p, sceneProject->id, lone.vat.string(), Vector3(), NULL_ENTITY, &error), NULL_ENTITY);
@@ -1191,9 +1191,9 @@ TEST(VatCrowdLayout, ClipWeightsAndValidation) {
 }
 
 TEST_F(VatEditor, CreateCrowdIsOneGameObjectInOneStep) {
-    const std::string dir = folder("crowd");
+    const std::string dir = vatFolder("crowd");
     const Pair pair = writePair(dir, "hero");
-    Project* p = project();
+    Project* p = vatProject();
     p->createNewScene("Crowd", SceneType::SCENE_3D);
     SceneProject* sceneProject = p->getScene(p->getSelectedSceneId());
     CommandHistory* sceneHistory = CommandHandle::get(sceneProject->id);

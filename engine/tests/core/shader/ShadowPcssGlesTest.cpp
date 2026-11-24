@@ -85,7 +85,7 @@ namespace {
         return reference;
     }
 
-    Compiled compile(uint64_t properties, ShaderBackend backend, const std::string& reference = std::string()){
+    Compiled shadowPcssGlesCompile(uint64_t properties, ShaderBackend backend, const std::string& reference = std::string()){
         Compiled out;
         uint16_t customId = 0;
         CustomShaderSources sources;
@@ -103,7 +103,7 @@ namespace {
         return out;
     }
 
-    const ShaderStage* fragmentOf(const ShaderData& data){
+    const ShaderStage* shadowPcssGlesFragmentOf(const ShaderData& data){
         for (const ShaderStage& stage : data.stages){
             if (stage.type == ShaderStageType::FRAGMENT)
                 return &stage;
@@ -126,7 +126,7 @@ namespace {
     // vectors within GLES3's guarantees; prints them with its size and texture lookups
     void expectWithinGles3Limits(const Compiled& compiled, bool uniforms = true){
         EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(compiled.data), "") << compiled.name;
-        const ShaderStage* fragment = fragmentOf(compiled.data);
+        const ShaderStage* fragment = shadowPcssGlesFragmentOf(compiled.data);
         ASSERT_NE(fragment, nullptr) << compiled.name;
         size_t vectors = 0;
         for (const ShaderUniformBlock& block : fragment->uniformblocks)
@@ -152,8 +152,8 @@ TEST(ShadowPcssGles, DirectionalOnlyVariantsReadRawDepthsWithinTheLimits){
     ASSERT_NE(paintedTerrain(true) & ShaderPool::getDirectionalOnlyProperty(), 0u);
     ASSERT_NE(heavyLit(true) & ShaderPool::getShadowsHQProperty(), 0u);
     std::vector<Compiled> variants;
-    variants.push_back(compile(heavyLit(true), ShaderBackend::GLES3, threeExtensionMaps()));
-    variants.push_back(compile(paintedTerrain(true), ShaderBackend::GLES3));
+    variants.push_back(shadowPcssGlesCompile(heavyLit(true), ShaderBackend::GLES3, threeExtensionMaps()));
+    variants.push_back(shadowPcssGlesCompile(paintedTerrain(true), ShaderBackend::GLES3));
     for (Compiled& variant : variants){
         EXPECT_TRUE(hasRawView(variant)) << variant.name << " has no raw-depth view: no PCSS on GLES3";
         EXPECT_EQ(variant.log.find(ShaderVariantCompiler::PCSS_LEFT_OUT), std::string::npos) << variant.name;
@@ -165,7 +165,7 @@ TEST(ShadowPcssGles, GeneralVariantsTakeItWhereTheTexturesLeaveAUnit){
     ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
     // the same mesh with point and spot lights possible: the spot mask and point atlas leave room
     // without extension maps...
-    Compiled plain = compile(heavyLit(false), ShaderBackend::GLES3);
+    Compiled plain = shadowPcssGlesCompile(heavyLit(false), ShaderBackend::GLES3);
     EXPECT_TRUE(hasRawView(plain)) << plain.name << " has a free texture unit and no PCSS";
     EXPECT_EQ(plain.log.find(ShaderVariantCompiler::PCSS_LEFT_OUT), std::string::npos) << plain.name;
     expectWithinGles3Limits(plain);
@@ -174,11 +174,11 @@ TEST(ShadowPcssGles, GeneralVariantsTakeItWhereTheTexturesLeaveAUnit){
     // Vogel disk) on every backend, and saying so. (The terrain's uniform vectors are over GLES3's
     // guaranteed 224 with or without it: the terrain layers' blocks, not PCSS's)
     for (ShaderBackend backend : {ShaderBackend::GLES3, ShaderBackend::GLCore, ShaderBackend::Vulkan}){
-        Compiled full = compile(heavyLit(false), backend, threeExtensionMaps());
+        Compiled full = shadowPcssGlesCompile(heavyLit(false), backend, threeExtensionMaps());
         EXPECT_FALSE(hasRawView(full)) << full.name << " is over the 16 fragment texture units";
         EXPECT_NE(full.log.find(ShaderVariantCompiler::PCSS_LEFT_OUT), std::string::npos) << full.name << ": " << full.log;
         expectWithinGles3Limits(full);
-        Compiled terrain = compile(paintedTerrain(false), backend);
+        Compiled terrain = shadowPcssGlesCompile(paintedTerrain(false), backend);
         EXPECT_FALSE(hasRawView(terrain)) << terrain.name << " is over the 16 samplers";
         EXPECT_NE(terrain.log.find(ShaderVariantCompiler::PCSS_LEFT_OUT), std::string::npos) << terrain.name << ": " << terrain.log;
         expectWithinGles3Limits(terrain, false);

@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <string_view>
 
 using namespace jasperengine;
 
@@ -283,22 +284,53 @@ namespace jasperengine{ namespace {
 } }
 
 // Factors change without rebuilding the array, so the block is filled at draw time. T3 R33: the arrays
-// hold 9 entries or 12 and the features' parameters end the block, in the order of terrain_fs.glsl, so
-// a variant uploads exactly the block it declares. A layer takes three vectors and a component, so 12
-// layers with every feature fit GLES3 / WebGL2's 224 fragment uniform vectors.
-void RenderSystem::applyTerrainLayersUniform(ObjectRender& render, int slot, Entity entity, TerrainComponent& terrainComponent, uint64_t litDefineBits, bool extendedBlock){
+// hold 9 entries or 12 and the features' parameters end the block (terrain_fs.glsl). It is packed from
+// the reflection of the program that draws: while a variant builds, a stand-in with other features and
+// arrays draws in its place (loadMesh), and its block is the one the upload must match. A layer takes
+// three vectors and a component, so 12 layers with every feature fit GLES3 / WebGL2's 224 fragment
+// uniform vectors.
+void RenderSystem::applyTerrainLayersUniform(ObjectRender& render, int slot, Entity entity, TerrainComponent& terrainComponent, ShaderData& shaderData){
     if (slot == -1){
         return;
     }
+    unsigned int blockBytes = 0;
+    const std::vector<ShaderUniform>* members = shaderData.getUniformBlockMembers("u_fs_terrainLayers", blockBytes);
+    Vector4 block[3 * MAX_TERRAIN_LAYERS + (MAX_TERRAIN_LAYERS + 3) / 4 + 3 + 1 + 1 + 1 + 1];
+    if (!members || blockBytes == 0 || blockBytes > sizeof(block) || blockBytes % sizeof(Vector4) != 0){
+        return;
+    }
+    // the member of that name ("terrainLayers.<name>"), null when the program has none
+    auto memberOf = [members](std::string_view name) -> const ShaderUniform* {
+        for (const ShaderUniform& member : *members){
+            const std::string_view full = member.name;
+            if (full.size() > name.size() && full.substr(full.size() - name.size()) == name && full[full.size() - name.size() - 1] == '.')
+                return &member;
+        }
+        return nullptr;
+    };
+    // its first vector in the block, -1 without it
+    auto vectorOf = [&memberOf](std::string_view name) -> int {
+        const ShaderUniform* member = memberOf(name);
+        return member ? (int)(member->offset / sizeof(Vector4)) : -1;
+    };
+    const int colorAt = vectorOf("colorFactor"), uvAt = vectorOf("uvTransform"), surfaceAt = vectorOf("surface"), codesAt = vectorOf("codes");
+    const ShaderUniform* colorMember = memberOf("colorFactor");
+    const int entries = colorMember ? std::min((int)colorMember->arrayCount, (int)MAX_TERRAIN_LAYERS) : 0;
+    if (colorAt < 0 || uvAt < 0 || surfaceAt < 0 || codesAt < 0 || entries <= 0){
+        return;
+    }
+    const int vectors = (int)(blockBytes / sizeof(Vector4));
+    std::fill(block, block + vectors, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+    auto put = [&block, vectors](int at, const Vector4& value){
+        if (at >= 0 && at < vectors)
+            block[at] = value;
+    };
 
     auto it = terrainDetailArrays.find(entity);
     const TerrainDetailArray* detail = (it != terrainDetailArrays.end() && !it->second.failed) ? &it->second : NULL;
 
     static const TerrainSurfaceLayer emptyLayer;
 
-    const int entries = extendedBlock ? MAX_TERRAIN_LAYERS : TERRAIN_SHADER_BASE_LAYERS;
-    const int codeVectors = (entries + 3) / 4;
-    Vector4 block[3 * MAX_TERRAIN_LAYERS + (MAX_TERRAIN_LAYERS + 3) / 4 + 3 + 1 + 1 + 1 + 1];
     float codes[4 * ((MAX_TERRAIN_LAYERS + 3) / 4)] = {};
     for (int i = 0; i < entries; i++){
         const bool present = i < (int)terrainComponent.surfaceLayers.size();
@@ -308,47 +340,45 @@ void RenderSystem::applyTerrainLayersUniform(ObjectRender& render, int slot, Ent
         const bool stochastic = present && layer.stochasticTiling && layer.stochasticCellSize > 0.0f;
         const bool hex = present && layer.hexTiling && !stochastic;
 
-        block[i] = Vector4(layer.colorFactor.x, layer.colorFactor.y, layer.colorFactor.z, layer.normalStrength);
-        block[entries + i] = Vector4(layer.uvScale.x, layer.uvScale.y, layer.uvOffset.x, layer.uvOffset.y);
-        block[entries * 2 + i] = Vector4(stochastic ? layer.stochasticCellSize : (hex ? -1.0f - std::clamp(layer.hexRotation, 0.0f, 1.0f) : 0.0f),
-                                         packTerrainFactors(layer.roughnessFactor, layer.metallicFactor),
-                                         packTerrainFactors(layer.occlusionStrength, layer.stochasticBlendSharpness),
-                                         packTerrainFactors(layer.stochasticContrast, layer.stochasticRotation));
+        put(colorAt + i, Vector4(layer.colorFactor.x, layer.colorFactor.y, layer.colorFactor.z, layer.normalStrength));
+        put(uvAt + i, Vector4(layer.uvScale.x, layer.uvScale.y, layer.uvOffset.x, layer.uvOffset.y));
+        put(surfaceAt + i, Vector4(stochastic ? layer.stochasticCellSize : (hex ? -1.0f - std::clamp(layer.hexRotation, 0.0f, 1.0f) : 0.0f),
+                                   packTerrainFactors(layer.roughnessFactor, layer.metallicFactor),
+                                   packTerrainFactors(layer.occlusionStrength, layer.stochasticBlendSharpness),
+                                   packTerrainFactors(layer.stochasticContrast, layer.stochasticRotation)));
         const int normalSlice = detail ? detail->normalSlice[i] : -1;
         const int surfaceSlice = detail ? detail->surfaceSlice[i] : -1;
         const bool flatOnly = present && layer.cliffProjection == TerrainCliffProjection::FLAT_ONLY;
         codes[i] = (float)((pbr ? 1 : 0) + (flatOnly ? 2 : 0) + 4 * (normalSlice + 1) + 256 * (surfaceSlice + 1));
     }
-    for (int v = 0; v < codeVectors; v++){
-        block[entries * 3 + v] = Vector4(codes[v * 4], codes[v * 4 + 1], codes[v * 4 + 2], codes[v * 4 + 3]);
+    for (int v = 0; v < (entries + 3) / 4; v++){
+        put(codesAt + v, Vector4(codes[v * 4], codes[v * 4 + 1], codes[v * 4 + 2], codes[v * 4 + 3]));
     }
 
-    int size = entries * 3 + codeVectors;
-    if (litDefineBits & MaterialPbr::getDefineBit("TERRAIN_MACRO")){
+    const int macroAt = vectorOf("macroParams");
+    if (macroAt >= 0){
         const float scale = terrainComponent.macroScale > 0.0f ? terrainComponent.macroScale : 1.0f;
-        block[size++] = Vector4(1.0f / scale, terrainComponent.macroStrength, terrainComponent.macroSlopeFade,
-                                terrainComponent.macroMode == TerrainMacroMode::BASE_MAP ? 1.0f : 0.0f);
-        block[size++] = Vector4(terrainComponent.macroTintA.x, terrainComponent.macroTintA.y, terrainComponent.macroTintA.z, terrainComponent.terrainSize);
-        block[size++] = Vector4(terrainComponent.macroTintB.x, terrainComponent.macroTintB.y, terrainComponent.macroTintB.z, 0.0f);
+        put(macroAt, Vector4(1.0f / scale, terrainComponent.macroStrength, terrainComponent.macroSlopeFade,
+                             terrainComponent.macroMode == TerrainMacroMode::BASE_MAP ? 1.0f : 0.0f));
+        put(vectorOf("macroTintA"), Vector4(terrainComponent.macroTintA.x, terrainComponent.macroTintA.y, terrainComponent.macroTintA.z, terrainComponent.terrainSize));
+        put(vectorOf("macroTintB"), Vector4(terrainComponent.macroTintB.x, terrainComponent.macroTintB.y, terrainComponent.macroTintB.z, 0.0f));
     }
-    if (litDefineBits & MaterialPbr::getDefineBit("TERRAIN_RESAMPLE")){
+    const int resampleAt = vectorOf("resampleParams");
+    if (resampleAt >= 0){
         // metres to the detail tiles v_terrainEyeTiles counts in
         const float tiles = terrainComponent.terrainSize > 0.0f ? terrainComponent.textureDetailTiles / terrainComponent.terrainSize : 0.0f;
         const float nearTiles = terrainComponent.resampleNear * tiles;
-        block[size++] = Vector4(nearTiles, std::max(terrainComponent.resampleFar * tiles, nearTiles + 0.0001f), terrainComponent.resampleReduction, 0.0f);
+        put(resampleAt, Vector4(nearTiles, std::max(terrainComponent.resampleFar * tiles, nearTiles + 0.0001f), terrainComponent.resampleReduction, 0.0f));
     }
-    if (litDefineBits & MaterialPbr::getDefineBit("TERRAIN_HEIGHT_BLEND")){
-        block[size++] = Vector4(terrainComponent.heightBlendSharpness, 0.0f, 0.0f, 0.0f);
-    }
-    if (litDefineBits & MaterialPbr::getDefineBit("TERRAIN_MACRO_NORMAL")){
+    put(vectorOf("heightBlendParams"), Vector4(terrainComponent.heightBlendSharpness, 0.0f, 0.0f, 0.0f));
+    const int macroNormalAt = vectorOf("macroNormalParams");
+    if (macroNormalAt >= 0){
         auto macro = terrainMacroNormals.find(entity);
-        block[size++] = Vector4(macro != terrainMacroNormals.end() && macro->second.render.isCreated() ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f);
+        put(macroNormalAt, Vector4(macro != terrainMacroNormals.end() && macro->second.render.isCreated() ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f));
     }
-    if (litDefineBits & MaterialPbr::getDefineBit("TERRAIN_DEBUG_VIEW")){
-        block[size++] = Vector4((float)terraincore::TerrainQualitySettings::getDebugView(), 0.0f, 0.0f, 0.0f);
-    }
+    put(vectorOf("debugParams"), Vector4((float)terraincore::TerrainQualitySettings::getDebugView(), 0.0f, 0.0f, 0.0f));
 
-    render.applyUniformBlock(slot, sizeof(Vector4) * (size_t)size, block);
+    render.applyUniformBlock(slot, blockBytes, block);
 }
 
 void RenderSystem::destroyTerrainHoleOverlays(){

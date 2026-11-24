@@ -156,6 +156,8 @@ namespace jasperengine::player {
         std::string audioIosSession = "default";
         // the group music plays through when nothing names one ("" = Master)
         std::string audioMusicGroup;
+        // MiB unused clips stay cached (SoundPool::setUnusedBudget)
+        int audioUnusedClipCacheMb = 16;
 
         // Project Settings > Localization (S87 R64, S95 REQ-27): the default language with its
         // fallbacks applied, and the String Tables (a Compile build's generated main sets the same)

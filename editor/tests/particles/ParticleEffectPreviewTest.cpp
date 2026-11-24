@@ -20,18 +20,18 @@ using namespace jasperengine::particles;
 
 namespace {
 
-    ParticleEffectDocument effectOf(const std::string& json){
+    ParticleEffectDocument particleEffectPreviewEffectOf(const std::string& json){
         ParticleEffectDocument document;
         std::vector<Diagnostic> diagnostics;
         EXPECT_TRUE(ParticleEffectCodec::read(json, document, diagnostics)) << ParticleEffectCodec::format(diagnostics);
         return document;
     }
 
-    ParticlePreviewRequest requestOf(const std::string& json){
+    ParticlePreviewRequest particleEffectPreviewRequestOf(const std::string& json){
         ParticlePreviewRequest request;
         ParticlePreviewSystem system;
         system.name = "test";
-        system.document = effectOf(json);
+        system.document = particleEffectPreviewEffectOf(json);
         request.systems.push_back(system);
         request.frames = 0;
         return request;
@@ -63,7 +63,7 @@ namespace {
 }
 
 TEST(ParticleEffectPreview, TheSameRequestGivesTheSameReport){
-    const ParticlePreviewRequest request = requestOf(burst(300, 1000));
+    const ParticlePreviewRequest request = particleEffectPreviewRequestOf(burst(300, 1000));
     const qa::Json first = reportOf(request);
     const qa::Json second = reportOf(request);
     EXPECT_EQ(first.dump(), second.dump());
@@ -77,7 +77,7 @@ TEST(ParticleEffectPreview, TheSameRequestGivesTheSameReport){
 }
 
 TEST(ParticleEffectPreview, CapacityHitFailsOnABurstOverMaxParticles){
-    const qa::Json over = reportOf(requestOf(burst(600, 400)));
+    const qa::Json over = reportOf(particleEffectPreviewRequestOf(burst(600, 400)));
     const qa::Json& hit = checkOf(over, "capacity_hit");
     EXPECT_EQ(hit["status"], "FAIL") << hit.dump();
     EXPECT_EQ(hit["measured"]["never_born"], 200);
@@ -86,43 +86,43 @@ TEST(ParticleEffectPreview, CapacityHitFailsOnABurstOverMaxParticles){
     ASSERT_EQ(over["fixes"].size(), 1u);
     EXPECT_EQ(over["fixes"][0]["patch"]["maxParticles"], 600);
 
-    const qa::Json under = reportOf(requestOf(burst(300, 400)));
+    const qa::Json under = reportOf(particleEffectPreviewRequestOf(burst(300, 400)));
     EXPECT_EQ(checkOf(under, "capacity_hit")["status"], "PASS");
     // exactly at the limit refuses nothing
-    EXPECT_EQ(checkOf(reportOf(requestOf(burst(400, 400))), "capacity_hit")["status"], "PASS");
+    EXPECT_EQ(checkOf(reportOf(particleEffectPreviewRequestOf(burst(400, 400))), "capacity_hit")["status"], "PASS");
 }
 
 TEST(ParticleEffectPreview, InvisibleFailsOnAnEmptyEffect){
-    const qa::Json empty = reportOf(requestOf(R"({"version": 1, "duration": 1, "looping": false, "modules": [
+    const qa::Json empty = reportOf(particleEffectPreviewRequestOf(R"({"version": 1, "duration": 1, "looping": false, "modules": [
         {"type": "main", "startLifetime": 1}, {"type": "emission", "rateOverTime": 0}]})"));
     const qa::Json& invisible = checkOf(empty, "invisible");
     EXPECT_EQ(invisible["status"], "FAIL");
     EXPECT_EQ(invisible["limited_by"], "No particle was alive during the run.");
     EXPECT_EQ(empty["verdict"], "FAIL");
-    EXPECT_EQ(checkOf(reportOf(requestOf(burst(50, 100))), "invisible")["status"], "PASS");
+    EXPECT_EQ(checkOf(reportOf(particleEffectPreviewRequestOf(burst(50, 100))), "invisible")["status"], "PASS");
 }
 
 TEST(ParticleEffectPreview, PopWarnsWhenParticlesDieOpaque){
     // every particle of the burst dies in the same tick at full alpha
-    EXPECT_EQ(checkOf(reportOf(requestOf(burst(100, 1000))), "pop")["status"], "WARN");
+    EXPECT_EQ(checkOf(reportOf(particleEffectPreviewRequestOf(burst(100, 1000))), "pop")["status"], "WARN");
     // the same, faded out over their life
     const std::string fade = R"(, {"type": "colorOverLifetime", "color": {"mode": "gradient", "gradient": {"colorKeys": [[0, 1, 1, 1], [1, 1, 1, 1]],
         "alphaKeys": [[0, 1], [1, 0]]}}})";
-    const qa::Json faded = reportOf(requestOf(burst(100, 1000, fade)));
+    const qa::Json faded = reportOf(particleEffectPreviewRequestOf(burst(100, 1000, fade)));
     EXPECT_EQ(checkOf(faded, "pop")["status"], "PASS") << checkOf(faded, "pop").dump();
 }
 
 TEST(ParticleEffectPreview, NeverEndsWarnsOnAOneShotThatOutlivesTheRun){
-    const qa::Json ended = reportOf(requestOf(burst(10, 100)));
+    const qa::Json ended = reportOf(particleEffectPreviewRequestOf(burst(10, 100)));
     EXPECT_EQ(checkOf(ended, "never_ends")["status"], "PASS");
     EXPECT_NEAR(ended["metrics"]["count"]["ended_at"].get<double>(), 1.0, 0.1);
 
     const std::string forever = R"({"version": 1, "duration": 1, "looping": false, "modules": [
         {"type": "main", "startLifetime": 100, "startSpeed": 0}, {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 5}]}]})";
-    const qa::Json lasting = reportOf(requestOf(forever));
+    const qa::Json lasting = reportOf(particleEffectPreviewRequestOf(forever));
     EXPECT_EQ(checkOf(lasting, "never_ends")["status"], "WARN");
 
-    const qa::Json looping = reportOf(requestOf(R"({"version": 1, "duration": 1, "looping": true, "modules": [{"type": "main"}]})"));
+    const qa::Json looping = reportOf(particleEffectPreviewRequestOf(R"({"version": 1, "duration": 1, "looping": true, "modules": [{"type": "main"}]})"));
     EXPECT_EQ(checkOf(looping, "never_ends")["status"], "SKIP");
 }
 
@@ -131,13 +131,13 @@ TEST(ParticleEffectPreview, StackedQuadsCountAsLayers){
     const std::string stacked = R"({"version": 1, "duration": 1, "looping": false, "seed": 3, "modules": [
         {"type": "main", "startLifetime": 2, "startSpeed": 0, "startSize": 1},
         {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 30}]}, {"type": "shape", "enabled": false}]})";
-    const qa::Json report = reportOf(requestOf(stacked));
+    const qa::Json report = reportOf(particleEffectPreviewRequestOf(stacked));
     EXPECT_NEAR(report["metrics"]["overdraw"]["peak_layers"].get<double>(), 30.0, 0.01);
     const qa::Json& budget = checkOf(report, "overdraw_budget");
     EXPECT_EQ(budget["status"], "FAIL") << "30 layers over mobile's 2 x 8";
     EXPECT_EQ(budget["threshold_source"], "particles.qa.overdraw_mobile");
 
-    ParticlePreviewRequest desktop = requestOf(stacked);
+    ParticlePreviewRequest desktop = particleEffectPreviewRequestOf(stacked);
     desktop.platform = "desktop";
     EXPECT_EQ(checkOf(reportOf(desktop), "overdraw_budget")["status"], "WARN") << "over desktop's 20, under 40";
 }
@@ -200,10 +200,10 @@ TEST(ParticleEffectChecks, InvisibleFollowsTheWholeRunNotTheCells){
 }
 
 TEST(ParticleEffectPreview, CutRunsSkipNeverEndsAndVariableStepsCostAFrameTick){
-    ParticlePreviewRequest cut = requestOf(burst(10, 100));
+    ParticlePreviewRequest cut = particleEffectPreviewRequestOf(burst(10, 100));
     cut.seconds = 0.5;
     EXPECT_EQ(checkOf(reportOf(cut), "never_ends")["status"], "SKIP");
-    const qa::Json variable = reportOf(requestOf(R"({"version": 1, "duration": 1, "looping": true, "tickRate": 0, "modules": [{"type": "main"}]})"));
+    const qa::Json variable = reportOf(particleEffectPreviewRequestOf(R"({"version": 1, "duration": 1, "looping": true, "tickRate": 0, "modules": [{"type": "main"}]})"));
     EXPECT_DOUBLE_EQ(variable["metrics"]["cost"]["ticks_per_frame"].get<double>(), 1.0);
 }
 
@@ -211,14 +211,14 @@ TEST(ParticleEffectChecks, DistortionWithNoSceneColourWarns){
     // S91 R14: where there is no scene colour a distorting particle draws undistorted, and the
     // checks say so: a sprite sheet's transparent cells have no scene behind them
     const std::string distorting = burst(10, 100, R"(, {"type": "renderer", "shader": "library:particles", "shaderFeatures": ["DISTORTION"]})");
-    EXPECT_EQ(checkOf(reportOf(requestOf(burst(10, 100))), "distortion")["status"], "PASS") << "nothing distorts";
+    EXPECT_EQ(checkOf(reportOf(particleEffectPreviewRequestOf(burst(10, 100))), "distortion")["status"], "PASS") << "nothing distorts";
 
-    const qa::Json live = checkOf(reportOf(requestOf(distorting)), "distortion");
+    const qa::Json live = checkOf(reportOf(particleEffectPreviewRequestOf(distorting)), "distortion");
     EXPECT_EQ(live["status"], "PASS") << live.dump();
     EXPECT_EQ(live["measured"]["distorting"], qa::Json::array({"test"}));
     EXPECT_EQ(live["measured"]["scene_color"], true);
 
-    ParticlePreviewRequest sheet = requestOf(distorting);
+    ParticlePreviewRequest sheet = particleEffectPreviewRequestOf(distorting);
     sheet.transparentCells = true;
     const qa::Json row = checkOf(reportOf(sheet), "distortion");
     EXPECT_EQ(row["status"], "WARN") << row.dump();

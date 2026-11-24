@@ -5,6 +5,8 @@
 #include "registry/SortingLayers.h"
 #include "pixelart/BitmapFont.h"
 #include "component/ButtonComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "audio/SourceEffectEdit.h"
 #include "component/Transform.h"
 #include "util/ProjectChecks.h"
 #include "component/CanvasGroupComponent.h"
@@ -2662,6 +2664,13 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         if (ref && isPlayerLayerBlendProperty(ctx.component, name)) {
             return anim::layerBlendName(*static_cast<AnimationLayerBlend*>(ref));
         }
+        // an Audio Source's effects and their parameters (S97): small, read as the scene file has
+        // them, so a running source's list shows the values heard now (get_runtime_entity)
+        if (ref && ctx.component == ComponentType::AudioSourceComponent) {
+            const reflect::ComponentDesc* desc = reflect::find(ctx.component);
+            const reflect::FieldDesc* field = desc ? reflect::findField(*desc, name) : nullptr;
+            if (field && field->ops && field->ops->toYaml) return yamlToJson(field->ops->toYaml(*field, ref, reflect::EncodeContext{}));
+        }
         bool found = false;
         return readYamlProperty(ctx, name, found);
     }
@@ -2707,7 +2716,7 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
             }
             return *static_cast<int*>(ref);
         case PropertyType::Enum: {
-            const int value = *static_cast<int*>(ref);
+            const int value = (int)readPropertyInteger(property, ref);
             const EnumOptions* options = enumOptions(ctx.component, name);
             return options ? enumToJson(value, *options) : Json(value);
         }
@@ -4184,6 +4193,15 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 error = label + " has no " + componentLabel + " component; add it first (add_component, or create_entity's "
                         "components).";
                 return false;
+            }
+            // an Audio Source's own effects name types and parameters a source has (S97 REQ-42)
+            if (component == ComponentType::AudioSourceComponent) {
+                const AudioSourceComponent& audio = scene->scene->getComponent<AudioSourceComponent>(entity);
+                for (const Change& change : changes) {
+                    if (change.component == component && !SourceEffectEdit::checkChange(audio, change.property, change.op, change.value, error)) {
+                        return false;
+                    }
+                }
             }
             if (component == ComponentType::RectTransformComponent) {
                 for (const Change& change : changes) {

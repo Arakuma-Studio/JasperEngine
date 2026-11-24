@@ -167,7 +167,7 @@ TEST_F(DataAssetTest, ListPropertiesOfScriptsReachLuaAndRoundTrip) {
     const ScriptProperty decodedItem = StreamTestAccess::decodeScriptProperty(StreamTestAccess::encodeScriptProperty(item));
     EXPECT_EQ(decodedItem.ptrTypeName, "ItemData");
     EXPECT_EQ(decodedItem.assetType, DataAsset::ASSET_TYPE);
-    // cooked: the scripts, then each property's element type; content cooked before 1.6 ends
+    // cooked: the scripts, then each property's element type; content cooked before 1.7 ends
     // after the scripts and still reads
     ScriptEntry entry;
     entry.type = ScriptType::LUA;

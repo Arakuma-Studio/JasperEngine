@@ -37,7 +37,7 @@ namespace {
     // a path as a CMake argument holds it (forward slashes)
     std::string cmakePath(const fs::path& path) { return path.generic_string(); }
 
-    void writeFile(const fs::path& path, const std::string& text, bool executable = false) {
+    void emscriptenSdkWriteFile(const fs::path& path, const std::string& text, bool executable = false) {
         fs::create_directories(path.parent_path());
         std::ofstream(path, std::ios::binary) << text;
         if (executable) fs::permissions(path, fs::perms::owner_all, fs::perm_options::replace);
@@ -49,13 +49,13 @@ namespace {
             root = fs::temp_directory_path() / ("jasper-emsdk-" + name + "-" + std::to_string(::getpid())) / "emsdk & co";
             fs::remove_all(root.parent_path());
             emscripten = root / "upstream" / "emscripten";
-            writeFile(emscripten / "emcc", "#!/bin/sh\n", true);
-            writeFile(emscripten / "emcmake", "#!/bin/sh\n", true);
-            writeFile(emscripten / "cmake" / "Modules" / "Platform" / "Emscripten.cmake", "# toolchain\n");
-            writeFile(root / "emsdk.py", "# emsdk\n");
+            emscriptenSdkWriteFile(emscripten / "emcc", "#!/bin/sh\n", true);
+            emscriptenSdkWriteFile(emscripten / "emcmake", "#!/bin/sh\n", true);
+            emscriptenSdkWriteFile(emscripten / "cmake" / "Modules" / "Platform" / "Emscripten.cmake", "# toolchain\n");
+            emscriptenSdkWriteFile(root / "emsdk.py", "# emsdk\n");
             node = root / "node" / "20.18.0_64bit" / "bin" / ("node" + exe);
-            writeFile(node, "#!/bin/sh\n", true);
-            writeFile(root / "node" / "18.0.0_64bit" / "bin" / ("node" + exe), "#!/bin/sh\n", true);
+            emscriptenSdkWriteFile(node, "#!/bin/sh\n", true);
+            emscriptenSdkWriteFile(root / "node" / "18.0.0_64bit" / "bin" / ("node" + exe), "#!/bin/sh\n", true);
         }
         ~FakeEmsdk() {
             std::error_code ec;
@@ -63,7 +63,7 @@ namespace {
         }
     };
 
-    bool contains(const std::vector<std::string>& list, const std::string& item) {
+    bool emscriptenSdkContains(const std::vector<std::string>& list, const std::string& item) {
         return std::find(list.begin(), list.end(), item) != list.end();
     }
 
@@ -72,7 +72,7 @@ namespace {
 TEST(EmscriptenSdk, DetectsTheLayoutAndConfigWithoutEmcmake) {
     FakeEmsdk sdk("layout");
     // the config emsdk writes: NODE_JS relative to emsdk_path (the config's folder)
-    writeFile(sdk.root / ".emscripten", "import os\nemsdk_path = os.path.dirname(os.getenv('EM_CONFIG')).replace('\\\\', '/')\n"
+    emscriptenSdkWriteFile(sdk.root / ".emscripten", "import os\nemsdk_path = os.path.dirname(os.getenv('EM_CONFIG')).replace('\\\\', '/')\n"
                                        "NODE_JS = emsdk_path + '/node/20.18.0_64bit/bin/node" + exe + "'\nLLVM_ROOT = emsdk_path + '/upstream/bin'\n");
     ::unsetenv("EM_CONFIG");
     const EmsdkInfo info = Exporter::detectEmsdk(sdk.root.string());
@@ -96,8 +96,8 @@ TEST(EmscriptenSdk, DetectsTheLayoutAndConfigWithoutEmcmake) {
     std::string error;
     const auto args = Exporter::emscriptenCMakeArgs(info, false, Exporter::emscriptenEnvironment(info), error);
     EXPECT_TRUE(error.empty()) << error;
-    EXPECT_TRUE(contains(args, "-DCMAKE_TOOLCHAIN_FILE=" + cmakePath(info.toolchainFile))) << ::testing::PrintToString(args);
-    EXPECT_TRUE(contains(args, "-DCMAKE_CROSSCOMPILING_EMULATOR=" + cmakePath(sdk.node))) << ::testing::PrintToString(args);
+    EXPECT_TRUE(emscriptenSdkContains(args, "-DCMAKE_TOOLCHAIN_FILE=" + cmakePath(info.toolchainFile))) << ::testing::PrintToString(args);
+    EXPECT_TRUE(emscriptenSdkContains(args, "-DCMAKE_CROSSCOMPILING_EMULATOR=" + cmakePath(sdk.node))) << ::testing::PrintToString(args);
 
     // the SDK environment: its folders first on PATH, EMSDK / EM_CONFIG / EMSDK_NODE
     const auto env = Exporter::emscriptenEnvironment(info);
@@ -113,7 +113,7 @@ TEST(EmscriptenSdk, DetectsTheLayoutAndConfigWithoutEmcmake) {
 
 TEST(EmscriptenSdk, NodeFromTheNewestInstallWhenTheConfigSaysNothingUsable) {
     FakeEmsdk sdk("noconfig");
-    writeFile(sdk.root / ".emscripten", "NODE_JS = os.path.expanduser(os.getenv('NODE', 'node'))\n");
+    emscriptenSdkWriteFile(sdk.root / ".emscripten", "NODE_JS = os.path.expanduser(os.getenv('NODE', 'node'))\n");
     ::unsetenv("EM_CONFIG");
     const EmsdkInfo info = Exporter::detectEmsdk(sdk.root.string());
     ASSERT_TRUE(info.found);
@@ -124,19 +124,19 @@ TEST(EmscriptenSdk, NodeFromTheNewestInstallWhenTheConfigSaysNothingUsable) {
 }
 
 TEST(HttpClientProtocols, OnlyHttpAndHttpsAreFetched) {
-    if (!htmlui::HttpClient::available()) GTEST_SKIP() << "no curl";
+    if (!jasperengine::editor::htmlui::HttpClient::available()) GTEST_SKIP() << "no curl";
     ::unsetenv("JASPERENGINE_IMPORT_MIRROR");
     const fs::path secret = fs::temp_directory_path() / ("jasper-curl-secret-" + std::to_string(::getpid()));
-    writeFile(secret, "TOP-SECRET-CONTENT");
-    htmlui::HttpClient client;
+    emscriptenSdkWriteFile(secret, "TOP-SECRET-CONTENT");
+    jasperengine::editor::htmlui::HttpClient client;
     const std::string urls[] = {"file://" + secret.string(), "FILE://" + secret.string(), "ftp://127.0.0.1:1/x",
                                 "dict://127.0.0.1:1/x", "gopher://127.0.0.1:1/x"};
     for (const std::string& url : urls) {
-        const htmlui::HttpResponse response = client.get(url);
+        const jasperengine::editor::htmlui::HttpResponse response = client.get(url);
         EXPECT_FALSE(response.ok()) << url;
         EXPECT_FALSE(response.error.empty()) << url;
         std::string body;
-        if (htmlui::HttpClient::readBody(response, body)) {
+        if (jasperengine::editor::htmlui::HttpClient::readBody(response, body)) {
             EXPECT_EQ(body.find("TOP-SECRET"), std::string::npos) << url;
         }
     }
@@ -167,9 +167,9 @@ TEST(EmscriptenSdk, WindowsGeneratorFollowsEmcmake) {
     const fs::path base = fs::temp_directory_path() / ("jasper-emgen-" + std::to_string(::getpid()));
     fs::remove_all(base);
     const fs::path ninjaDir = base / "ninja dir", makeDir = base / "mingw", batDir = base / "bat";
-    writeFile(ninjaDir / "ninja.exe", "x");
-    writeFile(makeDir / "mingw32-make.exe", "x");
-    writeFile(batDir / "ninja.bat", "x");
+    emscriptenSdkWriteFile(ninjaDir / "ninja.exe", "x");
+    emscriptenSdkWriteFile(makeDir / "mingw32-make.exe", "x");
+    emscriptenSdkWriteFile(batDir / "ninja.bat", "x");
     std::string error;
     using Env = CommandRunner::Environment;
     // a generator given, or CMAKE_GENERATOR in the environment: nothing added (CMake reads it)
@@ -192,10 +192,10 @@ TEST(EmscriptenSdk, WebBuildsRefuseFileNamesCmdWouldExpand) {
     const fs::path base = fs::temp_directory_path() / ("jasper-emtree-" + std::to_string(::getpid()));
     fs::remove_all(base);
     const fs::path assets = base / "assets", lua = base / "lua";
-    writeFile(assets / "ok & fine (1)" / "hero!.png", "x");
-    writeFile(lua / "main.lua", "x");
+    emscriptenSdkWriteFile(assets / "ok & fine (1)" / "hero!.png", "x");
+    emscriptenSdkWriteFile(lua / "main.lua", "x");
     EXPECT_EQ(Exporter::webTreePathRefusal({assets, lua, base / "missing"}), "");
-    writeFile(lua / "deep" / "er" / "50%off.lua", "x");
+    emscriptenSdkWriteFile(lua / "deep" / "er" / "50%off.lua", "x");
     const std::string refusal = Exporter::webTreePathRefusal({assets, lua});
     EXPECT_NE(refusal.find("rename"), std::string::npos) << refusal;
     EXPECT_NE(refusal.find("50%off.lua"), std::string::npos) << refusal;
@@ -219,10 +219,10 @@ TEST(EmscriptenSdk, AcceptsTheEmscripten6WindowsLayout) {
     const fs::path base = fs::temp_directory_path() / ("jasper-emsdk6-" + std::to_string(::getpid()));
     fs::remove_all(base);
     const fs::path emscripten = base / "emsdk" / "upstream" / "emscripten";
-    writeFile(emscripten / "emcc.exe", "MZ");
-    writeFile(emscripten / "emcmake.exe", "MZ");
-    writeFile(emscripten / "cmake" / "Modules" / "Platform" / "Emscripten.cmake", "# toolchain\n");
-    writeFile(base / "emsdk" / "emsdk.py", "# emsdk\n");
+    emscriptenSdkWriteFile(emscripten / "emcc.exe", "MZ");
+    emscriptenSdkWriteFile(emscripten / "emcmake.exe", "MZ");
+    emscriptenSdkWriteFile(emscripten / "cmake" / "Modules" / "Platform" / "Emscripten.cmake", "# toolchain\n");
+    emscriptenSdkWriteFile(base / "emsdk" / "emsdk.py", "# emsdk\n");
     const EmsdkInfo info = Exporter::detectEmsdk((base / "emsdk").string());
     EXPECT_TRUE(info.found);
     EXPECT_EQ(fs::path(info.emscripten), emscripten);

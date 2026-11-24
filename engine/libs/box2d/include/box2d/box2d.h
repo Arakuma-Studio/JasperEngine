@@ -184,6 +184,15 @@ B2_API void b2World_SetMaximumLinearSpeed( b2WorldId worldId, float maximumLinea
 /// Get the maximum linear speed. Usually in m/s.
 B2_API float b2World_GetMaximumLinearSpeed( b2WorldId worldId );
 
+// JASPER PATCH: max rotation
+/// Set the maximum rotation of a body per time step, in radians. Bodies with allowFastRotation are not capped.
+/// @see b2WorldDef::maximumRotation
+B2_API void b2World_SetMaximumRotation( b2WorldId worldId, float maximumRotation );
+
+// JASPER PATCH: max rotation
+/// Get the maximum rotation of a body per time step, in radians.
+B2_API float b2World_GetMaximumRotation( b2WorldId worldId );
+
 /// Enable/disable constraint warm starting. Advanced feature for testing. Disabling
 /// sleeping greatly reduces stability and provides no performance gain.
 B2_API void b2World_EnableWarmStarting( b2WorldId worldId, bool flag );
@@ -430,6 +439,10 @@ B2_API void b2Body_SetBullet( b2BodyId bodyId, bool flag );
 
 /// Is this body a bullet?
 B2_API bool b2Body_IsBullet( b2BodyId bodyId );
+
+// JASPER PATCH: max rotation
+/// Let this body bypass the world's maximum rotation per step (b2BodyDef::allowFastRotation), for wheels.
+B2_API void b2Body_SetAllowFastRotation( b2BodyId bodyId, bool flag );
 
 /// Enable/disable sensor events on all shapes.
 /// @see b2ShapeDef::enableSensorEvents

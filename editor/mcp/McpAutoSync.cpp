@@ -17,6 +17,7 @@
 #include "util/FileUtils.h"
 #include "util/Util.h"
 #include "util/ScriptReloadService.h"
+#include "util/ThreadCpuTime.h"
 #include "reload/HotReloadService.h"
 #include "util/FileUtils.h"
 
@@ -149,20 +150,6 @@ bool hashFile(const std::string& path, uint64_t size, uint64_t& out) {
 
 double msSince(std::chrono::steady_clock::time_point start) {
     return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-}
-
-// CPU time of the calling thread in ms: what a scan costs, whatever the host's load
-double threadCpuMs() {
-#ifdef _WIN32
-    FILETIME created, exited, kernel, user;
-    if (!GetThreadTimes(GetCurrentThread(), &created, &exited, &kernel, &user)) return 0.0;
-    auto ticks = [](const FILETIME& t) { return (static_cast<uint64_t>(t.dwHighDateTime) << 32) | t.dwLowDateTime; };
-    return static_cast<double>(ticks(kernel) + ticks(user)) / 10000.0;
-#else
-    struct timespec ts;
-    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) != 0) return 0.0;
-    return static_cast<double>(ts.tv_sec) * 1000.0 + static_cast<double>(ts.tv_nsec) / 1e6;
-#endif
 }
 
 std::string lowerExtension(const std::string& name) {

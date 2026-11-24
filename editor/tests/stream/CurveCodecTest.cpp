@@ -25,7 +25,7 @@ using namespace jasperengine::test;
 
 namespace {
 
-    Curve sample() {
+    Curve curveCodecSample() {
         Curve curve({{0.0f, 0.0f, 0.0f, 2.5f}, {0.4f, 1.25f, 0.1f, INFINITY}, {1.0f, 1.0f, 0.0f, 0.0f}});
         curve.keys[0].setBothModes(CurveTangentMode::ClampedAuto);
         curve.keys[2].setInMode(CurveTangentMode::Linear);
@@ -36,7 +36,7 @@ namespace {
 }
 
 TEST(CurveCodec, YamlIsByteStable) {
-    const Curve curve = sample();
+    const Curve curve = curveCodecSample();
     const std::string first = YAML::Dump(curvecodec::curveToYaml(curve));
     Curve read;
     std::string reason;
@@ -122,7 +122,7 @@ TEST(CurveCodec, OldTweenSceneLoadsALinearCurve) {
 TEST(CurveCodec, CppLiteral) {
     const Curve plain = Curve::linear(0.0f, 0.0f, 1.0f, 1.0f);
     EXPECT_EQ(curvecodec::curveCppLiteral(plain), "Curve({CurveKey{0.0f, 0.0f, 1.0f, 1.0f, 0}, CurveKey{1.0f, 1.0f, 1.0f, 1.0f, 0}})");
-    const std::string wrapped = curvecodec::curveCppLiteral(sample());
+    const std::string wrapped = curvecodec::curveCppLiteral(curveCodecSample());
     EXPECT_NE(wrapped.find("CurveWrapMode::PingPong"), std::string::npos) << wrapped;
     EXPECT_NE(wrapped.find("INFINITY"), std::string::npos) << wrapped;
 }

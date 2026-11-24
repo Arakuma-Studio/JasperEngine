@@ -60,6 +60,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerAnimationQualityTools, "Clip quality: reports and key reduction", "animation"},   // S77
     {registerAnimatorTools, "Animator: controllers, masks, montages, live control", "animation"},   // S21
     {registerPlacementTools, "Physics placement", "editor_ux"},   // upstream (Physics Placement)
+    {registerPhysicsQueryTools, "Physics queries", "physics"},   // S96
     {registerHtmlUiTools, "HTML/CSS UI", ""},
     {registerUiEffectTools, "HTML/CSS UI", ""},
     {registerEcsTools, "ECS: statistics, system schedule and queries", "diagnostics"},   // S07

@@ -4,6 +4,7 @@
 #include "TitleSheetExport.h"
 
 #include "EditorVersion.h"
+#include "titleart/TitleArtRenderHost.h"
 #include "titleart/interchange/TitleExport.h"
 #include "stb_rect_pack.h"
 
@@ -269,7 +270,10 @@ namespace {
                     texsynth::Image pixels;
                     TitleRectI covers;
                     std::string frameError;
-                    if (!renderer->render(name, f->times[i], c->image.scale, TitleRectI{}, pixels, covers, frameError)) return c->fail("pose_failed", frameError);
+                    const uint64_t waits = TitleArtRenderHost::editor().notReadyCount();
+                    if (!renderer->render(name, f->times[i], c->image.scale, TitleRectI{}, pixels, covers, frameError)) {
+                        return TitleArtRenderHost::editor().notReadyCount() != waits ? c->later() : c->fail("pose_failed", frameError);
+                    }
                     const TitleRectI box = alphaBox(pixels, c->image.alphaThreshold);
                     if (!box.empty()) {
                         const double scale = c->image.scale;
@@ -291,7 +295,10 @@ namespace {
                     c->then([c, f, i, renderer, name] {
                         TitleRenderedImage frame;
                         std::string frameError;
-                        if (!renderer->render(name, f->times[i], f->scale, f->frame, frame.image, frame.frame, frameError)) return c->fail("pose_failed", frameError);
+                        const uint64_t waits = TitleArtRenderHost::editor().notReadyCount();
+                        if (!renderer->render(name, f->times[i], f->scale, f->frame, frame.image, frame.frame, frameError)) {
+                            return TitleArtRenderHost::editor().notReadyCount() != waits ? c->later() : c->fail("pose_failed", frameError);
+                        }
                         frame.pxScale = (float)f->scale;
                         f->pixels[i] = c->cutFrame(frame, f->frame, f->scale, f->width, f->height);
                         return true;

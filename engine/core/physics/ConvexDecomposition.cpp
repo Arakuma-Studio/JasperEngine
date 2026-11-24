@@ -881,12 +881,17 @@ struct ConvexDecompositionCache::Impl {
         }
     }
 
+    // Caller holds the state lock.
+    void rememberLocked(uint64_t key, std::vector<ConvexHullPoints> hulls){
+        memory[key] = std::move(hulls);
+        failures.erase(key);
+        diskMisses.erase(key);
+    }
+
     void storeHulls(uint64_t key, const std::vector<ConvexHullPoints>& hulls){
         {
             std::lock_guard<std::mutex> lock(mutex);
-            memory[key] = hulls;
-            failures.erase(key);
-            diskMisses.erase(key);
+            rememberLocked(key, hulls);
         }
         writeToDisk(key, hulls);
     }
@@ -918,13 +923,17 @@ struct ConvexDecompositionCache::Impl {
                 ok = false;
                 error = CANCELLED;
             }
+            // saved before it is READY, and READY in the same lock as the pending count and the
+            // completion version: a caller that sees the key READY sees the job finished
             if (ok){
-                storeHulls(job.key, hulls);
+                writeToDisk(job.key, hulls);
             }
 
             lock.lock();
             running = false;
-            if (!ok){
+            if (ok){
+                rememberLocked(job.key, std::move(hulls));
+            }else{
                 failures[job.key] = error;
             }
             completions++;
@@ -965,6 +974,12 @@ bool ConvexDecompositionCache::find(uint64_t key, std::vector<ConvexHullPoints>&
             impl->diskMisses.insert(key);
         }
         return false;
+    }
+    // a pending key's own job makes it READY when it finishes: the file it has just saved is
+    // returned, not cached ahead of it
+    if (impl->pendingLocked(key)){
+        out = std::move(hulls);
+        return true;
     }
     out = impl->memory.emplace(key, std::move(hulls)).first->second;
     return true;

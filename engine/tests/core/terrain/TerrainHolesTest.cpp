@@ -22,7 +22,7 @@ using namespace terraintest;
 
 namespace {
 
-    constexpr int SIZE = 16;
+    constexpr int TERRAIN_HOLES_SIZE = 16;
 
     Op cut(float x, float z, float radius) {
         return circleOp(OpType::CutHoles, x, z, radius);
@@ -52,8 +52,8 @@ TEST(TerrainHoles, IsHoleTexelRule) {
 }
 
 TEST(TerrainHoles, CutFillAndQuery) {
-    RawMapStore store(static_cast<float>(SIZE), 8.0f);
-    addFlatHeight(store, SIZE, 0.5f);
+    RawMapStore store(static_cast<float>(TERRAIN_HOLES_SIZE), 8.0f);
+    addFlatHeight(store, TERRAIN_HOLES_SIZE, 0.5f);
     const uint64_t heightBefore = mapHash(store, HEIGHT);
     EXPECT_FALSE(store.format(HOLE).exists);
 
@@ -61,7 +61,7 @@ TEST(TerrainHoles, CutFillAndQuery) {
     const TerrainOpResult first = apply(store, cut(0.0f, 0.0f, 3.0f));
     ASSERT_TRUE(first.ok) << first.error;
     ASSERT_TRUE(store.format(HOLE).exists);
-    EXPECT_EQ(store.format(HOLE).bounds.w, SIZE);
+    EXPECT_EQ(store.format(HOLE).bounds.w, TERRAIN_HOLES_SIZE);
     EXPECT_EQ(store.format(HOLE).channels, 1);
     EXPECT_EQ(store.format(HOLE).bitsPerChannel, 8);
     const OpEntry& entry = first.ops[0];
@@ -69,7 +69,7 @@ TEST(TerrainHoles, CutFillAndQuery) {
     EXPECT_FALSE(entry.mapRemoved);
     EXPECT_GT(entry.changedTexels, 0);
     EXPECT_EQ(entry.holeTexels, entry.changedTexels);
-    EXPECT_FLOAT_EQ(entry.holeFraction, static_cast<float>(entry.holeTexels) / (SIZE * SIZE));
+    EXPECT_FLOAT_EQ(entry.holeFraction, static_cast<float>(entry.holeTexels) / (TERRAIN_HOLES_SIZE * TERRAIN_HOLES_SIZE));
     EXPECT_FALSE(first.hasWarning("holes_not_rendered")) << "T3 removed it: holes draw";
     ASSERT_EQ(first.createdMaps.size(), 1u);
     EXPECT_EQ(first.createdMaps[0], HOLE);
@@ -85,13 +85,13 @@ TEST(TerrainHoles, CutFillAndQuery) {
 
     // The texel-centre rule: isHole at a centre answers what the cut wrote
     const std::vector<uint8_t> holes = readAllBytes(store, HOLE);
-    const HoleMapView view{holes.data(), SIZE, SIZE};
-    for (int y = 0; y < SIZE; y++) {
-        for (int x = 0; x < SIZE; x++) {
+    const HoleMapView view{holes.data(), TERRAIN_HOLES_SIZE, TERRAIN_HOLES_SIZE};
+    for (int y = 0; y < TERRAIN_HOLES_SIZE; y++) {
+        for (int x = 0; x < TERRAIN_HOLES_SIZE; x++) {
             const float localX = static_cast<float>(x) + 0.5f - 8.0f;
             const float localZ = static_cast<float>(y) + 0.5f - 8.0f;
             const bool expected = localX * localX + localZ * localZ <= 9.0f;
-            EXPECT_EQ(isHole(view, (localX + 8.0f) / SIZE, (localZ + 8.0f) / SIZE), expected) << x << ", " << y;
+            EXPECT_EQ(isHole(view, (localX + 8.0f) / TERRAIN_HOLES_SIZE, (localZ + 8.0f) / TERRAIN_HOLES_SIZE), expected) << x << ", " << y;
         }
     }
 
@@ -123,8 +123,8 @@ TEST(TerrainHoles, CutFillAndQuery) {
 }
 
 TEST(TerrainHoles, NoMapMeansNothingToFillAndAnExcludedCutMakesNone) {
-    RawMapStore store(static_cast<float>(SIZE), 8.0f);
-    addFlatHeight(store, SIZE, 0.5f);
+    RawMapStore store(static_cast<float>(TERRAIN_HOLES_SIZE), 8.0f);
+    addFlatHeight(store, TERRAIN_HOLES_SIZE, 0.5f);
     Op fill;
     fill.type = OpType::FillHoles;
     const TerrainOpResult result = apply(store, fill);
@@ -144,8 +144,8 @@ TEST(TerrainHoles, NoMapMeansNothingToFillAndAnExcludedCutMakesNone) {
 }
 
 TEST(TerrainHoles, DryRunChangesNothing) {
-    RawMapStore store(static_cast<float>(SIZE), 8.0f);
-    addFlatHeight(store, SIZE, 0.5f);
+    RawMapStore store(static_cast<float>(TERRAIN_HOLES_SIZE), 8.0f);
+    addFlatHeight(store, TERRAIN_HOLES_SIZE, 0.5f);
     OpOptions dry;
     dry.dryRun = true;
     const TerrainOpResult preview = apply(store, cut(0.0f, 0.0f, 3.0f), dry);
@@ -156,8 +156,8 @@ TEST(TerrainHoles, DryRunChangesNothing) {
 }
 
 TEST(TerrainHoles, CutThenFillInOneListLeavesNoMap) {
-    RawMapStore store(static_cast<float>(SIZE), 8.0f);
-    addFlatHeight(store, SIZE, 0.5f);
+    RawMapStore store(static_cast<float>(TERRAIN_HOLES_SIZE), 8.0f);
+    addFlatHeight(store, TERRAIN_HOLES_SIZE, 0.5f);
     Op fill;
     fill.type = OpType::FillHoles;
     const Op list[] = {cut(0.0f, 0.0f, 3.0f), fill};
@@ -169,8 +169,8 @@ TEST(TerrainHoles, CutThenFillInOneListLeavesNoMap) {
 }
 
 TEST(TerrainHoles, RemoveThenCutInOneListKeepsTheMap) {
-    RawMapStore store(static_cast<float>(SIZE), 8.0f);
-    addFlatHeight(store, SIZE, 0.5f);
+    RawMapStore store(static_cast<float>(TERRAIN_HOLES_SIZE), 8.0f);
+    addFlatHeight(store, TERRAIN_HOLES_SIZE, 0.5f);
     ASSERT_TRUE(apply(store, cut(0.0f, 0.0f, 3.0f)).ok);
     Op fill;
     fill.type = OpType::FillHoles;
@@ -179,13 +179,13 @@ TEST(TerrainHoles, RemoveThenCutInOneListKeepsTheMap) {
     ASSERT_TRUE(result.ok) << result.error;
     ASSERT_TRUE(store.format(HOLE).exists);
     const std::vector<uint8_t> bytes = readAllBytes(store, HOLE);
-    EXPECT_EQ(bytes[static_cast<size_t>(8) * SIZE + 8], 255) << "the old hole went with the fill";
-    EXPECT_EQ(bytes[static_cast<size_t>(12) * SIZE + 12], 0) << "the new one is there";
+    EXPECT_EQ(bytes[static_cast<size_t>(8) * TERRAIN_HOLES_SIZE + 8], 255) << "the old hole went with the fill";
+    EXPECT_EQ(bytes[static_cast<size_t>(12) * TERRAIN_HOLES_SIZE + 12], 0) << "the new one is there";
 }
 
 TEST(TerrainHoles, AStoreMayKeepTheMap) {
-    KeepingStore store(static_cast<float>(SIZE), 8.0f);
-    addFlatHeight(store, SIZE, 0.5f);
+    KeepingStore store(static_cast<float>(TERRAIN_HOLES_SIZE), 8.0f);
+    addFlatHeight(store, TERRAIN_HOLES_SIZE, 0.5f);
     ASSERT_TRUE(apply(store, cut(0.0f, 0.0f, 3.0f)).ok);
     ASSERT_TRUE(store.format(HOLE).exists);
 
@@ -203,8 +203,8 @@ TEST(TerrainHoles, AStoreMayKeepTheMap) {
 }
 
 TEST(TerrainHoles, RegionKinds) {
-    RawMapStore store(static_cast<float>(SIZE), 8.0f);
-    addFlatHeight(store, SIZE, 0.5f);
+    RawMapStore store(static_cast<float>(TERRAIN_HOLES_SIZE), 8.0f);
+    addFlatHeight(store, TERRAIN_HOLES_SIZE, 0.5f);
 
     // A mask's threshold is 0.5: of a 2-texel mask, only the side at or above it
     Op masked;
@@ -216,8 +216,8 @@ TEST(TerrainHoles, RegionKinds) {
     masked.shape.maskPixels = {1.0f, 0.0f};
     ASSERT_TRUE(apply(store, masked).ok);
     const std::vector<uint8_t> holes = readAllBytes(store, HOLE);
-    EXPECT_EQ(holes[static_cast<size_t>(2) * SIZE + 8], 0) << "the mask's bright row";
-    EXPECT_EQ(holes[static_cast<size_t>(14) * SIZE + 8], 255) << "the mask's dark row";
+    EXPECT_EQ(holes[static_cast<size_t>(2) * TERRAIN_HOLES_SIZE + 8], 0) << "the mask's bright row";
+    EXPECT_EQ(holes[static_cast<size_t>(14) * TERRAIN_HOLES_SIZE + 8], 255) << "the mask's dark row";
 
     // A polygon's inside
     Op fill;
@@ -234,20 +234,20 @@ TEST(TerrainHoles, RegionKinds) {
 }
 
 TEST(TerrainHoles, QueryStaysDefinedUnderAHole) {
-    RawMapStore store(static_cast<float>(SIZE), 8.0f);
-    addFlatHeight(store, SIZE, 0.5f);
+    RawMapStore store(static_cast<float>(TERRAIN_HOLES_SIZE), 8.0f);
+    addFlatHeight(store, TERRAIN_HOLES_SIZE, 0.5f);
     ASSERT_TRUE(apply(store, cut(0.0f, 0.0f, 3.0f)).ok);
     const std::vector<uint8_t> heights = readAllBytes(store, HEIGHT);
     const std::vector<uint8_t> holes = readAllBytes(store, HOLE);
     SurfaceView view;
     view.pixels = heights.data();
-    view.width = SIZE;
-    view.height = SIZE;
+    view.width = TERRAIN_HOLES_SIZE;
+    view.height = TERRAIN_HOLES_SIZE;
     view.channels = 1;
     view.bytesPerChannel = 2;
-    view.size = static_cast<float>(SIZE);
+    view.size = static_cast<float>(TERRAIN_HOLES_SIZE);
     view.maxHeight = 8.0f;
-    view.holes = HoleMapView{holes.data(), SIZE, SIZE};
+    view.holes = HoleMapView{holes.data(), TERRAIN_HOLES_SIZE, TERRAIN_HOLES_SIZE};
     const SurfaceSample under = sampleSurface(view, 0.5f, 0.5f);
     EXPECT_TRUE(under.hole);
     EXPECT_NEAR(under.height, 4.0f, 1e-3f);
@@ -284,15 +284,15 @@ TEST(TerrainLayers, ChannelMappingIsTheOnlyRoute) {
 }
 
 TEST(TerrainLayers, RemapMovesPaintAcrossBlendMaps) {
-    RawMapStore store(static_cast<float>(SIZE), 8.0f);
-    addFlatHeight(store, SIZE, 0.5f);
-    store.addMap(blend(0), SIZE, SIZE, 4, 8);
+    RawMapStore store(static_cast<float>(TERRAIN_HOLES_SIZE), 8.0f);
+    addFlatHeight(store, TERRAIN_HOLES_SIZE, 0.5f);
+    store.addMap(blend(0), TERRAIN_HOLES_SIZE, TERRAIN_HOLES_SIZE, 4, 8);
     // layer 1 holds a gradient
     std::vector<float> weights;
-    for (int i = 0; i < SIZE * SIZE; i++) {
+    for (int i = 0; i < TERRAIN_HOLES_SIZE * TERRAIN_HOLES_SIZE; i++) {
         weights.insert(weights.end(), {0.0f, static_cast<float>(i % 251) / 250.0f, 0.0f, 1.0f});
     }
-    store.write(blend(0), TexelRect{0, 0, SIZE, SIZE}, weights);
+    store.write(blend(0), TexelRect{0, 0, TERRAIN_HOLES_SIZE, TERRAIN_HOLES_SIZE}, weights);
     const std::vector<uint8_t> before = readAllBytes(store, blend(0));
 
     // Layer 1 moves to index 5; 2, 3, 4 and 5 each move down one
@@ -306,21 +306,21 @@ TEST(TerrainLayers, RemapMovesPaintAcrossBlendMaps) {
 
     const std::vector<uint8_t> first = readAllBytes(store, blend(0));
     const std::vector<uint8_t> second = readAllBytes(store, blend(1));
-    for (size_t i = 0; i < static_cast<size_t>(SIZE) * SIZE; i++) {
+    for (size_t i = 0; i < static_cast<size_t>(TERRAIN_HOLES_SIZE) * TERRAIN_HOLES_SIZE; i++) {
         ASSERT_EQ(second[i * 4 + 2], before[i * 4 + 1]) << "layer 1's weights, exactly, at layer 5";
         ASSERT_EQ(first[i * 4 + 1], 0) << "the old place holds the old layer 2, which was empty";
     }
 }
 
 TEST(TerrainLayers, RemapRoundTripIsTheOriginalPaint) {
-    RawMapStore store(static_cast<float>(SIZE), 8.0f);
-    addFlatHeight(store, SIZE, 0.5f);
-    store.addMap(blend(0), SIZE, SIZE, 4, 8);
+    RawMapStore store(static_cast<float>(TERRAIN_HOLES_SIZE), 8.0f);
+    addFlatHeight(store, TERRAIN_HOLES_SIZE, 0.5f);
+    store.addMap(blend(0), TERRAIN_HOLES_SIZE, TERRAIN_HOLES_SIZE, 4, 8);
     std::vector<float> weights;
-    for (int i = 0; i < SIZE * SIZE; i++) {
+    for (int i = 0; i < TERRAIN_HOLES_SIZE * TERRAIN_HOLES_SIZE; i++) {
         weights.insert(weights.end(), {static_cast<float>(i % 7) / 7.0f, static_cast<float>(i % 5) / 5.0f, static_cast<float>(i % 3) / 3.0f, 1.0f});
     }
-    store.write(blend(0), TexelRect{0, 0, SIZE, SIZE}, weights);
+    store.write(blend(0), TexelRect{0, 0, TERRAIN_HOLES_SIZE, TERRAIN_HOLES_SIZE}, weights);
     const std::vector<uint8_t> before = readAllBytes(store, blend(0));
 
     Op forward;

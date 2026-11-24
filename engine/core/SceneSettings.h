@@ -13,6 +13,7 @@
 #include "math/Vector3.h"
 #include "math/Vector4.h"
 #include "util/CanvasScaler.h"
+#include "physics/WorldSettings.h"
 #include <string>
 #include <vector>
 
@@ -499,6 +500,10 @@ namespace jasperengine{
         // the fixed step (seconds) while this is the main scene; 0 = Project Settings > Time's
         // (a load applies it: Engine::applySceneUpdateTime)
         float fixedTimestep = 0.0f;
+        // the 2D world's units, rotation cap and tuning and the 3D solver (owned by PhysicsSystem
+        // as gravity; saved as flat keys, physicsWorldSettingFields)
+        ScenePhysics2DSettings physics2DWorld;
+        ScenePhysics3DSettings physics3DWorld;
 
         // fixed game resolution: when enabled and this scene is the Engine main scene, the main
         // camera renders into an offscreen framebuffer of this size, upscaled to the view rect

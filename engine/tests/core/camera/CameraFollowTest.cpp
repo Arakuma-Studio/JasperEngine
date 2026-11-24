@@ -24,7 +24,7 @@ using namespace jasperengine;
 
 namespace {
 
-    constexpr float DT = 1.0f / 60.0f;
+    constexpr float CAMERA_FOLLOW_DT = 1.0f / 60.0f;
 
     // Unity's Mathf.SmoothDamp, in double, written from its documented source
     double unitySmoothDamp(double current, double target, double& velocity, double smoothTime, double dt){
@@ -72,7 +72,7 @@ namespace {
             return f;
         }
 
-        void step(float dt = DT, int count = 1){
+        void step(float dt = CAMERA_FOLLOW_DT, int count = 1){
             for (int i = 0; i < count; i++) scene.getSystem<CameraControlSystem>()->step(dt, dt);
         }
 
@@ -89,14 +89,14 @@ TEST(FollowMath, SmoothDampMatchesUnity){
     double referenceVelocity = 0.0;
     float value = 0.0f;
     for (int i = 0; i < 12; i++){
-        value = CameraControlSystem::smoothDamp(value, 1.0f, velocity, 0.2f, 0.0f, DT);
-        reference = unitySmoothDamp(reference, 1.0, referenceVelocity, 0.2, DT);
+        value = CameraControlSystem::smoothDamp(value, 1.0f, velocity, 0.2f, 0.0f, CAMERA_FOLLOW_DT);
+        reference = unitySmoothDamp(reference, 1.0, referenceVelocity, 0.2, CAMERA_FOLLOW_DT);
     }
     EXPECT_NEAR(value, reference, 1e-4);
     EXPECT_NEAR(velocity, referenceVelocity, 1e-3);
     // a max speed caps the step
     float capped = 0.0f, cappedVelocity = 0.0f;
-    capped = CameraControlSystem::smoothDamp(capped, 100.0f, cappedVelocity, 0.2f, 1.0f, DT);
+    capped = CameraControlSystem::smoothDamp(capped, 100.0f, cappedVelocity, 0.2f, 1.0f, CAMERA_FOLLOW_DT);
     EXPECT_LT(capped, 0.2f);
 }
 
@@ -112,7 +112,7 @@ TEST_F(Follow, DampedFollowCoversTheSmoothDampFraction){
     double reference = 0.0, referenceVelocity = 0.0;
     for (int i = 0; i < 12; i++){
         step();
-        reference = unitySmoothDamp(reference, 1.0, referenceVelocity, 0.2, DT);
+        reference = unitySmoothDamp(reference, 1.0, referenceVelocity, 0.2, CAMERA_FOLLOW_DT);
     }
     EXPECT_NEAR(position(cam).x, reference, 1e-4);
     EXPECT_GT(position(cam).x, 0.3f);
@@ -257,7 +257,7 @@ TEST_F(Follow, MissingTargetHoldsAndSnapPlacesRigidly){
     EXPECT_EQ(position(cam), Vector3(100, 0, 0) + scene.getComponent<CameraFollowComponent>(cam).offset);
     scene.destroyEntity(target);
     cameratest::takeWarnings();
-    step(DT, 3);
+    step(CAMERA_FOLLOW_DT, 3);
     EXPECT_EQ(cameratest::takeWarnings().size(), 1u);
     EXPECT_NE(position(cam), placed);
 }

@@ -51,7 +51,7 @@ namespace {
         return LunaSVGRuntime::rasterize(svg.data(), svg.size(), 1.0f, true, pixels, w, h);
     }
 
-    void writeText(const fs::path& p, const std::string& text) {
+    void svgImportWriteText(const fs::path& p, const std::string& text) {
         fs::create_directories(p.parent_path());
         std::ofstream out(p, std::ios::binary);
         out << text;
@@ -165,7 +165,7 @@ TEST_F(SvgImportTest, ShapeModeNotes) {
 
 TEST_F(SvgImportTest, OpWritesPartsAndLayers) {
     const fs::path outside = root / "downloads" / "logo.svg";
-    writeText(outside, LOGO);
+    svgImportWriteText(outside, LOGO);
     const titleart::TitleArtDoc doc = emptyDoc();
     TitleOpsResult r = TitleArtOps::apply(doc, Json{{"op", "import_svg"}, {"file", outside.string()}, {"split", "groups"}}, options());
     ASSERT_TRUE(r.ok) << r.error();
@@ -189,13 +189,13 @@ TEST_F(SvgImportTest, OpWritesPartsAndLayers) {
 
     // inside the assets: referenced in place, parts beside it; importing again writes nothing new
     const fs::path inside = root / "assets" / "art" / "badge.svg";
-    writeText(inside, LOGO);
+    svgImportWriteText(inside, LOGO);
     r = TitleArtOps::apply(doc, Json{{"op", "import_svg"}, {"file", "assets/art/badge.svg"}, {"split", "paths"}, {"name", "Badge"}}, options());
     ASSERT_TRUE(r.ok) << r.error();
     ASSERT_EQ(r.files.size(), 5u);
     for (const TitleOpFile& f : r.files) {
         EXPECT_EQ(fs::path(f.path).parent_path(), inside.parent_path());
-        writeText(fs::path(f.path), f.content);
+        svgImportWriteText(fs::path(f.path), f.content);
     }
     EXPECT_EQ(r.doc.root["layers"][0]["name"], "Badge");
     r = TitleArtOps::apply(doc, Json{{"op", "import_svg"}, {"file", inside.string()}, {"split", "paths"}}, options());
@@ -218,7 +218,7 @@ TEST_F(SvgImportTest, OpWritesPartsAndLayers) {
 
 TEST_F(SvgImportTest, NotesNameTheirLayer) {
     const fs::path file = root / "assets" / "art" / "hi.svg";
-    writeText(file, WITH_TEXT);
+    svgImportWriteText(file, WITH_TEXT);
     const TitleOpsResult r = TitleArtOps::apply(emptyDoc(), Json{{"op", "import_svg"}, {"file", file.string()}, {"mode", "shape"}}, options());
     ASSERT_TRUE(r.ok) << r.error();
     const Json& notes = r.reports["0"]["notes"];
@@ -229,7 +229,7 @@ TEST_F(SvgImportTest, NotesNameTheirLayer) {
 
 TEST_F(SvgImportTest, CreateFromMakesADocument) {
     const fs::path file = root / "downloads" / "badge.svg";
-    writeText(file, LOGO);
+    svgImportWriteText(file, LOGO);
     TitleCreateRequest request;
     request.sourcePath = file.string();
     request.documentPath = (root / "assets" / "titles" / "badge.titleart").string();
@@ -246,6 +246,6 @@ TEST_F(SvgImportTest, CreateFromMakesADocument) {
     EXPECT_EQ(out.files.size(), 1u);
     EXPECT_TRUE(out.doc.root["exposed"].empty());
     // a file that is not SVG is not taken
-    writeText(file, "{\"format\": \"something\"}");
+    svgImportWriteText(file, "{\"format\": \"something\"}");
     EXPECT_FALSE(TitleArtOps::createFrom(request, out, code, error));
 }

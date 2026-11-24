@@ -81,7 +81,9 @@ Put state-dependent choices in the description or in the handler's error message
   see goes in `next` in `structuredContent` on a success and in the text on an error: a client like Claude Code shows the
   model only that part of each.
 - Work that can take longer than about 1 s runs as an `McpJobs` job: the call returns
-  `job_id` and `status` (`running|succeeded|failed|cancelled`), polled with `get_job`.
+  `job_id` and `status` (`running|succeeded|failed|cancelled`), polled with `get_job`. The images
+  of its result go on the job too (`McpJob::setImages`), so `get_job` returns them with a
+  succeeded job's result, as the call does when it waits for the end.
 - Images are `ToolResult` images (base64 in MCP, files in the CLI), never base64 in text.
 - Annotations (`readOnly`, `destructive`, `idempotent`) and `activity` (the busy policy) are
   accurate; `allowedWhilePlaying` is set on purpose for every tool that edits.

@@ -292,7 +292,7 @@ namespace {
             fs::remove_all(headless().dir.parent_path(), ec);
         }
     };
-    [[maybe_unused]] ::testing::Environment* const tempProjectCleanup = ::testing::AddGlobalTestEnvironment(new TempProjectCleanup);
+    [[maybe_unused]] ::testing::Environment* const animationClipControllerTempProjectCleanup = ::testing::AddGlobalTestEnvironment(new TempProjectCleanup);
 
     void writeAll(const fs::path& path, const std::string& content) {
         fs::create_directories(path.parent_path());

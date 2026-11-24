@@ -230,7 +230,7 @@ namespace {
 #endif
         }
 
-        static std::vector<uint8_t> readTarget(){
+        static std::vector<uint8_t> readInstancingTarget(){
             Framebuffer& target = GpuEnvironment::target();
             std::vector<uint8_t> rgba;
             readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba);
@@ -246,13 +246,13 @@ TEST_F(InstancingGoldenGpu, BatchedFrameMatchesUnbatched){
 
     Engine::setGpuInstancingEnabled(false);
     ASSERT_TRUE(render()) << "the scene never finished loading";
-    const std::vector<uint8_t> unbatched = readTarget();
+    const std::vector<uint8_t> unbatched = readInstancingTarget();
     EXPECT_EQ(SystemRender::getDrawBatchStats().instancedDraws, 0u);
 
     // the meshes load again with their batch variants
     Engine::setGpuInstancingEnabled(true);
     ASSERT_TRUE(render()) << "the batch variants never finished loading";
-    const std::vector<uint8_t> batched = readTarget();
+    const std::vector<uint8_t> batched = readInstancingTarget();
     const DrawBatchStats stats = SystemRender::getDrawBatchStats();
     std::printf("[instancing] %u instanced draws for %u draws, %llu uniform bytes kept; %u offered, split by pipeline %u, "
                 "elements %u, bindings %u (parts %x), uniforms %u (slots %x)\n", stats.instancedDraws, stats.batchedInstances,
@@ -291,7 +291,7 @@ TEST_F(InstancingGoldenGpu, CloneOfAnInstancedMeshLeavesTheOriginalsBatches){
     JASPER_REQUIRE_GPU();
     buildScene();
     ASSERT_TRUE(render()) << "the scene never finished loading";
-    const std::vector<uint8_t> before = readTarget();
+    const std::vector<uint8_t> before = readInstancingTarget();
     const Entity original = models[0]->getEntity();
     ASSERT_TRUE(batchLinked(scene.getComponent<MeshComponent>(original).submeshes[0]));
 
@@ -311,7 +311,7 @@ TEST_F(InstancingGoldenGpu, CloneOfAnInstancedMeshLeavesTheOriginalsBatches){
 
     EXPECT_TRUE(batchLinked(scene.getComponent<MeshComponent>(original).submeshes[0]));
     EXPECT_GT(SystemRender::getDrawBatchStats().instancedDraws, 0u);
-    const std::vector<uint8_t> after = readTarget();
+    const std::vector<uint8_t> after = readInstancingTarget();
     const size_t different = differentPixels(before, after);
     if (different > 0){
         const int width = (int)GpuEnvironment::target().getWidth();
@@ -330,7 +330,7 @@ TEST_F(InstancingGoldenGpu, BatchVariantsHeldOnlyWhileInstancing){
     JASPER_REQUIRE_GPU();
     buildScene();
     ASSERT_TRUE(render()) << "the scene never finished loading";
-    const std::vector<uint8_t> on = readTarget();
+    const std::vector<uint8_t> on = readInstancingTarget();
     auto heldAndBytes = [this](size_t& bytes){
         size_t held = 0;
         bytes = 0;
@@ -363,7 +363,7 @@ TEST_F(InstancingGoldenGpu, BatchVariantsHeldOnlyWhileInstancing){
     size_t bytesAgain = 0;
     EXPECT_EQ(heldAndBytes(bytesAgain), models.size());
     EXPECT_GT(SystemRender::getDrawBatchStats().instancedDraws, 0u);
-    EXPECT_EQ(differentPixels(on, readTarget()), 0u) << "pixels that differ after GPU Instancing went off and on";
+    EXPECT_EQ(differentPixels(on, readInstancingTarget()), 0u) << "pixels that differ after GPU Instancing went off and on";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -464,7 +464,7 @@ TEST_F(InstancingGoldenGpu, ShadowAndDepthPassesBatch){
     ASSERT_TRUE(renderWithPass("depth pre-pass")) << "the scene never finished loading, or the depth pre-pass never ran";
     const PassCounts shadowOff = passCounts("shadow");
     const PassCounts depthOff = passCounts("depth pre-pass");
-    const std::vector<uint8_t> frameOff = readTarget();
+    const std::vector<uint8_t> frameOff = readInstancingTarget();
     const std::vector<uint8_t> shadowImageOff = passImage("shadow", 4);
     // the control: the atlas read again, nothing changed
     const std::vector<uint8_t> shadowImageOffAgain = passImage("shadow", 4);
@@ -474,7 +474,7 @@ TEST_F(InstancingGoldenGpu, ShadowAndDepthPassesBatch){
     ASSERT_TRUE(renderWithPass("depth pre-pass")) << "the batch variants never finished loading, or the depth pre-pass never ran";
     const PassCounts shadowOn = passCounts("shadow");
     const PassCounts depthOn = passCounts("depth pre-pass");
-    const std::vector<uint8_t> frameOn = readTarget();
+    const std::vector<uint8_t> frameOn = readInstancingTarget();
     const std::vector<uint8_t> shadowImageOn = passImage("shadow", 4);
     const std::vector<uint8_t> depthImageOn = passImage("depth pre-pass", 0);
     std::printf("[instancing] shadow: %u draws (%u instances) off, %u (%u) on; depth pre-pass: %u (%u) off, %u (%u) on\n",
@@ -531,13 +531,13 @@ TEST_F(InstancingGoldenGpu, BatchedFrameMatchesUnderTiledLights){
     Engine::setGpuInstancingEnabled(false);
     ASSERT_TRUE(render()) << "the scene never finished loading";
     ASSERT_TRUE(scene.getSystem<RenderSystem>()->getLightingStats().tiledLights);
-    const std::vector<uint8_t> unbatched = readTarget();
+    const std::vector<uint8_t> unbatched = readInstancingTarget();
     EXPECT_EQ(SystemRender::getDrawBatchStats().instancedDraws, 0u);
 
     Engine::setGpuInstancingEnabled(true);
     ASSERT_TRUE(render()) << "the batch variants never finished loading";
     ASSERT_TRUE(scene.getSystem<RenderSystem>()->getLightingStats().tiledLights);
-    const std::vector<uint8_t> batched = readTarget();
+    const std::vector<uint8_t> batched = readInstancingTarget();
     const DrawBatchStats stats = SystemRender::getDrawBatchStats();
     const Submesh& first = scene.getComponent<MeshComponent>(models[0]->getEntity()).submeshes[0];
     ASSERT_TRUE(first.batch) << "the box holds no batch variants";
@@ -591,7 +591,7 @@ TEST_F(InstancingGoldenGpu, FadingMeshAmongBatchesMatchesUnbatched){
         *steady = mesh.submeshes[0].render.getAppliedPipelineId();
         sphere.setLodBias(biasCoarse);
         GpuEnvironment::drawFrames(15);
-        return readTarget();
+        return readInstancingTarget();
     };
 
     uint32_t steadyOff = 0;

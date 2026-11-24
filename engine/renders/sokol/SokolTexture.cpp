@@ -901,6 +901,10 @@ bool SokolTexture::createFramebufferTexture(
         img_desc.usage.resolve_attachment = true;
     }else{
         img_desc.usage.color_attachment = true;
+        // a 1-sample colour target is also what a multisampled pass resolves into (a camera's
+        // MSAA target resolves into whatever it draws to: SokolFramebuffer::getResolved), which
+        // sokol's validation asks the usage for; every backend makes the image the same
+        img_desc.usage.resolve_attachment = sampleCount <= 1;
     }
     img_desc.type = getTextureType(type);
     img_desc.width = width;

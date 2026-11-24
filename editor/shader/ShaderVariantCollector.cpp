@@ -602,8 +602,9 @@ namespace {
 
     class Collector {
     public:
-        Collector(Scene* scene, const std::vector<MeshShaderEnvironment>& environments, const std::vector<bool>& postColor, std::set<ShaderKey>& keys):
-            scene(scene), environments(environments), postColor(postColor), keys(keys) {}
+        Collector(Scene* scene, const std::vector<MeshShaderEnvironment>& environments, const std::vector<bool>& postColor, std::set<ShaderKey>& keys,
+                  const fs::path& projectRoot):
+            scene(scene), environments(environments), postColor(postColor), keys(keys), projectRoot(projectRoot) {}
 
         void collect(const editor::ShaderVariantContent& content){
             EntityRegistry* registry = content.registry;
@@ -667,7 +668,7 @@ namespace {
                             MeshComponent& live = const_cast<MeshComponent&>(*mesh);
                             const ShaderRef savedShader = live.customShader;
                             const std::vector<std::string> savedFeatures = live.submeshes[0].material.shaderFeatures;
-                            for (const std::vector<std::string>& features : jasperengine::editor::titleArtLiveFeatureSets(*title)){
+                            for (const std::vector<std::string>& features : jasperengine::editor::titleArtLiveFeatureSets(*title, projectRoot)){
                                 live.customShader = ShaderRef("library:title_fx_sprite");
                                 live.submeshes[0].material.shaderFeatures = features;
                                 collectMesh(registry, entity, live);
@@ -697,7 +698,7 @@ namespace {
                     if (registry->isComponentRegistered<TitleArtRendererComponent>()){
                         if (const TitleArtRendererComponent* title = registry->findComponent<TitleArtRendererComponent>(entity)){
                             // (an Image the title lends its image to: the textured variant)
-                            for (const std::vector<std::string>& features : jasperengine::editor::titleArtLiveFeatureSets(*title)){
+                            for (const std::vector<std::string>& features : jasperengine::editor::titleArtLiveFeatureSets(*title, projectRoot)){
                                 const uint16_t id = shaderId(ShaderRef("library:title_fx"), ShaderType::UI, features, ui->blendMode);
                                 insertKeys(ShaderType::UI, ShaderPool::getUIProperties(true, false, false, true), id);
                             }
@@ -770,6 +771,8 @@ namespace {
         // the post colour bit's states, for the points, lines and sky (meshes: environments)
         const std::vector<bool>& postColor;
         std::set<ShaderKey>& keys;
+        // where a Title Art Renderer's document is read (its animations' variants)
+        const fs::path& projectRoot;
 
         // The effective custom shader: the component's, the scene default, or built-in, with
         // the features the component enables and the define of its blend mode
@@ -1534,7 +1537,7 @@ void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const S
                                                                                   shadowHQStates(scene, scriptsSetShadowQuality),
                                                                                   scriptsSetLitQuality, mobilePbrTier, terrainTiers);
 
-    Collector collector(scene, environments, postColor, keys);
+    Collector collector(scene, environments, postColor, keys, projectRoot);
     collector.collect(sceneContent);
     for (const ShaderVariantContent& prefab : prefabContents){
         if (prefab.registry){

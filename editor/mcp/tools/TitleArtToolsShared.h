@@ -104,6 +104,9 @@ namespace jasperengine::editor::mcp::titletools {
     // starts a render as a job and replies with its result merged into `extra` (render_title,
     // edit_title {render}); `textPrefix` leads the summary
     void startRender(const CallPtr& call, RenderSpec spec, Json extra, const std::string& textPrefix = {});
+    // the same render as a task to run (null when the arguments failed the call); `extra` may
+    // still change until the render ends
+    std::shared_ptr<FrameTask> renderTask(const CallPtr& call, RenderSpec spec, std::shared_ptr<Json> extra, const std::string& textPrefix);
 
     // the handlers of TitleArtToolsRender.cpp
     void renderTitleTool(const CallPtr& call);

@@ -570,12 +570,12 @@ Per package, before merging:
 
 ### Integration
 
-- **Cooked scene format.** `main` reads and writes 1.5; this spec takes 1.6 (WP-5: script list
-  properties, their element types a tail after a Script component's scripts) and 1.7 (WP-3: the
-  scene's Fixed Timestep), contrary to REQ-37's "no version bump": the cooked format is
-  positional, so a new value is a new minor (the YAML scene and project keys stay optional, with
-  defaults, unversioned). The reader takes 1.5 to 1.7. Other open PRs of the program (S92, S96)
-  also take 1.6: whichever lands second renumbers its minors above the one on `main`.
+- **Cooked scene format.** `main` reads and writes 1.6 (S96 took 1.6); this spec takes 1.7 (WP-5:
+  script list properties, their element types a tail after a Script component's scripts) and 1.8
+  (WP-3: the scene's Fixed Timestep, after S96's physics world settings), contrary to REQ-37's "no
+  version bump": the cooked format is positional, so a new value is a new minor (the YAML scene and
+  project keys stay optional, with defaults, unversioned). The reader takes 1.5 to 1.8. Another PR
+  landing first renumbers these minors above the one on `main`.
 - **The LuaBridge workaround stays until S92 lands.** WP-1 left `engine/libs/luabridge3/LuaBridge.h`
   untouched (S92 owns its patch) and hardens LuaBridge's class tables from
   `LuaBinding.cpp` (`hardenClassTables`) instead. S92 fixes the same crashes inside LuaBridge;
@@ -640,7 +640,7 @@ Per package, before merging:
   that holds them (cycles handled), not lazily per field: a lazy proxy would break `pairs` and `#list`.
 - **Stored type name** is `data_asset`; `assetType = "dataasset"` is accepted as an alias.
 - **Lists are for Lua scripts and data classes only**, not C++ `DPROPERTY` fields.
-- **Cooked format:** element types are written after the scripts, so content cooked at 1.5 still reads.
+- **Cooked format:** element types are written after the scripts, so content cooked at 1.5 or 1.6 still reads.
 
 ### WP-6 String Tables
 

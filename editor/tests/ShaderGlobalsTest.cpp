@@ -55,7 +55,7 @@ namespace {
         return value;
     }
 
-    ShaderUniform member(const std::string& name, ShaderUniformType type, unsigned int offset, unsigned int count = 1) {
+    ShaderUniform shaderGlobalsMember(const std::string& name, ShaderUniformType type, unsigned int offset, unsigned int count = 1) {
         ShaderUniform uniform;
         uniform.name = "globals." + name;
         uniform.type = type;
@@ -77,10 +77,10 @@ namespace {
         block.slot = 3;
         block.sizeBytes = 240;
         block.flattened = false;
-        block.uniforms = {member("f", ShaderUniformType::FLOAT, 0), member("v2", ShaderUniformType::FLOAT2, 8),
-                          member("v3", ShaderUniformType::FLOAT3, 16), member("v4", ShaderUniformType::FLOAT4, 32),
-                          member("m", ShaderUniformType::MAT4, 48), member("fa", ShaderUniformType::FLOAT, 112, 4),
-                          member("va", ShaderUniformType::FLOAT4, 176, 4)};
+        block.uniforms = {shaderGlobalsMember("f", ShaderUniformType::FLOAT, 0), shaderGlobalsMember("v2", ShaderUniformType::FLOAT2, 8),
+                          shaderGlobalsMember("v3", ShaderUniformType::FLOAT3, 16), shaderGlobalsMember("v4", ShaderUniformType::FLOAT4, 32),
+                          shaderGlobalsMember("m", ShaderUniformType::MAT4, 48), shaderGlobalsMember("fa", ShaderUniformType::FLOAT, 112, 4),
+                          shaderGlobalsMember("va", ShaderUniformType::FLOAT4, 176, 4)};
         stage.uniformblocks.push_back(block);
         data.stages.push_back(stage);
         return data;
@@ -612,11 +612,11 @@ void surfaceVertex(vec3 worldPosition, vec3 worldNormal, vec4 color, vec2 uv) {
         ASSERT_TRUE(layout) << name;
         layout->update();
         for (const ShaderUniform& uniform : block->uniforms) {
-            const std::string member = ShaderData::getUniformShortName(uniform.name);
-            Vector4 expected = leading(member);
+            const std::string shaderGlobalsMember = ShaderData::getUniformShortName(uniform.name);
+            Vector4 expected = leading(shaderGlobalsMember);
             for (int c = 0; c < 4; c++) {
                 const float want = c == 0 ? expected.x : c == 1 ? expected.y : c == 2 ? expected.z : expected.w;
-                EXPECT_EQ(floatAt(layout->bytes, uniform.offset + c * 4), want) << name << " " << member << "[" << c << "]";
+                EXPECT_EQ(floatAt(layout->bytes, uniform.offset + c * 4), want) << name << " " << shaderGlobalsMember << "[" << c << "]";
             }
         }
         EXPECT_EQ(floatAt(layout->bytes, 0), -2.0f) << name << ": light 0's x first";

@@ -6,7 +6,7 @@
 // per frame) with the exporters' documented encodings: ASCII FBX meshes (every UV set, normals,
 // tangents, binormals), glTF meshes (tinygltf), EXR textures (FloatImage's writeExr), 8-bit PNGs
 // (stb), Unity .mat YAML, the legacy data JSON and OpenVAT's remap_info.json. Each import is
-// decoded back from our payload with vat::vatTexelIndex and compared with the ground truth
+// decoded back from our payload with jasperengine::vat::vatTexelIndex and compared with the ground truth
 // (positions within 1e-4 relative to the motion's size, normals within 1e-3).
 // The SideFX tutorial exports (VAT3_Houdini/VAT_Example_Files, read only, never copied) are
 // imported when present (JASPER_VAT_SIDEFX_EXAMPLES or the default path) and checked against the
@@ -54,7 +54,7 @@ namespace {
     // every mesh vertex of a soft import against the truth (matched by rest position)
     void expectSoft(const ev::VatImportResult& r, const SoftTruth& truth, double posTol, double nrmTol, const std::string& what) {
         ASSERT_TRUE(r.ok()) << what << ": " << issues(r);
-        ASSERT_EQ(r.data.mode, vat::VatMode::Vertices) << what;
+        ASSERT_EQ(r.data.mode, jasperengine::vat::VatMode::Vertices) << what;
         ASSERT_EQ(r.data.layout.vertices, (int)truth.rest.size()) << what;
         ASSERT_EQ(r.data.layout.samples, (int)truth.pos.size()) << what;
         double scale = 0.0;
@@ -78,7 +78,7 @@ namespace {
         }
     }
 
-    ev::VatImportSpec specFor(const fs::path& path) {
+    ev::VatImportSpec vatImportSpecFor(const fs::path& path) {
         ev::VatImportSpec spec;
         spec.path = path.string();
         spec.precision = "float";
@@ -125,7 +125,7 @@ TEST(VatImport, SoftFromMaterialUnity) {
     const fs::path root = freshDir("soft-mat");
     SoftOptions opt;
     const SoftTruth truth = writeSoft(root, "Wave", opt);
-    const ev::VatImportResult r = ev::importVat(specFor(root));
+    const ev::VatImportResult r = ev::importVat(vatImportSpecFor(root));
     expectSoft(r, truth, 1e-4, 1e-3, "soft from .mat");
     EXPECT_EQ(r.report.houdiniMode, ev::HoudiniMode::Soft);
     EXPECT_EQ(r.report.target, "unity");
@@ -172,19 +172,19 @@ TEST(VatImport, SoftFromMaterialUnity) {
 TEST(VatImport, SoftWritesFilesThatReadBack) {
     const fs::path root = freshDir("soft-encode");
     writeSoft(root, "Wave", SoftOptions());
-    ev::VatImportSpec spec = specFor(root / "geo" / "Wave_mesh.fbx");
+    ev::VatImportSpec spec = vatImportSpecFor(root / "geo" / "Wave_mesh.fbx");
     spec.precision = "auto";
     ev::VatImportResult r = ev::importVat(spec);
     ASSERT_TRUE(r.ok()) << issues(r);
-    EXPECT_EQ(r.data.layout.precision, vat::VatPrecision::Half);   // small offsets: half is within the tolerance
+    EXPECT_EQ(r.data.layout.precision, jasperengine::vat::VatPrecision::Half);   // small offsets: half is within the tolerance
     ev::VatEncodedFiles files;
     std::string error;
     ASSERT_TRUE(ev::encodeVatImport(r, (root / "Wave.vat").string(), files, &error)) << error;
-    const vat::VatParseResult parsed = vat::parseVat(files.vatText);
+    const jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(files.vatText);
     ASSERT_TRUE(parsed.ok()) << parsed.error;
     EXPECT_EQ(parsed.data->recipe.sources[0].kind, "houdini_vat3");
-    vat::VatGlbContents glb;
-    ASSERT_TRUE(vat::readVatGlb(files.glbBytes, glb, &error)) << error;
+    jasperengine::vat::VatGlbContents glb;
+    ASSERT_TRUE(jasperengine::vat::readVatGlb(files.glbBytes, glb, &error)) << error;
     EXPECT_EQ(glb.payload.bytes, r.payload.bytes);
     EXPECT_EQ(glb.layoutHash, parsed.data->layout.layoutHash);
     // the report's JSON form
@@ -202,7 +202,7 @@ TEST(VatImport, SoftFromDataJsonUnrealTarget) {
     opt.metadata = "json";
     opt.target = "unreal";
     const SoftTruth truth = writeSoft(root, "Cloth", opt);
-    const ev::VatImportResult r = ev::importVat(specFor(root / "data" / "Cloth_data.json"));
+    const ev::VatImportResult r = ev::importVat(vatImportSpecFor(root / "data" / "Cloth_data.json"));
     expectSoft(r, truth, 1e-4, 1e-3, "soft from data json, Unreal target");
     EXPECT_EQ(r.report.target, "unreal");
     EXPECT_EQ(r.data.clips[0].frames, 6);
@@ -216,7 +216,7 @@ TEST(VatImport, SoftFromMeshBoundsOnly) {
     opt.ur = 0.8;       // inactive columns on the right
     const SoftTruth truth = writeSoft(root, "Drape", opt);
     // without the target and the frame rate the import stops with the documented fixes
-    ev::VatImportResult r = ev::importVat(specFor(root));
+    ev::VatImportResult r = ev::importVat(vatImportSpecFor(root));
     EXPECT_TRUE(hasError(r, "unknown_target")) << issues(r);
     EXPECT_TRUE(hasError(r, "fps_unknown")) << issues(r);
     bool fixNamed = false;
@@ -224,7 +224,7 @@ TEST(VatImport, SoftFromMeshBoundsOnly) {
         if (e.kind == "unknown_target") fixNamed = e.fix.find("re-export with Target Engine = Unity, or pass axis") != std::string::npos;
     EXPECT_TRUE(fixNamed);
     // the frame count comes from the active height / the UV rows; fps and axis from the options
-    ev::VatImportSpec spec = specFor(root);
+    ev::VatImportSpec spec = vatImportSpecFor(root);
     spec.axis = "unity";
     spec.fps = 30.0f;
     r = ev::importVat(spec);
@@ -252,7 +252,7 @@ TEST(VatImport, SoftFloat32BoundsTrap) {
         opt.metadata = metadata;
         opt.float32Trap = true;
         const SoftTruth truth = writeSoft(root, "Trap", opt);
-        ev::VatImportSpec spec = specFor(root);
+        ev::VatImportSpec spec = vatImportSpecFor(root);
         if (opt.metadata == "bounds") {
             spec.axis = "unity";
             spec.fps = 24;
@@ -268,7 +268,7 @@ TEST(VatImport, SoftLdrSplitPositions) {
     opt.hdr = false;
     opt.twoPositions = true;
     const SoftTruth truth = writeSoft(root, "Ldr", opt);
-    const ev::VatImportResult r = ev::importVat(specFor(root));
+    const ev::VatImportResult r = ev::importVat(vatImportSpecFor(root));
     expectSoft(r, truth, 1e-4, 1e-3, "LDR, two position textures");
 }
 
@@ -277,7 +277,7 @@ TEST(VatImport, SoftHdrSplitPositions) {
     SoftOptions opt;
     opt.twoPositions = true;
     const SoftTruth truth = writeSoft(root, "Split", opt);
-    const ev::VatImportResult r = ev::importVat(specFor(root));
+    const ev::VatImportResult r = ev::importVat(vatImportSpecFor(root));
     expectSoft(r, truth, 1e-4, 1e-3, "HDR, two position textures");
 }
 
@@ -294,7 +294,7 @@ TEST(VatImport, SoftNodeTransformBaked) {
         for (V3& p : frame) p = place(p);
     for (auto& frame : truth.nrm)
         for (V3& n : frame) n = rot(turn, n);
-    const ev::VatImportResult r = ev::importVat(specFor(root));
+    const ev::VatImportResult r = ev::importVat(vatImportSpecFor(root));
     expectSoft(r, truth, 1e-4, 1e-3, "node transform");
     EXPECT_TRUE(hasWarning(r, "node_transform_baked"));
 }
@@ -304,7 +304,7 @@ TEST(VatImport, SoftCompressedNormals) {
     SoftOptions opt;
     opt.compressed = true;
     const SoftTruth truth = writeSoft(root, "Packed", opt);
-    const ev::VatImportResult r = ev::importVat(specFor(root));
+    const ev::VatImportResult r = ev::importVat(vatImportSpecFor(root));
     expectSoft(r, truth, 1e-4, 1e-3, "compressed normals");
     // the tangent: the mesh's, made perpendicular to the decoded normal
     for (size_t v = 0; v < r.mesh.vertexCount(); v++) {
@@ -321,10 +321,10 @@ TEST(VatImport, SoftMissingRotation) {
     bool reported = false;
     for (const auto& i : d.issues) reported = reported || (i.kind == "missing_file" && i.message.find("rotation texture not found") != std::string::npos);
     EXPECT_TRUE(reported) << ev::vatImportDetectionJson(d);
-    ev::VatImportResult r = ev::importVat(specFor(root));
+    ev::VatImportResult r = ev::importVat(vatImportSpecFor(root));
     ASSERT_TRUE(hasError(r, "missing_file")) << issues(r);
     EXPECT_NE(r.errors[0].fix.find("pass rotation"), std::string::npos);
-    ev::VatImportSpec spec = specFor(root);
+    ev::VatImportSpec spec = vatImportSpecFor(root);
     spec.normals = false;
     r = ev::importVat(spec);
     ASSERT_TRUE(r.ok()) << issues(r);
@@ -361,14 +361,14 @@ TEST(VatImport, Detection) {
 TEST(VatImport, InvalidSettings) {
     const fs::path root = freshDir("invalid");
     writeSoft(root, "Wave", SoftOptions());
-    ev::VatImportSpec spec = specFor(root);
+    ev::VatImportSpec spec = vatImportSpecFor(root);
     spec.preset = "phone";
     spec.precision = "double";
     spec.upsample = -1;
     const ev::VatImportResult r = ev::importVat(spec);
     EXPECT_EQ(r.errors.size(), 3u) << issues(r);
     for (const auto& e : r.errors) EXPECT_EQ(e.kind, "invalid_settings");
-    ev::VatImportSpec missing = specFor(root / "absent");
+    ev::VatImportSpec missing = vatImportSpecFor(root / "absent");
     EXPECT_TRUE(hasError(ev::importVat(missing), "not_found"));
 }
 
@@ -408,13 +408,13 @@ namespace {
 TEST(VatImport, RigidBonesWithUpsampling) {
     const fs::path root = freshDir("rigid");
     const RigidTruth truth = writeRigid(root, "Shatter", false);
-    ev::VatImportSpec spec = specFor(root);
+    ev::VatImportSpec spec = vatImportSpecFor(root);
     const ev::VatImportResult r = ev::importVat(spec);
     ASSERT_TRUE(r.ok()) << issues(r);
-    EXPECT_EQ(r.data.mode, vat::VatMode::Bones);
+    EXPECT_EQ(r.data.mode, jasperengine::vat::VatMode::Bones);
     EXPECT_EQ(r.data.layout.bones, 3);
     EXPECT_EQ(r.report.pieces, 3);
-    EXPECT_EQ(r.data.layout.precision, vat::VatPrecision::Float);
+    EXPECT_EQ(r.data.layout.precision, jasperengine::vat::VatPrecision::Float);
     // 140 degrees per frame needs at least 3 sub-steps of <= 60 degrees
     EXPECT_GE(r.report.upsample, 3);
     EXPECT_NE(r.report.modeReason.find("upsampled"), std::string::npos);
@@ -467,7 +467,7 @@ TEST(VatImport, RigidSmallestThreeIndices) {
 TEST(VatImport, RigidFixedUpsampleAndVertices) {
     const fs::path root = freshDir("rigid-options");
     const RigidTruth truth = writeRigid(root, "Shatter", false);
-    ev::VatImportSpec spec = specFor(root);
+    ev::VatImportSpec spec = vatImportSpecFor(root);
     spec.upsample = 4;
     ev::VatImportResult r = ev::importVat(spec);
     ASSERT_TRUE(r.ok()) << issues(r);
@@ -484,7 +484,7 @@ TEST(VatImport, RigidFixedUpsampleAndVertices) {
     spec.mode = "vertices";
     r = ev::importVat(spec);
     ASSERT_TRUE(r.ok()) << issues(r);
-    EXPECT_EQ(r.data.mode, vat::VatMode::Vertices);
+    EXPECT_EQ(r.data.mode, jasperengine::vat::VatMode::Vertices);
     EXPECT_TRUE(r.mesh.joints.empty());
     expectRigid(r, truth, 1e-4, "rigid as vertices");
     for (size_t v = 0; v < r.mesh.vertexCount(); v++) {
@@ -503,7 +503,7 @@ TEST(VatImport, RigidFixedUpsampleAndVertices) {
 TEST(VatImport, RigidSmoothTrajectories) {
     const fs::path root = freshDir("rigid-smooth");
     const RigidTruth truth = writeRigid(root, "Toss", true, 8);
-    const ev::VatImportResult r = ev::importVat(specFor(root));
+    const ev::VatImportResult r = ev::importVat(vatImportSpecFor(root));
     ASSERT_TRUE(r.ok()) << issues(r);
     EXPECT_GE(r.report.upsample, 2);   // the parabola between frames needs sub-steps
     // Houdini's interframe position is exact for a parabola from the second frame on (frame 1 lerps)
@@ -523,7 +523,7 @@ TEST(VatImport, RigidStretchByVelocityWarns) {
     }
     mat.replace(mat.find("_B_stretchByVel: 0"), 18, "_B_stretchByVel: 1");
     writeText(root / "unity" / "Shatter_mat.mat", mat);
-    const ev::VatImportResult r = ev::importVat(specFor(root));
+    const ev::VatImportResult r = ev::importVat(vatImportSpecFor(root));
     ASSERT_TRUE(r.ok()) << issues(r);
     EXPECT_TRUE(hasWarning(r, "stretch_by_velocity_ignored"));
 }
@@ -543,7 +543,7 @@ namespace {
         const int C = 12, N = 3, HP = 9, WL = 4;
         truth.pos.assign(N, {});
         truth.nrm.assign(N, {});
-        Image pos(WP, HP), rotTex(WP, HP), col(WP, HP), lookup(WL, 3 * N);
+        vatimportfixtures::Image pos(WP, HP), rotTex(WP, HP), col(WP, HP), lookup(WL, 3 * N);
         V3 lo(1e9, 1e9, 1e9), hi(-1e9, -1e9, -1e9);
         for (int f = 0; f < N; f++) {
             for (int c = 0; c < C; c++) {
@@ -598,7 +598,7 @@ namespace {
 
     void expectFluid(const ev::VatImportResult& r, const FluidTruth& truth, const std::string& what) {
         ASSERT_TRUE(r.ok()) << what << ": " << issues(r);
-        EXPECT_EQ(r.data.mode, vat::VatMode::Vertices);
+        EXPECT_EQ(r.data.mode, jasperengine::vat::VatMode::Vertices);
         ASSERT_EQ(r.data.clips.size(), 1u);
         EXPECT_TRUE(r.data.clips[0].restNone);
         EXPECT_FALSE(r.data.clips[0].interpolate);
@@ -622,7 +622,7 @@ namespace {
 TEST(VatImport, FluidLookup8Bit) {
     const fs::path root = freshDir("fluid8");
     const FluidTruth truth = writeFluid(root, "Splash", false);
-    const ev::VatImportResult r = ev::importVat(specFor(root));
+    const ev::VatImportResult r = ev::importVat(vatImportSpecFor(root));
     expectFluid(r, truth, "fluid, 8-bit lookup");
     EXPECT_TRUE(r.data.layout.colors);
 }
@@ -630,7 +630,7 @@ TEST(VatImport, FluidLookup8Bit) {
 TEST(VatImport, FluidLookup16Bit) {
     const fs::path root = freshDir("fluid16");
     const FluidTruth truth = writeFluid(root, "Splash", true);
-    expectFluid(ev::importVat(specFor(root)), truth, "fluid, HDR lookup (/ 2048)");
+    expectFluid(ev::importVat(vatImportSpecFor(root)), truth, "fluid, HDR lookup (/ 2048)");
 }
 
 TEST(VatImport, FluidLookupDepthMismatch) {
@@ -638,7 +638,7 @@ TEST(VatImport, FluidLookupDepthMismatch) {
     // with the numbers
     const fs::path root = freshDir("fluid-mismatch");
     writeFluid(root, "Splash", false, 256);
-    ASSERT_TRUE(ev::importVat(specFor(root)).ok());
+    ASSERT_TRUE(ev::importVat(vatImportSpecFor(root)).ok());
     std::string mat;
     {
         std::ifstream in(root / "unity" / "Splash_mat.mat");
@@ -651,7 +651,7 @@ TEST(VatImport, FluidLookupDepthMismatch) {
     const double minX = std::strtod(mat.substr(at + 12, end - at - 12).c_str(), nullptr);
     mat.replace(at, end - at, "_boundMinX: " + unityFloat(minX - 0.03));   // digit .3 -> .6
     writeText(root / "unity" / "Splash_mat.mat", mat);
-    const ev::VatImportResult r = ev::importVat(specFor(root));
+    const ev::VatImportResult r = ev::importVat(vatImportSpecFor(root));
     EXPECT_TRUE(hasError(r, "metadata_mismatch")) << issues(r);
 }
 
@@ -667,7 +667,7 @@ TEST(VatImport, SpritesAreRefused) {
     }
     mat.replace(mat.find(SOFT_GUID), 32, SPRITE_GUID);
     writeText(root / "unity" / "Sparks_mat.mat", mat);
-    const ev::VatImportResult r = ev::importVat(specFor(root));
+    const ev::VatImportResult r = ev::importVat(vatImportSpecFor(root));
     ASSERT_TRUE(hasError(r, "unsupported")) << issues(r);
     EXPECT_NE(r.errors[0].message.find("particle sprites are not supported yet"), std::string::npos);
 }
@@ -677,14 +677,14 @@ TEST(VatImport, TooLargeNamesTheDesktopPreset) {
     SoftOptions opt;
     opt.frames = 6;
     writeSoft(root, "Wave", opt);
-    ev::VatImportSpec spec = specFor(root);
+    ev::VatImportSpec spec = vatImportSpecFor(root);
     spec.preset = "mobile_web";
     const ev::VatImportResult ok = ev::importVat(spec);
     ASSERT_TRUE(ok.ok()) << issues(ok);
     // a rigid import with a forced huge upsampling overflows the preset
     const fs::path rigid = freshDir("too-large-rigid");
     writeRigid(rigid, "Shatter", false, 40);
-    ev::VatImportSpec big = specFor(rigid);
+    ev::VatImportSpec big = vatImportSpecFor(rigid);
     big.upsample = 1024;
     big.mode = "vertices";
     const ev::VatImportResult r = ev::importVat(big);
@@ -743,7 +743,7 @@ namespace {
             rows = p;
         }
         const int H = opt.normals == "packed" ? rows * 2 : rows;
-        Image vat(W, H), vnrm(W, H);
+        vatimportfixtures::Image vat(W, H), vnrm(W, H);
         truth.pos.assign(F, {});
         truth.nrm.assign(F, {});
         for (int i = 0; i < V; i++) truth.rest.push_back(toOurs(restBlender[i]));
@@ -906,12 +906,12 @@ namespace {
 TEST(VatImport, OpenVatPackedSingleRowGltf) {
     const fs::path dir = freshDir("openvat-packed");
     const OpenVatTruth truth = writeOpenVat(dir, "Flag", OpenVatOptions());
-    const ev::VatImportResult r = ev::importVat(specFor(dir / "Flag-remap_info.json"));
+    const ev::VatImportResult r = ev::importVat(vatImportSpecFor(dir / "Flag-remap_info.json"));
     expectOpenVat(r, truth, 1e-5, true, "packed, single row, glTF");
     // clips from the dict: 1-based scene frames made relative
     ASSERT_EQ(r.data.clips.size(), 2u);
-    const vat::VatClip* walk = &r.data.clips[0];
-    const vat::VatClip* jump = &r.data.clips[1];
+    const jasperengine::vat::VatClip* walk = &r.data.clips[0];
+    const jasperengine::vat::VatClip* jump = &r.data.clips[1];
     if (walk->name != "Walk") std::swap(walk, jump);
     EXPECT_EQ(walk->name, "Walk");
     EXPECT_EQ(walk->start, 0);
@@ -948,7 +948,7 @@ TEST(VatImport, OpenVatGltfKeepsUnlitAndFoliageTransmission) {
     OpenVatOptions opt;
     opt.unlitMaterial = true;
     const OpenVatTruth truth = writeOpenVat(dir, "Glow", opt);
-    const ev::VatImportResult r = ev::importVat(specFor(dir / "Glow-remap_info.json"));
+    const ev::VatImportResult r = ev::importVat(vatImportSpecFor(dir / "Glow-remap_info.json"));
     expectOpenVat(r, truth, 1e-5, true, "unlit material");
     ASSERT_EQ(r.mesh.materials.size(), 1u);
     EXPECT_EQ(r.mesh.materials[0].name, "Glow");
@@ -963,7 +963,7 @@ TEST(VatImport, OpenVatSeparateNormalsPowerOfTwo) {
     opt.normals = "separate";
     opt.singleRow = false;
     const OpenVatTruth truth = writeOpenVat(dir, "Flag", opt);
-    expectOpenVat(ev::importVat(specFor(dir)), truth, 1e-5, true, "separate normals, power-of-two blocks");
+    expectOpenVat(ev::importVat(vatImportSpecFor(dir)), truth, 1e-5, true, "separate normals, power-of-two blocks");
 }
 
 TEST(VatImport, OpenVatPackedPowerOfTwo) {
@@ -972,7 +972,7 @@ TEST(VatImport, OpenVatPackedPowerOfTwo) {
     opt.singleRow = false;
     opt.frames = 3;
     const OpenVatTruth truth = writeOpenVat(dir, "Flag", opt);
-    expectOpenVat(ev::importVat(specFor(dir)), truth, 1e-5, true, "packed normals, power-of-two blocks");
+    expectOpenVat(ev::importVat(vatImportSpecFor(dir)), truth, 1e-5, true, "packed normals, power-of-two blocks");
 }
 
 TEST(VatImport, OpenVatNoNormalsListAnimations) {
@@ -981,7 +981,7 @@ TEST(VatImport, OpenVatNoNormalsListAnimations) {
     opt.normals = "none";
     opt.animations = "list";
     const OpenVatTruth truth = writeOpenVat(dir, "Flag", opt);
-    const ev::VatImportResult r = ev::importVat(specFor(dir));
+    const ev::VatImportResult r = ev::importVat(vatImportSpecFor(dir));
     expectOpenVat(r, truth, 1e-5, false, "no normals, list animations");
     EXPECT_TRUE(hasWarning(r, "animations_list_form"));
     ASSERT_EQ(r.data.clips.size(), 2u);
@@ -996,9 +996,9 @@ TEST(VatImport, OpenVatNoAnimationsFbxPng) {
     opt.png = true;
     opt.animations = "none";
     const OpenVatTruth truth = writeOpenVat(dir, "Flag", opt);
-    ev::VatImportResult r = ev::importVat(specFor(dir));
+    ev::VatImportResult r = ev::importVat(vatImportSpecFor(dir));
     EXPECT_TRUE(hasError(r, "fps_unknown")) << issues(r);
-    ev::VatImportSpec spec = specFor(dir);
+    ev::VatImportSpec spec = vatImportSpecFor(dir);
     spec.fps = 25;
     r = ev::importVat(spec);
     // 8-bit offsets: exact to the stored codes
@@ -1062,10 +1062,10 @@ TEST(VatImportSideFx, DISABLED_RigidBodyDestruction) {
     EXPECT_EQ(r.report.houdiniMode, ev::HoudiniMode::Rigid);
     EXPECT_EQ(r.report.pieces, 519);
     EXPECT_EQ(r.report.sourceFrames, 100);
-    ASSERT_EQ(r.data.mode, vat::VatMode::Bones);
+    ASSERT_EQ(r.data.mode, jasperengine::vat::VatMode::Bones);
     EXPECT_EQ(r.data.layout.bones, 519);
     EXPECT_FALSE(hasWarning(r, "bone_limit"));
-    EXPECT_EQ(r.data.layout.precision, vat::VatPrecision::Float);
+    EXPECT_EQ(r.data.layout.precision, jasperengine::vat::VatPrecision::Float);
     // the payload: 519 bones x 2 texels x (100 frames x the upsampling), rows of 2048
     const int k = r.report.upsample;
     EXPECT_GE(k, 4);   // pieces turn up to 216 degrees between frames: at least 4 steps of <= 60
@@ -1114,7 +1114,7 @@ TEST(VatImportSideFx, DISABLED_RigidBodyDestructionAsVertices) {
     spec.precision = "float";
     const ev::VatImportResult r = ev::importVat(spec);
     ASSERT_TRUE(r.ok()) << issues(r);
-    EXPECT_EQ(r.data.mode, vat::VatMode::Vertices);
+    EXPECT_EQ(r.data.mode, jasperengine::vat::VatMode::Vertices);
     EXPECT_TRUE(r.mesh.joints.empty());
     // frame 1: every piece at its pivot, unrotated: the vertices at rest
     double maxOffset = 0;
@@ -1207,7 +1207,7 @@ namespace {
         writeText(out.dir / "Bad-remap_info.json",
                   Json({{"os-remap", {{"Min", {0, 0, 0}}, {"Max", {1, 1, 1}}, {"Frames", 1}}},
                         {"animations", {{"A", {{"startFrame", 1}, {"endFrame", 1}, {"framerate", 24}}}}}}).dump());
-        Image vat(2, 2);
+        vatimportfixtures::Image vat(2, 2);
         for (int r = 0; r < 2; r++)
             for (int c = 0; c < 2; c++) vat.set(c, r, 0.5, 0.5, 0.5, 1.0);
         writePng8(out.dir / "Bad_vat.png", vat);
@@ -1215,9 +1215,9 @@ namespace {
     }
 
     // the import of the edited export fails, its errors naming `expected`
-    void expectRefused(const BadGltf& bad, const std::string& expected, const std::string& what) {
+    void vatImportExpectRefused(const BadGltf& bad, const std::string& expected, const std::string& what) {
         bad.write();
-        const ev::VatImportResult r = ev::importVat(specFor(bad.dir / "Bad-remap_info.json"));
+        const ev::VatImportResult r = ev::importVat(vatImportSpecFor(bad.dir / "Bad-remap_info.json"));
         ASSERT_FALSE(r.ok()) << what;
         EXPECT_NE(issues(r).find(expected), std::string::npos) << what << ": " << issues(r);
     }
@@ -1228,7 +1228,7 @@ TEST(VatImport, MalformedGltfBaseExportImports) {
     // the unedited fixtures are valid: every refusal below comes from the edit
     for (bool extras : {false, true}) {
         const BadGltf bad = badGltf(extras ? "bad-base-extras" : "bad-base", extras);
-        const ev::VatImportResult r = ev::importVat(specFor(bad.dir / "Bad-remap_info.json"));
+        const ev::VatImportResult r = ev::importVat(vatImportSpecFor(bad.dir / "Bad-remap_info.json"));
         ASSERT_TRUE(r.ok()) << issues(r);
         EXPECT_EQ(r.data.layout.vertices, 3);
     }
@@ -1239,40 +1239,40 @@ TEST(VatImport, MalformedGltfAccessorSizesOverflow) {
     for (uint64_t count : {(uint64_t)1 << 62, ((uint64_t)1 << 63) + 1, (uint64_t)0x5555555555555556ull, (uint64_t)0xFFFFFFFFFFFFFFFFull}) {
         BadGltf bad = badGltf("bad-count");
         bad.gltf["accessors"][0]["count"] = count;
-        expectRefused(bad, "", "POSITION count " + std::to_string(count));
+        vatImportExpectRefused(bad, "", "POSITION count " + std::to_string(count));
     }
     BadGltf bad = badGltf("bad-offset");
     bad.gltf["accessors"][0]["byteOffset"] = (uint64_t)0xFFFFFFFFFFFFFFF0ull;
-    expectRefused(bad, "", "accessor byteOffset near 2^64");
+    vatImportExpectRefused(bad, "", "accessor byteOffset near 2^64");
     bad = badGltf("bad-view-offset");
     bad.gltf["bufferViews"][0]["byteOffset"] = (uint64_t)0xFFFFFFFFFFFFFFF0ull;
-    expectRefused(bad, "", "bufferView byteOffset near 2^64");
+    vatImportExpectRefused(bad, "", "bufferView byteOffset near 2^64");
     bad = badGltf("bad-stride");
     bad.gltf["bufferViews"][0]["byteStride"] = 252;
-    expectRefused(bad, "", "a stride far past the buffer");
+    vatImportExpectRefused(bad, "", "a stride far past the buffer");
     bad = badGltf("bad-zeros");
     bad.gltf["accessors"][1].erase("bufferView");
     bad.gltf["accessors"][1]["count"] = (uint64_t)1 << 60;
-    expectRefused(bad, "", "a data-less accessor claiming 2^60 elements");
+    vatImportExpectRefused(bad, "", "a data-less accessor claiming 2^60 elements");
 }
 
 TEST(VatImport, MalformedGltfIndicesOutOfRange) {
     // bufferView / buffer / accessor indices past their arrays (SIGSEGV before)
     BadGltf bad = badGltf("bad-view");
     bad.gltf["accessors"][0]["bufferView"] = 50;
-    expectRefused(bad, "", "POSITION bufferView 50");
+    vatImportExpectRefused(bad, "", "POSITION bufferView 50");
     bad = badGltf("bad-view-uv");
     bad.gltf["accessors"][1]["bufferView"] = 50;
-    expectRefused(bad, "", "TEXCOORD_0 bufferView 50");
+    vatImportExpectRefused(bad, "", "TEXCOORD_0 bufferView 50");
     bad = badGltf("bad-buffer");
     bad.gltf["bufferViews"][1]["buffer"] = 7;
-    expectRefused(bad, "", "bufferView buffer 7");
+    vatImportExpectRefused(bad, "", "bufferView buffer 7");
     bad = badGltf("bad-accessor");
     bad.gltf["meshes"][0]["primitives"][0]["attributes"]["TEXCOORD_0"] = 9;
-    expectRefused(bad, "", "TEXCOORD_0 accessor 9");
+    vatImportExpectRefused(bad, "", "TEXCOORD_0 accessor 9");
     bad = badGltf("bad-uvset");
     bad.gltf["meshes"][0]["primitives"][0]["attributes"]["TEXCOORD_99999999"] = 1;
-    expectRefused(bad, "UV sets", "TEXCOORD_99999999");
+    vatImportExpectRefused(bad, "UV sets", "TEXCOORD_99999999");
 }
 
 TEST(VatImport, MalformedGltfShortAttributes) {
@@ -1281,7 +1281,7 @@ TEST(VatImport, MalformedGltfShortAttributes) {
         BadGltf bad = badGltf(std::string("bad-short-") + name, true);
         const int accessor = bad.gltf["meshes"][0]["primitives"][0]["attributes"][name].get<int>();
         bad.gltf["accessors"][(size_t)accessor]["count"] = 1;
-        expectRefused(bad, std::string(name) + " has 1 elements but POSITION has 3", name);
+        vatImportExpectRefused(bad, std::string(name) + " has 1 elements but POSITION has 3", name);
     }
 }
 
@@ -1290,14 +1290,14 @@ TEST(VatImport, MalformedOpenVatFrameCounts) {
     BadGltf bad = badGltf("bad-frames");
     writeText(bad.dir / "Bad-remap_info.json",
               Json({{"os-remap", {{"Min", {0, 0, 0}}, {"Max", {1, 1, 1}}, {"Frames", 1e300}}}}).dump());
-    expectRefused(bad, "not a frame count", "Frames 1e300");
+    vatImportExpectRefused(bad, "not a frame count", "Frames 1e300");
     writeText(bad.dir / "Bad-remap_info.json",
               Json({{"os-remap", {{"Min", {0, 0, 0}}, {"Max", {1, 1, 1}}, {"Frames", 2147483647}}}}).dump());
-    expectRefused(bad, "", "Frames INT_MAX");
+    vatImportExpectRefused(bad, "", "Frames INT_MAX");
     writeText(bad.dir / "Bad-remap_info.json",
               Json({{"os-remap", {{"Min", {0, 0, 0}}, {"Max", {1, 1, 1}}, {"Frames", 1}}},
                     {"animations", {{"A", {{"startFrame", -1e300}, {"endFrame", 1e300}, {"framerate", 24}}}}}}).dump());
-    const ev::VatImportResult r = ev::importVat(specFor(bad.dir / "Bad-remap_info.json"));
+    const ev::VatImportResult r = ev::importVat(vatImportSpecFor(bad.dir / "Bad-remap_info.json"));
     EXPECT_TRUE(r.ok()) << issues(r);   // the absurd frame numbers are ignored (the clip covers the texture)
 }
 
@@ -1311,10 +1311,10 @@ TEST(VatImport, OpenVatOverlappingClipsBoundsCoverEveryFrame) {
     remap["animations"] = {{"Walk", {{"startFrame", 1}, {"endFrame", 4}, {"framerate", 24}, {"looping", true}}},
                            {"Jump", {{"startFrame", 3}, {"endFrame", 4}, {"framerate", 30}, {"looping", false}}}};
     writeText(dir / "Flag-remap_info.json", remap.dump());
-    const ev::VatImportResult r = ev::importVat(specFor(dir));
+    const ev::VatImportResult r = ev::importVat(vatImportSpecFor(dir));
     ASSERT_TRUE(r.ok()) << issues(r);
     ASSERT_EQ(r.data.clips.size(), 2u);
-    for (const vat::VatClip& clip : r.data.clips) {
+    for (const jasperengine::vat::VatClip& clip : r.data.clips) {
         ASSERT_TRUE(clip.bounds.valid) << clip.name;
         for (int f = clip.start; f < clip.start + clip.frames; f++)
             for (const V3& p : truth.pos[(size_t)f]) {
@@ -1337,7 +1337,7 @@ TEST(VatImport, NonFiniteDecodedDataIsRefused) {
     ASSERT_TRUE(jasperengine::editor::readFloatImage((dir / "Flag_vat.exr").string(), image, &error)) << error;
     image.rgba[((size_t)1 * (size_t)image.width + 2) * 4 + 1] = std::numeric_limits<float>::quiet_NaN();
     ASSERT_TRUE(jasperengine::editor::writeExr((dir / "Flag_vat.exr").string(), image, false, &error)) << error;
-    ev::VatImportResult r = ev::importVat(specFor(dir));
+    ev::VatImportResult r = ev::importVat(vatImportSpecFor(dir));
     ASSERT_TRUE(hasError(r, "invalid_data")) << issues(r);
     EXPECT_NE(issues(r).find("nan at frame 1, vertex "), std::string::npos) << issues(r);
     EXPECT_NE(issues(r).find("payload texel"), std::string::npos) << issues(r);
@@ -1351,7 +1351,7 @@ TEST(VatImport, NonFiniteDecodedDataIsRefused) {
     remap["os-remap"]["Min"] = {1e308, 0, 0};
     remap["os-remap"]["Max"] = {-1e308, 1, 1};
     writeText(inf / "Flag-remap_info.json", remap.dump());
-    r = ev::importVat(specFor(inf));
+    r = ev::importVat(vatImportSpecFor(inf));
     ASSERT_TRUE(hasError(r, "invalid_data")) << issues(r);
     EXPECT_NE(issues(r).find("inf at frame "), std::string::npos) << issues(r);
 }

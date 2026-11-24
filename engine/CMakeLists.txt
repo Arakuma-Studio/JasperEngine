@@ -99,8 +99,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     project(${APP_NAME})
 
-    # before any target: sanitizers apply to the whole tree (empty by default, as in every export)
+    # before any target: sanitizers and the debug information level apply to the whole tree (empty
+    # and full by default, as in every export)
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/JasperSanitizers.cmake)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/JasperDebugInfo.cmake)
 
     set(JASPERENGINE_SHARED OFF)
 
@@ -1076,7 +1078,8 @@ if(JASPERENGINE_SPLIT_SYMBOLS AND NOT ANDROID)
         add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Z7>)
         add_link_options(/DEBUG:FULL)
     else()
-        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-g>)
+        # -g, or line tables only with JASPERENGINE_DEBUG_INFO=lines (cmake/JasperDebugInfo.cmake)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:${JASPERENGINE_DEBUG_FLAG}>)
     endif()
 endif()
 if(JASPERENGINE_RELEASE_LINK)
@@ -1416,6 +1419,7 @@ set(JASPERENGINE_SRCS
     core/audio/AudioMixerIO.cpp
     core/audio/AudioTap.cpp
     core/audio/SoloudEngineFile.cpp
+    core/audio/SourceEffects.cpp
     core/audio/TruePeak.cpp
     core/input/InputControlNames.cpp
     core/input/InputManagerFormat.cpp
@@ -1721,6 +1725,8 @@ set(JASPERENGINE_SRCS
     core/object/TerrainOpsJson.cpp
     core/object/Tilemap.cpp
     core/object/sound/AudioSource.cpp
+    core/object/sound/AudioSourceSlots.cpp
+    core/object/sound/AudioSourceEffect.cpp
     core/object/environment/Fog.cpp
     core/object/environment/LocalVolumetricFog.cpp
     core/object/environment/ReflectionProbe.cpp
@@ -1774,15 +1780,19 @@ set(JASPERENGINE_SRCS
     core/registry/TagManager.cpp
     core/registry/PhysicsLayers.cpp
     core/registry/SortingLayers.cpp
+    core/physics/AttachedColliders.cpp
     core/physics/ContactTracker.cpp
     core/physics/ConvexDecomposition.cpp
     core/physics/JoltShapeBuilder.cpp
     core/physics/JoltTerrainRefresh.cpp
     core/physics/PhysicsDebugLines.cpp
     core/physics/PhysicsMaterial.cpp
+    core/physics/PhysicsQueries2D.cpp
+    core/physics/PhysicsQueries3D.cpp
     core/physics/RagdollBuilder.cpp
     core/physics/PolygonDecomposition2D.cpp
     core/physics/PlacementWorld.cpp
+    core/physics/WorldSettings.cpp
     core/render/AtmosphereMath.cpp
     core/render/FrameReadback.cpp
     core/render/AtmosphereNoise.cpp
@@ -1848,6 +1858,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/LocalizationClassesLua.cpp
     core/script/binding/ProfilerClassesLua.cpp
     core/script/binding/GameplayClassesLua.cpp
+    core/script/binding/PhysicsQueriesLua.cpp
     core/script/binding/SplineClassesLua.cpp
     core/script/binding/TerrainClassesLua.cpp
     core/script/binding/PixelArtClassesLua.cpp
@@ -1912,6 +1923,13 @@ set(JASPERENGINE_SRCS
     core/subsystem/PhysicsSystemJoints3D.cpp
     core/subsystem/PhysicsSystemRagdoll.cpp
     core/subsystem/PhysicsSystemDebugDraw.cpp
+    # S96 vehicles: their 3D parts are under JASPERENGINE_PHYSICS_3D inside the files
+    core/subsystem/VehicleSystem.cpp
+    core/physics/WheelColliderController.cpp
+    core/object/physics/WheelCollider.cpp
+    core/object/physics/VehicleDrivetrain.cpp
+    core/script/binding/VehicleClassesLua.cpp
+    core/subsystem/PhysicsSystemWorldSettings.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/RenderSystemShadows.cpp
     core/subsystem/RenderSystemFoliage.cpp
@@ -2444,6 +2462,12 @@ set_source_files_properties(${JASPERENGINE_ANIMATOR_SRCS} PROPERTIES COMPILE_OPT
 set_source_files_properties(core/audio/AudioMeter.cpp PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS}")
 set_source_files_properties(libs/soloud/src/audiosource/wav/stb_vorbis.c libs/soloud/src/audiosource/wav/dr_impl.cpp
     libs/soloud/src/audiosource/wav/soloud_wav.cpp libs/soloud/src/core/soloud_fft.cpp DIRECTORY libs/soloud PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS}")
+# and the same pi: stb_vorbis falls back to a float M_PI where <math.h> has none (the Windows CRT
+# without _USE_MATH_DEFINES, which the jasperengine target sets but not soloud's), and every Ogg
+# Vorbis decode's twiddles and window then differed from the other platforms' in the last bit
+if(WIN32)
+    target_compile_definitions(soloud PRIVATE _USE_MATH_DEFINES)
+endif()
 if(EMSCRIPTEN)
     if(JASPERENGINE_WASM_SIMD)
         set_source_files_properties(core/animation/AnimatorPose.cpp PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS};-msimd128")
@@ -2681,7 +2705,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
             SOURCES ${JASPERENGINE_ROOT}/platform/linux/JasperEngineLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
                     ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp ${JASPERENGINE_ROOT}/platform/linux/X11Pen.cpp
-                    ${JASPERENGINE_ROOT}/platform/linux/LinuxInputRouter.cpp ${JASPERENGINE_ROOT}/platform/linux/SystemLinux.cpp)
+                    ${JASPERENGINE_ROOT}/platform/linux/LinuxInputRouter.cpp ${JASPERENGINE_ROOT}/platform/linux/SystemLinux.cpp
+                    ${JASPERENGINE_ROOT}/platform/linux/HostServicesLinux.cpp)
     endif()
     # the shipped binary stripped, its debug information in symbols/ (JASPERENGINE_SPLIT_SYMBOLS)
     get_target_property(jasperengineAppType ${APP_NAME} TYPE)

@@ -96,7 +96,7 @@ namespace {
     };
 
     // premultiplied, as Pachislop's compare.ts and S80's ImageDiff
-    PixelStats compareImages(const Rgba8Image& a, const Rgba8Image& b) {
+    PixelStats titleArtEffectsCompareImages(const Rgba8Image& a, const Rgba8Image& b) {
         PixelStats s;
         if (a.width != b.width || a.height != b.height) {
             s.max = 255;
@@ -157,7 +157,7 @@ namespace {
         }
     }
 
-    LinearImage fixture(float s) {
+    LinearImage titleArtEffectsFixture(float s) {
         LinearImage image;
         image.width = (int)std::lround(FIXTURE_WIDTH * s);
         image.height = (int)std::lround(FIXTURE_HEIGHT * s);
@@ -402,7 +402,7 @@ namespace {
 
     // the golden of `name` (golden/titleart/effects/<name>.png), premultiplied with S80 §6.12's
     // golden limits; JASPER_TEST_UPDATE_GOLDEN=1 writes it (glcore)
-    void expectGolden(const std::string& name, const Rgba8Image& image) {
+    void titleArtEffectsExpectGolden(const std::string& name, const Rgba8Image& image) {
         const std::filesystem::path path = goldenPath("titleart/effects/" + name + ".png");
         if (isGoldenUpdateMode()) {
             if (std::string(HeadlessContext::getBackendName()) == "glcore") {
@@ -413,7 +413,7 @@ namespace {
         }
         Rgba8Image golden;
         ASSERT_TRUE(readImage(path, golden)) << "no golden " << path.string() << " (JASPER_TEST_UPDATE_GOLDEN=1 writes it)";
-        const PixelStats stats = compareImages(golden, image);
+        const PixelStats stats = titleArtEffectsCompareImages(golden, image);
         const bool ok = stats.max <= 48 && stats.mean <= 0.25 && stats.fractionOver8 <= 0.001;
         if (!ok) {
             const std::filesystem::path actual = std::filesystem::path(getOutputDirectory()) / ("titleart-" + name + ".actual.png");
@@ -423,7 +423,7 @@ namespace {
         EXPECT_TRUE(ok) << name << ": " << stats.text() << (golden.width != image.width || golden.height != image.height ? " (size differs)" : "");
     }
 
-    struct Case {
+    struct TitleArtEffectsCase {
         std::string name;       // the golden's name: "<type>" at defaults, "<type>-<variant>"
         std::string type;
         Json params;
@@ -431,8 +431,8 @@ namespace {
 
     // every effect at defaults and with two settings (the second exercising the other technique,
     // mode or fill path)
-    std::vector<Case> effectCases() {
-        std::vector<Case> cases;
+    std::vector<TitleArtEffectsCase> effectCases() {
+        std::vector<TitleArtEffectsCase> cases;
         // S80's ten core effects (S83's catalogue has its own goldens and limits: TitleFxCatalogueGpuTest)
         for (const char* type : {"outer_glow", "inner_glow", "drop_shadow", "inner_shadow", "outline", "color_overlay", "gradient_overlay",
                                  "pattern_overlay", "gaussian_blur", "adjust"}) {
@@ -464,8 +464,8 @@ namespace {
         return cases;
     }
 
-    std::vector<Case> generatorCases() {
-        std::vector<Case> cases;
+    std::vector<TitleArtEffectsCase> generatorCases() {
+        std::vector<TitleArtEffectsCase> cases;
         for (const GeneratorDef* d : TitleEffectRegistry::get().generators()) cases.push_back({d->type, d->type, Json::object()});
         cases.push_back({"fill-linear", "fill", Json{{"kind", "linear"}, {"angle", 45}}});
         cases.push_back({"fill-radial", "fill", Json{{"kind", "radial"}, {"scale", 0.7}, {"offset", 0.1}}});
@@ -511,12 +511,12 @@ TEST_F(TitleArtEffectsGpu, Goldens) {
     std::string titleError;
     ASSERT_TRUE(titleInput(title, titleError)) << titleError;
     const Padded input = padded(title, 32);
-    for (const Case& c : effectCases()) {
+    for (const TitleArtEffectsCase& c : effectCases()) {
         SCOPED_TRACE(c.name);
         LinearImage out;
         std::string error;
         ASSERT_TRUE(rig->runEffect(c.type, c.params, input.image, 1.0f, out, error, input.canvas)) << error;
-        expectGolden(c.name, toRgba8(out));
+        titleArtEffectsExpectGolden(c.name, toRgba8(out));
         // an ink-bound effect draws nothing in the border
         float leak = 0.0f;
         for (int y = 0; y < out.height; y++) {
@@ -530,12 +530,12 @@ TEST_F(TitleArtEffectsGpu, Goldens) {
             EXPECT_LT(leak, 1.0f / 255.0f) << "an ink-bound effect drew past the ink";
         }
     }
-    for (const Case& c : generatorCases()) {
+    for (const TitleArtEffectsCase& c : generatorCases()) {
         SCOPED_TRACE(c.name);
         LinearImage out;
         std::string error;
         ASSERT_TRUE(rig->runGenerator(c.type, c.params, GENERATOR_WIDTH, GENERATOR_HEIGHT, 1.0f, out, error)) << error;
-        expectGolden(c.name, toRgba8(out));
+        titleArtEffectsExpectGolden(c.name, toRgba8(out));
     }
 }
 
@@ -549,7 +549,7 @@ TEST_F(TitleArtEffectsGpu, GoldensSeeASettingChange) {
     std::string error;
     ASSERT_TRUE(rig->runEffect("drop_shadow", Json::object(), input.image, 1.0f, base, error, input.canvas)) << error;
     ASSERT_TRUE(rig->runEffect("drop_shadow", Json{{"distance", 13}}, input.image, 1.0f, moved, error, input.canvas)) << error;
-    const PixelStats stats = compareImages(toRgba8(base), toRgba8(moved));
+    const PixelStats stats = titleArtEffectsCompareImages(toRgba8(base), toRgba8(moved));
     EXPECT_TRUE(stats.max > 48 || stats.mean > 0.25 || stats.fractionOver8 > 0.001) << "3 px more distance passes the golden: " << stats.text();
 }
 
@@ -559,7 +559,7 @@ TEST_F(TitleArtEffectsGpu, Deterministic) {
     std::string titleError;
     ASSERT_TRUE(titleInput(title, titleError)) << titleError;
     const LinearImage input = downsample(title, 2);
-    for (const Case& c : effectCases()) {
+    for (const TitleArtEffectsCase& c : effectCases()) {
         SCOPED_TRACE(c.name);
         LinearImage a, b;
         std::string error;
@@ -572,17 +572,17 @@ TEST_F(TitleArtEffectsGpu, Deterministic) {
 // decision 5: effect pixel params scale with px_scale, so a render at 0.5 is the render at 1
 // filtered down (on the analytic fixture, drawn exactly at both scales)
 TEST_F(TitleArtEffectsGpu, ScaleInvariance) {
-    const Padded full = padded(fixture(1.0f), 32);
-    const Padded half = padded(fixture(0.5f), 16);
-    auto check = [&](const Case& c, float halfContextScale, PixelStats& stats) {
+    const Padded full = padded(titleArtEffectsFixture(1.0f), 32);
+    const Padded half = padded(titleArtEffectsFixture(0.5f), 16);
+    auto check = [&](const TitleArtEffectsCase& c, float halfContextScale, PixelStats& stats) {
         LinearImage a, b;
         std::string error;
         if (!rig->runEffect(c.type, c.params, full.image, 1.0f, a, error, full.canvas)) return error;
         if (!rig->runEffect(c.type, c.params, half.image, 0.5f, b, error, half.canvas, halfContextScale)) return error;
-        stats = compareImages(toRgba8(downsample(a, 2)), toRgba8(b));
+        stats = titleArtEffectsCompareImages(toRgba8(downsample(a, 2)), toRgba8(b));
         return std::string();
     };
-    for (const Case& c : effectCases()) {
+    for (const TitleArtEffectsCase& c : effectCases()) {
         SCOPED_TRACE(c.name);
         PixelStats stats;
         const std::string error = check(c, -1.0f, stats);
@@ -607,13 +607,13 @@ TEST_F(TitleArtEffectsGpu, FallbackAgreesWithinItsClass) {
     std::string titleError;
     ASSERT_TRUE(titleInput(title, titleError)) << titleError;
     const Padded input = padded(title, 32);
-    for (const Case& c : effectCases()) {
+    for (const TitleArtEffectsCase& c : effectCases()) {
         SCOPED_TRACE(c.name);
         LinearImage f, e;
         std::string error;
         ASSERT_TRUE(rig->runEffect(c.type, c.params, input.image, 1.0f, f, error, input.canvas)) << error;
         ASSERT_TRUE(fallback.runEffect(c.type, c.params, input.image, 1.0f, e, error, input.canvas)) << error;
-        const PixelStats stats = compareImages(toRgba8(f), toRgba8(e));
+        const PixelStats stats = titleArtEffectsCompareImages(toRgba8(f), toRgba8(e));
         const FallbackClass cls = findEffect(c.type)->fallback;
         // F0: S80 §6.3; F1: S83 §6.5 (multi-pass blurs and accumulations)
         const double maxMean = cls == FallbackClass::F0 ? 1.0 : 1.5;
@@ -623,13 +623,13 @@ TEST_F(TitleArtEffectsGpu, FallbackAgreesWithinItsClass) {
         EXPECT_LE(stats.max, maxDiff) << fallbackClassName(cls) << ": " << stats.text();
         EXPECT_LE(stats.fractionOver8, maxOver) << fallbackClassName(cls) << ": " << stats.text();
     }
-    for (const Case& c : generatorCases()) {
+    for (const TitleArtEffectsCase& c : generatorCases()) {
         SCOPED_TRACE(c.name);
         LinearImage f, e;
         std::string error;
         ASSERT_TRUE(rig->runGenerator(c.type, c.params, GENERATOR_WIDTH, GENERATOR_HEIGHT, 1.0f, f, error)) << error;
         ASSERT_TRUE(fallback.runGenerator(c.type, c.params, GENERATOR_WIDTH, GENERATOR_HEIGHT, 1.0f, e, error)) << error;
-        const PixelStats stats = compareImages(toRgba8(f), toRgba8(e));
+        const PixelStats stats = titleArtEffectsCompareImages(toRgba8(f), toRgba8(e));
         // S83 §6.5's classes: F0 as the effects', F1 for accumulations, F2 where light above 1 shapes the look
         const FallbackClass cls = findGenerator(c.type)->fallback;
         const double maxMean = cls == FallbackClass::F0 ? 1.0 : cls == FallbackClass::F1 ? 1.5 : 3.0;
@@ -671,7 +671,7 @@ TEST_F(TitleArtEffectsGpu, BoundedDistanceFieldMatchesTheUnbounded) {
     const bool ran = rig->runEffect("test_outline_unbounded", Json{{"width", 6}}, input.image, 1.0f, unbounded, error, input.canvas);
     TitleEffectRegistry::get().removeEffect("test_outline_unbounded");
     ASSERT_TRUE(ran) << error;
-    const PixelStats stats = compareImages(toRgba8(bounded), toRgba8(unbounded));
+    const PixelStats stats = titleArtEffectsCompareImages(toRgba8(bounded), toRgba8(unbounded));
     EXPECT_LE(stats.max, 1) << stats.text();
 }
 

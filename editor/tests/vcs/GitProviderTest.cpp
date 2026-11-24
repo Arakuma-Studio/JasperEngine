@@ -26,11 +26,11 @@ namespace {
         return result;
     }
 
-    const VcsChange* entry(const VcsSnapshot& snapshot, const std::string& path) {
+    const VcsChange* gitProviderEntry(const VcsSnapshot& snapshot, const std::string& path) {
         return snapshot.find(path);
     }
 
-    VcsSnapshot statusOf(GitProvider& provider, uint32_t depth = StatusDepth::Fast) {
+    VcsSnapshot gitProviderStatusOf(GitProvider& provider, uint32_t depth = StatusDepth::Fast) {
         return offMain([&]() {
             VcsSnapshot snapshot;
             const VcsResult result = provider.status(snapshot, depth);
@@ -61,48 +61,48 @@ TEST(GitProvider, StatusPorcelainV2) {
 #endif
 
     GitProvider provider(box.config(repo, repo));
-    const VcsSnapshot snapshot = statusOf(provider, StatusDepth::WithIgnored);
+    const VcsSnapshot snapshot = gitProviderStatusOf(provider, StatusDepth::WithIgnored);
 
-    const VcsChange* a = entry(snapshot, "a.txt");
+    const VcsChange* a = gitProviderEntry(snapshot, "a.txt");
     ASSERT_NE(a, nullptr);
     EXPECT_EQ(a->index, FileState::Unmodified);
     EXPECT_EQ(a->worktree, FileState::Modified);
     EXPECT_FALSE(a->baseOid.empty());
 
-    const VcsChange* added = entry(snapshot, "new.txt");
+    const VcsChange* added = gitProviderEntry(snapshot, "new.txt");
     ASSERT_NE(added, nullptr);
     EXPECT_EQ(added->index, FileState::Added);
     EXPECT_EQ(added->worktree, FileState::Unmodified);
     EXPECT_TRUE(added->newFile());
 
-    const VcsChange* untracked = entry(snapshot, "u.txt");
+    const VcsChange* untracked = gitProviderEntry(snapshot, "u.txt");
     ASSERT_NE(untracked, nullptr);
     EXPECT_EQ(untracked->index, FileState::Untracked);
     EXPECT_TRUE(untracked->newFile());
 
-    const VcsChange* deleted = entry(snapshot, "d.txt");
+    const VcsChange* deleted = gitProviderEntry(snapshot, "d.txt");
     ASSERT_NE(deleted, nullptr);
     EXPECT_EQ(deleted->worktree, FileState::Deleted);
     EXPECT_TRUE(deleted->deleted());
 
-    const VcsChange* renamed = entry(snapshot, "r2.txt");
+    const VcsChange* renamed = gitProviderEntry(snapshot, "r2.txt");
     ASSERT_NE(renamed, nullptr);
     EXPECT_EQ(renamed->index, FileState::Renamed);
     EXPECT_EQ(renamed->oldPath, "r.txt");
-    EXPECT_EQ(entry(snapshot, "r.txt"), nullptr);
+    EXPECT_EQ(gitProviderEntry(snapshot, "r.txt"), nullptr);
 
     EXPECT_TRUE(snapshot.isIgnored("ignored.log"));
-    EXPECT_EQ(entry(snapshot, "ignored.log"), nullptr);
+    EXPECT_EQ(gitProviderEntry(snapshot, "ignored.log"), nullptr);
 
-    const VcsChange* spaced = entry(snapshot, "with space.txt");
+    const VcsChange* spaced = gitProviderEntry(snapshot, "with space.txt");
     ASSERT_NE(spaced, nullptr);
     EXPECT_EQ(spaced->worktree, FileState::Modified);
 
-    const VcsChange* dash = entry(snapshot, "-dash.txt");
+    const VcsChange* dash = gitProviderEntry(snapshot, "-dash.txt");
     ASSERT_NE(dash, nullptr);
     EXPECT_EQ(dash->index, FileState::Untracked);
 #ifndef _WIN32
-    const VcsChange* newline = entry(snapshot, "new\nline.txt");
+    const VcsChange* newline = gitProviderEntry(snapshot, "new\nline.txt");
     ASSERT_NE(newline, nullptr);
     EXPECT_EQ(newline->index, FileState::Untracked);
 #endif
@@ -151,7 +151,7 @@ TEST(GitProvider, BranchAheadBehindAgainstABareUpstream) {
     EXPECT_EQ(branch.ahead, 1);
     EXPECT_EQ(branch.behind, 2);
     // the server's changes, read with the locks (no LFS here)
-    const VcsSnapshot snapshot = statusOf(provider, StatusDepth::WithLocksAndRemote);
+    const VcsSnapshot snapshot = gitProviderStatusOf(provider, StatusDepth::WithLocksAndRemote);
     EXPECT_TRUE(snapshot.hasRemote);
     const VcsChange* theirs = snapshot.find("theirs0.txt");
     ASSERT_NE(theirs, nullptr);
@@ -213,7 +213,7 @@ TEST(GitProvider, FsmonitorIgnored) {
     writeFile(repo / "a.txt", "a changed\n");
 
     GitProvider provider(box.config(repo, repo));
-    statusOf(provider);
+    gitProviderStatusOf(provider);
     std::vector<VcsLogEntry> log;
     EXPECT_TRUE(offMain([&]() { return provider.log(nullptr, 5, 0, log); }).ok);
     std::string diff;
@@ -233,7 +233,7 @@ TEST(GitProvider, ProjectInASubdirectory) {
     writeFile(repo / "game/inside.txt", "i2\n");
     writeFile(repo / "game/new.txt", "n\n");
     GitProvider provider(box.config(repo, repo / "game"));
-    const VcsSnapshot snapshot = statusOf(provider);
+    const VcsSnapshot snapshot = gitProviderStatusOf(provider);
     EXPECT_EQ(snapshot.find("outside.txt"), nullptr);
     ASSERT_NE(snapshot.find("game/inside.txt"), nullptr);
     ASSERT_NE(snapshot.find("game/new.txt"), nullptr);
@@ -254,9 +254,9 @@ TEST(GitProvider, StageUnstageRevertAndBaseContent) {
     GitProvider provider(box.config(repo, repo));
     const std::vector<RepoPath> a = {"a.txt"};
     ASSERT_TRUE(offMain([&]() { return provider.stage(a); }).ok);
-    EXPECT_EQ(statusOf(provider).find("a.txt")->index, FileState::Modified);
+    EXPECT_EQ(gitProviderStatusOf(provider).find("a.txt")->index, FileState::Modified);
     ASSERT_TRUE(offMain([&]() { return provider.unstage(a); }).ok);
-    EXPECT_EQ(statusOf(provider).find("a.txt")->index, FileState::Unmodified);
+    EXPECT_EQ(gitProviderStatusOf(provider).find("a.txt")->index, FileState::Unmodified);
     std::string base;
     ASSERT_TRUE(offMain([&]() { return provider.baseContent("a.txt", "HEAD", base); }).ok);
     EXPECT_EQ(base, "base\n");
@@ -266,7 +266,7 @@ TEST(GitProvider, StageUnstageRevertAndBaseContent) {
     ASSERT_TRUE(offMain([&]() { return provider.stage(a); }).ok);
     ASSERT_TRUE(offMain([&]() { return provider.revert(a); }).ok);
     EXPECT_EQ(readFile(repo / "a.txt"), "base\n");
-    EXPECT_EQ(statusOf(provider).find("a.txt"), nullptr);
+    EXPECT_EQ(gitProviderStatusOf(provider).find("a.txt"), nullptr);
     // a revision is one argument, never an option
     EXPECT_FALSE(offMain([&]() { return provider.baseContent("a.txt", "--output=/tmp/x", base); }).ok);
 }
@@ -284,7 +284,7 @@ TEST(GitProvider, ManyPathsGoThroughAPathspecFile) {
     std::string revision;
     const VcsResult result = offMain([&]() { return provider.commit(paths, "100 files", revision); });
     ASSERT_TRUE(result.ok) << result.message;
-    EXPECT_TRUE(statusOf(provider).entries.empty());
+    EXPECT_TRUE(gitProviderStatusOf(provider).entries.empty());
     // the pathspec file is gone again
     EXPECT_TRUE(!fs::exists(repo / ".jasperengine" / "vcs") || fs::is_empty(repo / ".jasperengine" / "vcs"));
 }
@@ -325,7 +325,7 @@ TEST(GitProvider, DetachedAndOperations) {
     ASSERT_FALSE(box.git.empty());
     const fs::path repo = box.gitRepo("repo", {{"a.txt", "base\n"}});
     GitProvider provider(box.config(repo, repo));
-    VcsSnapshot snapshot = statusOf(provider);
+    VcsSnapshot snapshot = gitProviderStatusOf(provider);
     EXPECT_FALSE(snapshot.branch.detached);
     EXPECT_EQ(snapshot.branch.operation, VcsOperation::None);
     EXPECT_EQ(headLabel(snapshot.branch), "main");
@@ -335,7 +335,7 @@ TEST(GitProvider, DetachedAndOperations) {
     writeFile(repo / "a.txt", "second\n");
     box.gitOk(repo, {"commit", "-q", "-am", "second"});
     box.gitOk(repo, {"checkout", "-q", "v1.0"});
-    snapshot = statusOf(provider);
+    snapshot = gitProviderStatusOf(provider);
     EXPECT_TRUE(snapshot.branch.detached);
     std::string tag;
     ASSERT_TRUE(offMain([&]() { return provider.headTag(tag); }).ok);
@@ -344,7 +344,7 @@ TEST(GitProvider, DetachedAndOperations) {
     EXPECT_EQ(headLabel(snapshot.branch), "tag v1.0");
     box.gitOk(repo, {"checkout", "-q", "main"});
     box.gitOk(repo, {"checkout", "-q", "--detach", "HEAD"});
-    snapshot = statusOf(provider);
+    snapshot = gitProviderStatusOf(provider);
     EXPECT_TRUE(snapshot.branch.detached);
     EXPECT_FALSE(offMain([&]() { return provider.headTag(tag); }).ok);
     EXPECT_EQ(headLabel(snapshot.branch), snapshot.branch.headOid.substr(0, 7));
@@ -358,25 +358,25 @@ TEST(GitProvider, DetachedAndOperations) {
     writeFile(repo / "a.txt", "main\n");
     box.gitOk(repo, {"commit", "-q", "-am", "main"});
     EXPECT_FALSE(box.run(box.git, repo, {"merge", "-q", "other"}).ok());
-    snapshot = statusOf(provider);
+    snapshot = gitProviderStatusOf(provider);
     EXPECT_EQ(snapshot.branch.operation, VcsOperation::Merge);
     EXPECT_EQ(headLabel(snapshot.branch), "main | MERGING");
     ASSERT_NE(snapshot.find("a.txt"), nullptr);
     EXPECT_TRUE(snapshot.find("a.txt")->conflict);
     box.gitOk(repo, {"merge", "--abort"});
-    EXPECT_EQ(statusOf(provider).branch.operation, VcsOperation::None);
+    EXPECT_EQ(gitProviderStatusOf(provider).branch.operation, VcsOperation::None);
 
     // a rebase that stopped on a conflict: its branch and step
     box.gitOk(repo, {"checkout", "-q", "other"});
     EXPECT_FALSE(box.run(box.git, repo, {"rebase", "main"}).ok());
-    snapshot = statusOf(provider);
+    snapshot = gitProviderStatusOf(provider);
     EXPECT_EQ(snapshot.branch.operation, VcsOperation::Rebase);
     EXPECT_EQ(snapshot.branch.operationBranch, "other");
     EXPECT_EQ(snapshot.branch.operationStep, 1);
     EXPECT_EQ(snapshot.branch.operationTotal, 1);
     EXPECT_EQ(headLabel(snapshot.branch), "other | REBASE 1/1");
     box.gitOk(repo, {"rebase", "--abort"});
-    EXPECT_EQ(statusOf(provider).branch.operation, VcsOperation::None);
+    EXPECT_EQ(gitProviderStatusOf(provider).branch.operation, VcsOperation::None);
 }
 
 #ifndef _WIN32
@@ -394,11 +394,11 @@ TEST(GitProvider, GitDirFailureIsNotCached) {
     ProviderConfig cfg = box.config(repo, repo);
     cfg.executable = wrapper;
     GitProvider provider(cfg);
-    VcsSnapshot snapshot = statusOf(provider);
+    VcsSnapshot snapshot = gitProviderStatusOf(provider);
     writeFile(repo / ".git" / "MERGE_HEAD", snapshot.branch.headOid + "\n");
     EXPECT_EQ(snapshot.branch.operation, VcsOperation::None);
     ASSERT_TRUE(fs::exists(flag)) << "the first read failed";
-    EXPECT_EQ(statusOf(provider).branch.operation, VcsOperation::Merge);
+    EXPECT_EQ(gitProviderStatusOf(provider).branch.operation, VcsOperation::Merge);
 }
 #endif
 
@@ -436,8 +436,8 @@ TEST(GitProvider, CopiesAreNewFilesDiffedAgainstTheirSource) {
     box.gitOk(repo, {"mv", "r.txt", "r2.txt"});
 
     GitProvider provider(box.config(repo, repo));
-    const VcsSnapshot snapshot = statusOf(provider);
-    const VcsChange* copy = entry(snapshot, "copy.txt");
+    const VcsSnapshot snapshot = gitProviderStatusOf(provider);
+    const VcsChange* copy = gitProviderEntry(snapshot, "copy.txt");
     ASSERT_NE(copy, nullptr);
     EXPECT_EQ(copy->oldPath, "source.txt");
     EXPECT_TRUE(copy->copied);
@@ -448,7 +448,7 @@ TEST(GitProvider, CopiesAreNewFilesDiffedAgainstTheirSource) {
     const std::string refusal = revertRefusal(snapshot, {"copy.txt"}, false);
     EXPECT_NE(refusal.find("is new"), std::string::npos) << refusal;
 
-    const VcsChange* renamed = entry(snapshot, "r2.txt");
+    const VcsChange* renamed = gitProviderEntry(snapshot, "r2.txt");
     ASSERT_NE(renamed, nullptr);
     EXPECT_TRUE(renamed->renamed());
     EXPECT_FALSE(renamed->newFile());

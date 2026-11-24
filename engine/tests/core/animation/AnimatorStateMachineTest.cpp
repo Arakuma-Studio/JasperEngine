@@ -18,7 +18,7 @@ using namespace animatortest;
 
 namespace {
 
-    constexpr float kDt = 1.0f / 60.0f;
+    constexpr float kAnimatorStateMachineDt = 1.0f / 60.0f;
 
     class AnimatorStateMachine : public ::testing::Test, public AnimatorFixture {
     protected:
@@ -57,18 +57,18 @@ TEST_F(AnimatorStateMachine, ExitTimeEachLoop){
     // the condition turns true after the first loop's 0.75: the transition waits for 1.75
     float time = 0.0f;
     while (time < 1.0f){
-        step(kDt);
-        time += kDt;
+        step(kAnimatorStateMachineDt);
+        time += kAnimatorStateMachineDt;
         ASSERT_EQ(current(), "A") << time;
     }
     object().setBool("Go", true);
     float switched = -1.0f;
     for (int i = 0; i < 120 && switched < 0.0f; i++){
-        step(kDt);
-        time += kDt;
+        step(kAnimatorStateMachineDt);
+        time += kAnimatorStateMachineDt;
         if (current() == "B") switched = time;
     }
-    EXPECT_NEAR(switched, 1.75f, kDt + 1e-4f);
+    EXPECT_NEAR(switched, 1.75f, kAnimatorStateMachineDt + 1e-4f);
 }
 
 TEST_F(AnimatorStateMachine, ExitTimeOnce){
@@ -80,11 +80,11 @@ TEST_F(AnimatorStateMachine, ExitTimeOnce){
     start(controller({}, {sa, state("B", b)}));
     float time = 0.0f, switched = -1.0f;
     for (int i = 0; i < 200 && switched < 0.0f; i++){
-        step(kDt);
-        time += kDt;
+        step(kAnimatorStateMachineDt);
+        time += kAnimatorStateMachineDt;
         if (current() == "B") switched = time;
     }
-    EXPECT_NEAR(switched, 1.5f, kDt + 1e-4f) << "an exit-time-only transition fires on exit time alone";
+    EXPECT_NEAR(switched, 1.5f, kAnimatorStateMachineDt + 1e-4f) << "an exit-time-only transition fires on exit time alone";
 
     // a condition that is false at 1.5 is not tried again later
     StateDef sa2 = state("A", a);
@@ -94,9 +94,9 @@ TEST_F(AnimatorStateMachine, ExitTimeOnce){
     sa2.transitions.push_back(late);
     start(controller({parameter("Go", AnimatorParameterType::Bool)}, {sa2, state("B", b)}));
     object().play("A", 0, 0.0f);
-    step(kDt, 100);
+    step(kAnimatorStateMachineDt, 100);
     object().setBool("Go", true);
-    step(kDt, 120);
+    step(kAnimatorStateMachineDt, 120);
     EXPECT_EQ(current(), "A");
 }
 
@@ -107,7 +107,7 @@ TEST_F(AnimatorStateMachine, AnyStateFirst){
     def.layers[0].machine.anyState.push_back(transition("C", {condition("Go", AnimatorConditionMode::If)}));
     start(def);
     object().setBool("Go", true);
-    step(kDt);
+    step(kAnimatorStateMachineDt);
     EXPECT_EQ(current(), "C");
 }
 
@@ -119,10 +119,10 @@ TEST_F(AnimatorStateMachine, TriggerConsumedOnce){
     sb.transitions.push_back(transition("C", {condition("T", AnimatorConditionMode::If)}));
     start(controller({parameter("T", AnimatorParameterType::Trigger)}, {sa, sb, state("C", c)}));
     object().setTrigger("T");
-    step(kDt);
+    step(kAnimatorStateMachineDt);
     EXPECT_EQ(current(), "B") << "the first eligible transition takes it";
     EXPECT_EQ(object().getBool("T"), false) << "consumed";
-    step(kDt, 10);
+    step(kAnimatorStateMachineDt, 10);
     EXPECT_EQ(current(), "B") << "the trigger was used once";
 }
 
@@ -131,11 +131,11 @@ TEST_F(AnimatorStateMachine, TriggerPersistsUntilUsed){
     sa.transitions.push_back(transition("B", {condition("T", AnimatorConditionMode::If), condition("Ready", AnimatorConditionMode::If)}));
     start(controller({parameter("T", AnimatorParameterType::Trigger), parameter("Ready", AnimatorParameterType::Bool)}, {sa, state("B", b)}));
     object().setTrigger("T");
-    step(kDt, 30);
+    step(kAnimatorStateMachineDt, 30);
     EXPECT_EQ(current(), "A");
     EXPECT_TRUE(object().getBool("T")) << "kept until a transition uses it";
     object().setBool("Ready", true);
-    step(kDt);
+    step(kAnimatorStateMachineDt);
     EXPECT_EQ(current(), "B");
     EXPECT_FALSE(object().getBool("T"));
     // resetTrigger clears one that waits
@@ -144,7 +144,7 @@ TEST_F(AnimatorStateMachine, TriggerPersistsUntilUsed){
     object().setTrigger("T");
     object().resetTrigger("T");
     object().setBool("Ready", true);
-    step(kDt);
+    step(kAnimatorStateMachineDt);
     EXPECT_EQ(current(), "A");
 }
 
@@ -159,13 +159,13 @@ TEST_F(AnimatorStateMachine, InterruptionNextThenCurrent){
     start(controller({parameter("GoB", AnimatorParameterType::Bool), parameter("GoC", AnimatorParameterType::Bool),
                       parameter("GoD", AnimatorParameterType::Bool)}, {sa, sb, state("C", c), state("D", d)}));
     object().setBool("GoB", true);
-    step(kDt);
+    step(kAnimatorStateMachineDt);
     ASSERT_TRUE(instance().isInTransition(0));
     EXPECT_EQ(next(), "B");
     object().setBool("GoB", false);
     object().setBool("GoC", true);
     object().setBool("GoD", true);
-    step(kDt);
+    step(kAnimatorStateMachineDt);
     EXPECT_EQ(next(), "D") << "the next state's transitions first";
     // None: nothing interrupts
     StateDef sa2 = state("A", a);
@@ -176,9 +176,9 @@ TEST_F(AnimatorStateMachine, InterruptionNextThenCurrent){
     object().play("A");
     object().setBool("GoB", true);
     object().setBool("GoC", false);
-    step(kDt);
+    step(kAnimatorStateMachineDt);
     object().setBool("GoC", true);
-    step(kDt, 5);
+    step(kAnimatorStateMachineDt, 5);
     EXPECT_EQ(next(), "B");
 }
 
@@ -193,13 +193,13 @@ TEST_F(AnimatorStateMachine, OrderedInterruption){
     start(controller({parameter("GoB", AnimatorParameterType::Bool), parameter("GoC", AnimatorParameterType::Bool),
                       parameter("GoD", AnimatorParameterType::Bool)}, {sa, state("B", b), state("C", c), state("D", d)}));
     object().setBool("GoB", true);
-    step(kDt);
+    step(kAnimatorStateMachineDt);
     ASSERT_EQ(next(), "B");
     object().setBool("GoD", true);
-    step(kDt);
+    step(kAnimatorStateMachineDt);
     EXPECT_EQ(next(), "B") << "a later transition does not interrupt an ordered one";
     object().setBool("GoC", true);
-    step(kDt);
+    step(kAnimatorStateMachineDt);
     EXPECT_EQ(next(), "C") << "an earlier one does";
 }
 
@@ -226,24 +226,24 @@ TEST_F(AnimatorStateMachine, SubStateEntryExit){
     EXPECT_EQ(current(), "Idle");
     object().setBool("Flag", true);
     object().setBool("GoSub", true);
-    step(kDt);
+    step(kAnimatorStateMachineDt);
     EXPECT_EQ(instance().currentState(0).fullPath, "Base Layer.Sub.S2") << "the entry transition";
 
     start(def);
     object().play("Idle");
     object().setBool("Flag", false);
     object().setBool("GoSub", true);
-    step(kDt);
+    step(kAnimatorStateMachineDt);
     EXPECT_EQ(current(), "S1") << "the default state";
     object().setBool("GoSub", false);
     object().setBool("Flag2", true);
     object().setBool("GoExit", true);
-    step(kDt);
+    step(kAnimatorStateMachineDt);
     EXPECT_EQ(current(), "Idle2") << "Exit takes the parent's transitions out of the sub-machine";
 
     object().play("Base Layer.Sub.S1");
     object().setBool("Flag2", false);
-    step(kDt);
+    step(kAnimatorStateMachineDt);
     EXPECT_EQ(current(), "Idle") << "without one: the parent's entry (its default)";
 }
 
@@ -253,14 +253,14 @@ TEST_F(AnimatorStateMachine, NoTransitionToSelfUnlessAllowed){
     def.layers[0].machine.anyState.push_back(any);
     start(def);
     object().setBool("Hold", true);
-    step(kDt, 30);
+    step(kAnimatorStateMachineDt, 30);
     EXPECT_GT(instance().currentState(0).normalizedTime, 0.4f) << "A keeps playing";
 
     def.layers[0].machine.anyState[0].canTransitionToSelf = true;
     start(def);
     object().setBool("Hold", true);
-    step(kDt, 30);
-    EXPECT_LT(instance().currentState(0).normalizedTime, 2.0f * kDt) << "restarted every update";
+    step(kAnimatorStateMachineDt, 30);
+    EXPECT_LT(instance().currentState(0).normalizedTime, 2.0f * kAnimatorStateMachineDt) << "restarted every update";
 }
 
 TEST_F(AnimatorStateMachine, InterruptedBlendIsContinuous){
@@ -275,14 +275,14 @@ TEST_F(AnimatorStateMachine, InterruptedBlendIsContinuous){
     float previous = position(hips).x;
     float maxStep = 0.0f;
     for (int i = 0; i < 30; i++){
-        step(kDt);
+        step(kAnimatorStateMachineDt);
         maxStep = std::max(maxStep, std::fabs(position(hips).x - previous));
         previous = position(hips).x;
     }
     object().setTrigger("Hit");
     float interruptStep = 0.0f;
     for (int i = 0; i < 90; i++){
-        step(kDt);
+        step(kAnimatorStateMachineDt);
         interruptStep = std::max(interruptStep, std::fabs(position(hips).x - previous));
         previous = position(hips).x;
     }

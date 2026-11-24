@@ -10,13 +10,13 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <numbers>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
 namespace {
 
-const double PI = 3.14159265358979323846;
 const double RATE = SoundDesign::SAMPLE_RATE;
 const double MAX_HZ = 0.45 * RATE;
 // amplitude falls 60 dB over t60
@@ -32,7 +32,7 @@ struct Filter {
     double x1 = 0.0, x2 = 0.0, y1 = 0.0, y2 = 0.0;
 
     void set(FilterKind kind, double hz, double q, double db = 0.0) {
-        const double w = 2.0 * PI * std::min(hz, MAX_HZ) / RATE;
+        const double w = 2.0 * std::numbers::pi * std::min(hz, MAX_HZ) / RATE;
         const double cosw = std::cos(w);
         const double alpha = std::sin(w) / (2.0 * q);
         double a0 = 1.0 + alpha;
@@ -220,7 +220,7 @@ double numberParam(const SoundDesign::Json& params, const char* key, double fall
 // the envelope at frame i of a layer that starts at 0: a raised-cosine attack, then its decay
 double envelopeAt(size_t i, double attackFrames, double t60Frames) {
     const double t = (double)i;
-    if (t < attackFrames) return 0.5 * (1.0 - std::cos(PI * t / attackFrames));
+    if (t < attackFrames) return 0.5 * (1.0 - std::cos(std::numbers::pi * t / attackFrames));
     return std::exp(-T60_LN * (t - attackFrames) / std::max(1.0, t60Frames));
 }
 
@@ -246,7 +246,7 @@ void addLayer(const Layer& layer, SoundSynth::Random& random, std::vector<double
                 const double partial = gain * dbToGain(layer.gainsDb[k]);
                 const double t60Frames = layer.t60 / std::pow(layer.ratios[k], layer.t60Exponent) * RATE / 1000.0;
                 const size_t frames = (size_t)std::ceil(t60Frames + attackFrames);
-                const double step = 2.0 * PI * hz / RATE;
+                const double step = 2.0 * std::numbers::pi * hz / RATE;
                 for (size_t i = 0; i < frames && start + i < out.size(); i++) {
                     out[start + i] += partial * std::sin(step * (double)i) * envelopeAt(i, attackFrames, t60Frames);
                 }
@@ -262,7 +262,7 @@ void addLayer(const Layer& layer, SoundSynth::Random& random, std::vector<double
                 const double t = std::min(1.0, (double)i / glideFrames);
                 const double hz = layer.hz * std::pow(layer.toHz / layer.hz, t);
                 if (hz <= MAX_HZ) out[start + i] += gain * std::sin(phase) * envelopeAt(i, attackFrames, t60Frames);
-                phase += 2.0 * PI * hz / RATE;
+                phase += 2.0 * std::numbers::pi * hz / RATE;
             }
             break;
         }
@@ -271,8 +271,8 @@ void addLayer(const Layer& layer, SoundSynth::Random& random, std::vector<double
             Filter filter;
             for (size_t i = 0; i < frames && start + i < out.size(); i++) {
                 const double t = (double)i / (double)std::max<size_t>(1, frames);
-                filter.set(FilterKind::Bandpass, layer.hz * std::pow(layer.toHz / layer.hz, std::sin(PI * t)), layer.q);
-                const double envelope = std::sin(PI * t);
+                filter.set(FilterKind::Bandpass, layer.hz * std::pow(layer.toHz / layer.hz, std::sin(std::numbers::pi * t)), layer.q);
+                const double envelope = std::sin(std::numbers::pi * t);
                 out[start + i] += gain * filter.process(random.bipolar()) * envelope * envelope;
             }
             break;

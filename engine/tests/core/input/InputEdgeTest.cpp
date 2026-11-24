@@ -18,10 +18,10 @@ using namespace jasperengine;
 
 namespace {
 
-    const char* callbackTag = "core-tests-input-edges";
+    const char* inputEdgeCallbackTag = "core-tests-input-edges";
 
     // positions go through the canvas transform (Engine::transformCoordPos): a last-bit difference
-    void expectVector(const Vector2& actual, const Vector2& expected){
+    void inputEdgeExpectVector(const Vector2& actual, const Vector2& expected){
         EXPECT_NEAR(actual.x, expected.x, 1e-3f);
         EXPECT_NEAR(actual.y, expected.y, 1e-3f);
     }
@@ -41,7 +41,7 @@ namespace {
             Engine::systemTouchCancel();
             for (int pad : {0, 1, 3})
                 Engine::systemGamepadDisconnect(pad);
-            Engine::onKeyUp.remove(callbackTag);
+            Engine::onKeyUp.remove(inputEdgeCallbackTag);
             Engine::setMouseMode(MouseMode::NORMAL);
             Engine::systemFocusChanged(true);
             Input::resetFrameState();
@@ -170,13 +170,13 @@ TEST_F(InputEdgeTest, ResetOnPlayStart){
     EXPECT_EQ(Input::getMouseScroll(), Vector2(0, 0));
     EXPECT_EQ(Input::numTouches(), 0u);
     EXPECT_FALSE(Input::getKeyDown(D_KEY_LEFT_SHIFT));
-    expectVector(Input::getMouseDelta(), Vector2(0, 0));
+    inputEdgeExpectVector(Input::getMouseDelta(), Vector2(0, 0));
     EXPECT_EQ(Input::getTouchCount(), 0u);
 
     runFrame();
     EXPECT_FALSE(Input::getKeyDown(D_KEY_Q));
     EXPECT_FALSE(Input::anyKeyDown());
-    expectVector(Input::getMouseDelta(), Vector2(0, 0));
+    inputEdgeExpectVector(Input::getMouseDelta(), Vector2(0, 0));
     EXPECT_EQ(Input::getMouseScrollDelta(), Vector2(0, 0));
     EXPECT_EQ(Input::getTouchCount(), 0u);
     EXPECT_FALSE(Input::getTouchDown(4));
@@ -184,12 +184,12 @@ TEST_F(InputEdgeTest, ResetOnPlayStart){
     // the first move of the new session is not a delta from the last one's pointer
     Engine::systemMouseMove(300, 200, 0);
     runFrame();
-    expectVector(Input::getMouseDelta(), Vector2(0, 0));
+    inputEdgeExpectVector(Input::getMouseDelta(), Vector2(0, 0));
 }
 
 TEST_F(InputEdgeTest, FocusLossReleases){
     int gameKeyUps = 0;
-    Engine::onKeyUp.add(callbackTag, std::function<void(int, bool, int)>([&](int key, bool, int){
+    Engine::onKeyUp.add(inputEdgeCallbackTag, std::function<void(int, bool, int)>([&](int key, bool, int){
         if (key == D_KEY_W) gameKeyUps++;
     }));
     Engine::setMouseMode(MouseMode::CAPTURED);
@@ -277,19 +277,19 @@ TEST_F(InputEdgeTest, MouseDeltaSumsMoves){
     Engine::systemMouseMove(110, 105, 0);
     Engine::systemMouseMove(130, 100, 0);
     runFrame();
-    expectVector(Input::getMouseDelta(), Vector2(30, 0));
-    expectVector(Input::getMousePosition(), Vector2(130, 100));
+    inputEdgeExpectVector(Input::getMouseDelta(), Vector2(30, 0));
+    inputEdgeExpectVector(Input::getMousePosition(), Vector2(130, 100));
 
     runFrame();
-    expectVector(Input::getMouseDelta(), Vector2(0, 0));
+    inputEdgeExpectVector(Input::getMouseDelta(), Vector2(0, 0));
 
     Engine::systemMouseMove(120, 90, 0);
     Engine::systemMouseMove(100, 80, 0);
     runFrame(2, [](int){
         // the frame's delta in every step (read deltas in the update)
-        expectVector(Input::getMouseDelta(), Vector2(-30, -20));
+        inputEdgeExpectVector(Input::getMouseDelta(), Vector2(-30, -20));
     });
-    expectVector(Input::getMouseDelta(), Vector2(-30, -20));
+    inputEdgeExpectVector(Input::getMouseDelta(), Vector2(-30, -20));
 
     // a finger moving as the mouse (callMouseInTouchEvent) moves it too, from where it touched
     Engine::setCallMouseInTouchEvent(true);
@@ -298,7 +298,7 @@ TEST_F(InputEdgeTest, MouseDeltaSumsMoves){
     Engine::systemTouchEnd(1, 410, 300);
     Engine::setCallMouseInTouchEvent(false);
     runFrame();
-    expectVector(Input::getMouseDelta(), Vector2(10, 0));
+    inputEdgeExpectVector(Input::getMouseDelta(), Vector2(10, 0));
 }
 
 TEST_F(InputEdgeTest, MouseDeltaExcludesWarpAndEnter){
@@ -309,8 +309,8 @@ TEST_F(InputEdgeTest, MouseDeltaExcludesWarpAndEnter){
     Engine::setMousePosition(300, 300);
     Engine::systemMouseMove(305, 300, 0);
     runFrame();
-    expectVector(Input::getMouseDelta(), Vector2(25, 0));
-    expectVector(Input::getMousePosition(), Vector2(305, 300));
+    inputEdgeExpectVector(Input::getMouseDelta(), Vector2(25, 0));
+    inputEdgeExpectVector(Input::getMousePosition(), Vector2(305, 300));
 
     // out and in again: the first move after entering comes from outside
     Engine::systemMouseLeave();
@@ -318,7 +318,7 @@ TEST_F(InputEdgeTest, MouseDeltaExcludesWarpAndEnter){
     Engine::systemMouseMove(10, 10, 0);
     Engine::systemMouseMove(12, 13, 0);
     runFrame();
-    expectVector(Input::getMouseDelta(), Vector2(2, 3));
+    inputEdgeExpectVector(Input::getMouseDelta(), Vector2(2, 3));
 }
 
 TEST_F(InputEdgeTest, ScrollDeltaPerWindow){
@@ -345,9 +345,9 @@ TEST_F(InputEdgeTest, TouchBeganEndedSameWindow){
     EXPECT_EQ(touch.pointer, 1);
     EXPECT_EQ(touch.phase, TouchPhase::ENDED);
     EXPECT_TRUE(touch.began);
-    expectVector(touch.startPosition, Vector2(50, 50));
-    expectVector(touch.position, Vector2(60, 50));
-    expectVector(touch.delta, Vector2(10, 0));
+    inputEdgeExpectVector(touch.startPosition, Vector2(50, 50));
+    inputEdgeExpectVector(touch.position, Vector2(60, 50));
+    inputEdgeExpectVector(touch.delta, Vector2(10, 0));
     EXPECT_TRUE(Input::getTouchDown(1));
     EXPECT_TRUE(Input::getTouchUp(1));
     EXPECT_TRUE(Input::getTouches().empty());
@@ -371,8 +371,8 @@ TEST_F(InputEdgeTest, TouchBeganEndedSameWindow){
     Engine::systemTouchMove(7, 210, 120);
     runFrame();
     EXPECT_EQ(Input::getTouch(0).phase, TouchPhase::MOVED);
-    expectVector(Input::getTouch(0).delta, Vector2(10, 20));
-    expectVector(Input::getTouch(0).startPosition, Vector2(200, 100));
+    inputEdgeExpectVector(Input::getTouch(0).delta, Vector2(10, 20));
+    inputEdgeExpectVector(Input::getTouch(0).startPosition, Vector2(200, 100));
     Engine::systemTouchCancel(7);
     runFrame();
     ASSERT_EQ(Input::getTouchCount(), 1u);

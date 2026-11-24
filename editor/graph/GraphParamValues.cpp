@@ -10,11 +10,11 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
-using graph::Json;
+using GraphJson = graph::Json;
 
 namespace{
 
-    bool number(const Json& object, const char* key, float& out){
+    bool paramNumber(const GraphJson& object, const char* key, float& out){
         auto it = object.find(key);
         if (it == object.end() || !it->is_number()) return false;
         out = it->get<float>();
@@ -22,14 +22,14 @@ namespace{
     }
 
     // a whole number at `key`, `fallback` when it is missing or of another type (a file holds anything)
-    int wholeOr(const Json& object, const char* key, int fallback){
+    int paramWholeOr(const GraphJson& object, const char* key, int fallback){
         if (!object.is_object()) return fallback;
         auto it = object.find(key);
         return it != object.end() && it->is_number() ? (int)it->get<double>() : fallback;
     }
 
     // a float stored as JSON without float noise ("0.3" stays 0.3, not 0.30000001192...)
-    Json rounded(float value){
+    GraphJson paramRounded(float value){
         return std::round((double)value * 1e6) / 1e6;
     }
 
@@ -41,11 +41,11 @@ void graphvalues::dragRange(const std::optional<double>& min, const std::optiona
     hi = max.value_or(far);
 }
 
-bool graphvalues::colorFrom(const Json& value, Vector4& out){
+bool graphvalues::colorFrom(const GraphJson& value, Vector4& out){
     if (value.is_object()){
         float r, g, b, a = 1.0f;
-        if (!number(value, "r", r) || !number(value, "g", g) || !number(value, "b", b)) return false;
-        if (value.contains("a") && !number(value, "a", a)) return false;
+        if (!paramNumber(value, "r", r) || !paramNumber(value, "g", g) || !paramNumber(value, "b", b)) return false;
+        if (value.contains("a") && !paramNumber(value, "a", a)) return false;
         out = Vector4(r, g, b, a);
         return true;
     }
@@ -61,38 +61,38 @@ bool graphvalues::colorFrom(const Json& value, Vector4& out){
     return false;
 }
 
-Json graphvalues::colorJson(const Vector4& color, const Json& like){
+GraphJson graphvalues::colorJson(const Vector4& color, const GraphJson& like){
     if (like.is_array()){
-        Json out = Json::array({rounded(color.x), rounded(color.y), rounded(color.z)});
-        if (like.size() != 3) out.push_back(rounded(color.w));
+        GraphJson out = GraphJson::array({paramRounded(color.x), paramRounded(color.y), paramRounded(color.z)});
+        if (like.size() != 3) out.push_back(paramRounded(color.w));
         return out;
     }
-    Json out = like.is_object() ? like : Json::object();
-    out["r"] = rounded(color.x);
-    out["g"] = rounded(color.y);
-    out["b"] = rounded(color.z);
-    out["a"] = rounded(color.w);
+    GraphJson out = like.is_object() ? like : GraphJson::object();
+    out["r"] = paramRounded(color.x);
+    out["g"] = paramRounded(color.y);
+    out["b"] = paramRounded(color.z);
+    out["a"] = paramRounded(color.w);
     return out;
 }
 
-bool graphvalues::gradientFrom(const Json& value, Gradient& out){
+bool graphvalues::gradientFrom(const GraphJson& value, Gradient& out){
     if (!value.is_object() || !value.contains("points") || !value["points"].is_array() || value["points"].empty()) return false;
     Gradient gradient;
-    for (const Json& point : value["points"]){
+    for (const GraphJson& point : value["points"]){
         if (!point.is_object()) return false;
         float pos, r, g, b, a = 1.0f;
-        if (!number(point, "pos", pos) || !number(point, "r", r) || !number(point, "g", g) || !number(point, "b", b)) return false;
-        if (point.contains("a") && !number(point, "a", a)) return false;
+        if (!paramNumber(point, "pos", pos) || !paramNumber(point, "r", r) || !paramNumber(point, "g", g) || !paramNumber(point, "b", b)) return false;
+        if (point.contains("a") && !paramNumber(point, "a", a)) return false;
         gradient.colorKeys.push_back({pos, Vector3(r, g, b)});
         gradient.alphaKeys.push_back({pos, a});
     }
-    gradient.mode = wholeOr(value, "interpolation", 1) == 0 ? GradientMode::Fixed : GradientMode::Blend;
+    gradient.mode = paramWholeOr(value, "interpolation", 1) == 0 ? GradientMode::Fixed : GradientMode::Blend;
     gradient.sortKeys();
     out = gradient;
     return true;
 }
 
-bool graphvalues::gradientJson(const Gradient& gradient, const Json& like, Json& out, std::string& error){
+bool graphvalues::gradientJson(const Gradient& gradient, const GraphJson& like, GraphJson& out, std::string& error){
     std::vector<float> times;
     for (const GradientColorKey& key : gradient.colorKeys) times.push_back(key.time);
     for (const GradientAlphaKey& key : gradient.alphaKeys) times.push_back(key.time);
@@ -104,31 +104,31 @@ bool graphvalues::gradientJson(const Gradient& gradient, const Json& like, Json&
         error = "a gradient holds at most " + std::to_string(RAMP_KEYS_MAX) + " keys (colour and alpha keys at different places count apart)";
         return false;
     }
-    out = like.is_object() ? like : Json::object();
-    Json points = Json::array();
+    out = like.is_object() ? like : GraphJson::object();
+    GraphJson points = GraphJson::array();
     for (float t : times){
         const Vector3 color = gradient.evaluateEncoded(t);
-        points.push_back({{"pos", rounded(t)}, {"r", rounded(color.x)}, {"g", rounded(color.y)}, {"b", rounded(color.z)},
-                          {"a", rounded(gradient.evaluateAlpha(t))}});
+        points.push_back({{"pos", paramRounded(t)}, {"r", paramRounded(color.x)}, {"g", paramRounded(color.y)}, {"b", paramRounded(color.z)},
+                          {"a", paramRounded(gradient.evaluateAlpha(t))}});
     }
     out["points"] = std::move(points);
     // Blend keeps a smooth interpolation the file had (2, 3): the editor shows those as Blend
-    const int before = wholeOr(like, "interpolation", 1);
+    const int before = paramWholeOr(like, "interpolation", 1);
     if (gradient.mode == GradientMode::Fixed) out["interpolation"] = 0;
     else out["interpolation"] = before == 0 ? 1 : before;
     return true;
 }
 
-bool graphvalues::curveFrom(const Json& value, Curve& out){
+bool graphvalues::curveFrom(const GraphJson& value, Curve& out){
     if (!value.is_object() || !value.contains("points") || !value["points"].is_array() || value["points"].empty()) return false;
     Curve curve;
-    for (const Json& point : value["points"]){
+    for (const GraphJson& point : value["points"]){
         if (!point.is_object()) return false;
         CurveKey key;
         float ls = 0.0f, rs = 0.0f;
-        if (!number(point, "x", key.time) || !number(point, "y", key.value)) return false;
-        number(point, "ls", ls);
-        number(point, "rs", rs);
+        if (!paramNumber(point, "x", key.time) || !paramNumber(point, "y", key.value)) return false;
+        paramNumber(point, "ls", ls);
+        paramNumber(point, "rs", rs);
         key.inTangent = ls;
         key.outTangent = rs;
         curve.keys.push_back(key);
@@ -138,19 +138,19 @@ bool graphvalues::curveFrom(const Json& value, Curve& out){
     return true;
 }
 
-bool graphvalues::curveJson(const Curve& curve, const Json& like, Json& out, std::string& error){
+bool graphvalues::curveJson(const Curve& curve, const GraphJson& like, GraphJson& out, std::string& error){
     const size_t had = like.is_object() && like.contains("points") && like["points"].is_array() ? like["points"].size() : 0;
     if (curve.keys.size() > std::max(RAMP_KEYS_MAX, had)){
         error = "a curve holds at most " + std::to_string(RAMP_KEYS_MAX) + " keys";
         return false;
     }
-    out = like.is_object() ? like : Json::object();
-    Json points = Json::array();
+    out = like.is_object() ? like : GraphJson::object();
+    GraphJson points = GraphJson::array();
     for (const CurveKey& key : curve.keys){
         // an infinite tangent (a step) has no slope a file can hold: flat
         const float ls = std::isfinite(key.inTangent) ? key.inTangent : 0.0f;
         const float rs = std::isfinite(key.outTangent) ? key.outTangent : 0.0f;
-        points.push_back({{"x", rounded(key.time)}, {"y", rounded(key.value)}, {"ls", rounded(ls)}, {"rs", rounded(rs)}});
+        points.push_back({{"x", paramRounded(key.time)}, {"y", paramRounded(key.value)}, {"ls", paramRounded(ls)}, {"rs", paramRounded(rs)}});
     }
     out["points"] = std::move(points);
     return true;

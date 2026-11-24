@@ -7,6 +7,7 @@
 #include "EntityHandle.h"
 #include "GameObject.h"
 #include "component/AudioSourceComponent.h"
+#include "object/sound/AudioSourceEffect.h"
 
 namespace jasperengine {
 
@@ -16,6 +17,7 @@ namespace jasperengine {
         // component checkbox (Unity Behaviour.enabled): a disabled Sound is skipped by its system
         void setEnabled(bool enabled);
         bool isEnabled() const;
+        // a new GameObject (a Transform) with an Audio Source: 2D (Spatial Blend 0), or 3D (1)
         AudioSource(Scene* scene);
         AudioSource(Scene* scene, bool is3D);
         AudioSource(Scene* scene, Entity entity);
@@ -28,7 +30,11 @@ namespace jasperengine {
 
         int loadSound(const std::string& filename);
         void destroySound();
+        // Unity's AudioClip.loadState of the source's clip: Loading from loadSound until ready
+        // (getLength() is 0 until Loaded) or Failed
+        AudioLoadState getLoadState() const;
 
+        // an entity without a Transform (an older AudioSource(scene)) gets one and stays 2D
         GameObject getGameObject() const;
 
         void play();
@@ -43,8 +49,14 @@ namespace jasperengine {
         bool isPaused();
         bool isStopped();
 
+        // true: a Transform (added when missing) and Spatial Blend 1; false: Spatial Blend 0
         void setSound3D(bool sound3D);
+        // a Transform and Spatial Blend above 0
         bool isSound3D() const;
+
+        // 0 = 2D (pan, no attenuation) .. 1 = 3D; clamped to 0..1 (S97 REQ-18)
+        void setSpatialBlend(float spatialBlend);
+        float getSpatialBlend() const;
 
         void setClockedSound(bool enableClocked);
         bool isClockedSound() const;
@@ -141,6 +153,17 @@ namespace jasperengine {
         bool isFading() const;
         // the voices playing now (main + one-shots)
         int getVoiceCount() const;
+
+        // ---- its own effects (docs/specs/S97-audio-gaps.md REQ-1, REQ-41; AudioSourceEffect.cpp)
+        // appends a mixer effect (not duck or limiter), up to AudioSourceComponent::maxEffects; an
+        // invalid effect (logged) when it cannot
+        AudioSourceEffect addEffect(const std::string& type);
+        // by 1-based index, or the first of a type; invalid when there is none
+        AudioSourceEffect getEffect(int index) const;
+        AudioSourceEffect getEffect(const std::string& type) const;
+        bool removeEffect(int index);
+        bool removeEffect(const std::string& type);
+        int getEffectCount() const;
 
         // Unity AudioSource.PlayClipAtPoint: a voice of `scene` at a world position, stopped with
         // the scene; through a mixer group by name ("" = Master)

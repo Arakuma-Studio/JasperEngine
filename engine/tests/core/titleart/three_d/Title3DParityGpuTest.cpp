@@ -105,7 +105,7 @@ namespace {
         }
     };
 
-    double luminance(const uint8_t* p) {
+    double title3DParityLuminance(const uint8_t* p) {
         return 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
     }
 
@@ -145,8 +145,8 @@ namespace {
                         }
                         if (worst > 24) over++;
                         if (r[3] > 200 && o[3] > 200) {
-                            toneRef += luminance(r);
-                            toneOurs += luminance(o);
+                            toneRef += title3DParityLuminance(r);
+                            toneOurs += title3DParityLuminance(o);
                             covered++;
                         }
                     }
@@ -345,9 +345,12 @@ namespace {
         std::unique_ptr<TitleArtRenderer> renderer;
     };
 
+    // over 5 min under ASan: the PR ASan lane leaves it to the nightly (docs/testing.md, Naming)
+    class Title3DParityGpuSlow : public Title3DParityGpu {};
+
 }
 
-TEST_F(Title3DParityGpu, PachislopLooks) {
+TEST_F(Title3DParityGpuSlow, PachislopLooks) {
     const std::filesystem::path fixtures = std::filesystem::path(jasperengine::test::testPaths().sourceDir) / "titleart" / "fixtures" / "pachislop3d";
     std::vector<std::filesystem::path> files;
     for (const auto& entry : std::filesystem::directory_iterator(fixtures)) {

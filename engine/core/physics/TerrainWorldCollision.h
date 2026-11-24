@@ -40,8 +40,13 @@ namespace jasperengine {
         static constexpr int MAX_COARSE_PER_FRAME = 8;
         // R20
         static constexpr int MAX_CHUNKS_PER_FRAME = 16;
-        // R23: the error Jolt's compression of a chunk may add, in metres (at most 8 bits a sample)
-        static constexpr float CHUNK_MAX_ERROR = 0.01f;
+        // R23: a chunk's samples at 8 bits, Jolt's most. Not Jolt's estimate for an error
+        // (CalculateBitsPerSampleForError): its second pass over a block lacks the first pass's
+        // clamp, so on a side that is not a multiple of the block size, as a chunk's 2^n + 1 is, it
+        // read wrapped and out-of-range samples and answered 8 for every chunk that is not flat.
+        // With the bits it means, two chunks' shared edge quantizes apart and a crate at a
+        // four-chunk corner never settles (TerrainWorldPlacement.CratesRestOnTheSurfaceAcrossBorders)
+        static constexpr uint32_t CHUNK_BITS_PER_SAMPLE = 8;
 
         // R23: one fine chunk's samples as the collider builds them (worldChunkSamples), its tile and
         // neighbours read now if they must be (Physics Placement reads synchronously); false when the

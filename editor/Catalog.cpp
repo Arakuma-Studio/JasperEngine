@@ -348,6 +348,26 @@ editor::PropertyType editor::Catalog::scriptPropertyTypeToPropertyType(ScriptPro
     }
 }
 
+// (an Enum sign-extends as reflect::readEnum does, so a value reads as the file writes it)
+int64_t editor::readPropertyInteger(const PropertyData& property, const void* value) {
+    const bool isUnsigned = property.type == PropertyType::UInt;
+    switch (property.size) {
+        case 1: { uint8_t v; std::memcpy(&v, value, 1); return isUnsigned ? int64_t(v) : int64_t(int8_t(v)); }
+        case 2: { uint16_t v; std::memcpy(&v, value, 2); return isUnsigned ? int64_t(v) : int64_t(int16_t(v)); }
+        case 8: { int64_t v; std::memcpy(&v, value, 8); return v; }
+        default: { uint32_t v; std::memcpy(&v, value, 4); return isUnsigned ? int64_t(v) : int64_t(int32_t(v)); }
+    }
+}
+
+void editor::writePropertyInteger(const PropertyData& property, void* value, int64_t integer) {
+    switch (property.size) {
+        case 1: { const uint8_t v = static_cast<uint8_t>(integer); std::memcpy(value, &v, 1); break; }
+        case 2: { const uint16_t v = static_cast<uint16_t>(integer); std::memcpy(value, &v, 2); break; }
+        case 8: std::memcpy(value, &integer, 8); break;
+        default: { const uint32_t v = static_cast<uint32_t>(integer); std::memcpy(value, &v, 4); break; }
+    }
+}
+
 std::map<std::string, editor::PropertyData> editor::Catalog::getProperties(ComponentType component, void* compRef){
     std::map<std::string, editor::PropertyData> ps;
     tryEnumerateProperties(component, compRef, ps);
@@ -1491,16 +1511,13 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             if (source && target) *target = *source;
             break;
         }
-        case PropertyType::Int: {
-            int* source = Catalog::getPropertyRef<int>(sourceRegistry, sourceEntity, compType, property);
-            int* target = Catalog::getPropertyRef<int>(targetRegistry, targetEntity, compType, property);
-            if (source && target) *target = *source;
-            break;
-        }
-        case PropertyType::UInt: {
-            unsigned int* source = Catalog::getPropertyRef<unsigned int>(sourceRegistry, sourceEntity, compType, property);
-            unsigned int* target = Catalog::getPropertyRef<unsigned int>(targetRegistry, targetEntity, compType, property);
-            if (source && target) *target = *source;
+        case PropertyType::Int:
+        case PropertyType::UInt:
+        case PropertyType::Enum: {
+            // at each one's own width (an enum may be one byte)
+            const PropertyData source = Catalog::getProperty(sourceRegistry, sourceEntity, compType, property);
+            const PropertyData target = Catalog::getProperty(targetRegistry, targetEntity, compType, property);
+            if (source.ref && target.ref) writePropertyInteger(target, target.ref, readPropertyInteger(source, source.ref));
             break;
         }
         case PropertyType::Vector2: {
@@ -1566,12 +1583,6 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
         case PropertyType::Texture: {
             Texture* source = Catalog::getPropertyRef<Texture>(sourceRegistry, sourceEntity, compType, property);
             Texture* target = Catalog::getPropertyRef<Texture>(targetRegistry, targetEntity, compType, property);
-            if (source && target) *target = *source;
-            break;
-        }
-        case PropertyType::Enum: {
-            int* source = Catalog::getPropertyRef<int>(sourceRegistry, sourceEntity, compType, property);
-            int* target = Catalog::getPropertyRef<int>(targetRegistry, targetEntity, compType, property);
             if (source && target) *target = *source;
             break;
         }

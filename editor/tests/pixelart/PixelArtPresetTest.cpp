@@ -62,9 +62,9 @@ namespace {
         return input;
     }
 
-    using Change = std::tuple<std::string, std::string, std::string>;
-    std::set<Change> changeSet(const std::vector<FixChange>& changes){
-        std::set<Change> out;
+    using PixelArtPresetChange = std::tuple<std::string, std::string, std::string>;
+    std::set<PixelArtPresetChange> changeSet(const std::vector<FixChange>& changes){
+        std::set<PixelArtPresetChange> out;
         for (const FixChange& change : changes)
             out.insert({change.target, change.field, change.to.dump()});
         return out;

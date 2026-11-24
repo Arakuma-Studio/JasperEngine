@@ -44,7 +44,7 @@ namespace {
     double decodeInteger(const uint8_t* rgba){
         return (double)rgba[0] * 65536.0 + (double)rgba[1] * 256.0 + (double)rgba[2];
     }
-    float decode(const uint8_t* rgba){
+    float meshPoseDecode(const uint8_t* rgba){
         return (float)(decodeInteger(rgba) / 16777215.0 * RANGE + RANGE_MIN);
     }
 
@@ -141,7 +141,7 @@ TEST(MeshPose, MatchesGpuSkinning){
             ASSERT_LT(index, (double)vertexCount) << "pixel (" << x << ", " << y << ") names no vertex";
             const uint32_t vertex = (uint32_t)index;
             seen[vertex] = true;
-            const Vector3 gpu(decode(&images[0][i]), decode(&images[1][i]), decode(&images[2][i]));
+            const Vector3 gpu(meshPoseDecode(&images[0][i]), meshPoseDecode(&images[1][i]), meshPoseDecode(&images[2][i]));
             const Vector3 cpu = modelMatrix * posed[layout.submeshes[0].base + vertex];
             const float error = (gpu - cpu).length();
             // (a NaN is the worst there is)
