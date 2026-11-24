@@ -16,7 +16,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <limits>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -1335,8 +1334,9 @@ bool Logger::isInitialized() {
 void Logger::shutdown() {
     LoggerState& s = logState();
     if (!s.initialized.load(std::memory_order_acquire)) return;
-    // what the rate limit still holds back is reported while the sinks are there
-    sweepValve(s, std::numeric_limits<int64_t>::max() / 2, false, true);
+    // what the rate limit still holds back is reported while the sinks are there. Every window,
+    // at the real time: the next sweep is scheduled from it, and an init after this one sweeps again
+    sweepValve(s, logMonotonicMs(), true, true);
     std::thread* drain = nullptr;
     {
         std::lock_guard<std::mutex> lock(s.queueMutex);
