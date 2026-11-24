@@ -280,7 +280,21 @@ void queryDrawnTool(const CallPtr& call, Project* project) {
         list.push_back(item);
     }
     Json data = {{"dimension", "drawn"}, {"shape", shape}, {"mode", "overlap"}, {"hits", list}};
-    call->ok(list.empty() ? std::string("Nothing drawn overlaps.") : std::to_string(list.size()) + " drawn object(s) overlap.", data);
+    if (list.empty()) {
+        call->ok("Nothing drawn overlaps.", data);
+        return;
+    }
+    // the hits in the text too: a client that shows the model only the text still names them
+    std::string text = std::to_string(list.size()) + " drawn object(s) overlap:";
+    const size_t shown = std::min<size_t>(list.size(), 20);
+    for (size_t i = 0; i < shown; i++) {
+        const Json& item = list[i];
+        text += (i ? ", " : " ") + item["name"].get<std::string>();
+        if (item.contains("tree_id")) text += " tree " + std::to_string(item["tree_id"].get<long long>());
+        else if (item["kind"] != "mesh") text += " " + item["kind"].get<std::string>();
+    }
+    if (shown < list.size()) text += ", ...";
+    call->ok(text + ".", data);
 }
 
 void queryPhysicsTool(const CallPtr& call) {

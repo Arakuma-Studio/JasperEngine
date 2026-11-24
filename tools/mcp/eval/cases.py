@@ -6007,7 +6007,7 @@ CASES = [
                   "their tree ids.",
         "mocks": [
             {"tool": "query_physics", "args": {"dimension": "drawn"}, "result": ok(
-                "2 drawn object(s) overlap.",
+                "2 drawn object(s) overlap: Terrain tree 17, Terrain tree 23.",
                 {"dimension": "drawn", "shape": "sphere", "mode": "overlap",
                  "hits": [{"entity": 4, "name": "Terrain", "kind": "tree", "prototype": 0, "tree_id": 17},
                           {"entity": 4, "name": "Terrain", "kind": "tree", "prototype": 1, "tree_id": 23}]})},
