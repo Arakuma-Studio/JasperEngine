@@ -32,7 +32,7 @@ namespace {
         return path;
     }
 
-    std::vector<float> turn(float degrees){
+    std::vector<float> clipMemoryTurn(float degrees){
         const float half = degrees * 3.14159265358979f / 360.0f;
         return {0.0f, std::sin(half), 0.0f, std::cos(half)};
     }
@@ -42,7 +42,7 @@ namespace {
         ClipTrackData t;
         t.path = path;
         t.channel = ClipChannel::Rotation;
-        for (size_t k = 0; k < count; k++) t.keys.push_back(key((float)k * spacing, turn((float)k * 3.0f)));
+        for (size_t k = 0; k < count; k++) t.keys.push_back(key((float)k * spacing, clipMemoryTurn((float)k * 3.0f)));
         return t;
     }
 
@@ -85,7 +85,7 @@ namespace {
         return data;
     }
 
-    size_t keyCount(const AnimationClip& clip){
+    size_t clipMemoryKeyCount(const AnimationClip& clip){
         size_t keys = 0;
         for (const AnimationClip::Track& t : clip.getTracks()) keys += t.keyCount;
         return keys;
@@ -97,7 +97,7 @@ namespace {
         return clip.getTracks()[(size_t)(index < 0 ? 0 : index)];
     }
 
-    ClipTrackData propertyTrack(const std::string& path, const std::string& component, const std::string& name, std::vector<ClipKey> keys){
+    ClipTrackData clipMemoryPropertyTrack(const std::string& path, const std::string& component, const std::string& name, std::vector<ClipKey> keys){
         ClipTrackData t;
         t.path = path;
         t.channel = ClipChannel::Property;
@@ -117,7 +117,7 @@ namespace {
         const std::vector<float> a = {0.0f, 1.0f, 2.0f};
         const std::vector<float> b = {3.0f, 2.0f, 1.0f};
         data.tracks.push_back(track("Linear", ClipChannel::Position, {key(0, a), key(0.5f, b), key(1, a)}));
-        data.tracks.push_back(track("Linear", ClipChannel::Rotation, {key(0, turn(0)), key(0.5f, turn(40)), key(1, turn(170))}));
+        data.tracks.push_back(track("Linear", ClipChannel::Rotation, {key(0, clipMemoryTurn(0)), key(0.5f, clipMemoryTurn(40)), key(1, clipMemoryTurn(170))}));
         data.tracks.push_back(track("Linear", ClipChannel::Scale, {key(0, a), key(0.5f, b), key(1, b)}));
         data.tracks.push_back(track("Eased", ClipChannel::Position, {key(0, a, EaseType::QUAD_OUT), key(0.5f, b, EaseType::LINEAR), key(1, a)}));
         data.tracks.push_back(track("Stepped", ClipChannel::Position, {key(0, a, EaseType::STEP), key(0.5f, b, EaseType::STEP), key(1, a)}));
@@ -140,16 +140,16 @@ namespace {
         ClipTrackData lattice = track("Cage", ClipChannel::Lattice, {key(0, {0, 0, 0, 1, 1, 1}), key(1, {2, 2, 2, 3, 3, 3})});
         lattice.points = {4, 7};
         data.tracks.push_back(lattice);
-        data.tracks.push_back(propertyTrack("Lamp", "light", "intensity", {key(0, {1.0f}), key(1, {4.0f})}));
-        data.tracks.push_back(propertyTrack("Box", "gameobject", "active", {key(0, {0.0f}), key(0.5f, {1.0f}), key(1, {0.0f})}));
-        data.tracks.push_back(propertyTrack("Box", "gameobject", "unheard_of", {}));
+        data.tracks.push_back(clipMemoryPropertyTrack("Lamp", "light", "intensity", {key(0, {1.0f}), key(1, {4.0f})}));
+        data.tracks.push_back(clipMemoryPropertyTrack("Box", "gameobject", "active", {key(0, {0.0f}), key(0.5f, {1.0f}), key(1, {0.0f})}));
+        data.tracks.push_back(clipMemoryPropertyTrack("Box", "gameobject", "unheard_of", {}));
         data.events = {event(0.25f, "step"), event(0.75f, "land")};
         data.events[1].args = {AnimationEventArg(std::string("a string longer than any small string buffer")), AnimationEventArg(2.0)};
         data.unknownKeys = {{"made_by", "\"a tool whose name is longer than a small string\""}};
         return data;
     }
 
-    void expectSameSample(const anim::TrackSample& a, const anim::TrackSample& b, const std::string& what){
+    void clipMemoryExpectSameSample(const anim::TrackSample& a, const anim::TrackSample& b, const std::string& what){
         EXPECT_EQ(a.valid, b.valid) << what;
         EXPECT_EQ(a.channel, b.channel) << what;
         EXPECT_EQ(std::memcmp(&a.vector, &b.vector, sizeof(Vector3)), 0) << what;
@@ -178,7 +178,7 @@ namespace {
             anim::sampleClipTracks(b, time, second);
             ASSERT_EQ(first.size(), second.size());
             for (size_t i = 0; i < first.size(); i++){
-                expectSameSample(first[i], second[i], a.getTracks()[i].path + " at " + std::to_string(time));
+                clipMemoryExpectSameSample(first[i], second[i], a.getTracks()[i].path + " at " + std::to_string(time));
             }
         }
     }
@@ -204,14 +204,14 @@ namespace {
 TEST(ClipMemory, TheWalkShapeFitsItsBudget){
     std::shared_ptr<const AnimationClip> clip = AnimationClip::build(walkShape());
     ASSERT_EQ(clip->getTracks().size(), 132u);
-    ASSERT_EQ(keyCount(*clip), 911u);
+    ASSERT_EQ(clipMemoryKeyCount(*clip), 911u);
     EXPECT_LE(clip->memoryBytes(), 72000u);
 }
 
 TEST(ClipMemory, TheDenseShapeFitsItsBudget){
     std::shared_ptr<const AnimationClip> clip = AnimationClip::build(denseShape());
     ASSERT_EQ(clip->getTracks().size(), 201u);
-    ASSERT_EQ(keyCount(*clip), 8241u);
+    ASSERT_EQ(clipMemoryKeyCount(*clip), 8241u);
     EXPECT_LE(clip->memoryBytes(), 190000u);
 }
 
@@ -337,7 +337,7 @@ TEST(ClipMemory, MemoryBytesIsWhatTheClipOwns){
     const std::string first = bonePath(0);
     const std::string second = bonePath(1);
     source.tracks.push_back(track(first, ClipChannel::Position, {key(0, {0, 0, 0}), key(1, {1, 1, 1})}));
-    source.tracks.push_back(track(first, ClipChannel::Rotation, {key(0, turn(0)), key(1, turn(10))}));
+    source.tracks.push_back(track(first, ClipChannel::Rotation, {key(0, clipMemoryTurn(0)), key(1, clipMemoryTurn(10))}));
     source.tracks.push_back(track(second, ClipChannel::Position, {key(0, {0, 0, 0}, EaseType::QUAD_IN), key(2, {1, 1, 1})}));
     std::shared_ptr<const AnimationClip> clip = AnimationClip::build(source);
 

@@ -107,10 +107,10 @@ namespace vatimportfixtures {
 
     // a payload texel through vatTexelIndex
     inline std::array<double, 4> texel(const ev::VatImportResult& r, int frame, int element, int k) {
-        const uint64_t t = vat::vatTexelIndex(r.data.mode, r.data.layout, frame, element, k);
+        const uint64_t t = jasperengine::vat::vatTexelIndex(r.data.mode, r.data.layout, frame, element, k);
         std::array<double, 4> out{};
         for (int c = 0; c < 4; c++) {
-            if (r.payload.precision == vat::VatPrecision::Float) {
+            if (r.payload.precision == jasperengine::vat::VatPrecision::Float) {
                 float f;
                 std::memcpy(&f, r.payload.bytes.data() + (t * 4 + c) * 4, 4);
                 out[c] = f;
@@ -132,7 +132,7 @@ namespace vatimportfixtures {
     // a mesh vertex's position at payload frame `frame` (Vertices: rest + offset or absolute; Bones: skinned)
     inline V3 animated(const ev::VatImportResult& r, size_t v, int frame) {
         const ev::VatMeshData& m = r.mesh;
-        if (r.data.mode == vat::VatMode::Bones) {
+        if (r.data.mode == jasperengine::vat::VatMode::Bones) {
             const int bone = m.joints[v * 4];
             const auto q = texelQuat(r, frame, bone, 0);
             const auto t = texel(r, frame, bone, 1);
@@ -141,7 +141,7 @@ namespace vatimportfixtures {
         const int e = (int)m.vatIndex[v];
         const auto o = texel(r, frame, e, 0);
         bool absolute = false;
-        for (const vat::VatClip& c : r.data.clips)
+        for (const jasperengine::vat::VatClip& c : r.data.clips)
             if (frame >= c.start && frame < c.start + c.frames) absolute = c.restNone;
         return (absolute ? V3() : meshPosition(m, v)) + V3(o[0], o[1], o[2]);
     }

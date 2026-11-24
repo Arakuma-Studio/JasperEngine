@@ -349,7 +349,11 @@ namespace{
     // ---------------------------------------------------------------- engine guards (place-physics')
 
     struct EngineRuntimeGuard{
+        Project& project;
         ~EngineRuntimeGuard(){
+            // the project's scenes and their renders go while the engine runs: ~Project, which
+            // comes after this guard, leaves them to the process exit
+            project.releaseScenes();
             ::jasperengine::ShaderPool::setShaderBuilder(nullptr);
             ShaderBuilder::requestShutdown();
             ::jasperengine::Engine::systemShutdown();
@@ -893,7 +897,7 @@ namespace{
         Project project;
         auto platform = std::make_unique<Platform>(&project);
         ::jasperengine::Engine::systemInit(argc, argv, platform.get());
-        EngineRuntimeGuard engineRuntime;
+        EngineRuntimeGuard engineRuntime{project};
         ::jasperengine::Engine::pauseGameEvents(true);
         ::jasperengine::Engine::setAsyncLoading(false);
 

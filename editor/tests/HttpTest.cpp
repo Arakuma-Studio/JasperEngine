@@ -1268,8 +1268,11 @@ TEST_F(HttpTest, LuaProgressDownloadTextureAndProperties) {
     EXPECT_EQ(luaValue("dl.bytesTotal"), "200000");
     EXPECT_EQ(scriptdata::readFile(root / "data" / "lua" / "d.bin"), TestHttpServer::pattern(200000));
     EXPECT_EQ(luaValue("tex.ok"), "true");
-    EXPECT_EQ(luaValue("tex.textureData:getWidth() .. 'x' .. tex.textureData:getHeight()"), "4x2");
+    ASSERT_EQ(lua("texData = tex.textureData"), "");
+    EXPECT_EQ(luaValue("texData:getWidth() .. 'x' .. texData:getHeight()"), "4x2");
     EXPECT_EQ(luaValue("tex.body"), "");
+    // read and given to no texture: its pixels are the script's to free (docs/mcp/guide/networking.md)
+    ASSERT_EQ(lua("texData:releaseImageData()"), "");
 
     // properties
     EXPECT_EQ(luaValue("Http.maxConcurrentRequests"), "8");

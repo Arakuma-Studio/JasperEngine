@@ -77,7 +77,7 @@ namespace {
         std::string names;
     };
 
-    MeshKeys collect(Scene& scene){
+    MeshKeys lodFadeVariantsCollect(Scene& scene){
         ShaderVariantContent content;
         content.registry = &scene;
         content.entities = scene.getEntityList();
@@ -111,32 +111,32 @@ TEST_F(LodFadeVariantKeys, OnlyMeshesThatCanFadeShipTheFadeVariant){
     Primitive sphere(&scene);
     sphere.createSphere(1.0f, 24, 12);
 
-    const MeshKeys on = collect(scene);
+    const MeshKeys on = lodFadeVariantsCollect(scene);
     EXPECT_GT(on.plain, 0u);
     EXPECT_EQ(on.fade, on.plain) << "each variant a fading draw can use has its fade sibling:" << on.names;
     EXPECT_EQ(on.autoInstancedFade, 0u) << "a fading draw is never auto-instanced, so no 'Aui' fade variant ships:" << on.names;
 
     // red control of the rule: every switch off ships none, and the same plain variants
     scene.setMeshLodCrossFade(false);
-    MeshKeys off = collect(scene);
+    MeshKeys off = lodFadeVariantsCollect(scene);
     EXPECT_EQ(off.fade, 0u) << "Cross Fade off";
     EXPECT_EQ(off.plain, on.plain);
     scene.setMeshLodCrossFade(true);
 
     scene.setMeshLodEnabled(false);
-    EXPECT_EQ(collect(scene).fade, 0u) << "Mesh LOD off";
+    EXPECT_EQ(lodFadeVariantsCollect(scene).fade, 0u) << "Mesh LOD off";
     scene.setMeshLodEnabled(true);
 
     sphere.setLodFadeMode(LodFadeMode::NONE);
-    EXPECT_EQ(collect(scene).fade, 0u) << "the mesh's Fade Mode None";
+    EXPECT_EQ(lodFadeVariantsCollect(scene).fade, 0u) << "the mesh's Fade Mode None";
     sphere.setLodFadeMode(LodFadeMode::CROSS_FADE);
 
     sphere.setLodEnabled(false);
-    EXPECT_EQ(collect(scene).fade, 0u) << "the mesh's LOD off";
+    EXPECT_EQ(lodFadeVariantsCollect(scene).fade, 0u) << "the mesh's LOD off";
     sphere.setLodEnabled(true);
 
     sphere.setCustomShader("shaders/myMesh");
-    EXPECT_EQ(collect(scene).fade, 0u) << "a fork has no fade variant";
+    EXPECT_EQ(lodFadeVariantsCollect(scene).fade, 0u) << "a fork has no fade variant";
 }
 
 TEST_F(LodFadeVariantKeys, AnInstancedMeshShipsItsInstancedFadeVariant){
@@ -146,5 +146,5 @@ TEST_F(LodFadeVariantKeys, AnInstancedMeshShipsItsInstancedFadeVariant){
     Primitive sphere(&scene);
     sphere.createSphere(1.0f, 24, 12);
     scene.addComponent<InstancedMeshComponent>(sphere.getEntity(), {});
-    EXPECT_GT(collect(scene).instancedFade, 0u);
+    EXPECT_GT(lodFadeVariantsCollect(scene).instancedFade, 0u);
 }

@@ -606,9 +606,18 @@ Each backend test is parameterised over `{Native, Polling}`.
   shared `jasperengine::test::TempDir`. After the S04 merge S04's file-local helpers met others
   (`lowerExtension`, `joinRelative`, `cacheVersion`, `trim`, `fixture`...): they have file-specific
   names now.
-- **Delete hold under polling** is the poll interval + 100 ms (R4's 200 ms with native events):
-  a scan between a save's delete and its rewrite would otherwise report a removal and an
-  addition (`FileWatcherTests.DeleteRecreate/Polling` under TSan's slowdown).
+- **Delete hold under polling** lasts until the next completed scan (#37), on top of R4's 200 ms
+  (native events keep 200 ms alone): a scan between a save's delete and its rewrite reports a
+  removal, and only the next scan sees the file back. A time-based hold (one interval and 100 ms,
+  then two) bet on when that scan ends and lost where a slow scan or a preempted poll thread
+  delayed it (the macOS CI runner, merge-queue run 44236737165). The polling backend ends each pass
+  with a `ScanDone` raw event (after its events; a pass with none reports it only while a removal
+  waits, so an idle watch wakes nobody), each tagged with its backend (`RawEvent::source`: the
+  project's or a linked folder's), and the coalescer releases a removal at the second `ScanDone`
+  of its source, the first ending the scan that reported it. A retired linked backend releases
+  what it held. `Polling/FileWatcherPolling.DeleteRecreateAcrossALateScan` holds that scan past the
+  old hold through `watch::setPollingScanHookForTesting`. A removal comes out about two intervals
+  after it happened (the old hold: up to three intervals + 100 ms).
 - **S09 and S24 landed during the stream** (merged at the end). The `[Hot Reload]` Console
   lines are in S09's `asset` log category and the watcher's own warnings (a fallback to polling,
   an overflow) in `io`, so the Console's Category filter separates them. `FileWatchSubscription`
@@ -664,3 +673,17 @@ Each backend test is parameterised over `{Native, Polling}`.
   tries up to 3; with none live it fails and the service polls (`Degraded`). The marker is what proves
   delivery, so the barrier asks with `FlushAsync` and waits on the marker up to its deadline. A root
   with no writable `.jasperengine/` has no marker: it asks once and waits 100 ms, the deadline at most.
+- **`FSEventStreamFlushAsync` has no effect on macOS 26.2**, so a barrier waits for the stream's
+  50 ms latency (R18), and AC6 takes about 50 s there. The marker is still what makes it a barrier. A
+  loaded macOS runner once took over 250 ms for one flush, so `FlushBarrier` gives each flush a 5 s
+  timeout, as a guard, and enforces AC6's 250 ms only in the benchmark run (`perfSlack`).
+
+### Watch follow-ups (fix/watch-followups)
+
+- **A polling backend starts from the service's index, not a walk of its own.** The service arms a
+  native backend before its index walk. A polling one starts after that walk, with the walk as its
+  baseline, so the tree is walked once. The service does the same for a linked folder's polling backend
+  (from what the index holds there) and for the switch to polling (from what was delivered). A change made
+  after the walk differs from the baseline, so it is reported. A linked folder's native backend is
+  armed after the walk that found the folder, so the service diffs that folder once the backend is armed.
+  The linked folders' backends start before `indexReady`.

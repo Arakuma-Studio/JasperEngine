@@ -25,8 +25,8 @@ meters, `isPlaying`, events and fades are real. Lua reference: `jasper://docs/lu
   {"op": "expose", "name": "SFXVolume", "group": "SFX", "volume": true, "remember": true},
   {"op": "expose", "name": "lowPassCutoff", "group": "Music", "param": "cutoff", "effect": "lowpass"},
   {"op": "expose", "name": "highPassCutoff", "group": "Music", "param": "cutoff", "effect": "highpass"},
-  {"op": "add_snapshot", "name": "Menu"},
-  {"op": "add_snapshot", "name": "Gameplay", "values": {"lowPassCutoff": 525, "highPassCutoff": 430}},
+  {"op": "add_snapshot", "name": "Menu", "values": {"lowPassCutoff": 525, "highPassCutoff": 430}},
+  {"op": "add_snapshot", "name": "Gameplay"},
   {"op": "set_start_snapshot", "name": "Menu"}
 ]}
 ```
@@ -157,7 +157,7 @@ target. A new snapshot holds every parameter's current value (the faders), with 
 Project Settings over MCP: `audio.mixer` (the .mixer path), `audio.max_real_voices` (32: voices
 mixed at once, the quietest others are virtualised; at most 255 minus the mixer's groups), `audio.max_voices` (256: voices playing at
 all), `audio.sample_rate` (`auto`, 22050, 44100, 48000), `audio.default_output_group` (the group
-new Audio Sources get).
+new Audio Sources get), `audio.unused_clip_cache` (16: MiB of clips nothing plays kept loaded; 0 drops them).
 
 `audio.output_stage`: `roundoff` (a soft clipper: a small signal leaves 1.66 dB lower, a -1 dB peak
 near -3.5 dBFS) or `linear` (samples pass unchanged, hard-clipped at 0 dBFS as a last guard: keep a
@@ -171,13 +171,47 @@ silent switch and stops the player's music), `ambient`, `solo_ambient`, `playbac
 | Property | Default | Meaning |
 |---|---|---|
 | `outputGroup` | `""` (Master) | the mixer group, by name |
-| `loadType` | Auto | `AudioLoadType.Auto` (files of 1 MiB and more stream, smaller are decoded), `DecompressOnLoad` (zero-latency effects), `CompressedInMemory` (the file's bytes, decoded while playing), `Streaming` (read from the file while playing: memory = nothing more). Per source (no clip import settings). A packed resource cannot stream: it is held compressed in memory |
+| `loadType` | Auto | `AudioLoadType.Auto` (the clip's import settings `load_type`, else files of 1 MiB and more stream, smaller are decoded), `DecompressOnLoad` (zero-latency effects), `CompressedInMemory` (the file's bytes, decoded while playing), `Streaming` (read from the file while playing: memory = nothing more). A source's own choice wins over the clip's. A packed resource cannot stream: it is held compressed in memory |
+| `loadState` (read-only) | Unloaded | `AudioLoadState`: Loading from `loadSound` until ready, then Loaded or Failed; `getLength()` is 0 until Loaded |
 | `priority` | 128 | 0 most important .. 256 least |
 | `maxVoices` | 8 | voices of this source at once (its clip + one-shots) |
 | `ignoreListenerPause` | false | plays on while `AudioListener.pause` is set |
 | `pitch` | 1 | = `speed` |
+| `effects` | `[]` | its own effects, up to 4: `[{type, bypass, wet, params}]` (below) |
+| `spatialBlend` | 1 (a new Audio Source: 0) | Unity's Spatial Blend: 0 plays 2D (`pan`, no distance attenuation), 1 plays 3D from the GameObject's position, between them a mix of the two without Doppler. A source without a Transform plays 2D |
+| `slot` | 0 | 0: the GameObject's own Audio Source; 1, 2, ...: a further one, on a hidden child (below) |
+
+- **Effects on one source** (Unity's Audio Low Pass, High Pass, Echo, Distortion and Reverb
+  Filter): to muffle, filter or echo one source (a radio, a voice behind a door), give that source
+  `effects`; a group's effects are for every source routed through it. `add_component
+  {"component": "Audio Low Pass Filter"}` adds one (and the Audio Source if missing), or
+  `set_properties {"values": {"AudioSource": {"effects": [{"type": "lowpass", "params": {"cutoff":
+  500}}]}}}`. Types and parameters are those of 4 but `duck` and `limiter`. They run on the
+  source's voices (its clip, one-shots, its event's voices) before its group. A change of the list
+  (add, remove, reorder, type) is heard from the next `play()`, values (`params`, `wet`, `bypass`)
+  at once. With no effect on (none, all bypassed, a low-pass at 22000 Hz) the voice costs nothing
+  more. An echo's delay longer than the one its voice started with is cut to it.
+
+```lua
+local src = AudioSource(self.scene, self.entity)
+local lowpass = src:getEffect("lowpass") or src:addEffect("lowpass")
+lowpass:setParameter("cutoff", 525, 0.9)
+```
 
 - **Many sources, one clip**: they play at once. `play()` on a playing source starts it over.
+- **Clip memory**: a clip stays loaded while a source, a voice or `AudioSystem.preload` holds it.
+  Let go (`loadSound` of another file, a voice that ended, a source removed or its scene unloaded),
+  it stays cached within Project Settings > Audio > Unused Clip Cache (16 MiB; the least recently
+  used go first; streamed clips count nothing; 0 drops it at once), so switching back decodes
+  nothing. To free one now: `destroySound()` on its source, or `AudioSystem.unload(path)` for a
+  preload. A low-memory warning clears the cache. `get_play_state`'s `audio.clips` lists the count,
+  the bytes, the unused bytes and the five largest clips with their holders.
+- **Load Type on the clip**: `set_audio_import_settings {paths, settings: {load_type: "streaming"}}`
+  (or the clip's Import Settings > Load Type) sets how every source left at Auto, `Audio.play`,
+  one-shots, Sound Events and music hold it.
+- **Load state**: `src:getAudioSourceComponent().onLoad = function(ok) ... end` runs once for each
+  `loadSound`, in a later audio update (never inside it), with false for a missing file. A
+  `fadeIn` of a clip still loading starts from silence with its voice.
 - **One-shots**: `sound:playOneShot("sfx/coin.wav", 0.8)` adds a voice (the source's group,
   volume x scale, pitch, pan; 3D voices follow the source). Ten coins from one source overlap up
   to `maxVoices`; past it the oldest one-shot stops. `stop()` stops them too. A one-shot of a clip
@@ -207,12 +241,29 @@ silent switch and stops the player's music), `ambient`, `solo_ambient`, `playbac
 - `AudioSource.playClipAtPoint(scene, path, position [, volume [, group]])` plays a clip at a world
   position (3D against the scene's camera, logarithmic rolloff) without a GameObject; it belongs to
   `scene` and stops with it.
-- **3D**: a source with a Transform plays 3D under a camera. One listener hears every scene: the
+- **2D and 3D**: every new Audio Source is a GameObject (GameObject > Audio > Audio Source, MCP
+  `create_entity audio_source`, a clip dropped in the scene, Lua `AudioSource(scene)`): 2D is
+  `spatialBlend` 0, so it can be parented and made persistent and still plays centred. Audio Source 3D
+  (`audio_source_3d`, `AudioSource(scene, true)`) has 1. `sound3D = true` sets 1 (adding a missing
+  Transform), `false` sets 0. A change of `spatialBlend` is heard on the playing voices.
+- **3D**: a source with a Transform and `spatialBlend` 1 plays 3D under a camera. One listener hears every scene: the
   main scene's camera (a perspective camera at its position; an orthographic or UI camera at the
   centre of its view, so a sound at the centre of the screen is centred). A layer scene's sources
   are heard where they are in its own camera's view. Doppler follows speeds in units a second,
   under perspective cameras only (2D and UI scenes move in pixels); a teleport or a camera cut has
   none. A clocked source (`enableClocked`) starts at the game time it was played.
+- **Several Audio Sources on one GameObject** (an engine and a horn on a car): the first is the
+  GameObject's own; `add_component AudioSource` on a GameObject that has one (Inspector: Add
+  Component > Audio Source) adds a further one and returns its entity in `added[].audio_source`.
+  Address it by that id: `set_properties`, `get_entity`, `remove_component` and `delete_entities`
+  take it. It is a child at the GameObject's origin with its own values and effects, hidden from the
+  Hierarchy, `get_scene_tree`, `find_entities` and Scene view picks; `get_entity` on the GameObject
+  lists `audio_sources: [{entity, slot}]`. It moves, copies, prefabs and persists with the
+  GameObject. Lua: `AudioSource.getAll(gameObject)` (its own first, then the others in order),
+  `AudioSource.add(gameObject)` (its own when it has none, else a further one at Spatial Blend 1),
+  `AudioSource.remove(source)`; `GameObject.findObjectOfType("AudioSource")` finds them too. As
+  Unity's components, they are not in the GameObject's `childCount`, `getChildren`, `findChild` or
+  `GameObject.find`.
 
 ## 8. Scene loads, persistence, devices
 
@@ -254,34 +305,41 @@ return VolumeController
 The values come back on the next launch by themselves (no PlayerPrefs code, no startup double-set).
 
 **Unity's MinigameSongs** (menu <-> gameplay filter sweeps): Music has a low-pass and a high-pass
-with `lowPassCutoff` / `highPassCutoff` exposed. Either time it with setFloat (scaled time, as the
-game's `Mathf.Lerp` on `Time.deltaTime`):
+with `lowPassCutoff` / `highPassCutoff` exposed. The menu muffles the music (525 Hz low-pass, 430 Hz
+high-pass, the "radio"); gameplay opens it (22000 Hz and 10 Hz). Either time it with setFloat (scaled
+time, as the game's `Mathf.Lerp` on `Time.deltaTime`):
 
 ```lua
 local MinigameSongs = {}
 
-function MinigameSongs:toGameplay()
-    AudioMixer.setFloat("lowPassCutoff", 525, 0.9)
-    AudioMixer.setFloat("highPassCutoff", 430, 0.9)
+function MinigameSongs:toMenu(seconds)
+    AudioMixer.setFloat("lowPassCutoff", 525, seconds)
+    AudioMixer.setFloat("highPassCutoff", 430, seconds)
 end
 
-function MinigameSongs:toMenu()
-    AudioMixer.setFloat("lowPassCutoff", 22000, 0.65)
-    AudioMixer.setFloat("highPassCutoff", 10, 0.65)
+function MinigameSongs:toGameplay(seconds)
+    AudioMixer.setFloat("lowPassCutoff", 22000, seconds)
+    AudioMixer.setFloat("highPassCutoff", 10, seconds)
 end
 
 return MinigameSongs
 ```
 
-or with two snapshots, `AudioMixer.transitionTo("Gameplay", 0.65)` /
-`AudioMixer.transitionTo("Menu", 0.65)` (exposed values a script set win over snapshots: use one
+or with the two snapshots of section 1, `AudioMixer.transitionTo("Menu", 1)` /
+`AudioMixer.transitionTo("Gameplay", 1)` (exposed values a script set win over snapshots: use one
 way per parameter, or `clearFloat` first).
 
 **A pause menu**: `AudioListener.pause = true` when it opens; its click sounds have
 `ignoreListenerPause`.
 
 **Music that streams, effects that do not lag**: leave `loadType` Auto (big files stream, small
-ones are decoded); `AudioSystem.preload("sfx/coin.wav")` in a loading screen.
+ones are decoded); `AudioSystem.preload("sfx/coin.wav")` in a loading screen and
+`AudioSystem.unload("sfx/coin.wav")` when the level that needs it ends. A small loop that should
+stream anyway: its import settings' `load_type: streaming`.
+
+**An engine hum or an ambience with no GameObject**: `Audio.play("sfx/hum.ogg", {loop = true, group = "SFX"})`
+loops until `handle:stop()` or its scene stops it; `{scene = SceneManager.persistentScene}` keeps it
+across scene loads (that scene exists after the first `DontDestroyOnLoad`; nil before).
 
 ## 10. Pitfalls
 
@@ -291,3 +349,11 @@ ones are decoded); `AudioSystem.preload("sfx/coin.wav")` in a loading screen.
 - Unknown parameter, snapshot or group names never raise: `setFloat` returns false, `getFloat`
   and `getGroup` nil, each logged once.
 - `getEffect(1)` in Lua is the first effect (1-based); MCP `index` is 0-based.
+
+## 11. Changes
+
+- S97: `AudioSource(scene)` and GameObject > Audio > Audio Source make a GameObject (a Transform)
+  with `spatialBlend` 0 instead of a bare entity; it sounds the same (2D). `getGameObject()` works on
+  it, and on an older bare source adds the Transform and keeps it 2D (it used to throw).
+  `sound3D = false` sets `spatialBlend` 0 and keeps the Transform (it used to remove it). Scenes saved
+  before keep their sound: no `spatialBlend` key is 1, and a source without a Transform plays 2D.

@@ -940,36 +940,6 @@
      16,
      true
     ],
-    "submeshes[].material.pbr.vertexColor.a": [
-     13,
-     16,
-     true
-    ],
-    "submeshes[].material.pbr.vertexColor.alphaOpacity": [
-     0,
-     16,
-     true
-    ],
-    "submeshes[].material.pbr.vertexColor.b": [
-     13,
-     16,
-     true
-    ],
-    "submeshes[].material.pbr.vertexColor.g": [
-     13,
-     16,
-     true
-    ],
-    "submeshes[].material.pbr.vertexColor.r": [
-     13,
-     16,
-     true
-    ],
-    "submeshes[].material.pbr.vertexColor.use": [
-     13,
-     16,
-     true
-    ],
     "submeshes[].material.pbr.volume.attenuationColor": [
      5,
      0,
@@ -5045,6 +5015,7 @@
     "attenuationModel",
     "attenuationRolloffFactor",
     "dopplerFactor",
+    "effects",
     "enableClocked",
     "enabled",
     "event",
@@ -5067,6 +5038,8 @@
     "playOn",
     "priority",
     "protectVoice",
+    "slot",
+    "spatialBlend",
     "speed",
     "state",
     "volume",
@@ -5086,6 +5059,11 @@
     ],
     "dopplerFactor": [
      2,
+     134217728,
+     true
+    ],
+    "effects": [
+     15,
      134217728,
      true
     ],
@@ -5201,6 +5179,16 @@
     ],
     "protectVoice": [
      0,
+     134217728,
+     true
+    ],
+    "slot": [
+     8,
+     134217728,
+     true
+    ],
+    "spatialBlend": [
+     2,
      134217728,
      true
     ],
@@ -5241,6 +5229,31 @@
      134217728,
      true
     ],
+    "effects": [
+     15,
+     134217728,
+     true
+    ],
+    "effects[].bypass": [
+     0,
+     134217728,
+     true
+    ],
+    "effects[].params": [
+     15,
+     134217728,
+     true
+    ],
+    "effects[].type": [
+     1,
+     134217728,
+     true
+    ],
+    "effects[].wet": [
+     2,
+     134217728,
+     true
+    ],
     "enableClocked": [
      0,
      134217728,
@@ -5353,6 +5366,16 @@
     ],
     "protectVoice": [
      0,
+     134217728,
+     true
+    ],
+    "slot": [
+     8,
+     134217728,
+     true
+    ],
+    "spatialBlend": [
+     2,
      134217728,
      true
     ],
@@ -5436,7 +5459,9 @@
    "icon": "ef8491",
    "key": "rigidbody2d",
    "known_keys": [
+    "allowFastRotation",
     "angularDamping",
+    "attachToParentBody",
     "autoCenterOfMass",
     "autoInertia",
     "centerOfMass",
@@ -5456,9 +5481,19 @@
    ],
    "name": "Rigidbody2DComponent",
    "properties_of_default": {
+    "allowFastRotation": [
+     0,
+     281474976710656,
+     true
+    ],
     "angularDamping": [
      2,
      281474976710656,
+     true
+    ],
+    "attachToParentBody": [
+     0,
+     131072,
      true
     ],
     "autoCenterOfMass": [
@@ -5538,9 +5573,19 @@
     ]
    },
    "properties_without_component": {
+    "allowFastRotation": [
+     0,
+     281474976710656,
+     true
+    ],
     "angularDamping": [
      2,
      281474976710656,
+     true
+    ],
+    "attachToParentBody": [
+     0,
+     131072,
      true
     ],
     "autoCenterOfMass": [
@@ -5776,6 +5821,7 @@
     "allowSleeping",
     "allowedDOFs",
     "angularDamping",
+    "attachToParentBody",
     "automaticCenterOfMass",
     "automaticInertiaTensor",
     "automaticMass",
@@ -5815,6 +5861,11 @@
     "angularDamping": [
      2,
      4503599627370496,
+     true
+    ],
+    "attachToParentBody": [
+     0,
+     262144,
      true
     ],
     "automaticCenterOfMass": [
@@ -5962,6 +6013,11 @@
     "angularDamping": [
      2,
      4503599627370496,
+     true
+    ],
+    "attachToParentBody": [
+     0,
+     262144,
      true
     ],
     "automaticCenterOfMass": [
@@ -24243,126 +24299,349 @@
    "type_of_name": 103
   },
   {
-   "display_name": "Vertex Colors",
-   "enum_options": {
-    "format": [
-     [
-      0,
-      "rgba8",
-      "RGBA8"
-     ],
-     [
-      1,
-      "rgba16f",
-      "High Precision (RGBA16F)"
-     ]
-    ],
-    "initialValue": [
-     [
-      0,
-      "asset",
-      "Asset Colors"
-     ],
-     [
-      1,
-      "white",
-      "White"
-     ],
-     [
-      2,
-      "black",
-      "Black"
-     ],
-     [
-      3,
-      "custom",
-      "Custom"
-     ]
-    ]
-   },
+   "display_name": "Wheel Collider",
+   "enum_options": {},
    "has_enabled": true,
-   "icon": "ef94bf",
-   "key": "vertexcolors",
+   "icon": "ef878e",
+   "key": "wheelcollider",
    "known_keys": [
-    "channelNames",
-    "customInitial",
-    "data",
+    "center",
+    "driveTransform",
     "enabled",
-    "format",
-    "initialValue"
+    "forceAppPointDistance",
+    "forwardFriction",
+    "mass",
+    "maxBrakeTorque",
+    "maxHandBrakeTorque",
+    "maxSteerAngle",
+    "radius",
+    "sidewaysFriction",
+    "suspensionDistance",
+    "suspensionSpring",
+    "wheelDampingRate"
    ],
-   "name": "VertexColorsComponent",
+   "name": "WheelColliderComponent",
    "properties_of_default": {
-    "channelNames[0]": [
-     1,
+    "brakeTorque": [
+     2,
      0,
      true
     ],
-    "channelNames[1]": [
-     1,
+    "center": [
+     5,
      0,
      true
     ],
-    "channelNames[2]": [
-     1,
+    "driveTransform": [
      0,
-     true
-    ],
-    "channelNames[3]": [
-     1,
      0,
-     true
-    ],
-    "customInitial": [
-     6,
-     288230376151711744,
-     true
-    ],
-    "data": [
-     18,
-     288230376151711744,
      true
     ],
     "enabled": [
      0,
-     288230376151711744,
+     0,
      true
     ],
-    "format": [
-     13,
-     288230376151711744,
+    "forceAppPointDistance": [
+     2,
+     0,
      true
     ],
-    "initialValue": [
-     13,
-     288230376151711744,
+    "forwardFriction.asymptoteSlip": [
+     2,
+     0,
+     true
+    ],
+    "forwardFriction.asymptoteValue": [
+     2,
+     0,
+     true
+    ],
+    "forwardFriction.extremumSlip": [
+     2,
+     0,
+     true
+    ],
+    "forwardFriction.extremumValue": [
+     2,
+     0,
+     true
+    ],
+    "forwardFriction.stiffness": [
+     2,
+     0,
+     true
+    ],
+    "isGrounded": [
+     0,
+     0,
+     false
+    ],
+    "mass": [
+     2,
+     0,
+     true
+    ],
+    "maxBrakeTorque": [
+     2,
+     0,
+     true
+    ],
+    "maxHandBrakeTorque": [
+     2,
+     0,
+     true
+    ],
+    "maxSteerAngle": [
+     2,
+     0,
+     true
+    ],
+    "motorTorque": [
+     2,
+     0,
+     true
+    ],
+    "radius": [
+     2,
+     0,
+     true
+    ],
+    "rpm": [
+     2,
+     0,
+     false
+    ],
+    "sidewaysFriction.asymptoteSlip": [
+     2,
+     0,
+     true
+    ],
+    "sidewaysFriction.asymptoteValue": [
+     2,
+     0,
+     true
+    ],
+    "sidewaysFriction.extremumSlip": [
+     2,
+     0,
+     true
+    ],
+    "sidewaysFriction.extremumValue": [
+     2,
+     0,
+     true
+    ],
+    "sidewaysFriction.stiffness": [
+     2,
+     0,
+     true
+    ],
+    "sprungMass": [
+     2,
+     0,
+     false
+    ],
+    "steerAngle": [
+     2,
+     0,
+     true
+    ],
+    "suspensionCompression": [
+     2,
+     0,
+     false
+    ],
+    "suspensionDistance": [
+     2,
+     0,
+     true
+    ],
+    "suspensionSpring.damper": [
+     2,
+     0,
+     true
+    ],
+    "suspensionSpring.spring": [
+     2,
+     0,
+     true
+    ],
+    "suspensionSpring.targetPosition": [
+     2,
+     0,
+     true
+    ],
+    "vehicleBody": [
+     16,
+     0,
+     false
+    ],
+    "wheelDampingRate": [
+     2,
+     0,
      true
     ]
    },
    "properties_without_component": {
-    "customInitial": [
-     6,
-     288230376151711744,
+    "brakeTorque": [
+     2,
+     0,
      true
     ],
-    "data": [
-     18,
-     288230376151711744,
+    "center": [
+     5,
+     0,
+     true
+    ],
+    "driveTransform": [
+     0,
+     0,
      true
     ],
     "enabled": [
      0,
-     288230376151711744,
+     0,
      true
     ],
-    "format": [
-     13,
-     288230376151711744,
+    "forceAppPointDistance": [
+     2,
+     0,
      true
     ],
-    "initialValue": [
-     13,
-     288230376151711744,
+    "forwardFriction.asymptoteSlip": [
+     2,
+     0,
+     true
+    ],
+    "forwardFriction.asymptoteValue": [
+     2,
+     0,
+     true
+    ],
+    "forwardFriction.extremumSlip": [
+     2,
+     0,
+     true
+    ],
+    "forwardFriction.extremumValue": [
+     2,
+     0,
+     true
+    ],
+    "forwardFriction.stiffness": [
+     2,
+     0,
+     true
+    ],
+    "isGrounded": [
+     0,
+     0,
+     false
+    ],
+    "mass": [
+     2,
+     0,
+     true
+    ],
+    "maxBrakeTorque": [
+     2,
+     0,
+     true
+    ],
+    "maxHandBrakeTorque": [
+     2,
+     0,
+     true
+    ],
+    "maxSteerAngle": [
+     2,
+     0,
+     true
+    ],
+    "motorTorque": [
+     2,
+     0,
+     true
+    ],
+    "radius": [
+     2,
+     0,
+     true
+    ],
+    "rpm": [
+     2,
+     0,
+     false
+    ],
+    "sidewaysFriction.asymptoteSlip": [
+     2,
+     0,
+     true
+    ],
+    "sidewaysFriction.asymptoteValue": [
+     2,
+     0,
+     true
+    ],
+    "sidewaysFriction.extremumSlip": [
+     2,
+     0,
+     true
+    ],
+    "sidewaysFriction.extremumValue": [
+     2,
+     0,
+     true
+    ],
+    "sidewaysFriction.stiffness": [
+     2,
+     0,
+     true
+    ],
+    "sprungMass": [
+     2,
+     0,
+     false
+    ],
+    "steerAngle": [
+     2,
+     0,
+     true
+    ],
+    "suspensionCompression": [
+     2,
+     0,
+     false
+    ],
+    "suspensionDistance": [
+     2,
+     0,
+     true
+    ],
+    "suspensionSpring.damper": [
+     2,
+     0,
+     true
+    ],
+    "suspensionSpring.spring": [
+     2,
+     0,
+     true
+    ],
+    "suspensionSpring.targetPosition": [
+     2,
+     0,
+     true
+    ],
+    "vehicleBody": [
+     16,
+     0,
+     false
+    ],
+    "wheelDampingRate": [
+     2,
+     0,
      true
     ]
    },
@@ -24370,6 +24649,372 @@
    "type": 104,
    "type_of_key": 104,
    "type_of_name": 104
+  },
+  {
+   "display_name": "Vehicle Drivetrain",
+   "enum_options": {
+    "transmission": [
+     [
+      0,
+      "auto",
+      "Automatic"
+     ],
+     [
+      1,
+      "manual",
+      "Manual"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef8285",
+   "key": "vehicledrivetrain",
+   "known_keys": [
+    "antiRollBars",
+    "clutchReleaseTime",
+    "clutchStrength",
+    "differentialLimitedSlipRatio",
+    "differentials",
+    "enabled",
+    "engineDamping",
+    "engineInertia",
+    "gearRatios",
+    "maxPitchRollAngle",
+    "maxRPM",
+    "maxTorque",
+    "minRPM",
+    "reverseGearRatios",
+    "shiftDownRPM",
+    "shiftUpRPM",
+    "switchLatency",
+    "switchTime",
+    "torqueCurve",
+    "transmission"
+   ],
+   "name": "VehicleDrivetrainComponent",
+   "properties_of_default": {
+    "antiRollBars": [
+     15,
+     0,
+     true
+    ],
+    "brake": [
+     2,
+     0,
+     true
+    ],
+    "clutchReleaseTime": [
+     2,
+     0,
+     true
+    ],
+    "clutchStrength": [
+     2,
+     0,
+     true
+    ],
+    "differentialLimitedSlipRatio": [
+     2,
+     0,
+     true
+    ],
+    "differentials": [
+     15,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "engineDamping": [
+     2,
+     0,
+     true
+    ],
+    "engineInertia": [
+     2,
+     0,
+     true
+    ],
+    "gear": [
+     8,
+     0,
+     false
+    ],
+    "gearRatios": [
+     15,
+     0,
+     true
+    ],
+    "handBrake": [
+     2,
+     0,
+     true
+    ],
+    "maxPitchRollAngle": [
+     2,
+     0,
+     true
+    ],
+    "maxRPM": [
+     2,
+     0,
+     true
+    ],
+    "maxTorque": [
+     2,
+     0,
+     true
+    ],
+    "minRPM": [
+     2,
+     0,
+     true
+    ],
+    "reverseGearRatios": [
+     15,
+     0,
+     true
+    ],
+    "rpm": [
+     2,
+     0,
+     false
+    ],
+    "shiftDownRPM": [
+     2,
+     0,
+     true
+    ],
+    "shiftUpRPM": [
+     2,
+     0,
+     true
+    ],
+    "speed": [
+     2,
+     0,
+     false
+    ],
+    "steer": [
+     2,
+     0,
+     true
+    ],
+    "switchLatency": [
+     2,
+     0,
+     true
+    ],
+    "switchTime": [
+     2,
+     0,
+     true
+    ],
+    "throttle": [
+     2,
+     0,
+     true
+    ],
+    "torqueCurve": [
+     20,
+     0,
+     true
+    ],
+    "transmission": [
+     13,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "antiRollBars": [
+     15,
+     0,
+     true
+    ],
+    "antiRollBars[].leftWheel": [
+     16,
+     0,
+     true
+    ],
+    "antiRollBars[].rightWheel": [
+     16,
+     0,
+     true
+    ],
+    "antiRollBars[].stiffness": [
+     2,
+     0,
+     true
+    ],
+    "brake": [
+     2,
+     0,
+     true
+    ],
+    "clutchReleaseTime": [
+     2,
+     0,
+     true
+    ],
+    "clutchStrength": [
+     2,
+     0,
+     true
+    ],
+    "differentialLimitedSlipRatio": [
+     2,
+     0,
+     true
+    ],
+    "differentials": [
+     15,
+     0,
+     true
+    ],
+    "differentials[].engineTorqueRatio": [
+     2,
+     0,
+     true
+    ],
+    "differentials[].leftRightSplit": [
+     2,
+     0,
+     true
+    ],
+    "differentials[].leftWheel": [
+     16,
+     0,
+     true
+    ],
+    "differentials[].limitedSlipRatio": [
+     2,
+     0,
+     true
+    ],
+    "differentials[].ratio": [
+     2,
+     0,
+     true
+    ],
+    "differentials[].rightWheel": [
+     16,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "engineDamping": [
+     2,
+     0,
+     true
+    ],
+    "engineInertia": [
+     2,
+     0,
+     true
+    ],
+    "gear": [
+     8,
+     0,
+     false
+    ],
+    "gearRatios": [
+     15,
+     0,
+     true
+    ],
+    "handBrake": [
+     2,
+     0,
+     true
+    ],
+    "maxPitchRollAngle": [
+     2,
+     0,
+     true
+    ],
+    "maxRPM": [
+     2,
+     0,
+     true
+    ],
+    "maxTorque": [
+     2,
+     0,
+     true
+    ],
+    "minRPM": [
+     2,
+     0,
+     true
+    ],
+    "reverseGearRatios": [
+     15,
+     0,
+     true
+    ],
+    "rpm": [
+     2,
+     0,
+     false
+    ],
+    "shiftDownRPM": [
+     2,
+     0,
+     true
+    ],
+    "shiftUpRPM": [
+     2,
+     0,
+     true
+    ],
+    "speed": [
+     2,
+     0,
+     false
+    ],
+    "steer": [
+     2,
+     0,
+     true
+    ],
+    "switchLatency": [
+     2,
+     0,
+     true
+    ],
+    "switchTime": [
+     2,
+     0,
+     true
+    ],
+    "throttle": [
+     2,
+     0,
+     true
+    ],
+    "torqueCurve": [
+     20,
+     0,
+     true
+    ],
+    "transmission": [
+     13,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 105,
+   "type_of_key": 105,
+   "type_of_name": 105
   }
  ],
  "ease_options": [
@@ -24983,6 +25628,11 @@
     134217728,
     true
    ],
+   "effects": [
+    15,
+    134217728,
+    true
+   ],
    "enableClocked": [
     0,
     134217728,
@@ -25095,6 +25745,16 @@
    ],
    "protectVoice": [
     0,
+    134217728,
+    true
+   ],
+   "slot": [
+    8,
+    134217728,
+    true
+   ],
+   "spatialBlend": [
+    2,
     134217728,
     true
    ],
@@ -28227,36 +28887,6 @@
     16,
     true
    ],
-   "submeshes[N].material.pbr.vertexColor.a": [
-    13,
-    16,
-    true
-   ],
-   "submeshes[N].material.pbr.vertexColor.alphaOpacity": [
-    0,
-    16,
-    true
-   ],
-   "submeshes[N].material.pbr.vertexColor.b": [
-    13,
-    16,
-    true
-   ],
-   "submeshes[N].material.pbr.vertexColor.g": [
-    13,
-    16,
-    true
-   ],
-   "submeshes[N].material.pbr.vertexColor.r": [
-    13,
-    16,
-    true
-   ],
-   "submeshes[N].material.pbr.vertexColor.use": [
-    13,
-    16,
-    true
-   ],
    "submeshes[N].material.pbr.volume.attenuationColor": [
     5,
     0,
@@ -30062,9 +30692,19 @@
    ]
   },
   "Rigidbody2DComponent": {
+   "allowFastRotation": [
+    0,
+    281474976710656,
+    true
+   ],
    "angularDamping": [
     2,
     281474976710656,
+    true
+   ],
+   "attachToParentBody": [
+    0,
+    131072,
     true
    ],
    "autoCenterOfMass": [
@@ -30152,6 +30792,11 @@
    "angularDamping": [
     2,
     4503599627370496,
+    true
+   ],
+   "attachToParentBody": [
+    0,
+    262144,
     true
    ],
    "automaticCenterOfMass": [
@@ -32764,6 +33409,143 @@
     true
    ]
   },
+  "VehicleDrivetrainComponent": {
+   "antiRollBars": [
+    15,
+    0,
+    true
+   ],
+   "brake": [
+    2,
+    0,
+    true
+   ],
+   "clutchReleaseTime": [
+    2,
+    0,
+    true
+   ],
+   "clutchStrength": [
+    2,
+    0,
+    true
+   ],
+   "differentialLimitedSlipRatio": [
+    2,
+    0,
+    true
+   ],
+   "differentials": [
+    15,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "engineDamping": [
+    2,
+    0,
+    true
+   ],
+   "engineInertia": [
+    2,
+    0,
+    true
+   ],
+   "gear": [
+    8,
+    0,
+    false
+   ],
+   "gearRatios": [
+    15,
+    0,
+    true
+   ],
+   "handBrake": [
+    2,
+    0,
+    true
+   ],
+   "maxPitchRollAngle": [
+    2,
+    0,
+    true
+   ],
+   "maxRPM": [
+    2,
+    0,
+    true
+   ],
+   "maxTorque": [
+    2,
+    0,
+    true
+   ],
+   "minRPM": [
+    2,
+    0,
+    true
+   ],
+   "reverseGearRatios": [
+    15,
+    0,
+    true
+   ],
+   "rpm": [
+    2,
+    0,
+    false
+   ],
+   "shiftDownRPM": [
+    2,
+    0,
+    true
+   ],
+   "shiftUpRPM": [
+    2,
+    0,
+    true
+   ],
+   "speed": [
+    2,
+    0,
+    false
+   ],
+   "steer": [
+    2,
+    0,
+    true
+   ],
+   "switchLatency": [
+    2,
+    0,
+    true
+   ],
+   "switchTime": [
+    2,
+    0,
+    true
+   ],
+   "throttle": [
+    2,
+    0,
+    true
+   ],
+   "torqueCurve": [
+    20,
+    0,
+    true
+   ],
+   "transmission": [
+    13,
+    0,
+    true
+   ]
+  },
   "VertexAnimatorComponent": {
    "animation": [
     1,
@@ -32823,38 +33605,6 @@
    "speed": [
     2,
     0,
-    true
-   ]
-  },
-  "VertexColorsComponent": {
-   "channelNames[N]": [
-    1,
-    0,
-    true
-   ],
-   "customInitial": [
-    6,
-    288230376151711744,
-    true
-   ],
-   "data": [
-    18,
-    288230376151711744,
-    true
-   ],
-   "enabled": [
-    0,
-    288230376151711744,
-    true
-   ],
-   "format": [
-    13,
-    288230376151711744,
-    true
-   ],
-   "initialValue": [
-    13,
-    288230376151711744,
     true
    ]
   },
@@ -33255,6 +34005,168 @@
     true
    ],
    "width": [
+    2,
+    0,
+    true
+   ]
+  },
+  "WheelColliderComponent": {
+   "brakeTorque": [
+    2,
+    0,
+    true
+   ],
+   "center": [
+    5,
+    0,
+    true
+   ],
+   "driveTransform": [
+    0,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "forceAppPointDistance": [
+    2,
+    0,
+    true
+   ],
+   "forwardFriction.asymptoteSlip": [
+    2,
+    0,
+    true
+   ],
+   "forwardFriction.asymptoteValue": [
+    2,
+    0,
+    true
+   ],
+   "forwardFriction.extremumSlip": [
+    2,
+    0,
+    true
+   ],
+   "forwardFriction.extremumValue": [
+    2,
+    0,
+    true
+   ],
+   "forwardFriction.stiffness": [
+    2,
+    0,
+    true
+   ],
+   "isGrounded": [
+    0,
+    0,
+    false
+   ],
+   "mass": [
+    2,
+    0,
+    true
+   ],
+   "maxBrakeTorque": [
+    2,
+    0,
+    true
+   ],
+   "maxHandBrakeTorque": [
+    2,
+    0,
+    true
+   ],
+   "maxSteerAngle": [
+    2,
+    0,
+    true
+   ],
+   "motorTorque": [
+    2,
+    0,
+    true
+   ],
+   "radius": [
+    2,
+    0,
+    true
+   ],
+   "rpm": [
+    2,
+    0,
+    false
+   ],
+   "sidewaysFriction.asymptoteSlip": [
+    2,
+    0,
+    true
+   ],
+   "sidewaysFriction.asymptoteValue": [
+    2,
+    0,
+    true
+   ],
+   "sidewaysFriction.extremumSlip": [
+    2,
+    0,
+    true
+   ],
+   "sidewaysFriction.extremumValue": [
+    2,
+    0,
+    true
+   ],
+   "sidewaysFriction.stiffness": [
+    2,
+    0,
+    true
+   ],
+   "sprungMass": [
+    2,
+    0,
+    false
+   ],
+   "steerAngle": [
+    2,
+    0,
+    true
+   ],
+   "suspensionCompression": [
+    2,
+    0,
+    false
+   ],
+   "suspensionDistance": [
+    2,
+    0,
+    true
+   ],
+   "suspensionSpring.damper": [
+    2,
+    0,
+    true
+   ],
+   "suspensionSpring.spring": [
+    2,
+    0,
+    true
+   ],
+   "suspensionSpring.targetPosition": [
+    2,
+    0,
+    true
+   ],
+   "vehicleBody": [
+    16,
+    0,
+    false
+   ],
+   "wheelDampingRate": [
     2,
     0,
     true

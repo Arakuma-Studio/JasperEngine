@@ -122,7 +122,12 @@ TEST(PayloadValidator, FindsWhatCannotShip) {
     std::vector<std::string> findings;
     EXPECT_FALSE(validatePayload(dir.path(), target, findings));
     EXPECT_TRUE(hasFinding(findings, "tools/helper is arm64")) << join(findings);
+#ifdef _WIN32
+    // NTFS keeps no exec bit (std::filesystem reads every file as executable): no finding claims one
+    EXPECT_FALSE(hasFinding(findings, "exec bit")) << join(findings);
+#else
     EXPECT_TRUE(hasFinding(findings, "game has no exec bit")) << join(findings);
+#endif
     EXPECT_TRUE(hasFinding(findings, "steam_appid.txt")) << join(findings);
     EXPECT_TRUE(hasFinding(findings, "licenses/lua-LICENSE")) << join(findings);
     EXPECT_TRUE(hasFinding(findings, "scenes/1.jscn")) << join(findings);
@@ -488,9 +493,9 @@ namespace publishing_test {
                     "src=\"$1\"; dst=\"${2#*:}\"\nexec cp -R \"$src\" \"$FAKE_DECK_HOME/$dst\"\n");
     }
 
-    struct SettingsScope {
-        explicit SettingsScope(const fs::path& file) { AppSettings::initializeWithFile(file); }
-        ~SettingsScope() {
+    struct PublishingSettingsScope {
+        explicit PublishingSettingsScope(const fs::path& file) { AppSettings::initializeWithFile(file); }
+        ~PublishingSettingsScope() {
             for (const char* tool : {"ssh", "scp", "steamcmd"}) AppSettings::setExternalToolPath(tool, "");
         }
     };
@@ -528,7 +533,7 @@ TEST(PublishDeck, DeployRollbackSmoke) {
     const fs::path project = dir / "Game";
     const fs::path deckHome = dir / "deck-home";
     fs::create_directories(deckHome);
-    SettingsScope settings(dir / "settings.yaml");
+    PublishingSettingsScope settings(dir / "settings.yaml");
     installDeckStubs(dir / "bin");
     AppSettings::setExternalToolPath("ssh", (dir / "bin/ssh").string());
     AppSettings::setExternalToolPath("scp", (dir / "bin/scp").string());

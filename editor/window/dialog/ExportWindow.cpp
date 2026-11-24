@@ -21,6 +21,8 @@
 #include "Factory.h"
 #include "SettingsCategoryList.h"
 #include "window/ConsoleWindow.h"
+#include "window/TargetPlatformsUi.h"
+#include "util/UIProbe.h"
 
 #include <algorithm>
 #include "util/CommandRunner.h"
@@ -97,9 +99,15 @@ void ExportWindow::open(Project* project) {
     m_publishingLoaded = false;
 
     populateBackendList();
-    // Remember the platform between openings, like Unity's active build target.
+    // Remember the platform between openings, like Unity's active build target, within a project:
+    // another project opens on its own default (this computer's platform if it is a target, else
+    // the first target)
+    if (m_platformProjectPath != project->getProjectPath()) {
+        m_platformInitialized = false;
+        m_platformProjectPath = project->getProjectPath();
+    }
     if (!m_platformInitialized) {
-        m_platform = hostPlatform();
+        m_platform = listPlatformOf(project->defaultBuildPlatform());
         m_buildPlayer = true;
     }
     selectPlatform(m_platform, m_buildPlayer);
@@ -440,16 +448,21 @@ const char* ExportWindow::platformName(BuildPlatform platform) {
 }
 
 const char* ExportWindow::platformIcon(BuildPlatform platform) {
+    if (platform == BuildPlatform::Custom) return ICON_FA_MICROCHIP;
+    if (platform == BuildPlatform::Count) return "";
+    return targetPlatformIcon(shipPlatformOf(platform));
+}
+
+ExportWindow::BuildPlatform ExportWindow::listPlatformOf(ShipPlatform platform) {
     switch (platform) {
-        case BuildPlatform::Windows: return ICON_FA_WINDOW_MAXIMIZE;
-        case BuildPlatform::MacOS: return ICON_FA_LAPTOP;
-        case BuildPlatform::Linux: return ICON_FA_TERMINAL;
-        case BuildPlatform::Android: return ICON_FA_MOBILE_SCREEN_BUTTON;
-        case BuildPlatform::IOS: return ICON_FA_MOBILE_BUTTON;
-        case BuildPlatform::Web: return ICON_FA_GLOBE;
-        case BuildPlatform::Custom: return ICON_FA_MICROCHIP;
-        default: return "";
+        case ShipPlatform::Windows: return BuildPlatform::Windows;
+        case ShipPlatform::MacOS: return BuildPlatform::MacOS;
+        case ShipPlatform::Linux: return BuildPlatform::Linux;
+        case ShipPlatform::Android: return BuildPlatform::Android;
+        case ShipPlatform::IOS: return BuildPlatform::IOS;
+        case ShipPlatform::Web: return BuildPlatform::Web;
     }
+    return BuildPlatform::Linux;
 }
 
 bool ExportWindow::platformCanBuildPlayer(BuildPlatform platform) const {
@@ -625,7 +638,8 @@ void ExportWindow::drawPlatformList() {
         }
         ImGui::PushID(i);
         const ImVec2 rowPos = ImGui::GetCursorScreenPos();
-        if (ImGui::Selectable("##platform", m_platform == platform, 0, ImVec2(0, rowHeight))) {
+        const bool isPlatform = platform != BuildPlatform::Custom;
+        if (ImGui::Selectable("##platform", m_platform == platform, isPlatform ? ImGuiSelectableFlags_AllowOverlap : 0, ImVec2(0, rowHeight))) {
             if (m_platform != platform) selectPlatform(platform, platformCanBuildPlayer(platform));
         }
         if (platform == hostPlatform()) {
@@ -636,18 +650,43 @@ void ExportWindow::drawPlatformList() {
             ImGui::SetItemTooltip("C++ source project with hand-picked graphics APIs.");
         }
 
+        // the Target checkbox (Custom is not a platform): Project Settings > Player > Target Platforms
+        const float checkSlot = Theme::dpi(4.0f) + ImGui::GetFrameHeight();
+        bool target = true;
+        if (isPlatform) {
+            const ShipPlatform ship = shipPlatformOf(platform);
+            const uint8_t targets = m_project->getTargetPlatforms();
+            const uint8_t bit = Project::targetPlatformBit(ship);
+            target = (targets & bit) != 0;
+            const ImVec2 after = ImGui::GetCursorScreenPos();
+            ImGui::SetCursorScreenPos(ImVec2(rowPos.x + Theme::dpi(4.0f), rowPos.y + (rowHeight - ImGui::GetFrameHeight()) * 0.5f));
+            bool on = target;
+            ImGui::BeginDisabled(targets == bit);
+            if (ImGui::Checkbox("##target", &on)) {
+                setTargetPlatformsUndoable(m_project, on ? (uint8_t)(targets | bit) : (uint8_t)(targets & ~bit));
+            }
+            ImGui::EndDisabled();
+            UIProbe::item(std::string("build_settings.target.") + buildPlatformName(ship));
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::SetTooltip(targets == bit ? "A game needs at least one target platform." : "Target platform: this game ships here.");
+            }
+            ImGui::SetCursorScreenPos(after);
+        }
+
         ImDrawList* drawList = ImGui::GetWindowDrawList();
-        const ImU32 textColor = ImGui::GetColorU32(ImGuiCol_Text);
+        // a platform the game does not ship on is dimmed; it still builds
+        const ImU32 textColor = ImGui::GetColorU32(target ? ImGuiCol_Text : ImGuiCol_TextDisabled);
         const float iconSize = baseSize * 1.35f;
         const float iconSlot = Theme::dpi(30.0f);
         ImFont* font = ImGui::GetFont();
         const char* icon = platformIcon(platform);
         const ImVec2 iconExtent = font->CalcTextSizeA(iconSize, FLT_MAX, 0.0f, icon);
         drawList->AddText(font, iconSize,
-                          ImVec2(rowPos.x + Theme::dpi(4.0f) + (iconSlot - iconExtent.x) * 0.5f, rowPos.y + (rowHeight - iconExtent.y) * 0.5f),
+                          ImVec2(rowPos.x + checkSlot + Theme::dpi(4.0f) + (iconSlot - iconExtent.x) * 0.5f,
+                                 rowPos.y + (rowHeight - iconExtent.y) * 0.5f),
                           textColor, icon);
         const float textHeight = ImGui::GetFontSize();
-        drawList->AddText(ImVec2(rowPos.x + Theme::dpi(8.0f) + iconSlot, rowPos.y + (rowHeight - textHeight) * 0.5f),
+        drawList->AddText(ImVec2(rowPos.x + checkSlot + Theme::dpi(8.0f) + iconSlot, rowPos.y + (rowHeight - textHeight) * 0.5f),
                           textColor, platformName(platform));
         ImGui::PopID();
     }
@@ -999,8 +1038,24 @@ void ExportWindow::drawBackendSection() {
     ImGui::Spacing();
 }
 
+void ExportWindow::drawTargetPlatformNotice() {
+    if (m_platform == BuildPlatform::Custom || m_project->isTargetPlatform(shipPlatform())) return;
+    ImGui::AlignTextToFramePadding();
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::Text("%s %s is not a target platform of this game.", ICON_FA_CIRCLE_INFO, platformName(m_platform));
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    if (ImGui::Button("Add to Target Platforms")) {
+        setTargetPlatformsUndoable(m_project, (uint8_t)(m_project->getTargetPlatforms() | Project::targetPlatformBit(shipPlatform())));
+    }
+    UIProbe::item("build_settings.add_target");
+    ImGui::SetItemTooltip("Adds it to Project Settings > Player > Target Platforms (undoable). It builds either way.");
+    ImGui::Spacing();
+}
+
 bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
     const bool isCustom = m_platform == BuildPlatform::Custom;
+    drawTargetPlatformNotice();
 
     ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 1.3f);
     ImGui::TextUnformatted(platformIcon(m_platform));

@@ -29,7 +29,7 @@ using namespace jasperengine;
 namespace {
 
     constexpr int MAP_SIZE = 33;
-    constexpr float TERRAIN_SIZE = 64.0f;
+    constexpr float TERRAIN_HOLES_CONSUMERS_TERRAIN_SIZE = 64.0f;
 
     class TerrainHolesConsumers : public ::testing::Test {
     protected:
@@ -46,7 +46,7 @@ namespace {
             scene->addComponent<Transform>(entity, {});
             heights.assign(static_cast<size_t>(MAP_SIZE) * MAP_SIZE, 128);
             TerrainComponent terrain;
-            terrain.terrainSize = TERRAIN_SIZE;
+            terrain.terrainSize = TERRAIN_HOLES_CONSUMERS_TERRAIN_SIZE;
             terrain.maxHeight = 8.0f;
             terrain.heightMap.setData(id("height"), TextureData(MAP_SIZE, MAP_SIZE, static_cast<unsigned int>(heights.size()),
                                                                 ColorFormat::RED, 1, heights.data()));

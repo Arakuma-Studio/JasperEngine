@@ -50,19 +50,19 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    fs::path tempProject(const std::string& name) {
+    fs::path generatedScenesTempProject(const std::string& name) {
         const fs::path dir = fs::temp_directory_path() / ("jasper-generated-scenes-test-" + name + "-" + std::to_string(::getpid()));
         fs::remove_all(dir);
         fs::create_directories(dir / ".jasperengine" / "generated");
         return dir;
     }
 
-    std::string readFile(const fs::path& path) {
+    std::string generatedScenesReadFile(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);
         return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
     }
 
-    std::string lower(std::string text) {
+    std::string generatedScenesLower(std::string text) {
         std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return text;
     }
@@ -85,13 +85,13 @@ TEST(GeneratedScenes, FileNamesNeverClashWithTheProjectSourcesOrEachOther) {
         Factory::sceneToFileName(8, "My-Scene"),
         Factory::sceneToFileName(9, ""),
     };
-    const std::vector<std::string> reserved = {"main", "scene_scripts", lower(Factory::prefabToFileName("level.prefab"))};
+    const std::vector<std::string> reserved = {"main", "scene_scripts", generatedScenesLower(Factory::prefabToFileName("level.prefab"))};
     for (size_t i = 0; i < names.size(); i++) {
         for (const std::string& name : reserved) {
-            EXPECT_NE(lower(names[i]), name);
+            EXPECT_NE(generatedScenesLower(names[i]), name);
         }
         for (size_t j = i + 1; j < names.size(); j++) {
-            EXPECT_NE(lower(names[i]), lower(names[j])) << names[i] << " and " << names[j];
+            EXPECT_NE(generatedScenesLower(names[i]), generatedScenesLower(names[j])) << names[i] << " and " << names[j];
         }
         // a C identifier: the file name is also the scene's function names
         ASSERT_FALSE(names[i].empty());
@@ -101,7 +101,7 @@ TEST(GeneratedScenes, FileNamesNeverClashWithTheProjectSourcesOrEachOther) {
 }
 
 TEST(GeneratedScenes, SceneNamedMainLeavesMainCppAlone) {
-    const fs::path project = tempProject("main");
+    const fs::path project = generatedScenesTempProject("main");
     const fs::path internal = project / ".jasperengine";
 
     // two scenes whose names are one identifier, one of them "main"
@@ -110,13 +110,13 @@ TEST(GeneratedScenes, SceneNamedMainLeavesMainCppAlone) {
     generator.configure(scenes, "test", {}, {}, project, internal, project / "assets", project / "lua", {}, 17);
 
     const fs::path generated = internal / "generated";
-    const std::string mainCpp = readFile(generated / "main.cpp");
+    const std::string mainCpp = generatedScenesReadFile(generated / "main.cpp");
     ASSERT_FALSE(mainCpp.empty());
     const std::string first = Factory::sceneToFileName(11, "main");
     const std::string second = Factory::sceneToFileName(22, "Main");
 
     // the project's CMake compiles both scene sources, neither of them main.cpp
-    const std::string cmake = readFile(project / "CMakeLists.txt");
+    const std::string cmake = generatedScenesReadFile(project / "CMakeLists.txt");
     ASSERT_FALSE(cmake.empty());
     EXPECT_NE(cmake.find("/generated/" + first + ".cpp"), std::string::npos);
     EXPECT_NE(cmake.find("/generated/" + second + ".cpp"), std::string::npos);
@@ -136,7 +136,7 @@ TEST(GeneratedScenes, SceneNamedMainLeavesMainCppAlone) {
 
     generator.clearSceneSource(11, "main", internal);
     EXPECT_FALSE(fs::exists(generated / (first + ".cpp")));
-    EXPECT_EQ(readFile(generated / "main.cpp"), mainCpp);
+    EXPECT_EQ(generatedScenesReadFile(generated / "main.cpp"), mainCpp);
 
     fs::remove_all(project);
 }

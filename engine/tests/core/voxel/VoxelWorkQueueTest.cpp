@@ -3,12 +3,15 @@
 
 // T6 R15 (AC13): the queue's order, its cap with workers and its per-frame slice with none
 
+#include "support/AllocationCounter.h"
 #include "voxel/VoxelWorkQueue.h"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <thread>
 #include <vector>
 
@@ -36,6 +39,7 @@ TEST(VoxelWorkQueue, SingleThreadStaysInBudget) {
     }
     int frames = 0;
     size_t done = 0;
+    double worstMs = 0.0;
     std::vector<uint64_t> finished, dropped;
     while (done < 200 && frames < 2000) {
         const auto start = std::chrono::steady_clock::now();
@@ -46,8 +50,13 @@ TEST(VoxelWorkQueue, SingleThreadStaysInBudget) {
         queue.takeFinished(finished, dropped);
         done += finished.size();
         frames++;
-        // The pump's 4 ms, to within one job and this host's jitter (Evidence: wall clock goes through perfSlack)
-        EXPECT_LT(frameMs, 4.0 + jobMs * 40.0);
+        worstMs = std::max(worstMs, frameMs);
+    }
+    // The pump's 4 ms, to within one job and this host's jitter: printed always, enforced where
+    // perfSlack() asks for it (the benchmark run); a loaded macOS runner took 75 ms for one frame (run 44743181144)
+    std::printf("[bench] voxel work queue: worst frame %.2f ms (budget %.0f)\n", worstMs, 4.0 + jobMs * 40.0);
+    if (const double slack = testsupport::perfSlack(); slack > 0.0) {
+        EXPECT_LT(worstMs, (4.0 + jobMs * 40.0) * slack);
     }
     EXPECT_EQ(done, 200u);
     // At most four a frame, one at least

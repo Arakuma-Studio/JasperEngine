@@ -34,7 +34,7 @@ using jasperengine::pixelart::toHex;
 
 namespace {
 
-    using Rows = std::vector<std::string>;
+    using CleanupPaletteRows = std::vector<std::string>;
 
     const std::string featureKeys = "WPKBSG";
 
@@ -55,7 +55,7 @@ namespace {
         return palette;
     }
 
-    PixelArt featureArt(const Rows& rows) {
+    PixelArt featureArt(const CleanupPaletteRows& rows) {
         PixelArt art;
         art.width = int(rows[0].size());
         art.height = int(rows.size());
@@ -66,9 +66,9 @@ namespace {
         return art;
     }
 
-    Rows featureLetters(const PixelArt& picture) {
+    CleanupPaletteRows featureLetters(const PixelArt& picture) {
         const std::vector<Rgba8> palette = featurePalette();
-        Rows out;
+        CleanupPaletteRows out;
         for (int y = 0; y < picture.height; y++) {
             std::string row;
             for (int x = 0; x < picture.width; x++) {
@@ -184,12 +184,12 @@ TEST(CleanupBackground, FindsBothColoursOfAFakeCheckerboardOnTheBorder) {
 TEST(CleanupBackground, FloodsInFromTheBorderAndStopsAtTheOutline) {
     const PixelArt scene = checkerScene();
     EXPECT_EQ(featureLetters(clearMasked(scene, floodMask(scene))),
-              (Rows{"..........", "...KKKK...", "..KBBWBK..", "..KBKKBK..", "..KBKWKK..", "..KBKKBK..", "..KSSSSK..", "...KKKK..."}));
+              (CleanupPaletteRows{"..........", "...KKKK...", "..KBBWBK..", "..KBKKBK..", "..KBKWKK..", "..KBKKBK..", "..KSSSSK..", "...KKKK..."}));
 }
 
 TEST(CleanupBackground, RemovesEnclosedBackgroundColouredAreasOnlyWhenAsked) {
     const PixelArt scene = checkerScene();
-    const Rows cleared = featureLetters(clearMasked(scene, findBackground(scene, backgroundColors(scene), bgOptions(0.02, true, false, false))));
+    const CleanupPaletteRows cleared = featureLetters(clearMasked(scene, findBackground(scene, backgroundColors(scene), bgOptions(0.02, true, false, false))));
     EXPECT_EQ(cleared[2], "..KBB.BK..");
     EXPECT_EQ(cleared[4], "..KBK.KK..");
 }
@@ -199,7 +199,7 @@ TEST(CleanupBackground, ErasesAndRestoresByHandAPixelOrAWholeAreaInOrder) {
     const Edited edited = applyEdits(scene, floodMask(scene),
                                      {editAt(5, 4, EditTool::Erase, false), editAt(3, 2, EditTool::Erase, true), editAt(0, 0, EditTool::Restore, true), editAt(9, 7, EditTool::Restore, false)},
                                      ColorMetric::OkLab);
-    const Rows rows = featureLetters(clearMasked(scene, edited.mask));
+    const CleanupPaletteRows rows = featureLetters(clearMasked(scene, edited.mask));
     EXPECT_EQ(rows[0], "WW........");
     EXPECT_EQ(rows[1], "WW.KKKK...");
     EXPECT_EQ(rows[2], "..K..WBK..");
@@ -218,7 +218,7 @@ TEST(CleanupBackground, PaintsOnePixelOrAWholeAreaWithTheNearestPaletteColourInO
                                       editAt(0, 4, EditTool::Paint, false, featureColor('S')),
                                       editAt(0, 4, EditTool::Erase, false)},
                                      ColorMetric::OkLab);
-    const Rows cleared = featureLetters(clearMasked(edited.art, edited.mask));
+    const CleanupPaletteRows cleared = featureLetters(clearMasked(edited.art, edited.mask));
     EXPECT_EQ(cleared[2], "..KBBKBK..");
     EXPECT_EQ(cleared[3], "S.KBKKBK..");
     EXPECT_EQ(cleared[4], "..KBKWKK..");
@@ -231,7 +231,7 @@ TEST(CleanupBackground, RemovesADropShadowUnderTheSubjectButNotTheSubjectsOwnGre
     const PixelArt shadowed = featureArt({"WWWWWWWWWW", "WWWKKKKWWW", "WWKBGGBKWW", "WWKBGGBKWW", "WWKBBBBKWW", "WWWKBBKWWW", "WGGGKKGGGW", "WWGGGGGGWW", "WWWWWWWWWW"});
     const std::vector<int> colors = backgroundColors(shadowed);
     EXPECT_EQ(featureLetters(clearMasked(shadowed, findBackground(shadowed, colors, bgOptions(0.02, false, false, true)))),
-              (Rows{"..........", "...KKKK...", "..KBGGBK..", "..KBGGBK..", "..KBBBBK..", "...KBBK...", "....KK....", "..........", ".........."}));
+              (CleanupPaletteRows{"..........", "...KKKK...", "..KBGGBK..", "..KBGGBK..", "..KBBBBK..", "...KBBK...", "....KK....", "..........", ".........."}));
     EXPECT_EQ(featureLetters(clearMasked(shadowed, findBackground(shadowed, colors, bgOptions(0.02, false, false, false))))[6], ".GGGKKGGG.");
 }
 
@@ -246,7 +246,7 @@ TEST(CleanupBackground, RemovesSpecksLeftAloneInTheBackgroundAndOnlyWhenAsked) {
     const std::vector<int> colors = backgroundColors(specked);
     EXPECT_EQ(featureLetters(clearMasked(specked, findBackground(specked, colors, bgOptions(0.02, false, false, false))))[1], ".P..KK..");
     EXPECT_EQ(featureLetters(clearMasked(specked, findBackground(specked, colors, bgOptions(0.02, false, true, false)))),
-              (Rows{"........", "....KK..", "...KBBK.", "...KBBK.", "....KK..", "........"}));
+              (CleanupPaletteRows{"........", "....KK..", "...KBBK.", "...KBBK.", "....KK..", "........"}));
 }
 
 TEST(CleanupBackground, TreatsPixelsThatAreAlreadyTransparentAsBackground) {
@@ -276,7 +276,7 @@ TEST(CleanupBackground, RemovesAFakeCheckerboardFromABlurryUpscaledPicture) {
 TEST(CleanupBackground, KeepsAnEnclosedEyeOfTheBackgroundColourWithoutEnclosed) {
     // AC7: W inside the outline at row 2 and row 4 stays
     const PixelArt scene = checkerScene();
-    const Rows cleared = featureLetters(clearMasked(scene, floodMask(scene)));
+    const CleanupPaletteRows cleared = featureLetters(clearMasked(scene, floodMask(scene)));
     EXPECT_EQ(cleared[2][5], 'W');
     EXPECT_EQ(cleared[4][5], 'W');
 }
@@ -317,7 +317,7 @@ TEST(CleanupExport, CropKeepsOnlyTheBoxAroundTheOpaquePixels) {
     const PixelArt cropped = cropToContent(featureArt({"......", "..K...", ".KBK..", "..K...", "......"}));
     EXPECT_EQ(cropped.width, 3);
     EXPECT_EQ(cropped.height, 3);
-    EXPECT_EQ(featureLetters(cropped), (Rows{".K.", "KBK", ".K."}));
+    EXPECT_EQ(featureLetters(cropped), (CleanupPaletteRows{".K.", "KBK", ".K."}));
 }
 
 TEST(CleanupExport, CropLeavesAPictureWithNothingToCropOrNothingOpaqueAsItIs) {

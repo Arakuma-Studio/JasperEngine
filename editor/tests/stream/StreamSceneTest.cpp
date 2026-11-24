@@ -10,6 +10,10 @@
 #include "component/LightComponent.h"
 #include "component/Transform.h"
 #include "Stream.h"
+#include "Catalog.h"
+#include "Factory.h"
+#include "StreamSchema.h"
+#include "util/Angle.h"
 
 #include "LogCapture.h"
 
@@ -321,4 +325,70 @@ TEST(StreamScene, WaterWakeSettings){
     EXPECT_FLOAT_EQ(read.getWaterWakeArea(), 8.0f);
     read.setWaterWakeFade(1000.0f);
     EXPECT_FLOAT_EQ(read.getWaterWakeFade(), 120.0f);
+}
+
+// S96 (REQ-30..REQ-35, AC-28): the physics world settings are written as flat keys only away from
+// their defaults, read back, and a scene without them (every scene before them) takes the defaults;
+// the generated scene code sets the changed ones; each is a scene setting of Catalog (MCP, Inspector)
+TEST(StreamScene, PhysicsWorldSettingsRoundTrip){
+    Scene plain;
+    const std::string plainYaml = dumpScene(&plain);
+    for (const PhysicsWorldSettingField& field : physicsWorldSettingFields())
+        EXPECT_EQ(plainYaml.find(field.key), std::string::npos) << field.key << ": defaults are not written";
+
+    Scene scene;
+    scene.setPhysics2DPointsPerMeter(100.0f);
+    scene.setPhysics2DMaxRotation(Angle::degToDefault(360.0f));
+    scene.setPhysics2DContactHertz(20.0f);
+    scene.setPhysics2DBounceThreshold(5.0f);
+    scene.setPhysics2DWarmStarting(false);
+    scene.setPhysics2DSleep(false);
+    scene.setPhysics3DVelocityIterations(6);
+    scene.setPhysics3DCollisionSteps(2);
+    scene.setPhysics3DSleepThreshold(0.1f);
+    const std::string yaml = dumpScene(&scene);
+    EXPECT_NE(yaml.find("physics2DPointsPerMeter: 100"), std::string::npos) << yaml;
+    EXPECT_NE(yaml.find("physics3DCollisionSteps: 2"), std::string::npos) << yaml;
+    EXPECT_NE(yaml.find("physics2DWarmStarting: false"), std::string::npos) << yaml;
+    EXPECT_EQ(yaml.find("physics2DContinuous"), std::string::npos) << "only the changed ones";
+
+    Scene read;
+    Stream::decodeScene(&read, YAML::Load(yaml));
+    EXPECT_TRUE(read.getPhysics2DWorldSettings() == scene.getPhysics2DWorldSettings());
+    EXPECT_TRUE(read.getPhysics3DWorldSettings() == scene.getPhysics3DWorldSettings());
+    EXPECT_FLOAT_EQ(read.getPhysics2DPointsPerMeter(), 100.0f);
+    EXPECT_EQ(dumpScene(&read), yaml);
+
+    // an old scene (none of the keys) over a changed one: the defaults
+    Stream::decodeScene(&read, YAML::Load(plainYaml));
+    const SceneSettings defaults;
+    EXPECT_TRUE(read.getPhysics2DWorldSettings() == defaults.physics2DWorld);
+    EXPECT_TRUE(read.getPhysics3DWorldSettings() == defaults.physics3DWorld);
+    EXPECT_FLOAT_EQ(read.getPhysics2DPointsPerMeter(), 64.0f);
+
+    // the keys are known: loading them reports no unknown data
+    for (const PhysicsWorldSettingField& field : physicsWorldSettingFields())
+        EXPECT_TRUE(StreamSchema::isKnownRootKey(RootKind::SceneSettings, field.key)) << field.key;
+
+    // the generated code sets each changed one through its Scene setter
+    const std::string code = Factory::createScene(0, &scene, 4343, "Physics", {}, NULL_ENTITY, std::filesystem::path("/project"), std::filesystem::path("/project/generated"));
+    EXPECT_NE(code.find("scene->setPhysics2DPointsPerMeter(100.0"), std::string::npos) << code;
+    EXPECT_NE(code.find("scene->setPhysics2DWarmStarting(false);"), std::string::npos);
+    EXPECT_NE(code.find("scene->setPhysics3DCollisionSteps(2);"), std::string::npos);
+    EXPECT_EQ(code.find("scene->setPhysics2DContinuous("), std::string::npos);
+    const std::string plainCode = Factory::createScene(0, &plain, 4343, "Plain", {}, NULL_ENTITY, std::filesystem::path("/project"), std::filesystem::path("/project/generated"));
+    EXPECT_EQ(plainCode.find("scene->setPhysics2DPointsPerMeter"), std::string::npos);
+
+    // Catalog (set_scene_settings, the Inspector rows, ScenePropertyCmd): by the MCP names
+    Scene edited;
+    Catalog::setSceneProperty<float>(&edited, "physics_2d_contact_push_speed", 1.5f);
+    Catalog::setSceneProperty<int>(&edited, "physics_3d_position_iterations", 4);
+    Catalog::setSceneProperty<bool>(&edited, "physics_2d_continuous", false);
+    EXPECT_FLOAT_EQ(edited.getPhysics2DContactPushSpeed(), 1.5f);
+    EXPECT_EQ(edited.getPhysics3DPositionIterations(), 4);
+    EXPECT_FALSE(edited.isPhysics2DContinuous());
+    EXPECT_FLOAT_EQ(Catalog::getSceneProperty<float>(&edited, "physics_2d_contact_push_speed"), 1.5f);
+    EXPECT_FLOAT_EQ(Catalog::getScenePropertyDefault<float>("physics_2d_points_per_meter"), 64.0f);
+    EXPECT_EQ(Catalog::getScenePropertyDefault<int>("physics_3d_velocity_iterations"), 10);
+    EXPECT_TRUE(Catalog::getScenePropertyDefault<bool>("physics_2d_warm_starting"));
 }

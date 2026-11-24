@@ -38,19 +38,19 @@ namespace {
 
     namespace fs = std::filesystem;
 
-    constexpr unsigned int kRate = 44100;
+    constexpr unsigned int kPatchRate = 44100;
 
-    std::string fixture(const char* name) {
+    std::string patchFixture(const char* name) {
         return std::string(JASPER_TEST_REPO_DIR) + "/engine/tests/core/fixtures/audio/" + name;
     }
 
-    std::vector<unsigned char> readBytes(const std::string& path) {
+    std::vector<unsigned char> patchReadBytes(const std::string& path) {
         std::ifstream in(path, std::ios::binary);
         return std::vector<unsigned char>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     }
 
     // a 16-bit PCM WAV of `channels` x `frames`, sample(frame, channel) in -1..1
-    std::vector<unsigned char> wavBytes(unsigned int channels, unsigned int frames, const std::function<float(unsigned int, unsigned int)>& sample) {
+    std::vector<unsigned char> patchWavBytes(unsigned int channels, unsigned int frames, const std::function<float(unsigned int, unsigned int)>& sample) {
         std::vector<unsigned char> out;
         auto u32 = [&out](uint32_t v) { for (int i = 0; i < 4; i++) out.push_back((unsigned char)(v >> (8 * i))); };
         auto u16 = [&out](uint16_t v) { out.push_back((unsigned char)v); out.push_back((unsigned char)(v >> 8)); };
@@ -61,8 +61,8 @@ namespace {
         u32(16);
         u16(1);
         u16((uint16_t)channels);
-        u32(kRate);
-        u32(kRate * channels * 2);
+        u32(kPatchRate);
+        u32(kPatchRate * channels * 2);
         u16((uint16_t)(channels * 2));
         u16(16);
         out.insert(out.end(), {'d', 'a', 't', 'a'});
@@ -77,12 +77,12 @@ namespace {
 
     // the sweep of the FLAC and MP3 fixtures, as a WAV
     float sweep(unsigned int frame) {
-        const double t = (double)frame / kRate;
+        const double t = (double)frame / kPatchRate;
         return (float)(0.5 * std::sin(2.0 * M_PI * (200.0 * t + 1900.0 * t * t)));
     }
 
     // one name per test: a death test's child runs the test again up to its statement
-    fs::path writeTemp(const std::string& name, const std::vector<unsigned char>& bytes) {
+    fs::path patchWriteTemp(const std::string& name, const std::vector<unsigned char>& bytes) {
         const fs::path path = fs::temp_directory_path() / ("jasper-soloud-test-" + name);
         std::ofstream out(path, std::ios::binary);
         out.write(reinterpret_cast<const char*>(bytes.data()), (std::streamsize)bytes.size());
@@ -96,7 +96,7 @@ namespace {
         SoLoud::Soloud soloud;
         std::vector<SoLoud::AudioSource*> played;
         NullSoloud() {
-            EXPECT_EQ(soloud.init(0, SoLoud::Soloud::NULLDRIVER, kRate, 512, 1), SoLoud::SO_NO_ERROR);
+            EXPECT_EQ(soloud.init(0, SoLoud::Soloud::NULLDRIVER, kPatchRate, 512, 1), SoLoud::SO_NO_ERROR);
         }
         ~NullSoloud() {
             for (SoLoud::AudioSource* source : played) {
@@ -155,7 +155,7 @@ namespace {
         const std::vector<float> out = looping.mix(length + 8192);
 
         ASSERT_EQ(stream.mSampleCount, length) << "the stream's length is the whole decode's";
-        const size_t point = (size_t)std::floor(loopPoint * kRate);
+        const size_t point = (size_t)std::floor(loopPoint * kPatchRate);
         EXPECT_LT(worstDifference(out, 16, ref, 16, length - 32), tolerance) << "the first pass plays the clip";
         // where the stream went on from: the reference's frame that matches best
         int lag = 0;
@@ -181,7 +181,7 @@ TEST(SoloudOggStream, StreamsFromAFileAndFromMemory) {
     // WavStream hands stb_vorbis a SoLoud File*; the stock stb_vorbis took it for a FILE* (glibc
     // aborts: invalid stdio handle). In a child first: on that build it dies.
     GTEST_FLAG_SET(death_test_style, "threadsafe");
-    const std::string path = fixture("spaceEngineLow_003.ogg");
+    const std::string path = patchFixture("spaceEngineLow_003.ogg");
     ASSERT_EXIT({
         jasperengine::EngineWavStream stream;
         const bool opened = stream.open(path);
@@ -192,7 +192,7 @@ TEST(SoloudOggStream, StreamsFromAFileAndFromMemory) {
     ASSERT_TRUE(fromFile.open(path));
     EXPECT_NEAR(fromFile.getLength(), 5.0, 1e-6) << "the last page's 220,500 frames";
 
-    const std::vector<unsigned char> bytes = readBytes(path);
+    const std::vector<unsigned char> bytes = patchReadBytes(path);
     SoLoud::WavStream fromMemory;
     ASSERT_EQ(fromMemory.loadMem(bytes.data(), (unsigned int)bytes.size(), true, false), SoLoud::SO_NO_ERROR);
     EXPECT_EQ(fromMemory.mSampleCount, 220500u);
@@ -202,12 +202,12 @@ TEST(SoloudOggStream, StreamsFromAFileAndFromMemory) {
     ASSERT_EQ(whole.load(path.c_str()), SoLoud::SO_NO_ERROR);
     NullSoloud reference;
     reference.play(whole);
-    const std::vector<float> ref = reference.mix(kRate);
+    const std::vector<float> ref = reference.mix(kPatchRate);
     for (SoLoud::WavStream* stream : std::vector<SoLoud::WavStream*>{&fromFile, &fromMemory}) {
         NullSoloud streamed;
         streamed.play(*stream);
-        const std::vector<float> out = streamed.mix(kRate);
-        EXPECT_LT(worstDifference(out, 0, ref, 0, kRate), 1e-6f);
+        const std::vector<float> out = streamed.mix(kPatchRate);
+        EXPECT_LT(worstDifference(out, 0, ref, 0, kPatchRate), 1e-6f);
         EXPECT_GT(*std::max_element(out.begin(), out.end()), 0.05f) << "not silence";
     }
 }
@@ -218,8 +218,8 @@ TEST(SoloudStreamSeek, WavFlacAndMp3LoopsWrapToTheirLoopPoint) {
     // The seek tested the decoder union's Ogg member, which is set for every format, and handed
     // WAV, FLAC and MP3 decoders to stb_vorbis_seek: on that build the first wrap corrupts memory
     GTEST_FLAG_SET(death_test_style, "threadsafe");
-    const fs::path wav = writeTemp("sweep.wav", wavBytes(1, kRate, [](unsigned int f, unsigned int) { return sweep(f); }));
-    const std::vector<std::string> files = {wav.string(), fixture("sweep.flac"), fixture("sweep.mp3")};
+    const fs::path wav = patchWriteTemp("sweep.wav", patchWavBytes(1, kPatchRate, [](unsigned int f, unsigned int) { return sweep(f); }));
+    const std::vector<std::string> files = {wav.string(), patchFixture("sweep.flac"), patchFixture("sweep.mp3")};
     for (const std::string& file : files) {
         SCOPED_TRACE(file);
         ASSERT_EXIT({
@@ -229,7 +229,7 @@ TEST(SoloudStreamSeek, WavFlacAndMp3LoopsWrapToTheirLoopPoint) {
             const SoLoud::handle voice = looping.play(stream);
             looping.soloud.setLooping(voice, true);
             looping.soloud.setLoopPoint(voice, 0.25);
-            looping.mix(3 * kRate);
+            looping.mix(3 * kPatchRate);
             std::exit(0);
         }, ::testing::ExitedWithCode(0), "");
 
@@ -246,7 +246,7 @@ TEST(SoloudStreamSeek, AnOggLoopWrapsToItsLoopPoint) {
     // The Ogg seek decoded the frame it sought for stb_vorbis_get_samples (which WavStream does
     // not use), so the next getAudio dropped it, and kept the frame it had before the seek: the
     // loop went on from the wrong place
-    const std::string path = fixture("spaceEngineLow_003.ogg");
+    const std::string path = patchFixture("spaceEngineLow_003.ogg");
     jasperengine::EngineWavStream stream;
     ASSERT_TRUE(stream.open(path));
     SoLoud::Wav whole;
@@ -263,7 +263,7 @@ TEST(SoloudWavLoader, AnOggThatDecodesPastItsLastGranuleLoadsAtItsLength) {
     // stb_vorbis decodes this file a few hundred frames past its last page's granule, the length
     // Wav::loadogg allocates: the copy wrote them past mData (AddressSanitizer: heap overflow)
     SoLoud::Wav whole;
-    ASSERT_EQ(whole.load(fixture("spaceEngineLow_003.ogg").c_str()), SoLoud::SO_NO_ERROR);
+    ASSERT_EQ(whole.load(patchFixture("spaceEngineLow_003.ogg").c_str()), SoLoud::SO_NO_ERROR);
     EXPECT_EQ(whole.mSampleCount, 220500u);
     EXPECT_EQ(whole.mChannels, 1u);
 }
@@ -271,7 +271,7 @@ TEST(SoloudWavLoader, AnOggThatDecodesPastItsLastGranuleLoadsAtItsLength) {
 TEST(SoloudWavLoader, FramesAShortReadLeavesAreSilent) {
     // a WAV whose data chunk says 2,048 frames and holds 1,000 (a cut file): dr_wav reads 1,000 and
     // loadwav copied every block whole, the frames after the read from the block before
-    std::vector<unsigned char> bytes = wavBytes(1, 2048, [](unsigned int, unsigned int) { return 0.5f; });
+    std::vector<unsigned char> bytes = patchWavBytes(1, 2048, [](unsigned int, unsigned int) { return 0.5f; });
     bytes.resize(44 + 1000 * 2);
     SoLoud::Wav cut;
     ASSERT_EQ(cut.loadMem(bytes.data(), (unsigned int)bytes.size(), true, false), SoLoud::SO_NO_ERROR);
@@ -282,12 +282,12 @@ TEST(SoloudWavLoader, FramesAShortReadLeavesAreSilent) {
     }
 
     // a FLAC cut to two thirds of its bytes: STREAMINFO still counts the whole second
-    std::vector<unsigned char> flac = readBytes(fixture("sweep.flac"));
+    std::vector<unsigned char> flac = patchReadBytes(patchFixture("sweep.flac"));
     flac.resize(flac.size() * 2 / 3);
     SoLoud::Wav cutFlac;
     ASSERT_EQ(cutFlac.loadMem(flac.data(), (unsigned int)flac.size(), true, false), SoLoud::SO_NO_ERROR);
-    ASSERT_EQ(cutFlac.mSampleCount, kRate);
-    for (unsigned int i = kRate - 4096; i < kRate; i++) {
+    ASSERT_EQ(cutFlac.mSampleCount, kPatchRate);
+    for (unsigned int i = kPatchRate - 4096; i < kPatchRate; i++) {
         ASSERT_EQ(cutFlac.mData[i], 0.0f) << "frame " << i << " is past what the cut file holds";
     }
 }
@@ -297,7 +297,7 @@ TEST(SoloudWavLoader, FramesAShortReadLeavesAreSilent) {
 TEST(SoloudMix, AVoicePlaysItsLastBlockToTheEnd) {
     // 1,000 frames: the second 512-frame block holds the last 488. With 300-frame mix calls that
     // block is read in the call that ends at frame 600, and SoLoud stopped the voice there
-    std::vector<unsigned char> bytes = wavBytes(1, 1000, [](unsigned int, unsigned int) { return 0.5f; });
+    std::vector<unsigned char> bytes = patchWavBytes(1, 1000, [](unsigned int, unsigned int) { return 0.5f; });
     SoLoud::Wav clip;
     ASSERT_EQ(clip.loadMem(bytes.data(), (unsigned int)bytes.size(), true, false), SoLoud::SO_NO_ERROR);
     for (unsigned int call : {300u, 441u, 480u, 735u, 1024u}) {
@@ -338,7 +338,7 @@ TEST(SoloudBus, AVoiceQueuedIntoABusIsMixedInTheNextCall) {
     // A bus reads its children's mix in 512-frame blocks and keeps what a call does not take: a
     // voice queued after a 300-frame call was first heard 212 frames later than one queued at a
     // block's start (SoLoud's linear resampler itself puts a frame between a block and its output)
-    std::vector<unsigned char> bytes = wavBytes(1, kRate, [](unsigned int, unsigned int) { return 0.5f; });
+    std::vector<unsigned char> bytes = patchWavBytes(1, kPatchRate, [](unsigned int, unsigned int) { return 0.5f; });
     SoLoud::Wav clip;
     ASSERT_EQ(clip.loadMem(bytes.data(), (unsigned int)bytes.size(), true, false), SoLoud::SO_NO_ERROR);
     // the onset of the clip queued into a bus after a first mix call of `first` frames

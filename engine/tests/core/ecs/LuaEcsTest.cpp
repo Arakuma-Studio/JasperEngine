@@ -21,7 +21,7 @@ using jasperengine::test::makeTransformEntity;
 namespace {
 
     // runs a chunk; "" on success, else the error message
-    std::string runLua(lua_State* L, const std::string& code){
+    std::string luaEcsRunLua(lua_State* L, const std::string& code){
         if (luaL_loadstring(L, code.c_str()) != LUA_OK || lua_pcall(L, 0, 0, 0) != LUA_OK){
             std::string error = lua_tostring(L, -1) ? lua_tostring(L, -1) : "(error)";
             lua_pop(L, 1);
@@ -78,9 +78,9 @@ TEST(LuaEcsTest, QueriesChangeTicksAndSignatures){
         manager:setSignature(entity, string.rep("0", 62) .. "11")
         assert(manager:getSignature(entity) == string.rep("0", 254) .. "11", "64-character string")
     )";
-    EXPECT_EQ(runLua(L, script), "");
+    EXPECT_EQ(luaEcsRunLua(L, script), "");
 
     lua_pushnil(L);
     lua_setglobal(L, "ecsScene");
-    runLua(L, "collectgarbage()");
+    luaEcsRunLua(L, "collectgarbage()");
 }

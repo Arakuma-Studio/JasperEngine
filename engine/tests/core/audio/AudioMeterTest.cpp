@@ -697,6 +697,39 @@ TEST(AudioMeter, PaddingCountsInNoLevel) {
     EXPECT_DOUBLE_EQ(file.samplePeakDb, live.samplePeakDb);
 }
 
+// A tone joined while it plays (the loudness tap from Play start or a Reset) reads its own true
+// peak at every phase; in Stream mode a join near the tone's crest reads a step from silence, up to
+// 1 dB over it (S38 R12: the Master's -1 dBTP limiter read as -0.07 dBTP)
+TEST(AudioMeter, JoinedModeReadsATonesTruePeakWhereverItJoins) {
+    const std::vector<float> tone = toneSegments({{0.02, -1.05}});
+    const double steady = AudioMeter::measure(tone.data(), tone.size(), kMeterRate, 1, false).truePeakDb;
+    double streamWorst = AudioMeter::SILENCE_DB;
+    for (size_t phase = 0; phase < kMeterRate / 1000; phase++) {
+        const size_t frames = tone.size() / 2;
+        AudioMeter joined(kMeterRate, 1, AudioMeterOptions{AudioMeterMode::Joined, false});
+        joined.process(tone.data() + phase, frames);
+        EXPECT_NEAR(joined.result().truePeakDb, steady, 0.01) << "joined at phase " << phase;
+        AudioMeter stream(kMeterRate, 1, AudioMeterOptions{AudioMeterMode::Stream, false});
+        stream.process(tone.data() + phase, frames);
+        streamWorst = std::max(streamWorst, stream.result().truePeakDb);
+    }
+    EXPECT_GT(streamWorst, steady + 0.5) << "a stream starts from silence";
+
+    // the frames that only fill the filter still count as samples, and a join in blocks of a few
+    // frames reads as one in a single block
+    AudioMeter joined(kMeterRate, 1, AudioMeterOptions{AudioMeterMode::Joined, false});
+    AudioMeter blocks(kMeterRate, 1, AudioMeterOptions{AudioMeterMode::Joined, false});
+    joined.process(tone.data() + 12, 100);
+    for (size_t at = 0; at < 100; at += 3) {
+        blocks.process(tone.data() + 12 + at, std::min<size_t>(3, 100 - at));
+    }
+    EXPECT_DOUBLE_EQ(blocks.result().truePeakDb, joined.result().truePeakDb);
+    const std::vector<float> click = {0.0f, 0.9f, 0.0f};
+    AudioMeter clicked(kMeterRate, 1, AudioMeterOptions{AudioMeterMode::Joined, false});
+    clicked.process(click.data(), click.size());
+    EXPECT_NEAR(clicked.result().truePeakDb, 20.0 * std::log10(0.9), 1e-6);
+}
+
 // The bands come from the spectrum, the sample-by-sample bank has them from its filters: the same
 // magnitudes, the same levels. Bands 70 dB under the loudest one only hold each method's leakage.
 TEST(AudioMeter, TheBandsAgreeWithTheFilterBank) {

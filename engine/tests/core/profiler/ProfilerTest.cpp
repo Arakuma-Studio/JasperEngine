@@ -243,7 +243,7 @@ TEST_F(Profiler, CaptureRoundTripsThroughJetraceJson){
     EXPECT_TRUE(info.complete);
     EXPECT_EQ(info.framesRecorded, 3u);
 
-    test::TempDir dir;
+    jasperengine::test::TempDir dir;
     const std::string path = (dir.path() / "capture.jetrace.json").string();
     std::string error;
     ASSERT_TRUE(profiler::saveCapture(id, path, &error)) << error;
@@ -362,7 +362,7 @@ TEST_F(Profiler, CommandLineCaptureWritesItsFile){
     // a development game's --profile-capture (R38): armed once the scenes are loaded, written
     // when its frames are in
     profiler::setEnabled(false);
-    test::TempDir dir;
+    jasperengine::test::TempDir dir;
     const std::string path = (dir.path() / "cli.jetrace.json").string();
     profiler::engineInit({"game", "--profile-capture=" + path, "--profile-frames", "3"});
     for (int frame = 0; frame < 4; frame++){

@@ -10,6 +10,8 @@
 #include "component/ModelComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/Transform.h"
+#include "component/AudioSourceComponent.h"
+#include "object/sound/AudioSourceSlots.h"
 #include "component/ParticleSystemComponent.h"
 
 #include "mcp/McpCall.h"
@@ -27,6 +29,8 @@
 #include "command/type/ClipSceneActions.h"
 #include "animation/AnimationClipIO.h"
 #include "command/type/AddComponentCmd.h"
+#include "command/type/AudioSourceSlotCmd.h"
+#include "audio/SourceEffectEdit.h"
 #include "command/type/ComponentValuesCmd.h"
 #include "command/type/CreateClipCmd.h"
 #include "command/type/MeshChangeCmd.h"
@@ -361,6 +365,19 @@ void getEntityTool(const CallPtr& call) {
     if (detail != "summary" && scene->playState == ScenePlayState::STOPPED &&
         (wanted(ComponentType::MeshComponent) || wanted(ComponentType::ModelComponent) || wanted(ComponentType::VertexColorsComponent))) {
         if (Json colors = vertexColorTargetsJson(project, scene->id, entity); !colors.is_null()) data["vertex_colors"] = colors;
+    }
+    // several Audio Sources (S97 REQ-28): its own, then its slots, each addressed by its entity
+    if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::AudioSourceComponent) != filter.end()) {
+        const std::vector<Entity> slots = AudioSourceSlots::getSlots(registry, entity);
+        if (!slots.empty()) {
+            Json sources = Json::array();
+            if (registry->findComponent<AudioSourceComponent>(entity)) sources.push_back(Json{{"entity", entity}, {"slot", 0}});
+            for (Entity slot : slots) {
+                sources.push_back(Json{{"entity", slot}, {"slot", registry->getComponent<AudioSourceComponent>(slot).slot}});
+            }
+            data["audio_sources"] = sources;
+            text += ". audio_sources: " + sources.dump();
+        }
     }
     // a fluid's runtime state (read only; FluidStats, the matching preset)
     if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::FluidSimulationComponent) != filter.end()) {
@@ -749,8 +766,22 @@ void addComponentTool(const CallPtr& call) {
         call->fail(error);
         return;
     }
+    // S97 WP-B: Unity's audio filters ("Audio Low Pass Filter") add their effect to the GameObject's
+    // Audio Source (REQ-5)
+    Json componentArg = args.contains("component") ? args["component"] : Json();
+    std::vector<std::string> filterEffects;
+    if (componentArg.is_string() || componentArg.is_array()) {
+        Json rest = Json::array();
+        for (const Json& item : componentArg.is_array() ? componentArg : Json::array({componentArg})) {
+            const SourceEffectEdit::FilterAlias* alias = item.is_string() ? SourceEffectEdit::findFilterAlias(item.get<std::string>()) : nullptr;
+            if (alias) filterEffects.push_back(alias->effect);
+            else rest.push_back(item);
+        }
+        if (!filterEffects.empty()) componentArg = rest;
+    }
     std::vector<ComponentType> types;
-    if (!args.contains("component") || !componentListArg(args["component"], types, error)) {
+    const bool onlyFilters = !filterEffects.empty() && componentArg.empty();
+    if (componentArg.is_null() || (!onlyFilters && !componentListArg(componentArg, types, error))) {
         call->fail(args.contains("component") ? error : "Pass component (a name or an array of names).");
         return;
     }
@@ -790,8 +821,30 @@ void addComponentTool(const CallPtr& call) {
     // an Animation Player already there whose models are in the legacy layout (no node
     // hierarchy, so its clips can't bind them): adding it again reloads them (9.R3)
     std::vector<Entity> reloadPlayers;
+    // a further Audio Source of a GameObject that has one: a slot (S97 REQ-28), its entity read
+    // back after the step ran
+    struct SlotAdd { Entity owner; size_t added; AddAudioSourceSlotCmd* cmd = nullptr; };
+    auto slotAdds = std::make_shared<std::vector<SlotAdd>>();
     for (Entity entity : entities) {
         for (ComponentType type : types) {
+            if (type == ComponentType::AudioSourceComponent && McpRefs::hasComponent(scene, entity, type)) {
+                const std::string refusal = AddAudioSourceSlotCmd::refusal(scene->scene, entity);
+                if (!refusal.empty()) {
+                    delete steps;
+                    call->fail("\"" + scene->scene->getEntityName(entity) + "\": " + refusal, Json{{"entity", entity}});
+                    return;
+                }
+                const size_t index = slotAdds->size();
+                slotAdds->push_back({entity, added.size()});
+                added.push_back(Json{{"entity", entity}, {"component", McpRefs::componentName(type)}});
+                steps->addStep([project, sceneId, entity, slotAdds, index](std::string& why) -> Command* {
+                    why = "Could not add a further Audio Source.";
+                    auto* cmd = new AddAudioSourceSlotCmd(project, sceneId, entity);
+                    (*slotAdds)[index].cmd = cmd;
+                    return cmd;
+                });
+                continue;
+            }
             if (McpRefs::hasComponent(scene, entity, type)) {
                 if (type == ComponentType::AnimationPlayerComponent &&
                     !PlayerModelLayout::modelsNeedingReload(project, scene->id, entity).empty()) {
@@ -838,6 +891,12 @@ void addComponentTool(const CallPtr& call) {
             return reload;
         });
     }
+    for (const std::string& effect : filterEffects) {
+        for (Entity entity : entities) added.push_back(Json{{"entity", entity}, {"component", "audiosource"}, {"effect", effect}});
+        steps->addStep([project, sceneId, entities, effect](std::string& why) -> Command* {
+            return SourceEffectEdit::addEffectCommand(project, sceneId, entities, effect, why);
+        });
+    }
     if (added.empty() && changes.empty()) {
         delete steps;
         call->fail("Every GameObject has that component already (set its values with set_properties).",
@@ -845,9 +904,25 @@ void addComponentTool(const CallPtr& call) {
         return;
     }
     if (!changes.empty()) {
-        steps->addStep([project, sceneId, entities, changes](std::string& why) -> Command* {
+        steps->addStep([project, sceneId, entities, changes, slotAdds](std::string& why) -> Command* {
             auto* multi = new MultiPropertyCmd();
-            if (!McpValues::appendChangeCommands(project, project->getScene(sceneId), entities, changes, *multi, why)) {
+            // a new slot takes the Audio Source values; the GameObject the others
+            std::vector<Entity> audioTargets;
+            std::vector<McpValues::Change> audioChanges;
+            std::vector<McpValues::Change> otherChanges;
+            for (const McpValues::Change& change : changes) {
+                (change.component == ComponentType::AudioSourceComponent ? audioChanges : otherChanges).push_back(change);
+            }
+            for (Entity entity : entities) {
+                auto slot = std::find_if(slotAdds->begin(), slotAdds->end(), [entity](const SlotAdd& add) { return add.owner == entity; });
+                audioTargets.push_back(slot != slotAdds->end() && slot->cmd ? slot->cmd->getSlotEntity() : entity);
+            }
+            SceneProject* current = project->getScene(sceneId);
+            const bool ok = slotAdds->empty()
+                ? McpValues::appendChangeCommands(project, current, entities, changes, *multi, why)
+                : (otherChanges.empty() || McpValues::appendChangeCommands(project, current, entities, otherChanges, *multi, why)) &&
+                  (audioChanges.empty() || McpValues::appendChangeCommands(project, current, audioTargets, audioChanges, *multi, why));
+            if (!ok) {
                 delete multi;
                 return nullptr;
             }
@@ -872,10 +947,22 @@ void addComponentTool(const CallPtr& call) {
     }
     Json result{{"scene_id", sceneId}, {"added", added}, {"skipped", skipped}};
     if (!legacyModels.empty()) result["reloaded"] = reloaded;
+    if (!slotAdds->empty()) {
+        std::string ids;
+        for (const SlotAdd& add : *slotAdds) {
+            const Entity slotEntity = add.cmd ? add.cmd->getSlotEntity() : NULL_ENTITY;
+            added[add.added]["audio_source"] = slotEntity;
+            added[add.added]["slot"] = add.cmd ? add.cmd->getSlot() : 0;
+            ids += (ids.empty() ? "" : ", ") + std::to_string(slotEntity);
+        }
+        result["added"] = added;
+        result["next"] = "Each further Audio Source is its own entity (" + ids + "), hidden in the scene tree: pass that id as entity "
+                         "to set_properties, get_entity and remove_component.";
+    }
     call->ok("Added " + std::to_string(added.size()) + " component(s)" +
              (skipped.empty() ? "" : ", " + std::to_string(skipped.size()) + " already there") +
              (legacyModels.empty() ? "" : ", reloaded " + std::to_string(reloadedCount) + " model(s) under the Animation Player in the node hierarchy") +
-             " (one undo step).", result);
+             " (one undo step)." + (result.contains("next") ? " " + result["next"].get<std::string>() : std::string()), result);
 }
 
 void removeComponentTool(const CallPtr& call) {
@@ -904,7 +991,12 @@ void removeComponentTool(const CallPtr& call) {
                 call->fail("\"" + scene->scene->getEntityName(entity) + "\" has no " + McpRefs::componentName(type) + " component.");
                 return;
             }
-            multi->addCommand(std::make_unique<RemoveComponentCmd>(project, sceneId, entity, type));
+            // a slot's Audio Source goes with its entity (S97 REQ-28)
+            if (type == ComponentType::AudioSourceComponent && AudioSourceSlots::isSlot(scene->scene, entity)) {
+                multi->addCommand(std::make_unique<RemoveAudioSourceSlotCmd>(project, sceneId, entity));
+            } else {
+                multi->addCommand(std::make_unique<RemoveComponentCmd>(project, sceneId, entity, type));
+            }
             removed.push_back(Json{{"entity", entity}, {"component", McpRefs::componentName(type)}});
         }
     }
@@ -1237,7 +1329,7 @@ void registerComponentTools(McpRegistry& registry) {
         tool.title = "Add Component";
         tool.description =
             "Add components to GameObjects, optionally with initial values (as set_properties); ones having it are "
-            "skipped. Names: list_component_types. Colliders: edit_colliders.";
+            "skipped, except AudioSource, which adds another. Names: list_component_types. Colliders: edit_colliders.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

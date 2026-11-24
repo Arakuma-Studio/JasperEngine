@@ -70,7 +70,7 @@ namespace {
         return std::find(variant.defines.begin(), variant.defines.end(), define) != variant.defines.end();
     }
 
-    Texture namedTexture(const std::string& path){
+    Texture materialPbrNamedTexture(const std::string& path){
         Texture texture;
         texture.setPath(path);
         return texture;
@@ -81,19 +81,19 @@ namespace {
         Material material;
         MaterialPbrExtensions& pbr = material.pbr.edit();
         pbr.clearcoat.enabled = true;
-        pbr.clearcoat.map = namedTexture("cc.png");
-        pbr.clearcoat.normalMap = namedTexture("ccn.png");
+        pbr.clearcoat.map = materialPbrNamedTexture("cc.png");
+        pbr.clearcoat.normalMap = materialPbrNamedTexture("ccn.png");
         pbr.sheen.enabled = true;
-        pbr.sheen.map = namedTexture("sheen.png");
+        pbr.sheen.map = materialPbrNamedTexture("sheen.png");
         pbr.anisotropy.enabled = true;
-        pbr.anisotropy.map = namedTexture("aniso.png");
+        pbr.anisotropy.map = materialPbrNamedTexture("aniso.png");
         pbr.iridescence.enabled = true;
-        pbr.iridescence.map = namedTexture("irid.png");
+        pbr.iridescence.map = materialPbrNamedTexture("irid.png");
         pbr.transmission.enabled = true;
-        pbr.transmission.map = namedTexture("trans.png");
+        pbr.transmission.map = materialPbrNamedTexture("trans.png");
         pbr.volume.enabled = true;
         pbr.specular.enabled = true;
-        pbr.specular.map = namedTexture("spec.png");
+        pbr.specular.map = materialPbrNamedTexture("spec.png");
         return material;
     }
 
@@ -164,7 +164,7 @@ TEST(MaterialPbr, DefaultHasNoReference){
     // factors and maps without the enabled flag select nothing either
     Material disabled;
     disabled.pbr.edit().clearcoat.factor = 1.0f;
-    disabled.pbr.edit().clearcoat.map = namedTexture("cc.png");
+    disabled.pbr.edit().clearcoat.map = materialPbrNamedTexture("cc.png");
     disabled.pbr.edit().specular.ior = 1.33f;
     EXPECT_TRUE(MaterialPbr::getPbrVariant(disabled, MaterialLighting::PIXEL, false, PbrTier::FULL).empty());
 }

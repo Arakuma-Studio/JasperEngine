@@ -40,6 +40,8 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kWaterVolumeWaves;
     extern const EnumDesc kWaterExcluderShape;
     extern const EnumDesc kBuoyancyColumns;
+    // S96 vehicles (VehicleReflect.cpp)
+    extern const EnumDesc kVehicleTransmissionMode;
     // upstream's components (UpstreamReflect.cpp: Trail Renderer, Canvas Group, on-screen controls)
     extern const EnumDesc kLineRendererMode;
     extern const EnumDesc kLineWidthUnit;

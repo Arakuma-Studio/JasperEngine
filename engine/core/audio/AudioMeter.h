@@ -166,7 +166,11 @@ namespace jasperengine{
         Stream,
         // a whole file: 400 ms of silence before and after it for the momentary windows, 12 samples
         // for the true-peak filter (finish() adds the trailing ones)
-        File
+        File,
+        // a live stream joined while it plays (the editor's loudness tap): what came before is not
+        // silence, so the first 11 frames only fill the true-peak filter, whose points over them would
+        // read a step from silence (up to 1 dB over a tone's peak); their samples still count
+        Joined
     };
 
     struct AudioMeterOptions{

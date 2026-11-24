@@ -7,8 +7,10 @@
 // component is changed in turn and the two must agree, with fixed cases as a check of the oracle.
 
 #include "support/EditorTestSupport.h"
+#include "reflect/ReflectTestSupport.h"
 
 #include "Catalog.h"
+#include "component/CameraComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/ScriptComponent.h"
@@ -66,10 +68,10 @@ namespace changed_update_flags_test {
                     changed = *static_cast<double*>(oldProp.ref) != *static_cast<double*>(newProp.ref);
                     break;
                 case PropertyType::Int:
-                    changed = *static_cast<int*>(oldProp.ref) != *static_cast<int*>(newProp.ref);
-                    break;
                 case PropertyType::UInt:
-                    changed = *static_cast<unsigned int*>(oldProp.ref) != *static_cast<unsigned int*>(newProp.ref);
+                case PropertyType::Enum:
+                    // at the property's own width (an Enum may be one byte)
+                    changed = readPropertyInteger(oldProp, oldProp.ref) != readPropertyInteger(newProp, newProp.ref);
                     break;
                 case PropertyType::String:
                     changed = *static_cast<std::string*>(oldProp.ref) != *static_cast<std::string*>(newProp.ref);
@@ -97,9 +99,6 @@ namespace changed_update_flags_test {
                     break;
                 case PropertyType::Quat:
                     changed = *static_cast<Quaternion*>(oldProp.ref) != *static_cast<Quaternion*>(newProp.ref);
-                    break;
-                case PropertyType::Enum:
-                    changed = *static_cast<int*>(oldProp.ref) != *static_cast<int*>(newProp.ref);
                     break;
                 case PropertyType::Ease:
                     changed = *static_cast<Ease*>(oldProp.ref) != *static_cast<Ease*>(newProp.ref);
@@ -133,8 +132,8 @@ namespace changed_update_flags_test {
         return flags;
     }
 
-    // another value of a property (a Custom one always counts as changed; a byte, as an Enum may be
-    // narrower than the int it is compared as)
+    // another value of a property (a Custom one always counts as changed; an Enum's first byte, as
+    // it may be one byte wide)
     void changeValue(const PropertyData& property) {
         void* ref = property.ref;
         if (!ref) return;
@@ -162,6 +161,12 @@ namespace changed_update_flags_test {
             case PropertyType::Gradient: static_cast<Gradient*>(ref)->colorKeys.emplace_back(); break;
             case PropertyType::Custom: break;
         }
+    }
+
+    // a camera made here: the framebuffer its constructor allocates (a scene's registry or renderer
+    // frees a scene camera's), shared by its copies, goes with `owned`
+    void own(jasperengine::editor::test::OwnedFramebuffers& owned, const reflect::ComponentDesc& desc, const reflect::Value& value) {
+        if (desc.type == ComponentType::CameraComponent) owned.keep(static_cast<const CameraComponent*>(value.get()));
     }
 
     // every array that can grow has elements, down to the arrays in those elements
@@ -282,32 +287,43 @@ namespace changed_update_flags_test {
 using namespace changed_update_flags_test;
 
 TEST(ChangedUpdateFlags, EveryPropertyOfADefaultComponent) {
+    jasperengine::editor::test::OwnedFramebuffers owned;
     for (const reflect::ComponentDesc* desc : reflect::listingOrder()) {
-        sweepEveryProperty(*desc, reflect::Value(desc->body.ops));
+        reflect::Value base(desc->body.ops);
+        own(owned, *desc, base);
+        sweepEveryProperty(*desc, base);
     }
 }
 
 TEST(ChangedUpdateFlags, EveryPropertyWithItsListsFilled) {
+    jasperengine::editor::test::OwnedFramebuffers owned;
     for (const reflect::ComponentDesc* desc : reflect::listingOrder()) {
         reflect::Value base(desc->body.ops);
+        own(owned, *desc, base);
         populateAll(*desc, base.get());
         sweepEveryProperty(*desc, base);
     }
 }
 
 TEST(ChangedUpdateFlags, ListsOfDifferentLengthsCompareTheElementsBothHave) {
+    jasperengine::editor::test::OwnedFramebuffers owned;
     for (const reflect::ComponentDesc* desc : reflect::listingOrder()) {
         reflect::Value empty(desc->body.ops);
         reflect::Value filled(desc->body.ops);
+        own(owned, *desc, empty);
+        own(owned, *desc, filled);
         populateAll(*desc, filled.get());
         expectAgree(desc->type, empty.get(), filled.get(), std::string(desc->cppName) + " empty against filled");
     }
 }
 
 TEST(ChangedUpdateFlags, NaNDiffersFromItself) {
+    jasperengine::editor::test::OwnedFramebuffers owned;
     for (const reflect::ComponentDesc* desc : reflect::listingOrder()) {
         reflect::Value a(desc->body.ops);
         reflect::Value b(desc->body.ops);
+        own(owned, *desc, a);
+        own(owned, *desc, b);
         for (void* comp : {a.get(), b.get()}) {
             std::map<std::string, PropertyData> properties;
             reflect::listProperties(*desc, comp, properties);
@@ -321,10 +337,13 @@ TEST(ChangedUpdateFlags, NaNDiffersFromItself) {
 
 TEST(ChangedUpdateFlags, RandomPairs) {
     std::mt19937 random(51);
+    jasperengine::editor::test::OwnedFramebuffers owned;
     for (const reflect::ComponentDesc* desc : reflect::listingOrder()) {
         for (int round = 0; round < 30; round++) {
             reflect::Value a(desc->body.ops);
             reflect::Value b(desc->body.ops);
+            own(owned, *desc, a);
+            own(owned, *desc, b);
             if (round % 2) populateAll(*desc, a.get());
             if (round % 3 == 0) populateAll(*desc, b.get());
             for (reflect::Value* side : {&a, &b}) {
@@ -441,17 +460,19 @@ TEST(ChangedUpdateFlagsBench, AMeshCostsMicroseconds) {
     std::printf("[ bench ] a Mesh's update flags: %.2f us a call, %.2f us with its property lists (budget 50)\n", now, lists);
     EXPECT_NE(sink, 0u);
     EXPECT_LT(now * 20.0, lists);
-    if (const double slack = test::perfSlack(); slack > 0.0) {
+    if (const double slack = jasperengine::editor::test::perfSlack(); slack > 0.0) {
         EXPECT_LE(now, 50.0 * slack);
     }
 }
 
 // The other components on Stop's path: those that run update flags, with their lists filled
 TEST(ChangedUpdateFlagsBench, EveryComponentStaysUnderTheBudget) {
-    const double slack = test::perfSlack();
+    const double slack = jasperengine::editor::test::perfSlack();
+    jasperengine::editor::test::OwnedFramebuffers owned;
     for (const reflect::ComponentDesc* desc : reflect::listingOrder()) {
         if (desc->decodeApply != reflect::DecodeApply::UpdateFlags) continue;
         reflect::Value a(desc->body.ops);
+        own(owned, *desc, a);
         populateAll(*desc, a.get());
         reflect::Value b(a);
         reflect::Value oracleA(a);

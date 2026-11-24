@@ -19,7 +19,7 @@ using jasperengine::editor::test::FakeAssetIndex;
 
 namespace {
 
-    SearchEntry entry(SearchKind kind, const std::string& key, const std::string& label, const std::string& detail = {}) {
+    SearchEntry searchEngineEntry(SearchKind kind, const std::string& key, const std::string& label, const std::string& detail = {}) {
         SearchEntry e;
         e.kind = kind;
         e.key = key;
@@ -28,7 +28,7 @@ namespace {
         return e;
     }
 
-    std::vector<std::string> keys(const SearchSnapshot& snapshot, const std::vector<SearchResult>& results) {
+    std::vector<std::string> searchEngineKeys(const SearchSnapshot& snapshot, const std::vector<SearchResult>& results) {
         std::vector<std::string> out;
         for (const SearchResult& result : results) out.push_back(snapshot.entries[result.entry].key);
         return out;
@@ -36,14 +36,14 @@ namespace {
 
     SearchSnapshot sampleSnapshot() {
         SearchSnapshot snapshot;
-        snapshot.entries.push_back(entry(SearchKind::Command, "command:edit.duplicate", "Duplicate", "Edit > Duplicate"));
-        snapshot.entries.push_back(entry(SearchKind::Command, "command:file.save", "Save", "File > Save"));
-        snapshot.entries.push_back(entry(SearchKind::Panel, "panel:Console", "Console"));
-        snapshot.entries.push_back(entry(SearchKind::Panel, "panel:Inspector", "Inspector"));
-        snapshot.entries.push_back(entry(SearchKind::Setting, "setting:physics.gravity", "Gravity", "Project Settings > Physics"));
-        snapshot.entries.push_back(entry(SearchKind::Component, "component:Light", "Light"));
-        snapshot.entries.push_back(entry(SearchKind::GameObject, "gameobject:main:1", "Light", "Light · Main Scene"));
-        snapshot.entries.push_back(entry(SearchKind::GameObject, "gameobject:main:2", "Save Point", "Save Point · Main Scene"));
+        snapshot.entries.push_back(searchEngineEntry(SearchKind::Command, "command:edit.duplicate", "Duplicate", "Edit > Duplicate"));
+        snapshot.entries.push_back(searchEngineEntry(SearchKind::Command, "command:file.save", "Save", "File > Save"));
+        snapshot.entries.push_back(searchEngineEntry(SearchKind::Panel, "panel:Console", "Console"));
+        snapshot.entries.push_back(searchEngineEntry(SearchKind::Panel, "panel:Inspector", "Inspector"));
+        snapshot.entries.push_back(searchEngineEntry(SearchKind::Setting, "setting:physics.gravity", "Gravity", "Project Settings > Physics"));
+        snapshot.entries.push_back(searchEngineEntry(SearchKind::Component, "component:Light", "Light"));
+        snapshot.entries.push_back(searchEngineEntry(SearchKind::GameObject, "gameobject:main:1", "Light", "Light · Main Scene"));
+        snapshot.entries.push_back(searchEngineEntry(SearchKind::GameObject, "gameobject:main:2", "Save Point", "Save Point · Main Scene"));
         snapshot.prepare();
         return snapshot;
     }
@@ -68,33 +68,33 @@ TEST(SearchEngine, ScopesRanksRecents) {
     SearchSnapshot snapshot = sampleSnapshot();
 
     // kind priority breaks ties: the Light component (45) before the Light GameObject (40)
-    std::vector<std::string> light = keys(snapshot, SearchEngine::query(snapshot, "light"));
+    std::vector<std::string> light = searchEngineKeys(snapshot, SearchEngine::query(snapshot, "light"));
     ASSERT_GE(light.size(), 2u);
     EXPECT_EQ(light[0], "component:Light");
     EXPECT_EQ(light[1], "gameobject:main:1");
 
     // a scope keeps one kind
-    EXPECT_EQ(keys(snapshot, SearchEngine::query(snapshot, "@light")), (std::vector<std::string>{"gameobject:main:1"}));
-    EXPECT_EQ(keys(snapshot, SearchEngine::query(snapshot, ">save")), (std::vector<std::string>{"command:file.save"}));
-    EXPECT_EQ(keys(snapshot, SearchEngine::query(snapshot, ":gravity")), (std::vector<std::string>{"setting:physics.gravity"}));
+    EXPECT_EQ(searchEngineKeys(snapshot, SearchEngine::query(snapshot, "@light")), (std::vector<std::string>{"gameobject:main:1"}));
+    EXPECT_EQ(searchEngineKeys(snapshot, SearchEngine::query(snapshot, ">save")), (std::vector<std::string>{"command:file.save"}));
+    EXPECT_EQ(searchEngineKeys(snapshot, SearchEngine::query(snapshot, ":gravity")), (std::vector<std::string>{"setting:physics.gravity"}));
 
     // "save": the command's exact match beats the GameObject's prefix
-    std::vector<std::string> save = keys(snapshot, SearchEngine::query(snapshot, "save"));
+    std::vector<std::string> save = searchEngineKeys(snapshot, SearchEngine::query(snapshot, "save"));
     ASSERT_EQ(save.size(), 2u);
     EXPECT_EQ(save[0], "command:file.save");
 
     // a recent entry is boosted (150 for the newest): the Save Point GameObject passes the command
     snapshot.recents = {"gameobject:main:2"};
-    save = keys(snapshot, SearchEngine::query(snapshot, "save"));
+    save = searchEngineKeys(snapshot, SearchEngine::query(snapshot, "save"));
     ASSERT_EQ(save.size(), 2u);
     EXPECT_EQ(save[0], "command:file.save");     // 1200 + 70 against 994 + 40 + 150
-    std::vector<std::string> sav = keys(snapshot, SearchEngine::query(snapshot, "sav"));
+    std::vector<std::string> sav = searchEngineKeys(snapshot, SearchEngine::query(snapshot, "sav"));
     ASSERT_EQ(sav.size(), 2u);
     EXPECT_EQ(sav[0], "gameobject:main:2");      // both prefixes: 999 + 70 against 993 + 40 + 150
 
     // an empty query: recents first (newest first), then commands and panels only
     snapshot.recents = {"setting:physics.gravity", "command:file.save"};
-    std::vector<std::string> empty = keys(snapshot, SearchEngine::query(snapshot, ""));
+    std::vector<std::string> empty = searchEngineKeys(snapshot, SearchEngine::query(snapshot, ""));
     ASSERT_EQ(empty.size(), 5u);
     EXPECT_EQ(empty[0], "setting:physics.gravity");
     EXPECT_EQ(empty[1], "command:file.save");
@@ -108,10 +108,10 @@ TEST(SearchEngine, ScopesRanksRecents) {
 TEST(SearchEngine, DeduplicatesAndCaps) {
     SearchSnapshot snapshot;
     for (int i = 0; i < 300; i++) {
-        snapshot.entries.push_back(entry(SearchKind::GameObject, "gameobject:s:" + std::to_string(i), "Cube", "Cube" + std::to_string(i)));
+        snapshot.entries.push_back(searchEngineEntry(SearchKind::GameObject, "gameobject:s:" + std::to_string(i), "Cube", "Cube" + std::to_string(i)));
     }
-    snapshot.entries.push_back(entry(SearchKind::Panel, "panel:a", "Cube", "same"));
-    snapshot.entries.push_back(entry(SearchKind::Panel, "panel:b", "Cube", "same"));
+    snapshot.entries.push_back(searchEngineEntry(SearchKind::Panel, "panel:a", "Cube", "same"));
+    snapshot.entries.push_back(searchEngineEntry(SearchKind::Panel, "panel:b", "Cube", "same"));
     snapshot.prepare();
     const std::vector<SearchResult> results = SearchEngine::query(snapshot, "cube");
     EXPECT_EQ(results.size(), SearchEngine::MAX_RESULTS);
@@ -130,7 +130,7 @@ TEST(SearchEngine, AssetScopeUsesTheProjectGrammar) {
     snapshot.assets = assets;
     snapshot.prepare();
 
-    EXPECT_EQ(keys(snapshot, SearchEngine::query(snapshot, "asset: t:texture l:hero")),
+    EXPECT_EQ(searchEngineKeys(snapshot, SearchEngine::query(snapshot, "asset: t:texture l:hero")),
               (std::vector<std::string>{"asset:guid-textures/hero.png"}));
     EXPECT_EQ(SearchEngine::query(snapshot, "asset: t:texture").size(), 2u);
     EXPECT_EQ(SearchEngine::query(snapshot, "hero").size(), 2u);   // unscoped: fuzzy over the names

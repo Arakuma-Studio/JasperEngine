@@ -35,6 +35,8 @@ namespace {
     constexpr size_t PREBAKE_COUNT_WARNING = 64;
     // R32: the cells a title's prebaked atlas holds at most
     constexpr size_t GLYPH_PREBAKE_CELLS = 1024;
+    // the main thread's time a glyph prebake takes per call (the export's main-thread task)
+    constexpr double GLYPH_PREBAKE_SLICE_MS = 20.0;
 
     // the build's copy of a document (what the player reads and hashes: its fonts relinked to subsets)
     std::shared_ptr<const titleart::TitleArtDoc> shippedDocument(const fs::path& path){
@@ -110,44 +112,62 @@ TitleArtExportPlan editor::planTitleArtExport(Project* project){
     return plan;
 }
 
+// a Glyph Atlas instance's prebake between the calls that step it
+struct editor::TitleArtGlyphPrebakeWork {
+    titleart::TitleArtRenderer renderer;
+    std::unique_ptr<titleart::TitleArtLive> live;
+    std::unique_ptr<titleart::TitleGlyphPrebake> prebake;
+};
+
 // R32: a Glyph Atlas instance's atlas, rendered here and shipped beside the title
-void editor::writeGlyphPrebake(Project* project, const TitleArtShippedInstance& instance, std::shared_ptr<const titleart::TitleArtDoc> doc,
+bool editor::writeGlyphPrebake(Project* project, size_t index, const TitleArtShippedInstance& instance, std::shared_ptr<const titleart::TitleArtDoc> doc,
                                uint64_t shippedHash, const titleart::TitleArtLiveState& state, const fs::path& assetsDst,
                                const std::string& assetsPrefix, TitleArtPrebakeResult& result){
-    const titleart::TitleGlyphAtlasPlan plan = titleart::planTitleGlyphAtlas(*doc);
-    if (!plan.fallback.empty() || plan.textLayer.empty()) return;
     const std::string who = "Title Art " + instance.object + " (" + instance.where + ")";
-    // the project's document renders; the build's copy's hash keys the style, as the player's
-    titleart::TitleArtLive live(instance.title, TitleArtRenderMode::GLYPH_ATLAS, doc, shippedHash);
-    live.setGlyphPlan(plan);
-    titleart::TitleArtRenderer renderer;
-    const titleart::TitleJobFactory factory = titleart::makeRendererJobFactory(renderer, TitleArtRenderHost::editor().resolver(project));
-    const std::vector<titleart::FieldOverride> overrides = titleart::titleArtFieldOverrides(*doc, instance.overrides);
-    std::string initial;
-    for (const titleart::FieldOverride& o : overrides)
-        if (o.layerId == plan.textLayer && o.path == "text" && o.value.is_string()) initial = o.value.get<std::string>();
-    if (initial.empty()){
-        if (const titleart::Json* layer = titleart::findLayer(doc->root, plan.textLayer)) initial = layer->value("text", std::string());
+    std::shared_ptr<TitleArtGlyphPrebakeWork>& work = result.glyphWork[index];
+    if (!work){
+        const titleart::TitleGlyphAtlasPlan plan = titleart::planTitleGlyphAtlas(*doc);
+        if (!plan.fallback.empty() || plan.textLayer.empty()){
+            result.glyphWork.erase(index);
+            return true;
+        }
+        work = std::make_shared<TitleArtGlyphPrebakeWork>();
+        // the project's document renders; the build's copy's hash keys the style, as the player's
+        work->live = std::make_unique<titleart::TitleArtLive>(instance.title, TitleArtRenderMode::GLYPH_ATLAS, doc, shippedHash);
+        work->live->setGlyphPlan(plan);
+        const std::vector<titleart::FieldOverride> overrides = titleart::titleArtFieldOverrides(*doc, instance.overrides);
+        std::string initial;
+        for (const titleart::FieldOverride& o : overrides)
+            if (o.layerId == plan.textLayer && o.path == "text" && o.value.is_string()) initial = o.value.get<std::string>();
+        if (initial.empty()){
+            if (const titleart::Json* layer = titleart::findLayer(doc->root, plan.textLayer)) initial = layer->value("text", std::string());
+        }
+        work->prebake = std::make_unique<titleart::TitleGlyphPrebake>(
+            *work->live, titleart::makeRendererJobFactory(work->renderer, TitleArtRenderHost::editor().resolver(project)), state, overrides,
+            plan.textLayer, titleart::titleGlyphPrebakeStrings(initial), GLYPH_PREBAKE_CELLS);
     }
+    // a slice per call: the frames between the calls build the programs it waits for
+    if (!work->prebake->step(GLYPH_PREBAKE_SLICE_MS)) return false;
+    const std::shared_ptr<TitleArtGlyphPrebakeWork> finished = work;
+    result.glyphWork.erase(index);
+    if (!finished->prebake->error().empty()) result.warnings.push_back(who + ": the prebaked glyph atlas stops at " + finished->prebake->error());
+    const std::shared_ptr<titleart::TitleGlyphAtlas>& atlas = finished->live->glyphAtlas();
+    if (!atlas || atlas->cellCount() == 0) return true;
     std::string error;
-    if (!titleart::prebakeTitleGlyphAtlas(live, factory, state, overrides, plan.textLayer, titleart::titleGlyphPrebakeStrings(initial),
-                                          GLYPH_PREBAKE_CELLS, error))
-        result.warnings.push_back(who + ": the prebaked glyph atlas stops at " + error);
-    const std::shared_ptr<titleart::TitleGlyphAtlas>& atlas = live.glyphAtlas();
-    if (!atlas || atlas->cellCount() == 0) return;
     titleart::TitleGlyphAtlasSnapshot snapshot;
     if (!atlas->snapshot(snapshot, error)){
         result.warnings.push_back(who + ": no prebaked glyph atlas: " + error);
-        return;
+        return true;
     }
     std::string manifest = titleArtGlyphPrebakePath(instance.title, atlas->stats().styleHash);
     if (!assetsPrefix.empty() && manifest.compare(0, assetsPrefix.size(), assetsPrefix) == 0) manifest = manifest.substr(assetsPrefix.size());
     if (!titleart::TitleGlyphAtlas::writePrebaked((assetsDst / manifest).string(), snapshot, result.bytes, error)){
         result.warnings.push_back(who + ": " + error);
-        return;
+        return true;
     }
     result.written.push_back(manifest);
     result.glyphCells += atlas->cellCount();
+    return true;
 }
 
 void editor::writeTitleArtPrebakes(Project* project, const TitleArtExportPlan& plan, const fs::path& assetsDst, const std::vector<std::string>& platforms,
@@ -182,9 +202,11 @@ void editor::writeTitleArtPrebakes(Project* project, const TitleArtExportPlan& p
         state.atlasPageSize = instance.atlasPageSize;
         state.atlasMaxPages = instance.atlasMaxPages;
         state.label = "TitleArt/" + instance.object;
-        if (instance.mode == TitleArtRenderMode::GLYPH_ATLAS && result.glyphsDone.insert(index).second)
-            writeGlyphPrebake(project, instance, live->document(), shippedHash, state, assetsDst, assetsPrefix, result);
         bool left = false;
+        if (instance.mode == TitleArtRenderMode::GLYPH_ATLAS && !result.glyphsDone.count(index)){
+            if (writeGlyphPrebake(project, index, instance, live->document(), shippedHash, state, assetsDst, assetsPrefix, result)) result.glyphsDone.insert(index);
+            else left = true;
+        }
         // S86 R37: a 3D title's state holds the tier it renders at on the device
         for (const int tier : titleArt3DPrebakeTiers(project, *live->document(), instance.qualityTier, platforms)){
             state.tier = tier;

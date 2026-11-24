@@ -35,4 +35,4 @@
 1101 grid/importSource any
 1102 tilemaplayer/tileset tileset
 1104 titleart/title title_art
-1105 vertexcolors/data vertex_colors
+1107 vertexcolors/data vertex_colors

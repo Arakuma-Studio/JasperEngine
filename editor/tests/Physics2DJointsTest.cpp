@@ -505,10 +505,10 @@ TEST(Physics2DJoints, LiveSettersReachTheJointWithoutRebuilding) {
 
 namespace {
 
-    struct BreakCounter : public ScriptBase {
+    struct Physics2DJointsBreakCounter : public ScriptBase {
         int* calls;
         JointBreakAction* seenAction;
-        BreakCounter(Scene* scene, Entity entity, int* calls, JointBreakAction* seenAction)
+        Physics2DJointsBreakCounter(Scene* scene, Entity entity, int* calls, JointBreakAction* seenAction)
             : ScriptBase(scene, entity), calls(calls), seenAction(seenAction) {}
         void onJointBreak2D(Joint2D& joint) override {
             (*calls)++;
@@ -516,24 +516,24 @@ namespace {
         }
     };
 
-    void addCppListener(World2D& world, Entity entity, BreakCounter* script) {
+    void physics2DJointsAddCppListener(World2D& world, Entity entity, Physics2DJointsBreakCounter* script) {
         ScriptComponent scripts;
         ScriptEntry entry;
         entry.type = ScriptType::CPP;
         entry.enabled = true;
         entry.className = "BreakCounter";
         entry.instance = script;
-        entry.cppScript = ScriptMessages::cppScript<BreakCounter>(script);
-        entry.cppMessageMask = ScriptMessages::cppMask<BreakCounter>();
+        entry.cppScript = ScriptMessages::cppScript<Physics2DJointsBreakCounter>(script);
+        entry.cppMessageMask = ScriptMessages::cppMask<Physics2DJointsBreakCounter>();
         scripts.scripts.push_back(entry);
         world.scene.addComponent<ScriptComponent>(entity, scripts);
     }
 
     // a 10 kg body hanging on a revolute joint that breaks at 50 N (its weight is 98 N)
-    struct Hanging {
+    struct Physics2DJointsHanging {
         World2D world;
         Entity anchor, weight, joint;
-        explicit Hanging(JointBreakAction action, Entity* parentForJoint = nullptr) {
+        explicit Physics2DJointsHanging(JointBreakAction action, Entity* parentForJoint = nullptr) {
             anchor = world.body(Vector3(0, 100, 0), BodyType::STATIC);
             weight = world.body(Vector3(0, 60, 0), BodyType::DYNAMIC);
             world.rb(weight).createCircleCollider(Vector2(0, 0), 8);
@@ -552,13 +552,13 @@ namespace {
 }
 
 TEST(Physics2DJoints, BreakingDestroyCallsBackThenRemovesTheJoint) {
-    Hanging h(JointBreakAction::DESTROY);
+    Physics2DJointsHanging h(JointBreakAction::DESTROY);
     int jointCalls = 0, bodyCalls = 0;
     JointBreakAction seen = JointBreakAction::IGNORE;
-    BreakCounter onJoint(&h.world.scene, h.joint, &jointCalls, &seen);
-    BreakCounter onBody(&h.world.scene, h.weight, &bodyCalls, &seen);
-    addCppListener(h.world, h.joint, &onJoint);
-    addCppListener(h.world, h.weight, &onBody);
+    Physics2DJointsBreakCounter onJoint(&h.world.scene, h.joint, &jointCalls, &seen);
+    Physics2DJointsBreakCounter onBody(&h.world.scene, h.weight, &bodyCalls, &seen);
+    physics2DJointsAddCppListener(h.world, h.joint, &onJoint);
+    physics2DJointsAddCppListener(h.world, h.weight, &onBody);
     h.world.load();
     h.world.step();
     EXPECT_EQ(jointCalls, 1) << "the joint's GameObject";
@@ -574,11 +574,11 @@ TEST(Physics2DJoints, BreakingDestroyCallsBackThenRemovesTheJoint) {
 
 TEST(Physics2DJoints, BreakingDisableIgnoreAndCallbackOnly) {
     {
-        Hanging h(JointBreakAction::DISABLE);
+        Physics2DJointsHanging h(JointBreakAction::DISABLE);
         int calls = 0;
         JointBreakAction seen;
-        BreakCounter onJoint(&h.world.scene, h.joint, &calls, &seen);
-        addCppListener(h.world, h.joint, &onJoint);
+        Physics2DJointsBreakCounter onJoint(&h.world.scene, h.joint, &calls, &seen);
+        physics2DJointsAddCppListener(h.world, h.joint, &onJoint);
         h.world.load();
         h.world.step(2);
         EXPECT_EQ(calls, 1);
@@ -595,11 +595,11 @@ TEST(Physics2DJoints, BreakingDisableIgnoreAndCallbackOnly) {
         h.world.scene.getComponent<ScriptComponent>(h.joint).scripts.clear();
     }
     {
-        Hanging h(JointBreakAction::IGNORE);
+        Physics2DJointsHanging h(JointBreakAction::IGNORE);
         int calls = 0;
         JointBreakAction seen;
-        BreakCounter onJoint(&h.world.scene, h.joint, &calls, &seen);
-        addCppListener(h.world, h.joint, &onJoint);
+        Physics2DJointsBreakCounter onJoint(&h.world.scene, h.joint, &calls, &seen);
+        physics2DJointsAddCppListener(h.world, h.joint, &onJoint);
         h.world.load();
         h.world.step(30);
         EXPECT_EQ(calls, 0);
@@ -608,11 +608,11 @@ TEST(Physics2DJoints, BreakingDisableIgnoreAndCallbackOnly) {
         h.world.scene.getComponent<ScriptComponent>(h.joint).scripts.clear();
     }
     {
-        Hanging h(JointBreakAction::CALLBACK_ONLY);
+        Physics2DJointsHanging h(JointBreakAction::CALLBACK_ONLY);
         int calls = 0;
         JointBreakAction seen;
-        BreakCounter onJoint(&h.world.scene, h.joint, &calls, &seen);
-        addCppListener(h.world, h.joint, &onJoint);
+        Physics2DJointsBreakCounter onJoint(&h.world.scene, h.joint, &calls, &seen);
+        physics2DJointsAddCppListener(h.world, h.joint, &onJoint);
         h.world.load();
         h.world.step(30);
         EXPECT_EQ(calls, 1) << "once while the load stays over the threshold";
@@ -631,7 +631,7 @@ TEST(Physics2DJoints, BreakingDisableIgnoreAndCallbackOnly) {
 }
 
 TEST(Physics2DJoints, BreakingCallsLuaOnJointBreak2D) {
-    Hanging h(JointBreakAction::DESTROY);
+    Physics2DJointsHanging h(JointBreakAction::DESTROY);
     lua_State* L = LuaBinding::getLuaState();
     ASSERT_TRUE(L != nullptr);
     ASSERT_EQ(luaL_dostring(L,

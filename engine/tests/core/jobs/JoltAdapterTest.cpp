@@ -66,7 +66,7 @@ namespace{
 
     // 500 boxes dropped in a 10 x 10 x 5 stack onto a floor, 300 steps of 1/60 s; returns
     // every box's final position, and in `moved` the farthest any box went
-    std::vector<JPH::RVec3> simulate(JPH::JobSystem& jobs, double& moved){
+    std::vector<JPH::RVec3> joltAdapterSimulate(JPH::JobSystem& jobs, double& moved){
         BroadPhaseLayers broadPhaseLayers;
         ObjectVsBroadPhase objectVsBroadPhase;
         ObjectPairs objectPairs;
@@ -123,11 +123,11 @@ TEST(JobsJolt, AdapterMatchesJoltsOwnPool){
     ensureJolt();
     jasperengine::JoltJobAdapter adapter(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers);
     double moved = 0.0, theirMoved = 0.0, againMoved = 0.0;
-    const std::vector<JPH::RVec3> ours = simulate(adapter, moved);
+    const std::vector<JPH::RVec3> ours = joltAdapterSimulate(adapter, moved);
     std::vector<JPH::RVec3> theirs;
     {
         JPH::JobSystemThreadPool pool(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, 7);
-        theirs = simulate(pool, theirMoved);
+        theirs = joltAdapterSimulate(pool, theirMoved);
     }
     ASSERT_EQ(ours.size(), 500u);
     ASSERT_EQ(theirs.size(), ours.size());
@@ -141,7 +141,7 @@ TEST(JobsJolt, AdapterMatchesJoltsOwnPool){
     EXPECT_LE(difference, 1e-4);
 
     // and our pool repeats itself
-    EXPECT_LE(largestDifference(ours, simulate(adapter, againMoved)), 1e-4);
+    EXPECT_LE(largestDifference(ours, joltAdapterSimulate(adapter, againMoved)), 1e-4);
 }
 
 // The adapter queues each Jolt job in an envelope that releases the job's reference after

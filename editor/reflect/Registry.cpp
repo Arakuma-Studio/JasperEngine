@@ -122,6 +122,8 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kWheelColliderDesc,
+        &kVehicleDrivetrainDesc,
         &kVertexColorsDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
@@ -233,6 +235,8 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kWheelColliderDesc,
+        &kVehicleDrivetrainDesc,
         &kVertexColorsDesc,
     };
 
@@ -342,6 +346,8 @@ namespace {
         &kTilemapLayerDesc,
         &kTilemapCollider2DDesc,
         &kTitleArtRendererDesc,
+        &kWheelColliderDesc,
+        &kVehicleDrivetrainDesc,
         &kVertexColorsDesc,
     };
 
@@ -378,6 +384,8 @@ namespace {
         &enums::kPixelUpscaleMode, &enums::kPixelRotation,
         // 2D sorting and Sprite Batch (S52)
         &enums::kSpriteSortPoint, &enums::kSpriteBatchMode, &enums::kSpriteBatchSpace,
+        // S96 vehicles
+        &enums::kVehicleTransmissionMode,
         // Vertex Colors (V1)
         &enums::kVertexColorFormat, &enums::kVertexColorInitialValue,
     };

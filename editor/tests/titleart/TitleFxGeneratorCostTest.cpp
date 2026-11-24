@@ -18,7 +18,7 @@ using titleart::Json;
 
 namespace {
 
-    titleart::TitleArtDoc parse(const std::string& text) {
+    titleart::TitleArtDoc titleFxGeneratorCostParse(const std::string& text) {
         titleart::TitleArtParseResult parsed = titleart::parseTitleArt(text);
         EXPECT_TRUE(parsed.ok) << parsed.error.toString();
         return parsed.doc;
@@ -43,7 +43,7 @@ namespace {
 }
 
 TEST(TitleFxGeneratorCostTest, OneRowPerVisibleGenerator) {
-    const TitleFxCost cost = estimateTitleFxCost(parse(WITH_FX), titleart::FxTier::Desktop);
+    const TitleFxCost cost = estimateTitleFxCost(titleFxGeneratorCostParse(WITH_FX), titleart::FxTier::Desktop);
     const TitleFxCostRow* rings = nullptr;
     int generators = 0;
     for (const TitleFxCostRow& r : cost.rows) {
@@ -67,7 +67,7 @@ TEST(TitleFxGeneratorCostTest, OneRowPerVisibleGenerator) {
 TEST(TitleFxGeneratorCostTest, HiddenGeneratorsAndDisabledEffectsCostNothing) {
     // R37: the readout with a disabled effect and a hidden generator equals the one without them
     for (titleart::FxTier tier : {titleart::FxTier::Desktop, titleart::FxTier::Mobile}) {
-        EXPECT_EQ(estimateTitleFxCost(parse(WITH_FX), tier).toJson(), estimateTitleFxCost(parse(WITHOUT_FX), tier).toJson());
+        EXPECT_EQ(estimateTitleFxCost(titleFxGeneratorCostParse(WITH_FX), tier).toJson(), estimateTitleFxCost(titleFxGeneratorCostParse(WITHOUT_FX), tier).toJson());
     }
 }
 
@@ -75,8 +75,8 @@ TEST(TitleFxGeneratorCostTest, MobileReadsTheMobileEstimate) {
     // Lens Flare draws 8 quads on the mobile tier (C0) and a full-canvas pass on the desktop one
     const char* flare = R"({"format": "jasperengine.titleart", "version": 1, "canvas": {"width": 1920, "height": 1080},
       "layers": [{"id": "00000002", "type": "generator", "name": "Flare", "generator": {"type": "lens_flare"}}]})";
-    const TitleFxCost desktop = estimateTitleFxCost(parse(flare), titleart::FxTier::Desktop);
-    const TitleFxCost mobile = estimateTitleFxCost(parse(flare), titleart::FxTier::Mobile);
+    const TitleFxCost desktop = estimateTitleFxCost(titleFxGeneratorCostParse(flare), titleart::FxTier::Desktop);
+    const TitleFxCost mobile = estimateTitleFxCost(titleFxGeneratorCostParse(flare), titleart::FxTier::Mobile);
     ASSERT_EQ(desktop.rows.size(), 1u);
     ASSERT_EQ(mobile.rows.size(), 1u);
     EXPECT_EQ(mobile.rows[0].costClass, titleart::CostClass::C0);

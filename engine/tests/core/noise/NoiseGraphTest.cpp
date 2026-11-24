@@ -47,7 +47,7 @@ namespace {
         return remap;
     }
 
-    bool contains(const std::vector<std::string>& list, const std::string& id) {
+    bool noiseGraphContains(const std::vector<std::string>& list, const std::string& id) {
         return std::find(list.begin(), list.end(), id) != list.end();
     }
 
@@ -317,7 +317,7 @@ TEST(NoiseCompile, DeadNodesAreRemoved) {
     const std::string orphan = b.node("simplex");
     const CompileResult result = compiled(b.graph());
     ASSERT_NE(result.graph, nullptr);
-    EXPECT_TRUE(contains(result.deadNodes, orphan));
+    EXPECT_TRUE(noiseGraphContains(result.deadNodes, orphan));
     EXPECT_EQ(result.opCount, liveResult.opCount);
 }
 
@@ -331,7 +331,7 @@ TEST(NoiseCompile, ConstantsFold) {
     b.output(mul);
     const CompileResult result = compiled(b.graph());
     ASSERT_NE(result.graph, nullptr);
-    EXPECT_TRUE(contains(result.foldedNodes, mul));
+    EXPECT_TRUE(noiseGraphContains(result.foldedNodes, mul));
     const Interval range = result.graph->rangeOf(0);
     EXPECT_EQ(range.min, 12.0f);
     EXPECT_EQ(range.max, 12.0f);
@@ -351,8 +351,8 @@ TEST(NoiseCompile, ProvenMaskDropsABranch) {
     b.output(select);
     const CompileResult result = compiled(b.graph());
     ASSERT_NE(result.graph, nullptr);
-    EXPECT_TRUE(contains(result.deadNodes, dropped));
-    EXPECT_FALSE(contains(result.deadNodes, kept));
+    EXPECT_TRUE(noiseGraphContains(result.deadNodes, dropped));
+    EXPECT_FALSE(noiseGraphContains(result.deadNodes, kept));
     // Blend's weight the same way
     GraphBuilder c;
     const std::string first = c.node("perlin");
@@ -363,8 +363,8 @@ TEST(NoiseCompile, ProvenMaskDropsABranch) {
     c.output(blend);
     const CompileResult blended = compiled(c.graph());
     ASSERT_NE(blended.graph, nullptr);
-    EXPECT_TRUE(contains(blended.deadNodes, first));
-    EXPECT_FALSE(contains(blended.deadNodes, second));
+    EXPECT_TRUE(noiseGraphContains(blended.deadNodes, first));
+    EXPECT_FALSE(noiseGraphContains(blended.deadNodes, second));
 }
 
 TEST(NoiseCompile, BuffersAreReused) {
@@ -398,9 +398,9 @@ TEST(NoiseCompile, ReportsDeadAndFolded) {
     const std::string orphan = b.node("value");
     const CompileResult result = compiled(b.graph());
     ASSERT_NE(result.graph, nullptr);
-    EXPECT_TRUE(contains(result.deadNodes, orphan));
-    EXPECT_TRUE(contains(result.foldedNodes, negate));
-    EXPECT_FALSE(contains(result.foldedNodes, sum));
+    EXPECT_TRUE(noiseGraphContains(result.deadNodes, orphan));
+    EXPECT_TRUE(noiseGraphContains(result.foldedNodes, negate));
+    EXPECT_FALSE(noiseGraphContains(result.foldedNodes, sum));
     bool nodeMarked = false;
     for (const CompiledNodeInfo& info : result.graph->nodes()) {
         if (info.id == negate) nodeMarked = info.folded;

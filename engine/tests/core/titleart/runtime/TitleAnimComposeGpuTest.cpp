@@ -31,12 +31,12 @@ using namespace jasperengine::titleart::test;
 
 namespace {
 
-    constexpr uint32_t UNLIMITED = 1000000000u;
-    constexpr double TOLERANCE_MEAN = 1.5;
-    constexpr double TOLERANCE_OVER = 0.03;
+    constexpr uint32_t COMPOSE_UNLIMITED = 1000000000u;
+    constexpr double COMPOSE_TOLERANCE_MEAN = 1.5;
+    constexpr double COMPOSE_TOLERANCE_OVER = 0.03;
     constexpr const char* MOVING = "00000002";
 
-    Json rimOf(const char* id, double width, const char* color) {
+    Json composeRimOf(const char* id, double width, const char* color) {
         return Json{{"id", id}, {"width", width}, {"material", solidFace(color)}};
     }
 
@@ -56,7 +56,7 @@ namespace {
     std::shared_ptr<const TitleArtDoc> twoTextDoc() {
         auto text = [](const char* id, const char* rim, const char* value, double y, const char* color){
             return Json{{"id", id}, {"type", "text"}, {"name", id}, {"text", value}, {"font", fontRef(SOURCE_SANS)}, {"size", 90}, {"align", "start"},
-                        {"style", {{"face", solidFace(color)}, {"rims", Json::array({rimOf(rim, 4, "#000000")})}}},
+                        {"style", {{"face", solidFace(color)}, {"rims", Json::array({composeRimOf(rim, 4, "#000000")})}}},
                         {"transform", {{"position", {-200, y}}}}};
         };
         Json layers = Json::array();
@@ -70,7 +70,7 @@ namespace {
         return std::make_shared<const TitleArtDoc>(std::move(parsed.doc));
     }
 
-    Pixels frontPixels(const TitleArtLive& live) {
+    Pixels composeFrontPixels(const TitleArtLive& live) {
         const TitleDisplayImage& front = live.front();
         Pixels out;
         out.width = front.width;
@@ -86,7 +86,7 @@ namespace {
         return out;
     }
 
-    int runFrames(TitleArtLive& live, const TitleJobFactory& factory) {
+    int composeRunFrames(TitleArtLive& live, const TitleJobFactory& factory) {
         TitleLiveLimits limits;
         double clock = 0.0;
         int frames = 0;
@@ -94,7 +94,7 @@ namespace {
         while (live.hasWork() && std::chrono::steady_clock::now() - start < std::chrono::minutes(3)) {
             SystemRender::updateGpuCreation();
             RuntimeShaderCompiler::beginFrame();
-            TitleArtScheduler::schedule({&live}, factory, UNLIMITED, 1.0);
+            TitleArtScheduler::schedule({&live}, factory, COMPOSE_UNLIMITED, 1.0);
             SystemRender::commit();
             size_t cache = 0;
             clock += 1.0 / 60.0;
@@ -118,9 +118,9 @@ namespace {
             s.atlasPageSize = 1024;
             s.atlasMaxPages = 4;
             live->setState(s, hash, {});
-            runFrames(*live, factory());
+            composeRunFrames(*live, factory());
             EXPECT_TRUE(live->front().valid()) << live->status().error;
-            return frontPixels(*live);
+            return composeFrontPixels(*live);
         }
 
         Pixels full(const std::shared_ptr<const TitleArtDoc>& doc, std::vector<FieldOverride> overrides) {
@@ -135,8 +135,8 @@ namespace {
         void expectWithin(const Pixels& a, const Pixels& b, const char* what) {
             const Difference d = compare(a, b);
             std::printf("[title compose] %s: mean %.3f max %.1f over8 %.4f\n", what, d.mean, d.max, d.overFraction);
-            EXPECT_LE(d.mean, TOLERANCE_MEAN) << what;
-            EXPECT_LE(d.overFraction, TOLERANCE_OVER) << what;
+            EXPECT_LE(d.mean, COMPOSE_TOLERANCE_MEAN) << what;
+            EXPECT_LE(d.overFraction, COMPOSE_TOLERANCE_OVER) << what;
         }
 
         TestAssetResolver assets;
@@ -160,7 +160,7 @@ TEST_F(TitleAnimComposeGpu, LayerSplitEqualsRender) {
     none->layers[MOVING] = {};
     const Difference d = compare(composed(doc, none, 2), reference);
     std::printf("[title compose] rest pose against the moved render (red control): mean %.3f over8 %.4f\n", d.mean, d.overFraction);
-    EXPECT_TRUE(d.mean > TOLERANCE_MEAN || d.overFraction > TOLERANCE_OVER);
+    EXPECT_TRUE(d.mean > COMPOSE_TOLERANCE_MEAN || d.overFraction > COMPOSE_TOLERANCE_OVER);
 
     // rotation and scale, about the layer's own origin
     auto spun = std::make_shared<TitleComposePose>();
@@ -219,7 +219,7 @@ TEST_F(TitleAnimComposeGpu, PrerenderFillsTheCacheAndPlaysWithoutRendering) {
     auto frame = [&](){
         TitleArtRuntime::setAnimation(live, player, 1);
         TitleArtRuntime::setState(live, state);
-        runFrames(live, factory());
+        composeRunFrames(live, factory());
     };
     frame();
     ASSERT_TRUE(TitleArtRuntime::prepareAnimation(live, player, "P"));
@@ -235,7 +235,7 @@ TEST_F(TitleAnimComposeGpu, PrerenderFillsTheCacheAndPlaysWithoutRendering) {
         player.seek(k / 10.0);
         TitleArtRuntime::setAnimation(live, player, 1);
         TitleArtRuntime::setState(live, state);
-        runFrames(live, factory());
+        composeRunFrames(live, factory());
     }
     EXPECT_EQ(live.status().steps, before) << "the frames came from the cache";
 

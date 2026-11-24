@@ -20,7 +20,7 @@ using namespace jasperengine::vat;
 
 namespace {
 
-    std::string makeAssetDir(){
+    std::string makeVatAssetDir(){
         std::random_device device;
         std::filesystem::path dir = std::filesystem::temp_directory_path() /
                                     ("jasperengine-vat-tests-" + std::to_string(device()));
@@ -50,7 +50,7 @@ namespace {
     };
 
     // gtest owns the listener; appended when this file is loaded
-    const bool listenerInstalled = [](){
+    const bool vatListenerInstalled = [](){
         ::testing::UnitTest::GetInstance()->listeners().Append(new VatAssetRoot());
         return true;
     }();
@@ -62,7 +62,7 @@ namespace {
 }
 
 const std::string& vattest::assetDir(){
-    static const std::string dir = makeAssetDir();
+    static const std::string dir = makeVatAssetDir();
     return dir;
 }
 

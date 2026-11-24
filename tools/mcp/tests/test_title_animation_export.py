@@ -4,6 +4,9 @@ screenshots the frame (--screenshot, headless, --fixed-fps 30); each capture equ
 render_title {animation: {as: "baked"}} at that time (24/255 on all but 1 % of the pixels: the
 build ships cooked, lossy textures). The .titleart is not in the content manifest and the player stays on the lite2d variant
 (S81 R59). The player's Baked title costs +0 draws against an Image twin in the editor's Play.
+The lite2d player a Baked title fits has no runtime shader compiler: a run with compilation turned off
+(ShaderPool.runtimeCompilation) draws the playing animation from the variants the build cooked
+(the companion's title_fx ANIM variant, S85 R13; the red run logged it missing and drew no title).
 
 Set JASPER_SLOW_BUILD=1 to run it (the run builds its prebuilt runtime once).
 """
@@ -47,6 +50,15 @@ function Sampler:onUpdate(dt)
     if self.frames % 20 == 0 then Log.print("[anim] sampled " .. self.time) end
 end
 return Sampler
+"""
+
+
+# the lite2d player's lack, in the full player this suite builds: what the build did not cook is missing
+NO_COMPILER = """local NoCompiler = { properties = {} }
+function NoCompiler:init()
+    ShaderPool.runtimeCompilation = false
+end
+return NoCompiler
 """
 
 
@@ -132,6 +144,28 @@ async def test_a_baked_animation_plays_in_the_exported_player(ed: Editor):
     # red control: the capture differs from another time's editor frame, so the comparison tells poses apart
     fraction, _, _ = pngdiff.centre_match(captures[0.25], editor_frames[0.8], TOLERANCE)
     ed.check(fraction > MAX_FRACTION, f"a capture does not match the editor at another time: {fraction:.5f}")
+
+    # without the runtime shader compiler (as in the lite2d player) the cooked variants draw the pose
+    await ed.call("create_script", kind="lua", name="NoCompiler", content=NO_COMPILER, entity="Logo", scene=sid)
+    await ed.call("save_scene", scene=sid)
+    out = ed.scratch.root / "export-title-anim-no-compiler"
+    job = await ed.call("build_project", mode="desktop", output_dir=str(out), method="prebuilt", timeout_seconds=900)
+    job = await wait_job(ed, job, 600)
+    ed.check_eq(job["status"], "succeeded", f"{job}")
+    t = 0.25
+    shot = ed.scratch.root / "player_no_compiler.png"
+    env = dict(os.environ)
+    env["TITLE_SAMPLE_TIME"] = str(t)
+    run = await asyncio.to_thread(
+        subprocess.run, [str(REPO / "tools" / "with-xvfb.sh"), job["result"]["executable"], "--headless", "--fixed-fps", "30", "--after-ready",
+                         "--quit-after", "120", "--resolution", "640x360", "--screenshot", str(shot), "--fail-on-error"],
+        cwd=out, capture_output=True, text=True, timeout=600, env=env)
+    log = run.stdout + run.stderr
+    (ed.scratch.root / "player_no_compiler.log").write_text(log)
+    ed.check("Missing shader" not in log, f"the build cooked every variant the playing title draws: {log[-2000:]}")
+    ed.check_eq(run.returncode, 0, f"the player ran and logged no error: {log[-2000:]}")
+    fraction, offset, worst = pngdiff.centre_match(pngdiff.decode(shot.read_bytes()), editor_frames[t], TOLERANCE)
+    ed.check(fraction <= MAX_FRACTION, f"t={t} without the compiler: {fraction:.4f} over tolerance at {offset} (worst {worst})")
 
 
 async def test_a_baked_title_costs_no_extra_draws(ed: Editor):

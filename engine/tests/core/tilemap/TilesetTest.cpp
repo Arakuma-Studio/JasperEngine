@@ -177,7 +177,7 @@ namespace {
         return kinds;
     }
 
-    bool hasProblem(const std::vector<TilesetProblem>& problems, const std::string& kind, const std::string& field){
+    bool tilesetHasProblem(const std::vector<TilesetProblem>& problems, const std::string& kind, const std::string& field){
         for (const TilesetProblem& p : problems){
             if (p.kind == kind && p.field == field)
                 return true;
@@ -355,7 +355,7 @@ TEST(Tileset, FatalProblemsNameTheirJsonPath){
         TilesetData d;
         std::vector<TilesetProblem> problems;
         EXPECT_FALSE(tileset::parse(c.text, d, problems)) << c.text;
-        EXPECT_TRUE(hasProblem(problems, "parse", c.field)) << c.text << " got " << (problems.empty() ? std::string("nothing") : problems.back().field);
+        EXPECT_TRUE(tilesetHasProblem(problems, "parse", c.field)) << c.text << " got " << (problems.empty() ? std::string("nothing") : problems.back().field);
     }
 }
 
@@ -363,8 +363,8 @@ TEST(Tileset, UnknownKeysAreReportedAndSkipped){
     TilesetData d;
     std::vector<TilesetProblem> problems;
     ASSERT_TRUE(tileset::parse(R"({"version":1,"future":true,"tiles":[{"id":3,"source":0,"sparkle":1}]})", d, problems));
-    EXPECT_TRUE(hasProblem(problems, "parse", "future"));
-    EXPECT_TRUE(hasProblem(problems, "parse", "tiles[0].sparkle"));
+    EXPECT_TRUE(tilesetHasProblem(problems, "parse", "future"));
+    EXPECT_TRUE(tilesetHasProblem(problems, "parse", "tiles[0].sparkle"));
     EXPECT_EQ(d.tiles.size(), 1u);
 }
 
@@ -372,7 +372,7 @@ TEST(Tileset, DanglingAnimationFramesAreReportedAndSkipped){
     TilesetData d;
     std::vector<TilesetProblem> problems;
     ASSERT_TRUE(tileset::parse(R"({"version":1,"tiles":[{"id":0,"source":0,"animation":[{"tile":0,"ms":100},{"tile":44,"ms":100}]}]})", d, problems));
-    EXPECT_TRUE(hasProblem(problems, "unknown_tile", "tiles[0].animation[1]"));
+    EXPECT_TRUE(tilesetHasProblem(problems, "unknown_tile", "tiles[0].animation[1]"));
     ASSERT_EQ(d.tiles[0].animation.size(), 1u);
     EXPECT_EQ(d.tiles[0].animation[0].tile, 0);
 }
@@ -384,7 +384,7 @@ TEST(Tileset, TilesSortByIdAndNextIdCoversThem){
     EXPECT_EQ(d.tiles[0].id, 1);
     EXPECT_EQ(d.tiles[1].id, 9);
     EXPECT_EQ(d.nextId, 10);
-    EXPECT_TRUE(hasProblem(problems, "parse", "next_id"));
+    EXPECT_TRUE(tilesetHasProblem(problems, "parse", "next_id"));
 }
 
 TEST(Tileset, IdsAreNeverReused){
@@ -446,7 +446,7 @@ TEST(Tileset, ValidateNamesTheDeclaredPropertiesInItsFix){
     d.tiles[0].properties["undeclared"] = value;
     std::vector<TilesetProblem> problems;
     tileset::validate(d, problems);
-    ASSERT_TRUE(hasProblem(problems, "unknown_property", "tiles[0].properties.undeclared"));
+    ASSERT_TRUE(tilesetHasProblem(problems, "unknown_property", "tiles[0].properties.undeclared"));
     EXPECT_NE(problems[0].fix.find("damage, friction, tag, solid, tint"), std::string::npos) << problems[0].fix;
 }
 
@@ -455,7 +455,7 @@ TEST(Tileset, ValidateFlagsATypeMismatchedProperty){
     d.tiles[1].properties["damage"].type = TilePropertyType::Float;
     std::vector<TilesetProblem> problems;
     tileset::validate(d, problems);
-    EXPECT_TRUE(hasProblem(problems, "invalid_property", "tiles[1].properties.damage"));
+    EXPECT_TRUE(tilesetHasProblem(problems, "invalid_property", "tiles[1].properties.damage"));
 }
 
 TEST(Tileset, ValidateReportsInvalidPeering){
@@ -465,9 +465,9 @@ TEST(Tileset, ValidateReportsInvalidPeering){
     d.tiles[3].terrain.peering[0] = 0;      // dual grid has no side 'n' slot
     std::vector<TilesetProblem> problems;
     tileset::validate(d, problems);
-    EXPECT_TRUE(hasProblem(problems, "invalid_peering", "tiles[2].terrain.center"));
-    EXPECT_TRUE(hasProblem(problems, "invalid_peering", "tiles[2].terrain.peering.e"));
-    EXPECT_TRUE(hasProblem(problems, "invalid_peering", "tiles[3].terrain.peering.n"));
+    EXPECT_TRUE(tilesetHasProblem(problems, "invalid_peering", "tiles[2].terrain.center"));
+    EXPECT_TRUE(tilesetHasProblem(problems, "invalid_peering", "tiles[2].terrain.peering.e"));
+    EXPECT_TRUE(tilesetHasProblem(problems, "invalid_peering", "tiles[3].terrain.peering.n"));
 }
 
 TEST(Tileset, ValidateReportsDanglingFramesAndDuplicateIds){
@@ -476,8 +476,8 @@ TEST(Tileset, ValidateReportsDanglingFramesAndDuplicateIds){
     d.tiles.push_back(d.tiles[0]);
     std::vector<TilesetProblem> problems;
     tileset::validate(d, problems);
-    EXPECT_TRUE(hasProblem(problems, "unknown_tile", "tiles[0].animation[0]"));
-    EXPECT_TRUE(hasProblem(problems, "duplicate_id", "tiles[" + std::to_string(d.tiles.size() - 1) + "].id"));
+    EXPECT_TRUE(tilesetHasProblem(problems, "unknown_tile", "tiles[0].animation[0]"));
+    EXPECT_TRUE(tilesetHasProblem(problems, "duplicate_id", "tiles[" + std::to_string(d.tiles.size() - 1) + "].id"));
 }
 
 TEST(Tileset, ValidateCapsTheTerrains){
