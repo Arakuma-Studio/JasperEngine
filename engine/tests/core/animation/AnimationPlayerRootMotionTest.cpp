@@ -22,7 +22,7 @@ using namespace animatortest;
 
 namespace {
 
-    constexpr float kDt = 1.0f / 64.0f;
+    constexpr float kPlayerRootDt = 1.0f / 64.0f;
 
     class AnimationPlayerRootMotionTest : public ::testing::Test, public AnimatorFixture {
     protected:
@@ -35,7 +35,7 @@ namespace {
         }
 
         void frames(int count){
-            for (int i = 0; i < count; i++) scene.getSystem<ActionSystem>()->update(kDt);
+            for (int i = 0; i < count; i++) scene.getSystem<ActionSystem>()->update(kPlayerRootDt);
         }
 
         // the hips walk 2 m along z per 1 s loop and bob 0.2 m

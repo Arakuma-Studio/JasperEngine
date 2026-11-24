@@ -29,7 +29,7 @@ using namespace animatortest;
 
 namespace {
 
-    constexpr float kDt = 1.0f / 30.0f;
+    constexpr float kAnimatorRootDt = 1.0f / 30.0f;
     constexpr float kRadToDeg = 57.29577951308232f;
 
     std::string readFixture(const std::string& name){
@@ -89,7 +89,7 @@ namespace {
             AnimatorComponent& component = animator(controllerFile(name, oneStateController(clip(name, data))), hero);
             component.retarget = AnimatorRetarget::Off;
             step(0.0);
-            step(kDt, 3);
+            step(kAnimatorRootDt, 3);
             return hipsBone;
         }
 
@@ -142,7 +142,7 @@ TEST_F(AnimatorRootMotionTest, ApplyOffDiscardsUnbakedMotion){
     ASSERT_FALSE(component.applyRootMotion);
     step(0.0);
     for (int i = 0; i < 40; i++){
-        step(kDt);
+        step(kAnimatorRootDt);
         EXPECT_LT(std::fabs(position(hips).x), 0.001f) << "frame " << i;
         EXPECT_LT(std::fabs(position(hips).z), 0.001f) << "frame " << i;
     }
