@@ -1066,7 +1066,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reload/handlers/Materials.cpp
     ${EDITOR_DIR}/reload/handlers/Models.cpp
     ${EDITOR_DIR}/reload/handlers/Scripts.cpp
-    ${EDITOR_DIR}/reload/handlers/MeshAssets.cpp
     ${EDITOR_DIR}/reload/handlers/Shaders.cpp
     ${EDITOR_DIR}/reload/handlers/Textures.cpp
     ${EDITOR_DIR}/util/YamlFootprint.cpp
