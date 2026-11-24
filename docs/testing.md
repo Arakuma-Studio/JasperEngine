@@ -1518,8 +1518,11 @@ report as checks on the commit, and never block: the `main` ruleset requires onl
   the same GHCR image (`.github/actions/image/image.sh`), on a `large` Linux VM (4 vCPU, 15 GB, 150 GB of
   disk; the free plan's largest). The free plan stops a job at 60 min, so `circleci.py budget` stops a
   build 47 min into its job and a test run at 55, and the long binaries run in shards: whole, unit
-  core and ASan core in 4, HTML UI in 5, ASan editor in 2, unit editor in 1; a filtered run in its share
-  of them (`FULL_SHARDS`). A sharded binary has a build job (`advisory/unit-core-build`); its shards
+  core and ASan core in 4, HTML UI in 6, ASan editor in 2, unit editor in 1; a filtered run in its share
+  of them (`FULL_SHARDS`). A tree whose cold build does not fit a job compiles in part jobs first
+  (`advisory/unit-editor-part-<k>`, `UNIT_BUILD_PART`; unit core and ASan core 2, unit and ASan editor
+  3, `PARTS`), whose objects the next job adds through the workspace: the ASan editor's cold build
+  compiled 777 objects in 47 min. A sharded binary has a build job (`advisory/unit-core-build`); its shards
   restore the cache it saved, or get the objects it compiled through the workspace when it saved none
   (`unit_split.py pack`). A shard is a run of consecutive suites of the binary's listing with its share of
   their seconds in GitHub's runs (`circleci.py gtest-args`, `tools/ci/circleci-suite-seconds.json`; a suite

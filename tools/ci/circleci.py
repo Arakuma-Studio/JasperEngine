@@ -68,7 +68,10 @@ CAPS = {"linux": "0.95G", "unit-core": "0.4G", "unit-editor": "0.85G", "asan-cor
         "htmlui": "0.85G", "smoke-players": "0.8G", "smoke-post-processing": "0.8G", "smoke-ecs-collision": "0.6G"}
 # shards of a whole test binary (the tests of GitHub's runs 45037289790, 45121239260: unit core 64-84 min, ASan
 # core 79-89, ASan editor 45-47, HTML UI 79-113, unit editor 5); a filtered run takes its share
-FULL_SHARDS = {"unit-core": 4, "unit-editor": 1, "asan-core": 4, "asan-editor": 2, "htmlui": 5}
+# trees whose cold build passes BUILD_UNTIL on 4 vCPU compile in this many part jobs first (cold, CircleCI:
+# unit core 47 min, unit editor and ASan editor past 2 x 47, ASan core 34 warm)
+PARTS = {"unit-core": 2, "unit-editor": 3, "asan-core": 2, "asan-editor": 3}
+FULL_SHARDS = {"unit-core": 4, "unit-editor": 1, "asan-core": 4, "asan-editor": 2, "htmlui": 6}
 TEST_DIRS = {"core": "engine/tests/core", "editor": "editor/tests", "htmlui": "engine/tests/htmlui"}
 MCP_SHARD_SECONDS = 35 * 60         # the planned length of an MCP shard (tools/mcp/shard.py's estimate)
 MCP_MAX_SHARDS = 16
@@ -302,9 +305,10 @@ def restore(lane: str) -> list:
             {"run": {"name": "Mark the restored cache", "command": f"python3 -I tools/ci/circleci.py ccache mark --lane {lane}"}}]
 
 
-def save(lane: str) -> list:
+def save(lane: str, only_cut: bool = False) -> list:
+    """only_cut: a part job's cache is saved only when its build was stopped (the job that joins the parts saves)."""
     return [{"run": {"name": "Trim the cache to the run's working set, or keep it", "when": "always",
-                     "command": f"python3 -I tools/ci/circleci.py ccache save --lane {lane}"}},
+                     "command": f"python3 -I tools/ci/circleci.py ccache save --lane {lane}{' --only-cut' if only_cut else ''}"}},
             {"save_cache": {"name": f"Save ccache ({lane})", "when": "always", "paths": [str(CCACHE)],
                             "key": f"v1-ccache-{lane}-{{{{ checksum \"{STATE}/image-tag\" }}}}-{{{{ .BuildNum }}}}"}},
             {"run": {"name": "Back to the job's cache", "when": "always",
@@ -352,18 +356,35 @@ def gtest_command(lane: str, gtest_filter: str, command: str, variable: str):
     return test
 
 
+def parts_of(add, lane: str, build: str) -> tuple[tuple[str, ...], list]:
+    """A tree whose cold build does not fit a job (PARTS) compiles in part jobs first (UNIT_BUILD_PART, as
+    ci.yml's unit-editor parts): their jobs, and the steps that add their objects to the job that joins them."""
+    n = PARTS.get(lane, 1)
+    if n == 1:
+        return (), []
+    keys = tuple(add(f"{lane}-part-{k}", start() + restore(lane)
+                     + [step(f"Compile part {k} of {n}", f"UNIT_BUILD_PART={k}/{n} {build}", BUILD_UNTIL),
+                        {"run": {"name": "The objects this part compiled", "when": "always",
+                                 "command": f"python3 -I tools/ci/circleci.py ccache pack --lane {lane} --part {k}"}},
+                        {"persist_to_workspace": {"root": str(WORKSPACE), "paths": [f"ccache-{lane}-part-{k}.tar"]}}]
+                     + save(lane, only_cut=True) + results(), saves=True) for k in range(1, n + 1))
+    return keys, [{"attach_workspace": {"at": str(WORKSPACE)}},
+                  {"run": {"name": "Add the parts' objects", "command": f"python3 -I tools/ci/circleci.py ccache unpack --lane {lane} --parts {n}"}}]
+
+
 def tree_jobs(add, lane: str, build: str, test, shards: int, extra=lambda k: ([], [])) -> None:
     """A test binary: one job when it runs in one shard, else a build job and a job per shard."""
+    parts, join = parts_of(add, lane, build)
     if shards == 1:
         before, after = extra(1)
-        add(lane, start() + restore(lane) + [step("Build", build, BUILD_UNTIL)] + save(lane)
-            + before + [step("Tests", test(1, 1), TEST_UNTIL)] + after + results(), saves=True)
+        add(lane, start() + restore(lane) + join + [step("Build", build, BUILD_UNTIL)] + save(lane)
+            + before + [step("Tests", test(1, 1), TEST_UNTIL)] + after + results(), requires=parts, saves=True)
         return
     # (the save decides first: the shards restore a saved cache, and get only an unsaved run's objects through
     # the workspace, which CircleCI keeps 15 days)
     decide, *rest = save(lane)
-    key = add(f"{lane}-build", start() + restore(lane) + [step("Build", build, BUILD_UNTIL), decide] + pack(lane) + rest
-              + results(), saves=True)
+    key = add(f"{lane}-build", start() + restore(lane) + join + [step("Build", build, BUILD_UNTIL), decide] + pack(lane) + rest
+              + results(), requires=parts, saves=True)
     for k in range(1, shards + 1):
         before, after = extra(k)
         add(f"{lane}-{k}", start(workspace=True) + restore(lane)[:1] + [unpack(lane)] + before
@@ -458,8 +479,11 @@ def warm_jobs(meta: dict, add) -> None:
              "asan-core": "RUN=0 SANITIZE=address,undefined UNIT_SUITE=core tools/build.sh unit-tests",
              "asan-editor": "RUN=0 SANITIZE=address,undefined UNIT_SUITE=editor tools/build.sh unit-tests",
              "htmlui": "RUN=0 JASPER_HTMLUI_PERF_SLACK=3 tools/build.sh htmlui-tests"}
-    keys = [add(f"warm-{lane}", start() + restore(lane) + [step("Build", command, BUILD_UNTIL)] + save(lane) + results(), saves=True)
-            for lane, command in trees.items()]
+    keys = []
+    for lane, command in trees.items():
+        parts, join = parts_of(lambda key, *a, **k: add(f"warm-{key}", *a, **k), lane, command)
+        keys.append(add(f"warm-{lane}", start() + restore(lane) + join + [step("Build", command, BUILD_UNTIL)] + save(lane)
+                        + results(), requires=parts, saves=True))
     stamp = str(STATE / "warm-stamp")
     add("warm-done", [{"run": {"name": "Today's stamp", "command": f"mkdir -p {stamp} && date -u > {stamp}/done && "
                                                                   f"echo {shlex.quote(meta['warm_key'])} > {STATE}/warm-key"}},
@@ -552,7 +576,7 @@ def misses() -> int:
 def cmd_ccache(args) -> int:
     lane = args.lane
     hidden = ROOT / f"{CCACHE}.unsaved"
-    tar = WORKSPACE / f"ccache-{lane}.tar"
+    tar = WORKSPACE / (f"ccache-{lane}-part-{args.part}.tar" if args.part else f"ccache-{lane}.tar")
     if args.action == "mark":
         (ROOT / CCACHE).mkdir(parents=True, exist_ok=True)
         marker = STATE / f"ccache-{lane}.marker"
@@ -567,18 +591,23 @@ def cmd_ccache(args) -> int:
         return 0
     if args.action == "pack":
         WORKSPACE.mkdir(parents=True, exist_ok=True)
-        if not hidden.is_dir():
+        if not hidden.is_dir() and not args.part:
             # saved: the shards restore it from the cache
             subprocess.run(["tar", "-cf", str(tar), "-T", "/dev/null"], check=True)
             print("circleci: the cache is saved; the shards restore it")
             return 0
-        return subprocess.run([sys.executable, "-I", "tools/ci/unit_split.py", "pack", "--ccache", str(hidden),
+        return subprocess.run([sys.executable, "-I", "tools/ci/unit_split.py", "pack", "--ccache", str(hidden if hidden.is_dir() else CCACHE),
                                "--before", str(STATE / f"ccache-{lane}.before.json"), "--out", str(tar)], cwd=str(ROOT)).returncode
     if args.action == "unpack":
         (ROOT / CCACHE).mkdir(parents=True, exist_ok=True)
-        if tar.is_file():
-            subprocess.run(["tar", "-m", "-C", str(ROOT / CCACHE), "-xf", str(tar)], check=True)
-            print(f"circleci: added {tar.stat().st_size >> 20} MiB of the build job's objects")
+        tars = [WORKSPACE / f"ccache-{lane}-part-{k}.tar" for k in range(1, args.parts + 1)] if args.parts else [tar]
+        for t in tars:
+            if t.is_file():
+                # (-m: written now, so the cache save counts them as this run's)
+                subprocess.run(["tar", "-m", "-C", str(ROOT / CCACHE), "-xf", str(t)], check=True)
+                print(f"circleci: added {t.stat().st_size >> 20} MiB of objects ({t.name})")
+            elif args.parts:
+                print(f"circleci: no {t.name}: this job compiles that part's objects")
         return 0
     if args.action == "unhide":
         if hidden.is_dir() and not (ROOT / CCACHE).exists():
@@ -591,9 +620,10 @@ def cmd_ccache(args) -> int:
         return 0
     cut = (STATE / "cut").is_file()
     compiled = misses()
-    decision = cut or compiled >= SAVE_MISSES
+    decision = cut or (compiled >= SAVE_MISSES and not args.only_cut)
     print(f"circleci: {compiled} compile(s) missed the cache{', a build was cut' if cut else ''}: "
-          + ("saving" if decision else f"not saving (under {SAVE_MISSES})"))
+          + ("saving" if decision else "not saving (a part job saves only a stopped build)" if args.only_cut
+             else f"not saving (under {SAVE_MISSES})"))
     if decision and not cut:
         env = {**os.environ, "LANE": lane, "EVENT": "push", "REF": "refs/heads/main", "RUNNER_OS": "Linux",
                "GITHUB_OUTPUT": str(STATE / "trim.out")}
@@ -756,6 +786,9 @@ def main(argv: list[str]) -> int:
     c = sub.add_parser("ccache")
     c.add_argument("action", choices=("mark", "pack", "unpack", "save", "unhide"))
     c.add_argument("--lane", required=True, choices=sorted(CAPS))
+    c.add_argument("--part", type=int, default=0, help="pack: a part job's objects")
+    c.add_argument("--parts", type=int, default=0, help="unpack: every part job's objects")
+    c.add_argument("--only-cut", action="store_true", help="save: only when a build was stopped (a part job)")
     sub.add_parser("junit")
     g = sub.add_parser("gtest-args")
     g.add_argument("--lane", required=True, choices=sorted(FULL_SHARDS))

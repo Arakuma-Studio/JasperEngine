@@ -57,7 +57,7 @@ class Jobs(unittest.TestCase):
         for k in range(1, 5):
             self.assertEqual(jobs[f"advisory/unit-core-{k}"], ["advisory/unit-core-build"])
             self.assertEqual(jobs[f"advisory/asan-core-{k}"], ["advisory/asan-core-build"])
-        for k in range(1, 6):
+        for k in range(1, 7):
             self.assertEqual(jobs[f"advisory/htmlui-{k}"], ["advisory/htmlui-build"])
         self.assertIn("advisory/unit-editor", jobs)
         self.assertEqual(jobs["advisory/asan-editor-2"], ["advisory/asan-editor-build"])
@@ -73,7 +73,7 @@ class Jobs(unittest.TestCase):
         self.assertIn("--gtest_filter=*-*GpuSlow*", shard)
         self.assertIn('UNIT_TEST_ARGS="$args" SANITIZE=address,undefined UNIT_SUITE=core tools/build.sh unit-tests', shard)
         self.assertIn("tools/ci/mcp_shard.sh 2 build/ci-plan", " ".join(commands(config["jobs"]["mcp-2"])))
-        self.assertIn("--shard 2/5", " ".join(commands(config["jobs"]["htmlui-2"])))
+        self.assertIn("--shard 2/6", " ".join(commands(config["jobs"]["htmlui-2"])))
 
     def test_a_filtered_selection_takes_its_share_of_the_shards(self):
         core = ":".join(f"S{i}.*:*/S{i}.*:S{i}/*.*" for i in range(300))
@@ -83,7 +83,14 @@ class Jobs(unittest.TestCase):
         jobs = names(config)
         # 300 of 800 suites: ceil(4 * 300 / 800) = 2 shards
         self.assertEqual(sorted(j for j in jobs if j.startswith("advisory/unit-core")),
-                         ["advisory/unit-core-1", "advisory/unit-core-2", "advisory/unit-core-build"])
+                         ["advisory/unit-core-1", "advisory/unit-core-2", "advisory/unit-core-build",
+                          "advisory/unit-core-part-1", "advisory/unit-core-part-2"])
+        # the build job joins the part jobs (UNIT_BUILD_PART), which save a cache only when stopped
+        self.assertEqual(jobs["advisory/unit-core-build"], ["advisory/unit-core-part-1", "advisory/unit-core-part-2"])
+        part = " ".join(commands(config["jobs"]["unit-core-part-2"]))
+        self.assertIn("UNIT_BUILD_PART=2/2 RUN=0 UNIT_SUITE=core", part)
+        self.assertIn("ccache save --lane unit-core --only-cut", part)
+        self.assertIn("ccache unpack --lane unit-core --parts 2", " ".join(commands(config["jobs"]["unit-core-build"])))
         self.assertNotIn("advisory/unit-editor", jobs)
         self.assertNotIn("advisory/editor", jobs)
         asan = " ".join(commands(config["jobs"]["asan-core-1"]))
@@ -110,11 +117,11 @@ class Jobs(unittest.TestCase):
     def test_warm_builds_each_tree_and_stamps_the_day(self):
         config = ci.continuation(dict(META, mode="warm"), None, TOTALS)
         jobs = names(config)
-        trees = [j for j in jobs if j != "advisory/warm-done"]
+        trees = [j for j in jobs if j != "advisory/warm-done" and "-part-" not in j]
         self.assertEqual(len(trees), 6)
         self.assertEqual(sorted(jobs["advisory/warm-done"]), sorted(trees))
         for key, job in config["jobs"].items():
-            if key != "warm-done":
+            if key != "warm-done" and "-part-" not in key:
                 self.assertTrue(any("RUN=0" in c or "tools/build.sh linux" in c for c in commands(job)), key)
                 self.assertEqual(job["retention"], {"caches": ci.CACHE_RETENTION})
         self.assertIn("20261123-tag", " ".join(commands(config["jobs"]["warm-done"])))
