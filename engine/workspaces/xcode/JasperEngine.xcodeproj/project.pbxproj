@@ -5035,6 +5035,140 @@
 		4A534E47600B17FAC4B3F90D /* WorldSettings.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C03036C6074531C9 /* WorldSettings.h */; };
 		4A534E47199EE7A96E7CD744 /* PhysicsQueriesLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */; };
 		4A534E47756CA62B8A32F0D1 /* VehicleSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4738BAED5E9B0F8D35 /* VehicleSystem.h */; };
+		4A534E47E35AE94D8975A3D1 /* EngineTextEntry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4745E4714837819508 /* EngineTextEntry.cpp */; };
+		4A534E4745EE6F73EBF129EB /* EngineTextEntry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4745E4714837819508 /* EngineTextEntry.cpp */; };
+		4A534E473655CD05E1CF3BB0 /* DevelopmentContent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4791C68DED5B482106 /* DevelopmentContent.cpp */; };
+		4A534E47C8E21C4C1EC3CFA8 /* DevelopmentContent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4791C68DED5B482106 /* DevelopmentContent.cpp */; };
+		4A534E47D2DD9D30B8E42A07 /* InputScriptRun.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CA6B666A030A4DD5 /* InputScriptRun.cpp */; };
+		4A534E47A0B3A1ECCD45D81D /* InputScriptRun.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CA6B666A030A4DD5 /* InputScriptRun.cpp */; };
+		4A534E4713242D777C493D65 /* InputScheme.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4702A1FF14F0E26870 /* InputScheme.cpp */; };
+		4A534E47073F25DCE6429C43 /* InputScheme.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4702A1FF14F0E26870 /* InputScheme.cpp */; };
+		4A534E47B7225EB59C826FEC /* TextEntry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47879CEBF1EC52E724 /* TextEntry.cpp */; };
+		4A534E47898697E5FD46287E /* TextEntry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47879CEBF1EC52E724 /* TextEntry.cpp */; };
+		4A534E4726D026AB2D8209D0 /* TextInputSync.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477A358BCDEE20A331 /* TextInputSync.cpp */; };
+		4A534E472D5EB34D45F54487 /* TextInputSync.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477A358BCDEE20A331 /* TextInputSync.cpp */; };
+		4A534E4789E1A9AF1D751A17 /* InputScript.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E562E3C49242FBD7 /* InputScript.cpp */; };
+		4A534E47DB6039C34EFAAD7A /* InputScript.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E562E3C49242FBD7 /* InputScript.cpp */; };
+		4A534E479C3A823131C40862 /* InputRecorder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47903ABA6837102B42 /* InputRecorder.cpp */; };
+		4A534E47958B36668C604F4A /* InputRecorder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47903ABA6837102B42 /* InputRecorder.cpp */; };
+		4A534E474175779AD50FC231 /* InputReplay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47414A3F109082A1A5 /* InputReplay.cpp */; };
+		4A534E4703B705BC1722D976 /* InputReplay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47414A3F109082A1A5 /* InputReplay.cpp */; };
+		4A534E47DDF961FF391C6089 /* StateHash.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47539BD5D8A31B6052 /* StateHash.cpp */; };
+		4A534E47161ACCD4A04829DC /* StateHash.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47539BD5D8A31B6052 /* StateHash.cpp */; };
+		4A534E47B9D44D63067883CC /* InputScriptsOff.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47BAC9D95819E5CAFD /* InputScriptsOff.cpp */; };
+		4A534E471F9E9CBDD28339C7 /* InputScriptsOff.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47BAC9D95819E5CAFD /* InputScriptsOff.cpp */; };
+		4A534E47B786095AB1341F0E /* GpuQuirks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AD57B08E511AAFFF /* GpuQuirks.cpp */; };
+		4A534E4704F6208E481C1D1C /* GpuQuirks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AD57B08E511AAFFF /* GpuQuirks.cpp */; };
+		4A534E473116202EB23D317E /* GpuQuirksData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474564060F0F13042E /* GpuQuirksData.cpp */; };
+		4A534E473EFEC6B02AFAB2FF /* GpuQuirksData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474564060F0F13042E /* GpuQuirksData.cpp */; };
+		4A534E4729AECE279C965B13 /* Journal.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47987280132C6A553A /* Journal.cpp */; };
+		4A534E47F58C995541F203AF /* Journal.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47987280132C6A553A /* Journal.cpp */; };
+		4A534E478B3D7882842B561A /* UserReport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4792A80D2DF7E35E88 /* UserReport.cpp */; };
+		4A534E476F0EFFA8AB3876B5 /* UserReport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4792A80D2DF7E35E88 /* UserReport.cpp */; };
+		4A534E47DB477BEEA4565AC8 /* ConsoleCommands.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C605544DB443297D /* ConsoleCommands.cpp */; };
+		4A534E47280848DAA9584A1C /* ConsoleCommands.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C605544DB443297D /* ConsoleCommands.cpp */; };
+		4A534E47D32D5980C2E5A628 /* HtmlL10n.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473E0CDBDD10629EA3 /* HtmlL10n.cpp */; };
+		4A534E476ADF2ABC854A8744 /* HtmlL10n.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473E0CDBDD10629EA3 /* HtmlL10n.cpp */; };
+		4A534E47B38658FC77489F19 /* TextEntryTraits.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F42D15DF2035317D /* TextEntryTraits.cpp */; };
+		4A534E47D04EB0F01B20BAF4 /* TextEntryTraits.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F42D15DF2035317D /* TextEntryTraits.cpp */; };
+		4A534E47D9E93DC5DEF235FB /* InputPrompt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476DEA1E88BDABEB14 /* InputPrompt.cpp */; };
+		4A534E4730398D89E4A155F8 /* InputPrompt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476DEA1E88BDABEB14 /* InputPrompt.cpp */; };
+		4A534E476955EB012C54CE34 /* SaveFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CAF7B69A0583A110 /* SaveFormat.cpp */; };
+		4A534E4797C6D0E902BE1DB8 /* SaveFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CAF7B69A0583A110 /* SaveFormat.cpp */; };
+		4A534E477212152A06759ED2 /* SaveGameStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470FF89075AA589D6F /* SaveGameStore.cpp */; };
+		4A534E47BF8A3C824C975AF8 /* SaveGameStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470FF89075AA589D6F /* SaveGameStore.cpp */; };
+		4A534E47C8671AC7EA697BEC /* SaveValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479F1764A02980F06D /* SaveValue.cpp */; };
+		4A534E472EE3834F55343442 /* SaveValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479F1764A02980F06D /* SaveValue.cpp */; };
+		4A534E47EF26AD2C82A98638 /* CullingGroup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476C58E229D7E19832 /* CullingGroup.cpp */; };
+		4A534E477D20A08C20EA2F1F /* CullingGroup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476C58E229D7E19832 /* CullingGroup.cpp */; };
+		4A534E47408A63BCB810218A /* SimulationCulling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47310A6F71AF79122B /* SimulationCulling.cpp */; };
+		4A534E47F5EFE6B597499AD6 /* SimulationCulling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47310A6F71AF79122B /* SimulationCulling.cpp */; };
+		4A534E4790E38A730122EC9F /* PhysicsQueryDebug.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E8DA31A26A60CF23 /* PhysicsQueryDebug.cpp */; };
+		4A534E4712342CB95B6941A4 /* PhysicsQueryDebug.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E8DA31A26A60CF23 /* PhysicsQueryDebug.cpp */; };
+		4A534E470A2E2049541AA4A0 /* PhysicsQueryReference.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D9A877F63C620597 /* PhysicsQueryReference.cpp */; };
+		4A534E47F8901D3C61848C32 /* PhysicsQueryReference.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D9A877F63C620597 /* PhysicsQueryReference.cpp */; };
+		4A534E47CA1E8355D7B75043 /* PhysicsQueryLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C8E60EBFCA4D4D8F /* PhysicsQueryLua.cpp */; };
+		4A534E47C9B4D3FEBBF9AF5F /* PhysicsQueryLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C8E60EBFCA4D4D8F /* PhysicsQueryLua.cpp */; };
+		4A534E470210EF3DC97A7F1D /* LocalizationClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D07BD1437308A3A2 /* LocalizationClassesLua.cpp */; };
+		4A534E47FECE89744C7673F5 /* LocalizationClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D07BD1437308A3A2 /* LocalizationClassesLua.cpp */; };
+		4A534E47A1B93D41C180BD6D /* SaveGameLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47BC6A5E7A1DB2D134 /* SaveGameLua.cpp */; };
+		4A534E473CEADECB879AA8BF /* SaveGameLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47BC6A5E7A1DB2D134 /* SaveGameLua.cpp */; };
+		4A534E479A6ECA4046584718 /* DialogueClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470B2EA3DAEC0E3A21 /* DialogueClassesLua.cpp */; };
+		4A534E471F6AA97ED9BAA54F /* DialogueClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470B2EA3DAEC0E3A21 /* DialogueClassesLua.cpp */; };
+		4A534E478003753F56F77D68 /* InputRecordingClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FC6AA1360ADE9D43 /* InputRecordingClassesLua.cpp */; };
+		4A534E473484F5DDF908A1F3 /* InputRecordingClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FC6AA1360ADE9D43 /* InputRecordingClassesLua.cpp */; };
+		4A534E470611FC91C80C2EAA /* CullingClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4771A4FBF2C146A04F /* CullingClassesLua.cpp */; };
+		4A534E47E263432C02CB12D0 /* CullingClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4771A4FBF2C146A04F /* CullingClassesLua.cpp */; };
+		4A534E47B7A4A4F3C5A76787 /* CullingSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B21A601EBC7437EE /* CullingSystem.cpp */; };
+		4A534E4776590B99B1885055 /* CullingSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B21A601EBC7437EE /* CullingSystem.cpp */; };
+		4A534E47844FEA1B94FA088E /* GamepadCursor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47653B5D68D3A499C4 /* GamepadCursor.cpp */; };
+		4A534E4745AF20CDF744798D /* GamepadCursor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47653B5D68D3A499C4 /* GamepadCursor.cpp */; };
+		4A534E47318C5726C8187120 /* PerfSampler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476345B2AD374C0575 /* PerfSampler.cpp */; };
+		4A534E478FC0D45E3BA3C823 /* PerfSampler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476345B2AD374C0575 /* PerfSampler.cpp */; };
+		4A534E478AF2E9E64C17468D /* ThreadCpuClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470E969EC23D5C64CD /* ThreadCpuClock.cpp */; };
+		4A534E47127CA5CF8901A6AE /* ThreadCpuClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470E969EC23D5C64CD /* ThreadCpuClock.cpp */; };
+		4A534E47CC1EAD4126BB8E77 /* Localization.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4765D377C8A90FEE2C /* Localization.cpp */; };
+		4A534E47BF5A72F34022452F /* Localization.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4765D377C8A90FEE2C /* Localization.cpp */; };
+		4A534E470BC7FF2CD66B3751 /* MessageFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D3194032526CE112 /* MessageFormat.cpp */; };
+		4A534E47B87D66B801A34840 /* MessageFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D3194032526CE112 /* MessageFormat.cpp */; };
+		4A534E47760F4276DE1BB621 /* PluralRules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47EC2E2C87B4D75DE1 /* PluralRules.cpp */; };
+		4A534E4734B46E4A8AA1BD54 /* PluralRules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47EC2E2C87B4D75DE1 /* PluralRules.cpp */; };
+		4A534E479CBBFD13794893E2 /* StringTableRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47264579824C6AA889 /* StringTableRuntime.cpp */; };
+		4A534E476D731FF6DD75A960 /* StringTableRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47264579824C6AA889 /* StringTableRuntime.cpp */; };
+		4A534E472F5E98109DED378D /* DialogueRunnerComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47213A81837C82EE4C /* DialogueRunnerComponent.h */; };
+		4A534E4779D13C2717205DF4 /* SimulationCullingComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4796E2C3866F22D77C /* SimulationCullingComponent.h */; };
+		4A534E479F663D9A1EF2ED9F /* ConsoleCommands.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470419A16C873F3E52 /* ConsoleCommands.h */; };
+		4A534E47C420A75D17815FE7 /* GpuQuirks.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473557F50C05DCFB9B /* GpuQuirks.h */; };
+		4A534E479D34924BF696C797 /* Journal.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C1C52882757084CB /* Journal.h */; };
+		4A534E470A9B61891BAF0CD3 /* UserReport.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A91F74C67FF0BD20 /* UserReport.h */; };
+		4A534E47124F8ED4FCA538F5 /* HtmlL10n.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B0BDDD79726EBB2F /* HtmlL10n.h */; };
+		4A534E47414EDA19A7B191A0 /* TextEntryTraits.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F625F43D9C08E937 /* TextEntryTraits.h */; };
+		4A534E47A6B48519D043A213 /* InputPrompt.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479AFBB09AC813195B /* InputPrompt.h */; };
+		4A534E47C2D211B17464A538 /* InputRecorder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475D56407228B8BA17 /* InputRecorder.h */; };
+		4A534E47E32BEB876EEB9DE7 /* InputReplay.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478CEAC0A0185F3B6F /* InputReplay.h */; };
+		4A534E4722C77914954BA823 /* InputScheme.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CCF058D81CDE3E1B /* InputScheme.h */; };
+		4A534E47233962EE4B8553AD /* InputScript.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4708A47DEEE94F83AE /* InputScript.h */; };
+		4A534E470FFB202D75CD6558 /* InputScriptRunner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4786963BAB6500F7BE /* InputScriptRunner.h */; };
+		4A534E47378DC06EC1736479 /* InputScriptSwitch.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4792E95617008D0465 /* InputScriptSwitch.h */; };
+		4A534E47CCB174687545D29E /* StateHash.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471DC5839095619C6F /* StateHash.h */; };
+		4A534E47F035A00EEFA5A73C /* TextEntry.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471E3A49042EFB6FBC /* TextEntry.h */; };
+		4A534E472D0F9D8C4B9261EB /* TextInputSync.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4765F22B9DE0076AEB /* TextInputSync.h */; };
+		4A534E4793DE9FD54036FC11 /* UserDataOverride.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F5FD5DD2D6D5C8E8 /* UserDataOverride.h */; };
+		4A534E470B0062B980E34AF9 /* Localization.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E27EC3692DD43A0E /* Localization.h */; };
+		4A534E47F22652515F676497 /* LocalizationArgs.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A8297BBB7780CCB4 /* LocalizationArgs.h */; };
+		4A534E47EAB1A42259BC93EB /* MessageFormat.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470B2329871720CC02 /* MessageFormat.h */; };
+		4A534E47229FA6D5C6CA97D7 /* PluralRules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D7DC5A2BBDDA5149 /* PluralRules.h */; };
+		4A534E4772F8D292D061E001 /* StringTableRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474CC8A9C045EE16B4 /* StringTableRuntime.h */; };
+		4A534E4761A7A367A5448107 /* CullingGroup.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AD378F6330680ED6 /* CullingGroup.h */; };
+		4A534E47DE85BB6F9C0E009E /* DialogueRunner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47961351BF5630DC7C /* DialogueRunner.h */; };
+		4A534E47FED2CE9691D75440 /* SimulationCulling.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475EE51C3B38637EFB /* SimulationCulling.h */; };
+		4A534E4791F8158E27C85959 /* PhysicsQueryDebug.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4729C0DD7AAEE708CF /* PhysicsQueryDebug.h */; };
+		4A534E47A4BCFF9EF5211FAA /* PhysicsQueryReference.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C36F9A60B5A0E29E /* PhysicsQueryReference.h */; };
+		4A534E47EE164F31D6D4925A /* DevelopmentContent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4747686B336DE5BF79 /* DevelopmentContent.h */; };
+		4A534E479F49542889F94E1F /* InputScriptRun.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4752968F3EF7DC98C0 /* InputScriptRun.h */; };
+		4A534E47E3FB5DB3F6D1603B /* PlayerTests.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47316455727F54F3C7 /* PlayerTests.h */; };
+		4A534E4750F36D4808DD6BA8 /* PerfSampler.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47072E0783470EA3FF /* PerfSampler.h */; };
+		4A534E470C56C79784E20C1A /* ThreadCpuClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477A25BB0ECD24B2B4 /* ThreadCpuClock.h */; };
+		4A534E47A1B310AEFA15F2E6 /* SaveFormat.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4703C785EB78220687 /* SaveFormat.h */; };
+		4A534E47839B8E430E7A3B51 /* SaveGameStore.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47FCF68ADBEB8D1DD4 /* SaveGameStore.h */; };
+		4A534E47C8038C88571DF3CC /* SaveValue.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473A1A1625794C3BA7 /* SaveValue.h */; };
+		4A534E47A95BC0B8ED5EEA1B /* LocalizationArgsLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47EBC686B84702E8F6 /* LocalizationArgsLua.h */; };
+		4A534E470B49733052D991A0 /* SceneConstructors.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47ED1050B5CDC423D4 /* SceneConstructors.h */; };
+		4A534E470F1DA0CC06D1BE45 /* CullingSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A36A3DA3472854CC /* CullingSystem.h */; };
+		4A534E478D03FD878354C64F /* GamepadCursor.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DA1CAB74E0F63C28 /* GamepadCursor.h */; };
+		4A534E47A738013D78827E06 /* CancellableEvent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4718BD5F7E76CC0509 /* CancellableEvent.h */; };
+		4A534E5338ACEAD8E0FC7D22 /* DialogueExpression.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53A747918ACD9F4E2A /* DialogueExpression.cpp */; };
+		4A534E53DBFB60AEB46EE96C /* DialogueKind.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53922C33FA44C430F6 /* DialogueKind.cpp */; };
+		4A534E539A886BF399AAB990 /* DialogueProgram.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5375143D287D60839A /* DialogueProgram.cpp */; };
+		4A534E5363E192CC7F21FDDB /* DialogueRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53720A533146371AE5 /* DialogueRunner.cpp */; };
+		4A534E53C5D22ADACAEF273F /* DialogueVariables.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53E74DB844AF1D67EC /* DialogueVariables.cpp */; };
+		4A534E53CDDF0C04F459F2AF /* DialogueRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53CB8B28243C275A9E /* DialogueRunner.cpp */; };
+		4A534E53515821357F8D063E /* DialogueExpression.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53A747918ACD9F4E2A /* DialogueExpression.cpp */; };
+		4A534E53C1FAA5C173CA7257 /* DialogueKind.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53922C33FA44C430F6 /* DialogueKind.cpp */; };
+		4A534E530DA4BED2FB010470 /* DialogueProgram.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E5375143D287D60839A /* DialogueProgram.cpp */; };
+		4A534E5341EF590C749B78C5 /* DialogueRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53720A533146371AE5 /* DialogueRunner.cpp */; };
+		4A534E53DA09EC5C72658167 /* DialogueVariables.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53E74DB844AF1D67EC /* DialogueVariables.cpp */; };
+		4A534E539FBAE080AFA1A35F /* DialogueRunner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E53CB8B28243C275A9E /* DialogueRunner.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -9682,6 +9816,94 @@
 		4A534E47C03036C6074531C9 /* WorldSettings.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WorldSettings.h; sourceTree = "<group>"; };
 		4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueriesLua.h; sourceTree = "<group>"; };
 		4A534E4738BAED5E9B0F8D35 /* VehicleSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VehicleSystem.h; sourceTree = "<group>"; };
+		4A534E4745E4714837819508 /* EngineTextEntry.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EngineTextEntry.cpp; sourceTree = "<group>"; };
+		4A534E4791C68DED5B482106 /* DevelopmentContent.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DevelopmentContent.cpp; sourceTree = "<group>"; };
+		4A534E47CA6B666A030A4DD5 /* InputScriptRun.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputScriptRun.cpp; sourceTree = "<group>"; };
+		4A534E4702A1FF14F0E26870 /* InputScheme.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputScheme.cpp; sourceTree = "<group>"; };
+		4A534E47879CEBF1EC52E724 /* TextEntry.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextEntry.cpp; sourceTree = "<group>"; };
+		4A534E477A358BCDEE20A331 /* TextInputSync.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextInputSync.cpp; sourceTree = "<group>"; };
+		4A534E47E562E3C49242FBD7 /* InputScript.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputScript.cpp; sourceTree = "<group>"; };
+		4A534E47903ABA6837102B42 /* InputRecorder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputRecorder.cpp; sourceTree = "<group>"; };
+		4A534E47414A3F109082A1A5 /* InputReplay.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputReplay.cpp; sourceTree = "<group>"; };
+		4A534E47539BD5D8A31B6052 /* StateHash.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StateHash.cpp; sourceTree = "<group>"; };
+		4A534E47BAC9D95819E5CAFD /* InputScriptsOff.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputScriptsOff.cpp; sourceTree = "<group>"; };
+		4A534E47AD57B08E511AAFFF /* GpuQuirks.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GpuQuirks.cpp; sourceTree = "<group>"; };
+		4A534E474564060F0F13042E /* GpuQuirksData.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GpuQuirksData.cpp; sourceTree = "<group>"; };
+		4A534E47987280132C6A553A /* Journal.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Journal.cpp; sourceTree = "<group>"; };
+		4A534E4792A80D2DF7E35E88 /* UserReport.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UserReport.cpp; sourceTree = "<group>"; };
+		4A534E47C605544DB443297D /* ConsoleCommands.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ConsoleCommands.cpp; sourceTree = "<group>"; };
+		4A534E473E0CDBDD10629EA3 /* HtmlL10n.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlL10n.cpp; sourceTree = "<group>"; };
+		4A534E47F42D15DF2035317D /* TextEntryTraits.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextEntryTraits.cpp; sourceTree = "<group>"; };
+		4A534E476DEA1E88BDABEB14 /* InputPrompt.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputPrompt.cpp; sourceTree = "<group>"; };
+		4A534E47CAF7B69A0583A110 /* SaveFormat.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SaveFormat.cpp; sourceTree = "<group>"; };
+		4A534E470FF89075AA589D6F /* SaveGameStore.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SaveGameStore.cpp; sourceTree = "<group>"; };
+		4A534E479F1764A02980F06D /* SaveValue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SaveValue.cpp; sourceTree = "<group>"; };
+		4A534E476C58E229D7E19832 /* CullingGroup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CullingGroup.cpp; sourceTree = "<group>"; };
+		4A534E47310A6F71AF79122B /* SimulationCulling.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SimulationCulling.cpp; sourceTree = "<group>"; };
+		4A534E47E8DA31A26A60CF23 /* PhysicsQueryDebug.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueryDebug.cpp; sourceTree = "<group>"; };
+		4A534E47D9A877F63C620597 /* PhysicsQueryReference.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueryReference.cpp; sourceTree = "<group>"; };
+		4A534E47C8E60EBFCA4D4D8F /* PhysicsQueryLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsQueryLua.cpp; sourceTree = "<group>"; };
+		4A534E47D07BD1437308A3A2 /* LocalizationClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LocalizationClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E47BC6A5E7A1DB2D134 /* SaveGameLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SaveGameLua.cpp; sourceTree = "<group>"; };
+		4A534E470B2EA3DAEC0E3A21 /* DialogueClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E47FC6AA1360ADE9D43 /* InputRecordingClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputRecordingClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E4771A4FBF2C146A04F /* CullingClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CullingClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E47B21A601EBC7437EE /* CullingSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CullingSystem.cpp; sourceTree = "<group>"; };
+		4A534E47653B5D68D3A499C4 /* GamepadCursor.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GamepadCursor.cpp; sourceTree = "<group>"; };
+		4A534E476345B2AD374C0575 /* PerfSampler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PerfSampler.cpp; sourceTree = "<group>"; };
+		4A534E470E969EC23D5C64CD /* ThreadCpuClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ThreadCpuClock.cpp; sourceTree = "<group>"; };
+		4A534E4765D377C8A90FEE2C /* Localization.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Localization.cpp; sourceTree = "<group>"; };
+		4A534E47D3194032526CE112 /* MessageFormat.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MessageFormat.cpp; sourceTree = "<group>"; };
+		4A534E47EC2E2C87B4D75DE1 /* PluralRules.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PluralRules.cpp; sourceTree = "<group>"; };
+		4A534E47264579824C6AA889 /* StringTableRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StringTableRuntime.cpp; sourceTree = "<group>"; };
+		4A534E47213A81837C82EE4C /* DialogueRunnerComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DialogueRunnerComponent.h; sourceTree = "<group>"; };
+		4A534E4796E2C3866F22D77C /* SimulationCullingComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SimulationCullingComponent.h; sourceTree = "<group>"; };
+		4A534E470419A16C873F3E52 /* ConsoleCommands.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ConsoleCommands.h; sourceTree = "<group>"; };
+		4A534E473557F50C05DCFB9B /* GpuQuirks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GpuQuirks.h; sourceTree = "<group>"; };
+		4A534E47C1C52882757084CB /* Journal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Journal.h; sourceTree = "<group>"; };
+		4A534E47A91F74C67FF0BD20 /* UserReport.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UserReport.h; sourceTree = "<group>"; };
+		4A534E47B0BDDD79726EBB2F /* HtmlL10n.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlL10n.h; sourceTree = "<group>"; };
+		4A534E47F625F43D9C08E937 /* TextEntryTraits.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextEntryTraits.h; sourceTree = "<group>"; };
+		4A534E479AFBB09AC813195B /* InputPrompt.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputPrompt.h; sourceTree = "<group>"; };
+		4A534E475D56407228B8BA17 /* InputRecorder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputRecorder.h; sourceTree = "<group>"; };
+		4A534E478CEAC0A0185F3B6F /* InputReplay.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputReplay.h; sourceTree = "<group>"; };
+		4A534E47CCF058D81CDE3E1B /* InputScheme.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputScheme.h; sourceTree = "<group>"; };
+		4A534E4708A47DEEE94F83AE /* InputScript.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputScript.h; sourceTree = "<group>"; };
+		4A534E4786963BAB6500F7BE /* InputScriptRunner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputScriptRunner.h; sourceTree = "<group>"; };
+		4A534E4792E95617008D0465 /* InputScriptSwitch.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputScriptSwitch.h; sourceTree = "<group>"; };
+		4A534E471DC5839095619C6F /* StateHash.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StateHash.h; sourceTree = "<group>"; };
+		4A534E471E3A49042EFB6FBC /* TextEntry.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextEntry.h; sourceTree = "<group>"; };
+		4A534E4765F22B9DE0076AEB /* TextInputSync.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextInputSync.h; sourceTree = "<group>"; };
+		4A534E47F5FD5DD2D6D5C8E8 /* UserDataOverride.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UserDataOverride.h; sourceTree = "<group>"; };
+		4A534E47E27EC3692DD43A0E /* Localization.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Localization.h; sourceTree = "<group>"; };
+		4A534E47A8297BBB7780CCB4 /* LocalizationArgs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LocalizationArgs.h; sourceTree = "<group>"; };
+		4A534E470B2329871720CC02 /* MessageFormat.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MessageFormat.h; sourceTree = "<group>"; };
+		4A534E47D7DC5A2BBDDA5149 /* PluralRules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PluralRules.h; sourceTree = "<group>"; };
+		4A534E474CC8A9C045EE16B4 /* StringTableRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StringTableRuntime.h; sourceTree = "<group>"; };
+		4A534E47AD378F6330680ED6 /* CullingGroup.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CullingGroup.h; sourceTree = "<group>"; };
+		4A534E47961351BF5630DC7C /* DialogueRunner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DialogueRunner.h; sourceTree = "<group>"; };
+		4A534E475EE51C3B38637EFB /* SimulationCulling.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SimulationCulling.h; sourceTree = "<group>"; };
+		4A534E4729C0DD7AAEE708CF /* PhysicsQueryDebug.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueryDebug.h; sourceTree = "<group>"; };
+		4A534E47C36F9A60B5A0E29E /* PhysicsQueryReference.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsQueryReference.h; sourceTree = "<group>"; };
+		4A534E4747686B336DE5BF79 /* DevelopmentContent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DevelopmentContent.h; sourceTree = "<group>"; };
+		4A534E4752968F3EF7DC98C0 /* InputScriptRun.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputScriptRun.h; sourceTree = "<group>"; };
+		4A534E47316455727F54F3C7 /* PlayerTests.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlayerTests.h; sourceTree = "<group>"; };
+		4A534E47072E0783470EA3FF /* PerfSampler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PerfSampler.h; sourceTree = "<group>"; };
+		4A534E477A25BB0ECD24B2B4 /* ThreadCpuClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ThreadCpuClock.h; sourceTree = "<group>"; };
+		4A534E4703C785EB78220687 /* SaveFormat.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SaveFormat.h; sourceTree = "<group>"; };
+		4A534E47FCF68ADBEB8D1DD4 /* SaveGameStore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SaveGameStore.h; sourceTree = "<group>"; };
+		4A534E473A1A1625794C3BA7 /* SaveValue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SaveValue.h; sourceTree = "<group>"; };
+		4A534E47EBC686B84702E8F6 /* LocalizationArgsLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LocalizationArgsLua.h; sourceTree = "<group>"; };
+		4A534E47ED1050B5CDC423D4 /* SceneConstructors.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SceneConstructors.h; sourceTree = "<group>"; };
+		4A534E47A36A3DA3472854CC /* CullingSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CullingSystem.h; sourceTree = "<group>"; };
+		4A534E47DA1CAB74E0F63C28 /* GamepadCursor.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GamepadCursor.h; sourceTree = "<group>"; };
+		4A534E4718BD5F7E76CC0509 /* CancellableEvent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CancellableEvent.h; sourceTree = "<group>"; };
+		4A534E53A747918ACD9F4E2A /* DialogueExpression.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueExpression.cpp; sourceTree = "<group>"; };
+		4A534E53922C33FA44C430F6 /* DialogueKind.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueKind.cpp; sourceTree = "<group>"; };
+		4A534E5375143D287D60839A /* DialogueProgram.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueProgram.cpp; sourceTree = "<group>"; };
+		4A534E53720A533146371AE5 /* DialogueRunner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueRunner.cpp; sourceTree = "<group>"; };
+		4A534E53E74DB844AF1D67EC /* DialogueVariables.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueVariables.cpp; sourceTree = "<group>"; };
+		4A534E53CB8B28243C275A9E /* DialogueRunner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DialogueRunner.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10090,6 +10312,10 @@
 				4A534E47C428625FC29F43B2 /* CrashHandlerWin.cpp */,
 				4A534E47226A2397DB9F2CBD /* HangStackCapture.cpp */,
 				4A534E47BECC06F1A1B73218 /* CrashHandlerWeb.cpp */,
+				4A534E47987280132C6A553A /* Journal.cpp */,
+				4A534E4792A80D2DF7E35E88 /* UserReport.cpp */,
+				4A534E47C1C52882757084CB /* Journal.h */,
+				4A534E47A91F74C67FF0BD20 /* UserReport.h */,
 			);
 			path = diag;
 			sourceTree = "<group>";
@@ -10106,6 +10332,10 @@
 				5E5150000000000000000007 /* Profiler.cpp */,
 				5E5150000000000000000008 /* Profiler.h */,
 				5E5150000000000000000011 /* Profile.h */,
+				4A534E476345B2AD374C0575 /* PerfSampler.cpp */,
+				4A534E470E969EC23D5C64CD /* ThreadCpuClock.cpp */,
+				4A534E47072E0783470EA3FF /* PerfSampler.h */,
+				4A534E477A25BB0ECD24B2B4 /* ThreadCpuClock.h */,
 			);
 			path = profiler;
 			sourceTree = "<group>";
@@ -10254,6 +10484,14 @@
 				4A534E47B2F3277BCB9B162A /* PhysicsQueriesLua.cpp */,
 				4A534E470776324E027F35E3 /* VehicleClassesLua.cpp */,
 				4A534E474160DAB0B735DE42 /* PhysicsQueriesLua.h */,
+				4A534E47C8E60EBFCA4D4D8F /* PhysicsQueryLua.cpp */,
+				4A534E47D07BD1437308A3A2 /* LocalizationClassesLua.cpp */,
+				4A534E47BC6A5E7A1DB2D134 /* SaveGameLua.cpp */,
+				4A534E470B2EA3DAEC0E3A21 /* DialogueClassesLua.cpp */,
+				4A534E47FC6AA1360ADE9D43 /* InputRecordingClassesLua.cpp */,
+				4A534E4771A4FBF2C146A04F /* CullingClassesLua.cpp */,
+				4A534E47EBC686B84702E8F6 /* LocalizationArgsLua.h */,
+				4A534E47ED1050B5CDC423D4 /* SceneConstructors.h */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -11122,6 +11360,10 @@
 				4A534E4749136251FD73C95F /* PhysicsQueryOptions.h */,
 				4A534E473B1161EE9F9B72D7 /* WheelColliderController.h */,
 				4A534E47C03036C6074531C9 /* WorldSettings.h */,
+				4A534E47E8DA31A26A60CF23 /* PhysicsQueryDebug.cpp */,
+				4A534E47D9A877F63C620597 /* PhysicsQueryReference.cpp */,
+				4A534E4729C0DD7AAEE708CF /* PhysicsQueryDebug.h */,
+				4A534E47C36F9A60B5A0E29E /* PhysicsQueryReference.h */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -11386,6 +11628,11 @@
 				4A534E47C484ACD2846CB3C2 /* RunControl.h */,
 				4A534E473BFB6BEEE8990A48 /* PlayerModules.cpp */,
 				4A534E47A4609FEFF72DC9EF /* PlayerModules.h */,
+				4A534E4791C68DED5B482106 /* DevelopmentContent.cpp */,
+				4A534E47CA6B666A030A4DD5 /* InputScriptRun.cpp */,
+				4A534E4747686B336DE5BF79 /* DevelopmentContent.h */,
+				4A534E4752968F3EF7DC98C0 /* InputScriptRun.h */,
+				4A534E47316455727F54F3C7 /* PlayerTests.h */,
 			);
 			path = player;
 			sourceTree = "<group>";
@@ -11426,6 +11673,23 @@
 				4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */,
 				4A534E47DA77C1DF72E1D462 /* InputActions.h */,
 				4A534E4763010A7AB6271A0C /* InputControlNames.h */,
+				4A534E4702A1FF14F0E26870 /* InputScheme.cpp */,
+				4A534E47879CEBF1EC52E724 /* TextEntry.cpp */,
+				4A534E477A358BCDEE20A331 /* TextInputSync.cpp */,
+				4A534E47E562E3C49242FBD7 /* InputScript.cpp */,
+				4A534E47903ABA6837102B42 /* InputRecorder.cpp */,
+				4A534E47414A3F109082A1A5 /* InputReplay.cpp */,
+				4A534E47539BD5D8A31B6052 /* StateHash.cpp */,
+				4A534E47BAC9D95819E5CAFD /* InputScriptsOff.cpp */,
+				4A534E475D56407228B8BA17 /* InputRecorder.h */,
+				4A534E478CEAC0A0185F3B6F /* InputReplay.h */,
+				4A534E47CCF058D81CDE3E1B /* InputScheme.h */,
+				4A534E4708A47DEEE94F83AE /* InputScript.h */,
+				4A534E4786963BAB6500F7BE /* InputScriptRunner.h */,
+				4A534E4792E95617008D0465 /* InputScriptSwitch.h */,
+				4A534E471DC5839095619C6F /* StateHash.h */,
+				4A534E471E3A49042EFB6FBC /* TextEntry.h */,
+				4A534E4765F22B9DE0076AEB /* TextInputSync.h */,
 			);
 			path = input;
 			sourceTree = "<group>";
@@ -11530,6 +11794,8 @@
 				4A534E470614F67155D9E9FC /* DebugOverlay.h */,
 				4A534E47C029F7456AC311E6 /* DebugOverlayResources.h */,
 				4A534E47FC23B0CE0C82B758 /* DebugStats.h */,
+				4A534E47C605544DB443297D /* ConsoleCommands.cpp */,
+				4A534E470419A16C873F3E52 /* ConsoleCommands.h */,
 			);
 			path = debug;
 			sourceTree = "<group>";
@@ -11547,6 +11813,9 @@
 				4A534E4733E849AD8672E52D /* DeviceTypes.h */,
 				4A534E472AFCDD32755F0D28 /* GpuTierDatabase.h */,
 				4A534E47B7168D0FCCFB915F /* QualityResolver.h */,
+				4A534E47AD57B08E511AAFFF /* GpuQuirks.cpp */,
+				4A534E474564060F0F13042E /* GpuQuirksData.cpp */,
+				4A534E473557F50C05DCFB9B /* GpuQuirks.h */,
 			);
 			path = device;
 			sourceTree = "<group>";
@@ -11792,6 +12061,35 @@
 			path = world;
 			sourceTree = "<group>";
 		};
+		4A534E475737E19B07B9FC33 /* save */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E47CAF7B69A0583A110 /* SaveFormat.cpp */,
+				4A534E470FF89075AA589D6F /* SaveGameStore.cpp */,
+				4A534E479F1764A02980F06D /* SaveValue.cpp */,
+				4A534E4703C785EB78220687 /* SaveFormat.h */,
+				4A534E47FCF68ADBEB8D1DD4 /* SaveGameStore.h */,
+				4A534E473A1A1625794C3BA7 /* SaveValue.h */,
+			);
+			path = save;
+			sourceTree = "<group>";
+		};
+		4A534E47651ABB7603E16A3A /* localization */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E4765D377C8A90FEE2C /* Localization.cpp */,
+				4A534E47D3194032526CE112 /* MessageFormat.cpp */,
+				4A534E47EC2E2C87B4D75DE1 /* PluralRules.cpp */,
+				4A534E47264579824C6AA889 /* StringTableRuntime.cpp */,
+				4A534E47E27EC3692DD43A0E /* Localization.h */,
+				4A534E47A8297BBB7780CCB4 /* LocalizationArgs.h */,
+				4A534E470B2329871720CC02 /* MessageFormat.h */,
+				4A534E47D7DC5A2BBDDA5149 /* PluralRules.h */,
+				4A534E474CC8A9C045EE16B4 /* StringTableRuntime.h */,
+			);
+			path = localization;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -11878,6 +12176,10 @@
 				5052544389C2D57FF7DC8B71 /* noise */,
 				564F584C566CEAA6686CA9AF /* voxel */,
 				4A534E531B38A0F5FBC1FFA3 /* tilemap */,
+				4A534E4745E4714837819508 /* EngineTextEntry.cpp */,
+				4A534E475737E19B07B9FC33 /* save */,
+				4A534E47651ABB7603E16A3A /* localization */,
+				4A534E53BCC7F910D7911F7F /* dialogue */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -11985,6 +12287,7 @@
 				4A534E474365841B0820D5A8 /* NearestName.h */,
 				4A534E47C3150163C8627096 /* TitleArtLanguage.cpp */,
 				4A534E4738CD11FBBCEAB4F0 /* TitleArtLanguage.h */,
+				4A534E4718BD5F7E76CC0509 /* CancellableEvent.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -12015,6 +12318,7 @@
 				A5E05A7C0000000000000001 /* watch */,
 				4A534E478A53FD45D6859CB8 /* JPak.cpp */,
 				4A534E477327188402907BEC /* JPak.h */,
+				4A534E47F5FD5DD2D6D5C8E8 /* UserDataOverride.h */,
 			);
 			path = io;
 			sourceTree = "<group>";
@@ -12212,6 +12516,8 @@
 				4A534E471441E06FB19F6699 /* TilemapLayerComponent.h */,
 				4A534E4713532B8D1DB19F2B /* VehicleDrivetrainComponent.h */,
 				4A534E47367FF921CC4C6947 /* WheelColliderComponent.h */,
+				4A534E47213A81837C82EE4C /* DialogueRunnerComponent.h */,
+				4A534E4796E2C3866F22D77C /* SimulationCullingComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -12353,6 +12659,12 @@
 				4A534E4777279AB03243A7B0 /* HitStopExempt.cpp */,
 				4A534E47953AF2D4BA6A2D5B /* HitStopExempt.h */,
 				4A534E47B2C3C858EC6764BC /* tilemap */,
+				4A534E476C58E229D7E19832 /* CullingGroup.cpp */,
+				4A534E47310A6F71AF79122B /* SimulationCulling.cpp */,
+				4A534E47AD378F6330680ED6 /* CullingGroup.h */,
+				4A534E47961351BF5630DC7C /* DialogueRunner.h */,
+				4A534E475EE51C3B38637EFB /* SimulationCulling.h */,
+				4A534E53CB8B28243C275A9E /* DialogueRunner.cpp */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -12570,6 +12882,10 @@
 				4A534E47A3412E0CDD92AD07 /* VehicleSystem.cpp */,
 				4A534E47E90ACABF2B099AB3 /* PhysicsSystemWorldSettings.cpp */,
 				4A534E4738BAED5E9B0F8D35 /* VehicleSystem.h */,
+				4A534E47B21A601EBC7437EE /* CullingSystem.cpp */,
+				4A534E47653B5D68D3A499C4 /* GamepadCursor.cpp */,
+				4A534E47A36A3DA3472854CC /* CullingSystem.h */,
+				4A534E47DA1CAB74E0F63C28 /* GamepadCursor.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -14674,6 +14990,8 @@
 			children = (
 				4A534E47884A25441D62340D /* OnScreenControls.cpp */,
 				4A534E47A3734219166C9A6F /* OnScreenControls.h */,
+				4A534E476DEA1E88BDABEB14 /* InputPrompt.cpp */,
+				4A534E479AFBB09AC813195B /* InputPrompt.h */,
 			);
 			path = controls;
 			sourceTree = "<group>";
@@ -14734,6 +15052,10 @@
 				4A534E47535074DEA48446A6 /* controls */,
 				4A534E477432B679554FC04C /* RmlFontEngineBitmap.cpp */,
 				4A534E477432B679554FC04C /* RmlFontEngineBitmap.cpp */,
+				4A534E473E0CDBDD10629EA3 /* HtmlL10n.cpp */,
+				4A534E47F42D15DF2035317D /* TextEntryTraits.cpp */,
+				4A534E47B0BDDD79726EBB2F /* HtmlL10n.h */,
+				4A534E47F625F43D9C08E937 /* TextEntryTraits.h */,
 			);
 			path = htmlui;
 			sourceTree = "<group>";
@@ -16191,6 +16513,18 @@
 			path = clipper2;
 			sourceTree = "<group>";
 		};
+		4A534E53BCC7F910D7911F7F /* dialogue */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E53A747918ACD9F4E2A /* DialogueExpression.cpp */,
+				4A534E53922C33FA44C430F6 /* DialogueKind.cpp */,
+				4A534E5375143D287D60839A /* DialogueProgram.cpp */,
+				4A534E53720A533146371AE5 /* DialogueRunner.cpp */,
+				4A534E53E74DB844AF1D67EC /* DialogueVariables.cpp */,
+			);
+			path = dialogue;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -17139,6 +17473,48 @@
 				4A534E47600B17FAC4B3F90D /* WorldSettings.h in Headers */,
 				4A534E47199EE7A96E7CD744 /* PhysicsQueriesLua.h in Headers */,
 				4A534E47756CA62B8A32F0D1 /* VehicleSystem.h in Headers */,
+				4A534E472F5E98109DED378D /* DialogueRunnerComponent.h in Headers */,
+				4A534E4779D13C2717205DF4 /* SimulationCullingComponent.h in Headers */,
+				4A534E479F663D9A1EF2ED9F /* ConsoleCommands.h in Headers */,
+				4A534E47C420A75D17815FE7 /* GpuQuirks.h in Headers */,
+				4A534E479D34924BF696C797 /* Journal.h in Headers */,
+				4A534E470A9B61891BAF0CD3 /* UserReport.h in Headers */,
+				4A534E47124F8ED4FCA538F5 /* HtmlL10n.h in Headers */,
+				4A534E47414EDA19A7B191A0 /* TextEntryTraits.h in Headers */,
+				4A534E47A6B48519D043A213 /* InputPrompt.h in Headers */,
+				4A534E47C2D211B17464A538 /* InputRecorder.h in Headers */,
+				4A534E47E32BEB876EEB9DE7 /* InputReplay.h in Headers */,
+				4A534E4722C77914954BA823 /* InputScheme.h in Headers */,
+				4A534E47233962EE4B8553AD /* InputScript.h in Headers */,
+				4A534E470FFB202D75CD6558 /* InputScriptRunner.h in Headers */,
+				4A534E47378DC06EC1736479 /* InputScriptSwitch.h in Headers */,
+				4A534E47CCB174687545D29E /* StateHash.h in Headers */,
+				4A534E47F035A00EEFA5A73C /* TextEntry.h in Headers */,
+				4A534E472D0F9D8C4B9261EB /* TextInputSync.h in Headers */,
+				4A534E4793DE9FD54036FC11 /* UserDataOverride.h in Headers */,
+				4A534E470B0062B980E34AF9 /* Localization.h in Headers */,
+				4A534E47F22652515F676497 /* LocalizationArgs.h in Headers */,
+				4A534E47EAB1A42259BC93EB /* MessageFormat.h in Headers */,
+				4A534E47229FA6D5C6CA97D7 /* PluralRules.h in Headers */,
+				4A534E4772F8D292D061E001 /* StringTableRuntime.h in Headers */,
+				4A534E4761A7A367A5448107 /* CullingGroup.h in Headers */,
+				4A534E47DE85BB6F9C0E009E /* DialogueRunner.h in Headers */,
+				4A534E47FED2CE9691D75440 /* SimulationCulling.h in Headers */,
+				4A534E4791F8158E27C85959 /* PhysicsQueryDebug.h in Headers */,
+				4A534E47A4BCFF9EF5211FAA /* PhysicsQueryReference.h in Headers */,
+				4A534E47EE164F31D6D4925A /* DevelopmentContent.h in Headers */,
+				4A534E479F49542889F94E1F /* InputScriptRun.h in Headers */,
+				4A534E47E3FB5DB3F6D1603B /* PlayerTests.h in Headers */,
+				4A534E4750F36D4808DD6BA8 /* PerfSampler.h in Headers */,
+				4A534E470C56C79784E20C1A /* ThreadCpuClock.h in Headers */,
+				4A534E47A1B310AEFA15F2E6 /* SaveFormat.h in Headers */,
+				4A534E47839B8E430E7A3B51 /* SaveGameStore.h in Headers */,
+				4A534E47C8038C88571DF3CC /* SaveValue.h in Headers */,
+				4A534E47A95BC0B8ED5EEA1B /* LocalizationArgsLua.h in Headers */,
+				4A534E470B49733052D991A0 /* SceneConstructors.h in Headers */,
+				4A534E470F1DA0CC06D1BE45 /* CullingSystem.h in Headers */,
+				4A534E478D03FD878354C64F /* GamepadCursor.h in Headers */,
+				4A534E47A738013D78827E06 /* CancellableEvent.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -19857,6 +20233,52 @@
 				4A534E478AA5B63EAA52315B /* VehicleDrivetrain.cpp in Sources */,
 				4A534E4757409C2B8884C336 /* VehicleClassesLua.cpp in Sources */,
 				4A534E47706936990B8552E9 /* PhysicsSystemWorldSettings.cpp in Sources */,
+				4A534E47E35AE94D8975A3D1 /* EngineTextEntry.cpp in Sources */,
+				4A534E473655CD05E1CF3BB0 /* DevelopmentContent.cpp in Sources */,
+				4A534E47D2DD9D30B8E42A07 /* InputScriptRun.cpp in Sources */,
+				4A534E4713242D777C493D65 /* InputScheme.cpp in Sources */,
+				4A534E47B7225EB59C826FEC /* TextEntry.cpp in Sources */,
+				4A534E4726D026AB2D8209D0 /* TextInputSync.cpp in Sources */,
+				4A534E4789E1A9AF1D751A17 /* InputScript.cpp in Sources */,
+				4A534E479C3A823131C40862 /* InputRecorder.cpp in Sources */,
+				4A534E474175779AD50FC231 /* InputReplay.cpp in Sources */,
+				4A534E47DDF961FF391C6089 /* StateHash.cpp in Sources */,
+				4A534E47B9D44D63067883CC /* InputScriptsOff.cpp in Sources */,
+				4A534E47B786095AB1341F0E /* GpuQuirks.cpp in Sources */,
+				4A534E473116202EB23D317E /* GpuQuirksData.cpp in Sources */,
+				4A534E4729AECE279C965B13 /* Journal.cpp in Sources */,
+				4A534E478B3D7882842B561A /* UserReport.cpp in Sources */,
+				4A534E47DB477BEEA4565AC8 /* ConsoleCommands.cpp in Sources */,
+				4A534E47D32D5980C2E5A628 /* HtmlL10n.cpp in Sources */,
+				4A534E47B38658FC77489F19 /* TextEntryTraits.cpp in Sources */,
+				4A534E47D9E93DC5DEF235FB /* InputPrompt.cpp in Sources */,
+				4A534E476955EB012C54CE34 /* SaveFormat.cpp in Sources */,
+				4A534E477212152A06759ED2 /* SaveGameStore.cpp in Sources */,
+				4A534E47C8671AC7EA697BEC /* SaveValue.cpp in Sources */,
+				4A534E47EF26AD2C82A98638 /* CullingGroup.cpp in Sources */,
+				4A534E47408A63BCB810218A /* SimulationCulling.cpp in Sources */,
+				4A534E4790E38A730122EC9F /* PhysicsQueryDebug.cpp in Sources */,
+				4A534E470A2E2049541AA4A0 /* PhysicsQueryReference.cpp in Sources */,
+				4A534E47CA1E8355D7B75043 /* PhysicsQueryLua.cpp in Sources */,
+				4A534E470210EF3DC97A7F1D /* LocalizationClassesLua.cpp in Sources */,
+				4A534E47A1B93D41C180BD6D /* SaveGameLua.cpp in Sources */,
+				4A534E479A6ECA4046584718 /* DialogueClassesLua.cpp in Sources */,
+				4A534E478003753F56F77D68 /* InputRecordingClassesLua.cpp in Sources */,
+				4A534E470611FC91C80C2EAA /* CullingClassesLua.cpp in Sources */,
+				4A534E47B7A4A4F3C5A76787 /* CullingSystem.cpp in Sources */,
+				4A534E47844FEA1B94FA088E /* GamepadCursor.cpp in Sources */,
+				4A534E47318C5726C8187120 /* PerfSampler.cpp in Sources */,
+				4A534E478AF2E9E64C17468D /* ThreadCpuClock.cpp in Sources */,
+				4A534E47CC1EAD4126BB8E77 /* Localization.cpp in Sources */,
+				4A534E470BC7FF2CD66B3751 /* MessageFormat.cpp in Sources */,
+				4A534E47760F4276DE1BB621 /* PluralRules.cpp in Sources */,
+				4A534E479CBBFD13794893E2 /* StringTableRuntime.cpp in Sources */,
+				4A534E53515821357F8D063E /* DialogueExpression.cpp in Sources */,
+				4A534E53C1FAA5C173CA7257 /* DialogueKind.cpp in Sources */,
+				4A534E530DA4BED2FB010470 /* DialogueProgram.cpp in Sources */,
+				4A534E5341EF590C749B78C5 /* DialogueRunner.cpp in Sources */,
+				4A534E53DA09EC5C72658167 /* DialogueVariables.cpp in Sources */,
+				4A534E539FBAE080AFA1A35F /* DialogueRunner.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -20866,6 +21288,52 @@
 				4A534E4745EC5F61B6962A54 /* VehicleDrivetrain.cpp in Sources */,
 				4A534E47BE01B38E98FA2F1E /* VehicleClassesLua.cpp in Sources */,
 				4A534E47C8BC5AC830F6D577 /* PhysicsSystemWorldSettings.cpp in Sources */,
+				4A534E4745EE6F73EBF129EB /* EngineTextEntry.cpp in Sources */,
+				4A534E47C8E21C4C1EC3CFA8 /* DevelopmentContent.cpp in Sources */,
+				4A534E47A0B3A1ECCD45D81D /* InputScriptRun.cpp in Sources */,
+				4A534E47073F25DCE6429C43 /* InputScheme.cpp in Sources */,
+				4A534E47898697E5FD46287E /* TextEntry.cpp in Sources */,
+				4A534E472D5EB34D45F54487 /* TextInputSync.cpp in Sources */,
+				4A534E47DB6039C34EFAAD7A /* InputScript.cpp in Sources */,
+				4A534E47958B36668C604F4A /* InputRecorder.cpp in Sources */,
+				4A534E4703B705BC1722D976 /* InputReplay.cpp in Sources */,
+				4A534E47161ACCD4A04829DC /* StateHash.cpp in Sources */,
+				4A534E471F9E9CBDD28339C7 /* InputScriptsOff.cpp in Sources */,
+				4A534E4704F6208E481C1D1C /* GpuQuirks.cpp in Sources */,
+				4A534E473EFEC6B02AFAB2FF /* GpuQuirksData.cpp in Sources */,
+				4A534E47F58C995541F203AF /* Journal.cpp in Sources */,
+				4A534E476F0EFFA8AB3876B5 /* UserReport.cpp in Sources */,
+				4A534E47280848DAA9584A1C /* ConsoleCommands.cpp in Sources */,
+				4A534E476ADF2ABC854A8744 /* HtmlL10n.cpp in Sources */,
+				4A534E47D04EB0F01B20BAF4 /* TextEntryTraits.cpp in Sources */,
+				4A534E4730398D89E4A155F8 /* InputPrompt.cpp in Sources */,
+				4A534E4797C6D0E902BE1DB8 /* SaveFormat.cpp in Sources */,
+				4A534E47BF8A3C824C975AF8 /* SaveGameStore.cpp in Sources */,
+				4A534E472EE3834F55343442 /* SaveValue.cpp in Sources */,
+				4A534E477D20A08C20EA2F1F /* CullingGroup.cpp in Sources */,
+				4A534E47F5EFE6B597499AD6 /* SimulationCulling.cpp in Sources */,
+				4A534E4712342CB95B6941A4 /* PhysicsQueryDebug.cpp in Sources */,
+				4A534E47F8901D3C61848C32 /* PhysicsQueryReference.cpp in Sources */,
+				4A534E47C9B4D3FEBBF9AF5F /* PhysicsQueryLua.cpp in Sources */,
+				4A534E47FECE89744C7673F5 /* LocalizationClassesLua.cpp in Sources */,
+				4A534E473CEADECB879AA8BF /* SaveGameLua.cpp in Sources */,
+				4A534E471F6AA97ED9BAA54F /* DialogueClassesLua.cpp in Sources */,
+				4A534E473484F5DDF908A1F3 /* InputRecordingClassesLua.cpp in Sources */,
+				4A534E47E263432C02CB12D0 /* CullingClassesLua.cpp in Sources */,
+				4A534E4776590B99B1885055 /* CullingSystem.cpp in Sources */,
+				4A534E4745AF20CDF744798D /* GamepadCursor.cpp in Sources */,
+				4A534E478FC0D45E3BA3C823 /* PerfSampler.cpp in Sources */,
+				4A534E47127CA5CF8901A6AE /* ThreadCpuClock.cpp in Sources */,
+				4A534E47BF5A72F34022452F /* Localization.cpp in Sources */,
+				4A534E47B87D66B801A34840 /* MessageFormat.cpp in Sources */,
+				4A534E4734B46E4A8AA1BD54 /* PluralRules.cpp in Sources */,
+				4A534E476D731FF6DD75A960 /* StringTableRuntime.cpp in Sources */,
+				4A534E5338ACEAD8E0FC7D22 /* DialogueExpression.cpp in Sources */,
+				4A534E53DBFB60AEB46EE96C /* DialogueKind.cpp in Sources */,
+				4A534E539A886BF399AAB990 /* DialogueProgram.cpp in Sources */,
+				4A534E5363E192CC7F21FDDB /* DialogueRunner.cpp in Sources */,
+				4A534E53C5D22ADACAEF273F /* DialogueVariables.cpp in Sources */,
+				4A534E53CDDF0C04F459F2AF /* DialogueRunner.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
