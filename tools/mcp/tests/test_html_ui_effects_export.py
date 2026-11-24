@@ -188,6 +188,9 @@ async def _setup_effects(ed: Editor):
           .replace("local_wave(c.uv.x, c.anim.x)", "1.0"))
     write(ed.project, "assets/ui/fx/unused.frag", FRAG.replace("tint-wave", "unused-wave"))
     write(ed.project, "assets/ui/shipped.html", HTML)
+    font = ed.project / "assets" / "ui" / "fonts" / "motion-roboto.woff2"
+    font.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(REPO / "docs" / "mcp" / "guide" / "html-ui-examples" / "motion_graphics" / "assets" / "motion-roboto.woff2", font)
     write(ed.project, "assets/ui/shipped.css", CSS)
     made = await ed.call("create_scene", name="EffectsExport", type="UI")
     S["scene"] = made["scene"]["id"]
@@ -214,6 +217,9 @@ async def test_cli_export_ships_effect_assets_and_license(ed: Editor):
     assets = out / "project" / "assets" / "ui" / "fx"
     for name in ("tint-wave.frag", "local-wave.glsl"):
         ed.check((assets / name).is_file(), f"{name} ships as an asset (the game reads the manifest)")
+    # a WOFF2 ships decoded at its own path: players have no web font decoder
+    shipped_font = (out / "project" / "assets" / "ui" / "fonts" / "motion-roboto.woff2").read_bytes()
+    ed.check_eq(shipped_font[:4], b"\x00\x01\x00\x00", "the WOFF2 ships as the TrueType it encodes")
 
 
 async def test_export_without_effects_has_no_notice(ed: Editor):
