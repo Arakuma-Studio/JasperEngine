@@ -38,6 +38,8 @@
 #include "util/WaterExclusion.h"
 #include "component/WaterExcluderComponent.h"
 #include "component/WaterWakeComponent.h"
+#include "component/WheelColliderComponent.h"
+#include "Engine.h"
 #include "subsystem/WaterInteractionSystem.h"
 #include <cmath>
 #include <cstdint>
@@ -156,6 +158,10 @@ editor::SceneRender3D::~SceneRender3D(){
     }
 
     for (auto& pair : waterWakeLines) {
+        delete pair.second;
+    }
+
+    for (auto& pair : wheelLines) {
         delete pair.second;
     }
 
@@ -635,6 +641,73 @@ void editor::SceneRender3D::createOrUpdateBuoyancyLines(Entity entity, const Tra
         lines->addLine(a, b, color);
         lines->addLine(transform.modelMatrix * (bottom - Vector3(tick, 0.0f, 0.0f)), transform.modelMatrix * (bottom + Vector3(tick, 0.0f, 0.0f)), color);
         lines->addLine(transform.modelMatrix * (bottom - Vector3(0.0f, 0.0f, tick)), transform.modelMatrix * (bottom + Vector3(0.0f, 0.0f, tick)), color);
+    }
+}
+
+// A Wheel Collider as the physics builds it: the wheel's circle at rest (its target position of the
+// travel under the body's weight) facing its forward, and the suspension travel down the body's
+// down axis; in Play the circle at its pose (getWorldPose), its contact and the force there
+void editor::SceneRender3D::createOrUpdateWheelLines(Entity entity, const Transform& transform, const WheelColliderComponent& wheel, bool visible, bool highlighted){
+    LineRenderer* lines = wheelLines[entity];
+    lines->clearLines();
+    lines->setVisible(transform.visible && visible);
+    if (!transform.visible || !visible) return;
+
+    // the body's up (the nearest Rigidbody above), else the parent's
+    Quaternion bodyRotation = transform.worldRotation;
+    for (Entity parent = transform.parent; parent != NULL_ENTITY;){
+        const Transform* parentTransform = scene->findComponent<Transform>(parent);
+        if (!parentTransform) break;
+        bodyRotation = parentTransform->worldRotation;
+        if (scene->findComponent<RigidbodyComponent>(parent)) break;
+        parent = parentTransform->parent;
+    }
+    const Vector3 up = (bodyRotation * Vector3(0.0f, 1.0f, 0.0f)).normalized();
+    Vector3 forward = transform.worldRotation * Vector3(0.0f, 0.0f, 1.0f);
+    forward = forward - up * forward.dotProduct(up);
+    forward = forward.squaredLength() > 1.0e-8f ? forward.normalized() : bodyRotation * Vector3(0.0f, 0.0f, 1.0f);
+
+    const float alpha = highlighted ? 1.0f : 0.4f;
+    const Vector4 color = wheel.enabled ? Vector4(0.45f, 0.95f, 0.35f, alpha) : Vector4(0.6f, 0.6f, 0.6f, alpha);
+    const Vector4 travelColor = wheel.enabled ? Vector4(1.0f, 0.75f, 0.25f, alpha) : Vector4(0.6f, 0.6f, 0.6f, alpha);
+    const float radius = std::max(0.0f, wheel.radius);
+    const float travel = std::max(0.0f, wheel.suspensionDistance);
+    // the read-outs are the last step's: after Stop they are left from Play
+    const bool running = wheel.wheelIndex >= 0 && Engine::isSceneRunning(scene);
+
+    Vector3 center;
+    Vector3 wheelUp = up;
+    Vector3 wheelForward = forward;
+    Vector3 attach;
+    if (running){
+        center = wheel.worldPosePosition;
+        wheelUp = wheel.worldPoseRotation * Vector3(0.0f, 1.0f, 0.0f);
+        wheelForward = wheel.worldPoseRotation * Vector3(0.0f, 0.0f, 1.0f);
+        attach = center + up * (travel * (1.0f - wheel.suspensionCompression));
+    }else{
+        attach = transform.modelMatrix * wheel.center;
+        center = attach - up * (travel * (1.0f - std::clamp(wheel.suspensionSpring.targetPosition, 0.0f, 1.0f)));
+    }
+    const int segments = 32;
+    auto point = [&](float a){ return center + (wheelUp * std::cos(a) + wheelForward * std::sin(a)) * radius; };
+    for (int i = 0; i < segments; i++)
+        lines->addLine(point(6.28318530718f * (float)i / (float)segments), point(6.28318530718f * (float)(i + 1) / (float)segments), color);
+    // a spoke shows the spin
+    lines->addLine(center, point(0.0f), color);
+    lines->addLine(attach, attach - up * travel, travelColor);
+    const float tick = std::max(0.02f, radius * 0.2f);
+    const Vector3 side = up.crossProduct(forward);
+    lines->addLine(attach - side * tick, attach + side * tick, travelColor);
+    lines->addLine(attach - up * travel - side * tick, attach - up * travel + side * tick, travelColor);
+
+    if (running && wheel.isGrounded){
+        const Vector4 contactColor(1.0f, 0.2f, 0.2f, 1.0f);
+        const Vector3 p = wheel.hit.point;
+        lines->addLine(p - side * tick, p + side * tick, contactColor);
+        lines->addLine(p - wheelForward * tick, p + wheelForward * tick, contactColor);
+        // the push, a metre per sprung weight
+        const float weight = std::max(1.0f, wheel.sprungMass * 9.81f);
+        lines->addLine(p, p + wheel.hit.normal * std::min(3.0f, wheel.hit.force / weight), contactColor);
     }
 }
 
@@ -1447,6 +1520,9 @@ void editor::SceneRender3D::hideAllGizmos(){
     for (auto& pair : waterWakeLines) {
         pair.second->setVisible(false);
     }
+    for (auto& pair : wheelLines) {
+        pair.second->setVisible(false);
+    }
     for (auto& pair : buoyancyLines) {
         pair.second->setVisible(false);
     }
@@ -1484,7 +1560,7 @@ void editor::SceneRender3D::hideEntityGizmos(Entity entity){
     }
     for (auto* lines : {&jointLines, &boneLines, &linePointLines, &polygonPointLines, &trackLines, &reflectionProbeLines,
                         &fogVolumeLines, &controllerLines, &waterVolumeLines, &buoyancyLines, &particleLines, &forceFieldLines,
-                        &capsuleShadowLines}) {
+                        &capsuleShadowLines, &wheelLines}) {
         hide(*lines);
     }
 }
@@ -1624,6 +1700,7 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     std::set<Entity> currentWaterVolumes;
     std::set<Entity> currentWaterExcluders;
     std::set<Entity> currentWaterWakes;
+    std::set<Entity> currentWheels;
     std::set<Entity> currentBuoyancies;
     std::set<Entity> currentParticleSystems;
     std::set<Entity> currentForceFields;
@@ -1794,6 +1871,21 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             ensureOverlayLines(buoyancyLines, entity);
             const bool highlighted = isDescendantSelected(entity);
             createOrUpdateBuoyancyLines(entity, transform, buoyancy, displaySettings.showAllBodies || highlighted, highlighted);
+        }
+
+        if (signature.test(scene->getComponentId<WheelColliderComponent>()) && signature.test(scene->getComponentId<Transform>())) {
+            const WheelColliderComponent& wheel = scene->getComponent<WheelColliderComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+            currentWheels.insert(entity);
+            ensureOverlayLines(wheelLines, entity);
+            // the wheel, what is under it, or the vehicle above it selected
+            bool highlighted = isDescendantSelected(entity);
+            for (Entity parent = transform.parent; !highlighted && parent != NULL_ENTITY;){
+                highlighted = selectedEntities.find(parent) != selectedEntities.end();
+                const Transform* parentTransform = scene->findComponent<Transform>(parent);
+                parent = parentTransform ? parentTransform->parent : NULL_ENTITY;
+            }
+            createOrUpdateWheelLines(entity, transform, wheel, displaySettings.showAllBodies || highlighted, highlighted);
         }
 
         if (signature.test(scene->getComponentId<CharacterControllerComponent>()) && signature.test(scene->getComponentId<Transform>())) {
@@ -1992,7 +2084,7 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     }
 
     for (const auto& pair : {std::make_pair(&waterVolumeLines, &currentWaterVolumes), std::make_pair(&waterExcluderLines, &currentWaterExcluders),
-                             std::make_pair(&waterWakeLines, &currentWaterWakes),
+                             std::make_pair(&waterWakeLines, &currentWaterWakes), std::make_pair(&wheelLines, &currentWheels),
                              std::make_pair(&buoyancyLines, &currentBuoyancies)}) {
         for (auto it = pair.first->begin(); it != pair.first->end();) {
             if (pair.second->find(it->first) == pair.second->end()) {

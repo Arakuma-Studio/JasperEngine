@@ -57,7 +57,7 @@ std::string commandName(const char* executableName) {
     return name.empty() ? std::string("jasperengine-editor") : name;
 }
 
-std::string format(const char* pattern, double value) {
+std::string cliFormat(const char* pattern, double value) {
     char text[64];
     std::snprintf(text, sizeof(text), pattern, value);
     return text;
@@ -158,9 +158,9 @@ std::string itemLine(const Json& item) {
     const Json& loudness = item["loudness"];
     const Json& peak = item["peak"];
     std::string line = std::to_string(item.value("n", 0)) + ". " + item.value("path", std::string()) + ": " +
-                       format("%.2f s", cliNumberOr(item["format"]["duration_s"], 0.0)) + ", ";
-    line += loudness["momentary_max"].is_number() ? format("%.1f LUFS-M", loudness["momentary_max"].get<double>()) : std::string("no loudness");
-    line += ", TP " + format("%.1f dBTP", cliNumberOr(peak["true_peak_dbtp"], AudioMeter::SILENCE_DB));
+                       cliFormat("%.2f s", cliNumberOr(item["format"]["duration_s"], 0.0)) + ", ";
+    line += loudness["momentary_max"].is_number() ? cliFormat("%.1f LUFS-M", loudness["momentary_max"].get<double>()) : std::string("no loudness");
+    line += ", TP " + cliFormat("%.1f dBTP", cliNumberOr(peak["true_peak_dbtp"], AudioMeter::SILENCE_DB));
     line += ", " + item.value("kind", std::string());
     if (item.contains("type")) line += " (" + item["type"].get<std::string>() + ")";
     const std::string notes = AudioAnalysis::notesSummary(item["notes"]);
@@ -184,7 +184,7 @@ bool renderImage(const Json& items, const std::vector<const AudioAnalysis::Signa
         const Json& item = items[0];
         AudioImages::Input input;
         input.signal = signals[0];
-        input.title = std::to_string(item["n"].get<int>()) + ". " + item["path"].get<std::string>() + "  " + format("%.3f s", signals[0]->seconds());
+        input.title = std::to_string(item["n"].get<int>()) + ". " + item["path"].get<std::string>() + "  " + cliFormat("%.3f s", signals[0]->seconds());
         auto curve = [](const Json& values) {
             std::vector<double> out;
             if (!values.is_array()) return out;
@@ -405,11 +405,11 @@ int listLibrary(bool json, const std::string& type, const std::string& query) {
         return EXIT_OK;
     }
     std::cout << "Starter library v" << status.version << " at " << status.root.generic_string() << ": " << status.clips << " clips, "
-              << format("%.1f", (double)status.bytes / (1024.0 * 1024.0)) << " MiB\n";
+              << cliFormat("%.1f", (double)status.bytes / (1024.0 * 1024.0)) << " MiB\n";
     for (const SoundManifestClip* clip : clips) {
         const SoundManifestMeasured& m = clip->measured;
-        std::cout << SoundLibrary::PREFIX << clip->id << "  " << clip->type << "/" << clip->kind << "  " << format("%.2f", m.durationS) << " s  "
-                  << (m.momentaryMaxLufs ? format("%.1f", *m.momentaryMaxLufs) : std::string("-")) << " LUFS-M  " << clip->source << " "
+        std::cout << SoundLibrary::PREFIX << clip->id << "  " << clip->type << "/" << clip->kind << "  " << cliFormat("%.2f", m.durationS) << " s  "
+                  << (m.momentaryMaxLufs ? cliFormat("%.1f", *m.momentaryMaxLufs) : std::string("-")) << " LUFS-M  " << clip->source << " "
                   << clip->author << "\n";
     }
     if (status.missing > 0) {

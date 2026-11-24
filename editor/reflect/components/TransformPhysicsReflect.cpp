@@ -277,6 +277,8 @@ namespace {
         JE_FIELD(Rigidbody2DComponent, linearDamping, .updateFlags = UpdateFlags_Rigidbody2D_Params, .min = 0.0f),
         JE_FIELD(Rigidbody2DComponent, angularDamping, .updateFlags = UpdateFlags_Rigidbody2D_Params, .min = 0.0f),
         JE_FIELD(Rigidbody2DComponent, fixedRotation, .updateFlags = UpdateFlags_Rigidbody2D_Params),
+        // S96 WP-E: not capped by the scene's Max Rotation Per Step
+        JE_FIELD(Rigidbody2DComponent, allowFastRotation, .updateFlags = UpdateFlags_Rigidbody2D_Params),
         JE_FIELD(Rigidbody2DComponent, collisionDetection, .enumDesc = &enums::kCollisionDetection2D, .updateFlags = UpdateFlags_Rigidbody2D_Params),
         JE_FIELD(Rigidbody2DComponent, sleepingMode, .enumDesc = &enums::kSleepMode2D, .updateFlags = UpdateFlags_Rigidbody2D_Params),
         JE_FIELD(Rigidbody2DComponent, useAutoMass, .updateFlags = UpdateFlags_Rigidbody2D_Params),
@@ -286,6 +288,8 @@ namespace {
         JE_FIELD(Rigidbody2DComponent, autoInertia, .updateFlags = UpdateFlags_Rigidbody2D_Params),
         JE_FIELD(Rigidbody2DComponent, inertia, .updateFlags = UpdateFlags_Rigidbody2D_Params, .min = 0.0f),
         JE_FIELD(Rigidbody2DComponent, material, .updateFlags = kBody2D),
+        // S96 WP-C: its colliders join the nearest ancestor's body (AttachedColliders.h)
+        JE_FIELD(Rigidbody2DComponent, attachToParentBody, .updateFlags = kBody2D),
         // upstream: a body's colliders are a list without a count limit (the files still write
         // numColliders, which the codec reads): the whole list is one property (a prefab override
         // when the count changes), each collider's members too
@@ -324,6 +328,8 @@ namespace {
         JE_FIELD(RigidbodyComponent, collideKinematicVsNonDynamic, .updateFlags = UpdateFlags_Rigidbody_Params),
         // read when the body is drawn
         JE_FIELD(RigidbodyComponent, interpolation, .enumDesc = &enums::kRigidbodyInterpolation),
+        // S96 WP-C: its colliders join the nearest ancestor's body (AttachedColliders.h)
+        JE_FIELD(RigidbodyComponent, attachToParentBody, .updateFlags = kBody3D),
         JE_FIELD(RigidbodyComponent, colliders, .flags = ListWhole | ListEachElement | ListTemplate, .updateFlags = kBody3D),
     };
 
@@ -397,7 +403,7 @@ const ComponentDesc kJoint3DDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kRigidbody2DKnownKeys[] = {"angularDamping", "autoCenterOfMass", "autoInertia", "centerOfMass", "colliders", "collisionDetection",
+    constexpr const char* kRigidbody2DKnownKeys[] = {"allowFastRotation", "angularDamping", "attachToParentBody", "autoCenterOfMass", "autoInertia", "centerOfMass", "colliders", "collisionDetection",
                                                       "enabled", "fixedRotation", "gravityScale", "inertia", "linearDamping", "mass", "material",
                                                       "numColliders", "sleepingMode", "type", "useAutoMass"};
 
@@ -417,7 +423,7 @@ const ComponentDesc kRigidbody2DDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kRigidbodyKnownKeys[] = {"allowSleeping", "allowedDOFs", "angularDamping", "automaticCenterOfMass", "automaticInertiaTensor",
+    constexpr const char* kRigidbodyKnownKeys[] = {"allowSleeping", "allowedDOFs", "angularDamping", "attachToParentBody", "automaticCenterOfMass", "automaticInertiaTensor",
                                                     "automaticMass", "buoyancy", "centerOfMass", "collideKinematicVsNonDynamic", "colliders", "enabled", "friction",
                                                     "gravityFactor", "inertiaTensor", "inertiaTensorRotation", "interpolation", "linearDamping", "mass", "material",
                                                     "maxAngularVelocity", "maxLinearVelocity", "motionQuality", "numColliders", "overrideMassProperties", "restitution",
