@@ -1035,7 +1035,7 @@ Jobs of `ci.yml`; a lane's command is also its repro.
 | `smoke` | `SMOKE_METHOD=compile tools/smoke-test.sh tools/fixtures/post-processing`, the prebuilt `tools/fixtures/unified-lighting` and a project from each template |
 | `web` | `tools/build.sh web && tools/build.sh web-gate` |
 | `android` | `tools/build.sh android` (`ANDROID_ABIS=arm64-v8a` on a PR) |
-| `windows` (parallel jobs: `windows-editor`, `windows-engine-glcore`, `-d3d11`, `-vulkan`, `windows-compile`) | `tools/ci/windows.sh <step>` on `windows-latest` with MSVC: the editor with its CPU unit tests (`TEST_SUITES=editor`, reported as `windows-editor-tests`, stopped after `TEST_TIMEOUT`) and the call CLI; the engine on each backend, OpenGL's with the core tests (`TEST_SUITES=core`); then a Compile build of a fixture with the editor job's install |
+| `windows` (parallel jobs: `windows-editor`, `windows-engine-glcore`, `-d3d11`, `-vulkan`, `windows-compile`) | `tools/ci/windows.sh <step>` on `windows-latest` with MSVC: the editor with its CPU unit tests (`TEST_SUITES=editor`, reported as `windows-editor-tests`, stopped after `TEST_TIMEOUT`) and the call CLI; the engine on each backend, OpenGL's with the core tests (`TEST_SUITES=core`), the D3D11 and Vulkan legs on a PR and in the queue only for their inputs (below); then a Compile build of a fixture with the editor job's install |
 | `macos`, `ios` | `tools/ci/macos.sh <step>` on `macos-latest`: the editor (arm64), the engine, the CPU unit tests, a Compile build of a fixture; `xcode ios` for iOS |
 | `report` | writes the PR comment (below) |
 | `check` | the one required status, `Check` (`tools/ci/check_gate.py`): green only when every lane that had to run passed |
@@ -1062,13 +1062,14 @@ on every change a game's build reads.
 
 **Advisory lanes during rollout.** `ci.yml`'s `ADVISORY_LANES` holds `unit asan htmlui mcp smoke`
 until `main` is green through CI, and `windows-editor-tests` (the Windows editor job's test run,
-reported apart from the job, until the suite passes on Windows): `Check` ignores their failures, and
-the report shows them first, marked advisory. Lint and the platform builds always block, the
+reported apart from the job, until the suite passes on Windows): `Check` ignores their failures and
+does not wait for them (its `needs` are `report`'s without them, which `tools/ci/test_check_gate.py`
+checks), and the report, which waits for every lane, shows them first, marked advisory. Lint and the platform builds always block, the
 Windows jobs' builds and the core tests' run included. Since an advisory lane cannot block a merge,
 the merge queue does not run it (`tools/ci/plan_lanes.py --advisory "$ADVISORY_LANES"`): of `unit`
 (every job of it), `asan`, `htmlui`, `mcp`, `smoke` and `windows-editor-tests` (the editor leg still
-builds), the ones the list names; taking a lane off the list puts it back in the queue with no other
-edit. Lint and the platform lanes run in the queue whatever the list says. The advisory run a push to
+builds), the ones the list names; taking a lane off the list puts it back in the queue, and the lane
+(a job) must join `check`'s `needs` too. Lint and the platform lanes run in the queue whatever the list says. The advisory run a push to
 `main` dispatches runs what the queue left out instead, as the queue would have (below), so every
 merged change still gets their results, in that run's report and the `advisory-red` issue.
 
@@ -1092,11 +1093,10 @@ first. The lane ends with its slowest shard, so the times have to be right:
   nothing from a single sample, and a new value only outside 25 % (at least 15 s) of the committed one.
   When an entry moved, it force-pushes `ci/mcp-timings-refit` and opens or updates its pull request
   (`tools/mcp/ci-timings.json` is on `CI_NOTHING_READS`: its PR runs only `changes` and `Check`).
-  GitHub Actions may not open pull requests here and its token's push starts no pull_request run:
-  with the secret `MCP_TIMINGS_TOKEN` it does both, without it the job dispatches `ci.yml` on the branch
-  with `status` and fails until the PR exists. A ruleset counts no check of a dispatched job, so that
-  run's `Check` job also sets the commit status `Check` on the head, which it counts. Then the job
-  turns on auto-merge and the merge queue lands the PR.
+  The GitHub App `jasper-ci-bot` (secrets `CI_BOT_APP_ID`, `CI_BOT_APP_PRIVATE_KEY`) pushes, opens
+  the PR and turns on auto-merge: the workflow token may not open pull requests here, its push starts
+  no pull_request run (whose `Check` the ruleset requires) and its auto-merge does not enqueue. The
+  App's push runs CI as any PR's, and the merge queue lands the PR once `Check` is green.
 - **The shard count**: the fewest shards that no larger count (up to 8 on a PR and in the queue) beats
   by more than the 4 min of setup each added shard costs (checkout, image, editor install: median
   236 s over 46 shards). Once the longest chunk sets the length, more shards save nothing.
@@ -1115,6 +1115,7 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 | `changes`, `Check` | yes | yes | yes | yes | yes |
 | `lint` | unless every path is one nothing reads | same | no | no | yes |
 | `linux`, `web`, `android`, `windows` | when anything that builds changed | yes | yes, to warm the caches (`windows`: the editor leg's build only) | `linux` when `mcp` or `smoke` runs (their editor install); `windows` for `windows-editor-tests` (the editor leg only) | yes |
+| `windows (engine-d3d11)`, `windows (engine-vulkan)` | with `windows`, when one of their inputs changed (below) | the same; the nightly builds both every night | yes (no build; `engine-vulkan` saves the Vulkan SDK's cache) | the same as the queue | yes |
 | `macos` | when an Apple-only input changed (below) | yes | yes, to warm its cache | no | yes |
 | `ios` | when an Apple-only input changed (below) | the same; the nightly builds it every night | no (no cache) | no | yes |
 | `unit`, `htmlui` | the suites the plan selects | all, unfiltered; not while advisory | build only (the caches, the deps dumps) | while advisory all, unfiltered | all |
@@ -1128,6 +1129,14 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
   `tools/mcp/ci-timings.json` runs only `changes` and `Check`, on a PR and in the queue. The rest of `docs/` counts as building:
   the editor embeds the MCP guide, and tests read other docs.
 - **Ledgers** ride in the PR of the work they record, so they cost no run of their own.
+- **Blocking lanes only, while GitHub's runners are the bottleneck**: with the repository variable
+  `PR_ADVISORY_LANES` set to `off`, a pull request plans as the merge queue does: its advisory test
+  lanes and test runs (`ADVISORY_LANES`: unit, ASan, HTML UI, MCP, smoke, the Windows editor tests) are
+  planned off (`advisory_off`; the editor leg still builds), and its `Check` waits for lint and the
+  platform builds only. They run on `main` after the merge, in the advisory run a push dispatches, as
+  for the queue. The default (`on`, or no variable) runs them. Set it while the organization's 60
+  concurrent hosted jobs are saturated, delete it when the backlog clears:
+  `gh variable set PR_ADVISORY_LANES --body off`, `gh variable delete PR_ADVISORY_LANES`.
 - **Stricter than check-changed**: any building change runs every platform lane, Web and Android
   included; a `.github/` change runs everything (ASan as below); a plan error, a missing deps dump or a missing or
   stale coverage map widens that lane to everything, and the report says why.
@@ -1160,6 +1169,25 @@ shards took 23 to 99 min; by the nightly's seconds (its game builds an hour each
 - **MCP in the merge queue** is planned from the coverage map, not the whole suite: a regression the
   map misses is the nightly's to find. A planned file outside the CI suite (it needs the fixture
   project, or is `CI_EXCLUDED`) is listed under "not run in CI"; `MCP_SUITE=all` locally covers it.
+- **The Windows D3D11 and Vulkan legs** (56-97 min each in merge-queue runs 45115998605 to 45216542055,
+  and `windows-compile` waits for every leg, so they set the queue's floor) build on a PR, a dispatch,
+  in the merge queue and the advisory run only when one of their inputs changed (`tools/ci/plan_lanes.py`
+  `windows_legs`, `lanes.json` `windows_parts`, the `windows` matrix): the sokol renderer
+  (`engine/renders/`) and its vendored library (`engine/libs/sokol/`), the shaders (`engine/shaderlib/`,
+  their stubs in `engine/shaders/`), the shader compilers and translators (`engine/libs/shadercompiler/`:
+  glslang, SPIRV-Cross), the shader data, variants and pools (`engine/core/shader/`, `ShaderPool`,
+  `ShaderRender`), the Windows platform code (`engine/platform/win/`; `VulkanContext` for Vulkan), the
+  engine's presets and CMake modules, `tools/ci/windows.sh`, `platform-common.sh`, the report action, and
+  `ci.yml`'s `windows` job or the workflow's `env`. Also a changed C/C++ file the legs compile (the engine,
+  `editor/procmat/`) whose text has backend code: a `SOKOL_<backend>` guard, D3D11 or DXGI for D3D11,
+  Vulkan, SPIR-V or the `vk` API for Vulkan; and a changed CMake line that names a backend or Windows, or
+  sits in an `if()`, `function()` or `macro()` that does (a source list's line is every backend's). The
+  reason: the two legs compile the engine and its core tests as `engine-glcore` does, with the same MSVC,
+  for one more backend, and run no test (no GPU on the runner), so all they catch is code that compiles
+  for that backend alone. Generic engine code rarely breaks one backend alone; backend and shader paths
+  still trigger them; and `nightly.yml`'s `windows-engine` builds both every night, whatever changed, so
+  a break the rule missed shows within a day in the `nightly` issue. A push, full runs and the rollback
+  (`CI_FULL_SELECTION`) keep every leg. `windows (engine-glcore)` runs whenever the lane does.
 - **Push to `main`** builds what keeps a cache and nothing else (`tools/ci/plan_lanes.py` `build_only`
   lists what builds without its tests): it saves the caches (ccache per lane), and a PR restores what
   `main` saved, never what the queue did; and it publishes the deps dumps `changes` plans from (below,
@@ -1317,7 +1345,8 @@ it; the next run's `changes` reads it.
 - **Nightly** (`nightly.yml`, 03:17 UTC, or dispatched): the slow configurations (HTML UI on Vulkan
   and under ASan, TSan, texture formats on lavapipe, the unity builds of the editor, the engine and
   both unit-test trees, every fixture's smoke on OpenGL, GLES3 and Vulkan through
-  `tools/ci/nightly-smoke.sh`, the pthreads web gate, prebuilt player parity) and the whole MCP CI suite, which also refreshes the coverage map (below, "Plan
+  `tools/ci/nightly-smoke.sh`, the pthreads web gate, prebuilt player parity, the Windows engine and its core tests built on
+  D3D11 and Vulkan, `windows-engine`) and the whole MCP CI suite, which also refreshes the coverage map (below, "Plan
   inputs") and the nightly's own shard timings (the `mcp-timings` cache). A failure opens or updates the issue
   labelled `nightly`. When `main` moved, it publishes the prerelease `nightly-YYYYMMDD` (the newest 14
   are kept); the slow lanes do not hold it back.
@@ -1441,8 +1470,9 @@ a service that starts with the machine (macOS: with the user's login) and reconn
 
 - the run may use one: a push, the merge queue, a dispatch, or a pull request whose head repository is
   this one, never a fork's;
-- it is the run's first attempt: a rerun stays on GitHub's runners, so the watchdog's rerun (below)
-  never waits for the same machine again;
+- it is not the rerun of a run the watchdog moved off a runner that went away (the state's
+  `hosted_only`, below), nor of a forced dispatch: those stay on GitHub's runners, so they never wait
+  for the same machine again. A rerun for an idle runner (below) routes as a first attempt does;
 - the runner state (`state.json` of the data branch `ci-runner-state`, fetched as the plan starts; not a
   repository variable, which a run reads as it is created, up to an hour before `changes` gets a
   runner) is under 5 min old (`STATE_MAX_AGE`), and says the hosted
@@ -1455,20 +1485,65 @@ a service that starts with the machine (macOS: with the user's login) and reconn
   (`TAKES`, one by default): `je-mac` takes `macos` and `ios` (it builds `ios` in 12 min, run
   45104498209), one after the other; `je-linux` `linux` (the MCP and smoke lanes wait for it), else the
   longest build; `je-win` the D3D11 or OpenGL engine leg. The Windows editor leg's MSVC build does not
-  fit in 7 GB in its time. `je-win` is out (`SELF_HOSTED_DISABLED=je-win`) since the box reset itself
-  19 min into the D3D11 leg (run 45104498209; Kernel-Power 41, its sixth such reset in two days, five of
-  them before it ran CI).
+  fit in 7 GB in its time. The box reset itself 19 min into the D3D11 leg once (run 45104498209;
+  Kernel-Power 41, its sixth such reset in two days, five of them before it ran CI); the watchdog
+  reroutes a job it loses that way.
 
 The `changes` job's summary and `lanes.json` (`routing`) say where each job went and why.
+
+**The paid tier: Blacksmith.** After GitHub's runners and the user's machines, a Linux or macOS job may
+go to Blacksmith, whose GitHub App is installed on the organization; its runner groups already allow
+public repositories. Its jobs do not count toward GitHub's 60 concurrent jobs, so Linux there frees
+hosted slots for the queue's macOS jobs. Linux goes first: GitHub's cap fills with Linux jobs.
+
+| OS | Label | Like | Price |
+|---|---|---|---|
+| Linux | `blacksmith-4vcpu-ubuntu-2404` | `ubuntu-latest` (4 vCPU) | $0.008 a minute |
+| macOS | `blacksmith-6vcpu-macos-26` | an M4, macOS 26, Xcode 26.6 selected | $0.08 a minute |
+
+Windows has no tier. The plan (`tools/ci/plan_lanes.py` `BLACKSMITH`) routes a job there only when
+all of these hold:
+
+- it is a job of the merge queue or a push to `main` (`BLACKSMITH_EVENTS`: the critical path; a pull
+  request never pays);
+- it is a first attempt, or a rerun the watchdog did not hold (as above);
+- the runner state is fresh and says the hosted runners of its OS are saturated, with at least
+  `BLACKSMITH_MIN_QUEUED` jobs of that OS waiting (Linux 10, macOS 3);
+- no machine of the user's takes it (busy, offline, unfit, disabled, or past what it takes of one
+  plan);
+- the state does not have it paused.
+
+- **Kill switch**: `gh variable set BLACKSMITH_OVERFLOW --body off` stops it from the next run on;
+  `gh variable delete BLACKSMITH_OVERFLOW` lets it run again.
+- **Spend limit**: $20 a month, set in the Blacksmith dashboard. Past it Blacksmith takes no job. A
+  job queued 10 min on a Blacksmith label gets its run cancelled and rerun on GitHub's runners (the
+  state's `hosted_only`, as for a lost runner), and the dispatcher pauses the tier for 6 h
+  (`blacksmith.ok` false in the state, said in the plan's routing notes), so the next runs do not
+  wait there either.
+- **Safety**: the same routing rules as the self-hosted tier (never a fork's pull request, the state
+  from `ci-runner-state`), and `free-disk` does nothing on a self-hosted-environment runner, which a
+  Blacksmith VM is. A Blacksmith VM runs none of the machines' hooks. What keeps a fork's own
+  `ci.yml` from asking for its label is GitHub's approval of every outside contributor's run, and the
+  spend limit.
+- **Caches**: a Blacksmith VM restores no GitHub cache entry (its `actions/cache` is its own store,
+  inferred from "Cache not found"), so its builds are cold until a push to `main` there saves one.
+  Only a `je-*` machine keeps a ccache of its own.
+- **Measured**: the `macos` lane took 43.4 min there, about $3.47 (run 45229221354, cold). The Linux
+  lane took 57.2 min, about $0.46 (run 45248117157, cold: no cache entry; the image pulled in 9 s).
+- **Testing it**: `gh workflow run ci.yml --ref <branch> -f self_hosted='linux=blacksmith-4vcpu-ubuntu-2404 macos=blacksmith-6vcpu-macos-26'`.
 
 **The planner overflows too.** `changes` cannot route itself, and on 2026-11-23 it waited up to an
 hour for a hosted Linux runner (79 Linux jobs queued, the oldest for 4 h), so no plan ran at all. The
 dispatcher sets the repository variable `SELF_HOSTED_PLANNER` to `je-linux` while hosted Linux is
-saturated and `je-linux` is online, fit and not disabled, and deletes it otherwise. A run reads
+saturated and `je-linux` is online, fit, idle (no job running or queued for it) and not disabled, and
+deletes it otherwise: runs created while it plans go hosted, so planners never queue behind each other
+or a build. A run reads
 `vars` as it is created, which is when its `changes` job is queued, so the value is current where it
 is used. `changes` runs there on a first attempt of a trusted event other than a push (a push waits
 `ADMISSION_SECONDS` first). While it plans, `je-linux` takes no lane (the state marks it unfit,
-"reserved for `changes`"): every run's `changes` would otherwise queue behind a build. If the runner goes away, the watchdog reroutes the run as below, and the rerun
+"reserved for `changes`"): every run's `changes` would otherwise queue behind a build. A non-queue run's `changes`
+queued 5 min for a busy runner anyway (`PLANNER_WAIT`) is rerouted as for a lost runner: cancelled and
+rerun on GitHub's runners. A merge-queue run's is not (a cancel fails its group). If the runner goes away, the watchdog reroutes the run as below, and the rerun
 plans on GitHub's runners.
 
 **The state and the watchdog** (`tools/ci/runner_dispatch.py`): a cron job runs it every minute on an
@@ -1481,8 +1556,18 @@ on one offline for 3 min, or failed because its runner went away ("lost communic
 signal", read as soon as the job ends), gets its run cancelled and, once stopped, rerun whole (`gh run rerun`): the rerun plans on
 GitHub's runners only. A merge-queue run is cancelled and its pull request put back in the queue (the
 queue removed the group, so a rerun would build nothing); a pull request's run that a newer push
-superseded is not rerun. Each run is acted on once, at most 6 actions an hour, each logged to the
-host's `je-runner-dispatch.log`. With no state for 5 min (the host, `gh` or the cron is down) every
+superseded is not rerun.
+
+**Re-routing a waiting job.** A plan routes once, so a job queued on a hosted label stays there even
+when an overflow runner becomes idle. When a trusted run's job has waited 15 min
+(`IDLE_REROUTE_WAIT`) for a hosted runner while an overflow runner that would take it (`OVERFLOW`) is
+online, idle, fit and not disabled, the dispatcher cancels the run and reruns it, so its plan routes
+it there; the merge queue's runs first, one run per idle runner a minute. A merge-queue run's pull
+request goes back to the front of the queue (`enqueuePullRequest` with `jump: true`): it was building
+there. The runs moved off a runner that went away are listed in the state's `hosted_only` for a day,
+and their reruns plan hosted only. Each run gets at most one reroute of each kind, and none for an idle
+runner after one for a lost runner: never a loop. All of it shares the limit of 6 actions an hour, each
+logged to the host's `je-runner-dispatch.log`. With no state for 5 min (the host, `gh` or the cron is down) every
 job goes hosted, so an offline machine never holds a run.
 
 **Taking a machine out**: `gh variable set SELF_HOSTED_DISABLED --body je-win` (labels, or `all`);
