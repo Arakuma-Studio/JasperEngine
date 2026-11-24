@@ -310,8 +310,10 @@ TEST(StreamMigrations, SceneV5ToV6AnimationPlayerControllersMoveToAnimators){
     EXPECT_TRUE(enabledOverride);
     EXPECT_FALSE(controllerOverride);
     EXPECT_FALSE(entry["components"]["animationplayer"]["enabled"].as<bool>());
-    ASSERT_EQ(result.log.lines.size(), 1u);
+    // then S94's 8 -> 9: the two Animators keep their root drift (a deliberate addition, S94 F33)
+    ASSERT_EQ(result.log.lines.size(), 2u);
     EXPECT_NE(result.log.lines[0].find("2 players got an Animator"), std::string::npos) << result.log.lines[0];
+    EXPECT_NE(result.log.lines[1].find("keep"), std::string::npos) << result.log.lines[1];
 
     // a prefab's members the same way (6 -> 7, then the curve form 7 -> 8)
     YAML::Node prefab = YAML::Load(

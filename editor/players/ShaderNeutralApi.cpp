@@ -96,9 +96,9 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"NavGrid", 0x5911c33cu},
         // (S74's isIKReached, setIKSoften, setIKHingeAxis, setIKTwist, setIKAimOffset reviewed: an IK
         // constraint's shape and its last solve, bones only)
-        {"Animator", 0xe5218434u},
-        // (S94 applyRootMotion reviewed: where the root goes, never what it draws with)
-        {"AnimationPlayer", 0xbe579cefu},
+        {"Animator", 0xd3a5c340u},
+        // (S94 applyRootMotion and legacyRootDrift reviewed: where the root goes, never what it draws with)
+        {"AnimationPlayer", 0xd8d0b1fbu},
         {"PoseAnimator", 0x9efa391cu},
         {"AnimationEvent", 0x3191cc4eu},
         {"AnimationState", 0xd696bd82u},
@@ -125,8 +125,8 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"AnimationComponent", 0x1f9ef76eu},
         {"TweenComponent", 0x6fb2e681u},
         {"ActionSystem", 0x2b5420b8u},
-        {"AnimationPlayerComponent", 0x9ed81675u},
-        {"AnimatorComponent", 0xc953276au},
+        {"AnimationPlayerComponent", 0xbe9bec49u},
+        {"AnimatorComponent", 0x25dc74deu},
         {"PoseAnimatorComponent", 0x39f009a9u},
         {"SplineFrame", 0x2e6a235du},
         {"SplineHit", 0x923264d8u},
